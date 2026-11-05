@@ -74,6 +74,9 @@ type FlowMgtServiceInterface interface {
 		string, *tidcommon.ServiceError)
 	GetSystemFlow(ctx context.Context, handle string) (*providers.CompleteFlowDefinition, *tidcommon.ServiceError)
 	ResolveFlowOU(ctx context.Context, flowDef *FlowDefinition) *tidcommon.ServiceError
+	// ValidateFlowShape refuses a definition for what it holds itself, as a create or an update would, without
+	// looking up the resources it names.
+	ValidateFlowShape(flowDef *FlowDefinition) *tidcommon.ServiceError
 
 	// ListFlowsForOU lists the flows an organization unit owns and the ones shared with it.
 	ListFlowsForOU(ctx context.Context, ouID string, flowType providers.FlowType, limit, offset int) (
@@ -236,6 +239,11 @@ func (s *flowMgtService) ListFlows(ctx context.Context, limit, offset int, flowT
 	}
 
 	return listResponse, nil
+}
+
+// ValidateFlowShape refuses a definition for what it holds itself.
+func (s *flowMgtService) ValidateFlowShape(flowDef *FlowDefinition) *tidcommon.ServiceError {
+	return s.flowValidator.ValidateFlowShape(flowDef)
 }
 
 // CreateFlow creates a new flow definition with version 1.

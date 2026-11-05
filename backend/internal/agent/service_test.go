@@ -4609,3 +4609,64 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_Project() {
 		})
 	}
 }
+
+// --- checks a dry run makes ---
+
+func (suite *AgentServiceTestSuite) TestCheckOwner_RefusesAnOwnerThatNamesNoEntity() {
+	svc, mockEntity, _, _, _ := suite.setupService()
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, "missing-owner").
+		Return((*providers.Entity)(nil), entity.ErrEntityNotFound)
+
+	svcErr := svc.CheckOwner(context.Background(), "missing-owner")
+
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), ErrorOwnerNotFound.Code, svcErr.Code)
+}
+
+func (suite *AgentServiceTestSuite) TestCheckClientID() {
+	held := "agent-2"
+	for name, tc := range map[string]struct {
+		clientID, agentID string
+		holder            *string
+		code              string
+	}{
+		"no client ID":           {clientID: "", agentID: "agent-1"},
+		"free":                   {clientID: "client-x", agentID: "agent-1"},
+		"held by another entity": {clientID: "client-x", agentID: "agent-1", holder: &held, code: "AGT-1037"},
+		"held by the agent":      {clientID: "client-x", agentID: "agent-2", holder: &held},
+	} {
+		suite.Run(name, func() {
+			svc, mockEntity, _, _, _ := suite.setupService()
+			clearMockCalls(mockEntity, "IdentifyEntity")
+			switch {
+			case tc.clientID == "":
+			case tc.holder != nil:
+				mockEntity.On("IdentifyEntity", mock.Anything, mock.Anything).Return(tc.holder, nil)
+			default:
+				mockEntity.On("IdentifyEntity", mock.Anything, mock.Anything).
+					Return((*string)(nil), entity.ErrEntityNotFound)
+			}
+
+			svcErr := svc.CheckClientID(context.Background(), tc.clientID, tc.agentID)
+
+			if tc.code == "" {
+				assert.Nil(suite.T(), svcErr)
+			} else {
+				suite.Require().NotNil(svcErr)
+				assert.Equal(suite.T(), tc.code, svcErr.Code)
+			}
+		})
+	}
+}
+
+func (suite *AgentServiceTestSuite) TestCheckClientID_StoreError() {
+	svc, mockEntity, _, _, _ := suite.setupService()
+	clearMockCalls(mockEntity, "IdentifyEntity")
+	mockEntity.On("IdentifyEntity", mock.Anything, mock.Anything).Return((*string)(nil), errors.New("db error"))
+
+	svcErr := svc.CheckClientID(context.Background(), "client-x", "")
+
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), tidcommon.InternalServerError.Code, svcErr.Code)
+}

@@ -101,4 +101,6 @@ type ImportItemOutcome struct {
 	Status       string `json:"status"`
 	Code         string `json:"code,omitempty"`
 	Message      string `json:"message,omitempty"`
+	// Description says what in the document was refused, where the refusal gives more than its message.
+	Description string `json:"description,omitempty"`
 }

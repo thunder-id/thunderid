@@ -51,6 +51,130 @@ func (_m *AgentServiceInterfaceMock) EXPECT() *AgentServiceInterfaceMock_Expecte
 	return &AgentServiceInterfaceMock_Expecter{mock: &_m.Mock}
 }
 
+// CheckClientID provides a mock function for the type AgentServiceInterfaceMock
+func (_mock *AgentServiceInterfaceMock) CheckClientID(ctx context.Context, clientID string, agentID string) *common.ServiceError {
+	ret := _mock.Called(ctx, clientID, agentID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for CheckClientID")
+	}
+
+	var r0 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) *common.ServiceError); ok {
+		r0 = returnFunc(ctx, clientID, agentID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*common.ServiceError)
+		}
+	}
+	return r0
+}
+
+// AgentServiceInterfaceMock_CheckClientID_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CheckClientID'
+type AgentServiceInterfaceMock_CheckClientID_Call struct {
+	*mock.Call
+}
+
+// CheckClientID is a helper method to define mock.On call
+//   - ctx context.Context
+//   - clientID string
+//   - agentID string
+func (_e *AgentServiceInterfaceMock_Expecter) CheckClientID(ctx any, clientID any, agentID any) *AgentServiceInterfaceMock_CheckClientID_Call {
+	return &AgentServiceInterfaceMock_CheckClientID_Call{Call: _e.mock.On("CheckClientID", ctx, clientID, agentID)}
+}
+
+func (_c *AgentServiceInterfaceMock_CheckClientID_Call) Run(run func(ctx context.Context, clientID string, agentID string)) *AgentServiceInterfaceMock_CheckClientID_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *AgentServiceInterfaceMock_CheckClientID_Call) Return(serviceError *common.ServiceError) *AgentServiceInterfaceMock_CheckClientID_Call {
+	_c.Call.Return(serviceError)
+	return _c
+}
+
+func (_c *AgentServiceInterfaceMock_CheckClientID_Call) RunAndReturn(run func(ctx context.Context, clientID string, agentID string) *common.ServiceError) *AgentServiceInterfaceMock_CheckClientID_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// CheckOwner provides a mock function for the type AgentServiceInterfaceMock
+func (_mock *AgentServiceInterfaceMock) CheckOwner(ctx context.Context, ownerID string) *common.ServiceError {
+	ret := _mock.Called(ctx, ownerID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for CheckOwner")
+	}
+
+	var r0 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *common.ServiceError); ok {
+		r0 = returnFunc(ctx, ownerID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*common.ServiceError)
+		}
+	}
+	return r0
+}
+
+// AgentServiceInterfaceMock_CheckOwner_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CheckOwner'
+type AgentServiceInterfaceMock_CheckOwner_Call struct {
+	*mock.Call
+}
+
+// CheckOwner is a helper method to define mock.On call
+//   - ctx context.Context
+//   - ownerID string
+func (_e *AgentServiceInterfaceMock_Expecter) CheckOwner(ctx any, ownerID any) *AgentServiceInterfaceMock_CheckOwner_Call {
+	return &AgentServiceInterfaceMock_CheckOwner_Call{Call: _e.mock.On("CheckOwner", ctx, ownerID)}
+}
+
+func (_c *AgentServiceInterfaceMock_CheckOwner_Call) Run(run func(ctx context.Context, ownerID string)) *AgentServiceInterfaceMock_CheckOwner_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *AgentServiceInterfaceMock_CheckOwner_Call) Return(serviceError *common.ServiceError) *AgentServiceInterfaceMock_CheckOwner_Call {
+	_c.Call.Return(serviceError)
+	return _c
+}
+
+func (_c *AgentServiceInterfaceMock_CheckOwner_Call) RunAndReturn(run func(ctx context.Context, ownerID string) *common.ServiceError) *AgentServiceInterfaceMock_CheckOwner_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // CreateAgent provides a mock function for the type AgentServiceInterfaceMock
 func (_mock *AgentServiceInterfaceMock) CreateAgent(ctx context.Context, agent *providers.Agent) (*model.AgentCompleteResponse, *common.ServiceError) {
 	ret := _mock.Called(ctx, agent)

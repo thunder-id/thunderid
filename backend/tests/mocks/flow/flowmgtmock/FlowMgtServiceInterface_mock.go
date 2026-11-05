@@ -2318,6 +2318,59 @@ func (_c *FlowMgtServiceInterfaceMock_UpdateSharingPolicy_Call) RunAndReturn(run
 	return _c
 }
 
+// ValidateFlowShape provides a mock function for the type FlowMgtServiceInterfaceMock
+func (_mock *FlowMgtServiceInterfaceMock) ValidateFlowShape(flowDef *flowmgt.FlowDefinition) *common.ServiceError {
+	ret := _mock.Called(flowDef)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ValidateFlowShape")
+	}
+
+	var r0 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(*flowmgt.FlowDefinition) *common.ServiceError); ok {
+		r0 = returnFunc(flowDef)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*common.ServiceError)
+		}
+	}
+	return r0
+}
+
+// FlowMgtServiceInterfaceMock_ValidateFlowShape_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ValidateFlowShape'
+type FlowMgtServiceInterfaceMock_ValidateFlowShape_Call struct {
+	*mock.Call
+}
+
+// ValidateFlowShape is a helper method to define mock.On call
+//   - flowDef *flowmgt.FlowDefinition
+func (_e *FlowMgtServiceInterfaceMock_Expecter) ValidateFlowShape(flowDef any) *FlowMgtServiceInterfaceMock_ValidateFlowShape_Call {
+	return &FlowMgtServiceInterfaceMock_ValidateFlowShape_Call{Call: _e.mock.On("ValidateFlowShape", flowDef)}
+}
+
+func (_c *FlowMgtServiceInterfaceMock_ValidateFlowShape_Call) Run(run func(flowDef *flowmgt.FlowDefinition)) *FlowMgtServiceInterfaceMock_ValidateFlowShape_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 *flowmgt.FlowDefinition
+		if args[0] != nil {
+			arg0 = args[0].(*flowmgt.FlowDefinition)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *FlowMgtServiceInterfaceMock_ValidateFlowShape_Call) Return(serviceError *common.ServiceError) *FlowMgtServiceInterfaceMock_ValidateFlowShape_Call {
+	_c.Call.Return(serviceError)
+	return _c
+}
+
+func (_c *FlowMgtServiceInterfaceMock_ValidateFlowShape_Call) RunAndReturn(run func(flowDef *flowmgt.FlowDefinition) *common.ServiceError) *FlowMgtServiceInterfaceMock_ValidateFlowShape_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // ValidateSharingPolicies provides a mock function for the type FlowMgtServiceInterfaceMock
 func (_mock *FlowMgtServiceInterfaceMock) ValidateSharingPolicies(ctx context.Context, flowID string, policies []sharing.PolicyRequest) *common.ServiceError {
 	ret := _mock.Called(ctx, flowID, policies)
