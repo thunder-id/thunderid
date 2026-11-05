@@ -1208,6 +1208,21 @@ var (
 			DefaultValue: "The user could not be deleted",
 		},
 	}
+
+	// ErrAmbiguousIdentifier is returned when more than one of a node's mutually exclusive
+	// identifier inputs is supplied, leaving the identifier to authenticate with undetermined.
+	ErrAmbiguousIdentifier = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1086",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.ambiguous_identifier",
+			DefaultValue: "Ambiguous identifier",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.ambiguous_identifier_desc",
+			DefaultValue: "More than one identifier was provided for this step",
+		},
+	}
 )
 
 // errAttributeNotUniqueFor returns a ServiceError for a specific attribute that is not unique.

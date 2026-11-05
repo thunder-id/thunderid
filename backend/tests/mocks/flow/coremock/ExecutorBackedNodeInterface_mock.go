@@ -409,6 +409,52 @@ func (_c *ExecutorBackedNodeInterfaceMock_GetID_Call) RunAndReturn(run func() st
 	return _c
 }
 
+// GetIdentifierInputs provides a mock function for the type ExecutorBackedNodeInterfaceMock
+func (_mock *ExecutorBackedNodeInterfaceMock) GetIdentifierInputs() []providers.Input {
+	ret := _mock.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetIdentifierInputs")
+	}
+
+	var r0 []providers.Input
+	if returnFunc, ok := ret.Get(0).(func() []providers.Input); ok {
+		r0 = returnFunc()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]providers.Input)
+		}
+	}
+	return r0
+}
+
+// ExecutorBackedNodeInterfaceMock_GetIdentifierInputs_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetIdentifierInputs'
+type ExecutorBackedNodeInterfaceMock_GetIdentifierInputs_Call struct {
+	*mock.Call
+}
+
+// GetIdentifierInputs is a helper method to define mock.On call
+func (_e *ExecutorBackedNodeInterfaceMock_Expecter) GetIdentifierInputs() *ExecutorBackedNodeInterfaceMock_GetIdentifierInputs_Call {
+	return &ExecutorBackedNodeInterfaceMock_GetIdentifierInputs_Call{Call: _e.mock.On("GetIdentifierInputs")}
+}
+
+func (_c *ExecutorBackedNodeInterfaceMock_GetIdentifierInputs_Call) Run(run func()) *ExecutorBackedNodeInterfaceMock_GetIdentifierInputs_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *ExecutorBackedNodeInterfaceMock_GetIdentifierInputs_Call) Return(inputs []providers.Input) *ExecutorBackedNodeInterfaceMock_GetIdentifierInputs_Call {
+	_c.Call.Return(inputs)
+	return _c
+}
+
+func (_c *ExecutorBackedNodeInterfaceMock_GetIdentifierInputs_Call) RunAndReturn(run func() []providers.Input) *ExecutorBackedNodeInterfaceMock_GetIdentifierInputs_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetInputs provides a mock function for the type ExecutorBackedNodeInterfaceMock
 func (_mock *ExecutorBackedNodeInterfaceMock) GetInputs() []providers.Input {
 	ret := _mock.Called()
@@ -1163,6 +1209,46 @@ func (_c *ExecutorBackedNodeInterfaceMock_SetExecutorName_Call) Return() *Execut
 }
 
 func (_c *ExecutorBackedNodeInterfaceMock_SetExecutorName_Call) RunAndReturn(run func(name string)) *ExecutorBackedNodeInterfaceMock_SetExecutorName_Call {
+	_c.Run(run)
+	return _c
+}
+
+// SetIdentifierInputs provides a mock function for the type ExecutorBackedNodeInterfaceMock
+func (_mock *ExecutorBackedNodeInterfaceMock) SetIdentifierInputs(inputs []providers.Input) {
+	_mock.Called(inputs)
+	return
+}
+
+// ExecutorBackedNodeInterfaceMock_SetIdentifierInputs_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetIdentifierInputs'
+type ExecutorBackedNodeInterfaceMock_SetIdentifierInputs_Call struct {
+	*mock.Call
+}
+
+// SetIdentifierInputs is a helper method to define mock.On call
+//   - inputs []providers.Input
+func (_e *ExecutorBackedNodeInterfaceMock_Expecter) SetIdentifierInputs(inputs interface{}) *ExecutorBackedNodeInterfaceMock_SetIdentifierInputs_Call {
+	return &ExecutorBackedNodeInterfaceMock_SetIdentifierInputs_Call{Call: _e.mock.On("SetIdentifierInputs", inputs)}
+}
+
+func (_c *ExecutorBackedNodeInterfaceMock_SetIdentifierInputs_Call) Run(run func(inputs []providers.Input)) *ExecutorBackedNodeInterfaceMock_SetIdentifierInputs_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 []providers.Input
+		if args[0] != nil {
+			arg0 = args[0].([]providers.Input)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *ExecutorBackedNodeInterfaceMock_SetIdentifierInputs_Call) Return() *ExecutorBackedNodeInterfaceMock_SetIdentifierInputs_Call {
+	_c.Call.Return()
+	return _c
+}
+
+func (_c *ExecutorBackedNodeInterfaceMock_SetIdentifierInputs_Call) RunAndReturn(run func(inputs []providers.Input)) *ExecutorBackedNodeInterfaceMock_SetIdentifierInputs_Call {
 	_c.Run(run)
 	return _c
 }

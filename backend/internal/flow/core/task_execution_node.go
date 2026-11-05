@@ -24,6 +24,8 @@ type ExecutorBackedNodeInterface interface {
 	SetExecutor(executor providers.Executor)
 	GetInputs() []providers.Input
 	SetInputs(inputs []providers.Input)
+	GetIdentifierInputs() []providers.Input
+	SetIdentifierInputs(inputs []providers.Input)
 	GetOnSuccess() string
 	SetOnSuccess(nodeID string)
 	GetOnFailure() string
@@ -37,14 +39,15 @@ type ExecutorBackedNodeInterface interface {
 // taskExecutionNode represents a node that executes a task via an executor
 type taskExecutionNode struct {
 	*node
-	executorName string
-	executor     providers.Executor
-	mode         string
-	inputs       []providers.Input
-	onSuccess    string
-	onFailure    string
-	onIncomplete string
-	logger       *log.Logger
+	executorName     string
+	executor         providers.Executor
+	mode             string
+	inputs           []providers.Input
+	identifierInputs []providers.Input
+	onSuccess        string
+	onFailure        string
+	onIncomplete     string
+	logger           *log.Logger
 }
 
 // Ensure taskExecutionNode implements ExecutorBackedNodeInterface
@@ -88,8 +91,9 @@ func (n *taskExecutionNode) Execute(ctx *providers.NodeContext) (*common.NodeRes
 		ctx.NodeProperties = make(map[string]interface{})
 	}
 
-	// Set executor mode in context
+	// Set executor mode and identifier inputs in context
 	ctx.ExecutorMode = n.mode
+	ctx.NodeIdentifierInputs = n.identifierInputs
 
 	n.enrichRuntimeData(ctx)
 
@@ -117,10 +121,7 @@ func (n *taskExecutionNode) Execute(ctx *providers.NodeContext) (*common.NodeRes
 			}
 		}
 
-		// Clear user inputs consumed by this executor
-		for _, input := range n.inputs {
-			delete(ctx.UserInputs, input.Identifier)
-		}
+		n.clearConsumedInputs(ctx)
 	} else if nodeResp.Status == common.NodeStatusIncomplete && n.onIncomplete != "" {
 		// Executor requires user input - forward to dedicated prompt node
 		// Change status to Forward so engine forwards execution to onIncomplete node
@@ -136,10 +137,7 @@ func (n *taskExecutionNode) Execute(ctx *providers.NodeContext) (*common.NodeRes
 				nodeResp.RuntimeData["failureReasonJSON"] = string(jsonBytes)
 			}
 
-			// Clear user inputs consumed by this executor
-			for _, input := range n.inputs {
-				delete(ctx.UserInputs, input.Identifier)
-			}
+			n.clearConsumedInputs(ctx)
 		}
 	} else if nodeResp.Status == common.NodeStatusIncomplete && nodeResp.Type == common.NodeResponseTypeView &&
 		len(nodeResp.Inputs) == 0 {
@@ -150,6 +148,17 @@ func (n *taskExecutionNode) Execute(ctx *providers.NodeContext) (*common.NodeRes
 	}
 
 	return nodeResp, nil
+}
+
+// clearConsumedInputs removes the user inputs this node declared, so the prompt it forwards to
+// re-asks for them. Identifier inputs are cleared alongside the regular ones: leaving one behind
+// would let a second identifier accumulate on a later attempt, which the executor cannot resolve.
+func (n *taskExecutionNode) clearConsumedInputs(ctx *providers.NodeContext) {
+	for _, inputs := range [][]providers.Input{n.inputs, n.identifierInputs} {
+		for _, input := range inputs {
+			delete(ctx.UserInputs, input.Identifier)
+		}
+	}
 }
 
 // enrichRuntimeData initializes the runtime data map and attaches identifiers like application, IDP,
@@ -322,4 +331,14 @@ func (n *taskExecutionNode) GetInputs() []providers.Input {
 // SetInputs sets the inputs required for the task execution node
 func (n *taskExecutionNode) SetInputs(inputs []providers.Input) {
 	n.inputs = inputs
+}
+
+// GetIdentifierInputs returns the node's mutually exclusive identifier inputs
+func (n *taskExecutionNode) GetIdentifierInputs() []providers.Input {
+	return n.identifierInputs
+}
+
+// SetIdentifierInputs sets the node's mutually exclusive identifier inputs
+func (n *taskExecutionNode) SetIdentifierInputs(inputs []providers.Input) {
+	n.identifierInputs = inputs
 }

@@ -447,7 +447,7 @@ func (suite *CredentialsAuthExecutorTestSuite) TestAuthenticateUser_SuccessfulAu
 	}, mock.Anything, mock.Anything, mock.Anything).
 		Return(authenticatedAuthUser, providers.AuthenticatedClaims{}, nil)
 
-	err := suite.executor.authenticateUser(ctx, execResp)
+	err := suite.executor.authenticateUser(ctx, execResp, nil)
 
 	assert.NoError(suite.T(), err)
 	assert.True(suite.T(), execResp.AuthUser.IsAuthenticated())
@@ -480,7 +480,7 @@ func (suite *CredentialsAuthExecutorTestSuite) TestAuthenticateUser_Success_With
 		userAttributePassword: "password123",
 	}, mock.Anything, mock.Anything, mock.Anything).Return(authenticatedAuthUser, runtimeAttrs, nil)
 
-	err := suite.executor.authenticateUser(ctx, execResp)
+	err := suite.executor.authenticateUser(ctx, execResp, nil)
 
 	assert.NoError(suite.T(), err)
 	assert.True(suite.T(), execResp.AuthUser.IsAuthenticated())
@@ -511,7 +511,7 @@ func (suite *CredentialsAuthExecutorTestSuite) TestAuthenticateUser_Authenticati
 	}, mock.Anything, mock.Anything, mock.Anything).
 		Return(authenticatedAuthUser, providers.AuthenticatedClaims{}, nil)
 
-	err := suite.executor.authenticateUser(ctx, execResp)
+	err := suite.executor.authenticateUser(ctx, execResp, nil)
 
 	assert.NoError(suite.T(), err)
 	assert.True(suite.T(), execResp.AuthUser.IsAuthenticated())
@@ -536,7 +536,7 @@ func (suite *CredentialsAuthExecutorTestSuite) TestAuthenticateUser_Registration
 		userAttributeUsername: "newuser",
 	}).Return(nil, entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "", ""))
 
-	err := suite.executor.authenticateUser(ctx, execResp)
+	err := suite.executor.authenticateUser(ctx, execResp, nil)
 
 	assert.NoError(suite.T(), err)
 	assert.False(suite.T(), execResp.AuthUser.IsAuthenticated())
@@ -632,7 +632,7 @@ func (suite *CredentialsAuthExecutorTestSuite) TestGetAuthenticatedUser_ClientEr
 			ErrorDescription: tidcommon.I18nMessage{Key: "error.test.wrong_password", DefaultValue: "wrong password"},
 		})
 
-	err := suite.executor.authenticateUser(ctx, execResp)
+	err := suite.executor.authenticateUser(ctx, execResp, nil)
 
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), providers.ExecUserInputRequired, execResp.Status,
@@ -687,4 +687,129 @@ func (suite *CredentialsAuthExecutorTestSuite) TestExecute_PreResolvedUser_WithP
 	assert.NotNil(suite.T(), resp)
 	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
 	assert.True(suite.T(), resp.AuthUser.IsAuthenticated())
+}
+
+// identifierInputsFixture returns the mutually exclusive identifier inputs used by the
+// identifier-input tests, mirroring a node reachable from several identifier prompts.
+func identifierInputsFixture() []providers.Input {
+	return []providers.Input{
+		{Identifier: "uin", Type: providers.InputTypeText, Required: true},
+		{Identifier: "phone", Type: providers.InputTypeText, Required: true},
+		{Identifier: "email", Type: providers.InputTypeText, Required: true},
+	}
+}
+
+// newIdentifierInputsContext builds a context for a node declaring identifier inputs, with
+// only the given identifiers supplied alongside the password.
+func newIdentifierInputsContext(supplied map[string]string) *providers.NodeContext {
+	userInputs := map[string]string{userAttributePassword: "password123"}
+	for k, v := range supplied {
+		userInputs[k] = v
+	}
+	return &providers.NodeContext{
+		ExecutionID:          "flow-123",
+		FlowType:             providers.FlowTypeAuthentication,
+		UserInputs:           userInputs,
+		RuntimeData:          make(map[string]string),
+		NodeIdentifierInputs: identifierInputsFixture(),
+	}
+}
+
+func (suite *CredentialsAuthExecutorTestSuite) TestExecute_IdentifierInputs_PassesSuppliedIdentifier() {
+	ctx := newIdentifierInputsContext(map[string]string{"phone": "+919876543210@phone"})
+	suite.executor.Executor = createMockExecutorWithCustomInputs(suite.T(), ExecutorNameCredentialsAuth,
+		[]providers.Input{{Identifier: userAttributePassword, Type: providers.InputTypePassword, Required: true}})
+
+	authenticatedAuthUser := newCredentialsAuthAuthenticatedUser()
+	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything,
+		map[string]interface{}{"phone": "+919876543210@phone"},
+		map[string]interface{}{userAttributePassword: "password123"},
+		mock.Anything, mock.Anything, mock.Anything).
+		Return(authenticatedAuthUser, providers.AuthenticatedClaims{}, nil)
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
+	suite.mockAuthnProvider.AssertExpectations(suite.T())
+}
+
+func (suite *CredentialsAuthExecutorTestSuite) TestExecute_IdentifierInputs_MissingIdentifierPrompts() {
+	ctx := newIdentifierInputsContext(nil)
+	suite.executor.Executor = createMockExecutorWithCustomInputs(suite.T(), ExecutorNameCredentialsAuth,
+		[]providers.Input{{Identifier: userAttributePassword, Type: providers.InputTypePassword, Required: true}})
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecUserInputRequired, resp.Status)
+	assert.Subset(suite.T(), resp.Inputs, identifierInputsFixture())
+}
+
+func (suite *CredentialsAuthExecutorTestSuite) TestExecute_IdentifierInputs_AmbiguousIdentifierFails() {
+	ctx := newIdentifierInputsContext(map[string]string{"uin": "4358192047", "phone": "+919876543210@phone"})
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecFailure, resp.Status)
+	assert.Equal(suite.T(), ErrAmbiguousIdentifier.Code, resp.Error.Code)
+}
+
+func (suite *CredentialsAuthExecutorTestSuite) TestExecute_WithoutIdentifierInputs_UsesDeclaredInputs() {
+	ctx := &providers.NodeContext{
+		ExecutionID: "flow-123",
+		FlowType:    providers.FlowTypeAuthentication,
+		UserInputs: map[string]string{
+			userAttributeUsername: "testuser",
+			userAttributePassword: "password123",
+		},
+		RuntimeData: make(map[string]string),
+	}
+
+	authenticatedAuthUser := newCredentialsAuthAuthenticatedUser()
+	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything,
+		map[string]interface{}{userAttributeUsername: "testuser"},
+		map[string]interface{}{userAttributePassword: "password123"},
+		mock.Anything, mock.Anything, mock.Anything).
+		Return(authenticatedAuthUser, providers.AuthenticatedClaims{}, nil)
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
+	suite.mockAuthnProvider.AssertExpectations(suite.T())
+}
+
+// TestExecute_PreResolvedUser_SkipsIdentifierInputs verifies that when a userID is
+// pre-resolved, identifier resolution and its ambiguity validation are skipped even
+// though the node declares identifier inputs and multiple are supplied. Authentication
+// must proceed using only the pre-resolved userID rather than failing as ambiguous.
+func (suite *CredentialsAuthExecutorTestSuite) TestExecute_PreResolvedUser_SkipsIdentifierInputs() {
+	ctx := &providers.NodeContext{
+		ExecutionID: "flow-123",
+		FlowType:    providers.FlowTypeAuthentication,
+		UserInputs: map[string]string{
+			userAttributePassword: "password123",
+			"uin":                 "4358192047",
+			"phone":               "+919876543210@phone",
+		},
+		RuntimeData: map[string]string{
+			userAttributeUserID: "pre-resolved-user-123",
+		},
+		NodeIdentifierInputs: identifierInputsFixture(),
+	}
+
+	authenticatedAuthUser := newCredentialsAuthAuthenticatedUser()
+	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything,
+		map[string]interface{}{userAttributeUserID: "pre-resolved-user-123"},
+		map[string]interface{}{userAttributePassword: "password123"},
+		mock.Anything, mock.Anything, mock.Anything).
+		Return(authenticatedAuthUser, providers.AuthenticatedClaims{}, nil)
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
+	suite.mockAuthnProvider.AssertExpectations(suite.T())
 }
