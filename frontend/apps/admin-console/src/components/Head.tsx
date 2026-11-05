@@ -6,7 +6,7 @@ import {useConfig} from '@thunderid/contexts';
 
 /**
  * Resolves a configured favicon path against the Vite base URL so it loads
- * correctly when the app is served under a sub-path such as `/console`.
+ * correctly when the app is served under a sub-path such as `/admin`.
  * Already-resolved values (absolute, protocol-relative or root-relative URLs,
  * and `data:` URIs) are returned untouched.
  */

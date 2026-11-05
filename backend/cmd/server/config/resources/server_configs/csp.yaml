@@ -25,6 +25,27 @@ value:
         worker-src:
           - "'self'"
           - "blob:" # Monaco instantiated web workers.
+    - location: "/admin/"
+      directives:
+        style-src-elem:
+          - "'self'"
+          - "'unsafe-inline'" # Needed for the embedded Monaco editor, which has no CSP nonce support.
+        # Governs inline style="" attributes that can't carry a nonce.
+        style-src-attr:
+          - "'self'"
+          - "'unsafe-inline'"
+        img-src:
+          - "'self'"
+          - "data:"
+        font-src:
+          - "'self'"
+          - "data:"
+        connect-src:
+          - "'self'"
+          - "https://thunderid.dev"
+        worker-src:
+          - "'self'"
+          - "blob:" # Monaco instantiated web workers.
     - location: "/gate/"
       directives:
         style-src-elem:

@@ -224,7 +224,7 @@ configuration:
 
   # Console client configuration
   consoleClient:
-    path: "/console"
+    path: "/admin"
     clientId: "CONSOLE"
     scopes: "['openid', 'profile', 'email', 'group', 'ou', 'system']"
     # Resource indicator (audience) the console sends on token requests. Must match the

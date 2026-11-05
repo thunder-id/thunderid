@@ -59,7 +59,7 @@ gate_client:
   path: "/gate"
 ```
 
-Then update the Gate and Console frontend config files so the browser-side apps call the public URL instead of `localhost`. In `apps/gate/config.js` and `apps/console/config.js`, set:
+Then update the Gate and Console frontend config files so the browser-side apps call the public URL instead of `localhost`. In `apps/gate/config.js` and `apps/admin/config.js`, set:
 
 ```js
 server: {
@@ -103,7 +103,7 @@ Download the latest Wayfinder sample distribution.
 
 ### Import the Sample Bundle
 
-1. Open the <ProductName /> Console at **`<PUBLIC_URL>/console`**.
+1. Open the <ProductName /> Console at **`<PUBLIC_URL>/admin`**.
 2. On first sign-in, a welcome screen appears with an **Open** button. (Later, reach it from the user profile menu.)
 3. Click **Open** and select `thunderid-config/redirect/thunderid-config.yaml`.
 4. Select `thunderid-config/redirect/thunderid.env` for environment variables.
