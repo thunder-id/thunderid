@@ -20,6 +20,11 @@ export interface VersionsCardProps {
   deploying?: string;
   /** The names of the targets each version is deployed to, by the version's key. */
   runners?: Record<string, string[]>;
+  /**
+   * The names of the targets that hold each version only in part, by the version's key. Such a target
+   * is not done with the version, so a Deploy to it stays on offer.
+   */
+  partlyRunners?: Record<string, string[]>;
   /** Every target's name, in path order, so each is tagged in a colour of its own. */
   targets?: string[];
   /**
@@ -78,6 +83,7 @@ export default function VersionsCard({
   onDeploy = undefined,
   deploying = undefined,
   runners = {},
+  partlyRunners = {},
   targets = [],
   deployTargets = undefined,
 }: VersionsCardProps): JSX.Element {
@@ -93,12 +99,14 @@ export default function VersionsCard({
   );
   const folded = versions.length - listed.length;
 
-  // A version that every target a deploy can reach already runs has nowhere to go, so its Deploy is
-  // disabled and says where it runs.
+  // A version that every target a deploy can reach already runs whole has nowhere to go, so its Deploy
+  // is disabled and says where it runs. A target holding it in part can still take the rest.
   const reachable = deployTargets ?? targets;
   const deployButton = (version: Version, deployedTo: string[]): JSX.Element | null => {
     if (!onDeploy) return null;
-    const everywhere = reachable.length > 0 && reachable.every((name: string) => deployedTo.includes(name));
+    const partly = partlyRunners[version.version] ?? [];
+    const everywhere =
+      reachable.length > 0 && reachable.every((name: string) => deployedTo.includes(name) && !partly.includes(name));
     const button = (
       <Button
         variant="contained"

@@ -78,11 +78,9 @@ export default function RevertPanel({
   };
 
   const changes = (preview?.diff.changes ?? []).filter((change: Change) => change.change !== 'unchanged');
-  // Counted as the control plane counts them for its threshold: a deletion the gateway holds back is
-  // not sent, so it is not a removal.
-  const removals = changes.filter(
-    (change: Change) => change.change === 'deleted' && Boolean(change.id) && !change.excluded,
-  ).length;
+  // Counted as the control plane counts them for its threshold: a resource without an id cannot be
+  // named to the gateway, so it is not a removal.
+  const removals = changes.filter((change: Change) => change.change === 'deleted' && Boolean(change.id)).length;
   const header = (
     <Stack direction="row" alignItems="center" spacing={1.5}>
       <Box sx={{display: 'flex', color: 'error.main'}}>

@@ -4,12 +4,17 @@
 import {DocumentTitle} from '@thunderid/components';
 import {User} from '@thunderid/react';
 import {Box, PageContent, Stack, Typography, useTheme} from '@wso2/oxygen-ui';
-import type {JSX} from 'react';
+import type {JSX, ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
 import NextStepsSection from '../components/home/NextStepsSection';
 import StartBuildingSection from '../components/home/StartBuildingSection';
 
-export default function HomePage(): JSX.Element {
+export interface HomePageProps {
+  /** Shown first, under the greeting, such as where the configuration is deployed. */
+  lead?: ReactNode;
+}
+
+export default function HomePage({lead = undefined}: HomePageProps = {}): JSX.Element {
   const {t} = useTranslation('home');
   const theme = useTheme();
 
@@ -54,6 +59,7 @@ export default function HomePage(): JSX.Element {
             </Box>
           )}
         </User>
+        {lead}
         <StartBuildingSection />
         <NextStepsSection />
       </Stack>

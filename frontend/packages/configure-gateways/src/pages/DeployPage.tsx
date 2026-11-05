@@ -2,29 +2,25 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {DocumentTitle} from '@thunderid/components';
-import {useToast} from '@thunderid/contexts';
 import {Alert, Box, CircularProgress, PageTitle, Stack} from '@wso2/oxygen-ui';
-import {Fragment, useCallback, useMemo, useState, type JSX} from 'react';
+import {Fragment, useMemo, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
 import useAppliedVersions from '../api/useAppliedVersions';
 import useGateways from '../api/useGateways';
 import {useVersions} from '../api/useVersions';
-import ApplyPanel from '../components/ApplyPanel';
 import FullScreenHeader from '../components/FullScreenHeader';
 import GatewayStage from '../components/GatewayStage';
 import PathConnector from '../components/PathConnector';
-import RevertPanel from '../components/RevertPanel';
 import VersionsCard from '../components/VersionsCard';
+import useDeployPanels from '../hooks/useDeployPanels';
 import useDeployRoutes from '../hooks/useDeployRoutes';
-import type {ApplyResult, Version} from '../models/deploy';
+import type {Version} from '../models/deploy';
 import type {Gateway} from '../models/gateway';
-import {versionLabel} from '../utils/format';
+import runnersOf from '../utils/runners';
 
 /** How many stages sit beside the versions card before the rest wrap to another row. */
 const STAGES_PER_ROW = 3;
-
-type Open = {kind: 'apply'; version: Version; gatewayId?: string} | {kind: 'revert'; gateway: Gateway} | null;
 
 /**
  * The Deploy page: the captured versions and every gateway, with the way to deploy any version to
@@ -34,66 +30,15 @@ export default function DeployPage(): JSX.Element {
   const {t} = useTranslation('deploy');
   const navigate = useNavigate();
   const routes = useDeployRoutes();
-  const {showToast} = useToast();
   const gateways = useGateways();
   const versions = useVersions();
   const list: Gateway[] = useMemo(() => gateways.data ?? [], [gateways.data]);
   const applied = useAppliedVersions(list.map((gateway: Gateway) => gateway.id));
-  const [open, setOpen] = useState<Open>(null);
 
   const all: Version[] = useMemo(() => versions.data ?? [], [versions.data]);
-  // Where each version is deployed, by its hash, so the list names the gateways that run it.
-  const runners = useMemo(() => {
-    const byVersion: Record<string, string[]> = {};
-    for (const gateway of list) {
-      const hash = applied.byGateway[gateway.id]?.appliedVersion;
-      if (hash) byVersion[hash] = [...(byVersion[hash] ?? []), gateway.name];
-    }
-    return byVersion;
-  }, [list, applied.byGateway]);
-  const labelOf = useCallback(
-    (hash: string | undefined): string => {
-      const index = all.findIndex((version: Version) => version.version === hash);
-      return index < 0 ? '' : versionLabel(all[index].hash ?? hash, all[index].number ?? all.length - index);
-    },
-    [all],
-  );
-  const deployed = (gateway: Gateway, result: ApplyResult): void => {
-    setOpen(null);
-    const failed = result.import?.summary?.failed ?? 0;
-    showToast(
-      failed > 0
-        ? t('applyPanel.doneWithFailures', 'Deployed to {{gateway}}; {{count}} resources were refused.', {
-            gateway: gateway.name,
-            count: failed,
-          })
-        : t('applyPanel.done', 'Deployed to {{gateway}}.', {gateway: gateway.name}),
-      failed > 0 ? 'warning' : 'success',
-    );
-  };
-  const reverted = (gateway: Gateway, result: ApplyResult): void => {
-    setOpen(null);
-    const failed = result.import?.summary?.failed ?? 0;
-    showToast(
-      failed > 0
-        ? t(
-            'revertPanel.doneWithFailures',
-            '{{gateway}} runs its earlier version again; {{count}} resources were refused.',
-            {
-              gateway: gateway.name,
-              count: failed,
-            },
-          )
-        : t('revertPanel.done', '{{gateway}} runs its earlier version again.', {gateway: gateway.name}),
-      failed > 0 ? 'warning' : 'success',
-    );
-  };
-
-  // Redeploying deploys the version a gateway runs again, so the values set on it since take effect.
-  const redeploy = (gateway: Gateway): void => {
-    const running = all.find((version: Version) => version.version === applied.byGateway[gateway.id]?.appliedVersion);
-    if (running) setOpen({kind: 'apply', version: running, gatewayId: gateway.id});
-  };
+  // Where each version is deployed, so the list names the gateways that run it.
+  const runners = useMemo(() => runnersOf(list, applied.byGateway), [list, applied.byGateway]);
+  const panels = useDeployPanels(list, all, applied.byGateway);
 
   const stage = (gateway: Gateway): JSX.Element => (
     <Fragment key={gateway.id}>
@@ -104,8 +49,9 @@ export default function DeployPage(): JSX.Element {
         versions={all}
         onExplore={() => void navigate(routes.deploy.explore(gateway.id))}
         onConfigure={() => void navigate(routes.deploy.values(gateway.id))}
-        onRevert={() => setOpen({kind: 'revert', gateway})}
-        onRedeploy={() => redeploy(gateway)}
+        onRevert={() => panels.revert(gateway)}
+        onRedeploy={() => panels.redeploy(gateway)}
+        onRetryRefused={(keys: string[]) => panels.retryRefused(gateway, keys)}
       />
     </Fragment>
   );
@@ -163,9 +109,10 @@ export default function DeployPage(): JSX.Element {
                     <VersionsCard
                       versions={all}
                       isLoading={versions.isLoading}
-                      onDeploy={(version: Version) => setOpen({kind: 'apply', version})}
-                      deploying={open?.kind === 'apply' ? open.version.version : undefined}
-                      runners={runners}
+                      onDeploy={(version: Version) => panels.deploy(version)}
+                      deploying={panels.deploying}
+                      runners={runners.running}
+                      partlyRunners={runners.partly}
                       targets={list.map((gateway: Gateway) => gateway.name)}
                     />
                   ) : (
@@ -175,24 +122,7 @@ export default function DeployPage(): JSX.Element {
                 </Box>
               ))
             )}
-            {open?.kind === 'apply' && (
-              <ApplyPanel
-                version={open.version}
-                label={labelOf(open.version.version)}
-                gateways={list}
-                gatewayId={open.gatewayId}
-                onClose={() => setOpen(null)}
-                onDeployed={deployed}
-              />
-            )}
-            {open?.kind === 'revert' && (
-              <RevertPanel
-                gateway={open.gateway}
-                previousLabel={labelOf(applied.byGateway[open.gateway.id]?.previousVersion) || undefined}
-                onClose={() => setOpen(null)}
-                onReverted={reverted}
-              />
-            )}
+            {panels.panels}
           </Stack>
         )}
       </Box>

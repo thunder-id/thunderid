@@ -219,7 +219,7 @@ export default function DashboardLayout({collapseSidebar = false}: DashboardLayo
         routes: [
           {
             id: 'users',
-            text: t('navigation:pages.users'),
+            text: t('navigation:pages.administrators', 'Administrators'),
             icon: <UsersRound />,
             path: RouteConfig.users.list(),
           },

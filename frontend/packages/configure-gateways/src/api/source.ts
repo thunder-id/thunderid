@@ -8,12 +8,15 @@ import type {
   AppliedVersion,
   ApplyRequest,
   ApplyResult,
+  Master,
+  ResourceHistory,
   StoredValue,
   ValueKind,
   ValueReference,
   Version,
 } from '../models/deploy';
 import type {Gateway} from '../models/gateway';
+import type {AutoApplySetting, Pipeline} from '../models/pipeline';
 
 /** A value to set in a target's store. */
 export interface StoredValueInput {
@@ -45,6 +48,12 @@ export interface DeploySource {
   appliedVersion(targetId: string): Promise<AppliedVersion>;
   /** Everything a target runs, each resource as its own read returns it. */
   appliedConfiguration(targetId: string): Promise<AppliedConfiguration>;
+  /** What a target holds, resource by resource, as the target last accepted each: its master. */
+  master(targetId: string): Promise<Master>;
+  /** A target's masters, newest first, without their entries. */
+  masterHistory(targetId: string): Promise<Master[]>;
+  /** One resource's entry across a target's masters, newest first. */
+  resourceHistory(targetId: string, key: string): Promise<ResourceHistory>;
   /** What applying a version would change on a target, and what it lacks for it. Nothing is written. */
   applyCheck(targetId: string, version: string): Promise<ApplyResult>;
   /** Applies a version to a target, or works out what it would do when `dryRun` is set. */
@@ -62,6 +71,12 @@ export interface DeploySource {
   deleteValue(targetId: string, kind: ValueKind, name: string): Promise<void>;
   /** Where the version a target runs refers to values. */
   runningReferences(targetId: string): Promise<ValueReference[]>;
+  /** The environments a version is deployed and promoted through, in order, each on a target. */
+  pipeline(): Promise<Pipeline>;
+  /** Whether a change saved here deploys to the first environment on its own. */
+  autoApply(): Promise<AutoApplySetting>;
+  /** Turns deploying a saved change to the first environment on or off. */
+  setAutoApply(enabled: boolean): Promise<void>;
 }
 
 const DeploySourceContext = createContext<DeploySource | null>(null);

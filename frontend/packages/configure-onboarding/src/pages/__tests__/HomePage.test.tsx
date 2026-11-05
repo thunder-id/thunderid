@@ -34,6 +34,18 @@ describe('HomePage', () => {
     vi.clearAllMocks();
   });
 
+  it('shows what it leads with between the greeting and what to build', () => {
+    render(<HomePage lead={<div data-testid="lead" />} />);
+
+    const lead = screen.getByTestId('lead');
+    expect(
+      screen.getByRole('heading', {level: 1}).compareDocumentPosition(lead) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      lead.compareDocumentPosition(screen.getByTestId('start-building-section')) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
   it('sets the document title to the product name', async () => {
     render(<HomePage />);
 

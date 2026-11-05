@@ -7,9 +7,14 @@ const DeployQueryKeys = {
   VERSION: 'deploy-version',
   APPLIED_VERSION: 'deploy-applied-version',
   APPLIED_CONFIGURATION: 'deploy-applied-configuration',
+  MASTER: 'deploy-master',
+  MASTER_HISTORY: 'deploy-master-history',
+  RESOURCE_HISTORY: 'deploy-resource-history',
   VALUES: 'deploy-values',
   APPLY_CHECK: 'deploy-apply-check',
   RUNNING_REFERENCES: 'deploy-running-references',
+  PIPELINE: 'deploy-pipeline',
+  AUTO_APPLY: 'deploy-auto-apply',
 } as const;
 
 export default DeployQueryKeys;

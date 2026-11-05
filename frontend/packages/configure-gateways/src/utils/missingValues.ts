@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import type {MissingValues, ValueKind, ValueReference} from '../models/deploy';
+import type {Change, MissingValues, Refusal, ValueKind, ValueReference} from '../models/deploy';
 
 export interface MissingField {
   kind: ValueKind;
@@ -11,6 +11,20 @@ export interface MissingField {
   /** The resource and field that refer to the value, for the label. */
   references: ValueReference[];
 }
+
+/** A resource the gateway refused last time, with why and the values it uses that can be set again. */
+export interface RefusedFix {
+  change: Change;
+  /** What the target answered when it refused the resource last time. */
+  failure?: Refusal;
+  /** What a check with the values the target holds says the target would answer now; absent when it passes. */
+  predicted?: Refusal;
+  fields: MissingField[];
+}
+
+/** A refusal as one line: its code, then what was refused, or its message when it says no more. */
+export const refusalText = (refusal: Refusal): string =>
+  [refusal.code, refusal.description ?? refusal.message].filter(Boolean).join(': ');
 
 export const fieldKey = (field: MissingField): string => `${field.kind}:${field.name}`;
 
