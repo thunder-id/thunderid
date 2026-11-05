@@ -257,6 +257,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		serverconfig.ConfigNameCSP:                   csp.PolicyHandler{},
 		serverconfig.ConfigNameAccountAccess:         identitygovernance.NewAccountAccessHandler(governanceCfg),
 		serverconfig.ConfigNameNotification:          notificationConfigHandler,
+		serverconfig.ConfigNameGateway:               gateway.NewSettingsConfigHandler(),
 	}
 	serverConfigService, serverConfigExporter, err := serverconfig.Initialize(mux, cacheManager, serverConfigHandlers,
 		observabilitySvc)
@@ -577,7 +578,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 
 	// The gateways this control plane administers. Registration is bounded by server.max_gateways,
 	// which is one unless a deployment raises it.
-	gatewayService, err := gateway.Initialize(mux, mcpServer, exportService, nil, exporters, nil)
+	gatewayService, err := gateway.Initialize(mux, mcpServer, exportService, nil, exporters, nil, serverConfigService)
 	fatalOnError(ctx, logger, err, "Failed to initialize gateway service")
 
 	// Initialize import service

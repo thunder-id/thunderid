@@ -81,7 +81,7 @@ func (c *ChangeCapture) bind(versions *versionService) {
 		if _, svcErr := versions.capture(ctx, CaptureRequest{Current: true}); svcErr != nil {
 			return fmt.Errorf("%s: %s", svcErr.Code, svcErr.Error.DefaultValue)
 		}
-		versions.applyToDefaultGateway(ctx)
+		versions.applyToFirstEnvironment(ctx)
 		return nil
 	}
 }

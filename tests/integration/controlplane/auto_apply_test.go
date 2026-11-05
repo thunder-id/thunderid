@@ -95,3 +95,45 @@ func (ts *ControlPlaneTestSuite) TestAChangeIsAppliedToTheDefaultGatewayWhenAuto
 	status, raw := ts.call(http.MethodGet, "/resource-servers/"+refusedID, nil, nil)
 	ts.Equal(http.StatusOK, status, string(raw))
 }
+
+// Auto apply is also an organization setting: turned on through the gateway server configuration
+// section, a change reaches the first environment of the pipeline without a restart, and turned off
+// again, the next change does not.
+func (ts *ControlPlaneTestSuite) TestAutoApplyIsTurnedOnAndOffWithoutARestart() {
+	g := newApplyGateway()
+	ts.T().Cleanup(g.close)
+	gatewayID := ts.registerDefaultGateway(g.server)
+
+	var p struct {
+		Stages []struct {
+			Name            string `json:"name"`
+			AdminConsoleURL string `json:"adminConsoleUrl"`
+			Gateway         struct {
+				ID string `json:"id"`
+			} `json:"gateway"`
+		} `json:"stages"`
+	}
+	status, raw := ts.call(http.MethodGet, "/gateways/pipeline", nil, &p)
+	ts.Require().Equal(http.StatusOK, status, string(raw))
+	ts.Require().Len(p.Stages, 1, "without gateway.pipeline the default gateway is the one environment")
+	ts.Equal(gatewayID, p.Stages[0].Gateway.ID)
+	ts.Equal(g.server.URL+"/console", p.Stages[0].AdminConsoleURL)
+
+	status, raw = ts.call(http.MethodPut, "/server-config/gateway", map[string]any{"autoApply": true}, nil)
+	ts.Require().Equal(http.StatusOK, status, "the gateway section must be writable here: %s", raw)
+	defer func() {
+		status, raw := ts.call(http.MethodPut, "/server-config/gateway", map[string]any{}, nil)
+		ts.Equal(http.StatusOK, status, "failed to restore the gateway section: %s", raw)
+	}()
+
+	ts.createResourceServer(unique("CP Org Auto Apply"), "https://"+unique("cp-org-auto-apply")+".example.com")
+	ts.True(g.importsSoon(1), "the control plane did not apply the change once auto apply was turned on")
+
+	status, raw = ts.call(http.MethodPut, "/server-config/gateway", map[string]any{"autoApply": false}, nil)
+	ts.Require().Equal(http.StatusOK, status, string(raw))
+	g.mu.Lock()
+	before := g.imports
+	g.mu.Unlock()
+	ts.createResourceServer(unique("CP Org Auto Apply Off"), "https://"+unique("cp-org-auto-apply-off")+".example.com")
+	ts.False(g.importsSoon(before+1), "the control plane applied a change after auto apply was turned off")
+}

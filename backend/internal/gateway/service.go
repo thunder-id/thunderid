@@ -32,17 +32,21 @@ type ServiceInterface interface {
 	// alone.
 	Update(ctx context.Context, id string, req UpdateRequest) (*Gateway, *tidcommon.ServiceError)
 	Delete(ctx context.Context, id string) *tidcommon.ServiceError
+	// GetPipeline reports the environments a version is deployed and promoted through, in order.
+	GetPipeline(ctx context.Context) (*Pipeline, *tidcommon.ServiceError)
 }
 
 type service struct {
-	store  storeInterface
-	logger *log.Logger
+	store    storeInterface
+	pipeline pipeline
+	logger   *log.Logger
 }
 
 func newService(store storeInterface) ServiceInterface {
 	return &service{
-		store:  store,
-		logger: log.GetLogger().With(log.String(log.LoggerKeyComponentName, "GatewayService")),
+		store:    store,
+		pipeline: newPipeline(),
+		logger:   log.GetLogger().With(log.String(log.LoggerKeyComponentName, "GatewayService")),
 	}
 }
 
@@ -68,6 +72,15 @@ func (s *service) List(ctx context.Context) ([]Gateway, *tidcommon.ServiceError)
 		gateways[i].Key = ""
 	}
 	return gateways, nil
+}
+
+func (s *service) GetPipeline(ctx context.Context) (*Pipeline, *tidcommon.ServiceError) {
+	gateways, svcErr := s.List(ctx)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	p := s.pipeline.of(ctx, gateways)
+	return &p, nil
 }
 
 func (s *service) Get(ctx context.Context, id string) (*Gateway, *tidcommon.ServiceError) {

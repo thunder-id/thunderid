@@ -423,6 +423,20 @@ type GatewayConfig struct {
 	// may take to answer, in place of the server's write timeout. It covers waiting for an apply
 	// already running on that gateway and the gateway's own import.
 	ApplyTimeoutSeconds int `yaml:"apply_timeout_seconds" json:"apply_timeout_seconds"`
+	// Pipeline lists the registered gateways a version is deployed and promoted through, in that
+	// order, each standing for an environment. Empty, the default gateway is the only environment.
+	Pipeline []GatewayPipelineStage `yaml:"pipeline" json:"pipeline"`
+}
+
+// GatewayPipelineStage is one environment of the deploy pipeline: a registered gateway, named.
+type GatewayPipelineStage struct {
+	// Gateway is the name the gateway is registered under.
+	Gateway string `yaml:"gateway" json:"gateway"`
+	// Name is what the environment is called, such as Development. Empty, the gateway's name.
+	Name string `yaml:"name" json:"name"`
+	// AdminConsoleURL is where the environment's own console is reached, to manage its users and
+	// sessions. Empty, the console the gateway serves under its base URL.
+	AdminConsoleURL string `yaml:"admin_console_url" json:"admin_console_url"`
 }
 
 // ApplyTimeout reports how long an apply or revert request may take to answer; zero leaves the

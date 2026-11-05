@@ -22,6 +22,8 @@ const (
 	ConfigNameAccountAccess ConfigName = "accountAccess"
 	// ConfigNameNotification is the configuration key for the notification defaults.
 	ConfigNameNotification ConfigName = "notification"
+	// ConfigNameGateway is the configuration key for how a control plane deploys to its gateways.
+	ConfigNameGateway ConfigName = "gateway"
 )
 
 // supportedConfigNames lists all the supported server configuration names.
@@ -33,6 +35,7 @@ var supportedConfigNames = []ConfigName{
 	ConfigNameCSP,
 	ConfigNameAccountAccess,
 	ConfigNameNotification,
+	ConfigNameGateway,
 }
 
 // IsValid reports whether the config name is one of the supported values.
