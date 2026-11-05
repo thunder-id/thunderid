@@ -25,6 +25,7 @@ import {ExternalLink} from '@wso2/oxygen-ui-icons-react';
 import {useMemo, useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useParams} from 'react-router';
+import useAppliedVersions from '../api/useAppliedVersions';
 import {useAppliedVersion, useRunningReferences} from '../api/useGatewayVersions';
 import {useMaster, useMasterHistory} from '../api/useMaster';
 import {usePipeline} from '../api/usePipeline';
@@ -79,7 +80,8 @@ export default function EnvironmentPage(): JSX.Element {
     (row: ValueRow) => !row.stored && row.references.length > 0,
   ).length;
   const gateways = useMemo(() => (stage ? [stage.gateway] : []), [stage]);
-  const panels = useDeployPanels(gateways, all, applied.data ? {[gatewayId]: applied.data} : {});
+  const everyApplied = useAppliedVersions(stages.map((entry: PipelineStage) => entry.gateway.id));
+  const panels = useDeployPanels(gateways, all, everyApplied.byGateway, stages);
 
   if (pipeline.isLoading) {
     return (

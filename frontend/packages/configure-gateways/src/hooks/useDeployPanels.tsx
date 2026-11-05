@@ -5,9 +5,12 @@ import {useToast} from '@thunderid/contexts';
 import {useCallback, useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import ApplyPanel from '../components/ApplyPanel';
+import AutoApplySwitch from '../components/AutoApplySwitch';
+import PipelineSteps from '../components/PipelineSteps';
 import RevertPanel from '../components/RevertPanel';
 import type {AppliedVersion, ApplyResult, Version} from '../models/deploy';
 import type {Gateway} from '../models/gateway';
+import type {PipelineStage} from '../models/pipeline';
 import {versionLabel} from '../utils/format';
 
 type Open =
@@ -37,12 +40,14 @@ export interface DeployPanels {
 
 /**
  * The deploy and rollback dialogs of the deploy path, opened from its versions and stages, and the toast
- * each says it is done with.
+ * each says it is done with. Given the pipeline, a deploy opens in a drawer that shows where along it the
+ * deploy goes, with auto-sync when it goes to the first environment.
  */
 export default function useDeployPanels(
   gateways: Gateway[],
   versions: Version[],
   applied: Record<string, AppliedVersion | undefined>,
+  pipeline?: PipelineStage[],
 ): DeployPanels {
   const {t} = useTranslation('deploy');
   const {showToast} = useToast();
@@ -93,8 +98,19 @@ export default function useDeployPanels(
 
   let panels: JSX.Element | null = null;
   if (open?.kind === 'apply') {
+    const targetId = open.gatewayId ?? (open.targets ?? gateways)[0]?.id ?? '';
+    const runs = Object.fromEntries(
+      (pipeline ?? []).map((stage: PipelineStage) => [
+        stage.gateway.id,
+        labelOf(applied[stage.gateway.id]?.appliedVersion),
+      ]),
+    );
+    const first = pipeline?.[0];
     panels = (
       <ApplyPanel
+        variant={pipeline ? 'drawer' : 'dialog'}
+        before={pipeline ? <PipelineSteps stages={pipeline} targetId={targetId} runs={runs} /> : undefined}
+        after={first?.gateway.id === targetId ? <AutoApplySwitch target={first.name} /> : undefined}
         version={open.version}
         label={labelOf(open.version.version)}
         gateways={open.targets ?? gateways}

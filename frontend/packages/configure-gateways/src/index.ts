@@ -49,6 +49,9 @@ export {default as GatewayStage} from './components/GatewayStage';
 export {default as EnvironmentsOverview} from './components/EnvironmentsOverview';
 export type {EnvironmentsOverviewProps} from './components/EnvironmentsOverview';
 export {default as AutoApplySwitch} from './components/AutoApplySwitch';
+export {default as DeployHeaderButton} from './components/DeployHeaderButton';
+export {default as PipelineSteps} from './components/PipelineSteps';
+export type {PipelineStepsProps} from './components/PipelineSteps';
 export {default as ActorName} from './components/ActorName';
 export {default as useActorName} from './hooks/useActorName';
 

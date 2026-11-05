@@ -27,6 +27,14 @@ const mockUseGetApplications = vi.fn<(params: unknown) => MockUseGetApplications
 let mockDiscovery: {wellKnown?: {end_session_endpoint?: string}} | undefined;
 let mockIsTrustedIssuerGenericOidc = false;
 
+vi.mock('@thunderid/configure-gateways', () => ({
+  DeployHeaderButton: () => (
+    <button type="button" data-testid="header-deploy">
+      Deploy
+    </button>
+  ),
+}));
+
 vi.mock('@thunderid/configure-applications', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@thunderid/configure-applications')>()),
   useGetApplications: (params: unknown) => mockUseGetApplications(params),
@@ -132,13 +140,11 @@ describe('DashboardLayout', () => {
     expect(screen.getByText('navigation:categories.resources')).toBeInTheDocument();
   });
 
-  it('opens the Deploy page from the header, not from the navigation', async () => {
+  it('deploys from the header, not from the navigation', () => {
     render(<DashboardLayout />);
 
     expect(screen.queryByRole('link', {name: /deploy/i})).not.toBeInTheDocument();
-    await userEvent.click(screen.getByTestId('header-deploy'));
-
-    expect(mockNavigate).toHaveBeenCalledWith('/deploy');
+    expect(screen.getByTestId('header-deploy')).toBeInTheDocument();
   });
 
   it('renders navigation items', () => {

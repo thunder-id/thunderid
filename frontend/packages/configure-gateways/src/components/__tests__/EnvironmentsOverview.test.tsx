@@ -120,8 +120,12 @@ describe('EnvironmentsOverview', () => {
     await waitFor(() => expect(promote).toBeEnabled());
     await userEvent.click(promote);
 
-    const dialog = await screen.findByRole('dialog');
-    expect(within(dialog).getByText(/v2/)).toBeInTheDocument();
+    const dialog = await screen.findByTestId('deploy-apply-panel');
+    expect(within(dialog).getByText('Deploy v2')).toBeInTheDocument();
+    const steps = within(dialog).getByTestId('pipeline-steps');
+    expect(within(steps).getByText('This deploy').closest('li')).toHaveTextContent('Production');
+    // Auto-sync belongs to the first environment, not to a promotion.
+    expect(within(dialog).queryByTestId('auto-apply')).not.toBeInTheDocument();
     expect(within(dialog).queryByRole('option', {name: 'dev-gateway'})).not.toBeInTheDocument();
   });
 

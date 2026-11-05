@@ -13,6 +13,7 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  Drawer,
   FormControlLabel,
   MenuItem,
   Select,
@@ -21,7 +22,7 @@ import {
   Typography,
 } from '@wso2/oxygen-ui';
 import {Rocket} from '@wso2/oxygen-ui-icons-react';
-import {useMemo, useState, type JSX} from 'react';
+import {useMemo, useState, type JSX, type ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
 import ChangedValuesNotice from './ChangedValuesNotice';
 import ChangeList from './ChangeList';
@@ -54,6 +55,12 @@ export interface ApplyPanelProps {
   onClose: () => void;
   /** Called once the version is written, with what the gateway reported. */
   onDeployed: (gateway: Gateway, result: ApplyResult) => void;
+  /** A dialog over the page, or a drawer at its right with the deploy path above the changes. */
+  variant?: 'dialog' | 'drawer';
+  /** Shown above the changes, such as where along the path the deploy goes. */
+  before?: ReactNode;
+  /** Shown below the changes, such as a setting of the gateway deployed to. */
+  after?: ReactNode;
 }
 
 /**
@@ -70,6 +77,9 @@ export default function ApplyPanel({
   only = undefined,
   onClose,
   onDeployed,
+  variant = 'dialog',
+  before = undefined,
+  after = undefined,
 }: ApplyPanelProps): JSX.Element {
   const {t} = useTranslation('deploy');
   const tForErrors = useGatewayErrorTranslator();
@@ -283,6 +293,13 @@ export default function ApplyPanel({
       </Select>
     </Stack>
   );
+  let submitLabel = t('applyPanel.submit', 'Deploy');
+  if (confirmRemovals) submitLabel = t('applyPanel.submitConfirm', 'Deploy and remove {{count}}', {count: removals});
+  else if (variant === 'drawer' && check.isSuccess)
+    submitLabel = t('applyPanel.submitCount', 'Deploy {{count}} changes to {{gateway}}', {
+      count: active.filter((change: Change) => selected.has(change.key)).length,
+      gateway: gateway?.name ?? '',
+    });
   const footer = (
     <>
       <Button variant="text" color="inherit" onClick={onClose} disabled={isWriting}>
@@ -295,123 +312,145 @@ export default function ApplyPanel({
         disabled={!canDeploy}
         sx={{borderRadius: 100}}
       >
-        {confirmRemovals
-          ? t('applyPanel.submitConfirm', 'Deploy and remove {{count}}', {count: removals})
-          : t('applyPanel.submit', 'Deploy')}
+        {submitLabel}
       </Button>
     </>
   );
+  const body = (
+    <Stack spacing={2.5}>
+      {before}
+      {check.isLoading && (
+        <Box sx={{display: 'flex', alignItems: 'center', gap: 1.5}}>
+          <CircularProgress size={18} />
+          <Typography variant="body2" color="text.secondary">
+            {t('applyPanel.checking', 'Working out what {{gateway}} would write...', {
+              gateway: gateway?.name ?? '',
+            })}
+          </Typography>
+        </Box>
+      )}
+      {check.isError && (
+        <QueryErrorNotice
+          error={check.error}
+          t={tForErrors}
+          variant="inline"
+          fallbackKey="deploy:applyPanel.checkFailed"
+          fallbackDefaultValue="What the gateway would write could not be read."
+          resolveErrorMessage={(error, translate, fallbackKey, fallbackDefaultValue) =>
+            isForbidden(error)
+              ? t('applyPanel.forbidden', 'Your account may not deploy to this gateway.')
+              : getErrorMessage(error, translate, fallbackKey, fallbackDefaultValue)
+          }
+          onRetry={() => void check.refetch()}
+        />
+      )}
+      {check.data?.changed && <ChangedValuesNotice changed={check.data.changed} />}
+      {confirmRemovals && (
+        <Alert severity="warning" data-testid="deploy-confirm-removals">
+          {t(
+            'applyPanel.confirmRemovals',
+            'Deploying removes {{count}} resources from {{gateway}}. Check them in the list, then deploy again to go ahead.',
+            {count: removals, gateway: gateway?.name ?? ''},
+          )}
+        </Alert>
+      )}
+      {fields.length > 0 && (
+        <MissingValuesFields
+          fields={fields}
+          values={values}
+          onChange={(field, value) => setValues((previous) => ({...previous, [fieldKey(field)]: value}))}
+          disabled={isWriting}
+        />
+      )}
+      {check.isSuccess && fixes.length > 0 && (
+        <RefusedFixes
+          fixes={fixes}
+          target={gateway?.name ?? ''}
+          checked={check.isSuccess}
+          valueOf={fixValueOf}
+          onChange={(field, value) => setFixValues((previous) => ({...previous, [fieldKey(field)]: value}))}
+          disabled={isWriting}
+        />
+      )}
+      {check.isSuccess && (
+        <ChangeList
+          changes={changes}
+          selected={selected}
+          onToggle={toggle}
+          onToggleAll={toggleAll}
+          target={gateway?.name}
+          required={required}
+        />
+      )}
+      {check.isSuccess && active.length > 0 && (
+        <Tooltip
+          title={t(
+            'applyPanel.includeNeededHint',
+            'A resource names the flows, units and other resources it needs. Ticked, deploying one brings along what it needs that {{gateway}} lacks.',
+            {gateway: gateway?.name ?? ''},
+          )}
+        >
+          <FormControlLabel
+            control={
+              <Checkbox
+                size="small"
+                checked={includeNeeded}
+                onChange={(_event, checked: boolean) => {
+                  setConfirmRemovals(false);
+                  setIncludeNeeded(checked);
+                }}
+                data-testid="deploy-include-needed"
+              />
+            }
+            label={
+              <Typography variant="body2">{t('applyPanel.includeNeeded', 'Also deploy what these need')}</Typography>
+            }
+          />
+        </Tooltip>
+      )}
+      {error && (
+        <Alert severity="error">
+          {isForbidden(error)
+            ? t('applyPanel.forbidden', 'Your account may not deploy to this gateway.')
+            : getErrorMessage(error, tForErrors, 'deploy:applyPanel.failed', 'The version could not be deployed.')}
+        </Alert>
+      )}
+      {after}
+    </Stack>
+  );
+  if (variant === 'drawer') {
+    return (
+      <Drawer
+        anchor="right"
+        open
+        onClose={onClose}
+        sx={{'& .MuiDrawer-paper': {width: 560, maxWidth: '100%', display: 'flex', flexDirection: 'column'}}}
+      >
+        <Box data-testid="deploy-apply-panel" sx={{display: 'flex', flexDirection: 'column', height: '100%'}}>
+          <Box sx={{px: 3, py: 2.5, borderBottom: 1, borderColor: 'divider'}}>{header}</Box>
+          <Box sx={{flex: 1, overflowY: 'auto', px: 3, py: 2.5}}>{body}</Box>
+          <Box
+            sx={{
+              display: 'flex',
+              justifyContent: 'flex-end',
+              gap: 1,
+              px: 3,
+              py: 2,
+              borderTop: 1,
+              borderColor: 'divider',
+            }}
+          >
+            {footer}
+          </Box>
+        </Box>
+      </Drawer>
+    );
+  }
   return (
     <Dialog open onClose={onClose} fullWidth maxWidth="md">
       <Box data-testid="deploy-apply-panel">
         <DialogTitle>{header}</DialogTitle>
-        <DialogContent dividers>
-          <Stack spacing={2.5}>
-            {check.isLoading && (
-              <Box sx={{display: 'flex', alignItems: 'center', gap: 1.5}}>
-                <CircularProgress size={18} />
-                <Typography variant="body2" color="text.secondary">
-                  {t('applyPanel.checking', 'Working out what {{gateway}} would write...', {
-                    gateway: gateway?.name ?? '',
-                  })}
-                </Typography>
-              </Box>
-            )}
-            {check.isError && (
-              <QueryErrorNotice
-                error={check.error}
-                t={tForErrors}
-                variant="inline"
-                fallbackKey="deploy:applyPanel.checkFailed"
-                fallbackDefaultValue="What the gateway would write could not be read."
-                resolveErrorMessage={(error, translate, fallbackKey, fallbackDefaultValue) =>
-                  isForbidden(error)
-                    ? t('applyPanel.forbidden', 'Your account may not deploy to this gateway.')
-                    : getErrorMessage(error, translate, fallbackKey, fallbackDefaultValue)
-                }
-                onRetry={() => void check.refetch()}
-              />
-            )}
-            {check.data?.changed && <ChangedValuesNotice changed={check.data.changed} />}
-            {confirmRemovals && (
-              <Alert severity="warning" data-testid="deploy-confirm-removals">
-                {t(
-                  'applyPanel.confirmRemovals',
-                  'Deploying removes {{count}} resources from {{gateway}}. Check them in the list, then deploy again to go ahead.',
-                  {count: removals, gateway: gateway?.name ?? ''},
-                )}
-              </Alert>
-            )}
-            {fields.length > 0 && (
-              <MissingValuesFields
-                fields={fields}
-                values={values}
-                onChange={(field, value) => setValues((previous) => ({...previous, [fieldKey(field)]: value}))}
-                disabled={isWriting}
-              />
-            )}
-            {check.isSuccess && fixes.length > 0 && (
-              <RefusedFixes
-                fixes={fixes}
-                target={gateway?.name ?? ''}
-                checked={check.isSuccess}
-                valueOf={fixValueOf}
-                onChange={(field, value) => setFixValues((previous) => ({...previous, [fieldKey(field)]: value}))}
-                disabled={isWriting}
-              />
-            )}
-            {check.isSuccess && (
-              <ChangeList
-                changes={changes}
-                selected={selected}
-                onToggle={toggle}
-                onToggleAll={toggleAll}
-                target={gateway?.name}
-                required={required}
-              />
-            )}
-            {check.isSuccess && active.length > 0 && (
-              <Tooltip
-                title={t(
-                  'applyPanel.includeNeededHint',
-                  'A resource names the flows, units and other resources it needs. Ticked, deploying one brings along what it needs that {{gateway}} lacks.',
-                  {gateway: gateway?.name ?? ''},
-                )}
-              >
-                <FormControlLabel
-                  control={
-                    <Checkbox
-                      size="small"
-                      checked={includeNeeded}
-                      onChange={(_event, checked: boolean) => {
-                        setConfirmRemovals(false);
-                        setIncludeNeeded(checked);
-                      }}
-                      data-testid="deploy-include-needed"
-                    />
-                  }
-                  label={
-                    <Typography variant="body2">
-                      {t('applyPanel.includeNeeded', 'Also deploy what these need')}
-                    </Typography>
-                  }
-                />
-              </Tooltip>
-            )}
-            {error && (
-              <Alert severity="error">
-                {isForbidden(error)
-                  ? t('applyPanel.forbidden', 'Your account may not deploy to this gateway.')
-                  : getErrorMessage(
-                      error,
-                      tForErrors,
-                      'deploy:applyPanel.failed',
-                      'The version could not be deployed.',
-                    )}
-              </Alert>
-            )}
-          </Stack>
-        </DialogContent>
+        <DialogContent dividers>{body}</DialogContent>
         <DialogActions>{footer}</DialogActions>
       </Box>
     </Dialog>

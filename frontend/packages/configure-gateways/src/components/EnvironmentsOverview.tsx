@@ -43,7 +43,7 @@ export default function EnvironmentsOverview({onOpenEnvironment = undefined}: En
   const gateways: Gateway[] = useMemo(() => stages.map((stage: PipelineStage) => stage.gateway), [stages]);
   const applied = useAppliedVersions(gateways.map((gateway: Gateway) => gateway.id));
   const all: Version[] = useMemo(() => versions.data ?? [], [versions.data]);
-  const panels = useDeployPanels(gateways, all, applied.byGateway);
+  const panels = useDeployPanels(gateways, all, applied.byGateway, stages);
   const names = useMemo(
     () => Object.fromEntries(stages.map((stage: PipelineStage) => [stage.gateway.id, stage.name])),
     [stages],

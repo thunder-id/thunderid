@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {getInitials} from '@thunderid/components';
+import {DeployHeaderButton} from '@thunderid/configure-gateways';
 import {useConfig} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {SignOutButton, User, useThunderID} from '@thunderid/react';
@@ -32,7 +33,6 @@ import {
   MessageSquare,
   Network,
   Palette,
-  Rocket,
   Server,
   Settings,
   ShieldCheck,
@@ -406,16 +406,7 @@ export default function DashboardLayout({collapseSidebar = false}: DashboardLayo
           </Header.Brand>
           <Header.Spacer />
           <Header.Actions>
-            <Button
-              variant="contained"
-              size="small"
-              startIcon={<Rocket size={16} />}
-              onClick={() => void navigate(RouteConfig.deploy.list())}
-              sx={{borderRadius: 100, mr: 1}}
-              data-testid="header-deploy"
-            >
-              {t('deploy:header.title', 'Deploy')}
-            </Button>
+            <DeployHeaderButton />
             <ColorSchemeToggle />
             <User>
               {(user) => {
