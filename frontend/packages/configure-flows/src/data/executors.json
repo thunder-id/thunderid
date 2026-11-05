@@ -1039,9 +1039,9 @@
     "display": {
       "header": "Pre Delete Executor",
       "label": "Validate and Plan Full Revocation",
-      "description": "Validate the target of an administrative operation, then plan revocation of every grant the subject holds",
+      "description": "Validate the user being deleted, then plan revocation of every grant they hold",
       "image": "assets/images/icons/magnifying-glass.svg",
-      "showOnResourcePanel": true
+      "showOnResourcePanel": false
     },
     "data": {
       "action": {
@@ -1096,28 +1096,6 @@
           "name": "SessionRevocationExecutor"
         },
         "onSuccess": ""
-      }
-    }
-  },
-  {
-    "resourceType": "STEP",
-    "category": "EXECUTOR",
-    "type": "TASK_EXECUTION",
-    "display": {
-      "header": "User Delete Executor",
-      "label": "Delete User",
-      "description": "Delete the validated user after tokens and sessions have been revoked",
-      "image": "assets/images/icons/link.svg",
-      "showOnResourcePanel": true
-    },
-    "data": {
-      "action": {
-        "type": "EXECUTOR",
-        "executor": {
-          "name": "UserDeleteExecutor"
-        },
-        "onSuccess": "",
-        "onFailure": ""
       }
     }
   },

@@ -35,3 +35,10 @@ const sharingPoliciesSegment = "sharing-policies"
 
 // queryParamOUID is the query parameter that names the organization unit a request is about.
 const queryParamOUID = "ouId"
+
+// The system flow a user deletion runs before the user is removed, and the input naming the user it
+// acts on.
+const (
+	systemFlowUserDeletePre = "system-user-delete-pre"
+	systemFlowInputSubject  = "subject"
+)

@@ -21,6 +21,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/attributeverification"
 	"github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/entitytype"
+	flowcommon "github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/identitygovernance"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/role"
@@ -101,6 +102,14 @@ type userService struct {
 	sharingDeclaration *userSharingDeclaration
 	logger             *log.Logger
 	bus                eventbus.EventBusInterface
+	// systemFlows is nil where system flows are off.
+	systemFlows systemFlowProvider
+}
+
+// systemFlowProvider runs a system flow to completion. The flow engine implements it.
+type systemFlowProvider interface {
+	ExecuteSystemFlow(ctx context.Context, sysCtx *flowcommon.SystemFlowContext) (*flowcommon.SystemFlowResult,
+		*tidcommon.ServiceError)
 }
 
 // newUserService creates a new instance of userService with injected dependencies.
@@ -1040,6 +1049,13 @@ func (us *userService) deleteUser(ctx context.Context, userID string) *tidcommon
 		return svcErr
 	}
 
+	// Revokes every token issued to the user and ends the user's sessions before anything of the user
+	// is removed. The revocation has no cutoff, so nothing runs after the write.
+	if svcErr := us.runSystemFlow(ctx, systemFlowUserDeletePre,
+		map[string]string{systemFlowInputSubject: userID}); svcErr != nil {
+		return svcErr
+	}
+
 	// Remove dependents that must be deleted with the user (e.g. role assignments). Run before the
 	// entity delete so a cleanup failure aborts the operation and leaves the user retriable. The
 	// registry is guaranteed non-nil here because ensureNoBlockingDependencies fails closed otherwise.
@@ -1094,6 +1110,17 @@ func (us *userService) publishUserEvent(ctx context.Context, name string, action
 		payload = payload.WithSubject(target)
 	}
 	eventbus.TryPublish(ctx, us.bus, eventbus.NewEvent(ctx, name).With(payload))
+}
+
+// runSystemFlow runs a system flow with the given inputs. With system flows off it runs nothing.
+func (us *userService) runSystemFlow(ctx context.Context, handle string,
+	inputs map[string]string) *tidcommon.ServiceError {
+	if us.systemFlows == nil {
+		return nil
+	}
+	_, svcErr := us.systemFlows.ExecuteSystemFlow(ctx, &flowcommon.SystemFlowContext{
+		Handle: handle, Inputs: inputs})
+	return svcErr
 }
 
 // ensureNoBlockingDependencies refuses deletion when other resources depend on the user in a way

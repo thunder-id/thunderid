@@ -112,7 +112,7 @@ func TestAuthorizationCodeRevocationTestSuite(t *testing.T) {
 
 func (ts *AuthorizationCodeRevocationTestSuite) SetupSuite() {
 	ts.flowIDs = map[string]string{}
-	for _, handle := range []string{rolePermissionRemovalFlowHandle, deletionFlowHandle} {
+	for _, handle := range []string{rolePermissionRemovalFlowHandle} {
 		flowID, err := testutils.GetFlowIDByHandle(handle, administrationFlowType)
 		ts.Require().NoError(err, "Failed to resolve the shipped %s", handle)
 		ts.Require().NotEmpty(flowID, "The shipped %s must be present", handle)
@@ -252,8 +252,7 @@ func (ts *AuthorizationCodeRevocationTestSuite) TestUserDeletedAfterCodeIssued_R
 
 	code := ts.obtainCode(username, "openid "+scopeCodeKept)
 
-	requireCompleted(&ts.Suite, executeAsAdmin(&ts.Suite, ts.flowIDs[deletionFlowHandle],
-		map[string]string{deletionSubjectInput: userID}))
+	ts.Require().NoError(testutils.DeleteUser(userID), "Failed to delete the user")
 
 	result := ts.redeem(code)
 

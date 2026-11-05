@@ -451,10 +451,6 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 				newPreSuspendExecutor(deps.FlowFactory, deps.IdentityGovernance, deps.tokenLeeway,
 					deps.ArtifactLifetime))
 		},
-		ExecutorNameUserDelete: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
-			reg.RegisterExecutor(ExecutorNameUserDelete,
-				newUserDeleteExecutor(deps.FlowFactory, deps.UserService))
-		},
 		ExecutorNameApplicationActionValidator: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameApplicationActionValidator,
 				newApplicationActionValidator(deps.FlowFactory))
