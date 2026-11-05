@@ -101,7 +101,6 @@ type AuthorizationCodeRevocationTestSuite struct {
 	resourceServerID string
 	resourceIDs      []string
 	appID            string
-	flowIDs          map[string]string
 	createdUserIDs   []string
 	createdRoleIDs   []string
 }
@@ -111,14 +110,6 @@ func TestAuthorizationCodeRevocationTestSuite(t *testing.T) {
 }
 
 func (ts *AuthorizationCodeRevocationTestSuite) SetupSuite() {
-	ts.flowIDs = map[string]string{}
-	for _, handle := range []string{rolePermissionRemovalFlowHandle} {
-		flowID, err := testutils.GetFlowIDByHandle(handle, administrationFlowType)
-		ts.Require().NoError(err, "Failed to resolve the shipped %s", handle)
-		ts.Require().NotEmpty(flowID, "The shipped %s must be present", handle)
-		ts.flowIDs[handle] = flowID
-	}
-
 	ouID, err := testutils.CreateOrganizationUnit(codeRevocationTestOU)
 	ts.Require().NoError(err, "Failed to create test organization unit")
 	ts.ouID = ouID
@@ -221,16 +212,14 @@ func (ts *AuthorizationCodeRevocationTestSuite) TearDownSuite() {
 func (ts *AuthorizationCodeRevocationTestSuite) TestPermissionRemovedAfterCodeIssued_IsNotMinted() {
 	username := common.GenerateUniqueUsername("code_revocation_narrowed")
 	user := testutils.Assignment{ID: ts.createUser(username), Type: "user"}
+	const name = "Code Revocation Narrowed Role"
 	roleID := createRole(&ts.Suite, &ts.createdRoleIDs, ts.ouID, ts.resourceServerID,
-		"Code Revocation Narrowed Role", []string{scopeCodeDropped, scopeCodeKept}, user)
+		name, []string{scopeCodeDropped, scopeCodeKept}, user)
 
 	code := ts.obtainCode(username, "openid "+scopeCodeDropped+" "+scopeCodeKept)
 
-	requireCompleted(&ts.Suite, executeAsAdmin(&ts.Suite, ts.flowIDs[rolePermissionRemovalFlowHandle],
-		map[string]string{
-			roleTargetInput:        roleID,
-			permissionsTargetInput: permissionSet(&ts.Suite, ts.resourceServerID, scopeCodeKept),
-		}))
+	ts.Require().NoError(updateRolePermissions(roleID, ts.ouID, ts.resourceServerID, name, scopeCodeKept),
+		"Failed to drop the permission from the role")
 
 	result := ts.redeem(code)
 
@@ -267,14 +256,12 @@ func (ts *AuthorizationCodeRevocationTestSuite) TestUserDeletedAfterCodeIssued_R
 func (ts *AuthorizationCodeRevocationTestSuite) TestCodeIssuedAfterPermissionRemoval_IsNotNarrowed() {
 	username := common.GenerateUniqueUsername("code_revocation_regranted")
 	user := testutils.Assignment{ID: ts.createUser(username), Type: "user"}
+	const name = "Code Revocation Regranted Role"
 	roleID := createRole(&ts.Suite, &ts.createdRoleIDs, ts.ouID, ts.resourceServerID,
-		"Code Revocation Regranted Role", []string{scopeCodeDropped, scopeCodeKept}, user)
+		name, []string{scopeCodeDropped, scopeCodeKept}, user)
 
-	requireCompleted(&ts.Suite, executeAsAdmin(&ts.Suite, ts.flowIDs[rolePermissionRemovalFlowHandle],
-		map[string]string{
-			roleTargetInput:        roleID,
-			permissionsTargetInput: permissionSet(&ts.Suite, ts.resourceServerID, scopeCodeKept),
-		}))
+	ts.Require().NoError(updateRolePermissions(roleID, ts.ouID, ts.resourceServerID, name, scopeCodeKept),
+		"Failed to drop the permission from the role")
 	// The user holds the revoked permission again, so only the revocation row could keep it out of the token.
 	createRole(&ts.Suite, &ts.createdRoleIDs, ts.ouID, ts.resourceServerID,
 		"Code Revocation Restored Role", []string{scopeCodeDropped}, user)

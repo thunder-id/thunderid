@@ -19,6 +19,7 @@ Access tokens are self-contained JWTs, so a resource server that validates them 
 | **Grant** | Every token of one authorization grant, by its `tfid` | Sign-out, refresh-token replay, authorization-code replay |
 | **Subject** | Every token issued to one user, agent, or application, by its `sub` | A user is deleted; a user, agent, or application is suspended |
 | **Client** | Every token issued through one OAuth client, by its client ID | An application, or an agent with an OAuth client, is suspended; an application is deleted or its client secret is replaced |
+| **Subject and permission** | Every token issued to one user, agent, or application that carries one permission, by its `sub` and the permission in its `scope` | A role stops granting the permission, for each of its holders |
 
 A token is rejected if **any** of these matches.
 
@@ -121,6 +122,14 @@ The revocation runs before the change is written, and if it fails nothing is wri
 The Console's secret regeneration flow revokes until the new secret is written, as the API does.
 
 The revocation runs as two **system flows**: flows built into the <ProductName /> binary, one that a service runs before it writes the change and one it runs after. They are not resources: they are never stored, they cannot be edited or started through any API, and they never ask for input. A failure before the write leaves the application as it was. A failure after it is reported as an error: a deletion keeps the application's record, so deleting it again revokes and removes it, and a secret replacement keeps the new secret, which the refresh grant already enforces by refusing the refresh tokens issued before it.
+
+## Role Permission Removal
+
+Updating a role so that it no longer grants a permission revokes the tokens its holders carry with that permission, for every user, agent, group member, and application the role is assigned to. A token that carries only permissions the role still grants keeps working. This happens whichever way the role is updated: from the Console, through the `PUT /roles/{id}` API, through the import API, or when a configuration version with fewer permissions for the role is applied to a gateway. An update that drops no permission, such as one that carries the permissions the role already has or only adds new ones, revokes nothing.
+
+The revocation runs as two system flows, as an application change does. The first runs before the role is updated and revokes the tokens issued up to that point. If it fails, the role is left as it was. The second runs after the update is written and moves the cutoff to that moment, so a token issued with the dropped permission while the update was being written is revoked too. If it fails, the request returns an error even though the update is already saved.
+
+When the server reads roles from both files and the database, an update that drops a permission from a role with more assignments than it can read in that mode is refused with `ROL-1017`, and the role is left as it was. Remove some of the role's assignments first, each of which revokes only that assignee's tokens, then update the role.
 
 ## Where Revocation Is Enforced
 

@@ -2178,8 +2178,6 @@ var defaultMessages = map[string]string{
 	"flows.executor.errors.role_deletion_not_allowed_desc": "The role is declarative, immutable, or no longer exists",
 	"flows.executor.errors.role_not_assignable": "Role not assignable",
 	"flows.executor.errors.role_not_assignable_desc": "A selected role cannot be assigned in this organization unit",
-	"flows.executor.errors.role_permission_removal_failed": "Role permission change failed",
-	"flows.executor.errors.role_permission_removal_failed_desc": "The role changed after the request was validated, or the caller may no longer grant the new permissions",
 	"flows.executor.errors.role_permission_removal_not_allowed": "Role permission change not allowed",
 	"flows.executor.errors.role_permission_removal_not_allowed_desc": "The role is declarative or no longer exists, or the caller may not grant the new permissions",
 	"flows.executor.errors.secret_regeneration_failed": "Client secret regeneration failed",

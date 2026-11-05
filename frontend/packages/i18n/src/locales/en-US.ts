@@ -279,7 +279,6 @@ const translations = {
     'errors.FET-1100': 'This role cannot be deleted in its current state.',
     'errors.FET-1101': 'The role could not be deleted. Please try again.',
     'errors.FET-1102': 'The permissions of this role cannot be changed in its current state.',
-    'errors.FET-1103': 'The permissions of this role could not be changed. Please try again.',
     'errors.FET-1104': 'This group cannot be deleted in its current state.',
     'errors.FET-1105': 'The group could not be deleted. Please try again.',
     'errors.FET-1106': 'This member cannot be removed from the group in its current state.',
@@ -4272,7 +4271,6 @@ const translations = {
     // Access change validator executor modes
     'core.executions.accessChangeValidator.mode.roleAssignmentRemoval': 'Validate and plan assignment removal',
     'core.executions.accessChangeValidator.mode.roleDeletion': 'Validate and plan role deletion',
-    'core.executions.accessChangeValidator.mode.rolePermissionRemoval': 'Validate and plan permission change',
     'core.executions.accessChangeValidator.mode.groupDeletion': 'Validate and plan group deletion',
     'core.executions.accessChangeValidator.mode.groupMembershipRemoval': 'Validate and plan membership removal',
     'core.executions.accessChangeValidator.mode.actionDeletion': 'Validate and plan action deletion',
@@ -4284,7 +4282,6 @@ const translations = {
     // Role executor modes
     'core.executions.roleExecutor.mode.roleAssignmentRemoval': 'Remove role assignment',
     'core.executions.roleExecutor.mode.roleDeletion': 'Delete role',
-    'core.executions.roleExecutor.mode.rolePermissionRemoval': 'Change role permissions',
     'core.executions.roleExecutor.mode.roleSelection': 'Select roles',
     'core.executions.roleExecutor.mode.roleAssignment': 'Assign roles',
     'core.executions.roleExecutor.roles.label': 'Roles',

@@ -82,7 +82,6 @@ func (h *FlowConfigHandler) Validate(ctx context.Context, incoming, _, _ any) er
 		{cfg.AgentOnboardingFlow, providers.FlowTypeAdministration, "agentOnboardingFlow"},
 		{cfg.RoleAssignmentRemovalFlow, providers.FlowTypeAdministration, "roleAssignmentRemovalFlow"},
 		{cfg.RoleDeletionFlow, providers.FlowTypeAdministration, "roleDeletionFlow"},
-		{cfg.RolePermissionRemovalFlow, providers.FlowTypeAdministration, "rolePermissionRemovalFlow"},
 		{cfg.GroupDeletionFlow, providers.FlowTypeAdministration, "groupDeletionFlow"},
 		{cfg.GroupMembershipRemovalFlow, providers.FlowTypeAdministration, "groupMembershipRemovalFlow"},
 		{cfg.ActionDeletionFlow, providers.FlowTypeAdministration, "actionDeletionFlow"},
@@ -131,8 +130,6 @@ func (h *FlowConfigHandler) Merge(readOnly, writable any) any {
 			ro.RoleAssignmentRemovalFlow, wr.RoleAssignmentRemovalFlow),
 		RoleDeletionFlow: mergeFlowTypeConfig(
 			ro.RoleDeletionFlow, wr.RoleDeletionFlow),
-		RolePermissionRemovalFlow: mergeFlowTypeConfig(
-			ro.RolePermissionRemovalFlow, wr.RolePermissionRemovalFlow),
 		GroupDeletionFlow: mergeFlowTypeConfig(
 			ro.GroupDeletionFlow, wr.GroupDeletionFlow),
 		GroupMembershipRemovalFlow: mergeFlowTypeConfig(

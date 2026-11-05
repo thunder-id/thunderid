@@ -50,28 +50,6 @@ var roleActionsByMode = map[string]roleAction{
 			return e.roles.DeleteRole(ctx, plan.TargetID), nil
 		},
 	},
-	ExecutorModeRolePermissionRemoval: {
-		reason: revocation.ReasonRolePermissionRemoved,
-		failed: ErrRolePermissionRemovalFailed,
-		act: func(ctx context.Context, e *roleExecutor, plan revocationPlan) (*tidcommon.ServiceError, error) {
-			permissions, err := decodeRolePermissions(plan.ActionArgs[revocationInputPermissions])
-			if err != nil {
-				return nil, err
-			}
-			current, svcErr := e.roles.GetRoleWithPermissions(ctx, plan.TargetID)
-			if svcErr != nil {
-				return svcErr, nil
-			}
-			// The update replaces the whole role, so the attributes not being changed are carried over.
-			_, svcErr = e.roles.UpdateRoleWithPermissions(ctx, plan.TargetID, role.RoleUpdateDetail{
-				Name:        current.Name,
-				Description: current.Description,
-				OUID:        current.OUID,
-				Permissions: permissions,
-			})
-			return svcErr, nil
-		},
-	},
 }
 
 // roleModeFlowTypes maps each mode to the flow type it serves: the revocation plan modes administration flows,
@@ -80,7 +58,6 @@ var roleModeFlowTypes = map[string][]providers.FlowType{
 	ExecutorModeRoleAssignment:        {providers.FlowTypeInvitation},
 	ExecutorModeRoleAssignmentRemoval: {providers.FlowTypeAdministration},
 	ExecutorModeRoleDeletion:          {providers.FlowTypeAdministration},
-	ExecutorModeRolePermissionRemoval: {providers.FlowTypeAdministration},
 	ExecutorModeRoleSelection:         {providers.FlowTypeInvitation},
 }
 

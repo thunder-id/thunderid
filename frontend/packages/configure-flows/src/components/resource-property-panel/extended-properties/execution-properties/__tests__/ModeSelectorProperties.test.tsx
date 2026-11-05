@@ -186,20 +186,13 @@ describe.each<[string, (props: CommonResourcePropertiesPropsInterface) => ReactN
   [
     'AccessChangeValidator',
     AccessChangeValidatorProperties,
-    [
-      'role_assignment_removal',
-      'role_deletion',
-      'role_permission_removal',
-      'group_deletion',
-      'group_membership_removal',
-      'action_deletion',
-    ],
+    ['role_assignment_removal', 'role_deletion', 'group_deletion', 'group_membership_removal', 'action_deletion'],
     false,
   ],
   [
     'RoleExecutor',
     RoleExecutorProperties,
-    ['role_assignment_removal', 'role_deletion', 'role_permission_removal', 'role_selection', 'role_assignment'],
+    ['role_assignment_removal', 'role_deletion', 'role_selection', 'role_assignment'],
     true,
   ],
   ['GroupExecutor', GroupExecutorProperties, ['group_deletion', 'group_membership_removal'], true],

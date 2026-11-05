@@ -2,25 +2,26 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {useMutation, useQueryClient, type UseMutationResult} from '@tanstack/react-query';
-import {AdministrationModes, useAdministrationOperation, useConfig, useToast} from '@thunderid/contexts';
+import {useAdministrationOperation, useConfig, useToast} from '@thunderid/contexts';
 import {useThunderID} from '@thunderid/react';
 import {useTranslation} from 'react-i18next';
 import RoleQueryKeys from '../constants/role-query-keys';
 import type {UpdateRoleRequest} from '../models/requests';
 import type {Role} from '../models/role';
-import {updateRoleNatively, updateRoleViaFlow, type HttpLike} from '../utils/roleAdministrationFlow';
+import {updateRoleNatively, type HttpLike} from '../utils/roleAdministrationFlow';
 
 export const ROLE_MUTATION_KEY = ['update-role'] as const;
 
 export interface UpdateRoleVariables {
   roleId: string;
   data: UpdateRoleRequest;
-  /** The role as the caller last read it, which decides whether the edit removes a permission. */
-  current: Role;
 }
 
 /**
  * Custom React hook to update an existing role.
+ *
+ * The update calls `PUT /roles/{id}`; when it drops a permission, the server revokes what that
+ * permission granted. A console that declares its own operation runs that instead.
  *
  * @returns TanStack Query mutation object for updating roles
  */
@@ -36,16 +37,13 @@ export default function useUpdateRole(): UseMutationResult<Role, Error, UpdateRo
     mutationKey: ROLE_MUTATION_KEY,
     mutationFn: async (variables: UpdateRoleVariables): Promise<Role> => {
       const client = http as unknown as HttpLike;
-      const {roleId, data, current} = variables;
+      const {roleId, data} = variables;
 
       if (typeof mode === 'function') {
         return mode(variables);
       }
-      if (mode === AdministrationModes.NATIVE) {
-        return updateRoleNatively(client, getServerUrl(), roleId, data);
-      }
 
-      return updateRoleViaFlow(client, getServerUrl(), roleId, data, current);
+      return updateRoleNatively(client, getServerUrl(), roleId, data);
     },
     onSuccess: (data, {roleId}) => {
       queryClient.setQueryData<Role>([RoleQueryKeys.ROLE, roleId], (old) =>
