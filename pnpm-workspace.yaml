@@ -45,8 +45,8 @@ catalog:
   '@playwright/test': 1.60.0
   '@vitejs/plugin-basic-ssl': 2.3.0
   '@vitejs/plugin-react': 6.0.2
-  '@vitest/browser-playwright': 4.1.10
-  '@vitest/coverage-istanbul': 4.1.10
+  '@vitest/browser-playwright': 4.1.12
+  '@vitest/coverage-istanbul': 4.1.12
   '@wso2/oxygen-ui': 0.20.0
   '@wso2/oxygen-ui-icons-react': 0.20.0
   babel-plugin-react-compiler: 19.1.0-rc.3
@@ -77,7 +77,7 @@ catalog:
   typescript-eslint: 8.57.2
   vite: 8.1.6
   vite-plugin-svgr: 5.2.0
-  vitest: 4.1.10
+  vitest: 4.1.12
   zod: 4.6.6
 
 overrides:
@@ -124,7 +124,11 @@ overrides:
   # ESLint plugin packages still require CJS-style minimatch resolution from the 3.x line.
   eslint-plugin-react>minimatch: '3.1.5'
   eslint-plugin-jsx-a11y>minimatch: '3.1.5'
-  serialize-javascript: '>=7.0.5'
+  # JUSTIFICATION: Fixes GHSA-m5mm-p8h7-m29v, XSS via an unescaped </script at the end of a serialized
+  # function body. Transitive via the Docusaurus copy-webpack-plugin and css-minimizer-webpack-plugin,
+  # which still declare serialize-javascript ^6, so this moves them onto the patched 7.x line.
+  # Added 2026-05-14, raised 2026-11-05. Remove once both plugins require serialize-javascript >=7.1.3.
+  serialize-javascript@<7.1.3: '>=7.1.3 <8'
   webpack: '5.105.0'
   yaml: 2.8.3
   path-to-regexp: 0.1.13
@@ -194,8 +198,11 @@ overrides:
   undici: '^6.28.1'
   # JUSTIFICATION: Fixes entity encoding bypass and RCE vulnerabilities in fast-xml-parser.
   fast-xml-parser: '>=5.3.6'
-  # JUSTIFICATION: Fixes arbitrary file read vulnerability in Vitest UI server.
-  vitest: '>=4.1.0'
+  # JUSTIFICATION: Fixes arbitrary file read vulnerability in Vitest UI server, GHSA-82fw-gwwq-j7x9
+  # (path traversal via @vitest/mocker redirect mock), and GHSA-qxg6-89mg-rqv8 (code injection via
+  # unauthenticated manual mock registration). Capped below 5 so the resolver can't move to a new major.
+  # Added 2026-07-25, raised 2026-11-05. Remove once the vitest catalog entry is >=4.1.12 everywhere.
+  vitest@<4.1.12: '>=4.1.12 <5'
   # JUSTIFICATION: Fixes command injection vulnerability via -c/--cmd flag in glob CLI.
   glob: '>=11.1.0'
   # JUSTIFICATION: Fixes environment variable exposure in Storybook manager bundle.
@@ -215,7 +222,18 @@ overrides:
   body-parser: '>=2.3.0'
   # JUSTIFICATION: Fixes webpack-dev-server CSRF and DoS vulnerabilities. Pinned to 5.2.6 to address <=5.2.5 vulnerability (5.3.0 introduces breaking changes).
   webpack-dev-server: '5.2.6'
-  '@hono/node-server': '>=2.0.5'
+  # JUSTIFICATION: Fixes GHSA-rmxm-3fg6-px4f, middleware bypass on static paths because serveStatic
+  # decodes the request path twice. Transitive via @modelcontextprotocol/sdk in the wayfinder samples,
+  # which accepts ^1.19.9 || ^2.0.5. Added 2026-07-25, raised 2026-11-05.
+  # Remove once @modelcontextprotocol/sdk requires @hono/node-server >=2.1.3.
+  '@hono/node-server@<2.1.3': '>=2.1.3 <3'
+  # JUSTIFICATION: Fixes GHSA-866g-f22w-33x8, uncontrolled resource consumption in
+  # @ai-sdk/provider-utils. Transitive via docs > @scalar/api-reference-react > @scalar/agent-chat,
+  # whose ai@6.0.33 and @ai-sdk/vue@3.0.33 pin the vulnerable 4.0.5 exactly. Pinned to 4.0.33, the
+  # first patched release on the same 4.0.x line. Added 2026-11-05.
+  # Remove once @scalar/api-reference-react is upgraded to a release that no longer ships ai@6.
+  # Tracking: https://github.com/thunder-id/thunderid/issues/6427
+  '@ai-sdk/provider-utils@>=4.0.0 <4.0.33': 4.0.33
   # JUSTIFICATION: Fixes GHSA-f88m-g3jw-g9cj (CVE-2026-33327, CVE-2026-33328, CVE-2026-35590,
   # CVE-2026-35591) — libvips vulnerabilities inherited by sharp, and GHSA-rgj7-g3m4-5g8c
   # (GHSA-g89c-p67h-r497, GHSA-2jg2-4ch7-h545) — libheif vulnerabilities inherited by sharp.
@@ -233,9 +251,11 @@ overrides:
   nanoid@<3.3.17: 3.3.18
   # JUSTIFICATION: Fixes GHSA-w9m9-85wc-3x92 — DoS via uncontrolled AST recursion in
   # postcss-selector-parser. Transitive via Docusaurus css-loader and postcss-preset-env chains.
+  # The 7.x entries are raised to 7.1.6 for GHSA-rj75-hqrm-r3gf, CPU exhaustion through quadratic
+  # complexity in flat selector parsing, via the Docusaurus cssnano chain. Raised 2026-11-05.
   postcss-selector-parser@>=6.1.0 <6.1.3: '>=6.1.3'
-  postcss-selector-parser@>=7.0.0 <7.1.3: '>=7.1.3'
-  postcss-discard-unused>postcss-selector-parser: '>=7.1.3'
+  postcss-selector-parser@>=7.0.0 <7.1.6: '>=7.1.6 <8'
+  postcss-discard-unused>postcss-selector-parser: '>=7.1.6 <8'
   # JUSTIFICATION: Fixes GHSA-c83g-rgw3-j3cx (unbounded memory growth / OOM via distinct query
   # results) and GHSA-73wf-gq98-2v4g (uncaught crash / prototype write via untrusted custom stats).
   # Transitive via @babel/helper-compilation-targets in the Docusaurus build chain.
@@ -254,7 +274,17 @@ overrides:
   # 3.x line: the consumers here (ajv) declare fast-uri ^3.0.1, and an open-ended floor lets the
   # resolver dedupe this edge onto the 4.x major, which those consumers were never tested against.
   # 3.1.8 is a patch release on the 3.1.x line already resolved here (3.1.6), so no API change.
-  fast-uri: '>=3.1.8 <4'
+  # Raised to 3.1.9 on 2026-11-05 for GHSA-w74x-v6f9-j3xg (scheme spoofing via percent-encoded scheme
+  # decoding), GHSA-xhq7-xmqj-769h (improper path equivalence in relative reference normalization),
+  # GHSA-wjr9-j795-jxcr (host confusion via unchecked WHATWG host canonicalization) and
+  # GHSA-333x-w4r6-6crp (scheme injection via an unescaped first-segment colon in suffix references).
+  fast-uri: '>=3.1.9 <4'
+  # JUSTIFICATION: Fixes GHSA-2wm5-q62r-hmrv, slow rejection of oversized malformed color strings in
+  # colord. Transitive via the Docusaurus cssnano chain (postcss-colormin, postcss-minify-gradients),
+  # which accepts ^2.9.3, but `pnpm update` keeps the locked 2.9.3. Added 2026-11-05.
+  # Remove once postcss-colormin and postcss-minify-gradients require colord >=2.9.4.
+  # Tracking: https://github.com/thunder-id/thunderid/issues/6426
+  colord@<2.9.4: '>=2.9.4 <3'
   # JUSTIFICATION: Fixes GHSA-mrhx-c7xc-m3w5, memory exhaustion while validating oversized
   # constrained collections. Enters through @codecov/vite-plugin@2.0.1 >
   # @codecov/bundler-plugin-core@2.0.1 > zod@3.25.76 in the Console, Console CP and Gate builds.
