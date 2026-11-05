@@ -27,6 +27,8 @@ The default suspend flow checks that you may suspend the account, revokes its to
 
 For an application, or an agent with an OAuth client, the flow also revokes the user tokens issued through its client. See [Account Suspension](../../protocols/oauth-oidc/token-revocation#account-suspension).
 
+Suspending a user also suspends the personal agents they own. See [When the owner's account changes](../../agents/personal-agents/oversight#when-the-owners-account-changes).
+
 If revoking tokens or ending sessions fails, the flow stops before placing the suspension, and some tokens or sessions may already be withdrawn. Correct the failure, then suspend the account again. Suspending an account that is already suspended repeats the revocation and keeps the original suspension time and note.
 
 :::warning
@@ -47,7 +49,7 @@ Unsuspending removes the suspension. Sessions and tokens revoked during the susp
 
 What follows depends on the category:
 
-- A **user** stays locked on every sign-in method until recovery or an administrator unlock. This lock does not expire and applies even when automatic locking is turned off. To lift both holds at once, select **Unsuspend and unlock** instead. It runs the unsuspend flow and then the unlock flow; if the unlock fails, the suspension is removed and the user stays locked.
+- A **user** stays locked on every sign-in method until recovery or an administrator unlock. This lock does not expire and applies even when automatic locking is turned off. To lift both holds at once, select **Unsuspend and unlock** instead. It runs the unsuspend flow and then the unlock flow; if the unlock fails, the suspension is removed and the user stays locked. The user's personal agents are unsuspended too, except those the user or an administrator suspended separately.
 - An **agent** can authenticate again, unless an automatic lock from before the suspension is still in force.
 - An **application** can authenticate and obtain tokens again.
 

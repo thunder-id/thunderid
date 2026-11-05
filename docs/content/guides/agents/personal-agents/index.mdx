@@ -1,0 +1,35 @@
+---
+title: Personal Agents
+docType: guide
+sidebar_position: 9
+persona: iam
+description: A personal agent belongs to one user and acts only for them. Register personal agents in {{ProductName}}, issue their tokens, and manage them as an owner or administrator.
+---
+
+# Personal Agents
+
+A personal agent is an AI agent that one of your users registers for themselves. That user becomes its owner, and the agent acts only for them. Every token the agent gets names the owner as the subject (`sub`) and the agent as the actor (`act`). <ProductName /> issues a token only after the owner signs in and approves what the agent may do.
+
+## How a personal agent differs from other agents
+
+An ordinary agent is registered and managed by your organization, as described in [Create and Manage Agents](../manage-agents). A personal agent is brought in by one of your users and stays tied to them:
+
+| | Ordinary agent | Personal agent |
+|---|---|---|
+| Who registers it | An administrator | The user who becomes its owner, or an administrator on a user's behalf |
+| What tokens it gets | Its own (`client_credentials`), or on behalf of any user allowed to sign in through it | Only on its owner's behalf |
+| Grant types | Any the agent is configured for | Authorization code, CIBA, and refresh token |
+| Who changes it | Administrators | The owner, through self-service, and administrators |
+
+## How a personal agent works
+
+1. **Registration.** A registration flow collects the agent's details and creates the agent with a signed-in user as its owner. The user can start it from your application, or the agent can start it itself, and the user signs in either way. See [Register Personal Agents](./register).
+2. **Sign-in and tokens.** The agent sends its owner to sign in through the agent's sign-in flow. The owner signs in, approves the permissions the agent asked for, and the agent receives a token for the owner. Only the owner can sign in through the agent. See [Personal Agent Sign-In and Tokens](./sign-in-and-tokens).
+3. **Owner self-service.** The owner lists, updates, suspends, and deletes their agents through the `/users/me/agents` API. Your application can call it with the owner's access token to give them that control. See [Owner Self-Service](./owner-self-service).
+4. **Oversight.** Administrators find, update, suspend, and delete personal agents, and see which ones each user owns. Suspending or deleting the owner's account reaches the owner's agents too. See [Oversee Personal Agents](./oversight).
+
+## Next Steps
+
+- [Register Personal Agents](./register)
+- [Secure Personal Agents](./security)
+- [Agent Access on Behalf of Users](../authentication/on-behalf-of-user), for the delegated tokens that personal agents use

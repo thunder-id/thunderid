@@ -1,0 +1,91 @@
+---
+title: Design Decisions & Alternatives
+docType: use-case
+sidebar_position: 2
+description: The reasoning behind the personal agent defaults in {{ProductName}}, and what to choose instead when your constraints differ.
+---
+
+# Design Decisions & Alternatives
+
+[Solve It](../solve) made a set of choices for the bank: who starts registration, a public key for the
+agent's credential, and the customer's approval on every authorization. What follows is the reasoning behind
+those choices, and what to pick when your product does not match them.
+
+## Choose Who Starts Registration
+
+- **The customer starts it from your portal** when they are already signed in there. The portal sends the customer's
+  access token with each step, so the flow needs no sign-in step of its own. The token has to be the customer's
+  own and issued to the application whose registration flow runs, so another application cannot register
+  agents for its users without them.
+- **The agent starts it** when the customer is not in your portal, for example when they are chatting with
+  the agent and ask it to connect to their bank account. Add a sign-in step to the flow. Whoever signs in there becomes the owner, even
+  if the agent runs the remaining steps. Use any sign-in method that keeps the sign-in away from the agent.
+  For example, a one-time link emailed to the customer continues the flow in their browser, so they sign in
+  there, not through the agent.
+
+A run with neither a signed-in customer nor a token creates nothing. See [Decide who becomes the owner](../../../../guides/agents/personal-agents/register#decide-who-becomes-the-owner).
+
+An administrator can also register an agent on a customer's behalf, for example during a supported setup
+call. The customer still owns it.
+
+## Choose the Credential
+
+- **A key pair** is recommended. The agent generates it, keeps the private key, and registers only the
+  public key, as an inline key set or a URL where it publishes its keys. Nothing secret is shown on a screen or
+  passed through the flow. Choose a published key URL when the agent rotates its keys on its own schedule.
+- **A client secret** is created when the flow collects no key. It is returned once, to whoever runs the step that
+  creates the agent, so it passes through that party. Choose it only when the agent cannot sign an
+  assertion.
+
+See [Choose the agent's credential](../../../../guides/agents/personal-agents/register#choose-the-agents-credential).
+
+## Choose How Often the Customer Approves
+
+The bank asks on every authorization, the default for a personal agent. The customer sees each request, and
+an approval never carries over without them.
+
+To let an approval carry over to later authorizations, set the registration flow to stop asking on every
+authorization. Choose this only when the agent's requests are routine and the customer already reviews them in
+your portal. Either way, keep the consent step in the sign-in flow, so the customer approves what the agent
+asks for at least once.
+
+## Choose How the Agent Reaches the Customer
+
+- **Browser sign-in**, the default every personal agent gets, suits an agent that can open a browser for the
+  customer.
+- **Sign-in on another device (CIBA)** suits an agent without a browser, such as one running on a server or a
+  smart speaker. The customer adds the grant from your portal, then approves each request on their own device.
+- **Refresh tokens** let the agent keep access between sign-ins. Each refresh still stops working when the
+  agent or the customer's account is suspended. Leave them off when every new token should bring the customer
+  back to approve.
+
+See [Get a token for the owner](../../../../guides/agents/personal-agents/sign-in-and-tokens#get-a-token-for-the-owner).
+
+## Choose the Sign-In Flow
+
+All agents registered through one registration flow share its sign-in flow. When different kinds of agents
+need different sign-in, for example passkeys for agents that act on payments and a password for the rest,
+build a registration flow for each and fix a different sign-in flow in each. A change to the fixed sign-in flow applies
+only to agents registered afterwards. To move an existing agent to another sign-in flow, an administrator
+updates it.
+
+## Choose How to Stop an Agent
+
+- **Suspend** when the agent may come back, such as while a reported flaw in it is fixed. Suspending revokes its
+  tokens and keeps its registration, so lifting the suspension needs no new registration. The customer's
+  suspension and the bank's are independent, and each party lifts only its own.
+- **Delete** when the agent is gone for good. Deletion is permanent, so bringing the agent back needs a
+  new registration.
+
+## Next Steps
+
+With these choices made, the bank lets customers bring their own personal agents. Each agent is owned by one
+customer, acts only for them, and gets access only when they approve. To set it up, follow the guides:
+
+<NextSteps>
+  <NextStepsCard
+    title="Personal Agents"
+    description="Register personal agents, issue their tokens, and manage them as an owner or administrator."
+    href="../../../../guides/agents/personal-agents"
+  />
+</NextSteps>
