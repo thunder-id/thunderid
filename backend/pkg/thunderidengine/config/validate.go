@@ -72,10 +72,67 @@ func (c *TokenRevocationConfig) Validate() error {
 			"server.security.token_revocation.sync_interval_seconds must be non-negative (got %d)",
 			c.SyncIntervalSeconds)
 	}
-	if c.Source != "" && c.Source != tokenRevocationSourceDB {
+	if c.Source != "" && c.Source != tokenRevocationSourceDB && c.Source != tokenRevocationSourceEvents {
 		return fmt.Errorf(
-			"server.security.token_revocation.source %q is not supported (supported: %q)",
-			c.Source, tokenRevocationSourceDB)
+			"server.security.token_revocation.source %q is not supported (supported: %q, %q)",
+			c.Source, tokenRevocationSourceDB, tokenRevocationSourceEvents)
+	}
+	return nil
+}
+
+// UsesEvents reports whether the deny list is filled from pushed revocation events.
+func (c *TokenRevocationConfig) UsesEvents() bool {
+	return c.Source == tokenRevocationSourceEvents
+}
+
+// Upper bounds for the revocation push retry settings, for the same reason as the back-channel
+// logout ones: the retry wait doubles per attempt and must not overflow.
+const (
+	maxRevocationPushRequestTimeout = 30
+	maxRevocationPushMaxAttempts    = 10
+	maxRevocationPushRetryDelay     = 60
+	maxRevocationPushQueueSize      = 1 << 20
+)
+
+// Validate checks the revocation push configuration when pushing is enabled: there must be at least
+// one receiver with an absolute URL and an audience, every tuning value must be positive and within
+// its bound, and a receiver must use https unless private addresses are allowed (development).
+func (c *TokenRevocationPushConfig) Validate() error {
+	if !c.IsEnabled() {
+		return nil
+	}
+	if len(c.Receivers) == 0 {
+		return fmt.Errorf("oauth.token_revocation.push.receivers must not be empty when push is enabled")
+	}
+	for i, r := range c.Receivers {
+		parsed, err := url.Parse(strings.TrimSpace(r.URL))
+		if err != nil || parsed.Host == "" || parsed.Fragment != "" {
+			return fmt.Errorf("oauth.token_revocation.push.receivers[%d].url must be an absolute URL "+
+				"without a fragment", i)
+		}
+		if parsed.Scheme != schemeHTTPS && (parsed.Scheme != schemeHTTP || c.RejectsPrivateAddresses()) {
+			return fmt.Errorf("oauth.token_revocation.push.receivers[%d].url must use https", i)
+		}
+		if strings.TrimSpace(r.Audience) == "" {
+			return fmt.Errorf("oauth.token_revocation.push.receivers[%d].audience must not be empty", i)
+		}
+	}
+	fields := []struct {
+		name       string
+		value, max int64
+	}{
+		{"request_timeout", c.RequestTimeout, maxRevocationPushRequestTimeout},
+		{"max_attempts", int64(c.MaxAttempts), maxRevocationPushMaxAttempts},
+		{"retry_delay", c.RetryDelay, maxRevocationPushRetryDelay},
+		{"queue_size", int64(c.QueueSize), maxRevocationPushQueueSize},
+	}
+	for _, f := range fields {
+		if f.value <= 0 {
+			return fmt.Errorf("oauth.token_revocation.push.%s must be positive (got %d)", f.name, f.value)
+		}
+		if f.value > f.max {
+			return fmt.Errorf("oauth.token_revocation.push.%s must be at most %d (got %d)", f.name, f.max, f.value)
+		}
 	}
 	return nil
 }

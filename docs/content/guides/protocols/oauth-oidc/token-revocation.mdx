@@ -122,7 +122,38 @@ A revoked token normally stops being accepted by a resource server within `serve
 
 Authorization-server enforcement **fails closed**. If the denylist cannot be read, token validation fails rather than assuming the token is good. Resource-server enforcement keeps serving its last good snapshot across a transient refresh failure.
 
-Resource-server enforcement covers services that share this deployment's database. An external resource server with no access to it should use [Token Introspection](../token-introspection) instead.
+Resource-server enforcement covers services that share this deployment's database. A resource server with no access to it can receive revocations as they happen, see [Pushing revocations to a control plane](#pushing-revocations-to-a-control-plane), or use [Token Introspection](../token-introspection).
+
+## Pushing revocations to a control plane
+
+A control plane has no revocation store of its own. It accepts management tokens issued by another <ProductName /> deployment, its trusted issuer. Without a feed, a token revoked at that issuer stays valid at the control plane until it expires.
+
+The issuer can push each revocation to the control plane as a signed Security Event Token ([RFC 8417](https://datatracker.ietf.org/doc/html/rfc8417)) over push delivery ([RFC 8935](https://datatracker.ietf.org/doc/html/rfc8935)):
+
+1. On the issuer, enable `oauth.token_revocation.push` and list the control plane as a receiver. The receiver's `audience` must equal the control plane's `server.security.trusted_issuer.audience`.
+2. On the control plane, set `server.security.token_revocation.enabled` to `true` and `source` to `events`. It accepts events at `POST /revocation/events` and rejects any whose signature, issuer or audience does not match its trusted issuer.
+
+```yaml title="Issuer (data plane)"
+oauth:
+  token_revocation:
+    push:
+      enabled: true
+      receivers:
+        - url: "https://cp.example.com/revocation/events"
+          audience: "thunderid-control-plane"
+```
+
+```yaml title="Control plane"
+server:
+  security:
+    token_revocation:
+      enabled: true
+      source: "events"
+```
+
+:::warning
+Delivery is best effort. The issuer retries a failed push up to `max_attempts` times and keeps nothing across a restart, and the control plane holds its list in memory, so a restart empties it. A revocation the control plane misses leaves that token valid there until it expires.
+:::
 
 ## Configuration
 
@@ -137,14 +168,15 @@ Revocation behavior on the authorization server, part of [OAuth Configuration](.
 | `oauth.token_exchange.token_family` | `none` | `none` issues an independent token; `inherit` keeps the subject token's family |
 | `oauth.refresh_token.renew_on_grant` | `false` | Issues a new refresh token on each grant. Required for rotation and replay detection |
 | `oauth.refresh_token.revoke_previous_on_renew` | `true` | Revokes the consumed refresh token after rotation, making refresh tokens single-use |
+| `oauth.token_revocation.push.enabled` | `false` | Pushes every recorded revocation to `oauth.token_revocation.push.receivers`. See the [full push settings](../../../../deployment/configuration#oauth-configuration) |
 
 Revocation enforcement on resource-server requests, part of [Security Configuration](../../../../deployment/configuration#security-configuration):
 
 | Setting | Default | Description |
 |---|---|---|
 | `server.security.token_revocation.enabled` | `true` | Enforces revocation on requests to protected APIs |
-| `server.security.token_revocation.source` | `db` | Where the revocation snapshot is read from. `db` is the only supported value |
-| `server.security.token_revocation.sync_interval_seconds` | `60` | How often the snapshot refreshes, which sets the normal propagation delay before a revoked token stops being accepted |
+| `server.security.token_revocation.source` | `db` | Where the deny list comes from: `db` reads the snapshot from the database, `events` fills it from revocations pushed by the trusted issuer |
+| `server.security.token_revocation.sync_interval_seconds` | `60` | How often the snapshot refreshes, which sets the normal propagation delay before a revoked token stops being accepted. Ignored for `events` |
 
 ## Related Guides
 

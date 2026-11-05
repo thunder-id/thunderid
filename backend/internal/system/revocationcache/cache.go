@@ -6,7 +6,12 @@ package revocationcache
 import (
 	"sync"
 	"time"
+
+	"github.com/thunder-id/thunderid/internal/revocation"
 )
+
+// pruneInterval is how often apply drops lapsed entries, which a full replace would otherwise do.
+const pruneInterval = time.Minute
 
 // revokedCache is the concurrent in-memory deny-list snapshot. It maps each revoked jti and each
 // revoked token-family id (tfid) to its original expiry, so a lookup can ignore entries whose token
@@ -21,6 +26,7 @@ type revokedCache struct {
 	// entityScopes and scopes are keyed by criterion digest.
 	entityScopes map[string]revokedEntry
 	scopes       map[string]revokedEntry
+	lastPruned   time.Time
 }
 
 // newRevokedCache creates an empty cache. It holds nothing until the first snapshot is loaded.
@@ -52,6 +58,89 @@ func (c *revokedCache) replace(snapshot revokedSnapshot) {
 	c.entityScopes = entityScopes
 	c.scopes = scopes
 	c.mu.Unlock()
+}
+
+// apply adds one pushed revocation to the snapshot, merging it with what is already held the way the
+// deny-list write does: a terminal revocation is never weakened to a bounded one, a cutoff never moves
+// back, and an expiry is never shortened. Criterion types the cache does not enforce are ignored.
+func (c *revokedCache) apply(event revocation.Event) {
+	incoming := revokedEntry{
+		Value:      event.Criterion.Value,
+		ExpiryTime: event.ExpiryTime,
+		RevokedAt:  event.RevokedAt,
+		Boundary:   revocation.IsBoundaryReason(event.Reason),
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if event.JTI != "" {
+		c.tokens[event.JTI] = laterOf(c.tokens[event.JTI], event.ExpiryTime)
+	} else {
+		switch event.Criterion.Type {
+		case revocation.CriterionTypeTokenFamily:
+			c.families[incoming.Value] = laterOf(c.families[incoming.Value], incoming.ExpiryTime)
+		case revocation.CriterionTypeSubject:
+			mergeEntry(c.subjects, incoming)
+		case revocation.CriterionTypeApplicationKey:
+			mergeEntry(c.appKeys, incoming)
+		case revocation.CriterionTypeEntityScope:
+			mergeEntry(c.entityScopes, incoming)
+		case revocation.CriterionTypeScope:
+			mergeEntry(c.scopes, incoming)
+		}
+	}
+	c.pruneLocked()
+}
+
+// mergeEntry stores the incoming entry over any held one without weakening it.
+func mergeEntry(entries map[string]revokedEntry, incoming revokedEntry) {
+	if held, ok := entries[incoming.Value]; ok {
+		incoming.Boundary = incoming.Boundary && held.Boundary
+		incoming.ExpiryTime = laterOf(held.ExpiryTime, incoming.ExpiryTime)
+		if held.RevokedAt.After(incoming.RevokedAt) {
+			incoming.RevokedAt = held.RevokedAt
+		}
+	}
+	entries[incoming.Value] = incoming
+}
+
+// laterOf returns the later of two times.
+func laterOf(a, b time.Time) time.Time {
+	if a.After(b) {
+		return a
+	}
+	return b
+}
+
+// pruneLocked drops entries whose expiry has passed, at most once per pruneInterval. The caller
+// holds the write lock.
+func (c *revokedCache) pruneLocked() {
+	now := time.Now()
+	if now.Sub(c.lastPruned) < pruneInterval {
+		return
+	}
+	c.lastPruned = now
+	pruneTimes(c.tokens, now)
+	pruneTimes(c.families, now)
+	pruneEntries(c.subjects, now)
+	pruneEntries(c.appKeys, now)
+	pruneEntries(c.entityScopes, now)
+	pruneEntries(c.scopes, now)
+}
+
+func pruneTimes(m map[string]time.Time, now time.Time) {
+	for k, expiry := range m {
+		if !now.Before(expiry) {
+			delete(m, k)
+		}
+	}
+}
+
+func pruneEntries(m map[string]revokedEntry, now time.Time) {
+	for k, entry := range m {
+		if !now.Before(entry.ExpiryTime) {
+			delete(m, k)
+		}
+	}
 }
 
 func (c *revokedCache) isSubjectRevoked(subject string, establishedAt time.Time) bool {

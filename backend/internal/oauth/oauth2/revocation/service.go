@@ -12,6 +12,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	sharedrevocation "github.com/thunder-id/thunderid/internal/revocation"
 	syscontext "github.com/thunder-id/thunderid/internal/system/context"
+	"github.com/thunder-id/thunderid/internal/system/eventlistener"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/observability/event"
@@ -81,7 +82,9 @@ type revocationService struct {
 	observabilitySvc  providers.ObservabilityProvider
 	// maxEntriesPerChange bounds one RevokeCriteriaBatch call.
 	maxEntriesPerChange int
-	logger              *log.Logger
+	// events announces each deny-list entry once it is recorded.
+	events *eventlistener.Topic[sharedrevocation.Event]
+	logger *log.Logger
 }
 
 // newRevocationService creates a new revocationService (internal use). It returns
@@ -100,6 +103,20 @@ func newRevocationService(
 	observabilitySvc providers.ObservabilityProvider,
 	maxEntriesPerChange int,
 ) RevocationServiceInterface {
+	return buildRevocationService(jwtService, store, tokenFamilyLifetime, validationLeeway, revokeTokenFamily,
+		observabilitySvc, maxEntriesPerChange)
+}
+
+// buildRevocationService creates the concrete service, for the caller that also needs its event topic.
+func buildRevocationService(
+	jwtService jwt.JWTServiceInterface,
+	store revocationStoreInterface,
+	tokenFamilyLifetime time.Duration,
+	validationLeeway time.Duration,
+	revokeTokenFamily bool,
+	observabilitySvc providers.ObservabilityProvider,
+	maxEntriesPerChange int,
+) *revocationService {
 	if tokenFamilyLifetime <= 0 {
 		tokenFamilyLifetime = defaultTokenFamilyRevocationTTL
 	}
@@ -111,6 +128,7 @@ func newRevocationService(
 		revokeTokenFamily:   revokeTokenFamily,
 		observabilitySvc:    observabilitySvc,
 		maxEntriesPerChange: maxEntriesPerChange,
+		events:              eventlistener.NewTopic[sharedrevocation.Event]("revocation"),
 		logger:              log.GetLogger().With(log.String(log.LoggerKeyComponentName, "RevocationService")),
 	}
 }
@@ -168,6 +186,7 @@ func (s *revocationService) RevokeToken(
 	if err := s.store.InsertRevokedToken(ctx, revoked); err != nil {
 		return RevokeOutcomeRevoked, fmt.Errorf("failed to record token revocation: %w", err)
 	}
+	s.notifyTokenRevoked(ctx, revoked)
 
 	// When the revoked token carries a token family id, drop the whole family so revoking a login's
 	// refresh token also invalidates the access tokens issued from that same login (RFC 7009 §2.1).
@@ -200,6 +219,7 @@ func (s *revocationService) RevokeRefreshToken(ctx context.Context, jti string, 
 	if err := s.store.InsertRevokedToken(ctx, revoked); err != nil {
 		return fmt.Errorf("failed to record refresh token revocation: %w", err)
 	}
+	s.notifyTokenRevoked(ctx, revoked)
 	s.logger.Debug(ctx, "Revoked refresh token")
 	return nil
 }
@@ -228,6 +248,7 @@ func (s *revocationService) RevokeTokenFamily(ctx context.Context, tokenFamilyID
 		s.publishCriteriaRevocationFailedEvent(ctx, revocation)
 		return fmt.Errorf("failed to revoke tokens by criteria: %w", err)
 	}
+	s.notifyCriteriaRevoked(ctx, *row)
 
 	s.logger.Debug(ctx, "Revoked tokens by criteria",
 		log.String("criterionType", string(CriterionTypeTokenFamily)),
@@ -270,9 +291,38 @@ func (s *revocationService) RevokeCriteriaBatch(ctx context.Context,
 		}
 		return &tidcommon.InternalServerError
 	}
+	s.notifyCriteriaRevoked(ctx, rows...)
 
 	s.logger.Debug(ctx, "Revoked tokens by criteria batch", log.Int("count", len(rows)))
 	return nil
+}
+
+// notifyTokenRevoked announces a recorded single-token revocation to the event listeners.
+func (s *revocationService) notifyTokenRevoked(ctx context.Context, token RevokedToken) {
+	if !s.events.HasListeners() {
+		return
+	}
+	s.events.Notify(ctx, sharedrevocation.Event{
+		JTI:        token.JTI,
+		Reason:     token.RevocationReason,
+		RevokedAt:  token.RevokedAt,
+		ExpiryTime: token.ExpiryTime,
+	})
+}
+
+// notifyCriteriaRevoked announces recorded criteria revocations to the event listeners.
+func (s *revocationService) notifyCriteriaRevoked(ctx context.Context, rows ...revocationCriterion) {
+	if !s.events.HasListeners() {
+		return
+	}
+	for _, row := range rows {
+		s.events.Notify(ctx, sharedrevocation.Event{
+			Criterion:  Criterion{Type: row.Type, Value: row.Value},
+			Reason:     row.Reason,
+			RevokedAt:  row.RevokedAt,
+			ExpiryTime: row.ExpiryTime,
+		})
+	}
 }
 
 // validatedCriterionRow validates a revocation and builds its deny-list row, or nil when it has no value.

@@ -6,6 +6,8 @@ package revocationcache
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -18,7 +20,7 @@ import (
 )
 
 func TestInitialize_DisabledReturnsNoops(t *testing.T) {
-	enforcer, syncer, err := Initialize(Config{Enabled: false})
+	enforcer, syncer, err := Initialize(Config{Enabled: false}, nil, nil)
 
 	assert.NoError(t, err)
 	assert.IsType(t, noopEnforcer{}, enforcer)
@@ -27,7 +29,7 @@ func TestInitialize_DisabledReturnsNoops(t *testing.T) {
 }
 
 func TestInitialize_UnsupportedSource(t *testing.T) {
-	enforcer, syncer, err := Initialize(Config{Enabled: true, Source: "events"})
+	enforcer, syncer, err := Initialize(Config{Enabled: true, Source: "endpoint"}, nil, nil)
 
 	assert.ErrorIs(t, err, errUnsupportedSource)
 	assert.Nil(t, enforcer)
@@ -72,4 +74,25 @@ func TestSelectSource(t *testing.T) {
 
 	_, err = selectSource("endpoint")
 	assert.ErrorIs(t, err, errUnsupportedSource)
+}
+
+func TestInitialize_EventsRequiresTrustedIssuer(t *testing.T) {
+	enforcer, syncer, err := Initialize(Config{Enabled: true, Source: sourceEvents}, http.NewServeMux(), nil)
+
+	assert.Error(t, err)
+	assert.Nil(t, enforcer)
+	assert.Nil(t, syncer)
+}
+
+func TestInitialize_EventsMountsThePushEndpoint(t *testing.T) {
+	mux := http.NewServeMux()
+
+	enforcer, syncer, err := Initialize(Config{Enabled: true, Source: sourceEvents, TrustedIssuer: testIssuer},
+		mux, nil)
+
+	require.NoError(t, err)
+	assert.IsType(t, noopSyncer{}, syncer, "events are pushed, so nothing is synced on a schedule")
+	assert.NoError(t, enforcer.EnsureNotRevoked(context.Background(), security.RevocationIdentity{JTI: "x"}))
+	_, pattern := mux.Handler(httptest.NewRequest(http.MethodPost, EventsPath, nil))
+	assert.Equal(t, "POST "+EventsPath, pattern)
 }

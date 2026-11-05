@@ -12,7 +12,10 @@ server:
 
   security:
     # This plane issues no tokens of its own, and the management tokens it accepts come from the
-    # configured issuer, so there is no revoked-token table here for a syncer to read.
+    # configured issuer, so there is no revoked-token table here for a syncer to read. To reject tokens
+    # the issuer has revoked, set `source: "events"` with `enabled: true` and configure
+    # `trusted_issuer`: the issuer then pushes its revocations to POST /revocation/events, and its
+    # `oauth.token_revocation.push.receivers` must name this plane with the trusted issuer audience.
     token_revocation:
       enabled: false
 

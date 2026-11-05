@@ -969,6 +969,51 @@ func (suite *JWTAuthenticatorTestSuite) TestAuthenticate_SelfIssuedTokenUnderFed
 	mockJWT.AssertNotCalled(suite.T(), "VerifyJWTWithJWKS")
 }
 
+func (suite *JWTAuthenticatorTestSuite) TestAuthenticate_FederatedTokenRevocationDimensions() {
+	// The trusted issuer's subject, client and establishment time are evaluated against the deny list
+	// only when that issuer feeds it through pushed events; a database-backed deny list holds nothing
+	// about the issuer's subjects, which could collide with local ones.
+	for _, source := range []string{"events", "db"} {
+		suite.Run(source, func() {
+			cfg := federatedConfigWithLocalIssuer()
+			enabled := true
+			cfg.Server.SecurityConfig.TokenRevocation = engineconfig.TokenRevocationConfig{
+				Enabled: &enabled, Source: source}
+			config.ResetServerRuntime()
+			defer config.ResetServerRuntime()
+			_ = config.InitializeServerRuntime("", cfg)
+
+			token := buildFakeJWT(
+				map[string]interface{}{"alg": "RS256", "kid": "kid"},
+				map[string]interface{}{
+					"sub": "user-1", "client_id": "client-1", "iat": float64(1_700_000_000),
+					"iss": testFederatedIssuer, "aud": testFederatedAudience, "scope": "system",
+				},
+			)
+			mockJWT := jwtmock.NewJWTServiceInterfaceMock(suite.T())
+			mockJWT.On("VerifyJWTWithJWKS", mock.Anything, token, testFederatedJWKSURL, testFederatedAudience,
+				testFederatedIssuer).Return(nil)
+			auth := newJWTAuthenticator(mockJWT, "")
+			req := httptest.NewRequest(http.MethodGet, "/users", nil)
+			req.Header.Set("Authorization", "Bearer "+token)
+
+			authCtx, err := auth.Authenticate(req)
+
+			suite.Require().NoError(err)
+			if source == "events" {
+				suite.Equal("user-1", authCtx.revocationSubject)
+				suite.Equal("client-1", authCtx.revocationAppKey)
+				suite.Equal([]string{testFederatedAudience}, authCtx.revocationAudiences)
+				suite.Equal(time.Unix(1_700_000_000, 0).UTC(), authCtx.establishedAt)
+			} else {
+				suite.Empty(authCtx.revocationSubject)
+				suite.Empty(authCtx.revocationAppKey)
+				suite.True(authCtx.establishedAt.IsZero())
+			}
+		})
+	}
+}
+
 func (suite *JWTAuthenticatorTestSuite) TestAuthenticate_SelfIssuedTokenInvalidUnderFederation() {
 	// A self-issued token routed to local verification that fails the signature
 	// check is rejected; it must not be retried against the trusted issuer JWKS.

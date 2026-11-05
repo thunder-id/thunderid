@@ -17,30 +17,38 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/clientauth"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/discovery"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/jti"
+	sharedrevocation "github.com/thunder-id/thunderid/internal/revocation"
+	"github.com/thunder-id/thunderid/internal/system/eventlistener"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
-// Initialize constructs the shared revocation read and write services from the OAuth config.
+// EventHook registers listeners that are told of every revocation once it is recorded. Initialize
+// hands it to the composition root, which registers the revocation push dispatcher on it.
+type EventHook = eventlistener.Hook[sharedrevocation.Event]
+
+// Initialize constructs the shared revocation read and write services from the OAuth config, and the
+// hook for listeners of recorded revocations.
 func Initialize(
 	cfg oauthconfig.Config,
 	jwtService jwt.JWTServiceInterface,
 	observabilitySvc providers.ObservabilityProvider,
-) (EnforcementServiceInterface, RevocationServiceInterface, error) {
+) (EnforcementServiceInterface, RevocationServiceInterface, EventHook, error) {
 	revocationCfg := cfg.OAuth.Revocation
 	maxEntriesPerChange := revocationCfg.Criteria.MaxEntriesPerChange
 	if maxEntriesPerChange < 0 {
-		return nil, nil, fmt.Errorf(
+		return nil, nil, nil, fmt.Errorf(
 			"oauth.revocation.criteria.max_entries_per_change must not be negative, got %d", maxEntriesPerChange)
 	}
 	tokenFamilyRevocationTTL := time.Duration(cfg.OAuth.RefreshToken.ValidityPeriod) * time.Second
 	validationLeeway := time.Duration(cfg.JWT.Leeway) * time.Second
 	store := newRevocationStore()
-	return newEnforcementService(observabilitySvc, store), newRevocationService(
+	service := buildRevocationService(
 		jwtService, store, tokenFamilyRevocationTTL, validationLeeway,
-		revocationCfg.TokenFamily.OnExplicitRevokeEnabled(), observabilitySvc, maxEntriesPerChange), nil
+		revocationCfg.TokenFamily.OnExplicitRevokeEnabled(), observabilitySvc, maxEntriesPerChange)
+	return newEnforcementService(observabilitySvc, store), service, service.events.Hook(), nil
 }
 
 // RegisterRoutes registers the RFC 7009 revocation endpoint using the shared revocation service.

@@ -108,7 +108,7 @@ func main() {
 	// Initialize the Resource Server token-revocation cache. The initial deny-list snapshot is loaded
 	// synchronously so enforcement is live before the first request; if that load fails the server
 	// still starts and the syncer repopulates the cache on its next tick.
-	revocationEnforcer, revocationSyncer := initRevocationCache(ctx, logger, cfg)
+	revocationEnforcer, revocationSyncer := initRevocationCache(ctx, logger, cfg, mux, jwtService)
 	revocationSyncer.Start(ctx)
 
 	// Mount the MCP server's routes now that the revocation enforcer exists - DefaultGuard uses it
@@ -162,14 +162,18 @@ func main() {
 // initRevocationCache builds the Resource Server token-revocation enforcer and its background syncer
 // from the server security configuration. An unsupported source configuration fails startup; a
 // failed initial deny-list load does not — the server starts and the syncer populates the cache later.
-func initRevocationCache(ctx context.Context, logger *log.Logger,
-	cfg *config.Config) (revocationcache.EnforcerInterface, revocationcache.Syncer) {
+func initRevocationCache(ctx context.Context, logger *log.Logger, cfg *config.Config, mux *http.ServeMux,
+	jwtService jwt.JWTServiceInterface) (revocationcache.EnforcerInterface, revocationcache.Syncer) {
 	rc := cfg.Server.SecurityConfig.TokenRevocation
+	issuer := cfg.Server.SecurityConfig.TrustedIssuer
 	enforcer, syncer, err := revocationcache.Initialize(revocationcache.Config{
 		Enabled:      rc.IsEnabled(),
 		Source:       rc.Source,
 		SyncInterval: time.Duration(rc.SyncIntervalSeconds) * time.Second,
-	})
+		TrustedIssuer: revocationcache.TrustedIssuer{
+			Issuer: issuer.Issuer, JWKSURL: issuer.JWKSURL, Audience: issuer.Audience,
+		},
+	}, mux, jwtService)
 	if err != nil {
 		logger.Fatal(ctx, "Failed to initialize token revocation cache", log.Error(err))
 	}

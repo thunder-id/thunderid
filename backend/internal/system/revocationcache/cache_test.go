@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+
+	"github.com/thunder-id/thunderid/internal/revocation"
 )
 
 func TestRevokedCache_ReplaceAndIsRevoked(t *testing.T) {
@@ -87,4 +89,98 @@ func TestRevokedCache_ConcurrentAccess(t *testing.T) {
 	wg.Wait()
 
 	assert.True(t, c.isTokenRevoked("jti"))
+}
+
+func criterionEvent(criterionType revocation.CriterionType, value string, reason revocation.Reason,
+	revokedAt time.Time, expiry time.Time) revocation.Event {
+	return revocation.Event{
+		Criterion: revocation.Criterion{Type: criterionType, Value: value},
+		Reason:    reason, RevokedAt: revokedAt, ExpiryTime: expiry,
+	}
+}
+
+func TestRevokedCache_ApplyEachDimension(t *testing.T) {
+	cache := newRevokedCache()
+	expiry := time.Now().Add(time.Hour)
+
+	cache.apply(revocation.Event{JTI: "jti-1", Reason: revocation.ReasonExplicit, RevokedAt: time.Now(),
+		ExpiryTime: expiry})
+	cache.apply(criterionEvent(revocation.CriterionTypeTokenFamily, "tfid-1", revocation.ReasonSessionLogout,
+		time.Now(), expiry))
+	cache.apply(criterionEvent(revocation.CriterionTypeSubject, "user-1", revocation.ReasonUserDeleted,
+		time.Now(), expiry))
+	cache.apply(criterionEvent(revocation.CriterionTypeApplicationKey, "client-1",
+		revocation.ReasonApplicationDeleted, time.Now(), expiry))
+	cache.apply(criterionEvent(revocation.CriterionTypeEntityScope, "digest-1", revocation.ReasonRoleDeleted,
+		time.Now(), expiry))
+	cache.apply(criterionEvent(revocation.CriterionTypeScope, "digest-2", revocation.ReasonActionDeleted,
+		time.Now(), expiry))
+	cache.apply(criterionEvent(revocation.CriterionTypeOrganizationUnit, "ou-1",
+		revocation.ReasonOrganizationUnitChanged, time.Now(), expiry))
+
+	assert.True(t, cache.isTokenRevoked("jti-1"))
+	assert.True(t, cache.isTokenFamilyRevoked("tfid-1"))
+	assert.True(t, cache.isSubjectRevoked("user-1", time.Time{}))
+	assert.True(t, cache.isAppKeyRevoked("client-1", time.Time{}))
+	assert.True(t, cache.isEntityScopeRevoked("digest-1", time.Time{}))
+	assert.True(t, cache.isScopeRevoked("digest-2", time.Time{}))
+	assert.False(t, cache.isSubjectRevoked("someone-else", time.Time{}))
+}
+
+func TestRevokedCache_ApplyNeverWeakensAnEntry(t *testing.T) {
+	now := time.Now()
+	established := now.Add(-time.Minute)
+
+	t.Run("a terminal entry stays terminal when a bounded one follows", func(t *testing.T) {
+		cache := newRevokedCache()
+		cache.apply(criterionEvent(revocation.CriterionTypeSubject, "user-1", revocation.ReasonUserDeleted,
+			now, now.Add(time.Hour)))
+		cache.apply(criterionEvent(revocation.CriterionTypeSubject, "user-1", revocation.ReasonIdentitySuspended,
+			now.Add(-time.Hour), now.Add(2*time.Hour)))
+
+		assert.True(t, cache.isSubjectRevoked("user-1", now.Add(time.Minute)),
+			"a token minted after the bounded cutoff is still rejected by the terminal entry")
+		assert.Equal(t, now.Add(2*time.Hour).Unix(), cache.subjects["user-1"].ExpiryTime.Unix(),
+			"the expiry is the later one")
+	})
+
+	t.Run("a bounded cutoff never moves back", func(t *testing.T) {
+		cache := newRevokedCache()
+		cache.apply(criterionEvent(revocation.CriterionTypeSubject, "user-1", revocation.ReasonIdentitySuspended,
+			now, now.Add(time.Hour)))
+		cache.apply(criterionEvent(revocation.CriterionTypeSubject, "user-1", revocation.ReasonIdentitySuspended,
+			now.Add(-time.Hour), now.Add(time.Minute)))
+
+		assert.True(t, cache.isSubjectRevoked("user-1", established), "established before the later cutoff")
+		assert.Equal(t, now.Add(time.Hour).Unix(), cache.subjects["user-1"].ExpiryTime.Unix(),
+			"the expiry is never shortened")
+	})
+
+	t.Run("a terminal event hardens a bounded entry", func(t *testing.T) {
+		cache := newRevokedCache()
+		cache.apply(criterionEvent(revocation.CriterionTypeSubject, "user-1", revocation.ReasonIdentitySuspended,
+			now.Add(-time.Hour), now.Add(time.Hour)))
+		assert.False(t, cache.isSubjectRevoked("user-1", now), "minted after the cutoff")
+
+		cache.apply(criterionEvent(revocation.CriterionTypeSubject, "user-1", revocation.ReasonUserDeleted,
+			now, now.Add(time.Hour)))
+
+		assert.True(t, cache.isSubjectRevoked("user-1", now))
+	})
+}
+
+func TestRevokedCache_ApplyPrunesLapsedEntries(t *testing.T) {
+	cache := newRevokedCache()
+	cache.apply(revocation.Event{JTI: "old", Reason: revocation.ReasonExplicit, RevokedAt: time.Now(),
+		ExpiryTime: time.Now().Add(-time.Minute)})
+	cache.apply(criterionEvent(revocation.CriterionTypeSubject, "old-user", revocation.ReasonUserDeleted,
+		time.Now(), time.Now().Add(-time.Minute)))
+	cache.lastPruned = time.Now().Add(-2 * pruneInterval)
+
+	cache.apply(revocation.Event{JTI: "fresh", Reason: revocation.ReasonExplicit, RevokedAt: time.Now(),
+		ExpiryTime: time.Now().Add(time.Hour)})
+
+	assert.NotContains(t, cache.tokens, "old")
+	assert.NotContains(t, cache.subjects, "old-user")
+	assert.Contains(t, cache.tokens, "fresh")
 }
