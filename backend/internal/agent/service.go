@@ -44,13 +44,18 @@ type AgentServiceInterface interface {
 		*tidcommon.ServiceError)
 	GetAgent(ctx context.Context, agentID string, includeDisplay bool) (*model.AgentGetResponse,
 		*tidcommon.ServiceError)
+	GetAgentByClientID(ctx context.Context, clientID string, includeDisplay bool) (*model.AgentGetResponse,
+		*tidcommon.ServiceError)
 	GetAgentList(ctx context.Context, limit, offset int, filters map[string]interface{},
 		includeDisplay bool) (*model.AgentListResponse, *tidcommon.ServiceError)
 	GetAgentListByProject(ctx context.Context, projectID string, limit, offset int,
 		filters map[string]interface{}, includeDisplay bool) (*model.AgentListResponse, *tidcommon.ServiceError)
+	GetAgentListByOwner(ctx context.Context, ownerID string, limit, offset int,
+		filters map[string]interface{}, includeDisplay bool) (*model.AgentListResponse, *tidcommon.ServiceError)
 	UpdateAgent(ctx context.Context, agentID string, req *model.UpdateAgentRequest) (
 		*model.AgentCompleteResponse, *tidcommon.ServiceError)
 	UpdateAgentCredentials(ctx context.Context, agentID string, credentials json.RawMessage) *tidcommon.ServiceError
+	RegenerateAgentSecret(ctx context.Context, agentID string) (string, *tidcommon.ServiceError)
 	DeleteAgent(ctx context.Context, agentID string) *tidcommon.ServiceError
 	GetAgentGroups(ctx context.Context, agentID string, limit, offset int) (
 		*model.AgentGroupListResponse, *tidcommon.ServiceError)
@@ -256,6 +261,29 @@ func (s *agentService) GetAgent(ctx context.Context, agentID string, includeDisp
 	return resp, nil
 }
 
+// GetAgentByClientID returns the agent that holds the given OAuth client ID.
+func (s *agentService) GetAgentByClientID(ctx context.Context, clientID string, includeDisplay bool) (
+	*model.AgentGetResponse, *tidcommon.ServiceError) {
+	if clientID == "" {
+		return nil, &ErrorMissingClientID
+	}
+
+	agentID, err := s.entityService.IdentifyEntity(ctx, map[string]interface{}{fieldClientID: clientID})
+	if err != nil {
+		if errors.Is(err, entity.ErrEntityNotFound) || errors.Is(err, entity.ErrAmbiguousEntity) {
+			return nil, &ErrorAgentNotFound
+		}
+		s.logger.Error(ctx, "Failed to find agent by client ID", log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+	if agentID == nil || *agentID == "" {
+		return nil, &ErrorAgentNotFound
+	}
+
+	// GetAgent refuses an entity that is not an agent, such as an application holding the client ID.
+	return s.GetAgent(ctx, *agentID, includeDisplay)
+}
+
 // GetAgentList returns a paginated list of agents. An organization unit filter lists the agents that
 // unit owns, followed by the ones shared into it.
 func (s *agentService) GetAgentList(ctx context.Context, limit, offset int,
@@ -346,6 +374,64 @@ func (s *agentService) GetAgentListByProject(ctx context.Context, projectID stri
 		return nil, &tidcommon.InternalServerError
 	}
 	return s.buildListResponse(ctx, entities, len(entities), total, limit, offset, includeDisplay, listQuery), nil
+}
+
+// GetAgentListByOwner returns a paginated list of the agents the given entity owns, narrowed by the
+// attribute filters.
+func (s *agentService) GetAgentListByOwner(ctx context.Context, ownerID string, limit, offset int,
+	filters map[string]interface{}, includeDisplay bool) (*model.AgentListResponse, *tidcommon.ServiceError) {
+	if ownerID == "" {
+		return nil, &ErrorInvalidFilter
+	}
+	if svcErr := validatePaginationParams(limit, offset); svcErr != nil {
+		return nil, svcErr
+	}
+	if limit == 0 {
+		limit = defaultAgentPageSize
+	}
+
+	listQuery := sysutils.FilterQueryParam(filters) + sysutils.DisplayQueryParam(includeDisplay)
+	ouID, filters, err := filter.SplitOUIDFilter(filters)
+	if err != nil || ouID != "" {
+		return nil, &ErrorInvalidFilter
+	}
+	query := entity.SystemAttributeQuery{
+		SystemAttributes: map[string]interface{}{fieldOwner: ownerID},
+		Attributes:       filters,
+	}
+
+	accessible, svcErr := s.getAccessibleOUs(ctx)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+
+	var totalCount int
+	var entities []providers.Entity
+	switch {
+	case accessible.AllAllowed:
+		totalCount, err = s.entityService.GetEntityListCountBySystemAttributes(
+			ctx, providers.EntityCategoryAgent, query)
+		if err == nil {
+			entities, err = s.entityService.GetEntityListBySystemAttributes(
+				ctx, providers.EntityCategoryAgent, query, limit, offset)
+		}
+	case len(accessible.IDs) == 0:
+		entities = []providers.Entity{}
+	default:
+		totalCount, err = s.entityService.GetEntityListCountBySystemAttributesAndOUIDs(
+			ctx, providers.EntityCategoryAgent, query, accessible.IDs)
+		if err == nil {
+			entities, err = s.entityService.GetEntityListBySystemAttributesAndOUIDs(
+				ctx, providers.EntityCategoryAgent, query, accessible.IDs, limit, offset)
+		}
+	}
+	if err != nil {
+		s.logger.Error(ctx, "Failed to list agents by owner", log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+
+	return s.buildListResponse(ctx, entities, len(entities), totalCount, limit, offset, includeDisplay,
+		listQuery), nil
 }
 
 // getAccessibleOUs resolves the set of organization units the caller is authorized to list agents from.
@@ -657,6 +743,73 @@ func (s *agentService) UpdateAgentCredentials(ctx context.Context, agentID strin
 	}
 	s.captureCredentials(ctx, existing, values)
 	return nil
+}
+
+// RegenerateAgentSecret replaces the client secret of an agent that authenticates with one, and returns
+// the new secret. That is the only time it can be read, since it is hashed when stored.
+func (s *agentService) RegenerateAgentSecret(ctx context.Context, agentID string) (
+	string, *tidcommon.ServiceError) {
+	if agentID == "" {
+		return "", &ErrorMissingAgentID
+	}
+
+	existing, err := s.entityService.GetEntityProfile(ctx, agentID)
+	if err != nil {
+		if errors.Is(err, entity.ErrEntityNotFound) {
+			return "", &ErrorAgentNotFound
+		}
+		s.logger.Error(ctx, "Failed to retrieve agent entity for secret regeneration",
+			log.MaskedString("agentID", agentID), log.Error(err))
+		return "", &tidcommon.InternalServerError
+	}
+	if existing.Category != providers.EntityCategoryAgent {
+		return "", &ErrorAgentNotFound
+	}
+	if existing.IsReadOnly {
+		return "", &ErrorCannotModifyDeclarativeResource
+	}
+	if svcErr := s.checkAgentAccess(ctx, security.ActionUpdateAgent, existing.OUID, agentID); svcErr != nil {
+		return "", svcErr
+	}
+
+	_, _, clientID := readSystemAttributes(existing.SystemAttributes)
+	oauth, err := s.inboundClientService.GetOAuthProfileByEntityID(ctx, agentID)
+	if err != nil && !errors.Is(err, inboundclient.ErrInboundClientNotFound) {
+		s.logger.Error(ctx, "Failed to load OAuth profile for secret regeneration",
+			log.MaskedString("agentID", agentID), log.Error(err))
+		return "", &tidcommon.InternalServerError
+	}
+	if clientID == "" || !usesClientSecret(oauth) {
+		return "", &ErrorClientSecretNotUsed
+	}
+
+	clientSecret, err := oauthutils.GenerateOAuth2ClientSecret()
+	if err != nil {
+		s.logger.Error(ctx, "Failed to generate client secret", log.Error(err))
+		return "", &tidcommon.InternalServerError
+	}
+	sysCredsJSON, err := buildSystemCredentialsJSON(clientSecret)
+	if err != nil {
+		s.logger.Error(ctx, "Failed to build agent system credentials", log.Error(err))
+		return "", &tidcommon.InternalServerError
+	}
+	if err = s.entityService.UpdateSystemCredentials(ctx, agentID, sysCredsJSON); err != nil {
+		s.logger.Error(ctx, "Failed to update agent system credentials",
+			log.MaskedString("agentID", agentID), log.Error(err))
+		return "", &tidcommon.InternalServerError
+	}
+
+	s.captureValues(ctx, &model.AgentCompleteResponse{
+		ID:         agentID,
+		OUID:       existing.OUID,
+		Type:       existing.Type,
+		Attributes: existing.Attributes,
+		InboundAuthConfig: annotateOAuthConfig([]providers.InboundAuthConfigWithSecret{{
+			Type:        providers.OAuthInboundAuthType,
+			OAuthConfig: oauthProfileToComplete(clientID, oauth),
+		}}, clientID, clientSecret),
+	}, nil)
+	return clientSecret, nil
 }
 
 // DeleteAgent removes the agent and its associated inbound client.
@@ -1656,6 +1809,20 @@ func requiresClientSecret(cfg *providers.OAuthConfigWithSecret) bool {
 	}
 	// Default to client_secret_basic when unspecified.
 	return true
+}
+
+// usesClientSecret reports whether a stored OAuth profile authenticates its client with a secret.
+func usesClientSecret(p *providers.OAuthProfile) bool {
+	if p == nil || p.PublicClient {
+		return false
+	}
+	switch providers.TokenEndpointAuthMethod(p.TokenEndpointAuthMethod) {
+	case providers.TokenEndpointAuthMethodClientSecretBasic, providers.TokenEndpointAuthMethodClientSecretPost:
+		return true
+	case providers.TokenEndpointAuthMethodPrivateKeyJWT, providers.TokenEndpointAuthMethodNone:
+		return false
+	}
+	return false
 }
 
 // buildAgentEntity constructs the entity row and system credentials JSON for a new or updated agent.

@@ -534,9 +534,9 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		"Failed to inject the application provider into the flow executors")
 	exporters = append(exporters, applicationExporter)
 
-	agentService, agentExporter, err := agent.Initialize(mux, entityService, inboundClientService, ouService,
-		roleService, ouAuthzService, governanceService, nil, entityTypeService,
-		dbprovider.GetDBProvider(), observabilitySvc, nil)
+	agentService, agentExporter, err := agent.Initialize(mux, mcpServer, entityService, inboundClientService,
+		ouService, roleService, resourceService, flowMgtService, ouAuthzService, governanceService, nil,
+		entityTypeService, dbprovider.GetDBProvider(), observabilitySvc, nil)
 	fatalOnError(ctx, logger, err, "Failed to initialize AgentService")
 	exporters = append(exporters, agentExporter)
 
@@ -630,7 +630,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	// The flow endpoint and the authorize endpoint share one SSO handle transport. The SSO cookie is
 	// marked Secure unless the deployment is configured to serve over plain HTTP.
 	ssoTransport := flowsession.NewHandleTransport(flowsession.TransportConfig{SecureCookies: flowConfig.SecureCookies})
-	flowExecService, err := flowexec.Initialize(mux, flowMgtService, actorProvider, ouProvider,
+	flowExecService, err := flowexec.Initialize(mux, mcpServer, flowMgtService, actorProvider, ouProvider,
 		execRegistry, interceptorRegistry, observabilitySvc, runtimeCryptoSvc, attestationProvider,
 		graphBuilder, jwtService, runtimeStoreProvider, transactioner, serverConfigService, ssoTransport,
 		governanceProvider, flowMgtService, flowMgtService, flowConfig)
