@@ -220,12 +220,18 @@ export default function App(): JSX.Element {
                   <Route path={`${ROUTE_SEGMENTS.groups}/:groupId`} element={<GroupEditPage />} />
                   <Route path={ROUTE_SEGMENTS.roles} element={<RolesListPage />} />
                   <Route path={`${ROUTE_SEGMENTS.roles}/:roleId`} element={<RoleEditPage />} />
-                  <Route path={ROUTE_SEGMENTS.verifiablePresentations} element={<VerifiablePresentationsListPage />} />
+                  <Route
+                    path={ROUTE_SEGMENTS.verifiablePresentations}
+                    element={<VerifiablePresentationsListPage showWalletQr />}
+                  />
                   <Route
                     path={`${ROUTE_SEGMENTS.verifiablePresentations}/:vpId`}
                     element={<VerifiablePresentationEditPage />}
                   />
-                  <Route path={ROUTE_SEGMENTS.verifiableCredentials} element={<VerifiableCredentialsListPage />} />
+                  <Route
+                    path={ROUTE_SEGMENTS.verifiableCredentials}
+                    element={<VerifiableCredentialsListPage showWalletQr />}
+                  />
                   <Route
                     path={`${ROUTE_SEGMENTS.verifiableCredentials}/:vcId`}
                     element={<VerifiableCredentialEditPage />}
