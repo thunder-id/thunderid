@@ -37,6 +37,9 @@ const CorrelationIDHeaderName = "X-Correlation-ID"
 // rather than in http.Request.Header, so it is surfaced under this key when capturing request data.
 const HostHeaderName = "Host"
 
+// OriginHeaderName is the name of the Origin header a browser sends to identify where a request came from.
+const OriginHeaderName = "Origin"
+
 // FlowSecretHeaderName is the name of the header used to present a Flow Secret when initiating
 // a flow directly over HTTP.
 const FlowSecretHeaderName = "Flow-Secret"
