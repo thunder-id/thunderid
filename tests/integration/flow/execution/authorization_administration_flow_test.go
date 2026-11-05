@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -18,7 +19,6 @@ import (
 
 const (
 	rolePermissionRemovalFlowHandle  = "default-role-permission-removal-flow"
-	groupDeletionFlowHandle          = "default-group-deletion-flow"
 	groupMembershipRemovalFlowHandle = "default-group-membership-removal-flow"
 	actionDeletionFlowHandle         = "default-action-deletion-flow"
 )
@@ -168,8 +168,8 @@ func (ts *AuthorizationAdministrationFlowTestSuite) SetupSuite() {
 	ts.ouID = ouID
 
 	for _, handle := range []string{
-		rolePermissionRemovalFlowHandle, groupDeletionFlowHandle,
-		groupMembershipRemovalFlowHandle, actionDeletionFlowHandle, roleAssignmentRemovalFlowHandle,
+		rolePermissionRemovalFlowHandle, groupMembershipRemovalFlowHandle,
+		actionDeletionFlowHandle, roleAssignmentRemovalFlowHandle,
 	} {
 		flowID, flowErr := testutils.GetFlowIDByHandle(handle, administrationFlowType)
 		ts.Require().NoError(flowErr, "Failed to resolve the shipped %s", handle)
@@ -395,16 +395,16 @@ func (ts *AuthorizationAdministrationFlowTestSuite) TestRolePermissionRemovalFlo
 	ts.Empty(ts.rolePermissions(roleID), "The role must be left granting nothing")
 }
 
-func (ts *AuthorizationAdministrationFlowTestSuite) TestGroupDeletionFlow_RevokesMemberTokenAndDeletesGroup() {
+// Deleting a group through the management API revokes what it passed to its members before it is removed.
+func (ts *AuthorizationAdministrationFlowTestSuite) TestGroupDeletion_RevokesMemberTokenAndDeletesGroup() {
 	groupID := ts.createGroup("Authz Flow Deleted Group",
 		testutils.Member{Id: ts.appID, Type: "app"})
 	ts.createRole("Authz Flow Group Deletion Administrator", []string{scopeGroupDeletion},
 		testutils.Assignment{ID: groupID, Type: "group"})
 	token := grantedToken(&ts.Suite, authzFlowClient, scopeGroupDeletion)
 
-	step := executeAsAdmin(&ts.Suite, ts.flowIDs[groupDeletionFlowHandle], map[string]string{groupTargetInput: groupID})
+	ts.requireGroupDeleted(groupID)
 
-	requireCompleted(&ts.Suite, step)
 	ts.False(tokenIsActive(&ts.Suite, authzFlowClient, token),
 		"The member's token must be rejected: the group was the only path to the scope")
 	ts.False(ts.groupExists(groupID), "The group must be deleted")
@@ -487,7 +487,6 @@ func (ts *AuthorizationAdministrationFlowTestSuite) TestFlows_RejectAnonymousCal
 
 	cases := map[string]map[string]string{
 		rolePermissionRemovalFlowHandle:  {roleTargetInput: roleID, permissionsTargetInput: "[]"},
-		groupDeletionFlowHandle:          {groupTargetInput: groupID},
 		groupMembershipRemovalFlowHandle: {groupTargetInput: groupID, memberTargetInput: ts.appID},
 		actionDeletionFlowHandle: {
 			resourceServerTargetInput: ts.resourceServerID,
@@ -527,7 +526,6 @@ func (ts *AuthorizationAdministrationFlowTestSuite) TestFlows_EmptyRequiredInput
 	}{
 		{"permission change carrying no permission set", rolePermissionRemovalFlowHandle,
 			map[string]string{roleTargetInput: roleID, permissionsTargetInput: ""}},
-		{"group deletion naming no group", groupDeletionFlowHandle, map[string]string{groupTargetInput: ""}},
 		{"member removal naming no member", groupMembershipRemovalFlowHandle,
 			map[string]string{groupTargetInput: groupID, memberTargetInput: ""}},
 	}
@@ -594,7 +592,7 @@ func (ts *AuthorizationAdministrationFlowTestSuite) TestRolePermissionRemovalFlo
 	ts.True(tokenIsActive(&ts.Suite, authzFlowClient, bystander), "A scope granted by an untouched role must survive")
 }
 
-func (ts *AuthorizationAdministrationFlowTestSuite) TestGroupDeletionFlow_LeavesOtherGroupMembershipsAlone() {
+func (ts *AuthorizationAdministrationFlowTestSuite) TestGroupDeletion_LeavesOtherGroupMembershipsAlone() {
 	doomedGroup := ts.createGroup("Authz Flow Doomed Group",
 		testutils.Member{Id: ts.appID, Type: "app"})
 	survivingGroup := ts.createGroup("Authz Flow Surviving Group",
@@ -607,10 +605,8 @@ func (ts *AuthorizationAdministrationFlowTestSuite) TestGroupDeletionFlow_Leaves
 	target := grantedToken(&ts.Suite, authzFlowClient, scopeDoomedGroup)
 	bystander := grantedToken(&ts.Suite, authzFlowClient, scopeUntouchedByGroupDelete)
 
-	step := executeAsAdmin(&ts.Suite, ts.flowIDs[groupDeletionFlowHandle],
-		map[string]string{groupTargetInput: doomedGroup})
+	ts.requireGroupDeleted(doomedGroup)
 
-	requireCompleted(&ts.Suite, step)
 	ts.False(tokenIsActive(&ts.Suite, authzFlowClient, target), "The deleted group's scope must be revoked")
 	ts.True(tokenIsActive(&ts.Suite, authzFlowClient, bystander),
 		"A scope held through a group that still exists must survive")
@@ -704,22 +700,19 @@ func (ts *AuthorizationAdministrationFlowTestSuite) TestRoleFlows_DeclarativeRol
 }
 
 func (ts *AuthorizationAdministrationFlowTestSuite) TestGroupFlows_UnknownGroupIsRefused() {
-	step := executeAsAdmin(&ts.Suite, ts.flowIDs[groupDeletionFlowHandle],
-		map[string]string{groupTargetInput: unknownID})
-	ts.requireRefused(step, errCodeGroupNotFound, "a group that does not exist cannot be deleted")
+	ts.requireGroupDeletionRefused(unknownID, http.StatusNotFound, errCodeGroupNotFound,
+		"a group that does not exist cannot be deleted")
 
-	step = executeAsAdmin(&ts.Suite, ts.flowIDs[groupMembershipRemovalFlowHandle], map[string]string{
+	step := executeAsAdmin(&ts.Suite, ts.flowIDs[groupMembershipRemovalFlowHandle], map[string]string{
 		groupTargetInput:  unknownID,
 		memberTargetInput: ts.appID,
 	})
 	ts.requireRefused(step, errCodeGroupNotFound, "a member cannot leave a group that does not exist")
 }
 
-func (ts *AuthorizationAdministrationFlowTestSuite) TestGroupDeletionFlow_DeclarativeGroupIsRefused() {
-	step := executeAsAdmin(&ts.Suite, ts.flowIDs[groupDeletionFlowHandle],
-		map[string]string{groupTargetInput: declarativeGroupID})
-
-	ts.requireRefused(step, errCodeImmutableGroup, "a declarative group cannot be deleted")
+func (ts *AuthorizationAdministrationFlowTestSuite) TestGroupDeletion_DeclarativeGroupIsRefused() {
+	ts.requireGroupDeletionRefused(declarativeGroupID, http.StatusBadRequest, errCodeImmutableGroup,
+		"a declarative group cannot be deleted")
 	ts.True(ts.groupExists(declarativeGroupID), "The declarative group must survive the refused deletion")
 }
 
@@ -753,13 +746,16 @@ func (ts *AuthorizationAdministrationFlowTestSuite) TestFlows_NestingBeyondTheDe
 	chain := make([]string, groupDescentLimit+1)
 	var roleID, parentID string
 	defer func() {
-		// Delete the role and parent first, then the chain top down, so nothing is deleted while still referenced.
+		// Delete the role first, then the chain from the leaf up and the parent last: a deletion revokes what
+		// the group passes to its members, so a group with members past the descent limit is refused.
 		if roleID != "" {
 			if err := testutils.DeleteRole(roleID); err != nil {
 				ts.T().Logf("Failed to delete the deep group's role during cleanup: %v", err)
 			}
 		}
-		for _, groupID := range append([]string{parentID}, chain...) {
+		order := slices.Clone(chain)
+		slices.Reverse(order)
+		for _, groupID := range append(order, parentID) {
 			if groupID == "" {
 				continue
 			}
@@ -803,11 +799,11 @@ func (ts *AuthorizationAdministrationFlowTestSuite) TestFlows_NestingBeyondTheDe
 	})
 	ts.Require().NoError(err, "Failed to create the role held by the chain")
 
-	step := executeAsAdmin(&ts.Suite, ts.flowIDs[groupDeletionFlowHandle], map[string]string{groupTargetInput: top})
-	ts.requireRefused(step, errCodeGroupNestingTooDeep, "the deleted group's members cannot all be reached")
+	ts.requireGroupDeletionRefused(top, http.StatusBadRequest, errCodeGroupNestingTooDeep,
+		"the deleted group's members cannot all be reached")
 	ts.True(ts.groupExists(top), "A refused deletion must leave the group in place")
 
-	step = executeAsAdmin(&ts.Suite, ts.flowIDs[groupMembershipRemovalFlowHandle], map[string]string{
+	step := executeAsAdmin(&ts.Suite, ts.flowIDs[groupMembershipRemovalFlowHandle], map[string]string{
 		groupTargetInput:  parentID,
 		memberTargetInput: top,
 	})
@@ -828,7 +824,7 @@ func (ts *AuthorizationAdministrationFlowTestSuite) TestFlows_NestingBeyondTheDe
 	ts.Len(assignments, 1, "A refused unassignment must leave the assignment in place")
 }
 
-func (ts *AuthorizationAdministrationFlowTestSuite) TestGroupDeletionFlow_RevokesAPrincipalReachedAlongSeveralPaths() {
+func (ts *AuthorizationAdministrationFlowTestSuite) TestGroupDeletion_RevokesAPrincipalReachedAlongSeveralPaths() {
 	// doomed holds the app directly and through left and right, which share the innermost group.
 	shared := ts.createGroup("Authz Flow Diamond Shared", testutils.Member{Id: ts.appID, Type: "app"})
 	left := ts.createGroup("Authz Flow Diamond Left", testutils.Member{Id: shared, Type: "group"})
@@ -841,9 +837,8 @@ func (ts *AuthorizationAdministrationFlowTestSuite) TestGroupDeletionFlow_Revoke
 		testutils.Assignment{ID: doomed, Type: "group"})
 	token := grantedToken(&ts.Suite, authzFlowClient, scopeReachedSeveralWays)
 
-	step := executeAsAdmin(&ts.Suite, ts.flowIDs[groupDeletionFlowHandle], map[string]string{groupTargetInput: doomed})
+	ts.requireGroupDeleted(doomed)
 
-	requireCompleted(&ts.Suite, step)
 	ts.False(tokenIsActive(&ts.Suite, authzFlowClient, token),
 		"The principal must lose the scope however many paths reached it")
 	ts.False(ts.groupExists(doomed), "The group must be deleted")
@@ -883,7 +878,7 @@ func (ts *AuthorizationAdministrationFlowTestSuite) TestDeleteRole_RevokesAScope
 	ts.False(ts.roleExists(roleID), "The role must be deleted")
 }
 
-func (ts *AuthorizationAdministrationFlowTestSuite) TestGroupDeletionFlow_RevokesMembersOfNestedGroups() {
+func (ts *AuthorizationAdministrationFlowTestSuite) TestGroupDeletion_RevokesMembersOfNestedGroups() {
 	childID := ts.createGroup("Authz Flow Deleted Parent Child",
 		testutils.Member{Id: ts.appID, Type: "app"})
 	parentID := ts.createGroup("Authz Flow Deleted Parent",
@@ -892,10 +887,8 @@ func (ts *AuthorizationAdministrationFlowTestSuite) TestGroupDeletionFlow_Revoke
 		testutils.Assignment{ID: parentID, Type: "group"})
 	token := grantedToken(&ts.Suite, authzFlowClient, scopeNestedGroupDeletion)
 
-	step := executeAsAdmin(&ts.Suite, ts.flowIDs[groupDeletionFlowHandle],
-		map[string]string{groupTargetInput: parentID})
+	ts.requireGroupDeleted(parentID)
 
-	requireCompleted(&ts.Suite, step)
 	ts.False(tokenIsActive(&ts.Suite, authzFlowClient, token),
 		"A principal in a nested group held the scope through the deleted group and must lose it")
 	ts.False(ts.groupExists(parentID), "The group must be deleted")
@@ -1163,6 +1156,43 @@ func (ts *AuthorizationAdministrationFlowTestSuite) declarativeRolePermissions()
 		byServer[resource.ResourceServerID] = resource.Permissions
 	}
 	return byServer
+}
+
+// deleteGroup deletes the group through the management API and returns the status and any error code.
+func (ts *AuthorizationAdministrationFlowTestSuite) deleteGroup(groupID string) (int, string) {
+	ts.T().Helper()
+
+	req, err := http.NewRequest(http.MethodDelete, testServerURL+"/groups/"+groupID, nil)
+	ts.Require().NoError(err)
+
+	resp, err := testutils.GetHTTPClient().Do(req)
+	ts.Require().NoError(err, "Failed to delete the group")
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	ts.Require().NoError(err)
+	if resp.StatusCode == http.StatusNoContent {
+		return resp.StatusCode, ""
+	}
+	var apiErr struct {
+		Code string `json:"code"`
+	}
+	ts.Require().NoError(json.Unmarshal(body, &apiErr), "Group deletion error response: %s", string(body))
+	return resp.StatusCode, apiErr.Code
+}
+
+func (ts *AuthorizationAdministrationFlowTestSuite) requireGroupDeleted(groupID string) {
+	ts.T().Helper()
+	status, code := ts.deleteGroup(groupID)
+	ts.Require().Equal(http.StatusNoContent, status, "The group must be deleted, got error %s", code)
+}
+
+func (ts *AuthorizationAdministrationFlowTestSuite) requireGroupDeletionRefused(groupID string, status int,
+	code, why string) {
+	ts.T().Helper()
+	gotStatus, gotCode := ts.deleteGroup(groupID)
+	ts.Equal(status, gotStatus, "The refusal must carry the expected status: %s", why)
+	ts.Equal(code, gotCode, "The validator's own refusal code must reach the caller: %s", why)
 }
 
 func (ts *AuthorizationAdministrationFlowTestSuite) requireRefused(step *common.FlowStep, code, why string) {

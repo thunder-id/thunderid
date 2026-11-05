@@ -7,7 +7,7 @@ description: RFC 7009 token revocation in {{ProductName}}, from revoking a singl
 
 # Token Revocation
 
-**Token Revocation** ([RFC 7009](https://datatracker.ietf.org/doc/html/rfc7009)) lets a client tell <ProductName /> that a token should stop working before it expires. <ProductName /> extends this with broader scopes, so an operational event such as a sign-out, a user deletion, an account suspension, an application deletion, or a role deletion can invalidate many tokens at once.
+**Token Revocation** ([RFC 7009](https://datatracker.ietf.org/doc/html/rfc7009)) lets a client tell <ProductName /> that a token should stop working before it expires. <ProductName /> extends this with broader scopes, so an operational event such as a sign-out, a user deletion, an account suspension, an application deletion, a role deletion, or a group deletion can invalidate many tokens at once.
 
 Access tokens are self-contained JWTs, so a resource server that validates them locally has no way to know a token was revoked. <ProductName /> solves this with a denylist that both the authorization server and resource servers consult. The scopes below differ only in what goes on that list.
 
@@ -19,6 +19,7 @@ Access tokens are self-contained JWTs, so a resource server that validates them 
 | **Grant** | Every token of one authorization grant, by its `tfid` | Sign-out, refresh-token replay, authorization-code replay |
 | **Subject** | Every token issued to one user, agent, or application, by its `sub` | A user is deleted; a user, agent, or application is suspended |
 | **Client** | Every token issued through one OAuth client, by its client ID | An application, or an agent with an OAuth client, is suspended; an application is deleted or its client secret is replaced |
+| **Subject and permission** | Every token issued to one user, agent, or application that carries one of the given permissions for its audience | A group whose roles grant those permissions is deleted, for each of its members |
 
 A token is rejected if **any** of these matches.
 
@@ -137,6 +138,19 @@ The deletion is refused, and the role kept, when the revocation is too large to 
 | `RVS-1001` | The revocation needs more entries than `oauth.revocation.criteria.max_entries_per_change` allows (`10000` by default). It records about one entry for each holder and each scope the role grants. | Remove some of the role's assignments first, each of which revokes only that assignee's tokens, then delete the role. Or raise the limit. |
 | `GRP-1017` | A holder reaches the role through a group nested too deep to walk. | Flatten the group hierarchy so that every member is within the supported depth. |
 | `ROL-1017` | The server reads roles from both files and the database, and the role has more assignments than it can read in that mode. | Remove some of the role's assignments first, then delete the role. |
+
+## Group Deletion
+
+Deleting a group revokes the scopes its members hold through it: the permissions of the roles assigned to the group, or to a group that contains it. Members of nested groups are covered too. Each member's tokens that carry those scopes are rejected, and then the group, its role assignments, and its memberships in other groups are removed. This happens whichever way the group is deleted: from the Console, through the `DELETE /groups/{id}` API, through the import API, or when a configuration version without the group is applied to a gateway.
+
+The revocation runs as two system flows. The first, which only a group deletion runs, runs before anything is removed and revokes the tokens issued up to that point. The group's role assignments and its memberships in other groups are then removed, which takes away what granted those scopes. The second is the same flow an [application deletion](#application-deletion-and-secret-regeneration) runs; it moves the cutoff to that moment, so a token issued while the assignments were being removed is revoked too, and only then is the group deleted. If any step fails, the group is left in place and the request returns an error; tokens already revoked stay revoked, and deleting the group again completes the removal. If the second flow is the step that failed, the role assignments are already gone, so the retry has nothing left to revoke: a token issued while the first attempt was removing them stays valid until it expires. A member that still holds a scope some other way gets it again in a new token.
+
+The deletion is refused, and the group kept, when the revocation cannot be planned:
+
+| Error | Refused when | What to do |
+|---|---|---|
+| `GRP-1017` | The group's members are nested too deep to walk. | Flatten the group hierarchy so that every member is within the supported depth. |
+| `RVS-1001` | The revocation needs more entries than `oauth.revocation.criteria.max_entries_per_change` allows (`10000` by default). It records about one entry for each member and each scope the group's roles grant, so 1000 members with a role of 11 scopes are refused. | Remove some of the group's members or role assignments first, then delete the group. Or raise the limit. |
 
 ## Where Revocation Is Enforced
 

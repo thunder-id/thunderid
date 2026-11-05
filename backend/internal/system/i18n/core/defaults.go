@@ -2056,8 +2056,6 @@ var defaultMessages = map[string]string{
 	"flows.executor.errors.failed_to_identify_entity_desc": "Unable to identify the {{param(entity)}} with the provided information",
 	"flows.executor.errors.federated_user_sync_failed": "Failed to sync user",
 	"flows.executor.errors.federated_user_sync_failed_desc": "The account could not be updated with the details from the identity provider",
-	"flows.executor.errors.group_deletion_failed": "Group deletion failed",
-	"flows.executor.errors.group_deletion_failed_desc": "The group may already be deleted, or it changed after the request was validated",
 	"flows.executor.errors.group_deletion_not_allowed": "Group deletion not allowed",
 	"flows.executor.errors.group_deletion_not_allowed_desc": "The group is read-only or no longer exists, or the caller may not delete it",
 	"flows.executor.errors.group_membership_removal_failed": "Group membership removal failed",

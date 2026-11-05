@@ -37,6 +37,8 @@ A group's OU cannot be changed after creation. If you need to move a group to a 
 Deleting a group is permanent. Members are not deleted, but only the group itself and its role assignments are removed.
 :::
 
+Deleting a group also revokes the tokens its members carry with the scopes they held through it. See [Group Deletion](../../protocols/oauth-oidc/token-revocation#group-deletion).
+
 ## Manage Members
 
 ### Add Members

@@ -280,7 +280,6 @@ const translations = {
     'errors.FET-1102': 'The permissions of this role cannot be changed in its current state.',
     'errors.FET-1103': 'The permissions of this role could not be changed. Please try again.',
     'errors.FET-1104': 'This group cannot be deleted in its current state.',
-    'errors.FET-1105': 'The group could not be deleted. Please try again.',
     'errors.FET-1106': 'This member cannot be removed from the group in its current state.',
     'errors.FET-1107': 'The member could not be removed from the group. Please try again.',
     'errors.FET-1108': 'This action cannot be deleted in its current state.',
@@ -4357,7 +4356,6 @@ const translations = {
       'In an administration flow, apply the role change named by the trusted revocation plan. In an invitation flow, Select roles offers the roles the admin can assign in the organization unit and records the choice, and Assign roles assigns them, as that admin, once the invitee accepts.',
 
     // Group executor modes
-    'core.executions.groupExecutor.mode.groupDeletion': 'Delete group',
     'core.executions.groupExecutor.mode.groupMembershipRemoval': 'Remove group member',
     'core.executions.groupExecutor.mode.label': 'Mode',
     'core.executions.groupExecutor.mode.placeholder': 'Select a mode',

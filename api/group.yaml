@@ -424,8 +424,14 @@ paths:
       summary: Delete a group by id
       description: |
         Deletes a group using its ID. Its role assignments and its memberships in other groups are
-        automatically removed by cascade. The delete is fail-closed and retriable: if dependency
-        cleanup fails, the group is left intact and the operation can be retried.
+        automatically removed by cascade. Before anything is removed, the server revokes the tokens
+        that hold scopes the group's roles granted its members, and refuses a group whose members
+        are nested too deep to reach with `GRP-1017`, and one whose members times scopes exceed
+        `oauth.revocation.criteria.max_entries_per_change` with `RVS-1001`. Once the role assignments
+        and memberships are removed, the server revokes what was issued while that ran, then deletes
+        the group. If any step fails, the group is left in place and the delete can be retried; tokens
+        already revoked stay revoked. When the step that failed is the one after the role assignments
+        were removed, a token issued while they were being removed stays valid until it expires.
       parameters:
         - in: path
           name: id
@@ -453,6 +459,26 @@ paths:
                     description:
                       key: "error.groupservice.missing_group_id_description"
                       defaultValue: "Group ID is required"
+                group-nesting-too-deep:
+                  summary: Members nested too deep to revoke
+                  value:
+                    code: "GRP-1017"
+                    message:
+                      key: "error.groupservice.group_nesting_too_deep"
+                      defaultValue: "Group nesting is too deep"
+                    description:
+                      key: "error.groupservice.group_nesting_too_deep_description"
+                      defaultValue: "The group's members are nested more than 32 levels deep, which cannot be expanded"
+                revocation-entry-limit:
+                  summary: Too many members and scopes to revoke in one change
+                  value:
+                    code: "RVS-1001"
+                    message:
+                      key: "error.revocationservice.entry_limit_exceeded"
+                      defaultValue: "Too many revocation entries"
+                    description:
+                      key: "error.revocationservice.entry_limit_exceeded_description"
+                      defaultValue: "The change would record 11000 revocation entries, more than the 10000 allowed for one change"
         "404":
           description: Group not found
           content:

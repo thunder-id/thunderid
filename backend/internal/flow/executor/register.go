@@ -602,7 +602,6 @@ type sharingAdminProvider interface {
 
 // groupAdminProvider is the group seam the group executor consumes.
 type groupAdminProvider interface {
-	DeleteGroup(ctx context.Context, groupID string) *tidcommon.ServiceError
 	RemoveGroupMembers(ctx context.Context, groupID string, members []group.Member) (
 		*group.Group, *tidcommon.ServiceError)
 }

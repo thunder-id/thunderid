@@ -48,65 +48,6 @@ func (_m *groupAdminProviderMock) EXPECT() *groupAdminProviderMock_Expecter {
 	return &groupAdminProviderMock_Expecter{mock: &_m.Mock}
 }
 
-// DeleteGroup provides a mock function for the type groupAdminProviderMock
-func (_mock *groupAdminProviderMock) DeleteGroup(ctx context.Context, groupID string) *common.ServiceError {
-	ret := _mock.Called(ctx, groupID)
-
-	if len(ret) == 0 {
-		panic("no return value specified for DeleteGroup")
-	}
-
-	var r0 *common.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *common.ServiceError); ok {
-		r0 = returnFunc(ctx, groupID)
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*common.ServiceError)
-		}
-	}
-	return r0
-}
-
-// groupAdminProviderMock_DeleteGroup_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'DeleteGroup'
-type groupAdminProviderMock_DeleteGroup_Call struct {
-	*mock.Call
-}
-
-// DeleteGroup is a helper method to define mock.On call
-//   - ctx context.Context
-//   - groupID string
-func (_e *groupAdminProviderMock_Expecter) DeleteGroup(ctx any, groupID any) *groupAdminProviderMock_DeleteGroup_Call {
-	return &groupAdminProviderMock_DeleteGroup_Call{Call: _e.mock.On("DeleteGroup", ctx, groupID)}
-}
-
-func (_c *groupAdminProviderMock_DeleteGroup_Call) Run(run func(ctx context.Context, groupID string)) *groupAdminProviderMock_DeleteGroup_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 context.Context
-		if args[0] != nil {
-			arg0 = args[0].(context.Context)
-		}
-		var arg1 string
-		if args[1] != nil {
-			arg1 = args[1].(string)
-		}
-		run(
-			arg0,
-			arg1,
-		)
-	})
-	return _c
-}
-
-func (_c *groupAdminProviderMock_DeleteGroup_Call) Return(serviceError *common.ServiceError) *groupAdminProviderMock_DeleteGroup_Call {
-	_c.Call.Return(serviceError)
-	return _c
-}
-
-func (_c *groupAdminProviderMock_DeleteGroup_Call) RunAndReturn(run func(ctx context.Context, groupID string) *common.ServiceError) *groupAdminProviderMock_DeleteGroup_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
 // RemoveGroupMembers provides a mock function for the type groupAdminProviderMock
 func (_mock *groupAdminProviderMock) RemoveGroupMembers(ctx context.Context, groupID string, members []group.Member) (*group.Group, *common.ServiceError) {
 	ret := _mock.Called(ctx, groupID, members)
