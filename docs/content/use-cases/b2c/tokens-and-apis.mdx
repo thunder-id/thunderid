@@ -31,6 +31,10 @@ Three patterns cover most consumer scenarios:
 
 Many consumer apps combine the second and third into a long, sliding, revocable session. Whichever you pick, refresh-token rotation limits the damage if a token leaks.
 
+These patterns describe the credential the application holds. The <ProductName /> session behind it, how single
+sign-on reuses that session across applications, and how a sign-out reaches every application are covered in
+[Sign In Once, Sign Out Everywhere](../sessions-index).
+
 ## Where the Application Holds the Token
 
 For a browser-based web app, storing an access token somewhere JavaScript can read it, `localStorage` or a
