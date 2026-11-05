@@ -18,14 +18,10 @@ import (
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
-const (
-	rolePermissionRemovalFlowHandle = "default-role-permission-removal-flow"
-	actionDeletionFlowHandle        = "default-action-deletion-flow"
-)
+const actionDeletionFlowHandle = "default-action-deletion-flow"
 
 const (
 	groupTargetInput          = "targetGroupId"
-	permissionsTargetInput    = "targetPermissions"
 	resourceServerTargetInput = "targetResourceServerId"
 	resourceTargetInput       = "targetResourceId"
 	actionTargetInput         = "targetActionId"
@@ -90,17 +86,15 @@ const (
 )
 
 const (
-	errCodeInvalidRolePermissions   = "ROL-1012"
-	errCodeImmutableRole            = "ROL-1013"
-	errCodeGroupNotFound            = "GRP-1003"
-	errCodeImmutableGroup           = "GRP-1015"
-	errCodeGroupNestingTooDeep      = "GRP-1017"
-	errCodeResourceServerNotFound   = "RES-1003"
-	errCodeResourceNotFound         = "RES-1008"
-	errCodeActionNotFound           = "RES-1009"
-	errCodeImmutableAction          = "RES-1020"
-	errCodeMalformedRolePermissions = "FET-1110"
-	errCodeRequiredInputEmpty       = "FET-1111"
+	errCodeInvalidRolePermissions = "ROL-1012"
+	errCodeImmutableRole          = "ROL-1013"
+	errCodeGroupNotFound          = "GRP-1003"
+	errCodeImmutableGroup         = "GRP-1015"
+	errCodeGroupNestingTooDeep    = "GRP-1017"
+	errCodeResourceServerNotFound = "RES-1003"
+	errCodeResourceNotFound       = "RES-1008"
+	errCodeActionNotFound         = "RES-1009"
+	errCodeImmutableAction        = "RES-1020"
 )
 
 // File-backed fixtures under resources/declarative_resources; the API treats them as read-only.
@@ -165,9 +159,7 @@ func (ts *AuthorizationAdministrationFlowTestSuite) SetupSuite() {
 	ts.Require().NoError(err, "Failed to create test organization unit")
 	ts.ouID = ouID
 
-	for _, handle := range []string{
-		rolePermissionRemovalFlowHandle, actionDeletionFlowHandle,
-	} {
+	for _, handle := range []string{actionDeletionFlowHandle} {
 		flowID, flowErr := testutils.GetFlowIDByHandle(handle, administrationFlowType)
 		ts.Require().NoError(flowErr, "Failed to resolve the shipped %s", handle)
 		ts.Require().NotEmpty(flowID, "The shipped %s must be present", handle)
@@ -339,55 +331,44 @@ func (ts *AuthorizationAdministrationFlowTestSuite) TestDeleteRole_RevokesTokenA
 	ts.False(ts.roleExists(roleID), "The role must be deleted")
 }
 
-func (ts *AuthorizationAdministrationFlowTestSuite) TestRolePermissionRemovalFlow_RevokesOnlyTheDroppedPermission() {
-	roleID := ts.createRole("Authz Flow Narrowed Administrator",
-		[]string{scopePermissionKept, scopePermissionDropped},
+// Updating a role through the management API revokes what the permissions it drops granted.
+func (ts *AuthorizationAdministrationFlowTestSuite) TestUpdateRoleThroughTheAPI_RevokesOnlyTheDroppedPermission() {
+	const name = "Authz Flow Narrowed Administrator"
+	roleID := ts.createRole(name, []string{scopePermissionKept, scopePermissionDropped},
 		testutils.Assignment{ID: ts.appID, Type: "app"})
 	dropped := grantedToken(&ts.Suite, authzFlowClient, scopePermissionDropped)
 	kept := grantedToken(&ts.Suite, authzFlowClient, scopePermissionKept)
 
-	step := executeAsAdmin(&ts.Suite, ts.flowIDs[rolePermissionRemovalFlowHandle], map[string]string{
-		roleTargetInput:        roleID,
-		permissionsTargetInput: permissionSet(&ts.Suite, ts.resourceServerID, scopePermissionKept),
-	})
+	ts.Require().NoError(ts.updateRolePermissions(roleID, name, scopePermissionKept), "Failed to update the role")
 
-	requireCompleted(&ts.Suite, step)
 	ts.False(tokenIsActive(&ts.Suite, authzFlowClient, dropped),
 		"The token carrying the dropped permission must be rejected")
 	ts.True(tokenIsActive(&ts.Suite, authzFlowClient, kept),
 		"The role still grants the kept permission, so a token carrying only it must stay accepted")
 	ts.Equal([]string{scopePermissionKept}, ts.rolePermissions(roleID),
-		"The role must grant exactly the permissions the flow was given")
+		"The role must grant exactly the permissions the update gave it")
 }
 
-func (ts *AuthorizationAdministrationFlowTestSuite) TestRolePermissionRemovalFlow_NothingDroppedRevokesNothing() {
-	roleID := ts.createRole("Authz Flow Unnarrowed Administrator", []string{scopeNothingDropped},
-		testutils.Assignment{ID: ts.appID, Type: "app"})
+func (ts *AuthorizationAdministrationFlowTestSuite) TestUpdateRoleThroughTheAPI_NothingDroppedRevokesNothing() {
+	const name = "Authz Flow Unnarrowed Administrator"
+	roleID := ts.createRole(name, []string{scopeNothingDropped}, testutils.Assignment{ID: ts.appID, Type: "app"})
 	token := grantedToken(&ts.Suite, authzFlowClient, scopeNothingDropped)
 
-	step := executeAsAdmin(&ts.Suite, ts.flowIDs[rolePermissionRemovalFlowHandle], map[string]string{
-		roleTargetInput:        roleID,
-		permissionsTargetInput: permissionSet(&ts.Suite, ts.resourceServerID, scopeNothingDropped),
-	})
+	ts.Require().NoError(ts.updateRolePermissions(roleID, name, scopeNothingDropped), "Failed to update the role")
 
-	requireCompleted(&ts.Suite, step)
 	ts.True(tokenIsActive(&ts.Suite, authzFlowClient, token),
 		"A change that drops no permission must revoke nothing")
 	ts.Equal([]string{scopeNothingDropped}, ts.rolePermissions(roleID),
-		"The role must still grant the permission the flow was given")
+		"The role must still grant the permission the update gave it")
 }
 
-func (ts *AuthorizationAdministrationFlowTestSuite) TestRolePermissionRemovalFlow_EmptySetClearsTheRole() {
-	roleID := ts.createRole("Authz Flow Cleared Administrator", []string{scopePermissionCleared},
-		testutils.Assignment{ID: ts.appID, Type: "app"})
+func (ts *AuthorizationAdministrationFlowTestSuite) TestUpdateRoleThroughTheAPI_EmptySetClearsTheRole() {
+	const name = "Authz Flow Cleared Administrator"
+	roleID := ts.createRole(name, []string{scopePermissionCleared}, testutils.Assignment{ID: ts.appID, Type: "app"})
 	token := grantedToken(&ts.Suite, authzFlowClient, scopePermissionCleared)
 
-	step := executeAsAdmin(&ts.Suite, ts.flowIDs[rolePermissionRemovalFlowHandle], map[string]string{
-		roleTargetInput:        roleID,
-		permissionsTargetInput: "[]",
-	})
+	ts.Require().NoError(ts.updateRolePermissions(roleID, name), "Failed to update the role")
 
-	requireCompleted(&ts.Suite, step)
 	ts.False(tokenIsActive(&ts.Suite, authzFlowClient, token))
 	ts.Empty(ts.rolePermissions(roleID), "The role must be left granting nothing")
 }
@@ -470,10 +451,7 @@ func (ts *AuthorizationAdministrationFlowTestSuite) TestActionDeletionFlow_Missi
 }
 
 func (ts *AuthorizationAdministrationFlowTestSuite) TestFlows_RejectAnonymousCallers() {
-	roleID := ts.createRole("Authz Flow Protected Administrator", nil)
-
 	cases := map[string]map[string]string{
-		rolePermissionRemovalFlowHandle: {roleTargetInput: roleID, permissionsTargetInput: "[]"},
 		actionDeletionFlowHandle: {
 			resourceServerTargetInput: ts.resourceServerID,
 			actionTargetInput:         ts.actionIDs[scopeRetiredNeighbor],
@@ -492,29 +470,7 @@ func (ts *AuthorizationAdministrationFlowTestSuite) TestFlows_RejectAnonymousCal
 		})
 	}
 
-	ts.True(ts.roleExists(roleID), "The role must be untouched")
 	ts.True(ts.actionExists(ts.actionIDs[scopeRetiredNeighbor]), "The action must be untouched")
-}
-
-func (ts *AuthorizationAdministrationFlowTestSuite) TestFlows_EmptyRequiredInputIsRefused() {
-	roleID := ts.createRole("Authz Flow Empty Input Administrator", nil)
-
-	cases := []struct {
-		name   string
-		handle string
-		inputs map[string]string
-	}{
-		{"permission change carrying no permission set", rolePermissionRemovalFlowHandle,
-			map[string]string{roleTargetInput: roleID, permissionsTargetInput: ""}},
-	}
-	for _, tc := range cases {
-		ts.Run(tc.name, func() {
-			step := executeAsAdmin(&ts.Suite, ts.flowIDs[tc.handle], tc.inputs)
-			ts.requireRefused(step, errCodeRequiredInputEmpty, tc.name)
-		})
-	}
-
-	ts.True(ts.roleExists(roleID), "A refused change must leave the role in place")
 }
 
 func (ts *AuthorizationAdministrationFlowTestSuite) TestDeleteRole_LeavesAnotherRoleOfTheSamePrincipalAlone() {
@@ -550,21 +506,17 @@ func (ts *AuthorizationAdministrationFlowTestSuite) TestDeleteRole_LeavesTheSame
 		"The identically named scope on another resource server is a different scope and must survive")
 }
 
-func (ts *AuthorizationAdministrationFlowTestSuite) TestRolePermissionRemovalFlow_LeavesScopesOfOtherRolesAlone() {
-	edited := ts.createRole("Authz Flow Edited Administrator", []string{scopeDoomedPermission},
-		testutils.Assignment{ID: ts.appID, Type: "app"})
+func (ts *AuthorizationAdministrationFlowTestSuite) TestUpdateRoleThroughTheAPI_LeavesScopesOfOtherRolesAlone() {
+	const name = "Authz Flow Edited Administrator"
+	edited := ts.createRole(name, []string{scopeDoomedPermission}, testutils.Assignment{ID: ts.appID, Type: "app"})
 	ts.createRole("Authz Flow Unedited Administrator", []string{scopeUntouchedByPermEdit},
 		testutils.Assignment{ID: ts.appID, Type: "app"})
 
 	target := grantedToken(&ts.Suite, authzFlowClient, scopeDoomedPermission)
 	bystander := grantedToken(&ts.Suite, authzFlowClient, scopeUntouchedByPermEdit)
 
-	step := executeAsAdmin(&ts.Suite, ts.flowIDs[rolePermissionRemovalFlowHandle], map[string]string{
-		roleTargetInput:        edited,
-		permissionsTargetInput: "[]",
-	})
+	ts.Require().NoError(ts.updateRolePermissions(edited, name), "Failed to update the role")
 
-	requireCompleted(&ts.Suite, step)
 	ts.False(tokenIsActive(&ts.Suite, authzFlowClient, target), "The dropped scope must be revoked")
 	ts.True(tokenIsActive(&ts.Suite, authzFlowClient, bystander), "A scope granted by an untouched role must survive")
 }
@@ -630,32 +582,26 @@ func (ts *AuthorizationAdministrationFlowTestSuite) TestRemoveGroupMembers_Skips
 	ts.Empty(members, "The member must be gone from the group")
 }
 
-func (ts *AuthorizationAdministrationFlowTestSuite) TestRolePermissionRemovalFlow_RefusedEditsChangeNothing() {
-	roleID := ts.createRole("Authz Flow Refused Edit Administrator", []string{scopeRefusedPermEdit},
-		testutils.Assignment{ID: ts.appID, Type: "app"})
+func (ts *AuthorizationAdministrationFlowTestSuite) TestUpdateRoleThroughTheAPI_RefusedEditsChangeNothing() {
+	const name = "Authz Flow Refused Edit Administrator"
+	roleID := ts.createRole(name, []string{scopeRefusedPermEdit}, testutils.Assignment{ID: ts.appID, Type: "app"})
 	token := grantedToken(&ts.Suite, authzFlowClient, scopeRefusedPermEdit)
 
 	cases := []struct {
-		name        string
-		permissions string
-		code        string
+		name             string
+		resourceServerID string
+		permissions      []string
 	}{
-		{"permission the resource server does not define",
-			permissionSet(&ts.Suite, ts.resourceServerID, scopeRefusedPermEdit, "no-such-permission"),
-			errCodeInvalidRolePermissions},
-		{"resource server that does not exist", permissionSet(&ts.Suite, unknownID, scopeRefusedPermEdit),
-			errCodeInvalidRolePermissions},
-		{"permission set naming no resource server", permissionSet(&ts.Suite, "", scopeRefusedPermEdit),
-			errCodeInvalidRolePermissions},
-		{"permission set that is not JSON", "not-a-permission-set", errCodeMalformedRolePermissions},
+		{"permission the resource server does not define", ts.resourceServerID,
+			[]string{"no-such-permission"}},
+		{"resource server that does not exist", unknownID, []string{scopeRefusedPermEdit}},
+		{"permission set naming no resource server", "", []string{scopeRefusedPermEdit}},
 	}
 	for _, tc := range cases {
 		ts.Run(tc.name, func() {
-			step := executeAsAdmin(&ts.Suite, ts.flowIDs[rolePermissionRemovalFlowHandle], map[string]string{
-				roleTargetInput:        roleID,
-				permissionsTargetInput: tc.permissions,
-			})
-			ts.requireRefused(step, tc.code, tc.name)
+			err := updateRolePermissions(roleID, ts.ouID, tc.resourceServerID, name, tc.permissions...)
+			ts.Require().Error(err, "An update naming a %s must be refused", tc.name)
+			ts.Contains(err.Error(), errCodeInvalidRolePermissions, tc.name)
 		})
 	}
 
@@ -663,15 +609,6 @@ func (ts *AuthorizationAdministrationFlowTestSuite) TestRolePermissionRemovalFlo
 		"A refused edit must not revoke the scope the role still grants")
 	ts.Equal([]string{scopeRefusedPermEdit}, ts.rolePermissions(roleID),
 		"A refused edit must leave the role granting what it granted")
-}
-
-func (ts *AuthorizationAdministrationFlowTestSuite) TestRolePermissionRemovalFlow_UnknownRoleIsRefused() {
-	step := executeAsAdmin(&ts.Suite, ts.flowIDs[rolePermissionRemovalFlowHandle], map[string]string{
-		roleTargetInput:        unknownID,
-		permissionsTargetInput: "[]",
-	})
-
-	ts.requireRefused(step, errCodeRoleNotFound, "the role does not exist")
 }
 
 func (ts *AuthorizationAdministrationFlowTestSuite) TestRoleFlows_DeclarativeRoleIsRefused() {
@@ -682,11 +619,13 @@ func (ts *AuthorizationAdministrationFlowTestSuite) TestRoleFlows_DeclarativeRol
 		"a declarative role cannot be deleted")
 	ts.True(ts.roleExists(declarativeRoleID), "The declarative role must survive the refused deletion")
 
-	step := executeAsAdmin(&ts.Suite, ts.flowIDs[rolePermissionRemovalFlowHandle], map[string]string{
-		roleTargetInput:        declarativeRoleID,
-		permissionsTargetInput: "[]",
-	})
-	ts.requireRefused(step, errCodeImmutableRole, "a declarative role's permissions cannot be edited")
+	status, body := ts.adminGet("/roles/" + declarativeRoleID)
+	ts.Require().Equal(http.StatusOK, status, "Declarative role read response: %s", string(body))
+	var stored testutils.Role
+	ts.Require().NoError(json.Unmarshal(body, &stored), "Declarative role read response: %s", string(body))
+	err := testutils.UpdateRole(declarativeRoleID, testutils.Role{Name: stored.Name, OUID: stored.OUID})
+	ts.Require().Error(err, "A declarative role's permissions cannot be edited")
+	ts.Contains(err.Error(), errCodeImmutableRole, "The refusal must say the role is immutable")
 	ts.Equal(before, ts.declarativeRolePermissions(),
 		"The declarative role must grant what it granted before the refused edit")
 }
@@ -1092,6 +1031,12 @@ func (ts *AuthorizationAdministrationFlowTestSuite) tryRemoveMembers(groupID str
 	ts.Require().NoError(err)
 	ts.Require().NoError(json.Unmarshal(respBody, &apiErr), "Member removal response: %s", string(respBody))
 	return resp.StatusCode, apiErr.Code
+}
+
+// updateRolePermissions replaces what a role made by createRole grants on the suite's resource server.
+func (ts *AuthorizationAdministrationFlowTestSuite) updateRolePermissions(roleID, name string,
+	permissions ...string) error {
+	return updateRolePermissions(roleID, ts.ouID, ts.resourceServerID, name, permissions...)
 }
 
 func (ts *AuthorizationAdministrationFlowTestSuite) rolePermissions(roleID string) []string {

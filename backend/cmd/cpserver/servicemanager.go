@@ -275,7 +275,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		sharingService, auditBus, projectService)
 	fatalOnError(ctx, logger, err, "Failed to initialize RoleService")
 	// The control plane runs no flows, so the role and group tools write removals directly.
-	role.RegisterMCPTools(mcpServer, roleService, roleAssignmentService, resourceService, ouService, nil)
+	role.RegisterMCPTools(mcpServer, roleService, roleAssignmentService, resourceService, ouService, false)
 	group.RegisterMCPTools(mcpServer, groupService, entityService, ouService, false)
 	// The control plane creates users directly, so only this plane registers create_user.
 	user.RegisterMCPTools(mcpServer, userService, entityService, entityTypeService, roleService, resourceService)

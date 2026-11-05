@@ -75,7 +75,8 @@ export const REVOCATION_MODES = [
 ] as const;
 
 /**
- * Available modes for the Access Change Validator executor. Must match its SupportedModes in the backend.
+ * Available modes for the Access Change Validator executor. Must match its SupportedModes in the backend, less
+ * the ones only a system flow runs.
  */
 export const ACCESS_CHANGE_VALIDATOR_MODES = [
   {
@@ -87,11 +88,6 @@ export const ACCESS_CHANGE_VALIDATOR_MODES = [
     value: 'role_deletion',
     translationKey: 'flows:core.executions.accessChangeValidator.mode.roleDeletion',
     displayLabel: 'Validate and Plan Role Deletion',
-  },
-  {
-    value: 'role_permission_removal',
-    translationKey: 'flows:core.executions.accessChangeValidator.mode.rolePermissionRemoval',
-    displayLabel: 'Validate and Plan Permission Change',
   },
   {
     value: 'group_deletion',
@@ -114,11 +110,6 @@ export const ACCESS_CHANGE_VALIDATOR_MODES = [
  * Available modes for the Role executor. Must match its SupportedModes in the backend.
  */
 export const ROLE_EXECUTOR_MODES = [
-  {
-    value: 'role_permission_removal',
-    translationKey: 'flows:core.executions.roleExecutor.mode.rolePermissionRemoval',
-    displayLabel: 'Change Role Permissions',
-  },
   {
     value: 'role_selection',
     translationKey: 'flows:core.executions.roleExecutor.mode.roleSelection',

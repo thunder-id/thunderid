@@ -34,7 +34,6 @@ type RoleToolsTestSuite struct {
 	assignments *RoleAssignmentServiceInterfaceMock
 	resources   *resourcemock.ResourceServiceInterfaceMock
 	ous         *oumock.OrganizationUnitServiceInterfaceMock
-	runner      *administrationFlowRunnerMock
 	session     *mcp.ClientSession
 }
 
@@ -46,14 +45,13 @@ func (s *RoleToolsTestSuite) SetupTest() {
 	s.connect(true)
 }
 
-// connect registers the tools over mocked services and connects an in-memory MCP client. withRunner gives
-// the tools a flow runner, as on a data plane.
-func (s *RoleToolsTestSuite) connect(withRunner bool) {
+// connect registers the tools over mocked services and connects an in-memory MCP client. revokes is true
+// on a server that issues tokens, as a data plane does.
+func (s *RoleToolsTestSuite) connect(revokes bool) {
 	s.roles = NewRoleServiceInterfaceMock(s.T())
 	s.assignments = NewRoleAssignmentServiceInterfaceMock(s.T())
 	s.resources = resourcemock.NewResourceServiceInterfaceMock(s.T())
 	s.ous = oumock.NewOrganizationUnitServiceInterfaceMock(s.T())
-	s.runner = newAdministrationFlowRunnerMock(s.T())
 	s.resources.On("GetResourceServerByIdentifier", mock.Anything, toolOrdersAPI).Return(
 		&providers.ResourceServer{ID: toolOrdersRS, Identifier: toolOrdersAPI, Name: "Orders"},
 		(*tidcommon.ServiceError)(nil)).Maybe()
@@ -62,11 +60,7 @@ func (s *RoleToolsTestSuite) connect(withRunner bool) {
 		(*tidcommon.ServiceError)(nil)).Maybe()
 
 	server := mcp.NewServer(&mcp.Implementation{Name: "test-server", Version: "1.0.0"}, nil)
-	var runner administrationFlowRunner
-	if withRunner {
-		runner = s.runner
-	}
-	RegisterMCPTools(server, s.roles, s.assignments, s.resources, s.ous, runner)
+	RegisterMCPTools(server, s.roles, s.assignments, s.resources, s.ous, revokes)
 	serverTransport, clientTransport := mcp.NewInMemoryTransports()
 	serverSession, err := server.Connect(context.Background(), serverTransport, nil)
 	s.Require().NoError(err)
@@ -89,14 +83,6 @@ func (s *RoleToolsTestSuite) existingRole(permissions ...string) *RoleWithPermis
 	s.roles.On("GetRoleWithPermissions", mock.Anything, toolRoleID).Return(role, (*tidcommon.ServiceError)(nil))
 	s.roles.On("IsRoleDeclarative", mock.Anything, toolRoleID).Return(false, (*tidcommon.ServiceError)(nil)).Maybe()
 	return role
-}
-
-// roleChangedByFlow makes the role read as before until the removal flow runs, and as after once it has.
-func (s *RoleToolsTestSuite) roleChangedByFlow(before, after *RoleWithPermissions) {
-	s.roles.On("GetRoleWithPermissions", mock.Anything, toolRoleID).Return(before, (*tidcommon.ServiceError)(nil)).
-		Once()
-	s.roles.On("GetRoleWithPermissions", mock.Anything, toolRoleID).Return(after, (*tidcommon.ServiceError)(nil))
-	s.roles.On("IsRoleDeclarative", mock.Anything, toolRoleID).Return(false, (*tidcommon.ServiceError)(nil)).Maybe()
 }
 
 func (s *RoleToolsTestSuite) call(name string, args map[string]any) *mcp.CallToolResult {
@@ -308,77 +294,46 @@ func (s *RoleToolsTestSuite) TestCreateRole() {
 }
 
 func (s *RoleToolsTestSuite) TestUpdateRolePermissions() {
-	s.Run("removes through the flow, then adds", func() {
-		role := toolRole("orders:read", "orders:delete")
-		s.roleChangedByFlow(role, toolRole("orders:read"))
-		var inputs map[string]string
-		s.runner.On("RunAdministrationFlow", mock.Anything, rolePermissionRemovalFlowKey, mock.Anything).
-			Run(func(args mock.Arguments) { inputs = args.Get(2).(map[string]string) }).
-			Return(true, (*tidcommon.ServiceError)(nil)).Once()
-		var update RoleUpdateDetail
+	s.Run("removes, then adds", func() {
+		s.existingRole("orders:read", "orders:delete")
+		var updates []RoleUpdateDetail
 		s.roles.On("UpdateRoleWithPermissions", mock.Anything, toolRoleID, mock.Anything).
-			Run(func(args mock.Arguments) { update = args.Get(2).(RoleUpdateDetail) }).
-			Return(role, (*tidcommon.ServiceError)(nil)).Once()
+			Run(func(args mock.Arguments) { updates = append(updates, args.Get(2).(RoleUpdateDetail)) }).
+			Return(toolRole(), (*tidcommon.ServiceError)(nil)).Twice()
 
 		var out updateRolePermissionsMCPResponse
 		s.structured(s.call("update_role_permissions", map[string]any{"roleId": toolRoleID, "api": toolOrdersAPI,
 			"add": []string{"orders:refund", "orders:read"}, "remove": []string{"orders:delete", "orders:none"}}), &out)
 
-		s.Equal(toolRoleID, inputs[flowInputRole])
-		s.JSONEq(`[{"resourceServerId":"rs-orders","permissions":["orders:read"]}]`, inputs[flowInputPermissions])
+		s.Require().Len(updates, 2)
+		s.Equal([]ResourcePermissions{{ResourceServerID: toolOrdersRS, Permissions: []string{"orders:read"}}},
+			updates[0].Permissions, "the removal is written first, on its own")
 		s.Equal([]ResourcePermissions{{ResourceServerID: toolOrdersRS,
-			Permissions: []string{"orders:read", "orders:refund"}}}, update.Permissions)
-		s.Equal("Order Support", update.Name)
-		s.Equal("ou-1", update.OUID)
+			Permissions: []string{"orders:read", "orders:refund"}}}, updates[1].Permissions)
+		for _, update := range updates {
+			s.Equal("Order Support", update.Name)
+			s.Equal("Supports orders", update.Description)
+			s.Equal("ou-1", update.OUID)
+		}
 		s.Equal([]string{"orders:refund"}, out.Added)
 		s.Equal([]string{"orders:delete"}, out.Removed)
-		s.Equal(flowRemovalNotice, out.Notice)
-	})
-
-	s.Run("additions build on what the flow left, not on the role read before it", func() {
-		s.connect(true)
-		// The configured flow also takes orders:read away, beyond the removal asked for.
-		s.roleChangedByFlow(toolRole("orders:read", "orders:delete"), toolRole())
-		s.runner.On("RunAdministrationFlow", mock.Anything, rolePermissionRemovalFlowKey, mock.Anything).
-			Return(true, (*tidcommon.ServiceError)(nil)).Once()
-		var update RoleUpdateDetail
-		s.roles.On("UpdateRoleWithPermissions", mock.Anything, toolRoleID, mock.Anything).
-			Run(func(args mock.Arguments) { update = args.Get(2).(RoleUpdateDetail) }).
-			Return(toolRole("orders:refund"), (*tidcommon.ServiceError)(nil)).Once()
-
-		var out updateRolePermissionsMCPResponse
-		s.structured(s.call("update_role_permissions", map[string]any{"roleId": toolRoleID, "api": toolOrdersAPI,
-			"add": []string{"orders:refund"}, "remove": []string{"orders:delete"}}), &out)
-
-		s.Equal([]ResourcePermissions{{ResourceServerID: toolOrdersRS, Permissions: []string{"orders:refund"}}},
-			update.Permissions, "orders:read, which the flow removed, is not written back")
-	})
-
-	s.Run("a flow that finishes without removing is refused", func() {
-		s.connect(true)
-		s.existingRole("orders:delete")
-		s.runner.On("RunAdministrationFlow", mock.Anything, rolePermissionRemovalFlowKey, mock.Anything).
-			Return(true, (*tidcommon.ServiceError)(nil)).Once()
-		text := s.errorText(s.call("update_role_permissions", map[string]any{"roleId": toolRoleID,
-			"api": toolOrdersAPI, "add": []string{"orders:read"}, "remove": []string{"orders:delete"}}))
-		s.Contains(text, "nothing was added")
-		s.Contains(text, "still grants [orders:delete]")
-		s.roles.AssertNotCalled(s.T(), "UpdateRoleWithPermissions", mock.Anything, mock.Anything, mock.Anything)
+		s.Equal(revokingRemovalNotice, out.Notice)
 	})
 
 	s.Run("a refused removal adds nothing", func() {
 		s.connect(true)
 		s.existingRole("orders:delete")
-		s.runner.On("RunAdministrationFlow", mock.Anything, rolePermissionRemovalFlowKey, mock.Anything).
-			Return(false, &tidcommon.ServiceError{ErrorDescription: tidcommon.I18nMessage{DefaultValue: "refused"}}).
-			Once()
+		s.roles.On("UpdateRoleWithPermissions", mock.Anything, toolRoleID, mock.Anything).
+			Return((*RoleWithPermissions)(nil),
+				&tidcommon.ServiceError{ErrorDescription: tidcommon.I18nMessage{DefaultValue: "refused"}}).Once()
 		text := s.errorText(s.call("update_role_permissions", map[string]any{"roleId": toolRoleID,
 			"api": toolOrdersAPI, "add": []string{"orders:read"}, "remove": []string{"orders:delete"}}))
 		s.Contains(text, "nothing was added")
-		s.roles.AssertNotCalled(s.T(), "UpdateRoleWithPermissions", mock.Anything, mock.Anything, mock.Anything)
+		s.Contains(text, "refused")
+		s.roles.AssertNumberOfCalls(s.T(), "UpdateRoleWithPermissions", 1)
 	})
 
-	s.Run("no flow runner writes the removal directly", func() {
+	s.Run("a server that issues no tokens says removals are written directly", func() {
 		s.connect(false)
 		role := s.existingRole("orders:delete")
 		s.roles.On("UpdateRoleWithPermissions", mock.Anything, toolRoleID, mock.Anything).
@@ -387,8 +342,7 @@ func (s *RoleToolsTestSuite) TestUpdateRolePermissions() {
 		s.structured(s.call("update_role_permissions", map[string]any{"roleId": toolRoleID,
 			"api": toolOrdersAPI, "remove": []string{"orders:delete"}}), &out)
 		s.Equal([]string{"orders:delete"}, out.Removed)
-		s.Equal(directRemovalNotice, out.Notice, "a server without flows says removals are written directly")
-		s.runner.AssertNotCalled(s.T(), "RunAdministrationFlow", mock.Anything, mock.Anything, mock.Anything)
+		s.Equal(directRemovalNotice, out.Notice)
 	})
 }
 
@@ -408,8 +362,7 @@ func (s *RoleToolsTestSuite) TestUpdateRoleAssignments() {
 			"grant": []string{"support"}, "revoke": []string{"viewer"}}), &out)
 		s.Equal([]roleAssignmentChangeMCPItem{{RoleID: "viewer", AssigneeID: "u1"}}, out.Revoked)
 		s.Equal([]roleAssignmentChangeMCPItem{{RoleID: "support", AssigneeID: "u1"}}, out.Granted)
-		s.Equal(flowRemovalNotice, out.Notice)
-		s.runner.AssertNotCalled(s.T(), "RunAdministrationFlow", mock.Anything, mock.Anything, mock.Anything)
+		s.Equal(revokingRemovalNotice, out.Notice)
 	})
 
 	s.Run("a role held only through a sharing policy is refused, and nothing is granted", func() {
@@ -457,15 +410,15 @@ func (s *RoleToolsTestSuite) TestUpdateRoleAssignments() {
 	})
 }
 
-// The removal tools say what a removal does on this server: a data plane runs flows that revoke tokens,
-// and a control plane writes removals directly.
+// The removal tools say what a removal does on this server: a data plane revokes tokens, and a control
+// plane writes removals directly.
 func (s *RoleToolsTestSuite) TestRemovalNoticeFollowsThePlane() {
-	for _, withRunner := range []bool{true, false} {
-		s.connect(withRunner)
+	for _, revokes := range []bool{true, false} {
+		s.connect(revokes)
 		result, err := s.session.ListTools(context.Background(), nil)
 		s.Require().NoError(err)
-		expected := flowRemovalNotice
-		if !withRunner {
+		expected := revokingRemovalNotice
+		if !revokes {
 			expected = directRemovalNotice
 		}
 		for _, t := range result.Tools {

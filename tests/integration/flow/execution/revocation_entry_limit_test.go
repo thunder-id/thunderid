@@ -4,6 +4,7 @@
 package execution
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"testing"
@@ -179,6 +180,48 @@ func (ts *RevocationEntryLimitTestSuite) TestDeleteRole_AtLimitCompletes() {
 	ts.Equal(http.StatusNoContent, status, "A change within the limit must be applied")
 	ts.False(tokenIsActive(&ts.Suite, entryLimitClient, token),
 		"A change within the limit must revoke the deleted role's scope")
+}
+
+func (ts *RevocationEntryLimitTestSuite) TestUpdateRole_DroppingPermissionsOverLimitIsRefusedAndAppliesNothing() {
+	holder := testutils.Assignment{ID: ts.appID, Type: "app"}
+	// One holder times two dropped scopes plans two entries, one more than the limit.
+	name := "Entry Limit Permission Drop Administrator"
+	roleID := createRole(&ts.Suite, &ts.createdRoleIDs, ts.ouID, ts.resourceServerID, name,
+		[]string{scopeOverLimitFirst, scopeOverLimitSecond}, holder)
+	first := grantedToken(&ts.Suite, entryLimitClient, scopeOverLimitFirst)
+
+	// Dropping every permission sends the role with none.
+	status, refusal := ts.updateRole(roleID, testutils.Role{
+		Name: name, Description: "Role created for flow execution testing", OUID: ts.ouID})
+
+	ts.Equal(http.StatusBadRequest, status, "A permission drop over the entry limit must be refused")
+	ts.Equal(errCodeEntryLimitExceeded, refusal.Code, "The refusal must carry the entry limit code")
+	ts.True(tokenIsActive(&ts.Suite, entryLimitClient, first),
+		"A refused permission drop must revoke nothing")
+	// A fresh grant proves the role still confers the permission the refused update would have dropped.
+	grantedToken(&ts.Suite, entryLimitClient, scopeOverLimitSecond)
+}
+
+// updateRole replaces the role through the management API, which plans and records the revocation of any
+// dropped permission before the update is written, and returns the status with the refusal, if any.
+func (ts *RevocationEntryLimitTestSuite) updateRole(roleID string, role testutils.Role) (int, entryLimitRefusal) {
+	ts.T().Helper()
+
+	body, err := json.Marshal(role)
+	ts.Require().NoError(err)
+	req, err := http.NewRequest(http.MethodPut, testServerURL+"/roles/"+roleID, bytes.NewReader(body))
+	ts.Require().NoError(err)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := testutils.GetHTTPClient().Do(req)
+	ts.Require().NoError(err, "Failed to update the role")
+	defer resp.Body.Close()
+
+	var refusal entryLimitRefusal
+	if resp.StatusCode != http.StatusOK {
+		ts.Require().NoError(json.NewDecoder(resp.Body).Decode(&refusal), "The refusal must carry an error body")
+	}
+	return resp.StatusCode, refusal
 }
 
 // entryLimitRefusal is the part of an API error response these tests read.

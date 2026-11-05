@@ -3,16 +3,6 @@
 
 package role
 
-// rolePermissionRemovalFlowKey is the server configuration key of the administration flow that removes a
-// role's permissions.
-const rolePermissionRemovalFlowKey = "rolePermissionRemovalFlow"
-
-// Inputs the role administration flows read.
-const (
-	flowInputRole        = "targetRoleId"
-	flowInputPermissions = "targetPermissions"
-)
-
 // Role MCP tool defaults.
 const (
 	// roleDetailHolders is the section get_role adds only when asked.
@@ -38,3 +28,10 @@ const (
 
 // maxRemovedAssignments is the most assignments a single removal request may name.
 const maxRemovedAssignments = 100
+
+// The system flow a role update runs before it drops a permission, and the input carrying the role's new
+// permission set.
+const (
+	systemFlowRolePermissionRemovalPre = "system-role-permission-removal-pre"
+	systemFlowInputPermissions         = "targetPermissions"
+)

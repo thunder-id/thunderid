@@ -159,7 +159,7 @@ export default function RoleEditPage(): JSX.Element {
           permissions: editedRole.permissions ?? role.permissions ?? [],
         };
         try {
-          await updateRole.mutateAsync({roleId, data: updatedData, current: role});
+          await updateRole.mutateAsync({roleId, data: updatedData});
         } catch (err: unknown) {
           logger.error('Failed to update role', {error: err});
           return;

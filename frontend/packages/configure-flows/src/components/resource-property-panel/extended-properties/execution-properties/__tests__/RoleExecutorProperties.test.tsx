@@ -53,7 +53,6 @@ function makeResource(mode?: string, properties?: Record<string, unknown>): Reso
   } as unknown as Resource;
 }
 
-const REVOCATION_MODES = ['Change Role Permissions'];
 const INVITATION_MODES = ['Select Roles', 'Assign Roles'];
 
 describe('RoleExecutorProperties', () => {
@@ -65,16 +64,9 @@ describe('RoleExecutorProperties', () => {
   });
 
   it('should read the type of the flow being edited', () => {
-    render(<RoleExecutorProperties resource={makeResource('role_permission_removal')} onChange={mockOnChange} />);
+    render(<RoleExecutorProperties resource={makeResource('role_selection')} onChange={mockOnChange} />);
 
     expect(mockUseGetFlowById).toHaveBeenCalledWith('flow-1');
-  });
-
-  // Selecting and assigning roles runs only in an invitation flow; the server refuses them elsewhere.
-  it('should offer only the revocation plan modes in an administration flow', () => {
-    render(<RoleExecutorProperties resource={makeResource()} onChange={mockOnChange} />);
-
-    expect(offeredModes()).toEqual(REVOCATION_MODES);
   });
 
   it('should offer only selecting and assigning roles in an invitation flow', () => {
@@ -84,18 +76,18 @@ describe('RoleExecutorProperties', () => {
     expect(offeredModes()).toEqual(INVITATION_MODES);
   });
 
+  // Selecting and assigning roles runs only in an invitation flow; the server refuses them elsewhere.
   it('should keep a mode already on the node listed in another flow type, so it can be changed', () => {
-    inFlowOfType('INVITATION');
-    render(<RoleExecutorProperties resource={makeResource('role_permission_removal')} onChange={mockOnChange} />);
+    render(<RoleExecutorProperties resource={makeResource('role_selection')} onChange={mockOnChange} />);
 
-    expect(offeredModes()).toEqual(['Change Role Permissions', ...INVITATION_MODES]);
+    expect(offeredModes()).toEqual(['Select Roles']);
   });
 
   it('should offer every mode until the flow loads', () => {
     inFlowOfType(undefined);
     render(<RoleExecutorProperties resource={makeResource()} onChange={mockOnChange} />);
 
-    expect(offeredModes()).toEqual([...REVOCATION_MODES, ...INVITATION_MODES]);
+    expect(offeredModes()).toEqual(INVITATION_MODES);
   });
 
   it('should say the mode must match the access change validator only outside an invitation flow', () => {

@@ -110,7 +110,6 @@ export const FLOW_PAGE_SIZE = 100;
  */
 export const AdministrationFlowConfigKey = {
   SECRET_REGENERATION: 'secretRegenerationFlow',
-  ROLE_PERMISSION_REMOVAL: 'rolePermissionRemovalFlow',
   ACTION_DELETION: 'actionDeletionFlow',
   USER_UNLOCK: 'userUnlockFlow',
   USER_SUSPEND: 'userSuspendFlow',
@@ -134,7 +133,6 @@ export const AdministrationFlowInput = {
   APPLICATION: 'targetApplicationId',
   GROUP: 'targetGroupId',
   OPERATOR_NOTE: 'operatorNote',
-  PERMISSIONS: 'targetPermissions',
   RESOURCE: 'targetResourceId',
   RESOURCE_SERVER: 'targetResourceServerId',
   ROLE: 'targetRoleId',

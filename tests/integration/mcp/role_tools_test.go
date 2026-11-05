@@ -46,9 +46,9 @@ func rolePermissions(role roleToolsRole) []string {
 }
 
 // The role tools carry a role through its life over MCP: they find the API's permissions, create a
-// role with some of them, find it by permission, swap a permission through the data plane's removal
-// flow, then grant it to a user and revoke it again, the role service running its assignment removal
-// system flow.
+// role with some of them, find it by permission, swap a permission, the role service running its
+// permission removal system flow, then grant it to a user and revoke it again, the role service running
+// its assignment removal system flow.
 func (ts *MCPTestSuite) TestRoleTools_RoleLifecycle() {
 	token := ts.mcpScopedAdminToken()
 
@@ -107,10 +107,12 @@ func (ts *MCPTestSuite) TestRoleTools_RoleLifecycle() {
 		Role    roleToolsRole `json:"role"`
 		Added   []string      `json:"added"`
 		Removed []string      `json:"removed"`
+		Notice  string        `json:"notice"`
 	}
 	ts.decodeToolResult(result, raw, &changed)
 	ts.Equal([]string{"refund"}, changed.Added)
 	ts.Equal([]string{"delete"}, changed.Removed)
+	ts.NotEmpty(changed.Notice, "a removal says what it revoked")
 	ts.ElementsMatch([]string{"read", "refund"}, rolePermissions(changed.Role))
 
 	userID := ts.createOperator("mcp-role-tools-user", "McpRoleTools@123")
@@ -314,82 +316,4 @@ func (ts *MCPTestSuite) TestRoleTools_FindRefuseAndReport() {
 		"assignees": assignee, "revoke": []string{reader.ID},
 		"grant": []string{"01900000-0000-7000-8000-00000000dead"}}), reader.ID+" for "+userID,
 		"a refused grant reports the revocation already made")
-}
-
-// Removing a permission trusts the configured administration flow only as far as it goes: a flow that
-// finishes without removing anything, one that stops for input, one whose step refuses, and one that no
-// longer exists each leave the change refused. Revoking a role runs the role service's own system flow,
-// which no configuration replaces.
-func (ts *MCPTestSuite) TestRoleTools_RemovalFlowsThatDoNotRemove() {
-	token := ts.mcpScopedAdminToken()
-	ts.createRoleToolsAPI("MCP Role Tools Orders API", roleToolsAPIIdentifier)
-
-	original, err := testutils.GetWritableServerConfig("flow")
-	ts.Require().NoError(err)
-	ts.T().Cleanup(func() {
-		if err := testutils.PutWritableServerConfig("flow", original); err != nil {
-			ts.T().Errorf("cleanup: failed to restore the flow section: %v", err)
-		}
-	})
-	useFlows := func(handle string) {
-		section := map[string]any{}
-		ts.Require().NoError(json.Unmarshal(original, &section))
-		section["rolePermissionRemovalFlow"] = map[string]any{"defaultHandle": handle}
-		payload, err := json.Marshal(section)
-		ts.Require().NoError(err)
-		ts.Require().NoError(testutils.PutWritableServerConfig("flow", payload))
-	}
-	createFlow := func(handle string, nodes ...map[string]any) string {
-		all := append([]map[string]any{{"id": "start", "type": "START", "onSuccess": nodes[0]["id"]}}, nodes...)
-		all = append(all, map[string]any{"id": "end", "type": "END"})
-		flowID, err := testutils.CreateFlow(testutils.Flow{
-			Name: handle, Handle: handle, FlowType: "ADMINISTRATION", Nodes: all})
-		ts.Require().NoError(err, "failed to create the flow")
-		ts.T().Cleanup(func() { _ = testutils.DeleteFlow(flowID) })
-		return flowID
-	}
-
-	result, raw := ts.callMCPTool(token, "create_role", map[string]any{
-		"name": "MCP Kept Role", "ouId": ts.ouID, "api": roleToolsAPIIdentifier,
-		"permissions": []string{"read", "delete"},
-	})
-	var role roleToolsRole
-	ts.decodeToolResult(result, raw, &role)
-	ts.T().Cleanup(func() { _ = testutils.DeleteRole(role.ID) })
-
-	removePermission := map[string]any{"roleId": role.ID, "api": roleToolsAPIIdentifier,
-		"remove": []string{"delete"}}
-
-	createFlow("mcp-role-tools-skipping-flow", map[string]any{"id": "check", "type": "TASK_EXECUTION",
-		"properties": map[string]any{"requiredScopes": []string{"system"}},
-		"executor":   map[string]any{"name": "PermissionValidator"}, "onSuccess": "end"})
-	useFlows("mcp-role-tools-skipping-flow")
-	ts.Contains(ts.requireToolError(token, "update_role_permissions", removePermission), "still grants")
-
-	createFlow("mcp-role-tools-asking-flow", map[string]any{"id": "ask", "type": "PROMPT",
-		"prompts": []map[string]any{{
-			"inputs": []map[string]any{{"ref": "input_reason", "identifier": "reason", "type": "TEXT_INPUT",
-				"required": true}},
-			"action": map[string]any{"ref": "submit", "nextNode": "end"},
-		}}})
-	useFlows("mcp-role-tools-asking-flow")
-	ts.Contains(ts.requireToolError(token, "update_role_permissions", removePermission), "asks for input")
-
-	createFlow("mcp-role-tools-refusing-flow", map[string]any{"id": "check", "type": "TASK_EXECUTION",
-		"properties": map[string]any{"requiredScopes": []string{"mcp-role-tools-missing-scope"}},
-		"executor":   map[string]any{"name": "PermissionValidator"}, "onSuccess": "end"})
-	useFlows("mcp-role-tools-refusing-flow")
-	ts.requireToolError(token, "update_role_permissions", removePermission)
-
-	goneID := createFlow("mcp-role-tools-gone-flow", map[string]any{"id": "check", "type": "TASK_EXECUTION",
-		"properties": map[string]any{"requiredScopes": []string{"system"}},
-		"executor":   map[string]any{"name": "PermissionValidator"}, "onSuccess": "end"})
-	useFlows("mcp-role-tools-gone-flow")
-	ts.Require().NoError(testutils.DeleteFlow(goneID))
-	ts.Contains(ts.requireToolError(token, "update_role_permissions", removePermission), "no longer exists")
-
-	result, raw = ts.callMCPTool(token, "get_role", map[string]any{"roleId": role.ID})
-	var kept roleToolsRole
-	ts.decodeToolResult(result, raw, &kept)
-	ts.ElementsMatch([]string{"read", "delete"}, rolePermissions(kept), "no refused removal took effect")
 }

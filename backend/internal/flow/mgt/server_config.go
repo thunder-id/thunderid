@@ -80,7 +80,6 @@ func (h *FlowConfigHandler) Validate(ctx context.Context, incoming, _, _ any) er
 		{cfg.SelfFlow, providers.FlowTypeSelf, "selfFlow"},
 		{cfg.SecretRegenerationFlow, providers.FlowTypeAdministration, "secretRegenerationFlow"},
 		{cfg.AgentOnboardingFlow, providers.FlowTypeAdministration, "agentOnboardingFlow"},
-		{cfg.RolePermissionRemovalFlow, providers.FlowTypeAdministration, "rolePermissionRemovalFlow"},
 		{cfg.ActionDeletionFlow, providers.FlowTypeAdministration, "actionDeletionFlow"},
 		{cfg.UserUnlockFlow, providers.FlowTypeAdministration, "userUnlockFlow"},
 		{cfg.UserSuspendFlow, providers.FlowTypeAdministration, "userSuspendFlow"},
@@ -123,8 +122,6 @@ func (h *FlowConfigHandler) Merge(readOnly, writable any) any {
 		SecretRegenerationFlow: mergeFlowTypeConfig(
 			ro.SecretRegenerationFlow, wr.SecretRegenerationFlow),
 		AgentOnboardingFlow: mergeFlowTypeConfig(ro.AgentOnboardingFlow, wr.AgentOnboardingFlow),
-		RolePermissionRemovalFlow: mergeFlowTypeConfig(
-			ro.RolePermissionRemovalFlow, wr.RolePermissionRemovalFlow),
 		ActionDeletionFlow: mergeFlowTypeConfig(
 			ro.ActionDeletionFlow, wr.ActionDeletionFlow),
 

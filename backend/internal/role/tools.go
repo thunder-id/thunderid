@@ -5,7 +5,6 @@ package role
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -23,21 +22,14 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/mcp/tool"
 )
 
-// administrationFlowRunner runs the administration flow a deployment configures for an action. It
-// reports false when no flow is configured, so the caller performs the action directly.
-type administrationFlowRunner interface {
-	RunAdministrationFlow(ctx context.Context, configKey string, inputs map[string]string) (
-		bool, *tidcommon.ServiceError)
-}
-
 // roleTools carries the services the role MCP tools call.
 type roleTools struct {
 	roleService       RoleServiceInterface
 	assignmentService RoleAssignmentServiceInterface
 	resourceService   resourcepkg.ResourceServiceInterface
 	ouService         oupkg.OrganizationUnitServiceInterface
-	// flowRunner is nil on a server that runs no flows, where removals are written directly.
-	flowRunner administrationFlowRunner
+	// revokesOnRemoval is false on a server that issues no tokens, where a removal revokes nothing.
+	revokesOnRemoval bool
 }
 
 // listRolesMCPInput is the input of the list_roles tool.
@@ -213,35 +205,34 @@ type updateRoleAssignmentsMCPResponse struct {
 	Notice  string                        `json:"notice,omitempty"`
 }
 
-// flowRemovalNotice describes what removing access does on a server that runs flows.
-const flowRemovalNotice = "Removing a permission runs the administration flow the server configuration names, " +
-	"and revoking a role runs the role assignment removal system flow. By default both revoke the tokens that " +
-	"carried the removed access. A deployment can change the permission removal flow."
+// revokingRemovalNotice describes what removing access does on a server that issues tokens.
+const revokingRemovalNotice = "Removing a permission or revoking a role revokes the tokens that carried the " +
+	"removed access."
 
-// directRemovalNotice describes what removing access does on a server that runs no flows, such as a
+// directRemovalNotice describes what removing access does on a server that issues no tokens, such as a
 // control plane.
-const directRemovalNotice = "This server runs no administration flows, so removals are written directly, " +
-	"without the token revocation a data plane's flow performs."
+const directRemovalNotice = "This server issues no tokens, so removals are written directly, " +
+	"without the token revocation a data plane performs."
 
 // removalNotice describes what a removal does on this server.
 func (t *roleTools) removalNotice() string {
-	if t.flowRunner == nil {
+	if !t.revokesOnRemoval {
 		return directRemovalNotice
 	}
-	return flowRemovalNotice
+	return revokingRemovalNotice
 }
 
-// RegisterMCPTools registers the role MCP tools with the server. flowRunner is nil on a server that runs no
-// flows; removals are then written directly.
+// RegisterMCPTools registers the role MCP tools with the server. revokesOnRemoval is false on a server
+// that issues no tokens, where a removal revokes nothing.
 func RegisterMCPTools(server *mcp.Server, roleService RoleServiceInterface,
 	assignmentService RoleAssignmentServiceInterface, resourceService resourcepkg.ResourceServiceInterface,
-	ouService oupkg.OrganizationUnitServiceInterface, flowRunner administrationFlowRunner) {
+	ouService oupkg.OrganizationUnitServiceInterface, revokesOnRemoval bool) {
 	tools := &roleTools{
 		roleService:       roleService,
 		assignmentService: assignmentService,
 		resourceService:   resourceService,
 		ouService:         ouService,
-		flowRunner:        flowRunner,
+		revokesOnRemoval:  revokesOnRemoval,
 	}
 	assigneeTypes := []string{string(AssigneeTypeUser), string(AssigneeTypeApp), string(AssigneeTypeAgent),
 		string(AssigneeTypeGroup)}
@@ -621,8 +612,8 @@ func (t *roleTools) roleNamed(ctx context.Context, ouID, name string) string {
 	return ""
 }
 
-// updateRolePermissions handles the update_role_permissions tool call. Removals run first, through the
-// configured administration flow when there is one, and nothing is added if they are refused.
+// updateRolePermissions handles the update_role_permissions tool call. Removals run first, and nothing is
+// added if they are refused.
 func (t *roleTools) updateRolePermissions(ctx context.Context, _ *mcp.CallToolRequest,
 	input updateRolePermissionsMCPInput) (*mcp.CallToolResult, *updateRolePermissionsMCPResponse, error) {
 	if len(input.Add) == 0 && len(input.Remove) == 0 {
@@ -648,16 +639,13 @@ func (t *roleTools) updateRolePermissions(ctx context.Context, _ *mcp.CallToolRe
 	if len(removed) > 0 {
 		permissions = withPermissions(current.Permissions, server.ID,
 			slices.DeleteFunc(slices.Clone(held), func(p string) bool { return slices.Contains(removed, p) }))
-		if err := t.removeRolePermissions(ctx, current, permissions, server.ID, removed); err != nil {
-			return nil, nil, fmt.Errorf("cannot complete the permission removal, so nothing was added: %w", err)
-		}
-		// A configured flow may change more than the removal, so additions build on the role as stored now.
-		if len(input.Add) > 0 {
-			if current, svcErr = t.roleService.GetRoleWithPermissions(ctx, input.RoleID); svcErr != nil {
-				return nil, nil, fmt.Errorf("removed %v, but the role could not be read back to add to it: %s",
-					removed, svcErr.ErrorDescription)
-			}
-			permissions = current.Permissions
+		// On a server that issues tokens the role service runs the permission removal system flow, which
+		// revokes the affected tokens.
+		_, svcErr = t.roleService.UpdateRoleWithPermissions(ctx, current.ID, RoleUpdateDetail{
+			Name: current.Name, Description: current.Description, OUID: current.OUID, Permissions: permissions})
+		if svcErr != nil {
+			return nil, nil, fmt.Errorf("cannot complete the permission removal, so nothing was added: %s",
+				svcErr.ErrorDescription)
 		}
 	}
 
@@ -689,8 +677,8 @@ func (t *roleTools) updateRolePermissions(ctx context.Context, _ *mcp.CallToolRe
 	return nil, out, nil
 }
 
-// updateRoleAssignments handles the update_role_assignments tool call. Revocations run first, through
-// the configured administration flow when there is one, and nothing is granted if one is refused.
+// updateRoleAssignments handles the update_role_assignments tool call. Revocations run first, and nothing
+// is granted if one is refused.
 func (t *roleTools) updateRoleAssignments(ctx context.Context, _ *mcp.CallToolRequest,
 	input updateRoleAssignmentsMCPInput) (*mcp.CallToolResult, *updateRoleAssignmentsMCPResponse, error) {
 	if len(input.Assignees) == 0 || (len(input.Grant) == 0 && len(input.Revoke) == 0) {
@@ -723,49 +711,6 @@ func (t *roleTools) updateRoleAssignments(ctx context.Context, _ *mcp.CallToolRe
 		out.Notice = t.removalNotice()
 	}
 	return nil, out, nil
-}
-
-// removeRolePermissions writes a role's reduced permission set, through the configured administration
-// flow when there is one. A flow that finishes must have removed the permissions: an administrator can
-// configure a flow whose path skips the step that writes them, so the role is read back to confirm it.
-func (t *roleTools) removeRolePermissions(ctx context.Context, role *RoleWithPermissions,
-	permissions []ResourcePermissions, serverID string, removed []string) error {
-	if t.flowRunner != nil {
-		encoded, err := json.Marshal(permissions)
-		if err != nil {
-			return errors.New("the permission set could not be encoded")
-		}
-		ran, svcErr := t.flowRunner.RunAdministrationFlow(ctx, rolePermissionRemovalFlowKey, map[string]string{
-			flowInputRole: role.ID, flowInputPermissions: string(encoded)})
-		if svcErr != nil {
-			return errors.New(svcErr.ErrorDescription.String())
-		}
-		if ran {
-			return t.confirmPermissionsRemoved(ctx, role.ID, serverID, removed)
-		}
-	}
-	_, svcErr := t.roleService.UpdateRoleWithPermissions(ctx, role.ID, RoleUpdateDetail{
-		Name: role.Name, Description: role.Description, OUID: role.OUID, Permissions: permissions})
-	if svcErr != nil {
-		return errors.New(svcErr.ErrorDescription.String())
-	}
-	return nil
-}
-
-// confirmPermissionsRemoved checks that a finished flow left none of the removed permissions on the role.
-func (t *roleTools) confirmPermissionsRemoved(ctx context.Context, roleID, serverID string, removed []string) error {
-	role, svcErr := t.roleService.GetRoleWithPermissions(ctx, roleID)
-	if svcErr != nil {
-		return fmt.Errorf("the flow finished, but the role could not be read back to confirm it: %s",
-			svcErr.ErrorDescription)
-	}
-	held := permissionsOn(role.Permissions, serverID)
-	kept := slices.DeleteFunc(slices.Clone(removed), func(p string) bool { return !slices.Contains(held, p) })
-	if len(kept) > 0 {
-		return fmt.Errorf("the flow configured as %s finished, but the role still grants %v",
-			rolePermissionRemovalFlowKey, kept)
-	}
-	return nil
 }
 
 // revokeRole removes one role from one assignee. A removal that would change nothing succeeds in the role

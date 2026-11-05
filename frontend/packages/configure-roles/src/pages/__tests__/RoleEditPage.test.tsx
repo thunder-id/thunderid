@@ -518,7 +518,6 @@ describe('RoleEditPage', () => {
           ouId: 'ou-1',
           permissions: [{resourceServerId: 'rs-1', permissions: ['a', 'b']}],
         }) as UpdateRoleRequest,
-        current: mockRole,
       });
     });
 

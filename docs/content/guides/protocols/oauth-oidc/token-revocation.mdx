@@ -7,7 +7,7 @@ description: RFC 7009 token revocation in {{ProductName}}, from revoking a singl
 
 # Token Revocation
 
-**Token Revocation** ([RFC 7009](https://datatracker.ietf.org/doc/html/rfc7009)) lets a client tell <ProductName /> that a token should stop working before it expires. <ProductName /> extends this with broader scopes, so an operational event such as a sign-out, a user deletion, an account suspension, an application deletion, a role deletion, a group deletion, or a role assignment removal can invalidate many tokens at once.
+**Token Revocation** ([RFC 7009](https://datatracker.ietf.org/doc/html/rfc7009)) lets a client tell <ProductName /> that a token should stop working before it expires. <ProductName /> extends this with broader scopes, so an operational event such as a sign-out, a user deletion, an account suspension, an application deletion, a role deletion, a group deletion, a role assignment removal, or a role permission removal can invalidate many tokens at once.
 
 Access tokens are self-contained JWTs, so a resource server that validates them locally has no way to know a token was revoked. <ProductName /> solves this with a denylist that both the authorization server and resource servers consult. The scopes below differ only in what goes on that list.
 
@@ -19,7 +19,7 @@ Access tokens are self-contained JWTs, so a resource server that validates them 
 | **Grant** | Every token of one authorization grant, by its `tfid` | Sign-out, refresh-token replay, authorization-code replay |
 | **Subject** | Every token issued to one user, agent, or application, by its `sub` | A user is deleted; a user, agent, or application is suspended |
 | **Client** | Every token issued through one OAuth client, by its client ID | An application, or an agent with an OAuth client, is suspended; an application is deleted or its client secret is replaced |
-| **Subject and permission** | Every token issued to one user, agent, or application that carries one of the given permissions for its audience | A group whose roles grant those permissions is deleted, for each of its members, or a member is removed from it |
+| **Subject and permission** | Every token issued to one user, agent, or application that carries one of the given permissions for its audience | A group whose roles grant those permissions is deleted, for each of its members, or a member is removed from it; a role stops granting a permission, for each of its holders |
 
 A token is rejected if **any** of these matches.
 
@@ -175,6 +175,16 @@ The removal is refused, and every assignment kept, when the request names too ma
 | `ROL-1042` | The request names more than 100 assignments. | Split the removal into requests of at most 100 assignments each. |
 | `GRP-1017` | The group's members are nested too deep to walk. | Flatten the group hierarchy so that every member is within the supported depth. |
 | `RVS-1001` | The revocation needs more entries than `oauth.revocation.criteria.max_entries_per_change` allows (`10000` by default). It records about one entry for each member of the group and each scope the role grants. | Remove some of the group's members first, then remove the assignment. Or raise the limit. |
+
+## Role Permission Removal
+
+Updating a role so that it no longer grants a permission revokes the tokens its holders carry with that permission, for every user, agent, group member, and application the role is assigned to. A token that carries only permissions the role still grants keeps working. This happens whichever way the role is updated: from the Console, through the `PUT /roles/{id}` API, through the import API, or when a configuration version with fewer permissions for the role is applied to a gateway. An update that drops no permission, such as one that carries the permissions the role already has or only adds new ones, revokes nothing.
+
+The revocation runs as two system flows, as an application change does. The first runs before the role is updated and revokes the tokens issued up to that point. If it fails, the role is left as it was. The second runs after the update is written and moves the cutoff to that moment, so a token issued with the dropped permission while the update was being written is revoked too. If it fails, the request returns an error even though the update is already saved.
+
+When the server reads roles from both files and the database, an update that drops a permission from a role with more assignments than it can read in that mode is refused with `ROL-1017`, and the role is left as it was. Remove some of the role's assignments first, each of which revokes only that assignee's tokens, then update the role.
+
+The role permission removal administration flow (`default-role-permission-removal-flow`), its `rolePermissionRemovalFlow` server configuration entry, and the `role_permission_removal` mode of the Role executor are removed, since every way of updating a role now revokes on its own. Drop any `rolePermissionRemovalFlow` entry from the `flow` server configuration, delete the stored `default-role-permission-removal-flow` from a deployment bootstrapped before this change (`DELETE /flows/{id}`, or from the Console's flows page), and update roles through the Console or `PUT /roles/{id}`. A custom flow that uses the removed executor mode no longer loads.
 
 ## Where Revocation Is Enforced
 
