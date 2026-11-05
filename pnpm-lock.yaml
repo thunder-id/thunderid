@@ -4400,6 +4400,9 @@ importers:
       '@testing-library/user-event':
         specifier: 'catalog:'
         version: 14.6.1(@testing-library/dom@10.4.1)
+      '@thunderid/configure-agents':
+        specifier: workspace:^
+        version: link:../configure-agents
       '@thunderid/contexts':
         specifier: workspace:^
         version: link:../contexts

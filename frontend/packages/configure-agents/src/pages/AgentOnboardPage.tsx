@@ -277,6 +277,18 @@ function AgentOnboardStep({
   );
 }
 
+export interface AgentOnboardPageProps {
+  /**
+   * Renders only the flow, for a host that supplies its own surface such as a dialog, instead of
+   * the full-screen wizard.
+   */
+  embedded?: boolean;
+  /**
+   * Called when the person leaves the flow. Defaults to navigating back to the agents list.
+   */
+  onClose?: () => void;
+}
+
 /**
  * Creates an agent by running the configured agent onboarding flow.
  *
@@ -284,7 +296,7 @@ function AgentOnboardStep({
  * no knowledge of what an agent needs. There is no non-flow fallback: the flow's provisioning node
  * is what creates the agent, so an unresolved flow is reported rather than worked around.
  */
-export default function AgentOnboardPage(): JSX.Element {
+export default function AgentOnboardPage({embedded = false, onClose}: AgentOnboardPageProps = {}): JSX.Element {
   const routes = useAgentRoutes();
   const {t} = useTranslation();
   const navigate = useNavigate();
@@ -317,8 +329,12 @@ export default function AgentOnboardPage(): JSX.Element {
   });
 
   const handleClose = useCallback((): void => {
+    if (onClose) {
+      onClose();
+      return;
+    }
     void navigate(isWelcomeFlow ? routes.welcome.getStarted() : routes.agents.list());
-  }, [navigate, isWelcomeFlow, routes]);
+  }, [navigate, isWelcomeFlow, routes, onClose]);
 
   const handleStepLabelChange = useCallback((label: string): void => {
     if (label === prevStepLabelRef.current) return;
@@ -450,6 +466,10 @@ export default function AgentOnboardPage(): JSX.Element {
       </Stack>
     );
   };
+
+  if (embedded) {
+    return renderBody();
+  }
 
   return (
     <FullScreenCreationWizardLayout
