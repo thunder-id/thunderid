@@ -4,6 +4,7 @@
 package security
 
 import (
+	"cmp"
 	"context"
 	"net/http"
 	"strings"
@@ -43,6 +44,9 @@ const (
 // jwtAuthenticator handles authentication and authorization using JWT Bearer tokens.
 type jwtAuthenticator struct {
 	jwtService jwt.JWTServiceInterface
+	// federatedAud is the audience required of a trusted-issuer token; empty falls back to
+	// server.security.trusted_issuer.audience, the REST API's audience for those tokens.
+	federatedAud string
 }
 
 // newJWTAuthenticator creates a new JWT authenticator.
@@ -75,8 +79,8 @@ func (h *jwtAuthenticator) Authenticate(r *http.Request) (*SecurityContext, erro
 
 // authenticateToken verifies token and builds the resulting SecurityContext. expectedAud, if
 // non-empty, is required as the audience of a self-issued token (RFC 8707 resource indicator);
-// empty skips that check, same as VerifyJWT itself treats it. It has no effect on a trusted-issuer
-// token, which is always checked against the issuer's own configured audience. authenticateToken
+// empty skips that check, same as VerifyJWT itself treats it. A trusted-issuer token is checked
+// against h.federatedAud, or trusted_issuer.audience when that is empty. authenticateToken
 // performs no revocation check on its own — the REST gate applies that separately in
 // securityService.Process; BearerAuthenticator.Authenticate applies it here for other callers that
 // need identical behavior in one call.
@@ -130,14 +134,17 @@ func (h *jwtAuthenticator) authenticateToken(ctx context.Context, token, expecte
 
 // AuthenticateBearerToken verifies a bearer token exactly as the REST gate's JWT authenticator does
 // — routing on issuer (self-issued, or a configured trusted issuer verified via JWKS) — and returns
-// the resulting SecurityContext. expectedAud is required as a self-issued token's audience (RFC 8707
-// resource indicator); pass "" to skip that check, as the REST gate does. It performs no revocation
-// check; use BearerAuthenticator.Authenticate for the REST gate's full behavior (verification plus
-// revocation) in one call.
+// the resulting SecurityContext. expectedAud is required as the audience (RFC 8707 resource
+// indicator) of a self-issued token and of a trusted-issuer token alike, so a token issued for
+// another resource server is rejected whichever issuer minted it. Pass "" to skip the self-issued
+// check, as the REST gate does; a trusted-issuer token is then checked against
+// trusted_issuer.audience. It performs no revocation check; use BearerAuthenticator.Authenticate for
+// the REST gate's full behavior (verification plus revocation) in one call.
 func AuthenticateBearerToken(
 	ctx context.Context, jwtService jwt.JWTServiceInterface, token, expectedAud string,
 ) (*SecurityContext, error) {
-	return (&jwtAuthenticator{jwtService: jwtService}).authenticateToken(ctx, token, expectedAud)
+	return (&jwtAuthenticator{jwtService: jwtService, federatedAud: expectedAud}).
+		authenticateToken(ctx, token, expectedAud)
 }
 
 // verifyToken verifies the bearer token by routing on its iss claim against
@@ -167,7 +174,7 @@ func (h *jwtAuthenticator) verifyToken(ctx context.Context, token, expectedAud s
 // verifyFederatedToken checks if the token is from a trusted external issuer and verifies it via JWKS.
 // Per RFC 9068 §2.2 and RFC 8707, this validates:
 //   - iss: matches the configured trusted issuer
-//   - aud: matches this server's own identifier (the resource server)
+//   - aud: matches h.federatedAud, or trusted_issuer.audience when that is empty
 //   - signature: verified via the auth server's JWKS endpoint
 //   - required_claims: each configured claim must match the expected value
 func (h *jwtAuthenticator) verifyFederatedToken(ctx context.Context, token string) (verified bool) {
@@ -187,8 +194,9 @@ func (h *jwtAuthenticator) verifyFederatedToken(ctx context.Context, token strin
 	}
 
 	// VerifyJWTWithJWKS validates signature, aud (resource server identity), iss, and time claims.
+	expectedAud := cmp.Or(h.federatedAud, trustedIssuer.Audience)
 	if svcErr := h.jwtService.VerifyJWTWithJWKS(ctx,
-		token, trustedIssuer.JWKSURL, trustedIssuer.Audience, trustedIssuer.Issuer,
+		token, trustedIssuer.JWKSURL, expectedAud, trustedIssuer.Issuer,
 	); svcErr != nil {
 		return false
 	}

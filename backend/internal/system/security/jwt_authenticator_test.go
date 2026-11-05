@@ -565,6 +565,76 @@ func (suite *JWTAuthenticatorTestSuite) TestVerifyFederatedToken_JWKSVerificatio
 	mockJWT.AssertExpectations(suite.T())
 }
 
+// TestVerifyFederatedToken_FederatedAudienceOverridesTrustedIssuerAudience locks in that a
+// jwtAuthenticator carrying federatedAud, as the MCP path does, checks a trusted-issuer token
+// against it and not against trusted_issuer.audience, which is the REST API's audience.
+func (suite *JWTAuthenticatorTestSuite) TestVerifyFederatedToken_FederatedAudienceOverridesTrustedIssuerAudience() {
+	config.ResetServerRuntime()
+	defer config.ResetServerRuntime()
+
+	const mcpAudience = "https://resource-server:9443/mcp"
+	cfg := &config.Config{
+		Server: engineconfig.ServerConfig{
+			SecurityConfig: engineconfig.SecurityConfig{
+				TrustedIssuer: engineconfig.TrustedIssuerConfig{
+					Issuer:         testFederatedIssuer,
+					JWKSURL:        testFederatedJWKSURL,
+					Audience:       testResourceServerAudURL,
+					RequiredClaims: []engineconfig.RequiredClaim{{Claim: "tenant", Value: "acme"}},
+				},
+			},
+		},
+	}
+	_ = config.InitializeServerRuntime("", cfg)
+
+	token := buildFakeJWT(
+		map[string]interface{}{"alg": "RS256", "kid": "test-kid"},
+		map[string]interface{}{"sub": "user1", "iss": testFederatedIssuer, "tenant": "acme"},
+	)
+
+	mockJWT := jwtmock.NewJWTServiceInterfaceMock(suite.T())
+	mockJWT.On("VerifyJWTWithJWKS", mock.Anything, token, testFederatedJWKSURL, mcpAudience, testFederatedIssuer).
+		Return(nil).Once()
+	auth := &jwtAuthenticator{jwtService: mockJWT, federatedAud: mcpAudience}
+
+	assert.True(suite.T(), auth.verifyFederatedToken(context.Background(), token))
+	mockJWT.AssertExpectations(suite.T())
+}
+
+// TestVerifyFederatedToken_RejectsOtherAudienceWhenFederatedAudienceSet covers the other
+// half: the verifier reports an audience mismatch for the override, so the token is rejected.
+func (suite *JWTAuthenticatorTestSuite) TestVerifyFederatedToken_RejectsOtherAudienceWhenFederatedAudienceSet() {
+	config.ResetServerRuntime()
+	defer config.ResetServerRuntime()
+
+	const mcpAudience = "https://resource-server:9443/mcp"
+	cfg := &config.Config{
+		Server: engineconfig.ServerConfig{
+			SecurityConfig: engineconfig.SecurityConfig{
+				TrustedIssuer: engineconfig.TrustedIssuerConfig{
+					Issuer:   testFederatedIssuer,
+					JWKSURL:  testFederatedJWKSURL,
+					Audience: testResourceServerAudURL,
+				},
+			},
+		},
+	}
+	_ = config.InitializeServerRuntime("", cfg)
+
+	token := buildFakeJWT(
+		map[string]interface{}{"alg": "RS256", "kid": "test-kid"},
+		map[string]interface{}{"sub": "user1", "iss": testFederatedIssuer, "aud": testResourceServerAudURL},
+	)
+
+	mockJWT := jwtmock.NewJWTServiceInterfaceMock(suite.T())
+	mockJWT.On("VerifyJWTWithJWKS", mock.Anything, token, testFederatedJWKSURL, mcpAudience, testFederatedIssuer).
+		Return(&tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "AUDIENCE_MISMATCH"}).Once()
+	auth := &jwtAuthenticator{jwtService: mockJWT, federatedAud: mcpAudience}
+
+	assert.False(suite.T(), auth.verifyFederatedToken(context.Background(), token))
+	mockJWT.AssertExpectations(suite.T())
+}
+
 func (suite *JWTAuthenticatorTestSuite) TestVerifyFederatedToken_JWKSVerificationFailure() {
 	config.ResetServerRuntime()
 	defer config.ResetServerRuntime()
