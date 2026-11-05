@@ -830,7 +830,7 @@ const translations = {
     'pages.emailTemplates': 'Email templates',
     'pages.smsTemplates': 'SMS templates',
     'pages.settings': 'Settings',
-    'pages.gateways': 'Gateway management',
+    'pages.gateways': 'Deployment',
     'breadcrumb.console': 'Console',
   },
 

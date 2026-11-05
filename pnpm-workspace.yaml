@@ -47,8 +47,8 @@ catalog:
   '@vitejs/plugin-react': 6.0.2
   '@vitest/browser-playwright': 4.1.10
   '@vitest/coverage-istanbul': 4.1.10
-  '@wso2/oxygen-ui': 0.17.0
-  '@wso2/oxygen-ui-icons-react': 0.17.0
+  '@wso2/oxygen-ui': 0.20.0
+  '@wso2/oxygen-ui-icons-react': 0.20.0
   babel-plugin-react-compiler: 19.1.0-rc.3
   clsx: 2.1.1
   dayjs: 1.11.18

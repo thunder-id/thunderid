@@ -194,6 +194,7 @@ func (suite *DefaultEntityProviderTestSuite) TestUpdateEntity() {
 	suite.Equal(ErrorCodeInvalidRequestFormat, err.Code)
 }
 
+//nolint:dupl // Testing the same error mapping for different credential operations
 func (suite *DefaultEntityProviderTestSuite) TestUpdateCredentials() {
 	cases := []struct {
 		method string

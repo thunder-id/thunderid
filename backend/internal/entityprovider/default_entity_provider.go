@@ -29,7 +29,8 @@ func newDefaultEntityProvider(
 
 // IdentifyEntity resolves an entity ID from indexed attribute filters.
 func (p *defaultEntityProvider) IdentifyEntity(
-	ctx context.Context, filters map[string]interface{},
+	ctx context.Context,
+	filters map[string]interface{},
 ) (*string, *EntityProviderError) {
 	ctx = security.WithRuntimeContext(ctx)
 	entityID, err := p.entitySvc.IdentifyEntity(ctx, filters)
@@ -43,7 +44,8 @@ func (p *defaultEntityProvider) IdentifyEntity(
 // OUHandle is not resolved here — callers that need it (e.g. disambiguation flows)
 // resolve it on demand via the OU service.
 func (p *defaultEntityProvider) SearchEntities(
-	ctx context.Context, filters map[string]interface{},
+	ctx context.Context,
+	filters map[string]interface{},
 ) ([]*providers.Entity, *EntityProviderError) {
 	ctx = security.WithRuntimeContext(ctx)
 	entities, err := p.entitySvc.SearchEntities(ctx, filters)
@@ -59,7 +61,8 @@ func (p *defaultEntityProvider) SearchEntities(
 
 // GetLinkedEntities returns the entities linked to a subject at a connection, with OUHandle set.
 func (p *defaultEntityProvider) GetLinkedEntities(
-	ctx context.Context, idpID, sub string,
+	ctx context.Context,
+	idpID, sub string,
 ) ([]*providers.Entity, *EntityProviderError) {
 	ctx = security.WithRuntimeContext(ctx)
 	entities, err := p.entitySvc.GetLinkedEntities(ctx, idpID, sub)
@@ -99,7 +102,8 @@ func (p *defaultEntityProvider) GetEntityProfile(
 
 // UpdateEntity updates an existing entity.
 func (p *defaultEntityProvider) UpdateEntity(
-	ctx context.Context, entityID string, e *providers.Entity,
+	ctx context.Context,
+	entityID string, e *providers.Entity,
 ) (*providers.Entity, *EntityProviderError) {
 	if e == nil {
 		return nil, NewEntityProviderError(ErrorCodeInvalidRequestFormat, "Invalid request",
@@ -116,7 +120,8 @@ func (p *defaultEntityProvider) UpdateEntity(
 
 // DeleteEntity deletes an entity by ID.
 func (p *defaultEntityProvider) DeleteEntity(
-	ctx context.Context, entityID string,
+	ctx context.Context,
+	entityID string,
 ) *EntityProviderError {
 	ctx = security.WithRuntimeContext(ctx)
 	err := p.entitySvc.DeleteEntity(ctx, entityID)
@@ -131,7 +136,8 @@ func (p *defaultEntityProvider) DeleteEntity(
 
 // UpdateCredentials updates schema-defined credentials for an entity.
 func (p *defaultEntityProvider) UpdateCredentials(
-	ctx context.Context, entityID string, credentials json.RawMessage,
+	ctx context.Context,
+	entityID string, credentials json.RawMessage,
 ) *EntityProviderError {
 	ctx = security.WithRuntimeContext(ctx)
 	err := p.entitySvc.UpdateCredentials(ctx, entityID, credentials)
@@ -143,7 +149,8 @@ func (p *defaultEntityProvider) UpdateCredentials(
 
 // UpdateAttributes updates schema-defined attributes for an entity.
 func (p *defaultEntityProvider) UpdateAttributes(
-	ctx context.Context, entityID string, attributes json.RawMessage,
+	ctx context.Context,
+	entityID string, attributes json.RawMessage,
 ) *EntityProviderError {
 	ctx = security.WithRuntimeContext(ctx)
 	err := p.entitySvc.UpdateAttributes(ctx, entityID, attributes)
@@ -155,7 +162,8 @@ func (p *defaultEntityProvider) UpdateAttributes(
 
 // UpdateSystemAttributes updates system-managed attributes for an entity.
 func (p *defaultEntityProvider) UpdateSystemAttributes(
-	ctx context.Context, entityID string, attributes json.RawMessage,
+	ctx context.Context,
+	entityID string, attributes json.RawMessage,
 ) *EntityProviderError {
 	ctx = security.WithRuntimeContext(ctx)
 	err := p.entitySvc.UpdateSystemAttributes(ctx, entityID, attributes)
@@ -168,7 +176,8 @@ func (p *defaultEntityProvider) UpdateSystemAttributes(
 // UpdateSystemCredentials updates system-managed credentials for an entity.
 // Uses merge behavior — existing credential types not in the update are preserved.
 func (p *defaultEntityProvider) UpdateSystemCredentials(
-	ctx context.Context, entityID string, credentials json.RawMessage,
+	ctx context.Context,
+	entityID string, credentials json.RawMessage,
 ) *EntityProviderError {
 	ctx = security.WithRuntimeContext(ctx)
 	err := p.entitySvc.UpdateSystemCredentials(ctx, entityID, credentials)
@@ -207,7 +216,8 @@ func (p *defaultEntityProvider) GetTransitiveGroupAncestors(
 
 // ValidateEntityIDs validates that the given entity IDs exist.
 func (p *defaultEntityProvider) ValidateEntityIDs(
-	ctx context.Context, entityIDs []string,
+	ctx context.Context,
+	entityIDs []string,
 ) ([]string, *EntityProviderError) {
 	ctx = security.WithRuntimeContext(ctx)
 	invalidIDs, err := p.entitySvc.ValidateEntityIDs(ctx, entityIDs)
@@ -219,7 +229,8 @@ func (p *defaultEntityProvider) ValidateEntityIDs(
 
 // GetEntitiesByIDs retrieves multiple entities by their IDs.
 func (p *defaultEntityProvider) GetEntitiesByIDs(
-	ctx context.Context, entityIDs []string,
+	ctx context.Context,
+	entityIDs []string,
 ) ([]providers.Entity, *EntityProviderError) {
 	ctx = security.WithRuntimeContext(ctx)
 	entities, err := p.entitySvc.GetEntitiesByIDs(ctx, entityIDs)
@@ -236,7 +247,8 @@ func (p *defaultEntityProvider) GetEntitiesByIDs(
 
 // GetEntityListCount returns the total number of entities in the given category.
 func (p *defaultEntityProvider) GetEntityListCount(
-	ctx context.Context, category providers.EntityCategory, filters map[string]interface{},
+	ctx context.Context,
+	category providers.EntityCategory, filters map[string]interface{},
 ) (int, *EntityProviderError) {
 	ctx = security.WithRuntimeContext(ctx)
 	count, err := p.entitySvc.GetEntityListCount(ctx, category, filters)
@@ -248,7 +260,8 @@ func (p *defaultEntityProvider) GetEntityListCount(
 
 // GetEntityList returns a page of entities in the given category.
 func (p *defaultEntityProvider) GetEntityList(
-	ctx context.Context, category providers.EntityCategory, limit, offset int, filters map[string]interface{},
+	ctx context.Context,
+	category providers.EntityCategory, limit, offset int, filters map[string]interface{},
 ) ([]providers.Entity, *EntityProviderError) {
 	ctx = security.WithRuntimeContext(ctx)
 	entities, err := p.entitySvc.GetEntityList(ctx, category, limit, offset, filters)

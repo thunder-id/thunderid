@@ -82,6 +82,8 @@ func TestMCPTestSuite(t *testing.T) {
 
 func (ts *MCPTestSuite) SetupSuite() {
 	ts.client = testutils.GetRawHTTPClient()
+	// The timeout fails a request the server never answers, instead of leaving it to the go test timeout.
+	ts.client.Timeout = 30 * time.Second
 
 	ouID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
 		Handle:      "mcp-auth-test-ou",
@@ -323,30 +325,37 @@ func (ts *MCPTestSuite) TestInitialize_RevokedToken_Rejected() {
 		"a revoked token must be rejected once the revocation cache has synced")
 }
 
-// A suspended operator's MCP token is rejected once the revocation copy syncs: suspension revokes by
-// entity ID, which the MCP gate checks as the REST gate does. The operator is this test's own, so the
-// shared admin is never suspended.
-func (ts *MCPTestSuite) TestInitialize_SuspendedOperatorToken_Rejected() {
-	const (
-		typeHandle = "mcp-suspend-operator"
-		username   = "mcp-suspend-operator"
-		password   = "McpSuspend@123"
-	)
+// createOperator creates a user who signs in with username and password, under a user type of its
+// own in the suite's organization unit, and removes both when the test ends. The user holds no
+// permission until a role grants one.
+func (ts *MCPTestSuite) createOperator(username, password string) string {
 	typeID, err := testutils.CreateUserType(testutils.UserType{
-		Handle: typeHandle, DisplayName: typeHandle, OUID: ts.ouID,
+		Handle: username, DisplayName: username, OUID: ts.ouID,
 		Schema: map[string]interface{}{
 			"username": map[string]interface{}{"type": "string"},
 			"password": map[string]interface{}{"type": "string", "credential": true},
 		},
 	})
 	ts.Require().NoError(err, "failed to create the operator user type")
-	defer func() { _ = testutils.DeleteUserType(typeID) }()
+	ts.T().Cleanup(func() { _ = testutils.DeleteUserType(typeID) })
 	userID, err := testutils.CreateUser(testutils.User{
-		Type: typeHandle, OUID: ts.ouID,
+		Type: username, OUID: ts.ouID,
 		Attributes: []byte(`{"username": "` + username + `", "password": "` + password + `"}`),
 	})
 	ts.Require().NoError(err, "failed to create the operator")
-	defer func() { _ = testutils.DeleteUser(userID) }()
+	ts.T().Cleanup(func() { _ = testutils.DeleteUser(userID) })
+	return userID
+}
+
+// A suspended operator's MCP token is rejected once the revocation copy syncs: suspension revokes by
+// entity ID, which the MCP gate checks as the REST gate does. The operator is this test's own, so the
+// shared admin is never suspended.
+func (ts *MCPTestSuite) TestInitialize_SuspendedOperatorToken_Rejected() {
+	const (
+		username = "mcp-suspend-operator"
+		password = "McpSuspend@123"
+	)
+	userID := ts.createOperator(username, password)
 	roleID, err := testutils.CreateRole(testutils.Role{
 		Name: "MCP Suspended Operator Role", OUID: ts.ouID,
 		Permissions: []testutils.ResourcePermissions{
@@ -419,6 +428,204 @@ func (ts *MCPTestSuite) TestInitialize_NoToken_Rejected() {
 	defer resp.Body.Close()
 
 	ts.Assert().Equal(http.StatusUnauthorized, resp.StatusCode)
+}
+
+// A token that is not a JWT, or one whose signature does not verify, is rejected.
+func (ts *MCPTestSuite) TestInitialize_MalformedToken_Rejected() {
+	parts := strings.Split(ts.mcpScopedAdminToken(), ".")
+	ts.Require().Len(parts, 3, "an access token is a JWS in compact serialization")
+	// The first character of the signature carries signature bits; the last may carry padding only.
+	signature := []byte(parts[2])
+	if signature[0] == 'A' {
+		signature[0] = 'B'
+	} else {
+		signature[0] = 'A'
+	}
+
+	cases := []struct {
+		name  string
+		token string
+	}{
+		{name: "not a JWT", token: "not-a-jwt"},
+		{name: "tampered signature", token: parts[0] + "." + parts[1] + "." + string(signature)},
+	}
+	for _, tc := range cases {
+		ts.Run(tc.name, func() {
+			resp := ts.initializeMCPSession(tc.token)
+			defer resp.Body.Close()
+
+			ts.Assert().Equal(http.StatusUnauthorized, resp.StatusCode)
+		})
+	}
+}
+
+const (
+	shortLivedClientID    = "mcp-short-lived-client"
+	shortLivedRedirectURI = "https://localhost:3000/mcp-short-lived/callback"
+	// shortLivedTokenSeconds is the access token lifetime registered for shortLivedClientID: long
+	// enough to use the token once before it expires, short enough to wait out.
+	shortLivedTokenSeconds = 10
+	// jwtLeewaySeconds mirrors the server's jwt.leeway default (backend/cmd/server/config/default.json).
+	jwtLeewaySeconds = 30
+)
+
+// An expired token is rejected. The token is a real one, issued through an application whose access
+// tokens live for a few seconds, and it is accepted before it expires, so expiry is the only reason
+// left to reject it.
+func (ts *MCPTestSuite) TestInitialize_ExpiredToken_Rejected() {
+	appID, err := testutils.CreateApplication(testutils.Application{
+		Name:        "MCP Short-Lived Token Test App",
+		Description: "Application whose access tokens expire seconds after they are issued",
+		OUID:        ts.ouID,
+		Type:        "fullstack",
+		InboundAuthConfig: []map[string]interface{}{
+			{
+				"type": "oauth2",
+				"config": map[string]interface{}{
+					"clientId":                shortLivedClientID,
+					"redirectUris":            []string{shortLivedRedirectURI},
+					"grantTypes":              []string{"authorization_code"},
+					"responseTypes":           []string{"code"},
+					"tokenEndpointAuthMethod": "none",
+					"publicClient":            true,
+					"pkceRequired":            true,
+					"token": map[string]interface{}{
+						"accessToken": map[string]interface{}{
+							"userConfig": map[string]interface{}{"validityPeriod": shortLivedTokenSeconds},
+						},
+					},
+				},
+			},
+		},
+	})
+	ts.Require().NoError(err, "failed to create application")
+	defer func() { _ = testutils.DeleteApplication(appID) }()
+
+	tokenResp, err := testutils.ObtainAccessTokenWithPassword(shortLivedClientID, shortLivedRedirectURI,
+		"system", testutils.AdminUsername, testutils.AdminPassword, true, "", mcpResourceIdentifier)
+	ts.Require().NoError(err, "failed to obtain a token through the application")
+	claims, err := testutils.DecodeJWTPayloadMap(tokenResp.AccessToken)
+	ts.Require().NoError(err, "failed to decode the token payload")
+	exp, ok := claims["exp"].(float64)
+	ts.Require().True(ok, "the token must carry a numeric exp claim")
+	iat, ok := claims["iat"].(float64)
+	ts.Require().True(ok, "the token must carry a numeric iat claim")
+	ts.Require().EqualValues(shortLivedTokenSeconds, int64(exp)-int64(iat),
+		"the registered access token lifetime was not applied")
+	resp := ts.initializeMCPSession(tokenResp.AccessToken)
+	_ = resp.Body.Close()
+	ts.Require().Equal(http.StatusOK, resp.StatusCode, "the token must work before it expires")
+
+	// The guard may refuse the token from exp on, or only past the server's leeway; by the deadline
+	// both apply.
+	deadline := time.Until(time.Unix(int64(exp)+jwtLeewaySeconds+5, 0))
+	ts.Require().Eventually(func() bool {
+		resp, err := ts.tryInitializeMCPSession(tokenResp.AccessToken)
+		if err != nil {
+			return false
+		}
+		defer resp.Body.Close()
+		return resp.StatusCode == http.StatusUnauthorized
+	}, deadline, 500*time.Millisecond, "an expired token must be rejected")
+}
+
+// foreignIssuerClientID names this suite's own mock issuer on the shared OIDC mock service.
+const foreignIssuerClientID = "mcp-foreign-issuer-client"
+
+// A well-formed token signed by an issuer this server does not trust is rejected, even though it
+// names the MCP resource as its audience and carries the "system" scope.
+func (ts *MCPTestSuite) TestInitialize_TokenFromAnotherIssuer_Rejected() {
+	issuer, err := testutils.NewMockOIDCServer(foreignIssuerClientID, "unused-secret")
+	ts.Require().NoError(err, "failed to start the foreign issuer")
+	defer func() { _ = issuer.Stop() }()
+
+	now := time.Now()
+	token, err := issuer.SignJWT(map[string]interface{}{"typ": "at+jwt"}, map[string]interface{}{
+		"iss":   issuer.GetURL(),
+		"sub":   "mcp-foreign-subject",
+		"aud":   mcpResourceIdentifier,
+		"scope": systemActionHandle,
+		"iat":   now.Unix(),
+		"exp":   now.Add(time.Hour).Unix(),
+	})
+	ts.Require().NoError(err, "failed to sign the foreign token")
+
+	resp := ts.initializeMCPSession(token)
+	defer resp.Body.Close()
+
+	ts.Assert().Equal(http.StatusUnauthorized, resp.StatusCode)
+}
+
+// A valid token for the MCP resource whose holder lacks the "system" permission is refused with 403,
+// and the challenge names the scope the endpoint requires.
+func (ts *MCPTestSuite) TestInitialize_TokenWithoutSystemPermission_Forbidden() {
+	const (
+		username = "mcp-unprivileged-operator"
+		password = "McpUnprivileged@123"
+	)
+	ts.createOperator(username, password)
+
+	tokenResp, err := testutils.ObtainAccessTokenWithPassword("CONSOLE", testServerURL+"/console", "system",
+		username, password, true, "", mcpResourceIdentifier)
+	ts.Require().NoError(err, "the operator must sign in")
+
+	resp := ts.initializeMCPSession(tokenResp.AccessToken)
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	ts.Assert().Equalf(http.StatusForbidden, resp.StatusCode, "response: %s", string(body))
+	ts.Assert().Equal(systemActionHandle, challengeParam(resp.Header.Get("WWW-Authenticate"), "scope"))
+}
+
+// A client that follows the challenge finds protected resource metadata naming the resource tokens are
+// checked against, the scope the endpoint requires, and an authorization server that publishes
+// metadata for that same issuer.
+func (ts *MCPTestSuite) TestProtectedResourceMetadata_MatchesTheChallengeAndTheAudience() {
+	resp := ts.initializeMCPSession("")
+	_ = resp.Body.Close()
+	ts.Require().Equal(http.StatusUnauthorized, resp.StatusCode)
+	challenge := resp.Header.Get("WWW-Authenticate")
+	ts.Equal(systemActionHandle, challengeParam(challenge, "scope"))
+	metadataURL := challengeParam(challenge, "resource_metadata")
+	ts.Require().Equal(testServerURL+"/.well-known/oauth-protected-resource", metadataURL)
+
+	var metadata struct {
+		Resource             string   `json:"resource"`
+		AuthorizationServers []string `json:"authorization_servers"`
+		ScopesSupported      []string `json:"scopes_supported"`
+	}
+	ts.getJSON(metadataURL, &metadata)
+	ts.Equal(mcpResourceIdentifier, metadata.Resource,
+		"the advertised resource must be the audience the guard accepts")
+	ts.Equal([]string{systemActionHandle}, metadata.ScopesSupported)
+	ts.Require().Len(metadata.AuthorizationServers, 1)
+
+	var server struct {
+		Issuer string `json:"issuer"`
+	}
+	ts.getJSON(metadata.AuthorizationServers[0]+"/.well-known/oauth-authorization-server", &server)
+	ts.Equal(metadata.AuthorizationServers[0], server.Issuer)
+}
+
+// challengeParam returns the value of the named quoted parameter in a WWW-Authenticate challenge.
+func challengeParam(challenge, name string) string {
+	_, rest, found := strings.Cut(challenge, name+`="`)
+	if !found {
+		return ""
+	}
+	value, _, _ := strings.Cut(rest, `"`)
+	return value
+}
+
+// getJSON fetches url without credentials and decodes its JSON body into out.
+func (ts *MCPTestSuite) getJSON(url string, out any) {
+	resp, err := ts.client.Get(url)
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	ts.Require().Equalf(http.StatusOK, resp.StatusCode, "GET %s: %s", url, string(body))
+	ts.Require().NoErrorf(json.Unmarshal(body, out), "GET %s: %s", url, string(body))
 }
 
 const (

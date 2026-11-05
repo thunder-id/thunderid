@@ -592,7 +592,7 @@ func (suite *HTTPRequestExecutorTestSuite) TestExecute_ErrorHandling_FailOnError
 
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), providers.ExecFailure, execResp.Status)
-	assert.Contains(suite.T(), execResp.Error.ErrorDescription.DefaultValue, "HTTP request failed with status 400")
+	assert.Equal(suite.T(), &ErrHTTPRequestFailed, execResp.Error)
 }
 
 func (suite *HTTPRequestExecutorTestSuite) TestExecute_MissingURL() {

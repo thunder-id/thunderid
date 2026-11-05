@@ -3,7 +3,7 @@
 
 import {CspOriginHint} from '@thunderid/components';
 import {isValidStylesheetUrl, isInsecureStylesheetUrl, type UrlStylesheet} from '@thunderid/design';
-import {FormControl, FormLabel, TextField} from '@wso2/oxygen-ui';
+import {Stack, TextField} from '@wso2/oxygen-ui';
 import type {JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 
@@ -30,9 +30,10 @@ function UrlField({sheet, onUpdate}: UrlFieldProps): JSX.Element {
     );
 
   return (
-    <FormControl fullWidth>
-      <FormLabel>{t('layouts.config.custom_css.fields.url.label', 'URL')}</FormLabel>
+    <Stack>
       <TextField
+        labelPlacement="top"
+        label={t('layouts.config.custom_css.fields.url.label', 'URL')}
         size="small"
         value={sheet.href}
         onChange={(e) => onUpdate({href: e.target.value})}
@@ -47,7 +48,7 @@ function UrlField({sheet, onUpdate}: UrlFieldProps): JSX.Element {
         }}
       />
       <CspOriginHint value={sheet.href} resourceType="stylesheet" />
-    </FormControl>
+    </Stack>
   );
 }
 

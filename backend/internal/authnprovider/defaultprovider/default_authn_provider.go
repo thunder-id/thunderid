@@ -267,7 +267,7 @@ func (p *defaultAuthnProvider) StoreAccountLink(ctx context.Context, entityRefer
 				"The user has reached the limit of linked accounts")
 		}
 		return p.logAndReturnServerError(ctx, "Failed to link account",
-			log.String("idpId", idpID), log.String("error", err.Error()))
+			log.String(log.LoggerKeyIDPID, idpID), log.String("error", err.Error()))
 	}
 	return nil
 }

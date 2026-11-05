@@ -238,20 +238,20 @@ export default function ConnectionForm({
           const error: string | undefined = fieldError(field);
           const required: boolean = isRequiredNow(field);
           fieldContent = (
-            <FormControl fullWidth required={required} error={Boolean(error)}>
-              <FormLabel htmlFor={`connection-field-${field.name}`}>{label}</FormLabel>
-              <TextField
-                id={`connection-field-${field.name}`}
-                fullWidth
-                type={field.kind === 'number' ? 'number' : undefined}
-                value={values[field.name] ?? ''}
-                placeholder={field.placeholder}
-                error={Boolean(error)}
-                helperText={error ?? (field.hintKey ? renderHint(field.hintKey) : undefined)}
-                onChange={(e) => setField(field.name, e.target.value)}
-                onBlur={() => setTouched((prev) => ({...prev, [field.name]: true}))}
-              />
-            </FormControl>
+            <TextField
+              labelPlacement="top"
+              label={label}
+              required={required}
+              id={`connection-field-${field.name}`}
+              fullWidth
+              type={field.kind === 'number' ? 'number' : undefined}
+              value={values[field.name] ?? ''}
+              placeholder={field.placeholder}
+              error={Boolean(error)}
+              helperText={error ?? (field.hintKey ? renderHint(field.hintKey) : undefined)}
+              onChange={(e) => setField(field.name, e.target.value)}
+              onBlur={() => setTouched((prev) => ({...prev, [field.name]: true}))}
+            />
           );
         }
 

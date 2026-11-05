@@ -4,7 +4,7 @@
 import {zodResolver} from '@hookform/resolvers/zod';
 import {NameSuggestion} from '@thunderid/components';
 import {generateHandle} from '@thunderid/utils';
-import {FormControl, FormLabel, Stack, TextField, Typography} from '@wso2/oxygen-ui';
+import {Stack, TextField, Typography} from '@wso2/oxygen-ui';
 import type {JSX} from 'react';
 import {useEffect, useRef} from 'react';
 import {Controller, useForm} from 'react-hook-form';
@@ -85,13 +85,15 @@ export default function ConfigureFlowName({value, onChange, onReadyChange}: Conf
         {t('flows:create.configure.title', "Let's collect some details about your flow")}
       </Typography>
 
-      <FormControl fullWidth required>
-        <FormLabel htmlFor="flow-name-input">{t('flows:create.configure.name.label', 'Flow name')}</FormLabel>
+      <Stack>
         <Controller
           name="name"
           control={control}
           render={({field, fieldState}) => (
             <TextField
+              labelPlacement="top"
+              label={t('flows:create.configure.name.label', 'Flow name')}
+              required
               {...field}
               fullWidth
               id="flow-name-input"
@@ -103,29 +105,29 @@ export default function ConfigureFlowName({value, onChange, onReadyChange}: Conf
         />
 
         <NameSuggestion onSelect={handleSuggestionSelect} />
-      </FormControl>
+      </Stack>
 
-      <FormControl fullWidth required>
-        <FormLabel htmlFor="flow-handle-input">{t('flows:create.configure.handle.label', 'Handle')}</FormLabel>
-        <Controller
-          name="handle"
-          control={control}
-          render={({field, fieldState}) => (
-            <TextField
-              {...field}
-              fullWidth
-              id="flow-handle-input"
-              onChange={(e) => handleHandleChange(e.target.value)}
-              placeholder={t('flows:create.configure.handle.placeholder', 'e.g. customer-sign-in')}
-              error={!!fieldState.error}
-              helperText={
-                fieldState.error?.message ??
-                t('flows:create.configure.handle.hint', 'Lowercase letters, numbers, and hyphens only')
-              }
-            />
-          )}
-        />
-      </FormControl>
+      <Controller
+        name="handle"
+        control={control}
+        render={({field, fieldState}) => (
+          <TextField
+            labelPlacement="top"
+            label={t('flows:create.configure.handle.label', 'Handle')}
+            required
+            {...field}
+            fullWidth
+            id="flow-handle-input"
+            onChange={(e) => handleHandleChange(e.target.value)}
+            placeholder={t('flows:create.configure.handle.placeholder', 'e.g. customer-sign-in')}
+            error={!!fieldState.error}
+            helperText={
+              fieldState.error?.message ??
+              t('flows:create.configure.handle.hint', 'Lowercase letters, numbers, and hyphens only')
+            }
+          />
+        )}
+      />
     </Stack>
   );
 }

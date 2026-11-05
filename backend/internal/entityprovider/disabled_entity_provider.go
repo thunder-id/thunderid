@@ -106,7 +106,7 @@ func (p *disabledEntityProvider) GetEntityListCount(
 }
 
 func (p *disabledEntityProvider) GetEntityList(
-	_ context.Context, _ providers.EntityCategory, _, _ int,
-	_ map[string]interface{}) ([]providers.Entity, *EntityProviderError) {
+	_ context.Context, _ providers.EntityCategory, _, _ int, _ map[string]interface{},
+) ([]providers.Entity, *EntityProviderError) {
 	return nil, errNotImplemented
 }

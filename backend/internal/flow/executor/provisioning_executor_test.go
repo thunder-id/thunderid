@@ -321,7 +321,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_ResolvedEntityReference_
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
 	assert.Nil(suite.T(), resp.Error)
-	suite.mockEntityProvider.AssertNotCalled(suite.T(), "IdentifyEntity", mock.Anything)
+	suite.mockEntityProvider.AssertNotCalled(suite.T(), "IdentifyEntity", mock.Anything, mock.Anything)
 	suite.mockUserMgtProvider.AssertNotCalled(suite.T(), "CreateUser")
 }
 
@@ -350,7 +350,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_PreResolvedUserIDInRunti
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), providers.ExecFailure, resp.Status)
 	assert.Equal(suite.T(), ErrEntityAlreadyExists.Code, resp.Error.Code)
-	suite.mockEntityProvider.AssertNotCalled(suite.T(), "IdentifyEntity", mock.Anything)
+	suite.mockEntityProvider.AssertNotCalled(suite.T(), "IdentifyEntity", mock.Anything, mock.Anything)
 	suite.mockUserMgtProvider.AssertNotCalled(suite.T(), "CreateUser")
 }
 
@@ -1214,7 +1214,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_MissingInputs_MissingUse
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), resp)
 	assert.Equal(suite.T(), providers.ExecFailure, resp.Status)
-	suite.mockEntityProvider.AssertNotCalled(suite.T(), "IdentifyEntity")
+	suite.mockEntityProvider.AssertNotCalled(suite.T(), "IdentifyEntity", mock.Anything, mock.Anything)
 	suite.mockUserMgtProvider.AssertNotCalled(suite.T(), "CreateUser")
 }
 
@@ -4319,8 +4319,8 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_IdentifyEntity_Ambiguous
 		NodeInputs: []providers.Input{{Identifier: "username", Type: "string", Required: true}},
 	}
 
-	suite.mockEntityProvider.On("IdentifyEntity",
-		mock.Anything, map[string]interface{}{"username": "newuser"}).
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything,
+		map[string]interface{}{"username": "newuser"}).
 		Return(nil, entityprovider.NewEntityProviderError(entityprovider.ErrorCodeAmbiguousEntity, "ambiguous", ""))
 
 	resp, err := suite.executor.Execute(ctx)
@@ -4994,7 +4994,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_CrossOU_SystemError_NoSe
 	assert.NotNil(suite.T(), resp)
 	assert.Equal(suite.T(), providers.ExecFailure, resp.Status)
 	assert.Equal(suite.T(), ErrFailedToIdentifyEntity.Error.DefaultValue, resp.Error.Error.DefaultValue)
-	suite.mockEntityProvider.AssertNotCalled(suite.T(), "SearchEntities", mock.Anything)
+	suite.mockEntityProvider.AssertNotCalled(suite.T(), "SearchEntities", mock.Anything, mock.Anything)
 }
 
 // The name is a required schema attribute, so provisioning asks for it rather than letting the
@@ -5372,7 +5372,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_Federated_ProvisionsAndL
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
 	assert.Equal(suite.T(), dataValueTrue, resp.RuntimeData[common.RuntimeKeyUserAutoProvisioned])
-	suite.mockEntityProvider.AssertNotCalled(suite.T(), "IdentifyEntity", mock.Anything)
+	suite.mockEntityProvider.AssertNotCalled(suite.T(), "IdentifyEntity", mock.Anything, mock.Anything)
 	suite.mockAuthnProvider.AssertNotCalled(suite.T(), "LinkAccount",
 		mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 }

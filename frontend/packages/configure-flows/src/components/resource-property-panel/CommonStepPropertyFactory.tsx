@@ -1,7 +1,7 @@
 // Copyright 2025 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {Checkbox, FormControl, FormControlLabel, FormLabel, TextField} from '@wso2/oxygen-ui';
+import {Checkbox, FormControlLabel, TextField} from '@wso2/oxygen-ui';
 import startCase from 'lodash-es/startCase';
 import type {ChangeEvent, ReactElement, SyntheticEvent} from 'react';
 import PresentationDefinitionSelect from './PresentationDefinitionSelect';
@@ -79,32 +79,32 @@ function CommonStepPropertyFactory({
 
   if (typeof propertyValue === 'number') {
     return (
-      <FormControl fullWidth sx={{mb: 3}}>
-        <FormLabel htmlFor={propertyKey}>{displayLabel}</FormLabel>
-        <TextField
-          fullWidth
-          id={propertyKey}
-          defaultValue={propertyValue}
-          onChange={(e: ChangeEvent<HTMLInputElement>) => {
-            const val = e.target.value;
+      <TextField
+        labelPlacement="top"
+        label={displayLabel}
+        sx={{mb: 3}}
+        fullWidth
+        id={propertyKey}
+        defaultValue={propertyValue}
+        onChange={(e: ChangeEvent<HTMLInputElement>) => {
+          const val = e.target.value;
 
-            if (val === '') {
-              return;
-            }
+          if (val === '') {
+            return;
+          }
 
-            const num = Number(val);
+          const num = Number(val);
 
-            if (Number.isNaN(num)) {
-              return;
-            }
+          if (Number.isNaN(num)) {
+            return;
+          }
 
-            onChange(propertyKey, num, resource, true);
-          }}
-          placeholder={`Enter ${displayLabel}`}
-          type="number"
-          {...rest}
-        />
-      </FormControl>
+          onChange(propertyKey, num, resource, true);
+        }}
+        placeholder={`Enter ${displayLabel}`}
+        type="number"
+        {...rest}
+      />
     );
   }
 
@@ -120,17 +120,17 @@ function CommonStepPropertyFactory({
 
   if (typeof propertyValue === 'string') {
     return (
-      <FormControl fullWidth sx={{mb: 3}}>
-        <FormLabel htmlFor={propertyKey}>{displayLabel} </FormLabel>
-        <TextField
-          fullWidth
-          id={propertyKey}
-          defaultValue={propertyValue}
-          onChange={(e: ChangeEvent<HTMLInputElement>) => onChange(propertyKey, e.target.value, resource, true)}
-          placeholder={`Enter ${displayLabel}`}
-          {...rest}
-        />
-      </FormControl>
+      <TextField
+        labelPlacement="top"
+        label={<>{displayLabel} </>}
+        sx={{mb: 3}}
+        fullWidth
+        id={propertyKey}
+        defaultValue={propertyValue}
+        onChange={(e: ChangeEvent<HTMLInputElement>) => onChange(propertyKey, e.target.value, resource, true)}
+        placeholder={`Enter ${displayLabel}`}
+        {...rest}
+      />
     );
   }
 

@@ -1,7 +1,7 @@
 // Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {FormHelperText, FormLabel, MenuItem, Select, Stack, Typography} from '@wso2/oxygen-ui';
+import {FormLabel, MenuItem, Select, Stack, Typography} from '@wso2/oxygen-ui';
 import {useCallback, useContext, useMemo, type ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
 import CheckboxWithHint from './CheckboxWithHint';
@@ -66,24 +66,19 @@ function OUResolverProperties({resource, onChange}: CommonResourcePropertiesProp
       </div>
 
       {currentResolveFrom === 'prompt' && flowType === FlowType.AUTHENTICATION && (
-        <div>
-          <FormLabel htmlFor="parent-ou-id" required>
-            {t('flows:core.executions.ouResolver.parentOuId.label', 'Parent OU ID')}
-          </FormLabel>
-          <DraftTextField
-            id="parent-ou-id"
-            value={parentOuId}
-            onCommit={(value) => onChange('data.properties.parentOuId', value.trim(), resource)}
-            placeholder={t('flows:core.executions.ouResolver.parentOuId.placeholder', 'OU ID')}
-            required
-            error={parentOuId.trim() === ''}
-            fullWidth
-            size="small"
-          />
-          <FormHelperText>
-            {t('flows:core.executions.ouResolver.parentOuId.hint', 'Users select an OU below this one.')}
-          </FormHelperText>
-        </div>
+        <DraftTextField
+          labelPlacement="top"
+          label={t('flows:core.executions.ouResolver.parentOuId.label', 'Parent OU ID')}
+          helperText={t('flows:core.executions.ouResolver.parentOuId.hint', 'Users select an OU below this one.')}
+          id="parent-ou-id"
+          value={parentOuId}
+          onCommit={(value) => onChange('data.properties.parentOuId', value.trim(), resource)}
+          placeholder={t('flows:core.executions.ouResolver.parentOuId.placeholder', 'OU ID')}
+          required
+          error={parentOuId.trim() === ''}
+          fullWidth
+          size="small"
+        />
       )}
 
       {currentResolveFrom === 'prompt' && (

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {useGetVerifiablePresentations} from '@thunderid/configure-verifiable-credentials';
-import {FormControl, FormHelperText, FormLabel, MenuItem, TextField} from '@wso2/oxygen-ui';
+import {MenuItem, TextField} from '@wso2/oxygen-ui';
 import type {ChangeEvent, ReactElement} from 'react';
 import {useTranslation} from 'react-i18next';
 
@@ -33,25 +33,25 @@ export default function PresentationDefinitionSelect({
   const hasError = !!errorMessage;
 
   return (
-    <FormControl fullWidth sx={{mb: 3}} error={hasError}>
-      <FormLabel htmlFor={propertyKey}>{t('verifiable-presentations:select.label')}</FormLabel>
-      <TextField
-        select
-        fullWidth
-        id={propertyKey}
-        value={value ?? ''}
-        disabled={isLoading}
-        error={hasError}
-        onChange={(e: ChangeEvent<HTMLInputElement>) => onChange(e.target.value)}
-        placeholder={t('verifiable-presentations:select.placeholder')}
-      >
-        {options.map((vp) => (
-          <MenuItem key={vp.id} value={vp.handle}>
-            {vp.name ?? vp.handle}
-          </MenuItem>
-        ))}
-      </TextField>
-      {hasError && <FormHelperText error>{errorMessage}</FormHelperText>}
-    </FormControl>
+    <TextField
+      labelPlacement="top"
+      label={t('verifiable-presentations:select.label')}
+      select
+      fullWidth
+      sx={{mb: 3}}
+      id={propertyKey}
+      value={value ?? ''}
+      disabled={isLoading}
+      error={hasError}
+      helperText={hasError ? errorMessage : undefined}
+      onChange={(e: ChangeEvent<HTMLInputElement>) => onChange(e.target.value)}
+      placeholder={t('verifiable-presentations:select.placeholder')}
+    >
+      {options.map((vp) => (
+        <MenuItem key={vp.id} value={vp.handle}>
+          {vp.name ?? vp.handle}
+        </MenuItem>
+      ))}
+    </TextField>
   );
 }

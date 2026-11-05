@@ -332,7 +332,7 @@ export default function DashboardLayout({collapseSidebar = false}: DashboardLayo
         routes: [
           {
             id: 'gateways',
-            text: t('navigation:pages.gateways', 'Gateway management'),
+            text: t('navigation:pages.gateways', 'Deployment'),
             icon: <Network />,
             path: RouteConfig.gateways.list(),
           },

@@ -10,17 +10,7 @@ import {
 } from '@thunderid/components';
 import {useLogger} from '@thunderid/logger/react';
 import {getErrorMessage} from '@thunderid/utils';
-import {
-  Button,
-  Chip,
-  FormControl,
-  FormLabel,
-  PageContent,
-  PageTitle,
-  Stack,
-  TextField,
-  Typography,
-} from '@wso2/oxygen-ui';
+import {Button, Chip, PageContent, PageTitle, Stack, TextField, Typography} from '@wso2/oxygen-ui';
 import {ArrowLeft, KeyRound} from '@wso2/oxygen-ui-icons-react';
 import {useMemo, useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
@@ -168,47 +158,42 @@ function GatewayDetail({gatewayId}: {gatewayId: string}): JSX.Element {
           description={t('gateways:detail.connection.description', 'Where this gateway answers and how it is trusted.')}
         >
           <Stack spacing={3}>
-            <FormControl fullWidth required>
-              <FormLabel htmlFor="gateway-edit-name-input">{t('gateways:form.name.label', 'Name')}</FormLabel>
-              <TextField
-                id="gateway-edit-name-input"
-                fullWidth
-                value={valueOf('name', gateway)}
-                onChange={(e) => handleChange('name', e.target.value)}
-                disabled={updateGateway.isPending}
-              />
-            </FormControl>
-            <FormControl fullWidth required>
-              <FormLabel htmlFor="gateway-edit-base-url-input">
-                {t('gateways:form.baseUrl.label', 'Base URL')}
-              </FormLabel>
-              <TextField
-                id="gateway-edit-base-url-input"
-                fullWidth
-                value={valueOf('baseUrl', gateway)}
-                onChange={(e) => handleChange('baseUrl', e.target.value)}
-                disabled={updateGateway.isPending}
-              />
-            </FormControl>
-            <FormControl fullWidth>
-              <FormLabel htmlFor="gateway-edit-ca-certificate-input">
-                {t('gateways:form.caCertificate.label', 'CA certificate (optional)')}
-              </FormLabel>
-              <TextField
-                id="gateway-edit-ca-certificate-input"
-                fullWidth
-                multiline
-                minRows={4}
-                value={valueOf('caCertificate', gateway)}
-                onChange={(e) => handleChange('caCertificate', e.target.value)}
-                disabled={updateGateway.isPending}
-                helperText={t(
-                  'gateways:form.caCertificate.hint',
-                  'A PEM certificate to trust when calling this gateway, for one serving a certificate no public authority signed.',
-                )}
-                slotProps={{htmlInput: {sx: {fontFamily: 'monospace', fontSize: '0.8rem'}}}}
-              />
-            </FormControl>
+            <TextField
+              labelPlacement="top"
+              label={t('gateways:form.name.label', 'Name')}
+              required
+              id="gateway-edit-name-input"
+              fullWidth
+              value={valueOf('name', gateway)}
+              onChange={(e) => handleChange('name', e.target.value)}
+              disabled={updateGateway.isPending}
+            />
+            <TextField
+              labelPlacement="top"
+              label={t('gateways:form.baseUrl.label', 'Base URL')}
+              required
+              id="gateway-edit-base-url-input"
+              fullWidth
+              value={valueOf('baseUrl', gateway)}
+              onChange={(e) => handleChange('baseUrl', e.target.value)}
+              disabled={updateGateway.isPending}
+            />
+            <TextField
+              labelPlacement="top"
+              label={t('gateways:form.caCertificate.label', 'CA certificate (optional)')}
+              id="gateway-edit-ca-certificate-input"
+              fullWidth
+              multiline
+              minRows={4}
+              value={valueOf('caCertificate', gateway)}
+              onChange={(e) => handleChange('caCertificate', e.target.value)}
+              disabled={updateGateway.isPending}
+              helperText={t(
+                'gateways:form.caCertificate.hint',
+                'A PEM certificate to trust when calling this gateway, for one serving a certificate no public authority signed.',
+              )}
+              slotProps={{htmlInput: {sx: {fontFamily: 'monospace', fontSize: '0.8rem'}}}}
+            />
           </Stack>
         </SettingsCard>
 

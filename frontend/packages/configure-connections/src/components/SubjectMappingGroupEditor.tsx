@@ -94,17 +94,15 @@ export default function SubjectMappingGroupEditor({
     >
       <Stack direction="row" spacing={2} alignItems="flex-end" sx={{mb: 2}}>
         {showEntityType && hasOnlyAvailableType && (
-          <FormControl sx={{minWidth: 220}}>
-            <FormLabel sx={{mb: 0.75}} htmlFor={`subject-mapping-group-user-type-${group.key}`}>
-              {entityTypeLabel}
-            </FormLabel>
-            <TextField
-              id={`subject-mapping-group-user-type-${group.key}`}
-              value={getTypeLabel(group.userType)}
-              slotProps={{input: {readOnly: true}}}
-              data-testid={`subject-mapping-group-user-type-value-${group.key}`}
-            />
-          </FormControl>
+          <TextField
+            labelPlacement="top"
+            label={entityTypeLabel}
+            sx={{minWidth: 220}}
+            id={`subject-mapping-group-user-type-${group.key}`}
+            value={getTypeLabel(group.userType)}
+            slotProps={{input: {readOnly: true}}}
+            data-testid={`subject-mapping-group-user-type-value-${group.key}`}
+          />
         )}
         {showEntityType && !hasOnlyAvailableType && (
           <FormControl sx={{minWidth: 220}}>

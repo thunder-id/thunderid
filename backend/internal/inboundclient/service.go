@@ -445,7 +445,7 @@ func (s *inboundClientService) resolveClientID(ctx context.Context, entityID str
 	e, epErr := s.entityProvider.GetEntityProfile(ctx, entityID)
 	if epErr != nil {
 		s.logger.Warn(ctx, "Failed to resolve OAuth client_id from entity provider",
-			log.String("entityID", entityID), log.Error(epErr))
+			log.MaskedString(log.LoggerKeyEntityID, entityID), log.Error(epErr))
 		return ""
 	}
 	return clientIDFromEntity(e)

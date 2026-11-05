@@ -158,9 +158,9 @@ describe('AuthenticationSection', () => {
   it('renders the selected method fields in the order the server gave them', () => {
     renderSection({values: {[AUTH_TYPE_FIELD]: 'basic'}});
 
-    const rendered = Array.from(document.querySelectorAll('[id^="connection-field-authentication.properties."]')).map(
-      (element) => element.id,
-    );
+    const rendered = Array.from(
+      document.querySelectorAll('input[id^="connection-field-authentication.properties."]'),
+    ).map((element) => element.id);
     expect(rendered).toEqual([
       `connection-field-${authPropertyField('username')}`,
       `connection-field-${authPropertyField('password')}`,
