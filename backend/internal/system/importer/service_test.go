@@ -43,6 +43,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/sharing"
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
 	"github.com/thunder-id/thunderid/internal/system/config"
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/kmprovider/defaultkm"
 	"github.com/thunder-id/thunderid/internal/system/outboundauth"
@@ -3443,6 +3444,12 @@ type fakeResourceServerService struct {
 	actions []importedAction
 	// actionErrs are the errors CreateAction returns, by action handle.
 	actionErrs map[string]*tidcommon.ServiceError
+	// resourceErrs are the errors CreateResource returns, by resource handle.
+	resourceErrs map[string]*tidcommon.ServiceError
+	// existing are the resources GetResourceList pages through, filtered by parent.
+	existing []providers.Resource
+	// listCalls are the GetResourceList calls, each as "<parent ID>@<offset>".
+	listCalls []string
 }
 
 // importedAction is an action an import created, with the ID of the resource it was created under.
@@ -3478,14 +3485,35 @@ func (f *fakeResourceServerService) UpdateResourceServer(
 func (f *fakeResourceServerService) CreateResource(
 	_ context.Context, _ string, res providers.Resource,
 ) (*providers.Resource, *tidcommon.ServiceError) {
+	if svcErr, ok := f.resourceErrs[res.Handle]; ok {
+		return nil, svcErr
+	}
 	f.resources = append(f.resources, res)
 	return &providers.Resource{ID: "id-" + res.Permission}, nil
 }
 
 func (f *fakeResourceServerService) GetResourceList(
-	_ context.Context, _ string, _ *string, _, _ int,
+	_ context.Context, _ string, parentID *string, limit, offset int,
 ) (*resource.ResourceList, *tidcommon.ServiceError) {
-	return &resource.ResourceList{}, nil
+	parent := ""
+	if parentID != nil {
+		parent = *parentID
+	}
+	f.listCalls = append(f.listCalls, fmt.Sprintf("%s@%d", parent, offset))
+	var children []providers.Resource
+	for _, res := range f.existing {
+		if (res.Parent == nil && parentID == nil) || (res.Parent != nil && *res.Parent == parent) {
+			children = append(children, res)
+		}
+	}
+	start := min(offset, len(children))
+	end := min(offset+limit, len(children))
+	return &resource.ResourceList{
+		TotalResults: len(children),
+		StartIndex:   offset + 1,
+		Count:        end - start,
+		Resources:    children[start:end],
+	}, nil
 }
 
 func (f *fakeResourceServerService) CreateAction(
@@ -3914,6 +3942,117 @@ func TestImportResourceServer_ChildBeforeParent(t *testing.T) {
 	assert.Equal(t, "drafts", rsSvc.resources[1].Handle)
 	require.NotNil(t, rsSvc.resources[1].Parent)
 	assert.Equal(t, "id-docs", *rsSvc.resources[1].Parent)
+}
+
+// TestImportResourceServer_ReusesExistingResources verifies that resources that already exist are
+// matched by parent and handle, including past the first page, and that each parent's resources are
+// listed only once, so their actions are imported under them.
+func TestImportResourceServer_ReusesExistingResources(t *testing.T) {
+	ordersID := "id-orders-existing"
+	existing := []providers.Resource{{ID: "id-invoices-existing", Handle: "invoices"}}
+	for i := 1; i < serverconst.MaxPageSize; i++ {
+		existing = append(existing, providers.Resource{ID: fmt.Sprintf("id-%d", i), Handle: fmt.Sprintf("r%d", i)})
+	}
+	existing = append(existing,
+		providers.Resource{ID: ordersID, Handle: "orders"},
+		providers.Resource{ID: "id-items-existing", Handle: "items", Parent: &ordersID},
+		providers.Resource{ID: "id-items-top", Handle: "items"},
+	)
+	rsSvc := &fakeResourceServerService{
+		resourceErrs: map[string]*tidcommon.ServiceError{
+			"invoices": &resource.ErrorHandleConflict,
+			"orders":   &resource.ErrorHandleConflict,
+			"items":    &resource.ErrorHandleConflict,
+		},
+		existing: existing,
+	}
+	svc := newImportService(
+		nil, nil, nil, nil, nil, nil, nil, nil, nil, rsSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+
+	content := strings.Join([]string{
+		"resource_type: resource_server",
+		"id: rs-new",
+		"name: Test RS",
+		"identifier: test-rs",
+		"ouId: ou-explicit",
+		"resources:",
+		"  - name: Orders",
+		"    handle: orders",
+		"    actions:",
+		"      - { name: Read, handle: read }",
+		"  - name: Items",
+		"    handle: items",
+		"    parent: orders",
+		"    actions:",
+		"      - { name: List, handle: list }",
+		"  - name: Invoices",
+		"    handle: invoices",
+		"    actions:",
+		"      - { name: Pay, handle: pay }",
+		"",
+	}, "\n")
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{
+		Content: content,
+		Options: &ImportOptions{Upsert: boolPtr(false)},
+	})
+
+	require.Nil(t, err)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status, resp.Results[0].Message)
+	assert.Empty(t, rsSvc.resources)
+	assert.Equal(t, []string{"@0", "@100", ordersID + "@0"}, rsSvc.listCalls)
+	resourceIDs := make(map[string]string, len(rsSvc.actions))
+	for _, a := range rsSvc.actions {
+		resourceIDs[a.action.Handle] = a.resourceID
+	}
+	assert.Equal(t, map[string]string{
+		"read": ordersID,
+		"list": "id-items-existing",
+		"pay":  "id-invoices-existing",
+	}, resourceIDs)
+}
+
+// TestImportResourceServer_ConflictingResourceNotListed verifies that a resource whose handle
+// conflicts but which no listed resource matches is skipped along with its actions, after a full
+// page of siblings is followed by the empty page that ends the listing.
+func TestImportResourceServer_ConflictingResourceNotListed(t *testing.T) {
+	existing := make([]providers.Resource, 0, serverconst.MaxPageSize)
+	for i := range serverconst.MaxPageSize {
+		existing = append(existing, providers.Resource{ID: fmt.Sprintf("id-%d", i), Handle: fmt.Sprintf("r%d", i)})
+	}
+	rsSvc := &fakeResourceServerService{
+		resourceErrs: map[string]*tidcommon.ServiceError{"orders": &resource.ErrorHandleConflict},
+		existing:     existing,
+	}
+	svc := newImportService(
+		nil, nil, nil, nil, nil, nil, nil, nil, nil, rsSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+
+	content := strings.Join([]string{
+		"resource_type: resource_server",
+		"id: rs-new",
+		"name: Test RS",
+		"identifier: test-rs",
+		"ouId: ou-explicit",
+		"resources:",
+		"  - name: Orders",
+		"    handle: orders",
+		"    actions:",
+		"      - { name: Read, handle: read }",
+		"",
+	}, "\n")
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{
+		Content: content,
+		Options: &ImportOptions{Upsert: boolPtr(false)},
+	})
+
+	require.Nil(t, err)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status, resp.Results[0].Message)
+	assert.Empty(t, rsSvc.resources)
+	assert.Equal(t, []string{"@0", "@100"}, rsSvc.listCalls)
+	assert.Empty(t, rsSvc.actions)
 }
 
 // TestImportResourceServer_SameHandleUnderDifferentParents verifies that a repeated handle is
