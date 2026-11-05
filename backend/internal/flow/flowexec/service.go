@@ -853,6 +853,28 @@ func (s *flowExecService) loadPrevContext(ctx context.Context, executionID, acti
 	return engineCtx, nil
 }
 
+// GetExecutionPosition returns the flow a paused execution runs and the node it is paused at.
+func (s *flowExecService) GetExecutionPosition(ctx context.Context, executionID string) (
+	string, string, *tidcommon.ServiceError) {
+	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "FlowExecService"))
+
+	dbModel, svcErr := s.getFlowContext(ctx, executionID, logger)
+	if svcErr != nil {
+		return "", "", svcErr
+	}
+	var content flowContextContent
+	if err := json.Unmarshal([]byte(dbModel.Context), &content); err != nil {
+		logger.Error(ctx, "Failed to read the position of a flow context",
+			log.String(log.LoggerKeyExecutionID, executionID), log.Error(err))
+		return "", "", &tidcommon.InternalServerError
+	}
+	nodeID := ""
+	if content.CurrentNodeID != nil {
+		nodeID = *content.CurrentNodeID
+	}
+	return content.GraphID, nodeID, nil
+}
+
 // loadContextFromStore retrieves the flow context from the store based on the given details.
 func (s *flowExecService) loadContextFromStore(ctx context.Context, executionID string, logger *log.Logger) (
 	*EngineContext, *tidcommon.ServiceError) {
@@ -1453,13 +1475,18 @@ func (s *flowExecService) getFlowContext(ctx context.Context, executionID string
 // Returns a zero FlowSectionConfig when the serverconfig service is not wired or the section is
 // absent, letting callers fall back to built-in defaults.
 func (s *flowExecService) getFlowSectionConfig(ctx context.Context) flowconfig.FlowSectionConfig {
+	return readFlowSectionConfig(ctx, s.serverConfigSvc)
+}
+
+// readFlowSectionConfig reads the "flow" section from serverConfigSvc, as getFlowSectionConfig does.
+func readFlowSectionConfig(ctx context.Context, serverConfigSvc serverConfigProvider) flowconfig.FlowSectionConfig {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "FlowExecService"))
 
-	if s.serverConfigSvc == nil {
+	if serverConfigSvc == nil {
 		return flowconfig.FlowSectionConfig{}
 	}
 
-	merged, svcErr := s.serverConfigSvc.GetMergedConfig(ctx, "flow")
+	merged, svcErr := serverConfigSvc.GetMergedConfig(ctx, "flow")
 	if svcErr != nil {
 		logger.Error(ctx, "Failed to retrieve merged flow section from serverconfig",
 			log.String("error", svcErr.Error.DefaultValue))

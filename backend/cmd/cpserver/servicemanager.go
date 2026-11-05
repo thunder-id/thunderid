@@ -371,11 +371,14 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	fatalOnError(ctx, logger, err, "Failed to initialize ApplicationService")
 	exporters = append(exporters, applicationExporter)
 
-	agentService, agentExporter, err := agent.Initialize(mux, entityService, inboundClientService, ouService,
-		roleService, ouAuthzService, governanceService, valueCapture, entityTypeService,
-		dbprovider.GetDBProvider(), observabilitySvc, projectService, auditBus)
+	agentService, agentExporter, err := agent.Initialize(mux, mcpServer, entityService, inboundClientService,
+		ouService, roleService, resourceService, flowMgtService, ouAuthzService, governanceService, valueCapture,
+		entityTypeService, dbprovider.GetDBProvider(), observabilitySvc, projectService, auditBus)
 	fatalOnError(ctx, logger, err, "Failed to initialize AgentService")
 	exporters = append(exporters, agentExporter)
+	// The control plane creates agents directly. The data plane creates them through its agent
+	// onboarding flow instead, which execute_flow runs, so only this plane registers onboard_agent.
+	agent.RegisterOnboardAgentTool(mcpServer, agentService, entityService, entityTypeService, flowMgtService)
 
 	// Wire the dependency registry into the consuming services (two-phase init to avoid cyclic
 	// imports). flowMgtService is both a consumer and a provider: it reports which flows reference an

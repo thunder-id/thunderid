@@ -118,6 +118,95 @@ func (ts *ControlPlaneTestSuite) TestMCPRefusesATokenItDoesNotTrust() {
 	}
 }
 
+// A Control Plane creates agents directly, so it offers onboard_agent and not execute_flow, which
+// runs flows it does not have. The agent it creates gets a secret, and the token guide says the token
+// endpoints are on the data planes.
+func (ts *ControlPlaneTestSuite) TestMCPOnboardsAgentsDirectly() {
+	token := ts.harnessToken(testutils.MCPScopedTokenEnv)
+	status, _, body := ts.listMCPTools(token)
+	ts.Require().Equalf(http.StatusOK, status, "response: %s", body)
+	ts.Contains(string(body), `"onboard_agent"`)
+	ts.NotContains(string(body), `"execute_flow"`)
+
+	// The suite's administrator is a user of the trusted issuer, not of the Control Plane, so the
+	// agent needs an owner of its own.
+	userType := unique("cp-agent-owner")
+	userTypeID, err := testutils.CreateUserType(testutils.UserType{
+		Handle: userType, DisplayName: "Agent owner", OUID: ts.ouID,
+		Schema: map[string]interface{}{
+			"username": map[string]interface{}{"type": "string", "required": true, "unique": true},
+		},
+	})
+	ts.Require().NoError(err)
+	defer func() { _ = testutils.DeleteUserType(userTypeID) }()
+	attributes, err := json.Marshal(map[string]any{"username": unique("cp-agent-owner")})
+	ts.Require().NoError(err)
+	ownerID, err := testutils.CreateUser(testutils.User{OUID: ts.ouID, Type: userType, Attributes: attributes})
+	ts.Require().NoError(err)
+	defer func() { _ = testutils.DeleteUser(ownerID) }()
+
+	message := ts.callMCPTool(token, "onboard_agent", map[string]any{
+		"name": unique("cp-agent"), "ouId": ts.ouID, "owner": ownerID, "include": []string{"token_guide"}})
+	var result struct {
+		Result struct {
+			IsError           bool `json:"isError"`
+			StructuredContent struct {
+				Agent struct {
+					ID    string `json:"id"`
+					Owner string `json:"owner"`
+				} `json:"agent"`
+				ClientSecret string `json:"clientSecret"`
+				Endpoints    string `json:"endpoints"`
+			} `json:"structuredContent"`
+		} `json:"result"`
+	}
+	ts.Require().NoErrorf(json.Unmarshal([]byte(message), &result), "onboard_agent returned: %s", message)
+	ts.Require().Falsef(result.Result.IsError, "onboard_agent failed: %s", message)
+	agent := result.Result.StructuredContent
+	ts.Require().NotEmpty(agent.Agent.ID)
+	defer func() { _ = testutils.DeleteAgent(agent.Agent.ID) }()
+	ts.Equal(ownerID, agent.Agent.Owner)
+	ts.NotEmpty(agent.ClientSecret)
+	ts.Contains(agent.Endpoints, "control plane")
+
+	// An agent holding a key that also signs users in and exchanges their tokens gets a guide for each
+	// way of getting a token, each authenticating with a signed assertion.
+	message = ts.callMCPTool(token, "onboard_agent", map[string]any{
+		"name": unique("cp-keyed-agent"), "ouId": ts.ouID, "owner": ownerID,
+		"credential": "private_key_jwt", "jwksUri": "https://agent.example.com/.well-known/jwks.json",
+		"actsForUsers": []string{"sign_in", "token_exchange"}, "redirectUris": []string{"https://agent.example.com/cb"},
+		"include": []string{"token_guide"}})
+	var keyed struct {
+		Result struct {
+			IsError           bool `json:"isError"`
+			StructuredContent struct {
+				Agent struct {
+					ID string `json:"id"`
+				} `json:"agent"`
+				ClientSecret string `json:"clientSecret"`
+				GetTokens    []struct {
+					For                  string `json:"for"`
+					ClientAuthentication string `json:"clientAuthentication"`
+					Note                 string `json:"note"`
+				} `json:"getTokens"`
+			} `json:"structuredContent"`
+		} `json:"result"`
+	}
+	ts.Require().NoErrorf(json.Unmarshal([]byte(message), &keyed), "onboard_agent returned: %s", message)
+	ts.Require().Falsef(keyed.Result.IsError, "onboard_agent failed: %s", message)
+	ts.Require().NotEmpty(keyed.Result.StructuredContent.Agent.ID)
+	defer func() { _ = testutils.DeleteAgent(keyed.Result.StructuredContent.Agent.ID) }()
+	ts.Empty(keyed.Result.StructuredContent.ClientSecret, "an agent with a key gets no secret")
+	ways := []string{}
+	for _, guide := range keyed.Result.StructuredContent.GetTokens {
+		ways = append(ways, guide.For)
+		ts.Contains(guide.ClientAuthentication, "client_assertion")
+	}
+	ts.Equalf([]string{"on_its_own", "sign_in", "token_exchange"}, ways, "onboard_agent returned: %s", message)
+	ts.Contains(keyed.Result.StructuredContent.GetTokens[1].Note, "refresh_token",
+		"signing users in comes with refresh tokens")
+}
+
 // harnessToken returns the token the harness exported in env.
 func (ts *ControlPlaneTestSuite) harnessToken(env string) string {
 	token := os.Getenv(env)
@@ -129,17 +218,37 @@ func (ts *ControlPlaneTestSuite) harnessToken(env string) string {
 // empty, and returns the status, the WWW-Authenticate challenge and the body.
 func (ts *ControlPlaneTestSuite) listMCPTools(token string) (int, string, []byte) {
 	ts.T().Helper()
-	payload, err := json.Marshal(map[string]any{
-		"jsonrpc": "2.0", "id": 1, "method": "tools/list",
-		"params": map[string]any{
-			"_meta": map[string]any{
-				"io.modelcontextprotocol/protocolVersion":    mcpProtocolVersion,
-				"io.modelcontextprotocol/clientCapabilities": map[string]any{},
-				"io.modelcontextprotocol/clientInfo": map[string]any{
-					"name": "thunderid-integration-test", "version": "1.0.0"},
-			},
-		},
-	})
+	return ts.postMCP(token, "tools/list", "", map[string]any{})
+}
+
+// callMCPTool sends a stateless tools/call request and returns the JSON-RPC message, with the data
+// line of an SSE response unwrapped.
+func (ts *ControlPlaneTestSuite) callMCPTool(token, name string, args map[string]any) string {
+	ts.T().Helper()
+	status, _, body := ts.postMCP(token, "tools/call", name, map[string]any{"name": name, "arguments": args})
+	ts.Require().Equalf(http.StatusOK, status, "%s failed: %s", name, body)
+	message := string(body)
+	for _, line := range strings.Split(message, "\n") {
+		if data, ok := strings.CutPrefix(line, "data: "); ok {
+			message = data
+		}
+	}
+	return message
+}
+
+// postMCP sends a stateless request to /mcp with the given token, or none when it is empty, and
+// returns the status, the WWW-Authenticate challenge and the body. A non-empty mcpName is mirrored
+// into the Mcp-Name header, as tools/call requires.
+func (ts *ControlPlaneTestSuite) postMCP(token, method, mcpName string, params map[string]any) (
+	int, string, []byte) {
+	ts.T().Helper()
+	params["_meta"] = map[string]any{
+		"io.modelcontextprotocol/protocolVersion":    mcpProtocolVersion,
+		"io.modelcontextprotocol/clientCapabilities": map[string]any{},
+		"io.modelcontextprotocol/clientInfo": map[string]any{
+			"name": "thunderid-integration-test", "version": "1.0.0"},
+	}
+	payload, err := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": 1, "method": method, "params": params})
 	ts.Require().NoError(err)
 
 	req, err := http.NewRequest(http.MethodPost, testutils.TestServerURL+"/mcp", bytes.NewReader(payload))
@@ -147,7 +256,10 @@ func (ts *ControlPlaneTestSuite) listMCPTools(token string) (int, string, []byte
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json, text/event-stream")
 	req.Header.Set("MCP-Protocol-Version", mcpProtocolVersion)
-	req.Header.Set("Mcp-Method", "tools/list")
+	req.Header.Set("Mcp-Method", method)
+	if mcpName != "" {
+		req.Header.Set("Mcp-Name", mcpName)
+	}
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}

@@ -52,3 +52,41 @@ const (
 	// trying out sample or development mobile clients; disabled by default.
 	flowInitiationDevMode
 )
+
+// onboardingFlow is a flow execute_flow starts.
+type onboardingFlow string
+
+// Flows execute_flow starts.
+const (
+	flowAgentOnboarding onboardingFlow = "agent_onboarding"
+	flowUserOnboarding  onboardingFlow = "user_onboarding"
+)
+
+// onboardingFlows lists every flow execute_flow starts.
+var onboardingFlows = []onboardingFlow{flowAgentOnboarding, flowUserOnboarding}
+
+// flowRunStatus is the state execute_flow reports a run in.
+type flowRunStatus string
+
+// States execute_flow reports a run in.
+const (
+	flowStatusComplete   flowRunStatus = "complete"
+	flowStatusNeedsInput flowRunStatus = "needs_input"
+	flowStatusInfo       flowRunStatus = "info"
+)
+
+// execute_flow notices.
+const (
+	// secretNotice goes with a client secret a flow returns.
+	secretNotice = "clientSecret is shown only this once, and no tool can return it again. Hand it to the " +
+		"administrator to keep in a secret manager, and don't repeat it in the conversation."
+
+	// inviteNotice goes with an invite link a flow returns.
+	inviteNotice = "inviteLink lets whoever opens it set up the invited account. Give it only to the person " +
+		"invited, by a channel you trust, and don't repeat it in the conversation."
+
+	// infoNotice goes with a step that only shows values.
+	infoNotice = "This step shows the values in data and asks for nothing. If it says someone else " +
+		"finishes the flow, such as an invited user opening their link, nothing more is needed from you. " +
+		"Otherwise call execute_flow with executionId to go on."
+)

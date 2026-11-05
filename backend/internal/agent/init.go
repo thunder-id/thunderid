@@ -7,22 +7,30 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+
 	"github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/entitytype"
+	flowmgt "github.com/thunder-id/thunderid/internal/flow/mgt"
 	"github.com/thunder-id/thunderid/internal/identitygovernance"
 	"github.com/thunder-id/thunderid/internal/inboundclient"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
+	"github.com/thunder-id/thunderid/internal/resource"
 	"github.com/thunder-id/thunderid/internal/role"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	dbprovider "github.com/thunder-id/thunderid/internal/system/database/provider"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/eventbus"
+	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
 	"github.com/thunder-id/thunderid/internal/system/observability"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 )
 
 // Initialize wires the agent service, registers HTTP routes and returns the service and exporter.
+//
+// mcpServer is optional. Given one, the agent MCP tools are registered with it, and they name APIs
+// through resourceService.
 //
 // valueCapturer is optional. Given one, the service hands it every agent it creates or changes, so the
 // values the agent's export refers to are kept where a reference finds them.
@@ -33,10 +41,13 @@ import (
 // on it.
 func Initialize(
 	mux *http.ServeMux,
+	mcpServer *mcp.Server,
 	entityService entity.EntityServiceInterface,
 	inboundClientService inboundclient.InboundClientServiceInterface,
 	ouService oupkg.OrganizationUnitServiceInterface,
 	roleService role.RoleServiceInterface,
+	resourceService resource.ResourceServiceInterface,
+	flowService flowmgt.FlowMgtServiceInterface,
 	authzService sysauthz.SystemAuthorizationServiceInterface,
 	governance identitygovernance.IdentityGovernanceServiceInterface,
 	valueCapturer declarativeresource.ValueCapturer,
@@ -73,6 +84,17 @@ func Initialize(
 
 	handler := newAgentHandler(service)
 	registerRoutes(mux, handler)
+	if mcpServer != nil {
+		registerMCPTools(mcpServer, &agentTools{
+			logger:            log.GetLogger().With(log.String(log.LoggerKeyComponentName, "AgentMCPTools")),
+			agentService:      service,
+			entityService:     entityService,
+			entityTypeService: entityTypeService,
+			roleService:       roleService,
+			resourceService:   resourceService,
+			flowService:       flowService,
+		})
+	}
 
 	exporter := newAgentExporter(service, entityService)
 	return service, exporter, nil
