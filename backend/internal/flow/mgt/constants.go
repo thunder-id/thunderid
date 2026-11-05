@@ -44,6 +44,9 @@ const (
 	// (internal/flow/executor).
 	nodePropertyKeyEmailTemplate = "emailTemplate"
 	nodePropertyKeySMSTemplate   = "smsTemplate"
+	// nodePropertyKeyAllowedAgentTypes lists the agent type handles an AgentTypeResolver node narrows its
+	// candidates to. It mirrors the executor property key (internal/flow/executor).
+	nodePropertyKeyAllowedAgentTypes = "allowedAgentTypes"
 )
 
 // authToRegLabelTerms maps authentication UI label terms to their registration equivalents.

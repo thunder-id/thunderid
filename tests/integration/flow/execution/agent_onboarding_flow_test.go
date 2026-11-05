@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -51,6 +52,14 @@ const (
 const (
 	agentOwnerAction   = "action_agent_owner"
 	agentDetailsAction = "action_agent_details"
+	agentTypeAction    = "action_agent_type"
+)
+
+// The agent type step only appears when more than one agent type is available. The tests that are not
+// about the type answer it with the bootstrap agent type, whose schema they rely on.
+const (
+	agentTypeInput     = "agentType"
+	bootstrapAgentType = "default"
 )
 
 // Every agent a test provisions needs a field of its own: the suite deletes them all in teardown,
@@ -150,6 +159,19 @@ func agentOnboardingStep(s *suite.Suite, flowID, executionID, challengeToken, ac
 	return resp.StatusCode, step, body
 }
 
+// startAgentOnboarding starts the shipped flow and, when the deployment holds more than one agent type,
+// answers the agent type step with the bootstrap agent type. It returns the step that follows.
+func startAgentOnboarding(s *suite.Suite, flowID string) (int, common.FlowStep, []byte) {
+	s.T().Helper()
+
+	status, step, body := agentOnboardingStep(s, flowID, "", "", "", nil)
+	if status != http.StatusOK || !slices.Contains(inputIdentifiers(step), agentTypeInput) {
+		return status, step, body
+	}
+	return agentOnboardingStep(s, flowID, step.ExecutionID, step.ChallengeToken, agentTypeAction,
+		map[string]string{agentTypeInput: bootstrapAgentType})
+}
+
 func (ts *AgentOnboardingFlowTestSuite) step(
 	executionID string, challengeToken string, action string, inputs map[string]string,
 ) (int, common.FlowStep, []byte) {
@@ -227,7 +249,7 @@ func detailsSelectOptions(ts *suite.Suite, flowID string) map[string][]interface
 // A value the agent type rejects at creation sends the run back to the details prompt, which asks
 // for the enumerated attribute again so the administrator can pick again.
 func (ts *AgentOnboardingFlowTestSuite) TestAgentOnboardingFlow_RejectedValueReturnsToDetailsWithChoices() {
-	_, step, _ := ts.step("", "", "", nil)
+	_, step, _ := startAgentOnboarding(&ts.Suite, ts.flowID)
 	executionID := step.ExecutionID
 	_, step, _ = ts.step(executionID, step.ChallengeToken, agentOwnerAction, map[string]string{})
 
@@ -245,7 +267,7 @@ func (ts *AgentOnboardingFlowTestSuite) TestAgentOnboardingFlow_RejectedValueRet
 // permission validator, the owner resolver, the prompts, the provisioning node, and the
 // credentials the final screen reads.
 func (ts *AgentOnboardingFlowTestSuite) TestAgentOnboardingFlow_CompletesAndReturnsCredentials() {
-	status, step, body := ts.step("", "", "", nil)
+	status, step, body := startAgentOnboarding(&ts.Suite, ts.flowID)
 	ts.Require().Equal(http.StatusOK, status, "Flow initiation failed: %s", string(body))
 	ts.Require().Equal("INCOMPLETE", step.FlowStatus, "The flow should pause for the owner: %s", string(body))
 	ts.Require().NotEmpty(step.ExecutionID)
@@ -301,7 +323,7 @@ func (ts *AgentOnboardingFlowTestSuite) TestAgentOnboardingFlow_CompletesAndRetu
 // Every attribute except the name is optional, so the detail step can be submitted with only a
 // name filled in.
 func (ts *AgentOnboardingFlowTestSuite) TestAgentOnboardingFlow_CompletesWithNoDetailsSupplied() {
-	_, step, _ := ts.step("", "", "", nil)
+	_, step, _ := startAgentOnboarding(&ts.Suite, ts.flowID)
 	executionID := step.ExecutionID
 
 	_, step, _ = ts.step(executionID, step.ChallengeToken, agentOwnerAction, map[string]string{})
@@ -324,7 +346,7 @@ func (ts *AgentOnboardingFlowTestSuite) TestAgentOnboardingFlow_DuplicateNameRet
 	taken := common.GenerateUniqueUsername("integration_agent_taken")
 
 	// The first run takes the name.
-	_, step, _ := ts.step("", "", "", nil)
+	_, step, _ := startAgentOnboarding(&ts.Suite, ts.flowID)
 	first := step.ExecutionID
 	_, step, _ = ts.step(first, step.ChallengeToken, agentOwnerAction, map[string]string{})
 	_, step, body := ts.step(first, step.ChallengeToken, agentDetailsAction,
@@ -333,7 +355,7 @@ func (ts *AgentOnboardingFlowTestSuite) TestAgentOnboardingFlow_DuplicateNameRet
 	ts.takenNameAgent = step.Data.AdditionalData[agentIDData]
 
 	// The second run collides on it.
-	_, step, _ = ts.step("", "", "", nil)
+	_, step, _ = startAgentOnboarding(&ts.Suite, ts.flowID)
 	second := step.ExecutionID
 	_, step, _ = ts.step(second, step.ChallengeToken, agentOwnerAction, map[string]string{})
 	_, step, body = ts.step(second, step.ChallengeToken, agentDetailsAction,
@@ -352,10 +374,10 @@ func (ts *AgentOnboardingFlowTestSuite) TestAgentOnboardingFlow_DuplicateNameRet
 	ts.secondAgent = step.Data.AdditionalData[agentIDData]
 }
 
-// With a single agent type available the resolver settles on it without asking, so the flow reaches
-// the schema-driven prompt with no type step in between. Reaching the detail prompt proves that.
+// Once the agent type is resolved, the flow reaches the schema-driven prompt. Reaching the detail
+// prompt with the type's attributes proves the schema was resolved.
 func (ts *AgentOnboardingFlowTestSuite) TestAgentOnboardingFlow_ResolvesTheAgentTypeWithoutAResolverNode() {
-	_, step, _ := ts.step("", "", "", nil)
+	_, step, _ := startAgentOnboarding(&ts.Suite, ts.flowID)
 	executionID := step.ExecutionID
 
 	_, step, body := ts.step(executionID, step.ChallengeToken, agentOwnerAction, map[string]string{})
@@ -363,6 +385,69 @@ func (ts *AgentOnboardingFlowTestSuite) TestAgentOnboardingFlow_ResolvesTheAgent
 	ts.Contains(inputIdentifiers(step), agentNameInput, "the details prompt asks for the name")
 	ts.Contains(inputIdentifiers(step), agentModelProviderInput,
 		"the agent type's attributes are prompted, so its schema was resolved")
+}
+
+// With a second agent type in its own organization unit, the type step offers both types, and the one
+// chosen decides the agent's type and roots the organization unit step at that type's unit.
+func (ts *AgentOnboardingFlowTestSuite) TestAgentOnboardingFlow_ProvisionsTheSelectedAgentType() {
+	const handle = "onboarding-flow-agents"
+	typeOUID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
+		Handle: "agent-onboarding-type-ou", Name: "Agent Onboarding Type OU",
+	})
+	ts.Require().NoError(err)
+	childOUID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
+		Handle: "agent-onboarding-type-child-ou", Name: "Agent Onboarding Type Child OU", Parent: &typeOUID,
+	})
+	ts.Require().NoError(err)
+	agentTypeID, err := testutils.CreateNewAgentType(testutils.UserType{
+		Handle: handle, DisplayName: "Onboarding Flow Agents", OUID: typeOUID,
+		Schema: map[string]interface{}{
+			"name": map[string]interface{}{"type": "string", "required": true, "unique": true},
+		},
+	})
+	ts.Require().NoError(err)
+	var agentID string
+	defer func() {
+		if agentID != "" {
+			ts.NoError(testutils.DeleteAgent(agentID), "cleanup: delete agent")
+		}
+		ts.NoError(testutils.DeleteAgentType(agentTypeID), "cleanup: delete agent type")
+		ts.NoError(testutils.DeleteOrganizationUnit(childOUID), "cleanup: delete child OU")
+		ts.NoError(testutils.DeleteOrganizationUnit(typeOUID), "cleanup: delete OU")
+	}()
+
+	status, step, body := ts.step("", "", "", nil)
+	ts.Require().Equal(http.StatusOK, status, "Flow initiation failed: %s", string(body))
+	var offered []string
+	for _, input := range step.Data.Inputs {
+		if input.Identifier == agentTypeInput {
+			offered = input.Options
+		}
+	}
+	ts.Contains(offered, bootstrapAgentType, "the type step offers the bootstrap agent type: %s", string(body))
+	ts.Contains(offered, handle, "the type step offers the new agent type: %s", string(body))
+	executionID := step.ExecutionID
+
+	status, step, body = ts.step(executionID, step.ChallengeToken, agentTypeAction,
+		map[string]string{agentTypeInput: handle})
+	ts.Require().Equal(http.StatusOK, status, "Type step failed: %s", string(body))
+	ts.Require().Contains(inputIdentifiers(step), agentOUSelectionInput,
+		"the child of the type's unit makes the OU step a choice: %s", string(body))
+
+	status, step, body = ts.step(executionID, step.ChallengeToken, agentOUSelectionAction,
+		map[string]string{agentOUSelectionInput: childOUID})
+	ts.Require().Equal(http.StatusOK, status, "OU step failed: %s", string(body))
+	_, step, _ = ts.step(executionID, step.ChallengeToken, agentOwnerAction, map[string]string{})
+	_, step, body = ts.step(executionID, step.ChallengeToken, agentDetailsAction,
+		map[string]string{agentNameInput: common.GenerateUniqueUsername("integration_agent_typed")})
+	ts.Require().Equal("COMPLETE", step.FlowStatus, "The flow should complete: %s", string(body))
+	agentID = step.Data.AdditionalData[agentIDData]
+	ts.Require().NotEmpty(agentID)
+
+	agent, err := testutils.GetAgent(agentID)
+	ts.Require().NoError(err, "Failed to read the provisioned agent")
+	ts.Equal(handle, agent.Type, "the agent is of the chosen agent type")
+	ts.Equal(childOUID, agent.OUID, "the agent is placed in the chosen unit inside the type's tree")
 }
 
 // The flow runs behind a permission validator, so an anonymous caller must not be able to create an
@@ -431,7 +516,7 @@ func (ts *AgentOnboardingFlowTestSuite) createOwnerUser() string {
 func (ts *AgentOnboardingFlowTestSuite) runToCompletion(name, owner string, details map[string]string) string {
 	ts.T().Helper()
 
-	_, step, _ := ts.step("", "", "", nil)
+	_, step, _ := startAgentOnboarding(&ts.Suite, ts.flowID)
 	executionID := step.ExecutionID
 
 	ownerInputs := map[string]string{}
@@ -470,7 +555,7 @@ func (ts *AgentOnboardingFlowTestSuite) TestAgentOnboardingFlow_RejectsAnOwnerTh
 	ts.ownerCheckAgent = ts.runToCompletion(
 		common.GenerateUniqueUsername("integration_agent_owner_probe"), "", map[string]string{})
 
-	_, step, _ := ts.step("", "", "", nil)
+	_, step, _ := startAgentOnboarding(&ts.Suite, ts.flowID)
 	executionID := step.ExecutionID
 
 	_, step, body := ts.step(executionID, step.ChallengeToken, agentOwnerAction,
@@ -488,7 +573,7 @@ func (ts *AgentOnboardingFlowTestSuite) TestAgentOnboardingFlow_RejectsAnOwnerTh
 // The shipped flow collects no delegation inputs, so they are submitted directly here, which is
 // what a flow carrying the delegation widget would do.
 func (ts *AgentOnboardingFlowTestSuite) TestAgentOnboardingFlow_DelegationRequiresARedirectURI() {
-	_, step, _ := ts.step("", "", "", nil)
+	_, step, _ := startAgentOnboarding(&ts.Suite, ts.flowID)
 	executionID := step.ExecutionID
 
 	_, step, _ = ts.step(executionID, step.ChallengeToken, agentOwnerAction, map[string]string{})
@@ -556,7 +641,7 @@ func (ts *AgentOnboardingFlowTestSuite) TestAgentOnboardingFlow_DelegatedAgentKe
 // A login flow that does not exist is refused by the agent service. The run stays open and reports
 // the error instead of ending.
 func (ts *AgentOnboardingFlowTestSuite) TestAgentOnboardingFlow_RejectsAnUnknownLoginFlow() {
-	_, step, _ := ts.step("", "", "", nil)
+	_, step, _ := startAgentOnboarding(&ts.Suite, ts.flowID)
 	executionID := step.ExecutionID
 	_, step, _ = ts.step(executionID, step.ChallengeToken, agentOwnerAction, map[string]string{})
 	_, step, body := ts.step(executionID, step.ChallengeToken, agentDetailsAction, map[string]string{

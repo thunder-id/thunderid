@@ -19,8 +19,13 @@ import (
 const (
 	agentSubjectAgentUsername = "agent_subject_bot"
 	agentSubjectAgentPassword = "AgentSubjectBot1!"
-	// agentSubjectAgentType is the singleton agent type name; the server allows no other.
+	// agentSubjectAgentType is the bootstrap agent type, which the suite's first agent is of.
 	agentSubjectAgentType = "default"
+	// agentSubjectOtherAgentType is an agent type the suite creates, in an organization unit of its own,
+	// for an agent that is not of the `default` type.
+	agentSubjectOtherAgentType     = "agent-subject-other"
+	agentSubjectOtherAgentUsername = "agent_subject_other_bot"
+	agentSubjectOtherAgentPassword = "AgentSubjectOther1!"
 	// agentSubjectAuthFailedErrorCode is what the credentials node reports when the subject itself
 	// is rejected. A wrong password or an unknown identifier reports a different code, so asserting
 	// this one keeps the test honest about why the sign-in failed.
@@ -28,10 +33,10 @@ const (
 )
 
 // AgentSubjectTypeTestSuite covers the application's allowedAgentTypes setting as a subject
-// constraint: an agent may sign in to an application only when its agent type is listed, and an
-// application that lists none accepts no agent at all. Both applications share one authentication
-// flow, so the flow's SSO cookie also lets the suite drive an agent that holds a live session into
-// the application that does not accept it.
+// constraint: an agent may sign in to an application only when its agent type is listed or the list
+// is `["*"]`, and an application that lists none accepts no agent at all. The applications share one
+// authentication flow, so the flow's SSO cookie also lets the suite drive an agent that holds a live
+// session into the application that does not accept it.
 type AgentSubjectTypeTestSuite struct {
 	suite.Suite
 	ouID              string
@@ -40,6 +45,10 @@ type AgentSubjectTypeTestSuite struct {
 	flowID            string
 	allowedAppID      string
 	deniedAppID       string
+	anyTypeAppID      string
+	otherOUID         string
+	otherAgentTypeID  string
+	otherAgentID      string
 }
 
 func TestAgentSubjectTypeTestSuite(t *testing.T) {
@@ -55,7 +64,7 @@ func (ts *AgentSubjectTypeTestSuite) SetupSuite() {
 	ts.Require().NoError(err, "Failed to create test organization unit")
 	ts.ouID = ouID
 
-	// The `default` agent type is a singleton shared with every other suite. Snapshot it before
+	// The `default` agent type is shared with every other suite. Snapshot it before
 	// installing this suite's schema, so teardown can put it back before the OU is deleted.
 	snapshot, err := testutils.SnapshotAgentType()
 	ts.Require().NoError(err, "Failed to snapshot the default agent type")
@@ -107,10 +116,59 @@ func (ts *AgentSubjectTypeTestSuite) SetupSuite() {
 		"Agent Subject Type Denied App", nil))
 	ts.Require().NoError(err, "Failed to create the agent-denying application")
 	ts.deniedAppID = deniedAppID
+
+	anyTypeAppID, err := testutils.CreateApplication(ts.appConfig(
+		"Agent Subject Type Any Type App", []string{"*"}))
+	ts.Require().NoError(err, "Failed to create the application admitting any agent type")
+	ts.anyTypeAppID = anyTypeAppID
+
+	ts.setUpOtherAgentType()
+}
+
+// setUpOtherAgentType creates an agent type other than `default`, in an organization unit of its own
+// since the suite's organization unit holds the `default` agent type, and an agent of it.
+func (ts *AgentSubjectTypeTestSuite) setUpOtherAgentType() {
+	otherOUID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
+		Handle:      "agent-subject-other-type-ou",
+		Name:        "Agent Subject Other Type OU",
+		Description: "Organization unit holding the suite's non-default agent type",
+	})
+	ts.Require().NoError(err, "Failed to create the other agent type's organization unit")
+	ts.otherOUID = otherOUID
+
+	otherAgentTypeID, err := testutils.CreateNewAgentType(testutils.UserType{
+		Handle:      agentSubjectOtherAgentType,
+		DisplayName: "Agent Subject Other",
+		OUID:        ts.otherOUID,
+		Schema: map[string]interface{}{
+			"name": map[string]interface{}{"type": "string", "required": true, "unique": true},
+			"agent_username": map[string]interface{}{
+				"type":     "string",
+				"required": true,
+				"unique":   true,
+			},
+			"password": map[string]interface{}{"type": "string", "credential": true},
+		},
+	})
+	ts.Require().NoError(err, "Failed to create the other agent type")
+	ts.otherAgentTypeID = otherAgentTypeID
+
+	otherAgentID, err := testutils.CreateAgent(testutils.Agent{
+		Type:        agentSubjectOtherAgentType,
+		Description: "Agent of a non-default agent type",
+		OUID:        ts.otherOUID,
+		Attributes: map[string]interface{}{
+			"name":           "agent-subject-other-bot",
+			"agent_username": agentSubjectOtherAgentUsername,
+			"password":       agentSubjectOtherAgentPassword,
+		},
+	})
+	ts.Require().NoError(err, "Failed to create the agent of the other agent type")
+	ts.otherAgentID = otherAgentID
 }
 
 func (ts *AgentSubjectTypeTestSuite) TearDownSuite() {
-	for _, appID := range []string{ts.allowedAppID, ts.deniedAppID} {
+	for _, appID := range []string{ts.allowedAppID, ts.deniedAppID, ts.anyTypeAppID} {
 		if appID != "" {
 			if err := testutils.DeleteApplication(appID); err != nil {
 				ts.T().Logf("teardown: failed to delete application %s: %v", appID, err)
@@ -127,7 +185,22 @@ func (ts *AgentSubjectTypeTestSuite) TearDownSuite() {
 			ts.T().Logf("teardown: failed to delete agent: %v", err)
 		}
 	}
-	// Restore the shared agent type before deleting the OU it points at, or the singleton is left
+	if ts.otherAgentID != "" {
+		if err := testutils.DeleteAgent(ts.otherAgentID); err != nil {
+			ts.T().Logf("teardown: failed to delete the other agent: %v", err)
+		}
+	}
+	if ts.otherAgentTypeID != "" {
+		if err := testutils.DeleteAgentType(ts.otherAgentTypeID); err != nil {
+			ts.T().Errorf("teardown: failed to delete the other agent type: %v", err)
+		}
+	}
+	if ts.otherOUID != "" {
+		if err := testutils.DeleteOrganizationUnit(ts.otherOUID); err != nil {
+			ts.T().Logf("teardown: failed to delete the other organization unit: %v", err)
+		}
+	}
+	// Restore the shared agent type before deleting the OU it points at, or the `default` type is left
 	// referencing a deleted OU and a later suite's restore fails. A failed restore keeps the OU:
 	// leaking one is cheaper than every later suite inheriting a dangling reference.
 	agentTypeRestored := true
@@ -194,10 +267,48 @@ func (ts *AgentSubjectTypeTestSuite) TestBarredAgentCannotRideItsSessionIntoTheA
 		"the joining flow should fail rather than return a flow step")
 }
 
-// submitAgentCredentials runs the flow for the given application up to the credentials node and
-// returns the step that node produced.
+// TestAgentOfAnyTypeSignsInWhenAnyAgentTypeIsAllowed verifies that `["*"]` admits an agent whatever
+// its agent type: both the `default` agent and the agent of the suite's other type complete the flow.
+func (ts *AgentSubjectTypeTestSuite) TestAgentOfAnyTypeSignsInWhenAnyAgentTypeIsAllowed() {
+	for name, credentials := range map[string][2]string{
+		"default agent type": {agentSubjectAgentUsername, agentSubjectAgentPassword},
+		"other agent type":   {agentSubjectOtherAgentUsername, agentSubjectOtherAgentPassword},
+	} {
+		ts.Run(name, func() {
+			step := ts.submitCredentials(ts.newSessionClient(), ts.anyTypeAppID, credentials[0], credentials[1])
+
+			ts.Require().Equal("COMPLETE", step.FlowStatus, "the agent should complete the flow")
+			ts.Require().NotEmpty(step.Assertion, "the agent should receive an assertion")
+			ts.Require().Nil(step.Error, "no error is expected for an admitted agent")
+		})
+	}
+}
+
+// TestAgentOfUnlistedTypeRejected verifies that an application listing only `default` rejects an agent
+// of another agent type whose credentials are correct, as the `["*"]` application above accepts them.
+func (ts *AgentSubjectTypeTestSuite) TestAgentOfUnlistedTypeRejected() {
+	step := ts.submitCredentials(ts.newSessionClient(), ts.allowedAppID,
+		agentSubjectOtherAgentUsername, agentSubjectOtherAgentPassword)
+
+	ts.Require().NotEqual("COMPLETE", step.FlowStatus, "the unlisted agent type must not complete the flow")
+	ts.Require().Empty(step.Assertion, "no assertion should be issued to an unlisted agent type")
+	ts.Require().NotNil(step.Error, "the rejected authentication should report an error")
+	ts.Equal(agentSubjectAuthFailedErrorCode, step.Error.Code,
+		"the sign-in should fail on the subject, not on the credentials")
+}
+
+// submitAgentCredentials runs the flow for the given application up to the credentials node with the
+// `default` agent's credentials and returns the step that node produced.
 func (ts *AgentSubjectTypeTestSuite) submitAgentCredentials(
 	client *http.Client, appID string,
+) *testutils.FlowStep {
+	return ts.submitCredentials(client, appID, agentSubjectAgentUsername, agentSubjectAgentPassword)
+}
+
+// submitCredentials runs the flow for the given application up to the credentials node with the given
+// credentials and returns the step that node produced.
+func (ts *AgentSubjectTypeTestSuite) submitCredentials(
+	client *http.Client, appID, username, password string,
 ) *testutils.FlowStep {
 	status, initial := ts.initiateFlow(client, appID)
 	ts.Require().Equal(http.StatusOK, status, "flow initiation should succeed")
@@ -207,8 +318,8 @@ func (ts *AgentSubjectTypeTestSuite) submitAgentCredentials(
 	status, step := ts.flowExecute(client, map[string]interface{}{
 		"executionId": initial.ExecutionID,
 		"inputs": map[string]string{
-			"agent_username": agentSubjectAgentUsername,
-			"password":       agentSubjectAgentPassword,
+			"agent_username": username,
+			"password":       password,
 		},
 		"action":         "action_001",
 		"challengeToken": initial.ChallengeToken,

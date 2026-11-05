@@ -1161,9 +1161,11 @@ func clientIDFromEntity(e *providers.Entity) (string, error) {
 
 // GetResourceDependencies returns the applications that reference the resource identified
 // by (resourceType, id). It implements the resourcedependency.Provider interface. The
-// inbound-client store resolves which reference types are tracked, so no per-type handling is
-// needed here. The number of referencing entities is bounded by MaxCompositeStoreRecords
-// (the inbound-client store limit).
+// inbound-client store resolves which reference types are tracked. An application falls back from
+// a reference it loses, except from an agent type it allows: a deleted handle could be recreated
+// in another organization unit and inherit the allowance, so that reference blocks the delete. The
+// number of referencing entities is bounded by MaxCompositeStoreRecords (the inbound-client store
+// limit).
 func (as *applicationService) GetResourceDependencies(
 	ctx context.Context, resourceType, id string) ([]resourcedependency.ResourceDependency, error) {
 	ids, _, err := as.inboundClientService.GetEntityIDsByReference(
@@ -1182,6 +1184,10 @@ func (as *applicationService) GetResourceDependencies(
 		return nil, entErr
 	}
 
+	behavior := resourcedependency.BehaviorFallback
+	if resourceType == resourcedependency.ResourceTypeAgentType {
+		behavior = resourcedependency.BehaviorRestrict
+	}
 	usages := make([]resourcedependency.ResourceDependency, 0, len(entities))
 	for _, e := range entities {
 		// Applications and agents share the inbound-client store; only report applications.
@@ -1202,7 +1208,7 @@ func (as *applicationService) GetResourceDependencies(
 			ResourceType:     resourcedependency.ResourceTypeApplication,
 			ID:               e.ID,
 			DisplayName:      name,
-			BehaviorOnDelete: resourcedependency.BehaviorFallback,
+			BehaviorOnDelete: behavior,
 		})
 	}
 	return usages, nil

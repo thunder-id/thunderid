@@ -3451,3 +3451,24 @@ func (s *ServiceTestSuite) TestWithVerifiedAttributesReplacesOnlyTheEntries() {
 	_, err := s.impl().withVerifiedAttributes(json.RawMessage(`[`), entries)
 	s.Error(err)
 }
+
+func (s *ServiceTestSuite) TestGetEntityListByType() {
+	e := testEntity("type-e1")
+	s.store.On("GetEntityListByType", mock.Anything, "agent", "tools", 10).
+		Return([]providers.Entity{*e}, nil).Once()
+	list, err := s.svc.GetEntityListByType(s.ctx, providers.EntityCategoryAgent, "tools", 10)
+	s.NoError(err)
+	s.Len(list, 1)
+
+	s.store.On("GetEntityListByType", mock.Anything, "agent", "tools", 10).Return(nil, s.testErr).Once()
+	_, err = s.svc.GetEntityListByType(s.ctx, providers.EntityCategoryAgent, "tools", 10)
+	s.ErrorIs(err, s.testErr, "store error")
+
+	svc, runtime := s.newServiceWithRuntimeMock()
+	failing := testEntity("type-read-fails")
+	s.store.On("GetEntityListByType", mock.Anything, "agent", "tools", 10).
+		Return([]providers.Entity{*failing}, nil).Once()
+	runtime.On("GetRuntimeData", mock.Anything, []string{failing.ID}).Return(nil, s.testErr)
+	_, err = svc.GetEntityListByType(s.ctx, providers.EntityCategoryAgent, "tools", 10)
+	s.ErrorIs(err, s.testErr, "runtime read error")
+}

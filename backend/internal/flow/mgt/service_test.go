@@ -2292,6 +2292,47 @@ func (s *FlowMgtServiceTestSuite) TestGetResourceDependencies_CountsAConnectionI
 	s.Equal("flow1", usages[0].ID)
 }
 
+func (s *FlowMgtServiceTestSuite) TestGetResourceDependencies_AgentTypeResolverListsAgentType() {
+	resolver := &providers.ExecutorDefinition{Name: "AgentTypeResolver"}
+	s.mockStore.EXPECT().ListActiveFlowsWithNodes(mock.Anything).Return([]*providers.CompleteFlowDefinition{
+		{
+			ID:   "flow1",
+			Name: "Onboarding",
+			Nodes: []providers.NodeDefinition{
+				{ID: "resolve", Type: "TASK_EXECUTION", Executor: resolver,
+					Properties: map[string]interface{}{
+						"allowedAgentTypes": []interface{}{"default", "support-agents"},
+					}},
+			},
+		},
+		{
+			ID:   "flow2",
+			Name: "Other types",
+			Nodes: []providers.NodeDefinition{
+				{ID: "resolve", Type: "TASK_EXECUTION", Executor: resolver,
+					Properties: map[string]interface{}{"allowedAgentTypes": []interface{}{"default", 7}}},
+			},
+		},
+		{
+			ID:   "flow3",
+			Name: "Not a resolver",
+			Nodes: []providers.NodeDefinition{
+				{ID: "other", Type: "TASK_EXECUTION", Executor: &providers.ExecutorDefinition{Name: "UserTypeResolver"},
+					Properties: map[string]interface{}{"allowedAgentTypes": []interface{}{"support-agents"}}},
+			},
+		},
+	}, nil)
+
+	usages, err := s.service.GetResourceDependencies(
+		context.Background(), resourcedependency.ResourceTypeAgentType, "support-agents")
+
+	s.NoError(err)
+	s.Equal([]resourcedependency.ResourceDependency{{
+		ResourceType: resourcedependency.ResourceTypeFlow, ID: "flow1", DisplayName: "Onboarding",
+		BehaviorOnDelete: resourcedependency.BehaviorRestrict,
+	}}, usages)
+}
+
 func (s *FlowMgtServiceTestSuite) TestGetResourceDependencies_ExtensionStepReferencesHTTPConnection() {
 	connectionID := "http-conn-1"
 	s.mockStore.EXPECT().ListActiveFlowsWithNodes(mock.Anything).Return([]*providers.CompleteFlowDefinition{

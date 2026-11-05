@@ -48,11 +48,12 @@ type errorResponse struct {
 type ProjectAPITestSuite struct {
 	suite.Suite
 	// suffix keeps this run's handles apart from leftovers of an interrupted earlier run.
-	suffix   string
-	projects []string
-	childOUs []string
-	apps     []string
-	agents   []string
+	suffix     string
+	projects   []string
+	childOUs   []string
+	apps       []string
+	agents     []string
+	agentTypes []string
 }
 
 func TestProjectAPITestSuite(t *testing.T) {
@@ -72,13 +73,16 @@ func (ts *ProjectAPITestSuite) TearDownTest() {
 	for _, id := range ts.agents {
 		_ = testutils.DeleteAgent(id)
 	}
+	for _, id := range ts.agentTypes {
+		_ = testutils.DeleteAgentType(id)
+	}
 	for _, id := range ts.childOUs {
 		_ = testutils.DeleteOrganizationUnit(id)
 	}
 	for _, id := range ts.projects {
 		ts.do(http.MethodDelete, "/projects/"+id, "")
 	}
-	ts.projects, ts.childOUs, ts.apps, ts.agents = nil, nil, nil, nil
+	ts.projects, ts.childOUs, ts.apps, ts.agents, ts.agentTypes = nil, nil, nil, nil, nil
 }
 
 func (ts *ProjectAPITestSuite) handle(name string) string {

@@ -31,9 +31,12 @@ func (ts *ProjectAPITestSuite) TestCreateAgentInProject() {
 	shop := ts.create(fmt.Sprintf(`{"handle":%q,"displayName":"Shop"}`, ts.handle("agent-shop")))
 	other := ts.create(fmt.Sprintf(`{"handle":%q,"displayName":"Other"}`, ts.handle("agent-other")))
 
-	inShop := ts.createAgent(ts.agentBody("shop", `"projectId":%q`, shop.ID))
+	shopType := ts.createAgentType(shop)
+	otherType := ts.createAgentType(other)
+
+	inShop := ts.createAgent(ts.agentBody(shopType, "shop", `"projectId":%q`, shop.ID))
 	ts.Equal(shop.RootOUID, inShop.OUID)
-	inOther := ts.createAgent(ts.agentBody("other", `"ouId":%q`, other.RootOUID))
+	inOther := ts.createAgent(ts.agentBody(otherType, "other", `"ouId":%q`, other.RootOUID))
 
 	list := ts.listAgents("?projectId=" + url.QueryEscape(shop.ID))
 
@@ -56,13 +59,15 @@ func (ts *ProjectAPITestSuite) TestAgentInProjectOrganizationUnit() {
 	ts.Require().NoError(err)
 	ts.childOUs = append(ts.childOUs, childOUID)
 
-	inRoot := ts.createAgent(ts.agentBody("ou-root", `"projectId":%q,"ouId":%q`, shop.ID, shop.RootOUID))
+	shopType := ts.createAgentType(shop)
+
+	inRoot := ts.createAgent(ts.agentBody(shopType, "ou-root", `"projectId":%q,"ouId":%q`, shop.ID, shop.RootOUID))
 	ts.Equal(shop.RootOUID, inRoot.OUID)
-	inChild := ts.createAgent(ts.agentBody("ou-child", `"projectId":%q,"ouId":%q`, shop.ID, childOUID))
+	inChild := ts.createAgent(ts.agentBody(shopType, "ou-child", `"projectId":%q,"ouId":%q`, shop.ID, childOUID))
 	ts.Equal(childOUID, inChild.OUID)
 
 	status, body := ts.do(http.MethodPost, "/agents",
-		ts.agentBody("ou-outside", `"projectId":%q,"ouId":%q`, shop.ID, other.RootOUID))
+		ts.agentBody(shopType, "ou-outside", `"projectId":%q,"ouId":%q`, shop.ID, other.RootOUID))
 	ts.Equal(http.StatusBadRequest, status, body)
 	ts.Equal("AGT-1048", codeOf(ts.T(), body))
 
@@ -88,16 +93,18 @@ func (ts *ProjectAPITestSuite) TestUpdateAgentWithProject() {
 	})
 	ts.Require().NoError(err)
 	ts.childOUs = append(ts.childOUs, childOUID)
-	agent := ts.createAgent(ts.agentBody("updated", `"projectId":%q`, shop.ID))
+	shopType := ts.createAgentType(shop)
+	agent := ts.createAgent(ts.agentBody(shopType, "updated", `"projectId":%q`, shop.ID))
 
-	updated := ts.updateAgent(agent.ID, ts.agentBody("updated", `"projectId":%q`, shop.ID))
+	updated := ts.updateAgent(agent.ID, ts.agentBody(shopType, "updated", `"projectId":%q`, shop.ID))
 	ts.Equal(shop.RootOUID, updated.OUID)
 
-	updated = ts.updateAgent(agent.ID, ts.agentBody("updated", `"projectId":%q,"ouId":%q`, shop.ID, childOUID))
+	updated = ts.updateAgent(agent.ID,
+		ts.agentBody(shopType, "updated", `"projectId":%q,"ouId":%q`, shop.ID, childOUID))
 	ts.Equal(childOUID, updated.OUID)
 
 	status, body := ts.do(http.MethodPut, "/agents/"+agent.ID,
-		ts.agentBody("updated", `"projectId":%q`, other.ID))
+		ts.agentBody(shopType, "updated", `"projectId":%q`, other.ID))
 	ts.Equal(http.StatusBadRequest, status, body)
 	ts.Equal("AGT-1048", codeOf(ts.T(), body))
 }
@@ -106,7 +113,7 @@ func (ts *ProjectAPITestSuite) TestAgentWithUnknownProject() {
 	const unknownProjectID = "019a0000-0000-7000-8000-00000000dead"
 
 	status, body := ts.do(http.MethodPost, "/agents",
-		ts.agentBody("unknown", `"projectId":%q`, unknownProjectID))
+		ts.agentBody("default", "unknown", `"projectId":%q`, unknownProjectID))
 	ts.Equal(http.StatusBadRequest, status, body)
 	ts.Equal("AGT-1047", codeOf(ts.T(), body))
 
@@ -115,10 +122,38 @@ func (ts *ProjectAPITestSuite) TestAgentWithUnknownProject() {
 	ts.Empty(list.Agents)
 }
 
-// agentBody builds an agent request of the default type, with the given placement fields spliced in.
-func (ts *ProjectAPITestSuite) agentBody(name, placement string, args ...interface{}) string {
-	return fmt.Sprintf(`{"type":"default","attributes":{"name":%q},%s}`,
-		ts.handle("agent-"+name), fmt.Sprintf(placement, args...))
+// TestAgentOfAnotherProjectsAgentTypeRejected verifies the agent type placement rule on the projectId
+// path: once the project resolves the agent's organization unit, an agent type of another project's tree
+// is refused.
+func (ts *ProjectAPITestSuite) TestAgentOfAnotherProjectsAgentTypeRejected() {
+	shop := ts.create(fmt.Sprintf(`{"handle":%q,"displayName":"Shop"}`, ts.handle("agent-type-shop")))
+	other := ts.create(fmt.Sprintf(`{"handle":%q,"displayName":"Other"}`, ts.handle("agent-type-other")))
+	ts.createAgentType(shop)
+	otherType := ts.createAgentType(other)
+
+	status, body := ts.do(http.MethodPost, "/agents",
+		ts.agentBody(otherType, "foreign-type", `"projectId":%q`, shop.ID))
+	ts.Equal(http.StatusBadRequest, status, body)
+	ts.Equal("AGT-1049", codeOf(ts.T(), body))
+}
+
+// createAgentType creates an agent type in the project's root organization unit, records it for cleanup,
+// and returns its handle. An agent must be placed within its agent type's organization unit tree.
+func (ts *ProjectAPITestSuite) createAgentType(p project) string {
+	handle := ts.handle("agents-" + p.RootOUID[len(p.RootOUID)-8:])
+	id, err := testutils.CreateNewAgentType(testutils.UserType{
+		Handle: handle, DisplayName: handle, OUID: p.RootOUID,
+		Schema: map[string]interface{}{"name": map[string]interface{}{"type": "string", "required": true}},
+	})
+	ts.Require().NoError(err)
+	ts.agentTypes = append(ts.agentTypes, id)
+	return handle
+}
+
+// agentBody builds an agent request of the given agent type, with the given placement fields spliced in.
+func (ts *ProjectAPITestSuite) agentBody(agentType, name, placement string, args ...interface{}) string {
+	return fmt.Sprintf(`{"type":%q,"attributes":{"name":%q},%s}`,
+		agentType, ts.handle("agent-"+name), fmt.Sprintf(placement, args...))
 }
 
 // createAgent posts an agent, requires a 201, and records it for cleanup.

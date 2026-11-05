@@ -336,8 +336,9 @@ var (
 			DefaultValue: "Invalid agent type",
 		},
 		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "error.applicationservice.invalid_agent_type_description",
-			DefaultValue: "One or more agent types in allowedAgentTypes do not exist in the system",
+			Key: "error.applicationservice.invalid_agent_type_description",
+			DefaultValue: "One or more agent types in allowedAgentTypes do not exist in the system, " +
+				"or * is combined with other entries",
 		},
 	}
 	// ErrorThemeNotFound is the error returned when theme is not found.

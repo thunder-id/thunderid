@@ -64,6 +64,7 @@ type entityStoreInterface interface {
 		sysQuery SystemAttributeQuery, ouIDs []string) (int, error)
 	GetEntityListBySystemAttributesAndOUIDs(ctx context.Context, category string,
 		sysQuery SystemAttributeQuery, ouIDs []string, limit, offset int) ([]providers.Entity, error)
+	GetEntityListByType(ctx context.Context, category, entityType string, limit int) ([]providers.Entity, error)
 	ValidateEntityIDs(ctx context.Context, entityIDs []string) ([]string, error)
 	GetEntitiesByIDs(ctx context.Context, entityIDs []string) ([]providers.Entity, error)
 	ValidateEntityIDsInOUs(ctx context.Context, entityIDs []string, ouIDs []string) ([]string, error)
@@ -725,6 +726,23 @@ func (es *entityDBStore) GetEntityListBySystemAttributes(ctx context.Context, ca
 	results, err := dbClient.QueryContext(ctx, listQuery, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute paginated query: %w", err)
+	}
+
+	return buildEntitiesFromResults(results)
+}
+
+// GetEntityListByType retrieves up to limit entities of a category that are of the given type.
+func (es *entityDBStore) GetEntityListByType(ctx context.Context, category, entityType string,
+	limit int) ([]providers.Entity, error) {
+	dbClient, err := es.dbProvider.GetEntityDBClient()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get database client: %w", err)
+	}
+
+	results, err := dbClient.QueryContext(ctx, queryGetEntityListByType,
+		category, entityType, es.scope(ctx), limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute query: %w", err)
 	}
 
 	return buildEntitiesFromResults(results)

@@ -128,6 +128,45 @@ func userTypeDocument(id, handle, displayName string) string {
 		"schema:\n  email:\n    type: string\n", id, handle, displayName)
 }
 
+// TestImportAgentTypeIntoOUWithAgentTypeFails covers the one agent type per organization unit rule on
+// import: an agent type imported into an organization unit without one is created, and a second agent
+// type imported into the same organization unit is refused with the service's reason.
+func (suite *ImportExportErrorSuite) TestImportAgentTypeIntoOUWithAgentTypeFails() {
+	suffix := fmt.Sprintf("%d", time.Now().UnixNano())
+	ouID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
+		Handle: "import-agent-type-ou-" + suffix, Name: "Import Agent Type OU",
+	})
+	suite.Require().NoError(err)
+	defer func() { suite.NoError(testutils.DeleteOrganizationUnit(ouID)) }()
+
+	firstID := newImportUUID(suite)
+	defer suite.deleteImportedAgentType(firstID)
+	result := suite.importUserType(agentTypeDocument(firstID, "import-at-first-"+suffix, ouID), false,
+		runtimeOptions())
+	suite.Require().Equal("success", result.Status, "message: %s", result.Message)
+	suite.Equal("create", result.Operation)
+
+	secondID := newImportUUID(suite)
+	defer suite.deleteImportedAgentType(secondID)
+	result = suite.importUserType(agentTypeDocument(secondID, "import-at-second-"+suffix, ouID), false,
+		runtimeOptions())
+	suite.Equal("failed", result.Status)
+	suite.Equal("USRS-1021", result.Code, "message: %s", result.Message)
+}
+
+// deleteImportedAgentType removes an agent type created by an import.
+func (suite *ImportExportErrorSuite) deleteImportedAgentType(id string) {
+	if err := testutils.DeleteAgentType(id); err != nil {
+		suite.T().Logf("Failed to delete imported agent type %s: %v", id, err)
+	}
+}
+
+// agentTypeDocument builds an agent type import document in the given organization unit.
+func agentTypeDocument(id, handle, ouID string) string {
+	return fmt.Sprintf("resource_type: agent_type\nid: %s\nhandle: %q\ndisplayName: %q\nouId: %s\n"+
+		"schema:\n  name:\n    type: string\n", id, handle, handle, ouID)
+}
+
 // newImportUUID returns a random version 4 UUID.
 func newImportUUID(suite interface{ Require() *require.Assertions }) string {
 	b := make([]byte, 16)

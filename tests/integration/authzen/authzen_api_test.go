@@ -927,9 +927,17 @@ func (ts *AuthZENAPITestSuite) TestSearchActionDeniedUserReturnsEmptyResults() {
 // the denial names the ended lifespan.
 func (ts *AuthZENAPITestSuite) TestAnExpiredAgentIsDenied() {
 	validUntil := time.Now().UTC().Add(4 * time.Second).Truncate(time.Second)
+	// An agent is placed within its agent type's organization unit tree, so it is of a type of the suite's
+	// unit.
+	agentTypeID, err := testutils.CreateNewAgentType(testutils.UserType{
+		Handle: "authzen-expiring-agents", DisplayName: "AuthZEN Expiring Agents", OUID: ts.ouID,
+		Schema: map[string]interface{}{"name": map[string]interface{}{"type": "string", "required": true}},
+	})
+	ts.Require().NoError(err, "create the expiring agent's type")
+	ts.T().Cleanup(func() { _ = testutils.DeleteAgentType(agentTypeID) })
 	agentID, err := testutils.CreateAgent(testutils.Agent{
 		OUID:       ts.ouID,
-		Type:       "default",
+		Type:       "authzen-expiring-agents",
 		Attributes: map[string]interface{}{"name": "authzen-expiring-agent"},
 		ValidUntil: validUntil.Format(time.RFC3339),
 	})
