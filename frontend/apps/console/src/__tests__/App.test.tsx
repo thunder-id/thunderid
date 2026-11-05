@@ -32,6 +32,13 @@ vi.mock('@thunderid/configure-onboarding', async (importOriginal) => ({
 
 vi.mock('../data/sampleBundles', () => ({SAMPLE_BUNDLES: {}}));
 
+vi.mock('@thunderid/configure-agent-types', () => ({
+  AgentTypeCreateProvider: ({children}: {children: React.ReactNode}) => children as React.ReactElement,
+  AgentTypesListPage: () => <div data-testid="agent-types-list-page">Agent Types List Page</div>,
+  CreateAgentTypePage: () => <div data-testid="create-agent-type-page">Create Agent Type Page</div>,
+  ViewAgentTypePage: () => <div data-testid="view-agent-type-page">View Agent Type Page</div>,
+}));
+
 vi.mock('@thunderid/configure-user-types', () => ({
   UserTypeCreateProvider: ({children}: {children: React.ReactNode}) => children as React.ReactElement,
   UserTypesListPage: () => <div data-testid="user-types-list-page">User Types List Page</div>,
@@ -240,6 +247,30 @@ describe('App', () => {
     render(<App />);
     await waitFor(() => {
       expect(screen.getByTestId('create-user-type-page')).toBeInTheDocument();
+    });
+  });
+
+  it('should load AgentTypesListPage lazily at /agent-types', async () => {
+    window.history.pushState({}, '', '/agent-types');
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.getByTestId('agent-types-list-page')).toBeInTheDocument();
+    });
+  });
+
+  it('should load ViewAgentTypePage lazily at /agent-types/:id', async () => {
+    window.history.pushState({}, '', '/agent-types/at-123');
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.getByTestId('view-agent-type-page')).toBeInTheDocument();
+    });
+  });
+
+  it('should load CreateAgentTypePage lazily at /agent-types/create', async () => {
+    window.history.pushState({}, '', '/agent-types/create');
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.getByTestId('create-agent-type-page')).toBeInTheDocument();
     });
   });
 

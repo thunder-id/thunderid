@@ -199,6 +199,17 @@ describe('agent onboarding templates', () => {
     [ownIdentity, obo, generic].forEach((nodes) => expect(nodes.get('agent_type_resolution')).toBeDefined());
   });
 
+  // An absent allowed list imposes no type restriction. The type is still resolved before the
+  // organization unit.
+  it('should not restrict the agent types the resolver offers', () => {
+    [ownIdentity, obo, generic].forEach((nodes) => {
+      const resolver = nodes.get('agent_type_resolution');
+
+      expect(resolver?.properties?.['allowedAgentTypes']).toBeUndefined();
+      expect(resolver?.onSuccess).toBe('ou_selection');
+    });
+  });
+
   it('should point every connection at a node that exists', () => {
     [ownIdentity, obo, generic].forEach((nodes) => {
       nodes.forEach((node) => {

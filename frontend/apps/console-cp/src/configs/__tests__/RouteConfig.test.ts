@@ -35,7 +35,9 @@ describe('RouteConfig', () => {
   });
 
   it('agentTypes builds paths from the segment', () => {
+    expect(RouteConfig.agentTypes.list()).toBe('/agent-types');
     expect(RouteConfig.agentTypes.detail('agent-type-1')).toBe('/agent-types/agent-type-1');
+    expect(RouteConfig.agentTypes.create()).toBe('/agent-types/create');
   });
 
   it('agents builds paths from the segment', () => {

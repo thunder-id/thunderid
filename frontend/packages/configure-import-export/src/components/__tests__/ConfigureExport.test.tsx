@@ -12,9 +12,9 @@ const mockLogger = {
   debug: vi.fn(),
 };
 
-const {mockUseGetAgentTypes} = vi.hoisted(() => ({mockUseGetAgentTypes: vi.fn(() => ({data: undefined}))}));
+const {mockUseGetAllAgentTypes} = vi.hoisted(() => ({mockUseGetAllAgentTypes: vi.fn(() => ({data: undefined}))}));
 
-vi.mock('@thunderid/configure-agent-types', () => ({useGetAgentTypes: mockUseGetAgentTypes}));
+vi.mock('@thunderid/configure-agent-types', () => ({useGetAllAgentTypes: mockUseGetAllAgentTypes}));
 
 vi.mock('@thunderid/logger/react', () => ({
   useLogger: () => mockLogger,
@@ -102,7 +102,7 @@ import ConfigureExport from '../ConfigureExport';
 
 afterEach(() => {
   vi.clearAllMocks();
-  mockUseGetAgentTypes.mockReturnValue({data: undefined});
+  mockUseGetAllAgentTypes.mockReturnValue({data: undefined});
 });
 
 describe('ConfigureExport', () => {
@@ -253,12 +253,12 @@ systemAttributes:
       await expandAgentsRow();
 
       expect(screen.getByText('Calendar Agent')).toBeInTheDocument();
-      expect(mockUseGetAgentTypes).toHaveBeenCalledWith(undefined, {enabled: false});
+      expect(mockUseGetAllAgentTypes).toHaveBeenCalledWith({enabled: false});
     });
 
     it('labels an agent from a server type when the bundle has no agent types', async () => {
-      mockUseGetAgentTypes.mockReturnValue({
-        data: {types: [{handle: 'default', systemAttributes: {display: 'name'}}]},
+      mockUseGetAllAgentTypes.mockReturnValue({
+        data: [{handle: 'default', systemAttributes: {display: 'name'}}],
       } as never);
       const yamlContent = `
 ---
@@ -272,7 +272,7 @@ attributes:
       await expandAgentsRow();
 
       expect(screen.getByText('Server Resolved')).toBeInTheDocument();
-      expect(mockUseGetAgentTypes).toHaveBeenCalledWith(undefined, {enabled: true});
+      expect(mockUseGetAllAgentTypes).toHaveBeenCalledWith({enabled: true});
     });
 
     it('falls back to the agent id when no type resolves a label', async () => {

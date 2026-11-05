@@ -7,15 +7,25 @@ import {describe, it, expect, vi, beforeEach} from 'vitest';
 import type {ApiAgentType} from '../../models/agent-type';
 import ViewAgentTypePage from '../ViewAgentTypePage';
 
-const {mockNavigate, mockUseGetAgentType, mockUseUpdateAgentType, mockMutateAsync, mockResetUpdate, mockShowToast} =
-  vi.hoisted(() => ({
-    mockNavigate: vi.fn(),
-    mockUseGetAgentType: vi.fn(),
-    mockUseUpdateAgentType: vi.fn(),
-    mockMutateAsync: vi.fn(),
-    mockResetUpdate: vi.fn(),
-    mockShowToast: vi.fn(),
-  }));
+const {
+  mockNavigate,
+  mockUseGetAgentType,
+  mockUseUpdateAgentType,
+  mockMutateAsync,
+  mockResetUpdate,
+  mockShowToast,
+  mockDeleteMutate,
+  mockUseGetAllAgentTypes,
+} = vi.hoisted(() => ({
+  mockNavigate: vi.fn(),
+  mockUseGetAgentType: vi.fn(),
+  mockUseUpdateAgentType: vi.fn(),
+  mockMutateAsync: vi.fn(),
+  mockResetUpdate: vi.fn(),
+  mockShowToast: vi.fn(),
+  mockDeleteMutate: vi.fn(),
+  mockUseGetAllAgentTypes: vi.fn(),
+}));
 
 vi.mock('react-router', async () => {
   const actual = await vi.importActual<typeof import('react-router')>('react-router');
@@ -46,9 +56,23 @@ vi.mock('@/api/useUpdateAgentType', () => ({
   default: (): unknown => mockUseUpdateAgentType() as unknown,
 }));
 
+vi.mock('@/api/useGetAllAgentTypes', () => ({
+  default: (): unknown => mockUseGetAllAgentTypes() as unknown,
+}));
+
+vi.mock('@/api/useDeleteAgentType', () => ({
+  default: (): unknown => ({mutate: mockDeleteMutate, isPending: false, error: null, reset: vi.fn()}),
+}));
+
 vi.mock('@/components/edit-agent-type/schema-settings/EditSchemaSettings', () => ({
-  default: ({onPropertiesChange}: {onPropertiesChange: (props: unknown[]) => void}) => (
-    <div data-testid="edit-schema-settings">
+  default: ({
+    onPropertiesChange,
+    disabled = false,
+  }: {
+    onPropertiesChange: (props: unknown[]) => void;
+    disabled?: boolean;
+  }) => (
+    <div data-testid="edit-schema-settings" data-disabled={String(disabled)}>
       {(['email', 'mobile'] as const).map((type) => (
         <button
           key={type}
@@ -232,6 +256,10 @@ describe('ViewAgentTypePage', () => {
       isPending: false,
       reset: mockResetUpdate,
     });
+    mockUseGetAllAgentTypes.mockReturnValue({
+      data: [{id: 'schema-1', handle: 'default', displayName: 'Default', ouId: 'ou-1', isReadOnly: false}],
+      isLoading: false,
+    });
   });
 
   describe('Loading and Error States', () => {
@@ -259,7 +287,7 @@ describe('ViewAgentTypePage', () => {
 
       expect(screen.getByText('Failed to load agent type information')).toBeInTheDocument();
       expect(screen.queryByText('Boom')).not.toBeInTheDocument();
-      expect(screen.getByRole('button', {name: /Back to agents/i})).toBeInTheDocument();
+      expect(screen.getByRole('button', {name: /Back to agent types/i})).toBeInTheDocument();
     });
 
     it('renders a not-found message when no data is returned', () => {
@@ -269,7 +297,7 @@ describe('ViewAgentTypePage', () => {
 
       // The page falls back to a translation that resolves to "Agent type not found" via test-utils i18n
       expect(screen.getByRole('alert')).toBeInTheDocument();
-      expect(screen.getByRole('button', {name: /Back to agents/i})).toBeInTheDocument();
+      expect(screen.getByRole('button', {name: /Back to agent types/i})).toBeInTheDocument();
     });
 
     it('navigates back from error state', async () => {
@@ -282,32 +310,146 @@ describe('ViewAgentTypePage', () => {
 
       render(<ViewAgentTypePage />);
 
-      await user.click(screen.getByRole('button', {name: /Back to agents/i}));
+      await user.click(screen.getByRole('button', {name: /Back to agent types/i}));
 
       await waitFor(() => {
-        expect(mockNavigate).toHaveBeenCalledWith('/agents');
+        expect(mockNavigate).toHaveBeenCalledWith('/agent-types');
       });
     });
   });
 
   describe('Header', () => {
-    it('renders the agent type heading', () => {
+    it('should render the agent type name as the heading', () => {
       render(<ViewAgentTypePage />);
 
-      expect(screen.getByText('Agent schema')).toBeInTheDocument();
+      expect(screen.getByRole('heading', {level: 1, name: 'Default'})).toBeInTheDocument();
     });
 
-    it('sets the browser tab title', async () => {
+    it('should set the browser tab title to the agent type name', async () => {
       render(<ViewAgentTypePage />);
 
-      await waitFor(() => expect(document.title).toBe('Agent schema | ThunderID'));
+      await waitFor(() => expect(document.title).toBe('Default | ThunderID'));
     });
 
-    it('renders the back link to /agents', () => {
+    it('should link back to the agent types list', () => {
       render(<ViewAgentTypePage />);
 
-      const backLink = screen.getByRole('link', {name: /Back to agents/i});
-      expect(backLink).toHaveAttribute('href', '/agents');
+      const backLink = screen.getByRole('link', {name: /Back to agent types/i});
+      expect(backLink).toHaveAttribute('href', '/agent-types');
+    });
+  });
+
+  describe('Tabs', () => {
+    it('should open on the Schema tab', () => {
+      render(<ViewAgentTypePage />);
+
+      expect(screen.getByRole('tab', {name: 'Schema'})).toHaveAttribute('aria-selected', 'true');
+      expect(screen.getByTestId('edit-schema-settings')).toBeInTheDocument();
+      expect(screen.queryByText('Danger zone')).not.toBeInTheDocument();
+    });
+
+    it('should show the danger zone on the Advanced tab', async () => {
+      const user = userEvent.setup();
+      render(<ViewAgentTypePage />);
+
+      await user.click(screen.getByRole('tab', {name: 'Advanced'}));
+
+      expect(screen.getByText('Danger zone')).toBeInTheDocument();
+      expect(screen.getByRole('button', {name: 'Delete'})).toBeInTheDocument();
+      expect(screen.queryByTestId('edit-schema-settings')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('Delete', () => {
+    const openDeleteDialog = async (user: ReturnType<typeof userEvent.setup>): Promise<HTMLElement> => {
+      await user.click(screen.getByRole('tab', {name: 'Advanced'}));
+      await user.click(screen.getByRole('button', {name: 'Delete'}));
+
+      return screen.findByRole('dialog', {name: 'Delete agent type'});
+    };
+
+    it('should delete the agent type and return to the list', async () => {
+      const user = userEvent.setup();
+      mockNavigate.mockResolvedValue(undefined);
+      mockDeleteMutate.mockImplementation((_id: string, options: {onSuccess: () => void}) => options.onSuccess());
+      render(<ViewAgentTypePage />);
+
+      const dialog = await openDeleteDialog(user);
+      await user.click(within(dialog).getByRole('button', {name: 'Delete'}));
+
+      expect(mockDeleteMutate).toHaveBeenCalledWith('schema-1', expect.any(Object));
+      await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/agent-types'));
+    });
+
+    it('should keep the dialog open and explain why when the type is still in use', async () => {
+      const user = userEvent.setup();
+      mockDeleteMutate.mockImplementation((_id: string, options: {onError: (err: Error) => void}) =>
+        options.onError(Object.assign(new Error('Request failed'), {response: {data: {code: 'USRS-1022'}}})),
+      );
+      render(<ViewAgentTypePage />);
+
+      const dialog = await openDeleteDialog(user);
+      await user.click(within(dialog).getByRole('button', {name: 'Delete'}));
+
+      expect(
+        await within(dialog).findByText(
+          'This agent type is in use. Delete or change the agents of this type, and remove it from the allowed agent types of applications, agents, and flows, before deleting it.',
+        ),
+      ).toBeInTheDocument();
+      expect(screen.getByRole('dialog', {name: 'Delete agent type'})).toBeInTheDocument();
+      expect(mockNavigate).not.toHaveBeenCalled();
+    });
+
+    // The detail response has no read-only flag, so it comes from the agent type list.
+    it('should not offer deleting a read-only agent type', async () => {
+      const user = userEvent.setup();
+      mockUseGetAllAgentTypes.mockReturnValue({
+        data: [{id: 'schema-1', handle: 'default', displayName: 'Default', ouId: 'ou-1', isReadOnly: true}],
+        isLoading: false,
+      });
+      render(<ViewAgentTypePage />);
+
+      await user.click(screen.getByRole('tab', {name: 'Advanced'}));
+
+      expect(screen.queryByText('Danger zone')).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', {name: 'Delete'})).not.toBeInTheDocument();
+    });
+
+    it('should show a read-only agent type without letting its schema be saved', async () => {
+      const user = userEvent.setup();
+      mockUseGetAllAgentTypes.mockReturnValue({
+        data: [{id: 'schema-1', handle: 'default', displayName: 'Default', ouId: 'ou-1', isReadOnly: true}],
+        isLoading: false,
+      });
+      render(<ViewAgentTypePage />);
+
+      expect(screen.getByText('This resource is read-only and cannot be modified.')).toBeInTheDocument();
+      expect(screen.getByTestId('edit-schema-settings')).toHaveAttribute('data-disabled', 'true');
+
+      await user.click(screen.getByText('Update Properties'));
+
+      expect(screen.getByRole('button', {name: 'Save'})).toBeDisabled();
+    });
+
+    it('should not offer deleting until the agent type list says whether the type is read-only', async () => {
+      const user = userEvent.setup();
+      mockUseGetAllAgentTypes.mockReturnValue({data: undefined, isLoading: true});
+      render(<ViewAgentTypePage />);
+
+      await user.click(screen.getByRole('tab', {name: 'Advanced'}));
+
+      expect(screen.queryByRole('button', {name: 'Delete'})).not.toBeInTheDocument();
+    });
+
+    it('should close the dialog on cancel without deleting', async () => {
+      const user = userEvent.setup();
+      render(<ViewAgentTypePage />);
+
+      const dialog = await openDeleteDialog(user);
+      await user.click(within(dialog).getByRole('button', {name: 'Cancel'}));
+
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+      expect(mockDeleteMutate).not.toHaveBeenCalled();
     });
   });
 
@@ -400,6 +542,48 @@ describe('ViewAgentTypePage', () => {
       });
       const [{data: sentData}] = mockMutateAsync.mock.calls[0] as [{data: Record<string, unknown>}];
       expect(sentData).not.toHaveProperty('handle');
+    });
+
+    it('should keep the display attribute the server returned when saving', async () => {
+      const user = userEvent.setup();
+      mockUseGetAgentType.mockReturnValue({
+        data: {...baseAgentType, systemAttributes: {display: 'email'}},
+        isLoading: false,
+        error: null,
+      });
+      render(<ViewAgentTypePage />);
+
+      await user.click(screen.getByText('Add Optional Field'));
+      await user.click(await screen.findByRole('button', {name: /^Save$/i}));
+
+      await waitFor(() => {
+        expect(mockMutateAsync).toHaveBeenCalledWith(
+          expect.objectContaining({
+            data: expect.objectContaining({systemAttributes: {display: 'email'}}) as Record<string, unknown>,
+          }),
+        );
+      });
+    });
+
+    // Update Properties replaces every property with `newField`, as a rename of the display property
+    // would. Sending the old display attribute would make the API reject the save with USRS-1011.
+    it('should drop a display attribute whose property was renamed or removed', async () => {
+      const user = userEvent.setup();
+      mockUseGetAgentType.mockReturnValue({
+        data: {...baseAgentType, systemAttributes: {display: 'email'}},
+        isLoading: false,
+        error: null,
+      });
+      render(<ViewAgentTypePage />);
+
+      await user.click(screen.getByText('Update Properties'));
+      await user.click(await screen.findByRole('button', {name: /^Save$/i}));
+      await user.click(await screen.findByRole('button', {name: /^Continue$/i}));
+
+      await waitFor(() => expect(mockMutateAsync).toHaveBeenCalled());
+      const [{data: sentData}] = mockMutateAsync.mock.calls[0] as [{data: Record<string, unknown>}];
+      expect(sentData).not.toHaveProperty('systemAttributes');
+      expect(sentData['schema']).toHaveProperty('newField');
     });
 
     it('warns before saving a breaking schema change and can be cancelled', async () => {

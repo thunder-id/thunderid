@@ -2,18 +2,23 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import userEvent from '@testing-library/user-event';
-import {render, screen, waitFor} from '@thunderid/test-utils';
+import {render, screen, waitFor, within} from '@thunderid/test-utils';
 import type {NavigateFunction} from 'react-router';
 import {describe, it, expect, beforeEach, vi} from 'vitest';
 import type {AgentListResponse} from '../../models/agent';
 import AgentsList from '../AgentsList';
 
-const {mockLoggerError} = vi.hoisted(() => ({
+const {mockLoggerError, mockUseGetAllAgentTypes} = vi.hoisted(() => ({
   mockLoggerError: vi.fn(),
+  mockUseGetAllAgentTypes: vi.fn(),
 }));
 
 // Mock the dependencies
 vi.mock('../../api/useGetAgents');
+vi.mock('@thunderid/configure-agent-types', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@thunderid/configure-agent-types')>()),
+  useGetAllAgentTypes: (): unknown => mockUseGetAllAgentTypes() as unknown,
+}));
 vi.mock('react-router', async () => {
   const actual = await vi.importActual('react-router');
   return {
@@ -175,6 +180,9 @@ describe('AgentsList', () => {
   beforeEach(() => {
     mockNavigate = vi.fn();
     mockLoggerError.mockReset();
+    mockUseGetAllAgentTypes.mockReturnValue({
+      data: [{id: 'type-1', handle: 'default', displayName: 'Default', ouId: 'ou-1'}],
+    });
     vi.mocked(useNavigate).mockReturnValue(mockNavigate as unknown as NavigateFunction);
     vi.mocked(useDataGridLocaleText).mockReturnValue({});
   });
@@ -347,6 +355,40 @@ describe('AgentsList', () => {
 
     expect(screen.getByText('agent-1')).toBeInTheDocument();
     expect(screen.getByText('agent-2')).toBeInTheDocument();
+  });
+
+  it("should show each agent's type by its display name", () => {
+    mockUseGetAllAgentTypes.mockReturnValue({
+      data: [
+        {id: 'type-1', handle: 'default', displayName: 'Default', ouId: 'ou-1'},
+        {id: 'type-2', handle: 'assistant', displayName: 'Research assistant', ouId: 'ou-2'},
+      ],
+    });
+    vi.mocked(useGetAgents).mockReturnValue({
+      data: {...mockAgentsData, agents: [mockAgentsData.agents[0], {...mockAgentsData.agents[1], type: 'assistant'}]},
+      isLoading: false,
+      error: null,
+    } as ReturnType<typeof useGetAgents>);
+
+    renderComponent();
+
+    const [firstRow, secondRow] = screen.getAllByRole('row');
+    expect(within(firstRow).getByText('Default')).toBeInTheDocument();
+    expect(within(secondRow).getByText('Research assistant')).toBeInTheDocument();
+    expect(within(secondRow).queryByText('Default')).not.toBeInTheDocument();
+  });
+
+  it('should show the type handle when the agent types have not loaded', () => {
+    mockUseGetAllAgentTypes.mockReturnValue({data: undefined});
+    vi.mocked(useGetAgents).mockReturnValue({
+      data: mockAgentsData,
+      isLoading: false,
+      error: null,
+    } as ReturnType<typeof useGetAgents>);
+
+    renderComponent();
+
+    expect(screen.getAllByText('default')).toHaveLength(2);
   });
 
   it('should display ouHandle when present and ouId otherwise', () => {

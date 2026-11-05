@@ -41,9 +41,9 @@ const getImportConfigurationButton = (): HTMLElement =>
 const getImportConfigurationBreadcrumb = (): HTMLElement =>
   screen.getAllByRole('button', {name: 'Import configuration'}).find((el) => el.tagName !== 'BUTTON')!;
 
-const {mockUseGetAgentTypes} = vi.hoisted(() => ({mockUseGetAgentTypes: vi.fn(() => ({data: undefined}))}));
+const {mockUseGetAllAgentTypes} = vi.hoisted(() => ({mockUseGetAllAgentTypes: vi.fn(() => ({data: undefined}))}));
 
-vi.mock('@thunderid/configure-agent-types', () => ({useGetAgentTypes: mockUseGetAgentTypes}));
+vi.mock('@thunderid/configure-agent-types', () => ({useGetAllAgentTypes: mockUseGetAllAgentTypes}));
 
 vi.mock('react-router', async () => {
   const actual = await vi.importActual<typeof import('react-router')>('react-router');
@@ -111,7 +111,7 @@ import ImportConfigurationSummaryPage from '../ImportConfigurationSummaryPage';
 
 afterEach(() => {
   vi.clearAllMocks();
-  mockUseGetAgentTypes.mockReturnValue({data: undefined});
+  mockUseGetAllAgentTypes.mockReturnValue({data: undefined});
 });
 
 describe('ImportConfigurationSummaryPage', () => {
@@ -199,8 +199,8 @@ describe('ImportConfigurationSummaryPage', () => {
     });
 
     it('labels agents from a server type when the bundle contains only agents', () => {
-      mockUseGetAgentTypes.mockReturnValue({
-        data: {types: [{handle: 'default', systemAttributes: {display: 'name'}}]},
+      mockUseGetAllAgentTypes.mockReturnValue({
+        data: [{handle: 'default', systemAttributes: {display: 'name'}}],
       } as never);
 
       withConfig(
@@ -209,7 +209,7 @@ describe('ImportConfigurationSummaryPage', () => {
           render(<ImportConfigurationSummaryPage />);
 
           expect(screen.getByText('Server Resolved')).toBeInTheDocument();
-          expect(mockUseGetAgentTypes).toHaveBeenCalledWith(undefined, {enabled: true});
+          expect(mockUseGetAllAgentTypes).toHaveBeenCalledWith({enabled: true});
         },
       );
     });

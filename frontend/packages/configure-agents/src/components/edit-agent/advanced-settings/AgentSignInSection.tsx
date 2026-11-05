@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {SettingsCard} from '@thunderid/components';
-import {deriveOAuth2Flags} from '@thunderid/configure-applications';
-import {Switch} from '@wso2/oxygen-ui';
+import {ApplicationConstants, deriveOAuth2Flags} from '@thunderid/configure-applications';
+import {Switch, Typography} from '@wso2/oxygen-ui';
 import type {JSX} from 'react';
 import {useTranslation} from 'react-i18next';
-import {DEFAULT_AGENT_TYPE_HANDLE, type Agent, type OAuthAgentConfig} from '../../../models/agent';
+import type {Agent, OAuthAgentConfig} from '../../../models/agent';
 
 interface AgentSignInSectionProps {
   agent: Agent;
@@ -29,12 +29,17 @@ export default function AgentSignInSection({
 
   if (!isApplicable) return null;
 
-  // Agent access is a single on/off choice in the console for now: on means the default agent type
-  // (the only type) is the only allowed one, off means no agent type is allowed.
-  const isEnabled = (editedAgent.allowedAgentTypes ?? agent.allowedAgentTypes ?? []).length > 0;
+  // Agent access is a single on/off choice in the console: on allows every agent type, off allows
+  // none. Any non-empty list, such as an older `['default']`, shows as on, and a list that names agent
+  // types is spelled out, since turning the switch back on allows every agent type instead.
+  const allowedAgentTypes = editedAgent.allowedAgentTypes ?? agent.allowedAgentTypes ?? [];
+  const isEnabled = allowedAgentTypes.length > 0;
+  const restrictedAgentTypes = allowedAgentTypes.includes(ApplicationConstants.ALL_AGENT_TYPES)
+    ? []
+    : allowedAgentTypes;
 
   const handleToggle = (enabled: boolean): void => {
-    onFieldChange('allowedAgentTypes', enabled ? [DEFAULT_AGENT_TYPE_HANDLE] : []);
+    onFieldChange('allowedAgentTypes', enabled ? [ApplicationConstants.ALL_AGENT_TYPES] : []);
   };
 
   const toggleLabel = t('agents:edit.advanced.agentSignIn.toggle.label', 'Enable agent sign-in');
@@ -44,7 +49,7 @@ export default function AgentSignInSection({
       title={t('agents:edit.advanced.agentSignIn.title', 'Agent sign-in')}
       description={t(
         'agents:edit.advanced.agentSignIn.description',
-        'Allow agents to sign in through this agent using the sign-in flow.',
+        'Allow agents of any agent type to sign in through this agent using the sign-in flow.',
       )}
       headerAction={
         <Switch
@@ -55,7 +60,15 @@ export default function AgentSignInSection({
         />
       }
     >
-      {null}
+      {restrictedAgentTypes.length > 0 ? (
+        <Typography variant="body2" color="text.secondary">
+          {t(
+            'agents:edit.advanced.agentSignIn.restricted',
+            'Only agents of these agent types can sign in now: {{types}}. Turning agent sign-in off and on again allows every agent type.',
+            {types: restrictedAgentTypes.join(', ')},
+          )}
+        </Typography>
+      ) : null}
     </SettingsCard>
   );
 }

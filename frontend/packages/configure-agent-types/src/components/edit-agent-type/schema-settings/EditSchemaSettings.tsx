@@ -35,6 +35,12 @@ export interface EditSchemaSettingsProps {
   properties: SchemaPropertyInput[];
   onPropertiesChange: (properties: SchemaPropertyInput[]) => void;
   agentTypeHandle: string;
+  disabled?: boolean;
+  /**
+   * Whether the schema belongs to an agent type that already exists, whose agents may hold values
+   * for it. The create wizard leaves it off.
+   */
+  isEditMode?: boolean;
 }
 
 /**
@@ -45,6 +51,8 @@ export default function EditSchemaSettings({
   properties,
   onPropertiesChange,
   agentTypeHandle,
+  disabled = false,
+  isEditMode = false,
 }: EditSchemaSettingsProps): JSX.Element {
   const {t} = useTranslation();
   const [enumInput, setEnumInput] = useState<Record<string, string>>({});
@@ -140,15 +148,23 @@ export default function EditSchemaSettings({
             '&:hover .property-delete-btn': {opacity: 1},
           }}
         >
-          {/* Remove button - visible on hover */}
-          {properties.length > 1 && (
+          {/* Remove button - visible on hover and on keyboard focus */}
+          {!disabled && properties.length > 1 && (
             <Tooltip title={t('agentTypes:removeProperty', 'Remove property')}>
               <IconButton
                 className="property-delete-btn"
                 size="small"
                 color="error"
+                aria-label={t('agentTypes:removeProperty', 'Remove property')}
                 onClick={() => handleRemoveProperty(property.id)}
-                sx={{position: 'absolute', top: 8, right: 8, opacity: 0, transition: 'opacity 0.2s'}}
+                sx={{
+                  position: 'absolute',
+                  top: 8,
+                  right: 8,
+                  opacity: 0,
+                  transition: 'opacity 0.2s',
+                  '&:focus-visible': {opacity: 1},
+                }}
               >
                 <Trash2 size={16} />
               </IconButton>
@@ -162,6 +178,7 @@ export default function EditSchemaSettings({
                 label={t('agentTypes:propertyName')}
                 fullWidth
                 value={property.name}
+                disabled={disabled}
                 onChange={(e) => handlePropertyChange(property.id, 'name', e.target.value)}
                 placeholder={t('agentTypes:propertyNamePlaceholder', 'e.g., email, age, address')}
                 size="small"
@@ -171,6 +188,7 @@ export default function EditSchemaSettings({
                 <FormLabel>{t('agentTypes:propertyType', 'Type')}</FormLabel>
                 <Select
                   value={property.type}
+                  disabled={disabled}
                   onChange={(e) => handlePropertyChange(property.id, 'type', e.target.value as PropertyType)}
                   size="small"
                 >
@@ -229,6 +247,7 @@ export default function EditSchemaSettings({
                   control={
                     <Checkbox
                       checked={property.required}
+                      disabled={disabled}
                       onChange={(e) => handlePropertyChange(property.id, 'required', e.target.checked)}
                     />
                   }
@@ -253,7 +272,7 @@ export default function EditSchemaSettings({
                     control={
                       <Checkbox
                         checked={property.unique}
-                        disabled={property.credential}
+                        disabled={disabled || property.credential}
                         onChange={(e) => handlePropertyChange(property.id, 'unique', e.target.checked)}
                       />
                     }
@@ -276,6 +295,7 @@ export default function EditSchemaSettings({
                     control={
                       <Checkbox
                         checked={property.credential}
+                        disabled={disabled}
                         onChange={({target: {checked}}) => {
                           if (!checked) {
                             setPendingCredentialRemoveId(property.id);
@@ -322,6 +342,7 @@ export default function EditSchemaSettings({
                 }
                 fullWidth
                 value={property.regex}
+                disabled={disabled}
                 required={isContactAttributeType(property.type)}
                 error={isContactAttributeType(property.type) && !property.regex.trim()}
                 helperText={
@@ -350,6 +371,7 @@ export default function EditSchemaSettings({
                 <Box sx={{display: 'flex', gap: 1, mb: 1}}>
                   <TextField
                     value={enumInput[property.id] ?? ''}
+                    disabled={disabled}
                     onChange={(e) => setEnumInput({...enumInput, [property.id]: e.target.value})}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') {
@@ -361,7 +383,12 @@ export default function EditSchemaSettings({
                     size="small"
                     fullWidth
                   />
-                  <Button variant="outlined" size="small" onClick={() => handleAddEnumValue(property.id)}>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    disabled={disabled}
+                    onClick={() => handleAddEnumValue(property.id)}
+                  >
                     {t('common:actions.add', 'Add')}
                   </Button>
                 </Box>
@@ -371,7 +398,7 @@ export default function EditSchemaSettings({
                       <Chip
                         key={val}
                         label={val}
-                        onDelete={() => handleRemoveEnumValue(property.id, val)}
+                        onDelete={disabled ? undefined : () => handleRemoveEnumValue(property.id, val)}
                         size="small"
                       />
                     ))}
@@ -384,22 +411,24 @@ export default function EditSchemaSettings({
       ))}
 
       {/* Add Property Button */}
-      <Button
-        variant="text"
-        color="primary"
-        startIcon={<Plus size={16} />}
-        onClick={handleAddProperty}
-        fullWidth
-        sx={{
-          py: 1.5,
-          mb: 2,
-          border: '1px dashed',
-          borderColor: 'divider',
-          '&:hover': {border: '1px dashed', borderColor: 'primary.main'},
-        }}
-      >
-        {t('agentTypes:addProperty', 'Add property')}
-      </Button>
+      {!disabled && (
+        <Button
+          variant="text"
+          color="primary"
+          startIcon={<Plus size={16} />}
+          onClick={handleAddProperty}
+          fullWidth
+          sx={{
+            py: 1.5,
+            mb: 2,
+            border: '1px dashed',
+            borderColor: 'divider',
+            '&:hover': {border: '1px dashed', borderColor: 'primary.main'},
+          }}
+        >
+          {t('agentTypes:addProperty', 'Add property')}
+        </Button>
+      )}
 
       {/* Credential Removal Confirmation Dialog */}
       <Dialog
@@ -412,10 +441,15 @@ export default function EditSchemaSettings({
         <DialogTitle>{t('agentTypes:removeCredentialDialog.title', 'Remove credential flag')}</DialogTitle>
         <DialogContent>
           <DialogContentText>
-            {t(
-              'agentTypes:removeCredentialDialog.description',
-              'Removing the credential flag will cause this field to no longer be hashed or protected. Existing hashed values may become inaccessible. Are you sure you want to proceed?',
-            )}
+            {isEditMode
+              ? t(
+                  'agentTypes:removeCredentialDialog.description',
+                  'Removing the credential flag will cause this field to no longer be hashed or protected. Existing hashed values may become inaccessible. Are you sure you want to proceed?',
+                )
+              : t(
+                  'agentTypes:removeCredentialDialog.descriptionNew',
+                  'Removing the credential flag will cause this field to no longer be hashed or protected. Are you sure you want to proceed?',
+                )}
           </DialogContentText>
         </DialogContent>
         <DialogActions>

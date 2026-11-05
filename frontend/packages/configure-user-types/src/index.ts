@@ -34,6 +34,7 @@ export {default as SchemaPropertyEditor} from './components/shared/SchemaPropert
 export type {SchemaPropertyEditorProps} from './components/shared/SchemaPropertyEditor';
 
 // Constants
+export {default as UserTypeConstraints} from './constants/user-type-constraints';
 export {default as UserTypeQueryKeys} from './constants/userTypeQueryKeys';
 
 // Contexts
