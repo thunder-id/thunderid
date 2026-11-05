@@ -37,7 +37,10 @@ export default function OwnerSection({agent, editedAgent, onFieldChange}: OwnerS
     [usersData],
   );
 
-  const ownerId = editedAgent.owner ?? agent.owner ?? '';
+  const owner = editedAgent.owner ?? agent.owner;
+  const ownerId = owner?.id ?? '';
+  // An owner managed in another identity system is not one of these users, so it is shown as is.
+  const isExternal = owner?.isLocal === false;
 
   return (
     <SettingsCard
@@ -50,8 +53,13 @@ export default function OwnerSection({agent, editedAgent, onFieldChange}: OwnerS
           id="agent-owner-select"
           value={ownerId}
           displayEmpty
-          disabled={usersLoading || agent.isReadOnly}
-          onChange={(e) => onFieldChange('owner', e.target.value || undefined)}
+          disabled={usersLoading || isExternal || agent.isReadOnly}
+          onChange={(e) =>
+            onFieldChange(
+              'owner',
+              e.target.value ? {id: String(e.target.value), idType: 'uuid', isLocal: true} : undefined,
+            )
+          }
           renderValue={(selected) =>
             !selected ? (
               <Typography color="text.secondary" variant="body2">
@@ -62,12 +70,21 @@ export default function OwnerSection({agent, editedAgent, onFieldChange}: OwnerS
             )
           }
         >
+          {isExternal && <MenuItem value={ownerId}>{ownerId}</MenuItem>}
           {options.map((opt) => (
             <MenuItem key={opt.id} value={opt.id}>
               {opt.label}
             </MenuItem>
           ))}
         </Select>
+        {isExternal && (
+          <Typography color="text.secondary" variant="caption">
+            {t(
+              'agents:edit.general.sections.owner.external',
+              'Managed in another identity system, so it cannot be changed here.',
+            )}
+          </Typography>
+        )}
       </FormControl>
     </SettingsCard>
   );

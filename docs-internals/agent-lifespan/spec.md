@@ -425,7 +425,7 @@ This specification does not define:
 {
   "name": "quarterly-report-agent",
   "description": "Builds the quarterly finance report",
-  "owner": "5f3e...",
+  "owner": {"id": "5f3e...", "idType": "uuid", "isLocal": true},
   "clientId": "qr-agent",
   "validUntil": "2027-03-31T00:00:00Z"
 }
@@ -450,7 +450,7 @@ This specification does not define:
   "ouId": "8a1c...",
   "type": "default",
   "name": "quarterly-report-agent",
-  "owner": "5f3e...",
+  "owner": {"id": "5f3e..."},
   "validUntil": "2027-03-31T00:00:00Z"
 }
 ```
@@ -525,6 +525,8 @@ Owners list their own agents through:
 | Endpoint | Behavior |
 |---|---|
 | `GET /users/me/agents` | Return the agents whose recorded owner is the caller, with `status`, `validUntil`, and `lifespan`, using the existing owner lookup. Paginated with `limit` and `offset`. |
+
+Only a local owner (`isLocal: true`) counts as the agent's owner here. An external owner's `id` is not tied to an issuer yet, so a subject from another issuer that happens to equal it must not be taken for the owner.
 
 Owner access is not delivered yet. The API gate on `GET /agents/**` requires the agent view permission before the agent service runs, so the owner read rule cannot be added at the service layer alone, and `GET /users/me/agents` needs an owner index rather than a scan of every agent. Both follow with a decision on the gate; see Open decisions.
 

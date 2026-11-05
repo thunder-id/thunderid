@@ -9,9 +9,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/mail"
 	"net/url"
 	"slices"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -157,9 +160,12 @@ func (s *agentService) CreateAgent(ctx context.Context, agent *providers.Agent) 
 	}
 
 	owner := agent.Owner
-	if owner == "" {
-		owner = security.GetSubject(ctx)
-	} else if svcErr := s.validateOwnerExists(ctx, owner); svcErr != nil {
+	if owner == nil {
+		var svcErr *tidcommon.ServiceError
+		if owner, svcErr = s.callerAsOwner(ctx); svcErr != nil {
+			return nil, svcErr
+		}
+	} else if svcErr := s.checkOwner(ctx, owner); svcErr != nil {
 		return nil, svcErr
 	}
 
@@ -778,7 +784,7 @@ func (s *agentService) GetResourceDependencies(
 func (s *agentService) getAgentsByOwner(
 	ctx context.Context, ownerID string) ([]resourcedependency.ResourceDependency, error) {
 	entities, err := s.entityService.GetEntityListBySystemAttributes(ctx, providers.EntityCategoryAgent,
-		entity.SystemAttributeQuery{SystemAttributes: map[string]interface{}{fieldOwner: ownerID}},
+		entity.SystemAttributeQuery{SystemAttributes: map[string]interface{}{fieldOwnerID: ownerID}},
 		serverconst.MaxCompositeStoreRecords, 0)
 	if err != nil {
 		s.logger.Error(ctx, "Failed to list agents", log.Error(err))
@@ -788,6 +794,10 @@ func (s *agentService) getAgentsByOwner(
 	displayPaths := s.resolveDisplayPaths(ctx, entityTypes(entities))
 	usages := make([]resourcedependency.ResourceDependency, 0)
 	for _, e := range entities {
+		// Only a local owner is an entity of this deployment whose deletion an agent can block.
+		if _, owner, _ := readSystemAttributes(e.SystemAttributes); owner == nil || !owner.Local() {
+			continue
+		}
 		// An agent cannot exist without its owner, so ownership blocks the owner's deletion.
 		usages = append(usages, resourcedependency.ResourceDependency{
 			ResourceType:     resourcedependency.ResourceTypeAgent,
@@ -953,6 +963,11 @@ func (s *agentService) ValidateAgent(ctx context.Context, agent *providers.Agent
 	if svcErr := validateLogoURL(agent.LogoURL); svcErr != nil {
 		return "", "", inboundmodel.InboundClient{}, svcErr
 	}
+	owner, svcErr := normalizeOwner(agent.Owner)
+	if svcErr != nil {
+		return "", "", inboundmodel.InboundClient{}, svcErr
+	}
+	agent.Owner = owner
 	if agent.OUID == "" && agent.OUHandle != "" {
 		ou, svcErr := s.ouService.GetOrganizationUnitByPath(ctx, agent.OUHandle)
 		if svcErr != nil {
@@ -1156,20 +1171,97 @@ func (s *agentService) resolveUpdateOUID(
 }
 
 // resolveUpdateOwner picks the effective owner for an update — either the requested owner or the
-// existing one — and validates it exists when the owner is changing.
+// existing one — and checks that a local owner exists when the owner is changing.
 func (s *agentService) resolveUpdateOwner(
-	ctx context.Context, requestedOwner, currentOwner string,
-) (string, *tidcommon.ServiceError) {
-	owner := requestedOwner
-	if owner == "" {
-		owner = currentOwner
+	ctx context.Context, requestedOwner, currentOwner *providers.AgentOwner,
+) (*providers.AgentOwner, *tidcommon.ServiceError) {
+	if requestedOwner == nil {
+		return currentOwner, nil
 	}
-	if owner != currentOwner {
-		if svcErr := s.validateOwnerExists(ctx, owner); svcErr != nil {
-			return "", svcErr
+	owner, svcErr := normalizeOwner(requestedOwner)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	if !sameOwner(owner, currentOwner) {
+		if svcErr := s.checkOwner(ctx, owner); svcErr != nil {
+			return nil, svcErr
 		}
 	}
 	return owner, nil
+}
+
+// checkOwner checks that a local owner exists in this deployment. An external owner is managed in another
+// identity system, so it is stored as given and never looked up.
+func (s *agentService) checkOwner(ctx context.Context, owner *providers.AgentOwner) *tidcommon.ServiceError {
+	if !owner.Local() {
+		return nil
+	}
+	return s.validateOwnerExists(ctx, owner.ID)
+}
+
+// normalizeOwner checks an agent owner and returns a copy that states its ID type and whether it is
+// local. A nil owner stays nil.
+func normalizeOwner(owner *providers.AgentOwner) (*providers.AgentOwner, *tidcommon.ServiceError) {
+	if owner == nil {
+		return nil, nil
+	}
+	id := strings.TrimSpace(owner.ID)
+	idType := owner.IDType
+	if idType == "" {
+		idType = providers.AgentOwnerIDTypeUUID
+	}
+	local := owner.Local()
+	if id == "" || utf8.RuneCountInString(id) > maxOwnerIDLength || !slices.Contains(ownerIDTypes, idType) ||
+		(local && idType != providers.AgentOwnerIDTypeUUID) || !ownerIDMatchesType(id, idType) {
+		return nil, &ErrorInvalidOwner
+	}
+	return &providers.AgentOwner{ID: id, IDType: idType, IsLocal: &local}, nil
+}
+
+// ownerIDMatchesType reports whether an owner ID has the form its ID type needs. An email is a bare
+// address and a mobile number is in E.164 form. A uuid is not checked, since an external owner's
+// subject is not always a UUID, and a local one is looked up.
+func ownerIDMatchesType(id string, idType providers.AgentOwnerIDType) bool {
+	switch idType {
+	case providers.AgentOwnerIDTypeEmail:
+		address, err := mail.ParseAddress(id)
+		return err == nil && address.Address == id
+	case providers.AgentOwnerIDTypeMobile:
+		return ownerMobilePattern.MatchString(id)
+	default:
+		return true
+	}
+}
+
+// callerAsOwner returns the authenticated caller as an owner, or nil when there is no caller or the
+// caller is the management API key, which is not a person. A caller holding a token this deployment
+// did not issue, such as one from the trusted issuer, is external without a lookup. A self-issued
+// token is not enough to make the caller local, since it can carry a subject from elsewhere (a JWT
+// bearer grant) or one since deleted, so its subject is local only when it is an entity of this
+// deployment.
+func (s *agentService) callerAsOwner(ctx context.Context) (*providers.AgentOwner, *tidcommon.ServiceError) {
+	subject := security.GetSubject(ctx)
+	if subject == "" || security.IsManagementAPIKey(ctx) {
+		return nil, nil
+	}
+	local := security.IsSelfIssued(ctx)
+	if local {
+		if svcErr := s.validateOwnerExists(ctx, subject); svcErr != nil {
+			if svcErr.Code != ErrorOwnerNotFound.Code {
+				return nil, svcErr
+			}
+			local = false
+		}
+	}
+	return &providers.AgentOwner{ID: subject, IDType: providers.AgentOwnerIDTypeUUID, IsLocal: &local}, nil
+}
+
+// sameOwner reports whether two owners name the same owner.
+func sameOwner(a, b *providers.AgentOwner) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return a.ID == b.ID && a.IDType == b.IDType && a.Local() == b.Local()
 }
 
 // validateOwnerExists returns an error when the given owner ID does not resolve to an existing entity.
@@ -1661,7 +1753,8 @@ func requiresClientSecret(cfg *providers.OAuthConfigWithSecret) bool {
 // buildAgentEntity constructs the entity row and system credentials JSON for a new or updated agent.
 // validUntil is the stored lifespan end; empty leaves it out, for writes that carry the stored value.
 func buildAgentEntity(agentID, agentType, ouID string, attributes json.RawMessage,
-	description, owner, clientID, clientSecret, validUntil string) (*providers.Entity, json.RawMessage, error) {
+	description string, owner *providers.AgentOwner, clientID, clientSecret, validUntil string,
+) (*providers.Entity, json.RawMessage, error) {
 	sysCredsJSON, err := buildSystemCredentialsJSON(clientSecret)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to build agent system credentials: %w", err)
@@ -1680,13 +1773,15 @@ func buildAgentEntity(agentID, agentType, ouID string, attributes json.RawMessag
 }
 
 // buildSystemAttributesJSON serializes agent description, owner, clientID, and validUntil into the
-// systemAttributes blob. Marshaling a map of strings cannot fail.
-func buildSystemAttributesJSON(description, owner, clientID, validUntil string) json.RawMessage {
+// systemAttributes blob. Marshaling strings and an owner cannot fail.
+func buildSystemAttributesJSON(
+	description string, owner *providers.AgentOwner, clientID, validUntil string,
+) json.RawMessage {
 	attrs := map[string]interface{}{}
 	if description != "" {
 		attrs[fieldDescription] = description
 	}
-	if owner != "" {
+	if owner != nil {
 		attrs[fieldOwner] = owner
 	}
 	if clientID != "" {
@@ -1712,20 +1807,24 @@ func buildSystemCredentialsJSON(clientSecret string) (json.RawMessage, error) {
 	})
 }
 
-// readSystemAttributes deserializes the systemAttributes JSON blob back into individual string fields.
-func readSystemAttributes(raw json.RawMessage) (description, owner, clientID string) {
+// readSystemAttributes deserializes the systemAttributes JSON blob back into individual fields.
+func readSystemAttributes(raw json.RawMessage) (description string, owner *providers.AgentOwner, clientID string) {
 	if len(raw) == 0 {
-		return "", "", ""
+		return "", nil, ""
 	}
 	var attrs map[string]interface{}
 	if err := json.Unmarshal(raw, &attrs); err != nil {
-		return "", "", ""
+		return "", nil, ""
 	}
 	if v, ok := attrs[fieldDescription].(string); ok {
 		description = v
 	}
-	if v, ok := attrs[fieldOwner].(string); ok {
-		owner = v
+	// A legacy string owner does not decode, and reads as no owner.
+	var stored struct {
+		Owner *providers.AgentOwner `json:"owner"`
+	}
+	if json.Unmarshal(raw, &stored) == nil && stored.Owner != nil && stored.Owner.ID != "" {
+		owner = stored.Owner
 	}
 	if v, ok := attrs[fieldClientID].(string); ok {
 		clientID = v
@@ -1908,7 +2007,8 @@ func convertGrantAndResponseTypes(
 }
 
 // buildCompleteResponse constructs the full create/update response including credentials and all inbound auth fields.
-func buildCompleteResponse(agentID, owner, clientID, clientSecret, agentType, description, logoURL string,
+func buildCompleteResponse(agentID string, owner *providers.AgentOwner,
+	clientID, clientSecret, agentType, description, logoURL string,
 	attributes json.RawMessage, authFlowID, regFlowID string, isRegEnabled bool,
 	themeID, layoutID string, assertion *inboundmodel.AssertionConfig,
 	loginConsent *inboundmodel.LoginConsentConfig, allowedUserTypes, allowedAgentTypes []string,

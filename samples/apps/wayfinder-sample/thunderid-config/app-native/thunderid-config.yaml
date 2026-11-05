@@ -1785,7 +1785,8 @@ nodes:
 ---
 resource_type: agent
 id: wayfinder-concierge
-owner: "{{.AGENT_OWNER_ID}}"
+owner:
+  id: "{{.AGENT_OWNER_ID}}"
 description: Wayfinder Concierge AI agent for the Wayfinder Travel sample
 ouHandle: default
 type: default
@@ -1824,7 +1825,8 @@ resource_type: agent
 # auth_flow_handle is shared between authorization_code and CIBA — they need
 # different flows (interactive vs backchannel notification).
 id: wayfinder-upgrade-agent
-owner: "{{.AGENT_OWNER_ID}}"
+owner:
+  id: "{{.AGENT_OWNER_ID}}"
 description: Upgrade scheduler agent — initiates CIBA for users with pending flight upgrade requests
 ouHandle: default
 type: default

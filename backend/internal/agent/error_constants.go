@@ -575,6 +575,21 @@ var (
 			DefaultValue: "The organization unit must belong to the project",
 		},
 	}
+
+	// ErrorInvalidOwner is returned when an agent's owner has no ID, an ID that is too long or does not
+	// match its ID type, an unknown ID type, or is local but not identified by its entity ID.
+	ErrorInvalidOwner = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AGT-1049",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.agentservice.invalid_owner",
+			DefaultValue: "Invalid owner",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.agentservice.invalid_owner_description",
+			DefaultValue: "An owner needs an id of at most 256 characters matching its type, and a local owner a uuid",
+		},
+	}
 )
 
 // errInvalidDeclarativeLifespan is returned when a declarative agent's validUntil is not an RFC 3339

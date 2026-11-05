@@ -57,7 +57,7 @@ curl -X POST https://localhost:8090/agents \
   -d '{
     "type": "default",
     "ouId": "<organization-unit-id>",
-    "owner": "<owner-user-id>",
+    "owner": { "id": "<owner-user-id>" },
     "attributes": {
       "name": "Quarterly Report Agent"
     },

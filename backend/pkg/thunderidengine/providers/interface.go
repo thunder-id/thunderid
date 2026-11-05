@@ -111,7 +111,7 @@ type AgentMgtProvider interface {
 	//
 	// The returned agent carries the generated identifier and, on InboundAuthConfig, the generated
 	// client credentials. Fields the agent service does not echo come back zero, so the result is
-	// not a full round-trip. Owner falls back to the authenticated caller when unset.
+	// not a full round-trip. Owner falls back to the authenticated caller when nil.
 	CreateAgent(ctx context.Context, agent *Agent) (*Agent, *common.ServiceError)
 }
 

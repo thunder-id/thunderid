@@ -144,7 +144,8 @@ func TestHandleAgentPostRequest_Success(t *testing.T) {
 		},
 	}
 	handler := newAgentHandler(stubService)
-	goodJSON := `{"ouId": "ou-123", "type": "worker", "attributes": {"name": "Valid Agent Name"}, "owner": "admin-id"}`
+	goodJSON := `{"ouId": "ou-123", "type": "worker", "attributes": {"name": "Valid Agent Name"},` +
+		`"owner": {"id": "admin-id"}}`
 	req := httptest.NewRequest(http.MethodPost, "/agents", bytes.NewBufferString(goodJSON))
 	w := httptest.NewRecorder()
 

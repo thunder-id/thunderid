@@ -86,6 +86,8 @@ var defaultMessages = map[string]string{
 	"error.agentservice.invalid_oauth_configuration_description": "The provided OAuth configuration is invalid",
 	"error.agentservice.invalid_offset": "Invalid pagination parameter",
 	"error.agentservice.invalid_offset_description": "The offset parameter must be a non-negative integer",
+	"error.agentservice.invalid_owner": "Invalid owner",
+	"error.agentservice.invalid_owner_description": "An owner needs an id of at most 256 characters matching its type, and a local owner a uuid",
 	"error.agentservice.invalid_project": "Invalid project",
 	"error.agentservice.invalid_project_description": "No project exists with the given project ID",
 	"error.agentservice.invalid_public_client_configuration": "Invalid public client configuration",

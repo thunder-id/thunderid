@@ -188,7 +188,9 @@ describe('AgentAddFormPage', () => {
     await user.click(screen.getByRole('button', {name: 'agents:addForm.submit'}));
 
     await waitFor(() => {
-      expect(requests().find((request) => request.method === 'POST')?.data).toMatchObject({owner: 'user-1'});
+      expect(requests().find((request) => request.method === 'POST')?.data).toMatchObject({
+        owner: {id: 'user-1', idType: 'uuid', isLocal: true},
+      });
     });
   });
 
@@ -256,7 +258,7 @@ describe('AgentAddFormPage', () => {
     expect(submit).toBeEnabled();
     await user.click(submit);
 
-    await waitFor(() => expect(posted()).toMatchObject({owner: 'user-1'}));
+    await waitFor(() => expect(posted()).toMatchObject({owner: {id: 'user-1', idType: 'uuid', isLocal: true}}));
     expect(requests().some((request) => lookedUpUser(request.url))).toBe(false);
   });
 
@@ -303,7 +305,7 @@ describe('AgentAddFormPage', () => {
     expect(submit).toBeEnabled();
     await user.click(submit);
 
-    await waitFor(() => expect(posted()).toMatchObject({owner: 'user-1'}));
+    await waitFor(() => expect(posted()).toMatchObject({owner: {id: 'user-1', idType: 'uuid', isLocal: true}}));
   });
 
   it('says there are no users to own the agent when one is needed and none exist', async () => {

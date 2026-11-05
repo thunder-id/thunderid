@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -445,6 +446,114 @@ func (ts *AgentAPITestSuite) TestCreateAgentEntityOnly() {
 	ts.Require().NoError(json.NewDecoder(resp.Body).Decode(&fetched))
 	ts.Assert().Empty(fetched.InboundAuthConfig, "entity-only agent must have no inbound auth config")
 	ts.Assert().Empty(fetched.AuthFlowID, "entity-only agent must have no auth flow ID")
+}
+
+// --- owner ---
+
+func (ts *AgentAPITestSuite) TestCreateAgent_ExternalOwnerIsStoredAsGiven() {
+	owner := testutils.ExternalAgentOwner("alice@example.com", "email")
+	created, _ := ts.createAgentWithStatus(Agent{
+		OUID: testOUID, Type: "default", Owner: owner, Attributes: agentAttrs("owner-external-create", nil),
+	}, http.StatusCreated)
+
+	fetched, err := testutils.GetAgent(created.ID)
+	ts.Require().NoError(err)
+	ts.Require().NotNil(fetched.Owner)
+	ts.Equal(owner.ID, fetched.Owner.ID)
+	ts.Equal("email", fetched.Owner.IDType)
+	ts.Require().NotNil(fetched.Owner.IsLocal)
+	ts.False(*fetched.Owner.IsLocal)
+}
+
+func (ts *AgentAPITestSuite) TestCreateAgent_LocalOwnerMustExist() {
+	_, code := ts.createAgentWithStatus(Agent{
+		OUID: testOUID, Type: "default", Owner: testutils.LocalAgentOwner("0199a1b2-0000-7000-8000-000000000999"),
+		Attributes: agentAttrs("owner-local-missing", nil),
+	}, http.StatusBadRequest)
+	ts.Equal("AGT-1039", code)
+}
+
+func (ts *AgentAPITestSuite) TestCreateAgent_InvalidOwnerIsRejected() {
+	local := true
+	_, code := ts.createAgentWithStatus(Agent{
+		OUID: testOUID, Type: "default",
+		Owner:      &testutils.AgentOwner{ID: "alice@example.com", IDType: "email", IsLocal: &local},
+		Attributes: agentAttrs("owner-invalid", nil),
+	}, http.StatusBadRequest)
+	ts.Equal("AGT-1049", code)
+}
+
+func (ts *AgentAPITestSuite) TestCreateAgent_OwnerValuesAreChecked() {
+	cases := map[string]*testutils.AgentOwner{
+		"email that is not an address": testutils.ExternalAgentOwner("not-an-email", "email"),
+		"mobile not in E.164 form":     testutils.ExternalAgentOwner("0771234567", "mobile"),
+		// Longer than the owner index allows a row on PostgreSQL, which failed the insert with a 500.
+		"id too long": testutils.ExternalAgentOwner(strings.Repeat("a", 4096), "uuid"),
+	}
+	for name, owner := range cases {
+		ts.Run(name, func() {
+			_, code := ts.createAgentWithStatus(Agent{
+				OUID: testOUID, Type: "default", Owner: owner, Attributes: agentAttrs("owner-value-checked", nil),
+			}, http.StatusBadRequest)
+			ts.Equal("AGT-1049", code)
+		})
+	}
+}
+
+// An external owner names a person in another identity system, so it is stored as given and never looked
+// up, even when its ID is also an entity of this deployment.
+func (ts *AgentAPITestSuite) TestExternalOwnerIsNotLookedUp() {
+	entity, _ := ts.createAgentWithStatus(Agent{
+		OUID: testOUID, Type: "default", Attributes: agentAttrs("owner-external-entity", nil),
+	}, http.StatusCreated)
+	owner := testutils.ExternalAgentOwner(entity.ID, "uuid")
+
+	created, _ := ts.createAgentWithStatus(Agent{
+		OUID: testOUID, Type: "default", Owner: owner, Attributes: agentAttrs("owner-external-create", nil),
+	}, http.StatusCreated)
+	ts.Require().NotNil(created.Owner)
+	ts.Equal(entity.ID, created.Owner.ID)
+	ts.Require().NotNil(created.Owner.IsLocal)
+	ts.False(*created.Owner.IsLocal)
+
+	other, _ := ts.createAgentWithStatus(Agent{
+		OUID: testOUID, Type: "default", Attributes: agentAttrs("owner-external-update", nil),
+	}, http.StatusCreated)
+	updated, _ := ts.updateAgentWithStatus(other.ID, Agent{
+		OUID: testOUID, Type: "default", Owner: owner, Attributes: agentAttrs("owner-external-update", nil),
+	}, http.StatusOK)
+	ts.Require().NotNil(updated.Owner)
+	ts.Equal(entity.ID, updated.Owner.ID)
+	ts.Require().NotNil(updated.Owner.IsLocal)
+	ts.False(*updated.Owner.IsLocal)
+}
+
+func (ts *AgentAPITestSuite) TestCreateAgent_WithoutOwnerTheCallerIsALocalOwner() {
+	created, _ := ts.createAgentWithStatus(Agent{
+		OUID: testOUID, Type: "default", Attributes: agentAttrs("owner-caller-default", nil),
+	}, http.StatusCreated)
+
+	ts.Require().NotNil(created.Owner, "the caller becomes the owner")
+	ts.NotEmpty(created.Owner.ID)
+	ts.Equal("uuid", created.Owner.IDType)
+	ts.Require().NotNil(created.Owner.IsLocal)
+	ts.True(*created.Owner.IsLocal, "a caller that is a user here is a local owner")
+}
+
+func (ts *AgentAPITestSuite) TestUpdateAgent_ToAnExternalOwner() {
+	created, _ := ts.createAgentWithStatus(Agent{
+		OUID: testOUID, Type: "default", Attributes: agentAttrs("owner-update-external", nil),
+	}, http.StatusCreated)
+
+	owner := testutils.ExternalAgentOwner("0199a1b2-7c3d-7e4f-9a8b-123456789abc", "uuid")
+	updated, _ := ts.updateAgentWithStatus(created.ID, Agent{
+		OUID: testOUID, Type: "default", Owner: owner, Attributes: agentAttrs("owner-update-external", nil),
+	}, http.StatusOK)
+
+	ts.Require().NotNil(updated.Owner)
+	ts.Equal(owner.ID, updated.Owner.ID)
+	ts.Require().NotNil(updated.Owner.IsLocal)
+	ts.False(*updated.Owner.IsLocal)
 }
 
 // --- creation mode: entity + inbound ---
