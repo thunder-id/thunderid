@@ -15,10 +15,19 @@ import useGetVerifiablePresentations from '../api/useGetVerifiablePresentations'
 import useVerifiableCredentialRoutes from '../hooks/useVerifiableCredentialRoutes';
 import type {VerifiablePresentationSummary} from '../models/vp';
 
+export interface VerifiablePresentationsListProps {
+  /**
+   * Shows the QR action that starts a wallet verification against the OpenID4VP verifier.
+   */
+  showWalletQr?: boolean;
+}
+
 /**
  * DataGrid listing of OpenID4VP presentation definitions.
  */
-export default function VerifiablePresentationsList(): JSX.Element {
+export default function VerifiablePresentationsList({
+  showWalletQr = false,
+}: VerifiablePresentationsListProps): JSX.Element {
   const navigate = useNavigate();
   const {t} = useTranslation();
   const logger = useLogger('VerifiablePresentationsList');
@@ -94,18 +103,20 @@ export default function VerifiablePresentationsList(): JSX.Element {
         hideable: false,
         renderCell: (params: DataGrid.GridRenderCellParams<VerifiablePresentationSummary>): JSX.Element => (
           <ListingTable.RowActions>
-            <Tooltip title={t('verifiable-presentations:listing.verify', 'Verify')}>
-              <IconButton
-                aria-label={t('verifiable-presentations:listing.verify', 'Verify')}
-                size="small"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setVerifyHandle(params.row.handle);
-                }}
-              >
-                <QrCodeIcon size={16} />
-              </IconButton>
-            </Tooltip>
+            {showWalletQr && (
+              <Tooltip title={t('verifiable-presentations:listing.verify', 'Verify')}>
+                <IconButton
+                  aria-label={t('verifiable-presentations:listing.verify', 'Verify')}
+                  size="small"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setVerifyHandle(params.row.handle);
+                  }}
+                >
+                  <QrCodeIcon size={16} />
+                </IconButton>
+              </Tooltip>
+            )}
             <Tooltip title={t('common:actions.edit', 'Edit')}>
               <IconButton
                 aria-label={t('common:actions.edit', 'Edit')}
@@ -135,7 +146,7 @@ export default function VerifiablePresentationsList(): JSX.Element {
         ),
       },
     ],
-    [handleDeleteClick, handleEditClick, t],
+    [handleDeleteClick, handleEditClick, showWalletQr, t],
   );
 
   if (error) {
@@ -176,11 +187,13 @@ export default function VerifiablePresentationsList(): JSX.Element {
 
       <VerifiablePresentationDeleteDialog open={deleteDialogOpen} vpId={selectedId} onClose={handleDeleteDialogClose} />
 
-      <VerificationDialog
-        open={verifyHandle !== null}
-        handle={verifyHandle}
-        onClose={(): void => setVerifyHandle(null)}
-      />
+      {showWalletQr && (
+        <VerificationDialog
+          open={verifyHandle !== null}
+          handle={verifyHandle}
+          onClose={(): void => setVerifyHandle(null)}
+        />
+      )}
     </>
   );
 }

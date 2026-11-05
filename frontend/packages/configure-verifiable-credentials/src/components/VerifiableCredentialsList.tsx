@@ -15,10 +15,17 @@ import useGetVerifiableCredentials from '../api/useGetVerifiableCredentials';
 import useVerifiableCredentialRoutes from '../hooks/useVerifiableCredentialRoutes';
 import type {VerifiableCredentialSummary} from '../models/vc';
 
+export interface VerifiableCredentialsListProps {
+  /**
+   * Shows the QR action that generates an OpenID4VCI credential offer.
+   */
+  showWalletQr?: boolean;
+}
+
 /**
  * DataGrid listing of OpenID4VCI credential configurations.
  */
-export default function VerifiableCredentialsList(): JSX.Element {
+export default function VerifiableCredentialsList({showWalletQr = false}: VerifiableCredentialsListProps): JSX.Element {
   const navigate = useNavigate();
   const {t} = useTranslation();
   const logger = useLogger('VerifiableCredentialsList');
@@ -94,18 +101,20 @@ export default function VerifiableCredentialsList(): JSX.Element {
         hideable: false,
         renderCell: (params: DataGrid.GridRenderCellParams<VerifiableCredentialSummary>): JSX.Element => (
           <ListingTable.RowActions>
-            <Tooltip title={t('verifiable-credentials:listing.offer', 'Generate offer')}>
-              <IconButton
-                aria-label={t('verifiable-credentials:listing.offer', 'Generate offer')}
-                size="small"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setOfferHandle(params.row.handle);
-                }}
-              >
-                <QrCodeIcon size={16} />
-              </IconButton>
-            </Tooltip>
+            {showWalletQr && (
+              <Tooltip title={t('verifiable-credentials:listing.offer', 'Generate offer')}>
+                <IconButton
+                  aria-label={t('verifiable-credentials:listing.offer', 'Generate offer')}
+                  size="small"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setOfferHandle(params.row.handle);
+                  }}
+                >
+                  <QrCodeIcon size={16} />
+                </IconButton>
+              </Tooltip>
+            )}
             <Tooltip title={t('common:actions.edit', 'Edit')}>
               <IconButton
                 aria-label={t('common:actions.edit', 'Edit')}
@@ -135,7 +144,7 @@ export default function VerifiableCredentialsList(): JSX.Element {
         ),
       },
     ],
-    [handleDeleteClick, handleEditClick, t],
+    [handleDeleteClick, handleEditClick, showWalletQr, t],
   );
 
   if (error) {
@@ -176,11 +185,13 @@ export default function VerifiableCredentialsList(): JSX.Element {
 
       <VerifiableCredentialDeleteDialog open={deleteDialogOpen} vcId={selectedId} onClose={handleDeleteDialogClose} />
 
-      <CredentialOfferDialog
-        open={offerHandle !== null}
-        handle={offerHandle}
-        onClose={(): void => setOfferHandle(null)}
-      />
+      {showWalletQr && (
+        <CredentialOfferDialog
+          open={offerHandle !== null}
+          handle={offerHandle}
+          onClose={(): void => setOfferHandle(null)}
+        />
+      )}
     </>
   );
 }
