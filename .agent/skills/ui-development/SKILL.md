@@ -318,14 +318,22 @@ Run through this on the diff:
       repo root to list candidates in the files you touched, including new untracked ones:
 
       ```bash
-      { git diff --name-only origin/main; git ls-files --others --exclude-standard; } \
+      remote=$(git remote -v | awk '/thunder-id\/thunderid(\.git)? \(fetch\)/ {print $1; exit}')
+      base=$(git merge-base HEAD "$remote/main") &&
+      { git diff --name-only --diff-filter=d "$base"; git ls-files --others --exclude-standard; } \
         | grep -E '^frontend/.*\.tsx?$' | grep -v -E '__tests__|\.test\.|\.stories\.' \
-        | xargs grep -n -E \
+        | xargs grep -Hn -E \
             -e '(aria-label|title|placeholder|label|helperText|alt|tooltip)="[^"]*[A-Za-z]' \
             -e '>[[:space:]]*[A-Za-z][^<>{}=]*[A-Za-z.!?][[:space:]]*</[A-Za-z]' \
             -e "(headerName|label|title|placeholder|helperText|description|tooltip|message):[[:space:]]*'[A-Z][a-z]" \
             -e "showToast\([[:space:]]*'[A-Za-z]"
       ```
+
+      The base is the merge base with `main` on the `thunder-id/thunderid` remote, as in `pr-preflight` Step 1, so a
+      fork's stale `origin` does not pull in unrelated files. For a change that targets a release branch, use that
+      branch instead of `main`. Deleted files are left out, since there is nothing to search in them. If it prints
+      `Not a valid object name /main`, add and fetch the remote first (`git remote add upstream
+      https://github.com/thunder-id/thunderid.git && git fetch upstream main`).
 
       No output means no candidates. It flags string props, JSX text, column and option labels, and toast literals.
       It also matches `<Trans defaults="...">` fallbacks and JSDoc examples, which are fine. It reports every line in a
