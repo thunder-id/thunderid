@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -16,6 +17,7 @@ import (
 	authncm "github.com/thunder-id/thunderid/internal/authn/common"
 	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
+	"github.com/thunder-id/thunderid/internal/entitytype"
 	entitytypemodel "github.com/thunder-id/thunderid/internal/entitytype/model"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
@@ -343,7 +345,7 @@ func resolveAndSetMappedAuthorizationTargets(
 	directTargets, svcErr := idpService.GetDirectAuthorizationTargets(ctx, idpDTO, federatedAttributes)
 	if svcErr != nil {
 		logger.Warn(ctx, "Failed to resolve direct authorization targets, continuing with rule-based targets only",
-			log.String("idpId", idpDTO.ID), log.String("error", svcErr.Error.DefaultValue))
+			log.String(log.LoggerKeyIDPID, idpDTO.ID), log.String("error", svcErr.Error.DefaultValue))
 	} else {
 		targets = append(targets, directTargets...)
 	}
@@ -515,6 +517,24 @@ func governanceFault(svcErr *tidcommon.ServiceError) error {
 	return fmt.Errorf("identity governance check failed: %s", svcErr.Error.DefaultValue)
 }
 
+// verificationClaimContacts returns the verification claims the server issues for a user type, mapped to
+// their contact attribute. Another category, or no entity type service, has none.
+func verificationClaimContacts(ctx context.Context, entityTypeService entitytype.EntityTypeServiceInterface,
+	entityCategory, userType string) (map[string]string, error) {
+	if entityTypeService == nil || userType == "" ||
+		providers.EntityCategory(entityCategory) != providers.EntityCategoryUser {
+		return nil, nil
+	}
+
+	attributes, svcErr := entityTypeService.GetAttributes(ctx, entitytype.TypeCategoryUser, userType,
+		entitytype.AttributeFilter{AllowNonCredential: true})
+	if svcErr != nil {
+		return nil, fmt.Errorf("failed to fetch attributes of user type %s: code: %s", userType, svcErr.Code)
+	}
+
+	return entitytypemodel.VerificationClaims(attributes), nil
+}
+
 // dispatchPlaneFor maps the flow a challenge belongs to onto the plane it is checked at. A lock gives
 // way at the recovery plane, so recovery and registration challenges still go out; every other flow
 // is checked at the dispatch plane.
@@ -558,4 +578,71 @@ func isInviter(ctx *providers.NodeContext) bool {
 	subject := security.GetSubject(ctx.Context)
 	return !security.IsRuntimeContext(ctx.Context) && subject != "" &&
 		subject == ctx.RuntimeData[common.RuntimeKeyInviter]
+}
+
+// deliveredRecipients returns the distinct recipients senders sent to since an earlier node cleared
+// the list. A list that does not decode is an error.
+func deliveredRecipients(ctx *providers.NodeContext) ([]string, error) {
+	raw := ctx.SharedRuntimeData[common.RuntimeKeyDeliveredRecipients]
+	if raw == "" {
+		return nil, nil
+	}
+
+	var recipients []string
+	if err := json.Unmarshal([]byte(raw), &recipients); err != nil {
+		return nil, errors.New("invalid delivered recipients")
+	}
+
+	return recipients, nil
+}
+
+// withDeliveredRecipient returns shared runtime data that adds the recipient to the delivered recipients.
+func withDeliveredRecipient(ctx *providers.NodeContext, recipient string) (map[string]string, error) {
+	recipients, err := deliveredRecipients(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	if !slices.Contains(recipients, recipient) {
+		recipients = append(recipients, recipient)
+	}
+
+	encoded, err := json.Marshal(recipients)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode delivered recipients: %w", err)
+	}
+
+	return map[string]string{common.RuntimeKeyDeliveredRecipients: string(encoded)}, nil
+}
+
+// sharedVerificationEvidence returns shared runtime data carrying the evidence. The evidence holds only
+// strings and booleans, so it always encodes.
+func sharedVerificationEvidence(proof verificationEvidence) (map[string]string, error) {
+	encoded, err := json.Marshal(proof)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode attribute verification evidence: %w", err)
+	}
+
+	return map[string]string{common.RuntimeKeyAttributeVerificationEvidence: string(encoded)}, nil
+}
+
+// pinnedVerificationEvidence returns the attribute verification evidence an earlier node recorded on
+// shared runtime data, or nil when no contact is pinned. Evidence that does not decode, or names no pin,
+// is an error.
+func pinnedVerificationEvidence(ctx *providers.NodeContext) (*verificationEvidence, error) {
+	raw := ctx.SharedRuntimeData[common.RuntimeKeyAttributeVerificationEvidence]
+	if raw == "" {
+		return nil, nil
+	}
+
+	var proof verificationEvidence
+	if err := json.Unmarshal([]byte(raw), &proof); err != nil {
+		return nil, errors.New("invalid verification evidence")
+	}
+
+	if proof.Pin == nil {
+		return nil, errors.New("missing verification pin")
+	}
+
+	return &proof, nil
 }

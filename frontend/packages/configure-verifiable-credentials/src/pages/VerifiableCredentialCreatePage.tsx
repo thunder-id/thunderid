@@ -175,17 +175,17 @@ export default function VerifiableCredentialCreatePage(): JSX.Element {
     required?: boolean,
     helperText?: string,
   ): JSX.Element => (
-    <FormControl fullWidth required={required}>
-      <FormLabel htmlFor={id}>{label}</FormLabel>
-      <TextField
-        fullWidth
-        id={id}
-        value={value}
-        placeholder={placeholder}
-        helperText={helperText}
-        onChange={(e: ChangeEvent<HTMLInputElement>): void => setValue(e.target.value)}
-      />
-    </FormControl>
+    <TextField
+      labelPlacement="top"
+      label={label}
+      required={required}
+      fullWidth
+      id={id}
+      value={value}
+      placeholder={placeholder}
+      helperText={helperText}
+      onChange={(e: ChangeEvent<HTMLInputElement>): void => setValue(e.target.value)}
+    />
   );
 
   const renderStep = (): JSX.Element => {

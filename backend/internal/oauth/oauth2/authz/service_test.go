@@ -423,7 +423,7 @@ func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_Fl
 
 // The organization-unit-qualified route hands its unit to the flow start unlooked-up, so a unit that does
 // not exist and one the application is not shared with both reach the start, which refuses each with
-// FES-1023, and both come back to the client as the same redirect.
+// FES-1028, and both come back to the client as the same redirect.
 func (suite *AuthorizeServiceTestSuite) TestOUQualifiedAuthorize_UnknownAndUnsharedUnitsGetTheSameRedirect() {
 	app := suite.testApp()
 	suite.mockInboundClient.EXPECT().GetOAuthClientByClientID(mock.Anything, "test-client-id").Return(app, nil)

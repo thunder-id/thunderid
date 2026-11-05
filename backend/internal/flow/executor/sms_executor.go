@@ -13,6 +13,7 @@ import (
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
 	"github.com/thunder-id/thunderid/internal/entityprovider"
+	entitytypemodel "github.com/thunder-id/thunderid/internal/entitytype/model"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/notification"
@@ -139,10 +140,16 @@ func (e *smsExecutor) Execute(ctx *providers.NodeContext) (*providers.ExecutorRe
 		return nil, fmt.Errorf("failed to render SMS template: %s", svcErr.Code)
 	}
 
+	delivered, err := withDeliveredRecipient(ctx, recipient)
+	if err != nil {
+		return nil, err
+	}
+
 	notifSvcErr := e.notifSenderSvc.SendMessage(ctx.Context, notifcm.ChannelTypeSMS, senderID,
 		notifcm.MessageData{Recipient: recipient, Body: rendered.Body})
 	if notifSvcErr != nil {
-		if ctx.FlowType == providers.FlowTypeUserOnboarding && notifSvcErr.Type == tidcommon.ClientErrorType {
+		if (ctx.FlowType == providers.FlowTypeUserOnboarding || ctx.FlowType == providers.FlowTypeSelf) &&
+			notifSvcErr.Type == tidcommon.ClientErrorType {
 			execResp.Status = providers.ExecFailure
 			execResp.Error = &ErrSMSProviderNotConfigured
 			return execResp, nil
@@ -152,6 +159,7 @@ func (e *smsExecutor) Execute(ctx *providers.NodeContext) (*providers.ExecutorRe
 
 	logger.Debug(ctx.Context, "SMS sent successfully", log.MaskedString("recipient", recipient))
 
+	execResp.SharedRuntimeData = delivered
 	execResp.AdditionalData[common.DataSMSSent] = dataValueTrue
 	execResp.Status = providers.ExecComplete
 	return execResp, nil
@@ -198,9 +206,14 @@ func (e *smsExecutor) resolveTemplateData(ctx *providers.NodeContext) map[string
 	return templateData
 }
 
-// resolveRecipientMobile retrieves the recipient mobile number from user inputs, runtime data,
-// or the entity provider (via RuntimeData["userID"]), in that order.
+// resolveRecipientMobile retrieves the recipient mobile number from the mobile recipient an earlier node
+// set, user inputs, runtime data, or the entity provider (via RuntimeData["userID"]), in that order.
 func (e *smsExecutor) resolveRecipientMobile(ctx *providers.NodeContext, phoneAttr string) string {
+	if ctx.RuntimeData[common.RuntimeKeyRecipientType] == entitytypemodel.TypeMobile {
+		if mobile := ctx.RuntimeData[common.RuntimeKeyExpectedRecipient]; mobile != "" {
+			return mobile
+		}
+	}
 	if mobile, ok := ctx.UserInputs[phoneAttr]; ok && mobile != "" {
 		return mobile
 	}

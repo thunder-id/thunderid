@@ -1,7 +1,7 @@
 // Copyright 2025 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {FormHelperText, FormLabel, MenuItem, Select, Stack, Typography} from '@wso2/oxygen-ui';
+import {FormLabel, MenuItem, Select, Stack, Typography} from '@wso2/oxygen-ui';
 import {useMemo, type ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
 import {PASSKEY_MODES, PASSKEY_MODES_WITH_RELYING_PARTY} from './constants';
@@ -80,33 +80,29 @@ function PasskeyProperties({resource, onChange}: CommonResourcePropertiesPropsIn
 
       {showRelyingPartyConfig && (
         <>
-          <div>
-            <FormLabel htmlFor="relying-party-id">{t('flows:core.executions.passkey.relyingPartyId.label')}</FormLabel>
-            <DraftTextField
-              id="relying-party-id"
-              value={currentRelyingPartyId}
-              onCommit={(value) => onChange('data.properties.relyingPartyId', value, resource)}
-              placeholder={t('flows:core.executions.passkey.relyingPartyId.placeholder')}
-              fullWidth
-              size="small"
-            />
-            <FormHelperText>{t('flows:core.executions.passkey.relyingPartyId.hint')}</FormHelperText>
-          </div>
+          <DraftTextField
+            labelPlacement="top"
+            label={t('flows:core.executions.passkey.relyingPartyId.label')}
+            helperText={t('flows:core.executions.passkey.relyingPartyId.hint')}
+            id="relying-party-id"
+            value={currentRelyingPartyId}
+            onCommit={(value) => onChange('data.properties.relyingPartyId', value, resource)}
+            placeholder={t('flows:core.executions.passkey.relyingPartyId.placeholder')}
+            fullWidth
+            size="small"
+          />
 
-          <div>
-            <FormLabel htmlFor="relying-party-name">
-              {t('flows:core.executions.passkey.relyingPartyName.label')}
-            </FormLabel>
-            <DraftTextField
-              id="relying-party-name"
-              value={currentRelyingPartyName}
-              onCommit={(value) => onChange('data.properties.relyingPartyName', value, resource)}
-              placeholder={t('flows:core.executions.passkey.relyingPartyName.placeholder')}
-              fullWidth
-              size="small"
-            />
-            <FormHelperText>{t('flows:core.executions.passkey.relyingPartyName.hint')}</FormHelperText>
-          </div>
+          <DraftTextField
+            labelPlacement="top"
+            label={t('flows:core.executions.passkey.relyingPartyName.label')}
+            helperText={t('flows:core.executions.passkey.relyingPartyName.hint')}
+            id="relying-party-name"
+            value={currentRelyingPartyName}
+            onCommit={(value) => onChange('data.properties.relyingPartyName', value, resource)}
+            placeholder={t('flows:core.executions.passkey.relyingPartyName.placeholder')}
+            fullWidth
+            size="small"
+          />
         </>
       )}
     </Stack>

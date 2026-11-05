@@ -354,7 +354,7 @@ func (b *graphBuilder) configureNodeInputs(
 	nodeDef *providers.NodeDefinition,
 	node core.NodeInterface,
 ) {
-	logger := b.logger.With(log.String("nodeID", nodeDef.ID))
+	logger := b.logger.With(log.String(log.LoggerKeyNodeID, nodeDef.ID))
 
 	executorNode, ok := node.(core.ExecutorBackedNodeInterface)
 	if !ok {
@@ -423,7 +423,7 @@ func (b *graphBuilder) configureNodePrompts(
 	node core.NodeInterface,
 	edges map[string][]string,
 ) error {
-	logger := b.logger.With(log.String("nodeID", nodeDef.ID))
+	logger := b.logger.With(log.String(log.LoggerKeyNodeID, nodeDef.ID))
 
 	if len(nodeDef.Prompts) == 0 {
 		logger.Debug(ctx, "No prompts to configure for this node")
@@ -485,7 +485,7 @@ func (b *graphBuilder) configureNodePrompts(
 func (b *graphBuilder) configureDisplayOnlyProperties(
 	ctx context.Context, nodeDef *providers.NodeDefinition, node core.NodeInterface,
 	edges map[string][]string, boundaries *[]segmentBoundary) error {
-	logger := b.logger.With(log.String("nodeID", nodeDef.ID))
+	logger := b.logger.With(log.String(log.LoggerKeyNodeID, nodeDef.ID))
 
 	if nodeDef.Next == "" {
 		return nil
@@ -554,7 +554,7 @@ func (b *graphBuilder) computeSegments(g core.GraphInterface, boundaries []segme
 // configureNodeExecutor configures the executor for a node.
 func (b *graphBuilder) configureNodeExecutor(
 	ctx context.Context, nodeDef *providers.NodeDefinition, node core.NodeInterface) error {
-	logger := b.logger.With(log.String("nodeID", nodeDef.ID))
+	logger := b.logger.With(log.String(log.LoggerKeyNodeID, nodeDef.ID))
 
 	if nodeDef.Executor == nil {
 		logger.Debug(ctx, "No executor to configure for this node")

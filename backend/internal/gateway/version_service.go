@@ -142,7 +142,7 @@ func (s *versionService) capture(ctx context.Context, req CaptureRequest) (*Vers
 	}
 	for _, failed := range skipped {
 		s.logger.Warn(ctx, "A resource the export could not write is left out of the version",
-			log.String("resourceType", failed.ResourceType), log.MaskedString("resourceId", failed.ResourceID),
+			log.String("resourceType", failed.ResourceType), log.MaskedString("resourceID", failed.ResourceID),
 			log.String("error", failed.Error))
 	}
 
@@ -691,7 +691,7 @@ func (s *versionService) write(ctx context.Context, gw *Gateway, target *Version
 	// Once the gateway may have written any of it, the version is kept as it is.
 	delivered = mayHaveWritten(err)
 	if err != nil {
-		s.logger.Error(ctx, "Failed to apply a version to a gateway", log.String("gatewayId", gw.ID),
+		s.logger.Error(ctx, "Failed to apply a version to a gateway", log.String("gatewayID", gw.ID),
 			log.Int("version", target.Seq), log.Error(err))
 		return nil, unreachable(err)
 	}
@@ -733,7 +733,7 @@ func (s *versionService) write(ctx context.Context, gw *Gateway, target *Version
 	result.Master = master.Hash
 	result.Recorded = true
 	result.Complete = state.complete
-	s.logger.Info(ctx, "Applied a configuration version to a gateway", log.String("gatewayId", gw.ID),
+	s.logger.Info(ctx, "Applied a configuration version to a gateway", log.String("gatewayID", gw.ID),
 		log.Int("version", target.Seq), log.Bool("complete", state.complete), log.Int("held", state.held),
 		log.Int("total", state.total))
 	return result, nil
@@ -765,12 +765,12 @@ func (s *versionService) recordOutcome(ctx context.Context, previous *Master, wr
 		return nil, refused
 	}
 	if err != nil {
-		s.logger.Error(ctx, "Failed to record what the gateway holds", log.String("gatewayId", previous.GatewayID),
+		s.logger.Error(ctx, "Failed to record what the gateway holds", log.String("gatewayID", previous.GatewayID),
 			log.Error(err))
 		return nil, &tidcommon.InternalServerError
 	}
 	if master.Seq != previous.Seq {
-		s.logger.Info(ctx, "Recorded the gateway's master", log.String("gatewayId", previous.GatewayID),
+		s.logger.Info(ctx, "Recorded the gateway's master", log.String("gatewayID", previous.GatewayID),
 			log.Int("master", master.Seq), log.Int("deployed", master.Summary.Deployed),
 			log.Int("failed", master.Summary.Failed), log.Int("removed", master.Summary.Removed))
 		s.pruneMasters(ctx, previous.GatewayID, master.Seq)
@@ -826,7 +826,7 @@ func (s *versionService) masterBefore(ctx context.Context, gatewayID string,
 func (s *versionService) mayStillSend(ctx context.Context, gw *Gateway, target *Version, token string,
 	prepared time.Time) *tidcommon.ServiceError {
 	if time.Since(prepared) > prepareBudget {
-		s.logger.Warn(ctx, "An apply took too long to prepare and sends nothing", log.String("gatewayId", gw.ID),
+		s.logger.Warn(ctx, "An apply took too long to prepare and sends nothing", log.String("gatewayID", gw.ID),
 			log.Int("version", target.Seq))
 		return &ErrorApplyTookTooLong
 	}
@@ -837,7 +837,7 @@ func (s *versionService) mayStillSend(ctx context.Context, gw *Gateway, target *
 	}
 	if !holds {
 		s.logger.Warn(ctx, "Another apply took over the gateway before the import was sent",
-			log.String("gatewayId", gw.ID), log.Int("version", target.Seq))
+			log.String("gatewayID", gw.ID), log.Int("version", target.Seq))
 		return &ErrorAppliedChanged
 	}
 	return nil
@@ -875,10 +875,10 @@ func (s *versionService) record(ctx context.Context, gw *Gateway, target *Versio
 		return nil
 	case errors.Is(err, errVersionRemoved):
 		s.logger.Warn(ctx, "A version was removed or replaced while it was applied to a gateway",
-			log.String("gatewayId", gw.ID), log.Int("version", target.Seq))
+			log.String("gatewayID", gw.ID), log.Int("version", target.Seq))
 		return &ErrorVersionRemoved
 	case errors.Is(err, errAppliedChanged):
-		s.logger.Warn(ctx, "Another apply to the gateway finished first", log.String("gatewayId", gw.ID),
+		s.logger.Warn(ctx, "Another apply to the gateway finished first", log.String("gatewayID", gw.ID),
 			log.Int("version", target.Seq))
 		return &ErrorAppliedChanged
 	default:
@@ -901,7 +901,7 @@ func (s *versionService) refuseUnconfirmedRemovals(ctx context.Context, gw *Gate
 		return nil
 	}
 	s.logger.Info(ctx, "Refused an apply that removes more than the threshold until it is confirmed",
-		log.String("gatewayId", gw.ID), log.Int("removals", removals), log.Int("threshold", limit))
+		log.String("gatewayID", gw.ID), log.Int("removals", removals), log.Int("threshold", limit))
 	return &ErrorRemovalsNeedConfirmation
 }
 
@@ -946,7 +946,7 @@ func (s *versionService) heldValues(ctx context.Context, gw *Gateway, key string
 	variables, secrets := referencesIn(target.Resources)
 	held, err := s.client.HeldValues(ctx, gw, key, variables, secrets)
 	if err != nil {
-		s.logger.Error(ctx, "Failed to read which values a gateway holds", log.String("gatewayId", gw.ID),
+		s.logger.Error(ctx, "Failed to read which values a gateway holds", log.String("gatewayID", gw.ID),
 			log.Error(err))
 		return nil, nil, unreachable(err)
 	}
@@ -1005,7 +1005,7 @@ func (s *versionService) missingValues(ctx context.Context, gw *Gateway, held *H
 	if !missing.empty() {
 		missing.References = referencesTo(content, missing)
 		if !dryRun {
-			s.logger.Info(ctx, "Refused an apply while the gateway lacks values", log.String("gatewayId", gw.ID),
+			s.logger.Info(ctx, "Refused an apply while the gateway lacks values", log.String("gatewayID", gw.ID),
 				log.Int("variables", len(missing.Variables)), log.Int("secrets", len(missing.Secrets)))
 			return nil, &ErrorMissingValues
 		}

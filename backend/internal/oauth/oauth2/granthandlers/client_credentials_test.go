@@ -104,7 +104,7 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) SetupTest() {
 		actorProvider:   suite.mockEntityProvider,
 		resourceService: suite.mockResourceService,
 	}
-	suite.mockEntityProvider.On("GetActorGroups", mock.Anything).
+	suite.mockEntityProvider.On("GetActorGroups", mock.Anything, mock.Anything).
 		Return([]providers.EntityGroup{}, nil).Maybe()
 
 	suite.oauthApp = &providers.OAuthClient{
@@ -714,7 +714,7 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_AgentOwnAtt
 		},
 	}
 
-	suite.mockEntityProvider.On("GetActor", agentApp.ID).Return(&providers.Entity{
+	suite.mockEntityProvider.On("GetActor", mock.Anything, agentApp.ID).Return(&providers.Entity{
 		ID:         agentApp.ID,
 		Attributes: []byte(`{"modelProvider":"anthropic"}`),
 	}, (*tidcommon.ServiceError)(nil))
@@ -759,7 +759,7 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_AgentSystem
 		},
 	}
 
-	suite.mockEntityProvider.On("GetActor", agentApp.ID).Return(&providers.Entity{
+	suite.mockEntityProvider.On("GetActor", mock.Anything, agentApp.ID).Return(&providers.Entity{
 		ID:               agentApp.ID,
 		Category:         providers.EntityCategoryAgent,
 		Attributes:       []byte(`{"name":"Ledger Agent"}`),
@@ -809,7 +809,7 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_Application
 	}
 
 	// Applications store name in SystemAttributes too; the category gate must keep it out of the token.
-	suite.mockEntityProvider.On("GetActor", appApp.ID).Return(&providers.Entity{
+	suite.mockEntityProvider.On("GetActor", mock.Anything, appApp.ID).Return(&providers.Entity{
 		ID:               appApp.ID,
 		Category:         providers.EntityCategoryApp,
 		SystemAttributes: []byte(`{"name":"My Application","clientId":"cid"}`),

@@ -86,20 +86,22 @@ func (e *attributeUniquenessValidator) Execute(ctx *providers.NodeContext) (*pro
 		return nil, fmt.Errorf("invalid category: %s", category)
 	}
 
-	svcCtx := security.WithRuntimeContext(context.Background())
+	svcCtx := security.WithRuntimeContext(ctx.Context)
 	uniqueAttrs, svcErr := e.entityTypeService.GetUniqueAttributes(svcCtx, category, entityType)
 	if svcErr != nil {
 		return nil, fmt.Errorf("failed to retrieve unique attributes from schema for %s type %s: %s",
 			category, entityType, svcErr.Error.DefaultValue)
 	}
 
+	// Uniqueness is deployment-wide: a holder outside the sign-in boundary must still be found.
+	identifyCtx := security.WithRuntimeContext(context.Background())
 	for _, attr := range uniqueAttrs {
 		value, exists := ctx.UserInputs[attr]
 		if !exists || value == "" {
 			continue
 		}
 
-		userID, svcErr := e.entityProvider.IdentifyEntity(svcCtx, map[string]interface{}{attr: value})
+		userID, svcErr := e.entityProvider.IdentifyEntity(identifyCtx, map[string]interface{}{attr: value})
 		if svcErr != nil {
 			if svcErr.Code == entityprovider.ErrorCodeEntityNotFound {
 				continue

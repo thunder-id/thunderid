@@ -96,10 +96,10 @@ type ActorProvider interface {
 	AuthenticateActor(
 		ctx context.Context, identifiers, credentials map[string]interface{},
 	) *common.ServiceError
-	GetActor(actorID string) (*Entity, *common.ServiceError)
-	GetActorGroups(actorID string) ([]EntityGroup, *common.ServiceError)
-	GetActorRoles(actorID string, groupIDs []string) ([]string, *common.ServiceError)
-	GetTransitiveGroupAncestors(groupID string) ([]string, *common.ServiceError)
+	GetActor(ctx context.Context, actorID string) (*Entity, *common.ServiceError)
+	GetActorGroups(ctx context.Context, actorID string) ([]EntityGroup, *common.ServiceError)
+	GetActorRoles(ctx context.Context, actorID string, groupIDs []string) ([]string, *common.ServiceError)
+	GetTransitiveGroupAncestors(ctx context.Context, groupID string) ([]string, *common.ServiceError)
 }
 
 // AgentMgtProvider provisions agents on behalf of runtime capabilities. The rules and semantics of an
@@ -169,6 +169,17 @@ type FlowProvider interface {
 	// GetSystemFlow returns the system flow with the given handle. A provider that serves no system
 	// flows returns a not-found error.
 	GetSystemFlow(ctx context.Context, handle string) (*CompleteFlowDefinition, *common.ServiceError)
+}
+
+// AttributeVerificationProvider pins a contact attribute before a challenge and records it as verified
+// after the challenge is passed. It makes no scope or access check; the caller makes both.
+type AttributeVerificationProvider interface {
+	// PrepareAttributeVerification pins the requested contact without writing. A pin for an entity
+	// pending creation names no subject until the contact is recorded.
+	PrepareAttributeVerification(ctx context.Context, request AttributeVerificationRequest) (
+		*AttributeVerificationPin, *common.ServiceError)
+	// RecordAttributeVerification records the pinned contact as verified if it is still current.
+	RecordAttributeVerification(ctx context.Context, pin AttributeVerificationPin) *common.ServiceError
 }
 
 // ResourceServerProvider defines the interface for the resource provider.

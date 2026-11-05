@@ -515,12 +515,13 @@ func idjagExcludedAttributeNames() map[string]bool {
 // The organization claims are not among them: BuildClientEffectiveOUAttributes resolves those, and
 // they travel in a field of their own on the build context.
 func BuildClientAttributes(
+	ctx context.Context,
 	oauthApp *providers.OAuthClient,
 	actorProvider providers.ActorProvider,
 ) (map[string]interface{}, error) {
 	claims := make(map[string]interface{})
 
-	entity, err := fetchClientEntity(oauthApp, actorProvider)
+	entity, err := fetchClientEntity(ctx, oauthApp, actorProvider)
 	if err != nil {
 		return nil, err
 	}
@@ -542,7 +543,7 @@ func BuildClientAttributes(
 		claims[k] = v
 	}
 
-	groupRoleClaims, err := resolveClientGroupRoleClaims(oauthApp, actorProvider)
+	groupRoleClaims, err := resolveClientGroupRoleClaims(ctx, oauthApp, actorProvider)
 	if err != nil {
 		return nil, err
 	}
@@ -573,6 +574,7 @@ func resolvedWithoutEntity(name string) bool {
 // system-attribute resolvers can share it. Returns nil when no requested attribute needs the
 // entity: an empty allow-list, or one that lists only claims resolved elsewhere (OU, groups, roles).
 func fetchClientEntity(
+	ctx context.Context,
 	oauthApp *providers.OAuthClient,
 	actorProvider providers.ActorProvider,
 ) (*providers.Entity, error) {
@@ -591,7 +593,7 @@ func fetchClientEntity(
 		return nil, nil
 	}
 
-	entity, svcErr := actorProvider.GetActor(oauthApp.ID)
+	entity, svcErr := actorProvider.GetActor(ctx, oauthApp.ID)
 	if svcErr != nil {
 		return nil, fmt.Errorf("failed to fetch entity %s for client attributes: %s", oauthApp.ID, svcErr.Error)
 	}
@@ -725,24 +727,27 @@ func resolveClientSystemAttributes(
 // ouActorRoleProvider is implemented by an actor provider that can read the roles an actor holds
 // through the assignments made in one organization unit. The server's own provider does.
 type ouActorRoleProvider interface {
-	GetActorRolesInOU(actorID string, groupIDs []string, ouID string) ([]string, *tidcommon.ServiceError)
+	GetActorRolesInOU(
+		ctx context.Context, actorID string, groupIDs []string, ouID string,
+	) ([]string, *tidcommon.ServiceError)
 }
 
 // actorRolesInOU returns the actor's roles from the assignments made in ouID. A provider that cannot
 // narrow its roles to an organization unit answers with the roles assigned anywhere, as before.
 func actorRolesInOU(
-	actorProvider providers.ActorProvider, actorID string, groupIDs []string, ouID string,
+	ctx context.Context, actorProvider providers.ActorProvider, actorID string, groupIDs []string, ouID string,
 ) ([]string, *tidcommon.ServiceError) {
 	if p, ok := actorProvider.(ouActorRoleProvider); ok {
-		return p.GetActorRolesInOU(actorID, groupIDs, ouID)
+		return p.GetActorRolesInOU(ctx, actorID, groupIDs, ouID)
 	}
-	return actorProvider.GetActorRoles(actorID, groupIDs)
+	return actorProvider.GetActorRoles(ctx, actorID, groupIDs)
 }
 
 // resolveClientGroupRoleClaims returns the client's groups and/or roles claims selected by
 // ClientConfig.Attributes. Groups come from the actor's transitive memberships; roles are resolved
 // from those groups plus direct assignments. The shared group lookup runs once for both.
 func resolveClientGroupRoleClaims(
+	ctx context.Context,
 	oauthApp *providers.OAuthClient,
 	actorProvider providers.ActorProvider,
 ) (map[string]interface{}, error) {
@@ -757,7 +762,7 @@ func resolveClientGroupRoleClaims(
 		return nil, nil
 	}
 
-	allGroups, svcErr := actorProvider.GetActorGroups(oauthApp.ID)
+	allGroups, svcErr := actorProvider.GetActorGroups(ctx, oauthApp.ID)
 	if svcErr != nil {
 		return nil, fmt.Errorf("failed to fetch groups for client %s: %s", oauthApp.ID, svcErr.Error)
 	}
@@ -789,7 +794,7 @@ func resolveClientGroupRoleClaims(
 				groupIDs = append(groupIDs, g.ID)
 			}
 		}
-		roles, roleErr := actorRolesInOU(actorProvider, oauthApp.ID, groupIDs, oauthApp.OUID)
+		roles, roleErr := actorRolesInOU(ctx, actorProvider, oauthApp.ID, groupIDs, oauthApp.OUID)
 		if roleErr != nil {
 			return nil, fmt.Errorf("failed to fetch roles for client %s: %s", oauthApp.ID, roleErr.Error)
 		}
@@ -891,7 +896,7 @@ func ApplyMappedAuthorization(
 	}
 
 	roleIDs, groupIDs, mappedPermissions := idp.SplitAuthorizationTargets(authorizationTargets)
-	groupIDs, err := expandMappedGroupAncestors(actorProvider, groupIDs)
+	groupIDs, err := expandMappedGroupAncestors(ctx, actorProvider, groupIDs)
 	if err != nil {
 		logger.Error(ctx, "Failed to resolve ancestors of a mapped group", log.Error(err))
 		return nil, &model.ErrorResponse{
@@ -932,14 +937,14 @@ func ApplyMappedAuthorization(
 // expandMappedGroupAncestors adds each mapped group's ancestor groups. Fails closed, like
 // resolveMappedAuthorization above.
 func expandMappedGroupAncestors(
-	actorProvider providers.ActorProvider, groupIDs []string,
+	ctx context.Context, actorProvider providers.ActorProvider, groupIDs []string,
 ) ([]string, error) {
 	if actorProvider == nil || len(groupIDs) == 0 {
 		return groupIDs, nil
 	}
 	expanded := groupIDs
 	for _, groupID := range groupIDs {
-		ancestors, svcErr := actorProvider.GetTransitiveGroupAncestors(groupID)
+		ancestors, svcErr := actorProvider.GetTransitiveGroupAncestors(ctx, groupID)
 		if svcErr != nil {
 			return nil, fmt.Errorf(
 				"%w: failed to resolve ancestors of group %q: %s",

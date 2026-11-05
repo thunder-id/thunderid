@@ -23,6 +23,7 @@ import (
 	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/entitytype"
+	entitytypemodel "github.com/thunder-id/thunderid/internal/entitytype/model"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
@@ -450,6 +451,11 @@ func (a *authAssertExecutor) generateAuthAssertion(ctx *providers.NodeContext,
 		return "", attrErr
 	}
 
+	if err := a.appendVerificationClaims(ctx.Context, requiredAttributes, resolvedAttributes, attrResp,
+		entityRef); err != nil {
+		return "", err
+	}
+
 	if err := a.recordResolvedAttributes(ctx, jwtClaims, resolvedAttributes, entityRef, logger); err != nil {
 		return "", err
 	}
@@ -653,6 +659,51 @@ func (a *authAssertExecutor) resolveUserAttributes(
 	}
 
 	return attributes, nil
+}
+
+// appendVerificationClaims sets each requested verification claim the server issues for the user's type,
+// replacing any value resolved for that name. A claim is released only with its contact, and is false
+// when the released value is not the one the verification status was read for.
+func (a *authAssertExecutor) appendVerificationClaims(ctx context.Context, requestedAttributes []string,
+	attributes map[string]interface{}, attrResp *providers.AttributesResponse,
+	entityRef *providers.EntityReference) error {
+	if !slices.ContainsFunc(requestedAttributes, entitytypemodel.IsVerificationClaimName) {
+		return nil
+	}
+
+	if _, ok := attributes[providers.RawJWTAttributeKey]; ok {
+		return nil
+	}
+
+	contacts, err := verificationClaimContacts(ctx, a.entityTypeService, entityRef.EntityCategory,
+		entityRef.EntityType)
+	if err != nil {
+		return err
+	}
+
+	for name, contact := range contacts {
+		if !slices.Contains(requestedAttributes, name) {
+			continue
+		}
+
+		delete(attributes, name)
+
+		released, ok := attributes[contact].(string)
+		if !ok {
+			continue
+		}
+
+		verified := false
+		if attrResp != nil {
+			if fetched := attrResp.Attributes[contact]; fetched != nil && fetched.Value == released {
+				verified = fetched.AssuranceMetadataResponse != nil && fetched.AssuranceMetadataResponse.IsVerified
+			}
+		}
+
+		attributes[name] = verified
+	}
+
+	return nil
 }
 
 // appendComputedAttributes appends computed/derived attributes (groups, roles, userType, OU details) to the claims.

@@ -2115,6 +2115,152 @@ a.connect-card {
   margin-top: 0.35rem;
 }
 
+/* ─── ProductionOptions component ───────────────────────────────────────── */
+
+/* The setups to move to before production, shown at the end of a quickstart. The
+   cards share the NextSteps card chrome; the recommended one carries the blue
+   accent that NextSteps cards only show on hover. */
+.production-options {
+  margin-top: 3rem;
+}
+
+.production-options__eyebrow {
+  display: block;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ifm-color-primary);
+  margin-bottom: 0.5rem;
+}
+
+.markdown .production-options__title {
+  margin-top: 0;
+}
+
+.production-options__intro {
+  color: var(--ifm-color-emphasis-700);
+}
+
+.production-options__cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-top: 1.25rem;
+}
+
+@media (max-width: 768px) {
+  .production-options__cards {
+    grid-template-columns: 1fr;
+  }
+}
+
+.production-option {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 1.25rem 1.4rem;
+  border-radius: 12px;
+  border: 1px solid rgba(0, 0, 0, 0.07);
+  background: rgba(0, 0, 0, 0.02);
+}
+
+[data-theme='dark'] .production-option {
+  border-color: rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.production-option--recommended,
+[data-theme='dark'] .production-option--recommended {
+  border-color: rgba(54, 136, 255, 0.35);
+  background: rgba(54, 136, 255, 0.04);
+}
+
+.production-option__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.production-option__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  border: 1px solid var(--ifm-color-emphasis-300);
+  background: var(--ifm-background-surface-color);
+  color: var(--ifm-font-color-base);
+}
+
+.production-option__badge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid var(--ifm-color-emphasis-400);
+  color: var(--ifm-color-emphasis-800);
+  white-space: nowrap;
+}
+
+.production-option--recommended .production-option__badge {
+  border-color: var(--ifm-color-primary);
+  background: var(--ifm-color-primary);
+  color: #fff;
+}
+
+.production-option__title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--ifm-font-color-base);
+  line-height: 1.3;
+}
+
+.production-option__desc {
+  font-size: 0.875rem;
+  color: var(--ifm-color-emphasis-700);
+  line-height: 1.5;
+}
+
+.production-option__desc p {
+  margin: 0;
+}
+
+.production-option__points {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.875rem;
+  color: var(--ifm-color-emphasis-800);
+}
+
+.production-option__points li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+}
+
+.production-option__points svg {
+  flex-shrink: 0;
+  color: var(--ifm-color-primary);
+}
+
+.production-option__links {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin-top: auto;
+  padding-top: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
 /* ─── Use Case Pages ─────────────────────────────────────────────────────── */
 
 /* ─── Journey Tree (B2B SaaS in Action) ─────────────────────────────── */

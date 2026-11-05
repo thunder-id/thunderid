@@ -10,7 +10,7 @@ import { UserInfoDiagram } from '@site/src/components/OAuthFlowDiagrams';
 
 # UserInfo
 
-The **UserInfo** endpoint ([OIDC Core §5.3](https://openid.net/specs/openid-connect-core-1_0.html#UserInfo)) returns claims about the user whose access token authorizes the call. It is the canonical way for an OIDC client to get fresh user attributes without re-authenticating.
+The **UserInfo** endpoint ([OIDC Core §5.3](https://openid.net/specs/openid-connect-core-1_0.html#UserInfo)) returns claims about the user whose access token authorizes the call. It is the canonical way for an OIDC client to get the user's claims without re-authenticating.
 
 The endpoint is OIDC-specific: the access token must have been issued with the `openid` scope. Which claims come back depends on the **scopes** the token carries. See [Claims & Scopes](../claims-and-scopes).
 
@@ -104,6 +104,8 @@ JSON response:
   "email_verified": true
 }
 ```
+
+`email_verified` states whether the user verified the email address in the same response, as recorded at sign-in. See [Verified Contact Claims](../claims-and-scopes#verified-contact-claims).
 
 Signed (JWS) response: the body is a JWT, not JSON:
 

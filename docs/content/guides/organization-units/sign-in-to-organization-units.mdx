@@ -139,7 +139,7 @@ An organization the application is not available in is refused at the pick, befo
 | Answer | Cause |
 |---|---|
 | Redirect with `error=unauthorized_client` | `/ou/{ouId}/oauth2/authorize` named an OU the application cannot be used from, or one that does not exist. |
-| `400` with `FES-1023` | `ouId` on `/flow/execute` named an OU the application cannot be used from, or one that does not exist. |
+| `400` with `FES-1028` | `ouId` on `/flow/execute` named an OU the application cannot be used from, or one that does not exist. |
 | `400` with `FES-1026` | `ouId` was sent on a request that does not start an `AUTHENTICATION` flow. |
 | `400 invalid_grant` | An authorization code redeemed at `/ou/{ouId}/oauth2/token` was not issued for that OU, or a refresh token was issued in an OU its user can no longer sign in to. |
 | `400 interaction_required` | A device secret exchanged at `/ou/{ouId}/oauth2/token`, or for an application that is not shared, names a user who cannot sign in to that OU. The session cannot be used there, so the user has to sign in. |

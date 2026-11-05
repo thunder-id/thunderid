@@ -21,10 +21,12 @@ import (
 	consentauthn "github.com/thunder-id/thunderid/internal/authn/consent"
 	authzdetail "github.com/thunder-id/thunderid/internal/authzdetail/common"
 	"github.com/thunder-id/thunderid/internal/consent"
+	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
 	"github.com/thunder-id/thunderid/tests/mocks/consentprovidermock"
+	"github.com/thunder-id/thunderid/tests/mocks/entitytypemock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/coremock"
 )
 
@@ -37,6 +39,7 @@ type ConsentExecutorTestSuite struct {
 	mockConsentEnforcer *consentprovidermock.ConsentProviderMock
 	mockAuthnProvider   *managermock.AuthnProviderManagerMock
 	mockFlowFactory     *coremock.FlowFactoryInterfaceMock
+	mockEntityTypeSvc   *entitytypemock.EntityTypeServiceInterfaceMock
 	executor            *consentExecutor
 }
 
@@ -48,14 +51,15 @@ func (suite *ConsentExecutorTestSuite) SetupTest() {
 	suite.mockConsentEnforcer = consentprovidermock.NewConsentProviderMock(suite.T())
 	suite.mockAuthnProvider = managermock.NewAuthnProviderManagerMock(suite.T())
 	suite.mockFlowFactory = coremock.NewFlowFactoryInterfaceMock(suite.T())
+	suite.mockEntityTypeSvc = entitytypemock.NewEntityTypeServiceInterfaceMock(suite.T())
 
 	mockExec := createMockExecutorWithInputs(suite.T())
 	suite.mockFlowFactory.On("CreateExecutor", ExecutorNameConsent, providers.ExecutorTypeUtility,
 		mock.AnythingOfType("[]providers.Input"), mock.AnythingOfType("[]providers.Input"),
 		mock.Anything).Return(mockExec)
 
-	suite.executor = newConsentExecutor(suite.mockFlowFactory, suite.mockConsentEnforcer,
-		suite.mockAuthnProvider)
+	suite.executor = newConsentExecutor(suite.mockFlowFactory, suite.mockConsentEnforcer, suite.mockAuthnProvider,
+		suite.mockEntityTypeSvc)
 }
 
 // createMockExecutorWithInputs creates a mock executor that supports ValidatePrerequisites and HasRequiredInputs
@@ -2474,4 +2478,70 @@ func (suite *ConsentExecutorTestSuite) TestExecute_HasInputs_RecordConsentFailsW
 
 	suite.Error(err)
 	suite.Nil(resp)
+}
+
+// A verification claim is offered only beside a contact attribute of the user's type, and a name the
+// type's schema defines itself keeps its own value.
+func (suite *ConsentExecutorTestSuite) TestOfferVerificationClaims_OnlyForContactAttributes() {
+	suite.mockEntityTypeSvc.On("GetAttributes", mock.Anything, entitytype.TypeCategoryUser, "customer",
+		entitytype.AttributeFilter{AllowNonCredential: true}).Return([]entitytype.AttributeInfo{
+		{Attribute: "email", Type: "email"},
+		{Attribute: "mobile", Type: "mobile"},
+		{Attribute: "workEmail", Type: "email"},
+		{Attribute: "workEmail_verified", Type: "boolean"},
+		{Attribute: "name", Type: "string"},
+	}, (*tidcommon.ServiceError)(nil)).Once()
+	stored := &providers.AttributeResponse{Value: true}
+	available := &providers.AttributesResponse{Attributes: map[string]*providers.AttributeResponse{
+		"email": nil, "workEmail": nil, "workEmail_verified": stored, "name": nil,
+	}}
+
+	err := suite.executor.offerVerificationClaims(context.Background(), []string{"email_verified"}, available,
+		&providers.EntityReference{
+			EntityID: testUserID, EntityCategory: string(providers.EntityCategoryUser), EntityType: "customer"})
+
+	suite.Require().NoError(err)
+	suite.Contains(available.Attributes, "email_verified")
+	suite.NotContains(available.Attributes, "mobile_verified", "a contact not offered has no claim")
+	suite.NotContains(available.Attributes, "name_verified", "a non-contact attribute has no claim")
+	suite.Same(stored, available.Attributes["workEmail_verified"])
+	suite.Len(available.Attributes, 5)
+}
+
+func (suite *ConsentExecutorTestSuite) TestOfferVerificationClaims_NoneForAnAgent() {
+	available := &providers.AttributesResponse{Attributes: map[string]*providers.AttributeResponse{"email": nil}}
+
+	err := suite.executor.offerVerificationClaims(context.Background(), []string{"email_verified"}, available,
+		&providers.EntityReference{
+			EntityID: "agent-1", EntityCategory: string(providers.EntityCategoryAgent), EntityType: "assistant"})
+
+	suite.Require().NoError(err)
+	suite.NotContains(available.Attributes, "email_verified")
+}
+
+func (suite *ConsentExecutorTestSuite) TestOfferVerificationClaims_SchemaReadFailureIsAnError() {
+	suite.mockEntityTypeSvc.On("GetAttributes", mock.Anything, entitytype.TypeCategoryUser, "customer",
+		mock.Anything).Return(nil, &tidcommon.InternalServerError).Once()
+	available := &providers.AttributesResponse{Attributes: map[string]*providers.AttributeResponse{"email": nil}}
+
+	err := suite.executor.offerVerificationClaims(context.Background(), []string{"email_verified"}, available,
+		&providers.EntityReference{
+			EntityID: testUserID, EntityCategory: string(providers.EntityCategoryUser), EntityType: "customer"})
+
+	suite.Error(err)
+}
+
+// The schema is not read unless a verification claim is requested, so a consent step without one
+// never fails on the schema.
+func (suite *ConsentExecutorTestSuite) TestOfferVerificationClaims_SchemaNotReadUnlessRequested() {
+	available := &providers.AttributesResponse{Attributes: map[string]*providers.AttributeResponse{"email": nil}}
+
+	err := suite.executor.offerVerificationClaims(context.Background(), []string{"email", "name"}, available,
+		&providers.EntityReference{EntityID: testUserID, EntityCategory: string(providers.EntityCategoryUser),
+			EntityType: "customer"})
+
+	suite.Require().NoError(err)
+	suite.NotContains(available.Attributes, "email_verified")
+	suite.mockEntityTypeSvc.AssertNotCalled(suite.T(), "GetAttributes", mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything)
 }

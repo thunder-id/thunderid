@@ -33,20 +33,22 @@ paths:
         their Flow Secret in the `Flow-Secret` header (see the `FlowSecret` security scheme) when
         initiating a new flow; the header is ignored for other application types.
 
-        A flow is initiated either by `applicationId` and `flowType`, or, for administration and
-        invitation flows only, by `flowId`. Initiating by `flowId` requires an access token
-        carrying the `system` scope. An `INVITATION` flow also requires the token to be issued for
-        an organization unit, which the flow then acts for, and that organization unit to own the
-        flow or have it shared with it. Any other flow type is rejected with `403`. A `DEVICE_GRANT`
-        request starts the Device Grant flow assigned to the specified application. Supplying the
-        step's inputs on the initiating request runs the flow through to its terminal state in a
-        single call; omitting them returns the required inputs and an `executionId` to continue with.
+        A flow is initiated by `applicationId` and `flowType`, by `flowType` and `handle` for a
+        `SELF` flow, or, for administration and invitation flows only, by `flowId`. Initiating by
+        `flowId` requires an access token carrying the `system` scope. An `INVITATION` flow also
+        requires the token to be issued for an organization unit, which the flow then acts for, and
+        that organization unit to own the flow or have it shared with it. Any other flow type is
+        rejected with `403`. A `DEVICE_GRANT` request starts the Device Grant flow assigned to the
+        specified application. Supplying the step's inputs on the initiating request runs the flow
+        through to its terminal state in a single call; omitting them returns the required inputs and
+        an `executionId` to continue with.
       tags:
         - Flow Execution
       security:
         - {}
         - FlowSecret: []
         - OAuth2: [system]
+        - OAuth2: []
       parameters:
         - in: header
           name: Attestation-Token
@@ -64,6 +66,7 @@ paths:
             schema:
               oneOf:
                 - $ref: '#/components/schemas/InitialFlowRequest'
+                - $ref: '#/components/schemas/SelfFlowRequest'
                 - $ref: '#/components/schemas/AdministrativeFlowRequest'
                 - $ref: '#/components/schemas/SubSequentFlowRequest'
             examples:
@@ -95,6 +98,15 @@ paths:
                   flowType: "DEVICE_GRANT"
                   inputs: {}
                   verbose: true
+              selfFlowRequest:
+                summary: Self flow started with the signed-in user's bearer token
+                value:
+                  flowType: "SELF"
+                  handle: "default-self-attribute-verification-flow"
+                  verbose: true
+                  inputs: {
+                    "attribute": "email"
+                  }
               administrativeFlowSingleCall:
                 summary: Administration flow run to completion in one call (inputs supplied up front)
                 value:
@@ -261,16 +273,27 @@ paths:
           description: >
             Bad Request: The request body is malformed or contains invalid data. An `ouId` sent on a
             request that does not start an `AUTHENTICATION` flow is refused with `FES-1026`, and an
-            `ouId` the application is not accessible from, or that does not exist, with `FES-1023`.
+            `ouId` the application is not accessible from, or that does not exist, with `FES-1028`.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+              examples:
+                flowHandleNotFound:
+                  value:
+                    code: FES-1025
+                    message:
+                      key: error.flowexecservice.flow_handle_not_found
+                      defaultValue: Flow not found
+                    description:
+                      key: error.flowexecservice.flow_handle_not_found_description
+                      defaultValue: No flow matches the specified handle and flow type
         "401":
           description: >
             Unauthorized: The application must present a valid credential to initiate a new flow —
             a Flow Secret for backend applications, or a platform attestation token for mobile
-            applications — and the presented credential was missing or invalid.
+            applications — and the presented credential was missing or invalid, or the flow runs for a
+            signed-in user and the user's access token was missing or invalid.
           content:
             application/json:
               schema:
@@ -281,7 +304,7 @@ paths:
             configuration, the application is suspended, or the flow started by `flowId` is not
             permitted for the caller or its token: an `INVITATION` flow started with a token issued
             for no organization unit (`FES-1027`), or for one the flow is not shared with
-            (`FES-1025`).
+            (`FES-1029`).
           content:
             application/json:
               schema:
@@ -308,8 +331,8 @@ components:
     OAuth2:
       type: oauth2
       description: >-
-        Access token used to authenticate the administrator initiating an administration flow by
-        `flowId`. The token must carry the `system` scope.
+        Access token. An administration flow initiated by `flowId` requires a token carrying the
+        `system` scope; a `SELF` flow requires the signed-in user's token.
       flows:
         authorizationCode:
           authorizationUrl: https://localhost:8090/oauth2/authorize
@@ -354,8 +377,38 @@ components:
             `AUTHENTICATION`; the sign-in is then bounded to this organization unit. Refused with
             `FES-1026` on any other request, including one that continues a flow by `executionId` or
             starts one by `flowId`. An organization unit the application is not accessible from, or
-            that does not exist, is refused with `FES-1023`.
+            that does not exist, is refused with `FES-1028`.
           example: "8a1f6c2e-3b4d-4e5f-9a6b-7c8d9e0f1a2b"
+
+    SelfFlowRequest:
+      type: object
+      description: >-
+        Initiates a `SELF` flow by its handle. The caller must present the signed-in user's access
+        token.
+      required:
+        - flowType
+        - handle
+      properties:
+        flowType:
+          type: string
+          enum: [SELF]
+        handle:
+          type: string
+          description: Handle of the `SELF` flow to execute
+          example: "default-self-attribute-verification-flow"
+        inputs:
+          type: object
+          description: Input data for the flow
+          additionalProperties:
+            type: string
+          example: {attribute: "email"}
+        action:
+          type: string
+          description: Reference of the action to execute in the flow
+        verbose:
+          type: boolean
+          description: When true, the response includes full UI metadata (meta/components) for prompt nodes
+          example: false
 
     AdministrativeFlowRequest:
       type: object

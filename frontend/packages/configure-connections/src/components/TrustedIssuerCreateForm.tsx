@@ -9,9 +9,7 @@ import {
   Button,
   Collapse,
   Divider,
-  FormControl,
   FormControlLabel,
-  FormLabel,
   Paper,
   Stack,
   Switch,
@@ -165,55 +163,51 @@ export default function TrustedIssuerCreateForm({
 
       <Paper variant="outlined" sx={{p: 3}}>
         <Stack direction="column" spacing={3}>
-          <FormControl fullWidth required error={Boolean(touched['issuer'] && errors.issuer)}>
-            <FormLabel htmlFor="trusted-issuer-issuer">
-              {t('trustedIssuers:create.form.issuer.label', 'Issuer URI')}
-            </FormLabel>
-            <TextField
-              id="trusted-issuer-issuer"
-              fullWidth
-              placeholder="https://idp.example.com"
-              value={issuer}
-              error={Boolean(touched['issuer'] && errors.issuer)}
-              helperText={
-                (touched['issuer'] ? fieldErrorMessage(errors.issuer) : undefined) ??
-                t(
-                  'trustedIssuers:create.form.issuer.hint',
-                  "The issuer URI from the external IdP's OpenID Connect discovery document.",
-                )
-              }
-              onChange={(e) => {
-                clearCreateError();
-                setIssuer(e.target.value);
-              }}
-              onBlur={() => setTouchedField('issuer')}
-            />
-          </FormControl>
+          <TextField
+            labelPlacement="top"
+            label={t('trustedIssuers:create.form.issuer.label', 'Issuer URI')}
+            required
+            id="trusted-issuer-issuer"
+            fullWidth
+            placeholder="https://idp.example.com"
+            value={issuer}
+            error={Boolean(touched['issuer'] && errors.issuer)}
+            helperText={
+              (touched['issuer'] ? fieldErrorMessage(errors.issuer) : undefined) ??
+              t(
+                'trustedIssuers:create.form.issuer.hint',
+                "The issuer URI from the external IdP's OpenID Connect discovery document.",
+              )
+            }
+            onChange={(e) => {
+              clearCreateError();
+              setIssuer(e.target.value);
+            }}
+            onBlur={() => setTouchedField('issuer')}
+          />
 
-          <FormControl fullWidth required error={Boolean(touched['jwksEndpoint'] && errors.jwksEndpoint)}>
-            <FormLabel htmlFor="trusted-issuer-jwks-endpoint">
-              {t('trustedIssuers:create.form.jwksEndpoint.label', 'JWKS endpoint')}
-            </FormLabel>
-            <TextField
-              id="trusted-issuer-jwks-endpoint"
-              fullWidth
-              placeholder="https://idp.example.com/oauth2/v1/keys"
-              value={jwksEndpoint}
-              error={Boolean(touched['jwksEndpoint'] && errors.jwksEndpoint)}
-              helperText={
-                (touched['jwksEndpoint'] ? fieldErrorMessage(errors.jwksEndpoint) : undefined) ??
-                t(
-                  'trustedIssuers:create.form.jwksEndpoint.hint',
-                  'The JWKS endpoint used to validate the signature of incoming identity assertions.',
-                )
-              }
-              onChange={(e) => {
-                clearCreateError();
-                setJwksEndpoint(e.target.value);
-              }}
-              onBlur={() => setTouchedField('jwksEndpoint')}
-            />
-          </FormControl>
+          <TextField
+            labelPlacement="top"
+            label={t('trustedIssuers:create.form.jwksEndpoint.label', 'JWKS endpoint')}
+            required
+            id="trusted-issuer-jwks-endpoint"
+            fullWidth
+            placeholder="https://idp.example.com/oauth2/v1/keys"
+            value={jwksEndpoint}
+            error={Boolean(touched['jwksEndpoint'] && errors.jwksEndpoint)}
+            helperText={
+              (touched['jwksEndpoint'] ? fieldErrorMessage(errors.jwksEndpoint) : undefined) ??
+              t(
+                'trustedIssuers:create.form.jwksEndpoint.hint',
+                'The JWKS endpoint used to validate the signature of incoming identity assertions.',
+              )
+            }
+            onChange={(e) => {
+              clearCreateError();
+              setJwksEndpoint(e.target.value);
+            }}
+            onBlur={() => setTouchedField('jwksEndpoint')}
+          />
 
           <Box>
             <Divider sx={{mb: 2}} />
@@ -241,26 +235,24 @@ export default function TrustedIssuerCreateForm({
             </Typography>
 
             <Collapse in={tokenExchangeEnabled}>
-              <FormControl fullWidth sx={{mt: 3}}>
-                <FormLabel htmlFor="trusted-issuer-token-audience">
-                  {t('trustedIssuers:detail.tokenExchange.audience.label', 'Trusted token audience')}
-                </FormLabel>
-                <TextField
-                  id="trusted-issuer-token-audience"
-                  fullWidth
-                  placeholder="api://thunderid"
-                  value={trustedTokenAudience}
-                  helperText={t(
-                    'trustedIssuers:detail.tokenExchange.audience.hint',
-                    "An additional audience value {{productName}} will accept in subject tokens from this issuer. Tokens whose audience is {{productName}}'s own issuer URL are always accepted.",
-                    {productName},
-                  )}
-                  onChange={(e) => {
-                    clearCreateError();
-                    setTrustedTokenAudience(e.target.value);
-                  }}
-                />
-              </FormControl>
+              <TextField
+                labelPlacement="top"
+                label={t('trustedIssuers:detail.tokenExchange.audience.label', 'Trusted token audience')}
+                sx={{mt: 3}}
+                id="trusted-issuer-token-audience"
+                fullWidth
+                placeholder="api://thunderid"
+                value={trustedTokenAudience}
+                helperText={t(
+                  'trustedIssuers:detail.tokenExchange.audience.hint',
+                  "An additional audience value {{productName}} will accept in subject tokens from this issuer. Tokens whose audience is {{productName}}'s own issuer URL are always accepted.",
+                  {productName},
+                )}
+                onChange={(e) => {
+                  clearCreateError();
+                  setTrustedTokenAudience(e.target.value);
+                }}
+              />
             </Collapse>
           </Box>
 

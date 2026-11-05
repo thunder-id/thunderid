@@ -41,6 +41,8 @@ const (
 	FlowTypeRegistration FlowType = "REGISTRATION"
 	// FlowTypeUserOnboarding represents an admin-initiated user onboarding flow.
 	FlowTypeUserOnboarding FlowType = "USER_ONBOARDING"
+	// FlowTypeSelf represents a flow a signed-in user runs on their own account.
+	FlowTypeSelf FlowType = "SELF"
 	// FlowTypeRecovery represents a flow execution for account recovery (e.g., password reset).
 	FlowTypeRecovery FlowType = "RECOVERY"
 	// FlowTypeSignOut represents a flow execution for terminating an SSO session.
@@ -61,6 +63,7 @@ var ValidFlowTypes = []FlowType{
 	FlowTypeAuthentication,
 	FlowTypeRegistration,
 	FlowTypeUserOnboarding,
+	FlowTypeSelf,
 	FlowTypeRecovery,
 	FlowTypeSignOut,
 	FlowTypeAdministration,
@@ -392,6 +395,10 @@ const (
 	// secret can be guessed, such as a password.
 	AccessPlaneRecovery AccessPlane = "recovery"
 
+	// AccessPlaneVerification is a contact attribute being verified. A suspension applies here. An
+	// automatic lock neither holds nor counts.
+	AccessPlaneVerification AccessPlane = "verification"
+
 	// AccessPlaneSession is a subject being resolved at the grant, from a session or a flow.
 	AccessPlaneSession AccessPlane = "session"
 
@@ -444,6 +451,17 @@ const (
 
 	// AccessRefusalReasonExpired says the account's lifespan has ended. It never states when.
 	AccessRefusalReasonExpired AccessRefusalReason = "expired"
+)
+
+// VerificationChannel is the channel a verification challenge for a contact attribute is sent on.
+type VerificationChannel string
+
+const (
+	// VerificationChannelEmail sends the challenge to an email address.
+	VerificationChannelEmail VerificationChannel = "email"
+
+	// VerificationChannelSMS sends the challenge to a mobile number.
+	VerificationChannelSMS VerificationChannel = "sms"
 )
 
 // ConsentStatus defines the possible statuses for a consent record.

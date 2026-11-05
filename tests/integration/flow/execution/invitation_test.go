@@ -31,7 +31,7 @@ const (
 	errCodeInvitationAuthRequired = "FES-1017"
 	errCodeInvitationPermission   = "FES-1019"
 	errCodeTargetNotDirectChild   = "SHR-1030"
-	errCodeFlowNotShared          = "FES-1025"
+	errCodeFlowNotShared          = "FES-1029"
 	errCodeInvitationOUMissing    = "FES-1027"
 	errCodeInvitedRoleNotAllowed  = "FET-1133"
 	errCodeInvitedTypeNotAllowed  = "FET-1054"

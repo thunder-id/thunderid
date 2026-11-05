@@ -159,7 +159,7 @@ func (s *interceptorRunner) executeInterceptor(
 	logger.Debug(execCtx.Ctx, "Running interceptor",
 		log.String("interceptorName", name),
 		log.String("mode", string(mode)),
-		log.String("nodeID", execCtx.CurrentNodeID))
+		log.String(log.LoggerKeyNodeID, execCtx.CurrentNodeID))
 
 	ctx := &core.InterceptorContext{
 		Context:             execCtx.Ctx,

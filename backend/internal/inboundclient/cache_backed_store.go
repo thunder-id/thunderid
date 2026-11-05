@@ -146,7 +146,7 @@ func (c *cachedBackStore) cacheInboundClient(ctx context.Context, client *inboun
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "InboundClientCachedBackStore"))
 	if err := c.inboundClientCache.Set(ctx, cache.CacheKey{Key: client.ID}, client); err != nil {
 		logger.Error(ctx, "Failed to cache inbound client",
-			log.String("entityID", client.ID), log.Error(err))
+			log.MaskedString(log.LoggerKeyEntityID, client.ID), log.Error(err))
 	}
 }
 
@@ -156,7 +156,8 @@ func (c *cachedBackStore) cacheOAuthProfile(ctx context.Context, entityID string
 	}
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "InboundClientCachedBackStore"))
 	if err := c.oauthProfileCache.Set(ctx, cache.CacheKey{Key: entityID}, profile); err != nil {
-		logger.Error(ctx, "Failed to cache OAuth profile", log.String("entityID", entityID), log.Error(err))
+		logger.Error(ctx, "Failed to cache OAuth profile",
+			log.MaskedString(log.LoggerKeyEntityID, entityID), log.Error(err))
 	}
 }
 
@@ -167,7 +168,7 @@ func (c *cachedBackStore) invalidateInboundClient(ctx context.Context, entityID 
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "InboundClientCachedBackStore"))
 	if err := c.inboundClientCache.Delete(ctx, cache.CacheKey{Key: entityID}); err != nil {
 		logger.Error(ctx, "Failed to invalidate inbound client cache",
-			log.String("entityID", entityID), log.Error(err))
+			log.MaskedString(log.LoggerKeyEntityID, entityID), log.Error(err))
 	}
 }
 
@@ -178,6 +179,6 @@ func (c *cachedBackStore) invalidateOAuthProfile(ctx context.Context, entityID s
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "InboundClientCachedBackStore"))
 	if err := c.oauthProfileCache.Delete(ctx, cache.CacheKey{Key: entityID}); err != nil {
 		logger.Error(ctx, "Failed to invalidate OAuth profile cache",
-			log.String("entityID", entityID), log.Error(err))
+			log.MaskedString(log.LoggerKeyEntityID, entityID), log.Error(err))
 	}
 }

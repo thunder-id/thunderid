@@ -586,7 +586,7 @@ func (as *authorizeService) handleStandardAuthorizationRequest(
 	if redirectURI == "" {
 		if len(app.RedirectURIs) == 0 {
 			as.logger.Error(ctx, "OAuth application has no registered redirect URIs",
-				log.String("client_id", app.ClientID))
+				log.String("clientID", app.ClientID))
 			return nil, &AuthorizationError{
 				Code:    oauth2const.ErrorServerError,
 				Message: "Failed to process authorization request",
@@ -827,7 +827,7 @@ func (as *authorizeService) tryCompleteWithSSOSession(
 	authID, executionID string,
 ) (string, *AuthorizationError) {
 	step, svcErr := as.flowExecService.Execute(ctx, app.ID, executionID,
-		string(providers.FlowTypeAuthentication), false, "", nil, "", "", "", nil)
+		string(providers.FlowTypeAuthentication), "", false, "", nil, "", "", "", nil)
 	completed := svcErr == nil && step != nil && step.Status == providers.FlowStatusComplete &&
 		step.Assertion != ""
 	if !completed {
@@ -902,7 +902,8 @@ func (as *authorizeService) AuthorizeWithSSOSession(ctx context.Context, app *pr
 	}
 
 	step, svcErr := as.flowExecService.Execute(ctx, app.ID, executionID,
-		string(providers.FlowTypeAuthentication), false, "", nil, "", "", "", toFlowSessionData(req.SessionData))
+		string(providers.FlowTypeAuthentication), "", false, "", nil, "", "", "",
+		toFlowSessionData(req.SessionData))
 	completed := svcErr == nil && step != nil && step.Status == providers.FlowStatusComplete &&
 		step.Assertion != ""
 	if !completed {

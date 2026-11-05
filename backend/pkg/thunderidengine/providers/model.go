@@ -774,6 +774,30 @@ type AccessDecision struct {
 	NotAfter time.Time
 }
 
+// VerifiedAttribute records when control of the current contact was proved.
+type VerifiedAttribute struct {
+	VerifiedAt string `json:"verifiedAt"`
+}
+
+// AttributeVerificationRequest names the contact attribute to pin: the stored value of an existing
+// entity, or, while the entity is pending creation, the given value checked against the entity type.
+type AttributeVerificationRequest struct {
+	EntityID        string
+	EntityType      string
+	Attribute       string
+	Value           string
+	PendingCreation bool
+}
+
+// AttributeVerificationPin binds proof to one contact value: an entity's stored value, or a value
+// collected for an entity pending creation, which has no subject until the contact is recorded.
+type AttributeVerificationPin struct {
+	Subject   string              `json:"subject"`
+	Attribute string              `json:"attribute"`
+	Value     string              `json:"value"`
+	Channel   VerificationChannel `json:"channel"`
+}
+
 // User represents a user in the system. Status is derived at read time and read-only. LastLoginAt is
 // recorded by the runtime, session reuse included, never by a profile write.
 type User struct {
@@ -789,6 +813,8 @@ type User struct {
 	IsOwnedByOU *bool               `json:"isOwnedByOU,omitempty"`
 	// LinkedAccount, set on create, records the user's linked account in the same write.
 	LinkedAccount *LinkedAccount `json:"-"`
+	// VerifiedAttributes maps each verified contact attribute to when it was verified.
+	VerifiedAttributes map[string]VerifiedAttribute `json:"verifiedAttributes,omitzero"`
 }
 
 // LinkedAccount names a subject at a connection.
@@ -1506,6 +1532,7 @@ type CurrentRequest struct {
 type NodeContext struct {
 	Context          context.Context
 	initiatorRequest *InitiatorRequest
+	boundSubject     string
 
 	ExecutionID   string
 	FlowType      FlowType
@@ -1566,6 +1593,17 @@ func (nc *NodeContext) GetInitiatorRequest() *InitiatorRequest {
 // SetInitiatorRequest sets the original HTTP request that triggered the flow.
 func (nc *NodeContext) SetInitiatorRequest(req *InitiatorRequest) {
 	nc.initiatorRequest = req
+}
+
+// GetBoundSubject returns the user the engine bound to a self flow execution at its start, or ""
+// when the execution has none. It is not an authenticated user.
+func (nc *NodeContext) GetBoundSubject() string {
+	return nc.boundSubject
+}
+
+// SetBoundSubject sets the bound subject the engine copies in. The engine never reads it back.
+func (nc *NodeContext) SetBoundSubject(subject string) {
+	nc.boundSubject = subject
 }
 
 // NodeExecutionRecord represents a record of a node execution in the flow.

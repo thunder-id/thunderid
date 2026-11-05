@@ -1026,7 +1026,11 @@ Validates the OTP code the user entered against the session token stored by Gene
 **Input Configuration:**
 - `otp` (required): the OTP code entered by the user. Default: `otp`
 
-**Executor properties:** None.
+**Executor properties:**
+
+| Property | Required | Description |
+|----------|----------|-------------|
+| `maxAttempts` | No | Maximum incorrect submissions for the current code. Unset means no attempt limit. Verify OTP nodes added in the flow builder set this to `3`. |
 
 **Example:**
 
@@ -1044,12 +1048,12 @@ Validates the OTP code the user entered against the session token stored by Gene
 ```
 
 **Failure conditions:**
-- OTP code incorrect: allow the user to retry (limit: 3 attempts)
+- OTP code incorrect: the user can retry until the code expires or reaches the configured limit
 - OTP session token missing (Generate OTP did not run)
 - OTP expired (user waited too long to enter it)
 - Authentication service error
 
-**Retry limit:** The maximum number of incorrect OTP attempts before the flow fails is 3 (fixed).
+When the configured limit is reached, the current code becomes invalid. The user needs a newly generated code to try again.
 
 </details>
 

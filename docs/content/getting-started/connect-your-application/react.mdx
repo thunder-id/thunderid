@@ -246,6 +246,36 @@ You should see the `<SignInButton />`. Click it, you'll be redirected to the <Pr
 
 </Stepper>
 
+<ProductionOptions
+  id="before-you-go-to-production"
+  eyebrow="Before you go to production"
+  title="Need single logout or more secure token storage?"
+  intro={<p>This quickstart runs entirely in the browser, so the SDK keeps your <strong>tokens in browser storage</strong>, where any script on the page can read them. It also can't support single logout: if users sign in to this app and another app through single sign-on, signing out of the other app leaves them signed in here until their tokens stop working. If either matters for your app, pick one of these setups.</p>}
+>
+  <ProductionOption
+    title="Build with Next.js"
+    icon={<NextLogo size={20} />}
+    badge="Recommended"
+    recommended
+    points={['Tokens in an HttpOnly cookie that scripts cannot read', 'Single logout through back-channel logout']}
+    links={[{label: 'Next.js Quickstart', href: '../nextjs'}]}
+  >
+    Still React, with a server side. The Next.js SDK signs users in on the server and receives back-channel logout.
+  </ProductionOption>
+  <ProductionOption
+    title="Add a Backend for Frontend (BFF)"
+    icon={<Server size={18} />}
+    badge="Can't migrate?"
+    points={['No rewrite of your React code', 'Single logout through the BFF']}
+    links={[
+      {label: 'React and Express BFF sample', href: 'https://github.com/thunder-id/samples/tree/main/patterns/react-express-bff'},
+      {label: 'How to set up a BFF', href: '/sdks-and-tools/react/guides/backend-for-frontend'},
+    ]}
+  >
+    Keep this React app and add a small server that signs users in and holds the tokens. The refresh token stays on the server, and the browser gets an `HttpOnly` session cookie.
+  </ProductionOption>
+</ProductionOptions>
+
 ## What's Next
 
 <NextSteps>

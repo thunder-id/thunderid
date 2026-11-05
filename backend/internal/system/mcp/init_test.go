@@ -4,15 +4,18 @@
 package mcp
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 
+	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
@@ -33,6 +36,8 @@ const (
 	// testConfiguredIdentifier is deliberately unrelated to the server's own URL, so a test using
 	// it cannot pass by accidentally falling back to the derived value.
 	testConfiguredIdentifier = "https://id.example.com/mcp"
+	testProtocolVersion      = "2026-07-28"
+	testWaitTimeout          = 5 * time.Second
 )
 
 // fakeRevocationEnforcer accepts every identity; security.RevocationEnforcerInterface has no
@@ -158,4 +163,161 @@ func TestToolWriteDeadlineOutlastsTheServerWriteTimeout(t *testing.T) {
 
 	_, err = get(0)
 	require.Error(t, err)
+}
+
+// blockingCall observes one blocking tool registered by addBlockingTool.
+type blockingCall struct {
+	started     chan struct{}
+	canceled    chan struct{}
+	release     chan struct{}
+	releaseOnce sync.Once
+}
+
+// unblock lets the tool return. It is safe to call more than once.
+func (c *blockingCall) unblock() {
+	c.releaseOnce.Do(func() { close(c.release) })
+}
+
+// addBlockingTool registers a tool that runs until its request is cancelled or the test releases
+// it. It stands in for a long-running tool, since ThunderID's own tools are short service calls.
+// Callers defer unblock: httptest.Server.Close waits for running handlers, so a test that fails
+// before the tool returns would otherwise hang instead of failing.
+func addBlockingTool(server *mcpsdk.Server, name string) *blockingCall {
+	call := &blockingCall{
+		started:  make(chan struct{}),
+		canceled: make(chan struct{}),
+		release:  make(chan struct{}),
+	}
+	server.AddTool(&mcpsdk.Tool{Name: name, InputSchema: map[string]any{"type": "object"}},
+		func(ctx context.Context, _ *mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
+			close(call.started)
+			select {
+			case <-ctx.Done():
+				close(call.canceled)
+				return nil, ctx.Err()
+			case <-call.release:
+				return &mcpsdk.CallToolResult{Content: []mcpsdk.Content{&mcpsdk.TextContent{Text: "released"}}}, nil
+			}
+		})
+	return call
+}
+
+// serveMCP mounts server through Initialize behind a guard that admits every request, and serves it
+// over a real listener so a client can close the connection mid-request. It installs a server
+// runtime, which the mounted handler reads on every request.
+func (suite *DefaultGuardTestSuite) serveMCP(server *mcpsdk.Server) *httptest.Server {
+	suite.initRuntime(nil)
+	mux := http.NewServeMux()
+	Initialize(mux, server, func(next http.Handler) http.Handler { return next }, nil)
+	httpServer := httptest.NewServer(mux)
+	suite.T().Cleanup(httpServer.Close)
+	return httpServer
+}
+
+// toolCallRequest builds a stateless 2026-07-28 tools/call request for tool. Canceling ctx closes the
+// connection, and with it the request's response stream.
+func (suite *DefaultGuardTestSuite) toolCallRequest(
+	ctx context.Context, httpServer *httptest.Server, tool string,
+) *http.Request {
+	payload, err := json.Marshal(map[string]any{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"_meta": map[string]any{
+				"io.modelcontextprotocol/protocolVersion":    testProtocolVersion,
+				"io.modelcontextprotocol/clientCapabilities": map[string]any{},
+				"io.modelcontextprotocol/clientInfo":         map[string]any{"name": "test", "version": "1.0.0"},
+			},
+			"name":      tool,
+			"arguments": map[string]any{},
+		},
+	})
+	suite.Require().NoError(err)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, httpServer.URL+MCPEndpointPath,
+		bytes.NewReader(payload))
+	suite.Require().NoError(err)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json, text/event-stream")
+	req.Header.Set("MCP-Protocol-Version", testProtocolVersion)
+	req.Header.Set("Mcp-Method", "tools/call")
+	req.Header.Set("Mcp-Name", tool)
+	return req
+}
+
+// toolCallResponse is what sendAsync observed for one tools/call request.
+type toolCallResponse struct {
+	status int
+	body   string
+	err    error
+}
+
+// sendAsync sends req on its own goroutine, since a call to a blocking tool does not return until
+// the tool does.
+func sendAsync(httpServer *httptest.Server, req *http.Request) <-chan toolCallResponse {
+	responses := make(chan toolCallResponse, 1)
+	go func() {
+		resp, err := httpServer.Client().Do(req)
+		if err != nil {
+			responses <- toolCallResponse{err: err}
+			return
+		}
+		defer func() { _ = resp.Body.Close() }()
+		body, err := io.ReadAll(resp.Body)
+		responses <- toolCallResponse{status: resp.StatusCode, body: string(body), err: err}
+	}()
+	return responses
+}
+
+// waitFor fails the test with failure unless ch closes within testWaitTimeout.
+func (suite *DefaultGuardTestSuite) waitFor(ch <-chan struct{}, failure string) {
+	select {
+	case <-ch:
+	case <-time.After(testWaitTimeout):
+		suite.FailNow(failure)
+	}
+}
+
+// TestInitialize_ClosedResponseStreamCancelsToolCall covers MCP 2026-07-28 Streamable HTTP
+// cancellation: a client closing a request's response stream cancels the request.
+func (suite *DefaultGuardTestSuite) TestInitialize_ClosedResponseStreamCancelsToolCall() {
+	server := NewServer()
+	call := addBlockingTool(server, "block")
+	defer call.unblock()
+	httpServer := suite.serveMCP(server)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	responses := sendAsync(httpServer, suite.toolCallRequest(ctx, httpServer, "block"))
+	suite.waitFor(call.started, "tool call did not start")
+
+	cancel()
+
+	suite.waitFor(call.canceled, "closing the response stream did not cancel the tool call")
+	suite.Error((<-responses).err)
+}
+
+func (suite *DefaultGuardTestSuite) TestInitialize_ClosedResponseStreamLeavesOtherCallsRunning() {
+	server := NewServer()
+	closedCall := addBlockingTool(server, "closed")
+	openCall := addBlockingTool(server, "open")
+	defer closedCall.unblock()
+	defer openCall.unblock()
+	httpServer := suite.serveMCP(server)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	closedResponses := sendAsync(httpServer, suite.toolCallRequest(ctx, httpServer, "closed"))
+	openResponses := sendAsync(httpServer, suite.toolCallRequest(context.Background(), httpServer, "open"))
+	suite.waitFor(closedCall.started, "closed tool call did not start")
+	suite.waitFor(openCall.started, "open tool call did not start")
+
+	cancel()
+	suite.waitFor(closedCall.canceled, "closing the response stream did not cancel the tool call")
+	<-closedResponses
+
+	openCall.unblock()
+	response := <-openResponses
+	suite.Require().NoError(response.err)
+	suite.Equal(http.StatusOK, response.status)
+	suite.Contains(response.body, `"released"`)
 }

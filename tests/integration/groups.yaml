@@ -46,6 +46,7 @@ groups:
 
   - name: g3
     packages:
+      - attributeverification
       - gateway
       - agent
       - oauth/introspect

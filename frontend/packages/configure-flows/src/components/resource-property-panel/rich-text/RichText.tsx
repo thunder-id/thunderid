@@ -11,7 +11,7 @@ import {LinkPlugin} from '@lexical/react/LexicalLinkPlugin';
 import {RichTextPlugin} from '@lexical/react/LexicalRichTextPlugin';
 import {HeadingNode} from '@lexical/rich-text';
 import {useTemplateLiteralResolver} from '@thunderid/hooks';
-import {Box, FormControl, FormLabel, Paper, TextField} from '@wso2/oxygen-ui';
+import {Box, Paper, TextField} from '@wso2/oxygen-ui';
 import {ParagraphNode, TextNode, type EditorThemeClasses} from 'lexical';
 import {useMemo, type ReactElement} from 'react';
 import {useTranslation} from 'react-i18next';
@@ -153,22 +153,19 @@ function RichText({
           <HTMLPlugin resource={resource} onChange={onChange} disabled={disabled} />
         </Paper>
         {isI18nPattern && (
-          <FormControl
+          <TextField
+            labelPlacement="top"
+            label={t('flows:core.elements.richText.resolvedI18nValue')}
             sx={{
               mt: 2,
             }}
             fullWidth
-          >
-            <FormLabel>{t('flows:core.elements.richText.resolvedI18nValue')}</FormLabel>
-            <TextField
-              fullWidth
-              value={resolvedI18nValue}
-              inputProps={{
-                disabled: true,
-                readOnly: true,
-              }}
-            />
-          </FormControl>
+            value={resolvedI18nValue}
+            inputProps={{
+              disabled: true,
+              readOnly: true,
+            }}
+          />
         )}
       </div>
     </LexicalComposer>

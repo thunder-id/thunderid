@@ -19,7 +19,7 @@ import (
 )
 
 const (
-	errCodeInvalidOrganizationUnit = "FES-1023"
+	errCodeInvalidOrganizationUnit = "FES-1028"
 	errCodeOUNotResolved           = "FET-1124"
 	errCodeNoAccessToApplication   = "FET-1122"
 	errCodeOUIDNotAllowed          = "FES-1026"

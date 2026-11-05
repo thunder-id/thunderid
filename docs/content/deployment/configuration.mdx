@@ -830,7 +830,7 @@ Use these values in any `categories` list to filter which events a subscriber re
 | `observability.authentication` | Token issuance and revocation events, back-channel logout delivery, revocation store outages, automatic account locks, and unlocks by a recovery flow |
 | `observability.authorization` | Authorization-related events |
 | `observability.flows` | Authentication and registration flow execution events |
-| `observability.administration` | Suspend, unsuspend, and unlock operations by an administrator, agent lifespan changes, and server configuration writes |
+| `observability.administration` | Suspend, unsuspend, and unlock operations by an administrator, agent lifespan changes, server configuration writes, and email address and mobile number verification |
 
 ### Example
 
@@ -1160,7 +1160,9 @@ Each flow type has two fields:
 | `<type>.defaultHandle` | Handle of the flow to use when the application and the organization unit do not pin a specific flow. Empty string means no server default, and the flow type is treated as not configured at the server level. |
 | `<type>.expirySeconds` | How long (in seconds) a started flow context remains valid before it expires. Must be a positive integer. |
 
-Supported flow types are `authFlow`, `registrationFlow`, `userOnboardingFlow`, `recoveryFlow`, `signOutFlow`, and `userDeletionFlow`.
+Supported flow types are `authFlow`, `registrationFlow`, `userOnboardingFlow`, `recoveryFlow`, `signOutFlow`, `selfFlow`, and `userDeletionFlow`.
+
+`selfFlow` sets the execution expiry of every `SELF` flow, 30 minutes by default. It has no `defaultHandle`: each start request names its flow by `handle`, such as the shipped `default-self-attribute-verification-flow` or the handle of a custom `SELF` flow. A start without a `handle`, or with one that names no `SELF` flow, is refused before any node runs.
 
 `userDeletionFlow` is resolved differently from the others: it names an administration flow that runs when a user is deleted from the Console, rather than a flow an inbound request starts. Its shipped default revokes the user's tokens and terminates their sessions before the record is removed. Deleting a user through the `DELETE /users/{id}` API removes the record only and does not run this flow. See [Token Revocation](../../guides/protocols/oauth-oidc/token-revocation#user-deletion).
 

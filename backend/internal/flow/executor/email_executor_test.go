@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/entityprovider"
+	entitytypemodel "github.com/thunder-id/thunderid/internal/entitytype/model"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/notification"
 	notifcm "github.com/thunder-id/thunderid/internal/notification/common"
@@ -598,6 +599,7 @@ func (suite *EmailExecutorTestSuite) TestExecute_SendMode_BestEffortCompletesWhe
 	suite.Equal(providers.ExecComplete, resp.Status)
 	suite.Nil(resp.Error)
 	suite.Equal(dataValueFalse, resp.AdditionalData[common.DataEmailSent])
+	suite.Nil(resp.SharedRuntimeData, "a best-effort send that failed must record no send")
 }
 
 func (suite *EmailExecutorTestSuite) TestExecute_SendMode_BestEffortCompletesWithoutAUsableProvider() {
@@ -696,6 +698,7 @@ func (suite *EmailExecutorTestSuite) TestExecute_SendMode_WithoutBestEffortASend
 	suite.NoError(err)
 	suite.Equal(providers.ExecFailure, resp.Status)
 	suite.Equal(ErrEmailProviderNotConfigured.Error.DefaultValue, resp.Error.Error.DefaultValue)
+	suite.Nil(resp.SharedRuntimeData, "a failed send must record no send")
 }
 
 func (suite *EmailExecutorTestSuite) TestExecute_SendMode_ClientErrorsBecomeProviderNotConfigured() {
@@ -1004,6 +1007,8 @@ func (suite *EmailExecutorTestSuite) assertExecuteSendSuccess(ctx *providers.Nod
 	suite.NoError(err)
 	suite.Equal(providers.ExecComplete, resp.Status)
 	suite.Equal([]string{expectedRecipient}, sentEmail.To)
+	suite.Equal(map[string]string{common.RuntimeKeyDeliveredRecipients: deliveredTo(suite.T(), expectedRecipient)},
+		resp.SharedRuntimeData, "a send must record where it went")
 }
 
 // A claim is only a fallback for the recipient, so an address the flow collected is not redirected to
@@ -1346,6 +1351,7 @@ func (suite *EmailExecutorTestSuite) TestExecute_SendMode_SkipDelivery() {
 	suite.NoError(err)
 	suite.Equal(providers.ExecComplete, resp.Status)
 	suite.Equal(dataValueTrue, resp.AdditionalData[common.DataEmailSent])
+	suite.Nil(resp.SharedRuntimeData, "a skipped send must record no send")
 	suite.mockNotifSenderSvc.AssertNumberOfCalls(suite.T(), "SendEmail", 0)
 }
 
@@ -1536,4 +1542,147 @@ func (suite *EmailExecutorTestSuite) TestExecute_SendMode_ApplicationNameInTempl
 	suite.NoError(err)
 	suite.NotNil(resp)
 	suite.Equal(providers.ExecComplete, resp.Status)
+}
+
+// An email recipient an earlier node set wins over every other source of the address, and the send
+// records it. A cleared recipient, or one set for another recipient type, leaves the address to the other
+// sources.
+func (suite *EmailExecutorTestSuite) TestExecute_SendMode_RecipientSetByAnEarlierNodeWins() {
+	const set, runtime = "pinned@example.com", "runtime@example.com"
+	for name, test := range map[string]struct {
+		recipient string
+		arrange   func(ctx *providers.NodeContext)
+		want      string
+	}{
+		"over a constant input": {set, func(ctx *providers.NodeContext) {
+			ctx.NodeInputs = []providers.Input{{Identifier: userAttributeEmail, Type: providers.InputTypeEmail,
+				Constant: true}}
+			ctx.UserInputs[userAttributeEmail] = "constant@example.com"
+		}, set},
+		"over forwarded data": {set, func(ctx *providers.NodeContext) {
+			ctx.ForwardedData = map[string]interface{}{userAttributeEmail: "forwarded@example.com"}
+		}, set},
+		"over runtime data": {set, func(ctx *providers.NodeContext) {
+			ctx.RuntimeData[userAttributeEmail] = "runtime@example.com"
+		}, set},
+		"over a user input": {set, func(ctx *providers.NodeContext) {
+			ctx.UserInputs[userAttributeEmail] = "input@example.com"
+		}, set},
+		// The suite's entity provider mock fails the test if the profile is read.
+		"over the profile": {set, func(ctx *providers.NodeContext) {
+			ctx.RuntimeData[userAttributeUserID] = "test-user-id"
+		}, set},
+		"cleared": {"", func(ctx *providers.NodeContext) {
+			ctx.RuntimeData[userAttributeEmail] = runtime
+		}, runtime},
+		"set for a mobile recipient": {"+94714627887", func(ctx *providers.NodeContext) {
+			ctx.RuntimeData[common.RuntimeKeyRecipientType] = entitytypemodel.TypeMobile
+			ctx.RuntimeData[userAttributeEmail] = runtime
+		}, runtime},
+		"set without a recipient type": {set, func(ctx *providers.NodeContext) {
+			delete(ctx.RuntimeData, common.RuntimeKeyRecipientType)
+			ctx.RuntimeData[userAttributeEmail] = runtime
+		}, runtime},
+	} {
+		suite.Run(name, func() {
+			suite.SetupTest()
+			ctx := &providers.NodeContext{
+				ExecutionID:  "test-execution-id",
+				FlowType:     providers.FlowTypeSelf,
+				ExecutorMode: ExecutorModeSend,
+				UserInputs:   map[string]string{},
+				RuntimeData: map[string]string{common.RuntimeKeyRecipientType: entitytypemodel.TypeEmail,
+					common.RuntimeKeyExpectedRecipient: test.recipient},
+				NodeProperties: map[string]interface{}{propertyKeyEmailTemplate: "otp"},
+			}
+			test.arrange(ctx)
+			suite.expectEmail(test.want)
+
+			resp, err := suite.executor.Execute(ctx)
+
+			suite.Require().NoError(err)
+			suite.Equal(providers.ExecComplete, resp.Status)
+			suite.Equal(dataValueTrue, resp.AdditionalData[common.DataEmailSent])
+			suite.Equal(map[string]string{common.RuntimeKeyDeliveredRecipients: deliveredTo(suite.T(), test.want)},
+				resp.SharedRuntimeData, "the send must record where it went")
+		})
+	}
+}
+
+// expectEmail expects one email to the given address.
+func (suite *EmailExecutorTestSuite) expectEmail(recipient string) {
+	suite.mockTemplateRenderer.On("Resolve", mock.Anything, notificationtemplate.ChannelTypeEmail,
+		mock.Anything, mock.Anything).
+		Return(&notificationtemplate.ResolvedContent{Subject: "Code", Body: "code"}, nil).Once()
+	suite.mockNotifSenderSvc.On("SendEmail", mock.Anything, "", mock.MatchedBy(func(email notifcm.EmailData) bool {
+		return len(email.To) == 1 && email.To[0] == recipient
+	})).Return((*tidcommon.ServiceError)(nil)).Once()
+}
+
+// testDeliveryEmail is the address the delivered-recipients tests send to.
+const testDeliveryEmail = "user@example.com"
+
+// A send adds its recipient to the recipients sent to before it, once, and a list that does not decode
+// fails the node before anything is sent.
+func (suite *EmailExecutorTestSuite) TestSendAddsToTheDeliveredRecipients() {
+	for name, test := range map[string]struct{ earlier, want string }{
+		"a new recipient": {deliveredTo(suite.T(), "+94714627887"),
+			deliveredTo(suite.T(), "+94714627887", testDeliveryEmail)},
+		"a recipient already sent to": {deliveredTo(suite.T(), testDeliveryEmail),
+			deliveredTo(suite.T(), testDeliveryEmail)},
+	} {
+		suite.Run(name, func() {
+			suite.SetupTest()
+			ctx := suite.deliveryContext(test.earlier)
+			suite.expectEmail(testDeliveryEmail)
+
+			resp, err := suite.executor.Execute(ctx)
+
+			suite.Require().NoError(err)
+			suite.Equal(providers.ExecComplete, resp.Status)
+			suite.Equal(map[string]string{common.RuntimeKeyDeliveredRecipients: test.want}, resp.SharedRuntimeData)
+		})
+	}
+
+	suite.Run("a list that does not decode", func() {
+		suite.SetupTest()
+		suite.mockTemplateRenderer.On("Resolve", mock.Anything, notificationtemplate.ChannelTypeEmail,
+			mock.Anything, mock.Anything).
+			Return(&notificationtemplate.ResolvedContent{Subject: "Code", Body: "code"}, nil).Maybe()
+
+		resp, err := suite.executor.Execute(suite.deliveryContext(testDeliveryEmail))
+
+		suite.Error(err)
+		suite.Nil(resp)
+		suite.mockNotifSenderSvc.AssertNotCalled(suite.T(), "SendEmail", mock.Anything, mock.Anything, mock.Anything)
+	})
+
+	suite.Run("a list that does not decode on a best-effort node", func() {
+		suite.SetupTest()
+		suite.mockTemplateRenderer.On("Resolve", mock.Anything, notificationtemplate.ChannelTypeEmail,
+			mock.Anything, mock.Anything).
+			Return(&notificationtemplate.ResolvedContent{Subject: "Code", Body: "code"}, nil).Maybe()
+		ctx := suite.deliveryContext(testDeliveryEmail)
+		ctx.NodeProperties[propertyKeyBestEffort] = true
+
+		resp, err := suite.executor.Execute(ctx)
+
+		suite.Require().NoError(err)
+		suite.Equal(providers.ExecComplete, resp.Status)
+		suite.Equal(dataValueFalse, resp.AdditionalData[common.DataEmailSent])
+		suite.Empty(resp.SharedRuntimeData, "a skipped send must list nothing")
+		suite.mockNotifSenderSvc.AssertNotCalled(suite.T(), "SendEmail", mock.Anything, mock.Anything, mock.Anything)
+	})
+}
+
+// deliveryContext is a send to testDeliveryEmail after earlier sends recorded as the delivered recipients.
+func (suite *EmailExecutorTestSuite) deliveryContext(delivered string) *providers.NodeContext {
+	return &providers.NodeContext{
+		ExecutionID:       "test-execution-id",
+		ExecutorMode:      ExecutorModeSend,
+		UserInputs:        map[string]string{},
+		RuntimeData:       map[string]string{userAttributeEmail: testDeliveryEmail},
+		SharedRuntimeData: map[string]string{common.RuntimeKeyDeliveredRecipients: delivered},
+		NodeProperties:    map[string]interface{}{propertyKeyEmailTemplate: "otp"},
+	}
 }

@@ -62,41 +62,38 @@ export default function AdvancedTab({
               )
         }
       >
-        <FormControl fullWidth>
-          <FormLabel htmlFor="resource-server-identifier">
-            {t('resourceServers:edit.advanced.identifier.label', 'Identifier (audience)')}
-          </FormLabel>
-          <TextField
-            id="resource-server-identifier"
-            value={identifier}
-            onChange={(e) => onIdentifierChange(e.target.value)}
-            fullWidth
-            size="small"
-            placeholder={
-              resourceServer.type === 'MCP'
-                ? t('resourceServers:edit.advanced.identifier.placeholderMcp', 'https://mcp.example.com/mcp')
-                : t('resourceServers:edit.advanced.identifier.placeholder', 'https://api.example.com')
-            }
-            error={isIdentifierInvalid}
-            helperText={
-              isIdentifierInvalid
+        <TextField
+          labelPlacement="top"
+          label={t('resourceServers:edit.advanced.identifier.label', 'Identifier (audience)')}
+          id="resource-server-identifier"
+          value={identifier}
+          onChange={(e) => onIdentifierChange(e.target.value)}
+          fullWidth
+          size="small"
+          placeholder={
+            resourceServer.type === 'MCP'
+              ? t('resourceServers:edit.advanced.identifier.placeholderMcp', 'https://mcp.example.com/mcp')
+              : t('resourceServers:edit.advanced.identifier.placeholder', 'https://api.example.com')
+          }
+          error={isIdentifierInvalid}
+          helperText={
+            isIdentifierInvalid
+              ? t(
+                  'resourceServers:edit.advanced.identifier.invalidMcp',
+                  'Enter an http or https URL with no fragment, such as https://mcp.example.com/mcp.',
+                )
+              : resourceServer.type === 'MCP'
                 ? t(
-                    'resourceServers:edit.advanced.identifier.invalidMcp',
-                    'Enter an http or https URL with no fragment, such as https://mcp.example.com/mcp.',
+                    'resourceServers:edit.advanced.identifier.hintMcp',
+                    'The URL MCP clients use to reach this server, such as https://mcp.example.com/mcp. MCP clients send it as the resource parameter, and it becomes the token audience.',
                   )
-                : resourceServer.type === 'MCP'
-                  ? t(
-                      'resourceServers:edit.advanced.identifier.hintMcp',
-                      'The URL MCP clients use to reach this server, such as https://mcp.example.com/mcp. MCP clients send it as the resource parameter, and it becomes the token audience.',
-                    )
-                  : t(
-                      'resourceServers:edit.advanced.identifier.hint',
-                      'A unique value that identifies this resource server. When set as an URI, enables RFC 8707 resource indicator support in OAuth2 authorization requests.',
-                    )
-            }
-            disabled={resourceServer.isReadOnly}
-          />
-        </FormControl>
+                : t(
+                    'resourceServers:edit.advanced.identifier.hint',
+                    'A unique value that identifies this resource server. When set as an URI, enables RFC 8707 resource indicator support in OAuth2 authorization requests.',
+                  )
+          }
+          disabled={resourceServer.isReadOnly}
+        />
         <FormControl fullWidth error={Boolean(pdpConnections.error)} sx={{mt: 3}}>
           <FormLabel id="resource-server-authorization-engine-label">
             {t('resourceServers:edit.advanced.authorizationEngine.label', 'Authorization engine')}

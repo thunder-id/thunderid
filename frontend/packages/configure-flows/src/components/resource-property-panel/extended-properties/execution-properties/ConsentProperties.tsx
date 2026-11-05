@@ -1,7 +1,7 @@
 // Copyright 2025 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {Checkbox, FormControlLabel, FormHelperText, FormLabel, Stack, Typography} from '@wso2/oxygen-ui';
+import {Checkbox, FormControlLabel, FormHelperText, Stack, Typography} from '@wso2/oxygen-ui';
 import {useCallback, useMemo, type ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
 import DraftTextField from './DraftTextField';
@@ -39,22 +39,21 @@ function ConsentProperties({resource, onChange}: CommonResourcePropertiesPropsIn
         {t('flows:core.executions.consent.description')}
       </Typography>
 
-      <div>
-        <FormLabel htmlFor="consent-timeout">{t('flows:core.executions.consent.timeout.label')}</FormLabel>
-        <DraftTextField
-          id="consent-timeout"
-          value={currentTimeout}
-          // The executor parses this property as a string, so it is stored as one.
-          onCommit={(value) => onChange('data.properties.timeout', value, resource)}
-          normalize={(raw) => clampToInteger(raw, 0)}
-          placeholder={t('flows:core.executions.consent.timeout.placeholder')}
-          fullWidth
-          size="small"
-          type="number"
-          inputProps={{min: 0}}
-        />
-        <FormHelperText>{t('flows:core.executions.consent.timeout.hint')}</FormHelperText>
-      </div>
+      <DraftTextField
+        labelPlacement="top"
+        label={t('flows:core.executions.consent.timeout.label')}
+        helperText={t('flows:core.executions.consent.timeout.hint')}
+        id="consent-timeout"
+        value={currentTimeout}
+        // The executor parses this property as a string, so it is stored as one.
+        onCommit={(value) => onChange('data.properties.timeout', value, resource)}
+        normalize={(raw) => clampToInteger(raw, 0)}
+        placeholder={t('flows:core.executions.consent.timeout.placeholder')}
+        fullWidth
+        size="small"
+        type="number"
+        inputProps={{min: 0}}
+      />
 
       <div>
         <FormControlLabel

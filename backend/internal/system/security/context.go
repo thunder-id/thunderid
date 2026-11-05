@@ -28,6 +28,7 @@ type SecurityContext struct {
 	revocationSubject   string
 	revocationAppKey    string
 	revocationAudiences []string
+	selfIssued          bool
 	establishedAt       time.Time
 	permissions         []string
 	attributes          map[string]interface{}
@@ -74,6 +75,13 @@ func GetSubject(ctx context.Context) string {
 		return authCtx.subject
 	}
 	return ""
+}
+
+// IsSelfIssued reports whether the caller presented a token this deployment issued. It is false for a
+// trusted-issuer token, a management API key and a context without a security context.
+func IsSelfIssued(ctx context.Context) bool {
+	authCtx := getSecurityContext(ctx)
+	return authCtx != nil && authCtx.selfIssued
 }
 
 // GetOUID retrieves the organization unit ID from the context.

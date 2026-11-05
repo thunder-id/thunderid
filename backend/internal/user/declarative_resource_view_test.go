@@ -5,6 +5,7 @@ package user
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -42,6 +43,9 @@ func TestViewResourceShowsAnExportedUserAsItsRead(t *testing.T) {
 	assert.Equal(t, "ou-1", u.OUID)
 	assert.JSONEq(t, `{"username":"alice","email":"var:USER_ALICE_EMAIL"}`, string(u.Attributes))
 	assert.NotContains(t, string(u.Attributes), "USER_ALICE_PASSWORD")
+	encoded, err := json.Marshal(u)
+	require.NoError(t, err)
+	assert.Contains(t, string(encoded), `"verifiedAttributes":{}`)
 }
 
 // A document that is not a user is refused.

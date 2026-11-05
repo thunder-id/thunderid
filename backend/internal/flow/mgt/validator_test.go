@@ -2751,6 +2751,61 @@ func (s *ValidatorTestSuite) TestValidateOUResolverExecutor() {
 	}
 }
 
+// attributeVerificationNodes is a flow running AttributeVerificationExecutor in each of the given modes.
+func attributeVerificationNodes(modes ...string) []providers.NodeDefinition {
+	names := make([]string, len(modes))
+	for i := range modes {
+		names[i] = executor.ExecutorNameAttributeVerification
+	}
+	nodes := companionNodes(names...)
+	for i, mode := range modes {
+		nodes[i+1].Executor.Mode = mode
+	}
+	return nodes
+}
+
+// A flow of any type that prepares a contact must record it, and one that records must prepare.
+func (s *ValidatorTestSuite) TestValidateCompanionExecutors_AttributeVerificationPair() {
+	s.Nil(s.v.validateCompanionExecutors(
+		attributeVerificationNodes(executor.ExecutorModePrepare, executor.ExecutorModeRecord)))
+
+	for name, test := range map[string]struct {
+		modes   []string
+		missing string
+	}{
+		"prepare without record": {[]string{executor.ExecutorModePrepare}, executor.ExecutorModeRecord},
+		"record without prepare": {[]string{executor.ExecutorModeRecord}, executor.ExecutorModePrepare},
+		"two prepares": {[]string{executor.ExecutorModePrepare, executor.ExecutorModePrepare},
+			executor.ExecutorModeRecord},
+	} {
+		s.Run(name, func() {
+			err := s.v.validateCompanionExecutors(attributeVerificationNodes(test.modes...))
+
+			s.Require().NotNil(err)
+			s.Equal(ErrorInvalidExecutorConfig.Code, err.Code)
+			s.Equal("error.flowmgtservice.companion_executor_missing_description", err.ErrorDescription.Key)
+			s.Equal(executor.ExecutorNameAttributeVerification, err.ErrorDescription.Params["executorName"])
+			s.Equal(executor.ExecutorNameAttributeVerification, err.ErrorDescription.Params["companionExecutorName"])
+			s.Equal(test.missing, err.ErrorDescription.Params["companionExecutorMode"])
+		})
+	}
+}
+
+// With more than one executor missing its companion, the error always names the first by name.
+func (s *ValidatorTestSuite) TestValidateCompanionExecutors_ReportsInNameOrder() {
+	nodes := append(attributeVerificationNodes(executor.ExecutorModePrepare), providers.NodeDefinition{
+		ID: "revoke_sessions", Type: string(common.NodeTypeTaskExecution),
+		Executor: &providers.ExecutorDefinition{Name: executor.ExecutorNameSessionRevocation},
+	})
+
+	for range 20 {
+		err := s.v.validateCompanionExecutors(nodes)
+
+		s.Require().NotNil(err)
+		s.Equal(executor.ExecutorNameAttributeVerification, err.ErrorDescription.Params["executorName"])
+	}
+}
+
 func (s *ValidatorTestSuite) TestValidateOUResolverExecutor_Inputs() {
 	const unsupported = "error.flowmgtservice.unsupported_ou_resolver_property_description"
 	const invalidInputs = "error.flowmgtservice.invalid_ou_resolver_inputs_description"
@@ -3346,4 +3401,16 @@ func (s *ValidatorTestSuite) TestValidateTaskExecutionNode_ChecksExecutorInputDe
 
 	node.Executor.Inputs[0].DefaultValue = "en-US"
 	s.Nil(s.v.validateTaskExecutionNode(node, index))
+}
+
+// The executor is allowed in every flow type, and no flow type requires it.
+func (s *ValidatorTestSuite) TestAttributeVerificationExecutorFitsAnyFlowType() {
+	meta, ok := executormeta.MetaFor(executor.ExecutorNameAttributeVerification)
+	s.Require().True(ok)
+	node := attributeVerificationNodes(executor.ExecutorModePrepare)[1]
+	for _, flowType := range providers.ValidFlowTypes {
+		s.Nil(s.v.validateExecutorFlowType(&node, &meta, flowType), string(flowType))
+	}
+	s.Nil(s.v.validateFlowTypeBasedConstraints(providers.FlowTypeSelf,
+		companionNodes(executor.ExecutorNameOTPExecutor)))
 }

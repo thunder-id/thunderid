@@ -7,6 +7,7 @@ package defaultprovider
 import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
+	"github.com/thunder-id/thunderid/internal/attributeverification"
 	authncommon "github.com/thunder-id/thunderid/internal/authn/common"
 	"github.com/thunder-id/thunderid/internal/authn/magiclink"
 	"github.com/thunder-id/thunderid/internal/authn/openid4vp"
@@ -26,7 +27,8 @@ func Initialize(entitySvc entity.EntityServiceInterface,
 	magicLinkSvc magiclink.MagicLinkAuthnServiceInterface,
 	openid4vpSvc openid4vp.OpenID4VPServiceInterface,
 	federatedAuths map[providers.IDPType]authncommon.FederatedAuthenticator,
-	governance identitygovernance.IdentityGovernanceServiceInterface) providers.AuthnProviderInterface {
+	governance identitygovernance.IdentityGovernanceServiceInterface,
+	verification attributeverification.AttributeVerificationServiceInterface) providers.AuthnProviderInterface {
 	return newDefaultAuthnProvider(entitySvc, passkeySvc, otpSvc, magicLinkSvc, openid4vpSvc,
-		federatedAuths, governance)
+		federatedAuths, governance, verification)
 }

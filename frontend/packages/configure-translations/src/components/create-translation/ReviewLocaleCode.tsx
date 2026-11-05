@@ -3,7 +3,7 @@
 
 import {getDisplayNameForCode, toFlagEmoji} from '@thunderid/i18n';
 import type {LocaleOption} from '@thunderid/i18n';
-import {Box, Chip, FormControl, FormLabel, Stack, TextField, Typography, useTheme} from '@wso2/oxygen-ui';
+import {Box, Chip, Stack, TextField, Typography, useTheme} from '@wso2/oxygen-ui';
 import {Lightbulb} from '@wso2/oxygen-ui-icons-react';
 import {useEffect, useMemo, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
@@ -91,16 +91,16 @@ export default function ReviewLocaleCode({
       </Box>
 
       <Box>
-        <FormControl required fullWidth>
-          <FormLabel htmlFor="locale-code-input">{t('language.add.code.label')}</FormLabel>
-          <TextField
-            id="locale-code-input"
-            placeholder={derivedLocale.code}
-            value={localeCode}
-            onChange={(e) => onLocaleCodeChange(e.target.value)}
-            fullWidth
-          />
-        </FormControl>
+        <TextField
+          labelPlacement="top"
+          label={t('language.add.code.label')}
+          required
+          id="locale-code-input"
+          placeholder={derivedLocale.code}
+          value={localeCode}
+          onChange={(e) => onLocaleCodeChange(e.target.value)}
+          fullWidth
+        />
 
         {effectiveCode && (
           <Stack direction="row" alignItems="center" spacing={1} sx={{mt: 1.5}}>

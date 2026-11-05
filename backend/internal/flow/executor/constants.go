@@ -68,6 +68,7 @@ const (
 	ExecutorNameActionDeletion               = executormeta.ExecutorNameActionDeletion
 	ExecutorNameOwnerResolver                = executormeta.ExecutorNameOwnerResolver
 	ExecutorNameAgentTypeResolver            = executormeta.ExecutorNameAgentTypeResolver
+	ExecutorNameAttributeVerification        = executormeta.ExecutorNameAttributeVerification
 	ExecutorNameIdentityGovernance           = executormeta.ExecutorNameIdentityGovernance
 	ExecutorNamePreSuspend                   = executormeta.ExecutorNamePreSuspend
 	ExecutorNameExtension                    = executormeta.ExecutorNameExtension
@@ -102,6 +103,8 @@ const (
 
 	ExecutorModeValidate = executormeta.ExecutorModeValidate
 	ExecutorModeShare    = executormeta.ExecutorModeShare
+	ExecutorModePrepare  = executormeta.ExecutorModePrepare
+	ExecutorModeRecord   = executormeta.ExecutorModeRecord
 )
 
 // defaultProvisioningCategory is the entity default category a provisioning node works on when no
@@ -124,6 +127,8 @@ const (
 
 	userInputCode  = "code"
 	userInputState = "state"
+
+	userInputVerificationAttribute = "attribute"
 
 	userInputOuName            = "ouName"
 	userInputOuHandle          = "ouHandle"
@@ -272,3 +277,9 @@ const suspensionRevocationTTL = 7 * 24 * time.Hour
 var nonSearchableInputs = []string{
 	"password", "code", "otp", "token", "userInputMagicLinkToken", "otpSessionToken",
 }
+
+// Masking of the contact a verification preparation returns.
+const (
+	contactMask               = "•••"
+	maskedMobileVisibleDigits = 2
+)

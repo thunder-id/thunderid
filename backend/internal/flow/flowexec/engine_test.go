@@ -2179,7 +2179,6 @@ func (s *EngineTestSuite) TestSkipToNextNode_NoCondition() {
 	t := s.T()
 	mockNode := coremock.NewNodeInterfaceMock(t)
 	mockNode.On("GetCondition").Return((*core.NodeCondition)(nil))
-	mockNode.On("GetID").Return("node-1")
 
 	fe := &flowEngine{logger: log.GetLogger()}
 	ctx := &EngineContext{Context: context.Background()}
@@ -2194,7 +2193,6 @@ func (s *EngineTestSuite) TestSkipToNextNode_EmptyOnSkip() {
 	cond := &core.NodeCondition{OnSkip: ""}
 	mockNode := coremock.NewNodeInterfaceMock(t)
 	mockNode.On("GetCondition").Return(cond)
-	mockNode.On("GetID").Return("node-1")
 
 	fe := &flowEngine{logger: log.GetLogger()}
 	ctx := &EngineContext{Context: context.Background()}
@@ -2209,7 +2207,6 @@ func (s *EngineTestSuite) TestSkipToNextNode_NodeNotFound() {
 	cond := &core.NodeCondition{OnSkip: "skip-target"}
 	mockNode := coremock.NewNodeInterfaceMock(t)
 	mockNode.On("GetCondition").Return(cond)
-	mockNode.On("GetID").Return("node-1")
 
 	mockGraph := coremock.NewGraphInterfaceMock(t)
 	mockGraph.On("GetNode", "skip-target").Return(nil, false)
@@ -2422,7 +2419,6 @@ func (s *EngineTestSuite) TestSetNodeExecutor_NotExecutorBacked() {
 	t := s.T()
 	mockNode := coremock.NewNodeInterfaceMock(t)
 	mockNode.On("GetType").Return(common.NodeTypeTaskExecution)
-	mockNode.On("GetID").Return("node-1")
 
 	fe := &flowEngine{logger: log.GetLogger()}
 	err := fe.setNodeExecutor(context.Background(), mockNode, log.GetLogger())
@@ -2447,7 +2443,6 @@ func (s *EngineTestSuite) TestSetNodeExecutor_ExecutorNameEmpty() {
 	mockNode.On("GetType").Return(common.NodeTypeTaskExecution)
 	mockNode.On("GetExecutor").Return(nil)
 	mockNode.On("GetExecutorName").Return("")
-	mockNode.On("GetID").Return("node-1")
 
 	fe := &flowEngine{logger: log.GetLogger()}
 	err := fe.setNodeExecutor(context.Background(), mockNode, log.GetLogger())
@@ -2463,7 +2458,6 @@ func (s *EngineTestSuite) TestSetNodeExecutor_RegistryError() {
 	mockNode.On("GetType").Return(common.NodeTypeTaskExecution)
 	mockNode.On("GetExecutor").Return(nil)
 	mockNode.On("GetExecutorName").Return("myExec")
-	mockNode.On("GetID").Return("node-1")
 
 	fe := &flowEngine{executorRegistry: mockRegistry, logger: log.GetLogger()}
 	err := fe.setNodeExecutor(context.Background(), mockNode, log.GetLogger())
@@ -2766,13 +2760,13 @@ func (s *EngineTestSuite) TestExecuteNodePackage_OmitsSubjectTypeConstraintsOnOt
 func (s *EngineTestSuite) TestExecuteNodePackage_MarksRecoveryFlow() {
 	nodeCtx := s.executeNodePackageCapturingContext(providers.FlowTypeRecovery, providers.Application{})
 
-	s.True(authnprovidercm.IsRecoveryFlow(nodeCtx))
+	s.True(authnprovidercm.IsRecoveryProof(nodeCtx))
 }
 
 func (s *EngineTestSuite) TestExecuteNodePackage_DoesNotMarkOtherFlowsAsRecovery() {
 	nodeCtx := s.executeNodePackageCapturingContext(providers.FlowTypeAuthentication, providers.Application{})
 
-	s.False(authnprovidercm.IsRecoveryFlow(nodeCtx))
+	s.False(authnprovidercm.IsRecoveryProof(nodeCtx))
 }
 
 func (s *EngineTestSuite) TestExecuteNodePackage_CompletesAndReturnsNilNextNode() {
@@ -2900,6 +2894,108 @@ func (s *EngineTestSuite) TestExecuteNodePackage_IncompleteExitClearsNodeScopeBe
 		"node-scope OneTimeUse input must be cleared before request-scope cleanup wipes the list")
 	s.Equal("e@x", ctx.UserInputs["email"], "non-OneTimeUse input should remain")
 	s.Empty(ctx.consumedInputs, "consumed list should be fully drained at this exit path")
+}
+
+// A node reads the bound subject; a write on its node context never reaches the engine.
+func (s *EngineTestSuite) TestExecuteNodePackage_BoundSubjectIsReadOnlyForNodes() {
+	t := s.T()
+	mockGraph := coremock.NewGraphInterfaceMock(t)
+	mockGraph.On("HasSegments").Return(false).Maybe()
+	mockGraph.On("GetID").Return("self-flow").Maybe()
+	mockGraph.On("GetInterceptors", mock.Anything).Return([]core.InterceptorUnitInterface{}).Maybe()
+	mockNode := coremock.NewNodeInterfaceMock(t)
+	mockNode.On("GetID").Return("prepare").Maybe()
+	mockNode.On("GetType").Return(common.NodeTypeStart).Maybe()
+	mockNode.On("GetProperties").Return(map[string]interface{}(nil)).Maybe()
+	mockNode.On("GetExecutionPolicy").Return((*providers.ExecutionPolicy)(nil)).Maybe()
+	mockNode.On("ShouldExecute", mock.Anything).Return(true)
+	var seen string
+	mockNode.On("Execute", mock.Anything).Run(func(args mock.Arguments) {
+		nodeCtx := args.Get(0).(*providers.NodeContext)
+		seen = nodeCtx.GetBoundSubject()
+		nodeCtx.SetBoundSubject("user-2")
+	}).Return(&common.NodeResponse{Status: common.NodeStatusIncomplete, Type: common.NodeResponseTypeView,
+		Inputs: []providers.Input{{Identifier: "attribute", Required: true}}}, nil)
+	mockRunner := NewInterceptorRunnerInterfaceMock(t)
+	mockRunner.On("runInterceptors", mock.Anything, mock.Anything).
+		Return(&common.InterceptorResponse{Status: common.InterceptorStatusComplete}, nil)
+	fe := &flowEngine{logger: log.GetLogger(), observabilitySvc: setupNodePackageMockObs(t),
+		interceptorRunner: mockRunner}
+	ctx := &EngineContext{Context: context.Background(), ExecutionID: "exec-bound", Graph: mockGraph,
+		CurrentNode: mockNode, UserInputs: map[string]string{},
+		ExecutionHistory: map[string]*providers.NodeExecutionRecord{}, boundSubject: "user-1"}
+
+	_, _, err := fe.executeNodePackage(ctx, mockNode, &FlowStep{}, 0)
+
+	s.Nil(err)
+	s.Equal("user-1", seen)
+	s.Equal("user-1", ctx.boundSubject)
+}
+
+// Only a self flow start binds a user: an execution started as another type that CALLs a
+// self flow runs the callee with the callee's type and no bound user.
+func (s *EngineTestSuite) TestCalledSelfFlowHasNoBoundSubject() {
+	t := s.T()
+	callerGraph := coremock.NewGraphInterfaceMock(t)
+	callNode := coremock.NewCallNodeInterfaceMock(t)
+	calleeGraph := coremock.NewGraphInterfaceMock(t)
+	calleeStart := coremock.NewNodeInterfaceMock(t)
+	flowProvider := NewFlowProviderMock(t)
+	graphBuilder := NewGraphBuilderInterfaceMock(t)
+	callNode.On("GetID").Return("call")
+	flow := &providers.CompleteFlowDefinition{ID: "self-flow", FlowType: providers.FlowTypeSelf}
+	flowProvider.On("GetFlow", mock.Anything, "self-flow").Return(flow, nil)
+	graphBuilder.On("GetGraph", mock.Anything, flow).Return(calleeGraph, nil)
+	calleeGraph.On("GetType").Return(providers.FlowTypeSelf)
+	calleeGraph.On("GetStartNode").Return(calleeStart, nil)
+	engine := &flowEngine{logger: log.GetLogger(), flowProvider: flowProvider, graphBuilder: graphBuilder}
+	ctx := &EngineContext{Context: context.Background(), Graph: callerGraph, CurrentNode: callNode,
+		FlowType: providers.FlowTypeAuthentication}
+
+	_, svcErr := engine.handleCallResponse(ctx, &common.NodeResponse{
+		Status: common.NodeStatusCall, CallTargetFlowID: "self-flow",
+	}, log.GetLogger())
+
+	s.Nil(svcErr)
+	s.Equal(providers.FlowTypeSelf, ctx.FlowType)
+	s.Empty(ctx.boundSubject)
+}
+
+func (s *EngineTestSuite) TestBoundSubjectSurvivesCallAndReturn() {
+	t := s.T()
+	callerGraph := coremock.NewGraphInterfaceMock(t)
+	callNode := coremock.NewCallNodeInterfaceMock(t)
+	nextNode := coremock.NewNodeInterfaceMock(t)
+	calleeGraph := coremock.NewGraphInterfaceMock(t)
+	calleeStart := coremock.NewNodeInterfaceMock(t)
+	flowProvider := NewFlowProviderMock(t)
+	graphBuilder := NewGraphBuilderInterfaceMock(t)
+
+	callNode.On("GetID").Return("call")
+	callerGraph.On("GetNode", "call").Return(callNode, true)
+	callNode.On("GetOnSuccess").Return("record")
+	callerGraph.On("GetNode", "record").Return(nextNode, true)
+	flow := &providers.CompleteFlowDefinition{ID: "callee-flow", FlowType: providers.FlowTypeAuthentication}
+	flowProvider.On("GetFlow", mock.Anything, "callee-flow").Return(flow, nil)
+	graphBuilder.On("GetGraph", mock.Anything, flow).Return(calleeGraph, nil)
+	calleeGraph.On("GetType").Return(providers.FlowTypeAuthentication)
+	calleeGraph.On("GetStartNode").Return(calleeStart, nil)
+	engine := &flowEngine{logger: log.GetLogger(), flowProvider: flowProvider, graphBuilder: graphBuilder}
+	ctx := &EngineContext{Context: context.Background(), Graph: callerGraph, CurrentNode: callNode,
+		FlowType: providers.FlowTypeSelf, boundSubject: "user-1"}
+
+	_, svcErr := engine.handleCallResponse(ctx, &common.NodeResponse{
+		Status: common.NodeStatusCall, CallTargetFlowID: "callee-flow",
+	}, log.GetLogger())
+	s.Nil(svcErr)
+	s.Equal("user-1", ctx.boundSubject)
+
+	ctx.CurrentNode = calleeStart
+	next, svcErr := engine.handleCalleeReturn(ctx, log.GetLogger())
+	s.Nil(svcErr)
+	s.Equal(nextNode, next)
+	s.Equal(providers.FlowTypeSelf, ctx.FlowType)
+	s.Equal("user-1", ctx.boundSubject)
 }
 
 func (s *EngineTestSuite) TestFlowEngineExecute_NilGraph() {
@@ -4723,6 +4819,8 @@ func setupCapturingObservability(t *testing.T) (
 	return mockObs, captured
 }
 
+const testRequestTraceID = "request-trace-1"
+
 // agentFlowContext returns an engine context for an authentication flow driven by an agent that has
 // authenticated a user. The subject is recorded on AuthUser, which is where the authentication
 // executors put it — EngineContext.AuthenticatedUser is never written during execution, so a test
@@ -4730,7 +4828,7 @@ func setupCapturingObservability(t *testing.T) (
 func agentFlowContext() *EngineContext {
 	ctx := &EngineContext{
 		ExecutionID: "flow-exec-1",
-		TraceID:     "request-trace-1",
+		TraceID:     testRequestTraceID,
 		FlowType:    providers.FlowTypeAuthentication,
 		AppID:       "agent-entity-1",
 		Application: providers.Application{
@@ -4766,10 +4864,8 @@ func TestFlowStartedEvent_ReportsPrincipalAndCorrelation(t *testing.T) {
 	}
 	evt := (*captured)[0]
 
-	// The whole flow must share one trace, keyed on the execution id, so FLOW_STARTED stitches to
-	// its own child events.
-	if evt.TraceID != "flow-exec-1" {
-		t.Errorf("TraceID = %q, want the execution id %q", evt.TraceID, "flow-exec-1")
+	if evt.TraceID != testRequestTraceID {
+		t.Errorf("TraceID = %q, want the request trace id %q", evt.TraceID, testRequestTraceID)
 	}
 
 	assertEventData(t, evt, map[string]interface{}{
@@ -4896,6 +4992,9 @@ func TestNodeExecutionStartedEvent_ReportsSubjectAndPrincipal(t *testing.T) {
 
 	publishNodeExecutionStartedEvent(agentFlowContext(), node, mockObs)
 
+	if evt := (*captured)[0]; evt.TraceID != testRequestTraceID {
+		t.Errorf("TraceID = %q, want the request trace id %q", evt.TraceID, testRequestTraceID)
+	}
 	assertEventData(t, (*captured)[0], map[string]interface{}{
 		event.DataKey.ActorType:     string(providers.EntityCategoryAgent),
 		event.DataKey.ClientID:      "agent-client-id",
@@ -4956,15 +5055,15 @@ func TestFlowCompletedEvent_ReportsPrincipalAndCorrelation(t *testing.T) {
 	})
 }
 
-func TestFlowFailedEvent_SharesTheFlowTrace(t *testing.T) {
+func TestFlowFailedEvent_CarriesTheRequestTrace(t *testing.T) {
 	mockObs, captured := setupCapturingObservability(t)
 	defer config.ResetServerRuntime()
 
 	publishFlowFailedEvent(agentFlowContext(), nil, 0, 5, mockObs)
 
 	evt := (*captured)[0]
-	if evt.TraceID != "flow-exec-1" {
-		t.Errorf("TraceID = %q, want the execution id %q", evt.TraceID, "flow-exec-1")
+	if evt.TraceID != testRequestTraceID {
+		t.Errorf("TraceID = %q, want the request trace id %q", evt.TraceID, testRequestTraceID)
 	}
 	assertEventData(t, evt, map[string]interface{}{
 		event.DataKey.ActorType:     string(providers.EntityCategoryAgent),

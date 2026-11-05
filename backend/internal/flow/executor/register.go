@@ -176,12 +176,12 @@ func (r *executorRegistry) RegisterExecutor(name string, exec providers.Executor
 		return
 	}
 
-	logger.Debug(ctx, "Registering executor", log.String("executorName", name))
+	logger.Debug(ctx, "Registering executor", log.String(log.LoggerKeyExecutorName, name))
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if _, ok := r.executors[name]; ok {
-		logger.Warn(ctx, "Executor already registered", log.String("executorName", name))
+		logger.Warn(ctx, "Executor already registered", log.String(log.LoggerKeyExecutorName, name))
 		return
 	}
 	r.executors[name] = exec
@@ -254,6 +254,7 @@ type ExecutorDependencies struct {
 	ExtensionHTTPClient    httpservice.HTTPClientInterface
 	ObservabilitySvc       providers.ObservabilityProvider
 	IdentityGovernance     providers.IdentityGovernanceProvider
+	AttributeVerification  providers.AttributeVerificationProvider
 	ArtifactLifetime       artifactLifetimeResolver
 	AuthzDetailProvider    providers.AuthorizationDetailProvider
 	SharingService         sharing.SharingServiceInterface
@@ -363,7 +364,7 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 		},
 		ExecutorNameConsent: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameConsent, newConsentExecutor(
-				deps.FlowFactory, deps.ConsentEnforcer, deps.AuthnProvider))
+				deps.FlowFactory, deps.ConsentEnforcer, deps.AuthnProvider, deps.EntityTypeService))
 		},
 		ExecutorNameOUResolver: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameOUResolver, newOUResolverExecutor(deps.FlowFactory, deps.OUService))
@@ -434,6 +435,11 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 		ExecutorNameOwnerResolver: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameOwnerResolver, newOwnerResolver(
 				deps.FlowFactory, deps.EntityProvider))
+		},
+		ExecutorNameAttributeVerification: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
+			reg.RegisterExecutor(ExecutorNameAttributeVerification, newAttributeVerificationExecutor(
+				deps.FlowFactory, deps.AttributeVerification, deps.AuthnProvider,
+				newAccessGuard(deps.IdentityGovernance)))
 		},
 		ExecutorNameIdentityGovernance: func(reg ExecutorRegistryInterface,
 			deps ExecutorDependencies) {

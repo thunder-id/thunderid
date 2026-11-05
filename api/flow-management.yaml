@@ -13,6 +13,7 @@ info:
     ## Flow Types
     - **AUTHENTICATION**: User login flows
     - **REGISTRATION**: User registration/signup flows
+    - **SELF**: Flows a signed-in user runs on their own account
     
     ## Node Types
     - **START**: Initial node indicating the starting point of the flow. Must be present in all flows.
@@ -84,6 +85,11 @@ paths:
             enum:
               - AUTHENTICATION
               - REGISTRATION
+              - USER_ONBOARDING
+              - SELF
+              - RECOVERY
+              - SIGNOUT
+              - ADMINISTRATION
               - INVITATION
               - DEVICE_GRANT
         - name: limit
@@ -1600,6 +1606,11 @@ components:
           enum:
             - AUTHENTICATION
             - REGISTRATION
+            - USER_ONBOARDING
+            - SELF
+            - RECOVERY
+            - SIGNOUT
+            - ADMINISTRATION
             - INVITATION
             - DEVICE_GRANT
         name:
@@ -1664,6 +1675,11 @@ components:
           enum:
             - AUTHENTICATION
             - REGISTRATION
+            - USER_ONBOARDING
+            - SELF
+            - RECOVERY
+            - SIGNOUT
+            - ADMINISTRATION
             - INVITATION
             - DEVICE_GRANT
           description: |
@@ -1921,6 +1937,11 @@ components:
           enum:
             - AUTHENTICATION
             - REGISTRATION
+            - USER_ONBOARDING
+            - SELF
+            - RECOVERY
+            - SIGNOUT
+            - ADMINISTRATION
             - INVITATION
             - DEVICE_GRANT
           description: |
@@ -2003,6 +2024,11 @@ components:
           enum:
             - AUTHENTICATION
             - REGISTRATION
+            - USER_ONBOARDING
+            - SELF
+            - RECOVERY
+            - SIGNOUT
+            - ADMINISTRATION
             - INVITATION
             - DEVICE_GRANT
           description: |

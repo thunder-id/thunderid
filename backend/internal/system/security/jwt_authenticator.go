@@ -95,7 +95,8 @@ func (h *jwtAuthenticator) authenticateToken(ctx context.Context, token, expecte
 	// Step 2: Verify the JWT, routing on its issuer. Tokens this server issued
 	// are verified with its own signing key; Additionally when a trusted issuer is
 	// configured, tokens from that issuer are verified against its JWKS.
-	if err := h.verifyToken(ctx, token, expectedAud); err != nil {
+	selfIssued, err := h.verifyToken(ctx, token, expectedAud)
+	if err != nil {
 		return nil, err
 	}
 
@@ -121,6 +122,7 @@ func (h *jwtAuthenticator) authenticateToken(ctx context.Context, token, expecte
 	securityCtx := newSecurityContext(subject, ouID, token, scopes, attributes)
 	securityCtx.revocationID = extractAttribute(attributes, claimJTI)
 	securityCtx.tokenFamilyID = extractAttribute(attributes, claimTokenFamilyID)
+	securityCtx.selfIssued = selfIssued
 	// Subject-dimension revocation is only meaningful for subjects this deployment issued, so a
 	// federated token contributes no revocation subject and is enforced on jti and tfid alone.
 	if issuer, _ := attributes[claimIssuer].(string); issuer == config.GetServerRuntime().Config.JWT.Issuer {
@@ -166,26 +168,28 @@ func AuthenticateBearerToken(
 // trusted issuer (when set) are verified against its JWKS. Tokens whose iss
 // matches this server's own JWT issuer must be access tokens, and are verified
 // with the local signing key and against expectedAud if it is non-empty. Any
-// other iss is rejected. There is no cross-issuer fallback.
-func (h *jwtAuthenticator) verifyToken(ctx context.Context, token, expectedAud string) error {
+// other iss is rejected. There is no cross-issuer fallback. It reports whether the local signing key
+// verified the token.
+func (h *jwtAuthenticator) verifyToken(ctx context.Context, token, expectedAud string) (bool, error) {
 	trustedIssuer := config.GetServerRuntime().Config.Server.SecurityConfig.TrustedIssuer
 	iss := extractIssuer(token)
 	switch {
 	case trustedIssuer.IsConfigured() && iss == trustedIssuer.Issuer:
 		if !h.verifyFederatedToken(ctx, token) {
-			return errInvalidToken
+			return false, errInvalidToken
 		}
+		return false, nil
 	case iss == config.GetServerRuntime().Config.JWT.Issuer:
 		if err := requireAccessTokenType(token); err != nil {
-			return err
+			return false, err
 		}
 		if err := h.jwtService.VerifyJWT(ctx, token, expectedAud, ""); err != nil {
-			return errInvalidToken
+			return false, errInvalidToken
 		}
+		return true, nil
 	default:
-		return errInvalidToken
+		return false, errInvalidToken
 	}
-	return nil
 }
 
 // verifyFederatedToken checks if the token is from a trusted external issuer and verifies it via JWKS.

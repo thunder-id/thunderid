@@ -15,11 +15,15 @@ import (
 
 	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	"github.com/thunder-id/thunderid/internal/entitytype"
+	entitytypemodel "github.com/thunder-id/thunderid/internal/entitytype/model"
 	"github.com/thunder-id/thunderid/internal/identitygovernance"
 	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/sharing"
+	syscontext "github.com/thunder-id/thunderid/internal/system/context"
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/observability/event"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
@@ -142,6 +146,11 @@ type EntityServiceInterface interface {
 	SetSuspension(ctx context.Context, entityID string, at time.Time, operatorNote string) (bool, error)
 	ClearSuspension(ctx context.Context, entityID string, hold *identitygovernance.AccountHold,
 		suspendedAt string) (bool, error)
+
+	// Attribute verification
+	// RecordAttributeVerification records the attribute as verified while the entity has the record's type
+	// and the attribute's canonical value is the record's value.
+	RecordAttributeVerification(ctx context.Context, record AttributeVerificationRecord) (bool, error)
 }
 
 // GroupMembershipProvider resolves group memberships for entities. Implemented by the group
@@ -162,6 +171,7 @@ type entityService struct {
 	sharingService          sharing.SharingServiceInterface
 	sharedTypes             map[providers.EntityCategory]sharing.ResourceType
 	transactioner           providers.Transactioner
+	observability           providers.ObservabilityProvider
 	logger                  *log.Logger
 	groupMembershipProvider GroupMembershipProvider
 }
@@ -181,6 +191,7 @@ func newEntityService(
 	ouService ou.OrganizationUnitServiceInterface,
 	transactioner providers.Transactioner,
 	sharingService sharing.SharingServiceInterface,
+	observabilitySvc providers.ObservabilityProvider,
 ) EntityServiceInterface {
 	return &entityService{
 		store:             store,
@@ -191,6 +202,7 @@ func newEntityService(
 		sharingService:    sharingService,
 		sharedTypes:       map[providers.EntityCategory]sharing.ResourceType{},
 		transactioner:     transactioner,
+		observability:     observabilitySvc,
 		logger:            log.GetLogger().With(log.String(log.LoggerKeyComponentName, "EntityService")),
 	}
 }
@@ -206,7 +218,7 @@ func (s *entityService) CreateEntity(ctx context.Context, entity *providers.Enti
 	if link != nil && (link.IdpID == "" || link.Sub == "") {
 		return nil, ErrBadAttributesInRequest
 	}
-	sysAttrs, err := withoutLinkedIDs(entity.SystemAttributes)
+	sysAttrs, err := s.withoutCreateProtectedAttributes(entity.SystemAttributes)
 	if err != nil {
 		return nil, err
 	}
@@ -387,14 +399,31 @@ func (s *entityService) UpdateEntity(
 		return nil, err
 	}
 
+	verifiableAttributes, err := s.verifiableAttributesOf(ctx, entity.Category, entity.Type)
+	if err != nil {
+		return nil, err
+	}
+
 	var updated providers.Entity
+	var cleared []clearedVerification
 	err = s.transactioner.Transact(ctx, func(txCtx context.Context) error {
 		entity.ID = entityID
-		preserved, prErr := s.mergeReservedAttributes(txCtx, entityID, entity.SystemAttributes)
+		current, lockErr := s.store.LockEntity(txCtx, entityID)
+		if lockErr != nil {
+			return lockErr
+		}
+
+		preserved, prErr := s.mergeReservedAttributes(current.SystemAttributes, entity.SystemAttributes)
 		if prErr != nil {
 			return prErr
 		}
-		entity.SystemAttributes = preserved
+
+		var invalidateErr error
+		entity.SystemAttributes, cleared, invalidateErr = s.invalidateVerification(current, entity.Type,
+			verifiableAttributes, entity.Attributes, preserved)
+		if invalidateErr != nil {
+			return invalidateErr
+		}
 
 		if err := s.store.UpdateEntity(txCtx, entity); err != nil {
 			return err
@@ -423,6 +452,8 @@ func (s *entityService) UpdateEntity(
 	if err != nil {
 		return nil, err
 	}
+
+	s.publishClearedVerifications(ctx, entityID, cleared)
 
 	entities := []providers.Entity{updated}
 	applyRuntimeData(entities, runtimeRecords)
@@ -489,9 +520,25 @@ func (s *entityService) UpdateAttributes(ctx context.Context, entityID string, a
 	// entityForExtraction.Attributes has credential fields removed.
 	cleanedAttrs := entityForExtraction.Attributes
 
-	return s.transactioner.Transact(ctx, func(txCtx context.Context) error {
+	var cleared []clearedVerification
+	typeUnchanged, err := s.transactOnLockedEntity(ctx, existing, func(txCtx context.Context,
+		current providers.Entity, verifiableAttributes map[string]string) error {
+		var invalidated json.RawMessage
+		var err error
+		invalidated, cleared, err = s.invalidateVerification(current, current.Type, verifiableAttributes,
+			cleanedAttrs, current.SystemAttributes)
+		if err != nil {
+			return err
+		}
+
 		if err := s.store.UpdateAttributes(txCtx, entityID, cleanedAttrs); err != nil {
 			return err
+		}
+
+		if len(cleared) > 0 {
+			if err := s.store.UpdateSystemAttributes(txCtx, entityID, invalidated); err != nil {
+				return err
+			}
 		}
 
 		// Merge extracted schema credentials with existing credentials.
@@ -506,6 +553,17 @@ func (s *entityService) UpdateAttributes(ctx context.Context, entityID string, a
 
 		return nil
 	})
+	if err != nil {
+		return err
+	}
+
+	// The attributes were validated against the type read before the lock.
+	if !typeUnchanged {
+		return ErrSchemaValidationFailed
+	}
+
+	s.publishClearedVerifications(ctx, entityID, cleared)
+	return nil
 }
 
 // UpdateSystemAttributes updates the system-managed attributes of an entity.
@@ -516,7 +574,12 @@ func (s *entityService) UpdateSystemAttributes(ctx context.Context, entityID str
 		return err
 	}
 	return s.transactioner.Transact(ctx, func(txCtx context.Context) error {
-		preserved, err := s.mergeReservedAttributes(txCtx, entityID, attrs)
+		current, err := s.store.LockEntity(txCtx, entityID)
+		if err != nil {
+			return err
+		}
+
+		preserved, err := s.mergeReservedAttributes(current.SystemAttributes, attrs)
 		if err != nil {
 			return err
 		}
@@ -687,7 +750,7 @@ func (s *entityService) LinkAccount(ctx context.Context, entityID, idpID, sub st
 		return ErrBadAttributesInRequest
 	}
 	s.logger.Debug(ctx, "Linking account", log.MaskedString("id", entityID),
-		log.String("idpId", idpID))
+		log.String(log.LoggerKeyIDPID, idpID))
 
 	return s.transactioner.Transact(ctx, func(txCtx context.Context) error {
 		current, err := s.store.LockEntity(txCtx, entityID)
@@ -1389,8 +1452,8 @@ func (s *entityService) UpdateSystemCredentials(ctx context.Context, entityID st
 	})
 }
 
-// withoutLinkedIDs returns systemAttributes without their linkedIds, unchanged when there are none.
-func withoutLinkedIDs(systemAttributes json.RawMessage) (json.RawMessage, error) {
+// withoutCreateProtectedAttributes drops incoming linked identities and verification metadata.
+func (s *entityService) withoutCreateProtectedAttributes(systemAttributes json.RawMessage) (json.RawMessage, error) {
 	if len(systemAttributes) == 0 {
 		return systemAttributes, nil
 	}
@@ -1398,10 +1461,12 @@ func withoutLinkedIDs(systemAttributes json.RawMessage) (json.RawMessage, error)
 	if err := json.Unmarshal(systemAttributes, &attrs); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal system attributes: %w", err)
 	}
-	if _, ok := attrs[authnprovidercm.SystemAttrLinkedIDs]; !ok {
+	count := len(attrs)
+	delete(attrs, authnprovidercm.SystemAttrLinkedIDs)
+	delete(attrs, systemAttrAttributeVerification)
+	if len(attrs) == count {
 		return systemAttributes, nil
 	}
-	delete(attrs, authnprovidercm.SystemAttrLinkedIDs)
 	stripped, err := json.Marshal(attrs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal system attributes: %w", err)
@@ -1587,15 +1652,10 @@ func (s *entityService) checkIDNotDeclarative(ctx context.Context, entityID stri
 // that own an entity rebuild it from their own model, so without this a rename would drop the
 // credential-change marker this package writes and revive the tokens a credential change invalidated.
 // A reserved key the caller sends is replaced by the stored value, or dropped when none is stored, so
-// only this package writes them. The entity is read under its lock rather than from the cache, so a
-// concurrent write to a reserved key is carried across instead of being overwritten.
-func (s *entityService) mergeReservedAttributes(ctx context.Context, entityID string,
-	incoming json.RawMessage) (json.RawMessage, error) {
-	current, err := s.store.LockEntity(ctx, entityID)
-	if err != nil {
-		return nil, err
-	}
-	preserved, err := reservedAttributesOf(current.SystemAttributes)
+// only this package writes them. The caller reads current under the entity's lock rather than from the
+// cache, so a concurrent write to a reserved key is carried across instead of being overwritten.
+func (s *entityService) mergeReservedAttributes(current, incoming json.RawMessage) (json.RawMessage, error) {
+	preserved, err := reservedAttributesOf(current)
 	if err != nil {
 		return nil, err
 	}
@@ -1922,6 +1982,55 @@ func (s *entityService) ClearSuspension(ctx context.Context, entityID string,
 	return s.runtimeStore.ClearAccessSuspension(ctx, entityID, hold, suspendedAt)
 }
 
+// RecordAttributeVerification writes the verification entry of the record's attribute under the entity
+// lock, only while the entity still has the record's type and the attribute's canonical value is still
+// the record's value, compared as invalidation compares it. It returns false when either changed, the
+// attribute is no longer verifiable or the entity is gone.
+func (s *entityService) RecordAttributeVerification(ctx context.Context,
+	record AttributeVerificationRecord) (bool, error) {
+	if record.Value == "" {
+		return false, nil
+	}
+
+	pinned := providers.Entity{ID: record.EntityID, Category: record.EntityCategory, Type: record.EntityType}
+	applied := false
+	_, err := s.transactOnLockedEntity(ctx, pinned, func(txCtx context.Context, current providers.Entity,
+		verifiableAttributes map[string]string) error {
+		stored, err := s.storedContactValue(current.Attributes, verifiableAttributes, record.Attribute)
+		if err != nil || stored != record.Value {
+			return err
+		}
+
+		entries, err := ReadRecordedAttributeVerifications(current.SystemAttributes)
+		if err != nil {
+			return err
+		}
+
+		entries[record.Attribute] = providers.VerifiedAttribute{
+			VerifiedAt: record.VerifiedAt.UTC().Format(time.RFC3339Nano)}
+		attrs, err := s.withVerifiedAttributes(current.SystemAttributes, entries)
+		if err != nil {
+			return err
+		}
+
+		if err := s.store.UpdateSystemAttributes(txCtx, record.EntityID, attrs); err != nil {
+			return err
+		}
+
+		applied = true
+		return nil
+	})
+	if errors.Is(err, ErrEntityNotFound) {
+		return false, nil
+	}
+
+	if err != nil {
+		return false, err
+	}
+
+	return applied, nil
+}
+
 // populateRuntime sets the runtime state and attributes on each entity, read outside the profile
 // cache. It never writes: an entity with no row reads as the row it starts with.
 func (s *entityService) populateRuntime(ctx context.Context, entities []providers.Entity) error {
@@ -1975,6 +2084,226 @@ func (s *entityService) governedRuntimeData(ctx context.Context,
 	}
 
 	return record, nil
+}
+
+// publishClearedVerifications publishes an event for each verification a committed write cleared.
+func (s *entityService) publishClearedVerifications(ctx context.Context, entityID string,
+	cleared []clearedVerification) {
+	if len(cleared) == 0 || s.observability == nil || !s.observability.IsEnabled() {
+		return
+	}
+
+	for _, c := range cleared {
+		s.observability.PublishEvent(ctx, s.newVerificationInvalidatedEvent(ctx, entityID, c))
+	}
+}
+
+// newVerificationInvalidatedEvent describes a write that cleared a recorded verification. It names the
+// attribute, never its value, and names the caller as the actor outside a runtime context.
+func (s *entityService) newVerificationInvalidatedEvent(ctx context.Context, entityID string,
+	cleared clearedVerification) *providers.Event {
+	evt := event.NewEvent(syscontext.GetTraceID(ctx), string(event.EventTypeAttributeVerificationInvalidated),
+		event.ComponentEntityService).
+		WithStatus(providers.StatusSuccess).
+		WithData(event.DataKey.Subject, entityID).
+		WithData(event.DataKey.SubjectType, event.PrincipalTypeUser).
+		WithData(event.DataKey.Attribute, cleared.attribute).
+		WithData(event.DataKey.InvalidationReason, string(cleared.reason))
+	if actor := security.GetSubject(ctx); actor != "" && !security.IsRuntimeContext(ctx) {
+		evt.WithData(event.DataKey.ActorSub, actor)
+	}
+
+	return evt
+}
+
+// verifiableAttributesOf maps each email or mobile attribute of an entity type to its attribute type.
+// A category without verifiable attributes, or a service without an entity type service, has none.
+func (s *entityService) verifiableAttributesOf(ctx context.Context, category providers.EntityCategory,
+	entityType string) (map[string]string, error) {
+	if category != providers.EntityCategoryUser {
+		return nil, nil
+	}
+
+	verifiableAttributes := make(map[string]string)
+	if s.entityTypeService == nil {
+		return verifiableAttributes, nil
+	}
+
+	attributes, svcErr := s.entityTypeService.GetAttributes(ctx, entitytype.TypeCategoryUser, entityType,
+		entitytype.AttributeFilter{AllowNonCredential: true})
+	if svcErr != nil {
+		return nil, fmt.Errorf("failed to read contact schema: %s", svcErr.Code)
+	}
+
+	for _, attribute := range attributes {
+		if entitytypemodel.IsContactType(attribute.Type) {
+			verifiableAttributes[attribute.Attribute] = attribute.Type
+		}
+	}
+
+	return verifiableAttributes, nil
+}
+
+// transactOnLockedEntity reads the verifiable attributes of existing's type, then runs fn in a transaction
+// with the entity locked. They come from the configuration database, so they are read before the
+// transaction. It returns false without running fn when the locked entity's category or type is no
+// longer the one read.
+func (s *entityService) transactOnLockedEntity(ctx context.Context, existing providers.Entity,
+	fn func(txCtx context.Context, current providers.Entity, verifiableAttributes map[string]string) error) (
+	bool, error) {
+	verifiableAttributes, err := s.verifiableAttributesOf(ctx, existing.Category, existing.Type)
+	if err != nil {
+		return false, err
+	}
+
+	typeUnchanged := false
+	err = s.transactioner.Transact(ctx, func(txCtx context.Context) error {
+		current, err := s.store.LockEntity(txCtx, existing.ID)
+		if err != nil {
+			return err
+		}
+
+		if current.Category != existing.Category || current.Type != existing.Type {
+			return nil
+		}
+
+		typeUnchanged = true
+		return fn(txCtx, current, verifiableAttributes)
+	})
+
+	return typeUnchanged, err
+}
+
+// invalidateVerification removes the verifications a write to the locked entity invalidates, and
+// returns the system attributes to write with the attributes it cleared.
+func (s *entityService) invalidateVerification(current providers.Entity, nextType string,
+	verifiableAttributes map[string]string, nextAttributes, systemAttributes json.RawMessage) (
+	json.RawMessage, []clearedVerification, error) {
+	if current.Category != providers.EntityCategoryUser {
+		return systemAttributes, nil, nil
+	}
+
+	entries, err := ReadRecordedAttributeVerifications(current.SystemAttributes)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if len(entries) == 0 {
+		return systemAttributes, nil, nil
+	}
+
+	var cleared []clearedVerification
+	if current.Type != nextType {
+		for _, name := range slices.Sorted(maps.Keys(entries)) {
+			cleared = append(cleared, clearedVerification{attribute: name,
+				reason: verificationUserTypeChanged})
+		}
+	} else {
+		cleared, err = s.changedVerifiedValues(current, verifiableAttributes, nextAttributes, entries)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+
+	if len(cleared) == 0 {
+		return systemAttributes, nil, nil
+	}
+
+	for _, c := range cleared {
+		delete(entries, c.attribute)
+	}
+
+	invalidated, err := s.withVerifiedAttributes(systemAttributes, entries)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return invalidated, cleared, nil
+}
+
+// withVerifiedAttributes returns the system attributes with the recorded verification replaced by entries.
+func (s *entityService) withVerifiedAttributes(systemAttributes json.RawMessage,
+	entries map[string]providers.VerifiedAttribute) (json.RawMessage, error) {
+	var attributes map[string]json.RawMessage
+	if len(systemAttributes) > 0 {
+		if err := json.Unmarshal(systemAttributes, &attributes); err != nil {
+			return nil, err
+		}
+	}
+
+	if attributes == nil {
+		attributes = make(map[string]json.RawMessage)
+	}
+
+	encoded, err := json.Marshal(entries)
+	if err != nil {
+		return nil, err
+	}
+	attributes[systemAttrAttributeVerification] = encoded
+
+	return json.Marshal(attributes)
+}
+
+// changedVerifiedValues returns the verified attributes whose value the write changes or removes.
+func (s *entityService) changedVerifiedValues(current providers.Entity, verifiableAttributes map[string]string,
+	nextAttributes json.RawMessage, entries map[string]providers.VerifiedAttribute) ([]clearedVerification, error) {
+	var before, after map[string]json.RawMessage
+	if len(current.Attributes) > 0 {
+		if err := json.Unmarshal(current.Attributes, &before); err != nil {
+			return nil, err
+		}
+	}
+
+	if len(nextAttributes) > 0 {
+		if err := json.Unmarshal(nextAttributes, &after); err != nil {
+			return nil, err
+		}
+	}
+
+	var cleared []clearedVerification
+	for _, name := range slices.Sorted(maps.Keys(entries)) {
+		newValue := s.verificationValue(after[name], verifiableAttributes[name])
+		if s.verificationValue(before[name], verifiableAttributes[name]) == newValue {
+			continue
+		}
+
+		reason := verificationValueChanged
+		if newValue == "" {
+			reason = verificationValueRemoved
+		}
+
+		cleared = append(cleared, clearedVerification{attribute: name, reason: reason})
+	}
+
+	return cleared, nil
+}
+
+// storedContactValue returns the canonical value an attribute holds, compared as invalidation compares
+// it, or empty when the attribute is not one of verifiableAttributes or holds no string.
+func (s *entityService) storedContactValue(attributes json.RawMessage, verifiableAttributes map[string]string,
+	attribute string) (string, error) {
+	attributeType := verifiableAttributes[attribute]
+	if attributeType == "" || len(attributes) == 0 {
+		return "", nil
+	}
+
+	var values map[string]json.RawMessage
+	if err := json.Unmarshal(attributes, &values); err != nil {
+		return "", err
+	}
+
+	return s.verificationValue(values[attribute], attributeType), nil
+}
+
+// verificationValue returns the canonical form of a stored contact value, empty when it is absent or
+// not a string.
+func (s *entityService) verificationValue(raw json.RawMessage, attributeType string) string {
+	var value string
+	if json.Unmarshal(raw, &value) != nil {
+		return ""
+	}
+
+	return entitytypemodel.CanonicalContactValue(attributeType, value)
 }
 
 // governedEntityOf narrows a hydrated entity to the part governance needs.

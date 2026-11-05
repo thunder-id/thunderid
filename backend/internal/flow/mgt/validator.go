@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"regexp"
 	"slices"
 	"strconv"
@@ -253,9 +254,17 @@ type companionExecutor struct {
 // flow that terminates without it would therefore delete sessions while their tokens stay live, so
 // the pairing is required rather than conventional. Only the revoke mode counts: the advance_cutoff
 // mode writes nothing for a revoke-all plan, so it alone would leave those tokens live.
+//
+// AttributeVerificationExecutor has no default mode, so each of its nodes prepares or records. A flow
+// that prepares must record, or it completes without verifying anything, and a flow that records must
+// prepare, or it has no pin to record.
 var companionExecutors = map[string][]companionExecutor{
 	executormeta.ExecutorNameSessionRevocation: {
 		{name: executormeta.ExecutorNameCriteriaRevocation, mode: executormeta.ExecutorModeRevoke},
+	},
+	executormeta.ExecutorNameAttributeVerification: {
+		{name: executormeta.ExecutorNameAttributeVerification, mode: executormeta.ExecutorModePrepare},
+		{name: executormeta.ExecutorNameAttributeVerification, mode: executormeta.ExecutorModeRecord},
 	},
 }
 
@@ -481,21 +490,22 @@ func (v *flowValidator) validateCompanionExecutors(
 	nodes []providers.NodeDefinition,
 ) *tidcommon.ServiceError {
 	presentExecutors := collectPresentExecutors(nodes)
-	for name, companions := range companionExecutors {
+	for _, name := range slices.Sorted(maps.Keys(companionExecutors)) {
 		if !presentExecutors[name] {
 			continue
 		}
-		for _, companion := range companions {
+		for _, companion := range companionExecutors[name] {
 			if hasExecutorInMode(nodes, companion.name, companion.mode) {
 				continue
 			}
 			return tidcommon.CustomServiceError(ErrorInvalidExecutorConfig, tidcommon.I18nMessage{
 				Key: "error.flowmgtservice.companion_executor_missing_description",
 				DefaultValue: "Executor '{{param(executorName)}}' requires executor " +
-					"'{{param(companionExecutorName)}}' in the same flow",
+					"'{{param(companionExecutorName)}}' in mode '{{param(companionExecutorMode)}}' in the same flow",
 				Params: map[string]string{
 					"executorName":          name,
 					"companionExecutorName": companion.name,
+					"companionExecutorMode": companion.mode,
 				},
 			})
 		}

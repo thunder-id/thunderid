@@ -440,6 +440,13 @@ func (s *SecurityContextTestSuite) TestGetSecurityContext() {
 	})
 }
 
+func (s *SecurityContextTestSuite) TestIsSelfIssued() {
+	s.False(IsSelfIssued(context.Background()), "no security context")
+	s.False(IsSelfIssued(withSecurityContext(context.Background(),
+		newSecurityContext("user", "ou", "token", nil, nil))), "a context not marked self-issued")
+	s.False(IsSelfIssued(WithRuntimeContext(context.Background())), "a runtime context")
+}
+
 func (s *SecurityContextTestSuite) TestWithRuntimeContext() {
 	s.T().Run("Marks context as runtime", func(t *testing.T) {
 		ctx := WithRuntimeContext(context.Background())

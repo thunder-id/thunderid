@@ -27,19 +27,22 @@ func NewServer() *mcpsdk.Server {
 	return newServer()
 }
 
-// Initialize mounts mcpServer's routes on mux, securing them with the given guard. resourceMeta, if
-// non-nil, is published at OAuthProtectedResourceMetadataPath for MCP client discovery; callers
-// that pass a guard with no discoverable authorization server (e.g. one that accepts every
-// request) should pass nil.
+// Initialize mounts mcpServer's routes on mux, securing them with an Origin check and the given
+// guard. resourceMeta, if non-nil, is published at OAuthProtectedResourceMetadataPath for MCP client
+// discovery; callers that pass a guard with no discoverable authorization server (e.g. one that
+// accepts every request) should pass nil.
 func Initialize(
 	mux *http.ServeMux,
 	mcpServer *mcpsdk.Server,
 	guard func(http.Handler) http.Handler,
 	resourceMeta *oauthex.ProtectedResourceMetadata,
 ) {
+	// Under MCP 2026-07-28 a request's HTTP response stream is its whole lifecycle, so a client
+	// closing that stream cancels the request. PropagateRequestCancellation cancels the handler's
+	// context when the HTTP request ends; requests on older protocol versions are unaffected.
 	httpHandler := mcpsdk.NewStreamableHTTPHandler(func(*http.Request) *mcpsdk.Server {
 		return mcpServer
-	}, &mcpsdk.StreamableHTTPOptions{Stateless: true})
+	}, &mcpsdk.StreamableHTTPOptions{Stateless: true, PropagateRequestCancellation: true})
 
 	securedHandler := guard(withToolWriteDeadline(httpHandler))
 
@@ -49,9 +52,11 @@ func Initialize(
 		mux.Handle(OAuthProtectedResourceMetadataPath, auth.ProtectedResourceMetadataHandler(resourceMeta))
 	}
 
-	// Register MCP routes
-	mux.Handle(MCPEndpointPath, securedHandler)
-	mux.Handle(MCPEndpointPath+"/", securedHandler)
+	// Register MCP routes. The Origin check runs before the guard, so a request from an untrusted
+	// origin is refused whether or not it carries a valid token.
+	mcpHandler := requireAllowedOrigin(serverOrigin(), securedHandler)
+	mux.Handle(MCPEndpointPath, mcpHandler)
+	mux.Handle(MCPEndpointPath+"/", mcpHandler)
 }
 
 // withToolWriteDeadline gives an MCP request the time an import or a gateway apply is allowed, in place

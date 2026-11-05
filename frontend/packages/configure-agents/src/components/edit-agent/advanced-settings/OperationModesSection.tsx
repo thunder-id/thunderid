@@ -314,24 +314,21 @@ export default function OperationModesSection({
 
         <Divider />
 
-        <FormControl fullWidth size="small">
-          <FormLabel htmlFor="agent_default_audience">
-            {t('applications:edit.advanced.audience.label', 'Default audience (aud)')}
-          </FormLabel>
-          <TextField
-            id="agent_default_audience"
-            size="small"
-            fullWidth
-            value={oauth2Config.token?.accessToken?.defaultAudience ?? ''}
-            disabled={!isEditable}
-            onChange={(e) => handleAudienceChange(e.target.value.trim())}
-            inputProps={{maxLength: 2048}}
-            placeholder={t('applications:edit.advanced.audience.placeholder', 'e.g. https://api.example.com')}
-            helperText={t('applications:edit.advanced.audience.hint', 'Leave empty to use the {{entity}} client ID.', {
-              entity: 'agent',
-            })}
-          />
-        </FormControl>
+        <TextField
+          labelPlacement="top"
+          label={t('applications:edit.advanced.audience.label', 'Default audience (aud)')}
+          id="agent_default_audience"
+          size="small"
+          fullWidth
+          value={oauth2Config.token?.accessToken?.defaultAudience ?? ''}
+          disabled={!isEditable}
+          onChange={(e) => handleAudienceChange(e.target.value.trim())}
+          inputProps={{maxLength: 2048}}
+          placeholder={t('applications:edit.advanced.audience.placeholder', 'e.g. https://api.example.com')}
+          helperText={t('applications:edit.advanced.audience.hint', 'Leave empty to use the {{entity}} client ID.', {
+            entity: 'agent',
+          })}
+        />
       </Stack>
     </SettingsCard>
   );

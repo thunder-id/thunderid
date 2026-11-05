@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {SettingsCard} from '@thunderid/components';
-import {Stack, TextField, InputAdornment, Tooltip, IconButton, FormControl, FormLabel} from '@wso2/oxygen-ui';
+import {Stack, TextField, InputAdornment, Tooltip, IconButton} from '@wso2/oxygen-ui';
 import {Copy, Check} from '@wso2/oxygen-ui-icons-react';
 import {useTranslation} from 'react-i18next';
 import type {Role} from '../../../models/role';
@@ -25,48 +25,47 @@ export default function QuickCopySection({role, copiedField, onCopyToClipboard}:
       )}
     >
       <Stack spacing={3}>
-        <FormControl fullWidth>
-          <FormLabel htmlFor="role-id-input">{t('roles:edit.general.labels.roleId', 'Role ID')}</FormLabel>
-          <TextField
-            fullWidth
-            id="role-id-input"
-            value={role.id}
-            InputProps={{
-              readOnly: true,
-              endAdornment: (
-                <InputAdornment position="end">
-                  <Tooltip
-                    title={
+        <TextField
+          labelPlacement="top"
+          label={t('roles:edit.general.labels.roleId', 'Role ID')}
+          fullWidth
+          id="role-id-input"
+          value={role.id}
+          InputProps={{
+            readOnly: true,
+            endAdornment: (
+              <InputAdornment position="end">
+                <Tooltip
+                  title={
+                    copiedField === 'role_id'
+                      ? t('common:actions.copied')
+                      : t('roles:edit.general.sections.quickCopy.copyRoleId')
+                  }
+                >
+                  <IconButton
+                    aria-label={
                       copiedField === 'role_id'
                         ? t('common:actions.copied')
                         : t('roles:edit.general.sections.quickCopy.copyRoleId')
                     }
+                    onClick={() => {
+                      onCopyToClipboard(role.id, 'role_id').catch(() => null);
+                    }}
+                    edge="end"
                   >
-                    <IconButton
-                      aria-label={
-                        copiedField === 'role_id'
-                          ? t('common:actions.copied')
-                          : t('roles:edit.general.sections.quickCopy.copyRoleId')
-                      }
-                      onClick={() => {
-                        onCopyToClipboard(role.id, 'role_id').catch(() => null);
-                      }}
-                      edge="end"
-                    >
-                      {copiedField === 'role_id' ? <Check size={16} /> : <Copy size={16} />}
-                    </IconButton>
-                  </Tooltip>
-                </InputAdornment>
-              ),
-            }}
-            sx={{
-              '& input': {
-                fontFamily: 'monospace',
-                fontSize: '0.875rem',
-              },
-            }}
-          />
-        </FormControl>
+                    {copiedField === 'role_id' ? <Check size={16} /> : <Copy size={16} />}
+                  </IconButton>
+                </Tooltip>
+              </InputAdornment>
+            ),
+          }}
+          sx={{
+            '& input': {
+              fontFamily: 'monospace',
+              fontSize: '0.875rem',
+            },
+          }}
+        />
       </Stack>
     </SettingsCard>
   );

@@ -1146,7 +1146,7 @@ func (suite *IdentifyingExecutorTestSuite) TestResolveLinkHolders_FirstPassOffer
 	suite.Require().Len(options, 1)
 	suite.Equal("ouHandle", options[0].Identifier)
 	suite.ElementsMatch([]string{"sales", "support"}, options[0].Options)
-	suite.mockEntityProvider.AssertNotCalled(suite.T(), "SearchEntities", mock.Anything)
+	suite.mockEntityProvider.AssertNotCalled(suite.T(), "SearchEntities", mock.Anything, mock.Anything)
 }
 
 // A pick narrows the holders to one, which is bound to the AuthUser. Inputs other than the offered
@@ -1392,7 +1392,7 @@ func (suite *IdentifyingExecutorTestSuite) TestCheckStateFederated_CountsLinkHol
 			suite.Equal(providers.ExecComplete, resp.Status)
 			suite.Empty(resp.Inputs)
 			suite.Equal(tc.wantState, resp.RuntimeData[common.RuntimeKeyEntityState])
-			suite.mockEntityProvider.AssertNotCalled(suite.T(), "SearchEntities", mock.Anything)
+			suite.mockEntityProvider.AssertNotCalled(suite.T(), "SearchEntities", mock.Anything, mock.Anything)
 		})
 	}
 }
@@ -1432,8 +1432,8 @@ func (suite *IdentifyingExecutorTestSuite) TestIdentifyFederated_UsesLinkHolder(
 			if tc.wantError != "" {
 				suite.Equal(tc.wantError, resp.Error.Code)
 			}
-			suite.mockEntityProvider.AssertNotCalled(suite.T(), "IdentifyEntity", mock.Anything)
-			suite.mockEntityProvider.AssertNotCalled(suite.T(), "SearchEntities", mock.Anything)
+			suite.mockEntityProvider.AssertNotCalled(suite.T(), "IdentifyEntity", mock.Anything, mock.Anything)
+			suite.mockEntityProvider.AssertNotCalled(suite.T(), "SearchEntities", mock.Anything, mock.Anything)
 		})
 	}
 }
