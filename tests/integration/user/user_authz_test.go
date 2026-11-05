@@ -429,19 +429,11 @@ func (ts *UserAuthzTestSuite) TestDeleteUserInOtherOU() {
 		"user-manager must not delete a user in a different OU")
 }
 
-// TestCreateUserByPathRequiresRootPermission pins the authorization boundary of the by-path create
-// route, which differs from the direct create above.
-//
-// `POST /users` is gated by `system:user`, so the user-manager can create in their own OU
-// (TestCreateUserInOwnOU). `POST /users/tree/{path...}` has **no entry** in the API permission table
-// (`system/security/permissions.go:244-249` lists GET, PUT and DELETE under `/users/**` but no
-// POST), and unmatched routes fall back to the **root** system permission
-// (`security/service.go:159-166`). The user-manager is therefore refused on this route for their own
-// OU as well as for OU2 — the refusal is the root-permission gate, not OU scoping.
-//
-// Both OUs are asserted deliberately. Testing only OU2 would look like a subtree-scoping test and
-// pass for the wrong reason, since the same caller is refused inside their own subtree.
-func (ts *UserAuthzTestSuite) TestCreateUserByPathRequiresRootPermission() {
+// TestCreateUserByPathRequiresOUView verifies the by-path create route passes the `system:user:create`
+// gate for the user-manager, then resolves the path through the OU service, which requires OU read
+// access. The user-manager holds none, so both the own OU and OU2 are refused with a 403 and no user
+// is persisted.
+func (ts *UserAuthzTestSuite) TestCreateUserByPathRequiresOUView() {
 	for _, tc := range []struct {
 		name     string
 		ouHandle string
@@ -469,8 +461,7 @@ func (ts *UserAuthzTestSuite) TestCreateUserByPathRequiresRootPermission() {
 
 			var errResp testutils.ErrorResponse
 			ts.Require().NoError(json.Unmarshal(body, &errResp), "error body: %s", string(body))
-			ts.Equal("AUTH-4030", errResp.Code,
-				"refusal must come from the route permission gate, not from OU scoping")
+			ts.Equal("SSE-4030", errResp.Code)
 
 			ts.Equal(0, ts.countUsersByUsername(tc.username),
 				"a refused by-path create must not persist a user")

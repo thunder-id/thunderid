@@ -202,13 +202,19 @@ func addBlockingTool(server *mcpsdk.Server, name string) *blockingCall {
 	return call
 }
 
-// serveMCP mounts server through Initialize behind a guard that admits every request, and serves it
-// over a real listener so a client can close the connection mid-request. It installs a server
-// runtime, which the mounted handler reads on every request.
+// serveMCP mounts server through Initialize behind a guard that admits every request as a root caller,
+// so the tool permission check passes, and serves it over a real listener so a client can close the
+// connection mid-request. It installs a server runtime, which the mounted handler reads on every request.
 func (suite *DefaultGuardTestSuite) serveMCP(server *mcpsdk.Server) *httptest.Server {
 	suite.initRuntime(nil)
 	mux := http.NewServeMux()
-	Initialize(mux, server, func(next http.Handler) http.Handler { return next }, nil)
+	rootCaller := security.NewSecurityContextForTest("user-1", "ou-1", "",
+		[]string{security.GetSystemRootPermission()}, nil)
+	Initialize(mux, server, func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			next.ServeHTTP(w, r.WithContext(security.WithSecurityContextTest(r.Context(), rootCaller)))
+		})
+	}, nil)
 	httpServer := httptest.NewServer(mux)
 	suite.T().Cleanup(httpServer.Close)
 	return httpServer
