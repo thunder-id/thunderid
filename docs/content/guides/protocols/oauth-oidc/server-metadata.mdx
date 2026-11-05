@@ -29,6 +29,7 @@ curl https://{{productSlug}}.example.com/.well-known/openid-configuration
   "issuer": "https://{{productSlug}}.example.com",
   "authorization_endpoint": "https://{{productSlug}}.example.com/oauth2/authorize",
   "token_endpoint": "https://{{productSlug}}.example.com/oauth2/token",
+  "device_authorization_endpoint": "https://{{productSlug}}.example.com/oauth2/device-authorize",
   "userinfo_endpoint": "https://{{productSlug}}.example.com/oauth2/userinfo",
   "introspection_endpoint": "https://{{productSlug}}.example.com/oauth2/introspect",
   "pushed_authorization_request_endpoint": "https://{{productSlug}}.example.com/oauth2/par",
@@ -37,6 +38,7 @@ curl https://{{productSlug}}.example.com/.well-known/openid-configuration
 
   "grant_types_supported": [
     "authorization_code",
+    "urn:ietf:params:oauth:grant-type:device_code",
     "client_credentials",
     "refresh_token",
     "urn:ietf:params:oauth:grant-type:token-exchange"
