@@ -1061,7 +1061,7 @@ func agentDelegation(ctx *providers.NodeContext) (bool, *tidcommon.ServiceError)
 	if raw := collectedValue(ctx, delegatedKey); raw != "" {
 		parsed, err := strconv.ParseBool(raw)
 		if err != nil {
-			return false, errInvalidFlagValueFor(delegatedKey)
+			return false, errForAttribute(ErrInvalidFlagValue, delegatedKey)
 		}
 
 		return parsed, nil
@@ -1070,7 +1070,7 @@ func agentDelegation(ctx *providers.NodeContext) (bool, *tidcommon.ServiceError)
 	if property, ok := ctx.NodeProperties[propertyKeyDelegated]; ok && property != nil {
 		fallback, isBool := property.(bool)
 		if !isBool {
-			return false, errInvalidFlagValueFor(propertyKeyDelegated)
+			return false, errForAttribute(ErrInvalidFlagValue, propertyKeyDelegated)
 		}
 
 		return fallback, nil

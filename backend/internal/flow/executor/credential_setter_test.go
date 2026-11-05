@@ -175,6 +175,43 @@ func (suite *CredentialSetterTestSuite) TestExecute_ServiceError() {
 	assert.Equal(suite.T(), ErrCredentialSetFailed.Code, resp.Error.Code)
 }
 
+func (suite *CredentialSetterTestSuite) TestExecute_SchemaValidationFailureRequestsInputAgain() {
+	ctx := &providers.NodeContext{
+		ExecutionID: "test-flow",
+		UserInputs: map[string]string{
+			userAttributePassword: "weak",
+		},
+	}
+
+	suite.mockBaseExecutor.On("HasRequiredInputs", ctx, mock.Anything).Return(true)
+	suite.mockBaseExecutor.On("ValidatePrerequisites", ctx, mock.Anything, mock.Anything).Return(true)
+	suite.mockBaseExecutor.On("GetUserIDFromContext", ctx, mock.Anything, mock.Anything).Return(testUserID)
+	suite.mockBaseExecutor.On("GetRequiredInputs", ctx).Return([]providers.Input{
+		{
+			Identifier: userAttributePassword,
+			Type:       providers.InputTypePassword,
+			Required:   true,
+		},
+	})
+
+	suite.mockEntityProvider.On("UpdateCredentials", mock.Anything, testUserID, mock.Anything).
+		Return(entityprovider.NewEntityProviderError(entityprovider.ErrorCodeSchemaValidationFailed,
+			"Schema validation failed", ""))
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecUserInputRequired, resp.Status)
+	assert.Equal(suite.T(), ErrCredentialValueInvalid.Code, resp.Error.Code)
+	assert.Equal(suite.T(), userAttributePassword, resp.Error.Error.Params["attribute"])
+	assert.Equal(suite.T(), []providers.Input{{
+		Identifier: userAttributePassword,
+		Type:       providers.InputTypePassword,
+		Required:   true,
+	}}, resp.Inputs)
+	assert.Empty(suite.T(), resp.SharedRuntimeData)
+}
+
 func (suite *CredentialSetterTestSuite) TestExecute_CustomAttribute() {
 	userID := testUserID
 	const customAttr = "pin"
@@ -301,7 +338,7 @@ func (suite *CredentialSetterTestSuite) TestExecute_SuccessfulWriteRecordsThePro
 func (suite *CredentialSetterTestSuite) TestExecute_FailedWriteRecordsNothing() {
 	ctx := suite.nodeContext()
 	suite.mockEntityProvider.On("UpdateCredentials", mock.Anything, testUserID, mock.Anything).
-		Return(&entityprovider.EntityProviderError{Code: entityprovider.ErrorCodeSchemaValidationFailed})
+		Return(&entityprovider.EntityProviderError{Code: entityprovider.ErrorCodeSystemError})
 
 	resp, err := suite.executor.Execute(ctx)
 

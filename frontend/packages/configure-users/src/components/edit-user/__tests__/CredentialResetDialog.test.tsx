@@ -12,6 +12,8 @@ vi.mock('react-i18next', () => ({
     t: (key: string, defaultValueOrOptions?: unknown, options?: unknown): string => {
       const translations: Record<string, string> = {
         'errors.USR-1024': 'One or more credential fields are not valid for this user type.',
+        'errors.USR-1041':
+          'The new value does not meet the requirements set for this user type, such as the allowed length or characters.',
       };
       if (translations[key]) return translations[key];
 
@@ -211,6 +213,20 @@ describe('CredentialResetDialog', () => {
     render(<CredentialResetDialog open field={passwordField} userId="user-123" onClose={mockOnClose} />);
 
     expect(screen.getByText('One or more credential fields are not valid for this user type.')).toBeInTheDocument();
+  });
+
+  it('should explain that the new value does not meet the user type requirements', () => {
+    const error = new Error('Bad Request') as Error & {response?: {data?: {code: string}}};
+    error.response = {data: {code: 'USR-1041'}};
+    mockUpdateCredentials.error = error;
+
+    render(<CredentialResetDialog open field={passwordField} userId="user-123" onClose={mockOnClose} />);
+
+    expect(
+      screen.getByText(
+        'The new value does not meet the requirements set for this user type, such as the allowed length or characters.',
+      ),
+    ).toBeInTheDocument();
   });
 
   it('should reset the mutation state when the new value input changes', () => {

@@ -58,6 +58,9 @@ type EntityTypeServiceInterface interface {
 		ctx context.Context, category TypeCategory, entityType string, attributes json.RawMessage,
 		skipCredentialRequired bool,
 	) (bool, *tidcommon.ServiceError)
+	ValidateEntityValues(
+		ctx context.Context, category TypeCategory, entityType string, attributes json.RawMessage,
+	) (bool, *tidcommon.ServiceError)
 	ValidateEntityUniqueness(
 		ctx context.Context,
 		category TypeCategory,
@@ -568,6 +571,29 @@ func (us *entityTypeService) ValidateEntity(
 	ctx context.Context, category TypeCategory, entityType string, attributes json.RawMessage,
 	skipCredentialRequired bool,
 ) (bool, *tidcommon.ServiceError) {
+	return us.validateAgainstSchema(ctx, category, entityType,
+		func(schema *model.Schema, logger *log.Logger) (bool, error) {
+			return schema.Validate(ctx, attributes, logger, skipCredentialRequired)
+		})
+}
+
+// ValidateEntityValues validates only the given attributes against the schema for the given category and
+// entity type, without requiring the attributes the payload leaves out.
+func (us *entityTypeService) ValidateEntityValues(
+	ctx context.Context, category TypeCategory, entityType string, attributes json.RawMessage,
+) (bool, *tidcommon.ServiceError) {
+	return us.validateAgainstSchema(ctx, category, entityType,
+		func(schema *model.Schema, logger *log.Logger) (bool, error) {
+			return schema.ValidateValues(ctx, attributes, logger)
+		})
+}
+
+// validateAgainstSchema loads the compiled schema for the given category and entity type and runs
+// validate against it.
+func (us *entityTypeService) validateAgainstSchema(
+	ctx context.Context, category TypeCategory, entityType string,
+	validate func(schema *model.Schema, logger *log.Logger) (bool, error),
+) (bool, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, entityTypeLoggerComponentName))
 
 	if svcErr := validateCategory(category); svcErr != nil {
@@ -582,7 +608,7 @@ func (us *entityTypeService) ValidateEntity(
 		return false, logAndReturnServerError(ctx, logger, "Failed to load entity type", err)
 	}
 
-	isValid, err := compiledSchema.Validate(ctx, attributes, logger, skipCredentialRequired)
+	isValid, err := validate(compiledSchema, logger)
 	if err != nil {
 		return false, logAndReturnServerError(ctx, logger, "Failed to validate entity attributes against schema", err)
 	}

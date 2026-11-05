@@ -432,6 +432,33 @@ func (s *SchemaValidateTestSuite) TestValidate_SkipCredentialRequired() {
 	s.Require().False(ok, "missing required credential should fail when skipCredentialRequired=false")
 }
 
+func (s *SchemaValidateTestSuite) TestValidateValues_ChecksOnlyGivenAttributes() {
+	schema, err := CompileSchema(json.RawMessage(`{
+		"email": {"type": "string", "required": true},
+		"password": {"type": "string", "required": true, "credential": true, "regex": "^.{8,}$"}
+	}`))
+	s.Require().NoError(err)
+
+	ok, err := schema.ValidateValues(context.Background(), json.RawMessage(`{"password":"longenough"}`), s.logger)
+	s.Require().NoError(err)
+	s.Require().True(ok, "a matching credential should pass without the required email")
+
+	ok, err = schema.ValidateValues(context.Background(), json.RawMessage(`{"password":"short"}`), s.logger)
+	s.Require().NoError(err)
+	s.Require().False(ok, "a credential that fails the regex should be rejected")
+
+	ok, err = schema.ValidateValues(context.Background(), json.RawMessage(`{"pin":"12345678"}`), s.logger)
+	s.Require().NoError(err)
+	s.Require().False(ok, "an undeclared attribute should be rejected")
+
+	ok, err = schema.ValidateValues(context.Background(), nil, s.logger)
+	s.Require().NoError(err)
+	s.Require().True(ok)
+
+	_, err = schema.ValidateValues(context.Background(), json.RawMessage(`not-json`), s.logger)
+	s.Require().Error(err)
+}
+
 func (s *SchemaValidateTestSuite) TestGetAttributes_NonCredentialRequiredOnly_ReturnsOnlyRequiredNonCredential() {
 	schema, err := CompileSchema(json.RawMessage(`{
 		"email":     {"type": "string", "required": true},

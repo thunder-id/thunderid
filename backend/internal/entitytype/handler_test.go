@@ -113,6 +113,12 @@ func (s *InlineStubEntityTypeService) ValidateEntity(
 	return true, nil
 }
 
+func (s *InlineStubEntityTypeService) ValidateEntityValues(
+	ctx context.Context, cat TypeCategory, name string, attributes json.RawMessage,
+) (bool, *tidcommon.ServiceError) {
+	return true, nil
+}
+
 func (s *InlineStubEntityTypeService) ValidateEntityUniqueness(
 	ctx context.Context, cat TypeCategory, name string, schema json.RawMessage,
 	eval func(map[string]interface{}) (bool, error),

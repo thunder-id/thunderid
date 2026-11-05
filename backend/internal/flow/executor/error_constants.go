@@ -1913,6 +1913,21 @@ var (
 			DefaultValue: "This contact cannot be verified here",
 		},
 	}
+
+	// ErrCredentialValueInvalid is returned when a new credential value does not meet the schema
+	// requirements. Raise through errForAttribute.
+	ErrCredentialValueInvalid = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1133",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.credential_value_invalid",
+			DefaultValue: "The provided {{param(attribute)}} does not meet the requirements",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.credential_value_invalid_desc",
+			DefaultValue: "The provided {{param(attribute)}} does not match the required format",
+		},
+	}
 )
 
 // errForEntityCategory returns a copy of err whose messages name the entity category they are
@@ -1938,10 +1953,11 @@ func errAttributeNotUniqueFor(attrName string,
 	return &e
 }
 
-// errInvalidFlagValueFor returns a ServiceError naming the flag whose value could not be read.
-func errInvalidFlagValueFor(attrName string) *tidcommon.ServiceError {
+// errForAttribute returns a copy of err whose messages name the attribute they are raised for.
+// Errors whose DefaultValue carries an "{{param(attribute)}}" placeholder must be raised through this.
+func errForAttribute(err tidcommon.ServiceError, attrName string) *tidcommon.ServiceError {
 	params := map[string]string{"attribute": attrName}
-	e := ErrInvalidFlagValue
+	e := err
 	e.Error.Params = params
 	e.ErrorDescription.Params = params
 	return &e

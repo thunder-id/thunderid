@@ -910,6 +910,9 @@ func (us *userService) UpdateUserCredentials(
 			log.MaskedString(log.LoggerKeyUserID, userID))
 	}
 	if err = us.entityService.UpdateCredentials(ctx, userID, plaintextJSON); err != nil {
+		if errors.Is(err, entity.ErrSchemaValidationFailed) {
+			return &ErrorInvalidCredentialValue
+		}
 		if svcErr := mapEntityError(err); svcErr != nil {
 			return svcErr
 		}

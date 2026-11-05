@@ -16233,6 +16233,7 @@
             "name": "CredentialSetter"
           },
           "onSuccess": "release_account_locks",
+          "onIncomplete": "prompt_new_password",
           "layout": {
             "size": {
               "width": 206,
@@ -16675,6 +16676,7 @@
             "name": "CredentialSetter"
           },
           "onSuccess": "release_account_locks",
+          "onIncomplete": "prompt_new_password",
           "layout": {
             "size": {
               "width": 206,

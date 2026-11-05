@@ -981,6 +981,8 @@ const translations = {
     'errors.USR-1034': 'The user is not shared into this unit, so the unit cannot share it on.',
     'errors.USR-1037':
       'Sharing with every unit or every other organization comes only from a resource file or an import.',
+    'errors.USR-1041':
+      'The new value does not meet the requirements set for this user type, such as the allowed length or characters.',
 
     // Read failures
     'listing.error': 'Failed to load users',

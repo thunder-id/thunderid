@@ -143,6 +143,14 @@ func (e *credentialSetter) Execute(ctx *providers.NodeContext) (*providers.Execu
 
 	// Update user credentials
 	if providerErr := e.entityProvider.UpdateCredentials(ctx.Context, userID, credentials); providerErr != nil {
+		if providerErr.Code == entityprovider.ErrorCodeSchemaValidationFailed {
+			logger.Debug(ctx.Context, "Credential value does not meet the schema requirements",
+				log.String("credentialKey", credentialKey))
+			execResp.Status = providers.ExecUserInputRequired
+			execResp.Inputs = []providers.Input{input}
+			execResp.Error = errForAttribute(ErrCredentialValueInvalid, credentialKey)
+			return execResp, nil
+		}
 		logger.Debug(ctx.Context, "Failed to update user credentials",
 			log.MaskedString(log.LoggerKeyUserID, userID))
 		execResp.Status = providers.ExecFailure

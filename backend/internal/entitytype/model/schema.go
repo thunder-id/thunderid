@@ -295,27 +295,46 @@ func (cs *Schema) Validate(
 	}
 
 	for propName, prop := range cs.properties {
-		value, exists := userAttrs[propName]
-		if !exists {
-			if prop.isRequired() && (!skipCredentialRequired || !prop.isCredential()) {
-				return false, nil
-			}
-			continue
-		}
-
-		isValid, err := prop.validateValue(ctx, value, propName, logger)
-		if err != nil {
-			return false, err
-		}
-		if !isValid {
+		if _, exists := userAttrs[propName]; !exists && prop.isRequired() &&
+			(!skipCredentialRequired || !prop.isCredential()) {
 			return false, nil
 		}
 	}
 
-	// Reject any user attributes not declared in the schema.
-	for key := range userAttrs {
-		if _, declared := cs.properties[key]; !declared {
-			logger.Debug(ctx, "Attribute not defined in schema", log.String("attribute", key))
+	return cs.validateValues(ctx, userAttrs, logger)
+}
+
+// ValidateValues validates only the given attributes against their schema properties, so a partial
+// payload such as a credential update is checked without requiring the rest of the entity.
+func (cs *Schema) ValidateValues(
+	ctx context.Context, attributes json.RawMessage, logger *log.Logger) (bool, error) {
+	if len(attributes) == 0 {
+		return true, nil
+	}
+
+	var attrs map[string]any
+	if err := json.Unmarshal(attributes, &attrs); err != nil {
+		return false, fmt.Errorf("failed to unmarshal attributes: %w", err)
+	}
+
+	return cs.validateValues(ctx, attrs, logger)
+}
+
+// validateValues checks each attribute against its schema property and rejects attributes the
+// schema does not declare.
+func (cs *Schema) validateValues(
+	ctx context.Context, attrs map[string]any, logger *log.Logger) (bool, error) {
+	for name, value := range attrs {
+		prop, declared := cs.properties[name]
+		if !declared {
+			logger.Debug(ctx, "Attribute not defined in schema", log.String("attribute", name))
+			return false, nil
+		}
+		isValid, err := prop.validateValue(ctx, value, name, logger)
+		if err != nil {
+			return false, err
+		}
+		if !isValid {
 			return false, nil
 		}
 	}
