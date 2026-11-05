@@ -38,16 +38,21 @@ interface Asset {
 }
 
 /**
- * A product zip, with the version captured. The version must start with a digit, so the Control
- * Plane and quickstart packs (`thunderid-cp-*`, `thunderid-quickstart-*`) that share target/dist
- * are not read as product zips of another version.
+ * A product zip, with the version captured. Only Data Plane packs (`thunderid-gateway-*`) are product
+ * zips, so the quickstart pack (`thunderid-<version>-*`) that shares target/dist is not read as one.
  */
-const PRODUCT_ZIP = /^thunderid-(\d.*)-(?:macos|linux|win)-(?:x64|arm64)\.zip$/;
+const PRODUCT_ZIP = /^thunderid-gateway-(\d.*)-(?:macos|linux|win)-(?:x64|arm64)\.zip$/;
+
+/**
+ * The CLI still asks for `thunderid-<version>-*` until it moves to the gateway name, which waits for
+ * a published release under that name. Until then the Data Plane zip is listed under that name.
+ */
+const toCliAssetName = (name: string): string => name.replace(/^thunderid-gateway-/, "thunderid-");
 
 /**
  * Builds a manifest from the zips present in dir.
  *
- * Naming is the contract: build.sh emits `thunderid-<version>-<platform>-<arch>.zip` and
+ * Naming is the contract: build.sh emits `thunderid-gateway-<version>-<platform>-<arch>.zip` and
  * `sample-app-<name>-<version>.zip`, which is exactly what release.PlatformAssetName and
  * release.SampleAssetName look for. The version is taken from the product zips, and the sample
  * zips are attached to the same release so `try` resolves against it.
@@ -58,7 +63,7 @@ export function buildManifest(dir: string, baseUrl: string): { version: string; 
   const productZips = zips.filter(name => PRODUCT_ZIP.test(name));
   if (productZips.length === 0) {
     throw new Error(
-      `No product zips in ${dir}. Expected something like thunderid-1.0.1-linux-x64.zip; found: ${
+      `No product zips in ${dir}. Expected something like thunderid-gateway-1.0.1-linux-x64.zip; found: ${
         zips.join(", ") || "(nothing)"
       }`
     );
@@ -74,7 +79,7 @@ export function buildManifest(dir: string, baseUrl: string): { version: string; 
   // product's version.
   const assets: Asset[] = zips
     .filter(name => productZips.includes(name) || name.startsWith("sample-app-"))
-    .map(name => ({ name, downloadUrl: `${baseUrl}/${name}` }));
+    .map(name => ({ name: toCliAssetName(name), downloadUrl: `${baseUrl}/${name}` }));
 
   const release = { tagName: `v${version}`, isLatest: true, assets };
   return { version, manifest: { latestRelease: release, releases: [release] } };
