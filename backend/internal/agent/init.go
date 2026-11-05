@@ -5,6 +5,7 @@ package agent
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 
 	"github.com/thunder-id/thunderid/internal/entity"
@@ -108,4 +109,16 @@ func registerRoutes(mux *http.ServeMux, h *agentHandler) {
 		h.HandleAgentGroupsRequest, groupsOpts))
 	mux.HandleFunc(middleware.WithCORS("GET /agents/{id}/roles",
 		h.HandleAgentRolesRequest, groupsOpts))
+}
+
+// SetSystemFlowProvider gives the agent service the engine that runs the system flows around its writes.
+// It is bound after the service, once the engine exists, and only on a server that runs system flows. A
+// service that cannot take it is reported rather than left without one.
+func SetSystemFlowProvider(service AgentServiceInterface, provider systemFlowProvider) error {
+	as, ok := service.(*agentService)
+	if !ok {
+		return fmt.Errorf("agent service does not support system flow provider injection")
+	}
+	as.systemFlows = provider
+	return nil
 }

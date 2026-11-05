@@ -10,6 +10,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -18,6 +19,10 @@ import (
 //
 // The input is a USER_SELECT, so the client sources the candidates itself. This executor declares
 // the input and verifies what comes back.
+//
+// In caller mode, which a system flow runs, nobody is asked: without an owner supplied, the caller
+// creating the entity becomes its owner. A supplied owner is left to the service creating the entity,
+// which verifies it.
 type ownerResolver struct {
 	providers.Executor
 	entityProvider entityprovider.EntityProviderInterface
@@ -49,7 +54,10 @@ func newOwnerResolver(
 			SupportedFlowTypes: []providers.FlowType{
 				providers.FlowTypeAdministration,
 				providers.FlowTypeRegistration,
+				providers.FlowTypeSystem,
 			},
+			DefaultMode:    ExecutorModeOwnerSelect,
+			SupportedModes: []string{ExecutorModeOwnerCaller, ExecutorModeOwnerSelect},
 		})
 
 	return &ownerResolver{
@@ -69,6 +77,10 @@ func (e *ownerResolver) Execute(ctx *providers.NodeContext) (*providers.Executor
 		ForwardedData:  make(map[string]interface{}),
 	}
 
+	if ctx.ExecutorMode == ExecutorModeOwnerCaller {
+		return e.resolveCallerOwner(ctx, execResp, logger), nil
+	}
+
 	if selected, ok := ctx.UserInputs[ownerKey]; ok && selected != "" {
 		return e.resolveSelectedOwner(ctx, execResp, selected, logger)
 	}
@@ -82,6 +94,25 @@ func (e *ownerResolver) Execute(ctx *providers.NodeContext) (*providers.Executor
 	}
 
 	return e.promptOwnerSelection(ctx, execResp, logger)
+}
+
+// resolveCallerOwner makes the caller the owner when none was supplied, sharing it with the service
+// that runs the flow. Without a caller either, the entity is created without an owner.
+func (e *ownerResolver) resolveCallerOwner(ctx *providers.NodeContext,
+	execResp *providers.ExecutorResponse, logger *log.Logger,
+) *providers.ExecutorResponse {
+	execResp.Status = providers.ExecComplete
+	if supplied := ctx.UserInputs[ownerKey]; supplied != "" {
+		return execResp
+	}
+	caller := security.GetSubject(ctx.Context)
+	if caller == "" {
+		logger.Debug(ctx.Context, "No owner supplied and no caller to take it")
+		return execResp
+	}
+	logger.Debug(ctx.Context, "Owner resolved from the caller", log.MaskedString(ownerKey, caller))
+	execResp.SharedRuntimeData = map[string]string{common.RuntimeKeyOwner: caller}
+	return execResp
 }
 
 // resolveSelectedOwner verifies the submitted owner and records it for the provisioning node.

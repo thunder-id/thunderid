@@ -21,6 +21,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/cert"
 	"github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/entitytype"
+	flowcommon "github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/identitygovernance"
 	"github.com/thunder-id/thunderid/internal/inboundclient"
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
@@ -84,6 +85,14 @@ type agentService struct {
 	observabilitySvc observability.ObservabilityServiceInterface
 	// projectResolver is nil on a deployment that serves no projects.
 	projectResolver projectOUResolver
+	// systemFlows is nil where system flows are off.
+	systemFlows systemFlowProvider
+}
+
+// systemFlowProvider runs a system flow to completion. The flow engine implements it.
+type systemFlowProvider interface {
+	ExecuteSystemFlow(ctx context.Context, sysCtx *flowcommon.SystemFlowContext) (*flowcommon.SystemFlowResult,
+		*tidcommon.ServiceError)
 }
 
 func newAgentService(
@@ -155,10 +164,8 @@ func (s *agentService) CreateAgent(ctx context.Context, agent *providers.Agent) 
 		}
 	}
 
-	owner := agent.Owner
-	if owner == "" {
-		owner = security.GetSubject(ctx)
-	} else if svcErr := s.validateOwnerExists(ctx, owner); svcErr != nil {
+	owner, svcErr := s.resolveCreateOwner(ctx, agent.Owner)
+	if svcErr != nil {
 		return nil, svcErr
 	}
 
@@ -1068,6 +1075,30 @@ func (s *agentService) resolveProjectOU(
 	default:
 		return "", &ErrorOrganizationUnitNotFound
 	}
+}
+
+// resolveCreateOwner returns the owner of an agent being created, which is optional. The agent creation
+// system flow resolves it when none is requested and makes the caller the owner; with system flows off
+// none is resolved, so the agent has no owner. A requested owner is verified here.
+func (s *agentService) resolveCreateOwner(ctx context.Context, requested string) (
+	string, *tidcommon.ServiceError) {
+	if s.systemFlows != nil {
+		result, svcErr := s.systemFlows.ExecuteSystemFlow(ctx, &flowcommon.SystemFlowContext{
+			Handle: systemFlowAgentCreate, Inputs: map[string]string{fieldOwner: requested}})
+		if svcErr != nil {
+			return "", svcErr
+		}
+		if requested == "" {
+			return result.RuntimeData[flowcommon.RuntimeKeyOwner], nil
+		}
+	}
+	if requested == "" {
+		return "", nil
+	}
+	if svcErr := s.validateOwnerExists(ctx, requested); svcErr != nil {
+		return "", svcErr
+	}
+	return requested, nil
 }
 
 // resolveUpdateOUID picks the organization unit and project for an update: the requested ones, or the
