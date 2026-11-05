@@ -1,6 +1,6 @@
 module github.com/thunder-id/thunderid/tests/integration
 
-go 1.27.2
+go 1.27.3
 
 require github.com/stretchr/testify v1.10.0
 
