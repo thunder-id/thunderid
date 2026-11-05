@@ -278,6 +278,11 @@ paths:
       tags:
         - Users
       summary: Get a user by id
+      description: |
+        With `ouId`, the user is read as that organization unit sees it: one the unit owns, or one
+        shared into it. A shared user is returned under the unit it is shared into, and
+        `isOwnedByOU` says which of the two it is. The caller needs to be able to read users in that
+        unit, and a user the unit can't see answers `404`.
       parameters:
         - in: path
           name: id
@@ -286,6 +291,14 @@ paths:
             type: string
             format: uuid
           example: "9a475e1e-b0cb-4b29-8df5-2e5b24fb0ed3"
+        - in: query
+          name: ouId
+          required: false
+          description: The organization unit to read the user in.
+          schema:
+            type: string
+            format: uuid
+          example: "456e8400-e29b-41d4-a716-446655440001"
         - $ref: '#/components/parameters/includeQueryParam'
       responses:
         "200":
@@ -294,22 +307,45 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/User'
-              example:
-                id: "9a475e1e-b0cb-4b29-8df5-2e5b24fb0ed3"
-                ouId: "456e8400-e29b-41d4-a716-446655440001"
-                type: "customer"
-                attributes:
-                  age: 24
-                  email: "jane.doe@example.com"
-                  mobile: "+1-650-555-1234"
-                  address:
-                    city: "Mountain View"
-                    zip: "94040"
-                  contactPreferences:
-                    - email
-                    - sms
+              examples:
+                ownedUser:
+                  summary: A user read with ouId in the organization unit that owns it
+                  value:
+                    id: "9a475e1e-b0cb-4b29-8df5-2e5b24fb0ed3"
+                    ouId: "456e8400-e29b-41d4-a716-446655440001"
+                    type: "customer"
+                    attributes:
+                      age: 24
+                      email: "jane.doe@example.com"
+                      mobile: "+1-650-555-1234"
+                      address:
+                        city: "Mountain View"
+                        zip: "94040"
+                      contactPreferences:
+                        - email
+                        - sms
+                    isOwnedByOU: true
+                sharedIntoOU:
+                  summary: A user read with ouId in an organization unit it is shared into
+                  value:
+                    id: "9a475e1e-b0cb-4b29-8df5-2e5b24fb0ed3"
+                    ouId: "afc77cfd-620b-4cf0-a31c-7377b0ea8902"
+                    type: "customer"
+                    attributes:
+                      age: 24
+                      email: "jane.doe@example.com"
+                      mobile: "+1-650-555-1234"
+                      address:
+                        city: "Mountain View"
+                        zip: "94040"
+                      contactPreferences:
+                        - email
+                        - sms
+                    isOwnedByOU: false
+        "403":
+          description: The caller may not read the user, or with ouId, users in that organization unit
         "404":
-          description: User not found
+          description: User not found, or with ouId, not owned by or shared into that organization unit
         "500":
           description: Internal server error
     put:
@@ -3037,7 +3073,7 @@ components:
           readOnly: true
           description: |
             Whether the listed organization unit owns the user rather than being shared it. Present
-            only in user lists.
+            in user lists, and when a user is read with `ouId`.
         status:
           $ref: '#/components/schemas/UserAccessStatus'
         lastLoginAt:

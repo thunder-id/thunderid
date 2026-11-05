@@ -711,6 +711,88 @@ func (_c *UserServiceInterfaceMock_GetUserGroups_Call) RunAndReturn(run func(ctx
 	return _c
 }
 
+// GetUserInOU provides a mock function for the type UserServiceInterfaceMock
+func (_mock *UserServiceInterfaceMock) GetUserInOU(ctx context.Context, userID string, ouID string, includeDisplay bool) (*providers.User, *common.ServiceError) {
+	ret := _mock.Called(ctx, userID, ouID, includeDisplay)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetUserInOU")
+	}
+
+	var r0 *providers.User
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, bool) (*providers.User, *common.ServiceError)); ok {
+		return returnFunc(ctx, userID, ouID, includeDisplay)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, bool) *providers.User); ok {
+		r0 = returnFunc(ctx, userID, ouID, includeDisplay)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*providers.User)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string, bool) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, userID, ouID, includeDisplay)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// UserServiceInterfaceMock_GetUserInOU_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetUserInOU'
+type UserServiceInterfaceMock_GetUserInOU_Call struct {
+	*mock.Call
+}
+
+// GetUserInOU is a helper method to define mock.On call
+//   - ctx context.Context
+//   - userID string
+//   - ouID string
+//   - includeDisplay bool
+func (_e *UserServiceInterfaceMock_Expecter) GetUserInOU(ctx any, userID any, ouID any, includeDisplay any) *UserServiceInterfaceMock_GetUserInOU_Call {
+	return &UserServiceInterfaceMock_GetUserInOU_Call{Call: _e.mock.On("GetUserInOU", ctx, userID, ouID, includeDisplay)}
+}
+
+func (_c *UserServiceInterfaceMock_GetUserInOU_Call) Run(run func(ctx context.Context, userID string, ouID string, includeDisplay bool)) *UserServiceInterfaceMock_GetUserInOU_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		var arg3 bool
+		if args[3] != nil {
+			arg3 = args[3].(bool)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *UserServiceInterfaceMock_GetUserInOU_Call) Return(user1 *providers.User, serviceError *common.ServiceError) *UserServiceInterfaceMock_GetUserInOU_Call {
+	_c.Call.Return(user1, serviceError)
+	return _c
+}
+
+func (_c *UserServiceInterfaceMock_GetUserInOU_Call) RunAndReturn(run func(ctx context.Context, userID string, ouID string, includeDisplay bool) (*providers.User, *common.ServiceError)) *UserServiceInterfaceMock_GetUserInOU_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetUserList provides a mock function for the type UserServiceInterfaceMock
 func (_mock *UserServiceInterfaceMock) GetUserList(ctx context.Context, limit int, offset int, filters map[string]interface{}, includeDisplay bool) (*user.UserListResponse, *common.ServiceError) {
 	ret := _mock.Called(ctx, limit, offset, filters, includeDisplay)
