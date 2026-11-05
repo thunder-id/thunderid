@@ -248,7 +248,11 @@ overrides:
   # 4.0.5 exactly. 4.0.33 is a patch release on the same 4.0.x line. Added 2026-11-05. Remove once
   # @scalar/api-reference ships with @ai-sdk/provider-utils >=4.0.33.
   '@ai-sdk/provider-utils@>=4.0.0 <4.0.33': '~4.0.33'
-  '@hono/node-server': '>=2.0.5'
+  # JUSTIFICATION: Fixes GHSA-rmxm-3fg6-px4f, middleware bypass on static paths because serveStatic
+  # decodes the request path twice. Transitive via @modelcontextprotocol/sdk in the wayfinder samples,
+  # which accepts ^1.19.9 || ^2.0.5. Added 2026-07-25, raised 2026-11-05.
+  # Remove once @modelcontextprotocol/sdk requires @hono/node-server >=2.1.3.
+  '@hono/node-server@<2.1.3': '>=2.1.3 <3'
   # JUSTIFICATION: Fixes GHSA-f88m-g3jw-g9cj (CVE-2026-33327, CVE-2026-33328, CVE-2026-35590,
   # CVE-2026-35591) — libvips vulnerabilities inherited by sharp, and GHSA-rgj7-g3m4-5g8c
   # (GHSA-g89c-p67h-r497, GHSA-2jg2-4ch7-h545) — libheif vulnerabilities inherited by sharp.
@@ -266,9 +270,11 @@ overrides:
   nanoid@<3.3.17: 3.3.18
   # JUSTIFICATION: Fixes GHSA-w9m9-85wc-3x92 — DoS via uncontrolled AST recursion in
   # postcss-selector-parser. Transitive via Docusaurus css-loader and postcss-preset-env chains.
+  # The 7.x entries are raised to 7.1.6 for GHSA-rj75-hqrm-r3gf, CPU exhaustion through quadratic
+  # complexity in flat selector parsing, via the Docusaurus cssnano chain. Raised 2026-11-05.
   postcss-selector-parser@>=6.1.0 <6.1.3: '>=6.1.3'
-  postcss-selector-parser@>=7.0.0 <7.1.3: '>=7.1.3'
-  postcss-discard-unused>postcss-selector-parser: '>=7.1.3'
+  postcss-selector-parser@>=7.0.0 <7.1.6: '>=7.1.6 <8'
+  postcss-discard-unused>postcss-selector-parser: '>=7.1.6 <8'
   # JUSTIFICATION: Fixes GHSA-c83g-rgw3-j3cx (unbounded memory growth / OOM via distinct query
   # results) and GHSA-73wf-gq98-2v4g (uncaught crash / prototype write via untrusted custom stats).
   # Transitive via @babel/helper-compilation-targets in the Docusaurus build chain.
@@ -287,7 +293,11 @@ overrides:
   # 3.x line: the consumers here (ajv) declare fast-uri ^3.0.1, and an open-ended floor lets the
   # resolver dedupe this edge onto the 4.x major, which those consumers were never tested against.
   # 3.1.8 is a patch release on the 3.1.x line already resolved here (3.1.6), so no API change.
-  fast-uri: '>=3.1.8 <4'
+  # Raised to 3.1.9 on 2026-11-05 for GHSA-w74x-v6f9-j3xg (scheme spoofing via percent-encoded scheme
+  # decoding), GHSA-xhq7-xmqj-769h (improper path equivalence in relative reference normalization),
+  # GHSA-wjr9-j795-jxcr (host confusion via unchecked WHATWG host canonicalization) and
+  # GHSA-333x-w4r6-6crp (scheme injection via an unescaped first-segment colon in suffix references).
+  fast-uri: '>=3.1.9 <4'
   # JUSTIFICATION: Fixes GHSA-mrhx-c7xc-m3w5, memory exhaustion while validating oversized
   # constrained collections. Enters through @codecov/vite-plugin@2.0.1 >
   # @codecov/bundler-plugin-core@2.0.1 > zod@3.25.76 in the Console, Console CP and Gate builds.
@@ -328,6 +338,27 @@ auditConfig:
     # build-time only, run against this repo's own OpenAPI specs. Revisit once postman-collection
     # upgrades its faker dependency.
     - GHSA-qxc2-j82w-r537
+    # JUSTIFICATION: minimatch DoS via globparts amplification, fixed only in 11.0.1. rimraf and
+    # i18next-cli already resolve to 11.x; the remaining paths are typescript-eslint
+    # (@typescript-eslint/typescript-estree) and eslint-plugin-import-x, whose latest releases still
+    # declare minimatch ^10. Not overridden: 11.0 removes makeRe(), which eslint-plugin-import-x's
+    # no-internal-modules rule calls. Not exploitable here: the patterns come from this repo's own
+    # lint configuration, never from untrusted input, and the code runs only at lint time.
+    # Added 2026-11-05. Revisit once typescript-eslint and eslint-plugin-import-x accept minimatch 11.
+    - GHSA-g3hv-75wg-m249
+    # JUSTIFICATION: KaTeX prototype-pollution trust bypass, fixed in 0.18.2. Transitive via docs ->
+    # @docusaurus/theme-mermaid -> mermaid, and the latest mermaid 11.x still declares katex ^0.16.47;
+    # only mermaid 12 moves to 0.18, which is a major upgrade of the docs diagram renderer. Not
+    # exploitable here: it needs an existing prototype pollution in the page plus attacker-controlled
+    # math input, and the only input is this repo's own docs content. Added 2026-11-05. Revisit
+    # when Docusaurus supports mermaid 12.
+    - GHSA-238p-pmpm-9mq7
+    # JUSTIFICATION: deepmerge mergeObject() prototype poisoning of returned objects. Transitive via
+    # docs -> @docusaurus/plugin-svgr -> @svgr/webpack -> @svgr/plugin-svgo. The advisory names 4.3.2
+    # as the fix, but no such release exists on npm (4.3.1 is the latest), so neither an upgrade nor
+    # an override can fix it. Not exploitable here: @svgr/plugin-svgo only merges this repo's own
+    # SVGO configuration at docs build time. Added 2026-11-05. Revisit once deepmerge publishes 4.3.2.
+    - GHSA-gcqx-w48m-w2h4
 
 minimumReleaseAgeExclude:
   - '@thunderid/*'
