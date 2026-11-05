@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
@@ -57,6 +58,14 @@ func (s *tokenIntrospectionService) IntrospectToken(
 			return nil, err
 		}
 		logger.Debug(ctx, "Token is inactive", log.Error(err))
+		return &IntrospectResponse{
+			Active: false,
+		}, nil
+	}
+
+	// A token is inactive from its exp by the server's own clock, without the validator's clock-skew leeway.
+	if exp, ok := payload[constants.ClaimExp].(float64); ok && time.Now().Unix() >= int64(exp) {
+		logger.Debug(ctx, "Token is inactive: expired")
 		return &IntrospectResponse{
 			Active: false,
 		}, nil
