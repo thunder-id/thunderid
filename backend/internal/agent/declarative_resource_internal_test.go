@@ -189,6 +189,59 @@ inboundAuthConfig:
 	assert.Equal(s.T(), "public-client-id", sysAttrs[fieldClientID])
 }
 
+// An agent's declared credentials are handed to the loader beside its client secret, to be hashed
+// before they are stored, so the imported agent can sign in with them.
+func (s *MakeAgentEntityParserTestSuite) TestMakeAgentEntityParser_CarriesDeclaredCredentials() {
+	yamlData := []byte(`
+id: cred-agent
+ouId: ou-1
+type: service-agent
+attributes:
+  username: cred-agent
+credentials:
+  password: s3cret
+inboundAuthConfig:
+  - type: oauth2
+    config:
+      clientId: cred-client-id
+      clientSecret: cred-client-secret
+      grantTypes:
+        - client_credentials
+`)
+	mockSvc := agentmock.NewAgentServiceInterfaceMock(s.T())
+	mockSvc.EXPECT().ValidateAgent(mock.Anything, mock.Anything, "cred-agent").
+		Return("cred-client-id", "cred-client-secret", inboundmodel.InboundClient{}, nil).Once()
+
+	_, _, sysCredsJSON, err := makeAgentEntityParser(mockSvc)(yamlData)
+
+	assert.NoError(s.T(), err)
+	var sysCreds map[string]interface{}
+	assert.NoError(s.T(), json.Unmarshal(sysCredsJSON, &sysCreds))
+	assert.Equal(s.T(), "s3cret", sysCreds["password"])
+	assert.Equal(s.T(), "cred-client-secret", sysCreds[fieldClientSecret])
+}
+
+// An agent with credentials and no OAuth client still carries them.
+func (s *MakeAgentEntityParserTestSuite) TestMakeAgentEntityParser_CarriesCredentialsWithoutAClient() {
+	yamlData := []byte(`
+id: plain-agent
+ouId: ou-1
+type: service-agent
+credentials:
+  password: s3cret
+`)
+	mockSvc := agentmock.NewAgentServiceInterfaceMock(s.T())
+	mockSvc.EXPECT().ValidateAgent(mock.Anything, mock.Anything, "plain-agent").
+		Return("", "", inboundmodel.InboundClient{}, nil).Once()
+
+	_, _, sysCredsJSON, err := makeAgentEntityParser(mockSvc)(yamlData)
+
+	assert.NoError(s.T(), err)
+	var sysCreds map[string]interface{}
+	assert.NoError(s.T(), json.Unmarshal(sysCredsJSON, &sysCreds))
+	assert.Equal(s.T(), map[string]interface{}{"password": "s3cret"}, sysCreds)
+}
+
 func (s *MakeAgentEntityParserTestSuite) TestMakeAgentEntityParser_WithOAuthConfidentialClient() {
 	yamlData := []byte(`
 id: conf-agent

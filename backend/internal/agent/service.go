@@ -209,7 +209,7 @@ func (s *agentService) CreateAgent(ctx context.Context, agent *providers.Agent) 
 	resp.OUID = agent.OUID
 	resp.ValidUntil, resp.Lifespan = lifespanView(&validUntil, now)
 	s.populateOUHandleForComplete(ctx, resp)
-	s.captureValues(ctx, resp)
+	s.captureValues(ctx, resp, agent.Attributes)
 	s.publishLifespanSet(ctx, agentID, validUntil)
 	return resp, nil
 }
@@ -586,7 +586,7 @@ func (s *agentService) UpdateAgent(ctx context.Context, agentID string,
 	resp.LastLoginAt = access.LastLoginAt
 	resp.ValidUntil, resp.Lifespan = lifespanView(currentValidUntil, now)
 	s.populateOUHandleForComplete(ctx, resp)
-	s.captureValues(ctx, resp)
+	s.captureValues(ctx, resp, req.Attributes)
 	return resp, nil
 }
 

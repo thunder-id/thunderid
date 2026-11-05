@@ -28,6 +28,9 @@ type AgentRequestWithID struct {
 	Owner       string                 `json:"owner,omitempty"       yaml:"owner,omitempty"`
 	Attributes  map[string]interface{} `json:"attributes,omitempty"  yaml:"attributes,omitempty"`
 	ValidUntil  string                 `json:"validUntil,omitempty"  yaml:"validUntil,omitempty"`
+	// Credentials holds the agent's credential-type attributes, keyed by attribute name, as plain
+	// text or a stored-format list; the loader hashes plain text before storing it.
+	Credentials map[string]interface{} `json:"credentials,omitempty" yaml:"credentials,omitempty"`
 
 	inboundmodel.InboundAuthProfileReq `yaml:",inline"`
 	InboundAuthConfig                  []providers.InboundAuthConfigWithSecret `json:"inboundAuthConfig,omitempty" yaml:"inboundAuthConfig,omitempty"`
@@ -106,6 +109,9 @@ type AgentGetResponse struct {
 	// directly YAML-marshaled, so AttributesYAML carries the decoded map for export.
 	Attributes     json.RawMessage        `json:"attributes,omitempty" yaml:"-"`
 	AttributesYAML map[string]interface{} `json:"-"                    yaml:"attributes,omitempty"`
+	// Credentials carries the agent's credential-type attributes for export only: a placeholder for
+	// each one the agent has set, since a stored credential is a one-way hash. A read never returns it.
+	Credentials map[string]interface{} `json:"-" yaml:"credentials,omitempty"`
 	// Status is the effective access status and what produced it, derived at read time: SUSPENDED
 	// beats LOCKED beats ACTIVE. Read-only, and excluded from the YAML export as runtime state.
 	Status *providers.AccessStatusReport `json:"status,omitempty" yaml:"-"`

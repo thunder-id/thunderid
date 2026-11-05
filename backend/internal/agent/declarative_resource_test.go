@@ -5,6 +5,7 @@ package agent_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -17,16 +18,22 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/agent"
 	"github.com/thunder-id/thunderid/internal/agent/model"
+	"github.com/thunder-id/thunderid/internal/entity"
+	"github.com/thunder-id/thunderid/internal/entitytype"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/tests/mocks/agentmock"
+	"github.com/thunder-id/thunderid/tests/mocks/entitymock"
+	"github.com/thunder-id/thunderid/tests/mocks/entitytypemock"
 )
 
 type AgentExporterTestSuite struct {
 	suite.Suite
-	mockService *agentmock.AgentServiceInterfaceMock
-	exporter    declarativeresource.ResourceExporter
-	logger      *log.Logger
+	mockService     *agentmock.AgentServiceInterfaceMock
+	mockEntity      *entitymock.EntityServiceInterfaceMock
+	mockEntityTypes *entitytypemock.EntityTypeServiceInterfaceMock
+	exporter        declarativeresource.ResourceExporter
+	logger          *log.Logger
 }
 
 func TestAgentExporterTestSuite(t *testing.T) {
@@ -35,7 +42,9 @@ func TestAgentExporterTestSuite(t *testing.T) {
 
 func (s *AgentExporterTestSuite) SetupTest() {
 	s.mockService = agentmock.NewAgentServiceInterfaceMock(s.T())
-	s.exporter = agent.NewAgentExporterForTest(s.mockService)
+	s.mockEntity = entitymock.NewEntityServiceInterfaceMock(s.T())
+	s.mockEntityTypes = entitytypemock.NewEntityTypeServiceInterfaceMock(s.T())
+	s.exporter = agent.NewAgentExporterForTest(s.mockService, s.mockEntity, s.mockEntityTypes)
 	s.logger = log.GetLogger()
 }
 
@@ -122,8 +131,9 @@ func (s *AgentExporterTestSuite) TestGetAllResourceIDs_EmptyList() {
 }
 
 func (s *AgentExporterTestSuite) TestGetResourceByID_Success() {
-	expected := &model.AgentGetResponse{ID: "agent1", Display: "My Agent"}
+	expected := &model.AgentGetResponse{ID: "agent1", Type: "default", Display: "My Agent"}
 	s.mockService.EXPECT().GetAgent(mock.Anything, "agent1", true).Return(expected, nil)
+	s.typeDeclaresCredentials()
 
 	resource, name, err := s.exporter.GetResourceByID(context.Background(), "agent1")
 
@@ -335,4 +345,112 @@ func (s *AgentExporterTestSuite) TestGetResourceRulesForResource_NonAgentType() 
 	assert.Contains(s.T(), rules.Variables, "InboundAuthConfig[].OAuthConfig.ClientID")
 	assert.Contains(s.T(), rules.SecretVariables, "InboundAuthConfig[].OAuthConfig.ClientSecret")
 	assert.Contains(s.T(), rules.ArrayVariables, "InboundAuthConfig[].OAuthConfig.RedirectURIs")
+}
+
+// typeDeclaresCredentials sets the credential attributes the agents' type declares.
+func (s *AgentExporterTestSuite) typeDeclaresCredentials(attributes ...string) {
+	infos := make([]entitytype.AttributeInfo, 0, len(attributes))
+	for _, attribute := range attributes {
+		infos = append(infos, entitytype.AttributeInfo{Attribute: attribute, Credential: true})
+	}
+	s.mockEntityTypes.EXPECT().GetAttributes(mock.Anything, entitytype.TypeCategoryAgent, "default",
+		entitytype.AttributeFilter{AllowCredential: true}).Return(infos, nil)
+}
+
+// agentHasCredential sets whether the agent has a stored credential for an attribute.
+func (s *AgentExporterTestSuite) agentHasCredential(attribute string, isSet bool) {
+	var stored []entity.StoredCredential
+	if isSet {
+		stored = []entity.StoredCredential{{Value: "a-hash"}}
+	}
+	s.mockEntity.EXPECT().GetCredentialsByType(mock.Anything, "agent1", attribute).Return(stored, nil)
+}
+
+func (s *AgentExporterTestSuite) exportAgent() *model.AgentGetResponse {
+	s.mockService.EXPECT().GetAgent(mock.Anything, "agent1", true).
+		Return(&model.AgentGetResponse{ID: "agent1", Type: "default", Display: "My Agent"}, nil)
+	resource, _, err := s.exporter.GetResourceByID(context.Background(), "agent1")
+	s.Require().Nil(err)
+	return resource.(*model.AgentGetResponse)
+}
+
+// An agent with a password exports it as a template variable named after the agent. The value is a
+// one-way hash and never leaves; the importing server fills the variable and hashes it on the way in.
+func (s *AgentExporterTestSuite) TestGetResourceByID_ExportsACredentialAsAPlaceholder() {
+	s.typeDeclaresCredentials("password")
+	s.agentHasCredential("password", true)
+
+	exported := s.exportAgent()
+
+	assert.Equal(s.T(), map[string]interface{}{"password": "{{.AGENT_MY_AGENT_PASSWORD}}"}, exported.Credentials)
+}
+
+// A control plane's export names the secret the gateway holds instead, so the gateway's import fills
+// it in and hashes it.
+func (s *AgentExporterTestSuite) TestGetResourceByID_ExportsACredentialAsASecretReference() {
+	s.exporter.(declarativeresource.ReferenceWriter).WriteValueReferences(true)
+	s.typeDeclaresCredentials("password")
+	s.agentHasCredential("password", true)
+
+	exported := s.exportAgent()
+
+	assert.Equal(s.T(), map[string]interface{}{"password": "sec:AGENT_MY_AGENT_PASSWORD"}, exported.Credentials)
+}
+
+// A credential the agent never set is left out, rather than demanding a value on import.
+func (s *AgentExporterTestSuite) TestGetResourceByID_LeavesOutACredentialTheAgentNeverSet() {
+	s.typeDeclaresCredentials("password", "pin")
+	s.agentHasCredential("password", false)
+	s.agentHasCredential("pin", true)
+
+	exported := s.exportAgent()
+
+	assert.Equal(s.T(), map[string]interface{}{"pin": "{{.AGENT_MY_AGENT_PIN}}"}, exported.Credentials)
+}
+
+// A type that cannot be read fails the export rather than exporting an agent that could no longer sign in.
+func (s *AgentExporterTestSuite) TestGetResourceByID_FailsWhenTheTypeIsUnreadable() {
+	s.mockService.EXPECT().GetAgent(mock.Anything, "agent1", true).
+		Return(&model.AgentGetResponse{ID: "agent1", Type: "default", Display: "My Agent"}, nil)
+	s.mockEntityTypes.EXPECT().GetAttributes(mock.Anything, entitytype.TypeCategoryAgent, "default",
+		entitytype.AttributeFilter{AllowCredential: true}).Return(nil, &tidcommon.ServiceError{Code: "ETS-1001"})
+
+	_, _, err := s.exporter.GetResourceByID(context.Background(), "agent1")
+
+	s.Require().NotNil(err)
+	assert.Equal(s.T(), "ETS-1001", err.Code)
+}
+
+// An unreadable stored credential fails the export for the same reason.
+func (s *AgentExporterTestSuite) TestGetResourceByID_FailsWhenTheStoredCredentialsAreUnreadable() {
+	s.mockService.EXPECT().GetAgent(mock.Anything, "agent1", true).
+		Return(&model.AgentGetResponse{ID: "agent1", Type: "default", Display: "My Agent"}, nil)
+	s.typeDeclaresCredentials("password")
+	s.mockEntity.EXPECT().GetCredentialsByType(mock.Anything, "agent1", "password").
+		Return(nil, errors.New("store unavailable"))
+
+	_, _, err := s.exporter.GetResourceByID(context.Background(), "agent1")
+
+	s.Require().NotNil(err)
+	assert.Equal(s.T(), tidcommon.InternalServerError.Code, err.Code)
+}
+
+// An agent with no name has nothing to name a credential after, so none is exported and the type is
+// not consulted.
+func (s *AgentExporterTestSuite) TestGetResourceByID_ExportsNoCredentialsForAnUnnamedAgent() {
+	s.mockService.EXPECT().GetAgent(mock.Anything, "agent1", true).
+		Return(&model.AgentGetResponse{ID: "agent1", Type: "default"}, nil)
+
+	resource, _, err := s.exporter.GetResourceByID(context.Background(), "agent1")
+
+	s.Require().Nil(err)
+	assert.Empty(s.T(), resource.(*model.AgentGetResponse).Credentials)
+}
+
+// The credentials are secret fields, so an import resolves a reference only where one is kept.
+func (s *AgentExporterTestSuite) TestSecretFieldsIncludeTheCredentials() {
+	lister := s.exporter.(declarativeresource.SecretFieldLister)
+
+	assert.Contains(s.T(), lister.SecretFields(), "credentials.*")
+	assert.Contains(s.T(), lister.SecretFields(), "inboundAuthConfig[].config.clientSecret")
 }

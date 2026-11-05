@@ -3567,6 +3567,8 @@ func (suite *AgentServiceTestSuite) withDisplayPaths(svc *agentService, path str
 	mockType := entitytypemock.NewEntityTypeServiceInterfaceMock(suite.T())
 	mockType.On("GetDisplayAttributesByHandles", mock.Anything, entitytype.TypeCategoryAgent,
 		mock.Anything).Return(map[string]string{testAgentType: path}, (*tidcommon.ServiceError)(nil)).Maybe()
+	mockType.On("GetAttributes", mock.Anything, entitytype.TypeCategoryAgent, mock.Anything, mock.Anything).
+		Return([]entitytype.AttributeInfo{}, (*tidcommon.ServiceError)(nil)).Maybe()
 	svc.entityTypeService = mockType
 }
 

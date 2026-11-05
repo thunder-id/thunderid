@@ -11,7 +11,10 @@ import (
 	"github.com/stretchr/testify/mock"
 
 	"github.com/thunder-id/thunderid/internal/agent/model"
+	"github.com/thunder-id/thunderid/internal/entitytype"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+	"github.com/thunder-id/thunderid/tests/mocks/entitytypemock"
 )
 
 // recordingCapturer records every resource handed to it.
@@ -103,7 +106,7 @@ func (suite *AgentServiceTestSuite) TestCapture_FallsBackToTheIDWithoutADisplayA
 
 	svc.captureValues(context.Background(), &model.AgentCompleteResponse{
 		ID: testAgentID, Type: testAgentType, Attributes: json.RawMessage(`{"name":"test-agent"}`),
-	})
+	}, nil)
 
 	assert.Equal(suite.T(), testAgentID, capturer.captured(suite).Display)
 }
@@ -125,6 +128,48 @@ func (suite *AgentServiceTestSuite) TestCaptureWithoutACapturerDoesNothing() {
 	svc, _, _, _, _ := suite.setupService()
 
 	assert.NotPanics(suite.T(), func() {
-		svc.captureValues(context.Background(), &model.AgentCompleteResponse{ID: testAgentID})
+		svc.captureValues(context.Background(), &model.AgentCompleteResponse{ID: testAgentID}, nil)
 	})
+}
+
+// The credential-type attributes an agent was written with are captured from the attributes as
+// submitted, since the write returns them stripped and stores only their hash.
+func (suite *AgentServiceTestSuite) TestCapture_CarriesTheSubmittedCredentials() {
+	svc, _, _, _, _ := suite.setupService()
+	capturer := &recordingCapturer{}
+	svc.valueCapturer = capturer
+	mockType := entitytypemock.NewEntityTypeServiceInterfaceMock(suite.T())
+	mockType.On("GetDisplayAttributesByHandles", mock.Anything, entitytype.TypeCategoryAgent, mock.Anything).
+		Return(map[string]string{testAgentType: "name"}, (*tidcommon.ServiceError)(nil)).Maybe()
+	mockType.On("GetAttributes", mock.Anything, entitytype.TypeCategoryAgent, testAgentType,
+		entitytype.AttributeFilter{AllowCredential: true}).
+		Return([]entitytype.AttributeInfo{{Attribute: "password", Credential: true}},
+			(*tidcommon.ServiceError)(nil))
+	svc.entityTypeService = mockType
+
+	svc.captureValues(context.Background(), &model.AgentCompleteResponse{
+		ID: testAgentID, Type: testAgentType, Attributes: json.RawMessage(`{"name":"test-agent"}`),
+	}, json.RawMessage(`{"name":"test-agent","username":"agent1","password":"s3cret"}`))
+
+	agent := capturer.captured(suite)
+	assert.Equal(suite.T(), map[string]interface{}{"password": "s3cret"}, agent.Credentials)
+}
+
+// A type that cannot be read leaves no credential captured, and does not fail the write.
+func (suite *AgentServiceTestSuite) TestCapture_ReadsNoCredentialsWhenTheTypeIsUnreadable() {
+	svc, _, _, _, _ := suite.setupService()
+	capturer := &recordingCapturer{}
+	svc.valueCapturer = capturer
+	mockType := entitytypemock.NewEntityTypeServiceInterfaceMock(suite.T())
+	mockType.On("GetDisplayAttributesByHandles", mock.Anything, entitytype.TypeCategoryAgent, mock.Anything).
+		Return(map[string]string{testAgentType: "name"}, (*tidcommon.ServiceError)(nil)).Maybe()
+	mockType.On("GetAttributes", mock.Anything, entitytype.TypeCategoryAgent, testAgentType, mock.Anything).
+		Return(nil, &tidcommon.ServiceError{Code: "ETS-1001"})
+	svc.entityTypeService = mockType
+
+	svc.captureValues(context.Background(), &model.AgentCompleteResponse{
+		ID: testAgentID, Type: testAgentType, Attributes: json.RawMessage(`{"name":"test-agent"}`),
+	}, json.RawMessage(`{"password":"s3cret"}`))
+
+	assert.Empty(suite.T(), capturer.captured(suite).Credentials)
 }

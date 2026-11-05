@@ -1194,6 +1194,17 @@ func (s *importService) importAgent(
 		req.RegistrationFlowID = mappedFlowID
 	}
 
+	// An agent takes its credentials as attributes, so the ones the document carries beside them are
+	// written with them. An empty one is left out, so an update keeps the credential the agent has.
+	for name, value := range req.Credentials {
+		if text, ok := value.(string); ok && text != "" {
+			if req.Attributes == nil {
+				req.Attributes = map[string]interface{}{}
+			}
+			req.Attributes[name] = text
+		}
+	}
+
 	var attributesJSON json.RawMessage
 	if len(req.Attributes) > 0 {
 		raw, err := json.Marshal(req.Attributes)

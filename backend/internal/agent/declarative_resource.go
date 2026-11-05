@@ -18,12 +18,15 @@ import (
 	"github.com/thunder-id/thunderid/internal/agent/model"
 	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	"github.com/thunder-id/thunderid/internal/entity"
+	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/inboundclient"
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/security"
+	"github.com/thunder-id/thunderid/internal/system/valueref"
+	"github.com/thunder-id/thunderid/internal/system/varname"
 )
 
 const (
@@ -33,19 +36,37 @@ const (
 
 // agentExporter implements declarativeresource.ResourceExporter for agents.
 type agentExporter struct {
-	service AgentServiceInterface
+	service           AgentServiceInterface
+	entityService     entity.EntityServiceInterface
+	entityTypeService entitytype.EntityTypeServiceInterface
+	// references writes a credential as a secret reference rather than a template placeholder, as a
+	// control plane's export does for every other credential.
+	references bool
 }
 
-func newAgentExporter(service AgentServiceInterface) *agentExporter {
-	return &agentExporter{service: service}
+// WriteValueReferences sets whether credentials are written as references or as placeholders.
+func (e *agentExporter) WriteValueReferences(references bool) {
+	e.references = references
+}
+
+func newAgentExporter(
+	service AgentServiceInterface,
+	entityService entity.EntityServiceInterface,
+	entityTypeService entitytype.EntityTypeServiceInterface,
+) *agentExporter {
+	return &agentExporter{service: service, entityService: entityService, entityTypeService: entityTypeService}
 }
 
 // NewAgentExporterForTest exposes the exporter constructor for test packages.
-func NewAgentExporterForTest(service AgentServiceInterface) *agentExporter {
+func NewAgentExporterForTest(
+	service AgentServiceInterface,
+	entityService entity.EntityServiceInterface,
+	entityTypeService entitytype.EntityTypeServiceInterface,
+) *agentExporter {
 	if !testing.Testing() {
 		panic("only for tests!")
 	}
-	return newAgentExporter(service)
+	return newAgentExporter(service, entityService, entityTypeService)
 }
 
 // GetResourceType returns the resource type identifier for agents.
@@ -106,7 +127,57 @@ func (e *agentExporter) GetResourceByID(
 	if a.Lifespan != nil && a.Lifespan.Phase == model.LifespanPhaseUnbounded {
 		a.ValidUntil = authnprovidercm.UnboundedValidUntil
 	}
+	credentials, svcErr := e.exportableCredentials(ctx, a.ID, a.Type, a.Display)
+	if svcErr != nil {
+		return nil, "", svcErr
+	}
+	a.Credentials = credentials
 	return a, a.Display, nil
+}
+
+// exportableCredentials describes the credentials an exported agent carries: one placeholder for each
+// credential the agent's type declares and the agent has set, a secret reference where the export
+// writes references and a template placeholder where it writes templates.
+//
+// A stored credential is a one-way hash, so its value never leaves. The placeholder names it
+// instead, and the importing server fills it from its own secret provider or environment before
+// hashing it, which leaves the imported agent able to sign in with it. A credential the agent has not
+// set is left out rather than exported empty. Only credentials the type declares are considered, and
+// the placeholder is written here because the parameterizer only walks a slice of properties and
+// credentials are a map.
+func (e *agentExporter) exportableCredentials(
+	ctx context.Context, agentID, agentType, name string,
+) (map[string]interface{}, *tidcommon.ServiceError) {
+	credentials := map[string]interface{}{}
+	if name == "" {
+		// The placeholder is named after the agent, so there is nothing to name it after.
+		return credentials, nil
+	}
+
+	declared, svcErr := e.entityTypeService.GetAttributes(ctx, entitytype.TypeCategoryAgent, agentType,
+		entitytype.AttributeFilter{AllowCredential: true})
+	if svcErr != nil {
+		return nil, svcErr
+	}
+
+	for _, attribute := range declared {
+		stored, err := e.entityService.GetCredentialsByType(ctx, agentID, attribute.Attribute)
+		if err != nil {
+			log.GetLogger().Error(ctx, "Failed to read an agent's credentials for export",
+				log.MaskedString(log.LoggerKeyEntityID, agentID), log.Error(err))
+			return nil, &tidcommon.InternalServerError
+		}
+		if len(stored) == 0 {
+			continue
+		}
+		variable := varname.DeriveVariableName(resourceTypeAgent, name, attribute.Attribute)
+		if e.references {
+			credentials[attribute.Attribute] = valueref.SecretReference(variable)
+			continue
+		}
+		credentials[attribute.Attribute] = fmt.Sprintf("{{.%s}}", variable)
+	}
+	return credentials, nil
 }
 
 // ValidateResource validates an agent resource prior to export.
@@ -152,9 +223,10 @@ func (e *agentExporter) ViewResource(_ context.Context, document *yaml.Node) (in
 	})
 }
 
-// SecretFields names where an exported agent holds its client secret.
+// SecretFields names where an exported agent holds its client secret and its credentials: every key
+// of the credentials map, since which credentials an agent has is its type's to say.
 func (e *agentExporter) SecretFields() []string {
-	return []string{"inboundAuthConfig[].config.clientSecret"}
+	return []string{"inboundAuthConfig[].config.clientSecret", "credentials.*"}
 }
 
 // GetResourceRules returns parameterization rules for agents with OAuth.
@@ -169,6 +241,7 @@ func (e *agentExporter) GetResourceRules() *declarativeresource.ResourceRules {
 		ArrayVariables: []string{
 			"InboundAuthConfig[].OAuthConfig.RedirectURIs",
 		},
+		DynamicPropertyFields: []string{"Credentials"},
 	}
 }
 
@@ -201,7 +274,9 @@ func (e *agentExporter) GetResourceRulesForResource(resource interface{}) *decla
 		secrets = append(secrets, "InboundAuthConfig[].OAuthConfig.ClientSecret")
 	}
 
-	rules := &declarativeresource.ResourceRules{Variables: variables, SecretVariables: secrets}
+	rules := &declarativeresource.ResourceRules{
+		Variables: variables, SecretVariables: secrets, DynamicPropertyFields: []string{"Credentials"},
+	}
 	if hasRedirectURIs {
 		rules.ArrayVariables = []string{"InboundAuthConfig[].OAuthConfig.RedirectURIs"}
 	}
@@ -291,8 +366,34 @@ func makeAgentEntityParser(
 			return nil, nil, nil, fmt.Errorf("failed to build agent entity for '%s': %w", req.ID, buildErr)
 		}
 
+		sysCredsJSON, err = mergeDeclaredCredentials(sysCredsJSON, req.Credentials)
+		if err != nil {
+			return nil, nil, nil, fmt.Errorf("failed to merge credentials of agent '%s': %w", req.ID, err)
+		}
+
 		return e, nil, sysCredsJSON, nil
 	}
+}
+
+// mergeDeclaredCredentials adds an agent's declared credentials to its system credentials, which the
+// loader hashes before they are stored. A plain-text value is hashed there; a stored-format list
+// passes through. An empty value is left out, as the loader would drop it.
+func mergeDeclaredCredentials(
+	sysCredsJSON json.RawMessage, declared map[string]interface{},
+) (json.RawMessage, error) {
+	if len(declared) == 0 {
+		return sysCredsJSON, nil
+	}
+	merged := map[string]interface{}{}
+	if len(sysCredsJSON) > 0 {
+		if err := json.Unmarshal(sysCredsJSON, &merged); err != nil {
+			return nil, err
+		}
+	}
+	for name, value := range declared {
+		merged[name] = value
+	}
+	return json.Marshal(merged)
 }
 
 // makeAgentInboundConfig returns the inbound client loader configuration for agents.
