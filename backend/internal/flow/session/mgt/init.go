@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-// Package sessionmgt provides the session management API for listing live SSO sessions.
+// Package sessionmgt provides the session management API for listing and revoking SSO sessions.
 package sessionmgt
 
 import (
@@ -23,17 +23,29 @@ func Initialize(mux *http.ServeMux, svc flowsession.Service, users user.UserServ
 // registerRoutes registers the routes for session management operations.
 func registerRoutes(mux *http.ServeMux, handler *sessionMgtHandler) {
 	opts := middleware.CORSOptions{
-		AllowedMethods:   []string{"GET"},
+		AllowedMethods:   []string{"GET", "DELETE"},
 		AllowedHeaders:   middleware.DefaultAllowedHeaders,
 		AllowCredentials: true,
 		MaxAge:           600,
 	}
+	idOpts := middleware.CORSOptions{
+		AllowedMethods:   []string{"DELETE"},
+		AllowedHeaders:   middleware.DefaultAllowedHeaders,
+		AllowCredentials: true,
+		MaxAge:           600,
+	}
+	preflight := func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}
 	mux.HandleFunc(middleware.WithCORS("GET /sessions", handler.HandleSessionListRequest, opts))
-	mux.HandleFunc(middleware.WithCORS("OPTIONS /sessions", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusNoContent)
-	}, opts))
+	mux.HandleFunc(middleware.WithCORS("DELETE /sessions", handler.HandleUserSessionsRevokeRequest, opts))
+	mux.HandleFunc(middleware.WithCORS("OPTIONS /sessions", preflight, opts))
+	mux.HandleFunc(middleware.WithCORS("DELETE /sessions/{id}", handler.HandleSessionRevokeRequest, idOpts))
+	mux.HandleFunc(middleware.WithCORS("OPTIONS /sessions/{id}", preflight, idOpts))
 	mux.HandleFunc(middleware.WithCORS("GET /users/me/sessions", handler.HandleSelfSessionListRequest, opts))
-	mux.HandleFunc(middleware.WithCORS("OPTIONS /users/me/sessions", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusNoContent)
-	}, opts))
+	mux.HandleFunc(middleware.WithCORS("DELETE /users/me/sessions", handler.HandleSelfSessionsRevokeRequest, opts))
+	mux.HandleFunc(middleware.WithCORS("OPTIONS /users/me/sessions", preflight, opts))
+	mux.HandleFunc(middleware.WithCORS("DELETE /users/me/sessions/{id}",
+		handler.HandleSelfSessionRevokeRequest, idOpts))
+	mux.HandleFunc(middleware.WithCORS("OPTIONS /users/me/sessions/{id}", preflight, idOpts))
 }

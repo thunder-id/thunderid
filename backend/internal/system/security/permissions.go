@@ -462,6 +462,7 @@ type SystemPermissions struct {
 	AppUpdate                  string
 	AppDelete                  string
 	SessionView                string
+	SessionDelete              string
 	// Catalog holds every permission the plane declares besides Root, in declaration order: each
 	// resource followed by its actions.
 	Catalog []string
@@ -627,6 +628,8 @@ func activatePermissions(p *SystemPermissions) {
 		{"PUT /users/me", ""},
 		{"GET /users/me/**", ""},
 		{"PUT /users/me/**", ""},
+		{"DELETE /users/me/sessions", ""},
+		{"DELETE /users/me/sessions/**", ""},
 		{"POST /users/me/update-credentials", ""},
 		{"GET /capabilities", ""},
 		{"DELETE /users/me/agents/*", ""},
@@ -984,6 +987,8 @@ func activatePermissions(p *SystemPermissions) {
 	if p.SessionView != "" {
 		apiPermissionEntries = append(apiPermissionEntries,
 			apiPermissionEntry{"GET /sessions", p.SessionView},
+			apiPermissionEntry{"DELETE /sessions", p.SessionDelete},
+			apiPermissionEntry{"DELETE /sessions/**", p.SessionDelete},
 		)
 	}
 }

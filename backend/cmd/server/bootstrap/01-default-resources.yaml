@@ -125,6 +125,8 @@ resources:
     actions:
       - name: View
         handle: view
+      - name: Delete
+        handle: delete
   - name: Organization
     handle: org
     description: Resources of the organization unit the token names

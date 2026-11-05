@@ -102,11 +102,16 @@ func (s *DataPlanePermissionsTestSuite) TestDeclaresNoProjectPermission() {
 // the self-service session routes stay open to any authenticated caller.
 func (s *DataPlanePermissionsTestSuite) TestSessionPermissionsAreUnderSystem() {
 	s.Equal("system:session:view", GetSystemPermissions().SessionView)
+	s.Equal("system:session:delete", GetSystemPermissions().SessionDelete)
 
 	svc, err := newSecurityService(nil, nil, []string{}, apiPermissionEntries)
 	s.Require().NoError(err)
 	s.Equal("system:session:view", svc.getRequiredPermissionForAPI(http.MethodGet, "/sessions"))
+	s.Equal("system:session:delete", svc.getRequiredPermissionForAPI(http.MethodDelete, "/sessions"))
+	s.Equal("system:session:delete", svc.getRequiredPermissionForAPI(http.MethodDelete, "/sessions/s-1"))
 	s.Equal("", svc.getRequiredPermissionForAPI(http.MethodGet, "/users/me/sessions"))
+	s.Equal("", svc.getRequiredPermissionForAPI(http.MethodDelete, "/users/me/sessions"))
+	s.Equal("", svc.getRequiredPermissionForAPI(http.MethodDelete, "/users/me/sessions/s-1"))
 }
 
 func (s *DataPlanePermissionsTestSuite) TestDeploymentWideReadsRequireOrgAndWritesRequireSystem() {
@@ -159,7 +164,7 @@ func (s *DataPlanePermissionsTestSuite) TestCatalogIsTheOrgTreeAndTheSystemChild
 		"org:usertype:delete",
 		"org:agenttype", "org:agenttype:view", "org:agenttype:create", "org:agenttype:update",
 		"org:agenttype:delete",
-		"system:session", "system:session:view",
+		"system:session", "system:session:view", "system:session:delete",
 	}, p.Catalog)
 }
 

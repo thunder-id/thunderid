@@ -16,8 +16,8 @@ var dataPlaneOrgCatalog = []catalogResource{
 	{ResourceTypeAgentType, crudActions},
 }
 
-// sessionActions are the actions declared on SSO sessions, which can only be read.
-var sessionActions = []string{catalogActionView}
+// sessionActions are the actions declared on SSO sessions, which can only be read and revoked.
+var sessionActions = []string{catalogActionView, catalogActionDelete}
 
 // dataPlaneSystemCatalog lists, in declaration order, each resource declared under the system root
 // resource on the System resource server and the actions declared on it. These are the resources that
@@ -135,7 +135,8 @@ func InitDataPlanePermissions(handle string) {
 		ConfigVersionView:   system,
 		ConfigVersionCreate: system,
 
-		SessionView: buildPermission(handle, "system", string(ResourceTypeSession), catalogActionView),
+		SessionView:   buildPermission(handle, "system", string(ResourceTypeSession), catalogActionView),
+		SessionDelete: buildPermission(handle, "system", string(ResourceTypeSession), catalogActionDelete),
 	}
 	p.Catalog = append([]string{org}, buildCatalog(handle, "org", dataPlaneOrgCatalog)...)
 	p.Catalog = append(p.Catalog, buildCatalog(handle, "system", dataPlaneSystemCatalog)...)

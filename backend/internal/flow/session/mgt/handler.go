@@ -5,6 +5,7 @@ package sessionmgt
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -125,6 +126,91 @@ func (h *sessionMgtHandler) HandleSelfSessionListRequest(w http.ResponseWriter, 
 		buildListResponse(sessions, page.TotalResults, "/users/me/sessions", limit, offset, ""))
 }
 
+// HandleSessionRevokeRequest handles DELETE /sessions/{id}. It responds 204 even when the session is
+// already gone.
+func (h *sessionMgtHandler) HandleSessionRevokeRequest(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	if _, err := h.svc.RevokeSession(ctx, r.PathValue("id"), ""); err != nil {
+		h.logger.Error(ctx, "Failed to revoke session", log.Error(err))
+		handleError(ctx, w, &tidcommon.InternalServerError)
+		return
+	}
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusNoContent, nil)
+}
+
+// HandleUserSessionsRevokeRequest handles DELETE /sessions?userId=: every session of the user.
+func (h *sessionMgtHandler) HandleUserSessionsRevokeRequest(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	userID := strings.TrimSpace(r.URL.Query().Get("userId"))
+	if userID == "" {
+		handleError(ctx, w, &ErrorMissingUserID)
+		return
+	}
+	if err := h.svc.RevokeSubjectSessions(ctx, userID, ""); err != nil {
+		h.logger.Error(ctx, "Failed to revoke user sessions", log.Error(err))
+		handleError(ctx, w, &tidcommon.InternalServerError)
+		return
+	}
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusNoContent, nil)
+}
+
+// HandleSelfSessionRevokeRequest handles DELETE /users/me/sessions/{id}. A session that is missing or belongs
+// to someone else is a 404 alike, so session IDs can't be probed.
+func (h *sessionMgtHandler) HandleSelfSessionRevokeRequest(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	subject := security.GetSubject(ctx)
+	if strings.TrimSpace(subject) == "" {
+		sysutils.WriteErrorResponse(ctx, w, http.StatusUnauthorized, apierror.ErrUnauthorized)
+		return
+	}
+	found, err := h.svc.RevokeSession(ctx, r.PathValue("id"), subject)
+	if err != nil {
+		h.logger.Error(ctx, "Failed to revoke own session", log.Error(err))
+		handleError(ctx, w, &tidcommon.InternalServerError)
+		return
+	}
+	if !found {
+		handleError(ctx, w, &ErrorSessionNotFound)
+		return
+	}
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusNoContent, nil)
+}
+
+// HandleSelfSessionsRevokeRequest handles DELETE /users/me/sessions: every session of the caller, or with
+// exceptCurrent=true every one but the session the caller's access token was issued in.
+func (h *sessionMgtHandler) HandleSelfSessionsRevokeRequest(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	subject := security.GetSubject(ctx)
+	if strings.TrimSpace(subject) == "" {
+		sysutils.WriteErrorResponse(ctx, w, http.StatusUnauthorized, apierror.ErrUnauthorized)
+		return
+	}
+	v := r.URL.Query().Get("exceptCurrent")
+	if v != "" && v != "true" && v != "false" {
+		handleError(ctx, w, &ErrorInvalidExceptCurrent)
+		return
+	}
+	exceptCurrent := v == "true"
+	var keepTokenFamilyID string
+	if exceptCurrent {
+		keepTokenFamilyID, _ = security.GetAttribute(ctx, oauth2const.ClaimTokenFamilyID).(string)
+		if keepTokenFamilyID == "" {
+			handleError(ctx, w, &ErrorCurrentSessionUnknown)
+			return
+		}
+	}
+	if err := h.svc.RevokeSubjectSessions(ctx, subject, keepTokenFamilyID); err != nil {
+		if errors.Is(err, flowsession.ErrTokenFamilyNotInSession) {
+			handleError(ctx, w, &ErrorCurrentSessionUnknown)
+			return
+		}
+		h.logger.Error(ctx, "Failed to revoke own sessions", log.Error(err))
+		handleError(ctx, w, &tidcommon.InternalServerError)
+		return
+	}
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusNoContent, nil)
+}
+
 // userNames resolves the display name of each distinct user across the sessions, once per user. A
 // user that can't be found gets no name.
 func (h *sessionMgtHandler) userNames(ctx context.Context, sessions []flowsession.SessionDetail) map[string]string {
@@ -214,6 +300,9 @@ func handleError(ctx context.Context, w http.ResponseWriter, svcErr *tidcommon.S
 	statusCode := http.StatusInternalServerError
 	if svcErr.Type == tidcommon.ClientErrorType {
 		statusCode = http.StatusBadRequest
+		if svcErr.Code == ErrorSessionNotFound.Code {
+			statusCode = http.StatusNotFound
+		}
 	}
 
 	sysutils.WriteErrorResponse(ctx, w, statusCode, apierror.ErrorResponse{

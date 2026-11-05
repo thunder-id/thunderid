@@ -35,6 +35,16 @@ var (
 			`FROM "SESSION" WHERE HANDLE_ID = $1 AND DEPLOYMENT_ID = $2 AND TYPE = 'SSO'`,
 	}
 
+	// queryGetSessionBySessionID fetches a session by its ID, for the session management API, which
+	// never sees the handle.
+	queryGetSessionBySessionID = model.DBQuery{
+		ID: "SEQ-SESS-23",
+		Query: `SELECT SESSION_ID, SUBJECT_ID, FLOW_ID, FLOW_VERSION, FLOW_EXECUTION_ID, HANDLE_ID, ` +
+			`AUTHENTICATED_AT, CREATED_AT, LAST_ACTIVE_AT, IDLE_EXPIRES_AT, ABSOLUTE_EXPIRES_AT, ` +
+			`PROPERTIES, STATE, VERSION ` +
+			`FROM "SESSION" WHERE SESSION_ID = $1 AND DEPLOYMENT_ID = $2`,
+	}
+
 	// queryGetSessionByExecutionID fetches the session established by a given flow execution, or no
 	// rows when that execution has not established one. Used on the fresh join path to attach later
 	// checkpoints to the session an earlier join in the same execution already created.

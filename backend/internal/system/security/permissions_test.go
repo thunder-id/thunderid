@@ -901,6 +901,16 @@ func TestGetRequiredPermissionForAPI(t *testing.T) {
 		{name: "GET /sessions falls back to system on the control plane", method: http.MethodGet, path: "/sessions",
 			wantPerm: p.Root},
 		{name: "GET /users/me/sessions self-service", method: http.MethodGet, path: "/users/me/sessions", wantPerm: ""},
+		{name: "DELETE /sessions/{id} falls back to system on the control plane", method: http.MethodDelete,
+			path: "/sessions/s-1", wantPerm: p.Root},
+		{name: "DELETE /users/me/sessions self-service", method: http.MethodDelete, path: "/users/me/sessions",
+			wantPerm: ""},
+		{name: "DELETE /users/me/sessions/{id} self-service", method: http.MethodDelete, path: "/users/me/sessions/s-1",
+			wantPerm: ""},
+		{name: "DELETE /users/me stays behind user delete permission", method: http.MethodDelete, path: "/users/me",
+			wantPerm: p.UserDelete},
+		{name: "DELETE /users/me/other stays behind user delete permission", method: http.MethodDelete,
+			path: "/users/me/other", wantPerm: p.UserDelete},
 
 		// ---- OU tree paths ----
 		{
@@ -1259,6 +1269,7 @@ func TestControlPlaneDeclaresNoSessionPermission(t *testing.T) {
 	InitControlPlanePermissions("")
 	p := GetSystemPermissions()
 	assert.Empty(t, p.SessionView)
+	assert.Empty(t, p.SessionDelete)
 	for _, perm := range p.Catalog {
 		assert.NotContains(t, perm, ":"+string(ResourceTypeSession))
 	}
@@ -1266,6 +1277,8 @@ func TestControlPlaneDeclaresNoSessionPermission(t *testing.T) {
 	svc, err := newSecurityService(nil, nil, []string{}, apiPermissionEntries)
 	require.NoError(t, err)
 	assert.Equal(t, p.Root, svc.getRequiredPermissionForAPI(http.MethodGet, "/sessions"))
+	assert.Equal(t, p.Root, svc.getRequiredPermissionForAPI(http.MethodDelete, "/sessions"))
+	assert.Equal(t, p.Root, svc.getRequiredPermissionForAPI(http.MethodDelete, "/sessions/s-1"))
 }
 
 // TestSystemCatalogKeepsExistingPermissions verifies that the catalog holds every permission
@@ -1298,6 +1311,7 @@ func TestRouteTableUsesCatalogPermissions(t *testing.T) {
 
 	selfService := map[string]bool{
 		"GET /users/me": true, "PUT /users/me": true, "GET /users/me/**": true, "PUT /users/me/**": true,
+		"DELETE /users/me/sessions": true, "DELETE /users/me/sessions/**": true,
 		"POST /users/me/update-credentials": true, "DELETE /users/me/agents/*": true,
 		"POST /users/me/agents/suspend": true, "POST /users/me/agents/*/suspend": true,
 		"POST /users/me/agents/*/unsuspend": true,
