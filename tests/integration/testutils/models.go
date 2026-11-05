@@ -552,6 +552,7 @@ type Agent struct {
 	ThemeID                   string                   `json:"themeId,omitempty"`
 	LayoutID                  string                   `json:"layoutId,omitempty"`
 	AllowedUserTypes          []string                 `json:"allowedUserTypes,omitempty"`
+	AllowedAgentTypes         []string                 `json:"allowedAgentTypes,omitempty"`
 	InboundAuthConfig         []AgentInboundAuthConfig `json:"inboundAuthConfig,omitempty"`
 }
 

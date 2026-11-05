@@ -26,14 +26,25 @@ func (ts *MCPTestSuite) executeFlow(token string, args map[string]any) map[strin
 	return result.Result.StructuredContent
 }
 
-// agentTypeChildOU creates an organization unit under the agent type's own unit, the only units the
-// agent onboarding flow places an agent in, and deletes it when the test ends.
-func (ts *MCPTestSuite) agentTypeChildOU(token string) string {
+// defaultAgentType returns the default agent type as list_agent_types lists it. Other agent types can
+// exist beside it, one per organization unit.
+func (ts *MCPTestSuite) defaultAgentType(token string) (map[string]any, string) {
 	listed, raw := ts.callMCPTool(token, "list_agent_types", map[string]any{})
 	ts.Require().Falsef(listed.Result.IsError, "list_agent_types failed: %s", raw)
 	types, _ := listed.Result.StructuredContent["types"].([]any)
-	ts.Require().NotEmpty(types, raw)
-	agentType, _ := types[0].(map[string]any)
+	for _, t := range types {
+		if agentType, _ := t.(map[string]any); agentType["handle"] == "default" {
+			return agentType, raw
+		}
+	}
+	ts.Require().Failf("the default agent type is not listed", "%s", raw)
+	return nil, raw
+}
+
+// agentTypeChildOU creates an organization unit under the default agent type's own unit, the only units
+// the agent onboarding flow places an agent of that type in, and deletes it when the test ends.
+func (ts *MCPTestSuite) agentTypeChildOU(token string) string {
+	agentType, raw := ts.defaultAgentType(token)
 	parent, _ := agentType["ouId"].(string)
 	ts.Require().NotEmpty(parent, raw)
 	ouID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
@@ -43,14 +54,15 @@ func (ts *MCPTestSuite) agentTypeChildOU(token string) string {
 	return ouID
 }
 
-// onboardAgentForTest onboards an agent through the data plane's agent onboarding flow, in a unit
-// under the agent type's own, and deletes it when the test ends. A step that asks only for optional
+// onboardAgentForTest onboards an agent of the default agent type through the data plane's agent
+// onboarding flow, in a unit under the agent type's own, and deletes it when the test ends. The flow
+// offers every agent type, so the default one is chosen up front. A step that asks only for optional
 // inputs, such as the owner, is passed by going on with nothing, as an agent leaving it to the caller
 // would. It returns the flow's final data (agentId, clientId and clientSecret) and the agent's unit.
 func (ts *MCPTestSuite) onboardAgentForTest(token, name string) (map[string]any, string) {
 	ouID := ts.agentTypeChildOU(token)
 	out := ts.executeFlow(token, map[string]any{
-		"flow": "agent_onboarding", "inputs": map[string]any{"name": name, "ouId": ouID}})
+		"flow": "agent_onboarding", "inputs": map[string]any{"name": name, "agentType": "default", "ouId": ouID}})
 	for range 3 {
 		if out["status"] != "needs_input" {
 			break
@@ -234,14 +246,9 @@ func (ts *MCPTestSuite) TestAgentTools_RotateKeySet() {
 	ts.Equal([]any{"new"}, got.Result.StructuredContent["keyIds"])
 }
 
-// list_agent_types returns the agent type with its attributes marked.
+// list_agent_types returns the agent types with their attributes marked.
 func (ts *MCPTestSuite) TestAgentTools_ListAgentTypes() {
-	listed, raw := ts.callMCPTool(ts.mcpScopedAdminToken(), "list_agent_types", map[string]any{})
-	ts.Require().Falsef(listed.Result.IsError, "list_agent_types failed: %s", raw)
-	types, _ := listed.Result.StructuredContent["types"].([]any)
-	ts.Require().Len(types, 1)
-	agentType, _ := types[0].(map[string]any)
-	ts.Equal("default", agentType["handle"])
+	agentType, raw := ts.defaultAgentType(ts.mcpScopedAdminToken())
 	ts.Equal("name", agentType["displayAttribute"])
 	attributes, _ := agentType["attributes"].([]any)
 	ts.Require().NotEmpty(attributes)

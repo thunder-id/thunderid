@@ -41,9 +41,11 @@ type AgentAuthzTestSuite struct {
 	// Admin-created OUs
 	agentOU1ID string
 	agentOU2ID string
+	// ou2AgentTypeID is OU2's own agent type.
+	ou2AgentTypeID string
 
-	// User type for the manager. The `default` agent type is a singleton shared with every other
-	// suite, so it is snapshotted and restored rather than created per OU.
+	// User type for the manager. The `default` agent type is shared with every other suite, so it is
+	// snapshotted and restored.
 	userTypeOU1ID     string
 	agentTypeSnapshot *testutils.AgentTypeSnapshot
 
@@ -72,8 +74,10 @@ const (
 	agentMgrUserType   = "authz-agent-mgr-type"
 	scopedRSIdentifier = "https://authz-test.example.com/agent"
 
-	// The server restricts agent types to a single `default` schema and refuses deletion.
+	// agentTypeName is the bootstrap agent type, which the suite points at OU1 for OU1's agents.
 	agentTypeName = "default"
+	// agentAuthzOU2AgentType is OU2's own agent type, since an agent is placed within its type's tree.
+	agentAuthzOU2AgentType = "authz-ou2-agents"
 
 	// The manager lives in OU1, and a sign-in is bounded to its application's OU, so it signs in through an
 	// application in OU1 rather than the Console.
@@ -122,10 +126,10 @@ func (ts *AgentAuthzTestSuite) SetupSuite() {
 	ts.Require().NoError(err, "create user type for agent-manager")
 	ts.userTypeOU1ID = userTypeID
 
-	// ---- 3. Point the shared `default` agent type at OU1 ----
-	// The singleton is shared with every other suite, so snapshot it before repointing and restore
-	// it in teardown. Entity creation validates attributes against the schema without requiring the
-	// type's OU to match the entity's, so agents in both OUs can use this one type.
+	// ---- 3. Point the shared `default` agent type at OU1, and give OU2 an agent type of its own ----
+	// The `default` type is shared with every other suite, so snapshot it before repointing and restore
+	// it in teardown. An agent must be placed within its agent type's organization unit tree, so OU2's
+	// agents use OU2's own type.
 	snapshot, err := testutils.SnapshotAgentType()
 	ts.Require().NoError(err, "snapshot the default agent type")
 	ts.agentTypeSnapshot = snapshot
@@ -139,6 +143,16 @@ func (ts *AgentAuthzTestSuite) SetupSuite() {
 		},
 	})
 	ts.Require().NoError(err, "point the default agent type at OU1")
+
+	ou2TypeID, err := testutils.CreateNewAgentType(testutils.UserType{
+		Handle: agentAuthzOU2AgentType, DisplayName: "Authz OU2 Agents", OUID: ts.agentOU2ID,
+		Schema: map[string]interface{}{
+			"name":    map[string]interface{}{"type": "string", "required": true, "unique": true},
+			"purpose": map[string]interface{}{"type": "string"},
+		},
+	})
+	ts.Require().NoError(err, "create OU2's agent type")
+	ts.ou2AgentTypeID = ou2TypeID
 
 	// ---- 4. Create the agent-manager in OU1 (needs username+password for the token grant) ----
 	agentMgrID, err := testutils.CreateUser(testutils.User{
@@ -170,7 +184,7 @@ func (ts *AgentAuthzTestSuite) SetupSuite() {
 	ts.deletableAgentOU1ID = deletableID
 
 	targetOU2ID, err := testutils.CreateAgent(testutils.Agent{
-		Type:       agentTypeName,
+		Type:       agentAuthzOU2AgentType,
 		OUID:       ts.agentOU2ID,
 		Attributes: map[string]interface{}{"name": "authz-target-agent-ou2", "purpose": "target in OU2"},
 	})
@@ -255,7 +269,12 @@ func (ts *AgentAuthzTestSuite) TearDownSuite() {
 			ts.T().Logf("teardown: delete agent-manager user: %v", err)
 		}
 	}
-	// Restore the shared agent type before deleting the OU it points at, or the singleton is left
+	if ts.ou2AgentTypeID != "" {
+		if err := testutils.DeleteAgentType(ts.ou2AgentTypeID); err != nil {
+			ts.T().Errorf("teardown: delete OU2's agent type: %v", err)
+		}
+	}
+	// Restore the shared agent type before deleting the OU it points at, or the `default` type is left
 	// referencing a deleted OU and a later suite's restore fails. A failed restore keeps the OU:
 	// leaking one is cheaper than every later suite inheriting a dangling reference.
 	agentTypeRestored := true

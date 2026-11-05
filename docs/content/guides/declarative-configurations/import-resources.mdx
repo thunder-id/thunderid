@@ -112,7 +112,15 @@ types, `user_type` and `agent_type`, as they are in `content`.
   `notification_template` are reported as an unsupported outcome, because a configuration that dropped
   one would otherwise look reconciled when it is not.
 - **A removal the owning service refuses is reported with its reason.** An `agent_type` deletion
-  fails with `USRS-1015`, because agent creation depends on the default agent type.
+  fails with `USRS-1022` while any agent is of that agent type, or while an application, agent, or
+  flow lists it in its allowed agent types.
+- **Replace an agent type within one organization unit in two requests.** An organization unit can
+  have only one agent type, and an agent type cannot be removed while agents are of it. So a request
+  that adds the new agent type, moves the agents to it, and removes the old one fails the same way
+  however often it is sent: the new agent type with `USRS-1021`, the agents with `AGT-1054` because
+  their new type does not exist, and the removal with `USRS-1022`. In a first request, move the old
+  agent type to an organization unit that has no agent type. In a second, add the new agent type,
+  change the agents' `type` to it, and remove the old one.
 - **A dry run reports what it would remove and removes nothing.**
 - **`deletions` alone is a valid request.** Removing what a configuration dropped does not require
   also restating what it kept.

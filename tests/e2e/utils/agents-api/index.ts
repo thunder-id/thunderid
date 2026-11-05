@@ -30,11 +30,11 @@ export class AgentsApi {
   constructor(private readonly request: APIRequestContext) {}
 
   /**
-   * Create an agent of the default type directly via the API, in the organization unit that type
-   * belongs to. Agent types are limited to the one bootstrap `default` schema.
+   * Create an agent of the bootstrap `default` type directly via the API, in the organization unit
+   * that type belongs to.
    */
   async create(name: string): Promise<ApiAgent> {
-    const types = (await (await sendOk(this.request, "GET", "/agent-types")).json()) as {
+    const types = (await (await sendOk(this.request, "GET", "/agent-types?limit=100")).json()) as {
       types?: { handle: string; ouId: string }[];
     };
     const agentType = types.types?.find(type => type.handle === "default");

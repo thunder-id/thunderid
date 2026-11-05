@@ -18,6 +18,12 @@ CREATE TABLE "ENTITY_TYPES" (
 -- Composite index for deployment + category + OU-based entity type lookups
 CREATE INDEX idx_entity_schemas_deployment_category_ou ON "ENTITY_TYPES" (DEPLOYMENT_ID, CATEGORY, OU_ID);
 
+-- An organization unit has at most one agent type. A partial index rather than a table constraint,
+-- because the rule covers only the agent category; user types are not limited per organization unit.
+CREATE UNIQUE INDEX idx_entity_types_agent_deployment_ou
+    ON "ENTITY_TYPES" (DEPLOYMENT_ID, OU_ID)
+    WHERE CATEGORY = 'agent';
+
 -- Table to store Roles
 CREATE TABLE "ROLE" (
     DEPLOYMENT_ID           VARCHAR(255) NOT NULL,

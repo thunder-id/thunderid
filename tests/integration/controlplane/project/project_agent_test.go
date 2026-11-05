@@ -130,6 +130,36 @@ func (ts *ProjectAPITestSuite) TestAgentWithUnknownProject() {
 	ts.Empty(list.Agents)
 }
 
+// An agent of a project is placed within its agent type's organization unit tree too. The agent takes the
+// system organization unit, so an agent type of another tree is refused.
+func (ts *ProjectAPITestSuite) TestAgentOfAgentTypeOutsideItsTreeRejected() {
+	shop := ts.create(fmt.Sprintf(`{"handle":%q,"displayName":"Shop"}`, ts.handle("agent-type-shop")))
+	otherRoot := ts.createRootOU("agent-type-other")
+	otherType := ts.handle("agent-type-other-agents")
+	agentTypeID, err := testutils.CreateNewAgentType(testutils.UserType{
+		Handle: otherType, DisplayName: "Other agents", OUID: otherRoot,
+		Schema: map[string]interface{}{"name": map[string]interface{}{"type": "string", "required": true}},
+	})
+	ts.Require().NoError(err)
+	// Removed before TearDownTest removes its organization unit.
+	defer func() { _ = testutils.DeleteAgentType(agentTypeID) }()
+
+	status, body := ts.do(http.MethodPost, "/agents", fmt.Sprintf(
+		`{"type":%q,"attributes":{"name":%q},"projectId":%q}`, otherType, ts.handle("agent-foreign-type"), shop.ID))
+	ts.Equal(http.StatusBadRequest, status, body)
+	ts.Equal("AGT-1053", codeOf(ts.T(), body))
+}
+
+// An agent of a project whose agent type does not exist is refused with the not-found code, as on /agents.
+func (ts *ProjectAPITestSuite) TestAgentOfUnknownAgentTypeRejected() {
+	shop := ts.create(fmt.Sprintf(`{"handle":%q,"displayName":"Shop"}`, ts.handle("agent-type-unknown-shop")))
+
+	status, body := ts.do(http.MethodPost, "/agents", fmt.Sprintf(
+		`{"type":"no-such-agents","attributes":{"name":%q},"projectId":%q}`, ts.handle("agent-unknown-type"), shop.ID))
+	ts.Equal(http.StatusBadRequest, status, body)
+	ts.Equal("AGT-1054", codeOf(ts.T(), body))
+}
+
 // agentBody builds an agent request of the default type, with the given placement fields spliced in.
 func (ts *ProjectAPITestSuite) agentBody(name, placement string, args ...interface{}) string {
 	return fmt.Sprintf(`{"type":"default","attributes":{"name":%q},%s}`,

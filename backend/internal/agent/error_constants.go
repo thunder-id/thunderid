@@ -633,6 +633,51 @@ var (
 			DefaultValue: "Only an agent that authenticates with a client secret can have its secret regenerated",
 		},
 	}
+
+	// ErrorOrganizationUnitMismatch is returned when an agent's organization unit is outside the
+	// organization unit tree of its agent type.
+	ErrorOrganizationUnitMismatch = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AGT-1053",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.agentservice.organization_unit_mismatch",
+			DefaultValue: "Organization unit mismatch",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.agentservice.organization_unit_mismatch_description",
+			DefaultValue: "The organization unit does not match the agent type configuration: it must be " +
+				"the agent type's organization unit or one of its descendants",
+		},
+	}
+
+	// ErrorAgentTypeNotFound is returned when the agent's type does not exist, or the caller cannot read it. Both
+	// read the same, so the error reveals nothing about agent types out of the caller's reach.
+	ErrorAgentTypeNotFound = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AGT-1054",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.agentservice.agent_type_not_found",
+			DefaultValue: "Agent type not found",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.agentservice.agent_type_not_found_description",
+			DefaultValue: "No agent type with that handle exists, or the caller cannot view it",
+		},
+	}
+
+	// ErrorAnyAgentTypeNotAlone is returned when * is combined with other entries in allowedAgentTypes.
+	ErrorAnyAgentTypeNotAlone = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AGT-1055",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.agentservice.any_agent_type_not_alone",
+			DefaultValue: "Invalid allowed agent types",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.agentservice.any_agent_type_not_alone_description",
+			DefaultValue: "* must be the only entry in allowedAgentTypes",
+		},
+	}
 )
 
 // errInvalidDeclarativeLifespan is returned when a declarative agent's validUntil is not an RFC 3339

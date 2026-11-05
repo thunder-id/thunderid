@@ -1662,9 +1662,16 @@ func (s *inboundClientService) validateAllowedUserTypes(
 }
 
 // validateAllowedAgentTypes validates that each allowed agent type corresponds to an existing agent type.
+// providers.AnyAgentType is accepted only as the sole entry, where it admits every agent type.
 func (s *inboundClientService) validateAllowedAgentTypes(
 	ctx context.Context, allowedAgentTypes []string,
 ) error {
+	if slices.Equal(allowedAgentTypes, []string{providers.AnyAgentType}) {
+		return nil
+	}
+	if slices.Contains(allowedAgentTypes, providers.AnyAgentType) {
+		return ErrFKAnyAgentTypeNotAlone
+	}
 	return s.validateAllowedEntityTypes(ctx, entitytype.TypeCategoryAgent, allowedAgentTypes,
 		ErrFKInvalidAgentType, ErrAgentSchemaLookupFailed)
 }

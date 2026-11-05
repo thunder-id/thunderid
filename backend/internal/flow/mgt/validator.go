@@ -1391,8 +1391,30 @@ func (v *flowValidator) validateExecutorSpecificConstraints(
 		return v.validateAccountLinkingExecutor(node, nodeIndex)
 	case executormeta.ExecutorNameOUResolver:
 		return v.validateOUResolverExecutor(node, flowType)
+	case executormeta.ExecutorNameAgentTypeResolver:
+		return validateAgentTypeResolverExecutor(node)
 	}
 	return nil
+}
+
+// validateAgentTypeResolverExecutor rejects "*" in the node's allowed agent types. The node reads each entry as
+// an agent type handle, so "*" would match no agent type, while leaving the property out already allows every
+// agent type. Applications and agents do take "*" in their allowed agent types, which is why it is caught here.
+func validateAgentTypeResolverExecutor(node *providers.NodeDefinition) *tidcommon.ServiceError {
+	allowed, _ := node.Properties[common.NodePropertyAllowedAgentTypes].([]interface{})
+	if !slices.Contains(allowed, interface{}(providers.AnyAgentType)) {
+		return nil
+	}
+	return tidcommon.CustomServiceError(ErrorInvalidExecutorConfig, tidcommon.I18nMessage{
+		Key: "error.flowmgtservice.agent_type_wildcard_not_supported_description",
+		DefaultValue: "Node '{{param(nodeID)}}': executor '{{param(executorName)}}' does not accept '*' in " +
+			"'{{param(propertyKey)}}'; leave the property out to allow every agent type",
+		Params: map[string]string{
+			"nodeID":       node.ID,
+			"executorName": node.Executor.Name,
+			"propertyKey":  common.NodePropertyAllowedAgentTypes,
+		},
+	})
 }
 
 // validateOUResolverExecutor rejects OU resolver properties and inputs that the node's strategy or flow type would

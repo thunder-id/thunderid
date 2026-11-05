@@ -1345,7 +1345,7 @@ Resolves the agent type and its default organization unit for an Administration 
 
 | Property | Required | Default | Description |
 |---|---|---|---|
-| `allowedAgentTypes` | No | No node-level restriction | List of agent-type handles eligible for this flow |
+| `allowedAgentTypes` | No | No node-level restriction | List of agent-type handles eligible for this flow. `*` is not accepted, and a flow that lists it is rejected when it is saved; leave the property out to allow every agent type. |
 
 **Input and output:** A requested selection uses `agentType` with input type `SELECT`. Successful type resolution writes `categoryName: agent`, the type handle as `categoryType`, and the type's organization unit as `defaultOUID` in runtime data.
 

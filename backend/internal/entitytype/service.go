@@ -88,15 +88,17 @@ type EntityTypeServiceInterface interface {
 	) (*EntityType, *tidcommon.ServiceError)
 	GetResourceDependencies(
 		ctx context.Context, resourceType, id string) ([]resourcedependency.ResourceDependency, error)
+	SetDependencyRegistry(r resourcedependency.Registry)
 }
 
 // entityTypeService is the default implementation of the EntityTypeServiceInterface.
 type entityTypeService struct {
-	entityTypeStore entityTypeStoreInterface
-	ouService       oupkg.OrganizationUnitServiceInterface
-	transactioner   providers.Transactioner
-	authzService    sysauthz.SystemAuthorizationServiceInterface
-	bus             eventbus.EventBusInterface
+	entityTypeStore    entityTypeStoreInterface
+	ouService          oupkg.OrganizationUnitServiceInterface
+	transactioner      providers.Transactioner
+	authzService       sysauthz.SystemAuthorizationServiceInterface
+	bus                eventbus.EventBusInterface
+	dependencyRegistry resourcedependency.Registry
 }
 
 // newEntityTypeService creates a new instance of entityTypeService.
@@ -235,10 +237,6 @@ func (us *entityTypeService) createEntityType(
 		return nil, svcErr
 	}
 
-	if category == TypeCategoryAgent && request.Handle != DefaultAgentTypeHandle {
-		return nil, &ErrorAgentTypeOnlyDefaultAllowed
-	}
-
 	if isDeclarativeModeEnabled() {
 		return nil, &ErrorCannotModifyDeclarativeResource
 	}
@@ -305,8 +303,16 @@ func (us *entityTypeService) createEntityType(
 	}
 
 	if err := us.transactioner.Transact(ctx, func(txCtx context.Context) error {
+		if category == TypeCategoryAgent {
+			if err := us.ensureOUHasNoAgentType(txCtx, request.OUID); err != nil {
+				return err
+			}
+		}
 		return us.entityTypeStore.CreateEntityType(txCtx, entityType)
 	}); err != nil {
+		if errors.Is(err, errAgentTypeExistsInOU) {
+			return nil, &ErrorAgentTypeAlreadyExistsInOU
+		}
 		return nil, logAndReturnServerError(ctx, logger, "Failed to create entity type", err)
 	}
 
@@ -430,10 +436,6 @@ func (us *entityTypeService) updateEntityType(ctx context.Context, category Type
 		return nil, svcErr
 	}
 
-	if category == TypeCategoryAgent && request.Handle != "" && request.Handle != DefaultAgentTypeHandle {
-		return nil, &ErrorAgentTypeOnlyDefaultAllowed
-	}
-
 	if schemaID == "" {
 		return nil, invalidEntityTypeRequestErr(category, "schema id must not be empty")
 	}
@@ -502,8 +504,16 @@ func (us *entityTypeService) updateEntityType(ctx context.Context, category Type
 	}
 
 	if err := us.transactioner.Transact(ctx, func(txCtx context.Context) error {
+		if category == TypeCategoryAgent && request.OUID != existingSchema.OUID {
+			if err := us.ensureOUHasNoAgentType(txCtx, request.OUID); err != nil {
+				return err
+			}
+		}
 		return us.entityTypeStore.UpdateEntityTypeByID(txCtx, category, schemaID, entityType)
 	}); err != nil {
+		if errors.Is(err, errAgentTypeExistsInOU) {
+			return nil, &ErrorAgentTypeAlreadyExistsInOU
+		}
 		return nil, logAndReturnServerError(ctx, logger, "Failed to update entity type", err)
 	}
 
@@ -534,10 +544,6 @@ func (us *entityTypeService) deleteEntityType(ctx context.Context, category Type
 		return svcErr
 	}
 
-	if category == TypeCategoryAgent {
-		return &ErrorAgentTypeCannotDelete
-	}
-
 	if schemaID == "" {
 		return invalidEntityTypeRequestErr(category, "schema id must not be empty")
 	}
@@ -563,6 +569,12 @@ func (us *entityTypeService) deleteEntityType(ctx context.Context, category Type
 		return &ErrorCannotModifyDeclarativeResource
 	}
 
+	if category == TypeCategoryAgent {
+		if svcErr := us.ensureAgentTypeNotInUse(ctx, existingSchema.Handle, logger); svcErr != nil {
+			return svcErr
+		}
+	}
+
 	if err := us.transactioner.Transact(ctx, func(txCtx context.Context) error {
 		return us.entityTypeStore.DeleteEntityTypeByID(txCtx, category, schemaID)
 	}); err != nil {
@@ -582,6 +594,12 @@ func (us *entityTypeService) publishEntityTypeEvent(ctx context.Context, categor
 	target := audit.Ref{Type: auditTargetTypeForCategory(category), ID: id}
 	eventbus.TryPublish(ctx, us.bus,
 		eventbus.NewEvent(ctx, name).With(audit.ChangePayload(ctx, target, action, svcErr)))
+}
+
+// SetDependencyRegistry injects the dependency registry. Called by servicemanager after the
+// provider services are initialized to avoid a cyclic import.
+func (us *entityTypeService) SetDependencyRegistry(r resourcedependency.Registry) {
+	us.dependencyRegistry = r
 }
 
 // GetResourceDependencies implements resourcedependency.Provider. It reports the user types and agent
@@ -807,6 +825,50 @@ func (us *entityTypeService) GetDisplayAttributesByHandles(
 	}
 
 	return result, nil
+}
+
+// ensureOUHasNoAgentType refuses a write that would give the organization unit a second agent type. The
+// agent type being written is never already in the organization unit: a create adds a new one, and an
+// update checks only an organization unit it moves the agent type into.
+func (us *entityTypeService) ensureOUHasNoAgentType(ctx context.Context, ouID string) error {
+	existing, err := us.entityTypeStore.GetEntityTypeListByOUIDs(ctx, TypeCategoryAgent, []string{ouID}, 1, 0)
+	if err != nil {
+		return err
+	}
+	if len(existing) > 0 {
+		return errAgentTypeExistsInOU
+	}
+	return nil
+}
+
+// ensureAgentTypeNotInUse refuses the deletion of an agent type that agents are of, or that applications,
+// agents or flows allow. Every reference names an agent type by its handle, so the registry target is the
+// handle, unlike other targets, which are IDs; the dependencies reported back still carry their own IDs.
+// Because deletion is destructive, it fails closed: if dependency data cannot be determined, the
+// deletion is refused rather than allowed.
+func (us *entityTypeService) ensureAgentTypeNotInUse(
+	ctx context.Context, handle string, logger *log.Logger,
+) *tidcommon.ServiceError {
+	if us.dependencyRegistry == nil {
+		logger.Error(ctx, "Dependency registry not set; refusing to delete agent type")
+		return &tidcommon.InternalServerError
+	}
+
+	deps, err := us.dependencyRegistry.GetDependencies(ctx, resourcedependency.ResourceTypeAgentType, handle)
+	if err != nil {
+		logger.Error(ctx, "Failed to evaluate agent type dependencies", log.Error(err))
+		return &tidcommon.InternalServerError
+	}
+	// Fail closed: nil TotalResults means a provider failed to report, so usage is unknown.
+	if deps == nil || deps.TotalResults == nil {
+		logger.Error(ctx, "Agent type dependency data unavailable; refusing to delete")
+		return &tidcommon.InternalServerError
+	}
+
+	if len(resourcedependency.BlockingUsages(deps)) > 0 {
+		return &ErrorAgentTypeInUse
+	}
+	return nil
 }
 
 func (us *entityTypeService) getCompiledSchemaForEntityType(

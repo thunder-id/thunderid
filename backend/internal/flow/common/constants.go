@@ -166,6 +166,9 @@ const (
 	NodePropertyCheckpointRef = "checkpointRef"
 	// NodePropertyConnectionID names the HTTP endpoint connection an extension step calls.
 	NodePropertyConnectionID = "connectionId"
+	// NodePropertyAllowedAgentTypes lists the agent type handles an AgentTypeResolver node narrows its candidates
+	// to. An absent or empty list allows every agent type.
+	NodePropertyAllowedAgentTypes = "allowedAgentTypes"
 	// NodePropertyInputKeys names the user inputs an extension step sends.
 	NodePropertyInputKeys = "inputKeys"
 	// NodePropertyRuntimeDataKeys restricts the runtime data an extension step sends.

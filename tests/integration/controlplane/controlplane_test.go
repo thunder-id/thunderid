@@ -33,9 +33,14 @@ func TestControlPlaneTestSuite(t *testing.T) {
 }
 
 func (ts *ControlPlaneTestSuite) SetupSuite() {
+	// The suite's agents are of the bootstrap default agent type, and an agent is placed within its agent
+	// type's organization unit tree, so the suite's organization unit sits below the default one.
+	defaultOUID, err := testutils.DefaultOUID()
+	ts.Require().NoError(err)
 	ouID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
 		Handle: unique("cp-suite"),
 		Name:   "Control Plane suite",
+		Parent: &defaultOUID,
 	})
 	ts.Require().NoError(err)
 	ts.ouID = ouID

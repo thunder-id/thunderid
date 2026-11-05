@@ -27,9 +27,10 @@ import (
 type AgentOUFilterTestSuite struct {
 	suite.Suite
 
-	parentOUID string
-	childOUID  string
-	emptyOUID  string
+	parentOUID  string
+	childOUID   string
+	emptyOUID   string
+	agentTypeID string
 
 	// owned holds, per organization unit, the IDs of the agents it owns, sorted.
 	owned map[string][]string
@@ -53,6 +54,9 @@ type ouAgentList struct {
 	} `json:"links"`
 }
 
+// agentOUFilterAgentType is the agent type of the suite's parent unit, which its agents are of.
+const agentOUFilterAgentType = "agent-ou-filter-agents"
+
 func TestAgentOUFilterTestSuite(t *testing.T) {
 	suite.Run(t, new(AgentOUFilterTestSuite))
 }
@@ -63,6 +67,14 @@ func (ts *AgentOUFilterTestSuite) SetupSuite() {
 	ts.parentOUID = ts.createOU("agent-ou-filter-parent", nil)
 	ts.childOUID = ts.createOU("agent-ou-filter-child", &ts.parentOUID)
 	ts.emptyOUID = ts.createOU("agent-ou-filter-empty", nil)
+
+	// The agents are of an agent type of the parent unit, so the child's agent is placed within its tree.
+	agentTypeID, err := testutils.CreateNewAgentType(testutils.UserType{
+		Handle: agentOUFilterAgentType, DisplayName: "Agent OU Filter Agents", OUID: ts.parentOUID,
+		Schema: map[string]interface{}{"name": map[string]interface{}{"type": "string", "required": true}},
+	})
+	ts.Require().NoError(err, "create agent type")
+	ts.agentTypeID = agentTypeID
 
 	for _, name := range []string{"parent-1", "parent-2", "parent-3"} {
 		ts.createAgent(name, ts.parentOUID)
@@ -76,6 +88,11 @@ func (ts *AgentOUFilterTestSuite) TearDownSuite() {
 			if err := testutils.DeleteAgent(id); err != nil {
 				ts.T().Logf("teardown: delete agent %s: %v", id, err)
 			}
+		}
+	}
+	if ts.agentTypeID != "" {
+		if err := testutils.DeleteAgentType(ts.agentTypeID); err != nil {
+			ts.T().Errorf("teardown: delete agent type: %v", err)
 		}
 	}
 	for _, id := range []string{ts.childOUID, ts.parentOUID, ts.emptyOUID} {
@@ -102,7 +119,7 @@ func (ts *AgentOUFilterTestSuite) createOU(handle string, parent *string) string
 func (ts *AgentOUFilterTestSuite) createAgent(name, ouID string) {
 	ts.T().Helper()
 	id, err := testutils.CreateAgent(testutils.Agent{
-		Type:       agentTypeName,
+		Type:       agentOUFilterAgentType,
 		OUID:       ouID,
 		Attributes: map[string]interface{}{"name": "agent-ou-filter-" + name},
 	})

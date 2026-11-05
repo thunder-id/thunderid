@@ -205,6 +205,7 @@ func (suite *ImportDeletionsSuite) TestEveryDeletableTypeResolves() {
 		"flow",
 		"organization_unit",
 		"user_type",
+		"agent_type",
 		"role",
 		"group",
 		"resource_server",
@@ -241,19 +242,56 @@ func (suite *ImportDeletionsSuite) TestEveryDeletableTypeResolves() {
 	suite.LessOrEqual(result.Summary.Deleted, len(deletable))
 }
 
-// An agent type deletion reaches the entity type service in the agent category, which refuses it:
-// agent creation depends on the default agent type. The refusal is reported with the service's own
-// reason rather than skipped, so a configuration that dropped an agent type does not look reconciled.
+// An agent type deletion reaches the entity type service in the agent category, which refuses it while
+// an agent is of the agent type. The refusal is reported with the service's own reason rather than
+// skipped, so a configuration that dropped an agent type still in use does not look reconciled. Once
+// the agent is gone, the same deletion removes the agent type.
 func (suite *ImportDeletionsSuite) TestAnAgentTypeDeletionReportsTheServiceRefusal() {
-	result := suite.importWith(testutils.ImportRequest{Deletions: []testutils.ResourceDeletion{{
-		ResourceType: "agent_type",
-		ID:           "00000000-0000-0000-0000-000000000000",
-	}}})
+	ouID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
+		Handle: "import-deletions-agent-type-ou", Name: "Import Deletions Agent Type OU",
+	})
+	suite.Require().NoError(err)
+	defer func() { suite.NoError(testutils.DeleteOrganizationUnit(ouID)) }()
 
+	agentTypeID, err := testutils.CreateNewAgentType(testutils.UserType{
+		Handle: "import-deletions-agents", DisplayName: "Import Deletions Agents", OUID: ouID,
+		Schema: map[string]interface{}{"name": map[string]interface{}{"type": "string", "required": true}},
+	})
+	suite.Require().NoError(err)
+	defer func() { _ = testutils.DeleteAgentType(agentTypeID) }()
+
+	agentID, err := testutils.CreateAgent(testutils.Agent{
+		Type: "import-deletions-agents", OUID: ouID,
+		Attributes: map[string]interface{}{"name": "import-deletions-agent"},
+	})
+	suite.Require().NoError(err)
+	agentDeleted := false
+	defer func() {
+		if !agentDeleted {
+			_ = testutils.DeleteAgent(agentID)
+		}
+	}()
+
+	deletion := testutils.ImportRequest{Deletions: []testutils.ResourceDeletion{{
+		ResourceType: "agent_type",
+		ID:           agentTypeID,
+	}}}
+
+	result := suite.importWith(deletion)
 	suite.Require().Len(result.Results, 1)
 	suite.Equal("failed", result.Results[0].Status)
-	suite.Equal("USRS-1015", result.Results[0].Code, "message: %s", result.Results[0].Message)
+	suite.Equal("USRS-1022", result.Results[0].Code, "message: %s", result.Results[0].Message)
 	suite.Equal(1, result.Summary.Failed)
+	suite.Equal(http.StatusOK, suite.getStatus("/agent-types/"+agentTypeID), "a refused deletion must keep it")
+
+	suite.Require().NoError(testutils.DeleteAgent(agentID))
+	agentDeleted = true
+
+	result = suite.importWith(deletion)
+	suite.Require().Len(result.Results, 1)
+	suite.Equal("success", result.Results[0].Status, "message: %s", result.Results[0].Message)
+	suite.Equal(1, result.Summary.Deleted)
+	suite.Equal(http.StatusNotFound, suite.getStatus("/agent-types/"+agentTypeID))
 }
 
 // A connection is held by one of four services, and a deletion reaches whichever holds it: an

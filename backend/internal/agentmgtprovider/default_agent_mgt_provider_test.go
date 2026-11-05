@@ -195,6 +195,11 @@ func (suite *DefaultAgentMgtProviderTestSuite) TestCreateAgentPreservesServiceEr
 			scenario: "the agent type is missing",
 			svcErr:   &agent.ErrorInvalidAgentType,
 		},
+		{
+			name:     "OrganizationUnitMismatch",
+			scenario: "the organization unit is outside the agent type's organization unit tree",
+			svcErr:   &agent.ErrorOrganizationUnitMismatch,
+		},
 	}
 
 	for _, tt := range tests {

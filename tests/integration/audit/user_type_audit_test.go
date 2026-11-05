@@ -176,13 +176,22 @@ func (ts *AuditLogTestSuite) TestEveryUserTypeChangeRecordsItsOutcome() {
 	}
 }
 
-// The agent types are served by the same service under their own events. The singleton default agent
-// type can be changed, which is recorded as an agent type update; a create of another agent type, a
-// second default one, and any delete are refused and recorded as failed.
+// The agent types are served by the same service under their own events. A change to the default agent
+// type is recorded as an agent type update; a second agent type with its handle, or a second agent type in
+// its organization unit, is refused and recorded as failed; and deleting an agent type no agent uses is
+// recorded as a delete.
 func (ts *AuditLogTestSuite) TestEveryAgentTypeChangeRecordsItsOutcome() {
 	snapshot, err := testutils.SnapshotAgentType()
 	ts.Require().NoError(err)
 	ts.T().Cleanup(func() { ts.NoError(testutils.RestoreAgentType(snapshot)) })
+	// An organization unit holds one agent type, so the one to delete gets an organization unit of its own.
+	disposableOUID := ts.createOrganizationUnit("agent-type-delete")
+	disposableID, err := testutils.CreateNewAgentType(testutils.UserType{
+		Handle: ts.prefix + "disposable-agents", DisplayName: "Audit Disposable Agents", OUID: disposableOUID,
+		Schema: map[string]interface{}{auditTypeAttribute: map[string]interface{}{"type": "string"}},
+	})
+	ts.Require().NoError(err)
+	ts.T().Cleanup(func() { _ = testutils.DeleteAgentType(disposableID) })
 	displayName := "Audit Default Agents"
 	body, err := json.Marshal(map[string]interface{}{
 		"handle": "default", "displayName": displayName, "ouId": snapshot.OUID,
@@ -216,13 +225,13 @@ func (ts *AuditLogTestSuite) TestEveryAgentTypeChangeRecordsItsOutcome() {
 		{
 			method: http.MethodPost, path: "/agent-types",
 			body:   ts.entityTypeBody(ts.prefix+"tools", displayName, snapshot.OUID),
-			status: http.StatusBadRequest, event: "agent_type.create",
-			outcome: map[string]string{"result": "failed", "reason": "usrs_1014"}, target: noType,
+			status: http.StatusConflict, event: "agent_type.create",
+			outcome: map[string]string{"result": "failed", "reason": "usrs_1021"}, target: noType,
 		},
 		{
-			method: http.MethodDelete, path: "/agent-types/" + snapshot.ID,
-			status: http.StatusBadRequest, event: "agent_type.delete",
-			outcome: map[string]string{"result": "failed", "reason": "usrs_1015"}, target: defaultRef,
+			method: http.MethodDelete, path: "/agent-types/" + disposableID,
+			status: http.StatusNoContent, event: "agent_type.delete", outcome: map[string]string{"result": "succeeded"},
+			target: testutils.AuditRef{Type: "agent_type", ID: disposableID}, subject: true,
 		},
 	}
 

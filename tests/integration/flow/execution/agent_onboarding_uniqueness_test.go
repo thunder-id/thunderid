@@ -49,7 +49,7 @@ func (ts *AgentOnboardingUniquenessTestSuite) step(
 func (ts *AgentOnboardingUniquenessTestSuite) runWithName(name string) common.FlowStep {
 	ts.T().Helper()
 
-	_, step, _ := ts.step("", "", "", nil)
+	_, step, _ := startAgentOnboarding(&ts.Suite, ts.flowID)
 	executionID := step.ExecutionID
 	_, step, _ = ts.step(executionID, step.ChallengeToken, agentOwnerAction, map[string]string{})
 	_, step, _ = ts.step(executionID, step.ChallengeToken, agentDetailsAction,

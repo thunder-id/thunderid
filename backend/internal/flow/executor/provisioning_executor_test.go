@@ -2473,7 +2473,7 @@ func (suite *ProvisioningExecutorTestSuite) TestCategoryPrincipalTypes() {
 	assert.Equal(suite.T(), user.ErrorAttributeConflict.Code, userTraits.attributeConflictCode)
 	assert.Equal(suite.T(), agentAttributeConflictCode, agentTraits.attributeConflictCode)
 	assert.Equal(suite.T(), propertyKeyAllowedUserTypes, userTraits.allowedTypesProperty)
-	assert.Equal(suite.T(), propertyKeyAllowedAgentTypes, agentTraits.allowedTypesProperty)
+	assert.Equal(suite.T(), common.NodePropertyAllowedAgentTypes, agentTraits.allowedTypesProperty)
 	// An unrecognized category behaves as the user category did before any other was supported.
 	// Compared field by field: the traits carry funcs, and funcs are never equal to one another.
 	unknown := traitsFor(entitytype.TypeCategory("unknown"))

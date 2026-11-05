@@ -1,7 +1,7 @@
 resource_type: agent
 id: decl-agent-1
 ouId: decl-ou-1
-type: default
+type: declarative-agents
 description: A declarative test agent for integration testing
 authFlowId: decl-flow-1
 registrationFlowId: decl-reg-flow-1

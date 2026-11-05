@@ -61,7 +61,8 @@ func (ts *MCPTestSuite) TestExecuteFlow_UserOnboardingInvite() {
 // the agent onboarding flow places agents only under the agent type's own unit.
 func (ts *MCPTestSuite) TestExecuteFlow_RefusedValueComesWithTheReason() {
 	out := ts.executeFlow(ts.mcpScopedAdminToken(), map[string]any{"flow": "agent_onboarding",
-		"inputs": map[string]any{"name": fmt.Sprintf("mcp-misplaced-%d", time.Now().UnixNano()), "ouId": ts.ouID}})
+		"inputs": map[string]any{"name": fmt.Sprintf("mcp-misplaced-%d", time.Now().UnixNano()), "agentType": "default",
+			"ouId": ts.ouID}})
 	ts.Equalf("needs_input", out["status"], "the flow must ask for another unit: %v", out)
 	ts.NotEmptyf(out["error"], "the step must say why it asks again: %v", out)
 	ts.Contains(fmt.Sprint(out["inputs"]), "ouId")

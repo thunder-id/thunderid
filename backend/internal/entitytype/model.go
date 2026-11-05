@@ -17,8 +17,7 @@ const (
 	TypeCategoryAgent TypeCategory = "agent"
 )
 
-// DefaultAgentTypeHandle is the only agent type handle allowed; agent types are restricted
-// to a single 'default' schema.
+// DefaultAgentTypeHandle is the handle of the agent type that setup creates in the default organization unit.
 const DefaultAgentTypeHandle = "default"
 
 // IsValid reports whether the category is one of the known fixed values.

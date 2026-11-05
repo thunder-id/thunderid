@@ -5,6 +5,7 @@ package executor
 
 import (
 	"github.com/thunder-id/thunderid/internal/entitytype"
+	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/group"
 	"github.com/thunder-id/thunderid/internal/role"
 	"github.com/thunder-id/thunderid/internal/user"
@@ -49,7 +50,7 @@ var categoryTraitsByCategory = map[entitytype.TypeCategory]categoryTraits{
 		applicationAllowedTypes: func(ctx *providers.NodeContext) []string {
 			return ctx.Application.AllowedAgentTypes
 		},
-		allowedTypesProperty: propertyKeyAllowedAgentTypes,
+		allowedTypesProperty: common.NodePropertyAllowedAgentTypes,
 		recordFields: []string{
 			ownerIDKey, delegatedKey, redirectURIsKey, authFlowIDKey, allowedUserTypesKey,
 		},

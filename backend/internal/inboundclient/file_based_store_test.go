@@ -345,6 +345,23 @@ func (suite *FileBasedStoreTestSuite) TestGetEntityIDsByReference_MatchesFlowAcr
 	suite.ElementsMatch([]string{"app-1", "app-2", "app-3"}, ids)
 }
 
+func (suite *FileBasedStoreTestSuite) TestGetEntityIDsByReference_MatchesAllowedAgentType() {
+	store := newFileBasedStoreForTest()
+	ctx := context.Background()
+
+	suite.NoError(store.CreateInboundClient(ctx, inboundmodel.InboundClient{
+		ID: "app-1", AllowedAgentTypes: []string{"default", "support-agents"}}))
+	suite.NoError(store.CreateInboundClient(ctx, inboundmodel.InboundClient{
+		ID: "app-2", AllowedAgentTypes: []string{"*"}}))
+	suite.NoError(store.CreateInboundClient(ctx, inboundmodel.InboundClient{ID: "app-3"}))
+
+	ids, total, err := store.GetEntityIDsByReference(
+		ctx, resourcedependency.ResourceTypeAgentType, "support-agents", 10, 0)
+	suite.NoError(err)
+	suite.Equal(1, total, "a client that admits any agent type does not name the handle")
+	suite.Equal([]string{"app-1"}, ids)
+}
+
 func (suite *FileBasedStoreTestSuite) TestGetEntityIDsByReference_UnknownTypeReturnsEmpty() {
 	store := newFileBasedStoreForTest()
 	ctx := context.Background()

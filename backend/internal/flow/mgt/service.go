@@ -592,6 +592,9 @@ func (s *flowMgtService) GetResourceDependencies(
 		propertyKey = nodePropertyKeyNotificationSenderID
 	case resourcedependency.ResourceTypeHTTPConnection:
 		propertyKey, executorName = common.NodePropertyConnectionID, executormeta.ExecutorNameExtension
+	case resourcedependency.ResourceTypeAgentType:
+		// The node names agent types by handle, which is how an agent type target is identified.
+		propertyKey, executorName = common.NodePropertyAllowedAgentTypes, executormeta.ExecutorNameAgentTypeResolver
 	default:
 		return []resourcedependency.ResourceDependency{}, nil
 	}
@@ -722,8 +725,24 @@ func flowReferencesResource(flow *providers.CompleteFlowDefinition, executorName
 			(flow.Nodes[i].Executor == nil || flow.Nodes[i].Executor.Name != executorName) {
 			continue
 		}
-		if val, ok := flow.Nodes[i].Properties[propertyKey].(string); ok && strings.TrimSpace(val) == id {
+		if propertyNamesResource(flow.Nodes[i].Properties[propertyKey], id) {
 			return true
+		}
+	}
+	return false
+}
+
+// propertyNamesResource reports whether a node property value names the resource, either as the value
+// itself or as one entry of a list.
+func propertyNamesResource(value interface{}, id string) bool {
+	switch v := value.(type) {
+	case string:
+		return strings.TrimSpace(v) == id
+	case []interface{}:
+		for _, item := range v {
+			if s, ok := item.(string); ok && strings.TrimSpace(s) == id {
+				return true
+			}
 		}
 	}
 	return false

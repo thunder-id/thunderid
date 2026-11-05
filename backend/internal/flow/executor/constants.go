@@ -223,7 +223,6 @@ const (
 	propertyKeyMagicLinkURL                            = "magicLinkURL"
 	propertyKeySMSTemplate                             = "smsTemplate"
 	propertyKeyAllowedUserTypes                        = "allowedUserTypes"
-	propertyKeyAllowedAgentTypes                       = "allowedAgentTypes"
 	propertyKeyNotificationSenderID                    = "senderId"
 	propertyKeyDynamicInputsIncludeOptional            = "includeOptional"
 	propertyKeyDynamicInputsIncludeOptionalCredentials = "includeOptionalCredentials"

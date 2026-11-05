@@ -102,7 +102,7 @@ func (ts *AgentOnboardingOUTestSuite) step(
 // A child organization unit gives the step something to ask, and the answer decides where the
 // agent is created. Without it the agent would follow its type's unit.
 func (ts *AgentOnboardingOUTestSuite) TestAgentIsProvisionedIntoTheSelectedOU() {
-	status, step, body := ts.step("", "", "", nil)
+	status, step, body := startAgentOnboarding(&ts.Suite, ts.flowID)
 	ts.Require().Equal(http.StatusOK, status, "Flow initiation failed: %s", string(body))
 	ts.Require().Equal("INCOMPLETE", step.FlowStatus, "The flow should pause for the OU: %s", string(body))
 	executionID := step.ExecutionID
@@ -140,7 +140,7 @@ func (ts *AgentOnboardingOUTestSuite) TestAgentIsProvisionedIntoTheSelectedOU() 
 // not reach must not place an agent. This is the case a caller reaches by submitting an
 // identifier the picker never offered.
 func (ts *AgentOnboardingOUTestSuite) TestOUOutsideTheTypeSubtreeIsRejected() {
-	_, step, _ := ts.step("", "", "", nil)
+	_, step, _ := startAgentOnboarding(&ts.Suite, ts.flowID)
 	executionID := step.ExecutionID
 
 	_, step, body := ts.step(executionID, step.ChallengeToken, agentOUSelectionAction,
@@ -157,7 +157,7 @@ func (ts *AgentOnboardingOUTestSuite) TestOUOutsideTheTypeSubtreeIsRejected() {
 // An identifier that names no organization unit is the other way the step can be given something
 // it cannot place an agent in.
 func (ts *AgentOnboardingOUTestSuite) TestUnknownOUIsRejected() {
-	_, step, _ := ts.step("", "", "", nil)
+	_, step, _ := startAgentOnboarding(&ts.Suite, ts.flowID)
 	executionID := step.ExecutionID
 
 	_, step, body := ts.step(executionID, step.ChallengeToken, agentOUSelectionAction,
