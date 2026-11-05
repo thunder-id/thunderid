@@ -151,6 +151,14 @@ type OrganizationUnitProvider interface {
 	GetOrganizationUnitChildren(
 		ctx context.Context, id string, limit, offset int, f *common.FilterGroup,
 	) (*OrganizationUnitListResponse, *common.ServiceError)
+	// GetEligibleOUs returns the organization units the signed-in user of the sign-in on the context may sign in
+	// to, kept where its application is usable. Without a signed-in user it returns a client error, never a list.
+	GetEligibleOUs(ctx context.Context) ([]string, *common.ServiceError)
+	// IsEligibleOU reports whether the sign-in on the context may land in the organization unit: one its
+	// signed-in user is eligible for, or, before sign-in, one its application is usable from.
+	IsEligibleOU(ctx context.Context, ouID string) (bool, *common.ServiceError)
+	// IsApplicationShared reports whether the application of the sign-in on the context is shared.
+	IsApplicationShared(ctx context.Context) (bool, *common.ServiceError)
 }
 
 // FlowProvider defines the flow management operations required for flow execution.

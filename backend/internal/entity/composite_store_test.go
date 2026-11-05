@@ -636,3 +636,68 @@ func (s *CompositeStoreTestSuite) TestSearchEntities_FileError() {
 	_, err := s.store.SearchEntities(s.ctx, filters)
 	s.Error(err)
 }
+
+func (s *CompositeStoreTestSuite) TestUpdateOwnership_Delegates() {
+	s.dbStore.On("UpdateOwnership", mock.Anything, "u1", "ou2", testProjectID).Return(nil)
+	s.NoError(s.store.UpdateOwnership(s.ctx, "u1", "ou2", testProjectID))
+}
+
+func (s *CompositeStoreTestSuite) TestProjectListing_MergesStores() {
+	e1 := compEntity("e1", "ou1")
+	e2 := compEntity("e2", "ou1")
+	s.dbStore.On("GetEntityListCountByProject", mock.Anything, "user", testProjectID, []string(nil)).Return(1, nil)
+	s.fileStore.On("GetEntityListCountByProject", mock.Anything, "user", testProjectID, []string(nil)).Return(1, nil)
+	s.dbStore.On("GetEntityListByProject", mock.Anything, "user", testProjectID, []string(nil), 1, 0).
+		Return([]providers.Entity{e1}, nil)
+	s.fileStore.On("GetEntityListByProject", mock.Anything, "user", testProjectID, []string(nil), 1, 0).
+		Return([]providers.Entity{e2}, nil)
+
+	count, err := s.store.GetEntityListCountByProject(s.ctx, "user", testProjectID, nil)
+	s.NoError(err)
+	s.Equal(2, count)
+
+	list, err := s.store.GetEntityListByProject(s.ctx, "user", testProjectID, nil, 10, 0)
+	s.NoError(err)
+	s.Len(list, 2)
+}
+
+func (s *CompositeStoreTestSuite) TestGetEntityListByProject_LimitExceeded() {
+	limit := serverconst.MaxCompositeStoreRecords + 1
+	s.dbStore.On("GetEntityListCountByProject", mock.Anything, "user", testProjectID, []string(nil)).Return(limit, nil)
+	s.fileStore.On("GetEntityListCountByProject", mock.Anything, "user", testProjectID, []string(nil)).Return(0, nil)
+
+	_, err := s.store.GetEntityListByProject(s.ctx, "user", testProjectID, nil, 10, 0)
+
+	s.ErrorIs(err, errResultLimitExceededInCompositeMode)
+}
+
+func (s *CompositeStoreTestSuite) TestProjectHasEntities() {
+	s.Run("found in the database", func() {
+		s.SetupTest()
+		s.dbStore.On("ProjectHasEntities", mock.Anything, testProjectID).Return(true, nil)
+
+		found, err := s.store.ProjectHasEntities(s.ctx, testProjectID)
+
+		s.NoError(err)
+		s.True(found)
+		s.fileStore.AssertNotCalled(s.T(), "ProjectHasEntities", mock.Anything, mock.Anything)
+	})
+	s.Run("found in a resource file", func() {
+		s.SetupTest()
+		s.dbStore.On("ProjectHasEntities", mock.Anything, testProjectID).Return(false, nil)
+		s.fileStore.On("ProjectHasEntities", mock.Anything, testProjectID).Return(true, nil)
+
+		found, err := s.store.ProjectHasEntities(s.ctx, testProjectID)
+
+		s.NoError(err)
+		s.True(found)
+	})
+	s.Run("database error", func() {
+		s.SetupTest()
+		s.dbStore.On("ProjectHasEntities", mock.Anything, testProjectID).Return(false, s.testErr)
+
+		_, err := s.store.ProjectHasEntities(s.ctx, testProjectID)
+
+		s.Error(err)
+	})
+}

@@ -104,6 +104,8 @@ func (e *inviteExecutor) executeGenerate(ctx *providers.NodeContext) (*providers
 		"appName":    ctx.Application.Name,
 	}
 
+	// The onboarding admin sees the link, for a screen that shows it when no email can be sent. An invitation's admin
+	// does not: with it they could accept for an existing user, so the email step surfaces it only when sending fails.
 	if ctx.FlowType == providers.FlowTypeUserOnboarding {
 		execResp.AdditionalData[common.DataInviteLink] = inviteLink
 	}

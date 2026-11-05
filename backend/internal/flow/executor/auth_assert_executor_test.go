@@ -12,6 +12,7 @@ import (
 
 	"context"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -21,6 +22,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/attributecache"
 	authnassert "github.com/thunder-id/thunderid/internal/authn/assert"
 	authncm "github.com/thunder-id/thunderid/internal/authn/common"
+	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/flow/common"
@@ -150,6 +152,7 @@ func (suite *AuthAssertExecutorTestSuite) TestNewAuthAssertExecutor() {
 
 func (suite *AuthAssertExecutorTestSuite) TestExecute_UserAuthenticated_Success() {
 	ctx := &providers.NodeContext{
+		Context:     context.Background(),
 		ExecutionID: "flow-123",
 		EntityID:    "app-123",
 		FlowType:    providers.FlowTypeAuthentication,
@@ -203,6 +206,7 @@ func (suite *AuthAssertExecutorTestSuite) TestExecute_UserAuthenticated_Success(
 
 func (suite *AuthAssertExecutorTestSuite) TestExecute_UserNotAuthenticated() {
 	ctx := &providers.NodeContext{
+		Context:     context.Background(),
 		ExecutionID: "flow-123",
 		FlowType:    providers.FlowTypeAuthentication,
 	}
@@ -220,6 +224,7 @@ func (suite *AuthAssertExecutorTestSuite) TestExecute_UserNotAuthenticated() {
 // in a plain error loses the classification and the whole execution answers 500.
 func (suite *AuthAssertExecutorTestSuite) TestExecute_EntityReferenceClientErrorFailsAsClientError() {
 	ctx := &providers.NodeContext{
+		Context:          context.Background(),
 		ExecutionID:      "flow-123",
 		FlowType:         providers.FlowTypeAuthentication,
 		AuthUser:         newTestAuthenticatedAuthUser(),
@@ -244,6 +249,7 @@ func (suite *AuthAssertExecutorTestSuite) TestExecute_EntityReferenceClientError
 // there, and the classification is what tells the two apart.
 func (suite *AuthAssertExecutorTestSuite) TestExecute_EntityReferenceServerErrorStaysAFault() {
 	ctx := &providers.NodeContext{
+		Context:          context.Background(),
 		ExecutionID:      "flow-123",
 		FlowType:         providers.FlowTypeAuthentication,
 		AuthUser:         newTestAuthenticatedAuthUser(),
@@ -264,6 +270,7 @@ func (suite *AuthAssertExecutorTestSuite) TestExecute_EntityReferenceServerError
 // The attribute fetch on the same path had the same collapse, so it carries its own client error too.
 func (suite *AuthAssertExecutorTestSuite) TestExecute_UserAttributesClientErrorFailsAsClientError() {
 	ctx := &providers.NodeContext{
+		Context:          context.Background(),
 		ExecutionID:      "flow-123",
 		FlowType:         providers.FlowTypeAuthentication,
 		AuthUser:         newTestAuthenticatedAuthUser(),
@@ -286,6 +293,7 @@ func (suite *AuthAssertExecutorTestSuite) TestExecute_UserAttributesClientErrorF
 
 func (suite *AuthAssertExecutorTestSuite) TestExecute_WithAuthorizedPermissions() {
 	ctx := &providers.NodeContext{
+		Context:     context.Background(),
 		ExecutionID: "flow-123",
 		EntityID:    "app-123",
 		FlowType:    providers.FlowTypeAuthentication,
@@ -317,6 +325,7 @@ func (suite *AuthAssertExecutorTestSuite) TestExecute_WithAuthorizedPermissions(
 
 func (suite *AuthAssertExecutorTestSuite) TestExecute_CarriesExecutionIDAsCorrelationID() {
 	ctx := &providers.NodeContext{
+		Context:          context.Background(),
 		ExecutionID:      "flow-123",
 		EntityID:         "app-123",
 		FlowType:         providers.FlowTypeAuthentication,
@@ -345,6 +354,7 @@ func (suite *AuthAssertExecutorTestSuite) TestExecute_CarriesExecutionIDAsCorrel
 // can report an opaque subject rather than the mapped attribute.
 func (suite *AuthAssertExecutorTestSuite) TestExecute_CarriesSubjectIdentityBesideAMappedSubject() {
 	ctx := &providers.NodeContext{
+		Context:          context.Background(),
 		ExecutionID:      "flow-123",
 		EntityID:         "app-123",
 		FlowType:         providers.FlowTypeAuthentication,
@@ -386,6 +396,7 @@ func (suite *AuthAssertExecutorTestSuite) TestExecute_CarriesSubjectIdentityBesi
 // and be reported as the event's subject, which is the disclosure the claim exists to avoid.
 func (suite *AuthAssertExecutorTestSuite) TestExecute_AttributeCannotOverwriteSubjectIdentityClaims() {
 	ctx := &providers.NodeContext{
+		Context:          context.Background(),
 		ExecutionID:      "flow-123",
 		EntityID:         "app-123",
 		FlowType:         providers.FlowTypeAuthentication,
@@ -419,6 +430,7 @@ func (suite *AuthAssertExecutorTestSuite) TestExecute_AttributeCannotOverwriteSu
 
 func (suite *AuthAssertExecutorTestSuite) TestExecute_WithUserAttributes() {
 	ctx := &providers.NodeContext{
+		Context:          context.Background(),
 		ExecutionID:      "flow-123",
 		EntityID:         "app-123",
 		FlowType:         providers.FlowTypeAuthentication,
@@ -456,6 +468,7 @@ func (suite *AuthAssertExecutorTestSuite) TestExecute_WithUserAttributes() {
 
 func (suite *AuthAssertExecutorTestSuite) TestExecute_JWTGenerationFails() {
 	ctx := &providers.NodeContext{
+		Context:          context.Background(),
 		ExecutionID:      "flow-123",
 		EntityID:         "app-123",
 		FlowType:         providers.FlowTypeAuthentication,
@@ -488,6 +501,7 @@ func (suite *AuthAssertExecutorTestSuite) TestExecute_JWTGenerationFails() {
 
 func (suite *AuthAssertExecutorTestSuite) TestExecute_AssertionGenerationFails_ServerError() {
 	ctx := &providers.NodeContext{
+		Context:     context.Background(),
 		ExecutionID: "flow-123",
 		EntityID:    "app-123",
 		FlowType:    providers.FlowTypeAuthentication,
@@ -607,8 +621,69 @@ func (suite *AuthAssertExecutorTestSuite) TestExtractAuthenticatorReferences_OTP
 	assert.Equal(suite.T(), 1, refs[0].Step)
 }
 
+func (suite *AuthAssertExecutorTestSuite) TestExecute_OUClaims_BoundaryVsUnbounded() {
+	tests := []struct {
+		name      string
+		ctx       context.Context
+		decidedOU string
+		wantOU    string
+		wantName  string
+	}{
+		{"unbounded uses the user's own OU", context.Background(), "", "ou-own", "Own"},
+		{"bounded uses the decided OU", authnprovidercm.WithSignInBoundary(context.Background(),
+			authnprovidercm.SignInBoundary{OUID: "ou-decided", ApplicationID: "app-1"}), "ou-decided",
+			"ou-decided", "Decided"},
+	}
+	for _, tt := range tests {
+		suite.Run(tt.name, func() {
+			suite.SetupTest()
+			ctx := &providers.NodeContext{
+				Context:          tt.ctx,
+				ExecutionID:      "flow-123",
+				EntityID:         "app-123",
+				FlowType:         providers.FlowTypeAuthentication,
+				AuthUser:         newTestAuthenticatedAuthUser(),
+				RuntimeData:      map[string]string{},
+				ExecutionHistory: map[string]*providers.NodeExecutionRecord{},
+				Application: providers.Application{
+					InboundAuthProfile: providers.InboundAuthProfile{
+						Assertion: &inboundmodel.AssertionConfig{
+							UserAttributes: []string{oauth2const.ClaimOUID, oauth2const.ClaimOUName,
+								oauth2const.ClaimOUHandle},
+						},
+					},
+				},
+			}
+
+			if tt.decidedOU != "" {
+				ctx.RuntimeData[common.RuntimeKeyOUID] = tt.decidedOU
+				suite.mockOUService.On("IsEligibleOU", mock.Anything, tt.decidedOU).Return(true, nil).Once()
+			}
+			suite.setupGetEntityReference("EXTERNAL", "ou-own")
+			suite.setupGetUserAttributesEmpty()
+			suite.mockOUService.On("GetOrganizationUnit", mock.Anything, "ou-own").
+				Return(providers.OrganizationUnit{ID: "ou-own", Name: "Own", Handle: "own"}, nil).Maybe()
+			suite.mockOUService.On("GetOrganizationUnit", mock.Anything, "ou-decided").
+				Return(providers.OrganizationUnit{ID: "ou-decided", Name: "Decided", Handle: "decided"}, nil).Maybe()
+			suite.mockJWTService.On("GenerateJWT", mock.Anything, "user-123", mock.Anything, mock.Anything,
+				mock.MatchedBy(func(claims map[string]interface{}) bool {
+					return claims[oauth2const.ClaimOUID] == tt.wantOU &&
+						claims[oauth2const.ClaimOUName] == tt.wantName &&
+						claims[oauth2const.ClaimOUHandle] == strings.ToLower(tt.wantName)
+				}), mock.Anything, mock.Anything).Return("jwt-token", int64(3600), nil)
+
+			resp, err := suite.executor.Execute(ctx)
+
+			suite.NoError(err)
+			suite.Equal(providers.ExecComplete, resp.Status)
+			suite.mockJWTService.AssertExpectations(suite.T())
+		})
+	}
+}
+
 func (suite *AuthAssertExecutorTestSuite) TestExecute_WithUserTypeAndOU() {
 	ctx := &providers.NodeContext{
+		Context:          context.Background(),
 		ExecutionID:      "flow-123",
 		EntityID:         "app-123",
 		FlowType:         providers.FlowTypeAuthentication,
@@ -645,6 +720,7 @@ func (suite *AuthAssertExecutorTestSuite) TestExecute_WithUserTypeAndOU() {
 func (suite *AuthAssertExecutorTestSuite) TestExecute_WithCustomTokenConfig() {
 	// App-level assertion config (validity period only — issuer defaults inside the JWT service)
 	ctx := &providers.NodeContext{
+		Context:          context.Background(),
 		ExecutionID:      "flow-123",
 		EntityID:         "app-123",
 		FlowType:         providers.FlowTypeAuthentication,
@@ -675,6 +751,7 @@ func (suite *AuthAssertExecutorTestSuite) TestExecute_WithCustomTokenConfig() {
 
 func (suite *AuthAssertExecutorTestSuite) TestExecute_WithOUNameAndHandle() {
 	ctx := &providers.NodeContext{
+		Context:          context.Background(),
 		ExecutionID:      "flow-123",
 		EntityID:         "app-123",
 		FlowType:         providers.FlowTypeAuthentication,
@@ -717,6 +794,7 @@ func (suite *AuthAssertExecutorTestSuite) TestExecute_WithOUNameAndHandle() {
 
 func (suite *AuthAssertExecutorTestSuite) TestExecute_AppendUserDetailsToClaimsFails() {
 	ctx := &providers.NodeContext{
+		Context:          context.Background(),
 		ExecutionID:      "flow-123",
 		EntityID:         "app-123",
 		FlowType:         providers.FlowTypeAuthentication,
@@ -753,6 +831,7 @@ func (suite *AuthAssertExecutorTestSuite) TestExecute_AppendUserDetailsToClaimsF
 
 func (suite *AuthAssertExecutorTestSuite) TestExecute_AppendOUDetailsToClaimsFails() {
 	ctx := &providers.NodeContext{
+		Context:          context.Background(),
 		ExecutionID:      "flow-123",
 		EntityID:         "app-123",
 		FlowType:         providers.FlowTypeAuthentication,
@@ -787,6 +866,7 @@ func (suite *AuthAssertExecutorTestSuite) TestExecute_AppendOUDetailsToClaimsFai
 
 func (suite *AuthAssertExecutorTestSuite) TestAppendUserDetailsToClaims_GetUserAttributesFails() {
 	ctx := &providers.NodeContext{
+		Context:          context.Background(),
 		ExecutionID:      "flow-123",
 		EntityID:         "app-123",
 		FlowType:         providers.FlowTypeAuthentication,
@@ -824,6 +904,7 @@ func (suite *AuthAssertExecutorTestSuite) TestAppendUserDetailsToClaims_GetUserA
 
 func (suite *AuthAssertExecutorTestSuite) TestAppendOUDetailsToClaims_GetOrganizationUnitFails() {
 	ctx := &providers.NodeContext{
+		Context:          context.Background(),
 		ExecutionID:      "flow-123",
 		EntityID:         "app-123",
 		FlowType:         providers.FlowTypeAuthentication,
@@ -859,6 +940,7 @@ func (suite *AuthAssertExecutorTestSuite) TestAppendOUDetailsToClaims_GetOrganiz
 
 func (suite *AuthAssertExecutorTestSuite) TestExecute_WithConfiguredUserAttributes() {
 	ctx := &providers.NodeContext{
+		Context:          context.Background(),
 		ExecutionID:      "flow-123",
 		EntityID:         "app-123",
 		FlowType:         providers.FlowTypeAuthentication,
@@ -902,6 +984,7 @@ func (suite *AuthAssertExecutorTestSuite) TestExecute_WithConfiguredUserAttribut
 
 func (suite *AuthAssertExecutorTestSuite) TestExecute_WithGroups() {
 	ctx := &providers.NodeContext{
+		Context:          context.Background(),
 		ExecutionID:      "flow-123",
 		EntityID:         "app-123",
 		FlowType:         providers.FlowTypeAuthentication,
@@ -948,6 +1031,7 @@ func (suite *AuthAssertExecutorTestSuite) TestExecute_WithGroups() {
 
 func (suite *AuthAssertExecutorTestSuite) TestExecute_WithGroups_EmptyGroups() {
 	ctx := &providers.NodeContext{
+		Context:          context.Background(),
 		ExecutionID:      "flow-123",
 		EntityID:         "app-123",
 		FlowType:         providers.FlowTypeAuthentication,
@@ -985,6 +1069,7 @@ func (suite *AuthAssertExecutorTestSuite) TestExecute_WithGroups_EmptyGroups() {
 
 func (suite *AuthAssertExecutorTestSuite) TestExecute_WithGroups_GetUserGroupsFails() {
 	ctx := &providers.NodeContext{
+		Context:          context.Background(),
 		ExecutionID:      "flow-123",
 		EntityID:         "app-123",
 		FlowType:         providers.FlowTypeAuthentication,
@@ -1017,6 +1102,7 @@ func (suite *AuthAssertExecutorTestSuite) TestExecute_WithGroups_GetUserGroupsFa
 
 func (suite *AuthAssertExecutorTestSuite) TestGetRequiredUserAttributes_ConsentRecordedWithoutConsentedKey() {
 	ctx := &providers.NodeContext{
+		Context:     context.Background(),
 		ExecutionID: "flow-123",
 		RuntimeData: map[string]string{
 			common.RuntimeKeyConsentID: "consent-123",
@@ -1030,6 +1116,7 @@ func (suite *AuthAssertExecutorTestSuite) TestGetRequiredUserAttributes_ConsentR
 
 func (suite *AuthAssertExecutorTestSuite) TestGetRequiredUserAttributes_ConsentRecordedWithConsentedKey() {
 	ctx := &providers.NodeContext{
+		Context:     context.Background(),
 		ExecutionID: "flow-123",
 		RuntimeData: map[string]string{
 			common.RuntimeKeyConsentID:           "consent-123",
@@ -1044,6 +1131,7 @@ func (suite *AuthAssertExecutorTestSuite) TestGetRequiredUserAttributes_ConsentR
 
 func (suite *AuthAssertExecutorTestSuite) TestGetRequiredUserAttributes_RuntimeEssentialOnly() {
 	ctx := &providers.NodeContext{
+		Context:     context.Background(),
 		ExecutionID: "flow-123",
 		RuntimeData: map[string]string{
 			common.RuntimeKeyRequiredEssentialAttributes: "email name",
@@ -1057,6 +1145,7 @@ func (suite *AuthAssertExecutorTestSuite) TestGetRequiredUserAttributes_RuntimeE
 
 func (suite *AuthAssertExecutorTestSuite) TestGetRequiredUserAttributes_RuntimeOptionalOnly() {
 	ctx := &providers.NodeContext{
+		Context:     context.Background(),
 		ExecutionID: "flow-123",
 		RuntimeData: map[string]string{
 			common.RuntimeKeyRequiredOptionalAttributes: "email phone",
@@ -1070,6 +1159,7 @@ func (suite *AuthAssertExecutorTestSuite) TestGetRequiredUserAttributes_RuntimeO
 
 func (suite *AuthAssertExecutorTestSuite) TestGetRequiredUserAttributes_RuntimeEssentialAndOptional() {
 	ctx := &providers.NodeContext{
+		Context:     context.Background(),
 		ExecutionID: "flow-123",
 		RuntimeData: map[string]string{
 			common.RuntimeKeyRequiredEssentialAttributes: "email",
@@ -1084,6 +1174,7 @@ func (suite *AuthAssertExecutorTestSuite) TestGetRequiredUserAttributes_RuntimeE
 
 func (suite *AuthAssertExecutorTestSuite) TestGetRequiredUserAttributes_FallbackToAssertion() {
 	ctx := &providers.NodeContext{
+		Context:     context.Background(),
 		ExecutionID: "flow-123",
 		RuntimeData: map[string]string{},
 		Application: providers.Application{
@@ -1100,6 +1191,7 @@ func (suite *AuthAssertExecutorTestSuite) TestGetRequiredUserAttributes_Fallback
 
 func (suite *AuthAssertExecutorTestSuite) TestGetRequiredUserAttributes_NoRuntimeOrAssertion() {
 	ctx := &providers.NodeContext{
+		Context:     context.Background(),
 		ExecutionID: "flow-123",
 		RuntimeData: map[string]string{},
 		Application: providers.Application{},
@@ -1114,6 +1206,7 @@ func (suite *AuthAssertExecutorTestSuite) TestGetRequiredUserAttributes_NoRuntim
 
 func (suite *AuthAssertExecutorTestSuite) TestExecute_WithConsentedAttributes_FiltersUserAttrs() {
 	ctx := &providers.NodeContext{
+		Context:     context.Background(),
 		ExecutionID: "flow-123",
 		EntityID:    "app-123",
 		FlowType:    providers.FlowTypeAuthentication,
@@ -1159,6 +1252,7 @@ func (suite *AuthAssertExecutorTestSuite) TestExecute_WithConsentedAttributes_Fi
 
 func (suite *AuthAssertExecutorTestSuite) TestExecute_WithEmptyConsentedAttributes() {
 	ctx := &providers.NodeContext{
+		Context:     context.Background(),
 		ExecutionID: "flow-123",
 		EntityID:    "app-123",
 		FlowType:    providers.FlowTypeAuthentication,
@@ -1186,6 +1280,7 @@ func (suite *AuthAssertExecutorTestSuite) TestExecute_WithEmptyConsentedAttribut
 
 func (suite *AuthAssertExecutorTestSuite) TestExecute_WithoutConsentedAttributes() {
 	ctx := &providers.NodeContext{
+		Context:          context.Background(),
 		ExecutionID:      "flow-123",
 		EntityID:         "app-123",
 		FlowType:         providers.FlowTypeAuthentication,
@@ -1211,6 +1306,7 @@ func (suite *AuthAssertExecutorTestSuite) TestExecute_WithoutConsentedAttributes
 func (suite *AuthAssertExecutorTestSuite) TestExecute_CarriesGrantedAuthorizationDetails() {
 	granted := `[{"id":"d-1","type":"payment_initiation","value":{"amount":10}}]`
 	ctx := &providers.NodeContext{
+		Context:          context.Background(),
 		ExecutionID:      "flow-123",
 		EntityID:         "app-123",
 		FlowType:         providers.FlowTypeAuthentication,
@@ -1244,6 +1340,7 @@ func (suite *AuthAssertExecutorTestSuite) TestExecute_CarriesGrantedAuthorizatio
 // server-side record of the resource ID once the token carries none.
 func (suite *AuthAssertExecutorTestSuite) TestExecute_AttributeCacheRecordsTheSubjectIdentity() {
 	ctx := &providers.NodeContext{
+		Context:          context.Background(),
 		ExecutionID:      "flow-123",
 		EntityID:         "app-123",
 		FlowType:         providers.FlowTypeAuthentication,
@@ -1497,6 +1594,27 @@ func (suite *AuthAssertExecutorTestSuite) TestResolveUserAttributes_WithGroups()
 	assert.True(suite.T(), ok)
 	assert.Equal(suite.T(), []string{"admin", "developer"}, groups)
 	suite.mockEntityProvider.AssertExpectations(suite.T())
+}
+
+// The role service narrows the roles to the boundary's organization unit itself, so the executor passes
+// no assignment OU and the decided OU still reaches the service on the context.
+func (suite *AuthAssertExecutorTestSuite) TestResolveUserAttributes_Roles_DecidedOUReachesTheServiceOnTheContext() {
+	boundaryCtx := authnprovidercm.WithSignInBoundary(context.Background(),
+		authnprovidercm.SignInBoundary{OUID: "ou-decided", ApplicationID: "app-1"})
+	ctx := &providers.NodeContext{ExecutionID: "flow-123", Context: boundaryCtx, RuntimeData: map[string]string{}}
+	suite.mockEntityProvider.On("GetTransitiveEntityGroups", mock.Anything, "user-123").
+		Return([]providers.EntityGroup{{ID: "group-1", Name: "admin"}}, nil)
+	suite.mockRoleService.On("GetUserRoles", mock.MatchedBy(func(c context.Context) bool {
+		boundary, bounded := authnprovidercm.SignInBoundaryFrom(c)
+		return bounded && boundary.OUID == "ou-decided"
+	}), "user-123", []string{"group-1"}, "").Return([]string{"editor"}, nil)
+
+	attrs, err := suite.executor.resolveUserAttributes(ctx, []string{oauth2const.UserAttributeRoles},
+		nil, "user-123", "", "", "")
+
+	suite.NoError(err)
+	suite.Equal([]string{"editor"}, attrs[oauth2const.UserAttributeRoles])
+	suite.mockRoleService.AssertExpectations(suite.T())
 }
 
 func (suite *AuthAssertExecutorTestSuite) TestResolveUserAttributes_WithGroups_FetchError() {
@@ -1914,6 +2032,7 @@ func (suite *AuthAssertExecutorTestSuite) TestExecute_WithAttributeCache_OUDetai
 
 func (suite *AuthAssertExecutorTestSuite) TestExecute_WithRuntimeRequiredEssentialAndOptionalAttributes() {
 	ctx := &providers.NodeContext{
+		Context:     context.Background(),
 		ExecutionID: "flow-123",
 		EntityID:    "app-123",
 		FlowType:    providers.FlowTypeAuthentication,
@@ -1953,7 +2072,7 @@ func (suite *AuthAssertExecutorTestSuite) TestExecute_WithRuntimeRequiredEssenti
 // ----- resolvePermissionsForClaim -----
 
 func (suite *AuthAssertExecutorTestSuite) TestResolvePermissionsForClaim_PrefersConsented() {
-	ctx := &providers.NodeContext{RuntimeData: map[string]string{
+	ctx := &providers.NodeContext{Context: context.Background(), RuntimeData: map[string]string{
 		common.RuntimeKeyConsentedPermissions: "booking:read",
 		"authorized_permissions":              "booking:read booking:write",
 		common.RuntimeKeyRequestedPermissions: "booking:read booking:write booking:cancel",
@@ -1964,7 +2083,7 @@ func (suite *AuthAssertExecutorTestSuite) TestResolvePermissionsForClaim_Prefers
 func (suite *AuthAssertExecutorTestSuite) TestResolvePermissionsForClaim_ConsentedEmptyStillPreferredOverAuthorized() {
 	// Consent step ran but the user denied every permission. The empty value must be used so
 	// the JWT does not leak authorized but not consented permissions.
-	ctx := &providers.NodeContext{RuntimeData: map[string]string{
+	ctx := &providers.NodeContext{Context: context.Background(), RuntimeData: map[string]string{
 		common.RuntimeKeyConsentedPermissions: "",
 		"authorized_permissions":              "booking:read",
 	}}
@@ -1972,7 +2091,7 @@ func (suite *AuthAssertExecutorTestSuite) TestResolvePermissionsForClaim_Consent
 }
 
 func (suite *AuthAssertExecutorTestSuite) TestResolvePermissionsForClaim_FallsBackToAuthorized() {
-	ctx := &providers.NodeContext{RuntimeData: map[string]string{
+	ctx := &providers.NodeContext{Context: context.Background(), RuntimeData: map[string]string{
 		"authorized_permissions":              "booking:read",
 		common.RuntimeKeyRequestedPermissions: "booking:read booking:write",
 	}}
@@ -1983,21 +2102,21 @@ func (suite *AuthAssertExecutorTestSuite) TestResolvePermissionsForClaim_Request
 	// Raw requested permissions must NEVER end up in the JWT claim without going through
 	// the authz executor. Regression: when a user has no authorized permissions, an empty
 	// claim must be emitted so token endpoint clears PermissionScopes correctly.
-	ctx := &providers.NodeContext{RuntimeData: map[string]string{
+	ctx := &providers.NodeContext{Context: context.Background(), RuntimeData: map[string]string{
 		common.RuntimeKeyRequestedPermissions: "booking:read booking:write",
 	}}
 	assert.Equal(suite.T(), "", (&authAssertExecutor{}).resolvePermissionsForClaim(ctx))
 }
 
 func (suite *AuthAssertExecutorTestSuite) TestResolvePermissionsForClaim_NoKeysReturnsEmpty() {
-	ctx := &providers.NodeContext{RuntimeData: map[string]string{}}
+	ctx := &providers.NodeContext{Context: context.Background(), RuntimeData: map[string]string{}}
 	assert.Equal(suite.T(), "", (&authAssertExecutor{}).resolvePermissionsForClaim(ctx))
 }
 
 func (suite *AuthAssertExecutorTestSuite) TestResolvePermissionsForClaim_IntersectsConsentedWithAuthorized() {
 	// Stale-permission scenario: the consent record has a permission ("write") the user no
 	// longer holds in this session. The intersection must drop it from the JWT.
-	ctx := &providers.NodeContext{RuntimeData: map[string]string{
+	ctx := &providers.NodeContext{Context: context.Background(), RuntimeData: map[string]string{
 		common.RuntimeKeyConsentedPermissions: "read write cancel",
 		"authorized_permissions":              "read cancel",
 	}}
@@ -2059,6 +2178,7 @@ func (suite *AuthAssertExecutorTestSuite) TestResolveSubject() {
 // client, and it does not leak into the assertion claims.
 func (suite *AuthAssertExecutorTestSuite) TestExecute_ResolvesMappedSubjectFromUnreleasedAttribute() {
 	ctx := &providers.NodeContext{
+		Context:          context.Background(),
 		ExecutionID:      "flow-123",
 		EntityID:         "app-123",
 		FlowType:         providers.FlowTypeAuthentication,
@@ -2099,6 +2219,7 @@ func (suite *AuthAssertExecutorTestSuite) TestExecute_ResolvesMappedSubjectFromU
 // claim so the authorization code, and in turn the ID token, name the session for logout.
 func (suite *AuthAssertExecutorTestSuite) TestExecute_CarriesSSOSessionIDAsSidClaim() {
 	ctx := &providers.NodeContext{
+		Context:          context.Background(),
 		ExecutionID:      "flow-123",
 		EntityID:         "app-123",
 		FlowType:         providers.FlowTypeAuthentication,
@@ -2127,6 +2248,7 @@ func (suite *AuthAssertExecutorTestSuite) TestExecute_CarriesSSOSessionIDAsSidCl
 // than a synthesized one that no termination could ever reference.
 func (suite *AuthAssertExecutorTestSuite) TestExecute_OmitsSidClaimWithoutSession() {
 	ctx := &providers.NodeContext{
+		Context:          context.Background(),
 		ExecutionID:      "flow-123",
 		EntityID:         "app-123",
 		FlowType:         providers.FlowTypeAuthentication,
@@ -2155,6 +2277,7 @@ func (suite *AuthAssertExecutorTestSuite) TestExecute_OmitsSidClaimWithoutSessio
 // logout notification derived from it, at a session the grant does not belong to.
 func (suite *AuthAssertExecutorTestSuite) TestExecute_AttributeCannotOverwriteSidClaim() {
 	ctx := &providers.NodeContext{
+		Context:          context.Background(),
 		ExecutionID:      "flow-123",
 		EntityID:         "app-123",
 		FlowType:         providers.FlowTypeAuthentication,
@@ -2309,6 +2432,115 @@ func (suite *AuthAssertExecutorTestSuite) TestExecute_UnresolvedEntityReferenceI
 				mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 		})
 	}
+}
+
+// boundedAssertionContext is a sign-in bounded to ouID for app-1 that has signed user-123 in, with ouID decided.
+func boundedAssertionContext(ouID string) (*providers.NodeContext, authnprovidercm.SignInBoundary) {
+	boundary := authnprovidercm.SignInBoundary{OUID: ouID, ApplicationID: "app-1", EntityID: "user-123"}
+	return &providers.NodeContext{
+		Context:          authnprovidercm.WithSignInBoundary(context.Background(), boundary),
+		ExecutionID:      "flow-123",
+		EntityID:         "app-1",
+		FlowType:         providers.FlowTypeAuthentication,
+		AuthUser:         newTestAuthenticatedAuthUser(),
+		RuntimeData:      map[string]string{common.RuntimeKeyOUID: ouID},
+		ExecutionHistory: map[string]*providers.NodeExecutionRecord{},
+	}, boundary
+}
+
+// inBoundary matches a context carrying exactly the given sign-in boundary.
+func inBoundary(boundary authnprovidercm.SignInBoundary) any {
+	return mock.MatchedBy(func(c context.Context) bool {
+		b, ok := authnprovidercm.SignInBoundaryFrom(c)
+		return ok && b == boundary
+	})
+}
+
+// assertNoAssertionGenerated checks that no assertion was signed.
+func (suite *AuthAssertExecutorTestSuite) assertNoAssertionGenerated() {
+	suite.mockJWTService.AssertNotCalled(suite.T(), "GenerateJWT", mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (suite *AuthAssertExecutorTestSuite) TestExecute_UnboundedSignInSkipsTheBoundaryCheck() {
+	ctx := &providers.NodeContext{
+		Context:          context.Background(),
+		ExecutionID:      "flow-123",
+		EntityID:         "app-1",
+		FlowType:         providers.FlowTypeAuthentication,
+		AuthUser:         newTestAuthenticatedAuthUser(),
+		RuntimeData:      map[string]string{},
+		ExecutionHistory: map[string]*providers.NodeExecutionRecord{},
+	}
+	suite.setupGetEntityReference("INTERNAL", testAuthOUID)
+	suite.setupGetUserAttributesEmpty()
+	suite.mockJWTService.On("GenerateJWT", mock.Anything, "user-123", mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything).Return("jwt-token", int64(3600), nil).Once()
+
+	resp, err := suite.executor.Execute(ctx)
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecComplete, resp.Status)
+	suite.Equal("jwt-token", resp.Assertion)
+	suite.mockOUService.AssertNotCalled(suite.T(), "IsEligibleOU", mock.Anything, mock.Anything)
+}
+
+func (suite *AuthAssertExecutorTestSuite) TestExecute_BoundedSignInWithNoOUDecidedIsRefused() {
+	ctx, _ := boundedAssertionContext("")
+	suite.setupGetEntityReference("INTERNAL", testAuthOUID)
+
+	resp, err := suite.executor.Execute(ctx)
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecFailure, resp.Status)
+	suite.Equal(&ErrOrganizationNotResolved, resp.Error)
+	suite.Empty(resp.Assertion)
+	suite.mockOUService.AssertNotCalled(suite.T(), "IsEligibleOU", mock.Anything, mock.Anything)
+	suite.assertNoAssertionGenerated()
+}
+
+func (suite *AuthAssertExecutorTestSuite) TestExecute_BoundedSignInInAnIneligibleOUIsRefused() {
+	ctx, boundary := boundedAssertionContext(testAssertOUID)
+	suite.setupGetEntityReference("INTERNAL", testAuthOUID)
+	suite.mockOUService.On("IsEligibleOU", inBoundary(boundary), testAssertOUID).Return(false, nil).Once()
+
+	resp, err := suite.executor.Execute(ctx)
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecFailure, resp.Status)
+	suite.Equal(&ErrNoAccessToApplication, resp.Error)
+	suite.Empty(resp.Assertion)
+	suite.assertNoAssertionGenerated()
+}
+
+func (suite *AuthAssertExecutorTestSuite) TestExecute_BoundedSignInInAnEligibleOUIsAsserted() {
+	ctx, boundary := boundedAssertionContext(testAssertOUID)
+	suite.setupGetEntityReference("INTERNAL", testAuthOUID)
+	suite.setupGetUserAttributesEmpty()
+	suite.mockOUService.On("IsEligibleOU", inBoundary(boundary), testAssertOUID).Return(true, nil).Once()
+	suite.mockJWTService.On("GenerateJWT", mock.Anything, "user-123", mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything).Return("jwt-token", int64(3600), nil).Once()
+
+	resp, err := suite.executor.Execute(ctx)
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecComplete, resp.Status)
+	suite.Nil(resp.Error)
+	suite.Equal("jwt-token", resp.Assertion)
+}
+
+// A failed eligibility check is a server fault, never a refusal or an assertion.
+func (suite *AuthAssertExecutorTestSuite) TestExecute_BoundaryCheckFailureIsAFault() {
+	ctx, _ := boundedAssertionContext(testAssertOUID)
+	suite.setupGetEntityReference("INTERNAL", testAuthOUID)
+	suite.mockOUService.On("IsEligibleOU", mock.Anything, testAssertOUID).
+		Return(false, &tidcommon.InternalServerError).Once()
+
+	resp, err := suite.executor.Execute(ctx)
+
+	suite.Require().Error(err)
+	suite.Nil(resp)
+	suite.assertNoAssertionGenerated()
 }
 
 func (suite *AuthAssertExecutorTestSuite) TestExecute_VerificationClaims() {
@@ -2533,6 +2765,7 @@ func (suite *AuthAssertExecutorTestSuite) setupUserEntityReference() {
 // newVerificationClaimContext builds an authentication context that releases the given attributes.
 func newVerificationClaimContext(requested []string, runtimeData map[string]string) *providers.NodeContext {
 	return &providers.NodeContext{
+		Context:          context.Background(),
 		ExecutionID:      "flow-123",
 		EntityID:         "app-123",
 		FlowType:         providers.FlowTypeAuthentication,

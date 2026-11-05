@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	"github.com/thunder-id/thunderid/internal/group"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/revocation"
@@ -3026,4 +3027,37 @@ func (suite *RoleServiceTestSuite) TestSharingCallsRefuseAMissingRoleID() {
 	_, svcErr = suite.service.ResolveSharingOverlay(context.Background(), "", "ou1")
 	suite.Require().NotNil(svcErr)
 	suite.Equal(ErrorMissingRoleID.Code, svcErr.Code)
+}
+
+// Inside a sign-in boundary the roles are counted in the boundary's organization unit, unless the caller
+// names one; with no boundary, or one that decided no unit, they are counted anywhere.
+func (suite *RoleServiceTestSuite) TestGetUserRoles_AssignmentOUFollowsTheBoundary() {
+	boundaryCtx := func(ouID string) context.Context {
+		return authnprovidercm.WithSignInBoundary(context.Background(),
+			authnprovidercm.SignInBoundary{OUID: ouID, ApplicationID: "app-1"})
+	}
+	tests := []struct {
+		name           string
+		ctx            context.Context
+		assignmentOUID string
+		wantOUID       string
+	}{
+		{"no boundary counts assignments anywhere", context.Background(), "", ""},
+		{"boundary counts assignments in its unit", boundaryCtx("ou-decided"), "", "ou-decided"},
+		{"boundary without a unit counts assignments anywhere", boundaryCtx(""), "", ""},
+		{"a named unit wins over the boundary", boundaryCtx("ou-decided"), "ou-named", "ou-named"},
+		{"a named unit without a boundary", context.Background(), "ou-named", "ou-named"},
+	}
+	for _, tt := range tests {
+		suite.Run(tt.name, func() {
+			suite.SetupTest()
+			suite.mockStore.On("GetUserRoles", tt.ctx, testUserID1, []string{"group-1"}, tt.wantOUID).
+				Return([]string{"editor"}, nil).Once()
+
+			roles, svcErr := suite.service.GetUserRoles(tt.ctx, testUserID1, []string{"group-1"}, tt.assignmentOUID)
+
+			suite.Nil(svcErr)
+			suite.Equal([]string{"editor"}, roles)
+		})
+	}
 }

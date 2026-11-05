@@ -6,6 +6,7 @@ package flowmgt
 import (
 	"context"
 	"fmt"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/mock"
@@ -1590,6 +1591,80 @@ func (s *ValidatorTestSuite) TestValidateModeFlowTypes_IdentityGovernance() {
 	}
 }
 
+// The role executor changes roles from a revocation plan only in an administration flow, and selects and assigns
+// roles only in an invitation flow. A node that names no mode runs role deletion.
+func (s *ValidatorTestSuite) TestValidateModeFlowTypes_RoleExecutor() {
+	cases := []struct {
+		mode     string
+		flowType providers.FlowType
+		allowed  bool
+	}{
+		{executor.ExecutorModeRoleSelection, providers.FlowTypeInvitation, true},
+		{executor.ExecutorModeRoleAssignment, providers.FlowTypeInvitation, true},
+		{executor.ExecutorModeRoleDeletion, providers.FlowTypeAdministration, true},
+		{executor.ExecutorModeRoleSelection, providers.FlowTypeAdministration, false},
+		{executor.ExecutorModeRoleAssignment, providers.FlowTypeAdministration, false},
+		{executor.ExecutorModeRoleDeletion, providers.FlowTypeInvitation, false},
+		{executor.ExecutorModeRoleAssignmentRemoval, providers.FlowTypeInvitation, false},
+		{executor.ExecutorModeRolePermissionRemoval, providers.FlowTypeInvitation, false},
+	}
+	for _, tc := range cases {
+		s.Run(tc.mode+"/"+string(tc.flowType), func() {
+			nodes := companionNodes(executor.ExecutorNameRole)
+			nodes[1].Executor.Mode = tc.mode
+
+			err := s.v.validateModeFlowTypes(tc.flowType, nodes)
+
+			if tc.allowed {
+				s.Nil(err)
+				return
+			}
+			s.Require().NotNil(err)
+			s.Equal(ErrorInvalidExecutorConfig.Code, err.Code)
+			s.Equal("error.flowmgtservice.unsupported_executor_mode_flow_type_description", err.ErrorDescription.Key)
+		})
+	}
+}
+
+// The sharing executor authorizes a share only in an invitation flow, and applies one there or, for what a
+// sign-up created, in a sign-in or registration flow.
+func (s *ValidatorTestSuite) TestValidateModeFlowTypes_SharingExecutor() {
+	allowedIn := map[string][]providers.FlowType{
+		executor.ExecutorModeValidate: {providers.FlowTypeInvitation},
+		executor.ExecutorModeShare: {providers.FlowTypeInvitation, providers.FlowTypeAuthentication,
+			providers.FlowTypeRegistration},
+	}
+	flowTypes := []providers.FlowType{providers.FlowTypeInvitation, providers.FlowTypeAuthentication,
+		providers.FlowTypeRegistration}
+	for mode, allowed := range allowedIn {
+		for _, flowType := range flowTypes {
+			nodes := companionNodes(executor.ExecutorNameSharing)
+			nodes[1].Executor.Mode = mode
+
+			err := s.v.validateModeFlowTypes(flowType, nodes)
+
+			if slices.Contains(allowed, flowType) {
+				s.Nil(err, "%s in %s", mode, flowType)
+				continue
+			}
+			s.Require().NotNil(err, "%s in %s", mode, flowType)
+			s.Equal("error.flowmgtservice.unsupported_executor_mode_flow_type_description", err.ErrorDescription.Key)
+		}
+	}
+}
+
+// A role node that names no mode is refused at save, as before the role executor gained its invitation modes.
+func (s *ValidatorTestSuite) TestValidateExecutorMode_RoleExecutorRequiresAMode() {
+	meta, ok := executormeta.MetaFor(executormeta.ExecutorNameRole)
+	s.Require().True(ok)
+	node := companionNodes(executor.ExecutorNameRole)[1]
+
+	err := s.v.validateExecutorMode(&node, &meta)
+
+	s.Require().NotNil(err)
+	s.Equal("error.flowmgtservice.executor_mode_required_description", err.ErrorDescription.Key)
+}
+
 // ---------------------------------------------------------------------------
 // Tests for validateCompanionExecutors
 // ---------------------------------------------------------------------------
@@ -2522,6 +2597,86 @@ func (s *ValidatorTestSuite) TestValidateSystemFlowDefinition() {
 	svcErr := s.v.ValidateSystemFlowDefinition(context.Background(), flow)
 	s.Require().NotNil(svcErr)
 	s.Equal("ask", svcErr.ErrorDescription.Params["nodeID"])
+}
+
+// ouResolverSSOFlow is a sign-in flow that wraps a credentials step in an SSO checkpoint, with an OU resolver
+// placed before Check SSO, between the step and Save/Load Session, after Save/Load Session, or after it behind a
+// prompt.
+func ouResolverSSOFlow(placement string) []providers.NodeDefinition {
+	task := func(id, name, next string) providers.NodeDefinition {
+		return providers.NodeDefinition{ID: id, Type: string(common.NodeTypeTaskExecution),
+			Executor: &providers.ExecutorDefinition{Name: name}, OnSuccess: next}
+	}
+	nextAfter := func(at, next string) string {
+		if placement == at {
+			return "resolve_ou"
+		}
+		return next
+	}
+	resolverNext := map[string]string{
+		"before": "sso_check", "between": "session", "after": "assert", "after a prompt": "assert",
+	}[placement]
+	sessionNext := nextAfter("after", "assert")
+	if placement == "after a prompt" {
+		sessionNext = "pick"
+	}
+
+	ssoCheck := task("sso_check", executor.ExecutorNameSSOCheck, "session")
+	ssoCheck.OnFailure = "login"
+	ssoCheck.Properties = map[string]interface{}{common.NodePropertyCheckpointRef: "session"}
+	nodes := []providers.NodeDefinition{
+		{ID: "start", Type: string(common.NodeTypeStart), OnSuccess: nextAfter("before", "sso_check")},
+		ssoCheck,
+		{ID: "login", Type: string(common.NodeTypePrompt), Prompts: []providers.PromptDefinition{
+			{Action: &providers.ActionDefinition{Ref: "submit", NextNode: "credentials"}}}},
+		task("credentials", executor.ExecutorNameCredentialsAuth, nextAfter("between", "session")),
+		task("session", executor.ExecutorNameSession, sessionNext),
+		task("resolve_ou", executor.ExecutorNameOUResolver, resolverNext),
+		task("assert", executor.ExecutorNameAuthAssert, "end"),
+		{ID: "end", Type: string(common.NodeTypeEnd)},
+	}
+	if placement == "after a prompt" {
+		nodes = append(nodes, providers.NodeDefinition{ID: "pick", Type: string(common.NodeTypePrompt),
+			Prompts: []providers.PromptDefinition{
+				{Action: &providers.ActionDefinition{Ref: "next", NextNode: "resolve_ou"}}}})
+	}
+	return nodes
+}
+
+func (s *ValidatorTestSuite) TestValidateOUResolverPlacement() {
+	tests := []struct {
+		placement   string
+		flowType    providers.FlowType
+		wantRefused bool
+	}{
+		{"before", providers.FlowTypeAuthentication, false},
+		{"between", providers.FlowTypeAuthentication, false},
+		{"after", providers.FlowTypeAuthentication, true},
+		{"after a prompt", providers.FlowTypeAuthentication, true},
+		{"after", providers.FlowTypeRegistration, false},
+		{"after", providers.FlowTypeUserOnboarding, false},
+	}
+	for _, tc := range tests {
+		s.Run(tc.placement+" in "+string(tc.flowType), func() {
+			err := validateOUResolverPlacement(tc.flowType, ouResolverSSOFlow(tc.placement))
+
+			if !tc.wantRefused {
+				s.Nil(err)
+				return
+			}
+			s.Require().NotNil(err)
+			s.Equal(ErrorOUResolverAfterSession.Code, err.Code)
+			s.Equal(map[string]string{"nodeID": "resolve_ou", "sessionNodeID": "session"},
+				err.ErrorDescription.Params)
+		})
+	}
+}
+
+func (s *ValidatorTestSuite) TestValidateFlowTypeBasedConstraints_RefusesOUResolverAfterSession() {
+	err := s.v.validateFlowTypeBasedConstraints(providers.FlowTypeAuthentication, ouResolverSSOFlow("after"))
+
+	s.Require().NotNil(err)
+	s.Equal(ErrorOUResolverAfterSession.Code, err.Code)
 }
 
 func ouResolverNode(properties map[string]interface{}) []providers.NodeDefinition {

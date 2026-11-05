@@ -116,6 +116,15 @@ describe('SelectFlowType', () => {
       expect(mockOnReadyChange).toHaveBeenCalledWith(true);
     });
 
+    it('should call onTypeChange with INVITATION when Invitation is clicked', () => {
+      render(<SelectFlowType {...defaultProps} />);
+
+      fireEvent.click(screen.getByText('Invitation'));
+
+      expect(mockOnTypeChange).toHaveBeenCalledWith('INVITATION');
+      expect(mockOnReadyChange).toHaveBeenCalledWith(true);
+    });
+
     it('should call onTypeChange with ADMINISTRATION when Administration is clicked', () => {
       render(<SelectFlowType {...defaultProps} />);
 

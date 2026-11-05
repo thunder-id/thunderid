@@ -20,6 +20,8 @@ import (
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/tests/mocks/agentmock"
+
+	"gopkg.in/yaml.v3"
 )
 
 type AgentExporterTestSuite struct {
@@ -143,6 +145,19 @@ func (s *AgentExporterTestSuite) TestGetResourceByID_ExportsUnboundedLifespan() 
 
 	assert.Nil(s.T(), err)
 	assert.Equal(s.T(), "9999-12-31T23:59:59Z", resource.(*model.AgentGetResponse).ValidUntil)
+}
+
+// An exported agent keeps its project, so an import places it in the same project.
+func (s *AgentExporterTestSuite) TestGetResourceByID_ExportsProject() {
+	s.mockService.EXPECT().GetAgent(mock.Anything, "agent1", true).Return(
+		&model.AgentGetResponse{ID: "agent1", ProjectID: "project-1"}, nil)
+
+	resource, _, err := s.exporter.GetResourceByID(context.Background(), "agent1")
+	s.Require().Nil(err)
+
+	document, marshalErr := yaml.Marshal(resource)
+	s.Require().NoError(marshalErr)
+	assert.Contains(s.T(), string(document), "projectId: project-1")
 }
 
 func (s *AgentExporterTestSuite) TestGetResourceByID_Error() {

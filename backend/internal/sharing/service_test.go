@@ -6064,3 +6064,248 @@ func (s *ServiceTestSuite) TestATypeWithoutWriteHooksIsUnaffected() {
 		PolicyRequest{ID: declaredID, AllUnits: allUnits()})
 	s.Require().Nil(svcErr)
 }
+
+// shareableType is the resource type of shareableDeclaration.
+const shareableType = ResourceType("shareable")
+
+// shareableDeclaration is testDeclaration for a type that may be shared into a child unit.
+type shareableDeclaration struct {
+	testDeclaration
+	refusal    *tidcommon.ServiceError
+	ownerErr   *tidcommon.ServiceError
+	noOwner    bool
+	authorized []string
+}
+
+// OwningOUID answers with the configured lookup failure, no owner, or the owner testDeclaration names.
+func (d *shareableDeclaration) OwningOUID(ctx context.Context, resourceID string) (string, *tidcommon.ServiceError) {
+	if d.ownerErr != nil || d.noOwner {
+		return "", d.ownerErr
+	}
+	return d.testDeclaration.OwningOUID(ctx, resourceID)
+}
+
+// ResourceType identifies the shareable type.
+func (d *shareableDeclaration) ResourceType() ResourceType { return shareableType }
+
+// AuthorizeShareInto records each check and answers with the configured refusal.
+func (d *shareableDeclaration) AuthorizeShareInto(
+	_ context.Context, resourceID, targetOUID string,
+) *tidcommon.ServiceError {
+	d.authorized = append(d.authorized, resourceID+"→"+targetOUID)
+	return d.refusal
+}
+
+// shareable registers a shareable type whose resources the root owns.
+func (s *ServiceTestSuite) shareable() *shareableDeclaration {
+	decl := &shareableDeclaration{testDeclaration: testDeclaration{owner: rootOU}}
+	s.svc.RegisterResourceType(decl)
+	return decl
+}
+
+func (s *ServiceTestSuite) TestShareIntoChildOU_TypeThatCannotBeShared() {
+	ctx := context.Background()
+	for _, rt := range []ResourceType{testType, ResourceType("unregistered")} {
+		svcErr := s.svc.ValidateShareIntoChildOU(ctx, rt, testResource, "", childOU)
+		s.Require().NotNil(svcErr, string(rt))
+		s.Equal(ErrorResourceTypeNotShareable.Code, svcErr.Code, string(rt))
+		svcErr = s.svc.ShareIntoChildOU(ctx, rt, testResource, childOU)
+		s.Require().NotNil(svcErr, string(rt))
+		s.Equal(ErrorResourceTypeNotShareable.Code, svcErr.Code, string(rt))
+	}
+}
+
+func (s *ServiceTestSuite) TestValidateShareIntoChildOU_AuthorizesAndWritesNothing() {
+	decl := s.shareable()
+
+	s.Require().Nil(s.svc.ValidateShareIntoChildOU(context.Background(), shareableType, testResource, "", childOU))
+
+	s.Equal([]string{testResource + "→" + childOU}, decl.authorized)
+	policies, svcErr := s.svc.ListPolicies(context.Background(), shareableType, testResource)
+	s.Require().Nil(svcErr)
+	s.Empty(policies)
+}
+
+func (s *ServiceTestSuite) TestValidateShareIntoChildOU_ANewResourceNamesItsOwner() {
+	decl := s.shareable()
+	decl.owner = ownerOU
+
+	s.Require().Nil(s.svc.ValidateShareIntoChildOU(context.Background(), shareableType, "", rootOU, childOU))
+	s.Equal([]string{"→" + childOU}, decl.authorized)
+}
+
+func (s *ServiceTestSuite) TestValidateShareIntoChildOU_AuthorizerRefusal() {
+	decl := s.shareable()
+	decl.refusal = &tidcommon.ErrorUnauthorized
+
+	svcErr := s.svc.ValidateShareIntoChildOU(context.Background(), shareableType, testResource, "", childOU)
+
+	s.Require().NotNil(svcErr)
+	s.Equal(tidcommon.ErrorUnauthorized.Code, svcErr.Code)
+}
+
+func (s *ServiceTestSuite) TestShareIntoChildOU_OnlyIntoADirectChild() {
+	s.shareable()
+	ctx := context.Background()
+
+	svcErr := s.svc.ValidateShareIntoChildOU(ctx, shareableType, testResource, "", grandOU)
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorTargetNotDirectChild.Code, svcErr.Code)
+	svcErr = s.svc.ShareIntoChildOU(ctx, shareableType, testResource, grandOU)
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorTargetNotDirectChild.Code, svcErr.Code)
+
+	policies, listErr := s.svc.ListPolicies(ctx, shareableType, testResource)
+	s.Require().Nil(listErr)
+	s.Empty(policies)
+}
+
+func (s *ServiceTestSuite) TestShareIntoChildOU_CreatesTheOwnersPolicyWithoutAuthorizing() {
+	decl := s.shareable()
+	ctx := context.Background()
+
+	s.Require().Nil(s.svc.ShareIntoChildOU(ctx, shareableType, testResource, childOU))
+
+	s.Empty(decl.authorized, "the write trusts the validation the caller ran earlier")
+	policies, svcErr := s.svc.ListPolicies(ctx, shareableType, testResource)
+	s.Require().Nil(svcErr)
+	s.Require().Len(policies, 1)
+	s.Equal(rootOU, policies[0].InitiatingOUID)
+	s.Equal(&ChildUnits{Mode: ChildUnitsSelected, Units: []ChildUnit{{OUID: childOU, Reach: ReachUnit}}},
+		policies[0].ChildUnits)
+	visible, svcErr := s.svc.IsVisible(ctx, shareableType, testResource, childOU)
+	s.Require().Nil(svcErr)
+	s.True(visible)
+}
+
+func (s *ServiceTestSuite) TestShareIntoChildOU_AddsToTheOwnersPolicy() {
+	s.shareable()
+	ctx := context.Background()
+	existing, svcErr := s.svc.CreatePolicy(ctx, shareableType, testResource, rootOU, PolicyRequest{
+		ChildUnits: &ChildUnitsRequest{Mode: ChildUnitsSelected,
+			Units: []ChildUnitRequest{{OUID: nestedOwnerOU, Reach: ReachUnit}}},
+	})
+	s.Require().Nil(svcErr)
+
+	s.Require().Nil(s.svc.ShareIntoChildOU(ctx, shareableType, testResource, childOU))
+
+	updated, svcErr := s.svc.GetPolicy(ctx, existing.ID)
+	s.Require().Nil(svcErr)
+	s.Equal(existing.Version+1, updated.Version)
+	s.Equal([]ChildUnit{{OUID: nestedOwnerOU, Reach: ReachUnit}, {OUID: childOU, Reach: ReachUnit}},
+		updated.ChildUnits.Units)
+}
+
+func (s *ServiceTestSuite) TestShareIntoChildOU_AlreadyVisibleWritesNothing() {
+	s.shareable()
+	ctx := context.Background()
+	s.Require().Nil(s.svc.ShareIntoChildOU(ctx, shareableType, testResource, childOU))
+	policies, _ := s.svc.ListPolicies(ctx, shareableType, testResource)
+	s.Require().Len(policies, 1)
+
+	s.Require().Nil(s.svc.ShareIntoChildOU(ctx, shareableType, testResource, childOU))
+
+	again, svcErr := s.svc.GetPolicy(ctx, policies[0].ID)
+	s.Require().Nil(svcErr)
+	s.Equal(policies[0].Version, again.Version)
+}
+
+func (s *ServiceTestSuite) TestShareIntoChildOU_WithheldByTheOwnersBlanketPolicy() {
+	s.shareable()
+	ctx := context.Background()
+	_, svcErr := s.svc.CreatePolicy(ctx, shareableType, testResource, rootOU, PolicyRequest{
+		ChildUnits: &ChildUnitsRequest{Mode: ChildUnitsAll, ExcludedOUIDs: []string{childOU}},
+	})
+	s.Require().Nil(svcErr)
+
+	svcErr = s.svc.ShareIntoChildOU(ctx, shareableType, testResource, childOU)
+
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorChildUnitWithheld.Code, svcErr.Code)
+}
+
+// concurrentEdits makes the next n reads of the policy find it edited by another writer since the share read it.
+func (s *ServiceTestSuite) concurrentEdits(policyID string, n int) {
+	edits := 0
+	s.storeMock.EXPECT().GetPolicy(mock.Anything, policyID).RunAndReturn(
+		func(ctx context.Context, id string) (Policy, error) {
+			if edits < n {
+				edits++
+				p := s.store.policies[id]
+				p.Version++
+				s.store.policies[id] = p
+			}
+			return s.store.GetPolicy(ctx, id)
+		})
+	// The suite wires every store method as Maybe; the newest expectation goes first so it is the one matched.
+	calls := s.storeMock.ExpectedCalls
+	s.storeMock.ExpectedCalls = append([]*mock.Call{calls[len(calls)-1]}, calls[:len(calls)-1]...)
+}
+
+func (s *ServiceTestSuite) ownersPolicy() Policy {
+	s.shareable()
+	existing, svcErr := s.svc.CreatePolicy(context.Background(), shareableType, testResource, rootOU, PolicyRequest{
+		ChildUnits: &ChildUnitsRequest{Mode: ChildUnitsSelected,
+			Units: []ChildUnitRequest{{OUID: nestedOwnerOU, Reach: ReachUnit}}},
+	})
+	s.Require().Nil(svcErr)
+	return existing
+}
+
+// An edit of the owner's policy that lands between the share's read and its write is worked out again, once.
+func (s *ServiceTestSuite) TestShareIntoChildOU_RetriesOnceAfterAConcurrentEdit() {
+	existing := s.ownersPolicy()
+	s.concurrentEdits(existing.ID, 1)
+
+	s.Require().Nil(s.svc.ShareIntoChildOU(context.Background(), shareableType, testResource, childOU))
+
+	updated, svcErr := s.svc.GetPolicy(context.Background(), existing.ID)
+	s.Require().Nil(svcErr)
+	s.Equal([]ChildUnit{{OUID: nestedOwnerOU, Reach: ReachUnit}, {OUID: childOU, Reach: ReachUnit}},
+		updated.ChildUnits.Units)
+}
+
+func (s *ServiceTestSuite) TestShareIntoChildOU_ASecondConcurrentEditIsReported() {
+	existing := s.ownersPolicy()
+	s.concurrentEdits(existing.ID, 2)
+
+	svcErr := s.svc.ShareIntoChildOU(context.Background(), shareableType, testResource, childOU)
+
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorVersionMismatch.Code, svcErr.Code)
+	visible, visErr := s.svc.IsVisible(context.Background(), shareableType, testResource, childOU)
+	s.Require().Nil(visErr)
+	s.False(visible)
+}
+
+// A failed or empty answer to who owns the resource stops the share before anything is checked or written.
+func (s *ServiceTestSuite) TestShareIntoChildOU_OwnerLookupFailures() {
+	cases := map[string]struct {
+		ownerErr *tidcommon.ServiceError
+		noOwner  bool
+		want     string
+	}{
+		"lookup fails":  {ownerErr: &tidcommon.InternalServerError, want: tidcommon.InternalServerError.Code},
+		"owner unknown": {noOwner: true, want: ErrorInvalidRequestFormat.Code},
+	}
+	for name, tc := range cases {
+		s.Run(name, func() {
+			s.SetupTest()
+			decl := s.shareable()
+			decl.ownerErr, decl.noOwner = tc.ownerErr, tc.noOwner
+			ctx := context.Background()
+
+			svcErr := s.svc.ValidateShareIntoChildOU(ctx, shareableType, testResource, "", childOU)
+			s.Require().NotNil(svcErr)
+			s.Equal(tc.want, svcErr.Code)
+			svcErr = s.svc.ShareIntoChildOU(ctx, shareableType, testResource, childOU)
+			s.Require().NotNil(svcErr)
+			s.Equal(tc.want, svcErr.Code)
+
+			s.Empty(decl.authorized)
+			policies, listErr := s.svc.ListPolicies(ctx, shareableType, testResource)
+			s.Require().Nil(listErr)
+			s.Empty(policies)
+		})
+	}
+}

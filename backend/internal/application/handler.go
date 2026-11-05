@@ -179,6 +179,7 @@ func toApplicationGetResponse(ctx context.Context, appDTO *providers.Application
 	returnApp := &model.ApplicationGetResponse{
 		ID:          appDTO.ID,
 		OUID:        appDTO.OUID,
+		ProjectID:   appDTO.ProjectID,
 		Name:        appDTO.Name,
 		Description: appDTO.Description,
 		InboundAuthProfileReq: inboundmodel.InboundAuthProfileReq{
@@ -679,6 +680,7 @@ func applicationCompleteResponseFromDTO(
 	response := model.ApplicationCompleteResponse{
 		ID:          dto.ID,
 		OUID:        dto.OUID,
+		ProjectID:   dto.ProjectID,
 		Name:        dto.Name,
 		Description: dto.Description,
 		InboundAuthProfileReq: inboundmodel.InboundAuthProfileReq{

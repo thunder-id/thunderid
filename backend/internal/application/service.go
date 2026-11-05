@@ -378,34 +378,55 @@ func (as *applicationService) GetApplicationList(
 	return as.buildApplicationList(ctx, entities, len(entities), totalResults)
 }
 
-// GetApplicationListByProject lists the applications an organization unit of the project owns, followed
-// by the ones shared into it. Without an organization unit filter it lists the project's root
-// organization unit. A project that does not exist, or an organization unit outside it, has none.
+// GetApplicationListByProject lists the applications of a project, narrowed to those an organization
+// unit owns when the filter names one. A project that does not exist has none.
 func (as *applicationService) GetApplicationListByProject(ctx context.Context, projectID string,
 	filters map[string]interface{}) (*model.ApplicationListResponse, *tidcommon.ServiceError) {
 	ouID, rest, err := filter.SplitOUIDFilter(filters)
 	if err != nil || len(rest) > 0 {
 		return nil, &ErrorInvalidFilter
 	}
-
-	ouID, svcErr := as.resolveProjectOU(ctx, projectID, ouID)
-	if svcErr != nil {
-		if svcErr.Type == tidcommon.ClientErrorType {
-			return as.buildApplicationList(ctx, nil, 0, 0)
-		}
-		return nil, svcErr
+	if projectID == "" {
+		return as.buildApplicationList(ctx, nil, 0, 0)
 	}
-	return as.listApplicationsInOU(ctx, ouID)
+	var ouIDs []string
+	if ouID != "" {
+		ouIDs = []string{ouID}
+	}
+
+	total, err := as.entityService.GetEntityListCountByProject(ctx, providers.EntityCategoryApp, projectID, ouIDs)
+	if err != nil {
+		as.logger.Error(ctx, "Failed to count project application entities",
+			log.String("projectID", projectID), log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+	entities, err := as.entityService.GetEntityListByProject(ctx, providers.EntityCategoryApp, projectID, ouIDs,
+		serverconst.MaxCompositeStoreRecords, 0)
+	if err != nil {
+		as.logger.Error(ctx, "Failed to list project application entities",
+			log.String("projectID", projectID), log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+	return as.buildApplicationList(ctx, entities, len(entities), total)
 }
 
 // resolveProjectOU returns the organization unit of the project that an application belongs to: the
-// project's root organization unit when ouID is empty, or ouID when it is in the project. It returns
+// system organization unit when ouID is empty, or ouID when it belongs to the project. It returns
 // ErrorInvalidProject when no such project exists, ErrorOUNotInProject when the organization unit is
 // outside the project, and ErrorInvalidRequestFormat when the organization unit does not exist.
+//
+// A deployment that serves no projects, such as a Data Plane, cannot check the project. It keeps the
+// project ID as given so that imported configuration retains it, and places the application as above.
 func (as *applicationService) resolveProjectOU(
 	ctx context.Context, projectID, ouID string) (string, *tidcommon.ServiceError) {
-	if projectID == "" || as.projectResolver == nil {
+	if projectID == "" {
 		return "", &ErrorInvalidProject
+	}
+	if as.projectResolver == nil {
+		if ouID == "" {
+			return oupkg.SystemOUID, nil
+		}
+		return ouID, nil
 	}
 	resolved, svcErr := as.projectResolver.ResolveProjectOU(ctx, projectID, ouID)
 	if svcErr == nil {
@@ -687,6 +708,15 @@ func (as *applicationService) updateEntityDataForApplicationUpdate(ctx context.C
 			return svcErr
 		}
 		as.logger.Error(ctx, "Failed to update entity system attributes",
+			log.String("appID", appID), log.Error(entErr))
+		return &tidcommon.InternalServerError
+	}
+
+	if entErr := as.entityService.UpdateOwnership(ctx, appID, app.OUID, app.ProjectID); entErr != nil {
+		if svcErr := mapEntityError(entErr); svcErr != nil {
+			return svcErr
+		}
+		as.logger.Error(ctx, "Failed to update entity organization unit and project",
 			log.String("appID", appID), log.Error(entErr))
 		return &tidcommon.InternalServerError
 	}
@@ -1417,6 +1447,7 @@ func toProcessedDTO(
 	// Extract identity fields from entity system attributes.
 	if e != nil {
 		dto.OUID = e.OUID
+		dto.ProjectID = e.ProjectID
 		var sysAttrs map[string]interface{}
 		if len(e.SystemAttributes) > 0 {
 			_ = json.Unmarshal(e.SystemAttributes, &sysAttrs)
@@ -1567,6 +1598,7 @@ func buildAppEntity(appID string, app *model.ApplicationDTO, clientID string, pl
 		Type:             "application",
 		State:            providers.EntityStateActive,
 		OUID:             app.OUID,
+		ProjectID:        app.ProjectID,
 		SystemAttributes: sysAttrsJSON,
 	}
 	return e, sysCredsJSON, nil
@@ -1647,8 +1679,17 @@ func (as *applicationService) validateApplicationForUpdate(
 		}
 	}
 
+	requestedProjectID := app.ProjectID
 	if svcErr := as.validateApplicationFields(ctx, app); svcErr != nil {
 		return nil, nil, svcErr
+	}
+	// An update that names no project keeps the application in its project, so the organization unit
+	// must still belong to it.
+	if requestedProjectID == "" && existingApp.ProjectID != "" {
+		app.ProjectID = existingApp.ProjectID
+		if _, svcErr := as.resolveProjectOU(ctx, app.ProjectID, app.OUID); svcErr != nil {
+			return nil, nil, svcErr
+		}
 	}
 
 	// The application type is immutable. Reject a request that attempts to change it; inherit the
@@ -1658,8 +1699,9 @@ func (as *applicationService) validateApplicationForUpdate(
 	}
 	app.Type = existingApp.Type
 
-	// A shared application stays in its organization unit: its policies were issued against that unit.
-	if app.OUID != existingApp.OUID {
+	// A shared application stays in its organization unit and project: its policies were issued
+	// against that unit.
+	if app.OUID != existingApp.OUID || app.ProjectID != existingApp.ProjectID {
 		policies, svcErr := as.sharingService.ListPolicies(ctx, ApplicationSharingType, appID)
 		if svcErr != nil {
 			return nil, nil, translateSharingError(svcErr)
@@ -1692,7 +1734,7 @@ func (as *applicationService) validateApplicationFields(
 		}
 		app.OUID = ou.ID
 	}
-	// A project places the application in its root organization unit, or checks that the one named
+	// A project places the application in the system organization unit, or checks that the one named
 	// belongs to it.
 	if app.ProjectID != "" {
 		ouID, svcErr := as.resolveProjectOU(ctx, app.ProjectID, app.OUID)
@@ -2425,6 +2467,7 @@ func buildApplicationResponse(dto *model.ApplicationProcessedDTO) *providers.App
 	application := &providers.Application{
 		ID:          dto.ID,
 		OUID:        dto.OUID,
+		ProjectID:   dto.ProjectID,
 		Name:        dto.Name,
 		Description: dto.Description,
 		Status:      dto.Status,
@@ -2518,6 +2561,7 @@ func buildBasicApplicationResponse(
 	}
 	// Enrich from entity system attributes.
 	if e != nil {
+		resp.ProjectID = e.ProjectID
 		var sysAttrs map[string]interface{}
 		if len(e.SystemAttributes) > 0 {
 			_ = json.Unmarshal(e.SystemAttributes, &sysAttrs)
@@ -2544,6 +2588,7 @@ func buildBaseApplicationProcessedDTO(appID string, app *model.ApplicationDTO,
 	return &model.ApplicationProcessedDTO{
 		ID:          appID,
 		OUID:        app.OUID,
+		ProjectID:   app.ProjectID,
 		Name:        app.Name,
 		Description: app.Description,
 		InboundAuthProfile: providers.InboundAuthProfile{
@@ -2634,6 +2679,7 @@ func buildReturnApplicationDTO(
 	returnApp := &model.ApplicationDTO{
 		ID:          appID,
 		OUID:        app.OUID,
+		ProjectID:   app.ProjectID,
 		Name:        app.Name,
 		Description: app.Description,
 		InboundAuthProfile: providers.InboundAuthProfile{

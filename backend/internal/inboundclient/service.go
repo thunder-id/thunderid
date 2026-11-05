@@ -73,6 +73,10 @@ type InboundClientServiceInterface interface {
 	IsClientAccessibleFromOU(
 		ctx context.Context, client *providers.OAuthClient, ouID string,
 	) (bool, *tidcommon.ServiceError)
+	// IsClientAccessibleFromOUByEntityID is IsClientAccessibleFromOU for any client, by its entity id.
+	IsClientAccessibleFromOUByEntityID(ctx context.Context, entityID, ouID string) (bool, *tidcommon.ServiceError)
+	// IsClientShared reports whether any sharing policy exists for the client of the given entity.
+	IsClientShared(ctx context.Context, entityID string) (bool, *tidcommon.ServiceError)
 	// GetOAuthClientByEntityID returns the runtime OAuth client of the entity, or (nil, nil) when the
 	// entity does not exist or has no OAuth client registered.
 	GetOAuthClientByEntityID(ctx context.Context, entityID string) (*providers.OAuthClient, error)
@@ -662,9 +666,29 @@ func (s *inboundClientService) IsClientAccessibleFromOU(
 	if accessingOUID == "" || client == nil {
 		return true, nil
 	}
+	return s.isAccessibleFromOU(ctx, client.ID, client.OUID, client.EntityCategory, accessingOUID)
+}
+
+// IsClientAccessibleFromOUByEntityID reports whether a client may act for the given organization unit.
+func (s *inboundClientService) IsClientAccessibleFromOUByEntityID(
+	ctx context.Context, entityID, accessingOUID string,
+) (bool, *tidcommon.ServiceError) {
+	if accessingOUID == "" {
+		return true, nil
+	}
+	e, svcErr := s.getClientEntity(ctx, entityID)
+	if svcErr != nil || e == nil {
+		return false, svcErr
+	}
+	return s.isAccessibleFromOU(ctx, entityID, e.OUID, e.Category, accessingOUID)
+}
+
+// isAccessibleFromOU reports whether a client owned by ownerOUID may act for accessingOUID.
+func (s *inboundClientService) isAccessibleFromOU(ctx context.Context, entityID, ownerOUID string,
+	category providers.EntityCategory, accessingOUID string) (bool, *tidcommon.ServiceError) {
 	// A client's own organization unit needs no policy. The framework would answer the same, but
 	// only after resolving ownership, and this is the common case on the token path.
-	if client.OUID == accessingOUID {
+	if ownerOUID == accessingOUID {
 		return true, nil
 	}
 
@@ -673,17 +697,65 @@ func (s *inboundClientService) IsClientAccessibleFromOU(
 	if s.sharedTypes == nil || s.sharingService == nil {
 		return false, nil
 	}
-	rt, shareable := s.sharedTypes.GetSharedResourceType(client.EntityCategory)
+	rt, shareable := s.sharedTypes.GetSharedResourceType(category)
 	if !shareable {
 		return false, nil
 	}
-	accessible, svcErr := s.sharingService.IsVisible(ctx, rt, client.ID, accessingOUID)
+	accessible, svcErr := s.sharingService.IsVisible(ctx, rt, entityID, accessingOUID)
 	if svcErr != nil {
-		s.logger.Error(ctx, "Failed to resolve client access for an organization unit",
-			log.String("clientID", client.ID), log.Any("error", svcErr))
+		// A client error, such as an organization unit that does not exist, is caller input, not a failure.
+		if svcErr.Type == tidcommon.ClientErrorType {
+			s.logger.Debug(ctx, "Client access for an organization unit was not resolved",
+				log.String("clientID", entityID), log.String("errorCode", svcErr.Code))
+		} else {
+			s.logger.Error(ctx, "Failed to resolve client access for an organization unit",
+				log.String("clientID", entityID), log.Any("error", svcErr))
+		}
 		return false, svcErr
 	}
 	return accessible, nil
+}
+
+// IsClientShared reports whether any sharing policy exists for the client of the given entity.
+func (s *inboundClientService) IsClientShared(ctx context.Context, entityID string) (bool, *tidcommon.ServiceError) {
+	if s.sharedTypes == nil || s.sharingService == nil {
+		return false, nil
+	}
+	e, svcErr := s.getClientEntity(ctx, entityID)
+	if svcErr != nil || e == nil {
+		return false, svcErr
+	}
+	rt, shareable := s.sharedTypes.GetSharedResourceType(e.Category)
+	if !shareable {
+		return false, nil
+	}
+	policies, svcErr := s.sharingService.ListPolicies(ctx, rt, entityID)
+	if svcErr != nil {
+		s.logger.Error(ctx, "Failed to list the sharing policies of a client",
+			log.String("clientID", entityID), log.Any("error", svcErr))
+		return false, svcErr
+	}
+	return len(policies) > 0, nil
+}
+
+// getClientEntity returns the entity a client belongs to, or nil when it does not exist.
+func (s *inboundClientService) getClientEntity(
+	ctx context.Context, entityID string,
+) (*providers.Entity, *tidcommon.ServiceError) {
+	if s.entityProvider == nil {
+		s.logger.Error(ctx, "Entity provider not configured")
+		return nil, &tidcommon.InternalServerError
+	}
+	e, epErr := s.entityProvider.GetEntityProfile(ctx, entityID)
+	if epErr != nil {
+		if epErr.Code == entityprovider.ErrorCodeEntityNotFound {
+			return nil, nil
+		}
+		s.logger.Error(ctx, "Failed to load the entity of a client",
+			log.String("clientID", entityID), log.Error(epErr))
+		return nil, &tidcommon.InternalServerError
+	}
+	return e, nil
 }
 
 // BuildOAuthClient assembles an OAuthClient from a stored OAuthProfile and entity context.

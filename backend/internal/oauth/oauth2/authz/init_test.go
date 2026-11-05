@@ -4,20 +4,25 @@
 package authz
 
 import (
+	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"testing"
 
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/actorprovider"
 	flowsession "github.com/thunder-id/thunderid/internal/flow/session"
+	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/jti"
 	"github.com/thunder-id/thunderid/internal/runtimestore/inmemory"
 	"github.com/thunder-id/thunderid/internal/system/config"
+	syscontext "github.com/thunder-id/thunderid/internal/system/context"
 	"github.com/thunder-id/thunderid/internal/system/transaction"
 	"github.com/thunder-id/thunderid/tests/mocks/entityprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/flowexecmock"
@@ -159,4 +164,79 @@ func (suite *InitTestSuite) TestRegisterRoutes_CORSConfiguration() {
 			}
 		})
 	}
+}
+
+func (suite *InitTestSuite) TestRegisterRoutes_OUQualifiedRouteFollowsTheSwitch() {
+	for _, enabled := range []bool{true, false} {
+		mux := http.NewServeMux()
+		registerRoutes(mux, NewAuthorizeHandlerInterfaceMock(suite.T()), enabled)
+
+		_, bare := mux.Handler(httptest.NewRequest(http.MethodGet, "/oauth2/authorize", nil))
+		_, qualified := mux.Handler(httptest.NewRequest(http.MethodGet, "/ou/customer-a/oauth2/authorize", nil))
+
+		suite.Equal("GET /oauth2/authorize", bare, "enabled=%t", enabled)
+		if enabled {
+			suite.Equal("GET /ou/{ouId}/oauth2/authorize", qualified)
+		} else {
+			suite.Empty(qualified, "no pattern matches the organization-unit-qualified path")
+		}
+	}
+}
+
+// getQualified sends GET /ou/{ouSegment}/oauth2/authorize through the registered route.
+func (suite *InitTestSuite) getQualified(handler AuthorizeHandlerInterface, ouSegment string) (
+	*httptest.ResponseRecorder, map[string]string) {
+	mux := http.NewServeMux()
+	registerRoutes(mux, handler, true)
+
+	recorder := httptest.NewRecorder()
+	mux.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet,
+		"/ou/"+ouSegment+"/oauth2/authorize?client_id=test-client-id", nil))
+
+	var body map[string]string
+	_ = json.Unmarshal(recorder.Body.Bytes(), &body)
+	return recorder, body
+}
+
+// The path's organization unit reaches the handler sanitized and without a lookup, so one that does not
+// exist is left to the flow start to refuse like any other.
+func (suite *InitTestSuite) TestOUQualifiedRoute_PutsTheOrganizationUnitOnTheContext() {
+	cases := []struct {
+		name      string
+		ouSegment string
+		wantOUID  string
+	}{
+		{"an organization unit", "customer-a", "customer-a"},
+		{"one padded with spaces", "%20customer-a%20", "customer-a"},
+		{"one that does not exist", "no-such-ou", "no-such-ou"},
+	}
+
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			handler := NewAuthorizeHandlerInterfaceMock(suite.T())
+			var accessingOUID string
+			handler.EXPECT().HandleAuthorizeGetRequest(mock.Anything, mock.Anything).
+				Run(func(_ http.ResponseWriter, r *http.Request) {
+					accessingOUID = syscontext.GetAccessingOUID(r.Context())
+				}).Once()
+
+			suite.getQualified(handler, tc.ouSegment)
+
+			suite.Equal(tc.wantOUID, accessingOUID)
+		})
+	}
+}
+
+// A path naming no usable organization unit never reaches the handler, so it cannot fall back to an
+// unbounded sign-in.
+func (suite *InitTestSuite) TestOUQualifiedRoute_RefusesABlankOrganizationUnit() {
+	for _, ouSegment := range []string{"%20", "%09%07"} {
+		recorder, body := suite.getQualified(NewAuthorizeHandlerInterfaceMock(suite.T()), ouSegment)
+
+		suite.Equal(http.StatusBadRequest, recorder.Code, ouSegment)
+		suite.Equal(oauth2const.ErrorInvalidRequest, body["error"], ouSegment)
+	}
+
+	recorder, _ := suite.getQualified(NewAuthorizeHandlerInterfaceMock(suite.T()), "")
+	suite.NotEqual(http.StatusOK, recorder.Code, "an empty segment matches no authorize route")
 }

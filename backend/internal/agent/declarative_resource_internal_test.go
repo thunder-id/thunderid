@@ -159,6 +159,26 @@ attributes:
 	assert.Empty(s.T(), e.SystemAttributes)
 }
 
+// A declared agent keeps its project, which a Data Plane stores without checking.
+func (s *MakeAgentEntityParserTestSuite) TestMakeAgentEntityParser_KeepsProject() {
+	yamlData := []byte(`
+id: project-agent
+ouId: ou-1
+projectId: project-1
+type: service-agent
+`)
+	mockSvc := agentmock.NewAgentServiceInterfaceMock(s.T())
+	mockSvc.EXPECT().ValidateAgent(mock.Anything,
+		mock.MatchedBy(func(a *providers.Agent) bool { return a.ProjectID == "project-1" }), "project-agent").
+		Return("", "", inboundmodel.InboundClient{}, nil).Once()
+
+	e, _, _, err := makeAgentEntityParser(mockSvc)(yamlData)
+
+	s.Require().NoError(err)
+	assert.Equal(s.T(), "project-1", e.ProjectID)
+	assert.Equal(s.T(), "ou-1", e.OUID)
+}
+
 func (s *MakeAgentEntityParserTestSuite) TestMakeAgentEntityParser_WithOAuthPublicClient() {
 	yamlData := []byte(`
 id: public-agent

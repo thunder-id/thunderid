@@ -276,16 +276,16 @@ func (_c *sessionStoreMock_DeleteBySessionID_Call) RunAndReturn(run func(ctx con
 }
 
 // DeleteParticipant provides a mock function for the type sessionStoreMock
-func (_mock *sessionStoreMock) DeleteParticipant(ctx context.Context, sessionID string, appID string) error {
-	ret := _mock.Called(ctx, sessionID, appID)
+func (_mock *sessionStoreMock) DeleteParticipant(ctx context.Context, sessionID string, appID string, ouID string) error {
+	ret := _mock.Called(ctx, sessionID, appID, ouID)
 
 	if len(ret) == 0 {
 		panic("no return value specified for DeleteParticipant")
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) error); ok {
-		r0 = returnFunc(ctx, sessionID, appID)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string) error); ok {
+		r0 = returnFunc(ctx, sessionID, appID, ouID)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -301,11 +301,12 @@ type sessionStoreMock_DeleteParticipant_Call struct {
 //   - ctx context.Context
 //   - sessionID string
 //   - appID string
-func (_e *sessionStoreMock_Expecter) DeleteParticipant(ctx any, sessionID any, appID any) *sessionStoreMock_DeleteParticipant_Call {
-	return &sessionStoreMock_DeleteParticipant_Call{Call: _e.mock.On("DeleteParticipant", ctx, sessionID, appID)}
+//   - ouID string
+func (_e *sessionStoreMock_Expecter) DeleteParticipant(ctx any, sessionID any, appID any, ouID any) *sessionStoreMock_DeleteParticipant_Call {
+	return &sessionStoreMock_DeleteParticipant_Call{Call: _e.mock.On("DeleteParticipant", ctx, sessionID, appID, ouID)}
 }
 
-func (_c *sessionStoreMock_DeleteParticipant_Call) Run(run func(ctx context.Context, sessionID string, appID string)) *sessionStoreMock_DeleteParticipant_Call {
+func (_c *sessionStoreMock_DeleteParticipant_Call) Run(run func(ctx context.Context, sessionID string, appID string, ouID string)) *sessionStoreMock_DeleteParticipant_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -319,10 +320,15 @@ func (_c *sessionStoreMock_DeleteParticipant_Call) Run(run func(ctx context.Cont
 		if args[2] != nil {
 			arg2 = args[2].(string)
 		}
+		var arg3 string
+		if args[3] != nil {
+			arg3 = args[3].(string)
+		}
 		run(
 			arg0,
 			arg1,
 			arg2,
+			arg3,
 		)
 	})
 	return _c
@@ -333,7 +339,7 @@ func (_c *sessionStoreMock_DeleteParticipant_Call) Return(err error) *sessionSto
 	return _c
 }
 
-func (_c *sessionStoreMock_DeleteParticipant_Call) RunAndReturn(run func(ctx context.Context, sessionID string, appID string) error) *sessionStoreMock_DeleteParticipant_Call {
+func (_c *sessionStoreMock_DeleteParticipant_Call) RunAndReturn(run func(ctx context.Context, sessionID string, appID string, ouID string) error) *sessionStoreMock_DeleteParticipant_Call {
 	_c.Call.Return(run)
 	return _c
 }

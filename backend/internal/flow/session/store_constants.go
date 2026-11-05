@@ -91,16 +91,17 @@ var (
 		Query: `DELETE FROM "SSO_SESSION_CONTEXT" WHERE SESSION_ID = $1 AND DEPLOYMENT_ID = $2`,
 	}
 
-	// queryUpsertParticipant records an application as a participant of a session, refreshing
-	// LAST_ACTIVE_AT and the current-grant TFID (but preserving FIRST_JOINED_AT) when the application
-	// has already joined. TFID moves to the latest grant so logout revokes the most recent family.
+	// queryUpsertParticipant records an application as a participant of a session under an organization
+	// unit, refreshing LAST_ACTIVE_AT and the current-grant TFID (but preserving FIRST_JOINED_AT) when the
+	// application has already joined under that unit. TFID moves to the latest grant so logout revokes the
+	// most recent family; another unit is another row with its own family.
 	// The ON CONFLICT ... DO UPDATE form is valid in both PostgreSQL and SQLite.
 	queryUpsertParticipant = model.DBQuery{
 		ID: "SEQ-SESS-09",
 		Query: `INSERT INTO "SESSION_PARTICIPANT" ` +
-			`(SESSION_ID, DEPLOYMENT_ID, APP_ID, FIRST_JOINED_AT, LAST_ACTIVE_AT, TFID) ` +
-			`VALUES ($1, $2, $3, $4, $5, $6) ` +
-			`ON CONFLICT (SESSION_ID, DEPLOYMENT_ID, APP_ID) DO UPDATE SET ` +
+			`(SESSION_ID, DEPLOYMENT_ID, APP_ID, OU_ID, FIRST_JOINED_AT, LAST_ACTIVE_AT, TFID) ` +
+			`VALUES ($1, $2, $3, $4, $5, $6, $7) ` +
+			`ON CONFLICT (SESSION_ID, DEPLOYMENT_ID, APP_ID, OU_ID) DO UPDATE SET ` +
 			`LAST_ACTIVE_AT = excluded.LAST_ACTIVE_AT, TFID = excluded.TFID`,
 	}
 
@@ -108,8 +109,8 @@ var (
 	// first.
 	queryListParticipantsBySessionID = model.DBQuery{
 		ID: "SEQ-SESS-10",
-		Query: `SELECT SESSION_ID, APP_ID, FIRST_JOINED_AT, LAST_ACTIVE_AT, TFID FROM "SESSION_PARTICIPANT" ` +
-			`WHERE SESSION_ID = $1 AND DEPLOYMENT_ID = $2 ORDER BY FIRST_JOINED_AT`,
+		Query: `SELECT SESSION_ID, APP_ID, OU_ID, FIRST_JOINED_AT, LAST_ACTIVE_AT, TFID ` +
+			`FROM "SESSION_PARTICIPANT" WHERE SESSION_ID = $1 AND DEPLOYMENT_ID = $2 ORDER BY FIRST_JOINED_AT`,
 	}
 
 	// queryDeleteParticipantsBySessionID removes all participants of a session.
@@ -136,16 +137,16 @@ var (
 	// Backed by idx_session_participant_app, since the table's primary key leads with SESSION_ID.
 	queryListParticipantsByAppID = model.DBQuery{
 		ID: "SEQ-SESS-14",
-		Query: `SELECT SESSION_ID, APP_ID, FIRST_JOINED_AT, LAST_ACTIVE_AT, TFID FROM "SESSION_PARTICIPANT" ` +
-			`WHERE APP_ID = $1 AND DEPLOYMENT_ID = $2 ORDER BY FIRST_JOINED_AT`,
+		Query: `SELECT SESSION_ID, APP_ID, OU_ID, FIRST_JOINED_AT, LAST_ACTIVE_AT, TFID ` +
+			`FROM "SESSION_PARTICIPANT" WHERE APP_ID = $1 AND DEPLOYMENT_ID = $2 ORDER BY FIRST_JOINED_AT`,
 	}
 
-	// queryDeleteParticipant removes one application's participation in one session, leaving the
-	// session's other participants intact.
+	// queryDeleteParticipant removes one application's participation in one session under one
+	// organization unit, leaving the session's other participants intact.
 	queryDeleteParticipant = model.DBQuery{
 		ID: "SEQ-SESS-15",
 		Query: `DELETE FROM "SESSION_PARTICIPANT" ` +
-			`WHERE SESSION_ID = $1 AND APP_ID = $2 AND DEPLOYMENT_ID = $3`,
+			`WHERE SESSION_ID = $1 AND APP_ID = $2 AND OU_ID = $3 AND DEPLOYMENT_ID = $4`,
 	}
 
 	// querySlideIdleDeadline refreshes a session's last-active timestamp and idle deadline. It matches
@@ -174,7 +175,8 @@ func buildListParticipantsBySessionIDsQuery(n int) model.DBQuery {
 	}
 	return model.DBQuery{
 		ID: "SEQ-SESS-17",
-		Query: `SELECT SESSION_ID, APP_ID, FIRST_JOINED_AT, LAST_ACTIVE_AT, TFID FROM "SESSION_PARTICIPANT" ` +
+		Query: `SELECT SESSION_ID, APP_ID, OU_ID, FIRST_JOINED_AT, LAST_ACTIVE_AT, TFID ` +
+			`FROM "SESSION_PARTICIPANT" ` +
 			`WHERE SESSION_ID IN (` + strings.Join(placeholders, ", ") + `) AND DEPLOYMENT_ID = $` +
 			fmt.Sprint(n+1) + ` ORDER BY SESSION_ID, FIRST_JOINED_AT`,
 	}

@@ -20,6 +20,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/attributecache"
 	"github.com/thunder-id/thunderid/internal/authn/assert"
 	authncm "github.com/thunder-id/thunderid/internal/authn/common"
+	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	entitytypemodel "github.com/thunder-id/thunderid/internal/entitytype/model"
@@ -116,6 +117,9 @@ func (a *authAssertExecutor) Execute(ctx *providers.NodeContext) (*providers.Exe
 		if fault == nil && svcErr == nil {
 			svcErr, fault = a.accessGuard.refuseSignInIfHeld(ctx.Context, entityRef.EntityID, logger)
 		}
+		if fault == nil && svcErr == nil {
+			svcErr, fault = a.refuseOutsideSignInBoundary(ctx, logger)
+		}
 		if fault != nil {
 			return nil, fault
 		}
@@ -167,6 +171,30 @@ func (a *authAssertExecutor) resolveEntityReference(ctx *providers.NodeContext,
 		return nil, nil, errors.New("entity reference resolved to nothing")
 	}
 	return entityRef, nil, nil
+}
+
+// refuseOutsideSignInBoundary returns the refusal for a bounded sign-in that decided no organization unit, or one
+// the OU provider does not admit it to. A failed check is returned as a fault.
+func (a *authAssertExecutor) refuseOutsideSignInBoundary(ctx *providers.NodeContext,
+	logger *log.Logger) (*tidcommon.ServiceError, error) {
+	if _, bounded := authnprovidercm.SignInBoundaryFrom(ctx.Context); !bounded {
+		return nil, nil
+	}
+	ouID := ctx.RuntimeData[common.RuntimeKeyOUID]
+	if ouID == "" {
+		logger.Debug(ctx.Context, "Refused a bounded sign-in that decided no organization unit")
+		return &ErrOrganizationNotResolved, nil
+	}
+	eligible, svcErr := a.ouService.IsEligibleOU(ctx.Context, ouID)
+	if svcErr != nil {
+		return nil, fmt.Errorf("failed to check whether the sign-in may land in its organization unit: %s",
+			svcErr.Code)
+	}
+	if !eligible {
+		logger.Debug(ctx.Context, "Refused a bounded sign-in outside its organization unit boundary")
+		return &ErrNoAccessToApplication, nil
+	}
+	return nil, nil
 }
 
 // checkAssurance verifies that the assurance accumulated in this execution satisfies the
@@ -716,6 +744,9 @@ func (a *authAssertExecutor) appendComputedAttributes(
 	ouAttributesConfigured := slices.Contains(requestedAttributes, oauth2const.ClaimOUID) ||
 		slices.Contains(requestedAttributes, oauth2const.ClaimOUName) ||
 		slices.Contains(requestedAttributes, oauth2const.ClaimOUHandle)
+	if boundary, bounded := authnprovidercm.SignInBoundaryFrom(ctx.Context); bounded && boundary.OUID != "" {
+		ouID = boundary.OUID
+	}
 	if ouAttributesConfigured && ouID != "" {
 		if err := a.appendOUDetailsToClaims(
 			ctx.Context, ouID, attributes, requestedAttributes); err != nil {

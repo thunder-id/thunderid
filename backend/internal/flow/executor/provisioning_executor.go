@@ -5,6 +5,7 @@ package executor
 
 import (
 	"cmp"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -22,6 +23,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/group"
 	"github.com/thunder-id/thunderid/internal/role"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	systemutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
 
@@ -76,6 +78,7 @@ func newProvisioningExecutor(
 				providers.FlowTypeRegistration,
 				providers.FlowTypeUserOnboarding,
 				providers.FlowTypeAdministration,
+				providers.FlowTypeInvitation,
 			},
 			SupportedProperties: []providers.ExecutorSupportedProperties{
 				{Property: propertyKeyDelegated},
@@ -87,6 +90,7 @@ func newProvisioningExecutor(
 				{Property: propertyKeySeedGroupsFromMapping},
 				{Property: propertyKeySeedRolesFromMapping},
 				{Property: common.NodePropertyAllowCrossOUProvisioning},
+				{Property: propertyKeyProvisioningOU},
 			},
 		})
 
@@ -215,6 +219,9 @@ func (p *provisioningExecutor) Execute(ctx *providers.NodeContext) (*providers.E
 		execResp.Status = providers.ExecFailure
 		execResp.Error = svcErr
 		return execResp, nil
+	}
+	if category == entitytype.TypeCategoryUser {
+		execResp.RuntimeData[userAttributeUserID] = entityID
 	}
 
 	return p.completeProvisioning(ctx, category, entityID, execResp, logger), nil
@@ -376,7 +383,10 @@ func (p *provisioningExecutor) resolveExistingEntity(ctx *providers.NodeContext,
 		return true, nil
 	}
 
-	entityID, err := p.IdentifyEntity(ctx.Context, identifyingAttrs, execResp, category)
+	// The existence lookup is deployment-wide: a user outside a sign-in boundary must still be found,
+	// or provisioning would attempt a duplicate create.
+	identifyCtx := security.WithRuntimeContext(context.Background())
+	entityID, err := p.IdentifyEntity(identifyCtx, identifyingAttrs, execResp, category)
 	if err != nil {
 		logger.Error(ctx.Context, "Failed to identify the entity", log.Error(err))
 		execResp.Status = providers.ExecFailure
@@ -587,7 +597,9 @@ func (p *provisioningExecutor) resolveAmbiguousEntityForProvisioning(ctx *provid
 	category entitytype.TypeCategory, identifyingAttrs map[string]interface{}) (*string, error) {
 	logger := p.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 
-	matches, searchErr := p.entityProvider.SearchEntities(ctx.Context, identifyingAttrs)
+	// Deployment-wide like the existence lookup: the holders may all be outside a sign-in boundary.
+	matches, searchErr := p.entityProvider.SearchEntities(security.WithRuntimeContext(context.Background()),
+		identifyingAttrs)
 	if searchErr != nil {
 		return nil, fmt.Errorf("failed to search for matching entities: code=%s, description=%s",
 			searchErr.Code, searchErr.Description)
@@ -1128,8 +1140,19 @@ func (p *provisioningExecutor) handleCreateEntityError(
 // getTargetEntityRef retrieves the target entity reference (entity type and OU ID) for provisioning.
 func (p *provisioningExecutor) getTargetEntityRef(ctx *providers.NodeContext,
 	category entitytype.TypeCategory) (*entityRef, error) {
-	ouID := p.getOUID(ctx)
+	ouID, err := p.getOUID(ctx)
+	if err != nil {
+		return nil, err
+	}
 	entityType := p.getEntityType(ctx)
+	placement, _ := ctx.NodeProperties[propertyKeyProvisioningOU].(string)
+	inUserTypeOU := provisioningOU(placement) == provisioningOUUserType
+	// Without a type resolver's record, as in a sign-in flow, the user type's unit is the named type's own.
+	if inUserTypeOU && ouID == "" && entityType != "" {
+		if ouID, err = p.entityTypeOUID(ctx, category, entityType); err != nil {
+			return nil, err
+		}
+	}
 
 	if ouID == "" || entityType == "" {
 		defaultEntityRef, err := p.getDefaultEntityRef(ctx, category)
@@ -1146,25 +1169,53 @@ func (p *provisioningExecutor) getTargetEntityRef(ctx *providers.NodeContext,
 		}
 	}
 
+	if inUserTypeOU && ouID == "" {
+		return nil, errors.New("the user type's organization unit is not resolved")
+	}
+
 	return &entityRef{
 		entityType: entityType,
 		ouID:       ouID,
 	}, nil
 }
 
+// entityTypeOUID returns the organization unit that owns the named entity type.
+func (p *provisioningExecutor) entityTypeOUID(ctx *providers.NodeContext, category entitytype.TypeCategory,
+	handle string) (string, error) {
+	if p.entityTypeService == nil {
+		return "", errors.New("entity type service is not configured")
+	}
+	entityType, svcErr := p.entityTypeService.GetEntityTypeByHandle(ctx.Context, category, handle)
+	if svcErr != nil {
+		return "", fmt.Errorf("failed to retrieve entity type %q in category %q: %s",
+			handle, category, svcErr.Error.DefaultValue)
+	}
+	return entityType.OUID, nil
+}
+
 // getOUID retrieves the organization unit ID from runtime data.
 // Priority: RuntimeData["ouId"] (set by OUResolverExecutor) > RuntimeData["defaultOUID"] (set by UserTypeResolver).
-func (p *provisioningExecutor) getOUID(ctx *providers.NodeContext) string {
+// With the provisioningOU property set to userType, only RuntimeData["defaultOUID"] is used; getTargetEntityRef
+// falls back to the provisioned type's own unit when it is not set.
+func (p *provisioningExecutor) getOUID(ctx *providers.NodeContext) (string, error) {
+	placement, _ := ctx.NodeProperties[propertyKeyProvisioningOU].(string)
+	switch provisioningOU(placement) {
+	case "", provisioningOUResolved:
+	case provisioningOUUserType:
+		return ctx.RuntimeData[defaultOUIDKey], nil
+	default:
+		return "", fmt.Errorf("unsupported %s value %q", propertyKeyProvisioningOU, placement)
+	}
 	// Check for ouId in runtime data (e.g. from OUResolverExecutor).
 	if val, ok := ctx.RuntimeData[ouIDKey]; ok && val != "" {
-		return val
+		return val, nil
 	}
 	// Fallback: check for defaultOUID in runtime data (set by UserTypeResolver).
 	if val, ok := ctx.RuntimeData[defaultOUIDKey]; ok && val != "" {
-		return val
+		return val, nil
 	}
 
-	return ""
+	return "", nil
 }
 
 // getEntityType retrieves the entity type to provision into from runtime data, which a type

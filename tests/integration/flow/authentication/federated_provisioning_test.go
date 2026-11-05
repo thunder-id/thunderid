@@ -249,7 +249,9 @@ func (ts *FederatedProvisioningTestSuite) SetupSuite() {
 		"fedprov_noselfreg_client", []string{ts.noSelfRegName})
 	ts.ambiguousAppID = ts.appForFlow("fedprov_flow_ambiguous", nil, "", "FedProv Ambiguous App",
 		"fedprov_ambiguous_client", []string{ts.primaryTypeName, ts.altTypeName})
-	ts.singleAppID = ts.appForFlow("fedprov_flow_single", nil, "", "FedProv Single App",
+	// A sign-in to an unshared application lands in the application's OU, so the application that
+	// provisions into the only self-registration type's OU lives there.
+	ts.singleAppID = ts.appForFlowIn(ts.ouAID, "fedprov_flow_single", nil, "", "FedProv Single App",
 		"fedprov_single_client", []string{ts.primaryTypeName, ts.noSelfRegName})
 	ts.promptAllAppID = ts.appForFlow("fedprov_flow_promptall", map[string]interface{}{"resolveFrom": "promptAll"}, "",
 		"FedProv PromptAll App", "fedprov_promptall_client", []string{ts.primaryTypeName, ts.noSelfRegName})
@@ -264,6 +266,13 @@ func (ts *FederatedProvisioningTestSuite) SetupSuite() {
 	ts.directChildrenHandleApp = ts.appForFlow("fedprov_flow_direct_handle",
 		map[string]interface{}{"resolveFrom": "prompt", "parentOuId": ts.ouAID, "directChildrenOnly": true},
 		"ouHandle", "FedProv Direct Children By Handle App", "fedprov_direct_handle_client", types)
+
+	// The OU resolver decides the OU only when the application is shared: an unshared application's
+	// sign-in is fixed to the application's own OU, and the resolver then has nothing to choose.
+	for _, appID := range []string{ts.promptAllAppID, ts.promptParentAppID, ts.directChildrenIDAppID,
+		ts.directChildrenHandleApp} {
+		ts.Require().NoError(testutils.ShareApplicationWithChildUnits(appID), "Failed to share app %s", appID)
+	}
 }
 
 // createUserTypeWithSelfRegDisabled posts a user type with allowSelfRegistration explicitly false.
@@ -312,13 +321,20 @@ func (ts *FederatedProvisioningTestSuite) createUserTypeWithSelfRegDisabled(
 func (ts *FederatedProvisioningTestSuite) appForFlow(
 	flowHandle string, ouProperties map[string]interface{}, ouInput, appName, clientID string,
 	allowedTypes []string) string {
+	return ts.appForFlowIn(ts.parentOUID, flowHandle, ouProperties, ouInput, appName, clientID, allowedTypes)
+}
+
+// appForFlowIn is appForFlow with the app owned by ouID.
+func (ts *FederatedProvisioningTestSuite) appForFlowIn(ouID,
+	flowHandle string, ouProperties map[string]interface{}, ouInput, appName, clientID string,
+	allowedTypes []string) string {
 	flowID, err := testutils.CreateFlow(
 		buildFederatedProvisioningFlow(flowHandle, ts.idpID, ouProperties, ouInput))
 	ts.Require().NoError(err, "Failed to create flow %s", flowHandle)
 	ts.createdFlowIDs = append(ts.createdFlowIDs, flowID)
 
 	appID, err := testutils.CreateApplication(testutils.Application{
-		OUID:             ts.parentOUID,
+		OUID:             ouID,
 		Name:             appName,
 		ClientID:         clientID,
 		ClientSecret:     clientID + "_secret",
@@ -500,6 +516,28 @@ func (ts *FederatedProvisioningTestSuite) TestSingleSelfRegistrationTypeProvisio
 	_, err := testutils.ValidateJWTAssertionFields(flowStep.Assertion, ts.singleAppID,
 		ts.primaryTypeName, ts.ouAID, ts.ouAName, ts.ouAHandle)
 	ts.Require().NoError(err, "The assertion must carry the provisioned user type and OU")
+}
+
+// An unshared application's sign-in is fixed to the application's OU, so federated JIT provisions the user
+// there: into OU-A's child, below its user type's own OU rather than in it.
+func (ts *FederatedProvisioningTestSuite) TestUnsharedAppProvisionsIntoTheAppsOU() {
+	appID := ts.appForFlowIn(ts.ouAChildID, "fedprov_flow_child_app", nil, "", "FedProv Child App",
+		"fedprov_child_app_client", []string{ts.primaryTypeName})
+	ts.T().Cleanup(func() {
+		if err := testutils.DeleteApplication(appID); err != nil {
+			ts.T().Logf("Failed to delete app %s: %v", appID, err)
+		}
+	})
+	sub := "fedprov-child-app-" + common.GenerateUniqueUsername("sub")
+	email := sub + "@example.com"
+
+	flowStep := ts.federatedLogin(appID, sub, email)
+
+	ts.Require().Equal("COMPLETE", flowStep.FlowStatus, "JIT must complete: %+v", flowStep.Error)
+	ts.assertProvisionedInto(email, ts.ouAChildID)
+	_, err := testutils.ValidateJWTAssertionFields(flowStep.Assertion, appID,
+		ts.primaryTypeName, ts.ouAChildID, "Federated Provisioning OU A Child", ts.ouAChildHandle)
+	ts.Require().NoError(err, "The assertion must carry the application's OU")
 }
 
 // Scenario 12: a user type may only be used in its own organization unit or one beneath it. When a

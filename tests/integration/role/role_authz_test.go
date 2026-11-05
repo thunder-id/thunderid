@@ -48,6 +48,10 @@ import (
 type RoleAuthzTestSuite struct {
 	suite.Suite
 
+	// Users here live outside the default OU, and a sign-in is bounded to its application's OU, so each
+	// signs in through an application in its own OU rather than the Console.
+	signIn testutils.OUSignInApps
+
 	authzOUID        string
 	authzTypeID      string
 	scopedAdminID    string
@@ -79,8 +83,6 @@ const (
 
 	roleAuthzAssigneeUsername = "authz-role-assignee"
 	roleAuthzAssigneePassword = "Assignee@123"
-
-	roleAuthzClientID = "CONSOLE"
 
 	// The permissions the scoped administrator holds and requests in its token. Deliberately
 	// excludes both the root "system" permission and "system:user".
@@ -266,16 +268,8 @@ func (ts *RoleAuthzTestSuite) SetupSuite() {
 	ts.Require().NoError(ts.assignScopedAdminToDeclarativeRole(),
 		"assign the scoped administrator to the declarative role")
 
-	tokenResp, err := testutils.ObtainAccessTokenWithPassword(
-		roleAuthzClientID,
-		roleAuthzRedirectURI,
-		roleAuthzScopedPermissions,
-		roleAuthzAdminUsername,
-		roleAuthzAdminPassword,
-		true,
-		"",
-		roleAuthzRSIdentifier,
-	)
+	tokenResp, err := ts.signIn.ObtainAccessToken(ts.authzOUID,
+		roleAuthzScopedPermissions, roleAuthzAdminUsername, roleAuthzAdminPassword, roleAuthzRSIdentifier)
 	ts.Require().NoError(err, "obtain scoped administrator token")
 	ts.Require().NotEmpty(tokenResp.AccessToken, "scoped administrator token must be non-empty")
 	ts.Require().NotContains(tokenResp.Scope, "system:user",
@@ -289,6 +283,9 @@ func (ts *RoleAuthzTestSuite) SetupSuite() {
 // ---------------------------------------------------------------------------
 
 func (ts *RoleAuthzTestSuite) TearDownSuite() {
+	if err := ts.signIn.DeleteAll(); err != nil {
+		ts.T().Logf("teardown: delete sign-in applications: %v", err)
+	}
 	// Asserted rather than logged: the declarative role is shared with RoleAPITestSuite, which counts
 	// its assignments, so a leaked assignment must fail here instead of there.
 	if ts.scopedAdminID != "" {

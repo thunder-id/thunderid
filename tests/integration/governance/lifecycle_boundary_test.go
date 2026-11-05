@@ -17,6 +17,9 @@ const (
 	boundaryClientID     = "governance_boundary_client"
 	boundaryClientSecret = "governance_boundary_secret" //nolint:gosec // test credential
 	boundaryRedirectURI  = "https://localhost:3000/callback"
+	// A sign-in is bounded to its application's OU, so unit B's users sign in through an application of
+	// their own.
+	boundaryClientIDB = "governance_boundary_client_b"
 
 	boundaryScopedRSHandle = "https://boundary-test.example.com/system"
 	boundaryRecoveryHandle = "governance-boundary-recovery-suspend"
@@ -69,27 +72,8 @@ func (ts *LifecycleBoundaryTestSuite) SetupSuite() {
 	cleanupFlow(t, authFlowID)
 	ts.authFlowID = authFlowID
 
-	appID, err := testutils.CreateApplication(testutils.Application{
-		OUID:             ts.unitA.ouID,
-		Name:             "Governance Boundary Test App",
-		Description:      "Application the lifecycle boundary tests sign targets in through",
-		AllowedUserTypes: []string{ts.unitA.userType, ts.unitB.userType},
-		InboundAuthConfig: []map[string]interface{}{{
-			"type": "oauth2",
-			"config": map[string]interface{}{
-				"clientId":                boundaryClientID,
-				"clientSecret":            boundaryClientSecret,
-				"redirectUris":            []string{boundaryRedirectURI},
-				"grantTypes":              []string{"authorization_code", "refresh_token"},
-				"responseTypes":           []string{"code"},
-				"tokenEndpointAuthMethod": "client_secret_post",
-				"scopes":                  []string{"openid"},
-			},
-		}},
-	})
-	ts.Require().NoError(err, "failed to create the test application")
-	cleanupApplication(t, appID)
-	ts.appID = appID
+	ts.appID = ts.createBoundaryApp(ts.unitA, boundaryClientID, "Governance Boundary Test App")
+	ts.createBoundaryApp(ts.unitB, boundaryClientIDB, "Governance Boundary Test App B")
 
 	// A second root operator, so a self-targeting bug suspends a throwaway account rather than the
 	// administrator every other suite runs as.
@@ -116,9 +100,9 @@ func (ts *LifecycleBoundaryTestSuite) SetupSuite() {
 	})
 	ts.Require().NoError(err, "failed to grant user management")
 	cleanupRole(t, roleID)
-	scoped, err := testutils.ObtainAccessTokenWithPassword("CONSOLE", boundaryConsoleURI,
+	scoped, err := testutils.ObtainAccessTokenWithPassword(ts.unitA.signInClientID, testutils.OUSignInRedirectURI,
 		"system:user system:user:view", scopedUsername, scopedPassword, true, "", boundaryScopedRSHandle)
-	ts.Require().NoError(err, "the scoped operator must sign in to the console")
+	ts.Require().NoError(err, "the scoped operator must sign in")
 	ts.scopedToken = scoped.AccessToken
 }
 
@@ -140,11 +124,12 @@ func (ts *LifecycleBoundaryTestSuite) TestAnOperatorCannotGovernThemselves() {
 // nothing in either. The target is locked first, so a refused unlock is seen to release nothing.
 func (ts *LifecycleBoundaryTestSuite) TestAnOperatorWithoutRootIsRefusedInAndOutsideTheirUnit() {
 	for _, target := range []struct {
-		name string
-		unit *userFixture
-	}{{"a", ts.unitA}, {"b", ts.unitB}} {
+		name     string
+		unit     *userFixture
+		clientID string
+	}{{"a", ts.unitA, boundaryClientID}, {"b", ts.unitB, boundaryClientIDB}} {
 		targetID, username, password := target.unit.newUser(ts.T(), "scoped_target", nil)
-		held := ts.signIn(username, password)
+		held := ts.signInThrough(target.clientID, username, password)
 		failAuthentication(ts.T(), "username", username, shippedUserLockThreshold)
 		ts.Require().Equal("LOCKED", readStatus(ts.T(), targetID).Value,
 			"unit %s: the target must be locked first", target.name)
@@ -155,7 +140,8 @@ func (ts *LifecycleBoundaryTestSuite) TestAnOperatorWithoutRootIsRefusedInAndOut
 		}
 
 		ts.Equal("LOCKED", readStatus(ts.T(), targetID).Value, "unit %s: the lock must stay", target.name)
-		ts.intact(held, fmt.Sprintf("unit %s: a refused suspend must revoke nothing", target.name))
+		ts.intactThrough(target.clientID, held, fmt.Sprintf("unit %s: a refused suspend must revoke nothing",
+			target.name))
 	}
 }
 
@@ -174,20 +160,20 @@ func (ts *LifecycleBoundaryTestSuite) TestAnUnlockWithoutASubjectAsksForOne() {
 }
 
 // Owning the account does not authorize a lifecycle operation on it. A locked holder signed in
-// to the Console with no permission cannot unlock, suspend or unsuspend themselves: the
-// administration gate refuses each, the lock stays, and the holder's own grant is untouched.
+// through its unit's sign-in application with no permission cannot unlock, suspend or unsuspend
+// themselves: the administration gate refuses each, the lock stays, and the holder's own grant is untouched.
 func (ts *LifecycleBoundaryTestSuite) TestOwningTheAccountDoesNotAuthorizeItsLifecycle() {
 	ownerID, username, password := ts.unitA.newUser(ts.T(), "owner", nil)
 	held := ts.signIn(username, password)
-	console, err := testutils.ObtainAccessTokenWithPassword("CONSOLE", boundaryConsoleURI, "openid",
-		username, password, true)
-	ts.Require().NoError(err, "the holder must be able to sign in to the console")
+	holderToken, err := testutils.ObtainAccessTokenWithPassword(ts.unitA.signInClientID, testutils.OUSignInRedirectURI,
+		"openid", username, password, true, "", testutils.SystemResourceIdentifier)
+	ts.Require().NoError(err, "the holder must be able to sign in")
 
 	failAuthentication(ts.T(), "username", username, shippedUserLockThreshold)
 	ts.Require().Equal("LOCKED", readStatus(ts.T(), ownerID).Value, "the holder must be locked first")
 
 	for _, handle := range []string{unlockFlowHandle, suspendFlowHandle, unsuspendFlowHandle} {
-		ts.refused(console.AccessToken, handle, ownerID, rootRequired, "the holder's own %s", handle)
+		ts.refused(holderToken.AccessToken, handle, ownerID, rootRequired, "the holder's own %s", handle)
 	}
 
 	ts.Equal("LOCKED", readStatus(ts.T(), ownerID).Value, "the holder must not have released their lock")
@@ -268,16 +254,55 @@ func (ts *LifecycleBoundaryTestSuite) run(handle, subject string) {
 // intact requires the access a refusal must not have touched to still work.
 func (ts *LifecycleBoundaryTestSuite) intact(token *testutils.TokenResponse, msg string) {
 	ts.T().Helper()
-	ts.True(ts.active(token.AccessToken), "%s: the access token", msg)
-	_, err := testutils.RefreshAccessTokenWithClientCredentialsInBody(boundaryClientID, boundaryClientSecret,
+	ts.intactThrough(boundaryClientID, token, msg)
+}
+
+// intactThrough is intact for a token the application with clientID holds.
+func (ts *LifecycleBoundaryTestSuite) intactThrough(clientID string, token *testutils.TokenResponse, msg string) {
+	ts.T().Helper()
+	ts.True(ts.activeThrough(clientID, token.AccessToken), "%s: the access token", msg)
+	_, err := testutils.RefreshAccessTokenWithClientCredentialsInBody(clientID, boundaryClientSecret,
 		token.RefreshToken)
 	ts.NoError(err, "%s: the refresh grant", msg)
+}
+
+// createBoundaryApp creates an application in the unit that the lifecycle boundary tests sign the unit's
+// targets in through.
+func (ts *LifecycleBoundaryTestSuite) createBoundaryApp(unit *userFixture, clientID, name string) string {
+	ts.T().Helper()
+	appID, err := testutils.CreateApplication(testutils.Application{
+		OUID:             unit.ouID,
+		Name:             name,
+		Description:      "Application the lifecycle boundary tests sign targets in through",
+		AllowedUserTypes: []string{unit.userType},
+		InboundAuthConfig: []map[string]interface{}{{
+			"type": "oauth2",
+			"config": map[string]interface{}{
+				"clientId":                clientID,
+				"clientSecret":            boundaryClientSecret,
+				"redirectUris":            []string{boundaryRedirectURI},
+				"grantTypes":              []string{"authorization_code", "refresh_token"},
+				"responseTypes":           []string{"code"},
+				"tokenEndpointAuthMethod": "client_secret_post",
+				"scopes":                  []string{"openid"},
+			},
+		}},
+	})
+	ts.Require().NoError(err, "failed to create the test application")
+	cleanupApplication(ts.T(), appID)
+	return appID
 }
 
 // signIn obtains an access token and refresh grant through the suite application.
 func (ts *LifecycleBoundaryTestSuite) signIn(username, password string) *testutils.TokenResponse {
 	ts.T().Helper()
-	token, err := testutils.ObtainAccessTokenWithPassword(boundaryClientID, boundaryRedirectURI, "openid",
+	return ts.signInThrough(boundaryClientID, username, password)
+}
+
+// signInThrough is signIn through the application with clientID.
+func (ts *LifecycleBoundaryTestSuite) signInThrough(clientID, username, password string) *testutils.TokenResponse {
+	ts.T().Helper()
+	token, err := testutils.ObtainAccessTokenWithPassword(clientID, boundaryRedirectURI, "openid",
 		username, password, false, boundaryClientSecret)
 	ts.Require().NoError(err, "failed to sign in %s", username)
 	ts.Require().NotEmpty(token.RefreshToken, "the sign-in must produce a refresh grant")
@@ -287,7 +312,13 @@ func (ts *LifecycleBoundaryTestSuite) signIn(username, password string) *testuti
 // active introspects a token as the suite application, which authenticates in the request body.
 func (ts *LifecycleBoundaryTestSuite) active(token string) bool {
 	ts.T().Helper()
-	result, err := testutils.IntrospectTokenResult(token, boundaryClientID, boundaryClientSecret, true)
+	return ts.activeThrough(boundaryClientID, token)
+}
+
+// activeThrough is active as the application with clientID.
+func (ts *LifecycleBoundaryTestSuite) activeThrough(clientID, token string) bool {
+	ts.T().Helper()
+	result, err := testutils.IntrospectTokenResult(token, clientID, boundaryClientSecret, true)
 	ts.Require().NoError(err, "introspection itself must answer")
 	return result.Active
 }

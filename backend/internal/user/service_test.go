@@ -953,6 +953,166 @@ func TestUserService_GetUser_WithIncludeDisplay(t *testing.T) {
 	require.Equal(t, "test-ou", user.OUHandle)
 }
 
+// readInOUAuthz returns an authorization mock that answers whether the caller may read users in testOrgID.
+// The check names no user, so reading one's own record is no shortcut past it.
+func readInOUAuthz(t *testing.T, allowed bool) *sysauthzmock.SystemAuthorizationServiceInterfaceMock {
+	authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
+	authzMock.On("IsActionAllowed", mock.Anything, security.ActionReadUser, &sysauthz.ActionContext{
+		ResourceType: security.ResourceTypeUser, OUID: testOrgID,
+	}).Return(allowed, nil).Once()
+	return authzMock
+}
+
+// noVerifiedAttributes is an attribute verification service that reports no verified attributes.
+func noVerifiedAttributes(t *testing.T) *attributeverificationmock.AttributeVerificationServiceInterfaceMock {
+	verification := attributeverificationmock.NewAttributeVerificationServiceInterfaceMock(t)
+	verification.On("GetVerifiedAttributes", mock.Anything, mock.Anything).
+		Return(map[string]providers.VerifiedAttribute{}).Maybe()
+	return verification
+}
+
+func TestUserService_GetUserInOU_OwnedUser(t *testing.T) {
+	storeMock := entitymock.NewEntityServiceInterfaceMock(t)
+	storeMock.On("GetEntity", mock.Anything, svcTestUserID1).Return(&providers.Entity{
+		Category: providers.EntityCategoryUser, ID: svcTestUserID1, OUID: testOrgID,
+	}, nil).Once()
+
+	service := &userService{
+		entityService:  storeMock,
+		authzService:   readInOUAuthz(t, true),
+		sharingService: sharingmock.NewSharingServiceInterfaceMock(t),
+		governance:     activeGovernance(t),
+		verification:   noVerifiedAttributes(t),
+	}
+
+	user, err := service.GetUserInOU(context.Background(), svcTestUserID1, testOrgID, false)
+	require.Nil(t, err)
+	require.Equal(t, svcTestUserID1, user.ID)
+	require.Equal(t, testOrgID, user.OUID)
+	require.NotNil(t, user.IsOwnedByOU)
+	require.True(t, *user.IsOwnedByOU)
+	require.NotNil(t, user.Status)
+}
+
+func TestUserService_GetUserInOU_SharedUser(t *testing.T) {
+	storeMock := entitymock.NewEntityServiceInterfaceMock(t)
+	storeMock.On("GetEntity", mock.Anything, svcTestUserID1).Return(&providers.Entity{
+		Category: providers.EntityCategoryUser, ID: svcTestUserID1, OUID: "owner-ou", Type: "employee",
+		Attributes: json.RawMessage(`{"email":"alice@example.com"}`),
+	}, nil).Once()
+	sharingMock := sharingmock.NewSharingServiceInterfaceMock(t)
+	sharingMock.On("IsVisible", mock.Anything, UserSharingType, svcTestUserID1, testOrgID).
+		Return(true, nil).Once()
+	schemaMock := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
+	schemaMock.On("GetDisplayAttributesByHandles", mock.Anything, mock.Anything, []string{"employee"}).
+		Return(map[string]string{"employee": "email"}, nil).Once()
+	ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
+	ouServiceMock.On("GetOrganizationUnitHandlesByIDs", mock.Anything, []string{testOrgID}).
+		Return(map[string]string{testOrgID: "test-ou"}, nil).Once()
+
+	service := &userService{
+		entityService:     storeMock,
+		authzService:      readInOUAuthz(t, true),
+		sharingService:    sharingMock,
+		entityTypeService: schemaMock,
+		ouService:         ouServiceMock,
+		governance:        activeGovernance(t),
+		verification:      noVerifiedAttributes(t),
+	}
+
+	user, err := service.GetUserInOU(context.Background(), svcTestUserID1, testOrgID, true)
+	require.Nil(t, err)
+	require.Equal(t, svcTestUserID1, user.ID)
+	require.Equal(t, testOrgID, user.OUID, "a shared user is read under the organization unit it is shared into")
+	require.Equal(t, "test-ou", user.OUHandle)
+	require.NotNil(t, user.IsOwnedByOU)
+	require.False(t, *user.IsOwnedByOU)
+	require.Equal(t, "alice@example.com", user.Display)
+	require.JSONEq(t, `{"email":"alice@example.com"}`, string(user.Attributes))
+}
+
+func TestUserService_GetUserInOU_CallerWithoutAccessInOU(t *testing.T) {
+	service := &userService{
+		entityService: entitymock.NewEntityServiceInterfaceMock(t),
+		authzService:  readInOUAuthz(t, false),
+	}
+
+	user, err := service.GetUserInOU(context.Background(), svcTestUserID1, testOrgID, false)
+	require.Nil(t, user)
+	require.NotNil(t, err)
+	require.Equal(t, tidcommon.ErrorUnauthorized.Code, err.Code)
+}
+
+func TestUserService_GetUserInOU_Errors(t *testing.T) {
+	sharedEntity := &providers.Entity{Category: providers.EntityCategoryUser, ID: svcTestUserID1, OUID: "owner-ou"}
+	tests := []struct {
+		name         string
+		userID       string
+		entity       *providers.Entity
+		entityErr    error
+		visible      bool
+		visibleErr   *tidcommon.ServiceError
+		askSharing   bool
+		readsEntity  bool
+		expectedCode string
+	}{
+		{name: "MissingUserID", userID: "", expectedCode: ErrorMissingUserID.Code},
+		{
+			name: "UserNotFound", userID: svcTestUserID1, entityErr: entitypkg.ErrEntityNotFound,
+			readsEntity: true, expectedCode: ErrorUserNotFound.Code,
+		},
+		{
+			name: "NotAUser", userID: svcTestUserID1, readsEntity: true, expectedCode: ErrorUserNotFound.Code,
+			entity: &providers.Entity{Category: providers.EntityCategoryAgent, ID: svcTestUserID1, OUID: testOrgID},
+		},
+		{
+			name: "EntityStoreError", userID: svcTestUserID1, entityErr: errors.New("db down"),
+			readsEntity: true, expectedCode: tidcommon.InternalServerError.Code,
+		},
+		{
+			name: "NotSharedIntoOU", userID: svcTestUserID1, entity: sharedEntity, readsEntity: true,
+			askSharing: true, visible: false, expectedCode: ErrorUserNotFound.Code,
+		},
+		{
+			name: "OUNotFound", userID: svcTestUserID1, entity: sharedEntity, readsEntity: true, askSharing: true,
+			visibleErr: &oupkg.ErrorOrganizationUnitNotFound, expectedCode: ErrorUserNotFound.Code,
+		},
+		{
+			name: "SharingServerError", userID: svcTestUserID1, entity: sharedEntity, readsEntity: true,
+			askSharing: true, visibleErr: &tidcommon.InternalServerError,
+			expectedCode: tidcommon.InternalServerError.Code,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			storeMock := entitymock.NewEntityServiceInterfaceMock(t)
+			if tc.readsEntity {
+				storeMock.On("GetEntity", mock.Anything, tc.userID).Return(tc.entity, tc.entityErr).Once()
+			}
+			sharingMock := sharingmock.NewSharingServiceInterfaceMock(t)
+			if tc.askSharing {
+				sharingMock.On("IsVisible", mock.Anything, UserSharingType, tc.userID, testOrgID).
+					Return(tc.visible, tc.visibleErr).Once()
+			}
+			authz := newAllowAllAuthz(t)
+			if tc.userID != "" {
+				authz = readInOUAuthz(t, true)
+			}
+			service := &userService{
+				entityService:  storeMock,
+				authzService:   authz,
+				sharingService: sharingMock,
+			}
+
+			user, err := service.GetUserInOU(context.Background(), tc.userID, testOrgID, false)
+			require.Nil(t, user)
+			require.NotNil(t, err)
+			require.Equal(t, tc.expectedCode, err.Code)
+		})
+	}
+}
+
 func TestUserService_DeleteUser(t *testing.T) {
 	userID := svcTestUserID1
 

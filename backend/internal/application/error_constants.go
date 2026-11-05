@@ -861,7 +861,7 @@ var (
 		},
 		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "error.applicationservice.ou_not_in_project_description",
-			DefaultValue: "The organization unit must be the project's root organization unit or one below it",
+			DefaultValue: "The organization unit must belong to the project",
 		},
 	}
 	// ErrorDeviceGrantFlowRequired is returned when Device Code is enabled without an assigned flow.

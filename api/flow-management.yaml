@@ -90,6 +90,7 @@ paths:
               - RECOVERY
               - SIGNOUT
               - ADMINISTRATION
+              - INVITATION
               - DEVICE_GRANT
         - name: limit
           in: query
@@ -1610,6 +1611,7 @@ components:
             - RECOVERY
             - SIGNOUT
             - ADMINISTRATION
+            - INVITATION
             - DEVICE_GRANT
         name:
           type: string
@@ -1678,6 +1680,7 @@ components:
             - RECOVERY
             - SIGNOUT
             - ADMINISTRATION
+            - INVITATION
             - DEVICE_GRANT
           description: |
             Type of flow
@@ -1939,6 +1942,7 @@ components:
             - RECOVERY
             - SIGNOUT
             - ADMINISTRATION
+            - INVITATION
             - DEVICE_GRANT
           description: |
             Type of flow
@@ -2025,6 +2029,7 @@ components:
             - RECOVERY
             - SIGNOUT
             - ADMINISTRATION
+            - INVITATION
             - DEVICE_GRANT
           description: |
             Type of flow
@@ -2538,6 +2543,7 @@ components:
           enum:
             - AUTHENTICATION
             - REGISTRATION
+            - INVITATION
           example: AUTHENTICATION
         ouId:
           type: string

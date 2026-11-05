@@ -98,10 +98,12 @@ func GetRawHTTPClient() *http.Client {
 
 // isPublicEndpoint determines if an endpoint requires authentication
 func isPublicEndpoint(path string) bool {
-	// The organization-unit-scoped token endpoint is public for the same reason the bare form is: the
-	// caller authenticates as an OAuth client. Injecting the admin bearer here would overwrite that
-	// client authentication. Mirrors the server's own allow-list, which names this one path.
-	if strings.HasPrefix(path, "/ou/") && strings.HasSuffix(path, "/oauth2/token") {
+	// The organization-unit-scoped token and authorize endpoints are public for the same reason the bare
+	// forms are: the token caller authenticates as an OAuth client, and authorize is a browser redirect.
+	// Injecting the admin bearer here would overwrite or misrepresent that. Mirrors the server's own
+	// allow-list, which names these two paths.
+	if strings.HasPrefix(path, "/ou/") &&
+		(strings.HasSuffix(path, "/oauth2/token") || strings.HasSuffix(path, "/oauth2/authorize")) {
 		return true
 	}
 
@@ -150,20 +152,128 @@ func GetHTTPClientWithToken(token string) *http.Client {
 	})
 }
 
+// OUSignInRedirectURI is the redirect URI of the applications CreateOUSignInApplication creates.
+const OUSignInRedirectURI = "https://localhost:3000/ou-sign-in"
+
+// CreateOUSignInApplication creates a public client owned by ouID that signs users in through the default flow
+// and puts their OU in its access tokens, as the Console does for the default OU. A sign-in is bounded to its
+// application's OU, so a user outside the default OU signs in through one of these instead of the Console.
+func CreateOUSignInApplication(ouID, clientID string) (string, error) {
+	return CreateApplication(Application{
+		Name: "OU Sign-in " + clientID,
+		OUID: ouID,
+		Type: "browser",
+		InboundAuthConfig: []map[string]interface{}{
+			{
+				"type": "oauth2",
+				"config": map[string]interface{}{
+					"clientId":                clientID,
+					"redirectUris":            []string{OUSignInRedirectURI},
+					"grantTypes":              []string{"authorization_code"},
+					"responseTypes":           []string{"code"},
+					"pkceRequired":            true,
+					"tokenEndpointAuthMethod": "none",
+					"publicClient":            true,
+					"token": map[string]interface{}{
+						"accessToken": map[string]interface{}{
+							"userConfig": map[string]interface{}{
+								"attributes": []string{"given_name", "family_name", "email", "groups", "name", "ouId"},
+							},
+						},
+					},
+				},
+			},
+		},
+	})
+}
+
+// OUSignInApps creates one CreateOUSignInApplication client per organization unit, on first use, for a suite whose
+// users live outside the default OU. DeleteAll removes them, before the suite deletes the units.
+type OUSignInApps struct {
+	appIDs    map[string]string
+	clientIDs map[string]string
+}
+
+// ClientID returns the client ID of ouID's sign-in application, creating the application on first use.
+func (a *OUSignInApps) ClientID(ouID string) (string, error) {
+	if clientID, ok := a.clientIDs[ouID]; ok {
+		return clientID, nil
+	}
+	clientID := "ou_sign_in_" + ouID
+	appID, err := CreateOUSignInApplication(ouID, clientID)
+	if err != nil {
+		return "", err
+	}
+	if a.appIDs == nil {
+		a.appIDs = map[string]string{}
+		a.clientIDs = map[string]string{}
+	}
+	a.appIDs[ouID] = appID
+	a.clientIDs[ouID] = clientID
+	return clientID, nil
+}
+
+// ObtainAccessToken is ObtainAccessTokenWithPassword through ouID's sign-in application, with PKCE and the
+// RFC 8707 resource, which may be empty.
+func (a *OUSignInApps) ObtainAccessToken(ouID, scope, username, password, resource string) (*TokenResponse,
+	error) {
+	clientID, err := a.ClientID(ouID)
+	if err != nil {
+		return nil, err
+	}
+	return ObtainAccessTokenWithPassword(clientID, OUSignInRedirectURI, scope, username, password, true, "",
+		resource)
+}
+
+// HTTPClientForUser is GetHTTPClientForUser through ouID's sign-in application.
+func (a *OUSignInApps) HTTPClientForUser(ouID, username, password string) (*http.Client, error) {
+	clientID, err := a.ClientID(ouID)
+	if err != nil {
+		return nil, err
+	}
+	return GetHTTPClientForOUUser(clientID, username, password)
+}
+
+// DeleteAll deletes every sign-in application created, returning the first failure.
+func (a *OUSignInApps) DeleteAll() error {
+	var firstErr error
+	for ouID, appID := range a.appIDs {
+		if err := DeleteApplication(appID); err != nil && firstErr == nil {
+			firstErr = err
+		}
+		delete(a.appIDs, ouID)
+		delete(a.clientIDs, ouID)
+	}
+	return firstErr
+}
+
 // GetHTTPClientForUser obtains a token using password grant (via CONSOLE app) and returns an HTTP client that
 // injects that token. This keeps token generation out of individual tests.
 func GetHTTPClientForUser(username, password string) (*http.Client, error) {
+	return getHTTPClientForUser("CONSOLE", TestServerURL+"/console", username, password)
+}
+
+// GetHTTPClientForOUUser is GetHTTPClientForUser through a CreateOUSignInApplication client, for a user outside
+// the default OU.
+func GetHTTPClientForOUUser(clientID, username, password string) (*http.Client, error) {
+	return getHTTPClientForUser(clientID, OUSignInRedirectURI, username, password)
+}
+
+// getHTTPClientForUser signs the user in through the client and returns an HTTP client that injects the token.
+func getHTTPClientForUser(clientID, redirectURI, username, password string) (*http.Client, error) {
 	if username == "" || password == "" {
 		return nil, fmt.Errorf("username and password are required")
 	}
 
 	tokenResp, err := ObtainAccessTokenWithPassword(
-		"CONSOLE",
-		TestServerURL+"/console",
+		clientID,
+		redirectURI,
 		"openid",
 		username,
 		password,
 		true,
+		"",
+		SystemResourceIdentifier,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to obtain token for user %s: %w", username, err)

@@ -11,7 +11,7 @@ type ApplicationListOutput struct {
 
 // ApplicationListInput represents the optional scope of the list_applications tool.
 type ApplicationListInput struct {
-	ProjectID string `json:"projectId,omitempty" jsonschema:"Project ID. Lists its root organization unit or ouId."`
+	ProjectID string `json:"projectId,omitempty" jsonschema:"Project ID. Lists its applications, within ouId if set."`
 	OUID      string `json:"ouId,omitempty" jsonschema:"Organization unit ID whose applications to list."`
 }
 

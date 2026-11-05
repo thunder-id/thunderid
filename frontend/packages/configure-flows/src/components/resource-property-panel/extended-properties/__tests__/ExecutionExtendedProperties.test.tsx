@@ -1955,6 +1955,7 @@ describe('ExecutionExtendedProperties', () => {
       [ExecutionTypes.GroupExecutor, 'group_membership_removal', 'groupExecutor'],
       [ExecutionTypes.CriteriaRevocation, 'advance_cutoff', 'criteriaRevocation'],
       [ExecutionTypes.IdentityGovernance, 'unlock', 'identityGovernance'],
+      [ExecutionTypes.SharingExecutor, 'validate', 'sharing'],
     ])('should route %s to its mode selector and hide the inputs editor', (name, mode, namespace) => {
       render(<ExecutionExtendedProperties resource={makeResource(name, mode)} onChange={mockOnChange} />);
 

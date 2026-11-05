@@ -634,12 +634,13 @@ func (suite *SecurityServiceTestSuite) TestProcess_OversizedPath_SkipsPermission
 	assert.ErrorIs(suite.T(), err, errForbidden)
 }
 
-// The organization-unit-scoped token endpoint is public for the same reason the bare one is: the
-// client authenticates with its own credentials in the request, not with a bearer token.
+// The organization-unit-scoped token and authorize endpoints are public for the same reason the bare
+// ones are: neither is called with a bearer token. The token request carries the client's own
+// credentials, and the authorize request is a browser redirect.
 //
-// The pattern is pinned to that one path rather than a subtree. "/ou/*/oauth2/**" would open every
+// The patterns are pinned to those two paths rather than a subtree. "/ou/*/oauth2/**" would open every
 // future organization-unit-scoped OAuth route, including ones nobody has reviewed yet.
-func TestOUScopedTokenEndpointIsTheOnlyPublicOUPath(t *testing.T) {
+func TestOUScopedPublicPathsArePinned(t *testing.T) {
 	var ouPaths []string
 	for _, p := range publicPaths {
 		if len(p) >= 4 && p[:4] == "/ou/" {
@@ -647,8 +648,8 @@ func TestOUScopedTokenEndpointIsTheOnlyPublicOUPath(t *testing.T) {
 		}
 	}
 
-	assert.Equal(t, []string{"/ou/*/oauth2/token"}, ouPaths,
-		"only the token endpoint is public beneath /ou/")
+	assert.Equal(t, []string{"/ou/*/oauth2/token", "/ou/*/oauth2/authorize"}, ouPaths,
+		"only the token and authorize endpoints are public beneath /ou/")
 
 	// Compiled the same way the security service compiles them, so the pattern is checked as it is
 	// actually matched rather than as a string.
@@ -665,8 +666,15 @@ func TestOUScopedTokenEndpointIsTheOnlyPublicOUPath(t *testing.T) {
 	}
 
 	assert.True(t, matches("/ou/customer-a/oauth2/token"), "the scoped token endpoint is public")
-	assert.False(t, matches("/ou/customer-a/oauth2/introspect"),
-		"nothing else beneath the prefix is")
+	assert.True(t, matches("/ou/customer-a/oauth2/authorize"), "the scoped authorize endpoint is public")
+	for _, path := range []string{
+		"/ou/customer-a/oauth2/introspect",
+		"/ou/customer-a/oauth2/authorize/extra",
+		"/ou/customer-a/b/oauth2/authorize",
+		"/ou/customer-a/oauth2",
+	} {
+		assert.False(t, matches(path), "nothing else beneath the prefix is: %s", path)
+	}
 	assert.False(t, matches("/ou/customer-a/applications"),
 		"and an organization unit prefix does not make a management path public")
 }

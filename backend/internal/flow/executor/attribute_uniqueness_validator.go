@@ -4,6 +4,7 @@
 package executor
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/thunder-id/thunderid/internal/entityprovider"
@@ -92,13 +93,15 @@ func (e *attributeUniquenessValidator) Execute(ctx *providers.NodeContext) (*pro
 			category, entityType, svcErr.Error.DefaultValue)
 	}
 
+	// Uniqueness is deployment-wide: a holder outside the sign-in boundary must still be found.
+	identifyCtx := security.WithRuntimeContext(context.Background())
 	for _, attr := range uniqueAttrs {
 		value, exists := ctx.UserInputs[attr]
 		if !exists || value == "" {
 			continue
 		}
 
-		userID, svcErr := e.entityProvider.IdentifyEntity(ctx.Context, map[string]interface{}{attr: value})
+		userID, svcErr := e.entityProvider.IdentifyEntity(identifyCtx, map[string]interface{}{attr: value})
 		if svcErr != nil {
 			if svcErr.Code == entityprovider.ErrorCodeEntityNotFound {
 				continue

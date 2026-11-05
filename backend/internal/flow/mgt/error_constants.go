@@ -572,6 +572,22 @@ var (
 				"can only be created from a declarative resource file or an import",
 		},
 	}
+	// ErrorOUResolverAfterSession is returned when an authentication flow can reach an OU resolver node from a
+	// session node.
+	ErrorOUResolverAfterSession = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FLM-1044",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.ou_resolver_after_session",
+			DefaultValue: "Resolve OU can't run after a Save/Load Session node",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.flowmgtservice.ou_resolver_after_session_description",
+			DefaultValue: "Node '{{param(nodeID)}}' is reachable from Save/Load Session node " +
+				"'{{param(sessionNodeID)}}'. Place it between the sign-in steps and Save/Load Session, " +
+				"or before Check SSO Session",
+		},
+	}
 )
 
 // Internal errors

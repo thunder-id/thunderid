@@ -1476,3 +1476,50 @@ func (s *ModelTestSuite) TestDeserializeFrameStack_NodeIDNotInGraph() {
 	s.Len(result, 1)
 	s.Nil(result[0].currentNode)
 }
+
+func (s *ModelTestSuite) TestSignInBounded_RoundTrips() {
+	for _, bounded := range []bool{true, false} {
+		mockGraph := coremock.NewGraphInterfaceMock(s.T())
+		mockGraph.On("GetID").Return("test-graph-id")
+		mockGraph.On("GetType").Return(providers.FlowTypeAuthentication)
+
+		ctx := EngineContext{
+			Context:          context.Background(),
+			ExecutionID:      "test-flow-id",
+			AppID:            "test-app-id",
+			FlowType:         providers.FlowTypeAuthentication,
+			SignInBounded:    bounded,
+			UserInputs:       map[string]string{},
+			RuntimeData:      map[string]string{},
+			ExecutionHistory: map[string]*providers.NodeExecutionRecord{},
+			Graph:            mockGraph,
+		}
+
+		dbModel := &FlowContextDB{}
+		s.NoError(dbModel.FromEngineContext(ctx))
+		s.Equal(bounded, s.getContextContent(dbModel).SignInBounded)
+
+		resultCtx, err := dbModel.ToEngineContext(context.Background(), mockGraph, nil)
+		s.NoError(err)
+		s.Equal(bounded, resultCtx.SignInBounded)
+	}
+}
+
+func (s *ModelTestSuite) TestFrameStack_SignInBoundedSurvivesPersistence() {
+	mockGraph := coremock.NewGraphInterfaceMock(s.T())
+	mockGraph.On("GetID").Return("graph-1")
+	mockGraph.On("GetType").Return(providers.FlowTypeAuthentication)
+
+	dbModel := &FlowContextDB{}
+	serialized, err := dbModel.serializeFrameStack([]*frame{{graph: mockGraph, signInBounded: true}})
+	s.NoError(err)
+
+	resolver := graphResolverFunc(func(_ context.Context, _ string) (core.GraphInterface, error) {
+		return mockGraph, nil
+	})
+	frames, err := dbModel.deserializeFrameStack(context.Background(), flowContextContent{FrameStack: serialized},
+		resolver)
+	s.NoError(err)
+	s.Require().Len(frames, 1)
+	s.True(frames[0].signInBounded)
+}

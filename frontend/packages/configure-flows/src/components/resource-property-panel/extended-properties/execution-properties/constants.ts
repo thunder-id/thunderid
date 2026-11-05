@@ -53,6 +53,13 @@ export const IDENTIFYING_MODES = [
 ] as const;
 
 /**
+ * Values of the Provisioning executor's provisioningOU property: create in the resolved organization unit, or in
+ * the one the flow's user type belongs to. Must stay in step with the executor in the backend.
+ */
+export const PROVISIONING_OU_RESOLVED = 'resolved';
+export const PROVISIONING_OU_USER_TYPE = 'userType';
+
+/**
  * Available revocation modes for the Administrative Flow Pre executor.
  *
  * Must stay in step with the executor's SupportedModes in the backend
@@ -121,6 +128,32 @@ export const ROLE_EXECUTOR_MODES = [
     value: 'role_permission_removal',
     translationKey: 'flows:core.executions.roleExecutor.mode.rolePermissionRemoval',
     displayLabel: 'Change Role Permissions',
+  },
+  {
+    value: 'role_selection',
+    translationKey: 'flows:core.executions.roleExecutor.mode.roleSelection',
+    displayLabel: 'Select Roles',
+  },
+  {
+    value: 'role_assignment',
+    translationKey: 'flows:core.executions.roleExecutor.mode.roleAssignment',
+    displayLabel: 'Assign Roles',
+  },
+] as const;
+
+/**
+ * Available modes for the Sharing executor. Must match its SupportedModes in the backend.
+ */
+export const SHARING_EXECUTOR_MODES = [
+  {
+    value: 'validate',
+    translationKey: 'flows:core.executions.sharing.mode.validate',
+    displayLabel: 'Validate Share',
+  },
+  {
+    value: 'share',
+    translationKey: 'flows:core.executions.sharing.mode.share',
+    displayLabel: 'Share',
   },
 ] as const;
 
@@ -267,4 +300,5 @@ export const EXECUTORS_WITH_FIXED_INPUTS = new Set<string>([
   ExecutionTypes.PreSuspend,
   ExecutionTypes.IdentityGovernance,
   ExecutionTypes.ExtensionExecutor,
+  ExecutionTypes.SharingExecutor,
 ]);

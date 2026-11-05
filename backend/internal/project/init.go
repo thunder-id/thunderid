@@ -14,18 +14,19 @@ import (
 )
 
 // Initialize builds the project service over the database store and registers the project
-// management routes and MCP tools. The returned service is also a resource dependency provider, so that a
-// project's root organization unit cannot be deleted outside the project API. The returned exporter
+// management routes and MCP tools. The returned service is also a resource dependency provider, so that the
+// system organization unit cannot be deleted while a project exists. The returned exporter
 // exports projects as declarative resources.
 func Initialize(
 	mux *http.ServeMux, mcpServer *mcp.Server, ouService ou.OrganizationUnitServiceInterface,
+	entities projectEntityReader,
 ) (ProjectServiceInterface, declarativeresource.ResourceExporter, error) {
 	store, transactioner, err := newProjectStore()
 	if err != nil {
 		return nil, nil, err
 	}
 
-	service := newProjectService(store, transactioner, ouService)
+	service := newProjectService(store, transactioner, ouService, entities)
 	registerRoutes(mux, newProjectHandler(service))
 	if mcpServer != nil {
 		registerMCPTools(mcpServer, service)

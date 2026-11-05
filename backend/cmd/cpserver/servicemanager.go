@@ -167,10 +167,6 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		runtime.Config.ResourceSharing.AllowChildOUCrossTreeSharing)
 	fatalOnError(ctx, logger, err, "Failed to initialize SharingService")
 
-	projectService, projectExporter, err := project.Initialize(mux, mcpServer, ouService)
-	fatalOnError(ctx, logger, err, "Failed to initialize ProjectService")
-	exporters = append(exporters, projectExporter)
-
 	hashCfg, err := buildHashConfig()
 	fatalOnError(ctx, logger, err, "Failed to build HashService config")
 	hashService, err := cryptolib.Initialize(hashCfg)
@@ -185,6 +181,10 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	entityService, err := entity.Initialize(cacheManager, hashService, entityTypeService, ouService,
 		sharingService, observabilitySvc)
 	fatalOnError(ctx, logger, err, "Failed to initialize EntityService")
+
+	projectService, projectExporter, err := project.Initialize(mux, mcpServer, ouService, entityService)
+	fatalOnError(ctx, logger, err, "Failed to initialize ProjectService")
+	exporters = append(exporters, projectExporter)
 
 	entityProvider := entityprovider.InitializeEntityProvider(entityService)
 
@@ -424,7 +424,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		sharingService,
 		authzDetailMgtService,
 		httpConnectionWriter,
-		// An imported root organization unit is created with its project.
+		// Declared projects are imported.
 		projectService,
 		// A control plane keeps configuration as references and holds no values, so none are resolved.
 		nil,

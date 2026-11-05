@@ -57,6 +57,7 @@ const (
 	ExecutorNamePreSuspend                   = "PreSuspendExecutor"
 	ExecutorNameExtension                    = "ExtensionExecutor"
 	ExecutorNameAuthorizationDetail          = "AuthorizationDetailExecutor"
+	ExecutorNameSharing                      = "SharingExecutor"
 	ExecutorNameDeviceCode                   = "DeviceCodeExecutor"
 )
 
@@ -72,6 +73,8 @@ const (
 	ExecutorModeRoleAssignmentRemoval  = "role_assignment_removal"
 	ExecutorModeRoleDeletion           = "role_deletion"
 	ExecutorModeRolePermissionRemoval  = "role_permission_removal"
+	ExecutorModeRoleSelection          = "role_selection"
+	ExecutorModeRoleAssignment         = "role_assignment"
 	ExecutorModeGroupDeletion          = "group_deletion"
 	ExecutorModeGroupMembershipRemoval = "group_membership_removal"
 	ExecutorModeActionDeletion         = "action_deletion"
@@ -85,6 +88,8 @@ const (
 	ExecutorModeSuspend   = "suspend"
 	ExecutorModeUnsuspend = "unsuspend"
 
-	ExecutorModePrepare = "prepare"
-	ExecutorModeRecord  = "record"
+	ExecutorModeValidate = "validate"
+	ExecutorModeShare    = "share"
+	ExecutorModePrepare  = "prepare"
+	ExecutorModeRecord   = "record"
 )

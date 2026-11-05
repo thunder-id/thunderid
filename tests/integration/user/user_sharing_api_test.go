@@ -43,6 +43,10 @@ type UserSharingAPITestSuite struct {
 	rootClient   *http.Client
 	parentClient *http.Client
 	childClient  *http.Client
+
+	// The suite's users live outside the default OU, and a sign-in is bounded to its application's OU, so
+	// each signs in through an application in its own OU rather than the Console.
+	signIn testutils.OUSignInApps
 }
 
 const (
@@ -111,6 +115,9 @@ func (ts *UserSharingAPITestSuite) SetupSuite() {
 }
 
 func (ts *UserSharingAPITestSuite) TearDownSuite() {
+	if err := ts.signIn.DeleteAll(); err != nil {
+		ts.T().Logf("teardown: delete sign-in applications: %v", err)
+	}
 	for _, id := range ts.roleIDs {
 		if err := testutils.DeleteRole(id); err != nil {
 			ts.T().Logf("teardown: delete role %s: %v", id, err)
@@ -164,7 +171,7 @@ func (ts *UserSharingAPITestSuite) adminClient(ouID, username, name string) *htt
 	userID := ts.createUser(ouID, username)
 	ts.adminUserIDs = append(ts.adminUserIDs, userID)
 
-	client, rsID, roleID := scopedAdminClient(ts.T(), ouID, userID, username,
+	client, rsID, roleID := scopedAdminClient(ts.T(), &ts.signIn, ouID, userID, username,
 		"User Sharing Test ("+name+")", "https://user-sharing-test.example.com/"+name)
 	ts.rsIDs = append(ts.rsIDs, rsID)
 	ts.roleIDs = append(ts.roleIDs, roleID)
@@ -180,7 +187,7 @@ func (ts *UserSharingAPITestSuite) do(client *http.Client, method, path string, 
 // scopedAdminClient makes userID hold system:user in ouID and nowhere else, and returns a client
 // carrying a token obtained as username, with the resource server and role it created for teardown.
 func scopedAdminClient(
-	t *testing.T, ouID, userID, username, label, identifier string,
+	t *testing.T, signIn *testutils.OUSignInApps, ouID, userID, username, label, identifier string,
 ) (client *http.Client, rsID, roleID string) {
 	t.Helper()
 	rsID, err := testutils.CreateSystemScopedResourceServer(ouID, label+" RS", identifier, "user", "usertype")
@@ -196,8 +203,7 @@ func scopedAdminClient(
 	})
 	require.NoError(t, err, "create role for %s", label)
 
-	token, err := testutils.ObtainAccessTokenWithPassword(
-		"CONSOLE", sharingTestConsoleURI, sharingTestScopes, username, sharingTestPassword, true, "", identifier)
+	token, err := signIn.ObtainAccessToken(ouID, sharingTestScopes, username, sharingTestPassword, identifier)
 	require.NoError(t, err, "obtain token for %s", label)
 	return testutils.GetHTTPClientWithToken(token.AccessToken), rsID, roleID
 }
@@ -483,7 +489,7 @@ func (ts *UserSharingAPITestSuite) TestASharedUserListsTheUnitsItCanAccess() {
 	reshareBody["initiatingOuId"] = ts.childOUID
 	ts.share(ts.rootClient, ts.sharedUserID, reshareBody)
 
-	userClient, err := testutils.GetHTTPClientForUser("user-sharing-target", sharingTestPassword)
+	userClient, err := ts.signIn.HTTPClientForUser(ts.parentOUID, "user-sharing-target", sharingTestPassword)
 	ts.Require().NoError(err, "sign in as the shared user")
 
 	list, ids := ts.accessible(userClient, "")
@@ -513,7 +519,7 @@ func (ts *UserSharingAPITestSuite) TestTheAccessibleUnitsListPages() {
 	reshareBody["initiatingOuId"] = ts.childOUID
 	ts.share(ts.rootClient, ts.sharedUserID, reshareBody)
 
-	userClient, err := testutils.GetHTTPClientForUser("user-sharing-target", sharingTestPassword)
+	userClient, err := ts.signIn.HTTPClientForUser(ts.parentOUID, "user-sharing-target", sharingTestPassword)
 	ts.Require().NoError(err, "sign in as the shared user")
 
 	first, firstIDs := ts.accessible(userClient, "?limit=2")
@@ -531,7 +537,7 @@ func (ts *UserSharingAPITestSuite) TestTheAccessibleUnitsListPages() {
 
 // A user nobody has shared lists its own unit alone, whatever the scope.
 func (ts *UserSharingAPITestSuite) TestAnUnsharedUserListsOnlyItsOwnUnit() {
-	client, err := testutils.GetHTTPClientForUser("user-sharing-child-admin", sharingTestPassword)
+	client, err := ts.signIn.HTTPClientForUser(ts.childOUID, "user-sharing-child-admin", sharingTestPassword)
 	ts.Require().NoError(err, "sign in as the child admin")
 
 	for _, query := range []string{"", "?scope=siblings"} {
@@ -849,7 +855,7 @@ func (ts *UserSharingAPITestSuite) TestEachKindOfShareListsWhatItReaches() {
 		{name: "Subtree", body: namedChild(ts.childOUID, "subtree")},
 		{name: "EveryChildUnit", body: map[string]interface{}{"childUnits": map[string]interface{}{"mode": "all"}}},
 	}
-	userClient, err := testutils.GetHTTPClientForUser("user-sharing-target", sharingTestPassword)
+	userClient, err := ts.signIn.HTTPClientForUser(ts.parentOUID, "user-sharing-target", sharingTestPassword)
 	ts.Require().NoError(err, "sign in as the shared user")
 
 	for _, tc := range cases {
@@ -876,7 +882,7 @@ sharingPolicies:
   - allUnits: {}
 `, sharingTestUserType, ts.parentOUID, sharingTestPassword))
 	defer func() { _ = testutils.DeleteUser(userID) }()
-	client, err := testutils.GetHTTPClientForUser("user-sharing-everywhere", sharingTestPassword)
+	client, err := ts.signIn.HTTPClientForUser(ts.parentOUID, "user-sharing-everywhere", sharingTestPassword)
 	ts.Require().NoError(err, "sign in as the user shared everywhere")
 
 	every := ts.everyAccessible(client, "")
@@ -898,7 +904,7 @@ func (ts *UserSharingAPITestSuite) TestAUnitDeletedAfterItWasSharedIsNotListed()
 		},
 	}})
 	defer ts.do(ts.rootClient, http.MethodDelete, policyPath(ts.sharedUserID, share.ID), nil)
-	userClient, err := testutils.GetHTTPClientForUser("user-sharing-target", sharingTestPassword)
+	userClient, err := ts.signIn.HTTPClientForUser(ts.parentOUID, "user-sharing-target", sharingTestPassword)
 	ts.Require().NoError(err, "sign in as the shared user")
 	ts.ElementsMatch([]string{ts.parentOUID, ts.childOUID, doomedID}, ts.everyAccessible(userClient, ""))
 
@@ -1012,7 +1018,7 @@ sharingPolicies:
       mode: all
 `, sharingTestUserType, ts.parentOUID, sharingTestPassword))
 	defer func() { _ = testutils.DeleteUser(userID) }()
-	client, err := testutils.GetHTTPClientForUser("user-sharing-every-root", sharingTestPassword)
+	client, err := ts.signIn.HTTPClientForUser(ts.parentOUID, "user-sharing-every-root", sharingTestPassword)
 	ts.Require().NoError(err, "sign in as the user shared with every other root")
 
 	every := ts.everyAccessible(client, "")

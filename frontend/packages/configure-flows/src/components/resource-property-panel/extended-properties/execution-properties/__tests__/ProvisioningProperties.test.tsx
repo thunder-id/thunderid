@@ -111,4 +111,38 @@ describe('ProvisioningProperties', () => {
 
     expect(mockOnChange).toHaveBeenCalledWith('data.properties.assignGroup', 'engineering', expect.anything());
   });
+
+  describe('provisioningOU', () => {
+    it('should create in the resolved unit by default, in any flow', () => {
+      render(<ProvisioningProperties resource={createResource()} onChange={mockOnChange} />);
+
+      expect(screen.getByRole('combobox')).toHaveTextContent(
+        'flows:core.executions.provisioning.provisioningOU.resolved',
+      );
+    });
+
+    it('should set the property when the user type unit is chosen', async () => {
+      const user = userEvent.setup();
+      render(<ProvisioningProperties resource={createResource()} onChange={mockOnChange} />);
+
+      await user.click(screen.getByRole('combobox'));
+      await user.click(screen.getByText('flows:core.executions.provisioning.provisioningOU.userType'));
+
+      expect(mockOnChange).toHaveBeenCalledWith(
+        'data.properties.provisioningOU',
+        'userType',
+        expect.objectContaining({data: {properties: {}}}),
+      );
+    });
+
+    it('should show the configured value', () => {
+      render(
+        <ProvisioningProperties resource={createResource({provisioningOU: 'userType'})} onChange={mockOnChange} />,
+      );
+
+      expect(screen.getByRole('combobox')).toHaveTextContent(
+        'flows:core.executions.provisioning.provisioningOU.userType',
+      );
+    });
+  });
 });

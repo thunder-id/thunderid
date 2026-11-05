@@ -22,8 +22,8 @@ type mcpToolResult struct {
 	} `json:"result"`
 }
 
-// The project tools run the project service end to end: a project created through MCP gets its root
-// organization unit, is listed and read back, and an update renames it.
+// The project tools run the project service end to end: a project created through MCP is listed and
+// read back, and an update renames it.
 func (ts *ProjectAPITestSuite) TestProjectMCPTools() {
 	created, raw := ts.callMCPTool("create_project", map[string]any{
 		"handle": ts.handle("mcp"), "displayName": "MCP Project", "description": "Created through MCP",
@@ -33,7 +33,7 @@ func (ts *ProjectAPITestSuite) TestProjectMCPTools() {
 	ts.Require().NotEmpty(id)
 	ts.projects = append(ts.projects, id)
 	ts.Equal(ts.handle("mcp"), created.Result.StructuredContent["handle"])
-	ts.NotEmpty(created.Result.StructuredContent["rootOuId"])
+	ts.NotContains(created.Result.StructuredContent, "rootOuId")
 
 	got, raw := ts.callMCPTool("get_project_by_id", map[string]any{"id": id})
 	ts.Require().Falsef(got.Result.IsError, "get failed: %s", raw)

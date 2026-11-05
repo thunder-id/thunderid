@@ -459,7 +459,7 @@ func (suite *HandlerTestSuite) TestHandleApplicationListRequest_WithProject() {
 	mockService := NewApplicationServiceInterfaceMock(suite.T())
 	handler := newApplicationHandler(mockService)
 
-	mockService.On("GetApplicationListByProject", mock.Anything, "project-1", mock.Anything).
+	mockService.On("GetApplicationListByProject", mock.Anything, testProjectID, mock.Anything).
 		Return(&model.ApplicationListResponse{Applications: []model.BasicApplicationResponse{}}, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/applications?projectId=project-1", nil)
@@ -475,7 +475,7 @@ func (suite *HandlerTestSuite) TestHandleApplicationListRequest_ProjectWithFilte
 	mockService := NewApplicationServiceInterfaceMock(suite.T())
 	handler := newApplicationHandler(mockService)
 
-	mockService.On("GetApplicationListByProject", mock.Anything, "project-1",
+	mockService.On("GetApplicationListByProject", mock.Anything, testProjectID,
 		map[string]interface{}{"ouId": "ou-1"}).
 		Return(&model.ApplicationListResponse{Applications: []model.BasicApplicationResponse{}}, nil)
 
@@ -494,10 +494,10 @@ func (suite *HandlerTestSuite) TestHandleApplicationPostRequest_PassesTheProject
 	handler := newApplicationHandler(mockService)
 
 	mockService.On("CreateApplication", mock.Anything, mock.MatchedBy(func(app *model.ApplicationDTO) bool {
-		return app.ProjectID == "project-1" && app.OUID == ""
+		return app.ProjectID == testProjectID && app.OUID == ""
 	})).Return(nil, &ErrorInvalidProject)
 
-	body, _ := json.Marshal(model.ApplicationRequest{ProjectID: "project-1", Name: "TestApp"})
+	body, _ := json.Marshal(model.ApplicationRequest{ProjectID: testProjectID, Name: "TestApp"})
 	req := httptest.NewRequest(http.MethodPost, "/applications", bytes.NewBuffer(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -517,10 +517,10 @@ func (suite *HandlerTestSuite) TestHandleApplicationPutRequest_PassesTheProject(
 
 	mockService.On("UpdateApplication", mock.Anything, "test-app-id",
 		mock.MatchedBy(func(app *model.ApplicationDTO) bool {
-			return app.ProjectID == "project-1" && app.OUID == ""
+			return app.ProjectID == testProjectID && app.OUID == ""
 		})).Return(nil, &ErrorInvalidProject)
 
-	body, _ := json.Marshal(model.ApplicationRequest{ProjectID: "project-1", Name: "UpdatedApp"})
+	body, _ := json.Marshal(model.ApplicationRequest{ProjectID: testProjectID, Name: "UpdatedApp"})
 	req := httptest.NewRequest(http.MethodPut, "/applications/test-app-id", bytes.NewBuffer(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.SetPathValue("id", "test-app-id")

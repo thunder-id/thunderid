@@ -8,6 +8,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/lib/pq"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
@@ -45,13 +46,16 @@ func (suite *ProjectStoreTestSuite) TearDownTest() {
 
 func (suite *ProjectStoreTestSuite) projectRow() map[string]interface{} {
 	return map[string]interface{}{
-		"id": testProjectID, "root_ou_id": []byte(testRootOUID), "created_at": "2026-10-23 10:15:00",
+		"id": testProjectID, "handle": []byte("shop"), "display_name": "Shop", "description": testDescription,
+		"created_at": "2026-10-23 10:15:00",
 	}
 }
 
-// expectedRecord is the record projectRow describes.
-func (suite *ProjectStoreTestSuite) expectedRecord() projectRecord {
-	return projectRecord{ID: testProjectID, RootOUID: testRootOUID, CreatedAt: testCreatedAt}
+// expectedProject is the project projectRow describes.
+func (suite *ProjectStoreTestSuite) expectedProject() Project {
+	return Project{
+		ID: testProjectID, Handle: "shop", DisplayName: "Shop", Description: testDescription, CreatedAt: testCreatedAt,
+	}
 }
 
 func (suite *ProjectStoreTestSuite) withClient() {
@@ -60,10 +64,46 @@ func (suite *ProjectStoreTestSuite) withClient() {
 
 func (suite *ProjectStoreTestSuite) TestCreateProject() {
 	suite.withClient()
-	suite.mockDBClient.On("ExecuteContext", mock.Anything, queryCreateProject, testProjectID, testRootOUID,
-		testCreatedAt, testDeploymentID).Return(int64(1), nil)
+	suite.mockDBClient.On("ExecuteContext", mock.Anything, queryCreateProject, testProjectID, "shop", "Shop",
+		testDescription, testCreatedAt, testDeploymentID).Return(int64(1), nil)
 
-	suite.NoError(suite.store.CreateProject(context.Background(), suite.expectedRecord()))
+	suite.NoError(suite.store.CreateProject(context.Background(), suite.expectedProject()))
+}
+
+func (suite *ProjectStoreTestSuite) TestCreateProject_UniqueViolations() {
+	cases := map[string]struct {
+		dbErr   error
+		wantErr error
+	}{
+		"postgres id":     {&pq.Error{Code: "23505", Constraint: primaryKeyName}, errProjectIDConflict},
+		"postgres handle": {&pq.Error{Code: "23505", Constraint: handleIndexName}, errProjectHandleConflict},
+		"sqlite id": {errors.New("constraint failed: UNIQUE constraint failed: " + primaryKeyColumns + " (1555)"),
+			errProjectIDConflict},
+		"sqlite handle": {errors.New("constraint failed: UNIQUE constraint failed: " + handleIndexColumns + " (2067)"),
+			errProjectHandleConflict},
+	}
+	for name, tc := range cases {
+		suite.Run(name, func() {
+			suite.SetupTest()
+			suite.withClient()
+			suite.mockDBClient.On("ExecuteContext", mock.Anything, queryCreateProject, mock.Anything, mock.Anything,
+				mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(int64(0), tc.dbErr)
+
+			suite.ErrorIs(suite.store.CreateProject(context.Background(), suite.expectedProject()), tc.wantErr)
+		})
+	}
+	suite.Run("other error", func() {
+		suite.SetupTest()
+		suite.withClient()
+		suite.mockDBClient.On("ExecuteContext", mock.Anything, queryCreateProject, mock.Anything, mock.Anything,
+			mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(int64(0), errors.New("db"))
+
+		err := suite.store.CreateProject(context.Background(), suite.expectedProject())
+
+		suite.Error(err)
+		suite.NotErrorIs(err, errProjectIDConflict)
+		suite.NotErrorIs(err, errProjectHandleConflict)
+	})
 }
 
 func (suite *ProjectStoreTestSuite) TestGetProject() {
@@ -73,10 +113,10 @@ func (suite *ProjectStoreTestSuite) TestGetProject() {
 		suite.mockDBClient.On("QueryContext", mock.Anything, queryGetProjectByID, testProjectID, testDeploymentID).
 			Return([]map[string]interface{}{suite.projectRow()}, nil)
 
-		record, err := suite.store.GetProject(context.Background(), testProjectID)
+		project, err := suite.store.GetProject(context.Background(), testProjectID)
 
 		suite.NoError(err)
-		suite.Equal(suite.expectedRecord(), record)
+		suite.Equal(suite.expectedProject(), project)
 	})
 	suite.Run("not found", func() {
 		suite.SetupTest()
@@ -101,15 +141,40 @@ func (suite *ProjectStoreTestSuite) TestGetProject() {
 	})
 }
 
-func (suite *ProjectStoreTestSuite) TestGetProjectByRootOUID() {
+func (suite *ProjectStoreTestSuite) TestGetProjectByHandle() {
 	suite.withClient()
-	suite.mockDBClient.On("QueryContext", mock.Anything, queryGetProjectByRootOUID, testRootOUID, testDeploymentID).
+	suite.mockDBClient.On("QueryContext", mock.Anything, queryGetProjectByHandle, "shop", testDeploymentID).
 		Return([]map[string]interface{}{suite.projectRow()}, nil)
 
-	record, err := suite.store.GetProjectByRootOUID(context.Background(), testRootOUID)
+	project, err := suite.store.GetProjectByHandle(context.Background(), "shop")
 
 	suite.NoError(err)
-	suite.Equal(testProjectID, record.ID)
+	suite.Equal(suite.expectedProject(), project)
+}
+
+func (suite *ProjectStoreTestSuite) TestUpdateProject() {
+	suite.Run("updates the display name and description", func() {
+		suite.SetupTest()
+		suite.withClient()
+		suite.mockDBClient.On("ExecuteContext", mock.Anything, queryUpdateProject, testProjectID, "Shop",
+			testDescription, testDeploymentID).Return(int64(1), nil)
+
+		suite.NoError(suite.store.UpdateProject(context.Background(), suite.expectedProject()))
+	})
+	suite.Run("execute error", func() {
+		suite.SetupTest()
+		suite.withClient()
+		suite.mockDBClient.On("ExecuteContext", mock.Anything, queryUpdateProject, testProjectID, "Shop",
+			testDescription, testDeploymentID).Return(int64(0), errors.New("db"))
+
+		suite.Error(suite.store.UpdateProject(context.Background(), suite.expectedProject()))
+	})
+	suite.Run("client error", func() {
+		suite.SetupTest()
+		suite.mockDBProvider.On("GetEntityDBClient").Return(nil, errors.New("no client"))
+
+		suite.Error(suite.store.UpdateProject(context.Background(), suite.expectedProject()))
+	})
 }
 
 func (suite *ProjectStoreTestSuite) TestGetProjectList() {
@@ -117,10 +182,10 @@ func (suite *ProjectStoreTestSuite) TestGetProjectList() {
 	suite.mockDBClient.On("QueryContext", mock.Anything, queryGetProjectList, 10, 0, testDeploymentID).
 		Return([]map[string]interface{}{suite.projectRow()}, nil)
 
-	records, err := suite.store.GetProjectList(context.Background(), 10, 0)
+	projects, err := suite.store.GetProjectList(context.Background(), 10, 0)
 
 	suite.NoError(err)
-	suite.Equal([]projectRecord{suite.expectedRecord()}, records)
+	suite.Equal([]Project{suite.expectedProject()}, projects)
 }
 
 func (suite *ProjectStoreTestSuite) TestGetProjectListCount() {
@@ -182,7 +247,7 @@ func (suite *ProjectStoreTestSuite) TestDBClientUnavailable() {
 	suite.mockDBProvider.On("GetEntityDBClient").Return(nil, errors.New("no client"))
 	ctx := context.Background()
 
-	suite.Error(suite.store.CreateProject(ctx, projectRecord{}))
+	suite.Error(suite.store.CreateProject(ctx, Project{}))
 	_, err := suite.store.GetProject(ctx, testProjectID)
 	suite.Error(err)
 	_, err = suite.store.GetProjectList(ctx, 10, 0)

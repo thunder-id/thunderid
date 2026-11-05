@@ -9,6 +9,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/security"
 )
 
 // userTypeResolver is a registration-flow executor that resolves the user type at flow start.
@@ -75,6 +76,17 @@ func (u *userTypeResolver) Execute(ctx *providers.NodeContext) (*providers.Execu
 		return u.resolveRegistrationFlow(ctx, entitytype.TypeCategoryUser, execResp, logger)
 	case providers.FlowTypeUserOnboarding:
 		return u.resolveOnboardingFlow(ctx, entitytype.TypeCategoryUser, execResp, logger)
+	case providers.FlowTypeInvitation:
+		if len(allowedTypesFromProperties(ctx, propertyKeyAllowedUserTypes)) != 1 {
+			execResp.Status = providers.ExecFailure
+			execResp.Error = errForEntityCategory(ErrInvitationEntityTypeNotNamed, entitytype.TypeCategoryUser)
+			return execResp, nil
+		}
+		// The type lives above the inviting admin's unit, where their token cannot read; resolving it
+		// grants nothing, since the share the type implies is authorized as the admin.
+		runtimeView := *ctx
+		runtimeView.Context = security.WithRuntimeContext(ctx.Context)
+		return u.resolveOnboardingFlow(&runtimeView, entitytype.TypeCategoryUser, execResp, logger)
 	default:
 		logger.Debug(ctx.Context, "User type resolver is not applicable for the flow type",
 			log.String("flowType", string(ctx.FlowType)))

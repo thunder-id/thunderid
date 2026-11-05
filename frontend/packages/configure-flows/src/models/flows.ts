@@ -52,6 +52,11 @@ export const FlowType = {
   ADMINISTRATION: 'ADMINISTRATION',
 
   /**
+   * Invitation flows let an organization unit admin invite a user into their unit, started by flow ID
+   */
+  INVITATION: 'INVITATION',
+
+  /**
    * Device Grant flows handle browser authorization for input-constrained devices.
    */
   DEVICE_GRANT: 'DEVICE_GRANT',
