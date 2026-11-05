@@ -2965,3 +2965,47 @@ func (s *ServiceTestSuite) TestUpdateSystemAttributes_ValuesAtLimitAccepted() {
 
 	s.NoError(svc.UpdateSystemAttributes(s.ctx, "e1", attrs))
 }
+
+func (s *ServiceTestSuite) TestProjectMethods_Delegate() {
+	e := testEntity("project-entity")
+	s.store.On("GetEntityListCountByProject", mock.Anything, "app", testProjectID, []string(nil)).Return(1, nil)
+	s.store.On("GetEntityListByProject", mock.Anything, "app", testProjectID, []string(nil), 10, 0).
+		Return([]providers.Entity{*e}, nil)
+	s.store.On("ProjectHasEntities", mock.Anything, testProjectID).Return(true, nil)
+	s.store.On("UpdateOwnership", mock.Anything, e.ID, "ou-2", testProjectID).Return(nil)
+
+	count, err := s.svc.GetEntityListCountByProject(s.ctx, providers.EntityCategoryApp, testProjectID, nil)
+	s.NoError(err)
+	s.Equal(1, count)
+	list, err := s.svc.GetEntityListByProject(s.ctx, providers.EntityCategoryApp, testProjectID, nil, 10, 0)
+	s.NoError(err)
+	s.Len(list, 1)
+	found, err := s.svc.ProjectHasEntities(s.ctx, testProjectID)
+	s.NoError(err)
+	s.True(found)
+	s.NoError(s.svc.UpdateOwnership(s.ctx, e.ID, "ou-2", testProjectID))
+}
+
+func (s *ServiceTestSuite) TestGetEntityListByProject_Errors() {
+	s.Run("store error", func() {
+		s.SetupTest()
+		s.store.On("GetEntityListByProject", mock.Anything, "app", testProjectID, []string(nil), 10, 0).
+			Return(nil, s.testErr)
+
+		_, err := s.svc.GetEntityListByProject(s.ctx, providers.EntityCategoryApp, testProjectID, nil, 10, 0)
+
+		s.ErrorIs(err, s.testErr)
+	})
+	s.Run("runtime read error", func() {
+		s.SetupTest()
+		svc, runtime := s.newServiceWithRuntimeMock()
+		e := testEntity("project-runtime")
+		s.store.On("GetEntityListByProject", mock.Anything, "app", testProjectID, []string(nil), 10, 0).
+			Return([]providers.Entity{*e}, nil)
+		runtime.On("GetRuntimeData", mock.Anything, []string{e.ID}).Return(nil, s.testErr)
+
+		_, err := svc.GetEntityListByProject(s.ctx, providers.EntityCategoryApp, testProjectID, nil, 10, 0)
+
+		s.ErrorIs(err, s.testErr)
+	})
+}

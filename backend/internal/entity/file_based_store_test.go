@@ -110,6 +110,7 @@ func (s *FileBasedStoreTestSuite) TestUnsupportedMutations() {
 
 	s.Error(s.store.UpdateEntity(s.ctx, &e))
 	s.Error(s.store.UpdateSystemAttributes(s.ctx, "e4", nil))
+	s.Error(s.store.UpdateOwnership(s.ctx, "e4", "ou2", testProjectID))
 	s.Error(s.store.UpdateCredentials(s.ctx, "e4", nil))
 	s.Error(s.store.UpdateSystemCredentials(s.ctx, "e4", nil))
 	s.Error(s.store.DeleteEntity(s.ctx, "e4"))
@@ -478,4 +479,44 @@ func (s *FileBasedStoreTestSuite) TestSearchEntities_MultipleMatches() {
 	got, err := s.store.SearchEntities(s.ctx, map[string]interface{}{"email": "shared@test.com"})
 	s.NoError(err)
 	s.Len(got, 2)
+}
+
+func (s *FileBasedStoreTestSuite) TestProjectListing() {
+	inProject := makeTestEntity("p1", "app", "ou1")
+	inProject.ProjectID = testProjectID
+	inChild := makeTestEntity("p2", "app", "ou2")
+	inChild.ProjectID = testProjectID
+	otherCategory := makeTestEntity("p3", "agent", "ou1")
+	otherCategory.ProjectID = testProjectID
+	otherProject := makeTestEntity("p4", "app", "ou1")
+	otherProject.ProjectID = "project-2"
+	for _, e := range []providers.Entity{inProject, inChild, otherCategory, otherProject,
+		makeTestEntity("p5", "app", "ou1")} {
+		s.seedEntity(e)
+	}
+
+	count, err := s.store.GetEntityListCountByProject(s.ctx, "app", testProjectID, nil)
+	s.NoError(err)
+	s.Equal(2, count)
+
+	count, err = s.store.GetEntityListCountByProject(s.ctx, "app", testProjectID, []string{"ou2"})
+	s.NoError(err)
+	s.Equal(1, count)
+
+	list, err := s.store.GetEntityListByProject(s.ctx, "app", testProjectID, nil, 1, 0)
+	s.NoError(err)
+	s.Len(list, 1)
+
+	list, err = s.store.GetEntityListByProject(s.ctx, "app", testProjectID, []string{"ou2"}, 10, 0)
+	s.NoError(err)
+	s.Require().Len(list, 1)
+	s.Equal("p2", list[0].ID)
+
+	found, err := s.store.ProjectHasEntities(s.ctx, "project-2")
+	s.NoError(err)
+	s.True(found)
+
+	found, err = s.store.ProjectHasEntities(s.ctx, "project-3")
+	s.NoError(err)
+	s.False(found)
 }

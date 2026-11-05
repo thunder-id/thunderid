@@ -21,6 +21,8 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/tests/mocks/applicationmock"
 	"github.com/thunder-id/thunderid/tests/mocks/sharingmock"
+
+	"gopkg.in/yaml.v3"
 )
 
 // ApplicationExporterTestSuite tests the applicationExporter.
@@ -115,6 +117,21 @@ func (s *ApplicationExporterTestSuite) TestGetResourceByID_Success() {
 	assert.Nil(s.T(), err)
 	assert.Equal(s.T(), "Test App", name)
 	assert.NotNil(s.T(), resource)
+}
+
+// An exported application keeps its project, so an import places it in the same project.
+func (s *ApplicationExporterTestSuite) TestGetResourceByID_ExportsProject() {
+	s.mockService.EXPECT().GetApplication(mock.Anything, "app1").Return(
+		&providers.Application{ID: "app1", Name: "Test App", ProjectID: "project-1"}, nil)
+	s.sharingMock.EXPECT().ExportPolicies(mock.Anything, application.ApplicationSharingType, "app1").
+		Return(nil, nil)
+
+	resource, _, err := s.exporter.GetResourceByID(context.Background(), "app1")
+	s.Require().Nil(err)
+
+	document, marshalErr := yaml.Marshal(resource)
+	s.Require().NoError(marshalErr)
+	assert.Contains(s.T(), string(document), "projectId: project-1")
 }
 
 // A failure to read the policies fails the export rather than writing a document that silently

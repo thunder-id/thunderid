@@ -133,7 +133,7 @@ func writeProjectError(ctx context.Context, w http.ResponseWriter, svcErr *tidco
 		switch svcErr.Code {
 		case ErrorProjectNotFound.Code:
 			status = http.StatusNotFound
-		case ErrorProjectIDConflict.Code, ErrorHandleConflict.Code:
+		case ErrorProjectIDConflict.Code, ErrorHandleConflict.Code, ErrorProjectNotEmpty.Code:
 			status = http.StatusConflict
 		case tidcommon.ErrorUnauthorized.Code:
 			status = http.StatusForbidden

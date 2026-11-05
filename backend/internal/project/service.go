@@ -43,21 +43,28 @@ type ProjectServiceInterface interface {
 		ctx context.Context, resourceType, id string) ([]resourcedependency.ResourceDependency, error)
 }
 
+// projectEntityReader reports whether any entity, such as an application or an agent, is in a project.
+type projectEntityReader interface {
+	ProjectHasEntities(ctx context.Context, projectID string) (bool, error)
+}
+
 // projectService is the default implementation of ProjectServiceInterface.
 type projectService struct {
 	store         projectStoreInterface
 	transactioner providers.Transactioner
 	ouService     ou.OrganizationUnitServiceInterface
+	entities      projectEntityReader
 	logger        *log.Logger
 }
 
 // newProjectService creates a project service.
 func newProjectService(store projectStoreInterface, transactioner providers.Transactioner,
-	ouService ou.OrganizationUnitServiceInterface) *projectService {
+	ouService ou.OrganizationUnitServiceInterface, entities projectEntityReader) *projectService {
 	return &projectService{
 		store:         store,
 		transactioner: transactioner,
 		ouService:     ouService,
+		entities:      entities,
 		logger:        log.GetLogger().With(log.String(log.LoggerKeyComponentName, "ProjectService")),
 	}
 }
@@ -160,9 +167,26 @@ func (s *projectService) UpdateProject(
 	return &project, nil
 }
 
-// DeleteProject deletes a project. Deleting a project that does not exist succeeds.
+// DeleteProject deletes a project. It is refused while an application or agent is still in the project.
+// The check and the delete run in one transaction in the entity database. Deleting a project that does
+// not exist succeeds.
 func (s *projectService) DeleteProject(ctx context.Context, id string) *tidcommon.ServiceError {
-	if err := s.store.DeleteProject(ctx, id); err != nil {
+	var capturedSvcErr *tidcommon.ServiceError
+	err := s.transactioner.Transact(ctx, func(txCtx context.Context) error {
+		hasEntities, err := s.entities.ProjectHasEntities(txCtx, id)
+		if err != nil {
+			return err
+		}
+		if hasEntities {
+			capturedSvcErr = &ErrorProjectNotEmpty
+			return errors.New("project is not empty")
+		}
+		return s.store.DeleteProject(txCtx, id)
+	})
+	if capturedSvcErr != nil {
+		return capturedSvcErr
+	}
+	if err != nil {
 		s.logger.Error(ctx, "Failed to delete project", log.Error(err))
 		return &tidcommon.InternalServerError
 	}

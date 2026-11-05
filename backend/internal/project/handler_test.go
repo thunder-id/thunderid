@@ -229,6 +229,7 @@ func (suite *ProjectHandlerTestSuite) TestWriteProjectErrorStatusMapping() {
 		{ErrorProjectNotFound, http.StatusNotFound},
 		{ErrorProjectIDConflict, http.StatusConflict},
 		{ErrorHandleConflict, http.StatusConflict},
+		{ErrorProjectNotEmpty, http.StatusConflict},
 		{tidcommon.ErrorUnauthorized, http.StatusForbidden},
 		{ErrorInvalidDisplayName, http.StatusBadRequest},
 		{tidcommon.InternalServerError, http.StatusInternalServerError},

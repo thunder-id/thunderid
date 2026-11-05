@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
 	"strings"
 
 	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
@@ -97,6 +98,11 @@ func (f *entityFileBasedStore) UpdateAttributes(
 func (f *entityFileBasedStore) UpdateSystemAttributes(ctx context.Context, entityID string,
 	attrs json.RawMessage) error {
 	return errors.New("UpdateSystemAttributes is not supported in file-based store")
+}
+
+// UpdateOwnership is not supported in file-based store.
+func (f *entityFileBasedStore) UpdateOwnership(ctx context.Context, entityID, ouID, projectID string) error {
+	return errors.New("UpdateOwnership is not supported in file-based store")
 }
 
 // UpdateCredentials is not supported in file-based store.
@@ -268,6 +274,62 @@ func (f *entityFileBasedStore) GetEntityListCountByOUIDs(ctx context.Context, ca
 		}
 	}
 	return count, nil
+}
+
+// GetEntityListCountByProject retrieves the number of entities of a category in a project, narrowed to
+// the given organization units when ouIDs is not nil.
+func (f *entityFileBasedStore) GetEntityListCountByProject(ctx context.Context, category, projectID string,
+	ouIDs []string) (int, error) {
+	entities, err := f.listProjectEntities(category, projectID, ouIDs)
+	if err != nil {
+		return 0, err
+	}
+	return len(entities), nil
+}
+
+// GetEntityListByProject retrieves a page of the entities of a category in a project, narrowed to the
+// given organization units when ouIDs is not nil.
+func (f *entityFileBasedStore) GetEntityListByProject(ctx context.Context, category, projectID string,
+	ouIDs []string, limit, offset int) ([]providers.Entity, error) {
+	entities, err := f.listProjectEntities(category, projectID, ouIDs)
+	if err != nil {
+		return nil, err
+	}
+	return applyPagination(entities, limit, offset), nil
+}
+
+// ProjectHasEntities reports whether any entity, of any category, is in a project.
+func (f *entityFileBasedStore) ProjectHasEntities(ctx context.Context, projectID string) (bool, error) {
+	resources, err := f.listEntityResources()
+	if err != nil {
+		return false, err
+	}
+	for _, resource := range resources {
+		if resource.Entity.ProjectID == projectID {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// listProjectEntities returns the entities of a category in a project, narrowed to the given
+// organization units when ouIDs is not nil.
+func (f *entityFileBasedStore) listProjectEntities(category, projectID string, ouIDs []string) (
+	[]providers.Entity, error) {
+	resources, err := f.listEntityResources()
+	if err != nil {
+		return nil, err
+	}
+	entities := make([]providers.Entity, 0)
+	for _, resource := range resources {
+		e := resource.Entity
+		if string(e.Category) != category || e.ProjectID != projectID ||
+			(ouIDs != nil && !slices.Contains(ouIDs, e.OUID)) {
+			continue
+		}
+		entities = append(entities, e)
+	}
+	return entities, nil
 }
 
 // GetEntityListByOUIDs retrieves entities scoped to OU IDs with pagination and filtering.

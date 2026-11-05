@@ -146,7 +146,7 @@ var (
 		},
 		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "error.projectservice.ou_not_in_project_description",
-			DefaultValue: "The organization unit must be the default organization unit or one below it",
+			DefaultValue: "The organization unit must be the system organization unit or one below it",
 		},
 	}
 
@@ -176,6 +176,20 @@ var (
 		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "error.projectservice.handle_conflict_description",
 			DefaultValue: "Supply a handle that no other project uses",
+		},
+	}
+
+	// ErrorProjectNotEmpty is the error returned when a project to delete still has resources.
+	ErrorProjectNotEmpty = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "PRJ-1013",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.projectservice.project_not_empty",
+			DefaultValue: "Project is not empty",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.projectservice.project_not_empty_description",
+			DefaultValue: "Delete or move the project's applications and agents before deleting the project",
 		},
 	}
 )

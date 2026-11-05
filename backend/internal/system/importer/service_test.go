@@ -1080,6 +1080,14 @@ func TestImportResources_CreateApplication(t *testing.T) {
 	assert.Equal(t, operationCreate, resp.Results[0].Operation)
 }
 
+// An exported application's project reaches the application service, so the import keeps it in the
+// project.
+func TestApplicationRequestToDTO_KeepsProject(t *testing.T) {
+	dto := applicationRequestToDTO(&model.ApplicationRequestWithID{ID: "app-1", ProjectID: "project-1"})
+
+	assert.Equal(t, "project-1", dto.ProjectID)
+}
+
 func TestImportApplicationRemapsDeviceGrantFlowID(t *testing.T) {
 	appSvc := &fakeApplicationService{existing: map[string]*providers.Application{}}
 	svc := newTestImportService(appSvc)

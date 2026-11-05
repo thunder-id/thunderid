@@ -59,7 +59,7 @@ func registerMCPTools(server *mcp.Server, service ProjectServiceInterface) {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "list_projects",
-		Description: `List all projects, oldest first. Every project includes the default organization unit.`,
+		Description: `List all projects, oldest first. Every project includes the system organization unit.`,
 		Annotations: &mcp.ToolAnnotations{
 			Title:        "List Projects",
 			ReadOnlyHint: true,
@@ -77,7 +77,7 @@ func registerMCPTools(server *mcp.Server, service ProjectServiceInterface) {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name: "create_project",
-		Description: `Create a project. Its resources are created in the default organization unit unless ` +
+		Description: `Create a project. Its resources are created in the system organization unit unless ` +
 			`they name one below it. A handle already used by another project is refused.`,
 		Annotations: &mcp.ToolAnnotations{
 			Title:          "Create Project",

@@ -34,12 +34,17 @@ type EntityServiceInterface interface {
 	GetEntityProfile(ctx context.Context, entityID string) (*providers.Entity, error)
 	GetCredentialsByType(ctx context.Context, entityID string,
 		credType string) ([]StoredCredential, error)
+	// UpdateEntity fully updates an entity. An entity with no project ID keeps its stored project, unlike
+	// UpdateOwnership, which treats an empty project ID as no project.
 	UpdateEntity(ctx context.Context, entityID string, entity *providers.Entity) (*providers.Entity, error)
 	DeleteEntity(ctx context.Context, entityID string) error
 
 	// Partial updates
 	UpdateAttributes(ctx context.Context, entityID string, attributes json.RawMessage) error
 	UpdateSystemAttributes(ctx context.Context, entityID string, attrs json.RawMessage) error
+	// UpdateOwnership moves an entity to another organization unit and project. An empty projectID
+	// leaves the entity in no project.
+	UpdateOwnership(ctx context.Context, entityID, ouID, projectID string) error
 
 	// Credentials
 	UpdateCredentials(ctx context.Context, entityID string,
@@ -69,6 +74,11 @@ type EntityServiceInterface interface {
 		ouIDs []string, filters map[string]interface{}) (int, error)
 	GetEntityListByOUIDs(ctx context.Context, category providers.EntityCategory,
 		ouIDs []string, limit, offset int, filters map[string]interface{}) ([]providers.Entity, error)
+	GetEntityListCountByProject(ctx context.Context, category providers.EntityCategory,
+		projectID string, ouIDs []string) (int, error)
+	GetEntityListByProject(ctx context.Context, category providers.EntityCategory,
+		projectID string, ouIDs []string, limit, offset int) ([]providers.Entity, error)
+	ProjectHasEntities(ctx context.Context, projectID string) (bool, error)
 	// GetEntityPageInOU lists the entities of a category an organization unit owns, in the store's list
 	// order, then the ones shared into it.
 	GetEntityPageInOU(ctx context.Context, category providers.EntityCategory, ouID string,
@@ -333,7 +343,7 @@ func (s *entityService) GetCredentialsByType(
 	return creds, nil
 }
 
-// UpdateEntity updates an entity.
+// UpdateEntity updates an entity. An entity with no project ID keeps its stored project.
 // Uses a transaction to ensure the entity update and identifier re-sync are atomic.
 // The entity's state is not written: lifecycle state lives in the runtime store.
 func (s *entityService) UpdateEntity(
@@ -512,6 +522,12 @@ func (s *entityService) UpdateSystemAttributes(ctx context.Context, entityID str
 		}
 		return s.store.UpdateSystemAttributes(txCtx, entityID, preserved)
 	})
+}
+
+// UpdateOwnership moves an entity to another organization unit and project.
+func (s *entityService) UpdateOwnership(ctx context.Context, entityID, ouID, projectID string) error {
+	s.logger.Debug(ctx, "Updating entity ownership", log.MaskedString("id", entityID))
+	return s.store.UpdateOwnership(ctx, entityID, ouID, projectID)
 }
 
 // SetValidUntil sets the entity's lifespan end, which every other system-attribute write carries
@@ -745,6 +761,32 @@ func (s *entityService) GetEntityListByOUIDs(ctx context.Context, category provi
 		return nil, err
 	}
 	return entities, nil
+}
+
+// GetEntityListCountByProject retrieves the number of entities of a category in a project, narrowed to
+// the given organization units when ouIDs is not nil.
+func (s *entityService) GetEntityListCountByProject(ctx context.Context, category providers.EntityCategory,
+	projectID string, ouIDs []string) (int, error) {
+	return s.store.GetEntityListCountByProject(ctx, string(category), projectID, ouIDs)
+}
+
+// GetEntityListByProject retrieves a page of the entities of a category in a project, narrowed to
+// the given organization units when ouIDs is not nil.
+func (s *entityService) GetEntityListByProject(ctx context.Context, category providers.EntityCategory,
+	projectID string, ouIDs []string, limit, offset int) ([]providers.Entity, error) {
+	entities, err := s.store.GetEntityListByProject(ctx, string(category), projectID, ouIDs, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.populateRuntime(ctx, entities); err != nil {
+		return nil, err
+	}
+	return entities, nil
+}
+
+// ProjectHasEntities reports whether any entity, of any category, is in a project.
+func (s *entityService) ProjectHasEntities(ctx context.Context, projectID string) (bool, error) {
+	return s.store.ProjectHasEntities(ctx, projectID)
 }
 
 // GetEntityPageInOU retrieves one page of the entities of a category an organization unit owns,

@@ -168,6 +168,7 @@ func (s *agentService) CreateAgent(ctx context.Context, agent *providers.Agent) 
 		s.logger.Error(ctx, "Failed to build agent entity", log.Error(buildErr))
 		return nil, &tidcommon.InternalServerError
 	}
+	e.ProjectID = agent.ProjectID
 
 	createdEntity, entErr := s.entityService.CreateEntity(ctx, e, sysCredsJSON, nil)
 	if entErr != nil {
@@ -207,6 +208,7 @@ func (s *agentService) CreateAgent(ctx context.Context, agent *providers.Agent) 
 		agent.ThemeID, agent.LayoutID, assertion, loginConsent,
 		agent.AllowedUserTypes, agent.AllowedAgentTypes, inboundConfigs)
 	resp.OUID = agent.OUID
+	resp.ProjectID = agent.ProjectID
 	resp.ValidUntil, resp.Lifespan = lifespanView(&validUntil, now)
 	s.populateOUHandleForComplete(ctx, resp)
 	s.captureValues(ctx, resp)
@@ -294,10 +296,9 @@ func (s *agentService) GetAgentList(ctx context.Context, limit, offset int,
 	return s.listAgentsByOUIDs(ctx, accessible.IDs, limit, offset, filters, includeDisplay, listQuery)
 }
 
-// GetAgentListByProject returns a paginated list of the agents an organization unit of the project
-// owns, followed by the ones shared into it. Without an organization unit filter it lists the
-// project's root organization unit. A project that does not exist, or an organization unit outside
-// it, has none.
+// GetAgentListByProject returns a paginated list of the agents of a project, narrowed to those an
+// organization unit owns when the filter names one. A project that does not exist has none. A caller
+// limited to some organization units lists only the project's agents in those units.
 func (s *agentService) GetAgentListByProject(ctx context.Context, projectID string, limit, offset int,
 	filters map[string]interface{}, includeDisplay bool) (*model.AgentListResponse, *tidcommon.ServiceError) {
 	if svcErr := validatePaginationParams(limit, offset); svcErr != nil {
@@ -313,16 +314,37 @@ func (s *agentService) GetAgentListByProject(ctx context.Context, projectID stri
 	if err != nil || len(rest) > 0 {
 		return nil, &ErrorInvalidFilter
 	}
+	empty := s.buildListResponse(ctx, []providers.Entity{}, 0, 0, limit, offset, includeDisplay, listQuery)
+	if projectID == "" {
+		return empty, nil
+	}
 
-	ouID, svcErr := s.resolveProjectOU(ctx, projectID, ouID)
+	accessible, svcErr := s.getAccessibleOUs(ctx)
 	if svcErr != nil {
-		if svcErr.Type == tidcommon.ClientErrorType {
-			return s.buildListResponse(ctx, []providers.Entity{}, 0, 0, limit, offset, includeDisplay,
-				listQuery), nil
-		}
 		return nil, svcErr
 	}
-	return s.listAccessibleAgentsInOU(ctx, ouID, limit, offset, includeDisplay, listQuery)
+	var ouIDs []string
+	switch {
+	case ouID != "" && !accessible.AllAllowed && !slices.Contains(accessible.IDs, ouID):
+		return empty, nil
+	case ouID != "":
+		ouIDs = []string{ouID}
+	case !accessible.AllAllowed:
+		ouIDs = append([]string{}, accessible.IDs...)
+	}
+
+	total, err := s.entityService.GetEntityListCountByProject(ctx, providers.EntityCategoryAgent, projectID, ouIDs)
+	if err != nil {
+		s.logger.Error(ctx, "Failed to count project agents", log.String("projectID", projectID), log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+	entities, err := s.entityService.GetEntityListByProject(ctx, providers.EntityCategoryAgent, projectID, ouIDs,
+		limit, offset)
+	if err != nil {
+		s.logger.Error(ctx, "Failed to list project agents", log.String("projectID", projectID), log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+	return s.buildListResponse(ctx, entities, len(entities), total, limit, offset, includeDisplay, listQuery), nil
 }
 
 // getAccessibleOUs resolves the set of organization units the caller is authorized to list agents from.
@@ -506,7 +528,7 @@ func (s *agentService) UpdateAgent(ctx context.Context, agentID string,
 		return fail(svcErr)
 	}
 
-	ouID, svcErr := s.resolveUpdateOUID(ctx, req, existing.OUID)
+	ouID, projectID, svcErr := s.resolveUpdateOUID(ctx, req, existing.OUID, existing.ProjectID)
 	if svcErr != nil {
 		return fail(svcErr)
 	}
@@ -538,6 +560,7 @@ func (s *agentService) UpdateAgent(ctx context.Context, agentID string,
 		Type:       req.Type,
 		State:      providers.EntityStateActive,
 		OUID:       ouID,
+		ProjectID:  projectID,
 		Attributes: req.Attributes,
 	}
 	updatedEntity.SystemAttributes = buildSystemAttributesJSON(req.Description, owner, clientID, "")
@@ -581,6 +604,7 @@ func (s *agentService) UpdateAgent(ctx context.Context, agentID string,
 		req.ThemeID, req.LayoutID, assertion, loginConsent,
 		req.AllowedUserTypes, req.AllowedAgentTypes, inboundConfigs)
 	resp.OUID = ouID
+	resp.ProjectID = projectID
 	access := s.governance.ReadEntityAccess(ctx, *updated)
 	resp.Status = &access.Status
 	resp.LastLoginAt = access.LastLoginAt
@@ -895,7 +919,7 @@ func (s *agentService) ValidateAgent(ctx context.Context, agent *providers.Agent
 		}
 		agent.OUID = ou.ID
 	}
-	// A project places the agent in its root organization unit, or checks that the one named
+	// A project places the agent in the system organization unit, or checks that the one named
 	// belongs to it.
 	if agent.ProjectID != "" {
 		ouID, svcErr := s.resolveProjectOU(ctx, agent.ProjectID, agent.OUID)
@@ -1012,13 +1036,22 @@ func (s *agentService) validateOUExists(ctx context.Context, ouID string) *tidco
 }
 
 // resolveProjectOU returns the organization unit of the project that an agent belongs to: the
-// project's root organization unit when ouID is empty, or ouID when it is in the project. It returns
+// system organization unit when ouID is empty, or ouID when it belongs to the project. It returns
 // ErrorInvalidProject when no such project exists, ErrorOUNotInProject when the organization unit is
 // outside the project, and ErrorOrganizationUnitNotFound when the organization unit does not exist.
+//
+// A deployment that serves no projects, such as a Data Plane, cannot check the project. It keeps the
+// project ID as given so that imported configuration retains it, and places the agent as above.
 func (s *agentService) resolveProjectOU(
 	ctx context.Context, projectID, ouID string) (string, *tidcommon.ServiceError) {
-	if projectID == "" || s.projectResolver == nil {
+	if projectID == "" {
 		return "", &ErrorInvalidProject
+	}
+	if s.projectResolver == nil {
+		if ouID == "" {
+			return oupkg.SystemOUID, nil
+		}
+		return ouID, nil
 	}
 	resolved, svcErr := s.projectResolver.ResolveProjectOU(ctx, projectID, ouID)
 	if svcErr == nil {
@@ -1037,19 +1070,19 @@ func (s *agentService) resolveProjectOU(
 	}
 }
 
-// resolveUpdateOwner picks the effective owner for an update — either the requested owner or the
-// existing one — and validates it exists when the owner is changing.
+// resolveUpdateOUID picks the organization unit and project for an update: the requested ones, or the
+// existing ones the request leaves out. The organization unit must belong to the project.
 func (s *agentService) resolveUpdateOUID(
-	ctx context.Context, req *model.UpdateAgentRequest, existingOUID string,
-) (string, *tidcommon.ServiceError) {
+	ctx context.Context, req *model.UpdateAgentRequest, existingOUID, existingProjectID string,
+) (string, string, *tidcommon.ServiceError) {
 	if req.OUID == "" && req.OUHandle != "" {
 		ou, ouSvcErr := s.ouService.GetOrganizationUnitByPath(ctx, req.OUHandle)
 		if ouSvcErr != nil {
 			if ouSvcErr.Code == oupkg.ErrorOrganizationUnitNotFound.Code {
-				return "", &ErrorOrganizationUnitNotFound
+				return "", "", &ErrorOrganizationUnitNotFound
 			}
 			s.logger.Error(ctx, "Failed to resolve OU handle", log.Any("error", ouSvcErr))
-			return "", &tidcommon.InternalServerError
+			return "", "", &tidcommon.InternalServerError
 		}
 		req.OUID = ou.ID
 	}
@@ -1058,16 +1091,27 @@ func (s *agentService) resolveUpdateOUID(
 		ouID = existingOUID
 	} else if ouID != existingOUID {
 		if svcErr := s.validateOUExists(ctx, ouID); svcErr != nil {
-			return "", svcErr
+			return "", "", svcErr
 		}
 	}
-	// A project checks that the agent stays in it; it never moves the agent on its own.
-	if req.ProjectID != "" {
-		return s.resolveProjectOU(ctx, req.ProjectID, ouID)
+	// A project checks that the agent stays in it; it never moves the agent on its own. An update that
+	// names no project keeps the agent in its project.
+	projectID := req.ProjectID
+	if projectID == "" {
+		projectID = existingProjectID
 	}
-	return ouID, nil
+	if projectID == "" {
+		return ouID, "", nil
+	}
+	ouID, svcErr := s.resolveProjectOU(ctx, projectID, ouID)
+	if svcErr != nil {
+		return "", "", svcErr
+	}
+	return ouID, projectID, nil
 }
 
+// resolveUpdateOwner picks the effective owner for an update — either the requested owner or the
+// existing one — and validates it exists when the owner is changing.
 func (s *agentService) resolveUpdateOwner(
 	ctx context.Context, requestedOwner, currentOwner string,
 ) (string, *tidcommon.ServiceError) {
@@ -1280,6 +1324,7 @@ func (s *agentService) composeGetResponse(ctx context.Context, e *providers.Enti
 		ID:          e.ID,
 		OUID:        e.OUID,
 		OUHandle:    e.OUHandle,
+		ProjectID:   e.ProjectID,
 		Type:        e.Type,
 		Description: description,
 		Owner:       owner,
@@ -1358,6 +1403,7 @@ func (s *agentService) buildListResponse(ctx context.Context, entities []provide
 			ID:          e.ID,
 			OUID:        e.OUID,
 			OUHandle:    e.OUHandle,
+			ProjectID:   e.ProjectID,
 			Type:        e.Type,
 			Description: description,
 			LogoURL:     logoByID[e.ID],

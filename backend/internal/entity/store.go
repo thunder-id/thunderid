@@ -37,6 +37,7 @@ type entityStoreInterface interface {
 	UpdateAttributes(ctx context.Context, entityID string, attributes json.RawMessage) error
 	UpdateSystemAttributes(ctx context.Context, entityID string,
 		attrs json.RawMessage) error
+	UpdateOwnership(ctx context.Context, entityID, ouID, projectID string) error
 	UpdateCredentials(ctx context.Context, entityID string,
 		creds json.RawMessage) error
 	UpdateSystemCredentials(ctx context.Context, entityID string,
@@ -56,6 +57,10 @@ type entityStoreInterface interface {
 		ouIDs []string, filters map[string]interface{}) (int, error)
 	GetEntityListByOUIDs(ctx context.Context, category string,
 		ouIDs []string, limit, offset int, filters map[string]interface{}) ([]providers.Entity, error)
+	GetEntityListCountByProject(ctx context.Context, category, projectID string, ouIDs []string) (int, error)
+	GetEntityListByProject(ctx context.Context, category, projectID string, ouIDs []string,
+		limit, offset int) ([]providers.Entity, error)
+	ProjectHasEntities(ctx context.Context, projectID string) (bool, error)
 	GetEntityListCountBySystemAttributes(ctx context.Context, category string,
 		sysQuery SystemAttributeQuery) (int, error)
 	GetEntityListBySystemAttributes(ctx context.Context, category string,
@@ -173,6 +178,7 @@ func (es *entityDBStore) CreateEntity(ctx context.Context, entity providers.Enti
 		string(entity.Category),
 		entity.Type,
 		entity.OUID,
+		nullableString(entity.ProjectID),
 		string(attributes),
 		systemAttrs,
 		credsJSON,
@@ -249,7 +255,8 @@ func (es *entityDBStore) GetEntityWithCredentials(ctx context.Context, id string
 	}, nil
 }
 
-// UpdateEntity fully updates an entity including system attributes, and re-syncs all identifiers.
+// UpdateEntity fully updates an entity including system attributes, and re-syncs all identifiers. An
+// entity with no project ID keeps its stored project; UpdateOwnership is what changes or clears it.
 func (es *entityDBStore) UpdateEntity(ctx context.Context, entity *providers.Entity) error {
 	dbClient, err := es.dbProvider.GetEntityDBClient()
 	if err != nil {
@@ -270,7 +277,7 @@ func (es *entityDBStore) UpdateEntity(ctx context.Context, entity *providers.Ent
 	rowsAffected, err := dbClient.ExecuteContext(
 		ctx,
 		QueryUpdateEntity,
-		entity.ID, entity.OUID, entity.Type,
+		entity.ID, entity.OUID, nullableString(entity.ProjectID), entity.Type,
 		string(attributes), systemAttrs, time.Now().UTC(), es.scope(ctx),
 	)
 	if err != nil {
@@ -345,6 +352,24 @@ func (es *entityDBStore) UpdateSystemAttributes(ctx context.Context, entityID st
 	}
 
 	return es.resyncIdentifiers(ctx, dbClient, entityID)
+}
+
+// UpdateOwnership updates the organization unit and project of an entity.
+func (es *entityDBStore) UpdateOwnership(ctx context.Context, entityID, ouID, projectID string) error {
+	dbClient, err := es.dbProvider.GetEntityDBClient()
+	if err != nil {
+		return fmt.Errorf("failed to get database client: %w", err)
+	}
+
+	rowsAffected, err := dbClient.ExecuteContext(ctx, QueryUpdateOwnership,
+		entityID, ouID, nullableString(projectID), time.Now().UTC(), es.scope(ctx))
+	if err != nil {
+		return fmt.Errorf("failed to execute query: %w", err)
+	}
+	if rowsAffected == 0 {
+		return ErrEntityNotFound
+	}
+	return nil
 }
 
 // UpdateCredentials updates the credentials of an entity.
@@ -691,6 +716,50 @@ func (es *entityDBStore) GetEntityListByOUIDs(ctx context.Context, category stri
 	return buildEntitiesFromResults(results)
 }
 
+// GetEntityListCountByProject retrieves the number of entities of a category in a project, narrowed to
+// the given organization units when ouIDs is not nil.
+func (es *entityDBStore) GetEntityListCountByProject(ctx context.Context, category, projectID string,
+	ouIDs []string) (int, error) {
+	dbClient, err := es.dbProvider.GetEntityDBClient()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get database client: %w", err)
+	}
+	query, args := buildEntityCountQueryByProject(category, projectID, ouIDs, es.scope(ctx))
+	return executeCountQuery(dbClient, ctx, query, args)
+}
+
+// GetEntityListByProject retrieves a page of the entities of a category in a project, narrowed to the
+// given organization units when ouIDs is not nil.
+func (es *entityDBStore) GetEntityListByProject(ctx context.Context, category, projectID string,
+	ouIDs []string, limit, offset int) ([]providers.Entity, error) {
+	dbClient, err := es.dbProvider.GetEntityDBClient()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get database client: %w", err)
+	}
+	query, args, err := buildEntityListQueryByProject(category, projectID, ouIDs, limit, offset, es.scope(ctx))
+	if err != nil {
+		return nil, fmt.Errorf("failed to build list query: %w", err)
+	}
+	results, err := dbClient.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute paginated query: %w", err)
+	}
+	return buildEntitiesFromResults(results)
+}
+
+// ProjectHasEntities reports whether any entity, of any category, is in a project.
+func (es *entityDBStore) ProjectHasEntities(ctx context.Context, projectID string) (bool, error) {
+	dbClient, err := es.dbProvider.GetEntityDBClient()
+	if err != nil {
+		return false, fmt.Errorf("failed to get database client: %w", err)
+	}
+	results, err := dbClient.QueryContext(ctx, QueryFindProjectEntity, projectID, es.scope(ctx))
+	if err != nil {
+		return false, fmt.Errorf("failed to find a project entity: %w", err)
+	}
+	return len(results) > 0, nil
+}
+
 // GetEntityListCountBySystemAttributes retrieves the number of entities a system attribute query selects.
 func (es *entityDBStore) GetEntityListCountBySystemAttributes(ctx context.Context, category string,
 	sysQuery SystemAttributeQuery) (int, error) {
@@ -986,10 +1055,11 @@ func buildEntityFromResultRow(row map[string]interface{}) (providers.Entity, err
 	}
 
 	entity := providers.Entity{
-		ID:       entityID,
-		Category: providers.EntityCategory(category),
-		Type:     entityType,
-		OUID:     ouID,
+		ID:        entityID,
+		Category:  providers.EntityCategory(category),
+		Type:      entityType,
+		OUID:      ouID,
+		ProjectID: optionalStringColumn(row["project_id"]),
 	}
 
 	if err := json.Unmarshal([]byte(attributes), &entity.Attributes); err != nil {
@@ -1030,6 +1100,26 @@ func buildEntitiesFromResults(results []map[string]interface{}) ([]providers.Ent
 		entities = append(entities, entity)
 	}
 	return entities, nil
+}
+
+// nullableString returns nil for an empty value, so that the column is stored as NULL.
+func nullableString(value string) interface{} {
+	if value == "" {
+		return nil
+	}
+	return value
+}
+
+// optionalStringColumn reads a nullable string column, returning an empty string for NULL.
+func optionalStringColumn(value interface{}) string {
+	switch v := value.(type) {
+	case string:
+		return v
+	case []byte:
+		return string(v)
+	default:
+		return ""
+	}
 }
 
 func parseJSONColumn(row map[string]interface{}, column string) json.RawMessage {

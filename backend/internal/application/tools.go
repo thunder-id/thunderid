@@ -36,8 +36,8 @@ func registerMCPTools(server *mcp.Server, appService ApplicationServiceInterface
 
 Behavior:
 - With ouId, lists the applications the organization unit owns, followed by the ones shared into it.
-- With projectId, lists the project's root organization unit, or ouId when it is in the project.
-  A project that does not exist, or an organization unit outside it, has no applications.`,
+- With projectId, lists the project's applications, narrowed to ouId when given.
+  A project that does not exist has no applications.`,
 		Annotations: &mcp.ToolAnnotations{
 			Title:        "List Applications",
 			ReadOnlyHint: true,
@@ -98,7 +98,8 @@ Workflow:
 2. Modify the fields you want to change
 3. Send the complete object back
 
-Any field not provided will be reset to empty/default.`,
+Any field not provided will be reset to empty/default, except projectId: leaving it out keeps the
+application in its project.`,
 		InputSchema: getUpdateAppSchema(),
 		Annotations: &mcp.ToolAnnotations{
 			Title:          "Update Application",

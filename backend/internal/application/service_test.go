@@ -50,7 +50,11 @@ import (
 
 const testServiceAppID = "app123"
 const testClientID = "test-client-id"
-const testOUID = "default-ou"
+const (
+	testOUID      = "default-ou"
+	testProjectID = "project-1"
+)
+
 const testConflictingAppID = "app456"
 
 type ServiceTestSuite struct {
@@ -158,6 +162,8 @@ func (suite *ServiceTestSuite) setupTestService() (
 		Maybe().Return(&providers.Entity{}, noEPErr)
 	mockEntityService.On("DeleteEntity", mock.Anything, mock.Anything).Maybe().Return(noEPErr)
 	mockEntityService.On("UpdateSystemAttributes", mock.Anything, mock.Anything, mock.Anything).Maybe().Return(noEPErr)
+	mockEntityService.On("UpdateOwnership", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Maybe().Return(noEPErr)
 	mockEntityService.On("UpdateSystemCredentials", mock.Anything, mock.Anything, mock.Anything).
 		Maybe().Return(noEPErr)
 	mockStore.On("Validate", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
@@ -306,6 +312,7 @@ func mockLoadFullApplication(
 			ID:               dto.ID,
 			Category:         providers.EntityCategoryApp,
 			OUID:             dto.OUID,
+			ProjectID:        dto.ProjectID,
 			SystemAttributes: sysAttrsJSON,
 		},
 		nil,
@@ -655,101 +662,88 @@ func (suite *ServiceTestSuite) TestGetApplicationList_InvalidFilter() {
 func (suite *ServiceTestSuite) TestGetApplicationListByProject() {
 	for name, tc := range map[string]struct {
 		filters map[string]interface{}
-		ouID    string
+		ouIDs   []string
 	}{
-		"the project's root organization unit": {ouID: "root-ou"},
-		"an organization unit filter":          {filters: map[string]interface{}{"ouId": "child-ou"}, ouID: "child-ou"},
+		"the whole project": {},
+		"an organization unit filter": {
+			filters: map[string]interface{}{"ouId": "child-ou"}, ouIDs: []string{"child-ou"},
+		},
 	} {
 		suite.Run(name, func() {
 			service, mockStore := suite.setupTestService()
-			filterOUID, _ := tc.filters["ouId"].(string)
-			resolver := newProjectOUResolverMock(suite.T())
-			resolver.EXPECT().ResolveProjectOU(mock.Anything, "project-1", filterOUID).Return(tc.ouID, nil).Once()
-			service.projectResolver = resolver
-
-			resetEntityServiceMethod(service, "GetEntityPageInOU").
-				On("GetEntityPageInOU", mock.Anything, providers.EntityCategoryApp, tc.ouID, entity.OUEntityScopeAll,
-					serverconst.MaxCompositeStoreRecords, 0, map[string]interface{}(nil)).
-				Return(&entity.OUEntityPage{
-					Owned:        []providers.Entity{{ID: "owned-app", Category: providers.EntityCategoryApp}},
-					Shared:       []providers.Entity{{ID: "shared-app", Category: providers.EntityCategoryApp}},
-					TotalResults: 2,
-				}, nil)
+			resetEntityServiceMethod(service, "GetEntityListCountByProject").
+				On("GetEntityListCountByProject", mock.Anything, providers.EntityCategoryApp, testProjectID, tc.ouIDs).
+				Return(1, nil)
+			resetEntityServiceMethod(service, "GetEntityListByProject").
+				On("GetEntityListByProject", mock.Anything, providers.EntityCategoryApp, testProjectID, tc.ouIDs,
+					serverconst.MaxCompositeStoreRecords, 0).
+				Return([]providers.Entity{{ID: "project-app", Category: providers.EntityCategoryApp,
+					ProjectID: testProjectID}}, nil)
 			mockStore.On("GetInboundClientList", mock.Anything).Return([]inboundmodel.InboundClient{
-				{ID: "owned-app"}, {ID: "shared-app"},
+				{ID: "project-app"},
 			}, nil)
 
-			result, svcErr := service.GetApplicationListByProject(context.Background(), "project-1", tc.filters)
+			result, svcErr := service.GetApplicationListByProject(context.Background(), testProjectID, tc.filters)
 
 			suite.Require().Nil(svcErr)
-			assert.Equal(suite.T(), 2, result.TotalResults)
-			suite.Require().Len(result.Applications, 2)
-			assert.Equal(suite.T(), "owned-app", result.Applications[0].ID)
+			assert.Equal(suite.T(), 1, result.TotalResults)
+			suite.Require().Len(result.Applications, 1)
+			assert.Equal(suite.T(), "project-app", result.Applications[0].ID)
+			assert.Equal(suite.T(), testProjectID, result.Applications[0].ProjectID)
 			assert.Equal(suite.T(), new(true), result.Applications[0].IsOwnedByOU)
-			assert.Equal(suite.T(), "shared-app", result.Applications[1].ID)
-			assert.Equal(suite.T(), new(false), result.Applications[1].IsOwnedByOU)
 		})
 	}
 }
 
-func (suite *ServiceTestSuite) TestGetApplicationListByProject_NothingInScope() {
-	for name, tc := range map[string]struct {
-		projectID string
-		resolver  func() projectOUResolver
-	}{
-		"an unknown project": {
-			projectID: "project-1",
-			resolver:  suite.projectResolverReturning(&project.ErrorProjectNotFound),
-		},
-		"an organization unit outside the project": {
-			projectID: "project-1",
-			resolver:  suite.projectResolverReturning(&project.ErrorOUNotInProject),
-		},
-		"an unknown organization unit": {
-			projectID: "project-1",
-			resolver: suite.projectResolverReturning(
-				&tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "OU-1003"}),
-		},
-		"an empty project ID": {
-			resolver: func() projectOUResolver { return newProjectOUResolverMock(suite.T()) },
-		},
-		"a deployment without projects": {
-			projectID: "project-1",
-			resolver:  func() projectOUResolver { return nil },
-		},
-	} {
-		suite.Run(name, func() {
-			service, _ := suite.setupTestService()
-			service.projectResolver = tc.resolver()
+func (suite *ServiceTestSuite) TestGetApplicationListByProject_EmptyProjectID() {
+	service, _ := suite.setupTestService()
 
-			result, svcErr := service.GetApplicationListByProject(context.Background(), tc.projectID, nil)
+	result, svcErr := service.GetApplicationListByProject(context.Background(), "", nil)
 
-			suite.Require().Nil(svcErr)
-			assert.Zero(suite.T(), result.TotalResults)
-			assert.Empty(suite.T(), result.Applications)
-		})
-	}
+	suite.Require().Nil(svcErr)
+	assert.Zero(suite.T(), result.TotalResults)
+	assert.Empty(suite.T(), result.Applications)
+}
+
+func (suite *ServiceTestSuite) TestGetApplicationListByProject_StoreErrors() {
+	suite.Run("count fails", func() {
+		service, _ := suite.setupTestService()
+		resetEntityServiceMethod(service, "GetEntityListCountByProject").
+			On("GetEntityListCountByProject", mock.Anything, providers.EntityCategoryApp, testProjectID,
+				[]string(nil)).
+			Return(0, errors.New("db"))
+
+		result, svcErr := service.GetApplicationListByProject(context.Background(), testProjectID, nil)
+
+		assert.Nil(suite.T(), result)
+		assert.Equal(suite.T(), &tidcommon.InternalServerError, svcErr)
+	})
+	suite.Run("list fails", func() {
+		service, _ := suite.setupTestService()
+		resetEntityServiceMethod(service, "GetEntityListCountByProject").
+			On("GetEntityListCountByProject", mock.Anything, providers.EntityCategoryApp, testProjectID,
+				[]string(nil)).
+			Return(1, nil)
+		resetEntityServiceMethod(service, "GetEntityListByProject").
+			On("GetEntityListByProject", mock.Anything, providers.EntityCategoryApp, testProjectID,
+				[]string(nil), serverconst.MaxCompositeStoreRecords, 0).
+			Return(nil, errors.New("db"))
+
+		result, svcErr := service.GetApplicationListByProject(context.Background(), testProjectID, nil)
+
+		assert.Nil(suite.T(), result)
+		assert.Equal(suite.T(), &tidcommon.InternalServerError, svcErr)
+	})
 }
 
 func (suite *ServiceTestSuite) TestGetApplicationListByProject_InvalidFilter() {
 	service, _ := suite.setupTestService()
-	service.projectResolver = newProjectOUResolverMock(suite.T())
 
-	result, svcErr := service.GetApplicationListByProject(context.Background(), "project-1",
+	result, svcErr := service.GetApplicationListByProject(context.Background(), testProjectID,
 		map[string]interface{}{"name": "App 1"})
 
 	assert.Nil(suite.T(), result)
 	assert.Equal(suite.T(), &ErrorInvalidFilter, svcErr)
-}
-
-func (suite *ServiceTestSuite) TestGetApplicationListByProject_ResolverError() {
-	service, _ := suite.setupTestService()
-	service.projectResolver = suite.projectResolverReturning(&tidcommon.InternalServerError)()
-
-	result, svcErr := service.GetApplicationListByProject(context.Background(), "project-1", nil)
-
-	assert.Nil(suite.T(), result)
-	assert.Equal(suite.T(), &tidcommon.InternalServerError, svcErr)
 }
 
 func (suite *ServiceTestSuite) TestProjectErrorCodesMatchTheProjectService() {
@@ -761,7 +755,7 @@ func (suite *ServiceTestSuite) TestProjectErrorCodesMatchTheProjectService() {
 func (suite *ServiceTestSuite) projectResolverReturning(svcErr *tidcommon.ServiceError) func() projectOUResolver {
 	return func() projectOUResolver {
 		resolver := newProjectOUResolverMock(suite.T())
-		resolver.EXPECT().ResolveProjectOU(mock.Anything, "project-1", mock.Anything).Return("", svcErr).Once()
+		resolver.EXPECT().ResolveProjectOU(mock.Anything, testProjectID, mock.Anything).Return("", svcErr).Once()
 		return resolver
 	}
 }
@@ -4190,21 +4184,21 @@ func (suite *ServiceTestSuite) TestValidateApplicationFields_ProjectResolved() {
 		ouID string
 	}{
 		"no organization unit": {
-			app: &model.ApplicationDTO{Name: "test-app", ProjectID: "project-1"},
+			app: &model.ApplicationDTO{Name: "test-app", ProjectID: testProjectID},
 		},
 		"an organization unit ID": {
-			app:  &model.ApplicationDTO{Name: "test-app", ProjectID: "project-1", OUID: "child-ou"},
+			app:  &model.ApplicationDTO{Name: "test-app", ProjectID: testProjectID, OUID: "child-ou"},
 			ouID: "child-ou",
 		},
 		"an organization unit handle": {
-			app:  &model.ApplicationDTO{Name: "test-app", ProjectID: "project-1", OUHandle: "child"},
+			app:  &model.ApplicationDTO{Name: "test-app", ProjectID: testProjectID, OUHandle: "child"},
 			ouID: "child-ou",
 		},
 	} {
 		suite.Run(name, func() {
 			service, _ := suite.setupTestService()
 			resolver := newProjectOUResolverMock(suite.T())
-			resolver.EXPECT().ResolveProjectOU(mock.Anything, "project-1", tc.ouID).Return(testOUID, nil).Once()
+			resolver.EXPECT().ResolveProjectOU(mock.Anything, testProjectID, tc.ouID).Return(testOUID, nil).Once()
 			service.projectResolver = resolver
 			service.ouService.(*oumock.OrganizationUnitServiceInterfaceMock).
 				On("GetOrganizationUnitByPath", mock.Anything, "child").
@@ -4214,6 +4208,28 @@ func (suite *ServiceTestSuite) TestValidateApplicationFields_ProjectResolved() {
 
 			assert.Nil(suite.T(), svcErr)
 			assert.Equal(suite.T(), testOUID, tc.app.OUID)
+		})
+	}
+}
+
+func (suite *ServiceTestSuite) TestValidateApplicationFields_ProjectWithoutProjectService() {
+	for name, tc := range map[string]struct {
+		ouID     string
+		expected string
+	}{
+		"no organization unit": {expected: ou.SystemOUID},
+		"an organization unit": {ouID: "child-ou", expected: "child-ou"},
+	} {
+		suite.Run(name, func() {
+			service, _ := suite.setupTestService()
+			service.projectResolver = nil
+			app := &model.ApplicationDTO{Name: "test-app", ProjectID: testProjectID, OUID: tc.ouID}
+
+			svcErr := service.validateApplicationFields(context.Background(), app)
+
+			assert.Nil(suite.T(), svcErr)
+			assert.Equal(suite.T(), tc.expected, app.OUID)
+			assert.Equal(suite.T(), testProjectID, app.ProjectID)
 		})
 	}
 }
@@ -4236,10 +4252,6 @@ func (suite *ServiceTestSuite) TestValidateApplicationFields_ProjectNotResolved(
 				&tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "OU-1003"}),
 			expected: &ErrorInvalidRequestFormat,
 		},
-		"a deployment without projects": {
-			resolver: func() projectOUResolver { return nil },
-			expected: &ErrorInvalidProject,
-		},
 		"a lookup failure": {
 			resolver: suite.projectResolverReturning(&tidcommon.InternalServerError),
 			expected: &tidcommon.InternalServerError,
@@ -4248,7 +4260,7 @@ func (suite *ServiceTestSuite) TestValidateApplicationFields_ProjectNotResolved(
 		suite.Run(name, func() {
 			service, _ := suite.setupTestService()
 			service.projectResolver = tc.resolver()
-			app := &model.ApplicationDTO{Name: "test-app", ProjectID: "project-1", OUID: "child-ou"}
+			app := &model.ApplicationDTO{Name: "test-app", ProjectID: testProjectID, OUID: "child-ou"}
 
 			svcErr := service.validateApplicationFields(context.Background(), app)
 
@@ -5246,6 +5258,58 @@ func (suite *ServiceTestSuite) sharingTestService() (
 		ID: testServiceAppID, Name: "Test App", OUID: "owner-ou",
 	})
 	return service, sharingMock
+}
+
+// A shared application stays in its project as well as its organization unit.
+func (suite *ServiceTestSuite) TestUpdateApplication_SharedApplicationCannotChangeProject() {
+	service, sharingMock := suite.sharingTestService()
+	resolver := newProjectOUResolverMock(suite.T())
+	resolver.EXPECT().ResolveProjectOU(mock.Anything, "project-2", "owner-ou").Return("owner-ou", nil).Once()
+	service.projectResolver = resolver
+	sharingMock.EXPECT().ListPolicies(mock.Anything, ApplicationSharingType, testServiceAppID).
+		Return([]sharing.Policy{{ID: "p1"}}, nil).Once()
+
+	result, svcErr := service.UpdateApplication(context.Background(), testServiceAppID,
+		&model.ApplicationDTO{Name: "Test App", OUID: "owner-ou", ProjectID: "project-2"})
+
+	suite.Nil(result)
+	suite.Require().NotNil(svcErr)
+	suite.Equal(ErrorSharedApplicationCannotMove.Code, svcErr.Code)
+}
+
+// An update that names no project keeps the application in its project, and the organization unit
+// must still belong to it.
+func (suite *ServiceTestSuite) TestValidateApplicationForUpdate_KeepsItsProject() {
+	for name, tc := range map[string]struct {
+		resolveErr *tidcommon.ServiceError
+		expected   *tidcommon.ServiceError
+	}{
+		"an organization unit in the project": {},
+		"an organization unit outside the project": {
+			resolveErr: &project.ErrorOUNotInProject, expected: &ErrorOUNotInProject,
+		},
+	} {
+		suite.Run(name, func() {
+			service, store := suite.setupTestService()
+			mockLoadFullApplication(store, service, &model.ApplicationProcessedDTO{
+				ID: testServiceAppID, Name: "Test App", OUID: "owner-ou", ProjectID: testProjectID,
+			})
+			resolver := newProjectOUResolverMock(suite.T())
+			resolver.EXPECT().ResolveProjectOU(mock.Anything, testProjectID, "owner-ou").
+				Return("owner-ou", tc.resolveErr).Once()
+			service.projectResolver = resolver
+			app := &model.ApplicationDTO{Name: "Test App", OUID: "owner-ou"}
+
+			_, _, svcErr := service.validateApplicationForUpdate(context.Background(), testServiceAppID, app)
+
+			if tc.expected != nil {
+				suite.Equal(tc.expected, svcErr)
+				return
+			}
+			suite.Nil(svcErr)
+			suite.Equal(testProjectID, app.ProjectID)
+		})
+	}
 }
 
 // mockStore reaches the inbound client mock the service was built with.

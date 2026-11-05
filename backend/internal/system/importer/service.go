@@ -1496,6 +1496,7 @@ func applicationRequestToDTO(req *appmodel.ApplicationRequestWithID) *appmodel.A
 		ID:          req.ID,
 		OUID:        req.OUID,
 		OUHandle:    req.OUHandle,
+		ProjectID:   req.ProjectID,
 		Name:        req.Name,
 		Description: req.Description,
 		InboundAuthProfile: providers.InboundAuthProfile{
