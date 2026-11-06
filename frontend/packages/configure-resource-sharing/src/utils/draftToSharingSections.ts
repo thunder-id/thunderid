@@ -42,7 +42,14 @@ export default function draftToSharingSections(draft: OrganizationAccessDraft): 
   if (draft.childUnitsAccess === 'selected' && draft.childUnits.length > 0) {
     sections.childUnits = {
       mode: 'selected',
-      units: draft.childUnits.map((unit) => ({ouId: unit.ouId, reach: unit.reach})),
+      units: draft.childUnits.map((unit) => ({
+        ouId: unit.ouId,
+        reach: unit.reach,
+        // The server refuses a roles rule on a subtree, so one is only written for a unit-only reach.
+        ...(unit.reach === 'unit' && unit.roles && unit.roles.length > 0
+          ? {overlayRules: {roles: {editable: false as const, value: [...unit.roles]}}}
+          : {}),
+      })),
     };
   }
 

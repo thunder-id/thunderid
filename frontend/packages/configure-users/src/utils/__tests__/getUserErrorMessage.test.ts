@@ -32,6 +32,27 @@ describe('getUserErrorMessage', () => {
     ).toBe('Failed to delete user. Please try again.');
   });
 
+  it.each([
+    ['USR-1039', 'errors.USR-1039', 'Users namespace message.'],
+    ['USR-1040', 'errors.USR-1040', 'Users namespace message.'],
+    ['ROL-1035', 'common:errors.ROL-1035', 'Common namespace message.'],
+    ['ROL-1038', 'common:errors.ROL-1038', 'Common namespace message.'],
+    ['SAZ-4030', 'common:errors.SAZ-4030', 'Common namespace message.'],
+  ])('should resolve %s through the errors catalog, not the server text', (code, key, message) => {
+    const error = Object.assign(new Error('refused'), {
+      response: {
+        data: {
+          code,
+          message: {key: 'k', defaultValue: 'Short message'},
+          description: {key: 'd', defaultValue: 'The server says why'},
+        },
+      },
+    });
+    const t = vi.fn((k: string) => (k === key ? message : ''));
+
+    expect(getUserErrorMessage(error, t, 'organizationAccess.save.error', 'Failed.')).toBe(message);
+  });
+
   it('should resolve a code reported at error.code (flow envelope)', () => {
     const error = Object.assign(new Error('flow failed'), {code: 'USR-1014'});
     const t = vi.fn((key: string) =>

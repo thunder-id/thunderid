@@ -20,12 +20,16 @@ function kindOf(sections: SharingPolicySections, name: SectionName): SectionKind
 
 function sectionKey(sections: SharingPolicySections, name: SectionName): string {
   const section = sections[name] as
-    | {mode?: string; excludedOuIds?: string[]; units?: {ouId: string; reach?: string}[]}
+    | {
+        mode?: string;
+        excludedOuIds?: string[];
+        units?: {ouId: string; reach?: string; overlayRules?: {roles?: {value?: string[]}}}[];
+      }
     | undefined;
   if (!section) return '';
   const excluded = [...(section.excludedOuIds ?? [])].sort().join(',');
   const units = (section.units ?? [])
-    .map((unit) => `${unit.ouId}:${unit.reach ?? ''}`)
+    .map((unit) => `${unit.ouId}:${unit.reach ?? ''}:${[...(unit.overlayRules?.roles?.value ?? [])].sort().join('+')}`)
     .sort()
     .join(',');
   return `${section.mode ?? ''}|${excluded}|${units}`;

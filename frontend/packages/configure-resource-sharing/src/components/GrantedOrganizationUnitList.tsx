@@ -4,7 +4,7 @@
 import type {OrganizationUnit} from '@thunderid/configure-organization-units';
 import {Box, IconButton, Stack, ToggleButton, ToggleButtonGroup, Tooltip, Typography} from '@wso2/oxygen-ui';
 import {Trash2} from '@wso2/oxygen-ui-icons-react';
-import type {JSX} from 'react';
+import type {JSX, ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
 import type {ChildUnitReach} from '../models/organization-access';
 
@@ -27,6 +27,10 @@ export interface GrantedOrganizationUnitListProps {
    */
   fixedReachLabel?: string;
   onReachChange?: (ouId: string, reach: ChildUnitReach) => void;
+  /**
+   * Content shown under a unit's row, across its full width.
+   */
+  renderUnitExtra?: (unit: GrantedOrganizationUnit) => ReactNode;
   onRemove: (ouId: string) => void;
 }
 
@@ -41,6 +45,7 @@ export default function GrantedOrganizationUnitList({
   emptyLabel,
   fixedReachLabel = undefined,
   onReachChange = undefined,
+  renderUnitExtra = undefined,
   onRemove,
 }: GrantedOrganizationUnitListProps): JSX.Element {
   const {t} = useTranslation();
@@ -63,6 +68,7 @@ export default function GrantedOrganizationUnitList({
       {units.map((unit, index) => {
         const ou = unitsById.get(unit.ouId);
         const name = ou?.name ?? unit.ouId;
+        const extra = renderUnitExtra?.(unit);
 
         return (
           <Box
@@ -132,6 +138,7 @@ export default function GrantedOrganizationUnitList({
                 </IconButton>
               </Tooltip>
             )}
+            {extra && <Box sx={{gridColumn: '1 / -1'}}>{extra}</Box>}
           </Box>
         );
       })}

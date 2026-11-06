@@ -26,6 +26,7 @@ describe('EditOrganizationAccessSettings', () => {
       ownerOuId: 'acme',
       resourceName: 'Alice',
       readOnly: false,
+      mandateRoles: true,
       errorNamespace: 'users',
       resolveErrorMessage: getUserErrorMessage,
     });

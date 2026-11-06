@@ -56,7 +56,11 @@ export default function sharingPolicyToDraft(policy: SharingPolicy | undefined):
     draft.childUnitExclusions = [...(childUnits.excludedOuIds ?? [])];
   } else if (childUnits?.mode === 'selected') {
     draft.childUnitsAccess = 'selected';
-    draft.childUnits = childUnits.units.map((unit) => ({ouId: unit.ouId, reach: unit.reach}));
+    draft.childUnits = childUnits.units.map((unit) => ({
+      ouId: unit.ouId,
+      reach: unit.reach,
+      ...(unit.overlayRules?.roles ? {roles: [...unit.overlayRules.roles.value]} : {}),
+    }));
   }
 
   if (otherTreeRoots?.mode === 'all') {

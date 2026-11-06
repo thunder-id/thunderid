@@ -18,9 +18,29 @@ export interface AllUnitsSection {
  */
 export type SharingReach = 'unit' | 'subtree';
 
+/**
+ * The roles a user share mandates in a named child unit. The rule is fixed: the unit cannot remove
+ * the roles, and the share pins exactly this list.
+ */
+export interface SharingRolesRule {
+  editable: false;
+  value: string[];
+}
+
+/**
+ * The terms a named child unit holds the shared resource on. A user share declares `roles` only.
+ */
+export interface SharingOverlayRules {
+  roles?: SharingRolesRule;
+}
+
 export interface SharingChildUnit {
   ouId: string;
   reach: SharingReach;
+  /**
+   * Accepted only with `reach: unit` on a named child unit.
+   */
+  overlayRules?: SharingOverlayRules;
 }
 
 /**

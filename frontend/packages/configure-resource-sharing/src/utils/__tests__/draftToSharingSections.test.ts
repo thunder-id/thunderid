@@ -117,3 +117,74 @@ describe('hasNoSharingSections', () => {
     expect(hasNoSharingSections({allUnits: {}})).toBe(false);
   });
 });
+
+describe('mandated roles', () => {
+  const rule = (value: string[]) => ({roles: {editable: false, value}});
+
+  it('writes the roles of a unit-only unit as a fixed roles rule', () => {
+    expect(
+      draftToSharingSections(
+        chosen({
+          childUnitsAccess: 'selected',
+          childUnits: [
+            {ouId: 'retail', reach: 'unit', roles: ['r1', 'r2']},
+            {ouId: 'trials', reach: 'unit'},
+          ],
+        }),
+      ),
+    ).toEqual({
+      childUnits: {
+        mode: 'selected',
+        units: [
+          {ouId: 'retail', reach: 'unit', overlayRules: rule(['r1', 'r2'])},
+          {ouId: 'trials', reach: 'unit'},
+        ],
+      },
+    });
+  });
+
+  it('leaves the rule out for a subtree reach and for an empty list', () => {
+    expect(
+      draftToSharingSections(
+        chosen({
+          childUnitsAccess: 'selected',
+          childUnits: [
+            {ouId: 'retail', reach: 'subtree', roles: ['r1']},
+            {ouId: 'trials', reach: 'unit', roles: []},
+          ],
+        }),
+      ),
+    ).toEqual({
+      childUnits: {
+        mode: 'selected',
+        units: [
+          {ouId: 'retail', reach: 'subtree'},
+          {ouId: 'trials', reach: 'unit'},
+        ],
+      },
+    });
+  });
+
+  it('round-trips the roles through the draft', () => {
+    const policy: SharingPolicy = {
+      id: 'p1',
+      stage: 'share',
+      version: 1,
+      childUnits: {
+        mode: 'selected',
+        units: [
+          {ouId: 'retail', reach: 'unit', overlayRules: rule(['r1', 'r2'])},
+          {ouId: 'trials', reach: 'subtree'},
+        ],
+      },
+    };
+
+    const draft = sharingPolicyToDraft(policy);
+
+    expect(draft.childUnits).toEqual([
+      {ouId: 'retail', reach: 'unit', roles: ['r1', 'r2']},
+      {ouId: 'trials', reach: 'subtree'},
+    ]);
+    expect(draftToSharingSections(draft)).toEqual({childUnits: policy.childUnits});
+  });
+});
