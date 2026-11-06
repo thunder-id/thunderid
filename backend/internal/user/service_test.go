@@ -5872,6 +5872,24 @@ func deletingUserService(t *testing.T, bus eventbus.EventBusInterface, allowed b
 	return service
 }
 
+func (suite *UserServiceTestSuite) TestValidateDeleteUser_RefusesACallerWhoMayNotDelete() {
+	storeMock := entitymock.NewEntityServiceInterfaceMock(suite.T())
+	storeMock.On("GetEntityProfile", mock.Anything, svcTestUserID1).Return(&providers.Entity{
+		Category: providers.EntityCategoryUser, ID: svcTestUserID1, OUID: testOrgID,
+	}, nil).Once()
+	authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+	authzMock.On("IsActionAllowed", mock.Anything, security.ActionDeleteUser, &sysauthz.ActionContext{
+		ResourceType: security.ResourceTypeUser, OUID: testOrgID, ResourceID: svcTestUserID1,
+	}).Return(false, (*tidcommon.ServiceError)(nil)).Once()
+	service := &userService{entityService: storeMock, authzService: authzMock}
+
+	svcErr := service.ValidateDeleteUser(context.Background(), svcTestUserID1)
+
+	suite.Require().NotNil(svcErr)
+	suite.Equal(tidcommon.ErrorUnauthorized.Code, svcErr.Code)
+	storeMock.AssertNotCalled(suite.T(), "IsEntityDeclarative", mock.Anything, mock.Anything)
+}
+
 func TestUserService_CreateUser_PublishesTheCreatedUser(t *testing.T) {
 	bus, published := newRecordingBus(t)
 	service := creatingUserService(t, bus, nil)

@@ -243,7 +243,8 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	authZENPDPService, err := authzenpdp.Initialize(runtime.Config.AuthZENPDP, entityTypeService, ouService)
 	fatalOnError(ctx, logger, err, "Failed to initialize AuthZENPDPService")
 
-	resourceService, resourceExporter, err := resource.Initialize(mux, ouService, authZENPDPService, nil, nil)
+	resourceService, resourceExporter, err := resource.Initialize(mux, ouService, ouAuthzService,
+		authZENPDPService, nil, nil)
 	fatalOnError(ctx, logger, err, "Failed to initialize Resource Service")
 	exporters = append(exporters, resourceExporter)
 
@@ -528,7 +529,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	consentEnforcer.SetConsentService(initConsentService(ctx, logger, inboundClientService))
 
 	applicationService, applicationExporter, err := application.Initialize(
-		mux, mcpServer, entityService, inboundClientService, ouService, i18nService,
+		mux, mcpServer, entityService, inboundClientService, ouService, ouAuthzService, i18nService,
 		runtimeCryptoSvc, serverConfigService, artifactLifetime, sharingService, nil, governanceService, nil,
 		auditBus)
 	fatalOnError(ctx, logger, err, "Failed to initialize ApplicationService")

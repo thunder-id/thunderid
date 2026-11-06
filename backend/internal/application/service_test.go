@@ -39,6 +39,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/security"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/crypto/cryptomock"
 	"github.com/thunder-id/thunderid/tests/mocks/entitymock"
@@ -48,6 +49,7 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/oumock"
 	"github.com/thunder-id/thunderid/tests/mocks/serverconfigmock"
 	"github.com/thunder-id/thunderid/tests/mocks/sharingmock"
+	"github.com/thunder-id/thunderid/tests/mocks/sysauthzmock"
 )
 
 const testServiceAppID = "app123"
@@ -5131,10 +5133,14 @@ func (suite *ServiceTestSuite) newFlowTargetTestService(entity *providers.Entity
 	var noEPErr error
 	mockEntityService.On("GetEntityProfile", mock.Anything, mock.Anything).Maybe().Return(entity, noEPErr)
 	mockEntityService.On("IsEntityDeclarative", mock.Anything, mock.Anything).Maybe().Return(false, noEPErr)
+	mockAuthz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+	mockAuthz.On("IsActionAllowed", mock.Anything, security.ActionUpdateApplication, mock.Anything).
+		Maybe().Return(true, nil)
 	service := &applicationService{
 		logger:               log.GetLogger().With(log.String(log.LoggerKeyComponentName, "ApplicationService")),
 		inboundClientService: mockStore,
 		entityService:        mockEntityService,
+		authzService:         mockAuthz,
 		dependencyRegistry:   noopDepRegistry{},
 	}
 	return service, mockStore
@@ -5310,6 +5316,41 @@ func (suite *ServiceTestSuite) TestValidateDeleteApplication_RefusesUnreadableSy
 	assert.Equal(suite.T(), tidcommon.InternalServerError.Code, svcErr.Code)
 }
 
+func (suite *ServiceTestSuite) TestValidateRegenerateClientSecret_RequiresApplicationUpdate() {
+	cases := []struct {
+		name     string
+		allowed  bool
+		authzErr *tidcommon.ServiceError
+		wantCode string
+	}{
+		{name: "denied", wantCode: tidcommon.ErrorUnauthorized.Code},
+		{name: "authz error", authzErr: &tidcommon.InternalServerError,
+			wantCode: tidcommon.InternalServerError.Code},
+	}
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			mockEntityService := entitymock.NewEntityServiceInterfaceMock(suite.T())
+			mockAuthz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+			mockAuthz.On("IsActionAllowed", mock.Anything, security.ActionUpdateApplication,
+				&sysauthz.ActionContext{ResourceType: security.ResourceTypeApplication, ResourceID: testServiceAppID}).
+				Return(tc.allowed, tc.authzErr)
+			service := &applicationService{
+				logger:        log.GetLogger().With(log.String(log.LoggerKeyComponentName, "ApplicationService")),
+				entityService: mockEntityService,
+				authzService:  mockAuthz,
+			}
+
+			target, svcErr := service.ValidateCredentialAction(
+				context.Background(), testServiceAppID, model.CredentialActionRegenerate)
+
+			assert.Nil(suite.T(), target)
+			suite.Require().NotNil(svcErr)
+			assert.Equal(suite.T(), tc.wantCode, svcErr.Code)
+			mockEntityService.AssertNotCalled(suite.T(), "GetEntityProfile", mock.Anything, mock.Anything)
+		})
+	}
+}
+
 // An unset token endpoint auth method defaults to client_secret_basic when the client is written, so such
 // a client does hold a secret to rotate. Both paths read one predicate so they cannot disagree on it.
 func (suite *ServiceTestSuite) TestValidateRegenerateClientSecret_AllowsUnspecifiedAuthMethod() {
@@ -5349,10 +5390,13 @@ func (suite *ServiceTestSuite) TestRegenerateClientSecret_PersistsAndReturnsNewS
 		&providers.OAuthClient{
 			TokenEndpointAuthMethod: providers.TokenEndpointAuthMethodClientSecretPost,
 		}, nil)
+	mockAuthz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+	mockAuthz.On("IsActionAllowed", mock.Anything, security.ActionUpdateApplication, mock.Anything).Return(true, nil)
 	service := &applicationService{
 		logger:               log.GetLogger().With(log.String(log.LoggerKeyComponentName, "ApplicationService")),
 		inboundClientService: mockStore,
 		entityService:        mockEntityService,
+		authzService:         mockAuthz,
 		dependencyRegistry:   noopDepRegistry{},
 	}
 

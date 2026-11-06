@@ -25,6 +25,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/projectscope"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/security"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 	"github.com/thunder-id/thunderid/internal/system/valueref"
 )
@@ -130,6 +131,7 @@ type resourceService struct {
 	logger             log.Logger
 	resourceStore      resourceStoreInterface
 	ouService          oupkg.OrganizationUnitServiceInterface
+	authzService       sysauthz.SystemAuthorizationServiceInterface
 	authZENPDPService  authZENPDPConnectionLookup
 	defaultDelimiter   string
 	transactioner      providers.Transactioner
@@ -243,6 +245,7 @@ func (rs *resourceService) GetResourceDependencies(
 // newResourceService creates a new instance of ResourceService.
 func newResourceService(
 	ouService oupkg.OrganizationUnitServiceInterface,
+	authzService sysauthz.SystemAuthorizationServiceInterface,
 	resourceStore resourceStoreInterface,
 	transactionerInstance providers.Transactioner,
 	authZENPDPService authZENPDPConnectionLookup,
@@ -260,6 +263,7 @@ func newResourceService(
 		logger:            *log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName)),
 		resourceStore:     resourceStore,
 		ouService:         ouService,
+		authzService:      authzService,
 		authZENPDPService: authZENPDPService,
 		defaultDelimiter:  defaultDelimiter,
 		transactioner:     transactionerInstance,
@@ -1465,6 +1469,16 @@ func (rs *resourceService) ValidateDeleteAction(
 	ctx context.Context,
 	resourceServerID string, resourceID *string, id string,
 ) (*revocation.AccessRevocationTarget, *tidcommon.ServiceError) {
+	allowed, svcErr := rs.authzService.IsActionAllowed(ctx, security.ActionUpdateResourceServer,
+		&sysauthz.ActionContext{ResourceType: security.ResourceTypeResourceServer, ResourceID: resourceServerID})
+	if svcErr != nil {
+		rs.logger.Error(ctx, "Failed to check authorization for action",
+			log.String("action", string(security.ActionUpdateResourceServer)), log.Any("error", svcErr))
+		return nil, &tidcommon.InternalServerError
+	}
+	if !allowed {
+		return nil, &tidcommon.ErrorUnauthorized
+	}
 	if svcErr := rs.validateActionDelete(ctx, resourceServerID, resourceID, id); svcErr != nil {
 		return nil, svcErr
 	}

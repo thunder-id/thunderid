@@ -204,8 +204,8 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	authZENPDPService, err := authzenpdp.Initialize(runtime.Config.AuthZENPDP, entityTypeService, ouService)
 	fatalOnError(ctx, logger, err, "Failed to initialize AuthZENPDPService")
 
-	resourceService, resourceExporter, err := resource.Initialize(mux, ouService, authZENPDPService, valueCapture,
-		projectService, resource.KeepingValueReferences())
+	resourceService, resourceExporter, err := resource.Initialize(mux, ouService, ouAuthzService, authZENPDPService,
+		valueCapture, projectService, resource.KeepingValueReferences())
 	fatalOnError(ctx, logger, err, "Failed to initialize Resource Service")
 	exporters = append(exporters, resourceExporter)
 
@@ -360,7 +360,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	// The artifact lifetime resolver is nil: it only bounds how long a revoked token stays on the
 	// deny list, and this plane issues and revokes no tokens. application treats nil as "no opinion".
 	applicationService, applicationExporter, err := application.Initialize(
-		mux, mcpServer, entityService, inboundClientService, ouService, i18nService,
+		mux, mcpServer, entityService, inboundClientService, ouService, ouAuthzService, i18nService,
 		runtimeCryptoSvc, serverConfigService, nil, sharingService, valueCapture, governanceService, projectService,
 		auditBus)
 	fatalOnError(ctx, logger, err, "Failed to initialize ApplicationService")

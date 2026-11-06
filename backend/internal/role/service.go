@@ -680,6 +680,9 @@ func (rs *roleService) publishRoleEvent(ctx context.Context, name string, action
 // ValidateDeleteRole reports whether the role may be deleted and returns what the deletion revokes.
 func (rs *roleService) ValidateDeleteRole(ctx context.Context, id string) (
 	*revocation.AccessRevocationTarget, *tidcommon.ServiceError) {
+	if svcErr := checkRoleAccess(ctx, rs.authzService, rs.logger, security.ActionDeleteRole, id); svcErr != nil {
+		return nil, svcErr
+	}
 	role, svcErr := rs.GetRoleWithPermissions(ctx, id)
 	if svcErr != nil {
 		return nil, svcErr
@@ -691,6 +694,22 @@ func (rs *roleService) ValidateDeleteRole(ctx context.Context, id string) (
 		return nil, svcErr
 	}
 	return rs.roleAccessChangeTarget(ctx, id, role.Permissions)
+}
+
+// checkRoleAccess refuses unless the caller may perform action on the role.
+func checkRoleAccess(ctx context.Context, authzService sysauthz.SystemAuthorizationServiceInterface,
+	logger *log.Logger, action security.Action, id string) *tidcommon.ServiceError {
+	allowed, svcErr := authzService.IsActionAllowed(ctx, action,
+		&sysauthz.ActionContext{ResourceType: security.ResourceTypeRole, ResourceID: id})
+	if svcErr != nil {
+		logger.Error(ctx, "Failed to check authorization for action",
+			log.String("action", string(action)), log.Any("error", svcErr))
+		return &tidcommon.InternalServerError
+	}
+	if !allowed {
+		return &tidcommon.ErrorUnauthorized
+	}
+	return nil
 }
 
 // requireRoleNotMandated refuses to delete a role a user sharing policy still mandates.
@@ -710,6 +729,9 @@ func (rs *roleService) requireRoleNotMandated(ctx context.Context, id string) *t
 // ValidateUpdateRolePermissions runs the checks UpdateRoleWithPermissions runs on the new permissions.
 func (rs *roleService) ValidateUpdateRolePermissions(ctx context.Context, id string,
 	permissions []ResourcePermissions) (*revocation.AccessRevocationTarget, *tidcommon.ServiceError) {
+	if svcErr := checkRoleAccess(ctx, rs.authzService, rs.logger, security.ActionUpdateRole, id); svcErr != nil {
+		return nil, svcErr
+	}
 	role, svcErr := rs.GetRoleWithPermissions(ctx, id)
 	if svcErr != nil {
 		return nil, svcErr
