@@ -82,6 +82,17 @@ func (s *AdministrationFlowRunnerTestSuite) TestReadsThePermissionRemovalEntry()
 	s.Nil(svcErr)
 }
 
+func (s *AdministrationFlowRunnerTestSuite) TestReadsTheGroupMembershipRemovalEntry() {
+	s.serverConfig.On("GetMergedConfig", mock.Anything, "flow").Return(flowconfig.FlowSectionConfig{
+		RoleAssignmentRemovalFlow: flowconfig.FlowTypeConfig{DefaultHandle: "assignment-flow"},
+	}, (*tidcommon.ServiceError)(nil)).Once()
+
+	ran, svcErr := s.runner.RunAdministrationFlow(context.Background(), groupMembershipRemovalFlowKey, nil)
+
+	s.False(ran, "only the assignment removal entry names a flow")
+	s.Nil(svcErr)
+}
+
 func (s *AdministrationFlowRunnerTestSuite) TestUnknownConfigKey() {
 	s.configure("removal-flow")
 

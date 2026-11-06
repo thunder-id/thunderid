@@ -20,8 +20,9 @@ import (
 
 // The flow configuration entries the runner reads.
 const (
-	roleAssignmentRemovalFlowKey = "roleAssignmentRemovalFlow"
-	rolePermissionRemovalFlowKey = "rolePermissionRemovalFlow"
+	roleAssignmentRemovalFlowKey  = "roleAssignmentRemovalFlow"
+	rolePermissionRemovalFlowKey  = "rolePermissionRemovalFlow"
+	groupMembershipRemovalFlowKey = "groupMembershipRemovalFlow"
 )
 
 // configEntries picks each entry the runner reads out of the flow configuration section.
@@ -31,6 +32,9 @@ var configEntries = map[string]func(flowconfig.FlowSectionConfig) flowconfig.Flo
 	},
 	rolePermissionRemovalFlowKey: func(c flowconfig.FlowSectionConfig) flowconfig.FlowTypeConfig {
 		return c.RolePermissionRemovalFlow
+	},
+	groupMembershipRemovalFlowKey: func(c flowconfig.FlowSectionConfig) flowconfig.FlowTypeConfig {
+		return c.GroupMembershipRemovalFlow
 	},
 }
 
