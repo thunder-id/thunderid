@@ -101,7 +101,9 @@ Each subdirectory has its own README with the environment variables it reads.
 
 The Wayfinder web app runs on `http://localhost:5173` and calls ThunderID directly for `/oauth2/authorize`, `/oauth2/token`, and `/users/me`. Browsers block these calls unless the CORS allow-list includes the frontend origin.
 
-The importable bundle already adds `http://localhost:5173` to the server-config `cors` section. If you serve the frontend from a different host or port, update the `# resource_type: server_config` document in `thunderid-config/thunderid-config.yaml` before importing, or use `PUT /server-config/cors` after startup.
+The importable bundle sets the server-config `cors` section to `http://localhost:5173`. An import replaces the section's runtime layer, so origins added earlier with `PUT /server-config/cors` are dropped. Origins from a declarative `server_configs/cors.yaml` file stay. If you serve the frontend from a different host or port, update the `cors` server-config document in `thunderid-config/<mode>/thunderid-config.yaml` before importing, or use `PUT /server-config/cors` after startup.
+
+The bundle's `flow` server-config document makes `wayfinder-onboarding-flow` the user onboarding flow. It repeats every other default flow handle the server ships with, because an import replaces the whole section. Importing the bundle therefore resets any flow defaults you changed before the import.
 
 ## ThunderID Setup
 

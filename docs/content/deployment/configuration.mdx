@@ -1190,15 +1190,16 @@ Configure flow defaults in either of these ways:
     signOutFlow:
       expirySeconds: 1800
   ```
-- **Runtime** - send the new value to `PUT /server-config/flow`; it is applied immediately and merged with any declarative file:
-  ```http
-  PUT /server-config/flow
-  Content-Type: application/json
+- **Runtime** - send the new value to `PUT /server-config/flow`; it is applied immediately and merged with any declarative file. A `PUT` replaces the entire runtime layer, and the server's shipped defaults are stored in that layer, so any flow type the request leaves out loses its default handle. Read `GET /server-config/flow` first, change the types you need in its `writable` value, and send the whole value back:
+  ```bash
+  curl -fks https://localhost:8090/server-config/flow \
+    -H "Authorization: Bearer $TOKEN" \
+    | jq '.writable | .authFlow.expirySeconds = 7200' > flow.json
 
-  {
-    "authFlow": { "defaultHandle": "default-flow", "expirySeconds": 3600 },
-    "registrationFlow": { "expirySeconds": 3600 }
-  }
+  curl -k -X PUT https://localhost:8090/server-config/flow \
+    -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d @flow.json
   ```
 
 :::note
