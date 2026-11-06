@@ -1,13 +1,28 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {render, screen} from '@testing-library/react';
-import type {JSX, ReactNode} from 'react';
-import {afterEach, describe, expect, it, vi} from 'vitest';
+import {render, screen, waitFor} from '@testing-library/react';
+import type {JSX} from 'react';
+import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import App from '../App';
 
-vi.mock('@thunderid/react-router', () => ({
-  ProtectedRoute: ({children}: {children: ReactNode}) => <div data-testid="protected-route">{children}</div>,
+// The real ProtectedRoute runs; only the session state it reads is controlled.
+const session = vi.hoisted(() => ({
+  isLoading: false,
+  isSignedIn: true,
+  signIn: vi.fn(() => Promise.resolve()),
+}));
+
+vi.mock('@thunderid/react', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@thunderid/react')>()),
+  useThunderID: () => ({
+    isLoading: session.isLoading,
+    isSignedIn: session.isSignedIn,
+    signIn: session.signIn,
+    signInOptions: {},
+    signInUrl: undefined,
+    tokenRequest: undefined,
+  }),
 }));
 
 vi.mock('../layouts/AdminLayout', async () => {
@@ -27,13 +42,45 @@ const renderAt = (path: string): void => {
 };
 
 describe('App', () => {
+  beforeEach(() => {
+    session.isLoading = false;
+    session.isSignedIn = true;
+    session.signIn.mockClear();
+  });
+
   afterEach(() => {
     window.history.pushState({}, '', '/');
   });
 
-  it('keeps every page behind sign-in', () => {
+  it('keeps every page behind sign-in', async () => {
+    session.isSignedIn = false;
     renderAt('/users');
-    expect(screen.getByTestId('protected-route')).toBeInTheDocument();
+    await waitFor(() => expect(session.signIn).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText('users list')).not.toBeInTheDocument();
+  });
+
+  // Without a loader, a protected page renders nothing while sign-in is checked or a redirect to
+  // sign-in is on its way, which shows as a bare page mid sign-out.
+  it('shows the page loader while sign-in is checked', () => {
+    session.isLoading = true;
+    renderAt('/users');
+    expect(screen.getByRole('progressbar', {name: 'Loading content'})).toBeInTheDocument();
+    expect(screen.queryByText('users list')).not.toBeInTheDocument();
+    expect(session.signIn).not.toHaveBeenCalled();
+  });
+
+  it('shows the page loader while the redirect to sign-in is on its way', async () => {
+    session.isSignedIn = false;
+    renderAt('/users');
+    expect(screen.getByRole('progressbar', {name: 'Loading content'})).toBeInTheDocument();
+    await waitFor(() => expect(session.signIn).toHaveBeenCalledTimes(1));
+    expect(screen.getByRole('progressbar', {name: 'Loading content'})).toBeInTheDocument();
+  });
+
+  it('shows the page once signed in, without the loader', async () => {
+    renderAt('/users');
+    expect(await screen.findByText('users list')).toBeInTheDocument();
+    expect(screen.queryByRole('progressbar', {name: 'Loading content'})).not.toBeInTheDocument();
   });
 
   it('redirects the root path to the users list', async () => {

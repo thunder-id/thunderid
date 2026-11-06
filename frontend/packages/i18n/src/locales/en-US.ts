@@ -4242,6 +4242,7 @@ const translations = {
     'errors.signin.session.expired': 'Your session has expired. Please return to the application and sign in again.',
     'errors.signin.returnToApplication': 'Return to application',
     'errors.signin.returnToApplicationUnavailable': 'Please return to the application and try again.',
+    'callback.loading': 'Signing you in',
     'errors.passkey.failed': 'Passkey authentication failed. Please try again.',
     'redirect.to.signup': "Don't have an account? <1>Sign up</1>",
     heading: 'Sign in',

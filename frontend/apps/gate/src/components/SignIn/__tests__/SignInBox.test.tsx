@@ -2672,3 +2672,58 @@ describe('SignInBox', () => {
     vi.useRealTimers();
   });
 });
+
+describe('SignInBox while completing a social sign-in', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockResolveAll.mockImplementation((template: string) => template);
+    mockUseDesign.mockReturnValue({
+      isDesignEnabled: false,
+    });
+    mockSearchParams = new URLSearchParams();
+    mockSignUpRenderProps = createMockSignUpRenderProps();
+  });
+
+  it('renders no card while the code exchange is in flight', () => {
+    const onSignInStepReady = vi.fn();
+    mockSignInRenderProps = createMockSignInRenderProps({isLoading: true});
+    render(<SignInBox isCompletingSignIn onSignInStepReady={onSignInStepReady} />);
+
+    expect(screen.getByTestId('thunderid-signin')).toBeEmptyDOMElement();
+    expect(onSignInStepReady).not.toHaveBeenCalled();
+  });
+
+  it('waits while the flow has neither a step nor an error', () => {
+    const onSignInStepReady = vi.fn();
+    mockSignInRenderProps = createMockSignInRenderProps();
+    render(<SignInBox isCompletingSignIn onSignInStepReady={onSignInStepReady} />);
+
+    expect(onSignInStepReady).not.toHaveBeenCalled();
+  });
+
+  it('reports ready once the flow has a step to show', () => {
+    const onSignInStepReady = vi.fn();
+    mockSignInRenderProps = createMockSignInRenderProps({
+      components: [{id: 'text-1', type: 'TEXT', label: 'Link your account', variant: 'H1'}],
+    });
+    render(<SignInBox isCompletingSignIn onSignInStepReady={onSignInStepReady} />);
+
+    expect(onSignInStepReady).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText('Link your account')).not.toBeInTheDocument();
+  });
+
+  it('reports ready once the flow fails', () => {
+    const onSignInStepReady = vi.fn();
+    mockSignInRenderProps = createMockSignInRenderProps({error: {message: 'Sign-in failed'}});
+    render(<SignInBox isCompletingSignIn onSignInStepReady={onSignInStepReady} />);
+
+    expect(onSignInStepReady).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders the card again once it is no longer completing', () => {
+    mockSignInRenderProps = createMockSignInRenderProps({error: {message: 'Sign-in failed'}});
+    render(<SignInBox isCompletingSignIn={false} />);
+
+    expect(screen.getByText('Sign-in failed')).toBeInTheDocument();
+  });
+});

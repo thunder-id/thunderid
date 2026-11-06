@@ -1,6 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {PageLoader} from '@thunderid/components';
 import {RoutesProvider, ToastProvider} from '@thunderid/contexts';
 import {ProtectedRoute} from '@thunderid/react-router';
 import type {JSX} from 'react';
@@ -18,7 +19,7 @@ export default function App(): JSX.Element {
             <Route
               path="/"
               element={
-                <ProtectedRoute>
+                <ProtectedRoute loader={<PageLoader />}>
                   <AdminLayout />
                 </ProtectedRoute>
               }
