@@ -60,6 +60,12 @@ const docsRehypePlugins: DocsOptions['rehypePlugins'] = [
         '{{WayFinderSampleUrl}}': productConfig.local.samples.wayfinderUrl,
         '{{WayFinderMailUrl}}': productConfig.local.samples.wayfinderMailUrl,
       },
+      // The Next docs describe unreleased builds, so `npx {{npxPackage}}` installs from the
+      // CLI's next channel there, and from its stable channel in every cut version.
+      perVersion: {
+        current: {'{{npxPackage}}': `${productConfig.project.name.toLowerCase()}@next`},
+        versioned: {'{{npxPackage}}': productConfig.project.name.toLowerCase()},
+      },
     },
   ],
 ];

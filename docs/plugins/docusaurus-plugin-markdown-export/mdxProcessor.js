@@ -18,7 +18,7 @@ async function processMarkdownFile(content, _constants, _sourceDir, linkContext)
   result = removeImports(result);
   const { frontmatter, body } = extractFrontmatter(result);
   result = body;
-  result = replacePlaceholders(result);
+  result = replacePlaceholders(result, linkContext?.isCurrentVersion);
   // Admonitions run as a whole-document pass, before anything else: a
   // `:::type ... :::` block's body often contains inline code spans, and
   // splitting on those first would cut the block in half so the regex never
@@ -68,9 +68,14 @@ function removeImports(content) {
   return content.replace(/^import\s+[\s\S]*?from\s+['"][^'"]+['"];?\s*$/gm, '');
 }
 
-/** Replace `{{...}}` frontmatter-style placeholders that may have leaked into the body. */
-function replacePlaceholders(content) {
+/**
+ * Replace `{{...}}` frontmatter-style placeholders that may have leaked into the body.
+ * `isCurrentVersion` marks the Next docs, whose `npx {{npxPackage}}` installs from the next channel.
+ */
+function replacePlaceholders(content, isCurrentVersion = false) {
   let result = content;
+  const productSlug = PRODUCT_NAME.toLowerCase();
+  result = result.replace(/\{\{npxPackage\}\}/g, isCurrentVersion ? `${productSlug}@next` : productSlug);
   result = result.replace(/\{\{ProductName\}\}/g, PRODUCT_NAME);
   result = result.replace(/\{\{productSlug\}\}/g, PRODUCT_NAME.toLowerCase());
   result = result.replace(/\{\{ConsoleUrl\}\}/g, CONSOLE_URL);
