@@ -1133,14 +1133,18 @@ async function handleConsent(
     return;
   }
 
+  // Take the pending consent before the exchange, so a second submission of
+  // the same code gets "No pending consent request" instead of redeeming it
+  // again. ThunderID treats a second redemption as a replay and, by default,
+  // revokes every token issued from the user's sign-in.
+  const { verifier } = session.pendingConsent;
+  session.pendingConsent = undefined;
+  session.consentError = undefined;
+
   try {
-    const userToken = await exchangeCodeForUserToken(
-      body.code,
-      session.pendingConsent.verifier,
-    );
+    const userToken = await exchangeCodeForUserToken(body.code, verifier);
     session.userToken = userToken;
     session.userToolsByName = undefined;
-    session.pendingConsent = undefined;
 
     sendJson(response, 200, {
       type: "consent_received",
