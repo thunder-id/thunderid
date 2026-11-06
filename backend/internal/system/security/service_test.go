@@ -575,6 +575,40 @@ func (suite *SecurityServiceTestSuite) TestProcess_PublicPath_WithToken() {
 	assert.Equal(suite.T(), "user123", userID)
 }
 
+// An authenticated caller reaches flow execution as itself, whatever it holds, while on another
+// public path that falls back to the root permission a caller without root becomes a runtime caller.
+func (suite *SecurityServiceTestSuite) TestProcess_PublicPath_FlowExecutionKeepsTheCaller() {
+	InitSystemPermissions("")
+
+	for name, tc := range map[string]struct {
+		path        string
+		permissions []string
+		runtime     bool
+	}{
+		"FlowExecutionWithSystemPermission":    {"/flow/execute", []string{"system:user:create"}, false},
+		"FlowExecutionWithoutSystemPermission": {"/flow/execute", []string{"orders:read"}, false},
+		"OtherPublicPathWithoutRoot":           {"/design/resolve/theme", []string{"system:user:create"}, true},
+		"OtherPublicPathWithRoot":              {"/design/resolve/theme", []string{"system"}, false},
+	} {
+		suite.Run(name, func() {
+			req := httptest.NewRequest(http.MethodPost, tc.path, nil)
+			authCtx := newSecurityContext("user123", "ou456", "token", tc.permissions, nil)
+			auth := &AuthenticatorInterfaceMock{}
+			auth.On("CanHandle", req).Return(true)
+			auth.On("Authenticate", req).Return(authCtx, nil)
+			svc, err := newSecurityService([]AuthenticatorInterface{auth}, suite.mockRevocation,
+				testPublicPaths, apiPermissionEntries)
+			suite.Require().NoError(err)
+
+			ctx, err := svc.Process(req)
+
+			suite.Require().NoError(err)
+			suite.Equal(tc.runtime, IsRuntimeContext(ctx))
+			suite.Equal("user123", GetSubject(ctx))
+		})
+	}
+}
+
 // Test Process method with public path and invalid token (optional auth failure)
 func (suite *SecurityServiceTestSuite) TestProcess_PublicPath_WithInvalidToken() {
 	req := httptest.NewRequest(http.MethodGet, "/gate/login", nil)

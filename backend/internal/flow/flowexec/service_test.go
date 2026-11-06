@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -30,6 +31,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	flowconfig "github.com/thunder-id/thunderid/internal/flow/config"
 	"github.com/thunder-id/thunderid/internal/flow/core"
+	"github.com/thunder-id/thunderid/internal/flow/executor"
 	"github.com/thunder-id/thunderid/internal/flow/interceptor"
 	"github.com/thunder-id/thunderid/internal/inboundclient"
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
@@ -2517,6 +2519,48 @@ func (s *ServiceTestSuite) TestLoadNewContext_ByIDLoadsAdministrationFlow() {
 	s.True(engineCtx.Verbose)
 }
 
+// A flow started by ID is gated on the permissions its PermissionValidator nodes accept, before any
+// node runs, and its nodes then run as the caller.
+func (s *ServiceTestSuite) TestLoadNewContext_ByIDChecksTheFlowPermissions() {
+	security.InitSystemPermissions("")
+	graph := s.graphWithPermissionValidators(map[string]interface{}{
+		"requiredScopes": []interface{}{"system:user:delete"}})
+	flow := &providers.CompleteFlowDefinition{
+		ID: "graph-1", FlowType: providers.FlowTypeAdministration, ActiveVersion: 1,
+	}
+
+	for name, tc := range map[string]struct {
+		permissions []string
+		allowed     bool
+	}{
+		"Granted": {[]string{"system:user:delete"}, true},
+		"Refused": {[]string{"system:user:view"}, false},
+	} {
+		s.Run(name, func() {
+			mockFlowProvider := NewFlowProviderMock(s.T())
+			mockFlowProvider.EXPECT().GetFlow(mock.Anything, "graph-1").Return(flow, nil).Once()
+			mockGraphBuilder := NewGraphBuilderInterfaceMock(s.T())
+			mockGraphBuilder.EXPECT().GetGraph(mock.Anything, flow).Return(graph, nil)
+			service := &flowExecService{
+				flowProvider: mockFlowProvider, graphBuilder: mockGraphBuilder, cfg: testFlowExecCfg,
+			}
+
+			engineCtx, svcErr := service.loadNewContext(authenticatedAdminContext(tc.permissions),
+				"graph-1", "", "", "", false, "", map[string]string{}, "", "", log.GetLogger())
+
+			if !tc.allowed {
+				s.Nil(engineCtx)
+				s.Require().NotNil(svcErr)
+				s.Equal(ErrorAdministrationPermissionRequired.Code, svcErr.Code)
+				return
+			}
+			s.Nil(svcErr)
+			s.Require().NotNil(engineCtx)
+			s.False(security.IsRuntimeContext(engineCtx.Context))
+		})
+	}
+}
+
 // A caller that already knows the flow's inputs can supply them on the initiating request and get
 // the finished result back, instead of being told which inputs are required and having to send a
 // second call. The inputs must therefore be on the context the very first time the engine runs.
@@ -2697,14 +2741,14 @@ func (s *ServiceTestSuite) TestLoadNewContext_ByIDRefusesInvitationWithoutTokenO
 	s.Equal(ErrorInvitationOUMissing.Code, svcErr.Code)
 }
 
-// Every flow started by ID needs the root permission for now, checked before the flow is resolved.
+// Every flow started by ID needs a system permission for now, checked before the flow is resolved.
 func (s *ServiceTestSuite) TestLoadNewContext_ByIDRefusesCallerWithoutRootPermission() {
 	security.InitSystemPermissions("")
 	mockFlowProvider := NewFlowProviderMock(s.T())
 	service := &flowExecService{flowProvider: mockFlowProvider, cfg: testFlowExecCfg}
 
 	for _, flowID := range []string{"administration-1", "invitation-1"} {
-		engineCtx, svcErr := service.loadNewContext(authenticatedAdminContext([]string{"system:user"}),
+		engineCtx, svcErr := service.loadNewContext(authenticatedAdminContext([]string{"orders:read"}),
 			flowID, "", "", "", false, "", nil, "", "", log.GetLogger())
 
 		s.Nil(engineCtx)
@@ -2749,6 +2793,115 @@ func authenticatedAdminContext(permissions []string) context.Context {
 	return security.WithSecurityContextTest(context.Background(), authCtx)
 }
 
+// graphWithPermissionValidators returns an administration graph with one PermissionValidator node
+// per entry, each holding that entry as its node properties.
+func (s *ServiceTestSuite) graphWithPermissionValidators(properties ...map[string]interface{}) core.GraphInterface {
+	config.ResetServerRuntime()
+	s.Require().NoError(config.InitializeServerRuntime(s.T().TempDir(), &config.Config{}))
+	flowFactory, _ := core.Initialize(cache.Initialize(config.GetServerRuntime().Config.Cache, "test-deployment"))
+	graph := flowFactory.CreateGraph("graph-1", providers.FlowTypeAdministration, 1)
+	for i, props := range properties {
+		node, err := flowFactory.CreateNode(fmt.Sprintf("validator-%d", i), string(common.NodeTypeTaskExecution),
+			props, false, false)
+		s.Require().NoError(err)
+		node.(core.ExecutorBackedNodeInterface).SetExecutorName(executor.ExecutorNamePermissionValidator)
+		s.Require().NoError(graph.AddNode(node))
+	}
+	return graph
+}
+
+func (s *ServiceTestSuite) TestValidateFlowPermissions() {
+	security.InitSystemPermissions("")
+	scopes := func(values ...interface{}) map[string]interface{} {
+		return map[string]interface{}{"requiredScopes": values}
+	}
+	none := s.graphWithPermissionValidators()
+	defaultScope := s.graphWithPermissionValidators(nil)
+	userDelete := s.graphWithPermissionValidators(scopes("system:user:delete"))
+	eitherScope := s.graphWithPermissionValidators(scopes("system:role:update", "system:user:delete"))
+	twoNodes := s.graphWithPermissionValidators(scopes("system:user:delete"), scopes("system:role:update"))
+	emptyScopes := s.graphWithPermissionValidators(scopes())
+	nonSystemScope := s.graphWithPermissionValidators(scopes("orders:write"))
+
+	for name, tc := range map[string]struct {
+		graph       core.GraphInterface
+		permissions []string
+		allowed     bool
+	}{
+		"NoValidatorRequiresRoot":      {none, []string{"system:user"}, false},
+		"NoValidatorAllowsRoot":        {none, []string{"system"}, true},
+		"DefaultScopeRequiresRoot":     {defaultScope, []string{"system:user"}, false},
+		"ExactPermission":              {userDelete, []string{"system:user:delete"}, true},
+		"ParentPermission":             {userDelete, []string{"system:user"}, true},
+		"SiblingPermissionRefused":     {userDelete, []string{"system:user:view"}, false},
+		"AnyScopeOfANodeSatisfiesIt":   {eitherScope, []string{"system:user:delete"}, true},
+		"EveryNodeMustBeSatisfied":     {twoNodes, []string{"system:user:delete"}, false},
+		"EveryNodeSatisfied":           {twoNodes, []string{"system:user:delete", "system:role:update"}, true},
+		"EmptyScopesFallBackToRoot":    {emptyScopes, []string{"system:user"}, false},
+		"RootSatisfiesANonSystemScope": {nonSystemScope, []string{"system"}, true},
+	} {
+		s.Run(name, func() {
+			svcErr := validateFlowPermissions(authenticatedAdminContext(tc.permissions), tc.graph)
+			if tc.allowed {
+				s.Nil(svcErr)
+				return
+			}
+			s.Require().NotNil(svcErr)
+			s.Equal(ErrorAdministrationPermissionRequired.Code, svcErr.Code)
+		})
+	}
+}
+
+func (s *ServiceTestSuite) TestValidateFlowStart() {
+	security.InitSystemPermissions("")
+	graph := s.graphWithPermissionValidators(map[string]interface{}{
+		"requiredScopes": []interface{}{"system:user:delete"}})
+
+	s.Run("RefusesRuntimeCaller", func() {
+		svcErr := validateFlowStart(security.WithRuntimeContext(context.Background()),
+			providers.FlowTypeAdministration, graph)
+		s.Require().NotNil(svcErr)
+		s.Equal(ErrorFlowAuthenticationRequired.Code, svcErr.Code)
+	})
+	s.Run("RefusesCallerWithoutTheFlowPermission", func() {
+		svcErr := validateFlowStart(authenticatedAdminContext([]string{"system:user:view"}),
+			providers.FlowTypeInvitation, graph)
+		s.Require().NotNil(svcErr)
+		s.Equal(ErrorAdministrationPermissionRequired.Code, svcErr.Code)
+	})
+	s.Run("AllowsCallerWithTheFlowPermission", func() {
+		s.Nil(validateFlowStart(authenticatedAdminContext([]string{"system:user:delete"}),
+			providers.FlowTypeAdministration, graph))
+	})
+	// Onboarding can start without a caller; its own PermissionValidator node decides.
+	s.Run("IgnoresOtherFlowTypes", func() {
+		s.Nil(validateFlowStart(context.Background(), providers.FlowTypeUserOnboarding, graph))
+		s.Nil(validateFlowStart(context.Background(), providers.FlowTypeAuthentication, graph))
+	})
+}
+
+func (s *ServiceTestSuite) TestFlowRunContext() {
+	caller := authenticatedAdminContext([]string{"system:user:create"})
+	for flowType, runtime := range map[providers.FlowType]bool{
+		providers.FlowTypeAuthentication: true,
+		providers.FlowTypeRegistration:   true,
+		providers.FlowTypeSelf:           true,
+		providers.FlowTypeRecovery:       true,
+		providers.FlowTypeSignOut:        true,
+		providers.FlowTypeDeviceGrant:    true,
+		providers.FlowTypeAdministration: false,
+		providers.FlowTypeUserOnboarding: false,
+		providers.FlowTypeInvitation:     false,
+		providers.FlowTypeSystem:         false,
+	} {
+		s.Run(string(flowType), func() {
+			ctx := flowRunContext(caller, flowType)
+			s.Equal(runtime, security.IsRuntimeContext(ctx))
+			s.Equal("admin-1", security.GetSubject(ctx))
+		})
+	}
+}
+
 func (s *ServiceTestSuite) TestValidateAdministrationCaller() {
 	security.InitSystemPermissions("")
 
@@ -2773,7 +2926,7 @@ func (s *ServiceTestSuite) TestValidateAdministrationCaller() {
 	// table. /flow/execute is a public path, so this boundary must hold on its own.
 	s.Run("RejectsAuthenticatedCallerWithoutSystemPermission", func() {
 		svcErr := validateAdministrationCaller(
-			authenticatedAdminContext([]string{"system:user:view"}), providers.FlowTypeAdministration)
+			authenticatedAdminContext([]string{"orders:read", "systemic:user"}), providers.FlowTypeAdministration)
 
 		s.Require().NotNil(svcErr)
 		s.Equal(ErrorAdministrationPermissionRequired.Code, svcErr.Code)
@@ -2782,6 +2935,11 @@ func (s *ServiceTestSuite) TestValidateAdministrationCaller() {
 	s.Run("AllowsAuthenticatedCallerWithSystemPermission", func() {
 		s.Nil(validateAdministrationCaller(
 			authenticatedAdminContext([]string{"system"}), providers.FlowTypeAdministration))
+	})
+
+	s.Run("AllowsAuthenticatedCallerWithFineGrainedSystemPermission", func() {
+		s.Nil(validateAdministrationCaller(
+			authenticatedAdminContext([]string{"system:user:create"}), providers.FlowTypeAdministration))
 	})
 
 	s.Run("AllowsPublicInteractiveFlow", func() {
@@ -3507,6 +3665,45 @@ func (s *ServiceTestSuite) TestExecute_ContinuationOfInvitationFlowWithoutToken(
 
 	s.Nil(svcErr)
 	s.NotNil(flowStep)
+}
+
+// Every step of an administration flow re-checks the permissions the flow requires, so a caller
+// that lost them, or never had them, cannot continue it.
+func (s *ServiceTestSuite) TestExecute_AdministrationContinuationChecksTheFlowPermissions() {
+	security.InitSystemPermissions("")
+	graph := s.graphWithPermissionValidators(map[string]interface{}{
+		"requiredScopes": []interface{}{"system:user:delete"}})
+
+	mockStore := newFlowStoreInterfaceMock(s.T())
+	storedCtx := &FlowContextDB{}
+	s.NoError(storedCtx.FromEngineContext(EngineContext{
+		ExecutionID:      "existing-execution-id",
+		FlowType:         providers.FlowTypeAdministration,
+		Graph:            graph,
+		UserInputs:       map[string]string{},
+		RuntimeData:      map[string]string{},
+		ExecutionHistory: map[string]*providers.NodeExecutionRecord{},
+	}))
+	mockStore.EXPECT().GetFlowContext(mock.Anything, "existing-execution-id").Return(storedCtx, nil)
+	mockFlowProvider := NewFlowProviderMock(s.T())
+	mockFlowProvider.EXPECT().GetFlow(mock.Anything, "graph-1").Return(
+		&providers.CompleteFlowDefinition{ID: "graph-1", FlowType: providers.FlowTypeAdministration}, nil)
+	mockGraphBuilder := NewGraphBuilderInterfaceMock(s.T())
+	mockGraphBuilder.EXPECT().GetGraph(mock.Anything, mock.Anything).Return(graph, nil)
+	service := &flowExecService{
+		flowStore:     mockStore,
+		graphBuilder:  mockGraphBuilder,
+		flowProvider:  mockFlowProvider,
+		flowEngine:    newFlowEngineInterfaceMock(s.T()),
+		transactioner: &stubTransactioner{},
+	}
+
+	flowStep, svcErr := service.Execute(authenticatedAdminContext([]string{"system:user:view"}), "",
+		"existing-execution-id", "", "", false, "", map[string]string{}, "", "", "", nil)
+
+	s.Nil(flowStep)
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorAdministrationPermissionRequired.Code, svcErr.Code)
 }
 
 // --- updateContext ---

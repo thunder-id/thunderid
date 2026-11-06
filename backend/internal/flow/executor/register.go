@@ -37,6 +37,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/security"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/internal/user"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -259,6 +260,7 @@ type ExecutorDependencies struct {
 	AuthzDetailProvider    providers.AuthorizationDetailProvider
 	SharingService         sharing.SharingServiceInterface
 	PermissionResolver     entityPermissionResolver
+	PermissionAuthorizer   sysauthz.SystemAuthorizationServiceInterface
 	tokenLeeway            time.Duration
 	DeviceCodeVerifier     providers.DeviceCodeVerifier
 }
@@ -352,7 +354,8 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 				deps.FlowFactory, deps.EntityProvider, deps.AuthnProvider, newAccessGuard(deps.IdentityGovernance)))
 		},
 		ExecutorNamePermissionValidator: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
-			reg.RegisterExecutor(ExecutorNamePermissionValidator, newPermissionValidator(deps.FlowFactory))
+			reg.RegisterExecutor(ExecutorNamePermissionValidator,
+				newPermissionValidator(deps.FlowFactory, deps.PermissionAuthorizer))
 		},
 		ExecutorNameIdentifying: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			identifyingInputs := []providers.Input{

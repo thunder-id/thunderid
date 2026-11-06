@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"time"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -18,6 +19,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	flowconfig "github.com/thunder-id/thunderid/internal/flow/config"
 	"github.com/thunder-id/thunderid/internal/flow/core"
+	"github.com/thunder-id/thunderid/internal/flow/executor"
 	"github.com/thunder-id/thunderid/internal/flow/graphbuilder"
 	"github.com/thunder-id/thunderid/internal/flow/session"
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
@@ -176,6 +178,11 @@ func (s *flowExecService) execute(ctx context.Context, flowID, appID, executionI
 		if svcErr := validateAdministrationCaller(ctx, engineCtx.FlowType); svcErr != nil {
 			return nil, svcErr
 		}
+		if engineCtx.FlowType == providers.FlowTypeAdministration {
+			if svcErr := validateFlowPermissions(ctx, engineCtx.Graph); svcErr != nil {
+				return nil, svcErr
+			}
+		}
 	}
 
 	// Checked after the context loads, so a flow started before the application was suspended is
@@ -323,29 +330,91 @@ func (s *flowExecService) buildErrorAssertion(ctx context.Context, engineCtx *En
 	return token
 }
 
-// validateAdministrationCaller gates administration flows on an authenticated caller that holds the
-// root system permission.
-//
-// The check is deliberately positive: it asserts what the caller must present rather than inferring
-// it from the absence of the runtime marker. /flow/execute is a public path, so an unauthenticated
-// request reaches the service with a runtime context, and an authenticated one only clears the
-// middleware's authorization step because the path has no entry in the API permission table and
-// therefore falls back to the root permission. Asserting the permission here keeps the gate intact
-// if either of those tables changes.
-//
-// PermissionValidator remains in the administration flow templates as defense in depth; this is the
-// boundary that must hold even for a hand-built flow that omits it.
+// validateAdministrationCaller gates administration flows on an authenticated caller that holds a
+// system permission. It is a floor checked before the flow is resolved; validateFlowPermissions
+// decides which permission the flow needs once it is.
 func validateAdministrationCaller(ctx context.Context, flowType providers.FlowType) *tidcommon.ServiceError {
 	if flowType != providers.FlowTypeAdministration {
 		return nil
 	}
+	return validateSystemCaller(ctx)
+}
+
+// validateSystemCaller requires an authenticated caller that holds the root system permission or
+// any permission under it.
+//
+// The check is deliberately positive: it asserts what the caller must present rather than inferring
+// it from the absence of the runtime marker. /flow/execute is a public path, so an unauthenticated
+// request reaches the service with a runtime context, and an authenticated one reaches it as itself.
+func validateSystemCaller(ctx context.Context) *tidcommon.ServiceError {
 	if security.IsRuntimeContext(ctx) || security.GetSubject(ctx) == "" {
 		return &ErrorFlowAuthenticationRequired
 	}
-	if !security.HasSystemPermission(security.GetPermissions(ctx)) {
+	if !security.HasAnySystemPermission(security.GetPermissions(ctx)) {
 		return &ErrorAdministrationPermissionRequired
 	}
 	return nil
+}
+
+// validateFlowStart gates the start of an administration or invitation flow on the permissions the
+// flow requires.
+func validateFlowStart(ctx context.Context, flowType providers.FlowType,
+	graph core.GraphInterface) *tidcommon.ServiceError {
+	switch flowType {
+	case providers.FlowTypeAdministration, providers.FlowTypeInvitation:
+	default:
+		return nil
+	}
+	if svcErr := validateSystemCaller(ctx); svcErr != nil {
+		return svcErr
+	}
+	return validateFlowPermissions(ctx, graph)
+}
+
+// validateFlowPermissions requires the caller to hold, for every PermissionValidator node in the
+// flow, one of the permissions that node accepts. A flow without one requires the root permission.
+// It runs before any node does, so where a validator sits in the flow does not matter.
+func validateFlowPermissions(ctx context.Context, graph core.GraphInterface) *tidcommon.ServiceError {
+	permissions := security.GetPermissions(ctx)
+	granted := func(required string) bool {
+		return security.HasSystemPermission(permissions) || security.HasSufficientPermission(permissions, required)
+	}
+	for _, accepted := range requiredFlowPermissions(graph) {
+		if !slices.ContainsFunc(accepted, granted) {
+			return &ErrorAdministrationPermissionRequired
+		}
+	}
+	return nil
+}
+
+// requiredFlowPermissions returns the permissions each PermissionValidator node in the graph accepts,
+// or the root permission alone when the graph has none.
+func requiredFlowPermissions(graph core.GraphInterface) [][]string {
+	var required [][]string
+	if graph != nil {
+		for _, node := range graph.GetNodes() {
+			if n, ok := node.(core.ExecutorBackedNodeInterface); ok &&
+				n.GetExecutorName() == executor.ExecutorNamePermissionValidator {
+				required = append(required, executor.RequiredPermissions(node.GetProperties()))
+			}
+		}
+	}
+	if len(required) == 0 {
+		return [][]string{{security.GetSystemRootPermission()}}
+	}
+	return required
+}
+
+// flowRunContext returns the context a flow's nodes run with. A flow that acts for an end user, who
+// may be anonymous, runs as the system; an administration, onboarding, invitation or system flow runs
+// as its caller.
+func flowRunContext(ctx context.Context, flowType providers.FlowType) context.Context {
+	switch flowType {
+	case providers.FlowTypeAuthentication, providers.FlowTypeRegistration, providers.FlowTypeSelf,
+		providers.FlowTypeRecovery, providers.FlowTypeSignOut, providers.FlowTypeDeviceGrant:
+		return security.WithRuntimeContext(ctx)
+	}
+	return ctx
 }
 
 // validateFlowSharedWithCaller requires the organization unit of the caller's token to own the flow or have it
@@ -444,11 +513,10 @@ func (s *flowExecService) loadNewContext(ctx context.Context, flowID, appID, flo
 			return nil, err
 		}
 	} else {
-		// Initiating by flow ID requires an authenticated caller holding the root permission, checked
+		// Initiating by flow ID requires an authenticated caller holding a system permission, checked
 		// before the flow is resolved. Checking the flow type first would let a caller on this public
 		// path distinguish a missing flow from an existing one, and one flow type from another, purely
-		// from the error it gets back. An invitation flow needs the root permission too for now: a
-		// token without it reaches this public path as a runtime caller.
+		// from the error it gets back. The permissions the flow requires are checked once it is built.
 		if svcErr := validateAdministrationCaller(ctx, providers.FlowTypeAdministration); svcErr != nil {
 			return nil, svcErr
 		}
@@ -731,7 +799,10 @@ func (s *flowExecService) initContext(ctx context.Context, requestedFlowID, appI
 		return nil, &tidcommon.InternalServerError
 	}
 	engineCtx.Graph = graph
-	engineCtx.Context = ctx
+	if svcErr := validateFlowStart(ctx, flow.FlowType, graph); svcErr != nil {
+		return nil, svcErr
+	}
+	engineCtx.Context = flowRunContext(ctx, flow.FlowType)
 	engineCtx.AppID = appID
 	engineCtx.Verbose = verbose
 	engineCtx.RuntimeData = runtimeData
@@ -905,6 +976,7 @@ func (s *flowExecService) loadContextFromStore(ctx context.Context, executionID 
 		return nil, &tidcommon.InternalServerError
 	}
 	engineContext.SSOFlowVersion = flow.ActiveVersion
+	engineContext.Context = flowRunContext(ctx, engineContext.FlowType)
 
 	// Set application context if required
 	if err := s.setApplicationToContext(&engineContext, logger); err != nil {

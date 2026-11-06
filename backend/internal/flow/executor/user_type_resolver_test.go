@@ -981,7 +981,7 @@ func (suite *UserTypeResolverTestSuite) TestExecute_UserOnboardingFlow_UserTypeP
 		Handle: "employee",
 		OUID:   "ou-123",
 	}
-	suite.mockEntityTypeService.On("GetEntityTypeByHandle", ctx.Context, mock.Anything, "employee").
+	suite.mockEntityTypeService.On("GetEntityTypeByHandle", runtimeContext, mock.Anything, "employee").
 		Return(entityType, nil)
 
 	result, err := suite.executor.Execute(ctx)
@@ -1017,7 +1017,7 @@ func (suite *UserTypeResolverTestSuite) TestExecute_UserOnboardingFlow_UserTypeP
 			Key: "error.test.user_type_not_found", DefaultValue: "User type not found",
 		},
 	}
-	suite.mockEntityTypeService.On("GetEntityTypeByHandle", ctx.Context, mock.Anything, "invalid_user").
+	suite.mockEntityTypeService.On("GetEntityTypeByHandle", runtimeContext, mock.Anything, "invalid_user").
 		Return(nil, svcErr)
 
 	result, err := suite.executor.Execute(ctx)
@@ -1044,7 +1044,7 @@ func (suite *UserTypeResolverTestSuite) TestExecute_UserOnboardingFlow_NoUserTyp
 	emptyList := &entitytype.EntityTypeListResponse{
 		Types: []entitytype.EntityTypeListItem{},
 	}
-	suite.mockEntityTypeService.On("GetEntityTypeList", ctx.Context, mock.Anything, 100, 0, false).
+	suite.mockEntityTypeService.On("GetEntityTypeList", runtimeContext, mock.Anything, 100, 0, false).
 		Return(emptyList, nil)
 
 	result, err := suite.executor.Execute(ctx)
@@ -1069,7 +1069,7 @@ func (suite *UserTypeResolverTestSuite) TestExecute_UserOnboardingFlow_NoUserTyp
 		Type:  tidcommon.ServerErrorType,
 		Error: tidcommon.I18nMessage{Key: "error.test.simulated_error", DefaultValue: "Simulated Error"},
 	}
-	suite.mockEntityTypeService.On("GetEntityTypeList", ctx.Context, mock.Anything, 100, 0, false).
+	suite.mockEntityTypeService.On("GetEntityTypeList", runtimeContext, mock.Anything, 100, 0, false).
 		Return(nil, svcErr)
 
 	result, err := suite.executor.Execute(ctx)
@@ -1096,7 +1096,7 @@ func (suite *UserTypeResolverTestSuite) TestExecute_UserOnboardingFlow_NoUserTyp
 			{Handle: "employee", OUID: "ou-123"},
 		},
 	}
-	suite.mockEntityTypeService.On("GetEntityTypeList", ctx.Context, mock.Anything, 100, 0, false).
+	suite.mockEntityTypeService.On("GetEntityTypeList", runtimeContext, mock.Anything, 100, 0, false).
 		Return(schemaList, nil)
 
 	result, err := suite.executor.Execute(ctx)
@@ -1126,7 +1126,7 @@ func (suite *UserTypeResolverTestSuite) TestExecute_UserOnboardingFlow_NoUserTyp
 			{Handle: "customer"},
 		},
 	}
-	suite.mockEntityTypeService.On("GetEntityTypeList", ctx.Context, mock.Anything, 100, 0, false).
+	suite.mockEntityTypeService.On("GetEntityTypeList", runtimeContext, mock.Anything, 100, 0, false).
 		Return(schemaList, nil)
 
 	result, err := suite.executor.Execute(ctx)
@@ -1163,7 +1163,7 @@ func (suite *UserTypeResolverTestSuite) TestExecute_UserOnboardingFlow_AllowedUs
 			{Handle: "partner", OUID: "ou-789"},
 		},
 	}
-	suite.mockEntityTypeService.On("GetEntityTypeList", ctx.Context, mock.Anything, 100, 0, false).
+	suite.mockEntityTypeService.On("GetEntityTypeList", runtimeContext, mock.Anything, 100, 0, false).
 		Return(schemaList, nil)
 
 	result, err := suite.executor.Execute(ctx)
@@ -1197,7 +1197,7 @@ func (suite *UserTypeResolverTestSuite) TestExecute_UserOnboardingFlow_AllowedUs
 			{Handle: "partner", OUID: "ou-789"},
 		},
 	}
-	suite.mockEntityTypeService.On("GetEntityTypeList", ctx.Context, mock.Anything, 100, 0, false).
+	suite.mockEntityTypeService.On("GetEntityTypeList", runtimeContext, mock.Anything, 100, 0, false).
 		Return(schemaList, nil)
 
 	result, err := suite.executor.Execute(ctx)
@@ -1231,7 +1231,7 @@ func (suite *UserTypeResolverTestSuite) TestExecute_UserOnboardingFlow_AllowedUs
 			{Handle: "customer", OUID: "ou-456"},
 		},
 	}
-	suite.mockEntityTypeService.On("GetEntityTypeList", ctx.Context, mock.Anything, 100, 0, false).
+	suite.mockEntityTypeService.On("GetEntityTypeList", runtimeContext, mock.Anything, 100, 0, false).
 		Return(schemaList, nil)
 
 	result, err := suite.executor.Execute(ctx)
@@ -1277,7 +1277,7 @@ func (suite *UserTypeResolverTestSuite) TestExecute_UserOnboardingFlow_AllowedUs
 	}
 
 	mockSchema := &entitytype.EntityType{Handle: "employee", OUID: "ou-123"}
-	suite.mockEntityTypeService.On("GetEntityTypeByHandle", ctx.Context, mock.Anything, "employee").
+	suite.mockEntityTypeService.On("GetEntityTypeByHandle", runtimeContext, mock.Anything, "employee").
 		Return(mockSchema, nil)
 
 	result, err := suite.executor.Execute(ctx)
@@ -1390,7 +1390,7 @@ func (suite *UserTypeResolverTestSuite) TestExecute_UserOnboarding_OUFirst_UserT
 		Handle: "employee",
 		OUID:   "parent-ou-123",
 	}
-	suite.mockEntityTypeService.On("GetEntityTypeByHandle", ctx.Context, mock.Anything, "employee").
+	suite.mockEntityTypeService.On("GetEntityTypeByHandle", runtimeContext, mock.Anything, "employee").
 		Return(entityType, nil)
 	suite.mockOUService.On("IsParent", mock.Anything, "parent-ou-123", "child-ou-456").
 		Return(true, (*tidcommon.ServiceError)(nil))
@@ -1425,7 +1425,7 @@ func (suite *UserTypeResolverTestSuite) TestExecute_UserOnboarding_OUFirst_UserT
 		Handle: "employee",
 		OUID:   "parent-ou-123",
 	}
-	suite.mockEntityTypeService.On("GetEntityTypeByHandle", ctx.Context, mock.Anything, "employee").
+	suite.mockEntityTypeService.On("GetEntityTypeByHandle", runtimeContext, mock.Anything, "employee").
 		Return(entityType, nil)
 	suite.mockOUService.On("IsParent", mock.Anything, "parent-ou-123", "unrelated-ou-789").
 		Return(false, (*tidcommon.ServiceError)(nil))
@@ -1458,7 +1458,7 @@ func (suite *UserTypeResolverTestSuite) TestExecute_UserOnboarding_OUFirst_IsPar
 		Handle: "employee",
 		OUID:   "parent-ou-123",
 	}
-	suite.mockEntityTypeService.On("GetEntityTypeByHandle", ctx.Context, mock.Anything, "employee").
+	suite.mockEntityTypeService.On("GetEntityTypeByHandle", runtimeContext, mock.Anything, "employee").
 		Return(entityType, nil)
 	svcErr := &tidcommon.ServiceError{
 		Type:  tidcommon.ServerErrorType,
@@ -1494,7 +1494,7 @@ func (suite *UserTypeResolverTestSuite) TestExecute_UserOnboarding_OUFirst_Filte
 			{Handle: "partner", OUID: "parent-ou-123"},
 		},
 	}
-	suite.mockEntityTypeService.On("GetEntityTypeList", ctx.Context, mock.Anything, 100, 0, false).
+	suite.mockEntityTypeService.On("GetEntityTypeList", runtimeContext, mock.Anything, 100, 0, false).
 		Return(schemaList, nil)
 
 	// employee's OU is ancestor of selected OU
@@ -1533,7 +1533,7 @@ func (suite *UserTypeResolverTestSuite) TestExecute_UserOnboarding_OUFirst_Filte
 			{Handle: "customer", OUID: "other-ou-789"},
 		},
 	}
-	suite.mockEntityTypeService.On("GetEntityTypeList", ctx.Context, mock.Anything, 100, 0, false).
+	suite.mockEntityTypeService.On("GetEntityTypeList", runtimeContext, mock.Anything, 100, 0, false).
 		Return(schemaList, nil)
 
 	suite.mockOUService.On("IsParent", mock.Anything, "parent-ou-123", "child-ou-456").
@@ -1570,7 +1570,7 @@ func (suite *UserTypeResolverTestSuite) TestExecute_UserOnboarding_OUFirst_AllSc
 			{Handle: "customer", OUID: "ou-456"},
 		},
 	}
-	suite.mockEntityTypeService.On("GetEntityTypeList", ctx.Context, mock.Anything, 100, 0, false).
+	suite.mockEntityTypeService.On("GetEntityTypeList", runtimeContext, mock.Anything, 100, 0, false).
 		Return(schemaList, nil)
 
 	suite.mockOUService.On("IsParent", mock.Anything, "ou-123", "unrelated-ou-999").
@@ -1605,7 +1605,7 @@ func (suite *UserTypeResolverTestSuite) TestExecute_UserOnboarding_OUFirst_IsPar
 			{Handle: "customer", OUID: "error-ou"},
 		},
 	}
-	suite.mockEntityTypeService.On("GetEntityTypeList", ctx.Context, mock.Anything, 100, 0, false).
+	suite.mockEntityTypeService.On("GetEntityTypeList", runtimeContext, mock.Anything, 100, 0, false).
 		Return(schemaList, nil)
 
 	suite.mockOUService.On("IsParent", mock.Anything, "parent-ou-123", "child-ou-456").
@@ -1624,6 +1624,9 @@ func (suite *UserTypeResolverTestSuite) TestExecute_UserOnboarding_OUFirst_IsPar
 	assert.Contains(suite.T(), err.Error(), "failed to check OU ancestry for schema customer")
 	suite.mockOUService.AssertExpectations(suite.T())
 }
+
+// runtimeContext matches a service call made with the server's authority, as an onboarding flow's reads are.
+var runtimeContext = mock.MatchedBy(security.IsRuntimeContext)
 
 // A inviting admin picks a type defined above their own unit, which their own token cannot read.
 func (suite *UserTypeResolverTestSuite) TestExecute_UserInvitationFlow_ResolvesOverARuntimeView() {

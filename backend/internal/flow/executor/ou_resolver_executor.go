@@ -125,6 +125,8 @@ func (e *ouResolverExecutor) Execute(ctx *providers.NodeContext) (*providers.Exe
 		return execResp, nil
 	}
 
+	// Reading the units to choose from grants nothing; the entity the flow places there is authorized on its own.
+	ctx = withServerAuthority(ctx)
 	resolveFrom := e.getResolveFrom(ctx)
 	if resolveFrom == "" {
 		logger.Debug(ctx.Context, "resolveFrom not configured, skipping OU override")

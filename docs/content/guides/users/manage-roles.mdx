@@ -104,7 +104,9 @@ The `flow`, `role`, `rs`, and `authzdetail` permissions are high impact, and the
 
 `system:serverconfig:update` changes deployment-wide security settings such as CORS, the content security policy, and sessions.
 
-The MCP server itself still requires the root `system` permission.
+The MCP server accepts a caller that holds any system permission, and each tool call then needs the permission that tool maps to. A tool with no mapping needs the root `system` permission.
+
+The default administration flows need the permission of the action they perform, such as `system:user:create` for the user onboarding flow and `system:user:delete` for the user deletion flow. ThunderID checks an administration flow's permission when it starts and on every step. A custom administration flow without a `PermissionValidator` node needs the root `system` permission. Some flow actions run with the server's authority rather than the caller's, so the permission isn't always confined to an organization unit. For example, a holder of `system:user:create` can onboard a user into any organization unit.
 
 If you set `server.security.system_permission_prefix`, the management APIs expect every system permission to start with that prefix, for example `mgmt:system:user:view`. The permissions declared on the System resource server don't include the prefix. To grant the prefixed permissions, declare them on a resource server of your own, for example with a root resource `mgmt` that holds `system` and its resources, and add them to your roles.
 

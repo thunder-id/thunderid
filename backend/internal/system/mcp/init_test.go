@@ -79,11 +79,15 @@ func (suite *DefaultGuardTestSuite) initRuntime(audience *string) {
 // accessToken builds a self-issued access token carrying the system scope, so the go-sdk guard's
 // own scope check passes and the request reaches the audience verification under test.
 func accessToken() string {
+	return accessTokenWithScope(security.GetSystemRootPermission())
+}
+
+func accessTokenWithScope(scope string) string {
 	header, _ := json.Marshal(map[string]any{"alg": "RS256", "typ": jwt.TokenTypeAccessToken})
 	payload, _ := json.Marshal(map[string]any{
 		"sub":   "user123",
 		"exp":   float64(time.Now().Add(time.Hour).Unix()),
-		"scope": security.GetSystemRootPermission(),
+		"scope": scope,
 	})
 	return base64.RawURLEncoding.EncodeToString(header) + "." +
 		base64.RawURLEncoding.EncodeToString(payload) + ".signature"
@@ -115,6 +119,35 @@ func (suite *DefaultGuardTestSuite) TestDefaultGuard_UnconfiguredAudienceUsesDer
 
 	suite.Equal(testDerivedIdentifier, metadata.Resource)
 	suite.Equal(testDerivedIdentifier, suite.audienceReachingVerification(guard, accessToken()))
+}
+
+// The endpoint admits any caller holding a system permission, since each tool call is checked against
+// its own permission; a caller holding none is refused.
+func (suite *DefaultGuardTestSuite) TestDefaultGuard_AdmitsAnySystemPermission() {
+	suite.initRuntime(nil)
+	guard, _ := DefaultGuard(suite.mockJWT, &fakeRevocationEnforcer{})
+
+	for scope, status := range map[string]int{
+		"system:user:view": http.StatusOK,
+		"orders:read":      http.StatusForbidden,
+	} {
+		token := accessTokenWithScope(scope)
+		suite.mockJWT.On("VerifyJWT", mock.Anything, token, mock.Anything, "").Return(nil)
+
+		req := httptest.NewRequest(http.MethodPost, MCPEndpointPath, nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		rec := httptest.NewRecorder()
+		guard(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })).
+			ServeHTTP(rec, req)
+
+		suite.Equal(status, rec.Code, scope)
+		if status == http.StatusForbidden {
+			challenge := rec.Header().Get("WWW-Authenticate")
+			suite.Contains(challenge, `error="insufficient_scope"`)
+			suite.Contains(challenge, `resource_metadata="`)
+			suite.NotContains(challenge, "scope=\"system\"")
+		}
+	}
 }
 
 // TestDefaultGuard_ConfiguredAudienceDrivesGuardAndMetadata is the point of the MCP audience being

@@ -686,6 +686,10 @@ func InitSystemPermissions(handle string) {
 		{"POST /users/me/update-credentials", ""},
 		{"GET /register/passkey/**", ""},
 		{"POST /register/passkey/**", ""},
+		// Flow execution and MCP decide for themselves which permission a caller needs, so an
+		// authenticated caller reaches them as itself rather than as a runtime caller.
+		{"POST /flow/execute", ""},
+		{"* /mcp/**", ""},
 
 		// Organization unit APIs. "/tree/{path...}" addresses an organization unit by its handle path.
 		{"GET /organization-units", p.OUView},
@@ -1028,6 +1032,20 @@ func HasSystemPermission(permissions []string) bool {
 	}
 	for _, p := range permissions {
 		if p == sysPerms.Root {
+			return true
+		}
+	}
+	return false
+}
+
+// HasAnySystemPermission reports whether any permission is the root system permission or sits under it,
+// such as "system:user:create". It says only that the caller holds some system permission, not which.
+func HasAnySystemPermission(permissions []string) bool {
+	if sysPerms == nil {
+		return false
+	}
+	for _, p := range permissions {
+		if p == sysPerms.Root || strings.HasPrefix(p, sysPerms.Root+":") {
 			return true
 		}
 	}

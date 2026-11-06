@@ -1845,7 +1845,7 @@ Checks whether the authenticated user has active consent records for the require
 
 Validates that the incoming API request has the required permission/scope to proceed. This is a **request-level guard** distinct from user-level authorization. Used to enforce scope-based access control on administrative or sensitive operations.
 
-**When to use:** At the start of user onboarding or administrative flows, to prevent unauthorized callers from executing sensitive operations. For example, only admins with `user:write` scope can start user registration flows.
+**When to use:** At the start of user onboarding or administrative flows, to prevent unauthorized callers from executing sensitive operations. For example, only callers holding `system:user:create` can start the user onboarding flow.
 
 **Prerequisites:** None. Permissions are extracted automatically from the incoming request's security context (OAuth token or identity context header).
 
@@ -1859,7 +1859,11 @@ Validates that the incoming API request has the required permission/scope to pro
 
 | Property | UI Label | Required | Default | Description |
 |---|---|---|---|---|
-| `requiredScopes` | Required Scopes | No | System root | Array of permission/scope strings required for access. If omitted, defaults to system root scope. Set to `[]` to allow any authenticated caller. |
+| `requiredScopes` | Required Scopes | No | System root | Array of permission/scope strings, any one of which grants access. If omitted or empty, defaults to the system root scope. |
+
+A held permission also covers the ones beneath it, so `system:user` satisfies `system:user:create` and `system` satisfies every system permission. The default administration flows require the action level permission, for example `system:user:delete` for user deletion and `system:role:update` for role assignment removal.
+
+For administration flows, ThunderID checks these permissions before any node runs, when the flow starts and again on every step. Invitation flows started by ID are checked when they start. The caller must satisfy every `PermissionValidator` node in the flow, so where the node sits doesn't change who can run the flow. An administration or invitation flow without a `PermissionValidator` node requires the root `system` permission. The flow's later actions aren't checked one by one, so set `requiredScopes` to cover everything the flow does.
 
 **Input Configuration:** None. This executor operates on the request security context and has no configurable node input defaults.
 
@@ -1870,7 +1874,7 @@ Validates that the incoming API request has the required permission/scope to pro
   "id": "validate_permission",
   "type": "TASK_EXECUTION",
   "properties": {
-    "requiredScopes": ["system"]
+    "requiredScopes": ["system:user:create"]
   },
   "executor": {
     "name": "PermissionValidator"

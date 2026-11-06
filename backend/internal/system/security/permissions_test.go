@@ -1144,6 +1144,7 @@ func TestRouteTableUsesCatalogPermissions(t *testing.T) {
 		"GET /users/me": true, "PUT /users/me": true, "GET /users/me/**": true, "PUT /users/me/**": true,
 		"POST /users/me/update-credentials": true,
 		"GET /register/passkey/**":          true, "POST /register/passkey/**": true,
+		"POST /flow/execute": true, "* /mcp/**": true,
 		"GET /scim/v2/Me": true, "PUT /scim/v2/Me": true,
 		"GET /scim/v2/Schemas": true, "GET /scim/v2/Schemas/**": true,
 		"GET /scim/v2/ResourceTypes": true, "GET /scim/v2/ResourceTypes/**": true,
@@ -1252,4 +1253,18 @@ func TestMCPToolPermissionsUseCatalogPermissions(t *testing.T) {
 		assert.Equal(t, p.Root, ResolveMCPToolPermission("unmapped_tool"))
 	}
 	InitSystemPermissions("")
+}
+
+func TestHasAnySystemPermission(t *testing.T) {
+	InitSystemPermissions("")
+
+	assert.True(t, HasAnySystemPermission([]string{"system"}))
+	assert.True(t, HasAnySystemPermission([]string{"orders:read", "system:user:create"}))
+	assert.False(t, HasAnySystemPermission([]string{"systemic:user", "orders:read"}))
+	assert.False(t, HasAnySystemPermission(nil))
+
+	InitSystemPermissions("mgmt")
+	defer InitSystemPermissions("")
+	assert.True(t, HasAnySystemPermission([]string{"mgmt:system:user:view"}))
+	assert.False(t, HasAnySystemPermission([]string{"system:user:view"}))
 }
