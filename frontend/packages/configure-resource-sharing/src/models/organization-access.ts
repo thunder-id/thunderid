@@ -29,6 +29,10 @@ export type ChildUnitReach = 'unit' | 'subtree';
 export interface GrantedChildUnit {
   ouId: string;
   reach: ChildUnitReach;
+  /**
+   * Roles the share mandates in this unit. Only meaningful with reach `unit`.
+   */
+  roles?: string[];
 }
 
 /**

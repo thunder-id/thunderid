@@ -24,6 +24,23 @@ vi.mock('@thunderid/configure-organization-units', async (importOriginal) => ({
     ),
 }));
 
+const mockCandidates = vi.hoisted(() => ({
+  roles: [
+    {id: 'r1', name: 'Auditor', ouId: 'acme'},
+    {id: 'r2', name: 'Support', ouId: 'acme'},
+  ],
+}));
+vi.mock('@/api/useGetMandatableRoles', () => ({
+  default: vi.fn((ouId: string) => ({
+    data:
+      ouId === 'retail'
+        ? {candidates: mockCandidates.roles, names: {r1: 'Auditor', r2: 'Support', r3: 'Legacy'}}
+        : {candidates: [], names: {}},
+    isLoading: false,
+    isError: false,
+  })),
+}));
+
 vi.mock('@/components/OrganizationUnitSelectDialog', () => ({
   default: ({title, onConfirm}: {title: string; onConfirm: (selection: {ouId: string}[]) => void}) => (
     <div role="dialog" aria-label={title}>
@@ -299,5 +316,92 @@ describe('OrganizationAccessSettings', () => {
     expect(screen.queryByText('Grant access')).not.toBeInTheDocument();
     expect(screen.queryByText('Add a tree')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', {name: /Revoke access/})).not.toBeInTheDocument();
+  });
+
+  describe('mandated roles', () => {
+    const named = (reach: 'unit' | 'subtree', roles?: string[]) =>
+      accessWith({childUnitsAccess: 'selected', childUnits: [{ouId: 'retail', reach, roles}]});
+    const renderMandating = (access: OrganizationAccessState) =>
+      renderWithProviders(
+        <OrganizationAccessSettings access={access} ownerOuId="acme" resourceName="Storefront" mandateRoles />,
+      );
+
+    // Every unit's picker carries the same label, so it is found inside that unit's row.
+    const rolesPicker = (unitName: string): HTMLElement =>
+      within(screen.getByText(unitName).closest('li') as HTMLElement).getByRole('combobox', {name: 'Mandated roles'});
+
+    it('shows a role picker for each unit named with a unit-only reach', () => {
+      renderMandating(
+        accessWith({
+          childUnitsAccess: 'selected',
+          childUnits: [
+            {ouId: 'retail', reach: 'unit'},
+            {ouId: 'trials', reach: 'unit'},
+          ],
+        }),
+      );
+
+      expect(rolesPicker('Acme Retail')).toBeInTheDocument();
+      expect(rolesPicker('Acme Trials')).toBeInTheDocument();
+    });
+
+    it('lists only the candidates the roles API returned for the unit', () => {
+      renderMandating(named('unit'));
+
+      fireEvent.mouseDown(rolesPicker('Acme Retail'));
+
+      expect(screen.getByRole('option', {name: 'Auditor'})).toBeInTheDocument();
+      expect(screen.getByRole('option', {name: 'Support'})).toBeInTheDocument();
+    });
+
+    it('offers nothing for a unit none of the issuer roles are shared with', () => {
+      renderMandating(accessWith({childUnitsAccess: 'selected', childUnits: [{ouId: 'trials', reach: 'unit'}]}));
+
+      fireEvent.mouseDown(rolesPicker('Acme Trials'));
+
+      expect(screen.getByText('No roles of yours are shared with this unit.')).toBeInTheDocument();
+    });
+
+    it('hides the picker for a subtree reach and says why', () => {
+      renderMandating(named('subtree'));
+
+      expect(screen.queryByRole('combobox', {name: 'Mandated roles'})).not.toBeInTheDocument();
+      expect(screen.getByText('Roles can be mandated only when access reaches this unit alone.')).toBeInTheDocument();
+    });
+
+    it('hides the picker when every child unit is granted', () => {
+      renderMandating(accessWith({childUnitsAccess: 'all'}));
+
+      expect(screen.queryByRole('combobox', {name: 'Mandated roles'})).not.toBeInTheDocument();
+    });
+
+    it('hides the picker for a resource that does not mandate roles', () => {
+      renderSettings(named('unit'));
+
+      expect(screen.queryByRole('combobox', {name: 'Mandated roles'})).not.toBeInTheDocument();
+    });
+
+    it('shows the chosen roles and writes a pick to the unit', () => {
+      const access = named('unit', ['r1']);
+      renderMandating(access);
+
+      expect(screen.getByText('Auditor')).toBeInTheDocument();
+
+      fireEvent.mouseDown(rolesPicker('Acme Retail'));
+      fireEvent.click(screen.getByRole('option', {name: 'Support'}));
+
+      const update = vi.mocked(access.updateDraft).mock.calls[0][0];
+      expect(update(access.draft).childUnits).toEqual([{ouId: 'retail', reach: 'unit', roles: ['r1', 'r2']}]);
+    });
+
+    it('drops the roles when the reach widens to the subtree', () => {
+      const access = named('unit', ['r1']);
+      renderMandating(access);
+
+      fireEvent.click(screen.getByRole('button', {name: 'And below'}));
+
+      const update = vi.mocked(access.updateDraft).mock.calls[0][0];
+      expect(update(access.draft).childUnits).toEqual([{ouId: 'retail', reach: 'subtree'}]);
+    });
   });
 });

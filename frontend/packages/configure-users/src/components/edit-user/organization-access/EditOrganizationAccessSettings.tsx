@@ -38,6 +38,7 @@ export default function EditOrganizationAccessSettings({
       ownerOuId={user.ouId}
       resourceName={user.display ?? user.id}
       readOnly={user.isReadOnly === true}
+      mandateRoles
       errorNamespace="users"
       resolveErrorMessage={getUserErrorMessage}
     />

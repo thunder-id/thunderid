@@ -251,6 +251,12 @@ const translations = {
     'errors.SSE-4030': 'You do not have permission to perform this action in this organization unit.',
     'errors.DCR-1002': 'This resource is managed declaratively and cannot be modified.',
     'errors.DCR-1003': 'This resource is managed declaratively and cannot be deleted.',
+    'errors.SAZ-4030':
+      'You cannot grant permissions that you do not hold. Ask an administrator who holds them to make this change.',
+    'errors.ROL-1035':
+      'A role in this share is not available in the organization unit that receives it. Choose roles that the unit owns or has shared with it.',
+    'errors.ROL-1038':
+      'Roles cannot be mandated on this server, because its roles load only from resource files. Ask an administrator to use a role store that allows changes.',
 
     // Backend error code translations for flow executor failures (per the flow execution error envelope).
     'errors.FET-1002': 'Could not check whether a matching {{entity}} already exists. Please try again.',
@@ -986,6 +992,10 @@ const translations = {
     'errors.USR-1034': 'The user is not shared into this unit, so the unit cannot share it on.',
     'errors.USR-1037':
       'Sharing with every unit or every other organization comes only from a resource file or an import.',
+    'errors.USR-1039':
+      'Roles can be mandated only on a named child unit with reach set to this unit only. Move the roles rule to such a unit.',
+    'errors.USR-1040':
+      'A roles rule must be locked and list the roles to assign. Turn off editing for the rule and remove any allowed or excluded values.',
     'errors.USR-1041':
       'The new value does not meet the requirements set for this user type, such as the allowed length or characters.',
 
@@ -1889,6 +1899,12 @@ const translations = {
       'Saving removes "Every tree". It can only be set in a resource file or by importing, so it can\'t be chosen again here.',
     'lost.everyUnit':
       'Saving deletes the "Every organization unit" policy. It can only be set in a resource file or by importing, so it can\'t be chosen again here.',
+    'mandatedRoles.hint': '{{name}} holds these roles for the user and cannot remove them.',
+    'mandatedRoles.label': 'Mandated roles',
+    'mandatedRoles.loadError': 'Failed to load roles.',
+    'mandatedRoles.noOptions': 'No roles of yours are shared with this unit.',
+    'mandatedRoles.placeholder': 'Select roles',
+    'mandatedRoles.unitOnlyHint': 'Roles can be mandated only when access reaches this unit alone.',
     'noneBlocked.childUnits': 'child units',
     'noneBlocked.dropsEveryTree': 'Not available. It also removes Every tree, which leaves nothing granted.',
     'noneBlocked.otherIsNone': 'Not available while {{section}} is set to None.',
@@ -2211,6 +2227,12 @@ const translations = {
     'errors.ROL-1015': 'New roles cannot be created while the server is running in declarative-only mode.',
     'errors.ROL-1019': 'Select the assignee to remove from this role.',
     'errors.ROL-1020': 'This assignee no longer holds the role. Refresh and try again.',
+    'errors.ROL-1036':
+      'A user share mandates this assignment. Remove the role from that share to remove the assignment.',
+    'errors.ROL-1037':
+      'A user share mandates this role in one of these organization units. Remove the role from that share, then stop sharing it with the unit.',
+    'errors.ROL-1039':
+      'A user share still mandates this role. Remove the role from the user shares that mandate it, then delete it again.',
   },
 
   // ============================================================================

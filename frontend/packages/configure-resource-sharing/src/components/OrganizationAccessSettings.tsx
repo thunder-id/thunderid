@@ -9,6 +9,7 @@ import {useMemo, useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import AccessChoiceCards, {type AccessChoice} from './AccessChoiceCards';
 import GrantedOrganizationUnitList from './GrantedOrganizationUnitList';
+import MandatedRolesPicker from './MandatedRolesPicker';
 import OrganizationUnitChipList from './OrganizationUnitChipList';
 import OrganizationUnitSelectDialog, {type OrganizationUnitSelection} from './OrganizationUnitSelectDialog';
 import SwitchAccessConfirmDialog from './SwitchAccessConfirmDialog';
@@ -50,6 +51,11 @@ export interface OrganizationAccessSettingsProps {
    */
   hasUnitSettings?: boolean;
   /**
+   * Lets each unit named one by one with a unit-only reach carry roles the share mandates there. Only
+   * a user share declares them.
+   */
+  mandateRoles?: boolean;
+  /**
    * The i18n namespace holding the resource's error catalog, e.g. `applications` for `APP-` codes.
    */
   errorNamespace?: string;
@@ -69,6 +75,7 @@ export default function OrganizationAccessSettings({
   resourceName,
   readOnly = false,
   hasUnitSettings = false,
+  mandateRoles = false,
   errorNamespace = 'resourceSharing',
   resolveErrorMessage = undefined,
 }: OrganizationAccessSettingsProps): JSX.Element {
@@ -442,8 +449,40 @@ export default function OrganizationAccessSettings({
                   )}
                   onReachChange={(ouId, reach) =>
                     edit((current) => ({
-                      childUnits: current.childUnits.map((unit) => (unit.ouId === ouId ? {...unit, reach} : unit)),
+                      childUnits: current.childUnits.map((unit) => {
+                        if (unit.ouId !== ouId) return unit;
+                        // Roles can be mandated only with a unit-only reach, so widening the reach drops them.
+                        return reach === 'subtree' ? {ouId, reach} : {...unit, reach};
+                      }),
                     }))
+                  }
+                  renderUnitExtra={
+                    mandateRoles
+                      ? (unit) =>
+                          unit.reach === 'unit' ? (
+                            <MandatedRolesPicker
+                              ouId={unit.ouId}
+                              issuerOuId={ownerOuId}
+                              unitName={unitsById.get(unit.ouId)?.name ?? unit.ouId}
+                              value={draft.childUnits.find((granted) => granted.ouId === unit.ouId)?.roles ?? []}
+                              readOnly={locked}
+                              onChange={(roles) =>
+                                edit((current) => ({
+                                  childUnits: current.childUnits.map((granted) =>
+                                    granted.ouId === unit.ouId ? {...granted, roles} : granted,
+                                  ),
+                                }))
+                              }
+                            />
+                          ) : (
+                            <Typography variant="caption" color="text.secondary">
+                              {t(
+                                'resourceSharing:mandatedRoles.unitOnlyHint',
+                                'Roles can be mandated only when access reaches this unit alone.',
+                              )}
+                            </Typography>
+                          )
+                      : undefined
                   }
                   onRemove={(ouId) =>
                     edit((current) => ({childUnits: current.childUnits.filter((unit) => unit.ouId !== ouId)}))

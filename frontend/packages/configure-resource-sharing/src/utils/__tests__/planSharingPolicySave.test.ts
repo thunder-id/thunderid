@@ -91,6 +91,41 @@ describe('planSharingPolicySave', () => {
   });
 });
 
+describe('a roles-only change', () => {
+  const unitWith = (roles: string[]): SharingPolicySections => ({
+    childUnits: {
+      mode: 'selected',
+      units: [
+        {
+          ouId: 'retail',
+          reach: 'unit',
+          ...(roles.length ? {overlayRules: {roles: {editable: false, value: roles}}} : {}),
+        },
+      ],
+    },
+  });
+
+  it('saves in place when a unit gains a mandated role', () => {
+    const sections = unitWith(['r1']);
+
+    expect(planSharingPolicySave(policyWith(unitWith([])), sections)).toEqual({
+      type: 'update',
+      policyId: 'p1',
+      version: 4,
+      sections,
+    });
+  });
+
+  it('saves in place when the roles change, and does nothing when only their order does', () => {
+    expect(planSharingPolicySave(policyWith(unitWith(['r1'])), unitWith(['r1', 'r2'])).type).toBe('update');
+    expect(planSharingPolicySave(policyWith(unitWith(['r1', 'r2'])), unitWith(['r2', 'r1']))).toEqual({type: 'none'});
+  });
+
+  it('saves in place when the last mandated role is removed', () => {
+    expect(planSharingPolicySave(policyWith(unitWith(['r1'])), unitWith([])).type).toBe('update');
+  });
+});
+
 describe('haveSameSharingSections', () => {
   it('tells apart named units that reach differently', () => {
     expect(
