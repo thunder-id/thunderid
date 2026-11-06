@@ -20,6 +20,7 @@ import {useTranslation} from 'react-i18next';
 import ChangedValuesNotice from './ChangedValuesNotice';
 import ChangeList from './ChangeList';
 import {useRevert} from '../api/useGatewayVersions';
+import useProjectScope from '../contexts/ProjectScope';
 import useGatewayErrorTranslator from '../hooks/useGatewayErrorTranslator';
 import type {ApplyResult, Change} from '../models/deploy';
 import type {Gateway} from '../models/gateway';
@@ -29,6 +30,10 @@ export interface RevertPanelProps {
   gateway: Gateway;
   /** The label of the version the gateway would go back to. */
   previousLabel?: string;
+  /** The rollback undoes the last deploy, going back within the version it runs, not to an older one. */
+  undo?: boolean;
+  /** What the gateway is called, its gateway's name otherwise. */
+  targetName?: string;
   onClose: () => void;
   onReverted: (gateway: Gateway, result: ApplyResult) => void;
 }
@@ -37,12 +42,16 @@ export interface RevertPanelProps {
 export default function RevertPanel({
   gateway,
   previousLabel = undefined,
+  undo = false,
+  targetName = undefined,
   onClose,
   onReverted,
 }: RevertPanelProps): JSX.Element {
   const {t} = useTranslation('deploy');
   const tForErrors = useGatewayErrorTranslator();
   const revert = useRevert();
+  // In a project only its own applications and agents go back.
+  const project = useProjectScope();
   const [preview, setPreview] = useState<ApplyResult | null>(null);
   const [error, setError] = useState<Error | null>(null);
   const [isWriting, setIsWriting] = useState(false);
@@ -54,18 +63,18 @@ export default function RevertPanel({
     setError(null);
     setConfirmRemovals(false);
     revert
-      .mutateAsync({gatewayId: gateway.id, dryRun: true})
+      .mutateAsync({gatewayId: gateway.id, dryRun: true, project})
       .then(setPreview)
       .catch((caught: unknown) => setError(caught instanceof Error ? caught : new Error(String(caught))));
     // The preview is read once per gateway; the mutation object changes identity on every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gateway.id]);
+  }, [gateway.id, project]);
 
   const confirm = async (): Promise<void> => {
     setIsWriting(true);
     setError(null);
     try {
-      onReverted(gateway, await revert.mutateAsync({gatewayId: gateway.id, confirmRemovals}));
+      onReverted(gateway, await revert.mutateAsync({gatewayId: gateway.id, confirmRemovals, project}));
     } catch (caught: unknown) {
       if (errorCodeOf(caught) === REMOVALS_NEED_CONFIRMATION) {
         setConfirmRemovals(true);
@@ -78,20 +87,23 @@ export default function RevertPanel({
   };
 
   const changes = (preview?.diff.changes ?? []).filter((change: Change) => change.change !== 'unchanged');
-  // Counted as the control plane counts them for its threshold: a deletion the gateway holds back is
-  // not sent, so it is not a removal.
-  const removals = changes.filter(
-    (change: Change) => change.change === 'deleted' && Boolean(change.id) && !change.heldBack,
-  ).length;
+  // Counted as the control plane counts them for its threshold: a resource without an id cannot be
+  // named to the gateway, so it is not a removal.
+  const removals = changes.filter((change: Change) => change.change === 'deleted' && Boolean(change.id)).length;
   const header = (
     <Stack direction="row" alignItems="center" spacing={1.5}>
       <Box sx={{display: 'flex', color: 'error.main'}}>
         <Undo2 size={18} />
       </Box>
       <Typography variant="subtitle1" fontWeight={600}>
-        {previousLabel
-          ? t('revertPanel.title', 'Roll back {{gateway}} to {{label}}', {gateway: gateway.name, label: previousLabel})
-          : t('revertPanel.titleUnknown', 'Roll back {{gateway}}', {gateway: gateway.name})}
+        {undo
+          ? t('revertPanel.titleUndo', 'Undo the last deploy to {{target}}', {target: targetName ?? gateway.name})
+          : previousLabel
+            ? t('revertPanel.title', 'Roll back {{gateway}} to {{label}}', {
+                gateway: gateway.name,
+                label: previousLabel,
+              })
+            : t('revertPanel.titleUnknown', 'Roll back {{gateway}}', {gateway: gateway.name})}
       </Typography>
     </Stack>
   );
@@ -121,17 +133,23 @@ export default function RevertPanel({
         <DialogContent dividers>
           <Stack spacing={1.5}>
             <Typography variant="body2" data-testid="deploy-revert-what">
-              {previousLabel
+              {project
                 ? t(
-                    'revertPanel.what',
-                    'A rollback goes back one step, to {{label}}, the version {{gateway}} ran before. To go further back, deploy an older version.',
-                    {label: previousLabel, gateway: gateway.name},
-                  )
-                : t(
-                    'revertPanel.whatUnknown',
-                    'A rollback goes back one step, to the version {{gateway}} ran before. To go further back, deploy an older version.',
+                    'revertPanel.whatProject',
+                    "Only this project's applications and agents on {{gateway}} go back one step. Shared resources and other projects' resources stay as they are.",
                     {gateway: gateway.name},
-                  )}
+                  )
+                : previousLabel
+                  ? t(
+                      'revertPanel.what',
+                      'A rollback goes back one step, to {{label}}, the version {{gateway}} ran before. To go further back, deploy an older version.',
+                      {label: previousLabel, gateway: gateway.name},
+                    )
+                  : t(
+                      'revertPanel.whatUnknown',
+                      'A rollback goes back one step, to the version {{gateway}} ran before. To go further back, deploy an older version.',
+                      {gateway: gateway.name},
+                    )}
             </Typography>
             {!preview && !error && (
               <Box sx={{display: 'flex', alignItems: 'center', gap: 1.5}}>

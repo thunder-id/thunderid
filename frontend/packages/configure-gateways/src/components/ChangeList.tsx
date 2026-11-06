@@ -5,7 +5,9 @@ import {Box, Button, Checkbox, Chip, Collapse, FormControlLabel, Stack, Typograp
 import {ChevronDown, ChevronUp} from '@wso2/oxygen-ui-icons-react';
 import {useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
+import ChangeFlags from './ChangeFlags';
 import ChangeLines from './ChangeLines';
+import useChangeName from '../hooks/useChangeName';
 import type {Change, ChangeKind} from '../models/deploy';
 
 export interface ChangeListProps {
@@ -14,10 +16,12 @@ export interface ChangeListProps {
   selected?: Set<string>;
   onToggle?: (key: string) => void;
   onToggleAll?: (keys: string[], checked: boolean) => void;
-  /** Where the changes are applied, to say a change held back there is held back on it. */
+  /** Where the changes are applied, to say a change the target refused was refused there. */
   target?: string;
   /** Where the changes come from, to say a change held back there is held back on it. */
   source?: string;
+  /** The changes a selection brings along, each with the key of the selected change that needs it. */
+  required?: ReadonlyMap<string, string>;
 }
 
 const COLORS: Readonly<Record<ChangeKind, 'success' | 'info' | 'error' | 'default'>> = {
@@ -31,6 +35,8 @@ const COLORS: Readonly<Record<ChangeKind, 'success' | 'info' | 'error' | 'defaul
  * The resources an apply would write or delete, each with a checkbox to leave it alone this time when
  * the changes are selectable, and each opening to its document diffed line by line against what the
  * gateway runs. Resources the gateway already runs as the version has them are counted, not listed.
+ * A change the target refused last time, one sent for a changed value, and one brought along for
+ * another's need each say so.
  */
 export default function ChangeList({
   changes,
@@ -39,8 +45,10 @@ export default function ChangeList({
   onToggleAll = undefined,
   target = undefined,
   source = undefined,
+  required = undefined,
 }: ChangeListProps): JSX.Element {
   const {t} = useTranslation('deploy');
+  const nameOfChange = useChangeName();
   const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
   const toggleOpen = (key: string): void =>
     setOpen((previous) => {
@@ -57,6 +65,10 @@ export default function ChangeList({
   };
   const active = changes.filter((change: Change) => change.change !== 'unchanged');
   const unchanged = changes.length - active.length;
+  const nameOf = (key: string): string => {
+    const change = changes.find((entry: Change) => entry.key === key);
+    return change ? nameOfChange(change) : key;
+  };
   // A change the source holds back can never be applied, so it is not one to tick.
   const keys = active.filter((change: Change) => !change.sourceExcluded).map((change: Change) => change.key);
   const allChecked = keys.length > 0 && keys.every((key: string) => selected?.has(key));
@@ -65,14 +77,16 @@ export default function ChangeList({
   if (active.length === 0) {
     return (
       <Typography variant="body2" color="text.secondary">
-        {t('changes.none', 'The gateway already runs this version as it is.')}
+        {target
+          ? t('changes.noneAt', '{{target}} already runs this version as it is.', {target})
+          : t('changes.none', 'The gateway already runs this version as it is.')}
       </Typography>
     );
   }
   const label = (change: Change): JSX.Element => (
     <Stack direction="row" alignItems="center" spacing={1} sx={{minWidth: 0}}>
       <Typography variant="body2" noWrap>
-        {change.name ?? change.id ?? change.key}
+        {nameOfChange(change)}
       </Typography>
       <Typography variant="caption" color="text.secondary" noWrap>
         {t(`changes.types.${change.resourceType}`, change.resourceType.replace(/_/g, ' '))}
@@ -84,31 +98,12 @@ export default function ChangeList({
         label={kinds[change.change]}
         sx={{height: 18, fontSize: 11}}
       />
-      {change.sourceExcluded && (
-        <Chip
-          size="small"
-          label={
-            source
-              ? t('changes.heldBackOn', 'Held back on {{target}}', {target: source})
-              : t('changes.heldBack', 'Held back')
-          }
-          data-testid="change-source-held-back"
-          title={t('changes.sourceHeldBackHint', '{{source}} does not run this change, so it cannot be promoted.', {
-            source: source ?? '',
-          })}
-          sx={{height: 18, fontSize: 11, bgcolor: 'action.selected', color: 'text.secondary'}}
-        />
-      )}
-      {change.heldBack && !change.sourceExcluded && (
-        <Chip
-          size="small"
-          label={
-            target ? t('changes.heldBackOn', 'Held back on {{target}}', {target}) : t('changes.heldBack', 'Held back')
-          }
-          data-testid="change-held-back"
-          sx={{height: 18, fontSize: 11, bgcolor: 'action.selected', color: 'text.secondary'}}
-        />
-      )}
+      <ChangeFlags
+        change={change}
+        target={target}
+        source={source}
+        neededBy={required?.has(change.key) ? nameOf(required.get(change.key) ?? '') : undefined}
+      />
     </Stack>
   );
   return (
@@ -132,7 +127,7 @@ export default function ChangeList({
       )}
       <Stack sx={{pl: 0.5}}>
         {active.map((change: Change) => {
-          const name = change.name ?? change.id ?? change.key;
+          const name = nameOfChange(change);
           const hasLines = (change.lines ?? []).some((line) => line.kind !== ' ');
           const isOpen = open.has(change.key);
           return (

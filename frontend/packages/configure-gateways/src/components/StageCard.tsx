@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {Box, Button, ButtonBase, Stack, Tooltip, Typography} from '@wso2/oxygen-ui';
-import {ArrowRight, RefreshCw, SlidersHorizontal, Undo2} from '@wso2/oxygen-ui-icons-react';
+import {AppWindow, ArrowRight, RefreshCw, SlidersHorizontal, Undo2, Wrench} from '@wso2/oxygen-ui-icons-react';
 import type {JSX, ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
 import ActorName from './ActorName';
@@ -11,19 +11,24 @@ import DeployCard from './DeployCard';
 import Timestamp from './Timestamp';
 import VersionName from './VersionName';
 import {changedCount} from '../api/useChangedValues';
-import type {Actor, Change, ChangedValues} from '../models/deploy';
+import type {Actor, ChangedValues, MasterEntry} from '../models/deploy';
+import {versionLabel} from '../utils/format';
 
 export interface StageCardProps {
   name: string;
   url?: string;
   /** The version the stage runs, with when it was captured, or absent while it runs none. */
   version?: {number?: number; hash?: string; capturedAt?: string};
+  /** How much of the version the stage holds, when a deploy applied it only in part. */
+  partial?: {held: number; total: number};
   /** When the stage came to run it, which is not when the version was captured. */
   deployedAt?: string;
   /** Who deployed it, promoted it there or rolled the stage back to it. */
   deployedBy?: Actor;
-  /** The changes of its version the stage holds back, so it does not run them. */
-  heldBack?: Change[];
+  /** The resources the stage refused on their last deploy, so it does not run them as the version has them. */
+  refused?: MasterEntry[];
+  /** Opens a deploy of the refused resources, with why each was refused and the values it uses. */
+  onRetryRefused?: () => void;
   /** Opens the stage's explorer. */
   onExplore: () => void;
   /** Opens the stage's variables and secrets. */
@@ -47,6 +52,10 @@ export interface StageCardProps {
   onRetryChangedCheck?: () => void;
   /** The stage's own action, at the right of its footer, such as promoting it to the next stage. */
   action?: ReactNode;
+  /** Opens the stage's own page. Absent, the footer offers no Open. */
+  onOpen?: () => void;
+  /** Shown in the card's body, above the URL, such as a setting that applies to this stage. */
+  extra?: ReactNode;
   testId?: string;
 }
 
@@ -55,9 +64,11 @@ export default function StageCard({
   name,
   url = undefined,
   version = undefined,
+  partial = undefined,
   deployedAt = undefined,
   deployedBy = undefined,
-  heldBack = [],
+  refused = [],
+  onRetryRefused = undefined,
   onExplore,
   onConfigure,
   onRevert = undefined,
@@ -67,6 +78,8 @@ export default function StageCard({
   changedCheckFailed = false,
   onRetryChangedCheck = undefined,
   action = undefined,
+  onOpen = undefined,
+  extra = undefined,
   testId = undefined,
 }: StageCardProps): JSX.Element {
   const {t} = useTranslation('deploy');
@@ -106,6 +119,17 @@ export default function StageCard({
   );
   const footer = (
     <>
+      {onOpen && (
+        <Button
+          variant="text"
+          size="small"
+          startIcon={<AppWindow size={14} />}
+          onClick={onOpen}
+          data-testid="stage-open"
+        >
+          {t('stage.open', 'Open gateway')}
+        </Button>
+      )}
       <Button variant="text" size="small" startIcon={<SlidersHorizontal size={14} />} onClick={onConfigure}>
         {t('stage.configure', 'Configure')}
       </Button>
@@ -199,6 +223,15 @@ export default function StageCard({
           {version ? (
             <Stack spacing={0.5} sx={{mt: 0.25}}>
               <VersionName number={version.number} hash={version.hash} variant="h6" />
+              {partial && (
+                <Typography variant="caption" color="warning.main" data-testid="stage-partial">
+                  {t('stage.partlyApplied', '{{version}} partly applied: {{held}} of {{total}} resources', {
+                    version: versionLabel(version.hash, version.number),
+                    held: partial.held,
+                    total: partial.total,
+                  })}
+                </Typography>
+              )}
               <Timestamp value={version.capturedAt} />
             </Stack>
           ) : (
@@ -239,27 +272,43 @@ export default function StageCard({
                   </Typography>
                 </Tooltip>
               )}
-              {heldBack.length > 0 && (
-                <Tooltip title={heldBack.map((change: Change) => change.name ?? change.id ?? change.key).join(', ')}>
-                  <Typography
-                    variant="caption"
-                    color="text.secondary"
-                    data-testid="stage-held-back"
-                    sx={{
-                      width: 'fit-content',
-                      cursor: 'help',
-                      borderBottom: 1,
-                      borderStyle: 'dotted',
-                      borderColor: 'divider',
-                    }}
-                  >
-                    {t('stage.heldBack', '{{count}} held back, not running', {count: heldBack.length})}
-                  </Typography>
-                </Tooltip>
+              {refused.length > 0 && (
+                <Stack direction="row" alignItems="center" spacing={1} sx={{flexWrap: 'wrap'}}>
+                  <Tooltip title={refused.map((entry: MasterEntry) => entry.name ?? entry.id ?? entry.key).join(', ')}>
+                    <Typography
+                      variant="caption"
+                      color="error.main"
+                      data-testid="stage-refused"
+                      sx={{
+                        width: 'fit-content',
+                        cursor: 'help',
+                        borderBottom: 1,
+                        borderStyle: 'dotted',
+                        borderColor: 'divider',
+                      }}
+                    >
+                      {t('stage.refused', '{{count}} refused, not running', {count: refused.length})}
+                    </Typography>
+                  </Tooltip>
+                  {onRetryRefused && (
+                    <Button
+                      variant="text"
+                      size="small"
+                      color="error"
+                      startIcon={<Wrench size={14} />}
+                      onClick={onRetryRefused}
+                      data-testid="stage-retry-refused"
+                      sx={{py: 0, minHeight: 0}}
+                    >
+                      {t('stage.retryRefused', 'Fix and retry')}
+                    </Button>
+                  )}
+                </Stack>
               )}
             </Stack>
           </Box>
         )}
+        {extra}
         {url && (
           <Box sx={{mt: 'auto'}}>
             <Typography variant="caption" color="text.secondary" component="div" sx={{mb: 0.5}}>
