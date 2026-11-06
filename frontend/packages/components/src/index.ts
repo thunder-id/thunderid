@@ -28,6 +28,10 @@ export type {FlowListColumnsOptions, FlowListRow} from './FlowList/useFlowListCo
 export {default as OrganizationUnitSummaryChip} from './OrganizationUnitSummaryChip/OrganizationUnitSummaryChip';
 export type {OrganizationUnitSummaryChipProps} from './OrganizationUnitSummaryChip/OrganizationUnitSummaryChip';
 export {default as PageLoader} from './PageLoader/PageLoader';
+export {default as ResourceDeployStatus} from './ResourceDeployStatus/ResourceDeployStatus';
+export type {ResourceDeployStatusProps} from './ResourceDeployStatus/ResourceDeployStatus';
+export {DeployStatusProvider, useDeployStatusSource} from './ResourceDeployStatus/DeployStatusContext';
+export type {DeployState, DeployStatus, DeployStatusSource} from './ResourceDeployStatus/DeployStatusContext';
 export {default as QueryErrorNotice} from './QueryErrorNotice/QueryErrorNotice';
 export type {QueryErrorNoticeProps, QueryErrorMessageResolver} from './QueryErrorNotice/QueryErrorNotice';
 export {default as StackblitzQuickstartCard} from './StackblitzQuickstartCard/StackblitzQuickstartCard';

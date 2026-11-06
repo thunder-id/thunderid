@@ -152,6 +152,11 @@ export interface Application {
   id: string;
 
   /**
+   * The project the application belongs to, if it is in one.
+   */
+  projectId?: string;
+
+  /**
    * Application name
    * @example 'My Web Application'
    */

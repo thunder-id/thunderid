@@ -40,7 +40,7 @@ describe('ChangeList', () => {
     expect(within(lines).getByText('+ url: new')).toHaveAttribute('data-kind', '+');
     expect(within(lines).getByText('7 unchanged lines')).toBeInTheDocument();
     expect(within(lines).queryByText('  line 0')).not.toBeInTheDocument();
-    expect(screen.getByText('1 resources are already as the version has them.')).toBeInTheDocument();
+    expect(screen.getByText('1 resource is already as the version has it.')).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', {name: 'Hide the changes to Orders'}));
     expect(screen.getByRole('button', {name: 'Show the changes to Orders'})).toHaveAttribute('aria-expanded', 'false');

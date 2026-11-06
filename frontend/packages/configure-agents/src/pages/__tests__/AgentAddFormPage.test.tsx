@@ -1,6 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {ProjectScopeProvider} from '@thunderid/contexts';
 import {render, screen, waitFor, userEvent, within} from '@thunderid/test-utils';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import AgentAddFormPage from '../AgentAddFormPage';
@@ -176,6 +177,32 @@ describe('AgentAddFormPage', () => {
     // No flow is involved anywhere along the way.
     expect(requests().some((request) => request.url.includes('/flow/execute'))).toBe(false);
     expect(requests().some((request) => request.url.includes('/server-config/flow'))).toBe(false);
+  });
+
+  it('creates the agent in the selected project, with no organization unit to pick', async () => {
+    const user = userEvent.setup();
+    render(
+      <ProjectScopeProvider project={{id: 'project-1'}}>
+        <AgentAddFormPage />
+      </ProjectScopeProvider>,
+    );
+
+    await chooseOption(user, 0, 'Default');
+    await user.type(await screen.findByRole('textbox', {name: /^name/}), 'Calendar Agent');
+    await user.type(await screen.findByRole('textbox', {name: /llmModel/}), 'claude');
+    expect(screen.queryByTestId('ou-picker')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', {name: 'agents:addForm.submit'}));
+
+    await waitFor(() => {
+      expect(requests().some((request) => request.method === 'POST')).toBe(true);
+    });
+    const post = requests().find((request) => request.method === 'POST');
+    expect(post?.data).toEqual({
+      projectId: 'project-1',
+      type: 'default',
+      attributes: {name: 'Calendar Agent', llmModel: 'claude'},
+      inboundAuthConfig: [ISSUED_CREDENTIALS],
+    });
   });
 
   it('posts the chosen owner, and none when no owner is chosen', async () => {

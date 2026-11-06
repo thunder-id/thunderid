@@ -234,7 +234,7 @@ describe('GatewayExplorerPage', () => {
     expect(writes.map((call: Call) => [call.url.replace(SERVER, ''), call.data])).toEqual([
       ['/gateways/gw-dev/variables/APP_ORDERS_REDIRECT_URIS', {value: '["https://b.test/cb"]', description: undefined}],
     ]);
-    expect(await screen.findByText('Saved 1 values to Dev.')).toBeInTheDocument();
+    expect(await screen.findByText('Saved 1 value to Dev.')).toBeInTheDocument();
   });
 
   it('keeps what saved when a later value fails, and sends only what failed again', async () => {

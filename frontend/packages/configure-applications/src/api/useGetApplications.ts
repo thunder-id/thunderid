@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {useQuery, type UseQueryResult} from '@tanstack/react-query';
-import {useConfig} from '@thunderid/contexts';
+import {useConfig, useProjectScope} from '@thunderid/contexts';
 import {useThunderID} from '@thunderid/react';
 import ApplicationQueryKeys from '../constants/application-query-keys';
 import type {ApplicationListResponse} from '../models/responses';
@@ -32,7 +32,8 @@ export interface UseGetApplicationsParams {
  *
  * This hook uses TanStack Query to manage the server state and provides automatic
  * caching, refetching, and background updates. The query is keyed by the pagination
- * parameters to ensure proper cache management.
+ * parameters to ensure proper cache management. Inside a `ProjectScopeProvider` with a selected
+ * project, only that project's applications are listed.
  *
  * @param params - Optional pagination parameters
  * @param params.limit - Maximum number of records to return (default: 30)
@@ -63,10 +64,11 @@ export interface UseGetApplicationsParams {
 export default function useGetApplications(params?: UseGetApplicationsParams): UseQueryResult<ApplicationListResponse> {
   const {http} = useThunderID();
   const {getServerUrl} = useConfig();
+  const {projectId} = useProjectScope();
   const {limit = 30, offset = 0, filter} = params ?? {};
 
   return useQuery<ApplicationListResponse>({
-    queryKey: [ApplicationQueryKeys.APPLICATIONS, {limit, offset, filter}],
+    queryKey: [ApplicationQueryKeys.APPLICATIONS, {limit, offset, filter, projectId}],
     queryFn: async (): Promise<ApplicationListResponse> => {
       const serverUrl: string = getServerUrl();
       const queryParams: URLSearchParams = new URLSearchParams({
@@ -75,6 +77,9 @@ export default function useGetApplications(params?: UseGetApplicationsParams): U
       });
       if (filter) {
         queryParams.append('filter', filter);
+      }
+      if (projectId) {
+        queryParams.append('projectId', projectId);
       }
 
       const response: {

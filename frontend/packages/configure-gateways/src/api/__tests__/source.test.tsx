@@ -31,12 +31,19 @@ function environments(): DeploySource {
     version: unused,
     appliedVersion: unused,
     appliedConfiguration: unused,
+    master: unused,
+    masterHistory: unused,
+    resourceHistory: unused,
     applyCheck: unused,
     apply: unused,
     revert: unused,
     values,
     setValue,
     deleteValue: unused,
+    pipeline: unused,
+    projects: unused,
+    autoApply: unused,
+    setAutoApply: unused,
     runningReferences: () =>
       Promise.resolve([
         {

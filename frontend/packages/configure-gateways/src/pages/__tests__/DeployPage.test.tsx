@@ -238,7 +238,7 @@ describe('DeployPage', () => {
     await userEvent.click(await screen.findByRole('option', {name: 'Prod'}));
 
     expect(await within(panel).findByText('2 resources to write')).toBeInTheDocument();
-    expect(within(panel).getByText('1 resources are already as the version has them.')).toBeInTheDocument();
+    expect(within(panel).getByText('1 resource is already as the version has it.')).toBeInTheDocument();
     // What the gateway lacks comes before what the version would write.
     expect(
       within(panel)
@@ -363,7 +363,7 @@ describe('DeployPage', () => {
       id: 'app-2',
       name: 'Billing',
       change: 'updated',
-      excluded: true,
+      heldBack: true,
     };
     routes['POST /gateways/gw-dev/apply'] = (call: Call) => ({
       gatewayId: 'gw-dev',
@@ -431,7 +431,7 @@ describe('DeployPage', () => {
     // A rollback goes back one step only, and says so.
     expect(within(panel).getByTestId('deploy-revert-what')).toHaveTextContent('goes back one step, to v5');
     expect(
-      await within(panel).findByText('Rolling back writes 1 resources as the earlier version has them.'),
+      await within(panel).findByText('Rolling back writes 1 resource as the earlier version has it.'),
     ).toBeInTheDocument();
     await userEvent.click(within(panel).getByRole('button', {name: 'Roll back'}));
 
@@ -591,7 +591,7 @@ describe('DeployPage: apply safety', () => {
           id: 'r-2',
           name: 'Ops',
           change: 'deleted',
-          excluded: true,
+          heldBack: true,
         };
         const diff = {...dryRunWithRemovals.diff, changes: [...dryRunWithRemovals.diff.changes, heldBack]};
         return {...dryRunWithRemovals, gatewayId: 'gw-dev', diff, changed: undefined};

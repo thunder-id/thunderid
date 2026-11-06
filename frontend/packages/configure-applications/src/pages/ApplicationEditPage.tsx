@@ -12,7 +12,7 @@ import {
 } from '@thunderid/components';
 import {FlowType, useGetFlows} from '@thunderid/configure-flows';
 import {useOrganizationAccess} from '@thunderid/configure-resource-sharing';
-import {useConfig} from '@thunderid/contexts';
+import {useConfig, useProjectScope} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {isEqualIgnoringEmpty} from '@thunderid/utils';
 import {
@@ -110,6 +110,13 @@ export default function ApplicationEditPage() {
   const {applicationId} = useParams<{applicationId: string}>();
 
   const {data: application, isLoading, error, refetch} = useGetApplication(applicationId ?? '');
+  const {projectId} = useProjectScope();
+  // Another project's application is not shown in the selected one: a deep link, a stale tab or a
+  // switch of project goes to the selected project's applications instead.
+  const isOtherProject = Boolean(projectId && application && application.projectId !== projectId);
+  useEffect(() => {
+    if (isOtherProject) void navigate(routes.applications.list(), {replace: true});
+  }, [isOtherProject, navigate, routes]);
   const updateApplication = useUpdateApplication();
   const handleStatusChanged = useCallback((): void => {
     void refetch();
@@ -311,7 +318,7 @@ export default function ApplicationEditPage() {
 
   const resourceTypeTitle = t('navigation:pages.applications', 'Applications');
 
-  if (isLoading) {
+  if (isLoading || isOtherProject) {
     return (
       <>
         <DocumentTitle title={resourceTypeTitle} />
