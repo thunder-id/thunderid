@@ -210,25 +210,27 @@ describe('DashboardLayout', () => {
     expect(screen.getByText('navigation:pages.projects')).toBeInTheDocument();
   });
 
-  it('offers only Applications, under Resources, in the sidebar while a project is selected', () => {
+  it('offers only Applications and Agents, under Resources, in the sidebar while a project is selected', () => {
     mockUseProjectSelection.mockReturnValue(projectSelection({projects: [shop], selectedProject: shop}));
 
     render(<DashboardLayout />);
 
     const navigation = screen.getByRole('navigation');
-    expect(navigation.querySelectorAll('.MuiListItemIcon-root')).toHaveLength(1);
+    expect(navigation.querySelectorAll('.MuiListItemIcon-root')).toHaveLength(2);
     expect(screen.getByRole('button', {name: 'navigation:pages.applications'})).toBeInTheDocument();
+    expect(screen.getByRole('button', {name: 'navigation:pages.agents'})).toBeInTheDocument();
     expect(screen.getByText('navigation:categories.resources')).toBeInTheDocument();
     expect(screen.queryByText('navigation:pages.projects')).not.toBeInTheDocument();
     expect(screen.queryByText('navigation:pages.users')).not.toBeInTheDocument();
   });
 
-  it('hides Applications from the sidebar while no project is selected', () => {
+  it('hides Applications and Agents from the sidebar while no project is selected', () => {
     mockUseProjectSelection.mockReturnValue(projectSelection({projects: [shop], isCleared: true}));
 
     render(<DashboardLayout />);
 
     expect(screen.queryByText('navigation:pages.applications')).not.toBeInTheDocument();
+    expect(screen.queryByText('navigation:pages.agents')).not.toBeInTheDocument();
     expect(screen.getByText('navigation:pages.users')).toBeInTheDocument();
   });
 

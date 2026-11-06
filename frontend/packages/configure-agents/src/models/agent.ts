@@ -34,6 +34,8 @@ export interface Agent {
   id: string;
   ouId: string;
   ouHandle?: string;
+  /** The project the agent belongs to. Absent for an agent outside every project. */
+  projectId?: string;
   type: string;
   display?: string;
   description?: string;
@@ -71,6 +73,8 @@ export interface BasicAgent {
   id: string;
   ouId: string;
   ouHandle?: string;
+  /** The project the agent belongs to. Absent for an agent outside every project. */
+  projectId?: string;
   type: string;
   display?: string;
   description?: string;
@@ -101,7 +105,13 @@ export interface AgentListResponse {
 }
 
 export interface CreateAgentRequest {
-  ouId: string;
+  /** Required outside a project. Inside one it is optional, and must belong to the project. */
+  ouId?: string;
+  /**
+   * Places the agent in the project. Without `ouId` the agent is placed in the system organization
+   * unit, and an `ouId` must belong to the project.
+   */
+  projectId?: string;
   type: string;
   description?: string;
   logoUrl?: string;

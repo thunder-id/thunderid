@@ -1,6 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {ProjectScopeProvider} from '@thunderid/contexts';
 import {render, screen, waitFor, userEvent, within} from '@thunderid/test-utils';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import AgentAddFormPage from '../AgentAddFormPage';
@@ -354,6 +355,44 @@ describe('AgentAddFormPage', () => {
     await user.click(await screen.findByTestId('ou-picker'));
     await screen.findByRole('textbox', {name: /llmModel/});
     expect(submit).toBeEnabled();
+  });
+
+  describe('Inside a project', () => {
+    function renderInProject(): void {
+      render(
+        <ProjectScopeProvider project={{id: 'project-1'}}>
+          <AgentAddFormPage />
+        </ProjectScopeProvider>,
+      );
+    }
+
+    it('does not ask for an organization unit', async () => {
+      const user = userEvent.setup();
+      renderInProject();
+
+      await chooseOption(user, 0, 'Default');
+      await screen.findByRole('textbox', {name: /llmModel/});
+
+      expect(screen.queryByTestId('ou-picker')).not.toBeInTheDocument();
+      expect(screen.getByRole('button', {name: 'agents:addForm.submit'})).toBeEnabled();
+    });
+
+    it('creates the agent with the project alone', async () => {
+      const user = userEvent.setup();
+      renderInProject();
+
+      await chooseOption(user, 0, 'Default');
+      await user.type(await screen.findByRole('textbox', {name: /^name/}), 'Calendar Agent');
+      await user.type(await screen.findByRole('textbox', {name: /llmModel/}), 'claude');
+      await user.click(screen.getByRole('button', {name: 'agents:addForm.submit'}));
+
+      await waitFor(() => {
+        expect(requests().some((request) => request.method === 'POST')).toBe(true);
+      });
+      const post = requests().find((request) => request.method === 'POST');
+      expect(post?.data).toMatchObject({projectId: 'project-1', type: 'default'});
+      expect(post?.data).not.toHaveProperty('ouId');
+    });
   });
 
   it('does not post when a required attribute is missing', async () => {

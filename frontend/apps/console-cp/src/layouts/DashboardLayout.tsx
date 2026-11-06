@@ -191,8 +191,8 @@ export default function DashboardLayout({collapseSidebar = false}: DashboardLayo
   // Once the project selection is cleared, the sidebar leads with the projects page so another
   // project can be opened. With no projects yet, it leads there too, where the first one is added.
   const showProjects = isCleared || (!isLoading && !error && projects.length === 0);
-  // Applications are listed per project, so they are only offered while a project is selected,
-  // and a selected project offers nothing else yet.
+  // Applications and agents are listed per project, so they are only offered while a project is
+  // selected, and a selected project offers nothing else yet.
   const isInProject = Boolean(selectedProject);
 
   const appRoutes: NavCategory[] = useMemo(
@@ -207,6 +207,12 @@ export default function DashboardLayout({collapseSidebar = false}: DashboardLayo
                   text: t('navigation:pages.applications'),
                   icon: <LayoutGrid />,
                   path: RouteConfig.applications.list(),
+                },
+                {
+                  id: 'agents',
+                  text: t('navigation:pages.agents', 'Agents'),
+                  icon: <Bot />,
+                  path: RouteConfig.agents.list(),
                 },
               ],
             },
@@ -251,12 +257,6 @@ export default function DashboardLayout({collapseSidebar = false}: DashboardLayo
                   text: t('navigation:pages.users'),
                   icon: <UsersRound />,
                   path: RouteConfig.users.list(),
-                },
-                {
-                  id: 'agents',
-                  text: t('navigation:pages.agents', 'Agents'),
-                  icon: <Bot />,
-                  path: RouteConfig.agents.list(),
                 },
                 {
                   id: 'groups',
