@@ -201,12 +201,20 @@ func (suite *ServiceTestSuite) setupTestService() (
 		inboundClientService: mockStore,
 		entityService:        mockEntityService,
 		ouService:            mockOUService,
+		authzService:         newAllowAllAppAuthz(suite.T()),
 		dependencyRegistry:   noopDepRegistry{},
 		sharingService:       mockSharing,
 		governance:           governance,
 		bus:                  discardingBus{},
 	}
 	return service, mockStore
+}
+
+// newAllowAllAppAuthz returns an authorizer that allows every action.
+func newAllowAllAppAuthz(t *testing.T) *sysauthzmock.SystemAuthorizationServiceInterfaceMock {
+	mockAuthz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
+	mockAuthz.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).Maybe().Return(true, nil)
+	return mockAuthz
 }
 
 // activeReads answers a governance read with ACTIVE for every entity.
@@ -5133,14 +5141,11 @@ func (suite *ServiceTestSuite) newFlowTargetTestService(entity *providers.Entity
 	var noEPErr error
 	mockEntityService.On("GetEntityProfile", mock.Anything, mock.Anything).Maybe().Return(entity, noEPErr)
 	mockEntityService.On("IsEntityDeclarative", mock.Anything, mock.Anything).Maybe().Return(false, noEPErr)
-	mockAuthz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
-	mockAuthz.On("IsActionAllowed", mock.Anything, security.ActionUpdateApplication, mock.Anything).
-		Maybe().Return(true, nil)
 	service := &applicationService{
 		logger:               log.GetLogger().With(log.String(log.LoggerKeyComponentName, "ApplicationService")),
 		inboundClientService: mockStore,
 		entityService:        mockEntityService,
-		authzService:         mockAuthz,
+		authzService:         newAllowAllAppAuthz(suite.T()),
 		dependencyRegistry:   noopDepRegistry{},
 	}
 	return service, mockStore
@@ -5253,6 +5258,7 @@ func (suite *ServiceTestSuite) TestValidateDeleteApplication_RefusesDeclarativeR
 		inboundClientService: mockStore,
 		entityService:        mockEntityService,
 		dependencyRegistry:   noopDepRegistry{},
+		authzService:         newAllowAllAppAuthz(suite.T()),
 	}
 
 	target, svcErr := service.ValidateDeleteApplication(context.Background(), testServiceAppID)
@@ -5348,6 +5354,77 @@ func (suite *ServiceTestSuite) TestValidateRegenerateClientSecret_RequiresApplic
 			assert.Equal(suite.T(), tc.wantCode, svcErr.Code)
 			mockEntityService.AssertNotCalled(suite.T(), "GetEntityProfile", mock.Anything, mock.Anything)
 		})
+	}
+}
+
+func (suite *ServiceTestSuite) TestApplicationChanges_RequireTheApplicationAction() {
+	ctx := context.Background()
+	cases := []struct {
+		name   string
+		action security.Action
+		appID  string
+		call   func(*applicationService) *tidcommon.ServiceError
+	}{
+		{"create", security.ActionCreateApplication, "", func(s *applicationService) *tidcommon.ServiceError {
+			_, svcErr := s.CreateApplication(ctx, &model.ApplicationDTO{Name: "app"})
+			return svcErr
+		}},
+		{"update", security.ActionUpdateApplication, testServiceAppID,
+			func(s *applicationService) *tidcommon.ServiceError {
+				_, svcErr := s.UpdateApplication(ctx, testServiceAppID, &model.ApplicationDTO{Name: "app"})
+				return svcErr
+			}},
+		{"delete", security.ActionDeleteApplication, testServiceAppID,
+			func(s *applicationService) *tidcommon.ServiceError {
+				return s.DeleteApplication(ctx, testServiceAppID)
+			}},
+		{"validate delete", security.ActionDeleteApplication, testServiceAppID,
+			func(s *applicationService) *tidcommon.ServiceError {
+				_, svcErr := s.ValidateDeleteApplication(ctx, testServiceAppID)
+				return svcErr
+			}},
+		{"create sharing policy", security.ActionUpdateApplication, testServiceAppID,
+			func(s *applicationService) *tidcommon.ServiceError {
+				_, svcErr := s.CreateSharingPolicy(ctx, testServiceAppID, sharing.PolicyRequest{})
+				return svcErr
+			}},
+		{"update sharing policy", security.ActionUpdateApplication, testServiceAppID,
+			func(s *applicationService) *tidcommon.ServiceError {
+				_, svcErr := s.UpdateSharingPolicy(ctx, testServiceAppID, "p1", sharing.PolicyRequest{})
+				return svcErr
+			}},
+		{"delete sharing policy", security.ActionUpdateApplication, testServiceAppID,
+			func(s *applicationService) *tidcommon.ServiceError {
+				return s.DeleteSharingPolicy(ctx, testServiceAppID, "p1")
+			}},
+	}
+	outcomes := []struct {
+		name     string
+		authzErr *tidcommon.ServiceError
+		wantCode string
+	}{
+		{"denied", nil, tidcommon.ErrorUnauthorized.Code},
+		{"check failure", &tidcommon.InternalServerError, tidcommon.InternalServerError.Code},
+	}
+	for _, tc := range cases {
+		for _, outcome := range outcomes {
+			suite.Run(tc.name+" "+outcome.name, func() {
+				service, mockStore := suite.setupTestService()
+				mockAuthz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+				mockAuthz.On("IsActionAllowed", mock.Anything, tc.action,
+					&sysauthz.ActionContext{ResourceType: security.ResourceTypeApplication, ResourceID: tc.appID}).
+					Return(false, outcome.authzErr)
+				service.authzService = mockAuthz
+
+				svcErr := tc.call(service)
+
+				suite.Require().NotNil(svcErr)
+				suite.Equal(outcome.wantCode, svcErr.Code)
+				suite.Empty(mockStore.Calls)
+				suite.Empty(service.entityService.(*entitymock.EntityServiceInterfaceMock).Calls)
+				suite.Empty(service.sharingService.(*sharingmock.SharingServiceInterfaceMock).Calls)
+			})
+		}
 	}
 }
 

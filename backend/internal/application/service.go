@@ -187,6 +187,9 @@ func (as *applicationService) createApplication(ctx context.Context, app *model.
 	if app == nil {
 		return nil, &ErrorApplicationNil
 	}
+	if svcErr := as.checkApplicationAccess(ctx, security.ActionCreateApplication, ""); svcErr != nil {
+		return nil, svcErr
+	}
 	// Check if store is in pure declarative mode
 	if isDeclarativeModeEnabled() {
 		return nil, &ErrorCannotModifyDeclarativeResource
@@ -629,6 +632,9 @@ func (as *applicationService) updateApplication(ctx context.Context, appID strin
 	if appID == "" {
 		return nil, &ErrorInvalidApplicationID
 	}
+	if svcErr := as.checkApplicationAccess(ctx, security.ActionUpdateApplication, appID); svcErr != nil {
+		return nil, svcErr
+	}
 	if svcErr := as.checkApplicationDeclarative(ctx, appID); svcErr != nil {
 		return nil, svcErr
 	}
@@ -885,6 +891,9 @@ func (as *applicationService) deleteApplication(ctx context.Context, appID strin
 	if appID == "" {
 		return &ErrorInvalidApplicationID
 	}
+	if svcErr := as.checkApplicationAccess(ctx, security.ActionDeleteApplication, appID); svcErr != nil {
+		return svcErr
+	}
 
 	inputs := map[string]string{systemFlowInputApplication: appID}
 	var shared map[string]string
@@ -1007,6 +1016,9 @@ func (as *applicationService) runSystemFlow(ctx context.Context, handle string,
 // DeleteApplication cannot fail after the deny-list row is written.
 func (as *applicationService) ValidateDeleteApplication(ctx context.Context, appID string) (
 	*model.ApplicationArtifactProfile, *tidcommon.ServiceError) {
+	if svcErr := as.checkApplicationAccess(ctx, security.ActionDeleteApplication, appID); svcErr != nil {
+		return nil, svcErr
+	}
 	existing, svcErr := as.loadApplicationEntity(ctx, appID)
 	if svcErr != nil {
 		return nil, svcErr
@@ -1071,15 +1083,8 @@ func (as *applicationService) ValidateCredentialAction(
 	if action != model.CredentialActionRegenerate {
 		return nil, &ErrorUnsupportedCredentialAction
 	}
-	allowed, svcErr := as.authzService.IsActionAllowed(ctx, security.ActionUpdateApplication,
-		&sysauthz.ActionContext{ResourceType: security.ResourceTypeApplication, ResourceID: appID})
-	if svcErr != nil {
-		as.logger.Error(ctx, "Failed to check authorization for action",
-			log.String("action", string(security.ActionUpdateApplication)), log.Any("error", svcErr))
-		return nil, &tidcommon.InternalServerError
-	}
-	if !allowed {
-		return nil, &tidcommon.ErrorUnauthorized
+	if svcErr := as.checkApplicationAccess(ctx, security.ActionUpdateApplication, appID); svcErr != nil {
+		return nil, svcErr
 	}
 	existing, svcErr := as.loadApplicationEntity(ctx, appID)
 	if svcErr != nil {
@@ -1108,6 +1113,22 @@ func (as *applicationService) ValidateCredentialAction(
 		return nil, &ErrorApplicationHasNoClientSecret
 	}
 	return as.artifactProfileForClient(clientID, client), nil
+}
+
+// checkApplicationAccess refuses unless the caller may perform action on the application.
+func (as *applicationService) checkApplicationAccess(
+	ctx context.Context, action security.Action, appID string) *tidcommon.ServiceError {
+	allowed, svcErr := as.authzService.IsActionAllowed(ctx, action,
+		&sysauthz.ActionContext{ResourceType: security.ResourceTypeApplication, ResourceID: appID})
+	if svcErr != nil {
+		as.logger.Error(ctx, "Failed to check authorization for action",
+			log.String("action", string(action)), log.Any("error", svcErr))
+		return &tidcommon.InternalServerError
+	}
+	if !allowed {
+		return &tidcommon.ErrorUnauthorized
+	}
+	return nil
 }
 
 // ApplyCredentialAction performs the action and returns the new credential value. The secret is
@@ -3021,6 +3042,9 @@ func (as *applicationService) requireOwnPolicy(
 func (as *applicationService) CreateSharingPolicy(
 	ctx context.Context, appID string, req sharing.PolicyRequest,
 ) (sharing.Policy, *tidcommon.ServiceError) {
+	if svcErr := as.checkApplicationAccess(ctx, security.ActionUpdateApplication, appID); svcErr != nil {
+		return sharing.Policy{}, svcErr
+	}
 	owningOUID, svcErr := as.requireSharing(ctx, appID)
 	if svcErr != nil {
 		return sharing.Policy{}, svcErr
@@ -3063,6 +3087,9 @@ func (as *applicationService) ListSharingPolicies(
 func (as *applicationService) UpdateSharingPolicy(
 	ctx context.Context, appID, policyID string, req sharing.PolicyRequest,
 ) (sharing.Policy, *tidcommon.ServiceError) {
+	if svcErr := as.checkApplicationAccess(ctx, security.ActionUpdateApplication, appID); svcErr != nil {
+		return sharing.Policy{}, svcErr
+	}
 	if _, svcErr := as.requireOwnPolicy(ctx, appID, policyID); svcErr != nil {
 		return sharing.Policy{}, svcErr
 	}
@@ -3077,6 +3104,9 @@ func (as *applicationService) UpdateSharingPolicy(
 func (as *applicationService) DeleteSharingPolicy(
 	ctx context.Context, appID, policyID string,
 ) *tidcommon.ServiceError {
+	if svcErr := as.checkApplicationAccess(ctx, security.ActionUpdateApplication, appID); svcErr != nil {
+		return svcErr
+	}
 	policy, svcErr := as.requireOwnPolicy(ctx, appID, policyID)
 	if svcErr != nil {
 		if svcErr.Code == ErrorSharingPolicyNotFound.Code {
