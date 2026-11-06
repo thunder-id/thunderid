@@ -497,10 +497,9 @@ Requirements:
    offer the verify action on that basis.
 6. Status is shown for top-level single-valued schema properties of type `email` or `mobile`
    that hold a value. The verify action is offered for `email` and `mobile`, and only for a
-   stored value, never one being edited. Verification opens by itself after a save only for an
-   `email` whose re-read stored value differs from the one before the save and that
-   `verifiedAttributes` reports unverified, since sending to a mobile number needs an SMS
-   provider the deployment may not have.
+   stored value, never one being edited. Saving an email address or mobile number updates the
+   stored value and its reported verification status. The profile MUST wait for an explicit Verify
+   action to start verification.
 7. Starting a verification sends a message, so a component that starts one when shown MUST
    start it once per showing and MUST NOT retry automatically.
 8. A UI SDK ships a verify-attribute component with a `Base` variant, and its user profile
@@ -1238,6 +1237,8 @@ server recorded and nothing else.
   unverified.
 - **AC10.5:** Given any verification step, when the log output is inspected, then it contains
   no code.
+- **AC10.6:** Given a changed email address or mobile number, when the profile saves it, then
+  it shows the stored value and its reported status and waits for Verify before starting a flow.
 
 ## Change log
 

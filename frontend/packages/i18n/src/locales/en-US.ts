@@ -4438,6 +4438,9 @@ const translations = {
     'create.type.onboarding.description': 'Onboard invited users to your organization',
     'create.type.self.label': 'Self',
     'create.type.self.description': 'Let signed-in users manage their own account, such as verifying an email address',
+    'create.type.adminInitiated.label': 'Administrator-initiated',
+    'create.type.adminInitiated.description':
+      'Let administrators start an action for a user, such as verifying their email address',
     'create.template.title': 'Choose a starting template',
     'create.template.recommended': 'Recommended',
     'create.template.search': 'Search templates...',

@@ -89,7 +89,7 @@ For what each operation does, see [Suspend and Restore Accounts](../../account-p
 
 For a user that is not declarative (read-only), each top-level `email` or `mobile` attribute that holds a value and is not a credential shows a **Verified** or **Unverified** label on the user's **General** and **Attributes** tabs. Hover over **Verified** to see when the value was verified. The label describes the stored value, so the **Attributes** tab hides it while you edit that field. See [Attribute Types](../user-type-reference#attribute-types).
 
-The Console only shows verification status. A signed-in user verifies their own email address or mobile number through a self flow that your application starts, for example from the profile component of a <ProductName /> SDK. See [Build a Flow](../../flows/build-a-flow#go-further).
+The Console only shows verification status. In the <ProductName /> SDK profile, a signed-in user selects **Verify** beside a saved email address or mobile number to start the self-service flow. See [Build a Flow](../../flows/build-a-flow#go-further).
 
 User API responses that include a user's attributes also include `verifiedAttributes`: each verified attribute with the time it was verified, or an empty object when none is verified. The field is omitted when the server could not read the user's verification state, and from listings that return identifiers only.
 

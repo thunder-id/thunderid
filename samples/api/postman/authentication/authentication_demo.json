@@ -3670,6 +3670,363 @@
           }
         }
       ]
+    },
+    {
+      "name": "07 - Admin Email Verification with Flow Native APIs",
+      "item": [
+        {
+          "name": "01 - Create Verification User Type",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/user-schemas",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "user-schemas"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"handle\": \"verification-user\",\n    \"displayName\": \"Verification User\",\n    \"ouId\": \"{{demoOuId}}\",\n    \"allowSelfRegistration\": false,\n    \"schema\": {\n        \"username\": {\n            \"type\": \"string\",\n            \"required\": true,\n            \"unique\": true\n        },\n        \"email\": {\n            \"type\": \"email\",\n            \"required\": false,\n            \"unique\": true\n        },\n        \"password\": {\n            \"type\": \"string\",\n            \"credential\": true,\n            \"required\": false\n        }\n    }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Creates a user type whose `email` attribute has type `email`, so it is eligible for verification. Plain `string` attributes are not."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    pm.collectionVariables.set(\"av_schema_id\", pm.response.json().id);",
+                  "}",
+                  "pm.test(\"User type created or already exists\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([201, 409]);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "02 - Create Verification User",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/users",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"ouId\": \"{{demoOuId}}\",\n    \"type\": \"verification-user\",\n    \"attributes\": {\n        \"username\": \"{{av_username}}\",\n        \"email\": \"{{av_user_email}}\",\n        \"password\": \"{{demoLoginUser1Password}}\"\n    }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Set `av_user_email` to an address you can read, or to the address your local email sender logs. An existing user can be used instead by setting `av_user_id`."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    pm.collectionVariables.set(\"av_user_id\", pm.response.json().id);",
+                  "}",
+                  "pm.test(\"User created\", function () {",
+                  "    pm.expect(pm.response.code).to.equal(201);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "03 - Admin Starts Email Verification",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/flow/execute",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "flow",
+                "execute"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"flowType\": \"ADMIN_INITIATED\",\n    \"handle\": \"default-admin-attribute-verification-flow\",\n    \"inputs\": {\n        \"subject\": \"{{av_user_id}}\",\n        \"attribute\": \"email\"\n    },\n    \"verbose\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Needs the management token from `01 - Set Token` (root `system` permission) and an email sender configured on the server. The response tells the administrator only the channel and masked destination; the link goes to the user."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "if (res.executionId) {",
+                  "    pm.collectionVariables.set(\"av_execution_id\", res.executionId);",
+                  "}",
+                  "pm.test(\"Link sent to the user's email\", function () {",
+                  "    pm.expect(res.flowStatus).to.equal(\"INCOMPLETE\");",
+                  "    pm.expect(res.data.additionalData.channel).to.equal(\"email\");",
+                  "    pm.expect(res.data.additionalData).to.not.have.property(\"inviteLink\");",
+                  "});",
+                  "console.log(\"Open the email and copy inviteToken from the link (<gate>/invite?executionId=...&inviteToken=...) into av_invite_token.\");"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "04 - User Opens Verification Link",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/flow/execute",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "flow",
+                "execute"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"executionId\": \"{{av_execution_id}}\",\n    \"inputs\": {\n        \"inviteToken\": \"{{av_invite_token}}\"\n    },\n    \"verbose\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "What Gate's invite page sends when the user opens the link. No bearer token: the user continues the administrator's execution with the link's execution ID and token only."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "if (res.challengeToken) {",
+                  "    pm.collectionVariables.set(\"av_challenge_token\", res.challengeToken);",
+                  "}",
+                  "pm.test(\"Confirm prompt shown, nothing recorded yet\", function () {",
+                  "    pm.expect(res.flowStatus).to.equal(\"INCOMPLETE\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "05 - User Confirms Email",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/flow/execute",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "flow",
+                "execute"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"executionId\": \"{{av_execution_id}}\",\n    \"challengeToken\": \"{{av_challenge_token}}\",\n    \"action\": \"action_confirm\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Opening the link alone records nothing; the confirm action records the verification."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Verification completed\", function () {",
+                  "    pm.expect(pm.response.json().flowStatus).to.equal(\"COMPLETE\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "06 - Check Verified Email",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/users/{{av_user_id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "{{av_user_id}}"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"email is verified\", function () {",
+                  "    pm.expect(pm.response.json().verifiedAttributes).to.have.property(\"email\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "description": "An administrator starts email verification for a user (`ADMIN_INITIATED` flow, `default-admin-attribute-verification-flow`); the user finishes it from the emailed link without a token."
     }
   ],
   "auth": {
@@ -3802,6 +4159,34 @@
     },
     {
       "key": "direct_auth_secret",
+      "value": ""
+    },
+    {
+      "key": "av_schema_id",
+      "value": ""
+    },
+    {
+      "key": "av_user_id",
+      "value": ""
+    },
+    {
+      "key": "av_username",
+      "value": "verification-user-1"
+    },
+    {
+      "key": "av_user_email",
+      "value": "verify.user@example.com"
+    },
+    {
+      "key": "av_execution_id",
+      "value": ""
+    },
+    {
+      "key": "av_invite_token",
+      "value": ""
+    },
+    {
+      "key": "av_challenge_token",
       "value": ""
     }
   ]

@@ -30,6 +30,9 @@ Standard OAuth 2.0 authorization code flow with PKCE:
 User self-registration flows:
 - **Registration with Username & Password** - Basic user registration flow
 
+### 5. Admin Email Verification with Flow Native APIs
+An administrator starts email verification for a user with the `ADMIN_INITIATED` flow `default-admin-attribute-verification-flow`; the user finishes it from the emailed link without a token. The folder creates its own user type whose `email` attribute has type `email` (a `string` attribute is not eligible), so it needs only `01 - Set Token`, `02 - Setup Resources / 01 - Create OU` and an email sender configured on the server. After step 03, copy `inviteToken` from the link in the email into `av_invite_token`.
+
 ## Collection Structure
 
 ```
@@ -49,7 +52,8 @@ User self-registration flows:
 │   └── 04.05 - Login With Multi Options
 ├── 05 - Registration with Flow Native APIs
 │   └── 05.01 - Registration With Username & Password
-└── 06 - Authenticate with OAuth (Standard Based)
+├── 06 - Authenticate with OAuth (Standard Based)
+└── 07 - Admin Email Verification with Flow Native APIs
 ```
 
 ## Prerequisites
@@ -212,6 +216,18 @@ These variables are automatically populated during the demo execution:
 | `auth_std_flow_id` | OAuth standard flow flow exec ID |
 | `auth_std_assertion` | OAuth standard flow assertion |
 | `auth_std_auth_code` | OAuth standard flow authorization code |
+
+### Admin Email Verification
+
+| Variable | Description |
+|----------|-------------|
+| `av_username`, `av_user_email` | User to create and verify; set `av_user_email` to an address you can read |
+| `av_schema_id`, `av_user_id` | Created user type and user (set `av_user_id` to verify an existing user) |
+| `av_execution_id` | Execution the administrator started |
+| `av_invite_token` | Token from the emailed link, copied by hand |
+| `av_challenge_token` | Challenge token for the user's confirm step |
+
+The folder creates the `verification-user` user type on its first run. To run it again, skip the user type and user requests and set `av_user_id`, or delete the user type first.
 
 ## Usage
 

@@ -19296,12 +19296,12 @@
           "onSuccess": "prepare_verification",
           "layout": {
             "size": {
-              "width": 101,
+              "width": 60,
               "height": 34
             },
             "position": {
               "x": 62,
-              "y": 530
+              "y": 1513
             }
           }
         },
@@ -19315,12 +19315,12 @@
           "onSuccess": "generate_email_otp",
           "layout": {
             "size": {
-              "width": 206,
+              "width": 260,
               "height": 113
             },
             "position": {
-              "x": 372,
-              "y": 490
+              "x": 245,
+              "y": 1474
             }
           }
         },
@@ -19343,12 +19343,12 @@
           "onSuccess": "send_email_otp",
           "layout": {
             "size": {
-              "width": 206,
+              "width": 260,
               "height": 113
             },
             "position": {
-              "x": 738,
-              "y": 490
+              "x": 645,
+              "y": 1474
             }
           }
         },
@@ -19372,12 +19372,12 @@
           "onSuccess": "email_code",
           "layout": {
             "size": {
-              "width": 206,
+              "width": 235,
               "height": 113
             },
             "position": {
-              "x": 1125,
-              "y": 490
+              "x": 1045,
+              "y": 1474
             }
           }
         },
@@ -19453,12 +19453,12 @@
           ],
           "layout": {
             "size": {
-              "width": 206,
-              "height": 113
+              "width": 350,
+              "height": 800
             },
             "position": {
-              "x": 1504,
-              "y": 490
+              "x": 1845,
+              "y": 1082
             }
           }
         },
@@ -19484,12 +19484,12 @@
           "onIncomplete": "email_code",
           "layout": {
             "size": {
-              "width": 206,
+              "width": 245,
               "height": 113
             },
             "position": {
-              "x": 1882,
-              "y": 471
+              "x": 2375,
+              "y": 1474
             }
           }
         },
@@ -19507,12 +19507,12 @@
           "onSuccess": "send_mobile_otp",
           "layout": {
             "size": {
-              "width": 206,
+              "width": 265,
               "height": 113
             },
             "position": {
-              "x": 1125,
-              "y": 277
+              "x": 1045,
+              "y": 454
             }
           }
         },
@@ -19537,12 +19537,12 @@
           "onSuccess": "mobile_code",
           "layout": {
             "size": {
-              "width": 206,
+              "width": 240,
               "height": 113
             },
             "position": {
-              "x": 1504,
-              "y": 238
+              "x": 1445,
+              "y": 454
             }
           }
         },
@@ -19618,12 +19618,12 @@
           ],
           "layout": {
             "size": {
-              "width": 206,
-              "height": 113
+              "width": 350,
+              "height": 800
             },
             "position": {
-              "x": 1882,
-              "y": 122
+              "x": 1845,
+              "y": 62
             }
           }
         },
@@ -19649,12 +19649,12 @@
           "onIncomplete": "mobile_code",
           "layout": {
             "size": {
-              "width": 206,
+              "width": 245,
               "height": 113
             },
             "position": {
-              "x": 2270,
-              "y": 355
+              "x": 2375,
+              "y": 454
             }
           }
         },
@@ -19668,12 +19668,12 @@
           "onSuccess": "end",
           "layout": {
             "size": {
-              "width": 206,
+              "width": 254,
               "height": 113
             },
             "position": {
-              "x": 2647,
-              "y": 471
+              "x": 2805,
+              "y": 1474
             }
           }
         },
@@ -19682,12 +19682,12 @@
           "type": "END",
           "layout": {
             "size": {
-              "width": 85,
+              "width": 50,
               "height": 34
             },
             "position": {
-              "x": 3013,
-              "y": 511
+              "x": 3220,
+              "y": 1513
             }
           }
         }
@@ -19715,12 +19715,12 @@
           "onSuccess": "prepare_verification",
           "layout": {
             "size": {
-              "width": 101,
+              "width": 60,
               "height": 34
             },
             "position": {
               "x": 62,
-              "y": 102
+              "y": 1513
             }
           }
         },
@@ -19734,12 +19734,12 @@
           "onSuccess": "generate_link",
           "layout": {
             "size": {
-              "width": 206,
+              "width": 260,
               "height": 113
             },
             "position": {
-              "x": 358,
-              "y": 62
+              "x": 245,
+              "y": 1474
             }
           }
         },
@@ -19758,12 +19758,12 @@
           "onSuccess": "send_link",
           "layout": {
             "size": {
-              "width": 206,
+              "width": 222,
               "height": 113
             },
             "position": {
-              "x": 724,
-              "y": 62
+              "x": 645,
+              "y": 1474
             }
           }
         },
@@ -19787,12 +19787,12 @@
           "onSuccess": "link_sent",
           "layout": {
             "size": {
-              "width": 206,
+              "width": 235,
               "height": 113
             },
             "position": {
-              "x": 1113,
-              "y": 62
+              "x": 1045,
+              "y": 1474
             }
           }
         },
@@ -19821,12 +19821,12 @@
           "next": "verify_link",
           "layout": {
             "size": {
-              "width": 206,
-              "height": 113
+              "width": 350,
+              "height": 350
             },
             "position": {
-              "x": 1479,
-              "y": 62
+              "x": 1445,
+              "y": 1355
             }
           }
         },
@@ -19848,12 +19848,12 @@
           "onSuccess": "confirm",
           "layout": {
             "size": {
-              "width": 206,
+              "width": 200,
               "height": 113
             },
             "position": {
-              "x": 1857,
-              "y": 62
+              "x": 1975,
+              "y": 1474
             }
           }
         },
@@ -19902,12 +19902,12 @@
           ],
           "layout": {
             "size": {
-              "width": 206,
-              "height": 113
+              "width": 350,
+              "height": 600
             },
             "position": {
-              "x": 2233,
-              "y": 62
+              "x": 2355,
+              "y": 1190
             }
           }
         },
@@ -19925,12 +19925,12 @@
           "onSuccess": "send_mobile_otp",
           "layout": {
             "size": {
-              "width": 206,
+              "width": 265,
               "height": 113
             },
             "position": {
-              "x": 1113,
-              "y": 295
+              "x": 1045,
+              "y": 454
             }
           }
         },
@@ -19955,12 +19955,12 @@
           "onSuccess": "mobile_code",
           "layout": {
             "size": {
-              "width": 206,
+              "width": 240,
               "height": 113
             },
             "position": {
-              "x": 1479,
-              "y": 295
+              "x": 1445,
+              "y": 454
             }
           }
         },
@@ -20036,12 +20036,12 @@
           ],
           "layout": {
             "size": {
-              "width": 206,
-              "height": 113
+              "width": 350,
+              "height": 800
             },
             "position": {
-              "x": 1857,
-              "y": 295
+              "x": 1845,
+              "y": 62
             }
           }
         },
@@ -20067,12 +20067,12 @@
           "onIncomplete": "mobile_code",
           "layout": {
             "size": {
-              "width": 206,
+              "width": 245,
               "height": 113
             },
             "position": {
-              "x": 2233,
-              "y": 295
+              "x": 2375,
+              "y": 454
             }
           }
         },
@@ -20086,12 +20086,12 @@
           "onSuccess": "verification_complete",
           "layout": {
             "size": {
-              "width": 206,
+              "width": 254,
               "height": 113
             },
             "position": {
-              "x": 2622,
-              "y": 62
+              "x": 2885,
+              "y": 1474
             }
           }
         },
@@ -20120,12 +20120,12 @@
           "next": "end",
           "layout": {
             "size": {
-              "width": 206,
-              "height": 113
+              "width": 350,
+              "height": 325
             },
             "position": {
-              "x": 2988,
-              "y": 62
+              "x": 3315,
+              "y": 1368
             }
           }
         },
@@ -20134,12 +20134,315 @@
           "type": "END",
           "layout": {
             "size": {
-              "width": 85,
+              "width": 50,
               "height": 34
             },
             "position": {
-              "x": 3354,
-              "y": 102
+              "x": 3845,
+              "y": 1513
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "resourceType": "TEMPLATE",
+    "category": "STARTER",
+    "type": "ADMIN_ATTRIBUTE_VERIFICATION_EMAIL_LINK",
+    "flowType": "ADMIN_INITIATED",
+    "display": {
+      "label": "Administrator Attribute Verification with Email Link",
+      "description": "An administrator starts verification of a user's email address, and the user confirms it from an emailed link",
+      "image": "assets/images/icons/link.svg",
+      "showOnResourcePanel": true
+    },
+    "config": {
+      "name": "Administrator Attribute Verification with Email Link Flow",
+      "handle": "admin-attribute-verification-email-link-flow",
+      "nodes": [
+        {
+          "id": "start",
+          "type": "START",
+          "onSuccess": "permission_validator",
+          "layout": {
+            "size": {
+              "width": 60,
+              "height": 34
+            },
+            "position": {
+              "x": 62,
+              "y": 345
+            }
+          }
+        },
+        {
+          "id": "permission_validator",
+          "type": "TASK_EXECUTION",
+          "properties": {
+            "requiredScopes": ["system:user"]
+          },
+          "executor": {
+            "name": "PermissionValidator"
+          },
+          "onSuccess": "prepare_verification",
+          "layout": {
+            "size": {
+              "width": 264,
+              "height": 113
+            },
+            "position": {
+              "x": 218,
+              "y": 305
+            }
+          }
+        },
+        {
+          "id": "prepare_verification",
+          "type": "TASK_EXECUTION",
+          "executor": {
+            "name": "AttributeVerificationExecutor",
+            "mode": "prepare"
+          },
+          "onSuccess": "generate_link",
+          "layout": {
+            "size": {
+              "width": 260,
+              "height": 113
+            },
+            "position": {
+              "x": 578,
+              "y": 305
+            }
+          }
+        },
+        {
+          "id": "generate_link",
+          "type": "TASK_EXECUTION",
+          "executor": {
+            "name": "InviteExecutor",
+            "mode": "generate"
+          },
+          "onSuccess": "send_link",
+          "layout": {
+            "size": {
+              "width": 222,
+              "height": 113
+            },
+            "position": {
+              "x": 934,
+              "y": 305
+            }
+          }
+        },
+        {
+          "id": "send_link",
+          "type": "TASK_EXECUTION",
+          "properties": {
+            "emailTemplate": "admin-email-verification"
+          },
+          "executor": {
+            "name": "EmailExecutor",
+            "mode": "send",
+            "inputs": [
+              {
+                "identifier": "email",
+                "type": "EMAIL_INPUT",
+                "required": true
+              }
+            ]
+          },
+          "onSuccess": "link_sent",
+          "layout": {
+            "size": {
+              "width": 200,
+              "height": 113
+            },
+            "position": {
+              "x": 1252,
+              "y": 305
+            }
+          }
+        },
+        {
+          "id": "link_sent",
+          "type": "PROMPT",
+          "meta": {
+            "components": [
+              {
+                "align": "left",
+                "type": "TEXT",
+                "id": "link_sent_heading",
+                "label": "{{ t(verification:admin.email.link.sent.title) }}",
+                "variant": "HEADING_1",
+                "color": "SUCCESS"
+              },
+              {
+                "align": "left",
+                "type": "TEXT",
+                "id": "link_sent_message",
+                "label": "{{ t(verification:admin.email.link.sent.message) }}",
+                "variant": "HEADING_6"
+              }
+            ]
+          },
+          "next": "verify_link",
+          "layout": {
+            "size": {
+              "width": 350,
+              "height": 350
+            },
+            "position": {
+              "x": 1548,
+              "y": 187
+            }
+          }
+        },
+        {
+          "id": "verify_link",
+          "type": "TASK_EXECUTION",
+          "inputs": [
+            {
+              "ref": "input_invite_token",
+              "identifier": "inviteToken",
+              "type": "HIDDEN",
+              "required": true
+            }
+          ],
+          "executor": {
+            "name": "InviteExecutor",
+            "mode": "verify"
+          },
+          "onSuccess": "confirm",
+          "layout": {
+            "size": {
+              "width": 200,
+              "height": 113
+            },
+            "position": {
+              "x": 1994,
+              "y": 305
+            }
+          }
+        },
+        {
+          "id": "confirm",
+          "type": "PROMPT",
+          "meta": {
+            "components": [
+              {
+                "align": "left",
+                "type": "TEXT",
+                "id": "confirm_heading",
+                "label": "{{ t(verification:admin.email.link.confirm.title) }}",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "left",
+                "type": "TEXT",
+                "id": "confirm_message",
+                "label": "{{ t(verification:admin.email.link.confirm.message) }}",
+                "variant": "HEADING_6"
+              },
+              {
+                "type": "BLOCK",
+                "id": "block_confirm",
+                "components": [
+                  {
+                    "type": "ACTION",
+                    "id": "action_confirm",
+                    "label": "{{ t(verification:admin.email.link.confirm.action) }}",
+                    "variant": "PRIMARY",
+                    "eventType": "SUBMIT"
+                  }
+                ]
+              }
+            ]
+          },
+          "prompts": [
+            {
+              "inputs": [],
+              "action": {
+                "ref": "action_confirm",
+                "nextNode": "record_verification"
+              }
+            }
+          ],
+          "layout": {
+            "size": {
+              "width": 350,
+              "height": 600
+            },
+            "position": {
+              "x": 2290,
+              "y": 62
+            }
+          }
+        },
+        {
+          "id": "record_verification",
+          "type": "TASK_EXECUTION",
+          "executor": {
+            "name": "AttributeVerificationExecutor",
+            "mode": "record"
+          },
+          "onSuccess": "verification_complete",
+          "layout": {
+            "size": {
+              "width": 254,
+              "height": 113
+            },
+            "position": {
+              "x": 2736,
+              "y": 305
+            }
+          }
+        },
+        {
+          "id": "verification_complete",
+          "type": "PROMPT",
+          "meta": {
+            "components": [
+              {
+                "align": "left",
+                "type": "TEXT",
+                "id": "verification_complete_heading",
+                "label": "{{ t(verification:admin.email.link.complete.title) }}",
+                "variant": "HEADING_1",
+                "color": "SUCCESS"
+              },
+              {
+                "align": "left",
+                "type": "TEXT",
+                "id": "verification_complete_message",
+                "label": "{{ t(verification:admin.email.link.complete.message) }}",
+                "variant": "HEADING_6"
+              }
+            ]
+          },
+          "next": "end",
+          "layout": {
+            "size": {
+              "width": 350,
+              "height": 325
+            },
+            "position": {
+              "x": 3086,
+              "y": 199
+            }
+          }
+        },
+        {
+          "id": "end",
+          "type": "END",
+          "layout": {
+            "size": {
+              "width": 50,
+              "height": 34
+            },
+            "position": {
+              "x": 3532,
+              "y": 345
             }
           }
         }

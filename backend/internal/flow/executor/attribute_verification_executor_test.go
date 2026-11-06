@@ -16,6 +16,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/log/rollingfile"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/attributeverificationprovidermock"
@@ -125,6 +126,25 @@ func flowPrepareContext(flowType providers.FlowType, inputs, runtime map[string]
 		SharedRuntimeData: map[string]string{}}
 }
 
+// adminPrepareContext is a prepare node of an administrator-initiated flow on the request context.
+func adminPrepareContext(requestCtx context.Context, inputs, shared map[string]string) *providers.NodeContext {
+	return &providers.NodeContext{Context: requestCtx, ExecutionID: "verification-1",
+		FlowType: providers.FlowTypeAdminInitiated, ExecutorMode: ExecutorModePrepare, UserInputs: inputs,
+		RuntimeData: map[string]string{}, SharedRuntimeData: shared}
+}
+
+// callerContext is the request context of an authenticated caller with the permissions.
+func callerContext(permissions ...string) context.Context {
+	return subjectContext("admin-1", permissions...)
+}
+
+// subjectContext is the request context of a caller with the subject and permissions.
+func subjectContext(subject string, permissions ...string) context.Context {
+	security.InitSystemPermissions("")
+	return security.WithSecurityContextTest(context.Background(),
+		security.NewSecurityContextForTest(subject, "ou-1", "token", permissions, map[string]interface{}{}))
+}
+
 // recordContext is a record node of a flow of the given type over the evidence.
 func recordContext(flowType providers.FlowType, shared map[string]string) *providers.NodeContext {
 	return &providers.NodeContext{Context: context.Background(), FlowType: flowType,
@@ -214,6 +234,68 @@ func (s *AttributeVerificationExecutorTestSuite) TestPrepareFailsWithoutAUserSou
 		})
 	}
 	s.verification.AssertNotCalled(s.T(), "PrepareAttributeVerification", mock.Anything, mock.Anything)
+}
+
+// An administrator-initiated flow pins the user the administrator names, never the administrator, and
+// consumes the input.
+func (s *AttributeVerificationExecutorTestSuite) TestPrepareTakesTheUserTheAdministratorNames() {
+	pin := emailPin()
+	s.verification.On("PrepareAttributeVerification", mock.Anything, existingRequest("user-a", "email")).
+		Return(pin, nil).Once()
+	ctx := adminPrepareContext(callerContext("system"), map[string]string{"subject": "user-a", "attribute": "email"},
+		map[string]string{})
+
+	prepared, err := s.executor.Execute(ctx)
+
+	s.Require().NoError(err)
+	s.Require().Equal(providers.ExecComplete, prepared.Status)
+	s.Equal(&verificationEvidence{Pin: pin}, s.decodedEvidence(prepared))
+	s.Equal("user-a", prepared.RuntimeData[userAttributeUserID])
+	s.Contains(ctx.GetConsumedInputs(), "subject")
+}
+
+// A request without the administrator names no one, so the user continuing from a link cannot
+// choose whom to verify, and an administrator who names no one verifies no one.
+func (s *AttributeVerificationExecutorTestSuite) TestPrepareRefusesATargetNamedWithoutTheAdministrator() {
+	for name, ctx := range map[string]*providers.NodeContext{
+		"no token": adminPrepareContext(context.Background(),
+			map[string]string{"subject": "user-b", "attribute": "email"}, map[string]string{}),
+		"no token over a pin": adminPrepareContext(context.Background(),
+			map[string]string{"subject": "user-a", "attribute": "email"}, pinnedEmailEvidence(s.T(), false)),
+		"token on the runtime": adminPrepareContext(security.WithRuntimeContext(callerContext("system")),
+			map[string]string{"subject": "user-b", "attribute": "email"}, map[string]string{}),
+		"token without the system permission": adminPrepareContext(callerContext("system:user"),
+			map[string]string{"subject": "user-b", "attribute": "email"}, map[string]string{}),
+		"system permission without a subject": adminPrepareContext(subjectContext("", "system"),
+			map[string]string{"subject": "user-b", "attribute": "email"}, map[string]string{}),
+		"administrator without a subject": adminPrepareContext(callerContext("system"),
+			map[string]string{"attribute": "email"}, map[string]string{}),
+		"administrator with an empty subject": adminPrepareContext(callerContext("system"),
+			map[string]string{"subject": "", "attribute": "email"}, map[string]string{}),
+	} {
+		s.Run(name, func() {
+			result, err := s.executor.Execute(ctx)
+
+			s.Require().NoError(err)
+			s.Equal(providers.ExecFailure, result.Status)
+			s.Equal(ErrVerificationChannelUnavailable.Code, result.Error.Code)
+			s.Equal(clearedShared(), result.SharedRuntimeData)
+		})
+	}
+	s.verification.AssertNotCalled(s.T(), "PrepareAttributeVerification", mock.Anything, mock.Anything)
+}
+
+// The verification service refusing the named user fails the node with the executor's refusal code.
+func (s *AttributeVerificationExecutorTestSuite) TestPrepareRefusedForTheNamedUserFails() {
+	s.verification.On("PrepareAttributeVerification", mock.Anything, existingRequest("user-a", "email")).
+		Return(nil, &tidcommon.ServiceError{Code: "AVS-1001", Type: tidcommon.ClientErrorType}).Once()
+
+	result, err := s.executor.Execute(adminPrepareContext(callerContext("system"),
+		map[string]string{"subject": "user-a", "attribute": "email"}, map[string]string{}))
+
+	s.Require().NoError(err)
+	s.Equal(providers.ExecFailure, result.Status)
+	s.Equal(ErrIdentityGovernanceFailed.Code, result.Error.Code)
 }
 
 // Recovery, registration and onboarding pin the user the flow established; a self flow bound
@@ -638,9 +720,10 @@ func (s *AttributeVerificationExecutorTestSuite) TestRecordRecordsThePinInAnyFlo
 		flowType providers.FlowType
 		pin      *providers.AttributeVerificationPin
 	}{
-		"self email":           {providers.FlowTypeSelf, emailPin()},
-		"self mobile":          {providers.FlowTypeSelf, mobilePin()},
-		"authentication email": {providers.FlowTypeAuthentication, emailPin()},
+		"self email":            {providers.FlowTypeSelf, emailPin()},
+		"self mobile":           {providers.FlowTypeSelf, mobilePin()},
+		"admin-initiated email": {providers.FlowTypeAdminInitiated, emailPin()},
+		"authentication email":  {providers.FlowTypeAuthentication, emailPin()},
 	} {
 		s.Run(name, func() {
 			s.SetupTest()

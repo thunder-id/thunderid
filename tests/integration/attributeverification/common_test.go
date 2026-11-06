@@ -871,6 +871,24 @@ func confirmLink(t *testing.T, link string) *common.FlowStep {
 	return done
 }
 
+// metaComponentIDs returns the IDs of the top-level components in the step's verbose meta.
+func metaComponentIDs(t *testing.T, step *common.FlowStep) []string {
+	t.Helper()
+
+	meta, ok := step.Data.Meta.(map[string]interface{})
+	require.True(t, ok, "the step must carry meta: %+v", step.Data.Meta)
+	components, ok := meta["components"].([]interface{})
+	require.True(t, ok, "the meta must carry components: %+v", meta)
+	ids := make([]string, 0, len(components))
+	for _, item := range components {
+		component, ok := item.(map[string]interface{})
+		require.True(t, ok, "unexpected component %+v", item)
+		id, _ := component["id"].(string)
+		ids = append(ids, id)
+	}
+	return ids
+}
+
 // useFlowConfigWith writes value under key in the flow section until the test ends, keeping the
 // section's other keys.
 func useFlowConfigWith(t *testing.T, key string, value map[string]interface{}) {

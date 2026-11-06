@@ -817,7 +817,7 @@ var defaultMessages = map[string]string{
 	"error.flowexecservice.flow_handle_not_found": "Flow not found",
 	"error.flowexecservice.flow_handle_not_found_description": "No flow matches the specified handle and flow type",
 	"error.flowexecservice.flow_handle_required": "Invalid request",
-	"error.flowexecservice.flow_handle_required_description": "A flow handle is required to start a self flow",
+	"error.flowexecservice.flow_handle_required_description": "A flow handle is required to start this flow",
 	"error.flowexecservice.flow_id_execution_not_permitted": "Flow execution not permitted",
 	"error.flowexecservice.flow_id_execution_not_permitted_description": "The selected flow cannot be executed directly by its ID",
 	"error.flowexecservice.flow_not_shared_with_ou": "Flow not shared",
