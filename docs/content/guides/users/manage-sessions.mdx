@@ -1,0 +1,122 @@
+---
+title: Sessions
+docType: guide
+sidebar_position: 6
+persona: iam
+description: View the active Single Sign-On (SSO) sessions of a user or an application, and revoke them to sign the user out, from the Console or the API. Users can also manage their own sessions.
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+# Manage Sessions
+
+An SSO session records that a user signed in through a flow with Single Sign-On (SSO) enabled, so other applications on that flow can reuse the sign-in. You can view the active sessions of a user or an application, and revoke a session to sign the user out.
+
+For how sessions and SSO work, see [Sessions and Single Sign-On](../../../key-concepts/authentication/sessions).
+
+## Prerequisites
+
+- <ProductName /> running locally. See [Get <ProductName />](../../../getting-started/get-thunderid).
+- A flow with SSO enabled. <ProductName /> records sessions only for sign-ins through such flows. See [Single Sign-On for Flows](../../flows/single-sign-on).
+- To use the administrator API, an access token with the `system` permission.
+
+## View Sessions
+
+<Tabs groupId="session-config">
+<TabItem value="console" label="Console" default>
+
+1. Navigate to **Users** in the <ProductName /> Console and open the user.
+2. Open the **Sessions** tab.
+
+Each session shows the browser and operating system it was created from and when it was last active. Click a session to see its IP address, the applications using it, when the user signed in, and when it expires.
+
+To see the sessions that signed in to an application, open the application from **Applications** and open its **Sessions** tab. Each session there also names its user.
+
+</TabItem>
+<TabItem value="api" label="API">
+
+List the sessions of a user. The `curl` examples in this guide use `-k` to accept the self-signed certificate of a local instance; leave it out when the server has a trusted certificate.
+
+```bash
+curl -k 'https://localhost:8090/sessions?userId=<user-id>' \
+  -H 'Authorization: Bearer <access-token>'
+```
+
+To list the sessions of an application, pass `appId=<application-id>` instead of `userId`. Exactly one of the two is required. Results are paged with `limit` (default 30, at most 100) and `offset`. See the [Sessions API Reference](../../../apis#tag/sessions) for the response fields.
+
+</TabItem>
+</Tabs>
+
+## Revoke Sessions
+
+<Tabs groupId="session-config">
+<TabItem value="console" label="Console" default>
+
+1. Open the **Sessions** tab of the user or the application.
+2. Click **Revoke** on the session and confirm.
+
+To revoke every session of a user, click **Revoke All** on the user's **Sessions** tab and confirm.
+
+</TabItem>
+<TabItem value="api" label="API">
+
+Revoke one session:
+
+```bash
+curl -k -X DELETE 'https://localhost:8090/sessions/<session-id>' \
+  -H 'Authorization: Bearer <access-token>'
+```
+
+Revoke every session of a user:
+
+```bash
+curl -k -X DELETE 'https://localhost:8090/sessions?userId=<user-id>' \
+  -H 'Authorization: Bearer <access-token>'
+```
+
+Both return `204 No Content`, also when the session is already gone.
+
+</TabItem>
+</Tabs>
+
+Revoking a session ends it for every application that uses it:
+
+- <ProductName /> deletes the session, so the next sign-in asks for credentials again.
+- The tokens each application received through the session are revoked. Only each application's latest grant is revoked. Tokens from an earlier grant of the same application stay valid until they expire.
+- Applications with a **Back-Channel Logout URI** receive a logout token, so they can end their own sessions for the user.
+
+## Let Users Manage Their Own Sessions
+
+Signed-in users can view and revoke their own sessions through the `/users/me/sessions` API. These calls need only the user's own access token, with no `system` permission, and act only on that user's sessions.
+
+List your sessions:
+
+```bash
+curl -k https://localhost:8090/users/me/sessions \
+  -H 'Authorization: Bearer <user-access-token>'
+```
+
+The response has the same fields as the administrator listing, without `userName`. Each session also has `isCurrent`, which is `true` for the session that issued the access token in the request.
+
+Revoke one of your sessions:
+
+```bash
+curl -k -X DELETE 'https://localhost:8090/users/me/sessions/<session-id>' \
+  -H 'Authorization: Bearer <user-access-token>'
+```
+
+This returns `204 No Content`. A session that is already gone or belongs to another user returns `404 Not Found`.
+
+Sign out everywhere except the current session:
+
+```bash
+curl -k -X DELETE 'https://localhost:8090/users/me/sessions?exceptCurrent=true' \
+  -H 'Authorization: Bearer <user-access-token>'
+```
+
+Without `exceptCurrent=true`, every session of the user is revoked, including the current one. If <ProductName /> cannot match the access token to one of the user's sessions, the request returns `400 Bad Request` and revokes nothing.
+
+## Next Steps
+
+- [Sessions and Single Sign-On](../../../key-concepts/authentication/sessions)

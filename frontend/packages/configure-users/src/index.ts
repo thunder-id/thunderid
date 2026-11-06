@@ -36,6 +36,7 @@ export {default as UserAddPage} from './pages/UserAddRoute';
 export {default as UserAddFlowPage} from './pages/UserAddPage';
 export {default as UserAddFormPage} from './pages/UserAddFormPage';
 export {default as UserEditPage} from './pages/UserEditPage';
+export type {UserEditPageProps} from './pages/UserEditPage';
 export {default as UsersListPage} from './pages/UsersListPage';
 
 // Routes

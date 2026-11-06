@@ -80,7 +80,15 @@ interface TabConfig {
   render: () => ReactNode;
 }
 
-export default function UserEditPage() {
+export interface UserEditPageProps {
+  /**
+   * Renders the "Sessions" tab content. Only a host app whose server keeps SSO sessions supplies it, so
+   * the tab is omitted entirely when this is not provided.
+   */
+  renderSessions?: (userId: string) => ReactNode;
+}
+
+export default function UserEditPage({renderSessions = undefined}: UserEditPageProps) {
   const navigate = useNavigate();
   const {t} = useTranslation();
   const logger = useLogger('UserEditPage');
@@ -446,6 +454,14 @@ export default function UserEditPage() {
       key: 'credentials',
       label: t('users:manageUser.tabs.credentials', 'Credentials'),
       render: () => <CredentialsTabPanel userId={userId!} credentialFields={credentialFields} />,
+    });
+  }
+
+  if (renderSessions) {
+    tabs.push({
+      key: 'sessions',
+      label: t('users:manageUser.tabs.sessions', 'Sessions'),
+      render: () => renderSessions(userId!),
     });
   }
 

@@ -35,6 +35,7 @@ const OrganizationUnitsListPage = lazy(() =>
 const OrganizationUnitDefaultFlowsSettings = lazy(() =>
   import('@thunderid/configure-flows').then((m) => ({default: m.OrganizationUnitDefaultFlowsSettings})),
 );
+const SessionsPanel = lazy(() => import('@thunderid/configure-sessions').then((m) => ({default: m.SessionsPanel})));
 const TranslationCreatePage = lazy(() =>
   import('@thunderid/configure-translations').then((m) => ({default: m.TranslationCreatePage})),
 );
@@ -204,7 +205,10 @@ export default function App(): JSX.Element {
                   <Route index element={<HomePage />} />
                   <Route path={ROUTE_SEGMENTS.home} element={<HomePage />} />
                   <Route path={ROUTE_SEGMENTS.users} element={<UsersListPage />} />
-                  <Route path={`${ROUTE_SEGMENTS.users}/:userId`} element={<UserEditPage />} />
+                  <Route
+                    path={`${ROUTE_SEGMENTS.users}/:userId`}
+                    element={<UserEditPage renderSessions={(userId) => <SessionsPanel filter={{userId}} />} />}
+                  />
                   <Route path={ROUTE_SEGMENTS.userTypes} element={<UserTypesListPage />} />
                   <Route path={`${ROUTE_SEGMENTS.userTypes}/:id`} element={<ViewUserTypePage />} />
                   <Route path={`${ROUTE_SEGMENTS.agentTypes}/:id`} element={<ViewAgentTypePage />} />
@@ -231,7 +235,10 @@ export default function App(): JSX.Element {
                     element={<VerifiableCredentialEditPage />}
                   />
                   <Route path={ROUTE_SEGMENTS.applications} element={<ApplicationsListPage />} />
-                  <Route path={`${ROUTE_SEGMENTS.applications}/:applicationId`} element={<ApplicationEditPage />} />
+                  <Route
+                    path={`${ROUTE_SEGMENTS.applications}/:applicationId`}
+                    element={<ApplicationEditPage renderSessions={(appId) => <SessionsPanel filter={{appId}} />} />}
+                  />
                   <Route path={ROUTE_SEGMENTS.agents} element={<AgentsListPage />} />
                   <Route path={`${ROUTE_SEGMENTS.agents}/:agentId`} element={<AgentEditPage />} />
                   <Route path={ROUTE_SEGMENTS.flows} element={<FlowsListPage />} />
