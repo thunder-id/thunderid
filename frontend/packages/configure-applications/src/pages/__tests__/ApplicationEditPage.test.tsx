@@ -4,8 +4,10 @@
 import type {UseQueryResult, UseMutationResult} from '@tanstack/react-query';
 import userEvent from '@testing-library/user-event';
 import {useGetFlows} from '@thunderid/configure-flows';
+import {ProjectScopeProvider} from '@thunderid/contexts';
 import {render, screen, waitFor, fireEvent, within} from '@thunderid/test-utils';
 import {useState} from 'react';
+import {useNavigate} from 'react-router';
 import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
 import useGetApplication from '../../api/useGetApplication';
 import useUpdateApplication from '../../api/useUpdateApplication';
@@ -426,6 +428,49 @@ describe('ApplicationEditPage', () => {
   });
 
   const renderComponent = () => render(<ApplicationEditPage />);
+
+  describe('Project scope', () => {
+    it("goes to the selected project's applications when the application belongs to another project", async () => {
+      const navigate = vi.fn();
+      vi.mocked(useNavigate).mockReturnValue(navigate);
+      mockUseGetApplication.mockReturnValue({
+        data: {...mockApplication, projectId: 'project-b'},
+        isLoading: false,
+        isError: false,
+        error: null,
+      } as UseQueryResult<Application>);
+
+      render(
+        <ProjectScopeProvider project={{id: 'project-a'}}>
+          <ApplicationEditPage />
+        </ProjectScopeProvider>,
+      );
+
+      await waitFor(() => {
+        expect(navigate).toHaveBeenCalledWith('/applications', {replace: true});
+      });
+      expect(screen.queryByRole('button', {name: 'Save Changes'})).not.toBeInTheDocument();
+    });
+
+    it('shows the application when it belongs to the selected project', () => {
+      const navigate = vi.fn();
+      vi.mocked(useNavigate).mockReturnValue(navigate);
+      mockUseGetApplication.mockReturnValue({
+        data: {...mockApplication, projectId: 'project-a'},
+        isLoading: false,
+        isError: false,
+        error: null,
+      } as UseQueryResult<Application>);
+
+      render(
+        <ProjectScopeProvider project={{id: 'project-a'}}>
+          <ApplicationEditPage />
+        </ProjectScopeProvider>,
+      );
+
+      expect(navigate).not.toHaveBeenCalledWith('/applications', {replace: true});
+    });
+  });
 
   describe('Device Grant flow selection', () => {
     const deviceGrantApplication = (): Application => ({

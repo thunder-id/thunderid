@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {DocumentTitle} from '@thunderid/components';
+import {DocumentTitle, QueryErrorNotice} from '@thunderid/components';
 import {useToast} from '@thunderid/contexts';
 import {getErrorMessage} from '@thunderid/utils';
 import {Alert, Box, CircularProgress, Typography} from '@wso2/oxygen-ui';
@@ -9,19 +9,22 @@ import {useCallback, useEffect, useMemo, useRef, useState, type JSX, type ReactN
 import {useTranslation} from 'react-i18next';
 import {useNavigate, useParams} from 'react-router';
 import useGateways from '../api/useGateways';
-import {useAppliedConfiguration, useRunningReferences} from '../api/useGatewayVersions';
-import useHeldBack from '../api/useHeldBack';
+import {useAppliedConfiguration, useApplyCheck, useRunningReferences} from '../api/useGatewayVersions';
+import {useMaster, useResourceHistory} from '../api/useMaster';
+import {usePipeline} from '../api/usePipeline';
 import {useSetStoredValue, useStoredValues} from '../api/useStoredValues';
 import {useVersions} from '../api/useVersions';
 import ExplorerCanvas from '../components/explorer/ExplorerCanvas';
 import ExplorerPanel from '../components/explorer/ExplorerPanel';
 import ExplorerToolbar from '../components/explorer/ExplorerToolbar';
 import FullScreenHeader from '../components/FullScreenHeader';
+import useProjectScope from '../contexts/ProjectScope';
 import {buildGraph, type GraphNode, type Label} from '../explorer/model';
-import useDeployRoutes from '../hooks/useDeployRoutes';
+import useDeployRoutes, {environmentSectionOf, projectHomeOf} from '../hooks/useDeployRoutes';
 import useGatewayErrorTranslator from '../hooks/useGatewayErrorTranslator';
-import type {Change, StoredValue, ValueReference, Version} from '../models/deploy';
+import type {AppliedResource, Change, MasterEntry, StoredValue, ValueReference, Version} from '../models/deploy';
 import type {Gateway} from '../models/gateway';
+import type {PipelineStage} from '../models/pipeline';
 import {versionLabel} from '../utils/format';
 import {fromListText, toListText} from '../utils/listValue';
 
@@ -37,12 +40,20 @@ export default function GatewayExplorerPage(): JSX.Element {
   const tForErrors = useGatewayErrorTranslator();
   const {gatewayId = ''} = useParams<{gatewayId: string}>();
   const gateways = useGateways();
+  const pipeline = usePipeline();
+  // The environment this gateway stands for, which the view returns to.
+  const stage = pipeline.data?.stages.find((entry: PipelineStage) => entry.gateway.id === gatewayId);
   const gateway = gateways.data?.find((entry: Gateway) => entry.id === gatewayId);
   const configuration = useAppliedConfiguration(gatewayId);
-  const heldBackChanges = useHeldBack(gatewayId, configuration.data?.version);
-  const heldBack = useMemo(
-    () => new Set(heldBackChanges.map((change: Change) => `${change.resourceType}/${change.id ?? ''}`)),
-    [heldBackChanges],
+  const master = useMaster(gatewayId);
+  const refused = useMemo(
+    () =>
+      new Set(
+        (master.data?.entries ?? [])
+          .filter((entry: MasterEntry) => entry.state === 'failed')
+          .map((entry: MasterEntry) => entry.key),
+      ),
+    [master.data],
   );
   const versions = useVersions(gatewayId);
   const references = useRunningReferences(gatewayId);
@@ -64,14 +75,40 @@ export default function GatewayExplorerPage(): JSX.Element {
     setUpdated(new Set());
   }, [gatewayId]);
 
+  // In a project, the map shows the project's own resources and the ones they need, as the project's
+  // check of what the gateway runs places them.
+  const project = useProjectScope();
+  const projectCheck = useApplyCheck(gatewayId, configuration.data?.version, Boolean(project));
+  const projectKeys = useMemo(() => {
+    if (!project) return undefined;
+    return new Set(
+      (projectCheck.data?.diff.changes ?? [])
+        .filter((change: Change) => change.section === 'project' || change.section === 'needed')
+        .map((change: Change) => change.key),
+    );
+  }, [project, projectCheck.data]);
   const graph = useMemo(
-    () => buildGraph(configuration.data?.resources ?? [], references.data ?? []),
-    [configuration.data?.resources, references.data],
+    () =>
+      buildGraph(
+        (configuration.data?.resources ?? []).filter(
+          (resource: AppliedResource) => !projectKeys || projectKeys.has(`${resource.resourceType}/${resource.id}`),
+        ),
+        (references.data ?? []).filter(
+          (reference: ValueReference) =>
+            !projectKeys || projectKeys.has(`${reference.resourceType}/${reference.resourceId ?? ''}`),
+        ),
+      ),
+    [configuration.data?.resources, references.data, projectKeys],
   );
   const node: GraphNode | null = useMemo(
     () => graph.nodes.find((entry: GraphNode) => entry.key === selected) ?? null,
     [graph, selected],
   );
+  const entry: MasterEntry | undefined = useMemo(
+    () => (master.data?.entries ?? []).find((candidate: MasterEntry) => candidate.key === node?.key),
+    [master.data, node],
+  );
+  const history = useResourceHistory(gatewayId, node?.key ?? null);
   const held = useMemo(
     () =>
       new Map(
@@ -190,7 +227,8 @@ export default function GatewayExplorerPage(): JSX.Element {
   };
 
   let body: ReactNode;
-  if (gateways.isLoading || configuration.isLoading) {
+  // In a project the map waits for the project's check, which says what is the project's.
+  if (gateways.isLoading || configuration.isLoading || (Boolean(project) && projectCheck.isLoading)) {
     body = (
       <Box sx={{display: 'flex', justifyContent: 'center', alignItems: 'center', flex: 1}}>
         <CircularProgress size={28} />
@@ -210,6 +248,19 @@ export default function GatewayExplorerPage(): JSX.Element {
         </Alert>
       </Box>
     );
+  } else if (project && projectCheck.isError && !projectCheck.data) {
+    body = (
+      <Box sx={{p: 4}}>
+        <QueryErrorNotice
+          error={projectCheck.error}
+          t={tForErrors}
+          variant="inline"
+          fallbackKey="deploy:explorer.projectCheckFailed"
+          fallbackDefaultValue="Which resources here belong to this project could not be read."
+          onRetry={() => void projectCheck.refetch()}
+        />
+      </Box>
+    );
   } else if (!configuration.data?.version) {
     body = (
       <Box sx={{p: 4}}>
@@ -226,7 +277,7 @@ export default function GatewayExplorerPage(): JSX.Element {
           selected={selected}
           onSelect={setSelected}
           labelFor={labelFor}
-          heldBack={heldBack}
+          refused={refused}
           fullscreen={fullscreen}
           onToggleFullscreen={toggleFullscreen}
         />
@@ -236,6 +287,8 @@ export default function GatewayExplorerPage(): JSX.Element {
           version={running}
           counts={counts}
           selected={node}
+          entry={entry}
+          history={history.data?.history}
           onSelect={setSelected}
           labelFor={labelFor}
           variables={held}
@@ -272,10 +325,23 @@ export default function GatewayExplorerPage(): JSX.Element {
       <DocumentTitle title={gateway?.name ?? t('header.title', 'Deploy')} />
       <FullScreenHeader
         breadcrumbs={[
-          {key: 'deploy', label: t('header.title', 'Deploy'), onClick: () => void navigate(routes.deploy.list())},
-          {key: 'gateway', label: gateway?.name ?? gatewayId},
+          project
+            ? {
+                key: 'project',
+                label: t('explorer.project', 'Project'),
+                onClick: () => void navigate(projectHomeOf(routes, project)),
+              }
+            : {key: 'home', label: t('explorer.home', 'Home'), onClick: () => void navigate(routes.home.list())},
+          stage
+            ? {
+                key: 'environment',
+                label: stage.name,
+                onClick: () => void navigate(routes.deploy.environment(gatewayId, project)),
+              }
+            : {key: 'gateway', label: gateway?.name ?? gatewayId},
+          {key: 'explore', label: t('environment.deployed', 'Deployed configuration')},
         ]}
-        onExit={() => void navigate(routes.home.list())}
+        onExit={() => void navigate(stage ? routes.deploy.environment(gatewayId, project) : routes.home.list())}
       />
       {gateway && (
         <ExplorerToolbar
@@ -283,7 +349,9 @@ export default function GatewayExplorerPage(): JSX.Element {
           gateways={gateways.data ?? []}
           version={running}
           counts={counts}
-          onSwitch={(id: string) => void navigate(routes.deploy.explore(id))}
+          onSwitch={(id: string) =>
+            void navigate(project ? environmentSectionOf(routes, id, project, 'explore') : routes.deploy.explore(id))
+          }
         />
       )}
       {references.isError && configuration.data?.version && (

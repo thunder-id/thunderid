@@ -60,3 +60,13 @@ export function gatewayEndpoints(baseUrl: string | undefined): Endpoint[] {
     {key: 'jwks', label: ['explorer.endpoints.jwks', 'JWKS'], url: join(baseUrl, '/oauth2/jwks')},
   ];
 }
+
+/** Every endpoint a client of a gateway signs in and gets tokens at. */
+export function clientEndpoints(baseUrl: string | undefined): Endpoint[] {
+  if (!baseUrl) return [];
+  return CLIENT_PATHS.map(([key, label, path]) => ({
+    key,
+    label: [`explorer.endpoints.${key}`, label],
+    url: join(baseUrl, path),
+  }));
+}

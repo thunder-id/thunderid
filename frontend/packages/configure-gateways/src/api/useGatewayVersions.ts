@@ -10,6 +10,7 @@ import {
 } from '@tanstack/react-query';
 import useDeploySource from './source';
 import DeployQueryKeys from '../constants/query-keys';
+import useProjectScope from '../contexts/ProjectScope';
 import type {AppliedConfiguration, AppliedVersion, ApplyRequest, ApplyResult, ValueReference} from '../models/deploy';
 
 /** Which version a gateway runs. */
@@ -36,7 +37,8 @@ export function useAppliedConfiguration(gatewayId: string, enabled = true): UseQ
 
 /**
  * What applying a version to a gateway would do: the changes, with their keys for a selection, and
- * the values the gateway lacks. Nothing is written.
+ * the values the gateway lacks. Nothing is written. Under a project, each change says where it stands
+ * with the project.
  */
 export function useApplyCheck(
   gatewayId: string,
@@ -44,9 +46,10 @@ export function useApplyCheck(
   enabled = true,
 ): UseQueryResult<ApplyResult> {
   const source = useDeploySource();
+  const project = useProjectScope();
   return useQuery<ApplyResult>({
-    queryKey: [DeployQueryKeys.APPLY_CHECK, gatewayId, version],
-    queryFn: (): Promise<ApplyResult> => source.applyCheck(gatewayId, version ?? ''),
+    queryKey: [DeployQueryKeys.APPLY_CHECK, gatewayId, version, project],
+    queryFn: (): Promise<ApplyResult> => source.applyCheck(gatewayId, version ?? '', project),
     enabled: enabled && Boolean(gatewayId) && Boolean(version),
     staleTime: 0,
     // The check is read when the deploy panel opens, and the user then works through it: refetching
@@ -71,8 +74,12 @@ export function useApplyVersion(): UseMutationResult<ApplyResult, Error, ApplyIn
       if (result.dryRun) return;
       void queryClient.invalidateQueries({queryKey: [DeployQueryKeys.APPLIED_VERSION, gatewayId]});
       void queryClient.invalidateQueries({queryKey: [DeployQueryKeys.APPLIED_CONFIGURATION, gatewayId]});
+      void queryClient.invalidateQueries({queryKey: [DeployQueryKeys.MASTER, gatewayId]});
+      void queryClient.invalidateQueries({queryKey: [DeployQueryKeys.MASTER_HISTORY, gatewayId]});
+      void queryClient.invalidateQueries({queryKey: [DeployQueryKeys.RESOURCE_HISTORY, gatewayId]});
       void queryClient.invalidateQueries({queryKey: [DeployQueryKeys.APPLY_CHECK, gatewayId]});
       void queryClient.invalidateQueries({queryKey: [DeployQueryKeys.RUNNING_REFERENCES, gatewayId]});
+      void queryClient.invalidateQueries({queryKey: [DeployQueryKeys.PROJECT_STATUS]});
     },
   });
 }
@@ -81,6 +88,8 @@ export interface RevertInput {
   gatewayId: string;
   dryRun?: boolean;
   confirmRemovals?: boolean;
+  /** Rolls back only this project's own resources. */
+  project?: string;
 }
 
 /** Puts a gateway back on the version it ran before the one it runs now. */
@@ -88,14 +97,18 @@ export function useRevert(): UseMutationResult<ApplyResult, Error, RevertInput> 
   const source = useDeploySource();
   const queryClient = useQueryClient();
   return useMutation<ApplyResult, Error, RevertInput>({
-    mutationFn: ({gatewayId, dryRun = false, confirmRemovals = false}: RevertInput): Promise<ApplyResult> =>
-      source.revert(gatewayId, dryRun, confirmRemovals),
+    mutationFn: ({gatewayId, dryRun = false, confirmRemovals = false, project}: RevertInput): Promise<ApplyResult> =>
+      source.revert(gatewayId, dryRun, confirmRemovals, project),
     onSuccess: (result: ApplyResult, {gatewayId}: RevertInput) => {
       if (result.dryRun) return;
       void queryClient.invalidateQueries({queryKey: [DeployQueryKeys.APPLIED_VERSION, gatewayId]});
       void queryClient.invalidateQueries({queryKey: [DeployQueryKeys.APPLIED_CONFIGURATION, gatewayId]});
+      void queryClient.invalidateQueries({queryKey: [DeployQueryKeys.MASTER, gatewayId]});
+      void queryClient.invalidateQueries({queryKey: [DeployQueryKeys.MASTER_HISTORY, gatewayId]});
+      void queryClient.invalidateQueries({queryKey: [DeployQueryKeys.RESOURCE_HISTORY, gatewayId]});
       void queryClient.invalidateQueries({queryKey: [DeployQueryKeys.APPLY_CHECK, gatewayId]});
       void queryClient.invalidateQueries({queryKey: [DeployQueryKeys.RUNNING_REFERENCES, gatewayId]});
+      void queryClient.invalidateQueries({queryKey: [DeployQueryKeys.PROJECT_STATUS]});
     },
   });
 }

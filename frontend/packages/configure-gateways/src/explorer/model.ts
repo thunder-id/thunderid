@@ -143,7 +143,8 @@ export const LANE_BY_ID: Readonly<Record<LaneId, Lane>> = Object.fromEntries(
   LANES.map((lane) => [lane.id, lane]),
 ) as Record<LaneId, Lane>;
 
-const laneOfType = (resourceType: string): Lane | undefined =>
+/** The lane a resource type is drawn in, if the map shows it. */
+export const laneOfType = (resourceType: string): Lane | undefined =>
   LANES.find((lane: Lane) => lane.resourceTypes.includes(resourceType));
 
 /** The geometry of the stage, from the design: lanes of a fixed height with tiles at a fixed step. */
@@ -332,6 +333,16 @@ const FLOW_FIELDS: readonly [field: string, key: string, defaultValue: string][]
 
 /** The connection a flow node's executor names, under any of the keys the executors use. */
 const CONNECTION_FIELDS: readonly string[] = ['connectionId', 'idpId', 'senderId', 'connection', 'idpName'];
+
+/** The name of each resource the map would show, by its `type/id` key, as the map names its tiles. */
+export function resourceNames(resources: readonly AppliedResource[]): Map<string, string> {
+  return new Map(
+    resources.map((applied: AppliedResource) => {
+      const fields: Fields = isObject(applied.resource) ? applied.resource : {};
+      return [`${applied.resourceType}/${applied.id}`, nameOf(fields, applied.resourceType, applied.id)];
+    }),
+  );
+}
 
 /**
  * Builds the map of what a gateway runs: a node per resource in a lane, a line per relationship the

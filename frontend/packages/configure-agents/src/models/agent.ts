@@ -33,6 +33,8 @@ export interface AgentLifespan {
 export interface Agent {
   id: string;
   ouId: string;
+  /** The project the agent belongs to, if any. */
+  projectId?: string;
   ouHandle?: string;
   type: string;
   display?: string;
@@ -101,7 +103,10 @@ export interface AgentListResponse {
 }
 
 export interface CreateAgentRequest {
-  ouId: string;
+  /** Where the agent is placed. Without it, an agent created in a project is placed in the system organization unit. */
+  ouId?: string;
+  /** The project the agent belongs to. */
+  projectId?: string;
   type: string;
   description?: string;
   logoUrl?: string;

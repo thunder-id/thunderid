@@ -294,6 +294,24 @@ describe('useCreateApplication', () => {
     });
   });
 
+  it("should mark the selected project's application list stale on success", async () => {
+    mockHttpRequest.mockResolvedValueOnce({
+      data: mockApplication,
+    });
+
+    const {result, queryClient} = renderHook(() => useCreateApplication());
+    const scopedList = [ApplicationQueryKeys.APPLICATIONS, {limit: 30, offset: 0, filter: undefined, projectId: 'p-1'}];
+    queryClient.setQueryData(scopedList, {applications: []});
+
+    result.current.mutate({...mockRequest, projectId: 'p-1'});
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+    });
+
+    expect(queryClient.getQueryState(scopedList)?.isInvalidated).toBe(true);
+  });
+
   it('should handle invalidateQueries rejection gracefully', async () => {
     mockHttpRequest.mockResolvedValueOnce({
       data: mockApplication,

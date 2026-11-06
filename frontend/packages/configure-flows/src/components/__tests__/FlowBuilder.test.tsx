@@ -1980,6 +1980,90 @@ describe('Compact (Non-Verbose) Mode', () => {
     await waitFor(() => expect(screen.getByTestId('is-dirty')).toHaveTextContent('true'), {timeout: 2000});
   });
 
+  it('should be clean after a save once the saved flow is read back, without a second save', async () => {
+    mockUseParams.mockReturnValue({flowId: 'existing-flow-123'});
+    mockExistingFlowData.value = {
+      id: 'existing-flow-123',
+      ouId: 'ou-1',
+      name: 'Existing Flow',
+      handle: 'existing-flow',
+      nodes: [],
+    };
+    mockUpdateFlowMutate.mockImplementation((_data: unknown, options: {onSuccess?: () => void}) => {
+      options?.onSuccess?.();
+    });
+    const nodesBefore: Node[] = [
+      {id: 'view-1', type: 'VIEW', position: {x: 0, y: 0}, data: {}},
+      {id: 'exec-a', type: 'TASK_EXECUTION', position: {x: 100, y: 0}, data: {}},
+    ];
+    mockUseNodesState.mockReturnValue([nodesBefore, mockSetNodes, vi.fn()]);
+    mockUseEdgesState.mockReturnValue([[], mockSetEdges, vi.fn()]);
+
+    const {rerender} = render(<FlowBuilder />);
+    fireEvent.pointerDown(window);
+    await waitFor(() => expect(screen.getByTestId('is-dirty')).toHaveTextContent('false'), {timeout: 2000});
+
+    // The user edits, and the edit makes the flow dirty.
+    const edited = nodesBefore.map((node) => (node.id === 'exec-a' ? {...node, position: {x: 160, y: 0}} : node));
+    mockUseNodesState.mockReturnValue([edited, mockSetNodes, vi.fn()]);
+    rerender(<FlowBuilder />);
+    await waitFor(() => expect(screen.getByTestId('is-dirty')).toHaveTextContent('true'), {timeout: 2000});
+
+    fireEvent.click(screen.getByTestId('save-btn'));
+    await waitFor(() => expect(mockUpdateFlowMutate).toHaveBeenCalled());
+
+    // Reading the saved flow back settles the graph once more, such as a relayout of its nodes.
+    mockUseNodesState.mockReturnValue([
+      edited.map((node) => ({...node, position: {x: node.position.x + 40, y: 25}})),
+      mockSetNodes,
+      vi.fn(),
+    ]);
+    rerender(<FlowBuilder />);
+
+    await new Promise((resolve) => setTimeout(resolve, 700));
+    expect(screen.getByTestId('is-dirty')).toHaveTextContent('false');
+  });
+
+  it('should keep an edit made while a save is in flight dirty once the save is read back', async () => {
+    mockUseParams.mockReturnValue({flowId: 'existing-flow-123'});
+    mockExistingFlowData.value = {
+      id: 'existing-flow-123',
+      ouId: 'ou-1',
+      name: 'Existing Flow',
+      handle: 'existing-flow',
+      nodes: [],
+    };
+    let succeed: (() => void) | undefined;
+    mockUpdateFlowMutate.mockImplementation((_data: unknown, options: {onSuccess?: () => void}) => {
+      succeed = () => options?.onSuccess?.();
+    });
+    const nodesBefore: Node[] = [
+      {id: 'view-1', type: 'VIEW', position: {x: 0, y: 0}, data: {}},
+      {id: 'exec-a', type: 'TASK_EXECUTION', position: {x: 100, y: 0}, data: {}},
+    ];
+    mockUseNodesState.mockReturnValue([nodesBefore, mockSetNodes, vi.fn()]);
+    mockUseEdgesState.mockReturnValue([[], mockSetEdges, vi.fn()]);
+
+    const {rerender} = render(<FlowBuilder />);
+    fireEvent.pointerDown(window);
+    await waitFor(() => expect(screen.getByTestId('is-dirty')).toHaveTextContent('false'), {timeout: 2000});
+
+    fireEvent.click(screen.getByTestId('save-btn'));
+    await waitFor(() => expect(mockUpdateFlowMutate).toHaveBeenCalled());
+
+    // The user edits while the save is in flight; the save then succeeds, and the edit settles after it.
+    fireEvent.pointerDown(window);
+    act(() => succeed?.());
+    mockUseNodesState.mockReturnValue([
+      nodesBefore.map((node) => (node.id === 'exec-a' ? {...node, position: {x: 260, y: 0}} : node)),
+      mockSetNodes,
+      vi.fn(),
+    ]);
+    rerender(<FlowBuilder />);
+
+    await waitFor(() => expect(screen.getByTestId('is-dirty')).toHaveTextContent('true'), {timeout: 2000});
+  });
+
   it('should keep stack dimension changes on the display node so its edges stay rendered', () => {
     const nodes: Node[] = [
       {id: 'view-1', type: 'VIEW', position: {x: 0, y: 0}, data: {}},
