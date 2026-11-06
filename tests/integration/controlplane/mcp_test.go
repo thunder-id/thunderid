@@ -71,8 +71,13 @@ func (ts *ControlPlaneTestSuite) TestMCPNeedsTheSystemScope() {
 }
 
 // A token is refused with 401 when it is not a JWT, when the trusted issuer did not sign it, when it
-// comes from another issuer, when it has expired, and when it was issued for another resource.
+// comes from another issuer, when it has expired, and when it was issued for another resource, the
+// management API included: the MCP server accepts only tokens issued for the resource it advertises
+// (thunder-id/thunderid#6037).
 func (ts *ControlPlaneTestSuite) TestMCPRefusesATokenItDoesNotTrust() {
+	management, err := testutils.GetAccessToken()
+	ts.Require().NoError(err)
+
 	forger, err := testutils.NewMockOIDCServer("", "")
 	ts.Require().NoError(err)
 	defer func() { _ = forger.Stop() }()
@@ -80,7 +85,7 @@ func (ts *ControlPlaneTestSuite) TestMCPRefusesATokenItDoesNotTrust() {
 		now := time.Now()
 		token, err := forger.SignJWT(map[string]interface{}{"typ": "at+jwt"}, map[string]interface{}{
 			"iss":   issuer,
-			"aud":   testutils.MCPAudiences(),
+			"aud":   testutils.MCPResource(),
 			"sub":   testutils.TrustedIssuerAdminSubject,
 			"scope": "system",
 			"iat":   now.Unix(),
@@ -99,6 +104,7 @@ func (ts *ControlPlaneTestSuite) TestMCPRefusesATokenItDoesNotTrust() {
 		{name: "from another issuer", token: sign(forger.GetURL())},
 		{name: "expired", token: ts.harnessToken(testutils.MCPExpiredTokenEnv)},
 		{name: "for another resource", token: ts.harnessToken(testutils.OtherResourceTokenEnv)},
+		{name: "for the management API", token: management},
 	}
 	for _, tc := range cases {
 		ts.Run(tc.name, func() {

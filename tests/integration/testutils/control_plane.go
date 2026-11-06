@@ -51,7 +51,7 @@ const (
 	StrangerTokenEnv = "TEST_CP_STRANGER_TOKEN"
 
 	// MCPScopedTokenEnv, MCPUnscopedTokenEnv and MCPExpiredTokenEnv carry tokens the trusted issuer
-	// signed for MCPAudiences: one with the system scope, one without it, and one with the scope that
+	// signed for MCPResource: one with the system scope, one without it, and one with the scope that
 	// expired an hour before the run.
 	MCPScopedTokenEnv   = "TEST_CP_MCP_SCOPED_TOKEN"
 	MCPUnscopedTokenEnv = "TEST_CP_MCP_UNSCOPED_TOKEN"
@@ -63,12 +63,11 @@ const (
 	OtherResource = "https://other-resource.example.com"
 )
 
-// MCPAudiences returns the audiences the tokens for the Control Plane's MCP endpoint name: the
-// management API's and the MCP resource identifier. Until #6037 is fixed, /mcp checks a trusted
-// issuer's token against the first instead of the resource it advertises; naming both keeps each
-// token accepted or refused for what its test is about, before and after the fix.
-func MCPAudiences() []string {
-	return []string{TrustedIssuerAudience, TestServerURL + "/mcp"}
+// MCPResource is the resource identifier the Control Plane's MCP server advertises, and the audience
+// a token for /mcp must name: the MCP server accepts only tokens issued for it, not for the audience
+// the management API accepts.
+func MCPResource() string {
+	return TestServerURL + "/mcp"
 }
 
 // UseControlPlane makes ReplaceResources install the Control Plane's deployment.yaml.

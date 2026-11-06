@@ -227,7 +227,7 @@ func useTrustedIssuerTokens(issuer *testutils.TrustedIssuer) error {
 	}
 
 	now := time.Now()
-	mcp := testutils.MCPAudiences()
+	mcp := testutils.MCPResource()
 	mcpTokens := []struct {
 		env                 string
 		audience            any
