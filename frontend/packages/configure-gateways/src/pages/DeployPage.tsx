@@ -8,6 +8,7 @@ import {Fragment, useCallback, useMemo, useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
 import useAppliedVersions from '../api/useAppliedVersions';
+import {useTargetsWithChangedValues} from '../api/useChangedValues';
 import useGateways from '../api/useGateways';
 import {useVersions} from '../api/useVersions';
 import ApplyPanel from '../components/ApplyPanel';
@@ -42,6 +43,14 @@ export default function DeployPage(): JSX.Element {
   const [open, setOpen] = useState<Open>(null);
 
   const all: Version[] = useMemo(() => versions.data ?? [], [versions.data]);
+  // The gateways holding a value set since the version they run was deployed.
+  const changedIds = useTargetsWithChangedValues(
+    Object.fromEntries(list.map((gateway: Gateway) => [gateway.id, applied.byGateway[gateway.id]?.appliedVersion])),
+  );
+  const targetsWithChangedValues = useMemo(
+    () => list.filter((gateway: Gateway) => changedIds.includes(gateway.id)).map((gateway: Gateway) => gateway.name),
+    [list, changedIds],
+  );
   // Where each version is deployed, by its hash, so the list names the gateways that run it.
   const runners = useMemo(() => {
     const byVersion: Record<string, string[]> = {};
@@ -93,6 +102,16 @@ export default function DeployPage(): JSX.Element {
   const redeploy = (gateway: Gateway): void => {
     const running = all.find((version: Version) => version.version === applied.byGateway[gateway.id]?.appliedVersion);
     if (running) setOpen({kind: 'apply', version: running, gatewayId: gateway.id});
+  };
+
+  // A version every gateway runs is deployed again only for the values set on a gateway since, so its
+  // deploy opens on the first gateway holding such values, as that gateway's Redeploy would.
+  const deploy = (version: Version): void => {
+    const everywhere = list.every(
+      (gateway: Gateway) => applied.byGateway[gateway.id]?.appliedVersion === version.version,
+    );
+    const changed = everywhere ? list.find((gateway: Gateway) => changedIds.includes(gateway.id)) : undefined;
+    setOpen({kind: 'apply', version, gatewayId: changed?.id});
   };
 
   const stage = (gateway: Gateway): JSX.Element => (
@@ -163,10 +182,11 @@ export default function DeployPage(): JSX.Element {
                     <VersionsCard
                       versions={all}
                       isLoading={versions.isLoading}
-                      onDeploy={(version: Version) => setOpen({kind: 'apply', version})}
+                      onDeploy={deploy}
                       deploying={open?.kind === 'apply' ? open.version.version : undefined}
                       runners={runners}
                       targets={list.map((gateway: Gateway) => gateway.name)}
+                      targetsWithChangedValues={targetsWithChangedValues}
                     />
                   ) : (
                     <Box />

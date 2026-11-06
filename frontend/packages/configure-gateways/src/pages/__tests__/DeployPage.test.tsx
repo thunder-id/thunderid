@@ -312,6 +312,106 @@ describe('DeployPage', () => {
     ]);
   });
 
+  describe('a version every gateway runs', () => {
+    const unchanged = {
+      toVersion: versions[0].version,
+      summary: {added: 0, updated: 0, deleted: 0, unchanged: 3},
+      changes: [{key: 'flow/f-1', resourceType: 'flow', id: 'f-1', name: 'Sign in', change: 'unchanged'}],
+    };
+
+    beforeEach(() => {
+      routes['GET /gateways/gw-prod/applied-version'] = {gatewayId: 'gw-prod', appliedVersion: versions[0].version};
+      routes['POST /gateways/gw-prod/apply'] = () => ({gatewayId: 'gw-prod', dryRun: true, diff: unchanged});
+    });
+
+    it('cannot be deployed while no value changed since', async () => {
+      routes['POST /gateways/gw-dev/apply'] = () => ({gatewayId: 'gw-dev', dryRun: true, diff: unchanged});
+      http = fakeHttp(routes);
+      render(<DeployPage />);
+
+      const newest = await screen.findByTestId(`deploy-version-${versions[0].version}`);
+      await waitFor(() => expect(within(newest).getAllByTestId('version-deployed-to')).toHaveLength(2));
+      const deploy = within(newest).getByRole('button', {name: 'Deploy'});
+      expect(deploy).toBeDisabled();
+      await userEvent.hover(deploy.parentElement!);
+      expect(await screen.findByText('Already deployed to Dev, Prod')).toBeInTheDocument();
+    });
+
+    // The dry run a gateway answers once a user's password was reset on it since its deploy: the user
+    // that refers to the password is offered again, though its document did not change.
+    const resetOn = (gatewayId: string) => (call: Call) =>
+      (call.data as {dryRun?: boolean}).dryRun
+        ? {
+            gatewayId,
+            dryRun: true,
+            diff: {
+              ...unchanged,
+              summary: {added: 0, updated: 1, deleted: 0, unchanged: 3},
+              changes: [
+                ...unchanged.changes,
+                {
+                  key: 'user/u-1',
+                  resourceType: 'user',
+                  id: 'u-1',
+                  name: 'alice',
+                  change: 'updated',
+                  valueChanged: true,
+                },
+              ],
+            },
+            changed: {secrets: ['USER_ALICE_PASSWORD']},
+          }
+        : {gatewayId, dryRun: false, diff: unchanged, recorded: true};
+
+    const deployNewest = async (): Promise<HTMLElement> => {
+      const newest = await screen.findByTestId(`deploy-version-${versions[0].version}`);
+      await waitFor(() => expect(within(newest).getAllByTestId('version-deployed-to')).toHaveLength(2));
+      await waitFor(() => expect(within(newest).getByRole('button', {name: 'Deploy'})).toBeEnabled());
+      await userEvent.click(within(newest).getByRole('button', {name: 'Deploy'}));
+      return screen.findByTestId('deploy-apply-panel');
+    };
+
+    const writes = (): unknown[][] =>
+      http.calls
+        .filter((call: Call) => call.method !== 'GET' && !(call.data as {dryRun?: boolean})?.dryRun)
+        .map((call: Call) => [call.method, call.url.replace(SERVER, ''), call.data]);
+
+    it('is deployed again once a value was set on a gateway since, so the value takes effect', async () => {
+      routes['POST /gateways/gw-dev/apply'] = resetOn('gw-dev');
+      http = fakeHttp(routes);
+      render(<DeployPage />);
+
+      // Every gateway runs the version, and Dev still takes it, since a value was set on it since.
+      const panel = await deployNewest();
+      const submit = within(panel).getByRole('button', {name: 'Deploy'});
+      await waitFor(() => expect(submit).toBeEnabled());
+      await userEvent.click(submit);
+
+      await waitFor(() => expect(screen.queryByTestId('deploy-apply-panel')).not.toBeInTheDocument());
+      expect(writes()).toEqual([
+        ['POST', '/gateways/gw-dev/apply', {version: versions[0].version, selection: ['user/u-1']}],
+      ]);
+    });
+
+    it('opens on the gateway a value was set on, though it is not the first', async () => {
+      routes['POST /gateways/gw-dev/apply'] = () => ({gatewayId: 'gw-dev', dryRun: true, diff: unchanged});
+      routes['POST /gateways/gw-prod/apply'] = resetOn('gw-prod');
+      http = fakeHttp(routes);
+      render(<DeployPage />);
+
+      const panel = await deployNewest();
+      expect(within(panel).getByRole('combobox', {name: 'Gateway'})).toHaveTextContent('Prod');
+      const submit = within(panel).getByRole('button', {name: 'Deploy'});
+      await waitFor(() => expect(submit).toBeEnabled());
+      await userEvent.click(submit);
+
+      await waitFor(() => expect(screen.queryByTestId('deploy-apply-panel')).not.toBeInTheDocument());
+      expect(writes()).toEqual([
+        ['POST', '/gateways/gw-prod/apply', {version: versions[0].version, selection: ['user/u-1']}],
+      ]);
+    });
+  });
+
   it('keeps what is typed and unticked when the window regains focus', async () => {
     routes['POST /gateways/gw-dev/apply'] = () => ({
       gatewayId: 'gw-dev',

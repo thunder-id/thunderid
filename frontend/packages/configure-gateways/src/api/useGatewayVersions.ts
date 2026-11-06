@@ -6,9 +6,10 @@ import {
   useQuery,
   useQueryClient,
   type UseMutationResult,
+  type UseQueryOptions,
   type UseQueryResult,
 } from '@tanstack/react-query';
-import useDeploySource from './source';
+import useDeploySource, {type DeploySource} from './source';
 import DeployQueryKeys from '../constants/query-keys';
 import useProjectScope from '../contexts/ProjectScope';
 import type {AppliedConfiguration, AppliedVersion, ApplyRequest, ApplyResult, ValueReference} from '../models/deploy';
@@ -35,6 +36,26 @@ export function useAppliedConfiguration(gatewayId: string, enabled = true): UseQ
   });
 }
 
+/** The query that checks applying a version to a gateway, shared by every reader of the check. */
+export function applyCheckQuery(
+  source: DeploySource,
+  gatewayId: string,
+  version: string | undefined,
+  project: string | undefined,
+  enabled = true,
+): UseQueryOptions<ApplyResult> {
+  return {
+    queryKey: [DeployQueryKeys.APPLY_CHECK, gatewayId, version, project],
+    queryFn: (): Promise<ApplyResult> => source.applyCheck(gatewayId, version ?? '', project),
+    enabled: enabled && Boolean(gatewayId) && Boolean(version),
+    staleTime: 0,
+    // The check is read when the deploy panel opens, and the user then works through it: refetching
+    // when the window regains focus would move the list under them.
+    refetchOnWindowFocus: false,
+    retry: false,
+  };
+}
+
 /**
  * What applying a version to a gateway would do: the changes, with their keys for a selection, and
  * the values the gateway lacks. Nothing is written. Under a project, each change says where it stands
@@ -47,16 +68,7 @@ export function useApplyCheck(
 ): UseQueryResult<ApplyResult> {
   const source = useDeploySource();
   const project = useProjectScope();
-  return useQuery<ApplyResult>({
-    queryKey: [DeployQueryKeys.APPLY_CHECK, gatewayId, version, project],
-    queryFn: (): Promise<ApplyResult> => source.applyCheck(gatewayId, version ?? '', project),
-    enabled: enabled && Boolean(gatewayId) && Boolean(version),
-    staleTime: 0,
-    // The check is read when the deploy panel opens, and the user then works through it: refetching
-    // when the window regains focus would move the list under them.
-    refetchOnWindowFocus: false,
-    retry: false,
-  });
+  return useQuery<ApplyResult>(applyCheckQuery(source, gatewayId, version, project, enabled));
 }
 
 export interface ApplyInput {
