@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 import {
@@ -182,8 +182,7 @@ const useVisualFlowHandlers = (props: UseVisualFlowHandlersProps): UseVisualFlow
 
   // Create handlers only once - reads ALL deps from ref at call time
   handlersRef.current ??= {
-    // A condition's skip target has no edge on the canvas, so the builder cannot repair one that
-    // points at a removed node. Refuse a deletion that leaves no single node to skip to.
+    // Refuse a deletion that leaves a condition without a single replacement skip target.
     handleBeforeDelete: ({nodes, edges}) => {
       const {props: currentProps, reactFlowInstance: rf, t: translate} = depsRef.current;
       const {sourceNodes, sourceEdges, onDeleteRefused} = currentProps;

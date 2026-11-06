@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -43,6 +44,14 @@ const (
 
 // systemResourceServerID is the shipped resource server that holds the system permission.
 const systemResourceServerID = "01900000-0000-7000-8000-000000000020"
+
+// The Console's Self Attribute Verification with Email Link template, by the handle it gives its flow,
+// the node of it that emails the link, and where the Console keeps its templates, from this package.
+const (
+	emailLinkTemplateHandle = "self-attribute-verification-email-link-flow"
+	emailLinkSendNode       = "send_link"
+	consoleTemplatesPath    = "../../../frontend/packages/configure-flows/src/data/templates.json"
+)
 
 // userSuspendFlowHandle names the shipped administration flow that suspends a user.
 const userSuspendFlowHandle = "default-user-suspend-flow"
@@ -112,18 +121,19 @@ func verificationUserTypeSchema() map[string]interface{} {
 // verificationFixture is an organization unit and user type for the suite's users, a mock SMTP
 // server, and a copy of the shipped verification flow whose email node sends through it.
 type verificationFixture struct {
-	name       string
-	smtp       *testutils.MockSMTPServer
-	senderID   string
-	flowHandle string
-	senders    map[string]string
-	ouID       string
-	userTypeID string
-	userType   string
-	userIDs    []string
-	suffix     string
-	mobileStem int64
-	mobiles    int
+	name           string
+	smtp           *testutils.MockSMTPServer
+	senderID       string
+	flowHandle     string
+	linkFlowHandle string
+	senders        map[string]string
+	ouID           string
+	userTypeID     string
+	userType       string
+	userIDs        []string
+	suffix         string
+	mobileStem     int64
+	mobiles        int
 	// signInClientID is the fixture's own sign-in application, since a sign-in is bounded to its
 	// application's OU and the Console signs in only the default OU's users.
 	signInClientID string
@@ -228,6 +238,45 @@ func copyShippedFlow(t *testing.T, name string, senders map[string]string) strin
 		}
 	})
 	return handle
+}
+
+// consoleTemplateFlow returns the flow the Console's template with the given handle creates.
+func consoleTemplateFlow(t *testing.T, handle string) testutils.Flow {
+	t.Helper()
+
+	data, err := os.ReadFile(consoleTemplatesPath)
+	require.NoError(t, err, "the Console flow templates must be readable")
+	var templates []struct {
+		FlowType string `json:"flowType"`
+		Config   struct {
+			Name   string      `json:"name"`
+			Handle string      `json:"handle"`
+			Nodes  interface{} `json:"nodes"`
+		} `json:"config"`
+	}
+	require.NoError(t, json.Unmarshal(data, &templates), "the Console flow templates must be valid JSON")
+	for _, template := range templates {
+		if template.Config.Handle == handle {
+			return testutils.Flow{Name: template.Config.Name, FlowType: template.FlowType, Handle: handle,
+				Nodes: template.Config.Nodes}
+		}
+	}
+	require.FailNow(t, "the Console must ship a template for "+handle)
+	return testutils.Flow{}
+}
+
+// createLinkFlow creates, until t ends, the flow the Console's email link template creates, under a
+// handle of the fixture's own and with the fixture's email provider named on its send node, as an
+// operator does before saving it.
+func (f *verificationFixture) createLinkFlow(t *testing.T) {
+	t.Helper()
+
+	flow := consoleTemplateFlow(t, emailLinkTemplateHandle)
+	require.Equal(t, selfFlowType, flow.FlowType, "the email link template must create a self flow")
+	flow.Handle = "verification-link-" + strings.ReplaceAll(f.name, "_", "-") + "-" + f.suffix
+	require.NoError(t, testutils.SetFlowNodeProperty(&flow, emailLinkSendNode, "senderId", f.senderID))
+	createFlow(t, flow)
+	f.linkFlowHandle = flow.Handle
 }
 
 // deleteUsers deletes the users the fixture created or was given, and forgets them.
@@ -783,6 +832,43 @@ func openLink(t *testing.T, link, inviteToken string) *common.FlowStep {
 		map[string]string{"inviteToken": inviteToken}, "", "")
 	require.NoError(t, err, "the link must reach the flow")
 	return step
+}
+
+// selfEmailLinkText appears only in the self-email-verification template the link flow sends.
+const selfEmailLinkText = "If you did not ask for this, you can ignore this email."
+
+// sendLink starts the fixture's email link flow with the user's token for their email, and returns the
+// start's response and the link the user receives.
+func (f *verificationFixture) sendLink(t *testing.T, u testUser) (*common.FlowExecutionResult, string) {
+	t.Helper()
+
+	require.NotEmpty(t, f.linkFlowHandle, "precondition: the suite created the email link flow")
+	result := execute(t, f.token(t, u),
+		selfFlowStart(f.linkFlowHandle, map[string]string{"attribute": emailAttribute}))
+	require.Equal(t, http.StatusOK, result.StatusCode, "the start must be accepted: %s", result.Body)
+	require.NotNil(t, result.Step, "the start must be answered in the flow: %s", result.Body)
+	require.Equal(t, flowStatusIncomplete, result.Step.FlowStatus,
+		"the flow must pause once the link is sent: %s", result.Body)
+
+	email := f.awaitEmailTo(t, u.email)
+	require.Contains(t, email.Body, selfEmailLinkText,
+		"the link must be sent with the self-email-verification template")
+	link := email.ExtractRecoveryLink()
+	require.NotEmpty(t, link, "the email must carry the verification link")
+	return result, link
+}
+
+// confirmLink opens the link with its own token and confirms, and returns the step the confirmation
+// gets.
+func confirmLink(t *testing.T, link string) *common.FlowStep {
+	t.Helper()
+
+	confirm := openLink(t, link, testutils.ExtractQueryParam(link, "inviteToken"))
+	require.Equal(t, flowStatusIncomplete, confirm.FlowStatus, "the link must lead to the confirmation")
+	require.True(t, common.HasAction(confirm.Data.Actions, actionConfirm), "the user must be asked to confirm")
+	done, err := common.CompleteFlow(confirm.ExecutionID, nil, actionConfirm, confirm.ChallengeToken)
+	require.NoError(t, err, "the confirmation must be answered in the flow, not as a server error")
+	return done
 }
 
 // useFlowConfigWith writes value under key in the flow section until the test ends, keeping the

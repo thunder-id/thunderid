@@ -143,8 +143,9 @@ vi.mock('@xyflow/react', async (importOriginal) => ({
 
 // Captures the onNodesChange prop handed to FlowCanvas so tests can feed
 // canvas changes through FlowBuilder's stack-aware wrapper.
-const {onNodesChangeCapture} = vi.hoisted(() => ({
+const {onNodesChangeCapture, setEdgesCapture} = vi.hoisted(() => ({
   onNodesChangeCapture: {current: null as ((changes: unknown[]) => void) | null},
+  setEdgesCapture: {current: null as ((update: Edge[]) => void) | null},
 }));
 
 // Mock FlowCanvas component
@@ -157,6 +158,7 @@ vi.mock('../FlowCanvas', () => ({
     nodes,
     edges,
     onNodesChange,
+    setEdges,
     onResourceAdd,
     onTemplateLoad,
     onWidgetLoad,
@@ -172,6 +174,7 @@ vi.mock('../FlowCanvas', () => ({
     nodes: Node[];
     edges: Edge[];
     onNodesChange: (changes: unknown[]) => void;
+    setEdges: (update: Edge[]) => void;
     onResourceAdd: (resource: unknown) => void;
     onTemplateLoad: (template: unknown) => unknown;
     onWidgetLoad: (widget: unknown, target: unknown, nodes: Node[], edges: Edge[]) => unknown;
@@ -181,6 +184,7 @@ vi.mock('../FlowCanvas', () => ({
     isDirty?: boolean;
   }) => {
     onNodesChangeCapture.current = onNodesChange;
+    setEdgesCapture.current = setEdges;
     return (
       <div data-testid="flow-builder">
         <div data-testid="flow-title">{flowTitle}</div>
@@ -4404,6 +4408,29 @@ describe('Edge Style Effect - setEdges Callback Execution', () => {
     const result = callbackHolder.fn!(existingEdges);
     // Each edge should have its type updated to the new edgeStyle
     expect(result.every((e: Edge) => e.type === 'smoothstep')).toBe(true);
+  });
+
+  it('should keep display-only skip edges out of the edges state', () => {
+    const edge: Edge = {id: 'edge-1', source: 'a', target: 'b'};
+    const skipEdge: Edge = {id: 'condition-skip:a', source: 'a', target: 'c', data: {conditionSkip: true}};
+    const updates: ((prev: Edge[]) => Edge[])[] = [];
+
+    mockSetEdges.mockImplementation((update: unknown) => {
+      updates.push(update as (prev: Edge[]) => Edge[]);
+    });
+    mockUseEdgesState.mockReturnValue([[], mockSetEdges, vi.fn()]);
+
+    render(<FlowBuilder />);
+    updates.length = 0;
+
+    const withSkipEdge = [edge, skipEdge];
+    const withoutSkipEdge = [edge];
+    setEdgesCapture.current!(withSkipEdge);
+    setEdgesCapture.current!(withoutSkipEdge);
+
+    expect(updates[0]([])).toEqual([edge]);
+    // An update with no skip edge keeps its array, so React can skip the render.
+    expect(updates[1]([])).toBe(withoutSkipEdge);
   });
 });
 

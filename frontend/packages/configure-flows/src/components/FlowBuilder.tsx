@@ -6,7 +6,7 @@ import {useEmailProviders, useIdentityProviders, useSMSProviders} from '@thunder
 import {Alert, Box, Snackbar, Stack} from '@wso2/oxygen-ui';
 import type {Edge, Node, NodeChange} from '@xyflow/react';
 import {useEdgesState, useNodesState, useUpdateNodeInternals} from '@xyflow/react';
-import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
+import {type SetStateAction, useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useLocation, useNavigate, useParams} from 'react-router';
 import '@xyflow/react/dist/style.css';
@@ -40,6 +40,7 @@ import {ExecutionTypes, StepTypes, type StepData} from '../models/steps';
 import {hasUnpositionedNodes} from '../utils/applyAutoLayout';
 import collapseExecutorChains, {getExecutionStackHeadId} from '../utils/compactGraphTransforms';
 import {mutateComponents} from '../utils/componentMutations';
+import getConditionSkipEdges from '../utils/getConditionSkipEdges';
 import {
   COMMON_GRAPH_VALIDATION_RULES,
   GRAPH_VALIDATION_RULES,
@@ -61,7 +62,18 @@ function FlowBuilder() {
     return {...draftFlow, id: '', activeVersion: 0, createdAt: '', updatedAt: ''};
   }, [draftFlow, isDraftFlow]);
   const [nodes, setNodes, defaultOnNodesChange] = useNodesState<Node>([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
+  const [edges, setStateEdges, onEdgesChange] = useEdgesState<Edge>([]);
+  // getEdges() returns the display-only skip edges too; keep them out of the edges that are saved.
+  const setEdges = useCallback(
+    (update: SetStateAction<Edge[]>): void =>
+      setStateEdges((current) => {
+        const next = typeof update === 'function' ? update(current) : update;
+        return next.some((edge) => edge.data?.['conditionSkip'] === true)
+          ? next.filter((edge) => edge.data?.['conditionSkip'] !== true)
+          : next;
+      }),
+    [setStateEdges],
+  );
   const {t} = useTranslation();
 
   const {data: resources} = useGetFlowBuilderResources();
@@ -495,9 +507,14 @@ function FlowBuilder() {
     [handleCollapseStack, handleExpandStack, expandedStackIds],
   );
 
+  const canvasEdges = useMemo(() => {
+    const skipEdges = getConditionSkipEdges(nodes, t('flows:core.canvas.edges.onSkip', 'On skip'), edgeStyle);
+    return skipEdges.length > 0 ? [...edges, ...skipEdges] : edges;
+  }, [nodes, edges, t, edgeStyle]);
+
   const compactGraph = useMemo(
-    () => (isVerboseMode ? null : collapseExecutorChains(nodes, edges, expandedStackIds)),
-    [nodes, edges, isVerboseMode, expandedStackIds],
+    () => (isVerboseMode ? null : collapseExecutorChains(nodes, canvasEdges, expandedStackIds)),
+    [nodes, canvasEdges, isVerboseMode, expandedStackIds],
   );
   const displayNodes = useMemo(() => {
     if (!compactGraph) {
@@ -508,7 +525,7 @@ function FlowBuilder() {
       return dimensions ? {...node, measured: dimensions} : node;
     });
   }, [compactGraph, nodes, stackDimensions]);
-  const baseDisplayEdges = compactGraph?.edges ?? edges;
+  const baseDisplayEdges = compactGraph?.edges ?? canvasEdges;
 
   const stackMembersRef = useRef<Map<string, string[]>>(new Map<string, string[]>());
   useEffect(() => {

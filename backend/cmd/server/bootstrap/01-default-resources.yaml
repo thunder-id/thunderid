@@ -6314,6 +6314,13 @@ translations:
     self.email.code.label: Verification code
     self.email.verify: Verify
     self.email.resend: Resend code
+    self.email.link.sent.title: Check your email
+    self.email.link.sent.message: We sent a verification link to your email address. Open it to verify the address.
+    self.email.link.confirm.title: Verify your email address
+    self.email.link.confirm.message: Confirm that this email address belongs to you.
+    self.email.link.confirm.action: Verify email address
+    self.complete.title: Verification complete
+    self.complete.message: Your details are verified. You can close this page.
     self.mobile.title: Verify your mobile number
     self.mobile.message: Enter the verification code sent to your mobile number.
     self.mobile.code.label: Verification code
@@ -6647,6 +6654,12 @@ translations:
     passwordRecovery.email.linkFallback: "If the button doesn't work, copy and paste this link into your browser:"
     passwordRecovery.email.expiry: "This link will expire in <strong>30 minutes</strong> for your security."
     passwordRecovery.email.ignore: "If you did not request a password reset, you can safely ignore this email, your account will remain unchanged."
+    selfEmailVerification.email.subject: "Verify your email address"
+    selfEmailVerification.email.heading: "Verify your email address"
+    selfEmailVerification.email.intro: "Select the button below to open the verification page, then select <strong>Verify email address</strong> to confirm that this address belongs to you."
+    selfEmailVerification.email.cta: "Open verification page"
+    selfEmailVerification.email.linkFallback: "If the button above doesn't work, copy and paste the following link into your browser:"
+    selfEmailVerification.email.ignore: "If you did not ask for this, you can ignore this email."
     cibaNotification.email.subject: "Authentication Request from {{ctx(appName)}}"
     cibaNotification.email.heading: "Authentication Request"
     cibaNotification.email.intro: "<strong>{{ctx(appName)}}</strong> is requesting to authenticate you."
@@ -7706,6 +7719,30 @@ content:
     </body>
     </html>
 ---
+resource_type: notification_template
+id: 01900000-0000-7000-8000-0000000000b2
+channel: email
+handle: self-email-verification
+ouHandle: default
+displayName: Self Email Verification Email
+description: Sent when a user asks to verify their own email address.
+content:
+  subject: "{{t(selfEmailVerification.email.subject)}}"
+  body: |
+    <!DOCTYPE html>
+    <html>
+    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: {{design(palette.text.primary)}}; background-color: {{design(palette.background.default)}};">
+      <h2>{{t(selfEmailVerification.email.heading)}}</h2>
+      <p>{{t(selfEmailVerification.email.intro)}}</p>
+      <p><a href="{{ctx(inviteLink)}}" style="display: inline-block; padding: 10px 20px;
+        background-color: {{design(palette.primary.main)}}; color: {{design(palette.primary.contrastText)}}; text-decoration: none;
+        border-radius: 4px;">{{t(selfEmailVerification.email.cta)}}</a></p>
+      <p>{{t(selfEmailVerification.email.linkFallback)}}</p>
+      <p style="word-break: break-all;"><a href="{{ctx(inviteLink)}}">{{ctx(inviteLink)}}</a></p>
+      <p>{{t(selfEmailVerification.email.ignore)}}</p>
+    </body>
+    </html>
+---
 resource_type: flow
 id: 01900000-0000-7000-8000-00000000008a
 ouHandle: default
@@ -7809,8 +7846,8 @@ nodes:
       width: 101
       height: 34
     position:
-      x: 100
-      y: 300
+      x: 62
+      y: 530
 - id: prepare_verification
   type: TASK_EXECUTION
   executor:
@@ -7822,8 +7859,8 @@ nodes:
       width: 206
       height: 113
     position:
-      x: 400
-      y: 275
+      x: 372
+      y: 490
 - id: generate_email_otp
   type: TASK_EXECUTION
   properties:
@@ -7842,8 +7879,8 @@ nodes:
       width: 206
       height: 113
     position:
-      x: 700
-      y: 50
+      x: 738
+      y: 490
 - id: send_email_otp
   type: TASK_EXECUTION
   properties:
@@ -7861,8 +7898,8 @@ nodes:
       width: 206
       height: 113
     position:
-      x: 1000
-      y: 50
+      x: 1125
+      y: 490
 - id: email_code
   type: PROMPT
   meta:
@@ -7912,8 +7949,8 @@ nodes:
       width: 206
       height: 113
     position:
-      x: 1300
-      y: 50
+      x: 1504
+      y: 490
 - id: verify_email_otp
   type: TASK_EXECUTION
   properties:
@@ -7933,8 +7970,8 @@ nodes:
       width: 206
       height: 113
     position:
-      x: 1600
-      y: 50
+      x: 1882
+      y: 471
 - id: generate_mobile_otp
   type: TASK_EXECUTION
   properties:
@@ -7949,8 +7986,8 @@ nodes:
       width: 206
       height: 113
     position:
-      x: 700
-      y: 500
+      x: 1125
+      y: 277
 - id: send_mobile_otp
   type: TASK_EXECUTION
   properties:
@@ -7969,8 +8006,8 @@ nodes:
       width: 206
       height: 113
     position:
-      x: 1000
-      y: 500
+      x: 1504
+      y: 238
 - id: mobile_code
   type: PROMPT
   meta:
@@ -8020,8 +8057,8 @@ nodes:
       width: 206
       height: 113
     position:
-      x: 1300
-      y: 500
+      x: 1882
+      y: 122
 - id: verify_mobile_otp
   type: TASK_EXECUTION
   properties:
@@ -8041,8 +8078,8 @@ nodes:
       width: 206
       height: 113
     position:
-      x: 1600
-      y: 500
+      x: 2270
+      y: 355
 - id: record_verification
   type: TASK_EXECUTION
   executor:
@@ -8054,8 +8091,8 @@ nodes:
       width: 206
       height: 113
     position:
-      x: 1900
-      y: 275
+      x: 2647
+      y: 471
 - id: end
   type: END
   layout:
@@ -8063,5 +8100,5 @@ nodes:
       width: 85
       height: 34
     position:
-      x: 2200
-      y: 300
+      x: 3013
+      y: 511

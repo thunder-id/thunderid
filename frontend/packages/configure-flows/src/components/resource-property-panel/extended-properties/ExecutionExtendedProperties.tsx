@@ -73,7 +73,11 @@ function ExecutionExtendedProperties({resource, onChange}: ExecutionExtendedProp
     return null;
   }
 
-  const showInputsEditor = !EXECUTORS_WITH_FIXED_INPUTS.has(executorName);
+  // Record Verification acts on the pin alone; Prepare Verification takes the attribute input.
+  const showInputsEditor =
+    executorName === ExecutionTypes.AttributeVerification
+      ? (resource?.data as StepData | undefined)?.action?.executor?.['mode'] === 'prepare'
+      : !EXECUTORS_WITH_FIXED_INPUTS.has(executorName);
 
   let executorSpecificProperties: ReactNode = null;
 
@@ -162,6 +166,7 @@ function ExecutionExtendedProperties({resource, onChange}: ExecutionExtendedProp
     case ExecutionTypes.Session:
     case ExecutionTypes.OwnerResolver:
     case ExecutionTypes.AccountLinking:
+    case ExecutionTypes.AttributeVerification:
       executorSpecificProperties = <NoConfigProperties />;
       break;
     default:

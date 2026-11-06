@@ -433,7 +433,6 @@ function transformNodeToCanvas(apiNode: FlowNode): CanvasNode {
     canvasNode.category = 'INTERFACE';
   }
 
-  // Keep the node's condition so a save writes it back; the canvas does not draw its skip target
   if (apiNode.condition) {
     canvasNode.data.condition = apiNode.condition;
   }

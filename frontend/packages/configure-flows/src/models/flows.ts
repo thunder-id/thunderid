@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 import type {BaseConfig} from './base';
@@ -60,6 +60,11 @@ export const FlowType = {
    * Device Grant flows handle browser authorization for input-constrained devices.
    */
   DEVICE_GRANT: 'DEVICE_GRANT',
+
+  /**
+   * Self flows run operations a signed-in user performs on their own account, picked by handle
+   */
+  SELF: 'SELF',
 } as const;
 
 /**

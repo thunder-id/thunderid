@@ -9,8 +9,10 @@ import {useEffect, useRef, type JSX} from 'react';
 import {useForm, useWatch} from 'react-hook-form';
 import {useTranslation} from 'react-i18next';
 import AttributesSummarySection from './AttributesSummarySection';
+import VerificationStatus from './VerificationStatus';
 import useGetUserType from '../../api/useGetUserType';
 import useGetUserTypes from '../../api/useGetUserTypes';
+import getVerifiableAttributes from '../../utils/getVerifiableAttributes';
 import renderSchemaField from '../../utils/renderSchemaField';
 
 interface EditUserAttributesProps {
@@ -39,6 +41,7 @@ export default function EditUserAttributes({user, editedUser, onFieldChange}: Ed
   const {data: userTypeDetails, isLoading} = useGetUserType(matchedSchema?.id);
 
   const attributes = (editedUser.attributes ?? user.attributes ?? {}) as AttributeFormData;
+  const verifiable = getVerifiableAttributes(user, userTypeDetails?.schema);
 
   const {
     control,
@@ -88,9 +91,19 @@ export default function EditUserAttributes({user, editedUser, onFieldChange}: Ed
     >
       <Box sx={{display: 'flex', flexDirection: 'column', gap: 2}}>
         {schemaFields.length > 0 ? (
-          schemaFields.map(([fieldName, fieldDef]) =>
-            renderSchemaField(fieldName, fieldDef, control, errors, resolveDisplayName),
-          )
+          schemaFields.map(([fieldName, fieldDef]) => {
+            // The status is for the stored value, so it hides while the field holds an edited one.
+            const showStatus = verifiable.has(fieldName) && watchedValues[fieldName] === user.attributes?.[fieldName];
+
+            return renderSchemaField(
+              fieldName,
+              fieldDef,
+              control,
+              errors,
+              resolveDisplayName,
+              showStatus ? <VerificationStatus verifiedAt={verifiable.get(fieldName)} /> : undefined,
+            );
+          })
         ) : (
           <Typography variant="body2" color="text.secondary">
             {t('users:manageUser.sections.attributes.noSchema', 'No schema available for editing')}

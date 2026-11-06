@@ -528,6 +528,10 @@ export default function EditTokenSettings({
         } else if (value.type !== 'array') {
           // Add primitive types (string, number, boolean)
           attributes.push(fullKey);
+          // A top-level contact can release its verification status
+          if (prefix === '' && (value.type === 'email' || value.type === 'mobile')) {
+            attributes.push(`${fullKey}_verified`);
+          }
         }
       });
 

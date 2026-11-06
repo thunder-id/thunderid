@@ -7,8 +7,10 @@ import type {User} from '@thunderid/types';
 import {Box, Chip, CircularProgress, Stack, Typography} from '@wso2/oxygen-ui';
 import type {JSX} from 'react';
 import {useTranslation} from 'react-i18next';
+import VerificationStatus from './VerificationStatus';
 import useGetUserType from '../../api/useGetUserType';
 import useGetUserTypes from '../../api/useGetUserTypes';
+import getVerifiableAttributes from '../../utils/getVerifiableAttributes';
 
 interface AttributesSummarySectionProps {
   user: User;
@@ -35,6 +37,7 @@ export default function AttributesSummarySection({user}: AttributesSummarySectio
   const {data: userTypeDetails, isLoading} = useGetUserType(matchedSchema?.id);
 
   const attributes = user.attributes ?? {};
+  const verifiable = getVerifiableAttributes(user, userTypeDetails?.schema);
 
   const labelFor = (key: string): string => {
     const fieldDef = userTypeDetails?.schema?.[key];
@@ -63,6 +66,7 @@ export default function AttributesSummarySection({user}: AttributesSummarySectio
               <Typography variant="caption" color="text.secondary">
                 {labelFor(key)}
               </Typography>
+              {verifiable.has(key) && <VerificationStatus verifiedAt={verifiable.get(key)} />}
               {typeof value === 'boolean' ? (
                 <Box>
                   <Chip

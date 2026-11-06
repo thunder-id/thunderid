@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 import type {Edge, Node} from '@xyflow/react';
@@ -100,7 +100,11 @@ const collectHappyPathEdgeIds = (nodes: Node[], edges: Edge[]): Set<string> => {
 
   while (current) {
     const nextEdge: Edge | undefined = edges.find(
-      (edge) => edge.source === current && sourcePortSide(edge.sourceHandle) === 'EAST' && !visited.has(edge.target),
+      (edge) =>
+        edge.source === current &&
+        edge.data?.['conditionSkip'] !== true &&
+        sourcePortSide(edge.sourceHandle) === 'EAST' &&
+        !visited.has(edge.target),
     );
     if (!nextEdge) {
       break;

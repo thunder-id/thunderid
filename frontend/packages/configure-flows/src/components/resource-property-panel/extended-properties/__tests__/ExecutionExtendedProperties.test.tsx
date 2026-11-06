@@ -1965,6 +1965,28 @@ describe('ExecutionExtendedProperties', () => {
     });
   });
 
+  describe('Verification executors', () => {
+    const verificationResource = (mode: string): Resource =>
+      ({
+        id: 'verification-1',
+        data: {action: {executor: {name: ExecutionTypes.AttributeVerification, mode}}},
+      }) as unknown as Resource;
+
+    it('should render the inputs editor for prepare, so the attribute can be set as a constant input', () => {
+      render(<ExecutionExtendedProperties resource={verificationResource('prepare')} onChange={mockOnChange} />);
+
+      expect(screen.getByText('flows:core.executions.noConfig.description')).toBeInTheDocument();
+      expect(screen.getByText('flows:core.executions.inputs.title')).toBeInTheDocument();
+    });
+
+    it('should render NoConfigProperties without the inputs editor for record', () => {
+      render(<ExecutionExtendedProperties resource={verificationResource('record')} onChange={mockOnChange} />);
+
+      expect(screen.getByText('flows:core.executions.noConfig.description')).toBeInTheDocument();
+      expect(screen.queryByText('flows:core.executions.inputs.title')).not.toBeInTheDocument();
+    });
+  });
+
   describe('Edge Cases', () => {
     it('should return null when executor name is not defined', () => {
       const resourceWithoutExecutor = {

@@ -1626,5 +1626,51 @@
         "onFailure": ""
       }
     }
+  },
+  {
+    "resourceType": "STEP",
+    "category": "EXECUTOR",
+    "type": "TASK_EXECUTION",
+    "display": {
+      "header": "Attribute Verification Executor",
+      "label": "Prepare Verification",
+      "description": "Choose the email address or mobile number to verify",
+      "image": "assets/images/icons/user.svg",
+      "showOnResourcePanel": true
+    },
+    "data": {
+      "action": {
+        "type": "EXECUTOR",
+        "executor": {
+          "name": "AttributeVerificationExecutor",
+          "mode": "prepare"
+        },
+        "onSuccess": "",
+        "onFailure": ""
+      }
+    }
+  },
+  {
+    "resourceType": "STEP",
+    "category": "EXECUTOR",
+    "type": "TASK_EXECUTION",
+    "display": {
+      "header": "Attribute Verification Executor",
+      "label": "Record Verification",
+      "description": "Mark the chosen email address or mobile number as verified",
+      "image": "assets/images/icons/user.svg",
+      "showOnResourcePanel": true
+    },
+    "data": {
+      "action": {
+        "type": "EXECUTOR",
+        "executor": {
+          "name": "AttributeVerificationExecutor",
+          "mode": "record"
+        },
+        "onSuccess": "",
+        "onFailure": ""
+      }
+    }
   }
 ]

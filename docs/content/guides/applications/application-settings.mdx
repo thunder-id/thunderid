@@ -83,7 +83,7 @@ Each sub-tab stays read-only until its grant type is enabled on the Advanced tab
 
 ### User Tokens
 
-On the **User** sub-tab, choose which user attributes each token carries, how long tokens stay valid, and the response format for ID tokens and userinfo.
+On the **User** sub-tab, choose which user attributes each token carries, how long tokens stay valid, and the response format for ID tokens and userinfo. The attribute lists offer the attributes of the allowed user types, the runtime-computed attributes such as `groups` and `roles`, and `<attribute>_verified` for each top-level attribute of type `email` or `mobile`, which carries its verification status. See [Verified Contact Claims](../../protocols/oauth-oidc/claims-and-scopes#verified-contact-claims).
 
 **Access token**: select the user attributes to include in the access token payload. Default attributes (`sub`, `iss`, `exp`, and others) are always included and cannot be removed. Set **Token validity** in seconds (for example, `3600` for one hour).
 

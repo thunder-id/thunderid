@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 import {GithubIcon, GoogleIcon, ResourceAvatar} from '@thunderid/components';
@@ -74,6 +74,8 @@ const TEMPLATE_ICONS: Record<string, string[]> = {
   CIBA_EMAIL_NOTIFICATION: ['assets/images/icons/email-down.svg'],
   DISAMBIGUATION_LOGIN: ['assets/images/icons/magnifying-glass.svg'],
   DEFAULT: ['assets/images/icons/user.svg'],
+  SELF_ATTRIBUTE_VERIFICATION: ['assets/images/icons/email-down.svg'],
+  SELF_ATTRIBUTE_VERIFICATION_EMAIL_LINK: ['assets/images/icons/link.svg'],
 };
 
 const DEVICE_TEMPLATE_ICONS: Record<string, ReactNode> = {

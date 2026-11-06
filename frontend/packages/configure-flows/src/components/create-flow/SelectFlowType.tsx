@@ -1,8 +1,8 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 import {Box, Card, CardContent, Stack, Typography} from '@wso2/oxygen-ui';
-import {KeyRound, Lock, LogOut, Send, UserCog, UserPlus} from '@wso2/oxygen-ui-icons-react';
+import {KeyRound, Lock, LogOut, Send, UserCheck, UserCog, UserPlus} from '@wso2/oxygen-ui-icons-react';
 import type {JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {FlowType} from '../../models/flows';
@@ -81,6 +81,14 @@ export default function SelectFlowType({selectedType, onTypeChange, onReadyChang
       descriptionKey: 'flows:create.type.deviceGrant.description',
       descriptionDefault: 'Authorize input-constrained devices through a browser sign-in flow',
       icon: <KeyRound size={28} />,
+    },
+    {
+      type: FlowType.SELF,
+      labelKey: 'flows:create.type.self.label',
+      labelDefault: 'Self',
+      descriptionKey: 'flows:create.type.self.description',
+      descriptionDefault: 'Let signed-in users manage their own account, such as verifying an email address',
+      icon: <UserCheck size={28} />,
     },
   ];
 
