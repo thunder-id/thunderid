@@ -171,6 +171,18 @@ func (fe *flowEngine) executeNodePackage(ctx *EngineContext,
 
 	logger.Debug(ctx.Context, "Executing node")
 
+	if ctx.nodeVisits == nil {
+		ctx.nodeVisits = make(map[core.NodeInterface]int)
+	}
+	ctx.nodeVisits[currentNode]++
+	if ctx.nodeVisits[currentNode] > maxNodeVisitsPerRequest {
+		logger.Error(ctx.Context, "Node exceeded the visit limit within a request, the flow is cycling "+
+			"without pausing for user input", log.Int("limit", maxNodeVisitsPerRequest))
+		publishFlowFailedEvent(ctx, &tidcommon.InternalServerError, flowStartTime, time.Now().UnixMilli(),
+			fe.observabilitySvc)
+		return nil, false, &tidcommon.InternalServerError
+	}
+
 	// SSO inputs ride on the context (transient, never persisted, and off the engine contract);
 	// only the SSO-Check and Session nodes read them.
 	ssoCtx := session.WithSSOInputs(ctx.Context, session.SSOInputs{

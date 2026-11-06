@@ -564,6 +564,57 @@ func (suite *FlowMgtAPITestSuite) TestCreateFlow_ValidationErrors() {
 	}
 }
 
+// credentialsFlowWithInputs returns an authentication flow that prompts for promptInputs and passes
+// executorInputs to the credentials authentication node.
+func credentialsFlowWithInputs(handle string, promptInputs, executorInputs []InputDefinition) FlowDefinition {
+	return FlowDefinition{
+		Name:     "Credentials Inputs Flow",
+		Handle:   handle,
+		FlowType: "AUTHENTICATION",
+		Nodes: []NodeDefinition{
+			{ID: "START", Type: "START", OnSuccess: "prompt_credentials"},
+			{
+				ID:   "prompt_credentials",
+				Type: "PROMPT",
+				Prompts: []PromptDefinition{{
+					Inputs: promptInputs,
+					Action: &ActionDefinition{Ref: "action_submit", NextNode: "credentials_auth"},
+				}},
+			},
+			{
+				ID:        "credentials_auth",
+				Type:      "TASK_EXECUTION",
+				Executor:  &ExecutorDefinition{Name: "CredentialsAuthExecutor", Inputs: executorInputs},
+				OnSuccess: "auth_assert",
+			},
+			{
+				ID:        "auth_assert",
+				Type:      "TASK_EXECUTION",
+				Executor:  &ExecutorDefinition{Name: "AuthAssertExecutor"},
+				OnSuccess: "END",
+			},
+			{ID: "END", Type: "END"},
+		},
+	}
+}
+
+func (suite *FlowMgtAPITestSuite) TestCreateFlow_InputWithoutIdentifierRejected() {
+	username := InputDefinition{Ref: "input_username", Type: "TEXT_INPUT", Identifier: "username", Required: true}
+	password := InputDefinition{Ref: "input_password", Type: "PASSWORD_INPUT", Identifier: "password", Required: true}
+	blank := InputDefinition{Ref: "input_blank", Type: "TEXT_INPUT", Identifier: " ", Required: true}
+	testCases := map[string]FlowDefinition{
+		"executor input": credentialsFlowWithInputs(generateUniqueHandle("blank-executor-input"),
+			[]InputDefinition{username, password}, []InputDefinition{blank}),
+		"prompt input": credentialsFlowWithInputs(generateUniqueHandle("blank-prompt-input"),
+			[]InputDefinition{username, password, blank}, nil),
+	}
+	for name, flowDef := range testCases {
+		suite.Run(name, func() {
+			suite.createFlowExpectError(flowDef, http.StatusBadRequest, "FLM-1024")
+		})
+	}
+}
+
 // authFlowWithOUResolver returns an authentication flow with an OUResolverExecutor node carrying the
 // given properties between credentials authentication and the assertion.
 func authFlowWithOUResolver(

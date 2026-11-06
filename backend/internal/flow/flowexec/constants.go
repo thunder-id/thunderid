@@ -19,6 +19,10 @@ const (
 	// applicationTypePropertyKey is the InboundClient.Properties key under which the application
 	// type is stored.
 	applicationTypePropertyKey = "type"
+
+	// maxNodeVisitsPerRequest is the number of times a node may run within a single request. A flow
+	// that goes past it is cycling without pausing for user input.
+	maxNodeVisitsPerRequest = 10
 )
 
 // flowInitiationMode classifies how an application is permitted to initiate a new authentication
