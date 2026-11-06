@@ -328,7 +328,7 @@ func (s *MasterServiceTestSuite) TestAnApplySupersededByATakeOverRecordsNothing(
 	_, svcErr := f.svc.Apply(context.Background(), "gw-1", ApplyRequest{})
 	s.Require().Nil(svcErr)
 	f.capture(s.T(), "ou-a", "ou-b")
-	f.client.onImport = func() { f.versions.leases["gw-1"].Token = "another-pod" }
+	f.client.onImport = func() { f.versions.leases["gw-1"].Token = anotherPod }
 
 	_, svcErr = f.svc.Apply(context.Background(), "gw-1", ApplyRequest{})
 
@@ -348,7 +348,7 @@ func (s *MasterServiceTestSuite) TestASupersededApplyWithRemovalsLeftRecordsNoMa
 	refusedRemoval := removed("ou-b")
 	refusedRemoval.Status = outcomeFailed
 	f.client.imported = answerOf(refusedRemoval)
-	f.client.onImport = func() { f.versions.leases["gw-1"].Token = "another-pod" }
+	f.client.onImport = func() { f.versions.leases["gw-1"].Token = anotherPod }
 
 	_, svcErr = f.svc.Apply(context.Background(), "gw-1", ApplyRequest{})
 

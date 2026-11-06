@@ -112,6 +112,7 @@ func TestVersionRoutesMapErrorsToStatuses(t *testing.T) {
 		&ErrorGatewayUnreachable:       http.StatusBadGateway,
 		&ErrorGatewayPrivateAddress:    http.StatusBadGateway,
 		&ErrorMissingValues:            http.StatusConflict,
+		&ErrorPromotionIncomplete:      http.StatusConflict,
 		&ErrorMisplacedSecret:          http.StatusBadRequest,
 		&ErrorApplyInProgress:          http.StatusConflict,
 		&ErrorRemovalsNeedConfirmation: http.StatusConflict,
