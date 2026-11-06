@@ -73,6 +73,7 @@ func (f *fileBasedStore) GetRoleList(ctx context.Context, limit, offset int) ([]
 			Name:        roleData.Name,
 			Description: roleData.Description,
 			OUID:        roleData.OUID,
+			IsReadOnly:  true,
 		})
 	}
 
@@ -150,6 +151,7 @@ func (f *fileBasedStore) rolesByOUID(ctx context.Context, ouID string) ([]Role, 
 			Name:        roleData.Name,
 			Description: roleData.Description,
 			OUID:        roleData.OUID,
+			IsReadOnly:  true,
 		})
 	}
 
@@ -221,6 +223,7 @@ func (f *fileBasedStore) GetRolesByNames(ctx context.Context, names []string) ([
 			Name:        roleData.Name,
 			Description: roleData.Description,
 			OUID:        roleData.OUID,
+			IsReadOnly:  true,
 		})
 	}
 
@@ -431,6 +434,37 @@ func (f *fileBasedStore) HasAssigneeAssignments(
 // permissions are immutable, so they are never pruned.
 func (f *fileBasedStore) GetReferencedPermissions(_ context.Context) ([]ResourcePermissions, error) {
 	return []ResourcePermissions{}, nil
+}
+
+// GetRolesByPermission returns the declared roles that grant a permission on a resource server.
+func (f *fileBasedStore) GetRolesByPermission(
+	ctx context.Context, resourceServerID, permission string) ([]Role, error) {
+	list, err := f.GenericFileBasedStore.List()
+	if err != nil {
+		return nil, err
+	}
+
+	roles := make([]Role, 0)
+	for _, item := range list {
+		roleData, err := roleFromDeclarativeData(item.ID.ID, item.Data)
+		if err != nil {
+			log.GetLogger().Warn(ctx, "Skipping malformed role in GetRolesByPermission",
+				log.String("roleID", item.ID.ID),
+				log.Error(err))
+			continue
+		}
+		if !grantsPermission(roleData.Permissions, resourceServerID, permission) {
+			continue
+		}
+		roles = append(roles, Role{
+			ID:          roleData.ID,
+			Name:        roleData.Name,
+			Description: roleData.Description,
+			OUID:        roleData.OUID,
+			IsReadOnly:  true,
+		})
+	}
+	return roles, nil
 }
 
 // DeleteRolePermission is a no-op for the file-based store: declarative role permissions are

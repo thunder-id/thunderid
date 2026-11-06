@@ -268,6 +268,8 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		mux, entityService, groupService, ouService, resourceService, entityTypeService, ouAuthzService,
 		sharingService)
 	fatalOnError(ctx, logger, err, "Failed to initialize RoleService")
+	// The control plane runs no flows, so the role tools write removals directly.
+	role.RegisterMCPTools(mcpServer, roleService, roleAssignmentService, resourceService, ouService, nil)
 	exporters = append(exporters, roleExporter)
 
 	// Two-phase initialization: inject user/group/role resolvers into OU service.

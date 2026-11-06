@@ -217,6 +217,7 @@ After connecting, ask your agent to use the <ProductName /> MCP server for tasks
 | `themes` | Browse and inspect login page themes, colors, and typography |
 | `organization_units` | List organization units |
 | `user_types` | List user types and self-registration settings |
+| `roles` | Find roles by name or by the API permission they grant, inspect a role and who holds it, find APIs and list their permissions, create roles, and change a role's permissions and who it is assigned to. On the data plane, removing a permission or revoking a role runs the configured administration flow, which by default revokes the affected tokens. On the control plane, or on a data plane with no flow configured, the removal is written directly and tokens already issued stay valid until they expire |
 | `react_sdk` | Get tailored integration code for the <ProductName /> React SDK |
 | `deployments` | List gateways and configuration versions, capture a version, compare it with what a gateway runs, deploy, promote, or roll back a gateway, list, set, and remove a gateway's variables and secrets, and export and import declarative configuration |
 
@@ -224,6 +225,7 @@ After connecting, ask your agent to use the <ProductName /> MCP server for tasks
 
 - "Create a new single-page application for my React project"
 - "Show me the current authentication flow"
+- "Which roles can issue refunds on the orders API, and does Alice hold one of them?"
 - "Add a second factor step to the default login flow"
 - "What colors and typography does the default theme use?"
 - "Integrate authentication with <ProductName /> for this application"

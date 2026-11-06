@@ -5,6 +5,7 @@ package role
 
 import (
 	"context"
+	"slices"
 
 	"github.com/thunder-id/thunderid/internal/group"
 	resourcepkg "github.com/thunder-id/thunderid/internal/resource"
@@ -71,4 +72,14 @@ func expandPrincipal(ctx context.Context, groupService group.GroupServiceInterfa
 		return []string{principalID}, nil
 	}
 	return groupService.GetTransitiveMemberEntities(ctx, principalID)
+}
+
+// grantsPermission reports whether a permission set includes the given permission on a resource server.
+func grantsPermission(permissions []ResourcePermissions, resourceServerID, permission string) bool {
+	for _, p := range permissions {
+		if p.ResourceServerID == resourceServerID && slices.Contains(p.Permissions, permission) {
+			return true
+		}
+	}
+	return false
 }

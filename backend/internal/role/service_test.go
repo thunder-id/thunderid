@@ -3029,6 +3029,28 @@ func (suite *RoleServiceTestSuite) TestSharingCallsRefuseAMissingRoleID() {
 	suite.Equal(ErrorMissingRoleID.Code, svcErr.Code)
 }
 
+func (suite *RoleServiceTestSuite) TestGetRolesByPermission() {
+	suite.Run("missing input", func() {
+		_, svcErr := suite.service.GetRolesByPermission(context.Background(), "", "orders:read")
+		suite.Equal(&ErrorInvalidRequestFormat, svcErr)
+	})
+
+	suite.Run("found", func() {
+		suite.mockStore.On("GetRolesByPermission", mock.Anything, "rs1", "orders:read").
+			Return([]Role{{ID: "role1", Name: "Order Viewer"}}, nil).Once()
+		roles, svcErr := suite.service.GetRolesByPermission(context.Background(), "rs1", "orders:read")
+		suite.Nil(svcErr)
+		suite.Equal([]Role{{ID: "role1", Name: "Order Viewer", IsOwnedByOU: true}}, roles)
+	})
+
+	suite.Run("store failure", func() {
+		suite.mockStore.On("GetRolesByPermission", mock.Anything, "rs1", "orders:write").
+			Return(nil, errors.New("db down")).Once()
+		_, svcErr := suite.service.GetRolesByPermission(context.Background(), "rs1", "orders:write")
+		suite.Equal(&tidcommon.InternalServerError, svcErr)
+	})
+}
+
 // Inside a sign-in boundary the roles are counted in the boundary's organization unit, unless the caller
 // names one; with no boundary, or one that decided no unit, they are counted anywhere.
 func (suite *RoleServiceTestSuite) TestGetUserRoles_AssignmentOUFollowsTheBoundary() {
