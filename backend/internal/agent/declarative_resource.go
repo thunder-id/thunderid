@@ -253,6 +253,8 @@ func makeAgentEntityParser(
 			InboundAuthProfile: providers.InboundAuthProfile{
 				AuthFlowID:                req.AuthFlowID,
 				AuthFlowHandle:            req.AuthFlowHandle,
+				DeviceGrantFlowID:         req.DeviceGrantFlowID,
+				DeviceGrantFlowHandle:     req.DeviceGrantFlowHandle,
 				RegistrationFlowID:        req.RegistrationFlowID,
 				RegistrationFlowHandle:    req.RegistrationFlowHandle,
 				IsRegistrationFlowEnabled: req.IsRegistrationFlowEnabled,
@@ -331,6 +333,8 @@ func makeAgentInboundParser(agentSvc AgentServiceInterface) func([]byte) (*inbou
 			InboundAuthProfile: providers.InboundAuthProfile{
 				AuthFlowID:                req.AuthFlowID,
 				AuthFlowHandle:            req.AuthFlowHandle,
+				DeviceGrantFlowID:         req.DeviceGrantFlowID,
+				DeviceGrantFlowHandle:     req.DeviceGrantFlowHandle,
 				RegistrationFlowID:        req.RegistrationFlowID,
 				RegistrationFlowHandle:    req.RegistrationFlowHandle,
 				IsRegistrationFlowEnabled: req.IsRegistrationFlowEnabled,

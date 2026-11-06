@@ -1420,6 +1420,11 @@ const translations = {
     'edit.page.validation.missingRedirectUri': 'add a redirect URI',
     'edit.page.validation.missingAllowedUserType': 'select at least one allowed user type',
     'edit.page.validation.missingCertificate': 'add a certificate',
+    'edit.page.validation.loadingDeviceGrantFlow':
+      'The default Device Grant flow is loading. Please wait before saving.',
+    'edit.page.validation.deviceGrantFlowQueryFailed':
+      'Could not load Device Grant flows. Retry loading the flow list before saving.',
+    'edit.page.validation.missingDeviceGrantFlow': 'Select a Device Grant flow in the Flows tab before saving.',
     'edit.page.validation.invalidBackchannelLogoutUri': 'fix the back-channel logout URI',
     'edit.page.validation.invalidIdentityAssertions': 'fix the identity assertions (ID-JAG) settings',
     'edit.page.validation.tokenSettings': 'fix the token settings',
@@ -1654,6 +1659,8 @@ const translations = {
       'A delegated agent needs at least one grant type that lets it act for a user, such as authorization code.',
     'errors.AGT-1045': 'The lifespan end must be a valid date and time.',
     'errors.AGT-1046': 'The lifespan end must be in the future.',
+    'errors.AGT-1049': 'Device Grant flow is required.',
+    'errors.AGT-1050': 'The assigned Device Grant flow is invalid.',
   },
 
   // ============================================================================
@@ -1801,6 +1808,13 @@ const translations = {
       'Select the flow that handles account recovery for applications under this organization unit.',
     'edit.flows.recoveryFlow.alert':
       'To modify the selected flow, <0>open the flow builder</0>. To create a new flow, visit the <1>Flows page</1>.',
+    'edit.flows.labels.deviceGrantFlow': 'Device authorization flow',
+    'edit.flows.labels.deviceGrantFlow.description': 'Choose the flow used to authorize devices for this {{entity}}.',
+    'edit.flows.deviceGrantFlow.defaultAssigned':
+      'The default Device Grant flow is selected and will be saved for this {{entity}}. It verifies the device code and calls this {{entity}}’s Authentication flow. You can select a different flow below.',
+    'edit.flows.deviceGrantFlow.placeholder': 'Select a Device Grant flow',
+    'edit.flows.deviceGrantFlow.hint':
+      'This flow verifies the device code and calls this {{entity}}’s Authentication flow.',
     'edit.flows.labels.signOutFlow': 'Sign out flow',
     'edit.flows.signOutFlow.description':
       'Choose the default flow that handles user sign-out and session termination for applications under this organization unit.',

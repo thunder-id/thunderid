@@ -575,6 +575,51 @@ var (
 			DefaultValue: "The organization unit must belong to the project",
 		},
 	}
+
+	// ErrorDeviceGrantFlowRequired is returned when Device Code is enabled without an assigned flow.
+	ErrorDeviceGrantFlowRequired = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AGT-1049",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.agentservice.device_grant_flow_required",
+			DefaultValue: "Device Grant flow is required",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.agentservice.device_grant_flow_required_description",
+			DefaultValue: "Assign a Device Grant flow before enabling the Device Code grant type",
+		},
+	}
+
+	// ErrorInvalidDeviceGrantFlowID is returned when an invalid Device Grant flow is assigned.
+	ErrorInvalidDeviceGrantFlowID = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AGT-1050",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.agentservice.invalid_device_grant_flow_id",
+			DefaultValue: "Invalid Device Grant flow ID",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.agentservice.invalid_device_grant_flow_id_description",
+			DefaultValue: "The assigned flow must be a valid Device Grant flow",
+		},
+	}
+
+	// ErrorAgentFlowMismatch is returned when a flow reached from an agent's configured flow
+	// conflicts with the agent's flow assignment.
+	ErrorAgentFlowMismatch = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AGT-1051",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.agentservice.agent_flow_mismatch",
+			DefaultValue: "Conflicting flow references",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.agentservice.agent_flow_mismatch_description",
+			DefaultValue: "The {{param(sourceFlowType)}} flow references a different " +
+				"{{param(flowType)}} flow than the one configured on the agent. " +
+				"Both must point to the same {{param(flowType)}} flow.",
+		},
+	}
 )
 
 // errInvalidDeclarativeLifespan is returned when a declarative agent's validUntil is not an RFC 3339

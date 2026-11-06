@@ -11,6 +11,7 @@ import {OAuth2GrantTypes} from '@thunderid/configure-applications';
 export const DELEGATION_GRANTS: string[] = [
   OAuth2GrantTypes.AUTHORIZATION_CODE,
   OAuth2GrantTypes.CIBA,
+  OAuth2GrantTypes.DEVICE_CODE,
   OAuth2GrantTypes.TOKEN_EXCHANGE,
   OAuth2GrantTypes.JWT_BEARER,
 ];
@@ -25,6 +26,7 @@ export const DEFAULT_DELEGATED_GRANTS: string[] = [OAuth2GrantTypes.AUTHORIZATIO
 export const DELEGATED_ONLY_GRANTS: string[] = [
   OAuth2GrantTypes.AUTHORIZATION_CODE,
   OAuth2GrantTypes.CIBA,
+  OAuth2GrantTypes.DEVICE_CODE,
   OAuth2GrantTypes.REFRESH_TOKEN,
   OAuth2GrantTypes.TOKEN_EXCHANGE,
   OAuth2GrantTypes.JWT_BEARER,

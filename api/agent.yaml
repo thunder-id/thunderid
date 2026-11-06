@@ -392,6 +392,36 @@ paths:
                     description:
                       key: "error.agentservice.missing_delegation_grant_type_description"
                       defaultValue: "A delegated agent needs at least one of these grant types: {{param(grantTypes)}}"
+                device-grant-flow-required:
+                  summary: Device Code is enabled without a Device Grant flow
+                  value:
+                    code: "AGT-1049"
+                    message:
+                      key: "error.agentservice.device_grant_flow_required"
+                      defaultValue: "Device Grant flow is required"
+                    description:
+                      key: "error.agentservice.device_grant_flow_required_description"
+                      defaultValue: "Assign a Device Grant flow before enabling the Device Code grant type"
+                invalid-device-grant-flow:
+                  summary: The assigned flow is invalid
+                  value:
+                    code: "AGT-1050"
+                    message:
+                      key: "error.agentservice.invalid_device_grant_flow_id"
+                      defaultValue: "Invalid Device Grant flow ID"
+                    description:
+                      key: "error.agentservice.invalid_device_grant_flow_id_description"
+                      defaultValue: "The assigned flow must be a valid Device Grant flow"
+                conflicting-flow-references:
+                  summary: A configured flow invokes a different flow than the agent assignment
+                  value:
+                    code: "AGT-1051"
+                    message:
+                      key: "error.agentservice.agent_flow_mismatch"
+                      defaultValue: "Conflicting flow references"
+                    description:
+                      key: "error.agentservice.agent_flow_mismatch_description"
+                      defaultValue: "The {{param(sourceFlowType)}} flow references a different {{param(flowType)}} flow than the one configured on the agent. Both must point to the same {{param(flowType)}} flow."
                 invalid-project:
                   summary: The project does not exist
                   value:
@@ -974,6 +1004,36 @@ paths:
                     description:
                       key: "error.agentservice.invalid_redirect_uri_description"
                       defaultValue: "One or more redirect URIs are not valid"
+                device-grant-flow-required:
+                  summary: Device Code is enabled without a Device Grant flow
+                  value:
+                    code: "AGT-1049"
+                    message:
+                      key: "error.agentservice.device_grant_flow_required"
+                      defaultValue: "Device Grant flow is required"
+                    description:
+                      key: "error.agentservice.device_grant_flow_required_description"
+                      defaultValue: "Assign a Device Grant flow before enabling the Device Code grant type"
+                invalid-device-grant-flow:
+                  summary: The assigned flow is invalid
+                  value:
+                    code: "AGT-1050"
+                    message:
+                      key: "error.agentservice.invalid_device_grant_flow_id"
+                      defaultValue: "Invalid Device Grant flow ID"
+                    description:
+                      key: "error.agentservice.invalid_device_grant_flow_id_description"
+                      defaultValue: "The assigned flow must be a valid Device Grant flow"
+                conflicting-flow-references:
+                  summary: A configured flow invokes a different flow than the agent assignment
+                  value:
+                    code: "AGT-1051"
+                    message:
+                      key: "error.agentservice.agent_flow_mismatch"
+                      defaultValue: "Conflicting flow references"
+                    description:
+                      key: "error.agentservice.agent_flow_mismatch_description"
+                      defaultValue: "The {{param(sourceFlowType)}} flow references a different {{param(flowType)}} flow than the one configured on the agent. Both must point to the same {{param(flowType)}} flow."
                 invalid-project:
                   summary: The project does not exist
                   value:
@@ -2180,6 +2240,10 @@ components:
             Auth flow to use when users authenticate against this agent. When omitted and
             other inbound auth fields are present, the system default auth flow is used.
           example: "edc013d0-e893-4dc0-990c-3e1d203e005b"
+        deviceGrantFlowId:
+          type: string
+          description: Flow used to authorize this agent through the Device Code grant. Required when `inboundAuthConfig` enables `urn:ietf:params:oauth:grant-type:device_code`.
+          example: "4ca080dc-8bd7-44bd-92f1-0b6509026d22"
         registrationFlowId:
           type: string
           description: Registration flow for this agent.
@@ -2223,7 +2287,7 @@ components:
             OAuth/OIDC configuration for the agent. Providing this also creates an inbound client row (inbound auth profile fields are not required to be explicitly set).
 
             The `client_credentials` grant type is always granted: it is added when missing, and is the default when no grant types are given. A public client, which has no secret, is not given it. All other requested grant types are accepted as given. When `delegated` is `true`, an OAuth configuration is created if none is given, and the grant types are checked:
-            - When any grant type beyond `client_credentials` is given, at least one of `authorization_code`, `urn:openid:params:grant-type:ciba`, `urn:ietf:params:oauth:grant-type:token-exchange` and `urn:ietf:params:oauth:grant-type:jwt-bearer` must be among them.
+            - When any grant type beyond `client_credentials` is given, at least one of `authorization_code`, `urn:openid:params:grant-type:ciba`, `urn:ietf:params:oauth:grant-type:device_code`, `urn:ietf:params:oauth:grant-type:token-exchange` and `urn:ietf:params:oauth:grant-type:jwt-bearer` must be among them.
             - When none beyond `client_credentials` is given, `authorization_code` and `refresh_token` are added, with the `code` response type and PKCE required.
 
     UpdateAgentRequest:
@@ -2291,6 +2355,10 @@ components:
         authFlowId:
           type: string
           example: "edc013d0-e893-4dc0-990c-3e1d203e005b"
+        deviceGrantFlowId:
+          type: string
+          description: Flow used to authorize this agent through the Device Code grant. Required when `inboundAuthConfig` enables `urn:ietf:params:oauth:grant-type:device_code`.
+          example: "4ca080dc-8bd7-44bd-92f1-0b6509026d22"
         registrationFlowId:
           type: string
           example: "f1c2d3e4-f5a6-7b8c-9d0e-1f2a3b4c5d6e"
@@ -2393,6 +2461,11 @@ components:
         authFlowId:
           type: string
           example: "edc013d0-e893-4dc0-990c-3e1d203e005b"
+        deviceGrantFlowId:
+          type: string
+          readOnly: true
+          description: Device Grant flow assigned to this agent.
+          example: "4ca080dc-8bd7-44bd-92f1-0b6509026d22"
         registrationFlowId:
           type: string
           example: "f1c2d3e4-f5a6-7b8c-9d0e-1f2a3b4c5d6e"
@@ -2494,6 +2567,11 @@ components:
         authFlowId:
           type: string
           example: "edc013d0-e893-4dc0-990c-3e1d203e005b"
+        deviceGrantFlowId:
+          type: string
+          readOnly: true
+          description: Device Grant flow assigned to this agent.
+          example: "4ca080dc-8bd7-44bd-92f1-0b6509026d22"
         registrationFlowId:
           type: string
           example: "f1c2d3e4-f5a6-7b8c-9d0e-1f2a3b4c5d6e"
@@ -2861,6 +2939,7 @@ components:
               - "client_credentials"
               - "refresh_token"
               - "urn:openid:params:grant-type:ciba"
+              - "urn:ietf:params:oauth:grant-type:device_code"
               - "urn:ietf:params:oauth:grant-type:token-exchange"
               - "urn:ietf:params:oauth:grant-type:jwt-bearer"
           description: >-

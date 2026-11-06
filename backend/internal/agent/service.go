@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net/url"
 	"slices"
+	"strings"
 	"time"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -180,7 +181,7 @@ func (s *agentService) CreateAgent(ctx context.Context, agent *providers.Agent) 
 		return nil, &tidcommon.InternalServerError
 	}
 
-	authFlowID, regFlowID := agent.AuthFlowID, agent.RegistrationFlowID
+	authFlowID, deviceGrantFlowID, regFlowID := agent.AuthFlowID, agent.DeviceGrantFlowID, agent.RegistrationFlowID
 	assertion, loginConsent := agent.Assertion, agent.LoginConsent
 	var inboundConfigs []providers.InboundAuthConfigWithSecret
 
@@ -191,6 +192,7 @@ func (s *agentService) CreateAgent(ctx context.Context, agent *providers.Agent) 
 			return nil, svcErr
 		}
 		authFlowID = resolvedClient.AuthFlowID
+		deviceGrantFlowID = resolvedClient.DeviceGrantFlowID
 		regFlowID = resolvedClient.RegistrationFlowID
 		assertion = resolvedClient.Assertion
 		loginConsent = resolvedClient.LoginConsent
@@ -207,6 +209,7 @@ func (s *agentService) CreateAgent(ctx context.Context, agent *providers.Agent) 
 		authFlowID, regFlowID, agent.IsRegistrationFlowEnabled,
 		agent.ThemeID, agent.LayoutID, assertion, loginConsent,
 		agent.AllowedUserTypes, agent.AllowedAgentTypes, inboundConfigs)
+	resp.DeviceGrantFlowID = deviceGrantFlowID
 	resp.OUID = agent.OUID
 	resp.ProjectID = agent.ProjectID
 	resp.ValidUntil, resp.Lifespan = lifespanView(&validUntil, now)
@@ -587,6 +590,7 @@ func (s *agentService) UpdateAgent(ctx context.Context, agentID string,
 	}
 
 	authFlowID := resolvedClient.AuthFlowID
+	deviceGrantFlowID := resolvedClient.DeviceGrantFlowID
 	regFlowID := resolvedClient.RegistrationFlowID
 	assertion := resolvedClient.Assertion
 	loginConsent := resolvedClient.LoginConsent
@@ -603,6 +607,7 @@ func (s *agentService) UpdateAgent(ctx context.Context, agentID string,
 		authFlowID, regFlowID, resolvedClient.IsRegistrationFlowEnabled,
 		req.ThemeID, req.LayoutID, assertion, loginConsent,
 		req.AllowedUserTypes, req.AllowedAgentTypes, inboundConfigs)
+	resp.DeviceGrantFlowID = deviceGrantFlowID
 	resp.OUID = ouID
 	resp.ProjectID = projectID
 	access := s.governance.ReadEntityAccess(ctx, *updated)
@@ -975,6 +980,7 @@ func (s *agentService) ValidateAgent(ctx context.Context, agent *providers.Agent
 	client := buildInboundClientRecord("", agent.AuthFlowID, agent.RegistrationFlowID,
 		agent.IsRegistrationFlowEnabled, agent.ThemeID, agent.LayoutID, agent.Assertion,
 		agent.LoginConsent, agent.AllowedUserTypes, agent.AllowedAgentTypes, agent.SubjectAttribute)
+	client.DeviceGrantFlowID = agent.DeviceGrantFlowID
 
 	if needsInboundClient(agent) {
 		oauthProfile := buildOAuthProfile(agent.InboundAuthConfig)
@@ -1222,6 +1228,7 @@ func (s *agentService) createInboundForAgent(ctx context.Context, agentID string
 	client := buildInboundClientRecord(agentID, agent.AuthFlowID, agent.RegistrationFlowID,
 		agent.IsRegistrationFlowEnabled, agent.ThemeID, agent.LayoutID, agent.Assertion,
 		agent.LoginConsent, agent.AllowedUserTypes, agent.AllowedAgentTypes, agent.SubjectAttribute)
+	client.DeviceGrantFlowID = agent.DeviceGrantFlowID
 	setLogoProperty(&client, agent.LogoURL)
 
 	seedClientSubTypeAttribute(agent.InboundAuthConfig)
@@ -1271,6 +1278,8 @@ func (s *agentService) reconcileInboundForUpdate(ctx context.Context, agentID st
 	profile := providers.InboundAuthProfile{
 		AuthFlowID:             req.AuthFlowID,
 		AuthFlowHandle:         req.AuthFlowHandle,
+		DeviceGrantFlowID:      req.DeviceGrantFlowID,
+		DeviceGrantFlowHandle:  req.DeviceGrantFlowHandle,
 		RegistrationFlowID:     req.RegistrationFlowID,
 		RegistrationFlowHandle: req.RegistrationFlowHandle,
 	}
@@ -1286,6 +1295,7 @@ func (s *agentService) reconcileInboundForUpdate(ctx context.Context, agentID st
 	client := buildInboundClientRecord(agentID, profile.AuthFlowID, profile.RegistrationFlowID,
 		req.IsRegistrationFlowEnabled, req.ThemeID, req.LayoutID, req.Assertion,
 		req.LoginConsent, req.AllowedUserTypes, req.AllowedAgentTypes, nil)
+	client.DeviceGrantFlowID = profile.DeviceGrantFlowID
 	setLogoProperty(&client, req.LogoURL)
 	oauthProfile := buildOAuthProfile(req.InboundAuthConfig)
 	hasSecret := clientSecret != ""
@@ -1346,6 +1356,7 @@ func (s *agentService) composeGetResponse(ctx context.Context, e *providers.Enti
 	}
 
 	resp.AuthFlowID = inbound.AuthFlowID
+	resp.DeviceGrantFlowID = inbound.DeviceGrantFlowID
 	resp.RegistrationFlowID = inbound.RegistrationFlowID
 	resp.IsRegistrationFlowEnabled = inbound.IsRegistrationFlowEnabled
 	resp.ThemeID = inbound.ThemeID
@@ -1504,6 +1515,7 @@ func needsInboundClient(agent *providers.Agent) bool {
 		return false
 	}
 	return agent.AuthFlowID != "" ||
+		agent.DeviceGrantFlowID != "" ||
 		agent.RegistrationFlowID != "" ||
 		agent.IsRegistrationFlowEnabled ||
 		agent.ThemeID != "" ||
@@ -1522,6 +1534,8 @@ func updateNeedsInboundClient(req *model.UpdateAgentRequest) bool {
 	}
 	return req.AuthFlowID != "" ||
 		req.AuthFlowHandle != "" ||
+		req.DeviceGrantFlowID != "" ||
+		req.DeviceGrantFlowHandle != "" ||
 		req.RegistrationFlowID != "" ||
 		req.RegistrationFlowHandle != "" ||
 		req.IsRegistrationFlowEnabled ||
@@ -2216,9 +2230,21 @@ func translateIDTokenValidationError(err error) *tidcommon.ServiceError {
 
 // translateInboundClientFKError maps foreign-key reference errors to agent-service errors.
 func translateInboundClientFKError(err error) *tidcommon.ServiceError {
+	var flowMismatch *inboundclient.FlowMismatchError
+	if errors.As(err, &flowMismatch) {
+		return ErrorAgentFlowMismatch.WithParams(map[string]string{
+			"sourceFlowType": strings.ToLower(string(flowMismatch.SourceFlowType)),
+			"flowType":       strings.ToLower(string(flowMismatch.FlowType)),
+		})
+	}
+
 	switch {
 	case errors.Is(err, inboundclient.ErrFKInvalidAuthFlow):
 		return &ErrorInvalidAuthFlowID
+	case errors.Is(err, inboundclient.ErrFKInvalidDeviceGrantFlow):
+		return &ErrorInvalidDeviceGrantFlowID
+	case errors.Is(err, inboundclient.ErrFKDeviceGrantFlowRequired):
+		return &ErrorDeviceGrantFlowRequired
 	case errors.Is(err, inboundclient.ErrFKInvalidRegistrationFlow):
 		return &ErrorInvalidRegistrationFlowID
 	case errors.Is(err, inboundclient.ErrFKFlowDefinitionRetrievalFailed):

@@ -95,6 +95,8 @@ func (h *agentHandler) HandleAgentPostRequest(w http.ResponseWriter, r *http.Req
 		ProjectID:   req.ProjectID,
 		InboundAuthProfile: providers.InboundAuthProfile{
 			AuthFlowID:                req.AuthFlowID,
+			DeviceGrantFlowID:         req.DeviceGrantFlowID,
+			DeviceGrantFlowHandle:     req.DeviceGrantFlowHandle,
 			RegistrationFlowID:        req.RegistrationFlowID,
 			IsRegistrationFlowEnabled: req.IsRegistrationFlowEnabled,
 			RecoveryFlowID:            req.RecoveryFlowID,

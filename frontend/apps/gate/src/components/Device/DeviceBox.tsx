@@ -5,10 +5,6 @@ import {useDesign, FlowComponentRenderer, AuthCardLayout} from '@thunderid/desig
 import {useTemplateLiteralResolver} from '@thunderid/hooks';
 import {
   DeviceGrant,
-  CONSENT_INVALID_KEY_PREFIX,
-  CONSENT_MODIFIED_KEY_PREFIX,
-  getConsentElementDecision,
-  getConsentOptionalKey,
   type DeviceGrantRenderProps,
   type EmbeddedFlowComponent,
 } from '@thunderid/react';
@@ -17,104 +13,6 @@ import {Alert, Box, CircularProgress, Typography} from '@wso2/oxygen-ui';
 import type {JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import useFlowForm from '../../hooks/useFlowForm';
-
-interface ConsentElement {
-  name: string;
-}
-
-interface ConsentPurpose {
-  purposeId: string;
-  purposeName?: string;
-  essential?: ConsentElement[] | null;
-  optional?: ConsentElement[] | null;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
-}
-
-function isConsentElement(value: unknown): value is ConsentElement {
-  return isRecord(value) && typeof value.name === 'string';
-}
-
-function parseConsentPurposes(value: unknown): ConsentPurpose[] | null {
-  let parsed: unknown = value;
-  if (typeof parsed === 'string') {
-    try {
-      parsed = JSON.parse(parsed) as unknown;
-    } catch {
-      return null;
-    }
-  }
-
-  if (isRecord(parsed)) parsed = parsed.purposes;
-  if (!Array.isArray(parsed)) return null;
-
-  const purposes: ConsentPurpose[] = [];
-  for (const purpose of parsed) {
-    if (!isRecord(purpose) || typeof purpose.purposeId !== 'string') return null;
-    const essential = purpose.essential;
-    const optional = purpose.optional;
-    if (
-      (essential != null && (!Array.isArray(essential) || !essential.every(isConsentElement))) ||
-      (optional != null && (!Array.isArray(optional) || !optional.every(isConsentElement)))
-    ) {
-      return null;
-    }
-    purposes.push({
-      purposeId: purpose.purposeId,
-      purposeName: typeof purpose.purposeName === 'string' ? purpose.purposeName : undefined,
-      essential,
-      optional,
-    });
-  }
-
-  return purposes;
-}
-
-function compileConsentInputs(
-  action: EmbeddedFlowComponent,
-  inputs: Record<string, string>,
-  additionalData: Record<string, unknown>,
-): Record<string, string> {
-  const consentPrompt = additionalData.consentPrompt;
-  if (consentPrompt == null || action.eventType?.toUpperCase() !== 'SUBMIT') return inputs;
-
-  const purposes = parseConsentPurposes(consentPrompt);
-  if (!purposes) return inputs;
-
-  const isDeny = action.variant?.toLowerCase() !== 'primary';
-  const decisions = {
-    approved: !isDeny,
-    ...(isDeny ? {reason: 'user_denied'} : {}),
-    purposes: purposes.map((purpose) => ({
-      approved: !isDeny,
-      elements: [
-        ...(purpose.essential ?? []).map((element) => ({approved: !isDeny, name: element.name})),
-        ...(purpose.optional ?? []).map((element) =>
-          getConsentElementDecision(
-            purpose.purposeId,
-            element,
-            !isDeny && inputs[getConsentOptionalKey(purpose.purposeId, element.name)] === 'true',
-            inputs,
-          ),
-        ),
-      ],
-      purposeName: purpose.purposeName ?? '',
-    })),
-  };
-  const compiledInputs: Record<string, string> = {...inputs, consent_decisions: JSON.stringify(decisions)};
-  Object.keys(compiledInputs).forEach((key) => {
-    if (
-      key.startsWith('__consent_opt__') ||
-      key.startsWith(CONSENT_MODIFIED_KEY_PREFIX) ||
-      key.startsWith(CONSENT_INVALID_KEY_PREFIX)
-    ) {
-      delete compiledInputs[key];
-    }
-  });
-  return compiledInputs;
-}
 
 export default function DeviceBox(): JSX.Element {
   const {resolve, resolveAll} = useTemplateLiteralResolver();
@@ -225,8 +123,7 @@ export default function DeviceBox(): JSX.Element {
                       onInputChange={updateInput}
                       onValidate={(items) => validateForm(items, initialValues)}
                       onSubmit={(action, inputs) => {
-                        const submittedInputs = compileConsentInputs(action, inputs, additionalData);
-                        void onSubmit({inputs: submittedInputs, action: action.id}).finally(() => {
+                        void onSubmit({inputs, action: action.id}).finally(() => {
                           clearInputs();
                         });
                       }}

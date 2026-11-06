@@ -43,6 +43,7 @@ var defaultGrantTypes = []providers.GrantType{
 var delegationGrantTypes = []providers.GrantType{
 	providers.GrantTypeAuthorizationCode,
 	providers.GrantTypeCIBA,
+	providers.GrantTypeDeviceCode,
 	providers.GrantTypeTokenExchange,
 	providers.GrantTypeJWTBearer,
 }

@@ -12,11 +12,13 @@ import {
 } from '@thunderid/components';
 import {useGetAgentType, useGetAgentTypes} from '@thunderid/configure-agent-types';
 import {
+  OAuth2GrantTypes,
   getBackchannelLogoutUriServerError,
   hasUserAccess,
   isIdJagEnabled,
   validateBackchannelLogoutUri,
 } from '@thunderid/configure-applications';
+import {FlowType, useGetFlows} from '@thunderid/configure-flows';
 import {dropNonConformingOptionalAttributes} from '@thunderid/configure-users';
 import {useLogger} from '@thunderid/logger/react';
 import {getErrorMessage, isEqualIgnoringEmpty} from '@thunderid/utils';
@@ -36,7 +38,7 @@ import {
   Typography,
 } from '@wso2/oxygen-ui';
 import {ArrowLeft, Edit} from '@wso2/oxygen-ui-icons-react';
-import {useState, useCallback, useMemo, type SyntheticEvent, type JSX, type ReactNode} from 'react';
+import {useState, useCallback, type SyntheticEvent, type JSX, type ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
 import {Link, useLocation, useNavigate, useParams} from 'react-router';
 import useGetAgent from '../api/useGetAgent';
@@ -134,6 +136,25 @@ export default function AgentEditPage(): JSX.Element {
   const [identityAssertionsInvalid, setIdentityAssertionsInvalid] = useState(false);
   const [lifespanInvalid, setLifespanInvalid] = useState(false);
 
+  const oauth2Config: OAuthAgentConfig | undefined = (editedAgent.inboundAuthConfig ?? agent?.inboundAuthConfig)?.find(
+    (config) => config.type === 'oauth2',
+  )?.config;
+  const deviceGrantEnabled = oauth2Config?.grantTypes?.includes(OAuth2GrantTypes.DEVICE_CODE) ?? false;
+  const deviceGrantFlowId = editedAgent.deviceGrantFlowId ?? agent?.deviceGrantFlowId;
+  const {
+    data: deviceGrantFlowList,
+    isLoading: isLoadingDeviceGrantFlows,
+    error: deviceGrantFlowQueryError,
+    refetch: refetchDeviceGrantFlows,
+  } = useGetFlows({
+    flowType: FlowType.DEVICE_GRANT,
+    limit: 100,
+    fetchAllPages: true,
+    enabled: Boolean(deviceGrantEnabled && !deviceGrantFlowId),
+  });
+  const defaultDeviceGrantFlow = deviceGrantFlowList?.flows.find((flow) => flow.handle === 'default-device-grant-flow');
+  const effectiveDeviceGrantFlowId = deviceGrantFlowId ?? (deviceGrantEnabled ? defaultDeviceGrantFlow?.id : undefined);
+
   const handleBack = async () => {
     await navigate(routes.agents.list());
   };
@@ -165,11 +186,22 @@ export default function AgentEditPage(): JSX.Element {
 
     // Drop stale optional attribute values so an untouched mismatch doesn't block the update.
     const attributes = dropNonConformingOptionalAttributes(updatedData.attributes ?? {}, agentTypeDetails?.schema);
+    const saveDeviceGrantEnabled = updatedData.inboundAuthConfig
+      ?.find((authConfig) => authConfig.type === 'oauth2')
+      ?.config?.grantTypes?.includes(OAuth2GrantTypes.DEVICE_CODE);
+    const saveDeviceGrantFlowId =
+      updatedData.deviceGrantFlowId ??
+      deviceGrantFlowList?.flows.find((flow) => flow.handle === 'default-device-grant-flow')?.id;
 
     try {
       await updateAgent.mutateAsync({
         agentId,
-        data: {...updatedData, attributes, delegated: isDelegatedAgent(updatedData.inboundAuthConfig)},
+        data: {
+          ...updatedData,
+          attributes,
+          delegated: isDelegatedAgent(updatedData.inboundAuthConfig),
+          ...(saveDeviceGrantEnabled && saveDeviceGrantFlowId ? {deviceGrantFlowId: saveDeviceGrantFlowId} : {}),
+        },
       });
       setEditedAgent({});
       await refetch();
@@ -178,12 +210,11 @@ export default function AgentEditPage(): JSX.Element {
     } catch (err) {
       logger.error('Failed to update agent', {error: err});
     }
-  }, [agent, agentId, editedAgent, agentTypeDetails, updateAgent, refetch, logger]);
+  }, [agent, agentId, editedAgent, agentTypeDetails, updateAgent, refetch, logger, deviceGrantFlowList]);
 
-  const hasChanges = useMemo(
-    () => Object.entries(editedAgent).some(([key, value]) => !isEqualIgnoringEmpty(value, agent?.[key as keyof Agent])),
-    [editedAgent, agent],
-  );
+  const hasChanges =
+    Boolean(deviceGrantEnabled && defaultDeviceGrantFlow && !deviceGrantFlowId) ||
+    Object.entries(editedAgent).some(([key, value]) => !isEqualIgnoringEmpty(value, agent?.[key as keyof Agent]));
 
   const resourceTypeTitle = t('agents:listing.title', 'Agents');
 
@@ -230,10 +261,6 @@ export default function AgentEditPage(): JSX.Element {
     );
   }
 
-  const oauth2Config: OAuthAgentConfig | undefined = (editedAgent.inboundAuthConfig ?? agent.inboundAuthConfig)?.find(
-    (config) => config.type === 'oauth2',
-  )?.config;
-
   const hasOAuth = Boolean(oauth2Config);
 
   // Computed directly from state rather than reported by the Advanced/Access tab content, since
@@ -253,6 +280,7 @@ export default function AgentEditPage(): JSX.Element {
   const isMissingAllowedUserType = hasAuthorizationCodeGrant && allowedUserTypes.length === 0;
   const isMissingCertificate =
     oauth2Config?.tokenEndpointAuthMethod === 'private_key_jwt' && !oauth2Config?.certificate?.value;
+  const isMissingDeviceGrantFlow = Boolean(deviceGrantEnabled && !effectiveDeviceGrantFlowId);
   // The field shows only with a user-facing grant, so a hidden value never blocks saving. The field
   // also reports a typed value it has not committed because it is invalid.
   const isInvalidBackchannelLogoutUri =
@@ -277,6 +305,7 @@ export default function AgentEditPage(): JSX.Element {
     isMissingRedirectUri ||
     isMissingAllowedUserType ||
     isMissingCertificate ||
+    isMissingDeviceGrantFlow ||
     isInvalidBackchannelLogoutUri ||
     isInvalidIdentityAssertions ||
     isInvalidLifespan;
@@ -298,6 +327,24 @@ export default function AgentEditPage(): JSX.Element {
   }
   if (isMissingCertificate) {
     validationIssues.push(t('agents:edit.page.validation.missingCertificate', 'add a certificate'));
+  }
+  if (isMissingDeviceGrantFlow) {
+    validationIssues.push(
+      isLoadingDeviceGrantFlows
+        ? t(
+            'agents:edit.page.validation.loadingDeviceGrantFlow',
+            'The default Device Grant flow is loading. Please wait before saving.',
+          )
+        : deviceGrantFlowQueryError
+          ? t(
+              'agents:edit.page.validation.deviceGrantFlowQueryFailed',
+              'Could not load Device Grant flows. Retry loading the flow list before saving.',
+            )
+          : t(
+              'agents:edit.page.validation.missingDeviceGrantFlow',
+              'Select a Device Grant flow in the Flows tab before saving.',
+            ),
+    );
   }
   if (isInvalidBackchannelLogoutUri) {
     validationIssues.push(
@@ -389,10 +436,12 @@ export default function AgentEditPage(): JSX.Element {
       label: t('agents:edit.page.tabs.flows', 'Flows'),
       render: () => (
         <EditFlowsSettings
-          agent={agent}
+          agent={{...agent, deviceGrantFlowId: effectiveDeviceGrantFlowId}}
           editedAgent={editedAgent}
           oauth2Config={oauth2Config}
           onFieldChange={handleFieldChange}
+          deviceGrantFlowQueryError={deviceGrantFlowQueryError}
+          onRetryDeviceGrantFlowQuery={() => void refetchDeviceGrantFlows()}
         />
       ),
     });
