@@ -1315,14 +1315,23 @@ func (s *importService) importAgent(
 
 	if dryRun {
 		if options.IsUpsertEnabled() && req.ID != "" {
-			_, svcErr := s.agentService.GetAgent(ctx, req.ID, false)
+			existing, svcErr := s.agentService.GetAgent(ctx, req.ID, false)
 			if svcErr == nil {
+				// An update checks the owner only when it changes it, as writing it does.
+				if req.Owner != existing.Owner {
+					if svcErr := s.checkAgentOwner(ctx, req.Owner); svcErr != nil {
+						return serviceErrorOutcome(resourceTypeAgent, req.ID, "", operationUpdate, svcErr)
+					}
+				}
 				return successOutcome(resourceTypeAgent, req.ID, "", operationUpdate)
 			}
 
 			if !isNotFoundServiceError(svcErr) {
 				return serviceErrorOutcome(resourceTypeAgent, req.ID, "", operationUpdate, svcErr)
 			}
+		}
+		if svcErr := s.checkAgentOwner(ctx, req.Owner); svcErr != nil {
+			return serviceErrorOutcome(resourceTypeAgent, req.ID, "", operationCreate, svcErr)
 		}
 
 		return successOutcome(resourceTypeAgent, req.ID, "", operationCreate)
@@ -1822,4 +1831,46 @@ func (s *importService) dryRunAuthorizationDetailType(ctx context.Context, t *pr
 			&authzdetailmgt.ErrorTypeIDConflict)
 	}
 	return successOutcome(resourceTypeAuthorizationDetailType, t.ID, t.Name, operationCreate)
+}
+
+// checkAgentOwner is the owner check a dry run makes in place of the write that would make it: an owner
+// another document of the request creates passes, and any other must already be there.
+func (s *importService) checkAgentOwner(ctx context.Context, owner string) *tidcommon.ServiceError {
+	if owner == "" || requestCreates(ctx, owner) {
+		return nil
+	}
+	return s.agentService.ValidateOwner(ctx, owner)
+}
+
+// dryRunContext is the context a request's documents are imported on. A dry run writes nothing, so what a
+// document names that another document of the same request creates is taken as there, as the import
+// would have created it first.
+func dryRunContext(ctx context.Context, dryRun bool, docs []parsedDocument) context.Context {
+	if !dryRun {
+		return ctx
+	}
+	return withRequestIDs(ctx, docs)
+}
+
+// requestIDsKey keys, on a dry run's context, the ids of the resources the request's documents create.
+type requestIDsKey struct{}
+
+// withRequestIDs records the ids of the resources a request's documents name as their own.
+func withRequestIDs(ctx context.Context, docs []parsedDocument) context.Context {
+	ids := map[string]bool{}
+	for _, doc := range docs {
+		var named struct {
+			ID string `yaml:"id"`
+		}
+		if doc.Node != nil && doc.Node.Decode(&named) == nil && named.ID != "" {
+			ids[named.ID] = true
+		}
+	}
+	return context.WithValue(ctx, requestIDsKey{}, ids)
+}
+
+// requestCreates reports whether a document of the request creates the resource with the id.
+func requestCreates(ctx context.Context, id string) bool {
+	ids, _ := ctx.Value(requestIDsKey{}).(map[string]bool)
+	return ids[id]
 }

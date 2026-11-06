@@ -78,7 +78,11 @@ func (f *fakeAgentService) DeleteAgent(_ context.Context, id string) *tidcommon.
 	return f.deleteErr
 }
 
+func (f *fakeAgentService) ValidateOwner(context.Context, string) *tidcommon.ServiceError { return nil }
+
 func (f *errAgentService) DeleteAgent(context.Context, string) *tidcommon.ServiceError { return nil }
+
+func (f *errAgentService) ValidateOwner(context.Context, string) *tidcommon.ServiceError { return nil }
 
 func (f *fakeResourceServerService) DeleteResourceServer(context.Context, string) *tidcommon.ServiceError {
 	return nil

@@ -104,3 +104,35 @@ func (suite *ServiceAdaptersTestSuite) TestImportAgent_MalformedLifespanFailsDry
 	assert.Equal(t, agent.ErrorInvalidLifespan.Code, outcome.Code)
 	agentSvc.AssertNotCalled(t, "CreateAgent", mock.Anything, mock.Anything)
 }
+
+// A dry run checks an agent's owner as the write would: an owner the deployment lacks is refused, one
+// another document of the request creates passes, and an update checks it only when it changes it.
+func (suite *ServiceAdaptersTestSuite) TestImportAgent_DryRunChecksTheOwner() {
+	t := suite.T()
+	ctx := context.Background()
+	agentSvc := agentmock.NewAgentServiceInterfaceMock(t)
+	agentSvc.On("ValidateOwner", mock.Anything, "ghost").Return(&agent.ErrorOwnerNotFound).Once()
+	agentSvc.On("ValidateOwner", mock.Anything, "user-1").Return(nil).Once()
+	agentSvc.On("GetAgent", mock.Anything, "agent-2", false).
+		Return(&agentmodel.AgentGetResponse{ID: "agent-2", Owner: "ghost"}, nil).Once()
+	svc := &importService{agentService: agentSvc}
+
+	refused := svc.importAgent(ctx, agentDoc(t, "id: agent-1\ntype: default\nouId: ou-1\nowner: ghost\n"),
+		noUpsert(), true, nil)
+	assert.Equal(t, statusFailed, refused.Status)
+	assert.Equal(t, agent.ErrorOwnerNotFound.Code, refused.Code)
+
+	known := svc.importAgent(ctx, agentDoc(t, "id: agent-1\ntype: default\nouId: ou-1\nowner: user-1\n"),
+		noUpsert(), true, nil)
+	assert.Equal(t, statusSuccess, known.Status)
+
+	inRequest := withRequestIDs(ctx, []parsedDocument{agentDoc(t, "id: user-9\n")})
+	created := svc.importAgent(inRequest, agentDoc(t, "id: agent-1\ntype: default\nouId: ou-1\nowner: user-9\n"),
+		noUpsert(), true, nil)
+	assert.Equal(t, statusSuccess, created.Status, "an owner the request creates was refused")
+
+	upsert := true
+	unchanged := svc.importAgent(ctx, agentDoc(t, "id: agent-2\ntype: default\nouId: ou-1\nowner: ghost\n"),
+		&ImportOptions{Upsert: &upsert}, true, nil)
+	assert.Equal(t, statusSuccess, unchanged.Status, "an unchanged owner was checked")
+}

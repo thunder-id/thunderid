@@ -271,6 +271,7 @@ type agentAdapter interface {
 		*agentmodel.AgentCompleteResponse, *tidcommon.ServiceError)
 	UpdateAgentCredentials(ctx context.Context, agentID string, credentials json.RawMessage) *tidcommon.ServiceError
 	DeleteAgent(ctx context.Context, agentID string) *tidcommon.ServiceError
+	ValidateOwner(ctx context.Context, ownerID string) *tidcommon.ServiceError
 }
 
 type presentationDefinitionAdapter interface {
@@ -462,6 +463,7 @@ func (s *importService) ImportResources(
 	var mandating []userSharingReplay
 
 	orderedDocs := orderDocumentsByDependencies(docs)
+	ctx = dryRunContext(ctx, request.DryRun, docs)
 
 	for _, doc := range orderedDocs {
 		originalFlowID := ""

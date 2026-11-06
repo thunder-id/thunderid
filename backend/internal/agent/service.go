@@ -58,6 +58,9 @@ type AgentServiceInterface interface {
 		*model.AgentRoleListResponse, *tidcommon.ServiceError)
 	ValidateAgent(ctx context.Context, agent *providers.Agent, excludeID string) (
 		clientID, clientSecret string, client inboundmodel.InboundClient, svcErr *tidcommon.ServiceError)
+	// ValidateOwner checks that an owner names a user, application or agent of the deployment, as
+	// creating an agent with it does. No owner passes.
+	ValidateOwner(ctx context.Context, ownerID string) *tidcommon.ServiceError
 	GetResourceDependencies(
 		ctx context.Context, resourceType, id string) ([]resourcedependency.ResourceDependency, error)
 	SetDependencyRegistry(r resourcedependency.Registry)
@@ -1170,6 +1173,11 @@ func (s *agentService) resolveUpdateOwner(
 		}
 	}
 	return owner, nil
+}
+
+// ValidateOwner checks that an owner names an entity of the deployment.
+func (s *agentService) ValidateOwner(ctx context.Context, ownerID string) *tidcommon.ServiceError {
+	return s.validateOwnerExists(ctx, ownerID)
 }
 
 // validateOwnerExists returns an error when the given owner ID does not resolve to an existing entity.

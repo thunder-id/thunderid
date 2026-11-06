@@ -122,6 +122,10 @@ func (s *InlineStubAgentService) GetAgentRoles(
 	return &model.AgentRoleListResponse{}, nil
 }
 
+func (s *InlineStubAgentService) ValidateOwner(context.Context, string) *tidcommon.ServiceError {
+	return nil
+}
+
 func (s *InlineStubAgentService) ValidateAgent(
 	ctx context.Context, agent *providers.Agent, flowID string,
 ) (string, string, inboundmodel.InboundClient, *tidcommon.ServiceError) {

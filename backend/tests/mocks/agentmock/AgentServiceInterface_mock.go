@@ -943,3 +943,62 @@ func (_c *AgentServiceInterfaceMock_ValidateAgent_Call) RunAndReturn(run func(ct
 	_c.Call.Return(run)
 	return _c
 }
+
+// ValidateOwner provides a mock function for the type AgentServiceInterfaceMock
+func (_mock *AgentServiceInterfaceMock) ValidateOwner(ctx context.Context, ownerID string) *common.ServiceError {
+	ret := _mock.Called(ctx, ownerID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ValidateOwner")
+	}
+
+	var r0 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *common.ServiceError); ok {
+		r0 = returnFunc(ctx, ownerID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*common.ServiceError)
+		}
+	}
+	return r0
+}
+
+// AgentServiceInterfaceMock_ValidateOwner_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ValidateOwner'
+type AgentServiceInterfaceMock_ValidateOwner_Call struct {
+	*mock.Call
+}
+
+// ValidateOwner is a helper method to define mock.On call
+//   - ctx context.Context
+//   - ownerID string
+func (_e *AgentServiceInterfaceMock_Expecter) ValidateOwner(ctx any, ownerID any) *AgentServiceInterfaceMock_ValidateOwner_Call {
+	return &AgentServiceInterfaceMock_ValidateOwner_Call{Call: _e.mock.On("ValidateOwner", ctx, ownerID)}
+}
+
+func (_c *AgentServiceInterfaceMock_ValidateOwner_Call) Run(run func(ctx context.Context, ownerID string)) *AgentServiceInterfaceMock_ValidateOwner_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *AgentServiceInterfaceMock_ValidateOwner_Call) Return(serviceError *common.ServiceError) *AgentServiceInterfaceMock_ValidateOwner_Call {
+	_c.Call.Return(serviceError)
+	return _c
+}
+
+func (_c *AgentServiceInterfaceMock_ValidateOwner_Call) RunAndReturn(run func(ctx context.Context, ownerID string) *common.ServiceError) *AgentServiceInterfaceMock_ValidateOwner_Call {
+	_c.Call.Return(run)
+	return _c
+}
