@@ -277,13 +277,28 @@ The background scheduler that processes CIBA upgrade requests is **disabled by d
 
 ## Run
 
-From the sample root, install all workspace dependencies:
+The services are npm workspaces that share one `node_modules` at the sample root. From the sample root, install the dependencies of every service once:
 
 ```bash
-cd backend     && npm install && npm start                   # http://localhost:8787 (REST + /mcp)
-cd smtp-server && npm install && npm run dev                 # SMTP :2525 | Inbox http://localhost:8788
-cd ai-agent    && npm install && npm run dev                 # http://localhost:8790/chat
-cd frontend    && npm install && npm run dev                 # http://localhost:5173
+npm install
+```
+
+Run only one `npm install` at a time. Installs that run at once in different folders write to the same `node_modules` and break each other.
+
+Then start every service, including the Skyline Lounge kiosk on `http://localhost:8795`:
+
+```bash
+npm run dev
+```
+
+`npm run dev:b2c` starts the same services without the AI agent. To run each service in its own terminal instead, start it from its folder:
+
+```bash
+cd backend     && npm start                   # http://localhost:8787 (REST + /mcp)
+cd smtp-server && npm run dev                 # SMTP :2525 | Inbox http://localhost:8788
+cd ai-agent    && npm run dev                 # http://localhost:8790/chat
+cd frontend    && npm run dev                 # http://localhost:5173
+cd lounge      && npm start                   # http://localhost:8795
 ```
 
 The Wayfinder server hosts both the REST API on `/api/*` and the MCP server on `/mcp`. Sample flights, hotels, and trips are held in memory and reloaded on every start, so there is no database to set up. Bookings and upgrade requests are in memory too, and reset when the server restarts.

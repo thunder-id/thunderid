@@ -9,8 +9,9 @@ Configure with `.env.example` in this folder.
 
 ## Run
 
+Install the dependencies once from the sample root with `npm install` (see the parent README), not from this folder. Then start the service from here:
+
 ```bash
-npm install
 npm run dev
 ```
 
