@@ -2058,8 +2058,56 @@ value:
 
 ---
 resource_type: server_config
-# Activates the Wayfinder staff onboarding flow.
+# Activates the Wayfinder staff onboarding flow. An import replaces the whole section, so this
+# repeats every default from the server bootstrap and changes only userOnboardingFlow.
 name: flow
 value:
+  authFlow:
+    defaultHandle: default-flow
+    expirySeconds: 3600
+  registrationFlow:
+    expirySeconds: 3600
+  recoveryFlow:
+    expirySeconds: 1800
+  signOutFlow:
+    defaultHandle: default-flow
+    expirySeconds: 1800
   userOnboardingFlow:
     defaultHandle: wayfinder-onboarding-flow
+    expirySeconds: 86400
+  userDeletionFlow:
+    defaultHandle: default-user-deletion-flow
+  applicationDeletionFlow:
+    defaultHandle: default-application-deletion-flow
+  secretRegenerationFlow:
+    defaultHandle: default-secret-regeneration-flow
+  agentOnboardingFlow:
+    defaultHandle: default-agent-onboarding-flow
+  roleAssignmentRemovalFlow:
+    defaultHandle: default-role-assignment-removal-flow
+  roleDeletionFlow:
+    defaultHandle: default-role-deletion-flow
+  rolePermissionRemovalFlow:
+    defaultHandle: default-role-permission-removal-flow
+  groupDeletionFlow:
+    defaultHandle: default-group-deletion-flow
+  groupMembershipRemovalFlow:
+    defaultHandle: default-group-membership-removal-flow
+  actionDeletionFlow:
+    defaultHandle: default-action-deletion-flow
+  userUnlockFlow:
+    defaultHandle: default-user-unlock-flow
+  userSuspendFlow:
+    defaultHandle: default-user-suspend-flow
+  userUnsuspendFlow:
+    defaultHandle: default-user-unsuspend-flow
+  agentUnlockFlow:
+    defaultHandle: default-agent-unlock-flow
+  agentSuspendFlow:
+    defaultHandle: default-agent-suspend-flow
+  agentUnsuspendFlow:
+    defaultHandle: default-agent-unsuspend-flow
+  applicationSuspendFlow:
+    defaultHandle: default-application-suspend-flow
+  applicationUnsuspendFlow:
+    defaultHandle: default-application-unsuspend-flow
