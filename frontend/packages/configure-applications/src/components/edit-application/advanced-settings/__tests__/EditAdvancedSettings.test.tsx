@@ -691,4 +691,131 @@ describe('EditAdvancedSettings', () => {
       expect(mockOnDeleteSuccess).toHaveBeenCalledTimes(1);
     });
   });
+
+  describe('Consent validity period field', () => {
+    const fieldName = 'applications:edit.advanced.loginConsent.validityPeriod.label';
+    const consentTestId = 'login-consent-validity-period';
+
+    it('renders the field for a user-facing client', () => {
+      render(
+        <EditAdvancedSettings
+          application={mockApplication}
+          editedApp={{}}
+          oauth2Config={mockOAuth2Config}
+          onFieldChange={mockOnFieldChange}
+        />,
+      );
+
+      expect(screen.getByLabelText(fieldName)).toBeInTheDocument();
+    });
+
+    it('places the field in the OAuth 2 configuration card, after the client authentication method', () => {
+      render(
+        <EditAdvancedSettings
+          application={mockApplication}
+          editedApp={{}}
+          oauth2Config={mockOAuth2Config}
+          onFieldChange={mockOnFieldChange}
+        />,
+      );
+
+      const authMethod = document.getElementById('token_endpoint_auth_method')!;
+      const consentField = screen.getByLabelText(fieldName);
+      const publicClient = screen.getByLabelText('applications:edit.advanced.labels.publicClient');
+
+      expect(authMethod.compareDocumentPosition(consentField) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(consentField.compareDocumentPosition(publicClient) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+      const card = screen.getByText('applications:edit.advanced.labels.oauth2Config').closest('[class*="MuiPaper"]');
+      expect(card).toContainElement(authMethod);
+      expect(card).toContainElement(consentField);
+    });
+
+    it('hides the field for a client without a user-facing grant', () => {
+      render(
+        <EditAdvancedSettings
+          application={mockApplication}
+          editedApp={{}}
+          oauth2Config={{...mockOAuth2Config, grantTypes: ['client_credentials']}}
+          onFieldChange={mockOnFieldChange}
+        />,
+      );
+
+      expect(screen.queryByLabelText(fieldName)).not.toBeInTheDocument();
+    });
+
+    it('hides the field when the application has no OAuth config', () => {
+      render(<EditAdvancedSettings application={mockApplication} editedApp={{}} onFieldChange={mockOnFieldChange} />);
+
+      expect(screen.queryByLabelText(fieldName)).not.toBeInTheDocument();
+    });
+
+    it('prefers editedApp.loginConsent over application.loginConsent', () => {
+      render(
+        <EditAdvancedSettings
+          application={{...mockApplication, loginConsent: {validityPeriod: 3600}}}
+          editedApp={{loginConsent: {validityPeriod: 120}}}
+          oauth2Config={mockOAuth2Config}
+          onFieldChange={mockOnFieldChange}
+        />,
+      );
+
+      expect(screen.getByTestId(consentTestId)).toHaveValue(2);
+    });
+
+    it('calls onFieldChange with the typed period in the chosen unit as seconds', () => {
+      render(
+        <EditAdvancedSettings
+          application={{...mockApplication, loginConsent: {validityPeriod: 3600}}}
+          editedApp={{}}
+          oauth2Config={mockOAuth2Config}
+          onFieldChange={mockOnFieldChange}
+        />,
+      );
+
+      fireEvent.change(screen.getByTestId(consentTestId), {target: {value: '2'}});
+
+      expect(mockOnFieldChange).toHaveBeenCalledWith('loginConsent', {validityPeriod: 7200});
+    });
+
+    it('disables the validity period field when the application is read-only', () => {
+      render(
+        <EditAdvancedSettings
+          application={{...mockApplication, isReadOnly: true, loginConsent: {validityPeriod: 3600}}}
+          editedApp={{}}
+          oauth2Config={mockOAuth2Config}
+          onFieldChange={mockOnFieldChange}
+        />,
+      );
+
+      expect(screen.getByTestId(consentTestId)).toBeDisabled();
+    });
+
+    it('shows the stored validity period again on reset', () => {
+      const appWithConsent: Application = {...mockApplication, loginConsent: {validityPeriod: 3600}};
+      const {rerender} = render(
+        <EditAdvancedSettings
+          application={appWithConsent}
+          editedApp={{loginConsent: {validityPeriod: 18000}}}
+          oauth2Config={mockOAuth2Config}
+          onFieldChange={mockOnFieldChange}
+          sectionResetKey={0}
+        />,
+      );
+
+      expect(screen.getByTestId(consentTestId)).toHaveValue(5);
+
+      rerender(
+        <EditAdvancedSettings
+          application={appWithConsent}
+          editedApp={{}}
+          oauth2Config={mockOAuth2Config}
+          onFieldChange={mockOnFieldChange}
+          sectionResetKey={1}
+        />,
+      );
+
+      expect(screen.getByTestId(consentTestId)).toHaveValue(1);
+    });
+  });
 });

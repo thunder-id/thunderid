@@ -26,7 +26,9 @@ import {
 import {Lock, Trash, Plus} from '@wso2/oxygen-ui-icons-react';
 import {useState} from 'react';
 import {useTranslation} from 'react-i18next';
+import LoginConsentField from './LoginConsentField';
 import useValidationReport from '../../../hooks/useValidationReport';
+import type {LoginConsentConfig} from '../../../models/application';
 import type {ApplicationTemplate} from '../../../models/application-templates';
 import type {OAuth2Config} from '../../../models/oauth';
 import {OAuth2GrantTypes, OAuth2ResponseTypes, TokenEndpointAuthMethods} from '../../../models/oauth';
@@ -92,6 +94,14 @@ interface OAuth2ConfigSectionProps {
    * fields currently have validation errors.
    */
   onValidationChange?: (hasErrors: boolean) => void;
+  /**
+   * The login consent configuration, shown for a client with a user-facing grant.
+   */
+  loginConsent?: LoginConsentConfig;
+  /**
+   * Callback to handle login consent changes. When omitted the consent validity period is read-only.
+   */
+  onLoginConsentChange?: (loginConsent: LoginConsentConfig) => void;
 }
 
 /**
@@ -102,6 +112,8 @@ interface OAuth2ConfigSectionProps {
  * - Allowed response types (multi-select dropdown from OIDC discovery)
  * - Authorized redirect URIs and post-logout redirect URIs (add/remove/edit with validation)
  * - Back-channel logout URI, for a client with a user-facing grant
+ * - Client authentication method
+ * - Consent validity period, for a client with a user-facing grant
  * - Public client status (toggle)
  * - PKCE requirement status (toggle)
  *
@@ -119,6 +131,8 @@ export default function OAuth2ConfigSection({
   allowedGrantTypes = undefined,
   showRedirectUris = true,
   onValidationChange = undefined,
+  loginConsent = undefined,
+  onLoginConsentChange = undefined,
 }: OAuth2ConfigSectionProps) {
   const {t} = useTranslation();
   const {discovery} = useThunderID();
@@ -629,6 +643,15 @@ export default function OAuth2ConfigSection({
             {tokenMethodCaption}
           </Typography>
         </FormControl>
+
+        {/* Consent is collected only in flows that sign a user in. */}
+        {hasUserAccess(oauth2Config.grantTypes) && (
+          <LoginConsentField
+            loginConsent={loginConsent}
+            onLoginConsentChange={onLoginConsentChange}
+            disabled={disabled}
+          />
+        )}
 
         {/* ACR Values */}
         {availableAcrValues.length > 0 && (

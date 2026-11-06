@@ -4,7 +4,7 @@
 import {MenuItem, Stack, TextField} from '@wso2/oxygen-ui';
 import {useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
-import {toDurationParts, toSeconds, type DurationParts, type DurationUnit} from '../../utils/duration';
+import {toDurationParts, toSeconds, type DurationParts, type DurationUnit} from './duration';
 
 interface DurationDraft {
   unit: DurationUnit;
@@ -100,23 +100,19 @@ export default function DurationField({
   const unitOptions: {value: string; label: string}[] = [
     {
       value: 'minutes',
-      label: one
-        ? t('settings:accountLock.units.minute', 'Minute')
-        : t('settings:accountLock.units.minutes', 'Minutes'),
+      label: one ? t('common:units.minute', 'Minute') : t('common:units.minutes', 'Minutes'),
     },
     {
       value: 'hours',
-      label: one ? t('settings:accountLock.units.hour', 'Hour') : t('settings:accountLock.units.hours', 'Hours'),
+      label: one ? t('common:units.hour', 'Hour') : t('common:units.hours', 'Hours'),
     },
     {
       value: 'days',
-      label: one ? t('settings:accountLock.units.day', 'Day') : t('settings:accountLock.units.days', 'Days'),
+      label: one ? t('common:units.day', 'Day') : t('common:units.days', 'Days'),
     },
     {
       value: 'seconds',
-      label: one
-        ? t('settings:accountLock.units.second', 'Second')
-        : t('settings:accountLock.units.seconds', 'Seconds'),
+      label: one ? t('common:units.second', 'Second') : t('common:units.seconds', 'Seconds'),
     },
   ];
   if (zeroLabel !== undefined) {
@@ -151,7 +147,7 @@ export default function DurationField({
     }
   };
 
-  const unitLabel: string = t('settings:accountLock.units.label', 'Unit');
+  const unitLabel: string = t('common:units.label', 'Unit');
   // With the number box hidden, the select carries the field's label and error.
   const selectLabel: string = isZero ? label : unitLabel;
   let selectHelperText: string | undefined;

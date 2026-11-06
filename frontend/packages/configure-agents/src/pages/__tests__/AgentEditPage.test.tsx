@@ -5,7 +5,7 @@
 import userEvent from '@testing-library/user-event';
 import {DeployStatusProvider} from '@thunderid/components';
 import {CapabilitiesProvider, ProjectScopeProvider} from '@thunderid/contexts';
-import {fireEvent, render, screen, waitFor} from '@thunderid/test-utils';
+import {fireEvent, render, screen, waitFor, within} from '@thunderid/test-utils';
 import type {ComponentProps, ReactNode} from 'react';
 import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
 import AgentConstants from '../../constants/agent-constants';
@@ -1559,6 +1559,68 @@ describe('AgentEditPage', () => {
         await user.click(screen.getByText('Stage a future lifespan end'));
 
         expect(screen.getByRole('button', {name: 'Save'})).not.toBeDisabled();
+      });
+    });
+
+    describe('consent validity', () => {
+      const renderDelegatedAgent = (loginConsent?: {validityPeriod?: number}): void => {
+        mockUseGetAgent.mockReturnValue({
+          data: {
+            ...baseAgent,
+            allowedUserTypes: ['person'],
+            loginConsent,
+            inboundAuthConfig: [
+              {
+                type: 'oauth2' as const,
+                config: {
+                  grantTypes: ['authorization_code'],
+                  responseTypes: ['code'],
+                  redirectUris: ['https://agent.example.com/cb'],
+                  pkceRequired: true,
+                  clientId: 'client-id-xyz',
+                },
+              },
+            ],
+          },
+          isLoading: false,
+          error: null,
+          isError: false,
+          refetch: mockRefetch,
+        });
+        render(<AgentEditPage />);
+      };
+
+      it('should save a period chosen from No expiry as seconds', async () => {
+        advancedSettings.real = true;
+        const user = userEvent.setup();
+        renderDelegatedAgent({validityPeriod: 0});
+        await user.click(screen.getByRole('tab', {name: /Advanced/i}));
+
+        await user.click(within(screen.getByTestId('login-consent-validity-period-unit')).getByRole('combobox'));
+        await user.click(screen.getByRole('option', {name: 'Hours'}));
+        await user.click(screen.getByRole('button', {name: 'Save'}));
+
+        await waitFor(() => {
+          expect(mockMutateAsync).toHaveBeenCalledTimes(1);
+        });
+        const {data} = mockMutateAsync.mock.calls[0][0] as {data: {loginConsent?: unknown}};
+        expect(data.loginConsent).toEqual({validityPeriod: 3600});
+      });
+
+      it('should save the typed number in the chosen unit as seconds', async () => {
+        advancedSettings.real = true;
+        const user = userEvent.setup();
+        renderDelegatedAgent({validityPeriod: 3600});
+        await user.click(screen.getByRole('tab', {name: /Advanced/i}));
+
+        fireEvent.change(screen.getByRole('spinbutton', {name: 'Consent validity period'}), {target: {value: '2'}});
+        await user.click(screen.getByRole('button', {name: 'Save'}));
+
+        await waitFor(() => {
+          expect(mockMutateAsync).toHaveBeenCalledTimes(1);
+        });
+        const {data} = mockMutateAsync.mock.calls[0][0] as {data: {loginConsent?: unknown}};
+        expect(data.loginConsent).toEqual({validityPeriod: 7200});
       });
     });
 

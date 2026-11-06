@@ -146,6 +146,10 @@ export default function EditAdvancedSettings({
         oauth2Config={oauth2Config}
         onOAuth2ConfigChange={handleOAuth2ConfigChange}
         onBackchannelLogoutUriValidationChange={onBackchannelLogoutUriValidationChange}
+        loginConsent={editedAgent.loginConsent ?? agent.loginConsent}
+        onLoginConsentChange={
+          agent.isReadOnly ? undefined : (loginConsent) => onFieldChange('loginConsent', loginConsent)
+        }
         disabled={agent.isReadOnly}
       />
       {oauth2Config && isUnlocked && (
