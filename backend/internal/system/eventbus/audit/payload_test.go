@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	syscontext "github.com/thunder-id/thunderid/internal/system/context"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
@@ -129,6 +130,23 @@ func (s *PayloadTestSuite) TestValidate() {
 			NewPayload(ctx, testApplication, ActionUpdate, OutcomeFailed("app_1001")), nil},
 		{"an application delete", EventApplicationDelete,
 			NewPayload(ctx, testApplication, ActionDelete, OutcomeDenied(reasonForbidden)), nil},
+		{"a role create", EventRoleCreate, NewPayload(ctx, testRole, ActionCreate, OutcomeSucceeded), nil},
+		{"a role update", EventRoleUpdate, NewPayload(ctx, testRole, ActionUpdate, OutcomeFailed("rol_1003")), nil},
+		{"a role delete", EventRoleDelete, NewPayload(ctx, testRole, ActionDelete, OutcomeSucceeded), nil},
+		{"a role assignment add", EventRoleAssignmentAdd,
+			NewPayload(ctx, testRole, ActionAdd, OutcomeSucceeded).WithSubject(testTarget), nil},
+		{"a role assignment remove", EventRoleAssignmentRemove,
+			NewPayload(ctx, testRole, ActionRemove, OutcomeDenied(reasonForbidden)), nil},
+		{"a group create", EventGroupCreate, NewPayload(ctx, testGroup, ActionCreate, OutcomeSucceeded), nil},
+		{"a group update", EventGroupUpdate, NewPayload(ctx, testGroup, ActionUpdate, OutcomeFailed("grp_1003")), nil},
+		{"a group delete", EventGroupDelete, NewPayload(ctx, testGroup, ActionDelete, OutcomeSucceeded), nil},
+		{"a group member add", EventGroupMemberAdd,
+			NewPayload(ctx, testGroup, ActionAdd, OutcomeSucceeded).WithSubject(testTarget), nil},
+		{"a group member remove", EventGroupMemberRemove,
+			NewPayload(ctx, testGroup, ActionRemove, OutcomeFailed("grp_1003")), nil},
+		{"a group member detail", EventGroupMemberAdd,
+			NewPayload(ctx, testGroup, ActionAdd, OutcomeSucceeded).
+				WithDetails(map[string]string{"name": "Librarians"}), errDetailNotAllowed},
 		{"an application detail", EventApplicationUpdate,
 			NewPayload(ctx, testApplication, ActionUpdate, OutcomeSucceeded).
 				WithDetails(map[string]string{"client_secret": "s3cr3t"}), errDetailNotAllowed},
@@ -218,6 +236,8 @@ func (s *PayloadTestSuite) TestChangePayload() {
 			OutcomeDenied("forbidden"), testApplication},
 		{"a refused create names no target", unnamed, &tidcommon.ErrorUnauthorized,
 			OutcomeDenied("forbidden"), Ref{}},
+		{"the grant check refuses the caller", testGroup, &sysauthz.ErrorGrantNotPermitted,
+			OutcomeDenied("forbidden"), testGroup},
 		{"a client error", testApplication, &tidcommon.ServiceError{Type: tidcommon.ClientErrorType,
 			Code: "APP-1003"}, OutcomeFailed("app_1003"), Ref{}},
 		{"a server error", testTarget, &tidcommon.InternalServerError, OutcomeFailed("sse_5000"), Ref{}},
@@ -232,6 +252,60 @@ func (s *PayloadTestSuite) TestChangePayload() {
 			s.Equal(tc.target, payload.Target())
 			s.Equal(tc.subject, payload.Subject())
 			s.Equal(ActionUpdate, payload.Action())
+		})
+	}
+}
+
+// A membership change that succeeded is one payload per distinct member, each with the member as subject,
+// so the log names everyone who gained or lost the membership. One that did not succeed is one payload
+// for the attempt, with the target only: a call may name several members.
+func (s *PayloadTestSuite) TestMembershipPayloads() {
+	agent := Ref{Type: TargetTypeAgent, ID: testAgentID}
+	cases := []struct {
+		name     string
+		members  []Ref
+		svcErr   *tidcommon.ServiceError
+		outcome  Outcome
+		subjects []Ref
+	}{
+		{"one member added", []Ref{testTarget}, nil, OutcomeSucceeded, []Ref{testTarget}},
+		{"each member once", []Ref{testTarget, agent, testTarget}, nil, OutcomeSucceeded,
+			[]Ref{testTarget, agent}},
+		{"no member named", nil, nil, OutcomeSucceeded, []Ref{}},
+		{"the grant check refuses the caller", []Ref{testTarget, agent}, &sysauthz.ErrorGrantNotPermitted,
+			OutcomeDenied("forbidden"), []Ref{{}}},
+		{"the access check refuses the caller", []Ref{testTarget}, &tidcommon.ErrorUnauthorized,
+			OutcomeDenied("forbidden"), []Ref{{}}},
+		{"the change fails", []Ref{testTarget, agent}, &tidcommon.InternalServerError,
+			OutcomeFailed("sse_5000"), []Ref{{}}},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			payloads := MembershipPayloads(context.Background(), testGroup, tc.members, ActionAdd, tc.svcErr)
+
+			subjects := make([]Ref, 0, len(payloads))
+			for _, payload := range payloads {
+				s.Equal(testGroup, payload.Target())
+				s.Equal(ActionAdd, payload.Action())
+				s.Equal(tc.outcome, payload.Outcome())
+				s.Empty(payload.Details())
+				subjects = append(subjects, payload.Subject())
+			}
+			s.Equal(tc.subjects, subjects)
+		})
+	}
+}
+
+// A principal is named by the type its entity category or a group maps to.
+func (s *PayloadTestSuite) TestPrincipalRef() {
+	for principalType, targetType := range map[string]string{
+		"user":  TargetTypeUser,
+		"app":   TargetTypeApplication,
+		"agent": TargetTypeAgent,
+		"group": TargetTypeGroup,
+	} {
+		s.Run(principalType, func() {
+			s.Equal(Ref{Type: targetType, ID: testUserID}, PrincipalRef(principalType, testUserID))
 		})
 	}
 }

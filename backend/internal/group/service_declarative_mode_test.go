@@ -40,6 +40,7 @@ func (suite *DeclarativeModeGroupServiceTestSuite) SetupTest() {
 	suite.entityService = entitymock.NewEntityServiceInterfaceMock(suite.T())
 	mtx := new(stubTransactioner)
 	suite.service = &groupService{
+		bus:           discardingBus{},
 		groupStore:    suite.store,
 		authzService:  newAllowAllAuthz(suite.T()),
 		transactioner: mtx,

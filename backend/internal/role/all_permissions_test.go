@@ -380,6 +380,7 @@ func TestRoleAssignmentGuard(t *testing.T) {
 		store := newRoleStoreInterfaceMock(t)
 		txr := &fakeTransactioner{}
 		svc := &roleAssignmentService{
+			bus:           discardingBus{},
 			roleStore:     store,
 			transactioner: txr,
 			authzService:  newRefusingRoleAuthz(t),
@@ -397,6 +398,7 @@ func TestRoleAssignmentGuard(t *testing.T) {
 		store := newRoleStoreInterfaceMock(t)
 		txr := &fakeTransactioner{}
 		svc := &roleAssignmentService{
+			bus:           discardingBus{},
 			roleStore:     store,
 			transactioner: txr,
 			authzService:  newRefusingRoleAuthz(t),
@@ -415,6 +417,7 @@ func TestRoleAssignmentGuard(t *testing.T) {
 	t.Run("GuardRunsBeforeAssigneeValidation", func(t *testing.T) {
 		entitySvc := entitymock.NewEntityServiceInterfaceMock(t)
 		svc := &roleAssignmentService{
+			bus:           discardingBus{},
 			roleStore:     newRoleStoreInterfaceMock(t),
 			entityService: entitySvc,
 			transactioner: &fakeTransactioner{},
@@ -528,6 +531,7 @@ func TestModifyAssignments_RechecksInsideTransaction(t *testing.T) {
 		Return(map[string]*group.Group{"grp1": {ID: "grp1", OUID: "ou1"}}, nil).Once()
 
 	svc := &roleAssignmentService{
+		bus:           discardingBus{},
 		roleStore:     store,
 		groupService:  groupSvc,
 		transactioner: txr,

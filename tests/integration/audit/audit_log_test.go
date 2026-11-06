@@ -44,7 +44,7 @@ var (
 	}
 )
 
-// AuditLogTestSuite drives user and application changes over the management API against a running
+// AuditLogTestSuite drives user, application, role and group changes over the management API against a running
 // server and reads the audit lines it writes to standard output. The server writes its output to the
 // server log only when this test process starts it, so the suite restarts it first, and every scenario
 // that changes the configuration restores it before the next one.
@@ -676,6 +676,24 @@ func (ts *AuditLogTestSuite) createUser(ouID, userType, username, password strin
 // client that calls with the manager's token.
 func (ts *AuditLogTestSuite) createScopedUserManager(name string) (string, *http.Client) {
 	ts.T().Helper()
+	manager := ts.createScopedManager(name, []string{"user", "usertype"},
+		[]string{"system:user", "system:usertype:view"})
+	return manager.id, manager.client
+}
+
+// scopedManager is a manager whose permissions reach only its own organization unit.
+type scopedManager struct {
+	id               string
+	ouID             string
+	resourceServerID string
+	client           *http.Client
+}
+
+// createScopedManager creates a manager in an organization unit of its own, named by name, who holds
+// permissions through a role on a resource server with a resource for each of handles, all removed when
+// the test ends. Its client calls with the manager's token.
+func (ts *AuditLogTestSuite) createScopedManager(name string, handles, permissions []string) scopedManager {
+	ts.T().Helper()
 	ownOU, ownType := ts.createUserType(name)
 
 	username := ts.prefix + name
@@ -684,16 +702,16 @@ func (ts *AuditLogTestSuite) createScopedUserManager(name string) (string, *http
 
 	identifier := "https://" + ts.prefix + name + ".audit.example.com/user"
 	rsID, err := testutils.CreateSystemScopedResourceServer(ownOU, "Audit Test RS "+ts.prefix+name, identifier,
-		"user", "usertype")
+		handles...)
 	ts.Require().NoError(err)
 	ts.T().Cleanup(func() { _ = testutils.DeleteResourceServerWithChildren(rsID) })
 	// A role name is unique only within its unit, and this unit is the run's own, so the name leaves out
 	// ts.prefix: a role name holds at most 50 characters, which PostgreSQL enforces and SQLite does not.
 	roleID, err := testutils.CreateRole(testutils.Role{
-		Name: "Audit User Manager " + name,
+		Name: "Audit Manager " + name,
 		OUID: ownOU,
 		Permissions: []testutils.ResourcePermissions{
-			{ResourceServerID: rsID, Permissions: []string{"system:user", "system:usertype:view"}},
+			{ResourceServerID: rsID, Permissions: permissions},
 		},
 		Assignments: []testutils.Assignment{{ID: managerID, Type: "user"}},
 	})
@@ -703,10 +721,12 @@ func (ts *AuditLogTestSuite) createScopedUserManager(name string) (string, *http
 	// A sign-in is bounded to its application's organization unit, so the manager signs in through an
 	// application in its own unit rather than the Console.
 	var signIn testutils.OUSignInApps
-	token, err := signIn.ObtainAccessToken(ownOU, "system system:user system:usertype:view", username, password,
+	token, err := signIn.ObtainAccessToken(ownOU, "system "+strings.Join(permissions, " "), username, password,
 		identifier)
 	ts.T().Cleanup(func() { _ = signIn.DeleteAll() })
 	ts.Require().NoError(err)
 	ts.Require().NotEmpty(token.AccessToken)
-	return managerID, testutils.GetHTTPClientWithToken(token.AccessToken)
+	return scopedManager{
+		id: managerID, ouID: ownOU, resourceServerID: rsID, client: testutils.GetHTTPClientWithToken(token.AccessToken),
+	}
 }

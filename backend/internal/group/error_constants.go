@@ -259,4 +259,7 @@ var (
 
 	// errResultLimitExceededInCompositeMode is returned when composite store results exceed the configured limit.
 	errResultLimitExceededInCompositeMode = errors.New("result limit exceeded in composite mode")
+
+	// errNilEventBus is returned when the service is initialized without the event bus it audits on.
+	errNilEventBus = errors.New("the group service needs an event bus")
 )
