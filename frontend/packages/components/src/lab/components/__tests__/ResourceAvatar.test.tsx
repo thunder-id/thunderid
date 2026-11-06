@@ -7,6 +7,14 @@ import {useState, type JSX} from 'react';
 import {describe, it, expect, vi} from 'vitest';
 import ResourceAvatar from '../ResourceAvatar';
 
+const {resolveLogoUriMock} = vi.hoisted(() => ({resolveLogoUriMock: vi.fn()}));
+
+vi.mock('@thunderid/react', async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>();
+  resolveLogoUriMock.mockImplementation(actual.resolveLogoUri as (...args: unknown[]) => unknown);
+  return {...actual, resolveLogoUri: resolveLogoUriMock};
+});
+
 /**
  * Mirrors how a real caller wires `ResourceAvatar` — `onSelect` feeds back into the
  * `value` prop — so the dialog's Cancel-to-revert logic (which diffs against the
@@ -41,6 +49,18 @@ describe('ResourceAvatar', () => {
       render(<ResourceAvatar fallback={<AppWindow data-testid="fallback-icon" />} />);
 
       expect(screen.getByTestId('fallback-icon')).toBeInTheDocument();
+    });
+
+    it('should render without crashing when generating the fallback avatar throws', () => {
+      resolveLogoUriMock.mockImplementationOnce(() => {
+        throw new URIError('URI malformed');
+      });
+      render(
+        <ResourceAvatar data-testid="avatar" fallback="avatar:shape=circle,variant=two_letter,colors=0,content=AB" />,
+      );
+
+      expect(screen.getByTestId('avatar')).toBeInTheDocument();
+      expect(screen.queryByRole('img')).not.toBeInTheDocument();
     });
 
     it('should render the emoji character when value is emoji:-prefixed', () => {

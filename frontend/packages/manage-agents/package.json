@@ -55,6 +55,7 @@
     "@testing-library/jest-dom": "catalog:",
     "@testing-library/react": "catalog:",
     "@testing-library/user-event": "catalog:",
+    "@thunderid/configure-agents": "workspace:^",
     "@thunderid/contexts": "workspace:^",
     "@thunderid/eslint-plugin": "workspace:^",
     "@thunderid/prettier-config": "workspace:^",
@@ -83,6 +84,7 @@
   },
   "dependencies": {},
   "peerDependencies": {
+    "@thunderid/configure-agents": "workspace:^",
     "@thunderid/contexts": "workspace:^",
     "@thunderid/react": "catalog:",
     "@wso2/oxygen-ui": "catalog:",

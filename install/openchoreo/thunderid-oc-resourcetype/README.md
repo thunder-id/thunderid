@@ -338,7 +338,7 @@ A second `HTTPRoute` is rendered for that hostname and the Console's
 | `secretStore.name` | External Secrets Operator store to resolve against | `default` |
 | `secretStore.kind` | Store scope — `ClusterSecretStore` (cluster-scoped) or `SecretStore` (namespaced, in the data-plane namespace) | `ClusterSecretStore` |
 | `secretStore.key` | Remote path whose properties become the container environment (**required**) | — |
-| `image` | ThunderID container image | `ghcr.io/thunder-id/thunderid:latest` |
+| `image` | ThunderID container image | `ghcr.io/thunder-id/thunderid-gateway:latest` |
 | `declarativeResources` | Multi-doc declarative resources YAML, loaded at startup via `--resources` (**required**) | — |
 | `configOverrides.deploymentYaml` | Full-content override for the rendered `deployment.yaml`; empty uses the built-in default driven by `runtime.*`/environment configurations. Used verbatim (no CEL interpolation); `{{.VAR}}` environment variable placeholders still resolve at startup | `""` |
 | `configOverrides.gateConfigJs` | Full-content override for the Gate `config.js` | `""` |

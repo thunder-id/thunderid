@@ -112,6 +112,37 @@ both import with the same password.
 resources. The bundle is not returned at all, because one that dropped a resource silently would look
 complete. Rename one of the users, or export them separately.
 
+## Agent Credentials
+
+An agent carries its credentials the same way a user does. An agent named `Support Bot` that has a
+password exports:
+
+```yaml
+credentials:
+  password: "{{.AGENT_SUPPORT_BOT_PASSWORD}}"
+```
+
+The export includes each credential the agent type declares, such as `password`, when the agent has
+set it, and leaves out a credential the agent has not set. The variable is named after the agent's
+display value, or after its ID when the agent type has no display attribute. The agent's OAuth client secret is not one of these credentials: it stays under
+`inboundAuthConfig` and is parameterized like any other field.
+
+Agent display names do not have to be unique. Two agents whose display names normalize to the same
+name, such as `Support Bot` and `Support-Bot`, would claim one password variable, so
+<ProductName /> refuses an export that holds both with `EXP-1003`, as it does for users. Rename one
+of the agents, or export them separately.
+
+The import sets the credentials after it writes the agent. It refuses a credential the agent type
+does not declare, one that is not a string, and one with no value. A new agent refused that way is
+deleted again, so a retry does not meet half of it. An agent that already exists keeps the profile
+the import wrote, and the import reports that its credentials were not updated.
+
+A declarative agent file takes the same `credentials` block, so a data-plane export of an agent
+loads as a file as it is. The file is loaded as written, without checking its credentials against
+the agent type, but it cannot set a credential the system manages, such as `clientSecret`,
+`flowSecret`, or `passkey`. A control-plane export does not load as a file: its credentials are
+`sec:` references, which only an import resolves.
+
 ## Resource Server Identifiers
 
 A resource server's `identifier` is the audience it is served under, such as an API's base URL or
@@ -174,10 +205,11 @@ with a new reference.
 
 ### What a Control Plane Does Not Parameterize
 
-A user's credentials are written as template placeholders on either plane, as described in
-[User Credentials](#user-credentials). A control-plane export that includes users who have set a
-password therefore still lists a password variable for each of them in `environment_variables`.
-Every other control-plane export leaves `environment_variables` empty.
+A control-plane export writes no template placeholders, the credentials of users and agents
+included. Those are written as `sec:` references named as their template variables are, such as
+`sec:USER_ALICE_EXAMPLE_COM_PASSWORD`. See [User Credentials](#user-credentials) and
+[Agent Credentials](#agent-credentials). Every control-plane export therefore leaves
+`environment_variables` empty.
 
 ### A Credential That Refers to a Variable
 

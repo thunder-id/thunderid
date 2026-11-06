@@ -207,13 +207,17 @@ A flow has no effect until it is assigned to an application.
 
   To customize the user onboarding flow, you can either edit the default flow directly in the Console's Flow Builder, or create a new one via the `/flows` API, which requires the `ouId` of the organization unit that owns the flow. See [Organization Unit Ownership](../flow-concepts#organization-unit-ownership) and the [API Reference](../../../apis).
 
-  To set the flow as the active system-wide user onboarding flow, call the Server Configuration API:
+  To set the flow as the active system-wide user onboarding flow, call the Server Configuration API. A `PUT` replaces the section's runtime layer, including the default handles for the other flow types, so read the section first, change only `userOnboardingFlow` with `jq`, and send the full value back:
 
   ```bash
+  curl -fksL https://localhost:8090/server-config/flow \
+    -H "Authorization: Bearer $TOKEN" \
+    | jq '.writable | .userOnboardingFlow.defaultHandle = "<your-flow-handle>"' > flow.json
+
   curl -kL -X PUT https://localhost:8090/server-config/flow \
     -H "Authorization: Bearer $TOKEN" \
     -H "Content-Type: application/json" \
-    -d '{ "userOnboardingFlow": { "defaultHandle": "<your-flow-handle>" } }'
+    -d @flow.json
   ```
 
 </details>

@@ -274,6 +274,8 @@ func (suite *AccountLinkingExecutorTestSuite) TestExecute_UnprovenCandidateReque
 	assert.Equal(suite.T(), dataValueTrue, resp.RuntimeData[common.RuntimeKeyLinkingVerificationRequested])
 	assert.JSONEq(suite.T(), `[{"label":"email","value":"jane@example.com"}]`,
 		resp.AdditionalData[common.DataLinkingPromptDetails])
+	assert.Equal(suite.T(), map[string]string{common.RuntimeKeyFederatedLoginCompleted: ""},
+		resp.SharedRuntimeData)
 }
 
 // Attributes naming different accounts send them all to verification. The prompt shows the values
@@ -537,29 +539,45 @@ func (suite *AccountLinkingExecutorTestSuite) TestExecute_VerifiedByAnyCandidate
 }
 
 // An account outside the list is not linked however many candidates there are, and neither is one
-// checked against a list that does not decode: nothing in it can be matched. Both get the retry.
+// checked against a list that does not decode: nothing in it can be matched. A federated login with
+// no local user, completed in verification here or in a called flow, names no candidate either. All
+// get the retry, which clears the federated login mark for the next attempt.
 func (suite *AccountLinkingExecutorTestSuite) TestExecute_ReEntryByNonCandidateRetries() {
-	for name, candidates := range map[string]string{
-		"several":   `["` + linkingCandidateID + `","` + linkingOtherCandidateID + `"]`,
-		"malformed": linkingCandidateID,
+	several := `["` + linkingCandidateID + `","` + linkingOtherCandidateID + `"]`
+	for name, tc := range map[string]struct {
+		candidates string
+		// entityID is who the verified AuthUser resolves to, "" for nobody.
+		entityID          string
+		sharedRuntimeData map[string]string
+	}{
+		"several":   {candidates: several, entityID: "user-3"},
+		"malformed": {candidates: linkingCandidateID, entityID: linkingCandidateID},
+		"federated account with no local user": {
+			candidates:        several,
+			sharedRuntimeData: map[string]string{common.RuntimeKeyFederatedLoginCompleted: dataValueTrue},
+		},
 	} {
 		suite.Run(name, func() {
 			mockAuthnProvider := managermock.NewAuthnProviderManagerMock(suite.T())
 			executor := newAccountLinkingExecutor(suite.mockFlowFactory, mockAuthnProvider,
 				suite.mockEntityTypeService)
+			runtime := returningFromVerification(withFederatedIdentity(verificationPendingFor(tc.candidates)))
 			ctx := &providers.NodeContext{
-				ExecutionID: "flow-1",
-				FlowType:    providers.FlowTypeAuthentication,
-				AuthUser:    otherAuthUser(),
-				RuntimeData: returningFromVerification(withFederatedIdentity(verificationPendingFor(candidates))),
+				ExecutionID:       "flow-1",
+				FlowType:          providers.FlowTypeAuthentication,
+				AuthUser:          otherAuthUser(),
+				RuntimeData:       runtime,
+				SharedRuntimeData: tc.sharedRuntimeData,
 			}
-			entityID := "user-3"
-			if name == "malformed" {
-				entityID = linkingCandidateID
+			if tc.entityID == "" {
+				mockAuthnProvider.On("GetEntityReference", mock.Anything, otherAuthUser()).
+					Return(otherAuthUser(), (*providers.EntityReference)(nil), &tidcommon.ServiceError{
+						Type: tidcommon.ClientErrorType, Code: "AUTHN-MGR-1007"})
+			} else {
+				mockAuthnProvider.On("GetEntityReference", mock.Anything, otherAuthUser()).
+					Return(otherAuthUser(), &providers.EntityReference{EntityID: tc.entityID},
+						(*tidcommon.ServiceError)(nil))
 			}
-			mockAuthnProvider.On("GetEntityReference", mock.Anything, otherAuthUser()).
-				Return(otherAuthUser(), &providers.EntityReference{EntityID: entityID},
-					(*tidcommon.ServiceError)(nil))
 			mockAuthnProvider.On("GetEntityReference", mock.Anything, pendingAuthUser()).
 				Return(pendingAuthUser(), (*providers.EntityReference)(nil), &tidcommon.ServiceError{
 					Type: tidcommon.ClientErrorType, Code: "AUTHN-MGR-1007"})
@@ -570,26 +588,47 @@ func (suite *AccountLinkingExecutorTestSuite) TestExecute_ReEntryByNonCandidateR
 			assert.Equal(suite.T(), providers.ExecUserInputRequired, resp.Status)
 			assert.Equal(suite.T(), ErrNonCandidateVerified.Code, resp.Error.Code)
 			assert.Equal(suite.T(), pendingAuthUser(), resp.AuthUser)
+			assert.Equal(suite.T(), map[string]string{common.RuntimeKeyFederatedLoginCompleted: ""},
+				resp.SharedRuntimeData)
 		})
 	}
 }
 
 // Re-entry with nobody authenticated must fail. The engine has no visited-node tracking and no step
-// cap, so going incomplete a second time would loop forever.
+// cap, so going incomplete a second time would loop forever. An AuthUser that resolves to nobody
+// without a federated login completed in verification is nobody too, even when a step on the way
+// rewrote its state, as fetching its attributes does.
 func (suite *AccountLinkingExecutorTestSuite) TestExecute_ReEntryWithoutAuthenticationFails() {
-	ctx := &providers.NodeContext{
-		ExecutionID: "flow-1",
-		FlowType:    providers.FlowTypeAuthentication,
-		RuntimeData: returningFromVerification(verificationPending()),
+	for name, authUser := range map[string]providers.AuthUser{
+		"nobody authenticated":                         {},
+		"rewritten AuthUser without a federated login": otherAuthUser(),
+	} {
+		suite.Run(name, func() {
+			mockAuthnProvider := managermock.NewAuthnProviderManagerMock(suite.T())
+			executor := newAccountLinkingExecutor(suite.mockFlowFactory, mockAuthnProvider,
+				suite.mockEntityTypeService)
+			ctx := &providers.NodeContext{
+				ExecutionID:       "flow-1",
+				FlowType:          providers.FlowTypeAuthentication,
+				AuthUser:          authUser,
+				RuntimeData:       returningFromVerification(verificationPending()),
+				SharedRuntimeData: map[string]string{common.RuntimeKeyFederatedLoginCompleted: ""},
+			}
+			if authUser.IsAuthenticated() {
+				mockAuthnProvider.On("GetEntityReference", mock.Anything, authUser).
+					Return(authUser, (*providers.EntityReference)(nil), &tidcommon.ServiceError{
+						Type: tidcommon.ClientErrorType, Code: "AUTHN-MGR-1007"})
+			}
+
+			resp, err := executor.Execute(ctx)
+
+			assert.NoError(suite.T(), err)
+			assert.Equal(suite.T(), providers.ExecFailure, resp.Status)
+			assert.Equal(suite.T(), ErrVerificationNotCompleted.Code, resp.Error.Code)
+			assert.NotContains(suite.T(), resp.RuntimeData, common.RuntimeKeyLinkingCandidateUserIDs)
+			suite.assertCycleEnded(resp)
+		})
 	}
-
-	resp, err := suite.executor.Execute(ctx)
-
-	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), providers.ExecFailure, resp.Status)
-	assert.Equal(suite.T(), ErrVerificationNotCompleted.Code, resp.Error.Code)
-	assert.NotContains(suite.T(), resp.RuntimeData, common.RuntimeKeyLinkingCandidateUserIDs)
-	suite.assertCycleEnded(resp)
 }
 
 // The first pass into the node raises no action, so it must still request one rather than read an

@@ -24,7 +24,7 @@ deployment:
     # -- Container image registry host name
     registry: "ghcr.io/thunder-id"
     # -- Container image repository name
-    repository: "thunderid"
+    repository: "thunderid-gateway"
     # -- Container image digest
     digest: ""
     # -- Container image tag. Either "tag" or "digest" should be defined
@@ -590,9 +590,6 @@ configuration:
     enforceKeyBinding: true
     # Optional verifier registration certificate (EUDI) file path. Empty to disable.
     registrationCertFile: ""
-    # Trusted issuer anchors (root CAs) used to validate credential issuer chains.
-    # Each entry: { name, certFile }.
-    trustedAnchors: []
     # Storage mode for presentation definitions: "mutable", "declarative", or "composite".
     # Leave empty to inherit the global declarativeResources.enabled setting.
     store: ""

@@ -124,4 +124,24 @@ test.describe("Wayfinder Sample Bundle", { tag: [TestTags.WAYFINDER] }, () => {
       });
     }
   });
+
+  /**
+   * TC002: The bundle's `flow` server-config document switches the user onboarding flow and keeps
+   * every other default handle. An import replaces the whole section, so a partial document
+   * would leave the other flow types, such as agent onboarding, without a default.
+   */
+  test("TC002: Flow defaults survive the import", async ({ request }) => {
+    const response = await send(request, "GET", "/server-config/flow");
+    expect(response.ok(), `GET /server-config/flow should succeed, got ${response.status()}`).toBe(true);
+
+    const merged: Record<string, { defaultHandle?: string }> = (await response.json()).merged;
+    expect(merged.userOnboardingFlow?.defaultHandle).toBe("wayfinder-onboarding-flow");
+
+    // The server ships these flow types without a default handle.
+    const withoutDefault = ["registrationFlow", "recoveryFlow", "selfFlow"];
+    const missing = Object.keys(merged)
+      .filter(flowType => !withoutDefault.includes(flowType))
+      .filter(flowType => !merged[flowType]?.defaultHandle);
+    expect(missing, "Flow types that lost their default handle").toEqual([]);
+  });
 });

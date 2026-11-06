@@ -13,33 +13,29 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/thunder-id/thunderid/internal/entity"
-	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/sharing"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/entitymock"
-	"github.com/thunder-id/thunderid/tests/mocks/entitytypemock"
 	"github.com/thunder-id/thunderid/tests/mocks/sharingmock"
 )
 
 // credentialExport wires a user exporter over mocks for one user of type "person" named alice.
 type credentialExport struct {
-	users       *UserServiceInterfaceMock
-	entities    *entitymock.EntityServiceInterfaceMock
-	entityTypes *entitytypemock.EntityTypeServiceInterfaceMock
-	sharing     *sharingmock.SharingServiceInterfaceMock
-	exporter    *userExporter
+	users    *UserServiceInterfaceMock
+	entities *entitymock.EntityServiceInterfaceMock
+	sharing  *sharingmock.SharingServiceInterfaceMock
+	exporter *userExporter
 }
 
 func newCredentialExport(t *testing.T, username string) *credentialExport {
 	t.Helper()
 	c := &credentialExport{
-		users:       NewUserServiceInterfaceMock(t),
-		entities:    entitymock.NewEntityServiceInterfaceMock(t),
-		entityTypes: entitytypemock.NewEntityTypeServiceInterfaceMock(t),
-		sharing:     sharingmock.NewSharingServiceInterfaceMock(t),
+		users:    NewUserServiceInterfaceMock(t),
+		entities: entitymock.NewEntityServiceInterfaceMock(t),
+		sharing:  sharingmock.NewSharingServiceInterfaceMock(t),
 	}
-	c.exporter = newUserExporter(c.users, c.entities, c.entityTypes, c.sharing)
+	c.exporter = newUserExporter(c.users, c.entities, c.sharing)
 	// The user is shared nowhere unless a test says otherwise.
 	c.sharing.On("ExportPolicies", context.Background(), UserSharingType, "user-1").
 		Return([]sharing.ReplayablePolicy(nil), (*tidcommon.ServiceError)(nil)).Maybe()
@@ -51,23 +47,9 @@ func newCredentialExport(t *testing.T, username string) *credentialExport {
 	return c
 }
 
-// typeDeclaresCredentials sets the credential attributes the user's type declares.
-func (c *credentialExport) typeDeclaresCredentials(attributes ...string) {
-	infos := make([]entitytype.AttributeInfo, 0, len(attributes))
-	for _, attribute := range attributes {
-		infos = append(infos, entitytype.AttributeInfo{Attribute: attribute, Credential: true})
-	}
-	c.entityTypes.On("GetAttributes", context.Background(), entitytype.TypeCategoryUser, "person",
-		entitytype.AttributeFilter{AllowCredential: true}).Return(infos, nil)
-}
-
-// userHasCredential sets whether the user has a stored credential for an attribute.
-func (c *credentialExport) userHasCredential(attribute string, isSet bool) {
-	var stored []entity.StoredCredential
-	if isSet {
-		stored = []entity.StoredCredential{{Value: "a-hash"}}
-	}
-	c.entities.On("GetCredentialsByType", context.Background(), "user-1", attribute).Return(stored, nil)
+// userHolds sets the credentials the user's type declares that the user has set.
+func (c *credentialExport) userHolds(credentials ...string) {
+	c.entities.On("GetHeldCredentialTypes", context.Background(), "user-1").Return(credentials, nil)
 }
 
 func (c *credentialExport) exportUser(t *testing.T) *userDeclarativeResource {
@@ -83,8 +65,7 @@ func (c *credentialExport) exportUser(t *testing.T) *userDeclarativeResource {
 // one-way hash and never leaves; the importing server fills the variable and hashes it on the way in.
 func TestAUserWithAPasswordExportsIt(t *testing.T) {
 	c := newCredentialExport(t, "alice")
-	c.typeDeclaresCredentials("password")
-	c.userHasCredential("password", true)
+	c.userHolds("password")
 
 	user := c.exportUser(t)
 
@@ -95,8 +76,7 @@ func TestAUserWithAPasswordExportsIt(t *testing.T) {
 // would demand a value on import for a credential the user never had.
 func TestAUserWithoutAPasswordIsExportedWithoutCredentials(t *testing.T) {
 	c := newCredentialExport(t, "alice")
-	c.typeDeclaresCredentials("password")
-	c.userHasCredential("password", false)
+	c.userHolds()
 
 	user := c.exportUser(t)
 
@@ -104,30 +84,21 @@ func TestAUserWithoutAPasswordIsExportedWithoutCredentials(t *testing.T) {
 	assert.Empty(t, user.Credentials)
 }
 
-// What is exported follows the user's type: each credential it declares, when the user has it.
-func TestOnlyTheCredentialsAUserHasAreExported(t *testing.T) {
+// Each credential the user holds is exported under its own variable.
+func TestEveryCredentialAUserHoldsIsExported(t *testing.T) {
 	c := newCredentialExport(t, "alice")
-	c.typeDeclaresCredentials("password", "pin")
-	c.userHasCredential("password", false)
-	c.userHasCredential("pin", true)
+	c.userHolds("password", "pin")
 
 	user := c.exportUser(t)
 
-	assert.Equal(t, map[string]interface{}{"pin": "{{.USER_ALICE_PIN}}"}, user.Credentials)
-}
-
-// A type that declares no credentials exports its users with none, and asks nothing of the store.
-func TestAUserTypeWithNoCredentialsExportsNone(t *testing.T) {
-	c := newCredentialExport(t, "alice")
-	c.typeDeclaresCredentials()
-
-	user := c.exportUser(t)
-
-	assert.Empty(t, user.Credentials)
+	assert.Equal(t, map[string]interface{}{
+		"password": "{{.USER_ALICE_PASSWORD}}",
+		"pin":      "{{.USER_ALICE_PIN}}",
+	}, user.Credentials)
 }
 
 // Without a username there is nothing to name the variable after, so no credential is exported and
-// neither the type nor the store is consulted.
+// the store is not consulted.
 func TestAUserWithoutAUsernameExportsNoCredentials(t *testing.T) {
 	c := newCredentialExport(t, "")
 
@@ -136,25 +107,11 @@ func TestAUserWithoutAUsernameExportsNoCredentials(t *testing.T) {
 	assert.Empty(t, user.Credentials)
 }
 
-// A failure to read the type is reported rather than exporting the user as if it had no
-// credentials, which would import a user who can no longer sign in.
-func TestAUnreadableUserTypeFailsTheUsersExport(t *testing.T) {
-	c := newCredentialExport(t, "alice")
-	c.entityTypes.On("GetAttributes", context.Background(), entitytype.TypeCategoryUser, "person",
-		entitytype.AttributeFilter{AllowCredential: true}).
-		Return(nil, &tidcommon.ServiceError{Code: "ETS-1001"})
-
-	_, _, svcErr := c.exporter.GetResourceByID(context.Background(), "user-1")
-
-	require.NotNil(t, svcErr)
-	assert.Equal(t, "ETS-1001", svcErr.Code)
-}
-
-// The same holds for a failure to read the user's stored credentials.
+// A failure to read which credentials the user holds is reported rather than exporting the user as
+// if it had none, which would import a user who can no longer sign in.
 func TestUnreadableCredentialsFailTheUsersExport(t *testing.T) {
 	c := newCredentialExport(t, "alice")
-	c.typeDeclaresCredentials("password")
-	c.entities.On("GetCredentialsByType", context.Background(), "user-1", "password").
+	c.entities.On("GetHeldCredentialTypes", context.Background(), "user-1").
 		Return(nil, errors.New("store unavailable"))
 
 	_, _, svcErr := c.exporter.GetResourceByID(context.Background(), "user-1")
@@ -163,13 +120,24 @@ func TestUnreadableCredentialsFailTheUsersExport(t *testing.T) {
 	assert.Equal(t, tidcommon.InternalServerError.Code, svcErr.Code)
 }
 
+// A user whose type is gone fails its export as a client error, as a write of the user would.
+func TestAUserWhoseTypeIsGoneFailsItsExportAsAClientError(t *testing.T) {
+	c := newCredentialExport(t, "alice")
+	c.entities.On("GetHeldCredentialTypes", context.Background(), "user-1").
+		Return(nil, entity.ErrSchemaValidationFailed)
+
+	_, _, svcErr := c.exporter.GetResourceByID(context.Background(), "user-1")
+
+	require.NotNil(t, svcErr)
+	assert.Equal(t, ErrorSchemaValidationFailed.Code, svcErr.Code)
+}
+
 // A control plane's export names the secret the gateway holds instead, as it does for every other
 // credential, so the gateway's import fills it in and hashes it.
 func TestAReferenceExportNamesAUsersPasswordAsASecret(t *testing.T) {
 	c := newCredentialExport(t, "alice")
 	c.exporter.WriteValueReferences(true)
-	c.typeDeclaresCredentials("password")
-	c.userHasCredential("password", true)
+	c.userHolds("password")
 
 	user := c.exportUser(t)
 

@@ -93,12 +93,10 @@ func (e *definitionExporter) ValidateResource(ctx context.Context,
 }
 
 // GetResourceRules returns the parameterization rules for presentation definitions.
-// The claim/value constraint blobs (ClaimValues) and the trusted-authority list are
-// the free-form, deployment-specific fields treated as dynamic property fields and
-// array variables respectively.
+// The claim/value constraint blob (ClaimValues) is the free-form, deployment-specific
+// field treated as a dynamic property field.
 func (e *definitionExporter) GetResourceRules() *declarativeresource.ResourceRules {
 	return &declarativeresource.ResourceRules{
-		ArrayVariables:        []string{"TrustedAuthorities"},
 		DynamicPropertyFields: []string{"ClaimValues"},
 	}
 }
@@ -127,7 +125,7 @@ type definitionRequestWithID struct {
 	OptionalClaims       []string            `yaml:"optionalClaims"`
 	ClaimValues          map[string][]string `yaml:"claimValues"`
 	EnforceTrustedIssuer *bool               `yaml:"enforceTrustedIssuer"`
-	TrustedAuthorities   []string            `yaml:"trustedAuthorities"`
+	TrustedAuthorities   []TrustedAuthority  `yaml:"trustedAuthorities"`
 }
 
 // loadDeclarativeResources loads declarative presentation-definition resources from YAML files

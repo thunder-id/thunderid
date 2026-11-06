@@ -46,7 +46,16 @@ type releasesData struct {
 	Releases      []releaseEntry `json:"releases"`
 }
 
-// PlatformAssetName returns the platform-specific ZIP name for the product binary.
+// entries returns every release the manifest lists. The latest release can appear only under
+// latestRelease, so it is included alongside the others.
+func (d *releasesData) entries() []releaseEntry {
+	return append([]releaseEntry{d.LatestRelease}, d.Releases...)
+}
+
+// gatewayPack is the name the Data Plane pack is published under.
+const gatewayPack = product.Slug + "-gateway"
+
+// PlatformAssetName returns the platform-specific ZIP name for the Data Plane product binary.
 func PlatformAssetName(version string) (string, error) {
 	platform, ok := platformMap[runtime.GOOS]
 	if !ok {
@@ -56,7 +65,7 @@ func PlatformAssetName(version string) (string, error) {
 	if !ok {
 		return "", fmt.Errorf("unsupported architecture: %s", runtime.GOARCH)
 	}
-	return fmt.Sprintf("%s-%s-%s-%s.zip", product.Slug, version, platform, arch), nil
+	return fmt.Sprintf("%s-%s-%s-%s.zip", gatewayPack, version, platform, arch), nil
 }
 
 func fetchJSON(url string, dest any) error {
@@ -157,7 +166,7 @@ func (c *Client) Download(version, destDir string, onProgress ProgressFunc) erro
 		return err
 	}
 
-	found := findAsset(data, version, assetName)
+	found, assetName := findDataPlaneAsset(data, version, assetName)
 	if found == nil {
 		return fmt.Errorf("no release asset found for %s at %s%s", assetName, c.ManifestURL, availableVersions(data))
 	}
@@ -265,7 +274,7 @@ func (c *Client) DownloadSample(sampleName, version, destDir string, onProgress 
 // release's asset for a version the manifest does not carry would install something other than
 // what was asked for, under the name that was asked for.
 func findAsset(data *releasesData, version, assetName string) *releaseAsset {
-	for _, r := range append([]releaseEntry{data.LatestRelease}, data.Releases...) {
+	for _, r := range data.entries() {
 		if r.TagName != "v"+version {
 			continue
 		}
@@ -278,12 +287,45 @@ func findAsset(data *releasesData, version, assetName string) *releaseAsset {
 	return nil
 }
 
+// findDataPlaneAsset returns the Data Plane pack of version, given its name from
+// PlatformAssetName, and the name it looked the pack up under.
+//
+// Releases published before the gateway name (v1.1.0 and older) list the pack as
+// <slug>-<version>-<os>-<arch>.zip, so that name is used for a release that lists no gateway
+// asset at all. It is never used for a release that lists one: those publish the quickstart pack
+// under that name, and installing it in place of a missing Data Plane pack would run a different
+// product than the one asked for.
+func findDataPlaneAsset(data *releasesData, version, assetName string) (*releaseAsset, string) {
+	if predatesGatewayName(data, version) {
+		assetName = product.Slug + "-" + strings.TrimPrefix(assetName, gatewayPack+"-")
+	}
+	return findAsset(data, version, assetName), assetName
+}
+
+// predatesGatewayName reports whether the manifest lists the release for version and none of its
+// assets carry the gateway name.
+func predatesGatewayName(data *releasesData, version string) bool {
+	listed := false
+	for _, r := range data.entries() {
+		if r.TagName != "v"+version {
+			continue
+		}
+		listed = true
+		for _, a := range r.Assets {
+			if strings.HasPrefix(a.Name, gatewayPack+"-") {
+				return false
+			}
+		}
+	}
+	return listed
+}
+
 // availableVersions renders the versions a manifest carries, for an error that would otherwise
 // only say the asset was missing.
 func availableVersions(data *releasesData) string {
 	seen := map[string]bool{}
 	var versions []string
-	for _, r := range append([]releaseEntry{data.LatestRelease}, data.Releases...) {
+	for _, r := range data.entries() {
 		if r.TagName == "" || seen[r.TagName] {
 			continue
 		}

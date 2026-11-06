@@ -40,7 +40,7 @@ export {default as AgentEditPage} from './pages/AgentEditPage';
 // AgentOnboardPage picks by administration mode: a form when creation runs natively, and the
 // onboarding flow otherwise.
 export {default as AgentOnboardPage} from './pages/AgentAddRoute';
-export {default as AgentOnboardFlowPage} from './pages/AgentOnboardPage';
+export {default as AgentOnboardFlowPage, type AgentOnboardPageProps} from './pages/AgentOnboardPage';
 export {default as AgentAddFormPage} from './pages/AgentAddFormPage';
 export {default as AgentsListPage} from './pages/AgentsListPage';
 

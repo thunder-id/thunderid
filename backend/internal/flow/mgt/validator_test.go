@@ -656,6 +656,22 @@ func (s *ValidatorTestSuite) TestValidateTaskExecutionNode_OnFailurePointsToProm
 	s.Nil(err)
 }
 
+func (s *ValidatorTestSuite) TestValidateTaskExecutionNode_InputWithEmptyIdentifier() {
+	nodes := minimalValidNodes()
+	index, _ := buildNodeIndex(nodes)
+	node := &providers.NodeDefinition{
+		ID:   "task",
+		Type: string(common.NodeTypeTaskExecution),
+		Executor: &providers.ExecutorDefinition{Name: "exec", Inputs: []providers.InputDefinition{
+			{Identifier: "", Type: providers.InputTypeText, Required: true},
+		}},
+		OnSuccess: "end",
+	}
+	err := s.v.validateTaskExecutionNode(node, index)
+	s.Require().NotNil(err)
+	s.Equal(ErrorInvalidInputConfig.Code, err.Code)
+}
+
 func (s *ValidatorTestSuite) TestValidateTaskExecutionNode_Valid() {
 	nodes := minimalValidNodes()
 	index, _ := buildNodeIndex(nodes)
@@ -874,6 +890,15 @@ func (s *ValidatorTestSuite) TestValidateCallNode_HasOnIncomplete() {
 // ---------------------------------------------------------------------------
 // validateInputDefinitions
 // ---------------------------------------------------------------------------
+
+func (s *ValidatorTestSuite) TestValidateInputDefinitions_EmptyIdentifier() {
+	inputs := []providers.InputDefinition{
+		{Type: providers.InputTypeText, Identifier: " "},
+	}
+	err := s.v.validateInputDefinitions("prompt", inputs)
+	s.Require().NotNil(err)
+	s.Equal(ErrorInvalidInputConfig.Code, err.Code)
+}
 
 func (s *ValidatorTestSuite) TestValidateInputDefinitions_InvalidInputType() {
 	inputs := []providers.InputDefinition{

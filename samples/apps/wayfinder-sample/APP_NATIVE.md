@@ -47,10 +47,18 @@ VITE_AUTH_IS_VERBOSE=false
 
 ## Run
 
+From the sample root, install the dependencies of every service once. The services share one `node_modules` at the sample root, so run only one `npm install` at a time:
+
 ```bash
-cd backend     && npm install && npm start                 # http://localhost:8787
-cd smtp-server && npm install && npm run dev                # SMTP :2525 | Inbox http://localhost:8788
-cd frontend    && npm install && npm run dev                # http://localhost:5173
+npm install
+```
+
+Then start each service in its own terminal:
+
+```bash
+cd backend     && npm start                 # http://localhost:8787
+cd smtp-server && npm run dev               # SMTP :2525 | Inbox http://localhost:8788
+cd frontend    && npm run dev               # http://localhost:5173
 ```
 
 ## Try It

@@ -25,12 +25,13 @@ RUN sed -i 's/hostname: "localhost"/hostname: "0.0.0.0"/' backend/cmd/server/dep
 
 # Security material (TLS/JWT/AES keys) is not baked into the image; the setup step generates it per deployment.
 
-# Build both frontend and backend for the target architecture
+# Build the frontend and the Data Plane pack for the target architecture
 ARG TARGETARCH
-RUN if [ "$TARGETARCH" = "amd64" ]; then \
-        ./build.sh build linux amd64; \
+RUN ./build.sh build_frontend && \
+    if [ "$TARGETARCH" = "amd64" ]; then \
+        ./build.sh build_backend linux amd64; \
     else \
-        ./build.sh build linux arm64; \
+        ./build.sh build_backend linux arm64; \
     fi
 
 # List the contents of the dist directory to verify zip output
@@ -62,9 +63,9 @@ ARG TARGETARCH
 COPY --from=builder /app/target/dist/ /tmp/dist/
 RUN cd /tmp/dist && \
     if [ "$TARGETARCH" = "amd64" ]; then \
-        find . -name "thunderid-*-linux-x64.zip" | grep -E '^.*/thunderid-v?[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9]+(-[A-Z]+)?)?-linux-x64\.zip$' | xargs -I{} cp {} /tmp/ ; \
+        find . -name "thunderid-gateway-*-linux-x64.zip" | grep -E '^.*/thunderid-gateway-v?[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9]+(-[A-Z]+)?)?-linux-x64\.zip$' | xargs -I{} cp {} /tmp/ ; \
     else \
-        find . -name "thunderid-*-linux-arm64.zip" | grep -E '^.*/thunderid-v?[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9]+(-[A-Z]+)?)?-linux-arm64\.zip$' | xargs -I{} cp {} /tmp/ ; \
+        find . -name "thunderid-gateway-*-linux-arm64.zip" | grep -E '^.*/thunderid-gateway-v?[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9]+(-[A-Z]+)?)?-linux-arm64\.zip$' | xargs -I{} cp {} /tmp/ ; \
     fi && \
     cd /tmp && \
     unzip thunderid-*.zip && \

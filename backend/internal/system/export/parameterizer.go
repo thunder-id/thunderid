@@ -310,9 +310,9 @@ func holdsReference(items []string) bool {
 // the name generatePropertyVarName gives its key.
 //
 // The parameterizer walks only a slice of properties, which carries IsSecret on each element. A user's
-// credentials are a map instead, so its exporter writes their placeholders itself, naming each the way
-// generatePropertyVarName would, and the parameterizer never sees a value to report. Every string entry
-// is taken as a credential, since a user's credentials are the only string-valued map held under a
+// or an agent's credentials are a map instead, so its exporter writes their placeholders itself, naming
+// each the way generatePropertyVarName would, and the parameterizer never sees a value to report. Every
+// string entry is taken as a credential, since credentials are the only string-valued maps held under a
 // dynamic property field. A map whose values are not strings, such as a presentation definition's list
 // of allowed values per claim, holds no value a single name can stand for and is skipped.
 func (p *parameterizer) mappedCredentials(

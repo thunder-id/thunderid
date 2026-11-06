@@ -117,6 +117,8 @@ func (suite *AgentServiceTestSuite) setupService() (
 		Maybe().Return([]providers.EntityGroup{}, nil)
 	mockEntity.On("GetGroupCountForEntity", mock.Anything, mock.Anything).
 		Maybe().Return(0, nil)
+	mockEntity.On("GetDeclaredCredentialValues", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Maybe().Return(map[string]string{}, nil)
 
 	mockInbound.On("GetInboundClientByEntityID", mock.Anything, mock.Anything).
 		Maybe().Return((*inboundmodel.InboundClient)(nil), inboundclient.ErrInboundClientNotFound)
@@ -4637,6 +4639,106 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_Project() {
 			} else {
 				mockEntity.AssertNotCalled(suite.T(), "UpdateEntity", mock.Anything, mock.Anything, mock.Anything)
 			}
+		})
+	}
+}
+
+func (suite *AgentServiceTestSuite) TestUpdateAgentCredentials_SetsTheCredentials() {
+	svc, mockEntity, _, _, _ := suite.setupService()
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).
+		Return(buildAgentEntityFixture(testAgentName, "", "", ""), nil)
+	mockEntity.On("UpdateCredentials", mock.Anything, testAgentID, json.RawMessage(`{"password":"s3cret"}`)).
+		Return(nil).Once()
+
+	svcErr := svc.UpdateAgentCredentials(context.Background(), testAgentID, json.RawMessage(`{"password":"s3cret"}`))
+
+	suite.Nil(svcErr)
+}
+
+func (suite *AgentServiceTestSuite) TestUpdateAgentCredentials_RefusesARequestWithoutCredentials() {
+	svc, _, _, _, _ := suite.setupService()
+
+	for _, body := range []string{``, `{}`, `{"password":7}`, `[]`} {
+		svcErr := svc.UpdateAgentCredentials(context.Background(), testAgentID, json.RawMessage(body))
+		suite.Require().NotNil(svcErr, body)
+		suite.Equal(ErrorInvalidRequestFormat.Code, svcErr.Code, body)
+	}
+	svcErr := svc.UpdateAgentCredentials(context.Background(), "", json.RawMessage(`{"password":"s3cret"}`))
+	suite.Require().NotNil(svcErr)
+	suite.Equal(ErrorMissingAgentID.Code, svcErr.Code)
+}
+
+func (suite *AgentServiceTestSuite) TestUpdateAgentCredentials_RefusesWhatIsNotAWritableAgent() {
+	readOnly := buildAgentEntityFixture(testAgentName, "", "", "")
+	readOnly.IsReadOnly = true
+	notAnAgent := buildAgentEntityFixture(testAgentName, "", "", "")
+	notAnAgent.Category = providers.EntityCategoryUser
+	cases := []struct {
+		name     string
+		existing *providers.Entity
+		err      error
+		want     string
+	}{
+		{name: "not found", err: entity.ErrEntityNotFound, want: ErrorAgentNotFound.Code},
+		{name: "read failure", err: assert.AnError, want: tidcommon.InternalServerError.Code},
+		{name: "not an agent", existing: notAnAgent, want: ErrorAgentNotFound.Code},
+		{name: "declarative", existing: readOnly, want: ErrorCannotModifyDeclarativeResource.Code},
+	}
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			svc, mockEntity, _, _, _ := suite.setupService()
+			clearMockCalls(mockEntity, "GetEntityProfile")
+			mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).Return(tc.existing, tc.err)
+
+			svcErr := svc.UpdateAgentCredentials(context.Background(), testAgentID,
+				json.RawMessage(`{"password":"s3cret"}`))
+
+			suite.Require().NotNil(svcErr)
+			suite.Equal(tc.want, svcErr.Code)
+			mockEntity.AssertNotCalled(suite.T(), "UpdateCredentials", mock.Anything, mock.Anything, mock.Anything)
+		})
+	}
+}
+
+func (suite *AgentServiceTestSuite) TestUpdateAgentCredentials_AuthzDenied() {
+	svc, mockEntity := suite.setupServiceWithAuthz(suite.newDenyAuthz(security.ActionUpdateAgent, testOUID))
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).
+		Return(buildAgentEntityFixture(testAgentName, "", "", ""), nil)
+
+	svcErr := svc.UpdateAgentCredentials(context.Background(), testAgentID, json.RawMessage(`{"password":"s3cret"}`))
+
+	suite.Require().NotNil(svcErr)
+	suite.Equal(tidcommon.ErrorUnauthorized.Code, svcErr.Code)
+	mockEntity.AssertNotCalled(suite.T(), "UpdateCredentials", mock.Anything, mock.Anything, mock.Anything)
+}
+
+// A credential the type does not declare, or an empty one, is refused as an invalid credential; any
+// other failure to write is a server error.
+func (suite *AgentServiceTestSuite) TestUpdateAgentCredentials_WriteFailures() {
+	cases := []struct {
+		name string
+		err  error
+		want string
+	}{
+		{name: "undeclared", err: entity.ErrInvalidCredential,
+			want: ErrorInvalidCredential.Code},
+		{name: "store", err: assert.AnError, want: tidcommon.InternalServerError.Code},
+	}
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			svc, mockEntity, _, _, _ := suite.setupService()
+			clearMockCalls(mockEntity, "GetEntityProfile")
+			mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).
+				Return(buildAgentEntityFixture(testAgentName, "", "", ""), nil)
+			mockEntity.On("UpdateCredentials", mock.Anything, testAgentID, mock.Anything).Return(tc.err)
+
+			svcErr := svc.UpdateAgentCredentials(context.Background(), testAgentID,
+				json.RawMessage(`{"secret":"s3cret"}`))
+
+			suite.Require().NotNil(svcErr)
+			suite.Equal(tc.want, svcErr.Code)
 		})
 	}
 }

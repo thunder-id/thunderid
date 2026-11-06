@@ -234,7 +234,7 @@ func (s *DefinitionHandlerTestSuite) TestRequestToDTOSanitizes() {
 		MandatoryClaims:      []string{"given_name"},
 		ClaimValues:          map[string][]string{" address.country ": {" DE ", "", "AT"}, "  ": {"x"}, "empty": {""}},
 		EnforceTrustedIssuer: &enforce,
-		TrustedAuthorities:   []string{" root-a "},
+		TrustedAuthorities:   []TrustedAuthority{{Name: " root-a ", Certificate: " pem\r\n "}, {Name: "root-b"}},
 	})
 
 	s.Equal("eudi-pid", dto.Handle)
@@ -244,7 +244,7 @@ func (s *DefinitionHandlerTestSuite) TestRequestToDTOSanitizes() {
 	s.Equal([]string{"DE", "AT"}, dto.ClaimValues["address.country"])
 	// Entry with blank path is dropped; entry with only-empty values is dropped.
 	s.Len(dto.ClaimValues, 1)
-	s.Equal([]string{"root-a"}, dto.TrustedAuthorities)
+	s.Equal([]TrustedAuthority{{Name: "root-a", Certificate: "pem"}, {Name: "root-b"}}, dto.TrustedAuthorities)
 	s.Require().NotNil(dto.EnforceTrustedIssuer)
 	s.True(*dto.EnforceTrustedIssuer)
 }

@@ -249,6 +249,36 @@ func (ts *ExportEntityResourcesTestSuite) TestUserWithoutAPasswordIsExportedWith
 		"a user without a password must not export a password variable")
 }
 
+// TestUserWhoseTypeIsGoneIsLeftOut verifies that a user whose type was deleted is left out of the
+// export rather than exported without its credentials: which credentials a user carries is its type's
+// to say, and there is no type left to say it.
+func (ts *ExportEntityResourcesTestSuite) TestUserWhoseTypeIsGoneIsLeftOut() {
+	typeHandle := "export-entity-gone-type"
+	typeID, err := testutils.CreateUserType(testutils.UserType{
+		Handle:      typeHandle,
+		DisplayName: "Export Entity Gone Type",
+		OUID:        ts.ouID,
+		Schema: map[string]interface{}{
+			"username": map[string]interface{}{"type": "string"},
+			"password": map[string]interface{}{"type": "string", "credential": true},
+		},
+	})
+	ts.Require().NoError(err, "Failed to create the user type")
+	userID, err := testutils.CreateUser(testutils.User{
+		Type:       typeHandle,
+		OUID:       ts.ouID,
+		Attributes: json.RawMessage(`{"username": "export-entity-gone-type-user", "password": "ExportEntity@123"}`),
+	})
+	ts.Require().NoError(err, "Failed to create the user")
+	defer func() { _ = testutils.DeleteUser(userID) }()
+	ts.Require().NoError(testutils.DeleteUserType(typeID))
+
+	_, err = ts.exportResourcesYAML(ExportRequest{Users: []string{userID}})
+
+	ts.Require().Error(err, "expected the user to be left out")
+	ts.Assert().Contains(err.Error(), "EXP-1002", "the export must hold no resources")
+}
+
 // TestUserWithoutAUsernameIsLeftOut verifies a user with no username is left out of the export
 // rather than exported without one. Its credential placeholders are named after the username, so
 // there is nothing to name them after, and a user with no username cannot be identified on import.

@@ -42,7 +42,7 @@ Run from the repository root.
 
 To rebuild after a code change, repeat the step that covers it. After a frontend-only change, run step 1 and then `./build.sh package_quickstart`, which repackages without rebuilding the Go binaries. That only works once `build_quickstart` has built them before; on a clean tree run `build_quickstart`. `make build_quickstart` does the same as the second command.
 
-The result is `target/dist/thunderid-quickstart-<version>-<os>-<arch>.zip`.
+The result is `target/dist/thunderid-<version>-<os>-<arch>.zip`.
 
 ### What packaging does
 
@@ -73,13 +73,13 @@ The result is `target/dist/thunderid-quickstart-<version>-<os>-<arch>.zip`.
 
 ```bash
 cd target/dist
-unzip thunderid-quickstart-*.zip
-cd thunderid-quickstart-*
+unzip thunderid-[0-9]*.zip
+cd thunderid-[0-9]*
 ./setup.sh   # once
 ./start.sh
 ```
 
-On Windows, build with `.\build.ps1 build_quickstart`, extract `thunderid-quickstart-*-win-x64.zip`, and run the PowerShell equivalents from the extracted folder:
+On Windows, build with `.\build.ps1 build_quickstart`, extract `thunderid-[0-9]*-win-x64.zip`, and run the PowerShell equivalents from the extracted folder:
 
 ```powershell
 .\setup.ps1   # once
@@ -130,7 +130,7 @@ The three deployments keep their state in their own SQLite databases and key mat
 | `port already in use` | Another process holds 8090, 8091 or 8095. The script clears them at start, but a process from another user may remain. |
 | The Control Plane logs `Failed to apply the latest version to the default gateway` with code `GTW-1017` | dp lacks a value the version refers to. A dry run names it: `POST /gateways/{id}/apply` with `{"version":"latest","dryRun":true}`, then read `missing`. Seeded values live in `seed_dp_values` in [bootstrap.sh](bootstrap.sh) and `Set-DpValues` in [bootstrap.ps1](bootstrap.ps1); a new one is usually a new upstream reference that needs seeding there. |
 | Nothing is logged after a change on the Control Plane | Auto-apply is off. Check that the Control Plane's `deployment.yaml` has `gateway.auto_apply: true`. |
-| Agents imported on the CP never reach the DP, or the import reports `Owner not found` | An agent's owner must be a user that exists on the CP and, once synced, on the DP. The Wayfinder `app-native` sample bundle takes it from `AGENT_OWNER_ID` in `thunderid.env`; set that to the Service Desk Admin's ID, `01900000-0000-7000-8000-0000000000f3`. In the CP console's Add Agent form, choose that user as the owner. |
+| Agents imported on the CP never reach the DP, or the import reports `Owner not found` | An agent's owner must be a user that exists on the CP and, once synced, on the DP. Both Wayfinder sample bundles take it from `AGENT_OWNER_ID` in `thunderid.env`, which defaults to the Service Desk Admin's ID, `01900000-0000-7000-8000-0000000000f3`. In the CP console's Add Agent form, choose that user as the owner. |
 | Signing into the CP console fails with `invalid_target` | auth-dp has no resource server for the Control Plane's URL. The pack registers it at package time, so rebuild and unzip fresh. |
 | Signing into the CP console is rejected on the redirect | The Control Plane's URL is not a redirect URI of `CP_CONSOLE` on auth-dp. Check `CP_CONSOLE_URL` and start with fresh databases. |
 

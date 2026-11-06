@@ -53,6 +53,9 @@ func setExternalIdentity(execResp *providers.ExecutorResponse, idpID, sub string
 		execResp.RuntimeData = make(map[string]string)
 	}
 	execResp.RuntimeData[common.RuntimeKeyExternalIdentity] = string(encoded)
+	if idpID != "" && sub != "" {
+		execResp.SharedRuntimeData = map[string]string{common.RuntimeKeyFederatedLoginCompleted: dataValueTrue}
+	}
 	return nil
 }
 

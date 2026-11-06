@@ -115,52 +115,6 @@ func (_c *walletInterfaceMock_GetRequestObject_Call) RunAndReturn(run func(ctx c
 	return _c
 }
 
-// GetTrustAnchors provides a mock function for the type walletInterfaceMock
-func (_mock *walletInterfaceMock) GetTrustAnchors() []TrustAnchorInfo {
-	ret := _mock.Called()
-
-	if len(ret) == 0 {
-		panic("no return value specified for GetTrustAnchors")
-	}
-
-	var r0 []TrustAnchorInfo
-	if returnFunc, ok := ret.Get(0).(func() []TrustAnchorInfo); ok {
-		r0 = returnFunc()
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]TrustAnchorInfo)
-		}
-	}
-	return r0
-}
-
-// walletInterfaceMock_GetTrustAnchors_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetTrustAnchors'
-type walletInterfaceMock_GetTrustAnchors_Call struct {
-	*mock.Call
-}
-
-// GetTrustAnchors is a helper method to define mock.On call
-func (_e *walletInterfaceMock_Expecter) GetTrustAnchors() *walletInterfaceMock_GetTrustAnchors_Call {
-	return &walletInterfaceMock_GetTrustAnchors_Call{Call: _e.mock.On("GetTrustAnchors")}
-}
-
-func (_c *walletInterfaceMock_GetTrustAnchors_Call) Run(run func()) *walletInterfaceMock_GetTrustAnchors_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		run()
-	})
-	return _c
-}
-
-func (_c *walletInterfaceMock_GetTrustAnchors_Call) Return(trustAnchorInfos []TrustAnchorInfo) *walletInterfaceMock_GetTrustAnchors_Call {
-	_c.Call.Return(trustAnchorInfos)
-	return _c
-}
-
-func (_c *walletInterfaceMock_GetTrustAnchors_Call) RunAndReturn(run func() []TrustAnchorInfo) *walletInterfaceMock_GetTrustAnchors_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
 // SubmitError provides a mock function for the type walletInterfaceMock
 func (_mock *walletInterfaceMock) SubmitError(ctx context.Context, state string, code string, description string) *common.ServiceError {
 	ret := _mock.Called(ctx, state, code, description)
