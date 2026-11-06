@@ -2143,6 +2143,35 @@ func TestImportResources_OrganizationUnitCarriesDefaultFlowFields(t *testing.T) 
 	assert.Equal(t, "signout-flow-1", ouSvc.created[0].SignOutFlowID)
 }
 
+func TestImportResources_FlowKeepsProjectID(t *testing.T) {
+	flowSvc := &fakeFlowService{
+		byID:  map[string]*providers.CompleteFlowDefinition{},
+		byKey: map[string]*providers.CompleteFlowDefinition{},
+	}
+
+	svc := newImportService(
+		nil, nil, nil, flowSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+
+	content := strings.Join([]string{
+		"resource_type: flow",
+		"handle: project-login",
+		"name: Project Login",
+		"flowType: AUTHENTICATION",
+		"ouId: ou-1",
+		"projectId: project-1",
+		"nodes: []",
+		"",
+	}, "\n")
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{Content: content})
+
+	require.Nil(t, err)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status)
+	require.Len(t, flowSvc.created, 1)
+	assert.Equal(t, "project-1", flowSvc.created[0].ProjectID)
+}
+
 func TestImportResources_FlowUpsertCreatePreservesID(t *testing.T) {
 	flowSvc := &fakeFlowService{
 		byID:  map[string]*providers.CompleteFlowDefinition{},

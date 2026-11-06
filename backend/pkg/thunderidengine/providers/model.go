@@ -226,6 +226,7 @@ type CompleteFlowDefinition struct {
 	IsReadOnly    bool                    `json:"isReadOnly"              yaml:"isReadOnly"             jsonschema:"Whether the flow is immutable (declarative)."`
 	OUID          string                  `json:"ouId"                    yaml:"ouId,omitempty"         jsonschema:"Organization unit that owns this flow."`
 	OUHandle      string                  `json:"-"                       yaml:"ouHandle,omitempty"`
+	ProjectID     string                  `json:"projectId,omitempty"     yaml:"projectId,omitempty"    jsonschema:"Project the flow belongs to."`
 }
 
 // InterceptorDefinition describes how an interceptor is declared in the flow definition.

@@ -270,8 +270,8 @@ export default function App(): JSX.Element {
                       path={`${ROUTE_SEGMENTS.resourceServers}/:resourceServerId`}
                       element={<ResourceServerEditPage />}
                     />
+                    <Route path={ROUTE_SEGMENTS.flows} element={<FlowsListPage />} />
                   </Route>
-                  <Route path={ROUTE_SEGMENTS.flows} element={<FlowsListPage />} />
                   <Route path={ROUTE_SEGMENTS.settings} element={<SettingsPage />} />
                   <Route path={ROUTE_SEGMENTS.projects} element={<ProjectsListPage />} />
                   <Route path={ROUTE_SEGMENTS.gateways} element={<GatewaysListPage />} />
@@ -467,7 +467,9 @@ export default function App(): JSX.Element {
                   path={RouteConfig.flows.create()}
                   element={
                     <ProtectedRoute>
-                      <FullScreenLayout />
+                      <SelectedProjectScope>
+                        <FullScreenLayout />
+                      </SelectedProjectScope>
                     </ProtectedRoute>
                   }
                 >
@@ -497,7 +499,9 @@ export default function App(): JSX.Element {
                   path={RouteConfig.flows.detail(':flowId')}
                   element={
                     <ProtectedRoute>
-                      <DashboardLayout collapseSidebar />
+                      <SelectedProjectScope>
+                        <DashboardLayout collapseSidebar />
+                      </SelectedProjectScope>
                     </ProtectedRoute>
                   }
                 >

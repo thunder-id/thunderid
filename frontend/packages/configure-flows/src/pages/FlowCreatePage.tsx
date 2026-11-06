@@ -3,6 +3,7 @@
 
 import {DocumentTitle, FullScreenCreationWizardLayout} from '@thunderid/components';
 import {useHasMultipleOUs} from '@thunderid/configure-organization-units';
+import {useProjectScope} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {getErrorMessage} from '@thunderid/utils';
 import {Alert, Box, Button, CircularProgress} from '@wso2/oxygen-ui';
@@ -49,8 +50,14 @@ export default function FlowCreatePage(): JSX.Element {
   const [selectedOuId, setSelectedOuId] = useState('');
 
   // The organization unit is the wizard's first step whenever there is a choice to make. A single-unit deployment
-  // uses its one unit, so once that is known the step is skipped.
-  const {hasMultipleOUs, isLoading: isOuLoading, ouList} = useHasMultipleOUs();
+  // uses its one unit, so once that is known the step is skipped. Inside a project the flow is created with the
+  // project alone, and the API places it in the system organization unit, so there is no organization unit to pick.
+  const ouLookup = useHasMultipleOUs();
+  const {projectId} = useProjectScope();
+  const isInProject = Boolean(projectId);
+  const hasMultipleOUs = !isInProject && ouLookup.hasMultipleOUs;
+  const isOuLoading = !isInProject && ouLookup.isLoading;
+  const {ouList} = ouLookup;
   const ouId: string = hasMultipleOUs ? selectedOuId : (ouList[0]?.id ?? '');
 
   const currentStep: FlowCreateStep =
@@ -123,7 +130,7 @@ export default function FlowCreatePage(): JSX.Element {
     }
     if (currentStep === FlowCreateStep.CONFIGURE) {
       if (!selectedType || !selectedTemplate) return;
-      if (!ouId) {
+      if (!isInProject && !ouId) {
         setError(t('flows:create.organizationUnit.required', 'Organization unit is required'));
         return;
       }
@@ -131,7 +138,7 @@ export default function FlowCreatePage(): JSX.Element {
         name: nameValue.name,
         handle: nameValue.handle,
         flowType: selectedType,
-        ouId,
+        ...(isInProject ? {projectId} : {ouId}),
         nodes: selectedTemplate.config.nodes,
       };
       setError(null);

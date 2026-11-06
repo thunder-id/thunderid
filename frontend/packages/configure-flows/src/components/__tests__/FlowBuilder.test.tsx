@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {act, render, screen, fireEvent, waitFor} from '@testing-library/react';
+import {ProjectScopeProvider} from '@thunderid/contexts';
 import type {Node, Edge} from '@xyflow/react';
 import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
 import FlowConstants from '../../constants/FlowConstants';
@@ -1396,6 +1397,36 @@ describe('Existing Flow Data Loading', () => {
 
     // Flow title should be set from existing data or default
     expect(screen.getByTestId('flow-title')).toBeInTheDocument();
+  });
+
+  it('returns to the list for a flow of another project', async () => {
+    mockUseParams.mockReturnValue({flowId: 'test-flow-id'});
+    mockExistingFlowData.value = {id: 'test-flow-id', ouId: 'ou-1', projectId: 'project-2', nodes: []};
+
+    render(
+      <ProjectScopeProvider project={{id: 'project-1'}}>
+        <FlowBuilder />
+      </ProjectScopeProvider>,
+    );
+
+    expect(screen.queryByTestId('flow-builder')).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith('/flows', {replace: true});
+    });
+  });
+
+  it('shows a flow of the selected project', () => {
+    mockUseParams.mockReturnValue({flowId: 'test-flow-id'});
+    mockExistingFlowData.value = {id: 'test-flow-id', ouId: 'ou-1', projectId: 'project-1', nodes: []};
+
+    render(
+      <ProjectScopeProvider project={{id: 'project-1'}}>
+        <FlowBuilder />
+      </ProjectScopeProvider>,
+    );
+
+    expect(screen.getByTestId('flow-builder')).toBeInTheDocument();
+    expect(mockNavigate).not.toHaveBeenCalledWith('/flows', {replace: true});
   });
 });
 

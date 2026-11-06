@@ -540,11 +540,71 @@ func (suite *FlowToolsTestSuite) TestGetCreateFlowSchema() {
 	schema := getCreateFlowSchema()
 
 	assert.NotNil(suite.T(), schema)
-	assert.Contains(suite.T(), schema.Required, "ouId")
+	assert.NotContains(suite.T(), schema.Required, "ouId")
+	assert.Contains(suite.T(), schema.Properties, "projectId")
 }
 
 func (suite *FlowToolsTestSuite) TestGetUpdateFlowSchema() {
 	schema := getUpdateFlowSchema()
 
 	assert.NotNil(suite.T(), schema)
+}
+
+func (suite *FlowToolsTestSuite) TestListFlows_ForAProject() {
+	mockService := NewFlowMgtServiceInterfaceMock(suite.T())
+	tools := &flowTools{flowService: mockService}
+
+	expectedFlows := []BasicFlowDefinition{{ID: "flow1", ProjectID: "project-1"}}
+	mockService.EXPECT().ListFlowsByProject(mock.Anything, "project-1", "",
+		providers.FlowTypeAuthentication, 30, 0).Return(&FlowListResponse{TotalResults: 1, Flows: expectedFlows}, nil)
+
+	result, output, err := tools.listFlows(context.Background(), &mcp.CallToolRequest{}, listFlowsInput{
+		FlowType:  string(providers.FlowTypeAuthentication),
+		ProjectID: "project-1",
+	})
+
+	assert.NoError(suite.T(), err)
+	assert.Nil(suite.T(), result)
+	assert.Equal(suite.T(), 1, output.TotalCount)
+	assert.Equal(suite.T(), expectedFlows, output.Flows)
+}
+
+func (suite *FlowToolsTestSuite) TestListFlows_ForAProjectError() {
+	mockService := NewFlowMgtServiceInterfaceMock(suite.T())
+	tools := &flowTools{flowService: mockService}
+
+	mockService.EXPECT().ListFlowsByProject(mock.Anything, "project-1", "", providers.FlowType(""), 30, 0).
+		Return(nil, &tidcommon.InternalServerError)
+
+	_, _, err := tools.listFlows(context.Background(), &mcp.CallToolRequest{}, listFlowsInput{ProjectID: "project-1"})
+
+	assert.Error(suite.T(), err)
+	assert.Contains(suite.T(), err.Error(), "failed to list flows")
+}
+
+func (suite *FlowToolsTestSuite) TestCreateFlow_WithProject() {
+	mockService := NewFlowMgtServiceInterfaceMock(suite.T())
+	tools := &flowTools{flowService: mockService}
+
+	input := FlowDefinition{
+		Handle:    "basic-login",
+		Name:      "Basic Login",
+		FlowType:  providers.FlowTypeAuthentication,
+		ProjectID: "project-1",
+	}
+	mockService.EXPECT().CreateFlow(mock.Anything, &input).Return(&providers.CompleteFlowDefinition{
+		ID:        "flow1",
+		ProjectID: "project-1",
+	}, nil)
+
+	_, output, err := tools.createFlow(context.Background(), &mcp.CallToolRequest{}, input)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), "project-1", output.ProjectID)
+}
+
+func (suite *FlowToolsTestSuite) TestGetListFlowsSchema_HasProjectID() {
+	schema := getListFlowsSchema()
+
+	assert.Contains(suite.T(), schema.Properties, "project_id")
 }

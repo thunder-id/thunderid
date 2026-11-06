@@ -906,6 +906,104 @@ func (_c *flowStoreInterfaceMock_ListFlowsByOU_Call) RunAndReturn(run func(ctx c
 	return _c
 }
 
+// ListFlowsByProject provides a mock function for the type flowStoreInterfaceMock
+func (_mock *flowStoreInterfaceMock) ListFlowsByProject(ctx context.Context, projectID string, ouID string, limit int, offset int, flowType string) ([]BasicFlowDefinition, int, error) {
+	ret := _mock.Called(ctx, projectID, ouID, limit, offset, flowType)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListFlowsByProject")
+	}
+
+	var r0 []BasicFlowDefinition
+	var r1 int
+	var r2 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, int, int, string) ([]BasicFlowDefinition, int, error)); ok {
+		return returnFunc(ctx, projectID, ouID, limit, offset, flowType)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, int, int, string) []BasicFlowDefinition); ok {
+		r0 = returnFunc(ctx, projectID, ouID, limit, offset, flowType)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]BasicFlowDefinition)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string, int, int, string) int); ok {
+		r1 = returnFunc(ctx, projectID, ouID, limit, offset, flowType)
+	} else {
+		r1 = ret.Get(1).(int)
+	}
+	if returnFunc, ok := ret.Get(2).(func(context.Context, string, string, int, int, string) error); ok {
+		r2 = returnFunc(ctx, projectID, ouID, limit, offset, flowType)
+	} else {
+		r2 = ret.Error(2)
+	}
+	return r0, r1, r2
+}
+
+// flowStoreInterfaceMock_ListFlowsByProject_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ListFlowsByProject'
+type flowStoreInterfaceMock_ListFlowsByProject_Call struct {
+	*mock.Call
+}
+
+// ListFlowsByProject is a helper method to define mock.On call
+//   - ctx context.Context
+//   - projectID string
+//   - ouID string
+//   - limit int
+//   - offset int
+//   - flowType string
+func (_e *flowStoreInterfaceMock_Expecter) ListFlowsByProject(ctx any, projectID any, ouID any, limit any, offset any, flowType any) *flowStoreInterfaceMock_ListFlowsByProject_Call {
+	return &flowStoreInterfaceMock_ListFlowsByProject_Call{Call: _e.mock.On("ListFlowsByProject", ctx, projectID, ouID, limit, offset, flowType)}
+}
+
+func (_c *flowStoreInterfaceMock_ListFlowsByProject_Call) Run(run func(ctx context.Context, projectID string, ouID string, limit int, offset int, flowType string)) *flowStoreInterfaceMock_ListFlowsByProject_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		var arg3 int
+		if args[3] != nil {
+			arg3 = args[3].(int)
+		}
+		var arg4 int
+		if args[4] != nil {
+			arg4 = args[4].(int)
+		}
+		var arg5 string
+		if args[5] != nil {
+			arg5 = args[5].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+			arg4,
+			arg5,
+		)
+	})
+	return _c
+}
+
+func (_c *flowStoreInterfaceMock_ListFlowsByProject_Call) Return(basicFlowDefinitions []BasicFlowDefinition, n int, err error) *flowStoreInterfaceMock_ListFlowsByProject_Call {
+	_c.Call.Return(basicFlowDefinitions, n, err)
+	return _c
+}
+
+func (_c *flowStoreInterfaceMock_ListFlowsByProject_Call) RunAndReturn(run func(ctx context.Context, projectID string, ouID string, limit int, offset int, flowType string) ([]BasicFlowDefinition, int, error)) *flowStoreInterfaceMock_ListFlowsByProject_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // RestoreFlowVersion provides a mock function for the type flowStoreInterfaceMock
 func (_mock *flowStoreInterfaceMock) RestoreFlowVersion(ctx context.Context, flowID string, version int) (*providers.CompleteFlowDefinition, error) {
 	ret := _mock.Called(ctx, flowID, version)

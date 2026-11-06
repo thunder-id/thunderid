@@ -50,6 +50,10 @@ var (
 type FlowMgtServiceInterface interface {
 	ListFlows(ctx context.Context, limit, offset int, flowType providers.FlowType) (
 		*FlowListResponse, *tidcommon.ServiceError)
+	// ListFlowsByProject lists the flows of a project, narrowed to the ones an organization unit owns when ouID is
+	// set.
+	ListFlowsByProject(ctx context.Context, projectID, ouID string, flowType providers.FlowType, limit, offset int) (
+		*FlowListResponse, *tidcommon.ServiceError)
 	CreateFlow(
 		ctx context.Context,
 		flowDef *FlowDefinition,
@@ -130,6 +134,12 @@ type ouProvider interface {
 	ResolveOwnerForUpdate(
 		ctx context.Context, requestedID, requestedHandle, currentID string, errs ou.OwnerErrors,
 	) (string, *tidcommon.ServiceError)
+	GetSystemOUID(ctx context.Context) (string, *tidcommon.ServiceError)
+}
+
+// projectOUValidator checks that a resource scoped to a project is in an organization unit the project holds.
+type projectOUValidator interface {
+	ValidateProjectOU(ctx context.Context, projectID, ouID string) *tidcommon.ServiceError
 }
 
 // flowOwnerErrors are the errors given when the organization unit of a flow is refused.
@@ -158,7 +168,9 @@ type flowMgtService struct {
 	sharingSvc  sharing.SharingServiceInterface
 	idps        idpProvider
 	bus         eventbus.EventBusInterface
-	logger      *log.Logger
+	// projectValidator is nil on a deployment that serves no projects.
+	projectValidator projectOUValidator
+	logger           *log.Logger
 }
 
 // notificationTemplateProvider maps a template handle (within a channel) to its id.
@@ -184,6 +196,7 @@ func newFlowMgtService(
 	sharingSvc sharing.SharingServiceInterface,
 	idps idpProvider,
 	bus eventbus.EventBusInterface,
+	projectValidator projectOUValidator,
 ) *flowMgtService {
 	return &flowMgtService{
 		store:               store,
@@ -201,6 +214,7 @@ func newFlowMgtService(
 		sharingSvc:          sharingSvc,
 		idps:                idps,
 		bus:                 bus,
+		projectValidator:    projectValidator,
 		logger:              log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName)),
 	}
 }
@@ -243,6 +257,45 @@ func (s *flowMgtService) ListFlows(ctx context.Context, limit, offset int, flowT
 	}
 
 	return listResponse, nil
+}
+
+// ListFlowsByProject retrieves a paginated list of the flows of a project, narrowed to the ones an organization unit
+// owns when ouID is set. A project that does not exist has none.
+func (s *flowMgtService) ListFlowsByProject(
+	ctx context.Context, projectID, ouID string, flowType providers.FlowType, limit, offset int,
+) (*FlowListResponse, *tidcommon.ServiceError) {
+	if flowType != "" && !isValidFlowType(flowType) {
+		return nil, &ErrorInvalidFlowType
+	}
+	if limit <= 0 {
+		limit = defaultPageSize
+	}
+	if limit > maxPageSize {
+		limit = maxPageSize
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
+	extraQuery := "&" + queryParamProject + "=" + url.QueryEscape(projectID) + flowTypeQueryParam(flowType)
+	if ouID != "" {
+		extraQuery += utils.FilterQueryParam(map[string]interface{}{filter.AttributeOUID: ouID})
+	}
+	if projectID == "" {
+		return buildFlowListResponse([]BasicFlowDefinition{}, 0, limit, offset, extraQuery), nil
+	}
+
+	flows, totalCount, err := s.store.ListFlowsByProject(ctx, projectID, ouID, limit, offset, string(flowType))
+	if err != nil {
+		s.logger.Error(ctx, "Failed to list the flows of a project", log.String("projectID", projectID),
+			log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+	for i := range flows {
+		flows[i].IsOwnedByOU = new(true)
+	}
+
+	return buildFlowListResponse(flows, totalCount, limit, offset, extraQuery), nil
 }
 
 // CreateFlow creates a new flow definition with version 1.
@@ -321,15 +374,51 @@ func (s *flowMgtService) createFlow(ctx context.Context, flowDef *FlowDefinition
 
 // ResolveFlowOU sets the organization unit a flow is owned by. A flow has to name one, by id or by handle, and it has
 // to exist. The handle is replaced by the id it resolves to. It is only recorded: nothing restricts what an
-// organization unit can do with a flow it does not own.
+// organization unit can do with a flow it does not own. A flow in a project may leave the organization unit out to be
+// placed in the system organization unit; one it names has to belong to the project.
 func (s *flowMgtService) ResolveFlowOU(ctx context.Context, flowDef *FlowDefinition) *tidcommon.ServiceError {
-	ouID, svcErr := s.ouSvc.ResolveOwner(ctx, flowDef.OUID, flowDef.OUHandle, flowOwnerErrors)
+	var ouID string
+	var svcErr *tidcommon.ServiceError
+	if flowDef.ProjectID != "" && flowDef.OUID == "" && flowDef.OUHandle == "" {
+		ouID, svcErr = s.ouSvc.GetSystemOUID(ctx)
+	} else {
+		ouID, svcErr = s.ouSvc.ResolveOwner(ctx, flowDef.OUID, flowDef.OUHandle, flowOwnerErrors)
+	}
 	if svcErr != nil {
 		return svcErr
+	}
+	if flowDef.ProjectID != "" {
+		if svcErr := s.validateProjectOU(ctx, flowDef.ProjectID, ouID); svcErr != nil {
+			return svcErr
+		}
 	}
 	flowDef.OUID = ouID
 	flowDef.OUHandle = ""
 	return nil
+}
+
+// validateProjectOU checks that a flow's organization unit belongs to its project. It returns ErrorInvalidProject
+// when no such project exists, and ErrorOUNotInProject when the organization unit is outside the project.
+//
+// A deployment that serves no projects, such as a Data Plane, cannot check the project. It keeps the project ID as
+// given so that imported configuration retains it.
+func (s *flowMgtService) validateProjectOU(ctx context.Context, projectID, ouID string) *tidcommon.ServiceError {
+	if s.projectValidator == nil {
+		return nil
+	}
+	svcErr := s.projectValidator.ValidateProjectOU(ctx, projectID, ouID)
+	switch {
+	case svcErr == nil:
+		return nil
+	case svcErr.Code == projectNotFoundErrorCode:
+		return &ErrorInvalidProject
+	case svcErr.Code == ouNotInProjectErrorCode:
+		return &ErrorOUNotInProject
+	default:
+		s.logger.Error(ctx, "Failed to check the project of a flow",
+			log.String("projectID", projectID), log.String("code", svcErr.Code))
+		return &tidcommon.InternalServerError
+	}
 }
 
 // GetFlow retrieves a flow definition by its ID.
@@ -821,6 +910,22 @@ func (s *flowMgtService) updateFlow(
 		}
 		flowDef.OUID = ouID
 		flowDef.OUHandle = ""
+
+		// A project checks that the flow's organization unit belongs to it. An update that names no project, or the
+		// current one, keeps the flow in its project without checking it again, since the organization unit cannot
+		// change.
+		if flowDef.ProjectID == "" {
+			flowDef.ProjectID = existingFlow.ProjectID
+		}
+		if flowDef.ProjectID != existingFlow.ProjectID {
+			if projectErr := s.validateProjectOU(txCtx, flowDef.ProjectID, ouID); projectErr != nil {
+				if projectErr.Type == tidcommon.ClientErrorType {
+					validationSvcErr = projectErr
+					return errClientValidation
+				}
+				return fmt.Errorf("failed to check the project of the flow: code=%s", projectErr.Code)
+			}
+		}
 
 		// A variable the flow no longer declares takes its rules and saved values with it. The ones it still
 		// declares have to still satisfy the sharing policies recorded for it, and the values organization units

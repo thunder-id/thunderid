@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	"github.com/google/jsonschema-go/jsonschema"
@@ -27,8 +28,11 @@ func registerMCPTools(server *mcp.Server, flowService FlowMgtServiceInterface) {
 	}
 
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        "list_flows",
-		Description: `List available flows. Supports optional filtering by flow_type.`,
+		Name: "list_flows",
+		Description: `List available flows. Supports optional filtering by flow_type.
+
+Behavior:
+- With project_id, lists only the flows of the project. A project that does not exist has no flows.`,
 		InputSchema: getListFlowsSchema(),
 		Annotations: &mcp.ToolAnnotations{
 			Title:        "List Flows",
@@ -66,6 +70,8 @@ Prerequisites:
 
 Key Requirements:
 - Handle: Lowercase alphanumeric, dashes/underscores allowed (not at start/end). Unique per flow type.
+- Owner: Give ouId, projectId, or both. With only projectId, the flow is placed in the system organization unit.
+  With both, the organization unit must belong to the project.
 - Structure: Must include START and END nodes with at least one functional node in between.
 - Node types: START, END, TASK_EXECUTION, PROMPT.
 - PROMPT nodes: Require 'meta.components' array for UI rendering.
@@ -110,7 +116,13 @@ func (t *flowTools) listFlows(
 
 	flowType := providers.FlowType(input.FlowType)
 
-	listResponse, svcErr := t.flowService.ListFlows(ctx, limit, input.Offset, flowType)
+	var listResponse *FlowListResponse
+	var svcErr *tidcommon.ServiceError
+	if input.ProjectID != "" {
+		listResponse, svcErr = t.flowService.ListFlowsByProject(ctx, input.ProjectID, "", flowType, limit, input.Offset)
+	} else {
+		listResponse, svcErr = t.flowService.ListFlows(ctx, limit, input.Offset, flowType)
+	}
 	if svcErr != nil {
 		return nil, flowListOutput{}, fmt.Errorf("failed to list flows: %s", svcErr.ErrorDescription)
 	}
@@ -226,7 +238,6 @@ func getCreateFlowSchema() *jsonschema.Schema {
 	return tool.GenerateSchema[FlowDefinition](
 		tool.WithEnum("", "flowType",
 			[]string{string(providers.FlowTypeAuthentication), string(providers.FlowTypeRegistration)}),
-		tool.WithRequired("", "ouId"),
 	)
 }
 

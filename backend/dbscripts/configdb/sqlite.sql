@@ -361,6 +361,7 @@ CREATE TABLE "FLOW" (
     FLOW_TYPE VARCHAR(50) NOT NULL,
     ACTIVE_VERSION INTEGER NOT NULL,
     OU_ID VARCHAR(36) NOT NULL,
+    PROJECT_ID VARCHAR(36),
     CREATED_AT TEXT DEFAULT (datetime('now')),
     UPDATED_AT TEXT DEFAULT (datetime('now')),
     UNIQUE (HANDLE, FLOW_TYPE, DEPLOYMENT_ID),
@@ -369,6 +370,9 @@ CREATE TABLE "FLOW" (
 
 -- Composite index for flow type + deployment queries
 CREATE INDEX idx_flow_type_deployment ON "FLOW" (DEPLOYMENT_ID, FLOW_TYPE);
+
+-- Composite index for project-based flow listing
+CREATE INDEX idx_flow_project ON "FLOW" (DEPLOYMENT_ID, PROJECT_ID);
 
 -- Table to store flow version history
 CREATE TABLE "FLOW_VERSION" (
