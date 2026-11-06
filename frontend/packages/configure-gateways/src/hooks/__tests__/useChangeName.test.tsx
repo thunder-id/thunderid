@@ -52,7 +52,7 @@ const named: Named[] = [
 ];
 
 describe('useChangeName', () => {
-  it("names a resource as the environments' maps do, else by its kind and the start of its id", async () => {
+  it("names a resource as the gateways' maps do, else by its kind and the start of its id", async () => {
     render(
       <ResourceNamesProvider targetIds={['gw-dev', '']}>
         <Names named={named} />

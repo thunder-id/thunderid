@@ -4,7 +4,7 @@
 import {describe, expect, it} from 'vitest';
 import {
   defaultDeployRoutePaths,
-  environmentSectionOf,
+  gatewaySectionOf,
   projectHomeOf,
   resourceEditOf,
   userRoutesOf,
@@ -45,11 +45,11 @@ describe('resourceEditOf', () => {
   });
 });
 
-describe('environment, project and administrator routes', () => {
-  it("places an environment's sections under it, within a project when given", () => {
-    expect(environmentSectionOf(defaultDeployRoutePaths, 'gw 1', undefined, 'overview')).toBe('/environments/gw%201');
-    expect(environmentSectionOf(defaultDeployRoutePaths, 'gw-1', 'p-1', 'values')).toBe(
-      '/projects/p-1/environments/gw-1/values',
+describe('gateway, project and administrator routes', () => {
+  it("places a gateway's sections under it, within a project when given", () => {
+    expect(gatewaySectionOf(defaultDeployRoutePaths, 'gw 1', undefined, 'overview')).toBe('/deploy/gateways/gw%201');
+    expect(gatewaySectionOf(defaultDeployRoutePaths, 'gw-1', 'p-1', 'values')).toBe(
+      '/projects/p-1/deploy/gateways/gw-1/values',
     );
   });
 

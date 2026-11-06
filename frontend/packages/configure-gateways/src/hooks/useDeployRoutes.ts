@@ -15,9 +15,9 @@ export interface DeployRoutePaths {
     explore: (gatewayId: string) => string;
     /** The variables and secrets one gateway holds. */
     values: (gatewayId: string) => string;
-    /** One environment's own page: what it runs, its endpoints and its values, for a project when given. */
-    environment: (gatewayId: string, projectId?: string) => string;
-    /** A project's home, which a project's environment page returns to. */
+    /** One gateway's own page: what it runs, its endpoints and its values, for a project when given. */
+    gateway: (gatewayId: string, projectId?: string) => string;
+    /** A project's home, which a project's gateway page returns to. */
     project?: (projectId: string) => string;
     /** Where a resource is edited in the console, for the kinds the console edits on a page of their own. */
     resource?: (resourceType: string, id: string) => string | undefined;
@@ -74,8 +74,8 @@ export const defaultDeployRoutePaths: DeployRoutePaths = {
     list: () => '/deploy',
     explore: (gatewayId: string) => `/deploy/gateways/${encodeURIComponent(gatewayId)}/explore`,
     values: (gatewayId: string) => `/deploy/gateways/${encodeURIComponent(gatewayId)}/values`,
-    environment: (gatewayId: string, projectId?: string) =>
-      `${projectId ? `/projects/${encodeURIComponent(projectId)}` : ''}/environments/${encodeURIComponent(gatewayId)}`,
+    gateway: (gatewayId: string, projectId?: string) =>
+      `${projectId ? `/projects/${encodeURIComponent(projectId)}` : ''}/deploy/gateways/${encodeURIComponent(gatewayId)}`,
     project: (projectId: string) => `/projects/${encodeURIComponent(projectId)}`,
     resource: (resourceType: string, id: string) => {
       const editOf = RESOURCE_EDIT_PAGES[resourceType];
@@ -103,16 +103,16 @@ export function resourceEditOf(routes: DeployRoutePaths, resourceType: string, i
   return (routes.deploy.resource ?? defaultDeployRoutePaths.deploy.resource ?? (() => undefined))(resourceType, id);
 }
 
-/** The sections of an environment's own page, each at an address of its own under the environment's. */
-export type EnvironmentSection = 'overview' | 'values' | 'endpoints' | 'history';
+/** The sections of a gateway's own page, each at an address of its own under the gateway's. */
+export type GatewaySection = 'overview' | 'values' | 'endpoints' | 'history';
 
-/** Where one section of an environment's page is. */
-export function environmentSectionOf(
+/** Where one section of a gateway's page is. */
+export function gatewaySectionOf(
   routes: DeployRoutePaths,
   gatewayId: string,
   projectId: string | undefined,
-  section: EnvironmentSection | 'explore',
+  section: GatewaySection | 'explore',
 ): string {
-  const base = routes.deploy.environment(gatewayId, projectId);
+  const base = routes.deploy.gateway(gatewayId, projectId);
   return section === 'overview' ? base : `${base}/${section}`;
 }

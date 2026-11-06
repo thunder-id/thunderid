@@ -49,7 +49,7 @@ describe('useProjectStatus', () => {
 });
 
 describe('useProjectChanges', () => {
-  it("counts the project's own changes the first environment does not run, by resource type", async () => {
+  it("counts the project's own changes the first gateway does not run, by resource type", async () => {
     scope.projectId = 'p-shop';
     http = fakeHttp({
       'GET /gateways/pipeline': {stages: [{name: 'Development', gateway: {id: 'gw-dev', name: 'dev'}}]},

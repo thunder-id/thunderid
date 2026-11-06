@@ -105,7 +105,7 @@ describe('useProjectStatuses', () => {
     {name: 'Production', gateway: {id: 'gw-prod', name: 'prod', baseUrl: ''}},
   ];
 
-  it('reads each environment against the one before it, says which failed, and reads one again', async () => {
+  it('reads each gateway against the one before it, says which failed, and reads one again', async () => {
     scope.projectId = 'p-shop';
     let fail = true;
     http = fakeHttp({

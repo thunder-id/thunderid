@@ -50,7 +50,7 @@ export interface StageCardProps {
   testId?: string;
 }
 
-/** One stage of the deploy path: a gateway, or an environment in the cloud. */
+/** One stage of the deploy path: a gateway. */
 export default function StageCard({
   name,
   url = undefined,

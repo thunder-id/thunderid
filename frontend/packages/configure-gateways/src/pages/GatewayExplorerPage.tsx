@@ -20,7 +20,7 @@ import ExplorerToolbar from '../components/explorer/ExplorerToolbar';
 import FullScreenHeader from '../components/FullScreenHeader';
 import useProjectScope from '../contexts/ProjectScope';
 import {buildGraph, type GraphNode, type Label} from '../explorer/model';
-import useDeployRoutes, {environmentSectionOf, projectHomeOf} from '../hooks/useDeployRoutes';
+import useDeployRoutes, {gatewaySectionOf, projectHomeOf} from '../hooks/useDeployRoutes';
 import useGatewayErrorTranslator from '../hooks/useGatewayErrorTranslator';
 import type {AppliedResource, Change, MasterEntry, StoredValue, ValueReference, Version} from '../models/deploy';
 import type {Gateway} from '../models/gateway';
@@ -41,7 +41,7 @@ export default function GatewayExplorerPage(): JSX.Element {
   const {gatewayId = ''} = useParams<{gatewayId: string}>();
   const gateways = useGateways();
   const pipeline = usePipeline();
-  // The environment this gateway stands for, which the view returns to.
+  // The pipeline stage this gateway stands for, whose page the view returns to.
   const stage = pipeline.data?.stages.find((entry: PipelineStage) => entry.gateway.id === gatewayId);
   const gateway = gateways.data?.find((entry: Gateway) => entry.id === gatewayId);
   const configuration = useAppliedConfiguration(gatewayId);
@@ -334,14 +334,14 @@ export default function GatewayExplorerPage(): JSX.Element {
             : {key: 'home', label: t('explorer.home', 'Home'), onClick: () => void navigate(routes.home.list())},
           stage
             ? {
-                key: 'environment',
+                key: 'gateway',
                 label: stage.name,
-                onClick: () => void navigate(routes.deploy.environment(gatewayId, project)),
+                onClick: () => void navigate(routes.deploy.gateway(gatewayId, project)),
               }
             : {key: 'gateway', label: gateway?.name ?? gatewayId},
-          {key: 'explore', label: t('environment.deployed', 'Deployed configuration')},
+          {key: 'explore', label: t('gateway.deployed', 'Deployed configuration')},
         ]}
-        onExit={() => void navigate(stage ? routes.deploy.environment(gatewayId, project) : routes.home.list())}
+        onExit={() => void navigate(stage ? routes.deploy.gateway(gatewayId, project) : routes.home.list())}
       />
       {gateway && (
         <ExplorerToolbar
@@ -350,7 +350,7 @@ export default function GatewayExplorerPage(): JSX.Element {
           version={running}
           counts={counts}
           onSwitch={(id: string) =>
-            void navigate(project ? environmentSectionOf(routes, id, project, 'explore') : routes.deploy.explore(id))
+            void navigate(project ? gatewaySectionOf(routes, id, project, 'explore') : routes.deploy.explore(id))
           }
         />
       )}

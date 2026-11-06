@@ -14,7 +14,7 @@ import useProjectScope from '../contexts/ProjectScope';
 import type {AutoApplySetting, Pipeline} from '../models/pipeline';
 import type {Project} from '../models/project';
 
-/** The environments a version is deployed and promoted through, in order: the project's, in one. */
+/** The gateways a version is deployed and promoted through, in order: the project's, in one. */
 export function usePipeline(): UseQueryResult<Pipeline> {
   const source = useDeploySource();
   const project = useProjectScope();
@@ -36,7 +36,7 @@ export function useProjects(): UseQueryResult<Project[]> {
   });
 }
 
-/** Whether a change saved here deploys to the first environment on its own. */
+/** Whether a change saved here deploys to the first gateway on its own. */
 export function useAutoApply(): UseQueryResult<AutoApplySetting> {
   const source = useDeploySource();
   return useQuery<AutoApplySetting>({
@@ -47,7 +47,7 @@ export function useAutoApply(): UseQueryResult<AutoApplySetting> {
 }
 
 /**
- * Turns deploying a project's saved changes to its first environment on or off, or, with null, has it
+ * Turns deploying a project's saved changes to its first gateway on or off, or, with null, has it
  * follow the organization's default again.
  */
 export function useSetProjectAutoSync(): UseMutationResult<void, Error, {project: string; enabled: boolean | null}> {
@@ -61,7 +61,7 @@ export function useSetProjectAutoSync(): UseMutationResult<void, Error, {project
   });
 }
 
-/** Turns deploying a saved change to the first environment on or off. */
+/** Turns deploying a saved change to the first gateway on or off. */
 export function useSetAutoApply(): UseMutationResult<void, Error, boolean> {
   const source = useDeploySource();
   const queryClient = useQueryClient();

@@ -4,7 +4,7 @@
 import type {useTranslation} from 'react-i18next';
 import type {ProjectStatus} from '../models/projectStatus';
 
-/** What a project's rollback on an environment would do, as its status says it. */
+/** What a project's rollback on a gateway would do, as its status says it. */
 export interface ProjectRollback {
   /** The version the project's resources go back to. */
   to: {hash: string; number?: number};
@@ -17,7 +17,7 @@ export interface ProjectRollback {
   changes?: number;
 }
 
-/** A project's rollback on an environment, or undefined when there is nothing to go back to. */
+/** A project's rollback on a gateway, or undefined when there is nothing to go back to. */
 export function projectRollbackOf(status: ProjectStatus | undefined): ProjectRollback | undefined {
   const rollback = status?.rollback;
   if (!rollback?.available || !rollback.toVersion) return undefined;
