@@ -1,7 +1,10 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {useApplyCheck} from './useGatewayVersions';
+import {useQueries} from '@tanstack/react-query';
+import useDeploySource from './source';
+import {applyCheckQuery, useApplyCheck} from './useGatewayVersions';
+import useProjectScope from '../contexts/ProjectScope';
 import type {ChangedValues} from '../models/deploy';
 
 /** What the check of a target's changed values found, or that it could not find out. */
@@ -35,4 +38,21 @@ export default function useChangedValues(targetId: string, runningVersion: strin
 /** How many values a target holds that were set since its version was deployed. */
 export function changedCount(changed: ChangedValues | undefined): number {
   return (changed?.variables?.length ?? 0) + (changed?.secrets?.length ?? 0);
+}
+
+/**
+ * The targets, of those given with the version each runs, that hold a value set since that version
+ * was deployed, so the version takes a deploy again. Read from the same check `useChangedValues`
+ * reads, so it costs no request of its own. A target whose check failed or has not answered is not
+ * counted.
+ */
+export function useTargetsWithChangedValues(running: Record<string, string | undefined>): string[] {
+  const source = useDeploySource();
+  const project = useProjectScope();
+  const targetIds = Object.keys(running);
+  return useQueries({
+    queries: targetIds.map((targetId: string) => applyCheckQuery(source, targetId, running[targetId], project)),
+    combine: (results) =>
+      targetIds.filter((_targetId: string, index: number) => changedCount(results[index]?.data?.changed) > 0),
+  });
 }
