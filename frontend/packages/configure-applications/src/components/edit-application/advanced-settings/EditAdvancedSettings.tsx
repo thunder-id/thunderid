@@ -6,15 +6,17 @@ import {Stack} from '@wso2/oxygen-ui';
 import {useState} from 'react';
 import AudienceSection from './AudienceSection';
 import IdentityAssertionsSection from './IdentityAssertionsSection';
+import LoginConsentSection from './LoginConsentSection';
 import MetadataSection from './MetadataSection';
 import OAuth2ConfigSection from './OAuth2ConfigSection';
 import PasskeysSection from './PasskeysSection';
 import useValidationReport from '../../../hooks/useValidationReport';
-import type {Application} from '../../../models/application';
+import type {Application, LoginConsentConfig} from '../../../models/application';
 import type {ApplicationTemplate} from '../../../models/application-templates';
 import type {InboundAuthConfig} from '../../../models/inbound-auth';
 import type {OAuth2Config, OAuth2Token} from '../../../models/oauth';
 import isSystemConsoleClient from '../../../utils/isSystemConsoleClient';
+import {hasUserAccess} from '../../../utils/oauth2Rules';
 import ApplicationDeleteDialog from '../../ApplicationDeleteDialog';
 import DangerZoneSection from '../general-settings/DangerZoneSection';
 
@@ -101,15 +103,16 @@ export default function EditAdvancedSettings({
   const [redirectUrisInvalid, setRedirectUrisInvalid] = useState(false);
   const [identityAssertionsInvalid, setIdentityAssertionsInvalid] = useState(false);
   const [passkeysInvalid, setPasskeysInvalid] = useState(false);
+  const [loginConsentInvalid, setLoginConsentInvalid] = useState(false);
 
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   // The whole tab unmounts on a tab switch, so a child's own unmount report never reaches the page.
-  // The redirect URI errors come from drafts and go with the tab; the identity assertion and passkey
-  // errors are on committed values and keep blocking Save until the user comes back.
+  // The redirect URI and consent validity errors come from drafts and go with the tab; the identity
+  // assertion and passkey errors are on committed values and keep blocking Save until the user comes back.
   useValidationReport(
     onValidationChange,
-    redirectUrisInvalid || identityAssertionsInvalid || passkeysInvalid,
+    redirectUrisInvalid || identityAssertionsInvalid || passkeysInvalid || loginConsentInvalid,
     identityAssertionsInvalid || passkeysInvalid,
   );
 
@@ -126,6 +129,14 @@ export default function EditAdvancedSettings({
   };
 
   const currentPasskeyOrigins = editedApp.passkeyAllowedOrigins ?? application.passkeyAllowedOrigins ?? [];
+
+  // Consent is collected only in flows that sign a user in, so the setting applies only to clients
+  // with a user-facing grant.
+  const isUserFacing = Boolean(oauth2Config && hasUserAccess(oauth2Config.grantTypes));
+
+  const handleLoginConsentChange = (loginConsent: LoginConsentConfig): void => {
+    onFieldChange('loginConsent', loginConsent);
+  };
 
   const handleTokenConfigChange = (tokenUpdates: Partial<OAuth2Token>, oauth2Updates: Partial<OAuth2Config> = {}) => {
     const currentInboundAuth: InboundAuthConfig[] = editedApp.inboundAuthConfig ?? application.inboundAuthConfig ?? [];
@@ -177,6 +188,15 @@ export default function EditAdvancedSettings({
             audience={oauth2Config.token?.accessToken?.defaultAudience ?? ''}
             onAudienceChange={handleDefaultAudienceChange}
             disabled={application.isReadOnly}
+          />
+        )}
+        {isUserFacing && (
+          <LoginConsentSection
+            key={`login-consent-${sectionResetKey}`}
+            loginConsent={editedApp.loginConsent ?? application.loginConsent}
+            onLoginConsentChange={application.isReadOnly ? undefined : handleLoginConsentChange}
+            disabled={application.isReadOnly}
+            onValidationChange={setLoginConsentInvalid}
           />
         )}
         <PasskeysSection

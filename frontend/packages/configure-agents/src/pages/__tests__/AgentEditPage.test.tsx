@@ -1297,6 +1297,68 @@ describe('AgentEditPage', () => {
       });
     });
 
+    describe('consent validity', () => {
+      const renderDelegatedAgent = (loginConsent?: {validityPeriod?: number}): void => {
+        mockUseGetAgent.mockReturnValue({
+          data: {
+            ...baseAgent,
+            allowedUserTypes: ['person'],
+            loginConsent,
+            inboundAuthConfig: [
+              {
+                type: 'oauth2' as const,
+                config: {
+                  grantTypes: ['authorization_code'],
+                  responseTypes: ['code'],
+                  redirectUris: ['https://agent.example.com/cb'],
+                  pkceRequired: true,
+                  clientId: 'client-id-xyz',
+                },
+              },
+            ],
+          },
+          isLoading: false,
+          error: null,
+          isError: false,
+          refetch: mockRefetch,
+        });
+        render(<AgentEditPage />);
+      };
+
+      it('should save the validity period set in the real card', async () => {
+        advancedSettings.real = true;
+        const user = userEvent.setup();
+        renderDelegatedAgent({validityPeriod: 0});
+        await user.click(screen.getByRole('tab', {name: /Advanced/i}));
+
+        fireEvent.change(screen.getByRole('spinbutton', {name: 'Validity period'}), {target: {value: '3600'}});
+        await user.click(screen.getByRole('button', {name: 'Save'}));
+
+        await waitFor(() => {
+          expect(mockMutateAsync).toHaveBeenCalledTimes(1);
+        });
+        const {data} = mockMutateAsync.mock.calls[0][0] as {data: {loginConsent?: unknown}};
+        expect(data.loginConsent).toEqual({validityPeriod: 3600});
+      });
+
+      it('should block Save on an invalid validity period typed in the real card, until the tab is left', async () => {
+        advancedSettings.real = true;
+        const user = userEvent.setup();
+        renderDelegatedAgent({validityPeriod: 3600});
+        await triggerAChange(user);
+        await user.click(screen.getByRole('tab', {name: /Advanced/i}));
+
+        fireEvent.change(screen.getByRole('spinbutton', {name: 'Validity period'}), {target: {value: '-1'}});
+
+        expect(screen.getByText('Before saving, fix the consent validity period.')).toBeInTheDocument();
+        expect(screen.getByRole('button', {name: 'Save'})).toBeDisabled();
+
+        // The typed value was never committed and is dropped with the tab, so the saved one stands.
+        await user.click(screen.getByRole('tab', {name: 'Overview'}));
+        expect(screen.getByRole('button', {name: 'Save'})).not.toBeDisabled();
+      });
+    });
+
     describe('identity assertions (ID-JAG)', () => {
       const renderWithIdJag = (
         idJag: Record<string, unknown>,
