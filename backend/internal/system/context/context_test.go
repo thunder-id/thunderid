@@ -303,23 +303,20 @@ func (s *ContextTestSuite) TestAccessingOUIDIsOverwritten() {
 	s.Equal("customer-b", GetAccessingOUID(ctx))
 }
 
-func (s *ContextTestSuite) TestClientRoundTrips() {
-	address, userAgent := GetClient(WithClient(context.Background(), "192.0.2.10", "audit-test/1.0"))
+func (s *ContextTestSuite) TestRequestMetadataRoundTrips() {
+	md := RequestMetadata{ClientIP: "203.0.113.10", UserAgent: "Mozilla/5.0"}
 
-	s.Equal("192.0.2.10", address)
-	s.Equal("audit-test/1.0", userAgent)
+	s.Equal(md, GetRequestMetadata(WithRequestMetadata(context.Background(), md)))
 }
 
-func (s *ContextTestSuite) TestGetClientWithoutOne() {
-	address, userAgent := GetClient(context.Background())
-	s.Empty(address)
-	s.Empty(userAgent)
+func (s *ContextTestSuite) TestGetRequestMetadataWithoutOne() {
+	s.Equal(RequestMetadata{}, GetRequestMetadata(context.Background()))
+	s.Equal(RequestMetadata{}, GetRequestMetadata(nil)) //nolint:staticcheck // Testing nil context handling
 }
 
-func (s *ContextTestSuite) TestGetClientWithWrongType() {
-	ctx := context.WithValue(context.WithValue(context.Background(), ClientAddressKey, 1), ClientUserAgentKey, 2)
+func (s *ContextTestSuite) TestWithRequestMetadataHandlesANilContext() {
+	md := RequestMetadata{ClientIP: "203.0.113.10"}
+	ctx := WithRequestMetadata(nil, md) //nolint:staticcheck // Testing nil context handling
 
-	address, userAgent := GetClient(ctx)
-	s.Empty(address)
-	s.Empty(userAgent)
+	s.Equal(md, GetRequestMetadata(ctx))
 }

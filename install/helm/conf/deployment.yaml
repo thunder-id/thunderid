@@ -15,6 +15,15 @@ server:
     write_seconds: {{ .writeSeconds }}
     idle_seconds: {{ .idleSeconds }}
   {{- end }}
+  {{- with .Values.configuration.server.trustedProxies }}
+  trusted_proxies:
+    {{- range . }}
+    - cidr: {{ .cidr | quote }}
+      {{- if .header }}
+      header: {{ .header | quote }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
   {{- if or .Values.configuration.server.security .Values.setup.enabled }}
   security:
     {{- with .Values.configuration.server.security }}

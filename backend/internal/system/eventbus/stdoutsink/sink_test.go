@@ -74,13 +74,17 @@ func envelope() eventbus.Envelope {
 	}
 }
 
-// clientContext returns the context the client middleware records for a request with userAgent.
+// clientContext returns the context the request metadata middleware records for a request with userAgent.
 func clientContext(userAgent string) context.Context {
 	r := httptest.NewRequest(http.MethodPut, "/users/"+testUserID, nil)
 	r.RemoteAddr = "127.0.0.1:52814"
 	r.Header.Set("User-Agent", userAgent)
+	withRequestMetadata, err := middleware.RequestMetadataMiddleware(nil)
+	if err != nil {
+		panic(err)
+	}
 	var ctx context.Context
-	middleware.ClientMiddleware(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+	withRequestMetadata(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 		ctx = r.Context()
 	})).ServeHTTP(httptest.NewRecorder(), r)
 	return ctx

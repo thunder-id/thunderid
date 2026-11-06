@@ -31,8 +31,8 @@ func (s *PayloadTestSuite) TestAnUnauthenticatedContextIsAnonymous() {
 	s.Equal(Client{}, payload.Client())
 }
 
-// The client is what the client middleware recorded for the request: the TCP peer, never a forwarded
-// header, and its user agent.
+// The client is what the request metadata middleware recorded for the request: with no trusted proxy
+// the TCP peer, never a forwarded header, and its user agent.
 func (s *PayloadTestSuite) TestTheClientComesFromTheContext() {
 	r := newRequest(http.MethodPost, "/users", accessToken(s.T(), map[string]interface{}{"sub": testUserID}), "")
 	r.Header.Set("X-Forwarded-For", "203.0.113.7")
@@ -42,7 +42,8 @@ func (s *PayloadTestSuite) TestTheClientComesFromTheContext() {
 
 	s.Equal(Client{Address: testClientIP, UserAgent: testUserAgent}, payload.Client())
 	s.Equal(Client{Address: "198.51.100.4", UserAgent: "other/2.0"},
-		NewPayload(syscontext.WithClient(context.Background(), "198.51.100.4", "other/2.0"), testTarget,
+		NewPayload(syscontext.WithRequestMetadata(context.Background(),
+			syscontext.RequestMetadata{ClientIP: "198.51.100.4", UserAgent: "other/2.0"}), testTarget,
 			ActionCreate, OutcomeSucceeded).Client())
 }
 
@@ -166,6 +167,16 @@ func (s *PayloadTestSuite) TestEveryIDIsCutTo128Characters() {
 		s.Equal(strings.Repeat("ü", maxIDLength), id)
 	}
 	s.Equal(exact, NewPayload(ctx, Ref{Type: TargetTypeUser, ID: exact}, ActionUpdate, OutcomeSucceeded).Target().ID)
+}
+
+// The user agent is cut to its first 256 characters, and a multi-byte character is never split.
+func (s *PayloadTestSuite) TestTheUserAgentIsCutTo256Characters() {
+	ctx := syscontext.WithRequestMetadata(context.Background(),
+		syscontext.RequestMetadata{UserAgent: strings.Repeat("ü", maxUserAgentLength+50)})
+
+	userAgent := NewPayload(ctx, testTarget, ActionCreate, OutcomeSucceeded).Client().UserAgent
+
+	s.Equal(strings.Repeat("ü", maxUserAgentLength), userAgent)
 }
 
 func (s *PayloadTestSuite) TestBuildersReturnIndependentCopies() {

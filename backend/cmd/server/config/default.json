@@ -4,6 +4,7 @@
     "port": 8090,
     "http_only": false,
     "identifier": "default-deployment",
+    "trusted_proxies": [],
     "timeouts": {
       "read_header_seconds": 10,
       "write_seconds": 10,

@@ -59,6 +59,9 @@ const (
 	// maxIDLength is the most characters of an actor, subject or target ID an event records.
 	maxIDLength = 128
 
+	// maxUserAgentLength is the most characters of a user agent an event records.
+	maxUserAgentLength = 256
+
 	// reasonServerError is the reason of a service error code that cannot make a valid reason.
 	reasonServerError = "server_error"
 )

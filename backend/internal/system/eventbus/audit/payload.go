@@ -10,6 +10,7 @@ import (
 
 	syscontext "github.com/thunder-id/thunderid/internal/system/context"
 	"github.com/thunder-id/thunderid/internal/system/eventbus"
+	"github.com/thunder-id/thunderid/internal/system/utils"
 )
 
 var _ eventbus.Payload = Payload{}
@@ -43,20 +44,20 @@ type Payload struct {
 
 // NewPayload builds the audit payload of an attempt on target. The actor, the principal it acted
 // for and the client are resolved from ctx, which carries the verified security context and where the
-// request came from. Every ID is cut to 128 characters.
+// request came from. Every ID is cut to 128 characters, and the user agent to 256.
 func NewPayload(ctx context.Context, target Ref, action Action, outcome Outcome) Payload {
 	actor, onBehalfOf := resolveActor(ctx)
 	actor.ID = capID(actor.ID)
 	onBehalfOf.ID = capID(onBehalfOf.ID)
 	target.ID = capID(target.ID)
-	address, userAgent := syscontext.GetClient(ctx)
+	md := syscontext.GetRequestMetadata(ctx)
 	return Payload{
 		actor:      actor,
 		onBehalfOf: onBehalfOf,
 		target:     target,
 		action:     action,
 		outcome:    outcome,
-		client:     Client{Address: address, UserAgent: userAgent},
+		client:     Client{Address: md.ClientIP, UserAgent: utils.TruncateRunes(md.UserAgent, maxUserAgentLength)},
 	}
 }
 
