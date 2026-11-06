@@ -1,11 +1,11 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {DurationField} from '@thunderid/components';
 import {Box, Button, FormControlLabel, IconButton, Radio, RadioGroup, Stack, Typography} from '@wso2/oxygen-ui';
 import {Plus, Trash2} from '@wso2/oxygen-ui-icons-react';
 import type {JSX} from 'react';
 import {useTranslation} from 'react-i18next';
-import DurationField from './DurationField';
 import type {AccountLockCategory} from '../../models/accountAccess';
 
 /** The default first rung, used when there is nothing to escalate from. */

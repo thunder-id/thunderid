@@ -4,7 +4,7 @@
 import {MenuItem, Stack, TextField} from '@wso2/oxygen-ui';
 import {useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
-import {toDurationParts, toSeconds, type DurationParts, type DurationUnit} from '../../utils/duration';
+import {toDurationParts, toSeconds, type DurationParts, type DurationUnit} from './duration';
 
 interface DurationDraft {
   unit: DurationUnit;
@@ -30,13 +30,18 @@ function parseWhole(text: string): number | undefined {
 export interface DurationFieldProps {
   /** Field label. */
   label: string;
+  /** Id of the first control, the number input or, when it is hidden, the unit list, for a label's `htmlFor`. */
+  id?: string;
   /** The stored value, in seconds. */
   seconds: number;
   /** Called with the new value in seconds. */
   onChange: (seconds: number) => void;
   /** Helper text shown below the field. */
   helperText?: string;
-  /** Blocking message shown instead of the helper text. */
+  /**
+   * Blocking message shown instead of the helper text. While the box is empty or not a positive whole
+   * number, a message saying so is shown unless this is given.
+   */
   error?: string;
   /** Whether the field is editable. */
   disabled?: boolean;
@@ -61,8 +66,8 @@ export interface DurationFieldProps {
 /**
  * A duration entered as a number and a unit, stored as seconds. The typed text and unit are kept
  * locally and re-derived (largest exact unit) only when `seconds` changes from outside, such as on
- * load or reset. Only a positive whole number is emitted; an empty box keeps the last valid value and
- * shows it again on blur.
+ * load or reset. Only a positive whole number is emitted; an empty or invalid box shows an error and
+ * keeps the last valid value, which it shows again on blur.
  *
  * @param props - The field's value and labels
  * @returns The rendered field
@@ -71,6 +76,7 @@ export interface DurationFieldProps {
  */
 export default function DurationField({
   label,
+  id = undefined,
   seconds,
   onChange,
   helperText = undefined,
@@ -100,23 +106,19 @@ export default function DurationField({
   const unitOptions: {value: string; label: string}[] = [
     {
       value: 'minutes',
-      label: one
-        ? t('settings:accountLock.units.minute', 'Minute')
-        : t('settings:accountLock.units.minutes', 'Minutes'),
+      label: one ? t('common:units.minute', 'Minute') : t('common:units.minutes', 'Minutes'),
     },
     {
       value: 'hours',
-      label: one ? t('settings:accountLock.units.hour', 'Hour') : t('settings:accountLock.units.hours', 'Hours'),
+      label: one ? t('common:units.hour', 'Hour') : t('common:units.hours', 'Hours'),
     },
     {
       value: 'days',
-      label: one ? t('settings:accountLock.units.day', 'Day') : t('settings:accountLock.units.days', 'Days'),
+      label: one ? t('common:units.day', 'Day') : t('common:units.days', 'Days'),
     },
     {
       value: 'seconds',
-      label: one
-        ? t('settings:accountLock.units.second', 'Second')
-        : t('settings:accountLock.units.seconds', 'Seconds'),
+      label: one ? t('common:units.second', 'Second') : t('common:units.seconds', 'Seconds'),
     },
   ];
   if (zeroLabel !== undefined) {
@@ -151,12 +153,15 @@ export default function DurationField({
     }
   };
 
-  const unitLabel: string = t('settings:accountLock.units.label', 'Unit');
+  const invalid: boolean = !isZero && parseWhole(draft.text) === undefined;
+  const shownError: string | undefined =
+    error ?? (invalid ? t('common:duration.invalid', 'Enter a whole number of 1 or more.') : undefined);
+  const unitLabel: string = t('common:units.label', 'Unit');
   // With the number box hidden, the select carries the field's label and error.
   const selectLabel: string = isZero ? label : unitLabel;
   let selectHelperText: string | undefined;
   if (isZero) {
-    selectHelperText = inline ? error : (error ?? helperText);
+    selectHelperText = inline ? shownError : (shownError ?? helperText);
   } else if (!inline) {
     selectHelperText = ' ';
   }
@@ -165,13 +170,14 @@ export default function DurationField({
     <Stack direction="row" spacing={1} useFlexGap alignItems="flex-start" sx={{flexWrap: 'wrap', flexShrink: 0}}>
       {!isZero && (
         <TextField
+          id={id}
           label={inline ? undefined : label}
           type="number"
           size="small"
           value={draft.text}
           disabled={disabled}
-          error={Boolean(error)}
-          helperText={inline ? error : (error ?? helperText)}
+          error={Boolean(shownError)}
+          helperText={inline ? shownError : (shownError ?? helperText)}
           slotProps={{htmlInput: {min: 1, 'aria-label': label, 'data-testid': testId}}}
           onChange={(event) => handleNumberChange(event.target.value)}
           onBlur={handleBlur}
@@ -180,13 +186,14 @@ export default function DurationField({
       )}
       <TextField
         select
+        id={isZero ? id : undefined}
         label={inline ? undefined : selectLabel}
         data-testid={testId === undefined ? undefined : `${testId}-unit`}
         size="small"
         value={isZero ? 'zero' : draft.unit}
         disabled={disabled}
         helperText={selectHelperText}
-        error={isZero && Boolean(error)}
+        error={isZero && Boolean(shownError)}
         onChange={(event) => handleUnitChange(event.target.value)}
         slotProps={{htmlInput: {'aria-label': selectLabel}}}
         sx={{minWidth: isZero ? 220 : 140, '& .MuiInputBase-root': {height: 40}}}
