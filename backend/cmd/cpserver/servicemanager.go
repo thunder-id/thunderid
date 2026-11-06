@@ -199,7 +199,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	entityProvider := entityprovider.InitializeEntityProvider(entityService, ouAuthzService)
 
 	attributeVerificationService := attributeverification.Initialize(entityService, entityTypeService,
-		observabilitySvc)
+		observabilitySvc, ouAuthzService)
 
 	// The accountAccess handler is built over the deployment policy, which must be valid on its own.
 	governanceCfg := identitygovernance.FromServerRuntime()

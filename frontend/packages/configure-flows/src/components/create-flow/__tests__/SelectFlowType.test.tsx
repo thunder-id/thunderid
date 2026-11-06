@@ -19,6 +19,7 @@ vi.mock('@wso2/oxygen-ui-icons-react', async (importOriginal) => {
   return {
     ...actual,
     KeyRound: ({size}: {size: number}) => <span data-testid="icon-key-round">{size}</span>,
+    ShieldCheck: ({size}: {size: number}) => <span data-testid="icon-shield-check">{size}</span>,
     UserCheck: ({size}: {size: number}) => <span data-testid="icon-user-check">{size}</span>,
     UserCog: ({size}: {size: number}) => <span data-testid="icon-user-cog">{size}</span>,
     UserPlus: ({size}: {size: number}) => <span data-testid="icon-user-plus">{size}</span>,
@@ -97,6 +98,16 @@ describe('SelectFlowType', () => {
       ).toBeInTheDocument();
       expect(screen.getByTestId('icon-user-check')).toBeInTheDocument();
     });
+
+    it('should render the Administrator-initiated option', () => {
+      render(<SelectFlowType {...defaultProps} />);
+
+      expect(screen.getByText('Administrator-initiated')).toBeInTheDocument();
+      expect(
+        screen.getByText('Let administrators start an action for a user, such as verifying their email address'),
+      ).toBeInTheDocument();
+      expect(screen.getByTestId('icon-shield-check')).toBeInTheDocument();
+    });
   });
 
   describe('Selection', () => {
@@ -151,6 +162,15 @@ describe('SelectFlowType', () => {
       fireEvent.click(screen.getByText('Self'));
 
       expect(mockOnTypeChange).toHaveBeenCalledWith('SELF');
+      expect(mockOnReadyChange).toHaveBeenCalledWith(true);
+    });
+
+    it('should call onTypeChange with ADMIN_INITIATED when Administrator-initiated is clicked', () => {
+      render(<SelectFlowType {...defaultProps} />);
+
+      fireEvent.click(screen.getByText('Administrator-initiated'));
+
+      expect(mockOnTypeChange).toHaveBeenCalledWith('ADMIN_INITIATED');
       expect(mockOnReadyChange).toHaveBeenCalledWith(true);
     });
 

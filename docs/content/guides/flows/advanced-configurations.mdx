@@ -389,7 +389,7 @@ Every flow you deploy must reference only executors that are registered on the s
 | **Resolve OU** | Resolves or selects an organizational unit based on strategy. | Varies by strategy |
 | **Generate Invite** | Generates an invite link for user registration. | - |
 | **Verify Invite** | Verifies an invite token before completing registration. | Generate Invite must have run |
-| **Prepare Verification** | Pins the user's email address or mobile number to verify, before a code or link is sent. | A Self, Recovery, Registration, or User Onboarding flow |
+| **Prepare Verification** | Pins the user's email address or mobile number to verify, before a code or link is sent. | A Self, Administrator-initiated, Recovery, Registration, or User Onboarding flow |
 | **Record Verification** | Records that the user verified the pinned email address or mobile number. | Prepare Verification, then a code or link that was sent to the pinned value and verified |
 | **Send Email** | Sends email using configured templates. | Email provider configured |
 | **Send SMS** | Sends SMS using configured templates and sender. | SMS sender configured |
@@ -2442,6 +2442,7 @@ Pins the email address or mobile number to verify, so that every later node acts
 
 **When to use:** Before Generate OTP or Generate Invite, in one of these flow types:
 - **Self:** at the start of the flow. The user is the signed-in user whose access token, issued by this deployment, started the flow.
+- **Administrator-initiated:** at the start of the flow, after Validate Permission. The user is the one the administrator names in the `subject` input of the request that starts the flow. The flow keeps that user to the end, so a later request cannot change it. The node refuses a user the administrator may not update, such as a user outside an organization unit administrator's units.
 - **Recovery:** after Identify User. The user is the one the flow identified.
 - **Registration** and **User Onboarding:** the user is the one the flow established. Before Provisioning creates the user, the node pins the value the flow collected for the attribute, such as the address entered on the sign-up form or the invited address, and **Record Verification** after Provisioning records it for the new user.
 
@@ -2454,19 +2455,18 @@ Always paired with **Record Verification**: a flow that has one without the othe
 - In any other flow type, the node fails.
 
 **Input Configuration:**
-- `attribute` (required): the name of the attribute to verify, such as `email` or `mobile_number`. In a Self flow, supply it when the flow starts, as `default-self-attribute-verification-flow` expects. When it is missing, the node asks for it. In a Recovery, Registration or User Onboarding flow, fix it on the node with a constant input: list `attribute` in the node's executor `inputs` with `defaultValue` set to the attribute name and `constant` set to `true`, so a submitted value cannot change it. See [Default and Constant Input Values](#default-and-constant-input-values).
-
-A `subject` input is ignored: the node never takes the user from an input.
+- `attribute` (required): the name of the attribute to verify, such as `email` or `mobile_number`. In a Self or Administrator-initiated flow, supply it when the flow starts, as `default-self-attribute-verification-flow` expects. `default-admin-attribute-verification-flow` sets `defaultValue` to `email` on the input, so a start without it verifies the email address. When it is missing and has no default, the node asks for it. In a Recovery, Registration or User Onboarding flow, fix it on the node with a constant input: list `attribute` in the node's executor `inputs` with `defaultValue` set to the attribute name and `constant` set to `true`, so a submitted value cannot change it. See [Default and Constant Input Values](#default-and-constant-input-values).
 
 **How it works:**
 1. Reads the user and the attribute. When the flow returns to this node, it keeps the attribute pinned earlier in the execution.
-2. For an existing user, checks that the user is not suspended, then that the user exists and is not a declarative (read-only) user. A user under an automatic sign-in lock can verify.
+2. For an existing user, checks that the user exists, is not a declarative (read-only) user, and that the flow's caller may update the user. A flow that runs with the server's authority may update any user.
 3. Checks that the attribute is a top-level `email` or `mobile` attribute of the user's type, is not a credential, and holds a value.
-4. Pins the attribute, its value and channel, and the user when one exists, and discards any code or link issued before.
-5. Writes the attribute's type, `email` or `mobile`, to runtime data as `recipientType`.
-6. Makes the pinned value the recipient of **Send Email** or **Send SMS**, and returns the channel and the masked contact in the `channel` and `maskedDestination` additional data, such as `email` and `a•••@example.com`, or `sms` and `•••67`.
+4. For an existing user, checks that the user is not suspended. A user under an automatic sign-in lock can verify. Most flows check this before steps 2 and 3, so a suspended user is refused before any event. An Administrator-initiated flow checks it after them, so a caller who may not update the user is not told whether the user is suspended.
+5. Pins the attribute, its value and channel, and the user when one exists, and discards any code or link issued before.
+6. Writes the attribute's type, `email` or `mobile`, to runtime data as `recipientType`.
+7. Makes the pinned value the recipient of **Send Email** or **Send SMS**, and returns the channel and the masked contact in the `channel` and `maskedDestination` additional data, such as `email` and `a•••@example.com`, or `sms` and `•••67`.
 
-A successful pin for an existing user, on the start and on each resend, publishes the `ATTRIBUTE_VERIFICATION_REQUESTED` event. A pin for a user not created yet publishes no event until it is recorded.
+For an existing user, on the start and on each resend, the node publishes the `ATTRIBUTE_VERIFICATION_REQUESTED` event once steps 2 to 4 pass. In an Administrator-initiated flow, the event is published once step 3 passes, even when step 4 then refuses the user. A pin for a user not created yet publishes no event until it is recorded.
 
 **Executor properties:** None.
 
@@ -2485,9 +2485,10 @@ A successful pin for an existing user, on the start and on each resend, publishe
 ```
 
 **Failure conditions:**
-- The flow type is not Self, Recovery, Registration or User Onboarding, a Self flow has no signed-in user, or a Recovery flow has not identified a user (`FET-1132`, Verification not available)
-- The user is suspended (`FET-1114`, Account suspended)
+- The flow type is not Self, Administrator-initiated, Recovery, Registration or User Onboarding, a Self flow has no signed-in user, an Administrator-initiated flow was started without a `subject`, or a Recovery flow has not identified a user (`FET-1132`, Verification not available)
 - The user is not an existing user, or is declarative (`FET-1112`, Operation failed)
+- The flow's caller may not update the user, such as a user outside an organization unit administrator's units (`FET-1112`)
+- The user is suspended (`FET-1114`, Account suspended)
 - Attribute is not a top-level `email` or `mobile` attribute of the user's type, is a credential, or holds no value; for a user not created yet, no user type is resolved (`FET-1112`)
 
 </details>
@@ -2497,7 +2498,7 @@ A successful pin for an existing user, on the start and on each resend, publishe
 
 Records that the user verified the email address or mobile number that **Prepare Verification** pinned. The user API then lists the attribute in the user's `verifiedAttributes`, with the time it was verified. Runs in the background: no user interaction at this step.
 
-**When to use:** After Verify OTP or Verify Invite accepts the code or link. In a Registration or User Onboarding flow that pinned before the user existed, place it after Provisioning. Place a confirmation prompt between Verify Invite and this node, so opening the link alone records nothing, for example when a mail security scanner opens it. <ProductName /> does not check for the prompt. The Console's **Self Attribute Verification with Email Link** template includes one.
+**When to use:** After Verify OTP or Verify Invite accepts the code or link. In a Registration or User Onboarding flow that pinned before the user existed, place it after Provisioning. Place a confirmation prompt between Verify Invite and this node, so opening the link alone records nothing, for example when a mail security scanner opens it. <ProductName /> does not check for the prompt. The Console's **Self Attribute Verification with Email Link** and **Administrator Attribute Verification with Email Link** templates include one.
 
 **Prerequisites:**
 - **Prepare Verification** pinned a contact earlier in the same execution.
@@ -2508,7 +2509,7 @@ Records that the user verified the email address or mobile number that **Prepare
 **How it works:**
 1. Checks that a code or link was verified after the pin, that something was sent since the pin, and that every send since the pin, on either channel, went to the pinned value.
 2. Checks again that the user is not suspended.
-3. Checks that the user still exists and that the stored value still matches the pin.
+3. Checks that the user still exists, that the flow's caller may still update the user, and that the stored value still matches the pin. In a User Onboarding flow, which runs as the administrator who started it, that administrator needs permission to update users as well as to create them.
 4. Records the verification time.
 
 A recorded verification publishes the `ATTRIBUTE_VERIFICATION_VERIFIED` event. A refusal in step 3 publishes `ATTRIBUTE_VERIFICATION_REFUSED`.
@@ -2534,6 +2535,7 @@ A recorded verification publishes the `ATTRIBUTE_VERIFICATION_VERIFIED` event. A
 - A pin made before the user existed, with no user created or identified since (`FET-1112`)
 - User suspended since the pin (`FET-1114`, Account suspended)
 - User deleted, or the value changed or can no longer be verified, since the pin (`FET-1112`)
+- The flow's caller may no longer update the user, such as an administrator who lost the permission before the user confirmed (`FET-1112`)
 
 </details>
 

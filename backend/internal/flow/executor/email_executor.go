@@ -196,7 +196,11 @@ func (e *emailExecutor) executeSend(ctx *providers.NodeContext) (*providers.Exec
 }
 
 // withUndeliveredInviteLink hands an invite link the email could not carry to the screen that shows it instead.
+// An administrator-initiated flow's link is withheld: its administrator could finish the flow in the user's place.
 func withUndeliveredInviteLink(ctx *providers.NodeContext, execResp *providers.ExecutorResponse) {
+	if ctx.FlowType == providers.FlowTypeAdminInitiated {
+		return
+	}
 	if link := ctx.RuntimeData[common.RuntimeKeyInviteLink]; link != "" {
 		execResp.AdditionalData[common.DataInviteLink] = link
 	}

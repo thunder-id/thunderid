@@ -529,7 +529,8 @@ starts a `SELF` flow on the flow execution endpoint with the user's access token
 flow handle and the attribute. The server takes the user from the token, binds it to the
 execution and sends a code or a link to the stored value. The SDK renders the steps the server
 describes and submits the code; the server records the verification, and the SDK reads the
-status back from `/users/me`.
+status back from `/users/me`. In the built-in profile, saving a contact only updates the
+stored value and status. The user selects Verify to start the flow.
 
 **Assets involved**
 
@@ -574,7 +575,7 @@ sequenceDiagram
 | --- | --- | --- | --- | --- |
 | 1 | [Elevation of Privilege] | A caller names another user to verify that user's contact | [No] | The SDK sends no user identifier; the server takes the user only from the access token on the start and keeps it for the execution (AC10.1) |
 | 2 | [Information Disclosure] | A call that names an explicit URL sends the access token to a host other than the server | [No] | The request goes through the SDK's authenticated transport, so the attachment rules of interaction 04 apply. Where storage is not isolated, the application already holds the token |
-| 3 | [Denial of Service] | A component that restarts verification on every render, or a caller holding the token, floods the user's mailbox or phone and uses up paid SMS volume | [Yes] | A component starts once per showing and never retries automatically (AC10.3). The server caps codes per execution, but not new executions. Recorded as a residual |
+| 3 | [Denial of Service] | A component that restarts verification on every render, or a caller holding the token, floods the user's mailbox or phone and uses up paid SMS volume | [Yes] | The profile requires Verify after a contact save (AC10.6). A component starts once per showing and never retries automatically (AC10.3). The server caps codes per execution, but not new executions. Recorded as a residual |
 | 4 | [Tampering] | The application shows an attribute as verified that the server never recorded | [No] | Status comes only from the read-only `verifiedAttributes` of `/users/me`, re-read after `COMPLETE`; the SDK never marks an attribute verified locally, and an absent field shows neither status (AC10.4) |
 | 5 | [Information Disclosure] | The code reaches a log or a crash report | [No] | The code is a credential under interaction 03 and is never logged (AC10.5) |
 
@@ -692,3 +693,4 @@ identifiers a user supplies during authentication and recovery.
 | 0.2 | 2026-10-06 | Interaction 06 added for receiving a back-channel logout token in SDKs with a server runtime. |
 | 0.3 | 2026-10-12 | Interaction 07 added for a federated redirect inside an embedded flow. A callback without a `state` is never submitted, and mobile SDKs reject one that does not echo the request's `state`. Authorization codes, and callback URLs that carry one, are never logged. |
 | 0.4 | 2026-11-03 | Interaction 08 added for starting a self user attribute verification. |
+| 0.5 | 2026-11-10 | Interaction 08: the built-in profile waits for Verify after a contact save, which limits threat 3 (AC10.6). |

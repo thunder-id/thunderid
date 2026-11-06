@@ -1656,8 +1656,8 @@ func (nc *NodeContext) SetInitiatorRequest(req *InitiatorRequest) {
 	nc.initiatorRequest = req
 }
 
-// GetBoundSubject returns the user the engine bound to a self flow execution at its start, or ""
-// when the execution has none. It is not an authenticated user.
+// GetBoundSubject returns the user the engine bound to a self or administrator-initiated flow execution at its
+// start, or "" when the execution has none. It is not an authenticated user.
 func (nc *NodeContext) GetBoundSubject() string {
 	return nc.boundSubject
 }

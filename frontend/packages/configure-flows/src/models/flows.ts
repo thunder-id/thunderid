@@ -65,6 +65,11 @@ export const FlowType = {
    * Self flows run operations a signed-in user performs on their own account, picked by handle
    */
   SELF: 'SELF',
+
+  /**
+   * Administrator-initiated flows run an operation an administrator starts on a user, picked by handle
+   */
+  ADMIN_INITIATED: 'ADMIN_INITIATED',
 } as const;
 
 /**

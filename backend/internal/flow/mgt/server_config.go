@@ -65,6 +65,9 @@ func (h *FlowConfigHandler) Validate(ctx context.Context, incoming, _, _ any) er
 	if cfg.SelfFlow.DefaultHandle != "" {
 		return fmt.Errorf("flow: selfFlow.defaultHandle is not supported")
 	}
+	if cfg.AdminInitiatedFlow.DefaultHandle != "" {
+		return fmt.Errorf("flow: adminInitiatedFlow.defaultHandle is not supported")
+	}
 
 	type entry struct {
 		tc       flowconfig.FlowTypeConfig
@@ -78,6 +81,7 @@ func (h *FlowConfigHandler) Validate(ctx context.Context, incoming, _, _ any) er
 		{cfg.RecoveryFlow, providers.FlowTypeRecovery, "recoveryFlow"},
 		{cfg.SignOutFlow, providers.FlowTypeSignOut, "signOutFlow"},
 		{cfg.SelfFlow, providers.FlowTypeSelf, "selfFlow"},
+		{cfg.AdminInitiatedFlow, providers.FlowTypeAdminInitiated, "adminInitiatedFlow"},
 		{cfg.SecretRegenerationFlow, providers.FlowTypeAdministration, "secretRegenerationFlow"},
 		{cfg.AgentOnboardingFlow, providers.FlowTypeAdministration, "agentOnboardingFlow"},
 		{cfg.UserUnlockFlow, providers.FlowTypeAdministration, "userUnlockFlow"},
@@ -118,6 +122,7 @@ func (h *FlowConfigHandler) Merge(readOnly, writable any) any {
 		RecoveryFlow:       mergeFlowTypeConfig(ro.RecoveryFlow, wr.RecoveryFlow),
 		SignOutFlow:        mergeFlowTypeConfig(ro.SignOutFlow, wr.SignOutFlow),
 		SelfFlow:           mergeFlowTypeConfig(ro.SelfFlow, wr.SelfFlow),
+		AdminInitiatedFlow: mergeFlowTypeConfig(ro.AdminInitiatedFlow, wr.AdminInitiatedFlow),
 		SecretRegenerationFlow: mergeFlowTypeConfig(
 			ro.SecretRegenerationFlow, wr.SecretRegenerationFlow),
 		AgentOnboardingFlow: mergeFlowTypeConfig(ro.AgentOnboardingFlow, wr.AgentOnboardingFlow),

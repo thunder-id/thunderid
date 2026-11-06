@@ -18,11 +18,13 @@ import (
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/system/observability/event"
 	"github.com/thunder-id/thunderid/internal/system/security"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/entitymock"
 	"github.com/thunder-id/thunderid/tests/mocks/entitytypemock"
 	"github.com/thunder-id/thunderid/tests/mocks/observabilityprovidermock"
+	"github.com/thunder-id/thunderid/tests/mocks/sysauthzmock"
 	"github.com/thunder-id/thunderid/tests/testhelpers"
 )
 
@@ -50,7 +52,9 @@ func (s *ServiceTestSuite) SetupTest() {
 	obs.On("IsEnabled").Return(true).Maybe()
 	obs.On("PublishEvent", mock.Anything, mock.Anything).
 		Run(func(args mock.Arguments) { published = append(published, args.Get(1).(*providers.Event)) }).Maybe()
-	s.svc = newAttributeVerificationService(s.entities, contactSchema(s.T()), obs)
+	authorizer := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(s.T())
+	authorizer.EXPECT().IsActionAllowed(mock.Anything, mock.Anything, mock.Anything).Return(true, nil).Maybe()
+	s.svc = newAttributeVerificationService(s.entities, contactSchema(s.T()), obs, authorizer)
 	s.ctx = context.Background()
 	s.testErr = errors.New("store error")
 }
@@ -520,5 +524,49 @@ func (s *ServiceTestSuite) TestGetVerifiedAttributesReportsAnUnreadableState() {
 		verified := s.svc.GetVerifiedAttributes(s.ctx, verifiedUser(`{}`, metadata))
 
 		s.Nil(verified, name)
+	}
+}
+
+// userUpdateIn is the authorizer's check that the caller may update user-1 in ou-1.
+var userUpdateIn = &sysauthz.ActionContext{ResourceType: security.ResourceTypeUser, OUID: "ou-1", ResourceID: "user-1"}
+
+// ouUser is contactUser in organization unit ou-1.
+func ouUser() *providers.Entity {
+	user := contactUser()
+	user.OUID = "ou-1"
+	return user
+}
+
+// Prepare and record both confine the caller to users it may update in the user's organization unit.
+func (s *ServiceTestSuite) TestPrepareAndRecordAuthorizeTheCallerForTheUsersUnit() {
+	for name, test := range map[string]struct {
+		allowed bool
+		authErr *tidcommon.ServiceError
+		want    *tidcommon.ServiceError
+	}{
+		"allowed":            {allowed: true},
+		"not allowed":        {want: &tidcommon.ErrorUnauthorized},
+		"authorizer failure": {authErr: &tidcommon.InternalServerError, want: &tidcommon.InternalServerError},
+	} {
+		s.Run(name, func() {
+			s.SetupTest()
+			authorizer := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(s.T())
+			authorizer.EXPECT().IsActionAllowed(mock.Anything, security.ActionUpdateUser, userUpdateIn).
+				Return(test.allowed, test.authErr).Twice()
+			s.svc.authorizer = authorizer
+			s.entities.On("GetEntityProfile", mock.Anything, "user-1").Return(ouUser(), nil).Twice()
+			if test.want == nil {
+				s.entities.On("RecordAttributeVerification", mock.Anything, mock.Anything).Return(true, nil).Once()
+			}
+
+			_, prepareErr := s.svc.PrepareAttributeVerification(s.ctx, storedRequest("workEmail"))
+			recordErr := s.svc.RecordAttributeVerification(s.ctx, contactPin())
+
+			s.Equal(test.want, prepareErr)
+			s.Equal(test.want, recordErr)
+			if test.want != nil {
+				s.entities.AssertNotCalled(s.T(), "RecordAttributeVerification", mock.Anything, mock.Anything)
+			}
+		})
 	}
 }

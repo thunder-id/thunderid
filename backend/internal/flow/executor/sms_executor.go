@@ -148,8 +148,8 @@ func (e *smsExecutor) Execute(ctx *providers.NodeContext) (*providers.ExecutorRe
 	notifSvcErr := e.notifSenderSvc.SendMessage(ctx.Context, notifcm.ChannelTypeSMS, senderID,
 		notifcm.MessageData{Recipient: recipient, Body: rendered.Body})
 	if notifSvcErr != nil {
-		if (ctx.FlowType == providers.FlowTypeUserOnboarding || ctx.FlowType == providers.FlowTypeSelf) &&
-			notifSvcErr.Type == tidcommon.ClientErrorType {
+		if (ctx.FlowType == providers.FlowTypeUserOnboarding || ctx.FlowType == providers.FlowTypeSelf ||
+			ctx.FlowType == providers.FlowTypeAdminInitiated) && notifSvcErr.Type == tidcommon.ClientErrorType {
 			execResp.Status = providers.ExecFailure
 			execResp.Error = &ErrSMSProviderNotConfigured
 			return execResp, nil
