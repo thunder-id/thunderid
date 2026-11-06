@@ -44,8 +44,12 @@ var (
 	resourceTypeField = topLevelScalar("resource_type")
 	// usernameField reads a user's username, which is nested under its attributes.
 	usernameField = regexp.MustCompile(`(?m)^\s+username:\s*(.+?)\s*$`)
-	idField       = topLevelScalar("id")
-	nameField     = topLevelScalar("name")
+	// agentNameField reads an agent's name, which is one of its attributes. An export indents a
+	// mapping by two spaces, so a name nested deeper in another attribute is not read. A blank line
+	// is part of the attributes, since an export writes one in a multi-line value without its indent.
+	agentNameField = regexp.MustCompile(`(?m)^attributes:[ \t]*\n(?:(?:  .*)?\n)*?  name:[ \t]*(.+?)[ \t]*$`)
+	idField        = topLevelScalar("id")
+	nameField      = topLevelScalar("name")
 	// languageField names a translation, which has neither an id nor a name: one document holds one
 	// language's translations.
 	languageField = topLevelScalar("language")
@@ -64,8 +68,11 @@ var (
 	keyOnly = regexp.MustCompile(`^(\s*)(?:-\s+)?` + mappingKey + `\s*:\s*$`)
 )
 
-// resourceTypeUser is the resource type an export writes a user under.
-const resourceTypeUser = "user"
+// The resource types an export writes a user and an agent under.
+const (
+	resourceTypeUser  = "user"
+	resourceTypeAgent = "agent"
+)
 
 // mappingKey reads a block mapping's key, quoted or plain, so a key such as `"a.b"` or `a.b` is read
 // as one. A plain key starts with no character that would open a list, flow style or a comment.
@@ -352,7 +359,7 @@ func splitLines(document string) []string {
 }
 
 func changeOf(resource bundleResource, kind ChangeKind) Change {
-	return Change{Key: resource.key(), ResourceType: resource.Type, ID: resource.ID, Name: resource.Name,
+	return Change{Key: resource.key(), ResourceType: resource.Type, ID: resource.ID, Name: labelOf(resource),
 		Change: kind}
 }
 
@@ -468,11 +475,18 @@ func unquoteKey(key string) string {
 	return key
 }
 
-// labelOf is how a resource is known to a person: its name, or a user's username. Only a user is
-// known by a username, since another resource may hold a nested username of its own.
+// labelOf is how a resource is known to a person: its name, a user's username, or an agent's name
+// attribute. Only a user is known by a username, since another resource may hold a nested username
+// of its own.
 func labelOf(resource bundleResource) string {
-	if resource.Name != "" || resource.Type != resourceTypeUser {
+	if resource.Name != "" {
 		return resource.Name
 	}
-	return firstMatch(usernameField, resource.Content)
+	switch resource.Type {
+	case resourceTypeUser:
+		return firstMatch(usernameField, resource.Content)
+	case resourceTypeAgent:
+		return firstMatch(agentNameField, resource.Content)
+	}
+	return ""
 }

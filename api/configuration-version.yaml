@@ -315,7 +315,7 @@ components:
           type: string
         resourceName:
           type: string
-          description: How the resource is known, its name or a user's username.
+          description: How the resource is known, its name, a user's username or an agent's name attribute.
         field:
           type: string
           description: The key the reference is the value of, or the list's key for a list item.

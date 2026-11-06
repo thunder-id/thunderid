@@ -304,6 +304,40 @@ func TestReferencesOfNamesOnlyAUserByItsUsername(t *testing.T) {
 	}
 }
 
+// An agent is known by its name attribute, in the diff and where its values are used. A name nested
+// deeper in another attribute is not taken for it, a blank line in a multi-line attribute before it
+// does not hide it, and an agent with no name attribute keeps none.
+func TestAnAgentIsKnownByItsNameAttribute(t *testing.T) {
+	named := "resource_type: agent\nid: agent-1\nattributes:\n  address:\n    name: Home\n" +
+		"  bio: |-\n    line one\n\n    line three\n  name: Helper\n" +
+		"inboundAuthConfig:\n  - type: oauth2\n    config:\n      clientId: var:HELPER_CLIENT_ID"
+	unnamed := "resource_type: agent\nid: agent-2\nattributes:\n  address:\n    name: Home\n" +
+		"inboundAuthConfig:\n  - type: oauth2\n    config:\n      clientId: var:OTHER_CLIENT_ID"
+
+	changes := diffBundles(nil, parseBundle(joinBundle([]string{named, unnamed})))
+	references := referencesOf(joinBundle([]string{named, unnamed}))
+
+	names := map[string]string{}
+	for _, change := range changes {
+		names[change.ID] = change.Name
+	}
+	assert.Equal(t, map[string]string{"agent-1": "Helper", "agent-2": ""}, names)
+	require.Len(t, references, 2)
+	assert.Equal(t, "Helper", references[0].ResourceName)
+	assert.Empty(t, references[1].ResourceName)
+}
+
+// A user is known by its username in the diff, as it is where its values are used.
+func TestDiffBundlesNamesAUserByItsUsername(t *testing.T) {
+	user := "resource_type: user\nid: user-1\nattributes:\n  username: alice@example.com"
+
+	changes := diffBundles(nil, parseBundle(user))
+
+	require.Len(t, changes, 1)
+	assert.Equal(t, "alice@example.com", changes[0].Name)
+	assert.Equal(t, "user/user-1", changes[0].Key, "the key stays the id")
+}
+
 // A document naming no resource type is skipped, as an import skips it, so a reference in it is
 // neither listed nor counted as needed.
 func TestReferencesInADocumentWithoutAResourceTypeAreNotCounted(t *testing.T) {

@@ -42,6 +42,7 @@ type change struct {
 	Key          string   `json:"key"`
 	ResourceType string   `json:"resourceType"`
 	ID           string   `json:"id"`
+	Name         string   `json:"name"`
 	Change       string   `json:"change"`
 	Failed       bool     `json:"failed"`
 	Selected     bool     `json:"selected"`
