@@ -25,7 +25,7 @@ import KeyValuePairsField from './KeyValuePairsField';
 import MaskedSecretField from './MaskedSecretField';
 import ReadOnlyCopyField from './ReadOnlyCopyField';
 import useConnectionMeta from '../api/useConnectionMeta';
-import {fieldsForMode, type ConnectionFieldDef} from '../config/connectionFormFields';
+import {fieldsForMode, type ConnectionFieldDef, type ConnectionFieldOption} from '../config/connectionFormFields';
 import type {ConnectionType, OutboundAuthMethod} from '../models/connection';
 import {type ConnectionFormValues, validateConnectionForm} from '../utils/connectionFormMapping';
 
@@ -90,6 +90,23 @@ export default function ConnectionForm({
 
   const setField = (name: string, value: string): void => {
     onFieldChange(name, value);
+  };
+
+  // Applies the chosen option's field defaults on create, keeping any value the user customised.
+  const setSelectField = (field: ConnectionFieldDef, value: string): void => {
+    setField(field.name, value);
+    if (mode !== 'create') {
+      return;
+    }
+    const options: ConnectionFieldOption[] = field.options ?? [];
+    const chosen: ConnectionFieldOption | undefined = options.find((option) => option.value === value);
+    Object.entries(chosen?.fieldDefaults ?? {}).forEach(([name, defaultValue]) => {
+      const current: string = values[name] ?? '';
+      const isDefault: boolean = options.some((option) => option.fieldDefaults?.[name] === current);
+      if (current === '' || isDefault) {
+        setField(name, defaultValue);
+      }
+    });
   };
 
   const fieldError = (field: ConnectionFieldDef): string | undefined => {
@@ -205,7 +222,7 @@ export default function ConnectionForm({
               <Select
                 id={`connection-field-${field.name}`}
                 value={values[field.name] ?? ''}
-                onChange={(e) => setField(field.name, e.target.value)}
+                onChange={(e) => setSelectField(field, e.target.value)}
                 data-testid={`connection-field-select-${field.name}`}
               >
                 {(field.options ?? []).map((option) => (
