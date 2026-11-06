@@ -32,7 +32,7 @@ import {ChevronLeft, ChevronRight, Home} from '@wso2/oxygen-ui-icons-react';
 import type {JSX} from 'react';
 import {useState, useCallback, useEffect, useMemo, useRef} from 'react';
 import {useTranslation} from 'react-i18next';
-import {useLocation, useNavigate} from 'react-router';
+import {useNavigate} from 'react-router';
 import useCreateApplication from '../api/useCreateApplication';
 import useGetApplications from '../api/useGetApplications';
 import ConfigureMetadataDocument from '../components/create-application/cimd/ConfigureMetadataDocument';
@@ -162,8 +162,6 @@ export default function ApplicationCreatePage(): JSX.Element {
     [t],
   );
   const navigate = useNavigate();
-  const {pathname} = useLocation();
-  const isWelcomeFlow = pathname.startsWith('/welcome');
   const logger = useLogger('ApplicationCreatePage');
   const createApplication = useCreateApplication();
   const {data: userTypesData} = useGetUserTypes();
@@ -182,7 +180,7 @@ export default function ApplicationCreatePage(): JSX.Element {
     : ouLookup.ouList[0]?.id;
 
   const handleBackToTemplates = (): void => {
-    void navigate(isWelcomeFlow ? '/welcome/get-started/applications/types' : '/applications/types');
+    void navigate('/applications/types');
   };
 
   // The organization unit whose defaults are offered on the Details step: the picked one when
@@ -358,8 +356,8 @@ export default function ApplicationCreatePage(): JSX.Element {
   // wizard is reached directly (e.g. a bookmarked URL) with no template, send the user back to it.
   useEffect((): void => {
     if (selectedTemplateConfig) return;
-    void navigate(isWelcomeFlow ? '/welcome/get-started/applications/types' : '/applications/types');
-  }, [selectedTemplateConfig, isWelcomeFlow, navigate]);
+    void navigate('/applications/types');
+  }, [selectedTemplateConfig, navigate]);
 
   // Derive the OAuth config from the selected template's defaults, mirroring what the removed
   // in-wizard template step used to seed on mount.
@@ -558,7 +556,7 @@ export default function ApplicationCreatePage(): JSX.Element {
   ]);
 
   const handleClose = (): void => {
-    void navigate(isWelcomeFlow ? '/home' : '/applications');
+    void navigate('/applications');
   };
 
   const handleLogoSelect = (logoUrl: string): void => {
@@ -1138,27 +1136,13 @@ export default function ApplicationCreatePage(): JSX.Element {
     return visibleSteps.slice(0, idx + 1);
   };
 
-  const prefixCrumbs = isWelcomeFlow
-    ? [
-        {key: 'welcome', label: t('common:welcome.header'), onClick: () => void navigate(routes.welcome.root())},
-        {
-          key: 'new',
-          label: t('common:welcome.createProject.breadcrumb'),
-          onClick: () => void navigate(routes.welcome.createProject()),
-        },
-        {
-          key: 'get-started',
-          label: t('common:welcome.getStarted.breadcrumb'),
-          onClick: () => void navigate(routes.welcome.getStarted()),
-        },
-      ]
-    : [
-        {
-          key: 'applications',
-          label: t('navigation:pages.applications'),
-          onClick: () => void navigate(routes.applications.list()),
-        },
-      ];
+  const prefixCrumbs = [
+    {
+      key: 'applications',
+      label: t('navigation:pages.applications'),
+      onClick: () => void navigate(routes.applications.list()),
+    },
+  ];
 
   // Which steps render the live sign-in preview panel is declared by the template itself
   // (`creationFlow.previewSteps`), not guessed here from the current step or platform — e.g. the

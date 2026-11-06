@@ -19,7 +19,6 @@ import ApplicationCreatePage from '../ApplicationCreatePage';
 // Mock functions
 const mockCreateApplication = vi.fn();
 const mockNavigate = vi.fn();
-let mockPathname = '/';
 const mockUseGetApplications = vi.hoisted(() => vi.fn());
 const mockUserTypes = vi.hoisted(() => ({
   types: [
@@ -101,7 +100,6 @@ vi.mock('react-router', async () => {
   return {
     ...actual,
     useNavigate: () => mockNavigate,
-    useLocation: () => ({pathname: mockPathname}),
   };
 });
 
@@ -789,7 +787,6 @@ describe('ApplicationCreatePage', () => {
     user = userEvent.setup();
 
     window.history.replaceState({}, '', '/');
-    mockPathname = '/';
 
     vi.clearAllMocks();
     mockNavigate.mockResolvedValue(undefined);
@@ -1082,47 +1079,8 @@ describe('ApplicationCreatePage', () => {
     });
   });
 
-  describe('Welcome flow breadcrumbs', () => {
-    it('shows welcome prefix breadcrumbs when in welcome flow', () => {
-      mockPathname = '/welcome/get-started';
-      renderWithProviders();
-
-      expect(screen.getByText('Welcome')).toBeInTheDocument();
-      expect(screen.getByText('New')).toBeInTheDocument();
-      expect(screen.getByText('Get started')).toBeInTheDocument();
-    });
-
-    it('navigates to /welcome when welcome breadcrumb is clicked', async () => {
-      mockPathname = '/welcome/get-started';
-      renderWithProviders();
-
-      await user.click(screen.getByRole('button', {name: 'Welcome'}));
-
-      expect(mockNavigate).toHaveBeenCalledWith('/welcome');
-    });
-
-    it('navigates to /welcome/create-project when create project breadcrumb is clicked', async () => {
-      mockPathname = '/welcome/get-started';
-      renderWithProviders();
-
-      await user.click(screen.getByRole('button', {name: 'New'}));
-
-      expect(mockNavigate).toHaveBeenCalledWith('/welcome/create-project');
-    });
-
-    it('navigates to /welcome/get-started when get-started breadcrumb is clicked', async () => {
-      mockPathname = '/welcome/get-started';
-      renderWithProviders();
-
-      await user.click(screen.getByRole('button', {name: 'Get started'}));
-
-      expect(mockNavigate).toHaveBeenCalledWith('/welcome/get-started');
-    });
-  });
-
   describe('Default breadcrumbs', () => {
-    it('navigates to /applications when the default breadcrumb is clicked outside the welcome flow', async () => {
-      mockPathname = '/';
+    it('navigates to /applications when the default breadcrumb is clicked', async () => {
       const {container} = renderWithProviders();
 
       const breadcrumbItem = container.querySelector('nav [role="button"]');

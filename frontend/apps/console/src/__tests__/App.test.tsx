@@ -27,16 +27,7 @@ vi.mock('../lib/monaco-setup', () => ({}));
 vi.mock('@thunderid/configure-onboarding', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@thunderid/configure-onboarding')>()),
   HomePage: () => <div data-testid="home-page" />,
-  WelcomePage: () => <div data-testid="welcome-page" />,
-  GetStartedPage: () => <div data-testid="get-started-page" />,
-  CreateProjectPage: () => <div data-testid="create-project-page" />,
-  TryoutSecuringApplicationPage: () => <div data-testid="tryout-securing-application-page" />,
-  TryoutSecuringAIAgentsPage: () => <div data-testid="tryout-ai-agents-page" />,
-  TryoutSecuringMCPPage: () => <div data-testid="tryout-mcp-page" />,
-  WelcomeRedirect: () => null,
 }));
-
-vi.mock('../data/sampleBundles', () => ({SAMPLE_BUNDLES: {}}));
 
 vi.mock('@thunderid/configure-user-types', () => ({
   UserTypeCreateProvider: ({children}: {children: React.ReactNode}) => children as React.ReactElement,
@@ -160,7 +151,6 @@ describe('App', () => {
     RouteConfig.organizationUnits.list(),
     RouteConfig.groups.create(),
     RouteConfig.flows.create(),
-    RouteConfig.welcome.root(),
     RouteConfig.design.list(),
     RouteConfig.translations.list(),
   ])('passes a loader to the protected route at %s', async (path) => {
@@ -450,22 +440,6 @@ describe('App', () => {
     render(<App />);
     await waitFor(() => {
       expect(screen.getByTestId('agents-list-page')).toBeInTheDocument();
-    });
-  });
-
-  it('loads WelcomePage lazily at /welcome', async () => {
-    window.history.pushState({}, '', '/welcome');
-    render(<App />);
-    await waitFor(() => {
-      expect(screen.getByTestId('welcome-page')).toBeInTheDocument();
-    });
-  });
-
-  it('loads the tryouts under /welcome/tryout', async () => {
-    window.history.pushState({}, '', '/welcome/tryout/mcp');
-    render(<App />);
-    await waitFor(() => {
-      expect(screen.getByTestId('tryout-mcp-page')).toBeInTheDocument();
     });
   });
 

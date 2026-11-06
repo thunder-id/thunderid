@@ -14,7 +14,6 @@ import ApplicationTemplateSelectPage from '../ApplicationTemplateSelectPage';
 
 const mockNavigate = vi.fn(() => Promise.resolve());
 const mockLoggerError = vi.fn();
-let mockPathname = '/applications/types';
 let mockSearchParams = new URLSearchParams();
 
 vi.mock('@thunderid/logger/react', async (importOriginal) => ({
@@ -27,7 +26,6 @@ vi.mock('react-router', async () => {
   return {
     ...actual,
     useNavigate: () => mockNavigate,
-    useLocation: () => ({pathname: mockPathname}),
     useSearchParams: () => [mockSearchParams, vi.fn()],
     Link: ({to, children = null}: {to: string; children?: ReactNode}) => <a href={to}>{children}</a>,
   };
@@ -92,7 +90,6 @@ const renderPage = (overrides: Partial<ApplicationCreateContextType> = {}) =>
 describe('ApplicationTemplateSelectPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockPathname = '/applications/types';
     mockSearchParams = new URLSearchParams();
   });
 
@@ -167,28 +164,7 @@ describe('ApplicationTemplateSelectPage', () => {
     });
   });
 
-  it('navigates back to the Get Started page when in the welcome flow', () => {
-    mockPathname = '/welcome/get-started/applications/types';
-    renderPage();
-
-    expect(screen.getByRole('link')).toHaveAttribute('href', '/welcome/get-started');
-  });
-
-  it('launches the wizard under the welcome flow prefix when in the welcome flow', async () => {
-    const user = userEvent.setup();
-    mockPathname = '/welcome/get-started/applications/types';
-
-    renderPage();
-
-    await user.click(screen.getByTestId(`template-card-${TechnologyApplicationTemplate.REACT}`));
-
-    expect(mockNavigate).toHaveBeenCalledWith(
-      `/welcome/get-started/applications/create?type=${TechnologyApplicationTemplate.REACT}`,
-      {replace: false},
-    );
-  });
-
-  it('navigates back to the applications list outside the welcome flow', () => {
+  it('navigates back to the applications list', () => {
     renderPage();
 
     expect(screen.getByRole('link')).toHaveAttribute('href', '/applications');

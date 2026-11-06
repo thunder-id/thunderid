@@ -6,7 +6,6 @@ import {ApplicationCreateProvider} from '@thunderid/configure-applications';
 import {LayoutBuilderProvider, ThemeBuilderProvider} from '@thunderid/configure-design';
 import {GroupCreateProvider} from '@thunderid/configure-groups';
 import type {NotificationChannel} from '@thunderid/configure-notification-templates';
-import {WelcomeRedirect} from '@thunderid/configure-onboarding';
 import {OrganizationUnitProvider} from '@thunderid/configure-organization-units';
 import {RoleCreateProvider} from '@thunderid/configure-roles';
 import {TranslationCreateProvider} from '@thunderid/configure-translations';
@@ -187,11 +186,6 @@ const UserTypesListPage = lazy(() =>
 const ViewUserTypePage = lazy(() =>
   import('@thunderid/configure-user-types').then((m) => ({default: m.ViewUserTypePage})),
 );
-const CreateProjectPage = lazy(() =>
-  import('@thunderid/configure-onboarding').then((m) => ({default: m.CreateProjectPage})),
-);
-const GetStartedPage = lazy(() => import('@thunderid/configure-onboarding').then((m) => ({default: m.GetStartedPage})));
-const WelcomePage = lazy(() => import('@thunderid/configure-onboarding').then((m) => ({default: m.WelcomePage})));
 
 /**
  * The control plane executes no flows: it holds configuration and deploys it to gateways, which
@@ -201,8 +195,7 @@ const CONTROL_PLANE_ADMINISTRATION: AdministrationConfig = {mode: Administration
 
 /**
  * The console the control plane serves: everything the console offers, plus the gateways the
- * configuration is deployed to, and without the tryouts, which walk through flows the control
- * plane does not run.
+ * configuration is deployed to.
  */
 export default function App(): JSX.Element {
   return (
@@ -210,7 +203,6 @@ export default function App(): JSX.Element {
       <RoutesProvider paths={RouteConfig}>
         <AdministrationProvider administration={CONTROL_PLANE_ADMINISTRATION}>
           <ToastProvider>
-            <WelcomeRedirect />
             <Suspense fallback={<PageLoader />}>
               <Routes>
                 <Route
@@ -473,32 +465,6 @@ export default function App(): JSX.Element {
                   <Route index element={<ImportConfigurationUploadPage />} />
                   <Route path="validate" element={<ImportConfigurationValidatePage />} />
                   <Route path="summary" element={<ImportConfigurationSummaryPage />} />
-                </Route>
-                <Route
-                  path={RouteConfig.welcome.root()}
-                  element={
-                    <ProtectedRoute loader={<PageLoader />}>
-                      <FullScreenLayout />
-                    </ProtectedRoute>
-                  }
-                >
-                  <Route index element={<WelcomePage />} />
-                  <Route path="create-project" element={<CreateProjectPage />} />
-                  <Route path="import-configuration" element={<ImportConfigurationUploadPage />} />
-                  <Route path="import-configuration/validate" element={<ImportConfigurationValidatePage />} />
-                  <Route path="import-configuration/summary" element={<ImportConfigurationSummaryPage />} />
-                  <Route path="get-started" element={<GetStartedPage />} />
-                  <Route
-                    element={
-                      <ApplicationCreateProvider>
-                        <Outlet />
-                      </ApplicationCreateProvider>
-                    }
-                  >
-                    <Route path="get-started/applications/types" element={<ApplicationTemplateSelectPage />} />
-                    <Route path="get-started/applications/create" element={<ApplicationCreatePage />} />
-                  </Route>
-                  <Route path="get-started/agents/create" element={<AgentOnboardPage />} />
                 </Route>
                 <Route
                   path={RouteConfig.design.list()}

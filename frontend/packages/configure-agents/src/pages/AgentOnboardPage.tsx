@@ -22,7 +22,7 @@ import {Alert, AlertTitle, Box, Button, CircularProgress, FormControl, FormLabel
 import type {JSX} from 'react';
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {useTranslation} from 'react-i18next';
-import {useLocation, useNavigate} from 'react-router';
+import {useNavigate} from 'react-router';
 import AgentQueryKeys from '../constants/agent-query-keys';
 import useAgentRoutes from '../hooks/useAgentRoutes';
 import resolveAgentOnboardingFlow, {AgentOnboardingFlowProblem} from '../utils/resolveAgentOnboardingFlow';
@@ -300,12 +300,9 @@ export default function AgentOnboardPage({embedded = false, onClose}: AgentOnboa
   const routes = useAgentRoutes();
   const {t} = useTranslation();
   const navigate = useNavigate();
-  const {pathname} = useLocation();
   const {http} = useThunderID();
   const {getServerUrl} = useConfig();
   const logger = useLogger('AgentOnboardPage');
-
-  const isWelcomeFlow = pathname.startsWith('/welcome');
 
   // The flow decides how many screens there are, so there is no total to divide by. The bar
   // advances asymptotically with each step and reaches the end only once the flow reports
@@ -333,8 +330,8 @@ export default function AgentOnboardPage({embedded = false, onClose}: AgentOnboa
       onClose();
       return;
     }
-    void navigate(isWelcomeFlow ? routes.welcome.getStarted() : routes.agents.list());
-  }, [navigate, isWelcomeFlow, routes, onClose]);
+    void navigate(routes.agents.list());
+  }, [navigate, routes, onClose]);
 
   const handleStepLabelChange = useCallback((label: string): void => {
     if (label === prevStepLabelRef.current) return;

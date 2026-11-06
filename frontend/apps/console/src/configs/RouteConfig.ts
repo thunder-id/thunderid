@@ -10,7 +10,6 @@ import type {FlowRoutePaths} from '@thunderid/configure-flows';
 import type {GroupRoutePaths} from '@thunderid/configure-groups';
 import type {ImportExportRoutePaths} from '@thunderid/configure-import-export';
 import type {NotificationTemplateRoutePaths} from '@thunderid/configure-notification-templates';
-import type {OnboardingRoutePaths} from '@thunderid/configure-onboarding';
 import type {OrganizationUnitRoutePaths} from '@thunderid/configure-organization-units';
 import type {ResourceServerRoutePaths} from '@thunderid/configure-resource-servers';
 import type {RoleRoutePaths} from '@thunderid/configure-roles';
@@ -63,7 +62,6 @@ export type RouteConfig = OrganizationUnitRoutePaths &
   FlowRoutePaths &
   GroupRoutePaths &
   RoleRoutePaths &
-  OnboardingRoutePaths &
   SettingsRoutePaths &
   ConsoleRoutePaths;
 
@@ -98,7 +96,6 @@ export const ROUTE_SEGMENTS = {
   importExport: 'import-export',
   export: 'export',
   importConfiguration: 'import-configuration',
-  welcome: 'welcome',
   settings: 'settings',
 } as const;
 
@@ -202,20 +199,6 @@ const RouteConfig: RouteConfig = {
     upload: () => `/${ROUTE_SEGMENTS.importConfiguration}`,
     validate: () => `/${ROUTE_SEGMENTS.importConfiguration}/validate`,
     summary: () => `/${ROUTE_SEGMENTS.importConfiguration}/summary`,
-  },
-  welcome: {
-    root: () => `/${ROUTE_SEGMENTS.welcome}`,
-    createProject: () => `/${ROUTE_SEGMENTS.welcome}/create-project`,
-    getStarted: () => `/${ROUTE_SEGMENTS.welcome}/get-started`,
-    getStartedApplicationsTypes: () => `/${ROUTE_SEGMENTS.welcome}/get-started/applications/types`,
-    getStartedApplicationsCreate: () => `/${ROUTE_SEGMENTS.welcome}/get-started/applications/create`,
-    getStartedAgentsCreate: () => `/${ROUTE_SEGMENTS.welcome}/get-started/agents/create`,
-    tryoutSecuringApplication: () => `/${ROUTE_SEGMENTS.welcome}/tryout/securing-application`,
-    tryoutAiAgents: () => `/${ROUTE_SEGMENTS.welcome}/tryout/ai-agents`,
-    tryoutMcp: () => `/${ROUTE_SEGMENTS.welcome}/tryout/mcp`,
-    importConfigurationUpload: () => `/${ROUTE_SEGMENTS.welcome}/import-configuration`,
-    importConfigurationValidate: () => `/${ROUTE_SEGMENTS.welcome}/import-configuration/validate`,
-    importConfigurationSummary: () => `/${ROUTE_SEGMENTS.welcome}/import-configuration/summary`,
   },
   settings: {
     list: () => `/${ROUTE_SEGMENTS.settings}`,

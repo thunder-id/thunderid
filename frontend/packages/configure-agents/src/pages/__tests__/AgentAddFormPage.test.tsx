@@ -9,7 +9,6 @@ import AgentAddFormPage from '../AgentAddFormPage';
 const h = vi.hoisted(() => ({
   http: {request: vi.fn<(config: unknown) => Promise<{data: unknown}>>()},
   navigate: vi.fn(),
-  pathname: {current: '/agents/create'},
   created: {current: {id: 'agent-1', name: 'Calendar Agent'} as Record<string, unknown>},
   // The signed-in user as the SDK holds them: the ID token's claims, which carry no ID, merged with
   // the profile /users/me returns, which does, when the caller is a user here.
@@ -29,7 +28,6 @@ vi.mock('react-i18next', async (importOriginal) => {
 vi.mock('react-router', async () => ({
   ...(await vi.importActual<typeof import('react-router')>('react-router')),
   useNavigate: () => h.navigate,
-  useLocation: () => ({pathname: h.pathname.current}),
 }));
 
 vi.mock('@thunderid/react', async (importOriginal) => ({
@@ -121,7 +119,6 @@ async function fillRequired(user: ReturnType<typeof userEvent.setup>): Promise<v
 describe('AgentAddFormPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    h.pathname.current = '/agents/create';
     h.created.current = {id: 'agent-1', name: 'Calendar Agent'};
     h.signedIn.current = {id: 'user-1', username: 'alice'};
     h.http.request.mockImplementation((config: unknown) => {
@@ -547,15 +544,5 @@ describe('AgentAddFormPage', () => {
     await user.click(await screen.findByRole('button', {name: 'common:actions.cancel'}));
 
     expect(h.navigate).toHaveBeenCalledWith('/agents');
-  });
-
-  it('returns to get started on cancel when opened from the welcome journey', async () => {
-    h.pathname.current = '/welcome/get-started/agents/create';
-    const user = userEvent.setup();
-    render(<AgentAddFormPage />);
-
-    await user.click(await screen.findByRole('button', {name: 'common:actions.cancel'}));
-
-    expect(h.navigate).toHaveBeenCalledWith('/welcome/get-started');
   });
 });

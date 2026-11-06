@@ -252,18 +252,6 @@ describe('DashboardLayout', () => {
     expect(screen.getByTestId('outlet')).toBeInTheDocument();
   });
 
-  it('navigates to welcome page when welcome menu item is clicked', async () => {
-    const user = userEvent.setup();
-    render(<DashboardLayout />);
-
-    const userMenuTrigger = screen.getByLabelText('Account');
-    await user.click(userMenuTrigger);
-
-    const welcomeItem = await screen.findByText('common:userMenu.welcome');
-    expect(welcomeItem).toBeInTheDocument();
-    await user.click(welcomeItem);
-  });
-
   describe('generic OIDC sign out', () => {
     let originalLocation: Location;
 

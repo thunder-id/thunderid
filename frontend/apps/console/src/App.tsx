@@ -6,7 +6,6 @@ import {ApplicationCreateProvider} from '@thunderid/configure-applications';
 import {LayoutBuilderProvider, ThemeBuilderProvider} from '@thunderid/configure-design';
 import {GroupCreateProvider} from '@thunderid/configure-groups';
 import type {NotificationChannel} from '@thunderid/configure-notification-templates';
-import {SampleBundlesProvider, WelcomeRedirect} from '@thunderid/configure-onboarding';
 import {OrganizationUnitProvider} from '@thunderid/configure-organization-units';
 import {RoleCreateProvider} from '@thunderid/configure-roles';
 import {TranslationCreateProvider} from '@thunderid/configure-translations';
@@ -16,7 +15,6 @@ import {ProtectedRoute} from '@thunderid/react-router';
 import {lazy, Suspense, type JSX} from 'react';
 import {BrowserRouter, Navigate, Outlet, Route, Routes} from 'react-router';
 import RouteConfig, {ROUTE_SEGMENTS} from './configs/RouteConfig';
-import {SAMPLE_BUNDLES} from './data/sampleBundles';
 import DashboardLayout from './layouts/DashboardLayout';
 import FullScreenLayout from './layouts/FullScreenLayout';
 
@@ -169,404 +167,358 @@ const UserTypesListPage = lazy(() =>
 const ViewUserTypePage = lazy(() =>
   import('@thunderid/configure-user-types').then((m) => ({default: m.ViewUserTypePage})),
 );
-const CreateProjectPage = lazy(() =>
-  import('@thunderid/configure-onboarding').then((m) => ({default: m.CreateProjectPage})),
-);
-const GetStartedPage = lazy(() => import('@thunderid/configure-onboarding').then((m) => ({default: m.GetStartedPage})));
-const TryoutSecuringAIAgentsPage = lazy(() =>
-  import('@thunderid/configure-onboarding').then((m) => ({default: m.TryoutSecuringAIAgentsPage})),
-);
-const TryoutSecuringApplicationPage = lazy(() =>
-  import('@thunderid/configure-onboarding').then((m) => ({default: m.TryoutSecuringApplicationPage})),
-);
-const TryoutSecuringMCPPage = lazy(() =>
-  import('@thunderid/configure-onboarding').then((m) => ({default: m.TryoutSecuringMCPPage})),
-);
-const WelcomePage = lazy(() => import('@thunderid/configure-onboarding').then((m) => ({default: m.WelcomePage})));
 
 export default function App(): JSX.Element {
   return (
     <BrowserRouter basename={import.meta.env.BASE_URL}>
       <RoutesProvider paths={RouteConfig}>
         <ToastProvider>
-          <SampleBundlesProvider bundles={SAMPLE_BUNDLES}>
-            <WelcomeRedirect />
-            <Suspense fallback={<PageLoader />}>
-              <Routes>
+          <Suspense fallback={<PageLoader />}>
+            <Routes>
+              <Route
+                path="/"
+                element={
+                  <ProtectedRoute loader={<PageLoader />}>
+                    <DashboardLayout />
+                  </ProtectedRoute>
+                }
+              >
+                <Route index element={<HomePage />} />
+                <Route path={ROUTE_SEGMENTS.home} element={<HomePage />} />
+                <Route path={ROUTE_SEGMENTS.users} element={<UsersListPage />} />
+                <Route path={`${ROUTE_SEGMENTS.users}/:userId`} element={<UserEditPage />} />
+                <Route path={ROUTE_SEGMENTS.userTypes} element={<UserTypesListPage />} />
+                <Route path={`${ROUTE_SEGMENTS.userTypes}/:id`} element={<ViewUserTypePage />} />
+                <Route path={`${ROUTE_SEGMENTS.agentTypes}/:id`} element={<ViewAgentTypePage />} />
+                <Route path={ROUTE_SEGMENTS.connections} element={<ConnectionsListPage />} />
+                <Route path={`${ROUTE_SEGMENTS.connections}/:type`} element={<ConnectionDetailPage />} />
+                <Route path={`${ROUTE_SEGMENTS.connections}/:type/:id`} element={<ConnectionDetailPage />} />
                 <Route
-                  path="/"
-                  element={
-                    <ProtectedRoute loader={<PageLoader />}>
-                      <DashboardLayout />
-                    </ProtectedRoute>
-                  }
-                >
-                  <Route index element={<HomePage />} />
-                  <Route path={ROUTE_SEGMENTS.home} element={<HomePage />} />
-                  <Route path={ROUTE_SEGMENTS.users} element={<UsersListPage />} />
-                  <Route path={`${ROUTE_SEGMENTS.users}/:userId`} element={<UserEditPage />} />
-                  <Route path={ROUTE_SEGMENTS.userTypes} element={<UserTypesListPage />} />
-                  <Route path={`${ROUTE_SEGMENTS.userTypes}/:id`} element={<ViewUserTypePage />} />
-                  <Route path={`${ROUTE_SEGMENTS.agentTypes}/:id`} element={<ViewAgentTypePage />} />
-                  <Route path={ROUTE_SEGMENTS.connections} element={<ConnectionsListPage />} />
-                  <Route path={`${ROUTE_SEGMENTS.connections}/:type`} element={<ConnectionDetailPage />} />
-                  <Route path={`${ROUTE_SEGMENTS.connections}/:type/:id`} element={<ConnectionDetailPage />} />
+                  path={ROUTE_SEGMENTS.trustedIssuers}
+                  element={<Navigate to={RouteConfig.connections.list()} replace />}
+                />
+                <Route path={`${ROUTE_SEGMENTS.trustedIssuers}/:id`} element={<TrustedIssuerDetailPage />} />
+                <Route path={ROUTE_SEGMENTS.groups} element={<GroupsListPage />} />
+                <Route path={`${ROUTE_SEGMENTS.groups}/:groupId`} element={<GroupEditPage />} />
+                <Route path={ROUTE_SEGMENTS.roles} element={<RolesListPage />} />
+                <Route path={`${ROUTE_SEGMENTS.roles}/:roleId`} element={<RoleEditPage />} />
+                <Route
+                  path={ROUTE_SEGMENTS.verifiablePresentations}
+                  element={<VerifiablePresentationsListPage showWalletQr />}
+                />
+                <Route
+                  path={`${ROUTE_SEGMENTS.verifiablePresentations}/:vpId`}
+                  element={<VerifiablePresentationEditPage />}
+                />
+                <Route
+                  path={ROUTE_SEGMENTS.verifiableCredentials}
+                  element={<VerifiableCredentialsListPage showWalletQr />}
+                />
+                <Route
+                  path={`${ROUTE_SEGMENTS.verifiableCredentials}/:vcId`}
+                  element={<VerifiableCredentialEditPage />}
+                />
+                <Route path={ROUTE_SEGMENTS.applications} element={<ApplicationsListPage />} />
+                <Route path={`${ROUTE_SEGMENTS.applications}/:applicationId`} element={<ApplicationEditPage />} />
+                <Route path={ROUTE_SEGMENTS.agents} element={<AgentsListPage />} />
+                <Route path={`${ROUTE_SEGMENTS.agents}/:agentId`} element={<AgentEditPage />} />
+                <Route path={ROUTE_SEGMENTS.flows} element={<FlowsListPage />} />
+                <Route path={ROUTE_SEGMENTS.resourceServers} element={<ResourceServersListPage />} />
+                <Route
+                  path={`${ROUTE_SEGMENTS.resourceServers}/:resourceServerId`}
+                  element={<ResourceServerEditPage />}
+                />
+                <Route path={ROUTE_SEGMENTS.settings} element={<SettingsPage />} />
+              </Route>
+              {/* Organization Units - wrapped in OrganizationUnitProvider to preserve tree state across navigation */}
+              <Route
+                path={RouteConfig.organizationUnits.list()}
+                element={
+                  <ProtectedRoute loader={<PageLoader />}>
+                    <OrganizationUnitProvider />
+                  </ProtectedRoute>
+                }
+              >
+                <Route element={<DashboardLayout />}>
+                  <Route index element={<OrganizationUnitsListPage />} />
                   <Route
-                    path={ROUTE_SEGMENTS.trustedIssuers}
-                    element={<Navigate to={RouteConfig.connections.list()} replace />}
-                  />
-                  <Route path={`${ROUTE_SEGMENTS.trustedIssuers}/:id`} element={<TrustedIssuerDetailPage />} />
-                  <Route path={ROUTE_SEGMENTS.groups} element={<GroupsListPage />} />
-                  <Route path={`${ROUTE_SEGMENTS.groups}/:groupId`} element={<GroupEditPage />} />
-                  <Route path={ROUTE_SEGMENTS.roles} element={<RolesListPage />} />
-                  <Route path={`${ROUTE_SEGMENTS.roles}/:roleId`} element={<RoleEditPage />} />
-                  <Route
-                    path={ROUTE_SEGMENTS.verifiablePresentations}
-                    element={<VerifiablePresentationsListPage showWalletQr />}
-                  />
-                  <Route
-                    path={`${ROUTE_SEGMENTS.verifiablePresentations}/:vpId`}
-                    element={<VerifiablePresentationEditPage />}
-                  />
-                  <Route
-                    path={ROUTE_SEGMENTS.verifiableCredentials}
-                    element={<VerifiableCredentialsListPage showWalletQr />}
-                  />
-                  <Route
-                    path={`${ROUTE_SEGMENTS.verifiableCredentials}/:vcId`}
-                    element={<VerifiableCredentialEditPage />}
-                  />
-                  <Route path={ROUTE_SEGMENTS.applications} element={<ApplicationsListPage />} />
-                  <Route path={`${ROUTE_SEGMENTS.applications}/:applicationId`} element={<ApplicationEditPage />} />
-                  <Route path={ROUTE_SEGMENTS.agents} element={<AgentsListPage />} />
-                  <Route path={`${ROUTE_SEGMENTS.agents}/:agentId`} element={<AgentEditPage />} />
-                  <Route path={ROUTE_SEGMENTS.flows} element={<FlowsListPage />} />
-                  <Route path={ROUTE_SEGMENTS.resourceServers} element={<ResourceServersListPage />} />
-                  <Route
-                    path={`${ROUTE_SEGMENTS.resourceServers}/:resourceServerId`}
-                    element={<ResourceServerEditPage />}
-                  />
-                  <Route path={ROUTE_SEGMENTS.settings} element={<SettingsPage />} />
-                </Route>
-                {/* Organization Units - wrapped in OrganizationUnitProvider to preserve tree state across navigation */}
-                <Route
-                  path={RouteConfig.organizationUnits.list()}
-                  element={
-                    <ProtectedRoute loader={<PageLoader />}>
-                      <OrganizationUnitProvider />
-                    </ProtectedRoute>
-                  }
-                >
-                  <Route element={<DashboardLayout />}>
-                    <Route index element={<OrganizationUnitsListPage />} />
-                    <Route
-                      path=":id"
-                      element={
-                        <OrganizationUnitEditPage
-                          renderDefaultFlowsSettings={(props) => <OrganizationUnitDefaultFlowsSettings {...props} />}
-                        />
-                      }
-                    />
-                  </Route>
-                  <Route path="create" element={<FullScreenLayout />}>
-                    <Route index element={<CreateOrganizationUnitPage />} />
-                  </Route>
-                </Route>
-                <Route
-                  path={RouteConfig.groups.create()}
-                  element={
-                    <ProtectedRoute loader={<PageLoader />}>
-                      <GroupCreateProvider>
-                        <FullScreenLayout />
-                      </GroupCreateProvider>
-                    </ProtectedRoute>
-                  }
-                >
-                  <Route index element={<CreateGroupPage />} />
-                </Route>
-                <Route
-                  path={RouteConfig.roles.create()}
-                  element={
-                    <ProtectedRoute loader={<PageLoader />}>
-                      <RoleCreateProvider>
-                        <FullScreenLayout />
-                      </RoleCreateProvider>
-                    </ProtectedRoute>
-                  }
-                >
-                  <Route index element={<CreateRolePage />} />
-                </Route>
-                <Route
-                  path={RouteConfig.users.add()}
-                  element={
-                    <ProtectedRoute loader={<PageLoader />}>
-                      <FullScreenLayout />
-                    </ProtectedRoute>
-                  }
-                >
-                  <Route index element={<UserAddPage />} />
-                </Route>
-                <Route
-                  path={RouteConfig.userTypes.create()}
-                  element={
-                    <ProtectedRoute loader={<PageLoader />}>
-                      <UserTypeCreateProvider>
-                        <FullScreenLayout />
-                      </UserTypeCreateProvider>
-                    </ProtectedRoute>
-                  }
-                >
-                  <Route index element={<CreateUserTypePage />} />
-                </Route>
-                <Route
-                  path={RouteConfig.verifiablePresentations.create()}
-                  element={
-                    <ProtectedRoute loader={<PageLoader />}>
-                      <FullScreenLayout />
-                    </ProtectedRoute>
-                  }
-                >
-                  <Route index element={<VerifiablePresentationCreatePage />} />
-                </Route>
-                <Route
-                  path={RouteConfig.verifiableCredentials.create()}
-                  element={
-                    <ProtectedRoute loader={<PageLoader />}>
-                      <FullScreenLayout />
-                    </ProtectedRoute>
-                  }
-                >
-                  <Route index element={<VerifiableCredentialCreatePage />} />
-                </Route>
-                <Route
-                  element={
-                    <ProtectedRoute loader={<PageLoader />}>
-                      <ApplicationCreateProvider>
-                        <Outlet />
-                      </ApplicationCreateProvider>
-                    </ProtectedRoute>
-                  }
-                >
-                  <Route path={RouteConfig.applications.types()} element={<DashboardLayout />}>
-                    <Route index element={<ApplicationTemplateSelectPage />} />
-                  </Route>
-                  <Route path={RouteConfig.applications.create()} element={<FullScreenLayout />}>
-                    <Route index element={<ApplicationCreatePage />} />
-                  </Route>
-                </Route>
-                <Route
-                  path={RouteConfig.agents.create()}
-                  element={
-                    <ProtectedRoute loader={<PageLoader />}>
-                      <FullScreenLayout />
-                    </ProtectedRoute>
-                  }
-                >
-                  <Route index element={<AgentOnboardPage />} />
-                </Route>
-                <Route
-                  path={RouteConfig.resourceServers.create()}
-                  element={
-                    <ProtectedRoute loader={<PageLoader />}>
-                      <FullScreenLayout />
-                    </ProtectedRoute>
-                  }
-                >
-                  <Route index element={<CreateResourceServerPage />} />
-                </Route>
-                <Route
-                  path={RouteConfig.flows.create()}
-                  element={
-                    <ProtectedRoute loader={<PageLoader />}>
-                      <FullScreenLayout />
-                    </ProtectedRoute>
-                  }
-                >
-                  <Route index element={<FlowCreatePage />} />
-                </Route>
-                <Route
-                  path={RouteConfig.connections.create()}
-                  element={
-                    <ProtectedRoute loader={<PageLoader />}>
-                      <FullScreenLayout />
-                    </ProtectedRoute>
-                  }
-                >
-                  <Route index element={<ConnectionCreateWizardPage />} />
-                </Route>
-                <Route
-                  path={`/${ROUTE_SEGMENTS.connections}/:type/configure`}
-                  element={
-                    <ProtectedRoute loader={<PageLoader />}>
-                      <FullScreenLayout />
-                    </ProtectedRoute>
-                  }
-                >
-                  <Route index element={<ConnectionConfigureWizardPage />} />
-                </Route>
-                <Route
-                  path={RouteConfig.flows.detail(':flowId')}
-                  element={
-                    <ProtectedRoute loader={<PageLoader />}>
-                      <DashboardLayout collapseSidebar />
-                    </ProtectedRoute>
-                  }
-                >
-                  <Route index element={<FlowBuilderPage />} />
-                </Route>
-                <Route
-                  path={RouteConfig.importExport.list()}
-                  element={
-                    <ProtectedRoute loader={<PageLoader />}>
-                      <FullScreenLayout />
-                    </ProtectedRoute>
-                  }
-                >
-                  <Route index element={<ImportExportPage />} />
-                </Route>
-                <Route
-                  path={RouteConfig.export.page()}
-                  element={
-                    <ProtectedRoute loader={<PageLoader />}>
-                      <FullScreenLayout />
-                    </ProtectedRoute>
-                  }
-                >
-                  <Route index element={<ExportPage />} />
-                </Route>
-                <Route
-                  path={RouteConfig.importConfiguration.upload()}
-                  element={
-                    <ProtectedRoute loader={<PageLoader />}>
-                      <FullScreenLayout />
-                    </ProtectedRoute>
-                  }
-                >
-                  <Route index element={<ImportConfigurationUploadPage />} />
-                  <Route path="validate" element={<ImportConfigurationValidatePage />} />
-                  <Route path="summary" element={<ImportConfigurationSummaryPage />} />
-                </Route>
-                <Route
-                  path={RouteConfig.welcome.root()}
-                  element={
-                    <ProtectedRoute loader={<PageLoader />}>
-                      <FullScreenLayout />
-                    </ProtectedRoute>
-                  }
-                >
-                  <Route index element={<WelcomePage />} />
-                  <Route path="create-project" element={<CreateProjectPage />} />
-                  <Route path="import-configuration" element={<ImportConfigurationUploadPage />} />
-                  <Route path="import-configuration/validate" element={<ImportConfigurationValidatePage />} />
-                  <Route path="import-configuration/summary" element={<ImportConfigurationSummaryPage />} />
-                  <Route path="get-started" element={<GetStartedPage />} />
-                  <Route
+                    path=":id"
                     element={
-                      <ApplicationCreateProvider>
-                        <Outlet />
-                      </ApplicationCreateProvider>
+                      <OrganizationUnitEditPage
+                        renderDefaultFlowsSettings={(props) => <OrganizationUnitDefaultFlowsSettings {...props} />}
+                      />
                     }
-                  >
-                    <Route path="get-started/applications/types" element={<ApplicationTemplateSelectPage />} />
-                    <Route path="get-started/applications/create" element={<ApplicationCreatePage />} />
-                  </Route>
-                  <Route path="get-started/agents/create" element={<AgentOnboardPage />} />
-                  <Route path="tryout/securing-application" element={<TryoutSecuringApplicationPage />} />
-                  <Route path="tryout/ai-agents" element={<TryoutSecuringAIAgentsPage />} />
-                  <Route path="tryout/mcp" element={<TryoutSecuringMCPPage />} />
+                  />
                 </Route>
-                <Route
-                  path={RouteConfig.design.list()}
-                  element={
-                    <ProtectedRoute loader={<PageLoader />}>
-                      <DashboardLayout />
-                    </ProtectedRoute>
-                  }
-                >
-                  <Route index element={<DesignPage />} />
+                <Route path="create" element={<FullScreenLayout />}>
+                  <Route index element={<CreateOrganizationUnitPage />} />
                 </Route>
-                <Route
-                  path={RouteConfig.design.themesCreate()}
-                  element={
-                    <ProtectedRoute loader={<PageLoader />}>
+              </Route>
+              <Route
+                path={RouteConfig.groups.create()}
+                element={
+                  <ProtectedRoute loader={<PageLoader />}>
+                    <GroupCreateProvider>
                       <FullScreenLayout />
-                    </ProtectedRoute>
-                  }
-                >
-                  <Route index element={<ThemeCreatePage />} />
-                </Route>
-                <Route
-                  path={`/${ROUTE_SEGMENTS.design}/themes/:themeId`}
-                  element={
-                    <ProtectedRoute loader={<PageLoader />}>
-                      <ThemeBuilderProvider>
-                        <DashboardLayout />
-                      </ThemeBuilderProvider>
-                    </ProtectedRoute>
-                  }
-                >
-                  <Route index element={<ThemeBuilderPage />} />
-                </Route>
-                <Route
-                  path={`/${ROUTE_SEGMENTS.design}/layouts/:layoutId`}
-                  element={
-                    <ProtectedRoute loader={<PageLoader />}>
-                      <LayoutBuilderProvider>
-                        <DashboardLayout />
-                      </LayoutBuilderProvider>
-                    </ProtectedRoute>
-                  }
-                >
-                  <Route index element={<LayoutBuilderPage />} />
-                </Route>
-                <Route
-                  path={RouteConfig.translations.create()}
-                  element={
-                    <ProtectedRoute loader={<PageLoader />}>
-                      <TranslationCreateProvider>
-                        <FullScreenLayout />
-                      </TranslationCreateProvider>
-                    </ProtectedRoute>
-                  }
-                >
-                  <Route index element={<TranslationCreatePage />} />
-                </Route>
-                <Route
-                  path={RouteConfig.translations.list()}
-                  element={
-                    <ProtectedRoute loader={<PageLoader />}>
-                      <DashboardLayout />
-                    </ProtectedRoute>
-                  }
-                >
-                  <Route index element={<TranslationsListPage />} />
-                  <Route path=":language" element={<TranslationsEditPage />} />
-                </Route>
-                <Route
-                  path={RouteConfig.notificationTemplates.list()}
-                  element={
-                    <ProtectedRoute loader={<PageLoader />}>
-                      <DashboardLayout />
-                    </ProtectedRoute>
-                  }
-                >
-                  <Route index element={<Navigate to={RouteConfig.notificationTemplates.channel('email')} replace />} />
-                  <Route path=":channel" element={<NotificationTemplatesListPage />} />
-                  <Route path=":channel/:id" element={<NotificationTemplateEditPage />} />
-                </Route>
-                <Route
-                  path={RouteConfig.notificationTemplates.create(':channel' as NotificationChannel)}
-                  element={
-                    <ProtectedRoute loader={<PageLoader />}>
+                    </GroupCreateProvider>
+                  </ProtectedRoute>
+                }
+              >
+                <Route index element={<CreateGroupPage />} />
+              </Route>
+              <Route
+                path={RouteConfig.roles.create()}
+                element={
+                  <ProtectedRoute loader={<PageLoader />}>
+                    <RoleCreateProvider>
                       <FullScreenLayout />
-                    </ProtectedRoute>
-                  }
-                >
-                  <Route index element={<NotificationTemplateCreatePage />} />
+                    </RoleCreateProvider>
+                  </ProtectedRoute>
+                }
+              >
+                <Route index element={<CreateRolePage />} />
+              </Route>
+              <Route
+                path={RouteConfig.users.add()}
+                element={
+                  <ProtectedRoute loader={<PageLoader />}>
+                    <FullScreenLayout />
+                  </ProtectedRoute>
+                }
+              >
+                <Route index element={<UserAddPage />} />
+              </Route>
+              <Route
+                path={RouteConfig.userTypes.create()}
+                element={
+                  <ProtectedRoute loader={<PageLoader />}>
+                    <UserTypeCreateProvider>
+                      <FullScreenLayout />
+                    </UserTypeCreateProvider>
+                  </ProtectedRoute>
+                }
+              >
+                <Route index element={<CreateUserTypePage />} />
+              </Route>
+              <Route
+                path={RouteConfig.verifiablePresentations.create()}
+                element={
+                  <ProtectedRoute loader={<PageLoader />}>
+                    <FullScreenLayout />
+                  </ProtectedRoute>
+                }
+              >
+                <Route index element={<VerifiablePresentationCreatePage />} />
+              </Route>
+              <Route
+                path={RouteConfig.verifiableCredentials.create()}
+                element={
+                  <ProtectedRoute loader={<PageLoader />}>
+                    <FullScreenLayout />
+                  </ProtectedRoute>
+                }
+              >
+                <Route index element={<VerifiableCredentialCreatePage />} />
+              </Route>
+              <Route
+                element={
+                  <ProtectedRoute loader={<PageLoader />}>
+                    <ApplicationCreateProvider>
+                      <Outlet />
+                    </ApplicationCreateProvider>
+                  </ProtectedRoute>
+                }
+              >
+                <Route path={RouteConfig.applications.types()} element={<DashboardLayout />}>
+                  <Route index element={<ApplicationTemplateSelectPage />} />
                 </Route>
-              </Routes>
-            </Suspense>
-          </SampleBundlesProvider>
+                <Route path={RouteConfig.applications.create()} element={<FullScreenLayout />}>
+                  <Route index element={<ApplicationCreatePage />} />
+                </Route>
+              </Route>
+              <Route
+                path={RouteConfig.agents.create()}
+                element={
+                  <ProtectedRoute loader={<PageLoader />}>
+                    <FullScreenLayout />
+                  </ProtectedRoute>
+                }
+              >
+                <Route index element={<AgentOnboardPage />} />
+              </Route>
+              <Route
+                path={RouteConfig.resourceServers.create()}
+                element={
+                  <ProtectedRoute loader={<PageLoader />}>
+                    <FullScreenLayout />
+                  </ProtectedRoute>
+                }
+              >
+                <Route index element={<CreateResourceServerPage />} />
+              </Route>
+              <Route
+                path={RouteConfig.flows.create()}
+                element={
+                  <ProtectedRoute loader={<PageLoader />}>
+                    <FullScreenLayout />
+                  </ProtectedRoute>
+                }
+              >
+                <Route index element={<FlowCreatePage />} />
+              </Route>
+              <Route
+                path={RouteConfig.connections.create()}
+                element={
+                  <ProtectedRoute loader={<PageLoader />}>
+                    <FullScreenLayout />
+                  </ProtectedRoute>
+                }
+              >
+                <Route index element={<ConnectionCreateWizardPage />} />
+              </Route>
+              <Route
+                path={`/${ROUTE_SEGMENTS.connections}/:type/configure`}
+                element={
+                  <ProtectedRoute loader={<PageLoader />}>
+                    <FullScreenLayout />
+                  </ProtectedRoute>
+                }
+              >
+                <Route index element={<ConnectionConfigureWizardPage />} />
+              </Route>
+              <Route
+                path={RouteConfig.flows.detail(':flowId')}
+                element={
+                  <ProtectedRoute loader={<PageLoader />}>
+                    <DashboardLayout collapseSidebar />
+                  </ProtectedRoute>
+                }
+              >
+                <Route index element={<FlowBuilderPage />} />
+              </Route>
+              <Route
+                path={RouteConfig.importExport.list()}
+                element={
+                  <ProtectedRoute loader={<PageLoader />}>
+                    <FullScreenLayout />
+                  </ProtectedRoute>
+                }
+              >
+                <Route index element={<ImportExportPage />} />
+              </Route>
+              <Route
+                path={RouteConfig.export.page()}
+                element={
+                  <ProtectedRoute loader={<PageLoader />}>
+                    <FullScreenLayout />
+                  </ProtectedRoute>
+                }
+              >
+                <Route index element={<ExportPage />} />
+              </Route>
+              <Route
+                path={RouteConfig.importConfiguration.upload()}
+                element={
+                  <ProtectedRoute loader={<PageLoader />}>
+                    <FullScreenLayout />
+                  </ProtectedRoute>
+                }
+              >
+                <Route index element={<ImportConfigurationUploadPage />} />
+                <Route path="validate" element={<ImportConfigurationValidatePage />} />
+                <Route path="summary" element={<ImportConfigurationSummaryPage />} />
+              </Route>
+              <Route
+                path={RouteConfig.design.list()}
+                element={
+                  <ProtectedRoute loader={<PageLoader />}>
+                    <DashboardLayout />
+                  </ProtectedRoute>
+                }
+              >
+                <Route index element={<DesignPage />} />
+              </Route>
+              <Route
+                path={RouteConfig.design.themesCreate()}
+                element={
+                  <ProtectedRoute loader={<PageLoader />}>
+                    <FullScreenLayout />
+                  </ProtectedRoute>
+                }
+              >
+                <Route index element={<ThemeCreatePage />} />
+              </Route>
+              <Route
+                path={`/${ROUTE_SEGMENTS.design}/themes/:themeId`}
+                element={
+                  <ProtectedRoute loader={<PageLoader />}>
+                    <ThemeBuilderProvider>
+                      <DashboardLayout />
+                    </ThemeBuilderProvider>
+                  </ProtectedRoute>
+                }
+              >
+                <Route index element={<ThemeBuilderPage />} />
+              </Route>
+              <Route
+                path={`/${ROUTE_SEGMENTS.design}/layouts/:layoutId`}
+                element={
+                  <ProtectedRoute loader={<PageLoader />}>
+                    <LayoutBuilderProvider>
+                      <DashboardLayout />
+                    </LayoutBuilderProvider>
+                  </ProtectedRoute>
+                }
+              >
+                <Route index element={<LayoutBuilderPage />} />
+              </Route>
+              <Route
+                path={RouteConfig.translations.create()}
+                element={
+                  <ProtectedRoute loader={<PageLoader />}>
+                    <TranslationCreateProvider>
+                      <FullScreenLayout />
+                    </TranslationCreateProvider>
+                  </ProtectedRoute>
+                }
+              >
+                <Route index element={<TranslationCreatePage />} />
+              </Route>
+              <Route
+                path={RouteConfig.translations.list()}
+                element={
+                  <ProtectedRoute loader={<PageLoader />}>
+                    <DashboardLayout />
+                  </ProtectedRoute>
+                }
+              >
+                <Route index element={<TranslationsListPage />} />
+                <Route path=":language" element={<TranslationsEditPage />} />
+              </Route>
+              <Route
+                path={RouteConfig.notificationTemplates.list()}
+                element={
+                  <ProtectedRoute loader={<PageLoader />}>
+                    <DashboardLayout />
+                  </ProtectedRoute>
+                }
+              >
+                <Route index element={<Navigate to={RouteConfig.notificationTemplates.channel('email')} replace />} />
+                <Route path=":channel" element={<NotificationTemplatesListPage />} />
+                <Route path=":channel/:id" element={<NotificationTemplateEditPage />} />
+              </Route>
+              <Route
+                path={RouteConfig.notificationTemplates.create(':channel' as NotificationChannel)}
+                element={
+                  <ProtectedRoute loader={<PageLoader />}>
+                    <FullScreenLayout />
+                  </ProtectedRoute>
+                }
+              >
+                <Route index element={<NotificationTemplateCreatePage />} />
+              </Route>
+            </Routes>
+          </Suspense>
         </ToastProvider>
       </RoutesProvider>
     </BrowserRouter>

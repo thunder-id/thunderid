@@ -27,7 +27,7 @@ import {
 import {useCallback, useState, type JSX} from 'react';
 import {useForm} from 'react-hook-form';
 import {useTranslation} from 'react-i18next';
-import {useLocation, useNavigate} from 'react-router';
+import {useNavigate} from 'react-router';
 import useCreateAgent from '../api/useCreateAgent';
 import ClientSecretSuccessDialog from '../components/ClientSecretSuccessDialog';
 import useAgentRoutes from '../hooks/useAgentRoutes';
@@ -71,15 +71,12 @@ export default function AgentAddFormPage(): JSX.Element {
   const routes = useAgentRoutes();
   const {t} = useTranslation();
   const navigate = useNavigate();
-  const {pathname} = useLocation();
   const {resolveDisplayName} = useResolveDisplayName({handlers: {t}});
   const createAgent = useCreateAgent();
   const {projectId} = useProjectScope();
   // Inside a project the agent is created with the project alone, and the API places it in the system
   // organization unit, so there is no organization unit to pick.
   const isInProject = Boolean(projectId);
-
-  const isWelcomeFlow = pathname.startsWith(routes.welcome.getStarted());
 
   const [description, setDescription] = useState<string>('');
   const [typeId, setTypeId] = useState<string>('');
@@ -145,7 +142,7 @@ export default function AgentAddFormPage(): JSX.Element {
   );
 
   const handleClose = (): void => {
-    void navigate(isWelcomeFlow ? routes.welcome.getStarted() : routes.agents.list());
+    void navigate(routes.agents.list());
   };
 
   const onSubmit = handleSubmit((values: AttributeFormData) => {
