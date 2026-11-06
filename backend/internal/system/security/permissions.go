@@ -977,6 +977,12 @@ func InitSystemPermissions(handle string) {
 		"list_apis":               p.ResourceServerView,
 		"list_api_permissions":    p.ResourceServerView,
 
+		// Group tools, at the permissions of the group API they act through.
+		"list_groups":              p.GroupView,
+		"get_group":                p.GroupView,
+		"create_group":             p.GroupCreate,
+		"update_group_memberships": p.GroupUpdate,
+
 		// Project tools.
 		"list_projects":     p.ProjectView,
 		"get_project_by_id": p.ProjectView,
