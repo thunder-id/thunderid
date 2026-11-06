@@ -944,6 +944,9 @@ func (v *flowValidator) validateTaskExecutionNode(
 				})
 		}
 	}
+	if err := v.validateInputIdentifiers(node.ID, node.Executor.Inputs); err != nil {
+		return err
+	}
 	return v.validateExecutorInputDefaults(node.ID, node.Executor.Inputs)
 }
 
@@ -996,11 +999,14 @@ func (v *flowValidator) validateInteractivePromptNode(node *providers.NodeDefini
 	return nil
 }
 
-// validateInputDefinitions validates prompt input definitions: no constants, valid types, validation rules
-// and defaults, including that a default satisfies the input's validation rules.
+// validateInputDefinitions validates prompt input definitions: an identifier, no constants, valid types,
+// validation rules and defaults, including that a default satisfies the input's validation rules.
 func (v *flowValidator) validateInputDefinitions(
 	nodeID string, inputs []providers.InputDefinition,
 ) *tidcommon.ServiceError {
+	if err := v.validateInputIdentifiers(nodeID, inputs); err != nil {
+		return err
+	}
 	for _, input := range inputs {
 		if input.Constant {
 			return tidcommon.CustomServiceError(ErrorInvalidInputConfig, tidcommon.I18nMessage{
@@ -1092,6 +1098,22 @@ func (v *flowValidator) validateConstantInputsNotPrompted(
 					})
 				}
 			}
+		}
+	}
+	return nil
+}
+
+// validateInputIdentifiers validates that every input has a non-empty identifier.
+func (v *flowValidator) validateInputIdentifiers(
+	nodeID string, inputs []providers.InputDefinition,
+) *tidcommon.ServiceError {
+	for i, input := range inputs {
+		if strings.TrimSpace(input.Identifier) == "" {
+			return tidcommon.CustomServiceError(ErrorInvalidInputConfig, tidcommon.I18nMessage{
+				Key:          "error.flowmgtservice.input_missing_identifier_description",
+				DefaultValue: "Node '{{param(nodeID)}}': input at index {{param(index)}} must have an identifier",
+				Params:       map[string]string{"nodeID": nodeID, "index": strconv.Itoa(i)},
+			})
 		}
 	}
 	return nil

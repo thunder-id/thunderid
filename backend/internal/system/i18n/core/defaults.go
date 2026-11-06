@@ -911,6 +911,7 @@ var defaultMessages = map[string]string{
 	"error.flowmgtservice.input_default_fails_validation_rule_description": "Node '{{param(nodeID)}}': defaultValue of input '{{param(inputID)}}' does not satisfy its '{{param(ruleType)}}' validation rule",
 	"error.flowmgtservice.input_default_invalid_for_type_description": "Node '{{param(nodeID)}}': defaultValue of input '{{param(inputID)}}' is not a valid '{{param(type)}}' value",
 	"error.flowmgtservice.input_default_not_allowed_for_sensitive_type_description": "Node '{{param(nodeID)}}': input '{{param(inputID)}}' of type '{{param(type)}}' cannot set defaultValue or constant",
+	"error.flowmgtservice.input_missing_identifier_description": "Node '{{param(nodeID)}}': input at index {{param(index)}} must have an identifier",
 	"error.flowmgtservice.interceptor_default_not_configurable": "Default interceptor '{{param(interceptorName)}}' cannot be configured in a flow definition",
 	"error.flowmgtservice.interceptor_invalid_apply_to_description": "Interceptor '{{param(interceptorName)}}': applyTo references non-existent node '{{param(nodeID)}}'",
 	"error.flowmgtservice.interceptor_invalid_mode": "Interceptor '{{param(interceptorName)}}' has invalid mode '{{param(mode)}}'",
