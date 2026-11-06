@@ -62,7 +62,10 @@ export default function MandatedRolesPicker({
         value={selected}
         getOptionLabel={(role: MandatableRole) => role.name}
         isOptionEqualToValue={(option: MandatableRole, current: MandatableRole) => option.id === current.id}
-        noOptionsText={t('resourceSharing:mandatedRoles.noOptions', 'No roles of yours are shared with this unit.')}
+        noOptionsText={t(
+          'resourceSharing:mandatedRoles.noOptions',
+          'No roles of yours are shared with this organization unit.',
+        )}
         onChange={(_event, roles: MandatableRole[]) => onChange(roles.map((role) => role.id))}
         renderInput={(params) => (
           <TextField

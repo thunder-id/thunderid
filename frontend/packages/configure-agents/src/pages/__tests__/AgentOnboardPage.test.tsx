@@ -128,7 +128,9 @@ vi.mock('react-router', async (importOriginal) => ({
   useNavigate: () => h.navigate,
 }));
 
-vi.mock('react-i18next', () => ({
+// Spread the real module so packages loaded through configure-users still find exports such as Trans.
+vi.mock('react-i18next', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('react-i18next')>()),
   useTranslation: () => ({
     t: (key: string, options?: string | Record<string, unknown>) => {
       const translations: Record<string, string> = {

@@ -74,11 +74,15 @@ export default function SwitchAccessConfirmDialog({
   const describe = (item: ClearedAccessItem): string => {
     switch (item.kind) {
       case 'childUnitExclusions':
-        return t('resourceSharing:switch.cleared.childUnitExclusions', 'Child unit exceptions: {{names}}', {
-          names: names(item.ouIds),
-        });
+        return t(
+          'resourceSharing:switch.cleared.childUnitExclusions',
+          'Child organization unit exceptions: {{names}}',
+          {
+            names: names(item.ouIds),
+          },
+        );
       case 'childUnits':
-        return t('resourceSharing:switch.cleared.childUnits', 'Granted child units: {{names}}', {
+        return t('resourceSharing:switch.cleared.childUnits', 'Granted child organization units: {{names}}', {
           names: names(item.ouIds),
         });
       case 'trees':
@@ -121,7 +125,7 @@ export default function SwitchAccessConfirmDialog({
               changesScope &&
               t(
                 'resourceSharing:switch.introChangeScope',
-                'This deletes the "Every organization unit" policy, so {{resource}} stops reaching every organization unit. Access then starts as All child units of {{owner}}, which you can change below. Deleting the policy clears:',
+                'This deletes the "Every organization unit" policy, so {{resource}} stops reaching every organization unit. Access then starts as All child organization units of {{owner}}, which you can change below. Deleting the policy clears:',
                 {owner: ownerName, resource: resourceName},
               )}
             {!stopsSharing &&
@@ -161,7 +165,7 @@ export default function SwitchAccessConfirmDialog({
             <Alert severity="info">
               {t(
                 'resourceSharing:switch.unitSettings',
-                'Unit settings are cleared too. Units lose the settings they chose for themselves within their terms.',
+                'Organization unit settings are cleared too. Organization units lose the settings they chose for themselves within their terms.',
               )}
             </Alert>
           )}

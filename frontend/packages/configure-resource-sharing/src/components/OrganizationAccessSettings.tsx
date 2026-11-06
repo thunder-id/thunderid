@@ -6,11 +6,12 @@ import {useGetOrganizationUnitsByIds} from '@thunderid/configure-organization-un
 import {Alert, Box, Button, CircularProgress, Stack, Typography} from '@wso2/oxygen-ui';
 import {Plus} from '@wso2/oxygen-ui-icons-react';
 import {useMemo, useState, type JSX} from 'react';
-import {useTranslation} from 'react-i18next';
+import {Trans, useTranslation} from 'react-i18next';
 import AccessChoiceCards, {type AccessChoice} from './AccessChoiceCards';
 import GrantedOrganizationUnitList from './GrantedOrganizationUnitList';
 import MandatedRolesPicker from './MandatedRolesPicker';
 import OrganizationUnitChipList from './OrganizationUnitChipList';
+import OrganizationUnitNameChip from './OrganizationUnitNameChip';
 import OrganizationUnitSelectDialog, {type OrganizationUnitSelection} from './OrganizationUnitSelectDialog';
 import SwitchAccessConfirmDialog from './SwitchAccessConfirmDialog';
 import type {OrganizationAccessState} from '../hooks/useOrganizationAccess';
@@ -114,19 +115,37 @@ export default function OrganizationAccessSettings({
   // The sentences that depend on what the resource is come from its own wording namespace, if it has one.
   const wording = (key: OrganizationAccessWordingKey): string =>
     translateOrganizationAccessWording(t, access.wordingNamespace, key, {resource: resourceName, owner: ownerName});
+  // The owner's name is set in a chip in the scope titles, so it stands apart from the text.
+  const withOwner = (key: string, defaults: string): JSX.Element => (
+    <Trans
+      i18nKey={`resourceSharing:${key}`}
+      defaults={defaults}
+      values={{owner: ownerName}}
+      components={{owner: <OrganizationUnitNameChip />}}
+    />
+  );
+  const withoutOwnerMarkup = (text: string): string => text.replace(/<\/?owner>/g, '');
 
   const scopeChoices: AccessChoice<OrganizationAccessScope>[] = [
     {
       value: 'owner',
-      title: t('resourceSharing:scope.owner.title', '{{owner}} only', {owner: ownerName}),
+      title: withoutOwnerMarkup(
+        t('resourceSharing:scope.owner.title', '<owner>{{owner}}</owner> organization unit only', {owner: ownerName}),
+      ),
+      titleContent: withOwner('scope.owner.title', '<owner>{{owner}}</owner> organization unit only'),
       description: wording('ownerOnly'),
     },
     {
       value: 'chosen',
-      title: t('resourceSharing:scope.chosen.title', '{{owner}} and chosen units', {owner: ownerName}),
+      title: withoutOwnerMarkup(
+        t('resourceSharing:scope.chosen.title', '<owner>{{owner}}</owner> and chosen organization units', {
+          owner: ownerName,
+        }),
+      ),
+      titleContent: withOwner('scope.chosen.title', '<owner>{{owner}}</owner> and chosen organization units'),
       description: t(
         'resourceSharing:scope.chosen.description',
-        'Choose child units of {{owner}} and other trees below.',
+        'Choose child organization units of {{owner}} and other trees below.',
         {owner: ownerName},
       ),
     },
@@ -135,7 +154,7 @@ export default function OrganizationAccessSettings({
       title: t('resourceSharing:scope.everyUnit.title', 'Every organization unit'),
       description: t(
         'resourceSharing:scope.everyUnit.description',
-        'Every unit in every tree, now and later, with optional exceptions.',
+        'Every organization unit in every tree, now and later, with optional exceptions.',
       ),
     },
   ];
@@ -150,24 +169,24 @@ export default function OrganizationAccessSettings({
       title: t('resourceSharing:childUnits.choices.none.title', 'None'),
       description: childNoneBlocked
         ? blockedNoneDescription(childNoneBlocked, t('resourceSharing:noneBlocked.otherTrees', 'other trees'))
-        : t('resourceSharing:childUnits.choices.none.description', 'No child unit has access.'),
+        : t('resourceSharing:childUnits.choices.none.description', 'No child organization unit has access.'),
       disabled: childNoneBlocked !== null,
     },
     {
       value: 'all',
-      title: t('resourceSharing:childUnits.choices.all.title', 'All child units'),
+      title: t('resourceSharing:childUnits.choices.all.title', 'All child organization units'),
       description: t(
         'resourceSharing:childUnits.choices.all.description',
-        'Every unit under {{owner}}, now and later.',
+        'Every organization unit under {{owner}}, now and later.',
         {owner: ownerName},
       ),
     },
     {
       value: 'selected',
-      title: t('resourceSharing:childUnits.choices.selected.title', 'Selected child units'),
+      title: t('resourceSharing:childUnits.choices.selected.title', 'Selected child organization units'),
       description: t(
         'resourceSharing:childUnits.choices.selected.description',
-        'Pick units and how far below each one access reaches.',
+        'Pick organization units and how far below each one access reaches.',
       ),
     },
   ];
@@ -176,14 +195,17 @@ export default function OrganizationAccessSettings({
       value: 'none',
       title: t('resourceSharing:trees.choices.none.title', 'None'),
       description: treesNoneBlocked
-        ? blockedNoneDescription(treesNoneBlocked, t('resourceSharing:noneBlocked.childUnits', 'child units'))
+        ? blockedNoneDescription(
+            treesNoneBlocked,
+            t('resourceSharing:noneBlocked.childUnits', 'child organization units'),
+          )
         : t('resourceSharing:trees.choices.none.description', 'No other tree has access.'),
       disabled: treesNoneBlocked !== null,
     },
     {
       value: 'selected',
       title: t('resourceSharing:trees.choices.selected.title', 'Selected trees'),
-      description: t('resourceSharing:trees.choices.selected.description', 'Grant top units one by one.'),
+      description: t('resourceSharing:trees.choices.selected.description', 'Grant top organization units one by one.'),
     },
     {
       value: 'every',
@@ -191,11 +213,11 @@ export default function OrganizationAccessSettings({
       description: offers.everyTree
         ? t(
             'resourceSharing:trees.choices.every.description',
-            'The top unit of every tree, now and later, with optional exceptions.',
+            'The top organization unit of every tree, now and later, with optional exceptions.',
           )
         : t(
             'resourceSharing:trees.choices.every.unavailable',
-            "Every tree's top unit. Only set through a resource file or an import.",
+            "Every tree's top organization unit. Only set through a resource file or an import.",
           ),
       disabled: !offers.everyTree,
     },
@@ -340,7 +362,7 @@ export default function OrganizationAccessSettings({
             <Alert severity="info">
               {t(
                 'resourceSharing:nothingChosen',
-                'Nothing is granted below yet. Saving like this is the same as "{{owner}} only".',
+                'Nothing is granted below yet. Saving like this is the same as "{{owner}} organization unit only".',
                 {owner: ownerName},
               )}
             </Alert>
@@ -351,14 +373,14 @@ export default function OrganizationAccessSettings({
               <Alert severity="info" icon={false}>
                 {t(
                   'resourceSharing:everyUnit.summary',
-                  'Every organization unit in every tree, at any depth. Units and trees created later get access automatically.',
+                  'Every organization unit in every tree, at any depth. Organization units and trees created later get access automatically.',
                 )}
               </Alert>
               {exceptionsField(
                 draft.everyUnitExclusions,
                 t(
                   'resourceSharing:exceptions.anyHint',
-                  'Any unit in any tree. Excluding a unit also excludes everything below it.',
+                  'Any organization unit in any tree. Excluding an organization unit also excludes everything below it.',
                 ),
                 'everyUnitExclusions',
               )}
@@ -378,11 +400,11 @@ export default function OrganizationAccessSettings({
                 >
                   <Typography variant="body2" sx={{flex: '1 1 320px'}}>
                     <Box component="strong" sx={{fontWeight: 600}}>
-                      {t('resourceSharing:changeScope.question', 'Need to grant only some units?')}
+                      {t('resourceSharing:changeScope.question', 'Need to grant only some organization units?')}
                     </Box>{' '}
                     {t(
                       'resourceSharing:changeScope.description',
-                      'Changing the scope deletes the "Every organization unit" policy and its exceptions, then lets you choose child units and other trees. Once you save, it can\'t be set again here.',
+                      'Changing the scope deletes the "Every organization unit" policy and its exceptions, then lets you choose child organization units and other trees. Once you save, it can\'t be set again here.',
                     )}
                   </Typography>
                   <Button variant="outlined" size="small" onClick={() => requestSwitch('scope', 'chosen')}>
@@ -397,18 +419,16 @@ export default function OrganizationAccessSettings({
 
       {scope === 'chosen' && (
         <SettingsCard
-          title={t('resourceSharing:childUnits.sectionTitle', 'Child organization units of {{owner}}', {
-            owner: ownerName,
-          })}
-          description={t('resourceSharing:childUnits.sectionDescription', "Units in {{owner}}'s own hierarchy.", {
-            owner: ownerName,
-          })}
+          title={t('resourceSharing:childUnits.sectionTitle', 'Child organization units')}
+          description={t(
+            'resourceSharing:childUnits.sectionDescription',
+            "Organization units in {{owner}}'s own hierarchy.",
+            {owner: ownerName},
+          )}
         >
           <Stack spacing={2.5}>
             <AccessChoiceCards
-              label={t('resourceSharing:childUnits.sectionTitle', 'Child organization units of {{owner}}', {
-                owner: ownerName,
-              })}
+              label={t('resourceSharing:childUnits.sectionTitle', 'Child organization units')}
               value={childMode}
               choices={childChoices}
               disabled={locked}
@@ -420,7 +440,7 @@ export default function OrganizationAccessSettings({
                 draft.childUnitExclusions,
                 t(
                   'resourceSharing:exceptions.childHint',
-                  'Direct child units only. Excluding a unit also excludes everything below it.',
+                  'Direct child organization units only. Excluding an organization unit also excludes everything below it.',
                 ),
                 'childUnitExclusions',
               )}
@@ -445,7 +465,7 @@ export default function OrganizationAccessSettings({
                   readOnly={locked}
                   emptyLabel={t(
                     'resourceSharing:childUnits.empty',
-                    'No child units selected yet. Use Grant access to pick them.',
+                    'No child organization units selected yet. Use Grant access to pick them.',
                   )}
                   onReachChange={(ouId, reach) =>
                     edit((current) => ({
@@ -478,7 +498,7 @@ export default function OrganizationAccessSettings({
                             <Typography variant="caption" color="text.secondary">
                               {t(
                                 'resourceSharing:mandatedRoles.unitOnlyHint',
-                                'Roles can be mandated only when access reaches this unit alone.',
+                                'Roles can be mandated only when access is set to Only this OU.',
                               )}
                             </Typography>
                           )
@@ -499,7 +519,7 @@ export default function OrganizationAccessSettings({
           title={t('resourceSharing:trees.title', 'Other organization trees')}
           description={t(
             'resourceSharing:trees.description',
-            "Top units of trees outside {{owner}}'s. Units below a top unit don't get access unless it passes access on to them.",
+            "Top organization units of trees outside {{owner}}'s. Organization units below a top organization unit don't get access unless it passes access on to them.",
             {owner: ownerName},
           )}
         >
@@ -524,7 +544,7 @@ export default function OrganizationAccessSettings({
             {treesMode === 'every' &&
               exceptionsField(
                 draft.everyTreeExclusions,
-                t('resourceSharing:exceptions.rootHint', 'Top units only.'),
+                t('resourceSharing:exceptions.rootHint', 'Top organization units only.'),
                 'everyTreeExclusions',
               )}
 
@@ -547,7 +567,7 @@ export default function OrganizationAccessSettings({
                   unitsById={unitsById}
                   readOnly={locked}
                   emptyLabel={t('resourceSharing:trees.empty', 'No trees picked yet. Use Add a tree to pick them.')}
-                  fixedReachLabel={t('resourceSharing:trees.topUnitOnly', 'Top unit only')}
+                  fixedReachLabel={t('resourceSharing:trees.topUnitOnly', 'Top organization unit only')}
                   onRemove={(ouId) => edit((current) => ({trees: current.trees.filter((id) => id !== ouId)}))}
                 />
               </Stack>
@@ -559,10 +579,10 @@ export default function OrganizationAccessSettings({
       {openPicker === 'childUnits' && (
         <OrganizationUnitSelectDialog
           open
-          title={t('resourceSharing:dialogs.childUnits.title', 'Grant access to child units')}
+          title={t('resourceSharing:dialogs.childUnits.title', 'Grant access to child organization units')}
           description={t(
             'resourceSharing:dialogs.childUnits.description',
-            'Only units directly under {{owner}} can be picked. Units deeper down are reached through their parent.',
+            'Only organization units directly under {{owner}} can be picked. Organization units deeper down are reached through their parent.',
             {owner: ownerName},
           )}
           confirmLabel={t('resourceSharing:childUnits.grant', 'Grant access')}
@@ -580,7 +600,7 @@ export default function OrganizationAccessSettings({
           title={t('resourceSharing:dialogs.trees.title', 'Grant access to other trees')}
           description={t(
             'resourceSharing:dialogs.trees.description',
-            'Pick the top unit of each tree. Units below it get access only if it passes access on.',
+            'Pick the top organization unit of each tree. Organization units below it get access only if it passes access on.',
           )}
           confirmLabel={t('resourceSharing:childUnits.grant', 'Grant access')}
           source={{type: 'roots'}}
@@ -602,16 +622,16 @@ export default function OrganizationAccessSettings({
             {
               childUnitExclusions: t(
                 'resourceSharing:dialogs.exceptions.childDescription',
-                "Choose child units of {{owner}} that shouldn't get access. Everything below an excluded unit is excluded too.",
+                "Choose child organization units of {{owner}} that shouldn't get access. Everything below an excluded organization unit is excluded too.",
                 {owner: ownerName},
               ),
               everyUnitExclusions: t(
                 'resourceSharing:dialogs.exceptions.anyDescription',
-                "Choose any unit, at any depth, that shouldn't get access. Everything below it is excluded too.",
+                "Choose any organization unit, at any depth, that shouldn't get access. Everything below it is excluded too.",
               ),
               everyTreeExclusions: t(
                 'resourceSharing:dialogs.exceptions.rootDescription',
-                "Choose top units that shouldn't get access.",
+                "Choose top organization units that shouldn't get access.",
               ),
             }[openPicker]
           }
