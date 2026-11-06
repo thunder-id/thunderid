@@ -588,7 +588,7 @@ func withServerAuthority(ctx *providers.NodeContext) *providers.NodeContext {
 // presenting their own token.
 func isInviter(ctx *providers.NodeContext) bool {
 	subject := security.GetSubject(ctx.Context)
-	return !security.IsRuntimeContext(ctx.Context) && subject != "" &&
+	return !security.IsRuntimeContext(ctx.Context) && !security.IsRecordedCaller(ctx.Context) && subject != "" &&
 		subject == ctx.RuntimeData[common.RuntimeKeyInviter]
 }
 

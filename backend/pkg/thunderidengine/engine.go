@@ -241,7 +241,7 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 		engineCtx.ouProvider, engineCtx.execRegistry, engineCtx.interceptorRegistry, engineCtx.observabilitySvc,
 		engineCtx.runtimeCryptoSvc, engineCtx.attestationProvider, engineCtx.graphBuilder,
 		engineCtx.jwtService, engineCtx.runtimeStoreProvider, engineCtx.transactioner, nil, nil,
-		engineCtx.identityGovernance, nil, nil, flowConfig)
+		engineCtx.identityGovernance, nil, nil, engineCtx.permissionProvider, flowConfig)
 	if err != nil {
 		logger.Fatal(ctx, "Failed to initialize flow execution service", log.Error(err))
 	}
@@ -446,6 +446,7 @@ type engineContext struct {
 	captchaValidationProvider providers.CaptchaValidationProvider
 	identityGovernance        providers.IdentityGovernanceProvider
 	attributeVerification     providers.AttributeVerificationProvider
+	permissionProvider        providers.PermissionProvider
 
 	transactioner        providers.Transactioner
 	runtimeStoreProvider providers.RuntimeStoreProvider
@@ -582,6 +583,12 @@ func WithFlowProvider(provider providers.FlowProvider) Option {
 // node that verifies a contact attribute fails.
 func WithAttributeVerificationProvider(provider providers.AttributeVerificationProvider) Option {
 	return func(c *engineContext) { c.attributeVerification = provider }
+}
+
+// WithPermissionProvider supplies the permission provider. Without it, a flow step that continues
+// without a token as the flow's starter is refused.
+func WithPermissionProvider(provider providers.PermissionProvider) Option {
+	return func(c *engineContext) { c.permissionProvider = provider }
 }
 
 // WithI18nProvider supplies the i18n provider.

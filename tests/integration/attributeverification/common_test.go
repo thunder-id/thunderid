@@ -89,6 +89,9 @@ const (
 	errCodeFlowIDNotPermitted = "FES-1018"
 	// errCodeFlowHandleNotFound is the start's refusal of a handle no self flow has.
 	errCodeFlowHandleNotFound = "FES-1025"
+	// errCodeAdministrationPermission is the flow ID entry point's refusal of a caller holding no system
+	// permission.
+	errCodeAdministrationPermission = "FES-1019"
 )
 
 // deliveryWait bounds the wait for an email or SMS the server sends during a request. A send
