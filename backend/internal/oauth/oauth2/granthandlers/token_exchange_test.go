@@ -4456,6 +4456,18 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_MappedActorReso
 	attrCache.On("GetAttributeCache", mock.Anything, "aci-actor").
 		Return(&attributecache.AttributeCache{ID: "aci-actor", SubjectID: testAgentEntityID},
 			(*tidcommon.ServiceError)(nil))
+	// The resolved actor's own permissions are evaluated for the requested scope.
+	actors.On("GetActor", mock.Anything, testAgentEntityID).
+		Return(&providers.Entity{ID: testAgentEntityID, Category: providers.EntityCategoryAgent},
+			(*tidcommon.ServiceError)(nil))
+	actors.On("GetActorGroups", mock.Anything, testAgentEntityID).
+		Return([]providers.EntityGroup{}, (*tidcommon.ServiceError)(nil))
+	authz := authzmock.NewAuthorizationProviderMock(suite.T())
+	suite.handler.authzService = authz
+	authz.On("EvaluateAccessBatch", mock.Anything, mock.Anything).
+		Return(&providers.AccessEvaluationsResponse{
+			Evaluations: []providers.AccessEvaluationResponse{{Decision: true}},
+		}, (*tidcommon.ServiceError)(nil))
 	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
 		mock.MatchedBy(func(ctx *tokenservice.AccessTokenBuildContext) bool {
 			return ctx.ActorClaims != nil && ctx.ActorClaims.Sub == "actor@example.com" &&
@@ -4465,6 +4477,118 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_MappedActorReso
 	_, errResp := suite.handler.HandleGrant(context.Background(), req, suite.oauthApp)
 
 	assert.Nil(suite.T(), errResp)
+}
+
+// actorAuthzFixture wires a token exchange where the subject holds read and write and the actor is
+// the local agent actorID, and returns the request plus the mocks the test scripts.
+func (suite *TokenExchangeGrantHandlerTestSuite) actorAuthzFixture(actorID string) (
+	*model.TokenRequest, *actorprovidermock.ActorProviderMock, *authzmock.AuthorizationProviderMock) {
+	actors := actorprovidermock.NewActorProviderMock(suite.T())
+	authz := authzmock.NewAuthorizationProviderMock(suite.T())
+	suite.handler.actorProvider = actors
+	suite.handler.authzService = authz
+
+	now := time.Now().Unix()
+	subjectToken := suite.createTestJWT(map[string]interface{}{
+		"sub": testUserID, "iss": testCustomIssuer, "exp": float64(now + 3600), "nbf": float64(now - 60),
+	})
+	req := suite.createBasicTokenRequest(subjectToken)
+	req.Scope = testScopeReadWrite
+	suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, subjectToken, suite.oauthApp).
+		Return(&tokenservice.SubjectTokenClaims{
+			Sub: testUserID, Iss: testCustomIssuer, Scopes: []string{testScopeRead, testScopeWrite},
+			UserAttributes: map[string]interface{}{},
+		}, nil)
+	actors.On("GetActor", mock.Anything, testUserID).
+		Return(&providers.Entity{ID: testUserID, Category: providers.EntityCategoryUser}, (*tidcommon.ServiceError)(nil))
+
+	if actorID != "" {
+		req.ActorToken = testActorToken
+		req.ActorTokenType = string(constants.TokenTypeIdentifierJWT)
+		suite.mockTokenValidator.On("ValidateActorToken", mock.Anything, testActorToken, suite.oauthApp).
+			Return(&tokenservice.SubjectTokenClaims{Sub: actorID, Iss: testCustomIssuer}, nil)
+		actors.On("GetActor", mock.Anything, actorID).
+			Return(&providers.Entity{ID: actorID, Category: providers.EntityCategoryAgent, OUID: "ou-1"},
+				(*tidcommon.ServiceError)(nil))
+	}
+	actors.On("GetActorGroups", mock.Anything, mock.Anything).
+		Return([]providers.EntityGroup{{ID: "group-1"}}, (*tidcommon.ServiceError)(nil))
+	return req, actors, authz
+}
+
+func (suite *TokenExchangeGrantHandlerTestSuite) expectActorEvaluation(
+	authz *authzmock.AuthorizationProviderMock, actorID string, decisions ...bool) {
+	evaluations := make([]providers.AccessEvaluationResponse, 0, len(decisions))
+	for _, d := range decisions {
+		evaluations = append(evaluations, providers.AccessEvaluationResponse{Decision: d})
+	}
+	authz.On("EvaluateAccessBatch", mock.Anything,
+		mock.MatchedBy(func(req providers.AccessEvaluationsRequest) bool {
+			return len(req.Evaluations) == len(decisions) &&
+				req.Evaluations[0].Subject.ID == actorID &&
+				req.Evaluations[0].Subject.Category == string(providers.EntityCategoryAgent) &&
+				assert.ObjectsAreEqual([]string{"group-1"}, req.Evaluations[0].Subject.GroupIDs) &&
+				req.Evaluations[0].ResourceServer.ID == testTokenExchangeDefaultRSID
+		})).Return(&providers.AccessEvaluationsResponse{Evaluations: evaluations}, (*tidcommon.ServiceError)(nil))
+}
+
+// The exchanged token carries only the scopes the actor itself is authorized for.
+func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_ActorTokenLimitsScopesToActorPermissions() {
+	req, _, authz := suite.actorAuthzFixture("agent-1")
+	suite.expectActorEvaluation(authz, "agent-1", true, false)
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
+		mock.MatchedBy(func(ctx *tokenservice.AccessTokenBuildContext) bool {
+			return tokenservice.JoinScopes(ctx.Scopes) == testScopeRead
+		})).Return(exchangedToken(), nil)
+
+	result, errResp := suite.handler.HandleGrant(context.Background(), req, suite.oauthApp)
+
+	assert.Nil(suite.T(), errResp)
+	assert.NotNil(suite.T(), result)
+}
+
+func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_ActorWithNoPermissionsGetsNoPermissionScopes() {
+	req, _, authz := suite.actorAuthzFixture("agent-1")
+	suite.expectActorEvaluation(authz, "agent-1", false, false)
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
+		mock.MatchedBy(func(ctx *tokenservice.AccessTokenBuildContext) bool {
+			return len(ctx.Scopes) == 0
+		})).Return(exchangedToken(), nil)
+
+	_, errResp := suite.handler.HandleGrant(context.Background(), req, suite.oauthApp)
+
+	assert.Nil(suite.T(), errResp)
+}
+
+// With no actor_token the authenticated agent client is the actor and is held to its own permissions.
+func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_ImplicitAgentActorLimitsScopes() {
+	suite.oauthApp.ID = "agent-client"
+	suite.oauthApp.EntityCategory = providers.EntityCategoryAgent
+	req, _, authz := suite.actorAuthzFixture("")
+	suite.expectActorEvaluation(authz, "agent-client", true, false)
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
+		mock.MatchedBy(func(ctx *tokenservice.AccessTokenBuildContext) bool {
+			return tokenservice.JoinScopes(ctx.Scopes) == testScopeRead
+		})).Return(exchangedToken(), nil)
+
+	_, errResp := suite.handler.HandleGrant(context.Background(), req, suite.oauthApp)
+
+	assert.Nil(suite.T(), errResp)
+}
+
+// An actor whose permissions cannot be evaluated fails the exchange rather than inheriting the
+// subject's scopes.
+func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_ActorAuthorizationFailureFailsClosed() {
+	req, _, authz := suite.actorAuthzFixture("agent-1")
+	authz.On("EvaluateAccessBatch", mock.Anything, mock.Anything).
+		Return((*providers.AccessEvaluationsResponse)(nil), &tidcommon.InternalServerError)
+
+	result, errResp := suite.handler.HandleGrant(context.Background(), req, suite.oauthApp)
+
+	assert.Nil(suite.T(), result)
+	suite.Require().NotNil(errResp)
+	assert.Equal(suite.T(), constants.ErrorServerError, errResp.Error)
+	suite.mockTokenBuilder.AssertNotCalled(suite.T(), "BuildAccessToken", mock.Anything, mock.Anything)
 }
 
 func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_ActorAciUnavailableIsServerError() {

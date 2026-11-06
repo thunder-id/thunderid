@@ -361,6 +361,14 @@ func (h *tokenExchangeGrantHandler) HandleGrant(ctx context.Context, tokenReques
 			return nil, errResp
 		}
 
+		// The actor can pass on only what it is itself authorized for, so a delegated token never
+		// carries a permission the acting agent lacks.
+		permissionScopes, errResp = h.filterByActorAuthorization(
+			ctx, actorClaims, oauthApp, targetRS.ID, permissionScopes, logger)
+		if errResp != nil {
+			return nil, errResp
+		}
+
 		finalScopes = make([]string, 0, len(oidcScopes)+len(permissionScopes))
 		finalScopes = append(finalScopes, oidcScopes...)
 		finalScopes = append(finalScopes, permissionScopes...)
@@ -392,6 +400,75 @@ func (h *tokenExchangeGrantHandler) HandleGrant(ctx context.Context, tokenReques
 	return &model.TokenResponseDTO{
 		AccessToken: *accessToken,
 	}, nil
+}
+
+// filterByActorAuthorization keeps the permission scopes the actor is authorized for on the target
+// resource server, evaluated as client_credentials evaluates a client's own scopes. The actor is the
+// entity named by the actor_token, or the authenticated client when it is recorded implicitly. An
+// actor that is not a local entity (for example one from an external issuer) has no permissions here
+// to evaluate, so its scopes are left as they are. It fails closed when the actor's authorization
+// cannot be evaluated.
+func (h *tokenExchangeGrantHandler) filterByActorAuthorization(ctx context.Context,
+	actorClaims *tokenservice.SubjectTokenClaims, oauthApp *providers.OAuthClient, resourceServerID string,
+	permissionScopes []string, logger *log.Logger) ([]string, *model.ErrorResponse) {
+	if actorClaims == nil || len(permissionScopes) == 0 {
+		return permissionScopes, nil
+	}
+
+	var actorID, actorCategory, actorOUID string
+	switch {
+	case actorClaims.EntityID != "":
+		actorID = actorClaims.EntityID
+	case actorClaims.Iss == "" && actorClaims.Sub == oauthApp.ID:
+		actorID, actorCategory, actorOUID = oauthApp.ID, oauthApp.EntityCategory.String(), oauthApp.OUID
+	default:
+		return permissionScopes, nil
+	}
+
+	failed := &model.ErrorResponse{
+		Error:            constants.ErrorServerError,
+		ErrorDescription: "Failed to generate token",
+	}
+	if h.authzService == nil || h.actorProvider == nil {
+		logger.Error(ctx, "Authorization provider unavailable while evaluating the actor's permissions")
+		return nil, failed
+	}
+
+	if actorCategory == "" {
+		entity, svcErr := h.actorProvider.GetActor(ctx, actorID)
+		if svcErr != nil || entity == nil {
+			logger.Error(ctx, "Failed to resolve the actor for authorization", log.String("actorID", actorID))
+			return nil, failed
+		}
+		actorCategory, actorOUID = string(entity.Category), entity.OUID
+	}
+
+	groups, groupErr := h.actorProvider.GetActorGroups(ctx, actorID)
+	if groupErr != nil {
+		logger.Error(ctx, "Failed to resolve the actor's group memberships",
+			log.String("actorID", actorID), log.String("error", groupErr.Error.DefaultValue))
+		return nil, failed
+	}
+	groupIDs := make([]string, 0, len(groups))
+	for _, group := range groups {
+		if group.ID != "" && !slices.Contains(groupIDs, group.ID) {
+			groupIDs = append(groupIDs, group.ID)
+		}
+	}
+
+	request := tokenservice.BuildAccessEvaluationsRequest(
+		actorID, actorCategory, groupIDs, nil, permissionScopes, resourceServerID, nil)
+	for i := range request.Evaluations {
+		request.Evaluations[i].OUID = actorOUID
+	}
+	authzResp, svcErr := h.authzService.EvaluateAccessBatch(ctx, request)
+	if svcErr != nil {
+		logger.Error(ctx, "Failed to evaluate the actor's permissions",
+			log.String("actorID", actorID), log.String("error", svcErr.Error.DefaultValue))
+		return nil, failed
+	}
+
+	return tokenservice.FilterAuthorizedScopes(permissionScopes, authzResp.Evaluations), nil
 }
 
 // handleDeviceSecretGrant exchanges a device secret: it runs the client's authentication flow silently
