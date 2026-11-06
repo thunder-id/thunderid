@@ -49,6 +49,20 @@ type InlineStubAgentService struct {
 	) (*model.AgentRoleListResponse, *tidcommon.ServiceError)
 }
 
+func (s *InlineStubAgentService) GetAgentByClientID(
+	context.Context, string, bool) (*model.AgentGetResponse, *tidcommon.ServiceError) {
+	return &model.AgentGetResponse{}, nil
+}
+
+func (s *InlineStubAgentService) GetAgentListByOwner(context.Context, string, int, int,
+	map[string]interface{}, bool) (*model.AgentListResponse, *tidcommon.ServiceError) {
+	return &model.AgentListResponse{}, nil
+}
+
+func (s *InlineStubAgentService) RegenerateAgentSecret(context.Context, string) (string, *tidcommon.ServiceError) {
+	return "", nil
+}
+
 func (s *InlineStubAgentService) CreateAgent(
 	ctx context.Context, agent *providers.Agent) (*model.AgentCompleteResponse, *tidcommon.ServiceError) {
 	if s.OnCreateAgent != nil {

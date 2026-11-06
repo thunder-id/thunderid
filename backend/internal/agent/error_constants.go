@@ -575,6 +575,35 @@ var (
 			DefaultValue: "The organization unit must belong to the project",
 		},
 	}
+
+	// ErrorMissingClientID is returned when an agent is looked up by an empty client ID.
+	ErrorMissingClientID = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AGT-1049",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.agentservice.missing_client_id",
+			DefaultValue: "Missing client ID",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.agentservice.missing_client_id_description",
+			DefaultValue: "A client ID is required to find an agent by its OAuth client",
+		},
+	}
+
+	// ErrorClientSecretNotUsed is returned when a client secret is regenerated for an agent that does not
+	// authenticate with one.
+	ErrorClientSecretNotUsed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AGT-1050",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.agentservice.client_secret_not_used",
+			DefaultValue: "Agent has no client secret",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.agentservice.client_secret_not_used_description",
+			DefaultValue: "Only an agent that authenticates with a client secret can have its secret regenerated",
+		},
+	}
 )
 
 // errInvalidDeclarativeLifespan is returned when a declarative agent's validUntil is not an RFC 3339

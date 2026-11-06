@@ -103,3 +103,67 @@ func (suite *EntityTypeToolsTestSuite) TestListUserTypes_ServiceError() {
 
 	mockService.AssertExpectations(suite.T())
 }
+
+func (suite *EntityTypeToolsTestSuite) TestListAgentTypes_Success() {
+	mockService := NewEntityTypeServiceInterfaceMock(suite.T())
+	tools := &entityTypeTools{entityTypeService: mockService}
+
+	listCall := mockService.On("GetEntityTypeList", mock.Anything, TypeCategoryAgent, mock.Anything, 0, false).
+		Return(&EntityTypeListResponse{TotalResults: 1, Types: []EntityTypeListItem{{
+			ID: "at1", Handle: DefaultAgentTypeHandle, OUID: "ou1",
+			SystemAttributes: &SystemAttributes{Display: "name"},
+		}}}, nil).Once()
+	mockService.On("GetAttributes", mock.Anything, TypeCategoryAgent, DefaultAgentTypeHandle,
+		AttributeFilter{AllowCredential: true, AllowNonCredential: true}).
+		Return([]AttributeInfo{
+			{Attribute: "name", Type: "string", Required: true, Unique: true},
+			{Attribute: "function", Type: "string", Enum: []string{"support", "sales"}},
+			{Attribute: "apiKey", Type: "string", Credential: true},
+		}, nil).NotBefore(listCall).Once()
+
+	result, output, err := tools.listAgentTypes(context.Background(), &mcp.CallToolRequest{}, nil)
+
+	suite.Require().NoError(err)
+	assert.Nil(suite.T(), result)
+	suite.Require().Len(output.Types, 1)
+	agentType := output.Types[0]
+	assert.Equal(suite.T(), "at1", agentType.ID)
+	assert.Equal(suite.T(), "name", agentType.DisplayAttribute)
+	assert.Equal(suite.T(), []agentTypeAttributeMCPItem{
+		{Name: "apiKey", Type: "string", Credential: true},
+		{Name: "function", Type: "string", Enum: []string{"support", "sales"}},
+		{Name: "name", Type: "string", Required: true, Unique: true},
+	}, agentType.Attributes)
+}
+
+func (suite *EntityTypeToolsTestSuite) TestListAgentTypes_ServiceErrors() {
+	failure := &tidcommon.ServiceError{ErrorDescription: tidcommon.I18nMessage{DefaultValue: "database error"}}
+
+	suite.Run("list", func() {
+		mockService := NewEntityTypeServiceInterfaceMock(suite.T())
+		tools := &entityTypeTools{entityTypeService: mockService}
+		mockService.On("GetEntityTypeList", mock.Anything, TypeCategoryAgent, mock.Anything, 0, false).
+			Return(nil, failure).Once()
+
+		_, output, err := tools.listAgentTypes(context.Background(), &mcp.CallToolRequest{}, nil)
+
+		assert.ErrorContains(suite.T(), err, "failed to list agent types: database error")
+		assert.Nil(suite.T(), output)
+		mockService.AssertNotCalled(suite.T(), "GetAttributes", mock.Anything, mock.Anything, mock.Anything,
+			mock.Anything)
+	})
+
+	suite.Run("attributes", func() {
+		mockService := NewEntityTypeServiceInterfaceMock(suite.T())
+		tools := &entityTypeTools{entityTypeService: mockService}
+		mockService.On("GetEntityTypeList", mock.Anything, TypeCategoryAgent, mock.Anything, 0, false).
+			Return(&EntityTypeListResponse{Types: []EntityTypeListItem{{Handle: DefaultAgentTypeHandle}}}, nil).Once()
+		mockService.On("GetAttributes", mock.Anything, TypeCategoryAgent, DefaultAgentTypeHandle, mock.Anything).
+			Return(nil, failure).Once()
+
+		_, output, err := tools.listAgentTypes(context.Background(), &mcp.CallToolRequest{}, nil)
+
+		assert.ErrorContains(suite.T(), err, "failed to list agent types: database error")
+		assert.Nil(suite.T(), output)
+	})
+}
