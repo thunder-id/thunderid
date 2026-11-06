@@ -16,11 +16,12 @@ vi.mock('@thunderid/contexts', async (importOriginal) => {
   return {
     ...actual,
     useConfig: vi.fn(),
+    useProjectScope: vi.fn(() => ({})),
   };
 });
 
 const {useThunderID} = await import('@thunderid/react');
-const {useConfig} = await import('@thunderid/contexts');
+const {useConfig, useProjectScope} = await import('@thunderid/contexts');
 
 describe('useGetAgents', () => {
   let mockHttpRequest: ReturnType<typeof vi.fn>;
@@ -55,6 +56,7 @@ describe('useGetAgents', () => {
     vi.mocked(useConfig).mockReturnValue({
       getServerUrl: () => 'https://api.test.com',
     } as ReturnType<typeof useConfig>);
+    vi.mocked(useProjectScope).mockReturnValue({});
   });
 
   afterEach(() => {
@@ -101,6 +103,23 @@ describe('useGetAgents', () => {
     expect(mockHttpRequest).toHaveBeenCalledWith(
       expect.objectContaining({
         url: 'https://api.test.com/agents?limit=50&offset=100&include=display',
+      }),
+    );
+  });
+
+  it('should scope the list to the selected project', async () => {
+    vi.mocked(useProjectScope).mockReturnValue({projectId: 'project-1'});
+    mockHttpRequest.mockResolvedValueOnce({data: mockResponse});
+
+    const {result} = renderHook(() => useGetAgents());
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+    });
+
+    expect(mockHttpRequest).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: 'https://api.test.com/agents?limit=30&offset=0&include=display&projectId=project-1',
       }),
     );
   });

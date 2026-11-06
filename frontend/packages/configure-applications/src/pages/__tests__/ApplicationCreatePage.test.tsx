@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import userEvent from '@testing-library/user-event';
+import {ProjectScopeProvider} from '@thunderid/contexts';
 import type {Theme} from '@thunderid/design';
 import {fireEvent, render, screen, waitFor, within} from '@thunderid/test-utils';
 import type {JSX} from 'react';
@@ -12,6 +13,7 @@ import useApplicationCreateContext from '../../hooks/useApplicationCreateContext
 import type {Application} from '../../models/application';
 import {OrganizationUnitDefaultItem} from '../../models/application-create-flow';
 import type {CimdPreviewResponse} from '../../models/cimd';
+import type {CreateApplicationRequest} from '../../models/requests';
 import ApplicationCreatePage from '../ApplicationCreatePage';
 
 // Mock functions
@@ -1176,6 +1178,55 @@ describe('ApplicationCreatePage', () => {
       await user.click(logoButton);
 
       expect(screen.getByTestId('preview-logo')).toHaveTextContent('test-logo.png');
+    });
+  });
+
+  describe('Inside a project', () => {
+    const renderInProject = () =>
+      render(
+        <ProjectScopeProvider project={{id: 'project-1'}}>
+          <ApplicationCreateProvider>
+            <ApplicationCreatePage />
+            <TemplateSeeder />
+          </ApplicationCreateProvider>
+        </ProjectScopeProvider>,
+      );
+
+    it('does not ask for an organization unit', () => {
+      mockUseHasMultipleOUs.mockReturnValue({
+        hasMultipleOUs: true,
+        isLoading: false,
+        ouList: [{id: 'ou-1', name: 'Default'}],
+      });
+
+      renderInProject();
+
+      expect(screen.queryByTestId('ou-picker-screen')).not.toBeInTheDocument();
+      expect(screen.getByTestId('application-configure-name')).toBeInTheDocument();
+    });
+
+    it('creates the application with the project alone', async () => {
+      mockCreateApplication.mockImplementation((_data, {onSuccess}: {onSuccess: (app: Application) => void}) => {
+        onSuccess({id: 'app-123', name: 'My App'} as Application);
+      });
+
+      renderInProject();
+
+      await goToDesignStep();
+      // DESIGN → CONFIGURE
+      await user.click(screen.getByRole('button', {name: /continue/i}));
+      await waitFor(() => {
+        expect(screen.getByTestId('application-configure-details')).toBeInTheDocument();
+      });
+      // CONFIGURE → Create
+      await user.click(screen.getByTestId('application-wizard-next-button'));
+
+      await waitFor(() => {
+        expect(mockCreateApplication).toHaveBeenCalled();
+      });
+      const request = mockCreateApplication.mock.calls[0][0] as CreateApplicationRequest;
+      expect(request.projectId).toBe('project-1');
+      expect(request).not.toHaveProperty('ouId');
     });
   });
 

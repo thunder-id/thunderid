@@ -149,6 +149,11 @@ describe('RouteConfig', () => {
     expect(RouteConfig.settings.list()).toBe('/settings');
   });
 
+  it('projects builds paths from the segment', () => {
+    expect(RouteConfig.projects.list()).toBe('/projects');
+    expect(RouteConfig.projects.create()).toBe('/projects/create');
+  });
+
   it('every builder derives its path from ROUTE_SEGMENTS rather than a separate literal', () => {
     expect(RouteConfig.organizationUnits.list()).toBe(`/${ROUTE_SEGMENTS.organizationUnits}`);
     expect(RouteConfig.users.list()).toBe(`/${ROUTE_SEGMENTS.users}`);

@@ -87,4 +87,10 @@ import type {Application} from './application';
  * };
  * ```
  */
-export type CreateApplicationRequest = Omit<Application, 'id' | 'createdAt' | 'updatedAt'>;
+export type CreateApplicationRequest = Omit<Application, 'id' | 'createdAt' | 'updatedAt'> & {
+  /**
+   * The project the application belongs to. Without `ouId` the application is placed in the system
+   * organization unit, and an `ouId` must belong to the project.
+   */
+  projectId?: string;
+};

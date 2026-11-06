@@ -5,6 +5,7 @@ import {DocumentTitle, FullScreenCreationWizardLayout, QueryErrorNotice} from '@
 import {useGetAgentType, useGetAgentTypes, type AgentTypeListItem} from '@thunderid/configure-agent-types';
 import {OrganizationUnitTreePicker} from '@thunderid/configure-organization-units';
 import {renderSchemaField, useGetUsers} from '@thunderid/configure-users';
+import {useProjectScope} from '@thunderid/contexts';
 import {useResolveDisplayName} from '@thunderid/hooks';
 import {getErrorMessage} from '@thunderid/utils';
 import {
@@ -45,7 +46,8 @@ const AGENT_CREDENTIALS: AgentInboundAuthConfig = {
  * Used when agent creation runs natively, for example on a deployment that holds configuration
  * only and so has no /flow/execute for the onboarding flow to call. It asks for an agent type, an
  * organization unit and what the type's schema holds, the agent's name among it, and posts them to
- * the agents API. An owner can be chosen from the users that exist here; without one the API makes the
+ * the agents API. Inside a project the agent is created with the project instead, and the API places it in
+ * the system organization unit, so there is no organization unit to pick. An owner can be chosen from the users that exist here; without one the API makes the
  * caller the owner. OAuth client credentials are issued with the agent unless switched off: the API
  * generates the client ID and secret, and the secret is shown once here, since the agent's page
  * can only regenerate it afterwards.
@@ -57,6 +59,8 @@ export default function AgentAddFormPage(): JSX.Element {
   const {pathname} = useLocation();
   const {resolveDisplayName} = useResolveDisplayName({handlers: {t}});
   const createAgent = useCreateAgent();
+  const {projectId} = useProjectScope();
+  const isInProject = Boolean(projectId);
 
   const isWelcomeFlow = pathname.startsWith(routes.welcome.getStarted());
 
@@ -112,7 +116,7 @@ export default function AgentAddFormPage(): JSX.Element {
     );
     const trimmedDescription = description.trim();
     const request: CreateAgentRequest = {
-      ouId,
+      ...(isInProject ? {projectId} : {ouId}),
       type: selectedType?.handle ?? '',
       ...(ownerId ? {owner: ownerId} : {}),
       ...(trimmedDescription ? {description: trimmedDescription} : {}),
@@ -215,7 +219,7 @@ export default function AgentAddFormPage(): JSX.Element {
               </Select>
             </FormControl>
 
-            {selectedType && (
+            {selectedType && !isInProject && (
               <FormControl fullWidth required>
                 <FormLabel htmlFor="agent-ou">{t('agents:addForm.organizationUnit')}</FormLabel>
                 {/* An agent of a type belongs to the type's organization unit or one beneath it. */}
@@ -302,7 +306,7 @@ export default function AgentAddFormPage(): JSX.Element {
               <Button
                 type="submit"
                 variant="contained"
-                disabled={!selectedType || !ouId || !agentType || createAgent.isPending}
+                disabled={!selectedType || (!isInProject && !ouId) || !agentType || createAgent.isPending}
               >
                 {createAgent.isPending ? t('agents:addForm.creating') : t('agents:addForm.submit')}
               </Button>
