@@ -55,8 +55,9 @@ jobs:
 
       - name: 🏷️ Set Version (if provided)
         if: ${{ github.event.inputs.version != '' && github.event.inputs.version != null }}
+        env:
+          VERSION: ${{ github.event.inputs.version }}
         run: |
-          VERSION="${{ github.event.inputs.version }}"
           echo "$VERSION" > version.txt
           echo "Set version to: $VERSION"
 
@@ -90,8 +91,9 @@ jobs:
     steps:
       - name: 📥 Download Distribution
         id: download
+        env:
+          DIST_URL: ${{ github.event.inputs.distribution-url }}
         run: |
-          DIST_URL="${{ github.event.inputs.distribution-url }}"
           DIST_FILENAME="product-distribution.zip"
           
           echo "Downloading distribution from: $DIST_URL"
