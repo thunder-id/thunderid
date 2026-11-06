@@ -110,6 +110,7 @@ paths:
             minimum: 0
             default: 0
         - $ref: '#/components/parameters/FlowFilter'
+        - $ref: '#/components/parameters/ProjectId'
       responses:
         '200':
           description: List of flows retrieved successfully
@@ -285,7 +286,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/FlowDefinitionResponse'
         '400':
-          description: Invalid flow definition
+          description: Invalid flow definition, a project that does not exist (FLM-1045), or an organization unit outside the project (FLM-1046)
           content:
             application/json:
               schema:
@@ -1324,6 +1325,14 @@ components:
         organization-unit:
           summary: Flows owned by or shared with an organization unit
           value: 'ouId eq "0193b0a1-2001-7000-8000-000000000002"'
+    ProjectId:
+      name: projectId
+      in: query
+      required: false
+      description: 'Lists the flows of the project. With an `ouId` filter, lists only the project''s flows that organization unit owns. A project that does not exist has no flows.'
+      schema:
+        type: string
+      example: 7c9e6679-7425-40de-944b-e07fc1f90ae7
     OptionalOuId:
       name: ouId
       in: query
@@ -1641,6 +1650,10 @@ components:
             ID of the organization unit that owns the flow. In a list or read made for an organization unit the flow
             was shared with, the ID of that organization unit instead.
           example: "01900000-0000-7000-8000-000000000001"
+        projectId:
+          type: string
+          description: ID of the project the flow belongs to. Absent when the flow is in no project.
+          example: "7c9e6679-7425-40de-944b-e07fc1f90ae7"
         createdAt:
           type: string
           format: date-time
@@ -1694,10 +1707,17 @@ components:
         ouId:
           type: string
           description: |
-            ID of the organization unit that owns the flow. Required on create, and the organization unit has to
-            exist. It cannot change afterwards: an update can leave it out to keep the current owner, or send the id
-            the flow already has.
+            ID of the organization unit that owns the flow. Required on create unless `projectId` is given, and the
+            organization unit has to exist. It cannot change afterwards: an update can leave it out to keep the current
+            owner, or send the id the flow already has.
           example: "01900000-0000-7000-8000-000000000001"
+        projectId:
+          type: string
+          description: |
+            ID of the project the flow belongs to. Without `ouId`, the flow is created in the system organization unit.
+            With `ouId`, that organization unit must belong to the project. An update that leaves it out keeps the
+            flow in its current project.
+          example: "7c9e6679-7425-40de-944b-e07fc1f90ae7"
       example:
         name: Basic Authentication Flow
         handle: default-flow
@@ -1900,9 +1920,11 @@ components:
     FlowDefinitionCreateRequest:
       allOf:
         - $ref: '#/components/schemas/FlowDefinitionUpdateRequest'
-        - type: object
-          required:
-            - ouId
+        - anyOf:
+            - required:
+                - ouId
+            - required:
+                - projectId
       example:
         name: Basic Authentication Flow
         handle: default-flow
@@ -1972,6 +1994,10 @@ components:
           description: |
             ID of the organization unit that owns the flow.
           example: "01900000-0000-7000-8000-000000000001"
+        projectId:
+          type: string
+          description: ID of the project the flow belongs to. Absent when the flow is in no project.
+          example: "7c9e6679-7425-40de-944b-e07fc1f90ae7"
         nodes:
           type: array
           minItems: 2

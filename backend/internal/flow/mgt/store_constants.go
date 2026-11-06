@@ -14,14 +14,14 @@ var (
 	// queryCreateFlow is the query to creates a new flow definition.
 	queryCreateFlow = model.DBQuery{
 		ID: "FLQ-FLOW_MGT-01",
-		Query: `INSERT INTO "FLOW" (ID, HANDLE, NAME, FLOW_TYPE, ACTIVE_VERSION, OU_ID, DEPLOYMENT_ID) ` +
-			`VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+		Query: `INSERT INTO "FLOW" (ID, HANDLE, NAME, FLOW_TYPE, ACTIVE_VERSION, OU_ID, PROJECT_ID, DEPLOYMENT_ID) ` +
+			`VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
 	}
 
 	// queryGetFlow is the query to retrieves a flow definition by its ID.
 	queryGetFlow = model.DBQuery{
 		ID: "FLQ-FLOW_MGT-02",
-		Query: `SELECT f.ID, f.HANDLE, f.NAME, f.FLOW_TYPE, f.ACTIVE_VERSION, f.OU_ID, ` +
+		Query: `SELECT f.ID, f.HANDLE, f.NAME, f.FLOW_TYPE, f.ACTIVE_VERSION, f.OU_ID, f.PROJECT_ID, ` +
 			`fv.NODES, fv.INTERCEPTORS, f.CREATED_AT, ` +
 			`f.UPDATED_AT FROM "FLOW" f INNER JOIN "FLOW_VERSION" fv ON f.ID = fv.FLOW_ID ` +
 			`AND f.DEPLOYMENT_ID = fv.DEPLOYMENT_ID AND f.ACTIVE_VERSION = fv.VERSION ` +
@@ -31,18 +31,18 @@ var (
 	// queryUpdateFlow is the query to updates an existing flow definition.
 	queryUpdateFlow = model.DBQuery{
 		ID: "FLQ-FLOW_MGT-04",
-		Query: `UPDATE "FLOW" SET NAME = $2, ACTIVE_VERSION = $3, ` +
-			`UPDATED_AT = datetime('now') WHERE ID = $1 AND DEPLOYMENT_ID = $4`,
-		SQLiteQuery: `UPDATE "FLOW" SET NAME = $2, ACTIVE_VERSION = $3, ` +
-			`UPDATED_AT = datetime('now') WHERE ID = $1 AND DEPLOYMENT_ID = $4`,
-		PostgresQuery: `UPDATE "FLOW" SET NAME = $2, ACTIVE_VERSION = $3, ` +
-			`UPDATED_AT = CURRENT_TIMESTAMP WHERE ID = $1 AND DEPLOYMENT_ID = $4`,
+		Query: `UPDATE "FLOW" SET NAME = $2, ACTIVE_VERSION = $3, PROJECT_ID = $4, ` +
+			`UPDATED_AT = datetime('now') WHERE ID = $1 AND DEPLOYMENT_ID = $5`,
+		SQLiteQuery: `UPDATE "FLOW" SET NAME = $2, ACTIVE_VERSION = $3, PROJECT_ID = $4, ` +
+			`UPDATED_AT = datetime('now') WHERE ID = $1 AND DEPLOYMENT_ID = $5`,
+		PostgresQuery: `UPDATE "FLOW" SET NAME = $2, ACTIVE_VERSION = $3, PROJECT_ID = $4, ` +
+			`UPDATED_AT = CURRENT_TIMESTAMP WHERE ID = $1 AND DEPLOYMENT_ID = $5`,
 	}
 
 	// queryListFlows is the query to retrieves a list of flow definitions.
 	queryListFlows = model.DBQuery{
 		ID: "FLQ-FLOW_MGT-05",
-		Query: `SELECT ID, HANDLE, NAME, FLOW_TYPE, ACTIVE_VERSION, OU_ID, CREATED_AT, UPDATED_AT ` +
+		Query: `SELECT ID, HANDLE, NAME, FLOW_TYPE, ACTIVE_VERSION, OU_ID, PROJECT_ID, CREATED_AT, UPDATED_AT ` +
 			`FROM "FLOW" WHERE DEPLOYMENT_ID = $1 ORDER BY CREATED_AT DESC LIMIT $2 OFFSET $3`,
 	}
 
@@ -50,7 +50,7 @@ var (
 	// single query, for dependency lookups that must scan node definitions across all flows.
 	queryListActiveFlowsWithNodes = model.DBQuery{
 		ID: "FLQ-FLOW_MGT-19",
-		Query: `SELECT f.ID, f.HANDLE, f.NAME, f.FLOW_TYPE, f.ACTIVE_VERSION, f.OU_ID, ` +
+		Query: `SELECT f.ID, f.HANDLE, f.NAME, f.FLOW_TYPE, f.ACTIVE_VERSION, f.OU_ID, f.PROJECT_ID, ` +
 			`fv.NODES, fv.INTERCEPTORS, f.CREATED_AT, f.UPDATED_AT ` +
 			`FROM "FLOW" f INNER JOIN "FLOW_VERSION" fv ON f.ID = fv.FLOW_ID ` +
 			`AND f.DEPLOYMENT_ID = fv.DEPLOYMENT_ID AND f.ACTIVE_VERSION = fv.VERSION ` +
@@ -60,7 +60,8 @@ var (
 	// queryListFlowsWithType is the query to retrieves a list of flow definitions filtered by type.
 	queryListFlowsWithType = model.DBQuery{
 		ID: "FLQ-FLOW_MGT-06",
-		Query: `SELECT ID, HANDLE, NAME, FLOW_TYPE, ACTIVE_VERSION, OU_ID, CREATED_AT, UPDATED_AT FROM "FLOW" ` +
+		Query: `SELECT ID, HANDLE, NAME, FLOW_TYPE, ACTIVE_VERSION, OU_ID, PROJECT_ID, CREATED_AT, UPDATED_AT ` +
+			`FROM "FLOW" ` +
 			`WHERE FLOW_TYPE = $1 AND DEPLOYMENT_ID = $2 ORDER BY CREATED_AT DESC LIMIT $3 OFFSET $4`,
 	}
 
@@ -136,7 +137,7 @@ var (
 	// queryGetFlowByHandle retrieves a flow definition by handle and flow type.
 	queryGetFlowByHandle = model.DBQuery{
 		ID: "FLQ-FLOW_MGT-18",
-		Query: `SELECT f.ID, f.HANDLE, f.NAME, f.FLOW_TYPE, f.ACTIVE_VERSION, f.OU_ID, ` +
+		Query: `SELECT f.ID, f.HANDLE, f.NAME, f.FLOW_TYPE, f.ACTIVE_VERSION, f.OU_ID, f.PROJECT_ID, ` +
 			`fv.NODES, fv.INTERCEPTORS, f.CREATED_AT, ` +
 			`f.UPDATED_AT FROM "FLOW" f INNER JOIN "FLOW_VERSION" fv ON f.ID = fv.FLOW_ID ` +
 			`AND f.DEPLOYMENT_ID = fv.DEPLOYMENT_ID AND f.ACTIVE_VERSION = fv.VERSION ` +
@@ -146,14 +147,16 @@ var (
 	// queryListFlowsByOU lists the flow definitions an organization unit owns.
 	queryListFlowsByOU = model.DBQuery{
 		ID: "FLQ-FLOW_MGT-20",
-		Query: `SELECT ID, HANDLE, NAME, FLOW_TYPE, ACTIVE_VERSION, OU_ID, CREATED_AT, UPDATED_AT FROM "FLOW" ` +
+		Query: `SELECT ID, HANDLE, NAME, FLOW_TYPE, ACTIVE_VERSION, OU_ID, PROJECT_ID, CREATED_AT, UPDATED_AT ` +
+			`FROM "FLOW" ` +
 			`WHERE OU_ID = $1 AND DEPLOYMENT_ID = $2 ORDER BY CREATED_AT DESC LIMIT $3 OFFSET $4`,
 	}
 
 	// queryListFlowsByOUWithType lists the flow definitions of one type an organization unit owns.
 	queryListFlowsByOUWithType = model.DBQuery{
 		ID: "FLQ-FLOW_MGT-21",
-		Query: `SELECT ID, HANDLE, NAME, FLOW_TYPE, ACTIVE_VERSION, OU_ID, CREATED_AT, UPDATED_AT FROM "FLOW" ` +
+		Query: `SELECT ID, HANDLE, NAME, FLOW_TYPE, ACTIVE_VERSION, OU_ID, PROJECT_ID, CREATED_AT, UPDATED_AT ` +
+			`FROM "FLOW" ` +
 			`WHERE OU_ID = $1 AND FLOW_TYPE = $2 AND DEPLOYMENT_ID = $3 ` +
 			`ORDER BY CREATED_AT DESC LIMIT $4 OFFSET $5`,
 	}
@@ -174,7 +177,8 @@ var (
 // buildListFlowsByIDsQuery builds the query that reads the flows with the given IDs, of one type when flowType is set.
 // The placeholders differ by engine, so both forms are given.
 func buildListFlowsByIDsQuery(ids []string, flowType, deploymentID string) (model.DBQuery, []interface{}) {
-	const columns = `SELECT ID, HANDLE, NAME, FLOW_TYPE, ACTIVE_VERSION, OU_ID, CREATED_AT, UPDATED_AT FROM "FLOW" `
+	const columns = `SELECT ID, HANDLE, NAME, FLOW_TYPE, ACTIVE_VERSION, OU_ID, PROJECT_ID, CREATED_AT, UPDATED_AT ` +
+		`FROM "FLOW" `
 	args := []interface{}{deploymentID}
 	postgres := columns + `WHERE DEPLOYMENT_ID = $1`
 	sqlite := columns + `WHERE DEPLOYMENT_ID = ?`
@@ -199,4 +203,37 @@ func buildListFlowsByIDsQuery(ids []string, flowType, deploymentID string) (mode
 		PostgresQuery: postgres,
 		SQLiteQuery:   sqlite,
 	}, args
+}
+
+// buildListFlowsByProjectQueries builds the queries that list one page of the flows of a project and count them,
+// narrowed to one organization unit when ouID is set and to one type when flowType is set.
+func buildListFlowsByProjectQueries(projectID, ouID, flowType, deploymentID string, limit, offset int) (
+	listQuery model.DBQuery, listArgs []interface{}, countQuery model.DBQuery, countArgs []interface{}) {
+	where := `WHERE PROJECT_ID = $1`
+	countArgs = []interface{}{projectID}
+	if ouID != "" {
+		countArgs = append(countArgs, ouID)
+		where += fmt.Sprintf(" AND OU_ID = $%d", len(countArgs))
+	}
+	if flowType != "" {
+		countArgs = append(countArgs, flowType)
+		where += fmt.Sprintf(" AND FLOW_TYPE = $%d", len(countArgs))
+	}
+	countArgs = append(countArgs, deploymentID)
+	where += fmt.Sprintf(" AND DEPLOYMENT_ID = $%d", len(countArgs))
+
+	countQuery = model.DBQuery{
+		ID:    "FLQ-FLOW_MGT-25",
+		Query: `SELECT COUNT(*) AS count FROM "FLOW" ` + where,
+	}
+
+	listArgs = append([]interface{}{}, countArgs...)
+	listArgs = append(listArgs, limit, offset)
+	listQuery = model.DBQuery{
+		ID: "FLQ-FLOW_MGT-26",
+		Query: `SELECT ID, HANDLE, NAME, FLOW_TYPE, ACTIVE_VERSION, OU_ID, PROJECT_ID, CREATED_AT, UPDATED_AT ` +
+			`FROM "FLOW" ` + where + fmt.Sprintf(" ORDER BY CREATED_AT DESC LIMIT $%d OFFSET $%d",
+			len(listArgs)-1, len(listArgs)),
+	}
+	return listQuery, listArgs, countQuery, countArgs
 }

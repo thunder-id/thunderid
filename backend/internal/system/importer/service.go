@@ -1149,13 +1149,14 @@ func (s *importService) importFlowDefinition(
 	}
 
 	flowDef := &flowmgt.FlowDefinition{
-		ID:       req.ID,
-		Handle:   req.Handle,
-		Name:     req.Name,
-		FlowType: req.FlowType,
-		Nodes:    req.Nodes,
-		OUID:     req.OUID,
-		OUHandle: req.OUHandle,
+		ID:        req.ID,
+		Handle:    req.Handle,
+		Name:      req.Name,
+		FlowType:  req.FlowType,
+		Nodes:     req.Nodes,
+		OUID:      req.OUID,
+		OUHandle:  req.OUHandle,
+		ProjectID: req.ProjectID,
 	}
 
 	if svcErr := s.flowService.ResolveFlowOU(ctx, flowDef); svcErr != nil {

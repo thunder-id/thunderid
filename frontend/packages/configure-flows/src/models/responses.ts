@@ -33,6 +33,10 @@ export interface BasicFlowDefinition {
    */
   ouId: string;
   /**
+   * ID of the project the flow belongs to, when it belongs to one
+   */
+  projectId?: string;
+  /**
    * Timestamp when the flow was initially created
    */
   createdAt: string;
@@ -297,9 +301,14 @@ export interface CreateFlowRequest {
    */
   flowType: FlowType;
   /**
-   * ID of the organization unit that owns the flow. It cannot change once the flow is created.
+   * ID of the organization unit that owns the flow. It cannot change once the flow is created. Required unless
+   * `projectId` is given.
    */
-  ouId: string;
+  ouId?: string;
+  /**
+   * Places the flow in the project, in the system organization unit.
+   */
+  projectId?: string;
   /**
    * List of nodes that define the flow graph
    */
@@ -345,6 +354,10 @@ export interface FlowDefinitionResponse {
    * ID of the organization unit that owns the flow
    */
   ouId: string;
+  /**
+   * ID of the project the flow belongs to, when it belongs to one
+   */
+  projectId?: string;
   /**
    * Name of the flow
    */

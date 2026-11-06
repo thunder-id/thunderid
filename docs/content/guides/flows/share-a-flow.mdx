@@ -33,7 +33,7 @@ A call that depends on an organization unit names it. <ProductName /> takes noth
 
 | Call | Where `ouId` goes |
 |---|---|
-| `POST /flows` | Required in the body, as for connections. |
+| `POST /flows` | Required in the body, as for connections, unless the body gives `projectId`. See [Scope a Flow to a Project](../flow-concepts#scope-a-flow-to-a-project). |
 | `GET /flows` | The filter `filter=ouId eq "<id>"`. |
 | `GET /flows/{flowId}` | The query parameter `ouId`. Without it, the whole definition is returned. With it, the flow is as that organization unit sees it. |
 | `GET /flows/{flowId}/variables`, `GET /flows/{flowId}/overlay-rules` | Required query parameter. |

@@ -39,7 +39,11 @@ type ProjectServiceInterface interface {
 	ProjectNames(ctx context.Context) (map[string]string, *tidcommon.ServiceError)
 	ImportProject(ctx context.Context, id, handle, displayName, description string, upsert bool) (
 		bool, *tidcommon.ServiceError)
+	AddResourceCheck(check ResourceCheck)
 }
+
+// ResourceCheck reports whether any resource of one type, such as a theme, still belongs to a project.
+type ResourceCheck func(ctx context.Context, projectID string) (bool, *tidcommon.ServiceError)
 
 // projectEntityReader reports whether any entity, such as an application or an agent, is in a project.
 type projectEntityReader interface {
@@ -52,7 +56,10 @@ type projectService struct {
 	transactioner providers.Transactioner
 	ouService     ou.OrganizationUnitServiceInterface
 	entities      projectEntityReader
-	logger        *log.Logger
+	// resourceChecks cover the resources kept outside the entity store, which the delete
+	// transaction cannot see.
+	resourceChecks []ResourceCheck
+	logger         *log.Logger
 }
 
 // newProjectService creates a project service.
@@ -182,10 +189,24 @@ func (s *projectService) UpdateProject(
 	return &project, nil
 }
 
-// DeleteProject deletes a project. It is refused while an application or agent is still in the project.
-// The check and the delete run in one transaction in the entity database. Deleting a project that does
-// not exist succeeds.
+// DeleteProject deletes a project. It is refused while an application or agent is still in the project,
+// or while a registered resource check finds resources of another type in it. The application and agent
+// check and the delete run in one transaction in the entity database. The resource checks run before that
+// transaction: their resources are in other databases, which it cannot cover, so a resource created
+// between a check and the delete keeps the ID of the deleted project. Deleting a project that does not
+// exist succeeds.
 func (s *projectService) DeleteProject(ctx context.Context, id string) *tidcommon.ServiceError {
+	for _, check := range s.resourceChecks {
+		hasResources, svcErr := check(ctx, id)
+		if svcErr != nil {
+			s.logger.Error(ctx, "Failed to check the resources of a project", log.String("projectID", id))
+			return &tidcommon.InternalServerError
+		}
+		if hasResources {
+			return &ErrorProjectNotEmpty
+		}
+	}
+
 	var capturedSvcErr *tidcommon.ServiceError
 	err := s.transactioner.Transact(ctx, func(txCtx context.Context) error {
 		hasEntities, err := s.entities.ProjectHasEntities(txCtx, id)
@@ -206,6 +227,12 @@ func (s *projectService) DeleteProject(ctx context.Context, id string) *tidcommo
 		return &tidcommon.InternalServerError
 	}
 	return nil
+}
+
+// AddResourceCheck adds a check that refuses to delete a project while resources of one type still
+// belong to it. Checks are added while the server starts, before it serves requests.
+func (s *projectService) AddResourceCheck(check ResourceCheck) {
+	s.resourceChecks = append(s.resourceChecks, check)
 }
 
 // ProjectExists reports whether a project with the given ID exists.
