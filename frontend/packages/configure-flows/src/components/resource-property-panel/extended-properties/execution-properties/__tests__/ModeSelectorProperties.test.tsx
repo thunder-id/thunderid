@@ -202,7 +202,7 @@ describe.each<[string, (props: CommonResourcePropertiesPropsInterface) => ReactN
     ['role_assignment_removal', 'role_permission_removal', 'role_selection', 'role_assignment'],
     true,
   ],
-  ['GroupExecutor', GroupExecutorProperties, ['group_deletion', 'group_membership_removal'], true],
+  ['GroupExecutor', GroupExecutorProperties, ['group_deletion'], true],
   ['CriteriaRevocationExecutor', CriteriaRevocationProperties, ['revoke', 'advance_cutoff'], false],
 ])('%s properties', (name, Component, supportedModes, pairedWithValidator) => {
   it('should offer exactly the modes the executor supports', async () => {

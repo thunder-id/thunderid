@@ -211,6 +211,13 @@ var (
 		Query: `SELECT COUNT(*) as total FROM "GROUP_MEMBER_REFERENCE" WHERE GROUP_ID = $1 AND DEPLOYMENT_ID = $2`,
 	}
 
+	// QueryGetGroupMember is the query to get one direct member of a group by the member's ID.
+	QueryGetGroupMember = dbmodel.DBQuery{
+		ID: "GRQ-GROUP_MGT-26",
+		Query: `SELECT MEMBER_ID, MEMBER_TYPE FROM "GROUP_MEMBER_REFERENCE" ` +
+			`WHERE GROUP_ID = $1 AND MEMBER_ID = $2 AND DEPLOYMENT_ID = $3 ORDER BY MEMBER_TYPE LIMIT 1`,
+	}
+
 	// QueryUpdateGroup is the query to update a group.
 	QueryUpdateGroup = dbmodel.DBQuery{
 		ID: "GRQ-GROUP_MGT-09",

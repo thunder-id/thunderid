@@ -282,7 +282,6 @@ const translations = {
     'errors.FET-1104': 'This group cannot be deleted in its current state.',
     'errors.FET-1105': 'The group could not be deleted. Please try again.',
     'errors.FET-1106': 'This member cannot be removed from the group in its current state.',
-    'errors.FET-1107': 'The member could not be removed from the group. Please try again.',
     'errors.FET-1108': 'This action cannot be deleted in its current state.',
     'errors.FET-1109': 'The action could not be deleted. Please try again.',
     'errors.FET-1110': 'The permissions supplied for this role are not valid. Refresh the page and try again.',
@@ -4358,7 +4357,6 @@ const translations = {
 
     // Group executor modes
     'core.executions.groupExecutor.mode.groupDeletion': 'Delete group',
-    'core.executions.groupExecutor.mode.groupMembershipRemoval': 'Remove group member',
     'core.executions.groupExecutor.mode.label': 'Mode',
     'core.executions.groupExecutor.mode.placeholder': 'Select a mode',
     'core.executions.groupExecutor.mode.hint':

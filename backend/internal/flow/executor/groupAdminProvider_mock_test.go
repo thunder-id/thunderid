@@ -8,7 +8,6 @@ import (
 	"context"
 
 	mock "github.com/stretchr/testify/mock"
-	"github.com/thunder-id/thunderid/internal/group"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
@@ -103,82 +102,6 @@ func (_c *groupAdminProviderMock_DeleteGroup_Call) Return(serviceError *common.S
 }
 
 func (_c *groupAdminProviderMock_DeleteGroup_Call) RunAndReturn(run func(ctx context.Context, groupID string) *common.ServiceError) *groupAdminProviderMock_DeleteGroup_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
-// RemoveGroupMembers provides a mock function for the type groupAdminProviderMock
-func (_mock *groupAdminProviderMock) RemoveGroupMembers(ctx context.Context, groupID string, members []group.Member) (*group.Group, *common.ServiceError) {
-	ret := _mock.Called(ctx, groupID, members)
-
-	if len(ret) == 0 {
-		panic("no return value specified for RemoveGroupMembers")
-	}
-
-	var r0 *group.Group
-	var r1 *common.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, []group.Member) (*group.Group, *common.ServiceError)); ok {
-		return returnFunc(ctx, groupID, members)
-	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, []group.Member) *group.Group); ok {
-		r0 = returnFunc(ctx, groupID, members)
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*group.Group)
-		}
-	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string, []group.Member) *common.ServiceError); ok {
-		r1 = returnFunc(ctx, groupID, members)
-	} else {
-		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*common.ServiceError)
-		}
-	}
-	return r0, r1
-}
-
-// groupAdminProviderMock_RemoveGroupMembers_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RemoveGroupMembers'
-type groupAdminProviderMock_RemoveGroupMembers_Call struct {
-	*mock.Call
-}
-
-// RemoveGroupMembers is a helper method to define mock.On call
-//   - ctx context.Context
-//   - groupID string
-//   - members []group.Member
-func (_e *groupAdminProviderMock_Expecter) RemoveGroupMembers(ctx any, groupID any, members any) *groupAdminProviderMock_RemoveGroupMembers_Call {
-	return &groupAdminProviderMock_RemoveGroupMembers_Call{Call: _e.mock.On("RemoveGroupMembers", ctx, groupID, members)}
-}
-
-func (_c *groupAdminProviderMock_RemoveGroupMembers_Call) Run(run func(ctx context.Context, groupID string, members []group.Member)) *groupAdminProviderMock_RemoveGroupMembers_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 context.Context
-		if args[0] != nil {
-			arg0 = args[0].(context.Context)
-		}
-		var arg1 string
-		if args[1] != nil {
-			arg1 = args[1].(string)
-		}
-		var arg2 []group.Member
-		if args[2] != nil {
-			arg2 = args[2].([]group.Member)
-		}
-		run(
-			arg0,
-			arg1,
-			arg2,
-		)
-	})
-	return _c
-}
-
-func (_c *groupAdminProviderMock_RemoveGroupMembers_Call) Return(group1 *group.Group, serviceError *common.ServiceError) *groupAdminProviderMock_RemoveGroupMembers_Call {
-	_c.Call.Return(group1, serviceError)
-	return _c
-}
-
-func (_c *groupAdminProviderMock_RemoveGroupMembers_Call) RunAndReturn(run func(ctx context.Context, groupID string, members []group.Member) (*group.Group, *common.ServiceError)) *groupAdminProviderMock_RemoveGroupMembers_Call {
 	_c.Call.Return(run)
 	return _c
 }

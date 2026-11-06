@@ -3919,11 +3919,19 @@ func (suite *GroupServiceTestSuite) TestGetTransitiveMemberEntities_RefusesANest
 	f.store.AssertNotCalled(suite.T(), "GetGroupMembers", mock.Anything, "child-grp", mock.Anything, mock.Anything)
 }
 
+// readableGroupWithMember sets up grp-001 for a caller that can read it, and the store's single-member
+// lookup in it.
+func (f *groupChangeFixture) readableGroupWithMember(memberID string, member *Member) {
+	f.store.On("GetGroup", mock.Anything, "grp-001").Return(GroupDAO{ID: "grp-001", OUID: testOUID1}, nil)
+	f.authz.On("IsActionAllowed", mock.Anything, security.ActionReadGroup, &sysauthz.ActionContext{
+		ResourceType: security.ResourceTypeGroup, OUID: testOUID1, ResourceID: "grp-001",
+	}).Return(true, (*tidcommon.ServiceError)(nil))
+	f.store.On("GetGroupMember", mock.Anything, "grp-001", memberID).Return(member, nil)
+}
+
 func (suite *GroupServiceTestSuite) TestGetDirectGroupMember_FindsTheMember() {
 	f := newGroupChangeFixture(suite.T())
-	f.readableGroup("grp-001",
-		Member{ID: "usr-001", Type: memberTypeEntity}, Member{ID: "child-grp", Type: MemberTypeGroup})
-	f.knownUsers("usr-001")
+	f.readableGroupWithMember("child-grp", &Member{ID: "child-grp", Type: MemberTypeGroup})
 
 	member, svcErr := f.service.GetDirectGroupMember(context.Background(), "grp-001", "child-grp")
 
@@ -3931,10 +3939,23 @@ func (suite *GroupServiceTestSuite) TestGetDirectGroupMember_FindsTheMember() {
 	suite.Equal(&Member{ID: "child-grp", Type: MemberTypeGroup}, member)
 }
 
+// The member is looked up on its own, so the group's membership is never listed.
+func (suite *GroupServiceTestSuite) TestGetDirectGroupMember_ResolvesAnEntityWithoutListingTheMembership() {
+	f := newGroupChangeFixture(suite.T())
+	f.readableGroupWithMember("usr-002", &Member{ID: "usr-002", Type: memberTypeEntity})
+	f.knownUsers("usr-002")
+
+	member, svcErr := f.service.GetDirectGroupMember(context.Background(), "grp-001", "usr-002")
+
+	suite.Require().Nil(svcErr)
+	suite.Equal(&Member{ID: "usr-002", Type: MemberTypeUser}, member)
+	f.store.AssertNotCalled(suite.T(), "GetGroupMembers", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+	f.store.AssertNotCalled(suite.T(), "GetGroupMemberCount", mock.Anything, mock.Anything)
+}
+
 func (suite *GroupServiceTestSuite) TestGetDirectGroupMember_NilForANonMember() {
 	f := newGroupChangeFixture(suite.T())
-	f.readableGroup("grp-001", Member{ID: "usr-001", Type: memberTypeEntity})
-	f.knownUsers("usr-001")
+	f.readableGroupWithMember("usr-002", nil)
 
 	member, svcErr := f.service.GetDirectGroupMember(context.Background(), "grp-001", "usr-002")
 
@@ -3942,23 +3963,53 @@ func (suite *GroupServiceTestSuite) TestGetDirectGroupMember_NilForANonMember() 
 	suite.Nil(member)
 }
 
-func (suite *GroupServiceTestSuite) TestGetDirectGroupMember_FindsAMemberOnALaterPage() {
+func (suite *GroupServiceTestSuite) TestGetDirectGroupMember_NilForAnOrphanedEntity() {
 	f := newGroupChangeFixture(suite.T())
-	f.store.On("GetGroup", mock.Anything, "grp-001").Return(GroupDAO{ID: "grp-001", OUID: testOUID1}, nil)
-	f.authz.On("IsActionAllowed", mock.Anything, security.ActionReadGroup, mock.Anything).
-		Return(true, (*tidcommon.ServiceError)(nil))
-	f.store.On("GetGroupMemberCount", mock.Anything, "grp-001").Return(serverconst.MaxPageSize+1, nil)
-	f.store.On("GetGroupMembers", mock.Anything, "grp-001", serverconst.MaxPageSize, 0).
-		Return([]Member{{ID: "usr-001", Type: memberTypeEntity}}, nil)
-	f.store.On("GetGroupMembers", mock.Anything, "grp-001", serverconst.MaxPageSize, serverconst.MaxPageSize).
-		Return([]Member{{ID: "usr-002", Type: memberTypeEntity}}, nil)
-	f.knownUsers("usr-001")
-	f.knownUsers("usr-002")
+	f.readableGroupWithMember("usr-002", &Member{ID: "usr-002", Type: memberTypeEntity})
+	f.entities.On("GetEntitiesByIDs", mock.Anything, []string{"usr-002"}).Return([]providers.Entity{}, nil)
 
 	member, svcErr := f.service.GetDirectGroupMember(context.Background(), "grp-001", "usr-002")
 
 	suite.Require().Nil(svcErr)
-	suite.Equal(&Member{ID: "usr-002", Type: MemberTypeUser}, member)
+	suite.Nil(member)
+}
+
+func (suite *GroupServiceTestSuite) TestGetDirectGroupMember_CarriesTheLookupError() {
+	f := newGroupChangeFixture(suite.T())
+	f.store.On("GetGroup", mock.Anything, "grp-001").Return(GroupDAO{ID: "grp-001", OUID: testOUID1}, nil)
+	f.authz.On("IsActionAllowed", mock.Anything, security.ActionReadGroup, mock.Anything).
+		Return(true, (*tidcommon.ServiceError)(nil))
+	f.store.On("GetGroupMember", mock.Anything, "grp-001", "usr-001").Return(nil, errors.New("db down"))
+
+	member, svcErr := f.service.GetDirectGroupMember(context.Background(), "grp-001", "usr-001")
+
+	suite.Require().NotNil(svcErr)
+	suite.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+	suite.Nil(member)
+}
+
+func (suite *GroupServiceTestSuite) TestGetDirectGroupMember_RefusesACallerThatCannotReadTheGroup() {
+	f := newGroupChangeFixture(suite.T())
+	f.store.On("GetGroup", mock.Anything, "grp-001").Return(GroupDAO{ID: "grp-001", OUID: testOUID1}, nil)
+	f.authz.On("IsActionAllowed", mock.Anything, security.ActionReadGroup, mock.Anything).
+		Return(false, (*tidcommon.ServiceError)(nil))
+
+	member, svcErr := f.service.GetDirectGroupMember(context.Background(), "grp-001", "usr-001")
+
+	suite.Require().NotNil(svcErr)
+	suite.Equal(tidcommon.ErrorUnauthorized.Code, svcErr.Code)
+	suite.Nil(member)
+	f.store.AssertNotCalled(suite.T(), "GetGroupMember", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (suite *GroupServiceTestSuite) TestGetDirectGroupMember_RequiresAGroupID() {
+	f := newGroupChangeFixture(suite.T())
+
+	member, svcErr := f.service.GetDirectGroupMember(context.Background(), "", "usr-001")
+
+	suite.Require().NotNil(svcErr)
+	suite.Equal(ErrorMissingGroupID.Code, svcErr.Code)
+	suite.Nil(member)
 }
 
 func (suite *GroupServiceTestSuite) TestGetDirectGroupMember_CarriesTheReadError() {

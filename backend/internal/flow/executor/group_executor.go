@@ -11,7 +11,6 @@ import (
 	"slices"
 
 	"github.com/thunder-id/thunderid/internal/flow/core"
-	"github.com/thunder-id/thunderid/internal/group"
 	"github.com/thunder-id/thunderid/internal/revocation"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -36,20 +35,6 @@ var groupActionsByMode = map[string]groupAction{
 				return nil, errors.New("trusted revocation plan names a departing member")
 			}
 			return groups.DeleteGroup(ctx, plan.TargetID), nil
-		},
-	},
-	ExecutorModeGroupMembershipRemoval: {
-		reason: revocation.ReasonGroupMembershipRemoved,
-		failed: ErrGroupMembershipRemovalFailed,
-		act: func(ctx context.Context, groups groupAdminProvider, plan revocationPlan) (
-			*tidcommon.ServiceError, error) {
-			if plan.AssigneeID == "" || plan.AssigneeType == "" {
-				return nil, errors.New("trusted revocation plan has no departing member")
-			}
-			_, svcErr := groups.RemoveGroupMembers(ctx, plan.TargetID, []group.Member{
-				{ID: plan.AssigneeID, Type: group.MemberType(plan.AssigneeType)},
-			})
-			return svcErr, nil
 		},
 	},
 }
