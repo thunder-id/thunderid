@@ -52,6 +52,8 @@ type diffInput struct {
 	GatewayID string `json:"gatewayId" jsonschema:"The ID of the gateway"`
 	//nolint:lll
 	Version string `json:"version,omitempty" jsonschema:"The version's hash or a prefix of it, or latest. Defaults to latest"`
+	//nolint:lll
+	Project string `json:"project,omitempty" jsonschema:"The ID of a project to scope it to: its own resources, what they need that the gateway lacks, and shared resources only when selected"`
 }
 
 type deployInput struct {
@@ -63,6 +65,8 @@ type deployInput struct {
 	Selection *[]string `json:"selection,omitempty" jsonschema:"The keys, from a dry run's changes, of the changes to deploy in this deploy only, with what they need. Omit to deploy every change"`
 	//nolint:lll
 	ConfirmRemovals bool `json:"confirmRemovals,omitempty" jsonschema:"Allow a deploy that removes more resources than the deployment's threshold. Set it only after a dry run showed the removals and the user agreed"`
+	//nolint:lll
+	Project string `json:"project,omitempty" jsonschema:"The ID of a project to scope it to: its own resources, what they need that the gateway lacks, and shared resources only when selected"`
 }
 
 type promoteInput struct {
@@ -71,6 +75,10 @@ type promoteInput struct {
 	DryRun          bool   `json:"dryRun,omitempty" jsonschema:"Report what the promotion would do, changing nothing"`
 	//nolint:lll
 	ConfirmRemovals bool `json:"confirmRemovals,omitempty" jsonschema:"Allow a promotion that removes more resources than the deployment's threshold. Set it only after a dry run showed the removals and the user agreed"`
+	//nolint:lll
+	Project string `json:"project,omitempty" jsonschema:"The ID of a project to scope it to: its own resources, what they need that the gateway lacks, and shared resources only when selected"`
+	//nolint:lll
+	Selection *[]string `json:"selection,omitempty" jsonschema:"With a project, the keys of the changes to promote in place of the project's own and what they need"`
 }
 
 type rollbackInput struct {
@@ -302,7 +310,7 @@ func (t *gatewayTools) capture(ctx context.Context, _ *mcp.CallToolRequest, in c
 
 func (t *gatewayTools) diff(ctx context.Context, _ *mcp.CallToolRequest, in diffInput,
 ) (*mcp.CallToolResult, restBody, error) {
-	diff, svcErr := t.versions.Diff(ctx, in.GatewayID, in.Version)
+	diff, svcErr := t.versions.Diff(ctx, in.GatewayID, in.Version, in.Project)
 	return answer("diff the version", diff, svcErr)
 }
 
@@ -310,7 +318,7 @@ func (t *gatewayTools) deploy(ctx context.Context, _ *mcp.CallToolRequest, in de
 ) (*mcp.CallToolResult, restBody, error) {
 	result, svcErr := t.versions.Apply(ctx, in.GatewayID, ApplyRequest{
 		Version: in.Version, DryRun: in.DryRun, Selection: in.Selection,
-		ConfirmRemovals: in.ConfirmRemovals,
+		ConfirmRemovals: in.ConfirmRemovals, Project: in.Project,
 	})
 	return answer("deploy the version", result, svcErr)
 }

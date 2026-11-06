@@ -74,10 +74,24 @@ func (h *versionHandler) handleGetApplied(w http.ResponseWriter, r *http.Request
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, applied)
 }
 
+// handleProjectStatus reports where a project stands on a gateway.
+func (h *versionHandler) handleProjectStatus(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	query := r.URL.Query()
+	status, svcErr := h.service.ProjectStatus(ctx, r.PathValue("id"), query.Get("project"), query.Get("from"),
+		query.Get("version"))
+	if svcErr != nil {
+		handleError(ctx, w, svcErr)
+		return
+	}
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, status)
+}
+
 // handleDiff reports how a version differs from what a gateway holds.
 func (h *versionHandler) handleDiff(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	diff, svcErr := h.service.Diff(ctx, r.PathValue("id"), r.URL.Query().Get("version"))
+	diff, svcErr := h.service.Diff(ctx, r.PathValue("id"), r.URL.Query().Get("version"),
+		r.URL.Query().Get("project"))
 	if svcErr != nil {
 		handleError(ctx, w, svcErr)
 		return

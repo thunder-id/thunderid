@@ -591,7 +591,9 @@ CREATE TABLE "GATEWAY_EXCLUDED_RESOURCE" (
 -- accepted it, in RESOURCES, and in MANIFEST one entry per resource saying how it got there and
 -- whether the gateway accepted it. Each apply writes a new row, numbered per gateway, and keeps the
 -- earlier ones as the gateway's history, within the same bound as the versions. HASH names the row
--- by what it holds. A gateway declared in a file has no GATEWAY row, so there is no foreign key.
+-- by what it holds. PROJECT_ID names the project an apply scoped to one was for, and PROJECT_REVERT
+-- marks the row a project's rollback wrote. A gateway declared in a file has no GATEWAY row, so there
+-- is no foreign key.
 CREATE TABLE "GATEWAY_MASTER" (
     DEPLOYMENT_ID VARCHAR(255) NOT NULL,
     ID VARCHAR(36) PRIMARY KEY,
@@ -602,6 +604,8 @@ CREATE TABLE "GATEWAY_MASTER" (
     MANIFEST TEXT NOT NULL,
     CREATED_AT TEXT DEFAULT (datetime('now')),
     CREATED_BY VARCHAR(255),
+    PROJECT_ID VARCHAR(36),
+    PROJECT_REVERT BOOLEAN NOT NULL DEFAULT FALSE,
     UNIQUE (DEPLOYMENT_ID, GATEWAY_ID, SEQ)
 );
 

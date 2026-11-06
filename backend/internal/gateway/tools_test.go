@@ -125,7 +125,7 @@ func (s *GatewayToolsTestSuite) TestAnswersAreTheRESTBodies() {
 	s.versions.EXPECT().ListVersions(mock.Anything).Return(versions, nil)
 	s.versions.EXPECT().GetVersion(mock.Anything, "bbb").Return(version, nil)
 	s.versions.EXPECT().Capture(mock.Anything, CaptureRequest{Name: "rc1"}).Return(captured, nil)
-	s.versions.EXPECT().Diff(mock.Anything, "dev", "bbb").Return(diff, nil)
+	s.versions.EXPECT().Diff(mock.Anything, "dev", "bbb", "").Return(diff, nil)
 	configuration := &AppliedConfiguration{GatewayID: "dev", Version: "bbb", Resources: []AppliedResource{
 		{ResourceType: "application", ID: "app-a", Resource: map[string]any{"name": "App A"}},
 	}}

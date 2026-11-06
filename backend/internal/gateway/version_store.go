@@ -75,14 +75,17 @@ var (
 		Query: `SELECT COALESCE(MAX(SEQ), 0) AS latest FROM "CONFIGURATION_VERSION" WHERE DEPLOYMENT_ID = $1`,
 	}
 	// queryPruneVersions removes versions older than the retention bound, except one a gateway holds
-	// or could be reverted to.
+	// or could be reverted to, and one a resource a gateway holds, or held in a master kept for a
+	// rollback, was deployed from.
 	queryPruneVersions = dbmodel.DBQuery{
 		ID: "GTV_MGT-05",
 		Query: `DELETE FROM "CONFIGURATION_VERSION" WHERE SEQ <= $1 ` +
 			`AND SEQ NOT IN (SELECT APPLIED_SEQ FROM "GATEWAY_APPLIED_VERSION" WHERE DEPLOYMENT_ID = $2) ` +
 			`AND SEQ NOT IN (SELECT PREVIOUS_SEQ FROM "GATEWAY_APPLIED_VERSION" ` +
 			`WHERE PREVIOUS_SEQ IS NOT NULL AND DEPLOYMENT_ID = $3) ` +
-			`AND DEPLOYMENT_ID = $4`,
+			`AND NOT EXISTS (SELECT 1 FROM "GATEWAY_MASTER" WHERE "GATEWAY_MASTER".DEPLOYMENT_ID = $4 ` +
+			`AND "GATEWAY_MASTER".MANIFEST LIKE '%"sourceVersion":"' || "CONFIGURATION_VERSION".HASH || '"%') ` +
+			`AND DEPLOYMENT_ID = $5`,
 	}
 	// queryUnsettleVersion gives a version back its place as the current one after an apply settled
 	// it and then wrote nothing to the gateway. Only the version as settled is touched: by number and
@@ -256,8 +259,9 @@ type versionStoreInterface interface {
 	GetMasterAt(ctx context.Context, gatewayID string, seq int) (*Master, error)
 	// ListMasters reads a gateway's masters, newest first, with their entries but not their resources.
 	ListMasters(ctx context.Context, gatewayID string) ([]Master, error)
-	// PruneMasters removes a gateway's masters numbered up to and including through.
-	PruneMasters(ctx context.Context, gatewayID string, through int) error
+	// PruneMasters removes a gateway's masters numbered up to and including through, except those
+	// numbered in keep.
+	PruneMasters(ctx context.Context, gatewayID string, through int, keep []int) error
 	DeleteMasters(ctx context.Context, gatewayID string) error
 	// Transact runs work in one transaction, rolled back when work returns an error.
 	Transact(ctx context.Context, work func(txCtx context.Context) error) error
@@ -445,7 +449,8 @@ func (s *versionStore) Prune(ctx context.Context, through int) error {
 		return nil
 	}
 	if err := s.execute(ctx, queryPruneVersions,
-		through, deployment.Resolve(ctx), deployment.Resolve(ctx), deployment.Resolve(ctx)); err != nil {
+		through, deployment.Resolve(ctx), deployment.Resolve(ctx), deployment.Resolve(ctx),
+		deployment.Resolve(ctx)); err != nil {
 		return fmt.Errorf("failed to remove old versions: %w", err)
 	}
 	return nil

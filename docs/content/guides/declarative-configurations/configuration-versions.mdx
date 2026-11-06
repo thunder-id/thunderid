@@ -64,7 +64,8 @@ shares also names it, and so does `latest`.
   out. The id is recorded either way, so a lookup configured later names the versions already captured.
   A capture after a change names the user who made the last change before it.
 - **Only `gateway.max_versions` versions are kept.** The oldest goes first, except a version some gateway
-  holds or can revert to. Those are kept even when that leaves more versions than the number. See
+  holds or can revert to, or that a resource a gateway holds, or held in a master it keeps, was deployed
+  from. Those are kept even when that leaves more versions than the number. See
   [Configuration](../../deployment/configuration.mdx).
 
 `GET /configuration-versions` lists the versions, newest first, without their content.
@@ -284,13 +285,48 @@ selection, so when that would leave a resource naming one the target does not ho
 resource the source does not run still names, it is refused with `409` (`GTW-1042`), naming the source
 gateway to deploy the version to first.
 
+### Deploy One Project
+
+A diff and an apply can be scoped to one project with its id: `GET /gateways/{id}/diff?project=<id>`,
+or `"project": "<id>"` in the apply's body. A project's own resources are those whose documents name it
+in `projectId`, such as its applications and agents. Organization units, users and groups name no
+project, so they are shared. Each change of the diff is then placed in a
+`section`:
+
+| Section | What it holds | Sent by default |
+|---|---|---|
+| `project` | The project's own resources. | Yes, less what the gateway holds back. |
+| `needed` | What they name by id, followed through `needs`. | Only when the gateway lacks or refused it, marked `"required": true`. |
+| `shared` | What names no project, such as organization units, translations, branding, other flows and system users. | No, only when selected. |
+| `other` | Another project's own resources. | Never. |
+
+A needed resource the gateway holds in another form already serves the project, so it is not required:
+selecting it replaces it for every resource on the gateway that uses it. Such a needed or shared change
+names those other projects in `usedBy`.
+
+Without a selection, an apply scoped to a project sends its defaults. A selection may add needed and
+shared changes, and is never widened. It is refused with `400` when it names another project's own
+resources (`GTW-1039`) or leaves out a required change (`GTW-1040`). An unknown project is refused with
+`404` (`GTW-1038`).
+
+`GET /gateways/{id}/project-status?project=<id>` reports where the project stands on the gateway: the
+versions its own resources there were deployed from, when they were last written and by whom, whether
+it can be rolled back, and how many of its own, needed and shared changes a deploy scoped to it would
+send. With `from=<gateway id>` it compares against what promoting that gateway would send.
+
+A promotion can carry only part of a version, so one gateway can hold one project's resources from one
+version and another project's from another. To roll back one project, send `"project": "<id>"` in a
+revert's body. Only that project's own resources go back to what the gateway held before the last
+deploy scoped to it, and the gateway stays recorded as running its version. A project is rolled back
+once until it is deployed again; one with nothing to roll back to is refused with `400` (`GTW-1041`).
+
 ## Revert a Gateway
 
 `POST /gateways/{id}/revert` returns the gateway to the master it held before the version it holds now,
 which is that earlier version as far as the gateway held it: a version that was partly applied is
 returned to in part, and each resource keeps the version that sent it. What that master does not hold
-is removed. A gateway whose earlier master is no longer kept, beyond `gateway.max_versions`, is returned
-to the earlier version whole. A revert goes back one step only: afterwards the gateway has
+is removed. The master a revert returns to is kept past `gateway.max_versions`, and so is each project's
+rollback point, so a project that has not deployed in a while can still be rolled back. A revert goes back one step only: afterwards the gateway has
 no earlier version to revert to, and a second revert is refused with `400` (`GTW-1016`) until a later
 apply. To return to the version reverted from, apply it.
 

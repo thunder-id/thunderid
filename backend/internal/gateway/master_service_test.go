@@ -50,21 +50,24 @@ func (s *MasterServiceTestSuite) TearDownTest() {
 	configureGatewayBound(shippedGatewayBound)
 }
 
-// A gateway's masters are kept within the same bound as the versions.
+// A gateway's masters are kept within the same bound as the versions, except the one its revert
+// returns to.
 func (s *MasterServiceTestSuite) TestMastersBeyondTheBoundArePruned() {
 	f := newVersionFixture(s.T())
 	f.capture(s.T(), "ou-a")
 	f.capture(s.T(), "ou-a", "ou-b")
-	_, svcErr := f.svc.Apply(context.Background(), "gw-1", ApplyRequest{Version: f.hash(1)})
-	s.Require().Nil(svcErr)
-	_, svcErr = f.svc.Apply(context.Background(), "gw-1", ApplyRequest{Version: f.hash(2)})
-	s.Require().Nil(svcErr)
+	f.capture(s.T(), "ou-a", "ou-b", "ou-c")
+	for seq := 1; seq <= 3; seq++ {
+		_, svcErr := f.svc.Apply(context.Background(), "gw-1", ApplyRequest{Version: f.hash(seq)})
+		s.Require().Nil(svcErr)
+	}
 
 	masters, svcErr := f.svc.ListMasters(context.Background(), "gw-1")
 
 	s.Require().Nil(svcErr)
-	s.Require().Len(masters, maxVersions())
-	s.Equal(2, masters[0].Seq, "the newest master was pruned")
+	s.Require().Len(masters, maxVersions()+1)
+	s.Equal(3, masters[0].Seq, "the newest master was pruned")
+	s.Equal(2, masters[1].Seq, "the master the revert returns to was pruned")
 }
 
 // An apply records the gateway's master from the import's own outcomes, resource by resource, and
