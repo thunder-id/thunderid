@@ -743,10 +743,14 @@ func auditLines(t *testing.T) func() []string {
 	}
 }
 
-// A user change a service publishes while serving a request, through the whole request chain, writes
-// one audit line with the actor the security layer verified, the peer address and user agent, and the
-// trace ID of the response. With audit off it writes none.
+// Each change a service publishes while serving a request, through the whole request chain, writes one
+// audit line with the actor the security layer verified, the peer address and user agent, and the trace
+// ID of the response. With audit off it writes none.
 func TestCreateHTTPServer_AuditsTheEventAServicePublishes(t *testing.T) {
+	published := []struct{ event, targetType string }{
+		{audit.EventUserCreate, audit.TargetTypeUser},
+		{audit.EventApplicationCreate, audit.TargetTypeApplication},
+	}
 	for _, enabled := range []bool{true, false} {
 		t.Run(fmt.Sprintf("enabled=%t", enabled), func(t *testing.T) {
 			cfg := &config.Config{
@@ -771,9 +775,11 @@ func TestCreateHTTPServer_AuditsTheEventAServicePublishes(t *testing.T) {
 			mux := http.NewServeMux()
 			mux.HandleFunc("POST /import", func(w http.ResponseWriter, r *http.Request) {
 				ctx := r.Context()
-				user := audit.Ref{Type: audit.TargetTypeUser, ID: "u1"}
-				eventbus.TryPublish(ctx, bus, eventbus.NewEvent(ctx, audit.EventUserCreate).
-					With(audit.NewPayload(ctx, user, audit.ActionCreate, audit.OutcomeSucceeded).WithSubject(user)))
+				for _, p := range published {
+					target := audit.Ref{Type: p.targetType, ID: "id-1"}
+					payload := audit.NewPayload(ctx, target, audit.ActionCreate, audit.OutcomeSucceeded)
+					eventbus.TryPublish(ctx, bus, eventbus.NewEvent(ctx, p.event).With(payload.WithSubject(target)))
+				}
 				w.WriteHeader(http.StatusOK)
 			})
 			server := createHTTPServer(context.Background(), log.GetLogger(), cfg, mux, nil, enforcer)
@@ -792,18 +798,22 @@ func TestCreateHTTPServer_AuditsTheEventAServicePublishes(t *testing.T) {
 				assert.Empty(t, lines)
 				return
 			}
-			require.Len(t, lines, 1)
-			var line struct {
-				Event   string            `json:"event"`
-				TraceID string            `json:"trace_id"`
-				Actor   map[string]string `json:"actor"`
-				Client  map[string]string `json:"client"`
+			require.Len(t, lines, len(published))
+			for i, p := range published {
+				var line struct {
+					Event   string            `json:"event"`
+					TraceID string            `json:"trace_id"`
+					Actor   map[string]string `json:"actor"`
+					Target  map[string]string `json:"target"`
+					Client  map[string]string `json:"client"`
+				}
+				require.NoError(t, json.Unmarshal([]byte(lines[i]), &line))
+				assert.Equal(t, p.event, line.Event)
+				assert.Equal(t, p.targetType, line.Target["type"])
+				assert.Equal(t, response.Header().Get(constants.CorrelationIDHeaderName), line.TraceID)
+				assert.Equal(t, map[string]string{"type": "system", "id": "management-api-key"}, line.Actor)
+				assert.Equal(t, map[string]string{"address": "192.0.2.10", "user_agent": "audit-test/1.0"}, line.Client)
 			}
-			require.NoError(t, json.Unmarshal([]byte(lines[0]), &line))
-			assert.Equal(t, audit.EventUserCreate, line.Event)
-			assert.Equal(t, response.Header().Get(constants.CorrelationIDHeaderName), line.TraceID)
-			assert.Equal(t, map[string]string{"type": "system", "id": "management-api-key"}, line.Actor)
-			assert.Equal(t, map[string]string{"address": "192.0.2.10", "user_agent": "audit-test/1.0"}, line.Client)
 		})
 	}
 }

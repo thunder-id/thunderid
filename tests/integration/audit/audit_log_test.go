@@ -37,17 +37,17 @@ var (
 	// lineTimePattern is the time format of an audit line: UTC with exactly six fractional digits.
 	lineTimePattern = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$`)
 
-	// lineKeys are the top-level keys of a user event line that changed a user, in the order written.
+	// lineKeys are the top-level keys of an event line that changed a resource, in the order written.
 	lineKeys = []string{
 		"log_type", "schema_version", "id", "time", "event", "trace_id", "actor", "subject", "target", "action",
 		"outcome", "client",
 	}
 )
 
-// AuditLogTestSuite drives user changes over the management API against a running server and reads
-// the audit lines it writes to standard output. The server writes its output to the server log only
-// when this test process starts it, so the suite restarts it first, and every scenario that changes
-// the configuration restores it before the next one.
+// AuditLogTestSuite drives user and application changes over the management API against a running
+// server and reads the audit lines it writes to standard output. The server writes its output to the
+// server log only when this test process starts it, so the suite restarts it first, and every scenario
+// that changes the configuration restores it before the next one.
 type AuditLogTestSuite struct {
 	suite.Suite
 	reader         *testutils.AuditLogReader
@@ -154,7 +154,7 @@ func (ts *AuditLogTestSuite) TestAUserLifecycleWritesOneLinePerChange() {
 
 // An update of a user that does not exist reaches the user service, which records the failed attempt.
 func (ts *AuditLogTestSuite) TestAnUpdateOfAMissingUserIsRecordedAsFailed() {
-	missing := unusedUserID()
+	missing := unusedID()
 	ouID, userType := ts.createUserType("missing")
 
 	updated := ts.send(http.MethodPut, "/users/"+missing, fmt.Sprintf(
@@ -304,7 +304,7 @@ func (ts *AuditLogTestSuite) TestEveryCreateAndUpdatePathRecordsItsOutcome() {
 // lookup that decides between update and create writes no line, and the import itself is not audited.
 func (ts *AuditLogTestSuite) TestAnImportWritesTheEventOfTheUserItCreates() {
 	ouID, userType := ts.createUserType("import")
-	userID := unusedUserID()
+	userID := unusedID()
 	password := "AuditImport123!"
 	request, err := json.Marshal(testutils.ImportRequest{
 		Content: fmt.Sprintf("resource_type: user\nid: %s\ntype: %s\nouId: %s\nattributes:\n  username: %s\n"+
@@ -340,11 +340,11 @@ func (ts *AuditLogTestSuite) TestAUserAgentAndATargetIDAreCutToTheirCaps() {
 	}{
 		{
 			name: "a user agent over the cap", userAgent: strings.Repeat("aü", userAgentCap),
-			wantUserAgent: strings.Repeat("aü", userAgentCap/2), id: unusedUserID(),
+			wantUserAgent: strings.Repeat("aü", userAgentCap/2), id: unusedID(),
 		},
 		{
 			name: "a multibyte user agent at the cap", userAgent: strings.Repeat("ü", userAgentCap),
-			wantUserAgent: strings.Repeat("ü", userAgentCap), id: unusedUserID(),
+			wantUserAgent: strings.Repeat("ü", userAgentCap), id: unusedID(),
 		},
 		{
 			name: "an ID over the cap", userAgent: testUserAgent, wantUserAgent: testUserAgent,
@@ -422,7 +422,7 @@ func (ts *AuditLogTestSuite) TestADelegatedCallNamesTheActorAndWhoItActedFor() {
 
 	// A 404 rather than a 401 or 403 shows the delegated token passed the security layer.
 	delegated := ts.sendWith(testutils.GetHTTPClientWithToken(token.AccessToken), http.MethodDelete,
-		"/users/"+unusedUserID(), "")
+		"/users/"+unusedID(), "")
 	ts.Require().Equal(http.StatusNotFound, delegated.StatusCode)
 
 	line := ts.linesOf(delegated)[0]
@@ -442,7 +442,7 @@ func (ts *AuditLogTestSuite) TestAuditLinesIgnoreTheLogLevelAndFormat() {
 	})
 	ouID, userType := ts.createUserType("quiet")
 
-	updated := ts.send(http.MethodPut, "/users/"+unusedUserID(), fmt.Sprintf(
+	updated := ts.send(http.MethodPut, "/users/"+unusedID(), fmt.Sprintf(
 		`{"ouId":%q,"type":%q,"attributes":{"username":"nobody"}}`, ouID, userType))
 	ts.Require().Equal(http.StatusNotFound, updated.StatusCode)
 
@@ -564,13 +564,26 @@ func (ts *AuditLogTestSuite) accessLogLine(traceID string) string {
 }
 
 // linesOf returns the audit line each call that got one of responses wrote, in order, after checking
-// each wrote exactly one. It first deletes a user that does not exist, a call that always writes a
-// line, and waits for that line alone: the server publishes a call's events before it responds and
-// writes them in the order published, so by then every line of the earlier calls is written too, and
-// one read counts them all without waiting out lines that must not appear.
+// each wrote exactly one.
 func (ts *AuditLogTestSuite) linesOf(responses ...*http.Response) []testutils.AuditLine {
 	ts.T().Helper()
-	fence := ts.send(http.MethodDelete, "/users/"+unusedUserID(), "")
+	lines := make([]testutils.AuditLine, 0, len(responses))
+	for i, written := range ts.linesPerCall(responses...) {
+		ts.Require().Len(written, 1, "the call with trace ID %s did not write exactly one line",
+			responses[i].Header.Get(correlationIDHeader))
+		lines = append(lines, written[0])
+	}
+	return lines
+}
+
+// linesPerCall returns the audit lines each call that got one of responses wrote, in the order written.
+// It first deletes a user that does not exist, a call that always writes a line, and waits for that line
+// alone: the server publishes a call's events before it responds and writes them in the order published,
+// so by then every line of the earlier calls is written too, and one read counts them all without
+// waiting out lines that must not appear.
+func (ts *AuditLogTestSuite) linesPerCall(responses ...*http.Response) [][]testutils.AuditLine {
+	ts.T().Helper()
+	fence := ts.send(http.MethodDelete, "/users/"+unusedID(), "")
 	ts.Require().Equal(http.StatusNotFound, fence.StatusCode)
 	fenceTraceID := fence.Header.Get(correlationIDHeader)
 	ts.Require().NotEmpty(fenceTraceID)
@@ -583,18 +596,17 @@ func (ts *AuditLogTestSuite) linesOf(responses ...*http.Response) []testutils.Au
 	for _, line := range written {
 		byTraceID[line.TraceID] = append(byTraceID[line.TraceID], line)
 	}
-	lines := make([]testutils.AuditLine, 0, len(responses))
+	perCall := make([][]testutils.AuditLine, 0, len(responses))
 	for _, response := range responses {
 		traceID := response.Header.Get(correlationIDHeader)
 		ts.Require().NotEmpty(traceID)
-		ts.Require().Len(byTraceID[traceID], 1, "the call with trace ID %s did not write exactly one line", traceID)
-		lines = append(lines, byTraceID[traceID][0])
+		perCall = append(perCall, byTraceID[traceID])
 	}
-	return lines
+	return perCall
 }
 
-// unusedUserID returns a user ID no user of this or an earlier run has.
-func unusedUserID() string {
+// unusedID returns an ID no resource of this or an earlier run has.
+func unusedID() string {
 	return fmt.Sprintf("01900000-0000-7000-8000-%012x", time.Now().UnixNano()&0xffffffffffff)
 }
 

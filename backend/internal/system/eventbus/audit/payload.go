@@ -10,6 +10,7 @@ import (
 
 	syscontext "github.com/thunder-id/thunderid/internal/system/context"
 	"github.com/thunder-id/thunderid/internal/system/eventbus"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
 var _ eventbus.Payload = Payload{}
@@ -26,6 +27,20 @@ func OutcomeDenied(reason string) Outcome {
 // reason code.
 func OutcomeFailed(reason string) Outcome {
 	return Outcome{Result: ResultFailed, Reason: reason}
+}
+
+// outcomeFromServiceError is the outcome of an attempt a service ended with svcErr: succeeded without
+// an error, denied as forbidden when the service's access check refused the caller, and failed with the
+// reason derived from the error code otherwise.
+func outcomeFromServiceError(svcErr *tidcommon.ServiceError) Outcome {
+	switch {
+	case svcErr == nil:
+		return OutcomeSucceeded
+	case svcErr.Code == tidcommon.ErrorUnauthorized.Code:
+		return OutcomeDenied(reasonForbidden)
+	default:
+		return OutcomeFailed(reasonFromCode(svcErr.Code))
+	}
 }
 
 // Payload is the audit view of an event. Build it with NewPayload, so the actor and the client come
@@ -58,6 +73,18 @@ func NewPayload(ctx context.Context, target Ref, action Action, outcome Outcome)
 		outcome:    outcome,
 		client:     Client{Address: address, UserAgent: userAgent},
 	}
+}
+
+// ChangePayload builds the audit payload of an attempt to change target that a service ended with
+// svcErr. The target is the subject when the attempt succeeded or was denied and names it: a service
+// refuses a change only to a target it found, while a failed attempt may name one that does not exist.
+func ChangePayload(ctx context.Context, target Ref, action Action, svcErr *tidcommon.ServiceError) Payload {
+	outcome := outcomeFromServiceError(svcErr)
+	payload := NewPayload(ctx, target, action, outcome)
+	if outcome.Result != ResultFailed && target.ID != "" {
+		payload = payload.WithSubject(target)
+	}
+	return payload
 }
 
 // Category returns the audit category.

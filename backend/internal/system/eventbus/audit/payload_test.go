@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	syscontext "github.com/thunder-id/thunderid/internal/system/context"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
 type PayloadTestSuite struct {
@@ -119,9 +120,18 @@ func (s *PayloadTestSuite) TestValidate() {
 		{"a succeeded outcome needs no reason", EventUserCreate,
 			NewPayload(ctx, testTarget, ActionCreate, OutcomeSucceeded), nil},
 		{"a denied outcome with a reason", EventUserCreate,
-			NewPayload(ctx, testTarget, ActionCreate, OutcomeDenied(ReasonForbidden)), nil},
+			NewPayload(ctx, testTarget, ActionCreate, OutcomeDenied(reasonForbidden)), nil},
 		{"a failed outcome with a reason", EventUserDelete,
 			NewPayload(ctx, testTarget, ActionDelete, OutcomeFailed("usr_1003")), nil},
+		{"an application create", EventApplicationCreate,
+			NewPayload(ctx, testApplication, ActionCreate, OutcomeSucceeded), nil},
+		{"an application update", EventApplicationUpdate,
+			NewPayload(ctx, testApplication, ActionUpdate, OutcomeFailed("app_1001")), nil},
+		{"an application delete", EventApplicationDelete,
+			NewPayload(ctx, testApplication, ActionDelete, OutcomeDenied(reasonForbidden)), nil},
+		{"an application detail", EventApplicationUpdate,
+			NewPayload(ctx, testApplication, ActionUpdate, OutcomeSucceeded).
+				WithDetails(map[string]string{"client_secret": "s3cr3t"}), errDetailNotAllowed},
 		{"an event that is not audited", "user.rename",
 			NewPayload(ctx, testTarget, ActionUpdate, OutcomeSucceeded), errUnknownEvent},
 		{"a detail the event does not allow", EventUserUpdate,
@@ -188,6 +198,40 @@ func (s *PayloadTestSuite) TestBuildersReturnIndependentCopies() {
 
 func (s *PayloadTestSuite) TestOutcomeConstructors() {
 	s.Equal(Outcome{Result: ResultSucceeded}, OutcomeSucceeded)
-	s.Equal(Outcome{Result: ResultDenied, Reason: ReasonForbidden}, OutcomeDenied(ReasonForbidden))
+	s.Equal(Outcome{Result: ResultDenied, Reason: reasonForbidden}, OutcomeDenied(reasonForbidden))
 	s.Equal(Outcome{Result: ResultFailed, Reason: "usr_1003"}, OutcomeFailed("usr_1003"))
+}
+
+// A change that succeeded or was denied on a named target has it as the subject; a failed change, or one
+// that names no target, has none.
+func (s *PayloadTestSuite) TestChangePayload() {
+	unnamed := Ref{Type: TargetTypeApplication}
+	cases := []struct {
+		name    string
+		target  Ref
+		svcErr  *tidcommon.ServiceError
+		outcome Outcome
+		subject Ref
+	}{
+		{"no error", testApplication, nil, OutcomeSucceeded, testApplication},
+		{"the access check refuses the caller", testApplication, &tidcommon.ErrorUnauthorized,
+			OutcomeDenied("forbidden"), testApplication},
+		{"a refused create names no target", unnamed, &tidcommon.ErrorUnauthorized,
+			OutcomeDenied("forbidden"), Ref{}},
+		{"a client error", testApplication, &tidcommon.ServiceError{Type: tidcommon.ClientErrorType,
+			Code: "APP-1003"}, OutcomeFailed("app_1003"), Ref{}},
+		{"a server error", testTarget, &tidcommon.InternalServerError, OutcomeFailed("sse_5000"), Ref{}},
+		{"a code that makes no reason", testTarget, &tidcommon.ServiceError{Type: tidcommon.ServerErrorType,
+			Code: ""}, OutcomeFailed("server_error"), Ref{}},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			payload := ChangePayload(context.Background(), tc.target, ActionUpdate, tc.svcErr)
+
+			s.Equal(tc.outcome, payload.Outcome())
+			s.Equal(tc.target, payload.Target())
+			s.Equal(tc.subject, payload.Subject())
+			s.Equal(ActionUpdate, payload.Action())
+		})
+	}
 }

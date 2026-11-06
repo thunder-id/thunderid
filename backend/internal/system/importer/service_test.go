@@ -120,6 +120,11 @@ type fakeApplicationService struct {
 	// create and a delete of two different ids both succeed whichever way round they run; the
 	// sequence is what shows which actually went first.
 	sequence []string
+	// updateAttempts records each update asked for, by application, whether it succeeded or not.
+	updateAttempts []string
+	// getErr and updateErr, when set, are what GetApplication and UpdateApplication fail with.
+	getErr    *tidcommon.ServiceError
+	updateErr *tidcommon.ServiceError
 }
 
 func (f *fakeApplicationService) CreateApplication(
@@ -158,6 +163,9 @@ func (f *fakeApplicationService) GetOAuthApplication(
 func (f *fakeApplicationService) GetApplication(
 	_ context.Context, appID string,
 ) (*providers.Application, *tidcommon.ServiceError) {
+	if f.getErr != nil {
+		return nil, f.getErr
+	}
 	if app, ok := f.existing[appID]; ok {
 		return app, nil
 	}
@@ -171,6 +179,10 @@ func (f *fakeApplicationService) GetApplication(
 func (f *fakeApplicationService) UpdateApplication(
 	_ context.Context, appID string, app *model.ApplicationDTO,
 ) (*model.ApplicationDTO, *tidcommon.ServiceError) {
+	f.updateAttempts = append(f.updateAttempts, appID)
+	if f.updateErr != nil {
+		return nil, f.updateErr
+	}
 	if _, ok := f.existing[appID]; !ok {
 		return nil, &tidcommon.ServiceError{
 			Type:  tidcommon.ClientErrorType,
@@ -1179,6 +1191,67 @@ func TestImportResources_UpdateApplication(t *testing.T) {
 	assert.Equal(t, 1, resp.Summary.Imported)
 	assert.Equal(t, statusSuccess, resp.Results[0].Status)
 	assert.Equal(t, operationUpdate, resp.Results[0].Operation)
+}
+
+// An upsert of an application that does not exist creates it without first attempting an update, so the
+// application service records no failed update for it.
+func TestImportResources_ApplicationUpsertCreatesAMissingApplicationWithoutAnUpdate(t *testing.T) {
+	appSvc := &fakeApplicationService{existing: map[string]*providers.Application{}}
+	svc := newTestImportService(appSvc)
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{
+		Content: "resource_type: application\nid: app-1\nname: My App\nauthFlowId: flow-1\n",
+		Options: &ImportOptions{Upsert: boolPtr(true), ContinueOnError: boolPtr(true), Target: importTargetRuntime},
+	})
+
+	require.Nil(t, err)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status, resp.Results[0].Message)
+	assert.Equal(t, operationCreate, resp.Results[0].Operation)
+	assert.Empty(t, appSvc.updateAttempts)
+	require.Len(t, appSvc.created, 1)
+	assert.Equal(t, "app-1", appSvc.created[0].ID)
+}
+
+// An application whose existence cannot be determined is neither updated nor created.
+func TestImportResources_ApplicationUpsertFailsWhenTheLookupFails(t *testing.T) {
+	appSvc := &fakeApplicationService{getErr: &tidcommon.InternalServerError}
+	svc := newTestImportService(appSvc)
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{
+		Content: "resource_type: application\nid: app-1\nname: My App\nauthFlowId: flow-1\n",
+		Options: &ImportOptions{Upsert: boolPtr(true), ContinueOnError: boolPtr(true), Target: importTargetRuntime},
+	})
+
+	require.Nil(t, err)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusFailed, resp.Results[0].Status)
+	assert.Equal(t, operationUpdate, resp.Results[0].Operation)
+	assert.Equal(t, tidcommon.InternalServerError.Code, resp.Results[0].Code)
+	assert.Empty(t, appSvc.updateAttempts)
+	assert.Empty(t, appSvc.created)
+}
+
+// An existing application whose update fails is reported as a failed update and is not created again.
+func TestImportResources_ApplicationUpsertReportsAFailedUpdate(t *testing.T) {
+	appSvc := &fakeApplicationService{
+		existing:  map[string]*providers.Application{"app-1": {ID: "app-1", Name: "Existing App"}},
+		updateErr: &application.ErrorInvalidApplicationName,
+	}
+	svc := newTestImportService(appSvc)
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{
+		Content: "resource_type: application\nid: app-1\nname: My App\nauthFlowId: flow-1\n",
+		Options: &ImportOptions{Upsert: boolPtr(true), ContinueOnError: boolPtr(true), Target: importTargetRuntime},
+	})
+
+	require.Nil(t, err)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusFailed, resp.Results[0].Status)
+	assert.Equal(t, operationUpdate, resp.Results[0].Operation)
+	assert.Equal(t, application.ErrorInvalidApplicationName.Code, resp.Results[0].Code)
+	assert.Equal(t, []string{"app-1"}, appSvc.updateAttempts)
+	assert.Empty(t, appSvc.created)
 }
 
 func TestImportResources_DryRunCreateApplicationWithoutWrite(t *testing.T) {

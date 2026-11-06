@@ -1,0 +1,340 @@
+// Copyright 2026 The ThunderID Authors
+// SPDX-License-Identifier: Apache-2.0
+
+package application
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"sync"
+	"testing"
+
+	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
+
+	"github.com/thunder-id/thunderid/internal/application/model"
+	"github.com/thunder-id/thunderid/internal/inboundclient"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
+	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
+	"github.com/thunder-id/thunderid/internal/system/security"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+	"github.com/thunder-id/thunderid/tests/mocks/eventbusmock"
+	"github.com/thunder-id/thunderid/tests/mocks/inboundclientmock"
+)
+
+const (
+	testAuditAdminID     = "admin-1"
+	testAuditSecretValue = "audit-test-client-secret-0123456789"
+	testAuditRedirectURI = "https://audit.example.com/callback"
+)
+
+// publishedEvent is one audit event the application service published.
+type publishedEvent struct {
+	name    string
+	payload audit.Payload
+}
+
+// recordingSink keeps every audit event it is handed, in order.
+type recordingSink struct {
+	mu     sync.Mutex
+	events []publishedEvent
+}
+
+func (r *recordingSink) Handle(_ context.Context, env eventbus.Envelope, payload audit.Payload) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.events = append(r.events, publishedEvent{name: env.Name, payload: payload})
+	return nil
+}
+
+// newRecordingBus returns an event bus with a sink subscribed the way the binaries subscribe theirs, so
+// an event audit refuses never reaches it, and a function that stops the bus and returns the audit
+// events written in order.
+func newRecordingBus(t *testing.T) (eventbus.EventBusInterface, func() []publishedEvent) {
+	bus, registry, stopper := eventbus.Initialize()
+	t.Cleanup(stopper.Stop)
+
+	sink := &recordingSink{}
+	require.NoError(t, audit.Subscribe(registry, "application-service-test", sink))
+	return bus, func() []publishedEvent {
+		stopper.Stop()
+		sink.mu.Lock()
+		defer sink.mu.Unlock()
+		return sink.events
+	}
+}
+
+// discardingBus is an event bus that drops every event, for a test the audit event does not matter to.
+// A test of what the service publishes uses newRecordingBus.
+type discardingBus struct{}
+
+func (discardingBus) Publish(context.Context, *eventbus.Event) error {
+	return nil
+}
+
+// adminContext is the context of a management call made by the admin.
+func adminContext() context.Context {
+	return security.WithSecurityContextTest(context.Background(),
+		security.NewSecurityContextForTest(testAuditAdminID, testOUID, "", nil, nil))
+}
+
+// confidentialApplication is an application whose OAuth client authenticates with a client secret.
+func confidentialApplication() *model.ApplicationDTO {
+	return &model.ApplicationDTO{
+		Type: model.ApplicationTypeFullStack,
+		Name: "Audited App",
+		OUID: testOUID,
+		InboundAuthProfile: providers.InboundAuthProfile{
+			AuthFlowID: "auth-flow-id",
+		},
+		InboundAuthConfig: []providers.InboundAuthConfigWithSecret{{
+			Type: providers.OAuthInboundAuthType,
+			OAuthConfig: &providers.OAuthConfigWithSecret{
+				ClientID:                testClientID,
+				ClientSecret:            testAuditSecretValue,
+				RedirectURIs:            []string{testAuditRedirectURI},
+				GrantTypes:              []providers.GrantType{providers.GrantTypeAuthorizationCode},
+				ResponseTypes:           []providers.ResponseType{providers.ResponseTypeCode},
+				TokenEndpointAuthMethod: providers.TokenEndpointAuthMethodClientSecretBasic,
+			},
+		}},
+	}
+}
+
+// requireOnlyEvent checks that exactly one event was published, named name, for an attempt by the admin
+// on the application with appID, and returns it. An attempt that succeeded or was denied has the
+// application as subject too; a failed one has no subject.
+func (suite *ServiceTestSuite) requireOnlyEvent(events []publishedEvent, name string, action audit.Action,
+	appID string, outcome audit.Outcome) publishedEvent {
+	suite.T().Helper()
+	suite.Require().Len(events, 1)
+	event := events[0]
+	application := audit.Ref{Type: audit.TargetTypeApplication, ID: appID}
+	suite.Equal(name, event.name)
+	suite.Equal(application, event.payload.Target())
+	suite.Equal(action, event.payload.Action())
+	suite.Equal(outcome, event.payload.Outcome())
+	suite.Equal(audit.Actor{Type: audit.ActorTypeUser, ID: testAuditAdminID}, event.payload.Actor())
+	suite.Empty(event.payload.Details(), "no attribute of the application is recorded")
+	if outcome.Result == audit.ResultFailed || appID == "" {
+		suite.Equal(audit.Ref{}, event.payload.Subject(), "a failed attempt may name no application")
+	} else {
+		suite.Equal(application, event.payload.Subject())
+	}
+	return event
+}
+
+// requireNoSecret checks that no part of the event carries the client secret or the redirect URI.
+func (suite *ServiceTestSuite) requireNoSecret(event publishedEvent) {
+	suite.T().Helper()
+	recorded := fmt.Sprintf("%+v", event.payload)
+	suite.NotContains(recorded, testAuditSecretValue, "a client secret is never recorded")
+	suite.NotContains(recorded, testAuditRedirectURI, "no OAuth configuration is recorded")
+}
+
+func (suite *ServiceTestSuite) TestCreateApplication_PublishesTheCreatedApplication() {
+	suite.withMutableRuntime()
+	bus, published := newRecordingBus(suite.T())
+	service, mockStore := suite.setupTestService()
+	service.bus = bus
+	mockStore.On("CreateInboundClient", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
+
+	created, svcErr := service.CreateApplication(adminContext(), confidentialApplication())
+
+	suite.Require().Nil(svcErr)
+	suite.Require().NotEmpty(created.ID)
+	event := suite.requireOnlyEvent(published(), audit.EventApplicationCreate, audit.ActionCreate, created.ID,
+		audit.OutcomeSucceeded)
+	suite.requireNoSecret(event)
+}
+
+func (suite *ServiceTestSuite) TestCreateApplication_PublishesTheSameNameWhenItFails() {
+	cases := []struct {
+		name    string
+		app     func() *model.ApplicationDTO
+		arrange func(service *applicationService)
+		outcome audit.Outcome
+	}{
+		{
+			name: "the request has no name",
+			app: func() *model.ApplicationDTO {
+				app := confidentialApplication()
+				app.Name = ""
+				return app
+			},
+			outcome: audit.OutcomeFailed("app_1004"),
+		},
+		{
+			name: "the store fails",
+			app:  confidentialApplication,
+			arrange: func(service *applicationService) {
+				resetEntityServiceMethod(service, "CreateEntity").On("CreateEntity",
+					mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+					Return((*providers.Entity)(nil), errors.New("store failure")).Once()
+			},
+			outcome: audit.OutcomeFailed("sse_5000"),
+		},
+	}
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			suite.withMutableRuntime()
+			bus, published := newRecordingBus(suite.T())
+			service, _ := suite.setupTestService()
+			service.bus = bus
+			if tc.arrange != nil {
+				tc.arrange(service)
+			}
+
+			created, svcErr := service.CreateApplication(adminContext(), tc.app())
+
+			suite.Nil(created)
+			suite.Require().NotNil(svcErr)
+			event := suite.requireOnlyEvent(published(), audit.EventApplicationCreate, audit.ActionCreate, "",
+				tc.outcome)
+			suite.requireNoSecret(event)
+		})
+	}
+}
+
+// An update that rotates the client secret is recorded as an update, without the secret.
+func (suite *ServiceTestSuite) TestUpdateApplication_PublishesTheUpdatedApplication() {
+	f := suite.newSecretUpdateFixture(testAuditSecretValue)
+	f.storedSecret(false)
+	bus, published := newRecordingBus(suite.T())
+	f.service.bus = bus
+
+	_, svcErr := f.service.UpdateApplication(adminContext(), testServiceAppID, f.update)
+
+	suite.Require().Nil(svcErr)
+	event := suite.requireOnlyEvent(published(), audit.EventApplicationUpdate, audit.ActionUpdate,
+		testServiceAppID, audit.OutcomeSucceeded)
+	suite.requireNoSecret(event)
+}
+
+// The application service has no access check of its own, so an update is denied only when a step it
+// runs, here the system flow before a secret rotation, refuses the caller. The flow runs once the
+// application is found, so the denied event has it as subject.
+func (suite *ServiceTestSuite) TestUpdateApplication_PublishesARefusalAsDenied() {
+	f := suite.newSecretUpdateFixture(testAuditSecretValue)
+	f.storedSecret(false)
+	suite.recordSystemFlows(f.service, &tidcommon.ErrorUnauthorized, nil)
+	bus, published := newRecordingBus(suite.T())
+	f.service.bus = bus
+
+	_, svcErr := f.service.UpdateApplication(adminContext(), testServiceAppID, f.update)
+
+	suite.Equal(&tidcommon.ErrorUnauthorized, svcErr)
+	event := suite.requireOnlyEvent(published(), audit.EventApplicationUpdate, audit.ActionUpdate,
+		testServiceAppID, audit.OutcomeDenied("forbidden"))
+	suite.requireNoSecret(event)
+}
+
+func (suite *ServiceTestSuite) TestUpdateApplication_PublishesAFailureForAMissingApplication() {
+	suite.withMutableRuntime()
+	bus, published := newRecordingBus(suite.T())
+	service, mockStore := suite.setupTestService()
+	service.bus = bus
+	mockStore.On("GetInboundClientByEntityID", mock.Anything, testServiceAppID).
+		Return(nil, inboundclient.ErrInboundClientNotFound)
+
+	_, svcErr := service.UpdateApplication(adminContext(), testServiceAppID,
+		confidentialApplication())
+
+	suite.Equal(&ErrorApplicationNotFound, svcErr)
+	suite.requireOnlyEvent(published(), audit.EventApplicationUpdate, audit.ActionUpdate, testServiceAppID,
+		audit.OutcomeFailed("app_1001"))
+}
+
+func (suite *ServiceTestSuite) TestDeleteApplication_PublishesOneEventPerAttempt() {
+	existing := func(service *applicationService) {
+		resetEntityServiceMethod(service, "GetEntityProfile").On("GetEntityProfile", mock.Anything,
+			testServiceAppID).Return(&providers.Entity{ID: testServiceAppID, Category: providers.EntityCategoryApp},
+			nil)
+	}
+	cases := []struct {
+		name    string
+		arrange func(service *applicationService, store *inboundclientmock.InboundClientServiceInterfaceMock)
+		outcome audit.Outcome
+	}{
+		{
+			name: "the application is deleted",
+			arrange: func(service *applicationService, store *inboundclientmock.InboundClientServiceInterfaceMock) {
+				existing(service)
+				store.On("DeleteInboundClient", mock.Anything, testServiceAppID).Return(nil)
+			},
+			outcome: audit.OutcomeSucceeded,
+		},
+		{
+			name: "the system flow before the deletion refuses the caller",
+			arrange: func(service *applicationService, _ *inboundclientmock.InboundClientServiceInterfaceMock) {
+				existing(service)
+				suite.recordSystemFlows(service, &tidcommon.ErrorUnauthorized, nil)
+			},
+			outcome: audit.OutcomeDenied("forbidden"),
+		},
+		{
+			name: "the application cannot be read",
+			arrange: func(service *applicationService, _ *inboundclientmock.InboundClientServiceInterfaceMock) {
+				resetEntityServiceMethod(service, "GetEntityProfile").On("GetEntityProfile", mock.Anything,
+					testServiceAppID).Return((*providers.Entity)(nil), errors.New("store failure"))
+			},
+			outcome: audit.OutcomeFailed("sse_5000"),
+		},
+		{
+			name: "what is left of a missing application cannot be removed",
+			arrange: func(_ *applicationService, store *inboundclientmock.InboundClientServiceInterfaceMock) {
+				store.On("DeleteInboundClient", mock.Anything, testServiceAppID).Return(errors.New("store failure"))
+			},
+			outcome: audit.OutcomeFailed("sse_5000"),
+		},
+	}
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			suite.withMutableRuntime()
+			bus, published := newRecordingBus(suite.T())
+			service, mockStore := suite.setupTestService()
+			service.bus = bus
+			tc.arrange(service, mockStore)
+
+			svcErr := service.DeleteApplication(adminContext(), testServiceAppID)
+
+			suite.Equal(tc.outcome == audit.OutcomeSucceeded, svcErr == nil)
+			suite.requireOnlyEvent(published(), audit.EventApplicationDelete, audit.ActionDelete, testServiceAppID,
+				tc.outcome)
+		})
+	}
+}
+
+// A delete stays idempotent, but one that finds no application records nothing, so a caller cannot
+// write a succeeded delete for any ID it chooses. The inbound client store deletes without reporting
+// whether a row matched, so its delete returns nil here as it does for a real missing ID.
+func (suite *ServiceTestSuite) TestDeleteApplication_PublishesNothingForAMissingApplication() {
+	suite.withMutableRuntime()
+	bus, published := newRecordingBus(suite.T())
+	service, mockStore := suite.setupTestService()
+	service.bus = bus
+	mockStore.On("DeleteInboundClient", mock.Anything, testServiceAppID).Return(nil)
+
+	svcErr := service.DeleteApplication(adminContext(), testServiceAppID)
+
+	suite.Nil(svcErr)
+	suite.Empty(published())
+	mockStore.AssertCalled(suite.T(), "DeleteInboundClient", mock.Anything, testServiceAppID)
+}
+
+// A bus that cannot take the event never fails the change it describes.
+func (suite *ServiceTestSuite) TestCreateApplication_SucceedsWhenTheBusRefusesTheEvent() {
+	suite.withMutableRuntime()
+	failing := eventbusmock.NewEventBusInterfaceMock(suite.T())
+	failing.EXPECT().Publish(mock.Anything, mock.Anything).Return(errors.New("audit queue is full")).Once()
+	service, mockStore := suite.setupTestService()
+	service.bus = failing
+	mockStore.On("CreateInboundClient", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
+
+	created, svcErr := service.CreateApplication(adminContext(), confidentialApplication())
+
+	suite.Nil(svcErr)
+	suite.NotEmpty(created.ID)
+}

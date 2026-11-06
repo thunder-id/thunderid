@@ -199,6 +199,7 @@ func (suite *ServiceTestSuite) setupTestService() (
 		dependencyRegistry:   noopDepRegistry{},
 		sharingService:       mockSharing,
 		governance:           governance,
+		bus:                  discardingBus{},
 	}
 	return service, mockStore
 }

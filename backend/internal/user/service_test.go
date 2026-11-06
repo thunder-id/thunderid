@@ -5908,8 +5908,7 @@ func TestUserService_CreateUserByPath_PublishesAFailureBeforeTheCreate(t *testin
 	events := published()
 	require.Len(t, events, 1)
 	require.Equal(t, audit.EventUserCreate, events[0].name)
-	require.Equal(t, audit.OutcomeFailed(audit.ReasonFromCode(ErrorOrganizationUnitNotFound.Code)),
-		events[0].payload.Outcome())
+	require.Equal(t, audit.OutcomeFailed("usr_1005"), events[0].payload.Outcome())
 }
 
 func TestUserService_CreateUser_PublishesTheSameNameWhenItFails(t *testing.T) {
@@ -6151,11 +6150,4 @@ func TestUserService_AFailingBusDoesNotFailTheChange(t *testing.T) {
 	require.NotEmpty(t, created.ID)
 
 	require.Nil(t, deletingUserService(t, failing, true).DeleteUser(adminContext(), svcTestUserID1))
-}
-
-func TestUserAuditOutcome(t *testing.T) {
-	require.Equal(t, audit.OutcomeSucceeded, userAuditOutcome(nil))
-	require.Equal(t, audit.OutcomeDenied("forbidden"), userAuditOutcome(&tidcommon.ErrorUnauthorized))
-	require.Equal(t, audit.OutcomeFailed("usr_1003"), userAuditOutcome(&ErrorUserNotFound))
-	require.Equal(t, audit.OutcomeFailed("sse_5000"), userAuditOutcome(&tidcommon.InternalServerError))
 }

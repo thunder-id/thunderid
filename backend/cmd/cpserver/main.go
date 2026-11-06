@@ -103,7 +103,7 @@ func main() {
 	// default resources in-process and exit without starting the HTTP server.
 	if isBootstrapInvocation() {
 		err := runBootstrap(ctx, logger, serverHome, importService, cacheManager)
-		// The bootstrap creates users, whose audit events must be written before the process exits.
+		// The bootstrap creates audited resources, whose events must be written before the process exits.
 		auditStopper.Stop()
 		if err != nil {
 			logger.Error(ctx, "In-process bootstrap failed; exiting", log.Error(err))

@@ -358,7 +358,8 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	// deny list, and this plane issues and revokes no tokens. application treats nil as "no opinion".
 	applicationService, applicationExporter, err := application.Initialize(
 		mux, mcpServer, entityService, inboundClientService, ouService, i18nService,
-		runtimeCryptoSvc, serverConfigService, nil, sharingService, valueCapture, governanceService, projectService)
+		runtimeCryptoSvc, serverConfigService, nil, sharingService, valueCapture, governanceService, projectService,
+		auditBus)
 	fatalOnError(ctx, logger, err, "Failed to initialize ApplicationService")
 	exporters = append(exporters, applicationExporter)
 
