@@ -122,6 +122,8 @@ export interface DecoratedVisualFlowPropsInterface extends Omit<VisualFlowPropsI
   onNodesChange: OnNodesChange<Node>;
   onEdgesChange: OnEdgesChange<Edge>;
   flowTitle: string;
+  /** Shown under the flow's name in the resource panel. */
+  flowStatus?: ReactNode;
   flowHandle: string;
   onFlowTitleChange: (newTitle: string) => void;
   onSave?: (canvasData: {nodes: Node[]; edges: Edge[]; viewport: {x: number; y: number; zoom: number}}) => void;
@@ -181,6 +183,7 @@ function DecoratedVisualFlow({
   onStepLoad,
   onSave = undefined,
   flowTitle,
+  flowStatus = undefined,
   flowHandle,
   onFlowTitleChange,
   triggerAutoLayoutOnLoad = false,
@@ -1076,6 +1079,7 @@ function DecoratedVisualFlow({
               onAdd={handleOnAdd}
               disabled={isFlowMetadataLoading}
               flowTitle={flowTitle}
+              flowStatus={flowStatus}
               flowHandle={flowHandle}
               onFlowTitleChange={onFlowTitleChange}
               rightPanel={rightPanel}

@@ -8,12 +8,17 @@ import type {
   AppliedVersion,
   ApplyRequest,
   ApplyResult,
+  Master,
+  ResourceHistory,
   StoredValue,
   ValueKind,
   ValueReference,
   Version,
 } from '../models/deploy';
 import type {Gateway} from '../models/gateway';
+import type {AutoApplySetting, Pipeline} from '../models/pipeline';
+import type {Project} from '../models/project';
+import type {ProjectStatus} from '../models/projectStatus';
 
 /** A value to set in a target's store. */
 export interface StoredValueInput {
@@ -45,15 +50,31 @@ export interface DeploySource {
   appliedVersion(targetId: string): Promise<AppliedVersion>;
   /** Everything a target runs, each resource as its own read returns it. */
   appliedConfiguration(targetId: string): Promise<AppliedConfiguration>;
-  /** What applying a version would change on a target, and what it lacks for it. Nothing is written. */
-  applyCheck(targetId: string, version: string): Promise<ApplyResult>;
+  /** What a target holds, resource by resource, as the target last accepted each: its master. */
+  master(targetId: string): Promise<Master>;
+  /** A target's masters, newest first, without their entries. */
+  masterHistory(targetId: string): Promise<Master[]>;
+  /** One resource's entry across a target's masters, newest first. */
+  resourceHistory(targetId: string, key: string): Promise<ResourceHistory>;
+  /**
+   * What applying a version would change on a target, and what it lacks for it. Nothing is written. For a
+   * project, each change says where it stands with the project.
+   */
+  applyCheck(targetId: string, version: string, project?: string): Promise<ApplyResult>;
   /** Applies a version to a target, or works out what it would do when `dryRun` is set. */
   apply(targetId: string, request: ApplyRequest): Promise<ApplyResult>;
   /**
    * Puts a target back on the version it ran before, or works out what that would do. A rollback that
-   * removes more resources than the threshold is refused until `confirmRemovals` is set.
+   * removes more resources than the threshold is refused until `confirmRemovals` is set. For a project,
+   * only its own resources go back; shared resources and other projects' stay as they are.
    */
-  revert(targetId: string, dryRun: boolean, confirmRemovals?: boolean): Promise<ApplyResult>;
+  revert(targetId: string, dryRun: boolean, confirmRemovals?: boolean, project?: string): Promise<ApplyResult>;
+  /**
+   * How a project stands on a target: the versions its own resources there came from, and what of its
+   * own, of what it needs and of what is shared waits to be brought there from `from`, the target before
+   * it in the project's pipeline, or from the latest version when there is none.
+   */
+  projectStatus(targetId: string, project: string, from?: string): Promise<ProjectStatus>;
   /** Every variable or every secret a target holds. A secret's value is never read back. */
   values(targetId: string, kind: ValueKind): Promise<StoredValue[]>;
   /** Sets a variable or a secret on a target, creating it when the target does not hold it. */
@@ -62,6 +83,22 @@ export interface DeploySource {
   deleteValue(targetId: string, kind: ValueKind, name: string): Promise<void>;
   /** Where the version a target runs refers to values. */
   runningReferences(targetId: string): Promise<ValueReference[]>;
+  /**
+   * The environments a version is deployed and promoted through, in order, each on a target: a project's
+   * own when one is given and projects have pipelines of their own.
+   */
+  pipeline(project?: string): Promise<Pipeline>;
+  /** The projects deploys can be scoped to. */
+  projects(): Promise<Project[]>;
+  /** Whether a change saved here deploys to the first environment on its own. */
+  autoApply(): Promise<AutoApplySetting>;
+  /** Turns deploying a saved change to the first environment on or off: the default for projects. */
+  setAutoApply(enabled: boolean): Promise<void>;
+  /**
+   * Turns deploying a project's saved changes to its first environment on or off, or, with null, has
+   * the project follow the organization's default again.
+   */
+  setProjectAutoSync(project: string, enabled: boolean | null): Promise<void>;
 }
 
 const DeploySourceContext = createContext<DeploySource | null>(null);

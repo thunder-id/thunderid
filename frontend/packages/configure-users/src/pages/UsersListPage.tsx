@@ -5,12 +5,20 @@ import {DocumentTitle, ExternalLink} from '@thunderid/components';
 import {useLogger} from '@thunderid/logger/react';
 import {Button, PageContent, PageTitle} from '@wso2/oxygen-ui';
 import {Plus} from '@wso2/oxygen-ui-icons-react';
+import type {JSX, ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
 import UsersList from '../components/UsersList';
 import useUserRoutes from '../hooks/useUserRoutes';
 
-export default function UsersListPage() {
+export interface UsersListPageProps {
+  /** The page's title, "Users" otherwise, for a console whose users are of one kind, such as administrators. */
+  title?: string;
+  /** Shown above the list, such as what the users are for. */
+  notice?: ReactNode;
+}
+
+export default function UsersListPage({title = undefined, notice = undefined}: UsersListPageProps = {}): JSX.Element {
   const navigate = useNavigate();
   const {t} = useTranslation();
   const logger = useLogger('UsersListPage');
@@ -18,10 +26,10 @@ export default function UsersListPage() {
 
   return (
     <PageContent>
-      <DocumentTitle title={t('users:title', 'Users')} />
+      <DocumentTitle title={title ?? t('users:title', 'Users')} />
       {/* Header */}
       <PageTitle>
-        <PageTitle.Header>{t('users:title')}</PageTitle.Header>
+        <PageTitle.Header>{title ?? t('users:title')}</PageTitle.Header>
         <PageTitle.SubHeader>
           {t('users:subtitle')} <ExternalLink docKey="users" />
         </PageTitle.SubHeader>
@@ -42,6 +50,7 @@ export default function UsersListPage() {
         </PageTitle.Actions>
       </PageTitle>
 
+      {notice}
       <UsersList />
     </PageContent>
   );

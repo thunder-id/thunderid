@@ -1,7 +1,13 @@
 // Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {AccessStatusIndicator, QueryErrorNotice, ResourceAvatar} from '@thunderid/components';
+import {
+  AccessStatusIndicator,
+  QueryErrorNotice,
+  ResourceAvatar,
+  ResourceDeployStatus,
+  useDeployStatusSource,
+} from '@thunderid/components';
 import {useConfig} from '@thunderid/contexts';
 import {useDataGridLocaleText} from '@thunderid/hooks';
 import {useLogger} from '@thunderid/logger/react';
@@ -62,6 +68,7 @@ export default function ApplicationsList(): JSX.Element {
     setSelectedAppId(null);
   };
 
+  const deploys = useDeployStatusSource() !== null;
   const columns: DataGrid.GridColDef<BasicApplication>[] = useMemo(
     () => [
       {
@@ -129,6 +136,21 @@ export default function ApplicationsList(): JSX.Element {
           <AccessStatusIndicator status={params.row.status} category="application" tabIndex={params.tabIndex} />
         ),
       },
+      // Where each application is along the deploy path is shown only where the app says so.
+      ...(deploys
+        ? [
+            {
+              field: 'deployment',
+              headerName: t('applications:listing.columns.deployment', 'Deployment'),
+              flex: 0.6,
+              minWidth: 150,
+              sortable: false,
+              renderCell: (params: DataGrid.GridRenderCellParams<BasicApplication>): JSX.Element => (
+                <ResourceDeployStatus resourceType="application" id={params.row.id} tabIndex={params.tabIndex} />
+              ),
+            } satisfies DataGrid.GridColDef<BasicApplication>,
+          ]
+        : []),
       {
         field: 'actions',
         headerName: t('applications:listing.columns.actions'),
@@ -186,7 +208,7 @@ export default function ApplicationsList(): JSX.Element {
         ),
       },
     ],
-    [consoleClientId, handleDeleteClick, handleEditClick, t],
+    [consoleClientId, deploys, handleDeleteClick, handleEditClick, t],
   );
 
   if (error) {

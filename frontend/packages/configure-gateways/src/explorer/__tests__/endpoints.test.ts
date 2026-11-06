@@ -3,7 +3,7 @@
 
 import {describe, expect, it} from 'vitest';
 import type {AppliedResource} from '../../models/deploy';
-import {endpointsOf, gatewayEndpoints} from '../endpoints';
+import {clientEndpoints, endpointsOf, gatewayEndpoints} from '../endpoints';
 import {buildGraph, type GraphNode} from '../model';
 
 const nodeOf = (resource: AppliedResource): GraphNode => {
@@ -56,5 +56,17 @@ describe('endpointsOf', () => {
       'https://dev.example.com/.well-known/openid-configuration',
       'https://dev.example.com/oauth2/jwks',
     ]);
+  });
+});
+
+describe('clientEndpoints', () => {
+  it("lists every endpoint a client signs in and gets tokens at, and none without the gateway's address", () => {
+    const endpoints = clientEndpoints('https://dev.example.com/');
+    expect(endpoints.map((endpoint) => endpoint.url)).toContain('https://dev.example.com/oauth2/token');
+    expect(endpoints.find((endpoint) => endpoint.key === 'revoke')?.label).toEqual([
+      'explorer.endpoints.revoke',
+      'Revocation',
+    ]);
+    expect(clientEndpoints(undefined)).toEqual([]);
   });
 });

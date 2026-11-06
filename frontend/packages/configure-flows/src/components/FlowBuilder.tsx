@@ -1,7 +1,7 @@
 // Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {GradientBorderButton, QueryErrorNotice} from '@thunderid/components';
+import {GradientBorderButton, QueryErrorNotice, ResourceDeployStatus} from '@thunderid/components';
 import {useEmailProviders, useIdentityProviders, useSMSProviders} from '@thunderid/configure-connections';
 import {Alert, Box, Snackbar, Stack} from '@wso2/oxygen-ui';
 import type {Edge, Node, NodeChange} from '@xyflow/react';
@@ -359,8 +359,13 @@ function FlowBuilder() {
   }, [isLoadingExistingFlow, isIdentityProvidersPending, isSMSProvidersPending, isEmailProvidersPending, nodes]);
 
   const hasInteractedRef = useRef<boolean>(false);
+  // How many interactions there have been, and how many there were when the last save was sent, so an
+  // edit made while a save is in flight is never taken into the saved baseline.
+  const interactionsRef = useRef<number>(0);
+  const interactionsAtSaveRef = useRef<number>(0);
   useEffect(() => {
     const freezeBaseline = (): void => {
+      interactionsRef.current += 1;
       // A real interaction cancels any pending view-mode rebase, so an edit
       // made while a relayout is still settling is never absorbed into the
       // clean baseline.
@@ -388,9 +393,13 @@ function FlowBuilder() {
   // persisted — the user may have kept editing while the save request was in
   // flight, and those edits must stay dirty. History is intentionally NOT
   // reset here: undoing past a save point simply makes the flow dirty again.
+  // A save is read back, which settles the graph once more (normalized fields, node internals); that
+  // settle is taken as the clean baseline too, unless the user interacted after the save was sent or
+  // interacts before it settles.
   const handleSaved = useCallback((savedCanvas: {nodes: Node[]; edges: Edge[]}) => {
     hasInteractedRef.current = true;
     setSavedSignature(computeGraphSignature(savedCanvas.nodes, savedCanvas.edges));
+    if (interactionsRef.current === interactionsAtSaveRef.current) setIsBaselineRebasePending(true);
   }, []);
 
   // Flow save hook
@@ -410,6 +419,18 @@ function FlowBuilder() {
       void navigate(flowRoutes.flows.detail(createdFlowId), {replace: true, state: null});
     },
   });
+  const saveFlow = useCallback(
+    (canvasData: Parameters<typeof handleSave>[0]): void => {
+      interactionsAtSaveRef.current = interactionsRef.current;
+      handleSave(canvasData);
+    },
+    [handleSave],
+  );
+  // Kept the same while the flow is, so the resource panel is not drawn again on every edit.
+  const flowStatus = useMemo(
+    () => (flowId ? <ResourceDeployStatus resourceType="flow" id={flowId} /> : undefined),
+    [flowId],
+  );
 
   // SSO toggle orchestration (enable/disable transformations, placement mode)
   const sso = useSsoToggle({
@@ -753,7 +774,7 @@ function FlowBuilder() {
             onWidgetLoad={handleWidgetLoad}
             onStepLoad={handleStepLoad}
             onResourceAdd={handleResourceAdd}
-            onSave={existingFlowData?.isReadOnly ? undefined : handleSave}
+            onSave={existingFlowData?.isReadOnly ? undefined : saveFlow}
             nodes={displayNodes}
             sourceNodes={nodes}
             sourceEdges={edges}
@@ -765,6 +786,7 @@ function FlowBuilder() {
             onEdgesChange={onEdgesChange}
             onEdgeClick={sso.handleEdgeClick}
             flowTitle={flowName}
+            flowStatus={flowStatus}
             flowHandle={flowHandle}
             onFlowTitleChange={handleFlowNameChange}
             triggerAutoLayoutOnLoad={needsAutoLayout}

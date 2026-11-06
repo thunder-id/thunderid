@@ -37,6 +37,7 @@ export {default as UserAddFlowPage} from './pages/UserAddPage';
 export {default as UserAddFormPage} from './pages/UserAddFormPage';
 export {default as UserEditPage} from './pages/UserEditPage';
 export {default as UsersListPage} from './pages/UsersListPage';
+export type {UsersListPageProps} from './pages/UsersListPage';
 
 // Routes
 export type {UserRoutePaths} from './hooks/useUserRoutes';

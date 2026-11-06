@@ -79,7 +79,7 @@ export default function ApplyPanel({
   const active = useMemo(() => changes.filter((change: Change) => change.change !== 'unchanged'), [changes]);
 
   const heldBack = useMemo(
-    () => new Set(active.filter((change: Change) => change.excluded).map((change: Change) => change.key)),
+    () => new Set(active.filter((change: Change) => change.heldBack).map((change: Change) => change.key)),
     [active],
   );
   const excluded = chosen ?? heldBack;

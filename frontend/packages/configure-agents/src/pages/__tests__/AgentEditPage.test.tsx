@@ -3,6 +3,8 @@
 
 /* eslint-disable @typescript-eslint/no-unsafe-return */
 import userEvent from '@testing-library/user-event';
+import {DeployStatusProvider} from '@thunderid/components';
+import {ProjectScopeProvider} from '@thunderid/contexts';
 import {fireEvent, render, screen, waitFor} from '@thunderid/test-utils';
 import type {ComponentProps, ReactNode} from 'react';
 import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
@@ -305,6 +307,47 @@ describe('AgentEditPage', () => {
     });
   });
 
+  describe('Project scope', () => {
+    it("goes to the selected project's agents when the agent belongs to another project", async () => {
+      mockUseGetAgent.mockReturnValue({
+        data: {...baseAgent, projectId: 'project-b'},
+        isLoading: false,
+        error: null,
+        isError: false,
+        refetch: mockRefetch,
+      });
+
+      render(
+        <ProjectScopeProvider project={{id: 'project-a'}}>
+          <AgentEditPage />
+        </ProjectScopeProvider>,
+      );
+
+      await waitFor(() => {
+        expect(mockNavigate).toHaveBeenCalledWith('/agents', {replace: true});
+      });
+      expect(screen.queryByText('Test Agent')).not.toBeInTheDocument();
+    });
+
+    it('shows the agent when it belongs to the selected project', () => {
+      mockUseGetAgent.mockReturnValue({
+        data: {...baseAgent, projectId: 'project-a'},
+        isLoading: false,
+        error: null,
+        isError: false,
+        refetch: mockRefetch,
+      });
+
+      render(
+        <ProjectScopeProvider project={{id: 'project-a'}}>
+          <AgentEditPage />
+        </ProjectScopeProvider>,
+      );
+
+      expect(mockNavigate).not.toHaveBeenCalledWith('/agents', {replace: true});
+    });
+  });
+
   describe('Loading and Error States', () => {
     it('renders a progressbar while loading', () => {
       mockUseGetAgent.mockReturnValue({
@@ -367,6 +410,49 @@ describe('AgentEditPage', () => {
       expect(screen.getByRole('tab', {name: 'Attributes'})).toBeInTheDocument();
       expect(screen.getByRole('tab', {name: /Access/i})).toBeInTheDocument();
       expect(screen.getByRole('tab', {name: /Advanced/i})).toBeInTheDocument();
+    });
+
+    it('opens the tab a link names, such as the Advanced tab for the owner', () => {
+      mockUseLocation.mockReturnValue({state: null, search: '?tab=advanced'});
+
+      render(<AgentEditPage />);
+
+      expect(screen.getByRole('tab', {name: /Advanced/i})).toHaveAttribute('aria-selected', 'true');
+    });
+
+    it('leaves the tab a link names once another is chosen', async () => {
+      mockUseLocation.mockReturnValue({state: null, search: '?tab=advanced'});
+
+      render(<AgentEditPage />);
+      await userEvent.click(screen.getByRole('tab', {name: 'Overview'}));
+
+      expect(screen.getByRole('tab', {name: 'Overview'})).toHaveAttribute('aria-selected', 'true');
+      expect(screen.getByRole('tab', {name: /Advanced/i})).toHaveAttribute('aria-selected', 'false');
+    });
+
+    it('opens the first tab when a link names a tab the agent does not have', () => {
+      mockUseLocation.mockReturnValue({state: null, search: '?tab=nothing'});
+
+      render(<AgentEditPage />);
+
+      expect(screen.getByRole('tab', {name: 'Overview'})).toHaveAttribute('aria-selected', 'true');
+    });
+
+    it('says where the agent is along the deploy path, such as a refusal and its reason', () => {
+      render(
+        <DeployStatusProvider
+          value={{
+            statusOf: (type: string) =>
+              type === 'agent' ? {state: 'refused', target: 'Dev', reason: 'AGT-1039: Owner not found'} : undefined,
+            openDeploy: vi.fn(),
+          }}
+        >
+          <AgentEditPage />
+        </DeployStatusProvider>,
+      );
+
+      expect(screen.getByTestId('resource-deploy-status')).toHaveTextContent('Refused by Dev');
+      expect(screen.getByTestId('resource-deploy-status')).toHaveTextContent('AGT-1039: Owner not found');
     });
 
     it('does not render icons on any tab', () => {

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import userEvent from '@testing-library/user-event';
+import {DeployStatusProvider} from '@thunderid/components';
 import {render, screen, waitFor} from '@thunderid/test-utils';
 import type {NavigateFunction} from 'react-router';
 import {describe, it, expect, beforeEach, vi} from 'vitest';
@@ -506,5 +507,27 @@ describe('AgentsList', () => {
     renderComponent();
 
     expect(screen.getByRole('grid')).toBeInTheDocument();
+  });
+
+  it('shows where each agent is along the deploy path only where the app says so, in the grid focus', () => {
+    vi.mocked(useGetAgents).mockReturnValue({
+      data: mockAgentsData,
+      isLoading: false,
+      error: null,
+    } as ReturnType<typeof useGetAgents>);
+    const {unmount} = renderComponent();
+    // Without the app saying where resources are, the list has no deployment column.
+    const cellsWithout = screen.getAllByRole('row')[0].children.length;
+    unmount();
+
+    render(
+      <DeployStatusProvider value={{statusOf: () => ({state: 'notPromoted', target: 'Prod'}), openDeploy: vi.fn()}}>
+        <AgentsList />
+      </DeployStatusProvider>,
+    );
+    expect(screen.getAllByRole('row')[0].children.length).toBe(cellsWithout + 1);
+    const chips = screen.getAllByTestId('resource-deploy-status');
+    expect(chips[0]).toHaveTextContent('Not in Prod');
+    chips.forEach((chip) => expect(chip).toHaveAttribute('tabindex', '-1'));
   });
 });
