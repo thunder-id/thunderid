@@ -47,6 +47,52 @@ If an operation would grant more than you hold, the API returns `403 Forbidden` 
 Because you must hold a permission to grant it, an administrator whose job is to manage role assignments needs to hold the permissions they distribute. Grant such an administrator the union of the permissions they are expected to assign.
 :::
 
+## System Permissions
+
+The **System** resource server declares the permissions for managing <ProductName /> itself. Each permission has the form `system:<resource>:<action>`. The root permission `system` covers every system operation, and a resource permission such as `system:user` covers every action on that resource.
+
+| Resource | Display name | Actions |
+|----------|--------------|---------|
+| `ou` | Organization Units | `view`, `create`, `update`, `delete` |
+| `user` | Users | `view`, `create`, `update`, `delete` |
+| `group` | Groups | `view`, `create`, `update`, `delete` |
+| `agent` | Agents | `view`, `create`, `update`, `delete` |
+| `usertype` | User Types | `view`, `create`, `update`, `delete` |
+| `agenttype` | Agent Types | `view`, `create`, `update`, `delete` |
+| `notificationtemplate` | Notification Templates | `view`, `create`, `update`, `delete` |
+| `app` | Applications | `view`, `create`, `update`, `delete` |
+| `role` | Roles | `view`, `create`, `update`, `delete` |
+| `rs` | Resource Servers | `view`, `create`, `update`, `delete` |
+| `connection` | Connections | `view`, `create`, `update`, `delete` |
+| `flow` | Flows | `view`, `create`, `update`, `delete` |
+| `vc` | Verifiable Credentials | `view`, `create`, `update`, `delete` |
+| `project` | Projects | `view`, `create`, `update`, `delete` |
+| `design` | Design | `view`, `create`, `update`, `delete` |
+| `i18n` | Translations | `view`, `create`, `update`, `delete` |
+| `gateway` | Gateways | `view`, `create`, `update`, `delete` |
+| `authzdetail` | Authorization Detail Types | `view`, `create`, `update`, `delete` |
+| `serverconfig` | Server Configuration | `view`, `update` |
+| `configversion` | Configuration Versions | `view`, `create` |
+
+Design, translations, gateways, authorization detail types, server configuration, and configuration versions have no owning organization unit, so a change to one affects every organization unit. A configuration version holds a snapshot of the whole deployment, so once a management API accepts `system:configversion:view`, it will expose the configuration of every organization unit. No management API accepts that permission yet.
+
+The management APIs currently accept the following permissions. Every other management API requires the root `system` permission.
+
+| Permission | Grants |
+|------------|--------|
+| `system:<resource>:view` | Read and list for `ou`, `user`, `group`, `agent`, `usertype`, `agenttype`, and `notificationtemplate`. Listing the child organization units of an organization unit (`GET /organization-units/{id}/ous`) is the exception and requires `system:ou`. |
+| `system:<resource>` | Full management of `ou`, `user`, `group`, `agent`, `usertype`, `agenttype`, and `notificationtemplate`. |
+
+If you set `server.security.system_permission_prefix`, the management APIs expect every system permission to start with that prefix, for example `mgmt:system:user:view`. The permissions declared on the System resource server don't include the prefix. To grant the prefixed permissions, declare them on a resource server of your own, for example with a root resource `mgmt` that holds `system` and its resources, and add them to your roles.
+
+### Add System Permissions After an Upgrade
+
+A deployment set up on an earlier release has a System resource server that declares only `system`. To add the other resources and actions, import the System resource server document from `bootstrap/01-default-resources.yaml` with the [import API](../../declarative-configurations/import-resources) and `options.upsert` set to `true`. Before you import it, set `identifier`, `name`, and `description` in the document to your System resource server's current values, and set `ouHandle` to the handle of the organization unit that owns it. The upsert overwrites these fields, so any value left at the bundled default replaces yours, and a different `ouHandle` moves the server to another organization unit.
+
+The import adds the resources and actions that are missing and keeps the ones that already exist. Roles and assignments are not changed.
+
+The import keeps your System resource server's existing delimiter. Check that it is `:` before you import, for example with `GET /resource-servers/{id}`. With any other delimiter, the imported permissions never match the ones the management APIs check.
+
 ## Create a Role
 
 1. Navigate to **Roles** in the <ProductName /> Console and click **Create role**.

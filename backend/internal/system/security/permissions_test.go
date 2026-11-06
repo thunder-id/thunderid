@@ -5,10 +5,13 @@ package security
 
 import (
 	"net/http"
+	"os"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v3"
 )
 
 // ---------------------------------------------------------------------------
@@ -694,4 +697,127 @@ func TestCoversHonoursConfiguredPermissionPrefix(t *testing.T) {
 		PermissionSet{rsSystem: {"system"}},
 		PermissionSet{rsSystem: {p.User}},
 	))
+}
+
+// ---------------------------------------------------------------------------
+// Permission catalog
+// ---------------------------------------------------------------------------
+
+const (
+	bootstrapBundlePath    = "../../../cmd/server/bootstrap/01-default-resources.yaml"
+	systemResourceServerID = "01900000-0000-7000-8000-000000000020"
+)
+
+// bootstrapSystemPermissions returns the delimiter of the System resource server in the bootstrap
+// bundle and every permission declared under its root resource.
+func bootstrapSystemPermissions(t *testing.T) (string, []string) {
+	t.Helper()
+	content, err := os.ReadFile(bootstrapBundlePath)
+	require.NoError(t, err)
+
+	type action struct {
+		Handle string `yaml:"handle"`
+	}
+	type resource struct {
+		Name    string   `yaml:"name"`
+		Handle  string   `yaml:"handle"`
+		Parent  string   `yaml:"parent"`
+		Actions []action `yaml:"actions"`
+	}
+	var server struct {
+		ID        string     `yaml:"id"`
+		Delimiter string     `yaml:"delimiter"`
+		Resources []resource `yaml:"resources"`
+	}
+	for _, doc := range strings.Split(string(content), "\n---\n") {
+		if !strings.Contains(doc, "id: "+systemResourceServerID) {
+			continue
+		}
+		require.NoError(t, yaml.Unmarshal([]byte(doc), &server))
+	}
+	require.Equal(t, systemResourceServerID, server.ID, "System resource server not found in the bootstrap bundle")
+	require.NotEmpty(t, server.Resources)
+	require.Equal(t, resource{Name: "System", Handle: "system"}, server.Resources[0])
+
+	var permissions []string
+	for _, res := range server.Resources[1:] {
+		require.Equal(t, "system", res.Parent, "resource %q must sit directly under the root", res.Handle)
+		require.NotEmpty(t, res.Name, "resource %q needs a display name", res.Handle)
+		path := res.Parent + server.Delimiter + res.Handle
+		permissions = append(permissions, path)
+		for _, a := range res.Actions {
+			permissions = append(permissions, path+server.Delimiter+a.Handle)
+		}
+	}
+	return server.Delimiter, permissions
+}
+
+// TestSystemCatalogMatchesBootstrapBundle verifies that the Go catalog and the System resource
+// server declared in the bootstrap bundle hold the same permissions.
+func TestSystemCatalogMatchesBootstrapBundle(t *testing.T) {
+	InitSystemPermissions("")
+
+	delimiter, declared := bootstrapSystemPermissions(t)
+	assert.Equal(t, ":", delimiter)
+	assert.ElementsMatch(t, GetSystemPermissions().Catalog, declared)
+}
+
+// TestSystemCatalogKeepsExistingPermissions verifies that the catalog holds every permission
+// enforced before it existed, unchanged, and that it honors the configured prefix.
+func TestSystemCatalogKeepsExistingPermissions(t *testing.T) {
+	for _, prefix := range []string{"", "mgmt"} {
+		InitSystemPermissions(prefix)
+		p := GetSystemPermissions()
+		for _, existing := range []string{
+			p.OU, p.OUView, p.User, p.UserView, p.Group, p.GroupView, p.Agent, p.AgentView,
+			p.UserType, p.UserTypeView, p.AgentType, p.AgentTypeView,
+			p.NotificationTemplate, p.NotificationTemplateView,
+		} {
+			assert.Contains(t, p.Catalog, existing)
+		}
+		for _, perm := range p.Catalog {
+			assert.True(t, strings.HasPrefix(perm, p.Root+":"), "%q is not under %q", perm, p.Root)
+		}
+	}
+	InitSystemPermissions("")
+	assert.Contains(t, GetSystemPermissions().Catalog, "system:user:view")
+}
+
+// TestRouteTableUsesCatalogPermissions verifies that every route rule requires a catalog
+// permission, or is one of the listed root or self-service rules. A route mapped to root or opened
+// to any authenticated caller has to be added to these lists on purpose.
+func TestRouteTableUsesCatalogPermissions(t *testing.T) {
+	InitSystemPermissions("")
+	p := GetSystemPermissions()
+
+	selfService := map[string]bool{
+		"GET /users/me": true, "PUT /users/me": true, "GET /users/me/**": true, "PUT /users/me/**": true,
+		"POST /users/me/update-credentials": true,
+		"GET /register/passkey/**":          true, "POST /register/passkey/**": true,
+		"GET /scim/v2/Me": true, "PUT /scim/v2/Me": true,
+		"GET /scim/v2/Schemas": true, "GET /scim/v2/Schemas/**": true,
+		"GET /scim/v2/ResourceTypes": true, "GET /scim/v2/ResourceTypes/**": true,
+	}
+	root := map[string]bool{
+		// Projects keep root until the project permissions are enabled with their confinement.
+		"GET /projects": true, "POST /projects": true, "GET /projects/**": true,
+		"PUT /projects/**": true, "DELETE /projects/**": true,
+		"GET /variables": true, "POST /variables": true, "GET /variables/**": true,
+		"PUT /variables/**": true, "DELETE /variables/**": true,
+		"GET /secrets": true, "POST /secrets": true, "GET /secrets/**": true,
+		"PUT /secrets/**": true, "DELETE /secrets/**": true,
+		"POST /import": true, "POST /import/delete": true,
+	}
+
+	for _, entry := range apiPermissionEntries {
+		switch entry.permission {
+		case "":
+			assert.True(t, selfService[entry.pattern], "%q is open to any authenticated caller", entry.pattern)
+		case p.Root:
+			assert.True(t, root[entry.pattern], "%q requires root but is not listed as a root rule", entry.pattern)
+		default:
+			assert.Contains(t, p.Catalog, entry.permission, "%q requires a permission outside the catalog",
+				entry.pattern)
+		}
+	}
 }

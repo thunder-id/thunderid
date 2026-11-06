@@ -4184,6 +4184,111 @@ func TestImportResourceServer_SameHandleUnderDifferentParents(t *testing.T) {
 	}, parents)
 }
 
+// TestImportResourceServer_UpsertAddsResourcesUnderExistingRoot verifies that re-importing a resource
+// server whose root resource already exists, as an upgraded System resource server does, creates the
+// new resources under that root and their actions.
+func TestImportResourceServer_UpsertAddsResourcesUnderExistingRoot(t *testing.T) {
+	rsSvc := &fakeResourceServerService{
+		resourceErrs: map[string]*tidcommon.ServiceError{"system": &resource.ErrorHandleConflict},
+		existing:     []providers.Resource{{ID: "id-existing-system", Handle: "system"}},
+	}
+	svc := newImportService(
+		nil, nil, nil, nil, nil, nil, nil, nil, nil, rsSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+
+	content := strings.Join([]string{
+		"resource_type: resource_server",
+		"id: rs-system",
+		"name: System",
+		"identifier: system-rs",
+		"ouId: ou-explicit",
+		"delimiter: \":\"",
+		"resources:",
+		"  - { name: System, handle: system }",
+		"  - name: Applications",
+		"    handle: app",
+		"    parent: system",
+		"    actions:",
+		"      - { name: View, handle: view }",
+		"      - { name: Update, handle: update }",
+		"",
+	}, "\n")
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{
+		Content: content,
+		Options: &ImportOptions{Upsert: boolPtr(true)},
+	})
+
+	require.Nil(t, err)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status, resp.Results[0].Message)
+	assert.Equal(t, operationUpdate, resp.Results[0].Operation)
+	require.Len(t, rsSvc.resources, 1)
+	assert.Equal(t, "system:app", rsSvc.resources[0].Permission)
+	require.NotNil(t, rsSvc.resources[0].Parent)
+	assert.Equal(t, "id-existing-system", *rsSvc.resources[0].Parent)
+	assert.Equal(t, []importedAction{
+		{resourceID: "id-system:app", action: providers.Action{
+			Name: "View", Handle: "view", Permission: "system:app:view",
+		}},
+		{resourceID: "id-system:app", action: providers.Action{
+			Name: "Update", Handle: "update", Permission: "system:app:update",
+		}},
+	}, rsSvc.actions)
+}
+
+// TestImportResourceServer_UpsertAddsActionsToExistingResource verifies that re-importing a resource
+// server whose resource already exists under the root creates no resource and adds only the actions
+// that resource is missing.
+func TestImportResourceServer_UpsertAddsActionsToExistingResource(t *testing.T) {
+	systemID := "id-existing-system"
+	rsSvc := &fakeResourceServerService{
+		resourceErrs: map[string]*tidcommon.ServiceError{
+			"system": &resource.ErrorHandleConflict,
+			"app":    &resource.ErrorHandleConflict,
+		},
+		existing: []providers.Resource{
+			{ID: systemID, Handle: "system"},
+			{ID: "id-existing-app", Handle: "app", Parent: &systemID},
+		},
+		actionErrs: map[string]*tidcommon.ServiceError{"view": &resource.ErrorHandleConflict},
+	}
+	svc := newImportService(
+		nil, nil, nil, nil, nil, nil, nil, nil, nil, rsSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+
+	content := strings.Join([]string{
+		"resource_type: resource_server",
+		"id: rs-system",
+		"name: System",
+		"identifier: system-rs",
+		"ouId: ou-explicit",
+		"delimiter: \":\"",
+		"resources:",
+		"  - { name: System, handle: system }",
+		"  - name: Applications",
+		"    handle: app",
+		"    parent: system",
+		"    actions:",
+		"      - { name: View, handle: view }",
+		"      - { name: Update, handle: update }",
+		"",
+	}, "\n")
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{
+		Content: content,
+		Options: &ImportOptions{Upsert: boolPtr(true)},
+	})
+
+	require.Nil(t, err)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status, resp.Results[0].Message)
+	assert.Empty(t, rsSvc.resources)
+	assert.Equal(t, []importedAction{
+		{resourceID: "id-existing-app", action: providers.Action{
+			Name: "Update", Handle: "update", Permission: "system:app:update",
+		}},
+	}, rsSvc.actions)
+}
+
 // TestImportResourceServer_ServerActions verifies that the actions declared on a resource server
 // itself are created at the server level, with or without resources, and that an action whose handle
 // already exists is skipped.
