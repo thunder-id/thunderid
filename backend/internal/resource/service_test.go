@@ -166,6 +166,7 @@ func (suite *ResourceServiceTestSuite) SetupTest() {
 	suite.mockStore = newResourceStoreInterfaceMock(suite.T())
 	suite.mockOU = new(oumock.OrganizationUnitServiceInterfaceMock)
 	suite.mockAuthz = sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+	suite.mockAuthz.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).Return(true, nil).Maybe()
 	suite.mockTransactioner = &fakeTransactioner{}
 	suite.service, err = newResourceService(
 		suite.mockOU, suite.mockAuthz, suite.mockStore, suite.mockTransactioner, nil, nil, nil,
@@ -407,7 +408,8 @@ func (suite *ResourceServiceTestSuite) TestCreateResourceServer_MCPIdentifierRef
 		suite.Run(tc.name, func() {
 			mockStore := newResourceStoreInterfaceMock(suite.T())
 			mockOU := new(oumock.OrganizationUnitServiceInterfaceMock)
-			service, err := newResourceService(mockOU, nil, mockStore, &fakeTransactioner{}, nil, nil, nil, tc.options...)
+			service, err := newResourceService(
+				mockOU, suite.mockAuthz, mockStore, &fakeTransactioner{}, nil, nil, nil, tc.options...)
 			suite.Require().NoError(err)
 			if tc.accepted {
 				mockOU.On("GetOrganizationUnit", mock.Anything, "ou-123").
@@ -442,7 +444,7 @@ func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_ControlPlaneMCPI
 	reference := "var:RESOURCE_SERVER_ORDERS_IDENTIFIER"
 	mockStore := newResourceStoreInterfaceMock(suite.T())
 	mockOU := new(oumock.OrganizationUnitServiceInterfaceMock)
-	service, err := newResourceService(mockOU, nil, mockStore, &fakeTransactioner{}, nil, nil, nil,
+	service, err := newResourceService(mockOU, suite.mockAuthz, mockStore, &fakeTransactioner{}, nil, nil, nil,
 		KeepingValueReferences())
 	suite.Require().NoError(err)
 	mockStore.On("GetResourceServer", mock.Anything, "rs-123").Return(providers.ResourceServer{
@@ -5617,15 +5619,8 @@ func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_CheckNameError()
 
 // ValidateDeleteAction Tests
 
-// allowResourceServerUpdate lets the caller update any resource server.
-func (suite *ResourceServiceTestSuite) allowResourceServerUpdate() {
-	suite.mockAuthz.On("IsActionAllowed", mock.Anything, security.ActionUpdateResourceServer, mock.Anything).
-		Return(true, nil)
-}
-
 // validateDeleteActionFixture stubs a mutable resource server with the given audience and one action.
 func (suite *ResourceServiceTestSuite) validateDeleteActionFixture(identifier string, resID *string) {
-	suite.allowResourceServerUpdate()
 	suite.mockStore.On("IsResourceServerDeclarative", "rs-123").Return(false)
 	suite.mockStore.On("GetResourceServer", mock.Anything, "rs-123").
 		Return(providers.ResourceServer{ID: "rs-123", Identifier: identifier}, nil)
@@ -5667,6 +5662,7 @@ func (suite *ResourceServiceTestSuite) TestValidateDeleteAction_ResourceServerWi
 }
 
 func (suite *ResourceServiceTestSuite) TestValidateDeleteAction_RefusesWithoutResourceServerUpdate() {
+	suite.mockAuthz.ExpectedCalls = nil
 	suite.mockAuthz.On("IsActionAllowed", mock.Anything, security.ActionUpdateResourceServer,
 		&sysauthz.ActionContext{ResourceType: security.ResourceTypeResourceServer, ResourceID: "rs-123"}).
 		Return(false, nil)
@@ -5681,6 +5677,7 @@ func (suite *ResourceServiceTestSuite) TestValidateDeleteAction_RefusesWithoutRe
 }
 
 func (suite *ResourceServiceTestSuite) TestValidateDeleteAction_AuthorizationError() {
+	suite.mockAuthz.ExpectedCalls = nil
 	suite.mockAuthz.On("IsActionAllowed", mock.Anything, security.ActionUpdateResourceServer, mock.Anything).
 		Return(false, &tidcommon.InternalServerError)
 
@@ -5691,8 +5688,77 @@ func (suite *ResourceServiceTestSuite) TestValidateDeleteAction_AuthorizationErr
 	suite.mockStore.AssertNotCalled(suite.T(), "GetResourceServer", mock.Anything, mock.Anything)
 }
 
+func (suite *ResourceServiceTestSuite) TestResourceServerChanges_RequireTheResourceServerAction() {
+	ctx := context.Background()
+	resID := testResourceID
+	cases := []struct {
+		name   string
+		action security.Action
+		rsID   string
+		call   func() *tidcommon.ServiceError
+	}{
+		{"create server", security.ActionCreateResourceServer, "", func() *tidcommon.ServiceError {
+			_, svcErr := suite.service.CreateResourceServer(ctx, providers.ResourceServer{Name: "rs"})
+			return svcErr
+		}},
+		{"update server", security.ActionUpdateResourceServer, "rs-123", func() *tidcommon.ServiceError {
+			_, svcErr := suite.service.UpdateResourceServer(ctx, "rs-123", providers.ResourceServer{Name: "rs"})
+			return svcErr
+		}},
+		{"delete server", security.ActionDeleteResourceServer, "rs-123", func() *tidcommon.ServiceError {
+			return suite.service.DeleteResourceServer(ctx, "rs-123")
+		}},
+		{"create resource", security.ActionUpdateResourceServer, "rs-123", func() *tidcommon.ServiceError {
+			_, svcErr := suite.service.CreateResource(ctx, "rs-123", providers.Resource{Name: "r"})
+			return svcErr
+		}},
+		{"update resource", security.ActionUpdateResourceServer, "rs-123", func() *tidcommon.ServiceError {
+			_, svcErr := suite.service.UpdateResource(ctx, "rs-123", resID, providers.Resource{Name: "r"})
+			return svcErr
+		}},
+		{"delete resource", security.ActionUpdateResourceServer, "rs-123", func() *tidcommon.ServiceError {
+			return suite.service.DeleteResource(ctx, "rs-123", resID)
+		}},
+		{"create action", security.ActionUpdateResourceServer, "rs-123", func() *tidcommon.ServiceError {
+			_, svcErr := suite.service.CreateAction(ctx, "rs-123", &resID, providers.Action{Name: "a"})
+			return svcErr
+		}},
+		{"update action", security.ActionUpdateResourceServer, "rs-123", func() *tidcommon.ServiceError {
+			_, svcErr := suite.service.UpdateAction(ctx, "rs-123", &resID, "action-123", providers.Action{Name: "a"})
+			return svcErr
+		}},
+		{"delete action", security.ActionUpdateResourceServer, "rs-123", func() *tidcommon.ServiceError {
+			return suite.service.DeleteAction(ctx, "rs-123", &resID, "action-123")
+		}},
+	}
+	outcomes := []struct {
+		name     string
+		authzErr *tidcommon.ServiceError
+		wantCode string
+	}{
+		{"denied", nil, tidcommon.ErrorUnauthorized.Code},
+		{"check failure", &tidcommon.InternalServerError, tidcommon.InternalServerError.Code},
+	}
+	for _, tc := range cases {
+		for _, outcome := range outcomes {
+			suite.Run(tc.name+" "+outcome.name, func() {
+				suite.SetupTest()
+				suite.mockAuthz.ExpectedCalls = nil
+				suite.mockAuthz.On("IsActionAllowed", mock.Anything, tc.action,
+					&sysauthz.ActionContext{ResourceType: security.ResourceTypeResourceServer, ResourceID: tc.rsID}).
+					Return(false, outcome.authzErr)
+
+				svcErr := tc.call()
+
+				suite.Require().NotNil(svcErr)
+				suite.Equal(outcome.wantCode, svcErr.Code)
+				suite.Empty(suite.mockStore.Calls)
+			})
+		}
+	}
+}
+
 func (suite *ResourceServiceTestSuite) TestValidateDeleteAction_RefusesDeclarativeResourceServer() {
-	suite.allowResourceServerUpdate()
 	suite.mockStore.On("IsResourceServerDeclarative", "rs-123").Return(true)
 
 	_, err := suite.service.ValidateDeleteAction(context.Background(), "rs-123", nil, "action-123")
@@ -5702,7 +5768,6 @@ func (suite *ResourceServiceTestSuite) TestValidateDeleteAction_RefusesDeclarati
 }
 
 func (suite *ResourceServiceTestSuite) TestValidateDeleteAction_MissingID() {
-	suite.allowResourceServerUpdate()
 	_, err := suite.service.ValidateDeleteAction(context.Background(), "", nil, "action-123")
 	suite.Require().NotNil(err)
 	suite.Equal(ErrorMissingID.Code, err.Code)
@@ -5717,7 +5782,6 @@ func (suite *ResourceServiceTestSuite) TestValidateDeleteAction_MissingID() {
 }
 
 func (suite *ResourceServiceTestSuite) TestValidateDeleteAction_CarriesTheLookupRefusal() {
-	suite.allowResourceServerUpdate()
 	suite.mockStore.On("IsResourceServerDeclarative", "rs-123").Return(false)
 	suite.mockStore.On("GetResourceServer", mock.Anything, "rs-123").
 		Return(providers.ResourceServer{}, errResourceServerNotFound)
@@ -5729,7 +5793,6 @@ func (suite *ResourceServiceTestSuite) TestValidateDeleteAction_CarriesTheLookup
 }
 
 func (suite *ResourceServiceTestSuite) TestValidateDeleteAction_ActionNotFound() {
-	suite.allowResourceServerUpdate()
 	suite.mockStore.On("IsResourceServerDeclarative", "rs-123").Return(false)
 	suite.mockStore.On("GetResourceServer", mock.Anything, "rs-123").
 		Return(providers.ResourceServer{ID: "rs-123"}, nil)

@@ -172,6 +172,14 @@ func (s *RoleServiceAuditTestSuite) expectPermissionGrant(svcErr *tidcommon.Serv
 	s.authz.On("CanGrantPermissions", mock.Anything, mock.Anything).Return(svcErr).Once()
 }
 
+// expectRoleAccess expects the check that the caller may perform action on the role with roleID to be
+// asked once, and allows it.
+func (s *RoleServiceAuditTestSuite) expectRoleAccess(action security.Action, roleID string) {
+	s.authz.On("IsActionAllowed", mock.Anything, action,
+		&sysauthz.ActionContext{ResourceType: security.ResourceTypeRole, ResourceID: roleID}).
+		Return(true, nil).Once()
+}
+
 // expectMembershipGrants expects the check that the caller may grant the role with roleID to be asked
 // times times, answered with svcErr.
 func (s *RoleServiceAuditTestSuite) expectMembershipGrants(roleID string, svcErr *tidcommon.ServiceError,
@@ -215,6 +223,7 @@ func (s *RoleServiceAuditTestSuite) arrangeAuditedRoleCreate() {
 	s.mockSharingService.EXPECT().ListVisibleResourceIDs(mock.Anything, RoleSharingType, "ou1").
 		Return(nil, nil).Once()
 	s.expectPermissionGrant(nil)
+	s.expectRoleAccess(security.ActionCreateRole, "")
 }
 
 // A role created with assignees is recorded as created, and each assignee as added to it once, after
@@ -255,7 +264,7 @@ func (s *RoleServiceAuditTestSuite) TestCreateRole_PublishesOneEventWhenItFails(
 				request.Name = ""
 				return request
 			},
-			arrange: func() {},
+			arrange: func() { s.expectRoleAccess(security.ActionCreateRole, "") },
 			outcome: audit.OutcomeFailed("rol_1001"),
 		},
 		{
@@ -288,6 +297,7 @@ func (s *RoleServiceAuditTestSuite) TestCreateRole_PublishesOneEventWhenItFails(
 // denied. A refused create made no role, so the event names none.
 func (s *RoleServiceAuditTestSuite) TestCreateRole_PublishesARefusedGrantAsDenied() {
 	service := s.service
+	s.expectRoleAccess(security.ActionCreateRole, "")
 	s.expectPermissionGrant(&sysauthz.ErrorGrantNotPermitted)
 	s.mockResourceService.On("ValidatePermissions", mock.Anything, "rs1", []string{testAuditPermission}).
 		Return([]string{}, nil).Once()
@@ -320,6 +330,7 @@ func (s *RoleServiceAuditTestSuite) TestUpdateRoleWithPermissions_PublishesOneEv
 		{
 			name: "the role is updated",
 			arrange: func() {
+				s.expectRoleAccess(security.ActionUpdateRole, "role1")
 				s.mockResourceService.On("ValidatePermissions", mock.Anything, "rs1",
 					[]string{testAuditPermission}).Return([]string{}, nil).Once()
 				s.mockStore.On("GetRole", mock.Anything, "role1").
@@ -339,6 +350,7 @@ func (s *RoleServiceAuditTestSuite) TestUpdateRoleWithPermissions_PublishesOneEv
 		{
 			name: "the role does not exist",
 			arrange: func() {
+				s.expectRoleAccess(security.ActionUpdateRole, "role1")
 				s.mockStore.On("GetRole", mock.Anything, "role1").
 					Return(RoleWithPermissions{}, ErrRoleNotFound).Once()
 			},
@@ -371,6 +383,7 @@ func (s *RoleServiceAuditTestSuite) TestDeleteRole_PublishesOneEventPerAttempt()
 		{
 			name: "the role is deleted with its assignments",
 			arrange: func() {
+				s.expectRoleAccess(security.ActionDeleteRole, "role1")
 				s.mockStore.On("IsRoleExist", mock.Anything, "role1").Return(true, nil).Once()
 				s.mockStore.On("ListMandatedAssignmentsForRole", mock.Anything, "role1", "").
 					Return([]RoleAssignment{}, nil).Once()
@@ -385,6 +398,7 @@ func (s *RoleServiceAuditTestSuite) TestDeleteRole_PublishesOneEventPerAttempt()
 		{
 			name: "the role cannot be read",
 			arrange: func() {
+				s.expectRoleAccess(security.ActionDeleteRole, "role1")
 				s.mockStore.On("IsRoleExist", mock.Anything, "role1").Return(false, errors.New("store failure")).Once()
 			},
 			outcome: audit.OutcomeFailed("sse_5000"),
@@ -407,6 +421,7 @@ func (s *RoleServiceAuditTestSuite) TestDeleteRole_PublishesOneEventPerAttempt()
 // A delete of a role that does not exist succeeds without an event, so no caller can record the deletion
 // of an ID it made up.
 func (s *RoleServiceAuditTestSuite) TestDeleteRole_PublishesNothingWhenTheRoleIsMissing() {
+	s.expectRoleAccess(security.ActionDeleteRole, "role1")
 	s.mockStore.On("IsRoleExist", mock.Anything, "role1").Return(false, nil).Once()
 
 	svcErr := s.service.DeleteRole(adminContext(), "role1")
