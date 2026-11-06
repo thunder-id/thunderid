@@ -41,6 +41,8 @@ The comparison respects the permission hierarchy. If you hold `system:user`, you
 
 Holders of the root `system` permission are exempt, since that permission already authorizes every system operation.
 
+The system permissions a role can carry, each with a `:view` child for reading, are `system:ou`, `system:user`, `system:group`, `system:agent`, `system:usertype`, `system:agenttype`, `system:notificationtemplate`, `system:gateway` (the gateway registry: registering, changing and removing gateways) and `system:deploy` (configuration versions and their delivery: capturing, applying, reverting, and writing a gateway's values). Every other system API needs the root `system` permission.
+
 If an operation would grant more than you hold, the API returns `403 Forbidden` with the error code `SAZ-4030`, and no change is made.
 
 :::note

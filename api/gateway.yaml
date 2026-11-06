@@ -24,13 +24,20 @@ info:
 
     ## Authorization
 
-    Every route here requires the **root system permission**, the one named by
-    `server.security.system_permission_prefix` plus `system` (so `system` by default, or for example
-    `tenant_instance:system` where a prefix is configured). A narrower permission is not enough for
-    any of them, including the reads.
+    Permissions are named under the system permission, `system` by default or for example
+    `tenant_instance:system` where `server.security.system_permission_prefix` is configured; the root
+    permission covers them all.
 
-    A registration holds the credential to a gateway, and even the list of names and addresses is
-    worth protecting: it describes the fleet. Reading it is therefore as privileged as changing it.
+    - The gateway registry (`GET`, `POST`, `PUT`, `DELETE /gateways` and `/gateways/{id}`) needs
+      `system:gateway`; reading it needs `system:gateway:view`. A registration holds the credential
+      to a gateway, and even the list of names and addresses describes the fleet, so reading it is a
+      permission of its own.
+    - Delivering configuration to a gateway (`apply`, `revert`, and writing its `variables` and
+      `secrets`) needs `system:deploy`; reading what a gateway holds (`diff`, `applied-version`,
+      `applied-configuration`, listing its values) needs `system:deploy:view`.
+
+    So an administrator can author and deploy without registering gateways, or read what a gateway
+    runs without changing it.
   license:
     name: Apache 2.0
     url: https://www.apache.org/licenses/LICENSE-2.0.html

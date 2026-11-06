@@ -56,8 +56,14 @@ type jwtService struct {
 	kid            string
 	logger         *log.Logger
 	jwksCache      sync.Map
-	httpClient     httpservice.HTTPClientInterface
+	// jwksRefreshed is when each JWKS URL was last fetched again for a key id the cache lacked, so
+	// a stream of tokens with unknown key ids cannot make this server fetch on every one.
+	jwksRefreshed sync.Map
+	httpClient    httpservice.HTTPClientInterface
 }
+
+// jwksRefreshInterval is the least time between two fetches of one JWKS for an unknown key id.
+const jwksRefreshInterval = 30 * time.Second
 
 // newJWTService creates a new JWT service instance.
 func newJWTService(
@@ -375,18 +381,20 @@ func (js *jwtService) VerifyJWTSignatureWithJWKS(
 	}
 
 	// Get JWKS keys (from cache or fetch)
-	keys, svcErr := js.getJWKSKeys(ctx, jwksURL)
+	keys, svcErr := js.getJWKSKeys(ctx, jwksURL, false)
 	if svcErr != nil {
 		return svcErr
 	}
 
-	// Find the key with matching kid
-	var jwk map[string]interface{}
-	for _, key := range keys {
-		if keyID, ok := key["kid"].(string); ok && keyID == kid {
-			jwk = key
-			break
+	jwk := keyWithID(keys, kid)
+	if jwk == nil && js.mayRefreshJWKS(jwksURL) {
+		// A key id the cached set lacks is what a key rotation at the issuer looks like: the set is
+		// fetched again rather than refusing every token signed with the new key until the cache
+		// expires. Once per interval per URL, so unknown key ids cannot drive fetches.
+		if keys, svcErr = js.getJWKSKeys(ctx, jwksURL, true); svcErr != nil {
+			return svcErr
 		}
+		jwk = keyWithID(keys, kid)
 	}
 	if jwk == nil {
 		return &ErrorNoMatchingJWKFound
@@ -400,10 +408,32 @@ func (js *jwtService) VerifyJWTSignatureWithJWKS(
 	return nil
 }
 
-// getJWKSKeys returns JWKS keys for the given URL, using a TTL-based cache.
+// keyWithID finds the key of a set with the given key id, or nil.
+func keyWithID(keys []map[string]interface{}, kid string) map[string]interface{} {
+	for _, key := range keys {
+		if keyID, ok := key["kid"].(string); ok && keyID == kid {
+			return key
+		}
+	}
+	return nil
+}
+
+// mayRefreshJWKS reports whether a JWKS may be fetched again for a key id the cache lacks, which is
+// once per jwksRefreshInterval per URL, and records that it is being done.
+func (js *jwtService) mayRefreshJWKS(jwksURL string) bool {
+	now := time.Now()
+	if last, ok := js.jwksRefreshed.Load(jwksURL); ok && now.Sub(last.(time.Time)) < jwksRefreshInterval {
+		return false
+	}
+	js.jwksRefreshed.Store(jwksURL, now)
+	return true
+}
+
+// getJWKSKeys returns JWKS keys for the given URL, using a TTL-based cache unless refresh asks for
+// the set to be fetched again.
 func (js *jwtService) getJWKSKeys(
-	ctx context.Context, jwksURL string) ([]map[string]interface{}, *tidcommon.ServiceError) {
-	if cached, ok := js.jwksCache.Load(jwksURL); ok {
+	ctx context.Context, jwksURL string, refresh bool) ([]map[string]interface{}, *tidcommon.ServiceError) {
+	if cached, ok := js.jwksCache.Load(jwksURL); ok && !refresh {
 		entry := cached.(*jwksCacheEntry)
 		if time.Now().Before(entry.expiresAt) {
 			return entry.keys, nil

@@ -2510,3 +2510,37 @@ func (suite *JWTServiceTestSuite) TestVerifyJWTWithZeroLeeway() {
 	assert.NotNil(suite.T(), svcErr)
 	assert.Equal(suite.T(), ErrorTokenExpired, *svcErr)
 }
+
+// A token signed with a key the cached set lacks, as after a key rotation at the issuer, has the set
+// fetched again before it is refused; once per interval per URL, so a stream of unknown key ids
+// does not fetch on every one.
+func (suite *JWTServiceTestSuite) TestVerifyJWTSignatureWithJWKSFetchesAgainForAnUnknownKeyID() {
+	suite.jwtService.cfg.JWKSCacheTTL = 300 * time.Second
+	jwksData := suite.createMockJWKSData()
+	var fetches int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		// The first set predates the rotation and holds no key at all.
+		if atomic.AddInt32(&fetches, 1) == 1 {
+			_, _ = fmt.Fprintln(w, `{"keys":[]}`)
+			return
+		}
+		_, _ = fmt.Fprintln(w, jwksData)
+	}))
+	defer server.Close()
+	token, _, genErr := suite.jwtService.GenerateJWT(context.Background(),
+		"test-subject", testIssuer, 3600, map[string]interface{}{"aud": testAudience}, TokenTypeJWT, "")
+	require.Nil(suite.T(), genErr)
+
+	assert.Nil(suite.T(), suite.jwtService.VerifyJWTSignatureWithJWKS(context.Background(), token, server.URL))
+	assert.Equal(suite.T(), int32(2), atomic.LoadInt32(&fetches), "the set was not fetched again for the new key")
+
+	unknown := suite.createJWTWithCustomHeader(map[string]interface{}{
+		"alg": "RS256", "typ": "JWT", "kid": "rotated-away",
+	})
+	err := suite.jwtService.VerifyJWTSignatureWithJWKS(context.Background(), unknown, server.URL)
+	require.NotNil(suite.T(), err)
+	assert.Equal(suite.T(), ErrorNoMatchingJWKFound.Code, err.Code)
+	assert.Equal(suite.T(), int32(2), atomic.LoadInt32(&fetches), "an unknown key id fetched again within the interval")
+}
