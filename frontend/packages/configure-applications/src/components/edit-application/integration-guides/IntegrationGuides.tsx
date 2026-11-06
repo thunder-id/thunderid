@@ -381,7 +381,7 @@ export default function IntegrationGuides({
   const endpoints = [...(showOAuthEndpoints ? oauthEndpoints : []), ...(showFlowEndpoints ? flowEndpoints : [])];
 
   const colorMode: 'light' | 'dark' = (mode === 'system' ? systemMode : mode) === 'dark' ? 'dark' : 'light';
-  const themeSwatchColor = themeDetails?.theme.vars?.palette.primary.main;
+  const themeSwatchColor = themeDetails?.theme.colorSchemes?.[colorMode]?.palette?.primary?.main;
   const hasVisibleQuickstart = Boolean(primaryQuickstartDocsUrl) || visibleQuickstarts.length > 0;
   const endpointsCard = (showOAuthEndpoints || showFlowEndpoints) && (
     <OverviewCard

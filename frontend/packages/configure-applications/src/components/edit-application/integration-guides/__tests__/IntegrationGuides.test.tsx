@@ -47,7 +47,7 @@ vi.mock('@thunderid/contexts', async (importOriginal) => {
 
 vi.mock('@thunderid/design', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@thunderid/design')>()),
-  useGetTheme: () => ({data: undefined, isLoading: false}),
+  useGetTheme: (): unknown => mockUseGetTheme(),
   DefaultTheme: {colorSchemes: {light: {palette: {}}, dark: {palette: {}}}},
 }));
 
@@ -62,6 +62,7 @@ vi.mock('@thunderid/configure-design', async (importOriginal) => ({
 }));
 
 const mockUseGetOrganizationUnit = vi.fn(() => ({data: undefined}) as unknown);
+const mockUseGetTheme = vi.fn(() => ({data: undefined, isLoading: false}) as unknown);
 
 vi.mock('@thunderid/configure-organization-units', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@thunderid/configure-organization-units')>()),
@@ -104,6 +105,7 @@ describe('IntegrationGuides', () => {
   beforeEach(() => {
     vi.useFakeTimers({shouldAdvanceTime: true});
     mockUseGetOrganizationUnit.mockReset().mockReturnValue({data: undefined});
+    mockUseGetTheme.mockReset().mockReturnValue({data: undefined, isLoading: false});
     delete mockConfig.direct_api;
     mockGetRuntimeUrl.mockReset().mockReturnValue('https://localhost:8090');
     mockWriteText.mockReset().mockResolvedValue(undefined);
@@ -273,6 +275,23 @@ describe('IntegrationGuides', () => {
     expect(screen.getByText('https://gateway.example.com/oauth2/authorize')).toBeInTheDocument();
     expect(screen.getByText('https://gateway.example.com/oauth2/token')).toBeInTheDocument();
     expect(screen.queryByText('https://localhost:8090/oauth2/authorize')).not.toBeInTheDocument();
+  });
+
+  it('shows the assigned theme primary color in the sign-in preview swatch', () => {
+    // A stored theme is plain JSON with no generated `vars`; the color lives under colorSchemes.
+    mockUseGetTheme.mockReturnValue({
+      data: {
+        displayName: 'Acme Inc branding',
+        theme: {
+          colorSchemes: {light: {palette: {primary: {main: '#9333ea'}}}, dark: {palette: {primary: {main: '#9333ea'}}}},
+        },
+      },
+      isLoading: false,
+    });
+    renderWithProviders(<IntegrationGuides application={{...reactApplication, themeId: 'theme-1'}} />);
+
+    const swatch = screen.getByText('Acme Inc branding').previousElementSibling as HTMLElement;
+    expect(getComputedStyle(swatch).backgroundColor).toBe('rgb(147, 51, 234)');
   });
 
   it('navigates to the Flows and Customization tabs via the sign-in preview links', () => {
