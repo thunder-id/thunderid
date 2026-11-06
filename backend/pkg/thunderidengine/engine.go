@@ -42,6 +42,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/kmprovider"
 	"github.com/thunder-id/thunderid/internal/system/kmprovider/defaultkm/pki"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/internal/usermgtprovider"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
@@ -183,6 +184,10 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 		engineCtx.authzDetailProvider = authzdetailexec.Initialize(engineCtx.authorizationDetailTypes,
 			engineCtx.oauthConfig.AuthorizationDetails.ProcessorTimeoutOrDefault())
 	}
+	permissionAuthorizer, err := sysauthz.InitializeOUBoundedAuthorization()
+	if err != nil {
+		logger.Fatal(ctx, "Failed to initialize the permission authorizer", log.Error(err))
+	}
 	execDeps := executor.ExecutorDependencies{
 		FlowFactory:           engineCtx.flowFactory,
 		AttributeCacheSvc:     engineCtx.attributeCacheService,
@@ -203,7 +208,8 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 		ArtifactLifetime: func(client *providers.OAuthClient) time.Duration {
 			return tokenservice.ArtifactLifetime(oauthConfig, client)
 		},
-		AuthzDetailProvider: engineCtx.authzDetailProvider,
+		AuthzDetailProvider:  engineCtx.authzDetailProvider,
+		PermissionAuthorizer: permissionAuthorizer,
 	}
 	interceptorDeps := interceptor.InterceptorDependencies{
 		FlowFactory:    engineCtx.flowFactory,

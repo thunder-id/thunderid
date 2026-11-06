@@ -22,6 +22,12 @@ type SystemAuthorizationServiceInterface interface {
 	IsActionAllowed(ctx context.Context, action security.Action,
 		actionCtx *ActionContext) (bool, *tidcommon.ServiceError)
 
+	// IsPermissionGranted reports whether the caller's token grants the required system permission, using
+	// the same hierarchical matching as IsActionAllowed: the root permission and any ancestor of
+	// required satisfy it. It is a check on what the token holds, so the runtime marker grants nothing.
+	// An empty required permission is always granted.
+	IsPermissionGranted(ctx context.Context, required string) bool
+
 	// GetAccessibleResources returns the set of resources the caller may access for the
 	// given action and resource type. The result must be applied as a store-level filter
 	// before pagination so that page sizes and total counts remain correct.
@@ -163,6 +169,12 @@ func (s *systemAuthorizationService) authorizeListCaller(ctx context.Context, ac
 		return &AccessibleResources{AllAllowed: false, IDs: []string{}}, true
 	}
 	return nil, false
+}
+
+// IsPermissionGranted reports whether the caller's token grants the required system permission.
+func (s *systemAuthorizationService) IsPermissionGranted(ctx context.Context, required string) bool {
+	permissions := security.GetPermissions(ctx)
+	return security.HasSystemPermission(permissions) || security.HasSufficientPermission(permissions, required)
 }
 
 // isResourceOwner checks whether the authenticated caller is the owner of the resource

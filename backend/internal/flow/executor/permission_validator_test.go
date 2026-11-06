@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/system/security"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/coremock"
 )
 
@@ -35,7 +36,9 @@ func (suite *PermissionValidatorTestSuite) SetupTest() {
 		[]providers.Input{},
 		[]providers.Input{}, mock.Anything).Return(mockBaseExecutor)
 
-	suite.executor = newPermissionValidator(suite.mockFlowFactory)
+	authorizer, err := sysauthz.InitializeOUBoundedAuthorization()
+	suite.Require().NoError(err)
+	suite.executor = newPermissionValidator(suite.mockFlowFactory, authorizer)
 }
 
 func (suite *PermissionValidatorTestSuite) TestExecute_DefaultScopeCheck_Success() {

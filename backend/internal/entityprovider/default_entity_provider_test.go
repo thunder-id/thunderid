@@ -563,7 +563,7 @@ func (suite *DefaultEntityProviderTestSuite) TestDeleteEntity_MissingEntityIsNot
 // The system authorization service decides runtime callers and self-service owners, and the provider defers to it.
 func (suite *DefaultEntityProviderTestSuite) TestWritesDeferToTheSystemAuthorizationRules() {
 	security.InitSystemPermissions("")
-	authz, err := sysauthz.Initialize()
+	authz, err := sysauthz.InitializeOUBoundedAuthorization()
 	suite.Require().NoError(err)
 	provider := newDefaultEntityProvider(suite.mockService, authz)
 	suite.mockService.On("GetEntityProfile", mock.Anything, testEntityID).
