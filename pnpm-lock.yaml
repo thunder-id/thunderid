@@ -5175,6 +5175,9 @@ importers:
       '@vitejs/plugin-react':
         specifier: ^5.0.4
         version: 5.2.0(supports-color@10.2.2)(vite@8.1.6(@types/node@25.0.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3))
+      concurrently:
+        specifier: 10.0.3
+        version: 10.0.3
       vite:
         specifier: 8.1.6
         version: 8.1.6(@types/node@25.0.2)(esbuild@0.28.1)(jiti@2.7.0)(sass-embedded@1.98.0)(sass@1.98.0)(terser@5.47.1)(tsx@4.22.4)(yaml@2.8.3)

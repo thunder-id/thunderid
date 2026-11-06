@@ -24,6 +24,8 @@ Prerequisites: a running ThunderID with the `wayfinder-skypass` presentation def
 reachable at a public HTTPS URL, and a guest who has already been issued the Sky Pass
 in their wallet.
 
+Install the dependencies once from the sample root with `npm install` (see the parent README), not from this folder. Then, from here:
+
 ```bash
 cp .env.example .env          # set THUNDER_BASE_URL to your public ThunderID URL
 node --env-file=.env server.js
