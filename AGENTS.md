@@ -18,7 +18,7 @@ Load only the guidance the task needs:
 | Frontend React code | [frontend/AGENTS.md](frontend/AGENTS.md) |
 | Frontend UI: Oxygen UI components, styling, layout, or a new shared component | [.agent/skills/ui-development/SKILL.md](.agent/skills/ui-development/SKILL.md) |
 | Documentation | [docs/AGENTS.md](docs/AGENTS.md) |
-| A ThunderID client SDK or integration package | [.agent/skills/sdk-development/SKILL.md](.agent/skills/sdk-development/SKILL.md) |
+| A ThunderID client SDK or integration package, or a Console, Admin Console, or Gate feature that calls the server (built SDK first) | [.agent/skills/sdk-development/SKILL.md](.agent/skills/sdk-development/SKILL.md) |
 | Database schema, queries, or stores | [.agent/skills/db/SKILL.md](.agent/skills/db/SKILL.md) |
 | Browser automation / Console UI verification | [.agent/skills/console/SKILL.md](.agent/skills/console/SKILL.md) |
 | Resolving a pnpm/npm security advisory | [.agent/skills/fix-npm-vulnerability/SKILL.md](.agent/skills/fix-npm-vulnerability/SKILL.md) |

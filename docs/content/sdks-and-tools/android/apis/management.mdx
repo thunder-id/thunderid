@@ -2,12 +2,12 @@
 displayed_sidebar: null
 title: Android Management API
 docType: reference
-description: List, read, create, update, and delete applications, users, and agents from the Android SDK through the management API.
+description: List, read, create, update, and delete applications, users, user types, agents, and agent types from the Android SDK through the management API, and run administration flows.
 ---
 
 # Android Management API
 
-`ThunderIDClient` exposes the <ProductName /> management API through three clients: `applications`, `users`, and `agents`. Each lists, reads, creates, updates, and deletes its resource. Requests are authorized with the signed-in user's access token, and the token needs the permissions the server requires for each resource.
+`ThunderIDClient` exposes the <ProductName /> management API through the `applications`, `users`, `userTypes`, `agents`, and `agentTypes` clients. Each lists, reads, creates, updates, and deletes its resource, and some add operations of their own. Requests are authorized with the signed-in user's access token, and the token needs the permissions the server requires for each resource.
 
 ```kotlin
 import dev.thunderid.android.management.ApplicationRequest
@@ -21,7 +21,7 @@ val application = client.applications.create(
 client.users.delete("<user-id>")
 ```
 
-The models and clients live in the `dev.thunderid.android.management` package. Accessing `applications`, `users`, or `agents` throws `SDK_NOT_INITIALIZED` until `initialize` has run.
+The models and clients live in the `dev.thunderid.android.management` package. Accessing any of these clients throws `SDK_NOT_INITIALIZED` until `initialize` has run.
 
 ## Operations
 
@@ -31,19 +31,42 @@ The models and clients live in the `dev.thunderid.android.management` package. A
 | | `get(id, fetcher)` | `GET /applications/{id}` | `Application` |
 | | `create(application, fetcher)` | `POST /applications` | `Application` |
 | | `update(id, application, fetcher)` | `PUT /applications/{id}` | `Application` |
-| | `delete(id, fetcher)` | `DELETE /applications/{id}` | `Unit` |
+| | `delete(id, fetcher, administrationMode)` | `DELETE /applications/{id}` | `Unit` |
+| | `previewCimdDocument(clientId, fetcher)` | `POST {baseUrl}/cimd/preview` | `CimdPreviewResponse` |
+| | `regenerateClientSecret(id, fetcher, administrationMode)` | `GET`, then `PUT /applications/{id}` | `RegenerateClientSecretResult` |
+| | `regenerateFlowSecret(id, fetcher)` | `GET`, then `PUT /applications/{id}` | `RegenerateFlowSecretResult` |
 | `users` | `list(limit, offset, filter, fetcher)` | `GET /users?include=display` | `ManagedUserListResponse` |
 | | `get(id, fetcher)` | `GET /users/{id}?include=display` | `ManagedUser` |
 | | `create(user, fetcher)` | `POST /users` | `ManagedUser` |
 | | `update(id, user, fetcher)` | `PUT /users/{id}` | `ManagedUser` |
-| | `delete(id, fetcher)` | `DELETE /users/{id}` | `Unit` |
-| `agents` | `list(limit, offset, fetcher)` | `GET /agents?include=display` | `AgentListResponse` |
+| | `delete(id, fetcher, administrationMode)` | `DELETE /users/{id}` | `Unit` |
+| | `getUsages(id, fetcher)` | `GET /users/{id}/usages` | `UserUsagesResponse` |
+| | `updateCredentials(id, request, fetcher)` | `POST /users/{id}/update-credentials` | `Unit` |
+| `userTypes` | `list(limit, offset, fetcher)` | `GET /user-types?include=display` | `ManagedUserTypeListResponse` |
+| | `get(id, fetcher)` | `GET /user-types/{id}?include=display` | `ManagedUserTypeDetails` |
+| | `create(userType, fetcher)` | `POST /user-types` | `ManagedUserTypeDetails` |
+| | `update(id, userType, fetcher)` | `PUT /user-types/{id}` | `ManagedUserTypeDetails` |
+| | `delete(id, fetcher)` | `DELETE /user-types/{id}` | `Unit` |
+| `agents` | `list(limit, offset, filter, fetcher)` | `GET /agents?include=display` | `AgentListResponse` |
 | | `get(id, fetcher)` | `GET /agents/{id}?include=display` | `Agent` |
 | | `create(agent, fetcher)` | `POST /agents` | `Agent` |
 | | `update(id, agent, fetcher)` | `PUT /agents/{id}` | `Agent` |
 | | `delete(id, fetcher)` | `DELETE /agents/{id}` | `Unit` |
+| | `regenerateSecret(id, fetcher)` | `GET`, then `PUT /agents/{id}` | `RegenerateAgentSecretResult` |
+| `agentTypes` | `list(limit, offset, fetcher)` | `GET /agent-types?include=display` | `AgentTypeListResponse` |
+| | `get(id, fetcher)` | `GET /agent-types/{id}?include=display` | `AgentTypeDetails` |
+| | `update(id, agentType, fetcher)` | `PUT /agent-types/{id}` | `AgentTypeDetails` |
 
 All functions are `suspend` functions, and every parameter other than `id` and the payload is optional.
+
+`getUsages` lists the resources that reference a user, such as agents that name the user as their owner, and what happens to each when the user is deleted: `FALLBACK`, `CASCADE`, or `RESTRICT`. `previewCimdDocument` asks the server to read a client ID metadata document (CIMD) and returns what it declares, so you can register an application from it. It always goes to `{baseUrl}/cimd/preview`.
+
+Unless an administration flow runs them, the secret operations generate a random secret on the device, save it on the resource, and return it with the updated resource. The result is the only place the new secret can be read. `regenerateClientSecret` and `agents.regenerateSecret` throw `INVALID_INPUT`, before saving anything, when the resource has no OAuth client.
+
+```kotlin
+val result = client.applications.regenerateClientSecret("<application-id>")
+showOnce(result.clientSecret)
+```
 
 ## Models
 
@@ -52,8 +75,12 @@ All functions are `suspend` functions, and every parameter other than `id` and t
 | `ApplicationRequest` | `applications.create`, `applications.update` | `name` |
 | `CreateManagedUserRequest` | `users.create` | `ouId`, `type` |
 | `UpdateManagedUserRequest` | `users.update` | None |
+| `UpdateUserCredentialsRequest` | `users.updateCredentials` | `credentials`, keyed by attribute name |
+| `CreateUserTypeRequest` | `userTypes.create` | `handle`, `displayName`, `ouId`, `schema` |
+| `UpdateUserTypeRequest` | `userTypes.update` | `displayName`, `ouId`, `schema` |
 | `CreateAgentRequest` | `agents.create` | `ouId`, `type`, `name` |
 | `UpdateAgentRequest` | `agents.update` | None |
+| `UpdateAgentTypeRequest` | `agentTypes.update` | `displayName`, `ouId`, `schema` |
 
 An update replaces the application's mutable fields. Call `Application.toRequest()` to get the full payload, then change the fields you need with `copy`:
 
@@ -84,7 +111,7 @@ ThunderIDConfig(
 
 ## Management API on a Separate Host
 
-Requests go to `{baseUrl}/applications`, `{baseUrl}/users`, and `{baseUrl}/agents`. When the management API runs on a different host, set the collection URL through `ThunderIDConfig.endpoints`:
+Requests go to `{baseUrl}/applications`, `{baseUrl}/users`, `{baseUrl}/user-types`, `{baseUrl}/agents`, and `{baseUrl}/agent-types`. When the management API runs on a different host, set the collection URL through `ThunderIDConfig.endpoints`, which also accepts `userTypes` and `agentTypes`:
 
 ```kotlin
 ThunderIDConfig(
@@ -97,6 +124,57 @@ ThunderIDConfig(
     ),
 )
 ```
+
+`previewCimdDocument` and administration flows always go to `baseUrl`, whatever `endpoints` sets.
+
+## Administration Flows
+
+Some operations change more than one record on the server, so the server can run them as an administration flow instead of a direct call. For example, a user deletion flow revokes the user's grants and ends their sessions before it removes the user. Pass `administrationMode = AdministrationMode.FLOW` to run the flow the server configures for the operation:
+
+```kotlin
+client.users.delete("<user-id>", administrationMode = AdministrationMode.FLOW)
+```
+
+| Value | Behavior |
+| :--- | :--- |
+| `NATIVE` (default) | Calls the management API directly. |
+| `FLOW` | Reads the flow configured for the operation and runs it. Calls the management API directly when the server configures no flow for the operation. Needs an access token that can read server configuration. |
+
+These operations accept `administrationMode`:
+
+| Operation | Flow configuration key |
+| :--- | :--- |
+| `applications.delete` | `APPLICATION_DELETION` |
+| `applications.regenerateClientSecret` | `SECRET_REGENERATION` |
+| `users.delete` | `USER_DELETION` |
+| `groups.delete` | `GROUP_DELETION` |
+| `groups.removeMembers` | `GROUP_MEMBERSHIP_REMOVAL`, run once for each member |
+| `roles.delete` | `ROLE_DELETION` |
+| `roles.removeAssignments` | `ROLE_ASSIGNMENT_REMOVAL`, run once for each assignee |
+| `roles.update` | `ROLE_PERMISSION_REMOVAL`, only when the update removes a permission |
+
+In `FLOW` mode, `roles.update` saves the role's other fields first, then runs the flow for the permissions. Pass the role as it is now in `current` to skip the read that tells whether the update removes a permission. When a flow regenerates a client secret, `RegenerateClientSecretResult.application` is `null`, because the flow does not return the application.
+
+To run an administration flow the SDK has no operation for, use `client.administration`. Its calls go to `{baseUrl}/server-config/flow`, `{baseUrl}/flows`, and `{baseUrl}/flow/execute`. `action` names what the flow does, such as `user suspension`, for error messages.
+
+| Function | Description |
+| :--- | :--- |
+| `resolveFlowHandles(configKeys, fetcher)` | Reads the flow handle configured for each `AdministrationFlowConfigKey`. A key with no handle is absent from the result. |
+| `findFlows(handles, fetcher)` | Finds the administration flows that carry the given handles, as `ManagedFlow` values. |
+| `resolveFlows(configKeys, fetcher)` | Maps each configuration key to the identifier of its configured flow. |
+| `resolveFlowId(configKey, action, fetcher)` | Returns the identifier of the flow configured for one key, or `null` when none is configured. |
+| `executeFlow(flowId, inputs, action, fetcher)` | Runs a flow to completion with all its inputs and returns the values it produced. |
+| `runFlow(configKey, inputs, action, fetcher)` | Resolves and runs the flow configured for one key, or returns `null` when none is configured. |
+
+```kotlin
+val produced = client.administration.runFlow(
+    AdministrationFlowConfigKey.USER_SUSPEND,
+    mapOf(AdministrationFlowInput.SUBJECT to "<user-id>"),
+    action = "user suspension",
+)
+```
+
+The constants name what a flow reads and returns. `AdministrationFlowConfigKey` holds the configuration key of each operation, `AdministrationFlowInput` the input names (such as `SUBJECT`, `APPLICATION`, `GROUP`, `MEMBER`, `ROLE`, and `ASSIGNEE`), and `AdministrationFlowData` the values a flow returns (`CLIENT_SECRET` and `EMAIL_SENT`). `ADMINISTRATION_FLOW_TYPE` is the flow type, `ADMINISTRATION`, and `AdministrationClient.FLOW_PAGE_SIZE` is the listing page size.
 
 ## Jetpack Compose
 
@@ -132,12 +210,27 @@ A single-resource query does not load while its `id` is `null`. A successful mut
 
 ## Error Handling
 
-The functions throw `IAMException`. Management requests add two codes:
+The functions throw `IAMException`. Management requests add these codes:
 
 | Code | Description |
 | :--- | :--- |
 | `FORBIDDEN` | The server returned HTTP 403. The access token lacks permission for the operation. |
 | `NOT_FOUND` | The server returned HTTP 404. The resource does not exist. |
-| `INVALID_INPUT` | The resource identifier is blank, or the server rejected the payload with HTTP 400. |
+| `INVALID_INPUT` | The resource identifier is blank, the resource has no OAuth client to regenerate a secret for, or the server rejected the payload with HTTP 400. |
+| `ADMINISTRATION_FLOW_FAILED` | An administration flow did not complete. Thrown as `AdministrationFlowError`. |
+
+When the server rejects a request, `serverError` carries the server's own error: its `code` (for example `USR-1027`), and its `message` and `description`, each with a `key`, a `defaultValue`, and the `params` to interpolate. Use it to show a translated message.
+
+`AdministrationFlowError` extends `IAMException`. It is thrown when a flow step refuses the operation, the flow asks for more input, the flow completes without the value the operation needed, or the server configures a flow for the operation that no longer exists. A refused step arrives as a completed request rather than an HTTP error, so `errorCode` carries the step's own code, such as `FLW-4001`, and `flowError` carries the step's `code`, `message`, and `description`. In the other cases `errorCode` is one of the SDK's codes, such as `executeAdministrationFlow-IncompleteError-001` or `resolveAdministrationFlowId-NotFoundError-001`.
+
+```kotlin
+try {
+    client.users.delete(userId, administrationMode = AdministrationMode.FLOW)
+} catch (e: AdministrationFlowError) {
+    showMessage(e.flowError?.message?.defaultValue ?: e.message)
+} catch (e: IAMException) {
+    showMessage(e.serverError?.message?.defaultValue ?: e.message)
+}
+```
 
 See [Error Codes](../thunderid-client#error-codes) for the full list.

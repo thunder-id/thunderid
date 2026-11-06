@@ -20,6 +20,14 @@ runtime: `configure-*` call the native management APIs only, while `manage-*` ru
 through the server's administration flows (`administrationMode: 'flow'` by default), so grants are revoked and sessions
 end first. Don't add flow handling to a `configure-*` package.
 
+**SDK first.** A feature that calls the server or adds a view of a server resource is built on the SDK: add the missing
+operation or component to [javascript-sdks](https://github.com/thunder-id/javascript-sdks) first, then use it here. In a
+`configure-*` package that still calls the API directly, an improvement to how it handles a resource lands in the SDK
+too, and when the change is small and an SDK component already renders that view, switch the view to the component
+(`administrationMode: 'native'`) rather than improving the package's own copy. See
+[SDK-first development](../docs-internals/sdk-development/spec.md#sdk-first-development) and the
+[sdk-development skill](../.agent/skills/sdk-development/SKILL.md).
+
 Gate consumes ThunderID's published SDK packages — `@thunderid/react` and `@thunderid/react-router` — from the separate
 [javascript-sdks](https://github.com/thunder-id/javascript-sdks) repository. Clone that repository only to develop or
 debug the SDK itself, or to test against unreleased SDK changes.

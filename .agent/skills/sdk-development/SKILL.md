@@ -1,6 +1,6 @@
 ---
 name: sdk-development
-description: The contract for every ThunderID SDK and the workflow for changing one. Use whenever work touches a ThunderID client SDK or integration package in javascript-sdks, ios-sdks, android-sdks, or flutter-sdks. Covers writing a new SDK for a language or framework, adding or changing an operation, configuration key, error, or UI component, porting a capability between SDKs, writing and running SDK tests, validating a change against the specification and threat model, raising the cross-SDK pull requests, reviewing an SDK change, and editing the SDK development specification itself.
+description: The contract for every ThunderID SDK and the workflow for changing one. Use whenever work touches a ThunderID client SDK or integration package in javascript-sdks, ios-sdks, android-sdks, or flutter-sdks, and whenever a Console, Admin Console, or Gate feature (including a change to a `configure-*` or `manage-*` package) calls the server or adds a view of a server resource, since those are built SDK first. Covers writing a new SDK for a language or framework, adding or changing an operation, configuration key, error, or UI component, porting a capability between SDKs, writing and running SDK tests, validating a change against the specification and threat model, raising the cross-SDK pull requests, reviewing an SDK change, and editing the SDK development specification itself.
 allowed-tools: Read Write Edit Bash WebFetch
 ---
 
@@ -81,8 +81,9 @@ Also check each checkout before branching:
 2. Confirm it is an SDK and not an integration. See **Integration packages**.
 3. Propose it through a design discussion before implementation starts.
 4. Implement configuration, client surface, error hierarchy, and the security floor.
-5. Add UI components if the layer and platform call for them, with translations and flow
-   element identifiers.
+5. Add UI components if the layer and platform call for them, grouped by function, each with
+   an unstyled variant, a custom render in the platform's idiom, translations, and flow element
+   identifiers. See **UI**.
 6. Add unit, component, and end-to-end tests.
 7. Add pipelines, quickstart, reference, and at least one runnable sample.
 8. Record the specification version in the SDK's `README.md`.
@@ -95,7 +96,30 @@ Also check each checkout before branching:
    same change set. An SDK must never be the only record of a contract.
 3. Decide which sibling SDKs need the same change, and implement it in each of them.
 4. Add or change the tests that cover the behaviour.
-5. Validate, then raise the linked pull requests.
+5. Check every sample in `thunder-id/samples` that uses the SDK. If the change breaks one, or
+   adds a capability one exists to show (self-care for the self-care sample, management for the
+   Admin sample in `management/admin`), raise a samples pull request that upgrades and updates it. See **Documentation
+   and samples**.
+6. Validate, then raise the linked pull requests.
+
+### Building a product feature
+
+ThunderID's own frontends are built SDK first. See **SDK-first development** and
+**Applying this specification** in the specification.
+
+1. Find the SDK operations and components the feature needs. Add what is missing to the SDK
+   through **Changing an existing SDK**, before or alongside the product change.
+2. Build the feature on the SDK, using its components where they render what it needs. The
+   product keeps only its shell, navigation, routing, layout, and what no other application
+   would need.
+3. In a `configure-*` package that has not moved onto the SDK yet, land the improvement in the
+   SDK as well. When the change is small and an SDK component already renders the view, switch
+   the view to the component (with `administrationMode: native`) instead of improving the
+   package's own copy. Moving a whole package is separate, tracked work.
+4. Fix an SDK defect in the SDK. A product workaround links the SDK pull request and goes away
+   on the upgrade that fixes it.
+5. Link the SDK pull request from the product pull request, and keep the product pull request a
+   draft until the SDK release it needs is out.
 
 ### Porting a capability between SDKs
 
@@ -181,7 +205,10 @@ or configuration that affects any of them. It is not optional for those changes.
 
 1. Does the change touch one of the modelled interactions? Those are redirect authorization
    and callback, code exchange and token storage, credential submission in embedded mode,
-   token attachment to outbound requests, sign-out, and receipt of a back-channel logout token.
+   token attachment to outbound requests, sign-out, receipt of a back-channel logout token, a
+   federated redirect inside an embedded flow, access evaluation with the server secret, device
+   authorization on the device side, token introspection, dynamic client registration, and
+   signing in to or switching organization units.
 2. Does it weaken a mitigation the model relies on, or introduce a configuration key that
    could? If so, the model needs updating in the same change set, and the change needs a
    second look before it ships.
@@ -264,11 +291,13 @@ Because the numbers only exist once the pull requests do, open them all first, t
 and fill in each body with the sibling links. Leaving that pass undone is the usual way a set
 of pull requests ends up unlinked.
 
-The parity check on each repository reads that section. It expects one disposition per sibling
-repository, each being a linked pull request, a written reason the capability does not apply
-there, or a linked tracked issue where the port is deferred. It applies `sdk-parity-reviewed`
-only when every sibling has one, and fails naming the repositories still unaccounted for.
-Answering for one sibling and staying silent about the others fails the check.
+Then record the decision with exactly one label: `parity/prs-raised` when the ports exist or
+are accounted for, or `parity/prs-not-needed` when nothing reaches another SDK. The parity check
+fails until one is present. With `parity/prs-raised` it also reads the body and the replies on
+its own comment, and expects one disposition per sibling repository: a linked pull request, a
+written reason the capability does not apply there, or a linked tracked issue where the port is
+deferred. It fails naming the repositories still unaccounted for, so answering for one sibling
+and staying silent about the others fails the check.
 
 Valid reasons for stopping at one platform: the capability has no meaning on the others, the
 platform primitive does not exist yet, the fix is confined to one platform's implementation of
@@ -285,5 +314,7 @@ and internal refactors.
 - Specification and threat model updated if the change reached either.
 - Lint, build, and unit tests pass in every repository touched.
 - End-to-end run for changes that affect a flow, or an explicit statement that it was skipped.
-- Quickstart, reference, and sample updated where the change is visible to an adopter.
+- Quickstart and reference updated where the change is visible to an adopter.
+- Every affected sample in `thunder-id/samples` upgraded and updated through a linked pull
+  request, or the SDK pull request says no sample is affected.
 - Pull requests opened, cross-linked, and each carrying its parity section.

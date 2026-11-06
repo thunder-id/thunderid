@@ -1,7 +1,7 @@
 # SDK Development Specification
 
 - **Status:** Draft
-- **Version:** 0.9
+- **Version:** 0.11
 - **Related documents:**
   [threat-model.md](threat-model.md),
   [#5305](https://github.com/thunder-id/thunderid/issues/5305),
@@ -10,10 +10,22 @@
   [#5354](https://github.com/thunder-id/thunderid/discussions/5354),
   [#5162](https://github.com/thunder-id/thunderid/issues/5162),
   [#5155](https://github.com/thunder-id/thunderid/issues/5155),
+  [#5625](https://github.com/thunder-id/thunderid/issues/5625),
+  [#6302](https://github.com/thunder-id/thunderid/issues/6302),
   [RFC 6749](https://datatracker.ietf.org/doc/html/rfc6749),
+  [RFC 7591](https://datatracker.ietf.org/doc/html/rfc7591),
+  [RFC 7592](https://datatracker.ietf.org/doc/html/rfc7592),
   [RFC 7636](https://datatracker.ietf.org/doc/html/rfc7636),
+  [RFC 7662](https://datatracker.ietf.org/doc/html/rfc7662),
+  [RFC 8628](https://datatracker.ietf.org/doc/html/rfc8628),
+  [RFC 9126](https://datatracker.ietf.org/doc/html/rfc9126),
   [RFC 9396](https://datatracker.ietf.org/doc/html/rfc9396),
+  [RFC 10017](https://www.rfc-editor.org/rfc/rfc10017.html),
   [OpenID Connect Core 1.0](https://openid.net/specs/openid-connect-core-1_0.html),
+  [OpenID Connect CIBA Core 1.0](https://openid.net/specs/openid-client-initiated-backchannel-authentication-core-1_0.html),
+  [AuthZEN Authorization API 1.0](https://openid.net/specs/authorization-api-1_0.html),
+  [OpenID for Verifiable Credential Issuance 1.0](https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html),
+  [OpenID for Verifiable Presentations 1.0](https://openid.net/specs/openid-4-verifiable-presentations-1_0.html),
   [OpenID Connect Back-Channel Logout 1.0](https://openid.net/specs/openid-connect-backchannel-1_0.html),
   [back-channel logout specification](../back-channel-logout/spec.md)
 
@@ -44,7 +56,9 @@ on transliterated signatures.
 Scope is the SDK repositories listed in [Repository topology](#repository-topology) and the
 integration packages that adapt ThunderID into third-party auth frameworks. The ThunderID
 server, the console, the CLI, and the MCP server are out of scope, as is the documentation
-site itself beyond the obligations this document places on SDK authors.
+site itself beyond the obligations this document places on SDK authors. One part reaches
+ThunderID's own frontends: [SDK-first development](#sdk-first-development) governs how they
+consume the SDKs.
 
 ## Architecture
 
@@ -273,6 +287,37 @@ at the flow endpoint rather than at initialization.
 The mode MUST NOT change the public surface. `signIn()` is `signIn()` in both modes; the SDK
 resolves the underlying flow internally.
 
+**Sign-in on a backend.** An SDK MAY additionally support running the whole flow on a backend
+the application owns: the Backend for Frontend pattern of
+[RFC 10017](https://www.rfc-editor.org/rfc/rfc10017.html). The backend runs redirect mode, keeps
+the tokens, and proxies the application's API calls, so the client holds no token at all. For a
+browser application it is the answer to the one weakness a browser cannot engineer away, that a
+token the page can reach is a token any script on the page can take. For a mobile application
+that already has a backend, it keeps the refresh token and the API credentials off the handset.
+
+What the client holds in place of a token differs by platform, and nothing else does:
+
+| | Browser SDKs | Mobile SDKs |
+|---|---|---|
+| Backend location | The application's own origin | Any origin, pinned in configuration |
+| Session held as | An `HttpOnly`, `Secure` cookie the page cannot read | An opaque handle in the platform's secure store, attached to each call |
+| Sign-in | A redirect to the backend's sign-in endpoint | The backend's sign-in endpoint in `ASWebAuthenticationSession` or a Custom Tab, returning a one-time code to the application's redirect scheme |
+| Cross-site defence | Same-origin calls and a header a cross-origin page cannot set | Not applicable: the backend's base URL is pinned, and the handle is held by the application |
+
+Everything else is identical, including the endpoints and how a `401` from each is read, so one
+backend serves an application's web and mobile clients alike.
+
+The backend is a contract, not a package. An SDK MUST NOT assume a particular implementation,
+and MUST work against any backend that answers the endpoints in
+[Backend endpoints](#backend-endpoints). ThunderID ships no backend of its own; the
+application's existing server, or a gateway in front of it, implements them.
+
+It is turned on by setting `endpoints.backend`, never inferred, and it applies for the lifetime
+of the client. It is not a third value of `mode`: the backend runs redirect mode on the
+application's behalf, and embedded mode through a backend is out of scope for this version. An
+SDK that supports it MUST refuse the embedded flows while it is on, rather than running them in
+the browser and leaving the result where the backend's tokens are not.
+
 Alongside the two user-facing modes, an SDK MAY support a `client_credentials` grant type for
 machine-to-machine use, in which there is no user and no sign-in step, and `getAccessToken()`
 fetches and refreshes a token for the service itself.
@@ -302,8 +347,8 @@ this table already covers.
 
 | Key | Type | Required | Default | Notes |
 |---|---|---|---|---|
-| `baseUrl` | String | Yes | None | Base URL of the ThunderID server. MUST be rejected if the scheme is not HTTPS. A non-HTTPS loopback address MAY be accepted for local development only, and MUST be rejected in embedded mode, where credentials cross the wire. |
-| `clientId` | String | Conditional | None | Required in redirect mode. |
+| `baseUrl` | String | Conditional | None | Base URL of the ThunderID server. MUST be rejected if the scheme is not HTTPS. A non-HTTPS loopback address MAY be accepted for local development only, and MUST be rejected in embedded mode, where credentials cross the wire. Required, except when sign-in runs on a backend: it is then the API base the backend's `proxy` serves, and a browser SDK MAY default it to the page's own origin. |
+| `clientId` | String | Conditional | None | Required in redirect mode, unless sign-in runs on a backend (`endpoints.backend`): the backend holds the client then, and an SDK MUST NOT require it. |
 | `clientSecret` | String | No | None | Confidential clients only. MUST NOT be accepted by a browser or other public client. |
 | `mode` | Enum | No | `redirect` | `redirect` or `embedded`. |
 | `grantType` | Enum | No | `authorization_code` | `authorization_code` or `client_credentials`. |
@@ -326,10 +371,11 @@ this table already covers.
 | `scopes` | String or list | No | `openid` | Space-separated string or list. |
 | `authorizationDetails` | List | No | None | Authorization details (RFC 9396): a list of objects, each with a string `type`. Sent JSON-encoded as `authorization_details` on the authorization request, silent sign-in included, on the CIBA backchannel authentication request, and on the `client_credentials` token request. A value passed to a single sign-in or CIBA call takes precedence over the configured one. Not sent in embedded mode. A request an SDK does not make, or cannot add it to, is documented as unsupported, as for any key. See [Authorization details](#authorization-details). |
 | `signInOptions` | Map | No | Empty | Extra parameters on the authorize request. `state`, `code_challenge`, `code_challenge_method`, `client_id`, and `redirect_uri` are SDK-owned: a caller value for any of them MUST be ignored, and the SDK's own value used. |
+| `pushedAuthorizationRequests` | Boolean | No | `false` | Redirect mode only. Pushes every authorization request to `/oauth2/par` (RFC 9126) and redirects with the returned `request_uri`. The SDK pushes regardless of this key when the server's metadata sets `require_pushed_authorization_requests`, so `false` never turns pushing off. See [Optional operations](#client-surface). |
 | `signOutOptions` | Map | No | Empty | Extra parameters on the sign-out request. |
 | `signUpOptions` | Map | No | Empty | Extra parameters on the sign-up request. |
 | `discovery` | Object | No | Enabled | OIDC discovery behaviour. Discovered metadata MUST be fetched over HTTPS, and its `issuer` MUST match the expected issuer exactly before any endpoint from it is used. |
-| `endpoints` | Object | No | Discovered | Per-endpoint overrides for a server that does not publish discovery. Every override MUST use HTTPS and MUST share the origin of `baseUrl`, unless the application has explicitly allowed the other origin. |
+| `endpoints` | Object | No | Discovered | Per-endpoint overrides for a server that does not publish discovery. Every override MUST use HTTPS and MUST share the origin of `baseUrl`, unless the application has explicitly allowed the other origin. `endpoints.backend` is not one of them: it names the application's own backend, and MUST NOT be carried into the OIDC provider metadata. See [Backend endpoints](#backend-endpoints). |
 | `tokenRequest` | Object | No | Platform default | Token endpoint authentication and request shaping. |
 | `http` | Object | No | None | HTTP options. `http.fetcher` replaces the transport for [management operations](#management-operations) only. |
 
@@ -341,7 +387,7 @@ this table already covers.
 | `tokenValidation` | Object | No | Validation on | Clock tolerance, and per-claim switches that MUST be rejected when they would disable a check required by [Security requirements](#security-requirements) against a non-loopback `baseUrl`. Disabling a mandatory check is a test affordance, not a deployment option. |
 | `tokenLifecycle` | Object | No | Platform default | Refresh timing and lifecycle behaviour. |
 | `allowedExternalUrls` | List | No | Empty | Origins the SDK may attach an access token to when tokens are held in isolated storage. Every entry MUST use HTTPS. See [Token attachment](#token-attachment) for how entries are matched. |
-| `session` | Object | No | Disabled | Browser SDKs only. Behaviour around the server's SSO session. `silentSignIn.beforeRedirect` (default `false`) makes `signIn` try a silent `prompt=none` sign-in first and continue with the redirect when it fails; it MUST be skipped when the caller sets its own `prompt`. `silentSignIn.timeout` (milliseconds, default `10000`) bounds how long a silent sign-in waits before reporting the user as signed out, including from `signInSilently`. Silent sign-in only finds the session when the browser sends the server's session cookie to the iframe, which needs the application on the same site as the server. |
+| `session` | Object | No | Disabled | Behaviour around the server's SSO session. `checkInterval` (seconds, default `0`, backend sign-in only) polls the backend's check endpoint for a session that ended elsewhere; `0` leaves only the check that runs when the application comes back to the foreground. The rest of the key is browser SDKs only. `silentSignIn.beforeRedirect` (default `false`) makes `signIn` try a silent `prompt=none` sign-in first and continue with the redirect when it fails; it MUST be skipped when the caller sets its own `prompt`. `silentSignIn.timeout` (milliseconds, default `10000`) bounds how long a silent sign-in waits before reporting the user as signed out, including from `signInSilently`. Silent sign-in only finds the session when the browser sends the server's session cookie to the iframe, which needs the application on the same site as the server. |
 | `backchannelLogout` | Object | No | Disabled | Server-side SDKs only. For an SDK that mounts the back-channel logout handler itself, turns on [back-channel logout handling](#back-channel-logout-handling): `enabled`, the `path` of the handler, and the `store` that records ended sessions. An SDK that exposes the handler for the application to mount takes the store on the handler instead and does not read this key. An SDK that cannot receive the request MUST document the key as unsupported. |
 | `organizationHandle` | String | No | None | Organization identifier, required when a custom domain is configured. |
 | `organizationChain` | Object | No | None | Chained authentication across organization contexts. |
@@ -357,6 +403,66 @@ this table already covers.
 Initialization MUST validate the object and fail before any network call when a required key
 is missing or a value is malformed. Any operation invoked before initialization MUST fail with
 a distinct, documented error rather than a null dereference.
+
+<a id="backend-endpoints"></a>
+
+#### Backend endpoints
+
+`endpoints.backend` holds the paths of the backend that signs the application in. In a browser
+each is a path on the application's own origin; on mobile each is a path under
+`endpoints.backend.baseUrl`. Each unset entry defaults under `/api/auth`. App developers see
+"backend", not "BFF".
+
+| Key | Default | Contract |
+|---|---|---|
+| `baseUrl` | None | Mobile only, and required there: the backend's origin, which every other entry is resolved against. MUST use HTTPS, and MUST be rejected at initialization otherwise; a loopback address MAY use HTTP for local development only. A browser SDK does not read it, because its backend is the page's own origin. |
+| `signIn` | `/api/auth/signin` | Starts sign-in. Takes a `returnTo` same-origin path and redirects to the authorization endpoint. Takes an optional `ouId` query parameter for a sign-in bounded to an organization unit, which the backend carries to the organization unit's authorization and token endpoints. See [Organization operations](#organization-operations). |
+| `session` | `/api/auth/session` | Reports `{isSignedIn, user, expiresAt}`. `user` is the ID token's claims without the protocol claims. |
+| `checkSession` | `/api/auth/checksession` | Reports `{isSignedIn}` only. Neither refreshes the session nor counts as activity, so it is safe to poll. |
+| `refresh` | `/api/auth/refresh` | Refreshes the session. A failure clears it. |
+| `signOut` | `/api/auth/signout` | Ends the session and returns the URL that ends it at the authorization server. |
+| `proxy` | `/api/auth/proxy` | Prefix the application's API calls are sent through. The backend attaches the access token. See [Proxied requests](#proxied-requests). |
+
+The SDK reads a `401` from the backend by its body. `session_expired` means refresh once and
+retry the request once: a refresh that fails means signed out, and so does a retry answered
+`session_expired` or `login_required`; the SDK never refreshes twice for one request.
+`login_required` means signed out straight away. Any other `401`, including one that answers a
+retry, is the API's own answer and MUST be returned to the caller untouched. A backend
+that refreshes on the server never answers `session_expired`, so one client works against both
+kinds.
+
+**Starting a session on mobile.** A browser carries the backend's cookie by itself. A mobile
+application cannot: the browser session it opens for sign-in has its own cookie jar, which the
+application is not allowed to read, and that separation is the platform's whole protection. The
+session is therefore handed over once, in the open, and the handoff MUST be bound to the
+application that started it:
+
+1. The SDK generates a PKCE verifier and opens `signIn` in `ASWebAuthenticationSession` or a
+   Custom Tab with `redirect_uri` (the application's registered scheme), `code_challenge` and
+   `code_challenge_method=S256`. `returnTo` is the browser SDKs' form of the same parameter.
+2. The backend runs the flow, keeps the tokens, and returns to `redirect_uri` with a one-time
+   `session_code`, or with `error`.
+3. The SDK posts the code and the verifier to `session` and receives
+   `{handle, isSignedIn, user, expiresAt}`.
+
+The handle MUST go in the platform's secure store and MUST be attached to every later backend
+call in the `X-Session-Handle` header. A backend MUST accept a `session_code` once, MUST bind it
+to the `code_challenge` it was issued against, and MUST expire it in minutes, for the same
+reason an authorization code is held to those rules: anything handed over through a redirect
+scheme can be observed by another application on the device.
+
+<a id="proxied-requests"></a>
+
+**Proxied requests.** The API base is `baseUrl`, or the page's own origin where a browser SDK
+defaults it. A request whose URL is the API base, or continues it with `/` or `?`, goes to the
+`proxy` prefix with the rest of the URL appended: `{baseUrl}/orders?id=1` is sent to
+`{proxy}/orders?id=1`. The whole base is compared, so a URL that merely starts with the same
+characters (`https://api.example.com.attacker.example`) does not match. In a browser, a
+path-only URL is read as relative to the API base. Any other URL is refused, as
+[Security requirements](#security-requirements) states.
+
+Everything after the handoff is the same on both platforms: the five remaining endpoints, the
+`401` reading above, and the surface in [Client surface](#client-surface).
 
 ### Client surface
 
@@ -377,7 +483,7 @@ return a different concept under the same name.
 
 | Operation | Contract |
 |---|---|
-| `signIn` | Redirect mode starts the authorization code flow; embedded mode drives one step of the flow. Overloaded, or discriminated by payload, per platform idiom. |
+| `signIn` | Redirect mode starts the authorization code flow; embedded mode drives one step of the flow. Overloaded, or discriminated by payload, per platform idiom. An SDK that ships [organization operations](#organization-operations) also accepts `organizationUnitId` here. |
 | `signOut` | Terminates the session. Revokes the refresh token server-side, then clears local state. Succeeds silently when no session exists. When revocation cannot be reached, the SDK MUST still clear local state, and MUST report the failed revocation to the caller rather than reporting a clean sign-out. Leaving the user signed in locally because the network was down is not an option. |
 | `signUp` | Redirect mode sends the user to registration; embedded mode drives the registration flow. |
 | `isSignedIn` | Returns current authentication state. |
@@ -392,6 +498,18 @@ return a different concept under the same name.
 | `decodeJwtToken` | Decodes a JWT payload without verifying its signature. MUST be documented as unsafe for authorization decisions. |
 | `setSession`, `clearSession` | Write and clear stored session state. |
 
+When sign-in runs on a backend, the surface stays the same but its source changes. `signIn`,
+`signOut`, `isSignedIn`, `getUser` and the profile operations go through the backend, and
+`isLoading` MUST report true until the first session read settles: an SDK that reports "not
+loading, not signed in" before it knows sends every route guard into a sign-in the SSO session
+answers at once, in a loop. The operations that hand a token to the caller (`getAccessToken`,
+`getIdToken`, `exchangeToken`, and any token revocation) MUST fail with a single stable
+unsupported-operation error, because the client holds no token to give. An SDK
+MUST NOT substitute a plausible-looking empty value for one. `setSession` MUST fail with the same
+error, since a session the caller writes would put a token in the client. `clearSession` clears
+only the client's own session state (the cached session in a browser, the handle on mobile) and
+does not end the session at the backend, which is `signOut`'s job.
+
 **User and profile**
 
 | Operation | Contract |
@@ -400,16 +518,120 @@ return a different concept under the same name.
 | `getUserProfile` | Returns the user's profile attributes. |
 | `updateUserProfile` | Applies attribute updates server-side. Returns the updated profile. |
 | `getUserSchema` | Returns the attribute schema that describes which profile fields exist, their types, and their mutability. |
+| `updateUserCredentials` | Replaces one of the signed-in user's own credentials, such as the password, through `/users/me/update-credentials`. The credential is sent once and MUST NOT be retained or logged. |
 
-Operations beyond this set are permitted where a platform needs them, and are the usual origin
-of a parity gap. Silent sign-in, CIBA, passkey registration and authentication, platform
-attestation, flow metadata retrieval, and account recovery all sit here: each is meaningful on
-some platforms and not on others. An SDK adding an operation in this position MUST follow
-[Cross-SDK parity and delivery](#cross-sdk-parity-and-delivery).
+These operations are the account data layer: they act on the signed-in user through `/users/me`,
+and never on another user's record, which is a [management operation](#management-operations).
 
-Organization operations (listing, reading, and switching organizations) are a specification
-target and are deliberately not part of the required surface yet. An SDK MUST NOT ship a
-partial implementation of them ahead of a specification update.
+**Optional operations**
+
+The operations below are optional. Each is meaningful on some platforms and not on others, so
+each is the usual origin of a parity gap. An SDK that ships one MUST use its canonical name and
+contract, and MUST follow [Cross-SDK parity and delivery](#cross-sdk-parity-and-delivery). An
+SDK that does not ship one MUST document it as unsupported, as for a configuration key.
+
+| Capability | Operations | Contract | Applies to |
+|---|---|---|---|
+| Silent sign-in | `signInSilently` | Tries a `prompt=none` sign-in from the server's SSO session and reports signed out when it fails, bounded by `session.silentSignIn.timeout`. | Browser SDKs |
+| Client-initiated backchannel authentication (CIBA) | `initiateCIBA`, `pollCIBA` | `initiateCIBA` posts to the discovered `backchannel_authentication_endpoint` with a login hint and the requested scopes and `authorizationDetails`, and returns the `authReqId`, its lifetime, and the polling interval. `pollCIBA` polls the token endpoint with the `urn:openid:params:grant-type:ciba` grant at no less than that interval, slowing down on `slow_down`, and stores the tokens on success as a sign-in does. A missing endpoint in discovery fails with a documented error. | Every SDK that can authenticate the client the way its registration requires. A server-side SDK authenticates with the client's credentials. A mobile SDK ships it only for a public client registered with `token_endpoint_auth_method` `none`, since it holds no secret, and documents it as unsupported for any other registration. A browser SDK does not ship it. |
+| Device authorization, device side (RFC 8628) | `startDeviceAuthorization`, `pollDeviceAuthorization` | `startDeviceAuthorization` posts to `/oauth2/device-authorize` and returns the `deviceCode`, `userCode`, verification URIs, lifetime, and interval; the `deviceCode` is a credential and MUST NOT be shown or logged. `pollDeviceAuthorization` polls the token endpoint with the `urn:ietf:params:oauth:grant-type:device_code` grant under the same rules as `pollCIBA`, and stores the tokens on success. | SDKs for input-constrained devices and command-line tools: Android (TV), Apple platforms where the package builds for tvOS, Flutter, and the Node SDK |
+| Device authorization, user side | `verifyDeviceCode` | Runs the server's `DEVICE_GRANT` flow in embedded mode with the user code the user typed, so a signed-in user approves a device from the application. Driven like any embedded flow. | SDKs that support embedded mode: the browser SDKs, iOS, Android, and Flutter |
+| Pushed authorization requests (RFC 9126) | `signIn` option | When the server's metadata sets `require_pushed_authorization_requests`, or the application sets `pushedAuthorizationRequests`, `signIn` pushes the authorization request to `/oauth2/par` and redirects with the returned `request_uri`. The surface does not change. | Redirect mode SDKs |
+| Token introspection (RFC 7662) | `introspectToken` | Posts a token to `/oauth2/introspect` with client authentication and returns the introspection response. It needs the client's credentials, so it MUST NOT be exposed where a client secret cannot be held. | Server-side SDKs only: the Node SDK and the Framework Specific SDKs built on it |
+| Passkeys | `registerPasskey`, passkey sign-in | Passkey registration and sign-in run as steps of the server's flows, using the platform's WebAuthn or credential manager API. The SDK MUST NOT call the server's direct passkey endpoints (`/register/passkey/*`, `/auth/passkey/*`) in their place. | SDKs whose platform exposes a passkey API |
+| Authorization details discovery | `getSupportedAuthorizationDetailsTypes`, `getSupportedAuthorizationDetailsType` | Reads the RFC 9396 types a client may request from the public `/oauth2/authorization-details-types`, and one type at `/oauth2/authorization-details-types/{type}`, with the type percent-encoded. Needs no management permission and MAY be read without a token. Placed with the auth data layer, not with the management operations that administer the types. | Every SDK that sends `authorizationDetails` |
+| Flow metadata | `getFlowMeta` | Reads `/flow/meta` for a flow type, so a component can render a flow's configured fields and translations before the first step. | SDKs that ship flow components |
+| Recovery and invitations | Recovery, accept invite, invite user | Run as the server's `RECOVERY` and onboarding flows in embedded mode, like sign-up. | SDKs that support embedded mode |
+| Platform attestation | Platform-specific | Play Integrity on Android and App Attest on Apple platforms, declared by the Platform SDK that owns them, per [Platform packaging and build](#platform-packaging-and-build). | Mobile SDKs |
+| Access evaluation (AuthZEN) | `evaluateAccess`, `evaluateAccesses`, `searchActions` | See [Access evaluation](#access-evaluation). | Server-side SDKs only: the Node SDK and the Framework Specific SDKs built on it |
+| Organization operations | `getAccessibleOrganizationUnits`, `getCurrentOrganizationUnit`, `switchOrganizationUnit`, the `signIn` option `organizationUnitId` | See [Organization operations](#organization-operations). | Every SDK with a signed-in user |
+
+**Out of scope.** Some server APIs exist for other clients and are not part of any SDK: SCIM 2.0
+(`/scim/v2`), which is for provisioning from other identity systems; the direct authenticator
+endpoints (`/auth/credentials`, `/auth/otp`, `/auth/oauth`, `/auth/passkey`, `/register/passkey`),
+which flows replace; and the health checks. Discovery and JWKS are read by the SDK internally
+and need no operation of their own. An SDK MUST NOT add operations for these without a
+specification update.
+
+<a id="organization-operations"></a>
+
+#### Organization operations
+
+A user can hold one identity across several organization units and act in one of them at a time
+([#5625](https://github.com/thunder-id/thunderid/issues/5625)). Every sign-in lands in exactly
+one unit where both the user and the application are found
+([#6302](https://github.com/thunder-id/thunderid/issues/6302)), and the tokens it yields are
+issued for that unit: the roles and permissions they carry are the ones assigned there.
+Organization operations let an application show where the user is, sign in to a chosen unit, and
+move between units. They are optional: an SDK MAY ship them, and one that does MUST follow this
+section.
+
+| Operation | Contract |
+|---|---|
+| `getAccessibleOrganizationUnits` | Account data layer. Reads `/users/me/ous` with the signed-in user's access token, accepting `scope`, `limit`, and `offset`, and returns `{current, organizationUnits, totalResults, startIndex, count}`. Each unit carries its `id`, `handle`, and `name`. `current` is the identifier of the unit the list is relative to: the one the token was issued for, or the user's own when the token names none, returned whatever the scope or page. With no `scope`, every accessible unit is listed. `siblings` is the only scope: `current` and the accessible units that share its parent. |
+| `getCurrentOrganizationUnit` | Returns `{id, handle, name}` from the session's `ouId`, `ouHandle`, and `ouName` claims, which name the unit the sign-in decided. `handle` and `name` are absent when their claims are, and the result is null when there is no `ouId`. Makes no request. |
+| `signIn` option `organizationUnitId` | Bounds the sign-in to that unit, as described below. |
+| `switchOrganizationUnit` | Takes a unit identifier and the options `signIn` takes, and signs in again bounded to that unit, as described below. |
+
+**Signing in to an organization unit.** `organizationUnitId` reaches the server the way the mode
+reaches it:
+
+- Redirect mode authorizes at `{baseUrl}/ou/{ouId}/oauth2/authorize`, with the same parameters
+  and the same security floor as any authorization request, and redeems the code at
+  `{baseUrl}/ou/{ouId}/oauth2/token` for the same unit. A code from a unit-bounded sign-in MUST
+  be redeemed only there; the server answers a code redeemed for another unit with
+  `invalid_grant`. The SDK keeps the unit with the sign-in's state and verifier, so the callback
+  redeems where the sign-in started.
+- Embedded mode sends `ouId` on the `/flow/execute` request that starts the `AUTHENTICATION`
+  flow, and never on a request that continues a flow by `executionId`, which the server refuses
+  (`FES-1026`). A unit the application cannot be used from, or one that does not exist, is
+  refused when the flow starts (`FES-1023`).
+- Backend mode passes it to the backend's `signIn` endpoint as the `ouId` query parameter (see
+  [Backend endpoints](#backend-endpoints)), and the backend bounds its own sign-in.
+
+The unit identifier is a path segment and MUST be percent-encoded, under the same rule as
+requirement 12 of [Management operations](#management-operations). The routes under
+`/ou/{ouId}/` are served only where the deployment enables organization-unit-qualified
+endpoints. Where they are not, a bounded sign-in fails, and the SDK MUST report the failure
+rather than fall back to the unqualified endpoints, which would sign the user in to a unit the
+application did not ask for. The server records the unit on a sign-in, and puts the claims in
+the tokens, only when the application's token configuration asks for the `ouId`, `ouHandle`, and
+`ouName` attributes, so an SDK that ships these operations documents that the application needs
+them.
+
+**Switching organization units.** `switchOrganizationUnit` runs a bounded sign-in to the target
+unit in the SDK's mode. The server reuses the SSO session when the user can sign in to the
+application there, so a switch normally asks for no credentials; when it cannot, the user is
+asked to sign in as for any sign-in. Requirements:
+
+1. On success the SDK replaces the whole token set at once, as a refresh does, and refreshes the
+   user. The new refresh token is bound to the new unit, so later refreshes stay there. No token
+   from the previous unit remains beside the new ones.
+2. On failure, including a cancelled sign-in, the previous session stays exactly as it was: its
+   tokens, its user, and its current unit. The SDK MUST NOT clear it or replace part of it.
+3. A refusal from the server surfaces as a documented error. The server answers a unit that does
+   not exist and a unit the application cannot be used from with the same `unauthorized_client`,
+   so that the answer does not reveal which units exist, and the SDK MUST NOT try to tell the two
+   apart.
+
+**Resolve OU steps.** An embedded sign-in flow can ask the user for a unit through a Resolve OU
+step. Before sign-in the user types or picks a unit, and no unit is ever listed; after sign-in
+the units the user can sign in to are offered. The flow renderers MUST render the step from the
+server's description, with its [flow element identifiers](#flow-element-identifiers), like any
+other step, and never as a picker of their own.
+
+**Claims are for display.** The `ouId`, `ouHandle`, and `ouName` claims,
+`getCurrentOrganizationUnit`, and `current` say which unit to show as selected. They MUST NOT be
+used for an authorization decision: the server decides every request against the unit the token
+was issued for, under the same rule as `decodeJwtToken`.
+
+**Not bounded yet.** Registration, recovery, and onboarding flows are not bounded to an
+organization unit: the server accepts `ouId` only on a request that starts an `AUTHENTICATION`
+flow. Bounding them is follow-up work under
+[#6302](https://github.com/thunder-id/thunderid/issues/6302), and until then an SDK MUST NOT
+send `ouId` on them.
+
+The organization unit switcher in [UI](#ui) is built on these operations.
 
 #### Management operations
 
@@ -418,9 +640,9 @@ organization can build its own console, or embed part of one in its product, wit
 the management API by hand. They are optional: an SDK MAY ship them, and one that does MUST
 follow this section.
 
-The initial resources are applications, users, and agents. Each exposes the same five
-operations, named for the resource in the platform's idiom (`getApplications`,
-`client.applications.list`, and so on):
+The resources are applications, users, groups, roles, agents, organization units, and resource
+servers. Each exposes the same five operations, named for the resource in the platform's idiom
+(`getApplications`, `client.applications.list`, and so on):
 
 | Operation | Contract |
 |---|---|
@@ -430,6 +652,65 @@ operations, named for the resource in the platform's idiom (`getApplications`,
 | Update | Replaces the resource's mutable fields and returns the updated resource. |
 | Delete | Deletes the resource. Returns nothing. |
 
+Groups and roles also relate identities to each other. These relationships are operations of
+their own, so that a caller never has to rewrite a whole group or role to change who is in it:
+
+| Resource | Operations |
+|---|---|
+| Group | List members, add members, remove members. A member is a user, a group, or an agent. List and create groups under an organization unit handle path (`getGroupsByPath`, `createGroupByPath`, at `/groups/tree/{path}`), as `getUsersByPath` and `createUserByPath` do for users. |
+| Role | List assignments, add assignments, remove assignments. An assignee is a user, a group, an app, or an agent. Manage the role's sharing policies and read its overlay rules. |
+| User | List the groups the user belongs to, list the resources that reference the user, replace the user's credentials, list and create users under an organization unit path, manage the user's sharing policies, read its overlay rules, and suspend, unsuspend, or unlock the user. |
+| User type | List, get, create, update, and delete. |
+| Agent | List the agent's groups and roles, list agent types, regenerate the agent's client secret, and suspend, unsuspend, or unlock the agent. |
+| Agent type | List, get, create, update, and delete. |
+| Application | Regenerate the client secret or the flow secret, preview a client ID metadata document, manage the application's sharing policies, read its overlay rules, and suspend or unsuspend it. |
+| Organization unit | Get, update, and delete by handle path as well as by identifier, and list a unit's child units, users, groups, and roles. |
+| Resource server | List, get, create, update, and delete its resources, and its actions, on the server or on a resource. |
+
+Every list operation in this table follows the List contract above: it returns one page with
+the total count, and accepts `limit` and `offset`. An operation on a relationship is addressed
+under the resource it belongs to, at the path the server's API defines for it (for example the
+members of a group under that group), so an `endpoints` override for a collection moves its
+relationships with it.
+
+A sharing policy makes a resource available to other organization units, and an overlay rule is
+what applies to the shared resource in one of them. Users, applications, roles, and flows each
+manage their sharing policies the same way (list, get, create, replace, delete) and read their
+overlay rules for an organization unit, so an SDK that ships them for one resource uses the same
+operation names and types for the others:
+
+| Resource | Sharing policies | Overlay rules |
+|---|---|---|
+| User | `getUserSharingPolicies`, `getUserSharingPolicy`, `createUserSharingPolicy`, `updateUserSharingPolicy`, `deleteUserSharingPolicy` | `getUserOverlayRules` |
+| Application | `getApplicationSharingPolicies`, `getApplicationSharingPolicy`, `createApplicationSharingPolicy`, `updateApplicationSharingPolicy`, `deleteApplicationSharingPolicy` | `getApplicationOverlayRules` |
+| Role | `getRoleSharingPolicies`, `getRoleSharingPolicy`, `createRoleSharingPolicy`, `updateRoleSharingPolicy`, `deleteRoleSharingPolicy`, at `/roles/{id}/sharing-policies` | `getRoleOverlayRules`, at `/roles/{id}/overlay-rules` |
+| Flow | `getFlowSharingPolicies`, `getFlowSharingPolicy`, `createFlowSharingPolicy`, `updateFlowSharingPolicy`, `deleteFlowSharingPolicy`, at `/flows/{flowId}/sharing-policies` | `getFlowOverlayRules`, at `/flows/{flowId}/overlay-rules` |
+
+An update replaces the policy. Overlay rules are read for one organization unit, named by `ouId`.
+
+An SDK MAY also expose the server's configuration resources, each with the operations its
+endpoints offer. They follow the same requirements:
+
+| Resource | Collection | Operations beyond the five |
+|---|---|---|
+| Connections | `connections` | Addressed by connection type. List the connection types, and list where a connection is used. |
+| Flows | `flows` | List versions, get a version, restore a version, and list where a flow is used. Manage the flow's sharing policies and read its overlay rules. Read the flow's variables with `getFlowVariables` and replace them with `updateFlowVariables`, at `/flows/{flowId}/variables`; the update is a full replacement, so a variable left out is removed. |
+| Notification templates | `notification-templates` | Addressed by channel. |
+| Design | `design` | Themes and layouts, each with where it is used, and resolving the design that applies to an application. |
+| Translations | `i18n` | List languages, resolve one key or a language's bundle, and set or delete one key or a language's translations. |
+| Server configuration | `server-config` | Get every section, get one, and replace one. No create or delete. |
+| Gateways | `gateways` | The applied version and configuration, the diff against a version, apply, and revert. The gateway's variables and secrets. The gateway's master (what it holds now, with a summary of deployed, failed, and removed resources), the master's history, and the history of one resource in it, addressed by resource type and identifier. |
+| Variables and secrets | `variables`, `secrets` | Addressed by name. |
+| Configuration versions | `configuration-versions` | List, get, and create. A version is never updated or deleted. |
+| Import and export | `import`, `export` | Export configuration, import it, and delete what an import created. |
+| Projects | `projects` | The five operations: `getProjects`, `getProject`, `createProject`, `updateProject`, `deleteProject`. Applications and agents take an optional `projectId`: as a query parameter on their list operations, and in the create request, where it places the resource in the project's root organization unit. |
+| Authorization detail types | `authorization-detail-types` | The five operations, for the RFC 9396 types the server accepts: `getAuthorizationDetailTypes`, `getAuthorizationDetailType`, `createAuthorizationDetailType`, `updateAuthorizationDetailType`, `deleteAuthorizationDetailType`. The public list a client reads before requesting a type is not a management operation: see `getSupportedAuthorizationDetailsTypes` in [Optional operations](#client-surface). |
+| Credential configurations | `openid4vci/credential-configurations` | The five operations, for the credentials the server issues through OpenID for Verifiable Credential Issuance. |
+| Presentation definitions | `openid4vp/presentation-definitions` | The five operations, for the presentations the server requests through OpenID for Verifiable Presentations. |
+| Client registrations | `oauth2/dcr/register` | Register, get, replace, and delete a client by dynamic client registration (RFC 7591 and RFC 7592), under the rules in requirement 11. |
+
+A secret's value is write-only: the SDK sends it and MUST NOT log it.
+
 Requirements:
 
 1. Requests are authorized with the signed-in user's access token. The SDK MUST NOT mint,
@@ -437,7 +718,12 @@ Requirements:
    decision, and the token needs the permissions the server requires for that resource.
 2. The management API can run on a different host from the authorization server. The request
    URL for each resource MUST come from, in order: an explicit URL passed to the call, then an
-   `endpoints` override for that resource's collection (`applications`, `users`, `agents`),
+   `endpoints` override for that resource's collection (`applications`, `users`, `groups`,
+   `roles`, `agents`, `userTypes`, `agentTypes`, `organizationUnits`, `resourceServers`, and, for
+   the configuration resources, `connections`, `flows`, `notificationTemplates`, `design`, `i18n`,
+   `serverConfig`, `gateways`, `variables`, `secrets`, `configurationVersions`, `import`, `export`,
+   `projects`, `authorizationDetailTypes`, `credentialConfigurations`, `presentationDefinitions`,
+   `clientRegistrations`),
    then `baseUrl` followed by the collection path. A single resource is addressed as the
    collection URL followed by its identifier.
 3. The transport MUST be replaceable by the application through a `fetcher`. A `fetcher` passed
@@ -455,6 +741,51 @@ Requirements:
    NOT reuse a type name the SDK already uses for the authenticated user.
 7. HTTP 403 and 404 MUST surface as distinct API error codes, so a caller can tell a missing
    permission from a missing resource.
+8. An SDK that ships these operations SHOULD also let a caller read the permissions the
+   signed-in user's access token carries, and test one against a required permission with the
+   server's hierarchy, where `system` satisfies `system:user:view`. The result only decides what
+   to show. The server still decides every request.
+9. A secret regeneration generates the secret in the SDK from the platform's cryptographically
+   secure random source (32 bytes, base64url without padding), saves it on the resource, and
+   returns it to the caller, which is the only time it can be read. The SDK MUST NOT retain or
+   log it. A resource without an OAuth client MUST be refused before anything is saved, rather
+   than returning a secret that was never stored. An agent's update states whether the agent is
+   delegated, derived from its grant types (authorization code, CIBA, or token exchange), because
+   the server does not store that flag.
+10. An operation whose effect reaches beyond the record, such as deleting a user, removing a
+    group member or a role assignment, removing a role permission, deleting a group, role, or
+    application, or regenerating a client secret, MAY accept an `administrationMode`:
+    - `native`, the default, calls the management API directly.
+    - `flow` runs the administration flow the server configures for the operation, which can
+      revoke grants and end sessions before the record changes. The SDK reads the flow's handle
+      from the server's `flow` configuration and resolves it among the `ADMINISTRATION` flows,
+      then executes it with the operation's inputs. These requests go to `baseUrl`, so `flow`
+      requires it. When no handle is configured, the SDK calls the API directly, since that is
+      the deployment's choice. A configured handle that names no flow, a flow that asks for more
+      input, and a step that refuses each fail with a documented error, the last carrying the
+      step's own error, and none of them falls back to the direct call.
+
+    An SDK that ships `administrationMode` SHOULD also expose the flow operations it is built
+    from (resolve the configured flows, execute one), so an application can run an
+    administration flow the SDK does not wrap. A console that holds configuration only, with no
+    runtime to clean up, uses `native`.
+
+    Suspending, unsuspending, and unlocking an identity have no direct API: they run only
+    through their administration flows. With no flow configured, the operation MUST fail with a
+    documented error rather than report success.
+11. Client registrations follow RFC 7591 and RFC 7592, so they differ from the other resources
+    in three ways. The wire format is `snake_case`, and the SDK maps it to and from the
+    platform's casing. A failure is answered with the OAuth error body (`error` and
+    `error_description`) rather than the server's error envelope: the SDK carries `error` as the
+    server's code and `error_description` as its message, and the status mapping of
+    requirement 7 still holds. The `client_secret` is returned only by registration, since the
+    server stores it write-only, so the SDK hands it to the caller once and MUST NOT retain, log,
+    or print it, including in a type's debug description. A replacement carries the full
+    metadata, since omitted fields are not kept, and the SDK sets its `client_id` from the client
+    being replaced.
+12. Path parameters, such as a handle path, a gateway resource type, or a variable name, MUST be
+    percent-encoded per segment, so that a value cannot address a different resource than the
+    caller named.
 
 #### Self user attribute verification
 
@@ -595,6 +926,41 @@ components render the server's consent step renders each authorization details e
 
 An SDK that does not render consent needs only the request and response behaviour above.
 
+<a id="access-evaluation"></a>
+
+#### Access evaluation
+
+The server is an AuthZEN policy decision point: given a subject, an action, and a resource, it
+answers whether the subject may perform the action. A resource's `type` is a resource server
+identifier and an action's `name` is a permission registered under it, so the decision follows
+the same roles that put permissions in an access token, and it also reflects state a token
+cannot carry, such as a subject suspended since the token was issued. It is optional: an SDK MAY
+ship it, and one that does MUST follow this section.
+
+| Operation | Contract |
+|---|---|
+| `evaluateAccess` | Posts one subject, action, resource, and optional context to the `access_evaluation_endpoint`, and returns the decision with any context the server added. |
+| `evaluateAccesses` | Posts a batch, with defaults shared across the evaluations, to the `access_evaluations_endpoint`, and returns one decision per evaluation, in order. |
+| `searchActions` | Asks which actions a subject may perform on a resource, at `/access/v1/search/action`. |
+
+Requirements:
+
+1. The access endpoints are authorized by a server-level secret in the `Direct-Auth-Secret`
+   header, not by a user's token. Only an SDK with a server runtime can hold it, so a browser or
+   mobile SDK MUST NOT expose these operations, and MUST document why. The secret is supplied
+   at initialization or per call, and MUST NOT be logged.
+2. The endpoints are read from the server's metadata at `/.well-known/authzen-configuration`,
+   whose `policy_decision_point` MUST match the configured server exactly, under the same rule
+   as the discovery `issuer`. An explicit endpoint override is held to the bar in
+   [Endpoint trust](#security-requirements).
+3. A denied decision is a result, not an error. An unknown resource or an unregistered action
+   comes back as a denial with an error context, and the SDK MUST return it as one. Only a
+   transport failure or a `4xx` or `5xx` answer is an error, with the server's `error` as the
+   message.
+4. A Framework Specific SDK MAY offer a guard, such as a middleware factory, that answers `403`
+   when the decision for the request is a denial. The application supplies how the request maps
+   to a subject, an action, and a resource.
+
 ### Framework integration
 
 A Core Lib or Framework Specific SDK MUST integrate into its framework's own composition
@@ -617,12 +983,27 @@ A Core Lib or Framework Specific SDK that targets a UI platform MUST ship compon
 the identity flows, so that an application gets working authentication UI without writing its
 own.
 
-| Category | Purpose | Components |
+Components are grouped by the job they do for the application, and an SDK lays out its source
+the same way, so a capability is found in the same place in every SDK:
+
+| Group | Purpose | Components |
 |---|---|---|
-| Actions | Trigger an operation | Sign-in button, sign-out button, sign-up button |
-| Auth flow | Handle the redirect callback | Callback |
-| Control | Render conditionally on auth state | Signed-in, signed-out, loading |
-| Presentation | Render identity UI | Sign-in, sign-up, recovery, accept invite, invite user, user, user avatar, user dropdown, user profile, verify attribute, language switcher |
+| Auth | Sign a user in or out, run the server-described identity flows (registration, recovery, invitations), and render on auth state | Sign-in, sign-up, recovery, accept invite, invite user, callback, device grant; sign-in, sign-out and sign-up buttons; signed-in, signed-out and loading guards |
+| Account | Show and change the signed-in user's own data | User, user avatar, user dropdown, user profile, verify attribute, change credential, organization unit switcher |
+| Management | Administer the resources of [management operations](#management-operations) | User list, user create, user details, group list, group create, group details, group members, role list, role create, role details, role assignments, role permissions, agent list, agent create, agent details, application list, application create, application details, project list, project create, project details, project switcher, organization unit list, organization unit create, organization unit details, sharing policies |
+| Common | Shared across the groups | Language switcher, attribution, branding |
+
+The pieces that render a server-described flow step, such as the field factory, sit with the
+auth group. Primitives, and the operations and state the components read, keep their own
+folders.
+
+A details component shows one record with what hangs off it, so an application gets a whole
+page from one component: group details embeds the group's members, and role details embeds
+what the role grants and who holds it. Each passes the record's organization unit to the
+embedded component, so identities offered for adding come from that unit, and each MAY delete
+the record under requirement 6, through `administrationMode` where the operation accepts one.
+A read-only record is never offered for deletion. Under a custom render the embedded sections
+are replaced along with the rest, or handed to the render to place.
 
 Requirements:
 
@@ -636,6 +1017,76 @@ Requirements:
 5. In embedded mode, the sign-in and sign-up components MUST render the server-described flow
    step rather than a hard-coded form, so that a change to the server flow does not require an
    SDK release.
+6. Management components are optional, and an SDK that ships them MUST also ship the management
+   operations they use. Each one MUST be usable alone, so an application composes its own
+   console from them. The application owns navigation between them: no management component renders
+   an app shell, a menu, or routes. Actions that change data, such as delete or edit, MUST be
+   off unless the application turns them on, and a delete MUST ask for confirmation. An error
+   from the server MUST be shown as a translated message for its kind, never as the server's
+   own text.
+7. Every component, the unstyled variant and the connected one alike, MUST accept an optional
+   custom render that replaces its built-in presentation while the component keeps its data
+   loading, state and actions. The mechanism is the platform's idiom: a `children` function in
+   React, the default scoped slot in Vue, a trailing `content` lambda in Jetpack Compose, a
+   `content` closure in SwiftUI, and a `builder` in Flutter. It MUST receive everything the
+   built-in presentation draws from: rows, paging, and selection for a list; values, setters,
+   submit, and validity for a form; the record and the actions the application allowed for a
+   details view; and loading and error state. What the requirements above guarantee MUST still
+   hold under a custom render: data-changing actions stay off unless the application turns them
+   on, a delete asks for confirmation, and errors arrive as translated messages.
+8. A management component whose data-changing operation accepts an `administrationMode` (see
+   [management operations](#management-operations)) MUST let the application choose it, and
+   MUST default to `native`. The details component of a user, an agent, or an application MAY
+   offer suspend, unsuspend, and unlock (applications are never locked). When it does, the
+   actions are off unless the application turns them on, the component offers only the actions
+   the identity's current status allows and whose administration flow the server configures,
+   suspending and unsuspending ask for confirmation, a suspension of a user or an agent takes an
+   optional operator note, and the identity's status is shown as a translated label. Reading the
+   configured flows happens only while the actions are on.
+9. Role permissions (`RolePermissions`) MAY be editable. Editing is off unless the application
+   sets `editable`, and role details passes its own `editable` through. When it is on, the
+   component adds and removes permissions per resource server, offering the resource servers
+   and their actions from the resource server operations, and saves through `updateRole`.
+   Removing a permission asks for confirmation. The custom render receives the permissions, and
+   `onAdd` and `onRemove` only while editing is on. Its strings use the `admin.roles.permissions`
+   keys in every locale the SDK ships.
+10. An SDK that ships [organization operations](#organization-operations) and account
+    components SHOULD ship an organization unit switcher (`OrganizationUnitSwitcher`, with
+    `BaseOrganizationUnitSwitcher`) in the account group. It lists the units from
+    `getAccessibleOrganizationUnits`, with an optional `scope`, marks the current one, and calls
+    `switchOrganizationUnit` when the user picks another, unless the application supplies
+    `onSelect` to take the switch over. The custom render receives the units, the current unit,
+    loading and error state, paging, and `onSwitch`. A failed switch is shown as a translated
+    message, and the session it leaves intact stays the one shown.
+11. Projects are a control plane concept, so their components (`ProjectList`, `ProjectCreate`,
+    `ProjectDetails`, and `ProjectSwitcher`) work only against a server that serves the project
+    API. A project id is not an organization unit id: a project has its own root organization
+    unit. The project switcher keeps the current project as client-side context and never signs
+    the user in again or changes a token. The SDK exposes the current project through its
+    state. Application and agent lists pass it as `projectId` when the application passes none,
+    so they show what the project's root unit owns and what is shared into it, and application
+    and agent create send it as `projectId` when the application names no organization unit.
+    No other component treats the project as an organization unit, and the other create
+    components keep their own organization unit default. Deleting a project is confirmed, and
+    create and update conflicts (an id or handle already in use, a handle that cannot change)
+    are shown as translated messages.
+12. Organization unit components (`OrganizationUnitList`, `OrganizationUnitCreate`, and
+    `OrganizationUnitDetails`) administer the units of the
+    [management operations](#management-operations). The list shows root units or the children
+    of a `parentId`. The details view shows the unit with its child units and the users, groups
+    and roles in it, read only. The server refuses to delete a unit that still has child units,
+    or one declared in a resource file, and each refusal is shown as its own translated message.
+    Sharing policies (`SharingPolicies`) show the sharing policies of
+    one user, application, role, or flow, and create, edit, and delete them only while
+    `editable` is on, with deletion confirmed. Given an `ouId`, it also shows the overlay rules
+    that resolve for that unit, read only. Details components do not embed it; the application
+    places it.
+13. An SDK that ships the user side of [device authorization](#client-surface)
+    (`verifyDeviceCode`) and auth components SHOULD ship a device grant component
+    (`DeviceGrant`, with `BaseDeviceGrant`) in the auth group. It takes the code the device
+    shows, typed or read from the verification URI, runs `verifyDeviceCode`, renders any flow
+    step the server returns like the other flow components, and shows approval, denial, and
+    expiry as translated outcomes.
 
 #### Flow element identifiers
 
@@ -686,7 +1137,7 @@ switches on a code.
 | Type | Carries |
 |---|---|
 | Base error | `message`, `code`, `origin` |
-| API error | The base fields, plus HTTP `statusCode` and `statusText` |
+| API error | The base fields, plus HTTP `statusCode` and `statusText`, and `serverError` when the server answered with its error envelope |
 | Runtime error | The base fields, for a failure that is not an API response |
 
 `code` is a stable, machine-readable string. `origin` identifies the package that raised the
@@ -704,6 +1155,11 @@ Requirements:
    the single JWKS re-fetch that [Security requirements](#security-requirements) requires after
    a signature verification failure.
 7. Input validation MUST fail before any network call is made.
+8. When the server answers a failed request with its error envelope, the API error MUST carry
+   it as `serverError`: the server's own `code`, and its `message` and `description`, each with
+   a translation `key`, a `defaultValue`, and the `params` to interpolate. The SDK's own `code`
+   stays the error's code, so `serverError` adds the server's reason without replacing it. A
+   body that is not the envelope leaves `serverError` absent.
 
 A shared catalogue of codes covering configuration, authentication, registration, recovery,
 and transport failures is a target this specification does not yet define. Until it does, an
@@ -724,6 +1180,26 @@ dumps, and cannot be rotated in place, so an SDK MUST NOT persist a token in one
 Every SDK MUST accept a caller-supplied storage adapter. That adapter is outside the SDK's
 control and can be weaker than the platform default, so an SDK MUST document that the secure
 default applies only when it is the one in use.
+
+**Sign-in on a backend.** Where an SDK supports it, the client MUST hold no token at any point:
+no storage write, no in-memory copy, and nothing in the surface that returns one. A request to a
+URL outside the configured [API base](#proxied-requests) MUST be refused rather than sent
+without credentials: sending it anyway turns an authenticated call into an anonymous one and
+hides the failure from the caller.
+
+In a browser, the application's origin MUST use HTTPS, and a browser SDK MUST refuse to start
+backend sign-in on one that does not; a loopback origin MAY use HTTP for local development only.
+The backend MUST set its session cookie `Secure` and `HttpOnly`. Every request the SDK sends to
+the backend, which is every endpoint except `signIn`, MUST be same-origin, MUST send credentials
+so the session cookie goes whenever one exists, and MUST carry `X-Requested-With: XMLHttpRequest`,
+a header a cross-origin page cannot set without a preflight the backend never answers. The
+backend MUST refuse a request to those endpoints that lacks the header. `signIn` is a top-level
+navigation, which cannot carry a custom header: it starts no session on its own, and it MUST
+accept only a same-origin `returnTo`. A session read before any cookie exists still carries the
+header, and is answered as signed out. On mobile, where the backend is reached
+cross-origin by definition, its base URL MUST be configured and MUST use HTTPS, every request
+MUST go to that base, and the session handle MUST live in the platform's secure store under
+[Token storage](#security-requirements) and MUST NOT be written to a log or a crash report.
 
 <a id="token-attachment"></a>
 
@@ -849,6 +1325,60 @@ fixed here. The current implementation is a reusable workflow in this repository
 already differ between SDKs are reconciled through the normal issue backlog rather than
 retroactively through this check, so that adopting the rule does not block unrelated work.
 
+### SDK-first development
+
+ThunderID's own frontends, the Console (`apps/console` and `apps/console-cp`), the Admin
+Console (`apps/admin-console`), and Gate (`apps/gate`), are clients of the server like any
+other application, and they reach it through the SDKs. A capability they need is built in the
+SDK first and consumed from there. The product then exercises the SDKs every day, and an
+application builder can build anything the product shows, with the same operations and
+components.
+
+Requirements:
+
+1. A product change that calls a server API, or adds a view of a server resource, MUST do so
+   through the SDK's operation for it. Where the SDK has no such operation, the change adds it
+   to the SDK, under [Applying this specification](#applying-this-specification), and the
+   product uses it once it is released. The product MUST NOT carry its own client for an API
+   the SDK covers or, under this specification, should cover.
+2. Where an SDK component renders what the change needs, the product SHOULD use the component,
+   configured and custom rendered as the product requires, rather than building its own. A gap
+   in the component, such as a missing field, action, or render hook, is closed in the
+   component.
+3. A defect in an SDK capability found through the product is fixed in the SDK. The product
+   MAY carry a workaround until the fix is released, marked with a link to the SDK pull request,
+   and removes it when it upgrades to that release.
+4. A product pull request that depends on an unreleased SDK change links the SDK pull request,
+   stays a draft until the release, and then moves the product to that release in the same pull
+   request.
+5. What stays in the product is what no other application would need: its shell, navigation,
+   routing, and page layout, and concerns the server's API does not expose. The test is whether
+   another application administering the same resource would need it. If it would, it belongs
+   in the SDK.
+
+**The existing `configure-*` packages.** The Console's `configure-*` feature packages predate
+the SDK's components and call the management APIs directly. They move onto the SDK over time.
+Until a package has moved, a change to it follows these rules:
+
+- An improvement to what the package does with a resource, such as a new field, operation,
+  filter, validation, or error case, lands in the SDK too: the operation, and the component
+  when the SDK has one for that resource. An improvement made only in the package widens the gap
+  between what the product can do and what an application built on the SDK can do.
+- When the change is small and an SDK component already renders the view being changed, the
+  package SHOULD switch that view to the component in the same change, rather than improving its
+  own copy. Moving a whole package is not a small change. It is tracked and done on its own, and
+  it never blocks an unrelated fix.
+- The configuration resources have SDK operations (see
+  [Management operations](#management-operations)) but no SDK components yet. A change to them
+  uses the SDK operations under requirement 1, and a view that another application would need
+  SHOULD be proposed as an SDK component.
+- The `configure-*` packages run data-changing operations natively, with no administration
+  flow, so a component they adopt is used with `administrationMode: native`.
+- A change confined to a package's layout, navigation, or styling needs no SDK change.
+
+The [parity rule](#cross-sdk-parity-and-delivery) applies to the SDK side of each of these
+changes as it does to any other.
+
 ### Repository layout, CI, and release
 
 Each SDK repository owns its own pipelines. There is no shared monorepo pipeline any more, so
@@ -868,6 +1398,28 @@ other through workspace paths in development.
 Naming follows each ecosystem rather than a single cross-language pattern: `@thunderid/*` on
 npm, PascalCase module names for Swift Package Manager products, reverse-domain coordinates
 under `dev.thunderid` for Android, and `snake_case` for Dart packages.
+
+Inside a package, source is grouped by function rather than by kind, with the same folder names
+in every SDK, so a capability is found in the same place on every platform:
+
+| Folder | Holds |
+|---|---|
+| `api/account` | The [account operations](#client-surface) on the signed-in user (`/users/me`) |
+| `api/auth` | Sign-in, sign-up, tokens, and the embedded flows |
+| `api/management` | The [management operations](#management-operations), one folder or file group per resource |
+| `components/auth` | The auth components, guards, and the flow step renderers |
+| `components/account` | The account components |
+| `components/management` | The management components |
+| `components/common` | Components shared across the groups |
+
+Primitives, models, and framework state keep folders of their own beside these. A package
+without UI has only `api`. A new SDK MUST use this layout. An existing SDK whose folders are part
+of its public import path, such as Kotlin packages, MAY keep its layout until its next major
+version, since moving them would break every application's imports.
+
+The management components' translation keys keep their `admin.` prefix (`admin.groups.details.overview`
+and so on). Applications override those keys in their own bundles, so renaming them would silently
+drop every application's translations; a rename waits for a major version of each SDK.
 
 ### Testing
 
@@ -925,14 +1477,12 @@ An SDK without documentation and a runnable sample is not shippable.
 developer from nothing to a working sign-in with copy-pasteable code, and a reference covering
 every public operation, configuration key, and type.
 
-**Samples** follow the three-tier split agreed in
-[#4065](https://github.com/thunder-id/thunderid/discussions/4065): minimal use-case samples
-ship with the product repository, each SDK repository owns its own quickstart samples
-alongside the SDK, and feature demos live in
-[`thunder-id/samples`](https://github.com/thunder-id/samples).
+**Samples** live in [`thunder-id/samples`](https://github.com/thunder-id/samples): a
+quickstart per SDK, the self-care sample and the Admin sample (`management/admin`) that show the
+account and management capabilities, and integration samples. Each sample depends on a released SDK version, and an SDK's end-to-end
+suite builds its quickstart against the SDK's own checkout.
 
-Every SDK at Core Lib or Framework Specific layer MUST ship at least one runnable sample in
-its own repository. A sample MUST run against a local server using only its documented
+Every SDK at Core Lib or Framework Specific layer MUST have at least one runnable sample. A sample MUST run against a local server using only its documented
 environment variables, MUST NOT hardcode credentials or server URLs, MUST use only the public
 SDK surface, and MUST be built in CI.
 
@@ -941,6 +1491,20 @@ completes, an authenticated state showing display name, email, and picture or an
 fallback, and a sign-out returning to the unauthenticated state. For a server-side SDK: a
 public route that succeeds without credentials, a protected route that rejects a request with
 no token, and the same protected route returning claims with a valid token.
+
+Samples move with the SDKs. Because a sample pins a released version, an SDK change cannot
+break it until the sample is upgraded, which is also when an application would hit the break.
+An SDK pull request MUST therefore check every sample that uses the SDK, and link a samples
+pull request when either:
+
+1. The change breaks a sample: a renamed type or package, a changed signature, or a changed
+   default. The samples pull request upgrades the SDK and fixes the sample, and waits for the
+   release it needs.
+2. The change adds a capability a sample exists to demonstrate, such as a self-care capability
+   for the self-care sample or a management operation or component for the Admin sample. The
+   samples pull request shows the new capability.
+
+When neither applies, the SDK pull request says so.
 
 ### Applying this specification
 
@@ -974,6 +1538,19 @@ exists. Before the pull request is opened:
 3. Answer the parity question on the pull request, per
    [Cross-SDK parity and delivery](#cross-sdk-parity-and-delivery).
 4. Add or change the tests that cover the behaviour.
+
+**Building a product feature.** A Console, Admin Console, or Gate feature that calls the
+server starts in the SDK, per [SDK-first development](#sdk-first-development):
+
+1. Find the SDK operations and components the feature needs, in this specification and in the
+   React SDK, which the product consumes.
+2. Add what is missing to the SDK, following the steps above, and raise its pull request with
+   the parity question answered.
+3. Build the feature on the SDK, using its components where they render what the feature needs.
+   In a `configure-*` package that has not moved onto the SDK yet, land the improvement in the
+   SDK as well, and switch the view to the SDK component when the change is small.
+4. Link the SDK pull request from the product pull request, and keep the product pull request a
+   draft until the SDK release it needs is out.
 
 **Reviewing.** A reviewer checks the change against the requirements in this document rather
 than against the surrounding code's habits. Where the two disagree, the specification is the
@@ -1038,6 +1615,9 @@ branching.
   neither contains a credential, a token, or unmasked personal data.
 - **AC3.4:** Given an SDK release, when its documentation is read, then every code that SDK can
   raise is listed.
+- **AC3.5:** Given the server answered a failed request with its error envelope, when the API
+  error is inspected, then `serverError` carries the server's code, message, and description,
+  and the error's own code is unchanged.
 
 ### R4. A security floor no SDK ships below
 
@@ -1123,13 +1703,16 @@ sample I can run, so I can reach a working sign-in without reading the SDK's sou
   for that SDK exists with runnable code.
 - **AC6.2:** Given an SDK release, when the reference is checked, then every public operation,
   configuration key, and type is covered.
-- **AC6.3:** Given an SDK at Core Lib or Framework Specific layer, when its repository is
-  checked, then it contains at least one runnable sample.
+- **AC6.3:** Given an SDK at Core Lib or Framework Specific layer, when
+  `thunder-id/samples` is checked, then it contains at least one runnable sample for it.
 - **AC6.4:** Given a sample and a local server, when only the documented environment variables
   are set, then the sample runs and completes the flow in
   [Documentation and samples](#documentation-and-samples) with no code change.
 - **AC6.5:** Given a sample, when its source is inspected, then it contains no hardcoded
   credential or server URL and uses only the SDK's public surface.
+- **AC6.6:** Given an SDK pull request that breaks a sample or adds a capability a sample
+  exists to show, when it is reviewed, then it links a samples pull request that upgrades the
+  sample, or says why no sample is affected.
 
 ### R7. Tested at three levels, with security behaviour pinned
 
@@ -1239,6 +1822,116 @@ server recorded and nothing else.
 - **AC10.5:** Given any verification step, when the log output is inspected, then it contains
   no code.
 
+### R11. An application can keep its tokens off the client
+
+**Requirement:** As a developer of an application whose users' sessions are worth stealing, I
+want sign-in to run on my own backend, so that nothing that reaches the page or the handset can
+read a token, and ending the session on the server ends it for the application.
+
+**Acceptance criteria:**
+
+- **AC11.1:** Given `endpoints.backend` is set, when the application signs in, calls an API,
+  restarts, and signs out, then client storage, the SDK's in-memory state, and every value the
+  public surface returns contain no access, refresh, or ID token.
+- **AC11.2:** Given `endpoints.backend` is not set, when the application runs, then its
+  behaviour is unchanged from an SDK without this capability.
+- **AC11.3:** Given sign-in runs on a backend, when `getAccessToken`, `getIdToken`,
+  `exchangeToken`, `setSession`, or a token revocation is called, then each fails with the documented
+  unsupported-operation error and returns no value.
+- **AC11.4:** Given the client is initializing, when `isLoading` is read before the first
+  session read settles, then it is true, and a route guard that waits on it starts no sign-in.
+- **AC11.5:** Given the backend answers `401 session_expired`, when the SDK handles it, then it
+  refreshes once and retries once; a failed refresh, or a retry answered `session_expired` or
+  `login_required`, is treated as signed out, and any other answer to the retry goes to the
+  caller.
+- **AC11.6:** Given the backend answers a `401` that is neither `session_expired` nor
+  `login_required`, including one that answers a retry, when the SDK handles it, then it is
+  returned to the caller unchanged and no further refresh is attempted.
+- **AC11.7:** Given a signed-in session ends elsewhere, when the proxy answers `401
+  login_required`, when a check on page focus finds it gone, or when a poll does, then the SDK
+  reports the user as signed out once, and the framework bindings clear the user.
+- **AC11.8:** Given the application signs itself out, when the sign-out completes, then the
+  session-ended notification does not fire for it.
+- **AC11.9:** Given a request to a URL outside the configured API base, when the application
+  sends it through the SDK, then it is refused with a documented error and no request leaves the
+  client.
+- **AC11.10:** Given a browser SDK and a cross-origin page, when it calls a backend endpoint
+  with the user's cookie, then the request is refused for want of the required header.
+- **AC11.11:** Given a mobile SDK, when the session is inspected after sign-in, then the handle
+  is in the platform's secure store, the backend base URL is pinned and uses HTTPS, and neither
+  the handle nor the backend's responses appear in logs or crash reports.
+- **AC11.12:** Given a mobile SDK, when the browser session returns a `session_code`, then it is
+  exchanged with the verifier the SDK generated for that sign-in, and a callback carrying no code,
+  or a code for a sign-in this client did not start, is refused.
+
+### R12. Every capability the server offers has one name and one place
+
+**Requirement:** As an implementor of a new SDK, I want every capability the server's API offers
+to be named, scoped, and placed by this specification, so that I build the whole surface from it
+without reading another SDK's source, and a capability one SDK lacks is a recorded gap rather
+than a different design.
+
+**Acceptance criteria:**
+
+- **AC12.1:** Given an SDK ships an operation listed in [Optional operations](#client-surface),
+  [Management operations](#management-operations), or [Access evaluation](#access-evaluation),
+  when its name and returned concept are compared with this specification, then they match,
+  allowing for platform naming conventions.
+- **AC12.2:** Given an SDK does not ship an optional operation, when its documentation is read,
+  then the operation is listed as unsupported.
+- **AC12.3:** Given a browser or mobile SDK, when its public surface is inspected, then it
+  exposes neither the access evaluation operations nor token introspection.
+- **AC12.4:** Given a client registration succeeds, when the SDK's logs and the debug
+  description of the returned registration are inspected, then neither contains the
+  `client_secret`, and a later read of the registration returns none.
+- **AC12.5:** Given a client registration fails with an OAuth error body, when the error is
+  inspected, then it carries the body's `error` as the server code and its
+  `error_description` as the message, and a `403` and a `404` carry distinct codes.
+- **AC12.6:** Given a denied access evaluation, including one for an unknown resource, when the
+  operation returns, then it returns the denial as a result rather than raising an error.
+- **AC12.7:** Given a path parameter containing `/`, `?`, or `..`, when a management request is
+  built, then the value is percent-encoded within its segment and addresses only the resource
+  the caller named.
+- **AC12.8:** Given a new SDK, when its source is inspected, then data-layer code sits under
+  `api/account`, `api/auth`, and `api/management`, and components under `components/auth`,
+  `components/account`, `components/management`, and `components/common`.
+- **AC12.9:** Given an SDK that ships [organization operations](#organization-operations), when
+  a redirect sign-in is made with `organizationUnitId`, then the authorization request goes to
+  `/ou/{ouId}/oauth2/authorize` with the unit percent-encoded, and the code is redeemed at
+  `/ou/{ouId}/oauth2/token` for the same unit and never at `/oauth2/token`.
+- **AC12.10:** Given an embedded sign-in with `organizationUnitId`, when the flow requests are
+  inspected, then `ouId` is on the request that starts the `AUTHENTICATION` flow and on no
+  request that continues it.
+- **AC12.11:** Given a signed-in session, when `switchOrganizationUnit` fails, including when the
+  server answers `unauthorized_client` or the user cancels, then the stored tokens, the user,
+  and the current unit are those of the session before the call, and the error is a documented
+  one.
+- **AC12.12:** Given `switchOrganizationUnit` succeeds, when the stored session is inspected,
+  then every token in it comes from the new sign-in, and the user has been read again.
+- **AC12.13:** Given an SDK that ships organization operations, when its source and
+  documentation are inspected, then no access decision is made from `ouId`, `ouHandle`,
+  `ouName`, or `getCurrentOrganizationUnit`, and the documentation states that they are for
+  display only.
+
+### R13. ThunderID's own features are built on the SDKs
+
+**Requirement:** As a developer building on ThunderID, I want every capability ThunderID's own
+Console and Admin Console offer to be in the SDKs, so that I can build the same experience
+without reverse engineering the product's API calls.
+
+**Acceptance criteria:**
+
+- **AC13.1:** Given a product pull request that calls a server API the SDK does not expose, when
+  it is reviewed, then it links the SDK pull request that adds the operation, or records why the
+  API stays outside the SDK.
+- **AC13.2:** Given a small product change to a view that an SDK component already renders, when
+  it is reviewed, then the view uses the component, or the pull request records why it does not.
+- **AC13.3:** Given an improvement to how a `configure-*` package handles a resource, when it
+  merges, then the same improvement exists in the SDK, or an open SDK pull request carrying it is
+  linked.
+- **AC13.4:** Given a product workaround for an SDK defect, when the product upgrades to the SDK
+  release that fixes it, then the workaround is removed in that upgrade.
+
 ## Change log
 
 | Version | Date | Change |
@@ -1252,3 +1945,5 @@ server recorded and nothing else.
 | 0.7 | 2026-10-26 | The `backchannelLogout` key applies only to an SDK that mounts the handler itself; an SDK that exposes the handler takes the store on it. A `sub`-only logout token also ends sessions that began within the clock tolerance after it was issued. As reviewed in #5777. |
 | 0.8 | 2026-10-26 | `authorizationDetails` configuration key (RFC 9396), sent on the authorization, silent sign-in, CIBA, and `client_credentials` requests. Granted details surfaced on the token response and the access token. Consent rendering of authorization details elements for SDKs that render consent, and decisions only in server-rendered consent. |
 | 0.9 | 2026-11-03 | Self user attribute verification added as an optional capability (R10). |
+| 0.10 | 2026-11-04 | Sign-in on a backend the application owns (RFC 10017) added as an optional capability for browser and mobile SDKs: the `endpoints.backend` contract, what the client holds in place of a token on each platform, the surface that is refused while it is on, and `session.checkInterval` (R11). Management operations extended to groups and roles, with member, assignment, and permission operations. Management operations also cover user types, agent types, user usages and credentials, secret regeneration, and client ID metadata document preview; an API error carries the server's error envelope as `serverError`; and destructive operations may run through the server's administration flows (`administrationMode`). Organization units and resource servers join the management resources, with suspend, unsuspend, and unlock run through flows, and the server's configuration resources (connections, flows, notification templates, design, translations, server configuration, gateways, variables and secrets, configuration versions, import and export) are an optional extension. Application list, create, and details join the management components. Management components let the application choose `administrationMode`, and the user, agent, and application details may offer suspend, unsuspend, and unlock through the configured flows. Management components added as an optional UI category. UI components grouped by function (auth, account, admin, common), and every component accepts a custom render in the platform's idiom. A change that breaks a sample, or adds a capability a sample exists to show, comes with a linked samples pull request (AC6.6). |
+| 0.11 | 2026-11-04 | Every capability of the server's API is now named and scoped (R12). The account surface gains `updateUserCredentials`, and optional operations are catalogued with canonical names and where each applies: silent sign-in, CIBA (`initiateCIBA`, `pollCIBA`), device authorization on the device side (`startDeviceAuthorization`, `pollDeviceAuthorization`) and the user side (`verifyDeviceCode`), pushed authorization requests, token introspection, passkeys, flow metadata, recovery and invitations, and platform attestation. Access evaluation (AuthZEN) added as an optional capability for server-side SDKs. Management operations cover groups by handle path, sharing policies and overlay rules for roles and flows, flow variables, the gateway master and its history, projects, authorization detail types, credential configurations (OpenID4VCI), presentation definitions (OpenID4VP), and client registrations (RFC 7591 and RFC 7592), with the OAuth error mapping and write-once secret rules registrations need, and per-segment encoding of path parameters. Group details and role details join the management components. The server APIs that are out of scope for SDKs are listed, and source is laid out under `api/{account,auth,management}` and `components/{auth,account,management,common}`. Organization operations replace the placeholder that kept them out of the surface ([#5625](https://github.com/thunder-id/thunderid/issues/5625), [#6302](https://github.com/thunder-id/thunderid/issues/6302)): `getAccessibleOrganizationUnits`, `getCurrentOrganizationUnit` (claims for display only), the `signIn` option `organizationUnitId` (the `/ou/{ouId}/oauth2/authorize` and `/ou/{ouId}/oauth2/token` routes in redirect mode, `ouId` on the flow start in embedded mode, and `ouId` on the backend `signIn` endpoint), `switchOrganizationUnit`, Resolve OU steps rendered from the server, and the `OrganizationUnitSwitcher` component (AC12.9 to AC12.13). Canonical names are stated for role and flow sharing policies and overlay rules, flow variables, groups by path, projects, authorization detail types, and the public `getSupportedAuthorizationDetailsTypes`. `RolePermissions` may edit a role's permissions. CIBA, device authorization, pushed authorization requests (`pushedAuthorizationRequests`), token introspection, and access evaluation are scoped to the platforms each applies to. The Admin sample (`management/admin`) replaces the B2B sample. The management group gains project, organization unit, and sharing policy components and a project switcher (UI requirements 11 and 12), and the auth group a device grant component (UI requirement 13). ThunderID's own features are built SDK first (R13): the Console, the Admin Console, and Gate reach the server through the SDKs, and an improvement to a `configure-*` package that has not moved onto the SDK yet lands in the SDK too, switching the view to the SDK component when the change is small. |
