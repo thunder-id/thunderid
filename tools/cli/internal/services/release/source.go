@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/thunder-id/thunderid/tools/cli/internal/plane"
 	"github.com/thunder-id/thunderid/tools/cli/internal/product"
 )
 
@@ -28,7 +29,18 @@ type Client struct {
 	FallbackURL string
 	// PinnedVersion is the release to install, without a leading "v". Empty means the latest.
 	PinnedVersion string
+	// Plane is the distribution to install. Auto takes the quickstart when the release has one.
+	Plane plane.Plane
+	// GitHubRelease reports that ManifestURL is the GitHub release API for one release, which a
+	// GitHub release page given as the source resolves to, rather than a releases manifest.
+	GitHubRelease bool
+	// Prereleases makes the newest release the latest even when it is a prerelease. A CLI
+	// published on the next channel sets it, so `npx thunderid@next` installs milestones.
+	Prereleases bool
 }
+
+// gitHubAPIBase is where GitHub release pages are resolved.
+const gitHubAPIBase = "https://api.github.com"
 
 // Default is the client the package-level helpers use. main replaces it once the command line
 // has been parsed.
@@ -42,6 +54,9 @@ func (c *Client) IsCustom() bool { return c.ManifestURL != product.ReleasesURL }
 
 // Pinned returns the pinned version, or "" when the latest release is wanted.
 func Pinned() string { return Default.PinnedVersion }
+
+// SelectedPlane returns the plane --plane asked for, or plane.Auto when the release decides.
+func SelectedPlane() plane.Plane { return Default.Plane }
 
 // SourceURL returns the manifest the CLI is reading releases from.
 func SourceURL() string { return Default.ManifestURL }
@@ -58,9 +73,14 @@ var semverPattern = regexp.MustCompile(`^v?\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$`)
 // Each value is classified by its shape: a URL selects the manifest to read, a semantic version
 // pins the release to install. Both may be given, in either order, so "this version from that
 // mirror" is expressible. Two of the same kind is a mistake rather than a last-one-wins.
+//
+// A GitHub release page (github.com/<owner>/<repo>/releases/tag/<tag>, or .../releases/latest) is
+// also a source: the release is read from the GitHub API, so a build published on any repository,
+// such as a fork, can be installed before it reaches the public manifest. A tag page pins its tag.
 func Configure(values []string) (*Client, error) {
 	client := &Client{ManifestURL: product.ReleasesURL, FallbackURL: product.GitHubAPI}
 	var sawURL, sawVersion bool
+	var releaseTag string
 
 	for _, raw := range values {
 		value := strings.TrimSpace(raw)
@@ -80,6 +100,15 @@ func Configure(values []string) (*Client, error) {
 			client.ManifestURL = value
 			client.FallbackURL = ""
 			sawURL = true
+			apiURL, tag, isRelease, err := gitHubReleaseAPI(value)
+			if err != nil {
+				return nil, err
+			}
+			if isRelease {
+				client.ManifestURL = apiURL
+				client.GitHubRelease = true
+				releaseTag = tag
+			}
 
 		case semverPattern.MatchString(value):
 			if sawVersion {
@@ -94,7 +123,53 @@ func Configure(values []string) (*Client, error) {
 					"pass a version like 1.0.1 or a manifest URL like https://example.com/releases.json", value)
 		}
 	}
+	if releaseTag != "" {
+		version := strings.TrimPrefix(releaseTag, "v")
+		if sawVersion && client.PinnedVersion != version {
+			return nil, fmt.Errorf("--product-version was given the release page for %s and the version %s; "+
+				"pass one of them", releaseTag, client.PinnedVersion)
+		}
+		client.PinnedVersion = version
+	}
 	return client, nil
+}
+
+// gitHubReleaseAPI resolves a GitHub release page to the API URL that describes it. isRelease is
+// false for any other URL, which is read as a manifest. For a tag page, tag is the release tag; it
+// has to be a "v" and a version, which is how releases are tagged and matched.
+func gitHubReleaseAPI(raw string) (apiURL, tag string, isRelease bool, err error) {
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return "", "", false, nil
+	}
+	host := strings.ToLower(parsed.Hostname())
+	if host != "github.com" && host != "www.github.com" {
+		return "", "", false, nil
+	}
+	parts := strings.Split(strings.Trim(parsed.Path, "/"), "/")
+	if len(parts) < 3 || parts[2] != "releases" {
+		return "", "", false, nil
+	}
+	repo := gitHubAPIBase + "/repos/" + url.PathEscape(parts[0]) + "/" + url.PathEscape(parts[1]) + "/releases"
+	switch {
+	case len(parts) == 4 && parts[3] == "latest":
+		return repo + "/latest", "", true, nil
+	// A release asset (.../releases/download/<tag>/<file>, or .../releases/latest/download/<file>)
+	// is a file someone published, such as a manifest kept on a release, so it is read as one.
+	case len(parts) == 6 && parts[3] == "download" && parts[4] != "" && parts[5] != "",
+		len(parts) == 6 && parts[3] == "latest" && parts[4] == "download" && parts[5] != "":
+		return "", "", false, nil
+	case len(parts) == 5 && parts[3] == "tag":
+		tag, err := url.PathUnescape(parts[4])
+		if err != nil || !strings.HasPrefix(tag, "v") || !semverPattern.MatchString(tag) {
+			return "", "", false, fmt.Errorf("--product-version %q is a release page whose tag is not a "+
+				"version like v2.0.0-m1", raw)
+		}
+		return repo + "/tags/" + url.PathEscape(tag), tag, true, nil
+	default:
+		return "", "", false, fmt.Errorf("--product-version %q is a GitHub page but not a release; pass a "+
+			"release page like https://github.com/<owner>/<repo>/releases/tag/v2.0.0", raw)
+	}
 }
 
 func looksLikeURL(value string) bool {

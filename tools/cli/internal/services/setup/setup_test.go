@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/thunder-id/thunderid/tools/cli/internal/plane"
 	"github.com/thunder-id/thunderid/tools/cli/internal/services/health"
 	"github.com/thunder-id/thunderid/tools/cli/internal/services/setup"
 )
@@ -361,4 +362,102 @@ func TestServerPort_PrefersConfiguredPort(t *testing.T) {
 func TestServerPort_FallsBackToDefault(t *testing.T) {
 	assert.Equal(t, health.DefaultPort, setup.ServerPort(t.TempDir()))
 	assert.Equal(t, health.DefaultPort, setup.ServerPort(""))
+}
+
+// scriptExt returns the platform's setup and start script extension.
+func scriptExt() string {
+	if runtime.GOOS == "windows" {
+		return ".ps1"
+	}
+	return ".sh"
+}
+
+// writeFiles creates each of names, with its parent directories, under dir.
+func writeFiles(t *testing.T, dir string, names map[string]string) {
+	t.Helper()
+	for name, body := range names {
+		path := filepath.Join(dir, name)
+		require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+		require.NoError(t, os.WriteFile(path, []byte(body), 0o644))
+	}
+}
+
+// quickstartPack lays out a quickstart pack: the 2.x pack named after the product.
+func quickstartPack(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	writeFiles(t, dir, map[string]string{
+		"setup" + scriptExt():                "",
+		"start" + scriptExt():                "",
+		"quickstart-bootstrap" + scriptExt(): "",
+		"cp/setup-cp" + scriptExt():          "",
+		"cp/deployment.yaml":                 "server:\n  port: 8095\n",
+		"dp/setup" + scriptExt():             "",
+		"dp/deployment.yaml":                 "server:\n  port: 8090\n",
+		"auth-dp/setup" + scriptExt():        "",
+		"auth-dp/deployment.yaml":            "server:\n  port: 8091\n",
+	})
+	return dir
+}
+
+// dataPlanePack lays out a Data Plane pack, which is also what every 1.x release ships.
+func dataPlanePack(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	writeFiles(t, dir, map[string]string{
+		"setup" + scriptExt(): "",
+		"start" + scriptExt(): "",
+		"deployment.yaml":     "server:\n  port: 8090\n",
+	})
+	return dir
+}
+
+func TestPlaneOf_ReadsThePlaneFromThePack(t *testing.T) {
+	assert.Equal(t, plane.Quickstart, setup.PlaneOf(quickstartPack(t)))
+	assert.Equal(t, plane.Data, setup.PlaneOf(dataPlanePack(t)))
+}
+
+// The quickstart's root holds its own setup script, so its planes' scripts underneath must not
+// be taken for the install's.
+func TestFindThunderRoot_QuickstartRootWinsOverItsPlanes(t *testing.T) {
+	dir := quickstartPack(t)
+	root, err := setup.FindThunderRoot(dir)
+	require.NoError(t, err)
+	assert.Equal(t, dir, root)
+}
+
+func TestDefaultPort_FollowsThePlane(t *testing.T) {
+	assert.Equal(t, health.DefaultPort, setup.DefaultPort(dataPlanePack(t)))
+	assert.Equal(t, 8095, setup.DefaultPort(quickstartPack(t)))
+}
+
+// The quickstart is known by its Control Plane's port, the console an operator starts from.
+func TestServerPort_QuickstartIsKnownByItsControlPlane(t *testing.T) {
+	assert.Equal(t, 8095, setup.ServerPort(quickstartPack(t)))
+}
+
+func TestInstallPorts_QuickstartListsEveryServer(t *testing.T) {
+	dir := quickstartPack(t)
+	assert.Equal(t, []int{8095, 8090, 8091}, setup.InstallPorts(dir, setup.ServerPort(dir)))
+	assert.Equal(t, 8090, setup.DataPlanePort(dir))
+	assert.True(t, setup.HasFixedPorts(dir))
+}
+
+func TestInstallPorts_SinglePlaneListsItsPort(t *testing.T) {
+	dir := dataPlanePack(t)
+	assert.Equal(t, []int{9000}, setup.InstallPorts(dir, 9000))
+	assert.Zero(t, setup.DataPlanePort(dir))
+	assert.False(t, setup.HasFixedPorts(dir))
+}
+
+// The quickstart's scripts carry the ports its servers reach each other on, so moving one in its
+// configuration alone would break the install.
+func TestEnsureServerPort_RefusesToMoveTheQuickstart(t *testing.T) {
+	dir := quickstartPack(t)
+	require.NoError(t, setup.EnsureServerPort(dir, 8095))
+
+	err := setup.EnsureServerPort(dir, 9000)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "fixed ports")
+	assert.Equal(t, 8095, setup.ReadServerPort(dir), "the configuration must be left as it was")
 }

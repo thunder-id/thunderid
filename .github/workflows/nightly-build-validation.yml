@@ -109,20 +109,44 @@ jobs:
       - name: 📦 Build and Package Samples for macOS/${{ matrix.arch }}
         run: ./scripts/package-samples.sh macos ${{ matrix.arch }}
 
+  # Lists the npm dist-tags the CLI lane tests. A job-level `if` cannot read `matrix`, so the
+  # channels are resolved here and handed to the matrix instead: a manual run can narrow them to
+  # one, and a dist-tag that has never been published is left out rather than failing the lane.
+  cli-channels:
+    name: 🔎 Resolve Published CLI Channels
+    runs-on: ubuntu-latest
+    outputs:
+      dist-tags: ${{ steps.tags.outputs.dist-tags }}
+    steps:
+      - name: 🔎 List the Published dist-tags to Test
+        id: tags
+        env:
+          REQUESTED: ${{ github.event.inputs.dist-tag }}
+        run: |
+          set -euo pipefail
+          PUBLISHED="$(npm view thunderid dist-tags --json)"
+          TAGS="$(node -e '
+            const published = JSON.parse(process.argv[1]);
+            const wanted = process.argv[2] ? [process.argv[2]] : ["latest", "next"];
+            for (const tag of wanted.filter(t => !published[t])) {
+              console.error(`⏭️ thunderid@${tag} is not published, so it is not tested`);
+            }
+            console.log(JSON.stringify(wanted.filter(t => published[t])));
+          ' "$PUBLISHED" "$REQUESTED")"
+          echo "dist-tags=$TAGS" >> "$GITHUB_OUTPUT"
+          echo "✅ Testing: $TAGS"
+
   cli-compatibility:
     name: 🌙 Published CLI (${{ matrix.dist-tag }}, ${{ matrix.os }})
+    needs: [cli-channels]
+    if: ${{ needs.cli-channels.outputs.dist-tags != '[]' }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
-        dist-tag: [latest, next]
-    # A manual run can narrow the matrix to one channel.
-    if: >-
-      github.event_name != 'workflow_dispatch' ||
-      github.event.inputs.dist-tag == '' ||
-      github.event.inputs.dist-tag == matrix.dist-tag
+        dist-tag: ${{ fromJSON(needs.cli-channels.outputs.dist-tags) }}
     steps:
       - name: 📥 Checkout Code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
