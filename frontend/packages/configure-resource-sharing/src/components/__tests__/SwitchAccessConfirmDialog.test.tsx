@@ -33,7 +33,7 @@ const renderDialog = (
     <SwitchAccessConfirmDialog
       accessSwitch={value}
       fromLabel="Every organization unit"
-      toLabel="Selected child units"
+      toLabel="Selected child organization units"
       ownerName="Acme Corp"
       resourceName="Storefront"
       unitsById={unitsById}
@@ -63,11 +63,11 @@ describe('SwitchAccessConfirmDialog', () => {
       }),
     );
 
-    expect(screen.getByText('Switch to Selected child units?')).toBeInTheDocument();
+    expect(screen.getByText('Switch to Selected child organization units?')).toBeInTheDocument();
     expect(
       screen.getByText('The "Every organization unit" policy, with its exceptions: Partner Sandbox'),
     ).toBeInTheDocument();
-    expect(screen.getByText('Granted child units: Acme Retail')).toBeInTheDocument();
+    expect(screen.getByText('Granted child organization units: Acme Retail')).toBeInTheDocument();
     expect(screen.getByText(/can't be chosen again here/)).toBeInTheDocument();
   });
 
@@ -77,7 +77,7 @@ describe('SwitchAccessConfirmDialog', () => {
     );
 
     expect(screen.getByText('Change the scope?')).toBeInTheDocument();
-    expect(screen.getByText(/Access then starts as All child units of Acme Corp/)).toBeInTheDocument();
+    expect(screen.getByText(/Access then starts as All child organization units of Acme Corp/)).toBeInTheDocument();
     expect(screen.getByText('The "Every organization unit" policy')).toBeInTheDocument();
     expect(screen.getByRole('button', {name: 'Delete policy and change scope'})).toBeInTheDocument();
   });
@@ -94,14 +94,14 @@ describe('SwitchAccessConfirmDialog', () => {
       accessSwitch({field: 'childUnitsAccess', to: 'none', cleared: [{kind: 'childUnits', ouIds: ['retail']}]}),
     );
 
-    expect(screen.getByText('Switch to Selected child units?')).toBeInTheDocument();
+    expect(screen.getByText('Switch to Selected child organization units?')).toBeInTheDocument();
     expect(screen.queryByText('Stop sharing Storefront?')).not.toBeInTheDocument();
   });
 
   it('mentions unit settings only for resources that have them', () => {
     renderDialog(accessSwitch({cleared: [{kind: 'trees', ouIds: ['x']}]}), {hasUnitSettings: true});
 
-    expect(screen.getByText(/Unit settings are cleared too/)).toBeInTheDocument();
+    expect(screen.getByText(/Organization unit settings are cleared too/)).toBeInTheDocument();
   });
 
   it('confirms and cancels', () => {

@@ -2,11 +2,18 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {Box, FormControlLabel, Radio, RadioGroup, Typography} from '@wso2/oxygen-ui';
-import type {JSX} from 'react';
+import type {JSX, ReactNode} from 'react';
 
 export interface AccessChoice<T extends string> {
   value: T;
+  /**
+   * Plain-text name of the choice, also used where markup can't go, such as a confirmation's title.
+   */
   title: string;
+  /**
+   * Rendered in place of `title` when the title carries markup, such as an organization unit chip.
+   */
+  titleContent?: ReactNode;
   description: string;
   /**
    * Shows the choice but keeps it from being picked, for choices the console can keep but not create.
@@ -66,7 +73,7 @@ export default function AccessChoiceCards<T extends string>({
             label={
               <Box>
                 <Typography variant="body1" fontWeight={600}>
-                  {choice.title}
+                  {choice.titleContent ?? choice.title}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
                   {choice.description}

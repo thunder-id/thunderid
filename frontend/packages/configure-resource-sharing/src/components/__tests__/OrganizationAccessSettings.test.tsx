@@ -124,11 +124,16 @@ describe('OrganizationAccessSettings', () => {
     );
 
     expect(
-      radio('Where Alice is affiliated', /Acme Corp only Alice isn't affiliated with any other unit\./),
+      radio(
+        'Where Alice is affiliated',
+        /Acme Corp organization unit only Alice isn't affiliated with any other organization unit\./,
+      ),
     ).toBeChecked();
-    expect(screen.getByText(/Alice can sign in and act within the units selected here\./)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Alice can sign in and act within the organization units selected here\./),
+    ).toBeInTheDocument();
     expect(screen.queryByText('Who can use Alice')).not.toBeInTheDocument();
-    expect(screen.queryByText('No child unit and no other tree can use it.')).not.toBeInTheDocument();
+    expect(screen.queryByText('No child organization unit and no other tree can use it.')).not.toBeInTheDocument();
   });
 
   it('keeps the generic wording for a sentence the namespace leaves out', () => {
@@ -147,15 +152,27 @@ describe('OrganizationAccessSettings', () => {
   it('hides both sections when only the owner can use the resource', () => {
     renderSettings(accessWith({scope: 'owner'}));
 
-    expect(radio('Who can use Storefront', /Acme Corp only/)).toBeChecked();
-    expect(screen.queryByText('Child organization units of Acme Corp')).not.toBeInTheDocument();
+    expect(radio('Who can use Storefront', /Acme Corp organization unit only/)).toBeChecked();
+    expect(screen.queryByText('Child organization units')).not.toBeInTheDocument();
     expect(screen.queryByText('Other organization trees')).not.toBeInTheDocument();
+  });
+
+  it('sets the owner name in a chip in the scope titles only', () => {
+    renderSettings(accessWith({scope: 'chosen', childUnitsAccess: 'all', otherTreesAccess: 'none'}));
+
+    for (const title of [/Acme Corp organization unit only/, /Acme Corp and chosen organization units/]) {
+      const choice = radio('Who can use Storefront', title).closest('label')!;
+      expect(within(choice).getByText('Acme Corp').closest('.MuiChip-root')).not.toBeNull();
+    }
+    expect(
+      screen.getByText("Organization units in Acme Corp's own hierarchy.").querySelector('.MuiChip-root'),
+    ).toBeNull();
   });
 
   it('decides child units and other trees independently', () => {
     renderSettings(accessWith({childUnitsAccess: 'none', otherTreesAccess: 'selected', trees: ['northwind']}));
 
-    expect(radio('Child organization units of Acme Corp', /None/)).toBeChecked();
+    expect(radio('Child organization units', /None/)).toBeChecked();
     expect(radio('Other organization trees', /Selected trees/)).toBeChecked();
     expect(screen.getByText('Northwind Partners')).toBeInTheDocument();
   });
@@ -163,7 +180,7 @@ describe('OrganizationAccessSettings', () => {
   it('keeps None read-only in one section while the other section is None', () => {
     renderSettings(accessWith({childUnitsAccess: 'all'}));
 
-    expect(radio('Child organization units of Acme Corp', /None/)).toBeDisabled();
+    expect(radio('Child organization units', /None/)).toBeDisabled();
     expect(screen.getByText('Not available while other trees is set to None.')).toBeInTheDocument();
     expect(radio('Other organization trees', /None/)).toBeChecked();
   });
@@ -172,7 +189,7 @@ describe('OrganizationAccessSettings', () => {
     renderSettings(accessWith({otherTreesAccess: 'selected', trees: ['northwind']}));
 
     expect(radio('Other organization trees', /None/)).toBeDisabled();
-    expect(screen.getByText('Not available while child units is set to None.')).toBeInTheDocument();
+    expect(screen.getByText('Not available while child organization units is set to None.')).toBeInTheDocument();
   });
 
   it('says when chosen units grant nothing yet', () => {
@@ -203,7 +220,7 @@ describe('OrganizationAccessSettings', () => {
     renderSettings(access);
 
     expect(screen.getByText('Acme Retail')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', {name: 'And below'}));
+    fireEvent.click(screen.getByRole('button', {name: 'Include all OUs below'}));
     expect(access.updateDraft).toHaveBeenCalled();
   });
 
@@ -211,11 +228,11 @@ describe('OrganizationAccessSettings', () => {
     const access = accessWith({childUnitsAccess: 'all', childUnitExclusions: ['trials']});
     renderSettings(access);
 
-    fireEvent.click(radio('Child organization units of Acme Corp', /Selected child units/));
+    fireEvent.click(radio('Child organization units', /Selected child organization units/));
 
     const dialog = screen.getByRole('dialog');
-    expect(within(dialog).getByText('Switch to Selected child units?')).toBeInTheDocument();
-    expect(within(dialog).getByText('Child unit exceptions: Acme Trials')).toBeInTheDocument();
+    expect(within(dialog).getByText('Switch to Selected child organization units?')).toBeInTheDocument();
+    expect(within(dialog).getByText('Child organization unit exceptions: Acme Trials')).toBeInTheDocument();
     expect(access.applySwitch).not.toHaveBeenCalled();
 
     fireEvent.click(within(dialog).getByRole('button', {name: 'Switch and clear'}));
@@ -226,7 +243,7 @@ describe('OrganizationAccessSettings', () => {
     const access = accessWith({childUnitsAccess: 'all', childUnitExclusions: ['trials']});
     renderSettings(access);
 
-    fireEvent.click(radio('Child organization units of Acme Corp', /Selected child units/));
+    fireEvent.click(radio('Child organization units', /Selected child organization units/));
     fireEvent.click(screen.getByRole('button', {name: 'Keep current choice'}));
 
     expect(access.applySwitch).not.toHaveBeenCalled();
@@ -236,7 +253,7 @@ describe('OrganizationAccessSettings', () => {
     const access = accessWith({scope: 'owner'});
     renderSettings(access);
 
-    fireEvent.click(radio('Who can use Storefront', /Acme Corp and chosen units/));
+    fireEvent.click(radio('Who can use Storefront', /Acme Corp and chosen organization units/));
 
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(access.previewSwitch).toHaveBeenCalledWith('scope', 'chosen');
@@ -246,9 +263,9 @@ describe('OrganizationAccessSettings', () => {
   it('does not offer every organization unit unless the saved policy holds it', () => {
     renderSettings(accessWith({scope: 'owner'}));
 
-    expect(radio('Who can use Storefront', /Acme Corp only/)).toBeChecked();
-    expect(radio('Who can use Storefront', /Acme Corp and chosen units/)).toBeEnabled();
-    expect(screen.queryByRole('radio', {name: /Every organization unit/})).not.toBeInTheDocument();
+    expect(radio('Who can use Storefront', /Acme Corp organization unit only/)).toBeChecked();
+    expect(radio('Who can use Storefront', /Acme Corp and chosen organization units/)).toBeEnabled();
+    expect(screen.queryByRole('radio', {name: /^Every organization unit/})).not.toBeInTheDocument();
   });
 
   it('shows every organization unit as the only choice, with its exceptions before changing the scope', () => {
@@ -259,8 +276,8 @@ describe('OrganizationAccessSettings', () => {
     renderSettings(access);
 
     expect(radio('Who can use Storefront', /Every organization unit/)).toBeChecked();
-    expect(screen.queryByRole('radio', {name: /Acme Corp only/})).not.toBeInTheDocument();
-    expect(screen.queryByRole('radio', {name: /Acme Corp and chosen units/})).not.toBeInTheDocument();
+    expect(screen.queryByRole('radio', {name: /Acme Corp organization unit only/})).not.toBeInTheDocument();
+    expect(screen.queryByRole('radio', {name: /Acme Corp and chosen organization units/})).not.toBeInTheDocument();
     expect(screen.queryByText('Other organization trees')).not.toBeInTheDocument();
 
     const exception = screen.getByText('Acme Trials');
@@ -282,7 +299,7 @@ describe('OrganizationAccessSettings', () => {
     renderSettings(accessWith({childUnitsAccess: 'all'}, {offers: {everyUnit: true, everyTree: false}}));
 
     expect(screen.getByText(/Saving deletes the "Every organization unit" policy/)).toBeInTheDocument();
-    expect(screen.queryByRole('radio', {name: /Every organization unit/})).not.toBeInTheDocument();
+    expect(screen.queryByRole('radio', {name: /^Every organization unit/})).not.toBeInTheDocument();
   });
 
   it('shows every tree with its exceptions while the saved policy holds it', () => {
@@ -311,8 +328,8 @@ describe('OrganizationAccessSettings', () => {
       ),
     );
 
-    expect(radio('Who can use Storefront', /Acme Corp only/)).toBeDisabled();
-    expect(radio('Child organization units of Acme Corp', /None/)).toBeDisabled();
+    expect(radio('Who can use Storefront', /Acme Corp organization unit only/)).toBeDisabled();
+    expect(radio('Child organization units', /None/)).toBeDisabled();
     expect(screen.queryByText('Grant access')).not.toBeInTheDocument();
     expect(screen.queryByText('Add a tree')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', {name: /Revoke access/})).not.toBeInTheDocument();
@@ -359,14 +376,14 @@ describe('OrganizationAccessSettings', () => {
 
       fireEvent.mouseDown(rolesPicker('Acme Trials'));
 
-      expect(screen.getByText('No roles of yours are shared with this unit.')).toBeInTheDocument();
+      expect(screen.getByText('No roles of yours are shared with this organization unit.')).toBeInTheDocument();
     });
 
     it('hides the picker for a subtree reach and says why', () => {
       renderMandating(named('subtree'));
 
       expect(screen.queryByRole('combobox', {name: 'Mandated roles'})).not.toBeInTheDocument();
-      expect(screen.getByText('Roles can be mandated only when access reaches this unit alone.')).toBeInTheDocument();
+      expect(screen.getByText('Roles can be mandated only when access is set to Only this OU.')).toBeInTheDocument();
     });
 
     it('hides the picker when every child unit is granted', () => {
@@ -398,7 +415,7 @@ describe('OrganizationAccessSettings', () => {
       const access = named('unit', ['r1']);
       renderMandating(access);
 
-      fireEvent.click(screen.getByRole('button', {name: 'And below'}));
+      fireEvent.click(screen.getByRole('button', {name: 'Include all OUs below'}));
 
       const update = vi.mocked(access.updateDraft).mock.calls[0][0];
       expect(update(access.draft).childUnits).toEqual([{ouId: 'retail', reach: 'subtree'}]);
