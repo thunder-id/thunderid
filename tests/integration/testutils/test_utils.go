@@ -893,7 +893,7 @@ func StartServerExpectingExit(timeout time.Duration, extraArgs ...string) error 
 	}
 	select {
 	case <-exited:
-	case <-time.After(3 * time.Second):
+	case <-time.After(serverStopGracePeriod):
 		_ = cmd.Process.Kill()
 		<-exited
 	}
@@ -939,6 +939,16 @@ func RestartServerWithResourcesFile(resourcesFilePath string) error {
 	return nil
 }
 
+const (
+	// serverStopGracePeriod is how long a stopped server has to shut down before it is killed. The
+	// server's graceful shutdown takes up to five seconds, and a killed server writes no coverage data.
+	serverStopGracePeriod = 10 * time.Second
+	// serverKillWait is how long a killed server has to exit.
+	serverKillWait = 5 * time.Second
+)
+
+// StopServer stops the server, waiting for every server process it stopped to exit and for the server
+// port to stop accepting connections. It logs a warning when either does not happen in time.
 func StopServer() {
 	log.Println("Stopping server...")
 	stopping := serverCmd != nil || serverPid != 0
@@ -961,7 +971,7 @@ func StopServer() {
 				// Process exited gracefully
 				// Give a brief moment for coverage files to be fully flushed to disk
 				time.Sleep(100 * time.Millisecond)
-			case <-time.After(3 * time.Second):
+			case <-time.After(serverStopGracePeriod):
 				// Timeout - force kill
 				log.Println("Server did not stop gracefully, forcing kill...")
 				serverCmd.Process.Kill()
@@ -971,25 +981,7 @@ func StopServer() {
 		serverCmd = nil
 	} else if serverPid != 0 {
 		// Subprocess case: we know the PID but did not start the process via Cmd.
-		// os.FindProcess always succeeds on Unix; use the handle only for signalling.
-		proc, err := os.FindProcess(serverPid)
-		if err == nil && proc != nil {
-			if err := sendStopSignal(proc); err != nil {
-				log.Printf("Failed to send stop signal to PID %d: %v, forcing kill...", serverPid, err)
-				proc.Kill()
-			} else {
-				// We cannot call proc.Wait() for a process we did not fork, and its parent may not
-				// have reaped it, so a zombie would still look alive. The closed port is the signal
-				// that it has shut down; kill it only if the port stays open past the grace period.
-				// Check liveness before killing to avoid hitting a recycled PID.
-				if err := waitForPortClosed(serverPort, 3*time.Second); err != nil && isProcessAlive(proc) {
-					proc.Kill()
-				}
-			}
-			time.Sleep(100 * time.Millisecond)
-		} else {
-			log.Printf("Could not find process with PID %d: %v", serverPid, err)
-		}
+		stopProcess(serverPid)
 	}
 
 	stoppedPid := serverPid
@@ -1002,12 +994,8 @@ func StopServer() {
 	// which process (parent or subprocess) called it.
 	if residualPid := readPidFile(); residualPid != 0 {
 		if residualPid != stoppedPid {
-			if proc, err := os.FindProcess(residualPid); err == nil && proc != nil {
-				_ = sendStopSignal(proc)
-				if err := waitForPortClosed(serverPort, 2*time.Second); err != nil && isProcessAlive(proc) {
-					_ = proc.Kill()
-				}
-			}
+			stopProcess(residualPid)
+			stopping = true
 		}
 		removePidFile()
 	}
@@ -1018,6 +1006,50 @@ func StopServer() {
 			log.Printf("Warning: %v", err)
 		}
 	}
+}
+
+// stopProcess stops a server process known only by its PID and returns once it has exited. A server
+// closes its listener as soon as it starts shutting down, then keeps its connections and database
+// files open until the shutdown completes, so a closed port does not mean the process is gone.
+func stopProcess(pid int) {
+	// os.FindProcess always succeeds on Unix; use the handle only for signalling.
+	proc, err := os.FindProcess(pid)
+	if err != nil {
+		log.Printf("Could not find process with PID %d: %v", pid, err)
+		return
+	}
+
+	err = sendStopSignal(proc)
+	if err == nil && waitForProcessExit(proc, serverStopGracePeriod) {
+		return
+	}
+	// A process that has already exited needs no kill.
+	if !isProcessAlive(proc) {
+		return
+	}
+
+	if err != nil {
+		log.Printf("Failed to send stop signal to PID %d: %v", pid, err)
+	}
+	log.Printf("Server process %d did not stop gracefully, forcing kill...", pid)
+	if err := proc.Kill(); err != nil {
+		log.Printf("Failed to kill server process %d: %v", pid, err)
+	}
+	if !waitForProcessExit(proc, serverKillWait) {
+		log.Printf("Warning: server process %d was still running %s after it was killed", pid, serverKillWait)
+	}
+}
+
+// waitForProcessExit polls until the process has exited, and reports whether it did within the timeout.
+func waitForProcessExit(proc *os.Process, timeout time.Duration) bool {
+	deadline := time.Now().Add(timeout)
+	for isProcessAlive(proc) {
+		if time.Now().After(deadline) {
+			return false
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	return true
 }
 
 // RestartServer stops the current server and starts a new one with the same configuration.
@@ -1311,6 +1343,10 @@ func RunSetupScript() error {
 		return fmt.Errorf("failed to get absolute path: %w", err)
 	}
 
+	if err := waitForSetupPortFree(10 * time.Second); err != nil {
+		return err
+	}
+
 	var cmd *exec.Cmd
 	if runtime.GOOS == "windows" {
 		log.Println("Running setup.ps1 from extracted product...")
@@ -1337,6 +1373,37 @@ func RunSetupScript() error {
 	log.Println("Setup script will start server, run bootstrap, and stop server automatically")
 
 	return cmd.Run()
+}
+
+// waitForSetupPortFree waits until the server port in the product's deployment.yaml is free for the
+// setup script. setup.sh refuses to run while any process holds a TCP socket on the port, listening or
+// not, and checks nothing without lsof. setup.ps1 does not check it, so there, and without lsof, only
+// a listener would stop the setup script's server from starting.
+func waitForSetupPortFree(timeout time.Duration) error {
+	server, err := ReadDeploymentConfigKey("server")
+	if err != nil {
+		return err
+	}
+	section, _ := server.(map[string]interface{})
+	port := fmt.Sprint(section["port"])
+
+	if _, err := exec.LookPath("lsof"); err != nil || runtime.GOOS == "windows" {
+		return waitForPortClosed(port, timeout)
+	}
+
+	deadline := time.Now().Add(timeout)
+	for {
+		// lsof exits non-zero when nothing matches, so the listing alone tells whether the port is held.
+		holders, _ := exec.Command("lsof", "-nP", "-i", "tcp:"+port).Output()
+		if len(strings.TrimSpace(string(holders))) == 0 {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("port %s was still in use %s later, so setup.sh would refuse to run:\n%s",
+				port, timeout, holders)
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
 }
 
 func GetZipFilePattern() string {
