@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/thunder-id/thunderid/internal/system/utils"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
@@ -46,7 +47,7 @@ func (suite *HandlerTestSuite) TestHandleResourceServerListRequest_Success() {
 		{ID: "rs-1", Name: "RS 1"},
 		{ID: "rs-2", Name: "RS 2"},
 	}
-	links := []Link{
+	links := []utils.Link{
 		{Href: "/resource-servers?limit=30&offset=0", Rel: "self"},
 	}
 	suite.mockService.On("GetResourceServerList", mock.Anything,
@@ -264,7 +265,7 @@ func (suite *HandlerTestSuite) TestHandleResourceListRequest_Success() {
 		{ID: "res-1", Name: "Resource 1"},
 		{ID: "res-2", Name: "Resource 2"},
 	}
-	links := []Link{
+	links := []utils.Link{
 		{Href: "/resource-servers?limit=30&offset=0", Rel: "self"},
 	}
 	suite.mockService.On("GetResourceList", mock.Anything,
@@ -412,7 +413,7 @@ func (suite *HandlerTestSuite) TestHandleActionListAtResourceServerRequest_Succe
 		{ID: "action-1", Name: "Action 1"},
 		{ID: "action-2", Name: "Action 2"},
 	}
-	links := []Link{
+	links := []utils.Link{
 		{Href: "/resource-servers?limit=30&offset=0", Rel: "self"},
 	}
 	var nilResourceID *string

@@ -28,6 +28,9 @@ type CredentialConfigurationServiceInterface interface {
 	ListCredentialConfigurationSummaries(
 		ctx context.Context,
 	) ([]CredentialConfigurationList, *tidcommon.ServiceError)
+	ListCredentialConfigurationSummariesByOUID(
+		ctx context.Context, ouID string,
+	) ([]CredentialConfigurationList, *tidcommon.ServiceError)
 	UpdateCredentialConfiguration(ctx context.Context, id string, dto *CredentialConfigurationDTO) (
 		*CredentialConfigurationDTO, *tidcommon.ServiceError)
 	DeleteCredentialConfiguration(ctx context.Context, id string) *tidcommon.ServiceError
@@ -162,6 +165,15 @@ func (s *configurationService) CreateCredentialConfiguration(
 			s.logger.Error(ctx, "Failed to generate configuration ID", log.Error(genErr))
 			return nil, &tidcommon.InternalServerError
 		}
+	} else {
+		_, err = s.store.GetCredentialConfigurationByID(ctx, id)
+		if err == nil {
+			return nil, &ErrorConfigurationIDConflict
+		}
+		if !errors.Is(err, ErrNotFound) {
+			s.logger.Error(ctx, "Failed to check existing configuration ID", log.Error(err))
+			return nil, &tidcommon.InternalServerError
+		}
 	}
 	dto.ID = id
 
@@ -236,6 +248,27 @@ func (s *configurationService) ListCredentialConfigurationSummaries(
 			return nil, &ErrorConfigurationResultLimitExceeded
 		}
 		s.logger.Error(ctx, "Failed to list credential configuration summaries", log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+	s.populateSummaryOUHandles(ctx, summaries)
+	return summaries, nil
+}
+
+// ListCredentialConfigurationSummariesByOUID returns summaries of the credential configurations an organization
+// unit owns, with resolved OU handles.
+func (s *configurationService) ListCredentialConfigurationSummariesByOUID(
+	ctx context.Context, ouID string,
+) ([]CredentialConfigurationList, *tidcommon.ServiceError) {
+	if ouID == "" {
+		return nil, &ErrorConfigurationInvalidRequest
+	}
+	summaries, err := s.store.ListCredentialConfigurationSummariesByOUID(ctx, ouID)
+	if err != nil {
+		if errors.Is(err, ErrResultLimitExceededInCompositeMode) {
+			return nil, &ErrorConfigurationResultLimitExceeded
+		}
+		s.logger.Error(ctx, "Failed to list credential configuration summaries in organization unit",
+			log.String("ouID", ouID), log.Error(err))
 		return nil, &tidcommon.InternalServerError
 	}
 	s.populateSummaryOUHandles(ctx, summaries)

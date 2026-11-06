@@ -45,4 +45,9 @@ var (
 		ID:    "OVCIQ-CC_MGT-06",
 		Query: `DELETE FROM "CREDENTIAL_CONFIGURATION" WHERE ID = $1 AND DEPLOYMENT_ID = $2`,
 	}
+	queryListConfigurationSummariesByOUID = dbmodel.DBQuery{
+		ID: "OVCIQ-CC_MGT-08",
+		Query: `SELECT ID, HANDLE, OU_ID, NAME, FORMAT, VCT ` +
+			`FROM "CREDENTIAL_CONFIGURATION" WHERE OU_ID = $1 AND DEPLOYMENT_ID = $2`,
+	}
 )

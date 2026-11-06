@@ -3,7 +3,10 @@
 
 package resource
 
-import "github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+import (
+	"github.com/thunder-id/thunderid/internal/system/utils"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+)
 
 // HTTP Response Models
 
@@ -120,19 +123,13 @@ type UpdateActionRequest struct {
 	Description string `json:"description,omitempty"`
 }
 
-// Link represents a pagination link in the service layer.
-type Link struct {
-	Href string
-	Rel  string
-}
-
 // ResourceServerList represents the result of listing resource servers.
 type ResourceServerList struct {
 	TotalResults    int
 	StartIndex      int
 	Count           int
 	ResourceServers []providers.ResourceServer
-	Links           []Link
+	Links           []utils.Link
 }
 
 // ResourceList represents the result of listing resources.
@@ -141,7 +138,7 @@ type ResourceList struct {
 	StartIndex   int
 	Count        int
 	Resources    []providers.Resource
-	Links        []Link
+	Links        []utils.Link
 }
 
 // ActionList represents the result of listing actions.
@@ -150,5 +147,5 @@ type ActionList struct {
 	StartIndex   int
 	Count        int
 	Actions      []providers.Action
-	Links        []Link
+	Links        []utils.Link
 }

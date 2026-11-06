@@ -172,6 +172,20 @@ var (
 				"declarative-only mode. Definitions must be defined in declarative configuration files",
 		},
 	}
+
+	// ErrorDefinitionIDConflict indicates a create named an ID that another presentation definition already holds.
+	ErrorDefinitionIDConflict = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "VP-2011",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.vp.definition_id_conflict",
+			DefaultValue: "Presentation definition ID conflict",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.vp.definition_id_conflict_description",
+			DefaultValue: "A presentation definition with the specified ID already exists",
+		},
+	}
 )
 
 // definitionClientErrorStatus maps a client-facing definition error to its HTTP status.
@@ -179,7 +193,7 @@ func definitionClientErrorStatus(code string) int {
 	switch code {
 	case ErrorDefinitionNotFound.Code:
 		return http.StatusNotFound
-	case ErrorDefinitionAlreadyExists.Code, ErrorDefinitionImmutable.Code:
+	case ErrorDefinitionAlreadyExists.Code, ErrorDefinitionImmutable.Code, ErrorDefinitionIDConflict.Code:
 		return http.StatusConflict
 	default:
 		return http.StatusBadRequest

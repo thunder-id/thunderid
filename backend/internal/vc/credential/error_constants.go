@@ -191,6 +191,20 @@ var (
 				"declarative-only mode. Configurations must be defined in declarative configuration files",
 		},
 	}
+
+	// ErrorConfigurationIDConflict indicates a create named an ID that another credential configuration already holds.
+	ErrorConfigurationIDConflict = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "VCI-2012",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.vci.configuration_id_conflict",
+			DefaultValue: "Credential configuration ID conflict",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.vci.configuration_id_conflict_description",
+			DefaultValue: "A credential configuration with the specified ID already exists",
+		},
+	}
 )
 
 // configurationClientErrorStatus maps a client-facing error to its HTTP status.
@@ -198,7 +212,7 @@ func configurationClientErrorStatus(code string) int {
 	switch code {
 	case ErrorConfigurationNotFound.Code:
 		return http.StatusNotFound
-	case ErrorConfigurationAlreadyExists.Code, ErrorConfigurationImmutable.Code:
+	case ErrorConfigurationAlreadyExists.Code, ErrorConfigurationImmutable.Code, ErrorConfigurationIDConflict.Code:
 		return http.StatusConflict
 	default:
 		return http.StatusBadRequest

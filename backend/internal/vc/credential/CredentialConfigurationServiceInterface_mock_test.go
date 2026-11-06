@@ -448,6 +448,76 @@ func (_c *CredentialConfigurationServiceInterfaceMock_ListCredentialConfiguratio
 	return _c
 }
 
+// ListCredentialConfigurationSummariesByOUID provides a mock function for the type CredentialConfigurationServiceInterfaceMock
+func (_mock *CredentialConfigurationServiceInterfaceMock) ListCredentialConfigurationSummariesByOUID(ctx context.Context, ouID string) ([]CredentialConfigurationList, *common.ServiceError) {
+	ret := _mock.Called(ctx, ouID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListCredentialConfigurationSummariesByOUID")
+	}
+
+	var r0 []CredentialConfigurationList
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) ([]CredentialConfigurationList, *common.ServiceError)); ok {
+		return returnFunc(ctx, ouID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) []CredentialConfigurationList); ok {
+		r0 = returnFunc(ctx, ouID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]CredentialConfigurationList)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, ouID)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// CredentialConfigurationServiceInterfaceMock_ListCredentialConfigurationSummariesByOUID_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ListCredentialConfigurationSummariesByOUID'
+type CredentialConfigurationServiceInterfaceMock_ListCredentialConfigurationSummariesByOUID_Call struct {
+	*mock.Call
+}
+
+// ListCredentialConfigurationSummariesByOUID is a helper method to define mock.On call
+//   - ctx context.Context
+//   - ouID string
+func (_e *CredentialConfigurationServiceInterfaceMock_Expecter) ListCredentialConfigurationSummariesByOUID(ctx any, ouID any) *CredentialConfigurationServiceInterfaceMock_ListCredentialConfigurationSummariesByOUID_Call {
+	return &CredentialConfigurationServiceInterfaceMock_ListCredentialConfigurationSummariesByOUID_Call{Call: _e.mock.On("ListCredentialConfigurationSummariesByOUID", ctx, ouID)}
+}
+
+func (_c *CredentialConfigurationServiceInterfaceMock_ListCredentialConfigurationSummariesByOUID_Call) Run(run func(ctx context.Context, ouID string)) *CredentialConfigurationServiceInterfaceMock_ListCredentialConfigurationSummariesByOUID_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *CredentialConfigurationServiceInterfaceMock_ListCredentialConfigurationSummariesByOUID_Call) Return(credentialConfigurationLists []CredentialConfigurationList, serviceError *common.ServiceError) *CredentialConfigurationServiceInterfaceMock_ListCredentialConfigurationSummariesByOUID_Call {
+	_c.Call.Return(credentialConfigurationLists, serviceError)
+	return _c
+}
+
+func (_c *CredentialConfigurationServiceInterfaceMock_ListCredentialConfigurationSummariesByOUID_Call) RunAndReturn(run func(ctx context.Context, ouID string) ([]CredentialConfigurationList, *common.ServiceError)) *CredentialConfigurationServiceInterfaceMock_ListCredentialConfigurationSummariesByOUID_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // ListCredentialConfigurations provides a mock function for the type CredentialConfigurationServiceInterfaceMock
 func (_mock *CredentialConfigurationServiceInterfaceMock) ListCredentialConfigurations(ctx context.Context) ([]CredentialConfigurationDTO, *common.ServiceError) {
 	ret := _mock.Called(ctx)

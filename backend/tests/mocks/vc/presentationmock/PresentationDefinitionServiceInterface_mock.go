@@ -449,6 +449,76 @@ func (_c *PresentationDefinitionServiceInterfaceMock_ListPresentationDefinitionS
 	return _c
 }
 
+// ListPresentationDefinitionSummariesByOUID provides a mock function for the type PresentationDefinitionServiceInterfaceMock
+func (_mock *PresentationDefinitionServiceInterfaceMock) ListPresentationDefinitionSummariesByOUID(ctx context.Context, ouID string) ([]presentation.PresentationDefinitionList, *common.ServiceError) {
+	ret := _mock.Called(ctx, ouID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListPresentationDefinitionSummariesByOUID")
+	}
+
+	var r0 []presentation.PresentationDefinitionList
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) ([]presentation.PresentationDefinitionList, *common.ServiceError)); ok {
+		return returnFunc(ctx, ouID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) []presentation.PresentationDefinitionList); ok {
+		r0 = returnFunc(ctx, ouID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]presentation.PresentationDefinitionList)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, ouID)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// PresentationDefinitionServiceInterfaceMock_ListPresentationDefinitionSummariesByOUID_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ListPresentationDefinitionSummariesByOUID'
+type PresentationDefinitionServiceInterfaceMock_ListPresentationDefinitionSummariesByOUID_Call struct {
+	*mock.Call
+}
+
+// ListPresentationDefinitionSummariesByOUID is a helper method to define mock.On call
+//   - ctx context.Context
+//   - ouID string
+func (_e *PresentationDefinitionServiceInterfaceMock_Expecter) ListPresentationDefinitionSummariesByOUID(ctx any, ouID any) *PresentationDefinitionServiceInterfaceMock_ListPresentationDefinitionSummariesByOUID_Call {
+	return &PresentationDefinitionServiceInterfaceMock_ListPresentationDefinitionSummariesByOUID_Call{Call: _e.mock.On("ListPresentationDefinitionSummariesByOUID", ctx, ouID)}
+}
+
+func (_c *PresentationDefinitionServiceInterfaceMock_ListPresentationDefinitionSummariesByOUID_Call) Run(run func(ctx context.Context, ouID string)) *PresentationDefinitionServiceInterfaceMock_ListPresentationDefinitionSummariesByOUID_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *PresentationDefinitionServiceInterfaceMock_ListPresentationDefinitionSummariesByOUID_Call) Return(presentationDefinitionLists []presentation.PresentationDefinitionList, serviceError *common.ServiceError) *PresentationDefinitionServiceInterfaceMock_ListPresentationDefinitionSummariesByOUID_Call {
+	_c.Call.Return(presentationDefinitionLists, serviceError)
+	return _c
+}
+
+func (_c *PresentationDefinitionServiceInterfaceMock_ListPresentationDefinitionSummariesByOUID_Call) RunAndReturn(run func(ctx context.Context, ouID string) ([]presentation.PresentationDefinitionList, *common.ServiceError)) *PresentationDefinitionServiceInterfaceMock_ListPresentationDefinitionSummariesByOUID_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // ListPresentationDefinitions provides a mock function for the type PresentationDefinitionServiceInterfaceMock
 func (_mock *PresentationDefinitionServiceInterfaceMock) ListPresentationDefinitions(ctx context.Context) ([]presentation.PresentationDefinitionDTO, *common.ServiceError) {
 	ret := _mock.Called(ctx)

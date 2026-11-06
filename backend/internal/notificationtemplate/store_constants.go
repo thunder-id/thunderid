@@ -74,4 +74,22 @@ var (
 			`FROM "NOTIFICATION_TEMPLATE" ` +
 			`WHERE HANDLE = $1 AND CHANNEL = $2 AND DEPLOYMENT_ID = $3`,
 	}
+
+	// queryListTemplatesByOUID retrieves a page of the templates of a channel an organization unit owns.
+	// It selects the same summary columns as queryListTemplates.
+	queryListTemplatesByOUID = dbmodel.DBQuery{
+		ID: "NTQ-NOTIF_TMPL-09",
+		Query: `SELECT ID, CHANNEL, HANDLE, OU_ID, DISPLAY_NAME, DESCRIPTION ` +
+			`FROM "NOTIFICATION_TEMPLATE" ` +
+			`WHERE CHANNEL = $1 AND OU_ID = $2 AND DEPLOYMENT_ID = $5 ` +
+			`ORDER BY CREATED_AT DESC, ID DESC LIMIT $3 OFFSET $4`,
+	}
+
+	// queryCountTemplatesByOUID counts the templates of a channel an organization unit owns, for
+	// pagination totals.
+	queryCountTemplatesByOUID = dbmodel.DBQuery{
+		ID: "NTQ-NOTIF_TMPL-10",
+		Query: `SELECT COUNT(*) as total FROM "NOTIFICATION_TEMPLATE" ` +
+			`WHERE CHANNEL = $1 AND OU_ID = $2 AND DEPLOYMENT_ID = $3`,
+	}
 )

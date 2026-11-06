@@ -98,6 +98,24 @@ func (f *definitionFileBasedStore) ListPresentationDefinitionSummaries(
 	return summaries, nil
 }
 
+// ListPresentationDefinitionSummariesByOUID retrieves minimal listing data for the presentation definitions an
+// organization unit owns from the file-based store.
+func (f *definitionFileBasedStore) ListPresentationDefinitionSummariesByOUID(
+	ctx context.Context, ouID string,
+) ([]PresentationDefinitionList, error) {
+	summaries, err := f.ListPresentationDefinitionSummaries(ctx)
+	if err != nil {
+		return nil, err
+	}
+	owned := make([]PresentationDefinitionList, 0, len(summaries))
+	for _, summary := range summaries {
+		if summary.OUID == ouID {
+			owned = append(owned, summary)
+		}
+	}
+	return owned, nil
+}
+
 // List retrieves all presentation definitions from the file-based store.
 func (f *definitionFileBasedStore) ListPresentationDefinitions(_ context.Context) ([]PresentationDefinitionDTO, error) {
 	list, err := f.GenericFileBasedStore.List()

@@ -20,6 +20,7 @@ type credentialStoreInterface interface {
 	GetCredentialConfigurationByHandle(ctx context.Context, handle string) (*CredentialConfigurationDTO, error)
 	ListCredentialConfigurations(ctx context.Context) ([]CredentialConfigurationDTO, error)
 	ListCredentialConfigurationSummaries(ctx context.Context) ([]CredentialConfigurationList, error)
+	ListCredentialConfigurationSummariesByOUID(ctx context.Context, ouID string) ([]CredentialConfigurationList, error)
 	UpdateCredentialConfiguration(ctx context.Context, dto CredentialConfigurationDTO) error
 	DeleteCredentialConfiguration(ctx context.Context, id string) error
 	IsCredentialConfigurationDeclarative(ctx context.Context, id string) (bool, error)
@@ -118,27 +119,15 @@ func (s *credentialStore) ListCredentialConfigurations(ctx context.Context) ([]C
 func (s *credentialStore) ListCredentialConfigurationSummaries(
 	ctx context.Context,
 ) ([]CredentialConfigurationList, error) {
-	dbClient, err := s.dbProvider.GetConfigDBClient()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get database client: %w", err)
-	}
-	results, err := dbClient.QueryContext(ctx, queryListConfigurationSummaries, s.scope(ctx))
-	if err != nil {
-		return nil, fmt.Errorf("failed to list credential configuration summaries: %w", err)
-	}
-	summaries := make([]CredentialConfigurationList, 0, len(results))
-	for _, row := range results {
-		summary := CredentialConfigurationList{
-			ID:     columnString(row["id"]),
-			Handle: columnString(row["handle"]),
-			OUID:   columnString(row["ou_id"]),
-			Name:   columnString(row["name"]),
-			Format: columnString(row["format"]),
-			VCT:    columnString(row["vct"]),
-		}
-		summaries = append(summaries, summary)
-	}
-	return summaries, nil
+	return s.listSummaries(ctx, queryListConfigurationSummaries, s.scope(ctx))
+}
+
+// ListCredentialConfigurationSummariesByOUID returns summary rows for the credential configurations an
+// organization unit owns in the config database.
+func (s *credentialStore) ListCredentialConfigurationSummariesByOUID(
+	ctx context.Context, ouID string,
+) ([]CredentialConfigurationList, error) {
+	return s.listSummaries(ctx, queryListConfigurationSummariesByOUID, ouID, s.scope(ctx))
 }
 
 // UpdateCredentialConfiguration persists changes to an existing credential configuration in the database.
@@ -176,6 +165,32 @@ func (s *credentialStore) DeleteCredentialConfiguration(ctx context.Context, id 
 // The database store only holds mutable resources, so this always returns false.
 func (s *credentialStore) IsCredentialConfigurationDeclarative(_ context.Context, _ string) (bool, error) {
 	return false, nil
+}
+
+// listSummaries runs a summary list query and maps its rows.
+func (s *credentialStore) listSummaries(
+	ctx context.Context, query dbmodel.DBQuery, args ...any,
+) ([]CredentialConfigurationList, error) {
+	dbClient, err := s.dbProvider.GetConfigDBClient()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get database client: %w", err)
+	}
+	results, err := dbClient.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list credential configuration summaries: %w", err)
+	}
+	summaries := make([]CredentialConfigurationList, 0, len(results))
+	for _, row := range results {
+		summaries = append(summaries, CredentialConfigurationList{
+			ID:     columnString(row["id"]),
+			Handle: columnString(row["handle"]),
+			OUID:   columnString(row["ou_id"]),
+			Name:   columnString(row["name"]),
+			Format: columnString(row["format"]),
+			VCT:    columnString(row["vct"]),
+		})
+	}
+	return summaries, nil
 }
 
 // marshalConfiguration serializes the claims and display to JSON columns.

@@ -1,7 +1,7 @@
 # Notification Templates Specification
 
 - **Status:** Draft
-- **Version:** 0.4
+- **Version:** 0.5
 - **Related documents:** [Feature issue #5337](https://github.com/thunder-id/thunderid/issues/5337), [design discussion #5388](https://github.com/thunder-id/thunderid/discussions/5388)
 
 ## Summary
@@ -95,6 +95,7 @@ Management goes through the service interface; runtime consumers (flow executors
 // Management surface.
 type NotificationTemplateServiceInterface interface {
     ListTemplates(ctx, channel ChannelType, limit, offset int) (*TemplateListResponse, *ServiceError)
+    ListTemplatesByOUID(ctx, channel ChannelType, ouID string, limit, offset int) (*TemplateListResponse, *ServiceError)
     CreateTemplate(ctx, channel ChannelType, req CreateTemplateRequest) (*Template, *ServiceError)
     GetTemplate(ctx, channel ChannelType, id string) (*Template, *ServiceError)
     GetTemplateByHandle(ctx, channel ChannelType, handle string) (*Template, *ServiceError)
@@ -145,7 +146,7 @@ type ResolvedContent struct { Subject, Body string }
 
 ### Template configuration and management
 
-Each template belongs to an organization unit (`ouId`, required and immutable). Attaching a template to an organization unit records ownership; access control by organization unit is not enforced in this phase. The handle is unique per channel across the deployment, so a flow's reference by handle resolves to a single template; per-organization-unit or per-application overrides of the same handle are not supported in this phase.
+Each template belongs to an organization unit (`ouId`, required and immutable). Attaching a template to an organization unit records ownership; access control by organization unit is not enforced in this phase. The service can list the templates of a channel that one organization unit owns (`ListTemplatesByOUID`), for organization-unit-bounded authorization to build on; the API does not expose this list yet. The handle is unique per channel across the deployment, so a flow's reference by handle resolves to a single template; per-organization-unit or per-application overrides of the same handle are not supported in this phase.
 
 Editability depends on the template store mode, selected by `notification.template.store` (`mutable`, `declarative`, or `composite`). When it is unset, the mode follows the global declarative setting: `declarative` when declarative mode is enabled deployment-wide, otherwise `mutable`. An explicit value always wins, and an unrecognized one fails server startup. In `mutable` mode the bootstrap templates are seeded into the database and are ordinary editable templates. In `declarative` and `composite` modes, templates declared in files are read-only (`isReadOnly: true`): a create, update, or delete that targets a file-declared template returns `403` (`NTM-1022`), and in `declarative`-only mode creating any template through the API is refused with `403` (`NTM-1024`). A read-only template can still be read, listed, rendered, and previewed.
 
@@ -368,3 +369,4 @@ The flow editor lists templates for the selected notification node’s channel s
 | 0.2 | 2026-10-15 | Aligned with the implemented feature: templates carry an owning organization unit (`ouId`, required and immutable) instead of being global; the runtime surface is the template renderer (not a provider); design is resolved against a theme rather than an application; the render order is translations, then design, then context. Added store modes (mutable/declarative/composite) and read-only file-declared templates (403, `NTM-1022`/`NTM-1024`), declarative-resource seeding and the read-through cache, split scopes (`system:notificationtemplate:view` read, `system:notificationtemplate` write), and a template-editor-only preview; write-time validation covers placeholder syntax and design placement, with translation and context keys resolved at render time. |
 | 0.3 | 2026-10-24 | Aligned with the shipped defaults and rendering: seeded templates use translation and design tokens, unresolved design tokens render empty, file-declared template ids and format, bootstrap upsert, export, and preview and Console behaviour. |
 | 0.4 | 2026-11-02 | Added configurable per-channel subject/body length limits enforced at create/update (`NTM-1027` subject, `NTM-1028` body), with `notification.template.max_subject_length` (default 1000), `max_email_body_length` (default 50000 characters), and `max_sms_body_length` (default 4096). |
+| 0.5 | 2026-11-05 | Added `ListTemplatesByOUID` to the management service: it lists the templates of a channel that one organization unit owns, and is not exposed through the API yet. |

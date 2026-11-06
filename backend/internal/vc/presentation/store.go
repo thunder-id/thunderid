@@ -32,6 +32,7 @@ type definitionStoreInterface interface {
 	GetPresentationDefinitionByHandle(ctx context.Context, handle string) (*PresentationDefinitionDTO, error)
 	ListPresentationDefinitions(ctx context.Context) ([]PresentationDefinitionDTO, error)
 	ListPresentationDefinitionSummaries(ctx context.Context) ([]PresentationDefinitionList, error)
+	ListPresentationDefinitionSummariesByOUID(ctx context.Context, ouID string) ([]PresentationDefinitionList, error)
 	UpdatePresentationDefinition(ctx context.Context, dto PresentationDefinitionDTO) error
 	DeletePresentationDefinition(ctx context.Context, id string) error
 	IsPresentationDefinitionDeclarative(ctx context.Context, id string) (bool, error)
@@ -134,26 +135,15 @@ func (s *definitionStore) ListPresentationDefinitions(ctx context.Context) ([]Pr
 func (s *definitionStore) ListPresentationDefinitionSummaries(
 	ctx context.Context,
 ) ([]PresentationDefinitionList, error) {
-	dbClient, err := s.dbProvider.GetConfigDBClient()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get database client: %w", err)
-	}
-	results, err := dbClient.QueryContext(ctx, queryListDefinitionSummaries, s.scope(ctx))
-	if err != nil {
-		return nil, fmt.Errorf("failed to list presentation definition summaries: %w", err)
-	}
-	summaries := make([]PresentationDefinitionList, 0, len(results))
-	for _, row := range results {
-		summaries = append(summaries, PresentationDefinitionList{
-			ID:     columnString(row["id"]),
-			Handle: columnString(row["handle"]),
-			OUID:   columnString(row["ou_id"]),
-			Name:   columnString(row["name"]),
-			VCT:    columnString(row["vct"]),
-			Format: columnString(row["format"]),
-		})
-	}
-	return summaries, nil
+	return s.listSummaries(ctx, queryListDefinitionSummaries, s.scope(ctx))
+}
+
+// ListPresentationDefinitionSummariesByOUID returns summary rows for the presentation definitions an
+// organization unit owns in the config database.
+func (s *definitionStore) ListPresentationDefinitionSummariesByOUID(
+	ctx context.Context, ouID string,
+) ([]PresentationDefinitionList, error) {
+	return s.listSummaries(ctx, queryListDefinitionSummariesByOUID, ouID, s.scope(ctx))
 }
 
 // UpdatePresentationDefinition persists changes to an existing presentation definition in the config database.
@@ -195,6 +185,32 @@ func (s *definitionStore) DeletePresentationDefinition(ctx context.Context, id s
 // The database store only holds mutable resources, so this always returns false.
 func (s *definitionStore) IsPresentationDefinitionDeclarative(_ context.Context, _ string) (bool, error) {
 	return false, nil
+}
+
+// listSummaries runs a summary list query and maps its rows.
+func (s *definitionStore) listSummaries(
+	ctx context.Context, query dbmodel.DBQuery, args ...any,
+) ([]PresentationDefinitionList, error) {
+	dbClient, err := s.dbProvider.GetConfigDBClient()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get database client: %w", err)
+	}
+	results, err := dbClient.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list presentation definition summaries: %w", err)
+	}
+	summaries := make([]PresentationDefinitionList, 0, len(results))
+	for _, row := range results {
+		summaries = append(summaries, PresentationDefinitionList{
+			ID:     columnString(row["id"]),
+			Handle: columnString(row["handle"]),
+			OUID:   columnString(row["ou_id"]),
+			Name:   columnString(row["name"]),
+			VCT:    columnString(row["vct"]),
+			Format: columnString(row["format"]),
+		})
+	}
+	return summaries, nil
 }
 
 // marshalClaims serializes the claim sets to the CLAIMS JSON column.

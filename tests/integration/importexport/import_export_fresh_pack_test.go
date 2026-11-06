@@ -543,6 +543,60 @@ vct: https://credentials.thunderid.local/ImportPresentation
 	suite.assertFound("/openid4vci/credential-configurations/" + credentialID)
 	suite.assertFound("/openid4vp/presentation-definitions/" + presentationID)
 
+	takenIDContent := fmt.Sprintf(`resource_type: credential_configuration
+id: %s
+handle: import-vci-taken-id-%s
+ouId: %s
+vct: https://credentials.thunderid.local/ImportCredential
+---
+resource_type: presentation_definition
+id: %s
+handle: import-vp-taken-id-%s
+ouId: %s
+vct: https://credentials.thunderid.local/ImportPresentation
+`, credentialID, suffix, ouID, presentationID, suffix, ouID)
+	response, err = suite.importResources(testutils.ImportRequest{
+		Content: takenIDContent,
+		Options: testutils.ImportOptions{Upsert: false, ContinueOnError: true, Target: "runtime"},
+	})
+	suite.Require().NoError(err)
+	suite.Equal(0, response.Summary.Imported)
+	suite.Equal(2, response.Summary.Failed)
+	codes := make([]string, 0, len(response.Results))
+	for _, result := range response.Results {
+		suite.Equal("failed", result.Status)
+		codes = append(codes, result.Code)
+	}
+	suite.ElementsMatch([]string{"VCI-2012", "VP-2011"}, codes)
+
+	// The IDs of the declarative fixtures under resources/declarative_resources, which the composite
+	// stores load: the database must not take an ID a declarative item holds.
+	declaredIDContent := fmt.Sprintf(`resource_type: credential_configuration
+id: decl-credential-config-1
+handle: import-vci-declared-id-%s
+ouId: %s
+vct: https://credentials.thunderid.local/ImportCredential
+---
+resource_type: presentation_definition
+id: decl-presentation-def-1
+handle: import-vp-declared-id-%s
+ouId: %s
+vct: https://credentials.thunderid.local/ImportPresentation
+`, suffix, ouID, suffix, ouID)
+	response, err = suite.importResources(testutils.ImportRequest{
+		Content: declaredIDContent,
+		Options: testutils.ImportOptions{Upsert: false, ContinueOnError: true, Target: "runtime"},
+	})
+	suite.Require().NoError(err)
+	suite.Equal(0, response.Summary.Imported)
+	suite.Equal(2, response.Summary.Failed)
+	codes = codes[:0]
+	for _, result := range response.Results {
+		suite.Equal("failed", result.Status)
+		codes = append(codes, result.Code)
+	}
+	suite.ElementsMatch([]string{"VCI-2012", "VP-2011"}, codes)
+
 	updatedContent := fmt.Sprintf(`resource_type: credential_configuration
 id: %s
 handle: import-vci-%s

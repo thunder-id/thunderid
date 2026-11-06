@@ -27,6 +27,9 @@ type PresentationDefinitionServiceInterface interface {
 	) (*PresentationDefinitionDTO, *tidcommon.ServiceError)
 	ListPresentationDefinitions(ctx context.Context) ([]PresentationDefinitionDTO, *tidcommon.ServiceError)
 	ListPresentationDefinitionSummaries(ctx context.Context) ([]PresentationDefinitionList, *tidcommon.ServiceError)
+	ListPresentationDefinitionSummariesByOUID(
+		ctx context.Context, ouID string,
+	) ([]PresentationDefinitionList, *tidcommon.ServiceError)
 	UpdatePresentationDefinition(ctx context.Context, id string, dto *PresentationDefinitionDTO) (
 		*PresentationDefinitionDTO, *tidcommon.ServiceError)
 	DeletePresentationDefinition(ctx context.Context, id string) *tidcommon.ServiceError
@@ -161,6 +164,15 @@ func (s *definitionService) CreatePresentationDefinition(
 			s.logger.Error(ctx, "Failed to generate definition ID", log.Error(genErr))
 			return nil, &tidcommon.InternalServerError
 		}
+	} else {
+		_, err = s.store.GetPresentationDefinitionByID(ctx, id)
+		if err == nil {
+			return nil, &ErrorDefinitionIDConflict
+		}
+		if !errors.Is(err, ErrNotFound) {
+			s.logger.Error(ctx, "Failed to check existing definition ID", log.Error(err))
+			return nil, &tidcommon.InternalServerError
+		}
 	}
 	dto.ID = id
 
@@ -235,6 +247,27 @@ func (s *definitionService) ListPresentationDefinitionSummaries(
 			return nil, &ErrorDefinitionResultLimitExceeded
 		}
 		s.logger.Error(ctx, "Failed to list presentation definition summaries", log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+	s.populateSummaryOUHandles(ctx, summaries)
+	return summaries, nil
+}
+
+// ListPresentationDefinitionSummariesByOUID returns summaries of the presentation definitions an organization
+// unit owns, with resolved OU handles.
+func (s *definitionService) ListPresentationDefinitionSummariesByOUID(
+	ctx context.Context, ouID string,
+) ([]PresentationDefinitionList, *tidcommon.ServiceError) {
+	if ouID == "" {
+		return nil, &ErrorDefinitionInvalidRequest
+	}
+	summaries, err := s.store.ListPresentationDefinitionSummariesByOUID(ctx, ouID)
+	if err != nil {
+		if errors.Is(err, ErrResultLimitExceededInCompositeMode) {
+			return nil, &ErrorDefinitionResultLimitExceeded
+		}
+		s.logger.Error(ctx, "Failed to list presentation definition summaries in organization unit",
+			log.String("ouID", ouID), log.Error(err))
 		return nil, &tidcommon.InternalServerError
 	}
 	s.populateSummaryOUHandles(ctx, summaries)

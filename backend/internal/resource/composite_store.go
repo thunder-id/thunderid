@@ -143,6 +143,51 @@ func (c *compositeResourceStore) GetResourceServerListCount(ctx context.Context)
 	return len(merged), nil
 }
 
+// GetResourceServerListByOUID returns a paginated, deduplicated list of the resource servers an
+// organization unit owns from both stores.
+func (c *compositeResourceStore) GetResourceServerListByOUID(
+	ctx context.Context, ouID string, limit, offset int,
+) ([]providers.ResourceServer, error) {
+	resourceServers, limitExceeded, err := declarativeresource.CompositeMergeListHelperWithLimit(
+		func() (int, error) { return c.dbStore.GetResourceServerListCountByOUID(ctx, ouID) },
+		func() (int, error) { return c.fileStore.GetResourceServerListCountByOUID(ctx, ouID) },
+		func(count int) ([]providers.ResourceServer, error) {
+			return c.dbStore.GetResourceServerListByOUID(ctx, ouID, count, 0)
+		},
+		func(count int) ([]providers.ResourceServer, error) {
+			return c.fileStore.GetResourceServerListByOUID(ctx, ouID, count, 0)
+		},
+		mergeAndDeduplicateResourceServers,
+		limit,
+		offset,
+		serverconst.MaxCompositeStoreRecords,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if limitExceeded {
+		return nil, errResultLimitExceededInCompositeMode
+	}
+	return resourceServers, nil
+}
+
+// GetResourceServerListCountByOUID returns the count of the resource servers an organization unit owns
+// across both stores. A resource server ID is unique across the stores, so the counts add up exactly.
+func (c *compositeResourceStore) GetResourceServerListCountByOUID(ctx context.Context, ouID string) (int, error) {
+	dbCount, err := c.dbStore.GetResourceServerListCountByOUID(ctx, ouID)
+	if err != nil {
+		return 0, err
+	}
+	fileCount, err := c.fileStore.GetResourceServerListCountByOUID(ctx, ouID)
+	if err != nil {
+		return 0, err
+	}
+	if dbCount+fileCount > serverconst.MaxCompositeStoreRecords {
+		return 0, errResultLimitExceededInCompositeMode
+	}
+	return dbCount + fileCount, nil
+}
+
 // UpdateResourceServer updates a resource server in the database store.
 func (c *compositeResourceStore) UpdateResourceServer(
 	ctx context.Context,
