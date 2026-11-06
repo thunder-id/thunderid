@@ -8,6 +8,7 @@ import {GroupCreateProvider} from '@thunderid/configure-groups';
 import type {NotificationChannel} from '@thunderid/configure-notification-templates';
 import {WelcomeRedirect} from '@thunderid/configure-onboarding';
 import {OrganizationUnitProvider} from '@thunderid/configure-organization-units';
+import {SelectedProjectScope} from '@thunderid/configure-projects';
 import {RoleCreateProvider} from '@thunderid/configure-roles';
 import {TranslationCreateProvider} from '@thunderid/configure-translations';
 import {UserTypeCreateProvider} from '@thunderid/configure-user-types';
@@ -25,6 +26,12 @@ import RouteConfig, {ROUTE_SEGMENTS} from './configs/RouteConfig';
 import DashboardLayout from './layouts/DashboardLayout';
 import FullScreenLayout from './layouts/FullScreenLayout';
 
+const ProjectsListPage = lazy(() =>
+  import('@thunderid/configure-projects').then((m) => ({default: m.ProjectsListPage})),
+);
+const ProjectCreatePage = lazy(() =>
+  import('@thunderid/configure-projects').then((m) => ({default: m.ProjectCreatePage})),
+);
 const ViewAgentTypePage = lazy(() =>
   import('@thunderid/configure-agent-types').then((m) => ({default: m.ViewAgentTypePage})),
 );
@@ -250,8 +257,16 @@ export default function App(): JSX.Element {
                     path={`${ROUTE_SEGMENTS.verifiableCredentials}/:vcId`}
                     element={<VerifiableCredentialEditPage />}
                   />
-                  <Route path={ROUTE_SEGMENTS.applications} element={<ApplicationsListPage />} />
-                  <Route path={`${ROUTE_SEGMENTS.applications}/:applicationId`} element={<ApplicationEditPage />} />
+                  <Route
+                    element={
+                      <SelectedProjectScope>
+                        <Outlet />
+                      </SelectedProjectScope>
+                    }
+                  >
+                    <Route path={ROUTE_SEGMENTS.applications} element={<ApplicationsListPage />} />
+                    <Route path={`${ROUTE_SEGMENTS.applications}/:applicationId`} element={<ApplicationEditPage />} />
+                  </Route>
                   <Route path={ROUTE_SEGMENTS.agents} element={<AgentsListPage />} />
                   <Route path={`${ROUTE_SEGMENTS.agents}/:agentId`} element={<AgentEditPage />} />
                   <Route path={ROUTE_SEGMENTS.flows} element={<FlowsListPage />} />
@@ -261,6 +276,7 @@ export default function App(): JSX.Element {
                     element={<ResourceServerEditPage />}
                   />
                   <Route path={ROUTE_SEGMENTS.settings} element={<SettingsPage />} />
+                  <Route path={ROUTE_SEGMENTS.projects} element={<ProjectsListPage />} />
                   <Route path={ROUTE_SEGMENTS.gateways} element={<GatewaysListPage />} />
                   <Route path={`${ROUTE_SEGMENTS.gateways}/:gatewayId`} element={<GatewayDetailPage />} />
                 </Route>
@@ -311,6 +327,16 @@ export default function App(): JSX.Element {
                   }
                 >
                   <Route index element={<CreateRolePage />} />
+                </Route>
+                <Route
+                  path={RouteConfig.projects.create()}
+                  element={
+                    <ProtectedRoute>
+                      <FullScreenLayout />
+                    </ProtectedRoute>
+                  }
+                >
+                  <Route index element={<ProjectCreatePage />} />
                 </Route>
                 <Route
                   path={RouteConfig.users.add()}
@@ -369,9 +395,11 @@ export default function App(): JSX.Element {
                 <Route
                   element={
                     <ProtectedRoute>
-                      <ApplicationCreateProvider>
-                        <Outlet />
-                      </ApplicationCreateProvider>
+                      <SelectedProjectScope>
+                        <ApplicationCreateProvider>
+                          <Outlet />
+                        </ApplicationCreateProvider>
+                      </SelectedProjectScope>
                     </ProtectedRoute>
                   }
                 >

@@ -28,6 +28,13 @@ const ApplicationConstants = {
    */
   NAME_MIN_LENGTH: 1,
   NAME_MAX_LENGTH: 100,
+
+  /**
+   * The system organization unit, where the API places an application created in a project. The
+   * sign-in flow generated for such an application is created there too. Keep in sync with
+   * `SystemOUID` in `backend/internal/ou/constants.go`.
+   */
+  SYSTEM_ORGANIZATION_UNIT_ID: '01900000-0000-7000-8000-000000000001',
 } as const;
 
 export default ApplicationConstants;

@@ -21,6 +21,9 @@ export {default as isEqualIgnoringEmpty} from './object/isEqualIgnoringEmpty';
 export {default as isPlainObject} from './object/isPlainObject';
 export {default as merge} from './object/merge';
 
+// Date Operations
+export {default as formatRelativeTime} from './date/formatRelativeTime';
+
 // Error Utilities
 export {default as getErrorMessage} from './error/getErrorMessage';
 

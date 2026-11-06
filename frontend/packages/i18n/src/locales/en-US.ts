@@ -808,6 +808,7 @@ const translations = {
     'pages.openProject': 'Import configuration',
     'pages.importExport': 'Import / Export',
     'pages.home': 'Home',
+    'pages.projects': 'Projects',
     'pages.users': 'Users',
     'pages.userTypes': 'User types',
     'pages.agentTypes': 'Agent types',
@@ -6401,6 +6402,48 @@ const translations = {
     'errors.VCI-2006':
       'The number of credential templates exceeds the supported limit. Use search to narrow the results.',
     'errors.VCI-2007': 'The specified organization unit is not valid.',
+  },
+
+  // ============================================================================
+  // Projects namespace - Project management translations
+  // ============================================================================
+  projects: {
+    'listing.title': 'All projects',
+    'listing.subtitle': 'Choose a project to work in.',
+    'listing.search': 'Search projects',
+    'listing.noMatches': 'No matching projects',
+    'listing.empty': 'There are no projects yet.',
+    'listing.created': 'Created',
+    'listing.add': 'Add project',
+    'create.title': 'Create a project',
+    'create.heading': "Let's set up your project",
+    'create.success': 'Project created',
+    'create.error': 'Failed to create the project. Please try again.',
+    'create.name.label': 'Name',
+    'create.name.placeholder': 'e.g., Customer support platform',
+    'create.name.required': 'Name is required',
+    'create.name.maxLength': 'Name cannot exceed {{max}} characters',
+    'create.handle.label': 'Handle',
+    'create.handle.placeholder': 'e.g., customer-support',
+    'create.handle.hint': 'A unique identifier for this project',
+    'create.handle.required': 'Handle is required',
+    'create.handle.maxLength': 'Handle cannot exceed {{max}} characters',
+    'create.handle.format':
+      'Handle may contain only lowercase letters, numbers, hyphens and underscores, and must start and end with a letter or a number',
+    'create.description.label': 'Description',
+    'create.description.placeholder': 'What is this project for?',
+    'create.description.maxLength': 'Description cannot exceed {{max}} characters',
+    'delete.action': 'Delete {{name}}',
+    'delete.title': 'Delete project',
+    'delete.message': 'Are you sure you want to delete the project "{{name}}"?',
+    'delete.disclaimer':
+      'This action cannot be undone. A project can be deleted only once it has no applications or agents.',
+    'delete.success': 'Project deleted',
+    'delete.error': 'Failed to delete the project. Please try again.',
+    'switcher.label': 'Project',
+    'switcher.heading': 'Projects',
+    'switcher.select': 'Select project',
+    'switcher.clear': 'Clear project selection',
   },
 
   // ============================================================================

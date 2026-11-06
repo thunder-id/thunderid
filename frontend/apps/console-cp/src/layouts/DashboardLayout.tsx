@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {getInitials} from '@thunderid/components';
+import {ProjectSwitcher, useProjectSelection} from '@thunderid/configure-projects';
 import {useConfig} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {SignOutButton, User, useThunderID} from '@thunderid/react';
@@ -20,6 +21,7 @@ import {
 } from '@wso2/oxygen-ui';
 import {
   Bot,
+  BoxIcon,
   Building,
   Group,
   Home,
@@ -185,167 +187,194 @@ export default function DashboardLayout({collapseSidebar = false}: DashboardLayo
     });
   };
 
+  const {projects, selectedProject, isCleared, isLoading, error} = useProjectSelection();
+  // Once the project selection is cleared, the sidebar leads with the projects page so another
+  // project can be opened. With no projects yet, it leads there too, where the first one is added.
+  const showProjects = isCleared || (!isLoading && !error && projects.length === 0);
+  // Applications are listed per project, so they are only offered while a project is selected,
+  // and a selected project offers nothing else yet.
+  const isInProject = Boolean(selectedProject);
+
   const appRoutes: NavCategory[] = useMemo(
-    () => [
-      {
-        routes: [
-          {
-            id: 'home',
-            text: t('navigation:pages.home'),
-            icon: <Home />,
-            path: RouteConfig.home.list(),
-          },
-        ],
-      },
-      {
-        category: t('navigation:categories.resources'),
-        routes: [
-          {
-            id: 'applications',
-            text: t('navigation:pages.applications'),
-            icon: <LayoutGrid />,
-            path: RouteConfig.applications.list(),
-          },
-          {
-            id: 'resource-servers',
-            text: t('navigation:pages.resourceServers', 'Resource servers'),
-            icon: <Server />,
-            path: RouteConfig.resourceServers.list(),
-          },
-        ],
-      },
-      {
-        category: t('navigation:categories.identities'),
-        routes: [
-          {
-            id: 'users',
-            text: t('navigation:pages.users'),
-            icon: <UsersRound />,
-            path: RouteConfig.users.list(),
-          },
-          {
-            id: 'agents',
-            text: t('navigation:pages.agents', 'Agents'),
-            icon: <Bot />,
-            path: RouteConfig.agents.list(),
-          },
-          {
-            id: 'groups',
-            text: t('navigation:pages.groups'),
-            icon: <Group />,
-            path: RouteConfig.groups.list(),
-          },
-          {
-            id: 'roles',
-            text: t('navigation:pages.roles'),
-            icon: <ShieldCheck />,
-            path: RouteConfig.roles.list(),
-          },
-          {
-            id: 'user-types',
-            text: t('navigation:pages.userTypes'),
-            icon: <UserRoundCog />,
-            path: RouteConfig.userTypes.list(),
-          },
-        ],
-      },
-      {
-        category: t('navigation:categories.configure'),
-        routes: [
-          {
-            id: 'organization-units',
-            text: t('navigation:pages.organizationUnits'),
-            icon: <Building />,
-            path: RouteConfig.organizationUnits.list(),
-          },
-          {
-            id: 'flows',
-            text: t('navigation:pages.flows'),
-            icon: <Workflow />,
-            path: RouteConfig.flows.list(),
-          },
-          {
-            id: 'connections',
-            text: t('navigation:pages.connections'),
-            icon: <Layers />,
-            path: RouteConfig.connections.list(),
-          },
-          {
-            id: 'verifiable-credentials',
-            text: t('navigation:pages.verifiableCredentials'),
-            icon: <Wallet />,
-            children: [
-              {
-                id: 'credentials',
-                text: t('navigation:pages.credentials'),
-                icon: <IdCard />,
-                path: RouteConfig.verifiableCredentials.list(),
-              },
-              {
-                id: 'presentations',
-                text: t('navigation:pages.presentations'),
-                icon: <ShieldCheck />,
-                path: RouteConfig.verifiablePresentations.list(),
-              },
-            ],
-          },
-        ],
-      },
-      {
-        category: t('navigation:categories.customize'),
-        routes: [
-          {
-            id: 'design',
-            text: t('navigation:pages.design', 'Design'),
-            icon: <Palette />,
-            path: RouteConfig.design.list(),
-          },
-          {
-            id: 'notifications',
-            text: t('navigation:pages.notifications', 'Notifications'),
-            icon: <Mail />,
-            children: [
-              {
-                id: 'email-templates',
-                text: t('navigation:pages.emailTemplates', 'Email templates'),
-                icon: <Mail />,
-                path: RouteConfig.notificationTemplates.channel('email'),
-              },
-              {
-                id: 'sms-templates',
-                text: t('navigation:pages.smsTemplates', 'SMS templates'),
-                icon: <MessageSquare />,
-                path: RouteConfig.notificationTemplates.channel('sms'),
-              },
-            ],
-          },
-          {
-            id: 'translations',
-            text: t('navigation:pages.translations'),
-            icon: <Languages />,
-            path: RouteConfig.translations.list(),
-          },
-        ],
-      },
-      {
-        category: t('navigation:categories.system'),
-        routes: [
-          {
-            id: 'gateways',
-            text: t('navigation:pages.gateways', 'Deployment'),
-            icon: <Network />,
-            path: RouteConfig.gateways.list(),
-          },
-          {
-            id: 'settings',
-            text: t('navigation:pages.settings'),
-            icon: <Settings />,
-            path: RouteConfig.settings.list(),
-          },
-        ],
-      },
-    ],
-    [t],
+    () =>
+      isInProject
+        ? [
+            {
+              category: t('navigation:categories.resources'),
+              routes: [
+                {
+                  id: 'applications',
+                  text: t('navigation:pages.applications'),
+                  icon: <LayoutGrid />,
+                  path: RouteConfig.applications.list(),
+                },
+              ],
+            },
+          ]
+        : [
+            {
+              routes: [
+                ...(showProjects
+                  ? [
+                      {
+                        id: 'projects',
+                        text: t('navigation:pages.projects', 'Projects'),
+                        icon: <BoxIcon />,
+                        path: RouteConfig.projects.list(),
+                      },
+                    ]
+                  : []),
+                {
+                  id: 'home',
+                  text: t('navigation:pages.home'),
+                  icon: <Home />,
+                  path: RouteConfig.home.list(),
+                },
+              ],
+            },
+            {
+              category: t('navigation:categories.resources'),
+              routes: [
+                {
+                  id: 'resource-servers',
+                  text: t('navigation:pages.resourceServers', 'Resource servers'),
+                  icon: <Server />,
+                  path: RouteConfig.resourceServers.list(),
+                },
+              ],
+            },
+            {
+              category: t('navigation:categories.identities'),
+              routes: [
+                {
+                  id: 'users',
+                  text: t('navigation:pages.users'),
+                  icon: <UsersRound />,
+                  path: RouteConfig.users.list(),
+                },
+                {
+                  id: 'agents',
+                  text: t('navigation:pages.agents', 'Agents'),
+                  icon: <Bot />,
+                  path: RouteConfig.agents.list(),
+                },
+                {
+                  id: 'groups',
+                  text: t('navigation:pages.groups'),
+                  icon: <Group />,
+                  path: RouteConfig.groups.list(),
+                },
+                {
+                  id: 'roles',
+                  text: t('navigation:pages.roles'),
+                  icon: <ShieldCheck />,
+                  path: RouteConfig.roles.list(),
+                },
+                {
+                  id: 'user-types',
+                  text: t('navigation:pages.userTypes'),
+                  icon: <UserRoundCog />,
+                  path: RouteConfig.userTypes.list(),
+                },
+              ],
+            },
+            {
+              category: t('navigation:categories.configure'),
+              routes: [
+                {
+                  id: 'organization-units',
+                  text: t('navigation:pages.organizationUnits'),
+                  icon: <Building />,
+                  path: RouteConfig.organizationUnits.list(),
+                },
+                {
+                  id: 'flows',
+                  text: t('navigation:pages.flows'),
+                  icon: <Workflow />,
+                  path: RouteConfig.flows.list(),
+                },
+                {
+                  id: 'connections',
+                  text: t('navigation:pages.connections'),
+                  icon: <Layers />,
+                  path: RouteConfig.connections.list(),
+                },
+                {
+                  id: 'verifiable-credentials',
+                  text: t('navigation:pages.verifiableCredentials'),
+                  icon: <Wallet />,
+                  children: [
+                    {
+                      id: 'credentials',
+                      text: t('navigation:pages.credentials'),
+                      icon: <IdCard />,
+                      path: RouteConfig.verifiableCredentials.list(),
+                    },
+                    {
+                      id: 'presentations',
+                      text: t('navigation:pages.presentations'),
+                      icon: <ShieldCheck />,
+                      path: RouteConfig.verifiablePresentations.list(),
+                    },
+                  ],
+                },
+              ],
+            },
+            {
+              category: t('navigation:categories.customize'),
+              routes: [
+                {
+                  id: 'design',
+                  text: t('navigation:pages.design', 'Design'),
+                  icon: <Palette />,
+                  path: RouteConfig.design.list(),
+                },
+                {
+                  id: 'notifications',
+                  text: t('navigation:pages.notifications', 'Notifications'),
+                  icon: <Mail />,
+                  children: [
+                    {
+                      id: 'email-templates',
+                      text: t('navigation:pages.emailTemplates', 'Email templates'),
+                      icon: <Mail />,
+                      path: RouteConfig.notificationTemplates.channel('email'),
+                    },
+                    {
+                      id: 'sms-templates',
+                      text: t('navigation:pages.smsTemplates', 'SMS templates'),
+                      icon: <MessageSquare />,
+                      path: RouteConfig.notificationTemplates.channel('sms'),
+                    },
+                  ],
+                },
+                {
+                  id: 'translations',
+                  text: t('navigation:pages.translations'),
+                  icon: <Languages />,
+                  path: RouteConfig.translations.list(),
+                },
+              ],
+            },
+            {
+              category: t('navigation:categories.system'),
+              routes: [
+                {
+                  id: 'gateways',
+                  text: t('navigation:pages.gateways', 'Deployment'),
+                  icon: <Network />,
+                  path: RouteConfig.gateways.list(),
+                },
+                {
+                  id: 'settings',
+                  text: t('navigation:pages.settings'),
+                  icon: <Settings />,
+                  path: RouteConfig.settings.list(),
+                },
+              ],
+            },
+          ],
+    [t, showProjects, isInProject],
   );
 
   const {pathname} = useLocation();
@@ -404,6 +433,11 @@ export default function DashboardLayout({collapseSidebar = false}: DashboardLayo
             </Header.BrandLogo>
             <Header.BrandTitle>Console</Header.BrandTitle>
           </Header.Brand>
+          {projects.length > 0 && (
+            <Header.Switchers showDivider={false}>
+              <ProjectSwitcher />
+            </Header.Switchers>
+          )}
           <Header.Spacer />
           <Header.Actions>
             <Button
