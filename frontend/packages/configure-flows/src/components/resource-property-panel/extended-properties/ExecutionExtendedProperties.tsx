@@ -12,7 +12,6 @@ import EmailProperties from './execution-properties/EmailProperties';
 import ExecutorInputsEditor from './execution-properties/ExecutorInputsEditor';
 import ExtensionProperties from './execution-properties/ExtensionProperties';
 import FederationProperties from './execution-properties/FederationProperties';
-import GroupExecutorProperties from './execution-properties/GroupExecutorProperties';
 import HttpRequestProperties from './execution-properties/HttpRequestProperties';
 import IdentifyingProperties from './execution-properties/IdentifyingProperties';
 import IdentityGovernanceProperties from './execution-properties/IdentityGovernanceProperties';
@@ -120,9 +119,6 @@ function ExecutionExtendedProperties({resource, onChange}: ExecutionExtendedProp
       break;
     case ExecutionTypes.RoleExecutor:
       executorSpecificProperties = <RoleExecutorProperties resource={resource} onChange={onChange} />;
-      break;
-    case ExecutionTypes.GroupExecutor:
-      executorSpecificProperties = <GroupExecutorProperties resource={resource} onChange={onChange} />;
       break;
     case ExecutionTypes.SharingExecutor:
       executorSpecificProperties = <SharingExecutorProperties resource={resource} onChange={onChange} />;

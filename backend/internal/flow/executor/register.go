@@ -416,10 +416,6 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 				newRoleExecutor(deps.FlowFactory, deps.RoleService, deps.RoleAssignmentService,
 					deps.PermissionResolver))
 		},
-		ExecutorNameGroup: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
-			reg.RegisterExecutor(ExecutorNameGroup,
-				newGroupExecutor(deps.FlowFactory, deps.GroupService))
-		},
 		ExecutorNameActionDeletion: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameActionDeletion,
 				newActionDeletionExecutor(deps.FlowFactory, deps.ResourceMgtService))
@@ -597,12 +593,6 @@ type sharingAdminProvider interface {
 		resourceID, owningOUID, targetOUID string) *tidcommon.ServiceError
 	ShareIntoChildOU(ctx context.Context, rt sharing.ResourceType,
 		resourceID, targetOUID string) *tidcommon.ServiceError
-}
-
-// groupAdminProvider is the group seam the group executor consumes.
-type groupAdminProvider interface {
-	RemoveGroupMembers(ctx context.Context, groupID string, members []group.Member) (
-		*group.Group, *tidcommon.ServiceError)
 }
 
 // resourceAdminProvider is the resource seam the action deletion validator and executor consume.

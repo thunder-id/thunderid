@@ -1268,26 +1268,6 @@
     "category": "EXECUTOR",
     "type": "TASK_EXECUTION",
     "display": {
-      "header": "Group Membership Removal Executor",
-      "label": "Remove Group Member",
-      "description": "Remove the member named by the trusted revocation plan from the group",
-      "image": "assets/images/icons/link.svg",
-      "showOnResourcePanel": true
-    },
-    "data": {
-      "action": {
-        "type": "EXECUTOR",
-        "executor": {"name": "GroupExecutor", "mode": "group_membership_removal"},
-        "onSuccess": "",
-        "onFailure": ""
-      }
-    }
-  },
-  {
-    "resourceType": "STEP",
-    "category": "EXECUTOR",
-    "type": "TASK_EXECUTION",
-    "display": {
       "header": "Action Deletion Validator",
       "label": "Validate and Plan Action Deletion",
       "description": "Validate the action and plan revocation of the scope it defines, for every principal",

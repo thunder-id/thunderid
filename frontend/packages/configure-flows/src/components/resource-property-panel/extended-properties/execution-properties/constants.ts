@@ -148,17 +148,6 @@ export const SHARING_EXECUTOR_MODES = [
 ] as const;
 
 /**
- * Available modes for the Group executor. Must match its SupportedModes in the backend.
- */
-export const GROUP_EXECUTOR_MODES = [
-  {
-    value: 'group_membership_removal',
-    translationKey: 'flows:core.executions.groupExecutor.mode.groupMembershipRemoval',
-    displayLabel: 'Remove Group Member',
-  },
-] as const;
-
-/**
  * Available modes for the Criteria Revocation executor. Must match its SupportedModes in the backend.
  */
 export const CRITERIA_REVOCATION_MODES = [
@@ -281,7 +270,6 @@ export const EXECUTORS_WITH_FIXED_INPUTS = new Set<string>([
   ExecutionTypes.CriteriaRevocation,
   ExecutionTypes.AccessChangeValidator,
   ExecutionTypes.RoleExecutor,
-  ExecutionTypes.GroupExecutor,
   ExecutionTypes.PreSuspend,
   ExecutionTypes.IdentityGovernance,
   ExecutionTypes.ExtensionExecutor,

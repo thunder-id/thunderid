@@ -194,6 +194,70 @@ func (suite *CompositeGroupStoreTestSuite) TestGetGroupList_FileListError() {
 
 // --- GetTransitiveGroupsForEntity ---
 
+func (suite *CompositeGroupStoreTestSuite) TestGetGroupMember_PrefersTheDBStore() {
+	suite.mockDBStore.On("GetGroupMember", mock.Anything, "grp1", "usr1").
+		Return(&Member{ID: "usr1", Type: memberTypeEntity}, nil)
+
+	member, err := suite.store.GetGroupMember(context.Background(), "grp1", "usr1")
+
+	suite.NoError(err)
+	suite.Equal(&Member{ID: "usr1", Type: memberTypeEntity}, member)
+	suite.mockFileStore.AssertNotCalled(suite.T(), "GetGroupMember", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (suite *CompositeGroupStoreTestSuite) TestGetGroupMember_FallsBackToTheFileStore() {
+	suite.mockDBStore.On("GetGroupMember", mock.Anything, "grp1", "grp2").Return(nil, nil)
+	suite.mockFileStore.On("GetGroupMember", mock.Anything, "grp1", "grp2").
+		Return(&Member{ID: "grp2", Type: MemberTypeGroup}, nil)
+
+	member, err := suite.store.GetGroupMember(context.Background(), "grp1", "grp2")
+
+	suite.NoError(err)
+	suite.Equal(&Member{ID: "grp2", Type: MemberTypeGroup}, member)
+}
+
+func (suite *CompositeGroupStoreTestSuite) TestGetGroupMember_NilWhenNeitherStoreHasIt() {
+	suite.mockDBStore.On("GetGroupMember", mock.Anything, "grp1", "usr1").Return(nil, nil)
+	suite.mockFileStore.On("GetGroupMember", mock.Anything, "grp1", "usr1").Return(nil, nil)
+
+	member, err := suite.store.GetGroupMember(context.Background(), "grp1", "usr1")
+
+	suite.NoError(err)
+	suite.Nil(member)
+}
+
+func (suite *CompositeGroupStoreTestSuite) TestGetGroupMember_DBStoreError() {
+	suite.mockDBStore.On("GetGroupMember", mock.Anything, "grp1", "usr1").Return(nil, errors.New("db error"))
+
+	member, err := suite.store.GetGroupMember(context.Background(), "grp1", "usr1")
+
+	suite.Error(err)
+	suite.Nil(member)
+	suite.mockFileStore.AssertNotCalled(suite.T(), "GetGroupMember", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (suite *CompositeGroupStoreTestSuite) TestGetGroupMember_FileStoreError() {
+	suite.mockDBStore.On("GetGroupMember", mock.Anything, "grp1", "usr1").Return(nil, nil)
+	suite.mockFileStore.On("GetGroupMember", mock.Anything, "grp1", "usr1").Return(nil, errors.New("file error"))
+
+	member, err := suite.store.GetGroupMember(context.Background(), "grp1", "usr1")
+
+	suite.Error(err)
+	suite.Nil(member)
+}
+
+// Only the file store declares members, so the database store is not asked.
+func (suite *CompositeGroupStoreTestSuite) TestIsGroupMemberDeclarative_AsksTheFileStore() {
+	suite.mockFileStore.On("IsGroupMemberDeclarative", mock.Anything, "grp1", "usr1").Return(true, nil)
+
+	declared, err := suite.store.IsGroupMemberDeclarative(context.Background(), "grp1", "usr1")
+
+	suite.NoError(err)
+	suite.True(declared)
+	suite.mockDBStore.AssertNotCalled(suite.T(), "IsGroupMemberDeclarative", mock.Anything, mock.Anything,
+		mock.Anything)
+}
+
 func (suite *CompositeGroupStoreTestSuite) TestGetTransitiveGroupsForEntity_MergesBothStores() {
 	dbGroups := []providers.EntityGroup{
 		{ID: "grp1", Name: "Administrators", OUID: "ou1"},

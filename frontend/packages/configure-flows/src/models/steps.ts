@@ -123,7 +123,6 @@ export const ExecutionTypes = {
   CriteriaRevocation: 'CriteriaRevocationExecutor',
   AccessChangeValidator: 'AccessChangeValidator',
   RoleExecutor: 'RoleExecutor',
-  GroupExecutor: 'GroupExecutor',
   ActionDeletion: 'ActionDeletionExecutor',
   IdentityGovernance: 'IdentityGovernanceExecutor',
   AttributeVerification: 'AttributeVerificationExecutor',

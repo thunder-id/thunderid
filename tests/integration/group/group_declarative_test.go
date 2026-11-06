@@ -223,6 +223,42 @@ func (suite *GroupDeclarativeAPITestSuite) TestDeleteDeclarativeGroupIsRejected(
 	suite.Equal(http.StatusOK, getResp.StatusCode)
 }
 
+// TestRemoveDeclaredMemberIsRejected verifies a member a YAML-declared group lists cannot be removed, and
+// that the refusal leaves the member in place. Without it the removal would revoke what the member holds
+// and still leave the member in the group.
+func (suite *GroupDeclarativeAPITestSuite) TestRemoveDeclaredMemberIsRejected() {
+	payload, err := json.Marshal(MembersRequest{Members: []Member{{Id: declGroupMemberID, Type: MemberTypeUser}}})
+	suite.Require().NoError(err)
+
+	resp := suite.doDeclarative(http.MethodPost, "/groups/"+declNestedGroupID+"/members/remove", payload)
+	defer resp.Body.Close()
+
+	suite.Require().Equal(http.StatusBadRequest, resp.StatusCode)
+	var errorResp ErrorResponse
+	suite.Require().NoError(json.NewDecoder(resp.Body).Decode(&errorResp))
+	suite.Equal("GRP-1015", errorResp.Code)
+
+	membersResp := suite.doDeclarative(http.MethodGet, "/groups/"+declNestedGroupID+"/members", nil)
+	defer membersResp.Body.Close()
+	suite.Require().Equal(http.StatusOK, membersResp.StatusCode)
+	var members MemberListResponse
+	suite.Require().NoError(json.NewDecoder(membersResp.Body).Decode(&members))
+	suite.Require().Len(members.Members, 1, "the declared member must remain")
+	suite.Equal(declGroupMemberID, members.Members[0].Id)
+}
+
+// TestRemoveUndeclaredMemberFromDeclarativeGroupIsAccepted verifies that only declared members are
+// refused: naming a principal the declaration does not list is accepted and changes nothing.
+func (suite *GroupDeclarativeAPITestSuite) TestRemoveUndeclaredMemberFromDeclarativeGroupIsAccepted() {
+	payload, err := json.Marshal(MembersRequest{Members: []Member{{Id: declGroupID, Type: MemberTypeGroup}}})
+	suite.Require().NoError(err)
+
+	resp := suite.doDeclarative(http.MethodPost, "/groups/"+declNestedGroupID+"/members/remove", payload)
+	defer resp.Body.Close()
+
+	suite.Require().Equal(http.StatusOK, resp.StatusCode)
+}
+
 // TestGetDeclarativeGroupsByPath verifies declarative groups are listed under their OU handle path.
 func (suite *GroupDeclarativeAPITestSuite) TestGetDeclarativeGroupsByPath() {
 	resp := suite.doDeclarative(http.MethodGet, "/groups/tree/"+declGroupOUHandle+"?limit=100", nil)

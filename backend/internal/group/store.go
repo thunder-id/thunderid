@@ -29,6 +29,7 @@ type groupStoreInterface interface {
 	GetGroup(ctx context.Context, id string) (GroupDAO, error)
 	GetGroupMembers(ctx context.Context, groupID string, limit, offset int) ([]Member, error)
 	GetGroupMemberCount(ctx context.Context, groupID string) (int, error)
+	GetGroupMember(ctx context.Context, groupID, memberID string) (*Member, error)
 	UpdateGroup(ctx context.Context, group GroupDAO) error
 	DeleteGroup(ctx context.Context, id string) error
 	ValidateGroupIDs(ctx context.Context, groupIDs []string) ([]string, error)
@@ -43,6 +44,7 @@ type groupStoreInterface interface {
 	GetGroupsByIDs(ctx context.Context, groupIDs []string) ([]GroupBasicDAO, error)
 	GetGroupsByNames(ctx context.Context, names []string) ([]GroupBasicDAO, error)
 	IsGroupDeclarative(ctx context.Context, id string) (bool, error)
+	IsGroupMemberDeclarative(ctx context.Context, groupID, memberID string) (bool, error)
 	GetTransitiveGroupsForEntity(ctx context.Context, entityID string) ([]providers.EntityGroup, error)
 	GetTransitiveAncestorGroups(ctx context.Context, groupID string) ([]string, error)
 	GetDirectGroupParents(ctx context.Context, groupIDs []string) ([]string, error)
@@ -340,6 +342,28 @@ func (s *groupStore) GetGroupMemberCount(ctx context.Context, groupID string) (i
 	return 0, nil
 }
 
+// GetGroupMember retrieves the group's direct member with the given ID, or nil when there is none.
+func (s *groupStore) GetGroupMember(ctx context.Context, groupID, memberID string) (*Member, error) {
+	dbClient, err := s.dbProvider.GetEntityDBClient()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get database client: %w", err)
+	}
+
+	results, err := dbClient.QueryContext(ctx, QueryGetGroupMember, groupID, memberID, s.scope(ctx))
+	if err != nil {
+		return nil, fmt.Errorf("failed to get group member: %w", err)
+	}
+
+	for _, row := range results {
+		id, idOK := row["member_id"].(string)
+		memberType, typeOK := row["member_type"].(string)
+		if idOK && typeOK {
+			return &Member{ID: id, Type: MemberType(memberType)}, nil
+		}
+	}
+	return nil, nil
+}
+
 // UpdateGroup updates an existing group.
 func (s *groupStore) UpdateGroup(ctx context.Context, group GroupDAO) error {
 	dbClient, err := s.dbProvider.GetEntityDBClient()
@@ -625,6 +649,11 @@ func (s *groupStore) getGroupsInBatches(
 
 // IsGroupDeclarative returns false for the database store — database groups are never declarative.
 func (s *groupStore) IsGroupDeclarative(ctx context.Context, id string) (bool, error) {
+	return false, nil
+}
+
+// IsGroupMemberDeclarative returns false for the database store: its memberships are never declared.
+func (s *groupStore) IsGroupMemberDeclarative(ctx context.Context, groupID, memberID string) (bool, error) {
 	return false, nil
 }
 

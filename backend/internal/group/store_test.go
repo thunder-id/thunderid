@@ -518,6 +518,13 @@ func (suite *GroupStoreTestSuite) TestGroupStore_GetGroup() {
 	}
 }
 
+func (suite *GroupStoreTestSuite) TestGroupStore_IsGroupMemberDeclarative() {
+	declared, err := (&groupStore{}).IsGroupMemberDeclarative(context.Background(), "grp-001", "usr-001")
+
+	suite.NoError(err)
+	suite.False(declared, "the database store never declares a member")
+}
+
 func (suite *GroupStoreTestSuite) TestGroupStore_GetGroupMembers() {
 	testCases := []struct {
 		name       string
@@ -617,6 +624,56 @@ func (suite *GroupStoreTestSuite) TestGroupStore_GetGroupMembers() {
 
 			providerMock.AssertExpectations(suite.T())
 			dbClientMock.AssertExpectations(suite.T())
+		})
+	}
+}
+
+func (suite *GroupStoreTestSuite) TestGroupStore_GetGroupMember() {
+	testCases := []struct {
+		name      string
+		rows      []map[string]interface{}
+		queryErr  error
+		clientErr error
+		expect    *Member
+		expectErr string
+	}{
+		{
+			name:   "found",
+			rows:   []map[string]interface{}{{"member_id": "grp-2", "member_type": "group"}},
+			expect: &Member{ID: "grp-2", Type: MemberTypeGroup},
+		},
+		{name: "not a member", rows: []map[string]interface{}{}},
+		{name: "invalid result format", rows: []map[string]interface{}{{"member_id": 1, "member_type": "group"}}},
+		{name: "query error", queryErr: errors.New("query fail"), expectErr: "failed to get group member"},
+		{name: "database client error", clientErr: errors.New("client fail"),
+			expectErr: "failed to get database client"},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			providerMock := providermock.NewDBProviderInterfaceMock(suite.T())
+			dbClientMock := providermock.NewDBClientInterfaceMock(suite.T())
+			if tc.clientErr != nil {
+				providerMock.On("GetEntityDBClient").Return(nil, tc.clientErr).Once()
+			} else {
+				providerMock.On("GetEntityDBClient").Return(dbClientMock, nil).Once()
+				dbClientMock.
+					On("QueryContext", mock.Anything, QueryGetGroupMember, "grp-001", "grp-2", testDeploymentID).
+					Return(tc.rows, tc.queryErr).
+					Once()
+			}
+			store := &groupStore{dbProvider: providerMock}
+
+			member, err := store.GetGroupMember(context.Background(), "grp-001", "grp-2")
+
+			if tc.expectErr != "" {
+				suite.Require().Error(err)
+				suite.Require().Contains(err.Error(), tc.expectErr)
+				suite.Require().Nil(member)
+				return
+			}
+			suite.Require().NoError(err)
+			suite.Require().Equal(tc.expect, member)
 		})
 	}
 }

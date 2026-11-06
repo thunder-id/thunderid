@@ -19,7 +19,7 @@ Access tokens are self-contained JWTs, so a resource server that validates them 
 | **Grant** | Every token of one authorization grant, by its `tfid` | Sign-out, refresh-token replay, authorization-code replay |
 | **Subject** | Every token issued to one user, agent, or application, by its `sub` | A user is deleted; a user, agent, or application is suspended |
 | **Client** | Every token issued through one OAuth client, by its client ID | An application, or an agent with an OAuth client, is suspended; an application is deleted or its client secret is replaced |
-| **Subject and permission** | Every token issued to one user, agent, or application that carries one of the given permissions for its audience | A group whose roles grant those permissions is deleted, for each of its members |
+| **Subject and permission** | Every token issued to one user, agent, or application that carries one of the given permissions for its audience | A group whose roles grant those permissions is deleted, for each of its members, or a member is removed from it |
 
 A token is rejected if **any** of these matches.
 
@@ -151,6 +151,12 @@ The deletion is refused, and the group kept, when the revocation cannot be plann
 |---|---|---|
 | `GRP-1017` | The group's members are nested too deep to walk. | Flatten the group hierarchy so that every member is within the supported depth. |
 | `RVS-1001` | The revocation needs more entries than `oauth.revocation.criteria.max_entries_per_change` allows (`10000` by default). It records about one entry for each member and each scope the group's roles grant, so 1000 members with a role of 11 scopes are refused. | Remove some of the group's members or role assignments first, then delete the group. Or raise the limit. |
+
+## Group Membership Removal
+
+Removing a member from a group revokes the tokens the member carries with the permissions of the roles assigned to the group, including the roles assigned to the groups that contain it. When the member is itself a group, the tokens of its members are revoked, including those of a user who is also a direct member of the group and so keeps the permissions. A token that carries any of those permissions is revoked, even when it also carries other permissions. Tokens that carry none of them are left alone. This happens whichever way the member is removed: from the Console or through the `POST /groups/{id}/members/remove` API. Removing a user or group that is not a member changes nothing and revokes nothing.
+
+The revocation runs as two system flows, as for an [application deletion](#application-deletion-and-secret-regeneration): one before the removal is written, and one after it that moves the revocation's cutoff to the moment of the removal, so a token issued while the member was being removed is revoked too. A failure before the write leaves every membership as it was, but tokens already revoked for it stay revoked, so retry the removal. A failure after it is reported as an error even though the member is already removed. In that case a token issued between the first flow's cutoff and the removal stays valid, and retrying does not revoke it, because the member is no longer in the group and the removal does nothing. Revoke such tokens separately, or wait for them to expire.
 
 ## Role Assignment Removal
 

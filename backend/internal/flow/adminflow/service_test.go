@@ -82,21 +82,6 @@ func (s *AdministrationFlowRunnerTestSuite) TestReadsOnlyItsOwnEntry() {
 	s.Nil(svcErr)
 }
 
-func (s *AdministrationFlowRunnerTestSuite) TestReadsTheGroupMembershipRemovalEntry() {
-	s.serverConfig.On("GetMergedConfig", mock.Anything, "flow").Return(flowconfig.FlowSectionConfig{
-		GroupMembershipRemovalFlow: flowconfig.FlowTypeConfig{DefaultHandle: "membership-flow"},
-	}, (*tidcommon.ServiceError)(nil)).Once()
-	s.flows.On("GetFlowByHandle", mock.Anything, "membership-flow", providers.FlowTypeAdministration).
-		Return(&providers.CompleteFlowDefinition{ID: "flow-2"}, (*tidcommon.ServiceError)(nil)).Once()
-	s.executor.On("ExecuteByID", mock.Anything, "flow-2", "", false, "", mock.Anything, "", mock.Anything).
-		Return(&flowexec.FlowStep{Status: providers.FlowStatusComplete}, (*tidcommon.ServiceError)(nil)).Once()
-
-	ran, svcErr := s.runner.RunAdministrationFlow(context.Background(), groupMembershipRemovalFlowKey, nil)
-
-	s.True(ran, "the group membership removal entry names the flow that ran")
-	s.Nil(svcErr)
-}
-
 func (s *AdministrationFlowRunnerTestSuite) TestUnknownConfigKey() {
 	s.configure("removal-flow")
 

@@ -6,14 +6,11 @@ package group
 // systemFlowGroupDeletePre is the system flow a group deletion runs before the group is removed.
 const systemFlowGroupDeletePre = "system-group-delete-pre"
 
-// groupMembershipRemovalFlowKey is the server configuration key of the administration flow that removes a
-// group member.
-const groupMembershipRemovalFlowKey = "groupMembershipRemovalFlow"
-
-// Inputs the group membership removal flow reads.
+// The system flow removing a group member runs before the removal is written, and the input naming the
+// member it acts on.
 const (
-	flowInputGroup  = "targetGroupId"
-	flowInputMember = "targetMemberId"
+	systemFlowGroupMembershipRemovalPre = "system-group-membership-removal-pre"
+	systemFlowInputMember               = "targetMemberId"
 )
 
 // Group MCP tool defaults.

@@ -112,7 +112,8 @@ func (suite *DeclarativeModeGroupServiceTestSuite) TestDeleteGroup_FailsWhenDecl
 	suite.store.AssertNotCalled(suite.T(), "DeleteGroup", mock.Anything, mock.Anything)
 }
 
-// Add/RemoveGroupMembers must succeed for declarative groups — member assignments are always DB-backed.
+// Add/RemoveGroupMembers must succeed for declarative groups when the members are not declared: members
+// added through the API are held by the database.
 func (suite *DeclarativeModeGroupServiceTestSuite) TestGroupMemberMutations_AllowedForDeclarativeGroup() {
 	cases := []struct {
 		name   string
@@ -145,6 +146,8 @@ func (suite *DeclarativeModeGroupServiceTestSuite) TestGroupMemberMutations_Allo
 			suite.entityService.On("GetEntitiesByIDs", mock.Anything, []string{"user-1"}).
 				Return([]providers.Entity{{ID: "user-1", Category: providers.EntityCategoryUser, OUID: "ou-1"}}, nil)
 			suite.store.On(tc.method, mock.Anything, "group-1", normalizedMembers).Return(nil)
+			suite.store.On("IsGroupDeclarative", mock.Anything, "group-1").Return(true, nil).Maybe()
+			suite.store.On("IsGroupMemberDeclarative", mock.Anything, "group-1", "user-1").Return(false, nil).Maybe()
 
 			grp, err := tc.invoke([]Member{{ID: "user-1", Type: MemberTypeUser}})
 

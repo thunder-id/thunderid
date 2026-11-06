@@ -260,10 +260,6 @@ var catalog = map[string]providers.ExecutorMeta{
 			{Property: "roles"},
 		},
 	},
-	ExecutorNameGroup: {
-		SupportedModes:     []string{ExecutorModeGroupMembershipRemoval},
-		SupportedFlowTypes: []providers.FlowType{"ADMINISTRATION"},
-	},
 	ExecutorNameActionDeletion: {
 		SupportedFlowTypes: []providers.FlowType{"ADMINISTRATION"},
 	},

@@ -21,20 +21,13 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/mcp/tool"
 )
 
-// administrationFlowRunner runs the administration flow a deployment configures for an action. It
-// reports false when no flow is configured, so the caller performs the action directly.
-type administrationFlowRunner interface {
-	RunAdministrationFlow(ctx context.Context, configKey string, inputs map[string]string) (
-		bool, *tidcommon.ServiceError)
-}
-
 // groupTools carries the services the group MCP tools call.
 type groupTools struct {
 	groupService  GroupServiceInterface
 	entityService entity.EntityServiceInterface
 	ouService     oupkg.OrganizationUnitServiceInterface
-	// flowRunner is nil on a server that runs no flows, where removals are written directly.
-	flowRunner administrationFlowRunner
+	// revokesOnRemoval is false on a server that issues no tokens, where a removal revokes nothing.
+	revokesOnRemoval bool
 }
 
 // groupMemberMCPInput names a user, app, agent or group.
@@ -135,33 +128,32 @@ type updateGroupMembershipsMCPResponse struct {
 	Notice  string                         `json:"notice,omitempty"`
 }
 
-// flowRemovalNotice describes what removing a member does on a server that runs administration flows.
-const flowRemovalNotice = "Removals run the administration flow the server configuration names, and the " +
-	"default flow revokes the tokens that carried the access the group gave. A deployment can change that flow."
+// revokingRemovalNotice describes what removing a member does on a server that issues tokens.
+const revokingRemovalNotice = "Removing a member revokes the tokens that carried the access the group gave."
 
-// directRemovalNotice describes what removing a member does on a server that runs no flows, such as a
+// directRemovalNotice describes what removing a member does on a server that issues no tokens, such as a
 // control plane.
-const directRemovalNotice = "This server runs no administration flows, so removals are written directly, " +
-	"without the token revocation a data plane's flow performs."
+const directRemovalNotice = "This server issues no tokens, so removals are written directly, " +
+	"without the token revocation a data plane performs."
 
 // removalNotice describes what a removal does on this server.
 func (t *groupTools) removalNotice() string {
-	if t.flowRunner == nil {
+	if !t.revokesOnRemoval {
 		return directRemovalNotice
 	}
-	return flowRemovalNotice
+	return revokingRemovalNotice
 }
 
-// RegisterMCPTools registers the group MCP tools with the server. flowRunner is nil on a server that runs
-// no flows; removals are then written directly.
+// RegisterMCPTools registers the group MCP tools with the server. revokesOnRemoval is false on a server
+// that issues no tokens, where a removal revokes nothing.
 func RegisterMCPTools(server *mcp.Server, groupService GroupServiceInterface,
 	entityService entity.EntityServiceInterface, ouService oupkg.OrganizationUnitServiceInterface,
-	flowRunner administrationFlowRunner) {
+	revokesOnRemoval bool) {
 	tools := &groupTools{
-		groupService:  groupService,
-		entityService: entityService,
-		ouService:     ouService,
-		flowRunner:    flowRunner,
+		groupService:     groupService,
+		entityService:    entityService,
+		ouService:        ouService,
+		revokesOnRemoval: revokesOnRemoval,
 	}
 	memberTypes := []string{string(MemberTypeUser), string(MemberTypeApp), string(MemberTypeAgent),
 		string(MemberTypeGroup)}
@@ -428,11 +420,8 @@ func (t *groupTools) updateGroupMemberships(ctx context.Context, _ *mcp.CallTool
 	return nil, out, nil
 }
 
-// removeMember removes one member from one group, through the configured administration flow when there
-// is one. Only a direct member can be removed, so one who isn't, or who belongs only through a nested group,
-// is refused rather than reported removed; a direct removal of a non-member would otherwise succeed without
-// changing anything. A flow that finishes must have removed the member: an administrator can configure a
-// flow whose path skips the step that does it, so the group is checked afterwards.
+// removeMember removes one member from one group. Only a direct member can be removed, so one who isn't, or
+// who belongs only through a nested group, is refused rather than reported removed.
 func (t *groupTools) removeMember(ctx context.Context, groupID string, member groupMemberMCPInput) error {
 	existing, svcErr := t.groupService.GetDirectGroupMember(ctx, groupID, member.ID)
 	if svcErr != nil {
@@ -441,25 +430,6 @@ func (t *groupTools) removeMember(ctx context.Context, groupID string, member gr
 	if existing == nil || string(existing.Type) != member.Type {
 		return fmt.Errorf("no %s with this ID is directly in the group, so there is nothing to remove; a member "+
 			"who belongs through a nested group leaves when removed from that group", member.Type)
-	}
-	if t.flowRunner != nil {
-		ran, svcErr := t.flowRunner.RunAdministrationFlow(ctx, groupMembershipRemovalFlowKey, map[string]string{
-			flowInputGroup: groupID, flowInputMember: member.ID})
-		if svcErr != nil {
-			return errors.New(svcErr.ErrorDescription.String())
-		}
-		if ran {
-			remaining, svcErr := t.groupService.GetDirectGroupMember(ctx, groupID, member.ID)
-			if svcErr != nil {
-				return fmt.Errorf("the flow finished, but the group could not be checked: %s",
-					svcErr.ErrorDescription)
-			}
-			if remaining != nil {
-				return fmt.Errorf("the flow configured as %s finished, but the member is still in the group",
-					groupMembershipRemovalFlowKey)
-			}
-			return nil
-		}
 	}
 	if _, svcErr := t.groupService.RemoveGroupMembers(ctx, groupID,
 		[]Member{{ID: member.ID, Type: MemberType(member.Type)}}); svcErr != nil {

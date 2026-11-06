@@ -25,7 +25,6 @@ type GroupToolsTestSuite struct {
 	groups   *GroupServiceInterfaceMock
 	entities *entitymock.EntityServiceInterfaceMock
 	ous      *oumock.OrganizationUnitServiceInterfaceMock
-	runner   *administrationFlowRunnerMock
 	session  *mcp.ClientSession
 }
 
@@ -37,20 +36,15 @@ func (s *GroupToolsTestSuite) SetupTest() {
 	s.connect(true)
 }
 
-// connect registers the tools over mocked services and connects an in-memory MCP client. withRunner gives
-// the tools a flow runner, as on a data plane.
-func (s *GroupToolsTestSuite) connect(withRunner bool) {
+// connect registers the tools over mocked services and connects an in-memory MCP client. revokes is true on a
+// server that issues tokens, as a data plane does.
+func (s *GroupToolsTestSuite) connect(revokes bool) {
 	s.groups = NewGroupServiceInterfaceMock(s.T())
 	s.entities = entitymock.NewEntityServiceInterfaceMock(s.T())
 	s.ous = oumock.NewOrganizationUnitServiceInterfaceMock(s.T())
-	s.runner = newAdministrationFlowRunnerMock(s.T())
 
 	server := mcp.NewServer(&mcp.Implementation{Name: "test-server", Version: "1.0.0"}, nil)
-	var runner administrationFlowRunner
-	if withRunner {
-		runner = s.runner
-	}
-	RegisterMCPTools(server, s.groups, s.entities, s.ous, runner)
+	RegisterMCPTools(server, s.groups, s.entities, s.ous, revokes)
 	serverTransport, clientTransport := mcp.NewInMemoryTransports()
 	serverSession, err := server.Connect(context.Background(), serverTransport, nil)
 	s.Require().NoError(err)
@@ -224,14 +218,11 @@ func (s *GroupToolsTestSuite) TestCreateGroup() {
 func (s *GroupToolsTestSuite) TestUpdateGroupMemberships() {
 	members := []any{map[string]any{"id": "u1", "type": "user"}}
 
-	s.Run("removes through the flow, then adds", func() {
+	s.Run("removes, then adds", func() {
 		s.groups.On("GetDirectGroupMember", mock.Anything, "booking", "u1").
 			Return(&Member{ID: "u1", Type: MemberTypeUser}, (*tidcommon.ServiceError)(nil)).Once()
-		s.runner.On("RunAdministrationFlow", mock.Anything, groupMembershipRemovalFlowKey,
-			map[string]string{flowInputGroup: "booking", flowInputMember: "u1"}).
-			Return(true, (*tidcommon.ServiceError)(nil)).Once()
-		s.groups.On("GetDirectGroupMember", mock.Anything, "booking", "u1").
-			Return((*Member)(nil), (*tidcommon.ServiceError)(nil)).Once()
+		s.groups.On("RemoveGroupMembers", mock.Anything, "booking", []Member{{ID: "u1", Type: MemberTypeUser}}).
+			Return(&Group{ID: "booking"}, (*tidcommon.ServiceError)(nil)).Once()
 		s.groups.On("AddGroupMembers", mock.Anything, "pricing", []Member{{ID: "u1", Type: MemberTypeUser}}).
 			Return(&Group{ID: "pricing"}, (*tidcommon.ServiceError)(nil)).Once()
 
@@ -240,31 +231,16 @@ func (s *GroupToolsTestSuite) TestUpdateGroupMemberships() {
 			"add": []string{"pricing"}, "remove": []string{"booking"}}), &out)
 		s.Equal([]groupMembershipChangeMCPItem{{GroupID: "booking", MemberID: "u1"}}, out.Removed)
 		s.Equal([]groupMembershipChangeMCPItem{{GroupID: "pricing", MemberID: "u1"}}, out.Added)
-		s.Equal(flowRemovalNotice, out.Notice)
-	})
-
-	s.Run("a flow that finishes without removing is refused", func() {
-		s.connect(true)
-		s.groups.On("GetDirectGroupMember", mock.Anything, "booking", "u1").
-			Return(&Member{ID: "u1", Type: MemberTypeUser}, (*tidcommon.ServiceError)(nil)).Once()
-		s.runner.On("RunAdministrationFlow", mock.Anything, groupMembershipRemovalFlowKey, mock.Anything).
-			Return(true, (*tidcommon.ServiceError)(nil)).Once()
-		s.groups.On("GetDirectGroupMember", mock.Anything, "booking", "u1").
-			Return(&Member{ID: "u1", Type: MemberTypeUser}, (*tidcommon.ServiceError)(nil)).Once()
-		text := s.errorText(s.call("update_group_memberships", map[string]any{"members": members,
-			"add": []string{"pricing"}, "remove": []string{"booking"}}))
-		s.Contains(text, "still in the group")
-		s.Contains(text, "Nothing was added")
-		s.groups.AssertNotCalled(s.T(), "AddGroupMembers", mock.Anything, mock.Anything, mock.Anything)
+		s.Equal(revokingRemovalNotice, out.Notice)
 	})
 
 	s.Run("a refused removal adds nothing", func() {
 		s.connect(true)
 		s.groups.On("GetDirectGroupMember", mock.Anything, "booking", "u1").
 			Return(&Member{ID: "u1", Type: MemberTypeUser}, (*tidcommon.ServiceError)(nil)).Once()
-		s.runner.On("RunAdministrationFlow", mock.Anything, groupMembershipRemovalFlowKey, mock.Anything).
-			Return(false, &tidcommon.ServiceError{ErrorDescription: tidcommon.I18nMessage{DefaultValue: "refused"}}).
-			Once()
+		s.groups.On("RemoveGroupMembers", mock.Anything, "booking", mock.Anything).
+			Return((*Group)(nil), &tidcommon.ServiceError{ErrorDescription: tidcommon.I18nMessage{
+				DefaultValue: "refused"}}).Once()
 		text := s.errorText(s.call("update_group_memberships", map[string]any{"members": members,
 			"add": []string{"pricing"}, "remove": []string{"booking"}}))
 		s.Contains(text, "refused")
@@ -272,7 +248,7 @@ func (s *GroupToolsTestSuite) TestUpdateGroupMemberships() {
 		s.groups.AssertNotCalled(s.T(), "AddGroupMembers", mock.Anything, mock.Anything, mock.Anything)
 	})
 
-	s.Run("a member who isn't directly in the group is refused before the flow runs", func() {
+	s.Run("a member who isn't directly in the group is refused before anything is removed", func() {
 		s.connect(true)
 		s.groups.On("GetDirectGroupMember", mock.Anything, "booking", "u1").
 			Return((*Member)(nil), (*tidcommon.ServiceError)(nil)).Once()
@@ -280,21 +256,21 @@ func (s *GroupToolsTestSuite) TestUpdateGroupMemberships() {
 			"add": []string{"pricing"}, "remove": []string{"booking"}}))
 		s.Contains(text, "no user with this ID is directly in the group")
 		s.Contains(text, "Nothing was added")
-		s.runner.AssertNotCalled(s.T(), "RunAdministrationFlow", mock.Anything, mock.Anything, mock.Anything)
+		s.groups.AssertNotCalled(s.T(), "RemoveGroupMembers", mock.Anything, mock.Anything, mock.Anything)
 		s.groups.AssertNotCalled(s.T(), "AddGroupMembers", mock.Anything, mock.Anything, mock.Anything)
 	})
 
-	s.Run("a membership that can't be read is refused before the flow runs", func() {
+	s.Run("a membership that can't be read is refused before anything is removed", func() {
 		s.connect(true)
 		s.groups.On("GetDirectGroupMember", mock.Anything, "booking", "u1").
 			Return((*Member)(nil), &tidcommon.ServiceError{
 				ErrorDescription: tidcommon.I18nMessage{DefaultValue: "group not found"}}).Once()
 		s.Contains(s.errorText(s.call("update_group_memberships", map[string]any{"members": members,
 			"remove": []string{"booking"}})), "group not found")
-		s.runner.AssertNotCalled(s.T(), "RunAdministrationFlow", mock.Anything, mock.Anything, mock.Anything)
+		s.groups.AssertNotCalled(s.T(), "RemoveGroupMembers", mock.Anything, mock.Anything, mock.Anything)
 	})
 
-	s.Run("no flow runner removes directly", func() {
+	s.Run("a server that issues no tokens says removals are written directly", func() {
 		s.connect(false)
 		s.groups.On("GetDirectGroupMember", mock.Anything, "booking", "u1").
 			Return(&Member{ID: "u1", Type: MemberTypeUser}, (*tidcommon.ServiceError)(nil)).Once()
@@ -305,17 +281,7 @@ func (s *GroupToolsTestSuite) TestUpdateGroupMemberships() {
 			"remove": []string{"booking"}}), &out)
 		s.Len(out.Removed, 1)
 		s.Empty(out.Added)
-		s.Equal(directRemovalNotice, out.Notice, "a server without flows says removals are written directly")
-		s.runner.AssertNotCalled(s.T(), "RunAdministrationFlow", mock.Anything, mock.Anything, mock.Anything)
-	})
-
-	s.Run("removing directly refuses a member who isn't directly in the group", func() {
-		s.connect(false)
-		s.groups.On("GetDirectGroupMember", mock.Anything, "booking", "u1").
-			Return((*Member)(nil), (*tidcommon.ServiceError)(nil)).Once()
-		s.Contains(s.errorText(s.call("update_group_memberships", map[string]any{"members": members,
-			"remove": []string{"booking"}})), "nothing to remove")
-		s.groups.AssertNotCalled(s.T(), "RemoveGroupMembers", mock.Anything, mock.Anything, mock.Anything)
+		s.Equal(directRemovalNotice, out.Notice)
 	})
 
 	s.Run("a member of another type with the same ID is refused", func() {
@@ -324,7 +290,7 @@ func (s *GroupToolsTestSuite) TestUpdateGroupMemberships() {
 			Return(&Member{ID: "u1", Type: MemberTypeGroup}, (*tidcommon.ServiceError)(nil)).Once()
 		s.Contains(s.errorText(s.call("update_group_memberships", map[string]any{"members": members,
 			"remove": []string{"booking"}})), "no user with this ID is directly in the group")
-		s.runner.AssertNotCalled(s.T(), "RunAdministrationFlow", mock.Anything, mock.Anything, mock.Anything)
+		s.groups.AssertNotCalled(s.T(), "RemoveGroupMembers", mock.Anything, mock.Anything, mock.Anything)
 	})
 
 	s.Run("needs a change", func() {
@@ -334,15 +300,15 @@ func (s *GroupToolsTestSuite) TestUpdateGroupMemberships() {
 	})
 }
 
-// update_group_memberships says what a removal does on this server: a data plane runs a flow that
-// revokes tokens, and a control plane writes removals directly.
+// update_group_memberships says what a removal does on this server: a data plane revokes tokens, and a
+// control plane writes removals directly.
 func (s *GroupToolsTestSuite) TestRemovalNoticeFollowsThePlane() {
-	for _, withRunner := range []bool{true, false} {
-		s.connect(withRunner)
+	for _, revokes := range []bool{true, false} {
+		s.connect(revokes)
 		result, err := s.session.ListTools(context.Background(), nil)
 		s.Require().NoError(err)
-		expected := flowRemovalNotice
-		if !withRunner {
+		expected := revokingRemovalNotice
+		if !revokes {
 			expected = directRemovalNotice
 		}
 		for _, t := range result.Tools {

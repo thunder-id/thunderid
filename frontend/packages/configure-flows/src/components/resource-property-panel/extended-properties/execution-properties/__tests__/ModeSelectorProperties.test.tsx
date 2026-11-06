@@ -7,9 +7,8 @@ import type {ReactNode} from 'react';
 import {beforeEach, describe, expect, it, vi} from 'vitest';
 import type {Resource} from '../../../../../models/resources';
 import AccessChangeValidatorProperties from '../AccessChangeValidatorProperties';
-import {ACCESS_CHANGE_VALIDATOR_MODES, GROUP_EXECUTOR_MODES, ROLE_EXECUTOR_MODES} from '../constants';
+import {ACCESS_CHANGE_VALIDATOR_MODES, ROLE_EXECUTOR_MODES} from '../constants';
 import CriteriaRevocationProperties from '../CriteriaRevocationProperties';
-import GroupExecutorProperties from '../GroupExecutorProperties';
 import ModeSelectorProperties from '../ModeSelectorProperties';
 import RoleExecutorProperties from '../RoleExecutorProperties';
 import type {CommonResourcePropertiesPropsInterface} from '../types';
@@ -197,7 +196,6 @@ describe.each<[string, (props: CommonResourcePropertiesPropsInterface) => ReactN
     false,
   ],
   ['RoleExecutor', RoleExecutorProperties, ['role_permission_removal', 'role_selection', 'role_assignment'], true],
-  ['GroupExecutor', GroupExecutorProperties, ['group_membership_removal'], true],
   ['CriteriaRevocationExecutor', CriteriaRevocationProperties, ['revoke', 'advance_cutoff'], false],
 ])('%s properties', (name, Component, supportedModes, pairedWithValidator) => {
   it('should offer exactly the modes the executor supports', async () => {
@@ -221,9 +219,7 @@ describe('executor mode constants', () => {
 
     // Selecting and assigning roles serve invitation flows, which run no access change validator.
     const invitationModes: string[] = ['role_selection', 'role_assignment'];
-    const pairedModes = [...ROLE_EXECUTOR_MODES, ...GROUP_EXECUTOR_MODES].filter(
-      (mode) => !invitationModes.includes(mode.value),
-    );
+    const pairedModes = ROLE_EXECUTOR_MODES.filter((mode) => !invitationModes.includes(mode.value));
 
     for (const mode of pairedModes) {
       expect(validatorModes).toContain(mode.value);
