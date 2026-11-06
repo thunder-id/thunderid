@@ -26,10 +26,10 @@ See [Workload Identity Federation](../overview) for what federation replaces and
 ## Create the Agent
 
 1. Sign in to the <ProductName /> Console at `https://localhost:8090/console`.
-2. Navigate to **Agents** → **New Agent**.
-3. Enter an **Agent name** (for example `research-agent`).
-4. Select an owner for the agent.
-5. Click **Create Agent**.
+2. Navigate to **Agents**. Click **Add agent**.
+3. Follow the [own-identity onboarding flow](../../../agents/manage-agents#act-using-its-own-identity). Select the organization unit when prompted, then select an owner.
+4. In **Agent Details**, set the schema attribute **Name** to a unique value, for example `research-agent`. Fill in any other required attributes.
+5. Complete onboarding using the agent's own identity.
 6. Note down the **Agent ID**, Anthropic matches on this value.
 7. Record the **Client ID** and **Client Secret**. The secret is shown once.
 8. Open the agent's **Advanced** tab. Under **OAuth 2 configuration**, set **Default audience (aud)** to `https://api.anthropic.com`, then save.

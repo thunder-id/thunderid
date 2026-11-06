@@ -55,8 +55,9 @@ placeholder:
 - A name that would start with a digit gets a leading underscore. The resource type leads every
   generated name, so this applies only where a name is derived without one.
 
-Normalization applies to generated variable names only. Exported file names and the `name` field
-inside the exported YAML keep the original resource name.
+Normalization applies to generated variable names only. Exported file names and resource attribute values keep their original text.
+
+For an agent, export uses the label resolved from the agent type's `systemAttributes.display` setting for the resource name. The default mapping reads `attributes.name`; if no display value is available, export uses the agent ID. The YAML stores the name under `attributes.name`, not in a top-level `name` or `display` field. See the [agent resource example](../declarative-configurations/import-resources#agent-resources).
 
 | Resource type | Resource name | Variable name for `clientId` |
 | --- | --- | --- |
