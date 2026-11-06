@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/system/mcp/tool"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
@@ -152,6 +153,15 @@ func (s *TypeToolsTestSuite) TestToolsOverMCP() {
 	s.ElementsMatch([]string{"list_authorization_detail_types",
 		"get_authorization_detail_type_by_id", "create_authorization_detail_type",
 		"update_authorization_detail_type"}, names)
+
+	// Every tool is mapped to an authorization detail type permission, so none falls back to root.
+	security.InitSystemPermissions("")
+	p := security.GetSystemPermissions()
+	for _, name := range names {
+		s.Contains([]string{p.AuthzDetailView, p.AuthzDetailCreate, p.AuthzDetailUpdate, p.AuthzDetailDelete},
+			security.ResolveMCPToolPermission(name),
+			"tool %q must require an authorization detail type permission", name)
+	}
 
 	created := toolsTestType()
 	var received json.RawMessage

@@ -15,6 +15,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/connection/httpconnection"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/outboundauth"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/tests/mocks/connection/httpconnectionmock"
 	"github.com/thunder-id/thunderid/tests/mocks/idp/idpmock"
@@ -377,4 +378,20 @@ func (s *HTTPConnectionToolsTestSuite) TestUpdateNotFound() {
 	s.Contains(text, "failed to update HTTP connection")
 	s.Contains(text, httpconnection.ErrorNotFound.ErrorDescription.DefaultValue)
 	s.mockHTTP.AssertNotCalled(s.T(), "UpdateHTTPConnection", mock.Anything, mock.Anything, mock.Anything)
+}
+
+// TestRegisteredToolsRequireConnectionPermissions verifies that every connection MCP tool is mapped to a
+// connection catalog permission, so none falls back to root by accident.
+func (s *HTTPConnectionToolsTestSuite) TestRegisteredToolsRequireConnectionPermissions() {
+	security.InitSystemPermissions("")
+	p := security.GetSystemPermissions()
+	tools, err := s.session.ListTools(context.Background(), nil)
+	s.Require().NoError(err)
+
+	s.Require().NotEmpty(tools.Tools)
+	for _, registered := range tools.Tools {
+		s.Contains([]string{p.ConnectionView, p.ConnectionCreate, p.ConnectionUpdate, p.ConnectionDelete},
+			security.ResolveMCPToolPermission(registered.Name),
+			"tool %q must require a connection permission", registered.Name)
+	}
 }

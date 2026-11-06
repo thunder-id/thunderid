@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
@@ -220,4 +221,20 @@ func (s *ProjectToolsTestSuite) TestUpdateProject() {
 		}))
 		s.Contains(text, "failed to update project")
 	})
+}
+
+// TestRegisteredToolsRequireProjectPermissions verifies that every project MCP tool is mapped to a project
+// catalog permission, so none falls back to root by accident.
+func (s *ProjectToolsTestSuite) TestRegisteredToolsRequireProjectPermissions() {
+	security.InitSystemPermissions("")
+	p := security.GetSystemPermissions()
+	tools, err := s.session.ListTools(context.Background(), nil)
+	s.Require().NoError(err)
+
+	s.Require().NotEmpty(tools.Tools)
+	for _, registered := range tools.Tools {
+		s.Contains([]string{p.ProjectView, p.ProjectCreate, p.ProjectUpdate, p.ProjectDelete},
+			security.ResolveMCPToolPermission(registered.Name),
+			"tool %q must require a project permission", registered.Name)
+	}
 }

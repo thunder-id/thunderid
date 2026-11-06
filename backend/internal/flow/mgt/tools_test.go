@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/system/mcp/tool"
+	"github.com/thunder-id/thunderid/internal/system/security"
 )
 
 type FlowToolsTestSuite struct {
@@ -488,6 +489,33 @@ func (suite *FlowToolsTestSuite) TestRegisterMCPTools() {
 	// Note: We can't directly verify the tools list without accessing internal server state,
 	// but we can verify the function doesn't panic
 	assert.NotNil(suite.T(), server)
+}
+
+// TestRegisteredToolsRequireFlowPermissions verifies that every flow MCP tool is mapped to a flow
+// catalog permission, so none falls back to root by accident.
+func (suite *FlowToolsTestSuite) TestRegisteredToolsRequireFlowPermissions() {
+	security.InitSystemPermissions("")
+	p := security.GetSystemPermissions()
+	server := mcp.NewServer(&mcp.Implementation{Name: "test-server", Version: "1.0.0"}, nil)
+	registerMCPTools(server, NewFlowMgtServiceInterfaceMock(suite.T()))
+
+	ctx := context.Background()
+	serverTransport, clientTransport := mcp.NewInMemoryTransports()
+	_, err := server.Connect(ctx, serverTransport, nil)
+	suite.Require().NoError(err)
+	session, err := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "1.0.0"}, nil).
+		Connect(ctx, clientTransport, nil)
+	suite.Require().NoError(err)
+	defer func() { _ = session.Close() }()
+	tools, err := session.ListTools(ctx, nil)
+	suite.Require().NoError(err)
+
+	suite.Require().NotEmpty(tools.Tools)
+	for _, registered := range tools.Tools {
+		assert.Contains(suite.T(), []string{p.FlowView, p.FlowCreate, p.FlowUpdate, p.FlowDelete},
+			security.ResolveMCPToolPermission(registered.Name),
+			"tool %q must require a flow permission", registered.Name)
+	}
 }
 
 func (suite *FlowToolsTestSuite) TestGetListFlowsSchema() {

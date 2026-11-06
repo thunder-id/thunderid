@@ -196,25 +196,98 @@ func (s *SecurityContextTestSuite) TestResolveActionPermission() {
 		wantPerm string
 	}{
 		// OU actions.
-		{name: "CreateOU", action: ActionCreateOU, wantPerm: p.OU},
+		{name: "CreateOU", action: ActionCreateOU, wantPerm: p.OUCreate},
 		{name: "ReadOU", action: ActionReadOU, wantPerm: p.OUView},
-		{name: "UpdateOU", action: ActionUpdateOU, wantPerm: p.OU},
-		{name: "DeleteOU", action: ActionDeleteOU, wantPerm: p.OU},
+		{name: "UpdateOU", action: ActionUpdateOU, wantPerm: p.OUUpdate},
+		{name: "DeleteOU", action: ActionDeleteOU, wantPerm: p.OUDelete},
 		{name: "ListOUs", action: ActionListOUs, wantPerm: p.OUView},
 
 		// User actions.
-		{name: "CreateUser", action: ActionCreateUser, wantPerm: p.User},
+		{name: "CreateUser", action: ActionCreateUser, wantPerm: p.UserCreate},
 		{name: "ReadUser", action: ActionReadUser, wantPerm: p.UserView},
-		{name: "UpdateUser", action: ActionUpdateUser, wantPerm: p.User},
-		{name: "DeleteUser", action: ActionDeleteUser, wantPerm: p.User},
+		{name: "UpdateUser", action: ActionUpdateUser, wantPerm: p.UserUpdate},
+		{name: "DeleteUser", action: ActionDeleteUser, wantPerm: p.UserDelete},
 		{name: "ListUsers", action: ActionListUsers, wantPerm: p.UserView},
 
 		// Group actions.
-		{name: "CreateGroup", action: ActionCreateGroup, wantPerm: p.Group},
+		{name: "CreateGroup", action: ActionCreateGroup, wantPerm: p.GroupCreate},
 		{name: "ReadGroup", action: ActionReadGroup, wantPerm: p.GroupView},
-		{name: "UpdateGroup", action: ActionUpdateGroup, wantPerm: p.Group},
-		{name: "DeleteGroup", action: ActionDeleteGroup, wantPerm: p.Group},
+		{name: "UpdateGroup", action: ActionUpdateGroup, wantPerm: p.GroupUpdate},
+		{name: "DeleteGroup", action: ActionDeleteGroup, wantPerm: p.GroupDelete},
 		{name: "ListGroups", action: ActionListGroups, wantPerm: p.GroupView},
+
+		// Flow actions.
+		{name: "CreateFlow", action: ActionCreateFlow, wantPerm: p.FlowCreate},
+		{name: "ReadFlow", action: ActionReadFlow, wantPerm: p.FlowView},
+		{name: "UpdateFlow", action: ActionUpdateFlow, wantPerm: p.FlowUpdate},
+		{name: "DeleteFlow", action: ActionDeleteFlow, wantPerm: p.FlowDelete},
+		{name: "ListFlows", action: ActionListFlows, wantPerm: p.FlowView},
+
+		// Role actions.
+		{name: "CreateRole", action: ActionCreateRole, wantPerm: p.RoleCreate},
+		{name: "ReadRole", action: ActionReadRole, wantPerm: p.RoleView},
+		{name: "UpdateRole", action: ActionUpdateRole, wantPerm: p.RoleUpdate},
+		{name: "DeleteRole", action: ActionDeleteRole, wantPerm: p.RoleDelete},
+		{name: "ListRoles", action: ActionListRoles, wantPerm: p.RoleView},
+
+		// Resource server actions.
+		{name: "CreateResourceServer", action: ActionCreateResourceServer, wantPerm: p.ResourceServerCreate},
+		{name: "ReadResourceServer", action: ActionReadResourceServer, wantPerm: p.ResourceServerView},
+		{name: "UpdateResourceServer", action: ActionUpdateResourceServer, wantPerm: p.ResourceServerUpdate},
+		{name: "DeleteResourceServer", action: ActionDeleteResourceServer, wantPerm: p.ResourceServerDelete},
+		{name: "ListResourceServers", action: ActionListResourceServers, wantPerm: p.ResourceServerView},
+
+		// Connection actions.
+		{name: "CreateConnection", action: ActionCreateConnection, wantPerm: p.ConnectionCreate},
+		{name: "ReadConnection", action: ActionReadConnection, wantPerm: p.ConnectionView},
+		{name: "UpdateConnection", action: ActionUpdateConnection, wantPerm: p.ConnectionUpdate},
+		{name: "DeleteConnection", action: ActionDeleteConnection, wantPerm: p.ConnectionDelete},
+		{name: "ListConnections", action: ActionListConnections, wantPerm: p.ConnectionView},
+
+		// Verifiable credential actions.
+		{name: "CreateVC", action: ActionCreateVC, wantPerm: p.VCCreate},
+		{name: "ReadVC", action: ActionReadVC, wantPerm: p.VCView},
+		{name: "UpdateVC", action: ActionUpdateVC, wantPerm: p.VCUpdate},
+		{name: "DeleteVC", action: ActionDeleteVC, wantPerm: p.VCDelete},
+		{name: "ListVCs", action: ActionListVCs, wantPerm: p.VCView},
+
+		// Design actions.
+		{name: "CreateDesign", action: ActionCreateDesign, wantPerm: p.DesignCreate},
+		{name: "ReadDesign", action: ActionReadDesign, wantPerm: p.DesignView},
+		{name: "UpdateDesign", action: ActionUpdateDesign, wantPerm: p.DesignUpdate},
+		{name: "DeleteDesign", action: ActionDeleteDesign, wantPerm: p.DesignDelete},
+		{name: "ListDesigns", action: ActionListDesigns, wantPerm: p.DesignView},
+
+		// Translation actions.
+		{name: "CreateI18n", action: ActionCreateI18n, wantPerm: p.I18nCreate},
+		{name: "ReadI18n", action: ActionReadI18n, wantPerm: p.I18nView},
+		{name: "UpdateI18n", action: ActionUpdateI18n, wantPerm: p.I18nUpdate},
+		{name: "DeleteI18n", action: ActionDeleteI18n, wantPerm: p.I18nDelete},
+		{name: "ListI18n", action: ActionListI18n, wantPerm: p.I18nView},
+
+		// Gateway actions.
+		{name: "CreateGateway", action: ActionCreateGateway, wantPerm: p.GatewayCreate},
+		{name: "ReadGateway", action: ActionReadGateway, wantPerm: p.GatewayView},
+		{name: "UpdateGateway", action: ActionUpdateGateway, wantPerm: p.GatewayUpdate},
+		{name: "DeleteGateway", action: ActionDeleteGateway, wantPerm: p.GatewayDelete},
+		{name: "ListGateways", action: ActionListGateways, wantPerm: p.GatewayView},
+
+		// Server configuration actions.
+		{name: "ReadServerConfig", action: ActionReadServerConfig, wantPerm: p.ServerConfigView},
+		{name: "UpdateServerConfig", action: ActionUpdateServerConfig, wantPerm: p.ServerConfigUpdate},
+		{name: "ListServerConfigs", action: ActionListServerConfigs, wantPerm: p.ServerConfigView},
+
+		// Configuration version actions.
+		{name: "CreateConfigVersion", action: ActionCreateConfigVersion, wantPerm: p.ConfigVersionCreate},
+		{name: "ReadConfigVersion", action: ActionReadConfigVersion, wantPerm: p.ConfigVersionView},
+		{name: "ListConfigVersions", action: ActionListConfigVersions, wantPerm: p.ConfigVersionView},
+
+		// Authorization detail type actions.
+		{name: "CreateAuthzDetail", action: ActionCreateAuthzDetail, wantPerm: p.AuthzDetailCreate},
+		{name: "ReadAuthzDetail", action: ActionReadAuthzDetail, wantPerm: p.AuthzDetailView},
+		{name: "UpdateAuthzDetail", action: ActionUpdateAuthzDetail, wantPerm: p.AuthzDetailUpdate},
+		{name: "DeleteAuthzDetail", action: ActionDeleteAuthzDetail, wantPerm: p.AuthzDetailDelete},
+		{name: "ListAuthzDetails", action: ActionListAuthzDetails, wantPerm: p.AuthzDetailView},
 
 		// Unmapped action falls back to Root (system).
 		{name: "UnmappedAction_FallsBackToSystem", action: Action("custom:unknown"), wantPerm: p.Root},
@@ -301,10 +374,10 @@ func TestInitSystemPermissions_NonEmptyHandle(t *testing.T) {
 
 func TestInitSystemPermissions_RebuildsActionMap(t *testing.T) {
 	InitSystemPermissions("x")
-	assert.Equal(t, "x:system:ou", ResolveActionPermission(ActionCreateOU))
+	assert.Equal(t, "x:system:ou:create", ResolveActionPermission(ActionCreateOU))
 
 	InitSystemPermissions("")
-	assert.Equal(t, "system:ou", ResolveActionPermission(ActionCreateOU))
+	assert.Equal(t, "system:ou:create", ResolveActionPermission(ActionCreateOU))
 }
 
 func TestHasSystemPermission_WithCustomHandle(t *testing.T) {
@@ -339,12 +412,12 @@ func TestGetRequiredPermissionForAPI(t *testing.T) {
 		},
 		{
 			name:   "POST /organization-units exact",
-			method: http.MethodPost, path: "/organization-units", wantPerm: p.OU,
+			method: http.MethodPost, path: "/organization-units", wantPerm: p.OUCreate,
 		},
 		{name: "GET /users exact", method: http.MethodGet, path: "/users", wantPerm: p.UserView},
-		{name: "POST /users exact", method: http.MethodPost, path: "/users", wantPerm: p.User},
+		{name: "POST /users exact", method: http.MethodPost, path: "/users", wantPerm: p.UserCreate},
 		{name: "GET /groups exact", method: http.MethodGet, path: "/groups", wantPerm: p.GroupView},
-		{name: "POST /groups exact", method: http.MethodPost, path: "/groups", wantPerm: p.Group},
+		{name: "POST /groups exact", method: http.MethodPost, path: "/groups", wantPerm: p.GroupCreate},
 
 		// ---- Notification template APIs ----
 		{
@@ -355,7 +428,7 @@ func TestGetRequiredPermissionForAPI(t *testing.T) {
 		{
 			name:   "POST notification-templates create",
 			method: http.MethodPost, path: "/notification-templates/sms/templates",
-			wantPerm: p.NotificationTemplate,
+			wantPerm: p.NotificationTemplateCreate,
 		},
 		{
 			name:   "GET notification-template by id",
@@ -365,12 +438,283 @@ func TestGetRequiredPermissionForAPI(t *testing.T) {
 		{
 			name:   "PUT notification-template by id",
 			method: http.MethodPut, path: "/notification-templates/email/templates/tmpl-1",
-			wantPerm: p.NotificationTemplate,
+			wantPerm: p.NotificationTemplateUpdate,
 		},
 		{
 			name:   "DELETE notification-template by id",
 			method: http.MethodDelete, path: "/notification-templates/sms/templates/tmpl-2",
-			wantPerm: p.NotificationTemplate,
+			wantPerm: p.NotificationTemplateDelete,
+		},
+
+		// ---- User and group sub-resources ----
+		{
+			name:   "POST user by OU path creates",
+			method: http.MethodPost, path: "/users/tree/root", wantPerm: p.UserCreate,
+		},
+		{
+			name:   "POST user credentials updates the user",
+			method: http.MethodPost, path: "/users/u-1/update-credentials", wantPerm: p.UserUpdate,
+		},
+		{
+			name:   "POST user sharing policy updates the user",
+			method: http.MethodPost, path: "/users/u-1/sharing-policies", wantPerm: p.UserUpdate,
+		},
+		{
+			name:   "DELETE user sharing policy updates the user",
+			method: http.MethodDelete, path: "/users/u-1/sharing-policies/p-1", wantPerm: p.UserUpdate,
+		},
+		{
+			name:   "POST group by OU path creates",
+			method: http.MethodPost, path: "/groups/tree/root", wantPerm: p.GroupCreate,
+		},
+		{
+			name:   "POST group members updates the group",
+			method: http.MethodPost, path: "/groups/g-1/members/add", wantPerm: p.GroupUpdate,
+		},
+		{name: "PATCH SCIM user updates", method: http.MethodPatch, path: "/scim/v2/Users/u-1", wantPerm: p.UserUpdate},
+		{name: "DELETE agent", method: http.MethodDelete, path: "/agents/a-1", wantPerm: p.AgentDelete},
+		{name: "PUT user type", method: http.MethodPut, path: "/user-types/t-1", wantPerm: p.UserTypeUpdate},
+		{name: "POST agent type", method: http.MethodPost, path: "/agent-types", wantPerm: p.AgentTypeCreate},
+
+		// ---- Role APIs ----
+		{name: "GET /roles", method: http.MethodGet, path: "/roles", wantPerm: p.RoleView},
+		{name: "POST /roles", method: http.MethodPost, path: "/roles", wantPerm: p.RoleCreate},
+		{name: "GET role", method: http.MethodGet, path: "/roles/r-1", wantPerm: p.RoleView},
+		{name: "PUT role", method: http.MethodPut, path: "/roles/r-1", wantPerm: p.RoleUpdate},
+		{name: "DELETE role", method: http.MethodDelete, path: "/roles/r-1", wantPerm: p.RoleDelete},
+		{
+			name:   "POST role assignments add updates the role",
+			method: http.MethodPost, path: "/roles/r-1/assignments/add", wantPerm: p.RoleUpdate,
+		},
+		{
+			name:   "POST role assignments remove updates the role",
+			method: http.MethodPost, path: "/roles/r-1/assignments/remove", wantPerm: p.RoleUpdate,
+		},
+		{
+			name:   "DELETE role sharing policy updates the role",
+			method: http.MethodDelete, path: "/roles/r-1/sharing-policies/p-1", wantPerm: p.RoleUpdate,
+		},
+
+		// ---- Resource server APIs ----
+		{
+			name:   "GET /resource-servers",
+			method: http.MethodGet, path: "/resource-servers", wantPerm: p.ResourceServerView,
+		},
+		{
+			name:   "POST /resource-servers",
+			method: http.MethodPost, path: "/resource-servers", wantPerm: p.ResourceServerCreate,
+		},
+		{
+			name:   "GET resource server",
+			method: http.MethodGet, path: "/resource-servers/rs-1", wantPerm: p.ResourceServerView,
+		},
+		{
+			name:   "PUT resource server",
+			method: http.MethodPut, path: "/resource-servers/rs-1", wantPerm: p.ResourceServerUpdate,
+		},
+		{
+			name:   "DELETE resource server",
+			method: http.MethodDelete, path: "/resource-servers/rs-1", wantPerm: p.ResourceServerDelete,
+		},
+		{
+			name:   "POST resource updates the resource server",
+			method: http.MethodPost, path: "/resource-servers/rs-1/resources", wantPerm: p.ResourceServerUpdate,
+		},
+		{
+			name:   "POST resource action updates the resource server",
+			method: http.MethodPost, path: "/resource-servers/rs-1/resources/r-1/actions",
+			wantPerm: p.ResourceServerUpdate,
+		},
+		{
+			name:   "DELETE resource updates the resource server",
+			method: http.MethodDelete, path: "/resource-servers/rs-1/resources/r-1",
+			wantPerm: p.ResourceServerUpdate,
+		},
+		{
+			name:   "DELETE action updates the resource server",
+			method: http.MethodDelete, path: "/resource-servers/rs-1/actions/a-1", wantPerm: p.ResourceServerUpdate,
+		},
+
+		// ---- Connection APIs ----
+		{name: "GET /connections", method: http.MethodGet, path: "/connections", wantPerm: p.ConnectionView},
+		{name: "GET connection meta", method: http.MethodGet, path: "/connections/meta", wantPerm: p.ConnectionView},
+		{
+			name:   "GET vendor connections",
+			method: http.MethodGet, path: "/connections/google", wantPerm: p.ConnectionView,
+		},
+		{name: "POST connection", method: http.MethodPost, path: "/connections/google", wantPerm: p.ConnectionCreate},
+		{name: "GET connection", method: http.MethodGet, path: "/connections/google/c-1", wantPerm: p.ConnectionView},
+		{name: "PUT connection", method: http.MethodPut, path: "/connections/google/c-1", wantPerm: p.ConnectionUpdate},
+		{
+			name:   "DELETE connection",
+			method: http.MethodDelete, path: "/connections/google/c-1", wantPerm: p.ConnectionDelete,
+		},
+		{
+			name:   "POST connection sharing policy updates the connection",
+			method: http.MethodPost, path: "/connections/http/c-1/sharing-policies", wantPerm: p.ConnectionUpdate,
+		},
+		{
+			name:   "PUT connection sharing policy updates the connection",
+			method: http.MethodPut, path: "/connections/http/c-1/sharing-policies/p-1", wantPerm: p.ConnectionUpdate,
+		},
+		{
+			name:   "DELETE connection sharing policy updates the connection",
+			method: http.MethodDelete, path: "/connections/http/c-1/sharing-policies/p-1",
+			wantPerm: p.ConnectionUpdate,
+		},
+
+		// ---- Verifiable credential APIs ----
+		{
+			name:   "GET credential configurations",
+			method: http.MethodGet, path: "/openid4vci/credential-configurations", wantPerm: p.VCView,
+		},
+		{
+			name:   "POST credential configuration",
+			method: http.MethodPost, path: "/openid4vci/credential-configurations", wantPerm: p.VCCreate,
+		},
+		{
+			name:   "PUT credential configuration",
+			method: http.MethodPut, path: "/openid4vci/credential-configurations/c-1", wantPerm: p.VCUpdate,
+		},
+		{
+			name:   "DELETE credential configuration",
+			method: http.MethodDelete, path: "/openid4vci/credential-configurations/c-1", wantPerm: p.VCDelete,
+		},
+		{
+			name:   "GET presentation definition",
+			method: http.MethodGet, path: "/openid4vp/presentation-definitions/d-1", wantPerm: p.VCView,
+		},
+		{
+			name:   "POST presentation definition",
+			method: http.MethodPost, path: "/openid4vp/presentation-definitions", wantPerm: p.VCCreate,
+		},
+		{
+			name:   "DELETE presentation definition",
+			method: http.MethodDelete, path: "/openid4vp/presentation-definitions/d-1", wantPerm: p.VCDelete,
+		},
+		{name: "GET trust anchors", method: http.MethodGet, path: "/openid4vp/trust-anchors", wantPerm: p.VCView},
+
+		// ---- Design APIs ----
+		{name: "GET /design/themes", method: http.MethodGet, path: "/design/themes", wantPerm: p.DesignView},
+		{name: "POST /design/themes", method: http.MethodPost, path: "/design/themes", wantPerm: p.DesignCreate},
+		{name: "GET theme usages", method: http.MethodGet, path: "/design/themes/t-1/usages", wantPerm: p.DesignView},
+		{name: "PUT layout", method: http.MethodPut, path: "/design/layouts/l-1", wantPerm: p.DesignUpdate},
+		{name: "DELETE layout", method: http.MethodDelete, path: "/design/layouts/l-1", wantPerm: p.DesignDelete},
+
+		// ---- Translation APIs ----
+		{
+			name:   "POST language translations updates",
+			method: http.MethodPost, path: "/i18n/languages/en/translations", wantPerm: p.I18nUpdate,
+		},
+		{
+			name:   "DELETE language translations",
+			method: http.MethodDelete, path: "/i18n/languages/en/translations", wantPerm: p.I18nDelete,
+		},
+		{
+			name:   "POST translation key updates",
+			method: http.MethodPost, path: "/i18n/languages/en/translations/ns/app/keys/title", wantPerm: p.I18nUpdate,
+		},
+		{
+			name:   "DELETE translation key",
+			method: http.MethodDelete, path: "/i18n/languages/en/translations/ns/app/keys/title",
+			wantPerm: p.I18nDelete,
+		},
+
+		// ---- Gateway APIs ----
+		{name: "GET /gateways", method: http.MethodGet, path: "/gateways", wantPerm: p.GatewayView},
+		{name: "POST /gateways", method: http.MethodPost, path: "/gateways", wantPerm: p.GatewayCreate},
+		{name: "GET gateway diff", method: http.MethodGet, path: "/gateways/g-1/diff", wantPerm: p.GatewayView},
+		{name: "PUT gateway", method: http.MethodPut, path: "/gateways/g-1", wantPerm: p.GatewayUpdate},
+		{name: "DELETE gateway", method: http.MethodDelete, path: "/gateways/g-1", wantPerm: p.GatewayDelete},
+		{
+			name:   "POST gateway apply updates",
+			method: http.MethodPost, path: "/gateways/g-1/apply", wantPerm: p.GatewayUpdate,
+		},
+		{
+			name:   "POST gateway revert updates",
+			method: http.MethodPost, path: "/gateways/g-1/revert", wantPerm: p.GatewayUpdate,
+		},
+		{name: "GET /projects", method: http.MethodGet, path: "/projects", wantPerm: p.ProjectView},
+		{name: "POST /projects", method: http.MethodPost, path: "/projects", wantPerm: p.ProjectCreate},
+		{name: "GET project", method: http.MethodGet, path: "/projects/p-1", wantPerm: p.ProjectView},
+		{name: "PUT project", method: http.MethodPut, path: "/projects/p-1", wantPerm: p.ProjectUpdate},
+		{name: "DELETE project", method: http.MethodDelete, path: "/projects/p-1", wantPerm: p.ProjectDelete},
+		{
+			name:   "GET gateway variables needs root",
+			method: http.MethodGet, path: "/gateways/g-1/variables", wantPerm: p.Root,
+		},
+		{
+			name:   "PUT gateway secret needs root",
+			method: http.MethodPut, path: "/gateways/g-1/secrets/db-password", wantPerm: p.Root,
+		},
+		{
+			name:   "POST gateway secret needs root",
+			method: http.MethodPost, path: "/gateways/g-1/secrets", wantPerm: p.Root,
+		},
+
+		// ---- Server configuration APIs ----
+		{name: "GET /server-config", method: http.MethodGet, path: "/server-config", wantPerm: p.ServerConfigView},
+		{name: "GET server config", method: http.MethodGet, path: "/server-config/cors", wantPerm: p.ServerConfigView},
+		{
+			name:   "PUT server config",
+			method: http.MethodPut, path: "/server-config/cors", wantPerm: p.ServerConfigUpdate,
+		},
+		{
+			name:   "DELETE server config has no rule",
+			method: http.MethodDelete, path: "/server-config/cors", wantPerm: p.Root,
+		},
+
+		// ---- Configuration version APIs ----
+		{
+			name:   "GET /configuration-versions",
+			method: http.MethodGet, path: "/configuration-versions", wantPerm: p.ConfigVersionView,
+		},
+		{
+			name:   "POST /configuration-versions",
+			method: http.MethodPost, path: "/configuration-versions", wantPerm: p.ConfigVersionCreate,
+		},
+		{
+			name:   "GET configuration version",
+			method: http.MethodGet, path: "/configuration-versions/3", wantPerm: p.ConfigVersionView,
+		},
+
+		// ---- Authorization detail type APIs ----
+		{
+			name:   "GET /authorization-detail-types",
+			method: http.MethodGet, path: "/authorization-detail-types", wantPerm: p.AuthzDetailView,
+		},
+		{
+			name:   "POST /authorization-detail-types",
+			method: http.MethodPost, path: "/authorization-detail-types", wantPerm: p.AuthzDetailCreate,
+		},
+		{
+			name:   "PUT authorization detail type",
+			method: http.MethodPut, path: "/authorization-detail-types/adt-1", wantPerm: p.AuthzDetailUpdate,
+		},
+		{
+			name:   "DELETE authorization detail type",
+			method: http.MethodDelete, path: "/authorization-detail-types/adt-1", wantPerm: p.AuthzDetailDelete,
+		},
+
+		// ---- Flow APIs ----
+		{name: "GET /flows", method: http.MethodGet, path: "/flows", wantPerm: p.FlowView},
+		{name: "POST /flows", method: http.MethodPost, path: "/flows", wantPerm: p.FlowCreate},
+		{name: "GET flow", method: http.MethodGet, path: "/flows/f-1", wantPerm: p.FlowView},
+		{name: "GET flow version", method: http.MethodGet, path: "/flows/f-1/versions/2", wantPerm: p.FlowView},
+		{name: "PUT flow", method: http.MethodPut, path: "/flows/f-1", wantPerm: p.FlowUpdate},
+		{name: "PUT flow variables", method: http.MethodPut, path: "/flows/f-1/variables", wantPerm: p.FlowUpdate},
+		{name: "DELETE flow", method: http.MethodDelete, path: "/flows/f-1", wantPerm: p.FlowDelete},
+		{
+			name:   "POST flow restore updates the flow",
+			method: http.MethodPost, path: "/flows/f-1/restore", wantPerm: p.FlowUpdate,
+		},
+		{
+			name:   "POST flow sharing policy updates the flow",
+			method: http.MethodPost, path: "/flows/f-1/sharing-policies", wantPerm: p.FlowUpdate,
+		},
+		{
+			name:   "DELETE flow sharing policy updates the flow",
+			method: http.MethodDelete, path: "/flows/f-1/sharing-policies/p-1", wantPerm: p.FlowUpdate,
 		},
 
 		// ---- Self-service paths (empty permission = any authenticated user) ----
@@ -398,11 +742,11 @@ func TestGetRequiredPermissionForAPI(t *testing.T) {
 		},
 		{
 			name:   "PUT /organization-units/{id} prefix",
-			method: http.MethodPut, path: "/organization-units/ou-123", wantPerm: p.OU,
+			method: http.MethodPut, path: "/organization-units/ou-123", wantPerm: p.OUUpdate,
 		},
 		{
 			name:   "DELETE /organization-units/{id} prefix",
-			method: http.MethodDelete, path: "/organization-units/ou-123", wantPerm: p.OU,
+			method: http.MethodDelete, path: "/organization-units/ou-123", wantPerm: p.OUDelete,
 		},
 		{
 			name:   "GET /users/{id} prefix",
@@ -410,11 +754,11 @@ func TestGetRequiredPermissionForAPI(t *testing.T) {
 		},
 		{
 			name:   "PUT /users/{id} prefix",
-			method: http.MethodPut, path: "/users/user-456", wantPerm: p.User,
+			method: http.MethodPut, path: "/users/user-456", wantPerm: p.UserUpdate,
 		},
 		{
 			name:   "DELETE /users/{id} prefix",
-			method: http.MethodDelete, path: "/users/user-789", wantPerm: p.User,
+			method: http.MethodDelete, path: "/users/user-789", wantPerm: p.UserDelete,
 		},
 		{
 			name:   "GET /groups/{id} prefix",
@@ -422,7 +766,7 @@ func TestGetRequiredPermissionForAPI(t *testing.T) {
 		},
 		{
 			name:   "DELETE /groups/{id} prefix",
-			method: http.MethodDelete, path: "/groups/grp-222", wantPerm: p.Group,
+			method: http.MethodDelete, path: "/groups/grp-222", wantPerm: p.GroupDelete,
 		},
 
 		// ---- Self-service wins over parent prefix ----
@@ -435,15 +779,15 @@ func TestGetRequiredPermissionForAPI(t *testing.T) {
 		// ---- OU tree paths ----
 		{
 			name:   "GET /organization-units/tree",
-			method: http.MethodGet, path: "/organization-units/tree", wantPerm: p.OUView,
+			method: http.MethodGet, path: "/organization-units/tree/root/child", wantPerm: p.OUView,
 		},
 		{
 			name:   "PUT /organization-units/tree",
-			method: http.MethodPut, path: "/organization-units/tree", wantPerm: p.OU,
+			method: http.MethodPut, path: "/organization-units/tree/root/child", wantPerm: p.OUUpdate,
 		},
 		{
 			name:   "DELETE /organization-units/tree",
-			method: http.MethodDelete, path: "/organization-units/tree", wantPerm: p.OU,
+			method: http.MethodDelete, path: "/organization-units/tree/root/child", wantPerm: p.OUDelete,
 		},
 
 		// ---- Unmapped paths fall back to Root ----
@@ -452,18 +796,6 @@ func TestGetRequiredPermissionForAPI(t *testing.T) {
 			method: http.MethodGet, path: "/applications", wantPerm: p.Root,
 		},
 		{name: "Root path falls back to system", method: http.MethodGet, path: "/", wantPerm: p.Root},
-		{
-			name:   "Resource servers require system",
-			method: http.MethodPost, path: "/resource-servers", wantPerm: p.Root,
-		},
-		{
-			name:   "Authorization detail types require system, as resource servers do",
-			method: http.MethodGet, path: "/authorization-detail-types", wantPerm: p.Root,
-		},
-		{
-			name:   "Authorization detail type updates require system",
-			method: http.MethodPut, path: "/authorization-detail-types/adt-1", wantPerm: p.Root,
-		},
 		{
 			name:   "Unknown POST falls back to system",
 			method: http.MethodPost, path: "/configs", wantPerm: p.Root,
@@ -703,10 +1035,7 @@ func TestCoversHonoursConfiguredPermissionPrefix(t *testing.T) {
 // Permission catalog
 // ---------------------------------------------------------------------------
 
-const (
-	bootstrapBundlePath    = "../../../cmd/server/bootstrap/01-default-resources.yaml"
-	systemResourceServerID = "01900000-0000-7000-8000-000000000020"
-)
+const bootstrapBundlePath = "../../../cmd/server/bootstrap/01-default-resources.yaml"
 
 // bootstrapSystemPermissions returns the delimiter of the System resource server in the bootstrap
 // bundle and every permission declared under its root resource.
@@ -730,12 +1059,12 @@ func bootstrapSystemPermissions(t *testing.T) (string, []string) {
 		Resources []resource `yaml:"resources"`
 	}
 	for _, doc := range strings.Split(string(content), "\n---\n") {
-		if !strings.Contains(doc, "id: "+systemResourceServerID) {
+		if !strings.Contains(doc, "id: "+rsSystem) {
 			continue
 		}
 		require.NoError(t, yaml.Unmarshal([]byte(doc), &server))
 	}
-	require.Equal(t, systemResourceServerID, server.ID, "System resource server not found in the bootstrap bundle")
+	require.Equal(t, rsSystem, server.ID, "System resource server not found in the bootstrap bundle")
 	require.NotEmpty(t, server.Resources)
 	require.Equal(t, resource{Name: "System", Handle: "system"}, server.Resources[0])
 
@@ -799,14 +1128,16 @@ func TestRouteTableUsesCatalogPermissions(t *testing.T) {
 		"GET /scim/v2/ResourceTypes": true, "GET /scim/v2/ResourceTypes/**": true,
 	}
 	root := map[string]bool{
-		// Projects keep root until the project permissions are enabled with their confinement.
-		"GET /projects": true, "POST /projects": true, "GET /projects/**": true,
-		"PUT /projects/**": true, "DELETE /projects/**": true,
 		"GET /variables": true, "POST /variables": true, "GET /variables/**": true,
 		"PUT /variables/**": true, "DELETE /variables/**": true,
 		"GET /secrets": true, "POST /secrets": true, "GET /secrets/**": true,
 		"PUT /secrets/**": true, "DELETE /secrets/**": true,
 		"POST /import": true, "POST /import/delete": true,
+		// A gateway's variable and secret stores hold credentials, as the server's own does.
+		"GET /gateways/*/variables/**": true, "POST /gateways/*/variables/**": true,
+		"PUT /gateways/*/variables/**": true, "DELETE /gateways/*/variables/**": true,
+		"GET /gateways/*/secrets/**": true, "POST /gateways/*/secrets/**": true,
+		"PUT /gateways/*/secrets/**": true, "DELETE /gateways/*/secrets/**": true,
 	}
 
 	for _, entry := range apiPermissionEntries {
@@ -820,4 +1151,81 @@ func TestRouteTableUsesCatalogPermissions(t *testing.T) {
 				entry.pattern)
 		}
 	}
+}
+
+// TestResourceRoutesUseResourcePermissions verifies that every route rule of a resource requires one
+// of that resource's catalog permissions, so a fine-grained administrator is never sent to another
+// resource's permission. Root rules are checked by TestRouteTableUsesCatalogPermissions.
+func TestResourceRoutesUseResourcePermissions(t *testing.T) {
+	InitSystemPermissions("")
+	p := GetSystemPermissions()
+
+	resources := []struct {
+		resource ResourceType
+		paths    []string
+	}{
+		{ResourceTypeOU, []string{" /organization-units"}},
+		{ResourceTypeUser, []string{" /users", " /scim/v2/Users"}},
+		{ResourceTypeGroup, []string{" /groups", " /scim/v2/Groups"}},
+		{ResourceTypeAgent, []string{" /agents"}},
+		{ResourceTypeUserType, []string{" /user-types"}},
+		{ResourceTypeAgentType, []string{" /agent-types"}},
+		{ResourceTypeNotificationTemplate, []string{" /notification-templates"}},
+		{ResourceTypeRole, []string{" /roles"}},
+		{ResourceTypeResourceServer, []string{" /resource-servers"}},
+		{ResourceTypeConnection, []string{" /connections"}},
+		{ResourceTypeVerifiableCredential, []string{
+			" /openid4vci/credential-configurations", " /openid4vp/presentation-definitions",
+			" /openid4vp/trust-anchors",
+		}},
+		{ResourceTypeDesign, []string{" /design/"}},
+		{ResourceTypeI18n, []string{" /i18n/"}},
+		{ResourceTypeGateway, []string{" /gateways"}},
+		{ResourceTypeServerConfig, []string{" /server-config"}},
+		{ResourceTypeConfigurationVersion, []string{" /configuration-versions"}},
+		{ResourceTypeAuthorizationDetailType, []string{" /authorization-detail-types"}},
+		{ResourceTypeFlow, []string{" /flows"}},
+	}
+
+	for _, r := range resources {
+		t.Run(string(r.resource), func(t *testing.T) {
+			var allowed []string
+			for _, perm := range p.Catalog {
+				if strings.HasPrefix(perm, "system:"+string(r.resource)+":") {
+					allowed = append(allowed, perm)
+				}
+			}
+			require.NotEmpty(t, allowed)
+
+			found := 0
+			for _, entry := range apiPermissionEntries {
+				matches := false
+				for _, path := range r.paths {
+					matches = matches || strings.Contains(entry.pattern, path)
+				}
+				if !matches || entry.permission == p.Root || entry.permission == "" {
+					continue
+				}
+				found++
+				assert.Contains(t, allowed, entry.permission, "%q must require a %s permission",
+					entry.pattern, r.resource)
+			}
+			assert.NotZero(t, found)
+		})
+	}
+}
+
+// TestMCPToolPermissionsUseCatalogPermissions verifies that every mapped MCP tool requires a catalog
+// permission, and that an unmapped tool requires root.
+func TestMCPToolPermissionsUseCatalogPermissions(t *testing.T) {
+	for _, prefix := range []string{"", "mgmt"} {
+		InitSystemPermissions(prefix)
+		p := GetSystemPermissions()
+		for name, perm := range mcpToolPermissions {
+			assert.Contains(t, p.Catalog, perm, "MCP tool %q requires a permission outside the catalog", name)
+			assert.Equal(t, perm, ResolveMCPToolPermission(name))
+		}
+		assert.Equal(t, p.Root, ResolveMCPToolPermission("unmapped_tool"))
+	}
+	InitSystemPermissions("")
 }
