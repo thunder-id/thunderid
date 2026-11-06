@@ -15,6 +15,12 @@ info:
 
     ThunderID authenticates to the processor with the credential configured on the type's processor: none, a bearer token, an API key or Basic. A processor configured without a credential is called unauthenticated, so it should accept calls only from ThunderID's network.
 
+security:
+  - {}
+  - BearerAuth: []
+  - BasicAuth: []
+  - ApiKeyAuth: []
+
 paths:
   /process:
     post:
@@ -73,6 +79,20 @@ paths:
                           reason_admin: "Limit rule DL-7 for account 0648489890"
 
 components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      description: "The `bearer` credential configured on the type's processor, sent as `Authorization: Bearer <token>`."
+    BasicAuth:
+      type: http
+      scheme: basic
+      description: The `basic` credential configured on the type's processor.
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: The `api_key` credential configured on the type's processor. The header name is whatever the configuration names, so `X-API-Key` stands for it; several headers may be sent.
   schemas:
     ProcessRequest:
       type: object
