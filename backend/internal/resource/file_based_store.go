@@ -154,8 +154,8 @@ func (f *fileBasedResourceStore) CheckResourceServerNameExists(ctx context.Conte
 
 func (f *fileBasedResourceStore) CheckResourceServerIdentifierExists(
 	ctx context.Context, identifier string) (bool, error) {
-	_, err := f.GenericFileBasedStore.GetByField(identifier, func(d interface{}) string {
-		return d.(*providers.ResourceServer).Identifier
+	_, err := f.GenericFileBasedStore.GetByField(normalizeResourceIdentifier(identifier), func(d interface{}) string {
+		return normalizeResourceIdentifier(d.(*providers.ResourceServer).Identifier)
 	})
 	if err != nil {
 		return false, nil

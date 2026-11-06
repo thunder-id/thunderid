@@ -1362,6 +1362,7 @@ func TestValidateResourceServerWrapper_MCPWithURIIdentifier(t *testing.T) {
 	fileStore := newResourceStoreInterfaceMock(t)
 	fileStore.On("GetResourceServer", mock.Anything, "rs1").
 		Return(providers.ResourceServer{}, errResourceServerNotFound)
+	fileStore.On("CheckResourceServerIdentifierExists", mock.Anything, mock.Anything).Return(false, nil)
 
 	err := validateResourceServerWrapper(&providers.ResourceServer{
 		ID: "rs1", Name: "Server", Identifier: "https://mcp.example.com/mcp",
@@ -1375,6 +1376,7 @@ func TestValidateResourceServerWrapper_MCPIdentifierReferenceOnControlPlane(t *t
 	fileStore := newResourceStoreInterfaceMock(t)
 	fileStore.On("GetResourceServer", mock.Anything, "rs1").
 		Return(providers.ResourceServer{}, errResourceServerNotFound)
+	fileStore.On("CheckResourceServerIdentifierExists", mock.Anything, mock.Anything).Return(false, nil)
 
 	err := validateResourceServerWrapper(&providers.ResourceServer{
 		ID: "rs1", Name: "Server", Identifier: "var:RESOURCE_SERVER_SERVER_IDENTIFIER",
@@ -1413,6 +1415,7 @@ func TestValidateResourceServerWrapper_DuplicateInDBStore(t *testing.T) {
 	dbStore := newResourceStoreInterfaceMock(t)
 	fileStore.On("GetResourceServer", mock.Anything, "rs1").
 		Return(providers.ResourceServer{}, errResourceServerNotFound)
+	fileStore.On("CheckResourceServerIdentifierExists", mock.Anything, mock.Anything).Return(false, nil)
 	dbStore.On("GetResourceServer", mock.Anything, "rs1").Return(providers.ResourceServer{ID: "rs1"}, nil)
 
 	err := validateResourceServerWrapper(
@@ -1428,6 +1431,7 @@ func TestValidateResourceServerWrapper_DBStoreError(t *testing.T) {
 	dbStore := newResourceStoreInterfaceMock(t)
 	fileStore.On("GetResourceServer", mock.Anything, "rs1").
 		Return(providers.ResourceServer{}, errResourceServerNotFound)
+	fileStore.On("CheckResourceServerIdentifierExists", mock.Anything, mock.Anything).Return(false, nil)
 	dbStore.On("GetResourceServer", mock.Anything, "rs1").Return(providers.ResourceServer{}, errors.New("db error"))
 
 	err := validateResourceServerWrapper(
@@ -1438,10 +1442,44 @@ func TestValidateResourceServerWrapper_DBStoreError(t *testing.T) {
 	assert.Contains(t, err.Error(), "database store")
 }
 
+func TestValidateResourceServerWrapper_EquivalentIdentifierInFileStore(t *testing.T) {
+	fileStore := newResourceStoreInterfaceMock(t)
+	fileStore.On("GetResourceServer", mock.Anything, "rs1").
+		Return(providers.ResourceServer{}, errResourceServerNotFound)
+	fileStore.On("CheckResourceServerIdentifierExists", mock.Anything, "https://API.example.com").Return(true, nil)
+
+	err := validateResourceServerWrapper(
+		&providers.ResourceServer{ID: "rs1", Name: "Server", Identifier: "https://API.example.com", OUID: "ou1"},
+		fileStore, nil, nil)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "duplicate resource server identifier")
+}
+
+func TestValidateResourceServerWrapper_EquivalentIdentifierInDBStore(t *testing.T) {
+	fileStore := newResourceStoreInterfaceMock(t)
+	dbStore := newResourceStoreInterfaceMock(t)
+	fileStore.On("GetResourceServer", mock.Anything, "rs1").
+		Return(providers.ResourceServer{}, errResourceServerNotFound)
+	fileStore.On("CheckResourceServerIdentifierExists", mock.Anything, "https://API.example.com").Return(false, nil)
+	dbStore.On("GetResourceServer", mock.Anything, "rs1").
+		Return(providers.ResourceServer{}, errResourceServerNotFound)
+	dbStore.On("CheckResourceServerIdentifierExists", mock.Anything, "https://API.example.com").Return(true, nil)
+
+	err := validateResourceServerWrapper(
+		&providers.ResourceServer{ID: "rs1", Name: "Server", Identifier: "https://API.example.com", OUID: "ou1"},
+		fileStore, dbStore, nil)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "duplicate resource server identifier")
+	assert.Contains(t, err.Error(), "database store")
+}
+
 func TestValidateResourceServerWrapper_Success(t *testing.T) {
 	fileStore := newResourceStoreInterfaceMock(t)
 	fileStore.On("GetResourceServer", mock.Anything, "rs1").
 		Return(providers.ResourceServer{}, errResourceServerNotFound)
+	fileStore.On("CheckResourceServerIdentifierExists", mock.Anything, mock.Anything).Return(false, nil)
 
 	err := validateResourceServerWrapper(
 		&providers.ResourceServer{ID: "rs1", Name: "Server", Identifier: "test-server", OUID: "ou1"},

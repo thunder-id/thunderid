@@ -71,7 +71,7 @@ curl -kL -X POST https://localhost:8090/resource-servers \
 | Field | Required | Description |
 |-------|----------|-------------|
 | `name` | Yes | Display name for the resource server. Must be unique. |
-| `identifier` | Yes | Unique identifier for the resource server. When set to an absolute URI (for example, `https://api.example.com/booking`), the resource server is used in RFC 8707 resource indicator flows and the identifier becomes the access token audience claim value. For an MCP resource server, the identifier must be an `http` or `https` URL with no fragment, such as `https://mcp.example.com/mcp`. |
+| `identifier` | Yes | Unique identifier for the resource server. When set to an absolute URI (for example, `https://api.example.com/booking`), the resource server is used in RFC 8707 resource indicator flows and the identifier becomes the access token audience claim value. For URLs with a host, uniqueness follows RFC 3986 URI equivalence: `https://API.example.com` and `https://api.example.com/` both conflict with `https://api.example.com`, while paths stay case-sensitive, so `https://api.example.com/Booking` and `https://api.example.com/booking/` are distinct from `https://api.example.com/booking`. Other identifiers must match exactly to conflict. For an MCP resource server, the identifier must be an `http` or `https` URL with no fragment, such as `https://mcp.example.com/mcp`. |
 | `type` | No | `API`, `MCP`, or `CUSTOM`. Defaults to `CUSTOM`. Immutable after creation. |
 | `ouId` | Yes | Organization unit ID. |
 | `delimiter` | No | Character that separates hierarchy levels in permission strings. Defaults to `:`. Immutable after creation. Allowed characters: `a-z A-Z 0-9 . _ : - /`. |
