@@ -81,6 +81,7 @@ During an authorization flow, <ProductName /> resolves the target resource serve
 7. To configure which user and agent attributes to send to the configured AuthZEN PDP, open the **Attribute configuration** tab.
    1. Under **User**, select a user type. Select the user attributes to send to the configured AuthZEN PDP. If the PDP expects different property names, map each attribute to the corresponding name.
    2. Under **Agent**, select the agent attributes to send to the configured AuthZEN PDP. If the PDP expects different property names, map each attribute to the corresponding name.
+   3. To send the subject's memberships, select `groups` or `roles`. `groups` sends the names of the groups the subject belongs to. `roles` sends the names of the roles assigned to the subject directly or through its groups. Both are sent as arrays of names.
 
 Authenticated remote evaluation endpoints must use HTTPS. Loopback endpoints may use HTTP. Changing the single or batch
 evaluation endpoint requires fresh credentials before the connection can be saved.

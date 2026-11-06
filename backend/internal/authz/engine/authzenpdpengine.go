@@ -10,11 +10,14 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/thunder-id/thunderid/internal/authzen"
 	"github.com/thunder-id/thunderid/internal/connection/authzenpdp"
+	"github.com/thunder-id/thunderid/internal/group"
+	"github.com/thunder-id/thunderid/internal/role"
 	httpservice "github.com/thunder-id/thunderid/internal/system/http"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/outboundauth"
@@ -24,10 +27,14 @@ import (
 // newAuthZENPDPEngine creates an AuthZEN PDP authorization engine.
 func newAuthZENPDPEngine(
 	connectionService authZENPDPConnectionService,
+	roleService role.RoleServiceInterface,
+	groupService group.GroupServiceInterface,
 	client httpservice.HTTPClientInterface,
 ) AuthorizationEngine {
 	return &authZENPDPEngine{
 		connectionService: connectionService,
+		roleService:       roleService,
+		groupService:      groupService,
 		client:            client,
 		logger:            log.GetLogger().With(log.String(log.LoggerKeyComponentName, "AuthZENPDP")),
 	}
@@ -68,7 +75,12 @@ func (p *authZENPDPEngine) EvaluateAccessBatch(
 		if err != nil {
 			return nil, err
 		}
-		response, err := p.evaluateGroup(ctx, settings, group.request)
+		memberships, err := p.resolveSubjectMemberships(
+			ctx, settings.subjectAttributeMappings, group.request.Evaluations)
+		if err != nil {
+			return nil, err
+		}
+		response, err := p.evaluateGroup(ctx, settings, group.request, memberships)
 		if err != nil {
 			return nil, err
 		}
@@ -84,14 +96,15 @@ func (p *authZENPDPEngine) evaluateGroup(
 	ctx context.Context,
 	settings *authZENPDPSettings,
 	request AccessEvaluationsRequest,
+	memberships []subjectMemberships,
 ) (*AccessEvaluationsResponse, error) {
 	if settings.batchEndpoint != "" {
-		return p.evaluateBatch(ctx, settings, request)
+		return p.evaluateBatch(ctx, settings, request, memberships)
 	}
 
 	responses := make([]AccessEvaluationResponse, 0, len(request.Evaluations))
-	for _, evaluation := range request.Evaluations {
-		response, err := p.evaluateSingle(ctx, settings, evaluation)
+	for index, evaluation := range request.Evaluations {
+		response, err := p.evaluateSingle(ctx, settings, evaluation, memberships[index])
 		if err != nil {
 			return nil, err
 		}
@@ -173,17 +186,19 @@ func (p *authZENPDPEngine) evaluateBatch(
 	ctx context.Context,
 	settings *authZENPDPSettings,
 	request AccessEvaluationsRequest,
+	memberships []subjectMemberships,
 ) (*AccessEvaluationsResponse, error) {
 	started := time.Now()
 	batchEndpoint := settings.batchEndpoint
 	payload := authzen.AccessEvaluationsRequest{
 		Evaluations: make([]authzen.AccessEvaluationRequest, 0, len(request.Evaluations)),
 	}
-	for _, evaluation := range request.Evaluations {
+	for index, evaluation := range request.Evaluations {
 		converted := toAuthZENEvaluationRequest(
 			evaluation,
 			settings.resourceType,
 			settings.subjectAttributeMappings,
+			memberships[index],
 		)
 		payload.Evaluations = append(payload.Evaluations, authzen.AccessEvaluationRequest{
 			Subject:  converted.Subject,
@@ -224,12 +239,14 @@ func (p *authZENPDPEngine) evaluateSingle(
 	ctx context.Context,
 	settings *authZENPDPSettings,
 	evaluation AccessEvaluationRequest,
+	memberships subjectMemberships,
 ) (*AccessEvaluationResponse, error) {
 	evaluationEndpoint := settings.endpoint
 	request := toAuthZENEvaluationRequest(
 		evaluation,
 		settings.resourceType,
 		settings.subjectAttributeMappings,
+		memberships,
 	)
 	payload, err := json.Marshal(request)
 	if err != nil {
@@ -311,6 +328,7 @@ func toAuthZENEvaluationRequest(
 	evaluation AccessEvaluationRequest,
 	configuredResourceType string,
 	subjectAttributeMappings []authzenpdp.SubjectAttributeMapping,
+	memberships subjectMemberships,
 ) authzen.AccessEvaluationRequest {
 	resourceType := strings.TrimSpace(configuredResourceType)
 	resourceID, _ := evaluation.ResourceServer.Properties[DelegatedResourceIDProperty].(string)
@@ -336,6 +354,7 @@ func toAuthZENEvaluationRequest(
 			Properties: mapAuthZENSubjectProperties(
 				evaluation.Subject,
 				subjectAttributeMappings,
+				memberships,
 			),
 		},
 		Resource: authzen.Resource{
@@ -355,6 +374,7 @@ func toAuthZENEvaluationRequest(
 func mapAuthZENSubjectProperties(
 	subject Subject,
 	subjectAttributeMappings []authzenpdp.SubjectAttributeMapping,
+	memberships subjectMemberships,
 ) map[string]interface{} {
 	properties := make(map[string]interface{}, len(subject.Properties)+1)
 	allowedSubjectProperties, subjectPropertyMappings := subjectMappingForSubject(
@@ -370,15 +390,26 @@ func mapAuthZENSubjectProperties(
 		}
 		properties[propertyName] = value
 	}
-	if len(subject.GroupIDs) > 0 {
-		if _, allowed := allowedSubjectProperties[subjectGroupsProperty]; allowed {
-			propertyName := subjectGroupsProperty
-			if mappedName, mapped := subjectPropertyMappings[subjectGroupsProperty]; mapped {
-				propertyName = mappedName
-			}
-			if _, exists := properties[propertyName]; !exists {
-				properties[propertyName] = append([]string(nil), subject.GroupIDs...)
-			}
+	for _, membership := range []struct {
+		attribute string
+		names     []string
+	}{
+		{attribute: subjectGroupsProperty, names: memberships.groups},
+		{attribute: subjectRolesProperty, names: memberships.roles},
+	} {
+		attribute, names := membership.attribute, membership.names
+		if len(names) == 0 {
+			continue
+		}
+		if _, allowed := allowedSubjectProperties[attribute]; !allowed {
+			continue
+		}
+		propertyName := attribute
+		if mappedName, mapped := subjectPropertyMappings[attribute]; mapped {
+			propertyName = mappedName
+		}
+		if _, exists := properties[propertyName]; !exists {
+			properties[propertyName] = append([]string(nil), names...)
 		}
 	}
 	if len(properties) == 0 {
@@ -412,6 +443,102 @@ func subjectMappingForSubject(
 		break
 	}
 	return resultProperties, resultMappings
+}
+
+// resolveSubjectMemberships resolves group and role names for subjects whose mapping releases them.
+// Lookups run only for subject types that map groups or roles and are shared by equal subjects.
+func (p *authZENPDPEngine) resolveSubjectMemberships(
+	ctx context.Context,
+	subjectAttributeMappings []authzenpdp.SubjectAttributeMapping,
+	evaluations []AccessEvaluationRequest,
+) ([]subjectMemberships, error) {
+	resolved := make([]subjectMemberships, len(evaluations))
+	type cacheKey struct {
+		entityType string
+		id         string
+		groupIDs   string
+		roleIDs    string
+	}
+	cache := make(map[cacheKey]subjectMemberships)
+	for index, evaluation := range evaluations {
+		subject := evaluation.Subject
+		allowed, _ := subjectMappingForSubject(subject.Type, subjectAttributeMappings)
+		_, releaseGroups := allowed[subjectGroupsProperty]
+		_, releaseRoles := allowed[subjectRolesProperty]
+		if !releaseGroups && !releaseRoles {
+			continue
+		}
+		key := cacheKey{
+			entityType: subject.Type,
+			id:         subject.ID,
+			groupIDs:   strings.Join(subject.GroupIDs, ","),
+			roleIDs:    strings.Join(subject.RoleIDs, ","),
+		}
+		if memberships, found := cache[key]; found {
+			resolved[index] = memberships
+			continue
+		}
+		var memberships subjectMemberships
+		var err error
+		if releaseGroups {
+			if memberships.groups, err = p.resolveGroupNames(ctx, subject.GroupIDs); err != nil {
+				return nil, err
+			}
+		}
+		if releaseRoles {
+			if memberships.roles, err = p.resolveRoleNames(ctx, subject); err != nil {
+				return nil, err
+			}
+		}
+		cache[key] = memberships
+		resolved[index] = memberships
+	}
+	return resolved, nil
+}
+
+// resolveGroupNames returns the sorted, distinct names of the given groups.
+func (p *authZENPDPEngine) resolveGroupNames(ctx context.Context, groupIDs []string) ([]string, error) {
+	if len(groupIDs) == 0 {
+		return nil, nil
+	}
+	if p.groupService == nil {
+		return nil, fmt.Errorf("group service is required to release subject groups")
+	}
+	groups, svcErr := p.groupService.GetGroupsByIDs(ctx, groupIDs)
+	if svcErr != nil {
+		return nil, fmt.Errorf("failed to resolve subject groups: %s", svcErr.Code)
+	}
+	names := make([]string, 0, len(groups))
+	for _, resolvedGroup := range groups {
+		names = append(names, resolvedGroup.Name)
+	}
+	slices.Sort(names)
+	return slices.Compact(names), nil
+}
+
+// resolveRoleNames returns the sorted, distinct names of the roles the subject holds directly, through
+// its groups, or through explicitly supplied role IDs.
+func (p *authZENPDPEngine) resolveRoleNames(ctx context.Context, subject Subject) ([]string, error) {
+	if subject.ID == "" && len(subject.GroupIDs) == 0 && len(subject.RoleIDs) == 0 {
+		return nil, nil
+	}
+	if p.roleService == nil {
+		return nil, fmt.Errorf("role service is required to release subject roles")
+	}
+	names, svcErr := p.roleService.GetUserRoles(ctx, subject.ID, subject.GroupIDs)
+	if svcErr != nil {
+		return nil, fmt.Errorf("failed to resolve subject roles: %s", svcErr.Code)
+	}
+	names = slices.Clone(names)
+	for _, roleID := range subject.RoleIDs {
+		assignedRole, svcErr := p.roleService.GetRoleWithPermissions(ctx, roleID)
+		if svcErr != nil {
+			return nil, fmt.Errorf("failed to resolve subject role: %s", svcErr.Code)
+		}
+		names = append(names, assignedRole.Name)
+	}
+	slices.Sort(names)
+	return slices.Compact(names), nil
 }
 
 // normalizeSubjectAttributeMappings copies and removes empty subject attribute mappings.

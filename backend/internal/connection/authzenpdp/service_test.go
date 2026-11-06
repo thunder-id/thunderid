@@ -436,6 +436,7 @@ func TestCreateConnectionValidatesSubjectAttributeMappings(t *testing.T) {
 			Attributes: []SubjectAttributeRow{
 				{Attribute: "email", PDPAttribute: "mail"},
 				{Attribute: reservedSubjectGroupsAttribute},
+				{Attribute: reservedSubjectRolesAttribute, PDPAttribute: "roleNames"},
 			},
 		}},
 	})

@@ -48,7 +48,7 @@ func newAuthZENPDPEngineForTest(
 	connectionService authZENPDPConnectionServiceFunc,
 	client httpservice.HTTPClientInterface,
 ) engine.AuthorizationEngine {
-	_, pdpEngine := engine.Initialize(nil, connectionService, client)
+	_, pdpEngine := engine.Initialize(nil, nil, connectionService, client)
 	return pdpEngine
 }
 
