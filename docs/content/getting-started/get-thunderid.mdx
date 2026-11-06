@@ -2,7 +2,7 @@
 title: Get started
 docType: guide
 sidebar_position: 2
-description: Download and run ThunderID using the release artifact, Docker Compose, or Helm on Kubernetes.
+description: Run ThunderID with npx, or download and run it using the release artifact, Docker Compose, or Helm on Kubernetes.
 ---
 
 import Tabs from '@theme/Tabs';
@@ -128,6 +128,58 @@ Access the <ProductName /> Admin Console on **https://localhost:8090/console**. 
 :::
 
 </Stepper>
+
+</TabItem>
+
+<TabItem value="npx" label="npx">
+
+Install and start <ProductName /> with one command. The CLI downloads the latest release, runs the setup, and starts the server.
+
+## Prerequisites
+
+- Node.js 22.23.1 or later
+- macOS, Linux, or Windows, on x64 or arm64
+- Terminal or command prompt access
+
+<Stepper stepNode="h2" as="h2">
+
+## Start <ProductName />
+
+Run the CLI:
+
+```bash
+npx {{npxPackage}}
+```
+
+The CLI installs the quickstart, which runs the Control Plane and the Data Plane it manages, already connected. It prompts for the admin username and password, then shows the credentials for two accounts:
+
+- **Admin**: signs in to the Control Plane console.
+- **Service Desk Admin**: signs in to the Data Plane Admin Console.
+
+The quickstart uses fixed ports: 8095 for the Control Plane, 8090 for the Data Plane, and 8091 for the sign-in service the Control Plane console uses.
+
+:::tip Success
+Access the Control Plane console on **https://localhost:8095/console** and the Data Plane Admin Console on **https://localhost:8090/console**.
+:::
+
+</Stepper>
+
+## Choose What to Install
+
+Pass `--plane dp` to install the Data Plane on its own instead of the quickstart:
+
+```bash
+npx {{npxPackage}} --plane dp
+```
+
+Pass `--product-version` to install a specific release. It takes a version or a GitHub release page:
+
+```bash
+npx {{npxPackage}} --product-version <version>
+npx {{npxPackage}} --product-version https://github.com/<owner>/<repo>/releases/tag/<tag>
+```
+
+Run `npx {{npxPackage}} --help` to list every command and flag.
 
 </TabItem>
 

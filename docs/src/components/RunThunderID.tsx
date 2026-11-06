@@ -9,6 +9,7 @@ import CodexLogo from './icons/CodexLogo';
 import DockerLogo from './icons/DockerLogo';
 import SkillsLogo from './icons/SkillsLogo';
 import {useDocsUrl} from '@site/src/hooks/useDocsUrl';
+import {useNpxCommand} from '@site/src/hooks/useNpxCommand';
 
 type TabId = 'cli' | 'docker' | 'claude' | 'codex' | 'skills';
 
@@ -27,7 +28,8 @@ const TABS: {id: TabId; label: string; icon: React.ReactElement}[] = [
 ];
 
 const CONTENT: Record<TabId, TabContent> = {
-  cli:    {command: 'npx thunderid',                                          hint: 'Requires Node.js 18+',               shell: true},
+  // The cli command follows the doc version the card renders in; see useNpxCommand.
+  cli:    {command: 'npx thunderid',                                          hint: 'Requires Node.js 22.23.1+',          shell: true},
   docker: {command: 'docker compose -f oci://ghcr.io/thunder-id/thunderid-quick-start:latest up', hint: 'Requires Docker and Docker Compose', shell: true},
   claude: {command: '/plugin marketplace add thunder-id/skills',              hint: 'Run in Claude chat',                 shell: true},
   codex:  {command: 'codex plugin marketplace add thunder-id/skills',         hint: 'Run in terminal with Codex installed', shell: false},
@@ -90,7 +92,9 @@ export default function RunThunderID({tabs, defaultTab, hideFooter}: RunThunderI
   const [activeTab, setActiveTab] = useState<TabId>(defaultTab ?? visibleTabs[0]?.id ?? 'cli');
   const theme = useTheme();
   const docsUrl = useDocsUrl();
-  const {command, hint, shell} = CONTENT[activeTab];
+  const npxCommand = useNpxCommand();
+  const {hint, shell} = CONTENT[activeTab];
+  const command = activeTab === 'cli' ? npxCommand : CONTENT[activeTab].command;
 
   return (
     <Box
