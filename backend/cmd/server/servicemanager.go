@@ -220,7 +220,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	fatalOnError(ctx, logger, err, "Failed to initialize EntityService")
 
 	// Initialize entity provider
-	entityProvider := entityprovider.InitializeEntityProvider(entityService)
+	entityProvider := entityprovider.InitializeEntityProvider(entityService, ouAuthzService)
 
 	attributeVerificationService := attributeverification.Initialize(entityService, entityTypeService,
 		observabilitySvc)

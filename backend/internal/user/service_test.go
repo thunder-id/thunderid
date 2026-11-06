@@ -479,6 +479,47 @@ func TestUserService_CreateUser_CallsCreateEntity(t *testing.T) {
 	storeMock.AssertNumberOfCalls(t, "CreateEntity", 1)
 }
 
+// Once the caller may create the user, the user type it names is read with the system's authority, so the
+// caller needs no permission to read user types; the user itself is still written as the caller.
+func TestUserService_CreateUser_ReadsTheUserTypeWithSystemAuthority(t *testing.T) {
+	callerCtx := security.WithSecurityContextTest(context.Background(),
+		security.NewSecurityContextForTest("admin-1", testOrgID, "token", nil, nil))
+	asCaller := mock.MatchedBy(func(c context.Context) bool { return !security.IsRuntimeContext(c) })
+
+	ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
+	ouServiceMock.On("IsOrganizationUnitExists", mock.Anything, testOrgID).
+		Return(true, (*tidcommon.ServiceError)(nil)).Once()
+
+	entityTypeMock := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
+	entityTypeMock.On("GetEntityTypeByHandle", mock.MatchedBy(func(c context.Context) bool {
+		return security.IsRuntimeContext(c) && security.GetSubject(c) == "admin-1"
+	}), entitytype.TypeCategoryUser, testUserType).
+		Return(&entitytype.EntityType{OUID: testOrgID}, (*tidcommon.ServiceError)(nil)).Once()
+
+	authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
+	authzMock.On("IsActionAllowed", asCaller, security.ActionCreateUser, mock.Anything).Return(true, nil).Once()
+
+	storeMock := entitymock.NewEntityServiceInterfaceMock(t)
+	storeMock.On("CreateEntity", asCaller, mock.Anything, mock.Anything, mock.Anything).
+		Return(&providers.Entity{OUID: testOrgID, Type: testUserType, Attributes: json.RawMessage(`{}`)}, nil).
+		Once()
+
+	service := &userService{
+		bus:               discardingBus{},
+		entityService:     storeMock,
+		ouService:         ouServiceMock,
+		entityTypeService: entityTypeMock,
+		authzService:      authzMock,
+		uuidGenerator:     utils.GenerateUUIDv7,
+	}
+
+	created, err := service.CreateUser(callerCtx, &providers.User{
+		Type: testUserType, OUID: testOrgID, Attributes: json.RawMessage(`{}`),
+	})
+	require.Nil(t, err)
+	require.NotNil(t, created)
+}
+
 // A user created with a federated link carries it to the entity layer as the linkedIds system
 // attribute, so the user and its link are written together.
 func TestUserService_CreateUser_WritesLinkedAccount(t *testing.T) {

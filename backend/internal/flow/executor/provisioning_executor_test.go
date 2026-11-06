@@ -5815,7 +5815,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_ProvisioningOUUserTypeWi
 		map[string]interface{}{propertyKeyProvisioningOU: string(provisioningOUUserType)})
 	delete(ctx.RuntimeData, defaultOUIDKey)
 	ctx.RuntimeData[common.RuntimeKeyUserEligibleForProvisioning] = dataValueTrue
-	suite.mockEntityTypeService.On("GetEntityTypeByHandle", mock.Anything, entitytype.TypeCategoryUser, testUserType).
+	suite.mockEntityTypeService.On("GetEntityTypeByHandle", runtimeContext, entitytype.TypeCategoryUser, testUserType).
 		Return(&entitytype.EntityType{Handle: testUserType, OUID: "type-ou"}, (*tidcommon.ServiceError)(nil))
 	suite.expectCreateUserIn("type-ou")
 

@@ -79,7 +79,7 @@ func (a *agentTypeResolver) Execute(ctx *providers.NodeContext) (*providers.Exec
 	case providers.FlowTypeAuthentication:
 		return a.resolveAuthFlow(ctx, entitytype.TypeCategoryAgent, execResp), nil
 	case providers.FlowTypeAdministration:
-		return a.resolveOnboardingFlow(ctx, entitytype.TypeCategoryAgent, execResp, logger)
+		return a.resolveOnboardingFlow(withServerAuthority(ctx), entitytype.TypeCategoryAgent, execResp, logger)
 	case providers.FlowTypeRegistration:
 		// An agent is provisioned on an administrator's behalf and never registers itself.
 		execResp.Status = providers.ExecFailure

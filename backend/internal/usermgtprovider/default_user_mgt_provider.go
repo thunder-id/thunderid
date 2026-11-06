@@ -7,7 +7,6 @@ package usermgtprovider
 import (
 	"context"
 
-	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/user"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -31,5 +30,5 @@ func (p *defaultUserMgtProvider) CreateUser(
 	if u == nil {
 		return nil, &ErrorInvalidRequestFormat
 	}
-	return p.userSvc.CreateUser(security.WithRuntimeContext(ctx), u)
+	return p.userSvc.CreateUser(ctx, u)
 }
