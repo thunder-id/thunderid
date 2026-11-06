@@ -195,7 +195,7 @@ export default function ExplorerPanel({
         <Stack spacing={2} sx={{p: 2.5}}>
           <Box>
             <Typography variant="overline" color="text.secondary">
-              {t('explorer.panel.environment', 'Gateway')}
+              {t('explorer.panel.gateway', 'Gateway')}
             </Typography>
             <Typography variant="h6" fontWeight={600}>
               {gateway.name}

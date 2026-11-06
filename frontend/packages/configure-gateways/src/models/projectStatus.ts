@@ -4,7 +4,7 @@
 import type {Actor} from './deploy';
 
 /**
- * A version some of a project's own resources on an environment were deployed from, with how many.
+ * A version some of a project's own resources on a gateway were deployed from, with how many.
  *
  * @public
  */
@@ -13,14 +13,14 @@ export interface ProjectVersionShare {
   hash: string;
   /** The version's number, when it has one. */
   number?: number;
-  /** How many of the project's resources on the environment came from it. */
+  /** How many of the project's resources on the gateway came from it. */
   resources: number;
 }
 
 /**
- * How one project stands on an environment, against the environment before it in the pipeline or, for
+ * How one project stands on a gateway, against the gateway before it in the pipeline or, for
  * the first one, against the latest version. A promotion can carry part of a version, so a project is
- * described by its own resources, never by the version the environment last received.
+ * described by its own resources, never by the version the gateway last received.
  *
  * @public
  */
@@ -30,7 +30,7 @@ export interface ProjectStatus {
     versions: ProjectVersionShare[];
     /** The project's own changes waiting to be brought there. */
     pending: number;
-    /** What the project's resources need that the environment lacks or refused. */
+    /** What the project's resources need that the gateway lacks or refused. */
     required: number;
   };
   /** Changes that belong to no project, which go with any project's promotion when ticked. */
@@ -38,7 +38,7 @@ export interface ProjectStatus {
     pending: number;
     byType: {resourceType: string; count: number}[];
   };
-  /** What the project's resources need that the environment holds in another form. */
+  /** What the project's resources need that the gateway holds in another form. */
   needed: {differing: number};
   /** When the project's resources were last deployed, promoted or rolled back there, and by whom. */
   deployedAt?: string;
@@ -46,7 +46,7 @@ export interface ProjectStatus {
   lastAction?: 'deployed' | 'promoted' | 'rolledBack';
   deployedBy?: Actor;
   /**
-   * On the first environment: whether a change saved to the project deploys there on its own, whether
+   * On the first gateway: whether a change saved to the project deploys there on its own, whether
    * that follows the organization's default, and how its last run went.
    */
   autoSync?: {

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {describe, expect, it} from 'vitest';
-import {environmentColor, ENVIRONMENT_COLORS} from '../../constants/environment-colors';
+import {gatewayColor, GATEWAY_COLORS} from '../../constants/gateway-colors';
 import type {Gateway} from '../../models/gateway';
 import {errorReasonOf} from '../apiError';
 import {aboutOwner, aboutValues, type MissingField} from '../missingValues';
@@ -52,11 +52,11 @@ describe('runnersOf', () => {
   });
 });
 
-describe('environmentColor', () => {
-  it('marks environments by their place, repeating after the last, for any place', () => {
-    expect(environmentColor(0)).toBe(ENVIRONMENT_COLORS[0]);
-    expect(environmentColor(ENVIRONMENT_COLORS.length)).toBe(ENVIRONMENT_COLORS[0]);
-    expect(environmentColor(-1)).toBe(ENVIRONMENT_COLORS[ENVIRONMENT_COLORS.length - 1]);
+describe('gatewayColor', () => {
+  it('marks gateways by their place, repeating after the last, for any place', () => {
+    expect(gatewayColor(0)).toBe(GATEWAY_COLORS[0]);
+    expect(gatewayColor(GATEWAY_COLORS.length)).toBe(GATEWAY_COLORS[0]);
+    expect(gatewayColor(-1)).toBe(GATEWAY_COLORS[GATEWAY_COLORS.length - 1]);
   });
 });
 

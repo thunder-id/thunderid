@@ -21,7 +21,7 @@ export interface Administrators {
 export default function useAdministrators(limit: number): UseQueryResult<Administrators> {
   const request = useRequest();
   return useQuery<Administrators>({
-    queryKey: ['environment-administrators', limit],
+    queryKey: ['gateway-administrators', limit],
     queryFn: () => request<Administrators>('GET', `/users?limit=${limit}&offset=0&include=display`),
     retry: false,
     staleTime: 60_000,

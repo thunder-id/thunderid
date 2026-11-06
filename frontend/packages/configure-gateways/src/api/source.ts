@@ -84,18 +84,18 @@ export interface DeploySource {
   /** Where the version a target runs refers to values. */
   runningReferences(targetId: string): Promise<ValueReference[]>;
   /**
-   * The environments a version is deployed and promoted through, in order, each on a target: a project's
+   * The gateways a version is deployed and promoted through, in order, each on a target: a project's
    * own when one is given and projects have pipelines of their own.
    */
   pipeline(project?: string): Promise<Pipeline>;
   /** The projects deploys can be scoped to. */
   projects(): Promise<Project[]>;
-  /** Whether a change saved here deploys to the first environment on its own. */
+  /** Whether a change saved here deploys to the first gateway on its own. */
   autoApply(): Promise<AutoApplySetting>;
-  /** Turns deploying a saved change to the first environment on or off: the default for projects. */
+  /** Turns deploying a saved change to the first gateway on or off: the default for projects. */
   setAutoApply(enabled: boolean): Promise<void>;
   /**
-   * Turns deploying a project's saved changes to its first environment on or off, or, with null, has
+   * Turns deploying a project's saved changes to its first gateway on or off, or, with null, has
    * the project follow the organization's default again.
    */
   setProjectAutoSync(project: string, enabled: boolean | null): Promise<void>;

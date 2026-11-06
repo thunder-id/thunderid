@@ -59,7 +59,7 @@ export default function useProjectStatus(targetId: string, from?: string): UseQu
 }
 
 /**
- * How the selected project stands on each environment of its pipeline, each against the one before it,
+ * How the selected project stands on each gateway of its pipeline, each against the one before it,
  * keyed by target id.
  */
 export function useProjectStatuses(stages: PipelineStage[]): {
@@ -107,7 +107,7 @@ export function useProjectStatuses(stages: PipelineStage[]): {
 }
 
 /**
- * How many of the selected project's own changes the first environment of its pipeline does not run
+ * How many of the selected project's own changes the first gateway of its pipeline does not run
  * yet, by resource type, as a deploy of the latest version would check them. Empty outside a project.
  */
 export function useProjectChanges(): Record<string, number> {

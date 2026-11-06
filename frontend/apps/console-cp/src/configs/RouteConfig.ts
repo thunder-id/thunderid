@@ -228,9 +228,9 @@ const RouteConfig: RouteConfig = {
     list: () => `/${ROUTE_SEGMENTS.deploy}`,
     explore: (gatewayId: string) => `/${ROUTE_SEGMENTS.deploy}/gateways/${encodeURIComponent(gatewayId)}/explore`,
     values: (gatewayId: string) => `/${ROUTE_SEGMENTS.deploy}/gateways/${encodeURIComponent(gatewayId)}/values`,
-    // Environments and projects have no pages of their own in this console yet: an environment is shown
+    // Gateways and projects have no pages of their own in this console yet: a gateway is shown
     // on the Deploy page, and a project's work starts from the home page.
-    environment: () => `/${ROUTE_SEGMENTS.deploy}`,
+    gateway: () => `/${ROUTE_SEGMENTS.deploy}`,
     project: () => `/${ROUTE_SEGMENTS.home}`,
   },
 };

@@ -14,8 +14,8 @@ describe('RouteConfig', () => {
     expect(RouteConfig.deploy.list()).toBe('/deploy');
     expect(RouteConfig.deploy.explore('gw 1')).toBe('/deploy/gateways/gw%201/explore');
     expect(RouteConfig.deploy.values('gw-1')).toBe('/deploy/gateways/gw-1/values');
-    // Environments and projects return to pages this console has.
-    expect(RouteConfig.deploy.environment('gw-1', 'p-1')).toBe('/deploy');
+    // Gateways and projects return to pages this console has.
+    expect(RouteConfig.deploy.gateway('gw-1', 'p-1')).toBe('/deploy');
     expect(RouteConfig.deploy.project?.('p-1')).toBe('/home');
   });
 

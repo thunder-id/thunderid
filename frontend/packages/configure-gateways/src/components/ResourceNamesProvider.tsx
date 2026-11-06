@@ -10,7 +10,7 @@ import {resourceNames} from '../explorer/model';
 import type {AppliedConfiguration} from '../models/deploy';
 
 /**
- * Names the resources the given environments run, as their maps name them, for the rows below it whose
+ * Names the resources the given gateways run, as their maps name them, for the rows below it whose
  * changes carry no name of their own.
  */
 export default function ResourceNamesProvider({

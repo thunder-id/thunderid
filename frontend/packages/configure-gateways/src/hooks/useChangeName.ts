@@ -15,7 +15,7 @@ export interface Named {
 }
 
 /**
- * What a row calls a resource: its own name, else the name the environments' maps give it, else its kind
+ * What a row calls a resource: its own name, else the name the gateways' maps give it, else its kind
  * and the start of its id, never a bare id.
  */
 export default function useChangeName(): (named: Named) => string {

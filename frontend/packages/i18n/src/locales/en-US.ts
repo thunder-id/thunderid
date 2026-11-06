@@ -6645,19 +6645,19 @@ const translations = {
     'card.undoHint_other':
       "Puts this project's resources back as they were before the last deploy of {{version}} ({{count}} changes).",
     'card.undoHintUncounted': "Puts this project's resources back as they were before the last deploy of {{version}}.",
-    'environment.deployed': 'Deployed configuration',
+    'gateway.deployed': 'Deployed configuration',
     'resourceStatus.changed': 'Changes not deployed',
     'resourceStatus.changedHint':
       'Your latest changes are saved here only. {{target}} still runs the earlier form until you deploy.',
     'resourceStatus.deploy': 'Deploy',
     'resourceStatus.live': 'Live',
-    'resourceStatus.liveHint': 'Every environment runs it as it is here.',
+    'resourceStatus.liveHint': 'Every gateway runs it as it is here.',
     'resourceStatus.notDeployed': 'Not deployed',
     'resourceStatus.notDeployedHint':
       'Saved here only. Deploy it to {{target}} to make it live, then promote it along the path.',
     'resourceStatus.notPromoted': 'Not in {{target}}',
     'resourceStatus.notPromotedHint':
-      'Running on the earlier environments, not yet on {{target}}. Promote it to take it there.',
+      'Running on the earlier gateways, not yet on {{target}}. Promote it to take it there.',
     'resourceStatus.promote': 'Promote',
     'resourceStatus.refused': 'Refused by {{target}}',
     'resourceStatus.refusedHint': '{{reason}}. Fix it, then deploy it to {{target}} again.',
@@ -6745,7 +6745,7 @@ const translations = {
     'explorer.panel.discard': 'Discard',
     'explorer.panel.edited': 'Edited',
     'explorer.panel.endpoints': 'Endpoints',
-    'explorer.panel.environment': 'Gateway',
+    'explorer.panel.gateway': 'Gateway',
     'explorer.panel.gatewayEndpointsHint': 'Where clients discover {{gateway}} and verify its tokens.',
     'explorer.panel.hide': 'Hide',
     'explorer.panel.laneShared': '{{count}} · shared',

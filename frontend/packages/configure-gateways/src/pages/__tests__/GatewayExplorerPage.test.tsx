@@ -464,9 +464,13 @@ describe('GatewayExplorerPage', () => {
     expect(navigate).toHaveBeenCalledWith('/deploy/gateways/gw-prod/explore');
     await userEvent.click(screen.getByText('Home'));
     expect(navigate).toHaveBeenCalledWith('/home');
+    navigate.mockReset();
+    // A gateway outside the pipeline has no page of its own, so leaving goes home too.
+    await userEvent.click(screen.getByRole('button', {name: 'Exit'}));
+    expect(navigate).toHaveBeenCalledWith('/home');
   });
 
-  it('goes back to the environment the gateway stands for', async () => {
+  it('goes back to the page of the stage the gateway stands for', async () => {
     routes['GET /gateways/pipeline'] = {
       stages: [{name: 'Development', adminConsoleUrl: 'https://dev.test/console', gateway: {id: 'gw-dev'}}],
     };
@@ -474,7 +478,36 @@ describe('GatewayExplorerPage', () => {
     await screen.findByTestId('explorer-node-application/app-1');
 
     await userEvent.click(await screen.findByText('Development'));
-    expect(navigate).toHaveBeenCalledWith('/environments/gw-dev');
+    expect(navigate).toHaveBeenCalledWith('/deploy/gateways/gw-dev');
+  });
+
+  it("stays within the project: exits to the gateway's page there, and switches to another gateway's map", async () => {
+    routes['GET /gateways/pipeline'] = {
+      stages: [{name: 'Development', adminConsoleUrl: 'https://dev.test/console', gateway: {id: 'gw-dev'}}],
+    };
+    routes['POST /gateways/gw-dev/apply'] = {
+      gatewayId: 'gw-dev',
+      dryRun: true,
+      diff: {
+        changes: [{key: 'application/app-1', resourceType: 'application', change: 'unchanged', section: 'project'}],
+      },
+    };
+    http = fakeHttp(routes);
+    render(
+      <ProjectScopeProvider project={{id: 'p-shop'}}>
+        <GatewayExplorerPage />
+      </ProjectScopeProvider>,
+    );
+    await screen.findByTestId('explorer-node-application/app-1');
+
+    await userEvent.click(await screen.findByText('Development'));
+    expect(navigate).toHaveBeenLastCalledWith('/projects/p-shop/deploy/gateways/gw-dev');
+    await userEvent.click(screen.getByRole('button', {name: 'Exit'}));
+    expect(navigate).toHaveBeenLastCalledWith('/projects/p-shop/deploy/gateways/gw-dev');
+    await userEvent.click(screen.getByRole('button', {name: 'Prod'}));
+    expect(navigate).toHaveBeenLastCalledWith('/projects/p-shop/deploy/gateways/gw-prod/explore');
+    await userEvent.click(screen.getByText('Project'));
+    expect(navigate).toHaveBeenLastCalledWith('/projects/p-shop');
   });
 
   it('says when nothing is deployed, or the gateway is unknown', async () => {

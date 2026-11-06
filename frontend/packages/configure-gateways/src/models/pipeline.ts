@@ -4,21 +4,21 @@
 import type {Gateway} from './gateway';
 
 /**
- * One environment a version is deployed and promoted through: a target, named.
+ * One gateway a version is deployed and promoted through: a target, named.
  *
  * @public
  */
 export interface PipelineStage {
-  /** What the environment is called, such as Development. */
+  /** What the gateway is called, such as Development. */
   name: string;
-  /** Where the environment's own console is reached, to manage its users and sessions. */
+  /** Where the gateway's own console is reached, to manage its users and sessions. */
   adminConsoleUrl?: string;
-  /** The target the environment runs on. */
+  /** The target the gateway runs on. */
   gateway: Gateway;
 }
 
 /**
- * The environments a version moves through, in order: a deploy enters at the first, and each later one
+ * The gateways a version moves through, in order: a deploy enters at the first, and each later one
  * is reached by promoting from the one before it.
  *
  * @public
@@ -28,7 +28,7 @@ export interface Pipeline {
 }
 
 /**
- * Whether a change saved here deploys to the first environment on its own.
+ * Whether a change saved here deploys to the first gateway on its own.
  *
  * @public
  */
