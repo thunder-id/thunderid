@@ -466,6 +466,11 @@ func (ts *GatewayVersionsTestSuite) TestAppliedFlowsDesignTranslationsAndServerC
 	ts.Require().Equal(http.StatusOK, ts.call(http.MethodGet, "/server-config", nil, &sections))
 	ts.Require().NotEmpty(sections)
 	for _, section := range sections {
+		// The gateway section sets how the control plane itself deploys, so it is not exported or
+		// applied.
+		if section == "gateway" {
+			continue
+		}
 		shown := ts.shown(applied, "server_config", section)
 		ts.Equal(ts.read("/server-config/" + section)["merged"], shown.Resource["merged"], section)
 		ts.Equal(shown.Resource["merged"], shown.Resource["writable"], "an import writes a section to its writable layer")

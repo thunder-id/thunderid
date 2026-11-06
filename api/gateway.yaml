@@ -326,6 +326,102 @@ paths:
           $ref: '#/components/responses/Forbidden'
         "404":
           $ref: '#/components/responses/NotFound'
+  /projects/{projectId}/auto-sync:
+    parameters:
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: The project's id.
+    put:
+      tags: [Gateways]
+      summary: Set a project's auto sync
+      description: |
+        Changes only this project's entry under `projects` in the `gateway` server configuration
+        section, on the server: the section is read and written with a conditional write that loses to
+        any write made since the read, on any node, and is read and tried again when it does. Updates of
+        different projects at the same moment are all kept, which a client reading and writing the whole
+        section through `PUT /server-config/gateway` cannot promise.
+
+        `autoSync` is `true` or `false` to set it, `null` to inherit `autoApply`, and left out to keep
+        it. `firstGateway` is a gateway's id to set where the project's pipeline starts, `""` to start at
+        the first stage of the configured pipeline, and left out to keep it. `autoSync: null` without
+        `firstGateway`, or an update that leaves the entry with neither, removes the entry.
+
+        Refused with `400` (`SCF-1003`) while a declarative `gateway` section is set, as a write to the
+        section is. Needs the same permission as `PUT /server-config/gateway`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                autoSync:
+                  type: boolean
+                  nullable: true
+                firstGateway:
+                  type: string
+      responses:
+        "200":
+          description: The project's entry as written
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  autoSync:
+                    type: boolean
+                  firstGateway:
+                    type: string
+        "204":
+          description: The project's entry was removed
+        "400":
+          description: |
+            The body is invalid, or the section is set declaratively (`SCF-1003`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          description: The project (`GTW-1038`) or the first gateway is unknown.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "409":
+          description: Other writes kept changing the section (`SCF-1005`); try again.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    delete:
+      tags: [Gateways]
+      summary: Remove a project's auto sync
+      description: |
+        Removes this project's entry from the `gateway` section, as a `PUT` does, so it inherits
+        `autoApply` and starts at the first stage of the configured pipeline. An entry whose project no
+        longer exists can be removed.
+      responses:
+        "204":
+          description: The entry was removed, or there was none
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "409":
+          description: Other writes kept changing the section (`SCF-1005`); try again.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /gateways/{id}/project-status:
     parameters:
       - $ref: '#/components/parameters/GatewayID'
@@ -1346,6 +1442,38 @@ components:
             differing:
               type: integer
               description: The needed changes the gateway holds in another form, which a deploy may take.
+        autoSync:
+          type: object
+          description: |
+            Whether a capture deploys the project's changes to its first gateway (`projects` in the
+            `gateway` server configuration section), whether that is inherited from `autoApply`, and
+            the last sync this node ran for the project.
+          properties:
+            enabled:
+              type: boolean
+            inherited:
+              type: boolean
+            lastRun:
+              type: object
+              properties:
+                at:
+                  type: string
+                  format: date-time
+                version:
+                  type: object
+                  properties:
+                    hash:
+                      type: string
+                    number:
+                      type: integer
+                error:
+                  type: object
+                  description: Why the gateway refused the sync. Omitted when it was applied.
+                  properties:
+                    code:
+                      type: string
+                    message:
+                      type: string
     RevertRequest:
       type: object
       properties:

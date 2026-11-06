@@ -78,11 +78,12 @@ func NewChangeCapture() *ChangeCapture {
 
 func (c *ChangeCapture) bind(versions *versionService) {
 	c.capture = func(ctx context.Context) error {
+		before := versions.latestResources(ctx)
 		captured, svcErr := versions.capture(ctx, CaptureRequest{Current: true})
 		if svcErr != nil {
 			return fmt.Errorf("%s: %s", svcErr.Code, svcErr.Error.DefaultValue)
 		}
-		versions.applyToFirstGateway(ctx, captured)
+		versions.syncAfterCapture(ctx, before, captured)
 		return nil
 	}
 }

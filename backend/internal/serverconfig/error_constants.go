@@ -37,6 +37,21 @@ var (
 		},
 	}
 
+	// ErrorConfigWriteConflict is the error returned when a section kept changing under an update, so
+	// it could not be written without losing another write.
+	ErrorConfigWriteConflict = common.ServiceError{
+		Type: common.ClientErrorType,
+		Code: "SCF-1005",
+		Error: common.I18nMessage{
+			Key:          "error.serverconfigservice.config_write_conflict",
+			DefaultValue: "The server configuration changed while it was updated",
+		},
+		ErrorDescription: common.I18nMessage{
+			Key:          "error.serverconfigservice.config_write_conflict_description",
+			DefaultValue: "Other writes kept changing the section. Try again.",
+		},
+	}
+
 	// ErrorInvalidRequestFormat is the error returned when the request body is malformed.
 	ErrorInvalidRequestFormat = common.ServiceError{
 		Type: common.ClientErrorType,

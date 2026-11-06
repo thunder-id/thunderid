@@ -74,3 +74,9 @@ func (suite *FileBasedStoreTestSuite) TestUpsertServerConfig_Rejected() {
 	err := suite.store.UpsertServerConfig(context.Background(), ServerConfig{Name: ConfigNameCORS, Value: corsValue})
 	suite.Error(err)
 }
+
+func (suite *FileBasedStoreTestSuite) TestReplaceServerConfigIfIsRejected() {
+	written, err := suite.store.ReplaceServerConfigIf(context.Background(), ServerConfig{Name: ConfigNameCORS}, nil)
+	suite.Error(err)
+	suite.False(written)
+}

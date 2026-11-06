@@ -71,3 +71,8 @@ func (s *fileBasedStore) GetServerConfig(_ context.Context, name ConfigName) (st
 func (s *fileBasedStore) UpsertServerConfig(_ context.Context, _ ServerConfig) error {
 	return errors.New("serverconfig: declarative store is read-only")
 }
+
+// ReplaceServerConfigIf is rejected: the declarative layer is read-only.
+func (s *fileBasedStore) ReplaceServerConfigIf(_ context.Context, _ ServerConfig, _ json.RawMessage) (bool, error) {
+	return false, errors.New("serverconfig: declarative store is read-only")
+}

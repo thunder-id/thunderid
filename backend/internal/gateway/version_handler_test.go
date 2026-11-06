@@ -55,6 +55,18 @@ func (s *stubVersionService) ProjectStatus(_ context.Context, _, projectID, sour
 	s.lastRef, s.lastProj, s.lastFrom = ref, projectID, sourceGatewayID
 	return &ProjectStatus{}, s.err
 }
+func (s *stubVersionService) SetProjectAutoSync(_ context.Context, projectID string,
+	req ProjectAutoSyncRequest) (*ProjectSyncSetting, *tidcommon.ServiceError) {
+	s.lastProj = projectID
+	if req.FirstGateway == nil {
+		return nil, s.err
+	}
+	return &ProjectSyncSetting{FirstGateway: *req.FirstGateway}, s.err
+}
+func (s *stubVersionService) DeleteProjectAutoSync(_ context.Context, projectID string) *tidcommon.ServiceError {
+	s.lastProj = projectID
+	return s.err
+}
 func (s *stubVersionService) Apply(_ context.Context, _ string,
 	req ApplyRequest) (*ApplyResult, *tidcommon.ServiceError) {
 	s.lastApp = req
@@ -118,6 +130,21 @@ func TestVersionRoutesAnswerEachCall(t *testing.T) {
 	assert.Equal(t, "3", stub.lastRef)
 	assert.Equal(t, http.StatusNoContent, serveVersions(stub, http.MethodOptions,
 		"/gateways/gw-2/project-status", ``).Code)
+
+	recorder := serveVersions(stub, http.MethodPut, "/projects/shop/auto-sync",
+		`{"autoSync":true,"firstGateway":"gw-1"}`)
+	assert.Equal(t, http.StatusOK, recorder.Code)
+	assert.JSONEq(t, `{"firstGateway":"gw-1"}`, recorder.Body.String())
+	assert.Equal(t, "shop", stub.lastProj)
+	assert.Equal(t, http.StatusNoContent, serveVersions(stub, http.MethodPut, "/projects/shop/auto-sync",
+		`{"autoSync":null}`).Code, "a removed entry answered content")
+	assert.Equal(t, http.StatusBadRequest, serveVersions(stub, http.MethodPut, "/projects/shop/auto-sync",
+		`{"enabled":true}x`).Code)
+	assert.Equal(t, http.StatusNoContent, serveVersions(stub, http.MethodDelete,
+		"/projects/billing/auto-sync", ``).Code)
+	assert.Equal(t, "billing", stub.lastProj)
+	assert.Equal(t, http.StatusNoContent, serveVersions(stub, http.MethodOptions,
+		"/projects/billing/auto-sync", ``).Code)
 }
 
 // Each failure is answered with the status that says what went wrong.

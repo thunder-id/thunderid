@@ -18,6 +18,8 @@ type fixedAutoApply bool
 
 func (f fixedAutoApply) enabled(context.Context) bool { return bool(f) }
 
+func (fixedAutoApply) projectSettings(context.Context) map[string]ProjectSyncSetting { return nil }
+
 // autoApplyFixture is a version fixture whose only gateway is the default one, with auto apply set.
 func autoApplyFixture(t *testing.T, enabled, isDefault bool) *versionFixture {
 	t.Helper()
