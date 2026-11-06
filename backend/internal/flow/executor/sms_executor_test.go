@@ -745,11 +745,19 @@ func (suite *SMSExecutorTestSuite) TestExecute_SendMode_RecipientSetByAnEarlierN
 	}
 }
 
-// In a self flow, an unresolved or unknown sender fails the node as an unconfigured provider, and
-// records no send.
-func (suite *SMSExecutorTestSuite) TestExecute_SendMode_SelfFlow_ClientError_ReturnsExecFailure() {
-	for _, senderID := range []string{"{{SENDER_ID}}", "unknown-sender"} {
-		suite.Run(senderID, func() {
+// In a self or administrator-initiated flow, an unresolved or unknown sender fails the node as an
+// unconfigured provider, and records no send.
+func (suite *SMSExecutorTestSuite) TestExecute_SendMode_SelfAndAdminInitiatedFlow_ClientError_ReturnsExecFailure() {
+	for _, test := range []struct {
+		flowType providers.FlowType
+		senderID string
+	}{
+		{providers.FlowTypeSelf, "{{SENDER_ID}}"},
+		{providers.FlowTypeSelf, "unknown-sender"},
+		{providers.FlowTypeAdminInitiated, "unknown-sender"},
+	} {
+		senderID := test.senderID
+		suite.Run(string(test.flowType)+" "+senderID, func() {
 			suite.SetupTest()
 			suite.mockTemplateRenderer.On("Resolve", mock.Anything, notificationtemplate.ChannelTypeSMS,
 				smsSelfRegistrationHandle, mock.Anything).
@@ -757,7 +765,7 @@ func (suite *SMSExecutorTestSuite) TestExecute_SendMode_SelfFlow_ClientError_Ret
 			suite.mockSMSSenderSvc.On("SendMessage", mock.Anything, notifcm.ChannelTypeSMS, senderID, mock.Anything).
 				Return(&tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "MNS-1001"}).Once()
 			ctx := &providers.NodeContext{
-				FlowType:     providers.FlowTypeSelf,
+				FlowType:     test.flowType,
 				ExecutorMode: ExecutorModeSend,
 				RuntimeData: map[string]string{common.RuntimeKeyRecipientType: entitytypemodel.TypeMobile,
 					common.RuntimeKeyExpectedRecipient: testPinnedMobile},

@@ -416,6 +416,76 @@ describe('useGetFlowsMeta', () => {
       );
     });
 
+    describe('Administrator-initiated templates', () => {
+      type TemplateNode = FlowTemplate['config']['nodes'][number];
+
+      const adminTemplates = (): FlowTemplate[] => {
+        const {result} = renderHook(() => useGetFlowsMeta({flowType: 'ADMIN_INITIATED'}));
+        return result.current.data.templates;
+      };
+
+      it('should offer only the administrator attribute verification template', () => {
+        expect(
+          adminTemplates().map((template) => [
+            template.type,
+            template.display.label,
+            template.config.name,
+            template.config.handle,
+          ]),
+        ).toEqual([
+          [
+            'ADMIN_ATTRIBUTE_VERIFICATION_EMAIL_LINK',
+            'Administrator Attribute Verification with Email Link',
+            'Administrator Attribute Verification with Email Link Flow',
+            'admin-attribute-verification-email-link-flow',
+          ],
+        ]);
+      });
+
+      it('should check the permission, prepare, send a link, confirm and record in order', () => {
+        const [template] = adminTemplates();
+        const byId = new Map<string, TemplateNode>(template.config.nodes.map((item) => [item.id, item]));
+        const steps: string[] = [];
+        let current = byId.get('start');
+        while (current && current.type !== 'END') {
+          steps.push(current.executor ? `${current.executor.name} ${String(current.executor['mode'])}` : current.id);
+          const next: string | undefined =
+            current.onSuccess ?? current.next ?? current.prompts?.[0]?.action?.nextNode ?? undefined;
+          current = next ? byId.get(next) : undefined;
+        }
+
+        expect(steps).toEqual([
+          'start',
+          'PermissionValidator undefined',
+          'AttributeVerificationExecutor prepare',
+          'InviteExecutor generate',
+          'EmailExecutor send',
+          'link_sent',
+          'InviteExecutor verify',
+          'confirm',
+          'AttributeVerificationExecutor record',
+          'verification_complete',
+        ]);
+        expect(byId.get('permission_validator')?.properties).toEqual({requiredScopes: ['system:user']});
+        expect(byId.get('send_link')?.properties).toEqual({emailTemplate: 'admin-email-verification'});
+        // Email only: the administrator's request names an email address, so nothing branches.
+        expect(template.config.nodes.filter((item) => item.condition)).toEqual([]);
+      });
+
+      it('should keep every link and need only an email sender through a load and save', () => {
+        const [template] = adminTemplates();
+        const nodes = structuredClone(template.config.nodes);
+
+        const canvas = transformFlowToCanvas({nodes} as FlowDefinitionResponse);
+        const saved = transformReactFlow(canvas);
+
+        const links = (list: TemplateNode[]): unknown[] =>
+          list.map((item) => [item.id, item.onSuccess, item.next, item.prompts?.map((e) => e.action?.nextNode)]);
+        expect(links(saved.nodes as TemplateNode[])).toEqual(links(template.config.nodes));
+        expect(validateFlowGraph(saved)).toEqual([]);
+      });
+    });
+
     it('should not affect non-template resources when filtering by flowType', () => {
       const {result} = renderHook(() => useGetFlowsMeta({flowType: 'AUTHENTICATION'}));
 

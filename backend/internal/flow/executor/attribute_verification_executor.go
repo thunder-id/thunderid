@@ -12,13 +12,15 @@ import (
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // attributeVerificationExecutor pins a user's contact before a challenge and records the proof after
 // it. The contact type decides the channel, so one executor serves email and mobile. In a self
-// flow the user is the one the engine bound to the execution at its start; in recovery, registration
+// flow the user is the one the engine bound to the execution at its start; in an
+// administrator-initiated flow it is the user the administrator names; in recovery, registration
 // and onboarding it is the user the flow established, and a flow that creates its user may pin before
 // the user exists.
 type attributeVerificationExecutor struct {
@@ -190,18 +192,20 @@ func (e *attributeVerificationExecutor) record(ctx *providers.NodeContext) (*pro
 }
 
 // verificationSubject returns the user prepare pins for, or "" when there is none. A self flow
-// has only the user bound at its start, so a self flow CALLed from another flow type has none.
-// Recovery has the user it identified. Registration and onboarding have the user they established, or
-// none yet when they will create it.
+// has only the user bound at its start, so a self flow CALLed from another flow type has none. An
+// administrator-initiated flow has the user its administrator names. Recovery has the user it
+// identified. Registration and onboarding have the user they established, or none yet when they will
+// create it.
 func (e *attributeVerificationExecutor) verificationSubject(ctx *providers.NodeContext,
 	resp *providers.ExecutorResponse) string {
 	switch ctx.FlowType {
 	case providers.FlowTypeSelf:
 		return ctx.GetBoundSubject()
+	case providers.FlowTypeAdminInitiated:
+		return administeredSubject(ctx)
 	case providers.FlowTypeRecovery, providers.FlowTypeRegistration, providers.FlowTypeUserOnboarding:
 		return e.GetUserIDFromContext(ctx, resp, e.authnProvider)
 	default:
-		// TODO: Support ADMINISTRATION with an authorized target user, apart from the administrator.
 		return ""
 	}
 }
@@ -234,6 +238,18 @@ func (e *attributeVerificationExecutor) refusal(ctx *providers.NodeContext,
 	e.logger.Debug(ctx.Context, "Attribute verification refused",
 		log.String(log.LoggerKeyExecutionID, ctx.ExecutionID), log.String("mode", ctx.ExecutorMode))
 	return e.failed(&ErrIdentityGovernanceFailed), nil
+}
+
+// administeredSubject returns the subject input when the request carries an administrator: an
+// authenticated caller, not on the runtime, holding the system permission. Any other request, such as
+// the user continuing from a link, names no one.
+func administeredSubject(ctx *providers.NodeContext) string {
+	subject, _ := ctx.ConsumeInput(revocationInputSubject)
+	if security.IsRuntimeContext(ctx.Context) || security.GetSubject(ctx.Context) == "" ||
+		!security.HasSystemPermission(security.GetPermissions(ctx.Context)) {
+		return ""
+	}
+	return subject
 }
 
 // failed returns a response that fails the node with the error and clears the evidence.

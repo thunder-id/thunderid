@@ -2857,6 +2857,7 @@ func (s *ServiceTestSuite) TestExecuteByID_RejectsNonAdministrationFlowType() {
 		providers.FlowTypeSignOut,
 		providers.FlowTypeUserOnboarding,
 		providers.FlowTypeSelf,
+		providers.FlowTypeAdminInitiated,
 	} {
 		s.Run(string(flowType), func() {
 			flow := &providers.CompleteFlowDefinition{ID: "flow-1", FlowType: flowType, ActiveVersion: 1}
@@ -4985,19 +4986,29 @@ func (s *ServiceTestSuite) TestGetFlowExpirySeconds_SelfFlow() {
 	s.Equal(int64(600), service.getFlowExpirySeconds(context.Background(), providers.FlowTypeSelf))
 }
 
-// A self flow is started only on the execute path, so the initiation entry points refuse its
-// type instead of starting the application's sign-in flow.
-func (s *ServiceTestSuite) TestInitiationEntryPointsRefuseSelfFlow() {
+// Self and administrator-initiated flows are started only on the execute path, so the initiation
+// entry points refuse their types instead of starting the application's sign-in flow.
+func (s *ServiceTestSuite) TestInitiationEntryPointsRefuseSelfAndAdminInitiatedFlows() {
+	for _, flowType := range []providers.FlowType{providers.FlowTypeSelf, providers.FlowTypeAdminInitiated} {
+		s.Run(string(flowType), func() {
+			s.requireInitiationRefused(flowType)
+		})
+	}
+}
+
+// requireInitiationRefused requires both initiation entry points to refuse the flow type, even for an
+// administrator.
+func (s *ServiceTestSuite) requireInitiationRefused(flowType providers.FlowType) {
 	service := &flowExecService{cfg: testFlowExecCfg}
 	initContext := &FlowInitContext{ApplicationID: "test-app",
-		FlowType: string(providers.FlowTypeSelf), RuntimeData: map[string]string{}}
+		FlowType: string(flowType), RuntimeData: map[string]string{}}
 
-	executionID, err := service.InitiateFlow(context.Background(), initContext)
+	executionID, err := service.InitiateFlow(authenticatedAdminContext([]string{"system"}), initContext)
 	s.Require().NotNil(err)
 	s.Equal(ErrorInvalidFlowType.Code, err.Code)
 	s.Empty(executionID)
 
-	step, err := service.InitiateAndExecute(context.Background(), initContext)
+	step, err := service.InitiateAndExecute(authenticatedAdminContext([]string{"system"}), initContext)
 	s.Require().NotNil(err)
 	s.Equal(ErrorInvalidFlowType.Code, err.Code)
 	s.Nil(step)
@@ -5008,4 +5019,177 @@ func (s *ServiceTestSuite) TestSelfFlowHasNoDefaultFlowHandle() {
 		SelfFlow: flowconfig.FlowTypeConfig{DefaultHandle: testSelfFlowHandle},
 	}}}
 	s.Empty(service.resolveDefaultFlowHandle(context.Background(), providers.FlowTypeSelf))
+}
+
+const testAdminInitiatedFlowHandle = "default-admin-attribute-verification-flow"
+
+// adminInitiatedFlowService returns a service whose flow provider resolves the handle to an
+// administrator-initiated flow.
+func (s *ServiceTestSuite) adminInitiatedFlowService(flowProvider *FlowProviderMock) (*flowExecService,
+	*providers.CompleteFlowDefinition) {
+	flowFactory, _ := core.Initialize(cache.Initialize(engineconfig.CacheConfig{}, "admin-initiated-test"))
+	flow := &providers.CompleteFlowDefinition{ID: "admin-initiated-flow", Handle: testAdminInitiatedFlowHandle,
+		FlowType: providers.FlowTypeAdminInitiated, ActiveVersion: 1}
+	builder := NewGraphBuilderInterfaceMock(s.T())
+	builder.EXPECT().GetGraph(mock.Anything, flow).Return(flowFactory.CreateGraph(flow.ID, flow.FlowType, 1), nil).
+		Maybe()
+	return &flowExecService{flowProvider: flowProvider, graphBuilder: builder, cfg: testFlowExecCfg}, flow
+}
+
+// An administrator starts the flow by handle for no application, and binds no one: the user is an
+// input for the flow's nodes.
+func (s *ServiceTestSuite) TestLoadNewContext_AdminInitiatedFlowStartsForAnAdministrator() {
+	security.InitSystemPermissions("")
+	flowProvider := NewFlowProviderMock(s.T())
+	service, flow := s.adminInitiatedFlowService(flowProvider)
+	flowProvider.EXPECT().GetFlowByHandle(mock.Anything, testAdminInitiatedFlowHandle,
+		providers.FlowTypeAdminInitiated).Return(flow, nil).Once()
+
+	engineCtx, svcErr := service.loadNewContext(authenticatedAdminContext([]string{"system"}), "", "some-app",
+		string(providers.FlowTypeAdminInitiated), testAdminInitiatedFlowHandle, false, "",
+		map[string]string{"subject": "user-1", "attribute": "email"}, "", "", log.GetLogger())
+
+	s.Require().Nil(svcErr)
+	s.Equal(flow.ID, engineCtx.Graph.GetID())
+	s.Equal(providers.FlowTypeAdminInitiated, engineCtx.FlowType)
+	s.Empty(engineCtx.boundSubject)
+	s.Empty(engineCtx.AppID)
+	s.Empty(engineCtx.Application.ID)
+	s.Equal("user-1", engineCtx.UserInputs["subject"])
+}
+
+// The start is refused unless the caller is an administrator, before the handle is resolved, so a
+// caller cannot learn which handles exist. A user's token on this public path arrives as a runtime
+// context that keeps its subject.
+func (s *ServiceTestSuite) TestLoadNewContext_AdminInitiatedFlowRequiresAnAdministrator() {
+	security.InitSystemPermissions("")
+	for name, test := range map[string]struct {
+		ctx  func() context.Context
+		code string
+	}{
+		"no token": {context.Background, ErrorFlowAuthenticationRequired.Code},
+		"runtime without one": {func() context.Context { return security.WithRuntimeContext(context.Background()) },
+			ErrorFlowAuthenticationRequired.Code},
+		"user token": {func() context.Context {
+			return security.WithRuntimeContext(s.selfIssuedTokenContext(testSelfFlowUser))
+		}, ErrorFlowAuthenticationRequired.Code},
+		"token without the system permission": {func() context.Context {
+			return authenticatedAdminContext([]string{"system:user"})
+		}, ErrorAdministrationPermissionRequired.Code},
+	} {
+		s.Run(name, func() {
+			flowProvider := NewFlowProviderMock(s.T())
+			service, _ := s.adminInitiatedFlowService(flowProvider)
+
+			engineCtx, svcErr := service.loadNewContext(test.ctx(), "", "",
+				string(providers.FlowTypeAdminInitiated), testAdminInitiatedFlowHandle, false, "",
+				map[string]string{"subject": "user-1", "attribute": "email"}, "", "", log.GetLogger())
+
+			s.Nil(engineCtx)
+			s.Require().NotNil(svcErr)
+			s.Equal(test.code, svcErr.Code)
+			flowProvider.AssertNotCalled(s.T(), "GetFlowByHandle", mock.Anything, mock.Anything, mock.Anything)
+		})
+	}
+}
+
+func (s *ServiceTestSuite) TestLoadNewContext_AdminInitiatedFlowRequiresAHandle() {
+	security.InitSystemPermissions("")
+	flowProvider := NewFlowProviderMock(s.T())
+	service, _ := s.adminInitiatedFlowService(flowProvider)
+	service.serverConfigSvc = stubServerConfig{cfg: flowconfig.FlowSectionConfig{
+		AdminInitiatedFlow: flowconfig.FlowTypeConfig{DefaultHandle: testAdminInitiatedFlowHandle},
+	}}
+
+	engineCtx, svcErr := service.loadNewContext(authenticatedAdminContext([]string{"system"}), "", "",
+		string(providers.FlowTypeAdminInitiated), "", false, "", map[string]string{"subject": "user-1"}, "", "",
+		log.GetLogger())
+
+	s.Nil(engineCtx)
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorFlowHandleRequired.Code, svcErr.Code)
+	flowProvider.AssertNotCalled(s.T(), "GetFlowByHandle", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (s *ServiceTestSuite) TestLoadNewContext_AdminInitiatedFlowUnknownHandle() {
+	security.InitSystemPermissions("")
+	notFound := &tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "FLM-1003"}
+	flowProvider := NewFlowProviderMock(s.T())
+	service, _ := s.adminInitiatedFlowService(flowProvider)
+	flowProvider.EXPECT().GetFlowByHandle(mock.Anything, "unknown", providers.FlowTypeAdminInitiated).
+		Return(nil, notFound).Once()
+
+	engineCtx, svcErr := service.loadNewContext(authenticatedAdminContext([]string{"system"}), "", "",
+		string(providers.FlowTypeAdminInitiated), "unknown", false, "", map[string]string{}, "", "",
+		log.GetLogger())
+
+	s.Nil(engineCtx)
+	s.Equal(ErrorFlowHandleNotFound.Code, svcErr.Code)
+}
+
+func (s *ServiceTestSuite) TestLoadNewContext_AdminInitiatedFlowLookupServerError() {
+	security.InitSystemPermissions("")
+	flowProvider := NewFlowProviderMock(s.T())
+	service, _ := s.adminInitiatedFlowService(flowProvider)
+	flowProvider.EXPECT().GetFlowByHandle(mock.Anything, testAdminInitiatedFlowHandle,
+		providers.FlowTypeAdminInitiated).Return(nil, &tidcommon.InternalServerError).Once()
+
+	engineCtx, svcErr := service.loadNewContext(authenticatedAdminContext([]string{"system"}), "", "",
+		string(providers.FlowTypeAdminInitiated), testAdminInitiatedFlowHandle, false, "",
+		map[string]string{}, "", "", log.GetLogger())
+
+	s.Nil(engineCtx)
+	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+}
+
+// The user continues from the link with no token: a continuation is not checked for the
+// administrator, and binds no one.
+func (s *ServiceTestSuite) TestExecute_AdminInitiatedFlowContinuesWithoutTheAdministrator() {
+	security.InitSystemPermissions("")
+	for name, ctx := range map[string]func() context.Context{
+		"no token":   context.Background,
+		"user token": func() context.Context { return security.WithRuntimeContext(s.selfIssuedTokenContext("user-2")) },
+	} {
+		s.Run(name, func() {
+			flowFactory, _ := core.Initialize(cache.Initialize(engineconfig.CacheConfig{}, "admin-continue-test"))
+			flow := &providers.CompleteFlowDefinition{ID: "admin-initiated-flow",
+				FlowType: providers.FlowTypeAdminInitiated}
+			graph := flowFactory.CreateGraph(flow.ID, flow.FlowType, 1)
+			stored := &FlowContextDB{}
+			s.Require().NoError(stored.FromEngineContext(EngineContext{
+				ExecutionID: existingExecutionID, FlowType: flow.FlowType, Graph: graph,
+				UserInputs: map[string]string{}, RuntimeData: map[string]string{},
+			}))
+			store := newFlowStoreInterfaceMock(s.T())
+			store.EXPECT().GetFlowContext(mock.Anything, existingExecutionID).Return(stored, nil)
+			store.EXPECT().DeleteFlowContext(mock.Anything, existingExecutionID).Return(nil)
+			flowProvider := NewFlowProviderMock(s.T())
+			flowProvider.EXPECT().GetFlow(mock.Anything, flow.ID).Return(flow, nil)
+			builder := NewGraphBuilderInterfaceMock(s.T())
+			builder.EXPECT().GetGraph(mock.Anything, flow).Return(graph, nil)
+			engine := newFlowEngineInterfaceMock(s.T())
+			engine.EXPECT().Execute(mock.MatchedBy(func(engineCtx *EngineContext) bool {
+				return engineCtx.boundSubject == "" && engineCtx.UserInputs["inviteToken"] == "invite-1"
+			})).Return(FlowStep{Status: providers.FlowStatusComplete}, nil).Once()
+			service := &flowExecService{flowStore: store, flowProvider: flowProvider, graphBuilder: builder,
+				flowEngine: engine, transactioner: &stubTransactioner{}}
+
+			step, svcErr := service.Execute(ctx(), "", existingExecutionID, "", "", false, "",
+				map[string]string{"inviteToken": "invite-1"}, "", "", "", nil)
+
+			s.Require().Nil(svcErr)
+			s.Equal(providers.FlowStatusComplete, step.Status)
+		})
+	}
+}
+
+func (s *ServiceTestSuite) TestGetFlowExpirySeconds_AdminInitiatedFlow() {
+	service := &flowExecService{}
+	s.Equal(defaultAdminInitiatedFlowExpiry, service.getFlowExpirySeconds(context.Background(),
+		providers.FlowTypeAdminInitiated))
+
+	service.serverConfigSvc = stubServerConfig{cfg: flowconfig.FlowSectionConfig{
+		AdminInitiatedFlow: flowconfig.FlowTypeConfig{ExpirySeconds: 600},
+	}}
+	s.Equal(int64(600), service.getFlowExpirySeconds(context.Background(), providers.FlowTypeAdminInitiated))
 }
