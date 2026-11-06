@@ -1423,6 +1423,7 @@ const translations = {
     'edit.page.validation.invalidBackchannelLogoutUri': 'fix the back-channel logout URI',
     'edit.page.validation.invalidIdentityAssertions': 'fix the identity assertions (ID-JAG) settings',
     'edit.page.validation.tokenSettings': 'fix the token settings',
+    'edit.page.validation.invalidLoginConsent': 'fix the consent validity period',
     'edit.page.validation.invalidLifespan': 'choose a lifespan end in the future',
     'edit.page.reset': 'Reset',
     'edit.page.save': 'Save',
@@ -3519,6 +3520,12 @@ const translations = {
     'edit.advanced.passkeys.allowedOrigins.addOrigin': 'Add origin',
     'edit.advanced.passkeys.allowedOrigins.error.empty': 'Origin cannot be empty',
     'edit.advanced.passkeys.allowedOrigins.error.invalid': 'Enter a valid URL',
+
+    /* Login consent section */
+    'edit.advanced.loginConsent.validityPeriod.label': 'Consent validity period',
+    'edit.advanced.loginConsent.validityPeriod.unit': 'seconds',
+    'edit.advanced.loginConsent.validityPeriod.hint': 'Leave empty or enter 0 so consent does not expire.',
+    'edit.advanced.loginConsent.validityPeriod.error': 'Enter a whole number of seconds.',
 
     /* -------------------- Edit page -------------------- */
     // Common

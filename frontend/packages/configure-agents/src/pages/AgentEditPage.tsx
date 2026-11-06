@@ -132,6 +132,7 @@ export default function AgentEditPage(): JSX.Element {
   const hasAnyOtherValidationError = Object.values(validationErrorSources).some(Boolean);
   const [backchannelLogoutUriInvalid, setBackchannelLogoutUriInvalid] = useState(false);
   const [identityAssertionsInvalid, setIdentityAssertionsInvalid] = useState(false);
+  const [loginConsentInvalid, setLoginConsentInvalid] = useState(false);
   const [lifespanInvalid, setLifespanInvalid] = useState(false);
 
   const handleBack = async () => {
@@ -266,6 +267,9 @@ export default function AgentEditPage(): JSX.Element {
     hasDelegationGrant(oauth2Config?.grantTypes) &&
     isIdJagEnabled(oauth2Config) &&
     (identityAssertionsInvalid || (oauth2Config?.token?.idJag?.allowedAudiences ?? []).length === 0);
+  // The Consent validity card shows only with a user-facing grant and reports a typed validity
+  // period it could not commit, which goes with the card when it unmounts.
+  const isInvalidLoginConsent = hasUserAccess(oauth2Config?.grantTypes) && loginConsentInvalid;
   // The Lifespan card reports a draft it could not parse only while it is shown, so a staged end that
   // has passed is checked here from state, and keeps blocking saving after the card's tab is left.
   const isInvalidLifespan =
@@ -279,6 +283,7 @@ export default function AgentEditPage(): JSX.Element {
     isMissingCertificate ||
     isInvalidBackchannelLogoutUri ||
     isInvalidIdentityAssertions ||
+    isInvalidLoginConsent ||
     isInvalidLifespan;
 
   // ResourceAvatar opens its picker on any avatar click while onSelect is set, so a read-only
@@ -308,6 +313,9 @@ export default function AgentEditPage(): JSX.Element {
     validationIssues.push(
       t('agents:edit.page.validation.invalidIdentityAssertions', 'fix the identity assertions (ID-JAG) settings'),
     );
+  }
+  if (isInvalidLoginConsent) {
+    validationIssues.push(t('agents:edit.page.validation.invalidLoginConsent', 'fix the consent validity period'));
   }
   if (isInvalidLifespan) {
     validationIssues.push(t('agents:edit.page.validation.invalidLifespan', 'choose a lifespan end in the future'));
@@ -428,6 +436,7 @@ export default function AgentEditPage(): JSX.Element {
         onFieldChange={handleFieldChange}
         onBackchannelLogoutUriValidationChange={setBackchannelLogoutUriInvalid}
         onIdentityAssertionsValidationChange={setIdentityAssertionsInvalid}
+        onLoginConsentValidationChange={setLoginConsentInvalid}
         onDeleteSuccess={() => {
           void handleBack();
         }}

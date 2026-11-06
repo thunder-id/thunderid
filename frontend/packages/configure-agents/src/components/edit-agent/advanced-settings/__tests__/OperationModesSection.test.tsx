@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {render, screen, within} from '@testing-library/react';
+import {fireEvent, render, screen, within} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type {OAuth2Config} from '@thunderid/configure-applications';
 import {describe, it, expect, vi} from 'vitest';
@@ -591,6 +591,89 @@ describe('OperationModesSection', () => {
           }) as Record<string, unknown>,
         }),
       );
+    });
+  });
+
+  describe('Consent validity period', () => {
+    const fieldName = 'Consent validity period';
+
+    it('shows the field after the client authentication method, in the same card', () => {
+      render(<OperationModesSection oauth2Config={delegatedConfig} onOAuth2ConfigChange={vi.fn()} />);
+
+      const authMethod = document.getElementById('agent_token_endpoint_auth_method')!;
+      const field = screen.getByRole('spinbutton', {name: fieldName});
+      const pkce = screen.getByLabelText('Require PKCE');
+      const card = screen.getByText('OAuth 2 configuration').closest('[class*="MuiPaper"]');
+
+      expect(authMethod.compareDocumentPosition(field) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(field.compareDocumentPosition(pkce) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(card).toContainElement(authMethod);
+      expect(card).toContainElement(field);
+    });
+
+    it('hides the field when the agent has no user-facing grant', () => {
+      render(<OperationModesSection oauth2Config={autonomousOnlyConfig} onOAuth2ConfigChange={vi.fn()} />);
+
+      expect(screen.queryByRole('spinbutton', {name: fieldName})).not.toBeInTheDocument();
+    });
+
+    it('shows the stored validity period', () => {
+      render(
+        <OperationModesSection
+          oauth2Config={delegatedConfig}
+          onOAuth2ConfigChange={vi.fn()}
+          loginConsent={{validityPeriod: 3600}}
+          onLoginConsentChange={vi.fn()}
+        />,
+      );
+
+      expect(screen.getByRole('spinbutton', {name: fieldName})).toHaveValue(3600);
+    });
+
+    it('commits a whole number of seconds', () => {
+      const onLoginConsentChange = vi.fn();
+      render(
+        <OperationModesSection
+          oauth2Config={delegatedConfig}
+          onOAuth2ConfigChange={vi.fn()}
+          onLoginConsentChange={onLoginConsentChange}
+        />,
+      );
+
+      fireEvent.change(screen.getByRole('spinbutton', {name: fieldName}), {target: {value: '600'}});
+
+      expect(onLoginConsentChange).toHaveBeenCalledWith({validityPeriod: 600});
+    });
+
+    it('reports a value that cannot be saved and does not commit it', () => {
+      const onLoginConsentChange = vi.fn();
+      const onLoginConsentValidationChange = vi.fn();
+      render(
+        <OperationModesSection
+          oauth2Config={delegatedConfig}
+          onOAuth2ConfigChange={vi.fn()}
+          onLoginConsentChange={onLoginConsentChange}
+          onLoginConsentValidationChange={onLoginConsentValidationChange}
+        />,
+      );
+
+      fireEvent.change(screen.getByRole('spinbutton', {name: fieldName}), {target: {value: '-1'}});
+
+      expect(onLoginConsentChange).not.toHaveBeenCalled();
+      expect(onLoginConsentValidationChange).toHaveBeenLastCalledWith(true);
+    });
+
+    it('disables the field when the section is disabled', () => {
+      render(
+        <OperationModesSection
+          oauth2Config={delegatedConfig}
+          onOAuth2ConfigChange={vi.fn()}
+          onLoginConsentChange={vi.fn()}
+          disabled
+        />,
+      );
+
+      expect(screen.getByRole('spinbutton', {name: fieldName})).toBeDisabled();
     });
   });
 });

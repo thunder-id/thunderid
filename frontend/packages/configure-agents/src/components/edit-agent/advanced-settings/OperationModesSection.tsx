@@ -4,6 +4,7 @@
 import {OAuth2Logo, SettingsCard} from '@thunderid/components';
 import {
   BackchannelLogoutUriField,
+  LoginConsentField,
   OAuth2GrantTypes,
   TokenEndpointAuthMethods,
   type OAuth2Config,
@@ -36,6 +37,7 @@ import type {ReactNode} from 'react';
 import {Trans, useTranslation} from 'react-i18next';
 import RedirectURIsSection from './RedirectURIsSection';
 import {DELEGATED_ONLY_GRANTS, DELEGATION_GRANTS} from '../../../constants/delegationGrants';
+import type {AgentLoginConsentConfig} from '../../../models/agent';
 import applyAgentPkceRule from '../../../utils/applyAgentPkceRule';
 import {hasDelegationGrant} from '../../../utils/isDelegatedAgent';
 import {codeComponents} from '../shared/transCodeComponents';
@@ -48,6 +50,9 @@ interface OperationModesSectionProps {
   oauth2Config?: OAuth2Config;
   onOAuth2ConfigChange?: (updates: Partial<OAuth2Config>) => void;
   onBackchannelLogoutUriValidationChange?: (hasError: boolean) => void;
+  loginConsent?: AgentLoginConsentConfig;
+  onLoginConsentChange?: (loginConsent: AgentLoginConsentConfig) => void;
+  onLoginConsentValidationChange?: (hasError: boolean) => void;
   disabled?: boolean;
 }
 
@@ -55,6 +60,9 @@ export default function OperationModesSection({
   oauth2Config = undefined,
   onOAuth2ConfigChange = undefined,
   onBackchannelLogoutUriValidationChange = undefined,
+  loginConsent = undefined,
+  onLoginConsentChange = undefined,
+  onLoginConsentValidationChange = undefined,
   disabled = false,
 }: OperationModesSectionProps) {
   const {t} = useTranslation();
@@ -253,6 +261,16 @@ export default function OperationModesSection({
                 )}
           </Typography>
         </FormControl>
+
+        {/* Consent is collected only in flows that sign a user in, such as authorization code and CIBA. */}
+        {hasUserAccess(grantTypes) && (
+          <LoginConsentField
+            loginConsent={loginConsent}
+            onLoginConsentChange={onLoginConsentChange}
+            disabled={disabled}
+            onValidationChange={onLoginConsentValidationChange}
+          />
+        )}
 
         <Divider />
 

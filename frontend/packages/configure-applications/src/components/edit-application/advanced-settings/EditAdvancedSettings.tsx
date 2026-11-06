@@ -10,7 +10,7 @@ import MetadataSection from './MetadataSection';
 import OAuth2ConfigSection from './OAuth2ConfigSection';
 import PasskeysSection from './PasskeysSection';
 import useValidationReport from '../../../hooks/useValidationReport';
-import type {Application} from '../../../models/application';
+import type {Application, LoginConsentConfig} from '../../../models/application';
 import type {ApplicationTemplate} from '../../../models/application-templates';
 import type {InboundAuthConfig} from '../../../models/inbound-auth';
 import type {OAuth2Config, OAuth2Token} from '../../../models/oauth';
@@ -101,15 +101,16 @@ export default function EditAdvancedSettings({
   const [redirectUrisInvalid, setRedirectUrisInvalid] = useState(false);
   const [identityAssertionsInvalid, setIdentityAssertionsInvalid] = useState(false);
   const [passkeysInvalid, setPasskeysInvalid] = useState(false);
+  const [loginConsentInvalid, setLoginConsentInvalid] = useState(false);
 
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   // The whole tab unmounts on a tab switch, so a child's own unmount report never reaches the page.
-  // The redirect URI errors come from drafts and go with the tab; the identity assertion and passkey
-  // errors are on committed values and keep blocking Save until the user comes back.
+  // The redirect URI and consent validity errors come from drafts and go with the tab; the identity
+  // assertion and passkey errors are on committed values and keep blocking Save until the user comes back.
   useValidationReport(
     onValidationChange,
-    redirectUrisInvalid || identityAssertionsInvalid || passkeysInvalid,
+    redirectUrisInvalid || identityAssertionsInvalid || passkeysInvalid || loginConsentInvalid,
     identityAssertionsInvalid || passkeysInvalid,
   );
 
@@ -126,6 +127,10 @@ export default function EditAdvancedSettings({
   };
 
   const currentPasskeyOrigins = editedApp.passkeyAllowedOrigins ?? application.passkeyAllowedOrigins ?? [];
+
+  const handleLoginConsentChange = (loginConsent: LoginConsentConfig): void => {
+    onFieldChange('loginConsent', loginConsent);
+  };
 
   const handleTokenConfigChange = (tokenUpdates: Partial<OAuth2Token>, oauth2Updates: Partial<OAuth2Config> = {}) => {
     const currentInboundAuth: InboundAuthConfig[] = editedApp.inboundAuthConfig ?? application.inboundAuthConfig ?? [];
@@ -154,7 +159,7 @@ export default function EditAdvancedSettings({
     <>
       <Stack spacing={3}>
         <OAuth2ConfigSection
-          key={sectionResetKey}
+          key={`oauth2-config-${sectionResetKey}`}
           oauth2Config={oauth2Config}
           oauth2Constraints={oauth2Constraints}
           onOAuth2ConfigChange={handleOAuth2ConfigChange}
@@ -162,6 +167,9 @@ export default function EditAdvancedSettings({
           allowedGrantTypes={allowedGrantTypes}
           showRedirectUris={showRedirectUris}
           onValidationChange={setRedirectUrisInvalid}
+          loginConsent={editedApp.loginConsent ?? application.loginConsent}
+          onLoginConsentChange={application.isReadOnly ? undefined : handleLoginConsentChange}
+          onLoginConsentValidationChange={setLoginConsentInvalid}
         />
         {oauth2Config && (
           <IdentityAssertionsSection
