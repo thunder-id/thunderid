@@ -416,7 +416,7 @@ func (s *DeployTestSuite) TestHeldBackRemovalsAreNotCountedBeforeQueueing() {
 		LeaveOut: []string{"organization_unit/ou-b", "organization_unit/ou-c", "organization_unit/ou-d",
 			"organization_unit/ou-e", "organization_unit/ou-f", "organization_unit/ou-g"}})
 	require.Nil(t, svcErr)
-	f.versions.leases["gw-1"].Token, f.versions.leases["gw-1"].Since = "a-node-elsewhere", time.Now()
+	f.versions.leases["gw-1"].Token, f.versions.leases["gw-1"].Since = nodeElsewhere, time.Now()
 
 	result, svcErr := f.svc.Apply(context.Background(), "gw-1", ApplyRequest{})
 

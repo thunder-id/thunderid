@@ -260,6 +260,50 @@ var (
 			DefaultValue: "Deploy a version to the source gateway before promoting it.",
 		},
 	}
+	// ErrorDependencyNotDeployed is returned when a selection sent without its dependencies names a
+	// resource that needs one the gateway does not hold as the version has it.
+	ErrorDependencyNotDeployed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "GTW-1032",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.gatewayservice.dependency_not_deployed",
+			DefaultValue: "A selected resource needs one the gateway does not hold",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.gatewayservice.dependency_not_deployed.description",
+			DefaultValue: "Select what the resource needs as well, or apply with withDependencies to send it " +
+				"along.",
+		},
+	}
+	// ErrorRemovalInUse is returned when an apply would remove a resource that a document the gateway
+	// keeps still names.
+	ErrorRemovalInUse = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "GTW-1033",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.gatewayservice.removal_in_use",
+			DefaultValue: "A resource to remove is still needed by one the gateway keeps",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.gatewayservice.removal_in_use.description",
+			DefaultValue: "Remove or update the resources that need it in the same apply, or leave it in place.",
+		},
+	}
+	// ErrorPromotionIncomplete is returned when a promotion would leave the target with a resource
+	// naming one it does not hold, because the source does not run the other as the version has it.
+	ErrorPromotionIncomplete = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "GTW-1042",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.gatewayservice.promotion_incomplete",
+			DefaultValue: "The source does not run what this promotion needs",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.gatewayservice.promotion_incomplete.description",
+			DefaultValue: "A promotion carries only what the source runs as the version has it. Deploy the " +
+				"version to the source first.",
+		},
+	}
 	// ErrorResourceNotDeployed names a resource no master of the gateway records.
 	ErrorResourceNotDeployed = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,

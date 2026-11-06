@@ -523,6 +523,12 @@ func (f *fakeGatewayClient) Import(_ context.Context, _ *Gateway, key string,
 
 func (f *fakeGatewayClient) last() gatewayImportRequest { return f.sent[len(f.sent)-1] }
 
+// nodeElsewhere and anotherPod hold a gateway's lease in place of the apply under test.
+const (
+	nodeElsewhere = "a-node-elsewhere"
+	anotherPod    = "another-pod"
+)
+
 func unit(id string) string {
 	return "resource_type: organization_unit\nid: " + id + "\nname: " + id
 }
@@ -1741,7 +1747,7 @@ func TestAnApplyRemovingManyIsRefusedBeforeItIsQueued(t *testing.T) {
 	_, svcErr := f.svc.Apply(context.Background(), "gw-1", ApplyRequest{})
 	require.Nil(t, svcErr)
 	f.capture(t, "ou-a")
-	f.versions.leases["gw-1"].Token, f.versions.leases["gw-1"].Since = "a-node-elsewhere", time.Now()
+	f.versions.leases["gw-1"].Token, f.versions.leases["gw-1"].Since = nodeElsewhere, time.Now()
 
 	_, svcErr = f.svc.Apply(context.Background(), "gw-1", ApplyRequest{})
 

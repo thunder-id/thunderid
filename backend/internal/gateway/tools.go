@@ -176,7 +176,9 @@ how values changed on the gateway take effect.`,
 			`next. It follows the version the source is recorded as running: an addition or update is sent only ` +
 			`when the source holds it deployed as that version has it, and what that version no longer has is ` +
 			`removed from the target. Changes the target holds back stay out. The target's master records the ` +
-			`source gateway's ID as the origin of each resource the promotion writes.
+			`source gateway's ID as the origin of each resource the promotion writes. A promotion that would leave ` +
+			`the target with a resource naming one it does not hold, because the source does not run it as the ` +
+			`version has it, is refused (GTW-1042): deploy the version to the source first.
 
 Run it with dryRun first and show the user what it would change on the target.`,
 		Annotations: &mcp.ToolAnnotations{DestructiveHint: &destructive},
