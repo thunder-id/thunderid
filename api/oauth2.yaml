@@ -743,7 +743,7 @@ paths:
                 $ref: '#/components/schemas/DCRRegistrationResponse'
               example:
                 client_id: "s6BhdRkqt3"
-                client_secret: "ZJYCqe3GGRvdrudKyZS0XhGv_Z45DuKhCUk0gBR1vZk"
+                client_secret: "<client_secret>"
                 client_secret_expires_at: 0
                 client_name: "My App"
                 redirect_uris:
