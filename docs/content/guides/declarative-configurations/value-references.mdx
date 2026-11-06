@@ -119,8 +119,8 @@ references as they are. They are resolved by the deployment the configuration is
 
 ## Values Captured on a Control Plane
 
-A control plane writes the values its references name to its default gateway as you create and
-change resources, so the gateway holds them when a configuration version is applied to it. Each
+A control plane writes the values its references name to its first gateway as you
+create and change resources, so the gateway holds them when a configuration version is applied to it. Each
 value is stored under the name the export refers to it by: a client ID or a resource server's
 identifier among the gateway's variables, a client secret or a password among its secrets. A list,
 such as an application's redirect URIs, is stored among the variables as the JSON list of its items,
@@ -142,8 +142,10 @@ stores only its hash.
 
 Capture follows these rules:
 
-- **Default gateway only.** Values go to the gateway marked `isDefault` in the Gateway API. With no
-  default gateway, nothing is captured. Set a value on any other gateway yourself.
+- **First gateway only.** Values go to the first gateway of the pipeline
+  (`gateway.pipeline`), the one auto apply deploys to, which is the gateway marked `isDefault` in the
+  Gateway API when no pipeline is set. With neither, nothing is captured. Set a value on any other
+  gateway yourself.
 - **HTTPS only.** The control plane sends a value, and the gateway's management key, only to a
   gateway whose `baseUrl` starts with `https://`. A gateway on plain HTTP receives nothing.
 - **Never blocks the write.** The values are worked out as the resource is written, and sent to the

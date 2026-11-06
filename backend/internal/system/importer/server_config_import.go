@@ -47,6 +47,15 @@ func (s *importService) importServerConfig(ctx context.Context, doc parsedDocume
 			Message:      "server config name is required",
 		}
 	}
+	if !serverconfig.ConfigName(req.Name).IsPortable() {
+		return ImportItemOutcome{
+			ResourceType: resourceTypeServerConfig,
+			ResourceName: req.Name,
+			Status:       statusFailed,
+			Code:         ErrorInvalidYAMLContent.Code,
+			Message:      "server config " + req.Name + " configures only the server it is set on and is not imported",
+		}
+	}
 	if req.Value.Kind == 0 {
 		return ImportItemOutcome{
 			ResourceType: resourceTypeServerConfig,

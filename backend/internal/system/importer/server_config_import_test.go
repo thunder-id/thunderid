@@ -59,6 +59,23 @@ func TestImportResources_ServerConfig_SetsWritable(t *testing.T) {
 	assert.JSONEq(t, `["https://app.example.com", {"regex":"^https://x$"}]`, string(scSvc.set["cors"]))
 }
 
+func TestImportResources_ServerConfig_GatewayRefused(t *testing.T) {
+	scSvc := &fakeServerConfigService{}
+	svc := newServerConfigImportService(scSvc)
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{Content: `resource_type: server_config
+name: gateway
+value:
+  autoApply: true
+`})
+
+	require.Nil(t, err)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusFailed, resp.Results[0].Status)
+	assert.Equal(t, "gateway", resp.Results[0].ResourceName)
+	assert.Empty(t, scSvc.set)
+}
+
 func TestImportResources_ServerConfig_DryRunDoesNotWrite(t *testing.T) {
 	scSvc := &fakeServerConfigService{}
 	svc := newServerConfigImportService(scSvc)

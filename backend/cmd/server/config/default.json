@@ -495,7 +495,8 @@
     "allow_private_addresses": false,
     "removal_confirmation_threshold": 5,
     "store": "composite",
-    "apply_timeout_seconds": 300
+    "apply_timeout_seconds": 300,
+    "pipeline": []
   },
   "import": {
     "timeout_seconds": 120

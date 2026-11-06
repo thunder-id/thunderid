@@ -7,6 +7,7 @@ import (
 	"encoding/pem"
 	"net/http"
 	"net/http/httptest"
+	"time"
 
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
@@ -94,4 +95,60 @@ func (ts *ControlPlaneTestSuite) TestAChangeIsAppliedToTheDefaultGatewayWhenAuto
 	ts.True(refusing.importsSoon(1), "the control plane did not try to apply the change to its default gateway")
 	status, raw := ts.call(http.MethodGet, "/resource-servers/"+refusedID, nil, nil)
 	ts.Equal(http.StatusOK, status, string(raw))
+}
+
+// Auto apply is also an organization setting: turned on through the gateway server configuration
+// section, a change reaches the first gateway of the pipeline without a restart, and turned off
+// again, the next change does not.
+func (ts *ControlPlaneTestSuite) TestAutoApplyIsTurnedOnAndOffWithoutARestart() {
+	g := newApplyGateway()
+	ts.T().Cleanup(g.close)
+	gatewayID := ts.registerDefaultGateway(g.server)
+
+	var p struct {
+		Stages []struct {
+			Name            string `json:"name"`
+			AdminConsoleURL string `json:"adminConsoleUrl"`
+			Gateway         struct {
+				ID string `json:"id"`
+			} `json:"gateway"`
+		} `json:"stages"`
+	}
+	status, raw := ts.call(http.MethodGet, "/gateways/pipeline", nil, &p)
+	ts.Require().Equal(http.StatusOK, status, string(raw))
+	ts.Require().Len(p.Stages, 1, "without gateway.pipeline the default gateway is the one stage")
+	ts.Equal(gatewayID, p.Stages[0].Gateway.ID)
+	ts.Equal(g.server.URL+"/console", p.Stages[0].AdminConsoleURL)
+
+	status, raw = ts.call(http.MethodPut, "/server-config/gateway", map[string]any{"autoApply": true}, nil)
+	ts.Require().Equal(http.StatusOK, status, "the gateway section must be writable here: %s", raw)
+	defer func() {
+		status, raw := ts.call(http.MethodPut, "/server-config/gateway", map[string]any{}, nil)
+		ts.Equal(http.StatusOK, status, "failed to restore the gateway section: %s", raw)
+	}()
+
+	// The write that turns auto apply on is a change of its own, which a capture can follow and apply. Once
+	// what it set off has settled, only the resource server can bring the import that names it.
+	// The resource server's name is in the import as it is, unlike its identifier, which an export
+	// writes as a reference to a variable.
+	settled := g.settledImports(5 * time.Second)
+	name := unique("CP Org Auto Apply")
+	ts.createResourceServer(name, "https://"+unique("cp-org-auto-apply")+".example.com")
+	ts.True(g.importedSoon(settled, name),
+		"the control plane did not apply the change once auto apply was turned on")
+
+	status, raw = ts.call(http.MethodPut, "/server-config/gateway", map[string]any{"autoApply": false}, nil)
+	ts.Require().Equal(http.StatusOK, status, string(raw))
+	g.mu.Lock()
+	before := g.imports
+	g.mu.Unlock()
+	ts.createResourceServer(unique("CP Org Auto Apply Off"), "https://"+unique("cp-org-auto-apply-off")+".example.com")
+	ts.False(g.importsSoon(before+1), "the control plane applied a change after auto apply was turned off")
+
+	// The gateway section sets how this control plane deploys, so none of what it deployed carries it.
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	for _, content := range g.contents {
+		ts.NotContains(content, "autoApply", "an import carried the gateway section")
+	}
 }

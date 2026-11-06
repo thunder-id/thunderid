@@ -119,6 +119,31 @@ paths:
         "409":
           $ref: '#/components/responses/Conflict'
 
+  /gateways/pipeline:
+    get:
+      tags: [Gateways]
+      summary: Read the deploy pipeline
+      description: |
+        Returns the stages a version is deployed and promoted through, in order. A deploy enters
+        at the first; each later one is reached by promoting from the one before it.
+
+        The order, names and console addresses come from `gateway.pipeline` in the deployment
+        configuration. A stage naming a gateway that is not registered is left out. Without
+        `gateway.pipeline`, the default gateway is the one stage, named after it. A
+        stage without an `admin_console_url` is given the console its gateway serves, at
+        `/console` under its base URL.
+      responses:
+        "200":
+          description: The stages, in promotion order
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Pipeline'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+
   /gateways/{id}:
     parameters:
       - name: id
@@ -913,6 +938,30 @@ components:
               type: string
               format: password
               description: The token this control plane will present to that gateway.
+    Pipeline:
+      type: object
+      description: The stages a version is deployed and promoted through, in order.
+      required: [stages]
+      properties:
+        stages:
+          type: array
+          items:
+            $ref: '#/components/schemas/PipelineStage'
+
+    PipelineStage:
+      type: object
+      description: One stage of the pipeline, and the gateway it runs on.
+      required: [name, adminConsoleUrl, gateway]
+      properties:
+        name:
+          type: string
+          description: What the stage is called. The gateway's name unless the pipeline names it.
+        adminConsoleUrl:
+          type: string
+          description: Where the gateway's own console is reached, to manage its users and sessions.
+        gateway:
+          $ref: '#/components/schemas/Gateway'
+
     Gateway:
       type: object
       description: A registered gateway. Carries no `key` property, so no read can disclose one.

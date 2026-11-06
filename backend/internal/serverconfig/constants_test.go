@@ -26,3 +26,9 @@ func TestNotificationConfigNameSupported(t *testing.T) {
 	assert.True(t, ConfigNameNotification.IsValid())
 	assert.Contains(t, supportedConfigNames, ConfigNameNotification)
 }
+
+func TestOnlyGatewayStaysOnTheServer(t *testing.T) {
+	for _, name := range supportedConfigNames {
+		assert.Equal(t, name != ConfigNameGateway, name.IsPortable(), string(name))
+	}
+}

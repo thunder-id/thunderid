@@ -82,7 +82,7 @@ func (c *ChangeCapture) bind(versions *versionService) {
 		if svcErr != nil {
 			return fmt.Errorf("%s: %s", svcErr.Code, svcErr.Error.DefaultValue)
 		}
-		versions.applyToDefaultGateway(ctx, captured)
+		versions.applyToFirstGateway(ctx, captured)
 		return nil
 	}
 }
