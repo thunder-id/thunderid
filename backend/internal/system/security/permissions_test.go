@@ -432,6 +432,20 @@ func TestGetRequiredPermissionForAPI(t *testing.T) {
 			method: http.MethodGet, path: "/users/me/profile", wantPerm: "",
 		},
 
+		// ---- Session management paths ----
+		{name: "GET /sessions falls back to system", method: http.MethodGet, path: "/sessions", wantPerm: p.Root},
+		{name: "GET /users/me/sessions self-service", method: http.MethodGet, path: "/users/me/sessions", wantPerm: ""},
+		{name: "DELETE /sessions/{id} falls back to system", method: http.MethodDelete, path: "/sessions/s-1",
+			wantPerm: p.Root},
+		{name: "DELETE /users/me/sessions self-service", method: http.MethodDelete, path: "/users/me/sessions",
+			wantPerm: ""},
+		{name: "DELETE /users/me/sessions/{id} self-service", method: http.MethodDelete, path: "/users/me/sessions/s-1",
+			wantPerm: ""},
+		{name: "DELETE /users/me stays behind user permission", method: http.MethodDelete, path: "/users/me",
+			wantPerm: p.User},
+		{name: "DELETE /users/me/other stays behind user permission", method: http.MethodDelete,
+			path: "/users/me/other", wantPerm: p.User},
+
 		// ---- OU tree paths ----
 		{
 			name:   "GET /organization-units/tree",
@@ -792,6 +806,7 @@ func TestRouteTableUsesCatalogPermissions(t *testing.T) {
 
 	selfService := map[string]bool{
 		"GET /users/me": true, "PUT /users/me": true, "GET /users/me/**": true, "PUT /users/me/**": true,
+		"DELETE /users/me/sessions": true, "DELETE /users/me/sessions/**": true,
 		"POST /users/me/update-credentials": true,
 		"GET /register/passkey/**":          true, "POST /register/passkey/**": true,
 		"GET /scim/v2/Me": true, "PUT /scim/v2/Me": true,
