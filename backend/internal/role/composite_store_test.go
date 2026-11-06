@@ -394,3 +394,18 @@ func (suite *CompositeRoleStoreTestSuite) TestCascadeHooks_UseDatabaseStoreOnly(
 	suite.mockFileStore.AssertNotCalled(suite.T(), "DeleteRolePermission",
 		mock.Anything, mock.Anything, mock.Anything)
 }
+
+func (suite *CompositeRoleStoreTestSuite) TestGetRolesByPermission_MergesBothStores() {
+	suite.mockDBStore.On("GetRolesByPermission", mock.Anything, "rs1", "orders:read").
+		Return([]Role{{ID: "db-role", Name: "DB"}}, nil).Once()
+	suite.mockFileStore.On("GetRolesByPermission", mock.Anything, "rs1", "orders:read").
+		Return([]Role{{ID: "file-role", Name: "File"}}, nil).Once()
+
+	roles, err := suite.store.GetRolesByPermission(context.Background(), "rs1", "orders:read")
+
+	suite.NoError(err)
+	suite.Len(roles, 2)
+	for _, role := range roles {
+		suite.Equal(role.ID == "file-role", role.IsReadOnly, role.ID)
+	}
+}

@@ -52,6 +52,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/entitytype"
+	"github.com/thunder-id/thunderid/internal/flow/adminflow"
 	flowconfig "github.com/thunder-id/thunderid/internal/flow/config"
 	flowcore "github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/flow/executor"
@@ -637,6 +638,9 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	fatalOnError(ctx, logger, err, "Failed to initialize flow execution service")
 	err = application.SetSystemFlowProvider(applicationService, flowExecService)
 	fatalOnError(ctx, logger, err, "Failed to inject the system flow provider into the application service")
+	adminFlowRunner := adminflow.Initialize(serverConfigService, flowMgtService, flowExecService)
+	role.RegisterMCPTools(mcpServer, roleService, roleAssignmentService, resourceService, ouService, adminFlowRunner)
+	group.RegisterMCPTools(mcpServer, groupService, entityService, ouService, adminFlowRunner)
 
 	// Initialize OAuth services.
 	tokenValidator, dispatcher, err := oauth.Initialize(mux, actorProvider, authnProvider, jwtService, jweService,
