@@ -36,6 +36,8 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/constants"
 	sysContext "github.com/thunder-id/thunderid/internal/system/context"
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
+	"github.com/thunder-id/thunderid/internal/system/eventbus/defaultaudit"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/kmprovider/common"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -79,6 +81,9 @@ func main() {
 		logger.Fatal(ctx, "Failed to configure log output", log.Error(err))
 	}
 
+	// Build the audit event bus before any service, so nothing that publishes can start without it.
+	auditBus, auditStopper := initAuditBus(ctx, logger, cfg)
+
 	// Initialize the cache manager.
 	cacheManager := cache.Initialize(cfg.Cache, cfg.Server.Identifier)
 
@@ -92,12 +97,15 @@ func main() {
 	}
 
 	// Register the services.
-	jwtService, runtimeCryptoSvc, importService, mcpServer := registerServices(mux, cacheManager)
+	jwtService, runtimeCryptoSvc, importService, mcpServer := registerServices(mux, cacheManager, auditBus)
 
 	// When invoked as the bootstrap one-shot (`cpserver bootstrap`), create the
 	// default resources in-process and exit without starting the HTTP server.
 	if isBootstrapInvocation() {
-		if err := runBootstrap(ctx, logger, serverHome, importService, cacheManager); err != nil {
+		err := runBootstrap(ctx, logger, serverHome, importService, cacheManager)
+		// The bootstrap creates users, whose audit events must be written before the process exits.
+		auditStopper.Stop()
+		if err != nil {
 			logger.Error(ctx, "In-process bootstrap failed; exiting", log.Error(err))
 			os.Exit(1)
 		}
@@ -156,7 +164,19 @@ func main() {
 	// Wait for shutdown signal
 	<-sigChan
 	logger.Info(ctx, "Shutting down server...")
-	gracefulShutdown(ctx, logger, server, cacheManager, revocationSyncer)
+	gracefulShutdown(ctx, logger, server, cacheManager, revocationSyncer, auditStopper)
+}
+
+// initAuditBus builds the audit event bus with the default stdout sink. A failure stops startup, so
+// the Control Plane never runs with audit silently missing.
+func initAuditBus(ctx context.Context, logger *log.Logger,
+	cfg *config.Config) (eventbus.EventBusInterface, eventbus.StopperInterface) {
+	bus, stopper, err := defaultaudit.Initialize(cfg.Audit)
+	if err != nil {
+		logger.Fatal(ctx, "Failed to initialize audit", log.Error(err))
+	}
+	logger.Info(ctx, "Audit events", log.Bool("enabled", cfg.Audit.IsEnabled()))
+	return bus, stopper
 }
 
 // initRevocationCache builds the Resource Server token-revocation enforcer and its background syncer
@@ -253,12 +273,15 @@ func createHTTPServer(ctx context.Context, logger *log.Logger, cfg *config.Confi
 		revocationEnforcer)
 
 	// Build the middleware chain with proper execution order.
-	// Request flow: CorrelationID (outermost) -> SecurityHeaders -> AccessLog -> Security -> Route Handler (innermost)
+	// Request flow: CorrelationID (outermost) -> Client -> SecurityHeaders -> AccessLog -> Security ->
+	// Route Handler (innermost)
 	// Note: Middlewares are wrapped in reverse order - the last added will execute first.
 	// The Console frontend path is always excluded from the access log to keep it
 	// focused on API traffic. Additional prefixes can be excluded via log.access.exclude_paths.
 	handler := log.AccessLogHandler(logger, accessLogExcludePaths(cfg.Log.Access.ExcludePaths), securityMiddleware)
 	handler = middleware.SecurityHeadersMiddleware()(handler)
+	// Records the client every audit event a service publishes for the request carries.
+	handler = middleware.ClientMiddleware(handler)
 	handler = middleware.CorrelationIDMiddleware(handler)
 
 	// Build the server address using hostname and port from the configurations.
@@ -325,6 +348,7 @@ func gracefulShutdown(
 	server *http.Server,
 	cacheManager cache.CacheManagerInterface,
 	revocationSyncer revocationcache.Syncer,
+	auditStopper eventbus.StopperInterface,
 ) {
 	ctx, cancel := context.WithTimeout(ctx, shutdownTimeout)
 	defer cancel()
@@ -342,6 +366,9 @@ func gracefulShutdown(
 
 	// Stop the token-revocation cache syncer.
 	revocationSyncer.Stop()
+
+	// Stop audit once the HTTP server has stopped, so the last requests are still written.
+	auditStopper.Stop()
 
 	// Shutdown services
 	unregisterServices()

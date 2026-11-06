@@ -819,22 +819,25 @@ func (s *importService) importUser(
 			Code: ErrorInvalidYAMLContent.Code, Message: fmt.Sprintf("failed to marshal user credentials: %v", err)}
 	}
 
-	if dryRun {
-		if options.IsUpsertEnabled() && req.ID != "" {
-			_, svcErr := s.userService.GetUser(ctx, req.ID, false)
-			if svcErr == nil {
-				return successOutcome(resourceTypeUser, req.ID, "", operationUpdate)
-			}
-
-			if !isNotFoundServiceError(svcErr) {
-				return serviceErrorOutcome(resourceTypeUser, req.ID, "", operationUpdate, svcErr)
-			}
+	// The upsert looks the user up rather than attempting an update, so a create is not preceded by an
+	// audited failed update.
+	exists := false
+	if options.IsUpsertEnabled() && req.ID != "" {
+		_, svcErr := s.userService.GetUser(ctx, req.ID, false)
+		if svcErr != nil && !isNotFoundServiceError(svcErr) {
+			return serviceErrorOutcome(resourceTypeUser, req.ID, "", operationUpdate, svcErr)
 		}
+		exists = svcErr == nil
+	}
 
+	if dryRun {
+		if exists {
+			return successOutcome(resourceTypeUser, req.ID, "", operationUpdate)
+		}
 		return successOutcome(resourceTypeUser, req.ID, "", operationCreate)
 	}
 
-	if options.IsUpsertEnabled() && req.ID != "" {
+	if exists {
 		updated, svcErr := s.userService.UpdateUser(ctx, req.ID, userReq)
 		if svcErr == nil {
 			if credentialsToKeep != nil {
@@ -868,10 +871,7 @@ func (s *importService) importUser(
 			}
 			return successOutcome(resourceTypeUser, updated.ID, "", operationUpdate)
 		}
-
-		if !isNotFoundServiceError(svcErr) {
-			return serviceErrorOutcome(resourceTypeUser, req.ID, "", operationUpdate, svcErr)
-		}
+		return serviceErrorOutcome(resourceTypeUser, req.ID, "", operationUpdate, svcErr)
 	}
 
 	created, svcErr := s.userService.CreateUser(ctx, userReq)

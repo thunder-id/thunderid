@@ -65,6 +65,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/csp"
 	dbprovider "github.com/thunder-id/thunderid/internal/system/database/provider"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
 	"github.com/thunder-id/thunderid/internal/system/export"
 	healthcheckservice "github.com/thunder-id/thunderid/internal/system/healthcheck/service"
 	i18nmgt "github.com/thunder-id/thunderid/internal/system/i18n/mgt"
@@ -93,12 +94,14 @@ var observabilitySvc observability.ObservabilityServiceInterface
 var changeCapture = gateway.NewChangeCapture()
 
 // registerServices registers the Control Plane management services with the provided HTTP
-// multiplexer. It also returns the import service so the bootstrap subcommand can create default
-// resources in-process through the same service instances.
+// multiplexer, with the services that audit what they change publishing on auditBus. It also returns
+// the import service so the bootstrap subcommand can create default resources in-process through the
+// same service instances.
 // nolint:gocyclo // This is the main service registration function, so its length is expected to be proportional
 // to the number of services. Eventhough it has many branching statements, almost all are early exits so cognitive
 // complexity is low.
-func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterface) (
+func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterface,
+	auditBus eventbus.EventBusInterface) (
 	jwt.JWTServiceInterface, kmprovider.RuntimeCryptoProvider, importer.ImportServiceInterface,
 	*mcpsdk.Server) {
 	logger := log.GetLogger()
@@ -249,7 +252,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 
 	userService, ouUserResolver, userExporter, err := user.Initialize(
 		mux, entityService, ouService, entityTypeService, ouAuthzService, governanceService,
-		attributeVerificationService, sharingService, valueCapture,
+		attributeVerificationService, sharingService, valueCapture, auditBus,
 	)
 	fatalOnError(ctx, logger, err, "Failed to initialize UserService")
 	exporters = append(exporters, userExporter)

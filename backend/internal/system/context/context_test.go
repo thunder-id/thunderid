@@ -302,3 +302,24 @@ func (s *ContextTestSuite) TestAccessingOUIDIsOverwritten() {
 
 	s.Equal("customer-b", GetAccessingOUID(ctx))
 }
+
+func (s *ContextTestSuite) TestClientRoundTrips() {
+	address, userAgent := GetClient(WithClient(context.Background(), "192.0.2.10", "audit-test/1.0"))
+
+	s.Equal("192.0.2.10", address)
+	s.Equal("audit-test/1.0", userAgent)
+}
+
+func (s *ContextTestSuite) TestGetClientWithoutOne() {
+	address, userAgent := GetClient(context.Background())
+	s.Empty(address)
+	s.Empty(userAgent)
+}
+
+func (s *ContextTestSuite) TestGetClientWithWrongType() {
+	ctx := context.WithValue(context.WithValue(context.Background(), ClientAddressKey, 1), ClientUserAgentKey, 2)
+
+	address, userAgent := GetClient(ctx)
+	s.Empty(address)
+	s.Empty(userAgent)
+}

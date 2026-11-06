@@ -732,6 +732,13 @@ func initSQLiteDB(name, schemaPath, dbPath string) error {
 	return nil
 }
 
+// ServerLogPath is the file a server started by a test subprocess writes its standard output and
+// standard error to. It is only ever appended to, so a reader records an offset before the action it
+// checks.
+func ServerLogPath() string {
+	return filepath.Join(GetExtractedProductHome(), "thunderid-restart.log")
+}
+
 // pidFilePath returns the path to the well-known PID file that always reflects the
 // PID of the currently running the server process, even after subprocess restarts.
 // Returns an empty string when extractedProductHome is not yet set, so callers
@@ -809,7 +816,7 @@ func startServerInternal(port string, extraArgs ...string) error {
 		// drain before declaring the test done, and the long-lived server process
 		// would keep those pipes open indefinitely, causing a 60s WaitDelay timeout.
 		// Redirect to a log file in the extracted product home so output is not lost.
-		logPath := filepath.Join(extractedProductHome, "thunderid-restart.log")
+		logPath := ServerLogPath()
 		var openErr error
 		logFile, openErr = os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 		if openErr != nil {

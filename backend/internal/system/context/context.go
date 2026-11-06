@@ -22,6 +22,12 @@ const (
 	// AccessingOUIDKey is the context key for the organization unit a request is made on behalf of,
 	// as opposed to the one the caller belongs to.
 	AccessingOUIDKey contextKey = "accessing_ou_id"
+
+	// ClientAddressKey is the context key for the TCP peer address of the request.
+	ClientAddressKey contextKey = "client_address"
+
+	// ClientUserAgentKey is the context key for the user agent of the request.
+	ClientUserAgentKey contextKey = "client_user_agent"
 )
 
 // ============================================================================
@@ -132,4 +138,21 @@ func WithAccessingOUID(ctx context.Context, ouID string) context.Context {
 		ctx = context.Background()
 	}
 	return context.WithValue(ctx, AccessingOUIDKey, ouID)
+}
+
+// ============================================================================
+// Client Functions
+// ============================================================================
+
+// GetClient retrieves where the request came from, its TCP peer address and its user agent, or ""
+// for each one the context does not carry.
+func GetClient(ctx context.Context) (address, userAgent string) {
+	address, _ = ctx.Value(ClientAddressKey).(string)
+	userAgent, _ = ctx.Value(ClientUserAgentKey).(string)
+	return address, userAgent
+}
+
+// WithClient records where the request came from, its TCP peer address and its user agent.
+func WithClient(ctx context.Context, address, userAgent string) context.Context {
+	return context.WithValue(context.WithValue(ctx, ClientAddressKey, address), ClientUserAgentKey, userAgent)
 }

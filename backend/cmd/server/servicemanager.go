@@ -94,6 +94,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/csp"
 	dbprovider "github.com/thunder-id/thunderid/internal/system/database/provider"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
 	"github.com/thunder-id/thunderid/internal/system/export"
 	healthcheckservice "github.com/thunder-id/thunderid/internal/system/healthcheck/service"
 	httpservice "github.com/thunder-id/thunderid/internal/system/http"
@@ -123,13 +124,15 @@ import (
 // observabilitySvc is the observability service instance. This is used for graceful shutdown.
 var observabilitySvc observability.ObservabilityServiceInterface
 
-// registerServices registers all the services with the provided HTTP multiplexer.
+// registerServices registers all the services with the provided HTTP multiplexer, with the services that
+// audit what they change publishing on auditBus.
 // It also returns the import service so the bootstrap subcommand can create default
 // resources in-process through the same service instances.
 // nolint:gocyclo // This is the main service registration function, so its length is expected to be proportional
 // to the number of services. Eventhough it has many branching statements, almost all are early exits so cognitive
 // complexity is low.
-func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterface) (
+func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterface,
+	auditBus eventbus.EventBusInterface) (
 	jwt.JWTServiceInterface, kmprovider.RuntimeCryptoProvider, importer.ImportServiceInterface, *mcpsdk.Server,
 	backchannel.DispatcherInterface, identitygovernance.LockNotifierInterface) {
 	logger := log.GetLogger()
@@ -297,7 +300,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 
 	userService, ouUserResolver, userExporter, err := user.Initialize(
 		mux, entityService, ouService, entityTypeService, ouAuthzService, governanceService,
-		attributeVerificationService, sharingService, nil,
+		attributeVerificationService, sharingService, nil, auditBus,
 	)
 	fatalOnError(ctx, logger, err, "Failed to initialize UserService")
 	exporters = append(exporters, userExporter)

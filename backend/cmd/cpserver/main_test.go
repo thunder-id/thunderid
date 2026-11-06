@@ -10,9 +10,11 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/json"
 	"encoding/pem"
 	"errors"
 	"flag"
+	"fmt"
 	"io"
 	"math/big"
 	"net"
@@ -21,6 +23,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -33,7 +36,12 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/constants"
 	sysContext "github.com/thunder-id/thunderid/internal/system/context"
+	"github.com/thunder-id/thunderid/internal/system/cryptolib"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
+	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/revocationcache"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/tests/mocks/jose/jwtmock"
 )
 
@@ -694,4 +702,96 @@ func TestAccessLogExcludePaths(t *testing.T) {
 	// and silently disable all access logging.
 	assert.Equal(t, []string{"/console/", "/health/"},
 		accessLogExcludePaths([]string{"", "/health/", "/"}))
+}
+
+// testAuditAPIKey is the management API key the audit test presents.
+const testAuditAPIKey = "pat-0123456789abcdef"
+
+// auditLines sends standard output to a pipe until the returned function is called, which returns the
+// audit lines written to it.
+func auditLines(t *testing.T) func() []string {
+	t.Helper()
+	reader, writer, err := os.Pipe()
+	require.NoError(t, err)
+	original := os.Stdout
+	os.Stdout = writer
+	t.Cleanup(func() { os.Stdout = original })
+	return func() []string {
+		os.Stdout = original
+		require.NoError(t, writer.Close())
+		written, err := io.ReadAll(reader)
+		require.NoError(t, err)
+		var lines []string
+		for _, line := range strings.Split(string(written), "\n") {
+			if strings.HasPrefix(line, `{"log_type":"AUDIT",`) {
+				lines = append(lines, line)
+			}
+		}
+		return lines
+	}
+}
+
+// A user change a service publishes while serving a request, through the whole request chain, writes
+// one audit line with the actor the security layer verified, the peer address and user agent, and the
+// trace ID of the response. With audit off it writes none.
+func TestCreateHTTPServer_AuditsTheEventAServicePublishes(t *testing.T) {
+	for _, enabled := range []bool{true, false} {
+		t.Run(fmt.Sprintf("enabled=%t", enabled), func(t *testing.T) {
+			cfg := &config.Config{
+				Server: engineconfig.ServerConfig{
+					Hostname: "localhost",
+					HTTPOnly: true,
+					SecurityConfig: engineconfig.SecurityConfig{
+						ManagementAPIKeyHash: cryptolib.HashToken(testAuditAPIKey),
+					},
+				},
+				Audit: config.AuditConfig{Enabled: &enabled},
+			}
+			config.ResetServerRuntime()
+			require.NoError(t, config.InitializeServerRuntime("", cfg))
+			t.Cleanup(config.ResetServerRuntime)
+			security.InitSystemPermissions("")
+			enforcer, _, err := revocationcache.Initialize(revocationcache.Config{})
+			require.NoError(t, err)
+
+			read := auditLines(t)
+			bus, stopper := initAuditBus(context.Background(), log.GetLogger(), cfg)
+			mux := http.NewServeMux()
+			mux.HandleFunc("POST /import", func(w http.ResponseWriter, r *http.Request) {
+				ctx := r.Context()
+				user := audit.Ref{Type: audit.TargetTypeUser, ID: "u1"}
+				eventbus.TryPublish(ctx, bus, eventbus.NewEvent(ctx, audit.EventUserCreate).
+					With(audit.NewPayload(ctx, user, audit.ActionCreate, audit.OutcomeSucceeded).WithSubject(user)))
+				w.WriteHeader(http.StatusOK)
+			})
+			server := createHTTPServer(context.Background(), log.GetLogger(), cfg, mux, nil, enforcer)
+
+			request := httptest.NewRequest(http.MethodPost, "/import", nil)
+			request.RemoteAddr = "192.0.2.10:52814"
+			request.Header.Set("User-Agent", "audit-test/1.0")
+			request.Header.Set(constants.APIKeyHeaderName, testAuditAPIKey)
+			response := httptest.NewRecorder()
+			server.Handler.ServeHTTP(response, request)
+			stopper.Stop()
+
+			require.Equal(t, http.StatusOK, response.Code)
+			lines := read()
+			if !enabled {
+				assert.Empty(t, lines)
+				return
+			}
+			require.Len(t, lines, 1)
+			var line struct {
+				Event   string            `json:"event"`
+				TraceID string            `json:"trace_id"`
+				Actor   map[string]string `json:"actor"`
+				Client  map[string]string `json:"client"`
+			}
+			require.NoError(t, json.Unmarshal([]byte(lines[0]), &line))
+			assert.Equal(t, audit.EventUserCreate, line.Event)
+			assert.Equal(t, response.Header().Get(constants.CorrelationIDHeaderName), line.TraceID)
+			assert.Equal(t, map[string]string{"type": "system", "id": "management-api-key"}, line.Actor)
+			assert.Equal(t, map[string]string{"address": "192.0.2.10", "user_agent": "audit-test/1.0"}, line.Client)
+		})
+	}
 }

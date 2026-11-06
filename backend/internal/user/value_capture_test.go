@@ -70,6 +70,7 @@ func newCapturingUserService(t *testing.T, capturer declarativeresource.ValueCap
 		authzService:      newAllowAllAuthz(t),
 		uuidGenerator:     utils.GenerateUUIDv7,
 		valueCapturer:     capturer,
+		bus:               discardingBus{},
 	}
 }
 

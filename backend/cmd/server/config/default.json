@@ -291,6 +291,9 @@
       "exclude_paths": []
     }
   },
+  "audit": {
+    "enabled": true
+  },
   "observability": {
     "enabled": false,
     "output": {

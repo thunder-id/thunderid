@@ -798,6 +798,11 @@ type fakeUserService struct {
 	deleted                     []string
 	// credentialUpdates records each credential update, by user.
 	credentialUpdates []string
+	// existing names the users GetUser finds, and getErr, when set, is what GetUser fails with instead.
+	existing map[string]bool
+	getErr   *tidcommon.ServiceError
+	// updated records each user update, by user.
+	updated []string
 }
 
 func (f *fakeUserService) CreateUser(
@@ -814,8 +819,14 @@ func (f *fakeUserService) CreateUser(
 }
 
 func (f *fakeUserService) GetUser(
-	_ context.Context, _ string, _ bool,
+	_ context.Context, userID string, _ bool,
 ) (*providers.User, *tidcommon.ServiceError) {
+	if f.getErr != nil {
+		return nil, f.getErr
+	}
+	if f.existing[userID] {
+		return &providers.User{ID: userID}, nil
+	}
 	return nil, &tidcommon.ServiceError{
 		Type:  tidcommon.ClientErrorType,
 		Code:  "USR-1003",
@@ -826,6 +837,7 @@ func (f *fakeUserService) GetUser(
 func (f *fakeUserService) UpdateUser(
 	_ context.Context, userID string, u *providers.User,
 ) (*providers.User, *tidcommon.ServiceError) {
+	f.updated = append(f.updated, userID)
 	updated := *u
 	updated.ID = userID
 	return &updated, nil
@@ -1867,7 +1879,7 @@ func TestImportResources_GroupMemberFailureReturnsError(t *testing.T) {
 }
 
 func TestImportResources_UserCredentialFailureRollsBackCreate(t *testing.T) {
-	userSvc := &fakeUserService{updateCredentialsShouldFail: true}
+	userSvc := &fakeUserService{updateCredentialsShouldFail: true, existing: map[string]bool{"user-1": true}}
 	svc := newImportService(
 		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, userSvc, nil, nil, nil, nil, nil, nil, nil)
 
@@ -1897,7 +1909,7 @@ func TestImportResources_UserCredentialFailureRollsBackCreate(t *testing.T) {
 // importing its own export names each credential it cannot export the value of. A new user is still
 // refused an empty credential.
 func TestImportResources_UserUpdateKeepsACredentialCarryingNoValue(t *testing.T) {
-	userSvc := &fakeUserService{updateCredentialsShouldFail: true}
+	userSvc := &fakeUserService{updateCredentialsShouldFail: true, existing: map[string]bool{"user-1": true}}
 	svc := newImportService(
 		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, userSvc, nil, nil, nil, nil, nil, nil, nil)
 	user := func(id string) string {
@@ -1929,6 +1941,68 @@ func TestImportResources_UserUpdateKeepsACredentialCarryingNoValue(t *testing.T)
 	require.Len(t, resp.Results, 1)
 	assert.Equal(t, statusFailed, resp.Results[0].Status, "a new user was created without a credential")
 	assert.Equal(t, []string{"user-2"}, userSvc.credentialUpdates)
+}
+
+// An upsert of a user that does not exist creates it without first attempting an update, so the user
+// service records no failed update for it.
+func TestImportResources_UserUpsertCreatesAMissingUserWithoutAnUpdate(t *testing.T) {
+	userSvc := &fakeUserService{}
+	svc := newImportService(
+		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, userSvc, nil, nil, nil, nil, nil, nil, nil)
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{Content: upsertedUser("user-1")})
+
+	require.Nil(t, err)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status, resp.Results[0].Message)
+	assert.Equal(t, operationCreate, resp.Results[0].Operation)
+	assert.Empty(t, userSvc.updated)
+	require.Len(t, userSvc.created, 1)
+	assert.Equal(t, "user-1", userSvc.created[0].ID)
+}
+
+func TestImportResources_UserUpsertUpdatesAnExistingUser(t *testing.T) {
+	userSvc := &fakeUserService{existing: map[string]bool{"user-1": true}}
+	svc := newImportService(
+		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, userSvc, nil, nil, nil, nil, nil, nil, nil)
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{Content: upsertedUser("user-1")})
+
+	require.Nil(t, err)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status, resp.Results[0].Message)
+	assert.Equal(t, operationUpdate, resp.Results[0].Operation)
+	assert.Equal(t, []string{"user-1"}, userSvc.updated)
+	assert.Empty(t, userSvc.created)
+}
+
+// A user whose existence cannot be determined is neither updated nor created.
+func TestImportResources_UserUpsertFailsWhenTheLookupFails(t *testing.T) {
+	userSvc := &fakeUserService{getErr: &tidcommon.InternalServerError}
+	svc := newImportService(
+		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, userSvc, nil, nil, nil, nil, nil, nil, nil)
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{Content: upsertedUser("user-1")})
+
+	require.Nil(t, err)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusFailed, resp.Results[0].Status)
+	assert.Equal(t, tidcommon.InternalServerError.Code, resp.Results[0].Code)
+	assert.Empty(t, userSvc.updated)
+	assert.Empty(t, userSvc.created)
+}
+
+// upsertedUser is the document of a user with id, imported with the default upsert.
+func upsertedUser(id string) string {
+	return strings.Join([]string{
+		"resource_type: user",
+		"id: " + id,
+		"type: customer",
+		"ouId: ou-1",
+		"attributes:",
+		"  username: " + id,
+		"",
+	}, "\n")
 }
 
 func TestImportResources_OrganizationUnitUpsertCreatePreservesID(t *testing.T) {
@@ -4823,7 +4897,7 @@ func TestImportUserAppliesSharingPolicies(t *testing.T) {
 // An update replays the document's policies too.
 func TestImportUserReplaysPoliciesOnUpdate(t *testing.T) {
 	sharingSvc := &fakeSharingService{}
-	svc := newTestUserImportWithSharing(&fakeUserService{}, sharingSvc)
+	svc := newTestUserImportWithSharing(&fakeUserService{existing: map[string]bool{"user-2": true}}, sharingSvc)
 
 	resp, err := svc.ImportResources(context.Background(), &ImportRequest{
 		Content: userDocWithPolicies("user-2"), Options: &ImportOptions{Upsert: boolPtr(true)}})
@@ -4999,7 +5073,7 @@ func (s *ImportUserMandatedRolesTestSuite) TestImportUserMandatedRolesRefusedUnd
 // An existing user's policies are not replayed without their roles, which would strip the mandates its share already
 // holds: the whole replay waits, and a refusal fails the update without undoing it.
 func (s *ImportUserMandatedRolesTestSuite) TestImportExistingUserDefersItsMandatingPolicies() {
-	userSvc := &fakeUserService{}
+	userSvc := &fakeUserService{existing: map[string]bool{"user-8": true}}
 	sharingSvc := refuseMandates()
 	svc := newTestUserImportWithSharing(userSvc, sharingSvc)
 
