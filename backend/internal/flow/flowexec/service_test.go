@@ -2697,14 +2697,14 @@ func (s *ServiceTestSuite) TestLoadNewContext_ByIDRefusesInvitationWithoutTokenO
 	s.Equal(ErrorInvitationOUMissing.Code, svcErr.Code)
 }
 
-// Every flow started by ID needs the root permission for now, checked before the flow is resolved.
+// Every flow started by ID needs a system permission for now, checked before the flow is resolved.
 func (s *ServiceTestSuite) TestLoadNewContext_ByIDRefusesCallerWithoutRootPermission() {
 	security.InitSystemPermissions("")
 	mockFlowProvider := NewFlowProviderMock(s.T())
 	service := &flowExecService{flowProvider: mockFlowProvider, cfg: testFlowExecCfg}
 
 	for _, flowID := range []string{"administration-1", "invitation-1"} {
-		engineCtx, svcErr := service.loadNewContext(authenticatedAdminContext([]string{"system:user"}),
+		engineCtx, svcErr := service.loadNewContext(authenticatedAdminContext([]string{"orders:read"}),
 			flowID, "", "", "", false, "", nil, "", "", log.GetLogger())
 
 		s.Nil(engineCtx)
@@ -2773,7 +2773,7 @@ func (s *ServiceTestSuite) TestValidateAdministrationCaller() {
 	// table. /flow/execute is a public path, so this boundary must hold on its own.
 	s.Run("RejectsAuthenticatedCallerWithoutSystemPermission", func() {
 		svcErr := validateAdministrationCaller(
-			authenticatedAdminContext([]string{"system:user:view"}), providers.FlowTypeAdministration)
+			authenticatedAdminContext([]string{"orders:read", "systemic:user"}), providers.FlowTypeAdministration)
 
 		s.Require().NotNil(svcErr)
 		s.Equal(ErrorAdministrationPermissionRequired.Code, svcErr.Code)
@@ -2782,6 +2782,11 @@ func (s *ServiceTestSuite) TestValidateAdministrationCaller() {
 	s.Run("AllowsAuthenticatedCallerWithSystemPermission", func() {
 		s.Nil(validateAdministrationCaller(
 			authenticatedAdminContext([]string{"system"}), providers.FlowTypeAdministration))
+	})
+
+	s.Run("AllowsAuthenticatedCallerWithFineGrainedSystemPermission", func() {
+		s.Nil(validateAdministrationCaller(
+			authenticatedAdminContext([]string{"system:user:create"}), providers.FlowTypeAdministration))
 	})
 
 	s.Run("AllowsPublicInteractiveFlow", func() {

@@ -1627,7 +1627,7 @@ nodes:
   type: TASK_EXECUTION
   properties:
     requiredScopes:
-    - system:user
+    - system:user:create
   executor:
     name: PermissionValidator
   onSuccess: user_type_resolver
@@ -2217,7 +2217,7 @@ nodes:
   type: TASK_EXECUTION
   properties:
     requiredScopes:
-    - system:user
+    - system:user:delete
   executor:
     name: PermissionValidator
   onSuccess: pre_delete
@@ -2398,7 +2398,7 @@ nodes:
   type: TASK_EXECUTION
   properties:
     requiredScopes:
-    - system
+    - system:role:update
   executor:
     name: PermissionValidator
   onSuccess: pre_role_assignment_removal
@@ -2492,7 +2492,7 @@ nodes:
   type: TASK_EXECUTION
   properties:
     requiredScopes:
-    - system
+    - system:rs:update
   executor:
     name: PermissionValidator
   onSuccess: pre_action_deletion
@@ -2585,7 +2585,7 @@ nodes:
   type: TASK_EXECUTION
   properties:
     requiredScopes:
-    - system
+    - system:role:delete
   executor:
     name: PermissionValidator
   onSuccess: pre_role_deletion
@@ -2679,7 +2679,7 @@ nodes:
   type: TASK_EXECUTION
   properties:
     requiredScopes:
-    - system:group
+    - system:group:delete
   executor:
     name: PermissionValidator
   onSuccess: pre_group_deletion
@@ -2773,7 +2773,7 @@ nodes:
   type: TASK_EXECUTION
   properties:
     requiredScopes:
-    - system:group
+    - system:group:update
   executor:
     name: PermissionValidator
   onSuccess: pre_group_membership_removal
@@ -2867,7 +2867,7 @@ nodes:
   type: TASK_EXECUTION
   properties:
     requiredScopes:
-    - system
+    - system:role:update
   executor:
     name: PermissionValidator
   onSuccess: pre_role_permission_removal
@@ -6984,7 +6984,7 @@ nodes:
   type: TASK_EXECUTION
   properties:
     requiredScopes:
-    - system:user
+    - system:user:update
   executor:
     name: PermissionValidator
   onSuccess: access_governance
@@ -7059,7 +7059,7 @@ nodes:
   type: TASK_EXECUTION
   properties:
     requiredScopes:
-    - system:agent
+    - system:agent:update
   executor:
     name: PermissionValidator
   onSuccess: access_governance
@@ -7114,7 +7114,7 @@ nodes:
   type: TASK_EXECUTION
   properties:
     requiredScopes:
-    - system:user
+    - system:user:update
   executor:
     name: PermissionValidator
   onSuccess: pre_suspend
@@ -7225,7 +7225,7 @@ nodes:
   type: TASK_EXECUTION
   properties:
     requiredScopes:
-    - system:user
+    - system:user:update
   executor:
     name: PermissionValidator
   onSuccess: access_governance
@@ -7300,7 +7300,7 @@ nodes:
   type: TASK_EXECUTION
   properties:
     requiredScopes:
-    - system:agent
+    - system:agent:update
   executor:
     name: PermissionValidator
   onSuccess: pre_suspend
@@ -7411,7 +7411,7 @@ nodes:
   type: TASK_EXECUTION
   properties:
     requiredScopes:
-    - system:agent
+    - system:agent:update
   executor:
     name: PermissionValidator
   onSuccess: access_governance

@@ -323,8 +323,9 @@ func (s *flowExecService) buildErrorAssertion(ctx context.Context, engineCtx *En
 	return token
 }
 
-// validateAdministrationCaller gates administration flows on an authenticated caller that holds the
-// root system permission.
+// validateAdministrationCaller gates administration flows on an authenticated caller that holds a
+// system permission, the root or any permission under it. Which permission a flow needs is the
+// PermissionValidator's job; this gate only keeps callers with none out.
 //
 // The check is deliberately positive: it asserts what the caller must present rather than inferring
 // it from the absence of the runtime marker. /flow/execute is a public path, so an unauthenticated
@@ -333,8 +334,8 @@ func (s *flowExecService) buildErrorAssertion(ctx context.Context, engineCtx *En
 // therefore falls back to the root permission. Asserting the permission here keeps the gate intact
 // if either of those tables changes.
 //
-// PermissionValidator remains in the administration flow templates as defense in depth; this is the
-// boundary that must hold even for a hand-built flow that omits it.
+// A hand-built flow that omits PermissionValidator runs for any caller holding a system permission;
+// the services it calls still authorize each action.
 func validateAdministrationCaller(ctx context.Context, flowType providers.FlowType) *tidcommon.ServiceError {
 	if flowType != providers.FlowTypeAdministration {
 		return nil
@@ -342,7 +343,7 @@ func validateAdministrationCaller(ctx context.Context, flowType providers.FlowTy
 	if security.IsRuntimeContext(ctx) || security.GetSubject(ctx) == "" {
 		return &ErrorFlowAuthenticationRequired
 	}
-	if !security.HasSystemPermission(security.GetPermissions(ctx)) {
+	if !security.HasAnySystemPermission(security.GetPermissions(ctx)) {
 		return &ErrorAdministrationPermissionRequired
 	}
 	return nil

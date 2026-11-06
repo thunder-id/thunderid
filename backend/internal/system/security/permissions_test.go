@@ -1253,3 +1253,17 @@ func TestMCPToolPermissionsUseCatalogPermissions(t *testing.T) {
 	}
 	InitSystemPermissions("")
 }
+
+func TestHasAnySystemPermission(t *testing.T) {
+	InitSystemPermissions("")
+
+	assert.True(t, HasAnySystemPermission([]string{"system"}))
+	assert.True(t, HasAnySystemPermission([]string{"orders:read", "system:user:create"}))
+	assert.False(t, HasAnySystemPermission([]string{"systemic:user", "orders:read"}))
+	assert.False(t, HasAnySystemPermission(nil))
+
+	InitSystemPermissions("mgmt")
+	defer InitSystemPermissions("")
+	assert.True(t, HasAnySystemPermission([]string{"mgmt:system:user:view"}))
+	assert.False(t, HasAnySystemPermission([]string{"system:user:view"}))
+}

@@ -1034,6 +1034,20 @@ func HasSystemPermission(permissions []string) bool {
 	return false
 }
 
+// HasAnySystemPermission reports whether any permission is the root system permission or sits under it,
+// such as "system:user:create". It says only that the caller holds some system permission, not which.
+func HasAnySystemPermission(permissions []string) bool {
+	if sysPerms == nil {
+		return false
+	}
+	for _, p := range permissions {
+		if p == sysPerms.Root || strings.HasPrefix(p, sysPerms.Root+":") {
+			return true
+		}
+	}
+	return false
+}
+
 // HasSufficientPermission returns true if any permission in userPermissions satisfies
 // the required permission using hierarchical scope matching.
 //
