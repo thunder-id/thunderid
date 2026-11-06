@@ -3,6 +3,7 @@
 
 /* eslint-disable @typescript-eslint/no-unsafe-return */
 import userEvent from '@testing-library/user-event';
+import {ProjectScopeProvider} from '@thunderid/contexts';
 import {fireEvent, render, screen, waitFor} from '@thunderid/test-utils';
 import type {ComponentProps, ReactNode} from 'react';
 import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
@@ -302,6 +303,47 @@ describe('AgentEditPage', () => {
       data: {id: 'default-type', handle: 'default', displayName: 'Default', schema: {}},
       isLoading: false,
       error: null,
+    });
+  });
+
+  describe('Project scope', () => {
+    it("goes to the selected project's agents when the agent belongs to another project", async () => {
+      mockUseGetAgent.mockReturnValue({
+        data: {...baseAgent, projectId: 'project-b'},
+        isLoading: false,
+        error: null,
+        isError: false,
+        refetch: mockRefetch,
+      });
+
+      render(
+        <ProjectScopeProvider project={{id: 'project-a'}}>
+          <AgentEditPage />
+        </ProjectScopeProvider>,
+      );
+
+      await waitFor(() => {
+        expect(mockNavigate).toHaveBeenCalledWith('/agents', {replace: true});
+      });
+      expect(screen.queryByText('Test Agent')).not.toBeInTheDocument();
+    });
+
+    it("shows the agent when it belongs to the selected project", () => {
+      mockUseGetAgent.mockReturnValue({
+        data: {...baseAgent, projectId: 'project-a'},
+        isLoading: false,
+        error: null,
+        isError: false,
+        refetch: mockRefetch,
+      });
+
+      render(
+        <ProjectScopeProvider project={{id: 'project-a'}}>
+          <AgentEditPage />
+        </ProjectScopeProvider>,
+      );
+
+      expect(mockNavigate).not.toHaveBeenCalledWith('/agents', {replace: true});
     });
   });
 

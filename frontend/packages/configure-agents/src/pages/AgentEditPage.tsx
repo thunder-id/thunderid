@@ -18,6 +18,7 @@ import {
   validateBackchannelLogoutUri,
 } from '@thunderid/configure-applications';
 import {dropNonConformingOptionalAttributes} from '@thunderid/configure-users';
+import {useProjectScope} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {getErrorMessage, isEqualIgnoringEmpty} from '@thunderid/utils';
 import {
@@ -36,7 +37,7 @@ import {
   Typography,
 } from '@wso2/oxygen-ui';
 import {ArrowLeft, Edit} from '@wso2/oxygen-ui-icons-react';
-import {useState, useCallback, useMemo, type SyntheticEvent, type JSX, type ReactNode} from 'react';
+import {useState, useCallback, useEffect, useMemo, type SyntheticEvent, type JSX, type ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
 import {Link, useLocation, useNavigate, useParams} from 'react-router';
 import useGetAgent from '../api/useGetAgent';
@@ -90,6 +91,13 @@ export default function AgentEditPage(): JSX.Element {
   const {agentId} = useParams<{agentId: string}>();
 
   const {data: agent, isLoading, error, refetch} = useGetAgent(agentId ?? '');
+  const {projectId} = useProjectScope();
+  // Another project's agent is not shown in the selected one: a deep link, a stale tab or a switch of
+  // project goes to the selected project's agents instead.
+  const isOtherProject = Boolean(projectId && agent && agent.projectId !== projectId);
+  useEffect(() => {
+    if (isOtherProject) void navigate(routes.agents.list(), {replace: true});
+  }, [isOtherProject, navigate, routes]);
   const updateAgent = useUpdateAgent();
   const handleStatusChanged = useCallback((): void => {
     void refetch();
@@ -187,7 +195,7 @@ export default function AgentEditPage(): JSX.Element {
 
   const resourceTypeTitle = t('agents:listing.title', 'Agents');
 
-  if (isLoading || isSchemaResolving) {
+  if (isLoading || isSchemaResolving || isOtherProject) {
     return (
       <>
         <DocumentTitle title={resourceTypeTitle} />
