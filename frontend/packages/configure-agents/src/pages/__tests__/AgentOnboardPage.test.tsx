@@ -234,6 +234,11 @@ describe('AgentOnboardPage', () => {
     h.http.request.mockResolvedValue({data: {flowStatus: 'INCOMPLETE'}});
   });
 
+  const credentialsStep = () =>
+    givenStep([{id: 'client_id', label: 'Client ID', source: 'clientId', type: 'COPYABLE_TEXT'}], {
+      clientId: 'agent-client-id',
+    });
+
   describe('resolving the flow', () => {
     it('should show a spinner while the flow is being resolved', () => {
       h.resolve.mockReturnValue(new Promise<AgentOnboardingFlowResolution>(() => undefined));
@@ -940,11 +945,6 @@ describe('AgentOnboardPage', () => {
   // A step with nothing to submit is the end of the run. Leaving the header X as the only exit
   // strands the administrator on the screen they were told to copy a secret from.
   describe('finishing', () => {
-    const credentialsStep = () =>
-      givenStep([{id: 'client_id', label: 'Client ID', source: 'clientId', type: 'COPYABLE_TEXT'}], {
-        clientId: 'agent-client-id',
-      });
-
     it('should offer a way out of a step with nothing to submit', async () => {
       credentialsStep();
 
@@ -1091,6 +1091,31 @@ describe('AgentOnboardPage', () => {
       (await screen.findByRole('button', {name: 'Close'})).click();
 
       expect(h.navigate).toHaveBeenCalledWith(defaultAgentRoutePaths.welcome.getStarted());
+    });
+
+    it('should hand the close to the host instead of navigating when it supplies one', async () => {
+      credentialsStep();
+      const onClose = vi.fn();
+
+      render(<AgentOnboardPage embedded onClose={onClose} />);
+
+      await screen.findByText('agent-client-id');
+      await userEvent.click(screen.getByRole('button', {name: 'Close'}));
+
+      expect(onClose).toHaveBeenCalledTimes(1);
+      expect(h.navigate).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('embedded', () => {
+    it('should render only the flow, without the full-screen wizard header', async () => {
+      credentialsStep();
+
+      render(<AgentOnboardPage embedded />);
+
+      await screen.findByText('agent-client-id');
+
+      expect(screen.getAllByRole('button', {name: 'Close'})).toHaveLength(1);
     });
   });
 });

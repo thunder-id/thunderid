@@ -277,6 +277,35 @@ func TestFindAsset_MatchesTheLatestReleaseByVersion(t *testing.T) {
 	assert.Equal(t, "https://example.com/2.0.0", found.DownloadURL)
 }
 
+// Once a gateway-named release is the latest, the manifest still lists v1.1.0 and older under the
+// older name, so whether that name applies has to be decided for the requested release alone.
+func TestFindDataPlaneAsset_DecidesTheNamePerRelease(t *testing.T) {
+	latest := releaseEntry{
+		TagName: "v1.2.0",
+		Assets: []releaseAsset{
+			{Name: "thunderid-1.2.0-linux-x64.zip", DownloadURL: "https://example.com/1.2.0/quickstart"},
+			{Name: "thunderid-gateway-1.2.0-linux-x64.zip", DownloadURL: "https://example.com/1.2.0/gateway"},
+		},
+	}
+	data := &releasesData{
+		LatestRelease: latest,
+		Releases: []releaseEntry{latest, {
+			TagName: "v1.1.0",
+			Assets:  []releaseAsset{{Name: "thunderid-1.1.0-linux-x64.zip", DownloadURL: "https://example.com/1.1.0"}},
+		}},
+	}
+
+	found, name := findDataPlaneAsset(data, "1.2.0", "thunderid-gateway-1.2.0-linux-x64.zip")
+	require.NotNil(t, found)
+	assert.Equal(t, "https://example.com/1.2.0/gateway", found.DownloadURL)
+	assert.Equal(t, "thunderid-gateway-1.2.0-linux-x64.zip", name)
+
+	found, name = findDataPlaneAsset(data, "1.1.0", "thunderid-gateway-1.1.0-linux-x64.zip")
+	require.NotNil(t, found)
+	assert.Equal(t, "https://example.com/1.1.0", found.DownloadURL)
+	assert.Equal(t, "thunderid-1.1.0-linux-x64.zip", name)
+}
+
 // A custom source is authoritative: reaching for the public GitHub API behind the operator's back
 // would fetch something they did not point at.
 func TestFetchReleasesData_NoFallbackWhenDisabled(t *testing.T) {

@@ -227,13 +227,13 @@ func marshalClaims(dto PresentationDefinitionDTO) (string, error) {
 	return string(claimsBytes), nil
 }
 
-// marshalTrustedAuthorities serializes the trusted-authority names to a JSON
-// array, returning nil (SQL NULL) when none are configured.
-func marshalTrustedAuthorities(names []string) (interface{}, error) {
-	if len(names) == 0 {
+// marshalTrustedAuthorities serializes the trusted authorities, with their certificates,
+// to a JSON array, returning nil (SQL NULL) when none are configured.
+func marshalTrustedAuthorities(authorities []TrustedAuthority) (interface{}, error) {
+	if len(authorities) == 0 {
 		return nil, nil
 	}
-	b, err := json.Marshal(names)
+	b, err := json.Marshal(authorities)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal trusted authorities: %w", err)
 	}

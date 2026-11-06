@@ -10,10 +10,17 @@ package presentation
 // requests when none is specified.
 const DefaultCredentialFormat = "dc+sd-jwt" //nolint:gosec
 
+// TrustedAuthority is a trusted issuer certificate registered on a presentation
+// definition. Certificate holds the PEM-encoded X.509 certificate that roots the
+// issuer's x5c chain.
+type TrustedAuthority struct {
+	Name        string `json:"name" yaml:"name"`
+	Certificate string `json:"certificate,omitempty" yaml:"certificate,omitempty"`
+}
+
 // PresentationDefinitionDTO is the managed representation of an OpenID4VP
-// presentation definition. Trusted issuers and the verifier identity are
-// engine-level configuration shared by every definition (global trust), so they
-// are not part of the definition.
+// presentation definition. The verifier identity is engine-level configuration
+// shared by every definition, so it is not part of the definition.
 type PresentationDefinitionDTO struct {
 	ID              string   `json:"id" yaml:"id"`
 	Handle          string   `json:"handle" yaml:"handle"`
@@ -29,12 +36,11 @@ type PresentationDefinitionDTO struct {
 	// ClaimValues constrains specific claims (by dotted path) to an allowed set
 	// of values, emitted as DCQL "values" and enforced at verification.
 	ClaimValues map[string][]string `json:"claimValues,omitempty" yaml:"claimValues,omitempty"`
-	// EnforceTrustedIssuer overrides the engine default issuer-trust enforcement
-	// for this definition. Nil inherits the engine default.
+	// EnforceTrustedIssuer requires the issuer's x5c chain to verify against one
+	// of TrustedAuthorities. Nil means not enforced.
 	EnforceTrustedIssuer *bool `json:"enforceTrustedIssuer,omitempty" yaml:"enforceTrustedIssuer,omitempty"`
-	// TrustedAuthorities restricts the acceptable trust anchors (by name).
-	// Empty accepts any configured anchor.
-	TrustedAuthorities []string `json:"trustedAuthorities,omitempty" yaml:"trustedAuthorities,omitempty"`
+	// TrustedAuthorities holds the trusted issuer certificates of this definition.
+	TrustedAuthorities []TrustedAuthority `json:"trustedAuthorities,omitempty" yaml:"trustedAuthorities,omitempty"`
 }
 
 // presentationDefinitionRequest is the API request body for create/update.
@@ -50,10 +56,11 @@ type presentationDefinitionRequest struct {
 	OptionalClaims       []string            `json:"optionalClaims"`
 	ClaimValues          map[string][]string `json:"claimValues"`
 	EnforceTrustedIssuer *bool               `json:"enforceTrustedIssuer"`
-	TrustedAuthorities   []string            `json:"trustedAuthorities"`
+	TrustedAuthorities   []TrustedAuthority  `json:"trustedAuthorities"`
 }
 
-// presentationDefinitionResponse is the API response body.
+// presentationDefinitionResponse is the API response body. Trusted authorities
+// are returned by name only; their certificates are write-only.
 type presentationDefinitionResponse struct {
 	ID                   string              `json:"id"`
 	Handle               string              `json:"handle"`
@@ -73,7 +80,34 @@ type presentationDefinitionResponse struct {
 
 // toResponse converts a DTO to its API response shape.
 func toResponse(dto PresentationDefinitionDTO) presentationDefinitionResponse {
-	return presentationDefinitionResponse(dto)
+	return presentationDefinitionResponse{
+		ID:                   dto.ID,
+		Handle:               dto.Handle,
+		OUID:                 dto.OUID,
+		OUHandle:             dto.OUHandle,
+		Name:                 dto.Name,
+		Description:          dto.Description,
+		VCT:                  dto.VCT,
+		Format:               dto.Format,
+		RequestedClaims:      dto.RequestedClaims,
+		MandatoryClaims:      dto.MandatoryClaims,
+		OptionalClaims:       dto.OptionalClaims,
+		ClaimValues:          dto.ClaimValues,
+		EnforceTrustedIssuer: dto.EnforceTrustedIssuer,
+		TrustedAuthorities:   trustedAuthorityNames(dto.TrustedAuthorities),
+	}
+}
+
+// trustedAuthorityNames returns the names of the given trusted authorities, or nil when there are none.
+func trustedAuthorityNames(authorities []TrustedAuthority) []string {
+	if len(authorities) == 0 {
+		return nil
+	}
+	names := make([]string, 0, len(authorities))
+	for _, a := range authorities {
+		names = append(names, a.Name)
+	}
+	return names
 }
 
 // PresentationDefinitionList is the minimal projection returned by the list

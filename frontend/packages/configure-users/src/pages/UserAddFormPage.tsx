@@ -132,8 +132,10 @@ export default function UserAddFormPage(): JSX.Element {
                 value={typeId}
                 displayEmpty
                 onChange={(event) => {
-                  setTypeId(String(event.target.value));
-                  setOuId('');
+                  const nextTypeId = String(event.target.value);
+                  setTypeId(nextTypeId);
+                  // The type's own organization unit is the picker's root, so it starts selected.
+                  setOuId(types.find((type) => type.id === nextTypeId)?.ouId ?? '');
                   // Another type's schema can share a field name, so its values are not carried over.
                   reset({});
                 }}

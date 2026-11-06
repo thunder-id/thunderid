@@ -76,11 +76,6 @@ func Initialize(
 		return nil, err
 	}
 
-	trust, err := buildTrustStore(cfg.TrustedAnchors, serverHome)
-	if err != nil {
-		return nil, err
-	}
-
 	stateTTL := time.Duration(cfg.StateTTLSeconds) * time.Second
 	resultTokenValidity := time.Duration(cfg.ResultTokenValiditySeconds) * time.Second
 
@@ -100,7 +95,7 @@ func Initialize(
 		EnforceKeyBinding:     cfg.EnforceKeyBindingEnabled(),
 	}, newOpenID4VPStore(configCrypto, store), clientID,
 		cryptoProvider, providers.KeyRef{KeyID: cfg.SigningKeyID}, signingKey.Algorithm, x5c,
-		trust, defSvc, jwtService, base)
+		defSvc, jwtService, base)
 	if err != nil {
 		return nil, err
 	}
@@ -123,14 +118,12 @@ func registerRoutes(mux *http.ServeMux, h *openID4VPHandler) {
 		middleware.CorrelationIDMiddleware(http.HandlerFunc(h.HandleRequestObject)).ServeHTTP, opts))
 	mux.HandleFunc(middleware.WithCORS("POST "+responseURIPath,
 		middleware.CorrelationIDMiddleware(http.HandlerFunc(h.HandleResponse)).ServeHTTP, opts))
-	mux.HandleFunc(middleware.WithCORS("GET "+apiTrustAnchorsPath,
-		middleware.CorrelationIDMiddleware(http.HandlerFunc(h.HandleTrustAnchors)).ServeHTTP, opts))
 	mux.HandleFunc(middleware.WithCORS("POST "+initiateURIPath,
 		middleware.CorrelationIDMiddleware(http.HandlerFunc(h.HandleInitiate)).ServeHTTP, opts))
 	mux.HandleFunc(middleware.WithCORS("GET "+statusURIPath,
 		middleware.CorrelationIDMiddleware(http.HandlerFunc(h.HandleStatus)).ServeHTTP, opts))
 
-	allPaths := []string{requestURIPath, responseURIPath, apiTrustAnchorsPath, initiateURIPath, statusURIPath}
+	allPaths := []string{requestURIPath, responseURIPath, initiateURIPath, statusURIPath}
 	for _, path := range allPaths {
 		mux.HandleFunc(middleware.WithCORS("OPTIONS "+path,
 			func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) }, opts))
@@ -181,4 +174,12 @@ func loadVerifierInfo(path, serverHome string) ([]interface{}, error) {
 			"data":   jwt,
 		},
 	}, nil
+}
+
+// resolvePath joins a relative path with the server home directory.
+func resolvePath(serverHome, path string) string {
+	if path == "" || filepath.IsAbs(path) || serverHome == "" {
+		return path
+	}
+	return filepath.Join(serverHome, path)
 }

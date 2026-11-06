@@ -605,7 +605,14 @@ type PresentationDefinition struct {
 	OptionalClaims       []string            `json:"optionalClaims,omitempty"`
 	ClaimValues          map[string][]string `json:"claimValues,omitempty"`
 	EnforceTrustedIssuer *bool               `json:"enforceTrustedIssuer,omitempty"`
-	TrustedAuthorities   []string            `json:"trustedAuthorities,omitempty"`
+	TrustedAuthorities   []TrustedAuthority  `json:"trustedAuthorities,omitempty"`
+}
+
+// TrustedAuthority is a trusted issuer certificate supplied on a presentation definition
+// request. On update, an entry with only a name keeps the certificate stored under that name.
+type TrustedAuthority struct {
+	Name        string `json:"name"`
+	Certificate string `json:"certificate,omitempty"`
 }
 
 // VPInitiateResponse is the body returned by POST /openid4vp/initiate.

@@ -372,13 +372,19 @@ See [Build a Flow](../../../guides/flows/build-a-flow).
 
 ### Activate the onboarding flow
 
-The user onboarding flow is a server-wide default: <ProductName /> runs it whenever an admin creates a user, in the Console or through the API. Point the server default at your flow by setting `userOnboardingFlow.defaultHandle` in the server-config `flow` section:
+The user onboarding flow is a server-wide default: <ProductName /> runs it whenever an admin creates a user, in the Console or through the API. Point the server default at your flow by setting `userOnboardingFlow.defaultHandle` in the server-config `flow` section.
+
+A `PUT` replaces the section's runtime layer, including the default handles for the other flow types, such as agent onboarding and user deletion. Read the section first, change only `userOnboardingFlow` with `jq`, and send the full value back:
 
 ```bash
+curl -fks https://localhost:8090/server-config/flow \
+  -H "Authorization: Bearer $TOKEN" \
+  | jq '.writable | .userOnboardingFlow.defaultHandle = "wayfinder-onboarding-flow"' > flow.json
+
 curl -k -X PUT https://localhost:8090/server-config/flow \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{ "userOnboardingFlow": { "defaultHandle": "wayfinder-onboarding-flow" } }'
+  -d @flow.json
 ```
 
 The change applies immediately. See [Flow Defaults](../../../deployment/configuration#flow-defaults) for the declarative alternative and the full resolution order.

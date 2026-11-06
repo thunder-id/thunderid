@@ -83,14 +83,16 @@ func (suite *DefinitionStoreTestSuite) TestDefinitionStoreRoundTripTrustFields()
 		Format:               DefaultCredentialFormat,
 		MandatoryClaims:      []string{"given_name"},
 		EnforceTrustedIssuer: &enforce,
-		TrustedAuthorities:   []string{"root-a", "root-b"},
+		TrustedAuthorities: []TrustedAuthority{
+			{Name: "root-a", Certificate: "pem-a"}, {Name: "root-b", Certificate: "pem-b"},
+		},
 	}
 
 	got, err := buildDefinitionDTOFromRow(rowFromDTO(suite.T(), original))
 	suite.Require().NoError(err)
 	suite.Require().NotNil(got.EnforceTrustedIssuer)
 	suite.True(*got.EnforceTrustedIssuer)
-	suite.Equal([]string{"root-a", "root-b"}, got.TrustedAuthorities)
+	suite.Equal(original.TrustedAuthorities, got.TrustedAuthorities)
 }
 
 func (suite *DefinitionStoreTestSuite) TestDefinitionStoreRoundTripTrustFieldsNull() {
@@ -201,7 +203,7 @@ func (suite *DefinitionStoreTestSuite) TestGetByID() {
 						MandatoryClaims:      []string{"given_name"},
 						OptionalClaims:       []string{"birthdate"},
 						EnforceTrustedIssuer: &enforce,
-						TrustedAuthorities:   []string{"root-ca"},
+						TrustedAuthorities:   []TrustedAuthority{{Name: "root-ca", Certificate: "pem"}},
 					}),
 				}, nil)
 			},
@@ -212,7 +214,7 @@ func (suite *DefinitionStoreTestSuite) TestGetByID() {
 				suite.Equal([]string{"birthdate"}, got.OptionalClaims)
 				suite.Require().NotNil(got.EnforceTrustedIssuer)
 				suite.True(*got.EnforceTrustedIssuer)
-				suite.Equal([]string{"root-ca"}, got.TrustedAuthorities)
+				suite.Equal([]TrustedAuthority{{Name: "root-ca", Certificate: "pem"}}, got.TrustedAuthorities)
 			},
 		},
 		{
@@ -629,6 +631,18 @@ func (suite *DefinitionStoreTestSuite) TestBuildDefinitionDTOFromRowMalformedTru
 		"handle":              "h",
 		"vct":                 "v",
 		"trusted_authorities": "{not valid json",
+	}
+	got, err := buildDefinitionDTOFromRow(row)
+	suite.Error(err)
+	suite.Nil(got)
+}
+
+func (suite *DefinitionStoreTestSuite) TestBuildDefinitionDTOFromRowRejectsNameOnlyTrustedAuthorities() {
+	row := map[string]interface{}{
+		"id":                  "def-1",
+		"handle":              "h",
+		"vct":                 "v",
+		"trusted_authorities": `["root-a"]`,
 	}
 	got, err := buildDefinitionDTOFromRow(row)
 	suite.Error(err)

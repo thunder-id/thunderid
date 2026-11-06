@@ -98,7 +98,7 @@ GO_ARCH=$(go env GOARCH)
 [ "$GO_OS" = "darwin" ] && PKG_OS="macos" || PKG_OS="$GO_OS"
 [ "$GO_ARCH" = "amd64" ] && GO_ARCH="x64"
 VERSION=$(sed 's/^v//' "$PROJECT_ROOT/version.txt")
-DIST_FOLDER="thunderid-quickstart-${VERSION}-${PKG_OS}-${GO_ARCH}"
+DIST_FOLDER="thunderid-${VERSION}-${PKG_OS}-${GO_ARCH}"
 DIST_HOME="$SCRIPT_DIR/distribution"
 DIST_ZIP="$PROJECT_ROOT/target/dist/${DIST_FOLDER}.zip"
 

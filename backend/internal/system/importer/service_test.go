@@ -3080,6 +3080,12 @@ type fakeAgentService struct {
 	created  []*providers.Agent
 	updated  []*agentmodel.UpdateAgentRequest
 	existing map[string]*agentmodel.AgentGetResponse
+	// credentials records the credentials set on each agent, and credentialErr refuses every set.
+	credentials   map[string]json.RawMessage
+	credentialErr *tidcommon.ServiceError
+	// deleted records each agent deleted, and deleteErr refuses every delete.
+	deleted   []string
+	deleteErr *tidcommon.ServiceError
 }
 
 func (f *fakeAgentService) CreateAgent(
@@ -3120,6 +3126,19 @@ func (f *fakeAgentService) UpdateAgent(
 	f.updated = append(f.updated, req)
 	f.existing[agentID] = &agentmodel.AgentGetResponse{ID: agentID, Attributes: req.Attributes}
 	return &agentmodel.AgentCompleteResponse{ID: agentID, Attributes: req.Attributes}, nil
+}
+
+func (f *fakeAgentService) UpdateAgentCredentials(
+	_ context.Context, agentID string, credentials json.RawMessage,
+) *tidcommon.ServiceError {
+	if f.credentialErr != nil {
+		return f.credentialErr
+	}
+	if f.credentials == nil {
+		f.credentials = map[string]json.RawMessage{}
+	}
+	f.credentials[agentID] = credentials
+	return nil
 }
 
 func testAgentAttributeName(attributes json.RawMessage) string {
@@ -3272,6 +3291,12 @@ type errAgentService struct {
 	createErr *tidcommon.ServiceError
 	getErr    *tidcommon.ServiceError
 	updateErr *tidcommon.ServiceError
+}
+
+func (e *errAgentService) UpdateAgentCredentials(
+	ctx context.Context, agentID string, credentials json.RawMessage,
+) *tidcommon.ServiceError {
+	return e.inner.UpdateAgentCredentials(ctx, agentID, credentials)
 }
 
 func (e *errAgentService) CreateAgent(
@@ -6555,4 +6580,122 @@ func TestImportFlowUpdateRefusedWithItsPoliciesFailsTheDocument(t *testing.T) {
 	assert.Equal(t, flowmgt.ErrorFlowConflictsWithSharingPolicy.Code, resp.Results[0].Code)
 	assert.Equal(t, operationUpdate, resp.Results[0].Operation)
 	assert.Empty(t, flowSvc.deleted)
+}
+
+const agentWithPasswordYAML = agentYAML + "credentials:\n  password: s3cret\n"
+
+func newAgentImport(agentSvc agentAdapter) ImportServiceInterface {
+	return newImportService(
+		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, agentSvc, nil, nil, nil, nil, nil)
+}
+
+// A new agent's credentials are set once the agent exists, through the agent service.
+func TestImportAgent_CreateSetsTheCredentials(t *testing.T) {
+	agentSvc := &fakeAgentService{existing: map[string]*agentmodel.AgentGetResponse{}}
+
+	resp, svcErr := newAgentImport(agentSvc).ImportResources(context.Background(), &ImportRequest{
+		Content: agentWithPasswordYAML,
+		Options: &ImportOptions{Upsert: boolPtr(true)},
+	})
+
+	require.Nil(t, svcErr)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status, resp.Results[0].Message)
+	require.Len(t, agentSvc.created, 1)
+	assert.NotContains(t, string(agentSvc.created[0].Attributes), "s3cret",
+		"a credential is never written as an attribute")
+	assert.JSONEq(t, `{"password":"s3cret"}`, string(agentSvc.credentials["Test Agent-id"]))
+}
+
+// A new agent whose credentials are refused is deleted again, so a retry does not meet half of it.
+func TestImportAgent_CreateCredentialFailureUndoesTheCreate(t *testing.T) {
+	credErr := &tidcommon.ServiceError{Code: "AGT-1016",
+		Error: tidcommon.I18nMessage{DefaultValue: "Invalid credential"}}
+	agentSvc := &fakeAgentService{existing: map[string]*agentmodel.AgentGetResponse{}, credentialErr: credErr}
+
+	resp, svcErr := newAgentImport(agentSvc).ImportResources(context.Background(), &ImportRequest{
+		Content: agentWithPasswordYAML,
+		Options: &ImportOptions{Upsert: boolPtr(true)},
+	})
+
+	require.Nil(t, svcErr)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusFailed, resp.Results[0].Status)
+	assert.Equal(t, "AGT-1016", resp.Results[0].Code)
+	assert.Equal(t, []string{"Test Agent-id"}, agentSvc.deleted)
+}
+
+func TestImportAgent_CreateCredentialAndRollbackFailure(t *testing.T) {
+	credErr := &tidcommon.ServiceError{Code: "AGT-1016",
+		Error: tidcommon.I18nMessage{DefaultValue: "Invalid credential"}}
+	deleteErr := &tidcommon.ServiceError{Code: "AGT-5000", Error: tidcommon.I18nMessage{DefaultValue: "delete failed"}}
+	agentSvc := &fakeAgentService{existing: map[string]*agentmodel.AgentGetResponse{},
+		credentialErr: credErr, deleteErr: deleteErr}
+
+	resp, svcErr := newAgentImport(agentSvc).ImportResources(context.Background(), &ImportRequest{
+		Content: agentWithPasswordYAML,
+		Options: &ImportOptions{Upsert: boolPtr(true)},
+	})
+
+	require.Nil(t, svcErr)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusFailed, resp.Results[0].Status)
+	assert.Equal(t, "AGT-1016", resp.Results[0].Code)
+	assert.Contains(t, resp.Results[0].Message, "rollback delete failed")
+}
+
+// An agent already there has its credentials set after its profile.
+func TestImportAgent_UpsertSetsTheCredentials(t *testing.T) {
+	agentSvc := &fakeAgentService{existing: map[string]*agentmodel.AgentGetResponse{
+		"agent-1": {ID: "agent-1", Attributes: json.RawMessage(`{"name":"Test Agent"}`)},
+	}}
+
+	resp, svcErr := newAgentImport(agentSvc).ImportResources(context.Background(), &ImportRequest{
+		Content: agentWithPasswordYAML,
+		Options: &ImportOptions{Upsert: boolPtr(true)},
+	})
+
+	require.Nil(t, svcErr)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status, resp.Results[0].Message)
+	assert.Equal(t, operationUpdate, resp.Results[0].Operation)
+	assert.JSONEq(t, `{"password":"s3cret"}`, string(agentSvc.credentials["agent-1"]))
+}
+
+// The profile is already written when its credentials are refused, so the outcome says so.
+func TestImportAgent_UpsertCredentialFailureIsAPartialFailure(t *testing.T) {
+	credErr := &tidcommon.ServiceError{Code: "AGT-1016",
+		Error: tidcommon.I18nMessage{DefaultValue: "Invalid credential"}}
+	agentSvc := &fakeAgentService{existing: map[string]*agentmodel.AgentGetResponse{
+		"agent-1": {ID: "agent-1", Attributes: json.RawMessage(`{"name":"Test Agent"}`)},
+	}, credentialErr: credErr}
+
+	resp, svcErr := newAgentImport(agentSvc).ImportResources(context.Background(), &ImportRequest{
+		Content: agentWithPasswordYAML,
+		Options: &ImportOptions{Upsert: boolPtr(true)},
+	})
+
+	require.Nil(t, svcErr)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusFailed, resp.Results[0].Status)
+	assert.Equal(t, operationUpdate, resp.Results[0].Operation)
+	assert.Equal(t, "AGT-1016", resp.Results[0].Code)
+	assert.Contains(t, resp.Results[0].Message, "agent profile updated but credential update failed")
+	assert.Empty(t, agentSvc.deleted, "an existing agent is never deleted")
+}
+
+func TestImportAgent_DryRunSetsNoCredentials(t *testing.T) {
+	agentSvc := &fakeAgentService{existing: map[string]*agentmodel.AgentGetResponse{}}
+
+	resp, svcErr := newAgentImport(agentSvc).ImportResources(context.Background(), &ImportRequest{
+		Content: agentWithPasswordYAML,
+		DryRun:  true,
+		Options: &ImportOptions{Upsert: boolPtr(true)},
+	})
+
+	require.Nil(t, svcErr)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status)
+	assert.Empty(t, agentSvc.credentials)
+	assert.Empty(t, agentSvc.created)
 }

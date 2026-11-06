@@ -1,7 +1,7 @@
 {
   "name": "@thunderid/wayfinder-sample",
   "private": true,
-  "version": "1.0.0",
+  "version": "2.0.0-m1",
   "description": "Wayfinder travel sample demonstrating an AI agent with its own ThunderID-managed identity.",
   "workspaces": [
     "backend",

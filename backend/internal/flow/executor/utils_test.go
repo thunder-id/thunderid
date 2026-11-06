@@ -961,6 +961,18 @@ func (s *UtilsTestSuite) TestSetExternalIdentity_DropsTokenMetadata() {
 	s.Equal("holder", core.GetExternalIdentity(execResp.RuntimeData).Claims["sub"])
 }
 
+// Only a login at an identity provider, which names the connection and the subject, marks a
+// federated login completed. An OpenID4VP presentation names neither and leaves no mark.
+func (s *UtilsTestSuite) TestSetExternalIdentity_MarksFederatedLoginCompleted() {
+	execResp := &providers.ExecutorResponse{}
+	s.NoError(setExternalIdentity(execResp, "", "", map[string]interface{}{"sub": "holder"}))
+	s.Empty(execResp.SharedRuntimeData)
+
+	s.NoError(setExternalIdentity(execResp, "idp-1", "sub-123", nil))
+	s.Equal(map[string]string{common.RuntimeKeyFederatedLoginCompleted: dataValueTrue},
+		execResp.SharedRuntimeData)
+}
+
 // A later sign-in replaces the earlier entry whole, so claims from two providers never mix.
 func (s *UtilsTestSuite) TestSetExternalIdentity_ReplacesEarlierEntry() {
 	execResp := &providers.ExecutorResponse{RuntimeData: map[string]string{

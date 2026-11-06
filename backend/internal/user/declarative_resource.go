@@ -10,21 +10,18 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/thunder-id/thunderid/internal/system/varname"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	"gopkg.in/yaml.v3"
 
 	"github.com/thunder-id/thunderid/internal/entity"
-	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/sharing"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
-	"github.com/thunder-id/thunderid/internal/system/valueref"
 )
 
 const (
@@ -34,10 +31,9 @@ const (
 
 // userExporter implements declarativeresource.ResourceExporter for users.
 type userExporter struct {
-	service           UserServiceInterface
-	entityService     entity.EntityServiceInterface
-	entityTypeService entitytype.EntityTypeServiceInterface
-	sharingService    sharing.SharingServiceInterface
+	service        UserServiceInterface
+	entityService  entity.EntityServiceInterface
+	sharingService sharing.SharingServiceInterface
 	// references writes a credential as a secret reference rather than a template placeholder, as a
 	// control plane's export does for every other credential.
 	references bool
@@ -52,11 +48,9 @@ func (e *userExporter) WriteValueReferences(references bool) {
 func newUserExporter(
 	service UserServiceInterface,
 	entityService entity.EntityServiceInterface,
-	entityTypeService entitytype.EntityTypeServiceInterface,
 	sharingService sharing.SharingServiceInterface,
 ) *userExporter {
-	return &userExporter{service: service, entityService: entityService, entityTypeService: entityTypeService,
-		sharingService: sharingService}
+	return &userExporter{service: service, entityService: entityService, sharingService: sharingService}
 }
 
 // GetResourceType returns the resource type for users.
@@ -136,7 +130,7 @@ func (e *userExporter) GetResourceByID(
 		attributesMap = make(map[string]interface{})
 	}
 
-	credentials, svcErr := e.exportableCredentials(ctx, user.ID, user.Type, username)
+	credentials, svcErr := e.exportableCredentials(ctx, user.ID, username)
 	if svcErr != nil {
 		return nil, "", svcErr
 	}
@@ -164,55 +158,33 @@ func (e *userExporter) GetResourceByID(
 	return exportUser, username, nil
 }
 
-// exportableCredentials describes the credentials an exported user carries: one placeholder for each
-// credential the user's type declares and the user has set, a secret reference where the export
-// writes references and a template placeholder where it writes templates.
+// exportableCredentials describes the credentials an exported user carries: a placeholder for each
+// credential the user's type declares and the user has set, named after the username.
 //
-// A stored credential is a one-way hash, so its value never leaves. The placeholder names it
-// instead, and the importing server fills it from its own secret provider or environment before
+// The importing server fills each placeholder from its own secret provider or environment before
 // hashing it, which leaves the imported user able to sign in with it. A credential the user has not
 // set is left out rather than exported empty, since it would otherwise demand a value on import for
-// something the user never had. The user itself is exported either way.
-//
-// Only credentials the type declares are considered, which leaves out device-bound ones such as a
-// passkey: those mean nothing on another deployment. The placeholder is written here because the
-// parameterizer only walks a slice of properties and credentials are a map, so it would export any
-// value here verbatim.
+// something the user never had. The user itself is exported either way. Only credentials the type
+// declares are considered, which leaves out device-bound ones such as a passkey: those mean nothing
+// on another deployment.
 func (e *userExporter) exportableCredentials(
-	ctx context.Context, userID, userType, username string,
+	ctx context.Context, userID, username string,
 ) (map[string]interface{}, *tidcommon.ServiceError) {
-	credentials := map[string]interface{}{}
 	if username == "" {
 		// The placeholder is named after the username, so there is nothing to name it after.
-		return credentials, nil
+		return map[string]interface{}{}, nil
 	}
 
-	declared, svcErr := e.entityTypeService.GetAttributes(ctx, entitytype.TypeCategoryUser, userType,
-		entitytype.AttributeFilter{AllowCredential: true})
-	if svcErr != nil {
-		return nil, svcErr
+	held, err := e.entityService.GetHeldCredentialTypes(ctx, userID)
+	if err != nil {
+		if svcErr := mapEntityError(err); svcErr != nil {
+			return nil, svcErr
+		}
+		log.GetLogger().Error(ctx, "Failed to read a user's credentials for export",
+			log.MaskedString(log.LoggerKeyUserID, userID), log.Error(err))
+		return nil, &tidcommon.InternalServerError
 	}
-
-	for _, attribute := range declared {
-		stored, err := e.entityService.GetCredentialsByType(ctx, userID, attribute.Attribute)
-		if err != nil {
-			log.GetLogger().Error(ctx, "Failed to read a user's credentials for export",
-				log.MaskedString(log.LoggerKeyUserID, userID), log.Error(err))
-			return nil, &tidcommon.InternalServerError
-		}
-		if len(stored) == 0 {
-			continue
-		}
-		name := varname.DeriveVariableName(resourceTypeUser, username, attribute.Attribute)
-		if e.references {
-			// A control plane holds no values, so the credential names the secret the gateway holds,
-			// which the gateway's import fills in before hashing.
-			credentials[attribute.Attribute] = valueref.SecretReference(name)
-			continue
-		}
-		credentials[attribute.Attribute] = fmt.Sprintf("{{.%s}}", name)
-	}
-	return credentials, nil
+	return declarativeresource.CredentialPlaceholders(resourceTypeUser, username, held, e.references), nil
 }
 
 // ValidateResource validates a user resource.

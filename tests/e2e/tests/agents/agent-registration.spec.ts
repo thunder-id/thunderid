@@ -4,8 +4,8 @@
 /**
  * Agents - Registration E2E Tests
  *
- * Covers the Admin Console's Register agent dialog, which creates the agent through the Agents API
- * and opens it, cancelling the dialog, and deleting an agent from its details page.
+ * Covers the Admin Console's Register agent dialog, which runs the agent onboarding flow to create
+ * the agent, cancelling the dialog, and deleting an agent from its details page.
  *
  * Required environment variables:
  * - BASE_URL: Admin Console base URL
@@ -31,7 +31,7 @@ test.describe("Agents - Registration", () => {
     }
   });
 
-  /** TC001: Register an agent and land on its details page */
+  /** TC001: Register an agent through the onboarding flow */
   test("TC001: Register an agent", async ({ agentsPage, agentsApi }) => {
     await test.step("Open Register agent from the agents list", async () => {
       await agentsPage.openRegisterDialog();
@@ -42,10 +42,10 @@ test.describe("Agents - Registration", () => {
       await agentsPage.register();
     });
 
-    await test.step("The Agents API has the agent, and its details page opens", async () => {
+    await test.step("The Agents API has the agent, and the list is shown again", async () => {
       const agent = await agentsApi.findByName(registeredAgent);
       expect(agent, `agent ${registeredAgent} should exist`).toBeDefined();
-      await agentsPage.page.waitForURL(`**${ConsoleRoutes.agentDetails(agent!.id)}`, { timeout: Timeouts.PAGE_LOAD });
+      await agentsPage.page.waitForURL(`**${ConsoleRoutes.agents}`, { timeout: Timeouts.PAGE_LOAD });
     });
   });
 
@@ -53,7 +53,7 @@ test.describe("Agents - Registration", () => {
   test("TC002: Cancel registering an agent", async ({ agentsPage, agentsApi }) => {
     await agentsPage.openRegisterDialog();
     await agentsPage.nameInput.fill(abandonedAgent);
-    await agentsPage.cancelButton.click();
+    await agentsPage.cancel();
 
     await agentsPage.page.waitForURL(`**${ConsoleRoutes.agents}`, { timeout: Timeouts.PAGE_LOAD });
     expect(await agentsApi.findByName(abandonedAgent)).toBeUndefined();

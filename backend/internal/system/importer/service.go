@@ -269,6 +269,7 @@ type agentAdapter interface {
 		*agentmodel.AgentGetResponse, *tidcommon.ServiceError)
 	UpdateAgent(ctx context.Context, agentID string, req *agentmodel.UpdateAgentRequest) (
 		*agentmodel.AgentCompleteResponse, *tidcommon.ServiceError)
+	UpdateAgentCredentials(ctx context.Context, agentID string, credentials json.RawMessage) *tidcommon.ServiceError
 	DeleteAgent(ctx context.Context, agentID string) *tidcommon.ServiceError
 }
 

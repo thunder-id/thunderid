@@ -4,7 +4,6 @@
 const VerifiablePresentationQueryKeys = {
   VPS: 'verifiable-presentations',
   VP: 'verifiable-presentation',
-  TRUST_ANCHORS: 'verifiable-presentation-trust-anchors',
 } as const;
 
 export default VerifiablePresentationQueryKeys;

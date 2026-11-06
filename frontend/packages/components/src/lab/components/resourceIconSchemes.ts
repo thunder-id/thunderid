@@ -15,7 +15,11 @@ export function resolveResourceIcon(value: string, seedText = ''): ResolvedResou
     return {char: value.slice(EMOJI_SCHEME.length), type: 'emoji'};
   }
   if (isAvatarUri(value)) {
-    return {src: resolveLogoUri(value, seedText).imgSrc ?? '', type: 'image'};
+    try {
+      return {src: resolveLogoUri(value, seedText).imgSrc ?? '', type: 'image'};
+    } catch {
+      return {char: '', type: 'emoji'};
+    }
   }
   if (isUrl(value)) {
     return {src: value, type: 'image'};

@@ -22,6 +22,10 @@ var (
 
 	// ErrDefinitionDataCorrupted is returned when declarative store data is malformed.
 	ErrDefinitionDataCorrupted = errors.New("presentation definition data is corrupted")
+
+	// errInvalidCertificatePEM is returned when a trusted authority certificate is not a single
+	// PEM-encoded X.509 certificate.
+	errInvalidCertificatePEM = errors.New("certificate must be a single PEM-encoded X.509 certificate")
 )
 
 // Client-facing API errors for the presentation-definition management endpoints.
@@ -173,10 +177,99 @@ var (
 		},
 	}
 
+	// ErrorDefinitionEmptyTrustedAuthorityName indicates a trusted authority was declared without a name.
+	ErrorDefinitionEmptyTrustedAuthorityName = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "VP-2011",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.vp.definition_empty_trusted_authority_name",
+			DefaultValue: "Invalid trusted authority",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.vp.definition_empty_trusted_authority_name_description",
+			DefaultValue: "Trusted authority names must not be empty",
+		},
+	}
+
+	// ErrorDefinitionDuplicateTrustedAuthority indicates a trusted authority name or certificate
+	// appears more than once in the same presentation definition.
+	ErrorDefinitionDuplicateTrustedAuthority = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "VP-2012",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.vp.definition_duplicate_trusted_authority",
+			DefaultValue: "Duplicate trusted authority",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.vp.definition_duplicate_trusted_authority_description",
+			DefaultValue: "Trusted authority '{{param(name)}}' repeats a name or certificate " +
+				"already registered on this presentation definition",
+		},
+	}
+
+	// ErrorDefinitionInvalidTrustedAuthorityCertificate indicates a trusted authority has no
+	// certificate, or its certificate is not a valid PEM-encoded X.509 certificate.
+	ErrorDefinitionInvalidTrustedAuthorityCertificate = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "VP-2013",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.vp.definition_invalid_trusted_authority_certificate",
+			DefaultValue: "Invalid trusted authority certificate",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.vp.definition_invalid_trusted_authority_certificate_description",
+			DefaultValue: "Trusted authority '{{param(name)}}' requires a single PEM-encoded X.509 " +
+				"certificate. Supply the certificate when adding a trusted authority",
+		},
+	}
+
+	// ErrorDefinitionExpiredTrustedAuthorityCertificate indicates a trusted authority certificate has expired.
+	ErrorDefinitionExpiredTrustedAuthorityCertificate = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "VP-2014",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.vp.definition_expired_trusted_authority_certificate",
+			DefaultValue: "Expired trusted authority certificate",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.vp.definition_expired_trusted_authority_certificate_description",
+			DefaultValue: "The certificate of trusted authority '{{param(name)}}' has expired",
+		},
+	}
+
+	// ErrorDefinitionTooManyTrustedAuthorities indicates more trusted authorities were supplied than allowed.
+	ErrorDefinitionTooManyTrustedAuthorities = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "VP-2015",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.vp.definition_too_many_trusted_authorities",
+			DefaultValue: "Too many trusted authorities",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.vp.definition_too_many_trusted_authorities_description",
+			DefaultValue: "A presentation definition supports at most {{param(max)}} trusted authorities",
+		},
+	}
+
+	// ErrorDefinitionTrustedIssuerWithoutAuthorities indicates issuer trust is enforced
+	// on a presentation definition that has no trusted authorities.
+	ErrorDefinitionTrustedIssuerWithoutAuthorities = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "VP-2016",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.vp.definition_trusted_issuer_without_authorities",
+			DefaultValue: "No trusted authorities",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.vp.definition_trusted_issuer_without_authorities_description",
+			DefaultValue: "Add at least one trusted authority certificate before enforcing issuer trust",
+		},
+	}
+
 	// ErrorDefinitionIDConflict indicates a create named an ID that another presentation definition already holds.
 	ErrorDefinitionIDConflict = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "VP-2011",
+		Code: "VP-2017",
 		Error: tidcommon.I18nMessage{
 			Key:          "error.vp.definition_id_conflict",
 			DefaultValue: "Presentation definition ID conflict",

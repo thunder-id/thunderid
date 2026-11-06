@@ -167,7 +167,7 @@ The following table lists the configurable parameters of the ThunderID chart and
 | `deployment.strategy.rollingUpdate.maxSurge` | Maximum number of pods that can be created over the desired number during an update | `1`                           |
 | `deployment.strategy.rollingUpdate.maxUnavailable` | Maximum number of pods that can be unavailable during an update              | `0`                           |
 | `deployment.image.registry`             | ThunderID image registry                                                                  | `ghcr.io/thunder-id`             |
-| `deployment.image.repository`           | ThunderID image repository                                                                | `thunderid`                      |
+| `deployment.image.repository`           | ThunderID image repository                                                                | `thunderid-gateway`                      |
 | `deployment.image.tag`                  | ThunderID image tag                                                                       | `latest`                       |
 | `deployment.image.digest`               | ThunderID image digest (use either tag or digest)                                         | `""`                           |
 | `deployment.image.pullPolicy`           | ThunderID image pull policy                                                               | `Always`                       |

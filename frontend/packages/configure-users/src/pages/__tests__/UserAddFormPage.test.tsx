@@ -34,13 +34,21 @@ vi.mock('@thunderid/react', async (importOriginal) => {
 
 vi.mock('@thunderid/configure-organization-units', () => ({
   OrganizationUnitTreePicker: ({
+    value,
     onChange,
     rootOuId = undefined,
   }: {
+    value: string;
     onChange: (ouId: string) => void;
     rootOuId?: string;
   }) => (
-    <button type="button" data-testid="ou-picker" data-root={rootOuId} onClick={() => onChange('ou-child')}>
+    <button
+      type="button"
+      data-testid="ou-picker"
+      data-root={rootOuId}
+      data-value={value}
+      onClick={() => onChange('ou-child')}
+    >
       pick ou
     </button>
   ),
@@ -165,7 +173,7 @@ describe('UserAddFormPage', () => {
     expect(requests().some((request) => /\/user-types\?.*limit=100/.test(request.url))).toBe(true);
   });
 
-  it('keeps submit disabled until a type and an organization unit are chosen', async () => {
+  it('keeps submit disabled until a type is chosen', async () => {
     const user = userEvent.setup();
     render(<UserAddFormPage />);
 
@@ -175,10 +183,45 @@ describe('UserAddFormPage', () => {
     await user.click(await screen.findByRole('combobox'));
     await user.click(within(await screen.findByRole('listbox')).getByText('Customer'));
     await screen.findByRole('textbox', {name: /username/i});
-    expect(submit).toBeDisabled();
-
-    await user.click(screen.getByTestId('ou-picker'));
     expect(submit).toBeEnabled();
+  });
+
+  it("preselects the chosen type's organization unit and posts it when no other is picked", async () => {
+    const user = userEvent.setup();
+    render(<UserAddFormPage />);
+
+    await user.click(await screen.findByRole('combobox'));
+    await user.click(within(await screen.findByRole('listbox')).getByText('Customer'));
+
+    expect(await screen.findByTestId('ou-picker')).toHaveAttribute('data-value', 'ou-root');
+
+    await user.type(await screen.findByRole('textbox', {name: /username/i}), 'carol');
+    await user.click(screen.getByRole('button', {name: 'users:addForm.submit'}));
+
+    await waitFor(() => {
+      expect(requests().find((request) => request.method === 'POST')?.data).toEqual({
+        ouId: 'ou-root',
+        type: 'customer',
+        attributes: {username: 'carol'},
+      });
+    });
+  });
+
+  it('clears the organization unit when the type is cleared again', async () => {
+    const user = userEvent.setup();
+    render(<UserAddFormPage />);
+
+    await user.click(await screen.findByRole('combobox'));
+    await user.click(within(await screen.findByRole('listbox')).getByText('Customer'));
+    expect(await screen.findByTestId('ou-picker')).toHaveAttribute('data-value', 'ou-root');
+
+    await user.click(screen.getByRole('combobox'));
+    await user.click(within(await screen.findByRole('listbox')).getByText('users:addForm.selectUserType'));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('ou-picker')).not.toBeInTheDocument();
+    });
+    expect(screen.getByRole('button', {name: 'users:addForm.submit'})).toBeDisabled();
   });
 
   it('does not post when a required attribute is missing', async () => {

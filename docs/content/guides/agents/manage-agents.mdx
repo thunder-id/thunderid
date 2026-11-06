@@ -128,6 +128,10 @@ Creating an agent gives that agent its own identity in <ProductName />, with its
 
 Select a creation path below. These instructions follow the supplied templates; custom flows can change the fields and their order. Selecting a card changes these instructions, not the Console's [configured onboarding flow](#make-the-flow-active).
 
+:::note
+On a Control Plane console, **Add agent** opens a form instead of an onboarding flow. Choose an **Owner** there, the person accountable for the agent. If you signed in to the Control Plane through another deployment, choose a user created on the Control Plane, because a gateway the agent is applied to refuses an owner it cannot find.
+:::
+
 <AgentModeSelector />
 
 <Mode value="own">
@@ -138,7 +142,7 @@ Use the built-in `default-agent-onboarding-flow`, or create a flow from **Agent 
 
 1. Navigate to **Agents**. Click **Add agent**.
 2. Select the organization unit when prompted. The template resolves the `default` agent type before this step.
-3. Confirm the owner. The selection defaults to your signed-in user; choose another user to change it. The owner is the person accountable for the agent.
+3. Confirm the owner. The selection defaults to you when your account is a user on the deployment you add the agent on; choose another user to change it. The owner is the person accountable for the agent.
 4. In **Agent Details**, fill in the schema attributes, including **Name**. The default schema requires a unique name; model provider, model, and function are optional.
 5. Click **Create Agent**. If you use the Choose Mode template, leave **Act on behalf of a signed-in user** unchecked on the next screen and click **Continue**.
 6. Copy the **Agent ID**, **Client ID**, and **Client Secret** from the completion screen. Store the secret before closing the flow; it is shown only once.
@@ -157,7 +161,7 @@ Prepare the Administration flow in either of these ways:
 
 1. Navigate to **Agents**. Click **Add agent**.
 2. Select the organization unit when prompted. The template resolves the `default` agent type before this step.
-3. Confirm the owner. The selection defaults to your signed-in user; choose another user to change it.
+3. Confirm the owner. The selection defaults to you when your account is a user on the deployment you add the agent on; choose another user to change it.
 4. In **Agent Details**, fill in the schema attributes, including a unique **Name**, and click **Create Agent**. The agent is created after the next screen.
 5. If you use the Choose Mode template, select **Act on behalf of a signed-in user**.
 6. Enter **Authorized redirect URIs**, separated by commas. Select the agent's **Login flow** and **User type**, then click **Continue**.

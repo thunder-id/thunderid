@@ -90,6 +90,8 @@ const configuration: AppliedResource[] = [
     },
   }),
   resource('connection', 'sms', {name: 'SMS OTP', type: 'twilio'}),
+  resource('credential_configuration', 'vc-pass', {handle: 'skypass', name: 'SkyPass', ouId: 'root'}),
+  resource('presentation_definition', 'vp-lounge', {handle: 'lounge-access', ouId: 'eng'}),
   resource('theme', 'dark', {displayName: 'Dark theme'}),
   resource('layout', 'centered', {displayName: 'Centered'}),
   resource('server_config', 'cors', {merged: {}}),
@@ -146,6 +148,8 @@ describe('buildGraph', () => {
     expect(node('user/alice').icon).toBe('user');
     expect(node('theme/dark').lane).toBe('design');
     expect(node('layout/centered').lane).toBe('design');
+    expect(node('credential_configuration/vc-pass').lane).toBe('credentials');
+    expect(node('presentation_definition/vp-lounge').lane).toBe('presentations');
     // The second resource of a lane sits one step to the right of the first.
     expect(node('organization_unit/eng').x - node('organization_unit/root').x).toBe(STAGE.columnStep);
     expect(node('organization_unit/root').y).toBe(STAGE.top + STAGE.tileOffset);
@@ -160,6 +164,12 @@ describe('buildGraph', () => {
     expect(node('connection/google-1').letter).toBe('G');
     expect(node('connection/sms').icon).toBe('phone');
     expect(node('role/administrator').kind).toEqual({key: 'deploy:explorer.kinds.role', defaultValue: 'Role'});
+    expect(node('credential_configuration/vc-pass').name).toBe('SkyPass');
+    expect(node('presentation_definition/vp-lounge').name).toBe('lounge-access');
+    expect(node('presentation_definition/vp-lounge').kind).toEqual({
+      key: 'deploy:explorer.kinds.presentation_definition',
+      defaultValue: 'Presentation definition',
+    });
   });
 
   it('draws one line per relationship the resources describe', () => {
@@ -195,6 +205,12 @@ describe('buildGraph', () => {
     expect(edgeLabels('resource_server/orders')).toEqual(['organization_unit/root: Resource server in ThunderID']);
     expect(edgeLabels('flow/signin')).toEqual(['connection/google-1: Step 2: Google']);
     expect(edgeLabels('flow/reg')).toEqual(['connection/sms: Step 1: SMS OTP']);
+    expect(edgeLabels('credential_configuration/vc-pass')).toEqual([
+      'organization_unit/root: Credential configuration in ThunderID',
+    ]);
+    expect(edgeLabels('presentation_definition/vp-lounge')).toEqual([
+      'organization_unit/eng: Presentation definition in Engineering',
+    ]);
     expect(edgeLabels('connection/google-1')).toEqual([
       'user_type/ut-person: Provisions users as Person',
       'user_type/ut-employee: Provisions users as Employee',
@@ -217,6 +233,8 @@ describe('buildGraph', () => {
     expect(summary.applications).toEqual([2, 2]);
     expect(summary.connections).toEqual([2, 1]);
     expect(summary.identities).toEqual([2, 0]);
+    expect(summary.credentials).toEqual([1, 0]);
+    expect(summary.presentations).toEqual([1, 0]);
     expect(graph.lanes.map((entry) => entry.lane.id)).toEqual(LANES.map((lane) => lane.id));
   });
 

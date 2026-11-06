@@ -21,6 +21,8 @@ export type LaneId =
   | 'resourceServers'
   | 'flows'
   | 'connections'
+  | 'credentials'
+  | 'presentations'
   | 'design';
 
 /** How a lane's tiles are drawn. */
@@ -110,6 +112,22 @@ export const LANES: readonly Lane[] = [
     color: '#FB923C',
     icon: 'layers',
     shape: 'circle',
+  },
+  {
+    id: 'credentials',
+    title: ['deploy:explorer.lanes.credentials', 'Credentials'],
+    resourceTypes: ['credential_configuration'],
+    color: '#818CF8',
+    icon: 'idCard',
+    shape: 'tile',
+  },
+  {
+    id: 'presentations',
+    title: ['deploy:explorer.lanes.presentations', 'Presentations'],
+    resourceTypes: ['presentation_definition'],
+    color: '#A3E635',
+    icon: 'shieldCheck',
+    shape: 'tile',
   },
   {
     id: 'design',
@@ -241,6 +259,8 @@ const KIND_LABELS: Readonly<Record<string, string>> = {
   resource_server: 'Resource server',
   flow: 'Flow',
   connection: 'Connection',
+  credential_configuration: 'Credential configuration',
+  presentation_definition: 'Presentation definition',
   theme: 'Theme',
   layout: 'Layout',
 };
@@ -427,6 +447,12 @@ export function buildGraph(resources: readonly AppliedResource[], references: re
       case 'user':
         link(node, userTypeByHandle.get(text(fields['type']) ?? ''), 'userOfType', 'User of type {{name}}');
         link(node, ou, 'userIn', 'User in {{name}}');
+        break;
+      case 'credential_configuration':
+        link(node, ou, 'credentialConfigurationIn', 'Credential configuration in {{name}}');
+        break;
+      case 'presentation_definition':
+        link(node, ou, 'presentationDefinitionIn', 'Presentation definition in {{name}}');
         break;
       case 'role':
         link(node, ou, 'roleIn', 'Role in {{name}}');

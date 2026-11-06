@@ -6,7 +6,6 @@ package openid4vp
 
 import (
 	"encoding/json"
-	"io"
 	"net/http"
 	"strings"
 	"testing"
@@ -212,19 +211,4 @@ func (ts *OpenID4VPTestSuite) TestInitiate_MissingDefinitionID() {
 	res, _, err := testutils.InitiateVP("")
 	ts.Require().NoError(err)
 	ts.Equal(http.StatusBadRequest, res.StatusCode)
-}
-
-// TestTrustAnchors returns the configured trust anchors (empty by default).
-func (ts *OpenID4VPTestSuite) TestTrustAnchors() {
-	req, err := http.NewRequest("GET", testutils.TestServerURL+"/openid4vp/trust-anchors", nil)
-	ts.Require().NoError(err)
-
-	resp, err := testutils.GetHTTPClient().Do(req)
-	ts.Require().NoError(err)
-	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
-	ts.Require().Equalf(http.StatusOK, resp.StatusCode, "trust anchors: %s", string(body))
-
-	var anchors []map[string]any
-	ts.Require().NoErrorf(json.Unmarshal(body, &anchors), "trust anchors body: %s", string(body))
 }

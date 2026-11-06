@@ -149,9 +149,9 @@ func fabricateResponseJWE(t *testing.T, recipientPub *ecdsa.PublicKey, plaintext
 	}, ".")
 }
 
-func newTestService(t *testing.T, b *pidBuilder) (*openid4vpService, map[string]*RequestState) {
+func newTestService(t *testing.T) (*openid4vpService, map[string]*RequestState) {
 	t.Helper()
-	svc, store, _ := newTestServiceWithDefs(t, b)
+	svc, store, _ := newTestServiceWithDefs(t)
 	return svc, store
 }
 
@@ -159,7 +159,7 @@ func newTestService(t *testing.T, b *pidBuilder) (*openid4vpService, map[string]
 // can mutate the seeded definition before initiating (the reader mock reads the
 // map at call time).
 func newTestServiceWithDefs(
-	t *testing.T, b *pidBuilder,
+	t *testing.T,
 ) (*openid4vpService, map[string]*RequestState, map[string]presentation.PresentationDefinitionDTO) {
 	t.Helper()
 	signerKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -188,7 +188,7 @@ func newTestServiceWithDefs(
 	provider := newTestCryptoProvider(t, signerKey)
 	svc, err := newOpenID4VPService(cfg, store, testAudience,
 		provider, providers.KeyRef{KeyID: "test-key"}, "ES256", nil,
-		b.trustStore(), defStore, nil, "")
+		defStore, nil, "")
 	require.NoError(t, err)
 	return svc, stateEntries, byHandle
 }
@@ -208,31 +208,30 @@ func (suite *OpenID4VPServiceTestSuite) TestNewServiceValidation() {
 	}
 	keyRef := providers.KeyRef{KeyID: "test-key"}
 
-	_, err := newOpenID4VPService(valid, nil, "x509_hash:x", provider, keyRef, "ES256", nil, nil, defStore, nil, "")
+	_, err := newOpenID4VPService(valid, nil, "x509_hash:x", provider, keyRef, "ES256", nil, defStore, nil, "")
 	suite.ErrorIs(err, ErrPolicy)
 
-	_, err = newOpenID4VPService(valid, store, "", provider, keyRef, "ES256", nil, nil, defStore, nil, "")
+	_, err = newOpenID4VPService(valid, store, "", provider, keyRef, "ES256", nil, defStore, nil, "")
 	suite.ErrorIs(err, ErrPolicy)
 
-	_, err = newOpenID4VPService(valid, store, "x509_hash:x", nil, keyRef, "ES256", nil, nil, defStore, nil, "")
+	_, err = newOpenID4VPService(valid, store, "x509_hash:x", nil, keyRef, "ES256", nil, defStore, nil, "")
 	suite.ErrorIs(err, ErrPolicy)
 
-	_, err = newOpenID4VPService(valid, store, "x509_hash:x", provider, keyRef, "ES256", nil, nil, nil, nil, "")
+	_, err = newOpenID4VPService(valid, store, "x509_hash:x", provider, keyRef, "ES256", nil, nil, nil, "")
 	suite.ErrorIs(err, ErrPolicy)
 
 	_, err = newOpenID4VPService(serviceConfig{}, store, "x509_hash:x", provider, keyRef, "ES256",
-		nil, nil, defStore, nil, "")
+		nil, defStore, nil, "")
 	suite.ErrorIs(err, ErrPolicy)
 
-	svc, err := newOpenID4VPService(valid, store, "x509_hash:x", provider, keyRef, "ES256", nil, nil, defStore, nil, "")
+	svc, err := newOpenID4VPService(valid, store, "x509_hash:x", provider, keyRef, "ES256", nil, defStore, nil, "")
 	suite.Require().NoError(err)
 	suite.Equal(5*time.Minute, svc.cfg.TTL)
 	suite.Equal("x509_hash:x", svc.clientID)
 }
 
 func (suite *OpenID4VPServiceTestSuite) TestInitiateStoresPendingState() {
-	b := newPIDBuilder(suite.T())
-	svc, store := newTestService(suite.T(), b)
+	svc, store := newTestService(suite.T())
 
 	init, svcErr := svc.Initiate(context.Background(), testDefinitionID)
 	suite.Require().Nil(svcErr)
@@ -249,8 +248,7 @@ func (suite *OpenID4VPServiceTestSuite) TestInitiateStoresPendingState() {
 }
 
 func (suite *OpenID4VPServiceTestSuite) TestRequestObjectBuildsSignedJAR() {
-	b := newPIDBuilder(suite.T())
-	svc, store := newTestService(suite.T(), b)
+	svc, store := newTestService(suite.T())
 
 	init, svcErr := svc.Initiate(context.Background(), testDefinitionID)
 	suite.Require().Nil(svcErr)
@@ -275,8 +273,7 @@ func (suite *OpenID4VPServiceTestSuite) TestRequestObjectBuildsSignedJAR() {
 }
 
 func (suite *OpenID4VPServiceTestSuite) TestRequestObjectUnknownState() {
-	b := newPIDBuilder(suite.T())
-	svc, _ := newTestService(suite.T(), b)
+	svc, _ := newTestService(suite.T())
 	_, svcErr := svc.GetRequestObject(context.Background(), "nope")
 	suite.Require().NotNil(svcErr)
 	suite.Equal(ErrorUnknownState.Code, svcErr.Code)
@@ -284,7 +281,7 @@ func (suite *OpenID4VPServiceTestSuite) TestRequestObjectUnknownState() {
 
 func (suite *OpenID4VPServiceTestSuite) TestSubmitResponseHappyPath() {
 	b := newPIDBuilder(suite.T())
-	svc, store := newTestService(suite.T(), b)
+	svc, store := newTestService(suite.T())
 	svc.jwtSvc = stubResultTokenIssuer(suite.T())
 	svc.issuerURL = testIssuerURL
 
@@ -320,7 +317,7 @@ func (suite *OpenID4VPServiceTestSuite) TestSubmitResponseHappyPath() {
 // must accept the first that satisfies the policy rather than failing as ambiguous.
 func (suite *OpenID4VPServiceTestSuite) TestSubmitResponseAcceptsFirstValidOfMany() {
 	b := newPIDBuilder(suite.T())
-	svc, store := newTestService(suite.T(), b)
+	svc, store := newTestService(suite.T())
 
 	init, svcErr := svc.Initiate(context.Background(), testDefinitionID)
 	suite.Require().Nil(svcErr)
@@ -344,13 +341,16 @@ func (suite *OpenID4VPServiceTestSuite) TestSubmitResponseAcceptsFirstValidOfMan
 
 func (suite *OpenID4VPServiceTestSuite) TestSubmitResponseRestrictsTrustedAuthority() {
 	b := newPIDBuilder(suite.T())
-	svc, store, byHandle := newTestServiceWithDefs(suite.T(), b)
+	svc, store, byHandle := newTestServiceWithDefs(suite.T())
 
 	// The definition enables trust enforcement and pins an anchor the credential's leaf does NOT chain to.
+	unrelatedRoot, _ := newTestRootCA(suite.T())
 	enforceIssuer := true
 	def := byHandle[testDefinitionID]
 	def.EnforceTrustedIssuer = &enforceIssuer
-	def.TrustedAuthorities = []string{"unrelated-root"}
+	def.TrustedAuthorities = []presentation.TrustedAuthority{
+		{Name: "unrelated-root", Certificate: certPEM(unrelatedRoot)},
+	}
 	byHandle[testDefinitionID] = def
 
 	init, svcErr := svc.Initiate(context.Background(), testDefinitionID)
@@ -373,13 +373,14 @@ func (suite *OpenID4VPServiceTestSuite) TestSubmitResponseRestrictsTrustedAuthor
 
 func (suite *OpenID4VPServiceTestSuite) TestSubmitResponseAcceptsCorrectTrustedAuthority() {
 	b := newPIDBuilder(suite.T())
-	svc, store, byHandle := newTestServiceWithDefs(suite.T(), b)
+	svc, store, byHandle := newTestServiceWithDefs(suite.T())
 
-	// b.trustStore() names the credential's root "test-root"; pin to it with enforcement enabled.
 	enforceIssuer := true
 	def := byHandle[testDefinitionID]
 	def.EnforceTrustedIssuer = &enforceIssuer
-	def.TrustedAuthorities = []string{"test-root"}
+	def.TrustedAuthorities = []presentation.TrustedAuthority{
+		{Name: "test-root", Certificate: certPEM(b.rootCert)},
+	}
 	byHandle[testDefinitionID] = def
 
 	init, svcErr := svc.Initiate(context.Background(), testDefinitionID)
@@ -401,10 +402,14 @@ func (suite *OpenID4VPServiceTestSuite) TestSubmitResponseAcceptsCorrectTrustedA
 
 func (suite *OpenID4VPServiceTestSuite) TestRequestObjectEmitsTrustedAuthorityAKI() {
 	b := newPIDBuilder(suite.T())
-	svc, _, byHandle := newTestServiceWithDefs(suite.T(), b)
+	svc, _, byHandle := newTestServiceWithDefs(suite.T())
 
+	enforceIssuer := true
 	def := byHandle[testDefinitionID]
-	def.TrustedAuthorities = []string{"test-root"}
+	def.EnforceTrustedIssuer = &enforceIssuer
+	def.TrustedAuthorities = []presentation.TrustedAuthority{
+		{Name: "test-root", Certificate: certPEM(b.rootCert)},
+	}
 	byHandle[testDefinitionID] = def
 
 	init, svcErr := svc.Initiate(context.Background(), testDefinitionID)
@@ -431,9 +436,71 @@ func (suite *OpenID4VPServiceTestSuite) TestRequestObjectEmitsTrustedAuthorityAK
 	suite.Equal([]interface{}{ski}, entry["values"])
 }
 
+func (suite *OpenID4VPServiceTestSuite) TestRequestObjectOmitsTrustedAuthoritiesWhenNotEnforced() {
+	b := newPIDBuilder(suite.T())
+	svc, _, byHandle := newTestServiceWithDefs(suite.T())
+
+	def := byHandle[testDefinitionID]
+	def.TrustedAuthorities = []presentation.TrustedAuthority{
+		{Name: "test-root", Certificate: certPEM(b.rootCert)},
+	}
+	byHandle[testDefinitionID] = def
+
+	init, svcErr := svc.Initiate(context.Background(), testDefinitionID)
+	suite.Require().Nil(svcErr)
+	jar, svcErr := svc.GetRequestObject(context.Background(), init.State)
+	suite.Require().Nil(svcErr)
+
+	parts := strings.Split(jar, ".")
+	suite.Require().Len(parts, 3)
+	payloadJSON, err := base64.RawURLEncoding.DecodeString(parts[1])
+	suite.Require().NoError(err)
+	var claims map[string]interface{}
+	suite.Require().NoError(json.Unmarshal(payloadJSON, &claims))
+
+	dcql := claims["dcql_query"].(map[string]interface{})
+	cred := dcql["credentials"].([]interface{})[0].(map[string]interface{})
+	suite.NotContains(cred, "trusted_authorities")
+}
+
+func (suite *OpenID4VPServiceTestSuite) TestSubmitResponseEnforcedWithoutTrustedAuthoritiesFails() {
+	b := newPIDBuilder(suite.T())
+	svc, store, byHandle := newTestServiceWithDefs(suite.T())
+
+	enforceIssuer := true
+	def := byHandle[testDefinitionID]
+	def.EnforceTrustedIssuer = &enforceIssuer
+	byHandle[testDefinitionID] = def
+
+	init, svcErr := svc.Initiate(context.Background(), testDefinitionID)
+	suite.Require().Nil(svcErr)
+	rs := store[init.State]
+
+	jweToken := fabricateResponseJWE(suite.T(), &rs.EphemeralKey.PublicKey,
+		responseBody(suite.T(), b.build(rs.Nonce, map[string]interface{}{"given_name": "Erika", "family_name": "M"}),
+			init.State))
+
+	_, _, svcErr = svc.SubmitResponse(context.Background(), init.State, []byte(jweToken))
+	suite.Require().NotNil(svcErr)
+	suite.Equal(ErrorVerificationFailed.Code, svcErr.Code)
+	suite.Equal(StatusFailed, store[init.State].Status)
+}
+
+func (suite *OpenID4VPServiceTestSuite) TestInitiateFailsOnCorruptTrustedAuthority() {
+	svc, _, byHandle := newTestServiceWithDefs(suite.T())
+
+	def := byHandle[testDefinitionID]
+	def.TrustedAuthorities = []presentation.TrustedAuthority{{Name: "broken", Certificate: "not pem"}}
+	byHandle[testDefinitionID] = def
+
+	_, svcErr := svc.Initiate(context.Background(), testDefinitionID)
+	suite.Require().NotNil(svcErr)
+	suite.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+}
+
 func (suite *OpenID4VPServiceTestSuite) TestSubmitResponseWrongNonceMarksFailed() {
 	b := newPIDBuilder(suite.T())
-	svc, store := newTestService(suite.T(), b)
+	svc, store := newTestService(suite.T())
 
 	init, svcErr := svc.Initiate(context.Background(), testDefinitionID)
 	suite.Require().Nil(svcErr)
@@ -457,7 +524,7 @@ func (suite *OpenID4VPServiceTestSuite) TestSubmitResponseWrongNonceMarksFailed(
 
 func (suite *OpenID4VPServiceTestSuite) TestSubmitResponseStateMismatch() {
 	b := newPIDBuilder(suite.T())
-	svc, store := newTestService(suite.T(), b)
+	svc, store := newTestService(suite.T())
 
 	init, svcErr := svc.Initiate(context.Background(), testDefinitionID)
 	suite.Require().Nil(svcErr)
@@ -477,8 +544,7 @@ func (suite *OpenID4VPServiceTestSuite) TestSubmitResponseStateMismatch() {
 }
 
 func (suite *OpenID4VPServiceTestSuite) TestSubmitResponseUndecryptable() {
-	b := newPIDBuilder(suite.T())
-	svc, _ := newTestService(suite.T(), b)
+	svc, _ := newTestService(suite.T())
 
 	init, svcErr := svc.Initiate(context.Background(), testDefinitionID)
 	suite.Require().Nil(svcErr)
@@ -494,16 +560,14 @@ func (suite *OpenID4VPServiceTestSuite) TestSubmitResponseUndecryptable() {
 }
 
 func (suite *OpenID4VPServiceTestSuite) TestSubmitResponseUnknownState() {
-	b := newPIDBuilder(suite.T())
-	svc, _ := newTestService(suite.T(), b)
+	svc, _ := newTestService(suite.T())
 	_, _, err := svc.SubmitResponse(context.Background(), "nope", []byte("x.y.z.a.b"))
 	suite.Require().NotNil(err)
 	suite.Equal(ErrorUnknownState.Code, err.Code)
 }
 
 func (suite *OpenID4VPServiceTestSuite) TestSubmitErrorMarksFailed() {
-	b := newPIDBuilder(suite.T())
-	svc, store := newTestService(suite.T(), b)
+	svc, store := newTestService(suite.T())
 
 	init, svcErr := svc.Initiate(context.Background(), testDefinitionID)
 	suite.Require().Nil(svcErr)
@@ -519,16 +583,14 @@ func (suite *OpenID4VPServiceTestSuite) TestSubmitErrorMarksFailed() {
 }
 
 func (suite *OpenID4VPServiceTestSuite) TestSubmitErrorUnknownState() {
-	b := newPIDBuilder(suite.T())
-	svc, _ := newTestService(suite.T(), b)
+	svc, _ := newTestService(suite.T())
 	err := svc.SubmitError(context.Background(), "nope", "access_denied", "")
 	suite.Require().NotNil(err)
 	suite.Equal(ErrorUnknownState.Code, err.Code)
 }
 
 func (suite *OpenID4VPServiceTestSuite) TestExpiredStateRejected() {
-	b := newPIDBuilder(suite.T())
-	svc, store := newTestService(suite.T(), b)
+	svc, store := newTestService(suite.T())
 
 	init, svcErr := svc.Initiate(context.Background(), testDefinitionID)
 	suite.Require().Nil(svcErr)
@@ -572,7 +634,7 @@ func (suite *OpenID4VPServiceTestSuite) TestSubmitResponseRedirectURI() {
 	}
 
 	b := newPIDBuilder(suite.T())
-	svc, store := newTestService(suite.T(), b)
+	svc, store := newTestService(suite.T())
 
 	// Unconfigured base => no redirect.
 	redirect, svcErr := submitVP(svc, store, b)
@@ -581,7 +643,7 @@ func (suite *OpenID4VPServiceTestSuite) TestSubmitResponseRedirectURI() {
 
 	// Plain base URL => state appended with ?.
 	svc.cfg.ResultRedirectURIBase = resultRedirectURIBase
-	svc, store = newTestService(suite.T(), b)
+	svc, store = newTestService(suite.T())
 	svc.cfg.ResultRedirectURIBase = resultRedirectURIBase
 	redirect, svcErr = submitVP(svc, store, b)
 	suite.Nil(svcErr)
@@ -589,7 +651,7 @@ func (suite *OpenID4VPServiceTestSuite) TestSubmitResponseRedirectURI() {
 	suite.Contains(redirect, resultRedirectURIBase)
 
 	// Base URL with existing query param => state appended with &.
-	svc, store = newTestService(suite.T(), b)
+	svc, store = newTestService(suite.T())
 	svc.cfg.ResultRedirectURIBase = "https://verifier.example/result?ui=qr"
 	redirect, svcErr = submitVP(svc, store, b)
 	suite.Nil(svcErr)
@@ -597,8 +659,7 @@ func (suite *OpenID4VPServiceTestSuite) TestSubmitResponseRedirectURI() {
 }
 
 func (suite *OpenID4VPServiceTestSuite) TestInitiateRejectsUnknownDefinition() {
-	b := newPIDBuilder(suite.T())
-	svc, _ := newTestService(suite.T(), b)
+	svc, _ := newTestService(suite.T())
 
 	_, err := svc.Initiate(context.Background(), "no-such-def")
 	suite.Require().NotNil(err)
@@ -627,14 +688,14 @@ func (suite *OpenID4VPServiceTestSuite) TestRandomTokenIsRandomAndBase64URL() {
 }
 
 func (suite *OpenID4VPServiceTestSuite) TestAuthenticate_NilCredential() {
-	svc, _ := newTestService(suite.T(), newPIDBuilder(suite.T()))
+	svc, _ := newTestService(suite.T())
 	result, err := svc.Authenticate(context.Background(), nil)
 	suite.Nil(result)
 	suite.NotNil(err)
 }
 
 func (suite *OpenID4VPServiceTestSuite) TestAuthenticate_ValidCredential() {
-	svc, _ := newTestService(suite.T(), newPIDBuilder(suite.T()))
+	svc, _ := newTestService(suite.T())
 	cred := &authncommon.OpenID4VPCredential{
 		Subject: "sub-42",
 		Claims:  map[string]interface{}{"given_name": "Ada", "family_name": "Lovelace"},
@@ -652,7 +713,7 @@ func (suite *OpenID4VPServiceTestSuite) TestAuthenticate_ValidCredential() {
 }
 
 func (suite *OpenID4VPServiceTestSuite) TestAuthenticate_NoSubject() {
-	svc, _ := newTestService(suite.T(), newPIDBuilder(suite.T()))
+	svc, _ := newTestService(suite.T())
 	cred := &authncommon.OpenID4VPCredential{
 		Claims: map[string]interface{}{"tax_id": "DE123456"},
 	}
@@ -666,8 +727,7 @@ func (suite *OpenID4VPServiceTestSuite) TestAuthenticate_NoSubject() {
 }
 
 func (suite *OpenID4VPServiceTestSuite) TestGetResultDeletesOnCompleted() {
-	b := newPIDBuilder(suite.T())
-	svc, store := newTestService(suite.T(), b)
+	svc, store := newTestService(suite.T())
 	svc.jwtSvc = stubResultTokenIssuer(suite.T())
 	svc.issuerURL = testIssuerURL
 
@@ -685,8 +745,7 @@ func (suite *OpenID4VPServiceTestSuite) TestGetResultDeletesOnCompleted() {
 }
 
 func (suite *OpenID4VPServiceTestSuite) TestGetResultDeletesOnFailed() {
-	b := newPIDBuilder(suite.T())
-	svc, store := newTestService(suite.T(), b)
+	svc, store := newTestService(suite.T())
 
 	init, svcErr := svc.Initiate(context.Background(), testDefinitionID)
 	suite.Require().Nil(svcErr)
@@ -952,7 +1011,7 @@ func newPIDBuilder(t *testing.T) *pidBuilder {
 
 func (b *pidBuilder) trustStore() *trustAnchorStore {
 	b.t.Helper()
-	return newTrustAnchorStore([]*x509.Certificate{b.rootCert}, []string{"test-root"})
+	return newTrustAnchorStore([]*x509.Certificate{b.rootCert})
 }
 
 // build creates a valid SD-JWT PID presentation disclosing claims, with a Key
@@ -1039,8 +1098,7 @@ func (v *testVerifier) verifyResponse(body []byte, credID, nonce string) (*Verif
 	cred, err := verifySDJWTPresentation(
 		presentations[0], v.trust, v.policy.Audience, nonce,
 		v.policy.Leeway, v.policy.KeyBindingMaxAge,
-		v.policy.EnforceTrustedIssuer, v.policy.EnforceKeyBinding,
-		v.policy.TrustedAuthorities)
+		v.policy.EnforceTrustedIssuer, v.policy.EnforceKeyBinding)
 	if err != nil {
 		return nil, err
 	}
@@ -1243,8 +1301,7 @@ func decodeFakeToken(t *testing.T, token string) map[string]interface{} {
 }
 
 func (suite *OpenID4VPServiceTestSuite) TestGetStatusUnknownTxn() {
-	b := newPIDBuilder(suite.T())
-	svc, _ := newTestService(suite.T(), b)
+	svc, _ := newTestService(suite.T())
 
 	ts, svcErr := svc.GetResult(context.Background(), "no-such-txn")
 	suite.Nil(ts)
@@ -1252,8 +1309,7 @@ func (suite *OpenID4VPServiceTestSuite) TestGetStatusUnknownTxn() {
 }
 
 func (suite *OpenID4VPServiceTestSuite) TestGetStatusPending() {
-	b := newPIDBuilder(suite.T())
-	svc, _ := newTestService(suite.T(), b)
+	svc, _ := newTestService(suite.T())
 
 	init, svcErr := svc.Initiate(context.Background(), testDefinitionID)
 	suite.Require().Nil(svcErr)
@@ -1265,8 +1321,7 @@ func (suite *OpenID4VPServiceTestSuite) TestGetStatusPending() {
 }
 
 func (suite *OpenID4VPServiceTestSuite) TestGetStatusFailed() {
-	b := newPIDBuilder(suite.T())
-	svc, store := newTestService(suite.T(), b)
+	svc, store := newTestService(suite.T())
 
 	init, svcErr := svc.Initiate(context.Background(), testDefinitionID)
 	suite.Require().Nil(svcErr)
@@ -1281,8 +1336,7 @@ func (suite *OpenID4VPServiceTestSuite) TestGetStatusFailed() {
 }
 
 func (suite *OpenID4VPServiceTestSuite) TestGetStatusExpired() {
-	b := newPIDBuilder(suite.T())
-	svc, store := newTestService(suite.T(), b)
+	svc, store := newTestService(suite.T())
 
 	init, svcErr := svc.Initiate(context.Background(), testDefinitionID)
 	suite.Require().Nil(svcErr)
@@ -1296,8 +1350,7 @@ func (suite *OpenID4VPServiceTestSuite) TestGetStatusExpired() {
 
 func (suite *OpenID4VPServiceTestSuite) TestGetStatusCompletedWithIssuer() {
 	t := suite.T()
-	b := newPIDBuilder(t)
-	svc, store := newTestService(t, b)
+	svc, store := newTestService(t)
 	svc.jwtSvc = stubResultTokenIssuer(t)
 	svc.issuerURL = testIssuerURL
 
@@ -1322,8 +1375,7 @@ func (suite *OpenID4VPServiceTestSuite) TestGetStatusCompletedWithIssuer() {
 }
 
 func (suite *OpenID4VPServiceTestSuite) TestGetStatusCompletedNoIssuer() {
-	b := newPIDBuilder(suite.T())
-	svc, store := newTestService(suite.T(), b)
+	svc, store := newTestService(suite.T())
 
 	init, svcErr := svc.Initiate(context.Background(), testDefinitionID)
 	suite.Require().Nil(svcErr)
@@ -1338,8 +1390,7 @@ func (suite *OpenID4VPServiceTestSuite) TestGetStatusCompletedNoIssuer() {
 
 func (suite *OpenID4VPServiceTestSuite) TestGetStatusCompletedIssuerError() {
 	t := suite.T()
-	b := newPIDBuilder(t)
-	svc, store := newTestService(t, b)
+	svc, store := newTestService(t)
 	svc.jwtSvc = failingResultTokenIssuer(t)
 	svc.issuerURL = testIssuerURL
 
@@ -1355,8 +1406,7 @@ func (suite *OpenID4VPServiceTestSuite) TestGetStatusCompletedIssuerError() {
 }
 
 func (suite *OpenID4VPServiceTestSuite) TestGetStatusUnknownStatusValue() {
-	b := newPIDBuilder(suite.T())
-	svc, store := newTestService(suite.T(), b)
+	svc, store := newTestService(suite.T())
 
 	init, svcErr := svc.Initiate(context.Background(), testDefinitionID)
 	suite.Require().Nil(svcErr)

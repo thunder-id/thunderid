@@ -35,7 +35,7 @@
     "@thunderid/eslint-plugin": "workspace:^",
     "@thunderid/logger": "workspace:^",
     "@thunderid/prettier-config": "workspace:^",
-    "i18next-cli": "1.51.3",
+    "i18next-cli": "1.82.2",
     "rimraf": "catalog:",
     "turbo": "catalog:"
   }

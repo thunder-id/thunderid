@@ -1,3 +1,3 @@
 module github.com/thunder-id/thunderid/tools/i18n-extractor
 
-go 1.27.2
+go 1.27.3

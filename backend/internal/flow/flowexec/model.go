@@ -79,6 +79,8 @@ type EngineContext struct {
 	// consumedInputs accumulates identifiers reported as consumed by executors and
 	// interceptors within the current request
 	consumedInputs []string
+	// nodeVisits counts how many times each node ran within the current request
+	nodeVisits map[core.NodeInterface]int
 	// frameStack holds saved call frames. Top is the most recent caller.
 	frameStack []*frame
 	// sharedRuntimeData is a cross-frame key-value store available to executors that opt in.

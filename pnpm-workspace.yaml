@@ -45,8 +45,8 @@ catalog:
   '@playwright/test': 1.60.0
   '@vitejs/plugin-basic-ssl': 2.3.0
   '@vitejs/plugin-react': 6.0.2
-  '@vitest/browser-playwright': 4.1.10
-  '@vitest/coverage-istanbul': 4.1.10
+  '@vitest/browser-playwright': 4.1.12
+  '@vitest/coverage-istanbul': 4.1.12
   '@wso2/oxygen-ui': 0.20.0
   '@wso2/oxygen-ui-icons-react': 0.20.0
   babel-plugin-react-compiler: 19.1.0-rc.3
@@ -60,7 +60,7 @@ catalog:
   jsdom: 27.0.1
   lodash-es: 4.18.1
   lucide-react: 0.545.0
-  next: 16.4.1
+  next: 16.4.5
   playwright: 1.60.0
   prettier: 3.6.2
   react: 19.2.3
@@ -68,7 +68,7 @@ catalog:
   react-hook-form: 7.65.0
   react-i18next: 16.0.1
   react-router: 8.3.0
-  rimraf: 6.1.3
+  rimraf: 6.1.4
   rolldown: 1.0.0-beta.45
   rollup-plugin-visualizer: 6.0.5
   tslib: 2.8.1
@@ -77,7 +77,7 @@ catalog:
   typescript-eslint: 8.57.2
   vite: 8.1.6
   vite-plugin-svgr: 5.2.0
-  vitest: 4.1.10
+  vitest: 4.1.12
   zod: 4.6.6
 
 overrides:
@@ -124,7 +124,12 @@ overrides:
   # ESLint plugin packages still require CJS-style minimatch resolution from the 3.x line.
   eslint-plugin-react>minimatch: '3.1.5'
   eslint-plugin-jsx-a11y>minimatch: '3.1.5'
-  serialize-javascript: '>=7.0.5'
+  # JUSTIFICATION: Fixes GHSA-m5mm-p8h7-m29v (CVE-2026-115897, CVE-2026-115754): a function value
+  # whose source ends in a bare `</script` could break out of a script element, fixed in 7.1.3.
+  # Transitive via docs -> copy-webpack-plugin and css-minimizer-webpack-plugin, which declare
+  # serialize-javascript ^6, so this lifts them onto the patched 7.x line; the caret keeps them off a
+  # future major. Added 2026-05-14, raised 2026-11-05. Remove once those plugins require >=7.1.3.
+  serialize-javascript@<7.1.3: '^7.1.3'
   webpack: '5.105.0'
   yaml: 2.8.3
   path-to-regexp: 0.1.13
@@ -194,8 +199,26 @@ overrides:
   undici: '^6.28.1'
   # JUSTIFICATION: Fixes entity encoding bypass and RCE vulnerabilities in fast-xml-parser.
   fast-xml-parser: '>=5.3.6'
-  # JUSTIFICATION: Fixes arbitrary file read vulnerability in Vitest UI server.
-  vitest: '>=4.1.0'
+  # JUSTIFICATION: Fixes the arbitrary file read vulnerability in the Vitest UI server, plus
+  # GHSA-82fw-gwwq-j7x9 (arbitrary file read through an @vitest/mocker redirect mock) and
+  # GHSA-qxg6-89mg-rqv8 (code injection through manual mock registration in @vitest/mocker), both
+  # fixed in 4.1.12. The catalog pins vitest 4.1.12, which this entry leaves alone; it only lifts
+  # any older vitest onto the patched 4.x line, and the caret keeps it off the untested 5.x major.
+  # Added 2026-07-25, raised 2026-11-05.
+  vitest@<4.1.12: '^4.1.12'
+  # JUSTIFICATION: Fixes GHSA-2wm5-q62r-hmrv, slow rejection of oversized malformed color strings
+  # in colord, fixed in 2.9.4. Transitive via docs -> Docusaurus -> cssnano -> postcss-colormin and
+  # postcss-minify-gradients, which declare colord ^2.9.3, so a patched 2.x release already fits
+  # their range; `pnpm update` alone does not move the locked 2.9.3, so this entry lifts it.
+  # Added 2026-11-05. Remove once cssnano requires colord >=2.9.4.
+  colord@<2.9.4: '^2.9.4'
+  # JUSTIFICATION: Fixes GHSA-r5c8-rf4w-qrq8 (readUint8Array reads past the decoder's view, fixed in
+  # 0.2.118) and GHSA-g75x-89c3-rvmr (readFromDataView out-of-bounds read, fixed in 0.2.119) in lib0.
+  # Transitive via the Console and other frontends -> @lexical/react -> @lexical/yjs -> yjs, which
+  # declares lib0 ^0.2.99, so a patched 0.2.x release already fits its range; `pnpm update` alone does
+  # not move the locked 0.2.117, so this entry lifts it. Added 2026-11-05. Remove once yjs requires
+  # lib0 >=0.2.119.
+  lib0@<0.2.119: '^0.2.119'
   # JUSTIFICATION: Fixes command injection vulnerability via -c/--cmd flag in glob CLI.
   glob: '>=11.1.0'
   # JUSTIFICATION: Fixes environment variable exposure in Storybook manager bundle.
@@ -213,9 +236,23 @@ overrides:
   picomatch: '>=2.3.2'
   # JUSTIFICATION: Fixes body-parser denial of service vulnerabilities. Covers 1.x <1.20.6 and 2.x <2.3.0 vulnerable ranges.
   body-parser: '>=2.3.0'
-  # JUSTIFICATION: Fixes webpack-dev-server CSRF and DoS vulnerabilities. Pinned to 5.2.6 to address <=5.2.5 vulnerability (5.3.0 introduces breaking changes).
-  webpack-dev-server: '5.2.6'
-  '@hono/node-server': '>=2.0.5'
+  # JUSTIFICATION: Fixes webpack-dev-server CSRF and DoS vulnerabilities, plus CVE-2026-112085
+  # (proxied WebSocket upgrades skip the allowedHosts check) and CVE-2026-114348 (open-editor endpoint
+  # Host check bypass), both fixed in 5.2.7. Transitive via docs -> @docusaurus/core, which declares
+  # ^5.2.2. Pinned exact on the 5.x line because the 6.x major introduces breaking changes.
+  # Added 2026-07-27, raised 2026-11-05.
+  webpack-dev-server: '5.2.7'
+  # JUSTIFICATION: Fixes GHSA-866g-f22w-33x8 (CVE-2026-8769): JSON response handlers read response
+  # bodies without a size limit, allowing memory exhaustion, fixed in 4.0.33. Transitive via docs ->
+  # @scalar/api-reference -> @scalar/agent-chat -> ai, @ai-sdk/vue and @ai-sdk/gateway, which pin
+  # 4.0.5 exactly. 4.0.33 is a patch release on the same 4.0.x line. Added 2026-11-05. Remove once
+  # @scalar/api-reference ships with @ai-sdk/provider-utils >=4.0.33.
+  '@ai-sdk/provider-utils@>=4.0.0 <4.0.33': '~4.0.33'
+  # JUSTIFICATION: Fixes GHSA-rmxm-3fg6-px4f, middleware bypass on static paths because serveStatic
+  # decodes the request path twice. Transitive via @modelcontextprotocol/sdk in the wayfinder samples,
+  # which accepts ^1.19.9 || ^2.0.5. Added 2026-07-25, raised 2026-11-05.
+  # Remove once @modelcontextprotocol/sdk requires @hono/node-server >=2.1.3.
+  '@hono/node-server@<2.1.3': '>=2.1.3 <3'
   # JUSTIFICATION: Fixes GHSA-f88m-g3jw-g9cj (CVE-2026-33327, CVE-2026-33328, CVE-2026-35590,
   # CVE-2026-35591) — libvips vulnerabilities inherited by sharp, and GHSA-rgj7-g3m4-5g8c
   # (GHSA-g89c-p67h-r497, GHSA-2jg2-4ch7-h545) — libheif vulnerabilities inherited by sharp.
@@ -233,9 +270,11 @@ overrides:
   nanoid@<3.3.17: 3.3.18
   # JUSTIFICATION: Fixes GHSA-w9m9-85wc-3x92 — DoS via uncontrolled AST recursion in
   # postcss-selector-parser. Transitive via Docusaurus css-loader and postcss-preset-env chains.
+  # The 7.x entries are raised to 7.1.6 for GHSA-rj75-hqrm-r3gf, CPU exhaustion through quadratic
+  # complexity in flat selector parsing, via the Docusaurus cssnano chain. Raised 2026-11-05.
   postcss-selector-parser@>=6.1.0 <6.1.3: '>=6.1.3'
-  postcss-selector-parser@>=7.0.0 <7.1.3: '>=7.1.3'
-  postcss-discard-unused>postcss-selector-parser: '>=7.1.3'
+  postcss-selector-parser@>=7.0.0 <7.1.6: '>=7.1.6 <8'
+  postcss-discard-unused>postcss-selector-parser: '>=7.1.6 <8'
   # JUSTIFICATION: Fixes GHSA-c83g-rgw3-j3cx (unbounded memory growth / OOM via distinct query
   # results) and GHSA-73wf-gq98-2v4g (uncaught crash / prototype write via untrusted custom stats).
   # Transitive via @babel/helper-compilation-targets in the Docusaurus build chain.
@@ -254,7 +293,11 @@ overrides:
   # 3.x line: the consumers here (ajv) declare fast-uri ^3.0.1, and an open-ended floor lets the
   # resolver dedupe this edge onto the 4.x major, which those consumers were never tested against.
   # 3.1.8 is a patch release on the 3.1.x line already resolved here (3.1.6), so no API change.
-  fast-uri: '>=3.1.8 <4'
+  # Raised to 3.1.9 on 2026-11-05 for GHSA-w74x-v6f9-j3xg (scheme spoofing via percent-encoded scheme
+  # decoding), GHSA-xhq7-xmqj-769h (improper path equivalence in relative reference normalization),
+  # GHSA-wjr9-j795-jxcr (host confusion via unchecked WHATWG host canonicalization) and
+  # GHSA-333x-w4r6-6crp (scheme injection via an unescaped first-segment colon in suffix references).
+  fast-uri: '>=3.1.9 <4'
   # JUSTIFICATION: Fixes GHSA-mrhx-c7xc-m3w5, memory exhaustion while validating oversized
   # constrained collections. Enters through @codecov/vite-plugin@2.0.1 >
   # @codecov/bundler-plugin-core@2.0.1 > zod@3.25.76 in the Console, Console CP and Gate builds.
@@ -281,14 +324,6 @@ peerDependencyRules:
 
 auditConfig:
   ignoreGhsas:
-    # JUSTIFICATION: image-size ICNS parser infinite-loop DoS, transitive via docusaurus mdx-loader.
-    # No patched release exists on npm yet (advisory lists "Patched: None"); revisit and add an
-    # override once image-size ships a fix.
-    - GHSA-w3rx-r6r6-pgpr
-    # JUSTIFICATION: image-size JXL/HEIF parser infinite-loop DoS, transitive via docusaurus
-    # mdx-loader. No patched release exists on npm yet (advisory lists "Patched: None"); revisit
-    # and add an override once image-size ships a fix.
-    - GHSA-5p2g-fcmc-qvqq
     # JUSTIFICATION: GHSA-qxc2-j82w-r537 — arbitrary code execution via faker's `helpers.fake`.
     # Transitive via docs -> openapi-to-postmanv2 -> postman-collection, which depends on the
     # deprecated @faker-js/faker@5.5.3. Not overridable: the fix landed in faker 10.5.0 (the
@@ -303,23 +338,27 @@ auditConfig:
     # build-time only, run against this repo's own OpenAPI specs. Revisit once postman-collection
     # upgrades its faker dependency.
     - GHSA-qxc2-j82w-r537
-    # JUSTIFICATION: http-cache-semantics max-stale handling can disclose a cached response to
-    # another user of a shared cache. Transitive via docs -> @docusaurus/core -> update-notifier ->
-    # latest-version -> package-json -> got -> cacheable-request. No patched release exists on npm
-    # yet (the advisory lists "Patched: None"; 4.2.0 is the latest), and the latest Docusaurus
-    # (3.10.2) still depends on update-notifier, so neither an upgrade nor an override can fix it.
-    # Not exploitable here: the only use is the Docusaurus CLI's own update check on a developer
-    # machine or CI runner, never a cache shared between users. Revisit once http-cache-semantics
-    # ships a fix.
-    - GHSA-ch52-4w7c-c8xp
-    # JUSTIFICATION: braces stack exhaustion through deeply nested brace patterns. Transitive via
-    # docs -> @docusaurus/core -> chokidar@3 and webpack-dev-server -> http-proxy-middleware ->
-    # micromatch. No patched release exists on npm yet (the advisory lists "Patched: None"; 3.0.3
-    # is the latest), and the latest Docusaurus (3.10.2) still depends on chokidar@3, so neither an
-    # upgrade nor an override can fix it. Not exploitable here: the patterns come from the docs
-    # site's own build and dev-server configuration, never from untrusted input, and the code runs
-    # only while building or serving the docs locally. Revisit once braces ships a fix.
-    - GHSA-vfj7-8cjw-p6xm
+    # JUSTIFICATION: minimatch DoS via globparts amplification, fixed only in 11.0.1. rimraf and
+    # i18next-cli already resolve to 11.x; the remaining paths are typescript-eslint
+    # (@typescript-eslint/typescript-estree) and eslint-plugin-import-x, whose latest releases still
+    # declare minimatch ^10. Not overridden: 11.0 removes makeRe(), which eslint-plugin-import-x's
+    # no-internal-modules rule calls. Not exploitable here: the patterns come from this repo's own
+    # lint configuration, never from untrusted input, and the code runs only at lint time.
+    # Added 2026-11-05. Revisit once typescript-eslint and eslint-plugin-import-x accept minimatch 11.
+    - GHSA-g3hv-75wg-m249
+    # JUSTIFICATION: KaTeX prototype-pollution trust bypass, fixed in 0.18.2. Transitive via docs ->
+    # @docusaurus/theme-mermaid -> mermaid, and the latest mermaid 11.x still declares katex ^0.16.47;
+    # only mermaid 12 moves to 0.18, which is a major upgrade of the docs diagram renderer. Not
+    # exploitable here: it needs an existing prototype pollution in the page plus attacker-controlled
+    # math input, and the only input is this repo's own docs content. Added 2026-11-05. Revisit
+    # when Docusaurus supports mermaid 12.
+    - GHSA-238p-pmpm-9mq7
+    # JUSTIFICATION: deepmerge mergeObject() prototype poisoning of returned objects. Transitive via
+    # docs -> @docusaurus/plugin-svgr -> @svgr/webpack -> @svgr/plugin-svgo. The advisory names 4.3.2
+    # as the fix, but no such release exists on npm (4.3.1 is the latest), so neither an upgrade nor
+    # an override can fix it. Not exploitable here: @svgr/plugin-svgo only merges this repo's own
+    # SVGO configuration at docs build time. Added 2026-11-05. Revisit once deepmerge publishes 4.3.2.
+    - GHSA-gcqx-w48m-w2h4
 
 minimumReleaseAgeExclude:
   - '@thunderid/*'
