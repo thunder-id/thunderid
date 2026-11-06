@@ -389,6 +389,7 @@ Every flow you deploy must reference only executors that are registered on the s
 | **Auth Assertion Generator** | Generates the final authentication assertion on successful flow completion. | User authenticated; assertion settings configured |
 | **End Session** | Terminates the SSO session established by the authentication flow and clears its session cookie. | - |
 | **HTTP Request** | Makes HTTP requests to external endpoints. | - |
+| **Device Code** | Verifies a `user_code` against a pending Device Authorization request and makes the verified request context available to the flow. | - |
 
 :::tip 
 - See [View and Executor Pairings](#view-and-executor-pairings) for more details on combining Views with executors.
@@ -779,6 +780,24 @@ Authenticates users via GitHub OAuth 2.0. After the redirect, <ProductName /> ex
 - Redirect URI not registered in the GitHub OAuth application
 - Authorization code expired
 - GitHub identity provider not configured in <ProductName />
+
+</details>
+
+#### Device Authorization
+
+<details>
+<summary>Device Code</summary>
+
+Verifies a user code entered in the browser against a pending Device Authorization request and makes the verified request context available to the rest of the flow.
+
+**When to use:** Verify a code entered in the browser before continuing to the Authentication flow assigned to the application.
+
+**Prerequisites:** Use this executor in a Device Grant flow and provide its required `user_code` input.
+
+**Input Configuration:**
+- `user_code` (required): the code displayed by the device. Connect the incomplete path to a View that collects this input, then route the View submission back to the executor.
+
+**Flow configuration:** Route successful verification to a Call node that invokes the Authentication flow assigned to the application. No node properties need configuration.
 
 </details>
 
