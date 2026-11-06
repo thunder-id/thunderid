@@ -2318,8 +2318,7 @@ describe('ApplicationEditPage', () => {
       expect(screen.getByRole('tab', {name: 'Customization'})).toBeInTheDocument();
       expect(screen.getByRole('tab', {name: 'Token'})).toBeInTheDocument();
       expect(screen.getByRole('tab', {name: 'Advanced'})).toBeInTheDocument();
-      // Organization Access is only offered to clients with the client credentials grant for now.
-      expect(screen.queryByRole('tab', {name: 'Organization Access'})).not.toBeInTheDocument();
+      expect(screen.getByRole('tab', {name: 'Organization Access'})).toBeInTheDocument();
     });
 
     it('renders the Overview tab panel by default, and the General tab panel once selected', async () => {
@@ -2794,8 +2793,6 @@ describe('ApplicationEditPage', () => {
   });
 
   describe('Organization Access', () => {
-    // Organization Access is only offered to applications with the client credentials grant, so
-    // these tests use a client-credentials application.
     const m2mApplication: Application = {
       ...mockApplication,
       inboundAuthConfig: [
@@ -2828,27 +2825,12 @@ describe('ApplicationEditPage', () => {
       mockOrganizationAccess.reset.mockReset();
     });
 
-    it('is not offered to an application without the client credentials grant', () => {
+    it.each([
+      ['signs users in', mockApplication],
+      ['only requests tokens for itself', m2mApplication],
+    ])('is offered to an application that %s', (_kind, application) => {
       mockUseGetApplication.mockReturnValue({
-        data: mockApplication,
-        isLoading: false,
-        isError: false,
-        error: null,
-      } as unknown as UseQueryResult<Application>);
-      renderComponent();
-
-      expect(screen.queryByRole('tab', {name: 'Organization Access'})).not.toBeInTheDocument();
-    });
-
-    it('is offered to a client credentials application that also signs users in', () => {
-      const oauth2 = m2mApplication.inboundAuthConfig![0];
-      mockUseGetApplication.mockReturnValue({
-        data: {
-          ...m2mApplication,
-          inboundAuthConfig: [
-            {...oauth2, config: {...oauth2.config, grantTypes: ['authorization_code', 'client_credentials']}},
-          ],
-        },
+        data: application,
         isLoading: false,
         isError: false,
         error: null,
