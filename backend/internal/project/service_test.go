@@ -48,7 +48,8 @@ func (suite *ProjectServiceTestSuite) SetupTest() {
 	mockTx := transactionmock.NewTransactionerMock(suite.T())
 	mockTx.On("Transact", mock.Anything, mock.Anything).
 		Return(func(ctx context.Context, fn func(context.Context) error) error { return fn(ctx) }).Maybe()
-	suite.service = newProjectService(suite.mockStore, mockTx, suite.mockOUService, suite.mockEntities)
+	suite.service = newProjectService(suite.mockStore, mockTx, suite.mockOUService, suite.mockEntities,
+		discardingBus{})
 }
 
 // project is the project the store holds in these tests.

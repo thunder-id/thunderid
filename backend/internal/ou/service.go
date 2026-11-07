@@ -16,6 +16,8 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
+	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/security"
@@ -105,6 +107,7 @@ type organizationUnitService struct {
 	groupResolver      OUGroupResolver
 	roleResolver       OURoleResolver
 	dependencyRegistry resourcedependency.Registry
+	bus                eventbus.EventBusInterface
 }
 
 func (ous *organizationUnitService) SetOUUserResolver(resolver OUUserResolver) {
@@ -130,11 +133,13 @@ func newOrganizationUnitService(
 	authzService sysauthz.SystemAuthorizationServiceInterface,
 	ouStore organizationUnitStoreInterface,
 	transactioner providers.Transactioner,
+	bus eventbus.EventBusInterface,
 ) ConfigurableOUService {
 	return &organizationUnitService{
 		authzService:  authzService,
 		ouStore:       ouStore,
 		transactioner: transactioner,
+		bus:           bus,
 	}
 }
 
@@ -296,6 +301,19 @@ func (ous *organizationUnitService) listAccessibleOrganizationUnits(
 
 // CreateOrganizationUnit creates a new organization unit.
 func (ous *organizationUnitService) CreateOrganizationUnit(
+	ctx context.Context, request OrganizationUnitRequestWithID,
+) (OrganizationUnit, *tidcommon.ServiceError) {
+	created, svcErr := ous.createOrganizationUnit(ctx, request)
+	var ouID string
+	if svcErr == nil {
+		ouID = created.ID
+	}
+	ous.publishOUEvent(ctx, audit.EventOUCreate, audit.ActionCreate, ouID, svcErr)
+	return created, svcErr
+}
+
+// createOrganizationUnit creates a new organization unit without publishing its audit event.
+func (ous *organizationUnitService) createOrganizationUnit(
 	ctx context.Context, request OrganizationUnitRequestWithID,
 ) (OrganizationUnit, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentNameService))
@@ -540,6 +558,15 @@ func (ous *organizationUnitService) IsParent(
 func (ous *organizationUnitService) UpdateOrganizationUnit(
 	ctx context.Context, id string, request OrganizationUnitRequestWithID,
 ) (OrganizationUnit, *tidcommon.ServiceError) {
+	updated, svcErr := ous.updateOrganizationUnit(ctx, id, request)
+	ous.publishOUEvent(ctx, audit.EventOUUpdate, audit.ActionUpdate, id, svcErr)
+	return updated, svcErr
+}
+
+// updateOrganizationUnit updates an organization unit without publishing its audit event.
+func (ous *organizationUnitService) updateOrganizationUnit(
+	ctx context.Context, id string, request OrganizationUnitRequestWithID,
+) (OrganizationUnit, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentNameService))
 	logger.Debug(ctx, "Updating organization unit", log.String("ouID", id))
 
@@ -585,14 +612,25 @@ func (ous *organizationUnitService) UpdateOrganizationUnit(
 func (ous *organizationUnitService) UpdateOrganizationUnitByPath(
 	ctx context.Context, handlePath string, request OrganizationUnitRequestWithID,
 ) (OrganizationUnit, *tidcommon.ServiceError) {
+	updated, ouID, svcErr := ous.updateOrganizationUnitByPath(ctx, handlePath, request)
+	ous.publishOUEvent(ctx, audit.EventOUUpdate, audit.ActionUpdate, ouID, svcErr)
+	return updated, svcErr
+}
+
+// updateOrganizationUnitByPath updates an organization unit by hierarchical handle path without
+// publishing its audit event. It returns the ID the path resolved to, empty when it resolved to none.
+func (ous *organizationUnitService) updateOrganizationUnitByPath(
+	ctx context.Context, handlePath string, request OrganizationUnitRequestWithID,
+) (OrganizationUnit, string, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentNameService))
 	logger.Debug(ctx, "Updating organization unit by path", log.String("path", handlePath))
 
 	handles, serviceError := validateAndProcessHandlePath(handlePath)
 	if serviceError != nil {
-		return OrganizationUnit{}, serviceError
+		return OrganizationUnit{}, "", serviceError
 	}
 
+	var ouID string
 	var updatedOU OrganizationUnit
 	var capturedSvcErr *tidcommon.ServiceError
 
@@ -605,6 +643,7 @@ func (ous *organizationUnitService) UpdateOrganizationUnitByPath(
 			}
 			return err
 		}
+		ouID = existingOU.ID
 
 		if svcErr := ous.checkOUAccess(txCtx, security.ActionUpdateOU, existingOU.ID); svcErr != nil {
 			capturedSvcErr = svcErr
@@ -627,16 +666,16 @@ func (ous *organizationUnitService) UpdateOrganizationUnitByPath(
 	})
 
 	if capturedSvcErr != nil {
-		return OrganizationUnit{}, capturedSvcErr
+		return OrganizationUnit{}, ouID, capturedSvcErr
 	}
 	if err != nil {
 		logger.Error(ctx, "Failed to update organization unit by path",
 			log.Error(err), log.String("path", handlePath))
-		return OrganizationUnit{}, &tidcommon.InternalServerError
+		return OrganizationUnit{}, ouID, &tidcommon.InternalServerError
 	}
 
 	logger.Debug(ctx, "Successfully updated organization unit by path", log.String("ouID", updatedOU.ID))
-	return updatedOU, nil
+	return updatedOU, ouID, nil
 }
 
 func (ous *organizationUnitService) updateOUInternal(
@@ -747,6 +786,14 @@ func (ous *organizationUnitService) updateOUInternal(
 // DeleteOrganizationUnit deletes an organization unit.
 func (ous *organizationUnitService) DeleteOrganizationUnit(
 	ctx context.Context, id string) *tidcommon.ServiceError {
+	svcErr := ous.deleteOrganizationUnit(ctx, id)
+	ous.publishOUEvent(ctx, audit.EventOUDelete, audit.ActionDelete, id, svcErr)
+	return svcErr
+}
+
+// deleteOrganizationUnit deletes an organization unit without publishing its audit event.
+func (ous *organizationUnitService) deleteOrganizationUnit(
+	ctx context.Context, id string) *tidcommon.ServiceError {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentNameService))
 	logger.Debug(ctx, "Deleting organization unit", log.String("ouID", id))
 
@@ -791,12 +838,22 @@ func (ous *organizationUnitService) DeleteOrganizationUnit(
 func (ous *organizationUnitService) DeleteOrganizationUnitByPath(
 	ctx context.Context, handlePath string,
 ) *tidcommon.ServiceError {
+	ouID, svcErr := ous.deleteOrganizationUnitByPath(ctx, handlePath)
+	ous.publishOUEvent(ctx, audit.EventOUDelete, audit.ActionDelete, ouID, svcErr)
+	return svcErr
+}
+
+// deleteOrganizationUnitByPath deletes an organization unit by hierarchical handle path without
+// publishing its audit event. It returns the ID the path resolved to, empty when it resolved to none.
+func (ous *organizationUnitService) deleteOrganizationUnitByPath(
+	ctx context.Context, handlePath string,
+) (string, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentNameService))
 	logger.Debug(ctx, "Deleting organization unit by path", log.String("path", handlePath))
 
 	handles, serviceError := validateAndProcessHandlePath(handlePath)
 	if serviceError != nil {
-		return serviceError
+		return "", serviceError
 	}
 
 	var ouID string
@@ -833,16 +890,30 @@ func (ous *organizationUnitService) DeleteOrganizationUnitByPath(
 	})
 
 	if capturedSvcErr != nil {
-		return capturedSvcErr
+		return ouID, capturedSvcErr
 	}
 	if err != nil {
 		logger.Error(ctx, "Failed to delete organization unit by path",
 			log.Error(err), log.String("path", handlePath))
-		return &tidcommon.InternalServerError
+		return ouID, &tidcommon.InternalServerError
 	}
 
 	logger.Debug(ctx, "Successfully deleted organization unit by path", log.String("ouID", ouID))
-	return nil
+	return ouID, nil
+}
+
+// publishOUEvent publishes the audit event of an attempt on the organization unit with ouID, after the
+// change committed or was refused. Anything removed along with a deleted unit writes no event of its own.
+func (ous *organizationUnitService) publishOUEvent(ctx context.Context, name string, action audit.Action,
+	ouID string, svcErr *tidcommon.ServiceError) {
+	// A failed attempt keeps the ID the caller asked for, even one that matches no organization unit, as
+	// forensic evidence of what was probed; the payload caps it and the sink escapes it. An attempt by
+	// handle path names the unit the path resolved to, and none when it resolved to none. An update or a
+	// delete by ID is authorized before the unit is looked up, so a caller refused there may be denied on
+	// an ID that matches no organization unit, which is then the subject: a known limitation.
+	target := audit.Ref{Type: audit.TargetTypeOU, ID: ouID}
+	eventbus.TryPublish(ctx, ous.bus,
+		eventbus.NewEvent(ctx, name).With(audit.ChangePayload(ctx, target, action, svcErr)))
 }
 
 // deleteOUInternal deletes an organization unit by ID after checking if it has child resources.

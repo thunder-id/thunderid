@@ -15,6 +15,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/application/model"
 	"github.com/thunder-id/thunderid/internal/inboundclient"
+	"github.com/thunder-id/thunderid/internal/sharing"
 	"github.com/thunder-id/thunderid/internal/system/eventbus"
 	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/security"
@@ -22,6 +23,7 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/eventbusmock"
 	"github.com/thunder-id/thunderid/tests/mocks/inboundclientmock"
+	"github.com/thunder-id/thunderid/tests/mocks/sharingmock"
 )
 
 const (
@@ -337,4 +339,175 @@ func (suite *ServiceTestSuite) TestCreateApplication_SucceedsWhenTheBusRefusesTh
 
 	suite.Nil(svcErr)
 	suite.NotEmpty(created.ID)
+}
+
+// requireOnlySharingPolicyEvent checks that exactly one event was published, named name, for an attempt
+// by the admin on the policy with policyID of the application. A succeeded attempt has the application as
+// subject; a failed one has none.
+func (suite *ServiceTestSuite) requireOnlySharingPolicyEvent(events []publishedEvent, name string,
+	action audit.Action, policyID string, outcome audit.Outcome) {
+	suite.T().Helper()
+	suite.Require().Len(events, 1)
+	event := events[0]
+	suite.Equal(name, event.name)
+	suite.Equal(audit.Ref{Type: audit.TargetTypeApplicationSharingPolicy, ID: policyID}, event.payload.Target())
+	suite.Equal(action, event.payload.Action())
+	suite.Equal(outcome, event.payload.Outcome())
+	suite.Equal(audit.Actor{Type: audit.ActorTypeUser, ID: testAuditAdminID}, event.payload.Actor())
+	suite.Empty(event.payload.Details())
+	if outcome.Result == audit.ResultFailed {
+		suite.Equal(audit.Ref{}, event.payload.Subject())
+	} else {
+		suite.Equal(audit.Ref{Type: audit.TargetTypeApplication, ID: testServiceAppID}, event.payload.Subject())
+	}
+	suite.NotContains(fmt.Sprintf("%+v", event.payload), "owner-ou", "no organization unit a policy names is recorded")
+}
+
+// ownPolicy is a policy of the application under test.
+func ownPolicy() sharing.Policy {
+	return sharing.Policy{ID: "p1", ResourceType: ApplicationSharingType, ResourceID: testServiceAppID}
+}
+
+func (suite *ServiceTestSuite) TestCreateSharingPolicy_PublishesOneEventPerAttempt() {
+	cases := []struct {
+		name     string
+		arrange  func(*sharingmock.SharingServiceInterfaceMock)
+		policyID string
+		outcome  audit.Outcome
+	}{
+		{
+			name: "the policy is created",
+			arrange: func(sharingMock *sharingmock.SharingServiceInterfaceMock) {
+				sharingMock.EXPECT().CreatePolicy(mock.Anything, ApplicationSharingType, testServiceAppID,
+					"owner-ou", mock.Anything).Return(ownPolicy(), nil).Once()
+			},
+			policyID: "p1", outcome: audit.OutcomeSucceeded,
+		},
+		{
+			name: "the framework refuses a second policy for the unit",
+			arrange: func(sharingMock *sharingmock.SharingServiceInterfaceMock) {
+				sharingMock.EXPECT().CreatePolicy(mock.Anything, ApplicationSharingType, testServiceAppID,
+					"owner-ou", mock.Anything).Return(sharing.Policy{}, &sharing.ErrorPolicyExists).Once()
+			},
+			outcome: audit.OutcomeFailed("app_1053"),
+		},
+	}
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			service, sharingMock := suite.sharingTestService()
+			bus, published := newRecordingBus(suite.T())
+			service.bus = bus
+			tc.arrange(sharingMock)
+
+			_, svcErr := service.CreateSharingPolicy(adminContext(), testServiceAppID, sharing.PolicyRequest{})
+
+			suite.Equal(tc.outcome == audit.OutcomeSucceeded, svcErr == nil)
+			suite.requireOnlySharingPolicyEvent(published(), audit.EventApplicationSharingPolicyCreate,
+				audit.ActionCreate, tc.policyID, tc.outcome)
+		})
+	}
+}
+
+func (suite *ServiceTestSuite) TestUpdateSharingPolicy_PublishesOneEventPerAttempt() {
+	cases := []struct {
+		name    string
+		policy  sharing.Policy
+		arrange func(*sharingmock.SharingServiceInterfaceMock)
+		outcome audit.Outcome
+	}{
+		{
+			name:   "the policy is updated",
+			policy: ownPolicy(),
+			arrange: func(sharingMock *sharingmock.SharingServiceInterfaceMock) {
+				sharingMock.EXPECT().UpdatePolicy(mock.Anything, "p1", mock.Anything).Return(ownPolicy(), nil).Once()
+			},
+			outcome: audit.OutcomeSucceeded,
+		},
+		{
+			name:    "the policy belongs to another application",
+			policy:  sharing.Policy{ID: "p1", ResourceType: ApplicationSharingType, ResourceID: "other"},
+			arrange: func(*sharingmock.SharingServiceInterfaceMock) {},
+			outcome: audit.OutcomeFailed("app_1052"),
+		},
+	}
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			service, sharingMock := suite.sharingTestService()
+			bus, published := newRecordingBus(suite.T())
+			service.bus = bus
+			sharingMock.EXPECT().GetPolicy(mock.Anything, "p1").Return(tc.policy, nil).Once()
+			tc.arrange(sharingMock)
+
+			_, svcErr := service.UpdateSharingPolicy(adminContext(), testServiceAppID, "p1", sharing.PolicyRequest{})
+
+			suite.Equal(tc.outcome == audit.OutcomeSucceeded, svcErr == nil)
+			suite.requireOnlySharingPolicyEvent(published(), audit.EventApplicationSharingPolicyUpdate,
+				audit.ActionUpdate, "p1", tc.outcome)
+		})
+	}
+}
+
+func (suite *ServiceTestSuite) TestDeleteSharingPolicy_PublishesOneEventPerAttempt() {
+	declared := ownPolicy()
+	declared.Declared = true
+	cases := []struct {
+		name    string
+		policy  sharing.Policy
+		arrange func(*sharingmock.SharingServiceInterfaceMock)
+		outcome audit.Outcome
+	}{
+		{
+			name:   "the policy is deleted",
+			policy: ownPolicy(),
+			arrange: func(sharingMock *sharingmock.SharingServiceInterfaceMock) {
+				sharingMock.EXPECT().DeletePolicy(mock.Anything, "p1").Return(nil).Once()
+			},
+			outcome: audit.OutcomeSucceeded,
+		},
+		{
+			name:    "a declared policy",
+			policy:  declared,
+			arrange: func(*sharingmock.SharingServiceInterfaceMock) {},
+			outcome: audit.OutcomeFailed("app_1055"),
+		},
+	}
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			service, sharingMock := suite.sharingTestService()
+			bus, published := newRecordingBus(suite.T())
+			service.bus = bus
+			sharingMock.EXPECT().GetPolicy(mock.Anything, "p1").Return(tc.policy, nil).Once()
+			tc.arrange(sharingMock)
+
+			svcErr := service.DeleteSharingPolicy(adminContext(), testServiceAppID, "p1")
+
+			suite.Equal(tc.outcome == audit.OutcomeSucceeded, svcErr == nil)
+			suite.requireOnlySharingPolicyEvent(published(), audit.EventApplicationSharingPolicyDelete,
+				audit.ActionDelete, "p1", tc.outcome)
+		})
+	}
+}
+
+// A delete stays idempotent, but one that finds no policy of the application records nothing, so a caller
+// cannot write a succeeded delete for any ID it chooses.
+func (suite *ServiceTestSuite) TestDeleteSharingPolicy_PublishesNothingForAMissingPolicy() {
+	for _, tc := range []struct {
+		name   string
+		policy sharing.Policy
+		err    *tidcommon.ServiceError
+	}{
+		{name: "no policy has the ID", err: &sharing.ErrorPolicyNotFound},
+		{name: "the policy belongs to another application",
+			policy: sharing.Policy{ID: "p1", ResourceType: ApplicationSharingType, ResourceID: "other"}},
+	} {
+		suite.Run(tc.name, func() {
+			service, sharingMock := suite.sharingTestService()
+			bus, published := newRecordingBus(suite.T())
+			service.bus = bus
+			sharingMock.EXPECT().GetPolicy(mock.Anything, "p1").Return(tc.policy, tc.err).Once()
+
+			suite.Nil(service.DeleteSharingPolicy(adminContext(), testServiceAppID, "p1"))
+			suite.Empty(published())
+		})
+	}
 }

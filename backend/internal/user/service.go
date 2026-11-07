@@ -1624,6 +1624,20 @@ func (us *userService) requireOwnPolicy(
 func (us *userService) CreateSharingPolicy(
 	ctx context.Context, userID string, req sharing.PolicyRequest,
 ) (sharing.Policy, *tidcommon.ServiceError) {
+	policy, svcErr := us.createSharingPolicy(ctx, userID, req)
+	var policyID string
+	if svcErr == nil {
+		policyID = policy.ID
+	}
+	us.publishSharingPolicyEvent(ctx, audit.EventUserSharingPolicyCreate, audit.ActionCreate, userID,
+		policyID, svcErr)
+	return policy, svcErr
+}
+
+// createSharingPolicy records a sharing policy of a user without publishing its audit event.
+func (us *userService) createSharingPolicy(
+	ctx context.Context, userID string, req sharing.PolicyRequest,
+) (sharing.Policy, *tidcommon.ServiceError) {
 	owningOUID, svcErr := us.requireSharing(ctx, userID)
 	if svcErr != nil {
 		return sharing.Policy{}, svcErr
@@ -1733,6 +1747,16 @@ func (us *userService) listOwnSharingPolicies(
 func (us *userService) UpdateSharingPolicy(
 	ctx context.Context, userID, policyID string, req sharing.PolicyRequest,
 ) (sharing.Policy, *tidcommon.ServiceError) {
+	updated, svcErr := us.updateSharingPolicy(ctx, userID, policyID, req)
+	us.publishSharingPolicyEvent(ctx, audit.EventUserSharingPolicyUpdate, audit.ActionUpdate, userID,
+		policyID, svcErr)
+	return updated, svcErr
+}
+
+// updateSharingPolicy replaces a sharing policy of a user without publishing its audit event.
+func (us *userService) updateSharingPolicy(
+	ctx context.Context, userID, policyID string, req sharing.PolicyRequest,
+) (sharing.Policy, *tidcommon.ServiceError) {
 	_, policy, svcErr := us.requireOwnPolicy(ctx, userID, policyID)
 	if svcErr != nil {
 		return sharing.Policy{}, svcErr
@@ -1750,10 +1774,23 @@ func (us *userService) UpdateSharingPolicy(
 // DeleteSharingPolicy removes a sharing policy and everything that depended on it. A policy that is
 // not there is already gone, so the call succeeds.
 func (us *userService) DeleteSharingPolicy(ctx context.Context, userID, policyID string) *tidcommon.ServiceError {
+	svcErr := us.deleteSharingPolicy(ctx, userID, policyID)
+	// A delete that found no policy of the user succeeds without an event, so no caller can record a
+	// deletion of an ID it made up.
+	if svcErr == errSharingPolicyNotFoundNoop {
+		return nil
+	}
+	us.publishSharingPolicyEvent(ctx, audit.EventUserSharingPolicyDelete, audit.ActionDelete, userID,
+		policyID, svcErr)
+	return svcErr
+}
+
+// deleteSharingPolicy removes a sharing policy of a user without publishing its audit event.
+func (us *userService) deleteSharingPolicy(ctx context.Context, userID, policyID string) *tidcommon.ServiceError {
 	_, policy, svcErr := us.requireOwnPolicy(ctx, userID, policyID)
 	if svcErr != nil {
 		if svcErr.Code == ErrorSharingPolicyNotFound.Code {
-			return nil
+			return errSharingPolicyNotFoundNoop
 		}
 		return svcErr
 	}
@@ -1767,6 +1804,21 @@ func (us *userService) DeleteSharingPolicy(ctx context.Context, userID, policyID
 		return &ErrorSharingPolicyDeclared
 	}
 	return translateSharingError(us.sharingService.DeletePolicy(ctx, policyID))
+}
+
+// publishSharingPolicyEvent publishes the audit event of an attempt on the sharing policy with policyID
+// of the user with userID, after the change committed or was refused. The policy is the target and the
+// user the subject, which a succeeded or denied attempt names: a sharing call is refused only once the
+// user is found. Reshares the framework re-narrows or removes beneath a changed policy write no event of
+// their own.
+func (us *userService) publishSharingPolicyEvent(ctx context.Context, name string, action audit.Action,
+	userID, policyID string, svcErr *tidcommon.ServiceError) {
+	// A failed attempt keeps the IDs the caller asked for, even ones that match nothing, as forensic
+	// evidence of what was probed; the payload caps them and the sink escapes them.
+	target := audit.Ref{Type: audit.TargetTypeUserSharingPolicy, ID: policyID}
+	subject := audit.Ref{Type: audit.TargetTypeUser, ID: userID}
+	eventbus.TryPublish(ctx, us.bus, eventbus.NewEvent(ctx, name).With(
+		audit.ChangePayloadWithSubject(ctx, target, subject, action, svcErr)))
 }
 
 // ResolveSharingOverlay answers the rules, such as mandated roles, one organization unit holds the user on.

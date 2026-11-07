@@ -149,6 +149,14 @@ func (s *PayloadTestSuite) TestValidate() {
 		{"a group member detail", EventGroupMemberAdd,
 			NewPayload(ctx, testGroup, ActionAdd, OutcomeSucceeded).
 				WithDetails(map[string]string{"name": "Librarians"}), errDetailNotAllowed},
+		{"a sharing policy of a user", EventUserSharingPolicyCreate,
+			NewPayload(ctx, Ref{Type: TargetTypeUserSharingPolicy}, ActionCreate, OutcomeSucceeded), nil},
+		{"a sharing policy of an application", EventApplicationSharingPolicyDelete,
+			NewPayload(ctx, Ref{Type: TargetTypeApplicationSharingPolicy}, ActionDelete, OutcomeSucceeded), nil},
+		{"an organization unit update", EventOUUpdate,
+			NewPayload(ctx, Ref{Type: TargetTypeOU}, ActionUpdate, OutcomeFailed("ou_1003")), nil},
+		{"a project delete", EventProjectDelete,
+			NewPayload(ctx, Ref{Type: TargetTypeProject}, ActionDelete, OutcomeFailed("prj_1013")), nil},
 		{"an application detail", EventApplicationUpdate,
 			NewPayload(ctx, testApplication, ActionUpdate, OutcomeSucceeded).
 				WithDetails(map[string]string{"client_secret": "s3cr3t"}), errDetailNotAllowed},
@@ -299,6 +307,38 @@ func (s *PayloadTestSuite) TestChangePayload() {
 			s.Equal(tc.target, payload.Target())
 			s.Equal(tc.subject, payload.Subject())
 			s.Equal(ActionUpdate, payload.Action())
+		})
+	}
+}
+
+// A change to a record kept for a resource, such as a sharing policy, has the resource as the subject when
+// it succeeded or was denied, even when the record does not exist yet; a failed change has none.
+func (s *PayloadTestSuite) TestChangePayloadWithSubject() {
+	policy := Ref{Type: TargetTypeUserSharingPolicy, ID: "policy-1"}
+	unnamed := Ref{Type: TargetTypeUserSharingPolicy}
+	cases := []struct {
+		name    string
+		target  Ref
+		svcErr  *tidcommon.ServiceError
+		outcome Outcome
+		subject Ref
+	}{
+		{"no error", policy, nil, OutcomeSucceeded, testTarget},
+		{"a refused create names no record", unnamed, &tidcommon.ErrorUnauthorized, OutcomeDenied("forbidden"),
+			testTarget},
+		{"a client error", policy, &tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "USR-1003"},
+			OutcomeFailed("usr_1003"), Ref{}},
+		{"a server error on a create", unnamed, &tidcommon.InternalServerError, OutcomeFailed("sse_5000"), Ref{}},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			payload := ChangePayloadWithSubject(context.Background(), tc.target, testTarget, ActionCreate,
+				tc.svcErr)
+
+			s.Equal(tc.outcome, payload.Outcome())
+			s.Equal(tc.target, payload.Target())
+			s.Equal(tc.subject, payload.Subject())
+			s.Equal(ActionCreate, payload.Action())
 		})
 	}
 }

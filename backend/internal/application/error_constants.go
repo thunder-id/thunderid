@@ -916,3 +916,10 @@ var errApplicationNotFoundNoop = &tidcommon.ServiceError{
 	Type: tidcommon.ClientErrorType,
 	Code: ErrorApplicationNotFound.Code,
 }
+
+// errSharingPolicyNotFoundNoop is returned by deleteSharingPolicy when the application holds no policy
+// under the requested id. DeleteSharingPolicy turns it into a success, so it never reaches a caller.
+var errSharingPolicyNotFoundNoop = &tidcommon.ServiceError{
+	Type: tidcommon.ClientErrorType,
+	Code: ErrorSharingPolicyNotFound.Code,
+}
