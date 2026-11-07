@@ -650,6 +650,36 @@ paths:
                     description:
                       key: "error.roleservice.cannot_modify_declarative_role_description"
                       defaultValue: "The role is defined in declarative configuration and cannot be modified"
+                revocation-entry-limit-exceeded:
+                  summary: Revoking the role's scopes from its holders needs more entries than one change may record
+                  value:
+                    code: "RVS-1001"
+                    message:
+                      key: "error.revocationservice.entry_limit_exceeded"
+                      defaultValue: "Too many revocation entries"
+                    description:
+                      key: "error.revocationservice.entry_limit_exceeded_description"
+                      defaultValue: "The change would record 12000 revocation entries, more than the 10000 allowed for one change"
+                group-nesting-too-deep:
+                  summary: A holder reaches the role through a group nested too deep to expand
+                  value:
+                    code: "GRP-1017"
+                    message:
+                      key: "error.groupservice.group_nesting_too_deep"
+                      defaultValue: "Group nesting is too deep"
+                    description:
+                      key: "error.groupservice.group_nesting_too_deep_description"
+                      defaultValue: "The group's members are nested more than 32 levels deep, which cannot be expanded"
+                result-limit-exceeded-in-composite-mode:
+                  summary: The role has more assignments than composite mode can read
+                  value:
+                    code: "ROL-1017"
+                    message:
+                      key: "error.roleservice.result_limit_exceeded_in_composite_mode"
+                      defaultValue: "Result limit exceeded in composite mode"
+                    description:
+                      key: "error.roleservice.result_limit_exceeded_in_composite_mode_description"
+                      defaultValue: "The total number of records exceeds the maximum limit in composite mode"
         "404":
           description: Role not found
           content:

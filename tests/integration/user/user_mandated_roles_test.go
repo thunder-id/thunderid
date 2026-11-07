@@ -996,18 +996,6 @@ func (ts *UserMandatedRolesTestSuite) TestTheRemovalFlowTakesTheDirectAssignment
 	ts.Equal([]mandateAssignment{mandatedRow(userID, ts.childAOUID)}, ts.assignments(roleID, ts.childAOUID))
 }
 
-// R11: the role deletion flow refuses a role a share mandates, as the API does.
-func (ts *UserMandatedRolesTestSuite) TestTheDeletionFlowRefusesAMandatedRole() {
-	roleID, userID, _ := ts.mandatedInChildA("mandate-r11")
-
-	step := ts.runAdministrationFlow("default-role-deletion-flow", map[string]string{"targetRoleId": roleID})
-
-	ts.NotEqual("COMPLETE", step.FlowStatus)
-	ts.Require().NotNil(step.Error, "the refusal is reported: %+v", step)
-	ts.Equal("ROL-1039", step.Error.Code)
-	ts.Equal([]mandateAssignment{mandatedRow(userID, ts.childAOUID)}, ts.assignments(roleID, ts.childAOUID))
-}
-
 // R12: at startup, a mandate whose share is gone, or whose role no longer reaches its unit, is removed,
 // and one its share still holds is kept.
 func (ts *UserMandatedRolesTestSuite) TestStartupRemovesMandatesNothingHoldsAnyLonger() {

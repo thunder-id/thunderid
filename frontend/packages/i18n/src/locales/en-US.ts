@@ -277,7 +277,6 @@ const translations = {
     'errors.FET-1098': 'This role assignment cannot be removed in its current state.',
     'errors.FET-1099': 'The role assignment could not be removed. Please try again.',
     'errors.FET-1100': 'This role cannot be deleted in its current state.',
-    'errors.FET-1101': 'The role could not be deleted. Please try again.',
     'errors.FET-1102': 'The permissions of this role cannot be changed in its current state.',
     'errors.FET-1103': 'The permissions of this role could not be changed. Please try again.',
     'errors.FET-1104': 'This group cannot be deleted in its current state.',
@@ -4325,7 +4324,6 @@ const translations = {
 
     // Role executor modes
     'core.executions.roleExecutor.mode.roleAssignmentRemoval': 'Remove role assignment',
-    'core.executions.roleExecutor.mode.roleDeletion': 'Delete role',
     'core.executions.roleExecutor.mode.rolePermissionRemoval': 'Change role permissions',
     'core.executions.roleExecutor.mode.roleSelection': 'Select roles',
     'core.executions.roleExecutor.mode.roleAssignment': 'Assign roles',

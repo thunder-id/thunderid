@@ -1617,7 +1617,7 @@ func (s *ValidatorTestSuite) TestValidateModeFlowTypes_IdentityGovernance() {
 }
 
 // The role executor changes roles from a revocation plan only in an administration flow, and selects and assigns
-// roles only in an invitation flow. A node that names no mode runs role deletion.
+// roles only in an invitation flow.
 func (s *ValidatorTestSuite) TestValidateModeFlowTypes_RoleExecutor() {
 	cases := []struct {
 		mode     string
@@ -1626,10 +1626,9 @@ func (s *ValidatorTestSuite) TestValidateModeFlowTypes_RoleExecutor() {
 	}{
 		{executor.ExecutorModeRoleSelection, providers.FlowTypeInvitation, true},
 		{executor.ExecutorModeRoleAssignment, providers.FlowTypeInvitation, true},
-		{executor.ExecutorModeRoleDeletion, providers.FlowTypeAdministration, true},
+		{executor.ExecutorModeRolePermissionRemoval, providers.FlowTypeAdministration, true},
 		{executor.ExecutorModeRoleSelection, providers.FlowTypeAdministration, false},
 		{executor.ExecutorModeRoleAssignment, providers.FlowTypeAdministration, false},
-		{executor.ExecutorModeRoleDeletion, providers.FlowTypeInvitation, false},
 		{executor.ExecutorModeRoleAssignmentRemoval, providers.FlowTypeInvitation, false},
 		{executor.ExecutorModeRolePermissionRemoval, providers.FlowTypeInvitation, false},
 	}

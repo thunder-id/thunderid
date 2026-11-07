@@ -279,7 +279,6 @@ var modeFlowTypes = map[string]map[string][]providers.FlowType{
 	},
 	executormeta.ExecutorNameRole: {
 		executormeta.ExecutorModeRoleAssignmentRemoval: {providers.FlowTypeAdministration},
-		executormeta.ExecutorModeRoleDeletion:          {providers.FlowTypeAdministration},
 		executormeta.ExecutorModeRolePermissionRemoval: {providers.FlowTypeAdministration},
 		executormeta.ExecutorModeRoleSelection:         {providers.FlowTypeInvitation},
 		executormeta.ExecutorModeRoleAssignment:        {providers.FlowTypeInvitation},

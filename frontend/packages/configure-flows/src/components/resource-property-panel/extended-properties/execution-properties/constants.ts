@@ -120,11 +120,6 @@ export const ROLE_EXECUTOR_MODES = [
     displayLabel: 'Remove Role Assignment',
   },
   {
-    value: 'role_deletion',
-    translationKey: 'flows:core.executions.roleExecutor.mode.roleDeletion',
-    displayLabel: 'Delete Role',
-  },
-  {
     value: 'role_permission_removal',
     translationKey: 'flows:core.executions.roleExecutor.mode.rolePermissionRemoval',
     displayLabel: 'Change Role Permissions',

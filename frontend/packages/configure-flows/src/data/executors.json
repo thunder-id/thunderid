@@ -1228,46 +1228,6 @@
     "category": "EXECUTOR",
     "type": "TASK_EXECUTION",
     "display": {
-      "header": "Role Deletion Validator",
-      "label": "Validate and Plan Role Deletion",
-      "description": "Validate the role and plan revocation of every scope it grants",
-      "image": "assets/images/icons/magnifying-glass.svg",
-      "showOnResourcePanel": true
-    },
-    "data": {
-      "action": {
-        "type": "EXECUTOR",
-        "executor": {"name": "AccessChangeValidator", "mode": "role_deletion"},
-        "onSuccess": "",
-        "onFailure": ""
-      }
-    }
-  },
-  {
-    "resourceType": "STEP",
-    "category": "EXECUTOR",
-    "type": "TASK_EXECUTION",
-    "display": {
-      "header": "Role Deletion Executor",
-      "label": "Delete Role",
-      "description": "Delete the role named by the trusted revocation plan",
-      "image": "assets/images/icons/link.svg",
-      "showOnResourcePanel": true
-    },
-    "data": {
-      "action": {
-        "type": "EXECUTOR",
-        "executor": {"name": "RoleExecutor", "mode": "role_deletion"},
-        "onSuccess": "",
-        "onFailure": ""
-      }
-    }
-  },
-  {
-    "resourceType": "STEP",
-    "category": "EXECUTOR",
-    "type": "TASK_EXECUTION",
-    "display": {
       "header": "Role Permission Removal Validator",
       "label": "Validate and Plan Permission Change",
       "description": "Validate the new permission set and plan revocation of the scopes it drops",

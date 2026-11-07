@@ -2178,8 +2178,6 @@ var defaultMessages = map[string]string{
 	"flows.executor.errors.role_assignment_removal_failed_desc": "The assignment may already be gone, or the caller may no longer change who holds the role",
 	"flows.executor.errors.role_assignment_removal_not_allowed": "Role assignment removal not allowed",
 	"flows.executor.errors.role_assignment_removal_not_allowed_desc": "The role or the assignee may not exist, or the caller may not change who holds the role",
-	"flows.executor.errors.role_deletion_failed": "Role deletion failed",
-	"flows.executor.errors.role_deletion_failed_desc": "The role may already be deleted, or it changed after the request was validated",
 	"flows.executor.errors.role_deletion_not_allowed": "Role deletion not allowed",
 	"flows.executor.errors.role_deletion_not_allowed_desc": "The role is declarative, immutable, or no longer exists",
 	"flows.executor.errors.role_not_assignable": "Role not assignable",

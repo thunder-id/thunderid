@@ -147,7 +147,7 @@ The update replaces the full set of permissions. Include every permission the ro
 2. Click **Delete** and confirm.
 
 :::warning
-Deletion fails if the role has active assignments. Remove all assignments before deleting the role.
+Deleting a role also removes its assignments and revokes the role's scopes from the tokens its holders carry. See [Role Deletion](../protocols/oauth-oidc/token-revocation.mdx#role-deletion) for what is revoked and when a deletion is refused.
 :::
 
 ## Manage Role Assignments
