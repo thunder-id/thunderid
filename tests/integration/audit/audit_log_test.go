@@ -300,8 +300,8 @@ func (ts *AuditLogTestSuite) TestEveryCreateAndUpdatePathRecordsItsOutcome() {
 	}
 }
 
-// An import that creates a user writes the user service's event for the user and nothing else: the
-// lookup that decides between update and create writes no line, and the import itself is not audited.
+// An import that creates a user writes the user service's event for the user, then its own: the lookup
+// that decides between update and create writes no line.
 func (ts *AuditLogTestSuite) TestAnImportWritesTheEventOfTheUserItCreates() {
 	ouID, userType := ts.createUserType("import")
 	userID := unusedID()
@@ -320,7 +320,7 @@ func (ts *AuditLogTestSuite) TestAnImportWritesTheEventOfTheUserItCreates() {
 	ts.Require().NoError(json.Unmarshal(body, &result))
 	ts.Require().Equal(1, result.Summary.Imported, string(body))
 
-	line := ts.linesOf(imported)[0]
+	line := ts.resourceLineOfImport(imported, map[string]string{"result": "succeeded"})
 	userRef := testutils.AuditRef{Type: "user", ID: userID}
 	ts.Equal("user.create", line.Event)
 	ts.Equal(userRef, line.Target)

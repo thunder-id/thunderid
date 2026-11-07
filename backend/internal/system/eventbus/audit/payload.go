@@ -111,6 +111,17 @@ func MembershipPayloads(ctx context.Context, target Ref, members []Ref, action A
 	return payloads
 }
 
+// BatchPayload builds the audit payload of a request on target that acts on several items and that a
+// service ended with svcErr. A request that completed with itemFailed set failed with item_failed, so a
+// partial result is never recorded as succeeded; any other is recorded as ChangePayload records it.
+func BatchPayload(ctx context.Context, target Ref, action Action, svcErr *tidcommon.ServiceError,
+	itemFailed bool) Payload {
+	if svcErr == nil && itemFailed {
+		return NewPayload(ctx, target, action, OutcomeFailed(reasonItemFailed))
+	}
+	return ChangePayload(ctx, target, action, svcErr)
+}
+
 // Category returns the audit category.
 func (Payload) Category() eventbus.Category {
 	return CategoryAudit

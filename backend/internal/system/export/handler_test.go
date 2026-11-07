@@ -59,7 +59,7 @@ func (suite *HandlerTestSuite) SetupTest() {
 		entitytype.NewEntityTypeExporterForTest(suite.mockEntityTypeService, entitytype.TypeCategoryUser),
 	}
 	parameterizer := newParameterizer(templatingRules{}, TemplatePlaceholders)
-	suite.exportService = newExportService(exporters, parameterizer)
+	suite.exportService = newExportService(exporters, parameterizer, discardingBus{})
 	suite.handler = newExportHandler(suite.exportService)
 }
 
@@ -83,7 +83,7 @@ func TestNewExportHandler(t *testing.T) {
 		entitytype.NewEntityTypeExporterForTest(mockEntityTypeService, entitytype.TypeCategoryUser),
 	}
 	parameterizer := newParameterizer(templatingRules{}, TemplatePlaceholders)
-	exportService := newExportService(exporters, parameterizer)
+	exportService := newExportService(exporters, parameterizer, discardingBus{})
 
 	handler := newExportHandler(exportService)
 
@@ -439,7 +439,7 @@ func setupBenchmarkTest(b *testing.B) (*exportHandler, []byte) {
 		entitytype.NewEntityTypeExporterForTest(mockEntityTypeService, entitytype.TypeCategoryUser),
 	}
 	parameterizer := newParameterizer(templatingRules{}, TemplatePlaceholders)
-	exportService := newExportService(exporters, parameterizer)
+	exportService := newExportService(exporters, parameterizer, discardingBus{})
 	handler := newExportHandler(exportService)
 
 	// Setup mock expectation

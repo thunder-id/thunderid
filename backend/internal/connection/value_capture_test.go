@@ -18,6 +18,7 @@ import (
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/connection/httpconnectionmock"
+	"github.com/thunder-id/thunderid/tests/mocks/eventbusmock"
 )
 
 // recordingCapturer records every resource handed to it.
@@ -144,13 +145,14 @@ func (s *ServiceTestSuite) TestACapturedSecretIsNamedAsTheExportNamesIt() {
 	s.mockIDP.On("GetIdentityProvider", mock.Anything, "tw-1").
 		Return((*providers.IDPDTO)(nil), &idp.ErrorIDPNotFound)
 	exporter := newConnectionExporter(s.mockIDP, s.mockNotif, nil, nil)
-	values := export.Initialize(http.NewServeMux(), []declarativeresource.ResourceExporter{exporter},
-		export.ValueReferences)
+	values, initErr := export.Initialize(http.NewServeMux(), []declarativeresource.ResourceExporter{exporter},
+		export.ValueReferences, eventbusmock.NewEventBusInterfaceMock(s.T()))
+	s.Require().NoError(initErr)
 
 	variables, secrets, err := values.PlaceholderValues(context.Background(), resourceTypeConnection,
 		s.captured(capturer))
 	s.Require().NoError(err)
-	exported, svcErr := values.ExportResources(context.Background(),
+	exported, svcErr := values.ReadResources(context.Background(),
 		&export.ExportRequest{Connections: []string{"tw-1"}})
 	s.Require().Nil(svcErr)
 
@@ -169,9 +171,10 @@ func (s *ServiceTestSuite) TestHTTPWritesCaptureTheConnectionAsTheExportNamesIt(
 	s.svc = newService(s.mockIDP, s.mockNotif, &testResourceServerLister{}, newAuthZENPDPServiceMock(s.T()), mockHTTP)
 	capturer := &recordingCapturer{}
 	s.svc.valueCapturer = capturer
-	values := export.Initialize(http.NewServeMux(),
+	values, initErr := export.Initialize(http.NewServeMux(),
 		[]declarativeresource.ResourceExporter{newConnectionExporter(s.mockIDP, s.mockNotif, nil, mockHTTP)},
-		export.ValueReferences)
+		export.ValueReferences, eventbusmock.NewEventBusInterfaceMock(s.T()))
+	s.Require().NoError(initErr)
 	var stored *httpconnection.HTTPConnection
 	write := func(connection httpconnection.HTTPConnection) *httpconnection.HTTPConnection {
 		connection.ID = storedHTTPConnectionID

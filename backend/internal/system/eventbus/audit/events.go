@@ -45,6 +45,13 @@ const (
 	EventFlowDelete = "flow.delete"
 	// EventFlowRestore names an attempt to make an earlier version of a flow its current one.
 	EventFlowRestore = "flow.restore"
+	// EventConfigurationImport names an attempt to import configuration, as one event for the whole
+	// request; each resource it writes is recorded by its own service.
+	EventConfigurationImport = "configuration.import"
+	// EventConfigurationDelete names an attempt to delete a declarative resource file.
+	EventConfigurationDelete = "configuration.delete"
+	// EventConfigurationExport names an attempt to export configuration, which can carry secrets.
+	EventConfigurationExport = "configuration.export"
 	// EventRoleCreate names an attempt to create a role.
 	EventRoleCreate = "role.create"
 	// EventRoleUpdate names an attempt to change a role.
@@ -78,6 +85,9 @@ const (
 	TargetTypeApplication = "application"
 	// TargetTypeFlow is the target type of an event about a flow.
 	TargetTypeFlow = "flow"
+	// TargetTypeConfiguration is the target type of an event about the configuration as a whole, which
+	// has no ID.
+	TargetTypeConfiguration = "configuration"
 	// TargetTypeAgent is the target type of an event about an agent.
 	TargetTypeAgent = "agent"
 	// TargetTypeAgentType is the target type of an event about an agent type.
@@ -99,6 +109,9 @@ var principalTargetTypes = map[string]string{
 	string(providers.EntityCategoryAgent): TargetTypeAgent,
 	TargetTypeGroup:                       TargetTypeGroup,
 }
+
+// DetailDryRun records whether an import only predicted its outcome, as "true" or "false".
+const DetailDryRun = "dry_run"
 
 // auditedEvents maps every audited event to the detail keys it may carry, so what is audited, and what
 // each event may record, is reviewed in one place. An event not listed here is never written.
@@ -123,10 +136,13 @@ var auditedEvents = map[string][]string{
 	EventApplicationUpdate: nil,
 	EventApplicationDelete: nil,
 
-	EventFlowCreate:  nil,
-	EventFlowUpdate:  nil,
-	EventFlowDelete:  nil,
-	EventFlowRestore: nil,
+	EventFlowCreate:          nil,
+	EventFlowUpdate:          nil,
+	EventFlowDelete:          nil,
+	EventFlowRestore:         nil,
+	EventConfigurationImport: {DetailDryRun},
+	EventConfigurationDelete: nil,
+	EventConfigurationExport: nil,
 
 	EventRoleCreate:           nil,
 	EventRoleUpdate:           nil,

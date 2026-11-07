@@ -397,7 +397,8 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	// Initialize export service with collected exporters
 	// This plane authors configuration and does not hold the values it refers to, so an export
 	// carries references naming where each value lives rather than the values themselves.
-	exportService := export.Initialize(mux, exporters, export.ValueReferences)
+	exportService, err := export.Initialize(mux, exporters, export.ValueReferences, auditBus)
+	fatalOnError(ctx, logger, err, "Failed to initialize export service")
 
 	// The gateways this control plane administers. Registration is bounded by gateway.max_gateways,
 	// which is one unless a deployment raises it.
@@ -406,7 +407,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	fatalOnError(ctx, logger, err, "Failed to initialize gateway service")
 
 	// Initialize import service
-	importService := importer.Initialize(
+	importService, err := importer.Initialize(
 		mux,
 		applicationService,
 		idpService,
@@ -436,7 +437,9 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		projectService,
 		// A control plane keeps configuration as references and holds no values, so none are resolved.
 		nil,
+		auditBus,
 	)
+	fatalOnError(ctx, logger, err, "Failed to initialize import service")
 	importer.RegisterMCPTools(mcpServer, importService)
 	export.RegisterMCPTools(mcpServer, exportService)
 

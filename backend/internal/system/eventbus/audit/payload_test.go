@@ -197,6 +197,16 @@ func (s *PayloadTestSuite) TestValidate() {
 		{"a user type detail", EventUserTypeUpdate,
 			NewPayload(ctx, Ref{Type: TargetTypeUserType, ID: testTypeID}, ActionUpdate, OutcomeSucceeded).
 				WithDetails(map[string]string{"schema": "{}"}), errDetailNotAllowed},
+		{"an import of the configuration, which has no ID", EventConfigurationImport,
+			NewPayload(ctx, testConfiguration, ActionImport, OutcomeFailed(reasonItemFailed)).
+				WithDetails(map[string]string{DetailDryRun: "true"}), nil},
+		{"a delete of a declarative resource file", EventConfigurationDelete,
+			NewPayload(ctx, testConfiguration, ActionDelete, OutcomeFailed("imp_1001")), nil},
+		{"an export of the configuration", EventConfigurationExport,
+			NewPayload(ctx, testConfiguration, ActionExport, OutcomeSucceeded), nil},
+		{"an export carries no dry run", EventConfigurationExport,
+			NewPayload(ctx, testConfiguration, ActionExport, OutcomeSucceeded).
+				WithDetails(map[string]string{DetailDryRun: "true"}), errDetailNotAllowed},
 		{"an event that is not audited", "user.rename",
 			NewPayload(ctx, testTarget, ActionUpdate, OutcomeSucceeded), errUnknownEvent},
 		{"a detail the event does not allow", EventUserUpdate,
@@ -369,4 +379,33 @@ func (s *PayloadTestSuite) TestPrincipalRef_KeepsAndLogsAnUnmappedType() {
 	s.Contains(logged, "Principal type has no audit target type")
 	s.Contains(logged, "workload")
 	s.NotContains(logged, testUserID)
+}
+
+// A request that completed with an item failed is recorded as failed with item_failed; any other is
+// recorded as a change is. A target without an ID is never the subject.
+func (s *PayloadTestSuite) TestBatchPayload() {
+	cases := []struct {
+		name       string
+		svcErr     *tidcommon.ServiceError
+		itemFailed bool
+		outcome    Outcome
+	}{
+		{"every item succeeded", nil, false, OutcomeSucceeded},
+		{"an item failed", nil, true, OutcomeFailed("item_failed")},
+		{"the request was refused", &tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "IMP-1001"},
+			false, OutcomeFailed("imp_1001")},
+		{"the access check refused the caller", &tidcommon.ErrorUnauthorized, false, OutcomeDenied("forbidden")},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			payload := BatchPayload(context.Background(), testConfiguration, ActionImport, tc.svcErr,
+				tc.itemFailed)
+
+			s.Equal(tc.outcome, payload.Outcome())
+			s.Equal(testConfiguration, payload.Target())
+			s.Equal(Ref{}, payload.Subject())
+			s.Equal(ActionImport, payload.Action())
+			s.Empty(payload.Details())
+		})
+	}
 }
