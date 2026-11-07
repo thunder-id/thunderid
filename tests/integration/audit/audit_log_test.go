@@ -37,10 +37,11 @@ var (
 	// lineTimePattern is the time format of an audit line: UTC with exactly six fractional digits.
 	lineTimePattern = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$`)
 
-	// lineKeys are the top-level keys of an event line that changed a resource, in the order written.
+	// lineKeys are the top-level keys of an event line that changed a resource, in the order written. A
+	// test calls the server from a loopback address, which is not a public peer, so a line has no client.
 	lineKeys = []string{
 		"log_type", "schema_version", "id", "time", "event", "trace_id", "actor", "subject", "target", "action",
-		"outcome", "client",
+		"outcome",
 	}
 )
 
@@ -101,7 +102,7 @@ func (ts *AuditLogTestSuite) TearDownSuite() {
 }
 
 // Creating, updating and deleting a user through the management API writes one line each, with the
-// marker first, the admin as actor, the user as target and subject, the peer address, the user agent
+// marker first, the admin as actor, the user as target and subject, no client for the loopback peer
 // and the trace ID of the response. The password the user is created with appears in no line.
 func (ts *AuditLogTestSuite) TestAUserLifecycleWritesOneLinePerChange() {
 	ouID, userType := ts.createUserType("lifecycle")
@@ -143,8 +144,8 @@ func (ts *AuditLogTestSuite) TestAUserLifecycleWritesOneLinePerChange() {
 		ts.Equal(userRef, line.Subject, tc.event)
 		ts.Equal(testutils.AuditRef{Type: "user", ID: adminID}, line.Actor, tc.event)
 		ts.Equal(map[string]string{"result": "succeeded"}, line.Outcome, tc.event)
-		ts.Contains([]string{"127.0.0.1", "::1"}, line.Client["address"])
-		ts.Equal(testUserAgent, line.Client["user_agent"], tc.event)
+		ts.Nil(line.Client, "%s: a loopback peer is not recorded", tc.event)
+		ts.NotContains(line.Raw, testUserAgent, "%s: the user agent is recorded only with a public peer", tc.event)
 		ts.NotContains(line.Raw, password, "a credential is never recorded")
 		ts.NotContains(line.Raw, "AuditLifecycle", "no part of a credential is recorded")
 	}
@@ -329,27 +330,18 @@ func (ts *AuditLogTestSuite) TestAnImportWritesTheEventOfTheUserItCreates() {
 	ts.NotContains(line.Raw, password, "a credential is never recorded")
 }
 
-// A user agent and an ID are cut to the characters a line holds for them, on a character boundary, so a
-// caller cannot grow a line without bound or split a multibyte character. A user agent longer than the
-// cap in bytes but not in characters is kept whole.
-func (ts *AuditLogTestSuite) TestAUserAgentAndATargetIDAreCutToTheirCaps() {
-	const userAgentCap, idCap = 256, 128
+// An ID is cut to the characters a line holds for it, so a caller cannot grow a line without bound. A
+// request from the loopback peer has no client, so a long user agent it sends is not recorded at all;
+// the 256 character cap on a public peer's user agent is covered by the client middleware unit tests.
+func (ts *AuditLogTestSuite) TestATargetIDIsCutToItsCapAndALoopbackUserAgentIsNotRecorded() {
+	const idCap = 128
 	longID := strings.Repeat("0123456789", 20)
+	longUserAgent := strings.Repeat("ü", 512)
 	cases := []struct {
-		name, userAgent, wantUserAgent, id, wantID string
+		name, userAgent, id, wantID string
 	}{
-		{
-			name: "a user agent over the cap", userAgent: strings.Repeat("aü", userAgentCap),
-			wantUserAgent: strings.Repeat("aü", userAgentCap/2), id: unusedID(),
-		},
-		{
-			name: "a multibyte user agent at the cap", userAgent: strings.Repeat("ü", userAgentCap),
-			wantUserAgent: strings.Repeat("ü", userAgentCap), id: unusedID(),
-		},
-		{
-			name: "an ID over the cap", userAgent: testUserAgent, wantUserAgent: testUserAgent,
-			id: longID, wantID: longID[:idCap],
-		},
+		{name: "a long multibyte user agent", userAgent: longUserAgent, id: unusedID()},
+		{name: "an ID over the cap", userAgent: testUserAgent, id: longID, wantID: longID[:idCap]},
 	}
 
 	responses := make([]*http.Response, len(cases))
@@ -368,12 +360,14 @@ func (ts *AuditLogTestSuite) TestAUserAgentAndATargetIDAreCutToTheirCaps() {
 		if wantID == "" {
 			wantID = tc.id
 		}
-		ts.Equal(tc.wantUserAgent, line.Client["user_agent"], tc.name)
+		ts.Nil(line.Client, tc.name)
+		ts.NotContains(line.Raw, `"client"`, "%s: a line from a loopback peer has no client key", tc.name)
+		ts.NotContains(line.Raw, "ü", "%s: no part of the user agent is recorded", tc.name)
+		ts.NotContains(line.Raw, testUserAgent, "%s: no part of the user agent is recorded", tc.name)
 		ts.Equal(testutils.AuditRef{Type: "user", ID: wantID}, line.Target, tc.name)
 		ts.Equal("user.delete", line.Event, tc.name)
 		ts.Equal(adminRef, line.Actor, tc.name)
 		ts.Equal(map[string]string{"result": "failed", "reason": "usr_1003"}, line.Outcome, tc.name)
-		ts.Contains([]string{"127.0.0.1", "::1"}, line.Client["address"], tc.name)
 	}
 }
 

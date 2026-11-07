@@ -74,10 +74,17 @@ func envelope() eventbus.Envelope {
 	}
 }
 
-// clientContext returns the context the client middleware records for a request with userAgent.
+// clientContext returns the context the client middleware records for a request from a public peer
+// with userAgent.
 func clientContext(userAgent string) context.Context {
+	return peerContext("8.8.8.8:52814", userAgent)
+}
+
+// peerContext returns the context the client middleware records for a request from remoteAddr with
+// userAgent.
+func peerContext(remoteAddr, userAgent string) context.Context {
 	r := httptest.NewRequest(http.MethodPut, "/users/"+testUserID, nil)
-	r.RemoteAddr = "127.0.0.1:52814"
+	r.RemoteAddr = remoteAddr
 	r.Header.Set("User-Agent", userAgent)
 	var ctx context.Context
 	middleware.ClientMiddleware(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
@@ -145,8 +152,30 @@ func (s *SinkTestSuite) TestALineCarriesTheMarkerFirstAndTheWholeEvent() {
 	s.Equal(map[string]string{"type": "user", "id": testUserID}, decoded.Target)
 	s.Equal("update", decoded.Action)
 	s.Equal(map[string]string{"result": "succeeded"}, decoded.Outcome)
-	s.Equal(map[string]string{"address": "127.0.0.1", "user_agent": testUserAgent}, decoded.Client)
+	s.Equal(map[string]string{"address": "8.8.8.8", "user_agent": testUserAgent}, decoded.Client)
 	s.Equal(map[string]string{"reason": "requested"}, decoded.Details)
+}
+
+// A request from a private or loopback peer has no client, so the line has no client key at all rather
+// than an empty object, and the fields around it keep their order.
+func (s *SinkTestSuite) TestALineFromANonPublicPeerHasNoClient() {
+	for _, remoteAddr := range []string{"127.0.0.1:52814", "[::1]:52814", "10.0.0.5:52814"} {
+		s.Run(remoteAddr, func() {
+			p := audit.NewPayload(peerContext(remoteAddr, testUserAgent), testTarget, audit.ActionUpdate,
+				audit.OutcomeSucceeded).WithSubject(testTarget).WithDetails(map[string]string{"reason": "requested"})
+
+			written := s.write(envelope(), p)
+
+			s.True(bytes.HasPrefix(written, []byte(`{"log_type":"AUDIT","schema_version":1,`)))
+			s.Equal([]string{
+				"log_type", "schema_version", "id", "time", "event", "trace_id", "actor", "subject", "target",
+				"action", "outcome", "details",
+			}, s.keys(written))
+			s.NotContains(string(written), `"client"`)
+			s.NotContains(string(written), testUserAgent, "the user agent is not recorded without the address")
+			s.Nil(s.decode(written).Client)
+		})
+	}
 }
 
 func (s *SinkTestSuite) TestTheTimeIsUTCWithSixFractionalDigits() {

@@ -316,7 +316,7 @@ func (ts *AuditLogTestSuite) requireLinesPerCall(target testutils.AuditRef, admi
 			ts.Equal(expected.subject, line.Subject, expected.event)
 			ts.Equal(testutils.AuditRef{Type: "user", ID: adminID}, line.Actor, expected.event)
 			ts.Equal(map[string]string{"result": "succeeded"}, line.Outcome, expected.event)
-			ts.Equal(testUserAgent, line.Client["user_agent"], expected.event)
+			ts.Nil(line.Client, "%s: a loopback peer is not recorded", expected.event)
 			ts.NotContains(line.Raw, name, "%s: no name is recorded", expected.event)
 			ts.NotContains(line.Raw, auditRoleGroupDetail, "%s: no description is recorded", expected.event)
 		}

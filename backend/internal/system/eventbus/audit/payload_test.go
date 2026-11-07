@@ -49,6 +49,19 @@ func (s *PayloadTestSuite) TestTheClientComesFromTheContext() {
 			ActionCreate, OutcomeSucceeded).Client())
 }
 
+// A request from a private or loopback peer, such as a proxy or a local caller, has no client: neither
+// its address nor its user agent.
+func (s *PayloadTestSuite) TestANonPublicPeerHasNoClient() {
+	r := newRequest(http.MethodPost, "/users", accessToken(s.T(), map[string]interface{}{"sub": testUserID}), "")
+	r.RemoteAddr = "127.0.0.1:52814"
+	r.Header.Set("X-Forwarded-For", "203.0.113.7")
+
+	payload := NewPayload(securedContext(s.T(), r), testTarget, ActionCreate, OutcomeSucceeded)
+
+	s.Equal(Client{}, payload.Client())
+	s.Equal(Actor{Type: ActorTypeUser, ID: testUserID}, payload.Actor(), "the actor is resolved as before")
+}
+
 func (s *PayloadTestSuite) TestTheManagementAPIKeyIsTheSystemActor() {
 	ctx := securedCallContext(s.T(), "", testAPIKey)
 

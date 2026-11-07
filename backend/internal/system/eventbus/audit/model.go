@@ -21,10 +21,11 @@ type Outcome struct {
 	Reason string
 }
 
-// Client is where a request came from.
+// Client is where a request came from, recorded only when the TCP peer is a public address, and the zero
+// Client otherwise.
 type Client struct {
-	// Address is the TCP peer address, so behind a proxy it is the proxy's.
+	// Address is the TCP peer address. A private or loopback peer, such as a proxy, is not recorded.
 	Address string
-	// UserAgent is the request's user agent, capped at 256 characters.
+	// UserAgent is the request's user agent, capped at 256 characters, recorded only with the address.
 	UserAgent string
 }
