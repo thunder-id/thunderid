@@ -24,6 +24,12 @@ func reasonFromCode(code string) string {
 	return reason
 }
 
+// PrincipalRef names the principal a role assignment or a group membership names by its type, user, app,
+// agent or group, and its ID.
+func PrincipalRef(principalType, id string) Ref {
+	return Ref{Type: principalTargetTypes[principalType], ID: id}
+}
+
 // capID cuts an ID to its first maxIDLength characters.
 func capID(id string) string {
 	return utils.TruncateRunes(id, maxIDLength)

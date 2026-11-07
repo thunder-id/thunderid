@@ -297,6 +297,7 @@ func (suite *GroupServiceTestSuite) TestGroupService_GetGroupList() {
 				authzSvc = newAllowAllAuthz(suite.T())
 			}
 			service := &groupService{
+				bus:          discardingBus{},
 				authzService: authzSvc,
 				groupStore:   storeMock,
 			}
@@ -532,6 +533,7 @@ func (suite *GroupServiceTestSuite) TestGroupService_GetGroupsByPath() {
 				authzSvc = newAllowAllAuthz(suite.T())
 			}
 			service := &groupService{
+				bus:          discardingBus{},
 				authzService: authzSvc,
 				groupStore:   storeMock,
 				ouService:    ouServiceMock,
@@ -825,6 +827,7 @@ func (suite *GroupServiceTestSuite) TestGroupService_CreateGroup() {
 				authzSvc = newAllowAllAuthz(suite.T())
 			}
 			service := &groupService{
+				bus:           discardingBus{},
 				authzService:  authzSvc,
 				groupStore:    storeMock,
 				ouService:     ouServiceMock,
@@ -921,6 +924,7 @@ func (suite *GroupServiceTestSuite) TestGroupService_CreateGroupByPath() {
 			}
 
 			service := &groupService{
+				bus:           discardingBus{},
 				authzService:  newAllowAllAuthz(suite.T()),
 				groupStore:    storeMock,
 				ouService:     ouServiceMock,
@@ -1038,6 +1042,7 @@ func (suite *GroupServiceTestSuite) TestGroupService_GetGroup() {
 				authzSvc = newAllowAllAuthz(suite.T())
 			}
 			service := &groupService{
+				bus:          discardingBus{},
 				authzService: authzSvc,
 				groupStore:   storeMock,
 			}
@@ -1073,6 +1078,7 @@ func (suite *GroupServiceTestSuite) TestGroupService_GetGroup_WithIncludeDisplay
 		).Return(map[string]string{testOUID1: "root"}, nil).Once()
 
 		service := &groupService{
+			bus:          discardingBus{},
 			authzService: newAllowAllAuthz(suite.T()),
 			groupStore:   storeMock,
 			ouService:    ouServiceMock,
@@ -1093,6 +1099,7 @@ func (suite *GroupServiceTestSuite) TestGroupService_GetGroup_WithIncludeDisplay
 			Once()
 
 		service := &groupService{
+			bus:          discardingBus{},
 			authzService: newAllowAllAuthz(suite.T()),
 			groupStore:   storeMock,
 		}
@@ -1118,6 +1125,7 @@ func (suite *GroupServiceTestSuite) TestGroupService_GetGroup_WithIncludeDisplay
 		).Once()
 
 		service := &groupService{
+			bus:          discardingBus{},
 			authzService: newAllowAllAuthz(suite.T()),
 			groupStore:   storeMock,
 			ouService:    ouServiceMock,
@@ -1157,6 +1165,7 @@ func (suite *GroupServiceTestSuite) TestGroupService_GetGroupList_WithIncludeDis
 	}, nil).Once()
 
 	service := &groupService{
+		bus:          discardingBus{},
 		authzService: newAllowAllAuthz(suite.T()),
 		groupStore:   storeMock,
 		ouService:    ouServiceMock,
@@ -1570,6 +1579,7 @@ func (suite *GroupServiceTestSuite) TestGroupService_UpdateGroup() {
 				authzSvc = newAllowAllAuthz(suite.T())
 			}
 			service := &groupService{
+				bus:           discardingBus{},
 				authzService:  authzSvc,
 				groupStore:    storeMock,
 				ouService:     ouServiceMock,
@@ -1710,6 +1720,7 @@ func (suite *GroupServiceTestSuite) TestGroupService_DeleteGroup() {
 				authzSvc = newAllowAllAuthz(suite.T())
 			}
 			service := &groupService{
+				bus:                discardingBus{},
 				authzService:       authzSvc,
 				groupStore:         storeMock,
 				transactioner:      &stubTransactioner{},
@@ -1891,6 +1902,7 @@ func (suite *GroupServiceTestSuite) TestGroupService_GetGroupMembers() {
 				entitySvc = tc.entitySetup(suite.T())
 			}
 			service := &groupService{
+				bus:           discardingBus{},
 				authzService:  authzSvc,
 				groupStore:    storeMock,
 				entityService: entitySvc,
@@ -1955,6 +1967,7 @@ func (suite *GroupServiceTestSuite) TestGroupService_GetGroupMembers_WithDisplay
 		}, nil).Once()
 
 	service := &groupService{
+		bus:               discardingBus{},
 		authzService:      newAllowAllAuthz(suite.T()),
 		groupStore:        storeMock,
 		entityService:     entitySvcMock,
@@ -1973,6 +1986,7 @@ func (suite *GroupServiceTestSuite) TestGroupService_GetGroupMembers_WithDisplay
 
 func (suite *GroupServiceTestSuite) TestGroupService_ValidateCreateGroupRequest() {
 	service := &groupService{
+		bus:          discardingBus{},
 		authzService: newAllowAllAuthz(suite.T())}
 
 	testCases := []groupRequestValidationTestCase[CreateGroupRequest]{
@@ -2020,6 +2034,7 @@ func (suite *GroupServiceTestSuite) TestGroupService_ValidateCreateGroupRequest(
 
 func (suite *GroupServiceTestSuite) TestGroupService_ValidateUpdateGroupRequest() {
 	service := &groupService{
+		bus:          discardingBus{},
 		authzService: newAllowAllAuthz(suite.T())}
 
 	testCases := []groupRequestValidationTestCase[UpdateGroupRequest]{
@@ -2057,6 +2072,7 @@ func (suite *GroupServiceTestSuite) TestGroupService_ValidateOUHandlesInternalEr
 		Once()
 
 	service := &groupService{
+		bus:          discardingBus{},
 		authzService: newAllowAllAuthz(suite.T()),
 		ouService:    ouServiceMock,
 	}
@@ -2070,6 +2086,7 @@ func (suite *GroupServiceTestSuite) TestGroupService_ValidateOUHandlesInternalEr
 func (suite *GroupServiceTestSuite) TestGroupService_ValidateAndProcessHandlePath() {
 	t := suite.T()
 	service := &groupService{
+		bus:          discardingBus{},
 		authzService: newAllowAllAuthz(suite.T())}
 
 	testCases := []struct {
@@ -2159,6 +2176,7 @@ func (suite *GroupServiceTestSuite) TestGroupService_ValidateGroupIDs() {
 		suite.Run(tc.name, func() {
 			storeMock := newGroupStoreInterfaceMock(suite.T())
 			service := &groupService{
+				bus:          discardingBus{},
 				authzService: newAllowAllAuthz(suite.T()), groupStore: storeMock}
 			tc.setup(storeMock)
 
@@ -2293,6 +2311,7 @@ func (suite *GroupServiceTestSuite) TestGroupService_AddMembersToGroups() {
 				txner = &stubTransactioner{}
 			}
 			svc := &groupService{
+				bus:           discardingBus{},
 				authzService:  newAllowAllAuthz(suite.T()),
 				groupStore:    storeMock,
 				entityService: entityMock,
@@ -2361,6 +2380,7 @@ func (suite *GroupServiceTestSuite) runGroupMemberTests(
 				authzSvc = newAllowAllAuthz(suite.T())
 			}
 			service := &groupService{
+				bus:           discardingBus{},
 				authzService:  authzSvc,
 				groupStore:    storeMock,
 				entityService: entityServiceMock,
@@ -2703,6 +2723,7 @@ func TestPopulateMemberDisplayNames_MixedMembers(t *testing.T) {
 		}, nil).Once()
 
 	service := &groupService{
+		bus:               discardingBus{},
 		entityService:     entitySvcMock,
 		entityTypeService: schemaMock,
 		groupStore:        storeMock,
@@ -2770,6 +2791,7 @@ func TestPopulateMemberDisplayNames_UserFallbackToID(t *testing.T) {
 		Return(map[string]string{"employee": "missing"}, (*tidcommon.ServiceError)(nil)).Once()
 
 	service := &groupService{
+		bus:               discardingBus{},
 		entityService:     entitySvcMock,
 		entityTypeService: schemaMock,
 	}
@@ -2791,6 +2813,7 @@ func TestPopulateMemberDisplayNames_UserServiceError(t *testing.T) {
 		Return([]providers.Entity(nil), errors.New("entity service error")).Once()
 
 	service := &groupService{
+		bus:           discardingBus{},
 		entityService: entitySvcMock,
 	}
 	logger := log.GetLogger()
@@ -2823,6 +2846,7 @@ func TestPopulateMemberDisplayNames_GroupFallbackToID(t *testing.T) {
 		}, nil).Once()
 
 	service := &groupService{
+		bus:        discardingBus{},
 		groupStore: storeMock,
 	}
 	logger := log.GetLogger()
@@ -2855,6 +2879,7 @@ func TestPopulateMemberDisplayNames_SchemaServiceError(t *testing.T) {
 		Return(map[string]string(nil), &tidcommon.ServiceError{Code: "ERR"}).Once()
 
 	service := &groupService{
+		bus:               discardingBus{},
 		entityService:     entitySvcMock,
 		entityTypeService: schemaMock,
 	}
@@ -2893,6 +2918,7 @@ func TestPopulateMemberDisplayNames_SchemaServiceError_WithGroupMember(t *testin
 		Return([]GroupBasicDAO{{ID: "group-1", Name: "Engineering", OUID: "ou-1"}}, nil).Once()
 
 	service := &groupService{
+		bus:               discardingBus{},
 		groupStore:        groupStoreMock,
 		entityService:     entitySvcMock,
 		entityTypeService: schemaMock,
@@ -2921,6 +2947,7 @@ func TestGetGroup_DatabaseFailure(t *testing.T) {
 		Return(GroupDAO{}, errors.New("mock query timeout")).Once()
 
 	service := &groupService{
+		bus:        discardingBus{},
 		groupStore: groupStoreMock,
 	}
 
@@ -2940,6 +2967,7 @@ func TestUpdateGroupMembers_EntityFetchFailure(t *testing.T) {
 		Return([]providers.Entity{}, errors.New("mock network timeout")).Once()
 
 	service := &groupService{
+		bus:           discardingBus{},
 		entityService: entitySvcMock,
 	}
 	logger := log.GetLogger()
@@ -2968,6 +2996,7 @@ func TestListGroupsByOUIDs_CountError(t *testing.T) {
 		Return(0, errors.New("count fail")).Once()
 
 	service := &groupService{
+		bus:          discardingBus{},
 		authzService: newScopedListAuthz(t),
 		groupStore:   storeMock,
 	}
@@ -2986,6 +3015,7 @@ func TestListGroupsByOUIDs_ListError(t *testing.T) {
 		Return(nil, errors.New("list fail")).Once()
 
 	service := &groupService{
+		bus:          discardingBus{},
 		authzService: newScopedListAuthz(t),
 		groupStore:   storeMock,
 	}
@@ -3015,6 +3045,7 @@ func TestGetGroupList_OUFilter(t *testing.T) {
 				}, nil).Once()
 
 			service := &groupService{
+				bus:          discardingBus{},
 				authzService: tc.authz(t),
 				groupStore:   storeMock,
 			}
@@ -3039,6 +3070,7 @@ func TestGetGroupList_OUFilter_NoAccessToOU(t *testing.T) {
 	storeMock := newGroupStoreInterfaceMock(t)
 
 	service := &groupService{
+		bus:          discardingBus{},
 		authzService: newScopedListAuthz(t),
 		groupStore:   storeMock,
 	}
@@ -3060,6 +3092,7 @@ func TestGetGroupList_InvalidFilter(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			service := &groupService{
+				bus:          discardingBus{},
 				authzService: sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t),
 				groupStore:   newGroupStoreInterfaceMock(t),
 			}
@@ -3078,6 +3111,7 @@ func TestUpdateGroup_IsDeclarativeError(t *testing.T) {
 		Return(false, errors.New("declarative check fail")).Once()
 
 	service := &groupService{
+		bus:           discardingBus{},
 		authzService:  newAllowAllAuthz(t),
 		groupStore:    storeMock,
 		transactioner: &stubTransactioner{},
@@ -3096,6 +3130,7 @@ func TestDeleteGroup_IsDeclarativeError(t *testing.T) {
 		Return(false, errors.New("declarative check fail")).Once()
 
 	service := &groupService{
+		bus:           discardingBus{},
 		authzService:  newAllowAllAuthz(t),
 		groupStore:    storeMock,
 		transactioner: &stubTransactioner{},
@@ -3112,6 +3147,7 @@ func TestResolveMembers_GetGroupsByIDsError(t *testing.T) {
 		Return(nil, errors.New("groups fetch fail")).Once()
 
 	service := &groupService{
+		bus:        discardingBus{},
 		groupStore: storeMock,
 	}
 	logger := log.GetLogger()
@@ -3129,6 +3165,7 @@ func TestResolveMembers_OrphanedEntityMember(t *testing.T) {
 		Return([]providers.Entity{}, nil).Once()
 
 	service := &groupService{
+		bus:           discardingBus{},
 		entityService: entitySvcMock,
 	}
 	logger := log.GetLogger()
@@ -3145,6 +3182,7 @@ func TestModifyGroupMembers_GetGroupError(t *testing.T) {
 		Return(GroupDAO{}, errors.New("db error")).Once()
 
 	service := &groupService{
+		bus:           discardingBus{},
 		authzService:  newAllowAllAuthz(t),
 		groupStore:    storeMock,
 		transactioner: &stubTransactioner{},
@@ -3169,6 +3207,7 @@ func TestModifyGroupMembers_InnerGroupNotFound(t *testing.T) {
 		Return(GroupDAO{}, ErrGroupNotFound).Once()
 
 	service := &groupService{
+		bus:           discardingBus{},
 		authzService:  newAllowAllAuthz(t),
 		groupStore:    storeMock,
 		entityService: entitySvcMock,
@@ -3188,6 +3227,7 @@ func TestValidateEntityMembers_GetEntitiesError(t *testing.T) {
 		Return(nil, errors.New("entity fetch fail")).Once()
 
 	service := &groupService{
+		bus:           discardingBus{},
 		authzService:  newAllowAllAuthz(t),
 		entityService: entitySvcMock,
 	}
@@ -3204,6 +3244,7 @@ func TestValidateEntityMembers_TypeMismatch(t *testing.T) {
 		Return([]providers.Entity{{ID: "usr-001", Category: providers.EntityCategoryApp}}, nil).Once()
 
 	service := &groupService{
+		bus:           discardingBus{},
 		authzService:  newAllowAllAuthz(t),
 		entityService: entitySvcMock,
 	}
@@ -3225,6 +3266,7 @@ func newSharingAwareService(
 ) *groupService {
 	registerSharedCategories(entitySvc)
 	return &groupService{
+		bus:            discardingBus{},
 		entityService:  entitySvc,
 		sharingService: sharingSvc,
 	}
@@ -3437,6 +3479,7 @@ func TestGetGroupsByIDs_StoreError(t *testing.T) {
 		Return(nil, errors.New("store fail")).Once()
 
 	service := &groupService{
+		bus:        discardingBus{},
 		groupStore: storeMock,
 	}
 
@@ -3491,6 +3534,7 @@ func TestPopulateGroupOUHandles_ServiceError(t *testing.T) {
 		Return((map[string]string)(nil), &tidcommon.ServiceError{Code: "OU-5000"}).Once()
 
 	service := &groupService{
+		bus:       discardingBus{},
 		ouService: ouServiceMock,
 	}
 	logger := log.GetLogger()
@@ -3502,6 +3546,7 @@ func TestPopulateGroupOUHandles_ServiceError(t *testing.T) {
 
 func TestCheckGroupAccess_AuthzError(t *testing.T) {
 	service := &groupService{
+		bus:          discardingBus{},
 		authzService: newAuthzError(t),
 	}
 
@@ -3596,6 +3641,7 @@ func (suite *GroupServiceTestSuite) TestDeleteGroup_AbortedWhenCascadeFails() {
 	storeMock.On("GetGroup", mock.Anything, "grp-001").
 		Return(GroupDAO{ID: "grp-001", OUID: testOUID1}, nil).Once()
 	service := &groupService{
+		bus:                discardingBus{},
 		authzService:       newAllowAllAuthz(suite.T()),
 		groupStore:         storeMock,
 		transactioner:      &stubTransactioner{},
@@ -3632,6 +3678,7 @@ func newGroupChangeFixture(t *testing.T) *groupChangeFixture {
 		authz:    sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t),
 	}
 	f.service = &groupService{
+		bus:           discardingBus{},
 		groupStore:    f.store,
 		entityService: f.entities,
 		authzService:  f.authz,

@@ -81,6 +81,7 @@ func (suite *RoleAssignmentServiceTestSuite) SetupTest() {
 		suite.transactioner,
 		newAllowAllRoleAuthz(suite.T()),
 		suite.mockSharingService,
+		discardingBus{},
 	)
 }
 
@@ -1154,7 +1155,7 @@ func (suite *RoleAssignmentServiceTestSuite) TestApplyMandatedAssignments_SyncsT
 func (suite *RoleAssignmentServiceTestSuite) withGrantChecks() *sysauthzmock.SystemAuthorizationServiceInterfaceMock {
 	authz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
 	suite.service = newRoleAssignmentService(suite.mockStore, suite.mockEntityService, suite.mockGroupService,
-		suite.mockEntityTypeService, nil, suite.transactioner, authz, suite.mockSharingService)
+		suite.mockEntityTypeService, nil, suite.transactioner, authz, suite.mockSharingService, discardingBus{})
 	return authz
 }
 
@@ -1334,7 +1335,8 @@ func (suite *RoleAssignmentServiceTestSuite) TestApplyMandatedAssignments_JoinsT
 			return txFunc(ctx)
 		}).Once()
 	suite.service = newRoleAssignmentService(suite.mockStore, suite.mockEntityService, suite.mockGroupService,
-		suite.mockEntityTypeService, nil, txr, newAllowAllRoleAuthz(suite.T()), suite.mockSharingService)
+		suite.mockEntityTypeService, nil, txr, newAllowAllRoleAuthz(suite.T()), suite.mockSharingService,
+		discardingBus{})
 	suite.mockStore.On("GetRole", inCallerTx, "role-a").
 		Return(RoleWithPermissions{ID: "role-a", OUID: testOwnerOU}, nil)
 	suite.mockSharingService.EXPECT().IsVisible(inCallerTx, RoleSharingType, "role-a", testShareeOU).Return(true, nil)
@@ -1551,7 +1553,7 @@ func (s *RoleAssignmentRemovalValidationTestSuite) SetupTest() {
 	s.authz = sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(s.T())
 	s.sharing = sharingmock.NewSharingServiceInterfaceMock(s.T())
 	s.service = newRoleAssignmentService(
-		s.store, s.entities, s.groups, nil, s.resources, &fakeTransactioner{}, s.authz, s.sharing)
+		s.store, s.entities, s.groups, nil, s.resources, &fakeTransactioner{}, s.authz, s.sharing, discardingBus{})
 }
 
 func (s *RoleAssignmentRemovalValidationTestSuite) mayChangeAssignments() {
@@ -1814,7 +1816,7 @@ assignments:
 	}
 	s.Require().NoError(store.Create(declared.ID, declared))
 	service := newRoleAssignmentService(
-		store, s.entities, s.groups, nil, s.resources, &fakeTransactioner{}, s.authz, nil)
+		store, s.entities, s.groups, nil, s.resources, &fakeTransactioner{}, s.authz, nil, discardingBus{})
 	s.mayChangeAssignments()
 	s.entities.On("GetEntitiesByIDs", mock.Anything, []string{targetUserID}).
 		Return([]providers.Entity{{ID: targetUserID, Category: providers.EntityCategoryUser}}, nil)

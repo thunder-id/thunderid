@@ -10,6 +10,7 @@ import (
 
 	syscontext "github.com/thunder-id/thunderid/internal/system/context"
 	"github.com/thunder-id/thunderid/internal/system/eventbus"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
@@ -30,13 +31,14 @@ func OutcomeFailed(reason string) Outcome {
 }
 
 // outcomeFromServiceError is the outcome of an attempt a service ended with svcErr: succeeded without
-// an error, denied as forbidden when the service's access check refused the caller, and failed with the
-// reason derived from the error code otherwise.
+// an error, denied as forbidden when the service's access check refused the caller or its grant check
+// refused to confer permissions the caller does not hold, and failed with the reason derived from the
+// error code otherwise.
 func outcomeFromServiceError(svcErr *tidcommon.ServiceError) Outcome {
 	switch {
 	case svcErr == nil:
 		return OutcomeSucceeded
-	case svcErr.Code == tidcommon.ErrorUnauthorized.Code:
+	case svcErr.Code == tidcommon.ErrorUnauthorized.Code, svcErr.Code == sysauthz.ErrorGrantNotPermitted.Code:
 		return OutcomeDenied(reasonForbidden)
 	default:
 		return OutcomeFailed(reasonFromCode(svcErr.Code))
@@ -85,6 +87,28 @@ func ChangePayload(ctx context.Context, target Ref, action Action, svcErr *tidco
 		payload = payload.WithSubject(target)
 	}
 	return payload
+}
+
+// MembershipPayloads builds the audit payloads of an attempt to add members to target, or remove them,
+// that a service ended with svcErr. An attempt that succeeded has one payload per distinct member, with
+// the member as subject, so the log names everyone who gained or lost the membership. Any other attempt
+// has one payload with the target only, since a call may name several members.
+func MembershipPayloads(ctx context.Context, target Ref, members []Ref, action Action,
+	svcErr *tidcommon.ServiceError) []Payload {
+	outcome := outcomeFromServiceError(svcErr)
+	if outcome.Result != ResultSucceeded {
+		return []Payload{NewPayload(ctx, target, action, outcome)}
+	}
+	payloads := make([]Payload, 0, len(members))
+	seen := make(map[Ref]struct{}, len(members))
+	for _, member := range members {
+		if _, ok := seen[member]; ok {
+			continue
+		}
+		seen[member] = struct{}{}
+		payloads = append(payloads, NewPayload(ctx, target, action, outcome).WithSubject(member))
+	}
+	return payloads
 }
 
 // Category returns the audit category.

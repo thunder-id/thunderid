@@ -22,6 +22,8 @@ import (
 	"github.com/thunder-id/thunderid/internal/revocation"
 	"github.com/thunder-id/thunderid/internal/sharing"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
+	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/filter"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
@@ -104,6 +106,7 @@ type roleService struct {
 	transactioner   providers.Transactioner
 	authzService    sysauthz.SystemAuthorizationServiceInterface
 	sharingService  sharing.SharingServiceInterface
+	bus             eventbus.EventBusInterface
 	logger          *log.Logger
 }
 
@@ -117,6 +120,7 @@ func newRoleService(
 	transactioner providers.Transactioner,
 	authzService sysauthz.SystemAuthorizationServiceInterface,
 	sharingService sharing.SharingServiceInterface,
+	bus eventbus.EventBusInterface,
 ) RoleServiceInterface {
 	return &roleService{
 		roleStore:       roleStore,
@@ -127,6 +131,7 @@ func newRoleService(
 		transactioner:   transactioner,
 		authzService:    authzService,
 		sharingService:  sharingService,
+		bus:             bus,
 		logger:          log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName)),
 	}
 }
@@ -264,8 +269,25 @@ func (rs *roleService) listRolesInOU(
 	return slices.Concat(owned, shared), ownedCount + len(sharedIDs), nil
 }
 
-// CreateRole creates a new role.
+// CreateRole creates a new role, assigned to the assignees it names.
 func (rs *roleService) CreateRole(
+	ctx context.Context, role RoleCreationDetail,
+) (*RoleWithPermissionsAndAssignments, *tidcommon.ServiceError) {
+	created, svcErr := rs.createRole(ctx, role)
+	var roleID string
+	if svcErr == nil {
+		roleID = created.ID
+	}
+	rs.publishRoleEvent(ctx, audit.EventRoleCreate, audit.ActionCreate, roleID, svcErr)
+	if svcErr == nil {
+		publishAssignmentEvents(ctx, rs.bus, audit.EventRoleAssignmentAdd, audit.ActionAdd, roleID,
+			created.Assignments, nil)
+	}
+	return created, svcErr
+}
+
+// createRole creates a new role without publishing its audit events.
+func (rs *roleService) createRole(
 	ctx context.Context, role RoleCreationDetail,
 ) (*RoleWithPermissionsAndAssignments, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
@@ -472,8 +494,16 @@ func (rs *roleService) GetRolesByNames(
 	return result, nil
 }
 
-// UpdateRole updates an existing role.
+// UpdateRoleWithPermissions updates an existing role.
 func (rs *roleService) UpdateRoleWithPermissions(
+	ctx context.Context, id string, role RoleUpdateDetail) (*RoleWithPermissions, *tidcommon.ServiceError) {
+	updated, svcErr := rs.updateRoleWithPermissions(ctx, id, role)
+	rs.publishRoleEvent(ctx, audit.EventRoleUpdate, audit.ActionUpdate, id, svcErr)
+	return updated, svcErr
+}
+
+// updateRoleWithPermissions updates an existing role without publishing its audit event.
+func (rs *roleService) updateRoleWithPermissions(
 	ctx context.Context, id string, role RoleUpdateDetail) (*RoleWithPermissions, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 	logger.Debug(ctx, "Updating role", log.String("id", id), log.String("name", role.Name))
@@ -556,6 +586,18 @@ func (rs *roleService) UpdateRoleWithPermissions(
 
 // DeleteRole delete the specified role by its id.
 func (rs *roleService) DeleteRole(ctx context.Context, id string) *tidcommon.ServiceError {
+	svcErr := rs.deleteRole(ctx, id)
+	// A delete that found nothing to remove succeeds without an event, so no caller can record a
+	// deletion of an ID it made up.
+	if svcErr == errRoleNotFoundNoop {
+		return nil
+	}
+	rs.publishRoleEvent(ctx, audit.EventRoleDelete, audit.ActionDelete, id, svcErr)
+	return svcErr
+}
+
+// deleteRole deletes the role and its assignments without publishing its audit event.
+func (rs *roleService) deleteRole(ctx context.Context, id string) *tidcommon.ServiceError {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 	logger.Debug(ctx, "Deleting role", log.String("id", id))
 
@@ -570,7 +612,7 @@ func (rs *roleService) DeleteRole(ctx context.Context, id string) *tidcommon.Ser
 	}
 	if !exists {
 		logger.Debug(ctx, "Role not found", log.String("id", id))
-		return nil
+		return errRoleNotFoundNoop
 	}
 
 	if svcErr := rs.validateRoleMutable(ctx, id); svcErr != nil {
@@ -610,6 +652,15 @@ func (rs *roleService) DeleteRole(ctx context.Context, id string) *tidcommon.Ser
 
 	logger.Debug(ctx, "Successfully deleted role", log.String("id", id))
 	return nil
+}
+
+// publishRoleEvent publishes the audit event of an attempt on the role with id, after the change
+// committed or was refused.
+func (rs *roleService) publishRoleEvent(ctx context.Context, name string, action audit.Action, id string,
+	svcErr *tidcommon.ServiceError) {
+	target := audit.Ref{Type: audit.TargetTypeRole, ID: id}
+	eventbus.TryPublish(ctx, rs.bus,
+		eventbus.NewEvent(ctx, name).With(audit.ChangePayload(ctx, target, action, svcErr)))
 }
 
 // ValidateDeleteRole reports whether the role may be deleted and returns what the deletion revokes.

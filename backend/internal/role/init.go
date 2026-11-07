@@ -17,12 +17,16 @@ import (
 	"github.com/thunder-id/thunderid/internal/sharing"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // Initialize initializes the role service and registers its routes.
+//
+// bus is required: the role and role assignment services publish the audit event of every role they
+// create, update or delete, and of every assignee they add or remove, on it.
 func Initialize(
 	mux *http.ServeMux,
 	entityService entity.EntityServiceInterface,
@@ -32,10 +36,15 @@ func Initialize(
 	entityTypeService entitytype.EntityTypeServiceInterface,
 	authzService sysauthz.SystemAuthorizationServiceInterface,
 	sharingService sharing.SharingServiceInterface,
+	bus eventbus.EventBusInterface,
 ) (
 	RoleServiceInterface, RoleAssignmentServiceInterface, oupkg.OURoleResolver,
 	declarativeresource.ResourceExporter, error,
 ) {
+	if bus == nil {
+		return nil, nil, nil, nil, errNilEventBus
+	}
+
 	// Step 1: Initialize store and transactioner based on store mode (no declarative loading yet)
 	roleStore, transactioner, fileStore, dbStore, err := initializeStore()
 	if err != nil {
@@ -45,10 +54,10 @@ func Initialize(
 	// Step 2: Create service with store
 	roleService := newRoleService(
 		roleStore, entityService, groupService, ouService, resourceService, transactioner, authzService,
-		sharingService)
+		sharingService, bus)
 	assignmentService := newRoleAssignmentService(
 		roleStore, entityService, groupService, entityTypeService, resourceService, transactioner, authzService,
-		sharingService,
+		sharingService, bus,
 	)
 
 	// Registered before declarative resources load, because loading seeds the sharing policies those

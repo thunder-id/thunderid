@@ -14,12 +14,16 @@ import (
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // Initialize initializes the group service and registers its routes.
+//
+// bus is required: the service publishes the audit event of every group it creates, updates or deletes,
+// and of every member it adds or removes, on it.
 func Initialize(
 	mux *http.ServeMux,
 	dbProvider provider.DBProviderInterface,
@@ -28,7 +32,12 @@ func Initialize(
 	entityTypeService entitytype.EntityTypeServiceInterface,
 	authzService sysauthz.SystemAuthorizationServiceInterface,
 	sharingService sharing.SharingServiceInterface,
+	bus eventbus.EventBusInterface,
 ) (GroupServiceInterface, oupkg.OUGroupResolver, declarativeresource.ResourceExporter, error) {
+	if bus == nil {
+		return nil, nil, nil, errNilEventBus
+	}
+
 	// Step 1: Initialize store and transactioner based on store mode (no declarative loading yet).
 	store, transactioner, fileStore, dbStore, err := initializeGroupStore(dbProvider)
 	if err != nil {
@@ -37,7 +46,7 @@ func Initialize(
 
 	// Step 2: Create service with store.
 	groupService := newGroupServiceWithStore(
-		store, ouService, entityService, entityTypeService, authzService, transactioner, sharingService,
+		store, ouService, entityService, entityTypeService, authzService, transactioner, sharingService, bus,
 	)
 
 	// Step 3: Load declarative resources into file store (if applicable).

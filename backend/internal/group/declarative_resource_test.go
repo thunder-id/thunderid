@@ -495,7 +495,7 @@ func (suite *GroupExporterTestSuite) newMemberCheckService() (
 	entitySvc := entitymock.NewEntityServiceInterfaceMock(suite.T())
 	sharingSvc := sharingmock.NewSharingServiceInterfaceMock(suite.T())
 	registerSharedCategories(entitySvc)
-	return &groupService{groupStore: store, entityService: entitySvc, sharingService: sharingSvc},
+	return &groupService{groupStore: store, entityService: entitySvc, sharingService: sharingSvc, bus: discardingBus{}},
 		store, entitySvc, sharingSvc
 }
 
