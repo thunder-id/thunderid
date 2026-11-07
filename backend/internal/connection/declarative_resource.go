@@ -895,7 +895,7 @@ func (e *connectionExporter) ViewResource(_ context.Context, document *yaml.Node
 	case *providers.IDPDTO:
 		return viewIDPConnection(*dto)
 	case *ncommon.NotificationSenderDTO:
-		return viewSMSConnection(*dto)
+		return viewSenderConnection(*dto)
 	default:
 		return nil, fmt.Errorf("unsupported connection resource type: %T", resource)
 	}
@@ -917,8 +917,8 @@ func viewIDPConnection(dto providers.IDPDTO) (interface{}, error) {
 	}
 }
 
-// viewSMSConnection maps a notification-sender DTO with the mapper its vendor's read uses.
-func viewSMSConnection(dto ncommon.NotificationSenderDTO) (interface{}, error) {
+// viewSenderConnection maps a notification-sender DTO with the mapper its vendor's read uses.
+func viewSenderConnection(dto ncommon.NotificationSenderDTO) (interface{}, error) {
 	switch dto.Provider {
 	case ncommon.NotificationProviderTypeTwilio:
 		return twilioFromSenderDTO(dto)
@@ -926,7 +926,9 @@ func viewSMSConnection(dto ncommon.NotificationSenderDTO) (interface{}, error) {
 		return vonageFromSenderDTO(dto)
 	case ncommon.NotificationProviderTypeCustom:
 		return smsGatewayFromSenderDTO(dto)
+	case ncommon.NotificationProviderTypeSMTP:
+		return emailSMTPFromSenderDTO(dto)
 	default:
-		return nil, fmt.Errorf("unsupported message provider for connection view: %s", dto.Provider)
+		return nil, fmt.Errorf("unsupported notification provider for connection view: %s", dto.Provider)
 	}
 }
