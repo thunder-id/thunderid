@@ -7,12 +7,30 @@ import "github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 // Audited event names. A publisher uses these constants, and auditedEvents lists what each may carry.
 const (
+	// EventAgentCreate names an attempt to create an agent.
+	EventAgentCreate = "agent.create"
+	// EventAgentUpdate names an attempt to change an agent.
+	EventAgentUpdate = "agent.update"
+	// EventAgentDelete names an attempt to delete an agent.
+	EventAgentDelete = "agent.delete"
+	// EventAgentTypeCreate names an attempt to create an agent type.
+	EventAgentTypeCreate = "agent_type.create"
+	// EventAgentTypeUpdate names an attempt to change an agent type.
+	EventAgentTypeUpdate = "agent_type.update"
+	// EventAgentTypeDelete names an attempt to delete an agent type.
+	EventAgentTypeDelete = "agent_type.delete"
 	// EventUserCreate names an attempt to create a user.
 	EventUserCreate = "user.create"
 	// EventUserUpdate names an attempt to change a user.
 	EventUserUpdate = "user.update"
 	// EventUserDelete names an attempt to delete a user.
 	EventUserDelete = "user.delete"
+	// EventUserTypeCreate names an attempt to create a user type.
+	EventUserTypeCreate = "user_type.create"
+	// EventUserTypeUpdate names an attempt to change a user type.
+	EventUserTypeUpdate = "user_type.update"
+	// EventUserTypeDelete names an attempt to delete a user type.
+	EventUserTypeDelete = "user_type.delete"
 	// EventApplicationCreate names an attempt to create an application.
 	EventApplicationCreate = "application.create"
 	// EventApplicationUpdate names an attempt to change an application.
@@ -54,12 +72,16 @@ const (
 const (
 	// TargetTypeUser is the target type of an event about a user.
 	TargetTypeUser = "user"
+	// TargetTypeUserType is the target type of an event about a user type.
+	TargetTypeUserType = "user_type"
 	// TargetTypeApplication is the target type of an event about an application.
 	TargetTypeApplication = "application"
 	// TargetTypeFlow is the target type of an event about a flow.
 	TargetTypeFlow = "flow"
 	// TargetTypeAgent is the target type of an event about an agent.
 	TargetTypeAgent = "agent"
+	// TargetTypeAgentType is the target type of an event about an agent type.
+	TargetTypeAgentType = "agent_type"
 	// TargetTypeRole is the target type of an event about a role.
 	TargetTypeRole = "role"
 	// TargetTypeGroup is the target type of an event about a group.
@@ -81,9 +103,21 @@ var principalTargetTypes = map[string]string{
 // auditedEvents maps every audited event to the detail keys it may carry, so what is audited, and what
 // each event may record, is reviewed in one place. An event not listed here is never written.
 var auditedEvents = map[string][]string{
+	EventAgentCreate: nil,
+	EventAgentUpdate: nil,
+	EventAgentDelete: nil,
+
+	EventAgentTypeCreate: nil,
+	EventAgentTypeUpdate: nil,
+	EventAgentTypeDelete: nil,
+
 	EventUserCreate: nil,
 	EventUserUpdate: nil,
 	EventUserDelete: nil,
+
+	EventUserTypeCreate: nil,
+	EventUserTypeUpdate: nil,
+	EventUserTypeDelete: nil,
 
 	EventApplicationCreate: nil,
 	EventApplicationUpdate: nil,

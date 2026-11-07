@@ -17,6 +17,8 @@ import (
 	"github.com/thunder-id/thunderid/internal/entitytype/model"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
+	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/security"
@@ -94,6 +96,7 @@ type entityTypeService struct {
 	ouService       oupkg.OrganizationUnitServiceInterface
 	transactioner   providers.Transactioner
 	authzService    sysauthz.SystemAuthorizationServiceInterface
+	bus             eventbus.EventBusInterface
 }
 
 // newEntityTypeService creates a new instance of entityTypeService.
@@ -102,12 +105,14 @@ func newEntityTypeService(
 	store entityTypeStoreInterface,
 	transactioner providers.Transactioner,
 	authzService sysauthz.SystemAuthorizationServiceInterface,
+	bus eventbus.EventBusInterface,
 ) EntityTypeServiceInterface {
 	return &entityTypeService{
 		entityTypeStore: store,
 		ouService:       ouService,
 		transactioner:   transactioner,
 		authzService:    authzService,
+		bus:             bus,
 	}
 }
 
@@ -209,6 +214,19 @@ func (us *entityTypeService) listAccessibleEntityTypes(
 
 // CreateEntityType creates a new entity type in the given category.
 func (us *entityTypeService) CreateEntityType(
+	ctx context.Context, category TypeCategory, request CreateEntityTypeRequestWithID,
+) (*EntityType, *tidcommon.ServiceError) {
+	created, svcErr := us.createEntityType(ctx, category, request)
+	var id string
+	if svcErr == nil {
+		id = created.ID
+	}
+	us.publishEntityTypeEvent(ctx, category, createEventForCategory(category), audit.ActionCreate, id, svcErr)
+	return created, svcErr
+}
+
+// createEntityType creates a new entity type in the given category without publishing its audit event.
+func (us *entityTypeService) createEntityType(
 	ctx context.Context, category TypeCategory, request CreateEntityTypeRequestWithID,
 ) (*EntityType, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, entityTypeLoggerComponentName))
@@ -395,6 +413,17 @@ func (us *entityTypeService) GetEntityTypeByHandle(
 func (us *entityTypeService) UpdateEntityType(ctx context.Context, category TypeCategory,
 	schemaID string, request UpdateEntityTypeRequest) (
 	*EntityType, *tidcommon.ServiceError) {
+	updated, svcErr := us.updateEntityType(ctx, category, schemaID, request)
+	us.publishEntityTypeEvent(ctx, category, updateEventForCategory(category), audit.ActionUpdate, schemaID,
+		svcErr)
+	return updated, svcErr
+}
+
+// updateEntityType updates an entity type by its ID within the given category without publishing its
+// audit event.
+func (us *entityTypeService) updateEntityType(ctx context.Context, category TypeCategory,
+	schemaID string, request UpdateEntityTypeRequest) (
+	*EntityType, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, entityTypeLoggerComponentName))
 
 	if svcErr := validateCategory(category); svcErr != nil {
@@ -484,6 +513,21 @@ func (us *entityTypeService) UpdateEntityType(ctx context.Context, category Type
 // DeleteEntityType deletes an entity type by its ID within the given category.
 func (us *entityTypeService) DeleteEntityType(ctx context.Context, category TypeCategory,
 	schemaID string) *tidcommon.ServiceError {
+	svcErr := us.deleteEntityType(ctx, category, schemaID)
+	// A delete that found nothing to remove succeeds without an event, so no caller can record a
+	// deletion of an ID it made up.
+	if svcErr == errEntityTypeNotFoundNoop {
+		return nil
+	}
+	us.publishEntityTypeEvent(ctx, category, deleteEventForCategory(category), audit.ActionDelete, schemaID,
+		svcErr)
+	return svcErr
+}
+
+// deleteEntityType deletes an entity type by its ID within the given category without publishing its
+// audit event.
+func (us *entityTypeService) deleteEntityType(ctx context.Context, category TypeCategory,
+	schemaID string) *tidcommon.ServiceError {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, entityTypeLoggerComponentName))
 
 	if svcErr := validateCategory(category); svcErr != nil {
@@ -505,7 +549,7 @@ func (us *entityTypeService) DeleteEntityType(ctx context.Context, category Type
 				ctx, category, deleteActionForCategory(category), ""); svcErr != nil {
 				return svcErr
 			}
-			return nil
+			return errEntityTypeNotFoundNoop
 		}
 		return logAndReturnServerError(ctx, logger, "Failed to get entity type for delete", err)
 	}
@@ -526,6 +570,18 @@ func (us *entityTypeService) DeleteEntityType(ctx context.Context, category Type
 	}
 
 	return nil
+}
+
+// publishEntityTypeEvent publishes the audit event of an attempt on the entity type with id, after the
+// change committed or was refused. The category picks the target type, a user type or an agent type.
+// Neither the schema nor any other part of the type is recorded.
+func (us *entityTypeService) publishEntityTypeEvent(ctx context.Context, category TypeCategory, name string,
+	action audit.Action, id string, svcErr *tidcommon.ServiceError) {
+	// A failed attempt keeps the ID the caller asked for, even one that matches no entity type, as
+	// forensic evidence of what was probed; the payload caps it and the sink escapes it.
+	target := audit.Ref{Type: auditTargetTypeForCategory(category), ID: id}
+	eventbus.TryPublish(ctx, us.bus,
+		eventbus.NewEvent(ctx, name).With(audit.ChangePayload(ctx, target, action, svcErr)))
 }
 
 // GetResourceDependencies implements resourcedependency.Provider. It reports the user types and agent
@@ -981,6 +1037,41 @@ func resourceTypeForCategory(category TypeCategory) security.ResourceType {
 		return security.ResourceTypeAgentType
 	}
 	return security.ResourceTypeUserType
+}
+
+// createEventForCategory returns the audit event of an attempt to create an entity type of the given
+// category.
+func createEventForCategory(category TypeCategory) string {
+	if category == TypeCategoryAgent {
+		return audit.EventAgentTypeCreate
+	}
+	return audit.EventUserTypeCreate
+}
+
+// updateEventForCategory returns the audit event of an attempt to change an entity type of the given
+// category.
+func updateEventForCategory(category TypeCategory) string {
+	if category == TypeCategoryAgent {
+		return audit.EventAgentTypeUpdate
+	}
+	return audit.EventUserTypeUpdate
+}
+
+// deleteEventForCategory returns the audit event of an attempt to delete an entity type of the given
+// category.
+func deleteEventForCategory(category TypeCategory) string {
+	if category == TypeCategoryAgent {
+		return audit.EventAgentTypeDelete
+	}
+	return audit.EventUserTypeDelete
+}
+
+// auditTargetTypeForCategory returns the audit target type of an entity type of the given category.
+func auditTargetTypeForCategory(category TypeCategory) string {
+	if category == TypeCategoryAgent {
+		return audit.TargetTypeAgentType
+	}
+	return audit.TargetTypeUserType
 }
 
 // buildPaginationLinks builds pagination links for the response.

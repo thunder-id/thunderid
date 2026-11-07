@@ -162,6 +162,7 @@ func (suite *AgentServiceTestSuite) setupService() (
 		}).Maybe()
 
 	svc := &agentService{
+		bus:                  discardingBus{},
 		logger:               log.GetLogger().With(log.String(log.LoggerKeyComponentName, "AgentService")),
 		authzService:         newAllowAllAuthz(suite.T()),
 		entityService:        mockEntity,
@@ -2033,7 +2034,7 @@ func (suite *AgentServiceTestSuite) TestTranslateCertValidationError() {
 // --- translateCertOperationError ---
 
 func (suite *AgentServiceTestSuite) TestTranslateCertOperationError() {
-	s := &agentService{logger: log.GetLogger().With(log.String("component", "test"))}
+	s := &agentService{bus: discardingBus{}, logger: log.GetLogger().With(log.String("component", "test"))}
 
 	cases := []struct {
 		name        string

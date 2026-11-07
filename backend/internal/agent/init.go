@@ -16,6 +16,7 @@ import (
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	dbprovider "github.com/thunder-id/thunderid/internal/system/database/provider"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
 	"github.com/thunder-id/thunderid/internal/system/observability"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
@@ -27,6 +28,9 @@ import (
 // values the agent's export refers to are kept where a reference finds them.
 //
 // projectValidator is nil on a deployment that serves no projects, where a project ID is kept unchecked.
+//
+// bus is required: the service publishes the audit event of every agent it creates, updates or deletes
+// on it.
 func Initialize(
 	mux *http.ServeMux,
 	entityService entity.EntityServiceInterface,
@@ -40,13 +44,17 @@ func Initialize(
 	dbProvider dbprovider.DBProviderInterface,
 	observabilitySvc observability.ObservabilityServiceInterface,
 	projectValidator projectOUValidator,
+	bus eventbus.EventBusInterface,
 ) (AgentServiceInterface, declarativeresource.ResourceExporter, error) {
+	if bus == nil {
+		return nil, nil, errNilEventBus
+	}
 	transactioner, err := dbProvider.GetEntityDBTransactioner()
 	if err != nil {
 		return nil, nil, err
 	}
 	service := newAgentService(authzService, entityService, inboundClientService, ouService, roleService,
-		governance, valueCapturer, entityTypeService, transactioner, observabilitySvc, projectValidator)
+		governance, valueCapturer, entityTypeService, transactioner, observabilitySvc, projectValidator, bus)
 
 	if err := entityService.LoadIndexedAttributes(getAgentIndexedAttributes()); err != nil {
 		return nil, nil, err

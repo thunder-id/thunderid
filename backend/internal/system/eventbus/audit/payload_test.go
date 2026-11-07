@@ -112,6 +112,7 @@ func (s *PayloadTestSuite) TestTheActorComesFromTheVerifiedToken() {
 }
 
 func (s *PayloadTestSuite) TestValidate() {
+	const testTypeID = "01900000-0000-7000-8000-000000000033"
 	ctx := context.Background()
 	cases := []struct {
 		name    string
@@ -167,6 +168,35 @@ func (s *PayloadTestSuite) TestValidate() {
 		{"a server config value", EventServerConfigUpdate,
 			NewPayload(ctx, Ref{Type: TargetTypeServerConfig, ID: "cors"}, ActionUpdate, OutcomeSucceeded).
 				WithDetails(map[string]string{"value": "https://app.example.com"}), errDetailNotAllowed},
+		{"an agent create", EventAgentCreate,
+			NewPayload(ctx, Ref{Type: TargetTypeAgent, ID: testAgentID}, ActionCreate, OutcomeSucceeded), nil},
+		{"an agent update", EventAgentUpdate,
+			NewPayload(ctx, Ref{Type: TargetTypeAgent, ID: testAgentID}, ActionUpdate,
+				OutcomeDenied(reasonForbidden)), nil},
+		{"an agent delete", EventAgentDelete,
+			NewPayload(ctx, Ref{Type: TargetTypeAgent, ID: testAgentID}, ActionDelete,
+				OutcomeFailed("agt_1004")), nil},
+		{"an agent detail", EventAgentUpdate,
+			NewPayload(ctx, Ref{Type: TargetTypeAgent, ID: testAgentID}, ActionUpdate, OutcomeSucceeded).
+				WithDetails(map[string]string{"client_secret": "s3cr3t"}), errDetailNotAllowed},
+		{"an agent type create", EventAgentTypeCreate,
+			NewPayload(ctx, Ref{Type: TargetTypeAgentType}, ActionCreate, OutcomeFailed("usrs_1003")), nil},
+		{"an agent type update", EventAgentTypeUpdate,
+			NewPayload(ctx, Ref{Type: TargetTypeAgentType, ID: testTypeID}, ActionUpdate, OutcomeSucceeded),
+			nil},
+		{"an agent type delete", EventAgentTypeDelete,
+			NewPayload(ctx, Ref{Type: TargetTypeAgentType, ID: testTypeID}, ActionDelete,
+				OutcomeFailed("usrs_1015")), nil},
+		{"a user type create", EventUserTypeCreate,
+			NewPayload(ctx, Ref{Type: TargetTypeUserType, ID: testTypeID}, ActionCreate, OutcomeSucceeded), nil},
+		{"a user type update", EventUserTypeUpdate,
+			NewPayload(ctx, Ref{Type: TargetTypeUserType, ID: testTypeID}, ActionUpdate,
+				OutcomeDenied(reasonForbidden)), nil},
+		{"a user type delete", EventUserTypeDelete,
+			NewPayload(ctx, Ref{Type: TargetTypeUserType, ID: testTypeID}, ActionDelete, OutcomeSucceeded), nil},
+		{"a user type detail", EventUserTypeUpdate,
+			NewPayload(ctx, Ref{Type: TargetTypeUserType, ID: testTypeID}, ActionUpdate, OutcomeSucceeded).
+				WithDetails(map[string]string{"schema": "{}"}), errDetailNotAllowed},
 		{"an event that is not audited", "user.rename",
 			NewPayload(ctx, testTarget, ActionUpdate, OutcomeSucceeded), errUnknownEvent},
 		{"a detail the event does not allow", EventUserUpdate,

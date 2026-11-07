@@ -286,36 +286,30 @@ func (s *importService) importEntityType(
 		Schema:                createReq.Schema,
 	}
 
-	if dryRun {
-		if options.IsUpsertEnabled() && req.ID != "" {
-			_, svcErr := s.entityTypeService.GetEntityType(ctx, category, req.ID, false)
-			if svcErr == nil {
-				return successOutcome(resourceTypeEntityType, req.ID, req.DisplayName, operationUpdate)
-			}
-
-			if !isNotFoundServiceError(svcErr) {
-				return serviceErrorOutcome(resourceTypeEntityType, req.ID, req.DisplayName, operationUpdate, svcErr)
-			}
+	// The upsert looks the type up rather than attempting an update, so a create is not preceded by an
+	// audited failed update.
+	exists := false
+	if options.IsUpsertEnabled() && req.ID != "" {
+		_, svcErr := s.entityTypeService.GetEntityType(ctx, category, req.ID, false)
+		if svcErr != nil && !isNotFoundServiceError(svcErr) {
+			return serviceErrorOutcome(resourceTypeEntityType, req.ID, req.DisplayName, operationUpdate, svcErr)
 		}
+		exists = svcErr == nil
+	}
 
+	if dryRun {
+		if exists {
+			return successOutcome(resourceTypeEntityType, req.ID, req.DisplayName, operationUpdate)
+		}
 		return successOutcome(resourceTypeEntityType, req.ID, req.DisplayName, operationCreate)
 	}
 
-	if options.IsUpsertEnabled() && req.ID != "" {
+	if exists {
 		updated, svcErr := s.entityTypeService.UpdateEntityType(ctx, category, req.ID, updateReq)
-		if svcErr == nil {
-			return successOutcome(resourceTypeEntityType, updated.ID, updated.DisplayName, operationUpdate)
-		}
-
-		if !isNotFoundServiceError(svcErr) {
+		if svcErr != nil {
 			return serviceErrorOutcome(resourceTypeEntityType, req.ID, req.DisplayName, operationUpdate, svcErr)
 		}
-
-		created, createErr := s.entityTypeService.CreateEntityType(ctx, category, createReq)
-		if createErr != nil {
-			return serviceErrorOutcome(resourceTypeEntityType, req.ID, req.DisplayName, operationCreate, createErr)
-		}
-		return successOutcome(resourceTypeEntityType, created.ID, created.DisplayName, operationCreate)
+		return successOutcome(resourceTypeEntityType, updated.ID, updated.DisplayName, operationUpdate)
 	}
 
 	created, svcErr := s.entityTypeService.CreateEntityType(ctx, category, createReq)
