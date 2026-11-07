@@ -53,8 +53,8 @@ func (s *TokenRouteRegistrationTestSuite) routes(enabled bool) (bare, scoped str
 		})
 
 	mux := http.NewServeMux()
-	registerRoutes(mux, newTokenHandler(NewTokenServiceInterfaceMock(s.T()), nil), nil, nil, nil,
-		discoverySvc, nil, nil, nil, enabled, engineconfig.ClientAssertionConfig{}, 0)
+	registerRoutes(mux, newTokenHandler(NewTokenServiceInterfaceMock(s.T()), nil, discardingBus{}), nil, nil, nil,
+		discoverySvc, nil, nil, nil, enabled, engineconfig.ClientAssertionConfig{}, 0, discardingBus{})
 
 	pattern := func(target string) string {
 		_, p := mux.Handler(httptest.NewRequest(http.MethodPost, target, nil))
@@ -122,9 +122,9 @@ func (s *OUEndpointOrderingTestSuite) post(ouID string) (*httptest.ResponseRecor
 		Return(&discovery.OAuth2AuthorizationServerMetadata{Issuer: "https://localhost:8090"})
 
 	mux := http.NewServeMux()
-	registerRoutes(mux, newTokenHandler(NewTokenServiceInterfaceMock(s.T()), nil),
+	registerRoutes(mux, newTokenHandler(NewTokenServiceInterfaceMock(s.T()), nil, discardingBus{}),
 		actorprovider.Initialize(s.inbound, s.entities, s.authn, nil, nil), s.authn, nil,
-		discoverySvc, nil, s.ouService, nil, true, engineconfig.ClientAssertionConfig{}, 0)
+		discoverySvc, nil, s.ouService, nil, true, engineconfig.ClientAssertionConfig{}, 0, discardingBus{})
 
 	form := url.Values{}
 	form.Set("client_id", orderingClientID)

@@ -210,6 +210,22 @@ func (s *PayloadTestSuite) TestValidate() {
 		{"a user type detail", EventUserTypeUpdate,
 			NewPayload(ctx, Ref{Type: TargetTypeUserType, ID: testTypeID}, ActionUpdate, OutcomeSucceeded).
 				WithDetails(map[string]string{"schema": "{}"}), errDetailNotAllowed},
+		{"a refused client authentication", EventClientAuthenticate,
+			NewPayload(ctx, testApplication, ActionAuthenticate, OutcomeDenied("invalid_client")), nil},
+		{"a token request with its grant type", EventTokenIssue,
+			NewPayload(ctx, testToken, ActionIssue, OutcomeSucceeded).
+				WithDetails(map[string]string{DetailGrantType: "client_credentials"}), nil},
+		{"a token request detail other than the grant type", EventTokenIssue,
+			NewPayload(ctx, testToken, ActionIssue, OutcomeSucceeded).
+				WithDetails(map[string]string{"refresh_token": "rt-value"}), errDetailNotAllowed},
+		{"a token revocation", EventTokenRevoke,
+			NewPayload(ctx, testToken, ActionRevoke, OutcomeDenied("invalid_grant")), nil},
+		{"a token revocation detail", EventTokenRevoke,
+			NewPayload(ctx, testToken, ActionRevoke, OutcomeSucceeded).
+				WithDetails(map[string]string{DetailGrantType: "refresh_token"}), errDetailNotAllowed},
+		{"a client authentication detail", EventClientAuthenticate,
+			NewPayload(ctx, testApplication, ActionAuthenticate, OutcomeFailed("invalid_request")).
+				WithDetails(map[string]string{"client_secret": "s3cr3t"}), errDetailNotAllowed},
 		{"an event that is not audited", "user.rename",
 			NewPayload(ctx, testTarget, ActionUpdate, OutcomeSucceeded), errUnknownEvent},
 		{"a detail the event does not allow", EventUserUpdate,
@@ -254,6 +270,29 @@ func (s *PayloadTestSuite) TestEveryIDIsCutTo128Characters() {
 		s.Equal(strings.Repeat("ü", maxIDLength), id)
 	}
 	s.Equal(exact, NewPayload(ctx, Ref{Type: TargetTypeUser, ID: exact}, ActionUpdate, OutcomeSucceeded).Target().ID)
+}
+
+// An OAuth endpoint names the actor itself, so a bearer token the request also carries decides neither
+// the actor nor the principal its act claim names.
+func (s *PayloadTestSuite) TestAnExplicitActorReplacesTheVerifiedToken() {
+	ctx := securedCallContext(s.T(), accessToken(s.T(), map[string]interface{}{
+		"sub": testUserID,
+		"act": map[string]interface{}{"sub": testAgentID},
+	}), "")
+	resolved := NewPayload(ctx, testToken, ActionIssue, OutcomeSucceeded)
+	s.Require().Equal(Actor{Type: ActorTypeAgent, ID: testAgentID}, resolved.Actor())
+	s.Require().Equal(Ref{Type: TargetTypeUser, ID: testUserID}, resolved.OnBehalfOf())
+
+	client := resolved.WithActor(Actor{Type: ActorTypeApplication, ID: testAppID})
+	anonymous := resolved.WithActor(Actor{Type: ActorTypeAnonymous})
+
+	s.Equal(Actor{Type: ActorTypeApplication, ID: testAppID}, client.Actor())
+	s.Equal(Ref{}, client.OnBehalfOf())
+	s.Equal(Actor{Type: ActorTypeAnonymous}, anonymous.Actor())
+	s.Equal(Ref{}, anonymous.OnBehalfOf())
+	s.Equal(Actor{Type: ActorTypeAgent, ID: testAgentID}, resolved.Actor(), "the receiver is unchanged")
+	s.Equal(strings.Repeat("ü", maxIDLength),
+		resolved.WithActor(Actor{Type: ActorTypeApplication, ID: strings.Repeat("ü", maxIDLength+1)}).Actor().ID)
 }
 
 func (s *PayloadTestSuite) TestBuildersReturnIndependentCopies() {

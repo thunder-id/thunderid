@@ -11,8 +11,10 @@ import (
 	"crypto/x509/pkix"
 	"encoding/json"
 	"encoding/pem"
+	"io"
 	"math/big"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"slices"
@@ -742,6 +744,12 @@ func (suite *EngineTestSuite) TestNew_ResetsDynamicMatcherWhenOriginConfigEmpty(
 // applied last, so they override those.
 func newTestEngine(t *testing.T, opts ...Option) *Engine {
 	t.Helper()
+	return newTestEngineOn(t, http.NewServeMux(), opts...)
+}
+
+// newTestEngineOn starts the engine newTestEngine starts, serving its routes on mux.
+func newTestEngineOn(t *testing.T, mux *http.ServeMux, opts ...Option) *Engine {
+	t.Helper()
 	tempDir := t.TempDir()
 	keyID := testKeyID
 	certPEM := generateSelfSignedCertFiles(t, tempDir, "cert.pem", "key.pem")
@@ -786,7 +794,7 @@ func newTestEngine(t *testing.T, opts ...Option) *Engine {
 			identitygovernanceprovidermock.NewIdentityGovernanceProviderMock(t)),
 		WithFlowConfig(engineconfig.FlowConfig{Executors: []string{"InviteExecutor", "PermissionValidator"}}),
 	}
-	return New(http.NewServeMux(), slices.Concat(baseOpts, opts)...)
+	return New(mux, slices.Concat(baseOpts, opts)...)
 }
 
 func (suite *EngineTestSuite) TestNew_PassesIdentityGovernanceToTheExecutors() {
@@ -877,4 +885,28 @@ func (suite *EngineTestSuite) TestAttributeVerificationOption() {
 	suite.Same(provider, ctx.attributeVerification)
 	WithAttributeVerificationProvider(nil)(&ctx)
 	suite.Nil(ctx.attributeVerification)
+}
+
+// The embedded engine subscribes nothing to its event bus, so a request its OAuth services audit, here a
+// token request whose client never authenticates, is answered as before and writes no audit line.
+func (suite *EngineTestSuite) TestNew_WritesNoAuditLine() {
+	t := suite.T()
+	reader, writer, err := os.Pipe()
+	require.NoError(t, err)
+	original := os.Stdout
+	os.Stdout = writer
+	t.Cleanup(func() { os.Stdout = original })
+
+	mux := http.NewServeMux()
+	require.NotNil(t, newTestEngineOn(t, mux))
+	recorder := httptest.NewRecorder()
+	mux.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/oauth2/token",
+		strings.NewReader("grant_type=client_credentials")))
+
+	os.Stdout = original
+	require.NoError(t, writer.Close())
+	written, err := io.ReadAll(reader)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusBadRequest, recorder.Code)
+	assert.NotContains(t, string(written), `"log_type":"AUDIT"`)
 }
