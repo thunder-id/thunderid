@@ -6,10 +6,13 @@ package role
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
+
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 )
 
 // CompositeRoleStoreTestSuite contains tests for the composite role store.
@@ -393,4 +396,50 @@ func (suite *CompositeRoleStoreTestSuite) TestCascadeHooks_UseDatabaseStoreOnly(
 	suite.mockFileStore.AssertNotCalled(suite.T(), "GetReferencedPermissions", mock.Anything)
 	suite.mockFileStore.AssertNotCalled(suite.T(), "DeleteRolePermission",
 		mock.Anything, mock.Anything, mock.Anything)
+}
+
+// Counting or listing the assignments of a role whose database store alone holds more than the composite
+// limit is refused, not read as if it held only the limit.
+func (suite *CompositeRoleStoreTestSuite) TestAssignmentReads_OneStoreOverTheLimit() {
+	reads := map[string]func() error{
+		"count": func() error {
+			_, err := suite.store.GetRoleAssignmentsCount(context.Background(), "role1", "")
+			return err
+		},
+		"list": func() error {
+			_, err := suite.store.GetRoleAssignments(context.Background(), "role1", "", 10, 0)
+			return err
+		},
+	}
+	for name, read := range reads {
+		suite.Run(name, func() {
+			suite.SetupTest()
+			suite.mockDBStore.On("GetRoleAssignmentsCount", mock.Anything, "role1", mock.Anything).
+				Return(serverconst.MaxCompositeStoreRecords+500, nil).Once()
+			suite.mockFileStore.On("GetRoleAssignmentsCount", mock.Anything, "role1", mock.Anything).
+				Return(0, nil).Once()
+
+			suite.ErrorIs(read(), errResultLimitExceededInCompositeMode)
+		})
+	}
+}
+
+// A role with exactly the limit in one store is still counted.
+func (suite *CompositeRoleStoreTestSuite) TestGetRoleAssignmentsCount_OneStoreAtTheLimit() {
+	assignments := make([]RoleAssignment, serverconst.MaxCompositeStoreRecords)
+	for i := range assignments {
+		assignments[i] = RoleAssignment{ID: fmt.Sprintf("user%d", i), Type: assigneeTypeEntity}
+	}
+	suite.mockDBStore.On("GetRoleAssignmentsCount", mock.Anything, "role1", mock.Anything).
+		Return(serverconst.MaxCompositeStoreRecords, nil).Once()
+	suite.mockFileStore.On("GetRoleAssignmentsCount", mock.Anything, "role1", mock.Anything).Return(0, nil).Once()
+	suite.mockDBStore.On("GetRoleAssignments", mock.Anything, "role1", mock.Anything,
+		serverconst.MaxCompositeStoreRecords, 0).Return(assignments, nil).Once()
+	suite.mockFileStore.On("GetRoleAssignments", mock.Anything, "role1", mock.Anything, 0, 0).
+		Return([]RoleAssignment{}, nil).Once()
+
+	count, err := suite.store.GetRoleAssignmentsCount(context.Background(), "role1", "")
+
+	suite.NoError(err)
+	suite.Equal(serverconst.MaxCompositeStoreRecords, count)
 }
