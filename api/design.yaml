@@ -108,6 +108,22 @@ paths:
           $ref: '#/components/responses/BadRequest'
         "401":
           $ref: '#/components/responses/Unauthorized'
+        "403":
+          description: |
+            The caller may not write themes and layouts. On a data plane, no token writes them, whatever its
+            permissions: only an import with the management API key does.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "SSE-4030"
+                message:
+                  key: "error.unauthorized"
+                  defaultValue: "Unauthorized"
+                description:
+                  key: "error.unauthorized_description"
+                  defaultValue: "The caller is not authorized to perform this operation"
         "500":
           $ref: '#/components/responses/InternalServerError'
 
@@ -226,6 +242,22 @@ paths:
           $ref: '#/components/responses/BadRequest'
         "401":
           $ref: '#/components/responses/Unauthorized'
+        "403":
+          description: |
+            The caller may not write themes and layouts. On a data plane, no token writes them, whatever its
+            permissions: only an import with the management API key does.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "SSE-4030"
+                message:
+                  key: "error.unauthorized"
+                  defaultValue: "Unauthorized"
+                description:
+                  key: "error.unauthorized_description"
+                  defaultValue: "The caller is not authorized to perform this operation"
         "404":
           description: 'Not Found: The theme could not be found'
           content:
@@ -261,6 +293,22 @@ paths:
           $ref: '#/components/responses/BadRequest'
         "401":
           $ref: '#/components/responses/Unauthorized'
+        "403":
+          description: |
+            The caller may not write themes and layouts. On a data plane, no token writes them, whatever its
+            permissions: only an import with the management API key does.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "SSE-4030"
+                message:
+                  key: "error.unauthorized"
+                  defaultValue: "Unauthorized"
+                description:
+                  key: "error.unauthorized_description"
+                  defaultValue: "The caller is not authorized to perform this operation"
         "404":
           description: 'Not Found: The theme could not be found'
           content:
@@ -459,6 +507,22 @@ paths:
                       defaultValue: "No project exists with the given project ID"
         "401":
           $ref: '#/components/responses/Unauthorized'
+        "403":
+          description: |
+            The caller may not write themes and layouts. On a data plane, no token writes them, whatever its
+            permissions: only an import with the management API key does.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "SSE-4030"
+                message:
+                  key: "error.unauthorized"
+                  defaultValue: "Unauthorized"
+                description:
+                  key: "error.unauthorized_description"
+                  defaultValue: "The caller is not authorized to perform this operation"
         "409":
           description: 'Conflict: A layout with the same ID already exists'
           content:
@@ -661,6 +725,22 @@ paths:
                       defaultValue: "No project exists with the given project ID"
         "401":
           $ref: '#/components/responses/Unauthorized'
+        "403":
+          description: |
+            The caller may not write themes and layouts. On a data plane, no token writes them, whatever its
+            permissions: only an import with the management API key does.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "SSE-4030"
+                message:
+                  key: "error.unauthorized"
+                  defaultValue: "Unauthorized"
+                description:
+                  key: "error.unauthorized_description"
+                  defaultValue: "The caller is not authorized to perform this operation"
         "404":
           description: 'Not Found: The layout could not be found'
           content:
@@ -696,6 +776,22 @@ paths:
           $ref: '#/components/responses/BadRequest'
         "401":
           $ref: '#/components/responses/Unauthorized'
+        "403":
+          description: |
+            The caller may not write themes and layouts. On a data plane, no token writes them, whatever its
+            permissions: only an import with the management API key does.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "SSE-4030"
+                message:
+                  key: "error.unauthorized"
+                  defaultValue: "Unauthorized"
+                description:
+                  key: "error.unauthorized_description"
+                  defaultValue: "The caller is not authorized to perform this operation"
         "404":
           description: 'Not Found: The layout could not be found'
           content:

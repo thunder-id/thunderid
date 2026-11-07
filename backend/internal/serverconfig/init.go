@@ -11,6 +11,7 @@ import (
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/eventbus"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -22,7 +23,8 @@ import (
 // every section write on it.
 func Initialize(mux *http.ServeMux, cacheManager cache.CacheManagerInterface,
 	handlers map[ConfigName]ServerConfigHandlerInterface, observability providers.ObservabilityProvider,
-	bus eventbus.EventBusInterface) (ServerConfigService, declarativeresource.ResourceExporter, error) {
+	bus eventbus.EventBusInterface, authzService sysauthz.SystemAuthorizationServiceInterface) (
+	ServerConfigService, declarativeresource.ResourceExporter, error) {
 	if bus == nil {
 		return nil, nil, errNilEventBus
 	}
@@ -30,7 +32,7 @@ func Initialize(mux *http.ServeMux, cacheManager cache.CacheManagerInterface,
 	if err != nil {
 		return nil, nil, err
 	}
-	service := newServerConfigService(store, handlers, observability, bus)
+	service := newServerConfigService(store, handlers, observability, bus, authzService)
 
 	handler := newServerConfigHandler(service)
 	registerRoutes(mux, handler)

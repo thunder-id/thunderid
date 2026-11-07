@@ -137,6 +137,22 @@ paths:
                       defaultValue: "The request body is malformed or contains invalid data"
         "401":
           $ref: '#/components/responses/Unauthorized'
+        "403":
+          description: |
+            The caller may not write server configuration. On a data plane, no token writes it, whatever its
+            permissions: only an import with the management API key does.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "SSE-4030"
+                message:
+                  key: "error.unauthorized"
+                  defaultValue: "Unauthorized"
+                description:
+                  key: "error.unauthorized_description"
+                  defaultValue: "The caller is not authorized to perform this operation"
         "500":
           $ref: '#/components/responses/InternalServerError'
 

@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/suite"
+
+	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
 const (
@@ -80,7 +82,7 @@ func (s *ImportExportTestSuite) TestExportedTypeImportsBack() {
 	s.Equal(codeTypeConflict, result["code"], "%v", result)
 
 	// An import can delete the type.
-	status, body = doJSON(s.T(), http.MethodPost, "/import", map[string]interface{}{
+	status, body = postImport(s.T(), testutils.GetManagementAPIKeyHTTPClient(), map[string]interface{}{
 		"deletions": []map[string]string{{"resourceType": resourceTypeAuthorizationDetailType, "id": original.ID}},
 		"options":   map[string]interface{}{"upsert": true, "continueOnError": true, "target": "runtime"},
 	})
@@ -340,6 +342,27 @@ func (s *ImportExportTestSuite) TestExportedNoneAuthenticationClearsTheStoredCre
 	s.Equal("bearer", storedAuthenticationType(), "a document without the block keeps the stored credential")
 }
 
+// A data plane takes a type only from an import with the management API key, so an import with a token is
+// refused and writes nothing.
+func (s *ImportExportTestSuite) TestImportWithTokenIsRefused() {
+	id := uniqueTypeID()
+	status, body := postImport(s.T(), testutils.GetHTTPClient(), map[string]interface{}{
+		"content": typeDocument(id, uniqueTypeValue("token-import"), ""),
+		"options": map[string]interface{}{"upsert": true, "continueOnError": true, "target": "runtime"},
+	})
+	s.Require().Equal(http.StatusOK, status, string(body))
+	var resp struct {
+		Results []map[string]interface{} `json:"results"`
+	}
+	s.Require().NoError(json.Unmarshal(body, &resp))
+	s.Require().Len(resp.Results, 1, string(body))
+	s.Equal("failed", resp.Results[0]["status"], "%v", resp.Results[0])
+	s.Equal(codeUnauthorized, resp.Results[0]["code"], "%v", resp.Results[0])
+
+	status, _ = doJSON(s.T(), http.MethodGet, typesPath+"/"+id, nil)
+	s.Equal(http.StatusNotFound, status, "a refused import writes nothing")
+}
+
 // Exporting every type exports the registered ones and leaves out those declared in files, which a deployment
 // already has.
 func (s *ImportExportTestSuite) TestExportOfAllTypesLeavesOutDeclaredTypes() {
@@ -396,11 +419,11 @@ func (s *ImportExportTestSuite) importDocument(content string, dryRun, upsert bo
 	return s.importDocumentWithVariables(content, nil, dryRun, upsert)
 }
 
-// importDocumentWithVariables imports the given content with the values of its template variables, and
-// returns the outcome of its single document.
+// importDocumentWithVariables imports the given content with the values of its template variables with the
+// management API key, the only way a data plane takes a type, and returns the outcome of its single document.
 func (s *ImportExportTestSuite) importDocumentWithVariables(content string, variables map[string]interface{},
 	dryRun, upsert bool) map[string]interface{} {
-	status, body := doJSON(s.T(), http.MethodPost, "/import", map[string]interface{}{
+	status, body := postImport(s.T(), testutils.GetManagementAPIKeyHTTPClient(), map[string]interface{}{
 		"content":   content,
 		"variables": variables,
 		"dryRun":    dryRun,
@@ -413,4 +436,14 @@ func (s *ImportExportTestSuite) importDocumentWithVariables(content string, vari
 	s.Require().NoError(json.Unmarshal(body, &resp))
 	s.Require().Len(resp.Results, 1, string(body))
 	return resp.Results[0]
+}
+
+// postImport sends an import request with the given client and returns the status and body.
+func postImport(t *testing.T, client *http.Client, request map[string]interface{}) (int, []byte) {
+	t.Helper()
+	body, err := json.Marshal(request)
+	if err != nil {
+		t.Fatalf("encoding import request: %v", err)
+	}
+	return doRawWith(t, client, http.MethodPost, "/import", body)
 }

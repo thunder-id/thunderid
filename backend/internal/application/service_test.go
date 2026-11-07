@@ -5088,14 +5088,20 @@ func (suite *ServiceTestSuite) TestSyncPasskeyOriginsToCORS_AddsNewOrigins() {
 	mockCfgSvc.On("GetWritableConfig", mock.Anything, string(serverconfig.ConfigNameCORS)).
 		Return(existing, (*tidcommon.ServiceError)(nil))
 
+	// The write runs as an internal operation, so a data plane does not refuse it, and keeps the caller
+	// the audit event names.
 	var capturedRaw json.RawMessage
-	mockCfgSvc.On("SetConfig", mock.Anything, serverconfig.ConfigNameCORS, mock.MatchedBy(
+	mockCfgSvc.On("SetConfig", mock.MatchedBy(func(ctx context.Context) bool {
+		return security.IsRuntimeContext(ctx) && security.GetSubject(ctx) == "admin-1"
+	}), serverconfig.ConfigNameCORS, mock.MatchedBy(
 		func(raw json.RawMessage) bool {
 			capturedRaw = raw
 			return true
 		})).Return((*tidcommon.ServiceError)(nil))
 
-	svc.syncPasskeyOriginsToCORS(context.Background(), []string{"https://app.example.com"})
+	ctx := security.WithSecurityContextTest(context.Background(),
+		security.NewSecurityContextForTest("admin-1", "ou-1", "", nil, nil))
+	svc.syncPasskeyOriginsToCORS(ctx, []string{"https://app.example.com"})
 
 	var saved map[string]json.RawMessage
 	require.NoError(suite.T(), json.Unmarshal(capturedRaw, &saved))

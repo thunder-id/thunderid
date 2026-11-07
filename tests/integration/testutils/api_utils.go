@@ -969,53 +969,112 @@ func MoveOrganizationUnitToRoot(id, handle, name string) error {
 
 // importOrganizationUnit imports one organization unit with the management API key and returns its ID.
 func importOrganizationUnit(ou any, upsert bool) (string, error) {
-	ouJSON, err := json.Marshal(ou)
-	if err != nil {
-		return "", fmt.Errorf("failed to marshal OU: %w", err)
-	}
-	var document map[string]any
-	if err := json.Unmarshal(ouJSON, &document); err != nil {
-		return "", fmt.Errorf("failed to build the OU import document: %w", err)
-	}
-	document["resource_type"] = "organization_unit"
-	content, err := json.Marshal(document)
-	if err != nil {
-		return "", fmt.Errorf("failed to marshal the OU import document: %w", err)
-	}
+	return ImportResource("organization_unit", ou, upsert)
+}
 
-	payload, err := json.Marshal(ImportRequest{Content: string(content), Options: ImportOptions{Upsert: upsert, Target: "runtime"}})
+// ImportResource imports one resource of the given import resource type with the management API key,
+// as a deployment pipeline does, and returns its ID. document is any value that marshals to the
+// resource's JSON fields. Upsert updates the resource when it exists.
+func ImportResource(resourceType string, document any, upsert bool) (string, error) {
+	item, err := ImportResourceOutcome(resourceType, document, upsert)
 	if err != nil {
-		return "", fmt.Errorf("failed to marshal the import request: %w", err)
+		return "", err
+	}
+	if item.Status != "success" {
+		return "", fmt.Errorf("%s import failed with %s: %s", resourceType, item.Code, item.Message)
+	}
+	return item.ResourceID, nil
+}
+
+// ImportResourceOutcome imports one resource as ImportResource does and returns the outcome of its
+// item, whether it succeeded or not.
+func ImportResourceOutcome(resourceType string, document any, upsert bool) (ImportItem, error) {
+	documentJSON, err := json.Marshal(document)
+	if err != nil {
+		return ImportItem{}, fmt.Errorf("failed to marshal the %s: %w", resourceType, err)
+	}
+	var fields map[string]any
+	if err := json.Unmarshal(documentJSON, &fields); err != nil {
+		return ImportItem{}, fmt.Errorf("failed to build the %s import document: %w", resourceType, err)
+	}
+	fields["resource_type"] = resourceType
+	content, err := json.Marshal(fields)
+	if err != nil {
+		return ImportItem{}, fmt.Errorf("failed to marshal the %s import document: %w", resourceType, err)
+	}
+	importResp, err := postManagementAPIKeyImport(ImportRequest{
+		Content: string(content), Options: ImportOptions{Upsert: upsert, Target: "runtime"},
+	})
+	if err != nil {
+		return ImportItem{}, err
+	}
+	if len(importResp.Results) != 1 {
+		return ImportItem{}, fmt.Errorf("expected one %s import result, got %d", resourceType, len(importResp.Results))
+	}
+	return importResp.Results[0], nil
+}
+
+// DeleteImportedResource removes one resource of the given import resource type through an import
+// with the management API key.
+func DeleteImportedResource(resourceType, id string) error {
+	item, err := DeleteImportedResourceOutcome(resourceType, id)
+	if err != nil {
+		return err
+	}
+	if item.Status != "success" {
+		return fmt.Errorf("%s %s deletion through import failed with %s: %s", resourceType, id, item.Code,
+			item.Message)
+	}
+	return nil
+}
+
+// DeleteImportedResourceOutcome removes a resource as DeleteImportedResource does and returns the
+// outcome of its deletion, whether it succeeded or not.
+func DeleteImportedResourceOutcome(resourceType, id string) (ImportItem, error) {
+	importResp, err := postManagementAPIKeyImport(ImportRequest{
+		Options:   ImportOptions{Target: "runtime"},
+		Deletions: []ResourceDeletion{{ResourceType: resourceType, ID: id}},
+	})
+	if err != nil {
+		return ImportItem{}, err
+	}
+	if len(importResp.Results) != 1 {
+		return ImportItem{}, fmt.Errorf("expected one %s deletion result, got %d", resourceType,
+			len(importResp.Results))
+	}
+	return importResp.Results[0], nil
+}
+
+// postManagementAPIKeyImport sends an import request with the management API key.
+func postManagementAPIKeyImport(request ImportRequest) (*ImportResponse, error) {
+	payload, err := json.Marshal(request)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal the import request: %w", err)
 	}
 	req, err := http.NewRequest(http.MethodPost, TestServerURL+"/import", bytes.NewReader(payload))
 	if err != nil {
-		return "", fmt.Errorf("failed to create the import request: %w", err)
+		return nil, fmt.Errorf("failed to create the import request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := GetManagementAPIKeyHTTPClient().Do(req)
 	if err != nil {
-		return "", fmt.Errorf("failed to send the import request: %w", err)
+		return nil, fmt.Errorf("failed to send the import request: %w", err)
 	}
 	defer resp.Body.Close()
 
 	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", fmt.Errorf("failed to read the import response: %w", err)
+		return nil, fmt.Errorf("failed to read the import response: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("expected status 200, got %d. Response: %s", resp.StatusCode, string(bodyBytes))
+		return nil, fmt.Errorf("expected status 200, got %d. Response: %s", resp.StatusCode, string(bodyBytes))
 	}
-
 	var importResp ImportResponse
 	if err := json.Unmarshal(bodyBytes, &importResp); err != nil {
-		return "", fmt.Errorf("failed to parse the import response: %w. Response: %s", err, string(bodyBytes))
+		return nil, fmt.Errorf("failed to parse the import response: %w. Response: %s", err, string(bodyBytes))
 	}
-	if len(importResp.Results) != 1 || importResp.Results[0].Status != "success" ||
-		importResp.Results[0].ResourceID == "" {
-		return "", fmt.Errorf("organization unit import failed. Response: %s", string(bodyBytes))
-	}
-	return importResp.Results[0].ResourceID, nil
+	return &importResp, nil
 }
 
 // DeleteOrganizationUnit deletes an organization unit by ID
@@ -1988,33 +2047,15 @@ func DeleteAction(resourceServerID, actionID string) error {
 	return nil
 }
 
+// PutDefaultResourceServer makes the resource server the deployment's default.
 func PutDefaultResourceServer(resourceServerID string) error {
-	client := GetHTTPClient()
-
 	payload, err := json.Marshal(map[string]string{
 		"resourceServerId": resourceServerID,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to marshal default resource server config: %w", err)
 	}
-
-	req, err := http.NewRequest(http.MethodPut, TestServerURL+"/server-config/defaultResourceServer", bytes.NewReader(payload))
-	if err != nil {
-		return fmt.Errorf("failed to create default resource server config request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed to update default resource server config: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		bodyBytes, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("expected status 200, got %d. Response: %s", resp.StatusCode, string(bodyBytes))
-	}
-	return nil
+	return PutWritableServerConfig("defaultResourceServer", payload)
 }
 
 // GetWritableServerConfig returns the writable layer of the named server-config section, so a
@@ -2071,7 +2112,13 @@ func PutWritableServerConfig(section string, body []byte) error {
 
 // PutWritableServerConfigWithStatus is PutWritableServerConfig for a write the server may refuse: it
 // returns the status and body whatever they are, and an error only when no answer came back.
+//
+// A data plane takes server configuration only from an import with the management API key, so there
+// the section is imported, and the outcome is answered as the server configuration API answers it.
 func PutWritableServerConfigWithStatus(section string, body []byte) (int, []byte, error) {
+	if !IsControlPlaneRun() {
+		return importServerConfig(section, body)
+	}
 	url := fmt.Sprintf("%s/server-config/%s", TestServerURL, section)
 
 	req, err := http.NewRequest(http.MethodPut, url, bytes.NewReader(body))
@@ -2091,6 +2138,62 @@ func PutWritableServerConfigWithStatus(section string, body []byte) (int, []byte
 		return 0, nil, fmt.Errorf("failed to read %s server config response: %w", section, err)
 	}
 	return resp.StatusCode, respBody, nil
+}
+
+// importServerConfig imports the section with the management API key. A section it writes is answered
+// with 200 and the section's layers. A refusal is answered with the status the server configuration API
+// gives it and an error body in the API's shape carrying the import's code and message: 403 for an
+// unauthorized caller, 500 for a server error and 400 for any other.
+func importServerConfig(section string, body []byte) (int, []byte, error) {
+	item, err := ImportResourceOutcome("server_config",
+		map[string]any{"name": section, "value": json.RawMessage(body)}, true)
+	if err != nil {
+		return 0, nil, err
+	}
+	if item.Status == "success" {
+		layers, err := getServerConfigLayers(section)
+		if err != nil {
+			return 0, nil, err
+		}
+		return http.StatusOK, layers, nil
+	}
+
+	status := http.StatusBadRequest
+	switch item.Code {
+	case "SSE-4030":
+		status = http.StatusForbidden
+	case "SSE-5000":
+		status = http.StatusInternalServerError
+	}
+	message := map[string]string{"defaultValue": item.Message}
+	errBody, err := json.Marshal(map[string]any{"code": item.Code, "message": message, "description": message})
+	if err != nil {
+		return 0, nil, fmt.Errorf("failed to marshal the %s import refusal: %w", section, err)
+	}
+	return status, errBody, nil
+}
+
+// getServerConfigLayers returns the body GET /server-config/{section} answers with.
+func getServerConfigLayers(section string) ([]byte, error) {
+	req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("%s/server-config/%s", TestServerURL, section), nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create %s server config request: %w", section, err)
+	}
+	resp, err := GetHTTPClient().Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read %s server config: %w", section, err)
+	}
+	defer resp.Body.Close()
+
+	layers, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read %s server config response: %w", section, err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("expected status 200 reading %s server config, got %d. Response: %s",
+			section, resp.StatusCode, string(layers))
+	}
+	return layers, nil
 }
 
 // MergeWritableServerConfig applies the given top-level keys over the current writable layer of the

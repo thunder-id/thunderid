@@ -16,9 +16,11 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/system/observability/event"
 	"github.com/thunder-id/thunderid/internal/system/security"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/observabilityprovidermock"
+	"github.com/thunder-id/thunderid/tests/mocks/sysauthzmock"
 )
 
 type ServiceTestSuite struct {
@@ -38,13 +40,14 @@ func (suite *ServiceTestSuite) SetupTest() {
 	suite.mockStore = newServerConfigStoreInterfaceMock(suite.T())
 	suite.mockHandler = NewServerConfigHandlerInterfaceMock(suite.T())
 	suite.service = newServerConfigService(suite.mockStore,
-		map[ConfigName]ServerConfigHandlerInterface{ConfigNameCORS: suite.mockHandler}, nil, discardingBus{})
+		map[ConfigName]ServerConfigHandlerInterface{ConfigNameCORS: suite.mockHandler}, nil, discardingBus{},
+		allowingAuthz(suite.T()))
 }
 
 // serviceWithoutHandlers builds a service with no registered handlers, sharing the suite store mock.
 func (suite *ServiceTestSuite) serviceWithoutHandlers() ServerConfigService {
 	return newServerConfigService(suite.mockStore, map[ConfigName]ServerConfigHandlerInterface{}, nil,
-		discardingBus{})
+		discardingBus{}, allowingAuthz(suite.T()))
 }
 
 // Raw (byte) layers shared across the store tests, plus an incoming PUT value.
@@ -85,7 +88,7 @@ func (suite *ServiceTestSuite) TestListConfigNames_NoHandlers() {
 func (suite *ServiceTestSuite) TestListConfigNames_NilHandler() {
 	service := newServerConfigService(suite.mockStore, map[ConfigName]ServerConfigHandlerInterface{
 		ConfigNameCORS: nil,
-	}, nil, discardingBus{})
+	}, nil, discardingBus{}, allowingAuthz(suite.T()))
 
 	names, svcErr := service.ListConfigNames(suite.ctx)
 
@@ -319,7 +322,7 @@ func (suite *ServiceTestSuite) auditedService() (ServerConfigService, *[]*provid
 		Run(func(_ context.Context, evt *providers.Event) { published = append(published, evt) })
 	return newServerConfigService(suite.mockStore,
 		map[ConfigName]ServerConfigHandlerInterface{ConfigNameCORS: suite.mockHandler}, obs,
-		discardingBus{}), &published
+		discardingBus{}, allowingAuthz(suite.T())), &published
 }
 
 // A write is recorded with the section and the outcome, never the value, which may hold secrets.
@@ -362,7 +365,8 @@ func (suite *ServiceTestSuite) TestSetConfig_PublishesARejection() {
 func (suite *ServiceTestSuite) TestSetConfig_UnknownNamePublishesNothing() {
 	obs := observabilityprovidermock.NewObservabilityProviderMock(suite.T())
 	svc := newServerConfigService(suite.mockStore,
-		map[ConfigName]ServerConfigHandlerInterface{ConfigNameCORS: suite.mockHandler}, obs, discardingBus{})
+		map[ConfigName]ServerConfigHandlerInterface{ConfigNameCORS: suite.mockHandler}, obs, discardingBus{},
+		allowingAuthz(suite.T()))
 
 	suite.NotNil(svc.SetConfig(suite.ctx, ConfigName("no-such-section"), incomingRaw))
 }
@@ -431,7 +435,8 @@ func (suite *ServiceTestSuite) TestSetConfig_PublishesNothingWithoutObservabilit
 		obs := observabilityprovidermock.NewObservabilityProviderMock(suite.T())
 		obs.EXPECT().IsEnabled().Return(false).Once()
 		svc := newServerConfigService(suite.mockStore,
-			map[ConfigName]ServerConfigHandlerInterface{ConfigNameCORS: suite.mockHandler}, obs, discardingBus{})
+			map[ConfigName]ServerConfigHandlerInterface{ConfigNameCORS: suite.mockHandler}, obs, discardingBus{},
+			allowingAuthz(suite.T()))
 
 		suite.Nil(svc.SetConfig(suite.ctx, ConfigNameCORS, incomingRaw))
 		obs.AssertNotCalled(suite.T(), "PublishEvent", mock.Anything, mock.Anything)
@@ -451,4 +456,34 @@ func (suite *ServiceTestSuite) assertCarriesNoValue(evt *providers.Event, values
 			suite.NotContains(fmt.Sprint(field), string(value), "field %s carries a config value", key)
 		}
 	}
+}
+
+func (suite *ServiceTestSuite) TestSetConfig_RefusedWithoutWriteAccess() {
+	tests := []struct {
+		name     string
+		authzErr *common.ServiceError
+		want     *common.ServiceError
+	}{
+		{"Denied", nil, &common.ErrorUnauthorized},
+		{"AuthorizationFailure", &common.InternalServerError, &common.InternalServerError},
+	}
+	for _, tt := range tests {
+		suite.Run(tt.name, func() {
+			authz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+			authz.On("IsActionAllowed", mock.Anything, security.ActionUpdateServerConfig,
+				&sysauthz.ActionContext{ResourceType: security.ResourceTypeServerConfig, ResourceID: "cors"}).
+				Return(false, tt.authzErr).Once()
+			service := newServerConfigService(newServerConfigStoreInterfaceMock(suite.T()),
+				map[ConfigName]ServerConfigHandlerInterface{ConfigNameCORS: mapHandler{}}, nil, discardingBus{}, authz)
+
+			suite.Equal(tt.want, service.SetConfig(context.Background(), ConfigNameCORS, json.RawMessage(`{}`)))
+		})
+	}
+}
+
+// allowingAuthz returns an authorization service that allows every action.
+func allowingAuthz(t *testing.T) *sysauthzmock.SystemAuthorizationServiceInterfaceMock {
+	authz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
+	authz.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).Return(true, nil).Maybe()
+	return authz
 }

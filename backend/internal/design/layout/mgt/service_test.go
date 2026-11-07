@@ -16,7 +16,10 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
+	"github.com/thunder-id/thunderid/internal/system/security"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/tests/mocks/sysauthzmock"
 )
 
 // Test Suite
@@ -44,7 +47,7 @@ func (suite *LayoutServiceTestSuite) SetupTest() {
 	}
 
 	suite.mockStore = newLayoutMgtStoreInterfaceMock(suite.T())
-	suite.service = newLayoutMgtService(suite.mockStore, discardingBus{}, nil, false)
+	suite.service = newLayoutMgtService(suite.mockStore, discardingBus{}, nil, false, allowAllAuthz(suite.T()))
 }
 
 // Test GetLayoutList - Success
@@ -702,7 +705,8 @@ const testProjectID = "proj-1"
 
 func (suite *LayoutServiceTestSuite) projectAwareService() (LayoutMgtServiceInterface, *projectCheckerMock) {
 	checker := newProjectCheckerMock(suite.T())
-	return newLayoutMgtService(suite.mockStore, discardingBus{}, checker, true), checker
+	service := newLayoutMgtService(suite.mockStore, discardingBus{}, checker, true, allowAllAuthz(suite.T()))
+	return service, checker
 }
 
 func (suite *LayoutServiceTestSuite) newLayoutRequest(projectID string) CreateLayoutRequestWithID {
@@ -974,4 +978,42 @@ func (suite *LayoutServiceTestSuite) TestProjectHasLayouts_StoreError() {
 	suite.False(hasLayouts)
 	suite.Require().NotNil(err)
 	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
+}
+
+func (suite *LayoutServiceTestSuite) TestWritesRefusedWithoutWriteAccess() {
+	tests := []struct {
+		name     string
+		authzErr *tidcommon.ServiceError
+		want     *tidcommon.ServiceError
+	}{
+		{"Denied", nil, &tidcommon.ErrorUnauthorized},
+		{"AuthorizationFailure", &tidcommon.InternalServerError, &tidcommon.InternalServerError},
+	}
+	for _, tt := range tests {
+		suite.Run(tt.name, func() {
+			authz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+			for _, action := range []security.Action{
+				security.ActionCreateDesign, security.ActionUpdateDesign, security.ActionDeleteDesign,
+			} {
+				authz.On("IsActionAllowed", mock.Anything, action,
+					&sysauthz.ActionContext{ResourceType: security.ResourceTypeDesign}).
+					Return(false, tt.authzErr).Once()
+			}
+			service := newLayoutMgtService(newLayoutMgtStoreInterfaceMock(suite.T()), discardingBus{}, nil, false,
+				authz)
+
+			_, err := service.CreateLayout(testCtx(), CreateLayoutRequestWithID{})
+			suite.Equal(tt.want, err)
+			_, err = service.UpdateLayout(testCtx(), "layout-1", UpdateLayoutRequest{})
+			suite.Equal(tt.want, err)
+			suite.Equal(tt.want, service.DeleteLayout(testCtx(), "layout-1"))
+		})
+	}
+}
+
+// allowAllAuthz returns an authorization service that allows every action.
+func allowAllAuthz(t *testing.T) *sysauthzmock.SystemAuthorizationServiceInterfaceMock {
+	authz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
+	authz.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).Return(true, nil).Maybe()
+	return authz
 }

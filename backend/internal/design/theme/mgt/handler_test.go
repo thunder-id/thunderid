@@ -587,6 +587,11 @@ func (suite *ThemeHandlerTestSuite) TestHandleError_StatusCodeMapping() {
 			expectedStatus: http.StatusNotFound,
 		},
 		{
+			name:           "Unauthorized",
+			svcErr:         &tidcommon.ErrorUnauthorized,
+			expectedStatus: http.StatusForbidden,
+		},
+		{
 			name:           "InvalidThemeID",
 			svcErr:         &ErrorInvalidThemeID,
 			expectedStatus: http.StatusBadRequest,

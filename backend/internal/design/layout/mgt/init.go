@@ -10,6 +10,7 @@ import (
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/eventbus"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 )
 
 // Initialize initializes the layout management service and registers its routes. bus is required: the
@@ -17,7 +18,8 @@ import (
 //
 // projectChecker is nil on a deployment that serves no projects, where a layout needs no project and a
 // project ID is kept unchecked.
-func Initialize(mux *http.ServeMux, bus eventbus.EventBusInterface, projectChecker projectChecker) (
+func Initialize(mux *http.ServeMux, bus eventbus.EventBusInterface, projectChecker projectChecker,
+	authzService sysauthz.SystemAuthorizationServiceInterface) (
 	LayoutMgtServiceInterface, declarativeresource.ResourceExporter, error) {
 	if bus == nil {
 		return nil, nil, errNilEventBus
@@ -34,7 +36,7 @@ func Initialize(mux *http.ServeMux, bus eventbus.EventBusInterface, projectCheck
 	}
 
 	// Step 2: Create service with store
-	layoutMgtService := newLayoutMgtService(layoutMgtStore, bus, projectChecker, requireProject)
+	layoutMgtService := newLayoutMgtService(layoutMgtStore, bus, projectChecker, requireProject, authzService)
 	layoutMgtHandler := newLayoutMgtHandler(layoutMgtService)
 	registerRoutes(mux, layoutMgtHandler)
 

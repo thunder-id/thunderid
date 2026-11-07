@@ -303,6 +303,13 @@ func (suite *I18nHandlerTestSuite) TestHandleClearOverrideTranslation_ServiceErr
 	suite.Equal(http.StatusBadRequest, w.Code)
 }
 
+func (suite *I18nHandlerTestSuite) TestHandleError_Unauthorized() {
+	w := httptest.NewRecorder()
+	handleError(context.Background(), w, &tidcommon.ErrorUnauthorized)
+
+	suite.Equal(http.StatusForbidden, w.Code)
+}
+
 func (suite *I18nHandlerTestSuite) TestHandleError_NotFound() {
 	// Testing manual error construction/mapping in handleError
 	svcErr := &tidcommon.ServiceError{

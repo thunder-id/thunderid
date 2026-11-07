@@ -25,6 +25,8 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/outboundauth"
 	"github.com/thunder-id/thunderid/internal/system/outboundauth/httpauth"
+	"github.com/thunder-id/thunderid/internal/system/security"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -76,6 +78,7 @@ type AuthorizationDetailMgtServiceInterface interface {
 
 // authorizationDetailMgtService implements AuthorizationDetailMgtServiceInterface.
 type authorizationDetailMgtService struct {
+	authzService  sysauthz.SystemAuthorizationServiceInterface
 	typeStore     typeStoreInterface
 	valueCapturer declarativeresource.ValueCapturer
 	logger        *log.Logger
@@ -83,8 +86,10 @@ type authorizationDetailMgtService struct {
 
 // newAuthorizationDetailMgtService creates a new authorizationDetailMgtService.
 func newAuthorizationDetailMgtService(typeStore typeStoreInterface,
-	valueCapturer declarativeresource.ValueCapturer) AuthorizationDetailMgtServiceInterface {
+	valueCapturer declarativeresource.ValueCapturer,
+	authzService sysauthz.SystemAuthorizationServiceInterface) AuthorizationDetailMgtServiceInterface {
 	return &authorizationDetailMgtService{
+		authzService:  authzService,
 		typeStore:     typeStore,
 		valueCapturer: valueCapturer,
 		logger: log.GetLogger().With(
@@ -95,6 +100,9 @@ func newAuthorizationDetailMgtService(typeStore typeStoreInterface,
 // CreateAuthorizationDetailType registers a type. Its processor credential is taken as the caller sent it.
 func (s *authorizationDetailMgtService) CreateAuthorizationDetailType(ctx context.Context,
 	t providers.AuthorizationDetailType) (*providers.AuthorizationDetailType, *tidcommon.ServiceError) {
+	if svcErr := s.checkWriteAccess(ctx, security.ActionCreateAuthzDetail); svcErr != nil {
+		return nil, svcErr
+	}
 	if IsDeclarativeModeEnabled() {
 		return nil, &ErrorDeclarativeModeCreateNotAllowed
 	}
@@ -184,6 +192,9 @@ func (s *authorizationDetailMgtService) ListAuthorizationDetailTypes(ctx context
 // omitted or masked one keeps the stored credential while the endpoint is unchanged.
 func (s *authorizationDetailMgtService) UpdateAuthorizationDetailType(ctx context.Context, id string,
 	t providers.AuthorizationDetailType) (*providers.AuthorizationDetailType, *tidcommon.ServiceError) {
+	if svcErr := s.checkWriteAccess(ctx, security.ActionUpdateAuthzDetail); svcErr != nil {
+		return nil, svcErr
+	}
 	existing, svcErr := s.GetAuthorizationDetailType(ctx, id)
 	if svcErr != nil {
 		return nil, svcErr
@@ -240,6 +251,20 @@ func (s *authorizationDetailMgtService) updateMissedError(ctx context.Context, i
 	return &ErrorTypeChanged
 }
 
+// checkWriteAccess refuses a caller who may not write an authorization details type.
+func (s *authorizationDetailMgtService) checkWriteAccess(ctx context.Context,
+	action security.Action) *tidcommon.ServiceError {
+	allowed, svcErr := s.authzService.IsActionAllowed(ctx, action,
+		&sysauthz.ActionContext{ResourceType: security.ResourceTypeAuthorizationDetailType})
+	if svcErr != nil {
+		return &tidcommon.InternalServerError
+	}
+	if !allowed {
+		return &tidcommon.ErrorUnauthorized
+	}
+	return nil
+}
+
 // ValidateAuthorizationDetailType checks a type's definition and processor credential as create and update do,
 // without saving it. The credential is checked against the stored type when one has the type's id.
 func (s *authorizationDetailMgtService) ValidateAuthorizationDetailType(ctx context.Context,
@@ -266,6 +291,9 @@ func (s *authorizationDetailMgtService) ValidateAuthorizationDetailType(ctx cont
 // DeleteAuthorizationDetailType deletes a type. Deleting a type that does not exist succeeds.
 func (s *authorizationDetailMgtService) DeleteAuthorizationDetailType(ctx context.Context,
 	id string) *tidcommon.ServiceError {
+	if svcErr := s.checkWriteAccess(ctx, security.ActionDeleteAuthzDetail); svcErr != nil {
+		return svcErr
+	}
 	existing, svcErr := s.GetAuthorizationDetailType(ctx, id)
 	if svcErr != nil {
 		if svcErr.Code == ErrorTypeNotFound.Code {

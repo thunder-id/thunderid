@@ -102,7 +102,8 @@ func (suite *ServerConfigServiceAuditTestSuite) SetupSubTest() {
 // service builds the service over the suite mocks, publishing on bus.
 func (suite *ServerConfigServiceAuditTestSuite) service(bus eventbus.EventBusInterface) ServerConfigService {
 	return newServerConfigService(suite.mockStore,
-		map[ConfigName]ServerConfigHandlerInterface{ConfigNameCORS: suite.mockHandler}, nil, bus)
+		map[ConfigName]ServerConfigHandlerInterface{ConfigNameCORS: suite.mockHandler}, nil, bus,
+		allowingAuthz(suite.T()))
 }
 
 // expectWrite arranges a write of the suite value to the CORS section that reaches the store, which
@@ -261,7 +262,8 @@ func (suite *ServerConfigServiceAuditTestSuite) TestUpdateConfig_PublishesOneEve
 			}
 			bus, published := newRecordingBus(suite.T())
 			service := newServerConfigService(tc.store,
-				map[ConfigName]ServerConfigHandlerInterface{ConfigNameCORS: mapHandler{}}, nil, bus)
+				map[ConfigName]ServerConfigHandlerInterface{ConfigNameCORS: mapHandler{}}, nil, bus,
+				allowingAuthz(suite.T()))
 
 			svcErr := service.UpdateConfig(adminContext(), tc.section, tc.updater)
 

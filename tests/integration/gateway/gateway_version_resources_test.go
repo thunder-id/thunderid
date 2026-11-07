@@ -408,14 +408,13 @@ func (ts *GatewayVersionsTestSuite) TestAppliedConnectionsShowWithTheirSecretsMa
 // An authorization details type shows as its read returns it, with its processor credential masked.
 func (ts *GatewayVersionsTestSuite) TestAnAppliedAuthorizationDetailTypeShowsWithItsCredentialMasked() {
 	const secret = "viewed-processor-secret"
-	typeID := ts.create("/authorization-detail-types", map[string]any{
+	typeID := ts.importResource("authorization_detail_type", map[string]any{
 		"type": "https://viewed.example.com/" + uniqueSuffix(), "name": "Viewed",
 		"schema": map[string]any{"type": "object",
 			"properties": map[string]any{"amount": map[string]any{"type": "number"}}},
 		"processor": map[string]any{"endpoint": "https://processor.example.com/rar",
 			"authentication": map[string]any{"type": "bearer", "properties": map[string]any{"token": secret}}},
 	})
-	ts.T().Cleanup(func() { ts.call(http.MethodDelete, "/authorization-detail-types/"+typeID, nil, nil) })
 
 	applied := ts.captureAndApply("authorization details type")
 	ts.NotContains(ts.rawBody(http.MethodGet, "/gateways/"+ts.gatewayID+"/applied-configuration"), secret,
@@ -433,22 +432,20 @@ func (ts *GatewayVersionsTestSuite) TestAppliedFlowsDesignTranslationsAndServerC
 	flowID, err := testutils.CreateIsolatedAuthFlow("viewed-flow-" + suffix)
 	ts.Require().NoError(err)
 	defer func() { _ = testutils.DeleteFlow(flowID) }()
-	themeID := ts.create("/design/themes", map[string]any{
+	themeID := ts.importResource("theme", map[string]any{
 		"handle": "viewed-theme-" + suffix, "displayName": "Viewed Theme", "description": "Viewed",
 		"theme": map[string]any{"direction": "ltr"},
 	})
-	defer ts.call(http.MethodDelete, "/design/themes/"+themeID, nil, nil)
-	layoutID := ts.create("/design/layouts", map[string]any{
+	layoutID := ts.importResource("layout", map[string]any{
 		"handle": "viewed-layout-" + suffix, "displayName": "Viewed Layout", "description": "Viewed",
 		"layout": map[string]any{"type": "centered"},
 	})
-	defer ts.call(http.MethodDelete, "/design/layouts/"+layoutID, nil, nil)
 	const language, namespace = "de-AT", "integration-version-view"
 	translations := "/i18n/languages/" + language + "/translations"
-	ts.Require().Equal(http.StatusOK, ts.call(http.MethodPost, translations, map[string]any{
+	ts.importResource("translation", map[string]any{
+		"language":     language,
 		"translations": map[string]map[string]string{namespace: {"greeting": "Servus", "farewell": "Pfiat di"}},
-	}, nil))
-	defer ts.call(http.MethodDelete, translations, nil, nil)
+	})
 
 	applied := ts.captureAndApply("flows, design, translations and server configuration")
 
@@ -615,6 +612,19 @@ func (ts *GatewayVersionsTestSuite) create(path string, body any) string {
 	}
 	ts.Require().Equal(http.StatusCreated, ts.call(http.MethodPost, path, body, &created), "POST %s", path)
 	return created.ID
+}
+
+// importResource imports a resource a data plane takes only from an import with the management API key,
+// requires it imported and returns its id. It is removed the same way when the test ends.
+func (ts *GatewayVersionsTestSuite) importResource(resourceType string, document map[string]any) string {
+	ts.T().Helper()
+	id, err := testutils.ImportResource(resourceType, document, true)
+	ts.Require().NoError(err, "import %s", resourceType)
+	if resourceType == "translation" {
+		id = document["language"].(string)
+	}
+	ts.T().Cleanup(func() { _ = testutils.DeleteImportedResource(resourceType, id) })
+	return id
 }
 
 // createUnit creates an organization unit the test's resources live in, removed when the test ends.

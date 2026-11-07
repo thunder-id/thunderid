@@ -602,6 +602,7 @@ packages:
       httpConnectionAdapter:
       notificationTemplateAdapter:
       senderAdapter:
+      translationAdapter:
 
   github.com/thunder-id/thunderid/internal/system/resourcedependency:
     config:

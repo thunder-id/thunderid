@@ -14,8 +14,10 @@ import (
 )
 
 // ouBoundedAuthzService confines a caller to the organization unit its token names. Root organization
-// units are created only through import, by the management API key, which reaches every organization
-// unit in the deployment. The confinement has these exceptions:
+// units, and the resources that apply to the whole deployment (themes, layouts, translations, server
+// configuration and authorization detail types), are written only through import, by the management
+// API key, which reaches every organization unit in the deployment. The confinement has these
+// exceptions:
 //   - A caller holding the root system permission reaches every existing organization unit.
 //   - User type reads also reach the ancestors of the caller's organization unit, through the
 //     inheritance policy.
@@ -148,6 +150,22 @@ type importOnlyRule func(action security.Action, actionCtx *ActionContext) bool
 // token.
 var importOnlyActions = []importOnlyRule{
 	isRootOUCreation,
+	isDeploymentWideWrite,
+}
+
+// deploymentWideWrites are the writes to resources that belong to no organization unit and apply to
+// the whole deployment.
+var deploymentWideWrites = []security.Action{
+	security.ActionCreateDesign,
+	security.ActionUpdateDesign,
+	security.ActionDeleteDesign,
+	security.ActionCreateI18n,
+	security.ActionUpdateI18n,
+	security.ActionDeleteI18n,
+	security.ActionUpdateServerConfig,
+	security.ActionCreateAuthzDetail,
+	security.ActionUpdateAuthzDetail,
+	security.ActionDeleteAuthzDetail,
 }
 
 // isImportOnlyAction reports whether the action may reach a data plane only through import.
@@ -160,4 +178,10 @@ func isImportOnlyAction(action security.Action, actionCtx *ActionContext) bool {
 // isRootOUCreation reports whether the action creates an organization unit with no parent.
 func isRootOUCreation(action security.Action, actionCtx *ActionContext) bool {
 	return action == security.ActionCreateOU && actionCtx != nil && actionCtx.OUID == ""
+}
+
+// isDeploymentWideWrite reports whether the action writes a resource that applies to the whole
+// deployment.
+func isDeploymentWideWrite(action security.Action, _ *ActionContext) bool {
+	return slices.Contains(deploymentWideWrites, action)
 }

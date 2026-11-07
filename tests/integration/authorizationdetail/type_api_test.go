@@ -49,6 +49,13 @@ const (
 	codeInvalidConsentTemplate = "RAR-1011"
 	// codeInvalidPagination is returned for a limit or offset out of range.
 	codeInvalidPagination = "RAR-1012"
+	// codeUnauthorized is returned to a caller that may not perform the operation.
+	codeUnauthorized = "SSE-4030"
+	// codeImportTemplateFailed is returned by an import whose content is not a valid template.
+	codeImportTemplateFailed = "IMP-1003"
+
+	// typeResourceType is the import resource type of an authorization details type.
+	typeResourceType = "authorization_detail_type"
 )
 
 // flightSchema is a type schema with a field the user and the client may lower.
@@ -98,18 +105,37 @@ func (s *TypeAPITestSuite) TestCreateGetUpdateDelete() {
 	updated = updateType(s.T(), created.ID, renamed)
 	s.Equal(3, updated.Version)
 
-	// A type changed this way is sent back as it was fetched.
-	fetched, err := json.Marshal(updated)
-	s.Require().NoError(err)
-	status, body = doRaw(s.T(), http.MethodPut, typesPath+"/"+created.ID, fetched)
-	s.Equal(http.StatusOK, status, string(body))
-
-	status, body = doJSON(s.T(), http.MethodDelete, typesPath+"/"+created.ID, nil)
-	s.Equal(http.StatusNoContent, status, string(body))
+	s.Require().NoError(testutils.DeleteImportedResource(typeResourceType, created.ID))
 	status, _ = doJSON(s.T(), http.MethodGet, typesPath+"/"+created.ID, nil)
 	s.Equal(http.StatusNotFound, status)
+	s.NoError(testutils.DeleteImportedResource(typeResourceType, created.ID),
+		"deleting a type that does not exist succeeds")
+}
+
+// A data plane takes no type from a token, whatever its scopes: the type is written only through an import
+// with the management API key.
+func (s *TypeAPITestSuite) TestTokenWritesAreForbidden() {
+	created := createType(s.T(), typeRequest{Type: uniqueTypeValue("token"), Name: "Token", Schema: flightSchema})
+	defer deleteType(s.T(), created.ID)
+
+	status, body := doJSON(s.T(), http.MethodPost, typesPath,
+		typeRequest{Type: uniqueTypeValue("token"), Name: "Token", Schema: flightSchema})
+	deleteIfCreated(s.T(), status, body)
+	s.Equal(http.StatusForbidden, status, string(body))
+	s.Equal(codeUnauthorized, errorCode(s.T(), body))
+
+	// A type is sent back as it was fetched.
+	fetched, err := json.Marshal(created)
+	s.Require().NoError(err)
+	status, body = doRaw(s.T(), http.MethodPut, typesPath+"/"+created.ID, fetched)
+	s.Equal(http.StatusForbidden, status, string(body))
+	s.Equal(codeUnauthorized, errorCode(s.T(), body))
+
 	status, body = doJSON(s.T(), http.MethodDelete, typesPath+"/"+created.ID, nil)
-	s.Equal(http.StatusNoContent, status, "deleting a type that does not exist succeeds: %s", body)
+	s.Equal(http.StatusForbidden, status, string(body))
+	s.Equal(codeUnauthorized, errorCode(s.T(), body))
+
+	s.Equal(created, getType(s.T(), created.ID), "the refused writes changed nothing")
 }
 
 func (s *TypeAPITestSuite) TestListPagesTheTypes() {
@@ -215,11 +241,15 @@ func (s *TypeAPITestSuite) TestInvalidDefinitionsAreRefused() {
 				`"modifiableBy":["user"]}}`),
 	}
 	for name, schema := range cases {
-		status, body := doJSON(s.T(), http.MethodPost, typesPath,
-			typeRequest{Type: uniqueTypeValue("invalid"), Name: "Invalid", Schema: schema})
-		deleteIfCreated(s.T(), status, body)
-		s.Equal(http.StatusBadRequest, status, name)
-		s.Equal(codeInvalidSchema, errorCode(s.T(), body), "%s: %s", name, body)
+		item := importType(s.T(), "", typeRequest{Type: uniqueTypeValue("invalid"), Name: "Invalid", Schema: schema})
+		deleteIfImported(s.T(), item)
+		want := codeInvalidSchema
+		if name == "a schema that is not JSON" {
+			// An import refuses a schema that is not JSON while reading the document.
+			want = codeImportInvalidYAML
+		}
+		s.Equal("failed", item.Status, name)
+		s.Equal(want, item.Code, "%s: %s", name, item.Message)
 	}
 }
 
@@ -229,26 +259,26 @@ func (s *TypeAPITestSuite) TestProcessorPoliciesAreRefusedWhereTheyCannotApply()
 	processor := &processorConfig{Endpoint: "https://processor.example.com/rar"}
 	nested := objectSchema(`"account":{"type":"object","policy":{"suppliedBy":"processor"},"properties":{` +
 		`"limit":{"type":"number","policy":{"modification":"decrease","modifiableBy":["user"]}}}}`)
-	status, body := doJSON(s.T(), http.MethodPost, typesPath, typeRequest{Type: uniqueTypeValue("nested"),
-		Name: "Nested", Schema: nested, Processor: processor})
-	deleteIfCreated(s.T(), status, body)
-	s.Equal(http.StatusBadRequest, status, string(body))
-	s.Equal(codeInvalidSchema, errorCode(s.T(), body))
+	item := importType(s.T(), "", typeRequest{Type: uniqueTypeValue("nested"), Name: "Nested", Schema: nested,
+		Processor: processor})
+	deleteIfImported(s.T(), item)
+	s.Equal("failed", item.Status, item.Message)
+	s.Equal(codeInvalidSchema, item.Code)
 
 	processorSupplied := objectSchema(`"balance":{"type":"number","policy":{"suppliedBy":"processor"}}`)
-	status, body = doJSON(s.T(), http.MethodPost, typesPath, typeRequest{Type: uniqueTypeValue("no-processor"),
-		Name: "No processor", Schema: processorSupplied})
-	deleteIfCreated(s.T(), status, body)
-	s.Equal(http.StatusBadRequest, status, string(body))
-	s.Equal(codeInvalidSchema, errorCode(s.T(), body))
+	item = importType(s.T(), "", typeRequest{Type: uniqueTypeValue("no-processor"), Name: "No processor",
+		Schema: processorSupplied})
+	deleteIfImported(s.T(), item)
+	s.Equal("failed", item.Status, item.Message)
+	s.Equal(codeInvalidSchema, item.Code)
 
 	processorChanged := objectSchema(`"amount":{"type":"number",` +
 		`"policy":{"modification":"decrease","modifiableBy":["processor"]}}`)
-	status, body = doJSON(s.T(), http.MethodPost, typesPath, typeRequest{Type: uniqueTypeValue("no-processor"),
-		Name: "No processor", Schema: processorChanged})
-	deleteIfCreated(s.T(), status, body)
-	s.Equal(http.StatusBadRequest, status, string(body))
-	s.Equal(codeInvalidSchema, errorCode(s.T(), body))
+	item = importType(s.T(), "", typeRequest{Type: uniqueTypeValue("no-processor"), Name: "No processor",
+		Schema: processorChanged})
+	deleteIfImported(s.T(), item)
+	s.Equal("failed", item.Status, item.Message)
+	s.Equal(codeInvalidSchema, item.Code)
 
 	// With a processor, the same field is accepted.
 	created := createType(s.T(), typeRequest{Type: uniqueTypeValue("with-processor"), Name: "With processor",
@@ -281,9 +311,10 @@ func (s *TypeAPITestSuite) TestDefinitionFieldsAreChecked() {
 			codeInvalidSchema},
 		{"a template naming an unknown field", typeRequest{Type: uniqueTypeValue("template"), Name: "Template",
 			Schema: flightSchema, ConsentTemplate: "Book {{destination}}"}, codeInvalidConsentTemplate},
+		// An import reads its content as a template, so it refuses this one before the registry sees it.
 		{"a template with a space inside a name", typeRequest{Type: uniqueTypeValue("template"),
 			Name: "Template", Schema: flightSchema, ConsentTemplate: "Book {{max fare}}"},
-			codeInvalidConsentTemplate},
+			codeImportTemplateFailed},
 		{"a template over 1000 bytes", typeRequest{Type: uniqueTypeValue("template"), Name: "Template",
 			Schema: flightSchema, ConsentTemplate: longText}, codeInvalidConsentTemplate},
 		{"an HTTP processor off loopback", typeRequest{Type: uniqueTypeValue("processor"), Name: "Processor",
@@ -301,11 +332,12 @@ func (s *TypeAPITestSuite) TestDefinitionFieldsAreChecked() {
 			codeInvalidProcessor},
 		{"a relative processor", typeRequest{Type: uniqueTypeValue("processor"), Name: "Processor",
 			Schema: flightSchema, Processor: &processorConfig{Endpoint: "/rar"}}, codeInvalidProcessor},
+		// An import refuses an authentication it does not know while reading the document.
 		{"an unknown processor authentication", typeRequest{Type: uniqueTypeValue("processor"),
 			Name: "Processor", Schema: flightSchema, Processor: &processorConfig{
 				Endpoint:       "https://processor.example.com/rar",
 				Authentication: &processorAuthentication{Type: "kerberos"}}},
-			codeInvalidProcessorAuthentication},
+			codeImportInvalidYAML},
 		{"a bearer authentication without a token", typeRequest{Type: uniqueTypeValue("processor"),
 			Name: "Processor", Schema: flightSchema, Processor: &processorConfig{
 				Endpoint:       "https://processor.example.com/rar",
@@ -313,15 +345,15 @@ func (s *TypeAPITestSuite) TestDefinitionFieldsAreChecked() {
 			codeInvalidProcessorAuthentication},
 	}
 	for _, tc := range cases {
-		status, body := doJSON(s.T(), http.MethodPost, typesPath, tc.req)
-		deleteIfCreated(s.T(), status, body)
-		s.Equal(http.StatusBadRequest, status, "%s: %s", tc.name, body)
-		s.Equal(tc.code, errorCode(s.T(), body), "%s: %s", tc.name, body)
+		item := importType(s.T(), "", tc.req)
+		deleteIfImported(s.T(), item)
+		s.Equal("failed", item.Status, tc.name)
+		s.Equal(tc.code, item.Code, "%s: %s", tc.name, item.Message)
 	}
 }
 
 // A request body that cannot be read, or that names a field the API does not have, is refused before it
-// reaches the registry.
+// reaches the registry, so a token is answered as on any server.
 func (s *TypeAPITestSuite) TestMalformedRequestsAreRefused() {
 	created := createType(s.T(), typeRequest{Type: uniqueTypeValue("malformed"), Name: "Malformed",
 		Schema: flightSchema})
@@ -365,29 +397,25 @@ func (s *TypeAPITestSuite) TestBadPaginationIsRefused() {
 	s.Equal(1, page.StartIndex)
 }
 
-// The type value of a registered type cannot change, and a type that does not exist is not found.
+// The type value of a registered type cannot change, and a type that does not exist is not found. An import
+// creates a type it does not find, so only a read can miss one.
 func (s *TypeAPITestSuite) TestTypeValueIsImmutableAndUnknownTypesAreNotFound() {
 	value := uniqueTypeValue("immutable")
 	created := createType(s.T(), typeRequest{Type: value, Name: "Immutable", Schema: flightSchema})
 	defer deleteType(s.T(), created.ID)
 
-	status, body := doJSON(s.T(), http.MethodPut, typesPath+"/"+created.ID,
-		typeRequest{Type: value + "-changed", Name: "Immutable", Schema: flightSchema})
-	s.Equal(http.StatusBadRequest, status, string(body))
-	s.Equal(codeTypeValueImmutable, errorCode(s.T(), body))
+	item := importType(s.T(), created.ID, typeRequest{Type: value + "-changed", Name: "Immutable",
+		Schema: flightSchema})
+	s.Equal("failed", item.Status, item.Message)
+	s.Equal(codeTypeValueImmutable, item.Code)
 
 	// A valid change to the other fields is still checked like a create.
-	status, body = doJSON(s.T(), http.MethodPut, typesPath+"/"+created.ID,
-		typeRequest{Type: value, Name: "", Schema: flightSchema})
-	s.Equal(http.StatusBadRequest, status, string(body))
-	s.Equal(codeInvalidName, errorCode(s.T(), body))
+	item = importType(s.T(), created.ID, typeRequest{Type: value, Name: "", Schema: flightSchema})
+	s.Equal("failed", item.Status, item.Message)
+	s.Equal(codeInvalidName, item.Code)
 
 	const missing = "00000000-0000-7000-8000-00000000dead"
-	status, body = doJSON(s.T(), http.MethodGet, typesPath+"/"+missing, nil)
-	s.Equal(http.StatusNotFound, status, string(body))
-	s.Equal(codeTypeNotFound, errorCode(s.T(), body))
-	status, body = doJSON(s.T(), http.MethodPut, typesPath+"/"+missing,
-		typeRequest{Type: value, Name: "Missing", Schema: flightSchema})
+	status, body := doJSON(s.T(), http.MethodGet, typesPath+"/"+missing, nil)
 	s.Equal(http.StatusNotFound, status, string(body))
 	s.Equal(codeTypeNotFound, errorCode(s.T(), body))
 }
@@ -450,11 +478,11 @@ func (s *TypeAPITestSuite) TestDatePolicyLimits() {
 			`"policy":{"minimum":"31/12/2026"}}`),
 	}
 	for name, schema := range refused {
-		status, body := doJSON(s.T(), http.MethodPost, typesPath,
+		item := importType(s.T(), "",
 			typeRequest{Type: uniqueTypeValue("date-limits"), Name: "Date limits", Schema: schema})
-		deleteIfCreated(s.T(), status, body)
-		s.Equal(http.StatusBadRequest, status, "%s: %s", name, body)
-		s.Equal(codeInvalidSchema, errorCode(s.T(), body), "%s: %s", name, body)
+		deleteIfImported(s.T(), item)
+		s.Equal("failed", item.Status, "%s: %+v", name, item)
+		s.Equal(codeInvalidSchema, item.Code, "%s: %+v", name, item)
 	}
 }
 
@@ -507,11 +535,10 @@ func (s *TypeAPITestSuite) TestDuplicateTypeValueIsRefused() {
 	created := createType(s.T(), typeRequest{Type: value, Name: "Original", Schema: flightSchema})
 	defer deleteType(s.T(), created.ID)
 
-	status, body := doJSON(s.T(), http.MethodPost, typesPath,
-		typeRequest{Type: value, Name: "Copy", Schema: flightSchema})
-	deleteIfCreated(s.T(), status, body)
-	s.Equal(http.StatusConflict, status, string(body))
-	s.Equal(codeTypeConflict, errorCode(s.T(), body))
+	item := importType(s.T(), "", typeRequest{Type: value, Name: "Copy", Schema: flightSchema})
+	deleteIfImported(s.T(), item)
+	s.Equal("failed", item.Status, item.Message)
+	s.Equal(codeTypeConflict, item.Code)
 }
 
 func (s *TypeAPITestSuite) TestMisspelledKeyIsRefused() {
@@ -546,9 +573,9 @@ func (s *TypeAPITestSuite) TestProcessorCredentialIsMaskedAndKept() {
 
 	// A new endpoint needs the credential again.
 	req.Processor = &processorConfig{Endpoint: "https://other.example.com/rar"}
-	status, body := doJSON(s.T(), http.MethodPut, typesPath+"/"+created.ID, req)
-	s.Equal(http.StatusBadRequest, status, string(body))
-	s.Equal(codeProcessorAuthenticationRequired, errorCode(s.T(), body))
+	item := importType(s.T(), created.ID, req)
+	s.Equal("failed", item.Status, item.Message)
+	s.Equal(codeProcessorAuthenticationRequired, item.Code)
 
 	// Authentication none sent at the same endpoint clears the stored credential.
 	req.Processor = &processorConfig{Endpoint: endpoint, Authentication: &processorAuthentication{Type: "none"}}
@@ -564,39 +591,101 @@ func uniqueTypeValue(name string) string {
 	return fmt.Sprintf("https://types.example.com/%s/%d", name, time.Now().UnixNano())
 }
 
-// createType registers a type and returns it as the management API returns it.
+// typeImportDocument is an authorization details type as an import document.
+type typeImportDocument struct {
+	ResourceType string `json:"resource_type"`
+	ID           string `json:"id,omitempty"`
+	typeRequest
+}
+
+// importType writes a type through an import with the management API key, the only way a data plane takes
+// one, and returns the outcome. A type with an id is updated, or created with that id when none has it. A
+// request the import refuses as a whole is reported as a failed outcome carrying the refusal's code.
+func importType(t *testing.T, id string, req typeRequest) testutils.ImportItem {
+	t.Helper()
+	document, err := json.Marshal(typeImportDocument{ResourceType: typeResourceType, ID: id, typeRequest: req})
+	if err != nil {
+		t.Fatalf("encoding type document: %v", err)
+	}
+	payload, err := json.Marshal(testutils.ImportRequest{Content: string(document),
+		Options: testutils.ImportOptions{Upsert: true, Target: "runtime"}})
+	if err != nil {
+		t.Fatalf("encoding import request: %v", err)
+	}
+	httpReq, err := http.NewRequest(http.MethodPost, testutils.TestServerURL+"/import", bytes.NewReader(payload))
+	if err != nil {
+		t.Fatalf("creating import request: %v", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	resp, err := testutils.GetManagementAPIKeyHTTPClient().Do(httpReq)
+	if err != nil {
+		t.Fatalf("sending import request: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("reading import response: %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return testutils.ImportItem{Status: "failed", Code: errorCode(t, body), Message: string(body)}
+	}
+	var importResp testutils.ImportResponse
+	if err := json.Unmarshal(body, &importResp); err != nil {
+		t.Fatalf("decoding import response %s: %v", body, err)
+	}
+	if len(importResp.Results) != 1 {
+		t.Fatalf("expected one import result, got %s", body)
+	}
+	return importResp.Results[0]
+}
+
+// createType registers a type through an import and returns it as the management API returns it.
 func createType(t *testing.T, req typeRequest) typeResponse {
 	t.Helper()
-	status, body := doJSON(t, http.MethodPost, typesPath, req)
-	if status != http.StatusCreated {
-		t.Fatalf("creating type %s: status %d, body %s", req.Type, status, body)
+	item := importType(t, "", req)
+	if item.Status != "success" {
+		t.Fatalf("creating type %s: %s %s", req.Type, item.Code, item.Message)
 	}
-	var created typeResponse
-	if err := json.Unmarshal(body, &created); err != nil {
-		t.Fatalf("decoding created type: %v", err)
-	}
-	return created
+	return getType(t, item.ResourceID)
 }
 
-// updateType replaces a type and returns it as the management API returns it.
+// updateType replaces a type through an import and returns it as the management API returns it.
 func updateType(t *testing.T, id string, req typeRequest) typeResponse {
 	t.Helper()
-	status, body := doJSON(t, http.MethodPut, typesPath+"/"+id, req)
-	if status != http.StatusOK {
-		t.Fatalf("updating type %s: status %d, body %s", id, status, body)
+	item := importType(t, id, req)
+	if item.Status != "success" {
+		t.Fatalf("updating type %s: %s %s", id, item.Code, item.Message)
 	}
-	var updated typeResponse
-	if err := json.Unmarshal(body, &updated); err != nil {
-		t.Fatalf("decoding updated type: %v", err)
-	}
-	return updated
+	return getType(t, id)
 }
 
-// deleteType removes a type, logging rather than failing when it cannot.
+// getType returns a type as the management API returns it.
+func getType(t *testing.T, id string) typeResponse {
+	t.Helper()
+	status, body := doJSON(t, http.MethodGet, typesPath+"/"+id, nil)
+	if status != http.StatusOK {
+		t.Fatalf("getting type %s: status %d, body %s", id, status, body)
+	}
+	var got typeResponse
+	if err := json.Unmarshal(body, &got); err != nil {
+		t.Fatalf("decoding type: %v", err)
+	}
+	return got
+}
+
+// deleteType removes a type through an import, logging rather than failing when it cannot.
 func deleteType(t *testing.T, id string) {
 	t.Helper()
-	if status, body := doJSON(t, http.MethodDelete, typesPath+"/"+id, nil); status != http.StatusNoContent {
-		t.Logf("Failed to delete authorization details type %s: status %d, body %s", id, status, body)
+	if err := testutils.DeleteImportedResource(typeResourceType, id); err != nil {
+		t.Logf("Failed to delete authorization details type %s: %v", id, err)
+	}
+}
+
+// deleteIfImported removes the type an import unexpectedly created, so a failing test leaves nothing behind.
+func deleteIfImported(t *testing.T, item testutils.ImportItem) {
+	t.Helper()
+	if item.Status == "success" && item.ResourceID != "" {
+		deleteType(t, item.ResourceID)
 	}
 }
 
@@ -680,6 +769,12 @@ func doJSON(t *testing.T, method, path string, payload interface{}) (int, []byte
 // doRaw sends an authenticated request with the given body and returns the status and body.
 func doRaw(t *testing.T, method, path string, body []byte) (int, []byte) {
 	t.Helper()
+	return doRawWith(t, testutils.GetHTTPClient(), method, path, body)
+}
+
+// doRawWith sends a request with the given client and body and returns the status and body.
+func doRawWith(t *testing.T, client *http.Client, method, path string, body []byte) (int, []byte) {
+	t.Helper()
 	var reader io.Reader
 	if body != nil {
 		reader = bytes.NewReader(body)
@@ -691,7 +786,7 @@ func doRaw(t *testing.T, method, path string, body []byte) (int, []byte) {
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	resp, err := testutils.GetHTTPClient().Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		t.Fatalf("sending %s %s: %v", method, path, err)
 	}

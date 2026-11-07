@@ -10,6 +10,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/suite"
+
+	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
 const (
@@ -57,25 +59,25 @@ func (s *DeclarativeTypeTestSuite) TestListMergesDeclaredAndRegisteredTypes() {
 }
 
 func (s *DeclarativeTypeTestSuite) TestWritesToTheDeclaredTypeAreRefused() {
-	status, body := doJSON(s.T(), http.MethodPut, typesPath+"/"+declarativeTypeID, typeRequest{
-		Type: declarativeTypeValue, Name: "Renamed", Schema: flightSchema})
-	s.Equal(http.StatusBadRequest, status, string(body))
-	s.Equal(codeImmutableType, errorCode(s.T(), body))
+	item := importType(s.T(), declarativeTypeID, typeRequest{Type: declarativeTypeValue, Name: "Renamed",
+		Schema: flightSchema})
+	s.Equal("failed", item.Status, item.Message)
+	s.Equal(codeImmutableType, item.Code)
 
-	status, body = doJSON(s.T(), http.MethodDelete, typesPath+"/"+declarativeTypeID, nil)
-	s.Equal(http.StatusBadRequest, status, string(body))
-	s.Equal(codeImmutableType, errorCode(s.T(), body))
+	item, err := testutils.DeleteImportedResourceOutcome(typeResourceType, declarativeTypeID)
+	s.Require().NoError(err)
+	s.Equal("failed", item.Status, item.Message)
+	s.Equal(codeImmutableType, item.Code)
 
-	status, _ = doJSON(s.T(), http.MethodGet, typesPath+"/"+declarativeTypeID, nil)
+	status, _ := doJSON(s.T(), http.MethodGet, typesPath+"/"+declarativeTypeID, nil)
 	s.Equal(http.StatusOK, status, "the declared type is still there")
 }
 
 func (s *DeclarativeTypeTestSuite) TestRegisteringTheDeclaredValueIsAConflict() {
-	status, body := doJSON(s.T(), http.MethodPost, typesPath, typeRequest{
-		Type: declarativeTypeValue, Name: "Duplicate", Schema: flightSchema})
-	deleteIfCreated(s.T(), status, body)
-	s.Equal(http.StatusConflict, status, string(body))
-	s.Equal(codeTypeConflict, errorCode(s.T(), body))
+	item := importType(s.T(), "", typeRequest{Type: declarativeTypeValue, Name: "Duplicate", Schema: flightSchema})
+	deleteIfImported(s.T(), item)
+	s.Equal("failed", item.Status, item.Message)
+	s.Equal(codeTypeConflict, item.Code)
 }
 
 func (s *DeclarativeTypeTestSuite) TestMetadataServesTheDeclaredType() {

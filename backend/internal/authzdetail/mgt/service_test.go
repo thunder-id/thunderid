@@ -19,9 +19,12 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/outboundauth"
+	"github.com/thunder-id/thunderid/internal/system/security"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/crypto/cryptomock"
+	"github.com/thunder-id/thunderid/tests/mocks/sysauthzmock"
 )
 
 // flightSchema is a registered schema for a flight booking type.
@@ -79,7 +82,9 @@ func (s *ServiceTestSuite) SetupSuite() {
 func (s *ServiceTestSuite) SetupTest() {
 	s.ctx = context.Background()
 	s.typeStore = newTypeStoreInterfaceMock(s.T())
-	s.service = newAuthorizationDetailMgtService(s.typeStore, nil).(*authorizationDetailMgtService)
+	authz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(s.T())
+	authz.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).Return(true, nil).Maybe()
+	s.service = newAuthorizationDetailMgtService(s.typeStore, nil, authz).(*authorizationDetailMgtService)
 }
 
 func flightType() providers.AuthorizationDetailType {
@@ -894,4 +899,34 @@ func (s *ServiceTestSuite) TestSetProcessorAuthentication_SentNoneClearsTheStore
 	s.False(config.Enabled())
 	s.Empty(storedToken(s.T(), updated.Processor.AuthenticationProperties))
 	s.Equal(string(outboundauth.TypeNone), processorResponse(updated.Processor).Authentication.Type)
+}
+
+func (s *ServiceTestSuite) TestWritesRefusedWithoutWriteAccess() {
+	tests := []struct {
+		name     string
+		authzErr *tidcommon.ServiceError
+		want     *tidcommon.ServiceError
+	}{
+		{"Denied", nil, &tidcommon.ErrorUnauthorized},
+		{"AuthorizationFailure", &tidcommon.InternalServerError, &tidcommon.InternalServerError},
+	}
+	for _, tt := range tests {
+		s.Run(tt.name, func() {
+			authz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(s.T())
+			for _, action := range []security.Action{
+				security.ActionCreateAuthzDetail, security.ActionUpdateAuthzDetail, security.ActionDeleteAuthzDetail,
+			} {
+				authz.On("IsActionAllowed", mock.Anything, action,
+					&sysauthz.ActionContext{ResourceType: security.ResourceTypeAuthorizationDetailType}).
+					Return(false, tt.authzErr).Once()
+			}
+			service := newAuthorizationDetailMgtService(newTypeStoreInterfaceMock(s.T()), nil, authz)
+
+			_, err := service.CreateAuthorizationDetailType(s.ctx, flightType())
+			s.Equal(tt.want, err)
+			_, err = service.UpdateAuthorizationDetailType(s.ctx, "type-1", flightType())
+			s.Equal(tt.want, err)
+			s.Equal(tt.want, service.DeleteAuthorizationDetailType(s.ctx, "type-1"))
+		})
+	}
 }

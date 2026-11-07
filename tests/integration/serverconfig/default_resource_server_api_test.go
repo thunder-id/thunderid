@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -74,18 +73,12 @@ func (suite *DefaultResourceServerAPITestSuite) mustPut(body string) int {
 	return status
 }
 
+// put writes the section through an import with the management API key, the only way a data plane
+// takes server configuration, and returns the status and body the API would answer with.
 func (suite *DefaultResourceServerAPITestSuite) put(body string) (int, []byte) {
-	req, err := http.NewRequest(http.MethodPut, defaultResourceServerConfigURL, strings.NewReader(body))
+	status, respBody, err := testutils.PutWritableServerConfigWithStatus("defaultResourceServer", []byte(body))
 	suite.Require().NoError(err)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := suite.adminClient.Do(req)
-	suite.Require().NoError(err)
-	defer closeBodyQuietly(suite.T(), resp.Body)
-
-	respBody, err := io.ReadAll(resp.Body)
-	suite.Require().NoError(err)
-	return resp.StatusCode, respBody
+	return status, respBody
 }
 
 func (suite *DefaultResourceServerAPITestSuite) get(url string) (int, []byte) {

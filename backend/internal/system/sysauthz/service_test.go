@@ -168,6 +168,38 @@ func (s *SystemAuthzTestSuite) TestIsActionAllowed() {
 			wantAllowed: true,
 		},
 		{
+			// Resources that apply to the whole deployment are not written through the API under the OU
+			// boundary, even with "system".
+			name:        "SystemScope_DeploymentWideWrite_Denied",
+			ctx:         buildCtxWithOU("system", "ou1"),
+			action:      security.ActionUpdateDesign,
+			actionCtx:   &ActionContext{ResourceType: security.ResourceTypeDesign, ResourceID: "theme-1"},
+			wantAllowed: false,
+		},
+		{
+			name:        "ServerConfigScope_DeploymentWideWrite_Denied",
+			ctx:         buildCtxWithOU("system:serverconfig", "ou1"),
+			action:      security.ActionUpdateServerConfig,
+			actionCtx:   &ActionContext{ResourceType: security.ResourceTypeServerConfig, ResourceID: "cors"},
+			wantAllowed: false,
+		},
+		{
+			// Resources that apply to the whole deployment are read with a token under the OU boundary.
+			name:        "DesignScope_DeploymentWideRead_Allowed",
+			ctx:         buildCtxWithOU("system:design:view", "ou1"),
+			action:      security.ActionReadDesign,
+			actionCtx:   &ActionContext{ResourceType: security.ResourceTypeDesign, ResourceID: "theme-1"},
+			wantAllowed: true,
+		},
+		{
+			// The management API key imports the resources that apply to the whole deployment.
+			name:        "ManagementAPIKey_DeploymentWideWrite_Allowed",
+			ctx:         buildManagementAPIKeyCtx(),
+			action:      security.ActionCreateI18n,
+			actionCtx:   &ActionContext{ResourceType: security.ResourceTypeI18n},
+			wantAllowed: true,
+		},
+		{
 			// The management API key spans the deployment, so any OU is in reach.
 			name:        "ManagementAPIKey_AnyOU_Allowed",
 			ctx:         buildManagementAPIKeyCtx(),
@@ -566,6 +598,22 @@ func (s *SystemAuthzTestSuite) TestIsImportOnlyAction() {
 			&ActionContext{ResourceType: security.ResourceTypeOU, OUID: "ou1"}, false},
 		{"OUCreationWithoutContext", security.ActionCreateOU, nil, false},
 		{"OtherAction", security.ActionUpdateOU, &ActionContext{ResourceType: security.ResourceTypeOU}, false},
+		{"DesignCreation", security.ActionCreateDesign,
+			&ActionContext{ResourceType: security.ResourceTypeDesign}, true},
+		{"DesignUpdate", security.ActionUpdateDesign, &ActionContext{ResourceType: security.ResourceTypeDesign}, true},
+		{"DesignDeletion", security.ActionDeleteDesign,
+			&ActionContext{ResourceType: security.ResourceTypeDesign}, true},
+		{"DesignRead", security.ActionReadDesign, &ActionContext{ResourceType: security.ResourceTypeDesign}, false},
+		{"TranslationCreation", security.ActionCreateI18n, nil, true},
+		{"TranslationUpdate", security.ActionUpdateI18n, nil, true},
+		{"TranslationDeletion", security.ActionDeleteI18n, nil, true},
+		{"TranslationList", security.ActionListI18n, nil, false},
+		{"ServerConfigUpdate", security.ActionUpdateServerConfig, nil, true},
+		{"ServerConfigRead", security.ActionReadServerConfig, nil, false},
+		{"AuthzDetailCreation", security.ActionCreateAuthzDetail, nil, true},
+		{"AuthzDetailUpdate", security.ActionUpdateAuthzDetail, nil, true},
+		{"AuthzDetailDeletion", security.ActionDeleteAuthzDetail, nil, true},
+		{"AuthzDetailRead", security.ActionReadAuthzDetail, nil, false},
 	}
 	for _, tt := range tests {
 		s.Run(tt.name, func() {
@@ -611,6 +659,13 @@ func (s *SystemAuthzTestSuite) TestIsActionAllowedDeploymentBoundary() {
 			ctx:         buildCtxWithOU("system:ou", "ou1"),
 			action:      security.ActionCreateOU,
 			actionCtx:   &ActionContext{ResourceType: security.ResourceTypeOU},
+			wantAllowed: true,
+		},
+		{
+			name:        "DesignScope_DeploymentWideWrite_Allowed",
+			ctx:         buildCtxWithOU("system:design", "ou1"),
+			action:      security.ActionUpdateDesign,
+			actionCtx:   &ActionContext{ResourceType: security.ResourceTypeDesign, ResourceID: "theme-1"},
 			wantAllowed: true,
 		},
 		{

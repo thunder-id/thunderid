@@ -43,8 +43,10 @@ type updateTypeInput struct {
 	AuthorizationDetailTypeRequest
 }
 
-// registerMCPTools registers the authorization details type tools with the MCP server.
-func registerMCPTools(server *mcp.Server, service AuthorizationDetailMgtServiceInterface) {
+// registerMCPTools registers the authorization details type tools with the MCP server. The create and update
+// tools are registered only when tokenWrites is set: an MCP caller always presents a token, and a data plane
+// takes a type only from an import with the management API key.
+func registerMCPTools(server *mcp.Server, service AuthorizationDetailMgtServiceInterface, tokenWrites bool) {
 	tools := &typeTools{service: service}
 
 	mcp.AddTool(server, &mcp.Tool{
@@ -69,6 +71,10 @@ func registerMCPTools(server *mcp.Server, service AuthorizationDetailMgtServiceI
 			ReadOnlyHint: true,
 		},
 	}, rawTool(tools.getType))
+
+	if !tokenWrites {
+		return
+	}
 
 	server.AddTool(&mcp.Tool{
 		Name: "create_authorization_detail_type",

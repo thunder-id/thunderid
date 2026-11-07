@@ -32,6 +32,24 @@ Send the token in the `Authorization` header:
 Authorization: Bearer <access_token>
 ```
 
+### Resources Imported Only With the Management API Key
+
+On a data plane, including the all-in-one server, no token writes the following resources, whatever its scopes:
+
+- Root organization units
+- Themes and layouts
+- Translations
+- Server configuration
+- Authorization details types
+
+Import them with the management API key instead. A token can still read them, and a control plane token with the matching scope still writes them. When a token imports one of them, the import reports that item as failed with the code `SSE-4030`.
+
+The key is off by default. To turn it on, set [`server.security.management_api_key_hash`](../../deployment/configuration.mdx) to the SHA-256 digest of the key, then send the key in the `API-Key` header:
+
+```http
+API-Key: <management_api_key>
+```
+
 ## Endpoint Summary
 
 - `POST /import`: Imports one or more YAML documents into runtime stores.
@@ -87,7 +105,8 @@ resources to remove, so one request can reconcile a deployment with the configur
 stands.
 
 Each entry names a `resourceType` and an `id`. User types and agent types are separate resource
-types, `user_type` and `agent_type`, as they are in `content`.
+types, `user_type` and `agent_type`, as they are in `content`. A `translation` is identified by its language, such as
+`fr-FR`, and removing it clears every custom translation of that language.
 
 ```json
 {
@@ -108,9 +127,9 @@ types, `user_type` and `agent_type`, as they are in `content`.
   no-op, and a request that failed because the removal already happened would make retrying
   impossible. Where the service reports not found, the outcome carries the message
   `resource already absent` and does not add to `summary.deleted`.
-- **A type with no runtime delete is reported, not skipped.** `translation`, `server_config`, and
-  `notification_template` are reported as an unsupported outcome, because a configuration that dropped
-  one would otherwise look reconciled when it is not.
+- **A type with no runtime delete is reported, not skipped.** `server_config` is reported as an
+  unsupported outcome, because a configuration that dropped it would otherwise look reconciled when it
+  is not. To clear a section, import it with an empty value instead.
 - **A removal the owning service refuses is reported with its reason.** An `agent_type` deletion
   fails with `USRS-1022` while any agent is of that agent type, or while an application, agent, or
   flow lists it in its allowed agent types.

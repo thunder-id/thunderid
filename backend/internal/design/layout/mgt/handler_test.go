@@ -469,6 +469,11 @@ func (suite *LayoutHandlerTestSuite) TestHandleError_StatusCodeMapping() {
 			expectedStatus: http.StatusConflict,
 		},
 		{
+			name:           "Unauthorized",
+			svcErr:         &tidcommon.ErrorUnauthorized,
+			expectedStatus: http.StatusForbidden,
+		},
+		{
 			name:           "InvalidLayoutID",
 			svcErr:         &ErrorInvalidLayoutID,
 			expectedStatus: http.StatusBadRequest,

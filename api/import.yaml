@@ -330,15 +330,18 @@ components:
           type: string
           description: >
             Type of the resource to remove. A type with no runtime delete operation, such as
-            `translation` or `server_config`, is reported as an unsupported outcome rather than
-            silently skipped. `role_assignment` takes the assignees in `members` off the role `id`
-            names, and `group_member` takes the members in `members` off the group `id` names.
-            These run before any resource is removed. One that no longer holds the role directly in
-            that organization unit, or is no longer in the group, is skipped as already removed.
+            `server_config`, is reported as an unsupported outcome rather than silently skipped.
+            `role_assignment` takes the assignees in `members` off the role `id` names, and
+            `group_member` takes the members in `members` off the group `id` names. These run before
+            any resource is removed. One that no longer holds the role directly in that organization
+            unit, or is no longer in the group, is skipped as already removed.
           example: "application"
         id:
           type: string
-          description: Identifier of the resource to remove, or of the role or group to take `members` off.
+          description: >
+            Identifier of the resource to remove, or of the role or group to take `members` off. A
+            `translation` is identified by its language, and removing it clears every custom
+            translation of that language.
           example: "550e8400-e29b-41d4-a716-446655440000"
         members:
           type: array

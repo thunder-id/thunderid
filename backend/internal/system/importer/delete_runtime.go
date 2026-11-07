@@ -162,7 +162,7 @@ func (s *importService) deleteRuntimeResource(
 type deleteFunc func(ctx context.Context, id string) *tidcommon.ServiceError
 
 // deleterFor returns the delete an import uses for a resource type, or nil when this deployment
-// cannot remove that type: translations and server configuration have no delete, and an adapter the
+// cannot remove that type: server configuration has no delete, and an adapter the
 // deployment was not configured with cannot be asked. It mirrors importDocument, which dispatches the
 // same resource types to the same adapters for create and update.
 func (s *importService) deleterFor(resourceType string) deleteFunc {
@@ -203,14 +203,8 @@ func (s *importService) deleterFor(resourceType string) deleteFunc {
 		if s.authorizationDetailTypeService != nil {
 			return s.authorizationDetailTypeService.DeleteAuthorizationDetailType
 		}
-	case resourceTypeTheme:
-		if s.themeService != nil {
-			return s.themeService.DeleteTheme
-		}
-	case resourceTypeLayout:
-		if s.layoutService != nil {
-			return s.layoutService.DeleteLayout
-		}
+	case resourceTypeTheme, resourceTypeLayout, resourceTypeTranslation:
+		return s.appearanceDeleterFor(resourceType)
 	case resourceTypeUser:
 		if s.userService != nil {
 			return s.userService.DeleteUser
@@ -259,6 +253,27 @@ func (s *importService) memberRemoverFor(deletion ResourceDeletion) deleteFunc {
 			return func(ctx context.Context, groupID string) *tidcommon.ServiceError {
 				return s.removeGroupMembers(ctx, groupID, deletion.Members)
 			}
+		}
+	}
+	return nil
+}
+
+// appearanceDeleterFor returns the delete for a theme, layout or translation, or nil when the
+// deployment was not configured with its adapter. A translation is identified by its language, and
+// deleting it clears the language's overrides.
+func (s *importService) appearanceDeleterFor(resourceType string) deleteFunc {
+	switch resourceType {
+	case resourceTypeTheme:
+		if s.themeService != nil {
+			return s.themeService.DeleteTheme
+		}
+	case resourceTypeLayout:
+		if s.layoutService != nil {
+			return s.layoutService.DeleteLayout
+		}
+	case resourceTypeTranslation:
+		if s.translationService != nil {
+			return s.translationService.ClearTranslationOverrides
 		}
 	}
 	return nil

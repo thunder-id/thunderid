@@ -301,6 +301,22 @@ paths:
                     description:
                       key: "error.declarative_resource.update_operation_not_allowed_description"
                       defaultValue: "Updating declarative resources is not permitted"
+        "403":
+          description: |
+            The caller may not write translations. On a data plane, no token writes them, whatever its
+            permissions: only an import with the management API key does.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "SSE-4030"
+                message:
+                  key: "error.unauthorized"
+                  defaultValue: "Unauthorized"
+                description:
+                  key: "error.unauthorized_description"
+                  defaultValue: "The caller is not authorized to perform this operation"
         "500":
           description: Internal server error
           content:
@@ -362,6 +378,22 @@ paths:
                     description:
                       key: "error.declarative_resource.delete_operation_not_allowed_description"
                       defaultValue: "Deleting declarative resources is not permitted"
+        "403":
+          description: |
+            The caller may not write translations. On a data plane, no token writes them, whatever its
+            permissions: only an import with the management API key does.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "SSE-4030"
+                message:
+                  key: "error.unauthorized"
+                  defaultValue: "Unauthorized"
+                description:
+                  key: "error.unauthorized_description"
+                  defaultValue: "The caller is not authorized to perform this operation"
         "500":
           description: Internal server error
           content:
@@ -567,6 +599,22 @@ paths:
                     description:
                       key: "error.declarative_resource.update_operation_not_allowed_description"
                       defaultValue: "Updating declarative resources is not permitted"
+        "403":
+          description: |
+            The caller may not write translations. On a data plane, no token writes them, whatever its
+            permissions: only an import with the management API key does.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "SSE-4030"
+                message:
+                  key: "error.unauthorized"
+                  defaultValue: "Unauthorized"
+                description:
+                  key: "error.unauthorized_description"
+                  defaultValue: "The caller is not authorized to perform this operation"
         "500":
           description: Internal server error
           content:
@@ -638,6 +686,22 @@ paths:
                     description:
                       key: "error.declarative_resource.delete_operation_not_allowed_description"
                       defaultValue: "Deleting declarative resources is not permitted"
+        "403":
+          description: |
+            The caller may not write translations. On a data plane, no token writes them, whatever its
+            permissions: only an import with the management API key does.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "SSE-4030"
+                message:
+                  key: "error.unauthorized"
+                  defaultValue: "Unauthorized"
+                description:
+                  key: "error.unauthorized_description"
+                  defaultValue: "The caller is not authorized to perform this operation"
         "500":
           description: Internal server error
           content:

@@ -16,7 +16,10 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
+	"github.com/thunder-id/thunderid/internal/system/security"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/tests/mocks/sysauthzmock"
 )
 
 // Test Suite
@@ -46,7 +49,8 @@ func (suite *ThemeServiceTestSuite) SetupTest() {
 
 	suite.mockStore = newThemeMgtStoreInterfaceMock(suite.T())
 	suite.mockProjects = newProjectCheckerMock(suite.T())
-	suite.service = newThemeMgtService(suite.mockStore, discardingBus{}, suite.mockProjects)
+	suite.service = newThemeMgtService(suite.mockStore, discardingBus{}, suite.mockProjects,
+		allowAllAuthz(suite.T()))
 }
 
 // Test GetThemeList - Success
@@ -135,7 +139,8 @@ func (suite *ThemeServiceTestSuite) TestCreateTheme_Success() {
 	suite.mockStore.On("IsThemeHandleConflict", testCtx(), "new-theme", "").Return(false, nil)
 	suite.mockStore.On("CreateTheme", testCtx(), mock.AnythingOfType("string"), storeReq).Return(nil)
 
-	result, err := newThemeMgtService(suite.mockStore, discardingBus{}, nil).CreateTheme(testCtx(), themeRequest)
+	service := newThemeMgtService(suite.mockStore, discardingBus{}, nil, allowAllAuthz(suite.T()))
+	result, err := service.CreateTheme(testCtx(), themeRequest)
 
 	assert.Nil(suite.T(), err)
 	assert.NotNil(suite.T(), result)
@@ -251,7 +256,8 @@ func (suite *ThemeServiceTestSuite) TestCreateTheme_StoreError() {
 	suite.mockStore.On("CreateTheme", testCtx(), mock.AnythingOfType("string"),
 		storeReq).Return(errors.New("database error"))
 
-	result, err := newThemeMgtService(suite.mockStore, discardingBus{}, nil).CreateTheme(testCtx(), themeRequest)
+	service := newThemeMgtService(suite.mockStore, discardingBus{}, nil, allowAllAuthz(suite.T()))
+	result, err := service.CreateTheme(testCtx(), themeRequest)
 
 	assert.Nil(suite.T(), result)
 	assert.NotNil(suite.T(), err)
@@ -748,7 +754,7 @@ func (suite *ThemeServiceTestSuite) TestCreateTheme_ProjectCheckFailure() {
 
 // A deployment that serves no projects keeps the project ID without checking it.
 func (suite *ThemeServiceTestSuite) TestCreateTheme_ProjectWithoutChecker() {
-	service := newThemeMgtService(suite.mockStore, discardingBus{}, nil)
+	service := newThemeMgtService(suite.mockStore, discardingBus{}, nil, allowAllAuthz(suite.T()))
 	req := projectThemeRequest()
 	suite.mockStore.On("IsThemeHandleConflict", testCtx(), req.Handle, "").Return(false, nil)
 	suite.mockStore.On("CreateTheme", testCtx(), mock.AnythingOfType("string"),
@@ -779,7 +785,7 @@ func (suite *ThemeServiceTestSuite) TestCreateTheme_ProjectIDTooLong() {
 	req.ProjectID = strings.Repeat("p", maxProjectIDLength+1)
 	suite.mockStore.On("IsThemeHandleConflict", testCtx(), req.Handle, "").Return(false, nil)
 
-	unchecked := newThemeMgtService(suite.mockStore, discardingBus{}, nil)
+	unchecked := newThemeMgtService(suite.mockStore, discardingBus{}, nil, allowAllAuthz(suite.T()))
 	for _, service := range []ThemeMgtServiceInterface{suite.service, unchecked} {
 		result, err := service.CreateTheme(testCtx(), req)
 
@@ -908,4 +914,41 @@ func (suite *ThemeServiceTestSuite) TestGetThemeListByProject_Errors() {
 	suite.mockStore.On("GetThemeListByProject", testCtx(), "list-fails", 10, 0).Return(nil, errors.New("db"))
 	_, err = suite.service.GetThemeListByProject(testCtx(), "list-fails", 10, 0)
 	suite.Equal(&tidcommon.InternalServerError, err)
+}
+
+func (suite *ThemeServiceTestSuite) TestWritesRefusedWithoutWriteAccess() {
+	tests := []struct {
+		name     string
+		authzErr *tidcommon.ServiceError
+		want     *tidcommon.ServiceError
+	}{
+		{"Denied", nil, &tidcommon.ErrorUnauthorized},
+		{"AuthorizationFailure", &tidcommon.InternalServerError, &tidcommon.InternalServerError},
+	}
+	for _, tt := range tests {
+		suite.Run(tt.name, func() {
+			authz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+			for _, action := range []security.Action{
+				security.ActionCreateDesign, security.ActionUpdateDesign, security.ActionDeleteDesign,
+			} {
+				authz.On("IsActionAllowed", mock.Anything, action,
+					&sysauthz.ActionContext{ResourceType: security.ResourceTypeDesign}).
+					Return(false, tt.authzErr).Once()
+			}
+			service := newThemeMgtService(newThemeMgtStoreInterfaceMock(suite.T()), discardingBus{}, nil, authz)
+
+			_, err := service.CreateTheme(testCtx(), CreateThemeRequestWithID{})
+			suite.Equal(tt.want, err)
+			_, err = service.UpdateTheme(testCtx(), "theme-1", UpdateThemeRequest{})
+			suite.Equal(tt.want, err)
+			suite.Equal(tt.want, service.DeleteTheme(testCtx(), "theme-1"))
+		})
+	}
+}
+
+// allowAllAuthz returns an authorization service that allows every action.
+func allowAllAuthz(t *testing.T) *sysauthzmock.SystemAuthorizationServiceInterfaceMock {
+	authz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
+	authz.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).Return(true, nil).Maybe()
+	return authz
 }

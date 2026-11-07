@@ -16,6 +16,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/observability/event"
 	"github.com/thunder-id/thunderid/internal/system/security"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
@@ -52,8 +53,9 @@ const (
 
 // serverConfigService is the default implementation of ServerConfigService.
 type serverConfigService struct {
-	store    serverConfigStoreInterface
-	handlers map[ConfigName]ServerConfigHandlerInterface
+	authzService sysauthz.SystemAuthorizationServiceInterface
+	store        serverConfigStoreInterface
+	handlers     map[ConfigName]ServerConfigHandlerInterface
 	// observability receives a SERVER_CONFIG_UPDATED event per write. Optional.
 	observability providers.ObservabilityProvider
 	bus           eventbus.EventBusInterface
@@ -66,8 +68,10 @@ type serverConfigService struct {
 // implementation depending on the configured store mode.
 func newServerConfigService(store serverConfigStoreInterface,
 	handlers map[ConfigName]ServerConfigHandlerInterface,
-	observability providers.ObservabilityProvider, bus eventbus.EventBusInterface) ServerConfigService {
+	observability providers.ObservabilityProvider, bus eventbus.EventBusInterface,
+	authzService sysauthz.SystemAuthorizationServiceInterface) ServerConfigService {
 	return &serverConfigService{
+		authzService:  authzService,
 		store:         store,
 		handlers:      handlers,
 		observability: observability,
@@ -165,7 +169,10 @@ func (s *serverConfigService) getConfigLayer(ctx context.Context, name string,
 // bytes to the writable layer. A bad incoming value is a client error; the stored bytes are kept as-is.
 func (s *serverConfigService) SetConfig(ctx context.Context,
 	name ConfigName, value json.RawMessage) *common.ServiceError {
-	svcErr := s.setConfig(ctx, name, value)
+	svcErr := s.checkWriteAccess(ctx, name)
+	if svcErr == nil {
+		svcErr = s.setConfig(ctx, name, value)
+	}
 	s.publishServerConfigEvent(ctx, name, svcErr)
 	return svcErr
 }
@@ -369,4 +376,18 @@ func (s *serverConfigService) handlerFor(ctx context.Context,
 		return nil, &common.InternalServerError
 	}
 	return handler, nil
+}
+
+// checkWriteAccess refuses a caller who may not write a configuration section through the server
+// configuration API or import.
+func (s *serverConfigService) checkWriteAccess(ctx context.Context, name ConfigName) *common.ServiceError {
+	allowed, svcErr := s.authzService.IsActionAllowed(ctx, security.ActionUpdateServerConfig,
+		&sysauthz.ActionContext{ResourceType: security.ResourceTypeServerConfig, ResourceID: string(name)})
+	if svcErr != nil {
+		return &common.InternalServerError
+	}
+	if !allowed {
+		return &common.ErrorUnauthorized
+	}
+	return nil
 }

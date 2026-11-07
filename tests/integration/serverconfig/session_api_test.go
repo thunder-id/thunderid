@@ -156,7 +156,7 @@ func (suite *SessionConfigAPITestSuite) TestPutWrongTopLevelShapeReturns400() {
 }
 
 func (suite *SessionConfigAPITestSuite) TestPutMalformedBodyReturns400() {
-	status, body := suite.put(sessionConfigURL, `{`)
+	status, body := suite.putWithToken(sessionConfigURL, `{`)
 
 	suite.Equal(http.StatusBadRequest, status)
 	suite.Equal("SCF-1004", suite.errorCode(body))
@@ -175,7 +175,7 @@ func (suite *SessionConfigAPITestSuite) TestPutOversizedBodyIsRejected() {
 	// A syntactically valid object whose padding field pushes it past the cap.
 	oversized := `{"idleTimeoutSeconds":1800,"padding":"` + strings.Repeat("a", 1<<20+1024) + `"}`
 
-	status, _ := suite.put(sessionConfigURL, oversized)
+	status, _ := suite.putWithToken(sessionConfigURL, oversized)
 
 	suite.Equal(http.StatusBadRequest, status)
 	suite.Zero(suite.getLayers().Writable.IdleTimeoutSeconds, "a rejected body must not persist")
@@ -204,7 +204,18 @@ func (suite *SessionConfigAPITestSuite) get(url string) (int, []byte) {
 	return suite.send(req)
 }
 
+// put writes the section the URL names through an import with the management API key, the only way a
+// data plane takes server configuration, and returns the status and body the API would answer with.
 func (suite *SessionConfigAPITestSuite) put(url, body string) (int, []byte) {
+	section := strings.TrimPrefix(url, serverConfigURL+"/")
+	status, respBody, err := testutils.PutWritableServerConfigWithStatus(section, []byte(body))
+	suite.Require().NoError(err)
+	return status, respBody
+}
+
+// putWithToken sends a PUT with the suite's token. A body the handler refuses never reaches
+// authorization, so it is answered as on any server.
+func (suite *SessionConfigAPITestSuite) putWithToken(url, body string) (int, []byte) {
 	req, err := http.NewRequest(http.MethodPut, url, bytes.NewReader([]byte(body)))
 	suite.Require().NoError(err)
 	req.Header.Set("Content-Type", "application/json")

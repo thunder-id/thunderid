@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
 	"testing"
 	"time"
 
@@ -140,19 +139,11 @@ func (suite *CORSIntegrationTestSuite) allowedOrigin(origin string) string {
 	return resp.Header.Get("Access-Control-Allow-Origin")
 }
 
-// putCORS sets the cors writable layer to the given allowed-origins array (object-shaped body) using the
-// admin client and requires a 200 response.
+// putCORS sets the cors writable layer to the given allowed-origins array (object-shaped body) through an
+// import with the management API key, the only way a data plane takes it.
 func (suite *CORSIntegrationTestSuite) putCORS(allowedOrigins string) {
-	body := `{"allowedOrigins":` + allowedOrigins + `}`
-	req, err := http.NewRequest(http.MethodPut, corsConfigURL, strings.NewReader(body))
-	suite.Require().NoError(err)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := suite.adminClient.Do(req)
-	suite.Require().NoError(err)
-	defer closeBodyQuietly(suite.T(), resp.Body)
-
-	suite.Require().Equal(http.StatusOK, resp.StatusCode)
+	suite.Require().NoError(testutils.PutWritableServerConfig("cors",
+		[]byte(`{"allowedOrigins":`+allowedOrigins+`}`)))
 }
 
 func closeBodyQuietly(t *testing.T, body io.ReadCloser) {

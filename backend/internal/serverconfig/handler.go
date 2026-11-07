@@ -80,6 +80,9 @@ func handleError(ctx context.Context, w http.ResponseWriter, svcErr *common.Serv
 	statusCode := http.StatusInternalServerError
 	if svcErr.Type == common.ClientErrorType {
 		statusCode = http.StatusBadRequest
+		if svcErr.Code == common.ErrorUnauthorized.Code {
+			statusCode = http.StatusForbidden
+		}
 	}
 
 	errResp := apierror.ErrorResponse{

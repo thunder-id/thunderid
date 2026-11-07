@@ -217,6 +217,8 @@ func handleError(ctx context.Context, w http.ResponseWriter, svcErr *tidcommon.S
 			statusCode = http.StatusNotFound
 		case ErrorTypeConflict.Code, ErrorTypeIDConflict.Code, ErrorTypeChanged.Code:
 			statusCode = http.StatusConflict
+		case tidcommon.ErrorUnauthorized.Code:
+			statusCode = http.StatusForbidden
 		default:
 			statusCode = http.StatusBadRequest
 		}

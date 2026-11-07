@@ -4,12 +4,12 @@
 package design
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
@@ -95,44 +95,14 @@ func (suite *LayoutAPITestSuite) TearDownSuite() {
 	}
 }
 
-// Helper function to create a layout
+// createLayout creates a layout through an import with the management API key, the only way a data plane
+// takes one, and returns it as the API reads it.
 func (suite *LayoutAPITestSuite) createLayout(request CreateLayoutRequest) (*LayoutResponse, error) {
-	payload, err := json.Marshal(request)
+	id, err := testutils.ImportResource("layout", request, false)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal layout request: %w", err)
+		return nil, err
 	}
-
-	req, err := http.NewRequest("POST", testServerURL+layoutBasePath, bytes.NewReader(payload))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := suite.client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to send request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	bodyBytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response body: %w", err)
-	}
-
-	if resp.StatusCode != http.StatusCreated {
-		var errResp ErrorResponse
-		if err := json.Unmarshal(bodyBytes, &errResp); err == nil {
-			return nil, fmt.Errorf("expected status 201, got %d. Code: %s, Message: %s", resp.StatusCode, errResp.Code, errResp.Message.DefaultValue)
-		}
-		return nil, fmt.Errorf("expected status 201, got %d. Response: %s", resp.StatusCode, string(bodyBytes))
-	}
-
-	var layout LayoutResponse
-	if err := json.Unmarshal(bodyBytes, &layout); err != nil {
-		return nil, fmt.Errorf("failed to parse response body: %w. Response: %s", err, string(bodyBytes))
-	}
-
-	return &layout, nil
+	return suite.getLayout(id)
 }
 
 // Helper function to get a layout by ID
@@ -216,69 +186,47 @@ func (suite *LayoutAPITestSuite) listLayouts(limit, offset int) (*LayoutListResp
 	return &listResponse, nil
 }
 
-// Helper function to update a layout
+// updateLayout updates a layout through an import with the management API key and returns it as the API
+// reads it.
 func (suite *LayoutAPITestSuite) updateLayout(id string, request UpdateLayoutRequest) (*LayoutResponse, error) {
-	payload, err := json.Marshal(request)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal layout request: %w", err)
+	document := layoutImportDocument{ID: id, UpdateLayoutRequest: request}
+	if _, err := testutils.ImportResource("layout", document, true); err != nil {
+		return nil, err
 	}
+	return suite.getLayout(id)
+}
 
-	req, err := http.NewRequest("PUT", testServerURL+layoutBasePath+"/"+id, bytes.NewReader(payload))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
+// deleteLayout deletes a layout through an import deletion. Deleting an absent layout succeeds.
+func (suite *LayoutAPITestSuite) deleteLayout(id string) error {
+	return testutils.DeleteImportedResource("layout", id)
+}
+
+// importOutcome imports a raw layout document and returns the outcome, whether it succeeded or not.
+func (suite *LayoutAPITestSuite) importOutcome(document string) testutils.ImportItem {
+	item, err := testutils.ImportResourceOutcome("layout", json.RawMessage(document), true)
+	suite.Require().NoError(err)
+	return item
+}
+
+// sendWithToken sends a request with the suite's token and returns the status and the error code.
+func (suite *LayoutAPITestSuite) sendWithToken(method, target, body string) (int, string) {
+	var reader io.Reader
+	if body != "" {
+		reader = strings.NewReader(body)
 	}
+	req, err := http.NewRequest(method, target, reader)
+	suite.Require().NoError(err)
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := suite.client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to send request: %w", err)
-	}
+	suite.Require().NoError(err)
 	defer resp.Body.Close()
 
 	bodyBytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response body: %w", err)
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		var errResp ErrorResponse
-		if err := json.Unmarshal(bodyBytes, &errResp); err == nil {
-			return nil, fmt.Errorf("expected status 200, got %d. Code: %s, Message: %s", resp.StatusCode, errResp.Code, errResp.Message.DefaultValue)
-		}
-		return nil, fmt.Errorf("expected status 200, got %d. Response: %s", resp.StatusCode, string(bodyBytes))
-	}
-
-	var layout LayoutResponse
-	if err := json.Unmarshal(bodyBytes, &layout); err != nil {
-		return nil, fmt.Errorf("failed to parse response body: %w. Response: %s", err, string(bodyBytes))
-	}
-
-	return &layout, nil
-}
-
-// Helper function to delete a layout
-func (suite *LayoutAPITestSuite) deleteLayout(id string) error {
-	req, err := http.NewRequest("DELETE", testServerURL+layoutBasePath+"/"+id, nil)
-	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
-	}
-
-	resp, err := suite.client.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed to send request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusNotFound {
-		bodyBytes, _ := io.ReadAll(resp.Body)
-		var errResp ErrorResponse
-		if err := json.Unmarshal(bodyBytes, &errResp); err == nil {
-			return fmt.Errorf("expected status 204 or 404, got %d. Code: %s, Message: %s", resp.StatusCode, errResp.Code, errResp.Message.DefaultValue)
-		}
-		return fmt.Errorf("expected status 204 or 404, got %d. Response: %s", resp.StatusCode, string(bodyBytes))
-	}
-
-	return nil
+	suite.Require().NoError(err)
+	var errResp ErrorResponse
+	suite.Require().NoError(json.Unmarshal(bodyBytes, &errResp), "body: %s", bodyBytes)
+	return resp.StatusCode, errResp.Code
 }
 
 // Create Layout - Success
@@ -307,57 +255,43 @@ func (suite *LayoutAPITestSuite) TestCreateLayout_Success() {
 func (suite *LayoutAPITestSuite) TestCreateLayout_ValidationErrors() {
 	testCases := []struct {
 		name        string
-		requestBody string
+		document    string
 		expectedErr string
 	}{
 		{
 			name:        "Missing DisplayName",
-			requestBody: `{"layout": {}}`,
+			document:    `{"layout": {}}`,
 			expectedErr: "LAY-1005",
 		},
 		{
-			name:        "Missing Layout",
-			requestBody: `{"displayName": "Test", "handle": "test-handle"}`,
-			expectedErr: "LAY-1006",
-		},
-		{
-			name:        "Invalid JSON Layout",
-			requestBody: `{"displayName": "Test", "handle": "test-handle", "layout": invalid json}`,
-			expectedErr: "LAY-1001",
-		},
-		{
 			name:        "Array Instead of Object",
-			requestBody: `{"displayName": "Test", "handle": "test-handle", "layout": ["item1", "item2"]}`,
+			document:    `{"displayName": "Test", "handle": "test-handle", "layout": ["item1", "item2"]}`,
 			expectedErr: "LAY-1007",
 		},
 		{
 			name:        "Primitive Instead of Object",
-			requestBody: `{"displayName": "Test", "handle": "test-handle", "layout": "string"}`,
+			document:    `{"displayName": "Test", "handle": "test-handle", "layout": "string"}`,
 			expectedErr: "LAY-1007",
 		},
 	}
 
 	for _, tc := range testCases {
 		suite.Run(tc.name, func() {
-			req, err := http.NewRequest("POST", testServerURL+layoutBasePath, bytes.NewReader([]byte(tc.requestBody)))
-			suite.Require().NoError(err)
-			req.Header.Set("Content-Type", "application/json")
-
-			resp, err := suite.client.Do(req)
-			suite.Require().NoError(err)
-			defer resp.Body.Close()
-
-			suite.Equal(http.StatusBadRequest, resp.StatusCode)
-
-			bodyBytes, err := io.ReadAll(resp.Body)
-			suite.Require().NoError(err)
-
-			var errResp ErrorResponse
-			err = json.Unmarshal(bodyBytes, &errResp)
-			suite.Require().NoError(err)
-			suite.Equal(tc.expectedErr, errResp.Code)
+			item := suite.importOutcome(tc.document)
+			suite.Equal("failed", item.Status)
+			suite.Equal(tc.expectedErr, item.Code)
 		})
 	}
+}
+
+// TestCreateLayout_MalformedBody checks that the handler refuses a body that is not JSON before
+// authorization, so a token is answered as on any server.
+func (suite *LayoutAPITestSuite) TestCreateLayout_MalformedBody() {
+	status, code := suite.sendWithToken(http.MethodPost, testServerURL+layoutBasePath,
+		`{"displayName": "Test", "handle": "test-handle", "layout": invalid json}`)
+
+	suite.Equal(http.StatusBadRequest, status)
+	suite.Equal("LAY-1001", code)
 }
 
 // Get Layout - Success
@@ -549,19 +483,37 @@ func (suite *LayoutAPITestSuite) TestUpdateLayout_Success() {
 	suite.Equal(layout.ID, retrievedLayout.ID)
 }
 
-// Update Layout - Not Found
-func (suite *LayoutAPITestSuite) TestUpdateLayout_NotFound() {
-	updateRequest := UpdateLayoutRequest{
-		Handle:      "test-layout-not-found",
-		DisplayName: "Test Layout",
-		Description: "Test description",
-		Layout:      testLayoutUpdate,
+// TestWritesWithTokenAreForbidden checks that a data plane takes no layout write from a token, whatever
+// its scopes, and that a refused write changes nothing.
+func (suite *LayoutAPITestSuite) TestWritesWithTokenAreForbidden() {
+	before, err := suite.getLayout(sharedLayoutID)
+	suite.Require().NoError(err)
+
+	writes := []struct {
+		method string
+		target string
+		body   string
+	}{
+		{http.MethodPost, testServerURL + layoutBasePath,
+			`{"handle": "token-layout", "displayName": "Token Layout", "layout": {}}`},
+		{http.MethodPut, testServerURL + layoutBasePath + "/" + sharedLayoutID,
+			`{"handle": "shared-test-layout", "displayName": "Renamed", "layout": {}}`},
+		{http.MethodDelete, testServerURL + layoutBasePath + "/" + sharedLayoutID, ""},
+	}
+	for _, write := range writes {
+		status, code := suite.sendWithToken(write.method, write.target, write.body)
+		suite.Equal(http.StatusForbidden, status, "%s %s", write.method, write.target)
+		suite.Equal("SSE-4030", code)
 	}
 
-	layout, err := suite.updateLayout("00000000-0000-0000-0000-000000000000", updateRequest)
-	suite.Error(err)
-	suite.Nil(layout)
-	suite.Contains(err.Error(), "LAY-1003")
+	after, err := suite.getLayout(sharedLayoutID)
+	suite.Require().NoError(err)
+	suite.Equal(before.DisplayName, after.DisplayName)
+	list, err := suite.listLayouts(100, 0)
+	suite.Require().NoError(err)
+	for _, item := range list.Layouts {
+		suite.NotEqual("token-layout", item.Handle)
+	}
 }
 
 // Update Layout - Validation Errors
@@ -578,57 +530,38 @@ func (suite *LayoutAPITestSuite) TestUpdateLayout_ValidationErrors() {
 
 	testCases := []struct {
 		name        string
-		requestBody string
+		document    string
 		expectedErr string
 	}{
 		{
 			name:        "Missing DisplayName",
-			requestBody: `{"layout": {}}`,
+			document:    `{"id": %q, "layout": {}}`,
 			expectedErr: "LAY-1005",
 		},
 		{
-			name:        "Missing Layout",
-			requestBody: `{"displayName": "Test", "handle": "test-layout-validation"}`,
-			expectedErr: "LAY-1006",
-		},
-		{
-			name:        "Invalid JSON Layout",
-			requestBody: `{"displayName": "Test", "handle": "test-layout-validation", "layout": invalid json}`,
-			expectedErr: "LAY-1001",
-		},
-		{
 			name:        "Array Instead of Object",
-			requestBody: `{"displayName": "Test", "handle": "test-layout-validation", "layout": ["item1", "item2"]}`,
+			document:    `{"id": %q, "displayName": "Test", "handle": "test-layout-validation", "layout": ["item1", "item2"]}`,
 			expectedErr: "LAY-1007",
 		},
 		{
 			name:        "Primitive Instead of Object",
-			requestBody: `{"displayName": "Test", "handle": "test-layout-validation", "layout": "string"}`,
+			document:    `{"id": %q, "displayName": "Test", "handle": "test-layout-validation", "layout": "string"}`,
 			expectedErr: "LAY-1007",
 		},
 	}
 
 	for _, tc := range testCases {
 		suite.Run(tc.name, func() {
-			req, err := http.NewRequest("PUT", testServerURL+layoutBasePath+"/"+layout.ID, bytes.NewReader([]byte(tc.requestBody)))
-			suite.Require().NoError(err)
-			req.Header.Set("Content-Type", "application/json")
-
-			resp, err := suite.client.Do(req)
-			suite.Require().NoError(err)
-			defer resp.Body.Close()
-
-			suite.Equal(http.StatusBadRequest, resp.StatusCode)
-
-			bodyBytes, err := io.ReadAll(resp.Body)
-			suite.Require().NoError(err)
-
-			var errResp ErrorResponse
-			err = json.Unmarshal(bodyBytes, &errResp)
-			suite.Require().NoError(err)
-			suite.Equal(tc.expectedErr, errResp.Code)
+			item := suite.importOutcome(fmt.Sprintf(tc.document, layout.ID))
+			suite.Equal("failed", item.Status)
+			suite.Equal(tc.expectedErr, item.Code)
 		})
 	}
+
+	status, code := suite.sendWithToken(http.MethodPut, testServerURL+layoutBasePath+"/"+layout.ID,
+		`{"displayName": "Test", "handle": "test-layout-validation", "layout": invalid json}`)
+	suite.Equal(http.StatusBadRequest, status)
+	suite.Equal("LAY-1001", code)
 }
 
 // Delete Layout - Success

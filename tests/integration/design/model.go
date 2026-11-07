@@ -27,6 +27,12 @@ type UpdateThemeRequest struct {
 	Theme       json.RawMessage `json:"theme"`
 }
 
+// themeImportDocument is the import document that updates the theme it names.
+type themeImportDocument struct {
+	ID string `json:"id"`
+	UpdateThemeRequest
+}
+
 // ThemeResponse represents a theme response.
 type ThemeResponse struct {
 	ID          string          `json:"id"`
@@ -68,6 +74,12 @@ type UpdateLayoutRequest struct {
 	DisplayName string          `json:"displayName"`
 	Description string          `json:"description,omitempty"`
 	Layout      json.RawMessage `json:"layout"`
+}
+
+// layoutImportDocument is the import document that updates the layout it names.
+type layoutImportDocument struct {
+	ID string `json:"id"`
+	UpdateLayoutRequest
 }
 
 // LayoutResponse represents a layout response.
