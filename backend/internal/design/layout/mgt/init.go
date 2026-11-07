@@ -8,11 +8,18 @@ import (
 
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
 )
 
-// Initialize initializes the layout management service and registers its routes.
-func Initialize(mux *http.ServeMux) (LayoutMgtServiceInterface, declarativeresource.ResourceExporter, error) {
+// Initialize initializes the layout management service and registers its routes. bus is required: the
+// service publishes the audit event of every layout it creates, updates or deletes on it.
+func Initialize(mux *http.ServeMux, bus eventbus.EventBusInterface) (LayoutMgtServiceInterface,
+	declarativeresource.ResourceExporter, error) {
+	if bus == nil {
+		return nil, nil, errNilEventBus
+	}
+
 	// Step 1: Initialize store based on configuration
 	layoutMgtStore, err := initializeStore()
 	if err != nil {
@@ -20,7 +27,7 @@ func Initialize(mux *http.ServeMux) (LayoutMgtServiceInterface, declarativeresou
 	}
 
 	// Step 2: Create service with store
-	layoutMgtService := newLayoutMgtService(layoutMgtStore)
+	layoutMgtService := newLayoutMgtService(layoutMgtStore, bus)
 	layoutMgtHandler := newLayoutMgtHandler(layoutMgtService)
 	registerRoutes(mux, layoutMgtHandler)
 

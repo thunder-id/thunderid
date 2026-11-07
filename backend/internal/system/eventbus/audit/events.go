@@ -67,6 +67,18 @@ const (
 	EventGroupMemberRemove = "group.member.remove"
 	// EventServerConfigUpdate names an attempt to change a section of the server configuration.
 	EventServerConfigUpdate = "server_config.update"
+	// EventLayoutCreate names an attempt to create a layout.
+	EventLayoutCreate = "layout.create"
+	// EventLayoutUpdate names an attempt to change a layout.
+	EventLayoutUpdate = "layout.update"
+	// EventLayoutDelete names an attempt to delete a layout.
+	EventLayoutDelete = "layout.delete"
+	// EventThemeCreate names an attempt to create a theme.
+	EventThemeCreate = "theme.create"
+	// EventThemeUpdate names an attempt to change a theme.
+	EventThemeUpdate = "theme.update"
+	// EventThemeDelete names an attempt to delete a theme.
+	EventThemeDelete = "theme.delete"
 )
 
 const (
@@ -89,6 +101,10 @@ const (
 	// TargetTypeServerConfig is the target type of an event about a section of the server configuration,
 	// identified by the section name.
 	TargetTypeServerConfig = "server_config"
+	// TargetTypeLayout is the target type of an event about a layout.
+	TargetTypeLayout = "layout"
+	// TargetTypeTheme is the target type of an event about a theme.
+	TargetTypeTheme = "theme"
 )
 
 // principalTargetTypes maps the type a role assignment or a group membership names its principal by to
@@ -141,4 +157,11 @@ var auditedEvents = map[string][]string{
 	EventGroupMemberRemove: nil,
 
 	EventServerConfigUpdate: nil,
+	EventLayoutCreate:       nil,
+	EventLayoutUpdate:       nil,
+	EventLayoutDelete:       nil,
+
+	EventThemeCreate: nil,
+	EventThemeUpdate: nil,
+	EventThemeDelete: nil,
 }

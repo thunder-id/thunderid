@@ -43,7 +43,7 @@ func (suite *ThemeServiceTestSuite) SetupTest() {
 	}
 
 	suite.mockStore = newThemeMgtStoreInterfaceMock(suite.T())
-	suite.service = newThemeMgtService(suite.mockStore)
+	suite.service = newThemeMgtService(suite.mockStore, discardingBus{})
 }
 
 // Test GetThemeList - Success
