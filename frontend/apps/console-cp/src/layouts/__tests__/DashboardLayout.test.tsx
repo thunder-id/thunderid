@@ -26,6 +26,7 @@ interface MockUseGetApplicationsResult {
 const mockUseGetApplications = vi.fn<(params: unknown) => MockUseGetApplicationsResult>();
 let mockDiscovery: {wellKnown?: {end_session_endpoint?: string}} | undefined;
 let mockIsTrustedIssuerGenericOidc = false;
+let mockSdkConfig: Record<string, unknown> | undefined;
 interface MockProjectSelection {
   projects: {id: string; displayName: string}[];
   selectedProject?: {id: string; displayName: string};
@@ -115,6 +116,7 @@ vi.mock('@thunderid/contexts', async (importOriginal) => {
           favicon: {light: 'assets/images/favicon.ico', dark: 'assets/images/favicon-inverted.ico'},
         },
         client: {client_id: 'CONSOLE'},
+        sdk: mockSdkConfig,
       },
       isTrustedIssuerGenericOidc: () => mockIsTrustedIssuerGenericOidc,
       getTrustedIssuerClientId: () => 'test-client-id',
@@ -479,6 +481,7 @@ describe('DashboardLayout', () => {
 
     beforeEach(() => {
       mockIsTrustedIssuerGenericOidc = true;
+      mockSdkConfig = undefined;
       originalLocation = window.location;
       Object.defineProperty(window, 'location', {
         value: {...originalLocation, href: ''},
@@ -548,6 +551,25 @@ describe('DashboardLayout', () => {
       expect(mockLoggerError).toHaveBeenCalledWith(expect.stringContaining('Failed to clear local session'), {
         error: sessionError,
       });
+    });
+
+    it('signs out through the backend when the SDK runs behind a BFF', async () => {
+      mockSdkConfig = {endpoints: {backend: {signOut: '/_auth/iam/logout'}}};
+      mockDiscovery = {wellKnown: {end_session_endpoint: 'https://console.example.com/oauth2/logout'}};
+      mockSignOut.mockResolvedValue(undefined);
+      const user = userEvent.setup();
+
+      render(<DashboardLayout />);
+
+      const userMenuTrigger = screen.getByLabelText('Account');
+      await user.click(userMenuTrigger);
+
+      const signOutButton = await screen.findByText('common:actions.signOut');
+      await user.click(signOutButton);
+
+      expect(mockSignOut).toHaveBeenCalled();
+      expect(mockClearSession).not.toHaveBeenCalled();
+      expect(window.location.href).toBe('');
     });
   });
 });
