@@ -19,6 +19,17 @@ type ProjectStatus struct {
 	Project ProjectState `json:"project"`
 	Shared  SharedState  `json:"shared"`
 	Needed  NeededState  `json:"needed"`
+	// AutoSync is whether a capture deploys the project's changes to its first gateway, and how the
+	// last one went.
+	AutoSync ProjectAutoSync `json:"autoSync"`
+}
+
+// ProjectAutoSync is a project's auto sync: whether it is on, whether that is the deployment's default
+// rather than the project's own setting, and the last one run on this node.
+type ProjectAutoSync struct {
+	Enabled   bool         `json:"enabled"`
+	Inherited bool         `json:"inherited"`
+	LastRun   *AutoSyncRun `json:"lastRun,omitempty"`
 }
 
 // ProjectState is the project's own part of a gateway.
@@ -130,6 +141,7 @@ func (s *versionService) ProjectStatus(ctx context.Context, gatewayID, projectID
 		s.names.fill(ctx, status.Project.DeployedBy)
 		status.Project.DeployedBy = shown(status.Project.DeployedBy)
 	}
+	status.AutoSync = s.projectAutoSync(ctx, projectID)
 	rollback, ok, svcErr := s.projectRollbackOf(ctx, gatewayID, projectID)
 	if svcErr != nil {
 		return nil, svcErr

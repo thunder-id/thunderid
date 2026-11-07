@@ -1712,6 +1712,8 @@ var defaultMessages = map[string]string{
 	"error.scim.unsupported_operation_description": "This SCIM operation is not supported",
 	"error.scim.user_not_found": "User not found",
 	"error.scim.user_not_found_description": "The user with the specified ID does not exist",
+	"error.serverconfigservice.config_write_conflict": "The server configuration changed while it was updated",
+	"error.serverconfigservice.config_write_conflict_description": "Other writes kept changing the section. Try again.",
 	"error.serverconfigservice.invalid_config_value": "Invalid server configuration value",
 	"error.serverconfigservice.invalid_config_value_description": "The provided server configuration value is invalid",
 	"error.serverconfigservice.invalid_request_format": "Invalid request format",

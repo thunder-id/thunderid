@@ -314,6 +314,15 @@ versions its own resources there were deployed from, when they were last written
 it can be rolled back, and how many of its own, needed and shared changes a deploy scoped to it would
 send. With `from=<gateway id>` it compares against what promoting that gateway would send.
 
+Each project can also be synced on its own after every capture. Set `projects` in the `gateway` server
+configuration section, by project id, with `autoSync` and the `firstGateway` its pipeline starts
+at. Set one project's entry with `PUT /projects/{projectId}/auto-sync`, which keeps every
+other project's entry even when two are set at once, and remove it with `DELETE` on the same path. A capture then deploys, for each project whose `autoSync` is on
+(or inherits `autoApply`), the changes it made to the project's own resources, what they need that the
+gateway lacks, and every shared change it made. A project with `autoSync` off keeps its changes pending
+for a deliberate deploy. `autoSync` in the project's status says whether it is on and how the last sync
+went.
+
 A promotion can carry only part of a version, so one gateway can hold one project's resources from one
 version and another project's from another. To roll back one project, send `"project": "<id>"` in a
 revert's body. Only that project's own resources go back to what the gateway held before the last

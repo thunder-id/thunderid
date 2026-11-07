@@ -74,6 +74,36 @@ func (h *versionHandler) handleGetApplied(w http.ResponseWriter, r *http.Request
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, applied)
 }
 
+// handleSetProjectAutoSync changes one project's auto sync entry, answering the entry as written, or no
+// content when the change removed it.
+func (h *versionHandler) handleSetProjectAutoSync(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	var req ProjectAutoSyncRequest
+	if !decodeBody(w, r, &req) {
+		return
+	}
+	entry, svcErr := h.service.SetProjectAutoSync(ctx, r.PathValue("projectId"), req)
+	if svcErr != nil {
+		handleError(ctx, w, svcErr)
+		return
+	}
+	if entry == nil {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, entry)
+}
+
+// handleDeleteProjectAutoSync removes one project's auto sync entry.
+func (h *versionHandler) handleDeleteProjectAutoSync(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	if svcErr := h.service.DeleteProjectAutoSync(ctx, r.PathValue("projectId")); svcErr != nil {
+		handleError(ctx, w, svcErr)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // handleProjectStatus reports where a project stands on a gateway.
 func (h *versionHandler) handleProjectStatus(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()

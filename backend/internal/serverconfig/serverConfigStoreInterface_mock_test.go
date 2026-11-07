@@ -6,6 +6,7 @@ package serverconfig
 
 import (
 	"context"
+	"encoding/json"
 
 	mock "github.com/stretchr/testify/mock"
 )
@@ -108,6 +109,78 @@ func (_c *serverConfigStoreInterfaceMock_GetServerConfig_Call) Return(storeLayer
 }
 
 func (_c *serverConfigStoreInterfaceMock_GetServerConfig_Call) RunAndReturn(run func(ctx context.Context, name ConfigName) (storeLayers, error)) *serverConfigStoreInterfaceMock_GetServerConfig_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ReplaceServerConfigIf provides a mock function for the type serverConfigStoreInterfaceMock
+func (_mock *serverConfigStoreInterfaceMock) ReplaceServerConfigIf(ctx context.Context, cfg ServerConfig, expected json.RawMessage) (bool, error) {
+	ret := _mock.Called(ctx, cfg, expected)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ReplaceServerConfigIf")
+	}
+
+	var r0 bool
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, ServerConfig, json.RawMessage) (bool, error)); ok {
+		return returnFunc(ctx, cfg, expected)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, ServerConfig, json.RawMessage) bool); ok {
+		r0 = returnFunc(ctx, cfg, expected)
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, ServerConfig, json.RawMessage) error); ok {
+		r1 = returnFunc(ctx, cfg, expected)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// serverConfigStoreInterfaceMock_ReplaceServerConfigIf_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ReplaceServerConfigIf'
+type serverConfigStoreInterfaceMock_ReplaceServerConfigIf_Call struct {
+	*mock.Call
+}
+
+// ReplaceServerConfigIf is a helper method to define mock.On call
+//   - ctx context.Context
+//   - cfg ServerConfig
+//   - expected json.RawMessage
+func (_e *serverConfigStoreInterfaceMock_Expecter) ReplaceServerConfigIf(ctx any, cfg any, expected any) *serverConfigStoreInterfaceMock_ReplaceServerConfigIf_Call {
+	return &serverConfigStoreInterfaceMock_ReplaceServerConfigIf_Call{Call: _e.mock.On("ReplaceServerConfigIf", ctx, cfg, expected)}
+}
+
+func (_c *serverConfigStoreInterfaceMock_ReplaceServerConfigIf_Call) Run(run func(ctx context.Context, cfg ServerConfig, expected json.RawMessage)) *serverConfigStoreInterfaceMock_ReplaceServerConfigIf_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 ServerConfig
+		if args[1] != nil {
+			arg1 = args[1].(ServerConfig)
+		}
+		var arg2 json.RawMessage
+		if args[2] != nil {
+			arg2 = args[2].(json.RawMessage)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *serverConfigStoreInterfaceMock_ReplaceServerConfigIf_Call) Return(b bool, err error) *serverConfigStoreInterfaceMock_ReplaceServerConfigIf_Call {
+	_c.Call.Return(b, err)
+	return _c
+}
+
+func (_c *serverConfigStoreInterfaceMock_ReplaceServerConfigIf_Call) RunAndReturn(run func(ctx context.Context, cfg ServerConfig, expected json.RawMessage) (bool, error)) *serverConfigStoreInterfaceMock_ReplaceServerConfigIf_Call {
 	_c.Call.Return(run)
 	return _c
 }

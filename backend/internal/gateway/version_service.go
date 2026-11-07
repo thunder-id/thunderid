@@ -15,6 +15,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/thunder-id/thunderid/internal/serverconfig"
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
@@ -68,6 +69,12 @@ type VersionServiceInterface interface {
 	// Forget drops what a removed gateway held, so a gateway registered later under the same id does
 	// not inherit it.
 	Forget(ctx context.Context, gatewayID string)
+	// SetProjectAutoSync changes one project's auto sync entry in the gateway section, and
+	// DeleteProjectAutoSync removes it, each without losing another project's entry written at the same
+	// moment.
+	SetProjectAutoSync(ctx context.Context, projectID string, req ProjectAutoSyncRequest) (*ProjectSyncSetting,
+		*tidcommon.ServiceError)
+	DeleteProjectAutoSync(ctx context.Context, projectID string) *tidcommon.ServiceError
 	// GetMaster reports what a gateway holds, resource by resource, as the gateway last accepted each.
 	GetMaster(ctx context.Context, gatewayID string) (*Master, *tidcommon.ServiceError)
 	// ListMasters reports a gateway's masters, newest first, without their entries.
@@ -90,7 +97,11 @@ type versionService struct {
 	autoApply autoApplySetting
 	// pipeline is the stages a version moves through.
 	pipeline pipeline
-	logger   *log.Logger
+	// syncRuns is each project's last auto sync.
+	syncRuns *syncRuns
+	// syncSettings writes each project's entry of the gateway section; a plane without one keeps none.
+	syncSettings serverconfig.ServerConfigService
+	logger       *log.Logger
 }
 
 func newVersionService(gateways storeInterface, versions versionStoreInterface,
@@ -105,6 +116,7 @@ func newVersionService(gateways storeInterface, versions versionStoreInterface,
 		names:        names,
 		pipeline:     p,
 		projects:     noProjects{},
+		syncRuns:     &syncRuns{runs: map[string]AutoSyncRun{}},
 		logger:       log.GetLogger().With(log.String(log.LoggerKeyComponentName, "GatewayVersionService")),
 	}
 }

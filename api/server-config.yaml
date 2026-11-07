@@ -237,12 +237,34 @@ components:
         configuration decides. A declarative `gateway` resource, when present, makes the section
         read-only, so a `PUT` is rejected with `SCF-1003`.
 
+        `projects` sets, by project id, how each project is synced after a capture. While it holds
+        any entry, each project is synced on its own: a project whose `autoSync` is on (or, unset,
+        inherits `autoApply`) gets the changes the capture made to its own resources, what they need
+        that the gateway lacks, and every shared change the capture made, deployed to its
+        `firstGateway` (unset, the first stage of the pipeline). Shared changes ride with any project's
+        sync, except a change to what only one project's resources need, which goes with that
+        project's sync alone. Without entries, `autoApply` deploys the whole version as before. A `PUT` replaces the
+        whole section; to change one project's entry without losing another written at the same
+        moment, use `PUT /projects/{projectId}/auto-sync` instead.
+
         The section stays on the control plane: it is not exported, captured into a configuration
         version or imported, so a gateway never receives it.
       additionalProperties: false
       properties:
         autoApply:
           type: boolean
+        projects:
+          type: object
+          additionalProperties:
+            type: object
+            additionalProperties: false
+            properties:
+              autoSync:
+                type: boolean
+                description: Deploys the project's changes after a capture. Unset, `autoApply` decides.
+              firstGateway:
+                type: string
+                description: The id of the gateway the project's pipeline starts at.
 
     AccountAccessConfig:
       type: object

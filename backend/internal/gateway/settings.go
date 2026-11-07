@@ -22,19 +22,36 @@ var errDeclarativeSettingsLocked = errors.New("gateway is set declaratively and 
 // runtime without a restart.
 type settingsValue struct {
 	// AutoApply makes a change captured on this control plane deploy to the first gateway of the
-	// pipeline. Unset, gateway.auto_apply decides.
+	// pipeline. Unset, gateway.auto_apply decides. With projects set, it is the default each project's
+	// auto sync inherits.
 	AutoApply *bool `json:"autoApply,omitempty"`
+	// Projects sets, by project id, how each project is synced after a capture. Set, each project is
+	// synced on its own: its own changes and the shared ones go to its first gateway.
+	Projects map[string]ProjectSyncSetting `json:"projects,omitempty"`
+}
+
+// ProjectSyncSetting is how one project is synced after a capture.
+type ProjectSyncSetting struct {
+	// AutoSync deploys the project's changes to its first gateway after a capture. Unset, AutoApply
+	// decides.
+	AutoSync *bool `json:"autoSync,omitempty"`
+	// FirstGateway is the gateway the project's pipeline starts at, by id. Unset, the first stage of the
+	// configured pipeline.
+	FirstGateway string `json:"firstGateway,omitempty"`
 }
 
 // isEmpty reports whether the value sets nothing.
 func (v settingsValue) isEmpty() bool {
-	return v.AutoApply == nil
+	return v.AutoApply == nil && len(v.Projects) == 0
 }
 
 // over lays v over base, field by field.
 func (v settingsValue) over(base settingsValue) settingsValue {
 	if v.AutoApply != nil {
 		base.AutoApply = v.AutoApply
+	}
+	if v.Projects != nil {
+		base.Projects = v.Projects
 	}
 	return base
 }
@@ -90,9 +107,13 @@ func (h settingsHandler) Merge(readOnly, writable any) any {
 	return wr.over(h.base)
 }
 
-// autoApplySetting reports whether a captured change deploys to the first gateway.
+// autoApplySetting reports whether a captured change deploys to the first gateway, and how each
+// project is synced.
 type autoApplySetting interface {
 	enabled(ctx context.Context) bool
+	// projectSettings is each project's sync setting, by project id; none while projects are not synced
+	// on their own.
+	projectSettings(ctx context.Context) map[string]ProjectSyncSetting
 }
 
 // autoApplySource reads the gateway section on every capture rather than once at startup. A node that
@@ -116,18 +137,28 @@ func newAutoApplySource(reader serverconfig.ServerConfigService) autoApplySource
 }
 
 func (s autoApplySource) enabled(ctx context.Context) bool {
-	if s.reader == nil {
+	section := s.section(ctx)
+	if section.AutoApply == nil {
 		return s.base
+	}
+	return *section.AutoApply
+}
+
+func (s autoApplySource) projectSettings(ctx context.Context) map[string]ProjectSyncSetting {
+	return s.section(ctx).Projects
+}
+
+// section reads the gateway section, or an empty one when there is no reader or it cannot be read.
+func (s autoApplySource) section(ctx context.Context) settingsValue {
+	if s.reader == nil {
+		return settingsValue{}
 	}
 	value, svcErr := s.reader.GetMergedConfig(ctx, string(serverconfig.ConfigNameGateway))
 	if svcErr != nil {
 		s.logger.Warn(ctx, "Failed to read the gateway server config; using gateway.auto_apply",
 			log.String("errorCode", svcErr.Code))
-		return s.base
+		return settingsValue{}
 	}
-	section, ok := value.(settingsValue)
-	if !ok || section.AutoApply == nil {
-		return s.base
-	}
-	return *section.AutoApply
+	section, _ := value.(settingsValue)
+	return section
 }

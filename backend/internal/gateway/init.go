@@ -69,6 +69,7 @@ func Initialize(mux *http.ServeMux, mcpServer *mcp.Server, exporter export.Expor
 	versions := newVersionService(gatewayStore, newVersionStore(), exporter, newGatewayClient(),
 		declarativeresource.SecretFieldsOf(exporters), newActorNames(), deployPipeline)
 	versions.autoApply = newAutoApplySource(settings)
+	versions.syncSettings = settings
 	if projects != nil {
 		versions.projects = projects
 	}
@@ -179,6 +180,17 @@ func registerVersionRoutes(mux *http.ServeMux, h *versionHandler) {
 	mux.HandleFunc(middleware.WithCORS("OPTIONS /gateways/{id}/apply", noContent, writeOpts))
 	mux.HandleFunc(middleware.WithCORS("POST /gateways/{id}/revert", h.handleRevert, writeOpts))
 	mux.HandleFunc(middleware.WithCORS("OPTIONS /gateways/{id}/revert", noContent, writeOpts))
+	syncOpts := middleware.CORSOptions{
+		AllowedMethods:   []string{"PUT", "DELETE"},
+		AllowedHeaders:   middleware.DefaultAllowedHeaders,
+		AllowCredentials: true,
+		MaxAge:           600,
+	}
+	mux.HandleFunc(middleware.WithCORS("PUT /projects/{projectId}/auto-sync", h.handleSetProjectAutoSync,
+		syncOpts))
+	mux.HandleFunc(middleware.WithCORS("DELETE /projects/{projectId}/auto-sync",
+		h.handleDeleteProjectAutoSync, syncOpts))
+	mux.HandleFunc(middleware.WithCORS("OPTIONS /projects/{projectId}/auto-sync", noContent, syncOpts))
 }
 
 // registerAppliedConfigurationRoutes serves the configuration a gateway runs.

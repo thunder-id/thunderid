@@ -6,7 +6,9 @@ package serverconfig
 import (
 	"context"
 	"encoding/json"
+	"math/rand/v2"
 	"sync"
+	"time"
 
 	syscontext "github.com/thunder-id/thunderid/internal/system/context"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -26,7 +28,25 @@ type ServerConfigService interface {
 	GetWritableConfig(ctx context.Context, name string) (any, *common.ServiceError)
 	GetMergedConfig(ctx context.Context, name string) (any, *common.ServiceError)
 	SetConfig(ctx context.Context, name ConfigName, value json.RawMessage) *common.ServiceError
+	// UpdateConfig changes a section's writable layer from what it holds now, through updater, and
+	// writes it only while no other write changed it since it was read, on any node, trying again a few
+	// times when one did. Two updates that change different parts of a section both survive.
+	UpdateConfig(ctx context.Context, name ConfigName, updater ConfigUpdater) *common.ServiceError
 }
+
+// ConfigUpdater works out a section's next writable layer from the one it holds, decoded as its handler
+// decodes it. An error refuses the update as an invalid value.
+type ConfigUpdater interface {
+	Update(current any) (any, error)
+}
+
+// maxConfigUpdateAttempts bounds how many times an update reads the section again after another write
+// changed it, and configUpdateBackoff is how long it waits first, longer each time, so two nodes
+// updating at once do not keep meeting.
+const (
+	maxConfigUpdateAttempts = 10
+	configUpdateBackoff     = 5 * time.Millisecond
+)
 
 // serverConfigService is the default implementation of ServerConfigService.
 type serverConfigService struct {
@@ -177,6 +197,69 @@ func (s *serverConfigService) SetConfig(ctx context.Context,
 		return &common.InternalServerError
 	}
 	return nil
+}
+
+// UpdateConfig changes a section's writable layer from the one it holds, with a conditional write that
+// loses to any write made since the read, and reads and tries again when it does.
+func (s *serverConfigService) UpdateConfig(ctx context.Context, name ConfigName,
+	updater ConfigUpdater) (svcErr *common.ServiceError) {
+	handler, svcErr := s.handlerFor(ctx, name)
+	if svcErr != nil {
+		return svcErr
+	}
+	defer func() { s.publishConfigWrite(ctx, name, svcErr) }()
+
+	s.configMu.Lock()
+	defer s.configMu.Unlock()
+	for attempt := 0; attempt < maxConfigUpdateAttempts; attempt++ {
+		rawLayers, err := s.store.GetServerConfig(ctx, name)
+		if err != nil {
+			s.logger.Error(ctx, "Failed to get current server config", log.Error(err))
+			return &common.InternalServerError
+		}
+		readOnly, writable, svcErr := s.decodeLayers(ctx, name, handler, rawLayers)
+		if svcErr != nil {
+			return svcErr
+		}
+		next, err := updater.Update(writable)
+		if err != nil {
+			s.logger.Debug(ctx, "Config update refused", log.String("name", string(name)), log.Error(err))
+			return &ErrorInvalidConfigValue
+		}
+		value, err := json.Marshal(next)
+		if err != nil {
+			return &common.InternalServerError
+		}
+		incoming, err := handler.Decode(value)
+		if err != nil {
+			return &ErrorInvalidConfigValue
+		}
+		if err := handler.Validate(ctx, incoming, readOnly, writable); err != nil {
+			s.logger.Debug(ctx, "Config value validation failed", log.String("name", string(name)), log.Error(err))
+			return &ErrorInvalidConfigValue
+		}
+		written, err := s.store.ReplaceServerConfigIf(ctx, ServerConfig{Name: name, Value: value}, rawLayers.Writable)
+		if err != nil {
+			s.logger.Error(ctx, "Failed to write server config", log.Error(err))
+			return &common.InternalServerError
+		}
+		if written {
+			return nil
+		}
+		s.logger.Debug(ctx, "Server config changed while it was updated; reading it again",
+			log.String("name", string(name)), log.Int("attempt", attempt+1))
+		// #nosec G404 -- spreads retries apart; nothing depends on it being unpredictable.
+		jitter := time.Duration(rand.Int64N(int64(configUpdateBackoff)))
+		// The wait ends with the request, so a caller that gave up releases the section's lock at once.
+		wait := time.NewTimer(time.Duration(attempt+1)*configUpdateBackoff + jitter)
+		select {
+		case <-ctx.Done():
+			wait.Stop()
+			return &ErrorConfigWriteConflict
+		case <-wait.C:
+		}
+	}
+	return &ErrorConfigWriteConflict
 }
 
 // publishConfigWrite records who wrote which section and the outcome. It never records the value,
