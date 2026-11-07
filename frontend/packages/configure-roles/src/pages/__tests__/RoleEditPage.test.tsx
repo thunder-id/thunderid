@@ -6,6 +6,7 @@ import type {ResourcePermissions} from '@thunderid/configure-resource-servers';
 import {fireEvent, render, screen, waitFor} from '@thunderid/test-utils';
 import type {NavigateFunction} from 'react-router';
 import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
+import EditOrganizationAccessSettings from '../../components/edit-role/organization-access/EditOrganizationAccessSettings';
 import type {UpdateRoleRequest} from '../../models/requests';
 import type {Role} from '../../models/role';
 import RoleEditPage from '../RoleEditPage';
@@ -38,6 +39,25 @@ vi.mock('../../components/edit-role/advanced-settings/EditAdvancedSettings', () 
       </button>
     </div>
   ),
+}));
+
+const mockOrganizationAccess = vi.hoisted(() => ({
+  hasChanges: false,
+  save: vi.fn(),
+  reset: vi.fn(),
+  isSaving: false,
+  saveError: null as Error | null,
+}));
+
+const mockUseOrganizationAccess = vi.hoisted(() => vi.fn());
+
+vi.mock('@thunderid/configure-resource-sharing', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@thunderid/configure-resource-sharing')>()),
+  useOrganizationAccess: mockUseOrganizationAccess,
+}));
+
+vi.mock('../../components/edit-role/organization-access/EditOrganizationAccessSettings', () => ({
+  default: vi.fn(() => <div data-testid="organization-access-settings" />),
 }));
 
 vi.mock('../../components/edit-role/assignments-settings/EditAssignmentsSettings', () => ({
@@ -164,6 +184,12 @@ describe('RoleEditPage', () => {
     vi.mocked(useParams).mockReturnValue({roleId: 'role-1'});
     vi.mocked(useNavigate).mockReturnValue(mockNavigate as unknown as NavigateFunction);
     vi.mocked(useIsMutating).mockReturnValue(0);
+    mockOrganizationAccess.hasChanges = false;
+    mockOrganizationAccess.isSaving = false;
+    mockOrganizationAccess.saveError = null;
+    mockOrganizationAccess.save.mockReset().mockResolvedValue(undefined);
+    mockOrganizationAccess.reset.mockReset();
+    mockUseOrganizationAccess.mockReset().mockReturnValue(mockOrganizationAccess);
 
     vi.mocked(useGetRole).mockReturnValue({
       data: mockRole,
@@ -240,11 +266,11 @@ describe('RoleEditPage', () => {
       expect(screen.getByText('Administrator role')).toBeInTheDocument();
     });
 
-    it('should render four tabs', () => {
+    it('should render five tabs', () => {
       render(<RoleEditPage />);
 
       const tabs = screen.getAllByRole('tab');
-      expect(tabs).toHaveLength(4);
+      expect(tabs).toHaveLength(5);
     });
 
     it('should show General tab panel by default', () => {
@@ -260,7 +286,13 @@ describe('RoleEditPage', () => {
       render(<RoleEditPage />);
 
       const tabs = await screen.findAllByRole('tab');
-      expect(tabs.map((tab) => tab.textContent)).toEqual(['General', 'Permissions', 'Assignments', 'Advanced']);
+      expect(tabs.map((tab) => tab.textContent)).toEqual([
+        'General',
+        'Permissions',
+        'Assignments',
+        'Organization Access',
+        'Advanced',
+      ]);
 
       await user.click(tabs[1]);
       expect(screen.getByTestId('permissions-settings')).toBeInTheDocument();
@@ -526,6 +558,106 @@ describe('RoleEditPage', () => {
 
       // Catalog selected should return to role.permissions
       expect(screen.getByTestId('permissions-selected')).toHaveTextContent(JSON.stringify(mockRole.permissions));
+    });
+  });
+
+  describe('Organization Access', () => {
+    it('loads the sharing policies only once the tab is opened', async () => {
+      const user = userEvent.setup();
+      render(<RoleEditPage />);
+
+      expect(mockUseOrganizationAccess).toHaveBeenLastCalledWith(
+        expect.objectContaining({resourcePath: 'roles/role-1', enabled: false}),
+      );
+
+      await user.click(screen.getByRole('tab', {name: 'Organization Access'}));
+      await user.click(screen.getByRole('tab', {name: 'General'}));
+
+      expect(mockUseOrganizationAccess).toHaveBeenLastCalledWith(expect.objectContaining({enabled: true}));
+    });
+
+    it('leaves the access draft unsaved when the role update is refused', async () => {
+      const user = userEvent.setup();
+      const mutateAsync = vi.fn().mockRejectedValue(new Error('Request failed'));
+      vi.mocked(useUpdateRole).mockReturnValue({
+        ...vi.mocked(useUpdateRole)(),
+        mutateAsync,
+      } as unknown as ReturnType<typeof useUpdateRole>);
+      mockOrganizationAccess.hasChanges = true;
+      render(<RoleEditPage />);
+
+      await user.click(screen.getByRole('tab', {name: 'Permissions'}));
+      fireEvent.click(screen.getByTestId('permissions-change'));
+      await user.click(screen.getByRole('button', {name: 'Save changes'}));
+
+      await waitFor(() => expect(mutateAsync).toHaveBeenCalled());
+      expect(mockOrganizationAccess.save).not.toHaveBeenCalled();
+      expect(mockOrganizationAccess.reset).not.toHaveBeenCalled();
+    });
+
+    it('hands the tab the role and its access state', async () => {
+      const user = userEvent.setup();
+      render(<RoleEditPage />);
+
+      await user.click(screen.getByRole('tab', {name: 'Organization Access'}));
+
+      expect(screen.getByTestId('organization-access-settings')).toBeInTheDocument();
+      expect(vi.mocked(EditOrganizationAccessSettings).mock.calls.at(-1)?.[0]).toEqual(
+        expect.objectContaining({role: mockRole, access: mockOrganizationAccess}),
+      );
+    });
+
+    it('saves only the access when only the access changed', async () => {
+      const user = userEvent.setup();
+      const mutateAsync = vi.fn();
+      vi.mocked(useUpdateRole).mockReturnValue({
+        ...vi.mocked(useUpdateRole)(),
+        mutateAsync,
+      } as unknown as ReturnType<typeof useUpdateRole>);
+      mockOrganizationAccess.hasChanges = true;
+      render(<RoleEditPage />);
+
+      await user.click(screen.getByRole('button', {name: 'Save changes'}));
+
+      await waitFor(() => expect(mockOrganizationAccess.save).toHaveBeenCalled());
+      expect(mutateAsync).not.toHaveBeenCalled();
+    });
+
+    it('saves the role before its access', async () => {
+      const user = userEvent.setup();
+      const calls: string[] = [];
+      const mutateAsync = vi.fn(() => {
+        calls.push('role');
+        return Promise.resolve();
+      });
+      vi.mocked(useUpdateRole).mockReturnValue({
+        ...vi.mocked(useUpdateRole)(),
+        mutateAsync,
+      } as unknown as ReturnType<typeof useUpdateRole>);
+      mockOrganizationAccess.hasChanges = true;
+      mockOrganizationAccess.save.mockImplementation(() => {
+        calls.push('access');
+        return Promise.resolve();
+      });
+      render(<RoleEditPage />);
+
+      await user.click(screen.getByRole('tab', {name: 'Permissions'}));
+      fireEvent.click(screen.getByTestId('permissions-change'));
+      await user.click(screen.getByRole('button', {name: 'Save changes'}));
+
+      await waitFor(() => expect(calls).toEqual(['role', 'access']));
+    });
+
+    it('shows a refused access save in the save bar and resets the access with the page', async () => {
+      const user = userEvent.setup();
+      mockOrganizationAccess.hasChanges = true;
+      mockOrganizationAccess.saveError = new Error('Request failed');
+      render(<RoleEditPage />);
+
+      expect(screen.getByRole('alert')).toHaveTextContent('Failed to update organization access. Please try again.');
+
+      await user.click(screen.getByRole('button', {name: 'Reset'}));
+      expect(mockOrganizationAccess.reset).toHaveBeenCalled();
     });
   });
 });

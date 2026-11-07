@@ -64,6 +64,7 @@ function accessWith(
     savedPolicy: undefined,
     draft: full,
     offers: {everyUnit: false, everyTree: false},
+    assignmentsOff: {everyUnit: false, allChildUnits: false, everyTree: false, ouIds: []},
     isDeclared: false,
     hasChanges: false,
     updateDraft: vi.fn(),
@@ -77,6 +78,7 @@ function accessWith(
           : [],
         losesEveryUnit: false,
         losesEveryTree: false,
+        losesAssignmentsOff: false,
       }),
     ),
     applySwitch: vi.fn(),
@@ -237,6 +239,53 @@ describe('OrganizationAccessSettings', () => {
 
     fireEvent.click(within(dialog).getByRole('button', {name: 'Switch and clear'}));
     expect(access.applySwitch).toHaveBeenCalled();
+  });
+
+  it('notes where assignments are turned off, without a way to change it', () => {
+    renderSettings(
+      accessWith(
+        {
+          childUnitsAccess: 'selected',
+          childUnits: [
+            {ouId: 'retail', reach: 'unit'},
+            {ouId: 'trials', reach: 'subtree'},
+          ],
+          otherTreesAccess: 'every',
+        },
+        {
+          offers: {everyUnit: false, everyTree: true},
+          assignmentsOff: {everyUnit: false, allChildUnits: false, everyTree: true, ouIds: ['retail']},
+        },
+      ),
+    );
+
+    expect(screen.getAllByText('Assignments are turned off for this organization unit.')).toHaveLength(1);
+    expect(screen.getByText('Assignments are turned off for these organization units.')).toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', {name: /assign/i})).not.toBeInTheDocument();
+    expect(screen.queryByRole('switch')).not.toBeInTheDocument();
+  });
+
+  it('confirms a switch that only drops a rule turning assignments off', () => {
+    const access = accessWith({childUnitsAccess: 'all'});
+    vi.mocked(access.previewSwitch).mockImplementation((field, to) => ({
+      field,
+      to,
+      next: {...access.draft, [field]: to},
+      cleared: [],
+      losesEveryUnit: false,
+      losesEveryTree: false,
+      losesAssignmentsOff: true,
+    }));
+    renderSettings(access);
+
+    fireEvent.click(radio('Child organization units', /Selected child organization units/));
+
+    const dialog = screen.getByRole('dialog');
+    expect(
+      within(dialog).getByText(/Assignments are turned off for some organization units this drops\./),
+    ).toBeInTheDocument();
+    expect(within(dialog).queryByText(/Switching clears:/)).not.toBeInTheDocument();
+    expect(access.applySwitch).not.toHaveBeenCalled();
   });
 
   it('keeps the current choice when the switch is cancelled', () => {

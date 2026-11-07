@@ -4,6 +4,7 @@
 import {useIsMutating} from '@tanstack/react-query';
 import {DocumentTitle, PageLoadingAnimation, QueryErrorNotice, UnsavedChangesBar} from '@thunderid/components';
 import {arePermissionsEqual, type ResourcePermissions} from '@thunderid/configure-resource-servers';
+import {useOrganizationAccess} from '@thunderid/configure-resource-sharing';
 import {useLogger} from '@thunderid/logger/react';
 import {getErrorMessage, isEqualIgnoringEmpty} from '@thunderid/utils';
 import {
@@ -20,7 +21,7 @@ import {
   PageTitle,
 } from '@wso2/oxygen-ui';
 import {ArrowLeft, Edit} from '@wso2/oxygen-ui-icons-react';
-import {useState, useCallback, useMemo} from 'react';
+import {useState, useCallback, useMemo, useRef} from 'react';
 import type {ReactNode, SyntheticEvent, JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {Link, useNavigate, useParams} from 'react-router';
@@ -29,10 +30,14 @@ import useUpdateRole, {ROLE_MUTATION_KEY} from '../api/useUpdateRole';
 import EditAdvancedSettings from '../components/edit-role/advanced-settings/EditAdvancedSettings';
 import EditAssignmentsSettings from '../components/edit-role/assignments-settings/EditAssignmentsSettings';
 import EditGeneralSettings from '../components/edit-role/general-settings/EditGeneralSettings';
+import EditOrganizationAccessSettings from '../components/edit-role/organization-access/EditOrganizationAccessSettings';
 import EditPermissionsSettings from '../components/edit-role/permissions-settings/EditPermissionsSettings';
 import RoleDeleteDialog from '../components/RoleDeleteDialog';
 import RoleConstraints from '../constants/role-constraints';
 import type {Role} from '../models/role';
+
+// The Organization Access tab's position, whose first opening loads the role's sharing policies.
+const ORGANIZATION_ACCESS_TAB_INDEX = 3;
 
 interface TabPanelProps {
   children?: ReactNode;
@@ -64,12 +69,26 @@ export default function RoleEditPage(): JSX.Element {
   const {data: role, isLoading, error: fetchError, refetch} = useGetRole(roleId ?? '');
   const updateRole = useUpdateRole();
   const isRoleUpdating = useIsMutating({mutationKey: ROLE_MUTATION_KEY}) > 0;
-
   const [activeTab, setActiveTab] = useState(0);
+  // The sharing policies load once the Organization Access tab is first opened, not on every visit to
+  // the role, and then stay loaded for the rest of the visit.
+  const [accessTabOpened, setAccessTabOpened] = useState(false);
+  // Held here rather than in its tab, because inactive tabs unmount and the draft must survive them.
+  const organizationAccess = useOrganizationAccess({
+    resourcePath: `roles/${roleId}`,
+    enabled: Boolean(roleId) && accessTabOpened,
+    // The tab's sentences say what access means for a role: `roles:organizationAccess.*`.
+    wordingNamespace: 'roles',
+  });
+
   const [editedRole, setEditedRole] = useState<Partial<Role>>({});
   const [deleteDialogOpen, setDeleteDialogOpen] = useState<boolean>(false);
   const [isEditingName, setIsEditingName] = useState(false);
   const [isEditingDescription, setIsEditingDescription] = useState(false);
+  // One flag over the whole save (role update, refetch, then access save), so the bar's Save and Reset
+  // stay disabled between the steps. The ref also drops a second click before the re-render lands.
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const submittingRef = useRef(false);
   const [tempName, setTempName] = useState('');
   const [tempDescription, setTempDescription] = useState('');
   const listUrl = '/roles';
@@ -80,6 +99,7 @@ export default function RoleEditPage(): JSX.Element {
 
   const handleTabChange = (_event: SyntheticEvent, newValue: number): void => {
     setActiveTab(newValue);
+    if (newValue === ORGANIZATION_ACCESS_TAB_INDEX) setAccessTabOpened(true);
   };
 
   const handleFieldChange = useCallback(
@@ -107,29 +127,47 @@ export default function RoleEditPage(): JSX.Element {
     [serverPermissions, updateRole],
   );
 
-  const handleSave = useCallback(async (): Promise<void> => {
-    if (!role || !roleId) return;
-
-    const updatedData = {
-      name: editedRole.name ?? role.name,
-      description: 'description' in editedRole ? editedRole.description : role.description,
-      ouId: role.ouId,
-      permissions: editedRole.permissions ?? role.permissions ?? [],
-    };
-
-    try {
-      await updateRole.mutateAsync({roleId, data: updatedData, current: role});
-      setEditedRole({});
-      await refetch();
-    } catch (err: unknown) {
-      logger.error('Failed to update role', {error: err});
-    }
-  }, [role, roleId, editedRole, updateRole, refetch, logger]);
-
-  const hasChanges = useMemo(
+  const hasRoleChanges = useMemo(
     () => Object.entries(editedRole).some(([key, value]) => !isEqualIgnoringEmpty(value, role?.[key as keyof Role])),
     [editedRole, role],
   );
+  const hasChanges = hasRoleChanges || organizationAccess.hasChanges;
+
+  const handleSave = useCallback(async (): Promise<void> => {
+    if (submittingRef.current || !role || !roleId) return;
+
+    // The role is saved first, so a refused organization access change leaves the role's own settings
+    // saved and only the access draft waiting to be retried. A refused role update stops the save
+    // before the access is touched.
+    submittingRef.current = true;
+    setIsSubmitting(true);
+    try {
+      if (hasRoleChanges) {
+        const updatedData = {
+          name: editedRole.name ?? role.name,
+          description: 'description' in editedRole ? editedRole.description : role.description,
+          ouId: role.ouId,
+          permissions: editedRole.permissions ?? role.permissions ?? [],
+        };
+        try {
+          await updateRole.mutateAsync({roleId, data: updatedData, current: role});
+        } catch (err: unknown) {
+          logger.error('Failed to update role', {error: err});
+          return;
+        }
+        setEditedRole({});
+        await refetch();
+      }
+      if (organizationAccess.hasChanges) {
+        await organizationAccess.save().catch((err: unknown) => {
+          logger.error("Failed to update the role's organization access", {error: err});
+        });
+      }
+    } finally {
+      submittingRef.current = false;
+      setIsSubmitting(false);
+    }
+  }, [role, roleId, hasRoleChanges, editedRole, updateRole, refetch, organizationAccess, logger]);
 
   const effectiveDescription = 'description' in editedRole ? (editedRole.description ?? '') : (role?.description ?? '');
 
@@ -339,9 +377,15 @@ export default function RoleEditPage(): JSX.Element {
           sx={{textTransform: 'none'}}
         />
         <Tab
-          label={t('edit.page.tabs.advanced', 'Advanced')}
+          label={t('edit.page.tabs.organizationAccess', 'Organization Access')}
           id="role-tab-3"
           aria-controls="role-tabpanel-3"
+          sx={{textTransform: 'none'}}
+        />
+        <Tab
+          label={t('edit.page.tabs.advanced', 'Advanced')}
+          id="role-tab-4"
+          aria-controls="role-tabpanel-4"
           sx={{textTransform: 'none'}}
         />
       </Tabs>
@@ -364,7 +408,11 @@ export default function RoleEditPage(): JSX.Element {
           <EditAssignmentsSettings roleId={role.id} ouId={role.ouId} isReadOnly={role.isReadOnly} />
         </TabPanel>
 
-        <TabPanel value={activeTab} index={3}>
+        <TabPanel value={activeTab} index={ORGANIZATION_ACCESS_TAB_INDEX}>
+          <EditOrganizationAccessSettings role={role} access={organizationAccess} />
+        </TabPanel>
+
+        <TabPanel value={activeTab} index={4}>
           <EditAdvancedSettings onDeleteClick={role.isReadOnly ? undefined : () => setDeleteDialogOpen(true)} />
         </TabPanel>
       </>
@@ -378,22 +426,32 @@ export default function RoleEditPage(): JSX.Element {
       />
 
       {/* Floating Action Bar */}
-      {hasChanges && (
+      {(hasChanges || isSubmitting) && (
         <UnsavedChangesBar
           message={t('edit.page.unsavedChanges', 'You have unsaved changes')}
           resetLabel={t('edit.page.reset', 'Reset')}
           saveLabel={t('edit.page.save', 'Save changes')}
           savingLabel={t('edit.page.saving', 'Saving...')}
-          isSaving={updateRole.isPending}
+          isSaving={isSubmitting || updateRole.isPending || organizationAccess.isSaving}
+          resetDisabled={isSubmitting || updateRole.isPending || organizationAccess.isSaving}
           saveDisabled={isRoleUpdating || role.isReadOnly === true}
           error={
-            updateRole.error
+            (updateRole.error
               ? getErrorMessage(updateRole.error, t, 'update.error', 'Failed to update role. Please try again.')
-              : undefined
+              : undefined) ??
+            (organizationAccess.saveError
+              ? getErrorMessage(
+                  organizationAccess.saveError,
+                  t,
+                  'edit.organizationAccess.save.error',
+                  'Failed to update organization access. Please try again.',
+                )
+              : undefined)
           }
           onReset={() => {
             updateRole.reset();
             setEditedRole({});
+            organizationAccess.reset();
           }}
           onSave={() => {
             handleSave().catch(() => {

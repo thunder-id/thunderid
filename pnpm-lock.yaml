@@ -3282,6 +3282,9 @@ importers:
       '@thunderid/configure-resource-servers':
         specifier: workspace:^
         version: link:../configure-resource-servers
+      '@thunderid/configure-resource-sharing':
+        specifier: workspace:^
+        version: link:../configure-resource-sharing
       '@thunderid/configure-users':
         specifier: workspace:^
         version: link:../configure-users

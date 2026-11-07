@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import draftToSharingSections from './draftToSharingSections';
+import getAssignmentsOffRules from './getAssignmentsOffRules';
 import {canEditSharingSectionsInPlace} from './planSharingPolicySave';
 import type {AccessSwitch, ClearedAccessItem, OrganizationAccessDraft} from '../models/organization-access';
 import type {SharingPolicy} from '../models/sharing-policy';
@@ -89,7 +90,17 @@ export default function switchOrganizationAccess(
     cleared.push({kind: 'trees', ouIds: droppedTrees});
   }
 
-  return {field, to, next, cleared, losesEveryUnit, losesEveryTree};
+  // A rule turning assignments off is kept only while its section stays the same kind, or its unit
+  // stays named, so a switch can drop one that the console can't set again.
+  const rulesBefore = getAssignmentsOffRules(draftToSharingSections(draft, saved));
+  const rulesAfter = getAssignmentsOffRules(draftToSharingSections(next, saved));
+  const losesAssignmentsOff =
+    (rulesBefore.everyUnit && !rulesAfter.everyUnit) ||
+    (rulesBefore.allChildUnits && !rulesAfter.allChildUnits) ||
+    (rulesBefore.everyTree && !rulesAfter.everyTree) ||
+    dropped(rulesBefore.ouIds, rulesAfter.ouIds).length > 0;
+
+  return {field, to, next, cleared, losesEveryUnit, losesEveryTree, losesAssignmentsOff};
 }
 
 /**

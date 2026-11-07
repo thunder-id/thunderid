@@ -197,6 +197,58 @@ Two changes are refused with `409 Conflict` while a user share mandates the role
 
 Remove the role from those user shares first, then repeat the change.
 
+## Share a Role With Other Organization Units
+
+A sharing policy makes a role available in organization units other than its own. It can reach the organization units beneath the role's organization unit, the top organization units of other trees, or both. An organization unit the role is shared with can assign the role to users, groups, applications, and agents, unless the policy turns assignments off there.
+
+Create a sharing policy in one of three places:
+
+- **The role's resource file**, in a `sharingPolicies` list.
+- **Management API**, through the [Role Sharing API](../../apis.mdx#tag/role-sharing).
+- **Console**, on the role's **Organization Access** tab.
+
+To share a role from the Console:
+
+1. Open the role from the **Roles** list.
+2. Select the **Organization Access** tab.
+3. Select whether only the role's own organization unit can use the role, or the organization units you choose. For chosen organization units, grant child organization units of the role's organization unit, top organization units of other trees, or both.
+4. Click **Save changes**.
+
+The Console cannot create a policy that reaches every organization unit in the deployment or the root of every other tree. Only a resource file or an import can set those. A policy that the role's resource file declares is read-only in the Console.
+
+### Assignments Turned Off
+
+A policy can turn assignments off for some of the organization units it reaches. Those organization units can use the role but cannot assign it. Only the role's resource file or the Role Sharing API can set this rule.
+
+In the following resource file, the `acme-retail` organization unit can use the Auditor role but cannot assign it. The `acme-wholesale` organization unit and the organization units below it can assign the role, because assignments stay on unless a policy turns them off:
+
+```yaml title="roles/auditor.yaml"
+resource_type: role
+id: auditor
+name: Auditor
+ouId: acme-root
+permissions:
+  - resourceServerId: reports-api
+    permissions:
+      - reports:read
+sharingPolicies:
+  - id: auditor-customers
+    childUnits:
+      mode: selected
+      units:
+        - ouId: acme-retail
+          reach: unit
+          overlayRules:
+            assignments:
+              editable: false
+        - ouId: acme-wholesale
+          reach: subtree
+```
+
+The same `overlayRules` block can sit on a whole section instead, such as `childUnits` with `mode: all`, to turn assignments off for every organization unit that section reaches. To set the rule through the API, see the [Role Sharing API](../../apis.mdx#tag/role-sharing).
+
+The **Organization Access** tab shows where a policy turns assignments off, as a read-only note. When you save, the Console keeps the rule on every section and named organization unit that stays. A change that drops the rule asks you to confirm first, because the Console cannot turn assignments off again. For example, switching from all child organization units to selected ones drops a rule set on all child organization units.
+
 ## Related Guides
 
 - [Resource Servers](../../resource-servers) - Define the permissions that roles reference

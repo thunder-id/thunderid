@@ -1858,6 +1858,8 @@ const translations = {
   // Resource Sharing namespace - Organization Access of every shareable resource
   // ============================================================================
   resourceSharing: {
+    'assignmentsOff.section': 'Assignments are turned off for these organization units.',
+    'assignmentsOff.unit': 'Assignments are turned off for this organization unit.',
     'changeScope.action': 'Change scope',
     'changeScope.description':
       'Changing the scope deletes the "Every organization unit" policy and its exceptions, then lets you choose child organization units and other trees. Once you save, it can\'t be set again here.',
@@ -1958,6 +1960,8 @@ const translations = {
       'This deletes the "Every organization unit" policy, so {{resource}} stops reaching every organization unit. Access then starts as All child organization units of {{owner}}, which you can change below. Deleting the policy clears:',
     'switch.introOwner': 'Only {{owner}} will be able to use {{resource}}. This clears:',
     'switch.keep': 'Keep current choice',
+    'switch.losesAssignmentsOff':
+      'Assignments are turned off for some organization units this drops. Any of them granted again can assign {{resource}}, and only a resource file or the API can turn assignments off again.',
     'switch.notYet': 'Nothing is removed until you save. Until then, Reset brings everything back.',
     'switch.title': 'Switch to {{choice}}?',
     'switch.titleChangeScope': 'Change the scope?',
@@ -2160,6 +2164,7 @@ const translations = {
     'edit.page.tabs.general': 'General',
     'edit.page.tabs.permissions': 'Permissions',
     'edit.page.tabs.assignments': 'Assignments',
+    'edit.page.tabs.organizationAccess': 'Organization Access',
     'edit.page.tabs.advanced': 'Advanced',
     'edit.page.unsavedChanges': 'You have unsaved changes',
     'edit.page.reset': 'Reset',
@@ -2221,6 +2226,7 @@ const translations = {
     'create.success': 'Role created successfully.',
     'update.success': 'Role updated successfully.',
     'update.error': 'Failed to update role. Please try again.',
+    'edit.organizationAccess.save.error': 'Failed to update organization access. Please try again.',
     'delete.success': 'Role deleted successfully.',
     'assignments.add.success': 'Assignment added successfully.',
     'assignments.remove.success': 'Assignment removed successfully.',
@@ -2232,12 +2238,29 @@ const translations = {
     'errors.ROL-1015': 'New roles cannot be created while the server is running in declarative-only mode.',
     'errors.ROL-1019': 'Select the assignee to remove from this role.',
     'errors.ROL-1020': 'This assignee no longer holds the role. Refresh and try again.',
+    'errors.ROL-1021':
+      'This organization access change is not allowed. An organization unit may have moved since you opened the role. Reset to load the latest, then try again.',
+    'errors.ROL-1022':
+      'This organization access no longer exists. It may have been removed already. Reset to load the latest.',
+    'errors.ROL-1023':
+      "This role's organization access was already set by a change made elsewhere. Reset to load it, then redo your change.",
+    'errors.ROL-1024':
+      "Someone else changed this role's organization access while you were editing. Reset to load the latest, then redo your change.",
+    'errors.ROL-1025': "This organization access is declared in a resource file and can't be changed here.",
+    'errors.ROL-1028':
+      'Access for every organization unit, or for every other tree, can only be set in a resource file or by importing.',
     'errors.ROL-1036':
       'A user share mandates this assignment. Remove the role from that share to remove the assignment.',
     'errors.ROL-1037':
       'A user share mandates this role in one of these organization units. Remove the role from that share, then stop sharing it with the unit.',
     'errors.ROL-1039':
       'A user share still mandates this role. Remove the role from the user shares that mandate it, then delete it again.',
+
+    // Organization Access
+    'organizationAccess.title': 'Where {{resource}} is available',
+    'organizationAccess.description':
+      '{{resource}} is available in the organization units selected here, which can assign it to users, groups, applications, and agents.',
+    'organizationAccess.ownerOnly': "{{resource}} isn't available in any other organization unit.",
   },
 
   // ============================================================================

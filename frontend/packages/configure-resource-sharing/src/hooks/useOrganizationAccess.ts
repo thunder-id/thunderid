@@ -6,12 +6,14 @@ import useGetSharingPolicies from '../api/useGetSharingPolicies';
 import useSaveSharingPolicy from '../api/useSaveSharingPolicy';
 import type {
   AccessSwitch,
+  AssignmentsOffRules,
   OrganizationAccessDraft,
   OrganizationAccessOffers,
   SharingPolicySavePlan,
 } from '../models/organization-access';
 import type {SharingPolicy} from '../models/sharing-policy';
 import draftToSharingSections from '../utils/draftToSharingSections';
+import getAssignmentsOffRules from '../utils/getAssignmentsOffRules';
 import getOrganizationAccessOffers from '../utils/getOrganizationAccessOffers';
 import planSharingPolicySave from '../utils/planSharingPolicySave';
 import sharingPolicyToDraft from '../utils/sharingPolicyToDraft';
@@ -53,6 +55,10 @@ export interface OrganizationAccessState {
    */
   draft: OrganizationAccessDraft;
   offers: OrganizationAccessOffers;
+  /**
+   * Where saving the draft keeps a role's assignments turned off.
+   */
+  assignmentsOff: AssignmentsOffRules;
   /**
    * Whether a resource file declares the policy, which makes it read-only here.
    */
@@ -118,9 +124,13 @@ export default function useOrganizationAccess({
   const basePolicy = edit ? edit.base : savedPolicy;
   const draft = edit?.draft ?? savedDraft;
   const offers = useMemo(() => getOrganizationAccessOffers(basePolicy), [basePolicy]);
+  const assignmentsOff = useMemo(
+    () => getAssignmentsOffRules(draftToSharingSections(draft, basePolicy)),
+    [draft, basePolicy],
+  );
 
   const plan = useMemo<SharingPolicySavePlan>(
-    () => (edit ? planSharingPolicySave(edit.base, draftToSharingSections(edit.draft)) : {type: 'none'}),
+    () => (edit ? planSharingPolicySave(edit.base, draftToSharingSections(edit.draft, edit.base)) : {type: 'none'}),
     [edit],
   );
 
@@ -171,6 +181,7 @@ export default function useOrganizationAccess({
     savedPolicy,
     draft,
     offers,
+    assignmentsOff,
     isDeclared: savedPolicy?.isReadOnly === true,
     hasChanges: plan.type !== 'none',
     updateDraft,
