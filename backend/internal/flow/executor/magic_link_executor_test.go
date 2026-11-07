@@ -193,6 +193,7 @@ func (suite *MagicLinkExecutorTestSuite) TestExecute_GenerateMode_Success_Authen
 	assert.Equal(suite.T(), expectedURL, templateData["magicLink"])
 	assert.Equal(suite.T(), "5 minutes", templateData["expiryTime"])
 	assert.Equal(suite.T(), magicLinkTestUserID, resp.RuntimeData[userAttributeUserID])
+	assert.NotContains(suite.T(), resp.RuntimeData, userAttributeEmail)
 	suite.mockEntityProvider.AssertExpectations(suite.T())
 	suite.mockMagicLinkService.AssertExpectations(suite.T())
 }
@@ -536,6 +537,7 @@ func (suite *MagicLinkExecutorTestSuite) TestExecute_GenerateMode_Success_WithAu
 	assert.NotNil(suite.T(), resp)
 	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
 	assert.Equal(suite.T(), magicLinkTestUserID, resp.RuntimeData[userAttributeUserID])
+	assert.NotContains(suite.T(), resp.RuntimeData, userAttributeEmail)
 	suite.mockEntityProvider.AssertNotCalled(suite.T(), "IdentifyEntity")
 	suite.mockMagicLinkService.AssertExpectations(suite.T())
 }

@@ -116,6 +116,13 @@ var magicLinkTestApp = testutils.Application{
 var magicLinkTestUserSchema = testutils.UserType{
 	Name: "magic_link_test_user",
 	Schema: map[string]interface{}{
+		"username": map[string]interface{}{
+			"type": "string",
+		},
+		"password": map[string]interface{}{
+			"type":       "string",
+			"credential": true,
+		},
 		"email": map[string]interface{}{
 			"type": "string",
 		},
@@ -414,6 +421,118 @@ func (ts *magicLinkAuthFlowTestSuite) TestMagicLinkLoginFlow() {
 	ts.Require().Equal(ts.ouID, claims.OUID)
 }
 
+func (ts *magicLinkAuthFlowTestSuite) TestMagicLinkLoginFlow_UsernameSendsToStoredEmail() {
+	username := common.GenerateUniqueUsername("magiclinkuser")
+	userIDs, err := testutils.CreateMultipleUsers(testutils.User{
+		OUID: ts.ouID,
+		Type: magicLinkTestUserSchema.Name,
+		Attributes: json.RawMessage(`{
+			"username": "` + username + `",
+			"email": "` + username + `@example.com"
+		}`),
+	})
+	ts.Require().NoError(err, "Failed to create the username test user")
+	defer func() {
+		if err := testutils.CleanupUsers(userIDs); err != nil {
+			ts.T().Logf("Failed to delete the username test user: %v", err)
+		}
+	}()
+
+	flowID, err := testutils.CreateFlow(buildUsernameMagicLinkFlow())
+	ts.Require().NoError(err, "Failed to create the username magic link flow")
+	defer func() {
+		_ = testutils.DeleteFlow(flowID)
+	}()
+
+	app := magicLinkTestApp
+	app.Name = "Magic Link Test App Username"
+	app.ClientID = "magic_link_test_client_username"
+	app.AuthFlowID = flowID
+	app.OUID = ts.ouID
+	appID, err := testutils.CreateApplication(app)
+	ts.Require().NoError(err, "Failed to create the username magic link test application")
+	defer func() {
+		_ = testutils.DeleteApplication(appID)
+	}()
+
+	ts.mockSMTP.ClearEmails()
+	flowStep, err := common.InitiateAuthenticationFlow(appID, false, nil, "")
+	ts.Require().NoError(err, "Failed to initiate the username magic link flow")
+
+	step2, err := common.CompleteFlow(flowStep.ExecutionID,
+		map[string]string{"username": username, "email": "other@example.com"},
+		"magic_link_action", flowStep.ChallengeToken)
+	ts.Require().NoError(err, "Failed to submit the username")
+	ts.Require().Equal("INCOMPLETE", step2.FlowStatus)
+
+	emailMessage := ts.waitForEmail()
+	ts.Equal([]string{username + "@example.com"}, emailMessage.To,
+		"The magic link goes to the email on the user's profile")
+}
+
+// buildUsernameMagicLinkFlow builds a magic link authentication flow that identifies the user by username.
+func buildUsernameMagicLinkFlow() testutils.Flow {
+	return testutils.Flow{
+		Name:     "Magic Link Auth Flow Username",
+		FlowType: "AUTHENTICATION",
+		Handle:   "auth_flow_magic_link_test_username",
+		Nodes: []map[string]interface{}{
+			{"id": "start", "type": "START", "onSuccess": "prompt_username"},
+			{
+				"id":   "prompt_username",
+				"type": "PROMPT",
+				"prompts": []map[string]interface{}{
+					{
+						"inputs": []map[string]interface{}{
+							{"ref": "input_001", "identifier": "username", "type": "TEXT_INPUT", "required": true},
+						},
+						"action": map[string]interface{}{"ref": "magic_link_action", "nextNode": "send_magic_link"},
+					},
+				},
+			},
+			{
+				"id":         "send_magic_link",
+				"type":       "TASK_EXECUTION",
+				"properties": map[string]interface{}{"magicLinkURL": "https://localhost:8095/gate/signin"},
+				"executor": map[string]interface{}{
+					"name": "MagicLinkExecutor",
+					"mode": "generate",
+					"inputs": []map[string]interface{}{
+						{"ref": "input_001", "identifier": "username", "type": "TEXT_INPUT", "required": true},
+					},
+				},
+				"onSuccess": "email_magic_link",
+			},
+			{
+				"id":         "email_magic_link",
+				"type":       "TASK_EXECUTION",
+				"properties": map[string]interface{}{"emailTemplate": "MAGIC_LINK"},
+				"executor": map[string]interface{}{
+					"name": "EmailExecutor",
+					"mode": "send",
+					"inputs": []map[string]interface{}{
+						{"identifier": "email", "type": "EMAIL_INPUT", "required": true},
+					},
+				},
+				"onSuccess": "verify_magic_link",
+			},
+			{
+				"id":        "verify_magic_link",
+				"type":      "TASK_EXECUTION",
+				"executor":  map[string]interface{}{"name": "MagicLinkExecutor", "mode": "verify"},
+				"onSuccess": "auth_assert",
+			},
+			{
+				"id":        "auth_assert",
+				"type":      "TASK_EXECUTION",
+				"executor":  map[string]interface{}{"name": "AuthAssertExecutor"},
+				"onSuccess": "end",
+			},
+			{"id": "end", "type": "END"},
+		},
+	}
+}
+
 func (ts *magicLinkAuthFlowTestSuite) TestMagicLinkLoginFlow_NonExistingUser() {
 	ts.mockSMTP.ClearEmails()
 
@@ -542,4 +661,181 @@ func (ts *magicLinkAuthFlowTestSuite) TestMagicLinkLoginFlow_CrossFlowToken() {
 	ts.Require().Equal("ERROR", errStep.FlowStatus, "Expected ERROR flow status for a cross-flow magic link token")
 	ts.Require().NotNil(errStep.Error, "Expected an error in the flow response")
 	ts.Require().NotEmpty(errStep.Error.Code, "Expected an error code in the error response")
+}
+
+func (ts *magicLinkAuthFlowTestSuite) TestPasswordMagicLink_SendsToStoredEmail() {
+	appID := ts.createPasswordMagicLinkApp()
+	username := ts.createPasswordUser(`"email": "stored@example.com"`)
+	ts.mockSMTP.ClearEmails()
+
+	step := ts.submitPassword(appID, username, map[string]string{"email": "other@example.com"})
+
+	ts.Require().Equal("INCOMPLETE", step.FlowStatus)
+	email := common.AwaitEmail(ts.Require(), ts.mockSMTP)
+	ts.Equal([]string{"stored@example.com"}, email.To, "The magic link goes to the email on the user's profile")
+	ts.Equal("stored@example.com", ts.storedAttribute(username, "email"), "The stored email is kept")
+
+	finalStep, err := common.CompleteFlow(step.ExecutionID,
+		map[string]string{"token": common.ExtractMagicLinkToken(email)}, "", step.ChallengeToken)
+	ts.Require().NoError(err, "Failed to submit the magic link token")
+	ts.Require().Equal("COMPLETE", finalStep.FlowStatus)
+
+	claims, err := testutils.DecodeJWT(finalStep.Assertion)
+	ts.Require().NoError(err, "Failed to decode the assertion")
+	ts.Equal("stored@example.com", claims.Additional["email"], "The assertion carries the stored email")
+}
+
+func (ts *magicLinkAuthFlowTestSuite) TestPasswordMagicLink_UserWithoutEmailEnrollsOne() {
+	appID := ts.createPasswordMagicLinkApp()
+	username := ts.createPasswordUser("")
+	ts.mockSMTP.ClearEmails()
+
+	step := ts.submitPassword(appID, username, nil)
+	ts.Require().Equal("INCOMPLETE", step.FlowStatus)
+	ts.Require().True(common.HasInput(step.Data.Inputs, "email"), "The email should be collected")
+
+	_, err := common.CompleteFlow(step.ExecutionID, map[string]string{"email": "enrolled@example.com"}, "",
+		step.ChallengeToken)
+	ts.Require().NoError(err, "Failed to submit the email")
+
+	email := common.AwaitEmail(ts.Require(), ts.mockSMTP)
+	ts.Equal([]string{"enrolled@example.com"}, email.To, "The magic link goes to the collected email")
+	ts.Equal("enrolled@example.com", ts.storedAttribute(username, "email"), "The collected email is stored")
+}
+
+// createPasswordMagicLinkApp creates a password then magic link flow and an application for it, deleted when the
+// test ends.
+func (ts *magicLinkAuthFlowTestSuite) createPasswordMagicLinkApp() string {
+	flowID, err := testutils.CreateFlow(buildPasswordMagicLinkFlow())
+	ts.Require().NoError(err, "Failed to create the password magic link flow")
+	ts.T().Cleanup(func() {
+		_ = testutils.DeleteFlow(flowID)
+	})
+
+	app := magicLinkTestApp
+	app.Name = "Magic Link Test App Password"
+	app.ClientID = "magic_link_test_client_password"
+	app.AuthFlowID = flowID
+	app.OUID = ts.ouID
+	app.AssertionConfig = map[string]interface{}{"userAttributes": []string{"email"}}
+	appID, err := testutils.CreateApplication(app)
+	ts.Require().NoError(err, "Failed to create the password magic link application")
+	ts.T().Cleanup(func() {
+		_ = testutils.DeleteApplication(appID)
+	})
+	return appID
+}
+
+// createPasswordUser creates a user with a password and the given extra attributes, deleted when the test ends.
+func (ts *magicLinkAuthFlowTestSuite) createPasswordUser(extraAttributes string) string {
+	username := common.GenerateUniqueUsername("magiclinkmfa")
+	attributes := `{"username": "` + username + `", "password": "testpassword"`
+	if extraAttributes != "" {
+		attributes += ", " + extraAttributes
+	}
+	userIDs, err := testutils.CreateMultipleUsers(testutils.User{
+		OUID:       ts.ouID,
+		Type:       magicLinkTestUserSchema.Name,
+		Attributes: json.RawMessage(attributes + "}"),
+	})
+	ts.Require().NoError(err, "Failed to create the test user")
+	ts.T().Cleanup(func() {
+		if err := testutils.CleanupUsers(userIDs); err != nil {
+			ts.T().Logf("Failed to delete the test user: %v", err)
+		}
+	})
+	return username
+}
+
+// submitPassword starts a sign-in and submits the user's password along with any extra inputs.
+func (ts *magicLinkAuthFlowTestSuite) submitPassword(appID, username string,
+	extraInputs map[string]string) *common.FlowStep {
+	step, err := common.InitiateAuthenticationFlow(appID, false, nil, "")
+	ts.Require().NoError(err, "Failed to initiate authentication flow")
+
+	inputs := map[string]string{"username": username, "password": "testpassword"}
+	for key, value := range extraInputs {
+		inputs[key] = value
+	}
+	step, err = common.CompleteFlow(step.ExecutionID, inputs, "", step.ChallengeToken)
+	ts.Require().NoError(err, "Failed to submit the password")
+	return step
+}
+
+// storedAttribute reads the attribute on the user's profile.
+func (ts *magicLinkAuthFlowTestSuite) storedAttribute(username, attribute string) interface{} {
+	user, err := testutils.FindUserByAttribute("username", username)
+	ts.Require().NoError(err, "Failed to read the user back")
+	ts.Require().NotNil(user, "The user should exist")
+	attrs, err := testutils.GetUserAttributes(*user)
+	ts.Require().NoError(err, "Failed to read the user's attributes")
+	return attrs[attribute]
+}
+
+// buildPasswordMagicLinkFlow builds a password then magic link flow, collecting an email from a user who has none.
+func buildPasswordMagicLinkFlow() testutils.Flow {
+	return testutils.Flow{
+		Name:     "MFA Recipient Password Magic Link",
+		FlowType: "AUTHENTICATION",
+		Handle:   "mfa_recipient_password_magic_link",
+		Nodes: []map[string]interface{}{
+			{"id": "start", "type": "START", "onSuccess": "credentials_auth"},
+			{
+				"id":        "credentials_auth",
+				"type":      "TASK_EXECUTION",
+				"executor":  map[string]interface{}{"name": "CredentialsAuthExecutor"},
+				"onSuccess": "attribute_collect",
+			},
+			{
+				"id":   "attribute_collect",
+				"type": "TASK_EXECUTION",
+				"executor": map[string]interface{}{
+					"name": "AttributeCollector",
+					"inputs": []map[string]interface{}{
+						{"ref": "input_email", "identifier": "email", "type": "EMAIL_INPUT", "required": true},
+					},
+				},
+				"onSuccess": "send_magic_link",
+			},
+			{
+				"id":         "send_magic_link",
+				"type":       "TASK_EXECUTION",
+				"properties": map[string]interface{}{"magicLinkURL": "https://localhost:8095/gate/signin"},
+				"executor": map[string]interface{}{
+					"name": "MagicLinkExecutor",
+					"mode": "generate",
+					"inputs": []map[string]interface{}{
+						{"ref": "input_email", "identifier": "email", "type": "EMAIL_INPUT", "required": true},
+					},
+				},
+				"onSuccess": "email_magic_link",
+			},
+			{
+				"id":         "email_magic_link",
+				"type":       "TASK_EXECUTION",
+				"properties": map[string]interface{}{"emailTemplate": "MAGIC_LINK"},
+				"executor": map[string]interface{}{
+					"name": "EmailExecutor",
+					"mode": "send",
+					"inputs": []map[string]interface{}{
+						{"ref": "input_email", "identifier": "email", "type": "EMAIL_INPUT", "required": true},
+					},
+				},
+				"onSuccess": "verify_magic_link",
+			},
+			{
+				"id":        "verify_magic_link",
+				"type":      "TASK_EXECUTION",
+				"executor":  map[string]interface{}{"name": "MagicLinkExecutor", "mode": "verify"},
+				"onSuccess": "auth_assert",
+			},
+			{
+				"id":        "auth_assert",
+				"type":      "TASK_EXECUTION",
+				"executor":  map[string]interface{}{"name": "AuthAssertExecutor"},
+				"onSuccess": "end",
+			},
+			{"id": "end", "type": "END"},
+		},
+	}
 }

@@ -24,12 +24,14 @@ type emailExecutor struct {
 	emailClient     email.EmailClientInterface
 	templateService template.TemplateServiceInterface
 	entityProvider  entityprovider.EntityProviderInterface
+	authnProvider   providers.AuthnProviderManager
 }
 
 // newEmailExecutor creates a new instance of the email executor.
 func newEmailExecutor(flowFactory core.FlowFactoryInterface, emailClient email.EmailClientInterface,
 	templateService template.TemplateServiceInterface,
-	entityProvider entityprovider.EntityProviderInterface) *emailExecutor {
+	entityProvider entityprovider.EntityProviderInterface,
+	authnProvider providers.AuthnProviderManager) *emailExecutor {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "EmailExecutor"))
 	base := flowFactory.CreateExecutor(
 		ExecutorNameEmailExecutor,
@@ -51,6 +53,7 @@ func newEmailExecutor(flowFactory core.FlowFactoryInterface, emailClient email.E
 		emailClient:     emailClient,
 		templateService: templateService,
 		entityProvider:  entityProvider,
+		authnProvider:   authnProvider,
 	}
 }
 
@@ -93,7 +96,7 @@ func (e *emailExecutor) executeSend(ctx *providers.NodeContext) (*providers.Exec
 		return nil, errors.New("template service is not configured")
 	}
 
-	recipient, err := e.resolveRecipientEmail(ctx, logger)
+	recipient, err := e.resolveRecipientEmail(ctx, execResp, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -147,9 +150,15 @@ func (e *emailExecutor) executeSend(ctx *providers.NodeContext) (*providers.Exec
 	return execResp, nil
 }
 
-// resolveRecipientEmail retrieves the recipient email from user inputs, runtime data, or forwarded data.
-func (e *emailExecutor) resolveRecipientEmail(ctx *providers.NodeContext, logger *log.Logger) (string, error) {
+// resolveRecipientEmail resolves the address the email is sent to.
+func (e *emailExecutor) resolveRecipientEmail(ctx *providers.NodeContext, execResp *providers.ExecutorResponse,
+	logger *log.Logger) (string, error) {
 	emailAttr := resolveInputIdentifierByType(ctx, providers.InputTypeEmail, userAttributeEmail)
+
+	if recipientEmail, known, err := resolveKnownRecipient(ctx, execResp, e.authnProvider, e.entityProvider,
+		emailAttr, logger); known || err != nil {
+		return recipientEmail, err
+	}
 
 	if recipientEmail, ok := ctx.ForwardedData[emailAttr].(string); ok && recipientEmail != "" {
 		return recipientEmail, nil
@@ -161,24 +170,6 @@ func (e *emailExecutor) resolveRecipientEmail(ctx *providers.NodeContext, logger
 
 	if recipientEmail, ok := ctx.UserInputs[emailAttr]; ok && recipientEmail != "" {
 		return recipientEmail, nil
-	}
-
-	if userID, ok := ctx.RuntimeData[userAttributeUserID]; ok && userID != "" {
-		if e.entityProvider == nil {
-			return "", errors.New("entity provider is not configured for email resolution")
-		}
-		user, providerErr := e.entityProvider.GetEntity(userID)
-		if providerErr != nil {
-			if providerErr.Code == entityprovider.ErrorCodeEntityNotFound {
-				return "", nil
-			}
-			return "", fmt.Errorf("failed to fetch user from entity provider: %w", providerErr)
-		}
-		if recipientEmail, err := GetUserAttribute(user, emailAttr); err == nil {
-			return recipientEmail, nil
-		}
-		logger.Debug(ctx.Context, "Email attribute not found on user entity",
-			log.String("attribute", emailAttr))
 	}
 
 	return "", nil

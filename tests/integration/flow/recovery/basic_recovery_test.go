@@ -308,6 +308,53 @@ func (ts *EmailLinkPasswordRecoveryTestSuite) TestBasicRecoveryFlow_UnknownUsern
 		"No email should be sent for a non-existent username")
 }
 
+func (ts *EmailLinkPasswordRecoveryTestSuite) TestBasicRecoveryFlow_SendsToStoredEmail() {
+	ts.mockSMTP.ClearEmails()
+
+	flowStep := ts.submitUsernameWithEmail(ts.testUsername, "other@example.com")
+
+	ts.Require().Equal("INCOMPLETE", flowStep.FlowStatus)
+	email := common.AwaitEmail(ts.Require(), ts.mockSMTP)
+	ts.Equal([]string{ts.testUsername + "@example.com"}, email.To, "The recovery email goes to the stored email")
+}
+
+func (ts *EmailLinkPasswordRecoveryTestSuite) TestBasicRecoveryFlow_UserWithoutEmail() {
+	ts.mockSMTP.ClearEmails()
+	username := common.GenerateUniqueUsername("recoverynoemail")
+	userIDs, err := testutils.CreateMultipleUsers(testutils.User{
+		OUID: ts.testOUID,
+		Type: basicRecoveryUserSchema.Name,
+		Attributes: json.RawMessage(`{
+			"username": "` + username + `",
+			"password": "NoEmail123!"
+		}`),
+	})
+	ts.Require().NoError(err, "Failed to create the user without an email")
+	defer func() {
+		if err := testutils.CleanupUsers(userIDs); err != nil {
+			ts.T().Logf("Failed to delete the user without an email: %v", err)
+		}
+	}()
+
+	flowStep := ts.submitUsernameWithEmail(username, "other@example.com")
+
+	ts.Require().Equal("INCOMPLETE", flowStep.FlowStatus)
+	time.Sleep(500 * time.Millisecond)
+	ts.Nil(ts.mockSMTP.GetLastEmail(), "No email should be sent")
+}
+
+// submitUsernameWithEmail starts a recovery flow and submits the username along with an email.
+func (ts *EmailLinkPasswordRecoveryTestSuite) submitUsernameWithEmail(username, email string) *common.FlowStep {
+	flowStep, err := common.InitiateRecoveryFlow(ts.testAppID, false, nil, "")
+	ts.Require().NoError(err, "Failed to initiate recovery flow")
+
+	flowStep, err = common.CompleteFlow(flowStep.ExecutionID,
+		map[string]string{"username": username, "email": email}, "action_submit_username", flowStep.ChallengeToken)
+	ts.Require().NoError(err, "Failed to submit username")
+
+	return flowStep
+}
+
 // TestBasicRecoveryFlow_InvalidToken tests that submitting a wrong recovery token
 // causes the token verification to fail and the flow to return an error/incomplete status.
 func (ts *EmailLinkPasswordRecoveryTestSuite) TestBasicRecoveryFlow_InvalidToken() {
