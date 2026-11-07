@@ -254,7 +254,7 @@ var catalog = map[string]providers.ExecutorMeta{
 	ExecutorNameRole: {
 		SupportedModes: []string{
 			ExecutorModeRoleAssignment, ExecutorModeRoleAssignmentRemoval, ExecutorModeRoleDeletion,
-			ExecutorModeRolePermissionRemoval, ExecutorModeRoleSelection,
+			ExecutorModeRoleSelection,
 		},
 		SupportedFlowTypes: []providers.FlowType{"ADMINISTRATION", "INVITATION"},
 		SupportedProperties: []providers.ExecutorSupportedProperties{

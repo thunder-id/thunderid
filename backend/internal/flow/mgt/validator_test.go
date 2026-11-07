@@ -1616,6 +1616,33 @@ func (s *ValidatorTestSuite) TestValidateModeFlowTypes_IdentityGovernance() {
 	}
 }
 
+// The access change validator plans a role permission change only in a system flow.
+func (s *ValidatorTestSuite) TestValidateModeFlowTypes_AccessChangeValidator() {
+	cases := []struct {
+		flowType providers.FlowType
+		allowed  bool
+	}{
+		{providers.FlowTypeSystem, true},
+		{providers.FlowTypeAdministration, false},
+	}
+	for _, tc := range cases {
+		s.Run(string(tc.flowType), func() {
+			nodes := companionNodes(executor.ExecutorNameAccessChangeValidator)
+			nodes[1].Executor.Mode = executor.ExecutorModeRolePermissionRemoval
+
+			err := s.v.validateModeFlowTypes(tc.flowType, nodes)
+
+			if tc.allowed {
+				s.Nil(err)
+				return
+			}
+			s.Require().NotNil(err)
+			s.Equal(ErrorInvalidExecutorConfig.Code, err.Code)
+			s.Equal("error.flowmgtservice.unsupported_executor_mode_flow_type_description", err.ErrorDescription.Key)
+		})
+	}
+}
+
 // The role executor changes roles from a revocation plan only in an administration flow, and selects and assigns
 // roles only in an invitation flow. A node that names no mode runs role deletion.
 func (s *ValidatorTestSuite) TestValidateModeFlowTypes_RoleExecutor() {
@@ -1631,7 +1658,6 @@ func (s *ValidatorTestSuite) TestValidateModeFlowTypes_RoleExecutor() {
 		{executor.ExecutorModeRoleAssignment, providers.FlowTypeAdministration, false},
 		{executor.ExecutorModeRoleDeletion, providers.FlowTypeInvitation, false},
 		{executor.ExecutorModeRoleAssignmentRemoval, providers.FlowTypeInvitation, false},
-		{executor.ExecutorModeRolePermissionRemoval, providers.FlowTypeInvitation, false},
 	}
 	for _, tc := range cases {
 		s.Run(tc.mode+"/"+string(tc.flowType), func() {

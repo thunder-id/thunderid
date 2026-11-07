@@ -569,9 +569,6 @@ type roleAdminProvider interface {
 	DeleteRole(ctx context.Context, id string) *tidcommon.ServiceError
 	ValidateUpdateRolePermissions(ctx context.Context, id string, permissions []role.ResourcePermissions) (
 		*revocation.AccessRevocationTarget, *tidcommon.ServiceError)
-	GetRoleWithPermissions(ctx context.Context, id string) (*role.RoleWithPermissions, *tidcommon.ServiceError)
-	UpdateRoleWithPermissions(ctx context.Context, id string, role role.RoleUpdateDetail) (
-		*role.RoleWithPermissions, *tidcommon.ServiceError)
 	ValidateGroupDeletion(ctx context.Context, groupID string) (
 		*revocation.AccessRevocationTarget, *tidcommon.ServiceError)
 	ValidateGroupMembershipRemoval(ctx context.Context, groupID, memberID string) (

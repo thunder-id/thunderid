@@ -53,7 +53,7 @@ function makeResource(mode?: string, properties?: Record<string, unknown>): Reso
   } as unknown as Resource;
 }
 
-const REVOCATION_MODES = ['Remove Role Assignment', 'Delete Role', 'Change Role Permissions'];
+const REVOCATION_MODES = ['Remove Role Assignment', 'Delete Role'];
 const INVITATION_MODES = ['Select Roles', 'Assign Roles'];
 
 describe('RoleExecutorProperties', () => {

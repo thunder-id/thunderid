@@ -6,6 +6,7 @@ package role
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
@@ -108,6 +109,8 @@ type roleService struct {
 	sharingService  sharing.SharingServiceInterface
 	bus             eventbus.EventBusInterface
 	logger          *log.Logger
+	// systemFlows is nil where system flows are off.
+	systemFlows systemFlowProvider
 }
 
 // newRoleService creates a new instance of RoleService with injected dependencies.
@@ -519,7 +522,7 @@ func (rs *roleService) updateRoleWithPermissions(
 	// A role's name, description and permissions stay with the organization unit that owns it, so an
 	// update naming one it is shared with is refused. Any other organization unit is somewhere to
 	// move the role to.
-	ownerOUID, sharedWith, svcErr := rs.resolveUpdateTarget(ctx, id, role.OUID)
+	stored, sharedWith, svcErr := rs.resolveUpdateTarget(ctx, id, role.OUID)
 	if svcErr != nil {
 		return nil, svcErr
 	}
@@ -559,7 +562,13 @@ func (rs *roleService) updateRoleWithPermissions(
 		return nil, svcErr
 	}
 
-	if svcErr := rs.requireRoleMovable(ctx, id, ownerOUID, role.OUID); svcErr != nil {
+	if svcErr := rs.requireRoleMovable(ctx, id, stored.OUID, role.OUID); svcErr != nil {
+		return nil, svcErr
+	}
+
+	// Dropping a permission revokes what it granted before the update is written, and again once it is.
+	inputs, shared, svcErr := rs.revokeDroppedPermissions(ctx, id, stored.Permissions, role.Permissions, logger)
+	if svcErr != nil {
 		return nil, svcErr
 	}
 
@@ -570,6 +579,11 @@ func (rs *roleService) updateRoleWithPermissions(
 	if err != nil {
 		logger.Error(ctx, "Failed to update role", log.Error(err))
 		return nil, &tidcommon.InternalServerError
+	}
+	if inputs != nil {
+		if _, svcErr := runSystemFlow(ctx, rs.systemFlows, systemFlowRevocationPost, inputs, shared); svcErr != nil {
+			return nil, svcErr
+		}
 	}
 
 	logger.Debug(ctx, "Successfully updated role", log.String("id", id), log.String("name", role.Name))
@@ -1396,32 +1410,32 @@ func (rs *roleService) requireRoleNameAvailable(
 	return nil
 }
 
-// resolveUpdateTarget returns the organization unit owning a role, and whether the organization unit
-// an update names is one the role is shared with rather than its owner or somewhere to move it.
+// resolveUpdateTarget returns the stored role, and whether the organization unit an update names is one
+// the role is shared with rather than its owner or somewhere to move it.
 func (rs *roleService) resolveUpdateTarget(
 	ctx context.Context, roleID, ouID string,
-) (string, bool, *tidcommon.ServiceError) {
+) (RoleWithPermissions, bool, *tidcommon.ServiceError) {
 	stored, err := rs.roleStore.GetRole(ctx, roleID)
 	if err != nil {
 		if errors.Is(err, ErrRoleNotFound) {
-			return "", false, &ErrorRoleNotFound
+			return RoleWithPermissions{}, false, &ErrorRoleNotFound
 		}
 		rs.logger.Error(ctx, "Failed to read the role being updated", log.String("id", roleID), log.Error(err))
-		return "", false, &tidcommon.InternalServerError
+		return RoleWithPermissions{}, false, &tidcommon.InternalServerError
 	}
 	if stored.OUID == ouID {
-		return stored.OUID, false, nil
+		return stored, false, nil
 	}
 	visible, svcErr := rs.sharingService.IsVisible(ctx, RoleSharingType, roleID, ouID)
 	if svcErr != nil {
 		// An organization unit that does not exist is not one the role is shared with. The move
 		// that follows reports it.
 		if svcErr.Code == oupkg.ErrorOrganizationUnitNotFound.Code {
-			return stored.OUID, false, nil
+			return stored, false, nil
 		}
-		return "", false, translateSharingError(svcErr)
+		return RoleWithPermissions{}, false, translateSharingError(svcErr)
 	}
-	return stored.OUID, visible, nil
+	return stored, visible, nil
 }
 
 // translateSharingError maps a sharing framework error into this service's own codes. A refusal this
@@ -1431,4 +1445,33 @@ func translateSharingError(svcErr *tidcommon.ServiceError) *tidcommon.ServiceErr
 		return svcErr
 	}
 	return sharingErrors.Translate(svcErr)
+}
+
+// revokeDroppedPermissions runs the permission removal pre flow when the update drops one of the role's
+// current permissions, and returns the inputs it ran with and what it shared, for the post flow to run
+// once the update is written. An update that drops nothing, or a service with system flows off, runs no
+// flow and returns no inputs. A refusal leaves the role as it was.
+func (rs *roleService) revokeDroppedPermissions(ctx context.Context, id string,
+	current, permissions []ResourcePermissions, logger *log.Logger) (map[string]string, map[string]string,
+	*tidcommon.ServiceError) {
+	if rs.systemFlows == nil {
+		return nil, nil, nil
+	}
+	if len(droppedPermissions(current, permissions)) == 0 {
+		return nil, nil, nil
+	}
+	if permissions == nil {
+		permissions = []ResourcePermissions{}
+	}
+	encoded, err := json.Marshal(permissions)
+	if err != nil {
+		logger.Error(ctx, "Failed to encode role permissions", log.String("id", id), log.Error(err))
+		return nil, nil, &tidcommon.InternalServerError
+	}
+	inputs := map[string]string{systemFlowInputRole: id, systemFlowInputPermissions: string(encoded)}
+	shared, svcErr := runSystemFlow(ctx, rs.systemFlows, systemFlowRolePermissionRemovalPre, inputs, nil)
+	if svcErr != nil {
+		return nil, nil, svcErr
+	}
+	return inputs, shared, nil
 }
