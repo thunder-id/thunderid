@@ -172,3 +172,20 @@ func ConvertToStringSlice[T ~string](items []T) []string {
 	}
 	return result
 }
+
+// TruncateRunes returns the first limit characters of s, cut on a rune boundary, without allocating:
+// a header may be a megabyte long. An invalid UTF-8 byte counts as one character.
+func TruncateRunes(s string, limit int) string {
+	// A string of at most limit bytes has at most limit characters.
+	if len(s) <= limit {
+		return s
+	}
+	count := 0
+	for i := range s {
+		if count == limit {
+			return s[:i]
+		}
+		count++
+	}
+	return s
+}

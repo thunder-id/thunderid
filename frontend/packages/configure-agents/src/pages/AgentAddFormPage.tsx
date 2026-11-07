@@ -4,8 +4,10 @@
 import {DocumentTitle, FullScreenCreationWizardLayout, QueryErrorNotice} from '@thunderid/components';
 import {useGetAgentType, useGetAgentTypes, type AgentTypeListItem} from '@thunderid/configure-agent-types';
 import {OrganizationUnitTreePicker} from '@thunderid/configure-organization-units';
-import {renderSchemaField, useGetUsers} from '@thunderid/configure-users';
+import {renderSchemaField, useGetUser, useGetUsers} from '@thunderid/configure-users';
+import {useProjectScope} from '@thunderid/contexts';
 import {useResolveDisplayName} from '@thunderid/hooks';
+import {useThunderID} from '@thunderid/react';
 import {getErrorMessage} from '@thunderid/utils';
 import {
   Alert,
@@ -25,7 +27,7 @@ import {
 import {useCallback, useState, type JSX} from 'react';
 import {useForm} from 'react-hook-form';
 import {useTranslation} from 'react-i18next';
-import {useLocation, useNavigate} from 'react-router';
+import {useNavigate} from 'react-router';
 import useCreateAgent from '../api/useCreateAgent';
 import ClientSecretSuccessDialog from '../components/ClientSecretSuccessDialog';
 import useAgentRoutes from '../hooks/useAgentRoutes';
@@ -40,25 +42,41 @@ const AGENT_CREDENTIALS: AgentInboundAuthConfig = {
 };
 
 /**
+ * The signed-in user's ID: the `id` of the profile the console reads from `/users/me`, which a caller
+ * who is not a user here does not have.
+ */
+function signedInUserId(user: Record<string, unknown> | null | undefined): string | undefined {
+  const id: unknown = user?.['id'];
+
+  return typeof id === 'string' && id !== '' ? id : undefined;
+}
+
+/** Whether a read failed because what it asked for does not exist. */
+function isNotFound(error: unknown): boolean {
+  return (error as {response?: {status?: number}} | null)?.response?.status === 404;
+}
+
+/**
  * Creates an agent from a single form, without running an onboarding flow.
  *
  * Used when agent creation runs natively, for example on a deployment that holds configuration
  * only and so has no /flow/execute for the onboarding flow to call. It asks for an agent type, an
  * organization unit and what the type's schema holds, the agent's name among it, and posts them to
  * the agents API. An owner can be chosen from the users that exist here; without one the API makes the
- * caller the owner. OAuth client credentials are issued with the agent unless switched off: the API
- * generates the client ID and secret, and the secret is shown once here, since the agent's page
- * can only regenerate it afterwards.
+ * caller the owner, so that is offered only when the caller is a user here too. OAuth client
+ * credentials are issued with the agent unless switched off: the API generates the client ID and
+ * secret, and the secret is shown once here, since the agent's page can only regenerate it afterwards.
  */
 export default function AgentAddFormPage(): JSX.Element {
   const routes = useAgentRoutes();
   const {t} = useTranslation();
   const navigate = useNavigate();
-  const {pathname} = useLocation();
   const {resolveDisplayName} = useResolveDisplayName({handlers: {t}});
   const createAgent = useCreateAgent();
-
-  const isWelcomeFlow = pathname.startsWith(routes.welcome.getStarted());
+  const {projectId} = useProjectScope();
+  // Inside a project the agent is created with the project alone, and the API places it in the system
+  // organization unit, so there is no organization unit to pick.
+  const isInProject = Boolean(projectId);
 
   const [description, setDescription] = useState<string>('');
   const [typeId, setTypeId] = useState<string>('');
@@ -75,6 +93,15 @@ export default function AgentAddFormPage(): JSX.Element {
     error: usersError,
     refetch: refetchUsers,
   } = useGetUsers({limit: 100, offset: 0});
+  // Without an owner the API makes the caller the owner, and a gateway refuses an agent whose owner it
+  // cannot find. A caller who signed in through another deployment has no profile here, so they are
+  // not offered as the owner, and neither is one this deployment does not find. A lookup refused for
+  // another reason, such as no permission to read users, says nothing about the caller being missing.
+  const {user: signedInUser} = useThunderID() as {user?: Record<string, unknown> | null};
+  const callerId = signedInUserId(signedInUser);
+  const {isPending: callerPending, error: callerError} = useGetUser(callerId);
+  const callerElsewhere = !callerId || isNotFound(callerError);
+  const callerCanOwn = !callerElsewhere && !callerPending;
 
   // A previously chosen type's fields are cleared when the type changes, so they are not posted.
   const {
@@ -95,6 +122,19 @@ export default function AgentAddFormPage(): JSX.Element {
     user.display && duplicateDisplays.has(user.display) ? `${user.display} (${user.id})` : (user.display ?? user.id);
   // Only the first page of users is offered, which is said when there are more.
   const usersTruncated = (userList?.totalResults ?? 0) > users.length;
+  let ownerHint: string = t(
+    'agents:addForm.ownerHint',
+    'Defaults to you. Choose a user created here if the agent is applied to a gateway, which needs an owner it can find.',
+  );
+  if (callerElsewhere) {
+    ownerHint =
+      !usersLoading && !usersError && users.length === 0
+        ? t('agents:addForm.ownerNoUsers', 'There are no users here to own the agent. Add a user, then add the agent.')
+        : t(
+            'agents:addForm.ownerRequiredHint',
+            'Choose a user created here. A gateway the agent is applied to needs an owner it can find, and the account you signed in with is not a user here.',
+          );
+  }
 
   const tForErrors = useCallback(
     (key: string, options?: Record<string, unknown>): string => t(key.includes(':') ? key : `agents:${key}`, options),
@@ -102,7 +142,7 @@ export default function AgentAddFormPage(): JSX.Element {
   );
 
   const handleClose = (): void => {
-    void navigate(isWelcomeFlow ? routes.welcome.getStarted() : routes.agents.list());
+    void navigate(routes.agents.list());
   };
 
   const onSubmit = handleSubmit((values: AttributeFormData) => {
@@ -112,9 +152,9 @@ export default function AgentAddFormPage(): JSX.Element {
     );
     const trimmedDescription = description.trim();
     const request: CreateAgentRequest = {
-      ouId,
+      ...(isInProject ? {projectId} : {ouId}),
       type: selectedType?.handle ?? '',
-      ...(ownerId ? {owner: ownerId} : {}),
+      ...(ownerId ? {owner: {id: ownerId, idType: 'uuid', isLocal: true}} : {}),
       ...(trimmedDescription ? {description: trimmedDescription} : {}),
       ...(Object.keys(attributes).length > 0 ? {attributes} : {}),
       // The API generates the client ID and secret for an OAuth config that names none, so only how
@@ -215,7 +255,7 @@ export default function AgentAddFormPage(): JSX.Element {
               </Select>
             </FormControl>
 
-            {selectedType && (
+            {selectedType && !isInProject && (
               <FormControl fullWidth required>
                 <FormLabel htmlFor="agent-ou">{t('agents:addForm.organizationUnit')}</FormLabel>
                 {/* An agent of a type belongs to the type's organization unit or one beneath it. */}
@@ -229,7 +269,7 @@ export default function AgentAddFormPage(): JSX.Element {
               </FormControl>
             )}
 
-            <FormControl fullWidth>
+            <FormControl fullWidth required={callerElsewhere}>
               <FormLabel htmlFor="agent-owner">{t('agents:addForm.owner', 'Owner')}</FormLabel>
               {usersError ? (
                 // A failed read is shown in place of the picker, not as an empty one: the agent would
@@ -253,7 +293,11 @@ export default function AgentAddFormPage(): JSX.Element {
                   onChange={(event) => setOwnerId(String(event.target.value))}
                 >
                   <MenuItem value="">
-                    <em>{t('agents:addForm.ownerDefault', 'Me (default)')}</em>
+                    <em>
+                      {callerElsewhere
+                        ? t('agents:addForm.selectOwner', 'Select an owner')
+                        : t('agents:addForm.ownerDefault', 'Me (default)')}
+                    </em>
                   </MenuItem>
                   {users.map((user) => (
                     <MenuItem key={user.id} value={user.id}>
@@ -271,10 +315,7 @@ export default function AgentAddFormPage(): JSX.Element {
                 </Typography>
               )}
               <Typography variant="caption" color="text.secondary">
-                {t(
-                  'agents:addForm.ownerHint',
-                  'Defaults to you. Choose a user created here if the agent is applied to a gateway, which needs an owner it can find.',
-                )}
+                {ownerHint}
               </Typography>
             </FormControl>
 
@@ -302,7 +343,13 @@ export default function AgentAddFormPage(): JSX.Element {
               <Button
                 type="submit"
                 variant="contained"
-                disabled={!selectedType || !ouId || !agentType || createAgent.isPending}
+                disabled={
+                  !selectedType ||
+                  (!isInProject && !ouId) ||
+                  !agentType ||
+                  (!callerCanOwn && !ownerId) ||
+                  createAgent.isPending
+                }
               >
                 {createAgent.isPending ? t('agents:addForm.creating') : t('agents:addForm.submit')}
               </Button>

@@ -539,7 +539,20 @@ func (rs *resourceService) UpdateResourceServer(
 		if hasInvalidMCPIdentifier(resourceServer.Type, resourceServer.Identifier, rs.keepsReferences) {
 			return nil, &ErrorInvalidMCPIdentifier
 		}
-		identifierExists, err := rs.resourceStore.CheckResourceServerIdentifierExists(ctx, resourceServer.Identifier)
+		var identifierExists bool
+		var err error
+		// An equivalent spelling of the current identifier only conflicts with a server that has it exactly.
+		if normalizeResourceIdentifier(resourceServer.Identifier) ==
+			normalizeResourceIdentifier(existingResServer.Identifier) {
+			_, err = rs.resourceStore.GetResourceServerByIdentifier(ctx, resourceServer.Identifier)
+			identifierExists = err == nil
+			if errors.Is(err, errResourceServerNotFound) {
+				err = nil
+			}
+		} else {
+			identifierExists, err = rs.resourceStore.CheckResourceServerIdentifierExists(
+				ctx, resourceServer.Identifier)
+		}
 		if err != nil {
 			rs.logger.Error(ctx, "Failed to check resource server identifier", log.Error(err))
 			return nil, &tidcommon.InternalServerError
@@ -1654,6 +1667,24 @@ func validateHandle(handle string, delimiter string) *tidcommon.ServiceError {
 		}
 	}
 	return nil
+}
+
+// normalizeResourceIdentifier returns the RFC 3986 normal form used to compare resource server identifiers
+// for equivalence. A URL with a host and no user info has its scheme and host lowercased, and an http or https
+// URL that ends at the host gets "/". Every other character, and any other value, is kept as given.
+func normalizeResourceIdentifier(identifier string) string {
+	parsed, err := url.Parse(identifier)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" || parsed.User != nil {
+		return identifier
+	}
+
+	authority, rest := identifier[len(parsed.Scheme)+len("://"):], ""
+	if i := strings.IndexAny(authority, "/?#"); i >= 0 {
+		authority, rest = authority[:i], authority[i:]
+	} else if parsed.Scheme == "http" || parsed.Scheme == "https" {
+		rest = "/"
+	}
+	return parsed.Scheme + "://" + strings.ToLower(authority) + rest
 }
 
 // hasInvalidMCPIdentifier reports whether an MCP resource server identifier is not an http or https

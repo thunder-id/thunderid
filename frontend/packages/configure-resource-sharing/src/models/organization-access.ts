@@ -29,6 +29,10 @@ export type ChildUnitReach = 'unit' | 'subtree';
 export interface GrantedChildUnit {
   ouId: string;
   reach: ChildUnitReach;
+  /**
+   * Roles the share mandates in this unit. Only meaningful with reach `unit`.
+   */
+  roles?: string[];
 }
 
 /**
@@ -74,6 +78,29 @@ export interface OrganizationAccessOffers {
 }
 
 /**
+ * Where a policy turns assignments off, so the organization units reached there can't assign the
+ * shared role. Only a resource file or the API sets these rules; the screen shows and keeps them.
+ */
+export interface AssignmentsOffRules {
+  /**
+   * Off for every organization unit an "Every organization unit" section reaches.
+   */
+  everyUnit: boolean;
+  /**
+   * Off for the child units that all child units reach.
+   */
+  allChildUnits: boolean;
+  /**
+   * Off for the top units that "Every tree" reaches.
+   */
+  everyTree: boolean;
+  /**
+   * Named child units and top units of other trees it is off for.
+   */
+  ouIds: string[];
+}
+
+/**
  * What saving a draft does to the resource's sharing policy.
  */
 export type SharingPolicySavePlan =
@@ -104,4 +131,9 @@ export interface AccessSwitch {
    */
   losesEveryUnit: boolean;
   losesEveryTree: boolean;
+  /**
+   * Whether the switch drops a rule turning a role's assignments off, which the console can't set
+   * again. Organization units granted again afterwards can assign the role.
+   */
+  losesAssignmentsOff: boolean;
 }

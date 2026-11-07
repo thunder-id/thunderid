@@ -15,15 +15,13 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
-// userDeletionProvider exposes the user operations required by deletion executors.
+// userDeletionProvider exposes the user operation the deletion executor validates with.
 type userDeletionProvider interface {
 	ValidateDeleteUser(ctx context.Context, userID string) *tidcommon.ServiceError
-	DeleteUser(ctx context.Context, userID string) *tidcommon.ServiceError
 }
 
-// preDeleteExecutor is the preparatory node of an administrative flow. It runs ahead of
-// the executors that act, validates the target of the operation, and publishes the trusted
-// revocation plan those executors consume.
+// preDeleteExecutor is the preparatory node of the user deletion system flow. It validates the user and
+// publishes the trusted revocation plan the executors after it consume.
 //
 // Nothing downstream re-derives the plan or reads it from the request: the plan travels on
 // SharedRuntimeData, which is unexported on the engine context and never serialized to the client. An
@@ -37,14 +35,14 @@ type preDeleteExecutor struct {
 
 var _ providers.Executor = (*preDeleteExecutor)(nil)
 
-// newPreDeleteExecutor creates the preparatory executor for administrative flows.
+// newPreDeleteExecutor creates the preparatory executor of the user deletion system flow.
 func newPreDeleteExecutor(factory core.FlowFactoryInterface,
 	userProvider userDeletionProvider) *preDeleteExecutor {
 	base := factory.CreateExecutor(ExecutorNamePreDelete, providers.ExecutorTypeUtility,
 		[]providers.Input{
 			{Identifier: revocationInputSubject, Type: providers.InputTypeText, Required: true},
 		}, nil, &providers.ExecutorMeta{
-			SupportedFlowTypes: []providers.FlowType{providers.FlowTypeAdministration, providers.FlowTypeSystem},
+			SupportedFlowTypes: []providers.FlowType{providers.FlowTypeSystem},
 			DefaultMode:        string(revocation.ModeAll),
 			SupportedModes:     []string{string(revocation.ModeAll)},
 		})

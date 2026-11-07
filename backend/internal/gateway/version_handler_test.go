@@ -22,6 +22,8 @@ import (
 type stubVersionService struct {
 	err      *tidcommon.ServiceError
 	lastRef  string
+	lastProj string
+	lastFrom string
 	lastApp  ApplyRequest
 	forgot   string
 	captured CaptureRequest
@@ -43,9 +45,27 @@ func (s *stubVersionService) GetVersion(_ context.Context, ref string) (*Version
 func (s *stubVersionService) GetApplied(_ context.Context, id string) (*AppliedVersion, *tidcommon.ServiceError) {
 	return &AppliedVersion{GatewayID: id}, s.err
 }
-func (s *stubVersionService) Diff(_ context.Context, _, ref string) (*Diff, *tidcommon.ServiceError) {
-	s.lastRef = ref
+func (s *stubVersionService) Diff(_ context.Context, _, ref, projectID string) (*Diff,
+	*tidcommon.ServiceError) {
+	s.lastRef, s.lastProj = ref, projectID
 	return &Diff{}, s.err
+}
+func (s *stubVersionService) ProjectStatus(_ context.Context, _, projectID, sourceGatewayID,
+	ref string) (*ProjectStatus, *tidcommon.ServiceError) {
+	s.lastRef, s.lastProj, s.lastFrom = ref, projectID, sourceGatewayID
+	return &ProjectStatus{}, s.err
+}
+func (s *stubVersionService) SetProjectAutoSync(_ context.Context, projectID string,
+	req ProjectAutoSyncRequest) (*ProjectSyncSetting, *tidcommon.ServiceError) {
+	s.lastProj = projectID
+	if req.FirstGateway == nil {
+		return nil, s.err
+	}
+	return &ProjectSyncSetting{FirstGateway: *req.FirstGateway}, s.err
+}
+func (s *stubVersionService) DeleteProjectAutoSync(_ context.Context, projectID string) *tidcommon.ServiceError {
+	s.lastProj = projectID
+	return s.err
 }
 func (s *stubVersionService) Apply(_ context.Context, _ string,
 	req ApplyRequest) (*ApplyResult, *tidcommon.ServiceError) {
@@ -91,16 +111,40 @@ func TestVersionRoutesAnswerEachCall(t *testing.T) {
 		{http.MethodGet, "/configuration-versions", ``, http.StatusOK},
 		{http.MethodGet, "/configuration-versions/latest", ``, http.StatusOK},
 		{http.MethodGet, "/gateways/gw-1/applied-version", ``, http.StatusOK},
-		{http.MethodGet, "/gateways/gw-1/diff?version=2", ``, http.StatusOK},
-		{http.MethodPost, "/gateways/gw-1/apply", `{"version":"2","dryRun":true}`, http.StatusOK},
+		{http.MethodGet, "/gateways/gw-1/diff?version=2&project=shop", ``, http.StatusOK},
+		{http.MethodPost, "/gateways/gw-1/apply", `{"version":"2","dryRun":true,"project":"shop"}`, http.StatusOK},
 		{http.MethodPost, "/gateways/gw-1/revert", `{}`, http.StatusOK},
 		{http.MethodOptions, "/gateways/gw-1/apply", ``, http.StatusNoContent},
 	} {
 		assert.Equal(t, call.want, serveVersions(stub, call.method, call.path, call.body).Code,
 			"%s %s", call.method, call.path)
 	}
-	assert.Equal(t, ApplyRequest{Version: "2", DryRun: true}, stub.lastApp)
+	assert.Equal(t, ApplyRequest{Version: "2", DryRun: true, Project: "shop"}, stub.lastApp)
+	assert.Equal(t, "shop", stub.lastProj)
 	assert.Equal(t, "n", stub.captured.Note)
+
+	assert.Equal(t, http.StatusOK, serveVersions(stub, http.MethodGet,
+		"/gateways/gw-2/project-status?project=billing&from=gw-1&version=3", ``).Code)
+	assert.Equal(t, "billing", stub.lastProj)
+	assert.Equal(t, "gw-1", stub.lastFrom)
+	assert.Equal(t, "3", stub.lastRef)
+	assert.Equal(t, http.StatusNoContent, serveVersions(stub, http.MethodOptions,
+		"/gateways/gw-2/project-status", ``).Code)
+
+	recorder := serveVersions(stub, http.MethodPut, "/projects/shop/auto-sync",
+		`{"autoSync":true,"firstGateway":"gw-1"}`)
+	assert.Equal(t, http.StatusOK, recorder.Code)
+	assert.JSONEq(t, `{"firstGateway":"gw-1"}`, recorder.Body.String())
+	assert.Equal(t, "shop", stub.lastProj)
+	assert.Equal(t, http.StatusNoContent, serveVersions(stub, http.MethodPut, "/projects/shop/auto-sync",
+		`{"autoSync":null}`).Code, "a removed entry answered content")
+	assert.Equal(t, http.StatusBadRequest, serveVersions(stub, http.MethodPut, "/projects/shop/auto-sync",
+		`{"enabled":true}x`).Code)
+	assert.Equal(t, http.StatusNoContent, serveVersions(stub, http.MethodDelete,
+		"/projects/billing/auto-sync", ``).Code)
+	assert.Equal(t, "billing", stub.lastProj)
+	assert.Equal(t, http.StatusNoContent, serveVersions(stub, http.MethodOptions,
+		"/projects/billing/auto-sync", ``).Code)
 }
 
 // Each failure is answered with the status that says what went wrong.
@@ -108,10 +152,13 @@ func TestVersionRoutesMapErrorsToStatuses(t *testing.T) {
 	for svcErr, want := range map[*tidcommon.ServiceError]int{
 		&ErrorVersionNotFound:          http.StatusNotFound,
 		&ErrorGatewayNotFound:          http.StatusNotFound,
+		&ErrorProjectNotFound:          http.StatusNotFound,
+		&ErrorProjectNeedsLeftOut:      http.StatusBadRequest,
 		&ErrorInvalidVersion:           http.StatusBadRequest,
 		&ErrorGatewayUnreachable:       http.StatusBadGateway,
 		&ErrorGatewayPrivateAddress:    http.StatusBadGateway,
 		&ErrorMissingValues:            http.StatusConflict,
+		&ErrorPromotionIncomplete:      http.StatusConflict,
 		&ErrorMisplacedSecret:          http.StatusBadRequest,
 		&ErrorApplyInProgress:          http.StatusConflict,
 		&ErrorRemovalsNeedConfirmation: http.StatusConflict,

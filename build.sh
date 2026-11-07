@@ -58,9 +58,9 @@ fi
 PRODUCT_NAME="ThunderID"
 PRODUCT_NAME_LOWERCASE="$(echo "$PRODUCT_NAME" | tr '[:upper:]' '[:lower:]')"
 BINARY_NAME="${PRODUCT_NAME_LOWERCASE}"
-PRODUCT_FOLDER=${BINARY_NAME}-${PRODUCT_VERSION}-${GO_PACKAGE_OS}-${GO_PACKAGE_ARCH}
+PRODUCT_FOLDER=${BINARY_NAME}-gateway-${PRODUCT_VERSION}-${GO_PACKAGE_OS}-${GO_PACKAGE_ARCH}
 CP_PRODUCT_FOLDER=${BINARY_NAME}-cp-${PRODUCT_VERSION}-${GO_PACKAGE_OS}-${GO_PACKAGE_ARCH}
-QUICKSTART_PRODUCT_FOLDER=${BINARY_NAME}-quickstart-${PRODUCT_VERSION}-${GO_PACKAGE_OS}-${GO_PACKAGE_ARCH}
+QUICKSTART_PRODUCT_FOLDER=${BINARY_NAME}-${PRODUCT_VERSION}-${GO_PACKAGE_OS}-${GO_PACKAGE_ARCH}
 
 # --- Sample App Distribution details ---
 # Vanilla Sample
@@ -1921,6 +1921,10 @@ case "$1" in
         build_frontend
         package
         package_sample_app
+        # package deleted the Data Plane binary, so build it again for the quickstart.
+        build_backend
+        build_cp_backend
+        package_quickstart
         ;;
     test_unit)
         test_unit
@@ -1960,7 +1964,7 @@ case "$1" in
         echo "Usage: ./build.sh {clean|build|build_backend|build_frontend|build_docs|test|run} [OS] [ARCH]"
         echo ""
         echo "  clean                    - Clean build artifacts"
-        echo "  build                    - Build the complete ${PRODUCT_NAME} application (backend + frontend + samples)"
+        echo "  build                    - Build the Data Plane and quickstart packs, plus the sample apps"
         echo "  build_backend            - Build only the ${PRODUCT_NAME} backend server"
         echo "  build_cp_backend         - Build and package the ${PRODUCT_NAME} Control Plane server"
         echo "  build_quickstart         - Build and package a combined Control Plane + Data Plane quickstart, pre-wired together"

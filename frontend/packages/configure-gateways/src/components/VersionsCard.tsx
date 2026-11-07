@@ -27,6 +27,11 @@ export interface VersionsCardProps {
    * configuration is promoted along a path, only the first target takes a deploy.
    */
   deployTargets?: string[];
+  /**
+   * The names of the targets that hold a value set since the version they run was deployed. Such a
+   * target still takes a deploy of that version, which is how the value takes effect.
+   */
+  targetsWithChangedValues?: string[];
 }
 
 /** The colours targets are tagged in, by their place along the path. */
@@ -80,6 +85,7 @@ export default function VersionsCard({
   runners = {},
   targets = [],
   deployTargets = undefined,
+  targetsWithChangedValues = [],
 }: VersionsCardProps): JSX.Element {
   const {t} = useTranslation('deploy');
   // One version is open at a time, the newest until another is opened; closing it leaves none open.
@@ -93,12 +99,14 @@ export default function VersionsCard({
   );
   const folded = versions.length - listed.length;
 
-  // A version that every target a deploy can reach already runs has nowhere to go, so its Deploy is
-  // disabled and says where it runs.
+  // A version that every target a deploy can reach already runs, with no value set since, has nowhere
+  // to go, so its Deploy is disabled and says where it runs.
   const reachable = deployTargets ?? targets;
   const deployButton = (version: Version, deployedTo: string[]): JSX.Element | null => {
     if (!onDeploy) return null;
-    const everywhere = reachable.length > 0 && reachable.every((name: string) => deployedTo.includes(name));
+    const everywhere =
+      reachable.length > 0 &&
+      reachable.every((name: string) => deployedTo.includes(name) && !targetsWithChangedValues.includes(name));
     const button = (
       <Button
         variant="contained"

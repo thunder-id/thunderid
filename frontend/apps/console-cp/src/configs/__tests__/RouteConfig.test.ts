@@ -14,6 +14,9 @@ describe('RouteConfig', () => {
     expect(RouteConfig.deploy.list()).toBe('/deploy');
     expect(RouteConfig.deploy.explore('gw 1')).toBe('/deploy/gateways/gw%201/explore');
     expect(RouteConfig.deploy.values('gw-1')).toBe('/deploy/gateways/gw-1/values');
+    // Gateways and projects return to pages this console has.
+    expect(RouteConfig.deploy.gateway('gw-1', 'p-1')).toBe('/deploy');
+    expect(RouteConfig.deploy.project?.('p-1')).toBe('/home');
   });
 
   it('organizationUnits builds paths from the segment', () => {
@@ -130,28 +133,17 @@ describe('RouteConfig', () => {
     expect(RouteConfig.importConfiguration.summary()).toBe('/import-configuration/summary');
   });
 
-  it('welcome builds paths from the segment', () => {
-    expect(RouteConfig.welcome.root()).toBe('/welcome');
-    expect(RouteConfig.welcome.createProject()).toBe('/welcome/create-project');
-    expect(RouteConfig.welcome.getStarted()).toBe('/welcome/get-started');
-    expect(RouteConfig.welcome.getStartedApplicationsTypes()).toBe('/welcome/get-started/applications/types');
-    expect(RouteConfig.welcome.getStartedApplicationsCreate()).toBe('/welcome/get-started/applications/create');
-    expect(RouteConfig.welcome.getStartedAgentsCreate()).toBe('/welcome/get-started/agents/create');
-    expect(RouteConfig.welcome.tryoutSecuringApplication).toBeUndefined();
-    expect(RouteConfig.welcome.tryoutAiAgents).toBeUndefined();
-    expect(RouteConfig.welcome.tryoutMcp).toBeUndefined();
-    expect(RouteConfig.welcome.importConfigurationUpload()).toBe('/welcome/import-configuration');
-    expect(RouteConfig.welcome.importConfigurationValidate()).toBe('/welcome/import-configuration/validate');
-    expect(RouteConfig.welcome.importConfigurationSummary()).toBe('/welcome/import-configuration/summary');
-  });
-
   it('settings builds paths from the segment', () => {
     expect(RouteConfig.settings.list()).toBe('/settings');
+  });
+
+  it('projects builds paths from the segment', () => {
+    expect(RouteConfig.projects.list()).toBe('/projects');
+    expect(RouteConfig.projects.create()).toBe('/projects/create');
   });
 
   it('every builder derives its path from ROUTE_SEGMENTS rather than a separate literal', () => {
     expect(RouteConfig.organizationUnits.list()).toBe(`/${ROUTE_SEGMENTS.organizationUnits}`);
     expect(RouteConfig.users.list()).toBe(`/${ROUTE_SEGMENTS.users}`);
-    expect(RouteConfig.welcome.root()).toBe(`/${ROUTE_SEGMENTS.welcome}`);
   });
 });

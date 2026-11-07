@@ -5,11 +5,10 @@ import {render, screen, userEvent, waitFor, fireEvent} from '@thunderid/test-uti
 import {afterEach, describe, expect, it, vi} from 'vitest';
 
 const mockNavigate = vi.fn();
-let mockPathname = '/import-configuration';
 
 vi.mock('react-router', async () => {
   const actual = await vi.importActual<typeof import('react-router')>('react-router');
-  return {...actual, useNavigate: () => mockNavigate, useLocation: () => ({pathname: mockPathname})};
+  return {...actual, useNavigate: () => mockNavigate};
 });
 
 vi.mock('@thunderid/logger/react', () => ({
@@ -44,7 +43,6 @@ import ImportConfigurationUploadPage from '../ImportConfigurationUploadPage';
 
 afterEach(() => {
   vi.clearAllMocks();
-  mockPathname = '/import-configuration';
 });
 
 describe('ImportConfigurationUploadPage', () => {
@@ -99,23 +97,13 @@ describe('ImportConfigurationUploadPage', () => {
     expect(mockNavigate).toHaveBeenCalledWith('/home');
   });
 
-  it('navigates to /import-export when the default breadcrumb is clicked outside the welcome flow', async () => {
+  it('navigates to /import-export when the breadcrumb is clicked', async () => {
     const user = userEvent.setup();
     render(<ImportConfigurationUploadPage />);
 
     await user.click(screen.getByText('Import / Export'));
 
     expect(mockNavigate).toHaveBeenCalledWith('/import-export');
-  });
-
-  it('navigates to /welcome when the welcome breadcrumb is clicked from the welcome flow', async () => {
-    mockPathname = '/welcome/import-configuration';
-    const user = userEvent.setup();
-    render(<ImportConfigurationUploadPage />);
-
-    await user.click(screen.getByText('Welcome'));
-
-    expect(mockNavigate).toHaveBeenCalledWith('/welcome');
   });
 
   it('shows error when non-yaml file is selected', () => {
@@ -199,7 +187,7 @@ describe('ImportConfigurationUploadPage', () => {
     await waitFor(
       () => {
         expect(mockNavigate).toHaveBeenCalledWith(
-          '/welcome/import-configuration/validate',
+          '/import-configuration/validate',
           expect.objectContaining({
             state: expect.objectContaining({
               method: 'file',
@@ -233,7 +221,7 @@ describe('ImportConfigurationUploadPage', () => {
     await waitFor(
       () => {
         expect(mockNavigate).toHaveBeenCalledWith(
-          '/welcome/import-configuration/validate',
+          '/import-configuration/validate',
           expect.objectContaining({state: expect.objectContaining({method: 'file'}) as Record<string, unknown>}),
         );
       },
@@ -256,7 +244,7 @@ describe('ImportConfigurationUploadPage', () => {
     await waitFor(
       () => {
         expect(mockNavigate).toHaveBeenCalledWith(
-          '/welcome/import-configuration/validate',
+          '/import-configuration/validate',
           expect.objectContaining({
             state: expect.objectContaining({
               method: 'file',
@@ -295,7 +283,7 @@ describe('ImportConfigurationUploadPage', () => {
     await waitFor(
       () => {
         expect(mockNavigate).toHaveBeenCalledWith(
-          '/welcome/import-configuration/validate',
+          '/import-configuration/validate',
           expect.objectContaining({
             state: expect.objectContaining({
               method: 'file',
@@ -470,7 +458,7 @@ describe('ImportConfigurationUploadPage', () => {
     await waitFor(
       () => {
         expect(mockNavigate).toHaveBeenCalledWith(
-          '/welcome/import-configuration/validate',
+          '/import-configuration/validate',
           expect.objectContaining({
             state: expect.objectContaining({
               method: 'file',
@@ -497,7 +485,7 @@ describe('ImportConfigurationUploadPage', () => {
     await waitFor(
       () => {
         expect(mockNavigate).toHaveBeenCalledWith(
-          '/welcome/import-configuration/validate',
+          '/import-configuration/validate',
           expect.objectContaining({
             state: expect.objectContaining({parseStats: {successCount: 1, failCount: 0}}) as Record<string, unknown>,
           }),
@@ -527,7 +515,7 @@ describe('ImportConfigurationUploadPage', () => {
     await waitFor(
       () => {
         expect(mockNavigate).toHaveBeenCalledWith(
-          '/welcome/import-configuration/validate',
+          '/import-configuration/validate',
           expect.objectContaining({
             state: expect.objectContaining({
               parseStats: {successCount: 0, failCount: 1},
@@ -555,7 +543,7 @@ describe('ImportConfigurationUploadPage', () => {
     await waitFor(
       () => {
         expect(mockNavigate).toHaveBeenCalledWith(
-          '/welcome/import-configuration/validate',
+          '/import-configuration/validate',
           expect.objectContaining({
             state: expect.objectContaining({parseStats: {successCount: 2, failCount: 0}}) as Record<string, unknown>,
           }),
@@ -586,7 +574,7 @@ describe('ImportConfigurationUploadPage', () => {
     await waitFor(
       () => {
         expect(mockNavigate).toHaveBeenCalledWith(
-          '/welcome/import-configuration/validate',
+          '/import-configuration/validate',
           expect.objectContaining({
             state: expect.objectContaining({
               parseStats: {successCount: 1, failCount: 1},

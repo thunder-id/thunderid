@@ -1196,19 +1196,6 @@ var (
 		},
 	}
 
-	// ErrUserDeletionFailed is returned when a permitted user deletion cannot be completed.
-	ErrUserDeletionFailed = tidcommon.ServiceError{
-		Type: tidcommon.ClientErrorType,
-		Code: "FET-1085",
-		Error: tidcommon.I18nMessage{
-			Key:          "flows.executor.errors.user_deletion_failed",
-			DefaultValue: "User deletion failed",
-		},
-		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "flows.executor.errors.user_deletion_failed_desc",
-			DefaultValue: "The user could not be deleted",
-		},
-	}
 	// ErrApplicationDeletionNotAllowed is returned when the target application cannot be deleted.
 	ErrApplicationDeletionNotAllowed = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,

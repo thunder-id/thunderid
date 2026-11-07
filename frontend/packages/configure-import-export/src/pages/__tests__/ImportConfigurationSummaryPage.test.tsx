@@ -31,8 +31,6 @@ const mockLocationState = {
   configContent: 'application:\n  - name: {{.APP_NAME}}\n',
 };
 
-let mockPathname = '/import/summary';
-
 // "Import configuration" is used both as the breadcrumb label (upload.breadcrumb.openProject)
 // and as the submit button label (summary.import.action). Disambiguate by element tag: the
 // submit action is a real <button>, the breadcrumb item is a non-button element with role="button".
@@ -52,7 +50,6 @@ vi.mock('react-router', async () => {
     useNavigate: () => mockNavigate,
     useLocation: () => ({
       state: mockLocationState,
-      pathname: mockPathname,
     }),
   };
 });
@@ -125,7 +122,6 @@ describe('ImportConfigurationSummaryPage', () => {
       isError: false,
       error: null,
     };
-    mockPathname = '/import/summary';
   });
 
   describe('rendering', () => {
@@ -242,16 +238,6 @@ describe('ImportConfigurationSummaryPage', () => {
       await userEvent.click(uploadLink);
 
       expect(mockNavigate).toHaveBeenCalledWith('/import-configuration');
-    });
-
-    it('shows a welcome breadcrumb that navigates to /welcome when reached from the welcome flow', async () => {
-      mockPathname = '/welcome/import-configuration/summary';
-      render(<ImportConfigurationSummaryPage />);
-
-      const welcomeLink = screen.getByText('Welcome');
-      await userEvent.click(welcomeLink);
-
-      expect(mockNavigate).toHaveBeenCalledWith('/welcome');
     });
   });
 

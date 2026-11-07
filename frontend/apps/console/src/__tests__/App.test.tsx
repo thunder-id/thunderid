@@ -1,12 +1,18 @@
 // Copyright 2025 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {render, screen, waitFor} from '@testing-library/react';
+import {render, screen, waitFor, within} from '@testing-library/react';
 import {afterEach, describe, expect, it, vi} from 'vitest';
 import App from '../App';
+import RouteConfig from '../configs/RouteConfig';
 
 vi.mock('@thunderid/react-router', () => ({
-  ProtectedRoute: ({children}: {children: React.ReactNode}) => <div data-testid="protected-route">{children}</div>,
+  ProtectedRoute: ({children, loader = undefined}: {children: React.ReactNode; loader?: React.ReactNode}) => (
+    <div data-testid="protected-route">
+      <div data-testid="protected-route-loader">{loader}</div>
+      {children}
+    </div>
+  ),
 }));
 
 vi.mock('@thunderid/configure-translations', () => ({
@@ -21,16 +27,7 @@ vi.mock('../lib/monaco-setup', () => ({}));
 vi.mock('@thunderid/configure-onboarding', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@thunderid/configure-onboarding')>()),
   HomePage: () => <div data-testid="home-page" />,
-  WelcomePage: () => <div data-testid="welcome-page" />,
-  GetStartedPage: () => <div data-testid="get-started-page" />,
-  CreateProjectPage: () => <div data-testid="create-project-page" />,
-  TryoutSecuringApplicationPage: () => <div data-testid="tryout-securing-application-page" />,
-  TryoutSecuringAIAgentsPage: () => <div data-testid="tryout-ai-agents-page" />,
-  TryoutSecuringMCPPage: () => <div data-testid="tryout-mcp-page" />,
-  WelcomeRedirect: () => null,
 }));
-
-vi.mock('../data/sampleBundles', () => ({SAMPLE_BUNDLES: {}}));
 
 vi.mock('@thunderid/configure-user-types', () => ({
   UserTypeCreateProvider: ({children}: {children: React.ReactNode}) => children as React.ReactElement,
@@ -145,6 +142,32 @@ describe('App', () => {
   it('renders without crashing', () => {
     const {container} = render(<App />);
     expect(container).toBeInTheDocument();
+  });
+
+  // Without a loader, a protected page renders nothing while sign-in is checked or a redirect to
+  // sign-in is on its way, which shows as a bare page mid sign-out.
+  it.each([
+    '/',
+    RouteConfig.organizationUnits.list(),
+    RouteConfig.groups.create(),
+    RouteConfig.flows.create(),
+    RouteConfig.design.list(),
+    RouteConfig.translations.list(),
+  ])('passes a loader to the protected route at %s', async (path) => {
+    window.history.pushState({}, '', path);
+    render(<App />);
+    await waitFor(() => {
+      const protectedRoutes = screen.getAllByTestId('protected-route');
+      expect(protectedRoutes.length).toBeGreaterThan(0);
+      // The page loader, not just any loader.
+      protectedRoutes.forEach((route) =>
+        expect(
+          within(within(route).getAllByTestId('protected-route-loader')[0]).getByRole('progressbar', {
+            name: 'Loading content',
+          }),
+        ).toBeInTheDocument(),
+      );
+    });
   });
 
   it('loads TranslationsEditPage lazily via the monaco-setup chain', async () => {
@@ -417,22 +440,6 @@ describe('App', () => {
     render(<App />);
     await waitFor(() => {
       expect(screen.getByTestId('agents-list-page')).toBeInTheDocument();
-    });
-  });
-
-  it('loads WelcomePage lazily at /welcome', async () => {
-    window.history.pushState({}, '', '/welcome');
-    render(<App />);
-    await waitFor(() => {
-      expect(screen.getByTestId('welcome-page')).toBeInTheDocument();
-    });
-  });
-
-  it('loads the tryouts under /welcome/tryout', async () => {
-    window.history.pushState({}, '', '/welcome/tryout/mcp');
-    render(<App />);
-    await waitFor(() => {
-      expect(screen.getByTestId('tryout-mcp-page')).toBeInTheDocument();
     });
   });
 

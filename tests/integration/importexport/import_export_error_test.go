@@ -512,3 +512,44 @@ func (suite *ImportExportErrorSuite) TestImportResolvesASecretInACredentialField
 	}
 	suite.Equal(1, resp.Summary.Imported)
 }
+
+// TestImportCreatesAUserBeforeTheAgentItOwns asserts an agent imported together with the user that owns
+// it is written, though the agent comes first in the content.
+func (suite *ImportExportErrorSuite) TestImportCreatesAUserBeforeTheAgentItOwns() {
+	suffix := fmt.Sprintf("%d", time.Now().UnixNano())
+	ouID, err := testutils.DefaultOUID()
+	suite.Require().NoError(err)
+	typeHandle := "agent-owner-person-" + suffix
+	typeID, err := testutils.CreateUserType(testutils.UserType{
+		Handle: typeHandle, DisplayName: "Agent owner person", OUID: ouID,
+		Schema: map[string]interface{}{"username": map[string]interface{}{"type": "string"}},
+	})
+	suite.Require().NoError(err)
+	defer func() { _ = testutils.DeleteUserType(typeID) }()
+
+	userID, agentID := newImportUUID(suite), newImportUUID(suite)
+	defer func() { _ = testutils.DeleteUser(userID) }()
+	defer func() { _ = testutils.DeleteAgent(agentID) }()
+
+	payload := suite.importBody(testutils.ImportRequest{
+		Content: fmt.Sprintf("resource_type: agent\nid: %s\nouId: %s\ntype: default\nowner:\n  id: %s\n"+
+			"attributes:\n  name: agent-owner-import-%s\n---\n"+
+			"resource_type: user\nid: %s\ntype: %s\nouId: %s\nattributes:\n  username: agent-owner-%s\n",
+			agentID, ouID, userID, suffix, userID, typeHandle, ouID, suffix),
+		Options: runtimeOptions(),
+	})
+	status, body := suite.postJSON(suite.client, "/import", payload)
+	suite.Require().Equal(http.StatusOK, status, "body: %s", body)
+
+	var resp testutils.ImportResponse
+	suite.Require().NoError(json.Unmarshal(body, &resp))
+	suite.Require().Equal(0, resp.Summary.Failed, "results: %+v", resp.Results)
+	suite.Equal(2, resp.Summary.Imported)
+
+	agent, err := testutils.GetAgent(agentID)
+	suite.Require().NoError(err)
+	suite.Require().NotNil(agent.Owner)
+	suite.Equal(userID, agent.Owner.ID)
+	suite.Require().NotNil(agent.Owner.IsLocal)
+	suite.True(*agent.Owner.IsLocal)
+}

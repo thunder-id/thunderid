@@ -269,6 +269,7 @@ type agentAdapter interface {
 		*agentmodel.AgentGetResponse, *tidcommon.ServiceError)
 	UpdateAgent(ctx context.Context, agentID string, req *agentmodel.UpdateAgentRequest) (
 		*agentmodel.AgentCompleteResponse, *tidcommon.ServiceError)
+	UpdateAgentCredentials(ctx context.Context, agentID string, credentials json.RawMessage) *tidcommon.ServiceError
 	DeleteAgent(ctx context.Context, agentID string) *tidcommon.ServiceError
 }
 
@@ -1295,8 +1296,8 @@ var resourceDependencyOrder = []string{
 	resourceTypeTheme,
 	resourceTypeLayout,
 	resourceTypeApplication,
-	resourceTypeAgent,
 	resourceTypeUser,
+	resourceTypeAgent,
 	resourceTypeGroup,
 	resourceTypeRole,
 	resourceTypeTranslation,
@@ -1372,22 +1373,25 @@ func (s *importService) importApplication(
 
 	appDTO := applicationRequestToDTO(&req)
 	normalizeOAuthConfigForImport(ctx, appDTO)
-	if dryRun {
-		if options.IsUpsertEnabled() && req.ID != "" {
-			_, svcErr := s.applicationService.GetApplication(ctx, req.ID)
-			if svcErr == nil {
-				return successOutcome(resourceTypeApplication, req.ID, req.Name, operationUpdate)
-			}
-
-			if !isNotFoundServiceError(svcErr) {
-				return serviceErrorOutcome(resourceTypeApplication, req.ID, req.Name, operationUpdate, svcErr)
-			}
+	// The upsert looks the application up rather than attempting an update, so a create is not preceded
+	// by an audited failed update.
+	exists := false
+	if options.IsUpsertEnabled() && req.ID != "" {
+		_, svcErr := s.applicationService.GetApplication(ctx, req.ID)
+		if svcErr != nil && !isNotFoundServiceError(svcErr) {
+			return serviceErrorOutcome(resourceTypeApplication, req.ID, req.Name, operationUpdate, svcErr)
 		}
+		exists = svcErr == nil
+	}
 
+	if dryRun {
+		if exists {
+			return successOutcome(resourceTypeApplication, req.ID, req.Name, operationUpdate)
+		}
 		return successOutcome(resourceTypeApplication, req.ID, req.Name, operationCreate)
 	}
 
-	if options.IsUpsertEnabled() && req.ID != "" {
+	if exists {
 		updated, svcErr := s.applicationService.UpdateApplication(ctx, req.ID, appDTO)
 		if svcErr == nil {
 			stored, getErr := s.applicationService.GetApplication(ctx, updated.ID)
@@ -1409,16 +1413,14 @@ func (s *importService) importApplication(
 			}
 		}
 
-		if !isNotFoundServiceError(svcErr) {
-			return ImportItemOutcome{
-				ResourceType: resourceTypeApplication,
-				ResourceID:   req.ID,
-				ResourceName: req.Name,
-				Operation:    operationUpdate,
-				Status:       statusFailed,
-				Code:         svcErr.Code,
-				Message:      svcErr.Error.DefaultValue,
-			}
+		return ImportItemOutcome{
+			ResourceType: resourceTypeApplication,
+			ResourceID:   req.ID,
+			ResourceName: req.Name,
+			Operation:    operationUpdate,
+			Status:       statusFailed,
+			Code:         svcErr.Code,
+			Message:      svcErr.Error.DefaultValue,
 		}
 	}
 

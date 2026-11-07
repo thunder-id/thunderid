@@ -30,15 +30,28 @@ export interface AgentLifespan {
   phase: AgentLifespanPhase;
 }
 
+/** What an agent owner's ID holds. */
+export type AgentOwnerIdType = 'uuid' | 'email' | 'mobile';
+
+/** Who is accountable for an agent. A local owner is an entity of this deployment. */
+export interface AgentOwner {
+  id: string;
+  idType?: AgentOwnerIdType;
+  /** Absent reads as local. */
+  isLocal?: boolean;
+}
+
 export interface Agent {
   id: string;
   ouId: string;
+  /** The project the agent belongs to, if any. */
+  projectId?: string;
   ouHandle?: string;
   type: string;
   display?: string;
   description?: string;
   logoUrl?: string;
-  owner?: string;
+  owner?: AgentOwner;
   clientId?: string;
   attributes?: Record<string, unknown>;
   allowedUserTypes?: string[];
@@ -101,11 +114,14 @@ export interface AgentListResponse {
 }
 
 export interface CreateAgentRequest {
-  ouId: string;
+  /** Where the agent is placed. Without it, an agent created in a project is placed in the system organization unit. */
+  ouId?: string;
+  /** The project the agent belongs to. */
+  projectId?: string;
   type: string;
   description?: string;
   logoUrl?: string;
-  owner?: string;
+  owner?: AgentOwner;
   attributes?: Record<string, unknown>;
   inboundAuthConfig?: AgentInboundAuthConfig[];
 }
@@ -115,7 +131,7 @@ export interface UpdateAgentRequest {
   type?: string;
   description?: string;
   logoUrl?: string;
-  owner?: string;
+  owner?: AgentOwner;
   /** Whether the agent acts on behalf of a user. Not stored; it selects the grant rules checked on save. */
   delegated?: boolean;
   attributes?: Record<string, unknown>;

@@ -25,7 +25,15 @@ type stubService struct {
 	listed     []Gateway
 	fetchedID  string
 	deletedID  string
+	pipeline   *Pipeline
 	svcErr     *tidcommon.ServiceError
+}
+
+func (s *stubService) GetPipeline(context.Context) (*Pipeline, *tidcommon.ServiceError) {
+	if s.svcErr != nil {
+		return nil, s.svcErr
+	}
+	return s.pipeline, nil
 }
 
 func (s *stubService) Register(_ context.Context,
@@ -238,7 +246,8 @@ func serve(t *testing.T, _ ServiceInterface, method, target string,
 // rather than 404ing on a pattern typo.
 func TestRegisteredRoutesAnswer(t *testing.T) {
 	mux := http.NewServeMux()
-	svc := &stubService{listed: []Gateway{}, result: &Registration{Gateway: Gateway{ID: testGatewayID}}}
+	svc := &stubService{listed: []Gateway{}, result: &Registration{Gateway: Gateway{ID: testGatewayID}},
+		pipeline: &Pipeline{Stages: []PipelineStage{}}}
 	registerRoutes(mux, newHandler(svc))
 
 	for _, tc := range []struct {
@@ -250,6 +259,8 @@ func TestRegisteredRoutesAnswer(t *testing.T) {
 		{http.MethodDelete, "/gateways/gw-1", http.StatusNoContent},
 		{http.MethodOptions, "/gateways", http.StatusNoContent},
 		{http.MethodOptions, "/gateways/gw-1", http.StatusNoContent},
+		{http.MethodGet, "/gateways/pipeline", http.StatusOK},
+		{http.MethodOptions, "/gateways/pipeline", http.StatusNoContent},
 	} {
 		recorder := httptest.NewRecorder()
 		mux.ServeHTTP(recorder, httptest.NewRequest(tc.method, tc.target, nil))
@@ -349,4 +360,30 @@ func (u *updateStub) Update(_ context.Context, id string,
 		return nil, u.svcErr
 	}
 	return u.result, nil
+}
+
+// The pipeline is answered as the service reports it, and a refusal with its own status.
+func TestPipelineReturnsTheStages(t *testing.T) {
+	svc := &stubService{pipeline: &Pipeline{Stages: []PipelineStage{
+		{Name: "Development", AdminConsoleURL: "https://dev.test/console", Gateway: Gateway{ID: testGatewayID}},
+	}}}
+
+	response := httptest.NewRecorder()
+	newHandler(svc).handlePipeline(response, httptest.NewRequest(http.MethodGet, "/gateways/pipeline", nil))
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", response.Code)
+	}
+	for _, want := range []string{`"name":"Development"`, `"adminConsoleUrl":"https://dev.test/console"`} {
+		if !strings.Contains(response.Body.String(), want) {
+			t.Fatalf("the pipeline did not carry %s: %s", want, response.Body.String())
+		}
+	}
+
+	svc = &stubService{svcErr: &tidcommon.InternalServerError}
+	response = httptest.NewRecorder()
+	newHandler(svc).handlePipeline(response, httptest.NewRequest(http.MethodGet, "/gateways/pipeline", nil))
+	if response.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d", response.Code)
+	}
 }

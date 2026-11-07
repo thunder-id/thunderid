@@ -287,3 +287,23 @@ func TestPipelineLeavesPublicPathsAlone(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotNil(t, ctx)
 }
+
+// The context the key authenticates is recognized as the key's, so a consumer can name the actor.
+func TestIsManagementAPIKeyRecognizesTheKey(t *testing.T) {
+	service := newPipelineWithManagementAPIKey(t)
+
+	ctx, err := service.Process(requestWithAPIKey(http.MethodPut, "/variables/API_URL", testManagementAPIKey))
+
+	require.NoError(t, err)
+	assert.True(t, IsManagementAPIKey(ctx))
+}
+
+// A bearer token whose sub claim happens to equal the key's subject is still a token, not the key.
+func TestIsManagementAPIKeyRefusesATokenWithTheSameSubject(t *testing.T) {
+	claims := map[string]interface{}{"sub": managementAPIKeySubject}
+	ctx := withSecurityContext(context.Background(),
+		newSecurityContext(managementAPIKeySubject, "", "header.payload.signature", nil, claims))
+
+	assert.False(t, IsManagementAPIKey(ctx))
+	assert.False(t, IsManagementAPIKey(context.Background()))
+}

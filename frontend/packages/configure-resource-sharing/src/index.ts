@@ -3,6 +3,7 @@
 
 // APIs
 export {default as useGetSharingPolicies} from './api/useGetSharingPolicies';
+export {default as useGetMandatableRoles} from './api/useGetMandatableRoles';
 export {default as useSaveSharingPolicy} from './api/useSaveSharingPolicy';
 
 // Components
@@ -10,6 +11,8 @@ export {default as AccessChoiceCards} from './components/AccessChoiceCards';
 export type {AccessChoice, AccessChoiceCardsProps} from './components/AccessChoiceCards';
 export {default as GrantedOrganizationUnitList} from './components/GrantedOrganizationUnitList';
 export type {GrantedOrganizationUnit, GrantedOrganizationUnitListProps} from './components/GrantedOrganizationUnitList';
+export {default as MandatedRolesPicker} from './components/MandatedRolesPicker';
+export type {MandatedRolesPickerProps} from './components/MandatedRolesPicker';
 export {default as OrganizationAccessSettings} from './components/OrganizationAccessSettings';
 export type {OrganizationAccessSettingsProps} from './components/OrganizationAccessSettings';
 export {default as OrganizationUnitChipList} from './components/OrganizationUnitChipList';
@@ -31,8 +34,10 @@ export {default as useOrganizationAccess} from './hooks/useOrganizationAccess';
 export type {OrganizationAccessState, UseOrganizationAccessOptions} from './hooks/useOrganizationAccess';
 
 // Models
+export type {MandatableRole, MandatableRoles} from './models/mandatable-role';
 export type {
   AccessSwitch,
+  AssignmentsOffRules,
   ChildUnitReach,
   ChildUnitsAccess,
   ClearedAccessItem,
@@ -47,17 +52,21 @@ export type {
   AllUnitsSection,
   ChildUnitsSection,
   OtherTreeRootsSection,
+  SharingAssignmentsRule,
   SharingChildUnit,
+  SharingOverlayRules,
   SharingPolicy,
   SharingPolicyListResponse,
   SharingPolicyRequest,
   SharingPolicySections,
   SharingReach,
+  SharingRolesRule,
   SharingRootUnit,
 } from './models/sharing-policy';
 
 // Utils
 export {default as draftToSharingSections, hasNoSharingSections} from './utils/draftToSharingSections';
+export {default as getAssignmentsOffRules} from './utils/getAssignmentsOffRules';
 export {default as getOrganizationAccessOffers} from './utils/getOrganizationAccessOffers';
 export {
   canEditSharingSectionsInPlace,

@@ -46,7 +46,6 @@ const (
 	ExecutorNamePreDelete                    = "PreDeleteExecutor"
 	ExecutorNameCriteriaRevocation           = "CriteriaRevocationExecutor"
 	ExecutorNameSessionRevocation            = "SessionRevocationExecutor"
-	ExecutorNameUserDelete                   = "UserDeleteExecutor"
 	ExecutorNameApplicationActionValidator   = "ApplicationActionValidator"
 	ExecutorNameClientSecret                 = "ClientSecretExecutor"
 	ExecutorNameAccessChangeValidator        = "AccessChangeValidator"

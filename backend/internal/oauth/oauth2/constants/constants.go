@@ -258,7 +258,7 @@ var StandardOIDCScopes = map[string]model.OIDCScope{
 
 // Standard JWT claim names.
 const (
-	ClaimSub      string = "sub"
+	ClaimSub      string = systemconst.SubClaimName
 	ClaimIss      string = "iss"
 	ClaimAud      string = "aud"
 	ClaimAzp      string = "azp"
@@ -273,7 +273,7 @@ const (
 	ClaimACR      string = "acr"
 	ClaimAMR      string = "amr"
 	ClaimScope    string = "scope"
-	ClaimAct      string = "act"
+	ClaimAct      string = systemconst.ActClaimName
 	ClaimCnf      string = "cnf"
 )
 
@@ -330,7 +330,7 @@ const (
 	ClaimIDP string = "idp"
 	// ClaimSubType identifies the identity class of the token subject, so a resource server can apply
 	// policy that differs by class. Emitted on client_credentials tokens.
-	ClaimSubType string = "sub_type"
+	ClaimSubType string = systemconst.SubTypeClaimName
 	// ClaimTokenFamilyID identifies the token family (one authorization grant) a token belongs to.
 	// A single tfid is minted per grant during the login flow and rides every access and refresh
 	// token of that grant, unchanged across refresh rotation, so revocation can target a whole

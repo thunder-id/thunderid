@@ -514,6 +514,25 @@ type OutboundAuthentication struct {
 	Properties map[string]string `json:"properties,omitempty"`
 }
 
+// AgentOwner names who is accountable for an agent.
+type AgentOwner struct {
+	ID      string `json:"id"`
+	IDType  string `json:"idType,omitempty"`
+	IsLocal *bool  `json:"isLocal,omitempty"`
+}
+
+// LocalAgentOwner returns a local owner identified by its entity ID.
+func LocalAgentOwner(id string) *AgentOwner {
+	local := true
+	return &AgentOwner{ID: id, IDType: "uuid", IsLocal: &local}
+}
+
+// ExternalAgentOwner returns an owner managed in another identity system.
+func ExternalAgentOwner(id, idType string) *AgentOwner {
+	local := false
+	return &AgentOwner{ID: id, IDType: idType, IsLocal: &local}
+}
+
 // Agent represents an agent resource in the system.
 type Agent struct {
 	ID          string      `json:"id,omitempty"`
@@ -522,7 +541,7 @@ type Agent struct {
 	Type        string      `json:"type,omitempty"`
 	Description string      `json:"description,omitempty"`
 	LogoURL     string      `json:"logoUrl,omitempty"`
-	Owner       string      `json:"owner,omitempty"`
+	Owner       *AgentOwner `json:"owner,omitempty"`
 	Attributes  interface{} `json:"attributes,omitempty"`
 	IsReadOnly  bool        `json:"isReadOnly"`
 	ValidUntil  string      `json:"validUntil,omitempty"`
@@ -605,7 +624,14 @@ type PresentationDefinition struct {
 	OptionalClaims       []string            `json:"optionalClaims,omitempty"`
 	ClaimValues          map[string][]string `json:"claimValues,omitempty"`
 	EnforceTrustedIssuer *bool               `json:"enforceTrustedIssuer,omitempty"`
-	TrustedAuthorities   []string            `json:"trustedAuthorities,omitempty"`
+	TrustedAuthorities   []TrustedAuthority  `json:"trustedAuthorities,omitempty"`
+}
+
+// TrustedAuthority is a trusted issuer certificate supplied on a presentation definition
+// request. On update, an entry with only a name keeps the certificate stored under that name.
+type TrustedAuthority struct {
+	Name        string `json:"name"`
+	Certificate string `json:"certificate,omitempty"`
 }
 
 // VPInitiateResponse is the body returned by POST /openid4vp/initiate.

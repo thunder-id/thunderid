@@ -109,9 +109,9 @@ if ($PRODUCT_VERSION.StartsWith("v")) {
     $PRODUCT_VERSION = $PRODUCT_VERSION.Substring(1)
 }
 $BINARY_NAME = $PRODUCT_NAME_LOWERCASE
-$PRODUCT_FOLDER = "${BINARY_NAME}-${PRODUCT_VERSION}-${GO_PACKAGE_OS}-${GO_PACKAGE_ARCH}"
+$PRODUCT_FOLDER = "${BINARY_NAME}-gateway-${PRODUCT_VERSION}-${GO_PACKAGE_OS}-${GO_PACKAGE_ARCH}"
 $CP_PRODUCT_FOLDER = "${BINARY_NAME}-cp-${PRODUCT_VERSION}-${GO_PACKAGE_OS}-${GO_PACKAGE_ARCH}"
-$QUICKSTART_PRODUCT_FOLDER = "${BINARY_NAME}-quickstart-${PRODUCT_VERSION}-${GO_PACKAGE_OS}-${GO_PACKAGE_ARCH}"
+$QUICKSTART_PRODUCT_FOLDER = "${BINARY_NAME}-${PRODUCT_VERSION}-${GO_PACKAGE_OS}-${GO_PACKAGE_ARCH}"
 
 # --- Sample App Distribution details ---
 
@@ -2279,6 +2279,10 @@ switch ($Command) {
         Build-Frontend
         Package
         Package-Sample-App
+        # Package deleted the Data Plane binary, so build it again for the quickstart.
+        Build-Backend
+        Build-CpBackend
+        Package-Quickstart
     }
     'build_backend' {
         Build-Backend

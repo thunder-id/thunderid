@@ -84,11 +84,14 @@ func (e *accountLinkingExecutor) Execute(ctx *providers.NodeContext) (*providers
 		return e.resolveIdentity(ctx, execResp, logger)
 	}
 
+	// Asking for verification cleared the mark, so a set one means a federated login completed during
+	// verification, in this flow or in one it called.
+	federatedVerified := ctx.SharedRuntimeData[common.RuntimeKeyFederatedLoginCompleted] == dataValueTrue
 	saved, err := restoreLinkingCheckpoint(ctx.RuntimeData)
 	if err != nil {
 		return nil, err
 	}
-	if err := e.settleVerification(ctx, execResp, saved, logger); err != nil {
+	if err := e.settleVerification(ctx, execResp, saved, federatedVerified, logger); err != nil {
 		return nil, err
 	}
 	if execResp.Status != providers.ExecUserInputRequired {
@@ -147,6 +150,7 @@ func (e *accountLinkingExecutor) resolveIdentity(ctx *providers.NodeContext,
 	if err := saveLinkingCheckpoint(ctx.RuntimeData, execResp.RuntimeData, checkpoint); err != nil {
 		return nil, fmt.Errorf("failed to save the linking checkpoint: %w", err)
 	}
+	e.clearFederatedLoginMark(execResp)
 	execResp.Status = providers.ExecUserInputRequired
 
 	logger.Debug(ctx.Context, "Candidates matched, requesting verification",
@@ -157,7 +161,8 @@ func (e *accountLinkingExecutor) resolveIdentity(ctx *providers.NodeContext,
 // settleVerification decides the outcome of the verification the first pass asked for, against the
 // candidates the checkpoint restored.
 func (e *accountLinkingExecutor) settleVerification(ctx *providers.NodeContext,
-	execResp *providers.ExecutorResponse, saved linkingCheckpoint, logger *log.Logger) error {
+	execResp *providers.ExecutorResponse, saved linkingCheckpoint, federatedVerified bool,
+	logger *log.Logger) error {
 	// Only REJECT is a decision. Any other action type falls through to who authenticated.
 	actionType, _ := ctx.ForwardedData[common.ForwardedDataKeyActionType].(string)
 	if common.ActionType(actionType) == common.ActionTypeReject {
@@ -170,6 +175,12 @@ func (e *accountLinkingExecutor) settleVerification(ctx *providers.NodeContext,
 		return err
 	}
 	if authenticatedID == "" {
+		// A federated account with no local user authenticates without naming an entity, so a
+		// completed federated login here means somebody other than a candidate verified.
+		if federatedVerified && ctx.AuthUser.IsAuthenticated() {
+			logger.Debug(ctx.Context, "Verification was completed by an account with no local user")
+			return e.retryVerification(ctx, execResp, saved, logger)
+		}
 		logger.Debug(ctx.Context, "Verification was offered but nobody authenticated")
 		execResp.Status = providers.ExecFailure
 		execResp.Error = &ErrVerificationNotCompleted
@@ -222,9 +233,16 @@ func (e *accountLinkingExecutor) retryVerification(ctx *providers.NodeContext,
 		execResp.AdditionalData[common.DataLinkingPromptDetails] = saved.PromptDetails
 	}
 	execResp.RuntimeData[common.RuntimeKeyExternalIdentity] = ""
+	e.clearFederatedLoginMark(execResp)
 	execResp.Status = providers.ExecUserInputRequired
 	execResp.Error = &ErrNonCandidateVerified
 	return nil
+}
+
+// clearFederatedLoginMark resets the cross-frame mark, so only a federated login completed in the
+// verification about to start sets it again.
+func (e *accountLinkingExecutor) clearFederatedLoginMark(execResp *providers.ExecutorResponse) {
+	execResp.SharedRuntimeData = map[string]string{common.RuntimeKeyFederatedLoginCompleted: ""}
 }
 
 // refuseCandidate drops the candidates and continues as a new user.

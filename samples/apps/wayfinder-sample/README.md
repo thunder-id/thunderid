@@ -101,7 +101,9 @@ Each subdirectory has its own README with the environment variables it reads.
 
 The Wayfinder web app runs on `http://localhost:5173` and calls ThunderID directly for `/oauth2/authorize`, `/oauth2/token`, and `/users/me`. Browsers block these calls unless the CORS allow-list includes the frontend origin.
 
-The importable bundle already adds `http://localhost:5173` to the server-config `cors` section. If you serve the frontend from a different host or port, update the `# resource_type: server_config` document in `thunderid-config/thunderid-config.yaml` before importing, or use `PUT /server-config/cors` after startup.
+The importable bundle sets the server-config `cors` section to `http://localhost:5173`. An import replaces the section's runtime layer, so origins added earlier with `PUT /server-config/cors` are dropped. Origins from a declarative `server_configs/cors.yaml` file stay. If you serve the frontend from a different host or port, update the `cors` server-config document in `thunderid-config/<mode>/thunderid-config.yaml` before importing, or use `PUT /server-config/cors` after startup.
+
+The bundle's `flow` server-config document makes `wayfinder-onboarding-flow` the user onboarding flow. It repeats every other default flow handle the server ships with, because an import replaces the whole section. Importing the bundle therefore resets any flow defaults you changed before the import.
 
 ## ThunderID Setup
 
@@ -151,6 +153,7 @@ The agent's client secret defaults to `wayfinder-agent-secret` (set in `thunderi
 | Variable | Required | Description |
 |---|---|---|
 | `WAYFINDER_CLIENT_ID` | Yes | Client ID for the `WAYFINDER` application |
+| `AGENT_OWNER_ID` | Yes | ID of the user that owns both agents. It must exist on the server you import into and, on the quickstart pack, on the Data Plane it syncs to; otherwise the import or the sync fails with `Owner not found`. The default is the quickstart pack's Service Desk Admin (`01900000-0000-7000-8000-0000000000f3`). On a standalone Data Plane, set it to the default admin (`01900000-0000-7000-8000-000000000030`). `app-native/thunderid.env` sets the same variable. |
 | `AGENT_CLIENT_ID` | Yes | Client ID for the `WAYFINDER-CONCIERGE` agent |
 | `AGENT_CLIENT_SECRET` | Yes | Client secret for the Wayfinder Concierge |
 | `UPGRADE_AGENT_CLIENT_ID` | Yes | Client ID for the `WAYFINDER-UPGRADE-AGENT` |
@@ -274,13 +277,28 @@ The background scheduler that processes CIBA upgrade requests is **disabled by d
 
 ## Run
 
-From the sample root, install all workspace dependencies:
+The services are npm workspaces that share one `node_modules` at the sample root. From the sample root, install the dependencies of every service once:
 
 ```bash
-cd backend     && npm install && npm start                   # http://localhost:8787 (REST + /mcp)
-cd smtp-server && npm install && npm run dev                 # SMTP :2525 | Inbox http://localhost:8788
-cd ai-agent    && npm install && npm run dev                 # http://localhost:8790/chat
-cd frontend    && npm install && npm run dev                 # http://localhost:5173
+npm install
+```
+
+Run only one `npm install` at a time. Installs that run at once in different folders write to the same `node_modules` and break each other.
+
+Then start every service, including the Skyline Lounge kiosk on `http://localhost:8795`:
+
+```bash
+npm run dev
+```
+
+`npm run dev:b2c` starts the same services without the AI agent. To run each service in its own terminal instead, start it from its folder:
+
+```bash
+cd backend     && npm start                   # http://localhost:8787 (REST + /mcp)
+cd smtp-server && npm run dev                 # SMTP :2525 | Inbox http://localhost:8788
+cd ai-agent    && npm run dev                 # http://localhost:8790/chat
+cd frontend    && npm run dev                 # http://localhost:5173
+cd lounge      && npm start                   # http://localhost:8795
 ```
 
 The Wayfinder server hosts both the REST API on `/api/*` and the MCP server on `/mcp`. Sample flights, hotels, and trips are held in memory and reloaded on every start, so there is no database to set up. Bookings and upgrade requests are in memory too, and reset when the server restarts.

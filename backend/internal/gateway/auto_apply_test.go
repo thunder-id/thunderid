@@ -13,12 +13,19 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// fixedAutoApply is an auto apply setting that does not change.
+type fixedAutoApply bool
+
+func (f fixedAutoApply) enabled(context.Context) bool { return bool(f) }
+
+func (fixedAutoApply) projectSettings(context.Context) map[string]ProjectSyncSetting { return nil }
+
 // autoApplyFixture is a version fixture whose only gateway is the default one, with auto apply set.
 func autoApplyFixture(t *testing.T, enabled, isDefault bool) *versionFixture {
 	t.Helper()
 	f := newVersionFixture(t)
 	svc := f.svc.(*versionService)
-	svc.autoApply = enabled
+	svc.autoApply = fixedAutoApply(enabled)
 	svc.gateways.(*fakeStore).gateways[0].IsDefault = isDefault
 	f.capture(t, "ou-a")
 	return f
@@ -27,7 +34,7 @@ func autoApplyFixture(t *testing.T, enabled, isDefault bool) *versionFixture {
 func TestAutoApplyAppliesTheLatestVersionToTheDefaultGateway(t *testing.T) {
 	f := autoApplyFixture(t, true, true)
 
-	f.svc.(*versionService).applyToDefaultGateway(context.Background())
+	f.svc.(*versionService).applyToFirstGateway(context.Background(), nil)
 
 	assert.Len(t, f.client.sent, 1)
 }
@@ -40,14 +47,14 @@ func TestAutoApplyAppliesAgainWhenTheConfigurationIsTheSame(t *testing.T) {
 	set := time.Date(2026, 10, 14, 9, 0, 0, 0, time.UTC)
 	f.client.heldSince = map[string]time.Time{"APP_CLIENT_ID": set, "APP_SECRET": set}
 
-	svc.applyToDefaultGateway(context.Background())
-	svc.applyToDefaultGateway(context.Background())
+	svc.applyToFirstGateway(context.Background(), nil)
+	svc.applyToFirstGateway(context.Background(), nil)
 	require.Len(t, f.client.sent, 1, "a version the gateway holds as it is was sent again")
 
 	// A captured secret leaves the version as it was and sets the value on the gateway again, so the
 	// resource that refers to it is sent again to read it.
 	f.client.heldSince["APP_SECRET"] = set.Add(time.Minute)
-	svc.applyToDefaultGateway(context.Background())
+	svc.applyToFirstGateway(context.Background(), nil)
 
 	require.Len(t, f.client.sent, 2, "a changed secret did not send the resource again")
 	assert.Contains(t, f.client.last().Content, "app-1")
@@ -56,7 +63,7 @@ func TestAutoApplyAppliesAgainWhenTheConfigurationIsTheSame(t *testing.T) {
 func TestAutoApplyDoesNothingWhenItIsOff(t *testing.T) {
 	f := autoApplyFixture(t, false, true)
 
-	f.svc.(*versionService).applyToDefaultGateway(context.Background())
+	f.svc.(*versionService).applyToFirstGateway(context.Background(), nil)
 
 	assert.Empty(t, f.client.sent)
 }
@@ -64,7 +71,7 @@ func TestAutoApplyDoesNothingWhenItIsOff(t *testing.T) {
 func TestAutoApplyDoesNothingWithoutADefaultGateway(t *testing.T) {
 	f := autoApplyFixture(t, true, false)
 
-	f.svc.(*versionService).applyToDefaultGateway(context.Background())
+	f.svc.(*versionService).applyToFirstGateway(context.Background(), nil)
 
 	assert.Empty(t, f.client.sent)
 }
@@ -75,7 +82,7 @@ func TestAutoApplyLeavesTheVersionWhenTheGatewayRefusesIt(t *testing.T) {
 	f := autoApplyFixture(t, true, true)
 	f.client.err = errors.New("connection refused")
 
-	f.svc.(*versionService).applyToDefaultGateway(context.Background())
+	f.svc.(*versionService).applyToFirstGateway(context.Background(), nil)
 
 	assert.Len(t, f.client.sent, 1, "the apply was tried once")
 	held, _ := f.svc.GetApplied(context.Background(), "gw-1")
@@ -87,7 +94,7 @@ func TestAutoApplyDoesNothingWhenTheGatewaysCannotBeListed(t *testing.T) {
 	f := autoApplyFixture(t, true, true)
 	f.svc.(*versionService).gateways.(*fakeStore).err = errors.New("database is down")
 
-	f.svc.(*versionService).applyToDefaultGateway(context.Background())
+	f.svc.(*versionService).applyToFirstGateway(context.Background(), nil)
 
 	assert.Empty(t, f.client.sent)
 }
@@ -97,7 +104,7 @@ func TestAutoApplyDoesNothingWhenTheGatewaysCannotBeListed(t *testing.T) {
 func TestAChangeCaptureAppliesTheVersionItCaptured(t *testing.T) {
 	f := newVersionFixture(t)
 	svc := f.svc.(*versionService)
-	svc.autoApply = true
+	svc.autoApply = fixedAutoApply(true)
 	svc.gateways.(*fakeStore).gateways[0].IsDefault = true
 	f.exporter.response = exportOf("", "ou-a")
 
@@ -106,4 +113,20 @@ func TestAChangeCaptureAppliesTheVersionItCaptured(t *testing.T) {
 
 	assert.NoError(t, capture.capture(context.Background()))
 	assert.Len(t, f.client.sent, 1)
+}
+
+// A revert captures a configuration an older version already holds, so the capture answers with that
+// version while "latest" is still the one being reverted. The default gateway gets the one captured.
+func TestAutoApplyAppliesTheCapturedVersionWhenItIsNotTheLatest(t *testing.T) {
+	f := autoApplyFixture(t, true, true)
+	svc := f.svc.(*versionService)
+	f.capture(t, "ou-b")
+	reverted := f.capture(t, "ou-a")
+	require.True(t, reverted.Unchanged)
+	require.Equal(t, 1, reverted.Seq)
+
+	svc.applyToFirstGateway(context.Background(), reverted)
+
+	held, _ := f.svc.GetApplied(context.Background(), "gw-1")
+	assert.Equal(t, 1, held.AppliedVersion)
 }

@@ -251,6 +251,12 @@ const translations = {
     'errors.SSE-4030': 'You do not have permission to perform this action in this organization unit.',
     'errors.DCR-1002': 'This resource is managed declaratively and cannot be modified.',
     'errors.DCR-1003': 'This resource is managed declaratively and cannot be deleted.',
+    'errors.SAZ-4030':
+      'You cannot grant permissions that you do not hold. Ask an administrator who holds them to make this change.',
+    'errors.ROL-1035':
+      'A role in this share is not available in the organization unit that receives it. Choose roles that the unit owns or has shared with it.',
+    'errors.ROL-1038':
+      'Roles cannot be mandated on this server, because its roles load only from resource files. Ask an administrator to use a role store that allows changes.',
 
     // Backend error code translations for flow executor failures (per the flow execution error envelope).
     'errors.FET-1002': 'Could not check whether a matching {{entity}} already exists. Please try again.',
@@ -265,7 +271,6 @@ const translations = {
     'errors.FET-1061': 'Another {{entity}} already exists with the provided {{attribute}}.',
     'errors.FET-1080': 'Another {{entity}} with the same unique attribute value already exists.',
     'errors.FET-1084': 'This user cannot be deleted in their current state.',
-    'errors.FET-1085': 'The user could not be deleted. Please try again.',
     'errors.FET-1086': 'This application cannot be deleted in its current state.',
     'errors.FET-1088': 'This application authenticates without a client secret, so there is none to regenerate.',
     'errors.FET-1089': 'The client secret could not be regenerated. Please try again.',
@@ -319,322 +324,7 @@ const translations = {
     'userMenu.myAccount': 'My account',
     'userMenu.addAnotherAccount': 'Add another account',
     'userMenu.settings': 'Settings',
-    'userMenu.welcome': 'Welcome',
     'userMenu.signOut': 'Sign Out',
-
-    // Welcome screen
-    'welcome.header': 'Welcome',
-    'welcome.dismissed': 'Welcome window can be reopened through the user dropdown menu.',
-    'welcome.sections.start': 'Start',
-    'welcome.sections.recent': 'Recent',
-    'welcome.sections.tryoutProduct': 'Try sample',
-    'welcome.tryoutProduct.securingApplication': 'Secured web application',
-    'welcome.tryoutProduct.securingApplicationDesc': 'Tryout user journeys of a secured web application',
-    'welcome.tryoutProduct.aiAgents': 'Secured AI agent',
-    'welcome.tryoutProduct.aiAgentsDesc': 'Tryout identity security patterns for AI agents and tools',
-    'welcome.tryoutProduct.mcp': 'Secured MCP server',
-    'welcome.tryoutProduct.mcpDesc': 'Tryout authorizing MCP client to a secured MCP server',
-    'welcome.start.newProject': 'New',
-    'welcome.start.newProjectDesc': 'Onboard your first resource to start',
-    'welcome.start.openImport': 'Import',
-    'welcome.start.openImportDesc': 'Import an existing {{productName}} configuration file',
-    'welcome.start.startSamples': 'Start with samples',
-    'welcome.start.connectTo': 'Connect to \u2026',
-    'welcome.noRecentItems': 'No recent items found',
-    'welcome.hero.titlePrefix': 'Welcome to',
-    'welcome.hero.subtitle': 'Secure your digital resources and manage user identities and access',
-    'welcome.walkthrough.getStartedDesigner': 'Get started',
-    'welcome.walkthrough.getStartedDesignerDesc': 'Learn how to design and customize your identity experience',
-    'welcome.walkthrough.learnFundamentals': 'Learn the fundamentals',
-    'welcome.walkthrough.learnFundamentalsDesc': 'Understand core concepts and architecture',
-    'welcome.createProject.breadcrumb': 'New',
-    'welcome.createProject.title': 'How {{productName}} works!',
-    'welcome.createProject.subtitle':
-      'Onboard your digital resources, configure security, verify the setup, and run {{productName}} with your configuration in production deployment.',
-    'welcome.createProject.cards.configure.title': 'Configure',
-    'welcome.createProject.cards.configure.description':
-      'Set up authentication flows, choose sign-in methods, and customize the user experience.',
-    'welcome.createProject.cards.verify.title': 'Verify',
-    'welcome.createProject.cards.verify.description': 'Test your configuration to ensure everything works as expected.',
-    'welcome.createProject.cards.runServer.title': 'Run server',
-    'welcome.createProject.cards.runServer.description':
-      '{{productName}} will run in immutable mode with the attached configurations.',
-    'welcome.createProject.actions.getStarted': 'Get started',
-    'welcome.wayfinderSampleSetup.title': 'Setup Wayfinder sample',
-    'welcome.wayfinderSampleSetup.oneTimeSetup': 'One-time setup',
-    'welcome.wayfinderSampleSetup.setupComplete': 'Already set up — you can skip this section',
-    'welcome.wayfinderSampleSetup.steps.getSample.title': 'Get the Wayfinder sample',
-    'welcome.wayfinderSampleSetup.steps.getSample.description':
-      'Download the latest Wayfinder sample distribution and extract the archive. It ships with the <strong>web frontend</strong>, <strong>AI agent service</strong>, <strong>MCP</strong>, <strong>SMTP mail server</strong> and <strong>Wayfinder server</strong>.',
-    'welcome.wayfinderSampleSetup.steps.configure.title': 'Configure Wayfinder sample in {{productName}}',
-    'welcome.wayfinderSampleSetup.steps.configure.description':
-      'Apply the Wayfinder sample configurations to {{productName}}. Skip this step if already done.',
-    'welcome.wayfinderSampleSetup.steps.run.title': 'Run the sample',
-    'welcome.wayfinderSampleSetup.steps.run.description':
-      'Start all Wayfinder services from the extracted sample directory.',
-    'welcome.wayfinderSampleDownload.downloadButton': 'Download',
-
-    'welcome.wayfinderFolderImport.actions.selectFolder': 'Select Wayfinder sample folder',
-    'welcome.wayfinderFolderImport.actions.change': 'Change',
-    'welcome.wayfinderFolderImport.actions.importConfig': 'Configure in {{productName}}',
-    'welcome.wayfinderFolderImport.actions.reconfigure': 'Reconfigure',
-    'welcome.wayfinderFolderImport.actions.reSelectFolder': 'Re-select folder',
-    'welcome.wayfinderFolderImport.status.importing': 'Importing configuration…',
-    'welcome.wayfinderFolderImport.status.alreadyDone': 'Wayfinder sample already configured in {{productName}}',
-    'welcome.wayfinderFolderImport.status.lastImported': 'Last configured on {{date}} — you can skip this step.',
-    'welcome.wayfinderFolderImport.status.success': 'Wayfinder sample configured in {{productName}} successfully',
-    'welcome.wayfinderFolderImport.status.resourcesImported_one': '{{count}} resource imported',
-    'welcome.wayfinderFolderImport.status.resourcesImported_other': '{{count}} resources imported',
-    'welcome.wayfinderFolderImport.status.envNotFound': 'thunderid-config/*.env — not found',
-    'welcome.wayfinderFolderImport.errors.cannotReadFolder': 'Could not read the selected folder.',
-    'welcome.wayfinderFolderImport.errors.importFailed': 'Import failed. Please try again.',
-    'welcome.wayfinderFolderImport.errors.partialFailure': 'Import completed with {{count}} failed resource(s).',
-
-    'welcome.tryout.breadcrumb': 'Try it out',
-    'welcome.tryout.title': 'Try it out',
-    'welcome.tryout.actions.readDocs': 'Read documentation for more guides and details',
-    'welcome.tryout.importConfigs.title': 'Configure Wayfinder sample in {{productName}}',
-    'welcome.tryout.importConfigs.description': 'Apply the Wayfinder sample configurations to {{productName}}.',
-
-    'welcome.getStarted.breadcrumb': 'Get started',
-    'welcome.getStarted.actions.skipToConsole': 'Skip to console',
-    'welcome.getStarted.title': 'Get started',
-    'welcome.getStarted.subtitle': 'Onboard your first resource and start securing it with {{productName}}.',
-    'welcome.getStarted.options.onboardApp.title': 'Web application',
-    'welcome.getStarted.options.onboardApp.description':
-      'Register your application in {{productName}} and integrate authentication step by step.',
-    'welcome.getStarted.options.onboardApp.action': 'Add application',
-    'welcome.getStarted.options.secureAiAgent.title': 'Secure an AI agent',
-    'welcome.getStarted.options.secureAiAgent.description':
-      'Protect your AI agents with token-based access control and scope enforcement.',
-    'welcome.getStarted.options.secureAiAgent.action': 'Add agent',
-    'welcome.getStarted.options.secureMcp.title': 'Secure an MCP client',
-    'welcome.getStarted.options.secureMcp.description':
-      'Register your MCP client and authorize it with fine-grained, scoped permissions.',
-    'welcome.getStarted.options.secureMcp.action': 'Add MCP client',
-    'welcome.getStarted.options.comingSoon': 'Coming soon',
-    'welcome.getStarted.options.skip.title': 'Skip for now',
-    'welcome.getStarted.options.skip.description':
-      'Head straight to the console and explore {{productName}} on your own.',
-    'welcome.getStarted.options.skip.action': 'Go to Console',
-
-    'welcome.applicationTryout.breadcrumb': 'Tryout secured web application',
-    'welcome.applicationTryout.overline': 'Secured web application',
-    'welcome.applicationTryout.title': 'Secure your application',
-    'welcome.applicationTryout.subtitle':
-      'Run web application use cases against the Wayfinder sample, a fictional travel-booking application.',
-    'welcome.applicationTryout.steps.getSample.title': 'Get the Wayfinder sample',
-    'welcome.applicationTryout.steps.getSample.description':
-      'Download the latest Wayfinder sample distribution and extract the archive. It ships with the web frontend, AI agent service, MCP, SMTP mail server and Wayfinder server.',
-    'welcome.applicationTryout.steps.getSample.action': 'Download sample',
-    'welcome.applicationTryout.steps.importConfigs.title': 'Configure Wayfinder sample in {{productName}}',
-    'welcome.applicationTryout.steps.importConfigs.description':
-      'Apply the Wayfinder sample configurations to {{productName}}.',
-    'welcome.applicationTryout.steps.runSample.title': 'Run the sample',
-    'welcome.applicationTryout.steps.runSample.description':
-      'Start all Wayfinder services from the extracted sample directory.',
-    'welcome.applicationTryout.steps.runSample.action': 'See run instructions',
-    'welcome.applicationTryout.steps.login.title': 'Sign-in to the app',
-    'welcome.applicationTryout.steps.login.description':
-      'Open the Wayfinder sample app and sign in with the demo credentials below.',
-
-    'welcome.applicationTryout.scenarios.title': 'Try the following user journeys',
-    'welcome.applicationTryout.scenarios.tabs.login': 'Sign-in',
-    'welcome.applicationTryout.scenarios.tabs.signup': 'Self sign-up',
-    'welcome.applicationTryout.scenarios.tabs.profile': 'View profile',
-    'welcome.applicationTryout.scenarios.tabs.recovery': 'Account recovery',
-    'welcome.applicationTryout.scenarios.tabs.onboard': 'Staff sign-up',
-
-    'welcome.applicationTryout.scenarios.login.description':
-      'Sign in with the test user account to explore {{productName}} Sign in experience.',
-    'welcome.applicationTryout.scenarios.login.step1': 'Open the Wayfinder app at <a>http://localhost:5173</a>.',
-    'welcome.applicationTryout.scenarios.login.step2': 'Click Sign in and use the credentials below.',
-
-    'welcome.applicationTryout.scenarios.signup.description':
-      'Register a new customer account and see {{productName}} assign the Traveler role automatically on completion.',
-    'welcome.applicationTryout.scenarios.signup.step1': 'Open <a>http://localhost:5173</a> and click Sign in.',
-    'welcome.applicationTryout.scenarios.signup.step2': 'On the {{productName}} page, click Sign up.',
-    'welcome.applicationTryout.scenarios.signup.step3': 'Fill in below sample details and click Continue.',
-    'welcome.applicationTryout.scenarios.signup.sampleFields.username': 'Username',
-    'welcome.applicationTryout.scenarios.signup.sampleFields.password': 'Password',
-    'welcome.applicationTryout.scenarios.signup.sampleFields.email': 'Email',
-    'welcome.applicationTryout.scenarios.signup.sampleFields.givenName': 'First name',
-    'welcome.applicationTryout.scenarios.signup.sampleFields.familyName': 'Last name',
-    'welcome.applicationTryout.scenarios.signup.sampleFields.mobileNumber': 'Mobile number',
-    'welcome.applicationTryout.scenarios.signup.step4':
-      'Fill in the registration form using these sample details and click Continue.',
-    'welcome.applicationTryout.scenarios.signup.step5':
-      '{{productName}} will create a Customer user and assign the Traveler role. The browser returns to the Wayfinder app signed in as the new user.',
-    'welcome.applicationTryout.scenarios.profile.description':
-      'Explore the self-service profile page - view account details, edit attributes, and change your password.',
-    'welcome.applicationTryout.scenarios.profile.step1': 'Sign in as John at <a>http://localhost:5173</a>.',
-    'welcome.applicationTryout.scenarios.profile.step2':
-      'Click the username in the top-right corner and select Profile.',
-    'welcome.applicationTryout.scenarios.profile.step3':
-      'View account details, edit profile attributes, or change your password. The page calls {{productName}} directly with your session token.',
-
-    'welcome.applicationTryout.scenarios.recovery.description':
-      'Walk through the password recovery flow - John forgets his password and resets it via email.',
-    'welcome.applicationTryout.scenarios.recovery.step1': 'Open <a>http://localhost:5173</a> and click Sign in.',
-    'welcome.applicationTryout.scenarios.recovery.step2': 'On the {{productName}} sign-in page, click Forgot password?',
-    'welcome.applicationTryout.scenarios.recovery.step3': 'Enter <code>john.doe</code> as the username and submit.',
-    'welcome.applicationTryout.scenarios.recovery.step4':
-      "{{productName}} sends a recovery email to John's registered address. Open it from the inbox at <mail>http://localhost:8788</mail>.",
-    'welcome.applicationTryout.scenarios.recovery.step5': 'Click the reset link in the email and set a new password.',
-    'welcome.applicationTryout.scenarios.recovery.step6': 'Sign in again with the new credentials.',
-
-    'welcome.applicationTryout.scenarios.onboard.description':
-      'Invite and onboard two new staff members entirely from the {{productName}} Console: Sam Rivera (Support) and Maya Patel (DestinationsAdmin). The admin picks the staff role and sends the invitation, and the matching role is attached automatically when the invitee completes their profile.',
-    'welcome.applicationTryout.scenarios.onboard.step1': 'Sign in to the {{productName}} Console as your admin user.',
-    'welcome.applicationTryout.scenarios.onboard.step2': 'Navigate to Users and select Add user.',
-    'welcome.applicationTryout.scenarios.onboard.step3': 'Select Staff as the user type.',
-    'welcome.applicationTryout.scenarios.onboard.step4':
-      "Pick Support as the role, enter Sam Rivera's email (sam.rivera@example.com), and click Send invitation. An invite link is emailed to Sam.",
-    'welcome.applicationTryout.scenarios.onboard.step5':
-      "Open Sam's invitation email from the inbox at <mail>http://localhost:8788</mail> and open the link. The browser opens a Complete Your Profile page.",
-    'welcome.applicationTryout.scenarios.onboard.step6':
-      "Fill in the additional attributes and submit. Sam's account is now active with the Support role attached.",
-    'welcome.applicationTryout.scenarios.onboard.step7':
-      'Repeat the flow for Maya Patel (email maya.patel@example.com), picking DestinationsAdmin as the role.',
-
-    'welcome.aiAgentsTryout.breadcrumb': 'Tryout secured AI agent',
-    'welcome.aiAgentsTryout.overline': 'Secured AI agent',
-    'welcome.aiAgentsTryout.subtitle':
-      'Run AI agent use cases against the Wayfinder sample, a travel-booking app with a built-in AI chat assistant.',
-    'welcome.aiAgentsTryout.steps.getSample.title': 'Get the Wayfinder sample',
-    'welcome.aiAgentsTryout.steps.getSample.description':
-      'Download the latest Wayfinder sample distribution and extract the archive. It ships with the web frontend, AI agent service, MCP, SMTP mail server and Wayfinder server.',
-    'welcome.aiAgentsTryout.steps.importConfigs.title': 'Configure Wayfinder sample in {{productName}}',
-    'welcome.aiAgentsTryout.steps.importConfigs.description':
-      'Apply the Wayfinder sample configurations to {{productName}}.',
-    'welcome.aiAgentsTryout.steps.configureSample.title': 'Configure the AI provider details in Wayfinder sample',
-    'welcome.aiAgentsTryout.steps.configureSample.description':
-      'Copy each .env.example to .env in backend/, ai-agent/, and frontend/. Fill in your LLM API key in ai-agent/.env — an Anthropic key from console.anthropic.com or a Gemini key from aistudio.google.com.',
-    'welcome.aiAgentsTryout.steps.runSample.title': 'Run the sample',
-    'welcome.aiAgentsTryout.steps.runSample.description':
-      'Start all Wayfinder services from the extracted sample directory.',
-    'welcome.aiAgentsTryout.steps.login.title': 'Sign-in to the app',
-    'welcome.aiAgentsTryout.steps.login.description':
-      'Open the Wayfinder sample app and sign in with the demo credentials below.',
-
-    'welcome.aiAgentsTryout.apiKeySetup.getKey.title': 'Get an LLM API key',
-    'welcome.aiAgentsTryout.apiKeySetup.getKey.description':
-      'The AI agent needs access to an LLM. Obtain a free API key from one of the providers below.',
-    'welcome.aiAgentsTryout.apiKeySetup.setKey.title': 'Add the key to ai-agent/.env',
-    'welcome.aiAgentsTryout.apiKeySetup.setKey.description':
-      'Open ai-agent/.env and set the key for the provider you chose.',
-
-    'welcome.aiAgentsTryout.scenarios.title': 'Try the following AI agents security patterns',
-    'welcome.aiAgentsTryout.scenarios.apiKeyNote':
-      'The AI agent requires an LLM API key. Edit ai-agent/.env in the sample directory and set ANTHROPIC_API_KEY or GOOGLE_API_KEY before starting the services.',
-    'welcome.aiAgentsTryout.scenarios.tabs.protect': 'Protect the agent',
-    'welcome.aiAgentsTryout.scenarios.tabs.browse': 'Browse with agent',
-    'welcome.aiAgentsTryout.scenarios.tabs.book': 'Book on behalf',
-
-    'welcome.aiAgentsTryout.scenarios.protect.description':
-      'See scope-based access control in action - John can use the AI concierge, but Jane cannot.',
-    'welcome.aiAgentsTryout.scenarios.protect.step1': 'Open <a>http://localhost:5173</a> and sign in as John Doe.',
-    'welcome.aiAgentsTryout.scenarios.protect.step2':
-      "Open the chat widget (bottom-right corner) and send any message. The concierge responds — John's token carries the <code>agent:access</code> scope.",
-    'welcome.aiAgentsTryout.scenarios.protect.step3': 'Sign out and sign in as Jane Smith.',
-    'welcome.aiAgentsTryout.scenarios.protect.step4':
-      'Open the chat. Since Jane does not have the Wayfinder Chat User role. Chat agent will not be accessible and the widget will show an error message instead.',
-    'welcome.aiAgentsTryout.scenarios.protect.johnLabel': 'John have access to chat with Wayfinder chat agent',
-    'welcome.aiAgentsTryout.scenarios.protect.janeLabel': 'Jane does not have access to chat with Wayfinder chat agent',
-
-    'welcome.aiAgentsTryout.scenarios.browse.description':
-      'Watch the agent use its own machine-to-machine (M2M) token to call read-only tools - no user consent popup required.',
-    'welcome.aiAgentsTryout.scenarios.browse.step1':
-      'Sign in as John at <a>http://localhost:5173</a> and open the chat widget.',
-    'welcome.aiAgentsTryout.scenarios.browse.step2': 'Ask a browsing question in the chat:',
-    'welcome.aiAgentsTryout.scenarios.browse.step3':
-      'The agent calls the Wayfinder MCP server with its own M2M token (client_credentials grant). No popup appears.',
-    'welcome.aiAgentsTryout.scenarios.browse.step4':
-      'You can also try asking for flight deals — the agent calls the recommend_bookings tool, which requires the <code>booking:recommend</code> scope — granted to the Wayfinder Concierge via its Recommender role.',
-    'welcome.aiAgentsTryout.scenarios.browse.step4Prompt': 'Suggest a few flight deals.',
-
-    'welcome.aiAgentsTryout.scenarios.book.description':
-      'Trigger the on-behalf-of consent flow - the agent pauses, asks for your permission, and only proceeds after you approve.',
-    'welcome.aiAgentsTryout.scenarios.book.step1':
-      'Sign in as John at <a>http://localhost:5173</a> and open the chat widget.',
-    'welcome.aiAgentsTryout.scenarios.book.step2': 'Ask the agent to book something, for example:',
-    'welcome.aiAgentsTryout.scenarios.book.step2Prompt': 'Book flight 2',
-    'welcome.aiAgentsTryout.scenarios.book.step3':
-      'The agent returns a consent request. A popup opens - sign in as John and select which booking permissions to grant (<code>booking:read</code>, <code>booking:create</code>, <code>booking:cancel</code>).',
-    'welcome.aiAgentsTryout.scenarios.book.step4':
-      "Click Authorize. The agent will retries the action using a user's context token. And you should see the booking confirmation in the chat window shortly after.",
-    'welcome.aiAgentsTryout.scenarios.book.step5':
-      'To see the rejection path, repeat the flow but deny <code>booking:create</code> in the consent screen. The agent returns a 403.',
-
-    'welcome.mcpTryout.breadcrumb': 'Tryout secured MCP server',
-    'welcome.mcpTryout.overline': 'Secured MCP server',
-    'welcome.mcpTryout.subtitle':
-      'Connect an external MCP client to the Wayfinder MCP server, signed in through {{productName}}.',
-    'welcome.mcpTryout.steps.prerequisite.title': 'Complete AI agents setup',
-    'welcome.mcpTryout.steps.prerequisite.description':
-      'This tryout extends the AI Agents environment. Complete the Securing AI Agents tryout setup first — the same bundle seeds the EXTERNAL-MCP-CLIENT application used here.',
-    'welcome.mcpTryout.steps.importConfigs.title': 'Configure Wayfinder sample in {{productName}}',
-    'welcome.mcpTryout.steps.importConfigs.description':
-      'Apply the Wayfinder sample configurations to {{productName}}.',
-    'welcome.mcpTryout.steps.verifyApp.title': 'Verify the application',
-    'welcome.mcpTryout.steps.verifyApp.description':
-      'In the {{productName}} Console, open Applications and confirm EXTERNAL-MCP-CLIENT is listed.',
-    'welcome.mcpTryout.steps.verifyApp.action': 'Open applications',
-    'welcome.mcpTryout.steps.installInspector.title': 'Launch MCP Inspector',
-    'welcome.mcpTryout.steps.installInspector.description':
-      'Launch MCP Inspector locally — a browser-based reference UI for MCP servers with built-in OAuth support. Open a new terminal in the sample app directory and run:',
-    'welcome.mcpTryout.steps.allowCors.title': 'Allow Inspector in CORS',
-    'welcome.mcpTryout.steps.allowCors.description':
-      "Add Inspector's origin to {{productName}}'s CORS allow-list in repository/conf/deployment.yaml, then restart {{productName}}.",
-
-    'welcome.mcpTryout.scenarios.title': 'Try out the following test scenarios',
-    'welcome.mcpTryout.scenarios.tabs.connect': 'Connect & sign in',
-    'welcome.mcpTryout.scenarios.tabs.permissions': 'Test permissions',
-
-    'welcome.mcpTryout.scenarios.connect.description':
-      'Point MCP Inspector at the Wayfinder MCP server, authenticate through {{productName}}, and grant booking permissions at the consent screen.',
-    'welcome.mcpTryout.scenarios.connect.step1':
-      'Open <a>http://localhost:6274</a> in your browser (Inspector should already be running from the setup step above).',
-    'welcome.mcpTryout.scenarios.connect.step2': 'Fill in the form with the details below.',
-    'welcome.mcpTryout.scenarios.connect.step3': 'Expand "Authentication" and fill in the details below.',
-    'welcome.mcpTryout.scenarios.connect.step4':
-      'Click Connect. You are redirected to {{productName}} Sign in page — Sign in as John.',
-    'welcome.mcpTryout.scenarios.connect.step5':
-      'At the consent screen select the booking permissions to grant (<code>booking:read</code>, <code>booking:create</code>, <code>booking:cancel</code>) and confirm.',
-    'welcome.mcpTryout.scenarios.connect.connectionLabel': 'Connection details',
-    'welcome.mcpTryout.scenarios.connect.fields.transport': 'Transport type',
-    'welcome.mcpTryout.scenarios.connect.fields.serverUrl': 'URL',
-    'welcome.mcpTryout.scenarios.connect.fields.connectionType': 'Connection type',
-    'welcome.mcpTryout.scenarios.connect.fields.clientId': 'Client ID',
-    'welcome.mcpTryout.scenarios.connect.fields.clientSecret': 'Client secret',
-    'welcome.mcpTryout.scenarios.connect.fields.redirectUrl': 'Redirect URL',
-
-    'welcome.mcpTryout.scenarios.permissions.description':
-      'Call MCP tools and observe how {{productName}} enforces the scopes you granted at consent. Reconnect with different permissions to see the difference.',
-    'welcome.mcpTryout.scenarios.permissions.step0':
-      'At the consent screen select the booking permissions to grant (<code>booking:read</code>, <code>booking:create</code>, <code>booking:cancel</code>) and confirm.',
-    'welcome.mcpTryout.scenarios.permissions.step1':
-      'In the Tools tab, call create_booking. Set type=flight, itemId=flight-cmb-sin-01, travelers=1. The call succeeds if you granted <code>booking:create</code>.',
-    'welcome.mcpTryout.scenarios.permissions.step2':
-      'Call delete_all_bookings. If <code>booking:cancel</code> was not granted you get: "Insufficient scope for tool delete_all_bookings. Required: <code>booking:cancel</code>".',
-    'welcome.mcpTryout.scenarios.permissions.step3':
-      'To narrow or expand permissions, disconnect from Inspector and reconnect.',
-    'welcome.mcpTryout.scenarios.permissions.step4':
-      'Re-authenticate as john.doe and toggle different scopes at the consent screen, then retry the previously denied tool call — it now succeeds.',
-
-    'welcome.setupComplete.breadcrumb': 'Complete',
-    'welcome.setupComplete.title': "You're all set!",
-    'welcome.setupComplete.subtitle':
-      'The essential configuration is done. Start exploring the designer, build your project, onboard applications, and export the config when ready to run {{productName}}.',
-    'welcome.setupComplete.exploreDashboard': 'Start exploring',
-    'welcome.setupComplete.nextSteps.onboardApp.title': 'Onboard an application',
-    'welcome.setupComplete.nextSteps.onboardApp.description':
-      'Register your first application to start integrating sign-in and identity flows.',
-    'welcome.setupComplete.nextSteps.onboardApp.action': 'Add application',
-    'welcome.setupComplete.nextSteps.exportConfig.title': 'Export configuration',
-    'welcome.setupComplete.nextSteps.exportConfig.description':
-      'Export your {{productName}} configuration to deploy and run {{productName}}.',
-    'welcome.setupComplete.nextSteps.exportConfig.action': 'Export config',
 
     // Header
     'header.notifications': 'Coming soon',
@@ -808,6 +498,7 @@ const translations = {
     'pages.openProject': 'Import configuration',
     'pages.importExport': 'Import / Export',
     'pages.home': 'Home',
+    'pages.projects': 'Projects',
     'pages.users': 'Users',
     'pages.userTypes': 'User types',
     'pages.agentTypes': 'Agent types',
@@ -986,6 +677,10 @@ const translations = {
     'errors.USR-1034': 'The user is not shared into this unit, so the unit cannot share it on.',
     'errors.USR-1037':
       'Sharing with every unit or every other organization comes only from a resource file or an import.',
+    'errors.USR-1039':
+      'Roles can be mandated only on a named child unit with reach set to this unit only. Move the roles rule to such a unit.',
+    'errors.USR-1040':
+      'A roles rule must be locked and list the roles to assign. Turn off editing for the rule and remove any allowed or excluded values.',
     'errors.USR-1041':
       'The new value does not meet the requirements set for this user type, such as the allowed length or characters.',
 
@@ -998,8 +693,8 @@ const translations = {
     'manageUser.tabs.affiliations': 'Affiliations',
     'organizationAccess.title': 'Where {{resource}} is affiliated',
     'organizationAccess.description':
-      '{{resource}} can sign in and act within the units selected here. What they can do in each unit depends on the roles that unit grants.',
-    'organizationAccess.ownerOnly': "{{resource}} isn't affiliated with any other unit.",
+      '{{resource}} can sign in and act within the organization units selected here. What they can do in each organization unit depends on the roles that organization unit grants.',
+    'organizationAccess.ownerOnly': "{{resource}} isn't affiliated with any other organization unit.",
     'organizationAccess.stopSharingTitle': 'Keep {{resource}} in {{owner}} only?',
     'organizationAccess.stopSharingIntro': '{{resource}} will be affiliated with {{owner}} only. This clears:',
     'organizationAccess.stopSharingConfirm': 'Remove affiliations',
@@ -1323,6 +1018,7 @@ const translations = {
     'listing.columns.agentId': 'Agent ID',
     'listing.columns.organizationUnit': 'Organization unit',
     'listing.columns.status': 'Status',
+    'listing.columns.deployment': 'Deployment',
     'listing.columns.actions': 'Actions',
 
     // Onboarding (flow driven)
@@ -1357,6 +1053,10 @@ const translations = {
     'addForm.ownersError': 'The users to choose an owner from could not be loaded.',
     'addForm.ownerHint':
       'Defaults to you. Choose a user created here if the agent is applied to a gateway, which needs an owner it can find.',
+    'addForm.ownerNoUsers': 'There are no users here to own the agent. Add a user, then add the agent.',
+    'addForm.ownerRequiredHint':
+      'Choose a user created here. A gateway the agent is applied to needs an owner it can find, and the account you signed in with is not a user here.',
+    'addForm.selectOwner': 'Select an owner',
     'addForm.organizationUnit': 'Organization unit',
     'addForm.selectAgentType': 'Select an agent type',
     'addForm.submit': 'Create agent',
@@ -1443,6 +1143,7 @@ const translations = {
     'edit.general.sections.owner.title': 'Owner',
     'edit.general.sections.owner.description': 'The user accountable for this agent.',
     'edit.general.sections.owner.label': 'Owner',
+    'edit.general.sections.owner.external': 'Managed in another identity system, so it cannot be changed here.',
     'edit.general.owner.empty': 'No owner assigned',
     'edit.attributes.lifespan.title': 'Lifespan',
     'edit.attributes.lifespan.description':
@@ -1843,41 +1544,45 @@ const translations = {
   // Resource Sharing namespace - Organization Access of every shareable resource
   // ============================================================================
   resourceSharing: {
+    'assignmentsOff.section': 'Assignments are turned off for these organization units.',
+    'assignmentsOff.unit': 'Assignments are turned off for this organization unit.',
     'changeScope.action': 'Change scope',
     'changeScope.description':
-      'Changing the scope deletes the "Every organization unit" policy and its exceptions, then lets you choose child units and other trees. Once you save, it can\'t be set again here.',
-    'changeScope.question': 'Need to grant only some units?',
-    'childUnits.choices.all.description': 'Every unit under {{owner}}, now and later.',
-    'childUnits.choices.all.title': 'All child units',
-    'childUnits.choices.none.description': 'No child unit has access.',
+      'Changing the scope deletes the "Every organization unit" policy and its exceptions, then lets you choose child organization units and other trees. Once you save, it can\'t be set again here.',
+    'changeScope.question': 'Need to grant only some organization units?',
+    'childUnits.choices.all.description': 'Every organization unit under {{owner}}, now and later.',
+    'childUnits.choices.all.title': 'All child organization units',
+    'childUnits.choices.none.description': 'No child organization unit has access.',
     'childUnits.choices.none.title': 'None',
-    'childUnits.choices.selected.description': 'Pick units and how far below each one access reaches.',
-    'childUnits.choices.selected.title': 'Selected child units',
-    'childUnits.empty': 'No child units selected yet. Use Grant access to pick them.',
+    'childUnits.choices.selected.description': 'Pick organization units and how far below each one access reaches.',
+    'childUnits.choices.selected.title': 'Selected child organization units',
+    'childUnits.empty': 'No child organization units selected yet. Use Grant access to pick them.',
     'childUnits.grant': 'Grant access',
-    'childUnits.sectionDescription': "Units in {{owner}}'s own hierarchy.",
-    'childUnits.sectionTitle': 'Child organization units of {{owner}}',
+    'childUnits.sectionDescription': "Organization units in {{owner}}'s own hierarchy.",
+    'childUnits.sectionTitle': 'Child organization units',
     'dialogs.childUnits.description':
-      'Only units directly under {{owner}} can be picked. Units deeper down are reached through their parent.',
-    'dialogs.childUnits.title': 'Grant access to child units',
+      'Only organization units directly under {{owner}} can be picked. Organization units deeper down are reached through their parent.',
+    'dialogs.childUnits.title': 'Grant access to child organization units',
     'dialogs.exceptions.anyDescription':
-      "Choose any unit, at any depth, that shouldn't get access. Everything below it is excluded too.",
+      "Choose any organization unit, at any depth, that shouldn't get access. Everything below it is excluded too.",
     'dialogs.exceptions.childDescription':
-      "Choose child units of {{owner}} that shouldn't get access. Everything below an excluded unit is excluded too.",
+      "Choose child organization units of {{owner}} that shouldn't get access. Everything below an excluded organization unit is excluded too.",
     'dialogs.exceptions.confirm': 'Apply exceptions',
-    'dialogs.exceptions.rootDescription': "Choose top units that shouldn't get access.",
+    'dialogs.exceptions.rootDescription': "Choose top organization units that shouldn't get access.",
     'dialogs.exceptions.title': 'Add exceptions',
     'dialogs.trees.description':
-      'Pick the top unit of each tree. Units below it get access only if it passes access on.',
+      'Pick the top organization unit of each tree. Organization units below it get access only if it passes access on.',
     'dialogs.trees.title': 'Grant access to other trees',
     'everyUnit.summary':
-      'Every organization unit in every tree, at any depth. Units and trees created later get access automatically.',
+      'Every organization unit in every tree, at any depth. Organization units and trees created later get access automatically.',
     'exceptions.add': 'Add exception',
-    'exceptions.anyHint': 'Any unit in any tree. Excluding a unit also excludes everything below it.',
-    'exceptions.childHint': 'Direct child units only. Excluding a unit also excludes everything below it.',
+    'exceptions.anyHint':
+      'Any organization unit in any tree. Excluding an organization unit also excludes everything below it.',
+    'exceptions.childHint':
+      'Direct child organization units only. Excluding an organization unit also excludes everything below it.',
     'exceptions.empty': 'No exceptions.',
     'exceptions.remove': 'Remove {{name}} from exceptions',
-    'exceptions.rootHint': 'Top units only.',
+    'exceptions.rootHint': 'Top organization units only.',
     'exceptions.title': 'Except',
     'loadError.message': 'Something went wrong while loading who can use this resource.',
     'loadError.title': 'Failed to load organization access',
@@ -1885,16 +1590,22 @@ const translations = {
       'Saving removes "Every tree". It can only be set in a resource file or by importing, so it can\'t be chosen again here.',
     'lost.everyUnit':
       'Saving deletes the "Every organization unit" policy. It can only be set in a resource file or by importing, so it can\'t be chosen again here.',
-    'noneBlocked.childUnits': 'child units',
+    'mandatedRoles.hint': '{{name}} holds these roles for the user and cannot remove them.',
+    'mandatedRoles.label': 'Mandated roles',
+    'mandatedRoles.loadError': 'Failed to load roles.',
+    'mandatedRoles.noOptions': 'No roles of yours are shared with this organization unit.',
+    'mandatedRoles.placeholder': 'Select roles',
+    'mandatedRoles.unitOnlyHint': 'Roles can be mandated only when access is set to Only this OU.',
+    'noneBlocked.childUnits': 'child organization units',
     'noneBlocked.dropsEveryTree': 'Not available. It also removes Every tree, which leaves nothing granted.',
     'noneBlocked.otherIsNone': 'Not available while {{section}} is set to None.',
     'noneBlocked.otherTrees': 'other trees',
-    nothingChosen: 'Nothing is granted below yet. Saving like this is the same as "{{owner}} only".',
+    nothingChosen: 'Nothing is granted below yet. Saving like this is the same as "{{owner}} organization unit only".',
     'picker.alreadyExcluded': 'Already excluded',
     'picker.alreadyGranted': 'Already granted',
-    'picker.collapse': 'Hide units under {{name}}',
+    'picker.collapse': 'Hide organization units under {{name}}',
     'picker.empty': 'No organization units to show.',
-    'picker.expand': 'Show units under {{name}}',
+    'picker.expand': 'Show organization units under {{name}}',
     'picker.includedWith': 'Included with {{name}}',
     'picker.loadError': 'Failed to load organization units.',
     'picker.loadMore': 'Load more',
@@ -1904,24 +1615,24 @@ const translations = {
     'picker.toGrant': 'To grant',
     'picker.unselect': 'Remove {{name}}',
     'reach.label': 'Reach for {{name}}',
-    'reach.subtree': 'And below',
-    'reach.subtreeHint': 'Includes every unit below it, now and later.',
-    'reach.unit': 'This unit only',
-    'reach.unitHint': "Units below it don't get access.",
+    'reach.subtree': 'Include all OUs below',
+    'reach.subtreeHint': 'This OU and every OU below it, now and later.',
+    'reach.unit': 'Only this OU',
+    'reach.unitHint': "Its child organization units don't get access.",
     revoke: 'Revoke access for {{name}}',
     'save.success': 'Organization access updated.',
-    'scope.chosen.description': 'Choose child units of {{owner}} and other trees below.',
-    'scope.chosen.title': '{{owner}} and chosen units',
-    'scope.everyUnit.description': 'Every unit in every tree, now and later, with optional exceptions.',
+    'scope.chosen.description': 'Choose child organization units of {{owner}} and other trees below.',
+    'scope.chosen.title': '<owner>{{owner}}</owner> and chosen organization units',
+    'scope.everyUnit.description': 'Every organization unit in every tree, now and later, with optional exceptions.',
     'scope.everyUnit.title': 'Every organization unit',
-    'scope.owner.description': 'No child unit and no other tree can use it.',
-    'scope.owner.title': '{{owner}} only',
+    'scope.owner.description': 'No child organization unit and no other tree can use it.',
+    'scope.owner.title': '<owner>{{owner}}</owner> organization unit only',
     'switch.cantRestore.everyTree':
       '"Every tree" can only be set in a resource file or by importing. Once you save, it can\'t be chosen again here.',
     'switch.cantRestore.everyUnit':
       '"Every organization unit" can only be set in a resource file or by importing. Once you save, it can\'t be chosen again here.',
-    'switch.cleared.childUnitExclusions': 'Child unit exceptions: {{names}}',
-    'switch.cleared.childUnits': 'Granted child units: {{names}}',
+    'switch.cleared.childUnitExclusions': 'Child organization unit exceptions: {{names}}',
+    'switch.cleared.childUnits': 'Granted child organization units: {{names}}',
     'switch.cleared.everyTree': 'Every tree',
     'switch.cleared.everyTreeWithExceptions': 'Every tree, with its exceptions: {{names}}',
     'switch.cleared.everyUnit': 'The "Every organization unit" policy',
@@ -1932,28 +1643,32 @@ const translations = {
     'switch.confirmOwner': 'Stop sharing',
     'switch.intro': "What you set up for {{choice}} doesn't carry over. Switching clears:",
     'switch.introChangeScope':
-      'This deletes the "Every organization unit" policy, so {{resource}} stops reaching every organization unit. Access then starts as All child units of {{owner}}, which you can change below. Deleting the policy clears:',
+      'This deletes the "Every organization unit" policy, so {{resource}} stops reaching every organization unit. Access then starts as All child organization units of {{owner}}, which you can change below. Deleting the policy clears:',
     'switch.introOwner': 'Only {{owner}} will be able to use {{resource}}. This clears:',
     'switch.keep': 'Keep current choice',
+    'switch.losesAssignmentsOff':
+      'Assignments are turned off for some organization units this drops. Any of them granted again can assign {{resource}}, and only a resource file or the API can turn assignments off again.',
     'switch.notYet': 'Nothing is removed until you save. Until then, Reset brings everything back.',
     'switch.title': 'Switch to {{choice}}?',
     'switch.titleChangeScope': 'Change the scope?',
     'switch.titleOwner': 'Stop sharing {{resource}}?',
     'switch.unitSettings':
-      'Unit settings are cleared too. Units lose the settings they chose for themselves within their terms.',
+      'Organization unit settings are cleared too. Organization units lose the settings they chose for themselves within their terms.',
     'trees.add': 'Add a tree',
-    'trees.choices.every.description': 'The top unit of every tree, now and later, with optional exceptions.',
+    'trees.choices.every.description':
+      'The top organization unit of every tree, now and later, with optional exceptions.',
     'trees.choices.every.title': 'Every tree',
-    'trees.choices.every.unavailable': "Every tree's top unit. Only set through a resource file or an import.",
+    'trees.choices.every.unavailable':
+      "Every tree's top organization unit. Only set through a resource file or an import.",
     'trees.choices.none.description': 'No other tree has access.',
     'trees.choices.none.title': 'None',
-    'trees.choices.selected.description': 'Grant top units one by one.',
+    'trees.choices.selected.description': 'Grant top organization units one by one.',
     'trees.choices.selected.title': 'Selected trees',
     'trees.description':
-      "Top units of trees outside {{owner}}'s. Units below a top unit don't get access unless it passes access on to them.",
+      "Top organization units of trees outside {{owner}}'s. Organization units below a top organization unit don't get access unless it passes access on to them.",
     'trees.empty': 'No trees picked yet. Use Add a tree to pick them.',
     'trees.title': 'Other organization trees',
-    'trees.topUnitOnly': 'Top unit only',
+    'trees.topUnitOnly': 'Top organization unit only',
     'who.description': 'Users and agents of a granted organization unit can sign in to {{resource}}.',
     'who.title': 'Who can use {{resource}}',
   },
@@ -2135,6 +1850,7 @@ const translations = {
     'edit.page.tabs.general': 'General',
     'edit.page.tabs.permissions': 'Permissions',
     'edit.page.tabs.assignments': 'Assignments',
+    'edit.page.tabs.organizationAccess': 'Organization Access',
     'edit.page.tabs.advanced': 'Advanced',
     'edit.page.unsavedChanges': 'You have unsaved changes',
     'edit.page.reset': 'Reset',
@@ -2196,6 +1912,7 @@ const translations = {
     'create.success': 'Role created successfully.',
     'update.success': 'Role updated successfully.',
     'update.error': 'Failed to update role. Please try again.',
+    'edit.organizationAccess.save.error': 'Failed to update organization access. Please try again.',
     'delete.success': 'Role deleted successfully.',
     'assignments.add.success': 'Assignment added successfully.',
     'assignments.remove.success': 'Assignment removed successfully.',
@@ -2207,6 +1924,29 @@ const translations = {
     'errors.ROL-1015': 'New roles cannot be created while the server is running in declarative-only mode.',
     'errors.ROL-1019': 'Select the assignee to remove from this role.',
     'errors.ROL-1020': 'This assignee no longer holds the role. Refresh and try again.',
+    'errors.ROL-1021':
+      'This organization access change is not allowed. An organization unit may have moved since you opened the role. Reset to load the latest, then try again.',
+    'errors.ROL-1022':
+      'This organization access no longer exists. It may have been removed already. Reset to load the latest.',
+    'errors.ROL-1023':
+      "This role's organization access was already set by a change made elsewhere. Reset to load it, then redo your change.",
+    'errors.ROL-1024':
+      "Someone else changed this role's organization access while you were editing. Reset to load the latest, then redo your change.",
+    'errors.ROL-1025': "This organization access is declared in a resource file and can't be changed here.",
+    'errors.ROL-1028':
+      'Access for every organization unit, or for every other tree, can only be set in a resource file or by importing.',
+    'errors.ROL-1036':
+      'A user share mandates this assignment. Remove the role from that share to remove the assignment.',
+    'errors.ROL-1037':
+      'A user share mandates this role in one of these organization units. Remove the role from that share, then stop sharing it with the unit.',
+    'errors.ROL-1039':
+      'A user share still mandates this role. Remove the role from the user shares that mandate it, then delete it again.',
+
+    // Organization Access
+    'organizationAccess.title': 'Where {{resource}} is available',
+    'organizationAccess.description':
+      '{{resource}} is available in the organization units selected here, which can assign it to users, groups, applications, and agents.',
+    'organizationAccess.ownerOnly': "{{resource}} isn't available in any other organization unit.",
   },
 
   // ============================================================================
@@ -2963,6 +2703,7 @@ const translations = {
     'listing.columns.name': 'Name',
     'listing.columns.clientId': 'Client ID',
     'listing.columns.status': 'Status',
+    'listing.columns.deployment': 'Deployment',
     'listing.columns.actions': 'Actions',
     'listing.columns.template': 'Type',
     'listing.search.placeholder': 'Search ..',
@@ -3538,8 +3279,8 @@ const translations = {
     'edit.page.tabs.organizationAccess': 'Organization Access',
     'edit.organizationAccess.save.error': 'Failed to update organization access. Please try again.',
     'organizationAccess.title': 'Where {{resource}} is available',
-    'organizationAccess.description': '{{resource}} can request tokens to act within the units selected here.',
-    'organizationAccess.ownerOnly': "{{resource}} isn't available in any other unit.",
+    'organizationAccess.description': '{{resource}} can be used from the organization units selected here.',
+    'organizationAccess.ownerOnly': "{{resource}} isn't available in any other organization unit.",
     'edit.page.tabs.advanced': 'Advanced',
     'edit.page.unsavedChanges': 'Unsaved changes',
     'edit.page.validation.missingRedirectUri': 'A redirect URI is required.',
@@ -4216,6 +3957,7 @@ const translations = {
     'errors.signin.session.expired': 'Your session has expired. Please return to the application and sign in again.',
     'errors.signin.returnToApplication': 'Return to application',
     'errors.signin.returnToApplicationUnavailable': 'Please return to the application and try again.',
+    'callback.loading': 'Signing you in',
     'errors.passkey.failed': 'Passkey authentication failed. Please try again.',
     'redirect.to.signup': "Don't have an account? <1>Sign up</1>",
     heading: 'Sign in',
@@ -4369,6 +4111,7 @@ const translations = {
     'listing.addFlow': 'Create new flow',
     'listing.columns.name': 'Name',
     'listing.columns.flowType': 'Type',
+    'listing.columns.deployment': 'Deployment',
     'listing.columns.updatedAt': 'Last updated',
     'listing.columns.actions': 'Actions',
     'listing.error.title': 'Failed to load flows',
@@ -5747,77 +5490,14 @@ const translations = {
   // ============================================================================
   // How Solution Works Illustration - Shared illustration translations
   // ============================================================================
-  consumerAppIllustration: {
-    step1Title: 'Get the Wayfinder sample',
-    step1Sub: 'Download the sample distribution',
-    step2Title: 'Register application',
-    step2Line1: 'Set redirect URIs',
-    step2Line2: 'and client credentials',
-    step2Line3: 'in the console',
-    step2Sub: 'Creates the app in the console',
-    step3Title: 'Run the sample',
-    step3Sub: 'Linux / macOS or Windows',
-  },
-  aiAgentsIllustration: {
-    consumers: 'Consumers',
-    johnDoe: 'John Doe',
-    janeSmith: 'Jane Smith',
-    use: 'Use',
-    wayfinderWeb: 'Wayfinder web',
-    wayfinderWebSub: 'Browser SPA with chat widget',
-    wayfinderWebDetail: 'Book travel, chat with the agent',
-    identityAuthority: 'Identity authority',
-    managesIdentities: 'Manages identities',
-    issuesTokens: 'and issues tokens',
-    aiAgent: 'AI agent',
-    aiAgentSub: 'Wayfinder Concierge',
-    drivesConversation: 'Drives the conversation',
-    wayfinderServer: 'Wayfinder server',
-    wayfinderServerSub: 'Booking API + MCP tools',
-    holdsData: 'Holds flights, hotels, bookings',
-    signIn: 'Sign in',
-    issueUserToken: 'Issue user token',
-    chat: 'Chat',
-    authenticatedCalls: 'Authenticated calls',
-    callMcpTools: 'Call MCP tools',
-    getAgentTokens: 'Get agent tokens',
-    issueAgentTokens: 'Issue agent / on-behalf-of tokens',
-    validateTokens: 'Validate tokens',
-  },
-  mcpIllustration: {
-    user: 'User',
-    johnDoe: 'John Doe',
-    use: 'Use',
-    externalMcpClient: 'External MCP client',
-    mcpInspector: 'MCP Inspector',
-    discoversSignsIn: 'Discovers, signs in, calls MCP tools',
-    identityAuthority: 'Identity authority',
-    managesIdentities: 'Manages identities',
-    issuesTokens: 'and issues tokens',
-    wayfinderServer: 'Wayfinder server',
-    wayfinderServerSub: 'Booking API + MCP tools',
-    holdsData: 'Holds flights, hotels, bookings',
-    signIn: 'Sign in',
-    issueTokens: 'Issue tokens',
-    callMcpTools: 'Call MCP tools',
-    validateTokens: 'Validate tokens',
-  },
   howSolutionWorksIllustration: {
-    validateTest: 'Validate / test',
-    configureProject: 'Configure project',
     run: 'Run',
-    console: '{{productName}} Console',
-    runtimeLocal: '{{productName}} runtime local',
     projectEnvConfigs: 'Project + ENV configs',
     runtimeHosted: '{{productName}} runtime hosted',
-    saveExport: 'Save & export',
     import: 'Attach',
     runInProduction: 'Run {{productName}} in production',
     runtimeComponentsOnly: '(with required runtime components only)',
-    designConfigure: 'Configure {{productName}}',
-    designComponents: '(with design components)',
     commandProduction: './start.sh project-foo.yml --env production.env',
-    commandStart: './start.sh',
     adminApp: 'Admin app',
     loginApp: 'Login app',
   },
@@ -6226,12 +5906,35 @@ const translations = {
     'form.issuerTrust.title': 'Issuer trust',
     'form.issuerTrust.description': 'Control which credential issuers are accepted for this presentation definition.',
     'form.issuerTrust.enforce.label': 'Enforce trusted issuer',
-    'form.issuerTrust.enforce.hint': 'When enabled, only credentials issued by a trusted issuer are accepted.',
-    'form.issuerTrust.enforce.noAnchorsHint':
-      'No trust anchors are configured, so issuer trust cannot be enforced. Configure trust anchors first.',
-    'form.issuerTrust.authorities.label': 'Trusted issuers',
-    'form.issuerTrust.authorities.hint': 'Leave empty to accept any registered trust anchor.',
-    'form.issuerTrust.authorities.optionSecondary': '{{subject}} · expires {{notAfter}}',
+    'form.issuerTrust.enforce.hint':
+      'When enabled, only credentials whose issuer certificate chain leads to one of the trusted issuer certificates are accepted.',
+    'form.issuerTrust.enforce.noCertificatesHint': 'Add a trusted issuer certificate before enforcing issuer trust.',
+    'form.issuerTrust.certificates.title': 'Trusted issuer certificates',
+    'form.issuerTrust.certificates.hint':
+      'Certificates of the issuers, or of the CAs that sign them, that this presentation definition trusts.',
+    'form.issuerTrust.certificates.empty': 'No trusted issuer certificates added yet.',
+    'form.issuerTrust.certificates.add': 'Add certificate',
+    'form.issuerTrust.certificates.unsaved': 'Unsaved',
+    'form.issuerTrust.certificates.remove': 'Remove certificate {{name}}',
+    'form.issuerTrust.addDialog.title': 'Add trusted issuer certificate',
+    'form.issuerTrust.addDialog.description': 'Paste a PEM-encoded X.509 certificate or upload a certificate file.',
+    'form.issuerTrust.addDialog.name.label': 'Name',
+    'form.issuerTrust.addDialog.name.placeholder': 'Example issuer CA',
+    'form.issuerTrust.addDialog.name.hint':
+      'A label that identifies this certificate within the presentation definition.',
+    'form.issuerTrust.addDialog.certificate.label': 'Certificate',
+    'form.issuerTrust.addDialog.certificate.placeholder': 'Paste the PEM-encoded certificate here',
+    'form.issuerTrust.addDialog.certificate.hint': 'A single PEM-encoded X.509 certificate.',
+    'form.issuerTrust.addDialog.upload': 'Upload file',
+    'form.issuerTrust.addDialog.uploadHint': 'Accepts .pem, .crt, and .cer files in PEM format.',
+    'form.issuerTrust.addDialog.errors.nameRequired': 'Enter a name for the certificate.',
+    'form.issuerTrust.addDialog.errors.nameDuplicate':
+      'A certificate with this name already exists in this presentation definition.',
+    'form.issuerTrust.addDialog.errors.certificateRequired': 'Paste or upload a certificate.',
+    'form.issuerTrust.addDialog.errors.certificateInvalid':
+      'Enter a single PEM-encoded X.509 certificate, including its BEGIN CERTIFICATE and END CERTIFICATE lines.',
+    'form.issuerTrust.addDialog.errors.fileRead':
+      'The file could not be read. Try again or paste the certificate instead.',
 
     // Claims editor
     'claims.empty': 'No claims yet. Add the claims this definition should request from the wallet.',
@@ -6295,6 +5998,13 @@ const translations = {
     'errors.VP-2006':
       'The number of presentation definitions exceeds the supported limit. Use search to narrow the results.',
     'errors.VP-2007': 'The specified organization unit is not valid.',
+    'errors.VP-2011': 'Each trusted issuer certificate needs a name.',
+    'errors.VP-2012':
+      'The trusted issuer certificate "{{name}}" repeats a name or certificate already added to this presentation definition.',
+    'errors.VP-2013': 'The trusted issuer certificate "{{name}}" is not a valid PEM-encoded X.509 certificate.',
+    'errors.VP-2014': 'The trusted issuer certificate "{{name}}" has expired.',
+    'errors.VP-2015': 'A presentation definition supports at most {{max}} trusted issuer certificates.',
+    'errors.VP-2016': 'Add at least one trusted issuer certificate before enforcing issuer trust.',
     'errors.EUDI-1002': 'This verification request is no longer active. Start a new verification.',
     'errors.EUDI-1004': 'This presentation definition is not registered for verification.',
   },
@@ -6411,6 +6121,48 @@ const translations = {
     'errors.VCI-2006':
       'The number of credential templates exceeds the supported limit. Use search to narrow the results.',
     'errors.VCI-2007': 'The specified organization unit is not valid.',
+  },
+
+  // ============================================================================
+  // Projects namespace - Project management translations
+  // ============================================================================
+  projects: {
+    'listing.title': 'All projects',
+    'listing.subtitle': 'Choose a project to work in.',
+    'listing.search': 'Search projects',
+    'listing.noMatches': 'No matching projects',
+    'listing.empty': 'There are no projects yet.',
+    'listing.created': 'Created',
+    'listing.add': 'Add project',
+    'create.title': 'Create a project',
+    'create.heading': "Let's set up your project",
+    'create.success': 'Project created',
+    'create.error': 'Failed to create the project. Please try again.',
+    'create.name.label': 'Name',
+    'create.name.placeholder': 'e.g., Customer support platform',
+    'create.name.required': 'Name is required',
+    'create.name.maxLength': 'Name cannot exceed {{max}} characters',
+    'create.handle.label': 'Handle',
+    'create.handle.placeholder': 'e.g., customer-support',
+    'create.handle.hint': 'A unique identifier for this project',
+    'create.handle.required': 'Handle is required',
+    'create.handle.maxLength': 'Handle cannot exceed {{max}} characters',
+    'create.handle.format':
+      'Handle may contain only lowercase letters, numbers, hyphens and underscores, and must start and end with a letter or a number',
+    'create.description.label': 'Description',
+    'create.description.placeholder': 'What is this project for?',
+    'create.description.maxLength': 'Description cannot exceed {{max}} characters',
+    'delete.action': 'Delete {{name}}',
+    'delete.title': 'Delete project',
+    'delete.message': 'Are you sure you want to delete the project "{{name}}"?',
+    'delete.disclaimer':
+      'This action cannot be undone. A project can be deleted only once it has no applications or agents.',
+    'delete.success': 'Project deleted',
+    'delete.error': 'Failed to delete the project. Please try again.',
+    'switcher.label': 'Project',
+    'switcher.heading': 'Projects',
+    'switcher.select': 'Select project',
+    'switcher.clear': 'Clear project selection',
   },
 
   // ============================================================================
@@ -6554,8 +6306,54 @@ const translations = {
     'changes.selectOne': 'Write {{name}}',
     'changes.sourceHeldBackHint': '{{source}} does not run this change, so it cannot be promoted.',
     'changes.unchanged': 'Unchanged',
-    'changes.unchangedCount': '{{count}} resources are already as the version has them.',
+    'changes.unchangedCount_one': '{{count}} resource is already as the version has it.',
+    'changes.unchangedCount_other': '{{count}} resources are already as the version has them.',
     'changes.updated': 'Changed',
+    'changes.unnamed': '{{type}} {{id}}',
+    'changes.types.agent': 'Agent',
+    'changes.types.agent_type': 'Agent type',
+    'changes.types.application': 'Application',
+    'changes.types.connection': 'Connection',
+    'changes.types.credential_configuration': 'Credential configuration',
+    'changes.types.flow': 'Flow',
+    'changes.types.group': 'Group',
+    'changes.types.layout': 'Layout',
+    'changes.types.notification_template': 'Notification template',
+    'changes.types.organization_unit': 'Organization unit',
+    'changes.types.presentation_definition': 'Presentation definition',
+    'changes.types.resource_server': 'Resource server',
+    'changes.types.role': 'Role',
+    'changes.types.server_config': 'Server configuration',
+    'changes.types.theme': 'Theme',
+    'changes.types.translation': 'Translation',
+    'changes.types.user': 'User',
+    'changes.types.user_type': 'User type',
+    'card.projectRevertHint':
+      "Put this project's applications and agents on {{name}} back one step. Shared resources and other projects stay as they are.",
+    'card.rollbackChanges_one': '({{count}} change)',
+    'card.rollbackChanges_other': '({{count}} changes)',
+    'card.undoHint_one':
+      "Puts this project's resources back as they were before the last deploy of {{version}} ({{count}} change).",
+    'card.undoHint_other':
+      "Puts this project's resources back as they were before the last deploy of {{version}} ({{count}} changes).",
+    'card.undoHintUncounted': "Puts this project's resources back as they were before the last deploy of {{version}}.",
+    'gateway.deployed': 'Deployed configuration',
+    'resourceStatus.changed': 'Changes not deployed',
+    'resourceStatus.changedHint':
+      'Your latest changes are saved here only. {{target}} still runs the earlier form until you deploy.',
+    'resourceStatus.deploy': 'Deploy',
+    'resourceStatus.live': 'Live',
+    'resourceStatus.liveHint': 'Every gateway runs it as it is here.',
+    'resourceStatus.notDeployed': 'Not deployed',
+    'resourceStatus.notDeployedHint':
+      'Saved here only. Deploy it to {{target}} to make it live, then promote it along the path.',
+    'resourceStatus.notPromoted': 'Not in {{target}}',
+    'resourceStatus.notPromotedHint':
+      'Running on the earlier gateways, not yet on {{target}}. Promote it to take it there.',
+    'resourceStatus.promote': 'Promote',
+    'resourceStatus.refused': 'Refused by {{target}}',
+    'resourceStatus.refusedHint': '{{reason}}. Fix it, then deploy it to {{target}} again.',
+    'resourceStatus.refusedHintNoReason': 'Fix it, then deploy it to {{target}} again.',
     'diff.hide': 'Hide changes',
     'diff.hideLabel': 'Hide the changes to {{name}}',
     'diff.show': 'Show changes',
@@ -6566,9 +6364,11 @@ const translations = {
     'explorer.edges.allowsUserType': 'Allows user type {{name}}',
     'explorer.edges.applicationIn': 'Application in {{name}}',
     'explorer.edges.assignedTo': 'Assigned to {{name}}',
+    'explorer.edges.credentialConfigurationIn': 'Credential configuration in {{name}}',
     'explorer.edges.grants': 'Grants {{scopes}}',
     'explorer.edges.groupIn': 'Group in {{name}}',
     'explorer.edges.memberOf': 'Member of {{name}}',
+    'explorer.edges.presentationDefinitionIn': 'Presentation definition in {{name}}',
     'explorer.edges.provisionsAs': 'Provisions users as {{name}}',
     'explorer.edges.recovers': 'Recovers passwords with {{name}}',
     'explorer.edges.registers': 'Registers users with {{name}}',
@@ -6594,10 +6394,12 @@ const translations = {
     'explorer.kinds.agent_type': 'Agent type',
     'explorer.kinds.application': 'Application',
     'explorer.kinds.connection': 'Connection',
+    'explorer.kinds.credential_configuration': 'Credential configuration',
     'explorer.kinds.flow': 'Flow',
     'explorer.kinds.group': 'Group',
     'explorer.kinds.layout': 'Layout',
     'explorer.kinds.organization_unit': 'Organization unit',
+    'explorer.kinds.presentation_definition': 'Presentation definition',
     'explorer.kinds.resource_server': 'Resource server',
     'explorer.kinds.role': 'Role',
     'explorer.kinds.theme': 'Theme',
@@ -6606,10 +6408,12 @@ const translations = {
     'explorer.lanes.agents': 'Agents',
     'explorer.lanes.applications': 'Applications',
     'explorer.lanes.connections': 'Connections',
+    'explorer.lanes.credentials': 'Credentials',
     'explorer.lanes.design': 'Design',
     'explorer.lanes.flows': 'Flows',
     'explorer.lanes.identities': 'Users and groups',
     'explorer.lanes.organizationUnits': 'Organization units',
+    'explorer.lanes.presentations': 'Presentations',
     'explorer.lanes.resourceServers': 'Resource servers',
     'explorer.lanes.roles': 'Roles',
     'explorer.lanes.userTypes': 'User types',
@@ -6617,12 +6421,23 @@ const translations = {
     'explorer.nothingDeployed': 'Nothing has been deployed to {{gateway}} yet.',
     'explorer.panel.clientEndpointsHint': 'Where {{name}} signs users in and gets tokens on {{gateway}}.',
     'explorer.panel.close': 'Close',
+    'explorer.home': 'Home',
+    'explorer.panel.deployment': 'Deployment',
+    'explorer.panel.fromVersion': 'from {{version}}',
+    'explorer.panel.history': 'Earlier',
+    'explorer.panel.states.deployed': 'Deployed',
+    'explorer.panel.states.failed': 'Refused',
+    'explorer.panel.states.removed': 'Removed',
+    'explorer.project': 'Project',
+    'explorer.projectCheckFailed': 'Which resources here belong to this project could not be read.',
+    'explorer.refused': 'Refused',
+    'explorer.refusedLabel': '{{name}}, refused',
     'explorer.panel.components': 'Components',
     'explorer.panel.deployedVersion': 'Deployed version',
     'explorer.panel.discard': 'Discard',
     'explorer.panel.edited': 'Edited',
     'explorer.panel.endpoints': 'Endpoints',
-    'explorer.panel.environment': 'Gateway',
+    'explorer.panel.gateway': 'Gateway',
     'explorer.panel.gatewayEndpointsHint': 'Where clients discover {{gateway}} and verify its tokens.',
     'explorer.panel.hide': 'Hide',
     'explorer.panel.laneShared': '{{count}} · shared',
@@ -6648,7 +6463,8 @@ const translations = {
     'explorer.readFailed': 'What {{gateway}} runs could not be read.',
     'explorer.referencesFailed': 'Which values {{gateway}} refers to could not be read, so none are shown.',
     'explorer.saveFailed': 'The values could not be saved.',
-    'explorer.saved': 'Saved {{count}} values to {{gateway}}.',
+    'explorer.saved_one': 'Saved {{count}} value to {{gateway}}.',
+    'explorer.saved_other': 'Saved {{count}} values to {{gateway}}.',
     'explorer.savedSome': 'Saved {{saved}} of {{count}} values to {{gateway}}. {{reason}}',
     'explorer.switch': 'Gateway',
     'explorer.fullscreen.enter': 'Full screen',
@@ -6672,7 +6488,8 @@ const translations = {
     'page.noGateways': 'Register a gateway to deploy a version to it.',
     'page.title': 'Deploy',
     'revertPanel.cancel': 'Cancel',
-    'revertPanel.changes': 'Rolling back writes {{count}} resources as the earlier version has them.',
+    'revertPanel.changes_one': 'Rolling back writes {{count}} resource as the earlier version has it.',
+    'revertPanel.changes_other': 'Rolling back writes {{count}} resources as the earlier version has them.',
     'revertPanel.checking': 'Working out what rolling back would change...',
     'revertPanel.confirmRemovals':
       'Rolling back removes {{count}} resources from {{gateway}}. Roll back again to go ahead.',

@@ -32,6 +32,7 @@ var testPublicPaths = []string{
 	"/auth/**",
 	"/register/passkey/**",
 	"/access/**",
+	"/mcp/**",
 }
 
 // SecurityServiceTestSuite defines the test suite for SecurityService
@@ -595,6 +596,39 @@ func (suite *SecurityServiceTestSuite) TestProcess_PublicPath_WithInvalidToken()
 
 	userID := GetSubject(ctx)
 	assert.Empty(suite.T(), userID)
+}
+
+// An authenticated caller reaches the MCP handler as itself, whatever system permission it holds, so
+// the handler checks each tool call against the caller's own permissions.
+func (suite *SecurityServiceTestSuite) TestProcess_MCPKeepsAnAuthenticatedCaller() {
+	for _, method := range []string{http.MethodPost, http.MethodGet, http.MethodDelete} {
+		suite.Run(method, func() {
+			suite.SetupTest()
+			req := httptest.NewRequest(method, "/mcp", nil)
+			narrow := newSecurityContext("admin-1", "ou-1", "token", []string{"system:user:view"}, nil)
+			suite.mockAuth1.On("CanHandle", req).Return(true)
+			suite.mockAuth1.On("Authenticate", req).Return(narrow, nil)
+
+			ctx, err := suite.service.Process(req)
+
+			suite.Require().NoError(err)
+			suite.False(IsRuntimeContext(ctx))
+			suite.Equal("admin-1", GetSubject(ctx))
+			suite.Equal([]string{"system:user:view"}, GetPermissions(ctx))
+		})
+	}
+}
+
+func (suite *SecurityServiceTestSuite) TestProcess_MCPLeavesAnAnonymousCallerRuntime() {
+	req := httptest.NewRequest(http.MethodPost, "/mcp", nil)
+	suite.mockAuth1.On("CanHandle", req).Return(false)
+	suite.mockAuth2.On("CanHandle", req).Return(false)
+
+	ctx, err := suite.service.Process(req)
+
+	suite.Require().NoError(err)
+	suite.True(IsRuntimeContext(ctx))
+	suite.Empty(GetSubject(ctx))
 }
 
 // Test that the service returns errInsufficientPermissions when the authenticated

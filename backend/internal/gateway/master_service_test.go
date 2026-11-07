@@ -50,21 +50,24 @@ func (s *MasterServiceTestSuite) TearDownTest() {
 	configureGatewayBound(shippedGatewayBound)
 }
 
-// A gateway's masters are kept within the same bound as the versions.
+// A gateway's masters are kept within the same bound as the versions, except the one its revert
+// returns to.
 func (s *MasterServiceTestSuite) TestMastersBeyondTheBoundArePruned() {
 	f := newVersionFixture(s.T())
 	f.capture(s.T(), "ou-a")
 	f.capture(s.T(), "ou-a", "ou-b")
-	_, svcErr := f.svc.Apply(context.Background(), "gw-1", ApplyRequest{Version: f.hash(1)})
-	s.Require().Nil(svcErr)
-	_, svcErr = f.svc.Apply(context.Background(), "gw-1", ApplyRequest{Version: f.hash(2)})
-	s.Require().Nil(svcErr)
+	f.capture(s.T(), "ou-a", "ou-b", "ou-c")
+	for seq := 1; seq <= 3; seq++ {
+		_, svcErr := f.svc.Apply(context.Background(), "gw-1", ApplyRequest{Version: f.hash(seq)})
+		s.Require().Nil(svcErr)
+	}
 
 	masters, svcErr := f.svc.ListMasters(context.Background(), "gw-1")
 
 	s.Require().Nil(svcErr)
-	s.Require().Len(masters, maxVersions())
-	s.Equal(2, masters[0].Seq, "the newest master was pruned")
+	s.Require().Len(masters, maxVersions()+1)
+	s.Equal(3, masters[0].Seq, "the newest master was pruned")
+	s.Equal(2, masters[1].Seq, "the master the revert returns to was pruned")
 }
 
 // An apply records the gateway's master from the import's own outcomes, resource by resource, and
@@ -283,7 +286,7 @@ func (s *MasterServiceTestSuite) TestAFirstMasterCollidingWithAnotherTakesTheOne
 	other := f.versions.masters["gw-1"][0]
 	f.versions.masters = map[string][]Master{}
 	store := &collidingMasterStore{fakeVersionStore: f.versions, winner: &other}
-	f.svc = newVersionService(f.gateways, store, f.exporter, f.client, testSecretFields, f.names)
+	f.svc = newVersionService(f.gateways, store, f.exporter, f.client, testSecretFields, f.names, newPipeline())
 
 	master, svcErr := f.svc.GetMaster(context.Background(), "gw-1")
 
@@ -299,7 +302,7 @@ func (s *MasterServiceTestSuite) TestAnApplyWhoseMasterCollidesIsRefused() {
 	f.versions.masters = map[string][]Master{"gw-1": {*deployedMaster("other", "ou-a")}}
 	f.versions.masters["gw-1"][0].Seq = 1
 	store := &collidingMasterStore{fakeVersionStore: f.versions}
-	f.svc = newVersionService(f.gateways, store, f.exporter, f.client, testSecretFields, f.names)
+	f.svc = newVersionService(f.gateways, store, f.exporter, f.client, testSecretFields, f.names, newPipeline())
 
 	_, svcErr := f.svc.Apply(context.Background(), "gw-1", ApplyRequest{})
 
@@ -328,7 +331,7 @@ func (s *MasterServiceTestSuite) TestAnApplySupersededByATakeOverRecordsNothing(
 	_, svcErr := f.svc.Apply(context.Background(), "gw-1", ApplyRequest{})
 	s.Require().Nil(svcErr)
 	f.capture(s.T(), "ou-a", "ou-b")
-	f.client.onImport = func() { f.versions.leases["gw-1"].Token = "another-pod" }
+	f.client.onImport = func() { f.versions.leases["gw-1"].Token = anotherPod }
 
 	_, svcErr = f.svc.Apply(context.Background(), "gw-1", ApplyRequest{})
 
@@ -348,7 +351,7 @@ func (s *MasterServiceTestSuite) TestASupersededApplyWithRemovalsLeftRecordsNoMa
 	refusedRemoval := removed("ou-b")
 	refusedRemoval.Status = outcomeFailed
 	f.client.imported = answerOf(refusedRemoval)
-	f.client.onImport = func() { f.versions.leases["gw-1"].Token = "another-pod" }
+	f.client.onImport = func() { f.versions.leases["gw-1"].Token = anotherPod }
 
 	_, svcErr = f.svc.Apply(context.Background(), "gw-1", ApplyRequest{})
 
@@ -416,7 +419,7 @@ func (s *MasterServiceTestSuite) TestAMasterThatFailsToRecordFailsTheApply() {
 	f.versions.masters["gw-1"][0].Seq = 1
 	store := &failingMasterStore{fakeVersionStore: f.versions}
 	f.svc = newVersionService(&fakeStore{gateways: []Gateway{{ID: "gw-1", BaseURL: "https://dp.test",
-		Key: "the-key"}}}, store, f.exporter, f.client, testSecretFields, f.names)
+		Key: "the-key"}}}, store, f.exporter, f.client, testSecretFields, f.names, newPipeline())
 
 	_, svcErr := f.svc.Apply(context.Background(), "gw-1", ApplyRequest{})
 

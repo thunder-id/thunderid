@@ -13,7 +13,7 @@ import type {Change} from '../models/deploy';
 export default function useHeldBack(targetId: string, runningVersion: string | undefined): Change[] {
   const check = useApplyCheck(targetId, runningVersion);
   return useMemo(
-    () => (check.data?.diff.changes ?? []).filter((change: Change) => change.excluded && change.change !== 'unchanged'),
+    () => (check.data?.diff.changes ?? []).filter((change: Change) => change.heldBack && change.change !== 'unchanged'),
     [check.data],
   );
 }

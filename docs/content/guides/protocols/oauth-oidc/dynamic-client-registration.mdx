@@ -11,7 +11,7 @@ import { DCRDiagram } from '@site/src/components/OAuthFlowDiagrams';
 
 **Dynamic Client Registration** ([RFC 7591](https://www.rfc-editor.org/rfc/rfc7591)) lets you create an OAuth 2.1 client at <ProductName /> with an HTTP request instead of going through the Console. It is used by automated provisioning pipelines, SDK installers that bootstrap their own clients, and federation flows where a relying party registers itself on first contact.
 
-The endpoint accepts the standard RFC 7591 metadata fields plus localized variants of human-readable strings (OIDC language tags). A registration can then be read, updated, and deleted through the client configuration endpoint, as defined by [RFC 7592](https://www.rfc-editor.org/rfc/rfc7592). Those operations are administrative: one caller holding system-level permissions manages every registration. See [Manage a Registration](#manage-a-registration).
+The endpoint accepts the standard RFC 7591 metadata fields plus localized variants of human-readable strings (OIDC language tags). A registration can then be read, updated, and deleted through the client configuration endpoint, as defined by [RFC 7592](https://www.rfc-editor.org/rfc/rfc7592). Those operations are administrative: one caller holding the matching application permission manages every registration. See [Manage a Registration](#manage-a-registration).
 
 :::note
 DCR registers **applications** only. Agents are provisioned through the <ProductName /> Console or the agent management API, not through `/oauth2/dcr/register`. Applications that use the embedded sign-in approach are also registered through the Console rather than via DCR.
@@ -28,7 +28,7 @@ DCR registers **applications** only. Agents are provisioned through the <Product
 |---|---|
 | Endpoint | `POST /oauth2/dcr/register` |
 | Authentication | Optional, configurable. When enabled, the caller must authenticate as a privileged client. |
-| RFC 7592 management | Supported. `GET`, `PUT`, and `DELETE` on `/oauth2/dcr/register/{client_id}`, authorized by a caller holding system-level permissions |
+| RFC 7592 management | Supported. `GET`, `PUT`, and `DELETE` on `/oauth2/dcr/register/{client_id}`, authorized by a caller holding `system:app:view`, `system:app:update`, or `system:app:delete` respectively |
 | Localized metadata | Supported via `<field>#<bcp47-tag>` syntax (see below) |
 | Returned credentials | `client_id`, `client_secret` (for confidential clients), and the full echoed metadata |
 | Discovery field | `registration_endpoint` in [Server Metadata](../server-metadata) |
@@ -112,7 +112,7 @@ A registration is managed at the client configuration endpoint, as defined by [R
 /oauth2/dcr/register/{client_id}
 ```
 
-Every request to this endpoint must be made by a caller holding system-level permissions, presenting its access token as a Bearer token. A caller holding that permission can manage any registration, so a single administrative credential governs every dynamically registered client. This suits a portal that provisions and maintains many clients on their behalf.
+Every request to this endpoint must be made by a caller presenting its access token as a Bearer token. The token needs the root `system` permission or the application permission for the operation: `system:app:view` to read, `system:app:update` to update, or `system:app:delete` to delete. `system:app` covers all three. A caller holding that permission can manage any registration, so a single administrative credential governs every dynamically registered client. This suits a portal that provisions and maintains many clients on their behalf.
 
 :::note
 Registration does not hand the registered client a credential for managing itself. A client cannot read, update, or delete its own registration; those operations belong to an administrative caller.
@@ -190,7 +190,7 @@ Returns `204 No Content`. The client is removed, and the endpoint no longer reso
 
 | HTTP Status | Cause |
 |-------------|-------|
-| `401 Unauthorized` | The caller does not hold the required system-level permission. The response carries a `WWW-Authenticate: Bearer error="invalid_token"` header. |
+| `401 Unauthorized` | The caller does not hold the required application permission. The response carries a `WWW-Authenticate: Bearer error="invalid_token"` header. |
 | `404 Not Found` | No registration exists for the given `client_id`, including one already deleted. |
 | `400 Bad Request` | The update contains invalid client metadata, or omits `client_id`, or carries a `client_id` that does not match the request path, or carries a `client_secret` that does not match the issued secret. |
 

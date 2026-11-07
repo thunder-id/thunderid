@@ -117,3 +117,154 @@ describe('hasNoSharingSections', () => {
     expect(hasNoSharingSections({allUnits: {}})).toBe(false);
   });
 });
+
+describe('mandated roles', () => {
+  const rule = (value: string[]) => ({roles: {editable: false, value}});
+
+  it('writes the roles of a unit-only unit as a fixed roles rule', () => {
+    expect(
+      draftToSharingSections(
+        chosen({
+          childUnitsAccess: 'selected',
+          childUnits: [
+            {ouId: 'retail', reach: 'unit', roles: ['r1', 'r2']},
+            {ouId: 'trials', reach: 'unit'},
+          ],
+        }),
+      ),
+    ).toEqual({
+      childUnits: {
+        mode: 'selected',
+        units: [
+          {ouId: 'retail', reach: 'unit', overlayRules: rule(['r1', 'r2'])},
+          {ouId: 'trials', reach: 'unit'},
+        ],
+      },
+    });
+  });
+
+  it('leaves the rule out for a subtree reach and for an empty list', () => {
+    expect(
+      draftToSharingSections(
+        chosen({
+          childUnitsAccess: 'selected',
+          childUnits: [
+            {ouId: 'retail', reach: 'subtree', roles: ['r1']},
+            {ouId: 'trials', reach: 'unit', roles: []},
+          ],
+        }),
+      ),
+    ).toEqual({
+      childUnits: {
+        mode: 'selected',
+        units: [
+          {ouId: 'retail', reach: 'subtree'},
+          {ouId: 'trials', reach: 'unit'},
+        ],
+      },
+    });
+  });
+
+  it('round-trips the roles through the draft', () => {
+    const policy: SharingPolicy = {
+      id: 'p1',
+      stage: 'share',
+      version: 1,
+      childUnits: {
+        mode: 'selected',
+        units: [
+          {ouId: 'retail', reach: 'unit', overlayRules: rule(['r1', 'r2'])},
+          {ouId: 'trials', reach: 'subtree'},
+        ],
+      },
+    };
+
+    const draft = sharingPolicyToDraft(policy);
+
+    expect(draft.childUnits).toEqual([
+      {ouId: 'retail', reach: 'unit', roles: ['r1', 'r2']},
+      {ouId: 'trials', reach: 'subtree'},
+    ]);
+    expect(draftToSharingSections(draft)).toEqual({childUnits: policy.childUnits});
+  });
+});
+
+describe('draftToSharingSections, keeping the rules the screen does not edit', () => {
+  const off = {assignments: {editable: false}};
+  const policyWith = (sections: Partial<SharingPolicy>): SharingPolicy => ({
+    id: 'p1',
+    stage: 'share',
+    version: 1,
+    ...sections,
+  });
+
+  it('keeps a section rule while the section stays the same kind', () => {
+    const saved = policyWith({
+      childUnits: {mode: 'all', excludedOuIds: ['trials'], overlayRules: off},
+      otherTreeRoots: {mode: 'all', overlayRules: off},
+    });
+    const draft = {...sharingPolicyToDraft(saved), childUnitExclusions: []};
+
+    expect(draftToSharingSections(draft, saved)).toEqual({
+      childUnits: {mode: 'all', overlayRules: off},
+      otherTreeRoots: {mode: 'all', overlayRules: off},
+    });
+    expect(draftToSharingSections({...draft, scope: 'everyUnit'}, policyWith({allUnits: {overlayRules: off}}))).toEqual(
+      {allUnits: {overlayRules: off}},
+    );
+  });
+
+  it('keeps a named unit rule while the unit stays, whatever its reach, and not for units added later', () => {
+    const saved = policyWith({
+      childUnits: {mode: 'selected', units: [{ouId: 'retail', reach: 'unit', overlayRules: off}]},
+      otherTreeRoots: {mode: 'selected', units: [{ouId: 'northwind', overlayRules: off}]},
+    });
+    const draft = chosen({
+      childUnitsAccess: 'selected',
+      childUnits: [
+        {ouId: 'retail', reach: 'subtree'},
+        {ouId: 'trials', reach: 'unit'},
+      ],
+      otherTreesAccess: 'selected',
+      trees: ['northwind', 'contoso'],
+    });
+
+    expect(draftToSharingSections(draft, saved)).toEqual({
+      childUnits: {
+        mode: 'selected',
+        units: [
+          {ouId: 'retail', reach: 'subtree', overlayRules: off},
+          {ouId: 'trials', reach: 'unit'},
+        ],
+      },
+      otherTreeRoots: {mode: 'selected', units: [{ouId: 'northwind', overlayRules: off}, {ouId: 'contoso'}]},
+    });
+  });
+
+  it('drops a section rule when the section changes kind', () => {
+    const saved = policyWith({childUnits: {mode: 'all', overlayRules: off}});
+
+    expect(
+      draftToSharingSections(
+        chosen({childUnitsAccess: 'selected', childUnits: [{ouId: 'retail', reach: 'unit'}]}),
+        saved,
+      ),
+    ).toEqual({childUnits: {mode: 'selected', units: [{ouId: 'retail', reach: 'unit'}]}});
+  });
+
+  it('writes mandated roles from the draft rather than the saved policy', () => {
+    const saved = policyWith({
+      childUnits: {
+        mode: 'selected',
+        units: [{ouId: 'retail', reach: 'unit', overlayRules: {roles: {editable: false, value: ['viewer']}}}],
+      },
+    });
+
+    expect(
+      draftToSharingSections(
+        chosen({childUnitsAccess: 'selected', childUnits: [{ouId: 'retail', reach: 'unit', roles: []}]}),
+        saved,
+      ),
+    ).toEqual({childUnits: {mode: 'selected', units: [{ouId: 'retail', reach: 'unit'}]}});
+  });
+});

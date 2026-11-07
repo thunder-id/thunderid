@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -357,7 +358,10 @@ func (f *fakeVersionStore) AddMaster(_ context.Context, master Master, token str
 		f.masters = map[string][]Master{}
 	}
 	kept := master
-	kept.Seq = len(f.masters[master.GatewayID]) + 1
+	kept.Seq = 1
+	if held := f.masters[master.GatewayID]; len(held) > 0 {
+		kept.Seq = held[len(held)-1].Seq + 1
+	}
 	kept.CreatedAt = testCreatedAt
 	f.masters[master.GatewayID] = append(f.masters[master.GatewayID], kept)
 	return &kept, nil
@@ -420,11 +424,11 @@ func (f *fakeVersionStore) ListMasters(_ context.Context, gatewayID string) ([]M
 	return listed, nil
 }
 
-func (f *fakeVersionStore) PruneMasters(_ context.Context, gatewayID string, through int) error {
+func (f *fakeVersionStore) PruneMasters(_ context.Context, gatewayID string, through int, keep []int) error {
 	kept := f.masters[gatewayID]
 	pruned := kept[:0]
 	for _, master := range kept {
-		if master.Seq > through {
+		if master.Seq > through || slices.Contains(keep, master.Seq) {
 			pruned = append(pruned, master)
 		}
 	}
@@ -474,7 +478,9 @@ func (f *fakeExporter) PlaceholderValues(ctx context.Context, resourceType strin
 type fakeGatewayClient struct {
 	sent []gatewayImportRequest
 	keys []string
-	err  error
+	// gatewayIDs is the gateway each import went to, in order.
+	gatewayIDs []string
+	err        error
 	// held are the values the gateway's store holds, by name; heldSince is when each was set, for
 	// those that say; heldErr fails reading them.
 	held      map[string]bool
@@ -505,10 +511,11 @@ func (f *fakeGatewayClient) HeldValues(_ context.Context, _ *Gateway, _ string,
 	return held, nil
 }
 
-func (f *fakeGatewayClient) Import(_ context.Context, _ *Gateway, key string,
+func (f *fakeGatewayClient) Import(_ context.Context, gw *Gateway, key string,
 	req gatewayImportRequest) (json.RawMessage, error) {
 	f.sent = append(f.sent, req)
 	f.keys = append(f.keys, key)
+	f.gatewayIDs = append(f.gatewayIDs, gw.ID)
 	if f.onImport != nil && !req.DryRun {
 		f.onImport()
 	}
@@ -522,6 +529,12 @@ func (f *fakeGatewayClient) Import(_ context.Context, _ *Gateway, key string,
 }
 
 func (f *fakeGatewayClient) last() gatewayImportRequest { return f.sent[len(f.sent)-1] }
+
+// nodeElsewhere and anotherPod hold a gateway's lease in place of the apply under test.
+const (
+	nodeElsewhere = "a-node-elsewhere"
+	anotherPod    = "another-pod"
+)
 
 func unit(id string) string {
 	return "resource_type: organization_unit\nid: " + id + "\nname: " + id
@@ -576,7 +589,7 @@ func newVersionFixture(t *testing.T) *versionFixture {
 		names:    &fakeActorNames{names: map[string]string{"u-1": "alice", "u-2": "bob"}},
 	}
 	f.gateways = &fakeStore{gateways: []Gateway{{ID: "gw-1", Name: "dev", BaseURL: "https://dp.test", Key: sealedKey}}}
-	f.svc = newVersionService(f.gateways, f.versions, f.exporter, f.client, testSecretFields, f.names)
+	f.svc = newVersionService(f.gateways, f.versions, f.exporter, f.client, testSecretFields, f.names, newPipeline())
 	return f
 }
 
@@ -1176,7 +1189,7 @@ func TestApplyNamesWhatIsMissing(t *testing.T) {
 	assert.Equal(t, ErrorGatewayNotFound.Code, svcErr.Code)
 	_, svcErr = f.svc.Apply(context.Background(), "gw-1", ApplyRequest{})
 	assert.Equal(t, ErrorNoVersions.Code, svcErr.Code)
-	_, svcErr = f.svc.Diff(context.Background(), "gw-none", "")
+	_, svcErr = f.svc.Diff(context.Background(), "gw-none", "", "")
 	assert.Equal(t, ErrorGatewayNotFound.Code, svcErr.Code)
 	_, svcErr = f.svc.GetApplied(context.Background(), "gw-none")
 	assert.Equal(t, ErrorGatewayNotFound.Code, svcErr.Code)
@@ -1200,7 +1213,8 @@ func TestApplySendsTheVersionsValues(t *testing.T) {
 func TestADeclaredGatewaysKeyIsPresentedAsWritten(t *testing.T) {
 	f := newVersionFixture(t)
 	declared := &fakeStore{gateways: []Gateway{{ID: "gw-d", BaseURL: "https://dp.test", Key: "plain-key"}}}
-	svc := newVersionService(declared, f.versions, f.exporter, f.client, testSecretFields, &fakeActorNames{})
+	svc := newVersionService(declared, f.versions, f.exporter, f.client, testSecretFields, &fakeActorNames{},
+		newPipeline())
 	f.capture(t, "ou-a")
 
 	_, svcErr := svc.Apply(context.Background(), "gw-d", ApplyRequest{})
@@ -1214,7 +1228,7 @@ func TestTheDiffChangesNothing(t *testing.T) {
 	f := newVersionFixture(t)
 	f.capture(t, "ou-a")
 
-	diff, svcErr := f.svc.Diff(context.Background(), "gw-1", "latest")
+	diff, svcErr := f.svc.Diff(context.Background(), "gw-1", "latest", "")
 
 	require.Nil(t, svcErr)
 	assert.Equal(t, DiffSummary{Added: 1}, diff.Summary)
@@ -1477,14 +1491,14 @@ func TestADiffReportsASecretStandingOutsideACredentialField(t *testing.T) {
 	_, err := f.versions.Add(context.Background(), Version{Hash: versionHash(content), Resources: content})
 	require.NoError(t, err)
 
-	diff, svcErr := f.svc.Diff(context.Background(), "gw-1", "latest")
+	diff, svcErr := f.svc.Diff(context.Background(), "gw-1", "latest", "")
 
 	require.Nil(t, svcErr)
 	assert.Equal(t, []ValueReference{{Name: "APP_SECRET", Kind: ReferenceSecret, ResourceType: "application",
 		ResourceID: "app-1", ResourceName: "app-1", Field: "description"}}, diff.MisplacedSecrets)
 
 	f.capture(t, "ou-a")
-	clean, svcErr := f.svc.Diff(context.Background(), "gw-1", "latest")
+	clean, svcErr := f.svc.Diff(context.Background(), "gw-1", "latest", "")
 	require.Nil(t, svcErr)
 	assert.Empty(t, clean.MisplacedSecrets)
 }
@@ -1741,7 +1755,7 @@ func TestAnApplyRemovingManyIsRefusedBeforeItIsQueued(t *testing.T) {
 	_, svcErr := f.svc.Apply(context.Background(), "gw-1", ApplyRequest{})
 	require.Nil(t, svcErr)
 	f.capture(t, "ou-a")
-	f.versions.leases["gw-1"].Token, f.versions.leases["gw-1"].Since = "a-node-elsewhere", time.Now()
+	f.versions.leases["gw-1"].Token, f.versions.leases["gw-1"].Since = nodeElsewhere, time.Now()
 
 	_, svcErr = f.svc.Apply(context.Background(), "gw-1", ApplyRequest{})
 

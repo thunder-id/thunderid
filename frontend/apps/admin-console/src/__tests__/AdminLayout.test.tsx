@@ -1,138 +1,127 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {fireEvent, render, screen, within} from '@testing-library/react';
-import type {JSX, ReactNode} from 'react';
-import {MemoryRouter, Route, Routes} from 'react-router';
+import {render, screen, userEvent} from '@thunderid/test-utils';
 import {beforeEach, describe, expect, it, vi} from 'vitest';
 import AdminLayout from '../layouts/AdminLayout';
 
-const state: {genericOidc: boolean; ouName?: string; permissions: string[]} = {genericOidc: false, permissions: []};
-const signOut = vi.fn(() => Promise.resolve());
+const mockSignOut = vi.fn(() => Promise.resolve());
+const mockClearSession = vi.fn();
+let mockDiscovery: {wellKnown?: {end_session_endpoint?: string}} | undefined;
+let mockIsTrustedIssuerGenericOidc = false;
+let mockPermissions: string[] = [];
+let mockOrganization: string | undefined;
 
 vi.mock('@thunderid/react', () => ({
-  Attribution: (): JSX.Element => <p>Secured by ThunderID</p>,
-  Logo: ({alt}: {alt: string}): JSX.Element => <img alt={alt} />,
-  SignOutButton: ({children}: {children: (props: {signOut: () => Promise<void>}) => ReactNode}) => children({signOut}),
-  User: ({children}: {children: (user: Record<string, unknown>) => ReactNode}) =>
-    children({email: 'admin@example.com', name: 'admin'}),
+  SignOutButton: ({children}: {children: (props: {signOut: () => Promise<void>}) => React.ReactNode}) =>
+    children({signOut: mockSignOut}),
+  User: ({children}: {children: (user: unknown) => React.ReactNode}) =>
+    children({email: 'admin@example.com', name: 'Admin User'}),
   useGrantedPermissions: () => ({
     can: (required: string): boolean =>
-      state.permissions.some((permission: string) => required === permission || required.startsWith(`${permission}:`)),
+      mockPermissions.some((permission: string) => required === permission || required.startsWith(`${permission}:`)),
     isLoading: false,
-    permissions: state.permissions,
+    permissions: mockPermissions,
   }),
-  useThunderID: () => ({
-    clearSession: vi.fn(),
-    discovery: {wellKnown: {end_session_endpoint: 'https://idp.example/logout'}},
-    meta: {application: {logoUrl: 'https://acme.example/logo.svg'}},
-  }),
+  useThunderID: () => ({clearSession: mockClearSession, discovery: mockDiscovery}),
 }));
 
-vi.mock('../hooks/useOrganizationName', () => ({default: () => state.ouName}));
-
-vi.mock('@thunderid/contexts', () => ({
+vi.mock('@thunderid/contexts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@thunderid/contexts')>()),
   useConfig: () => ({
     getClientUrl: () => 'https://admin.example/console',
     getTrustedIssuerClientId: () => 'console-client',
-    isTrustedIssuerGenericOidc: () => state.genericOidc,
+    isTrustedIssuerGenericOidc: () => mockIsTrustedIssuerGenericOidc,
   }),
 }));
 
-vi.mock('@thunderid/logger/react', () => ({
-  useLogger: () => ({error: vi.fn(), warn: vi.fn()}),
+vi.mock('../hooks/useOrganizationName', () => ({default: () => mockOrganization}));
+
+vi.mock('react-i18next', () => ({
+  useTranslation: () => ({t: (key: string) => key}),
 }));
 
-vi.mock('@wso2/oxygen-ui', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@wso2/oxygen-ui')>();
-  const {createElement} = await import('react');
-  const UserMenu = ({children}: {children: ReactNode}): JSX.Element => createElement('div', null, children);
+vi.mock('@thunderid/logger/react', () => ({
+  useLogger: () => ({debug: vi.fn(), error: vi.fn(), info: vi.fn(), warn: vi.fn()}),
+}));
+
+vi.mock('react-router', async () => {
+  const actual = await vi.importActual<typeof import('react-router')>('react-router');
 
   return {
     ...actual,
-    ColorSchemeToggle: (): JSX.Element => createElement('button', {type: 'button'}, 'scheme'),
-    UserMenu: Object.assign(UserMenu, {
-      Divider: (): null => null,
-      Header: (): null => null,
-      Logout: ({label, onClick}: {label: string; onClick: () => void}): JSX.Element =>
-        createElement('button', {onClick, type: 'button'}, label),
-      Trigger: ({name}: {name: string}): JSX.Element => createElement('span', null, name),
-    }),
+    Link: ({children, to}: {children: React.ReactNode; to: string}) => <a href={to}>{children}</a>,
+    Outlet: () => <div data-testid="outlet">Outlet Content</div>,
   };
 });
 
-const renderAt = (path: string): void => {
-  render(
-    <MemoryRouter initialEntries={[path]}>
-      <Routes>
-        <Route element={<AdminLayout />}>
-          <Route path="*" element={<p>page content</p>} />
-        </Route>
-      </Routes>
-    </MemoryRouter>,
-  );
-};
-
 describe('AdminLayout', () => {
   beforeEach(() => {
-    state.genericOidc = false;
-    state.ouName = undefined;
-    state.permissions = ['system:user:view', 'system:group:view', 'system:role:view', 'system:agent:view'];
-    signOut.mockClear();
+    vi.clearAllMocks();
+    mockDiscovery = {wellKnown: {end_session_endpoint: 'https://idp.example/logout'}};
+    mockIsTrustedIssuerGenericOidc = false;
+    mockOrganization = undefined;
+    mockPermissions = ['system:user:view', 'system:group:view', 'system:role:view', 'system:agent:view'];
   });
 
-  it('shows a tab for every page the admin may view, marking the current one', () => {
-    renderAt('/groups/g-1');
-    const nav: HTMLElement = screen.getByRole('navigation', {name: 'Admin Console'});
-    const tabs: string[] = within(nav)
-      .getAllByRole('link')
-      .map((link: HTMLElement) => link.textContent ?? '');
+  it('renders the nested route inside the shell', () => {
+    render(<AdminLayout />);
 
-    expect(tabs).toEqual(['Users', 'Agents', 'Groups', 'Roles']);
-    expect(within(nav).getByRole('link', {name: 'Groups'})).toHaveAttribute('aria-current', 'page');
-    expect(screen.getByText('page content')).toBeInTheDocument();
+    expect(screen.getByTestId('outlet')).toHaveTextContent('Outlet Content');
+    expect(screen.getByText(/The ThunderID Authors/)).toBeInTheDocument();
+  });
+
+  it('shows the organization unit the admin manages beside the brand', () => {
+    mockOrganization = 'Default';
+    render(<AdminLayout />);
+
+    expect(screen.getByText('Default')).toBeInTheDocument();
+  });
+
+  it('links every page the admin may view', () => {
+    render(<AdminLayout />);
+
+    expect(
+      ['navigation:pages.users', 'navigation:pages.agents', 'navigation:pages.groups', 'navigation:pages.roles'].map(
+        (label: string) => screen.getByText(label).closest('a')?.getAttribute('href'),
+      ),
+    ).toEqual(['/users', '/agents', '/groups', '/roles']);
   });
 
   it('leaves out pages the admin may not view', () => {
-    state.permissions = ['system:role:view'];
-    renderAt('/roles');
-    const nav: HTMLElement = screen.getByRole('navigation', {name: 'Admin Console'});
+    mockPermissions = ['system:role:view'];
+    render(<AdminLayout />);
 
-    expect(
-      within(nav)
-        .getAllByRole('link')
-        .map((link: HTMLElement) => link.textContent),
-    ).toEqual(['Roles']);
+    expect(screen.getByText('navigation:pages.roles')).toBeInTheDocument();
+    expect(screen.queryByText('navigation:pages.users')).not.toBeInTheDocument();
+    expect(screen.queryByText('navigation:pages.agents')).not.toBeInTheDocument();
+    expect(screen.queryByText('navigation:pages.groups')).not.toBeInTheDocument();
   });
 
-  it('shows the brand, the organization unit and the attribution', () => {
-    state.ouName = 'Default';
-    renderAt('/users');
+  it('signs out through the SDK', async () => {
+    const user = userEvent.setup();
+    render(<AdminLayout />);
 
-    expect(screen.getByRole('img', {name: 'Admin'})).toBeInTheDocument();
-    expect(screen.getByRole('heading', {level: 1, name: 'Admin'})).toBeInTheDocument();
-    expect(within(screen.getByLabelText('Organization unit')).getByText('Default')).toBeInTheDocument();
-    expect(screen.getByText('Secured by ThunderID')).toBeInTheDocument();
+    await user.click(screen.getByLabelText('Account'));
+    await user.click(await screen.findByText('common:actions.signOut'));
+
+    expect(mockSignOut).toHaveBeenCalledOnce();
   });
 
-  it('signs out through the SDK', () => {
-    renderAt('/users');
-    fireEvent.click(screen.getByRole('button', {name: 'Sign out'}));
-
-    expect(signOut).toHaveBeenCalledOnce();
-  });
-
-  it('signs out of a generic OIDC trusted issuer through its end-session endpoint', () => {
-    state.genericOidc = true;
+  it('signs out of a generic OIDC trusted issuer through its end-session endpoint', async () => {
+    mockIsTrustedIssuerGenericOidc = true;
     const location: Location = window.location;
     const assigned: {href: string} = {href: ''};
     Object.defineProperty(window, 'location', {configurable: true, value: assigned});
+    const user = userEvent.setup();
 
-    renderAt('/users');
-    fireEvent.click(screen.getByRole('button', {name: 'Sign out'}));
+    render(<AdminLayout />);
+    await user.click(screen.getByLabelText('Account'));
+    await user.click(await screen.findByText('common:actions.signOut'));
 
     Object.defineProperty(window, 'location', {configurable: true, value: location});
-    expect(signOut).not.toHaveBeenCalled();
+    expect(mockSignOut).not.toHaveBeenCalled();
+    expect(mockClearSession).toHaveBeenCalledOnce();
     expect(assigned.href).toBe(
       'https://idp.example/logout?client_id=console-client&post_logout_redirect_uri=https%3A%2F%2Fadmin.example%2Fconsole',
     );

@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/variablestore"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
@@ -124,7 +125,7 @@ func (s *GatewayToolsTestSuite) TestAnswersAreTheRESTBodies() {
 	s.versions.EXPECT().ListVersions(mock.Anything).Return(versions, nil)
 	s.versions.EXPECT().GetVersion(mock.Anything, "bbb").Return(version, nil)
 	s.versions.EXPECT().Capture(mock.Anything, CaptureRequest{Name: "rc1"}).Return(captured, nil)
-	s.versions.EXPECT().Diff(mock.Anything, "dev", "bbb").Return(diff, nil)
+	s.versions.EXPECT().Diff(mock.Anything, "dev", "bbb", "").Return(diff, nil)
 	configuration := &AppliedConfiguration{GatewayID: "dev", Version: "bbb", Resources: []AppliedResource{
 		{ResourceType: "application", ID: "app-a", Resource: map[string]any{"name": "App A"}},
 	}}
@@ -251,4 +252,29 @@ func (s *GatewayToolsTestSuite) TestGatewayValues() {
 	s.True(result.IsError)
 	raw, _ := json.Marshal(result.Content)
 	s.Contains(string(raw), "VAR-1001")
+}
+
+// TestRegisteredToolsRequireGatewayPermissions verifies that every gateway MCP tool is mapped to a gateway
+// or configuration version catalog permission, except the variable and secret tools, which require root
+// as their APIs do.
+func (s *GatewayToolsTestSuite) TestRegisteredToolsRequireGatewayPermissions() {
+	security.InitSystemPermissions("")
+	p := security.GetSystemPermissions()
+	rootTools := map[string]bool{
+		"list_gateway_variables": true, "set_gateway_variable": true, "delete_gateway_variable": true,
+		"list_gateway_secrets": true, "set_gateway_secret": true, "delete_gateway_secret": true,
+	}
+	tools, err := s.session.ListTools(context.Background(), nil)
+	s.Require().NoError(err)
+
+	s.Require().NotEmpty(tools.Tools)
+	for _, registered := range tools.Tools {
+		if rootTools[registered.Name] {
+			s.Equal(p.Root, security.ResolveMCPToolPermission(registered.Name), registered.Name)
+			continue
+		}
+		s.Contains([]string{p.GatewayView, p.GatewayUpdate, p.ConfigVersionView, p.ConfigVersionCreate},
+			security.ResolveMCPToolPermission(registered.Name),
+			"tool %q must require a gateway or configuration version permission", registered.Name)
+	}
 }

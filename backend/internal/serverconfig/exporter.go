@@ -51,15 +51,17 @@ func (e *serverConfigExporter) GetParameterizerType() string {
 	return paramTypeServerConfig
 }
 
-// GetAllResourceIDs returns the supported section names; one file is exported per section.
+// GetAllResourceIDs returns the portable section names; one file is exported per section.
 func (e *serverConfigExporter) GetAllResourceIDs(ctx context.Context) ([]string, *common.ServiceError) {
 	names, svcErr := e.service.ListConfigNames(ctx)
 	if svcErr != nil {
 		return nil, svcErr
 	}
-	ids := make([]string, len(names))
-	for i, name := range names {
-		ids[i] = string(name)
+	ids := make([]string, 0, len(names))
+	for _, name := range names {
+		if name.IsPortable() {
+			ids = append(ids, string(name))
+		}
 	}
 	return ids, nil
 }
@@ -68,6 +70,11 @@ func (e *serverConfigExporter) GetAllResourceIDs(ctx context.Context) ([]string,
 func (e *serverConfigExporter) GetResourceByID(ctx context.Context, id string) (
 	interface{}, string, *common.ServiceError,
 ) {
+	// A section that stays on this deployment is not exported, whether asked for by name or as part
+	// of everything.
+	if !ConfigName(id).IsPortable() {
+		return nil, "", &ErrorUnsupportedConfigName
+	}
 	layers, svcErr := e.service.GetConfig(ctx, ConfigName(id))
 	if svcErr != nil {
 		return nil, "", svcErr

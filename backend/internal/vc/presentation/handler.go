@@ -113,8 +113,23 @@ func requestToDTO(req *presentationDefinitionRequest) *PresentationDefinitionDTO
 		OptionalClaims:       sanitizeStrings(req.OptionalClaims),
 		ClaimValues:          sanitizeClaimValues(req.ClaimValues),
 		EnforceTrustedIssuer: req.EnforceTrustedIssuer,
-		TrustedAuthorities:   sanitizeStrings(req.TrustedAuthorities),
+		TrustedAuthorities:   sanitizeTrustedAuthorities(req.TrustedAuthorities),
 	}
+}
+
+// sanitizeTrustedAuthorities returns a new slice with each trusted authority's name and certificate sanitized.
+func sanitizeTrustedAuthorities(in []TrustedAuthority) []TrustedAuthority {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]TrustedAuthority, 0, len(in))
+	for _, a := range in {
+		out = append(out, TrustedAuthority{
+			Name:        sysutils.SanitizeString(a.Name),
+			Certificate: sysutils.SanitizeString(a.Certificate),
+		})
+	}
+	return out
 }
 
 // sanitizeStrings returns a new slice with each input string sanitized.

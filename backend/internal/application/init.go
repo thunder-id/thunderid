@@ -19,6 +19,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/sharing"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
 	i18nmgt "github.com/thunder-id/thunderid/internal/system/i18n/mgt"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -30,6 +31,8 @@ import (
 // so the values the application's export refers to are kept where a reference finds them.
 //
 // projectResolver is nil on a deployment that serves no projects, where a project ID is kept unchecked.
+// bus is required: the service publishes the audit event of every application it creates, updates or
+// deletes on it.
 func Initialize(
 	mux *http.ServeMux,
 	mcpServer *mcp.Server,
@@ -44,10 +47,15 @@ func Initialize(
 	valueCapturer declarativeresource.ValueCapturer,
 	governance identitygovernance.IdentityGovernanceServiceInterface,
 	projectResolver projectOUResolver,
+	bus eventbus.EventBusInterface,
 ) (ApplicationServiceInterface, declarativeresource.ResourceExporter, error) {
+	if bus == nil {
+		return nil, nil, errNilEventBus
+	}
+
 	appService := newApplicationService(
 		inboundClient, entityService, ouService, i18nService, cryptoSvc, serverConfigSvc, artifactLifetime,
-		valueCapturer, sharingService, governance, projectResolver,
+		valueCapturer, sharingService, governance, projectResolver, bus,
 	)
 
 	// Registered before declarative resources load, because loading seeds the sharing policies those

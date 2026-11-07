@@ -761,6 +761,19 @@ func credentialsToWrite(credentials map[string]interface{}, update bool) (json.R
 	return encoded, nil
 }
 
+// credentialRollbackError reports a resource whose credentials could not be written after it was
+// created, and which could not be deleted again either.
+func credentialRollbackError(resourceType, resourceID string,
+	credErr, rollbackErr *tidcommon.ServiceError) *tidcommon.ServiceError {
+	combined := *credErr
+	combined.Error.DefaultValue = fmt.Sprintf("%s credential update failed: %s; rollback delete failed: %s",
+		resourceType, credErr.Error.DefaultValue, rollbackErr.Error.DefaultValue)
+	combined.ErrorDescription.DefaultValue = fmt.Sprintf(
+		"credential update error code %s for %s %s; rollback delete error code %s",
+		credErr.Code, resourceType, resourceID, rollbackErr.Code)
+	return &combined
+}
+
 // userSharingReplay is a user's sharing policies that mandate roles, replayed once the import's roles are in.
 type userSharingReplay struct {
 	// resultIndex is the user's outcome, which a refusal replaces.
@@ -819,22 +832,25 @@ func (s *importService) importUser(
 			Code: ErrorInvalidYAMLContent.Code, Message: fmt.Sprintf("failed to marshal user credentials: %v", err)}
 	}
 
-	if dryRun {
-		if options.IsUpsertEnabled() && req.ID != "" {
-			_, svcErr := s.userService.GetUser(ctx, req.ID, false)
-			if svcErr == nil {
-				return successOutcome(resourceTypeUser, req.ID, "", operationUpdate)
-			}
-
-			if !isNotFoundServiceError(svcErr) {
-				return serviceErrorOutcome(resourceTypeUser, req.ID, "", operationUpdate, svcErr)
-			}
+	// The upsert looks the user up rather than attempting an update, so a create is not preceded by an
+	// audited failed update.
+	exists := false
+	if options.IsUpsertEnabled() && req.ID != "" {
+		_, svcErr := s.userService.GetUser(ctx, req.ID, false)
+		if svcErr != nil && !isNotFoundServiceError(svcErr) {
+			return serviceErrorOutcome(resourceTypeUser, req.ID, "", operationUpdate, svcErr)
 		}
+		exists = svcErr == nil
+	}
 
+	if dryRun {
+		if exists {
+			return successOutcome(resourceTypeUser, req.ID, "", operationUpdate)
+		}
 		return successOutcome(resourceTypeUser, req.ID, "", operationCreate)
 	}
 
-	if options.IsUpsertEnabled() && req.ID != "" {
+	if exists {
 		updated, svcErr := s.userService.UpdateUser(ctx, req.ID, userReq)
 		if svcErr == nil {
 			if credentialsToKeep != nil {
@@ -868,10 +884,7 @@ func (s *importService) importUser(
 			}
 			return successOutcome(resourceTypeUser, updated.ID, "", operationUpdate)
 		}
-
-		if !isNotFoundServiceError(svcErr) {
-			return serviceErrorOutcome(resourceTypeUser, req.ID, "", operationUpdate, svcErr)
-		}
+		return serviceErrorOutcome(resourceTypeUser, req.ID, "", operationUpdate, svcErr)
 	}
 
 	created, svcErr := s.userService.CreateUser(ctx, userReq)
@@ -885,29 +898,8 @@ func (s *importService) importUser(
 			credentialsJSON,
 		); credErr != nil {
 			if rollbackErr := s.userService.DeleteUser(ctx, created.ID); rollbackErr != nil {
-				combinedErr := &tidcommon.ServiceError{
-					Code: credErr.Code,
-					Type: credErr.Type,
-					Error: tidcommon.I18nMessage{
-						Key: credErr.Error.Key,
-						DefaultValue: fmt.Sprintf(
-							"user credential update failed: %s; rollback delete failed: %s",
-							credErr.Error.DefaultValue,
-							rollbackErr.Error.DefaultValue,
-						),
-					},
-					ErrorDescription: tidcommon.I18nMessage{
-						Key: credErr.ErrorDescription.Key,
-						DefaultValue: fmt.Sprintf(
-							"credential update error code %s for user %s; rollback delete error code %s",
-							credErr.Code,
-							created.ID,
-							rollbackErr.Code,
-						),
-					},
-				}
-
-				return serviceErrorOutcome(resourceTypeUser, created.ID, "", operationCreate, combinedErr)
+				return serviceErrorOutcome(resourceTypeUser, created.ID, "", operationCreate,
+					credentialRollbackError(resourceTypeUser, created.ID, credErr, rollbackErr))
 			}
 
 			return serviceErrorOutcome(resourceTypeUser, created.ID, "", operationCreate, credErr)
@@ -1256,6 +1248,14 @@ func (s *importService) importAgent(
 
 	normalizeAgentOAuthConfigForImport(ctx, &req)
 
+	// Credentials are written after the agent, as a user's are, so a document's credentials are held
+	// to the ones the agent's type declares.
+	credentialsJSON, err := json.Marshal(req.Credentials)
+	if err != nil {
+		return ImportItemOutcome{ResourceType: resourceTypeAgent, ResourceID: req.ID, Status: statusFailed,
+			Code: ErrorInvalidYAMLContent.Code, Message: fmt.Sprintf("failed to marshal agent credentials: %v", err)}
+	}
+
 	createReq := &providers.Agent{
 		ID:          req.ID,
 		OUID:        req.OUID,
@@ -1335,6 +1335,20 @@ func (s *importService) importAgent(
 			if updateErr != nil {
 				return serviceErrorOutcome(resourceTypeAgent, req.ID, "", operationUpdate, updateErr)
 			}
+			if len(req.Credentials) > 0 {
+				if credErr := s.agentService.UpdateAgentCredentials(ctx, req.ID, credentialsJSON); credErr != nil {
+					// The profile is already committed, so this is a partial failure.
+					return ImportItemOutcome{
+						ResourceType: resourceTypeAgent,
+						ResourceID:   req.ID,
+						Operation:    operationUpdate,
+						Status:       statusFailed,
+						Code:         credErr.Code,
+						Message: "agent profile updated but credential update failed: " +
+							credErr.Error.DefaultValue,
+					}
+				}
+			}
 			return successOutcome(resourceTypeAgent, updated.ID, "", operationUpdate)
 		}
 
@@ -1346,6 +1360,15 @@ func (s *importService) importAgent(
 	created, svcErr := s.agentService.CreateAgent(ctx, createReq)
 	if svcErr != nil {
 		return serviceErrorOutcome(resourceTypeAgent, req.ID, "", operationCreate, svcErr)
+	}
+	if len(req.Credentials) > 0 {
+		if credErr := s.agentService.UpdateAgentCredentials(ctx, created.ID, credentialsJSON); credErr != nil {
+			if rollbackErr := s.agentService.DeleteAgent(ctx, created.ID); rollbackErr != nil {
+				return serviceErrorOutcome(resourceTypeAgent, created.ID, "", operationCreate,
+					credentialRollbackError(resourceTypeAgent, created.ID, credErr, rollbackErr))
+			}
+			return serviceErrorOutcome(resourceTypeAgent, created.ID, "", operationCreate, credErr)
+		}
 	}
 	return successOutcome(resourceTypeAgent, created.ID, "", operationCreate)
 }

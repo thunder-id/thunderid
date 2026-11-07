@@ -12,7 +12,7 @@ vi.mock('react-router', async () => {
   return {
     ...actual,
     useNavigate: () => mockNavigate,
-    useLocation: () => ({state: mockLocationState, pathname: '/welcome/import-configuration/validate'}),
+    useLocation: () => ({state: mockLocationState, pathname: '/import-configuration/validate'}),
   };
 });
 
@@ -73,7 +73,7 @@ describe('ImportConfigurationValidatePage', () => {
     expect(mockNavigate).toHaveBeenCalledWith('/home');
   });
 
-  it('navigates to /welcome on cancel (no errors)', () => {
+  it('hides cancel when there are no parse errors', () => {
     mockLocationState = {parseErrors: [], configData: {application: []}};
     render(<ImportConfigurationValidatePage />);
 
@@ -104,7 +104,7 @@ describe('ImportConfigurationValidatePage', () => {
     expect(screen.getByRole('button', {name: 'Upload different file'})).toBeInTheDocument();
   });
 
-  it('navigates to /welcome/import-configuration when upload different file is clicked', async () => {
+  it('navigates to /import-configuration when upload different file is clicked', async () => {
     mockLocationState = {
       parseErrors: [{resourceType: 'bad_type', fileName: 'config.yaml', error: 'parse error'}],
       parseStats: {successCount: 0, failCount: 1},
@@ -115,21 +115,7 @@ describe('ImportConfigurationValidatePage', () => {
 
     await user.click(screen.getByRole('button', {name: 'Upload different file'}));
 
-    expect(mockNavigate).toHaveBeenCalledWith('/welcome/import-configuration');
-  });
-
-  it('renders breadcrumb with welcome header', () => {
-    render(<ImportConfigurationValidatePage />);
-    expect(screen.getByText('Welcome')).toBeInTheDocument();
-  });
-
-  it('navigates to /welcome when breadcrumb welcome is clicked', async () => {
-    const user = userEvent.setup();
-    render(<ImportConfigurationValidatePage />);
-
-    await user.click(screen.getByText('Welcome'));
-
-    expect(mockNavigate).toHaveBeenCalledWith('/welcome');
+    expect(mockNavigate).toHaveBeenCalledWith('/import-configuration');
   });
 
   it('navigates to /home on cancel when parse errors exist', async () => {

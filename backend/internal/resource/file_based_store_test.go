@@ -811,6 +811,29 @@ func (s *FileBasedResourceStoreTestSuite) TestCheckResourceServerIdentifierExist
 	assert.False(s.T(), exists)
 }
 
+func (s *FileBasedResourceStoreTestSuite) TestCheckResourceServerIdentifierExists_EquivalentURI() {
+	fileStore, ok := s.store.(*fileBasedResourceStore)
+	s.Require().True(ok)
+	s.Require().NoError(fileStore.Create("rs-uri", &providers.ResourceServer{
+		ID:         "rs-uri",
+		Name:       "URI Server",
+		Identifier: "https://api.example.com",
+		OUID:       "ou1",
+		Delimiter:  ":",
+	}))
+
+	for identifier, expected := range map[string]bool{
+		"https://API.example.com":    true,
+		"https://api.example.com/":   true,
+		"https://api.example.com/v1": false,
+		"http://api.example.com":     false,
+	} {
+		exists, err := s.store.CheckResourceServerIdentifierExists(s.ctx, identifier)
+		s.NoError(err)
+		s.Equal(expected, exists, identifier)
+	}
+}
+
 // TestServerActionsFromALoadedFile verifies that the actions a declarative file declares on the
 // resource server itself are served at the resource server level, filtered by kind, counted as
 // dependencies and accepted as permissions.

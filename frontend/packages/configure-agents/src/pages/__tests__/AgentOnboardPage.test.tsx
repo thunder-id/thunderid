@@ -30,7 +30,6 @@ const h = vi.hoisted(() => ({
   http: {request: vi.fn<(config: unknown) => Promise<{data: unknown}>>()},
   logger: {debug: vi.fn(), error: vi.fn(), info: vi.fn(), warn: vi.fn()},
   navigate: vi.fn(),
-  pathname: {current: '/agents/create'},
   resetFlow: vi.fn(),
   handleSubmit: vi.fn<(action: unknown, inputs?: Record<string, string>) => Promise<void>>(),
   showToast: vi.fn<(message: string, severity?: string) => void>(),
@@ -124,11 +123,12 @@ vi.mock('@thunderid/logger/react', async (importOriginal) => ({
 
 vi.mock('react-router', async (importOriginal) => ({
   ...(await importOriginal<typeof import('react-router')>()),
-  useLocation: () => ({pathname: h.pathname.current}),
   useNavigate: () => h.navigate,
 }));
 
-vi.mock('react-i18next', () => ({
+// Spread the real module so packages loaded through configure-users still find exports such as Trans.
+vi.mock('react-i18next', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('react-i18next')>()),
   useTranslation: () => ({
     t: (key: string, options?: string | Record<string, unknown>) => {
       const translations: Record<string, string> = {
@@ -220,7 +220,6 @@ describe('AgentOnboardPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     h.flowProps.current = null;
-    h.pathname.current = '/agents/create';
     h.step.components = [];
     h.step.additionalData = {};
     h.step.values = {};
@@ -233,6 +232,11 @@ describe('AgentOnboardPage', () => {
     h.resolve.mockResolvedValue({flowId: 'flow-1', handle: 'default-agent-onboarding-flow'});
     h.http.request.mockResolvedValue({data: {flowStatus: 'INCOMPLETE'}});
   });
+
+  const credentialsStep = () =>
+    givenStep([{id: 'client_id', label: 'Client ID', source: 'clientId', type: 'COPYABLE_TEXT'}], {
+      clientId: 'agent-client-id',
+    });
 
   describe('resolving the flow', () => {
     it('should show a spinner while the flow is being resolved', () => {
@@ -940,11 +944,6 @@ describe('AgentOnboardPage', () => {
   // A step with nothing to submit is the end of the run. Leaving the header X as the only exit
   // strands the administrator on the screen they were told to copy a secret from.
   describe('finishing', () => {
-    const credentialsStep = () =>
-      givenStep([{id: 'client_id', label: 'Client ID', source: 'clientId', type: 'COPYABLE_TEXT'}], {
-        clientId: 'agent-client-id',
-      });
-
     it('should offer a way out of a step with nothing to submit', async () => {
       credentialsStep();
 
@@ -1081,16 +1080,29 @@ describe('AgentOnboardPage', () => {
       expect(h.navigate).toHaveBeenCalledWith(defaultAgentRoutePaths.agents.list());
     });
 
-    // The same page is mounted inside the welcome experience, where the agent list is not where the
-    // administrator came from.
-    it('should return to the get started page when opened from the welcome flow', async () => {
-      h.pathname.current = defaultAgentRoutePaths.welcome.getStartedAgentsCreate();
+    it('should hand the close to the host instead of navigating when it supplies one', async () => {
+      credentialsStep();
+      const onClose = vi.fn();
 
-      render(<AgentOnboardPage />);
+      render(<AgentOnboardPage embedded onClose={onClose} />);
 
-      (await screen.findByRole('button', {name: 'Close'})).click();
+      await screen.findByText('agent-client-id');
+      await userEvent.click(screen.getByRole('button', {name: 'Close'}));
 
-      expect(h.navigate).toHaveBeenCalledWith(defaultAgentRoutePaths.welcome.getStarted());
+      expect(onClose).toHaveBeenCalledTimes(1);
+      expect(h.navigate).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('embedded', () => {
+    it('should render only the flow, without the full-screen wizard header', async () => {
+      credentialsStep();
+
+      render(<AgentOnboardPage embedded />);
+
+      await screen.findByText('agent-client-id');
+
+      expect(screen.getAllByRole('button', {name: 'Close'})).toHaveLength(1);
     });
   });
 });
@@ -1098,7 +1110,6 @@ describe('AgentOnboardPage', () => {
 describe('AgentOnboardPage breadcrumbs', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    h.pathname.current = '/agents/create';
     h.users.current = [];
     h.fetchUsers.mockImplementation(serveUsers);
     h.resolve.mockResolvedValue({flowId: 'flow-1', handle: 'default-agent-onboarding-flow'});
@@ -1151,7 +1162,6 @@ describe('AgentOnboardPage owner default', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    h.pathname.current = '/agents/create';
     h.signedInUser.current = null;
     h.users.current = [{display: 'Ada Lovelace', id: 'user-1'}];
     h.fetchUsers.mockImplementation(serveUsers);

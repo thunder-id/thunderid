@@ -32,12 +32,12 @@ var rawClient = func() *http.Client {
 }()
 
 // A client that follows the challenge is sent to the trusted issuer: the metadata names it as the
-// authorization server, with the MCP resource and the system scope, and the issuer publishes
-// metadata for itself.
+// authorization server, with the MCP resource and the scope a full administrator requests, and the
+// issuer publishes metadata for itself.
 func (ts *ControlPlaneTestSuite) TestMCPMetadataNamesTheTrustedIssuer() {
 	status, challenge, body := ts.listMCPTools("")
 	ts.Require().Equalf(http.StatusUnauthorized, status, "response: %s", body)
-	ts.Equal("system", challengeParam(challenge, "scope"))
+	ts.Empty(challengeParam(challenge, "scope"))
 	metadataURL := challengeParam(challenge, "resource_metadata")
 	ts.Require().Equal(testutils.TestServerURL+"/.well-known/oauth-protected-resource", metadataURL)
 
@@ -59,15 +59,19 @@ func (ts *ControlPlaneTestSuite) TestMCPMetadataNamesTheTrustedIssuer() {
 	ts.Equal(trustedIssuerURL, issuer.Issuer)
 }
 
-// A token the trusted issuer signed with the system scope reaches the tools. One without the scope
-// is refused with 403, and the challenge names the scope.
+// A token the trusted issuer signed with a system permission reaches the tools. One without the scope
+// is refused with 403. Any system permission admits the caller, so the insufficient_scope challenge
+// names no single scope.
 func (ts *ControlPlaneTestSuite) TestMCPNeedsTheSystemScope() {
 	status, _, body := ts.listMCPTools(ts.harnessToken(testutils.MCPScopedTokenEnv))
 	ts.Equalf(http.StatusOK, status, "response: %s", body)
 
 	status, challenge, body := ts.listMCPTools(ts.harnessToken(testutils.MCPUnscopedTokenEnv))
 	ts.Equalf(http.StatusForbidden, status, "response: %s", body)
-	ts.Equal("system", challengeParam(challenge, "scope"))
+	ts.Equal("insufficient_scope", challengeParam(challenge, "error"))
+	ts.Empty(challengeParam(challenge, "scope"))
+	ts.Equal(testutils.TestServerURL+"/.well-known/oauth-protected-resource",
+		challengeParam(challenge, "resource_metadata"))
 }
 
 // A token is refused with 401 when it is not a JWT, when the trusted issuer did not sign it, when it

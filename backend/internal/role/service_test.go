@@ -101,6 +101,7 @@ func (suite *RoleServiceTestSuite) SetupTest() {
 		suite.transactioner,
 		newAllowAllRoleAuthz(suite.T()),
 		suite.mockSharingService,
+		discardingBus{},
 	)
 }
 
@@ -1570,7 +1571,7 @@ func (suite *RoleServiceTestSuite) TestDeleteRole_RefusedWhileMandated() {
 		}).Once()
 	suite.service = newRoleService(suite.mockStore, suite.mockEntityService, suite.mockGroupService,
 		suite.mockOUService, suite.mockResourceService, txr, newAllowAllRoleAuthz(suite.T()),
-		suite.mockSharingService)
+		suite.mockSharingService, discardingBus{})
 	inTx := mock.MatchedBy(func(ctx context.Context) bool { return ctx.Value(txKey{}) != nil })
 	suite.mockStore.On("IsRoleExist", mock.Anything, "role1").Return(true, nil)
 	suite.mockStore.On("ListMandatedAssignmentsForRole", inTx, "role1", "").Return([]RoleAssignment{
@@ -1613,7 +1614,7 @@ func (suite *RoleServiceTestSuite) TestDeleteRole_PurgesPoliciesInTheRoleTransac
 		}).Once()
 	suite.service = newRoleService(suite.mockStore, suite.mockEntityService, suite.mockGroupService,
 		suite.mockOUService, suite.mockResourceService, txr, newAllowAllRoleAuthz(suite.T()),
-		suite.mockSharingService)
+		suite.mockSharingService, discardingBus{})
 	inTx := mock.MatchedBy(func(ctx context.Context) bool { return ctx.Value(txKey{}) != nil })
 	suite.mockStore.On("IsRoleExist", mock.Anything, "role1").Return(true, nil)
 	suite.unmandated()
@@ -2198,7 +2199,8 @@ func (s *RoleChangeValidationTestSuite) SetupTest() {
 	s.ous = oumock.NewOrganizationUnitServiceInterfaceMock(s.T())
 	s.resources = resourcemock.NewResourceServiceInterfaceMock(s.T())
 	s.authz = sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(s.T())
-	s.service = newRoleService(s.store, nil, s.groups, s.ous, s.resources, &fakeTransactioner{}, s.authz, nil)
+	s.service = newRoleService(s.store, nil, s.groups, s.ous, s.resources, &fakeTransactioner{}, s.authz, nil,
+		discardingBus{})
 }
 
 func (s *RoleChangeValidationTestSuite) TearDownTest() {

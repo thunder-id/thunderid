@@ -557,7 +557,17 @@ var (
 	// unit, which would otherwise address every unit of the policy.
 	errMandatedRoleWithoutOU = errors.New(
 		"a mandated assignment filter naming a role must name an organization unit")
+
+	// errNilEventBus is returned when the service is initialized without the event bus it audits on.
+	errNilEventBus = errors.New("the role service needs an event bus")
 )
+
+// errRoleNotFoundNoop is returned by deleteRole when the role does not exist. DeleteRole turns it into a
+// success, so it never reaches a caller.
+var errRoleNotFoundNoop = &tidcommon.ServiceError{
+	Type: tidcommon.ClientErrorType,
+	Code: ErrorRoleNotFound.Code,
+}
 
 // sharingErrors answers the sharing framework's client errors in this service's own codes.
 var sharingErrors = sharing.ErrorTranslation{

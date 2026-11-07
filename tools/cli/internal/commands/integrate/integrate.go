@@ -11,7 +11,7 @@ package integrate
 type Platform struct {
 	Key   string // command suffix, e.g. "nextjs" for "/integrate-nextjs"
 	Label string // display label, e.g. "Next.js"
-	Slug  string // docs filename under product.DocsBaseURL, e.g. "node" for Node.js
+	Slug  string // docs filename under product.DocsGuidePath, e.g. "node" for Node.js
 }
 
 // Platforms lists every platform with an /integrate-* command, in display order.

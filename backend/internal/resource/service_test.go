@@ -5241,6 +5241,84 @@ func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_IdentifierChange
 	suite.mockStore.AssertExpectations(suite.T())
 }
 
+func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_EquivalentIdentifierOfItselfAllowed() {
+	rs := providers.ResourceServer{
+		Name:       "my-rs",
+		Identifier: "https://API.example.com/",
+		OUID:       "ou-123",
+	}
+
+	existingRS := providers.ResourceServer{
+		ID:         "rs-123",
+		Name:       "my-rs",
+		Identifier: "https://api.example.com",
+		Delimiter:  ":",
+		OUID:       "ou-123",
+	}
+
+	suite.mockStore.On("IsResourceServerDeclarative", "rs-123").Return(false)
+	suite.mockStore.On("GetResourceServer", mock.Anything, "rs-123").Return(existingRS, nil)
+	suite.mockStore.On("GetResourceServerByIdentifier", mock.Anything, "https://API.example.com/").
+		Return(providers.ResourceServer{}, errResourceServerNotFound)
+	suite.mockOU.On("GetOrganizationUnit", mock.Anything, "ou-123").
+		Return(oupkg.OrganizationUnit{ID: "ou-123"}, nil)
+	suite.mockStore.On("UpdateResourceServer", mock.Anything, "rs-123",
+		mock.MatchedBy(func(r providers.ResourceServer) bool {
+			return r.Identifier == "https://API.example.com/"
+		})).Return(nil)
+
+	result, svcErr := suite.service.UpdateResourceServer(context.Background(), "rs-123", rs)
+
+	suite.Nil(svcErr)
+	suite.Require().NotNil(result)
+	suite.Equal("https://API.example.com/", result.Identifier)
+	suite.mockStore.AssertNotCalled(suite.T(), "CheckResourceServerIdentifierExists", mock.Anything, mock.Anything)
+}
+
+func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_EquivalentIdentifierHeldExactlyByAnother() {
+	rs := providers.ResourceServer{
+		Name:       "my-rs",
+		Identifier: "https://API.example.com",
+		OUID:       "ou-123",
+	}
+
+	existingRS := providers.ResourceServer{
+		ID:         "rs-123",
+		Name:       "my-rs",
+		Identifier: "https://api.example.com",
+		Delimiter:  ":",
+		OUID:       "ou-123",
+	}
+
+	suite.mockStore.On("IsResourceServerDeclarative", "rs-123").Return(false)
+	suite.mockStore.On("GetResourceServer", mock.Anything, "rs-123").Return(existingRS, nil)
+	suite.mockStore.On("GetResourceServerByIdentifier", mock.Anything, "https://API.example.com").
+		Return(providers.ResourceServer{ID: "rs-other", Identifier: "https://API.example.com"}, nil)
+
+	result, svcErr := suite.service.UpdateResourceServer(context.Background(), "rs-123", rs)
+
+	suite.Nil(result)
+	suite.Require().NotNil(svcErr)
+	suite.Equal(ErrorIdentifierConflict.Code, svcErr.Code)
+	suite.mockStore.AssertNotCalled(suite.T(), "UpdateResourceServer", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (suite *ResourceServiceTestSuite) TestNormalizeResourceIdentifier() {
+	for identifier, expected := range map[string]string{
+		"HTTPS://API.Example.com":            "https://api.example.com/",
+		"https://API.example.com:8443":       "https://api.example.com:8443/",
+		"https://API.example.com?q=A#F":      "https://api.example.com?q=A#F",
+		"https://User:Pass@API.example.com/": "https://User:Pass@API.example.com/",
+		"https://api.example.com/{a} b":      "https://api.example.com/{a} b",
+		"https://api.example.com/café":       "https://api.example.com/café",
+		"https://api.example.com/caf%C3%A9":  "https://api.example.com/caf%C3%A9",
+		"urn:Example:API":                    "urn:Example:API",
+		"Orders-API":                         "Orders-API",
+	} {
+		suite.Equal(expected, normalizeResourceIdentifier(identifier), identifier)
+	}
+}
+
 func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_InvalidMCPIdentifier() {
 	rs := providers.ResourceServer{
 		Name:       "my-rs",

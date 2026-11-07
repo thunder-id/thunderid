@@ -8,10 +8,16 @@ import {Plus} from '@wso2/oxygen-ui-icons-react';
 import {type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
-import VerifiablePresentationsList from '../components/VerifiablePresentationsList';
+import VerifiablePresentationsList, {
+  type VerifiablePresentationsListProps,
+} from '../components/VerifiablePresentationsList';
 import useVerifiableCredentialRoutes from '../hooks/useVerifiableCredentialRoutes';
 
-export default function VerifiablePresentationsListPage(): JSX.Element {
+export type VerifiablePresentationsListPageProps = VerifiablePresentationsListProps;
+
+export default function VerifiablePresentationsListPage({
+  showWalletQr = false,
+}: VerifiablePresentationsListPageProps): JSX.Element {
   const navigate = useNavigate();
   const {t} = useTranslation();
   const logger = useLogger('VerifiablePresentationsListPage');
@@ -45,7 +51,7 @@ export default function VerifiablePresentationsListPage(): JSX.Element {
         </PageTitle.Actions>
       </PageTitle>
 
-      <VerifiablePresentationsList />
+      <VerifiablePresentationsList showWalletQr={showWalletQr} />
     </PageContent>
   );
 }

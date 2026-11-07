@@ -120,6 +120,11 @@ type fakeApplicationService struct {
 	// create and a delete of two different ids both succeed whichever way round they run; the
 	// sequence is what shows which actually went first.
 	sequence []string
+	// updateAttempts records each update asked for, by application, whether it succeeded or not.
+	updateAttempts []string
+	// getErr and updateErr, when set, are what GetApplication and UpdateApplication fail with.
+	getErr    *tidcommon.ServiceError
+	updateErr *tidcommon.ServiceError
 }
 
 func (f *fakeApplicationService) CreateApplication(
@@ -158,6 +163,9 @@ func (f *fakeApplicationService) GetOAuthApplication(
 func (f *fakeApplicationService) GetApplication(
 	_ context.Context, appID string,
 ) (*providers.Application, *tidcommon.ServiceError) {
+	if f.getErr != nil {
+		return nil, f.getErr
+	}
 	if app, ok := f.existing[appID]; ok {
 		return app, nil
 	}
@@ -171,6 +179,10 @@ func (f *fakeApplicationService) GetApplication(
 func (f *fakeApplicationService) UpdateApplication(
 	_ context.Context, appID string, app *model.ApplicationDTO,
 ) (*model.ApplicationDTO, *tidcommon.ServiceError) {
+	f.updateAttempts = append(f.updateAttempts, appID)
+	if f.updateErr != nil {
+		return nil, f.updateErr
+	}
 	if _, ok := f.existing[appID]; !ok {
 		return nil, &tidcommon.ServiceError{
 			Type:  tidcommon.ClientErrorType,
@@ -798,6 +810,11 @@ type fakeUserService struct {
 	deleted                     []string
 	// credentialUpdates records each credential update, by user.
 	credentialUpdates []string
+	// existing names the users GetUser finds, and getErr, when set, is what GetUser fails with instead.
+	existing map[string]bool
+	getErr   *tidcommon.ServiceError
+	// updated records each user update, by user.
+	updated []string
 }
 
 func (f *fakeUserService) CreateUser(
@@ -814,8 +831,14 @@ func (f *fakeUserService) CreateUser(
 }
 
 func (f *fakeUserService) GetUser(
-	_ context.Context, _ string, _ bool,
+	_ context.Context, userID string, _ bool,
 ) (*providers.User, *tidcommon.ServiceError) {
+	if f.getErr != nil {
+		return nil, f.getErr
+	}
+	if f.existing[userID] {
+		return &providers.User{ID: userID}, nil
+	}
 	return nil, &tidcommon.ServiceError{
 		Type:  tidcommon.ClientErrorType,
 		Code:  "USR-1003",
@@ -826,6 +849,7 @@ func (f *fakeUserService) GetUser(
 func (f *fakeUserService) UpdateUser(
 	_ context.Context, userID string, u *providers.User,
 ) (*providers.User, *tidcommon.ServiceError) {
+	f.updated = append(f.updated, userID)
 	updated := *u
 	updated.ID = userID
 	return &updated, nil
@@ -1167,6 +1191,67 @@ func TestImportResources_UpdateApplication(t *testing.T) {
 	assert.Equal(t, 1, resp.Summary.Imported)
 	assert.Equal(t, statusSuccess, resp.Results[0].Status)
 	assert.Equal(t, operationUpdate, resp.Results[0].Operation)
+}
+
+// An upsert of an application that does not exist creates it without first attempting an update, so the
+// application service records no failed update for it.
+func TestImportResources_ApplicationUpsertCreatesAMissingApplicationWithoutAnUpdate(t *testing.T) {
+	appSvc := &fakeApplicationService{existing: map[string]*providers.Application{}}
+	svc := newTestImportService(appSvc)
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{
+		Content: "resource_type: application\nid: app-1\nname: My App\nauthFlowId: flow-1\n",
+		Options: &ImportOptions{Upsert: boolPtr(true), ContinueOnError: boolPtr(true), Target: importTargetRuntime},
+	})
+
+	require.Nil(t, err)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status, resp.Results[0].Message)
+	assert.Equal(t, operationCreate, resp.Results[0].Operation)
+	assert.Empty(t, appSvc.updateAttempts)
+	require.Len(t, appSvc.created, 1)
+	assert.Equal(t, "app-1", appSvc.created[0].ID)
+}
+
+// An application whose existence cannot be determined is neither updated nor created.
+func TestImportResources_ApplicationUpsertFailsWhenTheLookupFails(t *testing.T) {
+	appSvc := &fakeApplicationService{getErr: &tidcommon.InternalServerError}
+	svc := newTestImportService(appSvc)
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{
+		Content: "resource_type: application\nid: app-1\nname: My App\nauthFlowId: flow-1\n",
+		Options: &ImportOptions{Upsert: boolPtr(true), ContinueOnError: boolPtr(true), Target: importTargetRuntime},
+	})
+
+	require.Nil(t, err)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusFailed, resp.Results[0].Status)
+	assert.Equal(t, operationUpdate, resp.Results[0].Operation)
+	assert.Equal(t, tidcommon.InternalServerError.Code, resp.Results[0].Code)
+	assert.Empty(t, appSvc.updateAttempts)
+	assert.Empty(t, appSvc.created)
+}
+
+// An existing application whose update fails is reported as a failed update and is not created again.
+func TestImportResources_ApplicationUpsertReportsAFailedUpdate(t *testing.T) {
+	appSvc := &fakeApplicationService{
+		existing:  map[string]*providers.Application{"app-1": {ID: "app-1", Name: "Existing App"}},
+		updateErr: &application.ErrorInvalidApplicationName,
+	}
+	svc := newTestImportService(appSvc)
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{
+		Content: "resource_type: application\nid: app-1\nname: My App\nauthFlowId: flow-1\n",
+		Options: &ImportOptions{Upsert: boolPtr(true), ContinueOnError: boolPtr(true), Target: importTargetRuntime},
+	})
+
+	require.Nil(t, err)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusFailed, resp.Results[0].Status)
+	assert.Equal(t, operationUpdate, resp.Results[0].Operation)
+	assert.Equal(t, application.ErrorInvalidApplicationName.Code, resp.Results[0].Code)
+	assert.Equal(t, []string{"app-1"}, appSvc.updateAttempts)
+	assert.Empty(t, appSvc.created)
 }
 
 func TestImportResources_DryRunCreateApplicationWithoutWrite(t *testing.T) {
@@ -1867,7 +1952,7 @@ func TestImportResources_GroupMemberFailureReturnsError(t *testing.T) {
 }
 
 func TestImportResources_UserCredentialFailureRollsBackCreate(t *testing.T) {
-	userSvc := &fakeUserService{updateCredentialsShouldFail: true}
+	userSvc := &fakeUserService{updateCredentialsShouldFail: true, existing: map[string]bool{"user-1": true}}
 	svc := newImportService(
 		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, userSvc, nil, nil, nil, nil, nil, nil, nil)
 
@@ -1897,7 +1982,7 @@ func TestImportResources_UserCredentialFailureRollsBackCreate(t *testing.T) {
 // importing its own export names each credential it cannot export the value of. A new user is still
 // refused an empty credential.
 func TestImportResources_UserUpdateKeepsACredentialCarryingNoValue(t *testing.T) {
-	userSvc := &fakeUserService{updateCredentialsShouldFail: true}
+	userSvc := &fakeUserService{updateCredentialsShouldFail: true, existing: map[string]bool{"user-1": true}}
 	svc := newImportService(
 		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, userSvc, nil, nil, nil, nil, nil, nil, nil)
 	user := func(id string) string {
@@ -1929,6 +2014,68 @@ func TestImportResources_UserUpdateKeepsACredentialCarryingNoValue(t *testing.T)
 	require.Len(t, resp.Results, 1)
 	assert.Equal(t, statusFailed, resp.Results[0].Status, "a new user was created without a credential")
 	assert.Equal(t, []string{"user-2"}, userSvc.credentialUpdates)
+}
+
+// An upsert of a user that does not exist creates it without first attempting an update, so the user
+// service records no failed update for it.
+func TestImportResources_UserUpsertCreatesAMissingUserWithoutAnUpdate(t *testing.T) {
+	userSvc := &fakeUserService{}
+	svc := newImportService(
+		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, userSvc, nil, nil, nil, nil, nil, nil, nil)
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{Content: upsertedUser("user-1")})
+
+	require.Nil(t, err)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status, resp.Results[0].Message)
+	assert.Equal(t, operationCreate, resp.Results[0].Operation)
+	assert.Empty(t, userSvc.updated)
+	require.Len(t, userSvc.created, 1)
+	assert.Equal(t, "user-1", userSvc.created[0].ID)
+}
+
+func TestImportResources_UserUpsertUpdatesAnExistingUser(t *testing.T) {
+	userSvc := &fakeUserService{existing: map[string]bool{"user-1": true}}
+	svc := newImportService(
+		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, userSvc, nil, nil, nil, nil, nil, nil, nil)
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{Content: upsertedUser("user-1")})
+
+	require.Nil(t, err)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status, resp.Results[0].Message)
+	assert.Equal(t, operationUpdate, resp.Results[0].Operation)
+	assert.Equal(t, []string{"user-1"}, userSvc.updated)
+	assert.Empty(t, userSvc.created)
+}
+
+// A user whose existence cannot be determined is neither updated nor created.
+func TestImportResources_UserUpsertFailsWhenTheLookupFails(t *testing.T) {
+	userSvc := &fakeUserService{getErr: &tidcommon.InternalServerError}
+	svc := newImportService(
+		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, userSvc, nil, nil, nil, nil, nil, nil, nil)
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{Content: upsertedUser("user-1")})
+
+	require.Nil(t, err)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusFailed, resp.Results[0].Status)
+	assert.Equal(t, tidcommon.InternalServerError.Code, resp.Results[0].Code)
+	assert.Empty(t, userSvc.updated)
+	assert.Empty(t, userSvc.created)
+}
+
+// upsertedUser is the document of a user with id, imported with the default upsert.
+func upsertedUser(id string) string {
+	return strings.Join([]string{
+		"resource_type: user",
+		"id: " + id,
+		"type: customer",
+		"ouId: ou-1",
+		"attributes:",
+		"  username: " + id,
+		"",
+	}, "\n")
 }
 
 func TestImportResources_OrganizationUnitUpsertCreatePreservesID(t *testing.T) {
@@ -2758,18 +2905,22 @@ func TestImportResources_CarriesOAuthTokenBindingFlags(t *testing.T) {
 
 func TestOrderDocumentsByDependencies(t *testing.T) {
 	docs := []parsedDocument{
+		{ResourceType: resourceTypeAgent, Sequence: 4},
 		{ResourceType: resourceTypeApplication, Sequence: 3},
 		{ResourceType: resourceTypeFlow, Sequence: 2},
 		{ResourceType: resourceTypeResourceServer, Sequence: 1},
 		{ResourceType: resourceTypeConnection, Sequence: 0},
+		{ResourceType: resourceTypeUser, Sequence: 5},
 	}
 
 	ordered := orderDocumentsByDependencies(docs)
-	require.Len(t, ordered, 4)
+	require.Len(t, ordered, 6)
 	assert.Equal(t, resourceTypeConnection, ordered[0].ResourceType)
 	assert.Equal(t, resourceTypeResourceServer, ordered[1].ResourceType)
 	assert.Equal(t, resourceTypeFlow, ordered[2].ResourceType)
 	assert.Equal(t, resourceTypeApplication, ordered[3].ResourceType)
+	assert.Equal(t, resourceTypeUser, ordered[4].ResourceType)
+	assert.Equal(t, resourceTypeAgent, ordered[5].ResourceType)
 }
 
 func TestImportResources_FileTargetReturnsError(t *testing.T) {
@@ -3002,6 +3153,12 @@ type fakeAgentService struct {
 	created  []*providers.Agent
 	updated  []*agentmodel.UpdateAgentRequest
 	existing map[string]*agentmodel.AgentGetResponse
+	// credentials records the credentials set on each agent, and credentialErr refuses every set.
+	credentials   map[string]json.RawMessage
+	credentialErr *tidcommon.ServiceError
+	// deleted records each agent deleted, and deleteErr refuses every delete.
+	deleted   []string
+	deleteErr *tidcommon.ServiceError
 }
 
 func (f *fakeAgentService) CreateAgent(
@@ -3042,6 +3199,19 @@ func (f *fakeAgentService) UpdateAgent(
 	f.updated = append(f.updated, req)
 	f.existing[agentID] = &agentmodel.AgentGetResponse{ID: agentID, Attributes: req.Attributes}
 	return &agentmodel.AgentCompleteResponse{ID: agentID, Attributes: req.Attributes}, nil
+}
+
+func (f *fakeAgentService) UpdateAgentCredentials(
+	_ context.Context, agentID string, credentials json.RawMessage,
+) *tidcommon.ServiceError {
+	if f.credentialErr != nil {
+		return f.credentialErr
+	}
+	if f.credentials == nil {
+		f.credentials = map[string]json.RawMessage{}
+	}
+	f.credentials[agentID] = credentials
+	return nil
 }
 
 func testAgentAttributeName(attributes json.RawMessage) string {
@@ -3194,6 +3364,12 @@ type errAgentService struct {
 	createErr *tidcommon.ServiceError
 	getErr    *tidcommon.ServiceError
 	updateErr *tidcommon.ServiceError
+}
+
+func (e *errAgentService) UpdateAgentCredentials(
+	ctx context.Context, agentID string, credentials json.RawMessage,
+) *tidcommon.ServiceError {
+	return e.inner.UpdateAgentCredentials(ctx, agentID, credentials)
 }
 
 func (e *errAgentService) CreateAgent(
@@ -4106,6 +4282,111 @@ func TestImportResourceServer_SameHandleUnderDifferentParents(t *testing.T) {
 	}, parents)
 }
 
+// TestImportResourceServer_UpsertAddsResourcesUnderExistingRoot verifies that re-importing a resource
+// server whose root resource already exists, as an upgraded System resource server does, creates the
+// new resources under that root and their actions.
+func TestImportResourceServer_UpsertAddsResourcesUnderExistingRoot(t *testing.T) {
+	rsSvc := &fakeResourceServerService{
+		resourceErrs: map[string]*tidcommon.ServiceError{"system": &resource.ErrorHandleConflict},
+		existing:     []providers.Resource{{ID: "id-existing-system", Handle: "system"}},
+	}
+	svc := newImportService(
+		nil, nil, nil, nil, nil, nil, nil, nil, nil, rsSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+
+	content := strings.Join([]string{
+		"resource_type: resource_server",
+		"id: rs-system",
+		"name: System",
+		"identifier: system-rs",
+		"ouId: ou-explicit",
+		"delimiter: \":\"",
+		"resources:",
+		"  - { name: System, handle: system }",
+		"  - name: Applications",
+		"    handle: app",
+		"    parent: system",
+		"    actions:",
+		"      - { name: View, handle: view }",
+		"      - { name: Update, handle: update }",
+		"",
+	}, "\n")
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{
+		Content: content,
+		Options: &ImportOptions{Upsert: boolPtr(true)},
+	})
+
+	require.Nil(t, err)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status, resp.Results[0].Message)
+	assert.Equal(t, operationUpdate, resp.Results[0].Operation)
+	require.Len(t, rsSvc.resources, 1)
+	assert.Equal(t, "system:app", rsSvc.resources[0].Permission)
+	require.NotNil(t, rsSvc.resources[0].Parent)
+	assert.Equal(t, "id-existing-system", *rsSvc.resources[0].Parent)
+	assert.Equal(t, []importedAction{
+		{resourceID: "id-system:app", action: providers.Action{
+			Name: "View", Handle: "view", Permission: "system:app:view",
+		}},
+		{resourceID: "id-system:app", action: providers.Action{
+			Name: "Update", Handle: "update", Permission: "system:app:update",
+		}},
+	}, rsSvc.actions)
+}
+
+// TestImportResourceServer_UpsertAddsActionsToExistingResource verifies that re-importing a resource
+// server whose resource already exists under the root creates no resource and adds only the actions
+// that resource is missing.
+func TestImportResourceServer_UpsertAddsActionsToExistingResource(t *testing.T) {
+	systemID := "id-existing-system"
+	rsSvc := &fakeResourceServerService{
+		resourceErrs: map[string]*tidcommon.ServiceError{
+			"system": &resource.ErrorHandleConflict,
+			"app":    &resource.ErrorHandleConflict,
+		},
+		existing: []providers.Resource{
+			{ID: systemID, Handle: "system"},
+			{ID: "id-existing-app", Handle: "app", Parent: &systemID},
+		},
+		actionErrs: map[string]*tidcommon.ServiceError{"view": &resource.ErrorHandleConflict},
+	}
+	svc := newImportService(
+		nil, nil, nil, nil, nil, nil, nil, nil, nil, rsSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+
+	content := strings.Join([]string{
+		"resource_type: resource_server",
+		"id: rs-system",
+		"name: System",
+		"identifier: system-rs",
+		"ouId: ou-explicit",
+		"delimiter: \":\"",
+		"resources:",
+		"  - { name: System, handle: system }",
+		"  - name: Applications",
+		"    handle: app",
+		"    parent: system",
+		"    actions:",
+		"      - { name: View, handle: view }",
+		"      - { name: Update, handle: update }",
+		"",
+	}, "\n")
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{
+		Content: content,
+		Options: &ImportOptions{Upsert: boolPtr(true)},
+	})
+
+	require.Nil(t, err)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status, resp.Results[0].Message)
+	assert.Empty(t, rsSvc.resources)
+	assert.Equal(t, []importedAction{
+		{resourceID: "id-existing-app", action: providers.Action{
+			Name: "Update", Handle: "update", Permission: "system:app:update",
+		}},
+	}, rsSvc.actions)
+}
+
 // TestImportResourceServer_ServerActions verifies that the actions declared on a resource server
 // itself are created at the server level, with or without resources, and that an action whose handle
 // already exists is skipped.
@@ -4819,7 +5100,7 @@ func TestImportUserAppliesSharingPolicies(t *testing.T) {
 // An update replays the document's policies too.
 func TestImportUserReplaysPoliciesOnUpdate(t *testing.T) {
 	sharingSvc := &fakeSharingService{}
-	svc := newTestUserImportWithSharing(&fakeUserService{}, sharingSvc)
+	svc := newTestUserImportWithSharing(&fakeUserService{existing: map[string]bool{"user-2": true}}, sharingSvc)
 
 	resp, err := svc.ImportResources(context.Background(), &ImportRequest{
 		Content: userDocWithPolicies("user-2"), Options: &ImportOptions{Upsert: boolPtr(true)}})
@@ -4995,7 +5276,7 @@ func (s *ImportUserMandatedRolesTestSuite) TestImportUserMandatedRolesRefusedUnd
 // An existing user's policies are not replayed without their roles, which would strip the mandates its share already
 // holds: the whole replay waits, and a refusal fails the update without undoing it.
 func (s *ImportUserMandatedRolesTestSuite) TestImportExistingUserDefersItsMandatingPolicies() {
-	userSvc := &fakeUserService{}
+	userSvc := &fakeUserService{existing: map[string]bool{"user-8": true}}
 	sharingSvc := refuseMandates()
 	svc := newTestUserImportWithSharing(userSvc, sharingSvc)
 
@@ -6477,4 +6758,122 @@ func TestImportFlowUpdateRefusedWithItsPoliciesFailsTheDocument(t *testing.T) {
 	assert.Equal(t, flowmgt.ErrorFlowConflictsWithSharingPolicy.Code, resp.Results[0].Code)
 	assert.Equal(t, operationUpdate, resp.Results[0].Operation)
 	assert.Empty(t, flowSvc.deleted)
+}
+
+const agentWithPasswordYAML = agentYAML + "credentials:\n  password: s3cret\n"
+
+func newAgentImport(agentSvc agentAdapter) ImportServiceInterface {
+	return newImportService(
+		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, agentSvc, nil, nil, nil, nil, nil)
+}
+
+// A new agent's credentials are set once the agent exists, through the agent service.
+func TestImportAgent_CreateSetsTheCredentials(t *testing.T) {
+	agentSvc := &fakeAgentService{existing: map[string]*agentmodel.AgentGetResponse{}}
+
+	resp, svcErr := newAgentImport(agentSvc).ImportResources(context.Background(), &ImportRequest{
+		Content: agentWithPasswordYAML,
+		Options: &ImportOptions{Upsert: boolPtr(true)},
+	})
+
+	require.Nil(t, svcErr)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status, resp.Results[0].Message)
+	require.Len(t, agentSvc.created, 1)
+	assert.NotContains(t, string(agentSvc.created[0].Attributes), "s3cret",
+		"a credential is never written as an attribute")
+	assert.JSONEq(t, `{"password":"s3cret"}`, string(agentSvc.credentials["Test Agent-id"]))
+}
+
+// A new agent whose credentials are refused is deleted again, so a retry does not meet half of it.
+func TestImportAgent_CreateCredentialFailureUndoesTheCreate(t *testing.T) {
+	credErr := &tidcommon.ServiceError{Code: "AGT-1016",
+		Error: tidcommon.I18nMessage{DefaultValue: "Invalid credential"}}
+	agentSvc := &fakeAgentService{existing: map[string]*agentmodel.AgentGetResponse{}, credentialErr: credErr}
+
+	resp, svcErr := newAgentImport(agentSvc).ImportResources(context.Background(), &ImportRequest{
+		Content: agentWithPasswordYAML,
+		Options: &ImportOptions{Upsert: boolPtr(true)},
+	})
+
+	require.Nil(t, svcErr)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusFailed, resp.Results[0].Status)
+	assert.Equal(t, "AGT-1016", resp.Results[0].Code)
+	assert.Equal(t, []string{"Test Agent-id"}, agentSvc.deleted)
+}
+
+func TestImportAgent_CreateCredentialAndRollbackFailure(t *testing.T) {
+	credErr := &tidcommon.ServiceError{Code: "AGT-1016",
+		Error: tidcommon.I18nMessage{DefaultValue: "Invalid credential"}}
+	deleteErr := &tidcommon.ServiceError{Code: "AGT-5000", Error: tidcommon.I18nMessage{DefaultValue: "delete failed"}}
+	agentSvc := &fakeAgentService{existing: map[string]*agentmodel.AgentGetResponse{},
+		credentialErr: credErr, deleteErr: deleteErr}
+
+	resp, svcErr := newAgentImport(agentSvc).ImportResources(context.Background(), &ImportRequest{
+		Content: agentWithPasswordYAML,
+		Options: &ImportOptions{Upsert: boolPtr(true)},
+	})
+
+	require.Nil(t, svcErr)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusFailed, resp.Results[0].Status)
+	assert.Equal(t, "AGT-1016", resp.Results[0].Code)
+	assert.Contains(t, resp.Results[0].Message, "rollback delete failed")
+}
+
+// An agent already there has its credentials set after its profile.
+func TestImportAgent_UpsertSetsTheCredentials(t *testing.T) {
+	agentSvc := &fakeAgentService{existing: map[string]*agentmodel.AgentGetResponse{
+		"agent-1": {ID: "agent-1", Attributes: json.RawMessage(`{"name":"Test Agent"}`)},
+	}}
+
+	resp, svcErr := newAgentImport(agentSvc).ImportResources(context.Background(), &ImportRequest{
+		Content: agentWithPasswordYAML,
+		Options: &ImportOptions{Upsert: boolPtr(true)},
+	})
+
+	require.Nil(t, svcErr)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status, resp.Results[0].Message)
+	assert.Equal(t, operationUpdate, resp.Results[0].Operation)
+	assert.JSONEq(t, `{"password":"s3cret"}`, string(agentSvc.credentials["agent-1"]))
+}
+
+// The profile is already written when its credentials are refused, so the outcome says so.
+func TestImportAgent_UpsertCredentialFailureIsAPartialFailure(t *testing.T) {
+	credErr := &tidcommon.ServiceError{Code: "AGT-1016",
+		Error: tidcommon.I18nMessage{DefaultValue: "Invalid credential"}}
+	agentSvc := &fakeAgentService{existing: map[string]*agentmodel.AgentGetResponse{
+		"agent-1": {ID: "agent-1", Attributes: json.RawMessage(`{"name":"Test Agent"}`)},
+	}, credentialErr: credErr}
+
+	resp, svcErr := newAgentImport(agentSvc).ImportResources(context.Background(), &ImportRequest{
+		Content: agentWithPasswordYAML,
+		Options: &ImportOptions{Upsert: boolPtr(true)},
+	})
+
+	require.Nil(t, svcErr)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusFailed, resp.Results[0].Status)
+	assert.Equal(t, operationUpdate, resp.Results[0].Operation)
+	assert.Equal(t, "AGT-1016", resp.Results[0].Code)
+	assert.Contains(t, resp.Results[0].Message, "agent profile updated but credential update failed")
+	assert.Empty(t, agentSvc.deleted, "an existing agent is never deleted")
+}
+
+func TestImportAgent_DryRunSetsNoCredentials(t *testing.T) {
+	agentSvc := &fakeAgentService{existing: map[string]*agentmodel.AgentGetResponse{}}
+
+	resp, svcErr := newAgentImport(agentSvc).ImportResources(context.Background(), &ImportRequest{
+		Content: agentWithPasswordYAML,
+		DryRun:  true,
+		Options: &ImportOptions{Upsert: boolPtr(true)},
+	})
+
+	require.Nil(t, svcErr)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status)
+	assert.Empty(t, agentSvc.credentials)
+	assert.Empty(t, agentSvc.created)
 }

@@ -5,6 +5,7 @@ package gateway
 
 import (
 	"context"
+	"strings"
 	"unicode/utf8"
 
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -36,10 +37,15 @@ type shipment struct {
 // chosen works out what an apply sends from a diff and a selection. Without a selection every change
 // is sent. A selection names changes by key, and is refused when it names one the diff does not
 // report: a typo or a key from a stale diff would otherwise leave out the resource that was meant.
-// Naming a change that changes nothing is allowed; there is nothing to send for it. The changes sent
-// are flagged Selected on the diff.
-func chosen(diff *Diff, target *Version, selection *[]string) (shipment, bool) {
+// Naming a change that changes nothing is allowed; there is nothing to send for it. With
+// dependencies, the selection is widened to what the selected resources need that the gateway lacks,
+// and refused when one of those is held back; without, a selection needing such a resource is
+// refused. The changes sent are flagged Selected on the diff, and those sent for another's need
+// Required.
+func chosen(diff *Diff, target *Version, selection *[]string,
+	withDependencies bool) (shipment, *tidcommon.ServiceError) {
 	wanted := map[string]bool{}
+	required := map[string]string{}
 	if selection != nil {
 		wanted = toSet(*selection)
 		named := 0
@@ -49,7 +55,21 @@ func chosen(diff *Diff, target *Version, selection *[]string) (shipment, bool) {
 			}
 		}
 		if named != len(wanted) {
-			return shipment{}, false
+			return shipment{}, &ErrorInvalidSelection
+		}
+		if withDependencies {
+			var expanded []string
+			expanded, required = withNeeded(*selection, diff.Changes)
+			if missing, _ := lacking(expanded, diff.Changes); len(missing) > 0 {
+				return shipment{}, tidcommon.CustomServiceError(ErrorDependencyNotDeployed, tidcommon.I18nMessage{
+					Key: "error.gatewayservice.dependency_held_back.description",
+					DefaultValue: "{{param(missing)}}. This gateway holds that back: select it as well to send " +
+						"it, or leave out what needs it.",
+					Params: map[string]string{"missing": strings.Join(missing, "; ")}})
+			}
+			wanted = toSet(expanded)
+		} else if missing, heldBack := lacking(*selection, diff.Changes); len(missing) > 0 {
+			return shipment{}, dependenciesMissing(missing, heldBack)
 		}
 	}
 	take := func(change Change) bool { return selection == nil || wanted[change.Key] }
@@ -61,6 +81,10 @@ func chosen(diff *Diff, target *Version, selection *[]string) (shipment, bool) {
 			continue
 		}
 		diff.Changes[i].Selected = true
+		if by, ok := required[change.Key]; ok {
+			diff.Changes[i].Required = true
+			diff.Changes[i].RequiredBy = by
+		}
 		switch change.Change {
 		case ChangeDeleted:
 			// A resource without an id cannot be named to the gateway, so it is left in place.
@@ -77,7 +101,83 @@ func chosen(diff *Diff, target *Version, selection *[]string) (shipment, bool) {
 			documents = append(documents, resource.Content)
 		}
 	}
-	return shipment{content: joinBundle(documents), deletions: deletions}, true
+	return shipment{content: joinBundle(documents), deletions: deletions}, nil
+}
+
+// shipmentOf works out what an apply sends and the documents it writes, and refuses a removal that what
+// the gateway is left with still needs. A promotion sends only what the source runs, so what it would
+// leave unfinished, a resource naming one the source does not run, or a removal still needed by a
+// resource the source does not run as the version has it, is refused in a promotion's terms, naming
+// the source to deploy the version to first, since a promotion takes no selection to widen.
+func shipmentOf(diff *Diff, target *Version, previous *Master, selection *[]string,
+	options applyOptions) (shipment, []bundleResource, *tidcommon.ServiceError) {
+	// What an apply planned from a master read before it held the lease is sent only while the gateway
+	// still holds that master: another apply that finished in between leaves the plan stale.
+	if options.plannedOn != nil && previous.Hash != *options.plannedOn {
+		return shipment{}, nil, &ErrorAppliedChanged
+	}
+	if options.promotedFrom != "" && selection != nil {
+		if missing, _ := lacking(*selection, diff.Changes); len(missing) > 0 {
+			return shipment{}, nil, tidcommon.CustomServiceError(ErrorPromotionIncomplete, tidcommon.I18nMessage{
+				Key: "error.gatewayservice.promotion_needs_unrun.description",
+				DefaultValue: "{{param(missing)}}, which {{param(source)}} does not run as the version has it, " +
+					"so it cannot be promoted. Deploy it to {{param(source)}} first.",
+				Params: map[string]string{"missing": strings.Join(missing, "; "), "source": options.promotedFrom}})
+		}
+	}
+	sent, svcErr := chosen(diff, target, selection, options.withDependencies)
+	if svcErr != nil {
+		return shipment{}, nil, svcErr
+	}
+	documents := parseBundle(sent.content)
+	referenced := stillReferenced(sent.deletions, parseBundle(previous.Resources), documents)
+	switch {
+	case len(referenced) == 0:
+		return sent, documents, nil
+	case options.promotedFrom != "":
+		return shipment{}, nil, tidcommon.CustomServiceError(ErrorPromotionIncomplete, tidcommon.I18nMessage{
+			Key: "error.gatewayservice.promotion_removal_in_use.description",
+			DefaultValue: "{{param(referenced)}}, which {{param(source)}} does not run as the version has it, " +
+				"so this promotion cannot remove it. Deploy the version to {{param(source)}} first.",
+			Params: map[string]string{"referenced": strings.Join(referenced, "; "), "source": options.promotedFrom}})
+	default:
+		return shipment{}, nil, removalsInUse(referenced)
+	}
+}
+
+// refuseRemovalsInUse refuses removals that a document the gateway keeps still names once this apply's
+// documents are written over it. A removal that only an update in the same apply frees goes through,
+// sent after that update, so the import cannot refuse the update and still make the removal.
+func refuseRemovalsInUse(sent shipment, master *Master, updated []bundleResource) *tidcommon.ServiceError {
+	referenced := stillReferenced(sent.deletions, parseBundle(master.Resources), updated)
+	if len(referenced) == 0 {
+		return nil
+	}
+	return removalsInUse(referenced)
+}
+
+// removalsInUse refuses removals still needed, naming each with what needs it.
+func removalsInUse(referenced []string) *tidcommon.ServiceError {
+	return tidcommon.CustomServiceError(ErrorRemovalInUse, tidcommon.I18nMessage{
+		Key:          "error.gatewayservice.removal_in_use_by.description",
+		DefaultValue: "{{param(referenced)}}. Remove or update them in the same apply, or leave it in place.",
+		Params:       map[string]string{"referenced": strings.Join(referenced, "; ")}})
+}
+
+// dependenciesMissing refuses a selection sent without its dependencies, naming what it lacks. Sending
+// with dependencies brings along only what the gateway does not hold back, so when a held-back change
+// is among what it lacks, the caller is told to select it rather than to send dependencies along.
+func dependenciesMissing(missing []string, heldBack bool) *tidcommon.ServiceError {
+	if heldBack {
+		return tidcommon.CustomServiceError(ErrorDependencyNotDeployed, tidcommon.I18nMessage{
+			Key:          "error.gatewayservice.dependency_held_back_missing.description",
+			DefaultValue: "{{param(missing)}}. This gateway holds some of that back: select it as well to send it.",
+			Params:       map[string]string{"missing": strings.Join(missing, "; ")}})
+	}
+	return tidcommon.CustomServiceError(ErrorDependencyNotDeployed, tidcommon.I18nMessage{
+		Key:          "error.gatewayservice.dependency_missing.description",
+		DefaultValue: "{{param(missing)}}. Select them as well, or apply with withDependencies.",
+		Params:       map[string]string{"missing": strings.Join(missing, "; ")}})
 }
 
 func keysOf(excluded []excludedResource) map[string]bool {

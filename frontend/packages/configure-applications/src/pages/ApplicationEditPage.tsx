@@ -8,11 +8,12 @@ import {
   PageLoadingAnimation,
   QueryErrorNotice,
   ResourceAvatar,
+  ResourceDeployStatus,
   UnsavedChangesBar,
 } from '@thunderid/components';
 import {FlowType, useGetFlows} from '@thunderid/configure-flows';
 import {useOrganizationAccess} from '@thunderid/configure-resource-sharing';
-import {useConfig} from '@thunderid/contexts';
+import {useConfig, useProjectScope} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {isEqualIgnoringEmpty} from '@thunderid/utils';
 import {
@@ -63,7 +64,7 @@ import getTemplateFieldConstraints from '../utils/getTemplateFieldConstraints';
 import getTemplateMetadata from '../utils/getTemplateMetadata';
 import isSystemConsoleClient from '../utils/isSystemConsoleClient';
 import isValidRedirectUriFormat from '../utils/isValidRedirectUriFormat';
-import {hasClientAccess, hasUserAccess} from '../utils/oauth2Rules';
+import {hasUserAccess} from '../utils/oauth2Rules';
 import validateBackchannelLogoutUri from '../utils/validateBackchannelLogoutUri';
 
 interface TabConfig {
@@ -110,24 +111,21 @@ export default function ApplicationEditPage() {
   const {applicationId} = useParams<{applicationId: string}>();
 
   const {data: application, isLoading, error, refetch} = useGetApplication(applicationId ?? '');
+  const {projectId} = useProjectScope();
+  // Another project's application is not shown in the selected one: a deep link, a stale tab or a
+  // switch of project goes to the selected project's applications instead.
+  const isOtherProject = Boolean(projectId && application && application.projectId !== projectId);
+  useEffect(() => {
+    if (isOtherProject) void navigate(routes.applications.list(), {replace: true});
+  }, [isOtherProject, navigate, routes]);
   const updateApplication = useUpdateApplication();
   const handleStatusChanged = useCallback((): void => {
     void refetch();
   }, [refetch]);
-  // TODO: Offer Organization Access to every application once sharing an application that signs
-  // users in is supported, by removing this check. Until then a granted unit can only request tokens
-  // through the application, so only applications with the client credentials grant get the tab,
-  // whatever other grants they also have. Read from the saved application, so the tab does not
-  // appear or vanish while grant types are being edited.
-  const offersOrganizationAccess = useMemo(
-    () =>
-      hasClientAccess(application?.inboundAuthConfig?.find((config) => config.type === 'oauth2')?.config.grantTypes),
-    [application],
-  );
   // Held here rather than in its tab, because inactive tabs unmount and the draft must survive them.
   const organizationAccess = useOrganizationAccess({
     resourcePath: `applications/${applicationId}`,
-    enabled: Boolean(applicationId) && offersOrganizationAccess,
+    enabled: Boolean(applicationId),
     // The tab's sentences say what access means for an application: `applications:organizationAccess.*`.
     wordingNamespace: 'applications',
   });
@@ -311,7 +309,7 @@ export default function ApplicationEditPage() {
 
   const resourceTypeTitle = t('navigation:pages.applications', 'Applications');
 
-  if (isLoading) {
+  if (isLoading || isOtherProject) {
     return (
       <>
         <DocumentTitle title={resourceTypeTitle} />
@@ -510,7 +508,6 @@ export default function ApplicationEditPage() {
             key: 'organizationAccess',
             label: t('applications:edit.page.tabs.organizationAccess', 'Organization Access'),
             panel: <EditOrganizationAccessSettings application={application} access={organizationAccess} />,
-            hidden: !offersOrganizationAccess,
           },
           {
             key: 'advanced',
@@ -670,7 +667,6 @@ export default function ApplicationEditPage() {
           key: 'organizationAccess',
           label: t('applications:edit.page.tabs.organizationAccess', 'Organization Access'),
           panel: <EditOrganizationAccessSettings application={application} access={organizationAccess} />,
-          hidden: !offersOrganizationAccess,
         },
         {
           key: 'advanced',
@@ -691,7 +687,7 @@ export default function ApplicationEditPage() {
             />
           ),
         },
-      ].filter((tab) => !tab.hidden)
+      ]
     : [];
 
   const activeTabs = isMcpClient ? mcpTabs : standardTabs;
@@ -709,6 +705,7 @@ export default function ApplicationEditPage() {
         </Alert>
       )}
       <AccessStatusBanner status={application.status} category="application" sx={{mb: 2}} />
+      <ResourceDeployStatus resourceType="application" id={application.id} variant="notice" sx={{mb: 2}} />
       {/* Header */}
       <PageTitle>
         <PageTitle.BackButton component={<Link to={routes.applications.list()} />}>

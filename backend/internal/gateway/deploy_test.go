@@ -80,7 +80,7 @@ func (s *DeployTestSuite) TestASelectionSendsTheChangesNamedAndKeepsNothing() {
 	}
 	assert.Equal(t, map[string]bool{"organization_unit/ou-a": true, "organization_unit/ou-b": false}, selected)
 
-	diff, svcErr := f.svc.Diff(context.Background(), "gw-1", "")
+	diff, svcErr := f.svc.Diff(context.Background(), "gw-1", "", "")
 	require.Nil(t, svcErr)
 	assert.Equal(t, DiffSummary{Added: 1, Unchanged: 1}, diff.Summary, "the change left out is no longer offered")
 	for _, change := range diff.Changes {
@@ -108,7 +108,7 @@ func (s *DeployTestSuite) TestAChangeLeftOutIsHeldBackUntilSelected() {
 
 	require.Nil(t, svcErr)
 	assert.Equal(t, unit("ou-a"), f.client.last().Content)
-	diff, svcErr := f.svc.Diff(context.Background(), "gw-1", "")
+	diff, svcErr := f.svc.Diff(context.Background(), "gw-1", "", "")
 	require.Nil(t, svcErr)
 	held := map[string]bool{}
 	for _, change := range diff.Changes {
@@ -129,7 +129,7 @@ func (s *DeployTestSuite) TestAChangeLeftOutIsHeldBackUntilSelected() {
 	_, svcErr = f.svc.Apply(context.Background(), "gw-1", ApplyRequest{Selection: &[]string{"organization_unit/ou-b"}})
 	require.Nil(t, svcErr)
 	assert.Equal(t, unit("ou-b"), f.client.last().Content)
-	diff, _ = f.svc.Diff(context.Background(), "gw-1", "")
+	diff, _ = f.svc.Diff(context.Background(), "gw-1", "", "")
 	for _, change := range diff.Changes {
 		assert.False(t, change.HeldBack, "a selected change stayed held back")
 	}
@@ -161,7 +161,7 @@ func (s *DeployTestSuite) TestARefusedResourceIsOfferedAgainUntilAccepted() {
 	_, svcErr := f.svc.Apply(context.Background(), "gw-1", ApplyRequest{})
 	require.Nil(t, svcErr)
 
-	diff, svcErr := f.svc.Diff(context.Background(), "gw-1", "")
+	diff, svcErr := f.svc.Diff(context.Background(), "gw-1", "", "")
 	require.Nil(t, svcErr)
 	require.Len(t, diff.Changes, 2)
 	assert.Equal(t, ChangeUnchanged, diff.Changes[0].Change)
@@ -176,7 +176,7 @@ func (s *DeployTestSuite) TestARefusedResourceIsOfferedAgainUntilAccepted() {
 	assert.Equal(t, MasterSummary{Deployed: 2}, master.Summary)
 	assert.Equal(t, master.Hash, result.Master)
 
-	diff, _ = f.svc.Diff(context.Background(), "gw-1", "")
+	diff, _ = f.svc.Diff(context.Background(), "gw-1", "", "")
 	assert.Equal(t, DiffSummary{Unchanged: 2}, diff.Summary)
 	assert.False(t, diff.Changes[1].Failed)
 }
@@ -191,7 +191,7 @@ func (s *DeployTestSuite) TestARefusalOfARunningResourceIsOfferedAsUpdated() {
 	require.Nil(t, svcErr)
 	f.versions.masters["gw-1"][0].Entries[0].State = EntryFailed
 
-	diff, svcErr := f.svc.Diff(context.Background(), "gw-1", "")
+	diff, svcErr := f.svc.Diff(context.Background(), "gw-1", "", "")
 
 	require.Nil(t, svcErr)
 	require.Len(t, diff.Changes, 1)
@@ -416,7 +416,7 @@ func (s *DeployTestSuite) TestHeldBackRemovalsAreNotCountedBeforeQueueing() {
 		LeaveOut: []string{"organization_unit/ou-b", "organization_unit/ou-c", "organization_unit/ou-d",
 			"organization_unit/ou-e", "organization_unit/ou-f", "organization_unit/ou-g"}})
 	require.Nil(t, svcErr)
-	f.versions.leases["gw-1"].Token, f.versions.leases["gw-1"].Since = "a-node-elsewhere", time.Now()
+	f.versions.leases["gw-1"].Token, f.versions.leases["gw-1"].Since = nodeElsewhere, time.Now()
 
 	result, svcErr := f.svc.Apply(context.Background(), "gw-1", ApplyRequest{})
 
@@ -456,7 +456,7 @@ func (s *DeployTestSuite) TestASkipOwedBeforeMastersIsNotHeldBack() {
 		"organization_unit/ou-c": {Key: "organization_unit/ou-c", Type: "organization_unit", ID: "ou-c"},
 	}}
 
-	diff, svcErr := f.svc.Diff(context.Background(), "gw-1", "")
+	diff, svcErr := f.svc.Diff(context.Background(), "gw-1", "", "")
 	require.Nil(t, svcErr)
 	held := map[string]bool{}
 	for _, change := range diff.Changes {

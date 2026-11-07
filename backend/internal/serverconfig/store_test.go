@@ -149,3 +149,35 @@ func loadRuntimeForScope() {
 		Server: engineconfig.ServerConfig{Identifier: testDeploymentID},
 	})
 }
+
+// --- ReplaceServerConfigIf ---
+
+// A section read unset is written only while it stays unset, and one read set only while it still holds
+// what was read; a statement that writes no row reports the write lost.
+func (suite *StoreTestSuite) TestReplaceServerConfigIf() {
+	suite.expectDBClient()
+	suite.mockDBClient.On("ExecuteContext", mock.Anything, queryInsertServerConfigIfAbsent,
+		string(ConfigNameCORS), `["a"]`, testDeploymentID).Return(int64(1), nil).Once()
+	suite.mockDBClient.On("ExecuteContext", mock.Anything, queryReplaceServerConfigIf,
+		`["b"]`, string(ConfigNameCORS), testDeploymentID, `["a"]`).Return(int64(0), nil).Once()
+	suite.mockDBClient.On("ExecuteContext", mock.Anything, queryReplaceServerConfigIf,
+		`["c"]`, string(ConfigNameCORS), testDeploymentID, `["a"]`).Return(int64(0), errors.New("db down")).Once()
+
+	written, err := suite.store.ReplaceServerConfigIf(suite.ctx,
+		ServerConfig{Name: ConfigNameCORS, Value: json.RawMessage(`["a"]`)}, nil)
+	suite.NoError(err)
+	suite.True(written)
+	written, err = suite.store.ReplaceServerConfigIf(suite.ctx,
+		ServerConfig{Name: ConfigNameCORS, Value: json.RawMessage(`["b"]`)}, json.RawMessage(`["a"]`))
+	suite.NoError(err)
+	suite.False(written, "a write over a changed layer was reported written")
+	_, err = suite.store.ReplaceServerConfigIf(suite.ctx,
+		ServerConfig{Name: ConfigNameCORS, Value: json.RawMessage(`["c"]`)}, json.RawMessage(`["a"]`))
+	suite.Error(err)
+}
+
+func (suite *StoreTestSuite) TestReplaceServerConfigIf_ClientError() {
+	suite.expectDBClientError()
+	_, err := suite.store.ReplaceServerConfigIf(suite.ctx, ServerConfig{Name: ConfigNameCORS}, nil)
+	suite.Error(err)
+}

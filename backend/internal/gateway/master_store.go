@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 
 	"github.com/google/uuid"
 
@@ -22,8 +23,9 @@ var (
 	queryInsertMaster = dbmodel.DBQuery{
 		ID: "GTM_MGT-01",
 		Query: `INSERT INTO "GATEWAY_MASTER" (ID, GATEWAY_ID, SEQ, HASH, RESOURCES, MANIFEST, CREATED_BY, ` +
-			`DEPLOYMENT_ID) SELECT $1, $2, COALESCE(MAX(SEQ), 0) + 1, $3, $4, $5, $6, $7 ` +
-			`FROM "GATEWAY_MASTER" WHERE GATEWAY_ID = $8 AND DEPLOYMENT_ID = $9 RETURNING SEQ, CREATED_AT`,
+			`PROJECT_ID, PROJECT_REVERT, DEPLOYMENT_ID) SELECT $1, $2, COALESCE(MAX(SEQ), 0) + 1, $3, $4, $5, $6, ` +
+			`$7, $8, $9 FROM "GATEWAY_MASTER" WHERE GATEWAY_ID = $10 AND DEPLOYMENT_ID = $11 ` +
+			`RETURNING SEQ, CREATED_AT`,
 	}
 	// queryInsertMasterUnderLease records a gateway's new master as queryInsertMaster does, only while
 	// the apply writing it still holds the gateway's lease: one superseded after a take-over records
@@ -31,33 +33,37 @@ var (
 	queryInsertMasterUnderLease = dbmodel.DBQuery{
 		ID: "GTM_MGT-06",
 		Query: `INSERT INTO "GATEWAY_MASTER" (ID, GATEWAY_ID, SEQ, HASH, RESOURCES, MANIFEST, CREATED_BY, ` +
-			`DEPLOYMENT_ID) SELECT $1, $2, COALESCE(MAX(SEQ), 0) + 1, $3, $4, $5, $6, $7 ` +
-			`FROM "GATEWAY_MASTER" WHERE GATEWAY_ID = $8 AND DEPLOYMENT_ID = $9 ` +
+			`PROJECT_ID, PROJECT_REVERT, DEPLOYMENT_ID) SELECT $1, $2, COALESCE(MAX(SEQ), 0) + 1, $3, $4, $5, $6, ` +
+			`$7, $8, $9 FROM "GATEWAY_MASTER" WHERE GATEWAY_ID = $10 AND DEPLOYMENT_ID = $11 ` +
 			`HAVING EXISTS (SELECT 1 FROM "GATEWAY_APPLY_LEASE" ` +
-			`WHERE GATEWAY_ID = $8 AND DEPLOYMENT_ID = $9 AND TOKEN = $10) RETURNING SEQ, CREATED_AT`,
+			`WHERE GATEWAY_ID = $10 AND DEPLOYMENT_ID = $11 AND TOKEN = $12) RETURNING SEQ, CREATED_AT`,
 	}
 	// queryGetMaster reads the master a gateway holds now, with its resources.
 	queryGetMaster = dbmodel.DBQuery{
 		ID: "GTM_MGT-02",
-		Query: `SELECT SEQ, HASH, RESOURCES, MANIFEST, CREATED_AT, CREATED_BY FROM "GATEWAY_MASTER" ` +
+		Query: `SELECT SEQ, HASH, RESOURCES, MANIFEST, CREATED_AT, CREATED_BY, PROJECT_ID, PROJECT_REVERT ` +
+			`FROM "GATEWAY_MASTER" ` +
 			`WHERE GATEWAY_ID = $1 AND DEPLOYMENT_ID = $2 ORDER BY SEQ DESC LIMIT 1`,
 	}
 	// queryListMasters lists a gateway's masters, newest first, with their manifests but not their
 	// resources.
 	queryListMasters = dbmodel.DBQuery{
 		ID: "GTM_MGT-03",
-		Query: `SELECT SEQ, HASH, MANIFEST, CREATED_AT, CREATED_BY FROM "GATEWAY_MASTER" ` +
+		Query: `SELECT SEQ, HASH, MANIFEST, CREATED_AT, CREATED_BY, PROJECT_ID, PROJECT_REVERT FROM "GATEWAY_MASTER" ` +
 			`WHERE GATEWAY_ID = $1 AND DEPLOYMENT_ID = $2 ORDER BY SEQ DESC`,
 	}
-	// queryPruneMasters removes a gateway's masters older than the retention bound.
+	// queryPruneMasters removes a gateway's masters numbered from one number through another, which
+	// pruning runs for each stretch below the retention bound between the masters it keeps.
 	queryPruneMasters = dbmodel.DBQuery{
-		ID:    "GTM_MGT-04",
-		Query: `DELETE FROM "GATEWAY_MASTER" WHERE GATEWAY_ID = $1 AND SEQ <= $2 AND DEPLOYMENT_ID = $3`,
+		ID: "GTM_MGT-04",
+		Query: `DELETE FROM "GATEWAY_MASTER" WHERE GATEWAY_ID = $1 AND SEQ >= $2 AND SEQ <= $3 ` +
+			`AND DEPLOYMENT_ID = $4`,
 	}
 	// queryGetMasterAt reads one of a gateway's masters by its number, with its resources.
 	queryGetMasterAt = dbmodel.DBQuery{
 		ID: "GTM_MGT-07",
-		Query: `SELECT SEQ, HASH, RESOURCES, MANIFEST, CREATED_AT, CREATED_BY FROM "GATEWAY_MASTER" ` +
+		Query: `SELECT SEQ, HASH, RESOURCES, MANIFEST, CREATED_AT, CREATED_BY, PROJECT_ID, PROJECT_REVERT ` +
+			`FROM "GATEWAY_MASTER" ` +
 			`WHERE GATEWAY_ID = $1 AND SEQ = $2 AND DEPLOYMENT_ID = $3`,
 	}
 	// queryDeleteMasters forgets a removed gateway's masters.
@@ -89,7 +95,8 @@ func (s *versionStore) AddMaster(ctx context.Context, master Master, token strin
 	}
 	deploymentID := deployment.Resolve(ctx)
 	args := []interface{}{uuid.New().String(), master.GatewayID, master.Hash, master.Resources, manifest,
-		actorColumn(master.CreatedBy), deploymentID, master.GatewayID, deploymentID}
+		actorColumn(master.CreatedBy), nullable(master.Project), master.ProjectRevert, deploymentID,
+		master.GatewayID, deploymentID}
 	insert := queryInsertMaster
 	if token != "" {
 		insert = queryInsertMasterUnderLease
@@ -174,19 +181,46 @@ func masterFrom(gatewayID string, row map[string]interface{}) (*Master, error) {
 		Hash:      asString(row["hash"]),
 		CreatedAt: asTime(row["created_at"]),
 		CreatedBy: actorFrom(row["created_by"]),
+		Project:   asString(row["project_id"]),
 		Summary:   summarizeMaster(entries),
 		Entries:   entries,
+		// ProjectRevert is read apart from the row's other columns: a driver answers a boolean as one.
+		ProjectRevert: asBool(row["project_revert"]),
 	}, nil
 }
 
-func (s *versionStore) PruneMasters(ctx context.Context, gatewayID string, through int) error {
-	if through <= 0 {
-		return nil
-	}
-	if err := s.execute(ctx, queryPruneMasters, gatewayID, through, deployment.Resolve(ctx)); err != nil {
-		return fmt.Errorf("failed to remove old masters: %w", err)
+func (s *versionStore) PruneMasters(ctx context.Context, gatewayID string, through int, keep []int) error {
+	for _, stretch := range stretchesWithout(through, keep) {
+		if err := s.execute(ctx, queryPruneMasters, gatewayID, stretch[0], stretch[1],
+			deployment.Resolve(ctx)); err != nil {
+			return fmt.Errorf("failed to remove old masters: %w", err)
+		}
 	}
 	return nil
+}
+
+// stretchesWithout splits the numbers from 1 through through into the stretches between the kept ones,
+// each as its first and last number.
+func stretchesWithout(through int, keep []int) [][2]int {
+	kept := append([]int(nil), keep...)
+	sort.Ints(kept)
+	var stretches [][2]int
+	from := 1
+	for _, seq := range kept {
+		if seq > through {
+			break
+		}
+		if seq > from {
+			stretches = append(stretches, [2]int{from, seq - 1})
+		}
+		if seq >= from {
+			from = seq + 1
+		}
+	}
+	if from <= through {
+		stretches = append(stretches, [2]int{from, through})
+	}
+	return stretches
 }
 
 func (s *versionStore) DeleteMasters(ctx context.Context, gatewayID string) error {

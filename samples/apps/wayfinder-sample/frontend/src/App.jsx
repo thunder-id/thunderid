@@ -512,6 +512,10 @@ function ChatWidgetCore({ getToken, getCachedToken }) {
           });
           const data = await res.json();
 
+          if (!res.ok || data.type !== "consent_received") {
+            throw new Error(data.error || `Consent submission failed (${res.status})`);
+          }
+
           setMessages((current) =>
             current.map((m) =>
               m.kind === "consent_request" && m.status === "awaiting"
@@ -520,7 +524,7 @@ function ChatWidgetCore({ getToken, getCachedToken }) {
             )
           );
 
-          if (data.type === "consent_received" && pendingRetryRef.current) {
+          if (pendingRetryRef.current) {
             const retryMessage = pendingRetryRef.current;
             pendingRetryRef.current = null;
             await sendChatMessage(retryMessage, false);
@@ -530,7 +534,11 @@ function ChatWidgetCore({ getToken, getCachedToken }) {
           setMessages((current) =>
             current.map((m) =>
               m.kind === "consent_request" && m.status === "awaiting"
-                ? { ...m, status: "error", errorReason: "Failed to complete authorization" }
+                ? {
+                    ...m,
+                    status: "error",
+                    errorReason: "Failed to complete authorization. Send your request again to retry."
+                  }
                 : m
             )
           );
@@ -678,24 +686,24 @@ function HomeRedirect() {
   return <Navigate to="/flights" replace />;
 }
 
-// Receives the OAuth authorization code from Thunder after the chat agent has
-// triggered an authorization-code flow in a popup. Posts the code (and state)
-// back to the opener window (the chat widget) and closes itself.
-function AgentCallbackRoute() {
+// Posts the OAuth callback result in this popup's URL back to the opener window and closes the
+// popup. The result is posted once: StrictMode runs effects twice in development, and the opener
+// must not redeem the same authorization code twice, since ThunderID treats a second redemption as
+// a replay and, by default, revokes every token issued from the user's sign-in.
+function usePostOAuthResultToOpener(type) {
+  const postedRef = useRef(false);
+
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const code = params.get("code");
-    const state = params.get("state");
-    const error = params.get("error");
-    const errorDescription = params.get("error_description");
-    if (window.opener) {
+    if (!postedRef.current && window.opener) {
+      postedRef.current = true;
+      const params = new URLSearchParams(window.location.search);
       window.opener.postMessage(
         {
-          type: "wayfinder-agent-oauth",
-          code: code || null,
-          state: state || null,
-          error: error || null,
-          errorDescription: errorDescription || null
+          type,
+          code: params.get("code"),
+          state: params.get("state"),
+          error: params.get("error"),
+          errorDescription: params.get("error_description")
         },
         window.location.origin
       );
@@ -703,7 +711,14 @@ function AgentCallbackRoute() {
     // Give the parent a moment to receive the message before tearing the popup down.
     const timer = window.setTimeout(() => window.close(), 100);
     return () => window.clearTimeout(timer);
-  }, []);
+  }, [type]);
+}
+
+// Receives the OAuth authorization code from ThunderID after the chat agent has
+// triggered an authorization-code flow in a popup. Posts the code (and state)
+// back to the opener window (the chat widget) and closes itself.
+function AgentCallbackRoute() {
+  usePostOAuthResultToOpener("wayfinder-agent-oauth");
 
   return (
     <main style={{
@@ -720,29 +735,7 @@ function AgentCallbackRoute() {
 }
 
 function ChatTokenCallbackRoute() {
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const code = params.get("code");
-    const state = params.get("state");
-    const error = params.get("error");
-    const errorDescription = params.get("error_description");
-
-    if (window.opener) {
-      window.opener.postMessage(
-        {
-          type: "wayfinder-chat-token-oauth",
-          code: code || null,
-          state: state || null,
-          error: error || null,
-          errorDescription: errorDescription || null
-        },
-        window.location.origin
-      );
-    }
-
-    const timer = window.setTimeout(() => window.close(), 100);
-    return () => window.clearTimeout(timer);
-  }, []);
+  usePostOAuthResultToOpener("wayfinder-chat-token-oauth");
 
   return (
     <main style={{

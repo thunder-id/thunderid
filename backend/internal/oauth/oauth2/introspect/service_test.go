@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/revocation"
@@ -152,6 +153,55 @@ func (s *TokenIntrospectionServiceTestSuite) TestIntrospectToken_InvalidToken_Is
 	assert.NoError(s.T(), err)
 	assert.NotNil(s.T(), response)
 	assert.False(s.T(), response.Active)
+}
+
+// A token is inactive from its exp, even while the validator still accepts it within its leeway, and
+// active before it with exp surfaced.
+func (s *TokenIntrospectionServiceTestSuite) TestIntrospectToken_ExpBoundary() {
+	now := time.Now()
+	cases := []struct {
+		name    string
+		token   string
+		refresh bool
+		exp     time.Time
+		active  bool
+	}{
+		{
+			name:  "access token past exp within leeway",
+			token: accessTokenFor("expired-access"),
+			exp:   now.Add(-15 * time.Second),
+		},
+		{
+			name:    "refresh token past exp within leeway",
+			token:   refreshTokenFor("expired-refresh"),
+			refresh: true,
+			exp:     now.Add(-15 * time.Second),
+		},
+		{name: "access token at exp", token: accessTokenFor("at-exp"), exp: now},
+		{name: "access token before exp", token: accessTokenFor("live"), exp: now.Add(time.Minute), active: true},
+	}
+
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			claims := map[string]interface{}{"exp": float64(tc.exp.Unix())}
+			if tc.refresh {
+				s.tokenValidatorMock.On("ValidateRefreshToken", mock.Anything, tc.token).
+					Return(&tokenservice.RefreshTokenClaims{Claims: claims}, nil)
+			} else {
+				s.stubAccessToken(tc.token, claims)
+			}
+
+			response, err := s.introspectService.IntrospectToken(context.Background(), tc.token, "")
+
+			assert.NoError(s.T(), err)
+			if !tc.active {
+				assert.Equal(s.T(), &IntrospectResponse{Active: false}, response)
+				return
+			}
+			assert.True(s.T(), response.Active)
+			assert.Equal(s.T(), tc.exp.Unix(), response.Exp)
+		})
+	}
 }
 
 // A revoked but otherwise valid token is reported inactive (RFC 7009 deny-list enforcement).

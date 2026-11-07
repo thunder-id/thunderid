@@ -20,13 +20,12 @@ import {
   InputAdornment,
   Stack,
   TextField,
-  ToggleButton,
-  ToggleButtonGroup,
   Typography,
 } from '@wso2/oxygen-ui';
 import {ChevronRight, Search, X} from '@wso2/oxygen-ui-icons-react';
 import {useMemo, useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
+import ReachToggleGroup from './ReachToggleGroup';
 import type {ChildUnitReach} from '../models/organization-access';
 
 /**
@@ -181,8 +180,10 @@ function UnitLevel({
                   aria-expanded={isOpen}
                   aria-label={
                     isOpen
-                      ? t('resourceSharing:picker.collapse', 'Hide units under {{name}}', {name: unit.name})
-                      : t('resourceSharing:picker.expand', 'Show units under {{name}}', {name: unit.name})
+                      ? t('resourceSharing:picker.collapse', 'Hide organization units under {{name}}', {
+                          name: unit.name,
+                        })
+                      : t('resourceSharing:picker.expand', 'Show organization units under {{name}}', {name: unit.name})
                   }
                   onClick={() =>
                     setExpanded((current) => {
@@ -292,7 +293,8 @@ export default function OrganizationUnitSelectDialog({
       <DialogTitle>{title}</DialogTitle>
       <DialogContent>
         <DialogContentText sx={{mb: 2}}>{description}</DialogContentText>
-        <Box sx={{display: 'grid', gridTemplateColumns: {xs: '1fr', md: '3fr 2fr'}, gap: 2}}>
+        {/* The picked column is wide enough for each reach toggle's labels on one line. */}
+        <Box sx={{display: 'grid', gridTemplateColumns: {xs: '1fr', md: 'minmax(0, 1fr) 380px'}, gap: 2}}>
           <Stack spacing={1.5} sx={{minWidth: 0}}>
             <TextField
               size="small"
@@ -371,23 +373,7 @@ export default function OrganizationUnitSelectDialog({
                     </IconButton>
                   </Stack>
                   {item.reach && (
-                    <ToggleButtonGroup
-                      exclusive
-                      size="small"
-                      fullWidth
-                      value={item.reach}
-                      aria-label={t('resourceSharing:reach.label', 'Reach for {{name}}', {name})}
-                      onChange={(_event, reach: ChildUnitReach | null) => {
-                        if (reach) setReach(item.ouId, reach);
-                      }}
-                    >
-                      <ToggleButton value="unit" sx={{textTransform: 'none'}}>
-                        {t('resourceSharing:reach.unit', 'This unit only')}
-                      </ToggleButton>
-                      <ToggleButton value="subtree" sx={{textTransform: 'none'}}>
-                        {t('resourceSharing:reach.subtree', 'And below')}
-                      </ToggleButton>
-                    </ToggleButtonGroup>
+                    <ReachToggleGroup name={name} value={item.reach} onChange={(reach) => setReach(item.ouId, reach)} />
                   )}
                 </Stack>
               );

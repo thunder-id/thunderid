@@ -38,7 +38,7 @@ func TestViewResourceShowsAnExportedAgentAsItsRead(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	view, err := newAgentExporter(nil).ViewResource(context.Background(),
+	view, err := newAgentExporter(nil, nil).ViewResource(context.Background(),
 		viewDocument(t, "resource_type: agent\n"+string(exported)))
 
 	require.NoError(t, err)
@@ -68,7 +68,7 @@ func TestViewResourceReportsTheLifespanAsItsRead(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			view, err := newAgentExporter(nil).ViewResource(context.Background(), viewDocument(t,
+			view, err := newAgentExporter(nil, nil).ViewResource(context.Background(), viewDocument(t,
 				"resource_type: agent\nid: agent-1\nvalidUntil: \""+tc.validUntil+"\"\n"))
 
 			require.NoError(t, err)
@@ -82,7 +82,7 @@ func TestViewResourceReportsTheLifespanAsItsRead(t *testing.T) {
 
 // An exported agent with no validUntil reports no lifespan, as nothing says what it is.
 func TestViewResourceWithoutALifespanReportsNone(t *testing.T) {
-	view, err := newAgentExporter(nil).ViewResource(context.Background(),
+	view, err := newAgentExporter(nil, nil).ViewResource(context.Background(),
 		viewDocument(t, "resource_type: agent\nid: agent-1\n"))
 
 	require.NoError(t, err)
@@ -91,7 +91,7 @@ func TestViewResourceWithoutALifespanReportsNone(t *testing.T) {
 
 // A document that is not an agent is refused.
 func TestViewResourceRefusesAnUnreadableDocument(t *testing.T) {
-	exporter := newAgentExporter(nil)
+	exporter := newAgentExporter(nil, nil)
 
 	_, err := exporter.ViewResource(context.Background(), viewDocument(t, "id: [not, an, id]"))
 	assert.Error(t, err)

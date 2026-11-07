@@ -4,10 +4,12 @@
 package ui
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
@@ -517,5 +519,48 @@ func TestExit_UndeliverableSignalStopsTheServerItStarted(t *testing.T) {
 
 	if len(*stopped) != 1 || (*stopped)[0] != 8091 {
 		t.Fatalf("expected the orphaned server to be stopped on exit, got %v", *stopped)
+	}
+}
+
+// A quickstart runs three servers. One that will not stop must not leave the others running, and
+// the first failure is still reported.
+func TestStop_AttachedQuickstartTriesEveryPort(t *testing.T) {
+	dir := t.TempDir()
+	for name, body := range map[string]string{
+		"setup.sh":                "",
+		"quickstart-bootstrap.sh": "",
+		"cp/deployment.yaml":      "server:\n  port: 8095\n",
+		"dp/deployment.yaml":      "server:\n  port: 8090\n",
+		"auth-dp/deployment.yaml": "server:\n  port: 8091\n",
+	} {
+		path := filepath.Join(dir, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	origReady, origStop := productOnPort, stopPort
+	t.Cleanup(func() { productOnPort, stopPort = origReady, origStop })
+	productOnPort = func(int) bool { return true }
+	var tried []int
+	stopPort = func(port int) error {
+		tried = append(tried, port)
+		if port == 8095 {
+			return errors.New("port 8095 is still held")
+		}
+		return nil
+	}
+
+	m := NewReplModel("2.0.0", nil, dir, false, false, nil)
+	m.checkPort = 8095
+	err := m.stopThunderID(true)
+
+	if err == nil || !strings.Contains(err.Error(), "8095") {
+		t.Fatalf("expected the failure on 8095 to be reported, got %v", err)
+	}
+	if len(tried) != 3 {
+		t.Fatalf("expected every quickstart port to be tried, got %v", tried)
 	}
 }

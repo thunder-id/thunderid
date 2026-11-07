@@ -154,7 +154,7 @@ func (s *AgentClientAttributesTestSuite) createAgentWithClientConfig(
 	return createAgent(Agent{
 		OUID:       s.ouID,
 		Type:       "default",
-		Owner:      owner,
+		Owner:      testutils.LocalAgentOwner(owner),
 		Attributes: withName("Client Attrs Agent "+clientID, attributes),
 		InboundAuthConfig: []InboundAuthConfig{
 			{
@@ -183,7 +183,7 @@ func (s *AgentClientAttributesTestSuite) updateClientAttributes(
 	body := Agent{
 		OUID:       s.ouID,
 		Type:       "default",
-		Owner:      s.ownerUserID,
+		Owner:      testutils.LocalAgentOwner(s.ownerUserID),
 		Attributes: withName("Client Attrs Agent "+clientID, attrs),
 		InboundAuthConfig: []InboundAuthConfig{
 			{
@@ -357,7 +357,7 @@ func (s *AgentClientAttributesTestSuite) TestAgentClientAttrs_SubValidUntil() {
 			agentID, err := createAgent(Agent{
 				OUID:       s.ouID,
 				Type:       "default",
-				Owner:      s.ownerUserID,
+				Owner:      testutils.LocalAgentOwner(s.ownerUserID),
 				ValidUntil: tc.validUntil,
 				Attributes: withName("Client Attrs Agent "+clientID, nil),
 				InboundAuthConfig: []InboundAuthConfig{

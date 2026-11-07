@@ -19,7 +19,7 @@ export type ApiAgent = {
   id: string;
   display?: string;
   clientId?: string;
-  owner?: string;
+  owner?: { id: string; idType?: string; isLocal?: boolean };
   type?: string;
   ouId?: string;
   attributes?: Record<string, unknown>;

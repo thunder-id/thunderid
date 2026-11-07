@@ -8,6 +8,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/thunder-id/thunderid/internal/serverconfig"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/export"
@@ -32,14 +33,20 @@ import (
 // itself and has nothing to put anywhere.
 // The exporters it was built from are what show a gateway's applied resources as their own reads do.
 //
+// projects, when given, are what a deploy can be scoped to. Only a control plane gives them.
+//
 // changes is bound here when given, so the configuration is captured as the current version after
 // each change. Only a control plane gives one: it is where the configuration is authored.
+//
+// settings is the server-config service the gateway section is read from, so auto apply can be turned
+// on and off at runtime; without it, gateway.auto_apply alone decides.
 //
 // The same operations are registered on mcpServer, when given, as tools that answer as the REST endpoints do, so
 // an MCP client can capture, deploy, promote and roll back as the console does.
 func Initialize(mux *http.ServeMux, mcpServer *mcp.Server, exporter export.ExportServiceInterface,
 	capture *ValueCapture, exporters []declarativeresource.ResourceExporter,
-	changes *ChangeCapture) (ServiceInterface, error) {
+	changes *ChangeCapture, settings serverconfig.ServerConfigService,
+	projects ProjectDirectory) (ServiceInterface, error) {
 	var (
 		gatewayStore storeInterface
 		fileStore    *gatewayFileStore
@@ -56,15 +63,21 @@ func Initialize(mux *http.ServeMux, mcpServer *mcp.Server, exporter export.Expor
 		gatewayStore = newStore()
 	}
 
-	service := newService(gatewayStore)
+	// One pipeline, so the one the API shows is the one auto apply and value capture deploy to.
+	deployPipeline := newPipeline()
+	service := newService(gatewayStore, deployPipeline)
 	versions := newVersionService(gatewayStore, newVersionStore(), exporter, newGatewayClient(),
-		declarativeresource.SecretFieldsOf(exporters), newActorNames())
-	versions.autoApply = isAutoApplyEnabled()
+		declarativeresource.SecretFieldsOf(exporters), newActorNames(), deployPipeline)
+	versions.autoApply = newAutoApplySource(settings)
+	versions.syncSettings = settings
+	if projects != nil {
+		versions.projects = projects
+	}
 	h := newHandler(service)
 	h.afterDelete = versions.Forget
 	stores := newStoreService(gatewayStore, newGatewayClient())
 	if capture != nil {
-		capture.bind(exporter, gatewayStore, stores)
+		capture.bind(exporter, gatewayStore, stores, deployPipeline)
 	}
 	if changes != nil {
 		changes.bind(versions)
@@ -106,6 +119,15 @@ func registerRoutes(mux *http.ServeMux, h *handler) {
 	mux.HandleFunc(middleware.WithCORS("GET /gateways", h.handleList, collectionOpts))
 	mux.HandleFunc(middleware.WithCORS("POST /gateways", h.handleRegister, collectionOpts))
 	mux.HandleFunc(middleware.WithCORS("OPTIONS /gateways", noContent, collectionOpts))
+
+	pipelineOpts := middleware.CORSOptions{
+		AllowedMethods:   []string{"GET"},
+		AllowedHeaders:   middleware.DefaultAllowedHeaders,
+		AllowCredentials: true,
+		MaxAge:           600,
+	}
+	mux.HandleFunc(middleware.WithCORS("GET /gateways/pipeline", h.handlePipeline, pipelineOpts))
+	mux.HandleFunc(middleware.WithCORS("OPTIONS /gateways/pipeline", noContent, pipelineOpts))
 
 	itemOpts := middleware.CORSOptions{
 		AllowedMethods:   []string{"GET", "PUT", "DELETE"},
@@ -152,10 +174,23 @@ func registerVersionRoutes(mux *http.ServeMux, h *versionHandler) {
 	mux.HandleFunc(middleware.WithCORS("OPTIONS /gateways/{id}/applied-version", noContent, readOpts))
 	mux.HandleFunc(middleware.WithCORS("GET /gateways/{id}/diff", h.handleDiff, readOpts))
 	mux.HandleFunc(middleware.WithCORS("OPTIONS /gateways/{id}/diff", noContent, readOpts))
+	mux.HandleFunc(middleware.WithCORS("GET /gateways/{id}/project-status", h.handleProjectStatus, readOpts))
+	mux.HandleFunc(middleware.WithCORS("OPTIONS /gateways/{id}/project-status", noContent, readOpts))
 	mux.HandleFunc(middleware.WithCORS("POST /gateways/{id}/apply", h.handleApply, writeOpts))
 	mux.HandleFunc(middleware.WithCORS("OPTIONS /gateways/{id}/apply", noContent, writeOpts))
 	mux.HandleFunc(middleware.WithCORS("POST /gateways/{id}/revert", h.handleRevert, writeOpts))
 	mux.HandleFunc(middleware.WithCORS("OPTIONS /gateways/{id}/revert", noContent, writeOpts))
+	syncOpts := middleware.CORSOptions{
+		AllowedMethods:   []string{"PUT", "DELETE"},
+		AllowedHeaders:   middleware.DefaultAllowedHeaders,
+		AllowCredentials: true,
+		MaxAge:           600,
+	}
+	mux.HandleFunc(middleware.WithCORS("PUT /projects/{projectId}/auto-sync", h.handleSetProjectAutoSync,
+		syncOpts))
+	mux.HandleFunc(middleware.WithCORS("DELETE /projects/{projectId}/auto-sync",
+		h.handleDeleteProjectAutoSync, syncOpts))
+	mux.HandleFunc(middleware.WithCORS("OPTIONS /projects/{projectId}/auto-sync", noContent, syncOpts))
 }
 
 // registerAppliedConfigurationRoutes serves the configuration a gateway runs.

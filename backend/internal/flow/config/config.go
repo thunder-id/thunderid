@@ -44,7 +44,6 @@ type FlowSectionConfig struct {
 	RecoveryFlow           FlowTypeConfig `json:"recoveryFlow"`
 	SignOutFlow            FlowTypeConfig `json:"signOutFlow"`
 	SelfFlow               FlowTypeConfig `json:"selfFlow"`
-	UserDeletionFlow       FlowTypeConfig `json:"userDeletionFlow"`
 	SecretRegenerationFlow FlowTypeConfig `json:"secretRegenerationFlow"`
 	AgentOnboardingFlow    FlowTypeConfig `json:"agentOnboardingFlow"`
 

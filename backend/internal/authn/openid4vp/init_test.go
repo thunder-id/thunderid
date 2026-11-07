@@ -4,21 +4,11 @@
 package openid4vp
 
 import (
-	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/rand"
-	"crypto/x509"
-	"crypto/x509/pkix"
-	"encoding/base64"
-	"encoding/pem"
-	"math/big"
 	"net/http"
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 
-	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/system/config"
@@ -30,149 +20,6 @@ type OpenID4VPInitTestSuite struct {
 
 func TestOpenID4VPInitTestSuite(t *testing.T) {
 	suite.Run(t, new(OpenID4VPInitTestSuite))
-}
-
-// writeCACertPEM writes a CA certificate as PEM to a temp file and returns the path.
-func writeCACertPEM(t *testing.T, cert *x509.Certificate) string {
-	t.Helper()
-	path := filepath.Join(t.TempDir(), "ca.cert")
-	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cert.Raw})
-	require.NoError(t, os.WriteFile(path, pemBytes, 0o600))
-	return path
-}
-
-// leafChainTo mints a leaf certificate signed by root and returns the leaf-first
-// chain (leaf only; the root is the trust anchor and is not part of x5c).
-func leafChainTo(t *testing.T, root *x509.Certificate, rootKey *ecdsa.PrivateKey) []*x509.Certificate {
-	t.Helper()
-	leafKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	require.NoError(t, err)
-	tmpl := &x509.Certificate{
-		SerialNumber:   big.NewInt(2),
-		Subject:        pkix.Name{CommonName: "test-issuer"},
-		NotBefore:      time.Now().Add(-time.Hour),
-		NotAfter:       time.Now().Add(24 * time.Hour),
-		KeyUsage:       x509.KeyUsageDigitalSignature,
-		SubjectKeyId:   []byte{0x11, 0x22, 0x33, 0x44},
-		AuthorityKeyId: root.SubjectKeyId,
-	}
-	der, err := x509.CreateCertificate(rand.Reader, tmpl, root, &leafKey.PublicKey, rootKey)
-	require.NoError(t, err)
-	leaf, err := x509.ParseCertificate(der)
-	require.NoError(t, err)
-	return []*x509.Certificate{leaf}
-}
-
-func (suite *OpenID4VPInitTestSuite) TestBuildTrustStoreLoadsCertificate() {
-	t := suite.T()
-	root, rootKey := newTestRootCA(t)
-	certPath := writeCACertPEM(t, root)
-
-	store, err := buildTrustStore([]config.TrustedAnchorEntry{
-		{Name: "root-a", CertFile: certPath},
-	}, "")
-	suite.Require().NoError(err)
-
-	anchors := store.list()
-	suite.Require().Len(anchors, 1)
-	suite.Equal("root-a", anchors[0].Name)
-	suite.Equal(root.Subject.String(), anchors[0].Subject)
-
-	// A leaf chaining to the configured root verifies.
-	leaf, err := store.verifyChain(leafChainTo(t, root, rootKey), time.Now(), nil)
-	suite.Require().NoError(err)
-	suite.Require().NotNil(leaf)
-
-	// A leaf chaining to an unknown root is rejected.
-	otherRoot, otherKey := newTestRootCA(t)
-	_, err = store.verifyChain(leafChainTo(t, otherRoot, otherKey), time.Now(), nil)
-	suite.ErrorIs(err, ErrUntrustedIssuer)
-}
-
-func (suite *OpenID4VPInitTestSuite) TestTrustStoreSKIsFor() {
-	rootA := caCertWithSKI(suite.T(), []byte{0xaa, 0x01})
-	rootB := caCertWithSKI(suite.T(), []byte{0xbb, 0x02})
-	store := newTrustAnchorStore(
-		[]*x509.Certificate{rootA, rootB}, []string{"root-a", "root-b"})
-
-	skiA := base64.RawURLEncoding.EncodeToString(rootA.SubjectKeyId)
-	skiB := base64.RawURLEncoding.EncodeToString(rootB.SubjectKeyId)
-
-	// Known names resolve in order; unknown names and duplicates are skipped.
-	got := store.skisFor([]string{"root-b", "missing", "root-a", "root-b"})
-	suite.Equal([]string{skiB, skiA}, got)
-
-	suite.Empty(store.skisFor(nil))
-	suite.Empty(store.skisFor([]string{"missing"}))
-}
-
-// caCertWithSKI mints a self-signed CA certificate carrying the given SubjectKeyId.
-func caCertWithSKI(t *testing.T, ski []byte) *x509.Certificate {
-	t.Helper()
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	require.NoError(t, err)
-	tmpl := &x509.Certificate{
-		SerialNumber:          big.NewInt(1),
-		Subject:               pkix.Name{CommonName: "test-root-ca"},
-		NotBefore:             time.Now().Add(-time.Hour),
-		NotAfter:              time.Now().Add(24 * time.Hour),
-		IsCA:                  true,
-		BasicConstraintsValid: true,
-		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageDigitalSignature,
-		SubjectKeyId:          ski,
-	}
-	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
-	require.NoError(t, err)
-	cert, err := x509.ParseCertificate(der)
-	require.NoError(t, err)
-	return cert
-}
-
-func (suite *OpenID4VPInitTestSuite) TestBuildTrustStoreErrors() {
-	suite.Run("missing fields", func() {
-		_, err := buildTrustStore([]config.TrustedAnchorEntry{{Name: "x"}}, "")
-		suite.ErrorIs(err, ErrPolicy)
-	})
-
-	suite.Run("unreadable cert", func() {
-		_, err := buildTrustStore([]config.TrustedAnchorEntry{
-			{Name: "x", CertFile: filepath.Join(suite.T().TempDir(), "missing.cert")},
-		}, "")
-		suite.Error(err)
-	})
-}
-
-func (suite *OpenID4VPInitTestSuite) TestLoadCertificateRejectsNonPEM() {
-	path := filepath.Join(suite.T().TempDir(), "garbage.cert")
-	suite.Require().NoError(os.WriteFile(path, []byte("not pem"), 0o600))
-	_, err := loadCertificate(path)
-	suite.Error(err)
-}
-
-func (suite *OpenID4VPInitTestSuite) TestLoadCertificateMissingFile() {
-	_, err := loadCertificate(filepath.Join(suite.T().TempDir(), "missing.cert"))
-	suite.Error(err)
-}
-
-func (suite *OpenID4VPInitTestSuite) TestLoadCertificateRejectsPublicKeyPEM() {
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	suite.Require().NoError(err)
-	der, err := x509.MarshalPKIXPublicKey(&key.PublicKey)
-	suite.Require().NoError(err)
-	path := filepath.Join(suite.T().TempDir(), "issuer.pub")
-	suite.Require().NoError(os.WriteFile(path,
-		pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: der}), 0o600))
-
-	_, err = loadCertificate(path)
-	suite.Error(err)
-}
-
-func (suite *OpenID4VPInitTestSuite) TestLoadCertificateRejectsCorruptCertificate() {
-	path := filepath.Join(suite.T().TempDir(), "corrupt.cert")
-	suite.Require().NoError(os.WriteFile(path,
-		pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: []byte("not der")}), 0o600))
-	_, err := loadCertificate(path)
-	suite.Error(err)
 }
 
 func (suite *OpenID4VPInitTestSuite) TestLoadVerifierInfoEmptyPath() {
@@ -230,32 +77,6 @@ func (suite *OpenID4VPInitTestSuite) TestInitializeRequiresClientID() {
 	suite.Require().Error(err)
 	suite.ErrorIs(err, ErrPolicy)
 	suite.Nil(svc)
-}
-
-// buildTrustStore builds one engine-wide trust anchor store from the configured trust anchors.
-func (suite *OpenID4VPInitTestSuite) TestBuildTrustStore() {
-	t := suite.T()
-	root, rootKey := newTestRootCA(t)
-	certPath := writeCACertPEM(t, root)
-
-	trust, err := buildTrustStore([]config.TrustedAnchorEntry{
-		{Name: "root-a", CertFile: certPath},
-	}, "")
-	suite.Require().NoError(err)
-	suite.Require().NotNil(trust)
-
-	anchors := trust.list()
-	suite.Require().Len(anchors, 1)
-	suite.Equal("root-a", anchors[0].Name)
-
-	leaf, err := trust.verifyChain(leafChainTo(t, root, rootKey), time.Now(), nil)
-	suite.Require().NoError(err)
-	suite.Require().NotNil(leaf)
-
-	// No anchors -> nil store, no error.
-	store, err := buildTrustStore(nil, "")
-	suite.Require().NoError(err)
-	suite.Require().Nil(store)
 }
 
 // resolvePath joins relative cert paths to serverHome and leaves absolute and

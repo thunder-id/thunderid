@@ -6,8 +6,9 @@ See the parent README for end-to-end setup. Configure with `.env.example` in thi
 
 ## Run
 
+Install the dependencies once from the sample root with `npm install` (see the parent README), not from this folder. Then start the service from here:
+
 ```bash
-npm install
 npm run dev
 ```
 

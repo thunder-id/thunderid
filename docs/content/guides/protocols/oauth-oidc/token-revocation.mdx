@@ -93,11 +93,9 @@ For these, <ProductName /> revokes by **subject**: every token issued to that us
 
 ### User Deletion
 
-<ProductName /> ships an administration flow that runs when a user is deleted from the Console. It checks the caller's permission, revokes the user's tokens by subject, terminates their sessions, and then removes the record. `flow.userDeletionFlow.defaultHandle` names the flow to run. Pointing it at a different administration flow replaces the shipped one.
+Deleting a user revokes every token issued to them by subject and terminates their sessions, and then removes the record. This happens whichever way the user is deleted: from the Console, through the `DELETE /users/{id}` API, through SCIM with `DELETE /scim/v2/Users/{id}`, through the import API, or when a configuration version that no longer has the user is applied to a gateway.
 
-:::warning
-Deleting a user through the `DELETE /users/{id}` API removes the record only. It does not run the deletion flow, so the user's tokens stay valid until they expire. To revoke tokens as part of deletion, delete from the Console, or run the deletion flow directly from automation.
-:::
+The revocation runs as a **system flow**, built into the <ProductName /> binary, that the user service runs before it removes the record. It is not a resource: it is never stored, it cannot be edited or started through any API, and it never asks for input. If the revocation fails, the user is not deleted and the request returns an error, so the deletion can be retried. If the revocation succeeds but the removal then fails, the user stays, and their tokens and sessions stay revoked, including tokens issued to them afterwards, so retry the deletion. The revocation has no cutoff, so no system flow runs after the record is removed.
 
 ### Account Suspension
 

@@ -15,6 +15,8 @@ export interface RoleAssignment {
   type: 'user' | 'group' | 'app' | 'agent';
   /** Display name (resolved when include=display is used) */
   display?: string;
+  /** True when a user share mandates the assignment, so the organization unit cannot remove it. */
+  isReadOnly?: boolean;
 }
 
 /**

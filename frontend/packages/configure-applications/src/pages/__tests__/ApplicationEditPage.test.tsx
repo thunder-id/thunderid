@@ -4,8 +4,10 @@
 import type {UseQueryResult, UseMutationResult} from '@tanstack/react-query';
 import userEvent from '@testing-library/user-event';
 import {useGetFlows} from '@thunderid/configure-flows';
+import {ProjectScopeProvider} from '@thunderid/contexts';
 import {render, screen, waitFor, fireEvent, within} from '@thunderid/test-utils';
 import {useState} from 'react';
+import {useNavigate} from 'react-router';
 import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
 import useGetApplication from '../../api/useGetApplication';
 import useUpdateApplication from '../../api/useUpdateApplication';
@@ -426,6 +428,49 @@ describe('ApplicationEditPage', () => {
   });
 
   const renderComponent = () => render(<ApplicationEditPage />);
+
+  describe('Project scope', () => {
+    it("goes to the selected project's applications when the application belongs to another project", async () => {
+      const navigate = vi.fn();
+      vi.mocked(useNavigate).mockReturnValue(navigate);
+      mockUseGetApplication.mockReturnValue({
+        data: {...mockApplication, projectId: 'project-b'},
+        isLoading: false,
+        isError: false,
+        error: null,
+      } as UseQueryResult<Application>);
+
+      render(
+        <ProjectScopeProvider project={{id: 'project-a'}}>
+          <ApplicationEditPage />
+        </ProjectScopeProvider>,
+      );
+
+      await waitFor(() => {
+        expect(navigate).toHaveBeenCalledWith('/applications', {replace: true});
+      });
+      expect(screen.queryByRole('button', {name: 'Save Changes'})).not.toBeInTheDocument();
+    });
+
+    it('shows the application when it belongs to the selected project', () => {
+      const navigate = vi.fn();
+      vi.mocked(useNavigate).mockReturnValue(navigate);
+      mockUseGetApplication.mockReturnValue({
+        data: {...mockApplication, projectId: 'project-a'},
+        isLoading: false,
+        isError: false,
+        error: null,
+      } as UseQueryResult<Application>);
+
+      render(
+        <ProjectScopeProvider project={{id: 'project-a'}}>
+          <ApplicationEditPage />
+        </ProjectScopeProvider>,
+      );
+
+      expect(navigate).not.toHaveBeenCalledWith('/applications', {replace: true});
+    });
+  });
 
   describe('Device Grant flow selection', () => {
     const deviceGrantApplication = (): Application => ({
@@ -2273,8 +2318,7 @@ describe('ApplicationEditPage', () => {
       expect(screen.getByRole('tab', {name: 'Customization'})).toBeInTheDocument();
       expect(screen.getByRole('tab', {name: 'Token'})).toBeInTheDocument();
       expect(screen.getByRole('tab', {name: 'Advanced'})).toBeInTheDocument();
-      // Organization Access is only offered to clients with the client credentials grant for now.
-      expect(screen.queryByRole('tab', {name: 'Organization Access'})).not.toBeInTheDocument();
+      expect(screen.getByRole('tab', {name: 'Organization Access'})).toBeInTheDocument();
     });
 
     it('renders the Overview tab panel by default, and the General tab panel once selected', async () => {
@@ -2749,8 +2793,6 @@ describe('ApplicationEditPage', () => {
   });
 
   describe('Organization Access', () => {
-    // Organization Access is only offered to applications with the client credentials grant, so
-    // these tests use a client-credentials application.
     const m2mApplication: Application = {
       ...mockApplication,
       inboundAuthConfig: [
@@ -2783,27 +2825,12 @@ describe('ApplicationEditPage', () => {
       mockOrganizationAccess.reset.mockReset();
     });
 
-    it('is not offered to an application without the client credentials grant', () => {
+    it.each([
+      ['signs users in', mockApplication],
+      ['only requests tokens for itself', m2mApplication],
+    ])('is offered to an application that %s', (_kind, application) => {
       mockUseGetApplication.mockReturnValue({
-        data: mockApplication,
-        isLoading: false,
-        isError: false,
-        error: null,
-      } as unknown as UseQueryResult<Application>);
-      renderComponent();
-
-      expect(screen.queryByRole('tab', {name: 'Organization Access'})).not.toBeInTheDocument();
-    });
-
-    it('is offered to a client credentials application that also signs users in', () => {
-      const oauth2 = m2mApplication.inboundAuthConfig![0];
-      mockUseGetApplication.mockReturnValue({
-        data: {
-          ...m2mApplication,
-          inboundAuthConfig: [
-            {...oauth2, config: {...oauth2.config, grantTypes: ['authorization_code', 'client_credentials']}},
-          ],
-        },
+        data: application,
         isLoading: false,
         isError: false,
         error: null,

@@ -223,6 +223,31 @@ describe('ManageAssignmentsSection', () => {
       expect(mockOnRemoveAssignment).toHaveBeenCalledWith({id: 'user-1', type: 'user', display: 'Alice'});
     });
 
+    it('should show a read-only assignment as read only, without a remove action', () => {
+      vi.mocked(useGetRoleAssignments).mockImplementation(
+        () =>
+          ({
+            data: {
+              totalResults: 2,
+              startIndex: 0,
+              count: 2,
+              assignments: [
+                {id: 'user-1', type: 'user', display: 'Alice'},
+                {id: 'user-1', type: 'user', display: 'Alice', isReadOnly: true},
+              ],
+            },
+            isLoading: false,
+            error: null,
+          }) as unknown as ReturnType<typeof useGetRoleAssignments>,
+      );
+      renderComponent();
+
+      expect(screen.getAllByRole('button', {name: 'Remove'})).toHaveLength(1);
+      expect(screen.getAllByRole('button', {name: 'Read only'})).toHaveLength(1);
+
+      expect(screen.getByRole('grid').querySelectorAll('[role="row"]')).toHaveLength(2);
+    });
+
     it('should render a delete button for each row', () => {
       renderComponent();
 

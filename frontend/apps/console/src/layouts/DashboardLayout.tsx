@@ -147,7 +147,6 @@ export default function DashboardLayout({collapseSidebar = false}: DashboardLayo
   const {isTrustedIssuerGenericOidc, getTrustedIssuerClientId, getClientUrl} = useConfig();
   const {t} = useTranslation();
   const logger = useLogger();
-  const navigate = useNavigate();
 
   const handleSignOut = (signOut: () => Promise<void>): void => {
     if (isTrustedIssuerGenericOidc()) {
@@ -412,13 +411,6 @@ export default function DashboardLayout({collapseSidebar = false}: DashboardLayo
                       name={String(user?.name ?? '')}
                       email={String(user?.email ?? '')}
                       avatar={avatar}
-                    />
-                    <UserMenu.Divider />
-                    <UserMenu.Item
-                      label={t('common:userMenu.welcome')}
-                      onClick={() => {
-                        void navigate(RouteConfig.welcome.root());
-                      }}
                     />
                     <UserMenu.Divider />
                     <SignOutButton>

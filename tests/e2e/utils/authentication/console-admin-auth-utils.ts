@@ -252,8 +252,8 @@ export async function setupAuthentication(
  *
  * Deliberately scoped to just that one sessionStorage key (see SESSION_DATA_KEY_SUBSTRING) -
  * never the rest of storage. A test can register its own init script for unrelated state between
- * fixture setup and its own navigation (e.g. welcome-screen.spec.ts's simulateFirstStart()
- * clearing the welcome-dismissed flag right before its own goto()); reinjecting a full snapshot of
+ * fixture setup and its own navigation (e.g. clearing a UI preference flag right before its own
+ * goto()); reinjecting a full snapshot of
  * whatever this page happened to hold before this navigation would silently overwrite that,
  * undoing the test's own setup instead of just protecting the session.
  *
@@ -278,8 +278,8 @@ export async function resyncStorageBeforeNavigation(
 
   // Scoped to the SDK's own session key only - never the rest of sessionStorage (or any of
   // localStorage). A test can register its own later init script to manipulate other state (e.g.
-  // welcome-screen.spec.ts's simulateFirstStart() clearing the welcome-dismissed flag right before
-  // its own goto()); reinjecting a full snapshot capturing whatever this page held before this
+  // clearing a UI preference flag right before its own goto()); reinjecting a full snapshot
+  // capturing whatever this page held before this
   // navigation would silently overwrite that, undoing the test's own setup.
   const sessionEntries = await page
     .evaluate(

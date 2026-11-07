@@ -14,8 +14,12 @@ inputs:
     description: 'Path to the package from the repo root (e.g. tools/npx, frontend/packages/eslint-plugin)'
     required: true
   bump-type:
-    description: 'Semver bump type: major, minor, patch, or prerelease'
+    description: 'Semver bump type: major, minor, patch, premajor, preminor, prepatch, or prerelease'
     required: true
+  preid:
+    description: 'Prerelease identifier for a pre* bump (e.g. next makes 1.1.0-next.0). Leave empty for none.'
+    required: false
+    default: ''
   dist-tag:
     description: 'npm dist-tag to publish under. Defaults to latest, which is what existing consumers install.'
     required: false
@@ -64,7 +68,7 @@ runs:
         NAME=$(basename "${{ inputs.package-dir }}")
         echo "name=${NAME}" >> $GITHUB_OUTPUT
         cd ${{ inputs.package-dir }}
-        pnpm version ${{ inputs.bump-type }} --no-git-tag-version
+        pnpm version ${{ inputs.bump-type }} ${{ inputs.preid && format('--preid {0}', inputs.preid) || '' }} --no-git-tag-version
         VERSION=$(node -p "require('./package.json').version")
         PKG_NAME=$(node -p "require('./package.json').name")
         echo "version=${VERSION}" >> $GITHUB_OUTPUT

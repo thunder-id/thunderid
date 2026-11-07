@@ -21,6 +21,8 @@ import (
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/sharing"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
+	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/filter"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
@@ -92,6 +94,7 @@ type groupService struct {
 	dependencyRegistry resourcedependency.Registry
 	sharingService     sharing.SharingServiceInterface
 	roleAssignments    RoleAssignmentResolver
+	bus                eventbus.EventBusInterface
 }
 
 // newGroupServiceWithStore creates a new instance of GroupService with an externally provided store.
@@ -103,6 +106,7 @@ func newGroupServiceWithStore(
 	authzService sysauthz.SystemAuthorizationServiceInterface,
 	transactioner providers.Transactioner,
 	sharingService sharing.SharingServiceInterface,
+	bus eventbus.EventBusInterface,
 ) *groupService {
 	return &groupService{
 		groupStore:        store,
@@ -112,6 +116,7 @@ func newGroupServiceWithStore(
 		authzService:      authzService,
 		transactioner:     transactioner,
 		sharingService:    sharingService,
+		bus:               bus,
 	}
 }
 
@@ -302,8 +307,16 @@ func (gs *groupService) GetGroupsByPath(
 	return response, nil
 }
 
-// CreateGroup creates a new group.
+// CreateGroup creates a new group with the members it names.
 func (gs *groupService) CreateGroup(ctx context.Context, request CreateGroupRequest) (
+	*Group, *tidcommon.ServiceError) {
+	created, svcErr := gs.createGroup(ctx, request)
+	gs.publishCreate(ctx, created, svcErr)
+	return created, svcErr
+}
+
+// createGroup creates a new group without publishing its audit events.
+func (gs *groupService) createGroup(ctx context.Context, request CreateGroupRequest) (
 	*Group, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 	logger.Debug(ctx, "Creating group", log.String("name", request.Name))
@@ -401,6 +414,16 @@ func (gs *groupService) CreateGroup(ctx context.Context, request CreateGroupRequ
 func (gs *groupService) CreateGroupByPath(
 	ctx context.Context, handlePath string, request CreateGroupByPathRequest,
 ) (*Group, *tidcommon.ServiceError) {
+	created, svcErr := gs.createGroupByPath(ctx, handlePath, request)
+	gs.publishCreate(ctx, created, svcErr)
+	return created, svcErr
+}
+
+// createGroupByPath creates a new group under the organization unit specified by the handle path without
+// publishing its audit events.
+func (gs *groupService) createGroupByPath(
+	ctx context.Context, handlePath string, request CreateGroupByPathRequest,
+) (*Group, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 	logger.Debug(ctx, "Creating group by path",
 		log.String("path", handlePath), log.String("name", request.Name))
@@ -426,7 +449,43 @@ func (gs *groupService) CreateGroupByPath(
 		Members:     request.Members,
 	}
 
-	return gs.CreateGroup(ctx, createRequest)
+	return gs.createGroup(ctx, createRequest)
+}
+
+// publishCreate publishes the audit event of an attempt to create a group, and, when it was created, of
+// each member it was created with.
+func (gs *groupService) publishCreate(ctx context.Context, created *Group, svcErr *tidcommon.ServiceError) {
+	var groupID string
+	if svcErr == nil {
+		groupID = created.ID
+	}
+	gs.publishGroupEvent(ctx, audit.EventGroupCreate, audit.ActionCreate, groupID, svcErr)
+	if svcErr == nil {
+		gs.publishMemberEvents(ctx, audit.EventGroupMemberAdd, audit.ActionAdd, groupID, created.Members, nil)
+	}
+}
+
+// publishGroupEvent publishes the audit event of an attempt on the group with groupID, after the change
+// committed or was refused.
+func (gs *groupService) publishGroupEvent(ctx context.Context, name string, action audit.Action,
+	groupID string, svcErr *tidcommon.ServiceError) {
+	target := audit.Ref{Type: audit.TargetTypeGroup, ID: groupID}
+	eventbus.TryPublish(ctx, gs.bus,
+		eventbus.NewEvent(ctx, name).With(audit.ChangePayload(ctx, target, action, svcErr)))
+}
+
+// publishMemberEvents publishes the audit events of an attempt to add members to the group with groupID,
+// or remove them, after the change committed or was refused.
+func (gs *groupService) publishMemberEvents(ctx context.Context, name string, action audit.Action,
+	groupID string, members []Member, svcErr *tidcommon.ServiceError) {
+	principals := make([]audit.Ref, 0, len(members))
+	for _, m := range members {
+		principals = append(principals, audit.PrincipalRef(string(m.Type), m.ID))
+	}
+	target := audit.Ref{Type: audit.TargetTypeGroup, ID: groupID}
+	for _, payload := range audit.MembershipPayloads(ctx, target, principals, action, svcErr) {
+		eventbus.TryPublish(ctx, gs.bus, eventbus.NewEvent(ctx, name).With(payload))
+	}
 }
 
 // GetGroup retrieves a specific group by its id.
@@ -480,6 +539,14 @@ func (gs *groupService) GetGroup(
 
 // UpdateGroup updates an existing group.
 func (gs *groupService) UpdateGroup(
+	ctx context.Context, groupID string, request UpdateGroupRequest) (*Group, *tidcommon.ServiceError) {
+	updated, svcErr := gs.updateGroup(ctx, groupID, request)
+	gs.publishGroupEvent(ctx, audit.EventGroupUpdate, audit.ActionUpdate, groupID, svcErr)
+	return updated, svcErr
+}
+
+// updateGroup updates an existing group without publishing its audit event.
+func (gs *groupService) updateGroup(
 	ctx context.Context, groupID string, request UpdateGroupRequest) (*Group, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 	logger.Debug(ctx, "Updating group", log.String("id", groupID), log.String("name", request.Name))
@@ -610,7 +677,15 @@ func (gs *groupService) SetRoleAssignmentResolver(r RoleAssignmentResolver) {
 	gs.roleAssignments = r
 }
 
+// DeleteGroup deletes the group with groupID, with its memberships and role assignments.
 func (gs *groupService) DeleteGroup(ctx context.Context, groupID string) *tidcommon.ServiceError {
+	svcErr := gs.deleteGroup(ctx, groupID)
+	gs.publishGroupEvent(ctx, audit.EventGroupDelete, audit.ActionDelete, groupID, svcErr)
+	return svcErr
+}
+
+// deleteGroup deletes the group without publishing its audit event.
+func (gs *groupService) deleteGroup(ctx context.Context, groupID string) *tidcommon.ServiceError {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 	logger.Debug(ctx, "Deleting group", log.String("id", groupID))
 
@@ -829,6 +904,14 @@ func (gs *groupService) resolveMembers(
 // AddGroupMembers adds members to a group.
 func (gs *groupService) AddGroupMembers(
 	ctx context.Context, groupID string, members []Member) (*Group, *tidcommon.ServiceError) {
+	updated, svcErr := gs.addGroupMembers(ctx, groupID, members)
+	gs.publishMemberEvents(ctx, audit.EventGroupMemberAdd, audit.ActionAdd, groupID, members, svcErr)
+	return updated, svcErr
+}
+
+// addGroupMembers adds members to a group without publishing their audit events.
+func (gs *groupService) addGroupMembers(
+	ctx context.Context, groupID string, members []Member) (*Group, *tidcommon.ServiceError) {
 	log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName)).
 		Debug(ctx, "Adding members to group", log.String("id", groupID))
 	return gs.modifyGroupMembers(ctx, groupID, members, true,
@@ -843,11 +926,15 @@ func (gs *groupService) RemoveGroupMembers(
 	ctx context.Context, groupID string, members []Member) (*Group, *tidcommon.ServiceError) {
 	log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName)).
 		Debug(ctx, "Removing members from group", log.String("id", groupID))
-	return gs.modifyGroupMembers(ctx, groupID, members, false,
+	updated, svcErr := gs.modifyGroupMembers(ctx, groupID, members, false,
 		gs.groupStore.RemoveGroupMembers,
 		"Failed to remove members from group",
 		"Successfully removed members from group",
 	)
+	// The store does not report which members it removed, so the removal of a principal that was not a
+	// member is recorded as succeeded: a known limitation.
+	gs.publishMemberEvents(ctx, audit.EventGroupMemberRemove, audit.ActionRemove, groupID, members, svcErr)
+	return updated, svcErr
 }
 
 // ValidateRemoveGroupMembers runs the checks RemoveGroupMembers runs before it changes anything.
@@ -1424,6 +1511,22 @@ func (gs *groupService) AddMembersToGroups(
 	members []Member,
 	groupIDs []string,
 ) *tidcommon.ServiceError {
+	svcErr := gs.addMembersToGroups(ctx, members, groupIDs)
+	// Published once the transaction is over, so a group whose additions were rolled back is never
+	// recorded as gaining members.
+	for _, groupID := range utils.UniqueStrings(groupIDs) {
+		gs.publishMemberEvents(ctx, audit.EventGroupMemberAdd, audit.ActionAdd, groupID, members, svcErr)
+	}
+	return svcErr
+}
+
+// addMembersToGroups adds members to multiple groups in a single transaction without publishing their
+// audit events.
+func (gs *groupService) addMembersToGroups(
+	ctx context.Context,
+	members []Member,
+	groupIDs []string,
+) *tidcommon.ServiceError {
 	if len(groupIDs) == 0 || len(members) == 0 {
 		return nil
 	}
@@ -1434,7 +1537,7 @@ func (gs *groupService) AddMembersToGroups(
 	var capturedSvcErr *tidcommon.ServiceError
 	err := gs.transactioner.Transact(ctx, func(txCtx context.Context) error {
 		for _, gid := range groupIDs {
-			if _, svcErr := gs.AddGroupMembers(txCtx, gid, members); svcErr != nil {
+			if _, svcErr := gs.addGroupMembers(txCtx, gid, members); svcErr != nil {
 				capturedSvcErr = svcErr
 				return fmt.Errorf("failed to add members to group %s: %s", gid, svcErr.Error.DefaultValue)
 			}

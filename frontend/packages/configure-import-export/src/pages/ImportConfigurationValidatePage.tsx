@@ -17,7 +17,6 @@ export default function ImportConfigurationValidatePage(): JSX.Element {
   const navigate = useNavigate();
   const location = useLocation();
   const routes = useImportExportRoutes();
-  const isWelcomeFlow = location.pathname.startsWith(routes.welcome.root());
   const logger = useLogger('ImportConfigurationValidatePage');
 
   const state = location.state as {
@@ -90,10 +89,9 @@ export default function ImportConfigurationValidatePage(): JSX.Element {
             // Navigate to summary after all steps complete (only if no errors)
             setTimeout(() => {
               (async () => {
-                await navigate(
-                  isWelcomeFlow ? routes.welcome.importConfigurationSummary() : routes.importConfiguration.summary(),
-                  {state: location.state as Record<string, unknown>},
-                );
+                await navigate(routes.importConfiguration.summary(), {
+                  state: location.state as Record<string, unknown>,
+                });
               })().catch((_error: unknown) => {
                 logger.error('Failed to navigate to summary', {error: _error});
               });
@@ -104,16 +102,7 @@ export default function ImportConfigurationValidatePage(): JSX.Element {
     }, 1500);
 
     return () => clearInterval(interval);
-  }, [
-    navigate,
-    location.state,
-    logger,
-    validationSteps.length,
-    hasParseErrors,
-    isWelcomeFlow,
-    routes.importConfiguration,
-    routes.welcome,
-  ]);
+  }, [navigate, location.state, logger, validationSteps.length, hasParseErrors, routes.importConfiguration]);
 
   const completedSteps = validationSteps.filter((step) => step.status === 'completed').length;
   const progress = (completedSteps / validationSteps.length) * 100;
@@ -140,20 +129,7 @@ export default function ImportConfigurationValidatePage(): JSX.Element {
           >
             <X size={24} />
           </IconButton>
-          <AppBreadcrumbs
-            items={[
-              ...(isWelcomeFlow
-                ? [
-                    {
-                      key: 'welcome',
-                      label: t('common:welcome.header'),
-                      onClick: () => void navigate(routes.welcome.root()),
-                    },
-                  ]
-                : []),
-              {key: 'import-configuration', label: t('upload.breadcrumb.openProject')},
-            ]}
-          />
+          <AppBreadcrumbs items={[{key: 'import-configuration', label: t('upload.breadcrumb.openProject')}]} />
         </Stack>
       </Box>
 
@@ -326,7 +302,7 @@ export default function ImportConfigurationValidatePage(): JSX.Element {
                 <Button
                   variant="outlined"
                   color="error"
-                  onClick={() => void navigate(routes.welcome.importConfigurationUpload())}
+                  onClick={() => void navigate(routes.importConfiguration.upload())}
                 >
                   {t('validate.actions.uploadDifferentFile')}
                 </Button>

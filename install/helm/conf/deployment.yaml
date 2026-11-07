@@ -405,11 +405,6 @@ openid4vp:
   {{- if .Values.configuration.openid4vp.store }}
   store: {{ include "thunderid.validateStoreMode" (dict "value" .Values.configuration.openid4vp.store "field" "configuration.openid4vp.store") | quote }}
   {{- end }}
-  trusted_anchors:
-  {{- range .Values.configuration.openid4vp.trustedAnchors }}
-    - name: {{ .name | quote }}
-      cert_file: {{ .certFile | quote }}
-  {{- end }}
 
 openid4vci:
   signing_key_id: {{ .Values.configuration.openid4vci.signingKeyId | quote }}
@@ -497,6 +492,13 @@ log:
       - {{ . | quote }}
     {{- end }}
   {{- end }}
+{{- end }}
+
+{{- $audit := default dict .Values.configuration.audit }}
+{{- if hasKey $audit "enabled" }}
+
+audit:
+  enabled: {{ $audit.enabled }}
 {{- end }}
 
 {{- $stores := default dict .Values.configuration.stores }}

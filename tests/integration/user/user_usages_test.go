@@ -151,7 +151,7 @@ func (ts *UserUsagesTestSuite) SetupSuite() {
 	firstAgentID, err := testutils.CreateAgent(testutils.Agent{
 		OUID:        ts.ouID,
 		Type:        "default",
-		Owner:       ts.ownerUserID,
+		Owner:       testutils.LocalAgentOwner(ts.ownerUserID),
 		Description: "First agent owned by the usages test user",
 		Attributes:  map[string]interface{}{"name": "user-usages-first-agent"},
 	})
@@ -161,7 +161,7 @@ func (ts *UserUsagesTestSuite) SetupSuite() {
 	secondAgentID, err := testutils.CreateAgent(testutils.Agent{
 		OUID:        ts.ouID,
 		Type:        "default",
-		Owner:       ts.ownerUserID,
+		Owner:       testutils.LocalAgentOwner(ts.ownerUserID),
 		Description: "Second agent owned by the usages test user",
 		Attributes:  map[string]interface{}{"name": "user-usages-second-agent"},
 	})
@@ -281,6 +281,25 @@ func (ts *UserUsagesTestSuite) TestUsagesForUnreferencedUserIsConfirmedEmpty() {
 	ts.Require().NotNil(usages.TotalResults, "an empty result must be confirmed, not unknown")
 	ts.Equal(0, *usages.TotalResults)
 	ts.Equal(0, usages.Count)
+	ts.Empty(usages.Usages)
+}
+
+// TestUsagesIgnoreAnExternalOwnerCarryingTheUserID verifies an agent whose external owner has the same ID
+// as a local user is not a usage of that user: the external owner is a person in another identity system.
+func (ts *UserUsagesTestSuite) TestUsagesIgnoreAnExternalOwnerCarryingTheUserID() {
+	agentID, err := testutils.CreateAgent(testutils.Agent{
+		OUID:       ts.ouID,
+		Type:       "default",
+		Owner:      testutils.ExternalAgentOwner(ts.unusedUserID, "uuid"),
+		Attributes: map[string]interface{}{"name": "user-usages-external-owner-agent"},
+	})
+	ts.Require().NoError(err)
+	defer func() { _ = testutils.DeleteAgent(agentID) }()
+
+	usages := ts.getUsages(ts.unusedUserID)
+
+	ts.Require().NotNil(usages.TotalResults)
+	ts.Equal(0, *usages.TotalResults)
 	ts.Empty(usages.Usages)
 }
 

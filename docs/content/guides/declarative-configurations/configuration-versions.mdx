@@ -64,7 +64,8 @@ shares also names it, and so does `latest`.
   out. The id is recorded either way, so a lookup configured later names the versions already captured.
   A capture after a change names the user who made the last change before it.
 - **Only `gateway.max_versions` versions are kept.** The oldest goes first, except a version some gateway
-  holds or can revert to. Those are kept even when that leaves more versions than the number. See
+  holds or can revert to, or that a resource a gateway holds, or held in a master it keeps, was deployed
+  from. Those are kept even when that leaves more versions than the number. See
   [Configuration](../../deployment/configuration.mdx).
 
 `GET /configuration-versions` lists the versions, newest first, without their content.
@@ -101,8 +102,9 @@ remove, without contacting the gateway. The version defaults to `latest`.
 
 Each entry in `changes` names a resource, its `change` (`added`, `updated`, `deleted` or `unchanged`), and
 a `key` such as `application/550e8400-e29b-41d4-a716-446655440000`. Each change also carries `lines`, the
-resource's document compared line by line. The documents hold references, so a diff never shows a
-secret value.
+resource's document compared line by line, and `needs`, the keys of the resources it names by id (see
+[Deploy a Resource With What It Needs](#deploy-a-resource-with-what-it-needs)). The documents hold
+references, so a diff never shows a secret value.
 
 `GET /gateways/{id}/applied-version` reports the version the gateway holds and the one a revert returns
 it to, with when it was applied and who applied it (`appliedAt`, `appliedBy`, the latter under the same
@@ -244,13 +246,96 @@ resources". The diff goes on offering the rest, and the apply that brings the ga
 version, sending the rest or retrying what was refused, records it with `"complete": true`. An apply's
 own answer says the same in `complete`.
 
+### Deploy a Resource With What It Needs
+
+Each change in a diff carries `needs`: the keys of the resources its document names by id in the
+version, such as the flows and the unit an application names, the resource server a role names, or
+the parent a unit names. Nothing is declared per resource type: every scalar in a document that is
+the id of another document in the version counts, except the document's own `id`, a kind such as
+`type`, and a value that describes the resource, such as its name, description, handle, username or
+email. Resources of different types that share an id are
+all counted. A resource named by name or handle is expected to be on the gateway already.
+
+With `withDependencies` (on by default), a selection is widened to what the selected resources need
+that the gateway lacks or holds in another form, through what those need in turn, so selecting an
+application also sends its flows and its unit when the gateway does not have them. A dependency the
+gateway already holds as the version has it is not sent again. The answer's `diff` marks a change sent
+for another's sake with `"required": true` and `requiredBy`, the selected key that needed it. A dry
+run shows the same, which is how a console answers "deploying this brings these too".
+
+With `"withDependencies": false`, a selection whose resource needs something the gateway lacks or
+refused is refused with `409` (`GTW-1032`), naming what is missing, before anything is sent. A
+dependency the gateway holds in another form serves the selected resource, so it is not counted as
+missing: replacing it is a choice of its own. A needed resource the
+gateway holds back is never taken in either: with dependencies on, a selection needing one is refused
+the same way until it names that resource too, which also stops holding it back.
+
+A removal is refused with `409` (`GTW-1033`) while a document the gateway keeps still names the
+resource by id, such as a unit whose child unit stays, so an apply never leaves a resource pointing at
+nothing. Remove or update the resources that need it in the same apply, or leave it in place. A
+removal that only an update in the same apply frees, such as an application updated to stop naming a
+flow that the version also removes, is sent in a second import once the gateway has accepted the
+update; if the gateway refuses the update, the resource stays in place and the diff offers the removal
+again.
+
+These checks read the documents the gateway is left with once the apply's updates, additions and
+removals are made, so a revert that moves an application back to its earlier flow removes the flow it
+no longer names. A promotion sends only what the source runs as the version has it and takes no
+selection, so when that would leave a resource naming one the target does not hold, or remove one a
+resource the source does not run still names, it is refused with `409` (`GTW-1042`), naming the source
+gateway to deploy the version to first.
+
+### Deploy One Project
+
+A diff and an apply can be scoped to one project with its id: `GET /gateways/{id}/diff?project=<id>`,
+or `"project": "<id>"` in the apply's body. A project's own resources are those whose documents name it
+in `projectId`, such as its applications and agents. Organization units, users and groups name no
+project, so they are shared. Each change of the diff is then placed in a
+`section`:
+
+| Section | What it holds | Sent by default |
+|---|---|---|
+| `project` | The project's own resources. | Yes, less what the gateway holds back. |
+| `needed` | What they name by id, followed through `needs`. | Only when the gateway lacks or refused it, marked `"required": true`. |
+| `shared` | What names no project, such as organization units, translations, branding, other flows and system users. | No, only when selected. |
+| `other` | Another project's own resources. | Never. |
+
+A needed resource the gateway holds in another form already serves the project, so it is not required:
+selecting it replaces it for every resource on the gateway that uses it. Such a needed or shared change
+names those other projects in `usedBy`.
+
+Without a selection, an apply scoped to a project sends its defaults. A selection may add needed and
+shared changes, and is never widened. It is refused with `400` when it names another project's own
+resources (`GTW-1039`) or leaves out a required change (`GTW-1040`). An unknown project is refused with
+`404` (`GTW-1038`).
+
+`GET /gateways/{id}/project-status?project=<id>` reports where the project stands on the gateway: the
+versions its own resources there were deployed from, when they were last written and by whom, whether
+it can be rolled back, and how many of its own, needed and shared changes a deploy scoped to it would
+send. With `from=<gateway id>` it compares against what promoting that gateway would send.
+
+Each project can also be synced on its own after every capture. Set `projects` in the `gateway` server
+configuration section, by project id, with `autoSync` and the `firstGateway` its pipeline starts
+at. Set one project's entry with `PUT /projects/{projectId}/auto-sync`, which keeps every
+other project's entry even when two are set at once, and remove it with `DELETE` on the same path. A capture then deploys, for each project whose `autoSync` is on
+(or inherits `autoApply`), the changes it made to the project's own resources, what they need that the
+gateway lacks, and every shared change it made. A project with `autoSync` off keeps its changes pending
+for a deliberate deploy. `autoSync` in the project's status says whether it is on and how the last sync
+went.
+
+A promotion can carry only part of a version, so one gateway can hold one project's resources from one
+version and another project's from another. To roll back one project, send `"project": "<id>"` in a
+revert's body. Only that project's own resources go back to what the gateway held before the last
+deploy scoped to it, and the gateway stays recorded as running its version. A project is rolled back
+once until it is deployed again; one with nothing to roll back to is refused with `400` (`GTW-1041`).
+
 ## Revert a Gateway
 
 `POST /gateways/{id}/revert` returns the gateway to the master it held before the version it holds now,
 which is that earlier version as far as the gateway held it: a version that was partly applied is
 returned to in part, and each resource keeps the version that sent it. What that master does not hold
-is removed. A gateway whose earlier master is no longer kept, beyond `gateway.max_versions`, is returned
-to the earlier version whole. A revert goes back one step only: afterwards the gateway has
+is removed. The master a revert returns to is kept past `gateway.max_versions`, and so is each project's
+rollback point, so a project that has not deployed in a while can still be rolled back. A revert goes back one step only: afterwards the gateway has
 no earlier version to revert to, and a second revert is refused with `400` (`GTW-1016`) until a later
 apply. To return to the version reverted from, apply it.
 
@@ -287,7 +372,7 @@ curl -k https://localhost:8095/gateways/{id}/applied-configuration \
 
 - A value the version refers to, such as `var:APPLICATION_ORDERS_CLIENT_ID`, is returned as the reference:
   the version does not hold the value. A secret the resource's own read masks is masked the same way, and
-  user credentials are never returned.
+  the credentials of users and agents are never returned.
 - `parts` carries the collections a resource's own API serves apart from it, as one page holding every
   item: a group's `members`, a role's `assignments`, a resource server's `resources` and `actions`, and a
   translation's namespaces under `ns/{namespace}`.
@@ -422,11 +507,12 @@ always covers the removals that were pointed out. A deploy or rollback to a gate
 applying an earlier one is refused once it has waited, and the dialog says another deploy is running,
 so you can try again once it finishes.
 
-A value set on a gateway after its version was deployed, such as a client secret you regenerate or a
-secret you update under **Configure**, does not take effect until a version is deployed again, and the
-version itself has not changed. The gateway's card says how many values changed since its deploy, and
-**Redeploy** on the card deploys the version the gateway runs again so they take effect. **Redeploy**
-is disabled while no value has changed.
+A value set on a gateway after its version was deployed, such as a client secret you regenerate, a
+user's password you reset, or a secret you update under **Configure**, does not take effect until a
+version is deployed again, and the version itself has not changed. The gateway's card says how many
+values changed since its deploy, and **Redeploy** on the card deploys the version the gateway runs
+again so they take effect. **Deploy** on that version's row does the same. **Redeploy** is disabled
+while no value has changed, and so is **Deploy** on a version every gateway already runs.
 
 **Explore** on a gateway's card, or a click on the card itself, opens the gateway's explorer: a map of
 every resource the gateway runs, in lanes by type, with a line for each relationship between them,

@@ -38,7 +38,7 @@ The protocol uses a polling model: a **back-channel** between <ProductName /> an
 | **Credential format** | `dc+sd-jwt`. |
 | **Selective disclosure** | Disclosures beyond the combined requested claims list fail verification. Optional claims may be omitted by the wallet. |
 | **Key binding** | When `enforce_key_binding` is enabled, the wallet must include a `kb+jwt` binding the presentation to the nonce and verifier audience. |
-| **Issuer trust** | Each definition may override the engine-level default via `enforceTrustedIssuer`. When enabled, the SD-JWT issuer is verified against a pinned certificate. A definition's `trustedAuthorities` restricts which named anchors are acceptable. Active trust anchors are listed at `GET /openid4vp/trust-anchors` (returns `name`, `subject`, `ski`, `not_after` per anchor). |
+| **Issuer trust** | Configured per presentation definition. Each definition carries its own trusted issuer certificates in `trustedAuthorities`. When `enforceTrustedIssuer` is enabled, the issuer certificate chain in the SD-JWT VC `x5c` header must verify against one of them, and the request object advertises their Subject Key Identifiers as DCQL `trusted_authorities` of type `aki`. A certificate applies only to the definition it is added to. |
 | **Claim value constraints** | `claimValues` maps a dotted claim path to an allowed set of values. The constraint is advertised in the DCQL query and enforced at verification, but only when the claim is disclosed; undisclosed claims pass silently. |
 | **Result token** | Signed JWT issued on `COMPLETED`. Claims: `iss`, `sub`, `aud` (issuer URL), `jti`, `txn`, `definition_id`, `subject`, `verified_claims`, `verifier`. |
 | **State TTL** | Transactions expire after `state_ttl_seconds`. The status endpoint returns `EXPIRED` for past-TTL transactions. |
@@ -57,8 +57,44 @@ Manage definitions in **Verifiable Credentials → Presentations** in the <Produ
 | **Handle** | Unique identifier for this definition. Used as the `definition_id` in the initiate request and in flow step configuration. Required. |
 | **Credential type (VCT)** | The `vct` URI the wallet must present to satisfy this request. Required. |
 | **Claims** | Each entry has a dotted claim path, a requirement (**Mandatory** or **Optional**), and an optional allowed-values list. Mandatory claims must be disclosed; optional claims may be withheld. When allowed values are set, the disclosed value must match one, enforced at verification. Undisclosed optional claims pass silently regardless of allowed values. |
-| **Enforce trusted issuer** | When enabled, the SD-JWT VC issuer certificate chain is validated against the engine-level trust anchors. |
-| **Trusted issuers** | Restricts which named trust anchors are acceptable for this definition. Leave empty to accept any trust anchor configured at the engine level. |
+| **Enforce trusted issuer** | When enabled, the SD-JWT VC issuer certificate chain must verify against one of the definition's trusted issuer certificates. Requires at least one certificate. When disabled, credentials from any issuer are accepted. |
+| **Trusted issuer certificates** | PEM-encoded X.509 certificates of the issuers, or of the CAs that sign them, that this definition trusts. Each has a name that is unique within the definition. Add up to 10. To trust the same issuer in another definition, add its certificate to that definition as well. |
+
+### Trusted Issuer Certificates
+
+In the Console, open the definition, go to the **Issuer trust** tab, and click **Add certificate** to paste or upload a certificate. Use the remove action to delete one. A certificate cannot be viewed or edited after it is added: remove it and add it again to replace it.
+
+Through the management API, `trustedAuthorities` is a list of `{name, certificate}` objects in the create and update request bodies. Responses return only the names. Because the update request replaces the stored list, it follows these rules:
+
+- An entry with a `name` and a `certificate` adds that certificate.
+- An entry with only a `name` keeps the certificate already stored under that name.
+- A stored certificate whose name is left out is removed.
+
+```json
+{
+  "enforceTrustedIssuer": true,
+  "trustedAuthorities": [
+    { "name": "existing-issuer-ca" },
+    { "name": "new-issuer-ca", "certificate": "-----BEGIN CERTIFICATE-----\nMIIB...\n-----END CERTIFICATE-----" }
+  ]
+}
+```
+
+<ProductName /> rejects a certificate that is not a single PEM-encoded X.509 certificate, a certificate that has already expired when it is added, and a repeated name or certificate within the same definition.
+
+In a YAML presentation definition, give each certificate inline:
+
+```yaml
+resource_type: presentation_definition
+handle: lounge-access
+enforceTrustedIssuer: true
+trustedAuthorities:
+  - name: issuer-ca
+    certificate: |
+      -----BEGIN CERTIFICATE-----
+      MIIB...
+      -----END CERTIFICATE-----
+```
 
 ## Server Configurations
 
@@ -70,7 +106,6 @@ Configure the verifier engine under the `openid4vp:` key in `deployment.yaml`. A
 | `signing_key_id` | `ecdsa-key` | Key used to sign request objects. Must be certificate-backed. |
 | `ephemeral_key_id` | `vp-enc` | Key used for ECDH-ES decryption of wallet responses. |
 | `registration_cert_file` | - | Path to a PEM file containing the signing certificate chain advertised in `client_metadata`. |
-| `trusted_anchors` | `[]` | List of `{name, cert_file}` entries. Each entry pins a root CA whose chains are accepted as SD-JWT VC issuer certificates. Empty list disables certificate-chain validation. |
 | `enforce_key_binding` | `true` | Require wallets to include a `kb+jwt` binding the presentation to the nonce and verifier. |
 | `response_enc_values` | `["A128GCM","A256GCM","A128CBC-HS256","A256CBC-HS512"]` | Supported content-encryption algorithms for the wallet's JWE response. |
 | `request_audience` | - | `aud` claim placed in the signed request object sent to the wallet. Omit for `vp_token` flows (some wallets treat a non-empty `aud` as a SIOP request). |
@@ -79,15 +114,6 @@ Configure the verifier engine under the `openid4vp:` key in `deployment.yaml`. A
 | `leeway_seconds` | `30` | Clock-skew tolerance when validating credential timestamps. |
 | `key_binding_max_age_seconds` | `300` | Maximum age of the key-binding JWT `iat`. |
 | `result_token_validity_seconds` | `300` | Lifetime of the signed result token. |
-
-`trusted_anchors` is a list of objects:
-
-```yaml
-openid4vp:
-  trusted_anchors:
-    - name: my-gov-ca
-      cert_file: /path/to/ca.pem
-```
 
 ## Result Token Claims
 

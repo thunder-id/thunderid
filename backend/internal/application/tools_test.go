@@ -15,6 +15,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/application/model"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/mcp/tool"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -461,6 +462,33 @@ func (suite *ApplicationToolsTestSuite) TestRegisterMCPTools() {
 	// Note: We can't directly verify the tools list without accessing internal server state,
 	// but we can verify the function doesn't panic
 	assert.NotNil(suite.T(), server)
+}
+
+// TestRegisteredToolsRequireApplicationPermissions verifies that every application MCP tool is mapped
+// to an application catalog permission, so none falls back to root by accident.
+func (suite *ApplicationToolsTestSuite) TestRegisteredToolsRequireApplicationPermissions() {
+	security.InitSystemPermissions("")
+	p := security.GetSystemPermissions()
+	server := mcp.NewServer(&mcp.Implementation{Name: "test-server", Version: "1.0.0"}, nil)
+	registerMCPTools(server, NewApplicationServiceInterfaceMock(suite.T()))
+
+	ctx := context.Background()
+	serverTransport, clientTransport := mcp.NewInMemoryTransports()
+	_, err := server.Connect(ctx, serverTransport, nil)
+	suite.Require().NoError(err)
+	session, err := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "1.0.0"}, nil).
+		Connect(ctx, clientTransport, nil)
+	suite.Require().NoError(err)
+	defer func() { _ = session.Close() }()
+	tools, err := session.ListTools(ctx, nil)
+	suite.Require().NoError(err)
+
+	suite.Require().NotEmpty(tools.Tools)
+	for _, registered := range tools.Tools {
+		assert.Contains(suite.T(), []string{p.AppView, p.AppCreate, p.AppUpdate, p.AppDelete},
+			security.ResolveMCPToolPermission(registered.Name),
+			"tool %q must require an application permission", registered.Name)
+	}
 }
 
 func (suite *ApplicationToolsTestSuite) TestGetCommonSchemaModifiers() {

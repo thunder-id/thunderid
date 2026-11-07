@@ -179,3 +179,28 @@ func TestSecretFieldsOfCollectsByResourceType(t *testing.T) {
 	_, listed := fields["flow"]
 	assert.False(t, listed)
 }
+
+func TestCredentialPlaceholdersNameEachCredentialAfterTheResource(t *testing.T) {
+	tests := []struct {
+		name       string
+		references bool
+		want       map[string]interface{}
+	}{
+		{name: "template", want: map[string]interface{}{
+			"password": "{{.AGENT_MY_BOT_PASSWORD}}", "pin": "{{.AGENT_MY_BOT_PIN}}",
+		}},
+		{name: "reference", references: true, want: map[string]interface{}{
+			"password": "sec:AGENT_MY_BOT_PASSWORD", "pin": "sec:AGENT_MY_BOT_PIN",
+		}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := CredentialPlaceholders("agent", "My Bot", []string{"password", "pin"}, tc.references)
+			assert.Equal(t, tc.want, got)
+		})
+	}
+}
+
+func TestCredentialPlaceholdersOfNoCredentialsIsEmpty(t *testing.T) {
+	assert.Empty(t, CredentialPlaceholders("user", "alice", nil, false))
+}

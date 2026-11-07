@@ -11,8 +11,8 @@ import type {DeployRoutePaths, GatewayRoutePaths} from '@thunderid/configure-gat
 import type {GroupRoutePaths} from '@thunderid/configure-groups';
 import type {ImportExportRoutePaths} from '@thunderid/configure-import-export';
 import type {NotificationTemplateRoutePaths} from '@thunderid/configure-notification-templates';
-import type {OnboardingRoutePaths} from '@thunderid/configure-onboarding';
 import type {OrganizationUnitRoutePaths} from '@thunderid/configure-organization-units';
+import type {ProjectRoutePaths} from '@thunderid/configure-projects';
 import type {ResourceServerRoutePaths} from '@thunderid/configure-resource-servers';
 import type {RoleRoutePaths} from '@thunderid/configure-roles';
 import type {TranslationRoutePaths} from '@thunderid/configure-translations';
@@ -63,9 +63,9 @@ export type RouteConfig = OrganizationUnitRoutePaths &
   FlowRoutePaths &
   GroupRoutePaths &
   RoleRoutePaths &
-  OnboardingRoutePaths &
   GatewayRoutePaths &
   DeployRoutePaths &
+  ProjectRoutePaths &
   ConsoleRoutePaths;
 
 /**
@@ -99,8 +99,8 @@ export const ROUTE_SEGMENTS = {
   importExport: 'import-export',
   export: 'export',
   importConfiguration: 'import-configuration',
-  welcome: 'welcome',
   settings: 'settings',
+  projects: 'projects',
   gateways: 'gateways',
   deploy: 'deploy',
 } as const;
@@ -206,19 +206,12 @@ const RouteConfig: RouteConfig = {
     validate: () => `/${ROUTE_SEGMENTS.importConfiguration}/validate`,
     summary: () => `/${ROUTE_SEGMENTS.importConfiguration}/summary`,
   },
-  welcome: {
-    root: () => `/${ROUTE_SEGMENTS.welcome}`,
-    createProject: () => `/${ROUTE_SEGMENTS.welcome}/create-project`,
-    getStarted: () => `/${ROUTE_SEGMENTS.welcome}/get-started`,
-    getStartedApplicationsTypes: () => `/${ROUTE_SEGMENTS.welcome}/get-started/applications/types`,
-    getStartedApplicationsCreate: () => `/${ROUTE_SEGMENTS.welcome}/get-started/applications/create`,
-    getStartedAgentsCreate: () => `/${ROUTE_SEGMENTS.welcome}/get-started/agents/create`,
-    importConfigurationUpload: () => `/${ROUTE_SEGMENTS.welcome}/import-configuration`,
-    importConfigurationValidate: () => `/${ROUTE_SEGMENTS.welcome}/import-configuration/validate`,
-    importConfigurationSummary: () => `/${ROUTE_SEGMENTS.welcome}/import-configuration/summary`,
-  },
   settings: {
     list: () => `/${ROUTE_SEGMENTS.settings}`,
+  },
+  projects: {
+    list: () => `/${ROUTE_SEGMENTS.projects}`,
+    create: () => `/${ROUTE_SEGMENTS.projects}/create`,
   },
   gateways: {
     list: () => `/${ROUTE_SEGMENTS.gateways}`,
@@ -228,6 +221,10 @@ const RouteConfig: RouteConfig = {
     list: () => `/${ROUTE_SEGMENTS.deploy}`,
     explore: (gatewayId: string) => `/${ROUTE_SEGMENTS.deploy}/gateways/${encodeURIComponent(gatewayId)}/explore`,
     values: (gatewayId: string) => `/${ROUTE_SEGMENTS.deploy}/gateways/${encodeURIComponent(gatewayId)}/values`,
+    // Gateways and projects have no pages of their own in this console yet: a gateway is shown
+    // on the Deploy page, and a project's work starts from the home page.
+    gateway: () => `/${ROUTE_SEGMENTS.deploy}`,
+    project: () => `/${ROUTE_SEGMENTS.home}`,
   },
 };
 

@@ -26,6 +26,7 @@ Use it when a resource server cannot or should not validate JWTs locally. For ex
 | Who can call | Any registered client. Best practice: register the resource server as a confidential client and use its credentials |
 | `token_type_hint` parameter | Accepted but not used internally: the server determines the token type itself |
 | Inactive token response | `{ "active": false }` with HTTP 200, never leaks reason |
+| Expiry | A token is inactive from its `exp`, measured by the server's own clock. The [`jwt.leeway`](../../../../deployment/configuration#jwt-configuration) clock-skew tolerance does not apply. With several nodes, nodes whose clocks differ can disagree on a token's expiry for the size of the skew |
 | Active token response | Standard claims (see below) |
 | Tokens supported | Access tokens and refresh tokens |
 

@@ -39,8 +39,9 @@ Controls the <ProductName /> server's network settings and identity.
 | `server.timeouts.idle_seconds` | `120` | Seconds a kept-alive connection waits for its next request before it is closed. |
 | `server.identifier` | `default-deployment` | Unique identifier for this deployment instance. Every stored resource is scoped by it, so changing it on a server that already holds data hides that data rather than renaming it. |
 | `gateway.max_gateways` | `1` | Guards how many gateways this deployment administers, through the Gateway API (`POST /gateways`) or a gateway declared in a file. A standalone deployment pairs with one; raise it only where something else manages the fleet, or set it to `0` for a deployment that administers none. A registration beyond the number is refused with `409`. This is a guard rather than a guarantee: two registrations arriving at the same moment can leave one more gateway than configured, so do not rely on it as a licensing or security boundary. |
-| `gateway.max_versions` | `3` | How many captured configuration versions this deployment keeps (`POST /configuration-versions`). Capturing one beyond the number removes the oldest, except a version some gateway holds or could be reverted to. Those are kept even when that leaves more versions than the number, so applying and reverting keep working whatever it is. It also bounds the masters kept for each gateway (`GET /gateways/{id}/master/history`): recording one beyond the number removes that gateway's oldest, with no exception for a master the gateway holds, since the newest is always the one it holds. The number is never less than one. |
-| `gateway.auto_apply` | `false` | Whether a control plane applies its latest configuration version to the default gateway each time it captures one after a change, so a write reaches that gateway without a deploy. Off by default, because a control plane that administers several gateways usually keeps applying a version a deliberate step. The apply is refused like any other, for example when the gateway lacks a value the version refers to; the control plane logs it and the next change tries again. |
+| `gateway.max_versions` | `3` | How many captured configuration versions this deployment keeps (`POST /configuration-versions`). Capturing one beyond the number removes the oldest, except a version some gateway holds or could be reverted to. Those are kept even when that leaves more versions than the number, so applying and reverting keep working whatever it is. It also bounds the masters kept for each gateway (`GET /gateways/{id}/master/history`): recording one beyond the number removes that gateway's oldest, except the master the gateway's revert returns to and, for each project, the masters its rollback needs. The number is never less than one. |
+| `gateway.auto_apply` | `false` | Whether a control plane applies its latest configuration version to the first gateway of the pipeline each time it captures one after a change, so a write reaches that gateway without a deploy. Off by default, because a control plane that administers several gateways usually keeps applying a version a deliberate step. The `gateway` server configuration section overrides it at runtime. See [Deploy Pipeline and Auto Apply](#deploy-pipeline-and-auto-apply). |
+| `gateway.pipeline` | *(empty)* | The registered gateways a version is deployed and promoted through, in order. Empty, the default gateway is the only stage. See [Deploy Pipeline and Auto Apply](#deploy-pipeline-and-auto-apply). |
 | `gateway.allow_private_addresses` | `false` | Whether a gateway may be registered at, and reached on, a loopback, link-local or private address such as `localhost`, `10.0.0.5` or `169.254.169.254`. Off, a base URL naming one is refused with `400` (`GTW-1027`), and a hostname that resolves to one is refused when the gateway is called, so this deployment's calls, which carry the gateway's key, cannot be pointed at something inside its own network. Turn it on for a local or single-host setup whose gateways sit on such addresses. A base URL must be `https` and carry no credentials whatever this is set to. |
 | `gateway.removal_confirmation_threshold` | `5` | How many resources an apply or revert may remove from a gateway without being confirmed. One that would remove more is refused with `409` (`GTW-1030`) unless the request sets `confirmRemovals`; a dry run shows the removals first. A rollback to a much smaller version is the usual case. `0` turns the check off. |
 | `gateway.apply_timeout_seconds` | `300` | Seconds a request to apply a configuration version to a gateway, or to revert one, may take to answer, in place of `server.timeouts.write_seconds`. An MCP request (`/mcp`) gets this or `import.timeout_seconds`, whichever is longer, since a tool can deploy or import. It covers waiting for an apply already running on that gateway and the gateway's import. Raise it, together with `import.timeout_seconds` on the gateway and any proxy or ingress timeout in front of either, when large applies time out. |
@@ -1184,15 +1185,13 @@ Flow configuration uses the following fields. `selfFlow` uses only `expirySecond
 | `<type>.defaultHandle` | Handle of the flow to use when the application and the organization unit do not pin a specific flow. Empty string means no server default, and the flow type is treated as not configured at the server level. |
 | `<type>.expirySeconds` | How long (in seconds) a started flow context remains valid before it expires. Must be a positive integer. |
 
-Flow configuration keys include `authFlow`, `registrationFlow`, `userOnboardingFlow`, `recoveryFlow`, `signOutFlow`, `selfFlow`, `userDeletionFlow`, `applicationDeletionFlow`, `secretRegenerationFlow`, and `agentOnboardingFlow`.
+Flow configuration keys include `authFlow`, `registrationFlow`, `userOnboardingFlow`, `recoveryFlow`, `signOutFlow`, `selfFlow`, `secretRegenerationFlow`, and `agentOnboardingFlow`.
 
 `selfFlow` sets the execution expiry of every `SELF` flow, 30 minutes by default. It has no `defaultHandle`: each start request names its flow by `handle`, such as the shipped `default-self-attribute-verification-flow` or the handle of a custom `SELF` flow. A start without a `handle`, or with one that names no `SELF` flow, is refused before any node runs.
 
 `agentOnboardingFlow.defaultHandle` selects the Administration flow used when creating an agent in the Console. Bootstrap sets it to `default-agent-onboarding-flow`, which creates agents using their own identity. Set it to any saved agent onboarding Administration flow, including a custom flow, using the runtime API described below. For OBO creation, that flow collects delegation inputs and sets `delegated` through the Provisioning node or an administrator's selection. This Console action reads the server setting directly; it does not use the application and organization-unit fallback below. Direct `POST /agents` requests do not run the onboarding flow. See [Configure agent onboarding](../../guides/agents/manage-agents#configure-agent-onboarding).
 
-`userDeletionFlow` is resolved differently from the others: it names an administration flow that runs when a user is deleted from the Console, rather than a flow an inbound request starts. Its shipped default revokes the user's tokens and terminates their sessions before the record is removed. Deleting a user through the `DELETE /users/{id}` API removes the record only and does not run this flow. See [Token Revocation](../../guides/protocols/oauth-oidc/token-revocation#user-deletion).
-
-The account lifecycle administration flows have their own types: `userSuspendFlow`, `userUnsuspendFlow`, `userUnlockFlow`, `agentSuspendFlow`, `agentUnsuspendFlow`, `agentUnlockFlow`, `applicationSuspendFlow`, and `applicationUnsuspendFlow`. Like `userDeletionFlow`, each names an administration flow run against an existing identity, not a flow an inbound request starts. See [Customize the Lifecycle Flows](../../guides/account-protection/suspend-and-restore-accounts#customize-the-lifecycle-flows).
+The account lifecycle administration flows have their own types: `userSuspendFlow`, `userUnsuspendFlow`, `userUnlockFlow`, `agentSuspendFlow`, `agentUnsuspendFlow`, `agentUnlockFlow`, `applicationSuspendFlow`, and `applicationUnsuspendFlow`. Each names an administration flow run against an existing identity. An administrator starts it with `POST /flow/execute` and the flow's ID, so the resolution order below does not apply to it. User deletion is different: its revocation runs as a built-in system flow that no request starts and no server configuration key names. See [Customize the Lifecycle Flows](../../guides/account-protection/suspend-and-restore-accounts#customize-the-lifecycle-flows) and [User Deletion](../../guides/protocols/oauth-oidc/token-revocation#user-deletion).
 
 **Resolution order:** When an inbound request starts a flow, the effective flow is resolved as follows:
 
@@ -1275,6 +1274,63 @@ Set it in either of these ways:
 
 :::note
 A declarative sender takes precedence and locks the setting: while `notification.yaml` names a sender, runtime `PUT /server-config/notification` requests are rejected. Remove the declarative value to manage the sender at runtime.
+:::
+
+## Deploy Pipeline and Auto Apply
+
+A control plane deploys a version to the gateways it administers. The pipeline orders them: a deploy enters at the first gateway, and each later gateway is reached by promoting from the one before it. Set it in `deployment.yaml` with `gateway.pipeline`, one entry for each stage:
+
+| Field | Description |
+|-------|-------------|
+| `gateway` | The name a gateway is registered under. |
+| `name` | What the stage is called, for example `Development`. The gateway's name when omitted. |
+| `admin_console_url` | Where the gateway's own console is reached, to manage its users and sessions. `/console` under the gateway's base URL when omitted. |
+
+```yaml
+gateway:
+  pipeline:
+    - gateway: dev-gateway
+      name: Development
+    - gateway: prod-gateway
+      name: Production
+      admin_console_url: "https://console.prod.example.com"
+```
+
+Without `gateway.pipeline`, the default gateway is the only stage. `GET /gateways/pipeline` returns the stages. An entry is left out of them when nothing can be deployed to it for certain: its gateway is not registered, as right after startup before gateways are registered through the API, or two gateways have that name, as a gateway declared in a file and one registered through the API can.
+
+The first stage is where auto apply deploys and where a control plane writes the values its references name. While the first entry's gateway is left out, both wait rather than going to the next stage.
+
+### Auto Apply
+
+Auto apply makes each change captured on the control plane deploy to the first gateway. `gateway.auto_apply` sets it for the deployment, and the server-config `gateway` section turns it on or off without a restart:
+
+| Field | Description |
+|-------|-------------|
+| `autoApply` | Whether a captured change deploys to the first gateway. Unset, `gateway.auto_apply` decides, as it does when the section cannot be read. |
+
+The section stays on the control plane: it sets how this control plane deploys, so it is not exported, captured into a version or imported. Set it in either of these ways:
+
+- **Declarative** - create `config/resources/server_configs/gateway.yaml`, then restart:
+  ```yaml
+  name: gateway
+  value:
+    autoApply: true
+  ```
+- **Runtime** - send the new value to `PUT /server-config/gateway`:
+  ```http
+  PUT /server-config/gateway
+  Authorization: Bearer <admin-access-token>
+  Content-Type: application/json
+
+  { "autoApply": true }
+  ```
+
+An auto apply is refused like any other apply, for example when the gateway lacks a value the version refers to; the control plane logs it and the next change tries again.
+
+The section is read on every capture. The node that takes the update applies it at once. With the default in-memory [cache](#cache-configuration), another node sees it once its cached copy of the section expires.
+
+:::note
+A declarative value takes precedence and locks the setting: while `gateway.yaml` sets `autoApply`, runtime `PUT /server-config/gateway` requests are rejected. Remove the declarative value to manage it at runtime.
 :::
 
 ## Account Access

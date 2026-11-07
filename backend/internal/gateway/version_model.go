@@ -134,10 +134,15 @@ type appliedState struct {
 // Selection names, by key, the changes to send in this apply; the rest are neither written nor
 // removed, and stay on offer for the next apply. Without a selection every change the diff reports
 // is sent; an empty one sends nothing. Nothing about a selection is kept.
+//
+// WithDependencies, on by default, widens a selection to what the selected resources need that the
+// gateway lacks or holds differently, so an application brings the flows and the unit it names.
+// Off, a selection whose resource needs something the gateway lacks is refused.
 type ApplyRequest struct {
-	Version   string    `json:"version,omitempty"`
-	DryRun    bool      `json:"dryRun,omitempty"`
-	Selection *[]string `json:"selection,omitempty"`
+	Version          string    `json:"version,omitempty"`
+	DryRun           bool      `json:"dryRun,omitempty"`
+	Selection        *[]string `json:"selection,omitempty"`
+	WithDependencies *bool     `json:"withDependencies,omitempty"`
 	// LeaveOut names changes to leave out of this apply and the applies after it, until one selects
 	// them. Without a selection, an apply sends every change except those left out.
 	LeaveOut []string `json:"leaveOut,omitempty"`
@@ -149,6 +154,11 @@ type ApplyRequest struct {
 	// apply writes to the gateway's master. A caller promoting another environment's configuration
 	// names that environment here.
 	Origin string `json:"origin,omitempty"`
+	// Project scopes the apply to one project, by its id. Without a selection it sends the project's own
+	// changes and what they need that the gateway lacks or refused. A selection naming another
+	// project's resources, or leaving out what the selected ones need that the gateway lacks, is
+	// refused. The selection is not widened: WithDependencies is not read.
+	Project string `json:"project,omitempty"`
 }
 
 // PromoteRequest asks for the version one gateway runs to be applied to another, as a console promotes
@@ -158,12 +168,20 @@ type PromoteRequest struct {
 	TargetGatewayID string
 	DryRun          bool
 	ConfirmRemovals bool
+	// Project scopes the promotion as it scopes an apply, within what the source holds, and Selection
+	// then names what to send in place of the project's defaults. Without a project, Selection is not
+	// read.
+	Project   string
+	Selection *[]string
 }
 
-// RevertRequest is the body of a revert.
+// RevertRequest is the body of a revert. Project, by its id, rolls back only that project's own
+// resources, to what the gateway held before the last deploy scoped to it, and leaves every other
+// resource as the gateway holds it now.
 type RevertRequest struct {
-	DryRun          bool `json:"dryRun,omitempty"`
-	ConfirmRemovals bool `json:"confirmRemovals,omitempty"`
+	DryRun          bool   `json:"dryRun,omitempty"`
+	ConfirmRemovals bool   `json:"confirmRemovals,omitempty"`
+	Project         string `json:"project,omitempty"`
 }
 
 // ChangeKind says how a resource differs between what a gateway holds and what is applied to it.
@@ -197,6 +215,19 @@ type Change struct {
 	// HeldBack marks a change an earlier apply left out for the applies after it. An apply without a
 	// selection leaves it out again; one that selects it sends it and stops holding it back.
 	HeldBack bool `json:"heldBack,omitempty"`
+	// Needs lists the keys of the resources this one names by id in the version, which it needs on
+	// the gateway to run. Required marks, on an apply's answer, a change sent because a selected
+	// resource needs it, with RequiredBy the selected key.
+	Needs      []string `json:"needs,omitempty"`
+	Required   bool     `json:"required,omitempty"`
+	RequiredBy string   `json:"requiredBy,omitempty"`
+	// Section places the change in a diff or an apply scoped to a project: the project's own resources
+	// ("project"), what they need ("needed"), what belongs to no project ("shared"), or another
+	// project's own ("other"). Required then marks a needed change the gateway lacks or refused, which
+	// the project's resources cannot run without. UsedBy names, on a needed or shared change that
+	// updates or removes what the gateway holds, the other projects whose resources there name it.
+	Section string   `json:"section,omitempty"`
+	UsedBy  []string `json:"usedBy,omitempty"`
 	// Lines is the resource's document diffed line by line, from what the gateway holds to what is
 	// applied. An unchanged resource has none.
 	Lines []LineOp `json:"lines,omitempty"`

@@ -460,7 +460,9 @@ func (ts *AgentOnboardingFlowTestSuite) TestAgentOnboardingFlow_SelectedOwnerIsR
 
 	agent, err := testutils.GetAgent(ts.ownedAgent)
 	ts.Require().NoError(err, "Failed to read the provisioned agent")
-	ts.Equal(ts.ownerUserID, agent.Owner, "the agent is owned by the user the caller chose")
+	ts.Require().NotNil(agent.Owner, "the agent records its owner")
+	ts.Equal(ts.ownerUserID, agent.Owner.ID, "the agent is owned by the user the caller chose")
+	ts.True(*agent.Owner.IsLocal, "an owner the flow resolves is a local user")
 }
 
 // An owner has to be a user. Nothing downstream repeats that check, so an identifier of another

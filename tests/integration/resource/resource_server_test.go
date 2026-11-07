@@ -141,6 +141,78 @@ func (suite *ResourceServerAPITestSuite) TestCreateResourceServerDuplicateIdenti
 	suite.Contains(err.Error(), "409")
 }
 
+func (suite *ResourceServerAPITestSuite) TestCreateResourceServerEquivalentIdentifier() {
+	rsID, err := createResourceServer(CreateResourceServerRequest{
+		Name:       "Equivalent Identifier Server",
+		Identifier: "https://equivalence.example.com",
+		OUID:       testOUID,
+	})
+	suite.Require().NoError(err)
+	defer deleteResourceServer(rsID)
+
+	for i, identifier := range []string{
+		"https://EQUIVALENCE.example.com",
+		"HTTPS://equivalence.example.com",
+		"https://equivalence.example.com/",
+	} {
+		equivalentID, err := createResourceServer(CreateResourceServerRequest{
+			Name:       fmt.Sprintf("Equivalent Identifier Server %d", i),
+			Identifier: identifier,
+			OUID:       testOUID,
+		})
+		if equivalentID != "" {
+			defer deleteResourceServer(equivalentID)
+		}
+		suite.Require().Error(err, "Should fail with an identifier equivalent to %s", identifier)
+		suite.Contains(err.Error(), "409")
+	}
+}
+
+func (suite *ResourceServerAPITestSuite) TestCreateResourceServerDuplicateIdentifierKeptAsTyped() {
+	for i, identifier := range []string{
+		"https://kept-as-typed.example.com/{tenant}",
+		"https://kept-as-typed.example.com/a b",
+		"https://Kept-As-Typed-Ä.example.com/Ärzte",
+		"Ärzte-API",
+	} {
+		rsID, err := createResourceServer(CreateResourceServerRequest{
+			Name:       fmt.Sprintf("Kept As Typed Identifier Server %d", i),
+			Identifier: identifier,
+			OUID:       testOUID,
+		})
+		suite.Require().NoError(err, "Should create a resource server with identifier %s", identifier)
+		defer deleteResourceServer(rsID)
+
+		duplicateID, err := createResourceServer(CreateResourceServerRequest{
+			Name:       fmt.Sprintf("Kept As Typed Identifier Duplicate %d", i),
+			Identifier: identifier,
+			OUID:       testOUID,
+		})
+		if duplicateID != "" {
+			defer deleteResourceServer(duplicateID)
+		}
+		suite.Require().Error(err, "Should fail with duplicate identifier %s", identifier)
+		suite.Contains(err.Error(), "409")
+	}
+}
+
+func (suite *ResourceServerAPITestSuite) TestCreateResourceServerDistinctIdentifiers() {
+	for i, identifier := range []string{
+		"https://distinct.example.com/orders",
+		"https://distinct.example.com/Orders",
+		"https://distinct.example.com/orders/",
+		"https://distinct.example.com:8443/orders",
+	} {
+		rsID, err := createResourceServer(CreateResourceServerRequest{
+			Name:       fmt.Sprintf("Distinct Identifier Server %d", i),
+			Identifier: identifier,
+			OUID:       testOUID,
+		})
+		suite.Require().NoError(err, "Should create a resource server with identifier %s", identifier)
+		defer deleteResourceServer(rsID)
+	}
+}
+
 func (suite *ResourceServerAPITestSuite) TestCreateResourceServerInvalidOU() {
 	reqBody := CreateResourceServerRequest{
 		Name:       "Invalid OU Resource Server",

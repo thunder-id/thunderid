@@ -22,6 +22,8 @@ import (
 	"github.com/thunder-id/thunderid/internal/revocation"
 	"github.com/thunder-id/thunderid/internal/sharing"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
+	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/filter"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
@@ -77,6 +79,7 @@ type roleAssignmentService struct {
 	transactioner     providers.Transactioner
 	authzService      sysauthz.SystemAuthorizationServiceInterface
 	sharingService    sharing.SharingServiceInterface
+	bus               eventbus.EventBusInterface
 	logger            *log.Logger
 }
 
@@ -90,6 +93,7 @@ func newRoleAssignmentService(
 	transactioner providers.Transactioner,
 	authzService sysauthz.SystemAuthorizationServiceInterface,
 	sharingService sharing.SharingServiceInterface,
+	bus eventbus.EventBusInterface,
 ) *roleAssignmentService {
 	return &roleAssignmentService{
 		roleStore:         roleStore,
@@ -100,6 +104,7 @@ func newRoleAssignmentService(
 		transactioner:     transactioner,
 		authzService:      authzService,
 		sharingService:    sharingService,
+		bus:               bus,
 		logger:            log.GetLogger().With(log.String(log.LoggerKeyComponentName, assignmentLoggerComponentName)),
 	}
 }
@@ -277,6 +282,14 @@ func (as *roleAssignmentService) getAssignmentsByEntityCategory(
 // Assignments can be added to both mutable (DB-backed) and declarative (file-backed) roles.
 func (as *roleAssignmentService) AddAssignments(
 	ctx context.Context, id, ouID string, assignments []RoleAssignment) *tidcommon.ServiceError {
+	svcErr := as.addAssignments(ctx, id, ouID, assignments)
+	publishAssignmentEvents(ctx, as.bus, audit.EventRoleAssignmentAdd, audit.ActionAdd, id, assignments, svcErr)
+	return svcErr
+}
+
+// addAssignments adds assignments to a role in an organization unit without publishing their audit events.
+func (as *roleAssignmentService) addAssignments(
+	ctx context.Context, id, ouID string, assignments []RoleAssignment) *tidcommon.ServiceError {
 	return as.modifyAssignments(ctx, id, ouID, assignments, true,
 		as.roleStore.AddAssignments,
 		"add assignments to role", "added assignments to role")
@@ -286,9 +299,28 @@ func (as *roleAssignmentService) AddAssignments(
 // Assignments can be removed from both mutable (DB-backed) and declarative (file-backed) roles.
 func (as *roleAssignmentService) RemoveAssignments(
 	ctx context.Context, id, ouID string, assignments []RoleAssignment) *tidcommon.ServiceError {
-	return as.modifyAssignments(ctx, id, ouID, assignments, false,
+	svcErr := as.modifyAssignments(ctx, id, ouID, assignments, false,
 		as.roleStore.RemoveAssignments,
 		"remove assignments from role", "removed assignments from role")
+	// The store does not report which assignments it removed, so the removal of a principal that did not
+	// hold the role is recorded as succeeded: a known limitation.
+	publishAssignmentEvents(ctx, as.bus, audit.EventRoleAssignmentRemove, audit.ActionRemove, id, assignments,
+		svcErr)
+	return svcErr
+}
+
+// publishAssignmentEvents publishes the audit events of an attempt to add assignees to the role with
+// roleID, or remove them, after the change committed or was refused.
+func publishAssignmentEvents(ctx context.Context, bus eventbus.EventBusInterface, name string,
+	action audit.Action, roleID string, assignments []RoleAssignment, svcErr *tidcommon.ServiceError) {
+	assignees := make([]audit.Ref, 0, len(assignments))
+	for _, a := range assignments {
+		assignees = append(assignees, audit.PrincipalRef(string(a.Type), a.ID))
+	}
+	target := audit.Ref{Type: audit.TargetTypeRole, ID: roleID}
+	for _, payload := range audit.MembershipPayloads(ctx, target, assignees, action, svcErr) {
+		eventbus.TryPublish(ctx, bus, eventbus.NewEvent(ctx, name).With(payload))
+	}
 }
 
 // ValidateRemoveAssignment runs the checks RemoveAssignments runs.
@@ -424,6 +456,23 @@ func (as *roleAssignmentService) AddAssigneesToRoles(
 	assignments []RoleAssignment,
 	roleIDs []string,
 ) *tidcommon.ServiceError {
+	svcErr := as.addAssigneesToRoles(ctx, assignments, roleIDs)
+	// Published once the transaction is over, so a role whose additions were rolled back is never
+	// recorded as assigned.
+	for _, roleID := range utils.UniqueStrings(roleIDs) {
+		publishAssignmentEvents(ctx, as.bus, audit.EventRoleAssignmentAdd, audit.ActionAdd, roleID, assignments,
+			svcErr)
+	}
+	return svcErr
+}
+
+// addAssigneesToRoles adds assignees to multiple roles in a single transaction without publishing their
+// audit events.
+func (as *roleAssignmentService) addAssigneesToRoles(
+	ctx context.Context,
+	assignments []RoleAssignment,
+	roleIDs []string,
+) *tidcommon.ServiceError {
 	if len(roleIDs) == 0 || len(assignments) == 0 {
 		return nil
 	}
@@ -504,7 +553,7 @@ func (as *roleAssignmentService) addInEachOU(
 	err := as.transactioner.Transact(ctx, func(txCtx context.Context) error {
 		for _, rid := range roleIDs {
 			for _, ouID := range ouIDs {
-				if svcErr := as.AddAssignments(txCtx, rid, ouID, byOU[ouID]); svcErr != nil {
+				if svcErr := as.addAssignments(txCtx, rid, ouID, byOU[ouID]); svcErr != nil {
 					capturedSvcErr = svcErr
 					return fmt.Errorf("failed to assign role %s: %s", rid, svcErr.Error.DefaultValue)
 				}

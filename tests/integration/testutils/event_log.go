@@ -82,25 +82,41 @@ func ObservabilityFileSinkPatch(path string, enabled bool) map[string]interface{
 
 // EventLogReader tails the event log from the offset it last read, so each scenario sees only the
 // events its own requests produced rather than every event the suite has published so far.
-type EventLogReader struct {
-	path    string
-	offset  int64
-	batched []ObservabilityEvent
-}
+type EventLogReader = logReader[ObservabilityEvent]
 
 // NewEventLogReader returns a reader of the file sink at path.
 func NewEventLogReader(path string) *EventLogReader {
-	return &EventLogReader{path: path}
+	return &EventLogReader{path: path, parse: parseObservabilityEvent}
+}
+
+// parseObservabilityEvent parses one record of the observability file sink, every one of which is JSON.
+func parseObservabilityEvent(line string) (ObservabilityEvent, bool, error) {
+	var evt ObservabilityEvent
+	if err := json.Unmarshal([]byte(line), &evt); err != nil {
+		return ObservabilityEvent{}, false, err
+	}
+	evt.Raw = line
+	return evt, true, nil
+}
+
+// logReader tails a log from the offset it last read and keeps the records parse accepts.
+type logReader[T any] struct {
+	path string
+	// parse returns the record a line holds, false for a line that holds none, and an error for a
+	// line that should hold one and cannot be read.
+	parse   func(line string) (T, bool, error)
+	offset  int64
+	batched []T
 }
 
 // Reset drops everything read so far and moves the offset past the last complete record, so the next
-// read returns only events published after this call. Call it immediately before the requests under
+// read returns only records written after this call. Call it immediately before the requests under
 // test.
 //
-// The offset lands after the last newline rather than at the end of the file: the sink's buffered
-// writer can flush mid-record, and an offset inside one would make the next read start on a
-// fragment. Any bytes of that partial record are re-read once the record is complete.
-func (r *EventLogReader) Reset() error {
+// The offset lands after the last newline rather than at the end of the file: a buffered writer can
+// flush mid-record, and an offset inside one would make the next read start on a fragment. Any bytes
+// of that partial record are re-read once the record is complete.
+func (r *logReader[T]) Reset() error {
 	r.batched = nil
 
 	data, err := os.ReadFile(r.path)
@@ -109,62 +125,64 @@ func (r *EventLogReader) Reset() error {
 		return nil
 	}
 	if err != nil {
-		return fmt.Errorf("failed to read the event log %s: %w", r.path, err)
+		return fmt.Errorf("failed to read the log %s: %w", r.path, err)
 	}
 
 	r.offset = int64(bytes.LastIndexByte(data, '\n') + 1)
 	return nil
 }
 
-// Await polls the log until an event matching the predicate appears, and returns it. It reports an
-// error, rather than the zero event, when the wait times out, so the caller can fail with a message
+// Await polls the log until a record matching the predicate appears, and returns it. It reports an
+// error, rather than the zero record, when the wait times out, so the caller can fail with a message
 // naming what it was waiting for.
-func (r *EventLogReader) Await(match func(ObservabilityEvent) bool) (ObservabilityEvent, error) {
+func (r *logReader[T]) Await(match func(T) bool) (T, error) {
 	deadline := time.Now().Add(eventWaitTimeout)
 	for {
 		if err := r.poll(); err != nil {
-			return ObservabilityEvent{}, err
+			var zero T
+			return zero, err
 		}
-		for _, evt := range r.batched {
-			if match(evt) {
-				return evt, nil
+		for _, record := range r.batched {
+			if match(record) {
+				return record, nil
 			}
 		}
 		if time.Now().After(deadline) {
-			return ObservabilityEvent{}, fmt.Errorf(
-				"no matching event within %s (%d events read)", eventWaitTimeout, len(r.batched))
+			var zero T
+			return zero, fmt.Errorf(
+				"no matching record within %s (%d records read)", eventWaitTimeout, len(r.batched))
 		}
 		time.Sleep(eventPollInterval)
 	}
 }
 
-// Read returns every event written since the last Reset that has reached the log. It does not wait,
-// so a caller counting events first awaits one published after them.
-func (r *EventLogReader) Read() ([]ObservabilityEvent, error) {
+// Read returns every record written since the last Reset that has reached the log. It does not wait,
+// so a caller counting records first awaits one written after them.
+func (r *logReader[T]) Read() ([]T, error) {
 	if err := r.poll(); err != nil {
 		return nil, err
 	}
-	events := make([]ObservabilityEvent, len(r.batched))
-	copy(events, r.batched)
-	return events, nil
+	records := make([]T, len(r.batched))
+	copy(records, r.batched)
+	return records, nil
 }
 
-// poll reads whatever complete lines have been appended since the last read and adds them to the
-// batch. A partial trailing line is left for the next poll: the sink's buffered writer can flush
-// mid-record once a record straddles its buffer.
-func (r *EventLogReader) poll() error {
+// poll reads whatever complete lines have been appended since the last read and adds their records to
+// the batch. A partial trailing line is left for the next poll: a buffered writer can flush mid-record
+// once a record straddles its buffer.
+func (r *logReader[T]) poll() error {
 	file, err := os.Open(r.path)
 	if os.IsNotExist(err) {
 		return nil
 	}
 	if err != nil {
-		return fmt.Errorf("failed to open the event log %s: %w", r.path, err)
+		return fmt.Errorf("failed to open the log %s: %w", r.path, err)
 	}
 	defer file.Close()
 
 	info, err := file.Stat()
 	if err != nil {
-		return fmt.Errorf("failed to stat the event log %s: %w", r.path, err)
+		return fmt.Errorf("failed to stat the log %s: %w", r.path, err)
 	}
 	if info.Size() <= r.offset {
 		return nil
@@ -173,7 +191,7 @@ func (r *EventLogReader) poll() error {
 	buf := make([]byte, info.Size()-r.offset)
 	read, err := file.ReadAt(buf, r.offset)
 	if err != nil && read == 0 {
-		return fmt.Errorf("failed to read the event log %s: %w", r.path, err)
+		return fmt.Errorf("failed to read the log %s: %w", r.path, err)
 	}
 
 	chunk := string(buf[:read])
@@ -187,12 +205,13 @@ func (r *EventLogReader) poll() error {
 		if line == "" {
 			continue
 		}
-		var evt ObservabilityEvent
-		if err := json.Unmarshal([]byte(line), &evt); err != nil {
-			return fmt.Errorf("failed to parse the event log line %q: %w", line, err)
+		record, ok, err := r.parse(line)
+		if err != nil {
+			return fmt.Errorf("failed to parse the log line %q: %w", line, err)
 		}
-		evt.Raw = line
-		r.batched = append(r.batched, evt)
+		if ok {
+			r.batched = append(r.batched, record)
+		}
 	}
 
 	r.offset += int64(lastNewline) + 1

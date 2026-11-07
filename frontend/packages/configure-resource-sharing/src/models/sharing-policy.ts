@@ -10,6 +10,7 @@ export interface AllUnitsSection {
    * Organization units withheld from the section, each taking everything beneath it with it.
    */
   excludedOuIds?: string[];
+  overlayRules?: SharingOverlayRules;
 }
 
 /**
@@ -18,9 +19,40 @@ export interface AllUnitsSection {
  */
 export type SharingReach = 'unit' | 'subtree';
 
+/**
+ * The roles a user share mandates in a named child unit. The rule is fixed: the unit cannot remove
+ * the roles, and the share pins exactly this list.
+ */
+export interface SharingRolesRule {
+  editable: false;
+  value: string[];
+}
+
+/**
+ * Whether the organization units a role's section reaches may assign the role. They may unless a
+ * policy turns it off, and only a resource file or the API can: the console keeps the rule as it is.
+ */
+export interface SharingAssignmentsRule {
+  editable: boolean;
+}
+
+/**
+ * The terms the organization units a section reaches hold the shared resource on. A user share
+ * declares `roles`, on a named child unit only. A role declares `assignments`, on any section or
+ * named unit.
+ */
+export interface SharingOverlayRules {
+  roles?: SharingRolesRule;
+  assignments?: SharingAssignmentsRule;
+}
+
 export interface SharingChildUnit {
   ouId: string;
   reach: SharingReach;
+  /**
+   * A user's `roles` rule is accepted only with `reach: unit`.
+   */
+  overlayRules?: SharingOverlayRules;
 }
 
 /**
@@ -33,11 +65,13 @@ export type ChildUnitsSection =
        * Direct children of the issuer withheld from the section, each with everything beneath it.
        */
       excludedOuIds?: string[];
+      overlayRules?: SharingOverlayRules;
     }
   | {mode: 'selected'; units: SharingChildUnit[]};
 
 export interface SharingRootUnit {
   ouId: string;
+  overlayRules?: SharingOverlayRules;
 }
 
 /**
@@ -51,6 +85,7 @@ export type OtherTreeRootsSection =
        * Top units withheld from the section, and with them their trees.
        */
       excludedOuIds?: string[];
+      overlayRules?: SharingOverlayRules;
     }
   | {mode: 'selected'; units: SharingRootUnit[]};
 

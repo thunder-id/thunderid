@@ -65,6 +65,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/csp"
 	dbprovider "github.com/thunder-id/thunderid/internal/system/database/provider"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
 	"github.com/thunder-id/thunderid/internal/system/export"
 	healthcheckservice "github.com/thunder-id/thunderid/internal/system/healthcheck/service"
 	i18nmgt "github.com/thunder-id/thunderid/internal/system/i18n/mgt"
@@ -93,12 +94,14 @@ var observabilitySvc observability.ObservabilityServiceInterface
 var changeCapture = gateway.NewChangeCapture()
 
 // registerServices registers the Control Plane management services with the provided HTTP
-// multiplexer. It also returns the import service so the bootstrap subcommand can create default
-// resources in-process through the same service instances.
+// multiplexer, with the services that audit what they change publishing on auditBus. It also returns
+// the import service so the bootstrap subcommand can create default resources in-process through the
+// same service instances.
 // nolint:gocyclo // This is the main service registration function, so its length is expected to be proportional
 // to the number of services. Eventhough it has many branching statements, almost all are early exits so cognitive
 // complexity is low.
-func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterface) (
+func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterface,
+	auditBus eventbus.EventBusInterface) (
 	jwt.JWTServiceInterface, kmprovider.RuntimeCryptoProvider, importer.ImportServiceInterface,
 	*mcpsdk.Server) {
 	logger := log.GetLogger()
@@ -229,6 +232,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		serverconfig.ConfigNameCSP:                   csp.PolicyHandler{},
 		serverconfig.ConfigNameAccountAccess:         identitygovernance.NewAccountAccessHandler(governanceCfg),
 		serverconfig.ConfigNameNotification:          notificationConfigHandler,
+		serverconfig.ConfigNameGateway:               gateway.NewSettingsConfigHandler(),
 	}
 	serverConfigService, serverConfigExporter, err := serverconfig.Initialize(mux, cacheManager, serverConfigHandlers,
 		observabilitySvc)
@@ -249,14 +253,14 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 
 	userService, ouUserResolver, userExporter, err := user.Initialize(
 		mux, entityService, ouService, entityTypeService, ouAuthzService, governanceService,
-		attributeVerificationService, sharingService, valueCapture,
+		attributeVerificationService, sharingService, valueCapture, auditBus,
 	)
 	fatalOnError(ctx, logger, err, "Failed to initialize UserService")
 	exporters = append(exporters, userExporter)
 
 	groupService, ouGroupResolver, groupExporter, err := group.Initialize(
 		mux, dbprovider.GetDBProvider(), ouService, entityService, entityTypeService, ouAuthzService,
-		sharingService,
+		sharingService, auditBus,
 	)
 	fatalOnError(ctx, logger, err, "Failed to initialize GroupService")
 	exporters = append(exporters, groupExporter)
@@ -266,7 +270,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 
 	roleService, roleAssignmentService, ouRoleResolver, roleExporter, err := role.Initialize(
 		mux, entityService, groupService, ouService, resourceService, entityTypeService, ouAuthzService,
-		sharingService)
+		sharingService, auditBus)
 	fatalOnError(ctx, logger, err, "Failed to initialize RoleService")
 	// The control plane runs no flows, so the role tools write removals directly.
 	role.RegisterMCPTools(mcpServer, roleService, roleAssignmentService, resourceService, ouService, nil)
@@ -357,7 +361,8 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	// deny list, and this plane issues and revokes no tokens. application treats nil as "no opinion".
 	applicationService, applicationExporter, err := application.Initialize(
 		mux, mcpServer, entityService, inboundClientService, ouService, i18nService,
-		runtimeCryptoSvc, serverConfigService, nil, sharingService, valueCapture, governanceService, projectService)
+		runtimeCryptoSvc, serverConfigService, nil, sharingService, valueCapture, governanceService, projectService,
+		auditBus)
 	fatalOnError(ctx, logger, err, "Failed to initialize ApplicationService")
 	exporters = append(exporters, applicationExporter)
 
@@ -396,7 +401,8 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 
 	// The gateways this control plane administers. Registration is bounded by gateway.max_gateways,
 	// which is one unless a deployment raises it.
-	gatewayService, err := gateway.Initialize(mux, mcpServer, exportService, valueCapture, exporters, changeCapture)
+	gatewayService, err := gateway.Initialize(mux, mcpServer, exportService, valueCapture, exporters, changeCapture,
+		serverConfigService, projectService)
 	fatalOnError(ctx, logger, err, "Failed to initialize gateway service")
 
 	// Initialize import service

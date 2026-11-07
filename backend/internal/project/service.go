@@ -37,6 +37,7 @@ type ProjectServiceInterface interface {
 	DeleteProject(ctx context.Context, id string) *tidcommon.ServiceError
 	ResolveProjectOU(ctx context.Context, projectID, ouID string) (string, *tidcommon.ServiceError)
 	ProjectExists(ctx context.Context, id string) (bool, *tidcommon.ServiceError)
+	ProjectNames(ctx context.Context) (map[string]string, *tidcommon.ServiceError)
 	ImportProject(ctx context.Context, id, handle, displayName, description string, upsert bool) (
 		bool, *tidcommon.ServiceError)
 	GetResourceDependencies(
@@ -111,6 +112,28 @@ func (s *projectService) ResolveProjectOU(
 		return "", &ErrorOUNotInProject
 	}
 	return ouID, nil
+}
+
+// ProjectNames maps each project's id to the name it is shown by: its display name, or its handle when
+// it has none.
+func (s *projectService) ProjectNames(ctx context.Context) (map[string]string, *tidcommon.ServiceError) {
+	names := map[string]string{}
+	for offset := 0; ; offset += serverconst.MaxPageSize {
+		page, svcErr := s.GetProjectList(ctx, serverconst.MaxPageSize, offset)
+		if svcErr != nil {
+			return nil, svcErr
+		}
+		for _, found := range page.Projects {
+			name := found.DisplayName
+			if name == "" {
+				name = found.Handle
+			}
+			names[found.ID] = name
+		}
+		if len(page.Projects) < serverconst.MaxPageSize {
+			return names, nil
+		}
+	}
 }
 
 // GetProjectList returns a page of projects, oldest first.

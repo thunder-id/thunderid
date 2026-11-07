@@ -99,7 +99,7 @@ export default function ChangeList({
           sx={{height: 18, fontSize: 11, bgcolor: 'action.selected', color: 'text.secondary'}}
         />
       )}
-      {change.excluded && !change.sourceExcluded && (
+      {change.heldBack && !change.sourceExcluded && (
         <Chip
           size="small"
           label={

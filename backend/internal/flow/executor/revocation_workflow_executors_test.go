@@ -70,13 +70,6 @@ func (s *RevocationWorkflowExecutorsTestSuite) TestUserDeletionFlow() {
 	})
 	s.Require().NoError(err)
 	s.Equal(providers.ExecComplete, sessionResp.Status)
-
-	s.users.EXPECT().DeleteUser(mock.Anything, "user-123").Return(nil)
-	deleteResp, err := newUserDeleteExecutor(s.factory, s.users).Execute(&providers.NodeContext{
-		Context: context.Background(), SharedRuntimeData: validationResp.SharedRuntimeData,
-	})
-	s.Require().NoError(err)
-	s.Equal(providers.ExecComplete, deleteResp.Status)
 }
 
 func (s *RevocationWorkflowExecutorsTestSuite) TestValidationRequestsInputs() {
@@ -173,7 +166,7 @@ func (s *RevocationWorkflowExecutorsTestSuite) TestValidationExecutorDeclaresMod
 	s.Require().NotNil(meta)
 	s.Equal(string(revocation.ModeAll), meta.DefaultMode)
 	s.Equal([]string{string(revocation.ModeAll)}, meta.SupportedModes)
-	s.Equal([]providers.FlowType{providers.FlowTypeAdministration, providers.FlowTypeSystem}, meta.SupportedFlowTypes)
+	s.Equal([]providers.FlowType{providers.FlowTypeSystem}, meta.SupportedFlowTypes)
 }
 
 // The breadth the pre-executor records must survive the hop to the node that writes the revocation.

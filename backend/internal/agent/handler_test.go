@@ -57,6 +57,12 @@ func (s *InlineStubAgentService) CreateAgent(
 	return &model.AgentCompleteResponse{}, nil
 }
 
+func (s *InlineStubAgentService) UpdateAgentCredentials(
+	context.Context, string, json.RawMessage,
+) *tidcommon.ServiceError {
+	return nil
+}
+
 func (s *InlineStubAgentService) UpdateAgent(
 	ctx context.Context, id string, req *model.UpdateAgentRequest,
 ) (*model.AgentCompleteResponse, *tidcommon.ServiceError) {
@@ -138,7 +144,8 @@ func TestHandleAgentPostRequest_Success(t *testing.T) {
 		},
 	}
 	handler := newAgentHandler(stubService)
-	goodJSON := `{"ouId": "ou-123", "type": "worker", "attributes": {"name": "Valid Agent Name"}, "owner": "admin-id"}`
+	goodJSON := `{"ouId": "ou-123", "type": "worker", "attributes": {"name": "Valid Agent Name"},` +
+		`"owner": {"id": "admin-id"}}`
 	req := httptest.NewRequest(http.MethodPost, "/agents", bytes.NewBufferString(goodJSON))
 	w := httptest.NewRecorder()
 

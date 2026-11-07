@@ -25,7 +25,7 @@ spec:
       properties:
         image:
           type: string
-          default: "ghcr.io/thunder-id/thunderid:latest"
+          default: "ghcr.io/thunder-id/thunderid-gateway:latest"
         # Platform secret store location of the environment values. An
         # ExternalSecret is rendered that extracts every property stored at
         # the remote key into a Secret on the data plane, injected into the

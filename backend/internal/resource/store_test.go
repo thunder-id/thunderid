@@ -808,62 +808,97 @@ func (suite *ResourceStoreTestSuite) runBoolCheckTest(
 	})
 }
 
-// nolint:dupl
 func (suite *ResourceStoreTestSuite) TestCheckResourceServerIdentifierExists() {
 	testCases := []struct {
 		name           string
 		identifier     string
-		setupMocks     func()
+		withSlash      string
+		withoutSlash   string
+		results        []map[string]interface{}
+		queryErr       error
 		expectedExists bool
 		shouldErr      bool
 	}{
 		{
-			name:       "Exists",
-			identifier: "test-identifier",
-			setupMocks: func() {
-				suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
-				suite.mockDBClient.On("QueryContext", context.Background(),
-					queryCheckResourceServerIdentifierExists,
-					"test-identifier", "test-deployment").Return([]map[string]interface{}{
-					{"count": int64(1)},
-				}, nil)
-			},
+			name:           "ExactMatch",
+			identifier:     "orders-api",
+			withSlash:      "orders-api",
+			withoutSlash:   "orders-api",
+			results:        []map[string]interface{}{{"identifier": "orders-api"}},
 			expectedExists: true,
-			shouldErr:      false,
 		},
 		{
-			name:       "NotExists",
-			identifier: "nonexistent-identifier",
-			setupMocks: func() {
-				suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
-				suite.mockDBClient.On("QueryContext", context.Background(),
-					queryCheckResourceServerIdentifierExists,
-					"nonexistent-identifier", "test-deployment").Return([]map[string]interface{}{
-					{"count": int64(0)},
-				}, nil)
-			},
-			expectedExists: false,
-			shouldErr:      false,
+			name:           "HostCaseAndEmptyPath",
+			identifier:     "https://API.example.com",
+			withSlash:      "https://api.example.com/",
+			withoutSlash:   "https://api.example.com",
+			results:        []map[string]interface{}{{"identifier": "https://api.example.com/"}},
+			expectedExists: true,
 		},
 		{
-			name:       "QueryError",
-			identifier: "test-identifier",
-			setupMocks: func() {
-				suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
-				suite.mockDBClient.On("QueryContext", context.Background(),
-					queryCheckResourceServerIdentifierExists,
-					"test-identifier", "test-deployment").Return(nil, errors.New("query error"))
-			},
-			expectedExists: false,
-			shouldErr:      true,
+			name:         "PathCase",
+			identifier:   "https://api.example.com/Orders",
+			withSlash:    "https://api.example.com/orders",
+			withoutSlash: "https://api.example.com/orders",
+			results:      []map[string]interface{}{{"identifier": "https://api.example.com/orders"}},
+		},
+		{
+			name:         "NonURICase",
+			identifier:   "Orders-API",
+			withSlash:    "orders-api",
+			withoutSlash: "orders-api",
+			results:      []map[string]interface{}{{"identifier": "orders-api"}},
+		},
+		{
+			name:           "CharactersKeptAsTyped",
+			identifier:     "https://API.example.com/{tenant} café",
+			withSlash:      "https://api.example.com/{tenant} café",
+			withoutSlash:   "https://api.example.com/{tenant} café",
+			results:        []map[string]interface{}{{"identifier": "https://api.example.com/{tenant} café"}},
+			expectedExists: true,
+		},
+		{
+			name:           "NonASCIIExactMatch",
+			identifier:     "Ärzte-API",
+			withSlash:      "ärzte-api",
+			withoutSlash:   "ärzte-api",
+			results:        []map[string]interface{}{{"identifier": "Ärzte-API"}},
+			expectedExists: true,
+		},
+		{
+			name:         "NoMatch",
+			identifier:   "orders-api",
+			withSlash:    "orders-api",
+			withoutSlash: "orders-api",
+			results:      []map[string]interface{}{},
+		},
+		{
+			name:         "QueryError",
+			identifier:   "orders-api",
+			withSlash:    "orders-api",
+			withoutSlash: "orders-api",
+			queryErr:     errors.New("query error"),
+			shouldErr:    true,
+		},
+		{
+			name:         "InvalidIdentifierField",
+			identifier:   "orders-api",
+			withSlash:    "orders-api",
+			withoutSlash: "orders-api",
+			results:      []map[string]interface{}{{"identifier": 123}},
+			shouldErr:    true,
 		},
 	}
 
 	for _, tc := range testCases {
-		suite.runBoolCheckTest(tc.name, tc.setupMocks,
+		suite.runBoolCheckTest(tc.name,
+			func() {
+				suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
+				suite.mockDBClient.On("QueryContext", context.Background(), queryCheckResourceServerIdentifierExists,
+					tc.identifier, tc.withSlash, tc.withoutSlash, "test-deployment").Return(tc.results, tc.queryErr)
+			},
 			func() (bool, error) {
-				return suite.store.CheckResourceServerIdentifierExists(context.Background(),
-					tc.identifier)
+				return suite.store.CheckResourceServerIdentifierExists(context.Background(), tc.identifier)
 			},
 			tc.expectedExists, tc.shouldErr)
 	}

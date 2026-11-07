@@ -164,3 +164,12 @@ func TestRegisterRoutes_SelfOrganizationUnits(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, rr.Code)
 }
+
+func TestInitialize_RefusesANilEventBus(t *testing.T) {
+	userService, resolver, exporter, err := Initialize(http.NewServeMux(), nil, nil, nil, nil, nil, nil, nil, nil, nil)
+
+	require.ErrorIs(t, err, errNilEventBus)
+	require.Nil(t, userService)
+	require.Nil(t, resolver)
+	require.Nil(t, exporter)
+}

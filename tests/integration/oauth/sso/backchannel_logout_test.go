@@ -296,7 +296,6 @@ func (ts *SSOLogoutTestSuite) TestBackchannelLogout_InitiatorIsNotifiedToo() {
 // Deleting a user ends their sessions through administrative subject revocation, and that notifies
 // the participants just as a sign-out does.
 func (ts *SSOLogoutTestSuite) TestBackchannelLogout_UserDeletionNotifiesParticipants() {
-	flowID := ts.deletionFlowID()
 	username := "sso_bcl_deletion_user"
 	userID := ts.createUser(username)
 
@@ -308,7 +307,7 @@ func (ts *SSOLogoutTestSuite) TestBackchannelLogout_UserDeletionNotifiesParticip
 	ts.loginTokens(client, username, "bcl_deletion_1")
 	partner := ts.joinSession(client, "sso_bcl_deletion_client", "sso_bcl_deletion_secret", "bcl_deletion_2")
 
-	ts.deleteUserThroughFlow(flowID, userID)
+	ts.Require().NoError(testutils.DeleteUser(userID), "failed to delete the user")
 
 	got := receiver.await(ts, 1)
 	ts.assertLogoutToken(got[0], "sso_bcl_deletion_client", partner.IDToken)

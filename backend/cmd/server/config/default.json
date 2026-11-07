@@ -291,6 +291,9 @@
       "exclude_paths": []
     }
   },
+  "audit": {
+    "enabled": true
+  },
   "observability": {
     "enabled": false,
     "output": {
@@ -469,7 +472,6 @@
     "key_binding_max_age_seconds": 300,
     "result_token_validity_seconds": 300,
     "enforce_key_binding": true,
-    "trusted_anchors": [],
     "store": "composite"
   },
   "openid4vci": {
@@ -493,7 +495,8 @@
     "allow_private_addresses": false,
     "removal_confirmation_threshold": 5,
     "store": "composite",
-    "apply_timeout_seconds": 300
+    "apply_timeout_seconds": 300,
+    "pipeline": []
   },
   "import": {
     "timeout_seconds": 120

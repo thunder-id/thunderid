@@ -283,19 +283,18 @@ type OpenID4VPConfig struct {
 	// ClientIDScheme selects how the verifier's client_id is determined.
 	// Supported values: "x509_hash" (SHA-256 thumbprint of signing cert leaf),
 	// "x509_san_dns" (first DNS SAN of signing cert leaf), "redirect_uri" (response URI).
-	ClientIDScheme             string               `yaml:"client_id_scheme" json:"client_id_scheme"`
-	SigningKeyID               string               `yaml:"signing_key_id" json:"signing_key_id"`
-	ResultRedirectURI          string               `yaml:"result_redirect_uri" json:"result_redirect_uri"`
-	RequestAudience            string               `yaml:"request_audience" json:"request_audience"`
-	EphemeralKeyID             string               `yaml:"ephemeral_key_id" json:"ephemeral_key_id"`
-	ResponseEncValues          []string             `yaml:"response_enc_values" json:"response_enc_values"`
-	RequestValiditySeconds     int                  `yaml:"request_validity_seconds" json:"request_validity_seconds"`
-	StateTTLSeconds            int                  `yaml:"state_ttl_seconds" json:"state_ttl_seconds"`
-	LeewaySeconds              int                  `yaml:"leeway_seconds" json:"leeway_seconds"`
-	KeyBindingMaxAgeSeconds    int                  `yaml:"key_binding_max_age_seconds" json:"key_binding_max_age_seconds"`     //nolint:lll
-	ResultTokenValiditySeconds int                  `yaml:"result_token_validity_seconds" json:"result_token_validity_seconds"` //nolint:lll
-	RegistrationCertFile       string               `yaml:"registration_cert_file" json:"registration_cert_file"`
-	TrustedAnchors             []TrustedAnchorEntry `yaml:"trusted_anchors" json:"trusted_anchors"` //nolint:lll
+	ClientIDScheme             string   `yaml:"client_id_scheme" json:"client_id_scheme"`
+	SigningKeyID               string   `yaml:"signing_key_id" json:"signing_key_id"`
+	ResultRedirectURI          string   `yaml:"result_redirect_uri" json:"result_redirect_uri"`
+	RequestAudience            string   `yaml:"request_audience" json:"request_audience"`
+	EphemeralKeyID             string   `yaml:"ephemeral_key_id" json:"ephemeral_key_id"`
+	ResponseEncValues          []string `yaml:"response_enc_values" json:"response_enc_values"`
+	RequestValiditySeconds     int      `yaml:"request_validity_seconds" json:"request_validity_seconds"`
+	StateTTLSeconds            int      `yaml:"state_ttl_seconds" json:"state_ttl_seconds"`
+	LeewaySeconds              int      `yaml:"leeway_seconds" json:"leeway_seconds"`
+	KeyBindingMaxAgeSeconds    int      `yaml:"key_binding_max_age_seconds" json:"key_binding_max_age_seconds"`     //nolint:lll
+	ResultTokenValiditySeconds int      `yaml:"result_token_validity_seconds" json:"result_token_validity_seconds"` //nolint:lll
+	RegistrationCertFile       string   `yaml:"registration_cert_file" json:"registration_cert_file"`
 	// EnforceKeyBinding uses a pointer so an explicit false in deployment.yaml overrides the
 	// default.json default of true; a nil pointer means "not set" and keeps the default.
 	EnforceKeyBinding *bool `yaml:"enforce_key_binding" json:"enforce_key_binding"`
@@ -305,15 +304,6 @@ type OpenID4VPConfig struct {
 // when unset (an explicit default lives in default.json).
 func (c OpenID4VPConfig) EnforceKeyBindingEnabled() bool {
 	return derefBool(c.EnforceKeyBinding)
-}
-
-// TrustedAnchorEntry is a trust anchor (root CA) whose PEM certificate roots the
-// X.509 chains presented by credential issuers (via the x5c header). Trust
-// anchors are configured once at the OpenID4VP engine level and shared by every
-// presentation definition.
-type TrustedAnchorEntry struct {
-	Name     string `yaml:"name" json:"name"`
-	CertFile string `yaml:"cert_file" json:"cert_file"`
 }
 
 // OpenID4VCIConfig holds the OpenID4VCI credential issuer engine configuration.
@@ -414,7 +404,9 @@ type GatewayConfig struct {
 	//   - If DeclarativeResources.Enabled = false: behaves as "mutable"
 	Store string `yaml:"store" json:"store"`
 	// AutoApply controls whether a write on this control plane automatically captures and applies
-	// the resulting configuration to the default gateway. Off by default: Capture and Apply are
+	// the resulting configuration to the first gateway of Pipeline, or to the default gateway when no
+	// pipeline is configured. The gateway server-config section overrides it at runtime; while that
+	// section is unset or cannot be read, this value decides. Off by default: Capture and Apply are
 	// otherwise a deliberate, operator-driven action, and a control plane administering several
 	// gateways generally wants to keep reviewing and applying a version itself rather than having
 	// every write push one out immediately.
@@ -423,6 +415,20 @@ type GatewayConfig struct {
 	// may take to answer, in place of the server's write timeout. It covers waiting for an apply
 	// already running on that gateway and the gateway's own import.
 	ApplyTimeoutSeconds int `yaml:"apply_timeout_seconds" json:"apply_timeout_seconds"`
+	// Pipeline lists the registered gateways a version is deployed and promoted through, in that
+	// order, each a stage of the pipeline. Empty, the default gateway is the only stage.
+	Pipeline []GatewayPipelineStage `yaml:"pipeline" json:"pipeline"`
+}
+
+// GatewayPipelineStage is one stage of the deploy pipeline: a registered gateway, named.
+type GatewayPipelineStage struct {
+	// Gateway is the name the gateway is registered under.
+	Gateway string `yaml:"gateway" json:"gateway"`
+	// Name is what the stage is called, such as Development. Empty, the gateway's name.
+	Name string `yaml:"name" json:"name"`
+	// AdminConsoleURL is where the gateway's own console is reached, to manage its users and
+	// sessions. Empty, the console the gateway serves under its base URL.
+	AdminConsoleURL string `yaml:"admin_console_url" json:"admin_console_url"`
 }
 
 // ApplyTimeout reports how long an apply or revert request may take to answer; zero leaves the
@@ -475,7 +481,7 @@ func (c GatewayConfig) MaxVersionCount() int {
 }
 
 // IsAutoApplyEnabled reports whether a written resource should be automatically captured and
-// applied to the default gateway, defaulting to off when unset.
+// applied to the first gateway of the pipeline, defaulting to off when unset.
 func (c GatewayConfig) IsAutoApplyEnabled() bool {
 	return derefBool(c.AutoApply)
 }
@@ -635,6 +641,17 @@ type LogConfig struct {
 	Level  string          `yaml:"level"  json:"level"`
 	Output LogOutputConfig `yaml:"output" json:"output"`
 	Access LogAccessConfig `yaml:"access" json:"access"`
+}
+
+// AuditConfig holds the audit event settings.
+type AuditConfig struct {
+	// Enabled writes audit events to stdout. With audit off, events are still validated, then dropped.
+	Enabled *bool `yaml:"enabled" json:"enabled"`
+}
+
+// IsEnabled reports whether audit events are written.
+func (c AuditConfig) IsEnabled() bool {
+	return derefBool(c.Enabled)
 }
 
 // LogAccessConfig holds the access log settings.
@@ -865,6 +882,7 @@ type Config struct {
 	AuthZENPDP                 AuthZENPDPConfig                  `yaml:"authzen_pdp"           json:"authzen_pdp"`
 	HTTPConnection             HTTPConnectionConfig              `yaml:"http_connection"       json:"http_connection"`
 	Log                        LogConfig                         `yaml:"log"                   json:"log"`
+	Audit                      AuditConfig                       `yaml:"audit"                 json:"audit"`
 	GateClient                 engineconfig.GateClientConfig     `yaml:"gate_client"           json:"gate_client"`
 	TLS                        TLSConfig                         `yaml:"tls"                   json:"tls"`
 	Database                   DatabaseConfig                    `yaml:"database"              json:"database"`

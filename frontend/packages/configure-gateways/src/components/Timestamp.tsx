@@ -1,6 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {formatRelativeTime} from '@thunderid/utils';
 import {Box, Stack, Tooltip, Typography} from '@wso2/oxygen-ui';
 import {Calendar, Clock} from '@wso2/oxygen-ui-icons-react';
 import type {JSX} from 'react';
@@ -10,24 +11,6 @@ export interface TimestampProps {
   value?: string;
   /** Leaves the time out, for a row that has little room. */
   dateOnly?: boolean;
-}
-
-const UNITS: [Intl.RelativeTimeFormatUnit, number][] = [
-  ['year', 365 * 24 * 3600],
-  ['month', 30 * 24 * 3600],
-  ['day', 24 * 3600],
-  ['hour', 3600],
-  ['minute', 60],
-];
-
-/** How long ago a moment was, "3 hours ago". */
-function relative(date: Date): string {
-  const seconds = Math.round((date.getTime() - Date.now()) / 1000);
-  const format = new Intl.RelativeTimeFormat(undefined, {numeric: 'auto'});
-  for (const [unit, size] of UNITS) {
-    if (Math.abs(seconds) >= size) return format.format(Math.round(seconds / size), unit);
-  }
-  return format.format(seconds, 'second');
 }
 
 /**
@@ -51,7 +34,7 @@ export default function Timestamp({value = undefined, dateOnly = false}: Timesta
         {new Intl.DateTimeFormat(undefined, {dateStyle: 'full', timeStyle: 'long'}).format(date)}
       </Typography>
       <Typography variant="caption" component="span" sx={{opacity: 0.8}}>
-        {relative(date)}
+        {formatRelativeTime(date)}
       </Typography>
       <Typography variant="caption" component="span" sx={{opacity: 0.8, fontFamily: 'monospace'}}>
         {t('time.utc', '{{time}} UTC', {time: date.toISOString().replace('T', ' ').slice(0, 19)})}

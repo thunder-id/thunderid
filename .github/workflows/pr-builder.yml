@@ -145,7 +145,7 @@ jobs:
   verify-mocks:
     name: 🔍 Verify Mock Files
     needs: [preflight]
-    if: ${{ (github.event_name == 'pull_request' && needs.preflight.outputs.enabled == 'true') || github.event_name == 'merge_group' }}
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && needs.preflight.outputs.enabled == 'true') || github.event_name == 'merge_group' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -182,7 +182,7 @@ jobs:
   lint:
     name: 🧹 Lint Code
     needs: [preflight]
-    if: ${{ (github.event_name == 'pull_request' && needs.preflight.outputs.enabled == 'true') || github.event_name == 'merge_group' }}
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && needs.preflight.outputs.enabled == 'true') || github.event_name == 'merge_group' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -216,9 +216,14 @@ jobs:
         run: |
           make build_frontend
 
+      # A manual dispatch has no base commit to diff against, so it lints every package.
       - name: 🔍 Run Frontend Linter
         run: |
-          pnpm turbo run lint --affected --filter=!./tests/**
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            pnpm turbo run lint --filter=!./tests/**
+          else
+            pnpm turbo run lint --affected --filter=!./tests/**
+          fi
         env:
           TURBO_SCM_BASE: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.event.pull_request.base.sha }}
 
@@ -312,7 +317,7 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: quickstart-pack
-          path: target/dist/thunderid-quickstart-*.zip
+          path: target/dist/thunderid-[0-9]*.zip
           if-no-files-found: error
 
   test-backend-unit:
@@ -1153,10 +1158,10 @@ jobs:
       - name: 📂 Extract Quickstart Pack to E2E
         run: |
           mkdir -p tests/e2e/server
-          unzip target/dist/$PRODUCT_NAME_LOWER-quickstart-*.zip -d tests/e2e/server
+          unzip target/dist/$PRODUCT_NAME_LOWER-[0-9]*.zip -d tests/e2e/server
           cd tests/e2e/server
           # Find the extracted folder (name includes version and arch) and move its contents to the root of tests/e2e/server
-          EXTRACTED_DIR=$(find . -maxdepth 1 -type d -name "$PRODUCT_NAME_LOWER-quickstart-*" | head -n 1)
+          EXTRACTED_DIR=$(find . -maxdepth 1 -type d -name "$PRODUCT_NAME_LOWER-[0-9]*" | head -n 1)
           if [ -n "$EXTRACTED_DIR" ]; then
             mv "$EXTRACTED_DIR"/* .
             rmdir "$EXTRACTED_DIR"
@@ -1488,9 +1493,9 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
           mkdir -p tests/e2e/server
-          unzip target/dist/$PRODUCT_NAME_LOWER-quickstart-*.zip -d tests/e2e/server
+          unzip target/dist/$PRODUCT_NAME_LOWER-[0-9]*.zip -d tests/e2e/server
           cd tests/e2e/server
-          EXTRACTED_DIR=$(find . -maxdepth 1 -type d -name "$PRODUCT_NAME_LOWER-quickstart-*" | head -n 1)
+          EXTRACTED_DIR=$(find . -maxdepth 1 -type d -name "$PRODUCT_NAME_LOWER-[0-9]*" | head -n 1)
           if [ -n "$EXTRACTED_DIR" ]; then
             mv "$EXTRACTED_DIR"/* .
             rmdir "$EXTRACTED_DIR"
@@ -1548,6 +1553,7 @@ jobs:
           variables-json: |
             {
               "WAYFINDER_CLIENT_ID": "WAYFINDER",
+              "AGENT_OWNER_ID": "01900000-0000-7000-8000-0000000000f3",
               "AGENT_CLIENT_ID": "WAYFINDER-CONCIERGE",
               "AGENT_CLIENT_SECRET": "wayfinder-agent-secret",
               "UPGRADE_AGENT_CLIENT_ID": "WAYFINDER-UPGRADE-AGENT",
@@ -1657,7 +1663,7 @@ jobs:
   build-docs:
     name: 📚 Build Documentation
     needs: [preflight]
-    if: ${{ needs.preflight.outputs.docs-changed == 'true' }}
+    if: ${{ github.event_name == 'workflow_dispatch' || needs.preflight.outputs.docs-changed == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -1675,7 +1681,7 @@ jobs:
   validate-windows:
     name: 🪟 Validate Windows PowerShell
     needs: preflight
-    if: needs.preflight.outputs.powershell-changed == 'true'
+    if: ${{ github.event_name == 'workflow_dispatch' || needs.preflight.outputs.powershell-changed == 'true' }}
     uses: ./.github/workflows/windows-powershell-validation.yml
 
   cleanup-turbo-cache:

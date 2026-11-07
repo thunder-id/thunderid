@@ -26,10 +26,29 @@ interface MockUseGetApplicationsResult {
 const mockUseGetApplications = vi.fn<(params: unknown) => MockUseGetApplicationsResult>();
 let mockDiscovery: {wellKnown?: {end_session_endpoint?: string}} | undefined;
 let mockIsTrustedIssuerGenericOidc = false;
+interface MockProjectSelection {
+  projects: {id: string; displayName: string}[];
+  selectedProject?: {id: string; displayName: string};
+  isCleared: boolean;
+  isLoading: boolean;
+  error: Error | null;
+}
+
+const mockUseProjectSelection = vi.fn<() => MockProjectSelection>();
+const shop = {id: 'p1', displayName: 'Shop'};
+
+function projectSelection(overrides: Partial<MockProjectSelection> = {}): MockProjectSelection {
+  return {projects: [], isCleared: false, isLoading: false, error: null, ...overrides};
+}
 
 vi.mock('@thunderid/configure-applications', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@thunderid/configure-applications')>()),
   useGetApplications: (params: unknown) => mockUseGetApplications(params),
+}));
+
+vi.mock('@thunderid/configure-projects', () => ({
+  ProjectSwitcher: () => <div data-testid="project-switcher" />,
+  useProjectSelection: () => mockUseProjectSelection(),
 }));
 
 // Mock ThunderID
@@ -100,9 +119,11 @@ describe('DashboardLayout', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     sessionStorage.clear();
+    localStorage.clear();
     mockUserData.mockReturnValue({name: 'Test User', email: 'test@example.com'});
     mockIsTrustedIssuerGenericOidc = false;
     mockDiscovery = undefined;
+    mockUseProjectSelection.mockReturnValue(projectSelection());
     mockUseGetApplications.mockReturnValue({
       data: {applications: []},
       isLoading: false,
@@ -147,7 +168,6 @@ describe('DashboardLayout', () => {
     // Check for navigation items using translation keys
     expect(screen.getByText('navigation:pages.users')).toBeInTheDocument();
     expect(screen.getByText('navigation:pages.userTypes')).toBeInTheDocument();
-    expect(screen.getByText('navigation:pages.applications')).toBeInTheDocument();
     expect(screen.getByText('navigation:pages.connections')).toBeInTheDocument();
     expect(screen.getByText('navigation:pages.flows')).toBeInTheDocument();
     expect(screen.getByText('navigation:pages.gateways')).toBeInTheDocument();
@@ -156,14 +176,14 @@ describe('DashboardLayout', () => {
   it.each([false, true])('keeps navigation icon sizes consistent when collapseSidebar is %s', (collapseSidebar) => {
     render(<DashboardLayout collapseSidebar={collapseSidebar} />);
 
-    const applicationIcon = screen.getByRole('button', {name: 'navigation:pages.applications'}).querySelector('svg');
-    expect(applicationIcon).toBeInTheDocument();
+    const usersIcon = screen.getByRole('button', {name: 'navigation:pages.users'}).querySelector('svg');
+    expect(usersIcon).toBeInTheDocument();
 
     const navigationIcons = screen.getByRole('navigation').querySelectorAll('.MuiListItemIcon-root svg');
     expect(navigationIcons.length).toBeGreaterThan(0);
     navigationIcons.forEach((icon) => {
-      expect(icon).toHaveAttribute('width', applicationIcon?.getAttribute('width'));
-      expect(icon).toHaveAttribute('height', applicationIcon?.getAttribute('height'));
+      expect(icon).toHaveAttribute('width', usersIcon?.getAttribute('width'));
+      expect(icon).toHaveAttribute('height', usersIcon?.getAttribute('height'));
     });
   });
 
@@ -172,6 +192,58 @@ describe('DashboardLayout', () => {
 
     const currentYear = new Date().getFullYear();
     expect(screen.getByText(new RegExp(currentYear.toString()))).toBeInTheDocument();
+  });
+
+  it('shows the project selector in the header', () => {
+    mockUseProjectSelection.mockReturnValue(projectSelection({projects: [shop], selectedProject: shop}));
+
+    render(<DashboardLayout />);
+
+    expect(screen.getByTestId('project-switcher')).toBeInTheDocument();
+  });
+
+  it('leads the sidebar with Projects once the project selection is cleared', () => {
+    mockUseProjectSelection.mockReturnValue(projectSelection({projects: [shop], isCleared: true}));
+
+    render(<DashboardLayout />);
+
+    expect(screen.getByText('navigation:pages.projects')).toBeInTheDocument();
+  });
+
+  it('offers only Applications, under Resources, in the sidebar while a project is selected', () => {
+    mockUseProjectSelection.mockReturnValue(projectSelection({projects: [shop], selectedProject: shop}));
+
+    render(<DashboardLayout />);
+
+    const navigation = screen.getByRole('navigation');
+    expect(navigation.querySelectorAll('.MuiListItemIcon-root')).toHaveLength(1);
+    expect(screen.getByRole('button', {name: 'navigation:pages.applications'})).toBeInTheDocument();
+    expect(screen.getByText('navigation:categories.resources')).toBeInTheDocument();
+    expect(screen.queryByText('navigation:pages.projects')).not.toBeInTheDocument();
+    expect(screen.queryByText('navigation:pages.users')).not.toBeInTheDocument();
+  });
+
+  it('hides Applications from the sidebar while no project is selected', () => {
+    mockUseProjectSelection.mockReturnValue(projectSelection({projects: [shop], isCleared: true}));
+
+    render(<DashboardLayout />);
+
+    expect(screen.queryByText('navigation:pages.applications')).not.toBeInTheDocument();
+    expect(screen.getByText('navigation:pages.users')).toBeInTheDocument();
+  });
+
+  it('leads the sidebar with Projects when there are no projects yet', () => {
+    render(<DashboardLayout />);
+
+    expect(screen.getByText('navigation:pages.projects')).toBeInTheDocument();
+  });
+
+  it('leaves Projects out of the sidebar while the projects are loading', () => {
+    mockUseProjectSelection.mockReturnValue(projectSelection({isLoading: true}));
+
+    render(<DashboardLayout />);
+
+    expect(screen.queryByText('navigation:pages.projects')).not.toBeInTheDocument();
   });
 
   it('does not start a second sign-in after signing out', async () => {
@@ -250,18 +322,6 @@ describe('DashboardLayout', () => {
     render(<DashboardLayout />);
 
     expect(screen.getByTestId('outlet')).toBeInTheDocument();
-  });
-
-  it('navigates to welcome page when welcome menu item is clicked', async () => {
-    const user = userEvent.setup();
-    render(<DashboardLayout />);
-
-    const userMenuTrigger = screen.getByLabelText('Account');
-    await user.click(userMenuTrigger);
-
-    const welcomeItem = await screen.findByText('common:userMenu.welcome');
-    expect(welcomeItem).toBeInTheDocument();
-    await user.click(welcomeItem);
   });
 
   describe('generic OIDC sign out', () => {

@@ -22,7 +22,7 @@ import {Alert, AlertTitle, Box, Button, CircularProgress, FormControl, FormLabel
 import type {JSX} from 'react';
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {useTranslation} from 'react-i18next';
-import {useLocation, useNavigate} from 'react-router';
+import {useNavigate} from 'react-router';
 import AgentQueryKeys from '../constants/agent-query-keys';
 import useAgentRoutes from '../hooks/useAgentRoutes';
 import resolveAgentOnboardingFlow, {AgentOnboardingFlowProblem} from '../utils/resolveAgentOnboardingFlow';
@@ -277,6 +277,18 @@ function AgentOnboardStep({
   );
 }
 
+export interface AgentOnboardPageProps {
+  /**
+   * Renders only the flow, for a host that supplies its own surface such as a dialog, instead of
+   * the full-screen wizard.
+   */
+  embedded?: boolean;
+  /**
+   * Called when the person leaves the flow. Defaults to navigating back to the agents list.
+   */
+  onClose?: () => void;
+}
+
 /**
  * Creates an agent by running the configured agent onboarding flow.
  *
@@ -284,16 +296,13 @@ function AgentOnboardStep({
  * no knowledge of what an agent needs. There is no non-flow fallback: the flow's provisioning node
  * is what creates the agent, so an unresolved flow is reported rather than worked around.
  */
-export default function AgentOnboardPage(): JSX.Element {
+export default function AgentOnboardPage({embedded = false, onClose}: AgentOnboardPageProps = {}): JSX.Element {
   const routes = useAgentRoutes();
   const {t} = useTranslation();
   const navigate = useNavigate();
-  const {pathname} = useLocation();
   const {http} = useThunderID();
   const {getServerUrl} = useConfig();
   const logger = useLogger('AgentOnboardPage');
-
-  const isWelcomeFlow = pathname.startsWith('/welcome');
 
   // The flow decides how many screens there are, so there is no total to divide by. The bar
   // advances asymptotically with each step and reaches the end only once the flow reports
@@ -317,8 +326,12 @@ export default function AgentOnboardPage(): JSX.Element {
   });
 
   const handleClose = useCallback((): void => {
-    void navigate(isWelcomeFlow ? routes.welcome.getStarted() : routes.agents.list());
-  }, [navigate, isWelcomeFlow, routes]);
+    if (onClose) {
+      onClose();
+      return;
+    }
+    void navigate(routes.agents.list());
+  }, [navigate, routes, onClose]);
 
   const handleStepLabelChange = useCallback((label: string): void => {
     if (label === prevStepLabelRef.current) return;
@@ -450,6 +463,10 @@ export default function AgentOnboardPage(): JSX.Element {
       </Stack>
     );
   };
+
+  if (embedded) {
+    return renderBody();
+  }
 
   return (
     <FullScreenCreationWizardLayout

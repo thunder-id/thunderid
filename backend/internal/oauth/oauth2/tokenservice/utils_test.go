@@ -1043,10 +1043,11 @@ func (suite *UtilsTestSuite) TestBuildClientAttributes_AgentOwnAttributes_SkipsS
 func (suite *UtilsTestSuite) TestBuildClientAttributes_AgentSystemAttributes_HappyPath() {
 	actors := actorprovidermock.NewActorProviderMock(suite.T())
 	actors.On("GetActor", mock.Anything, testBCCAppID).Return(&providers.Entity{
-		ID:               testBCCAppID,
-		Category:         providers.EntityCategoryAgent,
-		Attributes:       []byte(`{"modelProvider":"anthropic","name":"Ledger Agent"}`),
-		SystemAttributes: []byte(`{"owner":"user-123","clientId":"cid","description":"d"}`),
+		ID:         testBCCAppID,
+		Category:   providers.EntityCategoryAgent,
+		Attributes: []byte(`{"modelProvider":"anthropic","name":"Ledger Agent"}`),
+		SystemAttributes: []byte(`{"owner":{"id":"user-123","idType":"uuid","isLocal":true},` +
+			`"clientId":"cid","description":"d"}`),
 	}, (*tidcommon.ServiceError)(nil))
 
 	app := newOAuthAppForOwnAttributes([]string{"modelProvider", "name", "owner"})
@@ -1060,6 +1061,41 @@ func (suite *UtilsTestSuite) TestBuildClientAttributes_AgentSystemAttributes_Hap
 	assert.NotContains(suite.T(), claims, "description")
 }
 
+// The owner is stored as an object; the claim carries only its ID, and nothing when there is none.
+func (suite *UtilsTestSuite) TestBuildClientAttributes_OwnerClaimCarriesID() {
+	tests := []struct {
+		name      string
+		sysAttrs  string
+		wantClaim interface{}
+	}{
+		{"local owner", `{"owner":{"id":"user-123","idType":"uuid","isLocal":true}}`, "user-123"},
+		{"external owner", `{"owner":{"id":"a@example.com","idType":"email","isLocal":false}}`,
+			"a@example.com"},
+		{"no owner", `{"clientId":"cid"}`, nil},
+		{"not an object", `{"owner":"user-123"}`, nil},
+	}
+	for _, tc := range tests {
+		suite.Run(tc.name, func() {
+			actors := actorprovidermock.NewActorProviderMock(suite.T())
+			actors.On("GetActor", mock.Anything, testBCCAppID).Return(&providers.Entity{
+				ID:               testBCCAppID,
+				Category:         providers.EntityCategoryAgent,
+				SystemAttributes: []byte(tc.sysAttrs),
+			}, (*tidcommon.ServiceError)(nil))
+
+			claims, err := BuildClientAttributes(
+				context.Background(), newOAuthAppForOwnAttributes([]string{"owner"}), actors)
+
+			assert.NoError(suite.T(), err)
+			if tc.wantClaim == nil {
+				assert.NotContains(suite.T(), claims, "owner")
+				return
+			}
+			assert.Equal(suite.T(), tc.wantClaim, claims["owner"])
+		})
+	}
+}
+
 // sub_valid_until surfaces the stored validUntil, kept in RFC 3339, in Unix seconds like exp and iat, and
 // only when the lifespan ends: an unbounded agent, or an end that does not parse, carries no claim.
 func (suite *UtilsTestSuite) TestBuildClientAttributes_SubValidUntil() {
@@ -1070,7 +1106,7 @@ func (suite *UtilsTestSuite) TestBuildClientAttributes_SubValidUntil() {
 	}{
 		{"bounded", `{"validUntil":"2027-01-27T14:00:00+05:30"}`, int64(1801038600)},
 		{"unbounded sentinel", `{"validUntil":"9999-12-31T23:59:59Z"}`, nil},
-		{"not stored", `{"owner":"user-123"}`, nil},
+		{"not stored", `{"owner":{"id":"user-123","idType":"uuid","isLocal":true}}`, nil},
 		{"unreadable", `{"validUntil":"2027-01-27"}`, nil},
 	}
 	for _, tc := range tests {
@@ -1099,9 +1135,10 @@ func (suite *UtilsTestSuite) TestBuildClientAttributes_SubValidUntil() {
 func (suite *UtilsTestSuite) TestBuildClientAttributes_SubValidUntilOnlyWhenSelected() {
 	actors := actorprovidermock.NewActorProviderMock(suite.T())
 	actors.On("GetActor", mock.Anything, testBCCAppID).Return(&providers.Entity{
-		ID:               testBCCAppID,
-		Category:         providers.EntityCategoryAgent,
-		SystemAttributes: []byte(`{"owner":"user-123","validUntil":"2027-01-27T08:30:00Z"}`),
+		ID:       testBCCAppID,
+		Category: providers.EntityCategoryAgent,
+		SystemAttributes: []byte(`{"owner":{"id":"user-123","idType":"uuid","isLocal":true},` +
+			`"validUntil":"2027-01-27T08:30:00Z"}`),
 	}, (*tidcommon.ServiceError)(nil))
 
 	claims, err := BuildClientAttributes(context.Background(), newOAuthAppForOwnAttributes([]string{"owner"}), actors)

@@ -5,6 +5,7 @@ package user
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -17,6 +18,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -25,7 +27,8 @@ import (
 // Initialize initializes the user service and registers its routes.
 //
 // valueCapturer is optional. Given one, the service hands it every credential it sets on a user, so
-// the values the user's export refers to are kept where a reference finds them.
+// the values the user's export refers to are kept where a reference finds them. bus is required: the
+// service publishes the audit event of every user it creates, updates or deletes on it.
 func Initialize(
 	mux *http.ServeMux,
 	entityService entity.EntityServiceInterface,
@@ -36,10 +39,15 @@ func Initialize(
 	verification attributeverification.AttributeVerificationServiceInterface,
 	sharingService sharing.SharingServiceInterface,
 	valueCapturer declarativeresource.ValueCapturer,
+	bus eventbus.EventBusInterface,
 ) (ConfigurableUserService, oupkg.OUUserResolver, declarativeresource.ResourceExporter, error) {
+	if bus == nil {
+		return nil, nil, nil, errNilEventBus
+	}
+
 	// Step 1: Create service with entity service
 	userService := newUserService(authzService, entityService, ouService, entityTypeService, governance,
-		verification, valueCapturer, sharingService)
+		verification, valueCapturer, sharingService, bus)
 	sharingService.RegisterResourceType(userService.sharingDeclaration)
 	entityService.RegisterSharedCategory(providers.EntityCategoryUser, UserSharingType)
 
@@ -69,7 +77,7 @@ func Initialize(
 	ouUserResolver := newOUUserResolver(entityService, entityTypeService)
 
 	// Create and return exporter
-	exporter := newUserExporter(userService, entityService, entityTypeService, sharingService)
+	exporter := newUserExporter(userService, entityService, sharingService)
 	return userService, ouUserResolver, exporter, nil
 }
 
@@ -250,4 +258,16 @@ func registerRoutes(mux *http.ServeMux, userHandler *userHandler) {
 // isSharingPolicyPath reports whether path segments name one sharing policy: {id}/sharing-policies/{policyId}.
 func isSharingPolicyPath(segments []string) bool {
 	return len(segments) == 3 && segments[1] == sharingPoliciesSegment && segments[2] != ""
+}
+
+// SetSystemFlowProvider gives the user service the engine that runs the system flows around its writes.
+// It is bound after the service, once the engine exists, and only on a server that issues tokens. A
+// service that cannot take it is reported rather than left without one.
+func SetSystemFlowProvider(service UserServiceInterface, provider systemFlowProvider) error {
+	us, ok := service.(*userService)
+	if !ok {
+		return fmt.Errorf("user service does not support system flow provider injection")
+	}
+	us.systemFlows = provider
+	return nil
 }

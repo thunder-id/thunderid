@@ -9,18 +9,39 @@ import type {
   AppliedVersion,
   ApplyRequest,
   ApplyResult,
+  Master,
+  ResourceHistory,
   StoredValue,
   ValueKind,
   ValueReference,
   Version,
 } from '../models/deploy';
 import type {Gateway} from '../models/gateway';
+import type {AutoApplySetting, Pipeline} from '../models/pipeline';
+import type {Project} from '../models/project';
+import type {ProjectStatus} from '../models/projectStatus';
 
 /** How many values a gateway's store answers with in one page. */
 const PAGE_SIZE = 100;
 
 const gateway = (id: string): string => `/gateways/${encodeURIComponent(id)}`;
 const collectionOf = (kind: ValueKind): string => (kind === 'secret' ? 'secrets' : 'variables');
+
+/** The server configuration section that says how this control plane deploys. */
+const SETTINGS_SECTION = '/server-config/gateway';
+
+/** The gateway section: the default for projects, and a project's own choice where it makes one. */
+interface GatewaySettings {
+  autoApply?: boolean;
+  projects?: Record<string, unknown>;
+}
+
+/** The gateway section's layers, as the server configuration API reads them. */
+interface SettingsLayers {
+  readOnly?: GatewaySettings | null;
+  writable?: GatewaySettings | null;
+  merged?: GatewaySettings | null;
+}
 
 /** The control plane's own source: its gateways and the configuration versions it captures. */
 export default function useGatewaySource(): DeploySource {
@@ -46,18 +67,32 @@ export default function useGatewaySource(): DeploySource {
       appliedVersion,
       appliedConfiguration: (targetId: string): Promise<AppliedConfiguration> =>
         request<AppliedConfiguration>('GET', `${gateway(targetId)}/applied-configuration`),
-      applyCheck: (targetId: string, ref: string): Promise<ApplyResult> =>
+      master: (targetId: string): Promise<Master> => request<Master>('GET', `${gateway(targetId)}/master`),
+      masterHistory: (targetId: string): Promise<Master[]> =>
+        request<Master[]>('GET', `${gateway(targetId)}/master/history`),
+      resourceHistory: (targetId: string, key: string): Promise<ResourceHistory> =>
+        request<ResourceHistory>(
+          'GET',
+          `${gateway(targetId)}/master/resources/${key.split('/').map(encodeURIComponent).join('/')}`,
+        ),
+      applyCheck: (targetId: string, ref: string, project?: string): Promise<ApplyResult> =>
         request<ApplyResult>('POST', `${gateway(targetId)}/apply`, {
           version: ref,
           dryRun: true,
+          ...(project ? {project} : {}),
         } satisfies ApplyRequest),
       apply: (targetId: string, data: ApplyRequest): Promise<ApplyResult> =>
         request<ApplyResult>('POST', `${gateway(targetId)}/apply`, data),
-      revert: (targetId: string, dryRun: boolean, confirmRemovals?: boolean): Promise<ApplyResult> =>
+      revert: (targetId: string, dryRun: boolean, confirmRemovals?: boolean, project?: string): Promise<ApplyResult> =>
         request<ApplyResult>('POST', `${gateway(targetId)}/revert`, {
           dryRun,
           ...(confirmRemovals ? {confirmRemovals} : {}),
+          ...(project ? {project} : {}),
         }),
+      projectStatus: (targetId: string, project: string, from?: string): Promise<ProjectStatus> => {
+        const query = new URLSearchParams({project, ...(from ? {from} : {})});
+        return request<ProjectStatus>('GET', `${gateway(targetId)}/project-status?${query.toString()}`);
+      },
       values: async (targetId: string, kind: ValueKind): Promise<StoredValue[]> => {
         const collection = collectionOf(kind);
         const values: StoredValue[] = [];
@@ -84,6 +119,32 @@ export default function useGatewaySource(): DeploySource {
         const applied = await appliedVersion(targetId);
         if (!applied.appliedVersion) return [];
         return (await version(applied.appliedVersion)).references ?? [];
+      },
+      // Every project is deployed through the one pipeline the control plane is configured with.
+      pipeline: async (): Promise<Pipeline> => {
+        const answer = await request<Pipeline>('GET', '/gateways/pipeline');
+        return {stages: answer.stages ?? []};
+      },
+      projects: async (): Promise<Project[]> => {
+        const answer = await request<{projects?: Project[]}>('GET', '/projects');
+        return (answer.projects ?? []).map(({id, displayName}: Project) => ({id, displayName}));
+      },
+      autoApply: async (): Promise<AutoApplySetting> => {
+        const layers = await request<SettingsLayers>('GET', SETTINGS_SECTION);
+        return {
+          enabled: layers.merged?.autoApply ?? false,
+          locked: layers.readOnly?.autoApply !== undefined && layers.readOnly?.autoApply !== null,
+        };
+      },
+      setAutoApply: async (enabled: boolean): Promise<void> => {
+        const layers = await request<SettingsLayers>('GET', SETTINGS_SECTION);
+        await request<unknown>('PUT', SETTINGS_SECTION, {...(layers.writable ?? {}), autoApply: enabled});
+      },
+      // Only this project's choice is written; null has it follow the organization's default again.
+      setProjectAutoSync: async (project: string, enabled: boolean | null): Promise<void> => {
+        await request<unknown>('PUT', `/projects/${encodeURIComponent(project)}/auto-sync`, {
+          autoSync: enabled,
+        });
       },
     };
   }, [request]);

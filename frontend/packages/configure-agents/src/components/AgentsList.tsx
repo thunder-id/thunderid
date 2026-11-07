@@ -1,7 +1,13 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {AccessStatusIndicator, QueryErrorNotice, ResourceAvatar} from '@thunderid/components';
+import {
+  AccessStatusIndicator,
+  QueryErrorNotice,
+  ResourceAvatar,
+  ResourceDeployStatus,
+  useDeployStatusSource,
+} from '@thunderid/components';
 import {useDataGridLocaleText} from '@thunderid/hooks';
 import {useLogger} from '@thunderid/logger/react';
 import {Box, IconButton, Tooltip, Typography, ListingTable, DataGrid} from '@wso2/oxygen-ui';
@@ -69,6 +75,7 @@ export default function AgentsList(): JSX.Element {
     [lifespanEndText, t],
   );
 
+  const deploys = useDeployStatusSource() !== null;
   const columns: DataGrid.GridColDef<BasicAgent>[] = useMemo(
     () => [
       {
@@ -122,6 +129,21 @@ export default function AgentsList(): JSX.Element {
           </Typography>
         ),
       },
+      // Where each agent is along the deploy path is shown only where the app says so.
+      ...(deploys
+        ? [
+            {
+              field: 'deployment',
+              headerName: t('agents:listing.columns.deployment', 'Deployment'),
+              flex: 0.6,
+              minWidth: 150,
+              sortable: false,
+              renderCell: (params: DataGrid.GridRenderCellParams<BasicAgent>): JSX.Element => (
+                <ResourceDeployStatus resourceType="agent" id={params.row.id} tabIndex={params.tabIndex} />
+              ),
+            } satisfies DataGrid.GridColDef<BasicAgent>,
+          ]
+        : []),
       {
         field: 'actions',
         headerName: t('agents:listing.columns.actions', 'Actions'),
@@ -177,7 +199,7 @@ export default function AgentsList(): JSX.Element {
         ),
       },
     ],
-    [handleDeleteClick, handleEditClick, lifespanHint, t],
+    [deploys, handleDeleteClick, handleEditClick, lifespanHint, t],
   );
 
   if (error) {

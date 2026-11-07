@@ -21,12 +21,15 @@ import (
 	"github.com/thunder-id/thunderid/internal/attributeverification"
 	"github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/entitytype"
+	flowcommon "github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/identitygovernance"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/role"
 	"github.com/thunder-id/thunderid/internal/sharing"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
+	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/filter"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
@@ -98,6 +101,15 @@ type userService struct {
 	sharingService     sharing.SharingServiceInterface
 	sharingDeclaration *userSharingDeclaration
 	logger             *log.Logger
+	bus                eventbus.EventBusInterface
+	// systemFlows is nil where system flows are off.
+	systemFlows systemFlowProvider
+}
+
+// systemFlowProvider runs a system flow to completion. The flow engine implements it.
+type systemFlowProvider interface {
+	ExecuteSystemFlow(ctx context.Context, sysCtx *flowcommon.SystemFlowContext) (*flowcommon.SystemFlowResult,
+		*tidcommon.ServiceError)
 }
 
 // newUserService creates a new instance of userService with injected dependencies.
@@ -110,6 +122,7 @@ func newUserService(
 	verification attributeverification.AttributeVerificationServiceInterface,
 	valueCapturer declarativeresource.ValueCapturer,
 	sharingService sharing.SharingServiceInterface,
+	bus eventbus.EventBusInterface,
 ) *userService {
 	us := &userService{
 		authzService:      authzService,
@@ -122,6 +135,7 @@ func newUserService(
 		valueCapturer:     valueCapturer,
 		sharingService:    sharingService,
 		logger:            log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName)),
+		bus:               bus,
 	}
 	us.sharingDeclaration = newUserSharingDeclaration(us, sharingService, us.authorizeShareInto)
 	return us
@@ -333,6 +347,14 @@ func (us *userService) GetUsersByPath(
 func (us *userService) CreateUser(
 	ctx context.Context, user *providers.User,
 ) (*providers.User, *tidcommon.ServiceError) {
+	created, svcErr := us.createUser(ctx, user)
+	return us.publishCreate(ctx, created, svcErr)
+}
+
+// createUser creates the user without publishing its audit event.
+func (us *userService) createUser(
+	ctx context.Context, user *providers.User,
+) (*providers.User, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 
 	if user == nil {
@@ -386,6 +408,15 @@ func (us *userService) CreateUser(
 func (us *userService) CreateUserByPath(
 	ctx context.Context, handlePath string, request CreateUserByPathRequest,
 ) (*providers.User, *tidcommon.ServiceError) {
+	created, svcErr := us.createUserByPath(ctx, handlePath, request)
+	return us.publishCreate(ctx, created, svcErr)
+}
+
+// createUserByPath creates a new user under the organization unit of the handle path without publishing
+// its audit event.
+func (us *userService) createUserByPath(
+	ctx context.Context, handlePath string, request CreateUserByPathRequest,
+) (*providers.User, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 	logger.Debug(ctx, "Creating user by path",
 		log.String("path", handlePath), log.String("type", request.Type))
@@ -415,7 +446,7 @@ func (us *userService) CreateUserByPath(
 		Attributes: request.Attributes,
 	}
 
-	return us.CreateUser(ctx, user)
+	return us.createUser(ctx, user)
 }
 
 // GetUser retrieves a user by ID.
@@ -619,6 +650,14 @@ func (as *userService) GetUserGroups(ctx context.Context, userID string, limit, 
 // UpdateUser update the user for given user id.
 func (us *userService) UpdateUser(
 	ctx context.Context, userID string, user *providers.User) (*providers.User, *tidcommon.ServiceError) {
+	updated, svcErr := us.updateUser(ctx, userID, user)
+	us.publishUserEvent(ctx, audit.EventUserUpdate, audit.ActionUpdate, userID, svcErr)
+	return updated, svcErr
+}
+
+// updateUser updates the user for the given user id without publishing its audit event.
+func (us *userService) updateUser(
+	ctx context.Context, userID string, user *providers.User) (*providers.User, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 	logger.Debug(ctx, "Updating user", log.MaskedString(log.LoggerKeyUserID, userID))
 
@@ -734,6 +773,15 @@ func (us *userService) UpdateUser(
 
 // UpdateUserAttributes updates only the attributes of a user while preserving immutable fields.
 func (us *userService) UpdateUserAttributes(
+	ctx context.Context, userID string, attributes json.RawMessage,
+) (*providers.User, *tidcommon.ServiceError) {
+	updated, svcErr := us.updateUserAttributes(ctx, userID, attributes)
+	us.publishUserEvent(ctx, audit.EventUserUpdate, audit.ActionUpdate, userID, svcErr)
+	return updated, svcErr
+}
+
+// updateUserAttributes updates only the attributes of a user without publishing its audit event.
+func (us *userService) updateUserAttributes(
 	ctx context.Context, userID string, attributes json.RawMessage,
 ) (*providers.User, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
@@ -956,6 +1004,13 @@ func (us *userService) ValidateDeleteUser(ctx context.Context, userID string) *t
 
 // DeleteUser deletes the user with the given ID.
 func (us *userService) DeleteUser(ctx context.Context, userID string) *tidcommon.ServiceError {
+	svcErr := us.deleteUser(ctx, userID)
+	us.publishUserEvent(ctx, audit.EventUserDelete, audit.ActionDelete, userID, svcErr)
+	return svcErr
+}
+
+// deleteUser deletes the user with the given ID without publishing its audit event.
+func (us *userService) deleteUser(ctx context.Context, userID string) *tidcommon.ServiceError {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 	logger.Debug(ctx, "Deleting user", log.MaskedString(log.LoggerKeyUserID, userID))
 
@@ -994,6 +1049,13 @@ func (us *userService) DeleteUser(ctx context.Context, userID string) *tidcommon
 		return svcErr
 	}
 
+	// Revokes every token issued to the user and ends the user's sessions before anything of the user
+	// is removed. The revocation has no cutoff, so nothing runs after the write.
+	if svcErr := us.runSystemFlow(ctx, systemFlowUserDeletePre,
+		map[string]string{systemFlowInputSubject: userID}); svcErr != nil {
+		return svcErr
+	}
+
 	// Remove dependents that must be deleted with the user (e.g. role assignments). Run before the
 	// entity delete so a cleanup failure aborts the operation and leaves the user retriable. The
 	// registry is guaranteed non-nil here because ensureNoBlockingDependencies fails closed otherwise.
@@ -1021,6 +1083,39 @@ func (us *userService) DeleteUser(ctx context.Context, userID string) *tidcommon
 
 	logger.Debug(ctx, "Successfully deleted user", log.MaskedString(log.LoggerKeyUserID, userID))
 	return nil
+}
+
+// publishCreate publishes the audit event of an attempt to create a user and returns its result.
+func (us *userService) publishCreate(ctx context.Context, created *providers.User,
+	svcErr *tidcommon.ServiceError) (*providers.User, *tidcommon.ServiceError) {
+	var userID string
+	if svcErr == nil {
+		userID = created.ID
+	}
+	us.publishUserEvent(ctx, audit.EventUserCreate, audit.ActionCreate, userID, svcErr)
+	return created, svcErr
+}
+
+// publishUserEvent publishes the audit event of an attempt on the user with userID, after the change
+// committed or was refused. An update or a delete is denied only on a user that exists.
+func (us *userService) publishUserEvent(ctx context.Context, name string, action audit.Action, userID string,
+	svcErr *tidcommon.ServiceError) {
+	// A failed attempt keeps the ID the caller asked for, even one that matches no user, as forensic
+	// evidence of what was probed; the payload caps it and the sink escapes it.
+	target := audit.Ref{Type: audit.TargetTypeUser, ID: userID}
+	eventbus.TryPublish(ctx, us.bus,
+		eventbus.NewEvent(ctx, name).With(audit.ChangePayload(ctx, target, action, svcErr)))
+}
+
+// runSystemFlow runs a system flow with the given inputs. With system flows off it runs nothing.
+func (us *userService) runSystemFlow(ctx context.Context, handle string,
+	inputs map[string]string) *tidcommon.ServiceError {
+	if us.systemFlows == nil {
+		return nil
+	}
+	_, svcErr := us.systemFlows.ExecuteSystemFlow(ctx, &flowcommon.SystemFlowContext{
+		Handle: handle, Inputs: inputs})
+	return svcErr
 }
 
 // ensureNoBlockingDependencies refuses deletion when other resources depend on the user in a way
@@ -1367,6 +1462,10 @@ func mapOUServiceError(ctx context.Context,
 
 	if mappedErr, ok := mappings[svcErr.Code]; ok {
 		return mappedErr
+	}
+
+	if svcErr.Code == tidcommon.ErrorUnauthorized.Code {
+		return &tidcommon.ErrorUnauthorized
 	}
 
 	if svcErr.Type == tidcommon.ClientErrorType {

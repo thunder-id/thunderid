@@ -47,65 +47,6 @@ func (_m *userDeletionProviderMock) EXPECT() *userDeletionProviderMock_Expecter 
 	return &userDeletionProviderMock_Expecter{mock: &_m.Mock}
 }
 
-// DeleteUser provides a mock function for the type userDeletionProviderMock
-func (_mock *userDeletionProviderMock) DeleteUser(ctx context.Context, userID string) *common.ServiceError {
-	ret := _mock.Called(ctx, userID)
-
-	if len(ret) == 0 {
-		panic("no return value specified for DeleteUser")
-	}
-
-	var r0 *common.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *common.ServiceError); ok {
-		r0 = returnFunc(ctx, userID)
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*common.ServiceError)
-		}
-	}
-	return r0
-}
-
-// userDeletionProviderMock_DeleteUser_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'DeleteUser'
-type userDeletionProviderMock_DeleteUser_Call struct {
-	*mock.Call
-}
-
-// DeleteUser is a helper method to define mock.On call
-//   - ctx context.Context
-//   - userID string
-func (_e *userDeletionProviderMock_Expecter) DeleteUser(ctx any, userID any) *userDeletionProviderMock_DeleteUser_Call {
-	return &userDeletionProviderMock_DeleteUser_Call{Call: _e.mock.On("DeleteUser", ctx, userID)}
-}
-
-func (_c *userDeletionProviderMock_DeleteUser_Call) Run(run func(ctx context.Context, userID string)) *userDeletionProviderMock_DeleteUser_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 context.Context
-		if args[0] != nil {
-			arg0 = args[0].(context.Context)
-		}
-		var arg1 string
-		if args[1] != nil {
-			arg1 = args[1].(string)
-		}
-		run(
-			arg0,
-			arg1,
-		)
-	})
-	return _c
-}
-
-func (_c *userDeletionProviderMock_DeleteUser_Call) Return(serviceError *common.ServiceError) *userDeletionProviderMock_DeleteUser_Call {
-	_c.Call.Return(serviceError)
-	return _c
-}
-
-func (_c *userDeletionProviderMock_DeleteUser_Call) RunAndReturn(run func(ctx context.Context, userID string) *common.ServiceError) *userDeletionProviderMock_DeleteUser_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
 // ValidateDeleteUser provides a mock function for the type userDeletionProviderMock
 func (_mock *userDeletionProviderMock) ValidateDeleteUser(ctx context.Context, userID string) *common.ServiceError {
 	ret := _mock.Called(ctx, userID)

@@ -149,6 +149,10 @@ A project on the control plane is backed by one root organization unit. When you
 
 A data plane has no projects. It rejects a `projectId` in a create or update request with `APP-1063`, and returns an empty list for `GET /applications?projectId=<project-id>`.
 
+## Permissions
+
+To manage applications, you need the root `system` permission or one of the application permissions, such as `system:app:view` to read applications or `system:app` for every action. The same permissions authorize Dynamic Client Registration and its client configuration endpoint. Application permissions reach the applications in every organization unit. See [System Permissions](../users/manage-roles.mdx#system-permissions).
+
 ## Next Steps
 
 - [Application Settings](../application-settings) - Configure OAuth 2.0, tokens, flows, and consent for your application

@@ -16,6 +16,7 @@
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^5.0.4",
+    "concurrently": "10.0.3",
     "vite": "npm:rolldown-vite@^7.1.14"
   },
   "engines": {

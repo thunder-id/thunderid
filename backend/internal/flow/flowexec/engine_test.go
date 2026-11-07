@@ -3017,6 +3017,73 @@ func (s *EngineTestSuite) TestFlowEngineExecute_NilGraph() {
 	s.NotNil(err)
 }
 
+func (s *EngineTestSuite) TestFlowEngineExecute_FailsWhenNodeExceedsVisitLimit() {
+	t := s.T()
+	mockGraph := coremock.NewGraphInterfaceMock(t)
+	mockGraph.On("HasSegments").Return(false).Maybe()
+	mockGraph.On("GetID").Return("auth-flow").Maybe()
+	mockGraph.On("GetInterceptors", mock.Anything).Return([]core.InterceptorUnitInterface{}).Maybe()
+
+	taskNode := coremock.NewExecutorBackedNodeInterfaceMock(t)
+	taskNode.On("GetID").Return("credentials_auth").Maybe()
+	taskNode.On("GetType").Return(common.NodeTypeTaskExecution).Maybe()
+	taskNode.On("GetProperties").Return(map[string]interface{}(nil)).Maybe()
+	taskNode.On("GetExecutionPolicy").Return((*providers.ExecutionPolicy)(nil)).Maybe()
+	mockExecutor := coremock.NewExecutorInterfaceMock(t)
+	mockExecutor.On("GetName").Return("CredentialsAuthExecutor").Maybe()
+	mockExecutor.On("GetType").Return(providers.ExecutorTypeAuthentication).Maybe()
+	taskNode.On("GetExecutor").Return(mockExecutor).Maybe()
+	taskNode.On("GetInputs").Return([]providers.Input{{Identifier: "", Required: true}}).Maybe()
+	taskNode.On("GetMode").Return("").Maybe()
+	taskNode.On("ShouldExecute", mock.Anything).Return(true)
+	// The executor keeps asking for an input the prompt never collects.
+	taskNode.On("Execute", mock.Anything).Return(&common.NodeResponse{
+		Status:     common.NodeStatusForward,
+		NextNodeID: "prompt_credentials",
+	}, nil).Times(maxNodeVisitsPerRequest)
+
+	promptNode := coremock.NewPromptNodeInterfaceMock(t)
+	promptNode.On("GetID").Return("prompt_credentials").Maybe()
+	promptNode.On("GetType").Return(common.NodeTypePrompt).Maybe()
+	promptNode.On("GetProperties").Return(map[string]interface{}(nil)).Maybe()
+	promptNode.On("GetExecutionPolicy").Return((*providers.ExecutionPolicy)(nil)).Maybe()
+	promptNode.On("GetPrompts").Return([]common.Prompt{}).Maybe()
+	promptNode.On("IsDisplayOnly").Return(false).Maybe()
+	promptNode.On("ShouldExecute", mock.Anything).Return(true)
+	// The prompt already holds its inputs, so it completes without pausing.
+	promptNode.On("Execute", mock.Anything).Return(&common.NodeResponse{
+		Status:     common.NodeStatusComplete,
+		NextNodeID: "credentials_auth",
+	}, nil).Times(maxNodeVisitsPerRequest)
+
+	mockGraph.On("GetNode", "prompt_credentials").Return(promptNode, true).Maybe()
+	mockGraph.On("GetNode", "credentials_auth").Return(taskNode, true).Maybe()
+
+	mockRunner := NewInterceptorRunnerInterfaceMock(t)
+	mockRunner.On("runInterceptors", mock.Anything, mock.Anything).
+		Return(&common.InterceptorResponse{Status: common.InterceptorStatusComplete}, nil)
+
+	fe := &flowEngine{
+		logger:            log.GetLogger(),
+		observabilitySvc:  setupNodePackageMockObs(t),
+		interceptorRunner: mockRunner,
+	}
+	ctx := &EngineContext{
+		Context:          context.Background(),
+		ExecutionID:      "exec-loop",
+		FlowType:         providers.FlowTypeAuthentication,
+		Graph:            mockGraph,
+		CurrentNode:      taskNode,
+		UserInputs:       map[string]string{"username": "alice", "password": "secret"},
+		ExecutionHistory: map[string]*providers.NodeExecutionRecord{},
+	}
+
+	_, err := fe.Execute(ctx)
+
+	s.NotNil(err)
+	s.Equal(tidcommon.InternalServerError.Code, err.Code)
+}
+
 // Tests for runInterceptors
 
 func (s *EngineTestSuite) TestRunInterceptors_NilGraph() {

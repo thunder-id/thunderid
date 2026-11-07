@@ -68,17 +68,24 @@ export default function SwitchAccessConfirmDialog({
     translateOrganizationAccessWording(t, wordingNamespace, key, {resource: resourceName, owner: ownerName});
   // Leaving "Every organization unit" deletes that policy, so the dialog says so in its own words.
   const changesScope = accessSwitch?.field === 'scope' && accessSwitch.losesEveryUnit;
+  // A switch that only drops a rule turning assignments off clears nothing else, so it has no list
+  // and no "Switching clears" intro.
+  const clearsSettings = (accessSwitch?.cleared.length ?? 0) > 0;
 
   const names = (ouIds: string[]): string => ouIds.map((ouId) => unitsById.get(ouId)?.name ?? ouId).join(', ');
 
   const describe = (item: ClearedAccessItem): string => {
     switch (item.kind) {
       case 'childUnitExclusions':
-        return t('resourceSharing:switch.cleared.childUnitExclusions', 'Child unit exceptions: {{names}}', {
-          names: names(item.ouIds),
-        });
+        return t(
+          'resourceSharing:switch.cleared.childUnitExclusions',
+          'Child organization unit exceptions: {{names}}',
+          {
+            names: names(item.ouIds),
+          },
+        );
       case 'childUnits':
-        return t('resourceSharing:switch.cleared.childUnits', 'Granted child units: {{names}}', {
+        return t('resourceSharing:switch.cleared.childUnits', 'Granted child organization units: {{names}}', {
           names: names(item.ouIds),
         });
       case 'trees':
@@ -115,32 +122,36 @@ export default function SwitchAccessConfirmDialog({
       </DialogTitle>
       <DialogContent>
         <Stack spacing={2}>
-          <DialogContentText>
-            {stopsSharing && wording('stopSharingIntro')}
-            {!stopsSharing &&
-              changesScope &&
-              t(
-                'resourceSharing:switch.introChangeScope',
-                'This deletes the "Every organization unit" policy, so {{resource}} stops reaching every organization unit. Access then starts as All child units of {{owner}}, which you can change below. Deleting the policy clears:',
-                {owner: ownerName, resource: resourceName},
-              )}
-            {!stopsSharing &&
-              !changesScope &&
-              t(
-                'resourceSharing:switch.intro',
-                "What you set up for {{choice}} doesn't carry over. Switching clears:",
-                {
-                  choice: fromLabel,
-                },
-              )}
-          </DialogContentText>
-          <Box component="ul" sx={{m: 0, pl: 3, py: 1.5, pr: 2, bgcolor: 'action.hover', borderRadius: '10px'}}>
-            {accessSwitch?.cleared.map((item) => (
-              <Typography component="li" variant="body2" key={item.kind} sx={{py: 0.25}}>
-                {describe(item)}
-              </Typography>
-            ))}
-          </Box>
+          {(stopsSharing || changesScope || clearsSettings) && (
+            <DialogContentText>
+              {stopsSharing && wording('stopSharingIntro')}
+              {!stopsSharing &&
+                changesScope &&
+                t(
+                  'resourceSharing:switch.introChangeScope',
+                  'This deletes the "Every organization unit" policy, so {{resource}} stops reaching every organization unit. Access then starts as All child organization units of {{owner}}, which you can change below. Deleting the policy clears:',
+                  {owner: ownerName, resource: resourceName},
+                )}
+              {!stopsSharing &&
+                !changesScope &&
+                t(
+                  'resourceSharing:switch.intro',
+                  "What you set up for {{choice}} doesn't carry over. Switching clears:",
+                  {
+                    choice: fromLabel,
+                  },
+                )}
+            </DialogContentText>
+          )}
+          {clearsSettings && (
+            <Box component="ul" sx={{m: 0, pl: 3, py: 1.5, pr: 2, bgcolor: 'action.hover', borderRadius: '10px'}}>
+              {accessSwitch?.cleared.map((item) => (
+                <Typography component="li" variant="body2" key={item.kind} sx={{py: 0.25}}>
+                  {describe(item)}
+                </Typography>
+              ))}
+            </Box>
+          )}
           {accessSwitch?.losesEveryUnit && (
             <Alert severity="warning">
               {t(
@@ -157,11 +168,20 @@ export default function SwitchAccessConfirmDialog({
               )}
             </Alert>
           )}
+          {accessSwitch?.losesAssignmentsOff && (
+            <Alert severity="warning">
+              {t(
+                'resourceSharing:switch.losesAssignmentsOff',
+                'Assignments are turned off for some organization units this drops. Any of them granted again can assign {{resource}}, and only a resource file or the API can turn assignments off again.',
+                {resource: resourceName},
+              )}
+            </Alert>
+          )}
           {hasUnitSettings && (
             <Alert severity="info">
               {t(
                 'resourceSharing:switch.unitSettings',
-                'Unit settings are cleared too. Units lose the settings they chose for themselves within their terms.',
+                'Organization unit settings are cleared too. Organization units lose the settings they chose for themselves within their terms.',
               )}
             </Alert>
           )}

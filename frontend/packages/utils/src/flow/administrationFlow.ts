@@ -116,7 +116,6 @@ export const AdministrationFlowConfigKey = {
   ROLE_DELETION: 'roleDeletionFlow',
   ROLE_PERMISSION_REMOVAL: 'rolePermissionRemovalFlow',
   ACTION_DELETION: 'actionDeletionFlow',
-  USER_DELETION: 'userDeletionFlow',
   USER_UNLOCK: 'userUnlockFlow',
   USER_SUSPEND: 'userSuspendFlow',
   USER_UNSUSPEND: 'userUnsuspendFlow',

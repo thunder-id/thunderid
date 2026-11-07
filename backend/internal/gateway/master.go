@@ -61,6 +61,9 @@ type masterWrite struct {
 	// earlier is the master a revert returns to: a resource it sends keeps the source and origin that
 	// master records for it.
 	earlier *Master
+	// project is the project the apply was scoped to, and projectRevert marks a rollback of it.
+	project       string
+	projectRevert bool
 }
 
 // nextMaster builds the master a gateway holds after an apply from the one it held before and the

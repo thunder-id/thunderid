@@ -752,6 +752,53 @@ func (suite *ValidationTestSuite) TestUpdateResourceServerIdentifierConflict() {
 	suite.Contains(err.Error(), "409")
 }
 
+func (suite *ValidationTestSuite) TestUpdateResourceServerEquivalentIdentifierConflict() {
+	firstID, err := createResourceServer(CreateResourceServerRequest{
+		Name:       "Equivalent Identifier Conflict Server 1",
+		Identifier: "https://equivalent-conflict.example.com",
+		OUID:       suite.ouID,
+	})
+	suite.Require().NoError(err)
+	defer deleteResourceServer(firstID)
+
+	secondID, err := createResourceServer(CreateResourceServerRequest{
+		Name:       "Equivalent Identifier Conflict Server 2",
+		Identifier: "https://equivalent-conflict.example.com/second",
+		OUID:       suite.ouID,
+	})
+	suite.Require().NoError(err)
+	defer deleteResourceServer(secondID)
+
+	err = updateResourceServer(secondID, UpdateResourceServerRequest{
+		Name:       "Equivalent Identifier Conflict Server 2",
+		Identifier: "https://Equivalent-Conflict.example.com/",
+		OUID:       suite.ouID,
+	})
+	suite.Require().Error(err, "Should fail when an equivalent identifier is already taken")
+	suite.Contains(err.Error(), "409")
+}
+
+func (suite *ValidationTestSuite) TestUpdateResourceServerToEquivalentOfOwnIdentifier() {
+	rsID, err := createResourceServer(CreateResourceServerRequest{
+		Name:       "Own Equivalent Identifier Server",
+		Identifier: "https://own-equivalent.example.com",
+		OUID:       suite.ouID,
+	})
+	suite.Require().NoError(err)
+	defer deleteResourceServer(rsID)
+
+	err = updateResourceServer(rsID, UpdateResourceServerRequest{
+		Name:       "Own Equivalent Identifier Server",
+		Identifier: "https://OWN-EQUIVALENT.example.com/",
+		OUID:       suite.ouID,
+	})
+	suite.Require().NoError(err)
+
+	rs, err := getResourceServer(rsID)
+	suite.Require().NoError(err)
+	suite.Equal("https://OWN-EQUIVALENT.example.com/", rs.Identifier)
+}
+
 // roleResponse is the role payload, limited to the fields needed to assert permission cleanup.
 type roleResponse struct {
 	ID          string                          `json:"id"`
