@@ -868,6 +868,37 @@ describe('ConnectionDetailPage', () => {
     expect(screen.queryByTestId('save-bar')).not.toBeInTheDocument();
   });
 
+  it('AuthZEN PDP: restores the stored API-key headers when API key is chosen again', () => {
+    mockParams.type = 'authzen-pdp';
+    mockParams.id = 'pdp1';
+    mockConn.data = AUTHZEN_PDP_API_KEYS;
+    render(<ConnectionDetailPage />);
+
+    fireEvent.click(screen.getByTestId('connection-tab-authentication'));
+    fireEvent.mouseDown(screen.getByRole('combobox'));
+    fireEvent.click(screen.getByRole('option', {name: 'Bearer token'}));
+    fireEvent.mouseDown(screen.getByRole('combobox'));
+    fireEvent.click(screen.getByRole('option', {name: 'API key'}));
+
+    expect(document.getElementById('connection-field-httpHeaders-name-1')).toHaveValue('X-First-Key');
+    expect(document.getElementById('connection-field-httpHeaders-value-1')).toBeDisabled();
+    expect(screen.queryByTestId('save-bar')).not.toBeInTheDocument();
+  });
+
+  it('AuthZEN PDP: needs a header once every stored API-key header is deleted', () => {
+    mockParams.type = 'authzen-pdp';
+    mockParams.id = 'pdp1';
+    mockConn.data = AUTHZEN_PDP_API_KEYS;
+    render(<ConnectionDetailPage />);
+
+    fireEvent.click(screen.getByTestId('connection-tab-authentication'));
+    fireEvent.click(screen.getByTestId('connection-field-httpHeaders-remove-1'));
+    fireEvent.click(screen.getByTestId('connection-field-httpHeaders-remove-1'));
+
+    expect(screen.getByTestId('save-bar')).toBeDisabled();
+    expect(screen.getByText('This field is required.')).toBeInTheDocument();
+  });
+
   it('AuthZEN PDP: handles a stored API key response with null headers', () => {
     mockParams.type = 'authzen-pdp';
     mockParams.id = 'pdp1';
@@ -960,10 +991,14 @@ describe('ConnectionDetailPage', () => {
     fireEvent.click(screen.getByTestId('edit-endpoint'));
     expect(screen.getByTestId('save-bar')).toBeDisabled();
     fireEvent.click(screen.getByTestId('connection-tab-authentication'));
-    fireEvent.click(screen.getByTestId('connection-field-httpHeaders-update-1'));
+    // The stored values cannot be kept for the new endpoint, so each row is open for its value.
+    expect(screen.queryByTestId('connection-field-httpHeaders-update-1')).not.toBeInTheDocument();
+    expect(document.getElementById('connection-field-httpHeaders-value-1')).toHaveValue('');
+    expect(screen.getByTestId('connection-field-httpHeaders-error-2')).toHaveTextContent(
+      "Enter this header's value again.",
+    );
     fireEvent.change(document.getElementById('connection-field-httpHeaders-value-1')!, {target: {value: 'first-new'}});
     expect(screen.getByTestId('save-bar')).toBeDisabled();
-    fireEvent.click(screen.getByTestId('connection-field-httpHeaders-update-2'));
     fireEvent.change(document.getElementById('connection-field-httpHeaders-value-2')!, {target: {value: 'second-new'}});
     expect(screen.getByTestId('save-bar')).not.toBeDisabled();
     fireEvent.click(screen.getByTestId('save-bar'));

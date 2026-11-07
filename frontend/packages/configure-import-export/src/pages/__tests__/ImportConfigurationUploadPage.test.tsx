@@ -258,6 +258,34 @@ describe('ImportConfigurationUploadPage', () => {
     );
   });
 
+  it('accepts an intent without flagging it as unknown', async () => {
+    const user = userEvent.setup();
+    render(<ImportConfigurationUploadPage />);
+
+    const yamlContent =
+      'resource_type: authorization_detail_type\nid: adt-1\ntype: payment_initiation\nname: Payment\nschema: \'{"type":"object","properties":{}}\'\n';
+    const yamlFile = new File([yamlContent], 'config.yaml', {type: 'text/yaml'});
+    Object.defineProperty(yamlFile, 'text', {value: () => Promise.resolve(yamlContent)});
+
+    await user.upload(document.getElementById('file-upload') as HTMLInputElement, yamlFile);
+    await user.click(screen.getByRole('button', {name: 'Continue'}));
+
+    await waitFor(
+      () => {
+        expect(mockNavigate).toHaveBeenCalledWith(
+          '/import-configuration/validate',
+          expect.objectContaining({
+            state: expect.objectContaining({
+              parseErrors: [],
+              parseStats: {successCount: 1, failCount: 0},
+            }) as Record<string, unknown>,
+          }),
+        );
+      },
+      {timeout: 5000},
+    );
+  });
+
   it('detects resource types from the resource_type YAML field (not comments)', async () => {
     const user = userEvent.setup();
     render(<ImportConfigurationUploadPage />);

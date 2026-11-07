@@ -1,7 +1,18 @@
 // Copyright 2025 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {DocumentTitle, QueryErrorNotice, SettingsCard, UnsavedChangesBar} from '@thunderid/components';
+import {
+  AUTHENTICATION_METHOD_FIELD_NAMES,
+  decodeKeyValuePairs,
+  DocumentTitle,
+  getServiceAuthenticationState,
+  MASKED_SECRET,
+  outboundAuthenticationFromFormValues,
+  QueryErrorNotice,
+  ServiceAuthenticationMethods,
+  SettingsCard,
+  UnsavedChangesBar,
+} from '@thunderid/components';
 import {useConfig} from '@thunderid/contexts';
 import {getErrorMessage} from '@thunderid/utils';
 import {
@@ -38,17 +49,11 @@ import ConnectionForm from '../components/ConnectionForm';
 import ConnectionUsagesSection from '../components/ConnectionUsagesSection';
 import OrganizationUnitSection from '../components/OrganizationUnitSection';
 import ReadOnlyCopyField from '../components/ReadOnlyCopyField';
-import ServiceAuthenticationMethods from '../components/ServiceAuthenticationMethods';
 import SetDefaultEmailSenderDialog from '../components/SetDefaultEmailSenderDialog';
 import SubjectMappingSection from '../components/SubjectMappingSection';
 import {CONNECTION_FORM_FIELDS} from '../config/connectionFormFields';
 import {VENDOR_META_BY_TYPE} from '../config/connectionVendorMeta';
 import useConnectionRoutes from '../hooks/useConnectionRoutes';
-import {
-  AUTHENTICATION_METHOD_FIELD_NAMES,
-  AuthenticationMethods,
-  type AuthenticationMethod,
-} from '../models/authentication-methods';
 import type {
   AccountLinking,
   AttributeConfiguration,
@@ -70,14 +75,11 @@ import {
   type ConnectionFormValues,
   formValuesToRequest,
   HTTPS_REQUIRED_WITH_AUTHENTICATION_ERROR,
-  MASKED_SECRET,
-  outboundAuthenticationFromFormValues,
   responseToFormValues,
   urlOriginChanged,
   validateConnectionForm,
 } from '../utils/connectionFormMapping';
 import isConflictError from '../utils/isConflictError';
-import {decodeKeyValuePairs, parseKeyValuePairs} from '../utils/keyValuePairs';
 import {hasDuplicateSubjectAttributes, normalizeSubjectAttributeMappings} from '../utils/subjectMapping';
 
 interface TabPanelProps {
@@ -256,26 +258,26 @@ export default function ConnectionDetailPage(): JSX.Element | null {
     linkingDirty ||
     !authzMappingsValid ||
     !directMappingsValid;
-  const selectedAuthenticationScheme =
-    (values['authenticationScheme'] as AuthenticationMethod | undefined) ?? AuthenticationMethods.NONE;
-  const persistedAuthenticationScheme = data?.authentication?.type?.toUpperCase() ?? AuthenticationMethods.NONE;
   const authenticationTargetChanged =
     supportsAuthentication &&
     (connectionType === ConnectionTypes.SMS_GATEWAY
       ? (values['url'] ?? '').trim() !== (data?.url ?? '').trim()
       : (values['endpoint'] ?? '').trim() !== (data?.endpoint ?? '').trim() ||
         (values['batchEndpoint'] ?? '').trim() !== (data?.batchEndpoint ?? '').trim());
-  const requiresFreshCredentials =
-    authenticationTargetChanged && selectedAuthenticationScheme !== AuthenticationMethods.NONE;
-  const hasStoredCredentialForSelectedScheme =
-    !authenticationTargetChanged &&
-    selectedAuthenticationScheme === persistedAuthenticationScheme &&
-    (selectedAuthenticationScheme === AuthenticationMethods.BEARER
-      ? Boolean(data?.authentication?.properties?.['token'])
-      : selectedAuthenticationScheme === AuthenticationMethods.BASIC
-        ? Boolean(data?.authentication?.properties?.['username']) &&
-          Boolean(data?.authentication?.properties?.['password'])
-        : false);
+  const {
+    selectedAuthenticationScheme,
+    requiresFreshCredentials,
+    hasStoredCredentialForSelectedScheme,
+    hasStoredHTTPHeaders,
+    storedHTTPHeaders,
+    authenticationErrors,
+    hasRequiredAuthenticationCredential,
+    authenticationChanged,
+  } = getServiceAuthenticationState(values, data?.authentication, {
+    replacing: secretReplacing,
+    targetChanged: authenticationTargetChanged,
+    requiredMessage: t('validation.required', 'This field is required.'),
+  });
   // A provider's credential is stored only for the method it was saved with, and comes back
   // masked. Switching to another method leaves nothing stored for it, so its credential has to
   // be entered rather than shown as kept.
@@ -315,51 +317,6 @@ export default function ConnectionDetailPage(): JSX.Element | null {
     values,
     authenticationMethods,
   );
-  const hasStoredHTTPHeaders =
-    selectedAuthenticationScheme === AuthenticationMethods.API_KEY &&
-    selectedAuthenticationScheme === persistedAuthenticationScheme &&
-    Boolean(Object.keys(data?.authentication?.properties ?? {}).length);
-  const requiredCredentialError = t('validation.required', 'This field is required.');
-  const enteredHeaders = parseKeyValuePairs(values['httpHeaders'] ?? '');
-  const authenticationErrors = {
-    bearerToken:
-      selectedAuthenticationScheme === AuthenticationMethods.BEARER &&
-      (secretReplacing || !hasStoredCredentialForSelectedScheme) &&
-      ((values['bearerToken'] ?? '').trim() === '' || (values['bearerToken'] ?? '').trim() === MASKED_SECRET)
-        ? requiredCredentialError
-        : undefined,
-    basicUsername:
-      selectedAuthenticationScheme === AuthenticationMethods.BASIC &&
-      (secretReplacing || !hasStoredCredentialForSelectedScheme) &&
-      (values['basicUsername'] ?? '').trim() === ''
-        ? requiredCredentialError
-        : undefined,
-    basicPassword:
-      selectedAuthenticationScheme === AuthenticationMethods.BASIC &&
-      (secretReplacing || !hasStoredCredentialForSelectedScheme) &&
-      ((values['basicPassword'] ?? '').trim() === '' || (values['basicPassword'] ?? '').trim() === MASKED_SECRET)
-        ? requiredCredentialError
-        : undefined,
-    httpHeaders:
-      selectedAuthenticationScheme === AuthenticationMethods.API_KEY &&
-      ((requiresFreshCredentials &&
-        (enteredHeaders.length === 0 ||
-          enteredHeaders.some(
-            ({name, value}) => name.trim() === '' || value.trim() === '' || value === MASKED_SECRET,
-          ))) ||
-        (!hasStoredHTTPHeaders && (values['httpHeaders'] ?? '').trim() === ''))
-        ? requiredCredentialError
-        : undefined,
-  };
-  const hasRequiredAuthenticationCredential = Object.values(authenticationErrors).every((error) => !error);
-  const hasEnteredAuthenticationCredential =
-    selectedAuthenticationScheme === AuthenticationMethods.BEARER
-      ? (values['bearerToken'] ?? '').trim() !== ''
-      : selectedAuthenticationScheme === AuthenticationMethods.BASIC
-        ? (values['basicUsername'] ?? '').trim() !== '' && (values['basicPassword'] ?? '').trim() !== ''
-        : selectedAuthenticationScheme === AuthenticationMethods.API_KEY
-          ? (values['httpHeaders'] ?? '').trim() !== ''
-          : false;
   const fieldErrors: Record<string, string> = validateConnectionForm(values, fields, 'edit');
   const valid: boolean =
     Object.keys(fieldErrors).length === 0 &&
@@ -425,13 +382,6 @@ export default function ConnectionDetailPage(): JSX.Element | null {
             accountLinking: hasLinking ? effectiveLinking : undefined,
           }
         : undefined;
-    const authenticationChanged =
-      selectedAuthenticationScheme !== persistedAuthenticationScheme ||
-      ((selectedAuthenticationScheme === AuthenticationMethods.BEARER ||
-        selectedAuthenticationScheme === AuthenticationMethods.BASIC) &&
-        (secretReplacing || hasEnteredAuthenticationCredential)) ||
-      (selectedAuthenticationScheme === AuthenticationMethods.API_KEY &&
-        values['httpHeaders'] !== baseline['httpHeaders']);
     const requestFields = supportsAuthentication
       ? fields.filter((field) => !AUTHENTICATION_METHOD_FIELD_NAMES.has(field.name))
       : fields;
@@ -771,6 +721,7 @@ export default function ConnectionDetailPage(): JSX.Element | null {
                   basicPassword={values['basicPassword'] ?? ''}
                   httpHeaders={values['httpHeaders'] ?? ''}
                   hasStoredHTTPHeaders={hasStoredHTTPHeaders}
+                  storedHTTPHeaders={storedHTTPHeaders}
                   hasStoredSecret={hasStoredCredentialForSelectedScheme}
                   replacing={secretReplacing}
                   errors={authenticationErrors}

@@ -435,6 +435,12 @@ type: google
         `resource_type: resource_server\nname: Resource Server ${idx}\nhandle: rs-${idx}\ndescription: Resource server description ${idx}`,
     },
     {
+      resourceType: 'authorization_detail_type',
+      label: 'Intents',
+      body: (idx) =>
+        `resource_type: authorization_detail_type\nid: adt-${idx}\ntype: payment_${idx}\nname: Payment ${idx}\ndescription: Pays once`,
+    },
+    {
       resourceType: 'role',
       label: 'Roles',
       body: (idx) =>

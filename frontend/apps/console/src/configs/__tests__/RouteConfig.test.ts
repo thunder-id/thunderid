@@ -51,6 +51,12 @@ describe('RouteConfig', () => {
     expect(RouteConfig.resourceServers.create()).toBe('/resource-servers/create');
   });
 
+  it('authorizationDetailTypes builds paths from the segment', () => {
+    expect(RouteConfig.authorizationDetailTypes.list()).toBe('/authorization-detail-types');
+    expect(RouteConfig.authorizationDetailTypes.detail('type-1')).toBe('/authorization-detail-types/type-1');
+    expect(RouteConfig.authorizationDetailTypes.create()).toBe('/authorization-detail-types/create');
+  });
+
   it('translations builds paths from the segment', () => {
     expect(RouteConfig.translations.list()).toBe('/translations');
     expect(RouteConfig.translations.detail('en-us')).toBe('/translations/en-us');

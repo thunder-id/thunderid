@@ -7,7 +7,8 @@ import {beforeEach, describe, expect, it, vi} from 'vitest';
 import type {SubjectMappingValues} from '../../models/connection';
 import SubjectMappingSection from '../SubjectMappingSection';
 
-vi.mock('@thunderid/components', () => ({
+vi.mock('@thunderid/components', async (importOriginal) => ({
+  sanitizeKeyValuePart: (await importOriginal<typeof import('@thunderid/components')>()).sanitizeKeyValuePart,
   SettingsCard: ({children}: {children: React.ReactNode}) => <section>{children}</section>,
 }));
 
