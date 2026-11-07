@@ -39,7 +39,7 @@ func (suite *TokenHandlerTestSuite) SetupTest() {
 
 // newHandler creates a tokenHandler backed by the suite's service mock.
 func (suite *TokenHandlerTestSuite) newHandler() *tokenHandler {
-	return newTokenHandler(suite.mockTokenService, nil).(*tokenHandler)
+	return newTokenHandler(suite.mockTokenService, nil, discardingBus{}).(*tokenHandler)
 }
 
 // buildRequest constructs a POST /token request with URL-encoded form data.
@@ -63,7 +63,7 @@ func (suite *TokenHandlerTestSuite) withClientContext(
 }
 
 func (suite *TokenHandlerTestSuite) TestnewTokenHandler() {
-	handler := newTokenHandler(suite.mockTokenService, nil)
+	handler := newTokenHandler(suite.mockTokenService, nil, discardingBus{})
 	assert.NotNil(suite.T(), handler)
 	assert.Implements(suite.T(), (*TokenHandlerInterface)(nil), handler)
 }
@@ -140,7 +140,7 @@ func (suite *TokenHandlerTestSuite) TestHandleTokenRequest_ServiceErrors() {
 	for _, tc := range tests {
 		suite.Run(tc.name, func() {
 			mockSvc := NewTokenServiceInterfaceMock(suite.T())
-			handler := newTokenHandler(mockSvc, nil).(*tokenHandler)
+			handler := newTokenHandler(mockSvc, nil, discardingBus{}).(*tokenHandler)
 			mockApp := &providers.OAuthClient{ClientID: "test-client-id"}
 			formData := url.Values{}
 			formData.Set("grant_type", tc.grantType)
@@ -362,7 +362,7 @@ func (s *OUScopedGrantTestSuite) serve(grantType, accessingOUID string) (*httpte
 	}
 
 	recorder := httptest.NewRecorder()
-	newTokenHandler(s.service, nil).HandleTokenRequest(recorder, req.WithContext(ctx))
+	newTokenHandler(s.service, nil, discardingBus{}).HandleTokenRequest(recorder, req.WithContext(ctx))
 
 	var body map[string]any
 	_ = json.Unmarshal(recorder.Body.Bytes(), &body)

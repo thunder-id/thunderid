@@ -116,6 +116,16 @@ func (Payload) Category() eventbus.Category {
 	return CategoryAudit
 }
 
+// WithActor replaces the actor resolved from the request and clears the principal it acted for. An
+// OAuth endpoint authenticates a client rather than a token, and a bearer token sent to one must never
+// decide the actor.
+func (p Payload) WithActor(actor Actor) Payload {
+	actor.ID = capID(actor.ID)
+	p.actor = actor
+	p.onBehalfOf = Ref{}
+	return p
+}
+
 // WithSubject names the identity whose activity log the event belongs to.
 func (p Payload) WithSubject(subject Ref) Payload {
 	subject.ID = capID(subject.ID)

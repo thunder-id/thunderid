@@ -19,6 +19,7 @@ import (
 	authzdetailexec "github.com/thunder-id/thunderid/internal/authzdetail/exec"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
+	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -2107,6 +2108,51 @@ func (suite *OAuth2UtilsTestSuite) TestAuthorizationDetailsErrorResponse() {
 	for _, tc := range testCases {
 		suite.Run(tc.name, func() {
 			assert.Equal(suite.T(), tc.expected, AuthorizationDetailsErrorResponse(tc.svcErr))
+		})
+	}
+}
+
+func (suite *OAuth2UtilsTestSuite) TestAuditOutcome() {
+	cases := []struct {
+		code string
+		want audit.Outcome
+	}{
+		{constants.ErrorInvalidClient, audit.OutcomeDenied("invalid_client")},
+		{constants.ErrorUnauthorizedClient, audit.OutcomeDenied("unauthorized_client")},
+		{constants.ErrorAccessDenied, audit.OutcomeDenied("access_denied")},
+		{constants.ErrorInvalidScope, audit.OutcomeDenied("invalid_scope")},
+		{constants.ErrorInvalidRequest, audit.OutcomeFailed("invalid_request")},
+		{constants.ErrorInvalidGrant, audit.OutcomeFailed("invalid_grant")},
+		{constants.ErrorUnsupportedGrantType, audit.OutcomeFailed("unsupported_grant_type")},
+		{constants.ErrorServerError, audit.OutcomeFailed("server_error")},
+		{"", audit.OutcomeFailed("server_error")},
+	}
+	for _, tc := range cases {
+		suite.Run(tc.code, func() {
+			suite.Equal(tc.want, AuditOutcome(tc.code))
+		})
+	}
+}
+
+// The actor of a client is the application or agent it belongs to, by its ID and never its client ID.
+func (suite *OAuth2UtilsTestSuite) TestAuditClientActor() {
+	const entityID, clientID = "01900000-0000-7000-8000-000000000041", "audit-client"
+	cases := []struct {
+		name   string
+		client *providers.OAuthClient
+		want   audit.Actor
+	}{
+		{"an application", &providers.OAuthClient{ID: entityID, ClientID: clientID,
+			EntityCategory: providers.EntityCategoryApp}, audit.Actor{Type: audit.ActorTypeApplication, ID: entityID}},
+		{"an agent", &providers.OAuthClient{ID: entityID, ClientID: clientID,
+			EntityCategory: providers.EntityCategoryAgent}, audit.Actor{Type: audit.ActorTypeAgent, ID: entityID}},
+		{"a client without a category", &providers.OAuthClient{ID: entityID, ClientID: clientID},
+			audit.Actor{Type: audit.ActorTypeApplication, ID: entityID}},
+		{"no client", nil, audit.Actor{Type: audit.ActorTypeAnonymous}},
+	}
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			suite.Equal(tc.want, AuditClientActor(tc.client))
 		})
 	}
 }

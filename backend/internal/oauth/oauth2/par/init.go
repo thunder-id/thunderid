@@ -12,6 +12,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/discovery"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/jti"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
@@ -20,6 +21,7 @@ import (
 
 // Initialize initializes the PAR handler and registers its routes.
 // Returns the PARServiceInterface so the authorization endpoint can resolve request_uri parameters.
+// Every refused client authentication is audited on bus.
 func Initialize(
 	mux *http.ServeMux,
 	actorProvider providers.ActorProvider,
@@ -33,6 +35,7 @@ func Initialize(
 	jtiStore jti.JTIStoreInterface,
 	governance providers.IdentityGovernanceProvider,
 	authzDetails providers.AuthorizationDetailProvider,
+	bus eventbus.EventBusInterface,
 ) PARServiceInterface {
 	store := newPARRequestStore(storeProvider)
 	parSvc := newPARService(store, resourceService, authzDetails, cfg)
@@ -40,7 +43,7 @@ func Initialize(
 		context.Background()).PushedAuthorizationRequestEndpoint
 	handler := newPARHandler(parSvc, dpopVerifier, parEndpoint)
 	registerRoutes(mux, handler, actorProvider, authnProvider, jwtService, discoveryService,
-		jtiStore, governance, cfg.OAuth.ClientAssertion, cfg.JWT.Leeway)
+		jtiStore, governance, cfg.OAuth.ClientAssertion, cfg.JWT.Leeway, bus)
 	return parSvc
 }
 
@@ -56,6 +59,7 @@ func registerRoutes(
 	governance providers.IdentityGovernanceProvider,
 	assertionCfg engineconfig.ClientAssertionConfig,
 	jwtLeeway int64,
+	bus eventbus.EventBusInterface,
 ) {
 	corsOpts := middleware.CORSOptions{
 		AllowedMethods:   []string{"POST"},
@@ -66,7 +70,7 @@ func registerRoutes(
 
 	issuer := discoveryService.GetOAuth2AuthorizationServerMetadata(context.Background()).Issuer
 	clientAuthMiddleware := clientauth.ClientAuthMiddleware(actorProvider, authnProvider, governance, jwtService,
-		jtiStore, issuer, assertionCfg, jwtLeeway)
+		jtiStore, issuer, assertionCfg, jwtLeeway, bus)
 	wrappedHandler := clientAuthMiddleware(http.HandlerFunc(handler.HandlePARRequest))
 
 	pattern, corsHandler := middleware.WithCORS(

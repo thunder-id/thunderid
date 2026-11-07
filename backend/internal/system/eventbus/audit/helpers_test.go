@@ -47,6 +47,7 @@ var (
 	testApplication = Ref{Type: TargetTypeApplication, ID: testAppID}
 	testRole        = Ref{Type: TargetTypeRole, ID: testRoleID}
 	testGroup       = Ref{Type: TargetTypeGroup, ID: testGroupID}
+	testToken       = Ref{Type: TargetTypeToken}
 )
 
 // received is one audit event a sink was handed.

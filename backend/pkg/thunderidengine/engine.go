@@ -35,6 +35,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/cache"
 	systemconfig "github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/cors"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
 	"github.com/thunder-id/thunderid/internal/system/jose"
 	joseconfig "github.com/thunder-id/thunderid/internal/system/jose/config"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwe"
@@ -259,6 +260,10 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 	}
 	cors.InitializeDynamicMatcher(originReader)
 
+	// The engine subscribes nothing to its event bus, so the OAuth services' audit events are dropped
+	// unwritten, no worker starts and the bus needs no stopping.
+	auditBus, _, _ := eventbus.Initialize()
+
 	// The embedded engine has no server-config store, so no default resource server is available: the
 	// resource provider is passed undecorated. Implicit no-resource requests that carry permission
 	// scopes are rejected (the provider resolves no server for an empty identifier); OIDC-only or
@@ -271,7 +276,7 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 		// The embedded engine has no SSO session store or SSO handle transport, so prompt=none keeps
 		// answering login_required rather than consulting a session.
 		nil, nil, engineCtx.flowProvider, engineCtx.identityGovernance, engineCtx.authzDetailProvider,
-		engineCtx.authorizationDetailTypes, oauthConfig)
+		engineCtx.authorizationDetailTypes, oauthConfig, auditBus)
 	if err != nil {
 		logger.Fatal(ctx, "Failed to initialize OAuth services", log.Error(err))
 	}
