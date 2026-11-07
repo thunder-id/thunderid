@@ -259,6 +259,16 @@ describe('DashboardLayout', () => {
     expect(item).toHaveTextContent('navigation:badges.undeployed');
   });
 
+  it("lists the selected project's themes under Design, with what is not deployed yet", () => {
+    mockUseProjectSelection.mockReturnValue(inShop());
+    mockProjectChanges = {theme: 2};
+    render(<DashboardLayout />);
+
+    expect(screen.getAllByText('navigation:pages.design')).toHaveLength(1);
+    const item = screen.getByText('navigation:pages.design').closest('.MuiListItemButton-root')!;
+    expect(item).toHaveTextContent('navigation:badges.undeployed');
+  });
+
   it('lists every role in the organization, outside any project', () => {
     mockUseProjectSelection.mockReturnValue(projectSelection({projects: [shop], isCleared: true}));
     mockPath = '/home';
@@ -403,10 +413,11 @@ describe('DashboardLayout', () => {
     expect(screen.getByText('navigation:pages.administrators')).toBeInTheDocument();
     expect(screen.getByText('navigation:pages.userTypes')).toBeInTheDocument();
     expect(screen.getByText('navigation:pages.connections')).toBeInTheDocument();
-    // Applications, agents and flows belong to projects, so the organization lists none of them.
+    // Applications, agents, flows and themes belong to projects, so the organization lists none of them.
     expect(screen.queryByText('navigation:pages.applications')).not.toBeInTheDocument();
     expect(screen.queryByText('navigation:pages.agents')).not.toBeInTheDocument();
     expect(screen.queryByText('navigation:pages.flows')).not.toBeInTheDocument();
+    expect(screen.queryByText('navigation:pages.design')).not.toBeInTheDocument();
     expect(screen.getByText('navigation:pages.resourceServers')).toBeInTheDocument();
     expect(screen.getByText('navigation:pages.gateways')).toBeInTheDocument();
     // Users and groups are listed in projects as well as the organization.

@@ -32,10 +32,11 @@ paths:
       tags:
         - Themes
       summary: List themes
-      description: Retrieve a list of all theme configurations.
+      description: Retrieve a list of all theme configurations, or of the themes of one project.
       parameters:
         - $ref: '#/components/parameters/limitQueryParam'
         - $ref: '#/components/parameters/offsetQueryParam'
+        - $ref: '#/components/parameters/themeProjectIdQueryParam'
       responses:
         "200":
           description: List of theme configurations
@@ -894,6 +895,14 @@ components:
       schema:
         type: string
       example: "7c9e6679-7425-40de-944b-e07fc1f90ae7"
+    themeProjectIdQueryParam:
+      name: projectId
+      in: query
+      description: Lists the themes of the project. A project that does not exist has no themes.
+      required: false
+      schema:
+        type: string
+      example: "7c9e6679-7425-40de-944b-e07fc1f90ae7"
 
   schemas:
     ThemeRequest:
@@ -915,6 +924,17 @@ components:
           type: string
           description: Description of the theme
           example: "Dracula theme..."
+        projectId:
+          type: string
+          maxLength: 36
+          description: |
+            ID of the project this theme belongs to. On the Control Plane every theme belongs to a project,
+            so a create without `projectId` fails with `THM-1019`. On update, leaving it out keeps the theme
+            in its project, and naming another one moves the theme there. On the Control Plane, a project
+            that does not exist fails the request with `THM-1018`. A deployment without projects, such as
+            the all-in-one server, keeps the ID without checking it. An ID longer than 36 characters fails
+            with `THM-1018` on every deployment.
+          example: "7c9e6679-7425-40de-944b-e07fc1f90ae7"
         theme:
           type: object
           description: Theme configuration as a JSON object
@@ -945,6 +965,10 @@ components:
           type: string
           description: Description of the theme
           example: "Dracula theme..."
+        projectId:
+          type: string
+          description: ID of the project this theme belongs to. Absent when it belongs to no project.
+          example: "7c9e6679-7425-40de-944b-e07fc1f90ae7"
         theme:
           type: object
           description: Theme configuration as a JSON object
@@ -989,6 +1013,10 @@ components:
           type: string
           description: Description of the theme
           example: "A timeless theme with warm accents."
+        projectId:
+          type: string
+          description: ID of the project this theme belongs to. Absent when it belongs to no project.
+          example: "7c9e6679-7425-40de-944b-e07fc1f90ae7"
         defaultColorScheme:
           type: string
           description: The name of the default color scheme for this theme (e.g. "light" or "dark")

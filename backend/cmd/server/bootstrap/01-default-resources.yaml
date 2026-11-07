@@ -2856,6 +2856,7 @@ nodes:
 resource_type: theme
 id: 01900000-0000-7000-8000-000000000071
 handle: acrylic-orange
+projectId: 01900000-0000-7000-8000-000000000002
 displayName: Acrylic Orange
 description: A vibrant theme with warm orange accents and translucent acrylic surfaces.
 theme:
@@ -3358,6 +3359,7 @@ theme:
 resource_type: theme
 id: 01900000-0000-7000-8000-000000000072
 handle: acrylic-purple
+projectId: 01900000-0000-7000-8000-000000000002
 displayName: Acrylic Purple
 description: A modern theme with bold purple accents and translucent acrylic surfaces.
 theme:
@@ -3860,6 +3862,7 @@ theme:
 resource_type: theme
 id: 01900000-0000-7000-8000-000000000073
 handle: classic
+projectId: 01900000-0000-7000-8000-000000000002
 displayName: Classic
 description: A timeless theme with warm accents and readable contrast for programming.
 theme:
@@ -4360,6 +4363,7 @@ theme:
 resource_type: theme
 id: 01900000-0000-7000-8000-000000000074
 handle: high-contrast
+projectId: 01900000-0000-7000-8000-000000000002
 displayName: High Contrast
 description: A high contrast theme optimized for accessibility with bold colors and maximum readability.
 theme:
@@ -4860,6 +4864,7 @@ theme:
 resource_type: theme
 id: 01900000-0000-7000-8000-000000000075
 handle: pale-gray
+projectId: 01900000-0000-7000-8000-000000000002
 displayName: Pale Gray
 description: A minimalist theme with neutral charcoal and gray tones for a distraction-free interface.
 theme:
@@ -5362,6 +5367,7 @@ theme:
 resource_type: theme
 id: 01900000-0000-7000-8000-000000000076
 handle: pale-indigo
+projectId: 01900000-0000-7000-8000-000000000002
 displayName: Pale Indigo
 description: A soft theme with gentle indigo accents and clean neutral backgrounds.
 theme:

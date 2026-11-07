@@ -8,7 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
+	"net/url"
 	"strconv"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -23,9 +23,18 @@ import (
 
 const loggerComponentName = "ThemeMgtService"
 
+// projectIDQueryParam is the query parameter that lists the themes of one project.
+const projectIDQueryParam = "projectId"
+
+// maxProjectIDLength is the length of the PROJECT_ID column of THEME.
+const maxProjectIDLength = 36
+
 // ThemeMgtServiceInterface defines the interface for the theme management service.
 type ThemeMgtServiceInterface interface {
 	GetThemeList(ctx context.Context, limit, offset int) (*ThemeList, *tidcommon.ServiceError)
+	GetThemeListByProject(ctx context.Context, projectID string, limit, offset int) (*ThemeList,
+		*tidcommon.ServiceError)
+	ProjectHasThemes(ctx context.Context, projectID string) (bool, *tidcommon.ServiceError)
 	CreateTheme(ctx context.Context, theme CreateThemeRequestWithID) (*Theme, *tidcommon.ServiceError)
 	GetTheme(ctx context.Context, id string) (*Theme, *tidcommon.ServiceError)
 	UpdateTheme(ctx context.Context, id string, theme UpdateThemeRequest) (*Theme, *tidcommon.ServiceError)
@@ -40,18 +49,26 @@ type ThemeMgtServiceInterface interface {
 type themeMgtService struct {
 	themeMgtStore      themeMgtStoreInterface
 	dependencyRegistry resourcedependency.Registry
-	logger             *log.Logger
-	bus                eventbus.EventBusInterface
+	// projectChecker is nil on a deployment that serves no projects.
+	projectChecker projectChecker
+	logger         *log.Logger
+	bus            eventbus.EventBusInterface
+}
+
+// projectChecker reports whether the project a theme names exists.
+type projectChecker interface {
+	ProjectExists(ctx context.Context, id string) (bool, *tidcommon.ServiceError)
 }
 
 // newThemeMgtService creates a new instance of ThemeMgtService with injected dependencies.
-func newThemeMgtService(themeMgtStore themeMgtStoreInterface,
-	bus eventbus.EventBusInterface) ThemeMgtServiceInterface {
+func newThemeMgtService(themeMgtStore themeMgtStoreInterface, bus eventbus.EventBusInterface,
+	projectChecker projectChecker) ThemeMgtServiceInterface {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 	return &themeMgtService{
-		themeMgtStore: themeMgtStore,
-		logger:        logger,
-		bus:           bus,
+		themeMgtStore:  themeMgtStore,
+		projectChecker: projectChecker,
+		logger:         logger,
+		bus:            bus,
 	}
 }
 
@@ -78,10 +95,61 @@ func (ts *themeMgtService) GetThemeList(ctx context.Context, limit, offset int) 
 		Themes:       themes,
 		StartIndex:   offset + 1,
 		Count:        len(themes),
-		Links:        buildPaginationLinks(limit, offset, totalCount),
+		Links:        buildPaginationLinks(limit, offset, totalCount, ""),
 	}
 
 	return response, nil
+}
+
+// GetThemeListByProject retrieves the themes of a project. A project that does not exist has none.
+func (ts *themeMgtService) GetThemeListByProject(ctx context.Context, projectID string, limit, offset int) (
+	*ThemeList, *tidcommon.ServiceError) {
+	if err := validatePaginationParams(limit, offset); err != nil {
+		return nil, err
+	}
+
+	extraQuery := "&" + projectIDQueryParam + "=" + url.QueryEscape(projectID)
+	if projectID == "" {
+		return &ThemeList{
+			Themes:     []Theme{},
+			StartIndex: offset + 1,
+			Links:      buildPaginationLinks(limit, offset, 0, extraQuery),
+		}, nil
+	}
+
+	totalCount, err := ts.themeMgtStore.GetThemeListCountByProject(ctx, projectID)
+	if err != nil {
+		ts.logger.Error(ctx, "Failed to get theme count in project", log.String("projectID", projectID),
+			log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+
+	themes, err := ts.themeMgtStore.GetThemeListByProject(ctx, projectID, limit, offset)
+	if err != nil {
+		ts.logger.Error(ctx, "Failed to list themes in project", log.String("projectID", projectID),
+			log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+
+	return &ThemeList{
+		TotalResults: totalCount,
+		Themes:       themes,
+		StartIndex:   offset + 1,
+		Count:        len(themes),
+		Links:        buildPaginationLinks(limit, offset, totalCount, extraQuery),
+	}, nil
+}
+
+// ProjectHasThemes reports whether any theme belongs to the project.
+func (ts *themeMgtService) ProjectHasThemes(ctx context.Context, projectID string) (bool,
+	*tidcommon.ServiceError) {
+	count, err := ts.themeMgtStore.GetThemeListCountByProject(ctx, projectID)
+	if err != nil {
+		ts.logger.Error(ctx, "Failed to count themes in project", log.String("projectID", projectID),
+			log.Error(err))
+		return false, &tidcommon.InternalServerError
+	}
+	return count > 0, nil
 }
 
 // CreateTheme creates a new theme configuration.
@@ -127,6 +195,15 @@ func (ts *themeMgtService) createTheme(ctx context.Context, theme CreateThemeReq
 		return nil, err
 	}
 
+	// A deployment that serves projects keeps every theme in one.
+	if theme.ProjectID == "" {
+		if ts.projectChecker != nil {
+			return nil, &ErrorProjectRequired
+		}
+	} else if err := ts.validateProject(ctx, theme.ProjectID); err != nil {
+		return nil, err
+	}
+
 	id := theme.ID
 	if id == "" {
 		var err error
@@ -141,6 +218,7 @@ func (ts *themeMgtService) createTheme(ctx context.Context, theme CreateThemeReq
 		Handle:      theme.Handle,
 		DisplayName: theme.DisplayName,
 		Description: theme.Description,
+		ProjectID:   theme.ProjectID,
 		Theme:       theme.Theme,
 	}
 
@@ -154,6 +232,7 @@ func (ts *themeMgtService) createTheme(ctx context.Context, theme CreateThemeReq
 		Handle:      theme.Handle,
 		DisplayName: theme.DisplayName,
 		Description: theme.Description,
+		ProjectID:   theme.ProjectID,
 		Theme:       theme.Theme,
 	}
 
@@ -228,6 +307,16 @@ func (ts *themeMgtService) updateTheme(ctx context.Context, id string, theme Upd
 		return nil, err
 	}
 
+	// An update that names no project keeps the theme in its project. The project is checked only when the
+	// update moves the theme to another one, so a theme whose project is gone can still be edited.
+	if theme.ProjectID == "" {
+		theme.ProjectID = existingTheme.ProjectID
+	} else if theme.ProjectID != existingTheme.ProjectID {
+		if err := ts.validateProject(ctx, theme.ProjectID); err != nil {
+			return nil, err
+		}
+	}
+
 	if err := ts.themeMgtStore.UpdateTheme(ctx, id, theme); err != nil {
 		ts.logger.Error(ctx, "Failed to update theme", log.String("id", id), log.Error(err))
 		return nil, &tidcommon.InternalServerError
@@ -238,6 +327,7 @@ func (ts *themeMgtService) updateTheme(ctx context.Context, id string, theme Upd
 		Handle:      existingTheme.Handle,
 		DisplayName: theme.DisplayName,
 		Description: theme.Description,
+		ProjectID:   theme.ProjectID,
 		Theme:       theme.Theme,
 	}
 
@@ -366,6 +456,28 @@ func (ts *themeMgtService) GetThemeUsages(
 	return resourcedependency.PaginateUsages(result, limit, offset), nil
 }
 
+// validateProject checks that the project a theme names exists. It returns ErrorInvalidProject when it does
+// not.
+//
+// A deployment that serves no projects, such as a Data Plane, cannot check that the project exists. It keeps a
+// project ID that fits the column as given, so that imported configuration retains it.
+func (ts *themeMgtService) validateProject(ctx context.Context, projectID string) *tidcommon.ServiceError {
+	if len(projectID) > maxProjectIDLength {
+		return &ErrorInvalidProject
+	}
+	if ts.projectChecker == nil {
+		return nil
+	}
+	exists, svcErr := ts.projectChecker.ProjectExists(ctx, projectID)
+	if svcErr != nil {
+		return &tidcommon.InternalServerError
+	}
+	if !exists {
+		return &ErrorInvalidProject
+	}
+	return nil
+}
+
 // validateThemePreferences validates the theme JSON.
 func (ts *themeMgtService) validateThemePreferences(
 	ctx context.Context, theme json.RawMessage) *tidcommon.ServiceError {
@@ -399,30 +511,13 @@ func validatePaginationParams(limit, offset int) *tidcommon.ServiceError {
 	return nil
 }
 
-// buildPaginationLinks builds pagination links for the response.
-func buildPaginationLinks(limit, offset, totalCount int) []Link {
-	links := make([]Link, 0)
-
-	// Previous link
-	if offset > 0 {
-		prevOffset := offset - limit
-		if prevOffset < 0 {
-			prevOffset = 0
-		}
-		links = append(links, Link{
-			Href: fmt.Sprintf("/design/themes?limit=%d&offset=%d", limit, prevOffset),
-			Rel:  "previous",
-		})
+// buildPaginationLinks builds pagination links for the response. extraQuery is appended to each link, so a
+// project's list links to the next page of the same project.
+func buildPaginationLinks(limit, offset, totalCount int, extraQuery string) []Link {
+	shared := utils.BuildPaginationLinks("/design/themes", limit, offset, totalCount, extraQuery)
+	links := make([]Link, 0, len(shared))
+	for _, link := range shared {
+		links = append(links, Link(link))
 	}
-
-	// Next link
-	if offset+limit < totalCount {
-		nextOffset := offset + limit
-		links = append(links, Link{
-			Href: fmt.Sprintf("/design/themes?limit=%d&offset=%d", limit, nextOffset),
-			Rel:  "next",
-		})
-	}
-
 	return links
 }

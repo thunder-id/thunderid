@@ -18,10 +18,10 @@ func (ts *ControlPlaneTestSuite) TestThemeAndLayoutChangesAreAudited() {
 	reader := testutils.NewAuditLogReader()
 	ts.Require().NoError(reader.Reset())
 
-	// A layout on the Control Plane belongs to a project, so it is created in the Default project.
+	// Themes and layouts on the Control Plane belong to a project, so they are created in the Default project.
 	for _, resource := range []struct{ kind, path, projectID string }{
-		{"theme", "/design/themes", ""},
-		{"layout", "/design/layouts", "01900000-0000-7000-8000-000000000002"},
+		{"theme", "/design/themes", defaultProjectID},
+		{"layout", "/design/layouts", defaultProjectID},
 	} {
 		handle := unique("cp-audit-" + resource.kind)
 		displayName := unique("CpAuditDesignName")
@@ -29,9 +29,8 @@ func (ts *ControlPlaneTestSuite) TestThemeAndLayoutChangesAreAudited() {
 		var created struct {
 			ID string `json:"id"`
 		}
-		body := map[string]any{"handle": handle, "displayName": displayName, resource.kind: content}
-		if resource.projectID != "" {
-			body["projectId"] = resource.projectID
+		body := map[string]any{
+			"handle": handle, "displayName": displayName, "projectId": resource.projectID, resource.kind: content,
 		}
 		status, raw := ts.call(http.MethodPost, resource.path, body, &created)
 		ts.Require().Equal(http.StatusCreated, status, string(raw))

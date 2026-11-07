@@ -430,7 +430,7 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
         },
         {
           category: t('navigation:categories.customize', 'Customize'),
-          routes: [{...design, badge: badgeOf(undeployed.layout)}],
+          routes: [{...design, badge: badgeOf((undeployed.layout ?? 0) + (undeployed.theme ?? 0))}],
         },
       ];
     }
@@ -537,6 +537,7 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
     undeployed.role,
     undeployed.flow,
     undeployed.layout,
+    undeployed.theme,
     gateway,
     gatewayId,
     gatewayIndex,

@@ -26,11 +26,16 @@ function isLayoutPresetVariant(handle: string): handle is LayoutPresetVariant {
 
 export default function DesignPage(): JSX.Element {
   const {t} = useTranslation('design');
-  // Inside a project, only its layouts are listed.
+  // Inside a project, only its themes and layouts are listed.
   const {projectId} = useProjectScope();
   const navigate = useNavigate();
   const routes = useDesignRoutes();
-  const {data: themesData, isLoading: themesLoading, error: themesError, refetch: refetchThemes} = useGetThemes();
+  const {
+    data: themesData,
+    isLoading: themesLoading,
+    error: themesError,
+    refetch: refetchThemes,
+  } = useGetThemes({projectId});
   const {data: layoutsData, error: layoutsError, refetch: refetchLayouts} = useGetLayouts({projectId});
 
   const [showAllThemes, setShowAllThemes] = useState(false);

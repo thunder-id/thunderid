@@ -60,6 +60,7 @@ export default function ThemeBuilderProvider({children}: ThemeBuilderProviderPro
   const [isSaving, setIsSaving] = useState<boolean>(false);
 
   const handle = themeData?.handle ?? null;
+  const projectId = themeData?.projectId ?? null;
   const displayName = themeData?.displayName ?? null;
   const isReadOnly = themeData?.isReadOnly ?? false;
 
@@ -120,6 +121,7 @@ export default function ThemeBuilderProvider({children}: ThemeBuilderProviderPro
     () => ({
       themeId,
       handle,
+      projectId,
       originalTheme: themeData?.theme ?? null,
       displayName,
       isReadOnly,
@@ -141,6 +143,7 @@ export default function ThemeBuilderProvider({children}: ThemeBuilderProviderPro
     [
       themeId,
       handle,
+      projectId,
       themeData?.theme,
       displayName,
       isReadOnly,

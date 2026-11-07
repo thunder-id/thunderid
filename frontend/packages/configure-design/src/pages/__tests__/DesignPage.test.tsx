@@ -41,14 +41,18 @@ let layoutsError: Error | null = null;
 let layoutsList: {id: string; handle: string; displayName: string; layout: unknown}[] = [];
 let themesList: MockTheme[] = [];
 let themesLoadingState = false;
+let themesParams: unknown;
 
 vi.mock('@thunderid/design', () => ({
-  useGetThemes: () => ({
-    data: {themes: themesList},
-    isLoading: themesLoadingState,
-    error: themesError,
-    refetch: mockRefetchThemes,
-  }),
+  useGetThemes: (params: unknown) => {
+    themesParams = params;
+    return {
+      data: {themes: themesList},
+      isLoading: themesLoadingState,
+      error: themesError,
+      refetch: mockRefetchThemes,
+    };
+  },
   useGetLayouts: (params?: {projectId?: string}) => {
     mockUseGetLayouts(params);
     return {
@@ -266,5 +270,21 @@ describe('DesignPage', () => {
     fireEvent.click(screen.getAllByRole('button', {name: /Refresh/i})[0]);
 
     expect(mockRefetchLayouts).toHaveBeenCalledTimes(1);
+  });
+
+  it('lists the themes of the selected project', () => {
+    render(
+      <ProjectScopeProvider project={{id: 'project-1'}}>
+        <DesignPage />
+      </ProjectScopeProvider>,
+    );
+
+    expect(themesParams).toEqual({projectId: 'project-1'});
+  });
+
+  it('lists every theme outside a project', () => {
+    render(<DesignPage />);
+
+    expect(themesParams).toEqual({projectId: undefined});
   });
 });
