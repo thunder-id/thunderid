@@ -16,6 +16,7 @@ import {
   Layers,
   LayoutGrid,
   Layout as LayoutIcon,
+  ListChecks,
   Palette,
   Server,
   Settings,
@@ -95,6 +96,7 @@ export default function ConfigureExport({
   const [expandedTranslations, setExpandedTranslations] = useState(false);
   const [expandedLayouts, setExpandedLayouts] = useState(false);
   const [expandedResourceServers, setExpandedResourceServers] = useState(false);
+  const [expandedAuthorizationDetailTypes, setExpandedAuthorizationDetailTypes] = useState(false);
   const [expandedRoles, setExpandedRoles] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState(false);
   const [expandedAgents, setExpandedAgents] = useState(false);
@@ -273,6 +275,9 @@ export default function ConfigureExport({
   const resourceServersCount =
     resourceCounts?.['resource_server'] ??
     (Array.isArray(configData?.['resource_server']) ? configData['resource_server'].length : 0);
+  const authorizationDetailTypesCount =
+    resourceCounts?.['authorization_detail_type'] ??
+    (Array.isArray(configData?.['authorization_detail_type']) ? configData['authorization_detail_type'].length : 0);
   const rolesCount = resourceCounts?.['role'] ?? (Array.isArray(configData?.['role']) ? configData['role'].length : 0);
   const groupsCount =
     resourceCounts?.['group'] ?? (Array.isArray(configData?.['group']) ? configData['group'].length : 0);
@@ -998,6 +1003,75 @@ export default function ConfigureExport({
                   size="small"
                   variant="outlined"
                   onClick={() => setExpandedResourceServers(!expandedResourceServers)}
+                  sx={{cursor: 'pointer'}}
+                />
+              </Box>
+            )}
+          </Stack>
+        </Box>
+      ),
+    });
+  }
+
+  // Add intents (authorization details types) if present
+  if (authorizationDetailTypesCount > 0) {
+    const authorizationDetailTypes =
+      (configData?.['authorization_detail_type'] as {
+        id?: string;
+        name?: string;
+        type?: string;
+        description?: string;
+      }[]) ?? [];
+    const displayedAuthorizationDetailTypes = expandedAuthorizationDetailTypes
+      ? authorizationDetailTypes
+      : authorizationDetailTypes.slice(0, 5);
+    const remainingCount = authorizationDetailTypes.length - 5;
+
+    items.push({
+      id: 'authorization-detail-types',
+      label: t('importExport:configureExport.labels.authorizationDetailTypes', 'Intents'),
+      icon: <ListChecks size={16} />,
+      value: authorizationDetailTypesCount,
+      status: 'ready',
+      dependencyCount: 0,
+      content: (
+        <Box sx={{px: 3, py: 2, bgcolor: 'background.default'}}>
+          <Stack spacing={2}>
+            <Stack spacing={2} divider={<Box sx={{borderBottom: 1, borderColor: 'divider'}} />}>
+              {displayedAuthorizationDetailTypes.map((detailType, idx) => (
+                <Stack key={detailType.id ?? detailType.type ?? `authorization-detail-type-${idx}`} spacing={0.5}>
+                  <Stack direction="row" spacing={1} sx={{alignItems: 'center'}}>
+                    <ListChecks size={14} />
+                    <Typography variant="body2" fontWeight={600}>
+                      {detailType.name ??
+                        detailType.type ??
+                        t('importExport:configureExport.fallback.unnamedAuthorizationDetailType', 'Unnamed intent')}
+                    </Typography>
+                  </Stack>
+                  {detailType.description && (
+                    <Typography variant="caption" color="text.secondary" sx={{pl: 2.5}}>
+                      {detailType.description}
+                    </Typography>
+                  )}
+                  {detailType.type && (
+                    <Typography variant="caption" color="text.secondary" sx={{pl: 2.5, fontFamily: 'monospace'}}>
+                      {detailType.type}
+                    </Typography>
+                  )}
+                </Stack>
+              ))}
+            </Stack>
+            {remainingCount > 0 && (
+              <Box sx={{pt: 1, textAlign: 'center'}}>
+                <Chip
+                  label={
+                    expandedAuthorizationDetailTypes
+                      ? t('importExport:configureExport.actions.showLess', 'Show less')
+                      : t('importExport:configureExport.actions.more', '+ {{count}} more', {count: remainingCount})
+                  }
+                  size="small"
+                  variant="outlined"
+                  onClick={() => setExpandedAuthorizationDetailTypes(!expandedAuthorizationDetailTypes)}
                   sx={{cursor: 'pointer'}}
                 />
               </Box>

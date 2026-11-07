@@ -1,7 +1,7 @@
 // Copyright 2025 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {DocumentTitle, FullScreenCreationWizardLayout} from '@thunderid/components';
+import {decodeKeyValuePairs, DocumentTitle, FullScreenCreationWizardLayout} from '@thunderid/components';
 import {useConfig, useToast} from '@thunderid/contexts';
 import {getErrorMessage} from '@thunderid/utils';
 import {Alert, Box, Button, CircularProgress, Paper, Stack, Typography} from '@wso2/oxygen-ui';
@@ -45,7 +45,6 @@ import {
   validateConnectionForm,
 } from '../utils/connectionFormMapping';
 import isConflictError from '../utils/isConflictError';
-import {decodeKeyValuePairs} from '../utils/keyValuePairs';
 
 const Step = {TYPE: 'TYPE', PROTOCOL: 'PROTOCOL', NAME: 'NAME', CONFIGURE: 'CONFIGURE'} as const;
 type Step = (typeof Step)[keyof typeof Step];

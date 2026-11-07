@@ -722,6 +722,23 @@ describe('ImportConfigurationSummaryPage', () => {
       expect(screen.getByText(/Resource Servers.*2/i)).toBeInTheDocument();
     });
 
+    it('displays intents with their type identifier', () => {
+      mockLocationState.configData = {
+        authorization_detail_type: [
+          {id: 'adt-1', type: 'payment_initiation', name: 'Payment', description: 'Pays once'},
+          {id: 'adt-2', type: 'flight_booking'},
+        ],
+      } as ProductConfig;
+
+      render(<ImportConfigurationSummaryPage />);
+
+      expect(screen.getByText(/Intents.*2/i)).toBeInTheDocument();
+      expect(screen.getByText('Payment')).toBeInTheDocument();
+      expect(screen.getByText('Pays once')).toBeInTheDocument();
+      expect(screen.getByText('payment_initiation')).toBeInTheDocument();
+      expect(screen.getAllByText('flight_booking'), 'named by its type identifier without a name').toHaveLength(2);
+    });
+
     it('displays roles when role data is present', () => {
       mockLocationState.configData = {
         role: [{name: 'Admin', description: 'Administrator'}],

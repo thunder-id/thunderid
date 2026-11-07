@@ -8,6 +8,8 @@ export {default as CspOriginHint} from './CspOriginHint/CspOriginHint';
 export type {CspOriginHintProps} from './CspOriginHint/CspOriginHint';
 export {resolveCspHint} from './CspOriginHint/resolveCspHint';
 export type {CspResourceType, CspHint} from './CspOriginHint/resolveCspHint';
+export {default as DiscardChangesDialog} from './DiscardChangesDialog/DiscardChangesDialog';
+export type {DiscardChangesDialogProps} from './DiscardChangesDialog/DiscardChangesDialog';
 export {default as DocumentTitle} from './DocumentTitle/DocumentTitle';
 export type {DocumentTitleProps} from './DocumentTitle/DocumentTitle';
 export {default as ExternalLinkConfirmDialog} from './ExternalLinkConfirm/ExternalLinkConfirmDialog';
@@ -25,6 +27,19 @@ export {default as ExternalLink} from './ExternalLink/ExternalLink';
 export type {ExternalLinkProps} from './ExternalLink/ExternalLink';
 export {default as useFlowListColumns} from './FlowList/useFlowListColumns';
 export type {FlowListColumnsOptions, FlowListRow} from './FlowList/useFlowListColumns';
+export {default as KeyValuePairsField} from './KeyValuePairsField/KeyValuePairsField';
+export type {KeyValuePairsFieldProps} from './KeyValuePairsField/KeyValuePairsField';
+export {
+  decodeKeyValuePairs,
+  encodeKeyValuePairs,
+  isCompleteKeyValuePair,
+  parseKeyValuePairs,
+  sanitizeKeyValuePart,
+  serializeKeyValuePairs,
+} from './KeyValuePairsField/keyValuePairs';
+export type {KeyValueFormat, KeyValuePair} from './KeyValuePairsField/keyValuePairs';
+export {default as MaskedSecretField} from './MaskedSecretField/MaskedSecretField';
+export type {MaskedSecretFieldProps} from './MaskedSecretField/MaskedSecretField';
 export {default as OrganizationUnitSummaryChip} from './OrganizationUnitSummaryChip/OrganizationUnitSummaryChip';
 export type {OrganizationUnitSummaryChipProps} from './OrganizationUnitSummaryChip/OrganizationUnitSummaryChip';
 export {default as PageLoader} from './PageLoader/PageLoader';
@@ -34,6 +49,26 @@ export {DeployStatusProvider, useDeployStatusSource} from './ResourceDeployStatu
 export type {DeployState, DeployStatus, DeployStatusSource} from './ResourceDeployStatus/DeployStatusContext';
 export {default as QueryErrorNotice} from './QueryErrorNotice/QueryErrorNotice';
 export type {QueryErrorNoticeProps, QueryErrorMessageResolver} from './QueryErrorNotice/QueryErrorNotice';
+export {default as ServiceAuthenticationMethods} from './ServiceAuthenticationMethods/ServiceAuthenticationMethods';
+export type {ServiceAuthenticationMethodsProps} from './ServiceAuthenticationMethods/ServiceAuthenticationMethods';
+export {
+  AUTHENTICATION_METHOD_FIELD_NAMES,
+  AuthenticationMethods,
+} from './ServiceAuthenticationMethods/authentication-methods';
+export type {AuthenticationMethod} from './ServiceAuthenticationMethods/authentication-methods';
+export {
+  getServiceAuthenticationState,
+  MASKED_SECRET,
+  outboundAuthenticationFromFormValues,
+  outboundAuthenticationToFormValues,
+} from './ServiceAuthenticationMethods/outboundAuthentication';
+export type {
+  OutboundAuthentication,
+  ServiceAuthenticationErrors,
+  ServiceAuthenticationFormValues,
+  ServiceAuthenticationState,
+  ServiceAuthenticationStateOptions,
+} from './ServiceAuthenticationMethods/outboundAuthentication';
 export {default as StackblitzQuickstartCard} from './StackblitzQuickstartCard/StackblitzQuickstartCard';
 export type {StackblitzQuickstartCardProps} from './StackblitzQuickstartCard/StackblitzQuickstartCard';
 export {default as ToggleCard} from './ToggleCard/ToggleCard';

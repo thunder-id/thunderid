@@ -4,6 +4,7 @@
 import {CollisionPriority} from '@dnd-kit/abstract';
 import {move} from '@dnd-kit/helpers';
 import {DragDropProvider, DragOverlay, type DragDropEventHandlers} from '@dnd-kit/react';
+import {DiscardChangesDialog} from '@thunderid/components';
 import {useEmailProviders, useIdentityProviders, useSMSProviders} from '@thunderid/configure-connections';
 import {Badge, Box, Button, Card, CardContent, Tooltip, Typography, type Theme} from '@wso2/oxygen-ui';
 import {ArrowLeft, Play, Save, Square} from '@wso2/oxygen-ui-icons-react';
@@ -32,7 +33,6 @@ import {
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
 import CanvasToolbar from './CanvasToolbar';
-import DiscardChangesDialog from './DiscardChangesDialog';
 import FormRequiresViewDialog from './FormRequiresViewDialog';
 import SimulationStepPreview from './SimulationStepPreview';
 import ValidationBadge from './ValidationBadge';
@@ -1155,6 +1155,10 @@ function DecoratedVisualFlow({
         open={isDiscardDialogOpen}
         onClose={() => setIsDiscardDialogOpen(false)}
         onConfirm={handleConfirmDiscard}
+        description={t(
+          'flows:core.dialogs.discardChanges.description',
+          'You have unsaved changes to this flow. If you leave now, your changes will be lost.',
+        )}
       />
     </Box>
   );

@@ -52,6 +52,9 @@
     "typecheck": "tsc -p tsconfig.lib.json"
   },
   "devDependencies": {
+    "@dnd-kit/collision": "0.4.0",
+    "@dnd-kit/react": "0.4.0",
+    "@monaco-editor/react": "catalog:",
     "@testing-library/jest-dom": "catalog:",
     "@testing-library/react": "catalog:",
     "@testing-library/user-event": "catalog:",
@@ -86,6 +89,9 @@
   },
   "dependencies": {},
   "peerDependencies": {
+    "@dnd-kit/collision": "0.4.0",
+    "@dnd-kit/react": "0.4.0",
+    "@monaco-editor/react": "catalog:",
     "@thunderid/react": "catalog:",
     "@hookform/resolvers": "catalog:",
     "@wso2/oxygen-ui": "catalog:",

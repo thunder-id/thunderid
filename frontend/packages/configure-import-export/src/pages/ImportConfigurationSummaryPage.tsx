@@ -29,6 +29,7 @@ import {
   LayoutGrid,
   Layout as LayoutIcon,
   Layers,
+  ListChecks,
   Palette,
   Server,
   Settings,
@@ -411,6 +412,21 @@ const RESOURCE_VIEWS: ResourceView[] = [
       <>
         {item.description && detailLine(item.description)}
         {item.handle && item.name !== item.handle && detailLine(item.handle, true)}
+      </>
+    ),
+  },
+  {
+    type: 'authorization_detail_type',
+    id: 'authorization-detail-types',
+    icon: ListChecks,
+    getLabel: (t) => t('configureExport.labels.authorizationDetailTypes', 'Intents'),
+    getKey: (item, idx) => item.id ?? item.type ?? `authorization-detail-type-${idx}`,
+    getName: (item, t) =>
+      item.name ?? item.type ?? t('configureExport.fallback.unnamedAuthorizationDetailType', 'Unnamed intent'),
+    renderDetails: (item) => (
+      <>
+        {item.description && detailLine(item.description)}
+        {item.type && detailLine(item.type, true)}
       </>
     ),
   },
