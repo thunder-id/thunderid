@@ -228,11 +228,13 @@ packages:
 
   github.com/thunder-id/thunderid/internal/user:
     config:
-      all: true
       dir: tests/mocks/usermock
       structname: '{{.InterfaceName}}Mock'
       pkgname: usermock
       filename: "{{.InterfaceName}}_mock.go"
+    interfaces:
+      ConfigurableUserService:
+      UserServiceInterface:
 
   github.com/thunder-id/thunderid/internal/authn:
     config:

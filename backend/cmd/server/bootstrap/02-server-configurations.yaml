@@ -16,8 +16,6 @@ value:
     expirySeconds: 86400
   selfFlow:
     expirySeconds: 1800
-  userDeletionFlow:
-    defaultHandle: default-user-deletion-flow
   secretRegenerationFlow:
     defaultHandle: default-secret-regeneration-flow
   agentOnboardingFlow:

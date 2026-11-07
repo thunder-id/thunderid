@@ -183,7 +183,7 @@ var catalog = map[string]providers.ExecutorMeta{
 	ExecutorNamePreDelete: {
 		DefaultMode:        "revoke_all",
 		SupportedModes:     []string{"revoke_all"},
-		SupportedFlowTypes: []providers.FlowType{"ADMINISTRATION", "SYSTEM"},
+		SupportedFlowTypes: []providers.FlowType{"SYSTEM"},
 	},
 	ExecutorNamePreSuspend: {
 		SupportedFlowTypes: []providers.FlowType{"ADMINISTRATION"},
@@ -225,9 +225,6 @@ var catalog = map[string]providers.ExecutorMeta{
 	},
 	ExecutorNameSessionSignOut: {
 		SupportedFlowTypes: []providers.FlowType{"SIGNOUT"},
-	},
-	ExecutorNameUserDelete: {
-		SupportedFlowTypes: []providers.FlowType{"ADMINISTRATION"},
 	},
 	ExecutorNameUserTypeResolver: {
 		SupportedProperties: []providers.ExecutorSupportedProperties{

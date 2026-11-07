@@ -2208,8 +2208,6 @@ var defaultMessages = map[string]string{
 	"flows.executor.errors.sms_template_missing_desc": "An SMS template must be provided to send the notification",
 	"flows.executor.errors.unverified_linking_candidate": "Account verification is required",
 	"flows.executor.errors.unverified_linking_candidate_desc": "An existing account matched this identity but was not verified",
-	"flows.executor.errors.user_deletion_failed": "User deletion failed",
-	"flows.executor.errors.user_deletion_failed_desc": "The user could not be deleted",
 	"flows.executor.errors.user_deletion_not_allowed": "User deletion not allowed",
 	"flows.executor.errors.user_deletion_not_allowed_desc": "The user cannot be deleted in the current state",
 	"flows.executor.errors.user_id_missing_in_context": "User ID not found",

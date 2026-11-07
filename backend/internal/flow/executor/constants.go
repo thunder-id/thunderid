@@ -58,7 +58,6 @@ const (
 	ExecutorNamePreDelete                    = executormeta.ExecutorNamePreDelete
 	ExecutorNameCriteriaRevocation           = executormeta.ExecutorNameCriteriaRevocation
 	ExecutorNameSessionRevocation            = executormeta.ExecutorNameSessionRevocation
-	ExecutorNameUserDelete                   = executormeta.ExecutorNameUserDelete
 	ExecutorNameApplicationActionValidator   = executormeta.ExecutorNameApplicationActionValidator
 	ExecutorNameClientSecret                 = executormeta.ExecutorNameClientSecret
 	ExecutorNameAccessChangeValidator        = executormeta.ExecutorNameAccessChangeValidator
