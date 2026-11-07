@@ -3570,8 +3570,7 @@ const translations = {
     'edit.page.tabs.organizationAccess': 'Organization Access',
     'edit.organizationAccess.save.error': 'Failed to update organization access. Please try again.',
     'organizationAccess.title': 'Where {{resource}} is available',
-    'organizationAccess.description':
-      '{{resource}} can request tokens to act within the organization units selected here.',
+    'organizationAccess.description': '{{resource}} can be used from the organization units selected here.',
     'organizationAccess.ownerOnly': "{{resource}} isn't available in any other organization unit.",
     'edit.page.tabs.advanced': 'Advanced',
     'edit.page.unsavedChanges': 'Unsaved changes',

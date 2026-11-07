@@ -1,7 +1,7 @@
 # Machine-to-Machine Access Across Organization Units Specification
 
 - **Status:** Draft
-- **Version:** 0.4
+- **Version:** 0.5
 - **Related documents:** [Discussion #5461: Machine-to-Machine (M2M) service working across OUs](https://github.com/thunder-id/thunderid/discussions/5461), [Issue #4037: Allow trusted machine clients to obtain an access token scoped to a chosen Organization Unit (without a per-OU application)](https://github.com/thunder-id/thunderid/issues/4037)
 
 ## Summary
@@ -274,7 +274,7 @@ A declared policy is visible through `GET` and refused by `PUT` and `DELETE`, be
 
 ### UI
 
-The application page has an **Organization Access** tab, just before Advanced. It shows only for an application with the `client_credentials` grant now, because a policy only affects token requests today. Changes are kept until the page's Save, and Reset discards them.
+The application page has an **Organization Access** tab, just before Advanced. It shows for every application, whatever its grants, because a policy decides both the organization units a token request can name and the ones whose users can sign in to the application. Changes are kept until the page's Save, and Reset discards them.
 
 **Chosen organization units.** The option named after the owning organization unit means the application has no policy. "Chosen organization units" splits the policy into its two sections: child units of the owner, all of them or selected ones with a reach each, and other trees, picked one by one. Both sections can't be None at once. "Every tree" is shown but can only be set through a resource file or an import.
 
@@ -404,3 +404,4 @@ inboundAuthConfig:
 | 0.2 | 2026-10-16 | Specified the application sharing API request shapes and error statuses, sharing for declared applications per store mode, import and export, lifecycle, and the Organization Access tab. |
 | 0.3 | 2026-10-27 | A policy field the format does not declare fails a resource file or an imported document instead of being ignored. A shared application cannot be moved to another organization unit. |
 | 0.4 | 2026-10-30 | An application's scopes and its `roles` and `groups` claims come only from the role assignments made in, and the groups owned by, its own organization unit. |
+| 0.5 | 2026-11-07 | The Organization Access tab shows for every application, not only those with the `client_credentials` grant, since a policy also decides which organization units' users can sign in. |
