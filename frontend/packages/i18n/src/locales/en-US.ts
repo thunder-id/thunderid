@@ -285,7 +285,6 @@ const translations = {
     'errors.FET-1106': 'This member cannot be removed from the group in its current state.',
     'errors.FET-1107': 'The member could not be removed from the group. Please try again.',
     'errors.FET-1108': 'This action cannot be deleted in its current state.',
-    'errors.FET-1109': 'The action could not be deleted. Please try again.',
     'errors.FET-1110': 'The permissions supplied for this role are not valid. Refresh the page and try again.',
     'errors.FET-1111': 'A required value for this change is missing. Refresh the page and try again.',
     'errors.FET-1112':

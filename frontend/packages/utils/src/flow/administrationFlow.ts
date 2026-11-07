@@ -115,7 +115,6 @@ export const AdministrationFlowConfigKey = {
   ROLE_ASSIGNMENT_REMOVAL: 'roleAssignmentRemovalFlow',
   ROLE_DELETION: 'roleDeletionFlow',
   ROLE_PERMISSION_REMOVAL: 'rolePermissionRemovalFlow',
-  ACTION_DELETION: 'actionDeletionFlow',
   USER_UNLOCK: 'userUnlockFlow',
   USER_SUSPEND: 'userSuspendFlow',
   USER_UNSUSPEND: 'userUnsuspendFlow',
@@ -134,15 +133,12 @@ export type AdministrationFlowConfigKeyValue =
  * the wrong place.
  */
 export const AdministrationFlowInput = {
-  ACTION: 'targetActionId',
   APPLICATION: 'targetApplicationId',
   ASSIGNEE: 'targetAssigneeId',
   GROUP: 'targetGroupId',
   MEMBER: 'targetMemberId',
   OPERATOR_NOTE: 'operatorNote',
   PERMISSIONS: 'targetPermissions',
-  RESOURCE: 'targetResourceId',
-  RESOURCE_SERVER: 'targetResourceServerId',
   ROLE: 'targetRoleId',
   SUBJECT: 'subject',
 } as const;

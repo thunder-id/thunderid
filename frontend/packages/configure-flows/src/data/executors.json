@@ -1408,26 +1408,6 @@
     "category": "EXECUTOR",
     "type": "TASK_EXECUTION",
     "display": {
-      "header": "Action Deletion Executor",
-      "label": "Delete Action",
-      "description": "Delete the action behind the scope named by the trusted revocation plan",
-      "image": "assets/images/icons/link.svg",
-      "showOnResourcePanel": true
-    },
-    "data": {
-      "action": {
-        "type": "EXECUTOR",
-        "executor": {"name": "ActionDeletionExecutor"},
-        "onSuccess": "",
-        "onFailure": ""
-      }
-    }
-  },
-  {
-    "resourceType": "STEP",
-    "category": "EXECUTOR",
-    "type": "TASK_EXECUTION",
-    "display": {
       "header": "Pre Suspend Executor",
       "label": "Validate and Plan Suspension",
       "description": "Check the operator may suspend the target, then plan revocation of what it holds. Place it before the revocation nodes and Suspend Identity",

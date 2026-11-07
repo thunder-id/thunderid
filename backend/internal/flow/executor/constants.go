@@ -63,7 +63,6 @@ const (
 	ExecutorNameAccessChangeValidator        = executormeta.ExecutorNameAccessChangeValidator
 	ExecutorNameRole                         = executormeta.ExecutorNameRole
 	ExecutorNameGroup                        = executormeta.ExecutorNameGroup
-	ExecutorNameActionDeletion               = executormeta.ExecutorNameActionDeletion
 	ExecutorNameOwnerResolver                = executormeta.ExecutorNameOwnerResolver
 	ExecutorNameAgentTypeResolver            = executormeta.ExecutorNameAgentTypeResolver
 	ExecutorNameAttributeVerification        = executormeta.ExecutorNameAttributeVerification
