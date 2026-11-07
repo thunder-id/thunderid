@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"net/url"
 	"slices"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -26,6 +27,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/filter"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/projectscope"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
@@ -38,6 +40,8 @@ const loggerComponentName = "RoleMgtService"
 type RoleServiceInterface interface {
 	GetRoleList(ctx context.Context, limit, offset int, filters map[string]interface{}) (
 		*RoleList, *tidcommon.ServiceError)
+	GetRoleListByProject(ctx context.Context, projectID string, limit, offset int,
+		filters map[string]interface{}) (*RoleList, *tidcommon.ServiceError)
 	CreateRole(ctx context.Context, role RoleCreationDetail) (
 		*RoleWithPermissionsAndAssignments, *tidcommon.ServiceError)
 	GetRoleWithPermissions(ctx context.Context, id string) (*RoleWithPermissions, *tidcommon.ServiceError)
@@ -110,6 +114,13 @@ type roleService struct {
 	logger          *log.Logger
 	// systemFlows is nil where system flows are off.
 	systemFlows systemFlowProvider
+	// projectValidator is nil on a deployment that serves no projects.
+	projectValidator projectOUValidator
+}
+
+// projectOUValidator checks that the organization unit of a resource scoped to a project belongs to it.
+type projectOUValidator interface {
+	ValidateProjectOU(ctx context.Context, projectID, ouID string) *tidcommon.ServiceError
 }
 
 // newRoleService creates a new instance of RoleService with injected dependencies.
@@ -123,18 +134,20 @@ func newRoleService(
 	authzService sysauthz.SystemAuthorizationServiceInterface,
 	sharingService sharing.SharingServiceInterface,
 	bus eventbus.EventBusInterface,
+	projectValidator projectOUValidator,
 ) RoleServiceInterface {
 	return &roleService{
-		roleStore:       roleStore,
-		entityService:   entityService,
-		groupService:    groupService,
-		ouService:       ouService,
-		resourceService: resourceService,
-		transactioner:   transactioner,
-		authzService:    authzService,
-		sharingService:  sharingService,
-		bus:             bus,
-		logger:          log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName)),
+		roleStore:        roleStore,
+		entityService:    entityService,
+		groupService:     groupService,
+		ouService:        ouService,
+		resourceService:  resourceService,
+		transactioner:    transactioner,
+		authzService:     authzService,
+		sharingService:   sharingService,
+		bus:              bus,
+		logger:           log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName)),
+		projectValidator: projectValidator,
 	}
 }
 
@@ -185,26 +198,7 @@ func (rs *roleService) GetRoleList(
 		}
 	}
 
-	if len(roles) > 0 {
-		seen := make(map[string]struct{}, len(roles))
-		ouIDs := make([]string, 0, len(roles))
-		for _, r := range roles {
-			if r.OUID != "" {
-				if _, exists := seen[r.OUID]; !exists {
-					ouIDs = append(ouIDs, r.OUID)
-					seen[r.OUID] = struct{}{}
-				}
-			}
-		}
-		ouHandles, svcErr := rs.ouService.GetOrganizationUnitHandlesByIDs(ctx, ouIDs)
-		if svcErr != nil {
-			logger.Warn(ctx, "Failed to resolve OU handles for roles, skipping", log.Any("error", svcErr))
-		} else {
-			for i := range roles {
-				roles[i].OUHandle = ouHandles[roles[i].OUID]
-			}
-		}
-	}
+	rs.resolveRoleOUHandles(ctx, roles)
 
 	response := &RoleList{
 		TotalResults: totalCount,
@@ -215,6 +209,86 @@ func (rs *roleService) GetRoleList(
 	}
 
 	return response, nil
+}
+
+// GetRoleListByProject retrieves the roles of a project, narrowed to the ones an organization unit owns
+// when the filter names one. A project that does not exist has none.
+func (rs *roleService) GetRoleListByProject(
+	ctx context.Context, projectID string, limit, offset int, filters map[string]interface{},
+) (*RoleList, *tidcommon.ServiceError) {
+	if err := validatePaginationParams(limit, offset); err != nil {
+		return nil, err
+	}
+	ouID, rest, err := filter.SplitOUIDFilter(filters)
+	if err != nil || len(rest) > 0 {
+		return nil, &ErrorInvalidFilter
+	}
+
+	extraQuery := "&" + projectIDQueryParam + "=" + url.QueryEscape(projectID) + utils.FilterQueryParam(filters)
+	if projectID == "" {
+		return &RoleList{
+			Roles:      []Role{},
+			StartIndex: offset + 1,
+			Links:      utils.BuildPaginationLinks("/roles", limit, offset, 0, extraQuery),
+		}, nil
+	}
+
+	totalCount, err := rs.roleStore.GetRoleListCountByProject(ctx, projectID, ouID)
+	if err != nil {
+		if errors.Is(err, errResultLimitExceededInCompositeMode) {
+			return nil, &ResultLimitExceededInCompositeMode
+		}
+		rs.logger.Error(ctx, "Failed to count the roles of a project", log.String("projectID", projectID),
+			log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+	roles, err := rs.roleStore.GetRoleListByProject(ctx, projectID, ouID, limit, offset)
+	if err != nil {
+		if errors.Is(err, errResultLimitExceededInCompositeMode) {
+			return nil, &ResultLimitExceededInCompositeMode
+		}
+		rs.logger.Error(ctx, "Failed to list the roles of a project", log.String("projectID", projectID),
+			log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+	for i := range roles {
+		roles[i].IsOwnedByOU = true
+	}
+	rs.resolveRoleOUHandles(ctx, roles)
+
+	return &RoleList{
+		TotalResults: totalCount,
+		Roles:        roles,
+		StartIndex:   offset + 1,
+		Count:        len(roles),
+		Links:        utils.BuildPaginationLinks("/roles", limit, offset, totalCount, extraQuery),
+	}, nil
+}
+
+// resolveRoleOUHandles fills in the handle of each listed role's organization unit. A failure to read the
+// handles leaves them out rather than failing the listing.
+func (rs *roleService) resolveRoleOUHandles(ctx context.Context, roles []Role) {
+	if len(roles) == 0 {
+		return
+	}
+	seen := make(map[string]struct{}, len(roles))
+	ouIDs := make([]string, 0, len(roles))
+	for _, r := range roles {
+		if r.OUID != "" {
+			if _, exists := seen[r.OUID]; !exists {
+				ouIDs = append(ouIDs, r.OUID)
+				seen[r.OUID] = struct{}{}
+			}
+		}
+	}
+	ouHandles, svcErr := rs.ouService.GetOrganizationUnitHandlesByIDs(ctx, ouIDs)
+	if svcErr != nil {
+		rs.logger.Warn(ctx, "Failed to resolve OU handles for roles, skipping", log.Any("error", svcErr))
+		return
+	}
+	for i := range roles {
+		roles[i].OUHandle = ouHandles[roles[i].OUID]
+	}
 }
 
 // listRolesInOU lists the roles an organization unit owns, followed by the ones shared with it, and
@@ -305,6 +379,22 @@ func (rs *roleService) createRole(
 		return nil, err
 	}
 
+	// A role that names no organization unit goes to the system organization unit.
+	if role.OUID == "" {
+		systemOUID, svcErr := rs.ouService.GetSystemOUID(ctx)
+		if svcErr != nil {
+			return nil, svcErr
+		}
+		role.OUID = systemOUID
+	}
+
+	// A project checks that the role's organization unit belongs to it.
+	if role.ProjectID != "" {
+		if svcErr := rs.validateProjectOU(ctx, role.ProjectID, role.OUID); svcErr != nil {
+			return nil, svcErr
+		}
+	}
+
 	responseAssignments := role.Assignments
 
 	// Validate organization unit exists using OU service
@@ -373,6 +463,7 @@ func (rs *roleService) createRole(
 		Description: role.Description,
 		OUID:        role.OUID,
 		OUHandle:    ou.Handle,
+		ProjectID:   role.ProjectID,
 		Permissions: role.Permissions,
 		Assignments: responseAssignments,
 	}
@@ -518,10 +609,27 @@ func (rs *roleService) updateRoleWithPermissions(
 		return nil, err
 	}
 
+	stored, err := rs.roleStore.GetRole(ctx, id)
+	if err != nil {
+		if errors.Is(err, ErrRoleNotFound) {
+			return nil, &ErrorRoleNotFound
+		}
+		logger.Error(ctx, "Failed to read the role being updated", log.String("id", id), log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+	// An update that names no organization unit keeps the role in its own, and one that names no project
+	// keeps it in its project.
+	if role.OUID == "" {
+		role.OUID = stored.OUID
+	}
+	if role.ProjectID == "" {
+		role.ProjectID = stored.ProjectID
+	}
+
 	// A role's name, description and permissions stay with the organization unit that owns it, so an
 	// update naming one it is shared with is refused. Any other organization unit is somewhere to
 	// move the role to.
-	ownerOUID, sharedWith, svcErr := rs.resolveUpdateTarget(ctx, id, role.OUID)
+	ownerOUID, sharedWith, svcErr := rs.resolveUpdateTarget(ctx, stored, role.OUID)
 	if svcErr != nil {
 		return nil, svcErr
 	}
@@ -545,6 +653,14 @@ func (rs *roleService) updateRoleWithPermissions(
 		return nil, svcErr
 	}
 
+	// A project checks that the role's organization unit belongs to it. It is checked only when the update
+	// changes the project or the organization unit, so a role whose project is gone can still be edited.
+	if role.ProjectID != "" && (role.ProjectID != stored.ProjectID || role.OUID != stored.OUID) {
+		if svcErr := rs.validateProjectOU(ctx, role.ProjectID, role.OUID); svcErr != nil {
+			return nil, svcErr
+		}
+	}
+
 	// Validate organization unit exists using OU service
 	ou, svcErr := rs.ouService.GetOrganizationUnit(ctx, role.OUID)
 	if svcErr != nil {
@@ -561,11 +677,13 @@ func (rs *roleService) updateRoleWithPermissions(
 		return nil, svcErr
 	}
 
-	if svcErr := rs.requireRoleMovable(ctx, id, ownerOUID, role.OUID); svcErr != nil {
+	if svcErr := rs.requireRoleMovable(
+		ctx, id, ownerOUID, role.OUID, stored.ProjectID, role.ProjectID,
+	); svcErr != nil {
 		return nil, svcErr
 	}
 
-	err := rs.transactioner.Transact(ctx, func(txCtx context.Context) error {
+	err = rs.transactioner.Transact(ctx, func(txCtx context.Context) error {
 		return rs.roleStore.UpdateRole(txCtx, id, role)
 	})
 
@@ -581,6 +699,7 @@ func (rs *roleService) updateRoleWithPermissions(
 		Description: role.Description,
 		OUID:        role.OUID,
 		OUHandle:    ou.Handle,
+		ProjectID:   role.ProjectID,
 		IsOwnedByOU: true,
 		Permissions: role.Permissions,
 	}, nil
@@ -937,10 +1056,6 @@ func (rs *roleService) validateCreateRoleRequest(role RoleCreationDetail) *tidco
 		return &ErrorInvalidRequestFormat
 	}
 
-	if role.OUID == "" {
-		return &ErrorInvalidRequestFormat
-	}
-
 	if len(role.Assignments) > 0 {
 		if err := rs.validateAssignmentsRequest(role.Assignments); err != nil {
 			return err
@@ -953,10 +1068,6 @@ func (rs *roleService) validateCreateRoleRequest(role RoleCreationDetail) *tidco
 // validateUpdateRoleRequest validates the update role request.
 func (rs *roleService) validateUpdateRoleRequest(request RoleUpdateDetail) *tidcommon.ServiceError {
 	if request.Name == "" {
-		return &ErrorInvalidRequestFormat
-	}
-
-	if request.OUID == "" {
 		return &ErrorInvalidRequestFormat
 	}
 
@@ -1330,13 +1441,13 @@ func (rs *roleService) requireOwnPolicy(
 	return policy, nil
 }
 
-// requireRoleMovable refuses to move a role from the organization unit owning it while that unit
-// has shared it or assigned it: its policies were issued against that unit, and its assignees were
-// checked against it.
+// requireRoleMovable refuses to move a shared role to another organization unit or project, and an
+// assigned role to another organization unit: its policies were issued against its unit and project,
+// and its assignees were checked against its unit.
 func (rs *roleService) requireRoleMovable(
-	ctx context.Context, roleID, fromOUID, toOUID string,
+	ctx context.Context, roleID, fromOUID, toOUID, fromProjectID, toProjectID string,
 ) *tidcommon.ServiceError {
-	if fromOUID == toOUID {
+	if fromOUID == toOUID && fromProjectID == toProjectID {
 		return nil
 	}
 	policies, svcErr := rs.sharingService.ListPolicies(ctx, RoleSharingType, roleID)
@@ -1345,6 +1456,9 @@ func (rs *roleService) requireRoleMovable(
 	}
 	if len(policies) > 0 {
 		return &ErrorSharedRoleCannotMove
+	}
+	if fromOUID == toOUID {
+		return nil
 	}
 	assignments, err := rs.roleStore.GetRoleAssignmentsCount(ctx, roleID, "")
 	if err != nil {
@@ -1413,20 +1527,12 @@ func (rs *roleService) requireRoleNameAvailable(
 // resolveUpdateTarget returns the organization unit owning a role, and whether the organization unit
 // an update names is one the role is shared with rather than its owner or somewhere to move it.
 func (rs *roleService) resolveUpdateTarget(
-	ctx context.Context, roleID, ouID string,
+	ctx context.Context, stored RoleWithPermissions, ouID string,
 ) (string, bool, *tidcommon.ServiceError) {
-	stored, err := rs.roleStore.GetRole(ctx, roleID)
-	if err != nil {
-		if errors.Is(err, ErrRoleNotFound) {
-			return "", false, &ErrorRoleNotFound
-		}
-		rs.logger.Error(ctx, "Failed to read the role being updated", log.String("id", roleID), log.Error(err))
-		return "", false, &tidcommon.InternalServerError
-	}
 	if stored.OUID == ouID {
 		return stored.OUID, false, nil
 	}
-	visible, svcErr := rs.sharingService.IsVisible(ctx, RoleSharingType, roleID, ouID)
+	visible, svcErr := rs.sharingService.IsVisible(ctx, RoleSharingType, stored.ID, ouID)
 	if svcErr != nil {
 		// An organization unit that does not exist is not one the role is shared with. The move
 		// that follows reports it.
@@ -1445,4 +1551,27 @@ func translateSharingError(svcErr *tidcommon.ServiceError) *tidcommon.ServiceErr
 		return svcErr
 	}
 	return sharingErrors.Translate(svcErr)
+}
+
+// validateProjectOU checks that a role's organization unit belongs to its project. It returns
+// ErrorInvalidProject when no such project exists, and ErrorOUNotInProject when the organization unit is
+// outside the project.
+//
+// A deployment that serves no projects, such as a Data Plane, cannot check the project. It keeps the
+// project ID and organization unit as given so that imported configuration retains them.
+func (rs *roleService) validateProjectOU(ctx context.Context, projectID, ouID string) *tidcommon.ServiceError {
+	if rs.projectValidator == nil {
+		return nil
+	}
+	svcErr := rs.projectValidator.ValidateProjectOU(ctx, projectID, ouID)
+	switch {
+	case svcErr == nil:
+		return nil
+	case svcErr.Code == projectscope.ProjectNotFoundErrorCode:
+		return &ErrorInvalidProject
+	case svcErr.Code == projectscope.OUNotInProjectErrorCode:
+		return &ErrorOUNotInProject
+	default:
+		return &tidcommon.InternalServerError
+	}
 }

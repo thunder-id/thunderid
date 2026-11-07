@@ -37,6 +37,7 @@ func Initialize(
 	authzService sysauthz.SystemAuthorizationServiceInterface,
 	sharingService sharing.SharingServiceInterface,
 	bus eventbus.EventBusInterface,
+	projectValidator projectOUValidator,
 ) (
 	RoleServiceInterface, RoleAssignmentServiceInterface, oupkg.OURoleResolver,
 	declarativeresource.ResourceExporter, error,
@@ -54,7 +55,7 @@ func Initialize(
 	// Step 2: Create service with store
 	roleService := newRoleService(
 		roleStore, entityService, groupService, ouService, resourceService, transactioner, authzService,
-		sharingService, bus)
+		sharingService, bus, projectValidator)
 	assignmentService := newRoleAssignmentService(
 		roleStore, entityService, groupService, entityTypeService, resourceService, transactioner, authzService,
 		sharingService, bus,

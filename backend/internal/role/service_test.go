@@ -20,6 +20,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/sharing"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	"github.com/thunder-id/thunderid/internal/system/projectscope"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
@@ -102,6 +103,7 @@ func (suite *RoleServiceTestSuite) SetupTest() {
 		newAllowAllRoleAuthz(suite.T()),
 		suite.mockSharingService,
 		discardingBus{},
+		nil,
 	)
 }
 
@@ -500,17 +502,6 @@ func (suite *RoleServiceTestSuite) TestCreateRole_ValidationErrors() {
 			name: "MissingName",
 			request: RoleCreationDetail{
 				OUID: "ou1",
-				Permissions: []ResourcePermissions{{
-					ResourceServerID: "rs1",
-					Permissions:      []string{"perm1"},
-				}},
-			},
-			errCode: ErrorInvalidRequestFormat.Code,
-		},
-		{
-			name: "MissingOrgUnit",
-			request: RoleCreationDetail{
-				Name: "Role",
 				Permissions: []ResourcePermissions{{
 					ResourceServerID: "rs1",
 					Permissions:      []string{"perm1"},
@@ -1058,17 +1049,6 @@ func (suite *RoleServiceTestSuite) TestUpdateRole_ValidationErrors() {
 			},
 			errCode: ErrorInvalidRequestFormat.Code,
 		},
-		{
-			name: "MissingOrgUnit",
-			request: RoleUpdateDetail{
-				Name: "Role",
-				Permissions: []ResourcePermissions{{
-					ResourceServerID: "rs1",
-					Permissions:      []string{"perm1"},
-				}},
-			},
-			errCode: ErrorInvalidRequestFormat.Code,
-		},
 	}
 
 	for _, tc := range testCases {
@@ -1571,7 +1551,7 @@ func (suite *RoleServiceTestSuite) TestDeleteRole_RefusedWhileMandated() {
 		}).Once()
 	suite.service = newRoleService(suite.mockStore, suite.mockEntityService, suite.mockGroupService,
 		suite.mockOUService, suite.mockResourceService, txr, newAllowAllRoleAuthz(suite.T()),
-		suite.mockSharingService, discardingBus{})
+		suite.mockSharingService, discardingBus{}, nil)
 	inTx := mock.MatchedBy(func(ctx context.Context) bool { return ctx.Value(txKey{}) != nil })
 	suite.mockStore.On("IsRoleExist", mock.Anything, "role1").Return(true, nil)
 	suite.mockStore.On("ListMandatedAssignmentsForRole", inTx, "role1", "").Return([]RoleAssignment{
@@ -1614,7 +1594,7 @@ func (suite *RoleServiceTestSuite) TestDeleteRole_PurgesPoliciesInTheRoleTransac
 		}).Once()
 	suite.service = newRoleService(suite.mockStore, suite.mockEntityService, suite.mockGroupService,
 		suite.mockOUService, suite.mockResourceService, txr, newAllowAllRoleAuthz(suite.T()),
-		suite.mockSharingService, discardingBus{})
+		suite.mockSharingService, discardingBus{}, nil)
 	inTx := mock.MatchedBy(func(ctx context.Context) bool { return ctx.Value(txKey{}) != nil })
 	suite.mockStore.On("IsRoleExist", mock.Anything, "role1").Return(true, nil)
 	suite.unmandated()
@@ -2200,7 +2180,7 @@ func (s *RoleChangeValidationTestSuite) SetupTest() {
 	s.resources = resourcemock.NewResourceServiceInterfaceMock(s.T())
 	s.authz = sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(s.T())
 	s.service = newRoleService(s.store, nil, s.groups, s.ous, s.resources, &fakeTransactioner{}, s.authz, nil,
-		discardingBus{})
+		discardingBus{}, nil)
 }
 
 func (s *RoleChangeValidationTestSuite) TearDownTest() {
@@ -3062,4 +3042,380 @@ func (suite *RoleServiceTestSuite) TestGetUserRoles_AssignmentOUFollowsTheBounda
 			suite.Equal([]string{"editor"}, roles)
 		})
 	}
+}
+
+const (
+	testProjectID  = "project-1"
+	testSystemOUID = "system-ou"
+)
+
+// newProjectAwareService builds the service as a deployment that serves projects does, with a project validator.
+func (suite *RoleServiceTestSuite) newProjectAwareService() *projectOUValidatorMock {
+	validator := newProjectOUValidatorMock(suite.T())
+	suite.service = newRoleService(suite.mockStore, suite.mockEntityService, suite.mockGroupService,
+		suite.mockOUService, suite.mockResourceService, suite.transactioner, newAllowAllRoleAuthz(suite.T()),
+		suite.mockSharingService, discardingBus{}, validator)
+	return validator
+}
+
+// arrangeRoleCreateIn sets up a create that succeeds in the given organization unit.
+func (suite *RoleServiceTestSuite) arrangeRoleCreateIn(ouID string) {
+	suite.mockOUService.On("GetOrganizationUnit", mock.Anything, ouID).
+		Return(oupkg.OrganizationUnit{ID: ouID, Handle: "system"}, nil)
+	suite.mockStore.On("CheckRoleNameExists", mock.Anything, ouID, "Shop Admin").Return(false, nil)
+	suite.mockSharingService.EXPECT().ListVisibleResourceIDs(mock.Anything, RoleSharingType, ouID).Return(nil, nil)
+}
+
+func (suite *RoleServiceTestSuite) TestCreateRole_InProject() {
+	validator := suite.newProjectAwareService()
+	suite.mockOUService.On("GetSystemOUID", mock.Anything).Return(testSystemOUID, nil)
+	validator.On("ValidateProjectOU", mock.Anything, testProjectID, testSystemOUID).Return(nil)
+	suite.arrangeRoleCreateIn(testSystemOUID)
+	suite.mockStore.On("CreateRole", mock.Anything, mock.AnythingOfType("string"),
+		mock.MatchedBy(func(r RoleCreationDetail) bool {
+			return r.ProjectID == testProjectID && r.OUID == testSystemOUID
+		})).Return(nil)
+
+	result, err := suite.service.CreateRole(context.Background(), RoleCreationDetail{
+		Name: "Shop Admin", ProjectID: testProjectID,
+	})
+
+	suite.Nil(err)
+	suite.Require().NotNil(result)
+	suite.Equal(testProjectID, result.ProjectID)
+	suite.Equal(testSystemOUID, result.OUID)
+}
+
+func (suite *RoleServiceTestSuite) TestCreateRole_WithoutOUGoesToSystemOU() {
+	suite.mockOUService.On("GetSystemOUID", mock.Anything).Return(testSystemOUID, nil)
+	suite.arrangeRoleCreateIn(testSystemOUID)
+	suite.mockStore.On("CreateRole", mock.Anything, mock.AnythingOfType("string"),
+		mock.MatchedBy(func(r RoleCreationDetail) bool { return r.OUID == testSystemOUID && r.ProjectID == "" })).
+		Return(nil)
+
+	result, err := suite.service.CreateRole(context.Background(), RoleCreationDetail{Name: "Shop Admin"})
+
+	suite.Nil(err)
+	suite.Require().NotNil(result)
+	suite.Equal(testSystemOUID, result.OUID)
+	suite.Empty(result.ProjectID)
+}
+
+func (suite *RoleServiceTestSuite) TestCreateRole_SystemOUUnavailable() {
+	suite.mockOUService.On("GetSystemOUID", mock.Anything).Return("", &tidcommon.InternalServerError)
+
+	result, err := suite.service.CreateRole(context.Background(), RoleCreationDetail{Name: "Shop Admin"})
+
+	suite.Nil(result)
+	suite.Require().NotNil(err)
+	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
+	suite.mockStore.AssertNotCalled(suite.T(), "CreateRole", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (suite *RoleServiceTestSuite) TestCreateRole_ProjectValidationErrors() {
+	testCases := []struct {
+		name         string
+		validatorErr *tidcommon.ServiceError
+		expectedCode string
+	}{
+		{name: "ProjectNotFound",
+			validatorErr: &tidcommon.ServiceError{
+				Type: tidcommon.ClientErrorType, Code: projectscope.ProjectNotFoundErrorCode,
+			},
+			expectedCode: ErrorInvalidProject.Code},
+		{name: "OUNotInProject",
+			validatorErr: &tidcommon.ServiceError{
+				Type: tidcommon.ClientErrorType, Code: projectscope.OUNotInProjectErrorCode,
+			},
+			expectedCode: ErrorOUNotInProject.Code},
+		{name: "ServerError",
+			validatorErr: &tidcommon.ServiceError{Type: tidcommon.ServerErrorType, Code: "SSE-5000"},
+			expectedCode: tidcommon.InternalServerError.Code},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			suite.SetupTest()
+			validator := suite.newProjectAwareService()
+			validator.On("ValidateProjectOU", mock.Anything, testProjectID, "ou-child").Return(tc.validatorErr)
+
+			result, err := suite.service.CreateRole(context.Background(), RoleCreationDetail{
+				Name: "Shop Admin", OUID: "ou-child", ProjectID: testProjectID,
+			})
+
+			suite.Nil(result)
+			suite.Require().NotNil(err)
+			suite.Equal(tc.expectedCode, err.Code)
+			suite.mockStore.AssertNotCalled(suite.T(), "CreateRole", mock.Anything, mock.Anything, mock.Anything)
+		})
+	}
+}
+
+func (suite *RoleServiceTestSuite) TestCreateRole_ProjectWithoutValidator() {
+	suite.arrangeRoleCreateIn("ou1")
+	suite.mockStore.On("CreateRole", mock.Anything, mock.AnythingOfType("string"),
+		mock.MatchedBy(func(r RoleCreationDetail) bool { return r.ProjectID == testProjectID })).Return(nil)
+
+	result, err := suite.service.CreateRole(context.Background(), RoleCreationDetail{
+		Name: "Shop Admin", OUID: "ou1", ProjectID: testProjectID,
+	})
+
+	suite.Nil(err)
+	suite.Require().NotNil(result)
+	suite.Equal(testProjectID, result.ProjectID)
+}
+
+// arrangeRoleUpdateIn sets up an update of role1 that succeeds in the given organization unit.
+func (suite *RoleServiceTestSuite) arrangeRoleUpdateIn(ouID string) {
+	suite.mockOUService.On("GetOrganizationUnit", mock.Anything, ouID).
+		Return(oupkg.OrganizationUnit{ID: ouID, Handle: "system"}, nil)
+	suite.mockStore.On("CheckRoleNameExistsExcludingID", mock.Anything, ouID, "Shop Admin", "role1").
+		Return(false, nil)
+	suite.mockSharingService.EXPECT().ListVisibleResourceIDs(mock.Anything, RoleSharingType, ouID).Return(nil, nil)
+}
+
+// An update that changes neither the project nor the organization unit keeps both without checking the
+// project again, so a role whose project is gone can still be edited.
+func (suite *RoleServiceTestSuite) TestUpdateRole_KeepsOUAndProjectWhenOmitted() {
+	validator := suite.newProjectAwareService()
+	suite.mockStore.On("GetRole", mock.Anything, "role1").Return(RoleWithPermissions{
+		ID: "role1", OUID: testSystemOUID, ProjectID: testProjectID,
+	}, nil)
+	suite.arrangeRoleUpdateIn(testSystemOUID)
+	suite.mockStore.On("UpdateRole", mock.Anything, "role1", mock.MatchedBy(func(r RoleUpdateDetail) bool {
+		return r.OUID == testSystemOUID && r.ProjectID == testProjectID
+	})).Return(nil)
+
+	result, err := suite.service.UpdateRoleWithPermissions(context.Background(), "role1",
+		RoleUpdateDetail{Name: "Shop Admin"})
+
+	suite.Nil(err)
+	suite.Require().NotNil(result)
+	suite.Equal(testProjectID, result.ProjectID)
+	suite.Equal(testSystemOUID, result.OUID)
+	validator.AssertNotCalled(suite.T(), "ValidateProjectOU", mock.Anything, mock.Anything, mock.Anything)
+}
+
+// An update that moves a role in a project to another organization unit checks the project again.
+func (suite *RoleServiceTestSuite) TestUpdateRole_OUChangeInProjectIsChecked() {
+	validator := suite.newProjectAwareService()
+	suite.mockStore.On("GetRole", mock.Anything, "role1").Return(RoleWithPermissions{
+		ID: "role1", OUID: testSystemOUID, ProjectID: testProjectID,
+	}, nil)
+	suite.mockSharingService.EXPECT().IsVisible(mock.Anything, RoleSharingType, "role1", "ou-child").Return(false, nil)
+	validator.On("ValidateProjectOU", mock.Anything, testProjectID, "ou-child").
+		Return(&tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: projectscope.OUNotInProjectErrorCode})
+
+	result, err := suite.service.UpdateRoleWithPermissions(context.Background(), "role1",
+		RoleUpdateDetail{Name: "Shop Admin", OUID: "ou-child"})
+
+	suite.Nil(result)
+	suite.Require().NotNil(err)
+	suite.Equal(ErrorOUNotInProject.Code, err.Code)
+}
+
+func (suite *RoleServiceTestSuite) TestUpdateRole_MovesToProject() {
+	testCases := []struct {
+		name      string
+		policies  []sharing.Policy
+		lookupErr *tidcommon.ServiceError
+		expected  string
+	}{
+		{name: "NotShared"},
+		{name: "Shared", policies: []sharing.Policy{{ID: "policy-1"}}, expected: ErrorSharedRoleCannotMove.Code},
+		{name: "SharingLookupFailure", lookupErr: &tidcommon.InternalServerError,
+			expected: tidcommon.InternalServerError.Code},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			suite.SetupTest()
+			validator := suite.newProjectAwareService()
+			suite.mockStore.On("GetRole", mock.Anything, "role1").Return(RoleWithPermissions{
+				ID: "role1", OUID: testSystemOUID,
+			}, nil)
+			validator.On("ValidateProjectOU", mock.Anything, testProjectID, testSystemOUID).Return(nil)
+			suite.arrangeRoleUpdateIn(testSystemOUID)
+			suite.mockSharingService.EXPECT().ListPolicies(mock.Anything, RoleSharingType, "role1").
+				Return(tc.policies, tc.lookupErr)
+			if tc.expected == "" {
+				suite.mockStore.On("UpdateRole", mock.Anything, "role1", mock.MatchedBy(func(r RoleUpdateDetail) bool {
+					return r.ProjectID == testProjectID
+				})).Return(nil)
+			}
+
+			result, err := suite.service.UpdateRoleWithPermissions(context.Background(), "role1",
+				RoleUpdateDetail{Name: "Shop Admin", ProjectID: testProjectID})
+
+			if tc.expected != "" {
+				suite.Nil(result)
+				suite.Require().NotNil(err)
+				suite.Equal(tc.expected, err.Code)
+				suite.mockStore.AssertNotCalled(suite.T(), "UpdateRole", mock.Anything, mock.Anything, mock.Anything)
+				return
+			}
+			suite.Nil(err)
+			suite.Require().NotNil(result)
+			suite.Equal(testProjectID, result.ProjectID)
+			// Only a move to another organization unit is refused for the role's assignments.
+			suite.mockStore.AssertNotCalled(suite.T(), "GetRoleAssignmentsCount",
+				mock.Anything, mock.Anything, mock.Anything)
+		})
+	}
+}
+
+// An update that moves a role to another organization unit and another project looks up its sharing
+// policies once.
+func (suite *RoleServiceTestSuite) TestUpdateRole_MovesOUAndProjectChecksSharingOnce() {
+	validator := suite.newProjectAwareService()
+	suite.mockStore.On("GetRole", mock.Anything, "role1").Return(RoleWithPermissions{ID: "role1", OUID: "ou1"}, nil)
+	suite.mockSharingService.EXPECT().IsVisible(mock.Anything, RoleSharingType, "role1", testSystemOUID).
+		Return(false, nil)
+	validator.On("ValidateProjectOU", mock.Anything, testProjectID, testSystemOUID).Return(nil)
+	suite.arrangeRoleUpdateIn(testSystemOUID)
+	suite.mockSharingService.EXPECT().ListPolicies(mock.Anything, RoleSharingType, "role1").
+		Return([]sharing.Policy{{ID: "policy-1"}}, nil).Once()
+
+	result, err := suite.service.UpdateRoleWithPermissions(context.Background(), "role1",
+		RoleUpdateDetail{Name: "Shop Admin", OUID: testSystemOUID, ProjectID: testProjectID})
+
+	suite.Nil(result)
+	suite.Require().NotNil(err)
+	suite.Equal(ErrorSharedRoleCannotMove.Code, err.Code)
+	suite.mockStore.AssertNotCalled(suite.T(), "UpdateRole", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (suite *RoleServiceTestSuite) TestUpdateRole_InvalidProject() {
+	validator := suite.newProjectAwareService()
+	suite.mockStore.On("GetRole", mock.Anything, "role1").Return(RoleWithPermissions{
+		ID: "role1", OUID: testSystemOUID,
+	}, nil)
+	validator.On("ValidateProjectOU", mock.Anything, "missing", testSystemOUID).
+		Return(&tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: projectscope.ProjectNotFoundErrorCode})
+
+	result, err := suite.service.UpdateRoleWithPermissions(context.Background(), "role1",
+		RoleUpdateDetail{Name: "Shop Admin", ProjectID: "missing"})
+
+	suite.Nil(result)
+	suite.Require().NotNil(err)
+	suite.Equal(ErrorInvalidProject.Code, err.Code)
+}
+
+func (suite *RoleServiceTestSuite) TestGetRoleListByProject_Success() {
+	roles := []Role{{ID: "role1", OUID: testSystemOUID, ProjectID: testProjectID}}
+	suite.mockStore.On("GetRoleListCountByProject", mock.Anything, testProjectID, testSystemOUID).Return(3, nil)
+	suite.mockStore.On("GetRoleListByProject", mock.Anything, testProjectID, testSystemOUID, 1, 1).Return(roles, nil)
+	suite.mockOUService.On("GetOrganizationUnitHandlesByIDs", mock.Anything, []string{testSystemOUID}).
+		Return(map[string]string{testSystemOUID: "system"}, nil)
+
+	result, err := suite.service.GetRoleListByProject(context.Background(), testProjectID, 1, 1,
+		map[string]interface{}{"ouId": testSystemOUID})
+
+	suite.Nil(err)
+	suite.Require().NotNil(result)
+	suite.Equal(3, result.TotalResults)
+	suite.Require().Len(result.Roles, 1)
+	suite.True(result.Roles[0].IsOwnedByOU)
+	suite.Equal("system", result.Roles[0].OUHandle)
+	suite.NotEmpty(result.Links)
+	for _, link := range result.Links {
+		suite.Contains(link.Href, "&projectId="+testProjectID)
+		suite.Contains(link.Href, "&filter=ouId+eq+%22"+testSystemOUID+"%22")
+	}
+}
+
+func (suite *RoleServiceTestSuite) TestGetRoleListByProject_EmptyProject() {
+	result, err := suite.service.GetRoleListByProject(context.Background(), "", 10, 0, nil)
+
+	suite.Nil(err)
+	suite.Require().NotNil(result)
+	suite.Zero(result.TotalResults)
+	suite.Empty(result.Roles)
+	suite.mockStore.AssertNotCalled(suite.T(), "GetRoleListCountByProject", mock.Anything, mock.Anything,
+		mock.Anything)
+}
+
+func (suite *RoleServiceTestSuite) TestGetRoleListByProject_RequestErrors() {
+	testCases := []struct {
+		name         string
+		limit        int
+		filters      map[string]interface{}
+		expectedCode string
+	}{
+		{name: "InvalidLimit", limit: 0, expectedCode: ErrorInvalidLimit.Code},
+		{name: "OtherFilter", limit: 10, filters: map[string]interface{}{"name": "admin"},
+			expectedCode: ErrorInvalidFilter.Code},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			result, err := suite.service.GetRoleListByProject(context.Background(), testProjectID, tc.limit, 0,
+				tc.filters)
+
+			suite.Nil(result)
+			suite.Require().NotNil(err)
+			suite.Equal(tc.expectedCode, err.Code)
+		})
+	}
+}
+
+func (suite *RoleServiceTestSuite) TestGetRoleListByProject_StoreErrors() {
+	storeErr := errors.New("database error")
+	testCases := []struct {
+		name         string
+		setup        func(store *roleStoreInterfaceMock)
+		expectedCode string
+	}{
+		{name: "CountError", expectedCode: tidcommon.InternalServerError.Code,
+			setup: func(store *roleStoreInterfaceMock) {
+				store.On("GetRoleListCountByProject", mock.Anything, testProjectID, "").Return(0, storeErr)
+			}},
+		{name: "CountLimitExceeded", expectedCode: ResultLimitExceededInCompositeMode.Code,
+			setup: func(store *roleStoreInterfaceMock) {
+				store.On("GetRoleListCountByProject", mock.Anything, testProjectID, "").
+					Return(0, errResultLimitExceededInCompositeMode)
+			}},
+		{name: "ListError", expectedCode: tidcommon.InternalServerError.Code,
+			setup: func(store *roleStoreInterfaceMock) {
+				store.On("GetRoleListCountByProject", mock.Anything, testProjectID, "").Return(2, nil)
+				store.On("GetRoleListByProject", mock.Anything, testProjectID, "", 10, 0).Return(nil, storeErr)
+			}},
+		{name: "ListLimitExceeded", expectedCode: ResultLimitExceededInCompositeMode.Code,
+			setup: func(store *roleStoreInterfaceMock) {
+				store.On("GetRoleListCountByProject", mock.Anything, testProjectID, "").Return(2, nil)
+				store.On("GetRoleListByProject", mock.Anything, testProjectID, "", 10, 0).
+					Return(nil, errResultLimitExceededInCompositeMode)
+			}},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			suite.SetupTest()
+			tc.setup(suite.mockStore)
+
+			result, err := suite.service.GetRoleListByProject(context.Background(), testProjectID, 10, 0, nil)
+
+			suite.Nil(result)
+			suite.Require().NotNil(err)
+			suite.Equal(tc.expectedCode, err.Code)
+		})
+	}
+}
+
+// A declared role reports that it is read-only before its project is checked.
+func (suite *RoleServiceTestSuite) TestUpdateRole_DeclarativeRoleRefusedBeforeProjectCheck() {
+	config.GetServerRuntime().Config.Role.Store = string(serverconst.StoreModeComposite)
+	validator := suite.newProjectAwareService()
+	suite.mockStore.On("GetRole", mock.Anything, "role1").Return(RoleWithPermissions{
+		ID: "role1", OUID: testSystemOUID, ProjectID: testProjectID,
+	}, nil)
+	suite.mockStore.On("IsRoleDeclarative", mock.Anything, "role1").Return(true, nil)
+
+	result, err := suite.service.UpdateRoleWithPermissions(context.Background(), "role1",
+		RoleUpdateDetail{Name: "Shop Admin", ProjectID: "missing"})
+
+	suite.Nil(result)
+	suite.Require().NotNil(err)
+	suite.Equal(ErrorImmutableRole.Code, err.Code)
+	validator.AssertNotCalled(suite.T(), "ValidateProjectOU", mock.Anything, mock.Anything, mock.Anything)
 }

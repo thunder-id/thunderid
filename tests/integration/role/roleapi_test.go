@@ -364,19 +364,6 @@ func (suite *RoleAPITestSuite) TestCreateRole_ValidationErrors() {
 			expectedErr: "INVALID_INPUT_METADATA",
 		},
 		{
-			name: "Missing OUID",
-			roleRequest: CreateRoleRequest{
-				Name: "Test Role",
-				Permissions: []ResourcePermissions{
-					{
-						ResourceServerID: testResourceServer1ID,
-						Permissions:      []string{testPermission1},
-					},
-				},
-			},
-			expectedErr: "INVALID_INPUT_METADATA",
-		},
-		{
 			name: "Invalid Organization Unit",
 			roleRequest: CreateRoleRequest{
 				Name: "Test Role",
@@ -1783,7 +1770,6 @@ func (suite *RoleAPITestSuite) TestUpdateRole_ValidationErrors() {
 		body UpdateRoleRequest
 	}{
 		{"MissingName", UpdateRoleRequest{OUID: testOUID, Permissions: []ResourcePermissions{}}},
-		{"MissingOUID", UpdateRoleRequest{Name: "Named", Permissions: []ResourcePermissions{}}},
 	} {
 		suite.Run(tc.name, func() {
 			resp := suite.doRoleRequest(http.MethodPut, rolesBasePath+"/"+role.ID, mustMarshal(suite.T(), tc.body))

@@ -73,6 +73,7 @@ func (f *fileBasedStore) GetRoleList(ctx context.Context, limit, offset int) ([]
 			Name:        roleData.Name,
 			Description: roleData.Description,
 			OUID:        roleData.OUID,
+			ProjectID:   roleData.ProjectID,
 		})
 	}
 
@@ -150,9 +151,68 @@ func (f *fileBasedStore) rolesByOUID(ctx context.Context, ouID string) ([]Role, 
 			Name:        roleData.Name,
 			Description: roleData.Description,
 			OUID:        roleData.OUID,
+			ProjectID:   roleData.ProjectID,
 		})
 	}
 
+	return roles, nil
+}
+
+// GetRoleListCountByProject returns the number of declared roles of a project, narrowed to the ones an
+// organization unit owns when ouID is set.
+func (f *fileBasedStore) GetRoleListCountByProject(ctx context.Context, projectID, ouID string) (int, error) {
+	roles, err := f.rolesByProject(ctx, projectID, ouID)
+	if err != nil {
+		return 0, err
+	}
+	return len(roles), nil
+}
+
+// GetRoleListByProject returns a page of the declared roles of a project, narrowed to the ones an
+// organization unit owns when ouID is set.
+func (f *fileBasedStore) GetRoleListByProject(
+	ctx context.Context, projectID, ouID string, limit, offset int,
+) ([]Role, error) {
+	roles, err := f.rolesByProject(ctx, projectID, ouID)
+	if err != nil {
+		return nil, err
+	}
+
+	start := max(offset, 0)
+	if start >= len(roles) {
+		return []Role{}, nil
+	}
+	end := min(start+max(limit, 0), len(roles))
+	return roles[start:end], nil
+}
+
+// rolesByProject returns the declared roles of a project, narrowed to the ones an organization unit owns
+// when ouID is set.
+func (f *fileBasedStore) rolesByProject(ctx context.Context, projectID, ouID string) ([]Role, error) {
+	list, err := f.GenericFileBasedStore.List()
+	if err != nil {
+		return nil, err
+	}
+
+	roles := make([]Role, 0, len(list))
+	for _, item := range list {
+		roleData, err := roleFromDeclarativeData(item.ID.ID, item.Data)
+		if err != nil {
+			log.GetLogger().Warn(ctx, "Skipping malformed role in rolesByProject",
+				log.String("roleID", item.ID.ID), log.Error(err))
+			continue
+		}
+		if roleData.ProjectID != projectID || (ouID != "" && roleData.OUID != ouID) {
+			continue
+		}
+		roles = append(roles, Role{
+			ID:          roleData.ID,
+			Name:        roleData.Name,
+			Description: roleData.Description,
+			OUID:        roleData.OUID,
+			ProjectID:   roleData.ProjectID,
+		})
+	}
 	return roles, nil
 }
 
@@ -184,6 +244,7 @@ func (f *fileBasedStore) GetRole(ctx context.Context, id string) (RoleWithPermis
 		Name:        roleData.Name,
 		Description: roleData.Description,
 		OUID:        roleData.OUID,
+		ProjectID:   roleData.ProjectID,
 		Permissions: roleData.Permissions,
 	}, nil
 }
@@ -221,6 +282,7 @@ func (f *fileBasedStore) GetRolesByNames(ctx context.Context, names []string) ([
 			Name:        roleData.Name,
 			Description: roleData.Description,
 			OUID:        roleData.OUID,
+			ProjectID:   roleData.ProjectID,
 		})
 	}
 
@@ -243,6 +305,7 @@ func (f *fileBasedStore) GetRolesByIDs(ctx context.Context, ids []string) ([]Rol
 			Name:        role.Name,
 			Description: role.Description,
 			OUID:        role.OUID,
+			ProjectID:   role.ProjectID,
 		})
 	}
 	return roles, nil

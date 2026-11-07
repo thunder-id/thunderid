@@ -163,7 +163,7 @@ func (s *RoleServiceAuditTestSuite) TearDownTest() {
 
 func (s *RoleServiceAuditTestSuite) newRoleService(bus eventbus.EventBusInterface) RoleServiceInterface {
 	return newRoleService(s.mockStore, s.mockEntityService, s.mockGroupService, s.mockOUService,
-		s.mockResourceService, s.transactioner, s.authz, s.mockSharingService, bus)
+		s.mockResourceService, s.transactioner, s.authz, s.mockSharingService, bus, nil)
 }
 
 // expectPermissionGrant expects the check that the caller may confer the role's permissions to be asked
@@ -595,7 +595,7 @@ func (s *RoleServiceAuditTestSuite) TestAddAssigneesToRoles_PublishesEachRoleWhe
 
 func (s *RoleServiceAuditTestSuite) TestInitialize_RefusesANilEventBus() {
 	roleService, assignmentService, resolver, exporter, err := Initialize(http.NewServeMux(), nil, nil, nil, nil,
-		nil, nil, nil, nil)
+		nil, nil, nil, nil, nil)
 
 	s.Require().ErrorIs(err, errNilEventBus)
 	s.Require().Nil(roleService)

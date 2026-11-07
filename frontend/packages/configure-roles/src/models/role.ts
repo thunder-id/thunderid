@@ -33,6 +33,8 @@ export interface RoleSummary {
   ouId: string;
   /** Handle of the organization unit (resolved when include=display is used) */
   ouHandle?: string;
+  /** ID of the project this role belongs to; absent when it belongs to no project */
+  projectId?: string;
   /** Whether this role is read-only (declarative/immutable) */
   isReadOnly?: boolean;
 }

@@ -10,6 +10,8 @@ import (
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
+
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 )
 
 // CompositeRoleStoreTestSuite contains tests for the composite role store.
@@ -393,4 +395,50 @@ func (suite *CompositeRoleStoreTestSuite) TestCascadeHooks_UseDatabaseStoreOnly(
 	suite.mockFileStore.AssertNotCalled(suite.T(), "GetReferencedPermissions", mock.Anything)
 	suite.mockFileStore.AssertNotCalled(suite.T(), "DeleteRolePermission",
 		mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (suite *CompositeRoleStoreTestSuite) TestGetRoleListByProject_MergesStores() {
+	dbRoles := []Role{{ID: "role1", ProjectID: "proj1"}, {ID: "role2", ProjectID: "proj1"}}
+	fileRoles := []Role{{ID: "role3", ProjectID: "proj1"}}
+
+	suite.mockDBStore.On("GetRoleListCountByProject", mock.Anything, "proj1", "").Return(2, nil)
+	suite.mockFileStore.On("GetRoleListCountByProject", mock.Anything, "proj1", "").Return(1, nil)
+	suite.mockDBStore.On("GetRoleListByProject", mock.Anything, "proj1", "", 2, 0).Return(dbRoles, nil)
+	suite.mockFileStore.On("GetRoleListByProject", mock.Anything, "proj1", "", 1, 0).Return(fileRoles, nil)
+
+	roles, err := suite.store.GetRoleListByProject(context.Background(), "proj1", "", 2, 1)
+	suite.NoError(err)
+	suite.Len(roles, 2)
+
+	count, err := suite.store.GetRoleListCountByProject(context.Background(), "proj1", "")
+	suite.NoError(err)
+	suite.Equal(3, count)
+}
+
+func (suite *CompositeRoleStoreTestSuite) TestGetRoleListByProject_Errors() {
+	storeErr := errors.New("db error")
+	suite.mockDBStore.On("GetRoleListCountByProject", mock.Anything, "proj1", "").Return(0, storeErr)
+
+	_, err := suite.store.GetRoleListCountByProject(context.Background(), "proj1", "")
+	suite.ErrorIs(err, storeErr)
+
+	roles, err := suite.store.GetRoleListByProject(context.Background(), "proj1", "", 5, 0)
+	suite.Error(err)
+	suite.Nil(roles)
+}
+
+func (suite *CompositeRoleStoreTestSuite) TestGetRoleListCountByProject_FileErrorAndLimit() {
+	storeErr := errors.New("file error")
+	suite.mockDBStore.On("GetRoleListCountByProject", mock.Anything, "proj1", "").Return(1, nil)
+	suite.mockFileStore.On("GetRoleListCountByProject", mock.Anything, "proj1", "").Return(0, storeErr)
+	_, err := suite.store.GetRoleListCountByProject(context.Background(), "proj1", "")
+	suite.ErrorIs(err, storeErr)
+
+	suite.mockDBStore.On("GetRoleListCountByProject", mock.Anything, "big", "").
+		Return(serverconst.MaxCompositeStoreRecords, nil)
+	suite.mockFileStore.On("GetRoleListCountByProject", mock.Anything, "big", "").Return(1, nil)
+	_, err = suite.store.GetRoleListCountByProject(context.Background(), "big", "")
+	suite.ErrorIs(err, errResultLimitExceededInCompositeMode)
+	_, err = suite.store.GetRoleListByProject(context.Background(), "big", "", 5, 0)
+	suite.ErrorIs(err, errResultLimitExceededInCompositeMode)
 }

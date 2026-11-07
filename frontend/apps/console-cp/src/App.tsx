@@ -242,8 +242,6 @@ export default function App(): JSX.Element {
                   <Route path={`${ROUTE_SEGMENTS.trustedIssuers}/:id`} element={<TrustedIssuerDetailPage />} />
                   <Route path={ROUTE_SEGMENTS.groups} element={<GroupsListPage />} />
                   <Route path={`${ROUTE_SEGMENTS.groups}/:groupId`} element={<GroupEditPage />} />
-                  <Route path={ROUTE_SEGMENTS.roles} element={<RolesListPage />} />
-                  <Route path={`${ROUTE_SEGMENTS.roles}/:roleId`} element={<RoleEditPage />} />
                   <Route path={ROUTE_SEGMENTS.verifiablePresentations} element={<VerifiablePresentationsListPage />} />
                   <Route
                     path={`${ROUTE_SEGMENTS.verifiablePresentations}/:vpId`}
@@ -270,6 +268,8 @@ export default function App(): JSX.Element {
                       path={`${ROUTE_SEGMENTS.resourceServers}/:resourceServerId`}
                       element={<ResourceServerEditPage />}
                     />
+                    <Route path={ROUTE_SEGMENTS.roles} element={<RolesListPage />} />
+                    <Route path={`${ROUTE_SEGMENTS.roles}/:roleId`} element={<RoleEditPage />} />
                   </Route>
                   <Route path={ROUTE_SEGMENTS.flows} element={<FlowsListPage />} />
                   <Route path={ROUTE_SEGMENTS.settings} element={<SettingsPage />} />
@@ -334,9 +334,11 @@ export default function App(): JSX.Element {
                   path={RouteConfig.roles.create()}
                   element={
                     <ProtectedRoute>
-                      <RoleCreateProvider>
-                        <FullScreenLayout />
-                      </RoleCreateProvider>
+                      <SelectedProjectScope>
+                        <RoleCreateProvider>
+                          <FullScreenLayout />
+                        </RoleCreateProvider>
+                      </SelectedProjectScope>
                     </ProtectedRoute>
                   }
                 >

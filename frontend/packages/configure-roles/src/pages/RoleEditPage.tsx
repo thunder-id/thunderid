@@ -5,6 +5,7 @@ import {useIsMutating} from '@tanstack/react-query';
 import {DocumentTitle, PageLoadingAnimation, QueryErrorNotice, UnsavedChangesBar} from '@thunderid/components';
 import {arePermissionsEqual, type ResourcePermissions} from '@thunderid/configure-resource-servers';
 import {useOrganizationAccess} from '@thunderid/configure-resource-sharing';
+import {useProjectScope} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {getErrorMessage, isEqualIgnoringEmpty} from '@thunderid/utils';
 import {
@@ -21,7 +22,7 @@ import {
   PageTitle,
 } from '@wso2/oxygen-ui';
 import {ArrowLeft, Edit} from '@wso2/oxygen-ui-icons-react';
-import {useState, useCallback, useMemo, useRef} from 'react';
+import {useState, useCallback, useEffect, useMemo, useRef} from 'react';
 import type {ReactNode, SyntheticEvent, JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {Link, useNavigate, useParams} from 'react-router';
@@ -34,6 +35,7 @@ import EditOrganizationAccessSettings from '../components/edit-role/organization
 import EditPermissionsSettings from '../components/edit-role/permissions-settings/EditPermissionsSettings';
 import RoleDeleteDialog from '../components/RoleDeleteDialog';
 import RoleConstraints from '../constants/role-constraints';
+import useRoleRoutes from '../hooks/useRoleRoutes';
 import type {Role} from '../models/role';
 
 // The Organization Access tab's position, whose first opening loads the role's sharing policies.
@@ -63,10 +65,17 @@ function TabPanel({children = null, value, index, ...other}: TabPanelProps): JSX
 export default function RoleEditPage(): JSX.Element {
   const {roleId} = useParams<{roleId: string}>();
   const navigate = useNavigate();
+  const routes = useRoleRoutes();
   const {t} = useTranslation('roles');
   const logger = useLogger('RoleEditPage');
 
   const {data: role, isLoading, error: fetchError, refetch} = useGetRole(roleId ?? '');
+  const {projectId} = useProjectScope();
+  // Inside a project, a role of another project is not shown: the page returns to the list.
+  const isOtherProject = Boolean(projectId && role && role.projectId !== projectId);
+  useEffect(() => {
+    if (isOtherProject) void navigate(routes.roles.list(), {replace: true});
+  }, [isOtherProject, navigate, routes]);
   const updateRole = useUpdateRole();
   const isRoleUpdating = useIsMutating({mutationKey: ROLE_MUTATION_KEY}) > 0;
   const [activeTab, setActiveTab] = useState(0);
@@ -181,7 +190,7 @@ export default function RoleEditPage(): JSX.Element {
 
   const resourceTypeTitle = t('navigation:pages.roles', 'Roles');
 
-  if (isLoading) {
+  if (isLoading || isOtherProject) {
     return (
       <>
         <DocumentTitle title={resourceTypeTitle} />

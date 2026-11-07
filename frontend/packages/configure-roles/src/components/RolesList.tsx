@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {QueryErrorNotice} from '@thunderid/components';
+import {useProjectScope} from '@thunderid/contexts';
 import {useDataGridLocaleText} from '@thunderid/hooks';
 import {useLogger} from '@thunderid/logger/react';
 import {IconButton, Typography, Tooltip, DataGrid, ListingTable} from '@wso2/oxygen-ui';
@@ -25,12 +26,14 @@ export default function RolesList(): JSX.Element {
   const routes = useRoleRoutes();
   const [paginationModel, setPaginationModel] = useState<DataGrid.GridPaginationModel>({pageSize: 10, page: 0});
 
+  const {projectId} = useProjectScope();
   const rolesParams = useMemo(
     () => ({
       limit: paginationModel.pageSize,
       offset: paginationModel.page * paginationModel.pageSize,
+      projectId,
     }),
-    [paginationModel],
+    [paginationModel, projectId],
   );
   const {data, isLoading, error, refetch} = useGetRoles(rolesParams);
 
