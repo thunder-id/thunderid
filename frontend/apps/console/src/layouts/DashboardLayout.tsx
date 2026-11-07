@@ -144,12 +144,17 @@ function SidebarPreference({collapsed}: {collapsed: boolean}): null {
 
 export default function DashboardLayout({collapseSidebar = false}: DashboardLayoutProps): ReactNode {
   const {clearSession, discovery} = useThunderID();
-  const {isTrustedIssuerGenericOidc, getTrustedIssuerClientId, getClientUrl} = useConfig();
+  const {isTrustedIssuerGenericOidc, getTrustedIssuerClientId, getClientUrl, config} = useConfig();
   const {t} = useTranslation();
   const logger = useLogger();
+  // Behind a gateway BFF the SDK runs in backend mode: the gateway holds the session and its own
+  // sign-out endpoint ends it at the IdP, so signOut() must go there instead of the IdP directly.
+  const signsOutThroughBackend = Boolean(
+    (config.sdk?.endpoints as {backend?: {signOut?: string}} | undefined)?.backend?.signOut,
+  );
 
   const handleSignOut = (signOut: () => Promise<void>): void => {
-    if (isTrustedIssuerGenericOidc()) {
+    if (isTrustedIssuerGenericOidc() && !signsOutThroughBackend) {
       try {
         clearSession();
       } catch (error: unknown) {
