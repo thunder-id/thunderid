@@ -369,7 +369,7 @@ func (s *DependenciesTestSuite) TestARemovalWaitsWhileItsUpdateIsRefused() {
 	master, _ := f.svc.GetMaster(context.Background(), "gw-1")
 	kept, _ := entryOf(master, "organization_unit/ou-1")
 	assert.Equal(t, EntryDeployed, kept.State, "the resource the refused update still names was dropped")
-	diff, _ := f.svc.Diff(context.Background(), "gw-1", "")
+	diff, _ := f.svc.Diff(context.Background(), "gw-1", "", "")
 	offered := map[string]ChangeKind{}
 	for _, change := range diff.Changes {
 		offered[change.Key] = change.Change
@@ -500,7 +500,7 @@ func (s *DependenciesTestSuite) TestTheFirstImportIsRecordedWhenTheSecondFails()
 			master, svcErr := f.svc.GetMaster(context.Background(), "gw-1")
 			require.Nil(t, svcErr)
 			assert.Contains(t, master.Resources, "parent: ou-3", "the first import's update was not recorded")
-			diff, svcErr := f.svc.Diff(context.Background(), "gw-1", "")
+			diff, svcErr := f.svc.Diff(context.Background(), "gw-1", "", "")
 			require.Nil(t, svcErr)
 			offered := false
 			for _, change := range diff.Changes {

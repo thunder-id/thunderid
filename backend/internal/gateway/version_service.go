@@ -49,8 +49,14 @@ type VersionServiceInterface interface {
 	GetVersion(ctx context.Context, ref string) (*Version, *tidcommon.ServiceError)
 	// GetApplied reports what a gateway holds. A gateway nothing was applied to holds no version.
 	GetApplied(ctx context.Context, gatewayID string) (*AppliedVersion, *tidcommon.ServiceError)
-	// Diff reports how a version differs from what a gateway holds, without changing anything.
-	Diff(ctx context.Context, gatewayID, ref string) (*Diff, *tidcommon.ServiceError)
+	// Diff reports how a version differs from what a gateway holds, without changing anything. With a
+	// project, each change is placed in that project's sections.
+	Diff(ctx context.Context, gatewayID, ref, projectID string) (*Diff, *tidcommon.ServiceError)
+	// ProjectStatus reports where a project stands on a gateway: the versions its own resources were
+	// deployed from, and what a deploy scoped to it would change, against what a promotion from the
+	// source gateway would send, or against a version when no source is given.
+	ProjectStatus(ctx context.Context, gatewayID, projectID, sourceGatewayID, ref string) (*ProjectStatus,
+		*tidcommon.ServiceError)
 	// Apply writes a version to a gateway: what the version adds or changes, and the removal of what
 	// the gateway holds that the version no longer has.
 	Apply(ctx context.Context, gatewayID string, req ApplyRequest) (*ApplyResult, *tidcommon.ServiceError)
@@ -78,6 +84,8 @@ type versionService struct {
 	// secretFields names, by resource type, the fields a secret reference may stand in.
 	secretFields map[string][]string
 	names        actorNamer
+	// projects reads the projects a deploy can be scoped to.
+	projects ProjectDirectory
 	// autoApply makes a capture of the current version apply it to the first gateway.
 	autoApply autoApplySetting
 	// pipeline is the stages a version moves through.
@@ -96,6 +104,7 @@ func newVersionService(gateways storeInterface, versions versionStoreInterface,
 		secretFields: secretFields,
 		names:        names,
 		pipeline:     p,
+		projects:     noProjects{},
 		logger:       log.GetLogger().With(log.String(log.LoggerKeyComponentName, "GatewayVersionService")),
 	}
 }
@@ -379,7 +388,8 @@ func (s *versionService) GetApplied(ctx context.Context,
 	return applied, nil
 }
 
-func (s *versionService) Diff(ctx context.Context, gatewayID, ref string) (*Diff, *tidcommon.ServiceError) {
+func (s *versionService) Diff(ctx context.Context, gatewayID, ref, projectID string) (*Diff,
+	*tidcommon.ServiceError) {
 	if _, svcErr := s.gateway(ctx, gatewayID); svcErr != nil {
 		return nil, svcErr
 	}
@@ -387,7 +397,7 @@ func (s *versionService) Diff(ctx context.Context, gatewayID, ref string) (*Diff
 	if svcErr != nil {
 		return nil, svcErr
 	}
-	_, diff, _, svcErr := s.plan(ctx, gatewayID, target)
+	_, diff, master, svcErr := s.plan(ctx, gatewayID, target)
 	if svcErr != nil {
 		return nil, svcErr
 	}
@@ -397,6 +407,11 @@ func (s *versionService) Diff(ctx context.Context, gatewayID, ref string) (*Diff
 	}
 	if _, svcErr := holdBack(diff, nil, nil, held); svcErr != nil {
 		return nil, svcErr
+	}
+	if projectID != "" {
+		if _, svcErr := s.scope(ctx, projectID, diff, target, master); svcErr != nil {
+			return nil, svcErr
+		}
 	}
 	return diff, nil
 }
@@ -420,11 +435,11 @@ func (s *versionService) Apply(ctx context.Context, gatewayID string,
 	// hash, a selection, or a confirmation is a choice of its own, which a later run could not carry
 	// out as asked. What the queued run would refuse for its removals is refused now instead.
 	coalesce := !req.DryRun && req.Selection == nil && len(req.LeaveOut) == 0 && !req.ConfirmRemovals &&
-		asksForLatest(req.Version)
+		req.Project == "" && asksForLatest(req.Version)
 	return s.write(ctx, gw, target, applyOptions{dryRun: req.DryRun, selection: req.Selection,
 		leaveOut:         req.LeaveOut,
 		withDependencies: req.WithDependencies == nil || *req.WithDependencies,
-		confirmRemovals:  req.ConfirmRemovals, coalesce: coalesce, origin: origin})
+		confirmRemovals:  req.ConfirmRemovals, coalesce: coalesce, origin: origin, project: req.Project})
 }
 
 // asksForLatest reports whether a reference asks for the latest version rather than naming one.
@@ -492,7 +507,7 @@ func (s *versionService) Promote(ctx context.Context, req PromoteRequest) (*Appl
 		sourceName = sourceGateway.Name
 	}
 	return s.write(ctx, gw, version, applyOptions{dryRun: req.DryRun, confirmRemovals: req.ConfirmRemovals,
-		origin: req.SourceGatewayID, promotedFrom: sourceName,
+		origin: req.SourceGatewayID, promotedFrom: sourceName, project: req.Project, selection: req.Selection,
 		choose: func(diff *Diff) []string { return promoteSelection(master, version, diff) }})
 }
 
@@ -530,6 +545,9 @@ func (s *versionService) Revert(ctx context.Context, gatewayID string,
 	gw, svcErr := s.gateway(ctx, gatewayID)
 	if svcErr != nil {
 		return nil, svcErr
+	}
+	if req.Project != "" {
+		return s.revertProject(ctx, gw, req)
 	}
 	applied, err := s.versions.GetApplied(ctx, gatewayID)
 	if err != nil {
@@ -598,10 +616,26 @@ type applyOptions struct {
 	// promotedFrom names the gateway a promotion carries the version from, so what it cannot carry is
 	// refused in a promotion's terms.
 	promotedFrom string
+	// project scopes the apply to one project's resources and what they need, by the project's id.
+	project string
+	// revertProject is the project a rollback of one project returns to its earlier master.
+	revertProject string
+	// plannedOn is the hash of the master the apply was planned from before it held the lease; the apply
+	// is refused when the gateway holds another by then.
+	plannedOn *string
 	// revertTo is the earlier master a revert returns the gateway to, and whole the version recorded
 	// with it; the master's documents are what is sent, and each keeps where it came from.
 	revertTo *Master
 	whole    *Version
+}
+
+// masterProject is the project the master an apply writes is recorded for, and whether the apply rolls
+// that project back.
+func (o applyOptions) masterProject() (string, bool) {
+	if o.revertProject != "" {
+		return o.revertProject, true
+	}
+	return o.project, false
 }
 
 // write applies a version to a gateway and, unless it is a dry run, records that the gateway holds it.
@@ -668,6 +702,11 @@ func (s *versionService) write(ctx context.Context, gw *Gateway, target *Version
 	if svcErr != nil {
 		return nil, svcErr
 	}
+	selection, withDependencies, svcErr := s.scopeSelection(ctx, options, diff, target, previous, selection)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	options.withDependencies = withDependencies
 	sent, sentDocuments, svcErr := shipmentOf(diff, target, previous, selection, options)
 	if svcErr == nil {
 		svcErr = s.refuseUnconfirmedRemovals(ctx, gw, len(sent.deletions), options)
@@ -733,6 +772,7 @@ func (s *versionService) write(ctx context.Context, gw *Gateway, target *Version
 		write = &masterWrite{sent: parseBundle(sent.content), deletions: request.Deletions, answer: answer,
 			source: target.Hash, origin: options.origin, by: actorOf(ctx), at: time.Now().UTC(),
 			earlier: options.revertTo}
+		write.project, write.projectRevert = options.masterProject()
 	}
 	var state appliedState
 	master, svcErr := s.recordOutcome(ctx, previous, write, token,
@@ -741,7 +781,9 @@ func (s *versionService) write(ctx context.Context, gw *Gateway, target *Version
 			if svcErr := s.record(txCtx, gw, target, applied, isRevert, values, token, state); svcErr != nil {
 				return svcErr
 			}
-			if isRevert {
+			// A revert, a project's included, keeps what the gateway holds back as it is: selecting a
+			// change to restore it is not a choice to stop holding it back.
+			if isRevert || options.revertProject != "" {
 				return nil
 			}
 			return s.rememberHeldBack(txCtx, gw.ID, diff, options.leaveOut)
@@ -1101,6 +1143,29 @@ func (s *versionService) selectionFor(ctx context.Context, gw *Gateway, diff *Di
 		selection = &picked
 	}
 	return selection, nil
+}
+
+// scopeSelection narrows an apply scoped to a project to what it may send, and reports whether the
+// selection is widened to what it needs, which a scoped apply never is. An apply scoped to no project
+// keeps its selection.
+func (s *versionService) scopeSelection(ctx context.Context, options applyOptions, diff *Diff, target *Version,
+	master *Master, selection *[]string) (*[]string, bool, *tidcommon.ServiceError) {
+	if options.project == "" {
+		return selection, options.withDependencies, nil
+	}
+	scope, svcErr := s.scope(ctx, options.project, diff, target, master)
+	if svcErr != nil {
+		return nil, false, svcErr
+	}
+	var promotable *[]string
+	if options.choose != nil {
+		promotable = selection
+	}
+	scoped, svcErr := scopedSelection(scope, options.selection, promotable)
+	if svcErr != nil {
+		return nil, false, svcErr
+	}
+	return &scoped, false, nil
 }
 
 // mayHaveWritten reports whether an import's outcome leaves open that the gateway wrote some of it.

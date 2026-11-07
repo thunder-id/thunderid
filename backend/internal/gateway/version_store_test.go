@@ -141,10 +141,11 @@ func (s *VersionStoreTestSuite) TestReadsAreDeploymentScoped() {
 	s.Equal(2, latest)
 }
 
-// Pruning spares a version a gateway holds or could revert to, which the statement decides.
+// Pruning spares a version a gateway holds or could revert to, and one a master names as where a resource
+// came from, which the statement decides.
 func (s *VersionStoreTestSuite) TestPruneNamesTheBoundAndTheDeployment() {
 	s.dbClientMock.On("ExecuteContext", mock.Anything, queryPruneVersions, 4,
-		storeDeploymentID, storeDeploymentID, storeDeploymentID).Return(int64(1), nil).Once()
+		storeDeploymentID, storeDeploymentID, storeDeploymentID, storeDeploymentID).Return(int64(1), nil).Once()
 
 	s.Require().NoError(s.store.Prune(scoped(), 4))
 	s.Require().NoError(s.store.Prune(scoped(), 0), "nothing to prune below the bound")

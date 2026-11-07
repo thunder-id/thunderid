@@ -297,6 +297,16 @@ paths:
         schema:
           type: string
         description: The version to compare, its hash, a prefix of at least seven of its characters, or `latest`. Defaults to `latest`.
+      - name: project
+        in: query
+        required: false
+        schema:
+          type: string
+        description: |
+          A project's id. Each change is then placed in that project's sections (`section`), a needed
+          change the gateway lacks or refused is marked `required`, and a needed or shared change that
+          updates or removes what the gateway holds names in `usedBy` the other projects whose resources
+          on the gateway use it. An unknown project is refused with `404` (`GTW-1038`).
     get:
       tags: [Gateways]
       summary: Compare a version with what a gateway holds
@@ -308,6 +318,53 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Diff'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+  /gateways/{id}/project-status:
+    parameters:
+      - $ref: '#/components/parameters/GatewayID'
+      - name: project
+        in: query
+        required: true
+        schema:
+          type: string
+        description: The project's id. An unknown project is refused with `404` (`GTW-1038`).
+      - name: from
+        in: query
+        required: false
+        schema:
+          type: string
+        description: |
+          A gateway to compare against, by its id: what promoting it to this gateway would send,
+          which is the version it runs as far as it holds it. Refused with `400` when it is this
+          gateway (`GTW-1036`) or runs nothing (`GTW-1037`). Without it, `version` is compared.
+      - name: version
+        in: query
+        required: false
+        schema:
+          type: string
+        description: The version to compare when no `from` is given, as on a diff. Defaults to `latest`.
+    get:
+      tags: [Gateways]
+      summary: Report where a project stands on a gateway
+      description: |
+        Reports the versions the project's own resources on the gateway were deployed from, when they
+        were last written and by whom, whether the project can be rolled back, and what a deploy
+        scoped to the project would send: its own changes, the needed changes the gateway lacks, the
+        needed changes it holds in another form, and the shared changes it could take with it.
+      responses:
+        "200":
+          description: The project's status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectStatus'
         "400":
           $ref: '#/components/responses/BadRequest'
         "401":
@@ -365,7 +422,11 @@ paths:
               schema:
                 $ref: '#/components/schemas/ApplyResult'
         "400":
-          description: The request was malformed, the selection names a resource the diff does not report, or the origin is too long
+          description: |
+            The request was malformed, the selection names a resource the diff does not report, or the
+            origin is too long. With a `project`, also when the selection names another project's own
+            resources (`GTW-1039`) or leaves out a change the project's selected resources need that the
+            gateway lacks or refused (`GTW-1040`).
           content:
             application/json:
               schema:
@@ -403,7 +464,13 @@ paths:
         "403":
           $ref: '#/components/responses/Forbidden'
         "404":
-          $ref: '#/components/responses/NotFound'
+          description: |
+            The gateway or the version does not exist, or, with a `project`, the deployment has no such
+            project (`GTW-1038`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         "409":
           description: |
             The gateway does not hold every value the version refers to (`GTW-1017`); the apply would
@@ -456,7 +523,9 @@ paths:
               schema:
                 $ref: '#/components/schemas/ApplyResult'
         "400":
-          description: The gateway holds no earlier version to revert to.
+          description: |
+            The gateway holds no earlier version to revert to (`GTW-1016`), or, with a `project`, the
+            project has nothing on the gateway to roll back to (`GTW-1041`).
           content:
             application/json:
               schema:
@@ -466,7 +535,13 @@ paths:
         "403":
           $ref: '#/components/responses/Forbidden'
         "404":
-          $ref: '#/components/responses/NotFound'
+          description: |
+            The gateway does not exist, or, with a `project`, the deployment has no such project
+            (`GTW-1038`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         "409":
           description: |
             The gateway does not hold every value the version refers to (`GTW-1017`); the revert
@@ -1171,7 +1246,106 @@ components:
             or holds differently, through what those need in turn. On unless set to `false`; with it
             off, a selection needing such a resource is refused with `409` (`GTW-1032`). A needed
             resource the gateway holds back is never taken in: with it on, a selection needing one is
-            refused the same way until the selection names it too.
+            refused the same way until the selection names it too. Not read with a `project`.
+        project:
+          type: string
+          description: |
+            Scopes the apply to a project, by its id. A project's own resources are those whose
+            documents name it in `projectId`, such as its applications and agents; what they need is
+            read from the version through `needs`; what names no project, such as organization units,
+            users and groups, is shared. Without a selection, the apply sends the project's own changes, less
+            those held back, and the needed changes the gateway lacks or refused. A selection may add
+            needed and shared changes, is refused with `400` when it names another project's own
+            resources (`GTW-1039`) or leaves out a required change (`GTW-1040`), and is not widened. An
+            unknown project is refused with `404` (`GTW-1038`).
+    ProjectStatus:
+      type: object
+      properties:
+        project:
+          type: object
+          properties:
+            versions:
+              type: array
+              description: |
+                The versions the project's own resources on the gateway were deployed from, newest
+                first, each with how many came from it. A version no longer kept is listed last, without
+                its number. Empty while the gateway holds none of the project's resources.
+              items:
+                type: object
+                properties:
+                  hash:
+                    type: string
+                  number:
+                    type: integer
+                  resources:
+                    type: integer
+            pending:
+              type: integer
+              description: |
+                The project's own changes a deploy scoped to it would send, with the changes to what
+                belongs to no project but only this project's resources need.
+            required:
+              type: integer
+              description: The changes the project's resources need that the gateway lacks or refused.
+            deployedAt:
+              type: string
+              format: date-time
+              description: When the project's own resources on the gateway were last written.
+            deployedBy:
+              $ref: '#/components/schemas/Actor'
+            lastAction:
+              type: string
+              enum: [deployed, promoted, rolledBack]
+              description: The last write to the project's resources, which `deployedAt` and `deployedBy` report.
+            rollback:
+              type: object
+              properties:
+                available:
+                  type: boolean
+                  description: |
+                    False while what a rollback returns to holds the project's own resources exactly as
+                    the gateway holds them now, so there is nothing to undo; a rollback then is refused
+                    with `400` (`GTW-1041`).
+                changes:
+                  type: integer
+                  description: How many of the project's own resources the rollback would write or remove.
+                sameVersion:
+                  type: boolean
+                  description: The rollback returns to the project's current version and still changes it.
+                toVersion:
+                  type: object
+                  description: |
+                    The version the project's resources came from in what a rollback returns to.
+                    Omitted while a rollback is available when the gateway held none of them then, so
+                    a rollback removes them.
+                  properties:
+                    hash:
+                      type: string
+                    number:
+                      type: integer
+        shared:
+          type: object
+          properties:
+            pending:
+              type: integer
+              description: |
+                The shared changes a deploy of the project could take with it. A change only another
+                project's resources need is that project's, and is not counted here.
+            byType:
+              type: array
+              items:
+                type: object
+                properties:
+                  resourceType:
+                    type: string
+                  count:
+                    type: integer
+        needed:
+          type: object
+          properties:
+            differing:
+              type: integer
+              description: The needed changes the gateway holds in another form, which a deploy may take.
     RevertRequest:
       type: object
       properties:
@@ -1180,6 +1354,15 @@ components:
           description: As on an apply. A revert to a much smaller version is the usual case.
         dryRun:
           type: boolean
+        project:
+          type: string
+          description: |
+            Rolls back only this project's own resources, by the project's id, to what the gateway held
+            before the last apply scoped to the project. A resource that apply added is removed, one it
+            removed is added back and one it updated is restored; every other resource stays as the
+            gateway holds it, and the gateway stays recorded as running its version. A project is rolled
+            back once until it is deployed to the gateway again: a project with nothing to roll back to
+            is refused with `400` (`GTW-1041`).
     Change:
       type: object
       properties:
@@ -1212,6 +1395,36 @@ components:
         change:
           type: string
           enum: [added, updated, deleted, unchanged]
+        section:
+          type: string
+          enum: [project, needed, shared, other]
+          description: |
+            On a diff or apply scoped to a project: the project's own resource, one they need, one that
+            belongs to no project, or another project's own.
+        required:
+          type: boolean
+          description: |
+            On a diff or apply scoped to a project, a needed change the gateway lacks or refused, which
+            the project's resources cannot run without. On an apply's answer otherwise, a change sent
+            because a selected resource needs it, with `requiredBy` the selected key.
+        requiredBy:
+          type: string
+          description: On an apply's answer, the selected key whose resource needed this change.
+        needs:
+          type: array
+          items:
+            type: string
+          description: |
+            The keys of the resources this one names by id in the version, which it needs on the gateway
+            to run, so a console can show what deploying it brings too.
+        usedBy:
+          type: array
+          items:
+            type: string
+          description: |
+            On a diff or apply scoped to a project, for a needed or shared change that updates or
+            removes what the gateway holds: the names of the other projects whose resources on the
+            gateway name it by id, which deploying it would also change.
         lines:
           type: array
           description: |
@@ -1364,6 +1577,12 @@ components:
           description: |
             Every resource the gateway holds, one YAML document each, in the same form a version holds
             them. Left out by a listing, and when the gateway holds none.
+        project:
+          type: string
+          description: The project the apply that wrote the master was scoped to. Omitted for an apply scoped to none.
+        projectRevert:
+          type: boolean
+          description: Marks a master a rollback of `project` wrote.
         summary:
           $ref: '#/components/schemas/MasterSummary'
         entries:

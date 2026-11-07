@@ -274,6 +274,28 @@ func (suite *ProjectServiceTestSuite) TestResolveProjectOU_Fails() {
 	}
 }
 
+func (suite *ProjectServiceTestSuite) TestProjectNames() {
+	suite.Run("names each project by its display name", func() {
+		suite.SetupTest()
+		suite.mockStore.On("GetProjectListCount", mock.Anything).Return(1, nil)
+		suite.mockStore.On("GetProjectList", mock.Anything, mock.Anything, 0).
+			Return([]Project{suite.project()}, nil)
+
+		names, svcErr := suite.service.ProjectNames(context.Background())
+
+		suite.Nil(svcErr)
+		suite.Equal(map[string]string{testProjectID: "Shop"}, names)
+	})
+	suite.Run("a list that cannot be read fails", func() {
+		suite.SetupTest()
+		suite.mockStore.On("GetProjectListCount", mock.Anything).Return(0, errors.New("down"))
+
+		_, svcErr := suite.service.ProjectNames(context.Background())
+
+		suite.Equal(tidcommon.InternalServerError, *svcErr)
+	})
+}
+
 func (suite *ProjectServiceTestSuite) TestGetProjectList() {
 	suite.Run("returns page", func() {
 		suite.SetupTest()

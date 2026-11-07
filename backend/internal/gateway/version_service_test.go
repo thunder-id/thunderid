@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -357,7 +358,10 @@ func (f *fakeVersionStore) AddMaster(_ context.Context, master Master, token str
 		f.masters = map[string][]Master{}
 	}
 	kept := master
-	kept.Seq = len(f.masters[master.GatewayID]) + 1
+	kept.Seq = 1
+	if held := f.masters[master.GatewayID]; len(held) > 0 {
+		kept.Seq = held[len(held)-1].Seq + 1
+	}
 	kept.CreatedAt = testCreatedAt
 	f.masters[master.GatewayID] = append(f.masters[master.GatewayID], kept)
 	return &kept, nil
@@ -420,11 +424,11 @@ func (f *fakeVersionStore) ListMasters(_ context.Context, gatewayID string) ([]M
 	return listed, nil
 }
 
-func (f *fakeVersionStore) PruneMasters(_ context.Context, gatewayID string, through int) error {
+func (f *fakeVersionStore) PruneMasters(_ context.Context, gatewayID string, through int, keep []int) error {
 	kept := f.masters[gatewayID]
 	pruned := kept[:0]
 	for _, master := range kept {
-		if master.Seq > through {
+		if master.Seq > through || slices.Contains(keep, master.Seq) {
 			pruned = append(pruned, master)
 		}
 	}
@@ -1185,7 +1189,7 @@ func TestApplyNamesWhatIsMissing(t *testing.T) {
 	assert.Equal(t, ErrorGatewayNotFound.Code, svcErr.Code)
 	_, svcErr = f.svc.Apply(context.Background(), "gw-1", ApplyRequest{})
 	assert.Equal(t, ErrorNoVersions.Code, svcErr.Code)
-	_, svcErr = f.svc.Diff(context.Background(), "gw-none", "")
+	_, svcErr = f.svc.Diff(context.Background(), "gw-none", "", "")
 	assert.Equal(t, ErrorGatewayNotFound.Code, svcErr.Code)
 	_, svcErr = f.svc.GetApplied(context.Background(), "gw-none")
 	assert.Equal(t, ErrorGatewayNotFound.Code, svcErr.Code)
@@ -1224,7 +1228,7 @@ func TestTheDiffChangesNothing(t *testing.T) {
 	f := newVersionFixture(t)
 	f.capture(t, "ou-a")
 
-	diff, svcErr := f.svc.Diff(context.Background(), "gw-1", "latest")
+	diff, svcErr := f.svc.Diff(context.Background(), "gw-1", "latest", "")
 
 	require.Nil(t, svcErr)
 	assert.Equal(t, DiffSummary{Added: 1}, diff.Summary)
@@ -1487,14 +1491,14 @@ func TestADiffReportsASecretStandingOutsideACredentialField(t *testing.T) {
 	_, err := f.versions.Add(context.Background(), Version{Hash: versionHash(content), Resources: content})
 	require.NoError(t, err)
 
-	diff, svcErr := f.svc.Diff(context.Background(), "gw-1", "latest")
+	diff, svcErr := f.svc.Diff(context.Background(), "gw-1", "latest", "")
 
 	require.Nil(t, svcErr)
 	assert.Equal(t, []ValueReference{{Name: "APP_SECRET", Kind: ReferenceSecret, ResourceType: "application",
 		ResourceID: "app-1", ResourceName: "app-1", Field: "description"}}, diff.MisplacedSecrets)
 
 	f.capture(t, "ou-a")
-	clean, svcErr := f.svc.Diff(context.Background(), "gw-1", "latest")
+	clean, svcErr := f.svc.Diff(context.Background(), "gw-1", "latest", "")
 	require.Nil(t, svcErr)
 	assert.Empty(t, clean.MisplacedSecrets)
 }

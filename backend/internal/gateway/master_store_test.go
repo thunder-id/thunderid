@@ -6,7 +6,9 @@ package gateway
 import (
 	"context"
 	"errors"
+	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
 
@@ -17,8 +19,9 @@ func (s *VersionStoreTestSuite) TestAddMasterNumbersItWithinTheGateway() {
 	master.Entries[0].By.Name = "alice"
 	manifest, err := manifestOf(master.Entries)
 	s.Require().NoError(err)
+	master.Project = "shop"
 	s.dbClientMock.On("QueryContext", mock.Anything, queryInsertMaster, mock.Anything, "gw-1", master.Hash,
-		master.Resources, manifest, "u-1", storeDeploymentID, "gw-1", storeDeploymentID).
+		master.Resources, manifest, "u-1", "shop", false, storeDeploymentID, "gw-1", storeDeploymentID).
 		Return([]map[string]interface{}{{"seq": int64(3), "created_at": "2026-10-28T09:00:00Z"}}, nil).Once()
 
 	kept, err := s.store.AddMaster(scoped(), *master, "")
@@ -37,10 +40,12 @@ func (s *VersionStoreTestSuite) TestAddMasterUnderALeaseChecksTheToken() {
 	manifest, err := manifestOf(master.Entries)
 	s.Require().NoError(err)
 	s.dbClientMock.On("QueryContext", mock.Anything, queryInsertMasterUnderLease, mock.Anything, "gw-1",
-		master.Hash, master.Resources, manifest, "u-1", storeDeploymentID, "gw-1", storeDeploymentID, "token-a").
+		master.Hash, master.Resources, manifest, "u-1", nil, false, storeDeploymentID, "gw-1", storeDeploymentID,
+		"token-a").
 		Return([]map[string]interface{}{{"seq": int64(4), "created_at": "2026-10-28T09:00:00Z"}}, nil).Once()
 	s.dbClientMock.On("QueryContext", mock.Anything, queryInsertMasterUnderLease, mock.Anything, "gw-1",
-		master.Hash, master.Resources, manifest, "u-1", storeDeploymentID, "gw-1", storeDeploymentID, "token-b").
+		master.Hash, master.Resources, manifest, "u-1", nil, false, storeDeploymentID, "gw-1", storeDeploymentID,
+		"token-b").
 		Return([]map[string]interface{}{}, nil).Once()
 
 	kept, err := s.store.AddMaster(scoped(), *master, "token-a")
@@ -73,7 +78,8 @@ func (s *VersionStoreTestSuite) TestGetMasterReadsTheNewestRow() {
 	s.Require().NoError(err)
 	s.dbClientMock.On("QueryContext", mock.Anything, queryGetMaster, "gw-1", storeDeploymentID).
 		Return([]map[string]interface{}{{"seq": int64(2), "hash": master.Hash, "resources": master.Resources,
-			"manifest": manifest, "created_at": "2026-10-28T09:00:00Z", "created_by": "u-1"}}, nil).Once()
+			"manifest": manifest, "created_at": "2026-10-28T09:00:00Z", "created_by": "u-1",
+			"project_id": "shop", "project_revert": int64(1)}}, nil).Once()
 	s.dbClientMock.On("QueryContext", mock.Anything, queryGetMaster, "gw-2", storeDeploymentID).
 		Return([]map[string]interface{}{}, nil).Once()
 
@@ -86,6 +92,8 @@ func (s *VersionStoreTestSuite) TestGetMasterReadsTheNewestRow() {
 	s.Equal(master.Entries, read.Entries)
 	s.Equal(MasterSummary{Deployed: 1}, read.Summary)
 	s.Equal(&Actor{ID: "u-1"}, read.CreatedBy)
+	s.Equal("shop", read.Project)
+	s.True(read.ProjectRevert)
 
 	none, err := s.store.GetMaster(scoped(), "gw-2")
 	s.Require().NoError(err)
@@ -113,15 +121,21 @@ func (s *VersionStoreTestSuite) TestListMastersReadsEachManifest() {
 	s.Error(err)
 }
 
-// Pruning and forgetting are scoped to the gateway within the deployment; nothing is pruned below 1.
+// Pruning and forgetting are scoped to the gateway within the deployment; nothing is pruned below 1, and
+// a kept master splits what is pruned around it.
 func (s *VersionStoreTestSuite) TestMastersArePrunedAndForgottenPerGateway() {
-	s.dbClientMock.On("ExecuteContext", mock.Anything, queryPruneMasters, "gw-1", 4, storeDeploymentID).
+	s.dbClientMock.On("ExecuteContext", mock.Anything, queryPruneMasters, "gw-1", 1, 4, storeDeploymentID).
 		Return(int64(2), nil).Once()
+	s.dbClientMock.On("ExecuteContext", mock.Anything, queryPruneMasters, "gw-1", 1, 1, storeDeploymentID).
+		Return(int64(1), nil).Once()
+	s.dbClientMock.On("ExecuteContext", mock.Anything, queryPruneMasters, "gw-1", 3, 4, storeDeploymentID).
+		Return(int64(1), nil).Once()
 	s.dbClientMock.On("ExecuteContext", mock.Anything, queryDeleteMasters, "gw-1", storeDeploymentID).
 		Return(int64(3), nil).Once()
 
-	s.Require().NoError(s.store.PruneMasters(scoped(), "gw-1", 4))
-	s.Require().NoError(s.store.PruneMasters(scoped(), "gw-1", 0))
+	s.Require().NoError(s.store.PruneMasters(scoped(), "gw-1", 4, nil))
+	s.Require().NoError(s.store.PruneMasters(scoped(), "gw-1", 4, []int{2, 9}))
+	s.Require().NoError(s.store.PruneMasters(scoped(), "gw-1", 0, nil))
 	s.Require().NoError(s.store.DeleteMasters(scoped(), "gw-1"))
 }
 
@@ -129,13 +143,14 @@ func (s *VersionStoreTestSuite) TestMastersArePrunedAndForgottenPerGateway() {
 func (s *VersionStoreTestSuite) TestMasterCallsReportDatabaseFailures() {
 	down := errors.New("database is down")
 	s.dbClientMock.On("QueryContext", mock.Anything, queryInsertMaster, mock.Anything, mock.Anything, mock.Anything,
-		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything).
 		Return(nil, down).Once()
 	s.dbClientMock.On("QueryContext", mock.Anything, queryGetMaster, "gw-1", storeDeploymentID).
 		Return(nil, down).Once()
 	s.dbClientMock.On("QueryContext", mock.Anything, queryListMasters, "gw-1", storeDeploymentID).
 		Return(nil, down).Once()
-	s.dbClientMock.On("ExecuteContext", mock.Anything, queryPruneMasters, "gw-1", 1, storeDeploymentID).
+	s.dbClientMock.On("ExecuteContext", mock.Anything, queryPruneMasters, "gw-1", 1, 1, storeDeploymentID).
 		Return(int64(0), down).Once()
 	s.dbClientMock.On("ExecuteContext", mock.Anything, queryDeleteMasters, "gw-1", storeDeploymentID).
 		Return(int64(0), down).Once()
@@ -146,7 +161,7 @@ func (s *VersionStoreTestSuite) TestMasterCallsReportDatabaseFailures() {
 	s.Error(err)
 	_, err = s.store.ListMasters(scoped(), "gw-1")
 	s.Error(err)
-	s.Error(s.store.PruneMasters(scoped(), "gw-1", 1))
+	s.Error(s.store.PruneMasters(scoped(), "gw-1", 1, nil))
 	s.Error(s.store.DeleteMasters(scoped(), "gw-1"))
 }
 
@@ -155,10 +170,12 @@ func (s *VersionStoreTestSuite) TestMasterCallsReportDatabaseFailures() {
 func (s *VersionStoreTestSuite) TestAddMasterReportsANumberTakenByAnotherWrite() {
 	taken := errors.New("constraint failed: UNIQUE constraint failed: " + masterNumberIndexColumns + " (2067)")
 	s.dbClientMock.On("QueryContext", mock.Anything, queryInsertMaster, mock.Anything, mock.Anything, mock.Anything,
-		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything).
 		Return(nil, taken).Once()
 	s.dbClientMock.On("QueryContext", mock.Anything, queryInsertMaster, mock.Anything, mock.Anything, mock.Anything,
-		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything).
 		Return(nil, errors.New("statement timeout")).Once()
 
 	_, err := s.store.AddMaster(scoped(), *deployedMaster("v1", "ou-a"), "")
@@ -188,4 +205,23 @@ func (s *VersionStoreTestSuite) TestGetMasterAtReadsOneMasterByItsNumber() {
 	none, err := s.store.GetMasterAt(scoped(), "gw-1", 1)
 	s.Require().NoError(err)
 	s.Nil(none)
+}
+
+// The stretches pruned run between the kept masters, each kept one left out, and stop at the bound.
+func TestStretchesWithoutKeptMasters(t *testing.T) {
+	cases := []struct {
+		through int
+		keep    []int
+		want    [][2]int
+	}{
+		{4, nil, [][2]int{{1, 4}}},
+		{4, []int{1}, [][2]int{{2, 4}}},
+		{4, []int{4, 2, 2}, [][2]int{{1, 1}, {3, 3}}},
+		{4, []int{1, 2, 3, 4}, nil},
+		{0, nil, nil},
+		{3, []int{7}, [][2]int{{1, 3}}},
+	}
+	for _, c := range cases {
+		assert.Equal(t, c.want, stretchesWithout(c.through, c.keep), "through %d keep %v", c.through, c.keep)
+	}
 }

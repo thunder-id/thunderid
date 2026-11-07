@@ -42,10 +42,11 @@ var (
 		return regexp.MustCompile(`(?m)^` + key + `:\s*(.+?)\s*$`)
 	}
 	resourceTypeField = topLevelScalar("resource_type")
-	// usernameField reads a user's username, which is nested under its attributes.
-	usernameField = regexp.MustCompile(`(?m)^\s+username:\s*(.+?)\s*$`)
-	idField       = topLevelScalar("id")
-	nameField     = topLevelScalar("name")
+	// displayNameField and handleField read the name a theme, a layout or a user type is shown by.
+	displayNameField = topLevelScalar("displayName")
+	handleField      = topLevelScalar("handle")
+	idField          = topLevelScalar("id")
+	nameField        = topLevelScalar("name")
 	// languageField names a translation, which has neither an id nor a name: one document holds one
 	// language's translations.
 	languageField = topLevelScalar("language")
@@ -352,7 +353,7 @@ func splitLines(document string) []string {
 }
 
 func changeOf(resource bundleResource, kind ChangeKind) Change {
-	return Change{Key: resource.key(), ResourceType: resource.Type, ID: resource.ID, Name: resource.Name,
+	return Change{Key: resource.key(), ResourceType: resource.Type, ID: resource.ID, Name: labelOf(resource),
 		Change: kind}
 }
 
@@ -468,11 +469,62 @@ func unquoteKey(key string) string {
 	return key
 }
 
-// labelOf is how a resource is known to a person: its name, or a user's username. Only a user is
-// known by a username, since another resource may hold a nested username of its own.
+// labelOf is how a resource is known to a person: its name, or else its display name or handle, as a
+// theme, a layout or a user type has, or the name it holds among its attributes: a user's username,
+// email or name, an agent's name. Attributes are read only for a user and an agent, and only from their
+// own attributes block, since another resource may hold nested fields of the same names.
 func labelOf(resource bundleResource) string {
-	if resource.Name != "" || resource.Type != resourceTypeUser {
+	if resource.Name != "" {
 		return resource.Name
 	}
-	return firstMatch(usernameField, resource.Content)
+	if label := firstMatch(displayNameField, resource.Content); label != "" {
+		return label
+	}
+	if label := firstMatch(handleField, resource.Content); label != "" {
+		return label
+	}
+	var keys []string
+	switch resource.Type {
+	case resourceTypeUser:
+		keys = []string{"username", "email", "name"}
+	case resourceTypeAgent:
+		keys = []string{"name", "username", "email"}
+	}
+	for _, key := range keys {
+		if label := attributeOf(resource.Content, key); label != "" {
+			return label
+		}
+	}
+	return ""
+}
+
+// resourceTypeAgent is the resource type an export writes an agent under.
+const resourceTypeAgent = "agent"
+
+// attributeOf reads a scalar of a document's top-level attributes block, unquoted, or "" when it has
+// none.
+func attributeOf(document, key string) string {
+	inside, indent := false, ""
+	for _, line := range strings.Split(document, "\n") {
+		trimmed := strings.TrimLeft(line, " ")
+		if !inside {
+			inside = strings.TrimRight(line, " ") == "attributes:"
+			continue
+		}
+		if trimmed == "" {
+			continue
+		}
+		lineIndent := line[:len(line)-len(trimmed)]
+		if lineIndent == "" {
+			return ""
+		}
+		if indent == "" {
+			indent = lineIndent
+		}
+		if lineIndent != indent || !strings.HasPrefix(trimmed, key+":") {
+			continue
+		}
+		return strings.Trim(strings.TrimSpace(strings.TrimPrefix(trimmed, key+":")), `"'`)
+	}
+	return ""
 }

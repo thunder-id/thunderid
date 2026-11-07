@@ -163,12 +163,51 @@ func (s *versionService) masters(ctx context.Context, gatewayID string) ([]Maste
 }
 
 // pruneMasters keeps a gateway's history within the same bound as the versions, once master number
-// latest is recorded. It runs outside any transaction: a failed statement would abort one.
+// latest is recorded. A master a rollback returns to is kept past the bound: the one the gateway's
+// revert returns to, and for each project the master its last scoped apply wrote and, unless that was
+// its rollback, the one before it. It runs outside any transaction: a failed statement would abort one.
 func (s *versionService) pruneMasters(ctx context.Context, gatewayID string, latest int) {
-	if err := s.versions.PruneMasters(ctx, gatewayID, latest-maxVersions()); err != nil {
+	through := latest - maxVersions()
+	if through <= 0 {
+		return
+	}
+	keep, err := s.rollbackPoints(ctx, gatewayID)
+	if err == nil {
+		err = s.versions.PruneMasters(ctx, gatewayID, through, keep)
+	}
+	if err != nil {
 		// The master is recorded; an older one surviving a little longer is not worth failing for.
 		s.logger.Warn(ctx, "Failed to remove the gateway's old masters", log.Error(err))
 	}
+}
+
+// rollbackPoints are the numbers of the masters a rollback on the gateway can return to, with each
+// project's last scoped master, which tells whether that project was rolled back since.
+func (s *versionService) rollbackPoints(ctx context.Context, gatewayID string) ([]int, error) {
+	keep := []int{}
+	applied, err := s.versions.GetApplied(ctx, gatewayID)
+	if err != nil {
+		return nil, err
+	}
+	if applied != nil && applied.PreviousMasterSeq > 0 {
+		keep = append(keep, applied.PreviousMasterSeq)
+	}
+	masters, err := s.versions.ListMasters(ctx, gatewayID)
+	if err != nil {
+		return nil, err
+	}
+	seen := map[string]bool{}
+	for _, master := range masters {
+		if master.Project == "" || seen[master.Project] {
+			continue
+		}
+		seen[master.Project] = true
+		keep = append(keep, master.Seq)
+		if !master.ProjectRevert {
+			keep = append(keep, master.Seq-1)
+		}
+	}
+	return keep, nil
 }
 
 // recordMaster writes the master a gateway holds after an apply sent it an import, from the
@@ -178,6 +217,7 @@ func (s *versionService) recordMaster(ctx context.Context, previous *Master, wri
 	token string) (*Master, *tidcommon.ServiceError) {
 	next := nextMaster(previous, write)
 	next.GatewayID = previous.GatewayID
+	next.Project, next.ProjectRevert = write.project, write.projectRevert
 	// An apply that changed nothing the master records, such as one repeated, keeps the master as it
 	// is rather than adding the same one again.
 	if previous.Seq > 0 && next.Hash == previous.Hash {

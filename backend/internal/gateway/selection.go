@@ -111,6 +111,11 @@ func chosen(diff *Diff, target *Version, selection *[]string,
 // the source to deploy the version to first, since a promotion takes no selection to widen.
 func shipmentOf(diff *Diff, target *Version, previous *Master, selection *[]string,
 	options applyOptions) (shipment, []bundleResource, *tidcommon.ServiceError) {
+	// What an apply planned from a master read before it held the lease is sent only while the gateway
+	// still holds that master: another apply that finished in between leaves the plan stale.
+	if options.plannedOn != nil && previous.Hash != *options.plannedOn {
+		return shipment{}, nil, &ErrorAppliedChanged
+	}
 	if options.promotedFrom != "" && selection != nil {
 		if missing, _ := lacking(*selection, diff.Changes); len(missing) > 0 {
 			return shipment{}, nil, tidcommon.CustomServiceError(ErrorPromotionIncomplete, tidcommon.I18nMessage{

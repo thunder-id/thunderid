@@ -557,6 +557,70 @@ func (_c *ProjectServiceInterfaceMock_ProjectExists_Call) RunAndReturn(run func(
 	return _c
 }
 
+// ProjectNames provides a mock function for the type ProjectServiceInterfaceMock
+func (_mock *ProjectServiceInterfaceMock) ProjectNames(ctx context.Context) (map[string]string, *common.ServiceError) {
+	ret := _mock.Called(ctx)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ProjectNames")
+	}
+
+	var r0 map[string]string
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context) (map[string]string, *common.ServiceError)); ok {
+		return returnFunc(ctx)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context) map[string]string); ok {
+		r0 = returnFunc(ctx)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(map[string]string)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context) *common.ServiceError); ok {
+		r1 = returnFunc(ctx)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// ProjectServiceInterfaceMock_ProjectNames_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ProjectNames'
+type ProjectServiceInterfaceMock_ProjectNames_Call struct {
+	*mock.Call
+}
+
+// ProjectNames is a helper method to define mock.On call
+//   - ctx context.Context
+func (_e *ProjectServiceInterfaceMock_Expecter) ProjectNames(ctx any) *ProjectServiceInterfaceMock_ProjectNames_Call {
+	return &ProjectServiceInterfaceMock_ProjectNames_Call{Call: _e.mock.On("ProjectNames", ctx)}
+}
+
+func (_c *ProjectServiceInterfaceMock_ProjectNames_Call) Run(run func(ctx context.Context)) *ProjectServiceInterfaceMock_ProjectNames_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *ProjectServiceInterfaceMock_ProjectNames_Call) Return(stringToString map[string]string, serviceError *common.ServiceError) *ProjectServiceInterfaceMock_ProjectNames_Call {
+	_c.Call.Return(stringToString, serviceError)
+	return _c
+}
+
+func (_c *ProjectServiceInterfaceMock_ProjectNames_Call) RunAndReturn(run func(ctx context.Context) (map[string]string, *common.ServiceError)) *ProjectServiceInterfaceMock_ProjectNames_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // ResolveProjectOU provides a mock function for the type ProjectServiceInterfaceMock
 func (_mock *ProjectServiceInterfaceMock) ResolveProjectOU(ctx context.Context, projectID string, ouID string) (string, *common.ServiceError) {
 	ret := _mock.Called(ctx, projectID, ouID)
