@@ -109,7 +109,6 @@ export const FLOW_PAGE_SIZE = 100;
  * account lifecycle actions have no native endpoint, so an unset handle withholds them.
  */
 export const AdministrationFlowConfigKey = {
-  GROUP_DELETION: 'groupDeletionFlow',
   SECRET_REGENERATION: 'secretRegenerationFlow',
   GROUP_MEMBERSHIP_REMOVAL: 'groupMembershipRemovalFlow',
   ROLE_ASSIGNMENT_REMOVAL: 'roleAssignmentRemovalFlow',

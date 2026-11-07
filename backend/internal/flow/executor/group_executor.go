@@ -27,17 +27,6 @@ type groupAction struct {
 
 // groupActionsByMode maps the node's mode to the group change it makes.
 var groupActionsByMode = map[string]groupAction{
-	ExecutorModeGroupDeletion: {
-		reason: revocation.ReasonGroupDeleted,
-		failed: ErrGroupDeletionFailed,
-		act: func(ctx context.Context, groups groupAdminProvider, plan revocationPlan) (
-			*tidcommon.ServiceError, error) {
-			if plan.AssigneeID != "" {
-				return nil, errors.New("trusted revocation plan names a departing member")
-			}
-			return groups.DeleteGroup(ctx, plan.TargetID), nil
-		},
-	},
 	ExecutorModeGroupMembershipRemoval: {
 		reason: revocation.ReasonGroupMembershipRemoved,
 		failed: ErrGroupMembershipRemovalFailed,
