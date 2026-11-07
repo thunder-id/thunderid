@@ -112,7 +112,6 @@ export const AdministrationFlowConfigKey = {
   GROUP_DELETION: 'groupDeletionFlow',
   SECRET_REGENERATION: 'secretRegenerationFlow',
   GROUP_MEMBERSHIP_REMOVAL: 'groupMembershipRemovalFlow',
-  ROLE_ASSIGNMENT_REMOVAL: 'roleAssignmentRemovalFlow',
   ROLE_DELETION: 'roleDeletionFlow',
   ROLE_PERMISSION_REMOVAL: 'rolePermissionRemovalFlow',
   ACTION_DELETION: 'actionDeletionFlow',
@@ -136,7 +135,6 @@ export type AdministrationFlowConfigKeyValue =
 export const AdministrationFlowInput = {
   ACTION: 'targetActionId',
   APPLICATION: 'targetApplicationId',
-  ASSIGNEE: 'targetAssigneeId',
   GROUP: 'targetGroupId',
   MEMBER: 'targetMemberId',
   OPERATOR_NOTE: 'operatorNote',

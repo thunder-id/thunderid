@@ -1356,20 +1356,6 @@ var (
 		},
 	}
 
-	// ErrRoleAssignmentRemovalFailed is returned when removing the role assignment was refused.
-	ErrRoleAssignmentRemovalFailed = tidcommon.ServiceError{
-		Type: tidcommon.ClientErrorType,
-		Code: "FET-1099",
-		Error: tidcommon.I18nMessage{
-			Key:          "flows.executor.errors.role_assignment_removal_failed",
-			DefaultValue: "Role assignment removal failed",
-		},
-		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "flows.executor.errors.role_assignment_removal_failed_desc",
-			DefaultValue: "The assignment may already be gone, or the caller may no longer change who holds the role",
-		},
-	}
-
 	// ErrRoleDeletionNotAllowed is returned when the role cannot be deleted.
 	ErrRoleDeletionNotAllowed = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,

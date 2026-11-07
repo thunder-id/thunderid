@@ -47,7 +47,8 @@ Each refresh re-evaluates the subject's authorization rather than replaying the 
 
 | Change since the refresh token was issued | Effect on the refresh |
 |---|---|
-| A role is unassigned from the subject, deleted, or stripped of a permission | The affected permission scopes are dropped from the new access token |
+| A role is unassigned from the subject | A refresh token that carries the role's permission scopes fails with `invalid_grant`; see [Token Revocation](../token-revocation#role-assignment-removal) |
+| A role is deleted or stripped of a permission | The affected permission scopes are dropped from the new access token |
 | The subject loses a group membership that granted a role | The affected permission scopes are dropped from the new access token |
 | A permission is removed from the resource server | The scope is dropped from the new access token |
 | The user's password is reset | The refresh fails with `invalid_grant` |

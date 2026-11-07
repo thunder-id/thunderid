@@ -261,3 +261,16 @@ func registerRoutes(mux *http.ServeMux, roleHandler *roleHandler) {
 			w.WriteHeader(http.StatusNoContent)
 		}, opts6))
 }
+
+// SetAssignmentSystemFlowProvider gives the role assignment service the engine that runs the system flows around
+// its writes. It is bound after the service, once the engine exists, and only on a server that issues
+// tokens. A service that cannot take it is reported rather than left without one.
+func SetAssignmentSystemFlowProvider(service RoleAssignmentServiceInterface,
+	provider systemFlowProvider) error {
+	as, ok := service.(*roleAssignmentService)
+	if !ok {
+		return fmt.Errorf("role assignment service does not support system flow provider injection")
+	}
+	as.systemFlows = provider
+	return nil
+}
