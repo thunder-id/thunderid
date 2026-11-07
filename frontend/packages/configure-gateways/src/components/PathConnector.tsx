@@ -1,14 +1,15 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {Box, Button, Stack} from '@wso2/oxygen-ui';
-import {ChevronRight, Rocket} from '@wso2/oxygen-ui-icons-react';
+import {Box, Button, Stack, alpha} from '@wso2/oxygen-ui';
+import {Rocket, Send} from '@wso2/oxygen-ui-icons-react';
 import type {JSX} from 'react';
 
 export interface PathConnectorProps {
   /**
-   * `deploy` joins the versions to a stage: a rocket stands in the middle and the versions' own
-   * buttons act. `promote` joins one stage to the next with the button that promotes.
+   * `deploy` joins the versions to a stage: a rocket rides the arrow and the versions' own buttons
+   * act. `promote` joins one stage to the next: a paper plane rides the arrow, above the button that
+   * promotes.
    */
   variant: 'deploy' | 'promote';
   /** The promote button's label; ignored for a deploy connector. */
@@ -18,9 +19,23 @@ export interface PathConnectorProps {
   testId?: string;
 }
 
-const Line = (): JSX.Element => <Box sx={{width: 18, height: 1, bgcolor: 'divider'}} />;
+const Shaft = (): JSX.Element => (
+  <Box
+    aria-hidden
+    sx={(theme) => ({
+      flex: 1,
+      minWidth: 24,
+      height: 2,
+      borderRadius: 1,
+      bgcolor: alpha(theme.palette.primary.main, 0.55),
+    })}
+  />
+);
 
-/** The dot, lines and arrow between two columns of the deploy path, with what sits in the middle. */
+/**
+ * The arrow between two columns of the deploy path, so the way configuration moves reads at a glance,
+ * with what it carries riding on its shaft.
+ */
 export default function PathConnector({
   variant,
   label = undefined,
@@ -29,14 +44,36 @@ export default function PathConnector({
   testId = undefined,
 }: PathConnectorProps): JSX.Element {
   return (
-    <Stack direction="row" alignItems="center" spacing={0.5} sx={{alignSelf: 'center', px: 1}} data-testid={testId}>
-      <Box sx={{width: 7, height: 7, borderRadius: '50%', bgcolor: 'text.disabled'}} />
-      <Line />
-      {variant === 'deploy' ? (
-        <Box sx={{display: 'flex', color: 'text.disabled'}} aria-hidden>
-          <Rocket size={16} />
+    <Stack alignItems="center" spacing={1} sx={{alignSelf: 'center', minWidth: 112, mx: 1}} data-testid={testId}>
+      <Box sx={{display: 'flex', alignItems: 'center', gap: 1, width: '100%'}}>
+        <Shaft />
+        <Box
+          sx={{display: 'flex', color: 'primary.main'}}
+          aria-hidden
+          data-testid={variant === 'deploy' ? 'path-rocket' : 'path-plane'}
+        >
+          {variant === 'deploy' ? <Rocket size={16} /> : <Send size={16} />}
         </Box>
-      ) : (
+        <Box sx={{flex: 1, minWidth: 24, display: 'flex', alignItems: 'center'}}>
+          <Shaft />
+          <Box
+            aria-hidden
+            component="svg"
+            viewBox="0 0 10 12"
+            sx={(theme) => ({
+              width: 10,
+              height: 12,
+              flexShrink: 0,
+              ml: '-1px',
+              display: 'block',
+              color: alpha(theme.palette.primary.main, 0.55),
+            })}
+          >
+            <path d="M0 0 L10 6 L0 12 Z" fill="currentColor" />
+          </Box>
+        </Box>
+      </Box>
+      {variant === 'promote' && (
         <Button
           variant="outlined"
           size="small"
@@ -47,10 +84,6 @@ export default function PathConnector({
           {label}
         </Button>
       )}
-      <Line />
-      <Box sx={{display: 'flex', color: 'text.disabled'}} aria-hidden>
-        <ChevronRight size={16} />
-      </Box>
     </Stack>
   );
 }

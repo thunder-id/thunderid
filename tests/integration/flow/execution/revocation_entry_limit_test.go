@@ -4,6 +4,8 @@
 package execution
 
 import (
+	"encoding/json"
+	"net/http"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -42,12 +44,11 @@ var entryLimitTestOU = testutils.OrganizationUnit{
 // The limit is read once when the revocation service is built, so the suite restarts the server with it.
 type RevocationEntryLimitTestSuite struct {
 	suite.Suite
-	roleDeletionFlowID string
-	ouID               string
-	resourceServerID   string
-	resourceIDs        []string
-	appID              string
-	createdRoleIDs     []string
+	ouID             string
+	resourceServerID string
+	resourceIDs      []string
+	appID            string
+	createdRoleIDs   []string
 }
 
 func TestRevocationEntryLimitTestSuite(t *testing.T) {
@@ -66,11 +67,6 @@ func (ts *RevocationEntryLimitTestSuite) SetupSuite() {
 	}), "Failed to set the revocation entry limit")
 	ts.Require().NoError(testutils.RestartServer(), "Failed to restart the server with the entry limit")
 	ts.Require().NoError(testutils.ObtainAdminAccessToken(), "Failed to re-obtain the admin token after restart")
-
-	flowID, err := testutils.GetFlowIDByHandle(roleDeletionFlowHandle, administrationFlowType)
-	ts.Require().NoError(err, "Failed to resolve the shipped %s", roleDeletionFlowHandle)
-	ts.Require().NotEmpty(flowID, "The shipped %s must be present", roleDeletionFlowHandle)
-	ts.roleDeletionFlowID = flowID
 
 	ouID, err := testutils.CreateOrganizationUnit(entryLimitTestOU)
 	ts.Require().NoError(err, "Failed to create test organization unit")
@@ -139,7 +135,7 @@ func (ts *RevocationEntryLimitTestSuite) TearDownSuite() {
 	}
 }
 
-func (ts *RevocationEntryLimitTestSuite) TestRoleDeletionFlow_OverLimitIsRefusedAndAppliesNothing() {
+func (ts *RevocationEntryLimitTestSuite) TestDeleteRole_OverLimitIsRefusedAndAppliesNothing() {
 	holder := testutils.Assignment{ID: ts.appID, Type: "app"}
 	// One holder times two scopes plans two entries, one more than the limit.
 	roleID := createRole(&ts.Suite, &ts.createdRoleIDs, ts.ouID, ts.resourceServerID,
@@ -147,14 +143,13 @@ func (ts *RevocationEntryLimitTestSuite) TestRoleDeletionFlow_OverLimitIsRefused
 	first := grantedToken(&ts.Suite, entryLimitClient, scopeOverLimitFirst)
 	second := grantedToken(&ts.Suite, entryLimitClient, scopeOverLimitSecond)
 
-	step := executeAsAdmin(&ts.Suite, ts.roleDeletionFlowID, map[string]string{roleTargetInput: roleID})
+	status, refusal := ts.deleteRole(roleID)
 
-	ts.Equal("ERROR", step.FlowStatus, "A change over the entry limit must not complete")
-	ts.Require().NotNil(step.Error, "The refusal must be reported in the error envelope")
-	ts.Equal(errCodeEntryLimitExceeded, step.Error.Code, "The refusal must carry the entry limit code")
-	ts.Equal("2", step.Error.Description.Params["entries"],
+	ts.Equal(http.StatusBadRequest, status, "A change over the entry limit must be refused")
+	ts.Equal(errCodeEntryLimitExceeded, refusal.Code, "The refusal must carry the entry limit code")
+	ts.Equal("2", refusal.Description.Params["entries"],
 		"The refusal must report how many entries the change would have written")
-	ts.Equal("1", step.Error.Description.Params["max"], "The refusal must report the configured limit")
+	ts.Equal("1", refusal.Description.Params["max"], "The refusal must report the configured limit")
 
 	ts.True(tokenIsActive(&ts.Suite, entryLimitClient, first),
 		"A refused change must revoke nothing, so the first scope's token must stay active")
@@ -173,17 +168,44 @@ func (ts *RevocationEntryLimitTestSuite) TestRoleDeletionFlow_OverLimitIsRefused
 	grantedToken(&ts.Suite, entryLimitClient, scopeOverLimitSecond)
 }
 
-func (ts *RevocationEntryLimitTestSuite) TestRoleDeletionFlow_AtLimitCompletes() {
+func (ts *RevocationEntryLimitTestSuite) TestDeleteRole_AtLimitCompletes() {
 	// Exactly as many entries as the limit is allowed: the limit refuses only a change that exceeds it.
 	roleID := createRole(&ts.Suite, &ts.createdRoleIDs, ts.ouID, ts.resourceServerID,
 		"Entry Limit At Administrator", []string{scopeAtLimit}, testutils.Assignment{ID: ts.appID, Type: "app"})
 	token := grantedToken(&ts.Suite, entryLimitClient, scopeAtLimit)
 
-	step := executeAsAdmin(&ts.Suite, ts.roleDeletionFlowID, map[string]string{roleTargetInput: roleID})
+	status, _ := ts.deleteRole(roleID)
 
-	requireCompleted(&ts.Suite, step)
+	ts.Equal(http.StatusNoContent, status, "A change within the limit must be applied")
 	ts.False(tokenIsActive(&ts.Suite, entryLimitClient, token),
 		"A change within the limit must revoke the deleted role's scope")
+}
+
+// entryLimitRefusal is the part of an API error response these tests read.
+type entryLimitRefusal struct {
+	Code        string `json:"code"`
+	Description struct {
+		Params map[string]string `json:"params"`
+	} `json:"description"`
+}
+
+// deleteRole deletes the role through the management API, which plans and records its revocation before
+// the role is removed, and returns the status with the refusal, if any.
+func (ts *RevocationEntryLimitTestSuite) deleteRole(roleID string) (int, entryLimitRefusal) {
+	ts.T().Helper()
+
+	req, err := http.NewRequest(http.MethodDelete, testServerURL+"/roles/"+roleID, nil)
+	ts.Require().NoError(err)
+
+	resp, err := testutils.GetHTTPClient().Do(req)
+	ts.Require().NoError(err, "Failed to delete the role")
+	defer resp.Body.Close()
+
+	var refusal entryLimitRefusal
+	if resp.StatusCode != http.StatusNoContent {
+		ts.Require().NoError(json.NewDecoder(resp.Body).Decode(&refusal), "The refusal must carry an error body")
+	}
+	return resp.StatusCode, refusal
 }
 
 // oauthWithEntryLimit copies the oauth section along the limit's path, because PatchDeploymentConfig

@@ -23,6 +23,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
 )
 
@@ -32,7 +33,8 @@ type serverConfigProvider interface {
 }
 
 // Initialize initializes the flow management service and registers HTTP routes. withSystemFlows loads
-// the system flows, for a server that executes flows.
+// the system flows, for a server that executes flows. bus is required: the service publishes the audit
+// event of every flow it creates, updates, deletes or restores on it.
 func Initialize(
 	mux *http.ServeMux,
 	mcpServer *mcp.Server,
@@ -49,7 +51,11 @@ func Initialize(
 	idpProvider idpProvider,
 	withSystemFlows bool,
 	sharingSvc sharing.SharingServiceInterface,
+	bus eventbus.EventBusInterface,
 ) (FlowMgtServiceInterface, declarativeresource.ResourceExporter, error) {
+	if bus == nil {
+		return nil, nil, errNilEventBus
+	}
 	flowValidator := newFlowValidator(
 		executorRegistry, interceptorRegistry, graphBuilder, connectionProvider, idpProvider)
 	store, compositeStore, transactioner, err := initializeStore(cacheManager, flowValidator, ouSvc)
@@ -74,7 +80,7 @@ func Initialize(
 	service := newFlowMgtService(
 		store, inferenceService, graphBuilder, executorRegistry,
 		interceptorRegistry, flowValidator, compositeStore, transactioner, serverConfigSvc, ouSvc,
-		templateResolver, systemFlows, sharingSvc, idpProvider,
+		templateResolver, systemFlows, sharingSvc, idpProvider, bus,
 	)
 	if err := service.loadDeclarativeSharing(); err != nil {
 		return nil, nil, err

@@ -85,8 +85,7 @@ func (ts *GatewayVersionsTestSuite) TestRemovingAUnitAMoveFreesGoesAfterTheMove(
 		_ = testutils.DeleteOrganizationUnit(parentID)
 	}()
 	underParent := ts.capture("a unit under another")
-	ts.Require().Equal(http.StatusOK, ts.call(http.MethodPut, "/organization-units/"+childID,
-		map[string]any{"handle": childHandle, "name": childName, "parent": nil}, nil))
+	ts.Require().NoError(testutils.MoveOrganizationUnitToRoot(childID, childHandle, childName))
 	ts.Require().NoError(testutils.DeleteOrganizationUnit(parentID))
 	moved := ts.capture("the unit moved out and its parent removed")
 	parentKey, childKey := "organization_unit/"+parentID, "organization_unit/"+childID

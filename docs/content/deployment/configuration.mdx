@@ -38,6 +38,7 @@ Controls the <ProductName /> server's network settings and identity.
 | `server.timeouts.write_seconds` | `10` | Seconds a request may take from the end of its headers until its response is written. A request still running at that point loses its connection, though the server finishes the work. It applies to every route except those with a timeout of their own, so it can stay short: applying and reverting a version (`gateway.apply_timeout_seconds`), the import (`import.timeout_seconds`), and the MCP server (`/mcp`), which gets the longer of the two because a tool can run either. |
 | `server.timeouts.idle_seconds` | `120` | Seconds a kept-alive connection waits for its next request before it is closed. |
 | `server.identifier` | `default-deployment` | Unique identifier for this deployment instance. Every stored resource is scoped by it, so changing it on a server that already holds data hides that data rather than renaming it. |
+| `server.system_ou_id` | _(empty)_ | The ID of the system organization unit: the one resources in a project are placed in, and that applications and agents created without an `ouId` go to. The shipped `deployment.yaml` sets it to the organization unit the bootstrap creates. The organization unit it names cannot be deleted. Don't change it once resources are placed in it. When empty, creating an application or agent without an `ouId` is rejected. |
 | `gateway.max_gateways` | `1` | Guards how many gateways this deployment administers, through the Gateway API (`POST /gateways`) or a gateway declared in a file. A standalone deployment pairs with one; raise it only where something else manages the fleet, or set it to `0` for a deployment that administers none. A registration beyond the number is refused with `409`. This is a guard rather than a guarantee: two registrations arriving at the same moment can leave one more gateway than configured, so do not rely on it as a licensing or security boundary. |
 | `gateway.max_versions` | `3` | How many captured configuration versions this deployment keeps (`POST /configuration-versions`). Capturing one beyond the number removes the oldest, except a version some gateway holds or could be reverted to. Those are kept even when that leaves more versions than the number, so applying and reverting keep working whatever it is. It also bounds the masters kept for each gateway (`GET /gateways/{id}/master/history`): recording one beyond the number removes that gateway's oldest, except the master the gateway's revert returns to and, for each project, the masters its rollback needs. The number is never less than one. |
 | `gateway.auto_apply` | `false` | Whether a control plane applies its latest configuration version to the first gateway of the pipeline each time it captures one after a change, so a write reaches that gateway without a deploy. Off by default, because a control plane that administers several gateways usually keeps applying a version a deliberate step. The `gateway` server configuration section overrides it at runtime. See [Deploy Pipeline and Auto Apply](#deploy-pipeline-and-auto-apply). |
@@ -1299,6 +1300,19 @@ gateway:
 Without `gateway.pipeline`, the default gateway is the only stage. `GET /gateways/pipeline` returns the stages. An entry is left out of them when nothing can be deployed to it for certain: its gateway is not registered, as right after startup before gateways are registered through the API, or two gateways have that name, as a gateway declared in a file and one registered through the API can.
 
 The first stage is where auto apply deploys and where a control plane writes the values its references name. While the first entry's gateway is left out, both wait rather than going to the next stage.
+
+The Console gives each stage's gateway a page of its own, at `/deploy/gateways/{id}`, and at `/projects/{projectId}/deploy/gateways/{id}` within a project. To place these pages elsewhere, set `deploy.gateway_path` in the Console's runtime configuration (`apps/console/config.js`):
+
+```javascript
+window.__THUNDERID_RUNTIME_CONFIG__ = {
+  // ...
+  deploy: {
+    gateway_path: 'environments',
+  },
+};
+```
+
+With this value, a gateway's page is at `/environments/{id}`. The explorer and values pages of a gateway stay under `/deploy/gateways/{id}`.
 
 ### Auto Apply
 

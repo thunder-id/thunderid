@@ -29,6 +29,8 @@ import (
 	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/sharing"
 	"github.com/thunder-id/thunderid/internal/system/config"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
+	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/filter"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
@@ -155,6 +157,7 @@ type flowMgtService struct {
 	systemFlows map[string]json.RawMessage
 	sharingSvc  sharing.SharingServiceInterface
 	idps        idpProvider
+	bus         eventbus.EventBusInterface
 	logger      *log.Logger
 }
 
@@ -180,6 +183,7 @@ func newFlowMgtService(
 	systemFlows map[string]json.RawMessage,
 	sharingSvc sharing.SharingServiceInterface,
 	idps idpProvider,
+	bus eventbus.EventBusInterface,
 ) *flowMgtService {
 	return &flowMgtService{
 		store:               store,
@@ -196,6 +200,7 @@ func newFlowMgtService(
 		systemFlows:         systemFlows,
 		sharingSvc:          sharingSvc,
 		idps:                idps,
+		bus:                 bus,
 		logger:              log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName)),
 	}
 }
@@ -242,6 +247,18 @@ func (s *flowMgtService) ListFlows(ctx context.Context, limit, offset int, flowT
 
 // CreateFlow creates a new flow definition with version 1.
 func (s *flowMgtService) CreateFlow(ctx context.Context, flowDef *FlowDefinition) (
+	*providers.CompleteFlowDefinition, *tidcommon.ServiceError) {
+	created, svcErr := s.createFlow(ctx, flowDef)
+	var flowID string
+	if svcErr == nil {
+		flowID = created.ID
+	}
+	s.publishFlowEvent(ctx, audit.EventFlowCreate, audit.ActionCreate, flowID, svcErr)
+	return created, svcErr
+}
+
+// createFlow creates a new flow definition with version 1 without publishing its audit event.
+func (s *flowMgtService) createFlow(ctx context.Context, flowDef *FlowDefinition) (
 	*providers.CompleteFlowDefinition, *tidcommon.ServiceError) {
 	if err := s.flowValidator.ValidateFlowDefinition(ctx, flowDef); err != nil {
 		return nil, err
@@ -718,7 +735,9 @@ func (s *flowMgtService) GetFlowByHandle(ctx context.Context, handle string, flo
 // Old versions are retained up to the configured max_version_history limit.
 func (s *flowMgtService) UpdateFlow(ctx context.Context, flowID string, flowDef *FlowDefinition) (
 	*providers.CompleteFlowDefinition, *tidcommon.ServiceError) {
-	return s.updateFlow(ctx, flowID, flowDef, nil)
+	updated, svcErr := s.updateFlow(ctx, flowID, flowDef, nil)
+	s.publishFlowEvent(ctx, audit.EventFlowUpdate, audit.ActionUpdate, flowID, svcErr)
+	return updated, svcErr
 }
 
 // UpdateFlowWithSharing updates a flow and replaces its sharing policies with the ones a document carries, in one
@@ -726,13 +745,15 @@ func (s *flowMgtService) UpdateFlow(ctx context.Context, flowID string, flowDef 
 func (s *flowMgtService) UpdateFlowWithSharing(
 	ctx context.Context, flowID string, flowDef *FlowDefinition, policies []sharing.PolicyRequest,
 ) (*providers.CompleteFlowDefinition, *tidcommon.ServiceError) {
-	return s.updateFlow(ctx, flowID, flowDef, policies)
+	updated, svcErr := s.updateFlow(ctx, flowID, flowDef, policies)
+	s.publishFlowEvent(ctx, audit.EventFlowUpdate, audit.ActionUpdate, flowID, svcErr)
+	return updated, svcErr
 }
 
 // updateFlow is UpdateFlow, optionally with the sharing policies of a document. Policies a document states take the
 // place of the checks of the new definition against the policies and saved values the flow holds: they are checked
 // against the new definition and applied, and then what the flow holds is checked, so only a conflict that survives
-// the document is refused.
+// the document is refused. It does not publish the audit event of the update.
 func (s *flowMgtService) updateFlow(
 	ctx context.Context, flowID string, flowDef *FlowDefinition, policies []sharing.PolicyRequest,
 ) (*providers.CompleteFlowDefinition, *tidcommon.ServiceError) {
@@ -873,6 +894,18 @@ func (s *flowMgtService) updateFlow(
 
 // DeleteFlow deletes a flow definition and all its version history.
 func (s *flowMgtService) DeleteFlow(ctx context.Context, flowID string) *tidcommon.ServiceError {
+	svcErr := s.deleteFlow(ctx, flowID)
+	// A delete that found nothing to remove succeeds without an event, so no caller can record a
+	// deletion of an ID it made up.
+	if svcErr == errFlowNotFoundNoop {
+		return nil
+	}
+	s.publishFlowEvent(ctx, audit.EventFlowDelete, audit.ActionDelete, flowID, svcErr)
+	return svcErr
+}
+
+// deleteFlow deletes a flow definition and all its version history without publishing its audit event.
+func (s *flowMgtService) deleteFlow(ctx context.Context, flowID string) *tidcommon.ServiceError {
 	if flowID == "" {
 		return &ErrorMissingFlowID
 	}
@@ -883,7 +916,10 @@ func (s *flowMgtService) DeleteFlow(ctx context.Context, flowID string) *tidcomm
 	if err != nil {
 		if errors.Is(err, errFlowNotFound) {
 			// A flow that is already gone is deleted; what is left of its sharing is not.
-			return s.purgeOrphanedSharing(ctx, flowID)
+			if svcErr := s.purgeOrphanedSharing(ctx, flowID); svcErr != nil {
+				return svcErr
+			}
+			return errFlowNotFoundNoop
 		}
 		logger.Error(ctx, "Failed to get existing flow", log.Error(err))
 		return &tidcommon.InternalServerError
@@ -976,6 +1012,14 @@ func (s *flowMgtService) GetFlowVersion(ctx context.Context, flowID string, vers
 // Creates a new version by copying the configuration from the specified version.
 func (s *flowMgtService) RestoreFlowVersion(ctx context.Context, flowID string, version int) (
 	*providers.CompleteFlowDefinition, *tidcommon.ServiceError) {
+	restored, svcErr := s.restoreFlowVersion(ctx, flowID, version)
+	s.publishFlowEvent(ctx, audit.EventFlowRestore, audit.ActionRestore, flowID, svcErr)
+	return restored, svcErr
+}
+
+// restoreFlowVersion restores a specific version as the active version without publishing its audit event.
+func (s *flowMgtService) restoreFlowVersion(ctx context.Context, flowID string, version int) (
+	*providers.CompleteFlowDefinition, *tidcommon.ServiceError) {
 	if flowID == "" {
 		return nil, &ErrorMissingFlowID
 	}
@@ -1036,6 +1080,19 @@ func (s *flowMgtService) RestoreFlowVersion(ctx context.Context, flowID string, 
 	s.graphBuilder.InvalidateCache(ctx, flowID)
 
 	return restoredFlow, nil
+}
+
+// publishFlowEvent publishes the audit event of an attempt on the flow with flowID, after the change
+// committed or was refused. Neither the definition nor the version restored is recorded. A delete whose
+// sharing cleanup fails after the flow is removed is recorded as failed, and the registration flow
+// inferred from a created authentication flow is created without an event of its own: known limitations.
+func (s *flowMgtService) publishFlowEvent(ctx context.Context, name string, action audit.Action,
+	flowID string, svcErr *tidcommon.ServiceError) {
+	// A failed attempt keeps the ID the caller asked for, even one that matches no flow, as forensic
+	// evidence of what was probed; the payload caps it and the sink escapes it.
+	target := audit.Ref{Type: audit.TargetTypeFlow, ID: flowID}
+	eventbus.TryPublish(ctx, s.bus,
+		eventbus.NewEvent(ctx, name).With(audit.ChangePayload(ctx, target, action, svcErr)))
 }
 
 // Graph building methods

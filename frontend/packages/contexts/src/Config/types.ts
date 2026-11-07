@@ -279,6 +279,20 @@ export interface DirectApiConfig {
 }
 
 /**
+ * Deploy configuration interface that defines where the console places the pages of the gateways a
+ * version is deployed and promoted through.
+ *
+ * @public
+ */
+export interface DeployConfig {
+  /**
+   * The path of a gateway's own page, before the gateway's id, such as `environments`. Defaults to
+   * `deploy/gateways`. Within a project, the page is under the project's.
+   */
+  gateway_path?: string;
+}
+
+/**
  * Runtime overrides for the ThunderID SDK provider (ThunderIDProvider props).
  *
  * Accepts any valid ThunderIDProvider prop. Values are deep-merged on top of
@@ -339,6 +353,9 @@ export interface ProductConfig {
 
   /** Optional SDK provider overrides. Values here take precedence over computed defaults. */
   sdk?: SdkConfig;
+
+  /** Optional deploy configuration, such as where a gateway's own page is. */
+  deploy?: DeployConfig;
 }
 
 /**

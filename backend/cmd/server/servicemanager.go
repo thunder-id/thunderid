@@ -183,7 +183,9 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	// what seals a secret before it reaches the database.
 	_, references := variablestore.Initialize(mux, configCryptoSvc, cacheManager)
 
-	ouAuthzService, err := sysauthz.Initialize()
+	// This server is the data plane, which confines each management token to the organization unit it
+	// names.
+	ouAuthzService, err := sysauthz.InitializeOUBoundedAuthorization()
 	fatalOnError(ctx, logger, err, "Failed to initialize system authorization service")
 
 	ouService, ouHierarchyResolver, ouEnumerator, ouExporter, err := ou.Initialize(
@@ -263,7 +265,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		serverconfig.ConfigNameNotification:          notificationConfigHandler,
 	}
 	serverConfigService, serverConfigExporter, err := serverconfig.Initialize(mux, cacheManager, serverConfigHandlers,
-		observabilitySvc)
+		observabilitySvc, auditBus)
 	fatalOnError(ctx, logger, err, "Failed to initialize server config service")
 	exporters = append(exporters, serverConfigExporter)
 
@@ -494,7 +496,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	flowMgtService, flowMgtExporter, err := flowmgt.Initialize(
 		mux, mcpServer, cacheManager, flowFactory, execRegistry, interceptorRegistry, graphBuilder,
 		serverConfigService, ouService, notifTemplateSvc, httpConnectionService, flowConfigHandler, idpService,
-		true, sharingService)
+		true, sharingService, auditBus)
 	fatalOnError(ctx, logger, err, "Failed to initialize FlowMgtService")
 
 	exporters = append(exporters, flowMgtExporter)
@@ -644,6 +646,8 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		adminflow.Initialize(serverConfigService, flowMgtService, flowExecService))
 	err = user.SetSystemFlowProvider(userService, flowExecService)
 	fatalOnError(ctx, logger, err, "Failed to inject the system flow provider into the user service")
+	err = role.SetSystemFlowProvider(roleService, flowExecService)
+	fatalOnError(ctx, logger, err, "Failed to inject the system flow provider into the role service")
 
 	// Initialize OAuth services.
 	tokenValidator, dispatcher, err := oauth.Initialize(mux, actorProvider, authnProvider, jwtService, jweService,
@@ -666,7 +670,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 
 	if oauthCfg.OAuth.DCR.IsEnabled() {
 		// Register OAuth2 DCR service.
-		err = dcr.Initialize(mux, applicationService, ouService, i18nService, authnProvider, oauthCfg)
+		err = dcr.Initialize(mux, applicationService, i18nService, authnProvider, oauthCfg)
 		fatalOnError(ctx, logger, err, "Failed to initialize OAuth2 DCR service")
 	}
 

@@ -311,6 +311,7 @@ func TestHandleDCRRegistration_ClosedDCR_NoToken(t *testing.T) {
 	handler.HandleDCRRegistration(rr, req)
 
 	assert.Equal(t, http.StatusUnauthorized, rr.Code)
+	assert.Equal(t, serverconst.TokenTypeBearer, rr.Header().Get(serverconst.WWWAuthenticateHeaderName))
 	var errResp map[string]interface{}
 	assert.NoError(t, json.Unmarshal(rr.Body.Bytes(), &errResp))
 	assert.Equal(t, "unauthorized_client", errResp["error"])
@@ -334,12 +335,14 @@ func TestHandleDCRRegistration_ClosedDCR_InsufficientPermissions(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodPost, "/oauth2/dcr/register", bytes.NewReader([]byte(`{}`)))
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(serverconst.AuthorizationHeaderName, "Bearer tok")
 	req = req.WithContext(ctx)
 	rr := httptest.NewRecorder()
 
 	handler.HandleDCRRegistration(rr, req)
 
 	assert.Equal(t, http.StatusUnauthorized, rr.Code)
+	assert.Equal(t, wwwAuthenticateInvalidToken, rr.Header().Get(serverconst.WWWAuthenticateHeaderName))
 	var errResp map[string]interface{}
 	assert.NoError(t, json.Unmarshal(rr.Body.Bytes(), &errResp))
 	assert.Equal(t, "unauthorized_client", errResp["error"])
@@ -428,6 +431,7 @@ func (s *DCRHandlerTestSuite) newRequestWithPermissions(
 		req = httptest.NewRequest(method, testConfigPath, nil)
 	}
 	if permissions != nil {
+		req.Header.Set(serverconst.AuthorizationHeaderName, "Bearer tok")
 		secCtx := security.NewSecurityContextForTest("admin", "ou1", "tok", permissions, nil)
 		req = req.WithContext(security.WithSecurityContextTest(context.Background(), secCtx))
 	}
@@ -461,6 +465,7 @@ func (s *DCRHandlerTestSuite) TestGet_WithoutSystemPermissionIsUnauthorized() {
 
 	s.Equal(http.StatusUnauthorized, rr.Code)
 	s.Equal(wwwAuthenticateInvalidToken, rr.Header().Get(serverconst.WWWAuthenticateHeaderName))
+	s.Contains(rr.Body.String(), `"error":"unauthorized_client"`)
 	s.mockService.AssertNotCalled(s.T(), "GetClient", mock.Anything, mock.Anything)
 }
 
@@ -483,6 +488,7 @@ func (s *DCRHandlerTestSuite) TestGet_UnauthenticatedIsUnauthorized() {
 	s.handler.HandleGetClientConfiguration(rr, s.newRequestWithPermissions(http.MethodGet, nil, nil))
 
 	s.Equal(http.StatusUnauthorized, rr.Code)
+	s.Equal(serverconst.TokenTypeBearer, rr.Header().Get(serverconst.WWWAuthenticateHeaderName))
 	s.mockService.AssertNotCalled(s.T(), "GetClient", mock.Anything, mock.Anything)
 }
 

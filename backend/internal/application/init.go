@@ -30,7 +30,7 @@ import (
 // valueCapturer is optional. Given one, the service hands it every application it creates or changes,
 // so the values the application's export refers to are kept where a reference finds them.
 //
-// projectResolver is nil on a deployment that serves no projects, where a project ID is kept unchecked.
+// projectValidator is nil on a deployment that serves no projects, where a project ID is kept unchecked.
 // bus is required: the service publishes the audit event of every application it creates, updates or
 // deletes on it.
 func Initialize(
@@ -46,7 +46,7 @@ func Initialize(
 	sharingService sharing.SharingServiceInterface,
 	valueCapturer declarativeresource.ValueCapturer,
 	governance identitygovernance.IdentityGovernanceServiceInterface,
-	projectResolver projectOUResolver,
+	projectValidator projectOUValidator,
 	bus eventbus.EventBusInterface,
 ) (ApplicationServiceInterface, declarativeresource.ResourceExporter, error) {
 	if bus == nil {
@@ -55,7 +55,7 @@ func Initialize(
 
 	appService := newApplicationService(
 		inboundClient, entityService, ouService, i18nService, cryptoSvc, serverConfigSvc, artifactLifetime,
-		valueCapturer, sharingService, governance, projectResolver, bus,
+		valueCapturer, sharingService, governance, projectValidator, bus,
 	)
 
 	// Registered before declarative resources load, because loading seeds the sharing policies those

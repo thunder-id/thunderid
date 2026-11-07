@@ -1384,20 +1384,6 @@ var (
 		},
 	}
 
-	// ErrRoleDeletionFailed is returned when a validated role deletion was refused.
-	ErrRoleDeletionFailed = tidcommon.ServiceError{
-		Type: tidcommon.ClientErrorType,
-		Code: "FET-1101",
-		Error: tidcommon.I18nMessage{
-			Key:          "flows.executor.errors.role_deletion_failed",
-			DefaultValue: "Role deletion failed",
-		},
-		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "flows.executor.errors.role_deletion_failed_desc",
-			DefaultValue: "The role may already be deleted, or it changed after the request was validated",
-		},
-	}
-
 	// ErrRolePermissionRemovalNotAllowed is returned when the role's permissions cannot be changed.
 	ErrRolePermissionRemovalNotAllowed = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,

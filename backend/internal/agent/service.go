@@ -35,6 +35,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/filter"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/observability"
+	"github.com/thunder-id/thunderid/internal/system/projectscope"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
@@ -66,9 +67,9 @@ type AgentServiceInterface interface {
 	SetDependencyRegistry(r resourcedependency.Registry)
 }
 
-// projectOUResolver finds the organization unit that a resource scoped to a project belongs to.
-type projectOUResolver interface {
-	ResolveProjectOU(ctx context.Context, projectID, ouID string) (string, *tidcommon.ServiceError)
+// projectOUValidator checks that the organization unit of a resource scoped to a project belongs to it.
+type projectOUValidator interface {
+	ValidateProjectOU(ctx context.Context, projectID, ouID string) *tidcommon.ServiceError
 }
 
 type agentService struct {
@@ -86,8 +87,10 @@ type agentService struct {
 	// commit together.
 	transactioner    providers.Transactioner
 	observabilitySvc observability.ObservabilityServiceInterface
-	// projectResolver is nil on a deployment that serves no projects.
-	projectResolver projectOUResolver
+	// projectValidator is nil on a deployment that serves no projects.
+	projectValidator projectOUValidator
+	// projectRequired is set when a deployment that serves projects refuses an agent created without one.
+	projectRequired bool
 }
 
 func newAgentService(
@@ -101,7 +104,7 @@ func newAgentService(
 	entityTypeService entitytype.EntityTypeServiceInterface,
 	transactioner providers.Transactioner,
 	observabilitySvc observability.ObservabilityServiceInterface,
-	projectResolver projectOUResolver,
+	projectValidator projectOUValidator,
 ) AgentServiceInterface {
 	return &agentService{
 		logger:               log.GetLogger().With(log.String(log.LoggerKeyComponentName, "AgentService")),
@@ -115,7 +118,8 @@ func newAgentService(
 		entityTypeService:    entityTypeService,
 		transactioner:        transactioner,
 		observabilitySvc:     observabilitySvc,
-		projectResolver:      projectResolver,
+		projectValidator:     projectValidator,
+		projectRequired:      projectValidator != nil && projectscope.ProjectRequired(security.ResourceTypeAgent),
 	}
 }
 
@@ -124,6 +128,9 @@ func (s *agentService) CreateAgent(ctx context.Context, agent *providers.Agent) 
 	*model.AgentCompleteResponse, *tidcommon.ServiceError) {
 	if agent == nil {
 		return nil, &ErrorInvalidRequestFormat
+	}
+	if svcErr := s.checkProjectGiven(ctx, agent.ProjectID); svcErr != nil {
+		return nil, svcErr
 	}
 	normalizeLoginConsent(agent.LoginConsent)
 
@@ -979,14 +986,18 @@ func (s *agentService) ValidateAgent(ctx context.Context, agent *providers.Agent
 		}
 		agent.OUID = ou.ID
 	}
-	// A project places the agent in the system organization unit, or checks that the one named
-	// belongs to it.
-	if agent.ProjectID != "" {
-		ouID, svcErr := s.resolveProjectOU(ctx, agent.ProjectID, agent.OUID)
+	if agent.OUID == "" {
+		systemOUID, svcErr := s.ouService.GetSystemOUID(ctx)
 		if svcErr != nil {
 			return "", "", inboundmodel.InboundClient{}, svcErr
 		}
-		agent.OUID = ouID
+		agent.OUID = systemOUID
+	}
+	// A project checks that the agent's organization unit belongs to it.
+	if agent.ProjectID != "" {
+		if svcErr := s.validateProjectOU(ctx, agent.ProjectID, agent.OUID); svcErr != nil {
+			return "", "", inboundmodel.InboundClient{}, svcErr
+		}
 	}
 	if svcErr := s.validateOUExists(ctx, agent.OUID); svcErr != nil {
 		return "", "", inboundmodel.InboundClient{}, svcErr
@@ -1095,38 +1106,39 @@ func (s *agentService) validateOUExists(ctx context.Context, ouID string) *tidco
 	return nil
 }
 
-// resolveProjectOU returns the organization unit of the project that an agent belongs to: the
-// system organization unit when ouID is empty, or ouID when it belongs to the project. It returns
-// ErrorInvalidProject when no such project exists, ErrorOUNotInProject when the organization unit is
-// outside the project, and ErrorOrganizationUnitNotFound when the organization unit does not exist.
+// checkProjectGiven refuses an agent created without a project where projects are served and one is
+// required, and warns about it where one is not required yet.
+func (s *agentService) checkProjectGiven(ctx context.Context, projectID string) *tidcommon.ServiceError {
+	if projectID != "" || s.projectValidator == nil {
+		return nil
+	}
+	if s.projectRequired {
+		return &ErrorProjectRequired
+	}
+	s.logger.Warn(ctx, "Agent created without a project; a project will be required")
+	return nil
+}
+
+// validateProjectOU checks that an agent's organization unit belongs to its project. It returns
+// ErrorInvalidProject when no such project exists, and ErrorOUNotInProject when the organization unit is
+// outside the project.
 //
 // A deployment that serves no projects, such as a Data Plane, cannot check the project. It keeps the
-// project ID as given so that imported configuration retains it, and places the agent as above.
-func (s *agentService) resolveProjectOU(
-	ctx context.Context, projectID, ouID string) (string, *tidcommon.ServiceError) {
-	if projectID == "" {
-		return "", &ErrorInvalidProject
+// project ID and organization unit as given so that imported configuration retains them.
+func (s *agentService) validateProjectOU(ctx context.Context, projectID, ouID string) *tidcommon.ServiceError {
+	if s.projectValidator == nil {
+		return nil
 	}
-	if s.projectResolver == nil {
-		if ouID == "" {
-			return oupkg.SystemOUID, nil
-		}
-		return ouID, nil
-	}
-	resolved, svcErr := s.projectResolver.ResolveProjectOU(ctx, projectID, ouID)
-	if svcErr == nil {
-		return resolved, nil
-	}
-	if svcErr.Type != tidcommon.ClientErrorType {
-		return "", &tidcommon.InternalServerError
-	}
-	switch svcErr.Code {
-	case projectNotFoundErrorCode:
-		return "", &ErrorInvalidProject
-	case ouNotInProjectErrorCode:
-		return "", &ErrorOUNotInProject
+	svcErr := s.projectValidator.ValidateProjectOU(ctx, projectID, ouID)
+	switch {
+	case svcErr == nil:
+		return nil
+	case svcErr.Code == projectNotFoundErrorCode:
+		return &ErrorInvalidProject
+	case svcErr.Code == ouNotInProjectErrorCode:
+		return &ErrorOUNotInProject
 	default:
-		return "", &ErrorOrganizationUnitNotFound
+		return &tidcommon.InternalServerError
 	}
 }
 
@@ -1163,8 +1175,7 @@ func (s *agentService) resolveUpdateOUID(
 	if projectID == "" {
 		return ouID, "", nil
 	}
-	ouID, svcErr := s.resolveProjectOU(ctx, projectID, ouID)
-	if svcErr != nil {
+	if svcErr := s.validateProjectOU(ctx, projectID, ouID); svcErr != nil {
 		return "", "", svcErr
 	}
 	return ouID, projectID, nil

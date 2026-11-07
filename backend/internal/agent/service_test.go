@@ -55,6 +55,7 @@ const (
 	testAgentName = "test-agent"
 	testAgentType = "employee"
 	testOUID      = "ou-id-abc"
+	testSystemOU  = "system-ou"
 	testAgentLogo = "avatar:shape=circle,variant=anonymous_entity,content=bot_head,colors=0"
 )
 
@@ -150,6 +151,8 @@ func (suite *AgentServiceTestSuite) setupService() (
 		Maybe().Return(oupkg.OrganizationUnit{ID: testOUID}, (*tidcommon.ServiceError)(nil))
 	mockOU.On("GetOrganizationUnitHandlesByIDs", mock.Anything, mock.Anything).
 		Maybe().Return(map[string]string{}, (*tidcommon.ServiceError)(nil))
+
+	mockOU.On("GetSystemOUID", mock.Anything).Maybe().Return(testSystemOU, (*tidcommon.ServiceError)(nil))
 
 	governance := identitygovernancemock.NewIdentityGovernanceServiceInterfaceMock(suite.T())
 	governance.EXPECT().ReadAccess(mock.Anything, mock.Anything).RunAndReturn(activeReads).Maybe()
@@ -2887,6 +2890,73 @@ func (suite *AgentServiceTestSuite) TestValidateAgent_NilRequest() {
 	assert.Equal(suite.T(), ErrorInvalidRequestFormat.Code, svcErr.Code)
 }
 
+func (suite *AgentServiceTestSuite) TestValidateAgent_DefaultOU() {
+	for name, tc := range map[string]struct {
+		callerOU string
+		expected string
+	}{
+		"a caller without an organization unit": {expected: testSystemOU},
+		"a caller with an organization unit":    {callerOU: "caller-ou", expected: testSystemOU},
+	} {
+		suite.Run(name, func() {
+			svc, _, _, _, _ := suite.setupService()
+			ctx := security.WithSecurityContextTest(context.Background(),
+				security.NewSecurityContextForTest("admin-1", tc.callerOU, "", nil, nil))
+			agent := &providers.Agent{Type: testAgentType}
+
+			_, _, _, svcErr := svc.ValidateAgent(ctx, agent, "")
+
+			suite.Nil(svcErr)
+			assert.Equal(suite.T(), tc.expected, agent.OUID)
+		})
+	}
+}
+
+func (suite *AgentServiceTestSuite) TestCreateAgent_ProjectGiven() {
+	for name, tc := range map[string]struct {
+		servesProjects  bool
+		projectRequired bool
+		expected        *tidcommon.ServiceError
+	}{
+		"projects not served":        {},
+		"a project not yet required": {servesProjects: true},
+		"a project required":         {servesProjects: true, projectRequired: true, expected: &ErrorProjectRequired},
+	} {
+		suite.Run(name, func() {
+			svc, _, _, _, _ := suite.setupService()
+			if tc.servesProjects {
+				svc.projectValidator = suite.validating(testSystemOU, nil)
+			}
+			svc.projectRequired = tc.projectRequired
+
+			assert.Equal(suite.T(), tc.expected, svc.checkProjectGiven(context.Background(), ""))
+		})
+	}
+}
+
+func (suite *AgentServiceTestSuite) TestCreateAgent_ProjectRequired() {
+	svc, _, _, _, _ := suite.setupService()
+	svc.projectValidator = suite.validating(testSystemOU, nil)
+	svc.projectRequired = true
+
+	resp, svcErr := svc.CreateAgent(context.Background(), &providers.Agent{Type: testAgentType})
+
+	assert.Nil(suite.T(), resp)
+	assert.Equal(suite.T(), &ErrorProjectRequired, svcErr)
+}
+
+// A system organization unit that is not configured or does not exist is a server error when the agent
+// defaults to it.
+func (suite *AgentServiceTestSuite) TestValidateAgent_NoSystemOU() {
+	svc, _, _, mockOU, _ := suite.setupService()
+	clearMockCalls(mockOU, "GetSystemOUID")
+	mockOU.On("GetSystemOUID", mock.Anything).Return("", &tidcommon.InternalServerError)
+
+	_, _, _, svcErr := svc.ValidateAgent(context.Background(), &providers.Agent{Type: testAgentType}, "")
+
+	assert.Equal(suite.T(), &tidcommon.InternalServerError, svcErr)
+}
+
 func (suite *AgentServiceTestSuite) TestValidateAgent_OUHandleNotFound() {
 	svc, _, _, mockOU, _ := suite.setupService()
 
@@ -4677,22 +4747,20 @@ func (suite *AgentServiceTestSuite) TestPublishLifespanEvent_ObservabilityDisabl
 	obs.AssertNotCalled(suite.T(), "PublishEvent", mock.Anything, mock.Anything)
 }
 
-// projectResolverStub resolves the organization unit of a project with the given function.
-type projectResolverStub func(ctx context.Context, projectID, ouID string) (string, *tidcommon.ServiceError)
+// projectValidatorStub checks the organization unit of a project with the given function.
+type projectValidatorStub func(ctx context.Context, projectID, ouID string) *tidcommon.ServiceError
 
-func (f projectResolverStub) ResolveProjectOU(
-	ctx context.Context, projectID, ouID string) (string, *tidcommon.ServiceError) {
+func (f projectValidatorStub) ValidateProjectOU(ctx context.Context, projectID, ouID string) *tidcommon.ServiceError {
 	return f(ctx, projectID, ouID)
 }
 
-// resolvingTo builds a project resolver that expects project-1 and the given organization unit, and
+// validating builds a project validator that expects project-1 and the given organization unit, and
 // returns the given result.
-func (suite *AgentServiceTestSuite) resolvingTo(
-	wantOUID, ouID string, svcErr *tidcommon.ServiceError) projectResolverStub {
-	return func(_ context.Context, projectID, gotOUID string) (string, *tidcommon.ServiceError) {
+func (suite *AgentServiceTestSuite) validating(wantOUID string, svcErr *tidcommon.ServiceError) projectValidatorStub {
+	return func(_ context.Context, projectID, gotOUID string) *tidcommon.ServiceError {
 		suite.Equal("project-1", projectID)
 		suite.Equal(wantOUID, gotOUID)
-		return ouID, svcErr
+		return svcErr
 	}
 }
 
@@ -4829,54 +4897,54 @@ func (suite *AgentServiceTestSuite) TestGetAgentListByProject_Fails() {
 
 func (suite *AgentServiceTestSuite) TestCreateAgent_InProject() {
 	svc, mockEntity, _, _, _ := suite.setupService()
-	svc.projectResolver = suite.resolvingTo("", testOUID, nil)
+	svc.projectValidator = suite.validating(testSystemOU, nil)
 	clearMockCalls(mockEntity, "CreateEntity")
 	mockEntity.On("CreateEntity", mock.Anything, mock.MatchedBy(func(e *providers.Entity) bool {
-		return e.OUID == testOUID && e.ProjectID == "project-1"
+		return e.OUID == testSystemOU && e.ProjectID == "project-1"
 	}), mock.Anything, mock.Anything).Return(buildAgentEntityFixture(testAgentName, "", "", ""), nil)
 
 	resp, svcErr := svc.CreateAgent(context.Background(),
 		&providers.Agent{Type: testAgentType, ProjectID: "project-1"})
 
 	suite.Require().Nil(svcErr)
-	assert.Equal(suite.T(), testOUID, resp.OUID)
 	assert.Equal(suite.T(), "project-1", resp.ProjectID)
 }
 
 func (suite *AgentServiceTestSuite) TestValidateAgent_Project() {
 	for name, tc := range map[string]struct {
 		agent    *providers.Agent
-		resolver projectOUResolver
+		callerOU string
+		resolver projectOUValidator
 		ouID     string
 		expected *tidcommon.ServiceError
 	}{
 		"no organization unit": {
 			agent:    &providers.Agent{Type: testAgentType, ProjectID: "project-1"},
-			resolver: suite.resolvingTo("", testOUID, nil),
-			ouID:     testOUID,
+			resolver: suite.validating(testSystemOU, nil),
+			ouID:     testSystemOU,
+		},
+		"no organization unit from a caller in one": {
+			agent:    &providers.Agent{Type: testAgentType, ProjectID: "project-1"},
+			callerOU: "caller-ou",
+			resolver: suite.validating(testSystemOU, nil),
+			ouID:     testSystemOU,
 		},
 		"an organization unit handle in the project": {
 			agent:    &providers.Agent{Type: testAgentType, ProjectID: "project-1", OUHandle: "child"},
-			resolver: suite.resolvingTo(testOUID, testOUID, nil),
+			resolver: suite.validating(testOUID, nil),
 			ouID:     testOUID,
 		},
 		"an unknown project": {
 			agent:    &providers.Agent{Type: testAgentType, ProjectID: "project-1"},
-			resolver: suite.resolvingTo("", "", &project.ErrorProjectNotFound),
+			resolver: suite.validating(testSystemOU, &project.ErrorProjectNotFound),
+			ouID:     testSystemOU,
 			expected: &ErrorInvalidProject,
 		},
 		"an organization unit outside the project": {
 			agent:    &providers.Agent{Type: testAgentType, ProjectID: "project-1", OUID: "other-ou"},
-			resolver: suite.resolvingTo("other-ou", "", &project.ErrorOUNotInProject),
+			resolver: suite.validating("other-ou", &project.ErrorOUNotInProject),
 			ouID:     "other-ou",
 			expected: &ErrorOUNotInProject,
-		},
-		"an unknown organization unit": {
-			agent: &providers.Agent{Type: testAgentType, ProjectID: "project-1", OUID: "missing-ou"},
-			resolver: suite.resolvingTo("missing-ou", "",
-				&tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "OU-1003"}),
-			ouID:     "missing-ou",
-			expected: &ErrorOrganizationUnitNotFound,
 		},
 		"a deployment without projects": {
 			agent: &providers.Agent{Type: testAgentType, ProjectID: "project-1", OUID: testOUID},
@@ -4884,19 +4952,22 @@ func (suite *AgentServiceTestSuite) TestValidateAgent_Project() {
 		},
 		"a deployment without projects and no organization unit": {
 			agent: &providers.Agent{Type: testAgentType, ProjectID: "project-1"},
-			ouID:  oupkg.SystemOUID,
+			ouID:  testSystemOU,
 		},
-		"a resolver failure": {
+		"a validator failure": {
 			agent:    &providers.Agent{Type: testAgentType, ProjectID: "project-1"},
-			resolver: suite.resolvingTo("", "", &tidcommon.InternalServerError),
+			resolver: suite.validating(testSystemOU, &tidcommon.InternalServerError),
+			ouID:     testSystemOU,
 			expected: &tidcommon.InternalServerError,
 		},
 	} {
 		suite.Run(name, func() {
 			svc, _, _, _, _ := suite.setupService()
-			svc.projectResolver = tc.resolver
+			svc.projectValidator = tc.resolver
+			ctx := security.WithSecurityContextTest(context.Background(),
+				security.NewSecurityContextForTest("admin-1", tc.callerOU, "", nil, nil))
 
-			_, _, _, svcErr := svc.ValidateAgent(context.Background(), tc.agent, "")
+			_, _, _, svcErr := svc.ValidateAgent(ctx, tc.agent, "")
 
 			assert.Equal(suite.T(), tc.expected, svcErr)
 			assert.Equal(suite.T(), tc.ouID, tc.agent.OUID)
@@ -4908,7 +4979,7 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_Project() {
 	for name, tc := range map[string]struct {
 		req             *model.UpdateAgentRequest
 		storedProjectID string
-		resolver        projectOUResolver
+		resolver        projectOUValidator
 		ouID            string
 		projectID       string
 		expected        *tidcommon.ServiceError
@@ -4916,7 +4987,7 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_Project() {
 		"the agent stays in its project": {
 			req:             &model.UpdateAgentRequest{Type: testAgentType},
 			storedProjectID: "project-1",
-			resolver:        suite.resolvingTo(testOUID, testOUID, nil),
+			resolver:        suite.validating(testOUID, nil),
 			ouID:            testOUID,
 			projectID:       "project-1",
 		},
@@ -4926,30 +4997,30 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_Project() {
 		},
 		"the agent stays in its organization unit": {
 			req:       &model.UpdateAgentRequest{Type: testAgentType, ProjectID: "project-1"},
-			resolver:  suite.resolvingTo(testOUID, testOUID, nil),
+			resolver:  suite.validating(testOUID, nil),
 			ouID:      testOUID,
 			projectID: "project-1",
 		},
 		"the agent moves within the project": {
 			req:       &model.UpdateAgentRequest{Type: testAgentType, ProjectID: "project-1", OUID: "child-ou"},
-			resolver:  suite.resolvingTo("child-ou", "child-ou", nil),
+			resolver:  suite.validating("child-ou", nil),
 			ouID:      "child-ou",
 			projectID: "project-1",
 		},
 		"the agent is outside the project": {
 			req:      &model.UpdateAgentRequest{Type: testAgentType, ProjectID: "project-1"},
-			resolver: suite.resolvingTo(testOUID, "", &project.ErrorOUNotInProject),
+			resolver: suite.validating(testOUID, &project.ErrorOUNotInProject),
 			expected: &ErrorOUNotInProject,
 		},
 		"an unknown project": {
 			req:      &model.UpdateAgentRequest{Type: testAgentType, ProjectID: "project-1"},
-			resolver: suite.resolvingTo(testOUID, "", &project.ErrorProjectNotFound),
+			resolver: suite.validating(testOUID, &project.ErrorProjectNotFound),
 			expected: &ErrorInvalidProject,
 		},
 	} {
 		suite.Run(name, func() {
 			svc, mockEntity, _, _, _ := suite.setupService()
-			svc.projectResolver = tc.resolver
+			svc.projectValidator = tc.resolver
 			clearMockCalls(mockEntity, "GetEntityProfile")
 			stored := buildAgentEntityFixture(testAgentName, "", "", "")
 			stored.ProjectID = tc.storedProjectID

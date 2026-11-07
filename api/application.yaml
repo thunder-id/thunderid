@@ -119,6 +119,7 @@ paths:
               $ref: '#/components/schemas/ApplicationRequest'
             example:
               ouId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+              projectId: "7c9e6679-7425-40de-944b-e07fc1f90ae7"
               name: "My Web Application"
               description: "Customer portal application"
               authFlowId: "edc013d0-e893-4dc0-990c-3e1d203e005b"
@@ -1503,17 +1504,20 @@ components:
         ouId:
           type: string
           description: |
-            The ID of the organization unit this application belongs to. Required unless
-            `projectId` is given.
+            The ID of the organization unit this application belongs to. On create, when omitted,
+            the application is placed in the system organization unit that the
+            `server.system_ou_id` deployment configuration names. On update, when omitted, the
+            application stays in its organization unit.
           example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
         projectId:
           type: string
           description: |
-            The ID of the project this application belongs to. Without `ouId`, the application is
-            placed in the system organization unit. With `ouId`, that organization unit
-            must belong to the project. On update, leaving it out keeps the application in its
-            project, and a different project moves it unless the application is shared. An
-            application can't be taken out of a project.
+            The ID of the project this application belongs to. On a deployment that serves
+            projects, such as the Control Plane, creating an application without one is deprecated
+            and will be refused (`APP-1067`) in a future release. The application's organization
+            unit, the given `ouId` or the default one, must belong to the project. On update, leaving it
+            out keeps the application in its project, and a different project moves it unless the
+            application is shared. An application can't be taken out of a project.
           example: "7c9e6679-7425-40de-944b-e07fc1f90ae7"
         name:
           type: string

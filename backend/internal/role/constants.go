@@ -26,3 +26,6 @@ const (
 	// defaultRolePageSize is the number of roles a list returns when no limit is given.
 	defaultRolePageSize = 30
 )
+
+// systemFlowRoleDeletePre is the system flow a role deletion runs before the role is removed.
+const systemFlowRoleDeletePre = "system-role-delete-pre"

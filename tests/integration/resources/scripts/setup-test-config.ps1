@@ -19,6 +19,7 @@ $header = @"
 server:
   hostname: localhost
   port: 8095
+  system_ou_id: "01900000-0000-7000-8000-000000000001"
   security:
     # Exercised by tests/integration/managementapikey: a deployment pipeline authenticating to the
     # import API without first obtaining OAuth client credentials. This is the SHA-256 digest of

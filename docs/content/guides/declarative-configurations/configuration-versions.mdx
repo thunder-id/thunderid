@@ -104,7 +104,8 @@ Each entry in `changes` names a resource, its `change` (`added`, `updated`, `del
 a `key` such as `application/550e8400-e29b-41d4-a716-446655440000`. Each change also carries `lines`, the
 resource's document compared line by line, and `needs`, the keys of the resources it names by id (see
 [Deploy a Resource With What It Needs](#deploy-a-resource-with-what-it-needs)). The documents hold
-references, so a diff never shows a secret value.
+references, so a diff never shows a secret value. A user's attribute values are masked as `********`, all
+but its username, so a diff shows which attributes changed without showing what they hold.
 
 `GET /gateways/{id}/applied-version` reports the version the gateway holds and the one a revert returns
 it to, with when it was applied and who applied it (`appliedAt`, `appliedBy`, the latter under the same

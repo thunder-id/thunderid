@@ -1037,3 +1037,12 @@ func (s *InitTestSuite) TestInitializeStore_ModeNormalization() {
 	_, ok := store.(*compositeFlowStore)
 	s.True(ok, "store should be of type *compositeFlowStore")
 }
+
+func (s *InitTestSuite) TestInitialize_RefusesANilEventBus() {
+	service, exporter, err := Initialize(http.NewServeMux(), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
+		nil, false, nil, nil)
+
+	s.ErrorIs(err, errNilEventBus)
+	s.Nil(service)
+	s.Nil(exporter)
+}

@@ -1,19 +1,13 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {render, screen, waitFor, within} from '@testing-library/react';
+import {render, screen, waitFor} from '@testing-library/react';
 import type {ReactNode} from 'react';
 import {afterEach, describe, expect, it, vi} from 'vitest';
 import App from '../App';
-import RouteConfig from '../configs/RouteConfig';
 
 vi.mock('@thunderid/react-router', () => ({
-  ProtectedRoute: ({children, loader = undefined}: {children: React.ReactNode; loader?: React.ReactNode}) => (
-    <div data-testid="protected-route">
-      <div data-testid="protected-route-loader">{loader}</div>
-      {children}
-    </div>
-  ),
+  ProtectedRoute: ({children}: {children: React.ReactNode}) => <div data-testid="protected-route">{children}</div>,
 }));
 
 vi.mock('@thunderid/configure-translations', () => ({
@@ -28,6 +22,26 @@ vi.mock('../lib/monaco-setup', () => ({}));
 vi.mock('@thunderid/configure-onboarding', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@thunderid/configure-onboarding')>()),
   HomePage: () => <div data-testid="home-page" />,
+}));
+
+vi.mock('../pages/OrganizationHomePage', () => ({
+  default: () => <div data-testid="organization-home-page" />,
+}));
+
+vi.mock('../pages/ProjectHomePage', () => ({
+  default: () => <div data-testid="project-home-page" />,
+}));
+
+vi.mock('../pages/ProjectGatewayPage', () => ({
+  default: ({section = 'overview'}: {section?: string}) => <div data-testid={`project-gateway-page-${section}`} />,
+}));
+
+vi.mock('../pages/ProjectExplorerPage', () => ({
+  default: () => <div data-testid="project-explorer-page" />,
+}));
+
+vi.mock('../pages/AdministratorsListPage', () => ({
+  default: () => <div data-testid="administrators-list-page" />,
 }));
 
 vi.mock('@thunderid/configure-gateways', () => ({
@@ -174,32 +188,6 @@ describe('App', () => {
     expect(container).toBeInTheDocument();
   });
 
-  // Without a loader, a protected page renders nothing while sign-in is checked or a redirect to
-  // sign-in is on its way, which shows as a bare page mid sign-out.
-  it.each([
-    '/',
-    RouteConfig.organizationUnits.list(),
-    RouteConfig.groups.create(),
-    RouteConfig.flows.create(),
-    RouteConfig.design.list(),
-    RouteConfig.translations.list(),
-  ])('passes a loader to the protected route at %s', async (path) => {
-    window.history.pushState({}, '', path);
-    render(<App />);
-    await waitFor(() => {
-      const protectedRoutes = screen.getAllByTestId('protected-route');
-      expect(protectedRoutes.length).toBeGreaterThan(0);
-      // The page loader, not just any loader.
-      protectedRoutes.forEach((route) =>
-        expect(
-          within(within(route).getAllByTestId('protected-route-loader')[0]).getByRole('progressbar', {
-            name: 'Loading content',
-          }),
-        ).toBeInTheDocument(),
-      );
-    });
-  });
-
   it('loads TranslationsEditPage lazily via the monaco-setup chain', async () => {
     window.history.pushState({}, '', '/translations/en');
     render(<App />);
@@ -246,6 +234,43 @@ describe('App', () => {
     await waitFor(() => {
       expect(screen.getByTestId('import-configuration-summary-page')).toBeInTheDocument();
     });
+  });
+
+  it('lands on the organization home at the root', async () => {
+    window.history.pushState({}, '', '/');
+    render(<App />);
+    expect(await screen.findByTestId('organization-home-page')).toBeInTheDocument();
+    expect(window.location.pathname).toBe('/home');
+  });
+
+  it("loads a project's home at /projects/:projectId", async () => {
+    window.history.pushState({}, '', '/projects/p-shop');
+    render(<App />);
+    expect(await screen.findByTestId('project-home-page')).toBeInTheDocument();
+  });
+
+  it("opens each of a gateway's sections within a project", async () => {
+    for (const section of ['values', 'endpoints', 'history']) {
+      window.history.pushState({}, '', `/projects/p-shop/deploy/gateways/gw-dev/${section}`);
+      const {unmount} = render(<App />);
+      expect(await screen.findByTestId(`project-gateway-page-${section}`)).toBeInTheDocument();
+      unmount();
+    }
+    window.history.pushState({}, '', '/projects/p-shop/deploy/gateways/gw-dev');
+    render(<App />);
+    expect(await screen.findByTestId('project-gateway-page-overview')).toBeInTheDocument();
+  });
+
+  it("opens a gateway's map within a project on a full page", async () => {
+    window.history.pushState({}, '', '/projects/p-shop/deploy/gateways/gw-dev/explore');
+    render(<App />);
+    expect(await screen.findByTestId('project-explorer-page')).toBeInTheDocument();
+  });
+
+  it('lists the administrators at /users', async () => {
+    window.history.pushState({}, '', '/users');
+    render(<App />);
+    expect(await screen.findByTestId('administrators-list-page')).toBeInTheDocument();
   });
 
   it('loads ResourceServersListPage lazily at /resource-servers', async () => {

@@ -68,7 +68,7 @@ const NotificationTemplateCreatePage = lazy(() =>
 );
 const UserAddPage = lazy(() => import('@thunderid/configure-users').then((m) => ({default: m.UserAddPage})));
 const UserEditPage = lazy(() => import('@thunderid/configure-users').then((m) => ({default: m.UserEditPage})));
-const UsersListPage = lazy(() => import('@thunderid/configure-users').then((m) => ({default: m.UsersListPage})));
+const UsersListPage = lazy(() => import('./pages/AdministratorsListPage'));
 const ResourceServersListPage = lazy(() =>
   import('@thunderid/configure-resource-servers').then((m) => ({default: m.ResourceServersListPage})),
 );
@@ -113,7 +113,10 @@ const FlowsListPage = lazy(() => import('@thunderid/configure-flows').then((m) =
 const CreateGroupPage = lazy(() => import('@thunderid/configure-groups').then((m) => ({default: m.CreateGroupPage})));
 const GroupEditPage = lazy(() => import('@thunderid/configure-groups').then((m) => ({default: m.GroupEditPage})));
 const GroupsListPage = lazy(() => import('@thunderid/configure-groups').then((m) => ({default: m.GroupsListPage})));
-const HomePage = lazy(() => import('@thunderid/configure-onboarding').then((m) => ({default: m.HomePage})));
+const OrganizationHomePage = lazy(() => import('./pages/OrganizationHomePage'));
+const ProjectHomePage = lazy(() => import('./pages/ProjectHomePage'));
+const ProjectGatewayPage = lazy(() => import('./pages/ProjectGatewayPage'));
+const ProjectExplorerPage = lazy(() => import('./pages/ProjectExplorerPage'));
 const ExportPage = lazy(() =>
   import('./lib/monaco-setup').then(() =>
     import('@thunderid/configure-import-export').then((m) => ({default: m.ExportPage})),
@@ -140,6 +143,7 @@ const GatewayDetailPage = lazy(() =>
   import('@thunderid/configure-gateways').then((m) => ({default: m.GatewayDetailPage})),
 );
 const DeployPage = lazy(() => import('@thunderid/configure-gateways').then((m) => ({default: m.DeployPage})));
+const GatewayPage = lazy(() => import('@thunderid/configure-gateways').then((m) => ({default: m.GatewayPage})));
 const GatewayExplorerPage = lazy(() =>
   import('@thunderid/configure-gateways').then((m) => ({default: m.GatewayExplorerPage})),
 );
@@ -215,13 +219,14 @@ export default function App(): JSX.Element {
                 <Route
                   path="/"
                   element={
-                    <ProtectedRoute loader={<PageLoader />}>
+                    <ProtectedRoute>
                       <DashboardLayout />
                     </ProtectedRoute>
                   }
                 >
-                  <Route index element={<HomePage />} />
-                  <Route path={ROUTE_SEGMENTS.home} element={<HomePage />} />
+                  <Route index element={<Navigate to={RouteConfig.home.list()} replace />} />
+                  <Route path={ROUTE_SEGMENTS.home} element={<OrganizationHomePage />} />
+                  <Route path={`${ROUTE_SEGMENTS.projects}/:projectId`} element={<ProjectHomePage />} />
                   <Route path={ROUTE_SEGMENTS.users} element={<UsersListPage />} />
                   <Route path={`${ROUTE_SEGMENTS.users}/:userId`} element={<UserEditPage />} />
                   <Route path={ROUTE_SEGMENTS.userTypes} element={<UserTypesListPage />} />
@@ -258,9 +263,9 @@ export default function App(): JSX.Element {
                   >
                     <Route path={ROUTE_SEGMENTS.applications} element={<ApplicationsListPage />} />
                     <Route path={`${ROUTE_SEGMENTS.applications}/:applicationId`} element={<ApplicationEditPage />} />
+                    <Route path={ROUTE_SEGMENTS.agents} element={<AgentsListPage />} />
+                    <Route path={`${ROUTE_SEGMENTS.agents}/:agentId`} element={<AgentEditPage />} />
                   </Route>
-                  <Route path={ROUTE_SEGMENTS.agents} element={<AgentsListPage />} />
-                  <Route path={`${ROUTE_SEGMENTS.agents}/:agentId`} element={<AgentEditPage />} />
                   <Route path={ROUTE_SEGMENTS.flows} element={<FlowsListPage />} />
                   <Route path={ROUTE_SEGMENTS.resourceServers} element={<ResourceServersListPage />} />
                   <Route
@@ -271,12 +276,29 @@ export default function App(): JSX.Element {
                   <Route path={ROUTE_SEGMENTS.projects} element={<ProjectsListPage />} />
                   <Route path={ROUTE_SEGMENTS.gateways} element={<GatewaysListPage />} />
                   <Route path={`${ROUTE_SEGMENTS.gateways}/:gatewayId`} element={<GatewayDetailPage />} />
+                  <Route path={`${ROUTE_SEGMENTS.deployTargets}/:gatewayId`} element={<GatewayPage />} />
+                  <Route
+                    path={`${ROUTE_SEGMENTS.projects}/:projectId/${ROUTE_SEGMENTS.deployTargets}/:gatewayId`}
+                    element={<ProjectGatewayPage />}
+                  />
+                  <Route
+                    path={`${ROUTE_SEGMENTS.projects}/:projectId/${ROUTE_SEGMENTS.deployTargets}/:gatewayId/values`}
+                    element={<ProjectGatewayPage section="values" />}
+                  />
+                  <Route
+                    path={`${ROUTE_SEGMENTS.projects}/:projectId/${ROUTE_SEGMENTS.deployTargets}/:gatewayId/endpoints`}
+                    element={<ProjectGatewayPage section="endpoints" />}
+                  />
+                  <Route
+                    path={`${ROUTE_SEGMENTS.projects}/:projectId/${ROUTE_SEGMENTS.deployTargets}/:gatewayId/history`}
+                    element={<ProjectGatewayPage section="history" />}
+                  />
                 </Route>
                 {/* Organization Units - wrapped in OrganizationUnitProvider to preserve tree state across navigation */}
                 <Route
                   path={RouteConfig.organizationUnits.list()}
                   element={
-                    <ProtectedRoute loader={<PageLoader />}>
+                    <ProtectedRoute>
                       <OrganizationUnitProvider />
                     </ProtectedRoute>
                   }
@@ -299,7 +321,7 @@ export default function App(): JSX.Element {
                 <Route
                   path={RouteConfig.groups.create()}
                   element={
-                    <ProtectedRoute loader={<PageLoader />}>
+                    <ProtectedRoute>
                       <GroupCreateProvider>
                         <FullScreenLayout />
                       </GroupCreateProvider>
@@ -311,7 +333,7 @@ export default function App(): JSX.Element {
                 <Route
                   path={RouteConfig.roles.create()}
                   element={
-                    <ProtectedRoute loader={<PageLoader />}>
+                    <ProtectedRoute>
                       <RoleCreateProvider>
                         <FullScreenLayout />
                       </RoleCreateProvider>
@@ -333,7 +355,7 @@ export default function App(): JSX.Element {
                 <Route
                   path={RouteConfig.users.add()}
                   element={
-                    <ProtectedRoute loader={<PageLoader />}>
+                    <ProtectedRoute>
                       <FullScreenLayout />
                     </ProtectedRoute>
                   }
@@ -343,7 +365,7 @@ export default function App(): JSX.Element {
                 <Route
                   path={RouteConfig.deploy.list()}
                   element={
-                    <ProtectedRoute loader={<PageLoader />}>
+                    <ProtectedRoute>
                       <FullScreenLayout />
                     </ProtectedRoute>
                   }
@@ -353,9 +375,19 @@ export default function App(): JSX.Element {
                   <Route path="gateways/:gatewayId/values" element={<GatewayValuesPage />} />
                 </Route>
                 <Route
+                  path={`${ROUTE_SEGMENTS.projects}/:projectId/${ROUTE_SEGMENTS.deployTargets}/:gatewayId/explore`}
+                  element={
+                    <ProtectedRoute>
+                      <FullScreenLayout />
+                    </ProtectedRoute>
+                  }
+                >
+                  <Route index element={<ProjectExplorerPage />} />
+                </Route>
+                <Route
                   path={RouteConfig.userTypes.create()}
                   element={
-                    <ProtectedRoute loader={<PageLoader />}>
+                    <ProtectedRoute>
                       <UserTypeCreateProvider>
                         <FullScreenLayout />
                       </UserTypeCreateProvider>
@@ -367,7 +399,7 @@ export default function App(): JSX.Element {
                 <Route
                   path={RouteConfig.verifiablePresentations.create()}
                   element={
-                    <ProtectedRoute loader={<PageLoader />}>
+                    <ProtectedRoute>
                       <FullScreenLayout />
                     </ProtectedRoute>
                   }
@@ -377,7 +409,7 @@ export default function App(): JSX.Element {
                 <Route
                   path={RouteConfig.verifiableCredentials.create()}
                   element={
-                    <ProtectedRoute loader={<PageLoader />}>
+                    <ProtectedRoute>
                       <FullScreenLayout />
                     </ProtectedRoute>
                   }
@@ -386,7 +418,7 @@ export default function App(): JSX.Element {
                 </Route>
                 <Route
                   element={
-                    <ProtectedRoute loader={<PageLoader />}>
+                    <ProtectedRoute>
                       <SelectedProjectScope>
                         <ApplicationCreateProvider>
                           <Outlet />
@@ -405,17 +437,24 @@ export default function App(): JSX.Element {
                 <Route
                   path={RouteConfig.agents.create()}
                   element={
-                    <ProtectedRoute loader={<PageLoader />}>
+                    <ProtectedRoute>
                       <FullScreenLayout />
                     </ProtectedRoute>
                   }
                 >
-                  <Route index element={<AgentOnboardPage />} />
+                  <Route
+                    index
+                    element={
+                      <SelectedProjectScope>
+                        <AgentOnboardPage />
+                      </SelectedProjectScope>
+                    }
+                  />
                 </Route>
                 <Route
                   path={RouteConfig.resourceServers.create()}
                   element={
-                    <ProtectedRoute loader={<PageLoader />}>
+                    <ProtectedRoute>
                       <FullScreenLayout />
                     </ProtectedRoute>
                   }
@@ -425,7 +464,7 @@ export default function App(): JSX.Element {
                 <Route
                   path={RouteConfig.flows.create()}
                   element={
-                    <ProtectedRoute loader={<PageLoader />}>
+                    <ProtectedRoute>
                       <FullScreenLayout />
                     </ProtectedRoute>
                   }
@@ -435,7 +474,7 @@ export default function App(): JSX.Element {
                 <Route
                   path={RouteConfig.connections.create()}
                   element={
-                    <ProtectedRoute loader={<PageLoader />}>
+                    <ProtectedRoute>
                       <FullScreenLayout />
                     </ProtectedRoute>
                   }
@@ -445,7 +484,7 @@ export default function App(): JSX.Element {
                 <Route
                   path={`/${ROUTE_SEGMENTS.connections}/:type/configure`}
                   element={
-                    <ProtectedRoute loader={<PageLoader />}>
+                    <ProtectedRoute>
                       <FullScreenLayout />
                     </ProtectedRoute>
                   }
@@ -455,7 +494,7 @@ export default function App(): JSX.Element {
                 <Route
                   path={RouteConfig.flows.detail(':flowId')}
                   element={
-                    <ProtectedRoute loader={<PageLoader />}>
+                    <ProtectedRoute>
                       <DashboardLayout collapseSidebar />
                     </ProtectedRoute>
                   }
@@ -465,7 +504,7 @@ export default function App(): JSX.Element {
                 <Route
                   path={RouteConfig.importExport.list()}
                   element={
-                    <ProtectedRoute loader={<PageLoader />}>
+                    <ProtectedRoute>
                       <FullScreenLayout />
                     </ProtectedRoute>
                   }
@@ -475,7 +514,7 @@ export default function App(): JSX.Element {
                 <Route
                   path={RouteConfig.export.page()}
                   element={
-                    <ProtectedRoute loader={<PageLoader />}>
+                    <ProtectedRoute>
                       <FullScreenLayout />
                     </ProtectedRoute>
                   }
@@ -485,7 +524,7 @@ export default function App(): JSX.Element {
                 <Route
                   path={RouteConfig.importConfiguration.upload()}
                   element={
-                    <ProtectedRoute loader={<PageLoader />}>
+                    <ProtectedRoute>
                       <FullScreenLayout />
                     </ProtectedRoute>
                   }
@@ -497,7 +536,7 @@ export default function App(): JSX.Element {
                 <Route
                   path={RouteConfig.design.list()}
                   element={
-                    <ProtectedRoute loader={<PageLoader />}>
+                    <ProtectedRoute>
                       <DashboardLayout />
                     </ProtectedRoute>
                   }
@@ -507,7 +546,7 @@ export default function App(): JSX.Element {
                 <Route
                   path={RouteConfig.design.themesCreate()}
                   element={
-                    <ProtectedRoute loader={<PageLoader />}>
+                    <ProtectedRoute>
                       <FullScreenLayout />
                     </ProtectedRoute>
                   }
@@ -517,7 +556,7 @@ export default function App(): JSX.Element {
                 <Route
                   path={`/${ROUTE_SEGMENTS.design}/themes/:themeId`}
                   element={
-                    <ProtectedRoute loader={<PageLoader />}>
+                    <ProtectedRoute>
                       <ThemeBuilderProvider>
                         <DashboardLayout />
                       </ThemeBuilderProvider>
@@ -529,7 +568,7 @@ export default function App(): JSX.Element {
                 <Route
                   path={`/${ROUTE_SEGMENTS.design}/layouts/:layoutId`}
                   element={
-                    <ProtectedRoute loader={<PageLoader />}>
+                    <ProtectedRoute>
                       <LayoutBuilderProvider>
                         <DashboardLayout />
                       </LayoutBuilderProvider>
@@ -541,7 +580,7 @@ export default function App(): JSX.Element {
                 <Route
                   path={RouteConfig.translations.create()}
                   element={
-                    <ProtectedRoute loader={<PageLoader />}>
+                    <ProtectedRoute>
                       <TranslationCreateProvider>
                         <FullScreenLayout />
                       </TranslationCreateProvider>
@@ -553,7 +592,7 @@ export default function App(): JSX.Element {
                 <Route
                   path={RouteConfig.translations.list()}
                   element={
-                    <ProtectedRoute loader={<PageLoader />}>
+                    <ProtectedRoute>
                       <DashboardLayout />
                     </ProtectedRoute>
                   }
@@ -564,7 +603,7 @@ export default function App(): JSX.Element {
                 <Route
                   path={RouteConfig.notificationTemplates.list()}
                   element={
-                    <ProtectedRoute loader={<PageLoader />}>
+                    <ProtectedRoute>
                       <DashboardLayout />
                     </ProtectedRoute>
                   }
@@ -576,7 +615,7 @@ export default function App(): JSX.Element {
                 <Route
                   path={RouteConfig.notificationTemplates.create(':channel' as NotificationChannel)}
                   element={
-                    <ProtectedRoute loader={<PageLoader />}>
+                    <ProtectedRoute>
                       <FullScreenLayout />
                     </ProtectedRoute>
                   }

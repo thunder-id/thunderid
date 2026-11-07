@@ -61,8 +61,7 @@ func (r *stubPermissionResolver) ResolveForRole(
 // newGuardService returns a service with the given resolver injected.
 func newGuardService(resolver PermissionResolver) *systemAuthorizationService {
 	svc := &systemAuthorizationService{
-		logger:   log.GetLogger().With(log.String("component", "SystemAuthorizationService")),
-		policies: &policies{membershipPolicy: &ouMembershipPolicy{}},
+		logger: log.GetLogger().With(log.String("component", "SystemAuthorizationService")),
 	}
 	if resolver != nil {
 		svc.SetPermissionResolver(resolver)

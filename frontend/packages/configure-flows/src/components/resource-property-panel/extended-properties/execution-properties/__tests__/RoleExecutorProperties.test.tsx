@@ -53,7 +53,7 @@ function makeResource(mode?: string, properties?: Record<string, unknown>): Reso
   } as unknown as Resource;
 }
 
-const REVOCATION_MODES = ['Remove Role Assignment', 'Delete Role', 'Change Role Permissions'];
+const REVOCATION_MODES = ['Remove Role Assignment', 'Change Role Permissions'];
 const INVITATION_MODES = ['Select Roles', 'Assign Roles'];
 
 describe('RoleExecutorProperties', () => {
@@ -65,7 +65,7 @@ describe('RoleExecutorProperties', () => {
   });
 
   it('should read the type of the flow being edited', () => {
-    render(<RoleExecutorProperties resource={makeResource('role_deletion')} onChange={mockOnChange} />);
+    render(<RoleExecutorProperties resource={makeResource('role_permission_removal')} onChange={mockOnChange} />);
 
     expect(mockUseGetFlowById).toHaveBeenCalledWith('flow-1');
   });
@@ -86,9 +86,9 @@ describe('RoleExecutorProperties', () => {
 
   it('should keep a mode already on the node listed in another flow type, so it can be changed', () => {
     inFlowOfType('INVITATION');
-    render(<RoleExecutorProperties resource={makeResource('role_deletion')} onChange={mockOnChange} />);
+    render(<RoleExecutorProperties resource={makeResource('role_permission_removal')} onChange={mockOnChange} />);
 
-    expect(offeredModes()).toEqual(['Delete Role', ...INVITATION_MODES]);
+    expect(offeredModes()).toEqual(['Change Role Permissions', ...INVITATION_MODES]);
   });
 
   it('should offer every mode until the flow loads', () => {

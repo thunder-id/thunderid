@@ -22,6 +22,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/entitymock"
 	"github.com/thunder-id/thunderid/tests/mocks/entitytypemock"
@@ -92,16 +93,6 @@ func adminContext() context.Context {
 		security.NewSecurityContextForTest(testAuditAdminID, "ou1", "", nil, nil))
 }
 
-// grantRefusingAuthz refuses every grant, as sysauthz does for a caller lacking what the role confers.
-func grantRefusingAuthz(t *testing.T) sysauthz.SystemAuthorizationServiceInterface {
-	mockAuthz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
-	mockAuthz.On("CanGrantPermissions", mock.Anything, mock.Anything).
-		Return(&sysauthz.ErrorGrantNotPermitted).Maybe()
-	mockAuthz.On("CanGrantMembership", mock.Anything, mock.Anything, mock.Anything).
-		Return(&sysauthz.ErrorGrantNotPermitted).Maybe()
-	return mockAuthz
-}
-
 // auditedRoleRequest is a role created with a user, a group and an agent assigned, the user twice.
 func auditedRoleRequest() RoleCreationDetail {
 	return RoleCreationDetail{
@@ -128,6 +119,7 @@ type RoleServiceAuditTestSuite struct {
 	mockResourceService   *resourcemock.ResourceServiceInterfaceMock
 	mockEntityTypeService *entitytypemock.EntityTypeServiceInterfaceMock
 	mockSharingService    *sharingmock.SharingServiceInterfaceMock
+	authz                 *sysauthzmock.SystemAuthorizationServiceInterfaceMock
 	transactioner         *fakeTransactioner
 	bus                   eventbus.EventBusInterface
 	published             func() []publishedEvent
@@ -147,16 +139,17 @@ func (s *RoleServiceAuditTestSuite) SetupTest() {
 
 	s.mockStore = newRoleStoreInterfaceMock(s.T())
 	s.mockEntityService = entitymock.NewEntityServiceInterfaceMock(s.T())
-	registerSharedCategories(s.mockEntityService)
 	s.mockGroupService = groupmock.NewGroupServiceInterfaceMock(s.T())
 	s.mockOUService = oumock.NewOrganizationUnitServiceInterfaceMock(s.T())
 	s.mockResourceService = resourcemock.NewResourceServiceInterfaceMock(s.T())
 	s.mockEntityTypeService = entitytypemock.NewEntityTypeServiceInterfaceMock(s.T())
 	s.mockSharingService = sharingmock.NewSharingServiceInterfaceMock(s.T())
+	s.authz = sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(s.T())
 	s.transactioner = &fakeTransactioner{}
 	s.bus, s.published = newRecordingBus(s.T())
-	s.service = s.newRoleService(newAllowAllRoleAuthz(s.T()), s.bus)
-	s.assignmentService = s.newAssignmentService(newAllowAllRoleAuthz(s.T()))
+	s.service = s.newRoleService(s.bus)
+	s.assignmentService = newRoleAssignmentService(s.mockStore, s.mockEntityService, s.mockGroupService,
+		s.mockEntityTypeService, nil, s.transactioner, s.authz, s.mockSharingService, s.bus)
 }
 
 // SetupSubTest gives each table case its own mocks and recording bus.
@@ -168,16 +161,23 @@ func (s *RoleServiceAuditTestSuite) TearDownTest() {
 	config.ResetServerRuntime()
 }
 
-func (s *RoleServiceAuditTestSuite) newRoleService(authz sysauthz.SystemAuthorizationServiceInterface,
-	bus eventbus.EventBusInterface) RoleServiceInterface {
+func (s *RoleServiceAuditTestSuite) newRoleService(bus eventbus.EventBusInterface) RoleServiceInterface {
 	return newRoleService(s.mockStore, s.mockEntityService, s.mockGroupService, s.mockOUService,
-		s.mockResourceService, s.transactioner, authz, s.mockSharingService, bus)
+		s.mockResourceService, s.transactioner, s.authz, s.mockSharingService, bus)
 }
 
-func (s *RoleServiceAuditTestSuite) newAssignmentService(
-	authz sysauthz.SystemAuthorizationServiceInterface) RoleAssignmentServiceInterface {
-	return newRoleAssignmentService(s.mockStore, s.mockEntityService, s.mockGroupService,
-		s.mockEntityTypeService, nil, s.transactioner, authz, s.mockSharingService, s.bus)
+// expectPermissionGrant expects the check that the caller may confer the role's permissions to be asked
+// once, answered with svcErr.
+func (s *RoleServiceAuditTestSuite) expectPermissionGrant(svcErr *tidcommon.ServiceError) {
+	s.authz.On("CanGrantPermissions", mock.Anything, mock.Anything).Return(svcErr).Once()
+}
+
+// expectMembershipGrants expects the check that the caller may grant the role with roleID to be asked
+// times times, answered with svcErr.
+func (s *RoleServiceAuditTestSuite) expectMembershipGrants(roleID string, svcErr *tidcommon.ServiceError,
+	times int) {
+	s.authz.On("CanGrantMembership", mock.Anything, sysauthz.PrincipalTypeRole, roleID).
+		Return(svcErr).Times(times)
 }
 
 // requireEvent checks that event is named name, for an attempt by the admin on the role with roleID,
@@ -201,26 +201,27 @@ func (s *RoleServiceAuditTestSuite) requireEvent(event publishedEvent, name stri
 // arrangeAuditedRoleCreate stubs what creating auditedRoleRequest reads and writes.
 func (s *RoleServiceAuditTestSuite) arrangeAuditedRoleCreate() {
 	s.mockResourceService.On("ValidatePermissions", mock.Anything, "rs1", []string{testAuditPermission}).
-		Return([]string{}, nil)
+		Return([]string{}, nil).Once()
 	s.mockOUService.On("GetOrganizationUnit", mock.Anything, "ou1").
-		Return(oupkg.OrganizationUnit{ID: "ou1", Handle: "default"}, nil)
+		Return(oupkg.OrganizationUnit{ID: "ou1", Handle: "default"}, nil).Once()
 	s.mockEntityService.On("GetEntitiesByIDs", mock.Anything, mock.Anything).Return([]providers.Entity{
 		{ID: testUserID1, Category: providers.EntityCategoryUser, OUID: "ou1"},
 		{ID: testAuditAgentID, Category: providers.EntityCategoryAgent, OUID: "ou1"},
-	}, nil)
-	s.mockGroupService.On("ValidateGroupIDs", mock.Anything, []string{testAuditGroupID}).Return(nil)
+	}, nil).Once()
+	s.mockGroupService.On("ValidateGroupIDs", mock.Anything, []string{testAuditGroupID}).Return(nil).Once()
 	s.mockGroupService.On("GetGroupsByIDs", mock.Anything, []string{testAuditGroupID}).
-		Return(map[string]*group.Group{testAuditGroupID: {ID: testAuditGroupID, OUID: "ou1"}}, nil)
-	s.mockStore.On("CheckRoleNameExists", mock.Anything, "ou1", testAuditRoleName).Return(false, nil)
+		Return(map[string]*group.Group{testAuditGroupID: {ID: testAuditGroupID, OUID: "ou1"}}, nil).Once()
+	s.mockStore.On("CheckRoleNameExists", mock.Anything, "ou1", testAuditRoleName).Return(false, nil).Once()
 	s.mockSharingService.EXPECT().ListVisibleResourceIDs(mock.Anything, RoleSharingType, "ou1").
-		Return(nil, nil)
+		Return(nil, nil).Once()
+	s.expectPermissionGrant(nil)
 }
 
 // A role created with assignees is recorded as created, and each assignee as added to it once, after
 // the create, so every grant the create made is in the log.
 func (s *RoleServiceAuditTestSuite) TestCreateRole_PublishesTheRoleAndEachAssignee() {
 	s.arrangeAuditedRoleCreate()
-	s.mockStore.On("CreateRole", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	s.mockStore.On("CreateRole", mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
 
 	created, svcErr := s.service.CreateRole(adminContext(), auditedRoleRequest())
 
@@ -263,7 +264,7 @@ func (s *RoleServiceAuditTestSuite) TestCreateRole_PublishesOneEventWhenItFails(
 			arrange: func() {
 				s.arrangeAuditedRoleCreate()
 				s.mockStore.On("CreateRole", mock.Anything, mock.Anything, mock.Anything).
-					Return(errors.New("store failure"))
+					Return(errors.New("store failure")).Once()
 			},
 			outcome: audit.OutcomeFailed("sse_5000"),
 		},
@@ -286,11 +287,12 @@ func (s *RoleServiceAuditTestSuite) TestCreateRole_PublishesOneEventWhenItFails(
 // A caller that does not hold what the role confers is refused inside the service, which is recorded as
 // denied. A refused create made no role, so the event names none.
 func (s *RoleServiceAuditTestSuite) TestCreateRole_PublishesARefusedGrantAsDenied() {
-	service := s.newRoleService(grantRefusingAuthz(s.T()), s.bus)
+	service := s.service
+	s.expectPermissionGrant(&sysauthz.ErrorGrantNotPermitted)
 	s.mockResourceService.On("ValidatePermissions", mock.Anything, "rs1", []string{testAuditPermission}).
-		Return([]string{}, nil)
+		Return([]string{}, nil).Once()
 	s.mockOUService.On("GetOrganizationUnit", mock.Anything, "ou1").
-		Return(oupkg.OrganizationUnit{ID: "ou1"}, nil)
+		Return(oupkg.OrganizationUnit{ID: "ou1"}, nil).Once()
 
 	_, svcErr := service.CreateRole(adminContext(), auditedRoleRequest())
 
@@ -319,16 +321,17 @@ func (s *RoleServiceAuditTestSuite) TestUpdateRoleWithPermissions_PublishesOneEv
 			name: "the role is updated",
 			arrange: func() {
 				s.mockResourceService.On("ValidatePermissions", mock.Anything, "rs1",
-					[]string{testAuditPermission}).Return([]string{}, nil)
+					[]string{testAuditPermission}).Return([]string{}, nil).Once()
 				s.mockStore.On("GetRole", mock.Anything, "role1").
-					Return(RoleWithPermissions{ID: "role1", OUID: "ou1"}, nil)
+					Return(RoleWithPermissions{ID: "role1", OUID: "ou1"}, nil).Once()
 				s.mockOUService.On("GetOrganizationUnit", mock.Anything, "ou1").
-					Return(oupkg.OrganizationUnit{ID: "ou1"}, nil)
+					Return(oupkg.OrganizationUnit{ID: "ou1"}, nil).Once()
 				s.mockStore.On("CheckRoleNameExistsExcludingID", mock.Anything, "ou1", testAuditRoleName,
-					"role1").Return(false, nil)
+					"role1").Return(false, nil).Once()
 				s.mockSharingService.EXPECT().ListVisibleResourceIDs(mock.Anything, RoleSharingType, "ou1").
-					Return(nil, nil)
-				s.mockStore.On("UpdateRole", mock.Anything, "role1", mock.Anything).Return(nil)
+					Return(nil, nil).Once()
+				s.mockStore.On("UpdateRole", mock.Anything, "role1", mock.Anything).Return(nil).Once()
+				s.expectPermissionGrant(nil)
 			},
 			outcome: audit.OutcomeSucceeded,
 			subject: role1,
@@ -337,7 +340,7 @@ func (s *RoleServiceAuditTestSuite) TestUpdateRoleWithPermissions_PublishesOneEv
 			name: "the role does not exist",
 			arrange: func() {
 				s.mockStore.On("GetRole", mock.Anything, "role1").
-					Return(RoleWithPermissions{}, ErrRoleNotFound)
+					Return(RoleWithPermissions{}, ErrRoleNotFound).Once()
 			},
 			outcome: audit.OutcomeFailed("rol_1003"),
 		},
@@ -368,13 +371,13 @@ func (s *RoleServiceAuditTestSuite) TestDeleteRole_PublishesOneEventPerAttempt()
 		{
 			name: "the role is deleted with its assignments",
 			arrange: func() {
-				s.mockStore.On("IsRoleExist", mock.Anything, "role1").Return(true, nil)
+				s.mockStore.On("IsRoleExist", mock.Anything, "role1").Return(true, nil).Once()
 				s.mockStore.On("ListMandatedAssignmentsForRole", mock.Anything, "role1", "").
-					Return([]RoleAssignment{}, nil)
+					Return([]RoleAssignment{}, nil).Once()
 				s.mockSharingService.EXPECT().DeletePoliciesForResource(mock.Anything, RoleSharingType,
-					"role1").Return(nil)
-				s.mockStore.On("DeleteAssignmentsByRoleID", mock.Anything, "role1").Return(nil)
-				s.mockStore.On("DeleteRole", mock.Anything, "role1").Return(nil)
+					"role1").Return(nil).Once()
+				s.mockStore.On("DeleteAssignmentsByRoleID", mock.Anything, "role1").Return(nil).Once()
+				s.mockStore.On("DeleteRole", mock.Anything, "role1").Return(nil).Once()
 			},
 			outcome: audit.OutcomeSucceeded,
 			subject: role1,
@@ -382,7 +385,7 @@ func (s *RoleServiceAuditTestSuite) TestDeleteRole_PublishesOneEventPerAttempt()
 		{
 			name: "the role cannot be read",
 			arrange: func() {
-				s.mockStore.On("IsRoleExist", mock.Anything, "role1").Return(false, errors.New("store failure"))
+				s.mockStore.On("IsRoleExist", mock.Anything, "role1").Return(false, errors.New("store failure")).Once()
 			},
 			outcome: audit.OutcomeFailed("sse_5000"),
 		},
@@ -404,7 +407,7 @@ func (s *RoleServiceAuditTestSuite) TestDeleteRole_PublishesOneEventPerAttempt()
 // A delete of a role that does not exist succeeds without an event, so no caller can record the deletion
 // of an ID it made up.
 func (s *RoleServiceAuditTestSuite) TestDeleteRole_PublishesNothingWhenTheRoleIsMissing() {
-	s.mockStore.On("IsRoleExist", mock.Anything, "role1").Return(false, nil)
+	s.mockStore.On("IsRoleExist", mock.Anything, "role1").Return(false, nil).Once()
 
 	svcErr := s.service.DeleteRole(adminContext(), "role1")
 
@@ -416,9 +419,9 @@ func (s *RoleServiceAuditTestSuite) TestDeleteRole_PublishesNothingWhenTheRoleIs
 func (s *RoleServiceAuditTestSuite) TestCreateRole_SucceedsWhenTheBusRefusesTheEvents() {
 	failing := eventbusmock.NewEventBusInterfaceMock(s.T())
 	failing.EXPECT().Publish(mock.Anything, mock.Anything).Return(errors.New("audit queue is full")).Times(4)
-	service := s.newRoleService(newAllowAllRoleAuthz(s.T()), failing)
+	service := s.newRoleService(failing)
 	s.arrangeAuditedRoleCreate()
-	s.mockStore.On("CreateRole", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	s.mockStore.On("CreateRole", mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
 
 	created, svcErr := service.CreateRole(adminContext(), auditedRoleRequest())
 
@@ -429,11 +432,12 @@ func (s *RoleServiceAuditTestSuite) TestCreateRole_SucceedsWhenTheBusRefusesTheE
 // The addition of several assignees is one event per assignee, each naming who gained the role.
 func (s *RoleServiceAuditTestSuite) TestAddAssignments_PublishesEachAddedAssignee() {
 	s.mockStore.On("GetRole", mock.Anything, "role1").
-		Return(RoleWithPermissions{ID: "role1", OUID: testOwnerOU}, nil)
+		Return(RoleWithPermissions{ID: "role1", OUID: testOwnerOU}, nil).Once()
 	s.mockEntityService.On("GetEntitiesByIDs", mock.Anything, mock.Anything).Return([]providers.Entity{
 		ownedUser(), {ID: testAuditAgentID, Category: providers.EntityCategoryAgent, OUID: testOwnerOU},
-	}, nil)
-	s.mockStore.On("AddAssignments", mock.Anything, "role1", mock.Anything).Return(nil)
+	}, nil).Once()
+	s.mockStore.On("AddAssignments", mock.Anything, "role1", mock.Anything).Return(nil).Once()
+	s.expectMembershipGrants("role1", nil, 2)
 
 	svcErr := s.assignmentService.AddAssignments(adminContext(), "role1", "", []RoleAssignment{
 		{ID: testUserID1, Type: AssigneeTypeUser},
@@ -461,7 +465,8 @@ func (s *RoleServiceAuditTestSuite) TestAddAssignments_PublishesOneEventWhenItFa
 		{
 			name: "the role does not exist",
 			arrange: func() RoleAssignmentServiceInterface {
-				s.mockStore.On("GetRole", mock.Anything, "role1").Return(RoleWithPermissions{}, ErrRoleNotFound)
+				s.mockStore.On("GetRole", mock.Anything, "role1").Return(RoleWithPermissions{}, ErrRoleNotFound).Once()
+				s.expectMembershipGrants("role1", nil, 1)
 				return s.assignmentService
 			},
 			outcome: audit.OutcomeFailed("rol_1003"),
@@ -470,12 +475,13 @@ func (s *RoleServiceAuditTestSuite) TestAddAssignments_PublishesOneEventWhenItFa
 			name: "the store fails",
 			arrange: func() RoleAssignmentServiceInterface {
 				s.mockStore.On("GetRole", mock.Anything, "role1").
-					Return(RoleWithPermissions{ID: "role1", OUID: testOwnerOU}, nil)
+					Return(RoleWithPermissions{ID: "role1", OUID: testOwnerOU}, nil).Once()
 				s.mockEntityService.On("GetEntitiesByIDs", mock.Anything, mock.Anything).Return(
 					[]providers.Entity{ownedUser(), {ID: "user2", Category: providers.EntityCategoryUser,
-						OUID: testOwnerOU}}, nil)
+						OUID: testOwnerOU}}, nil).Once()
 				s.mockStore.On("AddAssignments", mock.Anything, "role1", mock.Anything).
-					Return(errors.New("store failure"))
+					Return(errors.New("store failure")).Once()
+				s.expectMembershipGrants("role1", nil, 2)
 				return s.assignmentService
 			},
 			outcome: audit.OutcomeFailed("sse_5000"),
@@ -483,7 +489,8 @@ func (s *RoleServiceAuditTestSuite) TestAddAssignments_PublishesOneEventWhenItFa
 		{
 			name: "the caller may not grant the role",
 			arrange: func() RoleAssignmentServiceInterface {
-				return s.newAssignmentService(grantRefusingAuthz(s.T()))
+				s.expectMembershipGrants("role1", &sysauthz.ErrorGrantNotPermitted, 1)
+				return s.assignmentService
 			},
 			outcome: audit.OutcomeDenied("forbidden"),
 		},
@@ -505,12 +512,13 @@ func (s *RoleServiceAuditTestSuite) TestAddAssignments_PublishesOneEventWhenItFa
 
 func (s *RoleServiceAuditTestSuite) TestRemoveAssignments_PublishesEachRemovedAssignee() {
 	s.mockStore.On("GetRole", mock.Anything, "role1").
-		Return(RoleWithPermissions{ID: "role1", OUID: testOwnerOU}, nil)
+		Return(RoleWithPermissions{ID: "role1", OUID: testOwnerOU}, nil).Once()
 	s.mockEntityService.On("GetEntitiesByIDs", mock.Anything, []string{testUserID1}).
-		Return([]providers.Entity{ownedUser()}, nil)
+		Return([]providers.Entity{ownedUser()}, nil).Once()
 	s.mockStore.On("ListMandatedAssignmentsForRole", mock.Anything, "role1", testOwnerOU).
-		Return([]RoleAssignment{}, nil)
-	s.mockStore.On("RemoveAssignments", mock.Anything, "role1", mock.Anything).Return(nil)
+		Return([]RoleAssignment{}, nil).Once()
+	s.mockStore.On("RemoveAssignments", mock.Anything, "role1", mock.Anything).Return(nil).Once()
+	s.expectMembershipGrants("role1", nil, 2)
 
 	svcErr := s.assignmentService.RemoveAssignments(adminContext(), "role1", "",
 		[]RoleAssignment{{ID: testUserID1, Type: AssigneeTypeUser}})
@@ -523,6 +531,8 @@ func (s *RoleServiceAuditTestSuite) TestRemoveAssignments_PublishesEachRemovedAs
 }
 
 func (s *RoleServiceAuditTestSuite) TestRemoveAssignments_PublishesOneEventWhenItFails() {
+	s.expectMembershipGrants("role1", nil, 1)
+
 	svcErr := s.assignmentService.RemoveAssignments(adminContext(), "role1", "", nil)
 
 	s.Equal(&ErrorEmptyAssignments, svcErr)
@@ -535,13 +545,18 @@ func (s *RoleServiceAuditTestSuite) TestRemoveAssignments_PublishesOneEventWhenI
 // Assigning to several roles at once is one event per role and assignee, after all of them committed:
 // none is published from inside the transaction.
 func (s *RoleServiceAuditTestSuite) TestAddAssigneesToRoles_PublishesEachRoleAndAssignee() {
+	// A role named twice is assigned twice. The assignee is looked up once to place it in its
+	// organization unit and again for each assignment, which is checked before and inside the transaction.
 	s.mockStore.On("GetRole", mock.Anything, "role1").
-		Return(RoleWithPermissions{ID: "role1", OUID: testOwnerOU}, nil)
+		Return(RoleWithPermissions{ID: "role1", OUID: testOwnerOU}, nil).Times(2)
 	s.mockStore.On("GetRole", mock.Anything, "role2").
-		Return(RoleWithPermissions{ID: "role2", OUID: testOwnerOU}, nil)
+		Return(RoleWithPermissions{ID: "role2", OUID: testOwnerOU}, nil).Once()
 	s.mockEntityService.On("GetEntitiesByIDs", mock.Anything, []string{testUserID1}).
-		Return([]providers.Entity{ownedUser()}, nil)
-	s.mockStore.On("AddAssignments", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+		Return([]providers.Entity{ownedUser()}, nil).Times(4)
+	s.mockStore.On("AddAssignments", mock.Anything, "role1", mock.Anything).Return(nil).Times(2)
+	s.mockStore.On("AddAssignments", mock.Anything, "role2", mock.Anything).Return(nil).Once()
+	s.expectMembershipGrants("role1", nil, 4)
+	s.expectMembershipGrants("role2", nil, 2)
 
 	svcErr := s.assignmentService.AddAssigneesToRoles(adminContext(),
 		[]RoleAssignment{{ID: testUserID1, Type: AssigneeTypeUser}}, []string{"role1", "role2", "role1"})
@@ -559,11 +574,13 @@ func (s *RoleServiceAuditTestSuite) TestAddAssigneesToRoles_PublishesEachRoleAnd
 // A refusal for one role rolls back every role, so each is recorded as failed and no assignee as added.
 func (s *RoleServiceAuditTestSuite) TestAddAssigneesToRoles_PublishesEachRoleWhenItFails() {
 	s.mockStore.On("GetRole", mock.Anything, "role1").
-		Return(RoleWithPermissions{ID: "role1", OUID: testOwnerOU}, nil)
-	s.mockStore.On("GetRole", mock.Anything, "role2").Return(RoleWithPermissions{}, ErrRoleNotFound)
+		Return(RoleWithPermissions{ID: "role1", OUID: testOwnerOU}, nil).Once()
+	s.mockStore.On("GetRole", mock.Anything, "role2").Return(RoleWithPermissions{}, ErrRoleNotFound).Once()
 	s.mockEntityService.On("GetEntitiesByIDs", mock.Anything, []string{testUserID1}).
-		Return([]providers.Entity{ownedUser()}, nil)
-	s.mockStore.On("AddAssignments", mock.Anything, "role1", mock.Anything).Return(nil)
+		Return([]providers.Entity{ownedUser()}, nil).Times(2)
+	s.mockStore.On("AddAssignments", mock.Anything, "role1", mock.Anything).Return(nil).Once()
+	s.expectMembershipGrants("role1", nil, 2)
+	s.expectMembershipGrants("role2", nil, 1)
 
 	svcErr := s.assignmentService.AddAssigneesToRoles(adminContext(),
 		[]RoleAssignment{{ID: testUserID1, Type: AssigneeTypeUser}}, []string{"role1", "role2"})

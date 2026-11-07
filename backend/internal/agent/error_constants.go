@@ -590,6 +590,20 @@ var (
 			DefaultValue: "An owner needs an id of at most 256 characters matching its type, and a local owner a uuid",
 		},
 	}
+
+	// ErrorProjectRequired is returned when an agent is created without a project.
+	ErrorProjectRequired = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AGT-1050",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.agentservice.project_required",
+			DefaultValue: "Project required",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.agentservice.project_required_description",
+			DefaultValue: "Set projectId to the project the agent belongs to",
+		},
+	}
 )
 
 // errInvalidDeclarativeLifespan is returned when a declarative agent's validUntil is not an RFC 3339

@@ -109,6 +109,8 @@ type roleService struct {
 	sharingService  sharing.SharingServiceInterface
 	bus             eventbus.EventBusInterface
 	logger          *log.Logger
+	// systemFlows is nil where system flows are off.
+	systemFlows systemFlowProvider
 }
 
 // newRoleService creates a new instance of RoleService with injected dependencies.
@@ -641,6 +643,14 @@ func (rs *roleService) deleteRole(ctx context.Context, id string) *tidcommon.Ser
 		return svcErr
 	}
 
+	// Revokes what the role grants its assignees before anything of it is removed. A refusal leaves the
+	// role as it was.
+	inputs := map[string]string{systemFlowInputRole: id}
+	shared, svcErr := runSystemFlow(ctx, rs.systemFlows, systemFlowRoleDeletePre, inputs, nil)
+	if svcErr != nil {
+		return svcErr
+	}
+
 	var capturedSvcErr, refusal *tidcommon.ServiceError
 	err = rs.transactioner.Transact(ctx, func(txCtx context.Context) error {
 		if refusal = rs.requireRoleNotMandated(txCtx, id); refusal != nil {
@@ -670,6 +680,10 @@ func (rs *roleService) deleteRole(ctx context.Context, id string) *tidcommon.Ser
 	if err != nil {
 		logger.Error(ctx, "Failed to delete role", log.String("id", id), log.Error(err))
 		return &tidcommon.InternalServerError
+	}
+	// A token issued to an assignee while the role was being removed is revoked too.
+	if _, svcErr := runSystemFlow(ctx, rs.systemFlows, systemFlowRevocationPost, inputs, shared); svcErr != nil {
+		return svcErr
 	}
 
 	logger.Debug(ctx, "Successfully deleted role", log.String("id", id))

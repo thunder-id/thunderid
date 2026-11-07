@@ -7,7 +7,7 @@ description: RFC 7009 token revocation in {{ProductName}}, from revoking a singl
 
 # Token Revocation
 
-**Token Revocation** ([RFC 7009](https://datatracker.ietf.org/doc/html/rfc7009)) lets a client tell <ProductName /> that a token should stop working before it expires. <ProductName /> extends this with broader scopes, so an operational event such as a sign-out, a user deletion, an account suspension, or an application deletion can invalidate many tokens at once.
+**Token Revocation** ([RFC 7009](https://datatracker.ietf.org/doc/html/rfc7009)) lets a client tell <ProductName /> that a token should stop working before it expires. <ProductName /> extends this with broader scopes, so an operational event such as a sign-out, a user deletion, an account suspension, an application deletion, or a role deletion can invalidate many tokens at once.
 
 Access tokens are self-contained JWTs, so a resource server that validates them locally has no way to know a token was revoked. <ProductName /> solves this with a denylist that both the authorization server and resource servers consult. The scopes below differ only in what goes on that list.
 
@@ -121,6 +121,22 @@ The revocation runs before the change is written, and if it fails nothing is wri
 The Console's secret regeneration flow revokes until the new secret is written, as the API does.
 
 The revocation runs as two **system flows**: flows built into the <ProductName /> binary, one that a service runs before it writes the change and one it runs after. They are not resources: they are never stored, they cannot be edited or started through any API, and they never ask for input. A failure before the write leaves the application as it was. A failure after it is reported as an error: a deletion keeps the application's record, so deleting it again revokes and removes it, and a secret replacement keeps the new secret, which the refresh grant already enforces by refusing the refresh tokens issued before it.
+
+## Role Deletion
+
+Deleting a role revokes the scopes it grants from the tokens its holders carry: every user, application, agent, and group member the role is assigned to, directly or through a nested group. A token that carries one of those scopes on the role's resource server is rejected. A token carrying only scopes the holder has through another role, or the same scope on another resource server, stays valid. This happens whichever way the role is deleted: from the Console or through the `DELETE /roles/{id}` API.
+
+The revocation runs before the role is removed, and if it fails, for example because a holder sits in a group nested too deep to reach, the role is not deleted. Once the role is removed, the revocation's cutoff moves to that moment, so a token issued while the role was being removed is revoked too. A token issued after that does not carry the role's scopes, because the role no longer exists.
+
+Like application deletion, the revocation runs as two system flows, one before the role is removed and one after. A failure after the removal is reported as an error even though the role is already gone, and a token issued during the removal stays valid until it expires. Deleting a role that no longer exists revokes nothing.
+
+The deletion is refused, and the role kept, when the revocation is too large to plan or record:
+
+| Error | Refused when | What to do |
+|---|---|---|
+| `RVS-1001` | The revocation needs more entries than `oauth.revocation.criteria.max_entries_per_change` allows (`10000` by default). It records about one entry for each holder and each scope the role grants. | Remove some of the role's assignments first, each of which revokes only that assignee's tokens, then delete the role. Or raise the limit. |
+| `GRP-1017` | A holder reaches the role through a group nested too deep to walk. | Flatten the group hierarchy so that every member is within the supported depth. |
+| `ROL-1017` | The server reads roles from both files and the database, and the role has more assignments than it can read in that mode. | Remove some of the role's assignments first, then delete the role. |
 
 ## Where Revocation Is Enforced
 

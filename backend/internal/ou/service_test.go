@@ -10,6 +10,7 @@ import (
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
@@ -17,6 +18,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 	"github.com/thunder-id/thunderid/tests/mocks/sysauthzmock"
@@ -1481,6 +1483,78 @@ func (suite *OrganizationUnitServiceTestSuite) TestOUService_GetResourceDependen
 	})
 }
 
+// The system organization unit is the one the configuration names, and it must exist.
+func (suite *OrganizationUnitServiceTestSuite) TestOUService_GetSystemOUID() {
+	for name, tc := range map[string]struct {
+		systemOUID string
+		exists     bool
+		storeErr   error
+		expectErr  bool
+	}{
+		"configured and present": {systemOUID: "ou-1", exists: true},
+		"not configured":         {expectErr: true},
+		"missing":                {systemOUID: "ou-1", expectErr: true},
+		"store failure":          {systemOUID: "ou-1", storeErr: errors.New("boom"), expectErr: true},
+	} {
+		suite.Run(name, func() {
+			config.ResetServerRuntime()
+			cfg := &config.Config{}
+			cfg.Server.SystemOUID = tc.systemOUID
+			suite.Require().NoError(config.InitializeServerRuntime("/tmp/test", cfg))
+			store := newOrganizationUnitStoreInterfaceMock(suite.T())
+			if tc.systemOUID != "" {
+				store.On("IsOrganizationUnitExists", mock.Anything, tc.systemOUID).Return(tc.exists, tc.storeErr).Once()
+			}
+			service := suite.newService(store, newAllowAllAuthz(suite.T()))
+
+			ouID, svcErr := service.GetSystemOUID(context.Background())
+
+			if tc.expectErr {
+				suite.Empty(ouID)
+				suite.Equal(&tidcommon.InternalServerError, svcErr)
+				return
+			}
+			suite.Nil(svcErr)
+			suite.Equal(tc.systemOUID, ouID)
+		})
+	}
+}
+
+// The system organization unit cannot be deleted, by ID or by path, whatever depends on it.
+func (suite *OrganizationUnitServiceTestSuite) TestOUService_DeleteSystemOrganizationUnit() {
+	config.ResetServerRuntime()
+	cfg := &config.Config{}
+	cfg.Server.SystemOUID = "ou-1"
+	suite.Require().NoError(config.InitializeServerRuntime("/tmp/test", cfg))
+
+	suite.Run("by ID", func() {
+		store := newOrganizationUnitStoreInterfaceMock(suite.T())
+		store.On("IsOrganizationUnitExists", mock.Anything, "ou-1").Return(true, nil).Once()
+		service := suite.newService(store, newAllowAllAuthz(suite.T()))
+		service.SetDependencyRegistry(&stubDependencyRegistry{resp: emptyDeps()})
+
+		err := service.DeleteOrganizationUnit(context.Background(), "ou-1")
+
+		suite.Require().NotNil(err)
+		suite.Equal(ErrorCannotDeleteSystemOU, *err)
+		store.AssertNotCalled(suite.T(), "DeleteOrganizationUnit", mock.Anything, mock.Anything)
+	})
+	suite.Run("by path", func() {
+		store := newOrganizationUnitStoreInterfaceMock(suite.T())
+		store.On("GetOrganizationUnitByPath", mock.Anything, []string{"default"}).
+			Return(OrganizationUnit{ID: "ou-1"}, nil).Once()
+		store.On("IsOrganizationUnitDeclarative", mock.Anything, "ou-1").Return(false).Once()
+		service := suite.newService(store, newAllowAllAuthz(suite.T()))
+		service.SetDependencyRegistry(&stubDependencyRegistry{resp: emptyDeps()})
+
+		err := service.DeleteOrganizationUnitByPath(context.Background(), "default")
+
+		suite.Require().NotNil(err)
+		suite.Equal(ErrorCannotDeleteSystemOU, *err)
+		store.AssertNotCalled(suite.T(), "DeleteOrganizationUnit", mock.Anything, mock.Anything)
+	})
+}
+
 func (suite *OrganizationUnitServiceTestSuite) TestOUService_DeleteOrganizationUnitByPath() {
 	suite.Run("invalid path", func() {
 		store := newOrganizationUnitStoreInterfaceMock(suite.T())
@@ -2751,6 +2825,76 @@ func (suite *OrganizationUnitServiceTestSuite) TestOUService_UpdateOrganizationU
 	})
 }
 
+func (suite *OrganizationUnitServiceTestSuite) TestOUService_UpdateOrganizationUnit_ParentChangeAuthz() {
+	parentID := testParentOUID
+	otherParentID := "other-parent"
+
+	tests := []struct {
+		name              string
+		existing          *string
+		requested         *string
+		checksRootCreate  bool
+		rootCreateAllowed bool
+	}{
+		{name: "moving to root is refused without root creation", existing: &parentID, requested: nil,
+			checksRootCreate: true, rootCreateAllowed: false},
+		{name: "moving to root is allowed with root creation", existing: &parentID, requested: nil,
+			checksRootCreate: true, rootCreateAllowed: true},
+		{name: "moving under another parent needs only the update", existing: &parentID,
+			requested: &otherParentID},
+		{name: "updating a root without moving it needs only the update", existing: nil, requested: nil},
+	}
+
+	for _, tc := range tests {
+		suite.Run(tc.name, func() {
+			store := newOrganizationUnitStoreInterfaceMock(suite.T())
+			store.On("GetOrganizationUnit", mock.Anything, testOUID).
+				Return(OrganizationUnit{ID: testOUID, Handle: "finance", Name: "Finance", Parent: tc.existing}, nil).
+				Once()
+			store.On("IsOrganizationUnitDeclarative", mock.Anything, testOUID).Return(false).Once()
+			wantUpdated := !tc.checksRootCreate || tc.rootCreateAllowed
+			if wantUpdated {
+				if tc.requested != nil {
+					store.On("IsOrganizationUnitExists", mock.Anything, *tc.requested).Return(true, nil).Once()
+					store.On("GetOrganizationUnit", mock.Anything, *tc.requested).
+						Return(OrganizationUnit{ID: *tc.requested}, nil).Once()
+				}
+				if !stringPtrEqual(tc.existing, tc.requested) {
+					store.On("CheckOrganizationUnitNameConflict", mock.Anything, "Finance", tc.requested).
+						Return(false, nil).Once()
+					store.On("CheckOrganizationUnitHandleConflict", mock.Anything, "finance", tc.requested).
+						Return(false, nil).Once()
+				}
+				store.On("UpdateOrganizationUnit", mock.Anything, mock.Anything).Return(nil).Once()
+			}
+
+			// The mock refuses any call it does not expect, so an update that is not a move to the root
+			// fails if it checks creation.
+			authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+			authzMock.On("IsActionAllowed", mock.Anything, security.ActionUpdateOU,
+				mock.MatchedBy(func(c *sysauthz.ActionContext) bool { return c.OUID == testOUID })).
+				Return(true, nil).Once()
+			if tc.checksRootCreate {
+				authzMock.On("IsActionAllowed", mock.Anything, security.ActionCreateOU,
+					mock.MatchedBy(func(c *sysauthz.ActionContext) bool { return c.OUID == "" })).
+					Return(tc.rootCreateAllowed, nil).Once()
+			}
+
+			service := suite.newService(store, authzMock)
+			_, err := service.UpdateOrganizationUnit(context.Background(), testOUID,
+				OrganizationUnitRequestWithID{Handle: "finance", Name: "Finance", Parent: tc.requested})
+
+			if wantUpdated {
+				suite.Require().Nil(err)
+			} else {
+				suite.Require().NotNil(err)
+				suite.Equal(tidcommon.ErrorUnauthorized.Code, err.Code)
+				store.AssertNotCalled(suite.T(), "UpdateOrganizationUnit", mock.Anything, mock.Anything)
+			}
+		})
+	}
+}
+
 func (suite *OrganizationUnitServiceTestSuite) TestOUService_StringPtrEqual() {
 	suite.Run("both nil", func() {
 		suite.Require().True(stringPtrEqual(nil, nil))
@@ -3077,4 +3221,16 @@ func (suite *OrganizationUnitServiceTestSuite) TestOUService_GetOrganizationUnit
 		suite.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
 		store.AssertExpectations(suite.T())
 	})
+}
+
+func TestConfiguredSystemOUID(t *testing.T) {
+	t.Cleanup(config.ResetServerRuntime)
+
+	config.ResetServerRuntime()
+	assert.Empty(t, configuredSystemOUID(), "no runtime names no system organization unit")
+
+	cfg := &config.Config{}
+	cfg.Server.SystemOUID = "system-ou"
+	require.NoError(t, config.InitializeServerRuntime("/tmp/test", cfg))
+	assert.Equal(t, "system-ou", configuredSystemOUID())
 }

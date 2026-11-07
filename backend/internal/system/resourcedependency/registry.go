@@ -86,7 +86,6 @@ const (
 	ResourceTypeHTTPConnection       = "httpConnection"
 	ResourceTypeNotificationTemplate = "notificationTemplate"
 	ResourceTypeOU                   = "organizationUnit"
-	ResourceTypeProject              = "project"
 	ResourceTypeResourceServer       = "resourceServer"
 	ResourceTypeResource             = "resource"
 	ResourceTypeAction               = "action"

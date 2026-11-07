@@ -379,8 +379,11 @@ type fakeFlowService struct {
 	byKey      map[string]*providers.CompleteFlowDefinition
 	ouIDByPath map[string]string
 	sharingErr *tidcommon.ServiceError
-	getErr     *tidcommon.ServiceError
-	deleted    []string
+	// getErr, when set, is what GetFlow fails with for a flow the fake holds.
+	getErr  *tidcommon.ServiceError
+	deleted []string
+	// refused records each create and update the fake refused, as the audited service would record it.
+	refused []string
 	// withSharing records the policies each update that came with them carried, and updateSharingErr refuses them.
 	withSharing      [][]sharing.PolicyRequest
 	updateSharingErr *tidcommon.ServiceError
@@ -879,6 +882,7 @@ func (f *fakeFlowService) CreateFlow(
 	_ context.Context, flowDef *flowmgt.FlowDefinition,
 ) (*providers.CompleteFlowDefinition, *tidcommon.ServiceError) {
 	if _, ok := f.byKey[string(flowDef.FlowType)+":"+flowDef.Handle]; ok {
+		f.refused = append(f.refused, "create:"+flowDef.Handle)
 		return nil, &tidcommon.ServiceError{
 			Type:  tidcommon.ClientErrorType,
 			Code:  "FLM-1013",
@@ -907,10 +911,10 @@ func (f *fakeFlowService) CreateFlow(
 func (f *fakeFlowService) GetFlow(
 	_ context.Context, flowID string,
 ) (*providers.CompleteFlowDefinition, *tidcommon.ServiceError) {
-	if f.getErr != nil {
-		return nil, f.getErr
-	}
 	if v, ok := f.byID[flowID]; ok {
+		if f.getErr != nil {
+			return nil, f.getErr
+		}
 		return v, nil
 	}
 	return nil, &tidcommon.ServiceError{
@@ -937,6 +941,7 @@ func (f *fakeFlowService) UpdateFlow(
 	_ context.Context, flowID string, flowDef *flowmgt.FlowDefinition,
 ) (*providers.CompleteFlowDefinition, *tidcommon.ServiceError) {
 	if _, ok := f.byID[flowID]; !ok {
+		f.refused = append(f.refused, "update:"+flowID)
 		return nil, &tidcommon.ServiceError{
 			Type:  tidcommon.ClientErrorType,
 			Code:  "FLM-1003",
@@ -2169,6 +2174,7 @@ func TestImportResources_FlowUpsertCreatePreservesID(t *testing.T) {
 	assert.Len(t, flowSvc.created, 1)
 	assert.Equal(t, "missing-flow-id", flowSvc.created[0].ID)
 	assert.Len(t, flowSvc.updated, 0)
+	assert.Empty(t, flowSvc.refused, "the flow is looked up, so no update of it is attempted")
 }
 
 func TestImportResources_FlowKeepsItsOrganizationUnit(t *testing.T) {
@@ -2316,6 +2322,7 @@ func TestImportResources_FlowUpsertDuplicateHandleFallsBackToHandleUpdate(t *tes
 	assert.Len(t, flowSvc.created, 0)
 	assert.Len(t, flowSvc.updated, 1)
 	assert.Equal(t, "registration-flow", flowSvc.updated[0].Handle)
+	assert.Empty(t, flowSvc.refused, "the flow is looked up by handle, so no create of it is attempted")
 }
 
 func TestImportResources_ApplicationFlowReferencesAreRemappedFromFlowAlias(t *testing.T) {

@@ -395,6 +395,22 @@ func (ts *AgentAuthzTestSuite) TestCreateAgentInOwnOU() {
 	}
 }
 
+// TestCreateAgentWithoutOU verifies an agent the agent-manager creates without an OU goes to the
+// system OU rather than the manager's own, so the manager, who has no access there, is denied.
+func (ts *AgentAuthzTestSuite) TestCreateAgentWithoutOU() {
+	payload, err := json.Marshal(map[string]interface{}{
+		"type":       agentTypeName,
+		"attributes": map[string]interface{}{"name": "authz-agent-without-ou", "purpose": "default OU"},
+	})
+	ts.Require().NoError(err)
+
+	resp := ts.doAgent(http.MethodPost, "/agents", payload)
+	defer resp.Body.Close()
+
+	ts.Equal(http.StatusForbidden, resp.StatusCode,
+		"an agent without an OU goes to the system OU, outside the agent-manager's")
+}
+
 // TestCreateAgentInOtherOU verifies the agent-manager is denied creating an agent in OU2.
 func (ts *AgentAuthzTestSuite) TestCreateAgentInOtherOU() {
 	payload, err := json.Marshal(map[string]interface{}{

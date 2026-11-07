@@ -83,6 +83,63 @@ func TestLineDiffReportsAReplacedLine(t *testing.T) {
 	assert.Nil(t, lineDiff("same", "same"))
 }
 
+// A user's diff masks its attribute values, keeping the username, the attribute names and which of
+// them changed. A changed value still shows as removed and added, though both sides are masked, and
+// whatever is nested under an attribute is masked whole, a nested username included.
+func TestDiffBundlesMasksUserAttributeValues(t *testing.T) {
+	user := func(nationalID string) string {
+		return "resource_type: user\nid: user-1\ntype: person\nattributes:\n  username: alice\n" +
+			"  national_id: " + nationalID + "\n  email: \"alice@example.com\"\n  address:\n    city: Colombo\n" +
+			"  github:\n    username: alice-gh\n  phones:\n    - \"+94 77 123 4567\"\n  notes: |\n    Ship to:\n" +
+			"  manager: var:ALICE_MANAGER\ncredentials:\n  password: secret:USER_ALICE_PASSWORD"
+	}
+	held := parseBundle(user("TEST-ID-0001"))
+	applied := parseBundle(user("TEST-ID-0002"))
+
+	changes := diffBundles(held, applied)
+
+	require.Len(t, changes, 1)
+	assert.Equal(t, ChangeUpdated, changes[0].Change)
+	assert.Equal(t, []LineOp{
+		{Kind: " ", Text: "resource_type: user"},
+		{Kind: " ", Text: "id: user-1"},
+		{Kind: " ", Text: "type: person"},
+		{Kind: " ", Text: "attributes:"},
+		{Kind: " ", Text: "  username: alice"},
+		{Kind: "-", Text: "  national_id: ********"},
+		{Kind: "+", Text: "  national_id: ********"},
+		{Kind: " ", Text: "  email: ********"},
+		{Kind: " ", Text: "  address:"},
+		{Kind: " ", Text: "    ********"},
+		{Kind: " ", Text: "  github:"},
+		{Kind: " ", Text: "    ********"},
+		{Kind: " ", Text: "  phones:"},
+		{Kind: " ", Text: "    ********"},
+		{Kind: " ", Text: "  notes: ********"},
+		{Kind: " ", Text: "    ********"},
+		{Kind: " ", Text: "  manager: ********"},
+		{Kind: " ", Text: "credentials:"},
+		{Kind: " ", Text: "  password: secret:USER_ALICE_PASSWORD"},
+	}, changes[0].Lines)
+
+	removed := diffBundles(held, nil)
+	require.Len(t, removed, 1)
+	assert.Contains(t, removed[0].Lines, LineOp{Kind: "-", Text: "  national_id: ********"})
+	for _, op := range removed[0].Lines {
+		assert.NotContains(t, op.Text, "TEST-ID-0001", "a removed user's attribute value was shown")
+	}
+}
+
+// Only a user's diff masks its values: another resource's attributes are shown as they are.
+func TestDiffBundlesShowsOtherResourcesUnmasked(t *testing.T) {
+	document := "resource_type: application\nid: app-1\nname: Orders\nattributes:\n  owner: alice"
+
+	changes := diffBundles(nil, parseBundle(document))
+
+	require.Len(t, changes, 1)
+	assert.Contains(t, changes[0].Lines, LineOp{Kind: "+", Text: "  owner: alice"})
+}
+
 // An apply sends the documents of the changes chosen and names the removals chosen; only a removed
 // resource with an id can be named to the gateway, and an unchanged resource is never sent.
 func TestChosenSendsOnlyTheChangesChosen(t *testing.T) {

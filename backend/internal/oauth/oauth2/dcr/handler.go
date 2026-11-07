@@ -71,9 +71,19 @@ func (dh *dcrHandler) checkDCRAuthorization(r *http.Request, w http.ResponseWrit
 		security.GetSystemPermissions().AppCreate) {
 		return true
 	}
+	w.Header().Set(serverconst.WWWAuthenticateHeaderName, bearerChallenge(r))
 	sysutils.WriteJSONError(r.Context(), w, ErrorUnauthorized.Code,
 		ErrorUnauthorized.ErrorDescription.DefaultValue, http.StatusUnauthorized, nil)
 	return false
+}
+
+// bearerChallenge returns the WWW-Authenticate challenge for a refused request: a bare Bearer
+// challenge when no bearer token was presented, and invalid_token otherwise (RFC 6750 §3.1).
+func bearerChallenge(r *http.Request) string {
+	if sysutils.IsBearerAuth(r.Header.Get(serverconst.AuthorizationHeaderName)) {
+		return wwwAuthenticateInvalidToken
+	}
+	return serverconst.TokenTypeBearer
 }
 
 // HandleGetClientConfiguration handles an RFC 7592 read of a client's registration.
@@ -165,7 +175,7 @@ func (dh *dcrHandler) authorizeClientConfigurationRequest(
 		return clientID, true
 	}
 
-	w.Header().Set(serverconst.WWWAuthenticateHeaderName, wwwAuthenticateInvalidToken)
+	w.Header().Set(serverconst.WWWAuthenticateHeaderName, bearerChallenge(r))
 	sysutils.WriteJSONError(ctx, w, ErrorUnauthorizedManagement.Code,
 		ErrorUnauthorizedManagement.ErrorDescription.DefaultValue, http.StatusUnauthorized, nil)
 	return "", false

@@ -49,65 +49,6 @@ func (_m *roleAdminProviderMock) EXPECT() *roleAdminProviderMock_Expecter {
 	return &roleAdminProviderMock_Expecter{mock: &_m.Mock}
 }
 
-// DeleteRole provides a mock function for the type roleAdminProviderMock
-func (_mock *roleAdminProviderMock) DeleteRole(ctx context.Context, id string) *common.ServiceError {
-	ret := _mock.Called(ctx, id)
-
-	if len(ret) == 0 {
-		panic("no return value specified for DeleteRole")
-	}
-
-	var r0 *common.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *common.ServiceError); ok {
-		r0 = returnFunc(ctx, id)
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*common.ServiceError)
-		}
-	}
-	return r0
-}
-
-// roleAdminProviderMock_DeleteRole_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'DeleteRole'
-type roleAdminProviderMock_DeleteRole_Call struct {
-	*mock.Call
-}
-
-// DeleteRole is a helper method to define mock.On call
-//   - ctx context.Context
-//   - id string
-func (_e *roleAdminProviderMock_Expecter) DeleteRole(ctx any, id any) *roleAdminProviderMock_DeleteRole_Call {
-	return &roleAdminProviderMock_DeleteRole_Call{Call: _e.mock.On("DeleteRole", ctx, id)}
-}
-
-func (_c *roleAdminProviderMock_DeleteRole_Call) Run(run func(ctx context.Context, id string)) *roleAdminProviderMock_DeleteRole_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 context.Context
-		if args[0] != nil {
-			arg0 = args[0].(context.Context)
-		}
-		var arg1 string
-		if args[1] != nil {
-			arg1 = args[1].(string)
-		}
-		run(
-			arg0,
-			arg1,
-		)
-	})
-	return _c
-}
-
-func (_c *roleAdminProviderMock_DeleteRole_Call) Return(serviceError *common.ServiceError) *roleAdminProviderMock_DeleteRole_Call {
-	_c.Call.Return(serviceError)
-	return _c
-}
-
-func (_c *roleAdminProviderMock_DeleteRole_Call) RunAndReturn(run func(ctx context.Context, id string) *common.ServiceError) *roleAdminProviderMock_DeleteRole_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
 // GetRoleWithPermissions provides a mock function for the type roleAdminProviderMock
 func (_mock *roleAdminProviderMock) GetRoleWithPermissions(ctx context.Context, id string) (*role.RoleWithPermissions, *common.ServiceError) {
 	ret := _mock.Called(ctx, id)

@@ -202,7 +202,7 @@ describe('EditTokenSettings userAttributeSource', () => {
     renderAllUserTypes();
 
     expect(pickerAttributes()).toContain('employee_id');
-    expect(screen.getByRole('alert')).toHaveTextContent('Failed to load the user attributes.');
+    expect(screen.getByText('Failed to load the user attributes.').closest('[role="alert"]')).toBeInTheDocument();
   });
 
   it('should say no user type defines attributes when everything loaded and there are none', () => {

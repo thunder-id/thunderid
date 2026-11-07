@@ -178,7 +178,7 @@ export default function App(): JSX.Element {
               <Route
                 path="/"
                 element={
-                  <ProtectedRoute loader={<PageLoader />}>
+                  <ProtectedRoute>
                     <DashboardLayout />
                   </ProtectedRoute>
                 }
@@ -234,7 +234,7 @@ export default function App(): JSX.Element {
               <Route
                 path={RouteConfig.organizationUnits.list()}
                 element={
-                  <ProtectedRoute loader={<PageLoader />}>
+                  <ProtectedRoute>
                     <OrganizationUnitProvider />
                   </ProtectedRoute>
                 }
@@ -257,7 +257,7 @@ export default function App(): JSX.Element {
               <Route
                 path={RouteConfig.groups.create()}
                 element={
-                  <ProtectedRoute loader={<PageLoader />}>
+                  <ProtectedRoute>
                     <GroupCreateProvider>
                       <FullScreenLayout />
                     </GroupCreateProvider>
@@ -269,7 +269,7 @@ export default function App(): JSX.Element {
               <Route
                 path={RouteConfig.roles.create()}
                 element={
-                  <ProtectedRoute loader={<PageLoader />}>
+                  <ProtectedRoute>
                     <RoleCreateProvider>
                       <FullScreenLayout />
                     </RoleCreateProvider>
@@ -281,7 +281,7 @@ export default function App(): JSX.Element {
               <Route
                 path={RouteConfig.users.add()}
                 element={
-                  <ProtectedRoute loader={<PageLoader />}>
+                  <ProtectedRoute>
                     <FullScreenLayout />
                   </ProtectedRoute>
                 }
@@ -291,7 +291,7 @@ export default function App(): JSX.Element {
               <Route
                 path={RouteConfig.userTypes.create()}
                 element={
-                  <ProtectedRoute loader={<PageLoader />}>
+                  <ProtectedRoute>
                     <UserTypeCreateProvider>
                       <FullScreenLayout />
                     </UserTypeCreateProvider>
@@ -303,7 +303,7 @@ export default function App(): JSX.Element {
               <Route
                 path={RouteConfig.verifiablePresentations.create()}
                 element={
-                  <ProtectedRoute loader={<PageLoader />}>
+                  <ProtectedRoute>
                     <FullScreenLayout />
                   </ProtectedRoute>
                 }
@@ -313,7 +313,7 @@ export default function App(): JSX.Element {
               <Route
                 path={RouteConfig.verifiableCredentials.create()}
                 element={
-                  <ProtectedRoute loader={<PageLoader />}>
+                  <ProtectedRoute>
                     <FullScreenLayout />
                   </ProtectedRoute>
                 }
@@ -322,7 +322,7 @@ export default function App(): JSX.Element {
               </Route>
               <Route
                 element={
-                  <ProtectedRoute loader={<PageLoader />}>
+                  <ProtectedRoute>
                     <ApplicationCreateProvider>
                       <Outlet />
                     </ApplicationCreateProvider>
@@ -339,7 +339,7 @@ export default function App(): JSX.Element {
               <Route
                 path={RouteConfig.agents.create()}
                 element={
-                  <ProtectedRoute loader={<PageLoader />}>
+                  <ProtectedRoute>
                     <FullScreenLayout />
                   </ProtectedRoute>
                 }
@@ -349,7 +349,7 @@ export default function App(): JSX.Element {
               <Route
                 path={RouteConfig.resourceServers.create()}
                 element={
-                  <ProtectedRoute loader={<PageLoader />}>
+                  <ProtectedRoute>
                     <FullScreenLayout />
                   </ProtectedRoute>
                 }
@@ -359,7 +359,7 @@ export default function App(): JSX.Element {
               <Route
                 path={RouteConfig.flows.create()}
                 element={
-                  <ProtectedRoute loader={<PageLoader />}>
+                  <ProtectedRoute>
                     <FullScreenLayout />
                   </ProtectedRoute>
                 }
@@ -369,7 +369,7 @@ export default function App(): JSX.Element {
               <Route
                 path={RouteConfig.connections.create()}
                 element={
-                  <ProtectedRoute loader={<PageLoader />}>
+                  <ProtectedRoute>
                     <FullScreenLayout />
                   </ProtectedRoute>
                 }
@@ -379,7 +379,7 @@ export default function App(): JSX.Element {
               <Route
                 path={`/${ROUTE_SEGMENTS.connections}/:type/configure`}
                 element={
-                  <ProtectedRoute loader={<PageLoader />}>
+                  <ProtectedRoute>
                     <FullScreenLayout />
                   </ProtectedRoute>
                 }
@@ -389,7 +389,7 @@ export default function App(): JSX.Element {
               <Route
                 path={RouteConfig.flows.detail(':flowId')}
                 element={
-                  <ProtectedRoute loader={<PageLoader />}>
+                  <ProtectedRoute>
                     <DashboardLayout collapseSidebar />
                   </ProtectedRoute>
                 }
@@ -399,7 +399,7 @@ export default function App(): JSX.Element {
               <Route
                 path={RouteConfig.importExport.list()}
                 element={
-                  <ProtectedRoute loader={<PageLoader />}>
+                  <ProtectedRoute>
                     <FullScreenLayout />
                   </ProtectedRoute>
                 }
@@ -409,7 +409,7 @@ export default function App(): JSX.Element {
               <Route
                 path={RouteConfig.export.page()}
                 element={
-                  <ProtectedRoute loader={<PageLoader />}>
+                  <ProtectedRoute>
                     <FullScreenLayout />
                   </ProtectedRoute>
                 }
@@ -419,7 +419,7 @@ export default function App(): JSX.Element {
               <Route
                 path={RouteConfig.importConfiguration.upload()}
                 element={
-                  <ProtectedRoute loader={<PageLoader />}>
+                  <ProtectedRoute>
                     <FullScreenLayout />
                   </ProtectedRoute>
                 }
@@ -431,7 +431,7 @@ export default function App(): JSX.Element {
               <Route
                 path={RouteConfig.design.list()}
                 element={
-                  <ProtectedRoute loader={<PageLoader />}>
+                  <ProtectedRoute>
                     <DashboardLayout />
                   </ProtectedRoute>
                 }
@@ -441,7 +441,7 @@ export default function App(): JSX.Element {
               <Route
                 path={RouteConfig.design.themesCreate()}
                 element={
-                  <ProtectedRoute loader={<PageLoader />}>
+                  <ProtectedRoute>
                     <FullScreenLayout />
                   </ProtectedRoute>
                 }
@@ -451,7 +451,7 @@ export default function App(): JSX.Element {
               <Route
                 path={`/${ROUTE_SEGMENTS.design}/themes/:themeId`}
                 element={
-                  <ProtectedRoute loader={<PageLoader />}>
+                  <ProtectedRoute>
                     <ThemeBuilderProvider>
                       <DashboardLayout />
                     </ThemeBuilderProvider>
@@ -463,7 +463,7 @@ export default function App(): JSX.Element {
               <Route
                 path={`/${ROUTE_SEGMENTS.design}/layouts/:layoutId`}
                 element={
-                  <ProtectedRoute loader={<PageLoader />}>
+                  <ProtectedRoute>
                     <LayoutBuilderProvider>
                       <DashboardLayout />
                     </LayoutBuilderProvider>
@@ -475,7 +475,7 @@ export default function App(): JSX.Element {
               <Route
                 path={RouteConfig.translations.create()}
                 element={
-                  <ProtectedRoute loader={<PageLoader />}>
+                  <ProtectedRoute>
                     <TranslationCreateProvider>
                       <FullScreenLayout />
                     </TranslationCreateProvider>
@@ -487,7 +487,7 @@ export default function App(): JSX.Element {
               <Route
                 path={RouteConfig.translations.list()}
                 element={
-                  <ProtectedRoute loader={<PageLoader />}>
+                  <ProtectedRoute>
                     <DashboardLayout />
                   </ProtectedRoute>
                 }
@@ -498,7 +498,7 @@ export default function App(): JSX.Element {
               <Route
                 path={RouteConfig.notificationTemplates.list()}
                 element={
-                  <ProtectedRoute loader={<PageLoader />}>
+                  <ProtectedRoute>
                     <DashboardLayout />
                   </ProtectedRoute>
                 }
@@ -510,7 +510,7 @@ export default function App(): JSX.Element {
               <Route
                 path={RouteConfig.notificationTemplates.create(':channel' as NotificationChannel)}
                 element={
-                  <ProtectedRoute loader={<PageLoader />}>
+                  <ProtectedRoute>
                     <FullScreenLayout />
                   </ProtectedRoute>
                 }

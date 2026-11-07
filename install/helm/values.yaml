@@ -140,6 +140,10 @@ configuration:
     # Logical deployment identifier. Every record is scoped to it, so give each
     # deployment sharing a database its own value. Defaults to "default-deployment".
     identifier: ""
+    # The organization unit that resources in a project are placed in, and that applications and
+    # agents created without one go to. It is the organization unit the bootstrap creates. Don't
+    # change it once resources are placed in it.
+    systemOuId: "01900000-0000-7000-8000-000000000001"
     # The URL where users reach ThunderID in their browser.
     # ThunderID uses it to build the login and error redirect links.
     publicUrl: "https://thunderid.local"

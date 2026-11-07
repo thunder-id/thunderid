@@ -153,7 +153,9 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	fatalOnError(ctx, logger, err, "Failed to initialize i18n service")
 	exporters = append(exporters, i18nExporter)
 
-	ouAuthzService, err := sysauthz.Initialize()
+	// A control plane token names the business organization unit that selects the deployment, not an
+	// organization unit of this plane, so every caller acts across the whole deployment.
+	ouAuthzService, err := sysauthz.InitializeDeploymentBoundedAuthorization()
 	fatalOnError(ctx, logger, err, "Failed to initialize system authorization service")
 
 	ouService, ouHierarchyResolver, ouEnumerator, ouExporter, err := ou.Initialize(
@@ -235,7 +237,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		serverconfig.ConfigNameGateway:               gateway.NewSettingsConfigHandler(),
 	}
 	serverConfigService, serverConfigExporter, err := serverconfig.Initialize(mux, cacheManager, serverConfigHandlers,
-		observabilitySvc)
+		observabilitySvc, auditBus)
 	fatalOnError(ctx, logger, err, "Failed to initialize server config service")
 	exporters = append(exporters, serverConfigExporter)
 
@@ -333,7 +335,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	flowMgtService, flowMgtExporter, err := flowmgt.Initialize(
 		mux, mcpServer, cacheManager, flowFactory, execRegistry, interceptorRegistry, graphBuilder,
 		serverConfigService, ouService, notifTemplateSvc, httpConnectionService, flowConfigHandler, idpService,
-		false, sharingService)
+		false, sharingService, auditBus)
 	fatalOnError(ctx, logger, err, "Failed to initialize FlowMgtService")
 
 	exporters = append(exporters, flowMgtExporter)
@@ -392,7 +394,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		httpConnection: httpConnectionService,
 	}, applicationService, agentService, flowMgtService, roleAssignmentService, roleService,
 		groupService, ouService, ouUserResolver, ouGroupResolver, entityTypeService, resourceService,
-		sharingService, notifTemplateSvc, ouDependencyProvider, projectService)
+		sharingService, notifTemplateSvc, ouDependencyProvider)
 
 	// Initialize export service with collected exporters
 	// This plane authors configuration and does not hold the values it refers to, so an export

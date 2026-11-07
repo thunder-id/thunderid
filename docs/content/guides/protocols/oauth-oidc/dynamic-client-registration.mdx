@@ -190,7 +190,7 @@ Returns `204 No Content`. The client is removed, and the endpoint no longer reso
 
 | HTTP Status | Cause |
 |-------------|-------|
-| `401 Unauthorized` | The caller does not hold the required application permission. The response carries a `WWW-Authenticate: Bearer error="invalid_token"` header. |
+| `401 Unauthorized` | The caller does not hold the required application permission. The response carries a `WWW-Authenticate` header: `Bearer` when the request has no token, and `Bearer error="invalid_token"` when the token is refused. |
 | `404 Not Found` | No registration exists for the given `client_id`, including one already deleted. |
 | `400 Bad Request` | The update contains invalid client metadata, or omits `client_id`, or carries a `client_id` that does not match the request path, or carries a `client_secret` that does not match the issued secret. |
 

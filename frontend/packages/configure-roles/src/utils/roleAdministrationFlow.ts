@@ -26,25 +26,6 @@ export async function deleteRoleNatively(http: HttpLike, serverUrl: string, role
 }
 
 /**
- * Deletes a role through the configured deletion flow, falling back to the native endpoint.
- *
- * Only the flow revokes the scopes the role granted; a configured flow that cannot be resolved refuses.
- */
-export async function deleteRoleViaFlow(http: HttpLike, serverUrl: string, roleId: string): Promise<void> {
-  const result = await runAdministrationFlow(
-    http,
-    serverUrl,
-    AdministrationFlowConfigKey.ROLE_DELETION,
-    {[AdministrationFlowInput.ROLE]: roleId},
-    'role deletion',
-  );
-
-  if (result === null) {
-    await deleteRoleNatively(http, serverUrl, roleId);
-  }
-}
-
-/**
  * Unassigns a role from one assignee through the native endpoint.
  */
 export async function removeRoleAssignmentNatively(
