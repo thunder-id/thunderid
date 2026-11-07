@@ -15,6 +15,7 @@ import (
 	syscontext "github.com/thunder-id/thunderid/internal/system/context"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/tests/testhelpers"
 )
 
 type PayloadTestSuite struct {
@@ -305,7 +306,21 @@ func (s *PayloadTestSuite) TestPrincipalRef() {
 		"group": TargetTypeGroup,
 	} {
 		s.Run(principalType, func() {
-			s.Equal(Ref{Type: targetType, ID: testUserID}, PrincipalRef(principalType, testUserID))
+			s.Equal(Ref{Type: targetType, ID: testUserID}, PrincipalRef(context.Background(), principalType,
+				testUserID))
 		})
 	}
+}
+
+// A principal type with no target type is recorded as it is, and logged without the principal's ID.
+func (s *PayloadTestSuite) TestPrincipalRef_KeepsAndLogsAnUnmappedType() {
+	var ref Ref
+	logged := testhelpers.CaptureLogs(s.T(), "ERROR", func() {
+		ref = PrincipalRef(context.Background(), "workload", testUserID)
+	})
+
+	s.Equal(Ref{Type: "workload", ID: testUserID}, ref)
+	s.Contains(logged, "Principal type has no audit target type")
+	s.Contains(logged, "workload")
+	s.NotContains(logged, testUserID)
 }

@@ -95,6 +95,7 @@ type GroupServiceAuditTestSuite struct {
 	store     *groupStoreInterfaceMock
 	ous       *oumock.OrganizationUnitServiceInterfaceMock
 	entities  *entitymock.EntityServiceInterfaceMock
+	authz     *sysauthzmock.SystemAuthorizationServiceInterfaceMock
 	bus       eventbus.EventBusInterface
 	published func() []publishedEvent
 }
@@ -112,6 +113,7 @@ func (s *GroupServiceAuditTestSuite) SetupTest() {
 	s.store = newGroupStoreInterfaceMock(s.T())
 	s.ous = oumock.NewOrganizationUnitServiceInterfaceMock(s.T())
 	s.entities = entitymock.NewEntityServiceInterfaceMock(s.T())
+	s.authz = sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(s.T())
 	s.bus, s.published = newRecordingBus(s.T())
 }
 
@@ -124,30 +126,23 @@ func (s *GroupServiceAuditTestSuite) TearDownTest() {
 	config.ResetServerRuntime()
 }
 
-// newService returns a group service on the suite's mocks and recording bus that authorizes with authz.
-func (s *GroupServiceAuditTestSuite) newService(authz sysauthz.SystemAuthorizationServiceInterface) *groupService {
-	service := newGroupServiceWithStore(s.store, s.ous, s.entities, nil, authz, &stubTransactioner{}, nil, s.bus)
+// newService returns a group service on the suite's mocks and recording bus.
+func (s *GroupServiceAuditTestSuite) newService() *groupService {
+	service := newGroupServiceWithStore(s.store, s.ous, s.entities, nil, s.authz, &stubTransactioner{}, nil, s.bus)
 	service.dependencyRegistry = noopDepRegistry{}
 	return service
 }
 
-// denyingAuthz refuses every group action the caller asks for, as it does for a unit it does not manage.
-func denyingAuthz(t *testing.T) sysauthz.SystemAuthorizationServiceInterface {
-	authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
-	authzMock.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).
-		Return(false, (*tidcommon.ServiceError)(nil)).Maybe()
-	return authzMock
+// expectAccessChecks expects the access check to be asked times times, answered with allowed.
+func (s *GroupServiceAuditTestSuite) expectAccessChecks(allowed bool, times int) {
+	s.authz.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).
+		Return(allowed, (*tidcommon.ServiceError)(nil)).Times(times)
 }
 
-// grantRefusingAuthz allows every group action and refuses every membership grant, as sysauthz does for
-// a caller lacking what the group confers.
-func grantRefusingAuthz(t *testing.T) sysauthz.SystemAuthorizationServiceInterface {
-	authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
-	authzMock.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).
-		Return(true, (*tidcommon.ServiceError)(nil)).Maybe()
-	authzMock.On("CanGrantMembership", mock.Anything, mock.Anything, mock.Anything).
-		Return(&sysauthz.ErrorGrantNotPermitted).Maybe()
-	return authzMock
+// expectGrantChecks expects the membership grant check to be asked times times, answered with svcErr.
+func (s *GroupServiceAuditTestSuite) expectGrantChecks(svcErr *tidcommon.ServiceError, times int) {
+	s.authz.On("CanGrantMembership", mock.Anything, sysauthz.PrincipalTypeGroup, mock.Anything).
+		Return(svcErr).Times(times)
 }
 
 // requireGroupEvent checks that event is named name, for an attempt by the admin on the group with
@@ -184,30 +179,36 @@ func auditedMembers() []Member {
 	}
 }
 
-// memberEntities stubs the user and the agent as living in testOUID1.
-func (s *GroupServiceAuditTestSuite) memberEntities() {
+// memberEntities stubs times lookups of the user and the agent, both living in testOUID1.
+func (s *GroupServiceAuditTestSuite) memberEntities(times int) {
 	s.entities.On("GetEntitiesByIDs", mock.Anything, mock.Anything).Return([]providers.Entity{
 		{ID: testAuditUserID, Category: providers.EntityCategoryUser, OUID: testOUID1},
 		{ID: testAuditAgentID, Category: providers.EntityCategoryAgent, OUID: testOUID1},
-	}, nil)
-	// A removal checks only that a nested group exists, not where it lives.
-	s.store.On("GetGroupsByIDs", mock.Anything, []string{testAuditNestedID}).
-		Return([]GroupBasicDAO{{ID: testAuditNestedID, OUID: testOUID1}}, nil).Maybe()
+	}, nil).Times(times)
 }
 
-// memberUser stubs the user as living in testOUID1.
-func (s *GroupServiceAuditTestSuite) memberUser() {
+// nestedGroupInOU stubs the one lookup of the nested group an addition makes, to check where it lives.
+func (s *GroupServiceAuditTestSuite) nestedGroupInOU() {
+	s.store.On("GetGroupsByIDs", mock.Anything, []string{testAuditNestedID}).
+		Return([]GroupBasicDAO{{ID: testAuditNestedID, OUID: testOUID1}}, nil).Once()
+}
+
+// memberUser stubs times lookups of the user, living in testOUID1.
+func (s *GroupServiceAuditTestSuite) memberUser(times int) {
 	s.entities.On("GetEntitiesByIDs", mock.Anything, []string{testAuditUserID}).Return([]providers.Entity{
 		{ID: testAuditUserID, Category: providers.EntityCategoryUser, OUID: testOUID1},
-	}, nil)
+	}, nil).Times(times)
 }
 
-// arrangeCreate stubs a create of the group in testOUID1 that succeeds.
+// arrangeCreate stubs a create of the group in testOUID1 that succeeds. The members are looked up to
+// validate them and again to resolve them for the response.
 func (s *GroupServiceAuditTestSuite) arrangeCreate() {
-	s.ous.On("IsOrganizationUnitExists", mock.Anything, testOUID1).Return(true, nil)
-	s.memberEntities()
-	s.store.On("CheckGroupNameConflictForCreate", mock.Anything, testAuditGroupName, testOUID1).Return(nil)
-	s.store.On("CreateGroup", mock.Anything, mock.Anything).Return(nil)
+	s.ous.On("IsOrganizationUnitExists", mock.Anything, testOUID1).Return(true, nil).Once()
+	s.expectAccessChecks(true, 1)
+	s.memberEntities(2)
+	s.nestedGroupInOU()
+	s.store.On("CheckGroupNameConflictForCreate", mock.Anything, testAuditGroupName, testOUID1).Return(nil).Once()
+	s.store.On("CreateGroup", mock.Anything, mock.Anything).Return(nil).Once()
 }
 
 // requireCreatedWithMembers checks that the create of the group with groupID was published, then each
@@ -227,7 +228,7 @@ func (s *GroupServiceAuditTestSuite) requireCreatedWithMembers(events []publishe
 // A group created with members is recorded as created, and each member as added to it once, so every
 // membership the create granted is in the log.
 func (s *GroupServiceAuditTestSuite) TestCreateGroup_PublishesTheGroupAndEachMember() {
-	service := s.newService(newAllowAllAuthz(s.T()))
+	service := s.newService()
 	s.arrangeCreate()
 
 	created, svcErr := service.CreateGroup(adminContext(), CreateGroupRequest{
@@ -240,9 +241,9 @@ func (s *GroupServiceAuditTestSuite) TestCreateGroup_PublishesTheGroupAndEachMem
 
 // A create under an organization unit path is the same attempt, recorded once.
 func (s *GroupServiceAuditTestSuite) TestCreateGroupByPath_PublishesTheGroupAndEachMember() {
-	service := s.newService(newAllowAllAuthz(s.T()))
+	service := s.newService()
 	s.ous.On("GetOrganizationUnitByPath", mock.Anything, "library").
-		Return(oupkg.OrganizationUnit{ID: testOUID1}, nil)
+		Return(oupkg.OrganizationUnit{ID: testOUID1}, nil).Once()
 	s.arrangeCreate()
 
 	created, svcErr := service.CreateGroupByPath(adminContext(), "library", CreateGroupByPathRequest{
@@ -257,13 +258,11 @@ func (s *GroupServiceAuditTestSuite) TestCreateGroupByPath_PublishesTheGroupAndE
 func (s *GroupServiceAuditTestSuite) TestCreateGroup_PublishesOneEventWhenItFails() {
 	cases := []struct {
 		name    string
-		authz   func(t *testing.T) sysauthz.SystemAuthorizationServiceInterface
 		create  func(service *groupService) *tidcommon.ServiceError
 		outcome audit.Outcome
 	}{
 		{
-			name:  "the request has no name",
-			authz: newAllowAllAuthz,
+			name: "the request has no name",
 			create: func(service *groupService) *tidcommon.ServiceError {
 				_, svcErr := service.CreateGroup(adminContext(), CreateGroupRequest{OUID: testOUID1})
 				return svcErr
@@ -271,11 +270,10 @@ func (s *GroupServiceAuditTestSuite) TestCreateGroup_PublishesOneEventWhenItFail
 			outcome: audit.OutcomeFailed("grp_1001"),
 		},
 		{
-			name:  "the organization unit path does not exist",
-			authz: newAllowAllAuthz,
+			name: "the organization unit path does not exist",
 			create: func(service *groupService) *tidcommon.ServiceError {
 				s.ous.On("GetOrganizationUnitByPath", mock.Anything, "nowhere").
-					Return(oupkg.OrganizationUnit{}, &oupkg.ErrorOrganizationUnitNotFound)
+					Return(oupkg.OrganizationUnit{}, &oupkg.ErrorOrganizationUnitNotFound).Once()
 				_, svcErr := service.CreateGroupByPath(adminContext(), "nowhere",
 					CreateGroupByPathRequest{Name: testAuditGroupName})
 				return svcErr
@@ -283,10 +281,10 @@ func (s *GroupServiceAuditTestSuite) TestCreateGroup_PublishesOneEventWhenItFail
 			outcome: audit.OutcomeFailed("grp_1003"),
 		},
 		{
-			name:  "the caller does not manage the organization unit",
-			authz: denyingAuthz,
+			name: "the caller does not manage the organization unit",
 			create: func(service *groupService) *tidcommon.ServiceError {
-				s.ous.On("IsOrganizationUnitExists", mock.Anything, testOUID1).Return(true, nil)
+				s.ous.On("IsOrganizationUnitExists", mock.Anything, testOUID1).Return(true, nil).Once()
+				s.expectAccessChecks(false, 1)
 				_, svcErr := service.CreateGroup(adminContext(), CreateGroupRequest{
 					Name: testAuditGroupName, OUID: testOUID1, Members: auditedMembers(),
 				})
@@ -297,7 +295,7 @@ func (s *GroupServiceAuditTestSuite) TestCreateGroup_PublishesOneEventWhenItFail
 	}
 	for _, tc := range cases {
 		s.Run(tc.name, func() {
-			service := s.newService(tc.authz(s.T()))
+			service := s.newService()
 
 			s.Require().NotNil(tc.create(service))
 
@@ -321,14 +319,20 @@ func (s *GroupServiceAuditTestSuite) TestUpdateAndDeleteGroup_PublishOneEventPer
 	deleteGroup := func(service *groupService) *tidcommon.ServiceError {
 		return service.DeleteGroup(adminContext(), testAuditGroupID)
 	}
-	existing := func() {
-		s.store.On("IsGroupDeclarative", mock.Anything, testAuditGroupID).Return(false, nil)
-		s.store.On("GetGroup", mock.Anything, testAuditGroupID).
-			Return(GroupDAO{ID: testAuditGroupID, Name: "Old", OUID: testOUID1}, nil)
+	missing := func() {
+		s.store.On("IsGroupDeclarative", mock.Anything, testAuditGroupID).Return(false, nil).Once()
+		s.store.On("GetGroup", mock.Anything, testAuditGroupID).Return(GroupDAO{}, ErrGroupNotFound).Once()
+	}
+	existing := func(allowed bool) func() {
+		return func() {
+			s.store.On("IsGroupDeclarative", mock.Anything, testAuditGroupID).Return(false, nil).Once()
+			s.store.On("GetGroup", mock.Anything, testAuditGroupID).
+				Return(GroupDAO{ID: testAuditGroupID, Name: "Old", OUID: testOUID1}, nil).Once()
+			s.expectAccessChecks(allowed, 1)
+		}
 	}
 	cases := []struct {
 		name    string
-		authz   func(t *testing.T) sysauthz.SystemAuthorizationServiceInterface
 		arrange func()
 		call    func(service *groupService) *tidcommon.ServiceError
 		event   string
@@ -337,57 +341,49 @@ func (s *GroupServiceAuditTestSuite) TestUpdateAndDeleteGroup_PublishOneEventPer
 		subject audit.Ref
 	}{
 		{
-			name: "the group is updated", authz: newAllowAllAuthz, call: update,
+			name: "the group is updated", call: update,
 			arrange: func() {
-				existing()
+				existing(true)()
 				s.store.On("CheckGroupNameConflictForUpdate", mock.Anything, testAuditGroupName, testOUID1,
-					testAuditGroupID).Return(nil)
-				s.store.On("UpdateGroup", mock.Anything, mock.Anything).Return(nil)
+					testAuditGroupID).Return(nil).Once()
+				s.store.On("UpdateGroup", mock.Anything, mock.Anything).Return(nil).Once()
 			},
 			event: audit.EventGroupUpdate, action: audit.ActionUpdate, outcome: audit.OutcomeSucceeded,
 			subject: auditGroup,
 		},
 		{
-			name: "the group to update does not exist", authz: newAllowAllAuthz, call: update,
-			arrange: func() {
-				s.store.On("IsGroupDeclarative", mock.Anything, testAuditGroupID).Return(false, nil)
-				s.store.On("GetGroup", mock.Anything, testAuditGroupID).Return(GroupDAO{}, ErrGroupNotFound)
-			},
+			name: "the group to update does not exist", call: update, arrange: missing,
 			event: audit.EventGroupUpdate, action: audit.ActionUpdate, outcome: audit.OutcomeFailed("grp_1003"),
 		},
 		{
-			name: "the caller does not manage the group to update", authz: denyingAuthz, call: update,
-			arrange: existing,
+			name: "the caller does not manage the group to update", call: update,
+			arrange: existing(false),
 			event:   audit.EventGroupUpdate, action: audit.ActionUpdate, outcome: audit.OutcomeDenied("forbidden"),
 			subject: auditGroup,
 		},
 		{
-			name: "the group is deleted", authz: newAllowAllAuthz, call: deleteGroup,
+			name: "the group is deleted", call: deleteGroup,
 			arrange: func() {
-				existing()
-				s.store.On("DeleteGroup", mock.Anything, testAuditGroupID).Return(nil)
+				existing(true)()
+				s.store.On("DeleteGroup", mock.Anything, testAuditGroupID).Return(nil).Once()
 			},
 			event: audit.EventGroupDelete, action: audit.ActionDelete, outcome: audit.OutcomeSucceeded,
 			subject: auditGroup,
 		},
 		{
-			name: "the group to delete does not exist", authz: newAllowAllAuthz, call: deleteGroup,
-			arrange: func() {
-				s.store.On("IsGroupDeclarative", mock.Anything, testAuditGroupID).Return(false, nil)
-				s.store.On("GetGroup", mock.Anything, testAuditGroupID).Return(GroupDAO{}, ErrGroupNotFound)
-			},
+			name: "the group to delete does not exist", call: deleteGroup, arrange: missing,
 			event: audit.EventGroupDelete, action: audit.ActionDelete, outcome: audit.OutcomeFailed("grp_1003"),
 		},
 		{
-			name: "the caller does not manage the group to delete", authz: denyingAuthz, call: deleteGroup,
-			arrange: existing,
+			name: "the caller does not manage the group to delete", call: deleteGroup,
+			arrange: existing(false),
 			event:   audit.EventGroupDelete, action: audit.ActionDelete, outcome: audit.OutcomeDenied("forbidden"),
 			subject: auditGroup,
 		},
 	}
 	for _, tc := range cases {
 		s.Run(tc.name, func() {
-			service := s.newService(tc.authz(s.T()))
+			service := s.newService()
 			tc.arrange()
 
 			svcErr := tc.call(service)
@@ -400,25 +396,26 @@ func (s *GroupServiceAuditTestSuite) TestUpdateAndDeleteGroup_PublishOneEventPer
 	}
 }
 
-// arrangeMembershipChange stubs the group and its members for a membership change that succeeds.
-func (s *GroupServiceAuditTestSuite) arrangeMembershipChange() {
-	s.store.On("GetGroup", mock.Anything, testAuditGroupID).
-		Return(GroupDAO{ID: testAuditGroupID, OUID: testOUID1}, nil)
-	s.memberEntities()
+// arrangeMembershipChange stubs a membership change of the group with groupID that succeeds. The group is
+// read and checked before the transaction and again inside it, then read once more after storeOp.
+func (s *GroupServiceAuditTestSuite) arrangeMembershipChange(groupID, storeOp string) {
+	s.store.On("GetGroup", mock.Anything, groupID).Return(GroupDAO{ID: groupID, OUID: testOUID1}, nil).Times(3)
+	s.store.On(storeOp, mock.Anything, groupID, mock.Anything).Return(nil).Once()
 }
 
 // Adding or removing several members is one event per distinct member, each naming who gained or lost
 // the membership.
 func (s *GroupServiceAuditTestSuite) TestGroupMembers_PublishEachMember() {
 	cases := []struct {
-		name   string
-		store  string
-		call   func(service *groupService) (*Group, *tidcommon.ServiceError)
-		event  string
-		action audit.Action
+		name    string
+		store   string
+		arrange func()
+		call    func(service *groupService) (*Group, *tidcommon.ServiceError)
+		event   string
+		action  audit.Action
 	}{
 		{
-			name: "add", store: "AddGroupMembers",
+			name: "add", store: "AddGroupMembers", arrange: s.nestedGroupInOU,
 			call: func(service *groupService) (*Group, *tidcommon.ServiceError) {
 				return service.AddGroupMembers(adminContext(), testAuditGroupID, auditedMembers())
 			},
@@ -426,6 +423,10 @@ func (s *GroupServiceAuditTestSuite) TestGroupMembers_PublishEachMember() {
 		},
 		{
 			name: "remove", store: "RemoveGroupMembers",
+			// A removal checks only that a nested group exists, not where it lives.
+			arrange: func() {
+				s.store.On("ValidateGroupIDs", mock.Anything, []string{testAuditNestedID}).Return(nil, nil).Once()
+			},
 			call: func(service *groupService) (*Group, *tidcommon.ServiceError) {
 				return service.RemoveGroupMembers(adminContext(), testAuditGroupID, auditedMembers())
 			},
@@ -434,10 +435,12 @@ func (s *GroupServiceAuditTestSuite) TestGroupMembers_PublishEachMember() {
 	}
 	for _, tc := range cases {
 		s.Run(tc.name, func() {
-			service := s.newService(newAllowAllAuthz(s.T()))
-			s.arrangeMembershipChange()
-			s.store.On("ValidateGroupIDs", mock.Anything, mock.Anything).Return(nil, nil).Maybe()
-			s.store.On(tc.store, mock.Anything, testAuditGroupID, mock.Anything).Return(nil)
+			service := s.newService()
+			s.arrangeMembershipChange(testAuditGroupID, tc.store)
+			s.expectAccessChecks(true, 2)
+			s.expectGrantChecks(nil, 2)
+			s.memberEntities(1)
+			tc.arrange()
 
 			_, svcErr := tc.call(service)
 
@@ -457,7 +460,6 @@ func (s *GroupServiceAuditTestSuite) TestGroupMembers_PublishEachMember() {
 func (s *GroupServiceAuditTestSuite) TestGroupMembers_PublishOneEventWhenItFails() {
 	cases := []struct {
 		name    string
-		authz   func(t *testing.T) sysauthz.SystemAuthorizationServiceInterface
 		arrange func()
 		call    func(service *groupService) *tidcommon.ServiceError
 		event   string
@@ -465,9 +467,9 @@ func (s *GroupServiceAuditTestSuite) TestGroupMembers_PublishOneEventWhenItFails
 		outcome audit.Outcome
 	}{
 		{
-			name: "the group to add to does not exist", authz: newAllowAllAuthz,
+			name: "the group to add to does not exist",
 			arrange: func() {
-				s.store.On("GetGroup", mock.Anything, testAuditGroupID).Return(GroupDAO{}, ErrGroupNotFound)
+				s.store.On("GetGroup", mock.Anything, testAuditGroupID).Return(GroupDAO{}, ErrGroupNotFound).Once()
 			},
 			call: func(service *groupService) *tidcommon.ServiceError {
 				_, svcErr := service.AddGroupMembers(adminContext(), testAuditGroupID, auditedMembers())
@@ -476,10 +478,12 @@ func (s *GroupServiceAuditTestSuite) TestGroupMembers_PublishOneEventWhenItFails
 			event: audit.EventGroupMemberAdd, action: audit.ActionAdd, outcome: audit.OutcomeFailed("grp_1003"),
 		},
 		{
-			name: "the caller may not grant what the group confers", authz: grantRefusingAuthz,
+			name: "the caller may not grant what the group confers",
 			arrange: func() {
 				s.store.On("GetGroup", mock.Anything, testAuditGroupID).
-					Return(GroupDAO{ID: testAuditGroupID, OUID: testOUID1}, nil)
+					Return(GroupDAO{ID: testAuditGroupID, OUID: testOUID1}, nil).Once()
+				s.expectAccessChecks(true, 1)
+				s.expectGrantChecks(&sysauthz.ErrorGrantNotPermitted, 1)
 			},
 			call: func(service *groupService) *tidcommon.ServiceError {
 				_, svcErr := service.AddGroupMembers(adminContext(), testAuditGroupID, auditedMembers())
@@ -488,10 +492,11 @@ func (s *GroupServiceAuditTestSuite) TestGroupMembers_PublishOneEventWhenItFails
 			event: audit.EventGroupMemberAdd, action: audit.ActionAdd, outcome: audit.OutcomeDenied("forbidden"),
 		},
 		{
-			name: "the caller does not manage the group to remove from", authz: denyingAuthz,
+			name: "the caller does not manage the group to remove from",
 			arrange: func() {
 				s.store.On("GetGroup", mock.Anything, testAuditGroupID).
-					Return(GroupDAO{ID: testAuditGroupID, OUID: testOUID1}, nil)
+					Return(GroupDAO{ID: testAuditGroupID, OUID: testOUID1}, nil).Once()
+				s.expectAccessChecks(false, 1)
 			},
 			call: func(service *groupService) *tidcommon.ServiceError {
 				_, svcErr := service.RemoveGroupMembers(adminContext(), testAuditGroupID, auditedMembers())
@@ -501,7 +506,7 @@ func (s *GroupServiceAuditTestSuite) TestGroupMembers_PublishOneEventWhenItFails
 			outcome: audit.OutcomeDenied("forbidden"),
 		},
 		{
-			name: "no member is named", authz: newAllowAllAuthz, arrange: func() {},
+			name: "no member is named", arrange: func() {},
 			call: func(service *groupService) *tidcommon.ServiceError {
 				_, svcErr := service.RemoveGroupMembers(adminContext(), testAuditGroupID, nil)
 				return svcErr
@@ -512,7 +517,7 @@ func (s *GroupServiceAuditTestSuite) TestGroupMembers_PublishOneEventWhenItFails
 	}
 	for _, tc := range cases {
 		s.Run(tc.name, func() {
-			service := s.newService(tc.authz(s.T()))
+			service := s.newService()
 			tc.arrange()
 
 			s.Require().NotNil(tc.call(service))
@@ -527,13 +532,14 @@ func (s *GroupServiceAuditTestSuite) TestGroupMembers_PublishOneEventWhenItFails
 // Adding members to several groups at once is one event per group and member, after all of them
 // committed: none is published from inside the transaction.
 func (s *GroupServiceAuditTestSuite) TestAddMembersToGroups_PublishesEachGroupAndMember() {
-	service := s.newService(newAllowAllAuthz(s.T()))
-	s.store.On("ValidateGroupIDs", mock.Anything, mock.Anything).Return(nil, nil)
+	service := s.newService()
+	s.store.On("ValidateGroupIDs", mock.Anything, []string{testAuditGroupID, "grp-003"}).Return(nil, nil).Once()
 	for _, id := range []string{testAuditGroupID, "grp-003"} {
-		s.store.On("GetGroup", mock.Anything, id).Return(GroupDAO{ID: id, OUID: testOUID1}, nil)
-		s.store.On("AddGroupMembers", mock.Anything, id, mock.Anything).Return(nil)
+		s.arrangeMembershipChange(id, "AddGroupMembers")
 	}
-	s.memberUser()
+	s.expectAccessChecks(true, 4)
+	s.expectGrantChecks(nil, 4)
+	s.memberUser(2)
 
 	svcErr := service.AddMembersToGroups(adminContext(),
 		[]Member{{ID: testAuditUserID, Type: MemberTypeUser}}, []string{testAuditGroupID, "grp-003"})
@@ -549,12 +555,13 @@ func (s *GroupServiceAuditTestSuite) TestAddMembersToGroups_PublishesEachGroupAn
 
 // A refusal for one group rolls back every group, so each is recorded as failed and no member as added.
 func (s *GroupServiceAuditTestSuite) TestAddMembersToGroups_PublishesEachGroupWhenItFails() {
-	service := s.newService(newAllowAllAuthz(s.T()))
-	s.store.On("ValidateGroupIDs", mock.Anything, mock.Anything).Return(nil, nil)
-	s.store.On("GetGroup", mock.Anything, testAuditGroupID).Return(GroupDAO{ID: testAuditGroupID, OUID: testOUID1}, nil)
-	s.store.On("AddGroupMembers", mock.Anything, testAuditGroupID, mock.Anything).Return(nil)
-	s.store.On("GetGroup", mock.Anything, "grp-003").Return(GroupDAO{}, ErrGroupNotFound)
-	s.memberUser()
+	service := s.newService()
+	s.store.On("ValidateGroupIDs", mock.Anything, []string{testAuditGroupID, "grp-003"}).Return(nil, nil).Once()
+	s.arrangeMembershipChange(testAuditGroupID, "AddGroupMembers")
+	s.expectAccessChecks(true, 2)
+	s.expectGrantChecks(nil, 2)
+	s.memberUser(1)
+	s.store.On("GetGroup", mock.Anything, "grp-003").Return(GroupDAO{}, ErrGroupNotFound).Once()
 
 	svcErr := service.AddMembersToGroups(adminContext(),
 		[]Member{{ID: testAuditUserID, Type: MemberTypeUser}}, []string{testAuditGroupID, "grp-003"})
@@ -571,7 +578,7 @@ func (s *GroupServiceAuditTestSuite) TestAddMembersToGroups_PublishesEachGroupWh
 
 // A bus that cannot take the events never fails the change they describe.
 func (s *GroupServiceAuditTestSuite) TestCreateGroup_SucceedsWhenTheBusRefusesTheEvents() {
-	service := s.newService(newAllowAllAuthz(s.T()))
+	service := s.newService()
 	failing := eventbusmock.NewEventBusInterfaceMock(s.T())
 	failing.EXPECT().Publish(mock.Anything, mock.Anything).Return(errors.New("audit queue is full")).Times(4)
 	service.bus = failing
