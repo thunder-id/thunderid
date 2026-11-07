@@ -64,7 +64,7 @@ import {useTranslation} from 'react-i18next';
 import {Link as NavigateLink, Outlet, useLocation, useMatch, useNavigate} from 'react-router';
 import GatewaySwitcher from './components/GatewaySwitcher';
 import SessionExpiredBanner from '../components/SessionExpiredBanner';
-import RouteConfig from '../configs/RouteConfig';
+import RouteConfig, {ROUTE_SEGMENTS} from '../configs/RouteConfig';
 
 const ICON_BUTTON_SX = {
   minWidth: 40,
@@ -190,7 +190,7 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
   // How many of the project's own applications and agents the first gateway does not run yet.
   const undeployed = useProjectChanges();
   // On one of a gateway's pages, the navigation is the gateway's.
-  const gatewayMatch = useMatch('/projects/:projectId/deploy/gateways/:gatewayId/*');
+  const gatewayMatch = useMatch(`/${ROUTE_SEGMENTS.projects}/:projectId/${ROUTE_SEGMENTS.deployTargets}/:gatewayId/*`);
   const gatewayId = gatewayMatch?.params.gatewayId;
   const pipeline = usePipeline();
   const deployRoutes = useDeployRoutes();

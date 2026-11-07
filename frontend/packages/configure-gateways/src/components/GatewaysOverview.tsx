@@ -274,6 +274,22 @@ export default function GatewaysOverview({
   const latestChanges =
     project && first ? (statusOf(first.gateway.id) ? projectOwes(first.gateway.id) : undefined) : firstChanges;
 
+  // The versions a deploy enters at the first gateway with, and the way into it, beside the gateways
+  // whether there is one or more.
+  const versionsPanel = first ? (
+    <PipelineVersions
+      versions={all}
+      isLoading={versions.isLoading}
+      runners={runners}
+      firstRuns={project ? (statusOf(first.gateway.id)?.project.versions[0]?.hash ?? undefined) : firstRuns}
+      firstName={first.name}
+      latestChanges={latestChanges}
+      onDeploy={deployToFirst}
+      deploying={panels.deploying}
+    />
+  ) : null;
+  const deployJoint = first ? <DeployJoint testId={`gateway-connector-${first.gateway.id}`} /> : null;
+
   return (
     <Stack spacing={5} component="section" aria-label={t('gateways.title', 'Gateways')}>
       <Stack spacing={1.25} sx={{maxWidth: 900}}>
@@ -318,21 +334,33 @@ export default function GatewaysOverview({
         <Alert severity="info">{t('gateways.none', 'Register a gateway to have a gateway to deploy to.')}</Alert>
       )}
       {first && single && (
-        <Stack
+        <Box
           component="section"
-          aria-label={t('pipeline.singleRegion', 'Your gateway')}
-          spacing={1.5}
-          sx={{maxWidth: 360}}
-          data-testid="single-gateway"
+          aria-label={t('pipeline.region', 'Deployment pipeline')}
+          // As wide as the versions, the arrow and the one card need, so the versions keep the width they
+          // have beside a pipeline instead of filling the page.
+          sx={{display: 'flex', flexWrap: 'wrap', alignItems: 'stretch', gap: 2, maxWidth: 760}}
         >
-          <Typography variant="overline" color="text.secondary" sx={{fontWeight: 600}}>
-            {t('pipeline.singleTitle', 'Your gateway')}
-          </Typography>
-          {cardOf(first, 0, undefined)}
-          <Typography variant="caption" color="text.secondary">
-            {t('pipeline.singleHint', 'Add another gateway to get a full deployment pipeline.')}
-          </Typography>
-        </Stack>
+          {versionsPanel}
+          {/* The arrow stays with the gateway it points to when the row wraps. */}
+          <Box sx={{display: 'flex', alignItems: 'stretch', gap: 2}}>
+            {deployJoint}
+            <Stack
+              aria-label={t('pipeline.singleRegion', 'Your gateway')}
+              spacing={1.5}
+              sx={{maxWidth: 360}}
+              data-testid="single-gateway"
+            >
+              <Typography variant="overline" color="text.secondary" sx={{fontWeight: 600}}>
+                {t('pipeline.singleTitle', 'Your gateway')}
+              </Typography>
+              {cardOf(first, 0, undefined)}
+              <Typography variant="caption" color="text.secondary">
+                {t('pipeline.singleHint', 'Add another gateway to get a full deployment pipeline.')}
+              </Typography>
+            </Stack>
+          </Box>
+        </Box>
       )}
       {first && !single && (
         <Box
@@ -340,17 +368,8 @@ export default function GatewaysOverview({
           aria-label={t('pipeline.region', 'Deployment pipeline')}
           sx={{display: 'flex', flexWrap: 'wrap', alignItems: 'stretch', gap: 2}}
         >
-          <PipelineVersions
-            versions={all}
-            isLoading={versions.isLoading}
-            runners={runners}
-            firstRuns={project ? (statusOf(first.gateway.id)?.project.versions[0]?.hash ?? undefined) : firstRuns}
-            firstName={first.name}
-            latestChanges={latestChanges}
-            onDeploy={deployToFirst}
-            deploying={panels.deploying}
-          />
-          <DeployJoint testId={`gateway-connector-${first.gateway.id}`} />
+          {versionsPanel}
+          {deployJoint}
           <GatewaysStrip count={stages.length}>
             {stages.map((stage: PipelineStage, index: number) => {
               const {gateway} = stage;

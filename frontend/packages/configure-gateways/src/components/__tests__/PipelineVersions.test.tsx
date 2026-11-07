@@ -69,10 +69,13 @@ describe('PipelineVersions', () => {
     expect(screen.getByText(/Nothing is captured yet/)).toBeInTheDocument();
   });
 
-  it('does not single out the latest while the first gateway runs it', () => {
+  it("keeps the latest's Deploy the main one while the first gateway runs it, the others outlined", () => {
     render(<PipelineVersions versions={versions} runners={{}} firstRuns="hash-7" firstName="Dev" onDeploy={vi.fn()} />);
 
     expect(within(screen.getByTestId('pipeline-version-hash-7')).getByRole('button', {name: 'Deploy'})).toHaveClass(
+      'MuiButton-contained',
+    );
+    expect(within(screen.getByTestId('pipeline-version-hash-6')).getByRole('button', {name: 'Deploy'})).toHaveClass(
       'MuiButton-outlined',
     );
   });

@@ -129,7 +129,7 @@ describe('GatewaysOverview', () => {
     expect(navigate).toHaveBeenCalledWith('/deploy/gateways/gw-prod/explore');
   });
 
-  it('shows a project that runs in one gateway with that gateway alone', async () => {
+  it('shows a project that runs in one gateway with that gateway alone, beside the versions to deploy to it', async () => {
     routes['GET /gateways/pipeline'] = {stages: [{name: 'Development', gateway: dev}]};
 
     render(
@@ -144,7 +144,10 @@ describe('GatewaysOverview', () => {
       screen.getByText('This project runs in one gateway. Your configuration deploys straight to it.'),
     ).toBeInTheDocument();
     expect(screen.getByText('Add another gateway to get a full deployment pipeline.')).toBeInTheDocument();
-    expect(screen.queryByText('Project versions')).not.toBeInTheDocument();
+    // The versions stay, so a version can still be deployed with auto-sync off or an earlier one again.
+    expect(screen.getByText('Project versions')).toBeInTheDocument();
+    // The arrow wraps with the gateway it points to, not with the versions.
+    expect(screen.getByTestId('gateway-connector-gw-dev').parentElement).toBe(single.parentElement);
   });
 
   it("names the versions as the project's on a project home", async () => {
@@ -308,7 +311,7 @@ describe('GatewaysOverview', () => {
     expect(within(steps).getByText('Development').closest('li')).toHaveTextContent('Runs v1');
   });
 
-  it("fills the latest version's Deploy only while it brings the project's own changes to the first gateway", async () => {
+  it("keeps the latest version's Deploy the main one when it brings none of the project's changes", async () => {
     routes['GET /gateways/gw-dev/applied-version'] = {gatewayId: 'gw-dev', appliedVersion: v1};
     routes['GET /gateways/gw-dev/project-status'] = {
       project: {versions: [{hash: v1, number: 1, resources: 1}], pending: 0, required: 0},
@@ -323,7 +326,9 @@ describe('GatewaysOverview', () => {
     );
 
     const latest = await screen.findByTestId(`pipeline-version-${v2}`);
-    await waitFor(() => expect(within(latest).getByRole('button', {name: 'Deploy'})).toHaveClass('MuiButton-outlined'));
+    await waitFor(() =>
+      expect(within(latest).getByRole('button', {name: 'Deploy'})).toHaveClass('MuiButton-contained'),
+    );
   });
 
   it("keeps a card's rollback, deploy and more actions on one row", async () => {
@@ -685,7 +690,7 @@ describe('GatewaysOverview', () => {
           url: `${SERVER}/gateways/gw-prod/apply`,
           data: {
             version: v2,
-            selection: ['application/shop', 'flow/login', 'translation/en'],
+            selection: ['application/shop', 'translation/en', 'flow/login'],
             withDependencies: false,
             project: 'p-shop',
           },
@@ -831,7 +836,7 @@ describe('GatewaysOverview', () => {
 
     const latest = await screen.findByTestId(`pipeline-version-${v2}`);
     await waitFor(() => expect(within(latest).getByText('Development')).toBeInTheDocument());
-    expect(within(latest).getByRole('button', {name: 'Deploy'})).toHaveClass('MuiButton-outlined');
+    expect(within(latest).getByRole('button', {name: 'Deploy'})).toHaveClass('MuiButton-contained');
     expect(within(screen.getByTestId(`pipeline-version-${v1}`)).getByText('Production')).toBeInTheDocument();
     expect(within(screen.getByTestId('deploy-stage-gw-dev')).getByTestId('card-standing')).toHaveTextContent(
       'In sync with configuration',

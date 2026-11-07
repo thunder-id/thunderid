@@ -5507,7 +5507,9 @@ const translations = {
     'organization.hello': 'Hello, {{name}}',
     'organization.howItWorks': 'How it works',
     'organization.howItWorksLead':
-      'Configure here. Saves auto-sync to your first gateway, and you promote them through the rest. Each gateway has its own users and the apps connected to it.',
+      'Configure here, then deploy to your first gateway and promote through the rest. Each gateway has its own users and the apps connected to it.',
+    'organization.howItWorksLeadSingle':
+      'Configure here, then deploy to your gateway. It has its own users and the apps connected to it.',
     'organization.needProject': 'Need a new project? Create one.',
     'organization.newAgent': 'New agent',
     'organization.newApplication': 'New application',
@@ -6553,7 +6555,9 @@ const translations = {
     'deployChanges.valueChanged': '{{type}} · a value it uses changed',
     'deployChanges.thisProject': 'Project changes',
     'deployChanges.thisProjectFocusedNote': 'Tick the project changes to bring. What they need goes with them.',
-    'deployChanges.thisProjectNote': "The project's own applications and agents always go.",
+    'deployChanges.thisProjectNone': '{{target}} is up to date with this project',
+    'deployChanges.thisProjectNoneHint':
+      "The project's applications and agents on {{target}} already match this version.",
     'deployChanges.needed': 'What they need',
     'deployChanges.neededNote':
       'What {{target}} lacks goes with them. What {{target}} holds in another form already serves them; tick it to replace it.',

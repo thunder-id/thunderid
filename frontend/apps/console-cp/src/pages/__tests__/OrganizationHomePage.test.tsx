@@ -7,6 +7,8 @@ import {beforeEach, describe, expect, it, vi} from 'vitest';
 import OrganizationHomePage from '../OrganizationHomePage';
 
 const navigate = vi.fn();
+// The pipeline's stages; a test may leave only the first.
+const pipeline = vi.hoisted(() => ({only: false}));
 const request = vi.fn();
 vi.mock('react-router', async (importOriginal) => ({
   ...(await importOriginal<typeof import('react-router')>()),
@@ -45,23 +47,21 @@ vi.mock('@thunderid/configure-gateways', async (importOriginal) => {
   return {
     gatewayColor: actual.gatewayColor,
     useAutoApply: () => ({data: {enabled: false}}),
-    usePipeline: () => ({
-      isLoading: false,
-      data: {
-        stages: [
-          {
-            name: 'Development',
-            adminConsoleUrl: 'https://dev.auth.test/console',
-            gateway: {id: 'gw-dev', name: 'dev', baseUrl: 'https://dev.auth.test'},
-          },
-          {
-            name: 'Production',
-            adminConsoleUrl: 'https://auth.test/console',
-            gateway: {id: 'gw-prod', name: 'prod', baseUrl: 'https://auth.test'},
-          },
-        ],
-      },
-    }),
+    usePipeline: () => {
+      const stages = [
+        {
+          name: 'Development',
+          adminConsoleUrl: 'https://dev.auth.test/console',
+          gateway: {id: 'gw-dev', name: 'dev', baseUrl: 'https://dev.auth.test'},
+        },
+        {
+          name: 'Production',
+          adminConsoleUrl: 'https://auth.test/console',
+          gateway: {id: 'gw-prod', name: 'prod', baseUrl: 'https://auth.test'},
+        },
+      ];
+      return {isLoading: false, data: {stages: pipeline.only ? stages.slice(0, 1) : stages}};
+    },
     useProjects: () => ({
       isLoading: false,
       isSuccess: true,
@@ -107,6 +107,19 @@ describe('OrganizationHomePage', () => {
     expect(open).toHaveAttribute('href', '/deploy/gateways/gw-dev');
     expect(open).not.toHaveAttribute('target');
     expect(within(path).getByText('Gateways come from the deployment configuration.')).toBeInTheDocument();
+  });
+
+  it('says configuration deploys to the one gateway when there is no other to promote to', () => {
+    pipeline.only = true;
+    render(<OrganizationHomePage />);
+    pipeline.only = false;
+
+    expect(
+      screen.getByText(
+        'Configure here, then deploy to your gateway. It has its own users and the apps connected to it.',
+      ),
+    ).toBeInTheDocument();
+    expect(within(screen.getByTestId('organization-how-it-works')).queryByText('Promote')).not.toBeInTheDocument();
   });
 
   it('lists the projects with their applications and agents, and opens one', async () => {

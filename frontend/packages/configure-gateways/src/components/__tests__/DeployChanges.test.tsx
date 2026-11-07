@@ -71,7 +71,7 @@ const sectioned: Change[] = [
 ];
 
 describe('DeployChanges', () => {
-  it("groups a project's changes by where they stand with it, locking what it must carry", async () => {
+  it("groups a project's changes by where they stand with it, locking only what the ticked ones need", async () => {
     const onToggle = vi.fn();
     const onToggleAll = vi.fn();
     renderWithProviders(
@@ -81,14 +81,20 @@ describe('DeployChanges', () => {
         onToggle={onToggle}
         onToggleAll={onToggleAll}
         target="Stage"
+        required={new Map([['flow/login', 'application/shop']])}
       />,
     );
 
     const own = screen.getByTestId('deploy-changes-project');
     expect(within(own).getByText('Project changes · 1')).toBeInTheDocument();
+    expect(
+      within(own).getByText('Tick the project changes to bring. What they need goes with them.'),
+    ).toBeInTheDocument();
     const shop = within(own).getByRole('checkbox', {name: 'Write Shop web'});
     expect(shop).toBeChecked();
-    expect(shop).toBeDisabled();
+    expect(shop).toBeEnabled();
+    await userEvent.click(shop);
+    expect(onToggle).toHaveBeenCalledWith('application/shop');
 
     const needed = screen.getByTestId('deploy-changes-needed');
     const login = within(needed).getByTestId('change-flow/login');
@@ -111,7 +117,27 @@ describe('DeployChanges', () => {
     expect(bill).not.toBeChecked();
     expect(bill).toBeDisabled();
     expect(within(other).queryByRole('checkbox', {name: /Write every one/})).not.toBeInTheDocument();
-    expect(screen.queryByTestId('deploy-changes-project')?.querySelector('[aria-label^="Write every one"]')).toBeNull();
+    expect(within(own).getByRole('checkbox', {name: 'Write every one of Project changes'})).toBeInTheDocument();
+  });
+
+  it('says the target is up to date with the project, and hides other projects, when the project has no changes', () => {
+    renderWithProviders(
+      <DeployChanges
+        changes={sectioned.filter((change) => change.section === 'shared' || change.section === 'other')}
+        selected={new Set()}
+        onToggle={vi.fn()}
+        onToggleAll={vi.fn()}
+        target="Stage"
+      />,
+    );
+
+    const own = screen.getByTestId('deploy-changes-project');
+    expect(within(own).getByTestId('deploy-changes-project-none')).toHaveTextContent(
+      'Stage is up to date with this project',
+    );
+    expect(within(own).queryByRole('checkbox')).not.toBeInTheDocument();
+    expect(screen.getByTestId('deploy-changes-shared')).toBeInTheDocument();
+    expect(screen.queryByTestId('deploy-changes-other')).not.toBeInTheDocument();
   });
 
   it("lists the project's changes, then the shared ones, each with its kind and what changed", () => {

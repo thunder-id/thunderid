@@ -56,8 +56,9 @@ export default function PipelineVersions({
     // Any version can be deployed to the first gateway, an older one to go back to it; the latest
     // stands out while the first gateway does not run it.
     const deployable = Boolean(firstName);
-    // In a project the latest stands out only while it brings the project's own changes to the first
-    // gateway: a version can differ in another project's resources alone.
+    // The latest's Deploy is always the main one. Its row stands out too while it brings changes to the
+    // first gateway: in a project, the project's own changes, since a version can differ in another
+    // project's resources alone.
     const waiting = project ? (latestChanges ?? 0) > 0 : firstIndex !== 0;
     const leading = index === 0 && deployable && waiting;
     const when = relativeTime(version.createdAt);
@@ -110,7 +111,7 @@ export default function PipelineVersions({
         {deployable && (
           <Button
             size="small"
-            variant={leading ? 'contained' : 'outlined'}
+            variant={index === 0 && deployable ? 'contained' : 'outlined'}
             onClick={() => {
               setAll(false);
               onDeploy(version);

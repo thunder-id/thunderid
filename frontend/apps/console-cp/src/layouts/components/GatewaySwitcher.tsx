@@ -17,7 +17,7 @@ import {ChevronDown} from '@wso2/oxygen-ui-icons-react';
 import {useState, type MouseEvent, type ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useMatch, useNavigate} from 'react-router';
-import RouteConfig from '../../configs/RouteConfig';
+import RouteConfig, {ROUTE_SEGMENTS} from '../../configs/RouteConfig';
 
 /** The dot a gateway is marked with, in its pipeline colour. */
 function Dot({index}: {index: number}): ReactNode {
@@ -37,7 +37,7 @@ export default function GatewaySwitcher(): ReactNode {
   const versions = useVersions();
   const stages: PipelineStage[] = pipeline.data?.stages ?? [];
   const statuses = useProjectStatuses(stages);
-  const match = useMatch('/projects/:projectId/deploy/gateways/:gatewayId/*');
+  const match = useMatch(`/${ROUTE_SEGMENTS.projects}/:projectId/${ROUTE_SEGMENTS.deployTargets}/:gatewayId/*`);
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
 
   if (!project || stages.length === 0) {

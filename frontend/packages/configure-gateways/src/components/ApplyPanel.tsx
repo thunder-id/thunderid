@@ -41,7 +41,7 @@ import useGatewayErrorTranslator from '../hooks/useGatewayErrorTranslator';
 import type {ApplyResult, Change, MasterEntry, Refusal, StoredValue, ValueReference, Version} from '../models/deploy';
 import type {Gateway} from '../models/gateway';
 import {errorCodeOf, isForbidden, REMOVALS_NEED_CONFIRMATION} from '../utils/apiError';
-import {carriedWithProject, projectNeeds, optionalForProject, sharedMissing} from '../utils/changeSummary';
+import {carriedWithProject, projectNeeds, sharedMissing} from '../utils/changeSummary';
 import {fromListText, toListText} from '../utils/listValue';
 import {fieldKey, missingFields, type MissingField, type RefusedFix} from '../utils/missingValues';
 import {withNeeded} from '../utils/needs';
@@ -130,16 +130,13 @@ export default function ApplyPanel({
   const [startWith, setStartWith] = useState<string[] | undefined>(only);
 
   const changes: Change[] = useMemo(() => check.data?.diff.changes ?? [], [check.data]);
-  // Under a project whose check places each change, the deploy carries the project's own changes and
-  // what they need that the target lacks, and only what else is ticked; another project's changes are
-  // never carried. A check that places none, as where a project's deploys are not scoped, deploys as
-  // the whole organization does.
+  // Under a project whose check places each change, the project's own changes start ticked and can be
+  // unticked one by one, what the ticked ones need that the target lacks goes with them, and only what
+  // else is ticked goes too; another project's changes are never carried. A check that places none, as
+  // where a project's deploys are not scoped, deploys as the whole organization does.
   const project = useProjectScope();
   const scoped = project !== undefined && changes.some((change: Change) => change.section !== undefined);
   const active = useMemo(() => changes.filter((change: Change) => change.change !== 'unchanged'), [changes]);
-  // Opened for some resources of a project, such as one application, the project's own changes can be
-  // ticked one by one, and what the ticked ones need that the target lacks goes with them.
-  const focused = scoped && startWith !== undefined;
 
   // What starts unticked: with a retry, all but what it retries; otherwise what an earlier deploy left
   // out for the deploys after it.
@@ -149,7 +146,7 @@ export default function ApplyPanel({
       (startWith
         ? new Set(
             active
-              .filter((change: Change) => !startWith.includes(change.key) && !(focused && sharedMissing(change)))
+              .filter((change: Change) => !startWith.includes(change.key) && !(scoped && sharedMissing(change)))
               .map((change: Change) => change.key),
           )
         : scoped
@@ -160,7 +157,7 @@ export default function ApplyPanel({
                 .map((change: Change) => change.key),
             )
           : new Set(active.filter((change: Change) => change.heldBack === true).map((change: Change) => change.key))),
-    [chosen, startWith, active, scoped, focused],
+    [chosen, startWith, active, scoped],
   );
 
   // A new target starts over with everything ticked and nothing typed. Nothing else resets them, so a
@@ -180,19 +177,17 @@ export default function ApplyPanel({
       new Set(
         active
           .filter((change: Change) => {
-            if (focused) return change.section !== 'other' && !projectNeeds(change) && !excluded.has(change.key);
-            return scoped
-              ? carriedWithProject(change) || (optionalForProject(change) && !excluded.has(change.key))
-              : !excluded.has(change.key);
+            if (scoped) return change.section !== 'other' && !projectNeeds(change) && !excluded.has(change.key);
+            return !excluded.has(change.key);
           })
           .map((change: Change) => change.key),
       ),
-    [active, excluded, scoped, focused],
+    [active, excluded, scoped],
   );
   // What the ticked changes bring along, as the control plane widens the selection; shown ticked and
   // marked, not chosen by hand.
   const required = useMemo(() => {
-    if (focused) {
+    if (scoped) {
       // What the ticked resources need that the target lacks goes with them, locked. A check that names no
       // needs says only that the project needs it, so it goes whatever is ticked.
       const named = active.some((change: Change) => (change.needs ?? []).length > 0);
@@ -205,8 +200,8 @@ export default function ApplyPanel({
           .map((change: Change) => [change.key, reached.get(change.key) ?? '']),
       );
     }
-    return includeNeeded && !scoped ? withNeeded(ticked, changes) : new Map<string, string>();
-  }, [focused, active, includeNeeded, scoped, ticked, changes]);
+    return includeNeeded ? withNeeded(ticked, changes) : new Map<string, string>();
+  }, [active, includeNeeded, scoped, ticked, changes]);
   const selected = useMemo(() => new Set([...ticked, ...required.keys()]), [ticked, required]);
   // The values the deploy lacks that a ticked change uses. A value only unticked changes use is not
   // asked for, nor one whose user the check does not name; a value no reference ties to a change is.
@@ -330,7 +325,7 @@ export default function ApplyPanel({
         gatewayId: gateway.id,
         data: {
           version: version.version,
-          selection: [...(focused ? selected : ticked)],
+          selection: [...(scoped ? selected : ticked)],
           ...(leaveOut.length > 0 ? {leaveOut} : {}),
           ...(includeNeeded && !scoped ? {} : {withDependencies: false}),
           ...(scoped ? {project} : {}),
@@ -527,7 +522,6 @@ export default function ApplyPanel({
             target={envName}
             source={sourceName}
             required={required}
-            focused={focused}
           />
         ) : (
           <ChangeList

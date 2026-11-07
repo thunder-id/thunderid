@@ -2,13 +2,14 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {Box, Checkbox, Chip, Collapse, FormControlLabel, Link, Stack, Switch, Typography} from '@wso2/oxygen-ui';
+import {CircleCheck} from '@wso2/oxygen-ui-icons-react';
 import {useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import ChangeFlags from './ChangeFlags';
 import ChangeLines from './ChangeLines';
 import useChangeName from '../hooks/useChangeName';
 import type {Change, ChangeKind} from '../models/deploy';
-import {carriedWithProject, changedFields, isShared} from '../utils/changeSummary';
+import {changedFields, isShared} from '../utils/changeSummary';
 import {humanize} from '../utils/groupByResource';
 
 export interface DeployChangesProps {
@@ -23,11 +24,6 @@ export interface DeployChangesProps {
   source?: string;
   /** The changes a selection brings along, each with the key of the selected change that needs it. */
   required?: ReadonlyMap<string, string>;
-  /**
-   * Opened for some of a project's resources: its own changes are ticked one by one, and only what the
-   * ticked ones need is locked.
-   */
-  focused?: boolean;
 }
 
 const COLORS: Readonly<Record<ChangeKind, 'success' | 'info' | 'error' | 'default'>> = {
@@ -42,9 +38,10 @@ const COLORS: Readonly<Record<ChangeKind, 'success' | 'info' | 'error' | 'defaul
  * resources the whole organization shares, which ship with every deploy. Each change is a row with its
  * kind, what it is and what changed, a checkbox to leave it out this time and its diff to open in place.
  *
- * A project's deploy check places each change in a section: the project's own changes and what they
- * cannot run without are carried and cannot be unticked; what they need in another form and what is
- * shared are carried only when ticked; another project's changes are shown and never carried.
+ * A project's deploy check places each change in a section: the project's own changes start ticked and
+ * can be unticked, and what the ticked ones cannot run without is carried and locked; what they need in
+ * another form and what is shared are carried only when ticked; another project's changes are shown and
+ * never carried.
  */
 export default function DeployChanges({
   changes,
@@ -54,12 +51,10 @@ export default function DeployChanges({
   target,
   source = undefined,
   required = undefined,
-  focused = false,
 }: DeployChangesProps): JSX.Element {
   const {t} = useTranslation('deploy');
   const nameOfChange = useChangeName();
-  const isLocked = (change: Change): boolean =>
-    focused ? Boolean(required?.has(change.key)) : carriedWithProject(change);
+  const isLocked = (change: Change): boolean => Boolean(required?.has(change.key));
   const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
   const active = changes.filter((change: Change) => change.change !== 'unchanged');
   const unchanged = changes.length - active.length;
@@ -255,18 +250,53 @@ export default function DeployChanges({
 
   if (active.some((change: Change) => change.section !== undefined)) {
     const of = (wanted: Change['section']): Change[] => active.filter((change: Change) => change.section === wanted);
+    const own = of('project');
     return (
       <Stack spacing={3}>
-        {section(
-          'project',
-          t('deployChanges.thisProject', 'Project changes'),
-          of('project'),
-          focused
-            ? t(
-                'deployChanges.thisProjectFocusedNote',
-                'Tick the project changes to bring. What they need goes with them.',
-              )
-            : t('deployChanges.thisProjectNote', "The project's own applications and agents always go."),
+        {own.length > 0 ? (
+          section(
+            'project',
+            t('deployChanges.thisProject', 'Project changes'),
+            own,
+            t(
+              'deployChanges.thisProjectFocusedNote',
+              'Tick the project changes to bring. What they need goes with them.',
+            ),
+          )
+        ) : (
+          // Nothing of the project's own to bring: said in its place, rather than leaving the deploy to
+          // read as though another project's changes were what it carries.
+          <Stack
+            spacing={1.25}
+            component="section"
+            aria-label={t('deployChanges.thisProject', 'Project changes')}
+            data-testid="deploy-changes-project"
+          >
+            <Typography variant="subtitle2">{t('deployChanges.thisProject', 'Project changes')}</Typography>
+            <Stack
+              direction="row"
+              spacing={1.5}
+              alignItems="center"
+              data-testid="deploy-changes-project-none"
+              sx={{px: 2, py: 1.75, borderRadius: 1.5, border: 1, borderStyle: 'dashed', borderColor: 'divider'}}
+            >
+              <Box sx={{display: 'flex', color: 'success.main'}}>
+                <CircleCheck size={18} />
+              </Box>
+              <Box>
+                <Typography variant="body2">
+                  {t('deployChanges.thisProjectNone', '{{target}} is up to date with this project', {target})}
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {t(
+                    'deployChanges.thisProjectNoneHint',
+                    "The project's applications and agents on {{target}} already match this version.",
+                    {target},
+                  )}
+                </Typography>
+              </Box>
+            </Stack>
+          </Stack>
         )}
         {section(
           'needed',
@@ -288,12 +318,13 @@ export default function DeployChanges({
           ),
           true,
         )}
-        {section(
-          'other',
-          t('deployChanges.otherProjects', 'Other projects'),
-          of('other'),
-          t('deployChanges.otherProjectsNote', 'Each project promotes its own, so these stay as they are.'),
-        )}
+        {own.length > 0 &&
+          section(
+            'other',
+            t('deployChanges.otherProjects', 'Other projects'),
+            of('other'),
+            t('deployChanges.otherProjectsNote', 'Each project promotes its own, so these stay as they are.'),
+          )}
         {unchanged > 0 && (
           <Typography variant="caption" color="text.secondary">
             {t('changes.unchangedCount', '{{count}} resources are already as the version has them.', {
