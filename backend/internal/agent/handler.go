@@ -17,6 +17,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/agent/model"
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
 
@@ -283,7 +284,8 @@ func writeServiceError(ctx context.Context, w http.ResponseWriter, svcErr *tidco
 			ErrorAgentAlreadyExistsWithClientID.Code:
 			statusCode = http.StatusConflict
 		case ErrorCannotModifyDeclarativeResource.Code,
-			tidcommon.ErrorUnauthorized.Code:
+			tidcommon.ErrorUnauthorized.Code,
+			sysauthz.ErrorGrantNotPermitted.Code:
 			statusCode = http.StatusForbidden
 		default:
 			statusCode = http.StatusBadRequest

@@ -28,13 +28,14 @@ const (
 	// invitationTemplates is the designer's template file, so the flow under test is the shipped sample.
 	invitationTemplates = "../../../../frontend/packages/configure-flows/src/data/templates.json"
 
-	errCodeInvitationAuthRequired = "FES-1017"
-	errCodeInvitationPermission   = "FES-1019"
-	errCodeTargetNotDirectChild   = "SHR-1030"
-	errCodeFlowNotShared          = "FES-1029"
-	errCodeInvitationOUMissing    = "FES-1027"
-	errCodeInvitedRoleNotAllowed  = "FET-1133"
-	errCodeInvitedTypeNotAllowed  = "FET-1054"
+	errCodeInvitationAuthRequired     = "FES-1017"
+	errCodeInvitationPermission       = "FES-1019"
+	errCodeTargetNotDirectChild       = "SHR-1030"
+	errCodeFlowNotShared              = "FES-1029"
+	errCodeFlowStartedByAnotherCaller = "FES-1030"
+	errCodeInvitationOUMissing        = "FES-1027"
+	errCodeInvitedRoleNotAllowed      = "FET-1133"
+	errCodeInvitedTypeNotAllowed      = "FET-1054"
 
 	// The template's two branches, which suffix the actions each one prompts with.
 	branchExisting = "existing"
@@ -234,9 +235,9 @@ func (ts *InvitationTestSuite) TestExistingUser_AcceptSharesIntoAAndAssignsRoles
 	ts.Contains(ts.assigneesInChild(ts.ownedRoleID), userID)
 }
 
-// An admin who loses the root permission after inviting assigns no roles: the roles were selected with a copy
-// of their token, which acceptance checks against what they hold now. The share, on the owner's authority, stays.
-func (ts *InvitationTestSuite) TestAdminWhoLostTheRootPermission_AssignsNoRoles() {
+// The invitee's steps run as the admin with what the admin holds now, so once the admin holds no system
+// permission the acceptance is refused and nothing is written.
+func (ts *InvitationTestSuite) TestAdminWhoLostEverySystemPermission_AcceptanceRefused() {
 	admin := ts.adminToken(ts.childOUID, "revoked", []string{"system"})
 	email := "invitation-revoked@thunderid.test"
 	userID := ts.createUser(ts.parentOUID, "invitation-revoked", email)
@@ -244,10 +245,14 @@ func (ts *InvitationTestSuite) TestAdminWhoLostTheRootPermission_AssignsNoRoles(
 
 	ts.Require().NoError(testutils.RemoveRoleAssignments(admin.roleID,
 		[]testutils.Assignment{{ID: admin.userID, Type: "user"}}), "revoke the admin's root permission")
-	step := ts.accept(executionID, "action_accept_"+branchExisting)
+	status, _, errResp := ts.execute("", map[string]interface{}{
+		"executionId": executionID, "inputs": map[string]string{"inviteToken": ts.inviteTokens[executionID]},
+	})
 
-	ts.NotEqual("ERROR", step.FlowStatus, "%+v", step)
-	ts.Contains(ts.policyUnits(userID), ts.childOUID)
+	ts.Equal(http.StatusForbidden, status)
+	ts.Require().NotNil(errResp)
+	ts.Equal(errCodeInvitationPermission, errResp.Code)
+	ts.Empty(ts.policyUnits(userID))
 	ts.NotContains(ts.assigneesInChild(ts.ownedRoleID), userID)
 }
 
@@ -344,13 +349,39 @@ func (ts *InvitationTestSuite) TestAnonymousStart_Refused() {
 	ts.Equal(errCodeInvitationAuthRequired, errResp.Code)
 }
 
-// Without the root permission the middleware hands the request on as a runtime caller, which is refused.
-func (ts *InvitationTestSuite) TestStarterWithoutRootPermission_Refused() {
-	status, _, errResp := ts.execute(ts.limitedAdminToken, map[string]interface{}{"flowId": ts.flowID})
+// An admin holding only the user permission, which covers what the template's Permission Validator names,
+// invites with a role their permission covers, and the invitee's acceptance completes as that admin.
+func (ts *InvitationTestSuite) TestNarrowAdmin_InvitesAndTheInviteeAccepts() {
+	admin := ts.adminToken(ts.childOUID, "narrow", []string{"system:user"})
+	roleID := createRole(&ts.Suite, &ts.roleIDs, ts.childOUID, admin.rsID, "User Invitation Narrow Viewer",
+		[]string{"system:user:view"})
+	email := "invitation-narrow@thunderid.test"
+	userID := ts.createUser(ts.parentOUID, "invitation-narrow", email)
 
-	ts.Equal(http.StatusUnauthorized, status)
+	executionID := ts.invite(admin.token, email, roleID, branchExisting)
+	step := ts.accept(executionID, "action_accept_"+branchExisting)
+
+	ts.NotEqual("ERROR", step.FlowStatus, "%+v", step)
+	ts.Contains(ts.policyUnits(userID), ts.childOUID)
+	ts.Contains(ts.assigneesInChild(roleID), userID)
+}
+
+// An admin's half of the flow is theirs alone: another admin of the same unit cannot send its next step.
+func (ts *InvitationTestSuite) TestAnotherAdmin_CannotContinueTheInvitersSteps() {
+	email := "invitation-hijacked@thunderid.test"
+	ts.createUser(ts.parentOUID, "invitation-hijacked", email)
+	step := ts.start(ts.childAdminToken, email)
+	ts.Require().Nil(step.Error, "%+v", step)
+
+	status, _, errResp := ts.execute(ts.limitedAdminToken, map[string]interface{}{
+		"executionId": step.ExecutionID, "challengeToken": step.ChallengeToken,
+		"action": "action_roles_" + branchExisting, "inputs": map[string]string{"roles": ts.ownedRoleID},
+	})
+
+	ts.Equal(http.StatusForbidden, status)
 	ts.Require().NotNil(errResp)
-	ts.Equal(errCodeInvitationAuthRequired, errResp.Code)
+	ts.Equal(errCodeFlowStartedByAnotherCaller, errResp.Code)
+	ts.Empty(ts.smtp.GetEmails(), "no invite is sent")
 }
 
 // The child's admin holds the root permission, but runs only a flow its unit owns or was shared.

@@ -747,7 +747,10 @@ func (gs *groupService) ValidateDeleteGroup(ctx context.Context, groupID string)
 		return &tidcommon.InternalServerError
 	}
 
-	return gs.checkGroupAccess(ctx, security.ActionDeleteGroup, existingGroupDAO.OUID, groupID)
+	if svcErr := gs.checkGroupAccess(ctx, security.ActionDeleteGroup, existingGroupDAO.OUID, groupID); svcErr != nil {
+		return svcErr
+	}
+	return gs.authzService.CanGrantMembership(ctx, sysauthz.PrincipalTypeGroup, groupID)
 }
 
 // GetGroupMembers retrieves members of a group with pagination.

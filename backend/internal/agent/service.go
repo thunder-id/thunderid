@@ -504,6 +504,10 @@ func (s *agentService) UpdateAgent(ctx context.Context, agentID string,
 		ctx, security.ActionUpdateAgent, existing.OUID, agentID); svcErr != nil {
 		return fail(svcErr)
 	}
+	// An update can replace the agent's credentials, so it is control over the agent.
+	if svcErr := s.authzService.CanControlEntity(ctx, agentID); svcErr != nil {
+		return fail(svcErr)
+	}
 
 	// The lifespan is checked before anything is written, so a refused change applies no field.
 	if svcErr := s.checkLifespanUpdate(ctx, agentID, lifespan, now); svcErr != nil {
@@ -703,6 +707,10 @@ func (s *agentService) DeleteAgent(ctx context.Context, agentID string) *tidcomm
 	// Check authz before the cascade below, which is not transactional with the entity delete.
 	if svcErr := s.checkAgentAccess(
 		ctx, security.ActionDeleteAgent, existing.OUID, agentID); svcErr != nil {
+		return svcErr
+	}
+
+	if svcErr := s.authzService.CanControlEntity(ctx, agentID); svcErr != nil {
 		return svcErr
 	}
 

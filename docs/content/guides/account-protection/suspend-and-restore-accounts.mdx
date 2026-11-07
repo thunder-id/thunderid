@@ -13,7 +13,7 @@ Suspend a user, agent, or application to end its access while you investigate it
 ## Prerequisites
 
 - <ProductName /> running. See [Get <ProductName />](../../../getting-started/get-thunderid).
-- An administrator account with the `system` permission. You cannot suspend, unsuspend, or unlock your own account.
+- An administrator account with the permission for the account type: `system:user:update` for a user or `system:agent:update` for an agent, in the organization unit the account belongs to, or `system:app:update` for an application. You cannot suspend, unsuspend, or unlock your own account. See [Permissions for Administration Flows](../../users/manage-roles#permissions-for-administration-flows).
 - To email account holders, an [email provider](../../notifications/email-providers). See [Lifecycle Notifications](#lifecycle-notifications).
 
 ## Suspend an Account
@@ -86,7 +86,7 @@ Keep the suspend flow in this order, so that nothing is revoked before your acce
 
 There is no direct suspend, unsuspend, or unlock endpoint, and a profile update cannot change an account's status. Run the administration flow through the Flow Execution API instead:
 
-1. Obtain an administrator access token with the `system` permission, and set it as `ADMIN_TOKEN`.
+1. Obtain an administrator access token with the permission for the account type, such as `system:user:update`, and set it as `ADMIN_TOKEN`.
 2. Find the flow ID with `GET /flows?flowType=ADMINISTRATION`, matching the flow's handle, such as `default-user-suspend-flow`.
 3. Start the flow with the target account's ID as `subject`:
 

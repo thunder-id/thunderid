@@ -12,6 +12,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/security"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 )
 
 func getDefaultRequiredScope() string {
@@ -21,11 +22,13 @@ func getDefaultRequiredScope() string {
 // permissionValidator validates that the request has the required permission/scope to access the next node.
 type permissionValidator struct {
 	providers.Executor
-	logger *log.Logger
+	authorizer sysauthz.SystemAuthorizationServiceInterface
+	logger     *log.Logger
 }
 
 // newPermissionValidator creates a new permission validator executor.
-func newPermissionValidator(flowFactory core.FlowFactoryInterface) *permissionValidator {
+func newPermissionValidator(flowFactory core.FlowFactoryInterface,
+	authorizer sysauthz.SystemAuthorizationServiceInterface) *permissionValidator {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "PermissionValidator"))
 	base := flowFactory.CreateExecutor(
 		ExecutorNamePermissionValidator,
@@ -39,8 +42,9 @@ func newPermissionValidator(flowFactory core.FlowFactoryInterface) *permissionVa
 		},
 	)
 	return &permissionValidator{
-		Executor: base,
-		logger:   logger,
+		Executor:   base,
+		authorizer: authorizer,
+		logger:     logger,
 	}
 }
 
@@ -66,16 +70,16 @@ func (e *permissionValidator) Execute(ctx *providers.NodeContext) (*providers.Ex
 		return execResp, nil
 	}
 
-	// Extract permissions from request context
+	// Extract permissions from request context for the debug log
 	userPermissions := security.GetPermissions(ctx.Context)
 	logger.Debug(ctx.Context, "Extracted permissions from context",
 		log.Int("permissionCount", len(userPermissions)),
 		log.String("permissions", strings.Join(userPermissions, ", ")))
 
-	// Check if any of the required permissions are satisfied, using hierarchical
-	// scope matching (e.g. a "system" permission satisfies a "system:user" requirement).
+	// Check if any of the required permissions are satisfied. The authorizer owns the hierarchical
+	// matching, so a "system" permission satisfies a "system:user" requirement.
 	if !slices.ContainsFunc(requiredScopes, func(reqScope string) bool {
-		return security.HasSufficientPermission(userPermissions, reqScope)
+		return e.authorizer.IsPermissionGranted(ctx.Context, reqScope)
 	}) {
 		logger.Debug(ctx.Context, "Request lacks required scope",
 			log.Any("requiredScopes", requiredScopes))

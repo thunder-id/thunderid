@@ -22,6 +22,12 @@ type SystemAuthorizationServiceInterface interface {
 	IsActionAllowed(ctx context.Context, action security.Action,
 		actionCtx *ActionContext) (bool, *tidcommon.ServiceError)
 
+	// IsPermissionGranted reports whether the caller's token grants the required system permission, using
+	// the same hierarchical matching as IsActionAllowed: the root permission and any ancestor of
+	// required satisfy it. It is a check on what the token holds, so the runtime marker grants nothing.
+	// An empty required permission is always granted.
+	IsPermissionGranted(ctx context.Context, required string) bool
+
 	// GetAccessibleResources returns the set of resources the caller may access for the
 	// given action and resource type. The result must be applied as a store-level filter
 	// before pagination so that page sizes and total counts remain correct.
@@ -51,16 +57,21 @@ type SystemAuthorizationServiceInterface interface {
 	CanGrantMembership(ctx context.Context, principalType PrincipalType,
 		containerID string) *tidcommon.ServiceError
 
+	// CanControlEntity refuses taking control of an entity, such as by changing its credentials or
+	// attributes or by deleting it, unless the caller holds every permission the entity holds. An entity
+	// acting on itself is always allowed.
+	CanControlEntity(ctx context.Context, entityID string) *tidcommon.ServiceError
+
 	// GrantableMemberships returns, in the given order, the containers whose membership the caller may grant, as
 	// CanGrantMembership decides for each, resolving the caller's permissions once for the whole list. A
 	// server error fails the whole check.
 	GrantableMemberships(ctx context.Context, principalType PrincipalType,
 		containerIDs []string) ([]string, *tidcommon.ServiceError)
 
-	// SetPermissionResolver injects the effective-permission resolver used by the two checks above.
+	// SetPermissionResolver injects the effective-permission resolver used by the grant checks above.
 	// It must be called once at startup after the role and group packages are initialized,
 	// completing the same two-phase initialization used by SetOUHierarchyResolver. Until it is
-	// called, both checks refuse.
+	// called, the checks refuse.
 	SetPermissionResolver(resolver PermissionResolver)
 }
 
@@ -163,6 +174,12 @@ func (s *systemAuthorizationService) authorizeListCaller(ctx context.Context, ac
 		return &AccessibleResources{AllAllowed: false, IDs: []string{}}, true
 	}
 	return nil, false
+}
+
+// IsPermissionGranted reports whether the caller's token grants the required system permission.
+func (s *systemAuthorizationService) IsPermissionGranted(ctx context.Context, required string) bool {
+	permissions := security.GetPermissions(ctx)
+	return security.HasSystemPermission(permissions) || security.HasSufficientPermission(permissions, required)
 }
 
 // isResourceOwner checks whether the authenticated caller is the owner of the resource

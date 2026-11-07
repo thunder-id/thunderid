@@ -1667,6 +1667,44 @@ func (suite *RoleServiceTestSuite) TestDeleteRole_DeclarativeCheckError_Refused(
 	suite.mockStore.AssertNotCalled(suite.T(), "DeleteRole", mock.Anything, mock.Anything)
 }
 
+func (suite *RoleServiceTestSuite) TestDeleteRole_GrantRefused() {
+	authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+	authzMock.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).Return(true, nil).Maybe()
+	authzMock.On("CanGrantMembership", mock.Anything, sysauthz.PrincipalTypeRole, "role1").
+		Return(&sysauthz.ErrorGrantNotPermitted).Once()
+	suite.service = newRoleService(suite.mockStore, suite.mockEntityService, suite.mockGroupService,
+		suite.mockOUService, suite.mockResourceService, suite.transactioner, authzMock, suite.mockSharingService,
+		discardingBus{})
+
+	suite.mockStore.On("IsRoleExist", mock.Anything, "role1").Return(true, nil)
+
+	err := suite.service.DeleteRole(context.Background(), "role1")
+
+	suite.Require().NotNil(err)
+	suite.Equal(sysauthz.ErrorGrantNotPermitted.Code, err.Code)
+}
+
+func (suite *RoleServiceTestSuite) TestUpdateRoleWithPermissions_GrantRefused() {
+	authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+	authzMock.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).Return(true, nil).Maybe()
+	authzMock.On("CanGrantMembership", mock.Anything, sysauthz.PrincipalTypeRole, "role1").
+		Return(&sysauthz.ErrorGrantNotPermitted).Once()
+	suite.service = newRoleService(suite.mockStore, suite.mockEntityService, suite.mockGroupService,
+		suite.mockOUService, suite.mockResourceService, suite.transactioner, authzMock, suite.mockSharingService,
+		discardingBus{})
+
+	suite.mockStore.On("GetRole", mock.Anything, "role1").Return(RoleWithPermissions{
+		ID: "role1", Name: "Admin", OUID: "ou1",
+	}, nil)
+
+	_, err := suite.service.UpdateRoleWithPermissions(context.Background(), "role1", RoleUpdateDetail{
+		Name: "Admin", OUID: "ou1",
+	})
+
+	suite.Require().NotNil(err)
+	suite.Equal(sysauthz.ErrorGrantNotPermitted.Code, err.Code)
+}
+
 // validateAssignmentIDs Tests
 func (suite *RoleServiceTestSuite) TestValidateAssignmentIDs_UserServiceError() {
 	request := RoleCreationDetail{
@@ -2171,6 +2209,7 @@ func newAllowAllRoleAuthz(t *testing.T) sysauthz.SystemAuthorizationServiceInter
 		Return((*tidcommon.ServiceError)(nil)).Maybe()
 	mockAuthz.On("CanGrantMembership", mock.Anything, mock.Anything, mock.Anything).
 		Return((*tidcommon.ServiceError)(nil)).Maybe()
+	mockAuthz.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).Return(true, nil).Maybe()
 	return mockAuthz
 }
 
@@ -2199,6 +2238,9 @@ func (s *RoleChangeValidationTestSuite) SetupTest() {
 	s.ous = oumock.NewOrganizationUnitServiceInterfaceMock(s.T())
 	s.resources = resourcemock.NewResourceServiceInterfaceMock(s.T())
 	s.authz = sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(s.T())
+	s.authz.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).Return(true, nil).Maybe()
+	s.authz.On("CanGrantMembership", mock.Anything, mock.Anything, mock.Anything).
+		Return((*tidcommon.ServiceError)(nil)).Maybe()
 	s.service = newRoleService(s.store, nil, s.groups, s.ous, s.resources, &fakeTransactioner{}, s.authz, nil,
 		discardingBus{})
 }
@@ -2467,6 +2509,41 @@ func (s *RoleChangeValidationTestSuite) TestValidateUpdateRolePermissions_Refuse
 	s.Equal(tidcommon.ErrorUnauthorized.Code, svcErr.Code)
 }
 
+func (s *RoleChangeValidationTestSuite) TestValidateDeleteRole_RefusesUncoveredRolePermissions() {
+	s.authz = sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(s.T())
+	s.authz.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).Return(true, nil).Maybe()
+	s.authz.On("CanGrantMembership", mock.Anything, sysauthz.PrincipalTypeRole, targetRoleID).
+		Return(&sysauthz.ErrorGrantNotPermitted).Once()
+	s.service = newRoleService(s.store, nil, s.groups, s.ous, s.resources, &fakeTransactioner{}, s.authz, nil,
+		discardingBus{})
+
+	s.mutableRoleGranting(nil)
+
+	target, svcErr := s.service.ValidateDeleteRole(context.Background(), targetRoleID)
+
+	s.Nil(target)
+	s.Require().NotNil(svcErr)
+	s.Equal(sysauthz.ErrorGrantNotPermitted.Code, svcErr.Code)
+}
+
+func (s *RoleChangeValidationTestSuite) TestValidateUpdateRolePermissions_RefusesUncoveredExistingRolePermissions() {
+	s.authz = sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(s.T())
+	s.authz.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).Return(true, nil).Maybe()
+	s.authz.On("CanGrantMembership", mock.Anything, sysauthz.PrincipalTypeRole, targetRoleID).
+		Return(&sysauthz.ErrorGrantNotPermitted).Once()
+	s.service = newRoleService(s.store, nil, s.groups, s.ous, s.resources, &fakeTransactioner{}, s.authz, nil,
+		discardingBus{})
+
+	s.mutableRoleGranting(nil)
+
+	target, svcErr := s.service.ValidateUpdateRolePermissions(context.Background(), targetRoleID,
+		[]ResourcePermissions{{ResourceServerID: californiaRSID, Permissions: []string{"license"}}})
+
+	s.Nil(target)
+	s.Require().NotNil(svcErr)
+	s.Equal(sysauthz.ErrorGrantNotPermitted.Code, svcErr.Code)
+}
+
 func (s *RoleChangeValidationTestSuite) TestValidateUpdateRolePermissions_RefusesDeclarativeRole() {
 	s.store.On("GetRole", mock.Anything, targetRoleID).Return(RoleWithPermissions{ID: targetRoleID}, nil)
 	s.ous.On("GetOrganizationUnit", mock.Anything, "").Return(oupkg.OrganizationUnit{}, nil)
@@ -2477,6 +2554,57 @@ func (s *RoleChangeValidationTestSuite) TestValidateUpdateRolePermissions_Refuse
 	s.Require().NotNil(svcErr)
 	s.Equal(ErrorImmutableRole.Code, svcErr.Code)
 	s.resources.AssertNotCalled(s.T(), "ValidatePermissions", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (s *RoleChangeValidationTestSuite) TestValidateRoleChanges_RequireTheRoleAction() {
+	cases := []struct {
+		name     string
+		action   security.Action
+		authzErr *tidcommon.ServiceError
+		wantCode string
+		validate func() *tidcommon.ServiceError
+	}{
+		{name: "deletion denied", action: security.ActionDeleteRole, wantCode: tidcommon.ErrorUnauthorized.Code,
+			validate: func() *tidcommon.ServiceError {
+				_, svcErr := s.service.ValidateDeleteRole(context.Background(), targetRoleID)
+				return svcErr
+			}},
+		{name: "deletion check failure", action: security.ActionDeleteRole, authzErr: &tidcommon.InternalServerError,
+			wantCode: tidcommon.InternalServerError.Code,
+			validate: func() *tidcommon.ServiceError {
+				_, svcErr := s.service.ValidateDeleteRole(context.Background(), targetRoleID)
+				return svcErr
+			}},
+		{name: "permission update denied", action: security.ActionUpdateRole,
+			wantCode: tidcommon.ErrorUnauthorized.Code,
+			validate: func() *tidcommon.ServiceError {
+				_, svcErr := s.service.ValidateUpdateRolePermissions(context.Background(), targetRoleID, nil)
+				return svcErr
+			}},
+		{name: "permission update check failure", action: security.ActionUpdateRole,
+			authzErr: &tidcommon.InternalServerError, wantCode: tidcommon.InternalServerError.Code,
+			validate: func() *tidcommon.ServiceError {
+				_, svcErr := s.service.ValidateUpdateRolePermissions(context.Background(), targetRoleID, nil)
+				return svcErr
+			}},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			s.SetupTest()
+			s.authz = sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(s.T())
+			s.authz.On("IsActionAllowed", mock.Anything, tc.action,
+				&sysauthz.ActionContext{ResourceType: security.ResourceTypeRole, ResourceID: targetRoleID}).
+				Return(false, tc.authzErr)
+			s.service = newRoleService(s.store, nil, s.groups, s.ous, s.resources, &fakeTransactioner{}, s.authz, nil,
+				discardingBus{})
+
+			svcErr := tc.validate()
+
+			s.Require().NotNil(svcErr)
+			s.Equal(tc.wantCode, svcErr.Code)
+			s.store.AssertNotCalled(s.T(), "GetRole", mock.Anything, mock.Anything)
+		})
+	}
 }
 
 func (s *RoleChangeValidationTestSuite) TestValidateGroupDeletion_CoversEveryMember() {
@@ -3061,5 +3189,74 @@ func (suite *RoleServiceTestSuite) TestGetUserRoles_AssignmentOUFollowsTheBounda
 			suite.Nil(svcErr)
 			suite.Equal([]string{"editor"}, roles)
 		})
+	}
+}
+
+func (suite *RoleServiceTestSuite) TestRoleChanges_RequireTheRoleAction() {
+	ctx := context.Background()
+	cases := []struct {
+		name   string
+		action security.Action
+		roleID string
+		call   func(RoleServiceInterface) *tidcommon.ServiceError
+	}{
+		{"create", security.ActionCreateRole, "", func(s RoleServiceInterface) *tidcommon.ServiceError {
+			_, svcErr := s.CreateRole(ctx, RoleCreationDetail{Name: "r", OUID: "ou1"})
+			return svcErr
+		}},
+		{"update", security.ActionUpdateRole, "role1", func(s RoleServiceInterface) *tidcommon.ServiceError {
+			_, svcErr := s.UpdateRoleWithPermissions(ctx, "role1", RoleUpdateDetail{Name: "r", OUID: "ou1"})
+			return svcErr
+		}},
+		{"delete", security.ActionDeleteRole, "role1", func(s RoleServiceInterface) *tidcommon.ServiceError {
+			return s.DeleteRole(ctx, "role1")
+		}},
+		{"create sharing policy", security.ActionUpdateRole, "role1",
+			func(s RoleServiceInterface) *tidcommon.ServiceError {
+				_, svcErr := s.CreateSharingPolicy(ctx, "role1", sharing.PolicyRequest{})
+				return svcErr
+			}},
+		{"update sharing policy", security.ActionUpdateRole, "role1",
+			func(s RoleServiceInterface) *tidcommon.ServiceError {
+				_, svcErr := s.UpdateSharingPolicy(ctx, "role1", "p1", sharing.PolicyRequest{})
+				return svcErr
+			}},
+		{"delete sharing policy", security.ActionUpdateRole, "role1",
+			func(s RoleServiceInterface) *tidcommon.ServiceError {
+				return s.DeleteSharingPolicy(ctx, "role1", "p1")
+			}},
+	}
+	outcomes := []struct {
+		name     string
+		authzErr *tidcommon.ServiceError
+		wantCode string
+	}{
+		{"denied", nil, tidcommon.ErrorUnauthorized.Code},
+		{"check failure", &tidcommon.InternalServerError, tidcommon.InternalServerError.Code},
+	}
+	for _, tc := range cases {
+		for _, outcome := range outcomes {
+			suite.Run(tc.name+" "+outcome.name, func() {
+				suite.SetupTest()
+				authz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+				authz.On("IsActionAllowed", mock.Anything, tc.action,
+					&sysauthz.ActionContext{ResourceType: security.ResourceTypeRole, ResourceID: tc.roleID}).
+					Return(false, outcome.authzErr)
+				service := newRoleService(suite.mockStore, suite.mockEntityService, suite.mockGroupService,
+					suite.mockOUService, suite.mockResourceService, suite.transactioner, authz,
+					suite.mockSharingService, discardingBus{})
+
+				svcErr := tc.call(service)
+
+				suite.Require().NotNil(svcErr)
+				suite.Equal(outcome.wantCode, svcErr.Code)
+				suite.Zero(suite.transactioner.transactCalls)
+				suite.mockSharingService.AssertNotCalled(suite.T(), "CreatePolicy",
+					mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+				suite.mockSharingService.AssertNotCalled(suite.T(), "UpdatePolicy",
+					mock.Anything, mock.Anything, mock.Anything)
+				suite.mockSharingService.AssertNotCalled(suite.T(), "DeletePolicy", mock.Anything, mock.Anything)
+			})
+		}
 	}
 }

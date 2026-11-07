@@ -69,6 +69,8 @@ func newAllowAllAuthz(t interface {
 		Return(true, nil).Maybe()
 	authzMock.On("GetAccessibleResources", mock.Anything, mock.Anything, mock.Anything).
 		Return(&sysauthz.AccessibleResources{AllAllowed: true}, nil).Maybe()
+	authzMock.On("CanControlEntity", mock.Anything, mock.Anything).
+		Return(nil).Maybe()
 	return authzMock
 }
 
@@ -3651,6 +3653,8 @@ func (suite *AgentServiceTestSuite) newDenyAuthz(
 		}).Return(false, nil).Maybe()
 	authzMock.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).
 		Return(true, nil).Maybe()
+	authzMock.On("CanControlEntity", mock.Anything, mock.Anything).
+		Return(nil).Maybe()
 	return authzMock
 }
 
@@ -3739,6 +3743,58 @@ func (suite *AgentServiceTestSuite) TestDeleteAgent_AuthzDenied() {
 	suite.Require().NotNil(svcErr)
 	assert.Equal(suite.T(), tidcommon.ErrorUnauthorized.Code, svcErr.Code)
 	mockEntity.AssertNotCalled(suite.T(), "DeleteEntity", mock.Anything, mock.Anything)
+}
+
+func (suite *AgentServiceTestSuite) TestDeleteAgent_GrantNotPermitted() {
+	authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+	authzMock.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).
+		Return(true, nil).Maybe()
+	authzMock.On("CanControlEntity", mock.Anything, testAgentID).
+		Return(&sysauthz.ErrorGrantNotPermitted)
+	svc, mockEntity := suite.setupServiceWithAuthz(authzMock)
+
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).
+		Return(buildAgentEntityFixture(testAgentName, "", "", ""), nil)
+
+	svcErr := svc.DeleteAgent(context.Background(), testAgentID)
+
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), sysauthz.ErrorGrantNotPermitted.Code, svcErr.Code)
+	mockEntity.AssertNotCalled(suite.T(), "DeleteEntity", mock.Anything, mock.Anything)
+}
+
+// An update that sets no secret can still hand the agent to new credentials, here a switch to
+// private_key_jwt, so every update needs the caller to hold the agent's permissions.
+func (suite *AgentServiceTestSuite) TestUpdateAgent_GrantNotPermitted() {
+	authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+	authzMock.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).
+		Return(true, nil).Maybe()
+	authzMock.On("CanControlEntity", mock.Anything, testAgentID).
+		Return(&sysauthz.ErrorGrantNotPermitted)
+	svc, mockEntity := suite.setupServiceWithAuthz(authzMock)
+
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).
+		Return(buildAgentEntityFixture(testAgentName, "", "", ""), nil)
+
+	req := &model.UpdateAgentRequest{
+		Type: testAgentType,
+		InboundAuthConfig: []providers.InboundAuthConfigWithSecret{
+			{
+				Type: providers.OAuthInboundAuthType,
+				OAuthConfig: &providers.OAuthConfigWithSecret{
+					GrantTypes:              []providers.GrantType{providers.GrantTypeClientCredentials},
+					TokenEndpointAuthMethod: providers.TokenEndpointAuthMethodPrivateKeyJWT,
+				},
+			},
+		},
+	}
+	resp, svcErr := svc.UpdateAgent(context.Background(), testAgentID, req)
+	assert.Nil(suite.T(), resp)
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), sysauthz.ErrorGrantNotPermitted.Code, svcErr.Code)
+	mockEntity.AssertNotCalled(suite.T(), "UpdateEntity", mock.Anything, mock.Anything, mock.Anything)
 }
 
 func (suite *AgentServiceTestSuite) TestGetAgentGroups_AuthzDenied() {

@@ -643,13 +643,16 @@ func (s *identityGovernanceService) authorize(ctx context.Context, entity Govern
 
 	var action security.Action
 	var resourceType security.ResourceType
+	ouID := entity.OUID
 	switch entity.Category {
 	case providers.EntityCategoryUser:
 		action, resourceType = security.ActionUpdateUser, security.ResourceTypeUser
 	case providers.EntityCategoryAgent:
 		action, resourceType = security.ActionUpdateAgent, security.ResourceTypeAgent
+	case providers.EntityCategoryApp:
+		// Application permissions are not confined to an organization unit.
+		action, resourceType, ouID = security.ActionUpdateApplication, security.ResourceTypeApplication, ""
 	default:
-		// Applications have no system authorization resource.
 		return nil
 	}
 	// A non-runtime caller may not govern itself.
@@ -657,7 +660,7 @@ func (s *identityGovernanceService) authorize(ctx context.Context, entity Govern
 		return &tidcommon.ErrorUnauthorized
 	}
 	allowed, svcErr := s.authorizer.IsActionAllowed(ctx, action, &sysauthz.ActionContext{
-		ResourceType: resourceType, OUID: entity.OUID, ResourceID: entity.ID,
+		ResourceType: resourceType, OUID: ouID, ResourceID: entity.ID,
 	})
 	if svcErr != nil {
 		s.logger.Error(ctx, "Failed to authorize a lifecycle operation",

@@ -1112,6 +1112,12 @@ func (fe *flowEngine) handleCallResponse(ctx *EngineContext,
 			log.String("targetFlowID", targetFlowID))
 		return nil, &tidcommon.InternalServerError
 	}
+	// A flow running with the system's authority would lend it to a callee that should act for its caller.
+	if !actsForCaller(ctx.rootFlowType()) && actsForCaller(flow.FlowType) {
+		logger.Debug(ctx.Context, "Call target acts for its caller", log.String("targetFlowID", targetFlowID),
+			log.String("targetFlowType", string(flow.FlowType)))
+		return nil, &ErrorCallTargetNotPermitted
+	}
 
 	calleeGraph, svcErr := fe.graphBuilder.GetGraph(ctx.Context, flow)
 	if svcErr != nil {

@@ -25,6 +25,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/projectscope"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/security"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 	"github.com/thunder-id/thunderid/internal/system/valueref"
 )
@@ -130,6 +131,7 @@ type resourceService struct {
 	logger             log.Logger
 	resourceStore      resourceStoreInterface
 	ouService          oupkg.OrganizationUnitServiceInterface
+	authzService       sysauthz.SystemAuthorizationServiceInterface
 	authZENPDPService  authZENPDPConnectionLookup
 	defaultDelimiter   string
 	transactioner      providers.Transactioner
@@ -243,6 +245,7 @@ func (rs *resourceService) GetResourceDependencies(
 // newResourceService creates a new instance of ResourceService.
 func newResourceService(
 	ouService oupkg.OrganizationUnitServiceInterface,
+	authzService sysauthz.SystemAuthorizationServiceInterface,
 	resourceStore resourceStoreInterface,
 	transactionerInstance providers.Transactioner,
 	authZENPDPService authZENPDPConnectionLookup,
@@ -260,6 +263,7 @@ func newResourceService(
 		logger:            *log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName)),
 		resourceStore:     resourceStore,
 		ouService:         ouService,
+		authzService:      authzService,
 		authZENPDPService: authZENPDPService,
 		defaultDelimiter:  defaultDelimiter,
 		transactioner:     transactionerInstance,
@@ -280,6 +284,11 @@ func (rs *resourceService) CreateResourceServer(
 	resourceServer providers.ResourceServer,
 ) (*providers.ResourceServer, *tidcommon.ServiceError) {
 	rs.logger.Debug(ctx, "Creating resource server", log.String("name", resourceServer.Name))
+
+	if svcErr := rs.checkResourceServerAccess(
+		ctx, security.ActionCreateResourceServer, resourceServer.ID); svcErr != nil {
+		return nil, svcErr
+	}
 
 	if resourceServer.AuthorizationEngine.Type == "" {
 		resourceServer.AuthorizationEngine.Type = providers.AuthorizationEngineTypeRBAC
@@ -600,6 +609,10 @@ func (rs *resourceService) UpdateResourceServer(
 		return nil, &ErrorMissingID
 	}
 
+	if svcErr := rs.checkResourceServerAccess(ctx, security.ActionUpdateResourceServer, id); svcErr != nil {
+		return nil, svcErr
+	}
+
 	if err := rs.validateResourceServerUpdate(resourceServer); err != nil {
 		return nil, err
 	}
@@ -738,6 +751,10 @@ func (rs *resourceService) DeleteResourceServer(ctx context.Context, id string) 
 		return &ErrorMissingID
 	}
 
+	if svcErr := rs.checkResourceServerAccess(ctx, security.ActionDeleteResourceServer, id); svcErr != nil {
+		return svcErr
+	}
+
 	// Check if resource server is declarative (immutable)
 	if rs.IsResourceServerDeclarative(id) {
 		rs.logger.Debug(ctx, "Cannot delete declarative resource server", log.String("id", id))
@@ -786,6 +803,11 @@ func (rs *resourceService) CreateResource(
 	ctx context.Context,
 	resourceServerID string, resource providers.Resource,
 ) (*providers.Resource, *tidcommon.ServiceError) {
+	if svcErr := rs.checkResourceServerAccess(
+		ctx, security.ActionUpdateResourceServer, resourceServerID); svcErr != nil {
+		return nil, svcErr
+	}
+
 	// Validate resource server exists
 	resourceServer, svcErr := rs.validateAndGetResourceServer(ctx, resourceServerID)
 	if svcErr != nil {
@@ -997,6 +1019,11 @@ func (rs *resourceService) UpdateResource(
 		return nil, &ErrorMissingID
 	}
 
+	if svcErr := rs.checkResourceServerAccess(
+		ctx, security.ActionUpdateResourceServer, resourceServerID); svcErr != nil {
+		return nil, svcErr
+	}
+
 	// Check if resource server is declarative (immutable)
 	if rs.IsResourceServerDeclarative(resourceServerID) {
 		rs.logger.Debug(ctx,
@@ -1061,6 +1088,11 @@ func (rs *resourceService) DeleteResource(
 		return &ErrorMissingID
 	}
 
+	if svcErr := rs.checkResourceServerAccess(
+		ctx, security.ActionUpdateResourceServer, resourceServerID); svcErr != nil {
+		return svcErr
+	}
+
 	// Check if resource server is declarative (immutable)
 	if rs.IsResourceServerDeclarative(resourceServerID) {
 		rs.logger.Debug(ctx,
@@ -1118,6 +1150,11 @@ func (rs *resourceService) CreateAction(
 	ctx context.Context,
 	resourceServerID string, resourceID *string, action providers.Action,
 ) (*providers.Action, *tidcommon.ServiceError) {
+	if svcErr := rs.checkResourceServerAccess(
+		ctx, security.ActionUpdateResourceServer, resourceServerID); svcErr != nil {
+		return nil, svcErr
+	}
+
 	// Validate resource server exists
 	resourceServer, svcErr := rs.validateAndGetResourceServer(ctx, resourceServerID)
 	if svcErr != nil {
@@ -1335,6 +1372,11 @@ func (rs *resourceService) UpdateAction(
 		return nil, &ErrorMissingID
 	}
 
+	if svcErr := rs.checkResourceServerAccess(
+		ctx, security.ActionUpdateResourceServer, resourceServerID); svcErr != nil {
+		return nil, svcErr
+	}
+
 	// Check if resource server is declarative (immutable)
 	if rs.IsResourceServerDeclarative(resourceServerID) {
 		return nil, ErrorImmutableAction.WithParams(map[string]string{"id": id})
@@ -1410,6 +1452,10 @@ func (rs *resourceService) DeleteAction(
 	ctx context.Context,
 	resourceServerID string, resourceID *string, id string,
 ) *tidcommon.ServiceError {
+	if svcErr := rs.checkResourceServerAccess(
+		ctx, security.ActionUpdateResourceServer, resourceServerID); svcErr != nil {
+		return svcErr
+	}
 	if svcErr := rs.validateActionDelete(ctx, resourceServerID, resourceID, id); svcErr != nil {
 		return svcErr
 	}
@@ -1465,6 +1511,10 @@ func (rs *resourceService) ValidateDeleteAction(
 	ctx context.Context,
 	resourceServerID string, resourceID *string, id string,
 ) (*revocation.AccessRevocationTarget, *tidcommon.ServiceError) {
+	if svcErr := rs.checkResourceServerAccess(
+		ctx, security.ActionUpdateResourceServer, resourceServerID); svcErr != nil {
+		return nil, svcErr
+	}
 	if svcErr := rs.validateActionDelete(ctx, resourceServerID, resourceID, id); svcErr != nil {
 		return nil, svcErr
 	}
@@ -1485,6 +1535,22 @@ func (rs *resourceService) ValidateDeleteAction(
 	return &revocation.AccessRevocationTarget{
 		Scopes: []revocation.AudienceScope{{Audience: resourceServer.Identifier, Scope: action.Permission}},
 	}, nil
+}
+
+// checkResourceServerAccess refuses unless the caller may perform action on the resource server.
+func (rs *resourceService) checkResourceServerAccess(
+	ctx context.Context, action security.Action, id string) *tidcommon.ServiceError {
+	allowed, svcErr := rs.authzService.IsActionAllowed(ctx, action,
+		&sysauthz.ActionContext{ResourceType: security.ResourceTypeResourceServer, ResourceID: id})
+	if svcErr != nil {
+		rs.logger.Error(ctx, "Failed to check authorization for action",
+			log.String("action", string(action)), log.Any("error", svcErr))
+		return &tidcommon.InternalServerError
+	}
+	if !allowed {
+		return &tidcommon.ErrorUnauthorized
+	}
+	return nil
 }
 
 // ValidatePermissions checks if permissions exist for a given resource server.

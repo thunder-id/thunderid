@@ -49,6 +49,65 @@ func (_m *SystemAuthorizationServiceInterfaceMock) EXPECT() *SystemAuthorization
 	return &SystemAuthorizationServiceInterfaceMock_Expecter{mock: &_m.Mock}
 }
 
+// CanControlEntity provides a mock function for the type SystemAuthorizationServiceInterfaceMock
+func (_mock *SystemAuthorizationServiceInterfaceMock) CanControlEntity(ctx context.Context, entityID string) *common.ServiceError {
+	ret := _mock.Called(ctx, entityID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for CanControlEntity")
+	}
+
+	var r0 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *common.ServiceError); ok {
+		r0 = returnFunc(ctx, entityID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*common.ServiceError)
+		}
+	}
+	return r0
+}
+
+// SystemAuthorizationServiceInterfaceMock_CanControlEntity_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CanControlEntity'
+type SystemAuthorizationServiceInterfaceMock_CanControlEntity_Call struct {
+	*mock.Call
+}
+
+// CanControlEntity is a helper method to define mock.On call
+//   - ctx context.Context
+//   - entityID string
+func (_e *SystemAuthorizationServiceInterfaceMock_Expecter) CanControlEntity(ctx any, entityID any) *SystemAuthorizationServiceInterfaceMock_CanControlEntity_Call {
+	return &SystemAuthorizationServiceInterfaceMock_CanControlEntity_Call{Call: _e.mock.On("CanControlEntity", ctx, entityID)}
+}
+
+func (_c *SystemAuthorizationServiceInterfaceMock_CanControlEntity_Call) Run(run func(ctx context.Context, entityID string)) *SystemAuthorizationServiceInterfaceMock_CanControlEntity_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *SystemAuthorizationServiceInterfaceMock_CanControlEntity_Call) Return(serviceError *common.ServiceError) *SystemAuthorizationServiceInterfaceMock_CanControlEntity_Call {
+	_c.Call.Return(serviceError)
+	return _c
+}
+
+func (_c *SystemAuthorizationServiceInterfaceMock_CanControlEntity_Call) RunAndReturn(run func(ctx context.Context, entityID string) *common.ServiceError) *SystemAuthorizationServiceInterfaceMock_CanControlEntity_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // CanGrantMembership provides a mock function for the type SystemAuthorizationServiceInterfaceMock
 func (_mock *SystemAuthorizationServiceInterfaceMock) CanGrantMembership(ctx context.Context, principalType sysauthz.PrincipalType, containerID string) *common.ServiceError {
 	ret := _mock.Called(ctx, principalType, containerID)
@@ -395,6 +454,63 @@ func (_c *SystemAuthorizationServiceInterfaceMock_IsActionAllowed_Call) Return(b
 }
 
 func (_c *SystemAuthorizationServiceInterfaceMock_IsActionAllowed_Call) RunAndReturn(run func(ctx context.Context, action security.Action, actionCtx *sysauthz.ActionContext) (bool, *common.ServiceError)) *SystemAuthorizationServiceInterfaceMock_IsActionAllowed_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// IsPermissionGranted provides a mock function for the type SystemAuthorizationServiceInterfaceMock
+func (_mock *SystemAuthorizationServiceInterfaceMock) IsPermissionGranted(ctx context.Context, required string) bool {
+	ret := _mock.Called(ctx, required)
+
+	if len(ret) == 0 {
+		panic("no return value specified for IsPermissionGranted")
+	}
+
+	var r0 bool
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) bool); ok {
+		r0 = returnFunc(ctx, required)
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+	return r0
+}
+
+// SystemAuthorizationServiceInterfaceMock_IsPermissionGranted_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'IsPermissionGranted'
+type SystemAuthorizationServiceInterfaceMock_IsPermissionGranted_Call struct {
+	*mock.Call
+}
+
+// IsPermissionGranted is a helper method to define mock.On call
+//   - ctx context.Context
+//   - required string
+func (_e *SystemAuthorizationServiceInterfaceMock_Expecter) IsPermissionGranted(ctx any, required any) *SystemAuthorizationServiceInterfaceMock_IsPermissionGranted_Call {
+	return &SystemAuthorizationServiceInterfaceMock_IsPermissionGranted_Call{Call: _e.mock.On("IsPermissionGranted", ctx, required)}
+}
+
+func (_c *SystemAuthorizationServiceInterfaceMock_IsPermissionGranted_Call) Run(run func(ctx context.Context, required string)) *SystemAuthorizationServiceInterfaceMock_IsPermissionGranted_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *SystemAuthorizationServiceInterfaceMock_IsPermissionGranted_Call) Return(b bool) *SystemAuthorizationServiceInterfaceMock_IsPermissionGranted_Call {
+	_c.Call.Return(b)
+	return _c
+}
+
+func (_c *SystemAuthorizationServiceInterfaceMock_IsPermissionGranted_Call) RunAndReturn(run func(ctx context.Context, required string) bool) *SystemAuthorizationServiceInterfaceMock_IsPermissionGranted_Call {
 	_c.Call.Return(run)
 	return _c
 }

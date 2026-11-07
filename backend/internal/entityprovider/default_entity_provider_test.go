@@ -13,26 +13,44 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/entity"
+	"github.com/thunder-id/thunderid/internal/system/security"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/entitymock"
+	"github.com/thunder-id/thunderid/tests/mocks/sysauthzmock"
 )
 
 type DefaultEntityProviderTestSuite struct {
 	suite.Suite
 	mockService *entitymock.EntityServiceInterfaceMock
+	mockAuthz   *sysauthzmock.SystemAuthorizationServiceInterfaceMock
 	provider    EntityProviderInterface
 }
 
 func (suite *DefaultEntityProviderTestSuite) SetupTest() {
 	suite.mockService = entitymock.NewEntityServiceInterfaceMock(suite.T())
-	suite.provider = newDefaultEntityProvider(suite.mockService)
+	suite.mockAuthz = sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+	suite.provider = newDefaultEntityProvider(suite.mockService, suite.mockAuthz)
+}
+
+// allowWrites lets the caller write to the test entity, a user.
+func (suite *DefaultEntityProviderTestSuite) allowWrites() {
+	suite.mockService.On("GetEntityProfile", mock.MatchedBy(security.IsRuntimeContext), testEntityID).
+		Return(&providers.Entity{ID: testEntityID, Category: providers.EntityCategoryUser, OUID: "ou-1"}, nil).
+		Maybe()
+	suite.mockAuthz.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).Return(true, nil).Maybe()
+	suite.mockAuthz.On("CanControlEntity", mock.Anything, mock.Anything).Return(nil).Maybe()
 }
 
 func TestDefaultEntityProviderTestSuite(t *testing.T) {
 	suite.Run(t, new(DefaultEntityProviderTestSuite))
 }
 
-const testEntityID = "entity123"
+const (
+	testEntityID       = "entity123"
+	methodDeleteEntity = "DeleteEntity"
+)
 
 func (suite *DefaultEntityProviderTestSuite) TestIdentifyEntity() {
 	filters := map[string]interface{}{"clientId": "test-client"}
@@ -134,6 +152,7 @@ func (suite *DefaultEntityProviderTestSuite) TestGetEntityProfile() {
 }
 
 func (suite *DefaultEntityProviderTestSuite) TestUpdateEntity() {
+	suite.allowWrites()
 	providerEntity := &providers.Entity{
 		ID:   testEntityID,
 		Type: "customer",
@@ -195,6 +214,7 @@ func (suite *DefaultEntityProviderTestSuite) TestUpdateEntity() {
 }
 
 func (suite *DefaultEntityProviderTestSuite) TestUpdateCredentials() {
+	suite.allowWrites()
 	cases := []struct {
 		method string
 		creds  json.RawMessage
@@ -231,7 +251,34 @@ func (suite *DefaultEntityProviderTestSuite) TestUpdateCredentials() {
 	}
 }
 
+func (suite *DefaultEntityProviderTestSuite) TestUpdateCredentials_GrantNotPermitted() {
+	suite.mockService.On("GetEntityProfile", mock.MatchedBy(security.IsRuntimeContext), testEntityID).
+		Return(&providers.Entity{ID: testEntityID, Category: providers.EntityCategoryUser, OUID: "ou-1"}, nil).
+		Once()
+	suite.mockAuthz.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).Return(true, nil).Once()
+	suite.mockAuthz.On("CanControlEntity", mock.Anything, testEntityID).
+		Return(&sysauthz.ErrorGrantNotPermitted).Once()
+
+	err := suite.provider.UpdateCredentials(context.Background(), testEntityID, json.RawMessage(`{"password":"pass"}`))
+	suite.NotNil(err)
+	suite.Equal(ErrorCodeUnauthorized, err.Code)
+}
+
+func (suite *DefaultEntityProviderTestSuite) TestUpdateCredentials_CoverageSystemError() {
+	suite.mockService.On("GetEntityProfile", mock.MatchedBy(security.IsRuntimeContext), testEntityID).
+		Return(&providers.Entity{ID: testEntityID, Category: providers.EntityCategoryUser, OUID: "ou-1"}, nil).
+		Once()
+	suite.mockAuthz.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).Return(true, nil).Once()
+	suite.mockAuthz.On("CanControlEntity", mock.Anything, testEntityID).
+		Return(&tidcommon.InternalServerError).Once()
+
+	err := suite.provider.UpdateCredentials(context.Background(), testEntityID, json.RawMessage(`{"password":"pass"}`))
+	suite.NotNil(err)
+	suite.Equal(ErrorCodeSystemError, err.Code)
+}
+
 func (suite *DefaultEntityProviderTestSuite) TestDeleteEntity() {
+	suite.allowWrites()
 	// Test Success
 	suite.mockService.On("DeleteEntity", mock.Anything, testEntityID).Return(nil).Once()
 
@@ -252,6 +299,19 @@ func (suite *DefaultEntityProviderTestSuite) TestDeleteEntity() {
 	err = suite.provider.DeleteEntity(context.Background(), testEntityID)
 	suite.NotNil(err)
 	suite.Equal(ErrorCodeSystemError, err.Code)
+}
+
+func (suite *DefaultEntityProviderTestSuite) TestDeleteEntity_GrantNotPermitted() {
+	suite.mockService.On("GetEntityProfile", mock.MatchedBy(security.IsRuntimeContext), testEntityID).
+		Return(&providers.Entity{ID: testEntityID, Category: providers.EntityCategoryUser, OUID: "ou-1"}, nil).
+		Once()
+	suite.mockAuthz.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).Return(true, nil).Once()
+	suite.mockAuthz.On("CanControlEntity", mock.Anything, testEntityID).
+		Return(&sysauthz.ErrorGrantNotPermitted).Once()
+
+	err := suite.provider.DeleteEntity(context.Background(), testEntityID)
+	suite.NotNil(err)
+	suite.Equal(ErrorCodeUnauthorized, err.Code)
 }
 
 func (suite *DefaultEntityProviderTestSuite) TestUpdateSystemAttributes() {
@@ -406,4 +466,188 @@ func (suite *DefaultEntityProviderTestSuite) TestGetEntitiesByIDs() {
 	suite.Nil(result)
 	suite.NotNil(err)
 	suite.Equal(ErrorCodeSystemError, err.Code)
+}
+
+// writeCall invokes one of the writes the provider authorizes.
+type writeCall func(p EntityProviderInterface, ctx context.Context) *EntityProviderError
+
+func (suite *DefaultEntityProviderTestSuite) writes() map[string]writeCall {
+	attrs := json.RawMessage(`{"name":"test"}`)
+	return map[string]writeCall{
+		"UpdateEntity": func(p EntityProviderInterface, ctx context.Context) *EntityProviderError {
+			_, err := p.UpdateEntity(ctx, testEntityID, &providers.Entity{ID: testEntityID})
+			return err
+		},
+		methodDeleteEntity: func(p EntityProviderInterface, ctx context.Context) *EntityProviderError {
+			return p.DeleteEntity(ctx, testEntityID)
+		},
+		"UpdateCredentials": func(p EntityProviderInterface, ctx context.Context) *EntityProviderError {
+			return p.UpdateCredentials(ctx, testEntityID, attrs)
+		},
+		"UpdateAttributes": func(p EntityProviderInterface, ctx context.Context) *EntityProviderError {
+			return p.UpdateAttributes(ctx, testEntityID, attrs)
+		},
+	}
+}
+
+// expectWrite expects the named write on the entity service, run with the caller's own context.
+func (suite *DefaultEntityProviderTestSuite) expectWrite(method string, ctx context.Context) {
+	switch method {
+	case "UpdateEntity":
+		suite.mockService.On(method, ctx, testEntityID, mock.Anything).
+			Return(&providers.Entity{ID: testEntityID}, nil).Once()
+	case methodDeleteEntity:
+		suite.mockService.On(method, ctx, testEntityID).Return(nil).Once()
+	default:
+		suite.mockService.On(method, ctx, testEntityID, mock.Anything).Return(nil).Once()
+	}
+}
+
+// The entity service mock is strict, so a write that runs after a refusal fails the test.
+func (suite *DefaultEntityProviderTestSuite) TestWritesAuthorizeTheCallerForTheEntityCategory() {
+	categories := []struct {
+		category     providers.EntityCategory
+		update       security.Action
+		del          security.Action
+		resourceType security.ResourceType
+		ouID         string
+	}{
+		{providers.EntityCategoryUser, security.ActionUpdateUser, security.ActionDeleteUser,
+			security.ResourceTypeUser, "ou-1"},
+		{providers.EntityCategoryAgent, security.ActionUpdateAgent, security.ActionDeleteAgent,
+			security.ResourceTypeAgent, "ou-1"},
+		{providers.EntityCategoryApp, security.ActionUpdateApplication, security.ActionDeleteApplication,
+			security.ResourceTypeApplication, ""},
+	}
+	decisions := []struct {
+		name    string
+		allowed bool
+		svcErr  *tidcommon.ServiceError
+		code    ErrorCode
+	}{
+		{"allowed", true, nil, ""},
+		{"denied", false, nil, ErrorCodeUnauthorized},
+		{"authz error", false, &tidcommon.InternalServerError, ErrorCodeSystemError},
+	}
+	ctx := context.Background()
+	for _, c := range categories {
+		for method, call := range suite.writes() {
+			for _, d := range decisions {
+				suite.Run(string(c.category)+"/"+method+"/"+d.name, func() {
+					suite.SetupTest()
+					suite.mockService.On("GetEntityProfile", mock.MatchedBy(security.IsRuntimeContext), testEntityID).
+						Return(&providers.Entity{ID: testEntityID, Category: c.category, OUID: "ou-1"}, nil).Once()
+					action := c.update
+					if method == methodDeleteEntity {
+						action = c.del
+					}
+					suite.mockAuthz.On("IsActionAllowed", ctx, action, &sysauthz.ActionContext{
+						OUID: c.ouID, ResourceType: c.resourceType, ResourceID: testEntityID,
+					}).Return(d.allowed, d.svcErr).Once()
+					if d.allowed {
+						suite.mockAuthz.On("CanControlEntity", ctx, testEntityID).
+							Return(nil).Once()
+						suite.expectWrite(method, ctx)
+					}
+
+					err := call(suite.provider, ctx)
+
+					if d.code == "" {
+						suite.Nil(err)
+						return
+					}
+					suite.Require().NotNil(err)
+					suite.Equal(d.code, err.Code)
+				})
+			}
+		}
+	}
+}
+
+// Attributes lead to account recovery, so every write needs the caller to hold the entity's permissions.
+func (suite *DefaultEntityProviderTestSuite) TestWritesRefuseAnEntityTheCallerDoesNotCover() {
+	ctx := context.Background()
+	for method, call := range suite.writes() {
+		suite.Run(method, func() {
+			suite.SetupTest()
+			suite.mockService.On("GetEntityProfile", mock.MatchedBy(security.IsRuntimeContext), testEntityID).
+				Return(&providers.Entity{ID: testEntityID, Category: providers.EntityCategoryUser, OUID: "ou-1"}, nil).
+				Once()
+			suite.mockAuthz.On("IsActionAllowed", ctx, mock.Anything, mock.Anything).Return(true, nil).Once()
+			suite.mockAuthz.On("CanControlEntity", ctx, testEntityID).
+				Return(&sysauthz.ErrorGrantNotPermitted).Once()
+
+			err := call(suite.provider, ctx)
+
+			suite.Require().NotNil(err)
+			suite.Equal(ErrorCodeUnauthorized, err.Code)
+		})
+	}
+}
+
+func (suite *DefaultEntityProviderTestSuite) TestWritesToAnUngovernedCategoryNeedRuntime() {
+	for method, call := range suite.writes() {
+		suite.Run(method, func() {
+			suite.SetupTest()
+			suite.mockService.On("GetEntityProfile", mock.Anything, testEntityID).
+				Return(&providers.Entity{ID: testEntityID, Category: "device"}, nil)
+
+			err := call(suite.provider, context.Background())
+
+			suite.Require().NotNil(err)
+			suite.Equal(ErrorCodeUnauthorized, err.Code)
+
+			runtimeCtx := security.WithRuntimeContext(context.Background())
+			suite.expectWrite(method, runtimeCtx)
+			suite.Nil(call(suite.provider, runtimeCtx))
+			suite.mockAuthz.AssertNotCalled(suite.T(), "IsActionAllowed", mock.Anything, mock.Anything, mock.Anything)
+		})
+	}
+}
+
+func (suite *DefaultEntityProviderTestSuite) TestWritesFailWhenTheEntityCannotBeRead() {
+	for method, call := range suite.writes() {
+		suite.Run(method, func() {
+			suite.SetupTest()
+			suite.mockService.On("GetEntityProfile", mock.Anything, testEntityID).
+				Return(nil, errors.New("db error")).Once()
+
+			err := call(suite.provider, context.Background())
+
+			suite.Require().NotNil(err)
+			suite.Equal(ErrorCodeSystemError, err.Code)
+		})
+	}
+}
+
+func (suite *DefaultEntityProviderTestSuite) TestDeleteEntity_MissingEntityIsNotDeleted() {
+	suite.mockService.On("GetEntityProfile", mock.Anything, testEntityID).Return(nil, entity.ErrEntityNotFound).Once()
+
+	suite.Nil(suite.provider.DeleteEntity(context.Background(), testEntityID))
+}
+
+// The system authorization service decides runtime callers and self-service owners, and the provider defers to it.
+func (suite *DefaultEntityProviderTestSuite) TestWritesDeferToTheSystemAuthorizationRules() {
+	security.InitSystemPermissions("")
+	authz, err := sysauthz.InitializeOUBoundedAuthorization()
+	suite.Require().NoError(err)
+	provider := newDefaultEntityProvider(suite.mockService, authz)
+	suite.mockService.On("GetEntityProfile", mock.Anything, testEntityID).
+		Return(&providers.Entity{ID: testEntityID, Category: providers.EntityCategoryUser, OUID: "ou-1"}, nil)
+	attrs := json.RawMessage(`{"name":"test"}`)
+
+	runtimeCtx := security.WithRuntimeContext(context.Background())
+	suite.mockService.On("UpdateAttributes", runtimeCtx, testEntityID, attrs).Return(nil).Once()
+	suite.Nil(provider.UpdateAttributes(runtimeCtx, testEntityID, attrs))
+
+	ownerCtx := security.WithSecurityContextTest(context.Background(),
+		security.NewSecurityContextForTest(testEntityID, "ou-1", "token", nil, nil))
+	suite.mockService.On("UpdateAttributes", ownerCtx, testEntityID, attrs).Return(nil).Once()
+	suite.Nil(provider.UpdateAttributes(ownerCtx, testEntityID, attrs))
+
+	otherCtx := security.WithSecurityContextTest(context.Background(),
+		security.NewSecurityContextForTest("someone-else", "ou-1", "token", nil, nil))
+	denied := provider.UpdateAttributes(otherCtx, testEntityID, attrs)
+	suite.Require().NotNil(denied)
+	suite.Equal(ErrorCodeUnauthorized, denied.Code)
 }
