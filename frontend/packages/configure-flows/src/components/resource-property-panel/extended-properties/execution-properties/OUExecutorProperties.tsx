@@ -6,6 +6,7 @@ import {useMemo, type ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
 import DraftTextField from './DraftTextField';
 import type {CommonResourcePropertiesPropsInterface} from './types';
+import VariableBinding from './VariableBinding';
 import type {StepData} from '../../../../models/steps';
 
 function OUExecutorProperties({resource, onChange}: CommonResourcePropertiesPropsInterface): ReactNode {
@@ -22,17 +23,24 @@ function OUExecutorProperties({resource, onChange}: CommonResourcePropertiesProp
         {t('flows:core.executions.ouExecutor.description')}
       </Typography>
 
-      <DraftTextField
-        labelPlacement="top"
+      <VariableBinding
+        resource={resource}
+        onChange={onChange}
+        propertyKey="parentOuId"
         label={t('flows:core.executions.ouExecutor.parentOuId.label')}
-        helperText={t('flows:core.executions.ouExecutor.parentOuId.hint')}
-        id="parent-ou-id"
-        value={(properties['parentOuId'] as string) || ''}
-        onCommit={(value) => onChange('data.properties.parentOuId', value, resource)}
-        placeholder={t('flows:core.executions.ouExecutor.parentOuId.placeholder')}
-        fullWidth
-        size="small"
-      />
+      >
+        <DraftTextField
+          labelPlacement="top"
+          label={t('flows:core.executions.ouExecutor.parentOuId.label')}
+          helperText={t('flows:core.executions.ouExecutor.parentOuId.hint')}
+          id="parent-ou-id"
+          value={(properties['parentOuId'] as string) || ''}
+          onCommit={(value) => onChange('data.properties.parentOuId', value, resource)}
+          placeholder={t('flows:core.executions.ouExecutor.parentOuId.placeholder')}
+          fullWidth
+          size="small"
+        />
+      </VariableBinding>
     </Stack>
   );
 }

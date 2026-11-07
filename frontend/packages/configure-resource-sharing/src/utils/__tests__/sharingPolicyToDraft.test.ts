@@ -82,4 +82,31 @@ describe('sharingPolicyToDraft', () => {
 
     expect(sharingPolicyToDraft(undefined).trees).toEqual([]);
   });
+
+  it('reads the terms of all child units', () => {
+    const rules = {'variables.connection1': {editable: true}};
+    const draft = sharingPolicyToDraft(policyWith({childUnits: {mode: 'all', overlayRules: rules}}));
+
+    expect(draft.childUnitRules).toEqual(rules);
+  });
+
+  it('reads the terms of each selected child unit separately', () => {
+    const rules = {'variables.connection1': {editable: false, value: ['c-1']}};
+    const draft = sharingPolicyToDraft(
+      policyWith({
+        childUnits: {
+          mode: 'selected',
+          units: [
+            {ouId: 'retail', reach: 'unit'},
+            {ouId: 'banking', reach: 'unit', overlayRules: rules},
+          ],
+        },
+      }),
+    );
+
+    expect(draft.childUnits).toEqual([
+      {ouId: 'retail', reach: 'unit'},
+      {ouId: 'banking', reach: 'unit', rules},
+    ]);
+  });
 });

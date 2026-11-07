@@ -7,6 +7,7 @@ import {useTranslation} from 'react-i18next';
 import DraftTextField from './DraftTextField';
 import type {CommonResourcePropertiesPropsInterface} from './types';
 import {clampToInteger} from './utils';
+import VariableBinding from './VariableBinding';
 import type {StepData} from '../../../../models/steps';
 
 function OtpProperties({resource, onChange}: CommonResourcePropertiesPropsInterface): ReactNode {
@@ -33,64 +34,95 @@ function OtpProperties({resource, onChange}: CommonResourcePropertiesPropsInterf
         {t('flows:core.executions.otp.description')}
       </Typography>
 
-      <DraftTextField
-        labelPlacement="top"
+      <VariableBinding
+        resource={resource}
+        onChange={onChange}
+        propertyKey="otpLength"
         label={t('flows:core.executions.otp.otpLength.label')}
-        helperText={t('flows:core.executions.otp.otpLength.hint')}
-        id="otp-length"
-        type="number"
-        value={String((properties['otpLength'] as number | string | undefined) ?? '')}
-        onCommit={(value) => handleNumberPropertyChange('otpLength', value)}
-        normalize={(raw) => clampToInteger(raw, 4, 10)}
-        placeholder={t('flows:core.executions.otp.otpLength.placeholder')}
-        fullWidth
-        size="small"
-        inputProps={{min: 4, max: 10}}
-      />
+      >
+        <DraftTextField
+          labelPlacement="top"
+          label={t('flows:core.executions.otp.otpLength.label')}
+          helperText={t('flows:core.executions.otp.otpLength.hint')}
+          id="otp-length"
+          type="number"
+          value={String((properties['otpLength'] as number | string | undefined) ?? '')}
+          onCommit={(value) => handleNumberPropertyChange('otpLength', value)}
+          normalize={(raw) => clampToInteger(raw, 4, 10)}
+          placeholder={t('flows:core.executions.otp.otpLength.placeholder')}
+          fullWidth
+          size="small"
+          inputProps={{min: 4, max: 10}}
+        />
+      </VariableBinding>
 
-      <DraftTextField
-        labelPlacement="top"
+      <VariableBinding
+        resource={resource}
+        onChange={onChange}
+        propertyKey="otpValidityPeriodSeconds"
         label={t('flows:core.executions.otp.otpValidityPeriodSeconds.label')}
-        helperText={t('flows:core.executions.otp.otpValidityPeriodSeconds.hint')}
-        id="otp-validity"
-        type="number"
-        value={String((properties['otpValidityPeriodSeconds'] as number | string | undefined) ?? '')}
-        onCommit={(value) => handleNumberPropertyChange('otpValidityPeriodSeconds', value)}
-        normalize={(raw) => clampToInteger(raw, 30, 600)}
-        placeholder={t('flows:core.executions.otp.otpValidityPeriodSeconds.placeholder')}
-        fullWidth
-        size="small"
-        inputProps={{min: 30, max: 600}}
-      />
+      >
+        <DraftTextField
+          labelPlacement="top"
+          label={t('flows:core.executions.otp.otpValidityPeriodSeconds.label')}
+          helperText={t('flows:core.executions.otp.otpValidityPeriodSeconds.hint')}
+          id="otp-validity"
+          type="number"
+          value={String((properties['otpValidityPeriodSeconds'] as number | string | undefined) ?? '')}
+          onCommit={(value) => handleNumberPropertyChange('otpValidityPeriodSeconds', value)}
+          normalize={(raw) => clampToInteger(raw, 30, 600)}
+          placeholder={t('flows:core.executions.otp.otpValidityPeriodSeconds.placeholder')}
+          fullWidth
+          size="small"
+          inputProps={{min: 30, max: 600}}
+        />
+      </VariableBinding>
 
       <div>
-        <FormControlLabel
-          control={
-            <Checkbox
-              checked={(properties['otpUseNumericOnly'] ?? true) as boolean}
-              onChange={(e) => handleBooleanPropertyChange('otpUseNumericOnly', e.target.checked)}
-              size="small"
-            />
-          }
+        <VariableBinding
+          inline
+          resource={resource}
+          onChange={onChange}
+          propertyKey="otpUseNumericOnly"
           label={t('flows:core.executions.otp.otpUseNumericOnly.label')}
-        />
-        <FormHelperText>{t('flows:core.executions.otp.otpUseNumericOnly.hint')}</FormHelperText>
+        >
+          <div>
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={(properties['otpUseNumericOnly'] ?? true) as boolean}
+                  onChange={(e) => handleBooleanPropertyChange('otpUseNumericOnly', e.target.checked)}
+                  size="small"
+                />
+              }
+              label={t('flows:core.executions.otp.otpUseNumericOnly.label')}
+            />
+            <FormHelperText>{t('flows:core.executions.otp.otpUseNumericOnly.hint')}</FormHelperText>
+          </div>
+        </VariableBinding>
       </div>
 
-      <DraftTextField
-        labelPlacement="top"
+      <VariableBinding
+        resource={resource}
+        onChange={onChange}
+        propertyKey="maxAttempts"
         label={t('flows:core.executions.otp.maxAttempts.label')}
-        helperText={t('flows:core.executions.otp.maxAttempts.hint')}
-        id="otp-max-attempts"
-        type="number"
-        value={String((properties['maxAttempts'] as number | string | undefined) ?? '')}
-        onCommit={(value) => handleNumberPropertyChange('maxAttempts', value)}
-        normalize={(raw) => clampToInteger(raw, 1)}
-        placeholder={t('flows:core.executions.otp.maxAttempts.placeholder')}
-        fullWidth
-        size="small"
-        inputProps={{min: 1}}
-      />
+      >
+        <DraftTextField
+          labelPlacement="top"
+          label={t('flows:core.executions.otp.maxAttempts.label')}
+          helperText={t('flows:core.executions.otp.maxAttempts.hint')}
+          id="otp-max-attempts"
+          type="number"
+          value={String((properties['maxAttempts'] as number | string | undefined) ?? '')}
+          onCommit={(value) => handleNumberPropertyChange('maxAttempts', value)}
+          normalize={(raw) => clampToInteger(raw, 1)}
+          placeholder={t('flows:core.executions.otp.maxAttempts.placeholder')}
+          fullWidth
+          size="small"
+          inputProps={{min: 1}}
+        />
+      </VariableBinding>
     </Stack>
   );
 }

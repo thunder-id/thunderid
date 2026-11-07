@@ -10,13 +10,13 @@ function withExclusions<T extends object>(section: T, excluded: string[]): T & {
 
 /**
  * The rules of a saved section or unit that the screen doesn't edit, which a save keeps as they are.
- * The screen edits only a user's mandated `roles`, so everything else, such as a role's
- * `assignments`, is kept.
+ * The screen edits a user's mandated `roles` and the `variables.*` terms of a flow, so everything else, such
+ * as a role's `assignments`, is kept.
  */
 function keptOverlayRules(rules: SharingOverlayRules | undefined): SharingOverlayRules {
-  const {roles: _roles, ...kept} = rules ?? {};
+  const {roles: _roles, ...others} = rules ?? {};
   void _roles;
-  return kept;
+  return Object.fromEntries(Object.entries(others).filter(([field]) => !field.startsWith('variables.')));
 }
 
 function withOverlayRules<T extends object>(
@@ -68,11 +68,13 @@ export default function draftToSharingSections(
   const savedChildUnits = saved?.childUnits;
   const savedTrees = saved?.otherTreeRoots;
 
+  const rules = draft.childUnitRules && Object.keys(draft.childUnitRules).length > 0 ? draft.childUnitRules : undefined;
+
   if (draft.childUnitsAccess === 'all') {
-    sections.childUnits = withOverlayRules(
-      withExclusions({mode: 'all' as const}, draft.childUnitExclusions),
-      keptOverlayRules(savedChildUnits?.mode === 'all' ? savedChildUnits.overlayRules : undefined),
-    );
+    sections.childUnits = withOverlayRules(withExclusions({mode: 'all' as const}, draft.childUnitExclusions), {
+      ...keptOverlayRules(savedChildUnits?.mode === 'all' ? savedChildUnits.overlayRules : undefined),
+      ...(rules ?? {}),
+    });
   }
   if (draft.childUnitsAccess === 'selected' && draft.childUnits.length > 0) {
     sections.childUnits = {
@@ -82,12 +84,12 @@ export default function draftToSharingSections(
           savedChildUnits?.mode === 'selected'
             ? savedChildUnits.units.find((candidate) => candidate.ouId === unit.ouId)
             : undefined;
-        const rules = keptOverlayRules(savedUnit?.overlayRules);
+        const unitRules: SharingOverlayRules = {...keptOverlayRules(savedUnit?.overlayRules), ...(unit.rules ?? {})};
         // The server refuses a roles rule on a subtree, so one is only written for a unit-only reach.
         if (unit.reach === 'unit' && unit.roles && unit.roles.length > 0) {
-          rules.roles = {editable: false, value: [...unit.roles]};
+          unitRules.roles = {editable: false, value: [...unit.roles]};
         }
-        return withOverlayRules({ouId: unit.ouId, reach: unit.reach}, rules);
+        return withOverlayRules({ouId: unit.ouId, reach: unit.reach}, unitRules);
       }),
     };
   }

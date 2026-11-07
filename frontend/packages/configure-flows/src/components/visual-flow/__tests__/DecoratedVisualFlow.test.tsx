@@ -353,6 +353,28 @@ vi.mock('../FormRequiresViewDialog', () => ({
   ),
 }));
 
+vi.mock('../../flow-sharing/FlowSharingDialog', () => ({
+  default: ({
+    flow,
+    isDirty,
+    open,
+    variables,
+  }: {
+    flow: {id: string};
+    isDirty?: boolean;
+    open: boolean;
+    variables: unknown[];
+  }) => (
+    <div
+      data-testid="flow-sharing-dialog"
+      data-open={open}
+      data-flow={flow.id}
+      data-count={variables.length}
+      data-dirty={String(isDirty)}
+    />
+  ),
+}));
+
 vi.mock('../../../utils/generateResourceId', () => ({
   default: (prefix: string) => `${prefix}_test123`,
 }));
@@ -408,6 +430,85 @@ describe('DecoratedVisualFlow', () => {
       });
     });
     cleanup();
+  });
+
+  describe('Share button', () => {
+    const sharing = {id: 'flow-1', name: 'Enterprise sign-in', ouId: 'ou-root'};
+    const variablesNode = {
+      id: 'variables-1',
+      type: 'VARIABLES',
+      position: {x: 0, y: 0},
+      data: {inputs: [{identifier: 'connection1'}]},
+    } as Node;
+
+    it('should not render for a flow that cannot be shared yet', () => {
+      renderComponent(<DecoratedVisualFlow {...defaultProps} />);
+
+      expect(screen.queryByTestId('share-flow-button')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('flow-sharing-dialog')).not.toBeInTheDocument();
+    });
+
+    it('should render beside the other header buttons for a flow that can be shared', () => {
+      renderComponent(<DecoratedVisualFlow {...defaultProps} sharing={sharing} />);
+
+      expect(screen.getByTestId('share-flow-button')).toBeInTheDocument();
+    });
+
+    it('should open the sharing dialog for the flow, with its variables', () => {
+      renderComponent(<DecoratedVisualFlow {...defaultProps} nodes={[variablesNode]} sharing={sharing} isDirty />);
+
+      expect(screen.getByTestId('flow-sharing-dialog')).toHaveAttribute('data-open', 'false');
+
+      fireEvent.click(screen.getByTestId('share-flow-button'));
+
+      const dialog = screen.getByTestId('flow-sharing-dialog');
+
+      expect(dialog).toHaveAttribute('data-open', 'true');
+      expect(dialog).toHaveAttribute('data-flow', 'flow-1');
+      expect(dialog).toHaveAttribute('data-count', '1');
+      expect(dialog).toHaveAttribute('data-dirty', 'true');
+    });
+
+    it('should share a flow with no variables node with no variables', () => {
+      renderComponent(<DecoratedVisualFlow {...defaultProps} sharing={sharing} />);
+
+      expect(screen.getByTestId('flow-sharing-dialog')).toHaveAttribute('data-count', '0');
+    });
+  });
+
+  describe('Variables button', () => {
+    const variablesNode = {
+      id: 'variables-1',
+      type: 'VARIABLES',
+      position: {x: 0, y: 0},
+      data: {inputs: [{identifier: 'connection'}, {identifier: 'support_email'}]},
+    } as Node;
+
+    it('should not render a central variables button, even when the flow has a variables node', () => {
+      renderComponent(<DecoratedVisualFlow {...defaultProps} nodes={[variablesNode]} />);
+
+      expect(screen.queryByTestId('variables-flow-button')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('variables-dialog')).not.toBeInTheDocument();
+    });
+
+    it('should share the flow with the variables of every variables node', () => {
+      const secondNode = {
+        id: 'variables-2',
+        type: 'VARIABLES',
+        position: {x: 0, y: 200},
+        data: {inputs: [{identifier: 'phone'}]},
+      } as Node;
+
+      renderComponent(
+        <DecoratedVisualFlow
+          {...defaultProps}
+          nodes={[variablesNode, secondNode]}
+          sharing={{id: 'flow-1', name: 'Flow', ouId: 'ou-root'}}
+        />,
+      );
+
+      expect(screen.getByTestId('flow-sharing-dialog')).toHaveAttribute('data-count', '3');
+    });
   });
 
   describe('Rendering', () => {

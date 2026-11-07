@@ -6,7 +6,6 @@ import {
   Alert,
   Autocomplete,
   FormHelperText,
-  FormLabel,
   MenuItem,
   Select,
   Stack,
@@ -18,6 +17,7 @@ import {useMemo, type ReactNode, type SyntheticEvent} from 'react';
 import {useTranslation} from 'react-i18next';
 import type {CommonResourcePropertiesPropsInterface} from './types';
 import {buildTemplateLabels, buildTemplateOptions} from './utils';
+import VariableBinding from './VariableBinding';
 import useGetNotificationTemplates from '../../../../api/useGetNotificationTemplates';
 import type {StepData} from '../../../../models/steps';
 
@@ -57,8 +57,13 @@ function SmsProperties({resource, onChange}: CommonResourcePropertiesPropsInterf
         {t('flows:core.executions.sms.description')}
       </Typography>
 
-      <div>
-        <FormLabel htmlFor="sms-template">{t('flows:core.executions.sms.smsTemplate.label')}</FormLabel>
+      <VariableBinding
+        resource={resource}
+        onChange={onChange}
+        propertyKey="smsTemplate"
+        htmlFor="sms-template"
+        label={t('flows:core.executions.sms.smsTemplate.label')}
+      >
         <Autocomplete
           id="sms-template"
           options={templateOptions}
@@ -79,7 +84,7 @@ function SmsProperties({resource, onChange}: CommonResourcePropertiesPropsInterf
           size="small"
         />
         <FormHelperText>{t('flows:core.executions.sms.smsTemplate.hint')}</FormHelperText>
-      </div>
+      </VariableBinding>
 
       {isTemplatesError && <Alert severity="error">{t('flows:core.executions.sms.smsTemplate.loadError')}</Alert>}
 
@@ -87,8 +92,13 @@ function SmsProperties({resource, onChange}: CommonResourcePropertiesPropsInterf
         <Alert severity="warning">{t('flows:core.executions.sms.smsTemplate.noTemplates')}</Alert>
       )}
 
-      <div>
-        <FormLabel htmlFor="sms-sender-select">{t('flows:core.executions.smsOtp.sender.label')}</FormLabel>
+      <VariableBinding
+        resource={resource}
+        onChange={onChange}
+        propertyKey="senderId"
+        htmlFor="sms-sender-select"
+        label={t('flows:core.executions.smsOtp.sender.label')}
+      >
         <Select
           id="sms-sender-select"
           value={isSenderPlaceholder ? '' : smsSenderId}
@@ -106,7 +116,7 @@ function SmsProperties({resource, onChange}: CommonResourcePropertiesPropsInterf
             </MenuItem>
           ))}
         </Select>
-      </div>
+      </VariableBinding>
 
       {!isLoadingSMSProviders && !hasSenders && (
         <Alert severity="warning">{t('flows:core.executions.smsOtp.sender.noSenders')}</Alert>

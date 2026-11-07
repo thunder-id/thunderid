@@ -11,6 +11,7 @@ function clearChildUnits(draft: OrganizationAccessDraft): void {
   draft.childUnitsAccess = 'none';
   draft.childUnitExclusions = [];
   draft.childUnits = [];
+  draft.childUnitRules = {};
 }
 
 function clearOtherTrees(draft: OrganizationAccessDraft): void {
@@ -51,8 +52,13 @@ export default function switchOrganizationAccess(
     clearOtherTrees(next);
     if (to === 'chosen') next.childUnitsAccess = 'all';
   } else if (field === 'childUnitsAccess') {
-    if (draft.childUnitsAccess === 'all') next.childUnitExclusions = [];
+    if (draft.childUnitsAccess === 'all') {
+      next.childUnitExclusions = [];
+      next.childUnitRules = {};
+    }
     if (draft.childUnitsAccess === 'selected') next.childUnits = [];
+    // The terms belong to the units reached, so they go with the last of them.
+    if (to === 'none') next.childUnitRules = {};
   } else {
     if (draft.otherTreesAccess === 'selected') next.trees = [];
     if (draft.otherTreesAccess === 'every') next.everyTreeExclusions = [];
@@ -74,6 +80,9 @@ export default function switchOrganizationAccess(
   const droppedExclusions = dropped(draft.childUnitExclusions, next.childUnitExclusions);
   if (droppedExclusions.length > 0) {
     cleared.push({kind: 'childUnitExclusions', ouIds: droppedExclusions});
+  }
+  if (Object.keys(draft.childUnitRules ?? {}).length > 0 && Object.keys(next.childUnitRules ?? {}).length === 0) {
+    cleared.push({kind: 'childUnitRules', ouIds: []});
   }
   const droppedUnits = dropped(
     draft.childUnits.map((unit) => unit.ouId),

@@ -6,6 +6,7 @@ import {useMemo, type ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
 import CheckboxWithHint from './CheckboxWithHint';
 import type {CommonResourcePropertiesPropsInterface} from './types';
+import VariableBinding from './VariableBinding';
 import useResourceFieldError from '../../../../hooks/useResourceFieldError';
 import type {StepData} from '../../../../models/steps';
 import PresentationDefinitionSelect from '../../PresentationDefinitionSelect';
@@ -30,24 +31,43 @@ function OpenID4VPProperties({resource, onChange}: CommonResourcePropertiesProps
       <Typography variant="body2" color="text.secondary">
         {t('flows:core.executions.openid4vp.description')}
       </Typography>
-      <PresentationDefinitionSelect
+      <VariableBinding
+        resource={resource}
+        onChange={onChange}
         propertyKey="presentation_definition_id"
-        value={(properties['presentation_definition_id'] as string) ?? ''}
-        onChange={(value: string) => onChange('data.properties.presentation_definition_id', value, resource)}
-        errorMessage={errorMessage}
-      />
-      <CheckboxWithHint
-        checked={!!properties['allowAuthenticationWithoutLocalUser']}
-        onChange={(checked) => onChange('data.properties.allowAuthenticationWithoutLocalUser', checked, resource)}
+        htmlFor="presentation_definition_id"
+        label={t('verifiable-presentations:select.label')}
+      >
+        <PresentationDefinitionSelect
+          propertyKey="presentation_definition_id"
+          value={(properties['presentation_definition_id'] as string) ?? ''}
+          onChange={(value: string) => onChange('data.properties.presentation_definition_id', value, resource)}
+          errorMessage={errorMessage}
+        />
+      </VariableBinding>
+      <VariableBinding
+        inline
+        resource={resource}
+        onChange={onChange}
+        propertyKey="allowAuthenticationWithoutLocalUser"
         label={t(
           'flows:core.executions.openid4vp.allowAuthenticationWithoutLocalUser.label',
           'Allow authentication without a local user',
         )}
-        hint={t(
-          'flows:core.executions.openid4vp.allowAuthenticationWithoutLocalUser.hint',
-          'When enabled, a holder with no matching local user is provisioned just-in-time. When disabled, login requires an existing matching user.',
-        )}
-      />
+      >
+        <CheckboxWithHint
+          checked={!!properties['allowAuthenticationWithoutLocalUser']}
+          onChange={(checked) => onChange('data.properties.allowAuthenticationWithoutLocalUser', checked, resource)}
+          label={t(
+            'flows:core.executions.openid4vp.allowAuthenticationWithoutLocalUser.label',
+            'Allow authentication without a local user',
+          )}
+          hint={t(
+            'flows:core.executions.openid4vp.allowAuthenticationWithoutLocalUser.hint',
+            'When enabled, a holder with no matching local user is provisioned just-in-time. When disabled, login requires an existing matching user.',
+          )}
+        />
+      </VariableBinding>
     </Stack>
   );
 }

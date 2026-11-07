@@ -36,6 +36,8 @@ catalog:
   '@testing-library/jest-dom': 6.9.1
   '@testing-library/react': 16.3.0
   '@testing-library/user-event': 14.6.1
+  # TODO: bump this to the @thunderid/react release that includes https://github.com/thunder-id/javascript-sdks/pull/162
+  # (the flow variable components the flow editor uses) once that PR is merged and released, and refresh the lockfile.
   '@thunderid/react': 1.16.0
   '@thunderid/react-router': 1.14.1
   '@types/lodash-es': 4.17.12

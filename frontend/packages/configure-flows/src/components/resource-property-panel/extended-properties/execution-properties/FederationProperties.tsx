@@ -2,12 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {useIdentityProviders, type IdentityProviderType} from '@thunderid/configure-connections';
-import {Alert, FormHelperText, FormLabel, MenuItem, Select, Stack} from '@wso2/oxygen-ui';
+import {Alert, FormHelperText, MenuItem, Select, Stack} from '@wso2/oxygen-ui';
 import {useCallback, useMemo, type ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
 import CheckboxWithHint from './CheckboxWithHint';
 import {EXECUTOR_TO_IDP_TYPE_MAP, FEDERATED_EXECUTORS} from './constants';
 import type {CommonResourcePropertiesPropsInterface} from './types';
+import VariableBinding from './VariableBinding';
 import useResourceFieldError from '../../../../hooks/useResourceFieldError';
 import type {StepData} from '../../../../models/steps';
 
@@ -67,8 +68,13 @@ function FederationProperties({resource, onChange}: CommonResourcePropertiesProp
 
   return (
     <Stack gap={2}>
-      <div>
-        <FormLabel htmlFor="connection-select">{t('flows:core.executions.federation.connection.label')}</FormLabel>
+      <VariableBinding
+        resource={resource}
+        onChange={onChange}
+        propertyKey="idpId"
+        htmlFor="connection-select"
+        label={t('flows:core.executions.federation.connection.label')}
+      >
         <Select
           id="connection-select"
           value={isPlaceholder ? '' : currentIdpId}
@@ -92,7 +98,7 @@ function FederationProperties({resource, onChange}: CommonResourcePropertiesProp
             {errorMessage || t('flows:core.executions.federation.connection.required')}
           </FormHelperText>
         )}
-      </div>
+      </VariableBinding>
 
       {!isLoadingIdps && !hasConnections && (
         <Alert severity="warning">{t('flows:core.executions.federation.connection.noConnections')}</Alert>
@@ -100,30 +106,52 @@ function FederationProperties({resource, onChange}: CommonResourcePropertiesProp
 
       {isFederatedExecutor && (
         <Stack gap={1}>
-          <CheckboxWithHint
-            checked={!!properties['allowAuthenticationWithoutLocalUser']}
-            onChange={(checked) => handleBooleanPropertyChange('allowAuthenticationWithoutLocalUser', checked)}
+          <VariableBinding
+            inline
+            resource={resource}
+            onChange={onChange}
+            propertyKey="allowAuthenticationWithoutLocalUser"
             label={t(
               'flows:core.executions.federation.allowAuthenticationWithoutLocalUser.label',
               'Allow authentication without local user',
             )}
-            hint={t(
-              'flows:core.executions.federation.allowAuthenticationWithoutLocalUser.hint',
-              'Allow users to authenticate even when no matching local user exists.',
-            )}
-          />
-          <CheckboxWithHint
-            checked={!!properties['allowRegistrationWithExistingUser']}
-            onChange={(checked) => handleBooleanPropertyChange('allowRegistrationWithExistingUser', checked)}
+          >
+            <CheckboxWithHint
+              checked={!!properties['allowAuthenticationWithoutLocalUser']}
+              onChange={(checked) => handleBooleanPropertyChange('allowAuthenticationWithoutLocalUser', checked)}
+              label={t(
+                'flows:core.executions.federation.allowAuthenticationWithoutLocalUser.label',
+                'Allow authentication without local user',
+              )}
+              hint={t(
+                'flows:core.executions.federation.allowAuthenticationWithoutLocalUser.hint',
+                'Allow users to authenticate even when no matching local user exists.',
+              )}
+            />
+          </VariableBinding>
+          <VariableBinding
+            inline
+            resource={resource}
+            onChange={onChange}
+            propertyKey="allowRegistrationWithExistingUser"
             label={t(
               'flows:core.executions.federation.allowRegistrationWithExistingUser.label',
               'Allow registration with existing user',
             )}
-            hint={t(
-              'flows:core.executions.federation.allowRegistrationWithExistingUser.hint',
-              'Allow existing users to proceed through registration flows.',
-            )}
-          />
+          >
+            <CheckboxWithHint
+              checked={!!properties['allowRegistrationWithExistingUser']}
+              onChange={(checked) => handleBooleanPropertyChange('allowRegistrationWithExistingUser', checked)}
+              label={t(
+                'flows:core.executions.federation.allowRegistrationWithExistingUser.label',
+                'Allow registration with existing user',
+              )}
+              hint={t(
+                'flows:core.executions.federation.allowRegistrationWithExistingUser.hint',
+                'Allow existing users to proceed through registration flows.',
+              )}
+            />
+          </VariableBinding>
         </Stack>
       )}
     </Stack>

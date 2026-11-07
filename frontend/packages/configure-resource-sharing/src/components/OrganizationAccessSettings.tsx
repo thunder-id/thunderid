@@ -5,11 +5,11 @@ import {QueryErrorNotice, SettingsCard, type QueryErrorMessageResolver} from '@t
 import {useGetOrganizationUnitsByIds} from '@thunderid/configure-organization-units';
 import {Alert, Box, Button, CircularProgress, Stack, Typography} from '@wso2/oxygen-ui';
 import {Plus} from '@wso2/oxygen-ui-icons-react';
-import {useMemo, useState, type JSX} from 'react';
+import {useMemo, useState, type JSX, type ReactNode} from 'react';
 import {Trans, useTranslation} from 'react-i18next';
 import AccessChoiceCards, {type AccessChoice} from './AccessChoiceCards';
 import AssignmentsOffNote from './AssignmentsOffNote';
-import GrantedOrganizationUnitList from './GrantedOrganizationUnitList';
+import GrantedOrganizationUnitList, {type GrantedUnitTerms} from './GrantedOrganizationUnitList';
 import MandatedRolesPicker from './MandatedRolesPicker';
 import OrganizationUnitChipList from './OrganizationUnitChipList';
 import OrganizationUnitNameChip from './OrganizationUnitNameChip';
@@ -62,6 +62,15 @@ export interface OrganizationAccessSettingsProps {
    */
   errorNamespace?: string;
   resolveErrorMessage?: QueryErrorMessageResolver;
+  /**
+   * Shows the terms each granted child unit holds the resource on, with a way to change them, for a resource whose
+   * units hold terms.
+   */
+  childUnitTerms?: GrantedUnitTerms;
+  /**
+   * An extra action beside Grant access, such as setting the terms every unit starts with.
+   */
+  childUnitsAction?: ReactNode;
 }
 
 const unique = (ids: string[]): string[] => [...new Set(ids)];
@@ -80,6 +89,8 @@ export default function OrganizationAccessSettings({
   mandateRoles = false,
   errorNamespace = 'resourceSharing',
   resolveErrorMessage = undefined,
+  childUnitTerms = undefined,
+  childUnitsAction = undefined,
 }: OrganizationAccessSettingsProps): JSX.Element {
   const {t} = useTranslation();
   const [openPicker, setOpenPicker] = useState<OpenPicker | null>(null);
@@ -456,7 +467,7 @@ export default function OrganizationAccessSettings({
             {childMode === 'selected' && (
               <Stack spacing={1.5}>
                 {!locked && (
-                  <Box>
+                  <Stack direction="row" gap={1} flexWrap="wrap">
                     <Button
                       variant="contained"
                       size="small"
@@ -465,12 +476,14 @@ export default function OrganizationAccessSettings({
                     >
                       {t('resourceSharing:childUnits.grant', 'Grant access')}
                     </Button>
-                  </Box>
+                    {childUnitsAction}
+                  </Stack>
                 )}
                 <GrantedOrganizationUnitList
                   units={draft.childUnits}
                   unitsById={unitsById}
                   readOnly={locked}
+                  terms={childUnitTerms}
                   emptyLabel={t(
                     'resourceSharing:childUnits.empty',
                     'No child organization units selected yet. Use Grant access to pick them.',

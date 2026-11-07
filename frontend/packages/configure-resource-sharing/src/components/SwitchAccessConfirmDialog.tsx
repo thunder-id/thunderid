@@ -84,6 +84,8 @@ export default function SwitchAccessConfirmDialog({
             names: names(item.ouIds),
           },
         );
+      case 'childUnitRules':
+        return t('resourceSharing:switch.cleared.childUnitRules', 'Terms for every granted child unit');
       case 'childUnits':
         return t('resourceSharing:switch.cleared.childUnits', 'Granted child organization units: {{names}}', {
           names: names(item.ouIds),

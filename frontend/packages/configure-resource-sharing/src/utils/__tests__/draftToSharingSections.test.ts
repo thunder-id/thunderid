@@ -109,6 +109,44 @@ describe('draftToSharingSections', () => {
       otherTreeRoots: policy.otherTreeRoots,
     });
   });
+
+  it('writes the terms of the units reached into all child units', () => {
+    const childUnitRules = {'variables.connection1': {editable: true, allowedValues: ['c-1']}};
+
+    expect(draftToSharingSections(chosen({childUnitsAccess: 'all', childUnitRules}))).toEqual({
+      childUnits: {mode: 'all', overlayRules: childUnitRules},
+    });
+  });
+
+  it('writes each selected child unit with the terms of its own', () => {
+    const retailRules = {'variables.connection1': {editable: false, value: ['c-1']}};
+
+    expect(
+      draftToSharingSections(
+        chosen({
+          childUnitsAccess: 'selected',
+          childUnits: [
+            {ouId: 'retail', reach: 'unit', rules: retailRules},
+            {ouId: 'banking', reach: 'subtree'},
+          ],
+        }),
+      ),
+    ).toEqual({
+      childUnits: {
+        mode: 'selected',
+        units: [
+          {ouId: 'retail', reach: 'unit', overlayRules: retailRules},
+          {ouId: 'banking', reach: 'subtree'},
+        ],
+      },
+    });
+  });
+
+  it('leaves out terms when there are none', () => {
+    expect(draftToSharingSections(chosen({childUnitsAccess: 'all', childUnitRules: {}}))).toEqual({
+      childUnits: {mode: 'all'},
+    });
+  });
 });
 
 describe('hasNoSharingSections', () => {

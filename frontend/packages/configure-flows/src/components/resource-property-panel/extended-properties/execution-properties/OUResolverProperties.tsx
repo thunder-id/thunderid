@@ -8,6 +8,7 @@ import CheckboxWithHint from './CheckboxWithHint';
 import {OU_RESOLVE_FROM_OPTIONS} from './constants';
 import DraftTextField from './DraftTextField';
 import type {CommonResourcePropertiesPropsInterface} from './types';
+import VariableBinding from './VariableBinding';
 import FlowTypeContext from '../../../../context/FlowTypeContext';
 import {FlowType} from '../../../../models/flows';
 import type {StepData} from '../../../../models/steps';
@@ -66,31 +67,47 @@ function OUResolverProperties({resource, onChange}: CommonResourcePropertiesProp
       </div>
 
       {currentResolveFrom === 'prompt' && flowType === FlowType.AUTHENTICATION && (
-        <DraftTextField
-          labelPlacement="top"
-          label={t('flows:core.executions.ouResolver.parentOuId.label', 'Parent OU ID')}
-          helperText={t('flows:core.executions.ouResolver.parentOuId.hint', 'Users select an OU below this one.')}
-          id="parent-ou-id"
-          value={parentOuId}
-          onCommit={(value) => onChange('data.properties.parentOuId', value.trim(), resource)}
-          placeholder={t('flows:core.executions.ouResolver.parentOuId.placeholder', 'OU ID')}
+        <VariableBinding
+          resource={resource}
+          onChange={onChange}
+          propertyKey="parentOuId"
           required
-          error={parentOuId.trim() === ''}
-          fullWidth
-          size="small"
-        />
+          label={t('flows:core.executions.ouResolver.parentOuId.label', 'Parent OU ID')}
+        >
+          <DraftTextField
+            labelPlacement="top"
+            label={t('flows:core.executions.ouResolver.parentOuId.label', 'Parent OU ID')}
+            helperText={t('flows:core.executions.ouResolver.parentOuId.hint', 'Users select an OU below this one.')}
+            id="parent-ou-id"
+            value={parentOuId}
+            onCommit={(value) => onChange('data.properties.parentOuId', value.trim(), resource)}
+            placeholder={t('flows:core.executions.ouResolver.parentOuId.placeholder', 'OU ID')}
+            required
+            error={parentOuId.trim() === ''}
+            fullWidth
+            size="small"
+          />
+        </VariableBinding>
       )}
 
       {currentResolveFrom === 'prompt' && (
-        <CheckboxWithHint
-          checked={isDirectChildrenOnly}
-          onChange={(checked) => onChange('data.properties.directChildrenOnly', checked, resource)}
+        <VariableBinding
+          inline
+          resource={resource}
+          onChange={onChange}
+          propertyKey="directChildrenOnly"
           label={t('flows:core.executions.ouResolver.directChildrenOnly.label', 'Limit to direct children')}
-          hint={t(
-            'flows:core.executions.ouResolver.directChildrenOnly.hint',
-            'Only direct children of the parent OU can be selected. Declare an ouHandle input below to select by handle.',
-          )}
-        />
+        >
+          <CheckboxWithHint
+            checked={isDirectChildrenOnly}
+            onChange={(checked) => onChange('data.properties.directChildrenOnly', checked, resource)}
+            label={t('flows:core.executions.ouResolver.directChildrenOnly.label', 'Limit to direct children')}
+            hint={t(
+              'flows:core.executions.ouResolver.directChildrenOnly.hint',
+              'Only direct children of the parent OU can be selected. Declare an ouHandle input below to select by handle.',
+            )}
+          />
+        </VariableBinding>
       )}
     </Stack>
   );

@@ -5,6 +5,7 @@ import {Checkbox, FormControlLabel, FormHelperText, Stack, Typography} from '@ws
 import {useCallback, useMemo, type ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
 import type {CommonResourcePropertiesPropsInterface} from './types';
+import VariableBinding from './VariableBinding';
 import type {StepData} from '../../../../models/steps';
 
 function SessionSignOutProperties({resource, onChange}: CommonResourcePropertiesPropsInterface): ReactNode {
@@ -28,17 +29,27 @@ function SessionSignOutProperties({resource, onChange}: CommonResourceProperties
         {t('flows:core.executions.sessionSignOut.description')}
       </Typography>
 
-      <FormControlLabel
-        control={
-          <Checkbox
-            checked={!!properties['promptOnSignOut']}
-            onChange={(e) => handleBooleanPropertyChange('promptOnSignOut', e.target.checked)}
-            size="small"
-          />
-        }
+      <VariableBinding
+        inline
+        resource={resource}
+        onChange={onChange}
+        propertyKey="promptOnSignOut"
         label={t('flows:core.executions.sessionSignOut.promptOnSignOut.label')}
-      />
-      <FormHelperText>{t('flows:core.executions.sessionSignOut.promptOnSignOut.hint')}</FormHelperText>
+      >
+        <div>
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={!!properties['promptOnSignOut']}
+                onChange={(e) => handleBooleanPropertyChange('promptOnSignOut', e.target.checked)}
+                size="small"
+              />
+            }
+            label={t('flows:core.executions.sessionSignOut.promptOnSignOut.label')}
+          />
+          <FormHelperText>{t('flows:core.executions.sessionSignOut.promptOnSignOut.hint')}</FormHelperText>
+        </div>
+      </VariableBinding>
     </Stack>
   );
 }
