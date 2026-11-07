@@ -315,7 +315,7 @@ func publishAssignmentEvents(ctx context.Context, bus eventbus.EventBusInterface
 	action audit.Action, roleID string, assignments []RoleAssignment, svcErr *tidcommon.ServiceError) {
 	assignees := make([]audit.Ref, 0, len(assignments))
 	for _, a := range assignments {
-		assignees = append(assignees, audit.PrincipalRef(string(a.Type), a.ID))
+		assignees = append(assignees, audit.PrincipalRef(ctx, string(a.Type), a.ID))
 	}
 	target := audit.Ref{Type: audit.TargetTypeRole, ID: roleID}
 	for _, payload := range audit.MembershipPayloads(ctx, target, assignees, action, svcErr) {

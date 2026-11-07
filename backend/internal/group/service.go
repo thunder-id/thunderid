@@ -480,7 +480,7 @@ func (gs *groupService) publishMemberEvents(ctx context.Context, name string, ac
 	groupID string, members []Member, svcErr *tidcommon.ServiceError) {
 	principals := make([]audit.Ref, 0, len(members))
 	for _, m := range members {
-		principals = append(principals, audit.PrincipalRef(string(m.Type), m.ID))
+		principals = append(principals, audit.PrincipalRef(ctx, string(m.Type), m.ID))
 	}
 	target := audit.Ref{Type: audit.TargetTypeGroup, ID: groupID}
 	for _, payload := range audit.MembershipPayloads(ctx, target, principals, action, svcErr) {
