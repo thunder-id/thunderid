@@ -40,7 +40,10 @@ const (
 	eventWait        = 3 * time.Second
 )
 
-var testTarget = Ref{Type: TargetTypeUser, ID: testUserID}
+var (
+	testTarget      = Ref{Type: TargetTypeUser, ID: testUserID}
+	testApplication = Ref{Type: TargetTypeApplication, ID: testAppID}
+)
 
 // received is one audit event a sink was handed.
 type received struct {

@@ -28,6 +28,8 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/cors"
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
+	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/filter"
 	i18nmgt "github.com/thunder-id/thunderid/internal/system/i18n/mgt"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -109,6 +111,7 @@ type applicationService struct {
 	projectResolver projectOUResolver
 	// systemFlows is nil where system flows are off.
 	systemFlows systemFlowProvider
+	bus         eventbus.EventBusInterface
 }
 
 // systemFlowProvider runs a system flow to completion. The flow engine implements it.
@@ -130,6 +133,7 @@ func newApplicationService(
 	sharingService sharing.SharingServiceInterface,
 	governance identitygovernance.IdentityGovernanceServiceInterface,
 	projectResolver projectOUResolver,
+	bus eventbus.EventBusInterface,
 ) ApplicationServiceInterface {
 	return &applicationService{
 		logger:               log.GetLogger().With(log.String(log.LoggerKeyComponentName, "ApplicationService")),
@@ -144,6 +148,7 @@ func newApplicationService(
 		sharingService:       sharingService,
 		governance:           governance,
 		projectResolver:      projectResolver,
+		bus:                  bus,
 	}
 }
 
@@ -157,6 +162,18 @@ func (as *applicationService) deleteEntityCompensation(ctx context.Context, appI
 // CreateApplication creates the application.
 func (as *applicationService) CreateApplication(ctx context.Context, app *model.ApplicationDTO) (*model.ApplicationDTO,
 	*tidcommon.ServiceError) {
+	created, svcErr := as.createApplication(ctx, app)
+	var appID string
+	if svcErr == nil {
+		appID = created.ID
+	}
+	as.publishApplicationEvent(ctx, audit.EventApplicationCreate, audit.ActionCreate, appID, svcErr)
+	return created, svcErr
+}
+
+// createApplication creates the application without publishing its audit event.
+func (as *applicationService) createApplication(ctx context.Context, app *model.ApplicationDTO) (
+	*model.ApplicationDTO, *tidcommon.ServiceError) {
 	if app == nil {
 		return nil, &ErrorApplicationNil
 	}
@@ -587,6 +604,14 @@ func (as *applicationService) checkApplicationDeclarative(
 // UpdateApplication update the application for given app id.
 func (as *applicationService) UpdateApplication(ctx context.Context, appID string, app *model.ApplicationDTO) (
 	*model.ApplicationDTO, *tidcommon.ServiceError) {
+	updated, svcErr := as.updateApplication(ctx, appID, app)
+	as.publishApplicationEvent(ctx, audit.EventApplicationUpdate, audit.ActionUpdate, appID, svcErr)
+	return updated, svcErr
+}
+
+// updateApplication updates the application for the given app id without publishing its audit event.
+func (as *applicationService) updateApplication(ctx context.Context, appID string, app *model.ApplicationDTO) (
+	*model.ApplicationDTO, *tidcommon.ServiceError) {
 	if appID == "" {
 		return nil, &ErrorInvalidApplicationID
 	}
@@ -831,6 +856,18 @@ func (as *applicationService) SetDependencyRegistry(r resourcedependency.Registr
 }
 
 func (as *applicationService) DeleteApplication(ctx context.Context, appID string) *tidcommon.ServiceError {
+	svcErr := as.deleteApplication(ctx, appID)
+	// A delete that found nothing to remove succeeds without an event, so no caller can record a
+	// deletion of an ID it made up.
+	if svcErr == errApplicationNotFoundNoop {
+		return nil
+	}
+	as.publishApplicationEvent(ctx, audit.EventApplicationDelete, audit.ActionDelete, appID, svcErr)
+	return svcErr
+}
+
+// deleteApplication deletes the application for the given app id without publishing its audit event.
+func (as *applicationService) deleteApplication(ctx context.Context, appID string) *tidcommon.ServiceError {
 	if appID == "" {
 		return &ErrorInvalidApplicationID
 	}
@@ -915,7 +952,25 @@ func (as *applicationService) DeleteApplication(ctx context.Context, appID strin
 		return &tidcommon.InternalServerError
 	}
 
-	return as.deleteLocalizedVariants(ctx, appID)
+	if svcErr := as.deleteLocalizedVariants(ctx, appID); svcErr != nil || ranPreFlow {
+		return svcErr
+	}
+	// The pre-deletion flow runs only once the application is found.
+	return errApplicationNotFoundNoop
+}
+
+// publishApplicationEvent publishes the audit event of an attempt on the application with appID, after
+// the change committed or was refused. An update or a delete is refused by a system flow only once the
+// application is found. An update or a delete that fails after part of it is stored, a rotated client
+// secret whose revocation flow then fails or localized variants left after the entity is deleted, is
+// recorded as failed: a known limitation.
+func (as *applicationService) publishApplicationEvent(ctx context.Context, name string, action audit.Action,
+	appID string, svcErr *tidcommon.ServiceError) {
+	// A failed attempt keeps the ID the caller asked for, even one that matches no application, as
+	// forensic evidence of what was probed; the payload caps it and the sink escapes it.
+	target := audit.Ref{Type: audit.TargetTypeApplication, ID: appID}
+	eventbus.TryPublish(ctx, as.bus,
+		eventbus.NewEvent(ctx, name).With(audit.ChangePayload(ctx, target, action, svcErr)))
 }
 
 // runSystemFlow runs a system flow with the given inputs, starting from what an earlier run shared, and

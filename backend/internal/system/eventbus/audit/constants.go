@@ -52,13 +52,12 @@ const (
 	ResultFailed Result = "failed"
 )
 
-// ReasonForbidden is the reason of an attempt denied because the caller lacks the permission for it.
-const ReasonForbidden = "forbidden"
-
 const (
 	// maxIDLength is the most characters of an actor, subject or target ID an event records.
 	maxIDLength = 128
 
+	// reasonForbidden is the reason of an attempt denied because the caller lacks the permission for it.
+	reasonForbidden = "forbidden"
 	// reasonServerError is the reason of a service error code that cannot make a valid reason.
 	reasonServerError = "server_error"
 )

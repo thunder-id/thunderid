@@ -1081,19 +1081,14 @@ func (us *userService) publishCreate(ctx context.Context, created *providers.Use
 }
 
 // publishUserEvent publishes the audit event of an attempt on the user with userID, after the change
-// committed or was refused. The user is the event's subject when the attempt succeeded or was denied:
-// an update or a delete is denied only on a user that exists, while a failed attempt may name none.
+// committed or was refused. An update or a delete is denied only on a user that exists.
 func (us *userService) publishUserEvent(ctx context.Context, name string, action audit.Action, userID string,
 	svcErr *tidcommon.ServiceError) {
 	// A failed attempt keeps the ID the caller asked for, even one that matches no user, as forensic
 	// evidence of what was probed; the payload caps it and the sink escapes it.
 	target := audit.Ref{Type: audit.TargetTypeUser, ID: userID}
-	outcome := userAuditOutcome(svcErr)
-	payload := audit.NewPayload(ctx, target, action, outcome)
-	if outcome.Result != audit.ResultFailed && userID != "" {
-		payload = payload.WithSubject(target)
-	}
-	eventbus.TryPublish(ctx, us.bus, eventbus.NewEvent(ctx, name).With(payload))
+	eventbus.TryPublish(ctx, us.bus,
+		eventbus.NewEvent(ctx, name).With(audit.ChangePayload(ctx, target, action, svcErr)))
 }
 
 // ensureNoBlockingDependencies refuses deletion when other resources depend on the user in a way
@@ -1405,19 +1400,6 @@ func logErrorAndReturnServerError(ctx context.Context,
 	}
 	logger.Error(ctx, message, fields...)
 	return &tidcommon.InternalServerError
-}
-
-// userAuditOutcome maps the result of a user change to its audit outcome: a refusal by the access check
-// is denied as forbidden, and any other error failed, with the reason derived from the error code.
-func userAuditOutcome(svcErr *tidcommon.ServiceError) audit.Outcome {
-	switch {
-	case svcErr == nil:
-		return audit.OutcomeSucceeded
-	case svcErr.Code == tidcommon.ErrorUnauthorized.Code:
-		return audit.OutcomeDenied(audit.ReasonForbidden)
-	default:
-		return audit.OutcomeFailed(audit.ReasonFromCode(svcErr.Code))
-	}
 }
 
 // mapEntityError maps entity service errors to user service errors.

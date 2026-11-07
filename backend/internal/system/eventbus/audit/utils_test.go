@@ -33,7 +33,7 @@ func (s *UtilsTestSuite) TestReasonFromCode() {
 		"A" + strings.Repeat("b", 63): "a" + strings.Repeat("b", 63),
 	} {
 		s.Run(code, func() {
-			got := ReasonFromCode(code)
+			got := reasonFromCode(code)
 			s.Equal(reason, got)
 			s.Regexp(reasonPattern, got)
 		})

@@ -4,6 +4,8 @@
 package application
 
 import (
+	"errors"
+
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
@@ -891,3 +893,13 @@ var (
 		},
 	}
 )
+
+// errNilEventBus is returned when the service is initialized without the event bus it audits on.
+var errNilEventBus = errors.New("the application service needs an event bus")
+
+// errApplicationNotFoundNoop is returned by deleteApplication once it has removed what was left of an
+// application that does not exist. DeleteApplication turns it into a success, so it never reaches a caller.
+var errApplicationNotFoundNoop = &tidcommon.ServiceError{
+	Type: tidcommon.ClientErrorType,
+	Code: ErrorApplicationNotFound.Code,
+}
