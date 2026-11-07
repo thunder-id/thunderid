@@ -152,7 +152,8 @@ func GetClient(ctx context.Context) (address, userAgent string) {
 	return address, userAgent
 }
 
-// WithClient records where the request came from, its TCP peer address and its user agent.
+// WithClient records where the request came from, its TCP peer address and its user agent. The client
+// middleware records them only for a public peer.
 func WithClient(ctx context.Context, address, userAgent string) context.Context {
 	return context.WithValue(context.WithValue(ctx, ClientAddressKey, address), ClientUserAgentKey, userAgent)
 }

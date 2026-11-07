@@ -56,8 +56,7 @@ func (ts *AuditLogTestSuite) TestAnAgentLifecycleWritesOneLinePerChange() {
 		ts.Equal(agentRef, line.Subject, tc.event)
 		ts.Equal(testutils.AuditRef{Type: "user", ID: adminID}, line.Actor, tc.event)
 		ts.Equal(map[string]string{"result": "succeeded"}, line.Outcome, tc.event)
-		ts.Contains([]string{"127.0.0.1", "::1"}, line.Client["address"])
-		ts.Equal(testUserAgent, line.Client["user_agent"], tc.event)
+		ts.Nil(line.Client, "%s: a loopback peer is not recorded as the client", tc.event)
 		ts.requireNoAgentValue(line, name, clientID)
 	}
 }

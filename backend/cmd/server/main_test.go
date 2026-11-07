@@ -14,7 +14,6 @@ import (
 	"encoding/pem"
 	"errors"
 	"flag"
-	"fmt"
 	"io"
 	"math/big"
 	"net"
@@ -744,15 +743,30 @@ func auditLines(t *testing.T) func() []string {
 }
 
 // Each change a service publishes while serving a request, through the whole request chain, writes one
-// audit line with the actor the security layer verified, the peer address and user agent, and the trace
-// ID of the response. With audit off it writes none.
+// audit line with the actor the security layer verified, the trace ID of the response, and the peer
+// address and user agent when the peer is public. With audit off it writes none.
 func TestCreateHTTPServer_AuditsTheEventAServicePublishes(t *testing.T) {
 	published := []struct{ event, targetType string }{
 		{audit.EventUserCreate, audit.TargetTypeUser},
 		{audit.EventApplicationCreate, audit.TargetTypeApplication},
 	}
-	for _, enabled := range []bool{true, false} {
-		t.Run(fmt.Sprintf("enabled=%t", enabled), func(t *testing.T) {
+	cases := []struct {
+		name       string
+		enabled    bool
+		remoteAddr string
+		wantClient map[string]string
+	}{
+		{
+			name: "a public peer keeps its address and user agent", enabled: true, remoteAddr: "8.8.8.8:52814",
+			wantClient: map[string]string{"address": "8.8.8.8", "user_agent": "audit-test/1.0"},
+		},
+		{name: "a private peer has no client", enabled: true, remoteAddr: "10.0.0.5:52814"},
+		{name: "a loopback peer has no client", enabled: true, remoteAddr: "127.0.0.1:52814"},
+		{name: "audit off", enabled: false, remoteAddr: "8.8.8.8:52814"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			enabled := tc.enabled
 			cfg := &config.Config{
 				Server: engineconfig.ServerConfig{
 					Hostname: "localhost",
@@ -785,7 +799,7 @@ func TestCreateHTTPServer_AuditsTheEventAServicePublishes(t *testing.T) {
 			server := createHTTPServer(context.Background(), log.GetLogger(), cfg, mux, nil, enforcer)
 
 			request := httptest.NewRequest(http.MethodPost, "/import", nil)
-			request.RemoteAddr = "192.0.2.10:52814"
+			request.RemoteAddr = tc.remoteAddr
 			request.Header.Set("User-Agent", "audit-test/1.0")
 			request.Header.Set(constants.APIKeyHeaderName, testAuditAPIKey)
 			response := httptest.NewRecorder()
@@ -812,7 +826,10 @@ func TestCreateHTTPServer_AuditsTheEventAServicePublishes(t *testing.T) {
 				assert.Equal(t, p.targetType, line.Target["type"])
 				assert.Equal(t, response.Header().Get(constants.CorrelationIDHeaderName), line.TraceID)
 				assert.Equal(t, map[string]string{"type": "system", "id": "management-api-key"}, line.Actor)
-				assert.Equal(t, map[string]string{"address": "192.0.2.10", "user_agent": "audit-test/1.0"}, line.Client)
+				assert.Equal(t, tc.wantClient, line.Client)
+				if tc.wantClient == nil {
+					assert.NotContains(t, lines[i], `"client"`, "a line without a client has no client key")
+				}
 			}
 		})
 	}

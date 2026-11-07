@@ -160,7 +160,7 @@ func (p Payload) Outcome() Outcome {
 	return p.outcome
 }
 
-// Client returns where the request came from.
+// Client returns where the request came from, the zero Client when its peer was not a public address.
 func (p Payload) Client() Client {
 	return p.client
 }

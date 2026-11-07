@@ -54,7 +54,7 @@ func (ts *AuditLogTestSuite) TestAUserTypeLifecycleWritesOneLinePerChange() {
 		ts.Equal(typeRef, line.Subject, tc.event)
 		ts.Equal(testutils.AuditRef{Type: "user", ID: adminID}, line.Actor, tc.event)
 		ts.Equal(map[string]string{"result": "succeeded"}, line.Outcome, tc.event)
-		ts.Contains([]string{"127.0.0.1", "::1"}, line.Client["address"])
+		ts.Nil(line.Client, "%s: a loopback peer is not recorded as the client", tc.event)
 		ts.requireNoTypeValue(line, handle, displayName)
 	}
 }
