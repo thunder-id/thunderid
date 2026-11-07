@@ -26,7 +26,8 @@ func (s *PlaceholderTestSuite) SetupTest() {
 	initMutableTestRuntime(s.T())
 	s.mockStore = newNotificationTemplateStoreInterfaceMock(s.T())
 	s.svc = newNotificationTemplateService(s.mockStore, executingTransactioner(s.T()), nil, allowAllAuthz(s.T()),
-		nil, false)
+		nil, false,
+		discardingBus{})
 	s.ctx = context.Background()
 }
 

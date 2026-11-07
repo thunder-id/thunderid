@@ -39,7 +39,8 @@ func (s *TemplateAuthzTestSuite) SetupTest() {
 	initMutableTestRuntime(s.T())
 	s.mockStore = newNotificationTemplateStoreInterfaceMock(s.T())
 	s.authz = sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(s.T())
-	s.svc = newNotificationTemplateService(s.mockStore, executingTransactioner(s.T()), nil, s.authz, nil, false)
+	s.svc = newNotificationTemplateService(s.mockStore, executingTransactioner(s.T()), nil, s.authz, nil, false,
+		discardingBus{})
 	s.ctx = context.Background()
 }
 

@@ -218,7 +218,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	// Notification: only the sender-management (CRUD) service and the notification section handler are
 	// kept. The OTP and sender runtime services this returns are data plane concerns and are dropped.
 	notifSenderMgtSvc, _, _, notificationConfigHandler, err :=
-		notification.Initialize(jwtService, notificationconfig.FromServerRuntime(), ouService)
+		notification.Initialize(jwtService, notificationconfig.FromServerRuntime(), ouService, auditBus)
 	fatalOnError(ctx, logger, err, "Failed to initialize NotificationService")
 
 	// Create the flow server-config handler early so it can be registered before serverconfig is
@@ -308,7 +308,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	fatalOnError(ctx, logger, err, "Failed to initialize IDPService")
 
 	notifTemplateSvc, _, notifTemplateExporter, err := notificationtemplate.Initialize(
-		mux, cacheManager, ouService, ouAuthzService, i18nService, projectService)
+		mux, cacheManager, ouService, ouAuthzService, i18nService, projectService, auditBus)
 	fatalOnError(ctx, logger, err, "Failed to initialize NotificationTemplateService")
 	projectService.AddResourceCheck(notifTemplateSvc.ProjectHasTemplates)
 	exporters = append(exporters, notifTemplateExporter)

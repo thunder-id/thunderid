@@ -79,7 +79,8 @@ func (s *NotificationTemplateServiceTestSuite) SetupTest() {
 	initMutableTestRuntime(s.T())
 	s.mockStore = newNotificationTemplateStoreInterfaceMock(s.T())
 	s.svc = newNotificationTemplateService(s.mockStore, executingTransactioner(s.T()), nil, allowAllAuthz(s.T()),
-		nil, false)
+		nil, false,
+		discardingBus{})
 	s.ctx = context.Background()
 }
 
@@ -127,7 +128,8 @@ func (s *NotificationTemplateServiceTestSuite) TestCreateTemplate_KeepsProvidedI
 func (s *NotificationTemplateServiceTestSuite) svcWithOU(
 	ouMock *oumock.OrganizationUnitServiceInterfaceMock) NotificationTemplateServiceInterface {
 	return newNotificationTemplateService(s.mockStore, executingTransactioner(s.T()), ouMock,
-		allowAllAuthz(s.T()), nil, false)
+		allowAllAuthz(s.T()), nil, false,
+		discardingBus{})
 }
 
 // TestCreateTemplate_StoresOU verifies a valid ouId is checked against the OU service and persisted on
@@ -957,7 +959,8 @@ const testProjectID = "proj-1"
 func (s *NotificationTemplateServiceTestSuite) svcInProjects(ouMock *oumock.OrganizationUnitServiceInterfaceMock,
 	validator *projectOUValidatorMock) NotificationTemplateServiceInterface {
 	return newNotificationTemplateService(s.mockStore, executingTransactioner(s.T()), ouMock, allowAllAuthz(s.T()),
-		validator, true)
+		validator, true,
+		discardingBus{})
 }
 
 func (s *NotificationTemplateServiceTestSuite) projectRequest(ouID string) CreateTemplateRequest {
