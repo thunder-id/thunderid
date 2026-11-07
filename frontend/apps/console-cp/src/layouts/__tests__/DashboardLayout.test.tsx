@@ -229,6 +229,24 @@ describe('DashboardLayout', () => {
     expect(item).toHaveTextContent('navigation:badges.undeployed');
   });
 
+  it("lists the selected project's roles under it, with what is not deployed yet", () => {
+    mockUseProjectSelection.mockReturnValue(inShop());
+    mockProjectChanges = {role: 1};
+    render(<DashboardLayout />);
+
+    expect(screen.getAllByText('navigation:pages.roles')).toHaveLength(1);
+    const item = screen.getByText('navigation:pages.roles').closest('.MuiListItemButton-root')!;
+    expect(item).toHaveTextContent('navigation:badges.undeployed');
+  });
+
+  it('lists every role in the organization, outside any project', () => {
+    mockUseProjectSelection.mockReturnValue(projectSelection({projects: [shop], isCleared: true}));
+    mockPath = '/home';
+    render(<DashboardLayout />);
+
+    expect(screen.getAllByText('navigation:pages.roles')).toHaveLength(1);
+  });
+
   it('keeps the whole label beside an undeployed badge, the badge after it', () => {
     mockUseProjectSelection.mockReturnValue(inShop());
     mockProjectChanges = {application: 1};

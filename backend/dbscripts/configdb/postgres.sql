@@ -23,6 +23,7 @@ CREATE TABLE "ROLE" (
     DEPLOYMENT_ID           VARCHAR(255) NOT NULL,
     ID                  VARCHAR(36) NOT NULL,
     OU_ID               VARCHAR(36) NOT NULL,
+    PROJECT_ID          VARCHAR(36),
     NAME                VARCHAR(50) NOT NULL,
     DESCRIPTION         VARCHAR(255),
     CREATED_AT          TIMESTAMPTZ DEFAULT NOW(),
@@ -33,6 +34,9 @@ CREATE TABLE "ROLE" (
 
 -- Composite index for deployment + OU lookups (supports UNIQUE constraint checks)
 CREATE INDEX idx_role_ou_deployment ON "ROLE" (DEPLOYMENT_ID, OU_ID);
+
+-- Composite index for listing the roles of a project
+CREATE INDEX idx_role_project ON "ROLE" (DEPLOYMENT_ID, PROJECT_ID);
 
 -- Table to store Role permissions
 CREATE TABLE "ROLE_PERMISSION" (

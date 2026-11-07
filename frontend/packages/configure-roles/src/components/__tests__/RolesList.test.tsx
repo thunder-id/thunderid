@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import userEvent from '@testing-library/user-event';
+import {ProjectScopeProvider} from '@thunderid/contexts';
 import {render, screen, waitFor} from '@thunderid/test-utils';
 import type {NavigateFunction} from 'react-router';
 import {describe, it, expect, beforeEach, vi} from 'vitest';
@@ -364,5 +365,35 @@ describe('RolesList', () => {
     });
 
     expect(screen.getByRole('grid')).toBeInTheDocument();
+  });
+
+  it('should list the roles of the selected project', () => {
+    vi.mocked(useGetRoles).mockReturnValue({
+      data: {totalResults: 0, startIndex: 1, count: 0, roles: []},
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useGetRoles>);
+
+    render(
+      <ProjectScopeProvider project={{id: 'project-1'}}>
+        <RolesList />
+      </ProjectScopeProvider>,
+    );
+
+    expect(vi.mocked(useGetRoles)).toHaveBeenCalledWith(expect.objectContaining({projectId: 'project-1'}));
+  });
+
+  it('should list every role without a selected project', () => {
+    vi.mocked(useGetRoles).mockReturnValue({
+      data: {totalResults: 0, startIndex: 1, count: 0, roles: []},
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useGetRoles>);
+
+    render(<RolesList />);
+
+    expect(vi.mocked(useGetRoles)).toHaveBeenCalledWith(expect.objectContaining({projectId: undefined}));
   });
 });

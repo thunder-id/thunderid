@@ -3,6 +3,7 @@
 
 import userEvent from '@testing-library/user-event';
 import type {ResourcePermissions} from '@thunderid/configure-resource-servers';
+import {ProjectScopeProvider} from '@thunderid/contexts';
 import {fireEvent, render, screen, waitFor} from '@thunderid/test-utils';
 import type {NavigateFunction} from 'react-router';
 import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
@@ -658,6 +659,45 @@ describe('RoleEditPage', () => {
 
       await user.click(screen.getByRole('button', {name: 'Reset'}));
       expect(mockOrganizationAccess.reset).toHaveBeenCalled();
+    });
+  });
+
+  describe('inside a project', () => {
+    it('should return to the list for a role of another project', async () => {
+      vi.mocked(useGetRole).mockReturnValue({
+        data: {...mockRole, projectId: 'project-2'},
+        isLoading: false,
+        error: null,
+        refetch: vi.fn(),
+      } as unknown as ReturnType<typeof useGetRole>);
+
+      render(
+        <ProjectScopeProvider project={{id: 'project-1'}}>
+          <RoleEditPage />
+        </ProjectScopeProvider>,
+      );
+
+      await waitFor(() => {
+        expect(mockNavigate).toHaveBeenCalledWith('/roles', {replace: true});
+      });
+    });
+
+    it('should show a role of the selected project', () => {
+      vi.mocked(useGetRole).mockReturnValue({
+        data: {...mockRole, projectId: 'project-1'},
+        isLoading: false,
+        error: null,
+        refetch: vi.fn(),
+      } as unknown as ReturnType<typeof useGetRole>);
+
+      render(
+        <ProjectScopeProvider project={{id: 'project-1'}}>
+          <RoleEditPage />
+        </ProjectScopeProvider>,
+      );
+
+      expect(screen.getAllByText('Admin Role').length).toBeGreaterThan(0);
+      expect(mockNavigate).not.toHaveBeenCalledWith('/roles', {replace: true});
     });
   });
 });

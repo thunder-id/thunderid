@@ -7,6 +7,7 @@ import {
   useGetOrganizationUnit,
   useHasMultipleOUs,
 } from '@thunderid/configure-organization-units';
+import {useProjectScope} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {getErrorMessage} from '@thunderid/utils';
 import {Box, Button, CircularProgress, Alert} from '@wso2/oxygen-ui';
@@ -32,7 +33,14 @@ export default function CreateRolePage(): JSX.Element {
   const {currentStep, setCurrentStep, name, setName, ouId, setOuId, error, setError, permissions, setPermissions} =
     useRoleCreate();
 
-  const {hasMultipleOUs, isLoading: isOuLoading, ouList} = useHasMultipleOUs();
+  const ouLookup = useHasMultipleOUs();
+  const {projectId} = useProjectScope();
+  // Inside a project the role is created with the project alone, and the API places it in the system
+  // organization unit, so there is no organization unit to pick.
+  const isInProject = Boolean(projectId);
+  const hasMultipleOUs = !isInProject && ouLookup.hasMultipleOUs;
+  const isOuLoading = !isInProject && ouLookup.isLoading;
+  const {ouList} = ouLookup;
 
   // The organization unit is the wizard's first step whenever there's a choice to make. Single-OU
   // deployments never need it, so once that's known, skip straight past it.
@@ -43,7 +51,7 @@ export default function CreateRolePage(): JSX.Element {
   }, [isOuLoading, hasMultipleOUs, currentStep, setCurrentStep]);
 
   // The organization unit whose name is shown in the Details step's summary chip.
-  const resolvedOuId = hasMultipleOUs ? ouId : ouList[0]?.id;
+  const resolvedOuId = isInProject ? undefined : hasMultipleOUs ? ouId : ouList[0]?.id;
   const {data: resolvedOrganizationUnit, isLoading: isResolvedOuLoading} = useGetOrganizationUnit(
     resolvedOuId,
     Boolean(resolvedOuId),
@@ -111,14 +119,14 @@ export default function CreateRolePage(): JSX.Element {
     }
 
     const selectedOuId = hasMultipleOUs ? ouId : ouList[0]?.id;
-    if (!selectedOuId) {
+    if (!isInProject && !selectedOuId) {
       setError(t('create.form.organizationUnit.required', 'Organization unit is required'));
       return;
     }
 
     const requestData: CreateRoleRequest = {
       name: trimmedName,
-      ouId: selectedOuId,
+      ...(isInProject ? {projectId} : {ouId: selectedOuId}),
       ...(permissions.length > 0 ? {permissions} : {}),
     };
 

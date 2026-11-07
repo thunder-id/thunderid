@@ -37,6 +37,7 @@ paths:
         - $ref: '#/components/parameters/limitQueryParam'
         - $ref: '#/components/parameters/offsetQueryParam'
         - $ref: '#/components/parameters/roleFilterQueryParam'
+        - $ref: '#/components/parameters/roleProjectIdQueryParam'
       responses:
         "200":
           description: List of roles
@@ -235,6 +236,26 @@ paths:
                     description:
                       key: "error.roleservice.organization_unit_not_found_description"
                       defaultValue: "Organization unit not found"
+                invalid-project:
+                  summary: The project does not exist
+                  value:
+                    code: "ROL-1040"
+                    message:
+                      key: "error.roleservice.invalid_project"
+                      defaultValue: "Invalid project"
+                    description:
+                      key: "error.roleservice.invalid_project_description"
+                      defaultValue: "No project exists with the given project ID"
+                ou-not-in-project:
+                  summary: The organization unit is outside the project
+                  value:
+                    code: "ROL-1041"
+                    message:
+                      key: "error.roleservice.ou_not_in_project"
+                      defaultValue: "Organization unit not in project"
+                    description:
+                      key: "error.roleservice.ou_not_in_project_description"
+                      defaultValue: "A role in a project must be in the system organization unit"
                 invalid-permissions:
                   summary: Invalid permissions
                   value:
@@ -502,6 +523,26 @@ paths:
                     description:
                       key: "error.roleservice.organization_unit_not_found_description"
                       defaultValue: "Organization unit not found"
+                invalid-project:
+                  summary: The project does not exist
+                  value:
+                    code: "ROL-1040"
+                    message:
+                      key: "error.roleservice.invalid_project"
+                      defaultValue: "Invalid project"
+                    description:
+                      key: "error.roleservice.invalid_project_description"
+                      defaultValue: "No project exists with the given project ID"
+                ou-not-in-project:
+                  summary: The organization unit is outside the project
+                  value:
+                    code: "ROL-1041"
+                    message:
+                      key: "error.roleservice.ou_not_in_project"
+                      defaultValue: "Organization unit not in project"
+                    description:
+                      key: "error.roleservice.ou_not_in_project_description"
+                      defaultValue: "A role in a project must be in the system organization unit"
                 invalid-permissions:
                   summary: Invalid permissions
                   value:
@@ -523,7 +564,7 @@ paths:
                       key: "error.roleservice.cannot_modify_declarative_role_description"
                       defaultValue: "The role is defined in declarative configuration and cannot be modified"
                 shared-role-moved:
-                  summary: Role with sharing policies moved to another organization unit
+                  summary: Role with sharing policies moved to another organization unit or project
                   value:
                     code: "ROL-1029"
                     message:
@@ -531,7 +572,7 @@ paths:
                       defaultValue: "Role with sharing policies cannot be moved"
                     description:
                       key: "error.roleservice.shared_role_cannot_move_description"
-                      defaultValue: "The role is shared into other organization units. Delete its sharing policies before moving it to another organization unit"
+                      defaultValue: "The role is shared into other organization units. Delete its sharing policies before moving it to another organization unit or project"
                 assigned-role-moved:
                   summary: Role with assignments moved to another organization unit
                   value:
@@ -1525,11 +1566,21 @@ components:
       name: filter
       required: false
       description: |
-        Lists the roles one organization unit owns, followed by the roles shared with it. The only
-        supported filter is `ouId eq "<organization unit ID>"`.
+        Lists the roles one organization unit owns, followed by the roles shared with it. With
+        `projectId`, lists only the project's roles that organization unit owns. The only supported
+        filter is `ouId eq "<organization unit ID>"`.
       schema:
         type: string
       example: 'ouId eq "a839f4bd-39dc-4eaa-b5cc-210d8ecaee87"'
+    roleProjectIdQueryParam:
+      in: query
+      name: projectId
+      required: false
+      description: |
+        Lists the roles of the project. A project that does not exist has no roles.
+      schema:
+        type: string
+      example: "7c9e6679-7425-40de-944b-e07fc1f90ae7"
     assignmentFilterQueryParam:
       in: query
       name: filter
@@ -2008,6 +2059,9 @@ components:
           type: string
           readOnly: true
           description: "Handle of the organization unit this role belongs to"
+        projectId:
+          type: string
+          description: "ID of the project this role belongs to. Absent when it belongs to no project."
         isReadOnly:
           type: boolean
           readOnly: true
@@ -2040,6 +2094,9 @@ components:
           type: string
           readOnly: true
           description: "Handle of the organization unit this role belongs to"
+        projectId:
+          type: string
+          description: "ID of the project this role belongs to. Absent when it belongs to no project."
         isOwnedByOU:
           type: boolean
           readOnly: true
@@ -2063,7 +2120,7 @@ components:
 
     CreateRoleRequest:
       type: object
-      required: [name, ouId]
+      required: [name]
       properties:
         name:
           type: string
@@ -2074,7 +2131,12 @@ components:
         ouId:
           type: string
           format: uuid
-          description: "ID of the organization unit this role belongs to"
+          description: "ID of the organization unit this role belongs to. Defaults to the system organization unit."
+        projectId:
+          type: string
+          description: |
+            ID of the project this role belongs to. A role in a project must be in the system
+            organization unit. Without `projectId`, the role belongs to no project.
         permissions:
           type: array
           items:
@@ -2088,7 +2150,7 @@ components:
 
     UpdateRoleRequest:
       type: object
-      required: [name, ouId, permissions]
+      required: [name, permissions]
       properties:
         name:
           type: string
@@ -2099,7 +2161,12 @@ components:
         ouId:
           type: string
           format: uuid
-          description: "The organization unit the update is made as: the owner, an organization unit the role is shared with, or one to move the role to"
+          description: "The organization unit the update is made as: the owner, an organization unit the role is shared with, or one to move the role to. When omitted, the role stays in its organization unit."
+        projectId:
+          type: string
+          description: |
+            ID of the project this role belongs to. Leaving it out keeps the role in its current
+            project, and a different project moves it, unless the role is shared.
         permissions:
           type: array
           items:

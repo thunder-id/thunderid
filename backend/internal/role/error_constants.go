@@ -367,7 +367,7 @@ var (
 		},
 	}
 	// ErrorSharedRoleCannotMove is returned when a role that sharing policies govern is moved to
-	// another organization unit.
+	// another organization unit or project.
 	ErrorSharedRoleCannotMove = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
 		Code: "ROL-1029",
@@ -378,7 +378,7 @@ var (
 		ErrorDescription: tidcommon.I18nMessage{
 			Key: "error.roleservice.shared_role_cannot_move_description",
 			DefaultValue: "The role is shared into other organization units. Delete its sharing policies " +
-				"before moving it to another organization unit",
+				"before moving it to another organization unit or project",
 		},
 	}
 	// ErrorAssigneeNotInOU is returned when an assignment names an assignee that the organization unit
@@ -528,6 +528,32 @@ var (
 			Key: "error.roleservice.mandated_role_cannot_be_deleted_description",
 			DefaultValue: "A user sharing policy still mandates the role. Remove the role from those policies " +
 				"before deleting it",
+		},
+	}
+	// ErrorInvalidProject is returned when a role names a project that does not exist.
+	ErrorInvalidProject = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "ROL-1040",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.roleservice.invalid_project",
+			DefaultValue: "Invalid project",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.roleservice.invalid_project_description",
+			DefaultValue: "No project exists with the given project ID",
+		},
+	}
+	// ErrorOUNotInProject is returned when a role names an organization unit outside the project it names.
+	ErrorOUNotInProject = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "ROL-1041",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.roleservice.ou_not_in_project",
+			DefaultValue: "Organization unit not in project",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.roleservice.ou_not_in_project_description",
+			DefaultValue: "A role in a project must be in the system organization unit",
 		},
 	}
 )
