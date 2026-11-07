@@ -20,6 +20,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/role"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	systemutils "github.com/thunder-id/thunderid/internal/system/utils"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -389,4 +390,51 @@ func validateFederatedIdentifierConsistency(ctx *providers.NodeContext,
 	}
 
 	return true
+}
+
+// isEmptyAttribute reports whether a profile attribute holds no value, so the collector treats it as missing.
+func isEmptyAttribute(value interface{}) bool {
+	return value == nil || value == ""
+}
+
+// resolveKnownRecipient returns the stored attribute of the user the flow knows, falling back to the value
+// the attribute collector resolved for that user. known is false when the flow doesn't know the user.
+func resolveKnownRecipient(ctx *providers.NodeContext, execResp *providers.ExecutorResponse,
+	authnProvider providers.AuthnProviderManager, entityProvider entityprovider.EntityProviderInterface,
+	attribute string, logger *log.Logger) (recipient string, known bool, err error) {
+	userID := ctx.RuntimeData[userAttributeUserID]
+	if userID == "" && authnProvider != nil && ctx.AuthUser.IsAuthenticated() {
+		authUser, entityRef, svcErr := authnProvider.GetEntityReference(ctx.Context, ctx.AuthUser)
+		if svcErr != nil && svcErr.Type == tidcommon.ServerErrorType {
+			return "", true, fmt.Errorf("failed to resolve the authenticated user: %s", svcErr.Code)
+		}
+		if svcErr == nil {
+			execResp.AuthUser = authUser
+			if entityRef != nil {
+				userID = entityRef.EntityID
+			}
+		}
+	}
+	if userID == "" {
+		return "", false, nil
+	}
+
+	if entityProvider == nil {
+		return "", true, errors.New("entity provider is not configured for recipient resolution")
+	}
+	user, providerErr := entityProvider.GetEntity(userID)
+	if providerErr != nil {
+		if providerErr.Code == entityprovider.ErrorCodeEntityNotFound {
+			return "", true, nil
+		}
+		return "", true, fmt.Errorf("failed to fetch user from entity provider: %w", providerErr)
+	}
+	if recipient, attrErr := GetUserAttribute(user, attribute); attrErr == nil {
+		return recipient, true, nil
+	}
+	if resolved := ctx.RuntimeData[attribute]; resolved != "" {
+		return resolved, true, nil
+	}
+	logger.Debug(ctx.Context, "Recipient attribute not found on user entity", log.String("attribute", attribute))
+	return "", true, nil
 }
