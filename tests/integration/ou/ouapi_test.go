@@ -428,11 +428,12 @@ func (suite *OUAPITestSuite) TestCreateOrganizationUnitWithInvalidParent() {
 }
 
 func (suite *OUAPITestSuite) TestCreateOrganizationUnitWithDuplicateName() {
+	// A root OU reaches the server only through import, so the conflict is between siblings.
 	duplicateOU := CreateOURequest{
-		Name:        ouToCreate.Name,
+		Name:        childOUToCreate.Name,
 		Handle:      "duplicate-name-test",
 		Description: "Duplicate name test",
-		Parent:      nil,
+		Parent:      &createdOUID,
 	}
 
 	jsonData, err := json.Marshal(duplicateOU)
@@ -463,11 +464,12 @@ func (suite *OUAPITestSuite) TestCreateOrganizationUnitWithDuplicateName() {
 }
 
 func (suite *OUAPITestSuite) TestCreateOrganizationUnitWithDuplicateHandle() {
+	// A root OU reaches the server only through import, so the conflict is between siblings.
 	duplicateHandleOU := CreateOURequest{
 		Name:        "OU with Duplicate Handle",
-		Handle:      ouToCreate.Handle,
+		Handle:      childOUToCreate.Handle,
 		Description: "Duplicate handle test",
-		Parent:      nil,
+		Parent:      &createdOUID,
 	}
 
 	jsonData, err := json.Marshal(duplicateHandleOU)
@@ -1111,6 +1113,10 @@ func (suite *OUAPITestSuite) fetchOU(id string) OrganizationUnit {
 }
 
 func createOU(ts *OUAPITestSuite, ouRequest CreateOURequest) (string, error) {
+	if ouRequest.Parent == nil {
+		return testutils.ImportRootOrganizationUnit(ouRequest)
+	}
+
 	jsonData, err := json.Marshal(ouRequest)
 	if err != nil {
 		return "", fmt.Errorf("failed to marshal OU request: %w", err)

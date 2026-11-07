@@ -24,6 +24,8 @@ type ImportExportErrorSuite struct {
 	suite.Suite
 	client      *http.Client
 	plainClient *http.Client
+	// keyClient imports with the management API key, which a root organization unit needs.
+	keyClient *http.Client
 }
 
 func TestImportExportErrorSuite(t *testing.T) {
@@ -32,6 +34,7 @@ func TestImportExportErrorSuite(t *testing.T) {
 
 func (suite *ImportExportErrorSuite) SetupSuite() {
 	suite.client = testutils.GetHTTPClient()
+	suite.keyClient = testutils.GetManagementAPIKeyHTTPClient()
 	suite.plainClient = &http.Client{
 		Timeout: 10 * time.Second,
 		Transport: &http.Transport{
@@ -241,7 +244,7 @@ func (suite *ImportExportErrorSuite) TestImportContinueOnErrorTrueProcessesRemai
 		Options: runtimeOptions(),
 	})
 
-	status, body := suite.postJSON(suite.client, "/import", payload)
+	status, body := suite.postJSON(suite.keyClient, "/import", payload)
 	suite.Require().Equal(http.StatusOK, status, "body: %s", body)
 
 	var resp testutils.ImportResponse
@@ -265,7 +268,7 @@ func (suite *ImportExportErrorSuite) TestImportDryRunDoesNotPersist() {
 		Options: runtimeOptions(),
 	})
 
-	status, body := suite.postJSON(suite.client, "/import", payload)
+	status, body := suite.postJSON(suite.keyClient, "/import", payload)
 	suite.Require().Equal(http.StatusOK, status, "body: %s", body)
 
 	var resp testutils.ImportResponse
@@ -278,7 +281,7 @@ func (suite *ImportExportErrorSuite) TestImportDryRunDoesNotPersist() {
 		Content: fmt.Sprintf("resource_type: organization_unit\nname: Dry Run OU %s\nhandle: %s\n", suffix, handle),
 		Options: runtimeOptions(),
 	})
-	confirmStatus, confirmBody := suite.postJSON(suite.client, "/import", confirmPayload)
+	confirmStatus, confirmBody := suite.postJSON(suite.keyClient, "/import", confirmPayload)
 	suite.Require().Equal(http.StatusOK, confirmStatus, "body: %s", confirmBody)
 
 	var confirmResp testutils.ImportResponse
@@ -289,6 +292,28 @@ func (suite *ImportExportErrorSuite) TestImportDryRunDoesNotPersist() {
 		"the dry run must not have persisted the OU, so this is still a create")
 
 	suite.deleteImportedOU(&confirmResp)
+}
+
+// TestImportRootOUWithTokenIsRefused asserts a token, even one holding "system", cannot import a root
+// OU: only the management API key brings one in.
+func (suite *ImportExportErrorSuite) TestImportRootOUWithTokenIsRefused() {
+	suffix := fmt.Sprintf("%d", time.Now().UnixNano())
+	payload := suite.importBody(testutils.ImportRequest{
+		Content: fmt.Sprintf("resource_type: organization_unit\nname: Token Root OU %s\nhandle: token-root-ou-%s\n",
+			suffix, suffix),
+		Options: runtimeOptions(),
+	})
+
+	status, body := suite.postJSON(suite.client, "/import", payload)
+	suite.Require().Equal(http.StatusOK, status, "body: %s", body)
+
+	var resp testutils.ImportResponse
+	suite.Require().NoError(json.Unmarshal(body, &resp))
+	defer suite.deleteImportedOU(&resp)
+	suite.Require().Len(resp.Results, 1)
+	suite.Equal("failed", resp.Results[0].Status, "body: %s", body)
+	suite.Equal("SSE-4030", resp.Results[0].Code, "body: %s", body)
+	suite.Equal(0, resp.Summary.Imported)
 }
 
 // --- POST /import/delete ---

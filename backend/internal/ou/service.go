@@ -634,6 +634,15 @@ func (ous *organizationUnitService) updateOUInternal(
 		return OrganizationUnit{}, err
 	}
 
+	// Moving an organization unit to the root makes it a root organization unit, so the caller must be
+	// allowed to create one.
+	parentChanged := !stringPtrEqual(existingOU.Parent, request.Parent)
+	if parentChanged && request.Parent == nil {
+		if svcErr := ous.checkOUAccess(ctx, security.ActionCreateOU, ""); svcErr != nil {
+			return OrganizationUnit{}, svcErr
+		}
+	}
+
 	if request.Parent != nil {
 		exists, err := ous.ouStore.IsOrganizationUnitExists(ctx, *request.Parent)
 		if err != nil {
@@ -648,8 +657,6 @@ func (ous *organizationUnitService) updateOUInternal(
 	if err := ous.checkCircularDependency(ctx, id, request.Parent); err != nil {
 		return OrganizationUnit{}, err
 	}
-
-	parentChanged := !stringPtrEqual(existingOU.Parent, request.Parent)
 
 	var nameConflict bool
 	var err error

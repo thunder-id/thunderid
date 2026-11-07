@@ -42,7 +42,7 @@ var (
 
 func main() {
 	parseFlags()
-	controlPlane = os.Getenv("INTEGRATION_PLANE") == "control"
+	controlPlane = testutils.IsControlPlaneRun()
 
 	// The external services the tests stand in for run once for the whole run, shared by every group.
 	if testutils.TestGroup() == "" {

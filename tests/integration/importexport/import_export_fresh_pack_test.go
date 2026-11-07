@@ -827,7 +827,9 @@ func postImport(reqBody testutils.ImportRequest) (*testutils.ImportResponse, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := testutils.GetHTTPClient().Do(req)
+	// A deployment pipeline imports into a data plane with the management API key, which is what lets
+	// the import create root organization units.
+	resp, err := testutils.GetManagementAPIKeyHTTPClient().Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send import request: %w", err)
 	}
@@ -1697,7 +1699,9 @@ func (s *GroupRoleResourceImportExportSuite) importResources(reqBody testutils.I
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := testutils.GetHTTPClient().Do(req)
+	// A deployment pipeline imports into a data plane with the management API key, which is what lets
+	// the import create root organization units.
+	resp, err := testutils.GetManagementAPIKeyHTTPClient().Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send import request: %w", err)
 	}

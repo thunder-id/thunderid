@@ -70,6 +70,15 @@ func MCPResource() string {
 	return TestServerURL + "/mcp"
 }
 
+// IntegrationPlaneEnv names the plane a run tests. make test_integration_cp sets it to "control" on
+// the runner, and the test packages inherit it.
+const IntegrationPlaneEnv = "INTEGRATION_PLANE"
+
+// IsControlPlaneRun reports whether this process belongs to a run against the Control Plane.
+func IsControlPlaneRun() bool {
+	return os.Getenv(IntegrationPlaneEnv) == "control"
+}
+
 // UseControlPlane makes ReplaceResources install the Control Plane's deployment.yaml.
 func UseControlPlane() {
 	deploymentYamlSource = ControlPlaneDeploymentYamlPath

@@ -173,36 +173,16 @@ func (ts *DCREncryptionTestSuite) createAuthenticationFlow() string {
 }
 
 // createOrganizationUnitWithAuthFlow creates the suite organization unit with an explicit
-// authFlowId. testutils.CreateOrganizationUnit does not expose authFlowId, so the request is
-// issued directly.
+// authFlowId. testutils.CreateOrganizationUnit does not expose authFlowId, so the root organization
+// unit is imported directly.
 func (ts *DCREncryptionTestSuite) createOrganizationUnitWithAuthFlow(authFlowID string) string {
-	payload := map[string]interface{}{
+	ouID, err := testutils.ImportRootOrganizationUnit(map[string]interface{}{
 		"handle":      encOUHandle,
 		"name":        "DCR Encryption Test OU",
 		"description": "Organization unit for DCR response encryption integration tests",
 		"authFlowId":  authFlowID,
-	}
-	body, err := json.Marshal(payload)
-	ts.Require().NoError(err, "Failed to marshal organization unit payload")
-
-	req, err := http.NewRequest(http.MethodPost, testServerURL+"/organization-units", bytes.NewReader(body))
-	ts.Require().NoError(err, "Failed to build organization unit request")
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := ts.client.Do(req)
+	})
 	ts.Require().NoError(err, "Failed to create organization unit")
-	defer resp.Body.Close()
-
-	respBody, err := io.ReadAll(resp.Body)
-	ts.Require().NoError(err, "Failed to read organization unit response")
-	ts.Require().Equal(http.StatusCreated, resp.StatusCode,
-		"Unexpected organization unit response: %s", string(respBody))
-
-	var created map[string]interface{}
-	ts.Require().NoError(json.Unmarshal(respBody, &created), "Failed to parse organization unit response")
-
-	ouID, ok := created["id"].(string)
-	ts.Require().True(ok, "Organization unit response does not contain an id: %s", string(respBody))
 	return ouID
 }
 

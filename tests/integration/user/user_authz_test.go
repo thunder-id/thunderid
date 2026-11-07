@@ -429,6 +429,21 @@ func (ts *UserAuthzTestSuite) TestDeleteUserInOtherOU() {
 		"user-manager must not delete a user in a different OU")
 }
 
+// TestListUsersByPathWithoutOUViewIsForbidden verifies that listing users by an OU path, which
+// first reads the OU, is refused with 403 when the caller lacks system:ou:view.
+func (ts *UserAuthzTestSuite) TestListUsersByPathWithoutOUViewIsForbidden() {
+	resp := ts.doUser(http.MethodGet, "/users/tree/"+userAuthzOU1Handle, nil)
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	ts.Require().NoError(err)
+	ts.Require().Equal(http.StatusForbidden, resp.StatusCode, "error body: %s", string(body))
+
+	var errResp testutils.ErrorResponse
+	ts.Require().NoError(json.Unmarshal(body, &errResp), "error body: %s", string(body))
+	ts.Equal("SSE-4030", errResp.Code)
+}
+
 // TestCreateUserByPathRequiresOUView verifies the by-path create route passes the `system:user:create`
 // gate for the user-manager, then resolves the path through the OU service, which requires OU read
 // access. The user-manager holds none, so both the own OU and OU2 are refused with a 403 and no user

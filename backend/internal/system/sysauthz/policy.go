@@ -50,8 +50,7 @@ type authorizationPolicy interface {
 }
 
 // ouMembershipPolicy enforces that the caller's organization unit matches the OU of the
-// resource being acted upon. This prevents non-system callers from operating on
-// resources that belong to a different OU.
+// resource being acted upon. It prevents callers from operating on resources in a different OU.
 type ouMembershipPolicy struct{}
 
 // isActionAllowed returns:

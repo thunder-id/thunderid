@@ -570,8 +570,16 @@ func (ts *GatewayVersionsTestSuite) TestAnApplyThatReachedNoGatewayLeavesTheVers
 // every gateway would refuse to import it, so the configuration is refused here, naming the place.
 func (ts *GatewayVersionsTestSuite) TestACaptureRefusesASecretOutsideACredentialField() {
 	suffix := fmt.Sprint(time.Now().UnixNano())
+	// A root unit is imported, and import refuses a misplaced reference, so the unit is a child
+	// created through the API, which stores the reference as written.
+	parentID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
+		Handle: "misplaced-parent-" + suffix, Name: "Misplaced Parent " + suffix,
+	})
+	ts.Require().NoError(err)
+	defer func() { _ = testutils.DeleteOrganizationUnit(parentID) }()
 	id, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
 		Handle: "misplaced-" + suffix, Name: "Misplaced " + suffix, Description: "sec:MISPLACED_" + suffix,
+		Parent: &parentID,
 	})
 	ts.Require().NoError(err)
 	defer func() { _ = testutils.DeleteOrganizationUnit(id) }()

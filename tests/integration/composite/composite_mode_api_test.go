@@ -350,7 +350,17 @@ func (suite *CompositeModeSuite) TestOrganizationUnitDeclarativeVisibility() {
 	suite.Equal(http.StatusOK, resp.StatusCode, "declarative organization unit should be visible")
 	resp.Body.Close()
 
-	suite.assertMergedCollectionContainsIDs("/organization-units", "organizationUnits", "decl-ou-1", "organization_unit")
+	rootIDs := suite.extractCollectionIDs(suite.getCollectionItems("/organization-units", "organizationUnits"))
+	suite.Contains(rootIDs, "decl-ou-1", "root organization units should include decl-ou-1; got IDs: %v", rootIDs)
+
+	// The runtime unit is created under decl-ou-1, so the merged listing is that unit's children.
+	runtimeIDs := suite.createdResources["organization_unit"]
+	suite.Require().NotEmpty(runtimeIDs, "runtime organization unit should be created before verifying the listing")
+	childIDs := suite.extractCollectionIDs(
+		suite.getCollectionItems("/organization-units/decl-ou-1/ous", "organizationUnits"))
+	for _, id := range runtimeIDs {
+		suite.Contains(childIDs, id, "children of decl-ou-1 should include runtime unit %s; got IDs: %v", id, childIDs)
+	}
 }
 
 func (suite *CompositeModeSuite) TestIdentityProviderDeclarativeVisibility() {
@@ -815,9 +825,12 @@ func (suite *CompositeModeSuite) TestOrganizationUnitCreate() {
 	timestamp := time.Now().Unix()
 	ouHandle := fmt.Sprintf("runtime-ou-%d", timestamp)
 
+	// A root organization unit reaches the server only through import, so the runtime unit is created
+	// through the API under the declarative one.
 	ou := map[string]interface{}{
 		"handle": ouHandle,
 		"name":   "Test Runtime OU",
+		"parent": suite.declarativeOUID(),
 	}
 
 	payload, _ := json.Marshal(ou)

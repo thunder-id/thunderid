@@ -360,6 +360,21 @@ func TestUserService_GetUsersByPath_HandlesOUServiceErrors(t *testing.T) {
 			expectedErr: &ErrorInvalidHandlePath,
 		},
 		{
+			name: "ReturnsUnauthorizedWhenResolvingTheOUIsRefused",
+			setup: func(t *testing.T) *userService {
+				ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
+				ouServiceMock.
+					On("GetOrganizationUnitByPath", mock.Anything, "root").
+					Return(oupkg.OrganizationUnit{}, &tidcommon.ErrorUnauthorized).
+					Once()
+
+				return &userService{
+					ouService: ouServiceMock,
+				}
+			},
+			expectedErr: &tidcommon.ErrorUnauthorized,
+		},
+		{
 			name: "ReturnsServerErrorWhenListingUsersFails",
 			setup: func(t *testing.T) *userService {
 				ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
