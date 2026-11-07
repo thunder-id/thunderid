@@ -78,14 +78,16 @@ type versionService struct {
 	// secretFields names, by resource type, the fields a secret reference may stand in.
 	secretFields map[string][]string
 	names        actorNamer
-	// autoApply makes a capture of the current version apply it to the default gateway.
-	autoApply bool
-	logger    *log.Logger
+	// autoApply makes a capture of the current version apply it to the first gateway.
+	autoApply autoApplySetting
+	// pipeline is the stages a version moves through.
+	pipeline pipeline
+	logger   *log.Logger
 }
 
 func newVersionService(gateways storeInterface, versions versionStoreInterface,
 	exporter export.ExportServiceInterface, client gatewayClientInterface,
-	secretFields map[string][]string, names actorNamer) *versionService {
+	secretFields map[string][]string, names actorNamer, p pipeline) *versionService {
 	return &versionService{
 		gateways:     gateways,
 		versions:     versions,
@@ -93,6 +95,7 @@ func newVersionService(gateways storeInterface, versions versionStoreInterface,
 		client:       client,
 		secretFields: secretFields,
 		names:        names,
+		pipeline:     p,
 		logger:       log.GetLogger().With(log.String(log.LoggerKeyComponentName, "GatewayVersionService")),
 	}
 }

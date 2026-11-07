@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
+	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/constants"
 )
 
@@ -80,7 +81,7 @@ func newCaptureFixture(t *testing.T) *captureFixture {
 	// of one write; a test of the retries sets its own.
 	f.capture.retryDelay = 5 * time.Millisecond
 	f.capture.attempts = 1
-	f.capture.bind(f.exporter, f.gateways, newStoreService(f.gateways, newGatewayClient()))
+	f.capture.bind(f.exporter, f.gateways, newStoreService(f.gateways, newGatewayClient()), newPipeline())
 	return f
 }
 
@@ -130,6 +131,22 @@ func TestACaptureWritesVariablesAndSecretsToTheDefaultGateway(t *testing.T) {
 			body: `{"value":"the-secret"}`},
 	}, calls)
 	assert.Empty(t, others, "a value was written to a gateway that is not the default")
+}
+
+// With a configured pipeline, values go to its first gateway, the one auto apply deploys
+// the version that refers to them to, and not to the default gateway.
+func TestACaptureWritesToThePipelinesFirstGateway(t *testing.T) {
+	f := newCaptureFixture(t)
+	f.capture.pipeline = pipelineOf(config.GatewayPipelineStage{Gateway: "other"})
+	f.exporter.secrets = map[string]string{"APPLICATION_MY_APP_CLIENT_SECRET": "the-secret"}
+
+	f.capture.CaptureValues(context.Background(), "application", struct{}{})
+	f.settle(t)
+
+	calls, others := f.received()
+	assert.Empty(t, calls, "a value went to the default gateway, which is not the first gateway")
+	assert.Equal(t, []storeCall{{method: http.MethodPut, path: "/secrets/APPLICATION_MY_APP_CLIENT_SECRET",
+		key: "other-key", body: `{"value":"the-secret"}`}}, others)
 }
 
 // A name is escaped into the path, so it addresses one value however it is spelled.

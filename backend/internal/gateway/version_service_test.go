@@ -474,7 +474,9 @@ func (f *fakeExporter) PlaceholderValues(ctx context.Context, resourceType strin
 type fakeGatewayClient struct {
 	sent []gatewayImportRequest
 	keys []string
-	err  error
+	// gatewayIDs is the gateway each import went to, in order.
+	gatewayIDs []string
+	err        error
 	// held are the values the gateway's store holds, by name; heldSince is when each was set, for
 	// those that say; heldErr fails reading them.
 	held      map[string]bool
@@ -505,10 +507,11 @@ func (f *fakeGatewayClient) HeldValues(_ context.Context, _ *Gateway, _ string,
 	return held, nil
 }
 
-func (f *fakeGatewayClient) Import(_ context.Context, _ *Gateway, key string,
+func (f *fakeGatewayClient) Import(_ context.Context, gw *Gateway, key string,
 	req gatewayImportRequest) (json.RawMessage, error) {
 	f.sent = append(f.sent, req)
 	f.keys = append(f.keys, key)
+	f.gatewayIDs = append(f.gatewayIDs, gw.ID)
 	if f.onImport != nil && !req.DryRun {
 		f.onImport()
 	}
@@ -582,7 +585,7 @@ func newVersionFixture(t *testing.T) *versionFixture {
 		names:    &fakeActorNames{names: map[string]string{"u-1": "alice", "u-2": "bob"}},
 	}
 	f.gateways = &fakeStore{gateways: []Gateway{{ID: "gw-1", Name: "dev", BaseURL: "https://dp.test", Key: sealedKey}}}
-	f.svc = newVersionService(f.gateways, f.versions, f.exporter, f.client, testSecretFields, f.names)
+	f.svc = newVersionService(f.gateways, f.versions, f.exporter, f.client, testSecretFields, f.names, newPipeline())
 	return f
 }
 
@@ -1206,7 +1209,8 @@ func TestApplySendsTheVersionsValues(t *testing.T) {
 func TestADeclaredGatewaysKeyIsPresentedAsWritten(t *testing.T) {
 	f := newVersionFixture(t)
 	declared := &fakeStore{gateways: []Gateway{{ID: "gw-d", BaseURL: "https://dp.test", Key: "plain-key"}}}
-	svc := newVersionService(declared, f.versions, f.exporter, f.client, testSecretFields, &fakeActorNames{})
+	svc := newVersionService(declared, f.versions, f.exporter, f.client, testSecretFields, &fakeActorNames{},
+		newPipeline())
 	f.capture(t, "ou-a")
 
 	_, svcErr := svc.Apply(context.Background(), "gw-d", ApplyRequest{})

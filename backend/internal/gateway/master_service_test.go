@@ -283,7 +283,7 @@ func (s *MasterServiceTestSuite) TestAFirstMasterCollidingWithAnotherTakesTheOne
 	other := f.versions.masters["gw-1"][0]
 	f.versions.masters = map[string][]Master{}
 	store := &collidingMasterStore{fakeVersionStore: f.versions, winner: &other}
-	f.svc = newVersionService(f.gateways, store, f.exporter, f.client, testSecretFields, f.names)
+	f.svc = newVersionService(f.gateways, store, f.exporter, f.client, testSecretFields, f.names, newPipeline())
 
 	master, svcErr := f.svc.GetMaster(context.Background(), "gw-1")
 
@@ -299,7 +299,7 @@ func (s *MasterServiceTestSuite) TestAnApplyWhoseMasterCollidesIsRefused() {
 	f.versions.masters = map[string][]Master{"gw-1": {*deployedMaster("other", "ou-a")}}
 	f.versions.masters["gw-1"][0].Seq = 1
 	store := &collidingMasterStore{fakeVersionStore: f.versions}
-	f.svc = newVersionService(f.gateways, store, f.exporter, f.client, testSecretFields, f.names)
+	f.svc = newVersionService(f.gateways, store, f.exporter, f.client, testSecretFields, f.names, newPipeline())
 
 	_, svcErr := f.svc.Apply(context.Background(), "gw-1", ApplyRequest{})
 
@@ -416,7 +416,7 @@ func (s *MasterServiceTestSuite) TestAMasterThatFailsToRecordFailsTheApply() {
 	f.versions.masters["gw-1"][0].Seq = 1
 	store := &failingMasterStore{fakeVersionStore: f.versions}
 	f.svc = newVersionService(&fakeStore{gateways: []Gateway{{ID: "gw-1", BaseURL: "https://dp.test",
-		Key: "the-key"}}}, store, f.exporter, f.client, testSecretFields, f.names)
+		Key: "the-key"}}}, store, f.exporter, f.client, testSecretFields, f.names, newPipeline())
 
 	_, svcErr := f.svc.Apply(context.Background(), "gw-1", ApplyRequest{})
 

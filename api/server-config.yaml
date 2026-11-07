@@ -223,7 +223,26 @@ components:
       description: >
         The value of a configuration section. Its concrete shape is section-specific and may be any
         valid JSON value (object, array, or scalar). See `AccountAccessConfig` for the shape of the
-        `accountAccess` section and `NotificationConfig` for the `notification` section.
+        `accountAccess` section, `NotificationConfig` for the `notification` section and
+        `GatewaySettingsConfig` for the `gateway` section.
+
+    GatewaySettingsConfig:
+      type: object
+      description: |
+        The value of the `gateway` section: how a control plane deploys to its gateways, changed
+        without a restart.
+
+        `autoApply` makes each change captured on the control plane deploy to the first gateway
+        of the pipeline (`GET /gateways/pipeline`). Unset, `gateway.auto_apply` in the deployment
+        configuration decides. A declarative `gateway` resource, when present, makes the section
+        read-only, so a `PUT` is rejected with `SCF-1003`.
+
+        The section stays on the control plane: it is not exported, captured into a configuration
+        version or imported, so a gateway never receives it.
+      additionalProperties: false
+      properties:
+        autoApply:
+          type: boolean
 
     AccountAccessConfig:
       type: object

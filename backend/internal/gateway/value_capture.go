@@ -50,6 +50,8 @@ type ValueCapture struct {
 	values   placeholderValuer
 	gateways storeInterface
 	store    StoreServiceInterface
+	// pipeline finds the gateway the values go to: the first gateway, which auto apply deploys to.
+	pipeline pipeline
 	logger   *log.Logger
 
 	// retryDelay and attempts are how a write that failed is tried again, pushRetryDelay and
@@ -83,14 +85,17 @@ func NewValueCapture() *ValueCapture {
 	}
 }
 
-func (c *ValueCapture) bind(values placeholderValuer, gateways storeInterface, store StoreServiceInterface) {
+func (c *ValueCapture) bind(values placeholderValuer, gateways storeInterface, store StoreServiceInterface,
+	p pipeline) {
 	c.values = values
 	c.gateways = gateways
 	c.store = store
+	c.pipeline = p
 }
 
-// CaptureValues writes the values the resource's export would refer to into the default gateway's
-// store, variables and secrets each to its own collection.
+// CaptureValues writes the values the resource's export would refer to into the store of the gateway of
+// the pipeline's first gateway, the one auto apply deploys to, which is the default gateway unless
+// gateway.pipeline names another; variables and secrets each go to their own collection.
 //
 // It never fails the caller. The values are worked out, and the default gateway found, as the
 // resource is written, since the write is what holds them; the writes to the gateway then follow in
@@ -118,14 +123,14 @@ func (c *ValueCapture) CaptureValues(ctx context.Context, resourceType string, r
 		return
 	}
 
-	gw, err := c.defaultGateway(ctx)
+	gw, err := c.firstGateway(ctx)
 	if err != nil {
-		c.logger.Warn(ctx, "Failed to find the default gateway, so no values were captured",
+		c.logger.Warn(ctx, "Failed to find the first gateway, so no values were captured",
 			log.String("resourceType", resourceType), log.Error(err))
 		return
 	}
 	if gw == nil {
-		c.logger.Debug(ctx, "No gateway is the default, so no values were captured",
+		c.logger.Debug(ctx, "The pipeline has no first gateway, so no values were captured",
 			log.String("resourceType", resourceType))
 		return
 	}
@@ -253,16 +258,15 @@ func (c *ValueCapture) idle() bool {
 	return len(c.pending) == 0
 }
 
-// defaultGateway returns the default gateway, or nil when none is.
-func (c *ValueCapture) defaultGateway(ctx context.Context) (*Gateway, error) {
+// firstGateway returns the pipeline's first gateway, or nil when there is none.
+func (c *ValueCapture) firstGateway(ctx context.Context) (*Gateway, error) {
 	gateways, err := c.gateways.List(ctx)
 	if err != nil {
 		return nil, err
 	}
-	for i := range gateways {
-		if gateways[i].IsDefault {
-			return &gateways[i], nil
-		}
+	gw, ok := c.pipeline.first(ctx, gateways)
+	if !ok {
+		return nil, nil
 	}
-	return nil, nil
+	return &gw, nil
 }

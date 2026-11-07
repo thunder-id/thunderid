@@ -404,7 +404,9 @@ type GatewayConfig struct {
 	//   - If DeclarativeResources.Enabled = false: behaves as "mutable"
 	Store string `yaml:"store" json:"store"`
 	// AutoApply controls whether a write on this control plane automatically captures and applies
-	// the resulting configuration to the default gateway. Off by default: Capture and Apply are
+	// the resulting configuration to the first gateway of Pipeline, or to the default gateway when no
+	// pipeline is configured. The gateway server-config section overrides it at runtime; while that
+	// section is unset or cannot be read, this value decides. Off by default: Capture and Apply are
 	// otherwise a deliberate, operator-driven action, and a control plane administering several
 	// gateways generally wants to keep reviewing and applying a version itself rather than having
 	// every write push one out immediately.
@@ -413,6 +415,20 @@ type GatewayConfig struct {
 	// may take to answer, in place of the server's write timeout. It covers waiting for an apply
 	// already running on that gateway and the gateway's own import.
 	ApplyTimeoutSeconds int `yaml:"apply_timeout_seconds" json:"apply_timeout_seconds"`
+	// Pipeline lists the registered gateways a version is deployed and promoted through, in that
+	// order, each a stage of the pipeline. Empty, the default gateway is the only stage.
+	Pipeline []GatewayPipelineStage `yaml:"pipeline" json:"pipeline"`
+}
+
+// GatewayPipelineStage is one stage of the deploy pipeline: a registered gateway, named.
+type GatewayPipelineStage struct {
+	// Gateway is the name the gateway is registered under.
+	Gateway string `yaml:"gateway" json:"gateway"`
+	// Name is what the stage is called, such as Development. Empty, the gateway's name.
+	Name string `yaml:"name" json:"name"`
+	// AdminConsoleURL is where the gateway's own console is reached, to manage its users and
+	// sessions. Empty, the console the gateway serves under its base URL.
+	AdminConsoleURL string `yaml:"admin_console_url" json:"admin_console_url"`
 }
 
 // ApplyTimeout reports how long an apply or revert request may take to answer; zero leaves the
@@ -465,7 +481,7 @@ func (c GatewayConfig) MaxVersionCount() int {
 }
 
 // IsAutoApplyEnabled reports whether a written resource should be automatically captured and
-// applied to the default gateway, defaulting to off when unset.
+// applied to the first gateway of the pipeline, defaulting to off when unset.
 func (c GatewayConfig) IsAutoApplyEnabled() bool {
 	return derefBool(c.AutoApply)
 }

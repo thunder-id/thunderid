@@ -37,6 +37,17 @@ func (h *handler) handleList(w http.ResponseWriter, r *http.Request) {
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, gateways)
 }
 
+// handlePipeline returns the stages a version is deployed and promoted through.
+func (h *handler) handlePipeline(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	p, svcErr := h.service.GetPipeline(ctx)
+	if svcErr != nil {
+		handleError(ctx, w, svcErr)
+		return
+	}
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, p)
+}
+
 // handleGet returns one gateway.
 func (h *handler) handleGet(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()

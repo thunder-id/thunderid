@@ -30,6 +30,8 @@ type applyGateway struct {
 	began   chan struct{}
 	mu      sync.Mutex
 	imports int
+	// contents is each import's content, in the order they came.
+	contents []string
 }
 
 // newApplyGateway stands in for a data plane that answers each import at once.
@@ -80,8 +82,13 @@ func startApplyGateway(refuse bool) *applyGateway {
 			_ = json.NewEncoder(w).Encode(map[string]any{"totalResults": len(items), "count": len(items),
 				strings.TrimPrefix(r.URL.Path, "/"): items})
 		case r.Method == http.MethodPost && r.URL.Path == "/import":
+			var body struct {
+				Content string `json:"content"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&body)
 			g.mu.Lock()
 			g.imports++
+			g.contents = append(g.contents, body.Content)
 			g.mu.Unlock()
 			if g.refuse {
 				w.WriteHeader(http.StatusInternalServerError)
@@ -98,6 +105,47 @@ func startApplyGateway(refuse bool) *applyGateway {
 		}
 	}))
 	return g
+}
+
+// settledImports waits until no import has come for quiet, so what a change before it set off is done,
+// and returns how many came.
+func (g *applyGateway) settledImports(quiet time.Duration) int {
+	deadline := time.Now().Add(30 * time.Second)
+	g.mu.Lock()
+	last := g.imports
+	g.mu.Unlock()
+	still := time.Now()
+	for time.Now().Before(deadline) {
+		time.Sleep(100 * time.Millisecond)
+		g.mu.Lock()
+		count := g.imports
+		g.mu.Unlock()
+		if count != last {
+			last, still = count, time.Now()
+			continue
+		}
+		if time.Since(still) >= quiet {
+			break
+		}
+	}
+	return last
+}
+
+// importedSoon waits for an import after the first `after` to carry text, and reports whether one did.
+func (g *applyGateway) importedSoon(after int, text string) bool {
+	deadline := time.Now().Add(20 * time.Second)
+	for {
+		g.mu.Lock()
+		found := false
+		for _, content := range g.contents[min(after, len(g.contents)):] {
+			found = found || strings.Contains(content, text)
+		}
+		g.mu.Unlock()
+		if found || time.Now().After(deadline) {
+			return found
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
 }
 
 // importsSoon waits for the gateway to have received at least n imports.
