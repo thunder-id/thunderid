@@ -21,7 +21,6 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/applicationmock"
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
 	i18nmock "github.com/thunder-id/thunderid/tests/mocks/i18n/mgtmock"
-	"github.com/thunder-id/thunderid/tests/mocks/oumock"
 )
 
 const (
@@ -33,7 +32,6 @@ const (
 type DCRServiceTestSuite struct {
 	suite.Suite
 	mockAppService *applicationmock.ApplicationServiceInterfaceMock
-	mockOUService  *oumock.OrganizationUnitServiceInterfaceMock
 	service        DCRServiceInterface
 }
 
@@ -50,8 +48,7 @@ func (m *MockTransactioner) Transact(ctx context.Context, txFunc func(context.Co
 
 func (s *DCRServiceTestSuite) SetupTest() {
 	s.mockAppService = applicationmock.NewApplicationServiceInterfaceMock(s.T())
-	s.mockOUService = oumock.NewOrganizationUnitServiceInterfaceMock(s.T())
-	s.service = newDCRService(s.mockAppService, s.mockOUService, nil, nil, &MockTransactioner{})
+	s.service = newDCRService(s.mockAppService, nil, nil, &MockTransactioner{})
 }
 
 // TestBuildIDTokenConfig verifies that the response type is derived from the algorithm fields, so
@@ -112,7 +109,7 @@ func (s *DCRServiceTestSuite) TestBuildIDTokenConfig() {
 
 // TestNewDCRService tests the service constructor
 func (s *DCRServiceTestSuite) TestNewDCRService() {
-	service := newDCRService(s.mockAppService, s.mockOUService, nil, nil, &MockTransactioner{})
+	service := newDCRService(s.mockAppService, nil, nil, &MockTransactioner{})
 	s.NotNil(service)
 	s.Implements((*DCRServiceInterface)(nil), service)
 }
@@ -176,6 +173,35 @@ func (s *DCRServiceTestSuite) TestRegisterClient_ClientNameProvided() {
 	s.Nil(err)
 	s.Equal("client-id", response.ClientID)
 	s.Equal("Test Client", response.ClientName)
+}
+
+// TestRegisterClient_NoOULeavesItToTheApplicationService checks that a registration naming no
+// organization unit lets the application service place the client.
+func (s *DCRServiceTestSuite) TestRegisterClient_NoOULeavesItToTheApplicationService() {
+	request := &DCRRegistrationRequest{
+		RedirectURIs: []string{"https://client.example.com/callback"},
+		GrantTypes:   []providers.GrantType{providers.GrantTypeAuthorizationCode},
+		ClientName:   "Test Client",
+	}
+	appDTO := &model.ApplicationDTO{
+		ID:   "app-id",
+		Name: "Test Client",
+		InboundAuthConfig: []providers.InboundAuthConfigWithSecret{{
+			Type: providers.OAuthInboundAuthType,
+			OAuthConfig: &providers.OAuthConfigWithSecret{
+				ClientID: "client-id", ClientSecret: "client-secret", Scopes: []string{},
+			},
+		}},
+	}
+	s.mockAppService.On("CreateApplication", mock.Anything, mock.MatchedBy(func(app *model.ApplicationDTO) bool {
+		return app.OUID == "" && app.ProjectID == ""
+	})).Return(appDTO, (*tidcommon.ServiceError)(nil))
+
+	response, err := s.service.RegisterClient(context.Background(), request)
+
+	s.Nil(err)
+	s.Require().NotNil(response)
+	s.Equal("client-id", response.ClientID)
 }
 
 // TestRegisterClient_JWKSUriProvided tests registration with JWKS_URI
@@ -504,7 +530,7 @@ func (s *DCRServiceTestSuite) TestRegisterClient_EmptyInboundAuthConfig() {
 // and that the non-tagged default is stored under SystemLanguage.
 func (s *DCRServiceTestSuite) TestRegisterClient_WithLocalizedVariants() {
 	mockI18n := i18nmock.NewI18nServiceInterfaceMock(s.T())
-	svc := newDCRService(s.mockAppService, s.mockOUService, mockI18n, nil, &MockTransactioner{})
+	svc := newDCRService(s.mockAppService, mockI18n, nil, &MockTransactioner{})
 
 	request := &DCRRegistrationRequest{
 		OUID:                "test-ou-1",
@@ -559,7 +585,7 @@ func (s *DCRServiceTestSuite) TestRegisterClient_WithLocalizedVariants() {
 // client_name is provided (no localized variants), it is stored under SystemLanguage.
 func (s *DCRServiceTestSuite) TestRegisterClient_DefaultOnlyStoresSystemLanguage() {
 	mockI18n := i18nmock.NewI18nServiceInterfaceMock(s.T())
-	svc := newDCRService(s.mockAppService, s.mockOUService, mockI18n, nil, &MockTransactioner{})
+	svc := newDCRService(s.mockAppService, mockI18n, nil, &MockTransactioner{})
 
 	request := &DCRRegistrationRequest{
 		OUID:       "test-ou-1",
@@ -604,7 +630,7 @@ func (s *DCRServiceTestSuite) TestRegisterClient_DefaultOnlyStoresSystemLanguage
 // default and an explicit #SystemLanguage-tagged variant are provided, the tagged variant wins.
 func (s *DCRServiceTestSuite) TestRegisterClient_TaggedSystemLanguageWinsOverDefault() {
 	mockI18n := i18nmock.NewI18nServiceInterfaceMock(s.T())
-	svc := newDCRService(s.mockAppService, s.mockOUService, mockI18n, nil, &MockTransactioner{})
+	svc := newDCRService(s.mockAppService, mockI18n, nil, &MockTransactioner{})
 
 	request := &DCRRegistrationRequest{
 		OUID:                "test-ou-1",
@@ -652,7 +678,7 @@ func (s *DCRServiceTestSuite) TestRegisterClient_TaggedSystemLanguageWinsOverDef
 // partial-row cleanup and app compensation delete.
 func (s *DCRServiceTestSuite) TestRegisterClient_LocalizedVariantsWriteFailure() {
 	mockI18n := i18nmock.NewI18nServiceInterfaceMock(s.T())
-	svc := newDCRService(s.mockAppService, s.mockOUService, mockI18n, nil, &MockTransactioner{})
+	svc := newDCRService(s.mockAppService, mockI18n, nil, &MockTransactioner{})
 
 	request := &DCRRegistrationRequest{
 		OUID:                "test-ou-1",
@@ -703,7 +729,7 @@ func (s *DCRServiceTestSuite) TestRegisterClient_LocalizedVariantsWriteFailure()
 // validation must return ErrorInvalidClientMetadata and trigger the compensation rollback.
 func (s *DCRServiceTestSuite) TestRegisterClient_InvalidLocalizedURI() {
 	mockI18n := i18nmock.NewI18nServiceInterfaceMock(s.T())
-	svc := newDCRService(s.mockAppService, s.mockOUService, mockI18n, nil, &MockTransactioner{})
+	svc := newDCRService(s.mockAppService, mockI18n, nil, &MockTransactioner{})
 
 	request := &DCRRegistrationRequest{
 		OUID:             "test-ou-1",
@@ -824,7 +850,7 @@ func (s *DCRServiceTestSuite) TestRegisterClient_WithIDTokenEncryption() {
 // i18n error maps to ErrorServerError to avoid leaking internal details to external callers.
 func (s *DCRServiceTestSuite) TestRegisterClient_LocalizedVariantsWriteFailure_ClientError() {
 	mockI18n := i18nmock.NewI18nServiceInterfaceMock(s.T())
-	svc := newDCRService(s.mockAppService, s.mockOUService, mockI18n, nil, &MockTransactioner{})
+	svc := newDCRService(s.mockAppService, mockI18n, nil, &MockTransactioner{})
 
 	request := &DCRRegistrationRequest{
 		OUID:                "test-ou-1",
@@ -1105,7 +1131,7 @@ func (s *DCRServiceTestSuite) TestUpdateClient_LocalizedNameRefUsesExistingAppID
 // them from the i18n store.
 func (s *DCRServiceTestSuite) TestGetClient_ReturnsStoredLocalizedVariants() {
 	i18nSvc := i18nmock.NewI18nServiceInterfaceMock(s.T())
-	svc := newDCRService(s.mockAppService, s.mockOUService, i18nSvc, nil, &MockTransactioner{})
+	svc := newDCRService(s.mockAppService, i18nSvc, nil, &MockTransactioner{})
 
 	s.mockAppService.On("GetOAuthApplication", mock.Anything, svcTestClientID).
 		Return(s.existingOAuthClient(), (*tidcommon.ServiceError)(nil))
@@ -1139,7 +1165,7 @@ func (s *DCRServiceTestSuite) TestGetClient_ReturnsStoredLocalizedVariants() {
 // the reference would hand the caller a value that becomes a literal name if it is sent back.
 func (s *DCRServiceTestSuite) TestGetClient_NoBaseValueResolvesToAVariant() {
 	i18nSvc := i18nmock.NewI18nServiceInterfaceMock(s.T())
-	svc := newDCRService(s.mockAppService, s.mockOUService, i18nSvc, nil, &MockTransactioner{})
+	svc := newDCRService(s.mockAppService, i18nSvc, nil, &MockTransactioner{})
 
 	s.mockAppService.On("GetOAuthApplication", mock.Anything, svcTestClientID).
 		Return(s.existingOAuthClient(), (*tidcommon.ServiceError)(nil))
@@ -1211,7 +1237,7 @@ func (s *DCRServiceTestSuite) TestUpdateClient_LocalizedUpdateResponseReportsANa
 		s.Run(tc.name, func() {
 			appSvc := applicationmock.NewApplicationServiceInterfaceMock(s.T())
 			i18nSvc := i18nmock.NewI18nServiceInterfaceMock(s.T())
-			svc := newDCRService(appSvc, s.mockOUService, i18nSvc, nil, &MockTransactioner{})
+			svc := newDCRService(appSvc, i18nSvc, nil, &MockTransactioner{})
 
 			appSvc.On("GetOAuthApplication", mock.Anything, svcTestClientID).
 				Return(s.existingOAuthClient(), (*tidcommon.ServiceError)(nil))
@@ -1258,7 +1284,7 @@ func (s *DCRServiceTestSuite) TestUpdateClient_LocalizedUpdateResponseReportsANa
 // is what an update setting a plain logo_uri leaves behind.
 func (s *DCRServiceTestSuite) TestGetClient_LiteralFieldIsNotOverriddenByTranslations() {
 	i18nSvc := i18nmock.NewI18nServiceInterfaceMock(s.T())
-	svc := newDCRService(s.mockAppService, s.mockOUService, i18nSvc, nil, &MockTransactioner{})
+	svc := newDCRService(s.mockAppService, i18nSvc, nil, &MockTransactioner{})
 
 	s.mockAppService.On("GetOAuthApplication", mock.Anything, svcTestClientID).
 		Return(s.existingOAuthClient(), (*tidcommon.ServiceError)(nil))
@@ -1285,7 +1311,7 @@ func (s *DCRServiceTestSuite) TestGetClient_LiteralFieldIsNotOverriddenByTransla
 // update that changes only the variants of a field must not delete the base value along with them.
 func (s *DCRServiceTestSuite) TestUpdateClient_VariantOnlyUpdatePreservesBaseName() {
 	i18nSvc := i18nmock.NewI18nServiceInterfaceMock(s.T())
-	svc := newDCRService(s.mockAppService, s.mockOUService, i18nSvc, nil, &MockTransactioner{})
+	svc := newDCRService(s.mockAppService, i18nSvc, nil, &MockTransactioner{})
 
 	s.mockAppService.On("GetOAuthApplication", mock.Anything, svcTestClientID).
 		Return(s.existingOAuthClient(), (*tidcommon.ServiceError)(nil))
@@ -1341,7 +1367,7 @@ func (s *DCRServiceTestSuite) TestUpdateClient_VariantOnlyUpdatePreservesBaseNam
 // A client with no stored variants reads back without localized fields, rather than with empty maps.
 func (s *DCRServiceTestSuite) TestGetClient_NoVariantsLeavesLocalizedFieldsUnset() {
 	i18nSvc := i18nmock.NewI18nServiceInterfaceMock(s.T())
-	svc := newDCRService(s.mockAppService, s.mockOUService, i18nSvc, nil, &MockTransactioner{})
+	svc := newDCRService(s.mockAppService, i18nSvc, nil, &MockTransactioner{})
 
 	s.mockAppService.On("GetOAuthApplication", mock.Anything, svcTestClientID).
 		Return(s.existingOAuthClient(), (*tidcommon.ServiceError)(nil))
@@ -1363,7 +1389,7 @@ func (s *DCRServiceTestSuite) TestGetClient_NoVariantsLeavesLocalizedFieldsUnset
 // mismatch must be rejected before anything is written, so the registration is left unchanged.
 func (s *DCRServiceTestSuite) TestUpdateClient_MismatchedClientSecretIsRejected() {
 	authn := managermock.NewAuthnProviderManagerMock(s.T())
-	svc := newDCRService(s.mockAppService, s.mockOUService, nil, authn, &MockTransactioner{})
+	svc := newDCRService(s.mockAppService, nil, authn, &MockTransactioner{})
 
 	s.mockAppService.On("GetOAuthApplication", mock.Anything, svcTestClientID).
 		Return(s.existingOAuthClient(), (*tidcommon.ServiceError)(nil))
@@ -1394,7 +1420,7 @@ func (s *DCRServiceTestSuite) TestUpdateClient_MismatchedClientSecretIsRejected(
 // submitted value is only ever compared, never written, so the stored secret is preserved.
 func (s *DCRServiceTestSuite) TestUpdateClient_MatchingClientSecretIsAccepted() {
 	authn := managermock.NewAuthnProviderManagerMock(s.T())
-	svc := newDCRService(s.mockAppService, s.mockOUService, nil, authn, &MockTransactioner{})
+	svc := newDCRService(s.mockAppService, nil, authn, &MockTransactioner{})
 
 	s.mockAppService.On("GetOAuthApplication", mock.Anything, svcTestClientID).
 		Return(s.existingOAuthClient(), (*tidcommon.ServiceError)(nil))
@@ -1442,7 +1468,7 @@ func (s *DCRServiceTestSuite) TestUpdateClient_MatchingClientSecretIsAccepted() 
 // all, so a caller that simply does not echo the secret is unaffected.
 func (s *DCRServiceTestSuite) TestUpdateClient_OmittedClientSecretSkipsVerification() {
 	authn := managermock.NewAuthnProviderManagerMock(s.T())
-	svc := newDCRService(s.mockAppService, s.mockOUService, nil, authn, &MockTransactioner{})
+	svc := newDCRService(s.mockAppService, nil, authn, &MockTransactioner{})
 
 	s.mockAppService.On("GetOAuthApplication", mock.Anything, svcTestClientID).
 		Return(s.existingOAuthClient(), (*tidcommon.ServiceError)(nil))
@@ -1493,7 +1519,7 @@ func (s *DCRServiceTestSuite) TestUpdateClient_IssuedSecretIsReturnedWhenAdoptin
 	for _, tc := range cases {
 		s.Run(tc.name, func() {
 			appSvc := applicationmock.NewApplicationServiceInterfaceMock(s.T())
-			svc := newDCRService(appSvc, s.mockOUService, nil, nil, &MockTransactioner{})
+			svc := newDCRService(appSvc, nil, nil, &MockTransactioner{})
 
 			existingClient := s.existingOAuthClient()
 			existingClient.PublicClient = tc.publicClient
@@ -1559,7 +1585,7 @@ func (s *DCRServiceTestSuite) TestUpdateClient_PKCEFollowsAChangeOfClientType() 
 	for _, tc := range cases {
 		s.Run(tc.name, func() {
 			appSvc := applicationmock.NewApplicationServiceInterfaceMock(s.T())
-			svc := newDCRService(appSvc, s.mockOUService, nil, nil, &MockTransactioner{})
+			svc := newDCRService(appSvc, nil, nil, &MockTransactioner{})
 
 			existingClient := s.existingOAuthClient()
 			existingClient.PublicClient = tc.existingPublic
@@ -1609,7 +1635,7 @@ func (s *DCRServiceTestSuite) TestUpdateClient_PKCEFollowsAChangeOfClientType() 
 // attributes, is carried over rather than being dropped along with them.
 func (s *DCRServiceTestSuite) TestUpdateClient_OmittedResponseAlgorithmsAreCleared() {
 	appSvc := applicationmock.NewApplicationServiceInterfaceMock(s.T())
-	svc := newDCRService(appSvc, s.mockOUService, nil, nil, &MockTransactioner{})
+	svc := newDCRService(appSvc, nil, nil, &MockTransactioner{})
 
 	existingClient := s.existingOAuthClient()
 	existingClient.Token = &providers.OAuthTokenConfig{
@@ -1804,7 +1830,7 @@ func (s *DCRServiceTestSuite) TestUpdateClient_PreservesSettingsDCRCannotExpress
 // would keep resolving with no way to remove it through this API.
 func (s *DCRServiceTestSuite) TestUpdateClient_OmittedLocalizedVariantIsCleared() {
 	i18nSvc := i18nmock.NewI18nServiceInterfaceMock(s.T())
-	svc := newDCRService(s.mockAppService, s.mockOUService, i18nSvc, nil, &MockTransactioner{})
+	svc := newDCRService(s.mockAppService, i18nSvc, nil, &MockTransactioner{})
 
 	s.mockAppService.On("GetOAuthApplication", mock.Anything, svcTestClientID).
 		Return(s.existingOAuthClient(), (*tidcommon.ServiceError)(nil))
@@ -1854,7 +1880,7 @@ func (s *DCRServiceTestSuite) TestUpdateClient_OmittedLocalizedVariantIsCleared(
 // afterwards, because omitting the field is what created that state.
 func (s *DCRServiceTestSuite) TestUpdateClient_UnmentionedLocalizedFieldIsCleared() {
 	i18nSvc := i18nmock.NewI18nServiceInterfaceMock(s.T())
-	svc := newDCRService(s.mockAppService, s.mockOUService, i18nSvc, nil, &MockTransactioner{})
+	svc := newDCRService(s.mockAppService, i18nSvc, nil, &MockTransactioner{})
 
 	s.mockAppService.On("GetOAuthApplication", mock.Anything, svcTestClientID).
 		Return(s.existingOAuthClient(), (*tidcommon.ServiceError)(nil))
@@ -1900,7 +1926,7 @@ func (s *DCRServiceTestSuite) TestUpdateClient_UnmentionedLocalizedFieldIsCleare
 // its translations alone, rather than clearing them the way every other omitted field is cleared.
 func (s *DCRServiceTestSuite) TestUpdateClient_UnmentionedClientNameKeepsItsVariants() {
 	i18nSvc := i18nmock.NewI18nServiceInterfaceMock(s.T())
-	svc := newDCRService(s.mockAppService, s.mockOUService, i18nSvc, nil, &MockTransactioner{})
+	svc := newDCRService(s.mockAppService, i18nSvc, nil, &MockTransactioner{})
 
 	s.mockAppService.On("GetOAuthApplication", mock.Anything, svcTestClientID).
 		Return(s.existingOAuthClient(), (*tidcommon.ServiceError)(nil))
@@ -1948,7 +1974,7 @@ func (s *DCRServiceTestSuite) TestUpdateClient_UnmentionedClientNameKeepsItsVari
 // changes it.
 func (s *DCRServiceTestSuite) TestUpdateClient_VariantOnlyUpdateKeepsBaseURIFields() {
 	i18nSvc := i18nmock.NewI18nServiceInterfaceMock(s.T())
-	svc := newDCRService(s.mockAppService, s.mockOUService, i18nSvc, nil, &MockTransactioner{})
+	svc := newDCRService(s.mockAppService, i18nSvc, nil, &MockTransactioner{})
 
 	s.mockAppService.On("GetOAuthApplication", mock.Anything, svcTestClientID).
 		Return(s.existingOAuthClient(), (*tidcommon.ServiceError)(nil))
@@ -2005,7 +2031,7 @@ func (s *DCRServiceTestSuite) TestUpdateClient_VariantOnlyUpdateKeepsBaseURIFiel
 // late would leave the registration updated while the caller is told the request was invalid.
 func (s *DCRServiceTestSuite) TestUpdateClient_InvalidLocalizedURIRejectedBeforeWrite() {
 	i18nSvc := i18nmock.NewI18nServiceInterfaceMock(s.T())
-	svc := newDCRService(s.mockAppService, s.mockOUService, i18nSvc, nil, &MockTransactioner{})
+	svc := newDCRService(s.mockAppService, i18nSvc, nil, &MockTransactioner{})
 
 	request := &DCRUpdateRequest{
 		DCRRegistrationRequest: DCRRegistrationRequest{

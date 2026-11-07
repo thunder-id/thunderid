@@ -392,7 +392,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		httpConnection: httpConnectionService,
 	}, applicationService, agentService, flowMgtService, roleAssignmentService, roleService,
 		groupService, ouService, ouUserResolver, ouGroupResolver, entityTypeService, resourceService,
-		sharingService, notifTemplateSvc, ouDependencyProvider, projectService)
+		sharingService, notifTemplateSvc, ouDependencyProvider)
 
 	// Initialize export service with collected exporters
 	// This plane authors configuration and does not hold the values it refers to, so an export

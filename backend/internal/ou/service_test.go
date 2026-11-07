@@ -10,6 +10,7 @@ import (
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
@@ -1479,6 +1480,78 @@ func (suite *OrganizationUnitServiceTestSuite) TestOUService_GetResourceDependen
 
 		suite.Require().Error(err)
 		suite.Require().Nil(deps)
+	})
+}
+
+// The system organization unit is the one the configuration names, and it must exist.
+func (suite *OrganizationUnitServiceTestSuite) TestOUService_GetSystemOUID() {
+	for name, tc := range map[string]struct {
+		systemOUID string
+		exists     bool
+		storeErr   error
+		expectErr  bool
+	}{
+		"configured and present": {systemOUID: "ou-1", exists: true},
+		"not configured":         {expectErr: true},
+		"missing":                {systemOUID: "ou-1", expectErr: true},
+		"store failure":          {systemOUID: "ou-1", storeErr: errors.New("boom"), expectErr: true},
+	} {
+		suite.Run(name, func() {
+			config.ResetServerRuntime()
+			cfg := &config.Config{}
+			cfg.Server.SystemOUID = tc.systemOUID
+			suite.Require().NoError(config.InitializeServerRuntime("/tmp/test", cfg))
+			store := newOrganizationUnitStoreInterfaceMock(suite.T())
+			if tc.systemOUID != "" {
+				store.On("IsOrganizationUnitExists", mock.Anything, tc.systemOUID).Return(tc.exists, tc.storeErr).Once()
+			}
+			service := suite.newService(store, newAllowAllAuthz(suite.T()))
+
+			ouID, svcErr := service.GetSystemOUID(context.Background())
+
+			if tc.expectErr {
+				suite.Empty(ouID)
+				suite.Equal(&tidcommon.InternalServerError, svcErr)
+				return
+			}
+			suite.Nil(svcErr)
+			suite.Equal(tc.systemOUID, ouID)
+		})
+	}
+}
+
+// The system organization unit cannot be deleted, by ID or by path, whatever depends on it.
+func (suite *OrganizationUnitServiceTestSuite) TestOUService_DeleteSystemOrganizationUnit() {
+	config.ResetServerRuntime()
+	cfg := &config.Config{}
+	cfg.Server.SystemOUID = "ou-1"
+	suite.Require().NoError(config.InitializeServerRuntime("/tmp/test", cfg))
+
+	suite.Run("by ID", func() {
+		store := newOrganizationUnitStoreInterfaceMock(suite.T())
+		store.On("IsOrganizationUnitExists", mock.Anything, "ou-1").Return(true, nil).Once()
+		service := suite.newService(store, newAllowAllAuthz(suite.T()))
+		service.SetDependencyRegistry(&stubDependencyRegistry{resp: emptyDeps()})
+
+		err := service.DeleteOrganizationUnit(context.Background(), "ou-1")
+
+		suite.Require().NotNil(err)
+		suite.Equal(ErrorCannotDeleteSystemOU, *err)
+		store.AssertNotCalled(suite.T(), "DeleteOrganizationUnit", mock.Anything, mock.Anything)
+	})
+	suite.Run("by path", func() {
+		store := newOrganizationUnitStoreInterfaceMock(suite.T())
+		store.On("GetOrganizationUnitByPath", mock.Anything, []string{"default"}).
+			Return(OrganizationUnit{ID: "ou-1"}, nil).Once()
+		store.On("IsOrganizationUnitDeclarative", mock.Anything, "ou-1").Return(false).Once()
+		service := suite.newService(store, newAllowAllAuthz(suite.T()))
+		service.SetDependencyRegistry(&stubDependencyRegistry{resp: emptyDeps()})
+
+		err := service.DeleteOrganizationUnitByPath(context.Background(), "default")
+
+		suite.Require().NotNil(err)
+		suite.Equal(ErrorCannotDeleteSystemOU, *err)
+		store.AssertNotCalled(suite.T(), "DeleteOrganizationUnit", mock.Anything, mock.Anything)
 	})
 }
 
@@ -3148,4 +3221,16 @@ func (suite *OrganizationUnitServiceTestSuite) TestOUService_GetOrganizationUnit
 		suite.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
 		store.AssertExpectations(suite.T())
 	})
+}
+
+func TestConfiguredSystemOUID(t *testing.T) {
+	t.Cleanup(config.ResetServerRuntime)
+
+	config.ResetServerRuntime()
+	assert.Empty(t, configuredSystemOUID(), "no runtime names no system organization unit")
+
+	cfg := &config.Config{}
+	cfg.Server.SystemOUID = "system-ou"
+	require.NoError(t, config.InitializeServerRuntime("/tmp/test", cfg))
+	assert.Equal(t, "system-ou", configuredSystemOUID())
 }

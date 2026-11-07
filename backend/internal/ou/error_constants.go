@@ -191,6 +191,19 @@ var (
 			DefaultValue: "Organization units are listed only for a signed-in user",
 		},
 	}
+	// ErrorCannotDeleteSystemOU is the error returned when the system organization unit is deleted.
+	ErrorCannotDeleteSystemOU = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "OU-1021",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.ouservice.cannot_delete_system_ou",
+			DefaultValue: "System organization unit cannot be deleted",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.ouservice.cannot_delete_system_ou_description",
+			DefaultValue: "The deployment configuration names this organization unit in server.system_ou_id",
+		},
+	}
 )
 
 // Error variables

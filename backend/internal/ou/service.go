@@ -14,6 +14,7 @@ import (
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
+	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
@@ -38,6 +39,7 @@ type OrganizationUnitServiceInterface interface {
 		handlePath string,
 	) (OrganizationUnit, *tidcommon.ServiceError)
 	IsOrganizationUnitExists(ctx context.Context, id string) (bool, *tidcommon.ServiceError)
+	GetSystemOUID(ctx context.Context) (string, *tidcommon.ServiceError)
 	ResolveOwner(ctx context.Context, ouID, ouHandle string, errs OwnerErrors) (string, *tidcommon.ServiceError)
 	ResolveOwnerForUpdate(
 		ctx context.Context, requestedID, requestedHandle, currentID string, errs OwnerErrors,
@@ -473,6 +475,29 @@ func (ous *organizationUnitService) IsOrganizationUnitExists(
 	return exists, nil
 }
 
+// GetSystemOUID returns the ID of the system organization unit that server.system_ou_id names: the one
+// resources in a project are placed in, and that resources naming no organization unit go to. It is the
+// deployment's configuration, so one that is not configured or does not exist is a server error.
+func (ous *organizationUnitService) GetSystemOUID(ctx context.Context) (string, *tidcommon.ServiceError) {
+	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentNameService))
+	ouID := configuredSystemOUID()
+	if ouID == "" {
+		logger.Error(ctx, "No system organization unit is configured in server.system_ou_id")
+		return "", &tidcommon.InternalServerError
+	}
+	exists, err := ous.ouStore.IsOrganizationUnitExists(ctx, ouID)
+	if err != nil {
+		logger.Error(ctx, "Failed to check the system organization unit", log.Error(err))
+		return "", &tidcommon.InternalServerError
+	}
+	if !exists {
+		logger.Error(ctx, "The system organization unit in server.system_ou_id does not exist",
+			log.String("ouID", ouID))
+		return "", &tidcommon.InternalServerError
+	}
+	return ouID, nil
+}
+
 func (ous *organizationUnitService) IsOrganizationUnitDeclarative(ctx context.Context, id string) bool {
 	return ous.ouStore.IsOrganizationUnitDeclarative(ctx, id)
 }
@@ -824,6 +849,9 @@ func (ous *organizationUnitService) DeleteOrganizationUnitByPath(
 func (ous *organizationUnitService) deleteOUInternal(
 	ctx context.Context, id string, logger *log.Logger,
 ) *tidcommon.ServiceError {
+	if id == configuredSystemOUID() {
+		return &ErrorCannotDeleteSystemOU
+	}
 	// Check if OU is immutable (for composite mode)
 	if ous.ouStore.IsOrganizationUnitDeclarative(ctx, id) {
 		return &ErrorCannotModifyDeclarativeResource
@@ -1501,4 +1529,13 @@ func stringPtrEqual(a, b *string) bool {
 		return false
 	}
 	return *a == *b
+}
+
+// configuredSystemOUID returns the ID of the system organization unit the deployment configuration names,
+// or an empty string when none is configured.
+func configuredSystemOUID() string {
+	if !config.IsServerRuntimeInitialized() {
+		return ""
+	}
+	return config.GetServerRuntime().Config.Server.SystemOUID
 }

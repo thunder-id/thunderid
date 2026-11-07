@@ -527,6 +527,28 @@ func (suite *OUAPITestSuite) TestDeleteOrganizationUnitWithChildren() {
 	suite.Equal("Organization unit has children", errorResp["message"].(map[string]interface{})["defaultValue"])
 }
 
+// The system organization unit the deployment configuration names cannot be deleted, though this server
+// serves no projects.
+func (suite *OUAPITestSuite) TestDeleteSystemOrganizationUnitIsRefused() {
+	const systemOUID = "01900000-0000-7000-8000-000000000001"
+
+	req, err := http.NewRequest("DELETE", testServerURL+"/organization-units/"+systemOUID, nil)
+	suite.Require().NoError(err)
+	resp, err := testutils.GetHTTPClient().Do(req)
+	suite.Require().NoError(err)
+	defer resp.Body.Close()
+
+	suite.Equal(http.StatusBadRequest, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	suite.Require().NoError(err)
+	var errorResp map[string]interface{}
+	suite.Require().NoError(json.Unmarshal(body, &errorResp))
+	suite.Equal("OU-1021", errorResp["code"])
+
+	_, err = testutils.GetOrganizationUnit(systemOUID)
+	suite.NoError(err, "the system organization unit was deleted")
+}
+
 func (suite *OUAPITestSuite) TestDeleteOrganizationUnitWithUserType() {
 	ouID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
 		Handle: "ou-with-user-type",

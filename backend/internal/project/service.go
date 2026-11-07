@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-// Package project manages projects. A project groups identity configuration in the default
+// Package project manages projects. A project groups identity configuration in the system
 // organization unit, and its resources carry the project ID.
 package project
 
@@ -15,7 +15,6 @@ import (
 	"github.com/thunder-id/thunderid/internal/ou"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/log"
-	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -35,13 +34,11 @@ type ProjectServiceInterface interface {
 	GetProjectList(ctx context.Context, limit, offset int) (*ProjectListResponse, *tidcommon.ServiceError)
 	UpdateProject(ctx context.Context, id string, request ProjectRequest) (*Project, *tidcommon.ServiceError)
 	DeleteProject(ctx context.Context, id string) *tidcommon.ServiceError
-	ResolveProjectOU(ctx context.Context, projectID, ouID string) (string, *tidcommon.ServiceError)
+	ValidateProjectOU(ctx context.Context, projectID, ouID string) *tidcommon.ServiceError
 	ProjectExists(ctx context.Context, id string) (bool, *tidcommon.ServiceError)
 	ProjectNames(ctx context.Context) (map[string]string, *tidcommon.ServiceError)
 	ImportProject(ctx context.Context, id, handle, displayName, description string, upsert bool) (
 		bool, *tidcommon.ServiceError)
-	GetResourceDependencies(
-		ctx context.Context, resourceType, id string) ([]resourcedependency.ResourceDependency, error)
 }
 
 // projectEntityReader reports whether any entity, such as an application or an agent, is in a project.
@@ -91,27 +88,22 @@ func (s *projectService) GetProject(ctx context.Context, id string) (*Project, *
 	return &project, nil
 }
 
-// ResolveProjectOU returns the organization unit that a resource scoped to the project belongs to: the
-// system organization unit when ouID is empty, or ouID when it is the system organization unit or one
-// below it. It returns ErrorProjectNotFound when the project does not exist, ErrorOUNotInProject when the
-// organization unit is outside the project, and the organization unit service's error when the
-// organization unit does not exist.
-func (s *projectService) ResolveProjectOU(
-	ctx context.Context, projectID, ouID string) (string, *tidcommon.ServiceError) {
+// ValidateProjectOU checks that a resource scoped to the project is in an organization unit the project
+// includes: the system organization unit. It returns ErrorProjectNotFound when the project does not
+// exist, ErrorOUNotInProject when the organization unit is outside the project, and a server error when
+// the system organization unit is not configured or does not exist.
+func (s *projectService) ValidateProjectOU(ctx context.Context, projectID, ouID string) *tidcommon.ServiceError {
 	if _, err := s.store.GetProject(ctx, projectID); err != nil {
-		return "", s.mapStoreError(ctx, err, "Failed to get project")
+		return s.mapStoreError(ctx, err, "Failed to get project")
 	}
-	if ouID == "" {
-		return ou.SystemOUID, nil
-	}
-	inProject, svcErr := s.ouService.IsParent(ctx, ou.SystemOUID, ouID)
+	systemOUID, svcErr := s.ouService.GetSystemOUID(ctx)
 	if svcErr != nil {
-		return "", svcErr
+		return svcErr
 	}
-	if !inProject {
-		return "", &ErrorOUNotInProject
+	if ouID != systemOUID {
+		return &ErrorOUNotInProject
 	}
-	return ouID, nil
+	return nil
 }
 
 // ProjectNames maps each project's id to the name it is shown by: its display name, or its handle when
@@ -214,30 +206,6 @@ func (s *projectService) DeleteProject(ctx context.Context, id string) *tidcommo
 		return &tidcommon.InternalServerError
 	}
 	return nil
-}
-
-// GetResourceDependencies implements resourcedependency.Provider. Every project includes the system
-// organization unit, so it reports one project while any exists, which blocks the deletion.
-func (s *projectService) GetResourceDependencies(
-	ctx context.Context, resourceType, id string) ([]resourcedependency.ResourceDependency, error) {
-	if resourceType != resourcedependency.ResourceTypeOU || id != ou.SystemOUID {
-		return []resourcedependency.ResourceDependency{}, nil
-	}
-
-	projects, err := s.store.GetProjectList(ctx, 1, 0)
-	if err != nil {
-		return nil, err
-	}
-	dependencies := make([]resourcedependency.ResourceDependency, 0, len(projects))
-	for _, project := range projects {
-		dependencies = append(dependencies, resourcedependency.ResourceDependency{
-			ResourceType:     resourcedependency.ResourceTypeProject,
-			ID:               project.ID,
-			DisplayName:      project.DisplayName,
-			BehaviorOnDelete: resourcedependency.BehaviorRestrict,
-		})
-	}
-	return dependencies, nil
 }
 
 // ProjectExists reports whether a project with the given ID exists.

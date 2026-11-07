@@ -20,7 +20,6 @@ import (
 	"github.com/thunder-id/thunderid/internal/cert"
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	oauthutils "github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
-	"github.com/thunder-id/thunderid/internal/ou"
 	i18nmgt "github.com/thunder-id/thunderid/internal/system/i18n/mgt"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
@@ -43,7 +42,6 @@ type DCRServiceInterface interface {
 // dcrService is the default implementation of DCRServiceInterface.
 type dcrService struct {
 	appService    application.ApplicationServiceInterface
-	ouService     ou.OrganizationUnitServiceInterface
 	i18nService   i18nmgt.I18nServiceInterface
 	authnProvider providers.AuthnProviderManager
 	transactioner providers.Transactioner
@@ -52,14 +50,12 @@ type dcrService struct {
 // newDCRService creates a new instance of dcrService.
 func newDCRService(
 	appService application.ApplicationServiceInterface,
-	ouService ou.OrganizationUnitServiceInterface,
 	i18nService i18nmgt.I18nServiceInterface,
 	authnProvider providers.AuthnProviderManager,
 	transactioner providers.Transactioner,
 ) DCRServiceInterface {
 	return &dcrService{
 		appService:    appService,
-		ouService:     ouService,
 		i18nService:   i18nService,
 		authnProvider: authnProvider,
 		transactioner: transactioner,
@@ -77,21 +73,6 @@ func (ds *dcrService) RegisterClient(ctx context.Context, request *DCRRegistrati
 
 	if svcErr := validateJWKSConfig(request); svcErr != nil {
 		return nil, svcErr
-	}
-
-	// TODO: Revisit OU for DCR apps
-	if request.OUID == "" {
-		rootOUs, svcErr := ds.ouService.GetOrganizationUnitList(ctx, 1, 0, nil)
-		if svcErr != nil {
-			logger.Error(ctx, "Failed to retrieve root organization units for DCR",
-				log.String("error", svcErr.Error.DefaultValue))
-			return nil, &ErrorServerError
-		}
-		if rootOUs == nil || rootOUs.TotalResults == 0 || len(rootOUs.OrganizationUnits) == 0 {
-			logger.Error(ctx, "No root organization unit available for DCR registration")
-			return nil, &ErrorServerError
-		}
-		request.OUID = rootOUs.OrganizationUnits[0].ID
 	}
 
 	appDTO, svcErr := ds.convertDCRToApplication(request)

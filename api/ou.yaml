@@ -439,6 +439,16 @@ paths:
                     description:
                       key: "error.ouservice.organization_unit_has_children_description"
                       defaultValue: "Cannot delete an organization unit that has child organization units, users, groups, user types, agent types, connections, flows, or sharing policies it issued"
+                system-ou:
+                  summary: The system organization unit
+                  value:
+                    code: "OU-1021"
+                    message:
+                      key: "error.ouservice.cannot_delete_system_ou"
+                      defaultValue: "System organization unit cannot be deleted"
+                    description:
+                      key: "error.ouservice.cannot_delete_system_ou_description"
+                      defaultValue: "The deployment configuration names this organization unit in server.system_ou_id"
         "404":
           description: Organization unit not found
           content:
@@ -1035,6 +1045,16 @@ paths:
                     description:
                       key: "error.ouservice.organization_unit_has_children_description"
                       defaultValue: "Cannot delete an organization unit that has child organization units, users, groups, user types, agent types, connections, flows, or sharing policies it issued"
+                system-ou:
+                  summary: The system organization unit
+                  value:
+                    code: "OU-1021"
+                    message:
+                      key: "error.ouservice.cannot_delete_system_ou"
+                      defaultValue: "System organization unit cannot be deleted"
+                    description:
+                      key: "error.ouservice.cannot_delete_system_ou_description"
+                      defaultValue: "The deployment configuration names this organization unit in server.system_ou_id"
         "404":
           description: Organization unit not found
           content:

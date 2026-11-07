@@ -152,6 +152,7 @@ paths:
                 summary: Entity only (minimal)
                 value:
                   ouId: "456e8400-e29b-41d4-a716-446655440001"
+                  projectId: "7c9e6679-7425-40de-944b-e07fc1f90ae7"
                   type: "default"
                   description: "Runs nightly data sync jobs"
                   owner:
@@ -166,6 +167,7 @@ paths:
                 summary: Entity + inbound auth profile (no OAuth)
                 value:
                   ouId: "456e8400-e29b-41d4-a716-446655440001"
+                  projectId: "7c9e6679-7425-40de-944b-e07fc1f90ae7"
                   type: "default"
                   description: "Agent exposing calendar tools"
                   owner:
@@ -191,6 +193,7 @@ paths:
                 summary: Agent with client_credentials OAuth (M2M)
                 value:
                   ouId: "456e8400-e29b-41d4-a716-446655440001"
+                  projectId: "7c9e6679-7425-40de-944b-e07fc1f90ae7"
                   type: "default"
                   description: "Processes ETL jobs"
                   owner:
@@ -216,6 +219,7 @@ paths:
                 summary: Agent with authorization_code OAuth (all fields)
                 value:
                   ouId: "456e8400-e29b-41d4-a716-446655440001"
+                  projectId: "7c9e6679-7425-40de-944b-e07fc1f90ae7"
                   type: "default"
                   description: "Agent exposing calendar tools"
                   owner:
@@ -2161,15 +2165,17 @@ components:
           type: string
           format: uuid
           description: |
-            The organization unit ID where the agent will be created. Required unless `projectId`
-            is given.
+            The organization unit ID where the agent will be created. When omitted, the agent is
+            created in the system organization unit that the `server.system_ou_id` deployment
+            configuration names.
           example: "456e8400-e29b-41d4-a716-446655440001"
         projectId:
           type: string
           description: |
-            The ID of the project the agent belongs to. Without `ouId`, the agent is created in the
-            system organization unit. With `ouId`, that organization unit must belong to
-            the project.
+            The ID of the project the agent belongs to. On a deployment that serves projects, such
+            as the Control Plane, creating an agent without one is deprecated and will be refused
+            (`AGT-1050`) in a future release. The agent's organization unit, the given `ouId` or the
+            default one, must belong to the project.
           example: "7c9e6679-7425-40de-944b-e07fc1f90ae7"
         type:
           type: string

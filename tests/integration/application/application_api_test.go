@@ -20,6 +20,9 @@ import (
 
 var testServerURL = testutils.TestServerURL
 
+// systemOUID is the system organization unit the bootstrap server configuration names.
+const systemOUID = "01900000-0000-7000-8000-000000000001"
+
 var (
 	testOU = testutils.OrganizationUnit{
 		Handle:      "test_application_ou",
@@ -510,6 +513,47 @@ func (ts *ApplicationAPITestSuite) TestApplicationUpdateReportsTheDerivedStatus(
 	}
 	ts.Require().NoError(json.Unmarshal(raw, &updated))
 	ts.JSONEq(`{"value":"ACTIVE"}`, string(updated.Status), "the update must report the status value alone")
+}
+
+// An application created without an organization unit goes to the system organization unit.
+func (ts *ApplicationAPITestSuite) TestApplicationCreationWithoutOU() {
+	appID, err := createApplication(Application{Name: "App Without OU"})
+	ts.Require().NoError(err)
+	defer func() {
+		if err := deleteApplication(appID); err != nil {
+			ts.T().Logf("Failed to delete application without an OU: %v", err)
+		}
+	}()
+
+	ts.Equal(systemOUID, ts.applicationOU(appID))
+}
+
+func (ts *ApplicationAPITestSuite) TestApplicationUpdateWithoutOUKeepsOU() {
+	appID, err := createApplication(Application{Name: "App Keeping OU", OUID: testOUID})
+	ts.Require().NoError(err)
+	defer func() {
+		if err := deleteApplication(appID); err != nil {
+			ts.T().Logf("Failed to delete application keeping its OU: %v", err)
+		}
+	}()
+
+	ts.Require().NoError(updateApplication(appID, Application{Name: "App Keeping OU", Description: "updated"}))
+
+	ts.Equal(testOUID, ts.applicationOU(appID))
+}
+
+// applicationOU returns the organization unit of the application with the given ID.
+func (ts *ApplicationAPITestSuite) applicationOU(appID string) string {
+	req, err := http.NewRequest(http.MethodGet, testServerURL+"/applications/"+appID, nil)
+	ts.Require().NoError(err)
+	resp, err := testutils.GetHTTPClient().Do(req)
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+	ts.Require().Equal(http.StatusOK, resp.StatusCode)
+
+	var app Application
+	ts.Require().NoError(json.NewDecoder(resp.Body).Decode(&app))
+	return app.OUID
 }
 
 func retrieveAndValidateApplicationDetails(ts *ApplicationAPITestSuite, expectedApp Application) {

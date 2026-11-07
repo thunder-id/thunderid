@@ -77,8 +77,8 @@ func registerMCPTools(server *mcp.Server, service ProjectServiceInterface) {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name: "create_project",
-		Description: `Create a project. Its resources are created in the system organization unit unless ` +
-			`they name one below it. A handle already used by another project is refused.`,
+		Description: `Create a project. Its resources are created in the system organization unit, and one ` +
+			`naming another organization unit is refused. A handle already used by another project is refused.`,
 		Annotations: &mcp.ToolAnnotations{
 			Title:          "Create Project",
 			IdempotentHint: false,
