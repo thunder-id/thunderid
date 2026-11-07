@@ -276,6 +276,37 @@ describe('OrganizationUnitsTreeView', () => {
     });
   });
 
+  it('should navigate to the detail page when the view action of a read-only unit is clicked', async () => {
+    mockUseGetOrganizationUnits.mockReturnValue({
+      data: {
+        totalResults: 1,
+        startIndex: 1,
+        count: 1,
+        organizationUnits: [
+          {id: 'ou-ro', handle: 'declared', name: 'Declared OU', description: null, parent: null, isReadOnly: true},
+        ],
+      },
+      isLoading: false,
+      error: null,
+      refetch: mockRefetchOrganizationUnits,
+    });
+
+    renderWithProviders(<OrganizationUnitsTreeView />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Declared OU')).toBeInTheDocument();
+    });
+
+    expect(screen.queryByLabelText(t('common:actions.edit'))).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(t('common:actions.delete'))).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText(t('common:actions.view')));
+
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith('/organization-units/ou-ro');
+    });
+  });
+
   it('should open delete dialog when delete action is clicked', async () => {
     renderWithProviders(<OrganizationUnitsTreeView />);
 
