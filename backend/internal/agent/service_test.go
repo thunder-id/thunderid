@@ -293,34 +293,6 @@ func (suite *AgentServiceTestSuite) TestUpdateNeedsInboundClient_WithThemeID() {
 	assert.True(suite.T(), updateNeedsInboundClient(req))
 }
 
-func (suite *AgentServiceTestSuite) TestRequiresClientSecret_NilConfig() {
-	assert.False(suite.T(), requiresClientSecret(nil))
-}
-
-func (suite *AgentServiceTestSuite) TestRequiresClientSecret_PublicClient() {
-	cfg := &providers.OAuthConfigWithSecret{PublicClient: true}
-	assert.False(suite.T(), requiresClientSecret(cfg))
-}
-
-func (suite *AgentServiceTestSuite) TestRequiresClientSecret_ClientSecretBasic() {
-	cfg := &providers.OAuthConfigWithSecret{
-		TokenEndpointAuthMethod: providers.TokenEndpointAuthMethodClientSecretBasic,
-	}
-	assert.True(suite.T(), requiresClientSecret(cfg))
-}
-
-func (suite *AgentServiceTestSuite) TestRequiresClientSecret_NoneMethod() {
-	cfg := &providers.OAuthConfigWithSecret{
-		TokenEndpointAuthMethod: providers.TokenEndpointAuthMethodNone,
-	}
-	assert.False(suite.T(), requiresClientSecret(cfg))
-}
-
-func (suite *AgentServiceTestSuite) TestRequiresClientSecret_DefaultIsTrue() {
-	cfg := &providers.OAuthConfigWithSecret{}
-	assert.True(suite.T(), requiresClientSecret(cfg))
-}
-
 // --- readSystemAttributes / buildSystemAttributesJSON ---
 
 func (suite *AgentServiceTestSuite) TestReadSystemAttributes_Empty() {

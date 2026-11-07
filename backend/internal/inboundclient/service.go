@@ -1404,6 +1404,23 @@ func validateGrantAndResponseTypes(p *providers.OAuthProfile) error {
 	return nil
 }
 
+// UsesClientSecret reports whether an OAuth client authenticates with a client secret. Public clients
+// and clients using private_key_jwt or none cannot hold one.
+func UsesClientSecret(c *providers.OAuthConfigWithSecret) bool {
+	if c == nil {
+		return false
+	}
+	return AuthMethodUsesClientSecret(c.PublicClient, c.TokenEndpointAuthMethod)
+}
+
+// AuthMethodUsesClientSecret reports whether a client authenticating this way holds a client secret.
+// An unset method counts as holding one: the write path defaults it to client_secret_basic.
+func AuthMethodUsesClientSecret(publicClient bool, method providers.TokenEndpointAuthMethod) bool {
+	return !publicClient &&
+		method != providers.TokenEndpointAuthMethodPrivateKeyJWT &&
+		method != providers.TokenEndpointAuthMethodNone
+}
+
 // validateTokenEndpointAuthMethod validates the token endpoint auth method against cert and secret state.
 func validateTokenEndpointAuthMethod(p *providers.OAuthProfile, hasClientSecret bool) error {
 	err := validateWithAllowedTokenEndpointAuthMethod(p.TokenEndpointAuthMethod)

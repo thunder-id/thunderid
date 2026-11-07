@@ -3039,3 +3039,39 @@ func TestAListMixingAReferenceWithLiteralsKeepsThem(t *testing.T) {
 	assert.Contains(t, doc, "var:APPLICATION_MIXED_REDIRECT_URIS")
 	assert.Contains(t, doc, "https://kept.test/cb")
 }
+
+// An inline JWKS is JSON, which plain YAML reads as a mapping, so the certificate value must be
+// exported quoted, or the import fails to decode the mapping into the string field.
+func TestInlineJWKSCertificateIsExportedAsString(t *testing.T) {
+	jwks := "{\n  \"keys\": [\n    {\n      \"kty\": \"EC\",\n" +
+		"      \"x\": \"5PkEQvr9kLEhxsuZ6JRIZ5am9IIIx5c8AOlqHixi90I\",\n" +
+		"      \"y\": \"wYwunkRd_IFq75vYP_xcmmXNaHi_AfeWQ1YlWmAk3tU\",\n" +
+		"      \"crv\": \"P-256\",\n      \"kid\": \"k1\",\n      \"alg\": \"ES256\",\n      \"use\": \"sig\"\n" +
+		"    }\n  ]\n}"
+	type app struct {
+		Name              string                                  `yaml:"name"`
+		InboundAuthConfig []providers.InboundAuthConfigWithSecret `yaml:"inboundAuthConfig"`
+	}
+	in := app{Name: "My App", InboundAuthConfig: []providers.InboundAuthConfigWithSecret{{
+		Type: providers.OAuthInboundAuthType,
+		OAuthConfig: &providers.OAuthConfigWithSecret{
+			ClientID:                "client-id",
+			TokenEndpointAuthMethod: "private_key_jwt",
+			Certificate:             &providers.Certificate{Type: providers.CertificateTypeJWKS, Value: jwks},
+		},
+	}}}
+	rules := &declarativeresource.ResourceRules{Variables: []string{"InboundAuthConfig[].OAuthConfig.ClientID"}}
+
+	for _, style := range []PlaceholderStyle{ValueReferences, TemplatePlaceholders} {
+		doc, _, _, err := newParameterizer(templatingRules{}, style).
+			ToParameterizedYAML(context.Background(), in, "Application", "My App", rules)
+		require.NoError(t, err)
+		doc = templateVariablePattern.ReplaceAllString(doc, "value")
+
+		var out app
+		require.NoError(t, yaml.Unmarshal([]byte(doc), &out), doc)
+		require.Len(t, out.InboundAuthConfig, 1)
+		require.NotNil(t, out.InboundAuthConfig[0].OAuthConfig.Certificate)
+		assert.Equal(t, jwks, out.InboundAuthConfig[0].OAuthConfig.Certificate.Value)
+	}
+}

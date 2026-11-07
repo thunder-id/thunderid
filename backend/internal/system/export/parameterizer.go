@@ -42,6 +42,14 @@ const (
 	yamlTagInline    = "inline"
 )
 
+const (
+	// yamlFormatTag is the struct tag that controls how a field's value is written in the exported YAML.
+	yamlFormatTag = "yamlfmt"
+	// yamlFormatQuoted writes the field's scalar value double-quoted, so a value such as an inline JWKS
+	// is read back as a string rather than as a mapping.
+	yamlFormatQuoted = "quoted"
+)
+
 // PlaceholderStyle decides what an exported document carries where a value was.
 type PlaceholderStyle int
 
@@ -630,9 +638,6 @@ func (p *parameterizer) structToNodeIgnoringOmitempty(
 			continue
 		}
 
-		// Check for forced quoting via yamlfmt tag
-		forceQuoted := field.Tag.Get("yamlfmt") == "quoted"
-
 		// Build the current field path (using struct field names)
 		fieldPath := field.Name
 		if currentPath != "" {
@@ -657,10 +662,7 @@ func (p *parameterizer) structToNodeIgnoringOmitempty(
 			return err
 		}
 
-		// Apply forced quoting if requested
-		if forceQuoted && valueNode.Kind == yaml.ScalarNode {
-			valueNode.Style = yaml.DoubleQuotedStyle
-		}
+		applyYAMLFormat(field, valueNode)
 
 		// Add key-value pair to mapping
 		mappingNode.Content = append(mappingNode.Content, keyNode, valueNode)
@@ -731,9 +733,7 @@ func (p *parameterizer) appendInlineStructFields(
 		if err != nil {
 			return err
 		}
-		if field.Tag.Get("yamlfmt") == "quoted" && valueNode.Kind == yaml.ScalarNode {
-			valueNode.Style = yaml.DoubleQuotedStyle
-		}
+		applyYAMLFormat(field, valueNode)
 		mapping.Content = append(mapping.Content, keyNode, valueNode)
 	}
 	return nil
@@ -970,6 +970,13 @@ func (p *parameterizer) handleInterfaceValue(v reflect.Value) *yaml.Node {
 	}
 }
 
+// applyYAMLFormat double-quotes a scalar value node when its field is tagged yamlfmt:"quoted".
+func applyYAMLFormat(field reflect.StructField, valueNode *yaml.Node) {
+	if field.Tag.Get(yamlFormatTag) == yamlFormatQuoted && valueNode.Kind == yaml.ScalarNode {
+		valueNode.Style = yaml.DoubleQuotedStyle
+	}
+}
+
 // handleStructNode converts a struct reflect.Value to a YAML mapping node.
 func (p *parameterizer) handleStructNode(
 	v reflect.Value, rules *resourceRules, currentPath string, resourceName string) (*yaml.Node, error) {
@@ -1029,6 +1036,7 @@ func (p *parameterizer) handleStructNode(
 		if err != nil {
 			return nil, err
 		}
+		applyYAMLFormat(field, valueNode)
 		node.Content = append(node.Content, keyNode, valueNode)
 	}
 	return node, nil

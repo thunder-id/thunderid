@@ -779,7 +779,7 @@ func (as *applicationService) updateEntityDataForApplicationUpdate(ctx context.C
 
 	// The secret is written only when the client uses one and the caller decided it changed.
 	if inboundAuthConfig == nil || inboundAuthConfig.OAuthConfig == nil ||
-		!authMethodRequiresClientSecret(inboundAuthConfig.OAuthConfig.PublicClient,
+		!inboundclient.AuthMethodUsesClientSecret(inboundAuthConfig.OAuthConfig.PublicClient,
 			inboundAuthConfig.OAuthConfig.TokenEndpointAuthMethod) {
 		return nil
 	}
@@ -838,24 +838,6 @@ func seedClientSubTypeAttribute(processedDTO *model.ApplicationProcessedDTO) {
 		return
 	}
 	oauthProcessed.OAuthConfig.Token = oauthutils.EnsureClientSubTypeAttribute(oauthProcessed.OAuthConfig.Token)
-}
-
-// authMethodRequiresClientSecret reports whether a client authenticating this way holds a client secret.
-func authMethodRequiresClientSecret(publicClient bool, method providers.TokenEndpointAuthMethod) bool {
-	if publicClient {
-		return false
-	}
-	switch method {
-	case providers.TokenEndpointAuthMethodClientSecretBasic,
-		providers.TokenEndpointAuthMethodClientSecretPost:
-		return true
-	case providers.TokenEndpointAuthMethodNone,
-		providers.TokenEndpointAuthMethodPrivateKeyJWT:
-		return false
-	}
-	// Default to requiring a secret when method is unspecified: the write path defaults an unset method
-	// to client_secret_basic, so such a client does have one.
-	return true
 }
 
 // DeleteApplication delete the application for given app id.
@@ -1090,7 +1072,7 @@ func (as *applicationService) ValidateCredentialAction(
 			log.String("appID", appID))
 		return nil, &tidcommon.InternalServerError
 	}
-	if !authMethodRequiresClientSecret(client.PublicClient, client.TokenEndpointAuthMethod) {
+	if !inboundclient.AuthMethodUsesClientSecret(client.PublicClient, client.TokenEndpointAuthMethod) {
 		return nil, &ErrorApplicationHasNoClientSecret
 	}
 	return as.artifactProfileForClient(clientID, client), nil
@@ -1135,13 +1117,14 @@ func (as *applicationService) resolveClientSecretDisposition(ctx context.Context
 ) (clientSecretDisposition, *tidcommon.ServiceError) {
 	if inboundAuthConfig == nil || inboundAuthConfig.OAuthConfig == nil ||
 		inboundAuthConfig.OAuthConfig.ClientSecret == "" ||
-		!authMethodRequiresClientSecret(inboundAuthConfig.OAuthConfig.PublicClient,
+		!inboundclient.AuthMethodUsesClientSecret(inboundAuthConfig.OAuthConfig.PublicClient,
 			inboundAuthConfig.OAuthConfig.TokenEndpointAuthMethod) {
 		return clientSecretUnchanged, nil
 	}
 	current := getOAuthInboundAuthConfigProcessedDTO(existing.InboundAuthConfig)
 	if current == nil || current.OAuthConfig == nil ||
-		!authMethodRequiresClientSecret(current.OAuthConfig.PublicClient, current.OAuthConfig.TokenEndpointAuthMethod) {
+		!inboundclient.AuthMethodUsesClientSecret(current.OAuthConfig.PublicClient,
+			current.OAuthConfig.TokenEndpointAuthMethod) {
 		return clientSecretSet, nil
 	}
 	_, _, err := as.entityService.AuthenticateEntityByID(ctx, appID,

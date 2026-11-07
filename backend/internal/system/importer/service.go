@@ -27,6 +27,7 @@ import (
 	flowmgt "github.com/thunder-id/thunderid/internal/flow/mgt"
 	"github.com/thunder-id/thunderid/internal/group"
 	"github.com/thunder-id/thunderid/internal/idp"
+	"github.com/thunder-id/thunderid/internal/inboundclient"
 	"github.com/thunder-id/thunderid/internal/notification"
 	ncommon "github.com/thunder-id/thunderid/internal/notification/common"
 	"github.com/thunder-id/thunderid/internal/notificationtemplate"
@@ -1559,16 +1560,24 @@ func normalizeOAuthConfigForImport(ctx context.Context, appDTO *appmodel.Applica
 		return
 	}
 
-	if oauthConfig.PublicClient &&
-		oauthConfig.TokenEndpointAuthMethod == providers.TokenEndpointAuthMethodNone &&
-		oauthConfig.ClientSecret != "" {
-		log.GetLogger().Debug(ctx,
-			"Dropping client_secret for public client import with token endpoint auth method 'none'",
+	if dropUnusedClientSecret(oauthConfig) {
+		log.GetLogger().Debug(ctx, "Dropping client_secret for client import that does not use a client secret",
 			log.String("appID", appDTO.ID),
 			log.String("name", appDTO.Name),
-			log.String("clientID", oauthConfig.ClientID))
-		oauthConfig.ClientSecret = ""
+			log.String("clientID", oauthConfig.ClientID),
+			log.String("tokenEndpointAuthMethod", string(oauthConfig.TokenEndpointAuthMethod)))
 	}
+}
+
+// dropUnusedClientSecret clears a client_secret given for a client that does not authenticate with one
+// (public, private_key_jwt or none), so an older or hand edited bundle still imports. It reports whether a
+// secret was dropped.
+func dropUnusedClientSecret(oauthConfig *providers.OAuthConfigWithSecret) bool {
+	if oauthConfig == nil || oauthConfig.ClientSecret == "" || inboundclient.UsesClientSecret(oauthConfig) {
+		return false
+	}
+	oauthConfig.ClientSecret = ""
+	return true
 }
 
 func isNotFoundServiceError(svcErr *tidcommon.ServiceError) bool {

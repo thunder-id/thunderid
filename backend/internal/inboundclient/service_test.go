@@ -2778,6 +2778,31 @@ func TestCertOperationError_ErrorAndIsClientError(t *testing.T) {
 	assert.False(t, empty.IsClientError())
 }
 
+func TestUsesClientSecret(t *testing.T) {
+	tests := []struct {
+		name   string
+		config providers.OAuthConfigWithSecret
+		want   bool
+	}{
+		{"client_secret_basic", providers.OAuthConfigWithSecret{
+			TokenEndpointAuthMethod: providers.TokenEndpointAuthMethodClientSecretBasic}, true},
+		{"client_secret_post", providers.OAuthConfigWithSecret{
+			TokenEndpointAuthMethod: providers.TokenEndpointAuthMethodClientSecretPost}, true},
+		{"private_key_jwt", providers.OAuthConfigWithSecret{
+			TokenEndpointAuthMethod: providers.TokenEndpointAuthMethodPrivateKeyJWT}, false},
+		{"none", providers.OAuthConfigWithSecret{
+			TokenEndpointAuthMethod: providers.TokenEndpointAuthMethodNone}, false},
+		{"public client", providers.OAuthConfigWithSecret{PublicClient: true}, false},
+		{"unset method", providers.OAuthConfigWithSecret{}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, UsesClientSecret(&tt.config))
+		})
+	}
+	assert.False(t, UsesClientSecret(nil))
+}
+
 // ----- validateGrantAndResponseTypes branch coverage -----
 
 func (suite *InboundClientServiceTestSuite) TestValidateGrantAndResponseTypes_InvalidResponseType() {

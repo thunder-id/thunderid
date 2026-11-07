@@ -307,8 +307,9 @@ func (e *applicationExporter) GetResourceRules() *declarativeresource.ResourceRu
 }
 
 // GetResourceRulesForResource returns parameterization rules tailored to the specific application
-// instance. Public clients do not have a client secret, so the ClientSecret variable is excluded
-// from their export to avoid injecting an empty or invalid placeholder into the YAML template.
+// instance. Public clients and clients using private_key_jwt or none do not have a client secret, so
+// the ClientSecret variable is excluded from their export to avoid injecting an empty or invalid
+// placeholder into the YAML template.
 func (e *applicationExporter) GetResourceRulesForResource(resource interface{}) *declarativeresource.ResourceRules {
 	app, ok := applicationOf(resource)
 	if !ok {
@@ -316,7 +317,7 @@ func (e *applicationExporter) GetResourceRulesForResource(resource interface{}) 
 	}
 
 	for _, inbound := range app.InboundAuthConfig {
-		if inbound.OAuthConfig != nil && inbound.OAuthConfig.PublicClient {
+		if inbound.OAuthConfig != nil && !inboundclient.UsesClientSecret(inbound.OAuthConfig) {
 			return &declarativeresource.ResourceRules{
 				Variables: []string{
 					"InboundAuthConfig[].OAuthConfig.ClientID",

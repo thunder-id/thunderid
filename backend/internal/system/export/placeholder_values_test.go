@@ -143,6 +143,57 @@ func TestPlaceholderValuesOfAPublicClientCarryNoSecret(t *testing.T) {
 	assert.Empty(t, secrets)
 }
 
+// A confidential client that authenticates without a secret (private_key_jwt or none) has no secret
+// to vary, so its export names none even when the resource still carries one.
+func TestExportOfAClientWithoutASecretNamesNone(t *testing.T) {
+	methods := []providers.TokenEndpointAuthMethod{
+		providers.TokenEndpointAuthMethodPrivateKeyJWT,
+		providers.TokenEndpointAuthMethodNone,
+	}
+	for _, method := range methods {
+		t.Run("application "+string(method), func(t *testing.T) {
+			app := confidentialApp("the-id", "the-secret")
+			app.InboundAuthConfig[0].OAuthConfig.TokenEndpointAuthMethod = method
+			appService := applicationmock.NewApplicationServiceInterfaceMock(t)
+			appService.On("GetApplication", context.Background(), "app-1").Return(app, nil)
+			svc := referenceExportService(t,
+				application.NewApplicationExporterForTest(appService, sharingWithNoPolicies(t)))
+
+			variables, secrets, err := svc.PlaceholderValues(context.Background(), resourceTypeApplication, app)
+			require.NoError(t, err)
+			assert.Equal(t, "the-id", variables["APPLICATION_MY_APP_CLIENT_ID"])
+			assert.Empty(t, secrets)
+
+			exported, svcErr := svc.ExportResources(context.Background(),
+				&ExportRequest{Applications: []string{"app-1"}})
+			require.Nil(t, svcErr)
+			require.Len(t, exported.Files, 1)
+			assert.NotContains(t, exported.Files[0].Content, "APPLICATION_MY_APP_CLIENT_SECRET")
+		})
+
+		t.Run("agent "+string(method), func(t *testing.T) {
+			svc := referenceExportService(t, agent.NewAgentExporterForTest(nil, nil))
+
+			variables, secrets, err := svc.PlaceholderValues(context.Background(), resourceTypeAgent,
+				&agentmodel.AgentGetResponse{
+					ID:      "agent-1",
+					Display: "My Agent",
+					InboundAuthConfig: []providers.InboundAuthConfigWithSecret{{
+						Type: providers.OAuthInboundAuthType,
+						OAuthConfig: &providers.OAuthConfigWithSecret{
+							ClientID:                "agent-id",
+							ClientSecret:            "agent-secret",
+							TokenEndpointAuthMethod: method,
+						},
+					}},
+				})
+			require.NoError(t, err)
+			assert.Equal(t, map[string]string{"AGENT_MY_AGENT_CLIENT_ID": "agent-id"}, variables)
+			assert.Empty(t, secrets)
+		})
+	}
+}
+
 // An update that leaves the secret alone carries none, and an empty value is nothing to keep.
 func TestPlaceholderValuesLeaveOutAnEmptyValue(t *testing.T) {
 	svc := referenceExportService(t, application.NewApplicationExporterForTest(nil, nil))
