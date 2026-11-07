@@ -170,4 +170,35 @@ describe('canEditSharingSectionsInPlace', () => {
       ),
     ).toBe(false);
   });
+
+  it('edits the policy in place when only the terms change', () => {
+    const current = policyWith({
+      childUnits: {mode: 'all', overlayRules: {'variables.connection1': {editable: true}}},
+    });
+    const sections: SharingPolicySections = {
+      childUnits: {mode: 'all', overlayRules: {'variables.connection1': {editable: false, value: ['c-1']}}},
+    };
+
+    expect(planSharingPolicySave(current, sections)).toEqual({
+      type: 'update',
+      policyId: 'p1',
+      version: 4,
+      sections,
+    });
+  });
+
+  it('does nothing when the terms are the same, whatever order they are written in', () => {
+    const current = policyWith({
+      childUnits: {
+        mode: 'all',
+        overlayRules: {a: {editable: true}, b: {editable: false, value: ['x']}},
+      },
+    });
+
+    expect(
+      planSharingPolicySave(current, {
+        childUnits: {mode: 'all', overlayRules: {b: {editable: false, value: ['x']}, a: {editable: true}}},
+      }),
+    ).toEqual({type: 'none'});
+  });
 });

@@ -2291,6 +2291,9 @@ importers:
       '@thunderid/configure-organization-units':
         specifier: workspace:^
         version: link:../configure-organization-units
+      '@thunderid/configure-resource-sharing':
+        specifier: workspace:^
+        version: link:../configure-resource-sharing
       '@thunderid/configure-user-types':
         specifier: workspace:^
         version: link:../configure-user-types

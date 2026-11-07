@@ -10,7 +10,11 @@ export {default as useSaveSharingPolicy} from './api/useSaveSharingPolicy';
 export {default as AccessChoiceCards} from './components/AccessChoiceCards';
 export type {AccessChoice, AccessChoiceCardsProps} from './components/AccessChoiceCards';
 export {default as GrantedOrganizationUnitList} from './components/GrantedOrganizationUnitList';
-export type {GrantedOrganizationUnit, GrantedOrganizationUnitListProps} from './components/GrantedOrganizationUnitList';
+export type {
+  GrantedOrganizationUnit,
+  GrantedOrganizationUnitListProps,
+  GrantedUnitTerms,
+} from './components/GrantedOrganizationUnitList';
 export {default as MandatedRolesPicker} from './components/MandatedRolesPicker';
 export type {MandatedRolesPickerProps} from './components/MandatedRolesPicker';
 export {default as OrganizationAccessSettings} from './components/OrganizationAccessSettings';
@@ -53,6 +57,8 @@ export type {
   ChildUnitsSection,
   OtherTreeRootsSection,
   SharingAssignmentsRule,
+  OverlayRule,
+  OverlayRules,
   SharingChildUnit,
   SharingOverlayRules,
   SharingPolicy,

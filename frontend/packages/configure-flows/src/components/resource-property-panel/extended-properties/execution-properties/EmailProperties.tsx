@@ -6,7 +6,6 @@ import {
   Alert,
   Autocomplete,
   FormHelperText,
-  FormLabel,
   MenuItem,
   Select,
   Stack,
@@ -18,6 +17,7 @@ import {useMemo, type ReactNode, type SyntheticEvent} from 'react';
 import {useTranslation} from 'react-i18next';
 import type {CommonResourcePropertiesPropsInterface} from './types';
 import {buildTemplateLabels, buildTemplateOptions} from './utils';
+import VariableBinding from './VariableBinding';
 import useGetNotificationTemplates from '../../../../api/useGetNotificationTemplates';
 
 interface EmailStepProperties {
@@ -58,8 +58,13 @@ function EmailProperties({resource, onChange}: CommonResourcePropertiesPropsInte
         {t('flows:core.executions.email.description')}
       </Typography>
 
-      <div>
-        <FormLabel htmlFor="email-template">{t('flows:core.executions.email.emailTemplate.label')}</FormLabel>
+      <VariableBinding
+        resource={resource}
+        onChange={onChange}
+        propertyKey="emailTemplate"
+        htmlFor="email-template"
+        label={t('flows:core.executions.email.emailTemplate.label')}
+      >
         <Autocomplete
           id="email-template"
           options={options}
@@ -80,7 +85,7 @@ function EmailProperties({resource, onChange}: CommonResourcePropertiesPropsInte
           size="small"
         />
         <FormHelperText>{t('flows:core.executions.email.emailTemplate.hint')}</FormHelperText>
-      </div>
+      </VariableBinding>
 
       {isError && <Alert severity="error">{t('flows:core.executions.email.emailTemplate.loadError')}</Alert>}
 
@@ -94,8 +99,13 @@ function EmailProperties({resource, onChange}: CommonResourcePropertiesPropsInte
         <Alert severity="warning">{t('flows:core.executions.email.sender.noSenders')}</Alert>
       )}
 
-      <div>
-        <FormLabel htmlFor="email-sender-select">{t('flows:core.executions.email.sender.label')}</FormLabel>
+      <VariableBinding
+        resource={resource}
+        onChange={onChange}
+        propertyKey="senderId"
+        htmlFor="email-sender-select"
+        label={t('flows:core.executions.email.sender.label')}
+      >
         <Select
           id="email-sender-select"
           value={isSenderPlaceholder ? '' : emailSenderId}
@@ -114,7 +124,7 @@ function EmailProperties({resource, onChange}: CommonResourcePropertiesPropsInte
           ))}
         </Select>
         <FormHelperText>{t('flows:core.executions.email.sender.hint')}</FormHelperText>
-      </div>
+      </VariableBinding>
     </Stack>
   );
 }

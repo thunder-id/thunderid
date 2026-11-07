@@ -3,7 +3,15 @@
 
 import {hasNoSharingSections} from './draftToSharingSections';
 import type {OrganizationAccessDraft} from '../models/organization-access';
-import type {SharingPolicy} from '../models/sharing-policy';
+import type {OverlayRules, SharingOverlayRules, SharingPolicy} from '../models/sharing-policy';
+
+/**
+ * The terms a policy sets for a flow's variables, which the screen edits, or `undefined` when it sets none.
+ */
+function variableRulesOf(rules: SharingOverlayRules | undefined): OverlayRules | undefined {
+  const entries = Object.entries(rules ?? {}).filter(([field]) => field.startsWith('variables.'));
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
+}
 
 /**
  * The draft of a resource no policy shares: only its owner can use it.
@@ -54,12 +62,15 @@ export default function sharingPolicyToDraft(policy: SharingPolicy | undefined):
   if (childUnits?.mode === 'all') {
     draft.childUnitsAccess = 'all';
     draft.childUnitExclusions = [...(childUnits.excludedOuIds ?? [])];
+    const variableRules = variableRulesOf(childUnits.overlayRules);
+    if (variableRules) draft.childUnitRules = variableRules;
   } else if (childUnits?.mode === 'selected') {
     draft.childUnitsAccess = 'selected';
     draft.childUnits = childUnits.units.map((unit) => ({
       ouId: unit.ouId,
       reach: unit.reach,
       ...(unit.overlayRules?.roles ? {roles: [...unit.overlayRules.roles.value]} : {}),
+      ...(variableRulesOf(unit.overlayRules) ? {rules: variableRulesOf(unit.overlayRules)} : {}),
     }));
   }
 

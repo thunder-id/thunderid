@@ -20,6 +20,7 @@ import {useTranslation} from 'react-i18next';
 import DraftTextField from './DraftTextField';
 import type {CommonResourcePropertiesPropsInterface} from './types';
 import {clampToInteger} from './utils';
+import VariableBinding from './VariableBinding';
 import useResourceFieldError from '../../../../hooks/useResourceFieldError';
 import type {StepData} from '../../../../models/steps';
 
@@ -107,8 +108,13 @@ function ExtensionProperties({resource, onChange}: CommonResourcePropertiesProps
   }, [resource]);
 
   const connectionId = (properties['connectionId'] as string | undefined) ?? '';
+  // A connection named by a variable is resolved when the flow runs, so it is not in the list.
+  const connectionIsVariable = /^\{\{\s*var\(/.test(connectionId.trim());
   const connectionUnlisted =
-    !connectionsQuery.isLoading && connectionId !== '' && !connections.some((c) => c.id === connectionId);
+    !connectionsQuery.isLoading &&
+    connectionId !== '' &&
+    !connectionIsVariable &&
+    !connections.some((c) => c.id === connectionId);
   const connectionDangling = connectionsQuery.isSuccess && connectionUnlisted;
   const noConnections = connectionsQuery.isSuccess && connections.length === 0;
   const connectionFieldError: string = useResourceFieldError(resource?.id, 'data.properties.connectionId');
@@ -146,10 +152,15 @@ function ExtensionProperties({resource, onChange}: CommonResourcePropertiesProps
         )}
       </Typography>
 
-      <div>
-        <FormLabel id="extension-connection-label" htmlFor="extension-connection" required>
-          {t('flows:core.executions.extension.connection.label', 'Connection')}
-        </FormLabel>
+      <VariableBinding
+        resource={resource}
+        onChange={onChange}
+        propertyKey="connectionId"
+        htmlFor="extension-connection"
+        labelId="extension-connection-label"
+        required
+        label={t('flows:core.executions.extension.connection.label', 'Connection')}
+      >
         <Select
           id="extension-connection"
           labelId="extension-connection-label"
@@ -181,7 +192,7 @@ function ExtensionProperties({resource, onChange}: CommonResourcePropertiesProps
               'The URL, headers, timeout and authentication come from the connection.',
             )}
         </FormHelperText>
-      </div>
+      </VariableBinding>
 
       {connectionsQuery.error && (
         <QueryErrorNotice
@@ -248,22 +259,29 @@ function ExtensionProperties({resource, onChange}: CommonResourcePropertiesProps
         onChange={(keys) => handleKeyListChange('responseKeys', keys)}
       />
 
-      <DraftTextField
-        labelPlacement="top"
+      <VariableBinding
+        resource={resource}
+        onChange={onChange}
+        propertyKey="maxAttempts"
         label={t('flows:core.executions.extension.maxAttempts.label', 'Max attempts')}
-        helperText={t(
-          'flows:core.executions.extension.maxAttempts.hint',
-          'How many FAILED or INCOMPLETE answers this step accepts in one flow execution. After that, the step fails without calling the service, and the flow continues at onFailure, or ends if none is set.',
-        )}
-        id="extension-max-attempts"
-        type="number"
-        value={String((properties['maxAttempts'] as number | string | undefined) ?? DEFAULT_MAX_ATTEMPTS)}
-        onCommit={(value) => onChange('data.properties.maxAttempts', Number(value), resource)}
-        normalize={(raw) => clampToInteger(raw, 1, 20)}
-        fullWidth
-        size="small"
-        inputProps={{min: 1, max: 20, step: 1}}
-      />
+      >
+        <DraftTextField
+          labelPlacement="top"
+          label={t('flows:core.executions.extension.maxAttempts.label', 'Max attempts')}
+          helperText={t(
+            'flows:core.executions.extension.maxAttempts.hint',
+            'How many FAILED or INCOMPLETE answers this step accepts in one flow execution. After that, the step fails without calling the service, and the flow continues at onFailure, or ends if none is set.',
+          )}
+          id="extension-max-attempts"
+          type="number"
+          value={String((properties['maxAttempts'] as number | string | undefined) ?? DEFAULT_MAX_ATTEMPTS)}
+          onCommit={(value) => onChange('data.properties.maxAttempts', Number(value), resource)}
+          normalize={(raw) => clampToInteger(raw, 1, 20)}
+          fullWidth
+          size="small"
+          inputProps={{min: 1, max: 20, step: 1}}
+        />
+      </VariableBinding>
 
       <Typography variant="body2" color="text.secondary">
         {t(

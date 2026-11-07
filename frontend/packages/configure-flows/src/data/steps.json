@@ -581,5 +581,22 @@
         }
       ]
     }
+  },
+  {
+    "resourceType": "STEP",
+    "category": "WORKFLOW",
+    "type": "VARIABLES",
+    "version": "0.1.0",
+    "deprecated": false,
+    "deletable": true,
+    "display": {
+      "label": "Variables",
+      "image": "assets/images/icons/variables.svg",
+      "showOnResourcePanel": true,
+      "description": "Declare values that executors read and a delegated admin can override."
+    },
+    "data": {
+      "inputs": []
+    }
   }
 ]

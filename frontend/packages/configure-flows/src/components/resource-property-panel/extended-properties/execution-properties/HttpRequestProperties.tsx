@@ -9,6 +9,7 @@ import DraftTextField from './DraftTextField';
 import KeyValueEditor from './KeyValueEditor';
 import type {CommonResourcePropertiesPropsInterface} from './types';
 import {clampToInteger} from './utils';
+import VariableBinding from './VariableBinding';
 import type {StepData} from '../../../../models/steps';
 
 function HttpRequestProperties({resource, onChange}: CommonResourcePropertiesPropsInterface): ReactNode {
@@ -60,19 +61,31 @@ function HttpRequestProperties({resource, onChange}: CommonResourcePropertiesPro
         {t('flows:core.executions.httpRequest.description')}
       </Typography>
 
-      <DraftTextField
-        labelPlacement="top"
+      <VariableBinding
+        resource={resource}
+        onChange={onChange}
+        propertyKey="url"
         label={t('flows:core.executions.httpRequest.url.label')}
-        id="http-url"
-        value={(properties['url'] as string) || ''}
-        onCommit={(value) => handleStringPropertyChange('url', value)}
-        placeholder={t('flows:core.executions.httpRequest.url.placeholder')}
-        fullWidth
-        size="small"
-      />
+      >
+        <DraftTextField
+          labelPlacement="top"
+          label={t('flows:core.executions.httpRequest.url.label')}
+          id="http-url"
+          value={(properties['url'] as string) || ''}
+          onCommit={(value) => handleStringPropertyChange('url', value)}
+          placeholder={t('flows:core.executions.httpRequest.url.placeholder')}
+          fullWidth
+          size="small"
+        />
+      </VariableBinding>
 
-      <div>
-        <FormLabel htmlFor="http-method">{t('flows:core.executions.httpRequest.method.label')}</FormLabel>
+      <VariableBinding
+        resource={resource}
+        onChange={onChange}
+        propertyKey="method"
+        htmlFor="http-method"
+        label={t('flows:core.executions.httpRequest.method.label')}
+      >
         <Select
           id="http-method"
           value={(properties['method'] as string) || 'GET'}
@@ -85,7 +98,7 @@ function HttpRequestProperties({resource, onChange}: CommonResourcePropertiesPro
             </MenuItem>
           ))}
         </Select>
-      </div>
+      </VariableBinding>
 
       <div>
         <FormLabel>{t('flows:core.executions.httpRequest.headers.label')}</FormLabel>
@@ -108,46 +121,60 @@ function HttpRequestProperties({resource, onChange}: CommonResourcePropertiesPro
         />
       </div>
 
-      <DraftTextField
-        labelPlacement="top"
+      <VariableBinding
+        resource={resource}
+        onChange={onChange}
+        propertyKey="body"
         label={t('flows:core.executions.httpRequest.body.label')}
-        id="http-body"
-        value={
-          typeof properties['body'] === 'string'
-            ? properties['body']
-            : JSON.stringify(properties['body'] ?? {}, null, 2)
-        }
-        // Committing on blur also means a half-typed body is not repeatedly parsed and
-        // stored as a raw string on the way to becoming valid JSON.
-        onCommit={(value) => {
-          try {
-            const parsed: unknown = JSON.parse(value);
-            onChange('data.properties.body', parsed, resource);
-          } catch {
-            onChange('data.properties.body', value, resource);
+      >
+        <DraftTextField
+          labelPlacement="top"
+          label={t('flows:core.executions.httpRequest.body.label')}
+          id="http-body"
+          value={
+            typeof properties['body'] === 'string'
+              ? properties['body']
+              : JSON.stringify(properties['body'] ?? {}, null, 2)
           }
-        }}
-        placeholder={t('flows:core.executions.httpRequest.body.placeholder')}
-        fullWidth
-        size="small"
-        multiline
-        minRows={3}
-      />
+          // Committing on blur also means a half-typed body is not repeatedly parsed and
+          // stored as a raw string on the way to becoming valid JSON.
+          onCommit={(value) => {
+            try {
+              const parsed: unknown = JSON.parse(value);
+              onChange('data.properties.body', parsed, resource);
+            } catch {
+              onChange('data.properties.body', value, resource);
+            }
+          }}
+          placeholder={t('flows:core.executions.httpRequest.body.placeholder')}
+          fullWidth
+          size="small"
+          multiline
+          minRows={3}
+        />
+      </VariableBinding>
 
-      <DraftTextField
-        labelPlacement="top"
+      <VariableBinding
+        resource={resource}
+        onChange={onChange}
+        propertyKey="timeout"
         label={t('flows:core.executions.httpRequest.timeout.label')}
-        helperText={t('flows:core.executions.httpRequest.timeout.hint')}
-        id="http-timeout"
-        value={String((properties['timeout'] as number | string | undefined) ?? 10)}
-        onCommit={(value) => handleNumberPropertyChange('timeout', value)}
-        normalize={(raw) => clampToInteger(raw, 1, 20)}
-        placeholder={t('flows:core.executions.httpRequest.timeout.placeholder')}
-        fullWidth
-        size="small"
-        type="number"
-        inputProps={{min: 1, max: 20}}
-      />
+      >
+        <DraftTextField
+          labelPlacement="top"
+          label={t('flows:core.executions.httpRequest.timeout.label')}
+          helperText={t('flows:core.executions.httpRequest.timeout.hint')}
+          id="http-timeout"
+          value={String((properties['timeout'] as number | string | undefined) ?? 10)}
+          onCommit={(value) => handleNumberPropertyChange('timeout', value)}
+          normalize={(raw) => clampToInteger(raw, 1, 20)}
+          placeholder={t('flows:core.executions.httpRequest.timeout.placeholder')}
+          fullWidth
+          size="small"
+          type="number"
+          inputProps={{min: 1, max: 20}}
+        />
+      </VariableBinding>
 
       <div>
         <FormLabel>{t('flows:core.executions.httpRequest.responseMapping.label')}</FormLabel>

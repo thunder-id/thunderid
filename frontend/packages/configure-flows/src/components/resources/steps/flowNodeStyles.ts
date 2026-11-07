@@ -87,6 +87,25 @@ export const callSurfaceMixin = (theme: Theme): CSSObject =>
     '&:hover': {backgroundColor: mixWithPrimary(theme, surface, 86)},
   }));
 
+/**
+ * Accent of the variables step, which sets it apart from the executors and the call step.
+ */
+export const VARIABLES_ACCENT = '#6D28D9';
+
+/**
+ * Variables step surface: the executor surface with a permanent purple wash, so the step reads as its own kind of
+ * node.
+ *
+ * @param theme - The active theme.
+ * @returns The surface styles.
+ */
+export const variablesSurfaceMixin = (theme: Theme): CSSObject =>
+  executionSurfaceScheme(theme, (surface: string) => ({
+    backgroundColor: `color-mix(in srgb, ${surface} 90%, ${VARIABLES_ACCENT})`,
+    color: palette(theme).text.primary,
+    '&:hover': {backgroundColor: `color-mix(in srgb, ${surface} 84%, ${VARIABLES_ACCENT})`},
+  }));
+
 export interface OutcomeHandleWrapperProps {
   /**
    * Outcome the wrapped handle stands for.

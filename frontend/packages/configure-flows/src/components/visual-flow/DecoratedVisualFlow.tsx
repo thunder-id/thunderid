@@ -5,8 +5,9 @@ import {CollisionPriority} from '@dnd-kit/abstract';
 import {move} from '@dnd-kit/helpers';
 import {DragDropProvider, DragOverlay, type DragDropEventHandlers} from '@dnd-kit/react';
 import {useEmailProviders, useIdentityProviders, useSMSProviders} from '@thunderid/configure-connections';
+import type {FlowVariableDefinition} from '@thunderid/react';
 import {Badge, Box, Button, Card, CardContent, Tooltip, Typography, type Theme} from '@wso2/oxygen-ui';
-import {ArrowLeft, Play, Save, Square} from '@wso2/oxygen-ui-icons-react';
+import {ArrowLeft, Play, Save, Share2, Square} from '@wso2/oxygen-ui-icons-react';
 import {
   type Connection,
   type Edge,
@@ -38,6 +39,10 @@ import SimulationStepPreview from './SimulationStepPreview';
 import ValidationBadge from './ValidationBadge';
 import VisualFlow, {type VisualFlowPropsInterface} from './VisualFlow';
 import VisualFlowConstants from '../../constants/VisualFlowConstants';
+import FlowVariablesContext, {
+  type FlowVariablesContextValue,
+  type VariablesGroup,
+} from '../../context/FlowVariablesContext';
 import StepPreviewContext from '../../context/StepPreviewContext';
 import useComponentDelete from '../../hooks/useComponentDelete';
 import useConfirmPasswordField from '../../hooks/useConfirmPasswordField';
@@ -60,7 +65,7 @@ import {BlockTypes, type Element} from '../../models/elements';
 import type {MetadataInterface} from '../../models/metadata';
 import Notification, {NotificationType} from '../../models/notification';
 import {ResourceTypes, type Resource, type Resources} from '../../models/resources';
-import {StepTypes, type Step, type StepData} from '../../models/steps';
+import {StaticStepTypes, StepTypes, type Step, type StepData} from '../../models/steps';
 import {type Template} from '../../models/templates';
 import type {Widget} from '../../models/widget';
 import applyAutoLayout, {hasUnpositionedNodes} from '../../utils/applyAutoLayout';
@@ -76,6 +81,7 @@ import {
 import {findContainingComponent} from '../../utils/updateNestedComponent';
 import {widgetNeedsViewContainer} from '../../utils/widgetUtils';
 import Droppable from '../dnd/Droppable';
+import FlowSharingDialog, {type SharedFlow} from '../flow-sharing/FlowSharingDialog';
 import EdgePathsProvider from '../react-flow-overrides/EdgePathsProvider';
 import ResourcePanel from '../resource-panel/ResourcePanel';
 import ResourcePropertyPanel from '../resource-property-panel/ResourcePropertyPanel';
@@ -156,6 +162,10 @@ export interface DecoratedVisualFlowPropsInterface extends Omit<VisualFlowPropsI
    * Whether the flow has unsaved changes (drives the Save-button indicator).
    */
   isDirty?: boolean;
+  /**
+   * The flow being edited, when it can be shared. Adds the Share button to the header.
+   */
+  sharing?: SharedFlow;
 }
 
 /**
@@ -193,6 +203,7 @@ function DecoratedVisualFlow({
   canUndo = false,
   canRedo = false,
   isDirty = false,
+  sharing = undefined,
   ...rest
 }: DecoratedVisualFlowPropsInterface): ReactElement {
   useDeleteExecutionResource();
@@ -294,6 +305,7 @@ function DecoratedVisualFlow({
   }, [identityProviders, smsProviders, emailProviders, metadata]);
 
   const [isContainerDialogOpen, setIsContainerDialogOpen] = useState<boolean>(false);
+  const [isSharingOpen, setIsSharingOpen] = useState<boolean>(false);
   const [dropScenario, setDropScenario] = useState<
     'form-on-canvas' | 'input-on-canvas' | 'input-on-view' | 'widget-on-canvas'
   >('form-on-canvas');
@@ -499,6 +511,45 @@ function DecoratedVisualFlow({
       startSimulation();
     }
   }, [isSimulationActive, stopSimulation, startSimulation]);
+
+  // The variables of every variables node, by node. Nodes move on every drag, so the groups are only replaced when
+  // what they hold changes.
+  const rawVariableGroups: VariablesGroup[] = (sourceNodes ?? nodes)
+    .filter((node: Node) => node.type === StaticStepTypes.Variables)
+    .map((node: Node) => {
+      const inputs: unknown = (node.data as {inputs?: unknown} | undefined)?.inputs;
+
+      return {
+        nodeId: node.id,
+        variables: Array.isArray(inputs) ? (inputs as FlowVariableDefinition[]) : [],
+      };
+    });
+  const variableGroupsKey: string = JSON.stringify(rawVariableGroups);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const variableGroups: VariablesGroup[] = useMemo(() => rawVariableGroups, [variableGroupsKey]);
+  const variables: FlowVariableDefinition[] = useMemo(
+    () => variableGroups.flatMap((group: VariablesGroup) => group.variables),
+    [variableGroups],
+  );
+  const hasVariablesNode: boolean = variableGroups.length > 0;
+
+  const handleApplyVariableGroups = useCallback(
+    (groups: VariablesGroup[]): void => {
+      groups.forEach((group: VariablesGroup) => {
+        updateNodeData(group.nodeId, {inputs: group.variables});
+      });
+    },
+    [updateNodeData],
+  );
+
+  const flowVariablesValue: FlowVariablesContextValue = useMemo(
+    () => ({
+      groups: variableGroups,
+      setGroups: handleApplyVariableGroups,
+      variables: hasVariablesNode ? variables : undefined,
+    }),
+    [handleApplyVariableGroups, hasVariablesNode, variableGroups, variables],
+  );
 
   const handleSave = useCallback((): void => {
     if (isSimulationActive) {
@@ -1000,6 +1051,16 @@ function DecoratedVisualFlow({
 
         <Box sx={{display: 'flex', alignItems: 'center', gap: 1}}>
           <ValidationBadge errorCount={errorCount} warningCount={warningCount} />
+          {sharing && (
+            <Button
+              variant="outlined"
+              startIcon={<Share2 size={16} />}
+              onClick={() => setIsSharingOpen(true)}
+              data-testid="share-flow-button"
+            >
+              {t('flows:core.headerPanel.share', 'Share')}
+            </Button>
+          )}
           <Button
             variant="outlined"
             startIcon={simulation.isSimulating ? <Square size={16} /> : <Play size={16} />}
@@ -1072,76 +1133,78 @@ function DecoratedVisualFlow({
       <Box sx={{position: 'relative', flex: 1, overflow: 'hidden', p: 1, pt: 0}}>
         {/* startAt is referentially stable, so providing it does not re-render nodes on simulation state changes */}
         <StepPreviewContext.Provider value={simulation.startAt}>
-          <DragDropProvider onDragEnd={handleDragEnd} onDragOver={handleDragOver}>
-            <ResourcePanel
-              resources={resources}
-              open={isResourcePanelOpen}
-              onAdd={handleOnAdd}
-              disabled={isFlowMetadataLoading}
-              flowTitle={flowTitle}
-              flowStatus={flowStatus}
-              flowHandle={flowHandle}
-              onFlowTitleChange={onFlowTitleChange}
-              rightPanel={rightPanel}
-              footer={resourcePanelFooter}
-            >
-              <Droppable
-                id={generateResourceId(VisualFlowConstants.FLOW_BUILDER_CANVAS_ID)}
-                type={VisualFlowConstants.FLOW_BUILDER_DROPPABLE_CANVAS_ID}
-                accept={[...VisualFlowConstants.FLOW_BUILDER_CANVAS_ALLOWED_RESOURCE_TYPES]}
-                hideDropZones
-                collisionPriority={CollisionPriority.Low}
+          <FlowVariablesContext.Provider value={flowVariablesValue}>
+            <DragDropProvider onDragEnd={handleDragEnd} onDragOver={handleDragOver}>
+              <ResourcePanel
+                resources={resources}
+                open={isResourcePanelOpen}
+                onAdd={handleOnAdd}
+                disabled={isFlowMetadataLoading}
+                flowTitle={flowTitle}
+                flowStatus={flowStatus}
+                flowHandle={flowHandle}
+                onFlowTitleChange={onFlowTitleChange}
+                rightPanel={rightPanel}
+                footer={resourcePanelFooter}
               >
-                <EdgePathsProvider>
-                  <VisualFlow
-                    nodes={displayNodes}
-                    onNodesChange={onNodesChange}
-                    edges={displayEdges}
-                    edgeTypes={edgeTypes}
-                    onEdgesChange={onEdgesChange}
-                    onConnect={handleConnect}
-                    onBeforeDelete={handleBeforeDelete}
-                    onNodesDelete={handleNodesDelete}
-                    onEdgesDelete={handleEdgesDelete}
-                    onNodeDragStop={handleNodeDragStop}
-                    onNodeClick={handleNodeClick}
-                    onEdgeMouseEnter={handleEdgeMouseEnter}
-                    onEdgeMouseLeave={handleEdgeMouseLeave}
-                    {...rest}
-                  />
-                </EdgePathsProvider>
-              </Droppable>
-            </ResourcePanel>
-            <DragOverlay>
-              {(source) => {
-                const data = source?.data as DragSourceData | undefined;
+                <Droppable
+                  id={generateResourceId(VisualFlowConstants.FLOW_BUILDER_CANVAS_ID)}
+                  type={VisualFlowConstants.FLOW_BUILDER_DROPPABLE_CANVAS_ID}
+                  accept={[...VisualFlowConstants.FLOW_BUILDER_CANVAS_ALLOWED_RESOURCE_TYPES]}
+                  hideDropZones
+                  collisionPriority={CollisionPriority.Low}
+                >
+                  <EdgePathsProvider>
+                    <VisualFlow
+                      nodes={displayNodes}
+                      onNodesChange={onNodesChange}
+                      edges={displayEdges}
+                      edgeTypes={edgeTypes}
+                      onEdgesChange={onEdgesChange}
+                      onConnect={handleConnect}
+                      onBeforeDelete={handleBeforeDelete}
+                      onNodesDelete={handleNodesDelete}
+                      onEdgesDelete={handleEdgesDelete}
+                      onNodeDragStop={handleNodeDragStop}
+                      onNodeClick={handleNodeClick}
+                      onEdgeMouseEnter={handleEdgeMouseEnter}
+                      onEdgeMouseLeave={handleEdgeMouseLeave}
+                      {...rest}
+                    />
+                  </EdgePathsProvider>
+                </Droppable>
+              </ResourcePanel>
+              <DragOverlay>
+                {(source) => {
+                  const data = source?.data as DragSourceData | undefined;
 
-                if (!data?.isReordering || !data['resource']) return null;
+                  if (!data?.isReordering || !data['resource']) return null;
 
-                const label = (data['resource'] as Resource)?.display?.label ?? (data['resource'] as Resource)?.type;
+                  const label = (data['resource'] as Resource)?.display?.label ?? (data['resource'] as Resource)?.type;
 
-                return (
-                  <Card
-                    elevation={3}
-                    sx={{
-                      px: 2,
-                      py: 1.5,
-                      minWidth: 120,
-                      maxWidth: 280,
-                      cursor: 'grabbing',
-                      bgcolor: 'background.paper',
-                    }}
-                  >
-                    <CardContent sx={{p: 0, '&:last-child': {pb: 0}}}>
-                      <Typography variant="body2" fontWeight={500} noWrap>
-                        {label}
-                      </Typography>
-                    </CardContent>
-                  </Card>
-                );
-              }}
-            </DragOverlay>
-          </DragDropProvider>
+                  return (
+                    <Card
+                      elevation={3}
+                      sx={{
+                        px: 2,
+                        py: 1.5,
+                        minWidth: 120,
+                        maxWidth: 280,
+                        cursor: 'grabbing',
+                        bgcolor: 'background.paper',
+                      }}
+                    >
+                      <CardContent sx={{p: 0, '&:last-child': {pb: 0}}}>
+                        <Typography variant="body2" fontWeight={500} noWrap>
+                          {label}
+                        </Typography>
+                      </CardContent>
+                    </Card>
+                  );
+                }}
+              </DragOverlay>
+            </DragDropProvider>
+          </FlowVariablesContext.Provider>
         </StepPreviewContext.Provider>
       </Box>
 
@@ -1156,6 +1219,15 @@ function DecoratedVisualFlow({
         onClose={() => setIsDiscardDialogOpen(false)}
         onConfirm={handleConfirmDiscard}
       />
+      {sharing && (
+        <FlowSharingDialog
+          open={isSharingOpen}
+          flow={sharing}
+          variables={variables}
+          isDirty={isDirty}
+          onClose={() => setIsSharingOpen(false)}
+        />
+      )}
     </Box>
   );
 }

@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type {OrganizationUnit} from '@thunderid/configure-organization-units';
-import {Box, IconButton, Tooltip, Typography} from '@wso2/oxygen-ui';
-import {Trash2} from '@wso2/oxygen-ui-icons-react';
+import {Box, Button, IconButton, Tooltip, Typography} from '@wso2/oxygen-ui';
+import {Pencil, Trash2} from '@wso2/oxygen-ui-icons-react';
 import type {JSX, ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
 import ReachToggleGroup from './ReachToggleGroup';
@@ -16,6 +16,28 @@ export interface GrantedOrganizationUnit {
    * unit of another tree.
    */
   reach?: ChildUnitReach;
+}
+
+/**
+ * The terms each granted unit holds the resource on, with a button on each row that opens them under it.
+ */
+export interface GrantedUnitTerms {
+  /**
+   * What the button is called to assistive technology, which names the unit whose terms it opens.
+   */
+  editLabel: (name: string) => string;
+  /**
+   * The unit whose terms are open, if any.
+   */
+  expandedOuId?: string | null;
+  /**
+   * Opens or closes the unit's terms, which appear under its row.
+   */
+  onEdit: (ouId: string, name: string) => void;
+  /**
+   * Draws the unit's terms under its row while they are open.
+   */
+  renderPanel?: (ouId: string, name: string) => ReactNode;
 }
 
 export interface GrantedOrganizationUnitListProps {
@@ -33,6 +55,10 @@ export interface GrantedOrganizationUnitListProps {
    */
   renderUnitExtra?: (unit: GrantedOrganizationUnit) => ReactNode;
   onRemove: (ouId: string) => void;
+  /**
+   * Shows a way to open each unit's terms, when the resource's units hold terms of their own.
+   */
+  terms?: GrantedUnitTerms;
 }
 
 /**
@@ -48,6 +74,7 @@ export default function GrantedOrganizationUnitList({
   onReachChange = undefined,
   renderUnitExtra = undefined,
   onRemove,
+  terms = undefined,
 }: GrantedOrganizationUnitListProps): JSX.Element {
   const {t} = useTranslation();
 
@@ -70,6 +97,8 @@ export default function GrantedOrganizationUnitList({
         const ou = unitsById.get(unit.ouId);
         const name = ou?.name ?? unit.ouId;
         const extra = renderUnitExtra?.(unit);
+        const panel =
+          terms?.renderPanel && terms.expandedOuId === unit.ouId ? terms.renderPanel(unit.ouId, name) : null;
 
         return (
           <Box
@@ -79,8 +108,12 @@ export default function GrantedOrganizationUnitList({
               // A fixed grid keeps every row's reach toggle and revoke action in the same column, whatever
               // the length of the unit's name.
               display: 'grid',
-              gridTemplateColumns: {xs: 'minmax(0, 1fr) 40px', sm: 'minmax(0, 1fr) 360px 40px'},
-              gridTemplateAreas: {xs: '"name action" "reach reach"', sm: '"name reach action"'},
+              gridTemplateColumns: terms
+                ? {xs: 'minmax(0, 1fr) 40px', sm: 'minmax(0, 1fr) 360px auto 40px'}
+                : {xs: 'minmax(0, 1fr) 40px', sm: 'minmax(0, 1fr) 360px 40px'},
+              gridTemplateAreas: terms
+                ? {xs: '"name action" "reach reach" "terms terms"', sm: '"name reach terms action"'}
+                : {xs: '"name action" "reach reach"', sm: '"name reach action"'},
               alignItems: 'center',
               columnGap: 2,
               rowGap: 1,
@@ -109,6 +142,19 @@ export default function GrantedOrganizationUnitList({
                 />
               </Box>
             )}
+            {terms && (
+              <Button
+                size="small"
+                variant="text"
+                aria-label={terms.editLabel(name)}
+                aria-expanded={terms.expandedOuId === unit.ouId}
+                startIcon={<Pencil size={14} />}
+                onClick={() => terms.onEdit(unit.ouId, name)}
+                sx={{gridArea: 'terms', justifySelf: 'start', textTransform: 'none'}}
+              >
+                {t('resourceSharing:terms.edit', 'Edit terms')}
+              </Button>
+            )}
             {!readOnly && (
               <Tooltip title={t('resourceSharing:revoke', 'Revoke access for {{name}}', {name})}>
                 <IconButton
@@ -121,7 +167,12 @@ export default function GrantedOrganizationUnitList({
                 </IconButton>
               </Tooltip>
             )}
-            {extra && <Box sx={{gridColumn: '1 / -1'}}>{extra}</Box>}
+            {(Boolean(extra) || Boolean(panel)) && (
+              <Box sx={{gridColumn: '1 / -1'}}>
+                {extra}
+                {panel}
+              </Box>
+            )}
           </Box>
         );
       })}

@@ -3,7 +3,7 @@
 
 import {hasNoSharingSections} from './draftToSharingSections';
 import type {SharingPolicySavePlan} from '../models/organization-access';
-import type {SharingPolicy, SharingPolicySections} from '../models/sharing-policy';
+import type {OverlayRules, SharingPolicy, SharingPolicySections} from '../models/sharing-policy';
 
 type SectionName = keyof SharingPolicySections;
 
@@ -18,21 +18,32 @@ function kindOf(sections: SharingPolicySections, name: SectionName): SectionKind
   return (section as {mode: string}).mode === 'all' ? 'blanket' : 'selected';
 }
 
+function rulesKey(rules: OverlayRules | undefined): string {
+  return Object.keys(rules ?? {})
+    .sort()
+    .map((field) => {
+      const {editable, value, allowedValues, excludedValues} = rules![field];
+      return `${field}=${JSON.stringify([editable, value ?? null, allowedValues ?? null, excludedValues ?? null])}`;
+    })
+    .join(';');
+}
+
 function sectionKey(sections: SharingPolicySections, name: SectionName): string {
   const section = sections[name] as
     | {
         mode?: string;
         excludedOuIds?: string[];
-        units?: {ouId: string; reach?: string; overlayRules?: {roles?: {value?: string[]}}}[];
+        overlayRules?: OverlayRules;
+        units?: {ouId: string; reach?: string; overlayRules?: OverlayRules}[];
       }
     | undefined;
   if (!section) return '';
   const excluded = [...(section.excludedOuIds ?? [])].sort().join(',');
   const units = (section.units ?? [])
-    .map((unit) => `${unit.ouId}:${unit.reach ?? ''}:${[...(unit.overlayRules?.roles?.value ?? [])].sort().join('+')}`)
+    .map((unit) => `${unit.ouId}:${unit.reach ?? ''}:${rulesKey(unit.overlayRules)}`)
     .sort()
     .join(',');
-  return `${section.mode ?? ''}|${excluded}|${units}`;
+  return `${section.mode ?? ''}|${excluded}|${units}|${rulesKey(section.overlayRules)}`;
 }
 
 /**

@@ -5,7 +5,7 @@ import {render, screen, fireEvent} from '@testing-library/react';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import {ElementCategories, ElementTypes, type Element} from '../../../models/elements';
 import type {Resource} from '../../../models/resources';
-import {StepCategories, StepTypes} from '../../../models/steps';
+import {StaticStepTypes, StepCategories, StepTypes} from '../../../models/steps';
 import ResourceProperties from '../ResourceProperties';
 
 // Mock dependencies
@@ -60,6 +60,14 @@ vi.mock('../extended-properties/ButtonExtendedProperties', () => ({
   default: ({resource}: {resource: Resource}) => (
     <div data-testid="button-extended-properties" data-resource-id={resource.id}>
       Button Extended Properties
+    </div>
+  ),
+}));
+
+vi.mock('../nodes/VariablesProperties', () => ({
+  default: ({resource}: {resource: Resource}) => (
+    <div data-testid="variables-properties" data-resource-id={resource.id}>
+      Variables Properties
     </div>
   ),
 }));
@@ -391,6 +399,32 @@ describe('ResourceProperties', () => {
       );
 
       expect(screen.getByTestId('resource-property-factory-id')).toHaveAttribute('data-property-value', 'call-42');
+    });
+  });
+
+  describe('Workflow Category - Variables Type', () => {
+    it('should render VariablesProperties and not the executor properties for the Variables node', () => {
+      const resource = createMockResource({
+        id: 'resolve_variables',
+        category: StepCategories.Workflow,
+        type: StaticStepTypes.Variables,
+      } as Partial<Resource>);
+
+      render(
+        <ResourceProperties
+          resource={resource}
+          properties={{}}
+          onChange={mockOnChange}
+          onVariantChange={mockOnVariantChange}
+        />,
+      );
+
+      expect(screen.getByTestId('variables-properties')).toHaveAttribute('data-resource-id', 'resolve_variables');
+      expect(screen.queryByTestId('execution-extended-properties')).not.toBeInTheDocument();
+      expect(screen.getByTestId('resource-property-factory-id')).toHaveAttribute(
+        'data-property-value',
+        'resolve_variables',
+      );
     });
   });
 

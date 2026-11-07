@@ -4,7 +4,7 @@
 import {describe, it, expect} from 'vitest';
 import VisualFlowConstants from '../../constants/VisualFlowConstants';
 import type {Element} from '../../models/elements';
-import {StepTypes} from '../../models/steps';
+import {StaticStepTypes, StepTypes} from '../../models/steps';
 import {transformReactFlow} from '../../utils/reactFlowTransformer';
 import steps from '../steps.json';
 
@@ -86,5 +86,16 @@ describe('steps catalog', () => {
 
     expect(prompts.map((prompt) => prompt.action?.type)).toEqual(['CONFIRM', 'REJECT']);
     prompts.forEach((prompt) => expect(prompt.inputs ?? []).toHaveLength(0));
+  });
+
+  it('offers the variables step on the palette with no variables declared yet', () => {
+    const variablesSteps = (
+      steps as {data?: {inputs?: unknown[]}; display?: {label?: string; showOnResourcePanel?: boolean}; type?: string}[]
+    ).filter((step) => step.type === StaticStepTypes.Variables);
+
+    expect(variablesSteps).toHaveLength(1);
+    expect(variablesSteps[0].display?.label).toBe('Variables');
+    expect(variablesSteps[0].display?.showOnResourcePanel).toBe(true);
+    expect(variablesSteps[0].data?.inputs).toEqual([]);
   });
 });

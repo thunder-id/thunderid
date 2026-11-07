@@ -7,6 +7,7 @@ import {useTranslation} from 'react-i18next';
 import DraftTextField from './DraftTextField';
 import type {CommonResourcePropertiesPropsInterface} from './types';
 import {clampToInteger} from './utils';
+import VariableBinding from './VariableBinding';
 import type {StepData} from '../../../../models/steps';
 
 interface ConsentPropertyValues {
@@ -39,35 +40,50 @@ function ConsentProperties({resource, onChange}: CommonResourcePropertiesPropsIn
         {t('flows:core.executions.consent.description')}
       </Typography>
 
-      <DraftTextField
-        labelPlacement="top"
+      <VariableBinding
+        resource={resource}
+        onChange={onChange}
+        propertyKey="timeout"
         label={t('flows:core.executions.consent.timeout.label')}
-        helperText={t('flows:core.executions.consent.timeout.hint')}
-        id="consent-timeout"
-        value={currentTimeout}
-        // The executor parses this property as a string, so it is stored as one.
-        onCommit={(value) => onChange('data.properties.timeout', value, resource)}
-        normalize={(raw) => clampToInteger(raw, 0)}
-        placeholder={t('flows:core.executions.consent.timeout.placeholder')}
-        fullWidth
-        size="small"
-        type="number"
-        inputProps={{min: 0}}
-      />
-
-      <div>
-        <FormControlLabel
-          control={
-            <Checkbox
-              checked={failOnDenyChecked}
-              onChange={(e) => handleFailOnDenyChange(e.target.checked)}
-              size="small"
-            />
-          }
-          label={t('flows:core.executions.consent.failOnDeny.label')}
+      >
+        <DraftTextField
+          labelPlacement="top"
+          label={t('flows:core.executions.consent.timeout.label')}
+          helperText={t('flows:core.executions.consent.timeout.hint')}
+          id="consent-timeout"
+          value={currentTimeout}
+          // The executor parses this property as a string, so it is stored as one.
+          onCommit={(value) => onChange('data.properties.timeout', value, resource)}
+          normalize={(raw) => clampToInteger(raw, 0)}
+          placeholder={t('flows:core.executions.consent.timeout.placeholder')}
+          fullWidth
+          size="small"
+          type="number"
+          inputProps={{min: 0}}
         />
-        <FormHelperText>{t('flows:core.executions.consent.failOnDeny.hint')}</FormHelperText>
-      </div>
+      </VariableBinding>
+
+      <VariableBinding
+        inline
+        resource={resource}
+        onChange={onChange}
+        propertyKey="failOnDeny"
+        label={t('flows:core.executions.consent.failOnDeny.label')}
+      >
+        <div>
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={failOnDenyChecked}
+                onChange={(e) => handleFailOnDenyChange(e.target.checked)}
+                size="small"
+              />
+            }
+            label={t('flows:core.executions.consent.failOnDeny.label')}
+          />
+          <FormHelperText>{t('flows:core.executions.consent.failOnDeny.hint')}</FormHelperText>
+        </div>
+      </VariableBinding>
     </Stack>
   );
 }

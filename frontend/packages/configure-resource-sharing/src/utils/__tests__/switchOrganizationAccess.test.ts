@@ -173,4 +173,23 @@ describe('getBlockedNoneReason', () => {
   it('blocks nothing outside the chosen scope', () => {
     expect(getBlockedNoneReason(sharingPolicyToDraft(undefined), 'childUnitsAccess', undefined)).toBeNull();
   });
+
+  it('drops the shared terms, and says so, when switching from all to selected child units', () => {
+    const rules = {'variables.connection1': {editable: true}};
+    const saved = policyWith({childUnits: {mode: 'all', overlayRules: rules}});
+    const result = switchOrganizationAccess(sharingPolicyToDraft(saved), 'childUnitsAccess', 'selected', saved);
+
+    expect(result.next.childUnitRules).toEqual({});
+    expect(result.cleared).toContainEqual({kind: 'childUnitRules', ouIds: []});
+  });
+
+  it('drops the terms when no child unit is reached any more', () => {
+    const saved = policyWith({
+      childUnits: {mode: 'all', overlayRules: {'variables.connection1': {editable: true}}},
+      otherTreeRoots: {mode: 'selected', units: [{ouId: 'northwind'}]},
+    });
+    const result = switchOrganizationAccess(sharingPolicyToDraft(saved), 'childUnitsAccess', 'none', saved);
+
+    expect(result.next.childUnitRules).toEqual({});
+  });
 });

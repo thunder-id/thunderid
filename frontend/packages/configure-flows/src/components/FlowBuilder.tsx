@@ -700,6 +700,20 @@ function FlowBuilder() {
 
   const isReadOnlyFlow = Boolean(existingFlowData?.isReadOnly);
 
+  // Only a flow that is saved, and so has an owner, can be shared.
+  const sharedFlow = useMemo(
+    () =>
+      flowId && existingFlowData?.ouId
+        ? {
+            id: flowId,
+            isReadOnly: existingFlowData.isReadOnly,
+            name: existingFlowData.name,
+            ouId: existingFlowData.ouId,
+          }
+        : undefined,
+    [flowId, existingFlowData?.isReadOnly, existingFlowData?.name, existingFlowData?.ouId],
+  );
+
   // Memoized so the resource panel (which renders this as its footer and is
   // itself memoized) is not re-rendered on unrelated graph changes like drags.
   const ssoToggleFooter = useMemo(
@@ -796,6 +810,7 @@ function FlowBuilder() {
             canUndo={canUndo}
             canRedo={canRedo}
             isDirty={isDirty}
+            sharing={sharedFlow}
           />
         </CompactStacksContext.Provider>
       </FlowTypeContext.Provider>
