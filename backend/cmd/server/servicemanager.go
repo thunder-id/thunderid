@@ -507,7 +507,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	fatalOnError(ctx, logger, err, "Failed to initialize ThemeMgtService")
 	exporters = append(exporters, themeExporter)
 
-	layoutMgtService, layoutExporter, err := layoutmgt.Initialize(mux, auditBus)
+	layoutMgtService, layoutExporter, err := layoutmgt.Initialize(mux, auditBus, nil)
 	fatalOnError(ctx, logger, err, "Failed to initialize LayoutMgtService")
 	exporters = append(exporters, layoutExporter)
 

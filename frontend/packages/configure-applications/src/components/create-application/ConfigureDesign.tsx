@@ -7,7 +7,7 @@ import {
   ThemeThumbnail,
   type LayoutPresetVariant,
 } from '@thunderid/configure-design';
-import {useConfig} from '@thunderid/contexts';
+import {useConfig, useProjectScope} from '@thunderid/contexts';
 import {
   useGetThemes,
   useGetTheme,
@@ -131,7 +131,8 @@ export default function ConfigureDesign({
   const {product_name: productName} = brand || {};
   const {ouDefaults, selectedTemplateConfig, appName} = useApplicationCreateContext();
   const {data: themesData, isLoading: loadingThemes} = useGetThemes({limit: 100});
-  const {data: layoutsData} = useGetLayouts({limit: 100});
+  const {projectId} = useProjectScope();
+  const {data: layoutsData} = useGetLayouts({limit: 100, projectId});
 
   const [selectedThemeId, setSelectedThemeId] = useState<string | null>(externallyProvidedThemeId ?? null);
   const [selectedLayoutId, setSelectedLayoutId] = useState<string | null>(externallyProvidedLayoutId ?? null);

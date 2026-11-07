@@ -204,7 +204,7 @@ describe('DashboardLayout', () => {
     expect(screen.getByTestId('project-switcher')).toBeInTheDocument();
   });
 
-  it("lists the selected project's applications, agents, resource servers and flows under it, with what is not deployed yet", () => {
+  it("lists the selected project's applications, agents, resource servers, flows and design under it, with what is not deployed yet", () => {
     mockUseProjectSelection.mockReturnValue(inShop());
     mockProjectChanges = {application: 2};
     render(<DashboardLayout />);
@@ -216,6 +216,7 @@ describe('DashboardLayout', () => {
     expect(screen.getAllByText('navigation:pages.agents')).toHaveLength(1);
     expect(screen.getAllByText('navigation:pages.resourceServers')).toHaveLength(1);
     expect(screen.getAllByText('navigation:pages.flows')).toHaveLength(1);
+    expect(screen.getAllByText('navigation:pages.design')).toHaveLength(1);
     // Nothing of the organization's own is listed inside a project.
     expect(screen.queryByText('navigation:pages.home')).not.toBeInTheDocument();
     expect(screen.queryByText('navigation:pages.administrators')).not.toBeInTheDocument();
@@ -272,6 +273,15 @@ describe('DashboardLayout', () => {
     render(<DashboardLayout />);
 
     const item = screen.getByText('navigation:pages.flows').closest('.MuiListItemButton-root')!;
+    expect(item).toHaveTextContent('navigation:badges.undeployed');
+  });
+
+  it("badges the selected project's design when its layouts are not deployed yet", () => {
+    mockUseProjectSelection.mockReturnValue(inShop());
+    mockProjectChanges = {layout: 1};
+    render(<DashboardLayout />);
+
+    const item = screen.getByText('navigation:pages.design').closest('.MuiListItemButton-root')!;
     expect(item).toHaveTextContent('navigation:badges.undeployed');
   });
 

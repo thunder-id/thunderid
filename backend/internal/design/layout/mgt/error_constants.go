@@ -219,6 +219,35 @@ var (
 			DefaultValue: "The layout handle cannot be changed after creation",
 		},
 	}
+
+	// ErrorInvalidProject is returned when a layout names a project that does not exist.
+	ErrorInvalidProject = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "LAY-1019",
+		Error: tidcommon.I18nMessage{
+			Key:          "layout.error.invalid_project",
+			DefaultValue: "Invalid project",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "layout.error.invalid_project_description",
+			DefaultValue: "No project exists with the given project ID",
+		},
+	}
+
+	// ErrorProjectRequired is returned when a layout is created without a project on a deployment that
+	// serves projects.
+	ErrorProjectRequired = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "LAY-1020",
+		Error: tidcommon.I18nMessage{
+			Key:          "layout.error.project_required",
+			DefaultValue: "Project required",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "layout.error.project_required_description",
+			DefaultValue: "A layout must belong to a project. Set projectId to the project it belongs to",
+		},
+	}
 )
 
 // errNilEventBus is returned when the service is initialized without the event bus it audits on.

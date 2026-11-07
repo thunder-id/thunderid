@@ -351,10 +351,11 @@ paths:
       tags:
         - Layouts
       summary: List layouts
-      description: Retrieve a list of all layout configurations.
+      description: Retrieve a list of all layout configurations, or of the layouts of one project.
       parameters:
         - $ref: '#/components/parameters/limitQueryParam'
         - $ref: '#/components/parameters/offsetQueryParam'
+        - $ref: '#/components/parameters/layoutProjectIdQueryParam'
       responses:
         "200":
           description: List of layout configurations
@@ -395,6 +396,7 @@ paths:
             example:
               handle: "modern-layout"
               displayName: "Modern Layout"
+              projectId: "01900000-0000-7000-8000-000000000002"
               layout:
                 contentAlignment: "center"
                 maxWidth: "1200px"
@@ -411,13 +413,49 @@ paths:
                 id: "3fa85f64-5717-4562-b3fc-2c963f66afa6"
                 handle: "modern-layout"
                 displayName: "Modern Layout"
+                projectId: "01900000-0000-7000-8000-000000000002"
                 layout:
                   contentAlignment: "center"
                   maxWidth: "1200px"
                   showLogo: true
                   logoPosition: "top"
         "400":
-          $ref: '#/components/responses/BadRequest'
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalid-layout-data:
+                  summary: Invalid layout data
+                  value:
+                    code: "LAY-1001"
+                    message:
+                      key: "layout.error.invalid_data"
+                      defaultValue: "Invalid layout data"
+                    description:
+                      key: "layout.error.invalid_data_description"
+                      defaultValue: "The provided layout data is invalid"
+                project-required:
+                  summary: No project on the Control Plane
+                  value:
+                    code: "LAY-1020"
+                    message:
+                      key: "layout.error.project_required"
+                      defaultValue: "Project required"
+                    description:
+                      key: "layout.error.project_required_description"
+                      defaultValue: "A layout must belong to a project. Set projectId to the project it belongs to"
+                invalid-project:
+                  summary: The project does not exist
+                  value:
+                    code: "LAY-1019"
+                    message:
+                      key: "layout.error.invalid_project"
+                      defaultValue: "Invalid project"
+                    description:
+                      key: "layout.error.invalid_project_description"
+                      defaultValue: "No project exists with the given project ID"
         "401":
           $ref: '#/components/responses/Unauthorized'
         "409":
@@ -594,7 +632,32 @@ paths:
               schema:
                 $ref: '#/components/schemas/LayoutResponse'
         "400":
-          $ref: '#/components/responses/BadRequest'
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalid-layout-data:
+                  summary: Invalid layout data
+                  value:
+                    code: "LAY-1001"
+                    message:
+                      key: "layout.error.invalid_data"
+                      defaultValue: "Invalid layout data"
+                    description:
+                      key: "layout.error.invalid_data_description"
+                      defaultValue: "The provided layout data is invalid"
+                invalid-project:
+                  summary: The project does not exist
+                  value:
+                    code: "LAY-1019"
+                    message:
+                      key: "layout.error.invalid_project"
+                      defaultValue: "Invalid project"
+                    description:
+                      key: "layout.error.invalid_project_description"
+                      defaultValue: "No project exists with the given project ID"
         "401":
           $ref: '#/components/responses/Unauthorized'
         "404":
@@ -822,6 +885,15 @@ components:
         type: integer
         minimum: 0
         default: 0
+
+    layoutProjectIdQueryParam:
+      name: projectId
+      in: query
+      description: Lists the layouts of the project. A project that does not exist has no layouts.
+      required: false
+      schema:
+        type: string
+      example: "7c9e6679-7425-40de-944b-e07fc1f90ae7"
 
   schemas:
     ThemeRequest:
@@ -1061,6 +1133,16 @@ components:
           type: string
           description: Description of the layout
           example: "A clean, modern authentication layout"
+        projectId:
+          type: string
+          maxLength: 36
+          description: |
+            ID of the project this layout belongs to. On a deployment that serves projects, a layout
+            must belong to one: a create without `projectId` fails with `LAY-1020`. On update, leaving
+            it out keeps the layout in its project, and naming another one moves the layout there. A
+            project that does not exist, or an ID longer than 36 characters, fails the request with
+            `LAY-1019`.
+          example: "7c9e6679-7425-40de-944b-e07fc1f90ae7"
         layout:
           type: object
           description: Layout configuration as a JSON object
@@ -1091,6 +1173,10 @@ components:
           type: string
           description: Description of the layout
           example: "A clean, modern authentication layout"
+        projectId:
+          type: string
+          description: ID of the project this layout belongs to. Absent when it belongs to no project.
+          example: "7c9e6679-7425-40de-944b-e07fc1f90ae7"
         layout:
           type: object
           description: Layout configuration as a JSON object
@@ -1135,6 +1221,10 @@ components:
           type: string
           description: Description of the layout
           example: "A clean, modern authentication layout"
+        projectId:
+          type: string
+          description: ID of the project this layout belongs to. Absent when it belongs to no project.
+          example: "7c9e6679-7425-40de-944b-e07fc1f90ae7"
         createdAt:
           type: string
           format: date-time

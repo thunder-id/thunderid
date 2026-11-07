@@ -119,6 +119,7 @@ type layoutDeclarativeYAML struct {
 	Handle      string      `yaml:"handle"`
 	DisplayName string      `yaml:"displayName"`
 	Description string      `yaml:"description,omitempty"`
+	ProjectID   string      `yaml:"projectId,omitempty"`
 	Layout      interface{} `yaml:"layout"`
 }
 
@@ -681,12 +682,14 @@ func (s *importService) importLayout(
 		Handle:      req.Handle,
 		DisplayName: req.DisplayName,
 		Description: req.Description,
+		ProjectID:   req.ProjectID,
 		Layout:      layoutBytes,
 	}
 	updateReq := layoutmgt.UpdateLayoutRequest{
 		Handle:      req.Handle,
 		DisplayName: req.DisplayName,
 		Description: req.Description,
+		ProjectID:   req.ProjectID,
 		Layout:      layoutBytes,
 	}
 

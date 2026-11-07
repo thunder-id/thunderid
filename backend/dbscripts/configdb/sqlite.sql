@@ -100,6 +100,7 @@ CREATE TABLE "LAYOUT" (
     ID VARCHAR(36) NOT NULL,
     DISPLAY_NAME VARCHAR(255) NOT NULL,
     HANDLE VARCHAR(255) NOT NULL,
+    PROJECT_ID VARCHAR(36),
     DESCRIPTION VARCHAR(512),
     LAYOUT TEXT NOT NULL,
     CREATED_AT TEXT DEFAULT (datetime('now')),
@@ -113,6 +114,9 @@ CREATE INDEX idx_layout_deployment_id ON "LAYOUT" (DEPLOYMENT_ID);
 
 -- Unique index for layout handle per deployment
 CREATE UNIQUE INDEX idx_layout_handle_deployment ON "LAYOUT" (HANDLE, DEPLOYMENT_ID);
+
+-- Composite index for listing the layouts of a project
+CREATE INDEX idx_layout_project ON "LAYOUT" (DEPLOYMENT_ID, PROJECT_ID);
 
 -- Table to store inbound client configurations for an entity.
 CREATE TABLE "INBOUND_CLIENT" (

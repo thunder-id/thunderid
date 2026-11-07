@@ -273,6 +273,12 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
       icon: <Group />,
       path: RouteConfig.groups.list(),
     };
+    const design: NavRoute = {
+      id: 'design',
+      text: t('navigation:pages.design', 'Design'),
+      icon: <Palette />,
+      path: RouteConfig.design.list(),
+    };
     const badgeOf = (count: number | undefined): string | undefined =>
       count ? t('navigation:badges.undeployed', '{{count}} undeployed', {count}) : undefined;
     // On a gateway's pages the navigation is the gateway's, the same from wherever it was opened: a
@@ -424,14 +430,7 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
         },
         {
           category: t('navigation:categories.customize', 'Customize'),
-          routes: [
-            {
-              id: 'design',
-              text: t('navigation:pages.design', 'Design'),
-              icon: <Palette />,
-              path: RouteConfig.design.list(),
-            },
-          ],
+          routes: [{...design, badge: badgeOf(undeployed.layout)}],
         },
       ];
     }
@@ -537,6 +536,7 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
     undeployed.resource_server,
     undeployed.role,
     undeployed.flow,
+    undeployed.layout,
     gateway,
     gatewayId,
     gatewayIndex,

@@ -9,7 +9,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"strconv"
+	"unicode/utf8"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
@@ -23,9 +25,18 @@ import (
 
 const loggerComponentName = "LayoutMgtService"
 
+// projectIDQueryParam is the query parameter that lists the layouts of one project.
+const projectIDQueryParam = "projectId"
+
+// maxProjectIDLength is the length of the PROJECT_ID column. A longer project ID names no project.
+const maxProjectIDLength = 36
+
 // LayoutMgtServiceInterface defines the interface for the layout management service.
 type LayoutMgtServiceInterface interface {
 	GetLayoutList(ctx context.Context, limit, offset int) (*LayoutList, *tidcommon.ServiceError)
+	GetLayoutListByProject(ctx context.Context, projectID string, limit, offset int) (*LayoutList,
+		*tidcommon.ServiceError)
+	ProjectHasLayouts(ctx context.Context, projectID string) (bool, *tidcommon.ServiceError)
 	CreateLayout(ctx context.Context, layout CreateLayoutRequestWithID) (*Layout, *tidcommon.ServiceError)
 	GetLayout(ctx context.Context, id string) (*Layout, *tidcommon.ServiceError)
 	UpdateLayout(ctx context.Context, id string, layout UpdateLayoutRequest) (*Layout, *tidcommon.ServiceError)
@@ -40,18 +51,29 @@ type LayoutMgtServiceInterface interface {
 type layoutMgtService struct {
 	layoutMgtStore     layoutMgtStoreInterface
 	dependencyRegistry resourcedependency.Registry
-	logger             *log.Logger
-	bus                eventbus.EventBusInterface
+	// projectChecker is nil on a deployment that serves no projects.
+	projectChecker projectChecker
+	// projectRequired is set on a deployment that serves projects, where every layout belongs to one.
+	projectRequired bool
+	logger          *log.Logger
+	bus             eventbus.EventBusInterface
+}
+
+// projectChecker reports whether the project a layout names exists.
+type projectChecker interface {
+	ProjectExists(ctx context.Context, id string) (bool, *tidcommon.ServiceError)
 }
 
 // newLayoutMgtService creates a new instance of LayoutMgtService with injected dependencies.
-func newLayoutMgtService(layoutMgtStore layoutMgtStoreInterface,
-	bus eventbus.EventBusInterface) LayoutMgtServiceInterface {
+func newLayoutMgtService(layoutMgtStore layoutMgtStoreInterface, bus eventbus.EventBusInterface,
+	projectChecker projectChecker, projectRequired bool) LayoutMgtServiceInterface {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 	return &layoutMgtService{
-		layoutMgtStore: layoutMgtStore,
-		logger:         logger,
-		bus:            bus,
+		layoutMgtStore:  layoutMgtStore,
+		projectChecker:  projectChecker,
+		projectRequired: projectRequired,
+		logger:          logger,
+		bus:             bus,
 	}
 }
 
@@ -79,10 +101,60 @@ func (ls *layoutMgtService) GetLayoutList(ctx context.Context, limit, offset int
 		Layouts:      layouts,
 		StartIndex:   offset + 1,
 		Count:        len(layouts),
-		Links:        buildPaginationLinks(limit, offset, totalCount),
+		Links:        buildPaginationLinks(limit, offset, totalCount, ""),
 	}
 
 	return response, nil
+}
+
+// GetLayoutListByProject retrieves the layouts of a project. A project that does not exist has none.
+func (ls *layoutMgtService) GetLayoutListByProject(ctx context.Context, projectID string, limit, offset int) (
+	*LayoutList, *tidcommon.ServiceError) {
+	if err := validatePaginationParams(limit, offset); err != nil {
+		return nil, err
+	}
+
+	extraQuery := "&" + projectIDQueryParam + "=" + url.QueryEscape(projectID)
+	if projectID == "" {
+		return &LayoutList{
+			Layouts:    []Layout{},
+			StartIndex: offset + 1,
+			Links:      buildPaginationLinks(limit, offset, 0, extraQuery),
+		}, nil
+	}
+
+	totalCount, err := ls.layoutMgtStore.GetLayoutListCountByProject(ctx, projectID)
+	if err != nil {
+		ls.logger.Error(ctx, "Failed to get layout count in project", log.String("projectID", projectID),
+			log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+
+	layouts, err := ls.layoutMgtStore.GetLayoutListByProject(ctx, projectID, limit, offset)
+	if err != nil {
+		ls.logger.Error(ctx, "Failed to list layouts in project", log.String("projectID", projectID),
+			log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+
+	return &LayoutList{
+		TotalResults: totalCount,
+		Layouts:      layouts,
+		StartIndex:   offset + 1,
+		Count:        len(layouts),
+		Links:        buildPaginationLinks(limit, offset, totalCount, extraQuery),
+	}, nil
+}
+
+// ProjectHasLayouts reports whether any layout belongs to the project.
+func (ls *layoutMgtService) ProjectHasLayouts(ctx context.Context, projectID string) (bool, *tidcommon.ServiceError) {
+	count, err := ls.layoutMgtStore.GetLayoutListCountByProject(ctx, projectID)
+	if err != nil {
+		ls.logger.Error(ctx, "Failed to count the layouts of a project", log.String("projectID", projectID),
+			log.Error(err))
+		return false, &tidcommon.InternalServerError
+	}
+	return count > 0, nil
 }
 
 // CreateLayout creates a new layout configuration.
@@ -115,6 +187,16 @@ func (ls *layoutMgtService) createLayout(ctx context.Context, layout CreateLayou
 		return nil, &ErrorCannotModifyDeclarativeResource
 	}
 
+	// Where projects are served, a layout belongs to one.
+	if layout.ProjectID == "" && ls.projectRequired {
+		return nil, &ErrorProjectRequired
+	}
+	if layout.ProjectID != "" {
+		if err := ls.validateProject(ctx, layout.ProjectID); err != nil {
+			return nil, err
+		}
+	}
+
 	conflict, err := ls.layoutMgtStore.IsLayoutHandleConflict(ctx, layout.Handle, "")
 	if err != nil {
 		ls.logger.Error(ctx, "Failed to check layout handle conflict", log.Error(err))
@@ -142,6 +224,7 @@ func (ls *layoutMgtService) createLayout(ctx context.Context, layout CreateLayou
 		Handle:      layout.Handle,
 		DisplayName: layout.DisplayName,
 		Description: layout.Description,
+		ProjectID:   layout.ProjectID,
 		Layout:      layout.Layout,
 	}
 
@@ -155,6 +238,7 @@ func (ls *layoutMgtService) createLayout(ctx context.Context, layout CreateLayou
 		Handle:      layout.Handle,
 		DisplayName: layout.DisplayName,
 		Description: layout.Description,
+		ProjectID:   layout.ProjectID,
 		Layout:      layout.Layout,
 	}
 
@@ -225,6 +309,16 @@ func (ls *layoutMgtService) updateLayout(ctx context.Context,
 		return nil, &ErrorLayoutHandleImmutable
 	}
 
+	// An update that names no project keeps the layout in its project. The project is checked only when the
+	// update moves the layout to another one, so a layout whose project is gone can still be edited.
+	if layout.ProjectID == "" {
+		layout.ProjectID = existingLayout.ProjectID
+	} else if layout.ProjectID != existingLayout.ProjectID {
+		if err := ls.validateProject(ctx, layout.ProjectID); err != nil {
+			return nil, err
+		}
+	}
+
 	if err := ls.validateLayoutPreferences(ctx, layout.Layout); err != nil {
 		return nil, err
 	}
@@ -239,6 +333,7 @@ func (ls *layoutMgtService) updateLayout(ctx context.Context,
 		Handle:      existingLayout.Handle,
 		DisplayName: layout.DisplayName,
 		Description: layout.Description,
+		ProjectID:   layout.ProjectID,
 		Layout:      layout.Layout,
 	}
 
@@ -367,6 +462,29 @@ func (ls *layoutMgtService) GetLayoutUsages(
 	return resourcedependency.PaginateUsages(result, limit, offset), nil
 }
 
+// validateProject checks that the project a layout names exists. It returns ErrorInvalidProject when it does
+// not.
+//
+// A deployment that serves no projects, such as a Data Plane, cannot check the project. It keeps the project
+// ID as given so that imported configuration retains it.
+func (ls *layoutMgtService) validateProject(ctx context.Context, projectID string) *tidcommon.ServiceError {
+	// The column holds 36 characters, so a longer ID is refused on every deployment, checked or not.
+	if utf8.RuneCountInString(projectID) > maxProjectIDLength {
+		return &ErrorInvalidProject
+	}
+	if ls.projectChecker == nil {
+		return nil
+	}
+	exists, svcErr := ls.projectChecker.ProjectExists(ctx, projectID)
+	if svcErr != nil {
+		return &tidcommon.InternalServerError
+	}
+	if !exists {
+		return &ErrorInvalidProject
+	}
+	return nil
+}
+
 // validateLayoutPreferences validates the layout JSON.
 func (ls *layoutMgtService) validateLayoutPreferences(
 	ctx context.Context, layout json.RawMessage) *tidcommon.ServiceError {
@@ -400,8 +518,9 @@ func validatePaginationParams(limit, offset int) *tidcommon.ServiceError {
 	return nil
 }
 
-// buildPaginationLinks builds pagination links for the response.
-func buildPaginationLinks(limit, offset, totalCount int) []Link {
+// buildPaginationLinks builds pagination links for the response. extraQuery is appended to each link, so a
+// page of a filtered list links to the next page of the same list.
+func buildPaginationLinks(limit, offset, totalCount int, extraQuery string) []Link {
 	links := make([]Link, 0)
 
 	// Previous link
@@ -411,7 +530,7 @@ func buildPaginationLinks(limit, offset, totalCount int) []Link {
 			prevOffset = 0
 		}
 		links = append(links, Link{
-			Href: fmt.Sprintf("/design/layouts?limit=%d&offset=%d", limit, prevOffset),
+			Href: fmt.Sprintf("/design/layouts?limit=%d&offset=%d%s", limit, prevOffset, extraQuery),
 			Rel:  "previous",
 		})
 	}
@@ -420,7 +539,7 @@ func buildPaginationLinks(limit, offset, totalCount int) []Link {
 	if offset+limit < totalCount {
 		nextOffset := offset + limit
 		links = append(links, Link{
-			Href: fmt.Sprintf("/design/layouts?limit=%d&offset=%d", limit, nextOffset),
+			Href: fmt.Sprintf("/design/layouts?limit=%d&offset=%d%s", limit, nextOffset, extraQuery),
 			Rel:  "next",
 		})
 	}

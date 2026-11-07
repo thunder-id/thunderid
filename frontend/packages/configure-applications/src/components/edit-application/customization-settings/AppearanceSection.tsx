@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {SettingsCard} from '@thunderid/components';
+import {useProjectScope} from '@thunderid/contexts';
 import {useGetThemes, useGetLayouts} from '@thunderid/design';
 import {Box, Typography, TextField, Autocomplete, CircularProgress, Stack} from '@wso2/oxygen-ui';
 import {useTranslation} from 'react-i18next';
@@ -48,7 +49,8 @@ export default function AppearanceSection({
 }: AppearanceSectionProps) {
   const {t} = useTranslation();
   const {data: themesData, isLoading: loadingThemes} = useGetThemes();
-  const {data: layoutsData, isLoading: loadingLayouts} = useGetLayouts();
+  const {projectId} = useProjectScope();
+  const {data: layoutsData, isLoading: loadingLayouts} = useGetLayouts({projectId});
 
   const themeOptions = themesData?.themes ?? [];
   const layoutOptions = layoutsData?.layouts ?? [];

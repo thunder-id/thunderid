@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -43,7 +44,7 @@ func (suite *LayoutServiceTestSuite) SetupTest() {
 	}
 
 	suite.mockStore = newLayoutMgtStoreInterfaceMock(suite.T())
-	suite.service = newLayoutMgtService(suite.mockStore, discardingBus{})
+	suite.service = newLayoutMgtService(suite.mockStore, discardingBus{}, nil, false)
 }
 
 // Test GetLayoutList - Success
@@ -695,4 +696,282 @@ type ctxKeyForTest struct{}
 // testCtx returns a context distinguishable from any other, including context.Background().
 func testCtx() context.Context {
 	return context.WithValue(context.Background(), ctxKeyForTest{}, "carried")
+}
+
+const testProjectID = "proj-1"
+
+func (suite *LayoutServiceTestSuite) projectAwareService() (LayoutMgtServiceInterface, *projectCheckerMock) {
+	checker := newProjectCheckerMock(suite.T())
+	return newLayoutMgtService(suite.mockStore, discardingBus{}, checker, true), checker
+}
+
+func (suite *LayoutServiceTestSuite) newLayoutRequest(projectID string) CreateLayoutRequestWithID {
+	return CreateLayoutRequestWithID{
+		Handle:      "new-layout",
+		DisplayName: "New Layout",
+		ProjectID:   projectID,
+		Layout:      json.RawMessage(`{"structure": "grid"}`),
+	}
+}
+
+func (suite *LayoutServiceTestSuite) TestCreateLayout_ProjectRequiredWhereProjectsAreServed() {
+	service, checker := suite.projectAwareService()
+
+	result, err := service.CreateLayout(testCtx(), suite.newLayoutRequest(""))
+
+	suite.Nil(result)
+	suite.Require().NotNil(err)
+	suite.Equal(ErrorProjectRequired.Code, err.Code)
+	checker.AssertNotCalled(suite.T(), "ProjectExists", mock.Anything, mock.Anything)
+	suite.mockStore.AssertNotCalled(suite.T(), "CreateLayout", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (suite *LayoutServiceTestSuite) TestCreateLayout_InProject() {
+	service, checker := suite.projectAwareService()
+	checker.On("ProjectExists", testCtx(), testProjectID).Return(true, nil)
+	suite.mockStore.On("IsLayoutHandleConflict", testCtx(), "new-layout", "").Return(false, nil)
+	suite.mockStore.On("CreateLayout", testCtx(), mock.AnythingOfType("string"),
+		mock.MatchedBy(func(req CreateLayoutRequest) bool { return req.ProjectID == testProjectID })).Return(nil)
+
+	result, err := service.CreateLayout(testCtx(), suite.newLayoutRequest(testProjectID))
+
+	suite.Nil(err)
+	suite.Require().NotNil(result)
+	suite.Equal(testProjectID, result.ProjectID)
+}
+
+func (suite *LayoutServiceTestSuite) TestCreateLayout_ProjectCheckErrors() {
+	testCases := []struct {
+		name         string
+		exists       bool
+		checkErr     *tidcommon.ServiceError
+		expectedCode string
+	}{
+		{name: "UnknownProject", exists: false, expectedCode: ErrorInvalidProject.Code},
+		{name: "CheckFails", checkErr: &tidcommon.InternalServerError,
+			expectedCode: tidcommon.InternalServerError.Code},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			suite.SetupTest()
+			service, checker := suite.projectAwareService()
+			checker.On("ProjectExists", testCtx(), testProjectID).Return(tc.exists, tc.checkErr)
+
+			result, err := service.CreateLayout(testCtx(), suite.newLayoutRequest(testProjectID))
+
+			suite.Nil(result)
+			suite.Require().NotNil(err)
+			suite.Equal(tc.expectedCode, err.Code)
+		})
+	}
+}
+
+func (suite *LayoutServiceTestSuite) TestCreateLayout_ProjectKeptUncheckedWithoutProjects() {
+	suite.mockStore.On("IsLayoutHandleConflict", testCtx(), "new-layout", "").Return(false, nil)
+	suite.mockStore.On("CreateLayout", testCtx(), mock.AnythingOfType("string"),
+		mock.MatchedBy(func(req CreateLayoutRequest) bool { return req.ProjectID == testProjectID })).Return(nil)
+
+	result, err := suite.service.CreateLayout(testCtx(), suite.newLayoutRequest(testProjectID))
+
+	suite.Nil(err)
+	suite.Require().NotNil(result)
+	suite.Equal(testProjectID, result.ProjectID)
+}
+
+func (suite *LayoutServiceTestSuite) TestCreateLayout_ProjectIDTooLong() {
+	longProjectID := strings.Repeat("p", maxProjectIDLength+1)
+
+	suite.Run("WithoutProjects", func() {
+		suite.SetupTest()
+		suite.mockStore.On("IsLayoutHandleConflict", testCtx(), "new-layout", "").Return(false, nil).Maybe()
+
+		result, err := suite.service.CreateLayout(testCtx(), suite.newLayoutRequest(longProjectID))
+
+		suite.Nil(result)
+		suite.Require().NotNil(err)
+		suite.Equal(ErrorInvalidProject.Code, err.Code)
+		suite.mockStore.AssertNotCalled(suite.T(), "CreateLayout", mock.Anything, mock.Anything, mock.Anything)
+	})
+
+	suite.Run("WithProjects", func() {
+		suite.SetupTest()
+		service, checker := suite.projectAwareService()
+		suite.mockStore.On("IsLayoutHandleConflict", testCtx(), "new-layout", "").Return(false, nil).Maybe()
+
+		result, err := service.CreateLayout(testCtx(), suite.newLayoutRequest(longProjectID))
+
+		suite.Nil(result)
+		suite.Require().NotNil(err)
+		suite.Equal(ErrorInvalidProject.Code, err.Code)
+		checker.AssertNotCalled(suite.T(), "ProjectExists", mock.Anything, mock.Anything)
+	})
+}
+
+func (suite *LayoutServiceTestSuite) TestUpdateLayout_ProjectIDTooLongWithoutProjects() {
+	suite.mockStore.On("IsLayoutDeclarative", testCtx(), "layout-123").Return(false)
+	suite.mockStore.On("GetLayout", testCtx(), "layout-123").
+		Return(Layout{ID: "layout-123", Handle: "my-layout", ProjectID: testProjectID}, nil)
+
+	result, err := suite.service.UpdateLayout(testCtx(), "layout-123", UpdateLayoutRequest{
+		DisplayName: "Updated",
+		ProjectID:   strings.Repeat("p", maxProjectIDLength+1),
+		Layout:      json.RawMessage(`{"a": 1}`),
+	})
+
+	suite.Nil(result)
+	suite.Require().NotNil(err)
+	suite.Equal(ErrorInvalidProject.Code, err.Code)
+	suite.mockStore.AssertNotCalled(suite.T(), "UpdateLayout", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (suite *LayoutServiceTestSuite) TestUpdateLayout_ProjectChanges() {
+	testCases := []struct {
+		name              string
+		requestProjectID  string
+		expectedProjectID string
+		checksProject     bool
+	}{
+		{name: "KeepsProjectWhenOmitted", requestProjectID: "", expectedProjectID: testProjectID},
+		{name: "KeepsProjectWhenNamedAgain", requestProjectID: testProjectID, expectedProjectID: testProjectID},
+		{name: "MovesToAnotherProject", requestProjectID: "proj-2", expectedProjectID: "proj-2",
+			checksProject: true},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			suite.SetupTest()
+			service, checker := suite.projectAwareService()
+			if tc.checksProject {
+				checker.On("ProjectExists", testCtx(), tc.expectedProjectID).Return(true, nil)
+			}
+			suite.mockStore.On("IsLayoutDeclarative", testCtx(), "layout-123").Return(false)
+			suite.mockStore.On("GetLayout", testCtx(), "layout-123").
+				Return(Layout{ID: "layout-123", Handle: "my-layout", ProjectID: testProjectID}, nil)
+			suite.mockStore.On("UpdateLayout", testCtx(), "layout-123",
+				mock.MatchedBy(func(req UpdateLayoutRequest) bool { return req.ProjectID == tc.expectedProjectID })).
+				Return(nil)
+
+			result, err := service.UpdateLayout(testCtx(), "layout-123", UpdateLayoutRequest{
+				DisplayName: "Updated", ProjectID: tc.requestProjectID, Layout: json.RawMessage(`{"a": 1}`),
+			})
+
+			suite.Nil(err)
+			suite.Require().NotNil(result)
+			suite.Equal(tc.expectedProjectID, result.ProjectID)
+			if !tc.checksProject {
+				checker.AssertNotCalled(suite.T(), "ProjectExists", mock.Anything, mock.Anything)
+			}
+		})
+	}
+}
+
+func (suite *LayoutServiceTestSuite) TestUpdateLayout_MoveToUnknownProject() {
+	service, checker := suite.projectAwareService()
+	checker.On("ProjectExists", testCtx(), "missing").Return(false, nil)
+	suite.mockStore.On("IsLayoutDeclarative", testCtx(), "layout-123").Return(false)
+	suite.mockStore.On("GetLayout", testCtx(), "layout-123").
+		Return(Layout{ID: "layout-123", Handle: "my-layout", ProjectID: testProjectID}, nil)
+
+	result, err := service.UpdateLayout(testCtx(), "layout-123", UpdateLayoutRequest{
+		DisplayName: "Updated", ProjectID: "missing", Layout: json.RawMessage(`{"a": 1}`),
+	})
+
+	suite.Nil(result)
+	suite.Require().NotNil(err)
+	suite.Equal(ErrorInvalidProject.Code, err.Code)
+	suite.mockStore.AssertNotCalled(suite.T(), "UpdateLayout", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (suite *LayoutServiceTestSuite) TestGetLayoutListByProject_Success() {
+	layouts := []Layout{{ID: "layout-1", ProjectID: testProjectID}, {ID: "layout-2", ProjectID: testProjectID}}
+	suite.mockStore.On("GetLayoutListCountByProject", testCtx(), testProjectID).Return(5, nil)
+	suite.mockStore.On("GetLayoutListByProject", testCtx(), testProjectID, 2, 2).Return(layouts, nil)
+
+	result, err := suite.service.GetLayoutListByProject(testCtx(), testProjectID, 2, 2)
+
+	suite.Nil(err)
+	suite.Require().NotNil(result)
+	suite.Equal(5, result.TotalResults)
+	suite.Equal(layouts, result.Layouts)
+	suite.Equal(3, result.StartIndex)
+	suite.NotEmpty(result.Links)
+	for _, link := range result.Links {
+		suite.Contains(link.Href, "&projectId="+testProjectID)
+	}
+}
+
+func (suite *LayoutServiceTestSuite) TestGetLayoutListByProject_EmptyProject() {
+	result, err := suite.service.GetLayoutListByProject(testCtx(), "", 10, 0)
+
+	suite.Nil(err)
+	suite.Require().NotNil(result)
+	suite.Zero(result.TotalResults)
+	suite.Empty(result.Layouts)
+	suite.mockStore.AssertNotCalled(suite.T(), "GetLayoutListCountByProject", mock.Anything, mock.Anything)
+}
+
+func (suite *LayoutServiceTestSuite) TestGetLayoutListByProject_Errors() {
+	storeErr := errors.New("db error")
+	testCases := []struct {
+		name         string
+		limit        int
+		setup        func()
+		expectedCode string
+	}{
+		{name: "InvalidLimit", limit: 0, setup: func() {}, expectedCode: ErrorInvalidLimitValue.Code},
+		{name: "CountError", limit: 10, expectedCode: tidcommon.InternalServerError.Code, setup: func() {
+			suite.mockStore.On("GetLayoutListCountByProject", testCtx(), testProjectID).Return(0, storeErr)
+		}},
+		{name: "ListError", limit: 10, expectedCode: tidcommon.InternalServerError.Code, setup: func() {
+			suite.mockStore.On("GetLayoutListCountByProject", testCtx(), testProjectID).Return(1, nil)
+			suite.mockStore.On("GetLayoutListByProject", testCtx(), testProjectID, 10, 0).Return(nil, storeErr)
+		}},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			suite.SetupTest()
+			tc.setup()
+
+			result, err := suite.service.GetLayoutListByProject(testCtx(), testProjectID, tc.limit, 0)
+
+			suite.Nil(result)
+			suite.Require().NotNil(err)
+			suite.Equal(tc.expectedCode, err.Code)
+		})
+	}
+}
+
+func (suite *LayoutServiceTestSuite) TestProjectHasLayouts() {
+	testCases := []struct {
+		name     string
+		count    int
+		expected bool
+	}{
+		{name: "WithLayouts", count: 2, expected: true},
+		{name: "WithoutLayouts", count: 0, expected: false},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			suite.SetupTest()
+			suite.mockStore.On("GetLayoutListCountByProject", testCtx(), testProjectID).Return(tc.count, nil)
+
+			hasLayouts, err := suite.service.ProjectHasLayouts(testCtx(), testProjectID)
+
+			suite.Nil(err)
+			suite.Equal(tc.expected, hasLayouts)
+		})
+	}
+}
+
+func (suite *LayoutServiceTestSuite) TestProjectHasLayouts_StoreError() {
+	suite.mockStore.On("GetLayoutListCountByProject", testCtx(), testProjectID).Return(0, errors.New("db error"))
+
+	hasLayouts, err := suite.service.ProjectHasLayouts(testCtx(), testProjectID)
+
+	suite.False(hasLayouts)
+	suite.Require().NotNil(err)
+	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
 }

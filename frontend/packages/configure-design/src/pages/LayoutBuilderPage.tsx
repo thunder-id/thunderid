@@ -2,10 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {BuilderLayout, BuilderStaticPanel, DocumentTitle} from '@thunderid/components';
+import {useProjectScope} from '@thunderid/contexts';
 import {useGetThemes, useGetTheme, type Stylesheet} from '@thunderid/design';
 import {Autocomplete, Box, Button, IconButton, TextField, Tooltip, Typography, useColorScheme} from '@wso2/oxygen-ui';
 import {ArrowLeft, Crosshair, Layers, Save} from '@wso2/oxygen-ui-icons-react';
-import {useCallback, useMemo, useRef, useState, type JSX} from 'react';
+import {useCallback, useEffect, useMemo, useRef, useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
 import LayoutConfigPanel from '../components/LayoutConfigPanel';
@@ -27,6 +28,7 @@ export default function LayoutBuilderPage(): JSX.Element {
   const {
     layoutId,
     handle,
+    projectId,
     displayName,
     draftLayout,
     updateDraftLayout,
@@ -40,6 +42,14 @@ export default function LayoutBuilderPage(): JSX.Element {
     setScreenDraft,
     setIsDirty,
   } = useLayoutBuilder();
+
+  const {projectId: selectedProjectId} = useProjectScope();
+  // Another project's layout is not shown in the selected one: a deep link, a stale tab or a switch
+  // of project goes to the selected project's layouts instead.
+  const isOtherProject = Boolean(selectedProjectId && layoutId && projectId !== selectedProjectId);
+  useEffect(() => {
+    if (isOtherProject) void navigate(routes.design.list(), {replace: true});
+  }, [isOtherProject, navigate, routes]);
 
   const saveHandlerRef = useRef<() => void>(() => {
     /* no-op */

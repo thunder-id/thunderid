@@ -10,6 +10,8 @@ import type {LayoutListResponse} from '../models/responses';
 interface UseGetLayoutsParams {
   limit?: number;
   offset?: number;
+  /** List only the layouts of this project. Without it, every layout is listed. */
+  projectId?: string;
 }
 
 /**
@@ -18,21 +20,25 @@ interface UseGetLayoutsParams {
  * @param params - Optional query parameters
  * @param params.limit - Maximum number of records to return (default: 30)
  * @param params.offset - Number of records to skip for pagination (default: 0)
+ * @param params.projectId - List only the layouts of this project
  * @returns TanStack Query result object with layout list data
  */
 export default function useGetLayouts(params?: UseGetLayoutsParams): UseQueryResult<LayoutListResponse> {
   const {http} = useThunderID();
   const {getServerUrl} = useConfig();
-  const {limit = 30, offset = 0} = params ?? {};
+  const {limit = 30, offset = 0, projectId} = params ?? {};
 
   return useQuery<LayoutListResponse>({
-    queryKey: [DesignQueryKeys.LAYOUTS, {limit, offset}],
+    queryKey: [DesignQueryKeys.LAYOUTS, {limit, offset, ...(projectId ? {projectId} : {})}],
     queryFn: async (): Promise<LayoutListResponse> => {
       const serverUrl: string = getServerUrl();
       const queryParams: URLSearchParams = new URLSearchParams({
         limit: limit.toString(),
         offset: offset.toString(),
       });
+      if (projectId) {
+        queryParams.append('projectId', projectId);
+      }
 
       const response: {
         data: LayoutListResponse;
