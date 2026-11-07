@@ -32,13 +32,6 @@ const (
 // projectIDQueryParam is the query parameter that lists the applications of one project.
 const projectIDQueryParam = "projectId"
 
-// Error codes the project service returns when it resolves the organization unit of a project. They
-// are matched by value, since the Data Plane must not link the Control Plane only project package.
-const (
-	projectNotFoundErrorCode = "PRJ-1002"
-	ouNotInProjectErrorCode  = "PRJ-1010"
-)
-
 // The system flows this service runs, by handle, before a change is written and after, and the input
 // naming the application they act on.
 const (

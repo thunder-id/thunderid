@@ -248,10 +248,17 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
       icon: <Bot />,
       path: RouteConfig.agents.list(),
     };
+    const resourceServers: NavRoute = {
+      id: 'resource-servers',
+      text: t('navigation:pages.resourceServers', 'Resource servers'),
+      icon: <Server />,
+      path: RouteConfig.resourceServers.list(),
+    };
     const badgeOf = (count: number | undefined): string | undefined =>
       count ? t('navigation:badges.undeployed', '{{count}} undeployed', {count}) : undefined;
     // A selected project is all the navigation shows: its gateways, then its applications and
-    // agents, which belong to projects only. The organization's sections come back once it is left.
+    // agents, which belong to projects only, and its resource servers. The organization's sections,
+    // which list every resource server, come back once it is left.
     if (project && gateway && gatewayId) {
       const section = (name: 'overview' | 'values' | 'endpoints' | 'history' | 'explore'): string =>
         gatewaySectionOf(deployRoutes, gatewayId, project.id, name);
@@ -348,6 +355,7 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
           routes: [
             {...applications, badge: badgeOf(undeployed.application)},
             {...agents, badge: badgeOf(undeployed.agent)},
+            {...resourceServers, badge: badgeOf(undeployed.resource_server)},
           ],
         },
       ];
@@ -477,12 +485,7 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
       {
         category: t('navigation:categories.apisAndCredentials', 'APIs and credentials'),
         routes: [
-          {
-            id: 'resource-servers',
-            text: t('navigation:pages.resourceServers', 'Resource servers'),
-            icon: <Server />,
-            path: RouteConfig.resourceServers.list(),
-          },
+          resourceServers,
           {
             id: 'verifiable-credentials',
             text: t('navigation:pages.verifiableCredentials'),
@@ -511,6 +514,7 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
     showProjects,
     undeployed.application,
     undeployed.agent,
+    undeployed.resource_server,
     gateway,
     gatewayId,
     gatewayIndex,

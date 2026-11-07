@@ -42,6 +42,8 @@ paths:
       parameters:
         - $ref: '#/components/parameters/limitQueryParam'
         - $ref: '#/components/parameters/offsetQueryParam'
+        - $ref: '#/components/parameters/resourceServerProjectIdQueryParam'
+        - $ref: '#/components/parameters/resourceServerFilterQueryParam'
       responses:
         "200":
           description: List of resource servers
@@ -98,6 +100,16 @@ paths:
                     description:
                       key: "error.resourceservice.invalid_offset_parameter_description"
                       defaultValue: "The offset parameter must be a non-negative integer"
+                invalid-filter:
+                  summary: Invalid filter parameter
+                  value:
+                    code: "RES-1027"
+                    message:
+                      key: "error.resourceservice.invalid_filter_parameter"
+                      defaultValue: "Invalid filter parameter"
+                    description:
+                      key: "error.resourceservice.invalid_filter_parameter_description"
+                      defaultValue: "The filter must be a single ouId eq expression with a quoted organization unit ID"
                 result-limit-exceeded:
                   summary: Result limit exceeded in composite mode
                   value:
@@ -2287,6 +2299,31 @@ components:
         type: integer
         minimum: 0
         default: 0
+    resourceServerProjectIdQueryParam:
+      in: query
+      name: projectId
+      required: false
+      description: |
+        Lists the resource servers of the project. With an `ouId` filter, lists only the project's
+        resource servers that organization unit owns. A project that does not exist has no resource
+        servers.
+      schema:
+        type: string
+      example: "7c9e6679-7425-40de-944b-e07fc1f90ae7"
+    resourceServerFilterQueryParam:
+      in: query
+      name: filter
+      required: false
+      description: |
+        Filters resource servers by organization unit with `ouId eq "<id>"`, the only supported
+        expression. Lists the resource servers the organization unit owns, within the project when
+        `projectId` is also given.
+      schema:
+        type: string
+      examples:
+        organization-unit:
+          summary: Resource servers an organization unit owns
+          value: 'ouId eq "a839f4bd-39dc-4eaa-b5cc-210d8ecaee87"'
 
   schemas:
     ResourceServer:
@@ -2315,6 +2352,9 @@ components:
           type: string
           format: uuid
           description: ID of the organization unit this resource server belongs to
+        projectId:
+          type: string
+          description: ID of the project this resource server belongs to. Absent when it belongs to no project.
         delimiter:
           type: string
           description: Character used to separate permission hierarchy levels (immutable after creation)
@@ -2326,7 +2366,7 @@ components:
 
     CreateResourceServerRequest:
       type: object
-      required: [name, ouId, identifier]
+      required: [name, identifier]
       properties:
         name:
           type: string
@@ -2344,14 +2384,22 @@ components:
         ouId:
           type: string
           format: uuid
-          description: ID of the organization unit this resource server belongs to
+          description: |
+            ID of the organization unit this resource server belongs to. When left out, the resource
+            server is placed in the system organization unit.
+        projectId:
+          type: string
+          description: |
+            ID of the project this resource server belongs to. A resource server in a project is in the
+            system organization unit, so `ouId` can be left out, and any other organization unit is
+            refused. Without `projectId`, the resource server belongs to no project.
         delimiter:
           type: string
           description: Optional delimiter character for permission hierarchy (defaults to ":", immutable after creation)
 
     UpdateResourceServerRequest:
       type: object
-      required: [name, ouId]
+      required: [name]
       properties:
         name:
           type: string
@@ -2365,7 +2413,15 @@ components:
         ouId:
           type: string
           format: uuid
-          description: ID of the organization unit this resource server belongs to
+          description: |
+            ID of the organization unit this resource server belongs to. When left out, the resource
+            server keeps its current organization unit.
+        projectId:
+          type: string
+          description: |
+            ID of the project this resource server belongs to. A resource server in a project must be in
+            the system organization unit. Leaving it out keeps the resource server in its current
+            project, and a different project moves it.
         authorizationEngine:
           $ref: '#/components/schemas/AuthorizationEngineConfig'
 

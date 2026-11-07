@@ -11,6 +11,7 @@ type ResourceServerResponse struct {
 	Identifier  string `json:"identifier,omitempty"`
 	Type        string `json:"type,omitempty"`
 	OUID        string `json:"ouId"`
+	ProjectID   string `json:"projectId,omitempty"`
 	Delimiter   string `json:"delimiter"`
 	IsReadOnly  bool   `json:"isReadOnly"`
 }
@@ -90,6 +91,7 @@ type CreateResourceServerRequest struct {
 	Identifier  string  `json:"identifier,omitempty"`
 	Type        string  `json:"type,omitempty"`
 	OUID        string  `json:"ouId"`
+	ProjectID   string  `json:"projectId,omitempty"`
 	Delimiter   *string `json:"delimiter,omitempty"`
 }
 

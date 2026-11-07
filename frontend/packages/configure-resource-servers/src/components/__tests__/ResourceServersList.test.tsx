@@ -12,11 +12,14 @@ vi.mock('@thunderid/react', {spy: true});
 // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access -- vi.mock({spy:true}) type inference doesn't resolve for this package's conditional exports
 vi.mocked(thunderIdReactModule.useThunderID).mockImplementation(() => ({http: {request: vi.fn()}}) as never);
 
+const mockUseProjectScope = vi.fn<() => {projectId?: string}>(() => ({}));
+
 vi.mock('@thunderid/contexts', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@thunderid/contexts')>();
   return {
     ...actual,
     useConfig: () => ({getServerUrl: () => 'http://localhost:8090'}),
+    useProjectScope: () => mockUseProjectScope(),
     useToast: () => ({showToast: vi.fn()}),
   };
 });
@@ -98,6 +101,22 @@ describe('ResourceServersList', () => {
     mockUseGetDefaultResourceServer.mockReturnValue({
       data: {readOnly: {}, writable: {}, merged: {resourceServerId: 'rs-1'}},
     });
+  });
+
+  it('lists the resource servers of the selected project', () => {
+    mockUseProjectScope.mockReturnValue({projectId: 'project-1'});
+
+    renderWithProviders(<ResourceServersList />);
+
+    expect(mockUseGetResourceServers).toHaveBeenCalledWith(expect.objectContaining({projectId: 'project-1'}));
+  });
+
+  it('lists every resource server without a selected project', () => {
+    mockUseProjectScope.mockReturnValue({});
+
+    renderWithProviders(<ResourceServersList />);
+
+    expect(mockUseGetResourceServers).toHaveBeenCalledWith(expect.objectContaining({projectId: undefined}));
   });
 
   it('renders the type chip label for a normal row', () => {

@@ -265,13 +265,13 @@ export default function App(): JSX.Element {
                     <Route path={`${ROUTE_SEGMENTS.applications}/:applicationId`} element={<ApplicationEditPage />} />
                     <Route path={ROUTE_SEGMENTS.agents} element={<AgentsListPage />} />
                     <Route path={`${ROUTE_SEGMENTS.agents}/:agentId`} element={<AgentEditPage />} />
+                    <Route path={ROUTE_SEGMENTS.resourceServers} element={<ResourceServersListPage />} />
+                    <Route
+                      path={`${ROUTE_SEGMENTS.resourceServers}/:resourceServerId`}
+                      element={<ResourceServerEditPage />}
+                    />
                   </Route>
                   <Route path={ROUTE_SEGMENTS.flows} element={<FlowsListPage />} />
-                  <Route path={ROUTE_SEGMENTS.resourceServers} element={<ResourceServersListPage />} />
-                  <Route
-                    path={`${ROUTE_SEGMENTS.resourceServers}/:resourceServerId`}
-                    element={<ResourceServerEditPage />}
-                  />
                   <Route path={ROUTE_SEGMENTS.settings} element={<SettingsPage />} />
                   <Route path={ROUTE_SEGMENTS.projects} element={<ProjectsListPage />} />
                   <Route path={ROUTE_SEGMENTS.gateways} element={<GatewaysListPage />} />
@@ -455,7 +455,9 @@ export default function App(): JSX.Element {
                   path={RouteConfig.resourceServers.create()}
                   element={
                     <ProtectedRoute>
-                      <FullScreenLayout />
+                      <SelectedProjectScope>
+                        <FullScreenLayout />
+                      </SelectedProjectScope>
                     </ProtectedRoute>
                   }
                 >

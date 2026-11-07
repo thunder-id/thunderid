@@ -1,8 +1,9 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-// Package projectscope decides, for each resource type, whether a resource must be created in a project.
-// It is apart from the project package, which only the Control Plane links.
+// Package projectscope decides, for each resource type, whether a resource must be created in a project,
+// and holds the project error codes other services match. It is apart from the project package, which
+// only the Control Plane links.
 package projectscope
 
 import "github.com/thunder-id/thunderid/internal/system/security"

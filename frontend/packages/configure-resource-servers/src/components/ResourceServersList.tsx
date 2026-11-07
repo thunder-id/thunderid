@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {QueryErrorNotice} from '@thunderid/components';
+import {useProjectScope} from '@thunderid/contexts';
 import {useDataGridLocaleText} from '@thunderid/hooks';
 import {useLogger} from '@thunderid/logger/react';
 import {Box, Chip, DataGrid, IconButton, ListingTable, Menu, MenuItem, Tooltip, Typography} from '@wso2/oxygen-ui';
@@ -23,6 +24,7 @@ export default function ResourceServersList(): JSX.Element {
   const {t} = useTranslation();
   const logger = useLogger('ResourceServersList');
   const dataGridLocaleText = useDataGridLocaleText();
+  const {projectId} = useProjectScope();
 
   // Resolves an error through the `resourceServers` catalog. `t` defaults to the `common`
   // namespace, so this forwards explicit `ns:` prefixes unchanged and prefixes bare keys with
@@ -42,6 +44,7 @@ export default function ResourceServersList(): JSX.Element {
   const {data, isLoading, error, refetch} = useGetResourceServers({
     limit: paginationModel.pageSize,
     offset: paginationModel.page * paginationModel.pageSize,
+    projectId,
   });
   const {data: defaultConfig, isLoading: isDefaultLoading, error: defaultError} = useGetDefaultResourceServer();
   const defaultId = defaultConfig?.merged?.resourceServerId;

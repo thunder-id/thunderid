@@ -5,6 +5,8 @@ package project
 
 import (
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
+	"github.com/thunder-id/thunderid/internal/system/projectscope"
 )
 
 // Client errors for project management operations.
@@ -26,7 +28,7 @@ var (
 	// ErrorProjectNotFound is the error returned when a project does not exist.
 	ErrorProjectNotFound = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "PRJ-1002",
+		Code: projectscope.ProjectNotFoundErrorCode,
 		Error: tidcommon.I18nMessage{
 			Key:          "error.projectservice.project_not_found",
 			DefaultValue: "Project not found",
@@ -139,7 +141,7 @@ var (
 	// units a project includes.
 	ErrorOUNotInProject = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "PRJ-1010",
+		Code: projectscope.OUNotInProjectErrorCode,
 		Error: tidcommon.I18nMessage{
 			Key:          "error.projectservice.ou_not_in_project",
 			DefaultValue: "Organization unit not in project",

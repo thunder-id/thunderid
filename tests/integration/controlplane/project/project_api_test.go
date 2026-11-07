@@ -46,6 +46,8 @@ type ProjectAPITestSuite struct {
 	ous      []string
 	apps     []string
 	agents   []string
+	// resourceServers are the resource servers a test created.
+	resourceServers []string
 }
 
 func TestProjectAPITestSuite(t *testing.T) {
@@ -56,8 +58,8 @@ func (ts *ProjectAPITestSuite) SetupSuite() {
 	ts.suffix = fmt.Sprintf("%d", time.Now().UnixNano())
 }
 
-// TearDownTest removes what a test created: applications and agents first, then organization units,
-// the latest first so that children go before their parents.
+// TearDownTest removes what a test created: applications, agents and resource servers first, then
+// organization units, the latest first so that children go before their parents.
 func (ts *ProjectAPITestSuite) TearDownTest() {
 	for _, id := range ts.apps {
 		_ = testutils.DeleteApplication(id)
@@ -65,13 +67,16 @@ func (ts *ProjectAPITestSuite) TearDownTest() {
 	for _, id := range ts.agents {
 		_ = testutils.DeleteAgent(id)
 	}
+	for _, id := range ts.resourceServers {
+		_ = testutils.DeleteResourceServer(id)
+	}
 	for _, id := range slices.Backward(ts.ous) {
 		_ = testutils.DeleteOrganizationUnit(id)
 	}
 	for _, id := range ts.projects {
 		ts.do(http.MethodDelete, "/projects/"+id, "")
 	}
-	ts.projects, ts.ous, ts.apps, ts.agents = nil, nil, nil, nil
+	ts.projects, ts.ous, ts.apps, ts.agents, ts.resourceServers = nil, nil, nil, nil, nil
 }
 
 func (ts *ProjectAPITestSuite) handle(name string) string {

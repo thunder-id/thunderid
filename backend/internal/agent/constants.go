@@ -17,13 +17,6 @@ const (
 // projectIDQueryParam is the query parameter that lists the agents of one project.
 const projectIDQueryParam = "projectId"
 
-// Error codes the project service returns when it resolves the organization unit of a project. They
-// are matched by value, since the Data Plane must not link the Control Plane only project package.
-const (
-	projectNotFoundErrorCode = "PRJ-1002"
-	ouNotInProjectErrorCode  = "PRJ-1010"
-)
-
 // Field keys stored in the entity SystemAttributes JSON blob.
 const (
 	fieldDescription  = "description"

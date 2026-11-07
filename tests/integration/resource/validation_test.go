@@ -70,15 +70,15 @@ func (suite *ValidationTestSuite) TestCreateResourceServerMissingName() {
 	suite.Contains(err.Error(), "400")
 }
 
-func (suite *ValidationTestSuite) TestCreateResourceServerMissingOrgUnit() {
-	req := CreateResourceServerRequest{
-		Name: "missing-ou-server",
-		OUID: "",
-	}
+// A resource server that names no organization unit is placed in the system organization unit.
+func (suite *ValidationTestSuite) TestCreateResourceServerWithoutOrgUnit() {
+	id, err := createResourceServer(CreateResourceServerRequest{Name: "no-ou-server"})
+	suite.Require().NoError(err)
+	defer func() { _ = deleteResourceServer(id) }()
 
-	_, err := createResourceServer(req)
-	suite.Error(err, "Should fail with missing organization unit")
-	suite.Contains(err.Error(), "400")
+	rs, err := getResourceServer(id)
+	suite.Require().NoError(err)
+	suite.Equal(systemOUID, rs.OUID)
 }
 
 func (suite *ValidationTestSuite) TestCreateResourceServerMissingIdentifier() {
@@ -565,9 +565,9 @@ func (suite *ValidationTestSuite) TestStructuredValidationErrorsOnMissingRequire
 		url         string
 		body        map[string]interface{}
 	}{
-		{"update resource server without organization unit", http.MethodPut,
+		{"update resource server without name", http.MethodPut,
 			resourceServerURL("/%s", suite.resourceServerID),
-			map[string]interface{}{"name": "No Organization Unit"}},
+			map[string]interface{}{"description": "No name"}},
 		{"update action at resource server without name", http.MethodPut,
 			resourceServerURL("/%s/actions/%s", suite.resourceServerID, serverActionID),
 			map[string]interface{}{"description": "No name"}},

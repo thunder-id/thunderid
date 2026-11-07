@@ -1851,6 +1851,92 @@ func (_c *resourceStoreInterfaceMock_GetResourceServerListByOUID_Call) RunAndRet
 	return _c
 }
 
+// GetResourceServerListByProject provides a mock function for the type resourceStoreInterfaceMock
+func (_mock *resourceStoreInterfaceMock) GetResourceServerListByProject(ctx context.Context, projectID string, ouID string, limit int, offset int) ([]providers.ResourceServer, error) {
+	ret := _mock.Called(ctx, projectID, ouID, limit, offset)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetResourceServerListByProject")
+	}
+
+	var r0 []providers.ResourceServer
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, int, int) ([]providers.ResourceServer, error)); ok {
+		return returnFunc(ctx, projectID, ouID, limit, offset)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, int, int) []providers.ResourceServer); ok {
+		r0 = returnFunc(ctx, projectID, ouID, limit, offset)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]providers.ResourceServer)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string, int, int) error); ok {
+		r1 = returnFunc(ctx, projectID, ouID, limit, offset)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// resourceStoreInterfaceMock_GetResourceServerListByProject_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetResourceServerListByProject'
+type resourceStoreInterfaceMock_GetResourceServerListByProject_Call struct {
+	*mock.Call
+}
+
+// GetResourceServerListByProject is a helper method to define mock.On call
+//   - ctx context.Context
+//   - projectID string
+//   - ouID string
+//   - limit int
+//   - offset int
+func (_e *resourceStoreInterfaceMock_Expecter) GetResourceServerListByProject(ctx any, projectID any, ouID any, limit any, offset any) *resourceStoreInterfaceMock_GetResourceServerListByProject_Call {
+	return &resourceStoreInterfaceMock_GetResourceServerListByProject_Call{Call: _e.mock.On("GetResourceServerListByProject", ctx, projectID, ouID, limit, offset)}
+}
+
+func (_c *resourceStoreInterfaceMock_GetResourceServerListByProject_Call) Run(run func(ctx context.Context, projectID string, ouID string, limit int, offset int)) *resourceStoreInterfaceMock_GetResourceServerListByProject_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		var arg3 int
+		if args[3] != nil {
+			arg3 = args[3].(int)
+		}
+		var arg4 int
+		if args[4] != nil {
+			arg4 = args[4].(int)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+			arg4,
+		)
+	})
+	return _c
+}
+
+func (_c *resourceStoreInterfaceMock_GetResourceServerListByProject_Call) Return(resourceServers []providers.ResourceServer, err error) *resourceStoreInterfaceMock_GetResourceServerListByProject_Call {
+	_c.Call.Return(resourceServers, err)
+	return _c
+}
+
+func (_c *resourceStoreInterfaceMock_GetResourceServerListByProject_Call) RunAndReturn(run func(ctx context.Context, projectID string, ouID string, limit int, offset int) ([]providers.ResourceServer, error)) *resourceStoreInterfaceMock_GetResourceServerListByProject_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetResourceServerListCount provides a mock function for the type resourceStoreInterfaceMock
 func (_mock *resourceStoreInterfaceMock) GetResourceServerListCount(ctx context.Context) (int, error) {
 	ret := _mock.Called(ctx)
@@ -1973,6 +2059,78 @@ func (_c *resourceStoreInterfaceMock_GetResourceServerListCountByOUID_Call) Retu
 }
 
 func (_c *resourceStoreInterfaceMock_GetResourceServerListCountByOUID_Call) RunAndReturn(run func(ctx context.Context, ouID string) (int, error)) *resourceStoreInterfaceMock_GetResourceServerListCountByOUID_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetResourceServerListCountByProject provides a mock function for the type resourceStoreInterfaceMock
+func (_mock *resourceStoreInterfaceMock) GetResourceServerListCountByProject(ctx context.Context, projectID string, ouID string) (int, error) {
+	ret := _mock.Called(ctx, projectID, ouID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetResourceServerListCountByProject")
+	}
+
+	var r0 int
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) (int, error)); ok {
+		return returnFunc(ctx, projectID, ouID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) int); ok {
+		r0 = returnFunc(ctx, projectID, ouID)
+	} else {
+		r0 = ret.Get(0).(int)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string) error); ok {
+		r1 = returnFunc(ctx, projectID, ouID)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// resourceStoreInterfaceMock_GetResourceServerListCountByProject_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetResourceServerListCountByProject'
+type resourceStoreInterfaceMock_GetResourceServerListCountByProject_Call struct {
+	*mock.Call
+}
+
+// GetResourceServerListCountByProject is a helper method to define mock.On call
+//   - ctx context.Context
+//   - projectID string
+//   - ouID string
+func (_e *resourceStoreInterfaceMock_Expecter) GetResourceServerListCountByProject(ctx any, projectID any, ouID any) *resourceStoreInterfaceMock_GetResourceServerListCountByProject_Call {
+	return &resourceStoreInterfaceMock_GetResourceServerListCountByProject_Call{Call: _e.mock.On("GetResourceServerListCountByProject", ctx, projectID, ouID)}
+}
+
+func (_c *resourceStoreInterfaceMock_GetResourceServerListCountByProject_Call) Run(run func(ctx context.Context, projectID string, ouID string)) *resourceStoreInterfaceMock_GetResourceServerListCountByProject_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *resourceStoreInterfaceMock_GetResourceServerListCountByProject_Call) Return(n int, err error) *resourceStoreInterfaceMock_GetResourceServerListCountByProject_Call {
+	_c.Call.Return(n, err)
+	return _c
+}
+
+func (_c *resourceStoreInterfaceMock_GetResourceServerListCountByProject_Call) RunAndReturn(run func(ctx context.Context, projectID string, ouID string) (int, error)) *resourceStoreInterfaceMock_GetResourceServerListCountByProject_Call {
 	_c.Call.Return(run)
 	return _c
 }

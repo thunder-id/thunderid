@@ -22,6 +22,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/revocation"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/projectscope"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/tests/mocks/oumock"
 )
@@ -33,6 +34,8 @@ const (
 	testNewDescription  = "new description"
 	testWrongResourceID = "res-wrong"
 	declarativeRSID     = "declarative-rs"
+	testProjectID       = "proj-1"
+	testSystemOUID      = "01900000-0000-7000-8000-000000000001"
 )
 
 var testParentResourceID = "parent-123"
@@ -160,7 +163,7 @@ func (suite *ResourceServiceTestSuite) SetupTest() {
 	suite.mockOU = new(oumock.OrganizationUnitServiceInterfaceMock)
 	suite.mockTransactioner = &fakeTransactioner{}
 	suite.service, err = newResourceService(
-		suite.mockOU, suite.mockStore, suite.mockTransactioner, nil, nil,
+		suite.mockOU, suite.mockStore, suite.mockTransactioner, nil, nil, nil,
 	)
 	suite.NoError(err)
 	// The resource service is its own dependency provider: deletion consults the registry, which
@@ -202,7 +205,7 @@ func (suite *ResourceServiceTestSuite) TestNewResourceService_InvalidDelimiter()
 	mockOU := new(oumock.OrganizationUnitServiceInterfaceMock)
 
 	mockTransactioner := &fakeTransactioner{}
-	service, err := newResourceService(mockOU, mockStore, mockTransactioner, nil, nil)
+	service, err := newResourceService(mockOU, mockStore, mockTransactioner, nil, nil, nil)
 
 	suite.Error(err)
 	suite.Nil(service)
@@ -399,7 +402,7 @@ func (suite *ResourceServiceTestSuite) TestCreateResourceServer_MCPIdentifierRef
 		suite.Run(tc.name, func() {
 			mockStore := newResourceStoreInterfaceMock(suite.T())
 			mockOU := new(oumock.OrganizationUnitServiceInterfaceMock)
-			service, err := newResourceService(mockOU, mockStore, &fakeTransactioner{}, nil, nil, tc.options...)
+			service, err := newResourceService(mockOU, mockStore, &fakeTransactioner{}, nil, nil, nil, tc.options...)
 			suite.Require().NoError(err)
 			if tc.accepted {
 				mockOU.On("GetOrganizationUnit", mock.Anything, "ou-123").
@@ -434,7 +437,7 @@ func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_ControlPlaneMCPI
 	reference := "var:RESOURCE_SERVER_ORDERS_IDENTIFIER"
 	mockStore := newResourceStoreInterfaceMock(suite.T())
 	mockOU := new(oumock.OrganizationUnitServiceInterfaceMock)
-	service, err := newResourceService(mockOU, mockStore, &fakeTransactioner{}, nil, nil,
+	service, err := newResourceService(mockOU, mockStore, &fakeTransactioner{}, nil, nil, nil,
 		KeepingValueReferences())
 	suite.Require().NoError(err)
 	mockStore.On("GetResourceServer", mock.Anything, "rs-123").Return(providers.ResourceServer{
@@ -504,8 +507,8 @@ func (suite *ResourceServiceTestSuite) TestCreateResourceServer_ValidationErrors
 			expectedError:  ErrorInvalidRequestFormat,
 		},
 		{
-			name:           "EmptyOU",
-			resourceServer: providers.ResourceServer{Name: "test-rs", OUID: ""},
+			name:           "EmptyIdentifier",
+			resourceServer: providers.ResourceServer{Name: "test-rs", OUID: "ou-123"},
 			expectedError:  ErrorInvalidRequestFormat,
 		},
 		{
@@ -864,12 +867,6 @@ func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_ValidationErrors
 			name:           "EmptyName",
 			id:             "rs-123",
 			resourceServer: providers.ResourceServer{Name: "", OUID: "ou-123"},
-			expectedError:  ErrorInvalidRequestFormat,
-		},
-		{
-			name:           "EmptyOU",
-			id:             "rs-123",
-			resourceServer: providers.ResourceServer{Name: "test-rs", OUID: ""},
 			expectedError:  ErrorInvalidRequestFormat,
 		},
 		{
@@ -4962,7 +4959,7 @@ func (suite *ResourceServiceTestSuite) TestValidatePermissions() {
 			// Create a fresh service instance with the fresh mocks
 			mockTransactioner := &fakeTransactioner{}
 			svc, err := newResourceService(
-				mockOU, mockStore, mockTransactioner, nil, nil,
+				mockOU, mockStore, mockTransactioner, nil, nil, nil,
 			)
 			suite.Require().NoError(err)
 
@@ -5721,5 +5718,395 @@ ouHandle: default
 	}
 	if rs.OUID != "" {
 		t.Errorf("OUID = %q, want empty (resolution happens later)", rs.OUID)
+	}
+}
+
+func (suite *ResourceServiceTestSuite) newProjectAwareService() (ResourceServiceInterface, *projectOUValidatorMock) {
+	validator := newProjectOUValidatorMock(suite.T())
+	service, err := newResourceService(suite.mockOU, suite.mockStore, suite.mockTransactioner, nil, nil, validator)
+	suite.Require().NoError(err)
+	return service, validator
+}
+
+// expectStoredCreate sets up the store calls of a create that passes validation, keeping the stored resource server.
+func (suite *ResourceServiceTestSuite) expectStoredCreate(stored *providers.ResourceServer, ouID string) {
+	suite.mockOU.On("GetOrganizationUnit", mock.Anything, ouID).Return(oupkg.OrganizationUnit{ID: ouID}, nil)
+	suite.mockStore.On("CheckResourceServerNameExists", mock.Anything, "test-rs").Return(false, nil)
+	suite.mockStore.On("CheckResourceServerIdentifierExists", mock.Anything, "test-identifier").Return(false, nil)
+	suite.mockStore.On("CreateResourceServer", mock.Anything, mock.AnythingOfType("string"),
+		mock.AnythingOfType("providers.ResourceServer")).
+		Run(func(args mock.Arguments) {
+			if rs, ok := args.Get(2).(providers.ResourceServer); ok {
+				*stored = rs
+			}
+		}).Return(nil)
+}
+
+func (suite *ResourceServiceTestSuite) TestCreateResourceServer_DefaultsToSystemOU() {
+	var stored providers.ResourceServer
+	suite.mockOU.On("GetSystemOUID", mock.Anything).Return(testSystemOUID, nil)
+	suite.expectStoredCreate(&stored, testSystemOUID)
+
+	result, err := suite.service.CreateResourceServer(context.Background(), providers.ResourceServer{
+		Name: "test-rs", Identifier: "test-identifier",
+	})
+
+	suite.Nil(err)
+	suite.Require().NotNil(result)
+	suite.Equal(testSystemOUID, result.OUID)
+	suite.Equal(testSystemOUID, stored.OUID)
+	suite.Empty(stored.ProjectID)
+}
+
+func (suite *ResourceServiceTestSuite) TestCreateResourceServer_SystemOUUnavailable() {
+	suite.mockOU.On("GetSystemOUID", mock.Anything).Return("", &tidcommon.InternalServerError)
+
+	result, err := suite.service.CreateResourceServer(context.Background(), providers.ResourceServer{
+		Name: "test-rs", Identifier: "test-identifier",
+	})
+
+	suite.Nil(result)
+	suite.Require().NotNil(err)
+	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
+	suite.mockStore.AssertNotCalled(suite.T(), "CreateResourceServer", mock.Anything, mock.Anything,
+		mock.Anything)
+}
+
+func (suite *ResourceServiceTestSuite) TestCreateResourceServer_InProject() {
+	testCases := []struct {
+		name       string
+		ouID       string
+		resolvedOU string
+	}{
+		{name: "ProjectOnly", ouID: "", resolvedOU: testSystemOUID},
+		{name: "ProjectAndOU", ouID: testSystemOUID, resolvedOU: testSystemOUID},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			suite.SetupTest()
+			service, validator := suite.newProjectAwareService()
+			if tc.ouID == "" {
+				suite.mockOU.On("GetSystemOUID", mock.Anything).Return(testSystemOUID, nil)
+			}
+			validator.On("ValidateProjectOU", mock.Anything, testProjectID, tc.resolvedOU).Return(nil)
+			var stored providers.ResourceServer
+			suite.expectStoredCreate(&stored, tc.resolvedOU)
+
+			result, err := service.CreateResourceServer(context.Background(), providers.ResourceServer{
+				Name: "test-rs", Identifier: "test-identifier", OUID: tc.ouID, ProjectID: testProjectID,
+			})
+
+			suite.Nil(err)
+			suite.Require().NotNil(result)
+			suite.Equal(tc.resolvedOU, result.OUID)
+			suite.Equal(testProjectID, result.ProjectID)
+			suite.Equal(testProjectID, stored.ProjectID)
+		})
+	}
+}
+
+func (suite *ResourceServiceTestSuite) TestCreateResourceServer_ProjectValidationErrors() {
+	testCases := []struct {
+		name         string
+		validateErr  *tidcommon.ServiceError
+		expectedCode string
+	}{
+		{name: "ProjectNotFound",
+			validateErr: &tidcommon.ServiceError{
+				Type: tidcommon.ClientErrorType, Code: projectscope.ProjectNotFoundErrorCode},
+			expectedCode: ErrorInvalidProject.Code},
+		{name: "OUNotInProject",
+			validateErr: &tidcommon.ServiceError{
+				Type: tidcommon.ClientErrorType, Code: projectscope.OUNotInProjectErrorCode},
+			expectedCode: ErrorOUNotInProject.Code},
+		{name: "OtherClientError",
+			validateErr:  &tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "PRJ-1999"},
+			expectedCode: tidcommon.InternalServerError.Code},
+		{name: "ServerError",
+			validateErr:  &tidcommon.ServiceError{Type: tidcommon.ServerErrorType, Code: "SSE-5000"},
+			expectedCode: tidcommon.InternalServerError.Code},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			suite.SetupTest()
+			service, validator := suite.newProjectAwareService()
+			validator.On("ValidateProjectOU", mock.Anything, testProjectID, "ou-123").Return(tc.validateErr)
+
+			result, err := service.CreateResourceServer(context.Background(), providers.ResourceServer{
+				Name: "test-rs", Identifier: "test-identifier", OUID: "ou-123", ProjectID: testProjectID,
+			})
+
+			suite.Nil(result)
+			suite.Require().NotNil(err)
+			suite.Equal(tc.expectedCode, err.Code)
+			suite.mockStore.AssertNotCalled(suite.T(), "CreateResourceServer", mock.Anything, mock.Anything,
+				mock.Anything)
+		})
+	}
+}
+
+func (suite *ResourceServiceTestSuite) TestCreateResourceServer_ProjectWithoutValidator() {
+	var stored providers.ResourceServer
+	suite.mockOU.On("GetSystemOUID", mock.Anything).Return(testSystemOUID, nil)
+	suite.expectStoredCreate(&stored, testSystemOUID)
+
+	result, err := suite.service.CreateResourceServer(context.Background(), providers.ResourceServer{
+		Name: "test-rs", Identifier: "test-identifier", ProjectID: testProjectID,
+	})
+
+	suite.Nil(err)
+	suite.Require().NotNil(result)
+	suite.Equal(testProjectID, result.ProjectID)
+	suite.Equal(testSystemOUID, stored.OUID)
+}
+
+func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_ProjectChanges() {
+	testCases := []struct {
+		name              string
+		existingProjectID string
+		requestProjectID  string
+		expectedProjectID string
+		checksProject     bool
+	}{
+		{name: "MovesIntoProject", existingProjectID: "", requestProjectID: testProjectID,
+			expectedProjectID: testProjectID, checksProject: true},
+		{name: "MovesBetweenProjects", existingProjectID: testProjectID, requestProjectID: "proj-2",
+			expectedProjectID: "proj-2", checksProject: true},
+		{name: "KeepsProjectWhenOmitted", existingProjectID: testProjectID, requestProjectID: "",
+			expectedProjectID: testProjectID},
+		{name: "KeepsProjectWhenNamedAgain", existingProjectID: testProjectID, requestProjectID: testProjectID,
+			expectedProjectID: testProjectID},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			suite.SetupTest()
+			service, validator := suite.newProjectAwareService()
+			if tc.checksProject {
+				validator.On("ValidateProjectOU", mock.Anything, tc.expectedProjectID, testSystemOUID).Return(nil)
+			}
+			suite.mockStore.On("GetResourceServer", mock.Anything, "rs-123").Return(providers.ResourceServer{
+				ID: "rs-123", Name: "my-rs", Identifier: "test-identifier", OUID: testSystemOUID,
+				ProjectID: tc.existingProjectID, Delimiter: ":",
+			}, nil)
+			suite.mockStore.On("IsResourceServerDeclarative", "rs-123").Return(false)
+			suite.mockOU.On("GetOrganizationUnit", mock.Anything, testSystemOUID).
+				Return(oupkg.OrganizationUnit{ID: testSystemOUID}, nil)
+			suite.mockStore.On("UpdateResourceServer", mock.Anything, "rs-123",
+				mock.MatchedBy(func(r providers.ResourceServer) bool {
+					return r.ProjectID == tc.expectedProjectID && r.OUID == testSystemOUID
+				})).Return(nil)
+
+			result, err := service.UpdateResourceServer(context.Background(), "rs-123", providers.ResourceServer{
+				Name: "my-rs", ProjectID: tc.requestProjectID,
+			})
+
+			suite.Nil(err)
+			suite.Require().NotNil(result)
+			suite.Equal(tc.expectedProjectID, result.ProjectID)
+			suite.Equal(testSystemOUID, result.OUID, "an update that names no organization unit keeps it")
+			if !tc.checksProject {
+				validator.AssertNotCalled(suite.T(), "ValidateProjectOU", mock.Anything, mock.Anything, mock.Anything)
+			}
+		})
+	}
+}
+
+// A resource server whose project was deleted keeps it, and an update that changes neither the project nor
+// the organization unit does not check it again.
+func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_ProjectGone() {
+	service, validator := suite.newProjectAwareService()
+	suite.mockStore.On("GetResourceServer", mock.Anything, "rs-123").Return(providers.ResourceServer{
+		ID: "rs-123", Name: "my-rs", Identifier: "test-identifier", OUID: testSystemOUID,
+		ProjectID: "deleted-project", Delimiter: ":",
+	}, nil)
+	suite.mockStore.On("IsResourceServerDeclarative", "rs-123").Return(false)
+	suite.mockOU.On("GetOrganizationUnit", mock.Anything, testSystemOUID).
+		Return(oupkg.OrganizationUnit{ID: testSystemOUID}, nil)
+	suite.mockStore.On("CheckResourceServerNameExists", mock.Anything, "renamed-rs").Return(false, nil)
+	suite.mockStore.On("UpdateResourceServer", mock.Anything, "rs-123", mock.Anything).Return(nil)
+
+	result, err := service.UpdateResourceServer(context.Background(), "rs-123", providers.ResourceServer{
+		Name: "renamed-rs",
+	})
+
+	suite.Nil(err)
+	suite.Require().NotNil(result)
+	suite.Equal("renamed-rs", result.Name)
+	suite.Equal("deleted-project", result.ProjectID)
+	validator.AssertNotCalled(suite.T(), "ValidateProjectOU", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_ProjectRejectsOUOutsideIt() {
+	testCases := []struct {
+		name             string
+		requestProjectID string
+	}{
+		{name: "KeptProject", requestProjectID: ""},
+		{name: "NamedProject", requestProjectID: testProjectID},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			suite.SetupTest()
+			service, validator := suite.newProjectAwareService()
+			validator.On("ValidateProjectOU", mock.Anything, testProjectID, "ou-other").
+				Return(&tidcommon.ServiceError{
+					Type: tidcommon.ClientErrorType, Code: projectscope.OUNotInProjectErrorCode})
+			suite.mockStore.On("GetResourceServer", mock.Anything, "rs-123").Return(providers.ResourceServer{
+				ID: "rs-123", Name: "my-rs", Identifier: "test-identifier", OUID: testSystemOUID,
+				ProjectID: testProjectID,
+			}, nil)
+			suite.mockStore.On("IsResourceServerDeclarative", "rs-123").Return(false)
+
+			result, err := service.UpdateResourceServer(context.Background(), "rs-123", providers.ResourceServer{
+				Name: "my-rs", OUID: "ou-other", ProjectID: tc.requestProjectID,
+			})
+
+			suite.Nil(result)
+			suite.Require().NotNil(err)
+			suite.Equal(ErrorOUNotInProject.Code, err.Code)
+			suite.mockStore.AssertNotCalled(suite.T(), "UpdateResourceServer", mock.Anything, mock.Anything,
+				mock.Anything)
+		})
+	}
+}
+
+func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_InvalidRequestedProject() {
+	service, validator := suite.newProjectAwareService()
+	validator.On("ValidateProjectOU", mock.Anything, "missing", testSystemOUID).
+		Return(&tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: projectscope.ProjectNotFoundErrorCode})
+	suite.mockStore.On("GetResourceServer", mock.Anything, "rs-123").Return(providers.ResourceServer{
+		ID: "rs-123", Name: "my-rs", Identifier: "test-identifier", OUID: testSystemOUID,
+	}, nil)
+	suite.mockStore.On("IsResourceServerDeclarative", "rs-123").Return(false)
+
+	result, err := service.UpdateResourceServer(context.Background(), "rs-123", providers.ResourceServer{
+		Name: "my-rs", ProjectID: "missing",
+	})
+
+	suite.Nil(result)
+	suite.Require().NotNil(err)
+	suite.Equal(ErrorInvalidProject.Code, err.Code)
+}
+
+func (suite *ResourceServiceTestSuite) TestGetResourceServerListByProject_Success() {
+	resourceServers := []providers.ResourceServer{
+		{ID: "rs-1", OUID: testSystemOUID, ProjectID: testProjectID},
+		{ID: "rs-2", OUID: "ou-1", ProjectID: testProjectID},
+	}
+	suite.mockStore.On("GetResourceServerListCountByProject", mock.Anything, testProjectID, "").Return(5, nil)
+	suite.mockStore.On("GetResourceServerListByProject", mock.Anything, testProjectID, "", 2, 2).
+		Return(resourceServers, nil)
+
+	result, err := suite.service.GetResourceServerListByProject(context.Background(), testProjectID, "", 2, 2)
+
+	suite.Nil(err)
+	suite.Require().NotNil(result)
+	suite.Equal(5, result.TotalResults)
+	suite.Equal(2, result.Count)
+	suite.Equal(3, result.StartIndex)
+	suite.Equal(resourceServers, result.ResourceServers)
+	suite.NotEmpty(result.Links)
+	for _, link := range result.Links {
+		suite.Contains(link.Href, "&projectId=proj-1")
+	}
+}
+
+func (suite *ResourceServiceTestSuite) TestGetResourceServerListByProject_NarrowedToOU() {
+	resourceServers := []providers.ResourceServer{{ID: "rs-2", OUID: "ou-1", ProjectID: testProjectID}}
+	suite.mockStore.On("GetResourceServerListCountByProject", mock.Anything, testProjectID, "ou-1").Return(3, nil)
+	suite.mockStore.On("GetResourceServerListByProject", mock.Anything, testProjectID, "ou-1", 1, 1).
+		Return(resourceServers, nil)
+
+	result, err := suite.service.GetResourceServerListByProject(context.Background(), testProjectID, "ou-1", 1, 1)
+
+	suite.Nil(err)
+	suite.Require().NotNil(result)
+	suite.Equal(resourceServers, result.ResourceServers)
+	suite.NotEmpty(result.Links)
+	for _, link := range result.Links {
+		suite.Contains(link.Href, "&projectId="+testProjectID)
+		suite.Contains(link.Href, "&filter=ouId+eq+%22ou-1%22")
+	}
+}
+
+func (suite *ResourceServiceTestSuite) TestGetResourceServerListByProject_EmptyProject() {
+	result, err := suite.service.GetResourceServerListByProject(context.Background(), "", "", 10, 0)
+
+	suite.Nil(err)
+	suite.Require().NotNil(result)
+	suite.Equal(0, result.TotalResults)
+	suite.Empty(result.ResourceServers)
+	suite.mockStore.AssertNotCalled(suite.T(), "GetResourceServerListCountByProject", mock.Anything,
+		mock.Anything, mock.Anything)
+}
+
+func (suite *ResourceServiceTestSuite) TestGetResourceServerListByProject_InvalidPagination() {
+	testCases := []struct {
+		name         string
+		limit        int
+		offset       int
+		expectedCode string
+	}{
+		{name: "InvalidLimit", limit: 0, offset: 0, expectedCode: ErrorInvalidLimit.Code},
+		{name: "InvalidOffset", limit: 10, offset: -1, expectedCode: ErrorInvalidOffset.Code},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			result, err := suite.service.GetResourceServerListByProject(
+				context.Background(), testProjectID, "", tc.limit, tc.offset)
+
+			suite.Nil(result)
+			suite.Require().NotNil(err)
+			suite.Equal(tc.expectedCode, err.Code)
+		})
+	}
+}
+
+func (suite *ResourceServiceTestSuite) TestGetResourceServerListByProject_StoreErrors() {
+	storeErr := errors.New("database error")
+	testCases := []struct {
+		name         string
+		setup        func(store *resourceStoreInterfaceMock)
+		expectedCode string
+	}{
+		{name: "CountError", expectedCode: tidcommon.InternalServerError.Code,
+			setup: func(store *resourceStoreInterfaceMock) {
+				store.On("GetResourceServerListCountByProject", mock.Anything, testProjectID, "").Return(0, storeErr)
+			}},
+		{name: "CountLimitExceeded", expectedCode: ErrResultLimitExceededInCompositeMode.Code,
+			setup: func(store *resourceStoreInterfaceMock) {
+				store.On("GetResourceServerListCountByProject", mock.Anything, testProjectID, "").
+					Return(0, errResultLimitExceededInCompositeMode)
+			}},
+		{name: "ListError", expectedCode: tidcommon.InternalServerError.Code,
+			setup: func(store *resourceStoreInterfaceMock) {
+				store.On("GetResourceServerListCountByProject", mock.Anything, testProjectID, "").Return(2, nil)
+				store.On("GetResourceServerListByProject", mock.Anything, testProjectID, "", 10, 0).
+					Return(nil, storeErr)
+			}},
+		{name: "ListLimitExceeded", expectedCode: ErrResultLimitExceededInCompositeMode.Code,
+			setup: func(store *resourceStoreInterfaceMock) {
+				store.On("GetResourceServerListCountByProject", mock.Anything, testProjectID, "").Return(2, nil)
+				store.On("GetResourceServerListByProject", mock.Anything, testProjectID, "", 10, 0).
+					Return(nil, errResultLimitExceededInCompositeMode)
+			}},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			suite.SetupTest()
+			tc.setup(suite.mockStore)
+
+			result, err := suite.service.GetResourceServerListByProject(context.Background(), testProjectID, "", 10, 0)
+
+			suite.Nil(result)
+			suite.Require().NotNil(err)
+			suite.Equal(tc.expectedCode, err.Code)
+		})
 	}
 }

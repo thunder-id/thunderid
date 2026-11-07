@@ -102,6 +102,7 @@ func (e *resourceServerExporter) GetResourceByID(ctx context.Context, id string)
 		Identifier:          server.Identifier,
 		Type:                server.Type,
 		OUID:                server.OUID,
+		ProjectID:           server.ProjectID,
 		Delimiter:           server.Delimiter,
 		AuthorizationEngine: server.AuthorizationEngine,
 		Resources:           []providers.Resource{},

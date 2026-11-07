@@ -873,3 +873,41 @@ actions:
 	assert.NoError(s.T(), err)
 	assert.Equal(s.T(), []string{"unknown"}, invalid)
 }
+
+func (s *FileBasedResourceStoreTestSuite) TestGetResourceServerListByProject() {
+	fileStore, ok := s.store.(*fileBasedResourceStore)
+	s.Require().True(ok)
+	s.Require().NoError(fileStore.Create("rs-p1-a",
+		&providers.ResourceServer{ID: "rs-p1-a", OUID: "ou1", ProjectID: "proj1"}))
+	s.Require().NoError(fileStore.Create("rs-p1-b",
+		&providers.ResourceServer{ID: "rs-p1-b", OUID: "ou2", ProjectID: "proj1"}))
+	s.Require().NoError(fileStore.Create("rs-org", &providers.ResourceServer{ID: "rs-org", OUID: "ou1"}))
+
+	count, err := s.store.GetResourceServerListCountByProject(s.ctx, "proj1", "")
+	s.NoError(err)
+	s.Equal(2, count)
+
+	servers, err := s.store.GetResourceServerListByProject(s.ctx, "proj1", "", 10, 0)
+	s.NoError(err)
+	s.Len(servers, 2)
+	for _, rs := range servers {
+		s.Equal("proj1", rs.ProjectID)
+	}
+
+	servers, err = s.store.GetResourceServerListByProject(s.ctx, "proj1", "", 1, 1)
+	s.NoError(err)
+	s.Len(servers, 1)
+
+	servers, err = s.store.GetResourceServerListByProject(s.ctx, "proj1", "", 10, 5)
+	s.NoError(err)
+	s.Empty(servers)
+
+	servers, err = s.store.GetResourceServerListByProject(s.ctx, "proj1", "ou2", 10, 0)
+	s.NoError(err)
+	s.Require().Len(servers, 1)
+	s.Equal("rs-p1-b", servers[0].ID)
+
+	count, err = s.store.GetResourceServerListCountByProject(s.ctx, "proj1", "ou2")
+	s.NoError(err)
+	s.Equal(1, count)
+}

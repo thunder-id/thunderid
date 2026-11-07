@@ -4,7 +4,7 @@
 import * as componentsModule from '@thunderid/components';
 import {renderWithProviders, screen, fireEvent, waitFor} from '@thunderid/test-utils';
 import type {ReactNode} from 'react';
-import {describe, it, expect, vi, beforeEach} from 'vitest';
+import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
 import type {ResourceServer} from '../../models/resource-server';
 import ResourceServerEditPage from '../ResourceServerEditPage';
 
@@ -41,11 +41,14 @@ vi.mock('@thunderid/react', async (importOriginal) => {
   };
 });
 
+const mockUseProjectScope = vi.fn<() => {projectId?: string}>(() => ({}));
+
 vi.mock('@thunderid/contexts', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@thunderid/contexts')>();
   return {
     ...actual,
     useConfig: () => ({getServerUrl: () => 'http://localhost:8090', config: {brand: {product_name: 'ThunderID'}}}),
+    useProjectScope: () => mockUseProjectScope(),
     useToast: () => ({showToast: vi.fn()}),
   };
 });
@@ -215,6 +218,44 @@ describe('ResourceServerEditPage', () => {
       isError: false,
       error: null,
       reset: mockUpdateReset,
+    });
+  });
+
+  describe('inside a project', () => {
+    afterEach(() => {
+      mockUseProjectScope.mockReturnValue({});
+    });
+
+    it('returns to the list for a resource server of another project', async () => {
+      mockUseProjectScope.mockReturnValue({projectId: 'project-1'});
+      mockUseGetResourceServer.mockReturnValue({
+        data: {...mockResourceServer, projectId: 'project-2'},
+        isLoading: false,
+        error: null,
+        refetch: mockRefetch,
+      });
+
+      renderWithProviders(<ResourceServerEditPage />);
+
+      expect(screen.getByRole('progressbar')).toBeInTheDocument();
+      await waitFor(() => {
+        expect(mockNavigate).toHaveBeenCalledWith('/resource-servers', {replace: true});
+      });
+    });
+
+    it('shows a resource server of the selected project', () => {
+      mockUseProjectScope.mockReturnValue({projectId: 'project-1'});
+      mockUseGetResourceServer.mockReturnValue({
+        data: {...mockResourceServer, projectId: 'project-1'},
+        isLoading: false,
+        error: null,
+        refetch: mockRefetch,
+      });
+
+      renderWithProviders(<ResourceServerEditPage />);
+
+      expect(screen.getByText(mockResourceServer.name)).toBeInTheDocument();
+      expect(mockNavigate).not.toHaveBeenCalled();
     });
   });
 

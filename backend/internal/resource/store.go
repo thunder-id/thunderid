@@ -23,6 +23,10 @@ type resourceStoreInterface interface {
 	GetResourceServerListCount(ctx context.Context) (int, error)
 	GetResourceServerListByOUID(ctx context.Context, ouID string, limit, offset int) ([]providers.ResourceServer, error)
 	GetResourceServerListCountByOUID(ctx context.Context, ouID string) (int, error)
+	GetResourceServerListByProject(
+		ctx context.Context, projectID, ouID string, limit, offset int,
+	) ([]providers.ResourceServer, error)
+	GetResourceServerListCountByProject(ctx context.Context, projectID, ouID string) (int, error)
 	UpdateResourceServer(ctx context.Context, id string, rs providers.ResourceServer) error
 	DeleteResourceServer(ctx context.Context, id string) error
 	CheckResourceServerNameExists(ctx context.Context, name string) (bool, error)
@@ -110,6 +114,7 @@ func (s *resourceStore) CreateResourceServer(ctx context.Context, id string, rs 
 			queryCreateResourceServer,
 			id,
 			rs.OUID,
+			resolveNullableString(rs.ProjectID),
 			rs.Name,
 			rs.Description,
 			resolveNullableString(rs.Identifier),
@@ -232,6 +237,68 @@ func (s *resourceStore) GetResourceServerListCountByOUID(ctx context.Context, ou
 	return count, err
 }
 
+// GetResourceServerListByProject retrieves the resource servers of a project with pagination, narrowed to
+// the ones an organization unit owns when ouID is set.
+func (s *resourceStore) GetResourceServerListByProject(
+	ctx context.Context, projectID, ouID string, limit, offset int,
+) ([]providers.ResourceServer, error) {
+	var resourceServers []providers.ResourceServer
+	err := s.withDBClient(func(dbClient provider.DBClientInterface) error {
+		var results []map[string]interface{}
+		var err error
+		if ouID == "" {
+			results, err = dbClient.QueryContext(
+				ctx, queryGetResourceServerListByProject, projectID, limit, offset, s.scope(ctx))
+		} else {
+			results, err = dbClient.QueryContext(ctx, queryGetResourceServerListByProjectAndOUID,
+				projectID, ouID, limit, offset, s.scope(ctx))
+		}
+		if err != nil {
+			return fmt.Errorf("failed to get resource server list by project: %w", err)
+		}
+
+		resourceServers = make([]providers.ResourceServer, 0, len(results))
+		for _, row := range results {
+			rs, err := buildResourceServerFromResultRow(row)
+			if err != nil {
+				return fmt.Errorf("failed to build resource server: %w", err)
+			}
+			resourceServers = append(resourceServers, rs)
+		}
+
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return resourceServers, nil
+}
+
+// GetResourceServerListCountByProject retrieves the total count of the resource servers of a project,
+// narrowed to the ones an organization unit owns when ouID is set.
+func (s *resourceStore) GetResourceServerListCountByProject(
+	ctx context.Context, projectID, ouID string,
+) (int, error) {
+	var count int
+	err := s.withDBClient(func(dbClient provider.DBClientInterface) error {
+		var results []map[string]interface{}
+		var err error
+		if ouID == "" {
+			results, err = dbClient.QueryContext(ctx, queryGetResourceServerListCountByProject, projectID, s.scope(ctx))
+		} else {
+			results, err = dbClient.QueryContext(ctx, queryGetResourceServerListCountByProjectAndOUID,
+				projectID, ouID, s.scope(ctx))
+		}
+		if err != nil {
+			return fmt.Errorf("failed to get resource server count by project: %w", err)
+		}
+
+		count, err = parseCountResult(results)
+		return err
+	})
+	return count, err
+}
+
 // UpdateResourceServer updates a resource server.
 func (s *resourceStore) UpdateResourceServer(ctx context.Context, id string, rs providers.ResourceServer) error {
 	return s.withDBClient(func(dbClient provider.DBClientInterface) error {
@@ -239,6 +306,7 @@ func (s *resourceStore) UpdateResourceServer(ctx context.Context, id string, rs 
 			ctx,
 			queryUpdateResourceServer,
 			rs.OUID,
+			resolveNullableString(rs.ProjectID),
 			rs.Name,
 			rs.Description,
 			resolveNullableString(rs.Identifier),
@@ -1077,6 +1145,10 @@ func buildResourceServerFromResultRow(row map[string]interface{}) (providers.Res
 		rs.OUID = ouID
 	} else {
 		return rs, fmt.Errorf("ou_id field is missing or invalid")
+	}
+
+	if projectID, ok := row["project_id"].(string); ok {
+		rs.ProjectID = projectID
 	}
 
 	if name, ok := row["name"].(string); ok {

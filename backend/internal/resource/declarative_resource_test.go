@@ -158,6 +158,7 @@ func (s *ResourceServerExporterTestSuite) TestGetResourceByID_Success() {
 		Description: "A test server",
 		Identifier:  "test-server",
 		OUID:        "ou1",
+		ProjectID:   "proj1",
 		Delimiter:   ":",
 		AuthorizationEngine: providers.AuthorizationEngineConfig{
 			Type: providers.AuthorizationEngineTypeAuthZENPDP,
@@ -232,10 +233,12 @@ func (s *ResourceServerExporterTestSuite) TestGetResourceByID_Success() {
 	assert.NoError(s.T(), marshalErr)
 	assert.Contains(s.T(), string(yamlBytes), "type: authzen_pdp")
 	assert.Contains(s.T(), string(yamlBytes), "pdpConnectionId: pdp-1")
+	assert.Contains(s.T(), string(yamlBytes), "projectId: proj1")
 
 	imported, parseErr := parseToResourceServer(yamlBytes)
 	s.Require().NoError(parseErr)
 	s.Require().NotNil(imported)
+	assert.Equal(s.T(), "proj1", imported.ProjectID)
 	assert.Equal(s.T(), server.AuthorizationEngine, imported.AuthorizationEngine)
 	assert.Equal(s.T(), dto.Actions, imported.Actions)
 }
@@ -1345,6 +1348,28 @@ func TestValidateResourceServerWrapper_EmptyIdentifier(t *testing.T) {
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "identifier cannot be empty")
+}
+
+func TestValidateResourceServerWrapper_ProjectWithoutOU(t *testing.T) {
+	fileStore := newResourceStoreInterfaceMock(t)
+
+	err := validateResourceServerWrapper(&providers.ResourceServer{
+		ID: "rs1", Name: "Server", Identifier: "server", ProjectID: "proj1",
+	}, fileStore, nil, nil)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "ou_id or ou_handle is required")
+}
+
+func TestValidateResourceServerWrapper_NoProjectNoOU(t *testing.T) {
+	fileStore := newResourceStoreInterfaceMock(t)
+
+	err := validateResourceServerWrapper(&providers.ResourceServer{
+		ID: "rs1", Name: "Server", Identifier: "server",
+	}, fileStore, nil, nil)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "ou_id or ou_handle is required")
 }
 
 func TestValidateResourceServerWrapper_InvalidMCPIdentifier(t *testing.T) {
