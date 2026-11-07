@@ -89,3 +89,11 @@ func (suite *LayoutInitTestSuite) TestInitializeStore_DeclarativeMode() {
 	_, ok := store.(*layoutFileBasedStore)
 	suite.True(ok)
 }
+
+func (suite *LayoutInitTestSuite) TestInitialize_RefusesANilEventBus() {
+	service, exporter, err := Initialize(http.NewServeMux(), nil)
+
+	suite.ErrorIs(err, errNilEventBus)
+	suite.Nil(service)
+	suite.Nil(exporter)
+}

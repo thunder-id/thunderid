@@ -77,6 +77,18 @@ const (
 	EventTokenIssue = "token.issue"
 	// EventTokenRevoke names a token revocation request.
 	EventTokenRevoke = "token.revoke"
+	// EventLayoutCreate names an attempt to create a layout.
+	EventLayoutCreate = "layout.create"
+	// EventLayoutUpdate names an attempt to change a layout.
+	EventLayoutUpdate = "layout.update"
+	// EventLayoutDelete names an attempt to delete a layout.
+	EventLayoutDelete = "layout.delete"
+	// EventThemeCreate names an attempt to create a theme.
+	EventThemeCreate = "theme.create"
+	// EventThemeUpdate names an attempt to change a theme.
+	EventThemeUpdate = "theme.update"
+	// EventThemeDelete names an attempt to delete a theme.
+	EventThemeDelete = "theme.delete"
 )
 
 const (
@@ -103,6 +115,10 @@ const (
 	TargetTypeServerConfig = "server_config"
 	// TargetTypeToken is the target type of an event about a token. It never carries the token.
 	TargetTypeToken = "token"
+	// TargetTypeLayout is the target type of an event about a layout.
+	TargetTypeLayout = "layout"
+	// TargetTypeTheme is the target type of an event about a theme.
+	TargetTypeTheme = "theme"
 )
 
 // principalTargetTypes maps the type a role assignment or a group membership names its principal by to
@@ -164,4 +180,11 @@ var auditedEvents = map[string][]string{
 	EventServerConfigUpdate: nil,
 	EventTokenIssue:         {DetailGrantType},
 	EventTokenRevoke:        nil,
+	EventLayoutCreate:       nil,
+	EventLayoutUpdate:       nil,
+	EventLayoutDelete:       nil,
+
+	EventThemeCreate: nil,
+	EventThemeUpdate: nil,
+	EventThemeDelete: nil,
 }

@@ -89,3 +89,11 @@ func (suite *ThemeInitTestSuite) TestInitializeStore_DeclarativeMode() {
 	_, ok := store.(*themeFileBasedStore)
 	suite.True(ok)
 }
+
+func (suite *ThemeInitTestSuite) TestInitialize_RefusesANilEventBus() {
+	service, exporter, err := Initialize(http.NewServeMux(), nil, nil)
+
+	suite.ErrorIs(err, errNilEventBus)
+	suite.Nil(service)
+	suite.Nil(exporter)
+}

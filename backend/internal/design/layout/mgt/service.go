@@ -14,6 +14,8 @@ import (
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
+	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/utils"
@@ -39,14 +41,17 @@ type layoutMgtService struct {
 	layoutMgtStore     layoutMgtStoreInterface
 	dependencyRegistry resourcedependency.Registry
 	logger             *log.Logger
+	bus                eventbus.EventBusInterface
 }
 
 // newLayoutMgtService creates a new instance of LayoutMgtService with injected dependencies.
-func newLayoutMgtService(layoutMgtStore layoutMgtStoreInterface) LayoutMgtServiceInterface {
+func newLayoutMgtService(layoutMgtStore layoutMgtStoreInterface,
+	bus eventbus.EventBusInterface) LayoutMgtServiceInterface {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 	return &layoutMgtService{
 		layoutMgtStore: layoutMgtStore,
 		logger:         logger,
+		bus:            bus,
 	}
 }
 
@@ -82,6 +87,18 @@ func (ls *layoutMgtService) GetLayoutList(ctx context.Context, limit, offset int
 
 // CreateLayout creates a new layout configuration.
 func (ls *layoutMgtService) CreateLayout(ctx context.Context, layout CreateLayoutRequestWithID) (*Layout,
+	*tidcommon.ServiceError) {
+	created, svcErr := ls.createLayout(ctx, layout)
+	var layoutID string
+	if svcErr == nil {
+		layoutID = created.ID
+	}
+	ls.publishLayoutEvent(ctx, audit.EventLayoutCreate, audit.ActionCreate, layoutID, svcErr)
+	return created, svcErr
+}
+
+// createLayout creates a new layout configuration without publishing its audit event.
+func (ls *layoutMgtService) createLayout(ctx context.Context, layout CreateLayoutRequestWithID) (*Layout,
 	*tidcommon.ServiceError) {
 	ls.logger.Debug(ctx, "Creating layout configuration")
 
@@ -170,6 +187,14 @@ func (ls *layoutMgtService) GetLayout(ctx context.Context, id string) (*Layout, 
 // UpdateLayout updates an existing layout configuration.
 func (ls *layoutMgtService) UpdateLayout(ctx context.Context,
 	id string, layout UpdateLayoutRequest) (*Layout, *tidcommon.ServiceError) {
+	updated, svcErr := ls.updateLayout(ctx, id, layout)
+	ls.publishLayoutEvent(ctx, audit.EventLayoutUpdate, audit.ActionUpdate, id, svcErr)
+	return updated, svcErr
+}
+
+// updateLayout updates an existing layout configuration without publishing its audit event.
+func (ls *layoutMgtService) updateLayout(ctx context.Context,
+	id string, layout UpdateLayoutRequest) (*Layout, *tidcommon.ServiceError) {
 	ls.logger.Debug(ctx, "Updating layout", log.String("id", id))
 
 	if id == "" {
@@ -223,6 +248,18 @@ func (ls *layoutMgtService) UpdateLayout(ctx context.Context,
 
 // DeleteLayout deletes a layout configuration.
 func (ls *layoutMgtService) DeleteLayout(ctx context.Context, id string) *tidcommon.ServiceError {
+	svcErr := ls.deleteLayout(ctx, id)
+	// A delete that found nothing to remove succeeds without an event, so no caller can record a
+	// deletion of an ID it made up.
+	if svcErr == errLayoutNotFoundNoop {
+		return nil
+	}
+	ls.publishLayoutEvent(ctx, audit.EventLayoutDelete, audit.ActionDelete, id, svcErr)
+	return svcErr
+}
+
+// deleteLayout deletes a layout configuration without publishing its audit event.
+func (ls *layoutMgtService) deleteLayout(ctx context.Context, id string) *tidcommon.ServiceError {
 	ls.logger.Debug(ctx, "Deleting layout", log.String("id", id))
 
 	if id == "" {
@@ -243,7 +280,7 @@ func (ls *layoutMgtService) DeleteLayout(ctx context.Context, id string) *tidcom
 
 	if !exists {
 		ls.logger.Debug(ctx, "Layout not found for deletion, returning success", log.String("id", id))
-		return nil
+		return errLayoutNotFoundNoop
 	}
 
 	// A layout can be deleted even while applications reference it: those applications keep their
@@ -256,6 +293,17 @@ func (ls *layoutMgtService) DeleteLayout(ctx context.Context, id string) *tidcom
 
 	ls.logger.Debug(ctx, "Successfully deleted layout", log.String("id", id))
 	return nil
+}
+
+// publishLayoutEvent publishes the audit event of an attempt on the layout with id, after the change was
+// stored or refused. Only the ID is recorded, never the layout's handle, names or content.
+func (ls *layoutMgtService) publishLayoutEvent(ctx context.Context, name string, action audit.Action,
+	id string, svcErr *tidcommon.ServiceError) {
+	// A failed attempt keeps the ID the caller asked for, even one that matches no layout, as forensic
+	// evidence of what was probed; the payload caps it and the sink escapes it.
+	target := audit.Ref{Type: audit.TargetTypeLayout, ID: id}
+	eventbus.TryPublish(ctx, ls.bus,
+		eventbus.NewEvent(ctx, name).With(audit.ChangePayload(ctx, target, action, svcErr)))
 }
 
 // IsLayoutExist checks if a layout exists.
