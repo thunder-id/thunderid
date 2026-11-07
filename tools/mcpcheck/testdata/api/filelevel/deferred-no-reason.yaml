@@ -1,0 +1,10 @@
+openapi: 3.0.3
+info:
+  title: File-level deferred without a reason
+  version: "1.0"
+x-thunderid-mcp:
+  expose: deferred
+paths:
+  /covered:
+    get:
+      operationId: covered

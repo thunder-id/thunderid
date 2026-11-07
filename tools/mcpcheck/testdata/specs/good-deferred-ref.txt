@@ -1,0 +1,11 @@
+# Spec
+
+### API
+
+Some endpoints.
+
+### MCP exposure
+
+Decision: deferred
+Reason: Tools follow once the API settles.
+Issue: #42

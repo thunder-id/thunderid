@@ -1,0 +1,16 @@
+openapi: 3.0.3
+info:
+  title: OAuth 2.0
+  version: "1.0"
+x-thunderid-mcp:
+  expose: false
+  reason: Protocol endpoint; agents call it as OAuth clients, not as a tool.
+paths:
+  /oauth2/token:
+    post:
+      operationId: token
+  /oauth2/authorize:
+    get:
+      x-thunderid-mcp:
+        expose: deferred
+        reason: Planned with the agent authorization tools.
