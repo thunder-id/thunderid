@@ -2472,13 +2472,14 @@ func TestImportResources_LayoutUpsertUpdatesExisting(t *testing.T) {
 	assert.Empty(t, layoutSvc.created)
 }
 
-// A non-not-found error from update surfaces as a failed update outcome without attempting a create.
+// An error from the update of an existing layout surfaces as a failed update outcome without attempting
+// a create.
 //
 //nolint:dupl // Parallel error-path tests differ only by the failing operation and error code.
 func TestImportResources_LayoutUpsertUpdateError(t *testing.T) {
 	layoutSvc := &fakeLayoutService{
-		byID:     map[string]*layoutmgt.Layout{},
-		byHandle: map[string]*layoutmgt.Layout{},
+		byID:     map[string]*layoutmgt.Layout{"lay-123": {ID: "lay-123", Handle: "default-layout"}},
+		byHandle: map[string]*layoutmgt.Layout{"default-layout": {ID: "lay-123", Handle: "default-layout"}},
 		updateErr: &tidcommon.ServiceError{
 			Type:  tidcommon.ServerErrorType,
 			Code:  "LAY-5000",
@@ -2501,7 +2502,7 @@ func TestImportResources_LayoutUpsertUpdateError(t *testing.T) {
 	assert.Empty(t, layoutSvc.created)
 }
 
-// When update reports not-found but the fallback create fails, it surfaces as a failed create outcome.
+// When the layout does not exist and its create fails, it surfaces as a failed create outcome.
 //
 //nolint:dupl // Parallel error-path tests differ only by the failing operation and error code.
 func TestImportResources_LayoutUpsertCreateError(t *testing.T) {

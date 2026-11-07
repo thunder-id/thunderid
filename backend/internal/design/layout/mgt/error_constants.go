@@ -221,6 +221,16 @@ var (
 	}
 )
 
+// errNilEventBus is returned when the service is initialized without the event bus it audits on.
+var errNilEventBus = errors.New("the layout management service needs an event bus")
+
+// errLayoutNotFoundNoop is returned by deleteLayout for a layout that does not exist. DeleteLayout turns
+// it into a success, so it never reaches a caller.
+var errLayoutNotFoundNoop = &tidcommon.ServiceError{
+	Type: tidcommon.ClientErrorType,
+	Code: ErrorLayoutNotFound.Code,
+}
+
 // errCannotUpdateDeclarativeLayout is an internal error for composite store operations.
 var errCannotUpdateDeclarativeLayout = errors.New("cannot update declarative layout")
 

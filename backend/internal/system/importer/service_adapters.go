@@ -615,37 +615,30 @@ func (s *importService) importTheme(
 		Theme:       themeBytes,
 	}
 
-	if dryRun {
-		if options.IsUpsertEnabled() && req.ID != "" {
-			_, svcErr := s.themeService.GetTheme(ctx, req.ID)
-			if svcErr == nil {
-				return successOutcome(resourceTypeTheme, req.ID, req.DisplayName, operationUpdate)
-			}
-
-			if !isNotFoundServiceError(svcErr) {
-				return serviceErrorOutcome(resourceTypeTheme, req.ID, req.DisplayName, operationUpdate, svcErr)
-			}
+	// The upsert looks the theme up rather than attempting an update, so a create is not preceded by an
+	// audited failed update.
+	exists := false
+	if options.IsUpsertEnabled() && req.ID != "" {
+		_, svcErr := s.themeService.GetTheme(ctx, req.ID)
+		if svcErr != nil && !isNotFoundServiceError(svcErr) {
+			return serviceErrorOutcome(resourceTypeTheme, req.ID, req.DisplayName, operationUpdate, svcErr)
 		}
+		exists = svcErr == nil
+	}
 
+	if dryRun {
+		if exists {
+			return successOutcome(resourceTypeTheme, req.ID, req.DisplayName, operationUpdate)
+		}
 		return successOutcome(resourceTypeTheme, req.ID, req.DisplayName, operationCreate)
 	}
 
-	if options.IsUpsertEnabled() && req.ID != "" {
+	if exists {
 		updated, svcErr := s.themeService.UpdateTheme(ctx, req.ID, updateReq)
-		if svcErr == nil {
-			return successOutcome(resourceTypeTheme, updated.ID, updated.DisplayName, operationUpdate)
-		}
-
-		if !isNotFoundServiceError(svcErr) {
+		if svcErr != nil {
 			return serviceErrorOutcome(resourceTypeTheme, req.ID, req.DisplayName, operationUpdate, svcErr)
 		}
-
-		created, createErr := s.themeService.CreateTheme(ctx, createReq)
-		if createErr != nil {
-			return serviceErrorOutcome(resourceTypeTheme, req.ID, req.DisplayName, operationCreate, createErr)
-		}
-
-		return successOutcome(resourceTypeTheme, created.ID, created.DisplayName, operationCreate)
+		return successOutcome(resourceTypeTheme, updated.ID, updated.DisplayName, operationUpdate)
 	}
 
 	created, svcErr := s.themeService.CreateTheme(ctx, createReq)
@@ -694,37 +687,30 @@ func (s *importService) importLayout(
 		Layout:      layoutBytes,
 	}
 
-	if dryRun {
-		if options.IsUpsertEnabled() && req.ID != "" {
-			_, svcErr := s.layoutService.GetLayout(ctx, req.ID)
-			if svcErr == nil {
-				return successOutcome(resourceTypeLayout, req.ID, req.DisplayName, operationUpdate)
-			}
-
-			if !isNotFoundServiceError(svcErr) {
-				return serviceErrorOutcome(resourceTypeLayout, req.ID, req.DisplayName, operationUpdate, svcErr)
-			}
+	// The upsert looks the layout up rather than attempting an update, so a create is not preceded by an
+	// audited failed update.
+	exists := false
+	if options.IsUpsertEnabled() && req.ID != "" {
+		_, svcErr := s.layoutService.GetLayout(ctx, req.ID)
+		if svcErr != nil && !isNotFoundServiceError(svcErr) {
+			return serviceErrorOutcome(resourceTypeLayout, req.ID, req.DisplayName, operationUpdate, svcErr)
 		}
+		exists = svcErr == nil
+	}
 
+	if dryRun {
+		if exists {
+			return successOutcome(resourceTypeLayout, req.ID, req.DisplayName, operationUpdate)
+		}
 		return successOutcome(resourceTypeLayout, req.ID, req.DisplayName, operationCreate)
 	}
 
-	if options.IsUpsertEnabled() && req.ID != "" {
+	if exists {
 		updated, svcErr := s.layoutService.UpdateLayout(ctx, req.ID, updateReq)
-		if svcErr == nil {
-			return successOutcome(resourceTypeLayout, updated.ID, updated.DisplayName, operationUpdate)
-		}
-
-		if !isNotFoundServiceError(svcErr) {
+		if svcErr != nil {
 			return serviceErrorOutcome(resourceTypeLayout, req.ID, req.DisplayName, operationUpdate, svcErr)
 		}
-
-		created, createErr := s.layoutService.CreateLayout(ctx, createReq)
-		if createErr != nil {
-			return serviceErrorOutcome(resourceTypeLayout, req.ID, req.DisplayName, operationCreate, createErr)
-		}
-
-		return successOutcome(resourceTypeLayout, created.ID, created.DisplayName, operationCreate)
+		return successOutcome(resourceTypeLayout, updated.ID, updated.DisplayName, operationUpdate)
 	}
 
 	created, svcErr := s.layoutService.CreateLayout(ctx, createReq)
