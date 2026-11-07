@@ -870,3 +870,33 @@ func (suite *ThemeAPITestSuite) TestDeleteTheme_NotFound() {
 	// Delete should not error for non-existent theme (returns 204 or 404)
 	suite.NoError(err)
 }
+
+// A data plane has no projects, so it keeps the project ID a theme gives without checking it, and lists the
+// themes that carry it.
+func (suite *ThemeAPITestSuite) TestThemeProjectIDIsKeptUnchecked() {
+	const projectID = "019a0000-0000-7000-8000-0000000000cc"
+	theme, err := suite.createTheme(CreateThemeRequest{
+		Handle:      "test-theme-project",
+		DisplayName: "Test Theme Project",
+		ProjectID:   projectID,
+		Theme:       testTheme2,
+	})
+	suite.Require().NoError(err)
+	defer func() { _ = suite.deleteTheme(theme.ID) }()
+	suite.Equal(projectID, theme.ProjectID)
+
+	fetched, err := suite.getTheme(theme.ID)
+	suite.Require().NoError(err)
+	suite.Equal(projectID, fetched.ProjectID)
+
+	resp, err := suite.client.Get(testServerURL + themeBasePath + "?projectId=" + projectID)
+	suite.Require().NoError(err)
+	defer resp.Body.Close()
+	suite.Require().Equal(http.StatusOK, resp.StatusCode)
+	var list ThemeListResponse
+	suite.Require().NoError(json.NewDecoder(resp.Body).Decode(&list))
+	suite.Equal(1, list.TotalResults)
+	suite.Require().Len(list.Themes, 1)
+	suite.Equal(theme.ID, list.Themes[0].ID)
+	suite.Equal(projectID, list.Themes[0].ProjectID)
+}

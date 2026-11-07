@@ -2294,6 +2294,8 @@ var defaultMessages = map[string]string{
 	"theme.error.invalid_offset_description": "Offset must be non-negative",
 	"theme.error.invalid_offset_param": "Invalid offset",
 	"theme.error.invalid_offset_param_description": "Offset must be a valid integer",
+	"theme.error.invalid_project": "Invalid project",
+	"theme.error.invalid_project_description": "No project exists with the given project ID",
 	"theme.error.missing_display_name": "Missing display name",
 	"theme.error.missing_display_name_description": "Display name is required",
 	"theme.error.missing_handle": "Missing theme handle",

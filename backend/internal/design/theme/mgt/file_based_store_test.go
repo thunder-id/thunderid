@@ -349,3 +349,53 @@ func (suite *ThemeFileBasedStoreTestSuite) TestIsThemeHandleConflict_SameIDExclu
 	suite.NoError(err)
 	suite.False(conflict)
 }
+
+// A declarative theme keeps its project, and the project lists only its own themes, a page at a time.
+func (suite *ThemeFileBasedStoreTestSuite) TestThemesByProject() {
+	ctx := context.Background()
+	for i, projectID := range []string{"project-1", "project-1", "project-2", ""} {
+		req := suite.createTestTheme(fmt.Sprintf("Theme %d", i))
+		req.Handle = fmt.Sprintf("theme-%d", i)
+		req.ProjectID = projectID
+		suite.Require().NoError(suite.store.CreateTheme(ctx, fmt.Sprintf("theme-%d", i), req))
+	}
+
+	theme, err := suite.store.GetTheme(ctx, "theme-0")
+	suite.Require().NoError(err)
+	suite.Equal("project-1", theme.ProjectID)
+
+	count, err := suite.store.GetThemeListCountByProject(ctx, "project-1")
+	suite.NoError(err)
+	suite.Equal(2, count)
+
+	all, err := suite.store.GetThemeListByProject(ctx, "project-1", 10, 0)
+	suite.NoError(err)
+	suite.Len(all, 2)
+	for _, theme := range all {
+		suite.Equal("project-1", theme.ProjectID)
+	}
+
+	page, err := suite.store.GetThemeListByProject(ctx, "project-1", 1, 1)
+	suite.NoError(err)
+	suite.Len(page, 1)
+
+	past, err := suite.store.GetThemeListByProject(ctx, "project-1", 10, 5)
+	suite.NoError(err)
+	suite.Empty(past)
+
+	none, err := suite.store.GetThemeListCountByProject(ctx, "project-3")
+	suite.NoError(err)
+	suite.Zero(none)
+}
+
+// The loader hands a parsed theme to the store with its project.
+func (suite *ThemeFileBasedStoreTestSuite) TestCreateKeepsProject() {
+	suite.Require().NoError(suite.store.Create("theme-p", &Theme{
+		ID: "theme-p", Handle: "theme-p", DisplayName: "Project", ProjectID: "project-1",
+		Theme: json.RawMessage(`{}`),
+	}))
+
+	theme, err := suite.store.GetTheme(context.Background(), "theme-p")
+	suite.Require().NoError(err)
+	suite.Equal("project-1", theme.ProjectID)
+}

@@ -2404,6 +2404,34 @@ func TestImportResources_ThemeUpsertCreatePreservesID(t *testing.T) {
 	assert.Equal(t, "thm-123", themeSvc.created[0].ID)
 }
 
+// A theme document can place the theme in a project, on create and on upsert.
+func TestImportResources_ThemeKeepsProject(t *testing.T) {
+	themeSvc := &fakeThemeService{byID: map[string]*thememgt.Theme{}, byHandle: map[string]*thememgt.Theme{}}
+	svc := newImportService(
+		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, themeSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	content := strings.Join([]string{
+		"resource_type: theme",
+		"id: thm-123",
+		"handle: default-theme",
+		"displayName: Default Theme",
+		"projectId: project-1",
+		"theme:",
+		"  colorSchemes:",
+		"    light: {}",
+		"",
+	}, "\n")
+
+	_, err := svc.ImportResources(context.Background(), &ImportRequest{Content: content})
+	require.Nil(t, err)
+	require.Len(t, themeSvc.created, 1)
+	assert.Equal(t, "project-1", themeSvc.created[0].ProjectID)
+
+	_, err = svc.ImportResources(context.Background(), &ImportRequest{Content: content})
+	require.Nil(t, err)
+	require.Len(t, themeSvc.updated, 1)
+	assert.Equal(t, "project-1", themeSvc.updated[0].ProjectID)
+}
+
 func layoutImportContent() string {
 	return strings.Join([]string{
 		"resource_type: layout",

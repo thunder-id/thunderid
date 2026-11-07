@@ -76,6 +76,7 @@ CREATE TABLE "THEME" (
     ID VARCHAR(36) NOT NULL,
     DISPLAY_NAME VARCHAR(255) NOT NULL,
     HANDLE VARCHAR(255) NOT NULL,
+    PROJECT_ID VARCHAR(36),
     DESCRIPTION VARCHAR(512),
     THEME JSONB NOT NULL,
     CREATED_AT TIMESTAMPTZ DEFAULT NOW(),
@@ -86,6 +87,9 @@ CREATE TABLE "THEME" (
 
 -- Index for deployment isolation on THEME
 CREATE INDEX idx_theme_deployment_id ON "THEME" (DEPLOYMENT_ID);
+
+-- Composite index for listing the themes of a project
+CREATE INDEX idx_theme_project ON "THEME" (DEPLOYMENT_ID, PROJECT_ID);
 
 -- Unique index for theme handle per deployment
 CREATE UNIQUE INDEX idx_theme_handle_deployment ON "THEME" (HANDLE, DEPLOYMENT_ID);

@@ -43,7 +43,14 @@ func (th *themeMgtHandler) HandleThemeListRequest(w http.ResponseWriter, r *http
 		return
 	}
 
-	themeList, svcErr := th.themeMgtService.GetThemeList(ctx, limit, offset)
+	// With a project, the list is of the project's themes. Without one, it is of every theme.
+	var themeList *ThemeList
+	if query := r.URL.Query(); query.Has(projectIDQueryParam) {
+		themeList, svcErr = th.themeMgtService.GetThemeListByProject(
+			ctx, sysutils.SanitizeString(query.Get(projectIDQueryParam)), limit, offset)
+	} else {
+		themeList, svcErr = th.themeMgtService.GetThemeList(ctx, limit, offset)
+	}
 	if svcErr != nil {
 		handleError(ctx, w, svcErr)
 		return
@@ -57,6 +64,7 @@ func (th *themeMgtHandler) HandleThemeListRequest(w http.ResponseWriter, r *http
 			Handle:             theme.Handle,
 			DisplayName:        theme.DisplayName,
 			Description:        theme.Description,
+			ProjectID:          theme.ProjectID,
 			DefaultColorScheme: defaultColorScheme,
 			PrimaryColor:       primaryColor,
 			CreatedAt:          theme.CreatedAt,
@@ -94,6 +102,7 @@ func (th *themeMgtHandler) HandleThemePostRequest(w http.ResponseWriter, r *http
 		Handle:      createRequest.Handle,
 		DisplayName: createRequest.DisplayName,
 		Description: createRequest.Description,
+		ProjectID:   sysutils.SanitizeString(createRequest.ProjectID),
 		Theme:       createRequest.Theme,
 	})
 	if svcErr != nil {
@@ -106,6 +115,7 @@ func (th *themeMgtHandler) HandleThemePostRequest(w http.ResponseWriter, r *http
 		Handle:      createdTheme.Handle,
 		DisplayName: createdTheme.DisplayName,
 		Description: createdTheme.Description,
+		ProjectID:   createdTheme.ProjectID,
 		Theme:       createdTheme.Theme,
 		CreatedAt:   createdTheme.CreatedAt,
 		UpdatedAt:   createdTheme.UpdatedAt,
@@ -142,6 +152,7 @@ func (th *themeMgtHandler) HandleThemePutRequest(w http.ResponseWriter, r *http.
 		return
 	}
 
+	updateRequest.ProjectID = sysutils.SanitizeString(updateRequest.ProjectID)
 	updatedTheme, svcErr := th.themeMgtService.UpdateTheme(ctx, id, *updateRequest)
 	if svcErr != nil {
 		handleError(ctx, w, svcErr)
@@ -153,6 +164,7 @@ func (th *themeMgtHandler) HandleThemePutRequest(w http.ResponseWriter, r *http.
 		Handle:      updatedTheme.Handle,
 		DisplayName: updatedTheme.DisplayName,
 		Description: updatedTheme.Description,
+		ProjectID:   updatedTheme.ProjectID,
 		Theme:       updatedTheme.Theme,
 		CreatedAt:   updatedTheme.CreatedAt,
 		UpdatedAt:   updatedTheme.UpdatedAt,
@@ -259,6 +271,7 @@ func toThemeGetResponse(theme *Theme) Theme {
 		Handle:      theme.Handle,
 		DisplayName: theme.DisplayName,
 		Description: theme.Description,
+		ProjectID:   theme.ProjectID,
 		Theme:       theme.Theme,
 		CreatedAt:   theme.CreatedAt,
 		UpdatedAt:   theme.UpdatedAt,

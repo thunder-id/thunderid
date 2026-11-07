@@ -9,22 +9,22 @@ var (
 	// queryCreateTheme creates a new theme configuration.
 	queryCreateTheme = dbmodel.DBQuery{
 		ID: "THQ-THEME_MGT-01",
-		Query: `INSERT INTO "THEME" (ID, HANDLE, DISPLAY_NAME, DESCRIPTION, THEME, DEPLOYMENT_ID) ` +
-			`VALUES ($1, $2, $3, $4, $5, $6)`,
+		Query: `INSERT INTO "THEME" (ID, HANDLE, DISPLAY_NAME, DESCRIPTION, THEME, DEPLOYMENT_ID, PROJECT_ID) ` +
+			`VALUES ($1, $2, $3, $4, $5, $6, $7)`,
 	}
 
 	// queryGetThemeByID retrieves a theme configuration by ID.
 	queryGetThemeByID = dbmodel.DBQuery{
 		ID: "THQ-THEME_MGT-02",
-		Query: `SELECT ID, HANDLE, DISPLAY_NAME, DESCRIPTION, THEME, CREATED_AT, UPDATED_AT FROM "THEME" ` +
-			`WHERE ID = $1 AND DEPLOYMENT_ID = $2`,
+		Query: `SELECT ID, HANDLE, DISPLAY_NAME, DESCRIPTION, PROJECT_ID, THEME, CREATED_AT, UPDATED_AT ` +
+			`FROM "THEME" WHERE ID = $1 AND DEPLOYMENT_ID = $2`,
 	}
 
 	// queryGetThemeList retrieves a list of theme configurations with pagination.
 	queryGetThemeList = dbmodel.DBQuery{
 		ID: "THQ-THEME_MGT-03",
-		Query: `SELECT ID, HANDLE, DISPLAY_NAME, DESCRIPTION, THEME, CREATED_AT, UPDATED_AT FROM "THEME" ` +
-			`WHERE DEPLOYMENT_ID = $3 ORDER BY CREATED_AT DESC LIMIT $1 OFFSET $2`,
+		Query: `SELECT ID, HANDLE, DISPLAY_NAME, DESCRIPTION, PROJECT_ID, THEME, CREATED_AT, UPDATED_AT ` +
+			`FROM "THEME" WHERE DEPLOYMENT_ID = $3 ORDER BY CREATED_AT DESC LIMIT $1 OFFSET $2`,
 	}
 
 	// queryGetThemeListCount retrieves the total count of theme configurations.
@@ -36,11 +36,11 @@ var (
 	// queryUpdateTheme updates a theme configuration.
 	queryUpdateTheme = dbmodel.DBQuery{
 		ID: "THQ-THEME_MGT-05",
-		PostgresQuery: `UPDATE "THEME" SET DISPLAY_NAME = $1, DESCRIPTION = $2, THEME = $3, ` +
+		PostgresQuery: `UPDATE "THEME" SET DISPLAY_NAME = $1, DESCRIPTION = $2, THEME = $3, PROJECT_ID = $6, ` +
 			`UPDATED_AT = NOW() WHERE ID = $4 AND DEPLOYMENT_ID = $5`,
-		SQLiteQuery: `UPDATE "THEME" SET DISPLAY_NAME = $1, DESCRIPTION = $2, THEME = $3, ` +
+		SQLiteQuery: `UPDATE "THEME" SET DISPLAY_NAME = $1, DESCRIPTION = $2, THEME = $3, PROJECT_ID = $6, ` +
 			`UPDATED_AT = datetime('now') WHERE ID = $4 AND DEPLOYMENT_ID = $5`,
-		Query: `UPDATE "THEME" SET DISPLAY_NAME = $1, DESCRIPTION = $2, THEME = $3, ` +
+		Query: `UPDATE "THEME" SET DISPLAY_NAME = $1, DESCRIPTION = $2, THEME = $3, PROJECT_ID = $6, ` +
 			`UPDATED_AT = datetime('now') WHERE ID = $4 AND DEPLOYMENT_ID = $5`,
 	}
 
@@ -60,5 +60,18 @@ var (
 	queryCheckThemeHandleConflict = dbmodel.DBQuery{
 		ID:    "THQ-THEME_MGT-09",
 		Query: `SELECT COUNT(*) as total FROM "THEME" WHERE HANDLE = $1 AND DEPLOYMENT_ID = $2 AND ID != $3`,
+	}
+
+	// queryGetThemeListByProject retrieves a page of the themes of a project.
+	queryGetThemeListByProject = dbmodel.DBQuery{
+		ID: "THQ-THEME_MGT-10",
+		Query: `SELECT ID, HANDLE, DISPLAY_NAME, DESCRIPTION, PROJECT_ID, THEME, CREATED_AT, UPDATED_AT ` +
+			`FROM "THEME" WHERE DEPLOYMENT_ID = $3 AND PROJECT_ID = $4 ORDER BY CREATED_AT DESC LIMIT $1 OFFSET $2`,
+	}
+
+	// queryGetThemeListCountByProject retrieves the number of themes of a project.
+	queryGetThemeListCountByProject = dbmodel.DBQuery{
+		ID:    "THQ-THEME_MGT-11",
+		Query: `SELECT COUNT(*) as total FROM "THEME" WHERE DEPLOYMENT_ID = $1 AND PROJECT_ID = $2`,
 	}
 )

@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -31,18 +32,24 @@ func TestThemeHandlerTestSuite(t *testing.T) {
 
 // mockThemeService implements ThemeMgtServiceInterface for handler tests
 type mockThemeService struct {
-	getThemeListFunc   func(limit, offset int) (*ThemeList, *tidcommon.ServiceError)
-	createThemeFunc    func(theme CreateThemeRequestWithID) (*Theme, *tidcommon.ServiceError)
-	getThemeFunc       func(id string) (*Theme, *tidcommon.ServiceError)
-	updateThemeFunc    func(id string, theme UpdateThemeRequest) (*Theme, *tidcommon.ServiceError)
-	deleteThemeFunc    func(id string) *tidcommon.ServiceError
-	isThemeExistFunc   func(id string) (bool, *tidcommon.ServiceError)
-	getThemeUsagesFunc func(id string, limit, offset int) (
+	getThemeListFunc          func(limit, offset int) (*ThemeList, *tidcommon.ServiceError)
+	getThemeListByProjectFunc func(projectID string, limit, offset int) (*ThemeList, *tidcommon.ServiceError)
+	createThemeFunc           func(theme CreateThemeRequestWithID) (*Theme, *tidcommon.ServiceError)
+	getThemeFunc              func(id string) (*Theme, *tidcommon.ServiceError)
+	updateThemeFunc           func(id string, theme UpdateThemeRequest) (*Theme, *tidcommon.ServiceError)
+	deleteThemeFunc           func(id string) *tidcommon.ServiceError
+	isThemeExistFunc          func(id string) (bool, *tidcommon.ServiceError)
+	getThemeUsagesFunc        func(id string, limit, offset int) (
 		*resourcedependency.DependenciesResponse, *tidcommon.ServiceError)
 }
 
 func (m *mockThemeService) GetThemeList(_ context.Context, limit, offset int) (*ThemeList, *tidcommon.ServiceError) {
 	return m.getThemeListFunc(limit, offset)
+}
+
+func (m *mockThemeService) GetThemeListByProject(
+	_ context.Context, projectID string, limit, offset int) (*ThemeList, *tidcommon.ServiceError) {
+	return m.getThemeListByProjectFunc(projectID, limit, offset)
 }
 
 func (m *mockThemeService) CreateTheme(
@@ -606,5 +613,82 @@ func (suite *ThemeHandlerTestSuite) TestHandleError_StatusCodeMapping() {
 			handleError(context.Background(), w, tc.svcErr)
 			assert.Equal(suite.T(), tc.expectedStatus, w.Code)
 		})
+	}
+}
+
+// A list with a projectId lists the themes of that project, and each entry carries it.
+func (suite *ThemeHandlerTestSuite) TestHandleThemeListRequest_ByProject() {
+	var gotProjectID string
+	mockSvc := &mockThemeService{
+		getThemeListByProjectFunc: func(projectID string, limit, offset int) (*ThemeList,
+			*tidcommon.ServiceError) {
+			gotProjectID = projectID
+			return &ThemeList{TotalResults: 1, StartIndex: 1, Count: 1,
+				Themes: []Theme{{ID: "theme-1", ProjectID: projectID}}}, nil
+		},
+	}
+	req := httptest.NewRequest(http.MethodGet, "/design/themes?projectId=project-1", nil)
+	w := httptest.NewRecorder()
+
+	newThemeMgtHandler(mockSvc).HandleThemeListRequest(w, req)
+
+	suite.Equal(http.StatusOK, w.Code)
+	suite.Equal("project-1", gotProjectID)
+	var response ThemeListResponse
+	suite.Require().NoError(json.Unmarshal(w.Body.Bytes(), &response))
+	suite.Require().Len(response.Themes, 1)
+	suite.Equal("project-1", response.Themes[0].ProjectID)
+}
+
+// A create and an update pass the project ID to the service, and the response carries it.
+func (suite *ThemeHandlerTestSuite) TestHandleThemeWritesWithProject() {
+	mockSvc := &mockThemeService{
+		createThemeFunc: func(theme CreateThemeRequestWithID) (*Theme, *tidcommon.ServiceError) {
+			return &Theme{ID: "theme-1", Handle: theme.Handle, ProjectID: theme.ProjectID}, nil
+		},
+		updateThemeFunc: func(id string, theme UpdateThemeRequest) (*Theme, *tidcommon.ServiceError) {
+			return &Theme{ID: id, ProjectID: theme.ProjectID}, nil
+		},
+	}
+	handler := newThemeMgtHandler(mockSvc)
+	body := `{"handle":"classic","displayName":"Classic","projectId":"project-1","theme":{}}`
+
+	w := httptest.NewRecorder()
+	handler.HandleThemePostRequest(w, httptest.NewRequest(http.MethodPost, "/design/themes",
+		strings.NewReader(body)))
+	suite.Equal(http.StatusCreated, w.Code)
+	var created Theme
+	suite.Require().NoError(json.Unmarshal(w.Body.Bytes(), &created))
+	suite.Equal("project-1", created.ProjectID)
+
+	req := httptest.NewRequest(http.MethodPut, "/design/themes/theme-1", strings.NewReader(body))
+	req.SetPathValue("id", "theme-1")
+	w = httptest.NewRecorder()
+	handler.HandleThemePutRequest(w, req)
+	suite.Equal(http.StatusOK, w.Code)
+	var updated Theme
+	suite.Require().NoError(json.Unmarshal(w.Body.Bytes(), &updated))
+	suite.Equal("project-1", updated.ProjectID)
+}
+
+// A read of a theme in a project carries the project ID, and one in no project leaves it out.
+func (suite *ThemeHandlerTestSuite) TestHandleThemeGetRequest_ProjectID() {
+	mockSvc := &mockThemeService{
+		getThemeFunc: func(id string) (*Theme, *tidcommon.ServiceError) {
+			if id == "scoped" {
+				return &Theme{ID: id, ProjectID: "project-1"}, nil
+			}
+			return &Theme{ID: id}, nil
+		},
+	}
+	handler := newThemeMgtHandler(mockSvc)
+	for id, want := range map[string]bool{"scoped": true, "unscoped": false} {
+		req := httptest.NewRequest(http.MethodGet, "/design/themes/"+id, nil)
+		req.SetPathValue("id", id)
+		w := httptest.NewRecorder()
+		handler.HandleThemeGetRequest(w, req)
+		suite.Equal(http.StatusOK, w.Code)
+		suite.Equal(want, strings.Contains(w.Body.String(), `"projectId":"project-1"`), id)
+		suite.Equal(want, strings.Contains(w.Body.String(), `"projectId"`), id)
 	}
 }

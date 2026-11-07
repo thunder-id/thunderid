@@ -110,6 +110,7 @@ type themeDeclarativeYAML struct {
 	Handle      string      `yaml:"handle"`
 	DisplayName string      `yaml:"displayName"`
 	Description string      `yaml:"description,omitempty"`
+	ProjectID   string      `yaml:"projectId,omitempty"`
 	Theme       interface{} `yaml:"theme"`
 }
 
@@ -612,12 +613,14 @@ func (s *importService) importTheme(
 		Handle:      req.Handle,
 		DisplayName: req.DisplayName,
 		Description: req.Description,
+		ProjectID:   req.ProjectID,
 		Theme:       themeBytes,
 	}
 	updateReq := thememgt.UpdateThemeRequest{
 		Handle:      req.Handle,
 		DisplayName: req.DisplayName,
 		Description: req.Description,
+		ProjectID:   req.ProjectID,
 		Theme:       themeBytes,
 	}
 

@@ -324,6 +324,88 @@ func (_c *ThemeMgtServiceInterfaceMock_GetThemeList_Call) RunAndReturn(run func(
 	return _c
 }
 
+// GetThemeListByProject provides a mock function for the type ThemeMgtServiceInterfaceMock
+func (_mock *ThemeMgtServiceInterfaceMock) GetThemeListByProject(ctx context.Context, projectID string, limit int, offset int) (*thememgt.ThemeList, *common.ServiceError) {
+	ret := _mock.Called(ctx, projectID, limit, offset)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetThemeListByProject")
+	}
+
+	var r0 *thememgt.ThemeList
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int) (*thememgt.ThemeList, *common.ServiceError)); ok {
+		return returnFunc(ctx, projectID, limit, offset)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int) *thememgt.ThemeList); ok {
+		r0 = returnFunc(ctx, projectID, limit, offset)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*thememgt.ThemeList)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, int, int) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, projectID, limit, offset)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// ThemeMgtServiceInterfaceMock_GetThemeListByProject_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetThemeListByProject'
+type ThemeMgtServiceInterfaceMock_GetThemeListByProject_Call struct {
+	*mock.Call
+}
+
+// GetThemeListByProject is a helper method to define mock.On call
+//   - ctx context.Context
+//   - projectID string
+//   - limit int
+//   - offset int
+func (_e *ThemeMgtServiceInterfaceMock_Expecter) GetThemeListByProject(ctx any, projectID any, limit any, offset any) *ThemeMgtServiceInterfaceMock_GetThemeListByProject_Call {
+	return &ThemeMgtServiceInterfaceMock_GetThemeListByProject_Call{Call: _e.mock.On("GetThemeListByProject", ctx, projectID, limit, offset)}
+}
+
+func (_c *ThemeMgtServiceInterfaceMock_GetThemeListByProject_Call) Run(run func(ctx context.Context, projectID string, limit int, offset int)) *ThemeMgtServiceInterfaceMock_GetThemeListByProject_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 int
+		if args[2] != nil {
+			arg2 = args[2].(int)
+		}
+		var arg3 int
+		if args[3] != nil {
+			arg3 = args[3].(int)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *ThemeMgtServiceInterfaceMock_GetThemeListByProject_Call) Return(themeList *thememgt.ThemeList, serviceError *common.ServiceError) *ThemeMgtServiceInterfaceMock_GetThemeListByProject_Call {
+	_c.Call.Return(themeList, serviceError)
+	return _c
+}
+
+func (_c *ThemeMgtServiceInterfaceMock_GetThemeListByProject_Call) RunAndReturn(run func(ctx context.Context, projectID string, limit int, offset int) (*thememgt.ThemeList, *common.ServiceError)) *ThemeMgtServiceInterfaceMock_GetThemeListByProject_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetThemeUsages provides a mock function for the type ThemeMgtServiceInterfaceMock
 func (_mock *ThemeMgtServiceInterfaceMock) GetThemeUsages(ctx context.Context, id string, limit int, offset int) (*resourcedependency.DependenciesResponse, *common.ServiceError) {
 	ret := _mock.Called(ctx, id, limit, offset)
