@@ -32,6 +32,8 @@ import (
 	"github.com/thunder-id/thunderid/internal/role"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
+	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/filter"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/observability"
@@ -91,6 +93,7 @@ type agentService struct {
 	projectValidator projectOUValidator
 	// projectRequired is set when a deployment that serves projects refuses an agent created without one.
 	projectRequired bool
+	bus             eventbus.EventBusInterface
 }
 
 func newAgentService(
@@ -105,6 +108,7 @@ func newAgentService(
 	transactioner providers.Transactioner,
 	observabilitySvc observability.ObservabilityServiceInterface,
 	projectValidator projectOUValidator,
+	bus eventbus.EventBusInterface,
 ) AgentServiceInterface {
 	return &agentService{
 		logger:               log.GetLogger().With(log.String(log.LoggerKeyComponentName, "AgentService")),
@@ -120,11 +124,25 @@ func newAgentService(
 		observabilitySvc:     observabilitySvc,
 		projectValidator:     projectValidator,
 		projectRequired:      projectValidator != nil && projectscope.ProjectRequired(security.ResourceTypeAgent),
+		bus:                  bus,
 	}
 }
 
 // CreateAgent creates an agent entity with optional inbound auth profile.
 func (s *agentService) CreateAgent(ctx context.Context, agent *providers.Agent) (
+	*model.AgentCompleteResponse, *tidcommon.ServiceError) {
+	created, svcErr := s.createAgent(ctx, agent)
+	var agentID string
+	if svcErr == nil {
+		agentID = created.ID
+	}
+	s.publishAgentEvent(ctx, audit.EventAgentCreate, audit.ActionCreate, agentID, svcErr)
+	return created, svcErr
+}
+
+// createAgent creates an agent entity with optional inbound auth profile without publishing its audit
+// event.
+func (s *agentService) createAgent(ctx context.Context, agent *providers.Agent) (
 	*model.AgentCompleteResponse, *tidcommon.ServiceError) {
 	if agent == nil {
 		return nil, &ErrorInvalidRequestFormat
@@ -460,6 +478,14 @@ func (s *agentService) listAgentsByOUIDs(ctx context.Context, ouIDs []string, li
 // UpdateAgent applies a full-replacement update to the agent.
 func (s *agentService) UpdateAgent(ctx context.Context, agentID string,
 	req *model.UpdateAgentRequest) (*model.AgentCompleteResponse, *tidcommon.ServiceError) {
+	updated, svcErr := s.updateAgent(ctx, agentID, req)
+	s.publishAgentEvent(ctx, audit.EventAgentUpdate, audit.ActionUpdate, agentID, svcErr)
+	return updated, svcErr
+}
+
+// updateAgent applies a full-replacement update to the agent without publishing its audit event.
+func (s *agentService) updateAgent(ctx context.Context, agentID string,
+	req *model.UpdateAgentRequest) (*model.AgentCompleteResponse, *tidcommon.ServiceError) {
 	if agentID == "" {
 		return nil, &ErrorMissingAgentID
 	}
@@ -672,14 +698,21 @@ func (s *agentService) UpdateAgentCredentials(ctx context.Context, agentID strin
 	return nil
 }
 
-// DeleteAgent removes the agent and its associated inbound client.
 // SetDependencyRegistry injects the dependency registry. Called by servicemanager after the
 // provider services are initialized to avoid a cyclic import.
 func (s *agentService) SetDependencyRegistry(r resourcedependency.Registry) {
 	s.dependencyRegistry = r
 }
 
+// DeleteAgent removes the agent and its associated inbound client.
 func (s *agentService) DeleteAgent(ctx context.Context, agentID string) *tidcommon.ServiceError {
+	svcErr := s.deleteAgent(ctx, agentID)
+	s.publishAgentEvent(ctx, audit.EventAgentDelete, audit.ActionDelete, agentID, svcErr)
+	return svcErr
+}
+
+// deleteAgent removes the agent and its associated inbound client without publishing its audit event.
+func (s *agentService) deleteAgent(ctx context.Context, agentID string) *tidcommon.ServiceError {
 	if agentID == "" {
 		return &ErrorMissingAgentID
 	}
@@ -738,6 +771,20 @@ func (s *agentService) DeleteAgent(ctx context.Context, agentID string) *tidcomm
 		return &tidcommon.InternalServerError
 	}
 	return nil
+}
+
+// publishAgentEvent publishes the audit event of an attempt on the agent with agentID, after the change
+// committed or was refused. A delete of a missing agent fails, so it is recorded as failed. An update
+// whose entity write committed but whose new client secret could not be stored is recorded as failed,
+// and the role assignments and group memberships a delete removes write no events: known limitations.
+// Neither the agent's client credentials nor its attributes are recorded.
+func (s *agentService) publishAgentEvent(ctx context.Context, name string, action audit.Action,
+	agentID string, svcErr *tidcommon.ServiceError) {
+	// A failed attempt keeps the ID the caller asked for, even one that matches no agent, as forensic
+	// evidence of what was probed; the payload caps it and the sink escapes it.
+	target := audit.Ref{Type: audit.TargetTypeAgent, ID: agentID}
+	eventbus.TryPublish(ctx, s.bus,
+		eventbus.NewEvent(ctx, name).With(audit.ChangePayload(ctx, target, action, svcErr)))
 }
 
 // GetResourceDependencies returns the agents that reference the resource identified by

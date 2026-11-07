@@ -70,6 +70,7 @@ func TestCreateEntityTypeReturnsErrorWhenOrganizationUnitMissing(t *testing.T) {
 		Once()
 
 	service := &entityTypeService{
+		bus:             discardingBus{},
 		entityTypeStore: storeMock,
 		ouService:       ouServiceMock,
 		transactioner:   &mockTransactioner{},
@@ -112,6 +113,7 @@ func TestCreateEntityTypeReturnsInternalErrorWhenOUValidationFails(t *testing.T)
 		Once()
 
 	service := &entityTypeService{
+		bus:             discardingBus{},
 		entityTypeStore: storeMock,
 		ouService:       ouServiceMock,
 		transactioner:   &mockTransactioner{},
@@ -153,6 +155,7 @@ func TestUpdateEntityTypeReturnsErrorWhenOrganizationUnitMissing(t *testing.T) {
 		Once()
 
 	service := &entityTypeService{
+		bus:             discardingBus{},
 		entityTypeStore: storeMock,
 		ouService:       ouServiceMock,
 		transactioner:   &mockTransactioner{},
@@ -192,6 +195,7 @@ func TestCreateEntityTypeResolvesOUHandleToID(t *testing.T) {
 	storeMock.On("CreateEntityType", mock.Anything, mock.Anything).Return(nil).Once()
 
 	service := &entityTypeService{
+		bus:             discardingBus{},
 		entityTypeStore: storeMock,
 		ouService:       ouServiceMock,
 		transactioner:   &mockTransactioner{},
@@ -224,6 +228,7 @@ func TestCreateEntityTypeReturnsErrorWhenOUHandleNotFound(t *testing.T) {
 		Return(ou.OrganizationUnit{}, &tidcommon.ServiceError{Code: "OUS-4004"}).Once()
 
 	service := &entityTypeService{
+		bus:             discardingBus{},
 		entityTypeStore: storeMock,
 		ouService:       ouServiceMock,
 		transactioner:   &mockTransactioner{},
@@ -264,6 +269,7 @@ func TestUpdateEntityTypeResolvesOUHandleToID(t *testing.T) {
 	storeMock.On("UpdateEntityTypeByID", mock.Anything, TypeCategoryUser, "schema-id", mock.Anything).Return(nil).Once()
 
 	service := &entityTypeService{
+		bus:             discardingBus{},
 		entityTypeStore: storeMock,
 		ouService:       ouServiceMock,
 		transactioner:   &mockTransactioner{},
@@ -298,6 +304,7 @@ func TestUpdateEntityTypeReturnsErrorWhenOUHandleNotFound(t *testing.T) {
 		Return(ou.OrganizationUnit{}, &tidcommon.ServiceError{Code: "OUS-4004"}).Once()
 
 	service := &entityTypeService{
+		bus:             discardingBus{},
 		entityTypeStore: storeMock,
 		ouService:       ouServiceMock,
 		transactioner:   &mockTransactioner{},
@@ -338,6 +345,7 @@ func TestCreateEntityTypeOUIDWinsWhenBothOUIDAndOUHandleProvided(t *testing.T) {
 	storeMock.On("CreateEntityType", mock.Anything, mock.Anything).Return(nil).Once()
 
 	service := &entityTypeService{
+		bus:             discardingBus{},
 		entityTypeStore: storeMock,
 		ouService:       ouServiceMock,
 		transactioner:   &mockTransactioner{},
@@ -382,6 +390,7 @@ func TestUpdateEntityTypeOUIDWinsWhenBothOUIDAndOUHandleProvided(t *testing.T) {
 		Return(nil).Once()
 
 	service := &entityTypeService{
+		bus:             discardingBus{},
 		entityTypeStore: storeMock,
 		ouService:       ouServiceMock,
 		transactioner:   &mockTransactioner{},
@@ -406,7 +415,7 @@ func TestResolveEntityTypeHandles_OUHandleResolved(t *testing.T) {
 	ouServiceMock.On("GetOrganizationUnitByPath", mock.Anything, "default").
 		Return(ou.OrganizationUnit{ID: testOUID1}, (*tidcommon.ServiceError)(nil)).Once()
 
-	svc := &entityTypeService{ouService: ouServiceMock}
+	svc := &entityTypeService{bus: discardingBus{}, ouService: ouServiceMock}
 	et := &EntityType{OUHandle: "default"}
 
 	svcErr := svc.ResolveEntityTypeHandles(context.Background(), et)
@@ -416,7 +425,7 @@ func TestResolveEntityTypeHandles_OUHandleResolved(t *testing.T) {
 }
 
 func TestResolveEntityTypeHandles_OUIDAlreadySet(t *testing.T) {
-	svc := &entityTypeService{}
+	svc := &entityTypeService{bus: discardingBus{}}
 	et := &EntityType{OUID: testOUID1}
 
 	svcErr := svc.ResolveEntityTypeHandles(context.Background(), et)
@@ -430,7 +439,7 @@ func TestResolveEntityTypeHandles_OUHandleNotFound(t *testing.T) {
 	ouServiceMock.On("GetOrganizationUnitByPath", mock.Anything, "bad").
 		Return(ou.OrganizationUnit{}, &tidcommon.ServiceError{Code: "OUS-4004"}).Once()
 
-	svc := &entityTypeService{ouService: ouServiceMock}
+	svc := &entityTypeService{bus: discardingBus{}, ouService: ouServiceMock}
 	et := &EntityType{OUHandle: "bad"}
 
 	svcErr := svc.ResolveEntityTypeHandles(context.Background(), et)
@@ -440,7 +449,7 @@ func TestResolveEntityTypeHandles_OUHandleNotFound(t *testing.T) {
 }
 
 func TestResolveEntityTypeHandles_NilOUService(t *testing.T) {
-	svc := &entityTypeService{ouService: nil}
+	svc := &entityTypeService{bus: discardingBus{}, ouService: nil}
 	et := &EntityType{OUHandle: "default"}
 
 	svcErr := svc.ResolveEntityTypeHandles(context.Background(), et)
@@ -463,7 +472,7 @@ func TestResolveEntityTypeHandles_DeclarativeLoaderUsesRuntimeContext(t *testing
 		}).
 		Return(ou.OrganizationUnit{ID: testOUID1}, (*tidcommon.ServiceError)(nil)).Once()
 
-	svc := &entityTypeService{ouService: ouServiceMock}
+	svc := &entityTypeService{bus: discardingBus{}, ouService: ouServiceMock}
 	et := &EntityType{OUHandle: "default"}
 
 	svcErr := svc.ResolveEntityTypeHandles(context.Background(), et)
@@ -503,6 +512,7 @@ func TestCreateEntityType_OUHandleLookupUsesCallerContext(t *testing.T) {
 	storeMock.On("CreateEntityType", mock.Anything, mock.Anything).Return(nil).Once()
 
 	service := &entityTypeService{
+		bus:             discardingBus{},
 		entityTypeStore: storeMock,
 		ouService:       ouServiceMock,
 		transactioner:   &mockTransactioner{},
@@ -552,6 +562,7 @@ func TestUpdateEntityType_OUHandleLookupUsesCallerContext(t *testing.T) {
 		Return(nil).Once()
 
 	service := &entityTypeService{
+		bus:             discardingBus{},
 		entityTypeStore: storeMock,
 		ouService:       ouServiceMock,
 		transactioner:   &mockTransactioner{},
@@ -585,7 +596,7 @@ func TestGetResourceDependenciesReportsEntityTypesInOU(t *testing.T) {
 		Return([]EntityTypeListItem{{ID: "at-1", DisplayName: "Default"}}, nil).
 		Once()
 
-	service := &entityTypeService{entityTypeStore: storeMock}
+	service := &entityTypeService{bus: discardingBus{}, entityTypeStore: storeMock}
 
 	deps, err := service.GetResourceDependencies(context.Background(), resourcedependency.ResourceTypeOU, "ou-1")
 
@@ -614,7 +625,7 @@ func TestGetResourceDependenciesReturnsEmptyWhenOUHasNoEntityTypes(t *testing.T)
 		Return([]EntityTypeListItem{}, nil).
 		Twice()
 
-	service := &entityTypeService{entityTypeStore: storeMock}
+	service := &entityTypeService{bus: discardingBus{}, entityTypeStore: storeMock}
 
 	deps, err := service.GetResourceDependencies(context.Background(), resourcedependency.ResourceTypeOU, "ou-1")
 
@@ -625,7 +636,7 @@ func TestGetResourceDependenciesReturnsEmptyWhenOUHasNoEntityTypes(t *testing.T)
 func TestGetResourceDependenciesIgnoresNonOUResourceTypes(t *testing.T) {
 	storeMock := newEntityTypeStoreInterfaceMock(t)
 
-	service := &entityTypeService{entityTypeStore: storeMock}
+	service := &entityTypeService{bus: discardingBus{}, entityTypeStore: storeMock}
 
 	deps, err := service.GetResourceDependencies(context.Background(), resourcedependency.ResourceTypeFlow, "flow-1")
 
@@ -642,7 +653,7 @@ func TestGetResourceDependenciesReturnsStoreError(t *testing.T) {
 		Return(nil, errors.New("db failure")).
 		Once()
 
-	service := &entityTypeService{entityTypeStore: storeMock}
+	service := &entityTypeService{bus: discardingBus{}, entityTypeStore: storeMock}
 
 	deps, err := service.GetResourceDependencies(context.Background(), resourcedependency.ResourceTypeOU, "ou-1")
 
@@ -663,6 +674,7 @@ func TestGetEntityTypeByHandleReturnsSchema(t *testing.T) {
 		Once()
 
 	service := &entityTypeService{
+		bus:             discardingBus{},
 		entityTypeStore: storeMock,
 		transactioner:   &mockTransactioner{},
 		authzService:    newAllowAllAuthz(t),
@@ -683,6 +695,7 @@ func TestGetEntityTypeByHandleReturnsNotFound(t *testing.T) {
 		Once()
 
 	service := &entityTypeService{
+		bus:             discardingBus{},
 		entityTypeStore: storeMock,
 		transactioner:   &mockTransactioner{},
 	}
@@ -702,6 +715,7 @@ func TestGetEntityTypeByHandleReturnsInternalErrorOnStoreFailure(t *testing.T) {
 		Once()
 
 	service := &entityTypeService{
+		bus:             discardingBus{},
 		entityTypeStore: storeMock,
 		transactioner:   &mockTransactioner{},
 	}
@@ -717,6 +731,7 @@ func TestGetEntityTypeByHandleRequiresHandle(t *testing.T) {
 	storeMock := newEntityTypeStoreInterfaceMock(t)
 
 	service := &entityTypeService{
+		bus:             discardingBus{},
 		entityTypeStore: storeMock,
 		transactioner:   &mockTransactioner{},
 	}
@@ -740,6 +755,7 @@ func TestValidateEntityReturnsTrueWhenValidationPasses(t *testing.T) {
 		Once()
 
 	service := &entityTypeService{
+		bus:             discardingBus{},
 		entityTypeStore: storeMock,
 		transactioner:   &mockTransactioner{},
 	}
@@ -763,6 +779,7 @@ func TestValidateEntityReturnsInternalErrorWhenSchemaLoadFails(t *testing.T) {
 		Once()
 
 	service := &entityTypeService{
+		bus:             discardingBus{},
 		entityTypeStore: storeMock,
 		transactioner:   &mockTransactioner{},
 	}
@@ -787,6 +804,7 @@ func TestValidateEntityUniquenessReturnsTrueWhenNoConflicts(t *testing.T) {
 		Once()
 
 	service := &entityTypeService{
+		bus:             discardingBus{},
 		entityTypeStore: storeMock,
 		transactioner:   &mockTransactioner{},
 	}
@@ -813,6 +831,7 @@ func TestValidateEntityReturnsSchemaNotFoundWhenSchemaMissing(t *testing.T) {
 		Once()
 
 	service := &entityTypeService{
+		bus:             discardingBus{},
 		entityTypeStore: storeMock,
 		transactioner:   &mockTransactioner{},
 	}
@@ -837,6 +856,7 @@ func TestValidateEntityUniquenessReturnsSchemaNotFoundWhenSchemaMissing(t *testi
 		Once()
 
 	service := &entityTypeService{
+		bus:             discardingBus{},
 		entityTypeStore: storeMock,
 		transactioner:   &mockTransactioner{},
 	}
@@ -861,6 +881,7 @@ func TestValidateEntityUniquenessReturnsInternalErrorWhenSchemaLoadFails(t *test
 		Once()
 
 	service := &entityTypeService{
+		bus:             discardingBus{},
 		entityTypeStore: storeMock,
 		transactioner:   &mockTransactioner{},
 	}
@@ -1273,6 +1294,7 @@ func (s *EntityTypeServiceTestSuite) TestGetAttributes_Credential_ReturnsCredent
 		Once()
 
 	service := &entityTypeService{
+		bus:             discardingBus{},
 		entityTypeStore: storeMock,
 		transactioner:   &mockTransactioner{},
 	}
@@ -1306,6 +1328,7 @@ func (s *EntityTypeServiceTestSuite) TestGetAttributes_Credential_NoCredentials_
 		Once()
 
 	service := &entityTypeService{
+		bus:             discardingBus{},
 		entityTypeStore: storeMock,
 		transactioner:   &mockTransactioner{},
 	}
@@ -1326,6 +1349,7 @@ func (s *EntityTypeServiceTestSuite) TestGetAttributes_SchemaNotFound_ReturnsErr
 		Once()
 
 	service := &entityTypeService{
+		bus:             discardingBus{},
 		entityTypeStore: storeMock,
 		transactioner:   &mockTransactioner{},
 	}
@@ -1349,7 +1373,7 @@ func (s *EntityTypeServiceTestSuite) TestGetAttributesForEntityType_ReturnsAttri
 		On("GetEntityTypeByHandle", context.Background(), TypeCategoryAgent, "employee").
 		Return(EntityType{Schema: json.RawMessage(`{"clientId":{"type":"string"}}`)}, nil).
 		Once()
-	service := &entityTypeService{entityTypeStore: storeMock, transactioner: &mockTransactioner{}}
+	service := &entityTypeService{bus: discardingBus{}, entityTypeStore: storeMock, transactioner: &mockTransactioner{}}
 
 	attributes, svcErr := service.GetAttributesForEntityType(
 		context.Background(), "employee", AttributeFilter{AllowNonCredential: true},
@@ -1364,6 +1388,7 @@ func (s *EntityTypeServiceTestSuite) TestGetAttributes_EmptyEntityType_ReturnsEr
 	storeMock := newEntityTypeStoreInterfaceMock(s.T())
 
 	service := &entityTypeService{
+		bus:             discardingBus{},
 		entityTypeStore: storeMock,
 		transactioner:   &mockTransactioner{},
 	}
@@ -1385,6 +1410,7 @@ func (s *EntityTypeServiceTestSuite) TestGetAttributes_StoreError_ReturnsInterna
 		Once()
 
 	service := &entityTypeService{
+		bus:             discardingBus{},
 		entityTypeStore: storeMock,
 		transactioner:   &mockTransactioner{},
 	}
@@ -1412,6 +1438,7 @@ func (s *EntityTypeServiceTestSuite) TestGetAttributes_CredentialRequiredOnly_Re
 		Once()
 
 	service := &entityTypeService{
+		bus:             discardingBus{},
 		entityTypeStore: storeMock,
 		transactioner:   &mockTransactioner{},
 	}
@@ -1441,6 +1468,7 @@ func (s *EntityTypeServiceTestSuite) TestGetAttributes_CredentialAllAttrs_Includ
 		Once()
 
 	service := &entityTypeService{
+		bus:             discardingBus{},
 		entityTypeStore: storeMock,
 		transactioner:   &mockTransactioner{},
 	}
@@ -1479,6 +1507,7 @@ func (s *EntityTypeServiceTestSuite) TestGetUniqueAttributes_ReturnsUniqueFieldN
 		Once()
 
 	service := &entityTypeService{
+		bus:             discardingBus{},
 		entityTypeStore: storeMock,
 		transactioner:   &mockTransactioner{},
 	}
@@ -1500,6 +1529,7 @@ func (s *EntityTypeServiceTestSuite) TestGetUniqueAttributes_TestNoUniqueAttribu
 		Once()
 
 	service := &entityTypeService{
+		bus:             discardingBus{},
 		entityTypeStore: storeMock,
 		transactioner:   &mockTransactioner{},
 	}
@@ -1518,6 +1548,7 @@ func (s *EntityTypeServiceTestSuite) TestGetUniqueAttributes_TestSchemaNotFound_
 		Once()
 
 	service := &entityTypeService{
+		bus:             discardingBus{},
 		entityTypeStore: storeMock,
 		transactioner:   &mockTransactioner{},
 	}
@@ -1533,6 +1564,7 @@ func (s *EntityTypeServiceTestSuite) TestGetUniqueAttributes_TestEmptyUserType_R
 	storeMock := newEntityTypeStoreInterfaceMock(s.T())
 
 	service := &entityTypeService{
+		bus:             discardingBus{},
 		entityTypeStore: storeMock,
 		transactioner:   &mockTransactioner{},
 	}
@@ -1569,6 +1601,7 @@ func TestDeleteEntityType(t *testing.T) {
 	storeMock.On("DeleteEntityTypeByID", mock.Anything, mock.Anything, schemaID).Return(nil).Once()
 
 	service := &entityTypeService{
+		bus:             discardingBus{},
 		entityTypeStore: storeMock,
 		transactioner:   &mockTransactioner{},
 		authzService:    newAllowAllAuthz(t),
@@ -1589,6 +1622,7 @@ func TestCreateEntityType_AgentTypeRejectsNonDefaultHandle(t *testing.T) {
 	defer config.ResetServerRuntime()
 
 	service := &entityTypeService{
+		bus:             discardingBus{},
 		entityTypeStore: newEntityTypeStoreInterfaceMock(t),
 		transactioner:   &mockTransactioner{},
 		authzService:    newAllowAllAuthz(t),
@@ -1609,6 +1643,7 @@ func TestUpdateEntityType_AgentTypeRejectsNonDefaultHandle(t *testing.T) {
 	initEntityTypeTestRuntime(t)
 
 	service := &entityTypeService{
+		bus:             discardingBus{},
 		entityTypeStore: newEntityTypeStoreInterfaceMock(t),
 		transactioner:   &mockTransactioner{},
 		authzService:    newAllowAllAuthz(t),
@@ -1642,6 +1677,7 @@ func TestUpdateEntityType_AgentTypeOmittedHandleKeepsDefault(t *testing.T) {
 		})).Return(nil).Once()
 
 	service := &entityTypeService{
+		bus:             discardingBus{},
 		entityTypeStore: storeMock,
 		ouService:       ouServiceMock,
 		transactioner:   &mockTransactioner{},
@@ -1668,6 +1704,7 @@ func TestDeleteEntityType_AgentTypeAlwaysRejected(t *testing.T) {
 	defer config.ResetServerRuntime()
 
 	service := &entityTypeService{
+		bus:             discardingBus{},
 		entityTypeStore: newEntityTypeStoreInterfaceMock(t),
 		authzService:    newAllowAllAuthz(t),
 	}
@@ -1785,6 +1822,7 @@ func TestCreateEntityTypeReturnsErrorForInvalidDisplayAttribute(t *testing.T) {
 	storeMock := newEntityTypeStoreInterfaceMock(t)
 
 	service := &entityTypeService{
+		bus:             discardingBus{},
 		entityTypeStore: storeMock,
 		transactioner:   &mockTransactioner{},
 	}
@@ -1819,6 +1857,7 @@ func TestUpdateEntityTypeReturnsErrorForInvalidDisplayAttribute(t *testing.T) {
 	storeMock.On("IsEntityTypeDeclarative", TypeCategoryUser, "schema-id").Return(false).Once()
 
 	service := &entityTypeService{
+		bus:             discardingBus{},
 		entityTypeStore: storeMock,
 		transactioner:   &mockTransactioner{},
 	}
@@ -1920,7 +1959,7 @@ func (s *EntityTypeServiceTestSuite) TestGetDisplayAttributesByHandles_ReturnsDi
 		Return(expected, nil).
 		Once()
 
-	service := &entityTypeService{entityTypeStore: storeMock}
+	service := &entityTypeService{bus: discardingBus{}, entityTypeStore: storeMock}
 
 	result, svcErr := service.GetDisplayAttributesByHandles(
 		context.Background(), TypeCategoryUser, []string{"SchemaA", "SchemaB"})
@@ -1930,7 +1969,7 @@ func (s *EntityTypeServiceTestSuite) TestGetDisplayAttributesByHandles_ReturnsDi
 }
 
 func (s *EntityTypeServiceTestSuite) TestGetDisplayAttributesByHandles_TestEmptyInput_ReturnsEmptyMap() {
-	service := &entityTypeService{}
+	service := &entityTypeService{bus: discardingBus{}}
 
 	result, svcErr := service.GetDisplayAttributesByHandles(context.Background(), TypeCategoryUser, []string{})
 
@@ -1945,7 +1984,7 @@ func (s *EntityTypeServiceTestSuite) TestGetDisplayAttributesByHandles_TestStore
 		Return(map[string]string(nil), errors.New("db error")).
 		Once()
 
-	service := &entityTypeService{entityTypeStore: storeMock}
+	service := &entityTypeService{bus: discardingBus{}, entityTypeStore: storeMock}
 
 	_, svcErr := service.GetDisplayAttributesByHandles(context.Background(), TypeCategoryUser, []string{"SchemaA"})
 
@@ -1968,6 +2007,7 @@ func (s *EntityTypeServiceTestSuite) TestGetAttributes_NonCredentialRequiredOnly
 		Once()
 
 	service := &entityTypeService{
+		bus:             discardingBus{},
 		entityTypeStore: storeMock,
 		transactioner:   &mockTransactioner{},
 	}
@@ -2003,6 +2043,7 @@ func (s *EntityTypeServiceTestSuite) TestGetAttributes_NonCredential_UnknownEnti
 		Once()
 
 	service := &entityTypeService{
+		bus:             discardingBus{},
 		entityTypeStore: storeMock,
 		transactioner:   &mockTransactioner{},
 	}
@@ -2017,6 +2058,7 @@ func (s *EntityTypeServiceTestSuite) TestGetAttributes_NonCredential_UnknownEnti
 
 func (s *EntityTypeServiceTestSuite) TestGetAttributes_NonCredential_EmptyEntityType_ReturnsError() {
 	service := &entityTypeService{
+		bus:             discardingBus{},
 		entityTypeStore: newEntityTypeStoreInterfaceMock(s.T()),
 		transactioner:   &mockTransactioner{},
 	}
@@ -2041,6 +2083,7 @@ func (s *EntityTypeServiceTestSuite) TestGetAttributes_NonCredential_AllCredenti
 		Once()
 
 	service := &entityTypeService{
+		bus:             discardingBus{},
 		entityTypeStore: storeMock,
 		transactioner:   &mockTransactioner{},
 	}
@@ -2066,6 +2109,7 @@ func (s *EntityTypeServiceTestSuite) TestGetAttributes_NonCredentialAllAttrs_Inc
 		Once()
 
 	service := &entityTypeService{
+		bus:             discardingBus{},
 		entityTypeStore: storeMock,
 		transactioner:   &mockTransactioner{},
 	}
@@ -2094,6 +2138,7 @@ func (s *EntityTypeServiceTestSuite) TestGetAttributes_NonCredential_StoreError_
 		Once()
 
 	service := &entityTypeService{
+		bus:             discardingBus{},
 		entityTypeStore: storeMock,
 		transactioner:   &mockTransactioner{},
 	}
@@ -2113,7 +2158,7 @@ func (s *EntityTypeServiceTestSuite) TestGetEntityTypeSchema_Success() {
 		Return(EntityType{Handle: "employee", DisplayName: "employee", Schema: json.RawMessage(`{}`)}, nil).
 		Once()
 
-	service := &entityTypeService{entityTypeStore: storeMock}
+	service := &entityTypeService{bus: discardingBus{}, entityTypeStore: storeMock}
 
 	entityType, svcErr := service.GetEntityTypeSchema(context.Background(), TypeCategoryUser, "employee")
 	s.Require().Nil(svcErr)
@@ -2122,7 +2167,7 @@ func (s *EntityTypeServiceTestSuite) TestGetEntityTypeSchema_Success() {
 }
 
 func (s *EntityTypeServiceTestSuite) TestGetEntityTypeSchema_InvalidCategory() {
-	service := &entityTypeService{}
+	service := &entityTypeService{bus: discardingBus{}}
 	entityType, svcErr := service.GetEntityTypeSchema(context.Background(), TypeCategory("invalid"), "employee")
 	s.Require().Nil(entityType)
 	s.Require().NotNil(svcErr)
@@ -2130,7 +2175,7 @@ func (s *EntityTypeServiceTestSuite) TestGetEntityTypeSchema_InvalidCategory() {
 }
 
 func (s *EntityTypeServiceTestSuite) TestGetEntityTypeSchema_EmptyHandle() {
-	service := &entityTypeService{}
+	service := &entityTypeService{bus: discardingBus{}}
 	entityType, svcErr := service.GetEntityTypeSchema(context.Background(), TypeCategoryUser, "")
 	s.Require().Nil(entityType)
 	s.Require().NotNil(svcErr)
@@ -2144,7 +2189,7 @@ func (s *EntityTypeServiceTestSuite) TestGetEntityTypeSchema_NotFound() {
 		Return(EntityType{}, ErrEntityTypeNotFound).
 		Once()
 
-	service := &entityTypeService{entityTypeStore: storeMock}
+	service := &entityTypeService{bus: discardingBus{}, entityTypeStore: storeMock}
 
 	entityType, svcErr := service.GetEntityTypeSchema(context.Background(), TypeCategoryUser, "employee")
 	s.Require().Nil(entityType)
@@ -2159,7 +2204,7 @@ func (s *EntityTypeServiceTestSuite) TestGetEntityTypeSchema_StoreError() {
 		Return(EntityType{}, errors.New("db error")).
 		Once()
 
-	service := &entityTypeService{entityTypeStore: storeMock}
+	service := &entityTypeService{bus: discardingBus{}, entityTypeStore: storeMock}
 
 	entityType, svcErr := service.GetEntityTypeSchema(context.Background(), TypeCategoryUser, "employee")
 	s.Require().Nil(entityType)
@@ -2181,6 +2226,7 @@ func TestGetCompiledSchemaForEntityType_CompileError(t *testing.T) {
 		Once()
 
 	service := &entityTypeService{
+		bus:             discardingBus{},
 		entityTypeStore: storeMock,
 		transactioner:   &mockTransactioner{},
 	}
@@ -2196,7 +2242,7 @@ func TestGetCompiledSchemaForEntityType_CompileError(t *testing.T) {
 // TestEnsureOrganizationUnitExists_NilOUService verifies that a missing OU service yields an
 // internal server error.
 func TestEnsureOrganizationUnitExists_NilOUService(t *testing.T) {
-	service := &entityTypeService{ouService: nil}
+	service := &entityTypeService{bus: discardingBus{}, ouService: nil}
 
 	svcErr := service.ensureOrganizationUnitExists(
 		context.Background(), testOUID1, TypeCategoryUser, log.GetLogger())
@@ -2212,7 +2258,7 @@ func TestPopulateEntityTypeOUHandles_HandleResolutionError(t *testing.T) {
 	ouServiceMock.On("GetOrganizationUnitHandlesByIDs", mock.Anything, []string{testOUID1}).
 		Return(map[string]string(nil), &tidcommon.InternalServerError).Once()
 
-	service := &entityTypeService{ouService: ouServiceMock}
+	service := &entityTypeService{bus: discardingBus{}, ouService: ouServiceMock}
 	schemas := []EntityTypeListItem{{ID: "s1", Handle: "schema1", DisplayName: "Schema1", OUID: testOUID1}}
 
 	service.populateEntityTypeOUHandles(context.Background(), schemas, log.GetLogger())
@@ -2260,6 +2306,7 @@ func TestCreateEntityType_HandleValidation(t *testing.T) {
 			storeMock := newEntityTypeStoreInterfaceMock(t)
 			ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
 			service := &entityTypeService{
+				bus:             discardingBus{},
 				entityTypeStore: storeMock,
 				ouService:       ouServiceMock,
 				transactioner:   &mockTransactioner{},
@@ -2303,6 +2350,7 @@ func TestCreateEntityType_RejectsEmptyDisplayName(t *testing.T) {
 			initEntityTypeTestRuntime(t)
 
 			service := &entityTypeService{
+				bus:             discardingBus{},
 				entityTypeStore: newEntityTypeStoreInterfaceMock(t),
 				transactioner:   &mockTransactioner{},
 				authzService:    newAllowAllAuthz(t),
@@ -2337,6 +2385,7 @@ func TestCreateEntityType_HandleConflictWithinCategory(t *testing.T) {
 				Return(EntityType{ID: "existing-id", Handle: "default", OUID: testOUID1}, nil).Once()
 
 			service := &entityTypeService{
+				bus:             discardingBus{},
 				entityTypeStore: storeMock,
 				ouService:       ouServiceMock,
 				transactioner:   &mockTransactioner{},
@@ -2371,6 +2420,7 @@ func TestCreateEntityType_SameHandleInOtherCategoryAllowed(t *testing.T) {
 	storeMock.On("CreateEntityType", mock.Anything, mock.Anything).Return(nil).Once()
 
 	service := &entityTypeService{
+		bus:             discardingBus{},
 		entityTypeStore: storeMock,
 		ouService:       ouServiceMock,
 		transactioner:   &mockTransactioner{},
@@ -2401,6 +2451,7 @@ func TestCreateEntityType_HandleLookupStoreError(t *testing.T) {
 		Return(EntityType{}, errors.New("db failure")).Once()
 
 	service := &entityTypeService{
+		bus:             discardingBus{},
 		entityTypeStore: storeMock,
 		ouService:       ouServiceMock,
 		transactioner:   &mockTransactioner{},
@@ -2432,6 +2483,7 @@ func TestUpdateEntityType_HandleChangeRejected(t *testing.T) {
 		Return(EntityType{ID: "schema-id", Handle: "employee", DisplayName: "Employee", OUID: testOUID1}, nil).Once()
 
 	service := &entityTypeService{
+		bus:             discardingBus{},
 		entityTypeStore: storeMock,
 		ouService:       ouServiceMock,
 		transactioner:   &mockTransactioner{},
@@ -2469,6 +2521,7 @@ func TestUpdateEntityType_OmittedHandleKeepsExisting(t *testing.T) {
 		})).Return(nil).Once()
 
 	service := &entityTypeService{
+		bus:             discardingBus{},
 		entityTypeStore: storeMock,
 		ouService:       ouServiceMock,
 		transactioner:   &mockTransactioner{},
@@ -2493,6 +2546,7 @@ func TestUpdateEntityType_RejectsEmptyDisplayName(t *testing.T) {
 	storeMock.On("IsEntityTypeDeclarative", TypeCategoryUser, "schema-id").Return(false).Once()
 
 	service := &entityTypeService{
+		bus:             discardingBus{},
 		entityTypeStore: storeMock,
 		transactioner:   &mockTransactioner{},
 		authzService:    newAllowAllAuthz(t),
@@ -2528,6 +2582,7 @@ func TestUpdateEntityType_DisplayNameChangeSkipsHandleLookup(t *testing.T) {
 		})).Return(nil).Once()
 
 	service := &entityTypeService{
+		bus:             discardingBus{},
 		entityTypeStore: storeMock,
 		ouService:       ouServiceMock,
 		transactioner:   &mockTransactioner{},
@@ -2553,6 +2608,7 @@ func TestCreateEntityType_InvalidHandleRejected(t *testing.T) {
 	initEntityTypeTestRuntime(t)
 
 	service := &entityTypeService{
+		bus:             discardingBus{},
 		entityTypeStore: newEntityTypeStoreInterfaceMock(t),
 		transactioner:   &mockTransactioner{},
 		authzService:    newAllowAllAuthz(t),
@@ -2686,6 +2742,7 @@ func (s *EntityTypeServiceTestSuite) TestCreateEntityType_StoresDefaultPrimaryCo
 	})).Return(nil).Once()
 
 	service := &entityTypeService{
+		bus:             discardingBus{},
 		entityTypeStore: storeMock,
 		ouService:       ouServiceMock,
 		transactioner:   &mockTransactioner{},
@@ -2716,6 +2773,7 @@ func (s *EntityTypeServiceTestSuite) TestValidateEntityValues_ChecksOnlyGivenAtt
 		}, nil)
 
 	service := &entityTypeService{
+		bus:             discardingBus{},
 		entityTypeStore: storeMock,
 		transactioner:   &mockTransactioner{},
 	}
@@ -2749,6 +2807,7 @@ func (s *EntityTypeServiceTestSuite) TestValidateEntityValues_ReturnsErrors() {
 				Once()
 
 			service := &entityTypeService{
+				bus:             discardingBus{},
 				entityTypeStore: storeMock,
 				transactioner:   &mockTransactioner{},
 			}

@@ -375,4 +375,14 @@ var (
 
 	// errResultLimitExceededInCompositeMode is returned when the result limit is exceeded in composite mode.
 	errResultLimitExceededInCompositeMode = errors.New("result limit exceeded in composite mode")
+
+	// errNilEventBus is returned when the service is initialized without the event bus it audits on.
+	errNilEventBus = errors.New("the entity type service needs an event bus")
 )
+
+// errEntityTypeNotFoundNoop is returned by deleteEntityType when the entity type to delete does not
+// exist. DeleteEntityType turns it into a success, so it never reaches a caller.
+var errEntityTypeNotFoundNoop = &tidcommon.ServiceError{
+	Type: tidcommon.ClientErrorType,
+	Code: ErrorEntityTypeNotFound.Code,
+}

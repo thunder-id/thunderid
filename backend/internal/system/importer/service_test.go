@@ -545,9 +545,11 @@ func (f *fakeLayoutService) UpdateLayout(_ context.Context,
 type fakeEntityTypeService struct {
 	created          []entitytype.CreateEntityTypeRequestWithID
 	updated          []entitytype.UpdateEntityTypeRequest
+	updateAttempts   []string
 	createCategories []entitytype.TypeCategory
 	byID             map[string]*entitytype.EntityType
 	byHandle         map[string]*entitytype.EntityType
+	getErr           *tidcommon.ServiceError
 }
 
 func (f *fakeEntityTypeService) CreateEntityType(
@@ -582,6 +584,9 @@ func (f *fakeEntityTypeService) CreateEntityType(
 func (f *fakeEntityTypeService) GetEntityType(
 	_ context.Context, _ entitytype.TypeCategory, schemaID string, _ bool,
 ) (*entitytype.EntityType, *tidcommon.ServiceError) {
+	if f.getErr != nil {
+		return nil, f.getErr
+	}
 	if existing, ok := f.byID[schemaID]; ok {
 		return existing, nil
 	}
@@ -610,6 +615,7 @@ func (f *fakeEntityTypeService) GetEntityTypeByHandle(
 func (f *fakeEntityTypeService) UpdateEntityType(
 	_ context.Context, _ entitytype.TypeCategory, schemaID string, request entitytype.UpdateEntityTypeRequest,
 ) (*entitytype.EntityType, *tidcommon.ServiceError) {
+	f.updateAttempts = append(f.updateAttempts, schemaID)
 	if _, ok := f.byID[schemaID]; !ok {
 		return nil, &tidcommon.ServiceError{
 			Type:  tidcommon.ClientErrorType,
@@ -2604,6 +2610,73 @@ func TestImportResources_EntityTypeUpsertCreatePreservesID(t *testing.T) {
 	assert.Equal(t, "customer", entityTypeSvc.created[0].Handle)
 	assert.Equal(t, "Customer", entityTypeSvc.created[0].DisplayName)
 	assert.Equal(t, "Customer", resp.Results[0].ResourceName)
+}
+
+// An upsert of a user type that does not exist creates it without first attempting an update, so the
+// entity type service records no failed update for it.
+func TestImportResources_EntityTypeUpsertCreatesAMissingTypeWithoutAnUpdate(t *testing.T) {
+	entityTypeSvc := &fakeEntityTypeService{}
+	svc := newImportService(
+		nil, nil, nil, nil, nil, entityTypeSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{Content: upsertedUserType("usrs-1")})
+
+	require.Nil(t, err)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status, resp.Results[0].Message)
+	assert.Equal(t, operationCreate, resp.Results[0].Operation)
+	assert.Empty(t, entityTypeSvc.updateAttempts)
+	require.Len(t, entityTypeSvc.created, 1)
+	assert.Equal(t, "usrs-1", entityTypeSvc.created[0].ID)
+}
+
+func TestImportResources_EntityTypeUpsertUpdatesAnExistingType(t *testing.T) {
+	entityTypeSvc := &fakeEntityTypeService{
+		byID:     map[string]*entitytype.EntityType{"usrs-1": {ID: "usrs-1", Handle: "customer"}},
+		byHandle: map[string]*entitytype.EntityType{},
+	}
+	svc := newImportService(
+		nil, nil, nil, nil, nil, entityTypeSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{Content: upsertedUserType("usrs-1")})
+
+	require.Nil(t, err)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status, resp.Results[0].Message)
+	assert.Equal(t, operationUpdate, resp.Results[0].Operation)
+	assert.Equal(t, []string{"usrs-1"}, entityTypeSvc.updateAttempts)
+	assert.Empty(t, entityTypeSvc.created)
+}
+
+// A user type whose existence cannot be determined is neither updated nor created.
+func TestImportResources_EntityTypeUpsertFailsWhenTheLookupFails(t *testing.T) {
+	entityTypeSvc := &fakeEntityTypeService{getErr: &tidcommon.InternalServerError}
+	svc := newImportService(
+		nil, nil, nil, nil, nil, entityTypeSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{Content: upsertedUserType("usrs-1")})
+
+	require.Nil(t, err)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusFailed, resp.Results[0].Status)
+	assert.Equal(t, tidcommon.InternalServerError.Code, resp.Results[0].Code)
+	assert.Empty(t, entityTypeSvc.updateAttempts)
+	assert.Empty(t, entityTypeSvc.created)
+}
+
+// upsertedUserType is the document of a user type with id, imported with the default upsert.
+func upsertedUserType(id string) string {
+	return strings.Join([]string{
+		"resource_type: user_type",
+		"id: " + id,
+		"handle: customer",
+		"displayName: Customer",
+		"ouId: ou-1",
+		"schema:",
+		"  email:",
+		"    type: string",
+		"",
+	}, "\n")
 }
 
 func TestImportResources_UpsertCreatePreservesIDsAcrossResourceTypes(t *testing.T) {

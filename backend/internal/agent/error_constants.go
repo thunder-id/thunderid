@@ -609,3 +609,6 @@ var (
 // errInvalidDeclarativeLifespan is returned when a declarative agent's validUntil is not an RFC 3339
 // date and time.
 var errInvalidDeclarativeLifespan = errors.New("validUntil must be an RFC 3339 date and time")
+
+// errNilEventBus is returned when the service is initialized without the event bus it audits on.
+var errNilEventBus = errors.New("the agent service needs an event bus")

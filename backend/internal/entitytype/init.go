@@ -12,19 +12,27 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/cache"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // Initialize initializes the entity type service and registers its routes.
+//
+// bus is required: the service publishes the audit event of every user type and agent type it creates,
+// updates or deletes on it.
 func Initialize(
 	mux *http.ServeMux,
 	mcpServer *mcp.Server,
 	cacheManager cache.CacheManagerInterface,
 	ouService oupkg.OrganizationUnitServiceInterface,
 	authzService sysauthz.SystemAuthorizationServiceInterface,
+	bus eventbus.EventBusInterface,
 ) (EntityTypeServiceInterface, declarativeresource.ResourceExporter, declarativeresource.ResourceExporter, error) {
+	if bus == nil {
+		return nil, nil, nil, errNilEventBus
+	}
 	// Step 1: Determine store mode and initialize store and transactioner
 	storeMode := getEntityTypeStoreMode()
 	entityTypeStore, transactioner, err := initializeStore(storeMode, cacheManager)
@@ -34,7 +42,7 @@ func Initialize(
 
 	// Step 2: Create service with store
 	entityTypeService := newEntityTypeService(ouService, entityTypeStore, transactioner,
-		authzService)
+		authzService, bus)
 
 	// Step 3: Load declarative resources into store (if applicable)
 	if storeMode == serverconst.StoreModeComposite || storeMode == serverconst.StoreModeDeclarative {
