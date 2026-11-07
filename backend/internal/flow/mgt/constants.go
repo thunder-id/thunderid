@@ -57,3 +57,10 @@ var authToRegLabelTerms = []struct{ auth, reg string }{
 	{"Log In", "Register"},
 	{"Login", "Register"},
 }
+
+// Error codes the project service returns when it resolves the organization unit of a project. They are matched by
+// value, since the Data Plane must not link the Control Plane only project package.
+const (
+	projectNotFoundErrorCode = "PRJ-1002"
+	ouNotInProjectErrorCode  = "PRJ-1010"
+)

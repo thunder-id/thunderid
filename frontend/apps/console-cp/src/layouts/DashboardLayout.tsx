@@ -254,11 +254,17 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
       icon: <Server />,
       path: RouteConfig.resourceServers.list(),
     };
+    const flows: NavRoute = {
+      id: 'flows',
+      text: t('navigation:pages.flows'),
+      icon: <Workflow />,
+      path: RouteConfig.flows.list(),
+    };
     const badgeOf = (count: number | undefined): string | undefined =>
       count ? t('navigation:badges.undeployed', '{{count}} undeployed', {count}) : undefined;
     // A selected project is all the navigation shows: its gateways, then its applications and
-    // agents, which belong to projects only, and its resource servers. The organization's sections,
-    // which list every resource server, come back once it is left.
+    // agents, which belong to projects only, and its resource servers and flows. The organization's
+    // sections, which list every resource server and flow, come back once it is left.
     if (project && gateway && gatewayId) {
       const section = (name: 'overview' | 'values' | 'endpoints' | 'history' | 'explore'): string =>
         gatewaySectionOf(deployRoutes, gatewayId, project.id, name);
@@ -356,6 +362,7 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
             {...applications, badge: badgeOf(undeployed.application)},
             {...agents, badge: badgeOf(undeployed.agent)},
             {...resourceServers, badge: badgeOf(undeployed.resource_server)},
+            {...flows, badge: badgeOf(undeployed.flow)},
           ],
         },
       ];
@@ -437,12 +444,7 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
       {
         category: t('navigation:categories.signInExperience', 'Sign-in experience'),
         routes: [
-          {
-            id: 'flows',
-            text: t('navigation:pages.flows'),
-            icon: <Workflow />,
-            path: RouteConfig.flows.list(),
-          },
+          flows,
           {
             id: 'connections',
             text: t('navigation:pages.connections'),
@@ -515,6 +517,7 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
     undeployed.application,
     undeployed.agent,
     undeployed.resource_server,
+    undeployed.flow,
     gateway,
     gatewayId,
     gatewayIndex,

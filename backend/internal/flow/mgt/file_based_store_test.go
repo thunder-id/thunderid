@@ -458,3 +458,47 @@ func (s *FileBasedStoreTestSuite) TestListFlowsByIDs_ReadsTheNamedFlowsThatExist
 	require.NoError(s.T(), err)
 	assert.Empty(s.T(), none, "a flow of another type is left out")
 }
+
+func (s *FileBasedStoreTestSuite) TestListFlowsByProject_ListsOnlyThatProjectsFlowsAndPages() {
+	for _, f := range []struct{ id, name, ouID, projectID string }{
+		{"flow-001", "a", "ou-1", "project-1"},
+		{"flow-002", "b", "ou-2", "project-1"},
+		{"flow-003", "c", "ou-1", "project-2"},
+		{"flow-004", "d", "ou-1", ""},
+	} {
+		flowDef := s.createTestFlow(f.name)
+		flowDef.OUID = f.ouID
+		flowDef.ProjectID = f.projectID
+		_, err := s.store.CreateFlow(context.Background(), f.id, flowDef)
+		require.NoError(s.T(), err)
+	}
+
+	all, total, err := s.store.ListFlowsByProject(context.Background(), "project-1", "", 10, 0, "")
+	require.NoError(s.T(), err)
+	assert.Equal(s.T(), 2, total)
+	assert.Len(s.T(), all, 2)
+	assert.Equal(s.T(), "project-1", all[0].ProjectID)
+
+	inUnit, total, err := s.store.ListFlowsByProject(context.Background(), "project-1", "ou-2", 10, 0, "")
+	require.NoError(s.T(), err)
+	assert.Equal(s.T(), 1, total)
+	require.Len(s.T(), inUnit, 1)
+	assert.Equal(s.T(), "flow-002", inUnit[0].ID)
+
+	beyond, total, err := s.store.ListFlowsByProject(context.Background(), "project-1", "", 5, 9, "")
+	require.NoError(s.T(), err)
+	assert.Equal(s.T(), 2, total)
+	assert.Empty(s.T(), beyond)
+}
+
+func (s *FileBasedStoreTestSuite) TestCreate_CarriesTheProject() {
+	err := s.store.(*fileBasedStore).Create("flow-001", &providers.CompleteFlowDefinition{
+		ID: "flow-001", Handle: "a", Name: "A", FlowType: providers.FlowTypeAuthentication, OUID: "ou-1",
+		ProjectID: "project-1",
+	})
+	require.NoError(s.T(), err)
+
+	flow, err := s.store.GetFlowByID(context.Background(), "flow-001")
+	require.NoError(s.T(), err)
+	assert.Equal(s.T(), "project-1", flow.ProjectID)
+}

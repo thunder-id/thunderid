@@ -1,8 +1,14 @@
 // Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {GradientBorderButton, QueryErrorNotice, ResourceDeployStatus} from '@thunderid/components';
+import {
+  GradientBorderButton,
+  PageLoadingAnimation,
+  QueryErrorNotice,
+  ResourceDeployStatus,
+} from '@thunderid/components';
 import {useEmailProviders, useIdentityProviders, useSMSProviders} from '@thunderid/configure-connections';
+import {useProjectScope} from '@thunderid/contexts';
 import {Alert, Box, Snackbar, Stack} from '@wso2/oxygen-ui';
 import type {Edge, Node, NodeChange} from '@xyflow/react';
 import {useEdgesState, useNodesState, useUpdateNodeInternals} from '@xyflow/react';
@@ -59,7 +65,8 @@ function FlowBuilder() {
   const flowId = isDraftFlow ? undefined : routeFlowId;
   const initialFlowData = useMemo<FlowDefinitionResponse | undefined>(() => {
     if (!isDraftFlow || !draftFlow) return undefined;
-    return {...draftFlow, id: '', activeVersion: 0, createdAt: '', updatedAt: ''};
+    // A draft in a project has no organization unit yet: the API places it in the system one on create.
+    return {...draftFlow, ouId: draftFlow.ouId ?? '', id: '', activeVersion: 0, createdAt: '', updatedAt: ''};
   }, [draftFlow, isDraftFlow]);
   const [nodes, setNodes, defaultOnNodesChange] = useNodesState<Node>([]);
   const [edges, setStateEdges, onEdgesChange] = useEdgesState<Edge>([]);
@@ -98,6 +105,13 @@ function FlowBuilder() {
 
   // Determine if we're editing an existing flow
   const isEditingExistingFlow = Boolean(flowId && existingFlowData);
+
+  // Inside a project, a flow of another project is not shown: the builder returns to the list.
+  const {projectId} = useProjectScope();
+  const isOtherProject = Boolean(projectId && existingFlowData && existingFlowData.projectId !== projectId);
+  useEffect(() => {
+    if (isOtherProject) void navigate(flowRoutes.flows.list(), {replace: true});
+  }, [isOtherProject, navigate, flowRoutes]);
 
   // Resolves an error through the `flows` catalog. `t` defaults to the `common` namespace, so
   // this forwards explicit `ns:` prefixes unchanged and prefixes bare keys with `flows:`, per
@@ -411,6 +425,7 @@ function FlowBuilder() {
     flowHandle,
     flowType,
     ouId: existingFlowData?.ouId ?? initialFlowData?.ouId,
+    projectId: initialFlowData?.projectId,
     showError,
     showSuccess,
     setOpenValidationPanel,
@@ -728,6 +743,10 @@ function FlowBuilder() {
       sso.handleDisableRequest,
     ],
   );
+
+  if (isOtherProject) {
+    return <PageLoadingAnimation />;
+  }
 
   if (flowLoadError) {
     return (

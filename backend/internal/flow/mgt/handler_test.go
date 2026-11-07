@@ -1103,3 +1103,88 @@ func (s *FlowMgtHandlerTestSuite) TestACallerOutsideTheUnitIsForbidden() {
 
 	s.Equal(http.StatusForbidden, w.Code)
 }
+
+func (s *FlowMgtHandlerTestSuite) TestListFlows_ForAProject() {
+	expectedList := &FlowListResponse{Flows: []BasicFlowDefinition{
+		{ID: "flow-1", OUID: testOUIDHandler, ProjectID: "project-1", IsOwnedByOU: boolPtr(true)},
+	}, Count: 1, TotalResults: 1}
+	s.mockService.EXPECT().ListFlowsByProject(
+		mock.Anything, "project-1", testOUIDHandler, providers.FlowTypeAuthentication, 30, 0).
+		Return(expectedList, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/flows?projectId=project-1&filter="+
+		url.QueryEscape(`ouId eq "`+testOUIDHandler+`"`)+"&flowType=AUTHENTICATION", nil)
+	w := httptest.NewRecorder()
+
+	s.handler.listFlows(w, req)
+
+	s.Equal(http.StatusOK, w.Code)
+	var response FlowListResponse
+	s.NoError(json.Unmarshal(w.Body.Bytes(), &response))
+	s.Require().Len(response.Flows, 1)
+	s.Equal("project-1", response.Flows[0].ProjectID)
+}
+
+func (s *FlowMgtHandlerTestSuite) TestListFlows_ForAnEmptyProject() {
+	s.mockService.EXPECT().ListFlowsByProject(mock.Anything, "", "", providers.FlowType(""), 30, 0).
+		Return(&FlowListResponse{Flows: []BasicFlowDefinition{}}, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/flows?projectId=", nil)
+	w := httptest.NewRecorder()
+
+	s.handler.listFlows(w, req)
+
+	s.Equal(http.StatusOK, w.Code)
+}
+
+func (s *FlowMgtHandlerTestSuite) TestCreateFlow_WithProject() {
+	flowDef := &FlowDefinition{
+		Handle:    "new-flow-handle",
+		Name:      "New Flow",
+		FlowType:  providers.FlowTypeAuthentication,
+		Nodes:     []providers.NodeDefinition{{ID: "start", Type: "START"}},
+		ProjectID: "project-1",
+	}
+	s.mockService.EXPECT().CreateFlow(mock.Anything, flowDef).Return(&providers.CompleteFlowDefinition{
+		ID:        testFlowIDHandler,
+		OUID:      testOUIDHandler,
+		ProjectID: "project-1",
+	}, nil)
+
+	body, _ := json.Marshal(FlowDefinitionRequest{
+		Handle:    flowDef.Handle,
+		Name:      flowDef.Name,
+		FlowType:  flowDef.FlowType,
+		Nodes:     flowDef.Nodes,
+		ProjectID: "project-1",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/flows", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	s.handler.createFlow(w, req)
+
+	s.Equal(http.StatusCreated, w.Code)
+	var response providers.CompleteFlowDefinition
+	s.NoError(json.Unmarshal(w.Body.Bytes(), &response))
+	s.Equal("project-1", response.ProjectID)
+}
+
+func (s *FlowMgtHandlerTestSuite) TestCreateFlow_InvalidProject() {
+	s.mockService.EXPECT().CreateFlow(mock.Anything, mock.Anything).Return(nil, &ErrorInvalidProject)
+
+	body, _ := json.Marshal(FlowDefinitionRequest{
+		Handle:    "new-flow-handle",
+		Name:      "New Flow",
+		FlowType:  providers.FlowTypeAuthentication,
+		Nodes:     []providers.NodeDefinition{{ID: "start", Type: "START"}},
+		ProjectID: "missing",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/flows", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	s.handler.createFlow(w, req)
+
+	s.Equal(http.StatusBadRequest, w.Code)
+}

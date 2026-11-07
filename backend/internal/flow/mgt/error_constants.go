@@ -379,7 +379,7 @@ var (
 		},
 		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "error.flowmgtservice.flow_ou_required_description",
-			DefaultValue: "A flow needs an organization unit. Give its ouId in the request",
+			DefaultValue: "A flow needs an organization unit. Give its ouId or projectId in the request",
 		},
 	}
 	// ErrorSharingPolicyNotFound is the error returned when a sharing policy is not found for the flow.
@@ -586,6 +586,32 @@ var (
 			DefaultValue: "Node '{{param(nodeID)}}' is reachable from Save/Load Session node " +
 				"'{{param(sessionNodeID)}}'. Place it between the sign-in steps and Save/Load Session, " +
 				"or before Check SSO Session",
+		},
+	}
+	// ErrorInvalidProject is returned when a flow names a project that does not exist.
+	ErrorInvalidProject = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FLM-1045",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.invalid_project",
+			DefaultValue: "Invalid project",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.invalid_project_description",
+			DefaultValue: "No project exists with the given project ID",
+		},
+	}
+	// ErrorOUNotInProject is returned when a flow names an organization unit outside its project.
+	ErrorOUNotInProject = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FLM-1046",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.ou_not_in_project",
+			DefaultValue: "Organization unit not in project",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.ou_not_in_project_description",
+			DefaultValue: "The organization unit must belong to the project",
 		},
 	}
 )

@@ -33,6 +33,7 @@ const (
 	pathParamVersion   = "version"
 	queryParamFlowType = "flowType"
 	queryParamOUID     = "ouId"
+	queryParamProject  = "projectId"
 	queryParamLimit    = "limit"
 	queryParamOffset   = "offset"
 )
@@ -73,10 +74,14 @@ func (h *flowMgtHandler) listFlows(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// With an organization unit filter, the list is of the flows it owns and the ones shared with it. Without one, it
-	// is of every flow.
+	// With a project, the list is of the project's flows, narrowed to the ones an organization unit owns when the
+	// filter names one. With only an organization unit filter, the list is of the flows it owns and the ones shared
+	// with it. Without either, it is of every flow.
 	var flowList *FlowListResponse
-	if ouID != "" {
+	if query := r.URL.Query(); query.Has(queryParamProject) {
+		flowList, svcErr = h.service.ListFlowsByProject(
+			ctx, query.Get(queryParamProject), ouID, flowType, limit, offset)
+	} else if ouID != "" {
 		flowList, svcErr = h.service.ListFlowsForOU(ctx, ouID, flowType, limit, offset)
 	} else {
 		flowList, svcErr = h.service.ListFlows(ctx, limit, offset, flowType)
@@ -377,6 +382,7 @@ func sanitizeFlowDefinitionRequest(req *FlowDefinitionRequest) *FlowDefinition {
 		Interceptors: interceptors,
 		Nodes:        req.Nodes,
 		OUID:         utils.SanitizeString(req.OUID),
+		ProjectID:    utils.SanitizeString(req.ProjectID),
 	}
 
 	return sanitized
