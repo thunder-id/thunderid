@@ -12,6 +12,7 @@ import type {GroupRoutePaths} from '@thunderid/configure-groups';
 import type {ImportExportRoutePaths} from '@thunderid/configure-import-export';
 import type {NotificationTemplateRoutePaths} from '@thunderid/configure-notification-templates';
 import type {OrganizationUnitRoutePaths} from '@thunderid/configure-organization-units';
+import type {ProjectRoutePaths} from '@thunderid/configure-projects';
 import type {ResourceServerRoutePaths} from '@thunderid/configure-resource-servers';
 import type {RoleRoutePaths} from '@thunderid/configure-roles';
 import type {TranslationRoutePaths} from '@thunderid/configure-translations';
@@ -64,6 +65,7 @@ export type RouteConfig = OrganizationUnitRoutePaths &
   RoleRoutePaths &
   GatewayRoutePaths &
   DeployRoutePaths &
+  ProjectRoutePaths &
   ConsoleRoutePaths;
 
 /**
@@ -98,6 +100,7 @@ export const ROUTE_SEGMENTS = {
   export: 'export',
   importConfiguration: 'import-configuration',
   settings: 'settings',
+  projects: 'projects',
   gateways: 'gateways',
   deploy: 'deploy',
 } as const;
@@ -205,6 +208,10 @@ const RouteConfig: RouteConfig = {
   },
   settings: {
     list: () => `/${ROUTE_SEGMENTS.settings}`,
+  },
+  projects: {
+    list: () => `/${ROUTE_SEGMENTS.projects}`,
+    create: () => `/${ROUTE_SEGMENTS.projects}/create`,
   },
   gateways: {
     list: () => `/${ROUTE_SEGMENTS.gateways}`,
