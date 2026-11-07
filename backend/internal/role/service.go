@@ -43,6 +43,7 @@ type RoleServiceInterface interface {
 	GetRoleWithPermissions(ctx context.Context, id string) (*RoleWithPermissions, *tidcommon.ServiceError)
 	GetRoleInOU(ctx context.Context, id, ouID string) (*RoleWithPermissions, *tidcommon.ServiceError)
 	GetRolesByNames(ctx context.Context, names []string) (map[string][]*Role, *tidcommon.ServiceError)
+	GetRolesByPermission(ctx context.Context, resourceServerID, permission string) ([]Role, *tidcommon.ServiceError)
 	UpdateRoleWithPermissions(ctx context.Context, id string, role RoleUpdateDetail) (
 		*RoleWithPermissions, *tidcommon.ServiceError)
 	DeleteRole(ctx context.Context, id string) *tidcommon.ServiceError
@@ -494,6 +495,27 @@ func (rs *roleService) GetRolesByNames(
 	}
 
 	return result, nil
+}
+
+// GetRolesByPermission returns the roles that grant a permission on a resource server, in every
+// organization unit.
+func (rs *roleService) GetRolesByPermission(
+	ctx context.Context, resourceServerID, permission string,
+) ([]Role, *tidcommon.ServiceError) {
+	if resourceServerID == "" || permission == "" {
+		return nil, &ErrorInvalidRequestFormat
+	}
+
+	roles, err := rs.roleStore.GetRolesByPermission(ctx, resourceServerID, permission)
+	if err != nil {
+		log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName)).
+			Error(ctx, "Failed to get roles by permission", log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+	for i := range roles {
+		roles[i].IsOwnedByOU = true
+	}
+	return roles, nil
 }
 
 // UpdateRoleWithPermissions updates an existing role.

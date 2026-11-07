@@ -70,6 +70,8 @@ type roleStoreInterface interface {
 	// GetReferencedPermissions returns the distinct permissions referenced by any role, grouped by
 	// resource server. Used to detect permissions left dangling by a resource deletion.
 	GetReferencedPermissions(ctx context.Context) ([]ResourcePermissions, error)
+	// GetRolesByPermission returns the roles that grant a permission on a resource server.
+	GetRolesByPermission(ctx context.Context, resourceServerID, permission string) ([]Role, error)
 	// DeleteRolePermission removes the given permission from every role that holds it.
 	DeleteRolePermission(ctx context.Context, resourceServerID, permission string) (int64, error)
 	// GetEntityRoleIDs returns the set of role IDs assigned to the entity directly or via
@@ -605,6 +607,30 @@ func (s *roleStore) GetReferencedPermissions(ctx context.Context) ([]ResourcePer
 	}
 
 	return resourcePermissionsFromMap(byResourceServer), nil
+}
+
+// GetRolesByPermission returns the roles that grant a permission on a resource server.
+func (s *roleStore) GetRolesByPermission(
+	ctx context.Context, resourceServerID, permission string) ([]Role, error) {
+	dbClient, err := s.getConfigDBClient()
+	if err != nil {
+		return nil, err
+	}
+
+	results, err := dbClient.QueryContext(ctx, queryGetRolesByPermission, resourceServerID, permission, s.scope(ctx))
+	if err != nil {
+		return nil, fmt.Errorf("failed to get roles by permission: %w", err)
+	}
+
+	roles := make([]Role, 0, len(results))
+	for _, row := range results {
+		role, err := buildRoleBasicInfoFromResultRow(row)
+		if err != nil {
+			return nil, fmt.Errorf("failed to build role from result row: %w", err)
+		}
+		roles = append(roles, role)
+	}
+	return roles, nil
 }
 
 // DeleteRolePermission removes the given permission from every role that holds it.
