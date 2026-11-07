@@ -384,6 +384,59 @@ describe('OrganizationAccessSettings', () => {
     expect(screen.queryByRole('button', {name: /Revoke access/})).not.toBeInTheDocument();
   });
 
+  describe('content a resource draws under each granted unit', () => {
+    const extra = (ouId: string, name: string) => <div data-testid={`extra-${ouId}`}>{`Terms for ${name}`}</div>;
+    const access = () =>
+      accessWith({
+        childUnitsAccess: 'selected',
+        childUnits: [
+          {ouId: 'retail', reach: 'unit'},
+          {ouId: 'trials', reach: 'subtree'},
+        ],
+      });
+
+    it('shows it under the row of each named child unit, with the unit name', () => {
+      renderWithProviders(
+        <OrganizationAccessSettings
+          access={access()}
+          ownerOuId="acme"
+          resourceName="Storefront"
+          renderChildUnitExtra={extra}
+        />,
+      );
+
+      expect(
+        within(screen.getByText('Acme Retail').closest('li') as HTMLElement).getByTestId('extra-retail'),
+      ).toHaveTextContent('Terms for Acme Retail');
+      expect(
+        within(screen.getByText('Acme Trials').closest('li') as HTMLElement).getByTestId('extra-trials'),
+      ).toBeInTheDocument();
+    });
+
+    it('keeps the roles picker beside it for a resource that mandates roles', () => {
+      renderWithProviders(
+        <OrganizationAccessSettings
+          access={access()}
+          ownerOuId="acme"
+          resourceName="Storefront"
+          mandateRoles
+          renderChildUnitExtra={extra}
+        />,
+      );
+
+      const row = screen.getByText('Acme Retail').closest('li') as HTMLElement;
+
+      expect(within(row).getByRole('combobox', {name: 'Mandated roles'})).toBeInTheDocument();
+      expect(within(row).getByTestId('extra-retail')).toBeInTheDocument();
+    });
+
+    it('draws nothing extra when the resource gives none', () => {
+      renderSettings(access());
+
+      expect(screen.queryByTestId('extra-retail')).not.toBeInTheDocument();
+    });
+  });
+
   describe('mandated roles', () => {
     const named = (reach: 'unit' | 'subtree', roles?: string[]) =>
       accessWith({childUnitsAccess: 'selected', childUnits: [{ouId: 'retail', reach, roles}]});

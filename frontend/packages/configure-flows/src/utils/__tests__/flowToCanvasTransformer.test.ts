@@ -803,9 +803,14 @@ describe('flowToCanvasTransformer', () => {
 
         expect(node).toMatchObject({
           type: StaticStepTypes.Variables,
-          deletable: false,
           data: {displayOnly: true, inputs: declarations},
         });
+      });
+
+      it('should leave the node deletable, so its own remove button works on a saved flow', () => {
+        const node = transformFlowToCanvas(flowData).nodes.find((n) => n.id === 'vars');
+
+        expect(node?.deletable).toBe(true);
       });
 
       it('should draw the paths on both sides of the node', () => {

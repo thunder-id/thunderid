@@ -5,11 +5,11 @@ import {QueryErrorNotice, SettingsCard, type QueryErrorMessageResolver} from '@t
 import {useGetOrganizationUnitsByIds} from '@thunderid/configure-organization-units';
 import {Alert, Box, Button, CircularProgress, Stack, Typography} from '@wso2/oxygen-ui';
 import {Plus} from '@wso2/oxygen-ui-icons-react';
-import {useMemo, useState, type JSX} from 'react';
+import {useMemo, useState, type JSX, type ReactNode} from 'react';
 import {Trans, useTranslation} from 'react-i18next';
 import AccessChoiceCards, {type AccessChoice} from './AccessChoiceCards';
 import AssignmentsOffNote from './AssignmentsOffNote';
-import GrantedOrganizationUnitList from './GrantedOrganizationUnitList';
+import GrantedOrganizationUnitList, {type GrantedOrganizationUnit} from './GrantedOrganizationUnitList';
 import MandatedRolesPicker from './MandatedRolesPicker';
 import OrganizationUnitChipList from './OrganizationUnitChipList';
 import OrganizationUnitNameChip from './OrganizationUnitNameChip';
@@ -62,6 +62,15 @@ export interface OrganizationAccessSettingsProps {
    */
   errorNamespace?: string;
   resolveErrorMessage?: QueryErrorMessageResolver;
+  /**
+   * Content a resource draws under each granted child unit's row, after what the screen draws itself, such as the
+   * terms the unit holds the resource on.
+   */
+  renderChildUnitExtra?: (ouId: string, name: string) => ReactNode;
+  /**
+   * An extra action beside Grant access, such as setting the terms every unit starts with.
+   */
+  childUnitsAction?: ReactNode;
 }
 
 const unique = (ids: string[]): string[] => [...new Set(ids)];
@@ -80,15 +89,17 @@ export default function OrganizationAccessSettings({
   mandateRoles = false,
   errorNamespace = 'resourceSharing',
   resolveErrorMessage = undefined,
+  renderChildUnitExtra = undefined,
+  childUnitsAction = undefined,
 }: OrganizationAccessSettingsProps): JSX.Element {
   const {t} = useTranslation();
   const [openPicker, setOpenPicker] = useState<OpenPicker | null>(null);
   const [pendingSwitch, setPendingSwitch] = useState<AccessSwitch | null>(null);
 
-  const {draft, offers, assignmentsOff, updateDraft, savedPolicy} = access;
+  const {draft, offers, assignmentsOff, updateDraft, savedPolicy, editsRule} = access;
   const locked = readOnly || access.isDeclared;
-  const childNoneBlocked = getBlockedNoneReason(draft, 'childUnitsAccess', savedPolicy);
-  const treesNoneBlocked = getBlockedNoneReason(draft, 'otherTreesAccess', savedPolicy);
+  const childNoneBlocked = getBlockedNoneReason(draft, 'childUnitsAccess', savedPolicy, editsRule);
+  const treesNoneBlocked = getBlockedNoneReason(draft, 'otherTreesAccess', savedPolicy, editsRule);
   const blockedNoneDescription = (reason: BlockedNoneReason, otherSection: string): string =>
     reason === 'otherIsNone'
       ? t('resourceSharing:noneBlocked.otherIsNone', 'Not available while {{section}} is set to None.', {
@@ -341,6 +352,18 @@ export default function OrganizationAccessSettings({
   const sectionAssignmentsNote = <AssignmentsOffNote scope="section" />;
   const unitAssignmentsNote = (ouId: string): JSX.Element | null =>
     assignmentsOff.ouIds.includes(ouId) ? <AssignmentsOffNote scope="unit" /> : null;
+  // What the resource draws under a unit follows what the screen does.
+  const withChildUnitExtra = (
+    renderOwn: (unit: GrantedOrganizationUnit) => ReactNode,
+  ): ((unit: GrantedOrganizationUnit) => ReactNode) =>
+    renderChildUnitExtra
+      ? (unit) => (
+          <>
+            {renderOwn(unit)}
+            {renderChildUnitExtra(unit.ouId, unitsById.get(unit.ouId)?.name ?? unit.ouId)}
+          </>
+        )
+      : renderOwn;
 
   return (
     <Stack spacing={3}>
@@ -456,7 +479,7 @@ export default function OrganizationAccessSettings({
             {childMode === 'selected' && (
               <Stack spacing={1.5}>
                 {!locked && (
-                  <Box>
+                  <Stack direction="row" gap={1} flexWrap="wrap">
                     <Button
                       variant="contained"
                       size="small"
@@ -465,7 +488,8 @@ export default function OrganizationAccessSettings({
                     >
                       {t('resourceSharing:childUnits.grant', 'Grant access')}
                     </Button>
-                  </Box>
+                    {childUnitsAction}
+                  </Stack>
                 )}
                 <GrantedOrganizationUnitList
                   units={draft.childUnits}
@@ -484,7 +508,7 @@ export default function OrganizationAccessSettings({
                       }),
                     }))
                   }
-                  renderUnitExtra={
+                  renderUnitExtra={withChildUnitExtra(
                     mandateRoles
                       ? (unit) =>
                           unit.reach === 'unit' ? (
@@ -510,8 +534,8 @@ export default function OrganizationAccessSettings({
                               )}
                             </Typography>
                           )
-                      : (unit) => unitAssignmentsNote(unit.ouId)
-                  }
+                      : (unit) => unitAssignmentsNote(unit.ouId),
+                  )}
                   onRemove={(ouId) =>
                     edit((current) => ({childUnits: current.childUnits.filter((unit) => unit.ouId !== ouId)}))
                   }

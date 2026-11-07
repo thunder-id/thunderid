@@ -3,7 +3,9 @@
 
 import {describe, it, expect} from 'vitest';
 import type {SharingPolicy, SharingPolicySections} from '../../models/sharing-policy';
+import draftToSharingSections from '../draftToSharingSections';
 import planSharingPolicySave, {canEditSharingSectionsInPlace, haveSameSharingSections} from '../planSharingPolicySave';
+import sharingPolicyToDraft from '../sharingPolicyToDraft';
 
 const policyWith = (sections: SharingPolicySections): SharingPolicy => ({
   id: 'p1',
@@ -169,5 +171,77 @@ describe('canEditSharingSectionsInPlace', () => {
         {childUnits: {mode: 'selected', units: [{ouId: 'retail', reach: 'unit'}]}},
       ),
     ).toBe(false);
+  });
+
+  it('edits the policy in place when only the terms change', () => {
+    const current = policyWith({
+      childUnits: {mode: 'all', overlayRules: {'variables.connection1': {editable: true}}},
+    });
+    const sections: SharingPolicySections = {
+      childUnits: {mode: 'all', overlayRules: {'variables.connection1': {editable: false, value: ['c-1']}}},
+    };
+
+    expect(planSharingPolicySave(current, sections)).toEqual({
+      type: 'update',
+      policyId: 'p1',
+      version: 4,
+      sections,
+    });
+  });
+
+  it('does nothing when the values of a term are the same in a different order', () => {
+    const rule = (values: string[]) => ({editable: true, value: values, allowedValues: values, excludedValues: values});
+
+    expect(
+      planSharingPolicySave(policyWith({childUnits: {mode: 'all', overlayRules: {a: rule(['x', 'y'])}}}), {
+        childUnits: {mode: 'all', overlayRules: {a: rule(['y', 'x'])}},
+      }),
+    ).toEqual({type: 'none'});
+  });
+
+  it('does nothing when the terms are the same, whatever order they are written in', () => {
+    const current = policyWith({
+      childUnits: {
+        mode: 'all',
+        overlayRules: {a: {editable: true}, b: {editable: false, value: ['x']}},
+      },
+    });
+
+    expect(
+      planSharingPolicySave(current, {
+        childUnits: {mode: 'all', overlayRules: {b: {editable: false, value: ['x']}, a: {editable: true}}},
+      }),
+    ).toEqual({type: 'none'});
+  });
+});
+
+describe('a policy read and written back with no edit', () => {
+  const off = {assignments: {editable: false}};
+  const mandated = {roles: {editable: false, value: ['r1']}, assignments: {editable: false}};
+  const cases: [string, SharingPolicySections][] = [
+    ['every unit', {allUnits: {overlayRules: off}}],
+    ['all child units', {childUnits: {mode: 'all', excludedOuIds: ['trials'], overlayRules: off}}],
+    [
+      'selected child units',
+      {
+        childUnits: {
+          mode: 'selected',
+          units: [
+            {ouId: 'retail', reach: 'unit', overlayRules: mandated},
+            {ouId: 'banking', reach: 'subtree', overlayRules: off},
+          ],
+        },
+      },
+    ],
+    ['every other tree', {otherTreeRoots: {mode: 'all', overlayRules: off}}],
+    ['selected other trees', {otherTreeRoots: {mode: 'selected', units: [{ouId: 'northwind', overlayRules: off}]}}],
+  ];
+
+  it.each(cases)('plans nothing for a policy holding rules the screen does not edit, on %s', (_name, sections) => {
+    const policy = policyWith(sections);
+
+    expect(planSharingPolicySave(policy, draftToSharingSections(sharingPolicyToDraft(policy), policy))).toEqual({
+      type: 'none',
+    });
   });
 });

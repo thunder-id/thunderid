@@ -2,12 +2,14 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {useIdentityProviders, type IdentityProviderType} from '@thunderid/configure-connections';
-import {Alert, FormHelperText, FormLabel, MenuItem, Select, Stack} from '@wso2/oxygen-ui';
-import {useCallback, useMemo, type ReactNode} from 'react';
+import {Alert, FormHelperText, MenuItem, Select, Stack} from '@wso2/oxygen-ui';
+import {useMemo, type ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
 import CheckboxWithHint from './CheckboxWithHint';
 import {EXECUTOR_TO_IDP_TYPE_MAP, FEDERATED_EXECUTORS} from './constants';
 import type {CommonResourcePropertiesPropsInterface} from './types';
+import VariableBinding from './VariableBinding';
+import {BOOLEAN_VARIABLES, CONNECTION_VARIABLES} from './variableBindingTypes';
 import useResourceFieldError from '../../../../hooks/useResourceFieldError';
 import type {StepData} from '../../../../models/steps';
 
@@ -23,11 +25,6 @@ function FederationProperties({resource, onChange}: CommonResourcePropertiesProp
   const currentIdpId = useMemo(() => {
     const stepData = resource?.data as StepData | undefined;
     return (stepData?.properties as {idpId?: string})?.idpId ?? '';
-  }, [resource]);
-
-  const properties = useMemo(() => {
-    const stepData = resource?.data as StepData | undefined;
-    return stepData?.properties ?? {};
   }, [resource]);
 
   const idpType: IdentityProviderType | null = useMemo(() => {
@@ -49,17 +46,6 @@ function FederationProperties({resource, onChange}: CommonResourcePropertiesProp
 
   const errorMessage: string = useResourceFieldError(resource?.id, 'data.properties.idpId');
 
-  const handleConnectionChange = (selectedIdpId: string): void => {
-    onChange('data.properties.idpId', selectedIdpId, resource);
-  };
-
-  const handleBooleanPropertyChange = useCallback(
-    (propertyName: string, value: boolean): void => {
-      onChange(`data.properties.${propertyName}`, value, resource);
-    },
-    [resource, onChange],
-  );
-
   const isFederatedExecutor = executorName != null && FEDERATED_EXECUTORS.has(executorName);
   const hasConnections = availableConnections.length > 0;
   // Only show the error when the user can actually fix it (connections available but none selected)
@@ -67,32 +53,48 @@ function FederationProperties({resource, onChange}: CommonResourcePropertiesProp
 
   return (
     <Stack gap={2}>
-      <div>
-        <FormLabel htmlFor="connection-select">{t('flows:core.executions.federation.connection.label')}</FormLabel>
-        <Select
-          id="connection-select"
-          value={isPlaceholder ? '' : currentIdpId}
-          onChange={(e) => handleConnectionChange(e.target.value)}
-          displayEmpty
-          fullWidth
-          error={showError}
-          disabled={isLoadingIdps || !hasConnections}
-        >
-          <MenuItem value="" disabled>
-            {isLoadingIdps ? t('common:status.loading') : t('flows:core.executions.federation.connection.placeholder')}
-          </MenuItem>
-          {availableConnections.map((idp) => (
-            <MenuItem key={idp.id} value={idp.id}>
-              {idp.name}
-            </MenuItem>
-          ))}
-        </Select>
-        {showError && (
-          <FormHelperText error>
-            {errorMessage || t('flows:core.executions.federation.connection.required')}
-          </FormHelperText>
+      <VariableBinding
+        resource={resource}
+        onChange={onChange}
+        propertyKey="idpId"
+        accepts={CONNECTION_VARIABLES}
+        connectionType={idpType ?? undefined}
+        showLabel
+        labelId="connection-select-label"
+        htmlFor="connection-select"
+        label={t('flows:core.executions.federation.connection.label')}
+      >
+        {({commit}) => (
+          <>
+            <Select
+              labelId="connection-select-label"
+              id="connection-select"
+              value={isPlaceholder ? '' : currentIdpId}
+              onChange={(e) => commit(e.target.value)}
+              displayEmpty
+              fullWidth
+              error={showError}
+              disabled={isLoadingIdps || !hasConnections}
+            >
+              <MenuItem value="" disabled>
+                {isLoadingIdps
+                  ? t('common:status.loading')
+                  : t('flows:core.executions.federation.connection.placeholder')}
+              </MenuItem>
+              {availableConnections.map((idp) => (
+                <MenuItem key={idp.id} value={idp.id}>
+                  {idp.name}
+                </MenuItem>
+              ))}
+            </Select>
+            {showError && (
+              <FormHelperText error>
+                {errorMessage || t('flows:core.executions.federation.connection.required')}
+              </FormHelperText>
+            )}
+          </>
         )}
-      </div>
+      </VariableBinding>
 
       {!isLoadingIdps && !hasConnections && (
         <Alert severity="warning">{t('flows:core.executions.federation.connection.noConnections')}</Alert>
@@ -100,30 +102,52 @@ function FederationProperties({resource, onChange}: CommonResourcePropertiesProp
 
       {isFederatedExecutor && (
         <Stack gap={1}>
-          <CheckboxWithHint
-            checked={!!properties['allowAuthenticationWithoutLocalUser']}
-            onChange={(checked) => handleBooleanPropertyChange('allowAuthenticationWithoutLocalUser', checked)}
+          <VariableBinding
+            inline
+            resource={resource}
+            onChange={onChange}
+            propertyKey="allowAuthenticationWithoutLocalUser"
+            accepts={BOOLEAN_VARIABLES}
             label={t(
               'flows:core.executions.federation.allowAuthenticationWithoutLocalUser.label',
               'Allow authentication without local user',
             )}
-            hint={t(
-              'flows:core.executions.federation.allowAuthenticationWithoutLocalUser.hint',
-              'Allow users to authenticate even when no matching local user exists.',
+          >
+            {({commit, label, value: stored}) => (
+              <CheckboxWithHint
+                checked={!!stored}
+                onChange={commit}
+                label={label}
+                hint={t(
+                  'flows:core.executions.federation.allowAuthenticationWithoutLocalUser.hint',
+                  'Allow users to authenticate even when no matching local user exists.',
+                )}
+              />
             )}
-          />
-          <CheckboxWithHint
-            checked={!!properties['allowRegistrationWithExistingUser']}
-            onChange={(checked) => handleBooleanPropertyChange('allowRegistrationWithExistingUser', checked)}
+          </VariableBinding>
+          <VariableBinding
+            inline
+            resource={resource}
+            onChange={onChange}
+            propertyKey="allowRegistrationWithExistingUser"
+            accepts={BOOLEAN_VARIABLES}
             label={t(
               'flows:core.executions.federation.allowRegistrationWithExistingUser.label',
               'Allow registration with existing user',
             )}
-            hint={t(
-              'flows:core.executions.federation.allowRegistrationWithExistingUser.hint',
-              'Allow existing users to proceed through registration flows.',
+          >
+            {({commit, label, value: stored}) => (
+              <CheckboxWithHint
+                checked={!!stored}
+                onChange={commit}
+                label={label}
+                hint={t(
+                  'flows:core.executions.federation.allowRegistrationWithExistingUser.hint',
+                  'Allow existing users to proceed through registration flows.',
+                )}
+              />
             )}
-          />
+          </VariableBinding>
         </Stack>
       )}
     </Stack>

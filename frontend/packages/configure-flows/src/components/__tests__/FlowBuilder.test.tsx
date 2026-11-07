@@ -167,6 +167,7 @@ vi.mock('../FlowCanvas', () => ({
     triggerAutoLayoutOnLoad,
     mutateComponents,
     isDirty,
+    saveBlockedReason,
   }: {
     flowTitle: string;
     flowHandle: string;
@@ -183,6 +184,7 @@ vi.mock('../FlowCanvas', () => ({
     triggerAutoLayoutOnLoad?: boolean;
     mutateComponents: (components: Element[]) => Element[];
     isDirty?: boolean;
+    saveBlockedReason?: string;
   }) => {
     onNodesChangeCapture.current = onNodesChange;
     setEdgesCapture.current = setEdges;
@@ -192,6 +194,7 @@ vi.mock('../FlowCanvas', () => ({
         <div data-testid="flow-handle">{flowHandle}</div>
         <div data-testid="auto-layout">{String(triggerAutoLayoutOnLoad)}</div>
         <div data-testid="is-dirty">{String(Boolean(isDirty))}</div>
+        <div data-testid="save-blocked">{saveBlockedReason ?? ''}</div>
         <div data-testid="nodes-count">{nodes.length}</div>
         <div data-testid="edges-count">{edges.length}</div>
         <button data-testid="change-title-btn" onClick={() => onFlowTitleChange('New Flow Name')} type="button">
@@ -557,6 +560,20 @@ const mockProviderQueries = vi.hoisted(() => {
   });
   return {settled, identity: settled(), sms: settled(), email: settled()};
 });
+
+// The flow's organization access, which the editor holds and saves after the flow.
+const mockSharingAccess = vi.hoisted(() => ({
+  draft: {childUnits: [] as {rules?: unknown}[]} as Record<string, unknown>,
+  hasChanges: false,
+  isDeclared: false,
+  reset: vi.fn(),
+  save: vi.fn(),
+  savedPolicy: undefined as unknown,
+}));
+
+vi.mock('@thunderid/configure-resource-sharing', () => ({
+  useOrganizationAccess: () => mockSharingAccess,
+}));
 
 vi.mock('@thunderid/configure-connections', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@thunderid/configure-connections')>()),
@@ -961,6 +978,165 @@ describe('Edge Style Updates', () => {
 
     // The edge style effect is triggered on mount
     expect(screen.getByTestId('flow-builder')).toBeInTheDocument();
+  });
+});
+
+describe('Sharing saved with the flow', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockUseParams.mockReturnValue({flowId: 'existing-flow-123'});
+    mockUseNodesState.mockReturnValue([[], mockSetNodes, vi.fn()]);
+    mockUseEdgesState.mockReturnValue([[], mockSetEdges, vi.fn()]);
+    mockUseUpdateNodeInternals.mockReturnValue(vi.fn());
+    mockIsFlowValid.value = true;
+    mockValidateFlowGraph.mockReturnValue([]);
+    mockExistingFlowData.value = {
+      id: 'existing-flow-123',
+      ouId: 'ou-1',
+      name: 'Existing Flow',
+      handle: 'existing-flow',
+      nodes: [],
+    };
+    mockSharingAccess.hasChanges = false;
+    mockSharingAccess.isDeclared = false;
+    mockSharingAccess.draft = {childUnits: []};
+    mockSharingAccess.savedPolicy = undefined;
+    mockSharingAccess.save.mockResolvedValue(undefined);
+  });
+
+  it('should count a sharing change as an unsaved change of the editor', () => {
+    mockSharingAccess.hasChanges = true;
+
+    render(<FlowBuilder />);
+
+    expect(screen.getByTestId('is-dirty')).toHaveTextContent('true');
+  });
+
+  it('should not count anything as unsaved when neither the flow nor its sharing changed', () => {
+    render(<FlowBuilder />);
+
+    expect(screen.getByTestId('is-dirty')).toHaveTextContent('false');
+  });
+
+  it('should save only the sharing when only the sharing changed, leaving the flow alone', async () => {
+    mockSharingAccess.hasChanges = true;
+
+    render(<FlowBuilder />);
+    fireEvent.click(screen.getByTestId('save-btn'));
+
+    await waitFor(() => expect(mockSharingAccess.save).toHaveBeenCalledTimes(1));
+    expect(mockUpdateFlowMutate).not.toHaveBeenCalled();
+  });
+
+  describe('with a default a unit would start with that its variable refuses', () => {
+    const variablesNode = {
+      id: 'vars',
+      type: 'VARIABLES',
+      position: {x: 0, y: 0},
+      data: {inputs: [{identifier: 'supportEmail', type: 'EMAIL_INPUT', defaultValue: 'a@b.co'}]},
+    } as Node;
+
+    beforeEach(() => {
+      mockUseNodesState.mockReturnValue([[variablesNode], mockSetNodes, vi.fn()]);
+      mockSharingAccess.hasChanges = true;
+      mockSharingAccess.draft = {
+        childUnitRules: {'variables.supportEmail': {editable: true, value: ['not-an-email']}},
+        childUnits: [],
+      };
+    });
+
+    it('should hold Save back and say why', () => {
+      render(<FlowBuilder />);
+
+      expect(screen.getByTestId('save-blocked')).toHaveTextContent(
+        'Fix the organization unit defaults marked in Share before saving',
+      );
+    });
+
+    it('should save nothing, neither the flow nor the sharing', async () => {
+      render(<FlowBuilder />);
+      fireEvent.click(screen.getByTestId('save-btn'));
+
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(mockUpdateFlowMutate).not.toHaveBeenCalled();
+      expect(mockSharingAccess.save).not.toHaveBeenCalled();
+    });
+
+    it('should save again once the default is valid', async () => {
+      mockSharingAccess.draft = {
+        childUnitRules: {'variables.supportEmail': {editable: true, value: ['ops@acme.io']}},
+        childUnits: [],
+      };
+
+      render(<FlowBuilder />);
+
+      expect(screen.getByTestId('save-blocked')).toBeEmptyDOMElement();
+
+      fireEvent.click(screen.getByTestId('save-btn'));
+
+      await waitFor(() => expect(mockSharingAccess.save).toHaveBeenCalledTimes(1));
+    });
+
+    it('should not hold back a flow whose sharing is declared in a resource file', () => {
+      mockSharingAccess.isDeclared = true;
+
+      render(<FlowBuilder />);
+
+      expect(screen.getByTestId('save-blocked')).toBeEmptyDOMElement();
+    });
+  });
+
+  describe('after the flow is saved', () => {
+    const policy = {
+      id: 'p1',
+      stage: 'share',
+      version: 1,
+      childUnits: {mode: 'all', overlayRules: {'variables.region': {editable: true}}},
+    };
+    const declaring = {
+      id: 'vars',
+      type: 'VARIABLES',
+      position: {x: 0, y: 0},
+      data: {inputs: [{identifier: 'region', type: 'TEXT_INPUT'}]},
+    } as Node;
+    const discardedMessage = /took its sharing terms with it/;
+
+    beforeEach(() => {
+      mockSharingAccess.savedPolicy = policy;
+      mockUpdateFlowMutate.mockImplementation((_data: unknown, options: {onSuccess?: () => void}) => {
+        options?.onSuccess?.();
+      });
+    });
+
+    it('should read the policy again when the save removed a variable it names, even with no sharing draft', async () => {
+      mockUseNodesState.mockReturnValue([[], mockSetNodes, vi.fn()]);
+
+      render(<FlowBuilder />);
+      fireEvent.click(screen.getByTestId('save-btn'));
+
+      await waitFor(() => expect(mockSharingAccess.reset).toHaveBeenCalledTimes(1));
+      expect(mockSharingAccess.save).not.toHaveBeenCalled();
+      expect(screen.queryByText(discardedMessage)).not.toBeInTheDocument();
+    });
+
+    it('should leave the policy alone while the variables it names are still declared', async () => {
+      mockUseNodesState.mockReturnValue([[declaring], mockSetNodes, vi.fn()]);
+
+      render(<FlowBuilder />);
+      fireEvent.click(screen.getByTestId('save-btn'));
+
+      await waitFor(() => expect(mockUpdateFlowMutate).toHaveBeenCalled());
+      expect(mockSharingAccess.reset).not.toHaveBeenCalled();
+    });
+  });
+
+  it('should save the flow itself when nothing of the sharing changed', async () => {
+    render(<FlowBuilder />);
+    fireEvent.click(screen.getByTestId('save-btn'));
+
+    await waitFor(() => expect(mockUpdateFlowMutate).toHaveBeenCalled());
+    expect(mockSharingAccess.save).not.toHaveBeenCalled();
   });
 });
 

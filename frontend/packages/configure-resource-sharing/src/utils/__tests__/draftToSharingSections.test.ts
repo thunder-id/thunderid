@@ -7,6 +7,8 @@ import type {SharingPolicy} from '../../models/sharing-policy';
 import draftToSharingSections, {hasNoSharingSections} from '../draftToSharingSections';
 import sharingPolicyToDraft, {EMPTY_ORGANIZATION_ACCESS_DRAFT} from '../sharingPolicyToDraft';
 
+const editsTerms = (field: string): boolean => field.startsWith('terms.');
+
 const chosen = (overrides: Partial<OrganizationAccessDraft>): OrganizationAccessDraft => ({
   ...EMPTY_ORGANIZATION_ACCESS_DRAFT,
   scope: 'chosen',
@@ -107,6 +109,44 @@ describe('draftToSharingSections', () => {
     expect(draftToSharingSections(sharingPolicyToDraft(policy))).toEqual({
       childUnits: policy.childUnits,
       otherTreeRoots: policy.otherTreeRoots,
+    });
+  });
+
+  it('writes the terms of the units reached into all child units', () => {
+    const childUnitRules = {'terms.region': {editable: true, allowedValues: ['c-1']}};
+
+    expect(draftToSharingSections(chosen({childUnitsAccess: 'all', childUnitRules}), undefined, editsTerms)).toEqual({
+      childUnits: {mode: 'all', overlayRules: childUnitRules},
+    });
+  });
+
+  it('writes each selected child unit with the terms of its own', () => {
+    const retailRules = {'terms.region': {editable: false, value: ['c-1']}};
+
+    expect(
+      draftToSharingSections(
+        chosen({
+          childUnitsAccess: 'selected',
+          childUnits: [
+            {ouId: 'retail', reach: 'unit', rules: retailRules},
+            {ouId: 'banking', reach: 'subtree'},
+          ],
+        }),
+      ),
+    ).toEqual({
+      childUnits: {
+        mode: 'selected',
+        units: [
+          {ouId: 'retail', reach: 'unit', overlayRules: retailRules},
+          {ouId: 'banking', reach: 'subtree'},
+        ],
+      },
+    });
+  });
+
+  it('leaves out terms when there are none', () => {
+    expect(draftToSharingSections(chosen({childUnitsAccess: 'all', childUnitRules: {}}))).toEqual({
+      childUnits: {mode: 'all'},
     });
   });
 });
@@ -212,6 +252,82 @@ describe('draftToSharingSections, keeping the rules the screen does not edit', (
     expect(draftToSharingSections({...draft, scope: 'everyUnit'}, policyWith({allUnits: {overlayRules: off}}))).toEqual(
       {allUnits: {overlayRules: off}},
     );
+  });
+
+  it('keeps the edited rules of the every-unit and other-tree sections, which the draft holds none of', () => {
+    const terms = {'terms.region': {editable: true}};
+    const saved = policyWith({
+      childUnits: {mode: 'all', overlayRules: terms},
+      otherTreeRoots: {mode: 'all', overlayRules: terms},
+    });
+    const draft = {...sharingPolicyToDraft(saved, editsTerms), childUnitRules: {'terms.region': {editable: false}}};
+
+    // The child units take the terms the draft holds, and the other trees keep what was saved.
+    expect(draftToSharingSections(draft, saved, editsTerms)).toEqual({
+      childUnits: {mode: 'all', overlayRules: {'terms.region': {editable: false}}},
+      otherTreeRoots: {mode: 'all', overlayRules: terms},
+    });
+    expect(
+      draftToSharingSections({...draft, scope: 'everyUnit'}, policyWith({allUnits: {overlayRules: terms}})),
+    ).toEqual({allUnits: {overlayRules: terms}});
+  });
+
+  it('keeps every rule of a child-unit section when the resource edits none', () => {
+    const terms = {'terms.region': {editable: true}};
+    const saved = policyWith({childUnits: {mode: 'all', overlayRules: terms}});
+
+    expect(draftToSharingSections(sharingPolicyToDraft(saved), saved)).toEqual({
+      childUnits: {mode: 'all', overlayRules: terms},
+    });
+  });
+
+  it('does not bring back a term removed from the draft of all child units, and keeps the rules it does not edit', () => {
+    const off = {assignments: {editable: false}};
+    const saved = policyWith({
+      childUnits: {
+        mode: 'all',
+        overlayRules: {...off, 'terms.region': {editable: true}, 'terms.tier': {editable: false, value: ['gold']}},
+      },
+    });
+    const draft = {...sharingPolicyToDraft(saved, editsTerms), childUnitRules: {'terms.region': {editable: true}}};
+
+    // One term is gone from the draft and does not return from the saved policy; the rule the screen doesn't edit stays.
+    expect(draftToSharingSections(draft, saved, editsTerms)).toEqual({
+      childUnits: {mode: 'all', overlayRules: {...off, 'terms.region': {editable: true}}},
+    });
+    expect(draftToSharingSections({...draft, childUnitRules: {}}, saved, editsTerms)).toEqual({
+      childUnits: {mode: 'all', overlayRules: off},
+    });
+  });
+
+  it('writes no terms for a selected unit whose terms were removed, and leaves the saved ones out of its rules', () => {
+    const saved = policyWith({
+      childUnits: {
+        mode: 'selected',
+        units: [
+          {ouId: 'retail', reach: 'subtree', overlayRules: {...off, 'terms.region': {editable: true}}},
+          {ouId: 'banking', reach: 'subtree', overlayRules: {'terms.region': {editable: false, value: ['eu']}}},
+        ],
+      },
+    });
+    const draft = sharingPolicyToDraft(saved, editsTerms);
+    const withoutTerms = {
+      ...draft,
+      childUnits: draft.childUnits.map(({rules: _rules, ...unit}) => {
+        void _rules;
+        return unit;
+      }),
+    };
+
+    expect(draftToSharingSections(withoutTerms, saved, editsTerms)).toEqual({
+      childUnits: {
+        mode: 'selected',
+        units: [
+          {ouId: 'retail', reach: 'subtree', overlayRules: off},
+          {ouId: 'banking', reach: 'subtree'},
+        ],
+      },
+    });
   });
 
   it('keeps a named unit rule while the unit stays, whatever its reach, and not for units added later', () => {

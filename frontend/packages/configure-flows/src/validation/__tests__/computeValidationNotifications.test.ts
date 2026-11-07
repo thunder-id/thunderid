@@ -1221,4 +1221,30 @@ describe('computeValidationNotifications', () => {
       expect(compute([createElementNode('prompt_1', [richText({ref: ''})])]).has(NOTIFICATION_ID)).toBe(false);
     });
   });
+
+  describe('Resolve Variables declaration rule', () => {
+    const NOTIFICATION_ID = 'vars_1_VARIABLES_NONE_DECLARED';
+    const variablesNode = (id: string, inputs?: unknown[]): Node =>
+      ({id, type: 'VARIABLES', position: {x: 0, y: 0}, data: inputs ? {inputs} : {}}) as Node;
+    const compute = (nodes: Node[]) =>
+      computeValidationNotifications(nodes, VALIDATION_RULES, t, COMMON_GRAPH_VALIDATION_RULES, []);
+
+    it('should warn when no Resolve Variables step declares a variable', () => {
+      const notification = compute([variablesNode('vars_1'), variablesNode('vars_2', [])]).get(NOTIFICATION_ID)!;
+
+      expect(notification).toBeDefined();
+      expect(notification.getType()).toBe(NotificationType.WARNING);
+      expect(notification.hasResource('vars_1')).toBe(true);
+    });
+
+    it('should accept the flow once any step declares a variable', () => {
+      const declared = [{identifier: 'a', type: 'TEXT_INPUT'}];
+
+      expect(compute([variablesNode('vars_1'), variablesNode('vars_2', declared)]).has(NOTIFICATION_ID)).toBe(false);
+    });
+
+    it('should say nothing about a flow without a Resolve Variables step', () => {
+      expect(compute([createNode({id: 'plain'})]).size).toBe(0);
+    });
+  });
 });

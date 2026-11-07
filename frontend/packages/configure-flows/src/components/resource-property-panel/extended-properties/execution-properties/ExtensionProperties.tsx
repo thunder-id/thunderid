@@ -151,8 +151,8 @@ function ExtensionProperties({resource, onChange}: CommonResourcePropertiesProps
           {t('flows:core.executions.extension.connection.label', 'Connection')}
         </FormLabel>
         <Select
-          id="extension-connection"
           labelId="extension-connection-label"
+          id="extension-connection"
           value={connectionsQuery.isLoading || connectionDangling ? '' : connectionId}
           onChange={(e) => onChange('data.properties.connectionId', e.target.value, resource)}
           displayEmpty
@@ -257,7 +257,7 @@ function ExtensionProperties({resource, onChange}: CommonResourcePropertiesProps
         )}
         id="extension-max-attempts"
         type="number"
-        value={String((properties['maxAttempts'] as number | string | undefined) ?? DEFAULT_MAX_ATTEMPTS)}
+        value={String((properties['maxAttempts'] as number | undefined) ?? DEFAULT_MAX_ATTEMPTS)}
         onCommit={(value) => onChange('data.properties.maxAttempts', Number(value), resource)}
         normalize={(raw) => clampToInteger(raw, 1, 20)}
         fullWidth

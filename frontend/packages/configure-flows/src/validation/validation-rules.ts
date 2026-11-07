@@ -9,7 +9,7 @@ import {ActionEventTypes, BlockTypes, ElementCategories, ElementTypes, PromptAct
 import type {Element as FlowElement} from '../models/elements';
 import Notification, {NotificationType} from '../models/notification';
 import type {Resource} from '../models/resources';
-import {ExecutionTypes, StepTypes} from '../models/steps';
+import {ExecutionTypes, StaticStepTypes, StepTypes} from '../models/steps';
 import type {StepData} from '../models/steps';
 import {getExecutorInputs, hasInvalidInputConfig} from '../utils/executorInputs';
 import {getInputIdentifier, INPUT_ELEMENT_TYPES} from '../utils/inputTypeMapping';
@@ -790,11 +790,40 @@ export const promptInputHeldConstantRule: GraphValidationRule = (nodes: Node[]):
 };
 
 /**
+ * Mirrors the server's save check that the Resolve Variables steps of a flow declare at least one variable between
+ * them. A step dropped on the canvas starts with none, so this is a warning rather than an error, like the other
+ * rules the server refuses the save for: it must not block the author mid-draw. It is raised on the first of the
+ * steps, as the server does.
+ */
+export const variablesDeclaredRule: GraphValidationRule = (nodes: Node[]): Notification[] => {
+  const variablesNodes = nodes.filter((node) => node.type === StaticStepTypes.Variables);
+  const declaresAny = variablesNodes.some((node) => {
+    const inputs: unknown = (node.data as {inputs?: unknown} | undefined)?.inputs;
+
+    return Array.isArray(inputs) && inputs.length > 0;
+  });
+
+  if (variablesNodes.length === 0 || declaresAny) {
+    return [];
+  }
+
+  return [
+    createGraphErrorNotification(
+      `${variablesNodes[0].id}_VARIABLES_NONE_DECLARED`,
+      'flows:core.validation.variables.noneDeclared',
+      variablesNodes[0],
+      NotificationType.WARNING,
+    ),
+  ];
+};
+
+/**
  * Rules that apply to every flow type.
  */
 export const COMMON_GRAPH_VALIDATION_RULES: GraphValidationRule[] = [
   richTextActionWiringRule,
   promptInputHeldConstantRule,
+  variablesDeclaredRule,
 ];
 
 export const GRAPH_VALIDATION_RULES: GraphValidationRule[] = [

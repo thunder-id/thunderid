@@ -6,8 +6,10 @@ import {move} from '@dnd-kit/helpers';
 import {DragDropProvider, DragOverlay, type DragDropEventHandlers} from '@dnd-kit/react';
 import {DiscardChangesDialog} from '@thunderid/components';
 import {useEmailProviders, useIdentityProviders, useSMSProviders} from '@thunderid/configure-connections';
+import type {OrganizationAccessState} from '@thunderid/configure-resource-sharing';
+import type {FlowVariableDefinition} from '@thunderid/react';
 import {Badge, Box, Button, Card, CardContent, Tooltip, Typography, type Theme} from '@wso2/oxygen-ui';
-import {ArrowLeft, Play, Save, Square} from '@wso2/oxygen-ui-icons-react';
+import {ArrowLeft, Play, Save, Share2, Square} from '@wso2/oxygen-ui-icons-react';
 import {
   type Connection,
   type Edge,
@@ -15,6 +17,7 @@ import {
   type OnEdgesChange,
   type OnNodesChange,
   useReactFlow,
+  useStore,
   useUpdateNodeInternals,
 } from '@xyflow/react';
 import type {UpdateNodeInternals} from '@xyflow/system';
@@ -38,6 +41,10 @@ import SimulationStepPreview from './SimulationStepPreview';
 import ValidationBadge from './ValidationBadge';
 import VisualFlow, {type VisualFlowPropsInterface} from './VisualFlow';
 import VisualFlowConstants from '../../constants/VisualFlowConstants';
+import FlowVariablesContext, {
+  type FlowVariablesContextValue,
+  type VariablesGroup,
+} from '../../context/FlowVariablesContext';
 import StepPreviewContext from '../../context/StepPreviewContext';
 import useComponentDelete from '../../hooks/useComponentDelete';
 import useConfirmPasswordField from '../../hooks/useConfirmPasswordField';
@@ -60,7 +67,7 @@ import {BlockTypes, type Element} from '../../models/elements';
 import type {MetadataInterface} from '../../models/metadata';
 import Notification, {NotificationType} from '../../models/notification';
 import {ResourceTypes, type Resource, type Resources} from '../../models/resources';
-import {StepTypes, type Step, type StepData} from '../../models/steps';
+import {StaticStepTypes, StepCategories, StepTypes, type Step, type StepData} from '../../models/steps';
 import {type Template} from '../../models/templates';
 import type {Widget} from '../../models/widget';
 import applyAutoLayout, {hasUnpositionedNodes} from '../../utils/applyAutoLayout';
@@ -74,12 +81,19 @@ import {
   withSimulationClasses,
 } from '../../utils/stripSimulationClasses';
 import {findContainingComponent} from '../../utils/updateNestedComponent';
+import {areVariableGroupsEqual, selectVariableGroups} from '../../utils/variableGroups';
+import findVariablesNodesBefore from '../../utils/variablesScope';
 import {widgetNeedsViewContainer} from '../../utils/widgetUtils';
 import Droppable from '../dnd/Droppable';
+import FlowSharingDialog, {type SharedFlow} from '../flow-sharing/FlowSharingDialog';
+import useSharedVariables from '../flow-sharing/useSharedVariables';
+import {declaredVariablesOf} from '../flow-sharing/variableRules';
 import EdgePathsProvider from '../react-flow-overrides/EdgePathsProvider';
 import ResourcePanel from '../resource-panel/ResourcePanel';
 import ResourcePropertyPanel from '../resource-property-panel/ResourcePropertyPanel';
 import ValidationPanel from '../validation-panel/ValidationPanel';
+import {rewriteBindings} from '../variables-dialog/variableBindings';
+import VariableChangeDialog from '../variables-dialog/VariableChangeDialog';
 
 /**
  * Props interface of {@link DecoratedVisualFlow}
@@ -156,6 +170,19 @@ export interface DecoratedVisualFlowPropsInterface extends Omit<VisualFlowPropsI
    * Whether the flow has unsaved changes (drives the Save-button indicator).
    */
   isDirty?: boolean;
+  /**
+   * The flow being edited, when it can be shared. Adds the Share button to the header.
+   */
+  sharing?: SharedFlow;
+  /**
+   * The flow's organization access, which the Share view edits and the editor saves with the flow.
+   */
+  sharingAccess?: OrganizationAccessState;
+  /**
+   * Why the editor cannot be saved right now apart from validation errors, such as a sharing change the server would
+   * refuse. It disables Save, is given as its tooltip, and marks the Share button.
+   */
+  saveBlockedReason?: string;
 }
 
 /**
@@ -193,6 +220,9 @@ function DecoratedVisualFlow({
   canUndo = false,
   canRedo = false,
   isDirty = false,
+  sharing = undefined,
+  sharingAccess = undefined,
+  saveBlockedReason = undefined,
   ...rest
 }: DecoratedVisualFlowPropsInterface): ReactElement {
   useDeleteExecutionResource();
@@ -206,7 +236,7 @@ function DecoratedVisualFlow({
     useUIPanelState();
   const {notifyElementAdded, onAutoLayout} = useFlowEvents();
   const {isFlowMetadataLoading, isVerboseMode, metadata, setFlowNodes, setFlowEdges} = useFlowConfig();
-  const {onResourceDropOnCanvas} = useInteractionState();
+  const {onResourceDropOnCanvas, setLastInteractedResource, setLastInteractedStepId} = useInteractionState();
 
   // Sync controlled nodes to the shared FlowConfig context so that
   // ValidationProvider (which sits above this ReactFlowProvider) can
@@ -294,6 +324,7 @@ function DecoratedVisualFlow({
   }, [identityProviders, smsProviders, emailProviders, metadata]);
 
   const [isContainerDialogOpen, setIsContainerDialogOpen] = useState<boolean>(false);
+  const [isSharingOpen, setIsSharingOpen] = useState<boolean>(false);
   const [dropScenario, setDropScenario] = useState<
     'form-on-canvas' | 'input-on-canvas' | 'input-on-view' | 'widget-on-canvas'
   >('form-on-canvas');
@@ -333,6 +364,10 @@ function DecoratedVisualFlow({
     onResourceDropOnCanvas,
   });
 
+  // What is asked before a deletion is worked out further down, where the flow's variables are known.
+  const confirmNodesDeleteRef = useRef<(deleted: Node[]) => Promise<boolean>>(() => Promise.resolve(true));
+  const confirmNodesDelete = useCallback((deleted: Node[]) => confirmNodesDeleteRef.current(deleted), []);
+
   const {handleBeforeDelete, handleConnect, handleNodesDelete, handleEdgesDelete} = useVisualFlowHandlers({
     onEdgeResolve,
     setEdges,
@@ -340,6 +375,7 @@ function DecoratedVisualFlow({
     sourceNodes,
     sourceEdges,
     onDeleteRefused,
+    confirmNodesDelete,
   });
 
   const {addCanvasNode, addToView, addToForm, addToViewAtIndex, addToFormAtIndex} = useDragDropHandlers({
@@ -499,6 +535,169 @@ function DecoratedVisualFlow({
       startSimulation();
     }
   }, [isSimulationActive, stopSimulation, startSimulation]);
+
+  // The variables of every variables node, by node. Nodes move on every drag, so the groups are only replaced when
+  // a node or the list of variables it holds changes.
+  const variableGroups: VariablesGroup[] = useStore(selectVariableGroups, areVariableGroupsEqual);
+  const variables: FlowVariableDefinition[] = useMemo(
+    () => variableGroups.flatMap((group: VariablesGroup) => group.variables),
+    [variableGroups],
+  );
+  const hasVariablesNode: boolean = variableGroups.length > 0;
+
+  const sharedVariables: Set<string> = useSharedVariables(sharing);
+
+  // Rewrites the properties of every step bound to a variable: points them at another identifier, or takes them off.
+  // It works on the flow's own graph, not on what the canvas shows: the canvas holds a stack of executors as one node
+  // in compact mode, so it cannot reach the steps inside it.
+  const rewriteVariableBindings = useCallback(
+    (from: string, to: string | null): void => {
+      setNodes((current: Node[]) =>
+        current.map((node: Node) => {
+          const next = rewriteBindings((node.data as StepData | undefined)?.properties, from, to);
+
+          return next ? {...node, data: {...node.data, properties: next}} : node;
+        }),
+      );
+    },
+    [setNodes],
+  );
+
+  const countBindings = useCallback(
+    (identifier: string): number =>
+      (sourceNodes ?? getNodes()).filter(
+        (node: Node) =>
+          rewriteBindings((node.data as StepData | undefined)?.properties, identifier, null) !== undefined,
+      ).length,
+    [getNodes, sourceNodes],
+  );
+
+  const renameBindings = useCallback(
+    (from: string, to: string): void => rewriteVariableBindings(from, to),
+    [rewriteVariableBindings],
+  );
+  const removeBindings = useCallback(
+    (identifier: string): void => rewriteVariableBindings(identifier, null),
+    [rewriteVariableBindings],
+  );
+  const isShared = useCallback((identifier: string): boolean => sharedVariables.has(identifier), [sharedVariables]);
+
+  // Deleting a variables step takes its variables with it, so what uses them is looked at first: the steps bound to
+  // them lose their binding, and the terms shared for them go when the flow is saved.
+  const [pendingVariablesDelete, setPendingVariablesDelete] = useState<{
+    resolve: (confirmed: boolean) => void;
+    shared: boolean;
+    identifiers: string[];
+    stepsUsing: number;
+  } | null>(null);
+
+  const requestVariablesDelete = useCallback(
+    (deleted: Node[]): Promise<boolean> => {
+      const identifiers: string[] = declaredVariablesOf(deleted).map(
+        (variable: FlowVariableDefinition) => variable.identifier,
+      );
+      const stepsUsing: number = (sourceNodes ?? getNodes()).filter((node: Node) =>
+        identifiers.some(
+          (identifier: string) =>
+            rewriteBindings((node.data as StepData | undefined)?.properties, identifier, null) !== undefined,
+        ),
+      ).length;
+      const shared: boolean = identifiers.some((identifier: string) => sharedVariables.has(identifier));
+
+      if (stepsUsing === 0 && !shared) {
+        return Promise.resolve(true);
+      }
+
+      return new Promise<boolean>((resolve) => {
+        setPendingVariablesDelete({identifiers, resolve, shared, stepsUsing});
+      });
+    },
+    [getNodes, sharedVariables, sourceNodes],
+  );
+
+  useEffect(() => {
+    confirmNodesDeleteRef.current = requestVariablesDelete;
+  }, [requestVariablesDelete]);
+
+  const settleVariablesDelete = (confirmed: boolean): void => {
+    if (confirmed) {
+      pendingVariablesDelete?.identifiers.forEach((identifier: string) => removeBindings(identifier));
+    }
+
+    pendingVariablesDelete?.resolve(confirmed);
+    setPendingVariablesDelete(null);
+  };
+
+  // The variables node nearest before a step: walking the edges backwards from it, the first variables node found.
+  // The variables nodes every route passes before a step, nearest first: the only ones whose variables the step can use.
+  const variablesNodesBefore = useCallback(
+    (stepId: string): string[] =>
+      findVariablesNodesBefore(stepId, sourceNodes ?? getNodes(), sourceEdges ?? getEdges()),
+    [getEdges, getNodes, sourceEdges, sourceNodes],
+  );
+  const variablesNodeBefore = useCallback(
+    (stepId: string): string | undefined => variablesNodesBefore(stepId)[0],
+    [variablesNodesBefore],
+  );
+  const variablesBefore = useCallback(
+    (stepId: string): FlowVariableDefinition[] =>
+      variablesNodesBefore(stepId).flatMap(
+        (nodeId: string) => variableGroups.find((group: VariablesGroup) => group.nodeId === nodeId)?.variables ?? [],
+      ),
+    [variableGroups, variablesNodesBefore],
+  );
+
+  const openVariablesNode = useCallback(
+    (nodeId: string): void => {
+      const node: Node | undefined = (sourceNodes ?? getNodes()).find((candidate: Node) => candidate.id === nodeId);
+
+      if (!node) {
+        return;
+      }
+
+      // Selecting the node the way its own button does, so its properties show the variables to edit.
+      setLastInteractedStepId(nodeId);
+      setLastInteractedResource({
+        category: StepCategories.Workflow,
+        data: {...(node.data as StepData), displayOnly: true},
+        deletable: true,
+        display: {label: t('flows:core.variables.label', 'Resolve Variables'), showOnResourcePanel: false},
+        id: nodeId,
+        resourceType: ResourceTypes.Step,
+        type: StaticStepTypes.Variables,
+      } as unknown as Step);
+      setIsOpenResourcePropertiesPanel(true);
+    },
+    [getNodes, setIsOpenResourcePropertiesPanel, setLastInteractedResource, setLastInteractedStepId, sourceNodes, t],
+  );
+
+  const flowVariablesValue: FlowVariablesContextValue = useMemo(
+    () => ({
+      countBindings,
+      groups: variableGroups,
+      isShared,
+      openVariablesNode,
+      ownerOuId: sharing?.ouId,
+      removeBindings,
+      renameBindings,
+      variables: hasVariablesNode ? variables : undefined,
+      variablesBefore,
+      variablesNodeBefore,
+    }),
+    [
+      countBindings,
+      hasVariablesNode,
+      isShared,
+      openVariablesNode,
+      removeBindings,
+      renameBindings,
+      sharing?.ouId,
+      variableGroups,
+      variables,
+      variablesBefore,
+      variablesNodeBefore,
+    ],
+  );
 
   const handleSave = useCallback((): void => {
     if (isSimulationActive) {
@@ -1000,6 +1199,17 @@ function DecoratedVisualFlow({
 
         <Box sx={{display: 'flex', alignItems: 'center', gap: 1}}>
           <ValidationBadge errorCount={errorCount} warningCount={warningCount} />
+          {sharing && (
+            <Button
+              variant="outlined"
+              color={saveBlockedReason ? 'error' : 'primary'}
+              startIcon={<Share2 size={16} />}
+              onClick={() => setIsSharingOpen(true)}
+              data-testid="share-flow-button"
+            >
+              {t('flows:core.headerPanel.share', 'Share')}
+            </Button>
+          )}
           <Button
             variant="outlined"
             startIcon={simulation.isSimulating ? <Square size={16} /> : <Play size={16} />}
@@ -1014,9 +1224,8 @@ function DecoratedVisualFlow({
             title={
               hasErrors
                 ? t('flows:core.headerPanel.saveDisabledTooltip', 'Fix validation errors before saving')
-                : isDirty && onSave
-                  ? t('flows:core.headerPanel.unsavedChanges', 'You have unsaved changes')
-                  : ''
+                : (saveBlockedReason ??
+                  (isDirty && onSave ? t('flows:core.headerPanel.unsavedChanges', 'You have unsaved changes') : ''))
             }
           >
             <span>
@@ -1053,7 +1262,7 @@ function DecoratedVisualFlow({
               >
                 <Button
                   variant="contained"
-                  disabled={hasErrors || !onSave}
+                  disabled={hasErrors || !onSave || Boolean(saveBlockedReason)}
                   startIcon={<Save size={18} />}
                   // Saving during preview stops it first (handleSave), so the
                   // button stays enabled instead of blocking on the preview.
@@ -1072,76 +1281,78 @@ function DecoratedVisualFlow({
       <Box sx={{position: 'relative', flex: 1, overflow: 'hidden', p: 1, pt: 0}}>
         {/* startAt is referentially stable, so providing it does not re-render nodes on simulation state changes */}
         <StepPreviewContext.Provider value={simulation.startAt}>
-          <DragDropProvider onDragEnd={handleDragEnd} onDragOver={handleDragOver}>
-            <ResourcePanel
-              resources={resources}
-              open={isResourcePanelOpen}
-              onAdd={handleOnAdd}
-              disabled={isFlowMetadataLoading}
-              flowTitle={flowTitle}
-              flowStatus={flowStatus}
-              flowHandle={flowHandle}
-              onFlowTitleChange={onFlowTitleChange}
-              rightPanel={rightPanel}
-              footer={resourcePanelFooter}
-            >
-              <Droppable
-                id={generateResourceId(VisualFlowConstants.FLOW_BUILDER_CANVAS_ID)}
-                type={VisualFlowConstants.FLOW_BUILDER_DROPPABLE_CANVAS_ID}
-                accept={[...VisualFlowConstants.FLOW_BUILDER_CANVAS_ALLOWED_RESOURCE_TYPES]}
-                hideDropZones
-                collisionPriority={CollisionPriority.Low}
+          <FlowVariablesContext.Provider value={flowVariablesValue}>
+            <DragDropProvider onDragEnd={handleDragEnd} onDragOver={handleDragOver}>
+              <ResourcePanel
+                resources={resources}
+                open={isResourcePanelOpen}
+                onAdd={handleOnAdd}
+                disabled={isFlowMetadataLoading}
+                flowTitle={flowTitle}
+                flowStatus={flowStatus}
+                flowHandle={flowHandle}
+                onFlowTitleChange={onFlowTitleChange}
+                rightPanel={rightPanel}
+                footer={resourcePanelFooter}
               >
-                <EdgePathsProvider>
-                  <VisualFlow
-                    nodes={displayNodes}
-                    onNodesChange={onNodesChange}
-                    edges={displayEdges}
-                    edgeTypes={edgeTypes}
-                    onEdgesChange={onEdgesChange}
-                    onConnect={handleConnect}
-                    onBeforeDelete={handleBeforeDelete}
-                    onNodesDelete={handleNodesDelete}
-                    onEdgesDelete={handleEdgesDelete}
-                    onNodeDragStop={handleNodeDragStop}
-                    onNodeClick={handleNodeClick}
-                    onEdgeMouseEnter={handleEdgeMouseEnter}
-                    onEdgeMouseLeave={handleEdgeMouseLeave}
-                    {...rest}
-                  />
-                </EdgePathsProvider>
-              </Droppable>
-            </ResourcePanel>
-            <DragOverlay>
-              {(source) => {
-                const data = source?.data as DragSourceData | undefined;
+                <Droppable
+                  id={generateResourceId(VisualFlowConstants.FLOW_BUILDER_CANVAS_ID)}
+                  type={VisualFlowConstants.FLOW_BUILDER_DROPPABLE_CANVAS_ID}
+                  accept={[...VisualFlowConstants.FLOW_BUILDER_CANVAS_ALLOWED_RESOURCE_TYPES]}
+                  hideDropZones
+                  collisionPriority={CollisionPriority.Low}
+                >
+                  <EdgePathsProvider>
+                    <VisualFlow
+                      nodes={displayNodes}
+                      onNodesChange={onNodesChange}
+                      edges={displayEdges}
+                      edgeTypes={edgeTypes}
+                      onEdgesChange={onEdgesChange}
+                      onConnect={handleConnect}
+                      onBeforeDelete={handleBeforeDelete}
+                      onNodesDelete={handleNodesDelete}
+                      onEdgesDelete={handleEdgesDelete}
+                      onNodeDragStop={handleNodeDragStop}
+                      onNodeClick={handleNodeClick}
+                      onEdgeMouseEnter={handleEdgeMouseEnter}
+                      onEdgeMouseLeave={handleEdgeMouseLeave}
+                      {...rest}
+                    />
+                  </EdgePathsProvider>
+                </Droppable>
+              </ResourcePanel>
+              <DragOverlay>
+                {(source) => {
+                  const data = source?.data as DragSourceData | undefined;
 
-                if (!data?.isReordering || !data['resource']) return null;
+                  if (!data?.isReordering || !data['resource']) return null;
 
-                const label = (data['resource'] as Resource)?.display?.label ?? (data['resource'] as Resource)?.type;
+                  const label = (data['resource'] as Resource)?.display?.label ?? (data['resource'] as Resource)?.type;
 
-                return (
-                  <Card
-                    elevation={3}
-                    sx={{
-                      px: 2,
-                      py: 1.5,
-                      minWidth: 120,
-                      maxWidth: 280,
-                      cursor: 'grabbing',
-                      bgcolor: 'background.paper',
-                    }}
-                  >
-                    <CardContent sx={{p: 0, '&:last-child': {pb: 0}}}>
-                      <Typography variant="body2" fontWeight={500} noWrap>
-                        {label}
-                      </Typography>
-                    </CardContent>
-                  </Card>
-                );
-              }}
-            </DragOverlay>
-          </DragDropProvider>
+                  return (
+                    <Card
+                      elevation={3}
+                      sx={{
+                        px: 2,
+                        py: 1.5,
+                        minWidth: 120,
+                        maxWidth: 280,
+                        cursor: 'grabbing',
+                        bgcolor: 'background.paper',
+                      }}
+                    >
+                      <CardContent sx={{p: 0, '&:last-child': {pb: 0}}}>
+                        <Typography variant="body2" fontWeight={500} noWrap>
+                          {label}
+                        </Typography>
+                      </CardContent>
+                    </Card>
+                  );
+                }}
+              </DragOverlay>
+            </DragDropProvider>
+          </FlowVariablesContext.Provider>
         </StepPreviewContext.Provider>
       </Box>
 
@@ -1160,6 +1371,41 @@ function DecoratedVisualFlow({
           'You have unsaved changes to this flow. If you leave now, your changes will be lost.',
         )}
       />
+      <VariableChangeDialog
+        open={pendingVariablesDelete !== null}
+        title={t('flows:core.variables.deleteNode.title', 'Delete this step?')}
+        details={[
+          ...(pendingVariablesDelete && pendingVariablesDelete.stepsUsing > 0
+            ? [
+                t('flows:core.variables.deleteNode.used', {
+                  count: pendingVariablesDelete.stepsUsing,
+                  defaultValue_one: '{{count}} step uses its variables and will be unbound.',
+                  defaultValue_other: '{{count}} steps use its variables and will be unbound.',
+                }),
+              ]
+            : []),
+          ...(pendingVariablesDelete?.shared
+            ? [
+                t(
+                  'flows:core.variables.deleteNode.shared',
+                  'Sharing terms and values saved by organization units for its variables are deleted when you save.',
+                ),
+              ]
+            : []),
+        ]}
+        confirmLabel={t('common:actions.delete', 'Delete')}
+        onClose={() => settleVariablesDelete(false)}
+        onConfirm={() => settleVariablesDelete(true)}
+      />
+      {sharing && sharingAccess && (
+        <FlowSharingDialog
+          open={isSharingOpen}
+          access={sharingAccess}
+          flow={sharing}
+          variables={variables}
+          onClose={() => setIsSharingOpen(false)}
+        />
+      )}
     </Box>
   );
 }

@@ -1,12 +1,12 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {SdkTheme} from '@thunderid/components';
 import {useConfig} from '@thunderid/contexts';
 import {DefaultTheme, FontImporter, getCspNonce, getFontImportURL, useDesign, type Theme} from '@thunderid/design';
 import {Box, CircularProgress, createOxygenTheme, OxygenUIThemeProvider, HighContrastTheme} from '@wso2/oxygen-ui';
 import type {JSX, ComponentType} from 'react';
 import Head from '../components/Head';
-import SdkTheme from '../components/SdkTheme';
 
 export default function withTheme<P extends object>(WrappedComponent: ComponentType<P>) {
   return function WithTheme(props: P): JSX.Element {

@@ -3,7 +3,7 @@
 
 import {ActionTypes} from '../models/actions';
 import {BlockTypes, ElementTypes} from '../models/elements';
-import {ExecutionTypes, StepTypes} from '../models/steps';
+import {ExecutionTypes, StaticStepTypes, StepTypes} from '../models/steps';
 import {TemplateTypes} from '../models/templates';
 import {WidgetTypes} from '../models/widget';
 
@@ -49,6 +49,7 @@ class VisualFlowConstants {
     StepTypes.Rule,
     StepTypes.Execution,
     StepTypes.Call,
+    StaticStepTypes.Variables,
     TemplateTypes.Basic,
     TemplateTypes.BasicFederated,
     TemplateTypes.Blank,

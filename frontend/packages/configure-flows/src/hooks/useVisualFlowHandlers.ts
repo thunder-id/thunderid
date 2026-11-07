@@ -131,6 +131,11 @@ export interface UseVisualFlowHandlersProps {
    * Reports a deletion that was refused, with a message for the user.
    */
   onDeleteRefused?: (message: string) => void;
+  /**
+   * Asks before a deletion that takes more than the nodes with it, such as a variables step whose variables other steps
+   * use. Resolves to whether the deletion goes ahead.
+   */
+  confirmNodesDelete?: (nodes: Node[]) => Promise<boolean>;
 }
 
 /**
@@ -191,7 +196,11 @@ const useVisualFlowHandlers = (props: UseVisualFlowHandlersProps): UseVisualFlow
       const targets = resolveSkipTargets(deletedIds, sourceNodes ?? rf.getNodes(), sourceEdges ?? rf.getEdges());
       const blocked: string[] = [...targets].filter(([, target]) => target === undefined).map(([id]) => id);
       if (blocked.length === 0) {
-        return Promise.resolve({nodes, edges});
+        const {confirmNodesDelete} = currentProps;
+
+        return confirmNodesDelete
+          ? confirmNodesDelete(nodes).then((confirmed: boolean) => (confirmed ? {nodes, edges} : false))
+          : Promise.resolve({nodes, edges});
       }
 
       onDeleteRefused?.(
