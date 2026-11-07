@@ -265,16 +265,7 @@ func (e *roleExecutor) heldPermissions(ctx context.Context, caller recordedCalle
 	if err != nil {
 		return nil, err
 	}
-	held := make([]string, 0, len(caller.Permissions))
-	for _, permission := range caller.Permissions {
-		for _, onServer := range current {
-			if security.HasSufficientPermission(onServer, permission) {
-				held = append(held, permission)
-				break
-			}
-		}
-	}
-	return held, nil
+	return security.HeldPermissions(caller.Permissions, current), nil
 }
 
 // rolePrompt asks for one or more of the assignable roles, with the refusal that sent the prompt back if any.

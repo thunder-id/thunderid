@@ -575,11 +575,20 @@ func runtimeProperty(ctx *providers.NodeContext, key string) (string, error) {
 	return resolved, nil
 }
 
+// withServerAuthority returns a view of ctx whose service calls run with the server's authority. It is for
+// the reads a flow needs to decide where and as what it places an entity, which grant nothing themselves, so a
+// caller holding only the permission for the flow's action is not also asked for permission to read them.
+func withServerAuthority(ctx *providers.NodeContext) *providers.NodeContext {
+	view := *ctx
+	view.Context = security.WithRuntimeContext(ctx.Context)
+	return &view
+}
+
 // isInviter reports whether the caller is the one who started the invitation flow,
 // presenting their own token.
 func isInviter(ctx *providers.NodeContext) bool {
 	subject := security.GetSubject(ctx.Context)
-	return !security.IsRuntimeContext(ctx.Context) && subject != "" &&
+	return !security.IsRuntimeContext(ctx.Context) && !security.IsRecordedCaller(ctx.Context) && subject != "" &&
 		subject == ctx.RuntimeData[common.RuntimeKeyInviter]
 }
 

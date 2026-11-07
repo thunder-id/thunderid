@@ -22,6 +22,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/eventbus"
 	i18nmgt "github.com/thunder-id/thunderid/internal/system/i18n/mgt"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -39,6 +40,7 @@ func Initialize(
 	entityService entity.EntityServiceInterface,
 	inboundClient inboundclient.InboundClientServiceInterface,
 	ouService oupkg.OrganizationUnitServiceInterface,
+	authzService sysauthz.SystemAuthorizationServiceInterface,
 	i18nService i18nmgt.I18nServiceInterface,
 	cryptoSvc providers.RuntimeCryptoProvider,
 	serverConfigSvc serverconfig.ServerConfigService,
@@ -54,8 +56,8 @@ func Initialize(
 	}
 
 	appService := newApplicationService(
-		inboundClient, entityService, ouService, i18nService, cryptoSvc, serverConfigSvc, artifactLifetime,
-		valueCapturer, sharingService, governance, projectValidator, bus,
+		inboundClient, entityService, ouService, authzService, i18nService, cryptoSvc, serverConfigSvc,
+		artifactLifetime, valueCapturer, sharingService, governance, projectValidator, bus,
 	)
 
 	// Registered before declarative resources load, because loading seeds the sharing policies those

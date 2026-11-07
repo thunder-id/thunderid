@@ -123,6 +123,13 @@ type UserMgtProvider interface {
 	CreateUser(ctx context.Context, user *User) (*User, *common.ServiceError)
 }
 
+// PermissionProvider resolves the permissions an entity holds.
+type PermissionProvider interface {
+	// GetEntityPermissions returns the permissions the entity holds now, directly and through its
+	// groups, keyed by resource server ID.
+	GetEntityPermissions(ctx context.Context, entityID string) (map[string][]string, error)
+}
+
 // I18nProvider defines the interface for the i18n provider.
 type I18nProvider interface {
 	ResolveTranslations(

@@ -95,12 +95,30 @@ type EngineContext struct {
 	// boundSubject is the user a self flow was started for, taken from the caller's token at the
 	// start. Persisted with the context and shared by every call frame; executors read it, never write it.
 	boundSubject string
+	// starter is the caller who started a flow that acts with its starter's authority. Persisted with the
+	// context; executors never see it.
+	starter *flowStarter
 	// SessionFlowID overrides the flow whose SSO session this execution operates on. It is set for
 	// sign-out flows, which run a different flow than the one that owns the session: the login (auth)
 	// flow id is carried here so the inbound cookie, SSO inputs, and cookie clear all resolve under
 	// that flow rather than the running sign-out flow. Empty for all other flows. Transient — re-derived
 	// from the application on each context load, never persisted.
 	SessionFlowID string
+}
+
+// flowStarter is the caller who started a flow, as their token named them.
+type flowStarter struct {
+	Subject     string   `json:"subject"`
+	OUID        string   `json:"ouId"`
+	Permissions []string `json:"permissions"`
+}
+
+// rootFlowType returns the type of the flow the execution started, which a call into another flow does not change.
+func (ec *EngineContext) rootFlowType() providers.FlowType {
+	if len(ec.frameStack) > 0 {
+		return ec.frameStack[0].flowType
+	}
+	return ec.FlowType
 }
 
 // GetInitiatorRequest returns the original HTTP request that triggered the flow.
@@ -382,6 +400,8 @@ type flowContextContent struct {
 	PromptInputs          *string `json:"promptInputs,omitempty"`
 	PromptNodeID          *string `json:"promptNodeId,omitempty"`
 	BoundSubject          string  `json:"boundSubject,omitempty"`
+
+	Starter *flowStarter `json:"starter,omitempty"`
 }
 
 // graphResolverFunc resolves a flow graph by its flow ID. Used during context deserialization to
@@ -594,6 +614,7 @@ func (f *FlowContextDB) ToEngineContext(ctx context.Context,
 		CurrentPromptInputs:   promptInputs,
 		CurrentPromptNodeID:   promptNodeID,
 		boundSubject:          content.BoundSubject,
+		starter:               content.Starter,
 	}
 	engineCtx.SetInitiatorRequest(initiatorRequest)
 
@@ -774,6 +795,7 @@ func (f *FlowContextDB) FromEngineContext(ctx EngineContext) error {
 		PromptInputs:          promptInputsStr,
 		PromptNodeID:          promptNodeIDStr,
 		BoundSubject:          ctx.boundSubject,
+		Starter:               ctx.starter,
 	}
 
 	contextJSON, err := json.Marshal(content)

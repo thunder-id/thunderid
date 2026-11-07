@@ -9,7 +9,6 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/agent"
 	"github.com/thunder-id/thunderid/internal/agent/model"
-	"github.com/thunder-id/thunderid/internal/system/security"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
@@ -33,7 +32,7 @@ func (p *defaultAgentMgtProvider) CreateAgent(
 		return nil, &ErrorInvalidRequestFormat
 	}
 
-	created, svcErr := p.agentSvc.CreateAgent(security.WithRuntimeContext(ctx), agent)
+	created, svcErr := p.agentSvc.CreateAgent(ctx, agent)
 	if svcErr != nil {
 		return nil, svcErr
 	}

@@ -295,6 +295,10 @@ func (rs *roleService) createRole(
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 	logger.Debug(ctx, "Creating role", log.String("name", role.Name))
 
+	if svcErr := checkRoleAccess(ctx, rs.authzService, rs.logger, security.ActionCreateRole, ""); svcErr != nil {
+		return nil, svcErr
+	}
+
 	// Check if role creation is allowed (not in declarative-only mode)
 	if isDeclarativeModeEnabled() {
 		logger.Debug(ctx, "Cannot create role in declarative-only mode")
@@ -514,6 +518,10 @@ func (rs *roleService) updateRoleWithPermissions(
 		return nil, &ErrorMissingRoleID
 	}
 
+	if svcErr := checkRoleAccess(ctx, rs.authzService, rs.logger, security.ActionUpdateRole, id); svcErr != nil {
+		return nil, svcErr
+	}
+
 	if err := rs.validateUpdateRoleRequest(role); err != nil {
 		return nil, err
 	}
@@ -607,6 +615,10 @@ func (rs *roleService) deleteRole(ctx context.Context, id string) *tidcommon.Ser
 		return &ErrorMissingRoleID
 	}
 
+	if svcErr := checkRoleAccess(ctx, rs.authzService, rs.logger, security.ActionDeleteRole, id); svcErr != nil {
+		return svcErr
+	}
+
 	exists, err := rs.roleStore.IsRoleExist(ctx, id)
 	if err != nil {
 		logger.Error(ctx, "Failed to check role existence", log.String("id", id), log.Error(err))
@@ -680,6 +692,9 @@ func (rs *roleService) publishRoleEvent(ctx context.Context, name string, action
 // ValidateDeleteRole reports whether the role may be deleted and returns what the deletion revokes.
 func (rs *roleService) ValidateDeleteRole(ctx context.Context, id string) (
 	*revocation.AccessRevocationTarget, *tidcommon.ServiceError) {
+	if svcErr := checkRoleAccess(ctx, rs.authzService, rs.logger, security.ActionDeleteRole, id); svcErr != nil {
+		return nil, svcErr
+	}
 	role, svcErr := rs.GetRoleWithPermissions(ctx, id)
 	if svcErr != nil {
 		return nil, svcErr
@@ -691,6 +706,22 @@ func (rs *roleService) ValidateDeleteRole(ctx context.Context, id string) (
 		return nil, svcErr
 	}
 	return rs.roleAccessChangeTarget(ctx, id, role.Permissions)
+}
+
+// checkRoleAccess refuses unless the caller may perform action on the role.
+func checkRoleAccess(ctx context.Context, authzService sysauthz.SystemAuthorizationServiceInterface,
+	logger *log.Logger, action security.Action, id string) *tidcommon.ServiceError {
+	allowed, svcErr := authzService.IsActionAllowed(ctx, action,
+		&sysauthz.ActionContext{ResourceType: security.ResourceTypeRole, ResourceID: id})
+	if svcErr != nil {
+		logger.Error(ctx, "Failed to check authorization for action",
+			log.String("action", string(action)), log.Any("error", svcErr))
+		return &tidcommon.InternalServerError
+	}
+	if !allowed {
+		return &tidcommon.ErrorUnauthorized
+	}
+	return nil
 }
 
 // requireRoleNotMandated refuses to delete a role a user sharing policy still mandates.
@@ -710,6 +741,9 @@ func (rs *roleService) requireRoleNotMandated(ctx context.Context, id string) *t
 // ValidateUpdateRolePermissions runs the checks UpdateRoleWithPermissions runs on the new permissions.
 func (rs *roleService) ValidateUpdateRolePermissions(ctx context.Context, id string,
 	permissions []ResourcePermissions) (*revocation.AccessRevocationTarget, *tidcommon.ServiceError) {
+	if svcErr := checkRoleAccess(ctx, rs.authzService, rs.logger, security.ActionUpdateRole, id); svcErr != nil {
+		return nil, svcErr
+	}
 	role, svcErr := rs.GetRoleWithPermissions(ctx, id)
 	if svcErr != nil {
 		return nil, svcErr
@@ -1198,6 +1232,9 @@ func (rs *roleService) CascadeDeleteDependencies(
 func (rs *roleService) CreateSharingPolicy(
 	ctx context.Context, roleID string, req sharing.PolicyRequest,
 ) (sharing.Policy, *tidcommon.ServiceError) {
+	if svcErr := checkRoleAccess(ctx, rs.authzService, rs.logger, security.ActionUpdateRole, roleID); svcErr != nil {
+		return sharing.Policy{}, svcErr
+	}
 	owningOUID, svcErr := rs.requireSharing(ctx, roleID)
 	if svcErr != nil {
 		return sharing.Policy{}, svcErr
@@ -1240,6 +1277,9 @@ func (rs *roleService) ListSharingPolicies(
 func (rs *roleService) UpdateSharingPolicy(
 	ctx context.Context, roleID, policyID string, req sharing.PolicyRequest,
 ) (sharing.Policy, *tidcommon.ServiceError) {
+	if svcErr := checkRoleAccess(ctx, rs.authzService, rs.logger, security.ActionUpdateRole, roleID); svcErr != nil {
+		return sharing.Policy{}, svcErr
+	}
 	if _, svcErr := rs.requireOwnPolicy(ctx, roleID, policyID); svcErr != nil {
 		return sharing.Policy{}, svcErr
 	}
@@ -1254,6 +1294,9 @@ func (rs *roleService) UpdateSharingPolicy(
 func (rs *roleService) DeleteSharingPolicy(
 	ctx context.Context, roleID, policyID string,
 ) *tidcommon.ServiceError {
+	if svcErr := checkRoleAccess(ctx, rs.authzService, rs.logger, security.ActionUpdateRole, roleID); svcErr != nil {
+		return svcErr
+	}
 	policy, svcErr := rs.requireOwnPolicy(ctx, roleID, policyID)
 	if svcErr != nil {
 		if svcErr.Code == ErrorSharingPolicyNotFound.Code {

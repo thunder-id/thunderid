@@ -136,6 +136,8 @@ func (s *SharingExecutorTestSuite) TestValidate_RefusesAnyCallerButTheStarter() 
 		"runtime": security.WithRuntimeContext(context.Background()),
 		"other": security.WithSecurityContextTest(context.Background(),
 			security.NewSecurityContextForTest("admin-2", "ou-a", "token", nil, map[string]interface{}{})),
+		// A step the invitee sends runs as the recorded starter, who did not send it.
+		"recorded": security.WithRecordedCaller(context.Background(), "admin-1", "ou-a", []string{"system"}),
 	} {
 		s.Run(name, func() {
 			resp, err := s.executor.Execute(s.nodeContext(callerCtx, ExecutorModeValidate, existingUserProperties()))

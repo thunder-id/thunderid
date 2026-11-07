@@ -428,3 +428,32 @@ var ErrorFlowHandleNotFound = tidcommon.ServiceError{
 		DefaultValue: "No flow matches the specified handle and flow type",
 	},
 }
+
+// ErrorFlowStartedByAnotherCaller is returned when a caller continues a flow another caller started.
+var ErrorFlowStartedByAnotherCaller = tidcommon.ServiceError{
+	Code: "FES-1030",
+	Type: tidcommon.ClientErrorType,
+	Error: tidcommon.I18nMessage{
+		Key:          "error.flowexecservice.flow_started_by_another_caller",
+		DefaultValue: "Flow not permitted",
+	},
+	ErrorDescription: tidcommon.I18nMessage{
+		Key:          "error.flowexecservice.flow_started_by_another_caller_description",
+		DefaultValue: "Only the caller who started this flow can continue it",
+	},
+}
+
+// ErrorCallTargetNotPermitted is returned when a flow running with the system's authority calls a flow that
+// acts for its caller.
+var ErrorCallTargetNotPermitted = tidcommon.ServiceError{
+	Code: "FES-1031",
+	Type: tidcommon.ClientErrorType,
+	Error: tidcommon.I18nMessage{
+		Key:          "error.flowexecservice.call_target_not_permitted",
+		DefaultValue: "Call target not permitted",
+	},
+	ErrorDescription: tidcommon.I18nMessage{
+		Key:          "error.flowexecservice.call_target_not_permitted_description",
+		DefaultValue: "A flow that runs with the system's authority cannot call a flow that acts for its caller",
+	},
+}

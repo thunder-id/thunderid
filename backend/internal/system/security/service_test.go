@@ -631,6 +631,33 @@ func (suite *SecurityServiceTestSuite) TestProcess_MCPLeavesAnAnonymousCallerRun
 	suite.Empty(GetSubject(ctx))
 }
 
+// An authenticated caller reaches the flow engine as itself, whatever system permission it holds.
+func (suite *SecurityServiceTestSuite) TestProcess_FlowExecuteKeepsAnAuthenticatedCaller() {
+	req := httptest.NewRequest(http.MethodPost, "/flow/execute", nil)
+	narrow := newSecurityContext("admin-1", "ou-1", "token", []string{"system:user:create"}, nil)
+	suite.mockAuth1.On("CanHandle", req).Return(true)
+	suite.mockAuth1.On("Authenticate", req).Return(narrow, nil)
+
+	ctx, err := suite.service.Process(req)
+
+	suite.Require().NoError(err)
+	suite.False(IsRuntimeContext(ctx))
+	suite.Equal("admin-1", GetSubject(ctx))
+	suite.Equal([]string{"system:user:create"}, GetPermissions(ctx))
+}
+
+func (suite *SecurityServiceTestSuite) TestProcess_FlowExecuteLeavesAnAnonymousCallerRuntime() {
+	req := httptest.NewRequest(http.MethodPost, "/flow/execute", nil)
+	suite.mockAuth1.On("CanHandle", req).Return(false)
+	suite.mockAuth2.On("CanHandle", req).Return(false)
+
+	ctx, err := suite.service.Process(req)
+
+	suite.Require().NoError(err)
+	suite.True(IsRuntimeContext(ctx))
+	suite.Empty(GetSubject(ctx))
+}
+
 // Test that the service returns errInsufficientPermissions when the authenticated
 // subject lacks the required permission for a protected path.
 func (suite *SecurityServiceTestSuite) TestProcess_AuthorizationFailure_InsufficientPermissions() {

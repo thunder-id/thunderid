@@ -399,6 +399,63 @@ func (_c *SystemAuthorizationServiceInterfaceMock_IsActionAllowed_Call) RunAndRe
 	return _c
 }
 
+// IsPermissionGranted provides a mock function for the type SystemAuthorizationServiceInterfaceMock
+func (_mock *SystemAuthorizationServiceInterfaceMock) IsPermissionGranted(ctx context.Context, required string) bool {
+	ret := _mock.Called(ctx, required)
+
+	if len(ret) == 0 {
+		panic("no return value specified for IsPermissionGranted")
+	}
+
+	var r0 bool
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) bool); ok {
+		r0 = returnFunc(ctx, required)
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+	return r0
+}
+
+// SystemAuthorizationServiceInterfaceMock_IsPermissionGranted_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'IsPermissionGranted'
+type SystemAuthorizationServiceInterfaceMock_IsPermissionGranted_Call struct {
+	*mock.Call
+}
+
+// IsPermissionGranted is a helper method to define mock.On call
+//   - ctx context.Context
+//   - required string
+func (_e *SystemAuthorizationServiceInterfaceMock_Expecter) IsPermissionGranted(ctx any, required any) *SystemAuthorizationServiceInterfaceMock_IsPermissionGranted_Call {
+	return &SystemAuthorizationServiceInterfaceMock_IsPermissionGranted_Call{Call: _e.mock.On("IsPermissionGranted", ctx, required)}
+}
+
+func (_c *SystemAuthorizationServiceInterfaceMock_IsPermissionGranted_Call) Run(run func(ctx context.Context, required string)) *SystemAuthorizationServiceInterfaceMock_IsPermissionGranted_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *SystemAuthorizationServiceInterfaceMock_IsPermissionGranted_Call) Return(b bool) *SystemAuthorizationServiceInterfaceMock_IsPermissionGranted_Call {
+	_c.Call.Return(b)
+	return _c
+}
+
+func (_c *SystemAuthorizationServiceInterfaceMock_IsPermissionGranted_Call) RunAndReturn(run func(ctx context.Context, required string) bool) *SystemAuthorizationServiceInterfaceMock_IsPermissionGranted_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // SetOUHierarchyResolver provides a mock function for the type SystemAuthorizationServiceInterfaceMock
 func (_mock *SystemAuthorizationServiceInterfaceMock) SetOUHierarchyResolver(resolver sysauthz.OUHierarchyResolver) {
 	_mock.Called(resolver)

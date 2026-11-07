@@ -136,9 +136,8 @@ func (suite *DefaultUserMgtProviderTestSuite) TestCreateUserPreservesServerError
 	suite.Equal(tidcommon.ServerErrorType, svcErr.Type)
 }
 
-// The user service must see a runtime-marked context that still carries the caller's values, so
-// authorization is elevated without losing request-scoped data such as the trace ID.
-func (suite *DefaultUserMgtProviderTestSuite) TestCreateUserElevatesCallerContext() {
+// The user service authorizes the caller, so it must see the caller's own context, not a runtime one.
+func (suite *DefaultUserMgtProviderTestSuite) TestCreateUserPassesTheCallerContext() {
 	type ctxKey string
 	const traceKey ctxKey = "trace-id"
 
@@ -154,8 +153,8 @@ func (suite *DefaultUserMgtProviderTestSuite) TestCreateUserElevatesCallerContex
 	_, svcErr := suite.provider.CreateUser(callerCtx, newTestRequest())
 
 	suite.Nil(svcErr)
-	suite.True(security.IsRuntimeContext(observed))
-	suite.Equal("trace-789", observed.Value(traceKey))
+	suite.False(security.IsRuntimeContext(observed))
+	suite.Equal(callerCtx, observed)
 }
 
 // A service that returns neither a user nor an error must not be turned into a fabricated success.

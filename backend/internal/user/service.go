@@ -1318,7 +1318,8 @@ func (us *userService) validateOrganizationUnitForUserType(
 		return &tidcommon.InternalServerError
 	}
 
-	entityType, svcErr := us.entityTypeService.GetEntityTypeByHandle(ctx,
+	// Callers authorize the user action first; reading the type it names needs no permission of its own.
+	entityType, svcErr := us.entityTypeService.GetEntityTypeByHandle(security.WithRuntimeContext(ctx),
 		entitytype.TypeCategoryUser, userType)
 	if svcErr != nil {
 		if svcErr.Code == entitytype.ErrorEntityTypeNotFound.Code {
