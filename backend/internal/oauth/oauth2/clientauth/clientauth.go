@@ -22,6 +22,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/utils"
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -40,7 +41,8 @@ func authenticate(
 	jwtService jwt.JWTServiceInterface,
 	jtiStore jti.JTIStoreInterface,
 	issuer string,
-	leeway int64,
+	assertionCfg engineconfig.ClientAssertionConfig,
+	jwtLeeway int64,
 ) (*OAuthClientInfo, *authError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "ClientAuthMiddleware"))
 
@@ -143,7 +145,7 @@ func authenticate(
 	// TODO: Move this to authnProvider.Authenticate
 	case providers.TokenEndpointAuthMethodPrivateKeyJWT:
 		if err := validateClientAssertion(ctx, oauthApp, jwtService, jtiStore, issuer, clientID,
-			clientAssertion, leeway); err != nil {
+			clientAssertion, assertionCfg, jwtLeeway); err != nil {
 			logger.Debug(ctx, "Invalid client assertion: "+err.Error())
 			return nil, errInvalidClientAssertion
 		}
@@ -225,22 +227,20 @@ func extractClientIDFromAssertion(ctx context.Context, assertion string) (string
 	return subject, nil
 }
 
-// validateClientAssertion validates the provided client assertion JWT using the configured certificate and JWT service.
-// Per FAPI 2.0 Security Profile Section 5.3.2.1, the assertion's 'aud' claim must be the authorization server's
-// issuer identifier.
+// validateClientAssertion validates the provided client assertion JWT.
 func validateClientAssertion(ctx context.Context,
 	oauthApp *providers.OAuthClient,
 	jwtService jwt.JWTServiceInterface,
 	jtiStore jti.JTIStoreInterface,
 	issuer string,
 	clientID, clientAssertion string,
-	leeway int64) error {
+	assertionCfg engineconfig.ClientAssertionConfig,
+	jwtLeeway int64) error {
 	if oauthApp.Certificate == nil {
 		return fmt.Errorf("no certificate configured for client assertion validation")
 	}
 
-	// FAPI 2.0 Security Profile Section 5.3.2.1: the client assertion's 'aud' claim must be the
-	// authorization server's issuer identifier as a single string.
+	// The 'aud' claim must be the authorization server's issuer identifier as a single string.
 	payload, err := jwt.DecodeJWTPayload(clientAssertion)
 	if err != nil {
 		return fmt.Errorf("failed to decode client assertion payload: %w", err)
@@ -253,12 +253,54 @@ func validateClientAssertion(ctx context.Context,
 		return fmt.Errorf("client assertion 'aud' claim %q does not match the issuer", aud)
 	}
 
+	now := time.Now()
+	if assertionCfg.IsConfigured() {
+		if err := validateAssertionTimestamps(payload, assertionCfg, now, jwtLeeway); err != nil {
+			return err
+		}
+	}
+
 	if err := verifyAssertionSignature(ctx, oauthApp, jwtService, issuer, clientID, clientAssertion); err != nil {
 		return err
 	}
 
 	// Replay protection: record the assertion's jti so it cannot be reused within its validity window.
-	return recordAssertionJTI(ctx, jtiStore, payload, leeway)
+	return recordAssertionJTI(ctx, jtiStore, payload, jwtLeeway)
+}
+
+// validateAssertionTimestamps checks the 'iat' and 'exp' claims against the configured policy.
+// When 'iat' is present it must not be too far in the future (bounded by jwtLeeway) or too old.
+// 'exp' must not exceed MaxLifetime beyond 'iat'; when 'iat' is absent, now is used instead.
+func validateAssertionTimestamps(
+	payload map[string]any, cfg engineconfig.ClientAssertionConfig, now time.Time, jwtLeeway int64,
+) error {
+	base := now
+
+	iatRaw, hasIat := payload[constants.ClaimIat]
+	if hasIat {
+		iat, isNumber := iatRaw.(float64)
+		if !isNumber {
+			return fmt.Errorf("client assertion 'iat' claim is not a number")
+		}
+		iatTime := time.Unix(int64(iat), 0)
+		if iatTime.After(now.Add(time.Duration(jwtLeeway) * time.Second)) {
+			return fmt.Errorf("client assertion 'iat' claim is too far in the future")
+		}
+		if iatTime.Before(now.Add(-time.Duration(cfg.MaxIatAge) * time.Second)) {
+			return fmt.Errorf("client assertion 'iat' claim is unreasonably far in the past")
+		}
+		base = iatTime
+	}
+
+	exp, ok := payload[constants.ClaimExp].(float64)
+	if !ok {
+		return fmt.Errorf("client assertion missing 'exp' claim or 'exp' is not a number")
+	}
+	if time.Unix(int64(exp), 0).After(base.Add(time.Duration(cfg.MaxLifetime) * time.Second)) {
+		return fmt.Errorf("client assertion lifetime exceeds the maximum allowed duration")
+	}
+
+	return nil
 }
 
 // verifyAssertionSignature verifies the client assertion's signature against the client's configured
@@ -313,7 +355,7 @@ func verifyAssertionSignature(ctx context.Context,
 // recordAssertionJTI enforces one-time use of a verified client assertion by recording its jti in
 // the shared replay store.
 func recordAssertionJTI(ctx context.Context, jtiStore jti.JTIStoreInterface,
-	payload map[string]interface{}, leeway int64) error {
+	payload map[string]interface{}, jwtLeeway int64) error {
 	jtiValue, ok := payload[constants.ClaimJTI].(string)
 	if !ok || jtiValue == "" {
 		return fmt.Errorf("client assertion missing 'jti' claim or 'jti' is not a string")
@@ -323,7 +365,7 @@ func recordAssertionJTI(ctx context.Context, jtiStore jti.JTIStoreInterface,
 		return fmt.Errorf("client assertion missing 'exp' claim or 'exp' is not a number")
 	}
 
-	expiry := time.Unix(int64(exp)+leeway, 0)
+	expiry := time.Unix(int64(exp)+jwtLeeway, 0)
 	inserted, err := jtiStore.RecordJTI(ctx, jtiNamespace, jtiValue, expiry)
 	if err != nil {
 		return fmt.Errorf("failed to record client assertion jti: %w", err)

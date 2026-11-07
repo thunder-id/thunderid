@@ -505,6 +505,8 @@ Password fields are available in `configuration.database.config.postgres`, `conf
 | `configuration.oauth.refreshToken.validityPeriod` | Refresh token validity period in seconds                                                                                                                | `86400`                      |
 | `configuration.oauth.authorizationCode.validityPeriod` | Authorization code validity period in seconds                                                                                                      | `600`                        |
 | `configuration.oauth.authorizationRequest.validityPeriod` | How long the authorization request context stays valid while the user completes the login flow, in seconds                                       | `3600`                       |
+| `configuration.oauth.clientAssertion.maxLifetime` | Maximum lifetime of a `private_key_jwt` client assertion in seconds | `300` |
+| `configuration.oauth.clientAssertion.maxIatAge` | Maximum age of a `private_key_jwt` client assertion's `iat` claim in seconds | `60` |
 | `configuration.oauth.sendServerErrorsToClient`    | Report an authentication flow failure that maps to the OAuth `server_error` code to the client | `false`                      |
 | `configuration.flow.maxVersionHistory`            | Maximum flow version history to retain                                                                                                                  | `3`                          |
 | `configuration.flow.autoInferRegistration`        | Enable auto-infer registration flow                                                                                                                     | `true`                       |
