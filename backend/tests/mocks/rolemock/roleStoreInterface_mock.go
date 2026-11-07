@@ -471,20 +471,31 @@ func (_c *roleStoreInterfaceMock_DeleteAssignmentsByAssignee_Call) RunAndReturn(
 }
 
 // DeleteAssignmentsByRoleID provides a mock function for the type roleStoreInterfaceMock
-func (_mock *roleStoreInterfaceMock) DeleteAssignmentsByRoleID(ctx context.Context, id string) error {
+func (_mock *roleStoreInterfaceMock) DeleteAssignmentsByRoleID(ctx context.Context, id string) ([]role.RoleAssignment, error) {
 	ret := _mock.Called(ctx, id)
 
 	if len(ret) == 0 {
 		panic("no return value specified for DeleteAssignmentsByRoleID")
 	}
 
-	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) error); ok {
+	var r0 []role.RoleAssignment
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) ([]role.RoleAssignment, error)); ok {
+		return returnFunc(ctx, id)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) []role.RoleAssignment); ok {
 		r0 = returnFunc(ctx, id)
 	} else {
-		r0 = ret.Error(0)
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]role.RoleAssignment)
+		}
 	}
-	return r0
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = returnFunc(ctx, id)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
 }
 
 // roleStoreInterfaceMock_DeleteAssignmentsByRoleID_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'DeleteAssignmentsByRoleID'
@@ -517,12 +528,12 @@ func (_c *roleStoreInterfaceMock_DeleteAssignmentsByRoleID_Call) Run(run func(ct
 	return _c
 }
 
-func (_c *roleStoreInterfaceMock_DeleteAssignmentsByRoleID_Call) Return(err error) *roleStoreInterfaceMock_DeleteAssignmentsByRoleID_Call {
-	_c.Call.Return(err)
+func (_c *roleStoreInterfaceMock_DeleteAssignmentsByRoleID_Call) Return(roleAssignments []role.RoleAssignment, err error) *roleStoreInterfaceMock_DeleteAssignmentsByRoleID_Call {
+	_c.Call.Return(roleAssignments, err)
 	return _c
 }
 
-func (_c *roleStoreInterfaceMock_DeleteAssignmentsByRoleID_Call) RunAndReturn(run func(ctx context.Context, id string) error) *roleStoreInterfaceMock_DeleteAssignmentsByRoleID_Call {
+func (_c *roleStoreInterfaceMock_DeleteAssignmentsByRoleID_Call) RunAndReturn(run func(ctx context.Context, id string) ([]role.RoleAssignment, error)) *roleStoreInterfaceMock_DeleteAssignmentsByRoleID_Call {
 	_c.Call.Return(run)
 	return _c
 }

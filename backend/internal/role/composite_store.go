@@ -398,8 +398,9 @@ func (c *compositeRoleStore) DeleteRole(ctx context.Context, id string) error {
 	return c.dbStore.DeleteRole(ctx, id)
 }
 
-// DeleteAssignmentsByRoleID deletes all assignments for a role from the database store only.
-func (c *compositeRoleStore) DeleteAssignmentsByRoleID(ctx context.Context, id string) error {
+// DeleteAssignmentsByRoleID deletes all assignments for a role from the database store only, returning
+// the ones it removed. File-based assignments are declarative and are never removed.
+func (c *compositeRoleStore) DeleteAssignmentsByRoleID(ctx context.Context, id string) ([]RoleAssignment, error) {
 	return c.dbStore.DeleteAssignmentsByRoleID(ctx, id)
 }
 

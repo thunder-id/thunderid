@@ -477,6 +477,8 @@ func (suite *RoleFileBasedStoreTestSuite) TestDeclaredAssignmentsAreMadeInTheOwn
 	suite.Zero(count)
 
 	suite.NoError(suite.store.DeleteAssignmentsInOU(ctx, "role1", "ou-child"))
+	_, err = suite.store.DeleteAssignmentsByRoleID(ctx, "role1")
+	suite.Error(err)
 }
 
 // Resource files declare no mandated assignments.
