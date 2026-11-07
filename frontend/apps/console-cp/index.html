@@ -13,111 +13,12 @@
          frontend to authorize its own inline <style> tags under a nonce-based style-src-elem. -->
     <meta property="csp-nonce" content="__CSP_NONCE__" />
 
-    <!-- Until the app's own loader renders, paint what it will show, so a full page load (such as
-         arriving from sign-in) does not show a blank page first: the theme's background, and the spinner
-         the app's PageLoader shows (a copy of MUI's CircularProgress) in the same place. React replaces
-         the spinner when it first renders into #root. The script picks the color scheme the app is about
-         to use (its saved mui-mode, else the operating system's), and the styles stop applying once the
-         app sets data-color-scheme itself. Colors match DefaultTheme.ts in @thunderid/design. -->
-    <script nonce="__CSP_NONCE__">
-      (function () {
-        var mode = 'system';
-        try {
-          mode = window.localStorage.getItem('mui-mode') || mode;
-        } catch (e) {}
-        if (mode !== 'light' && mode !== 'dark') {
-          mode = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-        }
-        document.documentElement.setAttribute('data-first-paint', mode);
-      })();
-    </script>
-    <style nonce="__CSP_NONCE__">
-      html:not([data-color-scheme]) body {
-        margin: 0;
-        min-height: 100vh;
-      }
-      html[data-first-paint='light']:not([data-color-scheme]) {
-        color-scheme: light;
-        background-color: #ffffff;
-      }
-      html[data-first-paint='light']:not([data-color-scheme]) body {
-        background-color: #ffffff;
-        background-attachment: fixed;
-        background-image:
-          radial-gradient(circle at 65% 30%, rgb(0 127 242 / 19%) 10%, rgba(0, 0, 0, 0) 60% 40%),
-          radial-gradient(circle at 15% 50%, rgb(187 187 187 / 22%) 1%, rgb(0 0 0 / 0%) 40% 70%),
-          radial-gradient(circle at center, rgba(255, 255, 255, 0.6) 0%, #ffffff 100%);
-      }
-      html[data-first-paint='light']:not([data-color-scheme]) .first-paint-loader {
-        color: #3688ff;
-      }
-      html[data-first-paint='dark']:not([data-color-scheme]) {
-        color-scheme: dark;
-        background-color: #060d1a;
-      }
-      html[data-first-paint='dark']:not([data-color-scheme]) body {
-        background-color: #060d1a;
-        background-attachment: fixed;
-        background-image:
-          radial-gradient(circle at 15% 50%, rgb(0 136 255 / 13%) 0%, rgb(6 13 26 / 0%) 40% 70%),
-          radial-gradient(circle at 65% 30%, rgb(0 127 242 / 22%) 10%, rgba(6, 13, 26, 0%) 60% 40%),
-          radial-gradient(circle at center, rgba(0, 0, 0, 0.6) 0%, #060d1a 100%);
-        background-blend-mode: screen;
-      }
-      html[data-first-paint='dark']:not([data-color-scheme]) .first-paint-loader {
-        color: #3688ff;
-      }
-      .first-paint-loader {
-        position: fixed;
-        inset: 0;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-      }
-      .first-paint-loader svg {
-        width: 40px;
-        height: 40px;
-        animation: first-paint-loader-rotate 1.4s linear infinite;
-      }
-      .first-paint-loader circle {
-        stroke: currentColor;
-        stroke-dasharray: 80px, 200px;
-        stroke-dashoffset: 0;
-        animation: first-paint-loader-dash 1.4s ease-in-out infinite;
-      }
-      @keyframes first-paint-loader-rotate {
-        100% {
-          transform: rotate(360deg);
-        }
-      }
-      @keyframes first-paint-loader-dash {
-        0% {
-          stroke-dasharray: 1px, 200px;
-          stroke-dashoffset: 0;
-        }
-        50% {
-          stroke-dasharray: 100px, 200px;
-          stroke-dashoffset: -15px;
-        }
-        100% {
-          stroke-dasharray: 1px, 200px;
-          stroke-dashoffset: -126px;
-        }
-      }
-    </style>
-
     <!-- Start of loading application configurations -->
     <script type="text/javascript" src="/config.js"></script>
     <!-- End of loading application configurations -->
   </head>
   <body>
-    <div id="root">
-      <div class="first-paint-loader" role="progressbar" aria-label="Loading">
-        <svg viewBox="22 22 44 44" aria-hidden="true">
-          <circle cx="44" cy="44" r="20.2" fill="none" stroke-width="3.6" />
-        </svg>
-      </div>
-    </div>
+    <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

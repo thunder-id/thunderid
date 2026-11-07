@@ -38,7 +38,7 @@ export default function App(): JSX.Element {
               <Route
                 path="/"
                 element={
-                  <ProtectedRoute loader={<PageLoader />}>
+                  <ProtectedRoute>
                     <AdminLayout />
                   </ProtectedRoute>
                 }
@@ -57,7 +57,7 @@ export default function App(): JSX.Element {
               <Route
                 path={RouteConfig.users.add()}
                 element={
-                  <ProtectedRoute loader={<PageLoader />}>
+                  <ProtectedRoute>
                     <FullScreenLayout />
                   </ProtectedRoute>
                 }
@@ -67,7 +67,7 @@ export default function App(): JSX.Element {
               <Route
                 path={RouteConfig.agents.create()}
                 element={
-                  <ProtectedRoute loader={<PageLoader />}>
+                  <ProtectedRoute>
                     <FullScreenLayout />
                   </ProtectedRoute>
                 }
@@ -77,7 +77,7 @@ export default function App(): JSX.Element {
               <Route
                 path={RouteConfig.groups.create()}
                 element={
-                  <ProtectedRoute loader={<PageLoader />}>
+                  <ProtectedRoute>
                     <GroupCreateProvider>
                       <FullScreenLayout />
                     </GroupCreateProvider>
@@ -89,7 +89,7 @@ export default function App(): JSX.Element {
               <Route
                 path={RouteConfig.roles.create()}
                 element={
-                  <ProtectedRoute loader={<PageLoader />}>
+                  <ProtectedRoute>
                     <RoleCreateProvider>
                       <FullScreenLayout />
                     </RoleCreateProvider>
