@@ -154,7 +154,7 @@ export default function AgentAddFormPage(): JSX.Element {
     const request: CreateAgentRequest = {
       ...(isInProject ? {projectId} : {ouId}),
       type: selectedType?.handle ?? '',
-      ...(ownerId ? {owner: ownerId} : {}),
+      ...(ownerId ? {owner: {id: ownerId, idType: 'uuid', isLocal: true}} : {}),
       ...(trimmedDescription ? {description: trimmedDescription} : {}),
       ...(Object.keys(attributes).length > 0 ? {attributes} : {}),
       // The API generates the client ID and secret for an OAuth config that names none, so only how

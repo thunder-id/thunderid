@@ -717,6 +717,14 @@ func resolveClientSystemAttributes(
 			}
 			continue
 		}
+		if name == constants.ClaimOwner {
+			// The owner is stored as an object; the claim carries its ID.
+			owner, _ := sysAttrs[name].(map[string]interface{})
+			if id, ok := owner["id"].(string); ok && id != "" {
+				filtered[name] = id
+			}
+			continue
+		}
 		if val, ok := sysAttrs[name]; ok {
 			filtered[name] = val
 		}

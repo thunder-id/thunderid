@@ -823,6 +823,32 @@ type LinkedAccount struct {
 	Sub   string
 }
 
+// AgentOwnerIDType is the kind of value an agent owner's ID holds.
+type AgentOwnerIDType string
+
+const (
+	// AgentOwnerIDTypeUUID identifies the owner by its entity ID.
+	AgentOwnerIDTypeUUID AgentOwnerIDType = "uuid"
+	// AgentOwnerIDTypeEmail identifies the owner by an email address.
+	AgentOwnerIDTypeEmail AgentOwnerIDType = "email"
+	// AgentOwnerIDTypeMobile identifies the owner by a mobile number.
+	AgentOwnerIDTypeMobile AgentOwnerIDType = "mobile"
+)
+
+// AgentOwner names who is accountable for an agent. A local owner is an entity of this deployment;
+// any other owner is managed in another identity system and is recorded as given.
+type AgentOwner struct {
+	ID     string           `json:"id"               yaml:"id"`
+	IDType AgentOwnerIDType `json:"idType,omitempty" yaml:"idType,omitempty"`
+	// IsLocal is nil when the owner does not say, which reads as local.
+	IsLocal *bool `json:"isLocal,omitempty" yaml:"isLocal,omitempty"`
+}
+
+// Local reports whether the owner is an entity of this deployment.
+func (o *AgentOwner) Local() bool {
+	return o.IsLocal == nil || *o.IsLocal
+}
+
 // Agent is the service-level model for agent create operations.
 type Agent struct {
 	ID          string          `json:"id,omitempty"`
@@ -831,7 +857,7 @@ type Agent struct {
 	Type        string          `json:"type"`
 	Description string          `json:"description,omitempty"`
 	LogoURL     string          `json:"logoUrl,omitempty"`
-	Owner       string          `json:"owner,omitempty"`
+	Owner       *AgentOwner     `json:"owner,omitempty"`
 	Attributes  json.RawMessage `json:"attributes,omitempty"`
 	// ValidUntil is the RFC 3339 instant the agent's lifespan ends; nil registers an agent that does
 	// not expire.

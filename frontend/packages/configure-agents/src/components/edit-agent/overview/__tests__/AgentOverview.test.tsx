@@ -51,7 +51,7 @@ const baseAgent: Agent = {
   type: 'default',
   display: 'Enrollment Agent',
   clientId: 'client-abc',
-  owner: 'user-1',
+  owner: {id: 'user-1', idType: 'uuid', isLocal: true},
 };
 
 const delegatedOauth2Config: OAuthAgentConfig = {
@@ -227,6 +227,15 @@ describe('AgentOverview', () => {
     render(<AgentOverview agent={baseAgent} />);
 
     expect(screen.getByText('user-1')).toBeInTheDocument();
+  });
+
+  it('shows an external owner ID without matching it to a local user', () => {
+    mockUseGetUsers.mockReturnValue({data: {users: [{id: 'user-1', display: 'Alice'}]}, isLoading: false});
+
+    render(<AgentOverview agent={{...baseAgent, owner: {id: 'user-1', idType: 'uuid', isLocal: false}}} />);
+
+    expect(screen.getByText('user-1')).toBeInTheDocument();
+    expect(screen.queryByText('Alice')).not.toBeInTheDocument();
   });
 
   it('shows the raw owner id when the owner is not among the fetched users', () => {

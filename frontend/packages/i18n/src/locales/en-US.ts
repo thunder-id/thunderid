@@ -1143,6 +1143,7 @@ const translations = {
     'edit.general.sections.owner.title': 'Owner',
     'edit.general.sections.owner.description': 'The user accountable for this agent.',
     'edit.general.sections.owner.label': 'Owner',
+    'edit.general.sections.owner.external': 'Managed in another identity system, so it cannot be changed here.',
     'edit.general.owner.empty': 'No owner assigned',
     'edit.attributes.lifespan.title': 'Lifespan',
     'edit.attributes.lifespan.description':

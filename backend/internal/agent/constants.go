@@ -4,6 +4,8 @@
 package agent
 
 import (
+	"regexp"
+
 	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
@@ -29,6 +31,23 @@ const (
 	fieldClientID     = "clientId"
 	fieldClientSecret = authnprovidercm.CredentialTypeClientSecret
 )
+
+// fieldOwnerID is the path of the owner's ID within the SystemAttributes blob.
+const fieldOwnerID = fieldOwner + ".id"
+
+// maxOwnerIDLength is the longest ID an agent owner may have. It keeps the owner well inside the
+// owner index's row size on PostgreSQL.
+const maxOwnerIDLength = 256
+
+// ownerMobilePattern matches a mobile number in E.164 form.
+var ownerMobilePattern = regexp.MustCompile(`^\+[1-9][0-9]{6,14}$`)
+
+// ownerIDTypes are the ID types an agent owner may have.
+var ownerIDTypes = []providers.AgentOwnerIDType{
+	providers.AgentOwnerIDTypeUUID,
+	providers.AgentOwnerIDTypeEmail,
+	providers.AgentOwnerIDTypeMobile,
+}
 
 // propLogoURL is the inbound-client PROPERTIES key holding the agent logo.
 const propLogoURL = "logo_url"

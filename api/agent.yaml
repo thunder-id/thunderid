@@ -57,7 +57,10 @@ paths:
                     ouHandle: "platform/automations"
                     type: "default"
                     description: "Runs nightly data sync jobs"
-                    owner: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
+                    owner:
+                      id: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
+                      idType: uuid
+                      isLocal: true
                     attributes:
                       name: "Nightly Sync Worker"
                       model: "claude-3-5-sonnet"
@@ -69,7 +72,10 @@ paths:
                     type: "default"
                     description: "Agent exposing calendar tools"
                     clientId: "calendar_agent_client"
-                    owner: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
+                    owner:
+                      id: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
+                      idType: uuid
+                      isLocal: true
                     attributes:
                       name: "Calendar Agent"
                       model: "claude-3-5-sonnet"
@@ -148,7 +154,10 @@ paths:
                   ouId: "456e8400-e29b-41d4-a716-446655440001"
                   type: "default"
                   description: "Runs nightly data sync jobs"
-                  owner: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
+                  owner:
+                    id: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
+                    idType: uuid
+                    isLocal: true
                   attributes:
                     name: "Nightly Sync Worker"
                     model: "claude-3-5-sonnet"
@@ -159,7 +168,10 @@ paths:
                   ouId: "456e8400-e29b-41d4-a716-446655440001"
                   type: "default"
                   description: "Agent exposing calendar tools"
-                  owner: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
+                  owner:
+                    id: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
+                    idType: uuid
+                    isLocal: true
                   attributes:
                     name: "Calendar Agent"
                     model: "claude-3-5-sonnet"
@@ -181,7 +193,10 @@ paths:
                   ouId: "456e8400-e29b-41d4-a716-446655440001"
                   type: "default"
                   description: "Processes ETL jobs"
-                  owner: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
+                  owner:
+                    id: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
+                    idType: uuid
+                    isLocal: true
                   attributes:
                     name: "Data Pipeline Worker"
                     function: "task-automation"
@@ -203,7 +218,10 @@ paths:
                   ouId: "456e8400-e29b-41d4-a716-446655440001"
                   type: "default"
                   description: "Agent exposing calendar tools"
-                  owner: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
+                  owner:
+                    id: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
+                    idType: uuid
+                    isLocal: true
                   attributes:
                     name: "Calendar Agent"
                     model: "claude-3-5-sonnet"
@@ -270,7 +288,10 @@ paths:
                 ouHandle: "platform/automations"
                 type: "default"
                 description: "Agent exposing calendar tools"
-                owner: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
+                owner:
+                  id: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
+                  idType: uuid
+                  isLocal: true
                 attributes:
                   name: "Calendar Agent"
                   model: "claude-3-5-sonnet"
@@ -612,6 +633,16 @@ paths:
                     description:
                       key: "error.agentservice.owner_not_found_description"
                       defaultValue: "The specified owner does not match any known user, application, or agent"
+                invalid-owner:
+                  summary: Owner has no id, an id too long or not matching its id type, an unknown id type, or is local but not a uuid
+                  value:
+                    code: "AGT-1049"
+                    message:
+                      key: "error.agentservice.invalid_owner"
+                      defaultValue: "Invalid owner"
+                    description:
+                      key: "error.agentservice.invalid_owner_description"
+                      defaultValue: "An owner needs an id of at most 256 characters matching its type, and a local owner a uuid"
                 invalid-user-attribute:
                   summary: User attribute not valid for any allowed user type
                   value:
@@ -696,7 +727,10 @@ paths:
                 type: "default"
                 description: "Agent exposing calendar tools"
                 clientId: "calendar_agent_client"
-                owner: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
+                owner:
+                  id: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
+                  idType: uuid
+                  isLocal: true
                 attributes:
                   name: "Calendar Agent"
                   model: "claude-3-5-sonnet"
@@ -812,7 +846,10 @@ paths:
                   ouId: "456e8400-e29b-41d4-a716-446655440001"
                   type: "default"
                   description: "Agent exposing calendar tools"
-                  owner: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
+                  owner:
+                    id: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
+                    idType: uuid
+                    isLocal: true
                   attributes:
                     name: "Calendar Agent"
                     model: "claude-3-5-sonnet"
@@ -881,7 +918,10 @@ paths:
                 ouHandle: "platform/automations"
                 type: "default"
                 description: "Agent exposing calendar tools"
-                owner: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
+                owner:
+                  id: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
+                  idType: uuid
+                  isLocal: true
                 attributes:
                   name: "Calendar Agent"
                   model: "claude-3-5-sonnet"
@@ -1184,6 +1224,16 @@ paths:
                     description:
                       key: "error.agentservice.owner_not_found_description"
                       defaultValue: "The specified owner does not match any known user, application, or agent"
+                invalid-owner:
+                  summary: Owner has no id, an id too long or not matching its id type, an unknown id type, or is local but not a uuid
+                  value:
+                    code: "AGT-1049"
+                    message:
+                      key: "error.agentservice.invalid_owner"
+                      defaultValue: "Invalid owner"
+                    description:
+                      key: "error.agentservice.invalid_owner_description"
+                      defaultValue: "An owner needs an id of at most 256 characters matching its type, and a local owner a uuid"
                 invalid-user-attribute:
                   summary: User attribute not valid for any allowed user type
                   value:
@@ -2023,12 +2073,7 @@ components:
           description: OAuth client ID. Present only when the agent has an OAuth profile.
           example: "calendar_agent_client"
         owner:
-          type: string
-          format: uuid
-          description: |
-            ID of the entity that owns this agent. Defaults to the authenticated principal at
-            creation time. Can be transferred by an administrator.
-          example: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
+          $ref: '#/components/schemas/AgentOwner'
         validUntil:
           type: string
           format: date-time
@@ -2141,12 +2186,13 @@ components:
             client so the console and login flows can display it. Defaults to no logo when omitted.
           example: "avatar:shape=circle,variant=anonymous_entity,content=bot_head,colors=0"
         owner:
-          type: string
-          format: uuid
+          allOf:
+            - $ref: '#/components/schemas/AgentOwner'
           description: |
-            Optional ID of the entity that should own this agent. Defaults to the authenticated
-            principal creating the agent.
-          example: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
+            Optional owner of the agent. Defaults to the authenticated principal creating the agent:
+            a local owner when its subject is an entity of this deployment, otherwise an external one,
+            such as a principal holding a token from the trusted issuer. An agent created with the
+            management API key and no owner has no owner.
         delegated:
           type: boolean
           default: false
@@ -2263,10 +2309,9 @@ components:
             it clears the logo.
           example: "avatar:shape=circle,variant=anonymous_entity,content=bot_head,colors=0"
         owner:
-          type: string
-          format: uuid
-          description: Admins can transfer ownership by setting this to a different entity ID.
-          example: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
+          allOf:
+            - $ref: '#/components/schemas/AgentOwner'
+          description: Admins can transfer ownership by setting a different owner. Omit it to keep the current owner.
         delegated:
           type: boolean
           default: false
@@ -2360,9 +2405,7 @@ components:
           description: Logo URL or avatar spec for the agent, shown in the console and login flows.
           example: "avatar:shape=circle,variant=anonymous_entity,content=bot_head,colors=0"
         owner:
-          type: string
-          format: uuid
-          example: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
+          $ref: '#/components/schemas/AgentOwner'
         validUntil:
           type: string
           format: date-time
@@ -2473,9 +2516,7 @@ components:
           description: OAuth client ID. Present only when the agent has an OAuth profile.
           example: "calendar_agent_client"
         owner:
-          type: string
-          format: uuid
-          example: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
+          $ref: '#/components/schemas/AgentOwner'
         validUntil:
           type: string
           format: date-time
@@ -3370,6 +3411,33 @@ components:
                       When the lock expires. **Absent when it does not expire**: only the unlock flow
                       clears it.
                     example: "2026-09-08T10:15:00Z"
+
+    AgentOwner:
+      type: object
+      description: |
+        Who is accountable for the agent. A local owner is an entity of this deployment and must exist.
+        Any other owner is managed in another identity system and is stored as given, without a lookup.
+      required:
+        - id
+      properties:
+        id:
+          type: string
+          maxLength: 256
+          description: |
+            The owner's ID, of the kind `idType` names: a bare email address for `email`, and an E.164
+            number such as `+94771234567` for `mobile`.
+          example: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
+        idType:
+          type: string
+          enum: [uuid, email, mobile]
+          default: uuid
+          description: What the ID holds. A local owner is always identified by `uuid`.
+          example: "uuid"
+        isLocal:
+          type: boolean
+          default: true
+          description: Whether the owner is an entity of this deployment.
+          example: true
 
     Lifespan:
       type: object

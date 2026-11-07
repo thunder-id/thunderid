@@ -199,6 +199,44 @@ func (s *AgentImportExportSuite) TestExportImportRoundTrip_EntityOnlyAgent() {
 	s.Assert().Equal(pre.OUID, restored.OUID)
 }
 
+// TestExportImportRoundTrip_ExternalOwner verifies an owner managed elsewhere is exported as an
+// object and imported again without being looked up, as a control plane applies it to a gateway.
+func (s *AgentImportExportSuite) TestExportImportRoundTrip_ExternalOwner() {
+	owner := testutils.ExternalAgentOwner("0199a1b2-7c3d-7e4f-9a8b-0000000000aa", "uuid")
+	createdID, err := s.createAgent(Agent{
+		OUID:       s.ouID,
+		Type:       "default",
+		Owner:      owner,
+		Attributes: agentAttrs("Agent RT External Owner "+s.handleSuffix, nil),
+	})
+	s.Require().NoError(err, "failed to create source agent")
+
+	exportResp, err := s.exportAgents(agentExportRequest{Agents: []string{createdID}})
+	s.Require().NoError(err)
+	yamlContent := exportResp.Resources
+	s.Assert().Contains(yamlContent, "id: "+owner.ID)
+	s.Assert().Contains(yamlContent, "isLocal: false")
+
+	s.Require().NoError(s.deleteAgent(createdID))
+
+	importResp, err := s.importAgents(agentImportRequest{
+		Content: yamlContent,
+		Options: agentImportOptions{Upsert: true, ContinueOnError: false, Target: "runtime"},
+	})
+	s.Require().NoError(err)
+	s.Require().Equal(1, importResp.Summary.Imported, "import results: %+v", importResp.Results)
+
+	importedID := importResp.Results[0].ResourceID
+	defer func() { _ = s.deleteAgent(importedID) }()
+
+	restored, err := s.agentGet(importedID)
+	s.Require().NoError(err)
+	s.Require().NotNil(restored.Owner)
+	s.Assert().Equal(owner.ID, restored.Owner.ID)
+	s.Require().NotNil(restored.Owner.IsLocal)
+	s.Assert().False(*restored.Owner.IsLocal)
+}
+
 // TestExportImportRoundTrip_AgentWithConfidentialOAuth creates an agent with
 // confidential OAuth credentials, exports it, verifies the secret is
 // parameterized, then re-imports with variable substitution.

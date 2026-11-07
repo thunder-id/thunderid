@@ -149,9 +149,11 @@ export default function AgentOverview({
   const quickstartDocsUrl = getDocumentationLink('agents.quickstarts.langchain.docs');
 
   const ownerLabel = useMemo(() => {
-    if (!agent.owner) return undefined;
-    const match = (usersData?.users ?? []).find((user) => user.id === agent.owner);
-    return match ? formatUserLabel(match) : agent.owner;
+    const owner = agent.owner;
+    if (!owner?.id) return undefined;
+    // Only a local owner is one of this deployment's users.
+    const match = owner.isLocal === false ? undefined : (usersData?.users ?? []).find((user) => user.id === owner.id);
+    return match ? formatUserLabel(match) : owner.id;
   }, [usersData, agent.owner]);
 
   const isDelegated = hasDelegationGrant(oauth2Config?.grantTypes);

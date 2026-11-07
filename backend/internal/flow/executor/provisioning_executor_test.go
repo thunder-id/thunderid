@@ -1514,7 +1514,10 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_Delega
 	assert.Equal(suite.T(), testAgentType, received.Type)
 	assert.Equal(suite.T(), "Handles support tickets", received.Description)
 	assert.Equal(suite.T(), "https://example.com/logo.png", received.LogoURL)
-	assert.Equal(suite.T(), "user-owner-1", received.Owner)
+	require.NotNil(suite.T(), received.Owner)
+	assert.Equal(suite.T(), "user-owner-1", received.Owner.ID)
+	assert.Equal(suite.T(), providers.AgentOwnerIDTypeUUID, received.Owner.IDType)
+	assert.True(suite.T(), received.Owner.Local(), "the resolver only resolves local users")
 	// Only schema attributes reach the attributes payload, and the name is one of them.
 	assert.JSONEq(suite.T(), `{"model":"claude","name":"support-bot"}`, string(received.Attributes))
 
@@ -5117,7 +5120,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_Ignore
 
 	assert.NoError(suite.T(), err)
 	require.NotNil(suite.T(), received)
-	assert.Empty(suite.T(), received.Owner, "an unresolved owner leaves the service to use the caller")
+	assert.Nil(suite.T(), received.Owner, "an unresolved owner leaves the service to use the caller")
 }
 
 // What the resolver verified is what gets provisioned, even when a different owner is submitted.
@@ -5147,7 +5150,8 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_UsesRe
 
 	assert.NoError(suite.T(), err)
 	require.NotNil(suite.T(), received)
-	assert.Equal(suite.T(), "resolved-owner", received.Owner)
+	require.NotNil(suite.T(), received.Owner)
+	assert.Equal(suite.T(), "resolved-owner", received.Owner.ID)
 }
 
 func (suite *ProvisioningExecutorTestSuite) TestExecute_AgentProvisioning_ConstantsWinOverRuntimeRecordFields() {

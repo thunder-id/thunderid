@@ -316,7 +316,7 @@ func makeAgentEntityParser(
 		// agent.OUID may have been resolved from OUHandle by ValidateAgent.
 		e, sysCredsJSON, buildErr := buildAgentEntity(
 			req.ID, req.Type, agent.OUID, attributesJSON,
-			req.Description, req.Owner, clientID, clientSecret, validUntil,
+			req.Description, agent.Owner, clientID, clientSecret, validUntil,
 		)
 		if buildErr != nil {
 			return nil, nil, nil, fmt.Errorf("failed to build agent entity for '%s': %w", req.ID, buildErr)

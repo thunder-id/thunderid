@@ -24,7 +24,7 @@ describe('OwnerSection', () => {
     ouId: 'ou-1',
     type: 'default',
     display: 'Test Agent',
-    owner: 'user-1',
+    owner: {id: 'user-1', idType: 'uuid', isLocal: true},
   };
 
   beforeEach(() => {
@@ -55,7 +55,13 @@ describe('OwnerSection', () => {
   });
 
   it('prefers the edited owner over the saved one', () => {
-    render(<OwnerSection agent={mockAgent} editedAgent={{owner: 'user-2'}} onFieldChange={mockOnFieldChange} />);
+    render(
+      <OwnerSection
+        agent={mockAgent}
+        editedAgent={{owner: {id: 'user-2', idType: 'uuid', isLocal: true}}}
+        onFieldChange={mockOnFieldChange}
+      />,
+    );
 
     expect(screen.getByText('Bob')).toBeInTheDocument();
   });
@@ -70,7 +76,11 @@ describe('OwnerSection', () => {
     await user.click(within(listbox).getByText('Bob'));
 
     await waitFor(() => {
-      expect(mockOnFieldChange).toHaveBeenCalledWith('owner', 'user-2');
+      expect(mockOnFieldChange).toHaveBeenCalledWith('owner', {
+        id: 'user-2',
+        idType: 'uuid',
+        isLocal: true,
+      });
     });
   });
 
@@ -80,6 +90,20 @@ describe('OwnerSection', () => {
     );
 
     expect(screen.getByRole('combobox')).toHaveAttribute('aria-disabled', 'true');
+  });
+
+  it('shows an external owner as it is and does not let it be changed', () => {
+    render(
+      <OwnerSection
+        agent={{...mockAgent, owner: {id: 'alice@example.com', idType: 'email', isLocal: false}}}
+        editedAgent={{}}
+        onFieldChange={mockOnFieldChange}
+      />,
+    );
+
+    expect(screen.getByText('alice@example.com')).toBeInTheDocument();
+    expect(screen.getByRole('combobox')).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByText('Managed in another identity system, so it cannot be changed here.')).toBeInTheDocument();
   });
 
   it('falls back to the username attribute when no display name is set', () => {

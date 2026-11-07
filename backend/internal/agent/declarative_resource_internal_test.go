@@ -36,7 +36,10 @@ id: test-agent-001
 ouId: ou-123
 type: service-agent
 description: A test agent
-owner: owner-id-123
+owner:
+  id: owner-id-123
+  idType: uuid
+  isLocal: true
 authFlowId: flow-abc
 registrationFlowId: flow-reg-xyz
 themeId: theme-blue
@@ -57,7 +60,10 @@ attributes:
 	assert.Equal(s.T(), "service-agent", req.Type)
 	assert.Equal(s.T(), "Test Agent", req.Attributes["name"])
 	assert.Equal(s.T(), "A test agent", req.Description)
-	assert.Equal(s.T(), "owner-id-123", req.Owner)
+	s.Require().NotNil(req.Owner)
+	assert.Equal(s.T(), "owner-id-123", req.Owner.ID)
+	assert.Equal(s.T(), providers.AgentOwnerIDTypeUUID, req.Owner.IDType)
+	assert.True(s.T(), req.Owner.Local())
 	assert.Equal(s.T(), "flow-abc", req.AuthFlowID)
 	assert.Equal(s.T(), "flow-reg-xyz", req.RegistrationFlowID)
 	assert.Equal(s.T(), "theme-blue", req.ThemeID)

@@ -181,7 +181,7 @@ curl -X POST https://localhost:8090/agents \
   -d '{
     "type": "default",
     "ouId": "<organization-unit-id>",
-    "owner": "<owner-user-id>",
+    "owner": { "id": "<owner-user-id>" },
     "attributes": { "name": "Invoice Reconciler" }
   }'
 ```
@@ -215,6 +215,28 @@ Every agent has an **Agent ID**, its identity in <ProductName />, and an **Owner
 
 - **Console:** the **Overview** tab shows the Agent ID and owner under **Agent details**, and the **Advanced** tab is where the owner is changed.
 - **API:** `GET /agents/<AGENT_ID>` returns both. Add `?include=display` to get the label resolved from the schema's display attribute. The label falls back to the agent ID if no display value is available.
+
+The owner is an object with three fields:
+
+| Field | Description |
+|---|---|
+| `id` | The owner's ID, up to 256 characters. Required. |
+| `idType` | What the ID holds: `uuid` (the default), `email` (a bare email address), or `mobile` (an E.164 number such as `+94771234567`). |
+| `isLocal` | Whether the owner is an entity of this deployment. Defaults to `true`. |
+
+A local owner is a user, application, or agent of this deployment, identified by its `uuid`, and must exist when it is set. A user who owns agents cannot be deleted until those agents are deleted or given another owner.
+
+An owner managed in another identity system is set with `"isLocal": false`. <ProductName /> stores it as given, so a configuration that names it can be applied to deployments that do not hold that person, and it does not block deleting a local user. It is never looked up in this deployment, even when its ID matches a user, application, or agent here.
+
+```json
+"owner": {
+  "id": "<id-in-the-other-system>",
+  "idType": "uuid",
+  "isLocal": false
+}
+```
+
+When no owner is given, the caller becomes the owner. The caller is a local owner when it is a user, application, or agent of this deployment, and an external owner otherwise, for example when it signed in through the [trusted issuer](../../trusted-issuer). An agent created with the management API key and no owner, such as one imported into a data plane, has no owner.
 
 ### Attribute values
 

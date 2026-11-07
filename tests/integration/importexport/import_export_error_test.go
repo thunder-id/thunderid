@@ -532,7 +532,7 @@ func (suite *ImportExportErrorSuite) TestImportCreatesAUserBeforeTheAgentItOwns(
 	defer func() { _ = testutils.DeleteAgent(agentID) }()
 
 	payload := suite.importBody(testutils.ImportRequest{
-		Content: fmt.Sprintf("resource_type: agent\nid: %s\nouId: %s\ntype: default\nowner: %s\n"+
+		Content: fmt.Sprintf("resource_type: agent\nid: %s\nouId: %s\ntype: default\nowner:\n  id: %s\n"+
 			"attributes:\n  name: agent-owner-import-%s\n---\n"+
 			"resource_type: user\nid: %s\ntype: %s\nouId: %s\nattributes:\n  username: agent-owner-%s\n",
 			agentID, ouID, userID, suffix, userID, typeHandle, ouID, suffix),
@@ -548,5 +548,8 @@ func (suite *ImportExportErrorSuite) TestImportCreatesAUserBeforeTheAgentItOwns(
 
 	agent, err := testutils.GetAgent(agentID)
 	suite.Require().NoError(err)
-	suite.Equal(userID, agent.Owner)
+	suite.Require().NotNil(agent.Owner)
+	suite.Equal(userID, agent.Owner.ID)
+	suite.Require().NotNil(agent.Owner.IsLocal)
+	suite.True(*agent.Owner.IsLocal)
 }

@@ -19,9 +19,17 @@ import (
 )
 
 const (
-	testAgentID    = "agent-id-123"
-	testAgentOwner = "owner-id-456"
+	testAgentID      = "agent-id-123"
+	testAgentOwnerID = "owner-id-456"
 )
+
+// testAgentOwner returns the local owner the tests provision agents with.
+func testAgentOwner() *providers.AgentOwner {
+	local := true
+	return &providers.AgentOwner{
+		ID: testAgentOwnerID, IDType: providers.AgentOwnerIDTypeUUID, IsLocal: &local,
+	}
+}
 
 type DefaultAgentMgtProviderTestSuite struct {
 	suite.Suite
@@ -42,7 +50,7 @@ func newTestAgent() *providers.Agent {
 	return &providers.Agent{
 		OUID:       "ou-id-abc",
 		Type:       "default",
-		Owner:      testAgentOwner,
+		Owner:      testAgentOwner(),
 		Attributes: []byte(`{"name":"test-agent"}`),
 	}
 }
@@ -65,7 +73,7 @@ func (suite *DefaultAgentMgtProviderTestSuite) TestCreateAgentPassesEntityDataTh
 		Type:        "default",
 		Description: "handles invoices",
 		LogoURL:     "https://example.com/logo.png",
-		Owner:       testAgentOwner,
+		Owner:       testAgentOwner(),
 		Attributes:  []byte(`{"name":"billing-agent","model":"claude"}`),
 	}
 
@@ -118,14 +126,14 @@ func (suite *DefaultAgentMgtProviderTestSuite) TestCreateAgentForwardsTheAgentUn
 // is forwarded rather than rejected here.
 func (suite *DefaultAgentMgtProviderTestSuite) TestCreateAgentWithoutOwnerIsForwarded() {
 	req := newTestAgent()
-	req.Owner = ""
+	req.Owner = nil
 
 	captured := suite.captureCreatedAgent()
 
 	_, svcErr := suite.provider.CreateAgent(context.Background(), req)
 
 	suite.Nil(svcErr)
-	suite.Empty((*captured).Owner)
+	suite.Nil((*captured).Owner)
 }
 
 // A supplied owner reaches the agent service unchanged, which routes it through the service's owner
@@ -136,7 +144,7 @@ func (suite *DefaultAgentMgtProviderTestSuite) TestCreateAgentPassesOwnerExplici
 	_, svcErr := suite.provider.CreateAgent(context.Background(), newTestAgent())
 
 	suite.Nil(svcErr)
-	suite.Equal(testAgentOwner, (*captured).Owner)
+	suite.Equal(testAgentOwner(), (*captured).Owner)
 }
 
 func (suite *DefaultAgentMgtProviderTestSuite) TestCreateAgentWithNilRequestIsRejectedBeforeDelegation() {
@@ -293,7 +301,7 @@ func (suite *DefaultAgentMgtProviderTestSuite) TestCreateAgentMapsEveryResponseF
 		Type:        "default",
 		Description: "an agent",
 		LogoURL:     "avatar:shape=circle",
-		Owner:       testAgentOwner,
+		Owner:       testAgentOwner(),
 		Attributes:  []byte(`{"k":"v"}`),
 	}
 	full.ValidUntil = "2030-01-01T00:00:00Z"

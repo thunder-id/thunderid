@@ -978,6 +978,19 @@ func (p *provisioningExecutor) createUserInStore(nodeCtx *providers.NodeContext,
 	return createdUser, nil
 }
 
+// resolvedOwner returns the owner the owner resolver verified, a local entity, or nil when none was
+// resolved so the agent service falls back to the caller.
+func resolvedOwner(nodeCtx *providers.NodeContext) *providers.AgentOwner {
+	ownerID := nodeCtx.RuntimeData[ownerIDKey]
+	if ownerID == "" {
+		return nil
+	}
+	local := true
+	return &providers.AgentOwner{
+		ID: ownerID, IDType: providers.AgentOwnerIDTypeUUID, IsLocal: &local,
+	}
+}
+
 // createAgentInStore provisions an agent through the agent management provider. Description, logo
 // and owner are carried on the agent record rather than as schema attributes, and are forwarded as
 // collected: the agent service owns their validation. The name is a schema attribute and travels
@@ -1018,7 +1031,7 @@ func (p *provisioningExecutor) createAgentInStore(nodeCtx *providers.NodeContext
 		Type:        targetRef.entityType,
 		Description: collectedValue(nodeCtx, descriptionKey),
 		LogoURL:     collectedValue(nodeCtx, logoURLKey),
-		Owner:       nodeCtx.RuntimeData[ownerIDKey],
+		Owner:       resolvedOwner(nodeCtx),
 		Delegated:   delegated,
 		Attributes:  attributesJSON,
 		InboundAuthConfig: []providers.InboundAuthConfigWithSecret{
