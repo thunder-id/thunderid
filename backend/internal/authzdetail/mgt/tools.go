@@ -29,6 +29,7 @@ type typeMCPItem struct {
 	Version     int    `json:"version"`
 	Reuse       bool   `json:"reuse"`
 	IsReadOnly  bool   `json:"isReadOnly"`
+	OUID        string `json:"ouId"`
 }
 
 // typeListMCPResponse is the MCP list tool output.
@@ -84,12 +85,13 @@ Key Requirements:
 - consentTemplate: The consent summary, with {{field.path}} placeholders.
 - processor: Required when any field is supplied or changed by the processor.
 - reuse: Whether an approval may stand in for later prompts and be renewed by refresh (default false).
+- ouId: The ID of the organization unit that owns the type. It cannot be changed afterwards.
 
 Use get_authorization_detail_type_by_id on an existing type to see a complete example.`,
 		InputSchema: tool.GenerateSchema[AuthorizationDetailTypeRequest](
 			withSchemaObject("The JSON Schema 2020-12 object schema of the type, with field "+
 				"policies."),
-			tool.WithRequired("", "type", "name", "schema")),
+			tool.WithRequired("", "type", "name", "schema", "ouId")),
 		OutputSchema: tool.GenerateSchema[AuthorizationDetailTypeResponse](
 			withSchemaObject("The JSON Schema 2020-12 of the type.")),
 		Annotations: &mcp.ToolAnnotations{
@@ -105,7 +107,8 @@ Use get_authorization_detail_type_by_id on an existing type to see a complete ex
 
 Use get_authorization_detail_type_by_id first to get the current definition, change it, and send ` +
 			`the complete definition back. The version increments when the schema, consent template or reuse ` +
-			`changes, or the processor is added or removed, and earlier approvals then no longer cover new requests.`,
+			`changes, or the processor is added or removed, and earlier approvals then no longer cover new requests. ` +
+			`ouId can be left out to keep the owner, and cannot name another organization unit.`,
 		InputSchema: tool.GenerateSchema[updateTypeInput](
 			withSchemaObject("The JSON Schema 2020-12 object schema of the type, with field "+
 				"policies."),
@@ -180,7 +183,8 @@ func (t *typeTools) listTypes(ctx context.Context, _ *mcp.CallToolRequest,
 	items := make([]typeMCPItem, 0, len(types))
 	for _, typ := range types {
 		items = append(items, typeMCPItem{ID: typ.ID, Type: typ.Type, Name: typ.Name,
-			Description: typ.Description, Version: typ.Version, Reuse: typ.Reuse, IsReadOnly: typ.IsReadOnly})
+			Description: typ.Description, Version: typ.Version, Reuse: typ.Reuse, IsReadOnly: typ.IsReadOnly,
+			OUID: typ.OUID})
 	}
 	return nil, &typeListMCPResponse{TotalResults: len(items), Types: items}, nil
 }

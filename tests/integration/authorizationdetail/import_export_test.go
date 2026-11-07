@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/suite"
+
+	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
 const (
@@ -56,6 +58,7 @@ func (s *ImportExportTestSuite) TestExportedTypeImportsBack() {
 	s.Require().NoError(json.Unmarshal(body, &exported))
 	s.Contains(exported.Resources, "resource_type: "+resourceTypeAuthorizationDetailType)
 	s.Contains(exported.Resources, value)
+	s.Contains(exported.Resources, "ouId: "+original.OUID, "the export names the owner by id")
 
 	// Importing into a deployment without the type creates it with its exported id.
 	deleteType(s.T(), original.ID)
@@ -73,6 +76,7 @@ func (s *ImportExportTestSuite) TestExportedTypeImportsBack() {
 	s.Equal("Book {{route}}", imported.ConsentTemplate)
 	s.True(imported.Reuse)
 	s.JSONEq(string(flightSchema), string(imported.Schema))
+	s.Equal(original.OUID, imported.OUID, "the type keeps its owner")
 
 	// Without upsert, a dry run predicts the conflict the real import would hit.
 	result = s.importDocument(exported.Resources, true, false)
@@ -359,6 +363,50 @@ func (s *ImportExportTestSuite) TestExportOfAllTypesLeavesOutDeclaredTypes() {
 	s.NotContains(exported.Resources, declarativeTypeID, "a declared type is not exported")
 }
 
+// An import names the owner by ouId or ouHandle, and refuses a missing, unknown or changed owner in a dry run as
+// for real.
+func (s *ImportExportTestSuite) TestImportResolvesAndKeepsTheOwner() {
+	id := uniqueTypeID()
+	value := uniqueTypeValue("owner-import")
+	result := s.importDocument(typeDocument(id, value, ""), false, true)
+	s.Require().Equal("success", result["status"], "%v", result)
+	defer deleteType(s.T(), id)
+	status, body := doJSON(s.T(), http.MethodGet, typesPath+"/"+id, nil)
+	s.Require().Equal(http.StatusOK, status, string(body))
+	var imported typeResponse
+	s.Require().NoError(json.Unmarshal(body, &imported))
+	s.Equal(defaultOUID(s.T()), imported.OUID, "the handle the document names is stored as the id")
+
+	otherOUID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
+		Handle: fmt.Sprintf("adt-import-owner-%d", time.Now().UnixNano()), Name: "Import owner"})
+	s.Require().NoError(err)
+	defer func() {
+		if err := testutils.DeleteOrganizationUnit(otherOUID); err != nil {
+			s.T().Logf("failed to delete organization unit %s: %v", otherOUID, err)
+		}
+	}()
+	moved := typeDocument(id, value, "ouId: "+otherOUID+"\n")
+	for _, dryRun := range []bool{true, false} {
+		result = s.importDocument(moved, dryRun, true)
+		s.Equal("failed", result["status"], "dry run %v: %v", dryRun, result)
+		s.Equal(codeOUUpdateNotAllowed, result["code"], "dry run %v: %v", dryRun, result)
+	}
+
+	newID := uniqueTypeID()
+	newValue := uniqueTypeValue("owner-import-refused")
+	document := typeDocument(newID, newValue, "")
+	unknown := strings.Replace(document, "ouHandle: default\n", "ouHandle: no-such-unit\n", 1)
+	missing := strings.Replace(document, "ouHandle: default\n", "", 1)
+	for _, dryRun := range []bool{true, false} {
+		result = s.importDocument(unknown, dryRun, true)
+		s.Equal(codeInvalidTypeOU, result["code"], "dry run %v: %v", dryRun, result)
+		result = s.importDocument(missing, dryRun, true)
+		s.Equal(codeTypeOURequired, result["code"], "dry run %v: %v", dryRun, result)
+	}
+	status, _ = doJSON(s.T(), http.MethodGet, typesPath+"/"+newID, nil)
+	s.Equal(http.StatusNotFound, status, "a refused import writes nothing")
+}
+
 // export exports a type and returns the resources document and the environment variables file.
 func (s *ImportExportTestSuite) export(id string) (string, string) {
 	status, body := doJSON(s.T(), http.MethodPost, "/export",
@@ -376,7 +424,7 @@ func (s *ImportExportTestSuite) export(id string) (string, string) {
 // extra YAML, which replaces the schema when it declares one.
 func typeDocument(id, value, extra string) string {
 	document := "resource_type: " + resourceTypeAuthorizationDetailType + "\nid: " + id + "\ntype: " + value +
-		"\nname: Imported Type\nconsentTemplate: Book {{route}}\nreuse: true\n"
+		"\nname: Imported Type\nconsentTemplate: Book {{route}}\nreuse: true\nouHandle: default\n"
 	if !strings.Contains(extra, "schema:") {
 		document += "schema:\n  type: object\n  required: [route]\n  properties:\n" +
 			"    route:\n      type: string\n      title: Route\n" +

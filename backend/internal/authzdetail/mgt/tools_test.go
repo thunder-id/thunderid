@@ -40,7 +40,7 @@ func (s *TypeToolsTestSuite) SetupTest() {
 
 func toolsTestType() providers.AuthorizationDetailType {
 	return providers.AuthorizationDetailType{ID: "type-1", Type: "flight_booking", Name: toolsTestName, Version: 2,
-		Schema: json.RawMessage(toolsTestSchema), ConsentTemplate: "Book {{route}}", Reuse: true}
+		Schema: json.RawMessage(toolsTestSchema), ConsentTemplate: "Book {{route}}", Reuse: true, OUID: testOUID}
 }
 
 // The tool lists every type, however many there are, not only a first page.
@@ -52,8 +52,8 @@ func (s *TypeToolsTestSuite) TestListTypes() {
 
 	s.Require().NoError(err)
 	s.Equal(1, out.TotalResults)
-	s.Equal([]typeMCPItem{{ID: "type-1", Type: "flight_booking", Name: toolsTestName, Version: 2, Reuse: true}},
-		out.Types)
+	s.Equal([]typeMCPItem{{ID: "type-1", Type: "flight_booking", Name: toolsTestName, Version: 2, Reuse: true,
+		OUID: testOUID}}, out.Types)
 }
 
 func (s *TypeToolsTestSuite) TestListTypesFails() {
@@ -88,15 +88,16 @@ func (s *TypeToolsTestSuite) TestCreateTypeGoesThroughTheService() {
 	s.service.EXPECT().CreateAuthorizationDetailType(mock.Anything, mock.MatchedBy(
 		func(t providers.AuthorizationDetailType) bool {
 			return t.Type == "flight_booking" && t.Name == toolsTestName && !t.Reuse &&
-				string(t.Schema) == toolsTestSchema
+				string(t.Schema) == toolsTestSchema && t.OUID == testOUID
 		})).Return(&created, nil)
 
 	out, err := s.tools.createType(context.Background(),
 		AuthorizationDetailTypeRequest{Type: "flight_booking", Name: toolsTestName,
-			Schema: json.RawMessage(toolsTestSchema)})
+			Schema: json.RawMessage(toolsTestSchema), OUID: testOUID})
 
 	s.Require().NoError(err)
 	s.Equal("type-1", out.ID)
+	s.Equal(testOUID, out.OUID)
 }
 
 func (s *TypeToolsTestSuite) TestCreateTypeRefused() {
@@ -153,6 +154,15 @@ func (s *TypeToolsTestSuite) TestToolsOverMCP() {
 	s.ElementsMatch([]string{"list_authorization_detail_types",
 		"get_authorization_detail_type_by_id", "create_authorization_detail_type",
 		"update_authorization_detail_type"}, names)
+	for _, t := range listed.Tools {
+		required := t.InputSchema.(map[string]any)["required"]
+		switch t.Name {
+		case "create_authorization_detail_type":
+			s.Contains(required, "ouId", "a type is created with the organization unit that owns it")
+		case "update_authorization_detail_type":
+			s.NotContains(required, "ouId", "an update may leave the owner out to keep it")
+		}
+	}
 
 	// Every tool is mapped to an authorization detail type permission, so none falls back to root.
 	security.InitSystemPermissions("")
@@ -170,7 +180,7 @@ func (s *TypeToolsTestSuite) TestToolsOverMCP() {
 		Return(&created, nil)
 	result, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "create_authorization_detail_type",
 		Arguments: map[string]any{"type": "flight_booking", "name": toolsTestName,
-			"schema": json.RawMessage(toolsTestSchema)}})
+			"schema": json.RawMessage(toolsTestSchema), "ouId": testOUID}})
 	s.Require().NoError(err)
 	s.Require().False(result.IsError, "%v", result.Content)
 	structured, err := json.Marshal(result.StructuredContent)

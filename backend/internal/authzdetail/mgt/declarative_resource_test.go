@@ -48,6 +48,7 @@ consentTemplate: "Pay {{instructedAmount.amount}} {{instructedAmount.currency}}"
 processor:
   endpoint: https://bank.example.com/rar
 reuse: false
+ouHandle: default
 `
 
 type DeclarativeResourceTestSuite struct {
@@ -140,7 +141,7 @@ func (s *DeclarativeResourceTestSuite) TestInitialize_LoadsDeclarativeTypes() {
 	s.setupConfig(home, "declarative", false)
 	s.Require().NoError(newTypeFileBasedStore().ClearByType())
 	s.T().Cleanup(func() { _ = newTypeFileBasedStore().ClearByType() })
-	service, exporter, err := Initialize(http.NewServeMux(), nil, nil)
+	service, exporter, err := Initialize(http.NewServeMux(), nil, nil, testOwners{})
 	s.Require().NoError(err)
 	s.Equal(resourceTypeAuthorizationDetailType, exporter.GetResourceType())
 
@@ -150,6 +151,7 @@ func (s *DeclarativeResourceTestSuite) TestInitialize_LoadsDeclarativeTypes() {
 	s.False(t.Reuse)
 	s.Equal(1, t.Version)
 	s.Equal("https://bank.example.com/rar", t.Processor.Endpoint)
+	s.Equal(testOUID, t.OUID, "the handle the file names is resolved to the organization unit's id")
 	s.JSONEq(`{"type":"object","required":["instructedAmount"],"properties":{
 		"instructedAmount":{"type":"object","properties":{"amount":{"type":"string"},"currency":{"type":"string"}}},
 		"123":{"type":"string"}}}`, string(t.Schema))
@@ -167,7 +169,7 @@ func (s *DeclarativeResourceTestSuite) TestInitialize_FailsOnInvalidFile() {
 	s.setupConfig(home, "declarative", false)
 	s.Require().NoError(newTypeFileBasedStore().ClearByType())
 
-	_, _, err := Initialize(http.NewServeMux(), nil, nil)
+	_, _, err := Initialize(http.NewServeMux(), nil, nil, testOwners{})
 	s.Require().Error(err)
 	s.Contains(err.Error(), "failed to load authorization details type resources")
 }
@@ -240,27 +242,66 @@ func (s *DeclarativeResourceTestSuite) TestValidateTypeWrapper() {
 	}
 	fileStore := newTestFileStore(s.T(), paymentType())
 
-	s.NoError(validateTypeWrapper(valid(), fileStore, nil))
-	s.Error(validateTypeWrapper("not a type", fileStore, nil))
+	s.NoError(validateTypeWrapper(valid(), fileStore, nil, testOwners{}))
+	s.Error(validateTypeWrapper("not a type", fileStore, nil, testOwners{}))
 
 	noID := valid()
 	noID.ID = ""
-	s.ErrorContains(validateTypeWrapper(noID, fileStore, nil), "ID is required")
+	s.ErrorContains(validateTypeWrapper(noID, fileStore, nil, testOwners{}), "ID is required")
 
 	invalid := valid()
 	invalid.ConsentTemplate = "Book {{passenger}}"
-	s.ErrorContains(validateTypeWrapper(invalid, fileStore, nil),
+	s.ErrorContains(validateTypeWrapper(invalid, fileStore, nil, testOwners{}),
 		"{{passenger}} is not a field of the schema")
 
 	sameID := valid()
 	sameID.ID = paymentType().ID
-	s.ErrorContains(validateTypeWrapper(sameID, fileStore, nil),
+	s.ErrorContains(validateTypeWrapper(sameID, fileStore, nil, testOwners{}),
 		"already exists in declarative resources")
 
 	sameValue := valid()
 	sameValue.Type = testPaymentType
-	s.ErrorContains(validateTypeWrapper(sameValue, fileStore, nil),
+	s.ErrorContains(validateTypeWrapper(sameValue, fileStore, nil, testOwners{}),
 		"already used in declarative resources")
+}
+
+// A declarative type has to name the organization unit that owns it, and a handle is stored as the unit's id.
+func (s *DeclarativeResourceTestSuite) TestValidateTypeWrapper_ResolvesTheOwner() {
+	fileStore := newTestFileStore(s.T())
+
+	byHandle := flightType()
+	byHandle.OUID, byHandle.OUHandle = "", testOUHandle
+	s.Require().NoError(validateTypeWrapper(&byHandle, fileStore, nil, testOwners{}))
+	s.Equal(testOUID, byHandle.OUID)
+	s.Empty(byHandle.OUHandle)
+
+	noOwner := flightType()
+	noOwner.OUID = ""
+	s.ErrorContains(validateTypeWrapper(&noOwner, fileStore, nil, testOwners{}),
+		"needs an organization unit, give its ouId or ouHandle")
+
+	unknown := flightType()
+	unknown.OUID, unknown.OUHandle = "", "missing"
+	s.ErrorContains(validateTypeWrapper(&unknown, fileStore, nil, testOwners{}),
+		"organization unit of authorization details type 'type-1' could not be resolved")
+}
+
+// A document names the owner by ouId or ouHandle, and an export writes the id.
+func (s *DeclarativeResourceTestSuite) TestParseAndExport_CarryTheOwner() {
+	var node yaml.Node
+	s.Require().NoError(yaml.Unmarshal([]byte("id: a\ntype: t\nouId: ou-9\nouHandle: other\n"), &node))
+	t, err := ParseAuthorizationDetailTypeNode(node.Content[0])
+	s.Require().NoError(err)
+	s.Equal("ou-9", t.OUID)
+	s.Equal("other", t.OUHandle)
+
+	resource, err := declarativeResourceOf(&providers.AuthorizationDetailType{ID: "a", Type: "t",
+		Schema: json.RawMessage(`{"type":"object"}`), OUID: testOUID})
+	s.Require().NoError(err)
+	content, err := yaml.Marshal(resource)
+	s.Require().NoError(err)
+	s.Contains(string(content), "ouId: "+testOUID)
+	s.NotContains(string(content), "ouHandle")
 }
 
 func (s *DeclarativeResourceTestSuite) TestValidateTypeWrapper_DatabaseDuplicates() {
@@ -269,24 +310,24 @@ func (s *DeclarativeResourceTestSuite) TestValidateTypeWrapper_DatabaseDuplicate
 
 	dbStore := newTypeStoreInterfaceMock(s.T())
 	dbStore.EXPECT().GetTypeByID(mock.Anything, t.ID).Return(t, nil).Once()
-	s.ErrorContains(validateTypeWrapper(&t, fileStore, dbStore), "already exists in the database store")
+	s.ErrorContains(validateTypeWrapper(&t, fileStore, dbStore, testOwners{}), "already exists in the database store")
 
 	dbStore.EXPECT().GetTypeByID(mock.Anything, t.ID).Return(providers.AuthorizationDetailType{}, errTypeNotFound)
 	dbStore.EXPECT().GetTypeByValue(mock.Anything, t.Type).Return(t, nil).Once()
-	s.ErrorContains(validateTypeWrapper(&t, fileStore, dbStore), "already used in the database store")
+	s.ErrorContains(validateTypeWrapper(&t, fileStore, dbStore, testOwners{}), "already used in the database store")
 
 	dbStore.EXPECT().GetTypeByValue(mock.Anything, t.Type).Return(providers.AuthorizationDetailType{},
 		errTypeNotFound).Once()
-	s.NoError(validateTypeWrapper(&t, fileStore, dbStore))
+	s.NoError(validateTypeWrapper(&t, fileStore, dbStore, testOwners{}))
 
 	dbStore.EXPECT().GetTypeByValue(mock.Anything, t.Type).
 		Return(providers.AuthorizationDetailType{}, errors.New("db down")).Once()
-	s.ErrorContains(validateTypeWrapper(&t, fileStore, dbStore), "failed to check")
+	s.ErrorContains(validateTypeWrapper(&t, fileStore, dbStore, testOwners{}), "failed to check")
 
 	failing := newTypeStoreInterfaceMock(s.T())
 	failing.EXPECT().GetTypeByID(mock.Anything, t.ID).Return(providers.AuthorizationDetailType{},
 		errors.New("db down")).Once()
-	s.ErrorContains(validateTypeWrapper(&t, fileStore, failing), "failed to check")
+	s.ErrorContains(validateTypeWrapper(&t, fileStore, failing, testOwners{}), "failed to check")
 }
 
 func (s *DeclarativeResourceTestSuite) TestExporter() {

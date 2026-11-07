@@ -210,7 +210,8 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	exporters = append(exporters, resourceExporter)
 
 	// Initialize authorization details type management.
-	authzDetailMgtService, authzDetailExporter, err := authzdetailmgt.Initialize(mux, mcpServer, valueCapture)
+	authzDetailMgtService, authzDetailExporter, err := authzdetailmgt.Initialize(
+		mux, mcpServer, valueCapture, ouService)
 	fatalOnError(ctx, logger, err, "Failed to initialize AuthorizationDetailMgtService")
 	exporters = append(exporters, authzDetailExporter)
 
@@ -392,7 +393,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		httpConnection: httpConnectionService,
 	}, applicationService, agentService, flowMgtService, roleAssignmentService, roleService,
 		groupService, ouService, ouUserResolver, ouGroupResolver, entityTypeService, resourceService,
-		sharingService, notifTemplateSvc, ouDependencyProvider)
+		sharingService, notifTemplateSvc, ouDependencyProvider, authzDetailMgtService)
 
 	// Initialize export service with collected exporters
 	// This plane authors configuration and does not hold the values it refers to, so an export

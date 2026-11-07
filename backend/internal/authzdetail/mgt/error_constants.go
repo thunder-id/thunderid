@@ -239,6 +239,45 @@ var (
 				"and reapply the change",
 		},
 	}
+	// ErrorInvalidTypeOU is returned when the organization unit given for a type does not exist.
+	ErrorInvalidTypeOU = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "RAR-1030",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.authorizationdetailservice.invalid_type_ou",
+			DefaultValue: "Invalid organization unit",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.authorizationdetailservice.invalid_type_ou_description",
+			DefaultValue: "The organization unit given for the authorization details type does not exist",
+		},
+	}
+	// ErrorOUUpdateNotAllowed is returned when an update names another organization unit for a type.
+	ErrorOUUpdateNotAllowed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "RAR-1031",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.authorizationdetailservice.ou_update_not_allowed",
+			DefaultValue: "Organization unit update not allowed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.authorizationdetailservice.ou_update_not_allowed_description",
+			DefaultValue: "The organization unit of an authorization details type cannot be changed",
+		},
+	}
+	// ErrorTypeOURequired is returned when a type is created without an organization unit.
+	ErrorTypeOURequired = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "RAR-1032",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.authorizationdetailservice.type_ou_required",
+			DefaultValue: "Organization unit required",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.authorizationdetailservice.type_ou_required_description",
+			DefaultValue: "An authorization details type needs an organization unit. Give its ouId in the request",
+		},
+	}
 )
 
 // Internal errors.

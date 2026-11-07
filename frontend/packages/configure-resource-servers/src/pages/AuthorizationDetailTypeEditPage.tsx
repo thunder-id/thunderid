@@ -43,6 +43,7 @@ import useUpdateAuthorizationDetailType from '../api/useUpdateAuthorizationDetai
 import AskEveryTimeSetting from '../components/authorization-detail-types/AskEveryTimeSetting';
 import AuthorizationDetailTypeDeleteDialog from '../components/authorization-detail-types/AuthorizationDetailTypeDeleteDialog';
 import FieldsSection from '../components/authorization-detail-types/FieldsSection';
+import OrganizationUnitSection from '../components/authorization-detail-types/OrganizationUnitSection';
 import ProcessorSection from '../components/authorization-detail-types/ProcessorSection';
 import QuickCopySection from '../components/authorization-detail-types/QuickCopySection';
 import useAuthorizationDetailTypeForm, {
@@ -569,6 +570,7 @@ function AuthorizationDetailTypeEditor({
               type={detailType.type}
               typeError={form.saveErrorTarget === 'type' ? form.saveError : null}
             />
+            {detailType.ouId && <OrganizationUnitSection ouId={detailType.ouId} />}
             <SettingsCard
               title={t('authorizationDetailTypes:consent.title', 'Consent')}
               description={t(

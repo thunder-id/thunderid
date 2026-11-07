@@ -6103,6 +6103,10 @@ const translations = {
     'create.creating': 'Creating…',
     'create.details.title': "Let's collect some details about your intent",
     'create.fields.title': 'What does the user approve?',
+    'create.organizationUnit.required': 'Organization unit is required',
+    'create.organizationUnit.subtitle':
+      "Choose the organization unit that will own this intent. You can't change this once created.",
+    'create.organizationUnit.title': 'Where should this intent belong?',
     'create.processor.title': 'Should your system check each request?',
     'create.steps.details': 'Details',
     'create.steps.fields': 'Schema',
@@ -6253,6 +6257,12 @@ const translations = {
     'listing.subtitle':
       'Define fine-grained, structured permissions that clients can ask users to approve through Rich Authorization Requests (RAR).',
     'listing.title': 'Intents',
+    'organizationUnit.copyHandle': 'Copy handle',
+    'organizationUnit.copyId': 'Copy organization unit ID',
+    'organizationUnit.description': 'The organization unit this intent belongs to.',
+    'organizationUnit.handleLabel': 'Handle',
+    'organizationUnit.idLabel': 'ID',
+    'organizationUnit.title': 'Organization unit',
     'processor.description':
       'Your system that approves or refuses each request and can fill in values. Required for client credentials requests.',
     'processor.enable': 'Use an external processor',

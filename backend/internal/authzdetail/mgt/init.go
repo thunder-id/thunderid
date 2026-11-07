@@ -16,15 +16,16 @@ import (
 // Initialize initializes the authorization details type management service, routes, and MCP tools.
 //
 // valueCapturer is optional. Given one, the service hands it every type it creates or changes, so the
-// processor credential the type's export refers to is kept where a reference finds it.
+// processor credential the type's export refers to is kept where a reference finds it. ouSvc resolves the
+// organization unit that owns a type.
 func Initialize(
-	mux *http.ServeMux, mcpServer *mcp.Server, valueCapturer declarativeresource.ValueCapturer,
+	mux *http.ServeMux, mcpServer *mcp.Server, valueCapturer declarativeresource.ValueCapturer, ouSvc ouProvider,
 ) (AuthorizationDetailMgtServiceInterface, declarativeresource.ResourceExporter, error) {
 	typeStore, fileStore, dbStore := initializeStore()
-	service := newAuthorizationDetailMgtService(typeStore, valueCapturer)
+	service := newAuthorizationDetailMgtService(typeStore, valueCapturer, ouSvc)
 
 	if fileStore != nil {
-		if err := loadDeclarativeResources(fileStore, dbStore); err != nil {
+		if err := loadDeclarativeResources(fileStore, dbStore, ouSvc); err != nil {
 			return nil, nil, err
 		}
 	}

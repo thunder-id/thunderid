@@ -8,6 +8,7 @@ import (
 	"context"
 
 	mock "github.com/stretchr/testify/mock"
+	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
@@ -317,6 +318,80 @@ func (_c *AuthorizationDetailMgtServiceInterfaceMock_GetAuthorizationDetailTypeB
 	return _c
 }
 
+// GetResourceDependencies provides a mock function for the type AuthorizationDetailMgtServiceInterfaceMock
+func (_mock *AuthorizationDetailMgtServiceInterfaceMock) GetResourceDependencies(ctx context.Context, resourceType string, id string) ([]resourcedependency.ResourceDependency, error) {
+	ret := _mock.Called(ctx, resourceType, id)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetResourceDependencies")
+	}
+
+	var r0 []resourcedependency.ResourceDependency
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) ([]resourcedependency.ResourceDependency, error)); ok {
+		return returnFunc(ctx, resourceType, id)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) []resourcedependency.ResourceDependency); ok {
+		r0 = returnFunc(ctx, resourceType, id)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]resourcedependency.ResourceDependency)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string) error); ok {
+		r1 = returnFunc(ctx, resourceType, id)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// AuthorizationDetailMgtServiceInterfaceMock_GetResourceDependencies_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetResourceDependencies'
+type AuthorizationDetailMgtServiceInterfaceMock_GetResourceDependencies_Call struct {
+	*mock.Call
+}
+
+// GetResourceDependencies is a helper method to define mock.On call
+//   - ctx context.Context
+//   - resourceType string
+//   - id string
+func (_e *AuthorizationDetailMgtServiceInterfaceMock_Expecter) GetResourceDependencies(ctx any, resourceType any, id any) *AuthorizationDetailMgtServiceInterfaceMock_GetResourceDependencies_Call {
+	return &AuthorizationDetailMgtServiceInterfaceMock_GetResourceDependencies_Call{Call: _e.mock.On("GetResourceDependencies", ctx, resourceType, id)}
+}
+
+func (_c *AuthorizationDetailMgtServiceInterfaceMock_GetResourceDependencies_Call) Run(run func(ctx context.Context, resourceType string, id string)) *AuthorizationDetailMgtServiceInterfaceMock_GetResourceDependencies_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *AuthorizationDetailMgtServiceInterfaceMock_GetResourceDependencies_Call) Return(resourceDependencys []resourcedependency.ResourceDependency, err error) *AuthorizationDetailMgtServiceInterfaceMock_GetResourceDependencies_Call {
+	_c.Call.Return(resourceDependencys, err)
+	return _c
+}
+
+func (_c *AuthorizationDetailMgtServiceInterfaceMock_GetResourceDependencies_Call) RunAndReturn(run func(ctx context.Context, resourceType string, id string) ([]resourcedependency.ResourceDependency, error)) *AuthorizationDetailMgtServiceInterfaceMock_GetResourceDependencies_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // IsAuthorizationDetailTypeDeclarative provides a mock function for the type AuthorizationDetailMgtServiceInterfaceMock
 func (_mock *AuthorizationDetailMgtServiceInterfaceMock) IsAuthorizationDetailTypeDeclarative(ctx context.Context, id string) (bool, *common.ServiceError) {
 	ret := _mock.Called(ctx, id)
@@ -521,6 +596,65 @@ func (_c *AuthorizationDetailMgtServiceInterfaceMock_ListAuthorizationDetailType
 }
 
 func (_c *AuthorizationDetailMgtServiceInterfaceMock_ListAuthorizationDetailTypes_Call) RunAndReturn(run func(ctx context.Context, limit int, offset int) (*AuthorizationDetailTypePage, *common.ServiceError)) *AuthorizationDetailMgtServiceInterfaceMock_ListAuthorizationDetailTypes_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ResolveAuthorizationDetailTypeOU provides a mock function for the type AuthorizationDetailMgtServiceInterfaceMock
+func (_mock *AuthorizationDetailMgtServiceInterfaceMock) ResolveAuthorizationDetailTypeOU(ctx context.Context, t *providers.AuthorizationDetailType) *common.ServiceError {
+	ret := _mock.Called(ctx, t)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ResolveAuthorizationDetailTypeOU")
+	}
+
+	var r0 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *providers.AuthorizationDetailType) *common.ServiceError); ok {
+		r0 = returnFunc(ctx, t)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*common.ServiceError)
+		}
+	}
+	return r0
+}
+
+// AuthorizationDetailMgtServiceInterfaceMock_ResolveAuthorizationDetailTypeOU_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ResolveAuthorizationDetailTypeOU'
+type AuthorizationDetailMgtServiceInterfaceMock_ResolveAuthorizationDetailTypeOU_Call struct {
+	*mock.Call
+}
+
+// ResolveAuthorizationDetailTypeOU is a helper method to define mock.On call
+//   - ctx context.Context
+//   - t *providers.AuthorizationDetailType
+func (_e *AuthorizationDetailMgtServiceInterfaceMock_Expecter) ResolveAuthorizationDetailTypeOU(ctx any, t any) *AuthorizationDetailMgtServiceInterfaceMock_ResolveAuthorizationDetailTypeOU_Call {
+	return &AuthorizationDetailMgtServiceInterfaceMock_ResolveAuthorizationDetailTypeOU_Call{Call: _e.mock.On("ResolveAuthorizationDetailTypeOU", ctx, t)}
+}
+
+func (_c *AuthorizationDetailMgtServiceInterfaceMock_ResolveAuthorizationDetailTypeOU_Call) Run(run func(ctx context.Context, t *providers.AuthorizationDetailType)) *AuthorizationDetailMgtServiceInterfaceMock_ResolveAuthorizationDetailTypeOU_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 *providers.AuthorizationDetailType
+		if args[1] != nil {
+			arg1 = args[1].(*providers.AuthorizationDetailType)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *AuthorizationDetailMgtServiceInterfaceMock_ResolveAuthorizationDetailTypeOU_Call) Return(serviceError *common.ServiceError) *AuthorizationDetailMgtServiceInterfaceMock_ResolveAuthorizationDetailTypeOU_Call {
+	_c.Call.Return(serviceError)
+	return _c
+}
+
+func (_c *AuthorizationDetailMgtServiceInterfaceMock_ResolveAuthorizationDetailTypeOU_Call) RunAndReturn(run func(ctx context.Context, t *providers.AuthorizationDetailType) *common.ServiceError) *AuthorizationDetailMgtServiceInterfaceMock_ResolveAuthorizationDetailTypeOU_Call {
 	_c.Call.Return(run)
 	return _c
 }

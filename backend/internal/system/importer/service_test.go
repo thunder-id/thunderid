@@ -5530,6 +5530,21 @@ func (f *fakeAuthorizationDetailTypeService) GetAuthorizationDetailType(
 	return nil, &authzdetailmgt.ErrorTypeNotFound
 }
 
+// ResolveAuthorizationDetailTypeOU knows one organization unit, testTypeOUID, named by id or by its handle.
+func (f *fakeAuthorizationDetailTypeService) ResolveAuthorizationDetailTypeOU(
+	_ context.Context, t *providers.AuthorizationDetailType,
+) *tidcommon.ServiceError {
+	switch {
+	case t.OUID == "" && t.OUHandle == "":
+		return &authzdetailmgt.ErrorTypeOURequired
+	case t.OUID == testTypeOUID || (t.OUID == "" && t.OUHandle == "default"):
+		t.OUID, t.OUHandle = testTypeOUID, ""
+		return nil
+	default:
+		return &authzdetailmgt.ErrorInvalidTypeOU
+	}
+}
+
 func (f *fakeAuthorizationDetailTypeService) UpdateAuthorizationDetailType(
 	ctx context.Context, id string, t providers.AuthorizationDetailType,
 ) (*providers.AuthorizationDetailType, *tidcommon.ServiceError) {
@@ -5559,8 +5574,12 @@ func newAuthorizationDetailTypeImportService(adtSvc authorizationDetailTypeAdapt
 	return svc
 }
 
+// testTypeOUID is the organization unit that owns the imported types.
+const testTypeOUID = "ou-1"
+
 const authorizationDetailTypeDocument = `resource_type: authorization_detail_type
 id: adt-1
+ouHandle: default
 type: payment_initiation
 name: Payment initiation
 version: 2
@@ -5588,11 +5607,39 @@ func TestImportAuthorizationDetailType_CreatesWhenAbsent(t *testing.T) {
 	assert.Equal(t, "https://bank.example.com/rar", created.Processor.Endpoint)
 	assert.False(t, created.Reuse)
 	assert.JSONEq(t, `{"type":"object","properties":{"amount":{"type":"string"}}}`, string(created.Schema))
+	assert.Equal(t, testTypeOUID, created.OUID, "the handle the document names is resolved to the id")
+	assert.Empty(t, created.OUHandle)
+}
+
+// A document has to name the organization unit that owns the type, and the unit has to exist, in a dry run as in
+// the real import.
+func TestImportAuthorizationDetailType_RefusesAMissingOrUnknownOwner(t *testing.T) {
+	withAuthorizationDetailTypeStore(t, "")
+	cases := map[string]struct {
+		content string
+		code    string
+	}{
+		"no owner": {strings.Replace(authorizationDetailTypeDocument, "ouHandle: default\n", "", 1),
+			authzdetailmgt.ErrorTypeOURequired.Code},
+		"unknown owner": {strings.Replace(authorizationDetailTypeDocument, "ouHandle: default", "ouHandle: other", 1),
+			authzdetailmgt.ErrorInvalidTypeOU.Code},
+	}
+	for name, tc := range cases {
+		for _, dryRun := range []bool{false, true} {
+			adtSvc := &fakeAuthorizationDetailTypeService{}
+			resp, err := newAuthorizationDetailTypeImportService(adtSvc).ImportResources(context.Background(),
+				&ImportRequest{Content: tc.content, DryRun: dryRun})
+			require.Nil(t, err, name)
+			assert.Equal(t, statusFailed, resp.Results[0].Status, name)
+			assert.Equal(t, tc.code, resp.Results[0].Code, name)
+			assert.Empty(t, adtSvc.created, name)
+		}
+	}
 }
 
 func TestImportAuthorizationDetailType_UpdatesWhenPresent(t *testing.T) {
 	adtSvc := &fakeAuthorizationDetailTypeService{existing: map[string]*providers.AuthorizationDetailType{
-		"adt-1": {ID: "adt-1", Type: "payment_initiation"},
+		"adt-1": {ID: "adt-1", Type: "payment_initiation", OUID: testTypeOUID},
 	}}
 	svc := newAuthorizationDetailTypeImportService(adtSvc)
 
@@ -5682,7 +5729,8 @@ func existingTypes(types ...*providers.AuthorizationDetailType) *fakeAuthorizati
 
 // A dry run refuses what the real import would, reporting the operation that import would perform.
 func TestImportAuthorizationDetailType_DryRunPredictsRefusals(t *testing.T) {
-	invalidUpdate := existingTypes(&providers.AuthorizationDetailType{ID: "adt-1", Type: "payment_initiation"})
+	invalidUpdate := existingTypes(&providers.AuthorizationDetailType{ID: "adt-1", Type: "payment_initiation",
+		OUID: testTypeOUID})
 	invalidUpdate.validateErr = &authzdetailmgt.ErrorInvalidSchema
 	cases := map[string]struct {
 		service   *fakeAuthorizationDetailTypeService
@@ -5703,6 +5751,9 @@ func TestImportAuthorizationDetailType_DryRunPredictsRefusals(t *testing.T) {
 			operationUpdate},
 		"type value changed": {existingTypes(&providers.AuthorizationDetailType{ID: "adt-1", Type: "other"}), nil,
 			"", authzdetailmgt.ErrorTypeValueImmutable.Code, operationUpdate},
+		"owner changed": {existingTypes(&providers.AuthorizationDetailType{ID: "adt-1",
+			Type: "payment_initiation", OUID: "ou-2"}), nil, "", authzdetailmgt.ErrorOUUpdateNotAllowed.Code,
+			operationUpdate},
 		"create in declarative-only mode": {&fakeAuthorizationDetailTypeService{}, nil, "declarative",
 			authzdetailmgt.ErrorDeclarativeModeCreateNotAllowed.Code, operationCreate},
 	}

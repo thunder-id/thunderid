@@ -72,6 +72,10 @@ const mockUpdate = vi.fn();
 const mockDelete = vi.fn();
 const mockUseUpdate = vi.fn(() => ({mutate: mockUpdate, isPending: false}));
 
+vi.mock('@thunderid/configure-organization-units', () => ({
+  useGetOrganizationUnit: (id: string) => ({data: id === 'ou-1' ? {id: 'ou-1', handle: 'default'} : undefined}),
+}));
+
 vi.mock('../../api/useGetAuthorizationDetailType', () => ({
   default: (id: string) => mockUseGetType(id),
 }));
@@ -101,6 +105,7 @@ const paymentType: AuthorizationDetailType = {
   consentTemplate: 'Pay {{amount}}',
   processor: {endpoint: 'https://bank.example.com/process'},
   reuse: false,
+  ouId: 'ou-1',
 };
 
 const paymentRequest = {
@@ -599,6 +604,19 @@ describe('AuthorizationDetailTypeEditPage', () => {
     expect(mockUpdate).not.toHaveBeenCalled();
   });
 
+  it('shows the organization unit the type belongs to, which cannot be changed', async () => {
+    const user = userEvent.setup();
+    loaded(paymentType);
+    renderWithProviders(<AuthorizationDetailTypeEditPage />);
+
+    expect(screen.getByText('The organization unit this intent belongs to.')).toBeInTheDocument();
+    const writeText = vi.spyOn(navigator.clipboard, 'writeText');
+    await user.click(screen.getByRole('button', {name: 'Copy organization unit ID'}));
+    expect(writeText).toHaveBeenCalledWith('ou-1');
+    await user.click(screen.getByRole('button', {name: 'Copy handle'}));
+    expect(writeText).toHaveBeenCalledWith('default');
+  });
+
   it('opens a declarative type read-only, with nothing to save or delete', async () => {
     const user = userEvent.setup();
     loaded({...paymentType, isReadOnly: true});
@@ -614,6 +632,7 @@ describe('AuthorizationDetailTypeEditPage', () => {
     const writeText = vi.spyOn(navigator.clipboard, 'writeText');
     await user.click(screen.getByRole('button', {name: 'Copy type identifier'}));
     expect(writeText, 'the identifiers can still be copied').toHaveBeenCalledWith('payment_initiation');
+    expect(screen.getByText('The organization unit this intent belongs to.')).toBeInTheDocument();
 
     await user.click(screen.getByRole('tab', {name: 'Schema'}));
     expect(screen.getByText(/Select the summary or a field on the card to see it\./)).toBeInTheDocument();

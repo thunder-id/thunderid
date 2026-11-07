@@ -34,6 +34,7 @@ function withAuthentication(authentication: {type: string; properties?: Record<s
     schema: {type: 'object', properties: {amount: {type: 'number', title: 'Amount'}}},
     processor: {endpoint: ENDPOINT, authentication},
     reuse: false,
+    ouId: 'ou-1',
   } as AuthorizationDetailType;
 }
 

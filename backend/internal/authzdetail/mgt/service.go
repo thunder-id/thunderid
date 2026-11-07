@@ -19,12 +19,14 @@ import (
 	"unicode/utf8"
 
 	"github.com/thunder-id/thunderid/internal/authzdetail/common"
+	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/outboundauth"
 	"github.com/thunder-id/thunderid/internal/system/outboundauth/httpauth"
+	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -72,21 +74,44 @@ type AuthorizationDetailMgtServiceInterface interface {
 	ValidateAuthorizationDetailType(ctx context.Context, t providers.AuthorizationDetailType) *tidcommon.ServiceError
 	// IsAuthorizationDetailTypeDeclarative reports whether a type is defined in declarative configuration.
 	IsAuthorizationDetailTypeDeclarative(ctx context.Context, id string) (bool, *tidcommon.ServiceError)
+	// ResolveAuthorizationDetailTypeOU sets the organization unit that owns a type, resolving a handle to its id.
+	ResolveAuthorizationDetailTypeOU(ctx context.Context, t *providers.AuthorizationDetailType) *tidcommon.ServiceError
+	// GetResourceDependencies reports the types that depend on a resource: the types an organization unit owns.
+	GetResourceDependencies(ctx context.Context, resourceType, id string) ([]resourcedependency.ResourceDependency,
+		error)
+}
+
+// ouProvider is the subset of the organization unit service the registry uses to resolve the organization unit
+// that owns a type.
+type ouProvider interface {
+	ResolveOwner(ctx context.Context, ouID, ouHandle string, errs ou.OwnerErrors) (string, *tidcommon.ServiceError)
+	ResolveOwnerForUpdate(
+		ctx context.Context, requestedID, requestedHandle, currentID string, errs ou.OwnerErrors,
+	) (string, *tidcommon.ServiceError)
+}
+
+// typeOwnerErrors are the errors given when the organization unit of a type is refused.
+var typeOwnerErrors = ou.OwnerErrors{
+	Required: ErrorTypeOURequired,
+	NotFound: ErrorInvalidTypeOU,
+	Changed:  ErrorOUUpdateNotAllowed,
 }
 
 // authorizationDetailMgtService implements AuthorizationDetailMgtServiceInterface.
 type authorizationDetailMgtService struct {
 	typeStore     typeStoreInterface
 	valueCapturer declarativeresource.ValueCapturer
+	ouSvc         ouProvider
 	logger        *log.Logger
 }
 
 // newAuthorizationDetailMgtService creates a new authorizationDetailMgtService.
 func newAuthorizationDetailMgtService(typeStore typeStoreInterface,
-	valueCapturer declarativeresource.ValueCapturer) AuthorizationDetailMgtServiceInterface {
+	valueCapturer declarativeresource.ValueCapturer, ouSvc ouProvider) AuthorizationDetailMgtServiceInterface {
 	return &authorizationDetailMgtService{
 		typeStore:     typeStore,
 		valueCapturer: valueCapturer,
+		ouSvc:         ouSvc,
 		logger: log.GetLogger().With(
 			log.String(log.LoggerKeyComponentName, "AuthorizationDetailMgtService")),
 	}
@@ -102,6 +127,9 @@ func (s *authorizationDetailMgtService) CreateAuthorizationDetailType(ctx contex
 		return nil, svcErr
 	}
 	if svcErr := setProcessorAuthentication(&t, nil); svcErr != nil {
+		return nil, svcErr
+	}
+	if svcErr := s.ResolveAuthorizationDetailTypeOU(ctx, &t); svcErr != nil {
 		return nil, svcErr
 	}
 
@@ -139,6 +167,20 @@ func (s *authorizationDetailMgtService) CreateAuthorizationDetailType(ctx contex
 	}
 	s.captureValues(ctx, &t)
 	return &t, nil
+}
+
+// ResolveAuthorizationDetailTypeOU sets the organization unit that owns a type. A type has to name one, by id or by
+// handle, and it has to exist. The handle is replaced by the id it resolves to. The owner is only recorded: it does
+// not limit which clients may request the type.
+func (s *authorizationDetailMgtService) ResolveAuthorizationDetailTypeOU(ctx context.Context,
+	t *providers.AuthorizationDetailType) *tidcommon.ServiceError {
+	ouID, svcErr := s.ouSvc.ResolveOwner(ctx, t.OUID, t.OUHandle, typeOwnerErrors)
+	if svcErr != nil {
+		return svcErr
+	}
+	t.OUID = ouID
+	t.OUHandle = ""
+	return nil
 }
 
 // GetAuthorizationDetailType retrieves a type by id.
@@ -200,6 +242,13 @@ func (s *authorizationDetailMgtService) UpdateAuthorizationDetailType(ctx contex
 	if svcErr := setProcessorAuthentication(&t, existing.Processor); svcErr != nil {
 		return nil, svcErr
 	}
+	// The organization unit is kept when left out, and cannot be changed when given.
+	ouID, svcErr := s.ouSvc.ResolveOwnerForUpdate(ctx, t.OUID, t.OUHandle, existing.OUID, typeOwnerErrors)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	t.OUID = ouID
+	t.OUHandle = ""
 
 	t.ID = existing.ID
 	// The update applies only while the type is at the version read here, so it never overwrites a change that
@@ -304,6 +353,33 @@ func (s *authorizationDetailMgtService) IsAuthorizationDetailTypeDeclarative(ctx
 		return false, &tidcommon.InternalServerError
 	}
 	return isDeclarative, nil
+}
+
+// GetResourceDependencies implements resourcedependency.Provider. A type cannot exist without the organization unit
+// that owns it, so the types an organization unit owns block its deletion. No other resource has types depending
+// on it.
+func (s *authorizationDetailMgtService) GetResourceDependencies(ctx context.Context,
+	resourceType, id string) ([]resourcedependency.ResourceDependency, error) {
+	owned := make([]resourcedependency.ResourceDependency, 0)
+	if resourceType != resourcedependency.ResourceTypeOU {
+		return owned, nil
+	}
+	types, err := s.typeStore.ListTypes(ctx)
+	if err != nil {
+		// The registry logs provider errors; don't double-log here.
+		return nil, err
+	}
+	for _, t := range types {
+		if t.OUID == id {
+			owned = append(owned, resourcedependency.ResourceDependency{
+				ResourceType:     resourcedependency.ResourceTypeAuthorizationDetailType,
+				ID:               t.ID,
+				DisplayName:      t.Name,
+				BehaviorOnDelete: resourcedependency.BehaviorRestrict,
+			})
+		}
+	}
+	return owned, nil
 }
 
 // GetAuthorizationDetailTypeByValue implements providers.AuthorizationDetailTypeProvider.

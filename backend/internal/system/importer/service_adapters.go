@@ -1741,6 +1741,10 @@ func (s *importService) importAuthorizationDetailType(
 		return decodeErrorOutcome(resourceTypeAuthorizationDetailType, id, name, err)
 	}
 
+	if svcErr := s.authorizationDetailTypeService.ResolveAuthorizationDetailTypeOU(ctx, t); svcErr != nil {
+		return serviceErrorOutcome(resourceTypeAuthorizationDetailType, t.ID, t.Name, operationCreate, svcErr)
+	}
+
 	if dryRun {
 		return s.dryRunAuthorizationDetailType(ctx, t, options)
 	}
@@ -1783,6 +1787,12 @@ func (s *importService) dryRunAuthorizationDetailType(ctx context.Context, t *pr
 		if existing.Type != t.Type {
 			return serviceErrorOutcome(resourceTypeAuthorizationDetailType, t.ID, t.Name, operationUpdate,
 				&authzdetailmgt.ErrorTypeValueImmutable)
+		}
+		// The owner cannot change, so an update that names another one is refused here as the real apply would
+		// refuse it.
+		if existing.OUID != t.OUID {
+			return serviceErrorOutcome(resourceTypeAuthorizationDetailType, t.ID, t.Name, operationUpdate,
+				&authzdetailmgt.ErrorOUUpdateNotAllowed)
 		}
 		if svcErr := s.authorizationDetailTypeService.ValidateAuthorizationDetailType(ctx, *t); svcErr != nil {
 			return serviceErrorOutcome(resourceTypeAuthorizationDetailType, t.ID, t.Name, operationUpdate, svcErr)

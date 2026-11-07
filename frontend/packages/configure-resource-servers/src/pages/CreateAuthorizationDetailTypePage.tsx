@@ -1,9 +1,11 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {DiscardChangesDialog, DocumentTitle, FullScreenCreationWizardLayout} from '@thunderid/components';
+import {DiscardChangesDialog, DocumentTitle, FullScreenCreationWizardLayout, PageLoader} from '@thunderid/components';
+import {OrganizationUnitPickerScreen, useHasMultipleOUs} from '@thunderid/configure-organization-units';
 import {useLogger} from '@thunderid/logger/react';
 import {Alert, Box, Button, CircularProgress, Stack, Typography} from '@wso2/oxygen-ui';
+import {Home} from '@wso2/oxygen-ui-icons-react';
 import {useMemo, useRef, useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
@@ -59,6 +61,14 @@ export default function CreateAuthorizationDetailTypePage(): JSX.Element {
   const [currentStep, setCurrentStep] = useState<AuthorizationDetailTypeCreateStep>(
     AuthorizationDetailTypeCreateStep.DETAILS,
   );
+
+  // The organization unit is picked before the other steps whenever there is a choice to make. A single-unit
+  // deployment uses its one unit, so the picker is skipped.
+  const {hasMultipleOUs, isLoading: isOuLoading, ouList} = useHasMultipleOUs();
+  const [selectedOuId, setSelectedOuId] = useState('');
+  const [isOuPicked, setIsOuPicked] = useState(false);
+  const [ouError, setOuError] = useState<string | null>(null);
+  const ouId: string = hasMultipleOUs ? selectedOuId : (ouList[0]?.id ?? '');
 
   const steps: Record<AuthorizationDetailTypeCreateStep, {label: string; title: string; description: string}> = useMemo(
     () => ({
@@ -132,8 +142,14 @@ export default function CreateAuthorizationDetailTypePage(): JSX.Element {
       return;
     }
 
+    if (!ouId) {
+      setOuError(t('authorizationDetailTypes:create.organizationUnit.required', 'Organization unit is required'));
+      return;
+    }
+
     submittingRef.current = true;
-    createType.mutate(form.buildRequest(), {
+    const request = {...form.buildRequest(), ouId};
+    createType.mutate(request, {
       onSuccess: (created) => {
         // The wizard is left behind, so going back does not open it again, empty.
         (async (): Promise<void> => {
@@ -158,8 +174,14 @@ export default function CreateAuthorizationDetailTypePage(): JSX.Element {
   };
 
   const handleBack = (): void => {
-    if (!isFirstStep) setCurrentStep(STEP_ORDER[currentIndex - 1]);
+    if (!isFirstStep) {
+      setCurrentStep(STEP_ORDER[currentIndex - 1]);
+    } else if (hasMultipleOUs) {
+      setIsOuPicked(false);
+    }
   };
+
+  const canGoBack = !isFirstStep || hasMultipleOUs;
 
   const renderStep = (): JSX.Element => {
     switch (currentStep) {
@@ -172,9 +194,54 @@ export default function CreateAuthorizationDetailTypePage(): JSX.Element {
     }
   };
 
+  const pageTitle = t('authorizationDetailTypes:listing.addIntent', 'Add intent');
+
+  if (isOuLoading) {
+    return (
+      <>
+        <DocumentTitle title={pageTitle} />
+        <PageLoader />
+      </>
+    );
+  }
+
+  if (hasMultipleOUs && !isOuPicked) {
+    return (
+      <>
+        <DocumentTitle title={pageTitle} />
+        <OrganizationUnitPickerScreen
+          icon={<Home size={26} />}
+          title={t('authorizationDetailTypes:create.organizationUnit.title', 'Where should this intent belong?')}
+          subtitle={t(
+            'authorizationDetailTypes:create.organizationUnit.subtitle',
+            "Choose the organization unit that will own this intent. You can't change this once created.",
+          )}
+          value={selectedOuId}
+          onChange={(value) => {
+            setOuError(null);
+            setSelectedOuId(value);
+          }}
+          onBack={handleClose}
+          onContinue={() => setIsOuPicked(true)}
+          backLabel={t('common:actions.back', 'Back')}
+          continueLabel={t('common:actions.continue', 'Continue')}
+        />
+        <DiscardChangesDialog
+          open={discard.open}
+          onClose={discard.onClose}
+          onConfirm={discard.onConfirm}
+          description={t(
+            'authorizationDetailTypes:discard.description',
+            'You have changes to this intent that are not saved. If you leave now, they are lost.',
+          )}
+        />
+      </>
+    );
+  }
+
   return (
     <>
-      <DocumentTitle title={t('authorizationDetailTypes:listing.addIntent', 'Add intent')} />
+      <DocumentTitle title={pageTitle} />
       <FullScreenCreationWizardLayout
         onClose={handleClose}
         progress={((currentIndex + 1) / STEP_ORDER.length) * 100}
@@ -186,8 +253,8 @@ export default function CreateAuthorizationDetailTypePage(): JSX.Element {
         // The schema composer needs more horizontal room than the single-column forms.
         contentMaxWidth={currentStep === AuthorizationDetailTypeCreateStep.FIELDS ? 1400 : 800}
         footer={
-          <Box sx={{display: 'flex', justifyContent: isFirstStep ? 'flex-end' : 'space-between', gap: 2}}>
-            {!isFirstStep && (
+          <Box sx={{display: 'flex', justifyContent: canGoBack ? 'space-between' : 'flex-end', gap: 2}}>
+            {canGoBack && (
               <Button variant="outlined" onClick={handleBack} sx={{minWidth: 100}} disabled={isSubmitting}>
                 {t('common:actions.back', 'Back')}
               </Button>
@@ -207,6 +274,12 @@ export default function CreateAuthorizationDetailTypePage(): JSX.Element {
           </Box>
         }
       >
+        {ouError && (
+          <Alert severity="error" sx={{mb: 4}} onClose={() => setOuError(null)}>
+            {ouError}
+          </Alert>
+        )}
+
         {form.saveError && !form.saveErrorTarget && (
           <Alert
             severity="error"

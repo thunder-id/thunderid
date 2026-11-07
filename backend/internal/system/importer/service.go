@@ -229,6 +229,7 @@ type authorizationDetailTypeAdapter interface {
 		*tidcommon.ServiceError)
 	ValidateAuthorizationDetailType(ctx context.Context, t providers.AuthorizationDetailType) *tidcommon.ServiceError
 	DeleteAuthorizationDetailType(ctx context.Context, id string) *tidcommon.ServiceError
+	ResolveAuthorizationDetailTypeOU(ctx context.Context, t *providers.AuthorizationDetailType) *tidcommon.ServiceError
 }
 
 type themeAdapter interface {

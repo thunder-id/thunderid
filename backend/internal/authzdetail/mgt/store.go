@@ -48,7 +48,7 @@ func (s *typeStore) CreateType(ctx context.Context, t providers.AuthorizationDet
 	return s.withDBClient(func(dbClient provider.DBClientInterface) error {
 		if _, err := dbClient.ExecuteContext(ctx, queryCreateType,
 			t.ID, t.Type, t.Name, resolveNullableString(t.Description), t.Version,
-			[]byte(t.Schema), props, deployment.Resolve(ctx)); err != nil {
+			[]byte(t.Schema), props, t.OUID, deployment.Resolve(ctx)); err != nil {
 			return fmt.Errorf("failed to create authorization details type: %w", err)
 		}
 		return nil
@@ -242,6 +242,7 @@ func buildTypeFromRow(row map[string]interface{}) (providers.AuthorizationDetail
 	t.Type, _ = row["type"].(string)
 	t.Name, _ = row["name"].(string)
 	t.Description, _ = row["description"].(string)
+	t.OUID, _ = row["ou_id"].(string)
 
 	version, _ := sysutils.ToInt64(row["version"])
 	t.Version = int(version)

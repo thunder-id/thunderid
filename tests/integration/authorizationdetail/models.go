@@ -28,6 +28,7 @@ type typeRequest struct {
 	ConsentTemplate string           `json:"consentTemplate,omitempty"`
 	Processor       *processorConfig `json:"processor,omitempty"`
 	Reuse           bool             `json:"reuse"`
+	OUID            string           `json:"ouId,omitempty"`
 }
 
 // typeResponse mirrors an authorization details type as the management API returns it.
@@ -42,6 +43,7 @@ type typeResponse struct {
 	Processor       *processorConfig `json:"processor,omitempty"`
 	Reuse           bool             `json:"reuse"`
 	IsReadOnly      bool             `json:"isReadOnly"`
+	OUID            string           `json:"ouId"`
 }
 
 // typeListResponse mirrors one page of authorization details types.

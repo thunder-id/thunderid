@@ -1250,6 +1250,12 @@ type AuthorizationDetailType struct {
 	Reuse bool
 	// IsReadOnly reports that the type is declaratively defined and cannot be changed through the API.
 	IsReadOnly bool
+	// OUID is the organization unit that owns the type. It is only recorded: it does not limit which clients may
+	// request the type.
+	OUID string
+	// OUHandle names the owning organization unit by handle in an import or declarative document. It is resolved to
+	// OUID and not stored.
+	OUHandle string
 }
 
 // AuthorizationDetailProcessor identifies the endpoint that authorizes and enriches a type's details.

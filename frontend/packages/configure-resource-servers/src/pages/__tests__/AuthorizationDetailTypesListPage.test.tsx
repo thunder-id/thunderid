@@ -48,6 +48,7 @@ const page: AuthorizationDetailTypeListResponse = {
       version: 1,
       schema: {type: 'object', properties: {}},
       reuse: true,
+      ouId: 'ou-1',
     },
   ],
 };

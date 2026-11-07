@@ -102,6 +102,7 @@ const paymentType: AuthorizationDetailType = {
   consentTemplate: 'Pay {{amount}}',
   processor: {endpoint: 'https://bank.example.com/process'},
   reuse: false,
+  ouId: 'ou-1',
 };
 
 const SAVE_ERROR = 'Failed to save the intent. Please try again.';

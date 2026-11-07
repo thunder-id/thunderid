@@ -90,6 +90,8 @@ const (
 	ResourceTypeResource             = "resource"
 	ResourceTypeAction               = "action"
 	ResourceTypeSharingPolicy        = "sharingPolicy"
+
+	ResourceTypeAuthorizationDetailType = "authorizationDetailType"
 )
 
 // SummarizeBlockingUsages renders a deterministic, human-readable summary of blocking dependencies

@@ -29,7 +29,7 @@ const data: AuthorizationDetailTypeRequest = {
   reuse: true,
 };
 
-const saved: AuthorizationDetailType = {id: 'type-1', version: 2, ...data};
+const saved: AuthorizationDetailType = {id: 'type-1', version: 2, ouId: 'ou-1', ...data};
 
 describe('useUpdateAuthorizationDetailType', () => {
   beforeEach(() => {

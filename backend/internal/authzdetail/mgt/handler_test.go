@@ -42,16 +42,16 @@ func request(method, body, id string) *http.Request {
 }
 
 const typeRequestBody = `{"type":"` + testFlightType + `","name":"  Flight  ","schema":` + flightSchema +
-	`,"consentTemplate":"Book {{route}}","reuse":false}`
+	`,"consentTemplate":"Book {{route}}","reuse":false,"ouId":"` + testOUID + `"}`
 
 func (s *HandlerTestSuite) TestPost() {
 	s.service.EXPECT().CreateAuthorizationDetailType(mock.Anything,
 		mock.MatchedBy(func(t providers.AuthorizationDetailType) bool {
 			return t.Type == testFlightType && t.Name == "Flight" && t.ConsentTemplate == "Book {{route}}" &&
-				!t.Reuse
+				!t.Reuse && t.OUID == testOUID
 		})).
 		Return(&providers.AuthorizationDetailType{
-			ID: "type-1", Type: testFlightType, Version: 1,
+			ID: "type-1", Type: testFlightType, Version: 1, OUID: testOUID,
 		}, nil).
 		Once()
 
@@ -62,6 +62,7 @@ func (s *HandlerTestSuite) TestPost() {
 	var resp AuthorizationDetailTypeResponse
 	s.Require().NoError(json.Unmarshal(w.Body.Bytes(), &resp))
 	s.Equal("type-1", resp.ID)
+	s.Equal(testOUID, resp.OUID)
 }
 
 func (s *HandlerTestSuite) TestPost_InvalidBody() {

@@ -19,6 +19,7 @@ const paymentType: AuthorizationDetailType = {
   schema: {type: 'object', properties: {amount: {type: 'number', title: 'Amount'}}},
   processor: {endpoint: 'https://bank.example.com/process'},
   reuse: false,
+  ouId: 'ou-1',
 };
 
 describe('useAuthorizationDetailTypeForm', () => {

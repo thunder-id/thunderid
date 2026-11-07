@@ -29,7 +29,7 @@ const request: AuthorizationDetailTypeRequest = {
   reuse: false,
 };
 
-const created: AuthorizationDetailType = {id: 'type-1', version: 1, ...request};
+const created: AuthorizationDetailType = {id: 'type-1', version: 1, ouId: 'ou-1', ...request};
 
 describe('useCreateAuthorizationDetailType', () => {
   beforeEach(() => {

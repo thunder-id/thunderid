@@ -16,6 +16,8 @@ const (
 	// Declarative fixture loaded from tests/integration/resources/declarative_resources/authorization_detail_types.
 	declarativeTypeID    = "decl-adt-1"
 	declarativeTypeValue = "https://declarative.example.com/flight"
+	// declarativeTypeOUID is the declarative organization unit the declared type names by its handle.
+	declarativeTypeOUID = "decl-ou-1"
 
 	// codeImmutableType is returned for a write to a type declared in a file.
 	codeImmutableType = "RAR-1013"
@@ -42,6 +44,7 @@ func (s *DeclarativeTypeTestSuite) TestGetShowsTheDeclaredTypeAsReadOnly() {
 	s.Equal("Book a {{route}} flight", declared.ConsentTemplate)
 	s.True(declared.Reuse)
 	s.True(declared.IsReadOnly, "a declared type is read-only")
+	s.Equal(declarativeTypeOUID, declared.OUID, "the handle the file names is shown as the organization unit's id")
 	s.JSONEq(`{"type":"object","required":["route"],"properties":{"route":{"type":"string","title":"Route"}}}`,
 		string(declared.Schema))
 }
@@ -72,7 +75,7 @@ func (s *DeclarativeTypeTestSuite) TestWritesToTheDeclaredTypeAreRefused() {
 
 func (s *DeclarativeTypeTestSuite) TestRegisteringTheDeclaredValueIsAConflict() {
 	status, body := doJSON(s.T(), http.MethodPost, typesPath, typeRequest{
-		Type: declarativeTypeValue, Name: "Duplicate", Schema: flightSchema})
+		Type: declarativeTypeValue, Name: "Duplicate", Schema: flightSchema, OUID: defaultOUID(s.T())})
 	deleteIfCreated(s.T(), status, body)
 	s.Equal(http.StatusConflict, status, string(body))
 	s.Equal(codeTypeConflict, errorCode(s.T(), body))

@@ -83,6 +83,7 @@ paths:
                           token: "******"
                     reuse: false
                     isReadOnly: false
+                    ouId: "01900000-0000-7000-8000-000000000001"
         "400":
           description: Invalid limit or offset, or too many types to list in composite mode
           content:
@@ -142,12 +143,13 @@ paths:
         - `processor.endpoint` must be an absolute HTTPS URL with a valid host and port and no user information (HTTP is accepted only on a loopback host). A processor call times out after `oauth.authorization_details.processor_timeout` seconds (5 by default, at most 30).
         - A type without a processor can be requested only with a signed-in user who consents. A `client_credentials` token request for it is refused with `invalid_authorization_details`.
         - The request body is at most 1 MiB.
+        - `ouId` is required and must be the ID of an existing organization unit. It records the organization unit that owns the type and cannot change afterwards. It does not limit which clients may request the type.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/AuthorizationDetailTypeRequest'
+              $ref: '#/components/schemas/AuthorizationDetailTypeCreateRequest'
             example:
               type: "payment_initiation"
               name: "Payment initiation"
@@ -182,6 +184,7 @@ paths:
                   properties:
                     token: "<processor_token>"
               reuse: false
+              ouId: "01900000-0000-7000-8000-000000000001"
       responses:
         "201":
           description: Authorization details type created
@@ -226,6 +229,7 @@ paths:
                       token: "******"
                 reuse: false
                 isReadOnly: false
+                ouId: "01900000-0000-7000-8000-000000000001"
         "400":
           description: Bad request
           content:
@@ -313,6 +317,26 @@ paths:
                     description:
                       key: "error.authorizationdetailservice.cannot_create_type_in_declarative_only_mode_description"
                       defaultValue: "Authorization details type creation is not allowed when running in declarative-only mode. Types must be defined in declarative configuration files"
+                type-ou-required:
+                  summary: Organization unit required
+                  value:
+                    code: "RAR-1032"
+                    message:
+                      key: "error.authorizationdetailservice.type_ou_required"
+                      defaultValue: "Organization unit required"
+                    description:
+                      key: "error.authorizationdetailservice.type_ou_required_description"
+                      defaultValue: "An authorization details type needs an organization unit. Give its ouId in the request"
+                invalid-type-ou:
+                  summary: Organization unit does not exist
+                  value:
+                    code: "RAR-1030"
+                    message:
+                      key: "error.authorizationdetailservice.invalid_type_ou"
+                      defaultValue: "Invalid organization unit"
+                    description:
+                      key: "error.authorizationdetailservice.invalid_type_ou_description"
+                      defaultValue: "The organization unit given for the authorization details type does not exist"
         "409":
           description: Conflict
           content:
@@ -377,6 +401,7 @@ paths:
                 consentTemplate: "Pay {{creditorName}}"
                 reuse: false
                 isReadOnly: false
+                ouId: "01900000-0000-7000-8000-000000000001"
         "404":
           description: Authorization details type not found
           content:
@@ -411,7 +436,7 @@ paths:
         - Authorization Detail Types
       summary: Update an authorization details type
       description: |
-        Replaces the definition of an authorization details type. The `type` value is immutable and must match the registered value. `version` increments when the update changes the schema, the consent template or `reuse`, or adds or removes the processor, since earlier approvals only count for the version they were given on; other changes keep it, and an update that changes nothing is not saved. The same validation rules as registration apply.
+        Replaces the definition of an authorization details type. The `type` value is immutable and must match the registered value. `version` increments when the update changes the schema, the consent template or `reuse`, or adds or removes the processor, since earlier approvals only count for the version they were given on; other changes keep it, and an update that changes nothing is not saved. The same validation rules as registration apply, except that `ouId` may be left out to keep the organization unit that owns the type; when given, it must be the one the type already has.
       parameters:
         - in: path
           name: id
@@ -457,6 +482,7 @@ paths:
                 consentTemplate: "Pay {{creditorName}}"
                 reuse: false
                 isReadOnly: false
+                ouId: "01900000-0000-7000-8000-000000000001"
         "400":
           description: Bad request
           content:
@@ -564,6 +590,26 @@ paths:
                     description:
                       key: "error.authorizationdetailservice.cannot_modify_declarative_type_description"
                       defaultValue: "The authorization details type is defined in declarative configuration and cannot be modified"
+                ou-update-not-allowed:
+                  summary: Organization unit cannot be changed
+                  value:
+                    code: "RAR-1031"
+                    message:
+                      key: "error.authorizationdetailservice.ou_update_not_allowed"
+                      defaultValue: "Organization unit update not allowed"
+                    description:
+                      key: "error.authorizationdetailservice.ou_update_not_allowed_description"
+                      defaultValue: "The organization unit of an authorization details type cannot be changed"
+                invalid-type-ou:
+                  summary: Organization unit does not exist
+                  value:
+                    code: "RAR-1030"
+                    message:
+                      key: "error.authorizationdetailservice.invalid_type_ou"
+                      defaultValue: "Invalid organization unit"
+                    description:
+                      key: "error.authorizationdetailservice.invalid_type_ou_description"
+                      defaultValue: "The organization unit given for the authorization details type does not exist"
         "404":
           description: Authorization details type not found
           content:
@@ -740,10 +786,21 @@ components:
           default: false
           description: |
             Whether an earlier approval may stand in for the consent prompt. `false`, the default, prompts on every request and leaves the detail out of the refresh token, so it is granted for the authorization code's access token only, which suits one-off authorizations such as a single payment. With `true`, a detail the user already approved for the client is not prompted again while that approval is within the client's login consent validity period, on the same type version, and the new request is no wider than the approval, and the refresh token keeps the detail while the type stays on the version it was granted on. A refresh after the version moves leaves the detail out, so the user approves it again on the new version. An approval is a standing permission rather than a count: it covers every requested detail no wider than it, including several in one request; use `false` for authorizations that must be approved each time.
+        ouId:
+          type: string
+          description: |
+            ID of the organization unit that owns the type. Required on create, and the organization unit has to exist. It cannot change afterwards: an update can leave it out to keep the current owner, or send the ID the type already has. The owner is only recorded; it does not limit which clients may request the type.
+          example: "01900000-0000-7000-8000-000000000001"
+
+    AuthorizationDetailTypeCreateRequest:
+      allOf:
+        - $ref: '#/components/schemas/AuthorizationDetailTypeRequest'
+        - type: object
+          required: [ouId]
 
     AuthorizationDetailTypeResponse:
       type: object
-      required: [id, type, name, version, schema, reuse, isReadOnly]
+      required: [id, type, name, version, schema, reuse, isReadOnly, ouId]
       properties:
         id:
           type: string
@@ -778,6 +835,9 @@ components:
           type: boolean
           description: |
             Whether the type is defined in declarative configuration. A read-only type cannot be updated or deleted through the API.
+        ouId:
+          type: string
+          description: ID of the organization unit that owns the type.
 
     AuthorizationDetailTypeListResponse:
       type: object

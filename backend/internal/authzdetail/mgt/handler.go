@@ -173,6 +173,7 @@ func typeFromRequest(req *AuthorizationDetailTypeRequest) providers.Authorizatio
 		Schema:          req.Schema,
 		ConsentTemplate: req.ConsentTemplate,
 		Reuse:           req.Reuse != nil && *req.Reuse,
+		OUID:            sysutils.SanitizeString(req.OUID),
 	}
 	if req.Processor != nil {
 		t.Processor = &providers.AuthorizationDetailProcessor{Endpoint: req.Processor.Endpoint}
@@ -193,6 +194,7 @@ func toTypeResponse(t providers.AuthorizationDetailType) AuthorizationDetailType
 		Processor:       processorResponse(t.Processor),
 		Reuse:           t.Reuse,
 		IsReadOnly:      t.IsReadOnly,
+		OUID:            t.OUID,
 	}
 }
 

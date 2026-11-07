@@ -13,14 +13,14 @@ var (
 	queryCreateType = dbmodel.DBQuery{
 		ID: "ADQ-ADT_MGT-01",
 		Query: `INSERT INTO "AUTHORIZATION_DETAIL_TYPE"
-			(ID, TYPE, NAME, DESCRIPTION, VERSION, SCHEMA_DEFINITION, PROPERTIES, DEPLOYMENT_ID)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+			(ID, TYPE, NAME, DESCRIPTION, VERSION, SCHEMA_DEFINITION, PROPERTIES, OU_ID, DEPLOYMENT_ID)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
 	}
 
 	// queryGetTypeByID retrieves an authorization details type by id.
 	queryGetTypeByID = dbmodel.DBQuery{
 		ID: "ADQ-ADT_MGT-02",
-		Query: `SELECT ID, TYPE, NAME, DESCRIPTION, VERSION, SCHEMA_DEFINITION, PROPERTIES
+		Query: `SELECT ID, TYPE, NAME, DESCRIPTION, VERSION, SCHEMA_DEFINITION, PROPERTIES, OU_ID
 			FROM "AUTHORIZATION_DETAIL_TYPE"
 			WHERE ID = $1 AND DEPLOYMENT_ID = $2`,
 	}
@@ -28,7 +28,7 @@ var (
 	// queryGetTypeByValue retrieves an authorization details type by its type value.
 	queryGetTypeByValue = dbmodel.DBQuery{
 		ID: "ADQ-ADT_MGT-03",
-		Query: `SELECT ID, TYPE, NAME, DESCRIPTION, VERSION, SCHEMA_DEFINITION, PROPERTIES
+		Query: `SELECT ID, TYPE, NAME, DESCRIPTION, VERSION, SCHEMA_DEFINITION, PROPERTIES, OU_ID
 			FROM "AUTHORIZATION_DETAIL_TYPE"
 			WHERE TYPE = $1 AND DEPLOYMENT_ID = $2`,
 	}
@@ -36,7 +36,7 @@ var (
 	// queryListTypes lists the authorization details types of the deployment.
 	queryListTypes = dbmodel.DBQuery{
 		ID: "ADQ-ADT_MGT-04",
-		Query: `SELECT ID, TYPE, NAME, DESCRIPTION, VERSION, SCHEMA_DEFINITION, PROPERTIES
+		Query: `SELECT ID, TYPE, NAME, DESCRIPTION, VERSION, SCHEMA_DEFINITION, PROPERTIES, OU_ID
 			FROM "AUTHORIZATION_DETAIL_TYPE"
 			WHERE DEPLOYMENT_ID = $1
 			ORDER BY TYPE`,
@@ -75,7 +75,7 @@ var (
 	// queryListTypePage lists one page of the authorization details types of the deployment.
 	queryListTypePage = dbmodel.DBQuery{
 		ID: "ADQ-ADT_MGT-08",
-		Query: `SELECT ID, TYPE, NAME, DESCRIPTION, VERSION, SCHEMA_DEFINITION, PROPERTIES
+		Query: `SELECT ID, TYPE, NAME, DESCRIPTION, VERSION, SCHEMA_DEFINITION, PROPERTIES, OU_ID
 			FROM "AUTHORIZATION_DETAIL_TYPE"
 			WHERE DEPLOYMENT_ID = $3
 			ORDER BY TYPE

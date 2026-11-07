@@ -486,7 +486,7 @@ func (ts *ControlPlaneTestSuite) TestAWrittenAuthorizationDetailTypesProcessorCr
 		ID string `json:"id"`
 	}
 	status, raw := ts.call(http.MethodPost, "/authorization-detail-types", map[string]any{
-		"type": value, "name": name, "schema": schema,
+		"type": value, "name": name, "schema": schema, "ouId": ts.ouID,
 		"processor": map[string]any{"endpoint": "https://processor.example.com/rar",
 			"authentication": map[string]any{"type": "bearer", "properties": map[string]any{"token": credential}}},
 	}, &created)

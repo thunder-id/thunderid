@@ -49,20 +49,21 @@ func typeRow() map[string]interface{} {
 		"description": "Books a flight", "version": int64(2), "schema_definition": flightSchema,
 		"properties": []byte(`{"consentTemplate":"Book {{route}}","reuse":false,` +
 			`"processor":{"endpoint":"https://x"}}`),
+		"ou_id": testOUID,
 	}
 }
 
 func (s *StoreTestSuite) TestCreateType() {
 	s.dbProvider.EXPECT().GetConfigDBClient().Return(s.dbClient, nil)
 	s.dbClient.EXPECT().ExecuteContext(mock.Anything, queryCreateType, "type-1", testFlightType, "Flight",
-		nil, 1, []byte(flightSchema), mock.Anything, testDeploymentID).Return(int64(1), nil).Once()
+		nil, 1, []byte(flightSchema), mock.Anything, testOUID, testDeploymentID).Return(int64(1), nil).Once()
 
 	t := flightType()
 	t.Name, t.Description, t.Schema = "Flight", "", json.RawMessage(flightSchema)
 	s.NoError(s.types.CreateType(s.ctx, t))
 
 	s.dbClient.EXPECT().ExecuteContext(mock.Anything, queryCreateType, mock.Anything, mock.Anything, mock.Anything,
-		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(int64(0), errors.New("insert failed")).Once()
 	s.Error(s.types.CreateType(s.ctx, t))
 }
@@ -78,6 +79,7 @@ func (s *StoreTestSuite) TestGetType() {
 	s.Equal("Book {{route}}", t.ConsentTemplate)
 	s.False(t.Reuse)
 	s.Equal("https://x", t.Processor.Endpoint)
+	s.Equal(testOUID, t.OUID)
 	s.False(buildTypeFromRowWith(s, `{"consentTemplate":"Book {{route}}"}`).Reuse,
 		"a stored type without reuse asks every time")
 	s.True(buildTypeFromRowWith(s, `{"consentTemplate":"Book {{route}}","reuse":true}`).Reuse)

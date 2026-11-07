@@ -28,6 +28,8 @@ export interface AuthorizationDetailType {
   reuse: boolean;
   /** Whether the type is defined in declarative configuration, so it cannot be edited or deleted. */
   isReadOnly?: boolean;
+  /** The organization unit that owns the type. It cannot change once the type is created. */
+  ouId: string;
 }
 
 /**
@@ -41,6 +43,8 @@ export interface AuthorizationDetailTypeRequest {
   consentTemplate?: string;
   processor?: ProcessorConfig;
   reuse: boolean;
+  /** The organization unit that owns the type. Required on create; an update leaves it out to keep the owner. */
+  ouId?: string;
 }
 
 /**

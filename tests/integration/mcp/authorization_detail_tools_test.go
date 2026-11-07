@@ -25,7 +25,7 @@ func (ts *MCPTestSuite) TestAuthorizationDetailTypeTools_MaskAndRetainProcessorC
 	value := fmt.Sprintf("https://types.example.com/mcp/%d", time.Now().UnixNano())
 
 	created, raw := ts.callMCPTool(token, "create_authorization_detail_type", map[string]any{
-		"type": value, "name": "MCP Flight", "consentTemplate": "Book {{route}}",
+		"type": value, "name": "MCP Flight", "consentTemplate": "Book {{route}}", "ouId": ts.ouID,
 		"schema": map[string]any{"type": "object", "required": []any{"route"},
 			"properties": map[string]any{"route": map[string]any{"type": "string", "title": "Route"}}},
 		"processor": map[string]any{"endpoint": "https://processor.example.com/rar",
@@ -43,6 +43,7 @@ func (ts *MCPTestSuite) TestAuthorizationDetailTypeTools_MaskAndRetainProcessorC
 	ts.NotContains(raw, credential)
 	ts.Contains(raw, `"token":"******"`)
 	ts.Equal(value, got.Result.StructuredContent["type"])
+	ts.Equal(ts.ouID, got.Result.StructuredContent["ouId"])
 
 	listed, raw := ts.callMCPTool(token, "list_authorization_detail_types", map[string]any{})
 	ts.Require().Falsef(listed.Result.IsError, "list failed: %s", raw)

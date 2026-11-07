@@ -16,9 +16,11 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
+	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/outboundauth"
+	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/crypto/cryptomock"
@@ -46,7 +48,45 @@ const (
 	testFlightType   = "https://scheme.example.com/flight/v1"
 	testPaymentType  = "https://scheme.example.com/payment/v1"
 	testProcessorURL = "https://bank.example.com/rar/v1/process"
+
+	// testOUID is the organization unit that owns the test types.
+	testOUID = "ou-1"
+	// testOUHandle is the handle of the organization unit testOUID names.
+	testOUHandle = "default"
 )
+
+// testOwners resolves the owner of a type as the organization unit service does, knowing only testOUID.
+type testOwners struct{}
+
+func (testOwners) ResolveOwner(_ context.Context, ouID, ouHandle string,
+	errs ou.OwnerErrors) (string, *tidcommon.ServiceError) {
+	switch {
+	case ouID == "" && ouHandle == "":
+		return "", &errs.Required
+	case ouID == testOUID || (ouID == "" && ouHandle == testOUHandle):
+		return testOUID, nil
+	default:
+		return "", &errs.NotFound
+	}
+}
+
+func (o testOwners) ResolveOwnerForUpdate(ctx context.Context, requestedID, requestedHandle, currentID string,
+	errs ou.OwnerErrors) (string, *tidcommon.ServiceError) {
+	if requestedID == "" && requestedHandle == "" {
+		return currentID, nil
+	}
+	resolved := requestedID
+	if resolved == "" {
+		var svcErr *tidcommon.ServiceError
+		if resolved, svcErr = o.ResolveOwner(ctx, "", requestedHandle, errs); svcErr != nil {
+			return "", svcErr
+		}
+	}
+	if resolved != currentID {
+		return "", &errs.Changed
+	}
+	return currentID, nil
+}
 
 // paymentSchema is a registered schema whose debtor account is filled by the processor.
 const paymentSchema = `{
@@ -79,7 +119,7 @@ func (s *ServiceTestSuite) SetupSuite() {
 func (s *ServiceTestSuite) SetupTest() {
 	s.ctx = context.Background()
 	s.typeStore = newTypeStoreInterfaceMock(s.T())
-	s.service = newAuthorizationDetailMgtService(s.typeStore, nil).(*authorizationDetailMgtService)
+	s.service = newAuthorizationDetailMgtService(s.typeStore, nil, testOwners{}).(*authorizationDetailMgtService)
 }
 
 func flightType() providers.AuthorizationDetailType {
@@ -88,6 +128,7 @@ func flightType() providers.AuthorizationDetailType {
 		Schema:          json.RawMessage(flightSchema),
 		ConsentTemplate: "Book a {{route}} flight up to {{maxFare.amount}} {{maxFare.currency}}",
 		Reuse:           true,
+		OUID:            testOUID,
 	}
 }
 
@@ -97,6 +138,7 @@ func paymentType() providers.AuthorizationDetailType {
 		Schema:    json.RawMessage(paymentSchema),
 		Processor: &providers.AuthorizationDetailProcessor{Endpoint: testProcessorURL},
 		Reuse:     true,
+		OUID:      testOUID,
 	}
 }
 
@@ -283,6 +325,119 @@ func (s *ServiceTestSuite) TestCreateType_ConflictAndStoreErrors() {
 	s.typeStore.EXPECT().CreateType(mock.Anything, mock.Anything).Return(errors.New("insert failed")).Once()
 	_, svcErr = s.service.CreateAuthorizationDetailType(s.ctx, apiType(flightType()))
 	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+}
+
+// A type is created with the organization unit that owns it, named by id or by handle, and the unit has to exist.
+func (s *ServiceTestSuite) TestCreateType_RecordsTheOwner() {
+	s.typeStore.EXPECT().GetTypeByValue(mock.Anything, testFlightType).
+		Return(providers.AuthorizationDetailType{}, errTypeNotFound)
+	s.typeStore.EXPECT().CreateType(mock.Anything, mock.MatchedBy(func(t providers.AuthorizationDetailType) bool {
+		return t.OUID == testOUID && t.OUHandle == ""
+	})).Return(nil).Twice()
+	created, svcErr := s.service.CreateAuthorizationDetailType(s.ctx, apiType(flightType()))
+	s.Require().Nil(svcErr)
+	s.Equal(testOUID, created.OUID)
+
+	byHandle := apiType(flightType())
+	byHandle.OUID, byHandle.OUHandle = "", testOUHandle
+	created, svcErr = s.service.CreateAuthorizationDetailType(s.ctx, byHandle)
+	s.Require().Nil(svcErr)
+	s.Equal(testOUID, created.OUID, "a handle is stored as the id it names")
+	s.Empty(created.OUHandle)
+
+	noOwner := apiType(flightType())
+	noOwner.OUID = ""
+	_, svcErr = s.service.CreateAuthorizationDetailType(s.ctx, noOwner)
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorTypeOURequired.Code, svcErr.Code)
+
+	unknown := apiType(flightType())
+	unknown.OUID = "ou-unknown"
+	_, svcErr = s.service.CreateAuthorizationDetailType(s.ctx, unknown)
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorInvalidTypeOU.Code, svcErr.Code)
+}
+
+// A failed organization unit lookup is not taken for a missing unit, and nothing is stored.
+func (s *ServiceTestSuite) TestCreateType_OwnerLookupFailure() {
+	owners := newOuProviderMock(s.T())
+	owners.EXPECT().ResolveOwner(mock.Anything, testOUID, "", typeOwnerErrors).
+		Return("", &tidcommon.InternalServerError).Once()
+	service := newAuthorizationDetailMgtService(s.typeStore, nil, owners)
+	_, svcErr := service.CreateAuthorizationDetailType(s.ctx, apiType(flightType()))
+	s.Require().NotNil(svcErr)
+	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+}
+
+// An update keeps the owner when it leaves it out, accepts the owner the type has, and refuses another one.
+func (s *ServiceTestSuite) TestUpdateType_KeepsTheOwner() {
+	s.typeStore.EXPECT().GetTypeByID(mock.Anything, "type-1").Return(flightType(), nil)
+	s.typeStore.EXPECT().UpdateType(mock.Anything, mock.MatchedBy(func(t providers.AuthorizationDetailType) bool {
+		return t.OUID == testOUID && t.OUHandle == ""
+	}), false).Return(nil).Times(3)
+
+	for name, owner := range map[string][2]string{
+		"left out":      {"", ""},
+		"the same id":   {testOUID, ""},
+		"by its handle": {"", testOUHandle},
+	} {
+		renamed := flightType()
+		renamed.Name = renamedTypeName
+		renamed.OUID, renamed.OUHandle = owner[0], owner[1]
+		_, svcErr := s.service.UpdateAuthorizationDetailType(s.ctx, "type-1", renamed)
+		s.Nil(svcErr, name)
+	}
+
+	moved := flightType()
+	moved.Name = renamedTypeName
+	moved.OUID = "ou-2"
+	_, svcErr := s.service.UpdateAuthorizationDetailType(s.ctx, "type-1", moved)
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorOUUpdateNotAllowed.Code, svcErr.Code, "another organization unit is refused")
+
+	unknownHandle := flightType()
+	unknownHandle.Name = renamedTypeName
+	unknownHandle.OUID, unknownHandle.OUHandle = "", "missing"
+	_, svcErr = s.service.UpdateAuthorizationDetailType(s.ctx, "type-1", unknownHandle)
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorInvalidTypeOU.Code, svcErr.Code, "a handle that names no organization unit is refused")
+}
+
+func (s *ServiceTestSuite) TestResolveAuthorizationDetailTypeOU() {
+	t := apiType(flightType())
+	t.OUID, t.OUHandle = "", testOUHandle
+	s.Nil(s.service.ResolveAuthorizationDetailTypeOU(s.ctx, &t))
+	s.Equal(testOUID, t.OUID)
+	s.Empty(t.OUHandle)
+
+	t.OUID = ""
+	svcErr := s.service.ResolveAuthorizationDetailTypeOU(s.ctx, &t)
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorTypeOURequired.Code, svcErr.Code)
+}
+
+// The types an organization unit owns block its deletion; other resources have no type depending on them.
+func (s *ServiceTestSuite) TestGetResourceDependencies() {
+	other := paymentType()
+	other.OUID = "ou-2"
+	s.typeStore.EXPECT().ListTypes(mock.Anything).
+		Return([]providers.AuthorizationDetailType{flightType(), other}, nil).Once()
+	deps, err := s.service.GetResourceDependencies(s.ctx, resourcedependency.ResourceTypeOU, testOUID)
+	s.Require().NoError(err)
+	s.Equal([]resourcedependency.ResourceDependency{{
+		ResourceType:     resourcedependency.ResourceTypeAuthorizationDetailType,
+		ID:               "type-1",
+		DisplayName:      "Flight booking",
+		BehaviorOnDelete: resourcedependency.BehaviorRestrict,
+	}}, deps)
+
+	deps, err = s.service.GetResourceDependencies(s.ctx, resourcedependency.ResourceTypeFlow, "flow-1")
+	s.Require().NoError(err)
+	s.Empty(deps)
+
+	s.typeStore.EXPECT().ListTypes(mock.Anything).Return(nil, errors.New("db down")).Once()
+	_, err = s.service.GetResourceDependencies(s.ctx, resourcedependency.ResourceTypeOU, testOUID)
+	s.Error(err)
 }
 
 func (s *ServiceTestSuite) TestGetType() {

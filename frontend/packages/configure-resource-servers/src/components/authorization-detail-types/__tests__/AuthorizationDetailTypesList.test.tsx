@@ -55,6 +55,7 @@ const types: AuthorizationDetailType[] = [
     schema: {type: 'object', properties: {}},
     processor: {endpoint: 'https://bank.example.com/process'},
     reuse: false,
+    ouId: 'ou-1',
   },
   {
     id: 'type-2',
@@ -63,6 +64,7 @@ const types: AuthorizationDetailType[] = [
     version: 1,
     schema: {type: 'object', properties: {}},
     reuse: true,
+    ouId: 'ou-1',
   },
 ];
 

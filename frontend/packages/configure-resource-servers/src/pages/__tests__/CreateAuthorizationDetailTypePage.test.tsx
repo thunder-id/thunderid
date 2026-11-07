@@ -40,6 +40,47 @@ vi.mock('../../api/useCreateAuthorizationDetailType', () => ({
   default: () => mockUseCreate(),
 }));
 
+const mockUseHasMultipleOUs = vi.fn(() => ({
+  hasMultipleOUs: false,
+  isLoading: false,
+  ouList: [{id: 'ou-1', name: 'Default', handle: 'default', parent: null}],
+}));
+
+vi.mock('@thunderid/configure-organization-units', () => ({
+  useHasMultipleOUs: () => mockUseHasMultipleOUs(),
+  OrganizationUnitPickerScreen: ({
+    title,
+    value,
+    onChange,
+    onBack,
+    onContinue,
+    backLabel,
+    continueLabel,
+  }: {
+    title: string;
+    value: string;
+    onChange: (id: string) => void;
+    onBack: () => void;
+    onContinue: () => void;
+    backLabel: string;
+    continueLabel: string;
+  }) => (
+    <div data-testid="organization-unit-picker-screen">
+      <h1>{title}</h1>
+      <button type="button" onClick={() => onChange('ou-2')}>
+        Select OU
+      </button>
+      <span data-testid="selected-ou">{value}</span>
+      <button type="button" onClick={onBack}>
+        {backLabel}
+      </button>
+      <button type="button" onClick={onContinue}>
+        {continueLabel}
+      </button>
+    </div>
+  ),
+}));
+
 interface CreateCallbacks {
   onSuccess: (created: AuthorizationDetailType) => void;
   onError: (err: Error) => void;
@@ -52,6 +93,11 @@ describe('CreateAuthorizationDetailTypePage', () => {
     vi.clearAllMocks();
     mockNavigate.mockResolvedValue(undefined);
     mockUseCreate.mockReturnValue({mutate: mockCreate, isPending: false, isSuccess: false, reset: mockCreateReset});
+    mockUseHasMultipleOUs.mockReturnValue({
+      hasMultipleOUs: false,
+      isLoading: false,
+      ouList: [{id: 'ou-1', name: 'Default', handle: 'default', parent: null}],
+    });
   });
 
   it('sets the document title', async () => {
@@ -86,7 +132,13 @@ describe('CreateAuthorizationDetailTypePage', () => {
     await user.click(screen.getByRole('button', {name: CREATE}));
 
     expect(mockCreate).toHaveBeenCalledWith(
-      {type: 'flight_booking', name: 'Flight booking', schema: {type: 'object', properties: {}}, reuse: false},
+      {
+        type: 'flight_booking',
+        name: 'Flight booking',
+        schema: {type: 'object', properties: {}},
+        reuse: false,
+        ouId: 'ou-1',
+      },
       expect.any(Object),
     );
     const {onSuccess} = mockCreate.mock.calls[0][1] as CreateCallbacks;
@@ -97,6 +149,7 @@ describe('CreateAuthorizationDetailTypePage', () => {
       version: 1,
       schema: {type: 'object', properties: {}},
       reuse: false,
+      ouId: 'ou-1',
     });
     expect(mockShowToast, 'the create hook confirms the create').not.toHaveBeenCalled();
     expect(mockNavigate, 'going back does not open the wizard again').toHaveBeenCalledWith(
@@ -141,6 +194,7 @@ describe('CreateAuthorizationDetailTypePage', () => {
         consentTemplate: 'Book {{route}}',
         processor: {endpoint: 'https://bank.example.com/process'},
         reuse: true,
+        ouId: 'ou-1',
       },
       expect.any(Object),
     );
@@ -450,5 +504,49 @@ describe('CreateAuthorizationDetailTypePage', () => {
       }),
     );
     expect(mockNavigate).toHaveBeenCalledWith('/authorization-detail-types');
+  });
+
+  it('asks which organization unit the type belongs to when there is more than one, and creates it there', async () => {
+    mockUseHasMultipleOUs.mockReturnValue({
+      hasMultipleOUs: true,
+      isLoading: false,
+      ouList: [
+        {id: 'ou-1', name: 'Default', handle: 'default', parent: null},
+        {id: 'ou-2', name: 'Bank', handle: 'bank', parent: null},
+      ],
+    });
+    const user = userEvent.setup();
+    renderWithProviders(<CreateAuthorizationDetailTypePage />);
+
+    expect(screen.getByRole('heading', {name: 'Where should this intent belong?'})).toBeVisible();
+    await user.click(screen.getByRole('button', {name: 'Select OU'}));
+    expect(screen.getByTestId('selected-ou')).toHaveTextContent('ou-2');
+    await user.click(screen.getByRole('button', {name: 'Continue'}));
+
+    expect(screen.getByRole('heading', {name: "Let's collect some details about your intent"})).toBeVisible();
+    await user.click(screen.getByRole('button', {name: 'Back'}));
+    expect(screen.getByTestId('selected-ou'), 'back from the details returns to the choice').toHaveTextContent('ou-2');
+    await user.click(screen.getByRole('button', {name: 'Continue'}));
+
+    await user.type(screen.getByLabelText(/^Name/), 'Flight booking');
+    await user.click(screen.getByRole('button', {name: 'Continue'}));
+    await user.click(screen.getByRole('button', {name: 'Continue'}));
+    await user.click(screen.getByRole('button', {name: CREATE}));
+
+    expect(mockCreate).toHaveBeenCalledWith(expect.objectContaining({ouId: 'ou-2'}), expect.any(Object));
+  });
+
+  it('does not create a type without an organization unit', async () => {
+    mockUseHasMultipleOUs.mockReturnValue({hasMultipleOUs: false, isLoading: false, ouList: []});
+    const user = userEvent.setup();
+    renderWithProviders(<CreateAuthorizationDetailTypePage />);
+
+    await user.type(screen.getByLabelText(/^Name/), 'Flight booking');
+    await user.click(screen.getByRole('button', {name: 'Continue'}));
+    await user.click(screen.getByRole('button', {name: 'Continue'}));
+    await user.click(screen.getByRole('button', {name: CREATE}));
+
+    expect(mockCreate).not.toHaveBeenCalled();
+    expect(screen.getByText('Organization unit is required')).toBeInTheDocument();
   });
 });

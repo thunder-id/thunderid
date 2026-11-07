@@ -397,8 +397,10 @@ func (ts *GatewayVersionsTestSuite) TestAppliedConnectionsShowWithTheirSecretsMa
 // An authorization details type shows as its read returns it, with its processor credential masked.
 func (ts *GatewayVersionsTestSuite) TestAnAppliedAuthorizationDetailTypeShowsWithItsCredentialMasked() {
 	const secret = "viewed-processor-secret"
+	ouID, err := testutils.DefaultOUID()
+	ts.Require().NoError(err)
 	typeID := ts.create("/authorization-detail-types", map[string]any{
-		"type": "https://viewed.example.com/" + uniqueSuffix(), "name": "Viewed",
+		"type": "https://viewed.example.com/" + uniqueSuffix(), "name": "Viewed", "ouId": ouID,
 		"schema": map[string]any{"type": "object",
 			"properties": map[string]any{"amount": map[string]any{"type": "number"}}},
 		"processor": map[string]any{"endpoint": "https://processor.example.com/rar",

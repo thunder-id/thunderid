@@ -508,7 +508,7 @@ func (s *TypeAPITestSuite) TestDuplicateTypeValueIsRefused() {
 	defer deleteType(s.T(), created.ID)
 
 	status, body := doJSON(s.T(), http.MethodPost, typesPath,
-		typeRequest{Type: value, Name: "Copy", Schema: flightSchema})
+		typeRequest{Type: value, Name: "Copy", Schema: flightSchema, OUID: defaultOUID(s.T())})
 	deleteIfCreated(s.T(), status, body)
 	s.Equal(http.StatusConflict, status, string(body))
 	s.Equal(codeTypeConflict, errorCode(s.T(), body))
@@ -564,9 +564,23 @@ func uniqueTypeValue(name string) string {
 	return fmt.Sprintf("https://types.example.com/%s/%d", name, time.Now().UnixNano())
 }
 
-// createType registers a type and returns it as the management API returns it.
+// defaultOUID returns the organization unit that owns the types the tests create when they name none.
+func defaultOUID(t *testing.T) string {
+	t.Helper()
+	ouID, err := testutils.DefaultOUID()
+	if err != nil {
+		t.Fatalf("finding the default organization unit: %v", err)
+	}
+	return ouID
+}
+
+// createType registers a type, owned by the default organization unit unless the request names one, and returns
+// it as the management API returns it.
 func createType(t *testing.T, req typeRequest) typeResponse {
 	t.Helper()
+	if req.OUID == "" {
+		req.OUID = defaultOUID(t)
+	}
 	status, body := doJSON(t, http.MethodPost, typesPath, req)
 	if status != http.StatusCreated {
 		t.Fatalf("creating type %s: status %d, body %s", req.Type, status, body)

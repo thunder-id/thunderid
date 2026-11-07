@@ -34,6 +34,7 @@ describe('useGetAuthorizationDetailType', () => {
       version: 1,
       schema: {type: 'object', properties: {}},
       reuse: false,
+      ouId: 'ou-1',
     };
     mockHttpRequest.mockResolvedValue({data});
 
@@ -54,6 +55,7 @@ describe('useGetAuthorizationDetailType', () => {
       version: 1,
       schema: {type: 'object', properties},
       reuse: false,
+      ouId: 'ou-1',
     });
     const before = type({amount: {type: 'number'}, payee: {type: 'string'}});
     const after = type({payee: {type: 'string'}, amount: {type: 'number'}});

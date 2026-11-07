@@ -16,6 +16,7 @@ import (
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/outboundauth"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
@@ -110,6 +111,7 @@ func declarativeResourceOf(t *providers.AuthorizationDetailType) (*typeDeclarati
 		ConsentTemplate: t.ConsentTemplate,
 		Processor:       processor,
 		Reuse:           &reuse,
+		OUID:            t.OUID,
 	}, nil
 }
 
@@ -195,6 +197,8 @@ type typeDeclarativeResource struct {
 	ConsentTemplate string                `yaml:"consentTemplate,omitempty"`
 	Processor       *declarativeProcessor `yaml:"processor,omitempty"`
 	Reuse           *bool                 `yaml:"reuse,omitempty"`
+	OUID            string                `yaml:"ouId,omitempty"`
+	OUHandle        string                `yaml:"ouHandle,omitempty"`
 }
 
 // declarativeProcessor is the declarative form of a type's processor and its outbound authentication.
@@ -275,6 +279,8 @@ func ParseAuthorizationDetailTypeNode(node *yaml.Node) (*providers.Authorization
 		ConsentTemplate: doc.ConsentTemplate,
 		Processor:       processor,
 		Reuse:           doc.Reuse != nil && *doc.Reuse,
+		OUID:            doc.OUID,
+		OUHandle:        doc.OUHandle,
 	}, nil
 }
 
@@ -326,13 +332,13 @@ func writeYAMLNodeAsJSON(buf *bytes.Buffer, node *yaml.Node) error {
 }
 
 // loadDeclarativeResources loads declarative authorization details types from files.
-func loadDeclarativeResources(fileStore *typeFileBasedStore, dbStore typeStoreInterface) error {
+func loadDeclarativeResources(fileStore *typeFileBasedStore, dbStore typeStoreInterface, ouSvc ouProvider) error {
 	resourceConfig := declarativeresource.ResourceConfig{
 		ResourceType:  paramTypeAuthorizationDetailType,
 		DirectoryName: "authorization_detail_types",
 		Parser:        parseToTypeWrapper,
 		Validator: func(data interface{}) error {
-			return validateTypeWrapper(data, fileStore, dbStore)
+			return validateTypeWrapper(data, fileStore, dbStore, ouSvc)
 		},
 		IDExtractor: func(data interface{}) string {
 			return data.(*providers.AuthorizationDetailType).ID
@@ -363,8 +369,10 @@ func parseToTypeWrapper(data []byte) (interface{}, error) {
 	return t, nil
 }
 
-// validateTypeWrapper validates a declarative type and rejects duplicate ids or type values.
-func validateTypeWrapper(data interface{}, fileStore *typeFileBasedStore, dbStore typeStoreInterface) error {
+// validateTypeWrapper validates a declarative type and rejects duplicate ids or type values. A type has to name its
+// organization unit by ouId or ouHandle. The handle is resolved to the unit's id, so the type is stored with the id.
+func validateTypeWrapper(data interface{}, fileStore *typeFileBasedStore, dbStore typeStoreInterface,
+	ouSvc ouProvider) error {
 	t, ok := data.(*providers.AuthorizationDetailType)
 	if !ok {
 		return errors.New("invalid type: expected *providers.AuthorizationDetailType")
@@ -375,6 +383,20 @@ func validateTypeWrapper(data interface{}, fileStore *typeFileBasedStore, dbStor
 	if svcErr := validateTypeDefinition(*t); svcErr != nil {
 		return fmt.Errorf("invalid authorization details type '%s': %s", t.ID, svcErr.ErrorDescription.String())
 	}
+	if t.OUID == "" && t.OUHandle == "" {
+		return fmt.Errorf("authorization details type '%s' needs an organization unit, give its ouId or ouHandle",
+			t.ID)
+	}
+	// Declarative resources load at startup with no authenticated subject, so the owner is resolved with the
+	// runtime context.
+	ouID, ouErr := ouSvc.ResolveOwner(
+		security.WithRuntimeContext(context.Background()), t.OUID, t.OUHandle, typeOwnerErrors)
+	if ouErr != nil {
+		return fmt.Errorf("organization unit of authorization details type '%s' could not be resolved: %s",
+			t.ID, ouErr.ErrorDescription.DefaultValue)
+	}
+	t.OUID = ouID
+	t.OUHandle = ""
 
 	ctx := context.Background()
 	if err := checkDuplicateType(ctx, t, fileStore, "declarative resources"); err != nil {

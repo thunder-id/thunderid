@@ -45,6 +45,7 @@ type AuthorizationDetailTypeRequest struct {
 	ConsentTemplate string            `json:"consentTemplate,omitempty"`
 	Processor       *ProcessorRequest `json:"processor,omitempty"`
 	Reuse           *bool             `json:"reuse,omitempty"`
+	OUID            string            `json:"ouId,omitempty"`
 }
 
 // typeRequestWire is the management API request body. It also accepts the fields a GET returns, so a
@@ -68,6 +69,7 @@ type AuthorizationDetailTypeResponse struct {
 	Processor       *ProcessorResponse `json:"processor,omitempty"`
 	Reuse           bool               `json:"reuse"`
 	IsReadOnly      bool               `json:"isReadOnly"`
+	OUID            string             `json:"ouId"`
 }
 
 // AuthorizationDetailTypePage is one page of the registered types.

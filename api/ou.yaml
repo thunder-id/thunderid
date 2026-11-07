@@ -438,7 +438,7 @@ paths:
                       defaultValue: "Organization unit has children"
                     description:
                       key: "error.ouservice.organization_unit_has_children_description"
-                      defaultValue: "Cannot delete an organization unit that has child organization units, users, groups, user types, agent types, connections, flows, or sharing policies it issued"
+                      defaultValue: "Cannot delete an organization unit that has child organization units, users, groups, user types, agent types, connections, flows, authorization detail types, or sharing policies it issued"
                 system-ou:
                   summary: The system organization unit
                   value:
@@ -1044,7 +1044,7 @@ paths:
                       defaultValue: "Organization unit has children"
                     description:
                       key: "error.ouservice.organization_unit_has_children_description"
-                      defaultValue: "Cannot delete an organization unit that has child organization units, users, groups, user types, agent types, connections, flows, or sharing policies it issued"
+                      defaultValue: "Cannot delete an organization unit that has child organization units, users, groups, user types, agent types, connections, flows, authorization detail types, or sharing policies it issued"
                 system-ou:
                   summary: The system organization unit
                   value:
