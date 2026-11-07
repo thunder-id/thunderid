@@ -135,6 +135,7 @@ func (s *IDPServiceTestSuite) SetupTest() {
 		roleService:        s.mockRole,
 		groupService:       s.mockGroup,
 		resourceService:    s.mockResource,
+		bus:                discardingBus{},
 	}
 }
 
@@ -1095,7 +1096,7 @@ func (s *IDPServiceTestSuite) TestUpdateIdentityProvider_FailsForDeclarativeIDP(
 		Return((*providers.IDPDTO)(nil), ErrIDPNotFound)
 
 	service := newIDPService(compositeStore, nil, nil, nil, nil, &mockTransactioner{},
-		s.mockOU)
+		s.mockOU, discardingBus{})
 
 	updatedIDP := &providers.IDPDTO{
 		Name:        "Updated Name",
@@ -1148,7 +1149,7 @@ func (s *IDPServiceTestSuite) TestUpdateIdentityProvider_SucceedsForMutableIDP()
 	})).Return(nil)
 
 	service := newIDPService(compositeStore, nil, nil, nil, nil, &mockTransactioner{},
-		s.mockOU)
+		s.mockOU, discardingBus{})
 
 	updatedIDP := &providers.IDPDTO{
 		Name:        "Updated Name",
@@ -1191,7 +1192,7 @@ func (s *IDPServiceTestSuite) TestDeleteIdentityProvider_FailsForDeclarativeIDP(
 	fileStore.On("GetIdentityProvider", context.Background(), idpID).Return(existingIDP, nil)
 
 	service := newIDPService(compositeStore, nil, nil, nil, nil, &mockTransactioner{},
-		s.mockOU)
+		s.mockOU, discardingBus{})
 	service.SetDependencyRegistry(newNoBlockingDepsRegistry())
 
 	err := service.DeleteIdentityProvider(context.Background(), idpID)
@@ -1230,7 +1231,7 @@ func (s *IDPServiceTestSuite) TestDeleteIdentityProvider_SucceedsForMutableIDP()
 	dbStore.On("DeleteIdentityProvider", context.Background(), idpID).Return(nil)
 
 	service := newIDPService(compositeStore, nil, nil, nil, nil, &mockTransactioner{},
-		s.mockOU)
+		s.mockOU, discardingBus{})
 	service.SetDependencyRegistry(newNoBlockingDepsRegistry())
 
 	err := service.DeleteIdentityProvider(context.Background(), idpID)
@@ -1946,6 +1947,7 @@ func (s *IDPServiceTestSuite) TestUpdateIdentityProvider_DoesNotReSeedRemovedDef
 		ouService:          s.mockOU,
 		logger:             log.GetLogger().With(log.String(log.LoggerKeyComponentName, "IdPService")),
 		uuidGenerator:      utils.GenerateUUIDv7,
+		bus:                discardingBus{},
 	}
 
 	// The administrator saves the connection with the account-linking section removed.

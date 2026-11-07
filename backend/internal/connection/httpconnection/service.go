@@ -17,6 +17,8 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/ou"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
+	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/outboundauth"
 	"github.com/thunder-id/thunderid/internal/system/outboundauth/httpauth"
@@ -60,6 +62,7 @@ type httpConnectionService struct {
 	ouService          ou.OrganizationUnitServiceInterface
 	dependencyRegistry resourcedependency.Registry
 	logger             *log.Logger
+	bus                eventbus.EventBusInterface
 }
 
 // ownerErrors are the errors given when the organization unit of an HTTP connection is refused.
@@ -73,11 +76,12 @@ var _ HTTPConnectionServiceInterface = (*httpConnectionService)(nil)
 
 // newHTTPConnectionService creates an HTTP connection service.
 func newHTTPConnectionService(store httpConnectionStoreInterface,
-	ouService ou.OrganizationUnitServiceInterface) *httpConnectionService {
+	ouService ou.OrganizationUnitServiceInterface, bus eventbus.EventBusInterface) *httpConnectionService {
 	return &httpConnectionService{
 		store:     store,
 		ouService: ouService,
 		logger:    log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName)),
+		bus:       bus,
 	}
 }
 
@@ -125,6 +129,18 @@ func (s *httpConnectionService) GetResolvedConnection(ctx context.Context, id st
 
 // CreateHTTPConnection validates and stores a connection.
 func (s *httpConnectionService) CreateHTTPConnection(ctx context.Context, connection HTTPConnection) (
+	*HTTPConnection, *tidcommon.ServiceError) {
+	created, svcErr := s.createHTTPConnection(ctx, connection)
+	var connectionID string
+	if svcErr == nil {
+		connectionID = created.ID
+	}
+	s.publishConnectionEvent(ctx, audit.EventConnectionCreate, audit.ActionCreate, connectionID, svcErr)
+	return created, svcErr
+}
+
+// createHTTPConnection validates and stores a connection without publishing its audit event.
+func (s *httpConnectionService) createHTTPConnection(ctx context.Context, connection HTTPConnection) (
 	*HTTPConnection, *tidcommon.ServiceError) {
 	if svcErr := s.checkCreate(ctx, &connection); svcErr != nil {
 		return nil, svcErr
@@ -186,6 +202,15 @@ func (s *httpConnectionService) GetHTTPConnection(ctx context.Context, id string
 // UpdateHTTPConnection validates a connection and replaces the stored one.
 func (s *httpConnectionService) UpdateHTTPConnection(ctx context.Context, id string, connection HTTPConnection) (
 	*HTTPConnection, *tidcommon.ServiceError) {
+	updated, svcErr := s.updateHTTPConnection(ctx, id, connection)
+	s.publishConnectionEvent(ctx, audit.EventConnectionUpdate, audit.ActionUpdate, id, svcErr)
+	return updated, svcErr
+}
+
+// updateHTTPConnection validates a connection and replaces the stored one without publishing its audit
+// event.
+func (s *httpConnectionService) updateHTTPConnection(ctx context.Context, id string, connection HTTPConnection) (
+	*HTTPConnection, *tidcommon.ServiceError) {
 	if svcErr := s.checkUpdate(ctx, &connection); svcErr != nil {
 		return nil, svcErr
 	}
@@ -216,6 +241,18 @@ func (s *httpConnectionService) UpdateHTTPConnection(ctx context.Context, id str
 // DeleteHTTPConnection deletes a connection that no resource uses. Deleting a missing connection
 // succeeds.
 func (s *httpConnectionService) DeleteHTTPConnection(ctx context.Context, id string) *tidcommon.ServiceError {
+	svcErr := s.deleteHTTPConnection(ctx, id)
+	// A delete that found nothing to remove succeeds without an event, so no caller can record a
+	// deletion of an ID it made up.
+	if svcErr == errConnectionNotFoundNoop {
+		return nil
+	}
+	s.publishConnectionEvent(ctx, audit.EventConnectionDelete, audit.ActionDelete, id, svcErr)
+	return svcErr
+}
+
+// deleteHTTPConnection deletes a connection that no resource uses without publishing its audit event.
+func (s *httpConnectionService) deleteHTTPConnection(ctx context.Context, id string) *tidcommon.ServiceError {
 	if svcErr := declarativeresource.CheckDeclarativeDelete(); svcErr != nil {
 		return svcErr
 	}
@@ -225,7 +262,7 @@ func (s *httpConnectionService) DeleteHTTPConnection(ctx context.Context, id str
 	if err := s.store.DeleteHTTPConnection(ctx, id); err != nil {
 		switch {
 		case errors.Is(err, errConnectionNotFound):
-			return nil
+			return errConnectionNotFoundNoop
 		case errors.Is(err, errHTTPConnectionIsImmutable):
 			return &declarativeresource.ErrorDeclarativeResourceDeleteOperation
 		}
@@ -233,6 +270,17 @@ func (s *httpConnectionService) DeleteHTTPConnection(ctx context.Context, id str
 		return &tidcommon.InternalServerError
 	}
 	return nil
+}
+
+// publishConnectionEvent publishes the audit event of an attempt on the HTTP connection with id, after the
+// change committed or was refused. The URL, headers and authentication are never recorded.
+func (s *httpConnectionService) publishConnectionEvent(ctx context.Context, name string, action audit.Action,
+	id string, svcErr *tidcommon.ServiceError) {
+	// A failed attempt keeps the ID the caller asked for, even one that matches no connection, as
+	// forensic evidence of what was probed; the payload caps it and the sink escapes it.
+	target := audit.Ref{Type: audit.TargetTypeConnection, ID: id}
+	eventbus.TryPublish(ctx, s.bus,
+		eventbus.NewEvent(ctx, name).With(audit.ChangePayload(ctx, target, action, svcErr)))
 }
 
 // GetHTTPConnectionUsages returns the resources that use a connection.

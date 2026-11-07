@@ -19,6 +19,8 @@ import (
 	"github.com/thunder-id/thunderid/internal/role"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
+	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/utils"
@@ -68,6 +70,7 @@ type idpService struct {
 	dependencyRegistry resourcedependency.Registry
 	logger             *log.Logger
 	uuidGenerator      func() (string, error)
+	bus                eventbus.EventBusInterface
 }
 
 // userTypeAttributes holds a user type's non-credential schema attributes.
@@ -94,7 +97,7 @@ func (u userTypeAttributes) isRequired(attr string) bool {
 func newIDPService(idpStore idpStoreInterface, entityTypeService entitytype.EntityTypeServiceInterface,
 	roleService role.RoleServiceInterface, groupService group.GroupServiceInterface,
 	resourceService providers.ResourceServerProvider, transactioner providers.Transactioner,
-	ouService ou.OrganizationUnitServiceInterface) IDPServiceInterface {
+	ouService ou.OrganizationUnitServiceInterface, bus eventbus.EventBusInterface) IDPServiceInterface {
 	return &idpService{
 		idpStore:          idpStore,
 		entityTypeService: entityTypeService,
@@ -105,11 +108,24 @@ func newIDPService(idpStore idpStoreInterface, entityTypeService entitytype.Enti
 		ouService:         ouService,
 		logger:            log.GetLogger().With(log.String(log.LoggerKeyComponentName, "IdPService")),
 		uuidGenerator:     utils.GenerateUUIDv7,
+		bus:               bus,
 	}
 }
 
 // CreateIdentityProvider creates a new Identity Provider.
 func (is *idpService) CreateIdentityProvider(
+	ctx context.Context, idp *providers.IDPDTO) (*providers.IDPDTO, *tidcommon.ServiceError) {
+	created, svcErr := is.createIdentityProvider(ctx, idp)
+	var idpID string
+	if svcErr == nil {
+		idpID = created.ID
+	}
+	is.publishConnectionEvent(ctx, audit.EventConnectionCreate, audit.ActionCreate, idpID, svcErr)
+	return created, svcErr
+}
+
+// createIdentityProvider creates a new Identity Provider without publishing its audit event.
+func (is *idpService) createIdentityProvider(
 	ctx context.Context, idp *providers.IDPDTO) (*providers.IDPDTO, *tidcommon.ServiceError) {
 	logger := is.logger
 	if isDeclarativeModeEnabled() {
@@ -275,6 +291,18 @@ func (is *idpService) UpdateIdentityProvider(
 	idp *providers.IDPDTO,
 ) (*providers.IDPDTO,
 	*tidcommon.ServiceError) {
+	updated, svcErr := is.updateIdentityProvider(ctx, idpID, idp)
+	is.publishConnectionEvent(ctx, audit.EventConnectionUpdate, audit.ActionUpdate, idpID, svcErr)
+	return updated, svcErr
+}
+
+// updateIdentityProvider updates an existing Identity Provider without publishing its audit event.
+func (is *idpService) updateIdentityProvider(
+	ctx context.Context,
+	idpID string,
+	idp *providers.IDPDTO,
+) (*providers.IDPDTO,
+	*tidcommon.ServiceError) {
 	logger := is.logger
 	// Block updates only in declarative-only mode; allow in composite and mutable modes
 	// In composite mode, the store will check if the resource is immutable and return appropriate error
@@ -354,6 +382,18 @@ func (is *idpService) UpdateIdentityProvider(
 
 // DeleteIdentityProvider deletes an identity provider.
 func (is *idpService) DeleteIdentityProvider(ctx context.Context, idpID string) *tidcommon.ServiceError {
+	svcErr := is.deleteIdentityProvider(ctx, idpID)
+	// A delete that found nothing to remove succeeds without an event, so no caller can record a
+	// deletion of an ID it made up.
+	if svcErr == errIDPNotFoundNoop {
+		return nil
+	}
+	is.publishConnectionEvent(ctx, audit.EventConnectionDelete, audit.ActionDelete, idpID, svcErr)
+	return svcErr
+}
+
+// deleteIdentityProvider deletes an identity provider without publishing its audit event.
+func (is *idpService) deleteIdentityProvider(ctx context.Context, idpID string) *tidcommon.ServiceError {
 	logger := is.logger
 	// Block deletes only in declarative-only mode; allow in composite and mutable modes
 	// In composite mode, the store will check if the resource is immutable and return appropriate error
@@ -376,6 +416,7 @@ func (is *idpService) DeleteIdentityProvider(ctx context.Context, idpID string) 
 		_, err := is.idpStore.GetIdentityProvider(txCtx, idpID)
 		if err != nil {
 			if errors.Is(err, ErrIDPNotFound) {
+				svcErr = errIDPNotFoundNoop
 				return nil
 			}
 			return err
@@ -402,6 +443,19 @@ func (is *idpService) DeleteIdentityProvider(ctx context.Context, idpID string) 
 	}
 
 	return nil
+}
+
+// publishConnectionEvent publishes the audit event of an attempt on the identity provider connection with
+// idpID, after the change committed or was refused. Properties, client secrets and keys are never
+// recorded. A delete through the connection API that removes the identity provider but then fails to
+// remove its sharing policies is recorded as succeeded: a known limitation.
+func (is *idpService) publishConnectionEvent(ctx context.Context, name string, action audit.Action,
+	idpID string, svcErr *tidcommon.ServiceError) {
+	// A failed attempt keeps the ID the caller asked for, even one that matches no identity provider, as
+	// forensic evidence of what was probed; the payload caps it and the sink escapes it.
+	target := audit.Ref{Type: audit.TargetTypeConnection, ID: idpID}
+	eventbus.TryPublish(ctx, is.bus,
+		eventbus.NewEvent(ctx, name).With(audit.ChangePayload(ctx, target, action, svcErr)))
 }
 
 // ApplySchemaAwareDefaults seeds account-linking and username-mapping defaults derived from user-type
