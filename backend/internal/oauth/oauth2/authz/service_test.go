@@ -172,7 +172,7 @@ func (suite *AuthorizeServiceTestSuite) SetupTest() {
 // newService builds an authorizeService with all mocked dependencies.
 func (suite *AuthorizeServiceTestSuite) newService() *authorizeService {
 	inboundClient := actorprovider.Initialize(
-		suite.mockInboundClient, suite.mockEntityProvider, noopAuthnMgr(), nil, nil)
+		suite.mockInboundClient, suite.mockEntityProvider, noopAuthnMgr(), nil, nil, nil)
 	return &authorizeService{
 		authzDetails:    authzdetailexec.Initialize(nil, time.Second),
 		cfg:             authorizeServiceCfgFromRuntime(),

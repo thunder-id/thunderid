@@ -598,6 +598,8 @@ type OAuthClient struct {
 	ScopeClaims                        map[string][]string     `yaml:"scopeClaims,omitempty"`
 	Certificate                        *Certificate            `yaml:"certificate,omitempty"`
 	AcrValues                          []string                `yaml:"acrValues,omitempty"`
+	// Rules are the runtime rules the actor provider resolves for the client. Never serialized.
+	Rules ClientRules `yaml:"-" json:"-"`
 }
 
 // OAuthTokenConfig wraps access and ID token configs.
@@ -837,6 +839,10 @@ type Agent struct {
 	// not expire.
 	ValidUntil *string `json:"validUntil,omitempty"`
 
+	// Kind is the agent kind, fixed once the agent is created. The personal assistant kind makes the
+	// agent a personal agent of its owner.
+	Kind AgentKind `json:"kind,omitempty"`
+
 	// Delegated marks an agent that acts on behalf of a user. It selects the OAuth grant types applied
 	// and checked when the agent is created and is not stored.
 	Delegated bool `json:"delegated,omitempty"`
@@ -848,6 +854,13 @@ type Agent struct {
 	// The service-level model carries the full internal profile.
 	InboundAuthProfile
 	InboundAuthConfig []InboundAuthConfigWithSecret `json:"inboundAuthConfig,omitempty"`
+}
+
+// ClientRules holds the runtime rules of a client, beyond its configuration. They are resolved by the domain
+// that owns the client's entity, never stored, and applied as given, without knowing why the client has them.
+type ClientRules struct {
+	// RequiredSubjectID, when set, is the entity ID of the only subject the client may act for.
+	RequiredSubjectID string
 }
 
 // InboundClient is the persistence shape for protocol-agnostic inbound client record.
@@ -884,6 +897,7 @@ type AssertionConfig struct {
 // LoginConsentConfig is the login consent configuration.
 type LoginConsentConfig struct {
 	ValidityPeriod int64 `json:"validityPeriod" yaml:"validityPeriod" jsonschema:"Consent validity period in seconds. 0 means never expire."`
+	AlwaysPrompt   *bool `json:"alwaysPrompt,omitempty" yaml:"alwaysPrompt,omitempty" jsonschema:"Ask for consent on every authorization, even when an earlier consent covers it. Defaults to false."`
 }
 
 // Entity represents a unified identity principal returned by the entity provider.

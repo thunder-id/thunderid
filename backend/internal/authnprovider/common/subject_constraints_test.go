@@ -51,6 +51,16 @@ func (suite *SubjectTypeConstraintsTestSuite) TestPermitsSubject() {
 	}
 }
 
+func (suite *SubjectTypeConstraintsTestSuite) TestPermitsSubjectID() {
+	required := SubjectTypeConstraints{RequiredSubjectID: "owner-1"}
+
+	assert.True(suite.T(), required.PermitsSubjectID("owner-1"))
+	assert.False(suite.T(), required.PermitsSubjectID("user-2"))
+	assert.False(suite.T(), required.PermitsSubjectID(""))
+	assert.True(suite.T(), SubjectTypeConstraints{}.PermitsSubjectID("user-2"),
+		"no required subject leaves the subject to the type constraints")
+}
+
 func (suite *SubjectTypeConstraintsTestSuite) TestContextRoundTrip() {
 	in := SubjectTypeConstraints{
 		AllowedUserTypes:  []string{"customer"},
