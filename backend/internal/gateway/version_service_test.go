@@ -589,7 +589,8 @@ func newVersionFixture(t *testing.T) *versionFixture {
 		names:    &fakeActorNames{names: map[string]string{"u-1": "alice", "u-2": "bob"}},
 	}
 	f.gateways = &fakeStore{gateways: []Gateway{{ID: "gw-1", Name: "dev", BaseURL: "https://dp.test", Key: sealedKey}}}
-	f.svc = newVersionService(f.gateways, f.versions, f.exporter, f.client, testSecretFields, f.names, newPipeline())
+	f.svc = newVersionService(f.gateways, f.versions, f.exporter, f.client, testSecretFields, f.names,
+		newPipeline(), discardingBus{})
 	return f
 }
 
@@ -1214,7 +1215,7 @@ func TestADeclaredGatewaysKeyIsPresentedAsWritten(t *testing.T) {
 	f := newVersionFixture(t)
 	declared := &fakeStore{gateways: []Gateway{{ID: "gw-d", BaseURL: "https://dp.test", Key: "plain-key"}}}
 	svc := newVersionService(declared, f.versions, f.exporter, f.client, testSecretFields, &fakeActorNames{},
-		newPipeline())
+		newPipeline(), discardingBus{})
 	f.capture(t, "ou-a")
 
 	_, svcErr := svc.Apply(context.Background(), "gw-d", ApplyRequest{})

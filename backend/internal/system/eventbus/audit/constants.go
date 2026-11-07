@@ -18,6 +18,8 @@ type Action string
 const (
 	// ActionAuthenticate proves an identity.
 	ActionAuthenticate Action = "authenticate"
+	// ActionApply applies a configuration version to a resource.
+	ActionApply Action = "apply"
 	// ActionCreate creates a resource.
 	ActionCreate Action = "create"
 	// ActionUpdate changes a resource.
@@ -34,6 +36,8 @@ const (
 	ActionIssue Action = "issue"
 	// ActionRevoke withdraws a credential, such as a token.
 	ActionRevoke Action = "revoke"
+	// ActionRevert returns a resource to the configuration it held before.
+	ActionRevert Action = "revert"
 )
 
 // ActorType is the kind of principal that acted. The set is open.

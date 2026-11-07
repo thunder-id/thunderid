@@ -100,3 +100,53 @@ func (ts *ControlPlaneTestSuite) TestRoleAndGroupChangesAreAudited() {
 		ts.NotContains(line.Raw, roleName, "no attribute of the role is recorded")
 	}
 }
+
+// The Control Plane writes an audit line for each apply to one of its gateways, with the administrator
+// as the actor and the gateway as the target, and for a failed apply the gateway ID the caller sent with
+// no subject. Neither the gateway's key nor the version applied is recorded.
+func (ts *ControlPlaneTestSuite) TestGatewayAppliesAreAudited() {
+	ts.Require().NoError(testutils.RestartServer(), "the Control Plane must restart so its output is captured")
+	reader := testutils.NewAuditLogReader()
+	ts.Require().NoError(reader.Reset())
+	g := newApplyGateway()
+	ts.T().Cleanup(g.close)
+	gatewayID := ts.registerGateway(g.server)
+	var captured struct {
+		Version string `json:"version"`
+	}
+	status, raw := ts.call(http.MethodPost, "/configuration-versions", map[string]any{}, &captured)
+	ts.Require().Contains([]int{http.StatusCreated, http.StatusOK}, status, string(raw))
+	missing := unique("cp-audit-missing-gateway")
+
+	status, raw = ts.call(http.MethodPost, "/gateways/"+gatewayID+"/apply",
+		map[string]any{"version": captured.Version}, nil)
+	ts.Require().Equal(http.StatusOK, status, string(raw))
+	status, raw = ts.call(http.MethodPost, "/gateways/"+missing+"/apply", map[string]any{}, nil)
+	ts.Require().Equal(http.StatusNotFound, status, string(raw))
+
+	admin := testutils.AuditRef{Type: "user", ID: testutils.TrustedIssuerAdminSubject}
+	for _, tc := range []struct {
+		target  string
+		subject bool
+		outcome map[string]string
+	}{
+		{gatewayID, true, map[string]string{"result": "succeeded"}},
+		{missing, false, map[string]string{"result": "failed", "reason": "gtw_1002"}},
+	} {
+		gatewayRef := testutils.AuditRef{Type: "gateway", ID: tc.target}
+		line, err := reader.Await(func(line testutils.AuditLine) bool {
+			return line.Event == "gateway.apply" && line.Target == gatewayRef && line.Actor == admin
+		})
+		ts.Require().NoError(err, tc.target)
+		if tc.subject {
+			ts.Equal(gatewayRef, line.Subject, tc.target)
+		} else {
+			ts.Equal(testutils.AuditRef{}, line.Subject, tc.target)
+		}
+		ts.Equal(tc.outcome, line.Outcome, tc.target)
+		ts.Equal("apply", line.Action, tc.target)
+		ts.NotContains(line.Raw, captureGatewayKey, "the gateway's key is never recorded")
+		ts.NotContains(line.Raw, g.server.URL, "the gateway's address is not recorded")
+		ts.NotContains(line.Raw, captured.Version, "the version applied is not recorded")
+	}
+}
