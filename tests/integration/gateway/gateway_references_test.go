@@ -101,3 +101,29 @@ func (ts *GatewayVersionsTestSuite) TestAMissingValueIsReportedWithWhatItIsFor()
 	ts.Equal(http.StatusConflict, ts.call(http.MethodPost, "/gateways/"+ts.gatewayID+"/apply",
 		map[string]any{"version": captured.Version}, nil))
 }
+
+// An agent, whose name is one of its attributes, is named by it in the diff and where its values are
+// used, as an application is by its name.
+func (ts *GatewayVersionsTestSuite) TestAnAgentIsNamedByItsNameAttribute() {
+	suffix := fmt.Sprint(time.Now().UnixNano())
+	name := "Named Agent " + suffix
+	value := "NAMED_AGENT_" + suffix
+	ouID := ts.createUnit("named-agent-" + suffix)
+	id, err := testutils.CreateAgent(testutils.Agent{
+		Type: "default", OUID: ouID, Description: "var:" + value,
+		Attributes: map[string]any{"name": name},
+	})
+	ts.Require().NoError(err)
+	ts.T().Cleanup(func() { _ = testutils.DeleteAgent(id) })
+
+	var current referencingVersion
+	ts.Require().Equal(http.StatusOK, ts.call(http.MethodGet, "/configuration-versions/current", nil, &current))
+	reference := ts.referenceTo(current.References, value)
+	ts.Require().NotNil(reference, "the current configuration did not say where it refers to %s", value)
+	ts.Equal(valueReference{Name: value, Kind: "variable", ResourceType: "agent", ResourceID: id,
+		ResourceName: name, Field: "description"}, *reference)
+
+	agent := ts.changeIn(ts.diff(ts.capture("named agent").Version), "agent/"+id)
+	ts.Require().NotNil(agent, "the agent is not offered")
+	ts.Equal(name, agent.Name)
+}
