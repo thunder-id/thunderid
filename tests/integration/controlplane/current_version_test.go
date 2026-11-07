@@ -4,7 +4,9 @@
 package controlplane
 
 import (
+	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"os"
 	"strings"
@@ -139,4 +141,70 @@ func (ts *ControlPlaneTestSuite) TestAUserTheIssuerDoesNotKnowIsLeftOut() {
 		}
 	}
 	ts.Fail("the version left the listing", "%s", string(raw))
+}
+
+// Writing an HTTP connection is captured as the current version, whatever authentication it uses.
+func (ts *ControlPlaneTestSuite) TestAnHTTPConnectionIsCapturedAsTheCurrentVersion() {
+	for _, auth := range []map[string]any{
+		nil,
+		{"type": "basic", "properties": map[string]any{"username": "cp-http-user", "password": unique("password")}},
+		{"type": "bearer", "properties": map[string]any{"token": unique("token")}},
+		{"type": "api_key", "properties": map[string]any{"X-API-Key": unique("key")}},
+	} {
+		name := unique("cp-http-current")
+		body := map[string]any{"name": name, "url": "https://" + name + ".example.com/hook"}
+		if auth != nil {
+			body["authentication"] = auth
+		}
+		ts.createHTTPConnection(body)
+		ts.waitForCurrent(name)
+	}
+}
+
+// Writing a project is captured as the current version, and so is a change an MCP tool makes: every
+// write is captured, not only those to the APIs a list names.
+func (ts *ControlPlaneTestSuite) TestAProjectWrittenOverRESTOrMCPIsCapturedAsTheCurrentVersion() {
+	handle := unique("cp-current-project")
+	var created struct {
+		ID string `json:"id"`
+	}
+	status, raw := ts.call(http.MethodPost, "/projects",
+		map[string]any{"handle": handle, "displayName": "Current project"}, &created)
+	ts.Require().Equal(http.StatusCreated, status, string(raw))
+	ts.T().Cleanup(func() { ts.call(http.MethodDelete, "/projects/"+created.ID, nil, nil) })
+	ts.waitForCurrent(handle)
+
+	renamed := unique("Renamed through MCP")
+	ts.callMCPTool("update_project", map[string]any{"id": created.ID, "displayName": renamed})
+	ts.waitForCurrent(renamed)
+}
+
+// callMCPTool calls an MCP tool as the administrator and fails the test unless it succeeds.
+func (ts *ControlPlaneTestSuite) callMCPTool(name string, args map[string]any) {
+	ts.T().Helper()
+	const protocolVersion = "2026-07-28"
+	payload, err := json.Marshal(map[string]any{
+		"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+		"params": map[string]any{"name": name, "arguments": args, "_meta": map[string]any{
+			"io.modelcontextprotocol/protocolVersion":    protocolVersion,
+			"io.modelcontextprotocol/clientCapabilities": map[string]any{},
+			"io.modelcontextprotocol/clientInfo": map[string]any{
+				"name": "thunderid-integration-test", "version": "1.0.0"},
+		}},
+	})
+	ts.Require().NoError(err)
+	req, err := http.NewRequest(http.MethodPost, testutils.TestServerURL+"/mcp", bytes.NewReader(payload))
+	ts.Require().NoError(err)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json, text/event-stream")
+	req.Header.Set("MCP-Protocol-Version", protocolVersion)
+	req.Header.Set("Mcp-Method", "tools/call")
+	req.Header.Set("Mcp-Name", name)
+	resp, err := testutils.GetHTTPClient().Do(req)
+	ts.Require().NoError(err)
+	defer func() { _ = resp.Body.Close() }()
+	body, err := io.ReadAll(resp.Body)
+	ts.Require().NoError(err)
+	ts.Require().Equalf(http.StatusOK, resp.StatusCode, "%s failed: %s", name, string(body))
+	ts.Require().NotContainsf(string(body), `"isError":true`, "%s failed: %s", name, string(body))
 }

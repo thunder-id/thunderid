@@ -44,7 +44,7 @@ shares also names it, and so does `latest`.
   [value reference](./value-references.mdx) such as `sec:APPLICATION_ORDERS_CLIENT_SECRET`. The gateway
   fills it in from its own store when the version is applied.
 - **The current version is kept up to date in place.** A control plane captures the configuration on
-  its own shortly after each change to it: it waits about two seconds after the last of a run of
+  its own shortly after each change to it, made through the management APIs or an MCP tool: it waits about two seconds after the last of a run of
   changes, then captures them together, and tries again later if that capture fails. Until that
   capture has run, `latest` is still the version before the change, so check that `latest` has the
   hash you expect before applying it. That capture replaces the current version instead of adding one,

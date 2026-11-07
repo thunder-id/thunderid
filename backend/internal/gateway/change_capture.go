@@ -26,16 +26,12 @@ const changeCaptureTimeout = time.Minute
 // retryDelayMax bounds how long a capture that failed waits before it is tried again.
 const retryDelayMax = time.Minute
 
-// configurationPaths are the APIs whose writes change the configuration a version captures. Writes
-// elsewhere, such as signing in, the gateways and their values, or the versions themselves, do not.
-// The list is the set of resource types the export covers, so a resource type that joins the export
-// is added here with it.
-var configurationPaths = []string{
-	"/agent-types", "/agents", "/applications", "/authorization-detail-types", "/connections", "/design",
-	"/flows", "/groups", "/i18n", "/import", "/notification-templates", "/openid4vci", "/openid4vp",
-	"/organization-units", "/ou", "/resource-servers", "/roles", "/scim", "/server-config", "/user-types",
-	"/users",
-}
+// unchangingPaths are the APIs whose writes leave the configuration a version captures as it is: the
+// gateways and what is deployed to them, the versions themselves, and requests that only read, such as
+// an export. Every other successful write is captured, so a resource type the export comes to cover,
+// or another way of writing one such as an MCP tool, is captured without being listed here. A write
+// that changed nothing captures the configuration the current version already holds, which is kept.
+var unchangingPaths = []string{"/cimd", "/configuration-versions", "/export", "/gateways"}
 
 // ChangeCapture keeps the current version up to date as the configuration changes: a successful
 // write to a configuration API schedules a capture of the configuration as current, which the
@@ -88,7 +84,8 @@ func (c *ChangeCapture) bind(versions *versionService) {
 	}
 }
 
-// Middleware notes each successful write to a configuration API and schedules a capture for it.
+// Middleware notes each successful write that may change the configuration and schedules a capture for
+// it.
 func (c *ChangeCapture) Middleware(next http.Handler) http.Handler {
 	if c == nil {
 		return next
@@ -106,19 +103,19 @@ func (c *ChangeCapture) Middleware(next http.Handler) http.Handler {
 	})
 }
 
-// changesConfiguration reports whether a request writes to a configuration API.
+// changesConfiguration reports whether a request is a write that may change the configuration.
 func changesConfiguration(r *http.Request) bool {
 	switch r.Method {
 	case http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:
 	default:
 		return false
 	}
-	for _, prefix := range configurationPaths {
+	for _, prefix := range unchangingPaths {
 		if r.URL.Path == prefix || strings.HasPrefix(r.URL.Path, prefix+"/") {
-			return true
+			return false
 		}
 	}
-	return false
+	return true
 }
 
 // Notify schedules a capture of the deployment ctx acts for once its configuration has stopped
