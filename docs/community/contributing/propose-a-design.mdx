@@ -108,6 +108,8 @@ They are not required for bug fixes, documentation changes, dependency updates, 
 
 If you are unsure which side of the line your change falls on, ask in the design discussion. A maintainer will tell you whether the documents are needed.
 
+A specification is not an architectural decision record. The specification describes one feature, while an <RepoLink path="/blob/main/docs/adrs/README.md">architectural decision record</RepoLink> captures a single decision that cuts across features, such as a change to a wire-visible contract or a storage strategy that spans components. A change can need both: write the record for the decision, and link it from the specification that depends on it.
+
 ### What each document covers
 
 Start from the templates in the repository, and remove every template instruction before you submit.

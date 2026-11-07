@@ -29,8 +29,14 @@ _How should users update their code/configuration to adapt to the breaking chang
 ### Related PRs
 - N/A
 
+### Related ADRs
+<!-- Link the architectural decision record this change implements or is constrained by, e.g. ADR-0007.
+     See https://github.com/thunder-id/thunderid/blob/main/docs/adrs/README.md for when a record is required. -->
+- N/A
+
 ### Checklist
 - [ ] Followed the contribution guidelines.
+- [ ] Checked whether this change requires an [ADR](https://github.com/thunder-id/thunderid/blob/main/docs/adrs/README.md#when-an-adr-is-required); if so, it is linked under Related ADRs.
 - [ ] Manual test round performed and verified.
 - [ ] Documentation provided. (Add links if there are any)
     - [ ] Ran Vale and fixed all errors and warnings
