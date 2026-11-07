@@ -45,6 +45,8 @@ const (
 	EventFlowDelete = "flow.delete"
 	// EventFlowRestore names an attempt to make an earlier version of a flow its current one.
 	EventFlowRestore = "flow.restore"
+	// EventClientAuthenticate names a refused attempt by an OAuth client to authenticate.
+	EventClientAuthenticate = "client.authenticate"
 	// EventRoleCreate names an attempt to create a role.
 	EventRoleCreate = "role.create"
 	// EventRoleUpdate names an attempt to change a role.
@@ -67,6 +69,10 @@ const (
 	EventGroupMemberRemove = "group.member.remove"
 	// EventServerConfigUpdate names an attempt to change a section of the server configuration.
 	EventServerConfigUpdate = "server_config.update"
+	// EventTokenIssue names a token request.
+	EventTokenIssue = "token.issue"
+	// EventTokenRevoke names a token revocation request.
+	EventTokenRevoke = "token.revoke"
 )
 
 const (
@@ -89,6 +95,8 @@ const (
 	// TargetTypeServerConfig is the target type of an event about a section of the server configuration,
 	// identified by the section name.
 	TargetTypeServerConfig = "server_config"
+	// TargetTypeToken is the target type of an event about a token. It never carries the token.
+	TargetTypeToken = "token"
 )
 
 // principalTargetTypes maps the type a role assignment or a group membership names its principal by to
@@ -99,6 +107,9 @@ var principalTargetTypes = map[string]string{
 	string(providers.EntityCategoryAgent): TargetTypeAgent,
 	TargetTypeGroup:                       TargetTypeGroup,
 }
+
+// DetailGrantType is the detail key of the grant type a token was requested with.
+const DetailGrantType = "grant_type"
 
 // auditedEvents maps every audited event to the detail keys it may carry, so what is audited, and what
 // each event may record, is reviewed in one place. An event not listed here is never written.
@@ -123,10 +134,11 @@ var auditedEvents = map[string][]string{
 	EventApplicationUpdate: nil,
 	EventApplicationDelete: nil,
 
-	EventFlowCreate:  nil,
-	EventFlowUpdate:  nil,
-	EventFlowDelete:  nil,
-	EventFlowRestore: nil,
+	EventFlowCreate:         nil,
+	EventFlowUpdate:         nil,
+	EventFlowDelete:         nil,
+	EventFlowRestore:        nil,
+	EventClientAuthenticate: nil,
 
 	EventRoleCreate:           nil,
 	EventRoleUpdate:           nil,
@@ -141,4 +153,6 @@ var auditedEvents = map[string][]string{
 	EventGroupMemberRemove: nil,
 
 	EventServerConfigUpdate: nil,
+	EventTokenIssue:         {DetailGrantType},
+	EventTokenRevoke:        nil,
 }

@@ -15,13 +15,15 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/granthandlers"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/jti"
 	"github.com/thunder-id/thunderid/internal/oauth/scope"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
-// Initialize initializes the token handler and registers its routes.
+// Initialize initializes the token handler and registers its routes. Every token request and every
+// refused client authentication is audited on bus.
 func Initialize(
 	mux *http.ServeMux,
 	jwtService jwt.JWTServiceInterface,
@@ -36,15 +38,16 @@ func Initialize(
 	ouService providers.OrganizationUnitProvider,
 	governance providers.IdentityGovernanceProvider,
 	cfg oauthconfig.Config,
+	bus eventbus.EventBusInterface,
 ) TokenHandlerInterface {
 	tokenEndpoint := discoveryService.GetOAuth2AuthorizationServerMetadata(context.Background()).TokenEndpoint
 	dpopRequired := cfg.OAuth.DPoP.Required
 	tokenSvc := newTokenService(grantHandlerProvider, scopeValidator, observabilitySvc,
-		dpopVerifier, tokenEndpoint, dpopRequired)
-	tokenHandler := newTokenHandler(tokenSvc, observabilitySvc)
+		dpopVerifier, tokenEndpoint, dpopRequired, bus)
+	tokenHandler := newTokenHandler(tokenSvc, observabilitySvc, bus)
 	registerRoutes(mux, tokenHandler, actorProvider, authnProvider, jwtService, discoveryService,
 		jtiStore, ouService, governance, cfg.EnableOUQualifiedEndpoints, cfg.OAuth.ClientAssertion,
-		cfg.JWT.Leeway)
+		cfg.JWT.Leeway, bus)
 	return tokenHandler
 }
 
@@ -62,6 +65,7 @@ func registerRoutes(
 	ouQualifiedEndpointsEnabled bool,
 	assertionCfg engineconfig.ClientAssertionConfig,
 	jwtLeeway int64,
+	bus eventbus.EventBusInterface,
 ) {
 	corsOpts := middleware.CORSOptions{
 		AllowedMethods:   []string{"POST"},
@@ -72,7 +76,7 @@ func registerRoutes(
 
 	issuer := discoveryService.GetOAuth2AuthorizationServerMetadata(context.Background()).Issuer
 	clientAuthMiddleware := clientauth.ClientAuthMiddleware(actorProvider, authnProvider, governance, jwtService,
-		jtiStore, issuer, assertionCfg, jwtLeeway)
+		jtiStore, issuer, assertionCfg, jwtLeeway, bus)
 	endpoint := http.HandlerFunc(tokenHandler.HandleTokenRequest)
 	register := func(route string, handler http.Handler) {
 		pattern, wrapped := middleware.WithCORS(route, handler.ServeHTTP, corsOpts)

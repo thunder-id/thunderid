@@ -17,8 +17,11 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/granthandlers"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
+	oauth2utils "github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
 	"github.com/thunder-id/thunderid/internal/oauth/scope"
 	sysContext "github.com/thunder-id/thunderid/internal/system/context"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
+	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/observability/event"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -41,6 +44,7 @@ type tokenService struct {
 	dpopVerifier         dpop.VerifierInterface
 	tokenEndpoint        string
 	dpopRequired         bool
+	bus                  eventbus.EventBusInterface
 }
 
 // newTokenService creates a new instance of tokenService.
@@ -51,6 +55,7 @@ func newTokenService(
 	dpopVerifier dpop.VerifierInterface,
 	tokenEndpoint string,
 	dpopRequired bool,
+	bus eventbus.EventBusInterface,
 ) TokenServiceInterface {
 	return &tokenService{
 		grantHandlerProvider: grantHandlerProvider,
@@ -59,15 +64,28 @@ func newTokenService(
 		dpopVerifier:         dpopVerifier,
 		tokenEndpoint:        tokenEndpoint,
 		dpopRequired:         dpopRequired,
+		bus:                  bus,
 	}
 }
 
-// ProcessTokenRequest validates and processes an OAuth 2.0 token request.
+// ProcessTokenRequest validates and processes an OAuth 2.0 token request, and publishes its audit event.
 func (ts *tokenService) ProcessTokenRequest(
 	ctx context.Context,
 	tokenRequest *model.TokenRequest,
 	oauthApp *providers.OAuthClient,
 ) (*model.TokenResponse, *model.ErrorResponse) {
+	tokenResponse, accessToken, tokenError := ts.processTokenRequest(ctx, tokenRequest, oauthApp)
+	publishTokenIssue(ctx, ts.bus, oauthApp, tokenRequest.GrantType, accessToken, tokenError)
+	return tokenResponse, tokenError
+}
+
+// processTokenRequest validates and processes an OAuth 2.0 token request without publishing its audit
+// event, and returns the issued access token with the response.
+func (ts *tokenService) processTokenRequest(
+	ctx context.Context,
+	tokenRequest *model.TokenRequest,
+	oauthApp *providers.OAuthClient,
+) (*model.TokenResponse, *model.TokenDTO, *model.ErrorResponse) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "TokenService"))
 
 	startTime := time.Now().UnixMilli()
@@ -81,7 +99,7 @@ func (ts *tokenService) ProcessTokenRequest(
 	if grantTypeStr == "" {
 		publishTokenIssuanceFailedEvent(ts.observabilitySvc, ctx, oauthApp, clientID, grantTypeStr, scopeStr,
 			400, "Missing grant_type parameter", startTime)
-		return nil, &model.ErrorResponse{
+		return nil, nil, &model.ErrorResponse{
 			Error:            constants.ErrorInvalidRequest,
 			ErrorDescription: "Missing grant_type parameter",
 		}
@@ -92,7 +110,7 @@ func (ts *tokenService) ProcessTokenRequest(
 	if !grantType.IsValid() {
 		publishTokenIssuanceFailedEvent(ts.observabilitySvc, ctx, oauthApp, clientID, grantTypeStr, scopeStr,
 			400, "Invalid grant_type parameter", startTime)
-		return nil, &model.ErrorResponse{
+		return nil, nil, &model.ErrorResponse{
 			Error:            constants.ErrorUnsupportedGrantType,
 			ErrorDescription: "Invalid grant_type parameter",
 		}
@@ -104,7 +122,7 @@ func (ts *tokenService) ProcessTokenRequest(
 		if errors.Is(handlerErr, constants.UnSupportedGrantTypeError) {
 			publishTokenIssuanceFailedEvent(ts.observabilitySvc, ctx, oauthApp, clientID, grantTypeStr, scopeStr,
 				400, "Unsupported grant type", startTime)
-			return nil, &model.ErrorResponse{
+			return nil, nil, &model.ErrorResponse{
 				Error:            constants.ErrorUnsupportedGrantType,
 				ErrorDescription: "Unsupported grant type",
 			}
@@ -112,7 +130,7 @@ func (ts *tokenService) ProcessTokenRequest(
 		logger.Error(ctx, "Failed to get grant handler", log.Error(handlerErr))
 		publishTokenIssuanceFailedEvent(ts.observabilitySvc, ctx, oauthApp, clientID, grantTypeStr, scopeStr,
 			500, "Failed to get grant handler", startTime)
-		return nil, &model.ErrorResponse{
+		return nil, nil, &model.ErrorResponse{
 			Error:            constants.ErrorServerError,
 			ErrorDescription: "Failed to process token request",
 		}
@@ -122,7 +140,7 @@ func (ts *tokenService) ProcessTokenRequest(
 	if !oauthApp.IsAllowedGrantType(grantType) {
 		publishTokenIssuanceFailedEvent(ts.observabilitySvc, ctx, oauthApp, clientID, grantTypeStr, scopeStr,
 			401, "Client not authorized for grant type", startTime)
-		return nil, &model.ErrorResponse{
+		return nil, nil, &model.ErrorResponse{
 			Error:            constants.ErrorUnauthorizedClient,
 			ErrorDescription: "The client is not authorized to use this grant type",
 		}
@@ -132,7 +150,7 @@ func (ts *tokenService) ProcessTokenRequest(
 	if tokenRequest.AuthorizationDetails != "" && !acceptsAuthorizationDetails(grantType) {
 		publishTokenIssuanceFailedEvent(ts.observabilitySvc, ctx, oauthApp, clientID, grantTypeStr, scopeStr,
 			400, "Unsupported authorization_details", startTime)
-		return nil, &model.ErrorResponse{
+		return nil, nil, &model.ErrorResponse{
 			Error:            constants.ErrorInvalidAuthorizationDetails,
 			ErrorDescription: "authorization_details is not supported for this grant type",
 		}
@@ -143,7 +161,7 @@ func (ts *tokenService) ProcessTokenRequest(
 	if tokenError != nil && tokenError.Error != "" {
 		publishTokenIssuanceFailedEvent(ts.observabilitySvc, ctx, oauthApp, clientID, grantTypeStr, scopeStr,
 			400, tokenError.ErrorDescription, startTime)
-		return nil, tokenError
+		return nil, nil, tokenError
 	}
 
 	// Validate and filter scopes.
@@ -151,7 +169,7 @@ func (ts *tokenService) ProcessTokenRequest(
 	if scopeError != nil {
 		publishTokenIssuanceFailedEvent(ts.observabilitySvc, ctx, oauthApp, clientID, grantTypeStr, scopeStr,
 			400, scopeError.ErrorDescription, startTime)
-		return nil, &model.ErrorResponse{
+		return nil, nil, &model.ErrorResponse{
 			Error:            scopeError.Error,
 			ErrorDescription: scopeError.ErrorDescription,
 		}
@@ -162,7 +180,7 @@ func (ts *tokenService) ProcessTokenRequest(
 	if dpopErr != nil {
 		publishTokenIssuanceFailedEvent(ts.observabilitySvc, ctx, oauthApp, clientID, grantTypeStr, scopeStr,
 			400, dpopErr.ErrorDescription, startTime)
-		return nil, dpopErr
+		return nil, nil, dpopErr
 	}
 
 	// Delegate to the grant handler for token generation.
@@ -170,12 +188,12 @@ func (ts *tokenService) ProcessTokenRequest(
 	tokenRespDTO, tokenError := grantHandler.HandleGrant(ctx, tokenRequest, oauthApp)
 	if tokenError != nil {
 		ts.publishGrantError(ctx, oauthApp, clientID, grantTypeStr, scopeStr, tokenError, startTime)
-		return nil, tokenError
+		return nil, nil, tokenError
 	}
 	if tokenRespDTO == nil {
 		publishTokenIssuanceFailedEvent(ts.observabilitySvc, ctx, oauthApp, clientID, grantTypeStr, scopeStr,
 			500, "Grant handler returned empty response", startTime)
-		return nil, &model.ErrorResponse{
+		return nil, nil, &model.ErrorResponse{
 			Error:            constants.ErrorServerError,
 			ErrorDescription: "Failed to process token request",
 		}
@@ -192,7 +210,7 @@ func (ts *tokenService) ProcessTokenRequest(
 			logger.Error(ctx, "Failed to get refresh grant handler", log.Error(handlerErr))
 			publishTokenIssuanceFailedEvent(ts.observabilitySvc, ctx, oauthApp, clientID, grantTypeStr, scopeStr,
 				500, "Failed to get refresh grant handler", startTime)
-			return nil, &model.ErrorResponse{
+			return nil, nil, &model.ErrorResponse{
 				Error:            constants.ErrorServerError,
 				ErrorDescription: "Failed to process token request",
 			}
@@ -203,7 +221,7 @@ func (ts *tokenService) ProcessTokenRequest(
 				log.String("clientID", clientID), log.String("grant_type", grantTypeStr))
 			publishTokenIssuanceFailedEvent(ts.observabilitySvc, ctx, oauthApp, clientID, grantTypeStr, scopeStr,
 				500, "Internal Server Error", startTime)
-			return nil, &model.ErrorResponse{
+			return nil, nil, &model.ErrorResponse{
 				Error:            constants.ErrorServerError,
 				ErrorDescription: "Failed to process token request",
 			}
@@ -224,7 +242,7 @@ func (ts *tokenService) ProcessTokenRequest(
 		)
 		if refreshTokenError != nil && refreshTokenError.Error != "" {
 			ts.publishGrantError(ctx, oauthApp, clientID, grantTypeStr, scopeStr, refreshTokenError, startTime)
-			return nil, refreshTokenError
+			return nil, nil, refreshTokenError
 		}
 	}
 
@@ -259,7 +277,7 @@ func (ts *tokenService) ProcessTokenRequest(
 
 	ts.publishTokenIssuedEvent(ctx, oauthApp, tokenRespDTO, clientID, grantTypeStr, scopes, startTime)
 
-	return tokenResponse, nil
+	return tokenResponse, &tokenRespDTO.AccessToken, nil
 }
 
 // verifyDPoPProof validates the DPoP proof when present and stores the resulting jkt
@@ -446,6 +464,32 @@ func publishTokenIssuanceFailedEvent(
 	addActorData(evt, oauthApp)
 
 	svc.PublishEvent(ctx, evt)
+}
+
+// publishTokenIssue publishes the audit event of a token request by oauthApp that ended with tokenError,
+// or issued accessToken. The actor is the client, set explicitly because the token endpoint runs without
+// a user, and the subject is the user the token was issued for. The grant type is recorded only when the
+// server knows it, so no text the caller chose reaches the event. The answers a polling client gets
+// while a CIBA or device grant is still pending are not outcomes, so they publish nothing.
+func publishTokenIssue(ctx context.Context, bus eventbus.EventBusInterface, oauthApp *providers.OAuthClient,
+	grantType string, accessToken *model.TokenDTO, tokenError *model.ErrorResponse) {
+	outcome := audit.OutcomeSucceeded
+	if tokenError != nil {
+		if tokenError.Error == constants.ErrorAuthorizationPending || tokenError.Error == constants.ErrorSlowDown {
+			return
+		}
+		outcome = oauth2utils.AuditOutcome(tokenError.Error)
+	}
+	payload := audit.NewPayload(ctx, audit.Ref{Type: audit.TargetTypeToken}, audit.ActionIssue, outcome).
+		WithActor(oauth2utils.AuditClientActor(oauthApp))
+	if accessToken != nil && accessToken.SubjectID != "" &&
+		accessToken.SubjectCategory == string(providers.EntityCategoryUser) {
+		payload = payload.WithSubject(audit.Ref{Type: audit.TargetTypeUser, ID: accessToken.SubjectID})
+	}
+	if providers.GrantType(grantType).IsValid() {
+		payload = payload.WithDetails(map[string]string{audit.DetailGrantType: grantType})
+	}
+	eventbus.TryPublish(ctx, bus, eventbus.NewEvent(ctx, audit.EventTokenIssue).With(payload))
 }
 
 // addAccessingOUData stamps the organization unit a token was requested for. It matters most on a

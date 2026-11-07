@@ -17,6 +17,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/clientauth"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/discovery"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/jti"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
@@ -43,7 +44,8 @@ func Initialize(
 		revocationCfg.TokenFamily.OnExplicitRevokeEnabled(), observabilitySvc, maxEntriesPerChange), nil
 }
 
-// RegisterRoutes registers the RFC 7009 revocation endpoint using the shared revocation service.
+// RegisterRoutes registers the RFC 7009 revocation endpoint using the shared revocation service. Every
+// revocation request and every refused client authentication is audited on bus.
 func RegisterRoutes(
 	mux *http.ServeMux,
 	jwtService jwt.JWTServiceInterface,
@@ -55,10 +57,11 @@ func RegisterRoutes(
 	governance providers.IdentityGovernanceProvider,
 	assertionCfg engineconfig.ClientAssertionConfig,
 	jwtLeeway int64,
+	bus eventbus.EventBusInterface,
 ) {
-	revocationHandler := newRevocationHandler(revocationService)
+	revocationHandler := newRevocationHandler(revocationService, bus)
 	registerRoutes(mux, revocationHandler, actorProvider, authnProvider, jwtService, discoveryService,
-		jtiStore, governance, assertionCfg, jwtLeeway)
+		jtiStore, governance, assertionCfg, jwtLeeway, bus)
 }
 
 // registerRoutes registers the routes for the token revocation endpoint.
@@ -73,6 +76,7 @@ func registerRoutes(
 	governance providers.IdentityGovernanceProvider,
 	assertionCfg engineconfig.ClientAssertionConfig,
 	jwtLeeway int64,
+	bus eventbus.EventBusInterface,
 ) {
 	opts := middleware.CORSOptions{
 		AllowedMethods:   []string{"POST", "OPTIONS"},
@@ -83,7 +87,7 @@ func registerRoutes(
 
 	issuer := discoveryService.GetOAuth2AuthorizationServerMetadata(context.Background()).Issuer
 	clientAuthMiddleware := clientauth.ClientAuthMiddleware(actorProvider, authnProvider, governance, jwtService,
-		jtiStore, issuer, assertionCfg, jwtLeeway)
+		jtiStore, issuer, assertionCfg, jwtLeeway, bus)
 	handler := clientAuthMiddleware(http.HandlerFunc(revocationHandler.HandleRevoke))
 
 	pattern, wrappedHandler := middleware.WithCORS(

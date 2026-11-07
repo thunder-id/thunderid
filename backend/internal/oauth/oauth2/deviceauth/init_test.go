@@ -12,9 +12,17 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/discovery"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/discoverymock"
 )
+
+// discardingBus accepts every event and keeps none, for tests the audit event does not matter to.
+type discardingBus struct{}
+
+func (discardingBus) Publish(context.Context, *eventbus.Event) error {
+	return nil
+}
 
 type InitTestSuite struct {
 	suite.Suite
@@ -31,7 +39,7 @@ func (s *InitTestSuite) TestRegistersDeviceAuthorizationEndpoints() {
 
 	mux := http.NewServeMux()
 	registerRoutes(mux, NewDeviceAuthHandlerInterfaceMock(s.T()), nil, nil, nil, discoveryService, nil, nil,
-		engineconfig.ClientAssertionConfig{}, 0)
+		engineconfig.ClientAssertionConfig{}, 0, discardingBus{})
 
 	for _, tc := range []struct {
 		method string
