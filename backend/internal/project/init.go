@@ -10,21 +10,26 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/ou"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
 )
 
 // Initialize builds the project service over the database store and registers the project
-// management routes and MCP tools. The returned exporter exports projects as declarative resources.
+// management routes and MCP tools. The returned exporter exports projects as declarative resources. bus is
+// required: the service publishes the audit event of every project it creates, updates or deletes on it.
 func Initialize(
 	mux *http.ServeMux, mcpServer *mcp.Server, ouService ou.OrganizationUnitServiceInterface,
-	entities projectEntityReader,
+	entities projectEntityReader, bus eventbus.EventBusInterface,
 ) (ProjectServiceInterface, declarativeresource.ResourceExporter, error) {
+	if bus == nil {
+		return nil, nil, errNilEventBus
+	}
 	store, transactioner, err := newProjectStore()
 	if err != nil {
 		return nil, nil, err
 	}
 
-	service := newProjectService(store, transactioner, ouService, entities)
+	service := newProjectService(store, transactioner, ouService, entities, bus)
 	registerRoutes(mux, newProjectHandler(service))
 	if mcpServer != nil {
 		registerMCPTools(mcpServer, service)

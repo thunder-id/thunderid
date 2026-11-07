@@ -40,6 +40,7 @@ func (suite *DeclarativeModeServiceTestSuite) SetupTest() {
 		ouStore:       suite.store,
 		authzService:  newAllowAllAuthz(suite.T()),
 		transactioner: mtx,
+		bus:           discardingBus{},
 	}
 }
 

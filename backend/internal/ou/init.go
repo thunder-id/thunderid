@@ -14,26 +14,32 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/cache"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 )
 
 // Initialize initializes the organization unit service and registers its routes.
 // It returns the service, a hierarchy resolver (for injection into the authz service to
-// avoid an import cycle), and the declarative resource exporter.
+// avoid an import cycle), and the declarative resource exporter. bus is required: the service
+// publishes the audit event of every organization unit it creates, updates or deletes on it.
 func Initialize(
 	mux *http.ServeMux,
 	mcpServer *mcp.Server,
 	cacheManager cache.CacheManagerInterface,
 	authzService sysauthz.SystemAuthorizationServiceInterface,
+	bus eventbus.EventBusInterface,
 ) (ConfigurableOUService, sysauthz.OUHierarchyResolver, HierarchyEnumeratorInterface,
 	declarativeresource.ResourceExporter, error) {
+	if bus == nil {
+		return nil, nil, nil, nil, errNilEventBus
+	}
 	ouStore, transactioner, err := initializeStore(cacheManager)
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
 
-	ouService := newOrganizationUnitService(authzService, ouStore, transactioner)
+	ouService := newOrganizationUnitService(authzService, ouStore, transactioner, bus)
 
 	ouHandler := newOrganizationUnitHandler(ouService)
 	registerRoutes(mux, ouHandler)

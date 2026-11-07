@@ -54,7 +54,7 @@ func (suite *InitTestSuite) TestInitialize_WithDeclarativeResourcesDisabled() {
 	mux := http.NewServeMux()
 
 	// Execute
-	service, resolver, enumerator, exporter, err := Initialize(mux, nil, nil, nil)
+	service, resolver, enumerator, exporter, err := Initialize(mux, nil, nil, nil, discardingBus{})
 
 	// Assert
 	assert.NoError(suite.T(), err)
@@ -76,7 +76,7 @@ func (suite *InitTestSuite) TestInitialize_WithDeclarativeResourcesEnabled() {
 	mux := http.NewServeMux()
 
 	// Execute
-	service, resolver, enumerator, exporter, err := Initialize(mux, nil, nil, nil)
+	service, resolver, enumerator, exporter, err := Initialize(mux, nil, nil, nil, discardingBus{})
 
 	// Assert
 	assert.NoError(suite.T(), err)
@@ -98,7 +98,7 @@ func (suite *InitTestSuite) TestInitialize_FileBasedStoreCreation() {
 	mux := http.NewServeMux()
 
 	// Execute
-	service, resolver, enumerator, exporter, err := Initialize(mux, nil, nil, nil)
+	service, resolver, enumerator, exporter, err := Initialize(mux, nil, nil, nil, discardingBus{})
 
 	// Assert
 	assert.NoError(suite.T(), err)
@@ -120,7 +120,7 @@ func (suite *InitTestSuite) TestInitialize_DatabaseStoreCreation() {
 	mux := http.NewServeMux()
 
 	// Execute
-	service, resolver, enumerator, exporter, err := Initialize(mux, nil, nil, nil)
+	service, resolver, enumerator, exporter, err := Initialize(mux, nil, nil, nil, discardingBus{})
 
 	// Assert
 	assert.NoError(suite.T(), err)
@@ -138,7 +138,7 @@ func (suite *InitTestSuite) TestInitialize_RoutesRegistered() {
 	mux := http.NewServeMux()
 
 	// Execute
-	service, resolver, enumerator, exporter, err := Initialize(mux, nil, nil, nil)
+	service, resolver, enumerator, exporter, err := Initialize(mux, nil, nil, nil, discardingBus{})
 
 	// Assert
 	assert.NoError(suite.T(), err)
@@ -160,7 +160,7 @@ func (suite *InitTestSuite) TestInitialize_ExporterInterfaceCompliance() {
 	mux := http.NewServeMux()
 
 	// Execute
-	service, resolver, enumerator, exporter, err := Initialize(mux, nil, nil, nil)
+	service, resolver, enumerator, exporter, err := Initialize(mux, nil, nil, nil, discardingBus{})
 
 	// Assert
 	assert.NoError(suite.T(), err)
@@ -189,7 +189,7 @@ func (suite *InitTestSuite) TestInitialize_ServiceInterfaceCompliance() {
 	mux := http.NewServeMux()
 
 	// Execute
-	service, resolver, enumerator, exporter, err := Initialize(mux, nil, nil, nil)
+	service, resolver, enumerator, exporter, err := Initialize(mux, nil, nil, nil, discardingBus{})
 
 	// Assert
 	assert.NoError(suite.T(), err)
@@ -207,7 +207,7 @@ func (suite *InitTestSuite) TestInitialize_MultipleInitializations() {
 	runtime.Config.DeclarativeResources.Enabled = false
 
 	mux1 := http.NewServeMux()
-	service1, resolver1, enumerator1, exporter1, err1 := Initialize(mux1, nil, nil, nil)
+	service1, resolver1, enumerator1, exporter1, err1 := Initialize(mux1, nil, nil, nil, discardingBus{})
 	assert.NoError(suite.T(), err1)
 	assert.NotNil(suite.T(), service1)
 	assert.NotNil(suite.T(), resolver1)
@@ -215,7 +215,7 @@ func (suite *InitTestSuite) TestInitialize_MultipleInitializations() {
 	assert.NotNil(suite.T(), exporter1)
 
 	mux2 := http.NewServeMux()
-	service2, resolver2, enumerator2, exporter2, err2 := Initialize(mux2, nil, nil, nil)
+	service2, resolver2, enumerator2, exporter2, err2 := Initialize(mux2, nil, nil, nil, discardingBus{})
 	assert.NoError(suite.T(), err2)
 	assert.NotNil(suite.T(), service2)
 	assert.NotNil(suite.T(), resolver2)
@@ -225,4 +225,14 @@ func (suite *InitTestSuite) TestInitialize_MultipleInitializations() {
 	// Services should be different instances
 	assert.NotSame(suite.T(), service1, service2)
 	assert.NotSame(suite.T(), exporter1, exporter2)
+}
+
+func (suite *InitTestSuite) TestInitialize_RefusesANilEventBus() {
+	service, resolver, enumerator, exporter, err := Initialize(http.NewServeMux(), nil, nil, nil, nil)
+
+	suite.ErrorIs(err, errNilEventBus)
+	suite.Nil(service)
+	suite.Nil(resolver)
+	suite.Nil(enumerator)
+	suite.Nil(exporter)
 }

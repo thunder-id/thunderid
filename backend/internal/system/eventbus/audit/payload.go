@@ -77,16 +77,24 @@ func NewPayload(ctx context.Context, target Ref, action Action, outcome Outcome)
 	}
 }
 
+// ChangePayloadWithSubject builds the audit payload of an attempt to change target, a record kept for
+// subject such as a sharing policy of a user, that a service ended with svcErr. subject is set by the
+// rule ChangePayload follows for its target.
+func ChangePayloadWithSubject(ctx context.Context, target, subject Ref, action Action,
+	svcErr *tidcommon.ServiceError) Payload {
+	outcome := outcomeFromServiceError(svcErr)
+	payload := NewPayload(ctx, target, action, outcome)
+	if outcome.Result != ResultFailed && subject.ID != "" {
+		payload = payload.WithSubject(subject)
+	}
+	return payload
+}
+
 // ChangePayload builds the audit payload of an attempt to change target that a service ended with
 // svcErr. The target is the subject when the attempt succeeded or was denied and names it: a service
 // refuses a change only to a target it found, while a failed attempt may name one that does not exist.
 func ChangePayload(ctx context.Context, target Ref, action Action, svcErr *tidcommon.ServiceError) Payload {
-	outcome := outcomeFromServiceError(svcErr)
-	payload := NewPayload(ctx, target, action, outcome)
-	if outcome.Result != ResultFailed && target.ID != "" {
-		payload = payload.WithSubject(target)
-	}
-	return payload
+	return ChangePayloadWithSubject(ctx, target, target, action, svcErr)
 }
 
 // MembershipPayloads builds the audit payloads of an attempt to add members to target, or remove them,

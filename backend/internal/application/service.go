@@ -2990,6 +2990,20 @@ func (as *applicationService) requireOwnPolicy(
 func (as *applicationService) CreateSharingPolicy(
 	ctx context.Context, appID string, req sharing.PolicyRequest,
 ) (sharing.Policy, *tidcommon.ServiceError) {
+	policy, svcErr := as.createSharingPolicy(ctx, appID, req)
+	var policyID string
+	if svcErr == nil {
+		policyID = policy.ID
+	}
+	as.publishSharingPolicyEvent(ctx, audit.EventApplicationSharingPolicyCreate, audit.ActionCreate, appID,
+		policyID, svcErr)
+	return policy, svcErr
+}
+
+// createSharingPolicy records a sharing policy of an application without publishing its audit event.
+func (as *applicationService) createSharingPolicy(
+	ctx context.Context, appID string, req sharing.PolicyRequest,
+) (sharing.Policy, *tidcommon.ServiceError) {
 	owningOUID, svcErr := as.requireSharing(ctx, appID)
 	if svcErr != nil {
 		return sharing.Policy{}, svcErr
@@ -3032,6 +3046,16 @@ func (as *applicationService) ListSharingPolicies(
 func (as *applicationService) UpdateSharingPolicy(
 	ctx context.Context, appID, policyID string, req sharing.PolicyRequest,
 ) (sharing.Policy, *tidcommon.ServiceError) {
+	updated, svcErr := as.updateSharingPolicy(ctx, appID, policyID, req)
+	as.publishSharingPolicyEvent(ctx, audit.EventApplicationSharingPolicyUpdate, audit.ActionUpdate, appID,
+		policyID, svcErr)
+	return updated, svcErr
+}
+
+// updateSharingPolicy replaces a sharing policy of an application without publishing its audit event.
+func (as *applicationService) updateSharingPolicy(
+	ctx context.Context, appID, policyID string, req sharing.PolicyRequest,
+) (sharing.Policy, *tidcommon.ServiceError) {
 	if _, svcErr := as.requireOwnPolicy(ctx, appID, policyID); svcErr != nil {
 		return sharing.Policy{}, svcErr
 	}
@@ -3046,10 +3070,25 @@ func (as *applicationService) UpdateSharingPolicy(
 func (as *applicationService) DeleteSharingPolicy(
 	ctx context.Context, appID, policyID string,
 ) *tidcommon.ServiceError {
+	svcErr := as.deleteSharingPolicy(ctx, appID, policyID)
+	// A delete that found no policy of the application succeeds without an event, so no caller can record
+	// a deletion of an ID it made up.
+	if svcErr == errSharingPolicyNotFoundNoop {
+		return nil
+	}
+	as.publishSharingPolicyEvent(ctx, audit.EventApplicationSharingPolicyDelete, audit.ActionDelete, appID,
+		policyID, svcErr)
+	return svcErr
+}
+
+// deleteSharingPolicy removes a sharing policy of an application without publishing its audit event.
+func (as *applicationService) deleteSharingPolicy(
+	ctx context.Context, appID, policyID string,
+) *tidcommon.ServiceError {
 	policy, svcErr := as.requireOwnPolicy(ctx, appID, policyID)
 	if svcErr != nil {
 		if svcErr.Code == ErrorSharingPolicyNotFound.Code {
-			return nil
+			return errSharingPolicyNotFoundNoop
 		}
 		return svcErr
 	}
@@ -3060,6 +3099,21 @@ func (as *applicationService) DeleteSharingPolicy(
 		return &ErrorSharingPolicyDeclared
 	}
 	return translateSharingError(as.sharingService.DeletePolicy(ctx, policyID))
+}
+
+// publishSharingPolicyEvent publishes the audit event of an attempt on the sharing policy with policyID
+// of the application with appID, after the change committed or was refused. The policy is the target and
+// the application the subject, which a succeeded or denied attempt names: a sharing call is refused only
+// once the application is found. Reshares the framework re-narrows or removes beneath a changed policy
+// write no event of their own.
+func (as *applicationService) publishSharingPolicyEvent(ctx context.Context, name string,
+	action audit.Action, appID, policyID string, svcErr *tidcommon.ServiceError) {
+	// A failed attempt keeps the IDs the caller asked for, even ones that match nothing, as forensic
+	// evidence of what was probed; the payload caps them and the sink escapes them.
+	target := audit.Ref{Type: audit.TargetTypeApplicationSharingPolicy, ID: policyID}
+	subject := audit.Ref{Type: audit.TargetTypeApplication, ID: appID}
+	eventbus.TryPublish(ctx, as.bus, eventbus.NewEvent(ctx, name).With(
+		audit.ChangePayloadWithSubject(ctx, target, subject, action, svcErr)))
 }
 
 // ResolveSharingOverlay answers what one organization unit may do with the application. An

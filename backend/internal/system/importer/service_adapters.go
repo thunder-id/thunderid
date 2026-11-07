@@ -173,37 +173,30 @@ func (s *importService) importOrganizationUnit(
 	}
 	updateReq := createReq
 
-	if dryRun {
-		if options.IsUpsertEnabled() && req.ID != "" {
-			_, svcErr := s.ouService.GetOrganizationUnit(ctx, req.ID)
-			if svcErr == nil {
-				return successOutcome(resourceTypeOrganizationUnit, req.ID, req.Name, operationUpdate)
-			}
-
-			if !isNotFoundServiceError(svcErr) {
-				return serviceErrorOutcome(resourceTypeOrganizationUnit, req.ID, req.Name, operationUpdate, svcErr)
-			}
+	// The upsert looks the organization unit up rather than attempting an update, so a create is not
+	// preceded by an audited failed update.
+	exists := false
+	if options.IsUpsertEnabled() && req.ID != "" {
+		_, svcErr := s.ouService.GetOrganizationUnit(ctx, req.ID)
+		if svcErr != nil && !isNotFoundServiceError(svcErr) {
+			return serviceErrorOutcome(resourceTypeOrganizationUnit, req.ID, req.Name, operationUpdate, svcErr)
 		}
+		exists = svcErr == nil
+	}
 
+	if dryRun {
+		if exists {
+			return successOutcome(resourceTypeOrganizationUnit, req.ID, req.Name, operationUpdate)
+		}
 		return successOutcome(resourceTypeOrganizationUnit, req.ID, req.Name, operationCreate)
 	}
 
-	if options.IsUpsertEnabled() && req.ID != "" {
+	if exists {
 		updated, svcErr := s.ouService.UpdateOrganizationUnit(ctx, req.ID, updateReq)
-		if svcErr == nil {
-			return successOutcome(resourceTypeOrganizationUnit, updated.ID, updated.Name, operationUpdate)
-		}
-
-		if !isNotFoundServiceError(svcErr) {
+		if svcErr != nil {
 			return serviceErrorOutcome(resourceTypeOrganizationUnit, req.ID, req.Name, operationUpdate, svcErr)
 		}
-
-		created, createErr := s.ouService.CreateOrganizationUnit(ctx, createReq)
-		if createErr != nil {
-			return serviceErrorOutcome(resourceTypeOrganizationUnit, req.ID, req.Name, operationCreate, createErr)
-		}
-
-		return successOutcome(resourceTypeOrganizationUnit, created.ID, created.Name, operationCreate)
+		return successOutcome(resourceTypeOrganizationUnit, updated.ID, updated.Name, operationUpdate)
 	}
 
 	created, svcErr := s.ouService.CreateOrganizationUnit(ctx, createReq)
