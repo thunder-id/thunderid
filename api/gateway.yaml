@@ -1558,7 +1558,8 @@ components:
           description: |
             The resource's document diffed line by line, from what the gateway holds to what is applied.
             Omitted for an unchanged resource. Values appear as the references the version holds, never
-            as the values themselves.
+            as the values themselves. A user's attribute values, all but its username, appear as
+            `********`, so a changed attribute shows as a removed and an added line that read the same.
           items:
             type: object
             properties:
