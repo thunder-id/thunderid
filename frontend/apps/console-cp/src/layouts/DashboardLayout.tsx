@@ -197,12 +197,17 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
   const stages: PipelineStage[] = pipeline.data?.stages ?? [];
   const gatewayIndex = stages.findIndex((stage: PipelineStage) => stage.gateway.id === gatewayId);
   const gateway = gatewayIndex < 0 ? undefined : stages[gatewayIndex];
-  const {isTrustedIssuerGenericOidc, getTrustedIssuerClientId, getClientUrl} = useConfig();
+  const {isTrustedIssuerGenericOidc, getTrustedIssuerClientId, getClientUrl, config} = useConfig();
   const {t} = useTranslation();
   const logger = useLogger();
+  // When sign-in runs on a backend (BFF), the backend holds the session and its sign-out endpoint
+  // ends it at the IdP, so signOut() must go there instead of the IdP directly.
+  const signsOutThroughBackend = Boolean(
+    (config.sdk?.endpoints as {backend?: {signOut?: string}} | undefined)?.backend?.signOut,
+  );
 
   const handleSignOut = (signOut: () => Promise<void>): void => {
-    if (isTrustedIssuerGenericOidc()) {
+    if (isTrustedIssuerGenericOidc() && !signsOutThroughBackend) {
       try {
         clearSession();
       } catch (error: unknown) {
