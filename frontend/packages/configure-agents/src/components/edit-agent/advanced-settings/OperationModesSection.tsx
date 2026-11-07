@@ -14,6 +14,8 @@ import {
   hasUserAccess,
   isGrantLockedByIdJag,
   isIdJagEnabled,
+  useGetOpenIDConfiguration,
+  type OpenIDConfiguration,
 } from '@thunderid/configure-applications';
 import {useThunderID} from '@thunderid/react';
 import {
@@ -40,10 +42,6 @@ import applyAgentPkceRule from '../../../utils/applyAgentPkceRule';
 import {hasDelegationGrant} from '../../../utils/isDelegatedAgent';
 import {codeComponents} from '../shared/transCodeComponents';
 
-interface OidcDiscovery {
-  token_endpoint_auth_methods_supported?: string[];
-}
-
 interface OperationModesSectionProps {
   oauth2Config?: OAuth2Config;
   onOAuth2ConfigChange?: (updates: Partial<OAuth2Config>) => void;
@@ -59,6 +57,10 @@ export default function OperationModesSection({
 }: OperationModesSectionProps) {
   const {t} = useTranslation();
   const {discovery} = useThunderID();
+  const {data: runtimeOpenIdConfiguration} = useGetOpenIDConfiguration();
+  // Falls back to the sign-in server's discovery when the runtime's cannot be read.
+  const openIdConfiguration =
+    runtimeOpenIdConfiguration ?? (discovery?.wellKnown as OpenIDConfiguration | null | undefined);
 
   if (!oauth2Config) return null;
 
@@ -92,8 +94,7 @@ export default function OperationModesSection({
 
   const selectedGrantTypes = grantTypes.filter((grant) => availableGrantTypes.includes(grant));
 
-  const wellKnown = (discovery as {wellKnown?: OidcDiscovery} | undefined)?.wellKnown;
-  const availableTokenEndpointAuthMethods: string[] = wellKnown?.token_endpoint_auth_methods_supported ?? [];
+  const availableTokenEndpointAuthMethods = openIdConfiguration?.token_endpoint_auth_methods_supported ?? [];
   const isTokenMethodLocked = oauth2Config.publicClient === true;
   const effectiveTokenMethod = oauth2Config.publicClient ? 'none' : (oauth2Config.tokenEndpointAuthMethod ?? '');
 

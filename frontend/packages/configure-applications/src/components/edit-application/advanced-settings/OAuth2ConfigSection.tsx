@@ -26,10 +26,12 @@ import {
 import {Lock, Trash, Plus} from '@wso2/oxygen-ui-icons-react';
 import {useState} from 'react';
 import {useTranslation} from 'react-i18next';
+import useGetOpenIDConfiguration from '../../../api/useGetOpenIDConfiguration';
 import useValidationReport from '../../../hooks/useValidationReport';
 import type {ApplicationTemplate} from '../../../models/application-templates';
 import type {OAuth2Config} from '../../../models/oauth';
 import {OAuth2GrantTypes, OAuth2ResponseTypes, TokenEndpointAuthMethods} from '../../../models/oauth';
+import type {OpenIDConfiguration} from '../../../models/openid-configuration';
 import {getGrantTypeLabel} from '../../../utils/getGrantTypeLabel';
 import isValidRedirectUriFormat from '../../../utils/isValidRedirectUriFormat';
 import {
@@ -47,13 +49,6 @@ import {
   isIdJagEnabled,
 } from '../../../utils/oauth2Rules';
 import BackchannelLogoutUriField from '../../common/BackchannelLogoutUriField';
-
-interface OidcDiscovery {
-  grant_types_supported?: string[];
-  response_types_supported?: string[];
-  token_endpoint_auth_methods_supported?: string[];
-  acr_values_supported?: string[];
-}
 
 /**
  * Props for the {@link OAuth2ConfigSection} component.
@@ -122,6 +117,10 @@ export default function OAuth2ConfigSection({
 }: OAuth2ConfigSectionProps) {
   const {t} = useTranslation();
   const {discovery} = useThunderID();
+  const {data: runtimeOpenIdConfiguration} = useGetOpenIDConfiguration();
+  // Falls back to the sign-in server's discovery when the runtime's cannot be read.
+  const openIdConfiguration =
+    runtimeOpenIdConfiguration ?? (discovery?.wellKnown as OpenIDConfiguration | null | undefined);
 
   const [redirectUris, setRedirectUris] = useState<string[]>(() => oauth2Config?.redirectUris ?? []);
   const [uriErrors, setUriErrors] = useState<Record<number, string>>({});
@@ -284,16 +283,14 @@ export default function OAuth2ConfigSection({
   // A client registered from a metadata document takes its authentication settings from the document,
   // and the document rules limit its grants.
   const isCimdClient = oauth2Config.clientIdMetadataDocument === true;
-  const discoveredGrantTypes = discovery?.wellKnown?.grant_types_supported ?? [];
+  const discoveredGrantTypes = openIdConfiguration?.grant_types_supported ?? [];
   const availableGrantTypes = discoveredGrantTypes.filter(
     (grant) =>
       (!allowedGrantTypes || allowedGrantTypes.includes(grant)) && (!isCimdClient || CIMD_GRANT_TYPES.includes(grant)),
   );
-  const availableResponseTypes = discovery?.wellKnown?.response_types_supported ?? [];
-  const availableTokenEndpointAuthMethods: string[] =
-    (discovery as {wellKnown?: OidcDiscovery} | undefined)?.wellKnown?.token_endpoint_auth_methods_supported ?? [];
-  const availableAcrValues: string[] =
-    (discovery as {wellKnown?: OidcDiscovery} | undefined)?.wellKnown?.acr_values_supported ?? [];
+  const availableResponseTypes = openIdConfiguration?.response_types_supported ?? [];
+  const availableTokenEndpointAuthMethods = openIdConfiguration?.token_endpoint_auth_methods_supported ?? [];
+  const availableAcrValues = openIdConfiguration?.acr_values_supported ?? [];
   const isEditable = Boolean(onOAuth2ConfigChange) && !disabled;
 
   // Constraint helpers

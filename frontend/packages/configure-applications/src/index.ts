@@ -5,6 +5,8 @@
 export {default as useGetApplication} from './api/useGetApplication';
 export {default as useGetApplications} from './api/useGetApplications';
 export type {UseGetApplicationsParams} from './api/useGetApplications';
+export {default as useGetOpenIDConfiguration} from './api/useGetOpenIDConfiguration';
+export type {OpenIDConfiguration} from './models/openid-configuration';
 
 // Models & Types
 export type {Application, ApplicationType, BasicApplication} from './models/application';

@@ -211,9 +211,7 @@ vi.mock('../../components/AgentDeleteDialog', () => ({default: () => null}));
 
 vi.mock('@thunderid/react', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@thunderid/react')>()),
-  useThunderID: () => ({
-    discovery: {wellKnown: {token_endpoint_auth_methods_supported: ['client_secret_basic', 'none']}},
-  }),
+  useThunderID: () => ({discovery: undefined}),
 }));
 
 vi.mock('react-i18next', () => ({
@@ -236,14 +234,21 @@ vi.mock('react-i18next', () => ({
 
 // The real Identity assertions card reads the runtime's authorization server metadata. Answer that
 // one request from `serverMetadata` (a 404, which is unknown and blocks nothing, unless a test sets
-// a body) rather than reaching whatever listens on the test server URL; other requests pass through.
+// a body) rather than reaching whatever listens on the test server URL. The real OAuth 2 card reads
+// the runtime's OpenID configuration, answered from `openIdConfiguration`; other requests pass through.
 const serverMetadata: {body: Record<string, string[]> | undefined} = {body: undefined};
+const openIdConfiguration = {token_endpoint_auth_methods_supported: ['client_secret_basic', 'none']};
 const realFetch = globalThis.fetch;
 const fetchWithStubbedServerMetadata = (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
   let url: string;
   if (typeof input === 'string') url = input;
   else if (input instanceof URL) url = input.href;
   else url = input.url;
+  if (url.endsWith('/.well-known/openid-configuration')) {
+    return Promise.resolve(
+      new Response(JSON.stringify(openIdConfiguration), {status: 200, headers: {'Content-Type': 'application/json'}}),
+    );
+  }
   if (!url.endsWith('/.well-known/oauth-authorization-server')) return realFetch(input, init);
   return Promise.resolve(
     serverMetadata.body

@@ -16,11 +16,14 @@ vi.mock('react-i18next', () => ({
 
 vi.mock('@thunderid/react', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@thunderid/react')>()),
-  useThunderID: () => ({
-    discovery: {
-      wellKnown: {
-        token_endpoint_auth_methods_supported: ['client_secret_basic', 'client_secret_post', 'none'],
-      },
+  useThunderID: () => ({discovery: undefined}),
+}));
+
+vi.mock('@thunderid/configure-applications', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@thunderid/configure-applications')>()),
+  useGetOpenIDConfiguration: () => ({
+    data: {
+      token_endpoint_auth_methods_supported: ['client_secret_basic', 'client_secret_post', 'none'],
     },
   }),
 }));

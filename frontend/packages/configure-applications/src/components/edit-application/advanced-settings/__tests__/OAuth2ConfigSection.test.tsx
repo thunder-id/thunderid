@@ -13,21 +13,27 @@ vi.mock('react-i18next', () => ({
   }),
 }));
 
-const {mockUseThunderID} = vi.hoisted(() => ({
-  mockUseThunderID: vi.fn().mockReturnValue({
-    discovery: {
-      wellKnown: {
-        grant_types_supported: [
-          'authorization_code',
-          'refresh_token',
-          'client_credentials',
-          'urn:openid:params:grant-type:ciba',
-        ],
-        response_types_supported: ['code', 'token'],
-        token_endpoint_auth_methods_supported: ['client_secret_basic', 'client_secret_post', 'none'],
-      },
+const {mockUseGetOpenIDConfiguration} = vi.hoisted(() => ({
+  mockUseGetOpenIDConfiguration: vi.fn().mockReturnValue({
+    data: {
+      grant_types_supported: [
+        'authorization_code',
+        'refresh_token',
+        'client_credentials',
+        'urn:openid:params:grant-type:ciba',
+      ],
+      response_types_supported: ['code', 'token'],
+      token_endpoint_auth_methods_supported: ['client_secret_basic', 'client_secret_post', 'none'],
     },
   }),
+}));
+
+vi.mock('../../../../api/useGetOpenIDConfiguration', () => ({
+  default: mockUseGetOpenIDConfiguration,
+}));
+
+const {mockUseThunderID} = vi.hoisted(() => ({
+  mockUseThunderID: vi.fn().mockReturnValue({discovery: undefined}),
 }));
 
 vi.mock('@thunderid/react', async (importOriginal) => ({
@@ -331,30 +337,26 @@ describe('OAuth2ConfigSection', () => {
     const jwtBearer = 'urn:ietf:params:oauth:grant-type:jwt-bearer';
 
     beforeEach(() => {
-      mockUseThunderID.mockReturnValue({
-        discovery: {
-          wellKnown: {
-            grant_types_supported: ['authorization_code', 'refresh_token', tokenExchange, jwtBearer],
-            response_types_supported: ['code'],
-            token_endpoint_auth_methods_supported: ['client_secret_basic', 'none'],
-          },
+      mockUseGetOpenIDConfiguration.mockReturnValue({
+        data: {
+          grant_types_supported: ['authorization_code', 'refresh_token', tokenExchange, jwtBearer],
+          response_types_supported: ['code'],
+          token_endpoint_auth_methods_supported: ['client_secret_basic', 'none'],
         },
       });
     });
 
     afterEach(() => {
-      mockUseThunderID.mockReturnValue({
-        discovery: {
-          wellKnown: {
-            grant_types_supported: [
-              'authorization_code',
-              'refresh_token',
-              'client_credentials',
-              'urn:openid:params:grant-type:ciba',
-            ],
-            response_types_supported: ['code', 'token'],
-            token_endpoint_auth_methods_supported: ['client_secret_basic', 'client_secret_post', 'none'],
-          },
+      mockUseGetOpenIDConfiguration.mockReturnValue({
+        data: {
+          grant_types_supported: [
+            'authorization_code',
+            'refresh_token',
+            'client_credentials',
+            'urn:openid:params:grant-type:ciba',
+          ],
+          response_types_supported: ['code', 'token'],
+          token_endpoint_auth_methods_supported: ['client_secret_basic', 'client_secret_post', 'none'],
         },
       });
     });
@@ -577,37 +579,33 @@ describe('OAuth2ConfigSection', () => {
     };
 
     beforeEach(() => {
-      mockUseThunderID.mockReturnValue({
-        discovery: {
-          wellKnown: {
-            grant_types_supported: ['authorization_code', 'refresh_token', 'client_credentials'],
-            response_types_supported: ['code', 'token'],
-            token_endpoint_auth_methods_supported: ['client_secret_basic', 'client_secret_post', 'none'],
-            acr_values_supported: ['urn:acr:loa1', 'urn:acr:loa2', 'urn:acr:loa3'],
-          },
+      mockUseGetOpenIDConfiguration.mockReturnValue({
+        data: {
+          grant_types_supported: ['authorization_code', 'refresh_token', 'client_credentials'],
+          response_types_supported: ['code', 'token'],
+          token_endpoint_auth_methods_supported: ['client_secret_basic', 'client_secret_post', 'none'],
+          acr_values_supported: ['urn:acr:loa1', 'urn:acr:loa2', 'urn:acr:loa3'],
         },
       });
     });
 
     afterEach(() => {
-      mockUseThunderID.mockReturnValue({
-        discovery: {
-          wellKnown: {
-            grant_types_supported: [
-              'authorization_code',
-              'refresh_token',
-              'client_credentials',
-              'urn:openid:params:grant-type:ciba',
-            ],
-            response_types_supported: ['code', 'token'],
-            token_endpoint_auth_methods_supported: ['client_secret_basic', 'client_secret_post', 'none'],
-          },
+      mockUseGetOpenIDConfiguration.mockReturnValue({
+        data: {
+          grant_types_supported: [
+            'authorization_code',
+            'refresh_token',
+            'client_credentials',
+            'urn:openid:params:grant-type:ciba',
+          ],
+          response_types_supported: ['code', 'token'],
+          token_endpoint_auth_methods_supported: ['client_secret_basic', 'client_secret_post', 'none'],
         },
       });
     });
 
     it('should not render ACR values field when acr_values_supported is absent', () => {
-      mockUseThunderID.mockReturnValue({discovery: null});
+      mockUseGetOpenIDConfiguration.mockReturnValue({data: undefined});
 
       render(<OAuth2ConfigSection oauth2Config={baseConfig} />);
 
@@ -615,8 +613,8 @@ describe('OAuth2ConfigSection', () => {
     });
 
     it('should not render ACR values field when acr_values_supported is empty', () => {
-      mockUseThunderID.mockReturnValue({
-        discovery: {wellKnown: {acr_values_supported: []}},
+      mockUseGetOpenIDConfiguration.mockReturnValue({
+        data: {acr_values_supported: []},
       });
 
       render(<OAuth2ConfigSection oauth2Config={baseConfig} />);
@@ -690,36 +688,26 @@ describe('OAuth2ConfigSection', () => {
 
   describe('Allowed Grant Types Limiting', () => {
     beforeEach(() => {
-      mockUseThunderID.mockReturnValue({
-        discovery: {
-          wellKnown: {
-            grant_types_supported: [
-              'authorization_code',
-              'refresh_token',
-              'client_credentials',
-              'implicit',
-              'password',
-            ],
-            response_types_supported: ['code', 'token'],
-            token_endpoint_auth_methods_supported: ['client_secret_basic', 'client_secret_post', 'none'],
-          },
+      mockUseGetOpenIDConfiguration.mockReturnValue({
+        data: {
+          grant_types_supported: ['authorization_code', 'refresh_token', 'client_credentials', 'implicit', 'password'],
+          response_types_supported: ['code', 'token'],
+          token_endpoint_auth_methods_supported: ['client_secret_basic', 'client_secret_post', 'none'],
         },
       });
     });
 
     afterEach(() => {
-      mockUseThunderID.mockReturnValue({
-        discovery: {
-          wellKnown: {
-            grant_types_supported: [
-              'authorization_code',
-              'refresh_token',
-              'client_credentials',
-              'urn:openid:params:grant-type:ciba',
-            ],
-            response_types_supported: ['code', 'token'],
-            token_endpoint_auth_methods_supported: ['client_secret_basic', 'client_secret_post', 'none'],
-          },
+      mockUseGetOpenIDConfiguration.mockReturnValue({
+        data: {
+          grant_types_supported: [
+            'authorization_code',
+            'refresh_token',
+            'client_credentials',
+            'urn:openid:params:grant-type:ciba',
+          ],
+          response_types_supported: ['code', 'token'],
+          token_endpoint_auth_methods_supported: ['client_secret_basic', 'client_secret_post', 'none'],
         },
       });
     });
@@ -768,6 +756,61 @@ describe('OAuth2ConfigSection', () => {
       expect(screen.getByText('client_credentials')).toBeInTheDocument();
       expect(screen.getByText('implicit')).toBeInTheDocument();
       expect(screen.getByText('password')).toBeInTheDocument();
+    });
+  });
+
+  describe('Discovery Source', () => {
+    const oauth2Config: OAuth2Config = {
+      grantTypes: ['authorization_code'],
+      responseTypes: ['code'],
+      pkceRequired: false,
+      publicClient: false,
+    };
+    const runtimeConfiguration = {
+      data: {
+        grant_types_supported: [
+          'authorization_code',
+          'refresh_token',
+          'client_credentials',
+          'urn:openid:params:grant-type:ciba',
+        ],
+        response_types_supported: ['code', 'token'],
+        token_endpoint_auth_methods_supported: ['client_secret_basic', 'client_secret_post', 'none'],
+      },
+    };
+
+    afterEach(() => {
+      mockUseGetOpenIDConfiguration.mockReturnValue(runtimeConfiguration);
+      mockUseThunderID.mockReturnValue({discovery: undefined});
+    });
+
+    it("should offer the runtime's grant types over the sign-in server's", async () => {
+      const user = userEvent.setup();
+      mockUseGetOpenIDConfiguration.mockReturnValue({
+        data: {grant_types_supported: ['authorization_code', 'refresh_token']},
+      });
+      mockUseThunderID.mockReturnValue({
+        discovery: {wellKnown: {grant_types_supported: ['authorization_code', 'implicit']}},
+      });
+
+      render(<OAuth2ConfigSection oauth2Config={oauth2Config} onOAuth2ConfigChange={vi.fn()} />);
+      await user.click(document.getElementById('grant_types')!);
+
+      expect(screen.getByText('refresh_token')).toBeInTheDocument();
+      expect(screen.queryByText('implicit')).not.toBeInTheDocument();
+    });
+
+    it("should fall back to the sign-in server's grant types when the runtime's cannot be read", async () => {
+      const user = userEvent.setup();
+      mockUseGetOpenIDConfiguration.mockReturnValue({data: undefined});
+      mockUseThunderID.mockReturnValue({
+        discovery: {wellKnown: {grant_types_supported: ['authorization_code', 'implicit']}},
+      });
+
+      render(<OAuth2ConfigSection oauth2Config={oauth2Config} onOAuth2ConfigChange={vi.fn()} />);
+      await user.click(document.getElementById('grant_types')!);
+
+      expect(screen.getByText('implicit')).toBeInTheDocument();
     });
   });
 
@@ -1136,42 +1179,38 @@ describe('OAuth2ConfigSection', () => {
     const jwtBearer = 'urn:ietf:params:oauth:grant-type:jwt-bearer';
     const tokenExchangeLabel = /applications:edit\.advanced\.grantTypes\.labels\.tokenExchange/;
     const jwtBearerLabel = /applications:edit\.advanced\.grantTypes\.labels\.jwtBearer/;
-    const defaultDiscovery = {
-      discovery: {
-        wellKnown: {
+    const defaultOpenIdConfiguration = {
+      data: {
+        grant_types_supported: [
+          'authorization_code',
+          'refresh_token',
+          'client_credentials',
+          'urn:openid:params:grant-type:ciba',
+        ],
+        response_types_supported: ['code', 'token'],
+        token_endpoint_auth_methods_supported: ['client_secret_basic', 'client_secret_post', 'none'],
+      },
+    };
+
+    beforeEach(() => {
+      mockUseGetOpenIDConfiguration.mockReturnValue({
+        data: {
           grant_types_supported: [
             'authorization_code',
             'refresh_token',
             'client_credentials',
             'urn:openid:params:grant-type:ciba',
+            tokenExchange,
+            jwtBearer,
           ],
-          response_types_supported: ['code', 'token'],
-          token_endpoint_auth_methods_supported: ['client_secret_basic', 'client_secret_post', 'none'],
-        },
-      },
-    };
-
-    beforeEach(() => {
-      mockUseThunderID.mockReturnValue({
-        discovery: {
-          wellKnown: {
-            grant_types_supported: [
-              'authorization_code',
-              'refresh_token',
-              'client_credentials',
-              'urn:openid:params:grant-type:ciba',
-              tokenExchange,
-              jwtBearer,
-            ],
-            response_types_supported: ['code'],
-            token_endpoint_auth_methods_supported: ['client_secret_basic', 'private_key_jwt', 'none'],
-          },
+          response_types_supported: ['code'],
+          token_endpoint_auth_methods_supported: ['client_secret_basic', 'private_key_jwt', 'none'],
         },
       });
     });
 
     afterEach(() => {
-      mockUseThunderID.mockReturnValue(defaultDiscovery);
+      mockUseGetOpenIDConfiguration.mockReturnValue(defaultOpenIdConfiguration);
     });
 
     const cimdConfig = (tokenEndpointAuthMethod: 'none' | 'private_key_jwt'): OAuth2Config => ({

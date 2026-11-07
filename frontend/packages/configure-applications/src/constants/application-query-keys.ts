@@ -13,6 +13,10 @@ const ApplicationQueryKeys = {
    * Key for a single application query
    */
   APPLICATION: 'application',
+  /**
+   * Key for the runtime's OpenID Connect discovery document (GET /.well-known/openid-configuration)
+   */
+  OPENID_CONFIGURATION: 'openid-configuration',
 } as const;
 
 export default ApplicationQueryKeys;

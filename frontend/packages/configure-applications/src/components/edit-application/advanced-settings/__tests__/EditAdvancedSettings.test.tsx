@@ -8,13 +8,17 @@ import type {Application} from '../../../../models/application';
 import type {OAuth2Config} from '../../../../models/oauth';
 import EditAdvancedSettings from '../EditAdvancedSettings';
 
-const {mockUseThunderID} = vi.hoisted(() => ({
-  mockUseThunderID: vi.fn(() => ({discovery: null}) as unknown),
+const {mockUseGetOpenIDConfiguration} = vi.hoisted(() => ({
+  mockUseGetOpenIDConfiguration: vi.fn(() => ({data: undefined}) as unknown),
+}));
+
+vi.mock('../../../../api/useGetOpenIDConfiguration', () => ({
+  default: mockUseGetOpenIDConfiguration,
 }));
 
 vi.mock('@thunderid/react', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@thunderid/react')>()),
-  useThunderID: mockUseThunderID,
+  useThunderID: () => ({discovery: undefined}),
 }));
 
 // The identity assertions card reads the runtime's metadata; it stays unknown here so nothing is blocked.
@@ -222,20 +226,18 @@ describe('EditAdvancedSettings', () => {
 
   describe('AcrValuesSection Integration', () => {
     beforeEach(() => {
-      mockUseThunderID.mockReturnValue({
-        discovery: {
-          wellKnown: {
-            acr_values_supported: ['urn:acr:loa1', 'urn:acr:loa2'],
-            grant_types_supported: ['authorization_code', 'refresh_token', 'client_credentials'],
-            response_types_supported: ['code', 'token'],
-            token_endpoint_auth_methods_supported: ['client_secret_basic', 'client_secret_post', 'none'],
-          },
+      mockUseGetOpenIDConfiguration.mockReturnValue({
+        data: {
+          acr_values_supported: ['urn:acr:loa1', 'urn:acr:loa2'],
+          grant_types_supported: ['authorization_code', 'refresh_token', 'client_credentials'],
+          response_types_supported: ['code', 'token'],
+          token_endpoint_auth_methods_supported: ['client_secret_basic', 'client_secret_post', 'none'],
         },
       });
     });
 
     afterEach(() => {
-      mockUseThunderID.mockReturnValue({discovery: null});
+      mockUseGetOpenIDConfiguration.mockReturnValue({data: undefined});
     });
 
     it('should render AcrValuesSection when discovery has acr_values_supported', () => {
@@ -252,7 +254,7 @@ describe('EditAdvancedSettings', () => {
     });
 
     it('should not render AcrValuesSection when discovery has no acr_values_supported', () => {
-      mockUseThunderID.mockReturnValue({discovery: null});
+      mockUseGetOpenIDConfiguration.mockReturnValue({data: undefined});
 
       render(
         <EditAdvancedSettings
