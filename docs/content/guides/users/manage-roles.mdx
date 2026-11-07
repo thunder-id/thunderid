@@ -74,6 +74,8 @@ The **System** resource server declares the permissions for managing <ProductNam
 | `serverconfig` | Server Configuration | `view`, `update` |
 | `configversion` | Configuration Versions | `view`, `create` |
 
+The `app`, `user`, `role`, `connection`, and `flow` resources each hold a `sharing` resource with the `view`, `create`, `update`, and `delete` actions, for example `system:app:sharing:view`. The parent permission covers it, so `system:app` covers `system:app:sharing:view`. The sharing policy APIs of these resources require the `sharing` permissions: `view` to read and list policies, `create` to create one, `update` to update one, and `delete` to delete one. `system:<resource>:update` doesn't cover sharing policies.
+
 Design, translations, gateways, authorization detail types, server configuration, and configuration versions have no owning organization unit, so a change to one affects every organization unit. A configuration version holds a snapshot of the whole deployment, so once a management API accepts `system:configversion:view`, it will expose the configuration of every organization unit. No management API accepts that permission yet.
 
 The management APIs and MCP tools accept these permissions for every resource.
@@ -86,7 +88,7 @@ The management APIs and MCP tools accept these permissions for every resource.
 | `system:<resource>:delete` | Delete the resource. |
 | `system:<resource>` | Every action on the resource. |
 
-Changing a part of a resource updates that resource. For example, `system:role:update` covers adding and removing role assignments, `system:rs:update` covers creating and deleting the resources and actions of a resource server, and `system:flow:update` covers restoring a flow version. Changing a sharing policy updates the resource it governs.
+Changing a part of a resource updates that resource. For example, `system:role:update` covers adding and removing role assignments, `system:rs:update` covers creating and deleting the resources and actions of a resource server, and `system:flow:update` covers restoring a flow version.
 
 The following exceptions apply:
 
@@ -112,6 +114,8 @@ If you set `server.security.system_permission_prefix`, the management APIs expec
 A deployment set up on an earlier release has a System resource server that declares only `system`. To add the other resources and actions, import the System resource server document from `bootstrap/01-default-resources.yaml` with the [import API](../../declarative-configurations/import-resources) and `options.upsert` set to `true`. Before you import it, set `identifier`, `name`, and `description` in the document to your System resource server's current values, and set `ouHandle` to the handle of the organization unit that owns it. The upsert overwrites these fields, so any value left at the bundled default replaces yours, and a different `ouHandle` moves the server to another organization unit.
 
 The import adds the resources and actions that are missing and keeps the ones that already exist. Roles and assignments are not changed.
+
+The sharing policy APIs require the `sharing` permissions, which `system:<resource>:view` and `system:<resource>:update` don't cover. If a role reads or changes sharing policies through those permissions, add the `sharing` permissions it needs, or `system:<resource>`, to the role. A role that holds `system` or `system:<resource>` keeps its access.
 
 The import keeps your System resource server's existing delimiter. Check that it is `:` before you import, for example with `GET /resource-servers/{id}`. With any other delimiter, the imported permissions never match the ones the management APIs check.
 

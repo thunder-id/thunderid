@@ -6,6 +6,7 @@ package security
 import (
 	"net/http"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 
@@ -469,20 +470,16 @@ func TestGetRequiredPermissionForAPI(t *testing.T) {
 
 		// ---- User and group sub-resources ----
 		{
+			name:   "GET users by an OU path named like sharing policies reads users",
+			method: http.MethodGet, path: "/users/tree/sharing-policies", wantPerm: p.UserView,
+		},
+		{
 			name:   "POST user by OU path creates",
 			method: http.MethodPost, path: "/users/tree/root", wantPerm: p.UserCreate,
 		},
 		{
 			name:   "POST user credentials updates the user",
 			method: http.MethodPost, path: "/users/u-1/update-credentials", wantPerm: p.UserUpdate,
-		},
-		{
-			name:   "POST user sharing policy updates the user",
-			method: http.MethodPost, path: "/users/u-1/sharing-policies", wantPerm: p.UserUpdate,
-		},
-		{
-			name:   "DELETE user sharing policy updates the user",
-			method: http.MethodDelete, path: "/users/u-1/sharing-policies/p-1", wantPerm: p.UserUpdate,
 		},
 		{
 			name:   "POST group by OU path creates",
@@ -510,10 +507,6 @@ func TestGetRequiredPermissionForAPI(t *testing.T) {
 		{
 			name:   "POST role assignments remove updates the role",
 			method: http.MethodPost, path: "/roles/r-1/assignments/remove", wantPerm: p.RoleUpdate,
-		},
-		{
-			name:   "DELETE role sharing policy updates the role",
-			method: http.MethodDelete, path: "/roles/r-1/sharing-policies/p-1", wantPerm: p.RoleUpdate,
 		},
 
 		// ---- Resource server APIs ----
@@ -569,19 +562,6 @@ func TestGetRequiredPermissionForAPI(t *testing.T) {
 		{
 			name:   "DELETE connection",
 			method: http.MethodDelete, path: "/connections/google/c-1", wantPerm: p.ConnectionDelete,
-		},
-		{
-			name:   "POST connection sharing policy updates the connection",
-			method: http.MethodPost, path: "/connections/http/c-1/sharing-policies", wantPerm: p.ConnectionUpdate,
-		},
-		{
-			name:   "PUT connection sharing policy updates the connection",
-			method: http.MethodPut, path: "/connections/http/c-1/sharing-policies/p-1", wantPerm: p.ConnectionUpdate,
-		},
-		{
-			name:   "DELETE connection sharing policy updates the connection",
-			method: http.MethodDelete, path: "/connections/http/c-1/sharing-policies/p-1",
-			wantPerm: p.ConnectionUpdate,
 		},
 
 		// ---- Verifiable credential APIs ----
@@ -729,14 +709,6 @@ func TestGetRequiredPermissionForAPI(t *testing.T) {
 			name:   "POST flow restore updates the flow",
 			method: http.MethodPost, path: "/flows/f-1/restore", wantPerm: p.FlowUpdate,
 		},
-		{
-			name:   "POST flow sharing policy updates the flow",
-			method: http.MethodPost, path: "/flows/f-1/sharing-policies", wantPerm: p.FlowUpdate,
-		},
-		{
-			name:   "DELETE flow sharing policy updates the flow",
-			method: http.MethodDelete, path: "/flows/f-1/sharing-policies/p-1", wantPerm: p.FlowUpdate,
-		},
 
 		// ---- Application APIs ----
 		{name: "GET /applications", method: http.MethodGet, path: "/applications", wantPerm: p.AppView},
@@ -746,22 +718,6 @@ func TestGetRequiredPermissionForAPI(t *testing.T) {
 		{
 			name:   "DELETE application",
 			method: http.MethodDelete, path: "/applications/app-1", wantPerm: p.AppDelete,
-		},
-		{
-			name:   "GET application sharing policies",
-			method: http.MethodGet, path: "/applications/app-1/sharing-policies", wantPerm: p.AppView,
-		},
-		{
-			name:   "POST application sharing policy updates the application",
-			method: http.MethodPost, path: "/applications/app-1/sharing-policies", wantPerm: p.AppUpdate,
-		},
-		{
-			name:   "PUT application sharing policy updates the application",
-			method: http.MethodPut, path: "/applications/app-1/sharing-policies/p-1", wantPerm: p.AppUpdate,
-		},
-		{
-			name:   "DELETE application sharing policy updates the application",
-			method: http.MethodDelete, path: "/applications/app-1/sharing-policies/p-1", wantPerm: p.AppUpdate,
 		},
 		{
 			name:   "GET application overlay rules",
@@ -875,6 +831,42 @@ func TestGetRequiredPermissionForAPI(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			assert.Equal(t, tt.wantPerm, svc.getRequiredPermissionForAPI(tt.method, tt.path))
 		})
+	}
+}
+
+// TestGetRequiredPermissionForAPI_SharingPolicies verifies that each sharing policy route requires
+// the sharing permission of its resource, not the permission of the resource it governs.
+func TestGetRequiredPermissionForAPI_SharingPolicies(t *testing.T) {
+	InitSystemPermissions("")
+	p := GetSystemPermissions()
+	svc, err := newSecurityService(nil, nil, []string{}, apiPermissionEntries)
+	require.NoError(t, err)
+
+	resources := []struct {
+		base                           string
+		view, create, update, deletion string
+	}{
+		{"/applications/app-1", p.AppSharingView, p.AppSharingCreate, p.AppSharingUpdate, p.AppSharingDelete},
+		{"/users/u-1", p.UserSharingView, p.UserSharingCreate, p.UserSharingUpdate, p.UserSharingDelete},
+		{"/roles/r-1", p.RoleSharingView, p.RoleSharingCreate, p.RoleSharingUpdate, p.RoleSharingDelete},
+		{"/flows/f-1", p.FlowSharingView, p.FlowSharingCreate, p.FlowSharingUpdate, p.FlowSharingDelete},
+		{"/connections/http/c-1", p.ConnectionSharingView, p.ConnectionSharingCreate, p.ConnectionSharingUpdate,
+			p.ConnectionSharingDelete},
+	}
+	for _, r := range resources {
+		collection := r.base + "/sharing-policies"
+		item := collection + "/p-1"
+		for _, tc := range []struct{ method, path, want string }{
+			{http.MethodGet, collection, r.view},
+			{http.MethodGet, item, r.view},
+			{http.MethodPost, collection, r.create},
+			{http.MethodPut, item, r.update},
+			{http.MethodDelete, item, r.deletion},
+		} {
+			t.Run(tc.method+" "+tc.path, func(t *testing.T) {
+				assert.Equal(t, tc.want, svc.getRequiredPermissionForAPI(tc.method, tc.path))
+			})
+		}
 	}
 }
 
@@ -1129,7 +1121,8 @@ func bootstrapSystemPermissions(t *testing.T) (string, []string) {
 
 	var permissions []string
 	for _, res := range server.Resources[1:] {
-		require.Equal(t, "system", res.Parent, "resource %q must sit directly under the root", res.Handle)
+		require.True(t, res.Parent == "system" || slices.Contains(permissions, res.Parent),
+			"resource %q must sit under the root or a resource declared before it", res.Handle)
 		require.NotEmpty(t, res.Name, "resource %q needs a display name", res.Handle)
 		path := res.Parent + server.Delimiter + res.Handle
 		permissions = append(permissions, path)

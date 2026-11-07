@@ -122,33 +122,39 @@ var serverConfigActions = []string{catalogActionView, catalogActionUpdate}
 var configVersionActions = []string{catalogActionView, catalogActionCreate}
 
 // systemCatalog lists, in declaration order, each resource declared under the root system resource
-// on the System resource server and the actions declared on it. It must match the System resource
-// server in the bootstrap bundle (cmd/server/bootstrap/01-default-resources.yaml).
+// on the System resource server, the actions declared on it, and the actions of its sharing
+// sub-resource, if it has one. It must match the System resource server in the bootstrap bundle
+// (cmd/server/bootstrap/01-default-resources.yaml).
 var systemCatalog = []struct {
 	resource ResourceType
 	actions  []string
+	// sharingActions are the actions of the resource's sharing sub-resource; nil when it has none.
+	sharingActions []string
 }{
-	{ResourceTypeOU, crudActions},
-	{ResourceTypeUser, crudActions},
-	{ResourceTypeGroup, crudActions},
-	{ResourceTypeAgent, crudActions},
-	{ResourceTypeUserType, crudActions},
-	{ResourceTypeAgentType, crudActions},
-	{ResourceTypeNotificationTemplate, crudActions},
-	{ResourceTypeApplication, crudActions},
-	{ResourceTypeRole, crudActions},
-	{ResourceTypeResourceServer, crudActions},
-	{ResourceTypeConnection, crudActions},
-	{ResourceTypeFlow, crudActions},
-	{ResourceTypeVerifiableCredential, crudActions},
-	{ResourceTypeProject, crudActions},
-	{ResourceTypeDesign, crudActions},
-	{ResourceTypeI18n, crudActions},
-	{ResourceTypeGateway, crudActions},
-	{ResourceTypeAuthorizationDetailType, crudActions},
-	{ResourceTypeServerConfig, serverConfigActions},
-	{ResourceTypeConfigurationVersion, configVersionActions},
+	{ResourceTypeOU, crudActions, nil},
+	{ResourceTypeUser, crudActions, crudActions},
+	{ResourceTypeGroup, crudActions, nil},
+	{ResourceTypeAgent, crudActions, nil},
+	{ResourceTypeUserType, crudActions, nil},
+	{ResourceTypeAgentType, crudActions, nil},
+	{ResourceTypeNotificationTemplate, crudActions, nil},
+	{ResourceTypeApplication, crudActions, crudActions},
+	{ResourceTypeRole, crudActions, crudActions},
+	{ResourceTypeResourceServer, crudActions, nil},
+	{ResourceTypeConnection, crudActions, crudActions},
+	{ResourceTypeFlow, crudActions, crudActions},
+	{ResourceTypeVerifiableCredential, crudActions, nil},
+	{ResourceTypeProject, crudActions, nil},
+	{ResourceTypeDesign, crudActions, nil},
+	{ResourceTypeI18n, crudActions, nil},
+	{ResourceTypeGateway, crudActions, nil},
+	{ResourceTypeAuthorizationDetailType, crudActions, nil},
+	{ResourceTypeServerConfig, serverConfigActions, nil},
+	{ResourceTypeConfigurationVersion, configVersionActions, nil},
 }
+
+// sharingResource is the sub-resource that governs how a catalog resource is shared.
+const sharingResource = "sharing"
 
 // ---- Actions ----
 
@@ -179,6 +185,14 @@ const (
 	ActionDeleteUser Action = "user:delete"
 	// ActionListUsers lists users.
 	ActionListUsers Action = "user:list"
+	// ActionReadUserSharing reads the sharing policies of a user.
+	ActionReadUserSharing Action = "user:sharing:read"
+	// ActionCreateUserSharing creates a sharing policy for a user.
+	ActionCreateUserSharing Action = "user:sharing:create"
+	// ActionUpdateUserSharing updates a sharing policy of a user.
+	ActionUpdateUserSharing Action = "user:sharing:update"
+	// ActionDeleteUserSharing deletes a sharing policy of a user.
+	ActionDeleteUserSharing Action = "user:sharing:delete"
 
 	// ActionCreateGroup creates a new group.
 	ActionCreateGroup Action = "group:create"
@@ -449,6 +463,26 @@ type SystemPermissions struct {
 	AppCreate                  string
 	AppUpdate                  string
 	AppDelete                  string
+	AppSharingView             string
+	AppSharingCreate           string
+	AppSharingUpdate           string
+	AppSharingDelete           string
+	UserSharingView            string
+	UserSharingCreate          string
+	UserSharingUpdate          string
+	UserSharingDelete          string
+	RoleSharingView            string
+	RoleSharingCreate          string
+	RoleSharingUpdate          string
+	RoleSharingDelete          string
+	FlowSharingView            string
+	FlowSharingCreate          string
+	FlowSharingUpdate          string
+	FlowSharingDelete          string
+	ConnectionSharingView      string
+	ConnectionSharingCreate    string
+	ConnectionSharingUpdate    string
+	ConnectionSharingDelete    string
 	// Catalog holds every permission declared under Root, in declaration order: each resource
 	// followed by its actions.
 	Catalog []string
@@ -558,11 +592,41 @@ func InitSystemPermissions(handle string) {
 		AppCreate:                  buildPermission(handle, "system", "app", catalogActionCreate),
 		AppUpdate:                  buildPermission(handle, "system", "app", catalogActionUpdate),
 		AppDelete:                  buildPermission(handle, "system", "app", catalogActionDelete),
+		AppSharingView:             buildPermission(handle, "system", "app", sharingResource, catalogActionView),
+		AppSharingCreate:           buildPermission(handle, "system", "app", sharingResource, catalogActionCreate),
+		AppSharingUpdate:           buildPermission(handle, "system", "app", sharingResource, catalogActionUpdate),
+		AppSharingDelete:           buildPermission(handle, "system", "app", sharingResource, catalogActionDelete),
+		UserSharingView:            buildPermission(handle, "system", "user", sharingResource, catalogActionView),
+		UserSharingCreate:          buildPermission(handle, "system", "user", sharingResource, catalogActionCreate),
+		UserSharingUpdate:          buildPermission(handle, "system", "user", sharingResource, catalogActionUpdate),
+		UserSharingDelete:          buildPermission(handle, "system", "user", sharingResource, catalogActionDelete),
+		RoleSharingView:            buildPermission(handle, "system", "role", sharingResource, catalogActionView),
+		RoleSharingCreate:          buildPermission(handle, "system", "role", sharingResource, catalogActionCreate),
+		RoleSharingUpdate:          buildPermission(handle, "system", "role", sharingResource, catalogActionUpdate),
+		RoleSharingDelete:          buildPermission(handle, "system", "role", sharingResource, catalogActionDelete),
+		FlowSharingView:            buildPermission(handle, "system", "flow", sharingResource, catalogActionView),
+		FlowSharingCreate:          buildPermission(handle, "system", "flow", sharingResource, catalogActionCreate),
+		FlowSharingUpdate:          buildPermission(handle, "system", "flow", sharingResource, catalogActionUpdate),
+		FlowSharingDelete:          buildPermission(handle, "system", "flow", sharingResource, catalogActionDelete),
+		ConnectionSharingView:      buildPermission(handle, "system", "connection", sharingResource, catalogActionView),
+		ConnectionSharingCreate: buildPermission(
+			handle, "system", "connection", sharingResource, catalogActionCreate),
+		ConnectionSharingUpdate: buildPermission(
+			handle, "system", "connection", sharingResource, catalogActionUpdate),
+		ConnectionSharingDelete: buildPermission(
+			handle, "system", "connection", sharingResource, catalogActionDelete),
 	}
 	for _, entry := range systemCatalog {
 		p.Catalog = append(p.Catalog, buildPermission(handle, "system", string(entry.resource)))
 		for _, action := range entry.actions {
 			p.Catalog = append(p.Catalog, buildPermission(handle, "system", string(entry.resource), action))
+		}
+		if entry.sharingActions != nil {
+			p.Catalog = append(p.Catalog, buildPermission(handle, "system", string(entry.resource), sharingResource))
+			for _, action := range entry.sharingActions {
+				p.Catalog = append(p.Catalog,
+					buildPermission(handle, "system", string(entry.resource), sharingResource, action))
+			}
 		}
 	}
 	sysPerms = p
@@ -582,6 +646,12 @@ func InitSystemPermissions(handle string) {
 		ActionUpdateUser: p.UserUpdate,
 		ActionDeleteUser: p.UserDelete,
 		ActionListUsers:  p.UserView,
+
+		// User sharing policy actions.
+		ActionReadUserSharing:   p.UserSharingView,
+		ActionCreateUserSharing: p.UserSharingCreate,
+		ActionUpdateUserSharing: p.UserSharingUpdate,
+		ActionDeleteUserSharing: p.UserSharingDelete,
 
 		// Group actions.
 		ActionCreateGroup: p.GroupCreate,
@@ -719,14 +789,19 @@ func InitSystemPermissions(handle string) {
 		{"PUT /organization-units/**", p.OUUpdate},
 		{"DELETE /organization-units/**", p.OUDelete},
 
-		// User APIs. Credentials and sharing policies are part of the user they belong to, so changing
-		// one updates the user. "/tree/{path...}" creates a user in the organization unit at that path.
+		// User APIs. Credentials are part of the user they belong to, so changing them updates the user.
+		// Sharing policies have their own permissions. "/tree/{path...}" lists or creates users in the
+		// organization unit at that path, and is listed before the sharing policy rules so an
+		// organization unit handle never reads as a sharing policy path.
 		{"GET /users", p.UserView},
 		{"POST /users", p.UserCreate},
+		{"GET /users/tree/**", p.UserView},
 		{"POST /users/tree/**", p.UserCreate},
 		{"POST /users/*/update-credentials", p.UserUpdate},
-		{"POST /users/*/sharing-policies", p.UserUpdate},
-		{"DELETE /users/*/sharing-policies/**", p.UserUpdate},
+		{"GET /users/*/sharing-policies/**", p.UserSharingView},
+		{"POST /users/*/sharing-policies", p.UserSharingCreate},
+		{"PUT /users/*/sharing-policies/*", p.UserSharingUpdate},
+		{"DELETE /users/*/sharing-policies/*", p.UserSharingDelete},
 		{"GET /users/**", p.UserView},
 		{"PUT /users/**", p.UserUpdate},
 		{"DELETE /users/**", p.UserDelete},
@@ -783,24 +858,29 @@ func InitSystemPermissions(handle string) {
 		{"PUT /agent-types/**", p.AgentTypeUpdate},
 		{"DELETE /agent-types/**", p.AgentTypeDelete},
 
-		// Flow APIs. Restoring a version, sharing policies, and flow variables are part of the flow they
-		// belong to, so changing one updates the flow. These rules are listed before the "**" rules.
+		// Flow APIs. Restoring a version and flow variables are part of the flow they belong to, so
+		// changing one updates the flow. Sharing policies have their own permissions. These rules are
+		// listed before the "**" rules.
 		{"GET /flows", p.FlowView},
 		{"POST /flows", p.FlowCreate},
 		{"POST /flows/*/restore", p.FlowUpdate},
-		{"POST /flows/*/sharing-policies", p.FlowUpdate},
-		{"DELETE /flows/*/sharing-policies/**", p.FlowUpdate},
+		{"GET /flows/*/sharing-policies/**", p.FlowSharingView},
+		{"POST /flows/*/sharing-policies", p.FlowSharingCreate},
+		{"PUT /flows/*/sharing-policies/*", p.FlowSharingUpdate},
+		{"DELETE /flows/*/sharing-policies/*", p.FlowSharingDelete},
 		{"GET /flows/**", p.FlowView},
 		{"PUT /flows/**", p.FlowUpdate},
 		{"DELETE /flows/**", p.FlowDelete},
 
-		// Role APIs. Assignments and sharing policies are part of the role they belong to, so changing
-		// one updates the role. These rules are listed before the "**" rules.
+		// Role APIs. Assignments are part of the role they belong to, so changing one updates the role.
+		// Sharing policies have their own permissions. These rules are listed before the "**" rules.
 		{"GET /roles", p.RoleView},
 		{"POST /roles", p.RoleCreate},
 		{"POST /roles/*/assignments/**", p.RoleUpdate},
-		{"POST /roles/*/sharing-policies", p.RoleUpdate},
-		{"DELETE /roles/*/sharing-policies/**", p.RoleUpdate},
+		{"GET /roles/*/sharing-policies/**", p.RoleSharingView},
+		{"POST /roles/*/sharing-policies", p.RoleSharingCreate},
+		{"PUT /roles/*/sharing-policies/*", p.RoleSharingUpdate},
+		{"DELETE /roles/*/sharing-policies/*", p.RoleSharingDelete},
 		{"GET /roles/**", p.RoleView},
 		{"PUT /roles/**", p.RoleUpdate},
 		{"DELETE /roles/**", p.RoleDelete},
@@ -818,12 +898,13 @@ func InitSystemPermissions(handle string) {
 		{"PUT /resource-servers/**", p.ResourceServerUpdate},
 		{"DELETE /resource-servers/**", p.ResourceServerDelete},
 
-		// Connection APIs. Each vendor has its own collection, "/connections/{vendor}". A sharing policy is
-		// part of the connection it governs, so changing one updates the connection. Sharing policy rules
-		// are listed before the "**" rules.
+		// Connection APIs. Each vendor has its own collection, "/connections/{vendor}". Sharing policies
+		// have their own permissions, and their rules are listed before the "**" rules.
 		{"GET /connections", p.ConnectionView},
-		{"POST /connections/*/*/sharing-policies", p.ConnectionUpdate},
-		{"DELETE /connections/*/*/sharing-policies/**", p.ConnectionUpdate},
+		{"GET /connections/*/*/sharing-policies/**", p.ConnectionSharingView},
+		{"POST /connections/*/*/sharing-policies", p.ConnectionSharingCreate},
+		{"PUT /connections/*/*/sharing-policies/*", p.ConnectionSharingUpdate},
+		{"DELETE /connections/*/*/sharing-policies/*", p.ConnectionSharingDelete},
 		{"POST /connections/*", p.ConnectionCreate},
 		{"GET /connections/**", p.ConnectionView},
 		{"PUT /connections/**", p.ConnectionUpdate},
@@ -905,12 +986,14 @@ func InitSystemPermissions(handle string) {
 		{"PUT /projects/**", p.ProjectUpdate},
 		{"DELETE /projects/**", p.ProjectDelete},
 
-		// Application APIs. A sharing policy is part of the application it governs, so changing one
-		// updates the application. Sharing policy rules are listed before the "**" rules.
+		// Application APIs. Sharing policies have their own permissions, and their rules are listed
+		// before the "**" rules.
 		{"GET /applications", p.AppView},
 		{"POST /applications", p.AppCreate},
-		{"POST /applications/*/sharing-policies", p.AppUpdate},
-		{"DELETE /applications/*/sharing-policies/**", p.AppUpdate},
+		{"GET /applications/*/sharing-policies/**", p.AppSharingView},
+		{"POST /applications/*/sharing-policies", p.AppSharingCreate},
+		{"PUT /applications/*/sharing-policies/*", p.AppSharingUpdate},
+		{"DELETE /applications/*/sharing-policies/*", p.AppSharingDelete},
 		{"GET /applications/**", p.AppView},
 		{"PUT /applications/**", p.AppUpdate},
 		{"DELETE /applications/**", p.AppDelete},

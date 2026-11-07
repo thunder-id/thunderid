@@ -4638,7 +4638,7 @@ func TestSharingPolicy_CreateIsAuthorizedForTheInitiatingOU(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			f := newSharingFixture(t, map[security.Action][]string{security.ActionUpdateUser: {tc.allowedIn}})
+			f := newSharingFixture(t, map[security.Action][]string{security.ActionCreateUserSharing: {tc.allowedIn}})
 			req := sharing.PolicyRequest{InitiatingOUID: tc.initiating}
 			if tc.allowed {
 				f.sharing.On("CreatePolicy", mock.Anything, UserSharingType, svcTestUserID1, shareOwnerOU, req).
@@ -4659,7 +4659,7 @@ func TestSharingPolicy_CreateIsAuthorizedForTheInitiatingOU(t *testing.T) {
 
 // A declared user's own sharing is declared with it, so the owner's policy is refused here.
 func TestSharingPolicy_ADeclaredUsersOwnPolicyIsRefused(t *testing.T) {
-	f := newSharingFixture(t, map[security.Action][]string{security.ActionUpdateUser: {shareOwnerOU}})
+	f := newSharingFixture(t, map[security.Action][]string{security.ActionCreateUserSharing: {shareOwnerOU}})
 	f.userDeclared = true
 
 	_, err := f.service.CreateSharingPolicy(context.Background(), svcTestUserID1, sharing.PolicyRequest{})
@@ -4670,7 +4670,7 @@ func TestSharingPolicy_ADeclaredUsersOwnPolicyIsRefused(t *testing.T) {
 
 // A unit a declared user is shared into may still reshare: there is nowhere else to record that.
 func TestSharingPolicy_AUnitMayReshareADeclaredUser(t *testing.T) {
-	f := newSharingFixture(t, map[security.Action][]string{security.ActionUpdateUser: {shareChildOU}})
+	f := newSharingFixture(t, map[security.Action][]string{security.ActionCreateUserSharing: {shareChildOU}})
 	f.userDeclared = true
 	req := sharing.PolicyRequest{InitiatingOUID: shareChildOU}
 	f.sharing.On("CreatePolicy", mock.Anything, UserSharingType, svcTestUserID1, shareOwnerOU, req).
@@ -4684,7 +4684,11 @@ func TestSharingPolicy_AUnitMayReshareADeclaredUser(t *testing.T) {
 // Users that load from resource files only have all their sharing declared there, so no policy is
 // written, changed or removed here.
 func TestSharingPolicy_UsersFromFilesOnlyRefuseEveryWrite(t *testing.T) {
-	f := newSharingFixture(t, map[security.Action][]string{security.ActionUpdateUser: {shareOwnerOU}})
+	f := newSharingFixture(t, map[security.Action][]string{
+		security.ActionCreateUserSharing: {shareOwnerOU},
+		security.ActionUpdateUserSharing: {shareOwnerOU},
+		security.ActionDeleteUserSharing: {shareOwnerOU},
+	})
 	withUserStore(t, "declarative")
 	f.sharing.On("GetPolicy", mock.Anything, sharePolicyID).
 		Return(userPolicy(shareOwnerOU), (*tidcommon.ServiceError)(nil))
@@ -4701,7 +4705,7 @@ func TestSharingPolicy_UsersFromFilesOnlyRefuseEveryWrite(t *testing.T) {
 }
 
 func TestSharingPolicy_ChecksNeverNameTheUser(t *testing.T) {
-	f := newSharingFixture(t, map[security.Action][]string{security.ActionUpdateUser: {shareOwnerOU}})
+	f := newSharingFixture(t, map[security.Action][]string{security.ActionCreateUserSharing: {shareOwnerOU}})
 	f.sharing.On("CreatePolicy", mock.Anything, UserSharingType, svcTestUserID1, shareOwnerOU, mock.Anything).
 		Return(userPolicy(shareOwnerOU), (*tidcommon.ServiceError)(nil)).Once()
 
@@ -4715,7 +4719,7 @@ func TestSharingPolicy_ChecksNeverNameTheUser(t *testing.T) {
 }
 
 func TestSharingPolicy_UnknownUserAnswersNotFound(t *testing.T) {
-	f := newSharingFixture(t, map[security.Action][]string{security.ActionUpdateUser: {shareOwnerOU}})
+	f := newSharingFixture(t, map[security.Action][]string{security.ActionCreateUserSharing: {shareOwnerOU}})
 
 	_, err := f.service.CreateSharingPolicy(context.Background(), "missing-user", sharing.PolicyRequest{})
 
@@ -4724,7 +4728,7 @@ func TestSharingPolicy_UnknownUserAnswersNotFound(t *testing.T) {
 }
 
 func TestSharingPolicy_AnotherUsersPolicyIsNotFound(t *testing.T) {
-	f := newSharingFixture(t, map[security.Action][]string{security.ActionReadUser: {shareOwnerOU}})
+	f := newSharingFixture(t, map[security.Action][]string{security.ActionReadUserSharing: {shareOwnerOU}})
 	foreign := userPolicy(shareOwnerOU)
 	foreign.ResourceID = "user-2"
 	f.sharing.On("GetPolicy", mock.Anything, sharePolicyID).Return(foreign, (*tidcommon.ServiceError)(nil)).Once()
@@ -4747,7 +4751,7 @@ func TestSharingPolicy_GetIsReadableByTheOwnerOrTheInitiator(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			f := newSharingFixture(t, map[security.Action][]string{security.ActionReadUser: {tc.allowedIn}})
+			f := newSharingFixture(t, map[security.Action][]string{security.ActionReadUserSharing: {tc.allowedIn}})
 			f.sharing.On("GetPolicy", mock.Anything, sharePolicyID).
 				Return(userPolicy(shareChildOU), (*tidcommon.ServiceError)(nil)).Once()
 
@@ -4776,7 +4780,7 @@ func TestSharingPolicy_OnlyTheInitiatorChangesAPolicy(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name+"/Update", func(t *testing.T) {
-			f := newSharingFixture(t, map[security.Action][]string{security.ActionUpdateUser: {tc.allowedIn}})
+			f := newSharingFixture(t, map[security.Action][]string{security.ActionUpdateUserSharing: {tc.allowedIn}})
 			f.sharing.On("GetPolicy", mock.Anything, sharePolicyID).
 				Return(userPolicy(tc.initiating), (*tidcommon.ServiceError)(nil)).Once()
 			if tc.allowed {
@@ -4795,7 +4799,7 @@ func TestSharingPolicy_OnlyTheInitiatorChangesAPolicy(t *testing.T) {
 			require.Equal(t, tidcommon.ErrorUnauthorized.Code, err.Code)
 		})
 		t.Run(tc.name+"/Delete", func(t *testing.T) {
-			f := newSharingFixture(t, map[security.Action][]string{security.ActionUpdateUser: {tc.allowedIn}})
+			f := newSharingFixture(t, map[security.Action][]string{security.ActionDeleteUserSharing: {tc.allowedIn}})
 			f.sharing.On("GetPolicy", mock.Anything, sharePolicyID).
 				Return(userPolicy(tc.initiating), (*tidcommon.ServiceError)(nil)).Once()
 			if tc.allowed {
@@ -4825,7 +4829,7 @@ func TestSharingPolicy_DeletingAnAbsentPolicySucceeds(t *testing.T) {
 }
 
 func TestSharingPolicy_DeleteRefusesADeclaredPolicy(t *testing.T) {
-	f := newSharingFixture(t, map[security.Action][]string{security.ActionUpdateUser: {shareOwnerOU}})
+	f := newSharingFixture(t, map[security.Action][]string{security.ActionDeleteUserSharing: {shareOwnerOU}})
 	declared := userPolicy(shareOwnerOU)
 	declared.Declared = true
 	f.sharing.On("GetPolicy", mock.Anything, sharePolicyID).Return(declared, (*tidcommon.ServiceError)(nil)).Once()
@@ -4837,7 +4841,7 @@ func TestSharingPolicy_DeleteRefusesADeclaredPolicy(t *testing.T) {
 }
 
 func TestSharingPolicy_OwnerListsThroughTheFrameworkPage(t *testing.T) {
-	f := newSharingFixture(t, map[security.Action][]string{security.ActionReadUser: {shareOwnerOU}})
+	f := newSharingFixture(t, map[security.Action][]string{security.ActionReadUserSharing: {shareOwnerOU}})
 	page := sharing.PolicyList{TotalResults: 1, StartIndex: 1, Count: 1, Policies: []sharing.Policy{
 		userPolicy(shareOwnerOU),
 	}}
@@ -4851,7 +4855,9 @@ func TestSharingPolicy_OwnerListsThroughTheFrameworkPage(t *testing.T) {
 }
 
 func TestSharingPolicy_OtherUnitsListOnlyTheirOwnPolicies(t *testing.T) {
-	f := newSharingFixture(t, map[security.Action][]string{security.ActionReadUser: {shareChildOU, shareOtherOU}})
+	f := newSharingFixture(t, map[security.Action][]string{
+		security.ActionReadUserSharing: {shareChildOU, shareOtherOU},
+	})
 	f.sharing.On("ListPolicies", mock.Anything, UserSharingType, svcTestUserID1).Return([]sharing.Policy{
 		userPolicy(shareOwnerOU), userPolicy(shareChildOU), userPolicy(shareOtherOU),
 	}, (*tidcommon.ServiceError)(nil)).Once()
@@ -4866,7 +4872,7 @@ func TestSharingPolicy_OtherUnitsListOnlyTheirOwnPolicies(t *testing.T) {
 }
 
 func TestSharingPolicy_InMemoryListingPastTheLastPageIsEmpty(t *testing.T) {
-	f := newSharingFixture(t, map[security.Action][]string{security.ActionReadUser: {shareChildOU}})
+	f := newSharingFixture(t, map[security.Action][]string{security.ActionReadUserSharing: {shareChildOU}})
 	f.sharing.On("ListPolicies", mock.Anything, UserSharingType, svcTestUserID1).Return([]sharing.Policy{
 		userPolicy(shareOwnerOU), userPolicy(shareChildOU),
 	}, (*tidcommon.ServiceError)(nil)).Once()
@@ -4880,7 +4886,7 @@ func TestSharingPolicy_InMemoryListingPastTheLastPageIsEmpty(t *testing.T) {
 }
 
 func TestSharingPolicy_AUnitWithNoPoliciesCannotList(t *testing.T) {
-	f := newSharingFixture(t, map[security.Action][]string{security.ActionReadUser: {shareOtherOU}})
+	f := newSharingFixture(t, map[security.Action][]string{security.ActionReadUserSharing: {shareOtherOU}})
 	f.sharing.On("ListPolicies", mock.Anything, UserSharingType, svcTestUserID1).Return([]sharing.Policy{
 		userPolicy(shareOwnerOU),
 	}, (*tidcommon.ServiceError)(nil)).Once()
@@ -4908,7 +4914,7 @@ func TestSharingPolicy_ListingValidatesThePage(t *testing.T) {
 	for caller, ouID := range callers {
 		for _, tc := range cases {
 			t.Run(caller+"/"+tc.name, func(t *testing.T) {
-				f := newSharingFixture(t, map[security.Action][]string{security.ActionReadUser: {ouID}})
+				f := newSharingFixture(t, map[security.Action][]string{security.ActionReadUserSharing: {ouID}})
 
 				_, err := f.service.ListSharingPolicies(context.Background(), svcTestUserID1, tc.limit, tc.offset)
 
@@ -4997,7 +5003,10 @@ func TestTranslateSharingError(t *testing.T) {
 // A refusal of the roles a share mandates reaches the caller of every policy write with its own code.
 func TestSharingPolicy_WritesKeepTheMandatedRoleRefusal(t *testing.T) {
 	refusal := role.ErrorMandatedRoleNotInOU
-	allowed := map[security.Action][]string{security.ActionUpdateUser: {shareOwnerOU}}
+	allowed := map[security.Action][]string{
+		security.ActionCreateUserSharing: {shareOwnerOU},
+		security.ActionUpdateUserSharing: {shareOwnerOU},
+	}
 	req := sharing.PolicyRequest{}
 
 	t.Run("Create", func(t *testing.T) {
