@@ -54,16 +54,21 @@ type SystemAuthorizationServiceInterface interface {
 	CanGrantMembership(ctx context.Context, principalType PrincipalType,
 		containerID string) *tidcommon.ServiceError
 
+	// CanControlEntity refuses taking control of an entity, such as by changing its credentials or
+	// attributes or by deleting it, unless the caller holds every permission the entity holds. An entity
+	// acting on itself is always allowed.
+	CanControlEntity(ctx context.Context, entityID string) *tidcommon.ServiceError
+
 	// GrantableMemberships returns, in the given order, the containers whose membership the caller may grant, as
 	// CanGrantMembership decides for each, resolving the caller's permissions once for the whole list. A
 	// server error fails the whole check.
 	GrantableMemberships(ctx context.Context, principalType PrincipalType,
 		containerIDs []string) ([]string, *tidcommon.ServiceError)
 
-	// SetPermissionResolver injects the effective-permission resolver used by the two checks above.
+	// SetPermissionResolver injects the effective-permission resolver used by the grant checks above.
 	// It must be called once at startup after the role and group packages are initialized,
 	// completing the same two-phase initialization used by SetOUHierarchyResolver. Until it is
-	// called, both checks refuse.
+	// called, the checks refuse.
 	SetPermissionResolver(resolver PermissionResolver)
 }
 

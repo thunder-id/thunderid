@@ -117,6 +117,7 @@ func (s *AgentServiceAuditTestSuite) reset() {
 	s.inbound = inboundclientmock.NewInboundClientServiceInterfaceMock(s.T())
 	s.ous = oumock.NewOrganizationUnitServiceInterfaceMock(s.T())
 	s.authz = sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(s.T())
+	s.authz.On("CanControlEntity", mock.Anything, mock.Anything).Return((*tidcommon.ServiceError)(nil)).Maybe()
 	s.governance = identitygovernancemock.NewIdentityGovernanceServiceInterfaceMock(s.T())
 	// The agent's type sits in the agent's organization unit, so the placement check passes.
 	s.types = entitytypemock.NewEntityTypeServiceInterfaceMock(s.T())

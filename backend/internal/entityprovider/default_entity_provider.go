@@ -114,6 +114,9 @@ func (p *defaultEntityProvider) UpdateCredentials(
 	if authErr := p.authorizeWrite(ctx, entityID); authErr != nil {
 		return authErr
 	}
+	if authErr := p.requireEntityCoverage(ctx, entityID); authErr != nil {
+		return authErr
+	}
 	err := p.entitySvc.UpdateCredentials(ctx, entityID, credentials)
 	if err != nil {
 		return mapEntityError(err)
@@ -127,6 +130,9 @@ func (p *defaultEntityProvider) UpdateAttributes(
 	entityID string, attributes json.RawMessage,
 ) *EntityProviderError {
 	if authErr := p.authorizeWrite(ctx, entityID); authErr != nil {
+		return authErr
+	}
+	if authErr := p.requireEntityCoverage(ctx, entityID); authErr != nil {
 		return authErr
 	}
 	err := p.entitySvc.UpdateAttributes(ctx, entityID, attributes)
@@ -283,6 +289,21 @@ func (p *defaultEntityProvider) authorizeWrite(ctx context.Context, entityID str
 	if !allowed {
 		return NewEntityProviderError(ErrorCodeUnauthorized, "Unauthorized",
 			"The caller is not permitted to change this entity")
+	}
+	return nil
+}
+
+func (p *defaultEntityProvider) requireEntityCoverage(ctx context.Context, entityID string) *EntityProviderError {
+	if security.IsRuntimeContext(ctx) {
+		return nil
+	}
+	svcErr := p.authzSvc.CanControlEntity(ctx, entityID)
+	if svcErr != nil {
+		if svcErr.Code == sysauthz.ErrorGrantNotPermitted.Code {
+			return NewEntityProviderError(ErrorCodeUnauthorized, "Unauthorized",
+				"The caller is not permitted to change this entity")
+		}
+		return NewEntityProviderError(ErrorCodeSystemError, "System error", svcErr.Error.DefaultValue)
 	}
 	return nil
 }

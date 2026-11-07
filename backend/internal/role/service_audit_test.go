@@ -332,6 +332,7 @@ func (s *RoleServiceAuditTestSuite) TestUpdateRoleWithPermissions_PublishesOneEv
 					Return(nil, nil).Once()
 				s.mockStore.On("UpdateRole", mock.Anything, "role1", mock.Anything).Return(nil).Once()
 				s.expectPermissionGrant(nil)
+				s.expectMembershipGrants("role1", nil, 1)
 			},
 			outcome: audit.OutcomeSucceeded,
 			subject: role1,
@@ -373,6 +374,7 @@ func (s *RoleServiceAuditTestSuite) TestDeleteRole_PublishesOneEventPerAttempt()
 			arrange: func() {
 				s.mockStore.On("GetRole", mock.Anything, "role1").
 					Return(RoleWithPermissions{ID: "role1", OUID: testOwnerOU}, nil).Once()
+				s.expectMembershipGrants("role1", nil, 1)
 				s.mockStore.On("ListMandatedAssignmentsForRole", mock.Anything, "role1", "").
 					Return([]RoleAssignment{}, nil).Once()
 				s.mockSharingService.EXPECT().DeletePoliciesForResource(mock.Anything, RoleSharingType,

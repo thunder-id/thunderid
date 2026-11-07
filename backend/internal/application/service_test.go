@@ -220,6 +220,7 @@ func allowAllAuthz(t interface {
 	m.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).Return(true, nil).Maybe()
 	m.On("GetAccessibleResources", mock.Anything, mock.Anything, mock.Anything).
 		Return(&sysauthz.AccessibleResources{AllAllowed: true}, nil).Maybe()
+	m.On("CanControlEntity", mock.Anything, mock.Anything).Return(nil).Maybe()
 	return m
 }
 
@@ -5364,6 +5365,64 @@ func (suite *ServiceTestSuite) TestValidateDeleteApplication_RefusesUnreadableSy
 
 	assert.Nil(suite.T(), target)
 	assert.Equal(suite.T(), tidcommon.InternalServerError.Code, svcErr.Code)
+}
+
+func (suite *ServiceTestSuite) TestValidateRegenerateClientSecret_RefusesUncoveredApplicationPermissions() {
+	service, _ := suite.newFlowTargetTestService(appEntityWithClientID("client-1"))
+	authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+	authzMock.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).Return(true, nil).Maybe()
+	authzMock.On("CanControlEntity", mock.Anything, testServiceAppID).
+		Return(&sysauthz.ErrorGrantNotPermitted).Once()
+	service.authzService = authzMock
+
+	target, svcErr := service.ValidateCredentialAction(
+		context.Background(), testServiceAppID, model.CredentialActionRegenerate)
+
+	assert.Nil(suite.T(), target)
+	assert.NotNil(suite.T(), svcErr)
+	assert.Equal(suite.T(), sysauthz.ErrorGrantNotPermitted.Code, svcErr.Code)
+}
+
+func (suite *ServiceTestSuite) TestValidateDeleteApplication_RefusesUncoveredApplicationPermissions() {
+	service, _ := suite.newFlowTargetTestService(appEntityWithClientID("client-1"))
+	authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+	authzMock.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).Return(true, nil).Maybe()
+	authzMock.On("CanControlEntity", mock.Anything, testServiceAppID).
+		Return(&sysauthz.ErrorGrantNotPermitted).Once()
+	service.authzService = authzMock
+
+	target, svcErr := service.ValidateDeleteApplication(context.Background(), testServiceAppID)
+
+	assert.Nil(suite.T(), target)
+	assert.NotNil(suite.T(), svcErr)
+	assert.Equal(suite.T(), sysauthz.ErrorGrantNotPermitted.Code, svcErr.Code)
+}
+
+// Any update can set a client secret, switch the authentication method or replace the certificate, so
+// every update needs the caller to hold the application's permissions, not just a secret rotation.
+func (suite *ServiceTestSuite) TestUpdateApplication_RefusesUncoveredApplicationPermissions() {
+	service, mockStore := suite.setupTestService()
+	authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+	authzMock.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).Return(true, nil).Maybe()
+	authzMock.On("CanControlEntity", mock.Anything, testServiceAppID).
+		Return(&sysauthz.ErrorGrantNotPermitted).Once()
+	service.authzService = authzMock
+
+	app, svcErr := service.UpdateApplication(context.Background(), testServiceAppID, &model.ApplicationDTO{
+		Name: "app",
+		InboundAuthConfig: []providers.InboundAuthConfigWithSecret{{
+			Type: providers.OAuthInboundAuthType,
+			OAuthConfig: &providers.OAuthConfigWithSecret{
+				GrantTypes:              []providers.GrantType{providers.GrantTypeClientCredentials},
+				TokenEndpointAuthMethod: providers.TokenEndpointAuthMethodPrivateKeyJWT,
+			},
+		}},
+	})
+
+	suite.Nil(app)
+	suite.Require().NotNil(svcErr)
+	suite.Equal(sysauthz.ErrorGrantNotPermitted.Code, svcErr.Code)
+	suite.Empty(mockStore.Calls)
 }
 
 // An unset token endpoint auth method defaults to client_secret_basic when the client is written, so such

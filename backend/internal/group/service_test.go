@@ -3707,6 +3707,8 @@ func (suite *GroupServiceTestSuite) TestValidateDeleteGroup_AcceptsWithoutDeleti
 	f.authz.On("IsActionAllowed", mock.Anything, security.ActionDeleteGroup, &sysauthz.ActionContext{
 		ResourceType: security.ResourceTypeGroup, OUID: testOUID1, ResourceID: "grp-001",
 	}).Return(true, (*tidcommon.ServiceError)(nil))
+	f.authz.On("CanGrantMembership", mock.Anything, sysauthz.PrincipalTypeGroup, "grp-001").
+		Return((*tidcommon.ServiceError)(nil))
 
 	svcErr := f.service.ValidateDeleteGroup(context.Background(), "grp-001")
 
@@ -3737,6 +3739,14 @@ func (suite *GroupServiceTestSuite) TestValidateDeleteGroup_Refusals() {
 			f.authz.On("IsActionAllowed", mock.Anything, security.ActionDeleteGroup, mock.Anything).
 				Return(false, (*tidcommon.ServiceError)(nil))
 		}, tidcommon.ErrorUnauthorized},
+		"grant not permitted": {"grp-001", func(f *groupChangeFixture) {
+			f.store.On("IsGroupDeclarative", mock.Anything, "grp-001").Return(false, nil)
+			f.store.On("GetGroup", mock.Anything, "grp-001").Return(GroupDAO{ID: "grp-001", OUID: testOUID1}, nil)
+			f.authz.On("IsActionAllowed", mock.Anything, security.ActionDeleteGroup, mock.Anything).
+				Return(true, (*tidcommon.ServiceError)(nil))
+			f.authz.On("CanGrantMembership", mock.Anything, sysauthz.PrincipalTypeGroup, "grp-001").
+				Return(&sysauthz.ErrorGrantNotPermitted)
+		}, sysauthz.ErrorGrantNotPermitted},
 	}
 	for name, tc := range cases {
 		suite.Run(name, func() {
