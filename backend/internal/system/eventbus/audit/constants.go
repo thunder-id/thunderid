@@ -16,6 +16,8 @@ const CategoryAudit eventbus.Category = "audit"
 type Action string
 
 const (
+	// ActionApply applies a configuration version to a resource.
+	ActionApply Action = "apply"
 	// ActionCreate creates a resource.
 	ActionCreate Action = "create"
 	// ActionUpdate changes a resource.
@@ -28,6 +30,8 @@ const (
 	ActionRemove Action = "remove"
 	// ActionRestore brings back an earlier version of a resource.
 	ActionRestore Action = "restore"
+	// ActionRevert returns a resource to the configuration it held before.
+	ActionRevert Action = "revert"
 )
 
 // ActorType is the kind of principal that acted. The set is open.

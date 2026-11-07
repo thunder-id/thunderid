@@ -117,10 +117,13 @@ func (s *versionService) releaser(ctx context.Context, gatewayID, token string) 
 }
 
 // applyLatestAgain applies the latest version to a gateway, as asked for while another apply ran.
+//
+// The queued apply was recorded when it was asked for. This run publishes no audit event of its own:
+// ctx carries the caller of the apply that held the lease, who would be recorded as its actor.
 func (s *versionService) applyLatestAgain(ctx context.Context, gatewayID string) {
 	ctx, cancel := context.WithTimeout(ctx, leaseTimeout)
 	defer cancel()
-	result, svcErr := s.Apply(ctx, gatewayID, ApplyRequest{})
+	result, svcErr := s.apply(ctx, gatewayID, ApplyRequest{})
 	switch {
 	case svcErr != nil:
 		s.logger.Warn(ctx, "The latest version queued behind an apply could not be applied",

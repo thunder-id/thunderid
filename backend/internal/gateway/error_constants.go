@@ -3,7 +3,11 @@
 
 package gateway
 
-import tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+import (
+	"errors"
+
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+)
 
 var (
 	// ErrorInvalidGatewayID is returned when no usable gateway id is supplied.
@@ -173,4 +177,7 @@ var (
 				"and restart, or register a separate gateway through the API.",
 		},
 	}
+
+	// errNilEventBus is returned when the service is initialized without the event bus it audits on.
+	errNilEventBus = errors.New("the gateway service needs an event bus")
 )

@@ -11,6 +11,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/serverconfig"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
 	"github.com/thunder-id/thunderid/internal/system/export"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
 )
@@ -43,10 +44,16 @@ import (
 //
 // The same operations are registered on mcpServer, when given, as tools that answer as the REST endpoints do, so
 // an MCP client can capture, deploy, promote and roll back as the console does.
+//
+// bus is required: the version service publishes the audit event of every apply and revert it is asked
+// for on it.
 func Initialize(mux *http.ServeMux, mcpServer *mcp.Server, exporter export.ExportServiceInterface,
 	capture *ValueCapture, exporters []declarativeresource.ResourceExporter,
 	changes *ChangeCapture, settings serverconfig.ServerConfigService,
-	projects ProjectDirectory) (ServiceInterface, error) {
+	projects ProjectDirectory, bus eventbus.EventBusInterface) (ServiceInterface, error) {
+	if bus == nil {
+		return nil, errNilEventBus
+	}
 	var (
 		gatewayStore storeInterface
 		fileStore    *gatewayFileStore
@@ -67,7 +74,7 @@ func Initialize(mux *http.ServeMux, mcpServer *mcp.Server, exporter export.Expor
 	deployPipeline := newPipeline()
 	service := newService(gatewayStore, deployPipeline)
 	versions := newVersionService(gatewayStore, newVersionStore(), exporter, newGatewayClient(),
-		declarativeresource.SecretFieldsOf(exporters), newActorNames(), deployPipeline)
+		declarativeresource.SecretFieldsOf(exporters), newActorNames(), deployPipeline, bus)
 	versions.autoApply = newAutoApplySource(settings)
 	versions.syncSettings = settings
 	if projects != nil {
