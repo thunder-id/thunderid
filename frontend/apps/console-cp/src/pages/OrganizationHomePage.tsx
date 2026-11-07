@@ -227,7 +227,7 @@ function Joint({label, icon}: {label: string; icon: ReactNode}): JSX.Element {
   );
 }
 
-/** Where a gateway's gateway is reached, for a person to tell gateways apart. */
+/** Where a gateway is reached, for a person to tell gateways apart. */
 const hostOf = (url: string | undefined): string => {
   if (!url) return '';
   try {
@@ -389,10 +389,17 @@ export default function OrganizationHomePage({
 
         <Section
           title={t('home:organization.howItWorks', 'How it works')}
-          subtitle={t(
-            'home:organization.howItWorksLead',
-            'Configure here. Saves auto-sync to your first gateway, and you promote them through the rest. Each gateway has its own users and the apps connected to it.',
-          )}
+          subtitle={
+            stages.length === 1
+              ? t(
+                  'home:organization.howItWorksLeadSingle',
+                  'Configure here, then deploy to your gateway. It has its own users and the apps connected to it.',
+                )
+              : t(
+                  'home:organization.howItWorksLead',
+                  'Configure here, then deploy to your first gateway and promote through the rest. Each gateway has its own users and the apps connected to it.',
+                )
+          }
           action={
             projects.length > 0 ? (
               <Button
@@ -469,7 +476,7 @@ export default function OrganizationHomePage({
                     )}
                     <Button
                       component={Link}
-                      to={`/deploy/gateways/${encodeURIComponent(stage.gateway.id)}`}
+                      to={RouteConfig.deploy.gateway(stage.gateway.id)}
                       size="small"
                       variant="text"
                       endIcon={<ArrowRight size={14} />}

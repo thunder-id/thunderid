@@ -38,10 +38,6 @@ export function changedFields(lines: LineOp[] | undefined): string[] {
 export const carriedWithProject = (change: Change): boolean =>
   change.section === 'project' || (change.section === 'needed' && change.required === true);
 
-/** Whether a project's deploy may carry a change if ticked: what it needs in another form, or shared. */
-export const optionalForProject = (change: Change): boolean =>
-  (change.section === 'needed' && change.required !== true) || change.section === 'shared';
-
 /** Whether a change is a shared resource the target does not hold at all. */
 export const sharedMissing = (change: Change): boolean => change.section === 'shared' && change.change === 'added';
 
