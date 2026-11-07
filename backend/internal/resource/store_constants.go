@@ -13,14 +13,14 @@ var (
 	queryCreateResourceServer = dbmodel.DBQuery{
 		ID: "RSQ-RES_MGT-01",
 		Query: `INSERT INTO "RESOURCE_SERVER"
-			(ID, OU_ID, NAME, DESCRIPTION, IDENTIFIER, TYPE, PROPERTIES, DEPLOYMENT_ID)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+			(ID, OU_ID, PROJECT_ID, NAME, DESCRIPTION, IDENTIFIER, TYPE, PROPERTIES, DEPLOYMENT_ID)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
 	}
 
 	// queryGetResourceServerByID retrieves a resource server by ID.
 	queryGetResourceServerByID = dbmodel.DBQuery{
 		ID: "RSQ-RES_MGT-02",
-		Query: `SELECT ID, OU_ID, NAME, DESCRIPTION, IDENTIFIER, TYPE, PROPERTIES
+		Query: `SELECT ID, OU_ID, PROJECT_ID, NAME, DESCRIPTION, IDENTIFIER, TYPE, PROPERTIES
 			FROM "RESOURCE_SERVER"
 			WHERE ID = $1 AND DEPLOYMENT_ID = $2`,
 	}
@@ -28,7 +28,7 @@ var (
 	// queryGetResourceServerList retrieves a list of resource servers with pagination.
 	queryGetResourceServerList = dbmodel.DBQuery{
 		ID: "RSQ-RES_MGT-03",
-		Query: `SELECT ID, OU_ID, NAME, DESCRIPTION, IDENTIFIER, TYPE, PROPERTIES
+		Query: `SELECT ID, OU_ID, PROJECT_ID, NAME, DESCRIPTION, IDENTIFIER, TYPE, PROPERTIES
 			FROM "RESOURCE_SERVER"
 			WHERE DEPLOYMENT_ID = $3
 			ORDER BY CREATED_AT DESC
@@ -45,8 +45,9 @@ var (
 	queryUpdateResourceServer = dbmodel.DBQuery{
 		ID: "RSQ-RES_MGT-05",
 		Query: `UPDATE "RESOURCE_SERVER"
-			SET OU_ID = $1, NAME = $2, DESCRIPTION = $3, IDENTIFIER = $4, TYPE = $5, PROPERTIES = $6
-			WHERE ID = $7 AND DEPLOYMENT_ID = $8`,
+			SET OU_ID = $1, PROJECT_ID = $2, NAME = $3, DESCRIPTION = $4, IDENTIFIER = $5, TYPE = $6,
+			PROPERTIES = $7
+			WHERE ID = $8 AND DEPLOYMENT_ID = $9`,
 	}
 
 	// queryDeleteResourceServer deletes a resource server.
@@ -72,7 +73,7 @@ var (
 	// queryGetResourceServerByIdentifier retrieves a resource server by identifier.
 	queryGetResourceServerByIdentifier = dbmodel.DBQuery{
 		ID: "RSQ-RES_MGT-34",
-		Query: `SELECT ID, OU_ID, NAME, DESCRIPTION, IDENTIFIER, TYPE, PROPERTIES
+		Query: `SELECT ID, OU_ID, PROJECT_ID, NAME, DESCRIPTION, IDENTIFIER, TYPE, PROPERTIES
 			FROM "RESOURCE_SERVER"
 			WHERE IDENTIFIER = $1 AND DEPLOYMENT_ID = $2`,
 	}
@@ -94,7 +95,7 @@ var (
 	// with pagination.
 	queryGetResourceServerListByOUID = dbmodel.DBQuery{
 		ID: "RSQ-RES_MGT-41",
-		Query: `SELECT ID, OU_ID, NAME, DESCRIPTION, IDENTIFIER, TYPE, PROPERTIES
+		Query: `SELECT ID, OU_ID, PROJECT_ID, NAME, DESCRIPTION, IDENTIFIER, TYPE, PROPERTIES
 			FROM "RESOURCE_SERVER"
 			WHERE OU_ID = $1 AND DEPLOYMENT_ID = $4
 			ORDER BY CREATED_AT DESC, ID DESC
@@ -106,6 +107,44 @@ var (
 	queryGetResourceServerListCountByOUID = dbmodel.DBQuery{
 		ID:    "RSQ-RES_MGT-42",
 		Query: `SELECT COUNT(*) as total FROM "RESOURCE_SERVER" WHERE OU_ID = $1 AND DEPLOYMENT_ID = $2`,
+	}
+)
+
+// Resource server project queries
+var (
+	// queryGetResourceServerListByProject retrieves a list of the resource servers of a project with pagination.
+	queryGetResourceServerListByProject = dbmodel.DBQuery{
+		ID: "RSQ-RES_MGT-43",
+		Query: `SELECT ID, OU_ID, PROJECT_ID, NAME, DESCRIPTION, IDENTIFIER, TYPE, PROPERTIES
+			FROM "RESOURCE_SERVER"
+			WHERE PROJECT_ID = $1 AND DEPLOYMENT_ID = $4
+			ORDER BY CREATED_AT DESC, ID DESC
+			LIMIT $2 OFFSET $3`,
+	}
+
+	// queryGetResourceServerListCountByProject retrieves the total count of the resource servers of a project.
+	queryGetResourceServerListCountByProject = dbmodel.DBQuery{
+		ID:    "RSQ-RES_MGT-44",
+		Query: `SELECT COUNT(*) as total FROM "RESOURCE_SERVER" WHERE PROJECT_ID = $1 AND DEPLOYMENT_ID = $2`,
+	}
+
+	// queryGetResourceServerListByProjectAndOUID retrieves a list of the resource servers of a project that
+	// an organization unit owns, with pagination.
+	queryGetResourceServerListByProjectAndOUID = dbmodel.DBQuery{
+		ID: "RSQ-RES_MGT-46",
+		Query: `SELECT ID, OU_ID, PROJECT_ID, NAME, DESCRIPTION, IDENTIFIER, TYPE, PROPERTIES
+			FROM "RESOURCE_SERVER"
+			WHERE PROJECT_ID = $1 AND OU_ID = $2 AND DEPLOYMENT_ID = $5
+			ORDER BY CREATED_AT DESC, ID DESC
+			LIMIT $3 OFFSET $4`,
+	}
+
+	// queryGetResourceServerListCountByProjectAndOUID retrieves the total count of the resource servers of a
+	// project that an organization unit owns.
+	queryGetResourceServerListCountByProjectAndOUID = dbmodel.DBQuery{
+		ID: "RSQ-RES_MGT-47",
+		Query: `SELECT COUNT(*) as total FROM "RESOURCE_SERVER"
+			WHERE PROJECT_ID = $1 AND OU_ID = $2 AND DEPLOYMENT_ID = $3`,
 	}
 )
 

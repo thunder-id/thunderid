@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {renderWithProviders, screen, fireEvent, waitFor} from '@thunderid/test-utils';
-import {describe, it, expect, vi, beforeEach} from 'vitest';
+import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import type {ResourceServer} from '../../models/resource-server';
 import CreateResourceServerPage from '../CreateResourceServerPage';
 
@@ -25,12 +25,14 @@ vi.mock('@thunderid/react', async (importOriginal) => {
 });
 
 const mockShowToast = vi.fn();
+const mockUseProjectScope = vi.fn<() => {projectId?: string}>(() => ({}));
 
 vi.mock('@thunderid/contexts', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@thunderid/contexts')>();
   return {
     ...actual,
     useConfig: () => ({getServerUrl: () => 'http://localhost:8090', config: {brand: {product_name: 'ThunderID'}}}),
+    useProjectScope: () => mockUseProjectScope(),
     useToast: () => ({showToast: mockShowToast}),
   };
 });
@@ -571,6 +573,63 @@ describe('CreateResourceServerPage', () => {
         expect.objectContaining({ouId: 'ou-2'}),
         expect.any(Object),
       );
+    });
+  });
+
+  describe('inside a project', () => {
+    beforeEach(() => {
+      mockUseProjectScope.mockReturnValue({projectId: 'project-1'});
+      mockUseHasMultipleOUs.mockReturnValue({
+        hasMultipleOUs: true,
+        isLoading: false,
+        ouList: [
+          {id: 'ou-1', name: 'Default', handle: 'default', parent: null},
+          {id: 'ou-2', name: 'Other', handle: 'other', parent: null},
+        ],
+      });
+    });
+
+    afterEach(() => {
+      mockUseProjectScope.mockReturnValue({});
+    });
+
+    it('skips the organization unit step even when there are several organization units', () => {
+      renderWithProviders(<CreateResourceServerPage />);
+
+      expect(screen.queryByTestId('organization-unit-picker-screen')).not.toBeInTheDocument();
+      expect(screen.getByText(/What type of resource server are you adding/i)).toBeInTheDocument();
+    });
+
+    it('creates the resource server in the project, without an organization unit', async () => {
+      renderWithProviders(<CreateResourceServerPage />);
+
+      fireEvent.click(screen.getByRole('button', {name: /API/i}));
+      fireEvent.click(screen.getByRole('button', {name: /Continue/i}));
+
+      await waitFor(() => {
+        expect(screen.getByRole('textbox', {name: /resource server name/i})).toBeInTheDocument();
+      });
+
+      fireEvent.change(screen.getByRole('textbox', {name: /resource server name/i}), {
+        target: {value: 'Orders API'},
+      });
+      fireEvent.change(screen.getByRole('textbox', {name: /identifier/i}), {
+        target: {value: 'https://api.example.com/orders'},
+      });
+
+      fireEvent.click(screen.getByRole('button', {name: /Continue/i}));
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', {name: /Create resource server/i})).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByRole('button', {name: /Create resource server/i}));
+
+      expect(mockCreateResourceServerMutate).toHaveBeenCalledWith(
+        expect.objectContaining({name: 'Orders API', projectId: 'project-1'}),
+        expect.any(Object),
+      );
+      expect(mockCreateResourceServerMutate.mock.calls[0][0]).not.toHaveProperty('ouId');
     });
   });
 });

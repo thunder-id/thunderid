@@ -73,7 +73,8 @@ curl -kL -X POST https://localhost:8090/resource-servers \
 | `name` | Yes | Display name for the resource server. Must be unique. |
 | `identifier` | Yes | Unique identifier for the resource server. When set to an absolute URI (for example, `https://api.example.com/booking`), the resource server is used in RFC 8707 resource indicator flows and the identifier becomes the access token audience claim value. For URLs with a host, uniqueness follows RFC 3986 URI equivalence: `https://API.example.com` and `https://api.example.com/` both conflict with `https://api.example.com`, while paths stay case-sensitive, so `https://api.example.com/Booking` and `https://api.example.com/booking/` are distinct from `https://api.example.com/booking`. Other identifiers must match exactly to conflict. For an MCP resource server, the identifier must be an `http` or `https` URL with no fragment, such as `https://mcp.example.com/mcp`. |
 | `type` | No | `API`, `MCP`, or `CUSTOM`. Defaults to `CUSTOM`. Immutable after creation. |
-| `ouId` | Yes | Organization unit ID. |
+| `ouId` | No | Organization unit ID. When left out, the resource server is placed in the system organization unit. |
+| `projectId` | No | ID of the project the resource server belongs to. See [Scope Resource Servers to a Project](#scope-resource-servers-to-a-project). |
 | `delimiter` | No | Character that separates hierarchy levels in permission strings. Defaults to `:`. Immutable after creation. Allowed characters: `a-z A-Z 0-9 . _ : - /`. |
 | `description` | No | Description of the resource server. |
 
@@ -173,6 +174,8 @@ curl -kL https://localhost:8090/resource-servers?limit=10&offset=0 \
   -H 'Authorization: Bearer <access-token>'
 ```
 
+To list the resource servers an organization unit owns, add `filter=ouId eq "<ou-id>"`. It is the only supported filter expression. Any other filter fails the request with `RES-1027`.
+
 ## Get Resource Server Details
 
 ```bash
@@ -196,6 +199,18 @@ curl -kL -X PUT https://localhost:8090/resource-servers/<resource-server-id> \
     "ouId": "<organization-unit-id>"
   }'
 ```
+
+## Scope Resource Servers to a Project
+
+On the control plane, a resource server can belong to a project. A resource server without a `projectId` belongs to no project and stays available to every project.
+
+- **Create or update**: set `projectId` in the request body of `POST /resource-servers` or `PUT /resource-servers/{id}`. A resource server in a project is in the system organization unit, so `ouId` can be left out. Any other organization unit fails the request with `RES-1026`, and a project that does not exist fails it with `RES-1025`.
+- **Update without `projectId` or `ouId`**: the resource server keeps its current project and organization unit. A different `projectId` moves the resource server to that project.
+- **List**: `GET /resource-servers?projectId=<project-id>` returns the resource servers of the project. To list only the ones an organization unit in the project owns, add `filter=ouId eq "<ou-id>"`. A project that does not exist returns an empty list.
+
+A project groups resource servers for management only. At runtime, a resource server is found by its `identifier` whatever project it belongs to, so the `identifier` stays unique across all projects.
+
+A server without projects, such as the all-in-one server, keeps the `projectId` it receives without checking it, so configuration imported from a control plane keeps its project.
 
 ## Delete a Resource Server
 

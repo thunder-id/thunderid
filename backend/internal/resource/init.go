@@ -29,11 +29,13 @@ func KeepingValueReferences() Option {
 //
 // valueCapturer is optional. Given one, the service hands it every resource server it creates or
 // changes, so the values the resource server's export refers to are kept where a reference finds them.
+// projectValidator is nil on a deployment that serves no projects, where a project ID is kept unchecked.
 func Initialize(
 	mux *http.ServeMux,
 	ouService oupkg.OrganizationUnitServiceInterface,
 	authZENPDPService authzenpdp.AuthZENPDPServiceInterface,
 	valueCapturer declarativeresource.ValueCapturer,
+	projectValidator projectOUValidator,
 	options ...Option,
 ) (ResourceServiceInterface, declarativeresource.ResourceExporter, error) {
 	// Initialize store and transactioner based on store mode
@@ -43,7 +45,7 @@ func Initialize(
 	}
 
 	resourceService, err := newResourceService(ouService, resourceStore, transactioner, authZENPDPService,
-		valueCapturer, options...)
+		valueCapturer, projectValidator, options...)
 	if err != nil {
 		return nil, nil, err
 	}

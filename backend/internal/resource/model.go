@@ -18,6 +18,7 @@ type ResourceServerResponse struct {
 	Identifier          string                              `json:"identifier"`
 	Type                providers.ResourceServerType        `json:"type"`
 	OUID                string                              `json:"ouId"`
+	ProjectID           string                              `json:"projectId,omitempty"`
 	Delimiter           string                              `json:"delimiter"`
 	AuthorizationEngine providers.AuthorizationEngineConfig `json:"authorizationEngine,omitempty"`
 	IsReadOnly          bool                                `json:"isReadOnly"`
@@ -82,7 +83,8 @@ type CreateResourceServerRequest struct {
 	Description string                       `json:"description,omitempty"`
 	Identifier  string                       `json:"identifier"            native:"required"`
 	Type        providers.ResourceServerType `json:"type,omitempty"`
-	OUID        string                       `json:"ouId"                  native:"required"`
+	OUID        string                       `json:"ouId,omitempty"`
+	ProjectID   string                       `json:"projectId,omitempty"`
 	Delimiter   string                       `json:"delimiter,omitempty"`
 }
 
@@ -91,7 +93,8 @@ type UpdateResourceServerRequest struct {
 	Name                string                              `json:"name"`
 	Description         string                              `json:"description,omitempty"`
 	Identifier          string                              `json:"identifier,omitempty"`
-	OUID                string                              `json:"ouId"                  native:"required"`
+	OUID                string                              `json:"ouId,omitempty"`
+	ProjectID           string                              `json:"projectId,omitempty"`
 	AuthorizationEngine providers.AuthorizationEngineConfig `json:"authorizationEngine,omitempty"`
 }
 

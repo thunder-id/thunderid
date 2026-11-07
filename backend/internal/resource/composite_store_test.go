@@ -1327,3 +1327,70 @@ func (s *CompositeResourceStoreTestSuite) TestMergeAndDeduplicateResourceServers
 	assert.Len(s.T(), result, 1)
 	assert.True(s.T(), result[0].IsReadOnly, "File resource server should have IsReadOnly=true")
 }
+
+// projectServersReturner returns a mock return function that pages the given resource servers like a
+// project listing does.
+func projectServersReturner(
+	servers []providers.ResourceServer,
+) func(context.Context, string, string, int, int) []providers.ResourceServer {
+	return func(_ context.Context, _, _ string, limit, offset int) []providers.ResourceServer {
+		start := min(offset, len(servers))
+		return servers[start:min(start+limit, len(servers))]
+	}
+}
+
+func (s *CompositeResourceStoreTestSuite) TestGetResourceServerListByProject_MergesAndPaginates() {
+	dbServers := []providers.ResourceServer{
+		{ID: "rs1", ProjectID: "proj1"},
+		{ID: "rs2", ProjectID: "proj1"},
+	}
+	fileServers := []providers.ResourceServer{
+		{ID: "rs3", ProjectID: "proj1"},
+	}
+	s.dbStoreMock.On("GetResourceServerListCountByProject", s.ctx, "proj1", "ou1").Return(len(dbServers), nil)
+	s.fileStoreMock.On("GetResourceServerListCountByProject", s.ctx, "proj1", "ou1").Return(len(fileServers), nil)
+	s.dbStoreMock.On("GetResourceServerListByProject", s.ctx, "proj1", "ou1", mock.Anything, 0).
+		Return(projectServersReturner(dbServers), nil)
+	s.fileStoreMock.On("GetResourceServerListByProject", s.ctx, "proj1", "ou1", mock.Anything, 0).
+		Return(projectServersReturner(fileServers), nil)
+
+	result, err := s.compositeStore.GetResourceServerListByProject(s.ctx, "proj1", "ou1", 2, 1)
+	s.NoError(err)
+	s.Require().Len(result, 2)
+	s.Equal("rs2", result[0].ID)
+	s.Equal("rs3", result[1].ID)
+	s.True(result[1].IsReadOnly)
+
+	count, err := s.compositeStore.GetResourceServerListCountByProject(s.ctx, "proj1", "ou1")
+	s.NoError(err)
+	s.Equal(3, count)
+}
+
+func (s *CompositeResourceStoreTestSuite) TestGetResourceServerListByProject_LimitExceeded() {
+	s.dbStoreMock.On("GetResourceServerListCountByProject", s.ctx, "proj1", "ou1").
+		Return(serverconst.MaxCompositeStoreRecords, nil)
+	s.fileStoreMock.On("GetResourceServerListCountByProject", s.ctx, "proj1", "ou1").Return(1, nil)
+
+	_, err := s.compositeStore.GetResourceServerListByProject(s.ctx, "proj1", "ou1", 10, 0)
+	s.ErrorIs(err, errResultLimitExceededInCompositeMode)
+
+	_, err = s.compositeStore.GetResourceServerListCountByProject(s.ctx, "proj1", "ou1")
+	s.ErrorIs(err, errResultLimitExceededInCompositeMode)
+}
+
+func (s *CompositeResourceStoreTestSuite) TestGetResourceServerListCountByProject_StoreErrors() {
+	storeErr := errors.New("store error")
+
+	db := newResourceStoreInterfaceMock(s.T())
+	file := newResourceStoreInterfaceMock(s.T())
+	db.On("GetResourceServerListCountByProject", s.ctx, "proj1", "ou1").Return(0, storeErr)
+	_, err := newCompositeResourceStore(file, db).GetResourceServerListCountByProject(s.ctx, "proj1", "ou1")
+	s.ErrorIs(err, storeErr)
+
+	db = newResourceStoreInterfaceMock(s.T())
+	file = newResourceStoreInterfaceMock(s.T())
+	db.On("GetResourceServerListCountByProject", s.ctx, "proj1", "ou1").Return(1, nil)
+	file.On("GetResourceServerListCountByProject", s.ctx, "proj1", "ou1").Return(0, storeErr)
+	_, err = newCompositeResourceStore(file, db).GetResourceServerListCountByProject(s.ctx, "proj1", "ou1")
+	s.ErrorIs(err, storeErr)
+}

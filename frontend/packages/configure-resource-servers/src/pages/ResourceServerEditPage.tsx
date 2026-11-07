@@ -8,7 +8,7 @@ import {
   SettingsCard,
   UnsavedChangesBar,
 } from '@thunderid/components';
-import {useToast} from '@thunderid/contexts';
+import {useProjectScope, useToast} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {getErrorMessage, isEqualIgnoringEmpty} from '@thunderid/utils';
 import {
@@ -27,7 +27,7 @@ import {
   Typography,
 } from '@wso2/oxygen-ui';
 import {ArrowLeft, Edit} from '@wso2/oxygen-ui-icons-react';
-import {useCallback, useMemo, useState, type JSX, type SyntheticEvent} from 'react';
+import {useCallback, useEffect, useMemo, useState, type JSX, type SyntheticEvent} from 'react';
 import {useTranslation} from 'react-i18next';
 import {Link, useNavigate, useParams, useSearchParams} from 'react-router';
 import useGetDefaultResourceServer from '../api/useGetDefaultResourceServer';
@@ -83,6 +83,12 @@ export default function ResourceServerEditPage(): JSX.Element {
   const {data: resourceServer, isLoading, error, refetch} = useGetResourceServer(resourceServerId ?? '');
   const {data: defaultConfig, isLoading: isDefaultLoading, error: defaultError} = useGetDefaultResourceServer();
   const updateRs = useUpdateResourceServer();
+  const {projectId} = useProjectScope();
+  // Inside a project, a resource server of another project is not shown: the page returns to the list.
+  const isOtherProject = Boolean(projectId && resourceServer && resourceServer.projectId !== projectId);
+  useEffect(() => {
+    if (isOtherProject) void navigate(routes.list(), {replace: true});
+  }, [isOtherProject, navigate, routes]);
 
   // Resolves an error through the `resourceServers` catalog. `t` defaults to the `common`
   // namespace, so this forwards explicit `ns:` prefixes unchanged and prefixes bare keys with
@@ -192,7 +198,7 @@ export default function ResourceServerEditPage(): JSX.Element {
 
   const resourceTypeTitle = t('resourceServers:listing.title', 'Resource servers');
 
-  if (isLoading) {
+  if (isLoading || isOtherProject) {
     return (
       <>
         <DocumentTitle title={resourceTypeTitle} />

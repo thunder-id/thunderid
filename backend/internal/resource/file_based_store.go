@@ -130,6 +130,36 @@ func (f *fileBasedResourceStore) GetResourceServerListCountByOUID(ctx context.Co
 	return len(servers), nil
 }
 
+// GetResourceServerListByProject returns a page of the declarative resource servers of a project, narrowed
+// to the ones an organization unit owns when ouID is set.
+func (f *fileBasedResourceStore) GetResourceServerListByProject(
+	ctx context.Context, projectID, ouID string, limit, offset int,
+) ([]providers.ResourceServer, error) {
+	servers, err := f.resourceServersByProject(projectID, ouID)
+	if err != nil {
+		return nil, err
+	}
+
+	start := max(offset, 0)
+	if start >= len(servers) {
+		return []providers.ResourceServer{}, nil
+	}
+	end := min(start+max(limit, 0), len(servers))
+	return servers[start:end], nil
+}
+
+// GetResourceServerListCountByProject returns the number of declarative resource servers of a project,
+// narrowed to the ones an organization unit owns when ouID is set.
+func (f *fileBasedResourceStore) GetResourceServerListCountByProject(
+	ctx context.Context, projectID, ouID string,
+) (int, error) {
+	servers, err := f.resourceServersByProject(projectID, ouID)
+	if err != nil {
+		return 0, err
+	}
+	return len(servers), nil
+}
+
 func (f *fileBasedResourceStore) UpdateResourceServer(
 	ctx context.Context,
 	id string,
@@ -676,6 +706,26 @@ func (f *fileBasedResourceStore) resourceServersByOUID(ouID string) ([]providers
 	servers := make([]providers.ResourceServer, 0, len(list))
 	for _, item := range list {
 		if rs, ok := item.Data.(*providers.ResourceServer); ok && rs.OUID == ouID {
+			servers = append(servers, *rs)
+		}
+	}
+	return servers, nil
+}
+
+// resourceServersByProject returns the declarative resource servers of a project, narrowed to the ones an
+// organization unit owns when ouID is set.
+func (f *fileBasedResourceStore) resourceServersByProject(
+	projectID, ouID string,
+) ([]providers.ResourceServer, error) {
+	list, err := f.GenericFileBasedStore.List()
+	if err != nil {
+		return nil, err
+	}
+
+	servers := make([]providers.ResourceServer, 0, len(list))
+	for _, item := range list {
+		if rs, ok := item.Data.(*providers.ResourceServer); ok && rs.ProjectID == projectID &&
+			(ouID == "" || rs.OUID == ouID) {
 			servers = append(servers, *rs)
 		}
 	}

@@ -3,7 +3,7 @@
 
 import {DocumentTitle} from '@thunderid/components';
 import {OrganizationUnitPickerScreen, useHasMultipleOUs} from '@thunderid/configure-organization-units';
-import {useToast} from '@thunderid/contexts';
+import {useProjectScope, useToast} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {getErrorMessage} from '@thunderid/utils';
 import {
@@ -51,7 +51,14 @@ export default function CreateResourceServerPage(): JSX.Element {
   const setDefaultResourceServer = useSetDefaultResourceServer();
   const {data: defaultConfig, isLoading: isDefaultLoading, error: defaultError} = useGetDefaultResourceServer();
 
-  const {hasMultipleOUs, isLoading: isOuLoading, ouList} = useHasMultipleOUs();
+  const ouLookup = useHasMultipleOUs();
+  const {projectId} = useProjectScope();
+  // Inside a project the resource server is created with the project alone, and the API places it in
+  // the system organization unit, so there is no organization unit to pick.
+  const isInProject = Boolean(projectId);
+  const hasMultipleOUs = !isInProject && ouLookup.hasMultipleOUs;
+  const isOuLoading = !isInProject && ouLookup.isLoading;
+  const {ouList} = ouLookup;
 
   // Only trust the config once it has resolved, so the checkbox does not flicker from unticked to
   // ticked. A declarative (read-only) default is locked: the backend rejects any write to it.
@@ -212,12 +219,12 @@ export default function CreateResourceServerPage(): JSX.Element {
     }
 
     const resolvedOuId = effectiveOuId;
-    if (!resolvedOuId) return;
+    if (!isInProject && !resolvedOuId) return;
 
     const payload = {
       name: name.trim(),
       identifier: identifier.trim(),
-      ouId: resolvedOuId,
+      ...(isInProject ? {projectId} : {ouId: resolvedOuId}),
       type: selectedType,
       delimiter,
     };

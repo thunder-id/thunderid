@@ -791,11 +791,6 @@ func (suite *ServiceTestSuite) TestGetApplicationListByProject_InvalidFilter() {
 	assert.Equal(suite.T(), &ErrorInvalidFilter, svcErr)
 }
 
-func (suite *ServiceTestSuite) TestProjectErrorCodesMatchTheProjectService() {
-	assert.Equal(suite.T(), project.ErrorProjectNotFound.Code, projectNotFoundErrorCode)
-	assert.Equal(suite.T(), project.ErrorOUNotInProject.Code, ouNotInProjectErrorCode)
-}
-
 // projectValidatorReturning builds a project validator that fails with the given error.
 func (suite *ServiceTestSuite) projectValidatorReturning(svcErr *tidcommon.ServiceError) func() projectOUValidator {
 	return func() projectOUValidator {

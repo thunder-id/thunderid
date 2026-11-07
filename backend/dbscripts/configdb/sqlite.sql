@@ -235,6 +235,7 @@ CREATE TABLE "RESOURCE_SERVER" (
     DEPLOYMENT_ID VARCHAR(255) NOT NULL,
     ID VARCHAR(36) NOT NULL,
     OU_ID VARCHAR(36) NOT NULL,
+    PROJECT_ID VARCHAR(36),
     NAME VARCHAR(100) NOT NULL,
     DESCRIPTION TEXT,
     IDENTIFIER VARCHAR(2048) NOT NULL,
@@ -248,6 +249,9 @@ CREATE TABLE "RESOURCE_SERVER" (
 
 -- Composite index for name-based resource server lookups
 CREATE INDEX idx_resource_server_name_deployment ON "RESOURCE_SERVER" (DEPLOYMENT_ID, NAME);
+
+-- Composite index for listing the resource servers of a project
+CREATE INDEX idx_resource_server_project ON "RESOURCE_SERVER" (DEPLOYMENT_ID, PROJECT_ID);
 
 -- Unique constraint: Resource server identifier must be unique per deployment
 CREATE UNIQUE INDEX uq_resource_server_identifier

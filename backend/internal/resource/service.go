@@ -22,6 +22,7 @@ import (
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/filter"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/projectscope"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/utils"
@@ -42,6 +43,9 @@ const (
 		ValidPermissionDelimiters
 )
 
+// projectIDQueryParam is the query parameter that lists the resource servers of one project.
+const projectIDQueryParam = "projectId"
+
 // IsPermissionDelimiter reports whether r is one of the allowed delimiter characters in a
 // permission string (see ValidPermissionDelimiters).
 func IsPermissionDelimiter(r rune) bool {
@@ -59,6 +63,9 @@ type ResourceServiceInterface interface {
 	GetResourceServerList(ctx context.Context, limit, offset int) (*ResourceServerList, *tidcommon.ServiceError)
 	GetResourceServerListByOUID(
 		ctx context.Context, ouID string, limit, offset int,
+	) (*ResourceServerList, *tidcommon.ServiceError)
+	GetResourceServerListByProject(
+		ctx context.Context, projectID, ouID string, limit, offset int,
 	) (*ResourceServerList, *tidcommon.ServiceError)
 	UpdateResourceServer(
 		ctx context.Context, id string, rs providers.ResourceServer,
@@ -128,8 +135,15 @@ type resourceService struct {
 	transactioner      providers.Transactioner
 	dependencyRegistry resourcedependency.Registry
 	valueCapturer      declarativeresource.ValueCapturer
+	// projectValidator is nil on a deployment that serves no projects.
+	projectValidator projectOUValidator
 	// keepsReferences is set on a control plane, which keeps a value reference where a value belongs.
 	keepsReferences bool
+}
+
+// projectOUValidator checks that the organization unit of a resource scoped to a project belongs to it.
+type projectOUValidator interface {
+	ValidateProjectOU(ctx context.Context, projectID, ouID string) *tidcommon.ServiceError
 }
 
 // authZENPDPConnectionLookup retrieves AuthZEN PDP connections for resource-server validation.
@@ -233,6 +247,7 @@ func newResourceService(
 	transactionerInstance providers.Transactioner,
 	authZENPDPService authZENPDPConnectionLookup,
 	valueCapturer declarativeresource.ValueCapturer,
+	projectValidator projectOUValidator,
 	options ...Option,
 ) (ResourceServiceInterface, error) {
 	// Load default delimiter from config
@@ -249,6 +264,7 @@ func newResourceService(
 		defaultDelimiter:  defaultDelimiter,
 		transactioner:     transactionerInstance,
 		valueCapturer:     valueCapturer,
+		projectValidator:  projectValidator,
 	}
 	for _, option := range options {
 		option(service)
@@ -273,6 +289,20 @@ func (rs *resourceService) CreateResourceServer(
 	}
 	if err := rs.validateResourceServerCreate(resourceServer); err != nil {
 		return nil, err
+	}
+	// A resource server that names no organization unit goes to the system organization unit.
+	if resourceServer.OUID == "" {
+		systemOUID, svcErr := rs.ouService.GetSystemOUID(ctx)
+		if svcErr != nil {
+			return nil, svcErr
+		}
+		resourceServer.OUID = systemOUID
+	}
+	// A project checks that the resource server's organization unit belongs to it.
+	if resourceServer.ProjectID != "" {
+		if svcErr := rs.validateProjectOU(ctx, resourceServer.ProjectID, resourceServer.OUID); svcErr != nil {
+			return nil, svcErr
+		}
 	}
 
 	// Validate organization unit exists
@@ -353,6 +383,7 @@ func (rs *resourceService) CreateResourceServer(
 			Identifier:          resourceServer.Identifier,
 			Type:                resourceServer.Type,
 			OUID:                resourceServer.OUID,
+			ProjectID:           resourceServer.ProjectID,
 			Delimiter:           resourceServer.Delimiter,
 			AuthorizationEngine: resourceServer.AuthorizationEngine,
 		}
@@ -487,6 +518,79 @@ func (rs *resourceService) GetResourceServerListByOUID(
 	}, nil
 }
 
+// GetResourceServerListByProject retrieves a paginated list of the resource servers of a project, narrowed
+// to the ones an organization unit owns when ouID is set. A project that does not exist has none.
+func (rs *resourceService) GetResourceServerListByProject(
+	ctx context.Context, projectID, ouID string, limit, offset int,
+) (*ResourceServerList, *tidcommon.ServiceError) {
+	if err := validatePaginationParams(limit, offset); err != nil {
+		return nil, err
+	}
+
+	extraQuery := "&" + projectIDQueryParam + "=" + url.QueryEscape(projectID)
+	if ouID != "" {
+		extraQuery += utils.FilterQueryParam(map[string]any{filter.AttributeOUID: ouID})
+	}
+	if projectID == "" {
+		return &ResourceServerList{
+			ResourceServers: []providers.ResourceServer{},
+			StartIndex:      offset + 1,
+			Links:           utils.BuildPaginationLinks("/resource-servers", limit, offset, 0, extraQuery),
+		}, nil
+	}
+
+	totalCount, err := rs.resourceStore.GetResourceServerListCountByProject(ctx, projectID, ouID)
+	if err != nil {
+		if errors.Is(err, errResultLimitExceededInCompositeMode) {
+			return nil, &ErrResultLimitExceededInCompositeMode
+		}
+		rs.logger.Error(ctx, "Failed to get resource server count in project",
+			log.String("projectID", projectID), log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+
+	resourceServers, err := rs.resourceStore.GetResourceServerListByProject(ctx, projectID, ouID, limit, offset)
+	if err != nil {
+		if errors.Is(err, errResultLimitExceededInCompositeMode) {
+			return nil, &ErrResultLimitExceededInCompositeMode
+		}
+		rs.logger.Error(ctx, "Failed to list resource servers in project",
+			log.String("projectID", projectID), log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+
+	return &ResourceServerList{
+		TotalResults:    totalCount,
+		ResourceServers: resourceServers,
+		StartIndex:      offset + 1,
+		Count:           len(resourceServers),
+		Links:           utils.BuildPaginationLinks("/resource-servers", limit, offset, totalCount, extraQuery),
+	}, nil
+}
+
+// validateProjectOU checks that a resource server's organization unit belongs to its project. It returns
+// ErrorInvalidProject when no such project exists, and ErrorOUNotInProject when the organization unit is
+// outside the project.
+//
+// A deployment that serves no projects, such as a Data Plane, cannot check the project. It keeps the
+// project ID and organization unit as given so that imported configuration retains them.
+func (rs *resourceService) validateProjectOU(ctx context.Context, projectID, ouID string) *tidcommon.ServiceError {
+	if rs.projectValidator == nil {
+		return nil
+	}
+	svcErr := rs.projectValidator.ValidateProjectOU(ctx, projectID, ouID)
+	switch {
+	case svcErr == nil:
+		return nil
+	case svcErr.Code == projectscope.ProjectNotFoundErrorCode:
+		return &ErrorInvalidProject
+	case svcErr.Code == projectscope.OUNotInProjectErrorCode:
+		return &ErrorOUNotInProject
+	default:
+		return &tidcommon.InternalServerError
+	}
+}
+
 // UpdateResourceServer updates a resource server.
 func (rs *resourceService) UpdateResourceServer(
 	ctx context.Context,
@@ -514,6 +618,22 @@ func (rs *resourceService) UpdateResourceServer(
 	if rs.IsResourceServerDeclarative(id) {
 		rs.logger.Debug(ctx, "Cannot modify declarative resource server", log.String("id", id))
 		return nil, ErrorImmutableResourceServer.WithParams(map[string]string{"id": id})
+	}
+
+	// An update that names no organization unit keeps the resource server in its own, and one that names no
+	// project keeps it in its project. The project is checked only when the update changes the project or the
+	// organization unit, so a resource server whose project is gone can still be edited.
+	if resourceServer.OUID == "" {
+		resourceServer.OUID = existingResServer.OUID
+	}
+	if resourceServer.ProjectID == "" {
+		resourceServer.ProjectID = existingResServer.ProjectID
+	}
+	if resourceServer.ProjectID != "" && (resourceServer.ProjectID != existingResServer.ProjectID ||
+		resourceServer.OUID != existingResServer.OUID) {
+		if svcErr := rs.validateProjectOU(ctx, resourceServer.ProjectID, resourceServer.OUID); svcErr != nil {
+			return nil, svcErr
+		}
 	}
 
 	// Delimiter is always preserved from the existing record
@@ -599,6 +719,7 @@ func (rs *resourceService) UpdateResourceServer(
 			Identifier:          resourceServer.Identifier,
 			Type:                resourceServer.Type,
 			OUID:                resourceServer.OUID,
+			ProjectID:           resourceServer.ProjectID,
 			Delimiter:           resourceServer.Delimiter,
 			AuthorizationEngine: resourceServer.AuthorizationEngine,
 		}
@@ -1475,9 +1596,6 @@ func (rs *resourceService) validateResourceServerCreate(
 	if resourceServer.Name == "" {
 		return &ErrorInvalidRequestFormat
 	}
-	if resourceServer.OUID == "" {
-		return &ErrorInvalidRequestFormat
-	}
 	if resourceServer.Identifier == "" {
 		return &ErrorInvalidRequestFormat
 	}
@@ -1505,9 +1623,6 @@ func (rs *resourceService) validateResourceServerUpdate(
 	resourceServer providers.ResourceServer,
 ) *tidcommon.ServiceError {
 	if resourceServer.Name == "" {
-		return &ErrorInvalidRequestFormat
-	}
-	if resourceServer.OUID == "" {
 		return &ErrorInvalidRequestFormat
 	}
 	if resourceServer.AuthorizationEngine.Type != "" &&

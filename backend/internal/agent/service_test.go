@@ -4764,11 +4764,6 @@ func (suite *AgentServiceTestSuite) validating(wantOUID string, svcErr *tidcommo
 	}
 }
 
-func (suite *AgentServiceTestSuite) TestProjectErrorCodesMatchTheProjectService() {
-	assert.Equal(suite.T(), project.ErrorProjectNotFound.Code, projectNotFoundErrorCode)
-	assert.Equal(suite.T(), project.ErrorOUNotInProject.Code, ouNotInProjectErrorCode)
-}
-
 func (suite *AgentServiceTestSuite) TestGetAgentListByProject() {
 	for name, tc := range map[string]struct {
 		filters map[string]interface{}

@@ -463,9 +463,9 @@ func (as *applicationService) validateProjectOU(ctx context.Context, projectID, 
 	switch {
 	case svcErr == nil:
 		return nil
-	case svcErr.Code == projectNotFoundErrorCode:
+	case svcErr.Code == projectscope.ProjectNotFoundErrorCode:
 		return &ErrorInvalidProject
-	case svcErr.Code == ouNotInProjectErrorCode:
+	case svcErr.Code == projectscope.OUNotInProjectErrorCode:
 		return &ErrorOUNotInProject
 	default:
 		return &tidcommon.InternalServerError

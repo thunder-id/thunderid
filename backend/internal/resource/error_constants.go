@@ -299,6 +299,46 @@ var (
 			DefaultValue: "Use an http or https URL with no fragment, such as https://mcp.example.com/mcp",
 		},
 	}
+	// ErrorInvalidProject is returned when a resource server names a project that does not exist.
+	ErrorInvalidProject = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "RES-1025",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.resourceservice.invalid_project",
+			DefaultValue: "Invalid project",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.resourceservice.invalid_project_description",
+			DefaultValue: "No project exists with the given project ID",
+		},
+	}
+	// ErrorOUNotInProject is returned when a resource server names an organization unit outside the project
+	// it names.
+	ErrorOUNotInProject = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "RES-1026",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.resourceservice.ou_not_in_project",
+			DefaultValue: "Organization unit not in project",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.resourceservice.ou_not_in_project_description",
+			DefaultValue: "The organization unit must belong to the project",
+		},
+	}
+	// ErrorInvalidFilter is returned when a resource server listing carries a filter it cannot apply.
+	ErrorInvalidFilter = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "RES-1027",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.resourceservice.invalid_filter_parameter",
+			DefaultValue: "Invalid filter parameter",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.resourceservice.invalid_filter_parameter_description",
+			DefaultValue: "The filter must be a single ouId eq expression with a quoted organization unit ID",
+		},
+	}
 )
 
 // Internal error constants.

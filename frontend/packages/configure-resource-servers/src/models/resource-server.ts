@@ -41,6 +41,7 @@ export interface ResourceServer {
   description?: string | null;
   identifier: string;
   ouId: string;
+  projectId?: string;
   delimiter: string;
   isReadOnly?: boolean;
   type: ResourceServerType;
@@ -96,7 +97,10 @@ export interface CreateResourceServerRequest {
   description?: string;
   identifier: string;
   delimiter?: PermissionDelimiter;
-  ouId: string;
+  /** Required unless `projectId` is given. */
+  ouId?: string;
+  /** Places the resource server in the project, in the system organization unit. */
+  projectId?: string;
   type?: ResourceServerType;
 }
 

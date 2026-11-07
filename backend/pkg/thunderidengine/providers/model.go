@@ -182,6 +182,7 @@ type ResourceServer struct {
 	Type                ResourceServerType        `yaml:"type,omitempty"        json:"type,omitempty"`
 	OUID                string                    `yaml:"ouId,omitempty"        json:"ouId"`
 	OUHandle            string                    `yaml:"ouHandle,omitempty"    json:"-"`
+	ProjectID           string                    `yaml:"projectId,omitempty"   json:"projectId,omitempty"`
 	Delimiter           string                    `yaml:"delimiter,omitempty"   json:"delimiter,omitempty"   yamlfmt:"quoted"`
 	AuthorizationEngine AuthorizationEngineConfig `yaml:"authorizationEngine,omitempty" json:"authorizationEngine,omitempty"`
 	IsReadOnly          bool                      `yaml:"-"                     json:"-"`
