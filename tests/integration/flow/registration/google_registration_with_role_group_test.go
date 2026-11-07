@@ -136,9 +136,6 @@ var (
 			"username": map[string]interface{}{
 				"type": "string",
 			},
-			"sub": map[string]interface{}{
-				"type": "string",
-			},
 			"email": map[string]interface{}{
 				"type": "string",
 			},

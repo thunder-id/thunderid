@@ -20,13 +20,13 @@ identity is given a local user first so a well-formed exchange would authenticat
 assertion would hold merely because no user existed.
 */
 
-// oauthUser registers an identity on the OAuth mock and a local user carrying its subject.
+// oauthUser registers an identity on the OAuth mock and a local user carrying its email.
 func (s *FederatedMappingSuite) oauthUser() string {
 	s.T().Helper()
 	sub := s.nextSubject()
 	email := sub + "@example.com"
 	s.mockOAuth.AddUser(&testutils.OAuthUserInfo{Sub: sub, Email: email, Name: "OAuth User"})
-	s.createLocalUser(map[string]interface{}{"username": email, "email": email, "sub": sub})
+	s.createLocalUser(map[string]interface{}{"username": email, "email": email})
 	return sub
 }
 
