@@ -51,11 +51,11 @@ func (s *GroupExecutorTestSuite) TestMetaDeclaresEveryModeAndNoDefault() {
 
 	s.Require().NotNil(meta)
 	s.Empty(meta.DefaultMode)
-	s.Equal([]string{ExecutorModeGroupDeletion, ExecutorModeGroupMembershipRemoval}, meta.SupportedModes)
+	s.Equal([]string{ExecutorModeGroupMembershipRemoval}, meta.SupportedModes)
 }
 
 func (s *GroupExecutorTestSuite) TestUnknownModeIsAnError() {
-	for _, mode := range []string{"", ExecutorModeRoleAssignmentRemoval} {
+	for _, mode := range []string{"", ExecutorModeGroupDeletion, ExecutorModeRoleAssignmentRemoval} {
 		s.Run(mode, func() {
 			_, err := newGroupExecutor(s.factory, s.groups).Execute(
 				withRevocationPlan(s.T(), mode, groupPlan(testMemberID)))
@@ -64,7 +64,7 @@ func (s *GroupExecutorTestSuite) TestUnknownModeIsAnError() {
 			s.Contains(err.Error(), "unsupported mode")
 		})
 	}
-	s.groups.AssertNotCalled(s.T(), "DeleteGroup", mock.Anything, mock.Anything)
+	s.groups.AssertNotCalled(s.T(), "RemoveGroupMembers", mock.Anything, mock.Anything, mock.Anything)
 }
 
 func (s *GroupExecutorTestSuite) TestRemoveMember_ConsumesTheValidatorPlan() {
@@ -98,7 +98,7 @@ func (s *GroupExecutorTestSuite) TestRemoveMember_RefusesAPlanWithoutAMember() {
 
 	s.Require().Error(err)
 	s.Contains(err.Error(), "no departing member")
-	s.groups.AssertNotCalled(s.T(), "DeleteGroup", mock.Anything, mock.Anything)
+	s.groups.AssertNotCalled(s.T(), "RemoveGroupMembers", mock.Anything, mock.Anything, mock.Anything)
 }
 
 func (s *GroupExecutorTestSuite) TestRemoveMember_RefusesAPlanWithoutAMemberType() {
@@ -113,50 +113,8 @@ func (s *GroupExecutorTestSuite) TestRemoveMember_RefusesAPlanWithoutAMemberType
 	s.groups.AssertNotCalled(s.T(), "RemoveGroupMembers", mock.Anything, mock.Anything, mock.Anything)
 }
 
-func (s *GroupExecutorTestSuite) TestDelete_RefusesAPlanNamingAMember() {
-	plan := groupPlan(testMemberID)
-	plan.Reason = revocation.ReasonGroupDeleted
-
-	_, err := newGroupExecutor(s.factory, s.groups).Execute(
-		withRevocationPlan(s.T(), ExecutorModeGroupDeletion, plan))
-
-	s.Require().Error(err)
-	s.Contains(err.Error(), "names a departing member")
-	s.groups.AssertNotCalled(s.T(), "DeleteGroup", mock.Anything, mock.Anything)
-}
-
-func (s *GroupExecutorTestSuite) TestDelete_ConsumesTheValidatorPlan() {
-	roles := newRoleAdminProviderMock(s.T())
-	roles.On("ValidateGroupDeletion", mock.Anything, testGroupID).
-		Return(oneCaliforniaScope("member-1", "member-2"), nil)
-	s.groups.On("DeleteGroup", mock.Anything, testGroupID).Return(nil)
-
-	pre, err := newAccessChangeValidator(s.factory, roles, nil, nil).Execute(
-		administrationNodeContext(ExecutorModeGroupDeletion, map[string]string{revocationInputGroup: testGroupID}))
-	s.Require().NoError(err)
-	s.Require().Equal(providers.ExecComplete, pre.Status)
-
-	ctx := administrationNodeContext(ExecutorModeGroupDeletion, nil)
-	ctx.SharedRuntimeData = pre.SharedRuntimeData
-	resp, err := newGroupExecutor(s.factory, s.groups).Execute(ctx)
-
-	s.Require().NoError(err)
-	s.Equal(providers.ExecComplete, resp.Status)
-}
-
-func (s *GroupExecutorTestSuite) TestDelete_DeletesTheGroup() {
-	s.groups.On("DeleteGroup", mock.Anything, testGroupID).Return(nil)
-
-	resp, err := newGroupExecutor(s.factory, s.groups).Execute(
-		withRevocationPlan(s.T(), ExecutorModeGroupDeletion, groupPlan("")))
-
-	s.Require().NoError(err)
-	s.Equal(providers.ExecComplete, resp.Status)
-}
-
 func (s *GroupExecutorTestSuite) TestEveryModeRejectsAForeignPlan() {
 	foreign := map[string]revocation.Reason{
-		ExecutorModeGroupDeletion:          revocation.ReasonGroupMembershipRemoved,
 		ExecutorModeGroupMembershipRemoval: revocation.ReasonGroupDeleted,
 	}
 	s.Len(foreign, len(groupActionsByMode), "every mode must be covered")
@@ -174,7 +132,6 @@ func (s *GroupExecutorTestSuite) TestEveryModeRejectsAForeignPlan() {
 
 func (s *GroupExecutorTestSuite) TestUncodedRefusalFallsBackToTheModeError() {
 	uncoded := &tidcommon.ServiceError{Type: tidcommon.ClientErrorType}
-	s.groups.On("DeleteGroup", mock.Anything, mock.Anything).Return(uncoded)
 	s.groups.On("RemoveGroupMembers", mock.Anything, mock.Anything, mock.Anything).Return(nil, uncoded)
 
 	cases := []struct {
@@ -182,7 +139,6 @@ func (s *GroupExecutorTestSuite) TestUncodedRefusalFallsBackToTheModeError() {
 		plan revocationPlan
 		want tidcommon.ServiceError
 	}{
-		{ExecutorModeGroupDeletion, groupPlan(""), ErrGroupDeletionFailed},
 		{ExecutorModeGroupMembershipRemoval, groupPlan(testMemberID), ErrGroupMembershipRemovalFailed},
 	}
 	for _, tc := range cases {
@@ -198,17 +154,19 @@ func (s *GroupExecutorTestSuite) TestUncodedRefusalFallsBackToTheModeError() {
 }
 
 func (s *GroupExecutorTestSuite) TestServerErrorFailsTheFlow() {
-	s.groups.On("DeleteGroup", mock.Anything, testGroupID).Return(&tidcommon.InternalServerError)
+	s.groups.On("RemoveGroupMembers", mock.Anything, testGroupID, mock.Anything).
+		Return(nil, &tidcommon.InternalServerError)
 
 	_, err := newGroupExecutor(s.factory, s.groups).Execute(
-		withRevocationPlan(s.T(), ExecutorModeGroupDeletion, groupPlan("")))
+		withRevocationPlan(s.T(), ExecutorModeGroupMembershipRemoval, groupPlan(testMemberID)))
 
 	s.Require().Error(err)
-	s.Contains(err.Error(), "failed to perform group_deleted")
+	s.Contains(err.Error(), "failed to perform group_membership_removed")
 }
 
 func (s *GroupExecutorTestSuite) TestRefusesWithoutItsSeam() {
-	_, err := newGroupExecutor(s.factory, nil).Execute(administrationNodeContext(ExecutorModeGroupDeletion, nil))
+	_, err := newGroupExecutor(s.factory, nil).Execute(
+		administrationNodeContext(ExecutorModeGroupMembershipRemoval, nil))
 
 	s.Require().Error(err)
 	s.EqualError(err, "group service is not configured")

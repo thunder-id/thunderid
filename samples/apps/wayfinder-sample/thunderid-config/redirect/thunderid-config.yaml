@@ -2044,8 +2044,6 @@ value:
     defaultHandle: default-role-deletion-flow
   rolePermissionRemovalFlow:
     defaultHandle: default-role-permission-removal-flow
-  groupDeletionFlow:
-    defaultHandle: default-group-deletion-flow
   groupMembershipRemovalFlow:
     defaultHandle: default-group-membership-removal-flow
   actionDeletionFlow:

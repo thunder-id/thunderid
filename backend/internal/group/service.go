@@ -95,6 +95,8 @@ type groupService struct {
 	sharingService     sharing.SharingServiceInterface
 	roleAssignments    RoleAssignmentResolver
 	bus                eventbus.EventBusInterface
+	// systemFlows is nil where system flows are off.
+	systemFlows systemFlowProvider
 }
 
 // newGroupServiceWithStore creates a new instance of GroupService with an externally provided store.
@@ -698,6 +700,14 @@ func (gs *groupService) deleteGroup(ctx context.Context, groupID string) *tidcom
 		return &tidcommon.InternalServerError
 	}
 
+	// Revokes what the group passes to its members before anything is removed. It runs before the
+	// cascade, which removes the group's role assignments, and a refusal leaves the group as it was.
+	inputs := map[string]string{systemFlowInputGroup: groupID}
+	shared, svcErr := gs.runSystemFlow(ctx, systemFlowGroupDeletePre, inputs, nil)
+	if svcErr != nil {
+		return svcErr
+	}
+
 	// Remove dependents that must be deleted with the group (its role assignments and its
 	// memberships in other groups). This spans other databases, so run it before (and outside) the
 	// group-delete transaction: a failure aborts and leaves the group retriable, and the
@@ -707,6 +717,13 @@ func (gs *groupService) deleteGroup(ctx context.Context, groupID string) *tidcom
 		logger.Error(ctx, "Failed to cascade-delete group dependencies",
 			log.String("id", groupID), log.Error(cascadeErr))
 		return &tidcommon.InternalServerError
+	}
+
+	// Moves the cutoff past the cascade, which removed what granted the revoked scopes, so a token
+	// issued while it ran is revoked too. It runs before the group delete, so a failure leaves the
+	// group in place and the delete can be retried.
+	if _, svcErr := gs.runSystemFlow(ctx, systemFlowRevocationPost, inputs, shared); svcErr != nil {
+		return svcErr
 	}
 
 	if err := gs.transactioner.Transact(ctx, func(txCtx context.Context) error {

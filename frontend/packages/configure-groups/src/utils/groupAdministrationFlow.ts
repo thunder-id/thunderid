@@ -22,26 +22,6 @@ export async function deleteGroupNatively(http: HttpLike, serverUrl: string, gro
 }
 
 /**
- * Deletes a group through the configured deletion flow, falling back to the native endpoint.
- *
- * Only the flow revokes the scopes the members held through the group; a configured flow that cannot be
- * resolved refuses.
- */
-export async function deleteGroupViaFlow(http: HttpLike, serverUrl: string, groupId: string): Promise<void> {
-  const result = await runAdministrationFlow(
-    http,
-    serverUrl,
-    AdministrationFlowConfigKey.GROUP_DELETION,
-    {[AdministrationFlowInput.GROUP]: groupId},
-    'group deletion',
-  );
-
-  if (result === null) {
-    await deleteGroupNatively(http, serverUrl, groupId);
-  }
-}
-
-/**
  * Removes one member from a group through the native endpoint.
  */
 export async function removeGroupMemberNatively(
