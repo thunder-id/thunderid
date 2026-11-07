@@ -20,6 +20,8 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/ou"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
+	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/filter"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
@@ -53,19 +55,22 @@ type notificationTemplateService struct {
 	ouService          ou.OrganizationUnitServiceInterface
 	dependencyRegistry resourcedependency.Registry
 	logger             *log.Logger
+	bus                eventbus.EventBusInterface
 }
 
 // newNotificationTemplateService creates a new service with the given store, transactioner, and OU
 // service. The OU service verifies the ouId at creation; a nil ouService skips that check.
 func newNotificationTemplateService(store notificationTemplateStoreInterface,
 	transactioner providers.Transactioner,
-	ouService ou.OrganizationUnitServiceInterface) NotificationTemplateServiceInterface {
+	ouService ou.OrganizationUnitServiceInterface,
+	bus eventbus.EventBusInterface) NotificationTemplateServiceInterface {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "NotificationTemplateService"))
 	return &notificationTemplateService{
 		store:         store,
 		transactioner: transactioner,
 		ouService:     ouService,
 		logger:        logger,
+		bus:           bus,
 	}
 }
 
@@ -87,6 +92,18 @@ func (ts *notificationTemplateService) ListTemplatesByOUID(ctx context.Context, 
 // CreateTemplate creates a new template with a server-assigned id. The handle-uniqueness check and the
 // insert run in one transaction so a concurrent create cannot slip a duplicate past the check.
 func (ts *notificationTemplateService) CreateTemplate(ctx context.Context, channel ChannelType,
+	request CreateTemplateRequest) (*Template, *tidcommon.ServiceError) {
+	created, svcErr := ts.createTemplate(ctx, channel, request)
+	var templateID string
+	if svcErr == nil {
+		templateID = created.ID
+	}
+	ts.publishTemplateEvent(ctx, audit.EventNotificationTemplateCreate, audit.ActionCreate, templateID, svcErr)
+	return created, svcErr
+}
+
+// createTemplate creates a new template without publishing its audit event.
+func (ts *notificationTemplateService) createTemplate(ctx context.Context, channel ChannelType,
 	request CreateTemplateRequest) (*Template, *tidcommon.ServiceError) {
 	// In declarative-only mode the store is read-only: no handle can be created through the API.
 	if isDeclarativeModeEnabled() {
@@ -201,6 +218,14 @@ func (ts *notificationTemplateService) ValidateTemplate(ctx context.Context, cha
 // echoed on the response.
 func (ts *notificationTemplateService) UpdateTemplate(ctx context.Context, channel ChannelType, id string,
 	request UpdateTemplateRequest) (*Template, *tidcommon.ServiceError) {
+	updated, svcErr := ts.updateTemplate(ctx, channel, id, request)
+	ts.publishTemplateEvent(ctx, audit.EventNotificationTemplateUpdate, audit.ActionUpdate, id, svcErr)
+	return updated, svcErr
+}
+
+// updateTemplate updates an existing template without publishing its audit event.
+func (ts *notificationTemplateService) updateTemplate(ctx context.Context, channel ChannelType, id string,
+	request UpdateTemplateRequest) (*Template, *tidcommon.ServiceError) {
 	if svcErr := validateChannel(channel); svcErr != nil {
 		return nil, svcErr
 	}
@@ -254,6 +279,20 @@ func (ts *notificationTemplateService) UpdateTemplate(ctx context.Context, chann
 func (ts *notificationTemplateService) DeleteTemplate(
 	ctx context.Context, channel ChannelType, id string,
 ) *tidcommon.ServiceError {
+	svcErr := ts.deleteTemplate(ctx, channel, id)
+	// A delete that found nothing to remove succeeds without an event, so no caller can record a
+	// deletion of an ID it made up.
+	if svcErr == errTemplateNotFoundNoop {
+		return nil
+	}
+	ts.publishTemplateEvent(ctx, audit.EventNotificationTemplateDelete, audit.ActionDelete, id, svcErr)
+	return svcErr
+}
+
+// deleteTemplate deletes a template without publishing its audit event.
+func (ts *notificationTemplateService) deleteTemplate(
+	ctx context.Context, channel ChannelType, id string,
+) *tidcommon.ServiceError {
 	if svcErr := validateChannel(channel); svcErr != nil {
 		return svcErr
 	}
@@ -265,7 +304,7 @@ func (ts *notificationTemplateService) DeleteTemplate(
 	if err != nil {
 		if errors.Is(err, errTemplateNotFound) {
 			// Idempotent delete: an absent template is treated as already deleted (204).
-			return nil
+			return errTemplateNotFoundNoop
 		}
 		ts.logger.Error(ctx, "Failed to check template existence", log.String("id", id), log.Error(err))
 		return &tidcommon.InternalServerError
@@ -316,6 +355,17 @@ func (ts *notificationTemplateService) DeleteTemplate(
 
 	ts.logger.Debug(ctx, "Successfully deleted notification template", log.String("id", id))
 	return nil
+}
+
+// publishTemplateEvent publishes the audit event of an attempt on the template with id, after the change
+// committed or was refused. No part of the template, its handle, name or content, is recorded.
+func (ts *notificationTemplateService) publishTemplateEvent(ctx context.Context, name string,
+	action audit.Action, id string, svcErr *tidcommon.ServiceError) {
+	// A failed attempt keeps the ID the caller asked for, even one that matches no template, as forensic
+	// evidence of what was probed; the payload caps it and the sink escapes it.
+	target := audit.Ref{Type: audit.TargetTypeNotificationTemplate, ID: id}
+	eventbus.TryPublish(ctx, ts.bus,
+		eventbus.NewEvent(ctx, name).With(audit.ChangePayload(ctx, target, action, svcErr)))
 }
 
 // SetDependencyRegistry injects the dependency registry. Called by the service manager after the

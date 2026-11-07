@@ -10,6 +10,7 @@ import (
 	notificationconfig "github.com/thunder-id/thunderid/internal/notification/config"
 	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/serverconfig"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -21,10 +22,17 @@ import (
 // type. This package no longer registers any HTTP routes; its services are consumed internally
 // by authn, flow executors, and the connection/importer packages. It also returns the handler of
 // the "notification" server-config section.
+//
+// bus is required: the sender management service publishes the audit event of every notification
+// sender it creates, updates or deletes on it.
 func Initialize(jwtService jwt.JWTServiceInterface, cfg notificationconfig.Config,
-	ouService ou.OrganizationUnitServiceInterface) (
+	ouService ou.OrganizationUnitServiceInterface, bus eventbus.EventBusInterface) (
 	NotificationSenderMgtSvcInterface, OTPServiceInterface, NotificationSenderServiceInterface,
 	serverconfig.ServerConfigHandlerInterface, error) {
+	if bus == nil {
+		return nil, nil, nil, nil, errNilEventBus
+	}
+
 	var notificationStore notificationStoreInterface
 	var tx providers.Transactioner
 
@@ -41,7 +49,7 @@ func Initialize(jwtService jwt.JWTServiceInterface, cfg notificationconfig.Confi
 		}
 	}
 
-	mgtService := newNotificationSenderMgtService(notificationStore, tx, ouService)
+	mgtService := newNotificationSenderMgtService(notificationStore, tx, ouService, bus)
 
 	clientFactory := client.Initialize()
 	otpService := newOTPService(jwtService, cfg)

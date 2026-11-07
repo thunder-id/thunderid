@@ -1549,6 +1549,60 @@ func TestImportResources_ConnectionSenderUpsertFallsBackToCreateOnNotFound(t *te
 	require.Len(t, senderSvc.created, 1)
 }
 
+// An upsert of a sender that does not exist looks it up and creates it, without attempting an update
+// the sender service would record as failed.
+func TestImportResources_ConnectionSenderUpsertLooksUpBeforeUpdating(t *testing.T) {
+	senderSvc := &fakeSenderService{
+		byID: map[string]*ncommon.NotificationSenderDTO{},
+		updateErr: &tidcommon.ServiceError{
+			Type: tidcommon.ServerErrorType, Code: "MNS-5000",
+			Error: tidcommon.I18nMessage{DefaultValue: "an update must not be attempted"},
+		},
+	}
+	svc := newImportService(
+		nil, nil, senderSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{
+		Content: "resource_type: connection\nid: missing-sender\nname: sms-one\ntype: sms-gateway\n" +
+			"url: https://example.com/sms\n",
+		Options: &ImportOptions{Upsert: boolPtr(true), ContinueOnError: boolPtr(true), Target: importTargetRuntime},
+	})
+
+	require.Nil(t, err)
+	require.NotNil(t, resp)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status)
+	assert.Equal(t, operationCreate, resp.Results[0].Operation)
+	require.Len(t, senderSvc.created, 1)
+}
+
+// A lookup that fails for a reason other than a missing sender ends the upsert as a failed update.
+func TestImportResources_ConnectionSenderUpsertLookupFailure(t *testing.T) {
+	senderSvc := &fakeSenderService{
+		byID: map[string]*ncommon.NotificationSenderDTO{},
+		getErr: &tidcommon.ServiceError{
+			Type: tidcommon.ServerErrorType, Code: "SSE-5000",
+			Error: tidcommon.I18nMessage{DefaultValue: "internal error"},
+		},
+	}
+	svc := newImportService(
+		nil, nil, senderSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{
+		Content: "resource_type: connection\nid: sender-1\nname: sms-one\ntype: sms-gateway\n" +
+			"url: https://example.com/sms\n",
+		Options: &ImportOptions{Upsert: boolPtr(true), ContinueOnError: boolPtr(true), Target: importTargetRuntime},
+	})
+
+	require.Nil(t, err)
+	require.NotNil(t, resp)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusFailed, resp.Results[0].Status)
+	assert.Equal(t, operationUpdate, resp.Results[0].Operation)
+	assert.Equal(t, "SSE-5000", resp.Results[0].Code)
+	assert.Empty(t, senderSvc.created)
+}
+
 func TestImportResources_ConnectionSenderUpdateFailureNonNotFound(t *testing.T) {
 	senderSvc := &fakeSenderService{
 		byID: map[string]*ncommon.NotificationSenderDTO{"sender-1": {ID: "sender-1"}},

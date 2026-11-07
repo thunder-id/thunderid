@@ -62,7 +62,7 @@ func initMutableTestRuntime(t interface {
 func (s *NotificationTemplateServiceTestSuite) SetupTest() {
 	initMutableTestRuntime(s.T())
 	s.mockStore = newNotificationTemplateStoreInterfaceMock(s.T())
-	s.svc = newNotificationTemplateService(s.mockStore, executingTransactioner(s.T()), nil)
+	s.svc = newNotificationTemplateService(s.mockStore, executingTransactioner(s.T()), nil, discardingBus{})
 	s.ctx = context.Background()
 }
 
@@ -109,7 +109,7 @@ func (s *NotificationTemplateServiceTestSuite) TestCreateTemplate_KeepsProvidedI
 // exercised (the shared SetupTest service has a nil OU service that skips the check).
 func (s *NotificationTemplateServiceTestSuite) svcWithOU(
 	ouMock *oumock.OrganizationUnitServiceInterfaceMock) NotificationTemplateServiceInterface {
-	return newNotificationTemplateService(s.mockStore, executingTransactioner(s.T()), ouMock)
+	return newNotificationTemplateService(s.mockStore, executingTransactioner(s.T()), ouMock, discardingBus{})
 }
 
 // TestCreateTemplate_StoresOU verifies a valid ouId is checked against the OU service and persisted on

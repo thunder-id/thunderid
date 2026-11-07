@@ -112,6 +112,7 @@ func (suite *NotificationSenderMgtServiceTestSuite) SetupTest() {
 		transactioner:      &fakeTransactioner{},
 		dependencyRegistry: newNoBlockingDepsRegistry(),
 		uuidGenerator:      sysutils.GenerateUUIDv7,
+		bus:                discardingBus{},
 	}
 }
 
@@ -156,6 +157,7 @@ func (suite *NotificationSenderMgtServiceTestSuite) TestCreateSender_UUIDGenerat
 		uuidGenerator: func() (string, error) {
 			return "", errors.New("entropy source failed")
 		},
+		bus: discardingBus{},
 	}
 
 	result, err := svc.CreateSender(context.Background(), sender)
@@ -232,6 +234,7 @@ func (suite *NotificationSenderMgtServiceTestSuite) TestCreateSender_WithFailure
 				notificationStore: mockStore,
 				transactioner:     &fakeTransactioner{},
 				uuidGenerator:     sysutils.GenerateUUIDv7,
+				bus:               discardingBus{},
 			}
 
 			sender := suite.getValidTwilioSender()
@@ -373,6 +376,7 @@ func (suite *NotificationSenderMgtServiceTestSuite) TestGetSenderByName() {
 				notificationStore: mockStore,
 				transactioner:     &fakeTransactioner{},
 				uuidGenerator:     sysutils.GenerateUUIDv7,
+				bus:               discardingBus{},
 			}
 
 			if tc.setup != nil {
@@ -395,6 +399,7 @@ func (suite *NotificationSenderMgtServiceTestSuite) TestGetSenderByName_NotFound
 		ouService:         suite.mockOU,
 		notificationStore: mockStore,
 		transactioner:     &fakeTransactioner{},
+		bus:               discardingBus{},
 	}
 	mockStore.EXPECT().getSenderByName(mock.Anything, "NonExistent").Return(nil, nil).Once()
 
@@ -435,6 +440,7 @@ func (suite *NotificationSenderMgtServiceTestSuite) TestGetSenderByName_WithFail
 				notificationStore: mockStore,
 				transactioner:     &fakeTransactioner{},
 				uuidGenerator:     sysutils.GenerateUUIDv7,
+				bus:               discardingBus{},
 			}
 
 			if tc.setup != nil {
@@ -499,6 +505,7 @@ func (suite *NotificationSenderMgtServiceTestSuite) TestUpdateSender() {
 				notificationStore: mockStore,
 				transactioner:     &fakeTransactioner{},
 				uuidGenerator:     sysutils.GenerateUUIDv7,
+				bus:               discardingBus{},
 			}
 
 			sender := suite.getValidTwilioSender()
@@ -632,6 +639,7 @@ func (suite *NotificationSenderMgtServiceTestSuite) TestUpdateSender_WithFailure
 				notificationStore: mockStore,
 				transactioner:     &fakeTransactioner{},
 				uuidGenerator:     sysutils.GenerateUUIDv7,
+				bus:               discardingBus{},
 			}
 
 			sender := suite.getValidTwilioSender()
@@ -661,6 +669,8 @@ func (suite *NotificationSenderMgtServiceTestSuite) TestUpdateSender_WithFailure
 }
 
 func (suite *NotificationSenderMgtServiceTestSuite) TestDeleteSender() {
+	suite.mockStore.EXPECT().getSenderByID(mock.Anything, testSenderID).
+		Return(&common.NotificationSenderDTO{ID: testSenderID}, nil).Once()
 	suite.mockStore.EXPECT().deleteSender(mock.Anything, testSenderID).Return(nil).Once()
 	err := suite.service.DeleteSender(context.Background(), testSenderID)
 	suite.Nil(err)
@@ -797,6 +807,8 @@ func (suite *NotificationSenderMgtServiceTestSuite) TestGetSenderUsages_Registry
 }
 
 func (suite *NotificationSenderMgtServiceTestSuite) TestDeleteSender_StoreError() {
+	suite.mockStore.EXPECT().getSenderByID(context.Background(), testSenderID).
+		Return(&common.NotificationSenderDTO{ID: testSenderID}, nil).Once()
 	suite.mockStore.EXPECT().deleteSender(context.Background(), testSenderID).
 		Return(errors.New("database error")).Once()
 	err := suite.service.DeleteSender(context.Background(), testSenderID)

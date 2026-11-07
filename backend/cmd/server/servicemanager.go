@@ -227,11 +227,11 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 
 	// The notification services are built before governance, which sends the lock email through them.
 	notifSenderMgtSvc, notifOTPService, notifSenderSvc, notificationConfigHandler, err :=
-		notification.Initialize(jwtService, notificationconfig.FromServerRuntime(), ouService)
+		notification.Initialize(jwtService, notificationconfig.FromServerRuntime(), ouService, auditBus)
 	fatalOnError(ctx, logger, err, "Failed to initialize NotificationService")
 
 	notifTemplateSvc, notifTemplateRenderer, notifTemplateExporter, err :=
-		notificationtemplate.Initialize(mux, cacheManager, ouService, i18nService)
+		notificationtemplate.Initialize(mux, cacheManager, ouService, i18nService, auditBus)
 	fatalOnError(ctx, logger, err, "Failed to initialize NotificationTemplateService")
 	exporters = append(exporters, notifTemplateExporter)
 

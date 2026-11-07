@@ -12,16 +12,23 @@ import (
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
 )
 
 // Initialize wires up the notification template service, renderer, and exporter and registers routes.
 // Only the DB store is wrapped with a read cache for the runtime hot path; the file store is already
 // in memory.
+//
+// bus is required: the service publishes the audit event of every template it creates, updates or
+// deletes on it.
 func Initialize(mux *http.ServeMux, cacheManager cache.CacheManagerInterface,
 	ouService ou.OrganizationUnitServiceInterface,
-	translation translationResolver) (NotificationTemplateServiceInterface, TemplateRendererInterface,
-	declarativeresource.ResourceExporter, error) {
+	translation translationResolver, bus eventbus.EventBusInterface) (NotificationTemplateServiceInterface,
+	TemplateRendererInterface, declarativeresource.ResourceExporter, error) {
+	if bus == nil {
+		return nil, nil, nil, errNilEventBus
+	}
 	transactioner, err := provider.GetDBProvider().GetConfigDBTransactioner()
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("failed to get config database transactioner: %w", err)
@@ -33,7 +40,7 @@ func Initialize(mux *http.ServeMux, cacheManager cache.CacheManagerInterface,
 		return nil, nil, nil, err
 	}
 
-	service := newNotificationTemplateService(store, transactioner, ouService)
+	service := newNotificationTemplateService(store, transactioner, ouService, bus)
 	handler := newNotificationTemplateHandler(service)
 	registerRoutes(mux, handler)
 
