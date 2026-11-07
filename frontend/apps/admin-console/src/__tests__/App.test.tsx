@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {render, screen, waitFor} from '@testing-library/react';
-import type {JSX} from 'react';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import App from '../App';
 
@@ -30,11 +29,40 @@ vi.mock('../layouts/AdminLayout', async () => {
   return {default: () => <Outlet />};
 });
 
-vi.mock('../pages/ResourcePages', () => ({
-  ResourceCreatePage: ({resource}: {resource: string}): JSX.Element => <p>{resource} create</p>,
-  ResourceDetailsPage: ({resource}: {resource: string}): JSX.Element => <p>{resource} details</p>,
-  ResourceListPage: ({resource}: {resource: string}): JSX.Element => <p>{resource} list</p>,
+vi.mock('@thunderid/configure-users', () => ({
+  UserAddPage: () => <div data-testid="user-add-page">User Add Page</div>,
+  UserEditPage: () => <div data-testid="user-edit-page">User Edit Page</div>,
+  UsersListPage: () => <div data-testid="users-list-page">Users List Page</div>,
 }));
+
+vi.mock('@thunderid/configure-agents', () => ({
+  AgentsListPage: () => <div data-testid="agents-list-page">AgentsListPage</div>,
+  AgentEditPage: () => <div data-testid="agent-edit-page">AgentEditPage</div>,
+  AgentOnboardPage: () => <div data-testid="agent-onboard-page">AgentOnboardPage</div>,
+}));
+
+vi.mock('@thunderid/configure-groups', () => ({
+  GroupCreateProvider: ({children}: {children: React.ReactNode}) => children as React.ReactElement,
+  GroupsListPage: () => <div data-testid="groups-list-page">GroupsListPage</div>,
+  GroupEditPage: () => <div data-testid="group-edit-page">GroupEditPage</div>,
+  CreateGroupPage: () => <div data-testid="create-group-page">CreateGroupPage</div>,
+}));
+
+vi.mock('@thunderid/configure-roles', () => ({
+  RoleCreateProvider: ({children}: {children: React.ReactNode}) => children as React.ReactElement,
+  RolesListPage: () => <div data-testid="roles-list-page">RolesListPage</div>,
+  RoleEditPage: () => <div data-testid="role-edit-page">RoleEditPage</div>,
+  CreateRolePage: () => <div data-testid="create-role-page">CreateRolePage</div>,
+}));
+
+vi.mock('@thunderid/configure-agent-types', () => ({
+  ViewAgentTypePage: () => <div data-testid="view-agent-type-page">View Agent Type Page</div>,
+}));
+
+vi.mock('../layouts/FullScreenLayout', async () => {
+  const {Outlet} = await import('react-router');
+  return {default: () => <Outlet />};
+});
 
 const renderAt = (path: string): void => {
   window.history.pushState({}, '', path);
@@ -56,7 +84,7 @@ describe('App', () => {
     session.isSignedIn = false;
     renderAt('/users');
     await waitFor(() => expect(session.signIn).toHaveBeenCalledTimes(1));
-    expect(screen.queryByText('users list')).not.toBeInTheDocument();
+    expect(screen.queryByText('Users List Page')).not.toBeInTheDocument();
   });
 
   // Without a loader, a protected page renders nothing while sign-in is checked or a redirect to
@@ -65,7 +93,7 @@ describe('App', () => {
     session.isLoading = true;
     renderAt('/users');
     expect(screen.getByRole('progressbar', {name: 'Loading content'})).toBeInTheDocument();
-    expect(screen.queryByText('users list')).not.toBeInTheDocument();
+    expect(screen.queryByText('Users List Page')).not.toBeInTheDocument();
     expect(session.signIn).not.toHaveBeenCalled();
   });
 
@@ -79,32 +107,110 @@ describe('App', () => {
 
   it('shows the page once signed in, without the loader', async () => {
     renderAt('/users');
-    expect(await screen.findByText('users list')).toBeInTheDocument();
+    expect(await screen.findByText('Users List Page')).toBeInTheDocument();
     expect(screen.queryByRole('progressbar', {name: 'Loading content'})).not.toBeInTheDocument();
   });
 
   it('redirects the root path to the users list', async () => {
-    renderAt('/');
-    expect(await screen.findByText('users list')).toBeInTheDocument();
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.getByTestId('users-list-page')).toBeInTheDocument();
+    });
   });
 
-  it.each(['users', 'groups', 'roles', 'agents'])('mounts the list page of %s', async (resource) => {
-    renderAt(`/${resource}`);
-    expect(await screen.findByText(`${resource} list`)).toBeInTheDocument();
+  it('loads UserEditPage lazily at /users/:userId', async () => {
+    window.history.pushState({}, '', '/users/user-123');
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.getByTestId('user-edit-page')).toBeInTheDocument();
+    });
   });
 
-  it('opens the create dialog route', async () => {
-    renderAt('/groups/new');
-    expect(await screen.findByText('groups create')).toBeInTheDocument();
+  it('loads UserAddPage lazily at /users/add', async () => {
+    window.history.pushState({}, '', '/users/add');
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.getByTestId('user-add-page')).toBeInTheDocument();
+    });
   });
 
-  it('opens a resource by its id', async () => {
-    renderAt('/roles/r-1');
-    expect(await screen.findByText('roles details')).toBeInTheDocument();
+  it('loads AgentsListPage lazily at /agents', async () => {
+    window.history.pushState({}, '', '/agents');
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.getByTestId('agents-list-page')).toBeInTheDocument();
+    });
   });
 
-  it('sends an unknown path to the users list', async () => {
-    renderAt('/nowhere');
-    expect(await screen.findByText('users list')).toBeInTheDocument();
+  it('loads AgentEditPage lazily at /agents/a-1', async () => {
+    window.history.pushState({}, '', '/agents/a-1');
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.getByTestId('agent-edit-page')).toBeInTheDocument();
+    });
+  });
+
+  it('loads AgentOnboardPage lazily at /agents/create', async () => {
+    window.history.pushState({}, '', '/agents/create');
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.getByTestId('agent-onboard-page')).toBeInTheDocument();
+    });
+  });
+
+  it('loads GroupsListPage lazily at /groups', async () => {
+    window.history.pushState({}, '', '/groups');
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.getByTestId('groups-list-page')).toBeInTheDocument();
+    });
+  });
+
+  it('loads GroupEditPage lazily at /groups/g-1', async () => {
+    window.history.pushState({}, '', '/groups/g-1');
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.getByTestId('group-edit-page')).toBeInTheDocument();
+    });
+  });
+
+  it('loads CreateGroupPage lazily at /groups/create', async () => {
+    window.history.pushState({}, '', '/groups/create');
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.getByTestId('create-group-page')).toBeInTheDocument();
+    });
+  });
+
+  it('loads RolesListPage lazily at /roles', async () => {
+    window.history.pushState({}, '', '/roles');
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.getByTestId('roles-list-page')).toBeInTheDocument();
+    });
+  });
+
+  it('loads RoleEditPage lazily at /roles/r-1', async () => {
+    window.history.pushState({}, '', '/roles/r-1');
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.getByTestId('role-edit-page')).toBeInTheDocument();
+    });
+  });
+
+  it('loads CreateRolePage lazily at /roles/create', async () => {
+    window.history.pushState({}, '', '/roles/create');
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.getByTestId('create-role-page')).toBeInTheDocument();
+    });
+  });
+
+  it('loads ViewAgentTypePage lazily at /agent-types/:id', async () => {
+    window.history.pushState({}, '', '/agent-types/at-1');
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.getByTestId('view-agent-type-page')).toBeInTheDocument();
+    });
   });
 });

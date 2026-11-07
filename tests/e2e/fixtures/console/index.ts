@@ -26,7 +26,7 @@ export { routes, ConsoleRoutes };
 // Re-export page objects
 export { ConsoleSigninPage } from "../../pages/authentication";
 export { UsersPage, type UserFormData } from "../../pages/user-management";
-export { AgentsPage, AgentDetailsPage } from "../../pages/agents";
+export { AgentOnboardingPage, AgentDetailsPage } from "../../pages/agents";
 
 // Re-export API helpers so hooks can construct them without reaching into utils/
 export { UsersApi, type ApiUser, type ApiSharingPolicy } from "../../utils/users-api";
