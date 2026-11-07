@@ -85,10 +85,17 @@ type VersionServiceInterface interface {
 	GetResourceHistory(ctx context.Context, gatewayID, key string) (*ResourceHistory, *tidcommon.ServiceError)
 }
 
+// configurationReader reads the configuration a version captures, as an export writes it. It is not an
+// export request, so it records no export.
+type configurationReader interface {
+	ReadResources(ctx context.Context, request *export.ExportRequest) (*export.ExportResponse,
+		*tidcommon.ServiceError)
+}
+
 type versionService struct {
 	gateways storeInterface
 	versions versionStoreInterface
-	exporter export.ExportServiceInterface
+	exporter configurationReader
 	client   gatewayClientInterface
 	// secretFields names, by resource type, the fields a secret reference may stand in.
 	secretFields map[string][]string
@@ -108,7 +115,7 @@ type versionService struct {
 }
 
 func newVersionService(gateways storeInterface, versions versionStoreInterface,
-	exporter export.ExportServiceInterface, client gatewayClientInterface,
+	exporter configurationReader, client gatewayClientInterface,
 	secretFields map[string][]string, names actorNamer, p pipeline,
 	bus eventbus.EventBusInterface) *versionService {
 	return &versionService{
@@ -158,7 +165,7 @@ func (s *versionService) Capture(ctx context.Context, req CaptureRequest) (*Vers
 // capture captures the configuration as a version. Its user is left unnamed: the capture after each
 // change discards the answer, so a name read for it would be an issuer call for nothing.
 func (s *versionService) capture(ctx context.Context, req CaptureRequest) (*Version, *tidcommon.ServiceError) {
-	exported, svcErr := s.exporter.ExportResources(ctx, configurationExport())
+	exported, svcErr := s.exporter.ReadResources(ctx, configurationExport())
 	if svcErr != nil {
 		return nil, svcErr
 	}
@@ -325,7 +332,7 @@ func (s *versionService) GetVersion(ctx context.Context, ref string) (*Version, 
 // references say what each value is for as soon as a resource is written, before any capture, and its
 // hash is the one a capture would give it.
 func (s *versionService) current(ctx context.Context) (*Version, *tidcommon.ServiceError) {
-	exported, svcErr := s.exporter.ExportResources(ctx, configurationExport())
+	exported, svcErr := s.exporter.ReadResources(ctx, configurationExport())
 	if svcErr != nil {
 		return nil, svcErr
 	}

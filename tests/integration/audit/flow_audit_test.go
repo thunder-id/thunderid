@@ -128,13 +128,17 @@ func (ts *AuditLogTestSuite) TestAnImportWritesTheEventOfTheFlowItWrites() {
 	// Another ID with the same handle finds the flow by its handle, and updates it.
 	updatedByImport := ts.importFlow(unusedID(), handle, name+" Again", ouID)
 
-	lines := ts.linesOf(createdByImport, updatedByImport)
+	succeeded := map[string]string{"result": "succeeded"}
+	lines := []testutils.AuditLine{
+		ts.resourceLineOfImport(createdByImport, succeeded),
+		ts.resourceLineOfImport(updatedByImport, succeeded),
+	}
 	flowRef := testutils.AuditRef{Type: "flow", ID: flowID}
 	for i, event := range []string{"flow.create", "flow.update"} {
 		ts.Equal(event, lines[i].Event)
 		ts.Equal(flowRef, lines[i].Target, event)
 		ts.Equal(flowRef, lines[i].Subject, event)
-		ts.Equal(map[string]string{"result": "succeeded"}, lines[i].Outcome, event)
+		ts.Equal(succeeded, lines[i].Outcome, event)
 		ts.requireNoFlowContent(lines[i], handle, name)
 	}
 }

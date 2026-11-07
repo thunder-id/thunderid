@@ -186,8 +186,9 @@ func TestACapturedCredentialIsNamedAsTheExportNamesIt(t *testing.T) {
 	(&userService{valueCapturer: capturer}).captureCredentials(context.Background(),
 		&providers.User{ID: "user-1", Type: "person"}, json.RawMessage(`{"username":"alice"}`),
 		map[string]string{"password": "s3cret"})
-	values := export.Initialize(http.NewServeMux(), []declarativeresource.ResourceExporter{c.exporter},
-		export.ValueReferences)
+	values, err := export.Initialize(http.NewServeMux(), []declarativeresource.ResourceExporter{c.exporter},
+		export.ValueReferences, discardingBus{})
+	require.NoError(t, err)
 
 	variables, secrets, err := values.PlaceholderValues(context.Background(), resourceTypeUser,
 		capturer.captured(t))

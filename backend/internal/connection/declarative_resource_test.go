@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/connection/authzenpdp"
@@ -32,6 +33,7 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/connection/authzenpdpmock"
 	"github.com/thunder-id/thunderid/tests/mocks/connection/httpconnectionmock"
+	"github.com/thunder-id/thunderid/tests/mocks/eventbusmock"
 	"github.com/thunder-id/thunderid/tests/mocks/idp/idpmock"
 	"github.com/thunder-id/thunderid/tests/mocks/notification/notificationmock"
 
@@ -1335,10 +1337,13 @@ func (s *DeclarativeResourceTestSuite) apiKeyConnectionExporter(vendor string,
 	return newConnectionExporter(s.mockIDP, s.mockNotif, pdpService, httpService)
 }
 
-// exportConnection exports c-1 through the template-style export, as the export API does.
-func exportConnection(exporter *connectionExporter) (*export.ExportResponse, *tidcommon.ServiceError) {
-	return export.Initialize(http.NewServeMux(), []declarativeresource.ResourceExporter{exporter},
-		export.TemplatePlaceholders).ExportResources(context.Background(), &export.ExportRequest{
+// exportConnection exports c-1 through the template-style export, as the export API writes it.
+func exportConnection(t *testing.T, exporter *connectionExporter) (*export.ExportResponse,
+	*tidcommon.ServiceError) {
+	exportService, err := export.Initialize(http.NewServeMux(), []declarativeresource.ResourceExporter{exporter},
+		export.TemplatePlaceholders, eventbusmock.NewEventBusInterfaceMock(t))
+	require.NoError(t, err)
+	return exportService.ReadResources(context.Background(), &export.ExportRequest{
 		Connections: []string{"c-1"}, Options: &export.ExportOptions{Format: "yaml"},
 	})
 }
@@ -1376,7 +1381,7 @@ func (s *DeclarativeResourceTestSuite) TestAPIKeyHeadersTheExportCannotNameAreRe
 				for _, value := range tc.headers {
 					s.NotContains(exportErr.Error, value)
 				}
-				result, svcErr := exportConnection(exporter)
+				result, svcErr := exportConnection(s.T(), exporter)
 				s.Require().NotNil(svcErr, "the connection was exported")
 				s.Nil(result)
 			})
@@ -1389,7 +1394,7 @@ func (s *DeclarativeResourceTestSuite) TestAPIKeyHeadersExportAsParameters() {
 		s.Run(vendor, func() {
 			s.SetupTest()
 
-			result, svcErr := exportConnection(s.apiKeyConnectionExporter(vendor,
+			result, svcErr := exportConnection(s.T(), s.apiKeyConnectionExporter(vendor,
 				map[string]string{"X-Tenant-Key": "tenant-s3cret", "X-Region-Key": "region-s3cret"}))
 
 			s.Require().Nil(svcErr)

@@ -304,7 +304,14 @@ func (ts *AuditLogTestSuite) TestAnImportWritesTheEventOfTheConnectionOrResource
 	idpRef := testutils.AuditRef{Type: "connection", ID: idpID}
 	rsRef := testutils.AuditRef{Type: "resource_server", ID: rsID}
 	succeeded := map[string]string{"result": "succeeded"}
-	lines := ts.linesOf(idpCreated, idpUpdated, idpRefused, rsUpdated, rsRefused)
+	refused := map[string]string{"result": "failed", "reason": "item_failed"}
+	lines := []testutils.AuditLine{
+		ts.resourceLineOfImport(idpCreated, succeeded),
+		ts.resourceLineOfImport(idpUpdated, succeeded),
+		ts.resourceLineOfImport(idpRefused, refused),
+		ts.resourceLineOfImport(rsUpdated, succeeded),
+		ts.resourceLineOfImport(rsRefused, refused),
+	}
 	for i, want := range []struct {
 		event   string
 		target  testutils.AuditRef

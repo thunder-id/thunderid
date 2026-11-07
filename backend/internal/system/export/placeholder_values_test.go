@@ -38,7 +38,7 @@ func confidentialApp(clientID, clientSecret string) *providers.Application {
 func referenceExportService(t *testing.T,
 	exporters ...declarativeresource.ResourceExporter) ExportServiceInterface {
 	t.Helper()
-	return newExportService(exporters, newParameterizer(templatingRules{}, ValueReferences))
+	return newExportService(exporters, newParameterizer(templatingRules{}, ValueReferences), discardingBus{})
 }
 
 // The names a capture keeps values under are the ones the reference export of the same application

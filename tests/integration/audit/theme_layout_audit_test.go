@@ -217,9 +217,16 @@ func (ts *AuditLogTestSuite) TestAnImportWritesTheEventOfEachThemeOrLayoutItChan
 
 			ref := testutils.AuditRef{Type: resource.kind, ID: id}
 			perCall := ts.linesPerCall(dryCreate, dryUpdate)
-			ts.Empty(perCall[0], "a dry run that would create writes no line")
-			ts.Empty(perCall[1], "a dry run that would update writes no line")
-			lines := ts.linesOf(created, updated, deleted)
+			for i, dryRun := range []string{"create", "update"} {
+				ts.Require().Len(perCall[i], 1, "a dry run that would %s writes only the import's own line", dryRun)
+				ts.Equal(importEvent, perCall[i][0].Event, dryRun)
+			}
+			succeeded := map[string]string{"result": "succeeded"}
+			lines := []testutils.AuditLine{
+				ts.resourceLineOfImport(created, succeeded),
+				ts.resourceLineOfImport(updated, succeeded),
+				ts.resourceLineOfImport(deleted, succeeded),
+			}
 			for i, action := range []string{"create", "update", "delete"} {
 				line := lines[i]
 				ts.Equal(resource.kind+"."+action, line.Event)

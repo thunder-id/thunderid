@@ -196,7 +196,7 @@ func (ts *AuditLogTestSuite) TestAnImportWritesTheEventOfTheAgentItCreates() {
 	ts.Require().NoError(json.Unmarshal(body, &result))
 	ts.Require().Equal(1, result.Summary.Imported, string(body))
 
-	line := ts.linesOf(imported)[0]
+	line := ts.resourceLineOfImport(imported, map[string]string{"result": "succeeded"})
 	agentRef := testutils.AuditRef{Type: "agent", ID: agentID}
 	ts.Equal("agent.create", line.Event)
 	ts.Equal(agentRef, line.Target)

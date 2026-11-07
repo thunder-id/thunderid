@@ -273,7 +273,7 @@ func (ts *AuditLogTestSuite) TestAnImportWritesTheEventOfTheUserTypeItCreates() 
 	ts.T().Cleanup(func() { _ = testutils.DeleteUserType(typeID) })
 	ts.Require().Equal("create", result.Results[0].Operation)
 
-	line := ts.linesOf(imported)[0]
+	line := ts.resourceLineOfImport(imported, map[string]string{"result": "succeeded"})
 	typeRef := testutils.AuditRef{Type: "user_type", ID: typeID}
 	ts.Equal("user_type.create", line.Event)
 	ts.Equal(typeRef, line.Target)
@@ -351,16 +351,21 @@ func (ts *AuditLogTestSuite) importUpsert(content string) (*http.Response, testu
 	return imported, result
 }
 
-// requireOnlyImportedUpdate checks that an import wrote exactly one line, a succeeded update of typeRef
-// named event by the admin, and no failed event.
+// requireOnlyImportedUpdate checks that an import wrote exactly one resource line, a succeeded update of
+// typeRef named event by the admin, and no failed event. The import's own configuration.import line is
+// not a resource line.
 func (ts *AuditLogTestSuite) requireOnlyImportedUpdate(written []testutils.AuditLine, typeRef testutils.AuditRef,
 	event string) {
 	ts.T().Helper()
+	var resourceLines []testutils.AuditLine
 	for _, line := range written {
 		ts.NotEqual("failed", line.Outcome["result"], "the import wrote a failed event: %s", line.Raw)
+		if line.Event != importEvent {
+			resourceLines = append(resourceLines, line)
+		}
 	}
-	ts.Require().Len(written, 1, "the import did not write exactly one line")
-	line := written[0]
+	ts.Require().Len(resourceLines, 1, "the import did not write exactly one resource line")
+	line := resourceLines[0]
 	ts.Equal(event, line.Event)
 	ts.Equal("update", line.Action)
 	ts.Equal(typeRef, line.Target)
