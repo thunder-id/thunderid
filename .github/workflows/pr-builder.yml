@@ -145,7 +145,7 @@ jobs:
   verify-mocks:
     name: 🔍 Verify Mock Files
     needs: [preflight]
-    if: ${{ (github.event_name == 'pull_request' && needs.preflight.outputs.enabled == 'true') || github.event_name == 'merge_group' }}
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && needs.preflight.outputs.enabled == 'true') || github.event_name == 'merge_group' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -182,7 +182,7 @@ jobs:
   lint:
     name: 🧹 Lint Code
     needs: [preflight]
-    if: ${{ (github.event_name == 'pull_request' && needs.preflight.outputs.enabled == 'true') || github.event_name == 'merge_group' }}
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && needs.preflight.outputs.enabled == 'true') || github.event_name == 'merge_group' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -216,9 +216,14 @@ jobs:
         run: |
           make build_frontend
 
+      # A manual dispatch has no base commit to diff against, so it lints every package.
       - name: 🔍 Run Frontend Linter
         run: |
-          pnpm turbo run lint --affected --filter=!./tests/**
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            pnpm turbo run lint --filter=!./tests/**
+          else
+            pnpm turbo run lint --affected --filter=!./tests/**
+          fi
         env:
           TURBO_SCM_BASE: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.event.pull_request.base.sha }}
 
@@ -1658,7 +1663,7 @@ jobs:
   build-docs:
     name: 📚 Build Documentation
     needs: [preflight]
-    if: ${{ needs.preflight.outputs.docs-changed == 'true' }}
+    if: ${{ github.event_name == 'workflow_dispatch' || needs.preflight.outputs.docs-changed == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -1676,7 +1681,7 @@ jobs:
   validate-windows:
     name: 🪟 Validate Windows PowerShell
     needs: preflight
-    if: needs.preflight.outputs.powershell-changed == 'true'
+    if: ${{ github.event_name == 'workflow_dispatch' || needs.preflight.outputs.powershell-changed == 'true' }}
     uses: ./.github/workflows/windows-powershell-validation.yml
 
   cleanup-turbo-cache:
