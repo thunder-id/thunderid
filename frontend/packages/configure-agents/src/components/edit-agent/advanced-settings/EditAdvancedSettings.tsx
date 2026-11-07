@@ -12,6 +12,7 @@ import {
 import {Box, FormControlLabel, Stack, Switch, Typography} from '@wso2/oxygen-ui';
 import {useEffect, useState} from 'react';
 import {useTranslation} from 'react-i18next';
+import AgentLoginConsentSection from './AgentLoginConsentSection';
 import AgentSignInSection from './AgentSignInSection';
 import AllowedUserTypesSection from './AllowedUserTypesSection';
 import DangerZoneSection from './DangerZoneSection';
@@ -32,6 +33,8 @@ interface EditAdvancedSettingsProps {
   onBackchannelLogoutUriValidationChange?: (hasError: boolean) => void;
   /** Reports whether the Identity assertions (ID-JAG) card has a validation error, to gate Save. */
   onIdentityAssertionsValidationChange?: (hasError: boolean) => void;
+  /** Reports whether the Consent validity card holds a validity period it could not commit, to gate Save. */
+  onLoginConsentValidationChange?: (hasError: boolean) => void;
 }
 
 export default function EditAdvancedSettings({
@@ -42,6 +45,7 @@ export default function EditAdvancedSettings({
   onDeleteSuccess = undefined,
   onBackchannelLogoutUriValidationChange = undefined,
   onIdentityAssertionsValidationChange = undefined,
+  onLoginConsentValidationChange = undefined,
 }: EditAdvancedSettingsProps) {
   const {t} = useTranslation();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -139,6 +143,13 @@ export default function EditAdvancedSettings({
         editedAgent={editedAgent}
         oauth2Config={oauth2Config}
         onFieldChange={onFieldChange}
+      />
+      <AgentLoginConsentSection
+        agent={agent}
+        editedAgent={editedAgent}
+        oauth2Config={oauth2Config}
+        onFieldChange={onFieldChange}
+        onValidationChange={onLoginConsentValidationChange}
       />
       <OperationModesSection
         oauth2Config={oauth2Config}

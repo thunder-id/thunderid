@@ -74,6 +74,16 @@ vi.mock('../AgentSignInSection', () => ({
   default: () => <div data-testid="agent-sign-in-section">Agent Sign-In</div>,
 }));
 
+vi.mock('../AgentLoginConsentSection', () => ({
+  default: ({onValidationChange}: {onValidationChange?: (hasError: boolean) => void}) => (
+    <div data-testid="agent-login-consent-section">
+      <button type="button" onClick={() => onValidationChange?.(true)}>
+        Report invalid consent validity
+      </button>
+    </div>
+  ),
+}));
+
 vi.mock('../DangerZoneSection', () => ({
   default: ({onDeleteClick}: {onDeleteClick: () => void}) => (
     <button type="button" data-testid="danger-zone-section" onClick={onDeleteClick}>
@@ -125,6 +135,7 @@ describe('EditAdvancedSettings', () => {
     expect(screen.getByTestId('owner-section')).toBeInTheDocument();
     expect(screen.getByTestId('allowed-user-types-section')).toBeInTheDocument();
     expect(screen.getByTestId('agent-sign-in-section')).toBeInTheDocument();
+    expect(screen.getByTestId('agent-login-consent-section')).toBeInTheDocument();
     expect(screen.getByTestId('danger-zone-section')).toBeInTheDocument();
   });
 
@@ -662,6 +673,26 @@ describe('EditAdvancedSettings', () => {
 
       expect(screen.getByTestId('owner-section')).toBeInTheDocument();
       expect(screen.getByTestId('danger-zone-section')).toBeInTheDocument();
+    });
+  });
+
+  describe('Consent validity', () => {
+    it('should report the card validation state to the edit page', async () => {
+      const user = userEvent.setup();
+      const onLoginConsentValidationChange = vi.fn();
+      render(
+        <EditAdvancedSettings
+          agent={mockAgent}
+          editedAgent={{}}
+          oauth2Config={{grantTypes: ['authorization_code'], responseTypes: ['code']}}
+          onFieldChange={mockOnFieldChange}
+          onLoginConsentValidationChange={onLoginConsentValidationChange}
+        />,
+      );
+
+      await user.click(screen.getByRole('button', {name: 'Report invalid consent validity'}));
+
+      expect(onLoginConsentValidationChange).toHaveBeenLastCalledWith(true);
     });
   });
 });

@@ -661,4 +661,133 @@ describe('EditAdvancedSettings', () => {
       expect(mockOnDeleteSuccess).toHaveBeenCalledTimes(1);
     });
   });
+
+  describe('LoginConsentSection Integration', () => {
+    const fieldName = 'applications:edit.advanced.loginConsent.validityPeriod.label';
+
+    it('renders the Consent validity section for a user-facing client', () => {
+      render(
+        <EditAdvancedSettings
+          application={mockApplication}
+          editedApp={{}}
+          oauth2Config={mockOAuth2Config}
+          onFieldChange={mockOnFieldChange}
+        />,
+      );
+
+      expect(screen.getByText('applications:edit.advanced.loginConsent.title')).toBeInTheDocument();
+    });
+
+    it('hides the Consent validity section for a client without a user-facing grant', () => {
+      render(
+        <EditAdvancedSettings
+          application={mockApplication}
+          editedApp={{}}
+          oauth2Config={{...mockOAuth2Config, grantTypes: ['client_credentials']}}
+          onFieldChange={mockOnFieldChange}
+        />,
+      );
+
+      expect(screen.queryByText('applications:edit.advanced.loginConsent.title')).not.toBeInTheDocument();
+    });
+
+    it('hides the Consent validity section when the application has no OAuth config', () => {
+      render(<EditAdvancedSettings application={mockApplication} editedApp={{}} onFieldChange={mockOnFieldChange} />);
+
+      expect(screen.queryByText('applications:edit.advanced.loginConsent.title')).not.toBeInTheDocument();
+    });
+
+    it('prefers editedApp.loginConsent over application.loginConsent', () => {
+      render(
+        <EditAdvancedSettings
+          application={{...mockApplication, loginConsent: {validityPeriod: 3600}}}
+          editedApp={{loginConsent: {validityPeriod: 120}}}
+          oauth2Config={mockOAuth2Config}
+          onFieldChange={mockOnFieldChange}
+        />,
+      );
+
+      expect(screen.getByDisplayValue('120')).toBeInTheDocument();
+    });
+
+    it('calls onFieldChange with loginConsent when a validity period is entered', () => {
+      render(
+        <EditAdvancedSettings
+          application={{...mockApplication, loginConsent: {validityPeriod: 0}}}
+          editedApp={{}}
+          oauth2Config={mockOAuth2Config}
+          onFieldChange={mockOnFieldChange}
+        />,
+      );
+
+      fireEvent.change(screen.getByRole('spinbutton', {name: fieldName}), {target: {value: '3600'}});
+
+      expect(mockOnFieldChange).toHaveBeenCalledWith('loginConsent', {validityPeriod: 3600});
+    });
+
+    it('disables the validity period field when the application is read-only', () => {
+      render(
+        <EditAdvancedSettings
+          application={{...mockApplication, isReadOnly: true}}
+          editedApp={{}}
+          oauth2Config={mockOAuth2Config}
+          onFieldChange={mockOnFieldChange}
+        />,
+      );
+
+      expect(screen.getByRole('spinbutton', {name: fieldName})).toBeDisabled();
+    });
+
+    it('reports hasErrors=true via onValidationChange when the typed validity period is invalid', () => {
+      const onValidationChange = vi.fn();
+      render(
+        <EditAdvancedSettings
+          application={{...mockApplication, loginConsent: {validityPeriod: 3600}}}
+          editedApp={{}}
+          oauth2Config={mockOAuth2Config}
+          onFieldChange={mockOnFieldChange}
+          onValidationChange={onValidationChange}
+        />,
+      );
+
+      fireEvent.change(screen.getByDisplayValue('3600'), {target: {value: '-1'}});
+
+      expect(onValidationChange).toHaveBeenLastCalledWith(true);
+    });
+
+    it('drops a rejected validity period and its error on reset', () => {
+      const onValidationChange = vi.fn();
+      const appWithConsent: Application = {...mockApplication, loginConsent: {validityPeriod: 3600}};
+      const {rerender} = render(
+        <EditAdvancedSettings
+          application={appWithConsent}
+          editedApp={{}}
+          oauth2Config={mockOAuth2Config}
+          onFieldChange={mockOnFieldChange}
+          onValidationChange={onValidationChange}
+          sectionResetKey={0}
+        />,
+      );
+
+      fireEvent.change(screen.getByDisplayValue('3600'), {target: {value: '-1'}});
+      expect(onValidationChange).toHaveBeenLastCalledWith(true);
+
+      rerender(
+        <EditAdvancedSettings
+          application={appWithConsent}
+          editedApp={{}}
+          oauth2Config={mockOAuth2Config}
+          onFieldChange={mockOnFieldChange}
+          onValidationChange={onValidationChange}
+          sectionResetKey={1}
+        />,
+      );
+
+      expect(screen.getByDisplayValue('3600')).toBeInTheDocument();
+      expect(
+        screen.queryByText('applications:edit.advanced.loginConsent.validityPeriod.error'),
+      ).not.toBeInTheDocument();
+      expect(onValidationChange).toHaveBeenLastCalledWith(false);
+    });
+  });
 });

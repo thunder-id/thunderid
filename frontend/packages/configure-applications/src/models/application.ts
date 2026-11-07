@@ -22,6 +22,18 @@ import type {AssertionConfig} from './token';
 export type ApplicationType = 'browser' | 'fullstack' | 'mobile' | 'm2m' | 'mcp' | 'custom';
 
 /**
+ * Login consent configuration.
+ *
+ * @public
+ */
+export interface LoginConsentConfig {
+  /**
+   * How long a user's consent lasts, in seconds. 0 or unset means consent does not expire.
+   */
+  validityPeriod?: number;
+}
+
+/**
  * Application Response Model (Basic)
  *
  * Basic application information returned in list operations.
@@ -332,6 +344,12 @@ export interface Application {
    * Defines how assertions are generated for this application.
    */
   assertion?: AssertionConfig;
+
+  /**
+   * Login consent configuration
+   * Defines how long a user's consent to this application lasts.
+   */
+  loginConsent?: LoginConsentConfig;
 
   /**
    * Platform attestation configuration used to verify the binary identity of a mobile client

@@ -65,6 +65,7 @@ export {default as RegistrationFlowSection} from './components/edit-application/
 export {default as ClientAccessTokenSection} from './components/edit-application/token-settings/ClientAccessTokenSection';
 export {default as EditTokenSettings} from './components/edit-application/token-settings/EditTokenSettings';
 export {default as IdentityAssertionsSection} from './components/edit-application/advanced-settings/IdentityAssertionsSection';
+export {default as LoginConsentSection} from './components/edit-application/advanced-settings/LoginConsentSection';
 
 // Constants and utilities shared with other configure-* packages
 export {default as CertificateTypes} from './constants/certificate-types';
