@@ -121,6 +121,27 @@ describe('switchOrganizationAccess', () => {
     expect(result.next.everyTreeExclusions).toEqual([]);
     expect(result.cleared).toEqual([{kind: 'everyTree', ouIds: ['contoso']}]);
   });
+  it('reports a dropped rule turning assignments off, even when nothing else is cleared', () => {
+    const saved = policyWith({childUnits: {mode: 'all', overlayRules: {assignments: {editable: false}}}});
+    const result = switchOrganizationAccess(sharingPolicyToDraft(saved), 'childUnitsAccess', 'selected', saved);
+
+    expect(result.cleared).toEqual([]);
+    expect(result.losesAssignmentsOff).toBe(true);
+  });
+
+  it('reports a dropped rule on a named unit, and keeps quiet when no rule is dropped', () => {
+    const saved = policyWith({
+      childUnits: {
+        mode: 'selected',
+        units: [{ouId: 'retail', reach: 'unit', overlayRules: {assignments: {editable: false}}}],
+      },
+      otherTreeRoots: {mode: 'selected', units: [{ouId: 'northwind'}]},
+    });
+    const draft = sharingPolicyToDraft(saved);
+
+    expect(switchOrganizationAccess(draft, 'childUnitsAccess', 'all', saved).losesAssignmentsOff).toBe(true);
+    expect(switchOrganizationAccess(draft, 'otherTreesAccess', 'none', saved).losesAssignmentsOff).toBe(false);
+  });
 });
 
 describe('getBlockedNoneReason', () => {

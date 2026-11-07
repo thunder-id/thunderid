@@ -112,6 +112,7 @@ explicitSubGroups:
     tags:
       - AuthZEN
       - Roles
+      - Role Sharing
       - Resource Servers
       - Resources
       - Actions

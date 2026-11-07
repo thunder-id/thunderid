@@ -37,6 +37,7 @@ export type {OrganizationAccessState, UseOrganizationAccessOptions} from './hook
 export type {MandatableRole, MandatableRoles} from './models/mandatable-role';
 export type {
   AccessSwitch,
+  AssignmentsOffRules,
   ChildUnitReach,
   ChildUnitsAccess,
   ClearedAccessItem,
@@ -51,6 +52,7 @@ export type {
   AllUnitsSection,
   ChildUnitsSection,
   OtherTreeRootsSection,
+  SharingAssignmentsRule,
   SharingChildUnit,
   SharingOverlayRules,
   SharingPolicy,
@@ -64,6 +66,7 @@ export type {
 
 // Utils
 export {default as draftToSharingSections, hasNoSharingSections} from './utils/draftToSharingSections';
+export {default as getAssignmentsOffRules} from './utils/getAssignmentsOffRules';
 export {default as getOrganizationAccessOffers} from './utils/getOrganizationAccessOffers';
 export {
   canEditSharingSectionsInPlace,

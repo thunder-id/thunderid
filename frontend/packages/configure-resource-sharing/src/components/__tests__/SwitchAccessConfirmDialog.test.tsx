@@ -20,6 +20,7 @@ const accessSwitch = (overrides: Partial<AccessSwitch>): AccessSwitch => ({
   cleared: [],
   losesEveryUnit: false,
   losesEveryTree: false,
+  losesAssignmentsOff: false,
   ...overrides,
 });
 

@@ -8,6 +8,7 @@ import {Plus} from '@wso2/oxygen-ui-icons-react';
 import {useMemo, useState, type JSX} from 'react';
 import {Trans, useTranslation} from 'react-i18next';
 import AccessChoiceCards, {type AccessChoice} from './AccessChoiceCards';
+import AssignmentsOffNote from './AssignmentsOffNote';
 import GrantedOrganizationUnitList from './GrantedOrganizationUnitList';
 import MandatedRolesPicker from './MandatedRolesPicker';
 import OrganizationUnitChipList from './OrganizationUnitChipList';
@@ -84,7 +85,7 @@ export default function OrganizationAccessSettings({
   const [openPicker, setOpenPicker] = useState<OpenPicker | null>(null);
   const [pendingSwitch, setPendingSwitch] = useState<AccessSwitch | null>(null);
 
-  const {draft, offers, updateDraft, savedPolicy} = access;
+  const {draft, offers, assignmentsOff, updateDraft, savedPolicy} = access;
   const locked = readOnly || access.isDeclared;
   const childNoneBlocked = getBlockedNoneReason(draft, 'childUnitsAccess', savedPolicy);
   const treesNoneBlocked = getBlockedNoneReason(draft, 'otherTreesAccess', savedPolicy);
@@ -233,7 +234,8 @@ export default function OrganizationAccessSettings({
   const requestSwitch = (field: AccessSwitch['field'], to: AccessSwitch['to']): void => {
     if (locked) return;
     const accessSwitch = access.previewSwitch(field, to);
-    if (accessSwitch.cleared.length === 0) {
+    // Dropping a rule that turns assignments off always asks first, since the console can't set it again.
+    if (accessSwitch.cleared.length === 0 && !accessSwitch.losesAssignmentsOff) {
       access.applySwitch(accessSwitch);
     } else {
       setPendingSwitch(accessSwitch);
@@ -336,6 +338,9 @@ export default function OrganizationAccessSettings({
   );
 
   const heading = wording('title');
+  const sectionAssignmentsNote = <AssignmentsOffNote scope="section" />;
+  const unitAssignmentsNote = (ouId: string): JSX.Element | null =>
+    assignmentsOff.ouIds.includes(ouId) ? <AssignmentsOffNote scope="unit" /> : null;
 
   return (
     <Stack spacing={3}>
@@ -376,6 +381,7 @@ export default function OrganizationAccessSettings({
                   'Every organization unit in every tree, at any depth. Organization units and trees created later get access automatically.',
                 )}
               </Alert>
+              {assignmentsOff.everyUnit && sectionAssignmentsNote}
               {exceptionsField(
                 draft.everyUnitExclusions,
                 t(
@@ -434,6 +440,8 @@ export default function OrganizationAccessSettings({
               disabled={locked}
               onChange={(value) => requestSwitch('childUnitsAccess', value)}
             />
+
+            {childMode === 'all' && assignmentsOff.allChildUnits && sectionAssignmentsNote}
 
             {childMode === 'all' &&
               exceptionsField(
@@ -502,7 +510,7 @@ export default function OrganizationAccessSettings({
                               )}
                             </Typography>
                           )
-                      : undefined
+                      : (unit) => unitAssignmentsNote(unit.ouId)
                   }
                   onRemove={(ouId) =>
                     edit((current) => ({childUnits: current.childUnits.filter((unit) => unit.ouId !== ouId)}))
@@ -541,6 +549,8 @@ export default function OrganizationAccessSettings({
               </Alert>
             )}
 
+            {treesMode === 'every' && assignmentsOff.everyTree && sectionAssignmentsNote}
+
             {treesMode === 'every' &&
               exceptionsField(
                 draft.everyTreeExclusions,
@@ -568,6 +578,7 @@ export default function OrganizationAccessSettings({
                   readOnly={locked}
                   emptyLabel={t('resourceSharing:trees.empty', 'No trees picked yet. Use Add a tree to pick them.')}
                   fixedReachLabel={t('resourceSharing:trees.topUnitOnly', 'Top organization unit only')}
+                  renderUnitExtra={(unit) => unitAssignmentsNote(unit.ouId)}
                   onRemove={(ouId) => edit((current) => ({trees: current.trees.filter((id) => id !== ouId)}))}
                 />
               </Stack>
