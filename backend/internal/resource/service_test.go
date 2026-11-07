@@ -163,7 +163,7 @@ func (suite *ResourceServiceTestSuite) SetupTest() {
 	suite.mockOU = new(oumock.OrganizationUnitServiceInterfaceMock)
 	suite.mockTransactioner = &fakeTransactioner{}
 	suite.service, err = newResourceService(
-		suite.mockOU, suite.mockStore, suite.mockTransactioner, nil, nil, nil,
+		suite.mockOU, suite.mockStore, suite.mockTransactioner, nil, nil, nil, discardingBus{},
 	)
 	suite.NoError(err)
 	// The resource service is its own dependency provider: deletion consults the registry, which
@@ -205,7 +205,7 @@ func (suite *ResourceServiceTestSuite) TestNewResourceService_InvalidDelimiter()
 	mockOU := new(oumock.OrganizationUnitServiceInterfaceMock)
 
 	mockTransactioner := &fakeTransactioner{}
-	service, err := newResourceService(mockOU, mockStore, mockTransactioner, nil, nil, nil)
+	service, err := newResourceService(mockOU, mockStore, mockTransactioner, nil, nil, nil, discardingBus{})
 
 	suite.Error(err)
 	suite.Nil(service)
@@ -402,7 +402,8 @@ func (suite *ResourceServiceTestSuite) TestCreateResourceServer_MCPIdentifierRef
 		suite.Run(tc.name, func() {
 			mockStore := newResourceStoreInterfaceMock(suite.T())
 			mockOU := new(oumock.OrganizationUnitServiceInterfaceMock)
-			service, err := newResourceService(mockOU, mockStore, &fakeTransactioner{}, nil, nil, nil, tc.options...)
+			service, err := newResourceService(mockOU, mockStore, &fakeTransactioner{}, nil, nil, nil, discardingBus{},
+				tc.options...)
 			suite.Require().NoError(err)
 			if tc.accepted {
 				mockOU.On("GetOrganizationUnit", mock.Anything, "ou-123").
@@ -437,7 +438,7 @@ func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_ControlPlaneMCPI
 	reference := "var:RESOURCE_SERVER_ORDERS_IDENTIFIER"
 	mockStore := newResourceStoreInterfaceMock(suite.T())
 	mockOU := new(oumock.OrganizationUnitServiceInterfaceMock)
-	service, err := newResourceService(mockOU, mockStore, &fakeTransactioner{}, nil, nil, nil,
+	service, err := newResourceService(mockOU, mockStore, &fakeTransactioner{}, nil, nil, nil, discardingBus{},
 		KeepingValueReferences())
 	suite.Require().NoError(err)
 	mockStore.On("GetResourceServer", mock.Anything, "rs-123").Return(providers.ResourceServer{
@@ -4959,7 +4960,7 @@ func (suite *ResourceServiceTestSuite) TestValidatePermissions() {
 			// Create a fresh service instance with the fresh mocks
 			mockTransactioner := &fakeTransactioner{}
 			svc, err := newResourceService(
-				mockOU, mockStore, mockTransactioner, nil, nil, nil,
+				mockOU, mockStore, mockTransactioner, nil, nil, nil, discardingBus{},
 			)
 			suite.Require().NoError(err)
 
@@ -5723,7 +5724,8 @@ ouHandle: default
 
 func (suite *ResourceServiceTestSuite) newProjectAwareService() (ResourceServiceInterface, *projectOUValidatorMock) {
 	validator := newProjectOUValidatorMock(suite.T())
-	service, err := newResourceService(suite.mockOU, suite.mockStore, suite.mockTransactioner, nil, nil, validator)
+	service, err := newResourceService(suite.mockOU, suite.mockStore, suite.mockTransactioner, nil, nil, validator,
+		discardingBus{})
 	suite.Require().NoError(err)
 	return service, validator
 }

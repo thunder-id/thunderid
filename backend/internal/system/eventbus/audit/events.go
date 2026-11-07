@@ -45,6 +45,33 @@ const (
 	EventFlowDelete = "flow.delete"
 	// EventFlowRestore names an attempt to make an earlier version of a flow its current one.
 	EventFlowRestore = "flow.restore"
+	// EventConnectionCreate names an attempt to create a connection.
+	EventConnectionCreate = "connection.create"
+	// EventConnectionUpdate names an attempt to change a connection.
+	EventConnectionUpdate = "connection.update"
+	// EventConnectionDelete names an attempt to delete a connection.
+	EventConnectionDelete = "connection.delete"
+	// EventResourceServerCreate names an attempt to create a resource server.
+	EventResourceServerCreate = "resource_server.create"
+	// EventResourceServerUpdate names an attempt to change a resource server.
+	EventResourceServerUpdate = "resource_server.update"
+	// EventResourceServerDelete names an attempt to delete a resource server.
+	EventResourceServerDelete = "resource_server.delete"
+	// EventResourceServerResourceCreate names an attempt to create a resource of a resource server.
+	EventResourceServerResourceCreate = "resource_server.resource.create"
+	// EventResourceServerResourceUpdate names an attempt to change a resource of a resource server.
+	EventResourceServerResourceUpdate = "resource_server.resource.update"
+	// EventResourceServerResourceDelete names an attempt to delete a resource of a resource server.
+	EventResourceServerResourceDelete = "resource_server.resource.delete"
+	// EventResourceServerActionCreate names an attempt to create an action of a resource server or of one of
+	// its resources.
+	EventResourceServerActionCreate = "resource_server.action.create"
+	// EventResourceServerActionUpdate names an attempt to change an action of a resource server or of one of
+	// its resources.
+	EventResourceServerActionUpdate = "resource_server.action.update"
+	// EventResourceServerActionDelete names an attempt to delete an action of a resource server or of one of
+	// its resources.
+	EventResourceServerActionDelete = "resource_server.action.delete"
 	// EventRoleCreate names an attempt to create a role.
 	EventRoleCreate = "role.create"
 	// EventRoleUpdate names an attempt to change a role.
@@ -78,6 +105,16 @@ const (
 	TargetTypeApplication = "application"
 	// TargetTypeFlow is the target type of an event about a flow.
 	TargetTypeFlow = "flow"
+	// TargetTypeConnection is the target type of an event about a connection of any kind: an identity
+	// provider, an AuthZEN PDP or an HTTP endpoint.
+	TargetTypeConnection = "connection"
+	// TargetTypeResourceServer is the target type of an event about a resource server.
+	TargetTypeResourceServer = "resource_server"
+	// TargetTypeResource is the target type of an event about a resource of a resource server.
+	TargetTypeResource = "resource"
+	// TargetTypeAction is the target type of an event about an action of a resource server or of one of its
+	// resources.
+	TargetTypeAction = "action"
 	// TargetTypeAgent is the target type of an event about an agent.
 	TargetTypeAgent = "agent"
 	// TargetTypeAgentType is the target type of an event about an agent type.
@@ -127,6 +164,20 @@ var auditedEvents = map[string][]string{
 	EventFlowUpdate:  nil,
 	EventFlowDelete:  nil,
 	EventFlowRestore: nil,
+
+	EventConnectionCreate: nil,
+	EventConnectionUpdate: nil,
+	EventConnectionDelete: nil,
+
+	EventResourceServerCreate:         nil,
+	EventResourceServerUpdate:         nil,
+	EventResourceServerDelete:         nil,
+	EventResourceServerResourceCreate: nil,
+	EventResourceServerResourceUpdate: nil,
+	EventResourceServerResourceDelete: nil,
+	EventResourceServerActionCreate:   nil,
+	EventResourceServerActionUpdate:   nil,
+	EventResourceServerActionDelete:   nil,
 
 	EventRoleCreate:           nil,
 	EventRoleUpdate:           nil,

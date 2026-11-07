@@ -15,6 +15,8 @@ import (
 	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
+	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/outboundauth"
 	"github.com/thunder-id/thunderid/internal/system/outboundauth/httpauth"
@@ -48,6 +50,7 @@ type AuthZENPDPService struct {
 	entityTypes   entitytype.EntityTypeServiceInterface
 	ouService     ou.OrganizationUnitServiceInterface
 	logger        *log.Logger
+	bus           eventbus.EventBusInterface
 }
 
 // ownerErrors are the errors given when the organization unit of an AuthZEN PDP connection is refused.
@@ -68,6 +71,7 @@ func newAuthZENPDPService(
 	transactioner providers.Transactioner,
 	entityTypes entitytype.EntityTypeServiceInterface,
 	ouService ou.OrganizationUnitServiceInterface,
+	bus eventbus.EventBusInterface,
 ) *AuthZENPDPService {
 	return &AuthZENPDPService{
 		store:         store,
@@ -76,11 +80,27 @@ func newAuthZENPDPService(
 		entityTypes:   entityTypes,
 		ouService:     ouService,
 		logger:        log.GetLogger().With(log.String(log.LoggerKeyComponentName, "AuthZENPDPService")),
+		bus:           bus,
 	}
 }
 
 // CreateAuthZENPDPConnection validates and stores an AuthZEN PDP connection.
 func (s *AuthZENPDPService) CreateAuthZENPDPConnection(
+	ctx context.Context,
+	request ConnectionRequest,
+) (*AuthZENPDPConnection, *tidcommon.ServiceError) {
+	created, svcErr := s.createAuthZENPDPConnection(ctx, request)
+	var connectionID string
+	if svcErr == nil {
+		connectionID = created.ID
+	}
+	s.publishConnectionEvent(ctx, audit.EventConnectionCreate, audit.ActionCreate, connectionID, svcErr)
+	return created, svcErr
+}
+
+// createAuthZENPDPConnection validates and stores an AuthZEN PDP connection without publishing its audit
+// event.
+func (s *AuthZENPDPService) createAuthZENPDPConnection(
 	ctx context.Context,
 	request ConnectionRequest,
 ) (*AuthZENPDPConnection, *tidcommon.ServiceError) {
@@ -131,6 +151,18 @@ func (s *AuthZENPDPService) CreateAuthZENPDPConnection(
 
 // UpdateAuthZENPDPConnection validates and replaces an AuthZEN PDP connection.
 func (s *AuthZENPDPService) UpdateAuthZENPDPConnection(
+	ctx context.Context,
+	id string,
+	request ConnectionRequest,
+) (*AuthZENPDPConnection, *tidcommon.ServiceError) {
+	updated, svcErr := s.updateAuthZENPDPConnection(ctx, id, request)
+	s.publishConnectionEvent(ctx, audit.EventConnectionUpdate, audit.ActionUpdate, id, svcErr)
+	return updated, svcErr
+}
+
+// updateAuthZENPDPConnection validates and replaces an AuthZEN PDP connection without publishing its audit
+// event.
+func (s *AuthZENPDPService) updateAuthZENPDPConnection(
 	ctx context.Context,
 	id string,
 	request ConnectionRequest,
@@ -220,17 +252,44 @@ func (s *AuthZENPDPService) ResolveConnectionOU(
 
 // DeleteAuthZENPDPConnection deletes an AuthZEN PDP connection.
 func (s *AuthZENPDPService) DeleteAuthZENPDPConnection(ctx context.Context, id string) *tidcommon.ServiceError {
+	svcErr := s.deleteAuthZENPDPConnection(ctx, id)
+	// A delete that found nothing to remove succeeds without an event, so no caller can record a
+	// deletion of an ID it made up.
+	if svcErr == errNotFoundNoop {
+		return nil
+	}
+	s.publishConnectionEvent(ctx, audit.EventConnectionDelete, audit.ActionDelete, id, svcErr)
+	return svcErr
+}
+
+// deleteAuthZENPDPConnection deletes an AuthZEN PDP connection without publishing its audit event.
+func (s *AuthZENPDPService) deleteAuthZENPDPConnection(ctx context.Context, id string) *tidcommon.ServiceError {
 	if svcErr := declarativeresource.CheckDeclarativeDelete(); svcErr != nil {
 		return svcErr
 	}
 	if err := s.store.DeleteAuthZENPDP(ctx, id); err != nil {
-		if errors.Is(err, ErrAuthZENPDPIsImmutable) {
+		switch {
+		case errors.Is(err, errConnectionNotFound):
+			return errNotFoundNoop
+		case errors.Is(err, ErrAuthZENPDPIsImmutable):
 			return &declarativeresource.ErrorDeclarativeResourceDeleteOperation
 		}
 		s.logger.Error(ctx, "Failed to delete AuthZEN PDP connection", log.Error(err), log.String("connectionID", id))
 		return &tidcommon.InternalServerError
 	}
 	return nil
+}
+
+// publishConnectionEvent publishes the audit event of an attempt on the AuthZEN PDP connection with id,
+// after the change committed or was refused. Endpoints and authentication properties are never recorded.
+// An update stored before reading it back fails is recorded as failed: a known limitation.
+func (s *AuthZENPDPService) publishConnectionEvent(ctx context.Context, name string, action audit.Action,
+	id string, svcErr *tidcommon.ServiceError) {
+	// A failed attempt keeps the ID the caller asked for, even one that matches no connection, as
+	// forensic evidence of what was probed; the payload caps it and the sink escapes it.
+	target := audit.Ref{Type: audit.TargetTypeConnection, ID: id}
+	eventbus.TryPublish(ctx, s.bus,
+		eventbus.NewEvent(ctx, name).With(audit.ChangePayload(ctx, target, action, svcErr)))
 }
 
 // ListAuthZENPDPs returns all AuthZEN PDP connections.

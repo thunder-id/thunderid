@@ -369,4 +369,30 @@ var (
 	// errDependencyRegistryNotSet is returned when a cascade delete is attempted before the
 	// dependency registry has been injected.
 	errDependencyRegistryNotSet = errors.New("dependency registry not set")
+
+	// errNilEventBus is returned when the service is initialized without the event bus it audits on.
+	errNilEventBus = errors.New("the resource service needs an event bus")
+)
+
+var (
+	// errResourceServerNotFoundNoop is returned by deleteResourceServer when the resource server does not
+	// exist. DeleteResourceServer turns it into a success, so it never reaches a caller.
+	errResourceServerNotFoundNoop = &tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: ErrorResourceServerNotFound.Code,
+	}
+
+	// errResourceNotFoundNoop is returned by deleteResource when the resource, or its resource server, does
+	// not exist. DeleteResource turns it into a success, so it never reaches a caller.
+	errResourceNotFoundNoop = &tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: ErrorResourceNotFound.Code,
+	}
+
+	// errActionNotFoundNoop is returned by deleteAction when the action, or the resource server or resource
+	// it is under, does not exist. DeleteAction turns it into a success, so it never reaches a caller.
+	errActionNotFoundNoop = &tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: ErrorActionNotFound.Code,
+	}
 )

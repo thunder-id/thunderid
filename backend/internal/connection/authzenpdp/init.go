@@ -13,19 +13,28 @@ import (
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
 )
 
 // Initialize creates the AuthZEN PDP connection service with its production store.
+//
+// bus is required: the service publishes the audit event of every connection it creates, updates or
+// deletes on it.
 func Initialize(
 	defaults config.AuthZENPDPConfig,
 	entityTypes entitytype.EntityTypeServiceInterface,
 	ouService ou.OrganizationUnitServiceInterface,
+	bus eventbus.EventBusInterface,
 ) (AuthZENPDPServiceInterface, error) {
+	if bus == nil {
+		return nil, errNilEventBus
+	}
 	transactioner, err := provider.GetDBProvider().GetConfigDBTransactioner()
 	if err != nil {
 		return nil, err
 	}
-	return newAuthZENPDPService(initializeStore(defaults), defaults, transactioner, entityTypes, ouService), nil
+	return newAuthZENPDPService(initializeStore(defaults), defaults, transactioner, entityTypes, ouService,
+		bus), nil
 }
 
 // ShouldLoadDeclarativeAuthZENPDPResources reports whether the file store is enabled.

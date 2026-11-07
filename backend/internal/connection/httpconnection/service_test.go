@@ -51,7 +51,7 @@ func (s *HTTPConnectionServiceTestSuite) SetupTest() {
 			return currentID, nil
 		}).Maybe()
 	s.mockOU.On("ResolveOwnerForUpdate", mock.Anything, "ou-1", "", "ou-1", mock.Anything).Return("ou-1", nil).Maybe()
-	s.service = newHTTPConnectionService(s.mockStore, s.mockOU)
+	s.service = newHTTPConnectionService(s.mockStore, s.mockOU, discardingBus{})
 }
 
 func (s *HTTPConnectionServiceTestSuite) noneAuth() []cmodels.Property {
@@ -681,7 +681,7 @@ func (s *HTTPConnectionServiceTestSuite) TestUpdateKeepsOU() {
 }
 
 func (s *HTTPConnectionServiceTestSuite) TestCreateIsRefusedWhenOnlyTheConnectionStoreIsDeclarative() {
-	s.service = newHTTPConnectionService(newFileBasedStore(), s.mockOU)
+	s.service = newHTTPConnectionService(newFileBasedStore(), s.mockOU, discardingBus{})
 
 	s.assertCreateRejected(HTTPConnection{OUID: "ou-1", Name: "Risk", URL: testURL},
 		declarativeresource.ErrorDeclarativeResourceCreateOperation)
@@ -787,7 +787,7 @@ func (s *HTTPConnectionServiceTestSuite) withDeclared() *httpConnectionStoreInte
 	s.Require().NoError(fileStore.Create("file-1", &HTTPConnection{ID: "file-1", Name: "Declared", OUID: "ou-1",
 		URL: testURL}))
 	dbStore := newHttpConnectionStoreInterfaceMock(s.T())
-	s.service = newHTTPConnectionService(newCompositeStore(fileStore, dbStore), s.mockOU)
+	s.service = newHTTPConnectionService(newCompositeStore(fileStore, dbStore), s.mockOU, discardingBus{})
 	return dbStore
 }
 
