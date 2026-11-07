@@ -21,8 +21,9 @@ import (
 // Test Suite
 type ThemeServiceTestSuite struct {
 	suite.Suite
-	mockStore *themeMgtStoreInterfaceMock
-	service   ThemeMgtServiceInterface
+	mockStore    *themeMgtStoreInterfaceMock
+	mockProjects *projectCheckerMock
+	service      ThemeMgtServiceInterface
 }
 
 func TestThemeServiceTestSuite(t *testing.T) {
@@ -43,7 +44,8 @@ func (suite *ThemeServiceTestSuite) SetupTest() {
 	}
 
 	suite.mockStore = newThemeMgtStoreInterfaceMock(suite.T())
-	suite.service = newThemeMgtService(suite.mockStore)
+	suite.mockProjects = newProjectCheckerMock(suite.T())
+	suite.service = newThemeMgtService(suite.mockStore, suite.mockProjects)
 }
 
 // Test GetThemeList - Success
@@ -689,4 +691,165 @@ type ctxKeyForTest struct{}
 // testCtx returns a context distinguishable from any other, including context.Background().
 func testCtx() context.Context {
 	return context.WithValue(context.Background(), ctxKeyForTest{}, "carried")
+}
+
+const testProjectID = "project-1"
+
+// projectThemeRequest returns a create request for a theme in testProjectID.
+func projectThemeRequest() CreateThemeRequestWithID {
+	return CreateThemeRequestWithID{
+		Handle:      "project-theme",
+		DisplayName: "Project Theme",
+		ProjectID:   testProjectID,
+		Theme:       json.RawMessage(`{"colors": {"primary": "#ff0000"}}`),
+	}
+}
+
+// A theme created in a project that exists is stored with its project.
+func (suite *ThemeServiceTestSuite) TestCreateTheme_InProject() {
+	req := projectThemeRequest()
+	suite.mockStore.On("IsThemeHandleConflict", testCtx(), req.Handle, "").Return(false, nil)
+	suite.mockProjects.On("ProjectExists", testCtx(), testProjectID).Return(true, nil)
+	suite.mockStore.On("CreateTheme", testCtx(), mock.AnythingOfType("string"),
+		mock.MatchedBy(func(r CreateThemeRequest) bool { return r.ProjectID == testProjectID })).Return(nil)
+
+	result, err := suite.service.CreateTheme(testCtx(), req)
+
+	suite.Nil(err)
+	suite.Equal(testProjectID, result.ProjectID)
+}
+
+// A theme created in a project that does not exist is refused, and nothing is stored.
+func (suite *ThemeServiceTestSuite) TestCreateTheme_UnknownProject() {
+	req := projectThemeRequest()
+	suite.mockStore.On("IsThemeHandleConflict", testCtx(), req.Handle, "").Return(false, nil)
+	suite.mockProjects.On("ProjectExists", testCtx(), testProjectID).Return(false, nil)
+
+	result, err := suite.service.CreateTheme(testCtx(), req)
+
+	suite.Nil(result)
+	suite.Equal(&ErrorInvalidProject, err)
+	suite.mockStore.AssertNotCalled(suite.T(), "CreateTheme", mock.Anything, mock.Anything, mock.Anything)
+}
+
+// A failure to check the project is a server error.
+func (suite *ThemeServiceTestSuite) TestCreateTheme_ProjectCheckFailure() {
+	req := projectThemeRequest()
+	suite.mockStore.On("IsThemeHandleConflict", testCtx(), req.Handle, "").Return(false, nil)
+	suite.mockProjects.On("ProjectExists", testCtx(), testProjectID).
+		Return(false, &tidcommon.InternalServerError)
+
+	result, err := suite.service.CreateTheme(testCtx(), req)
+
+	suite.Nil(result)
+	suite.Equal(&tidcommon.InternalServerError, err)
+}
+
+// A deployment that serves no projects keeps the project ID without checking it.
+func (suite *ThemeServiceTestSuite) TestCreateTheme_ProjectWithoutChecker() {
+	service := newThemeMgtService(suite.mockStore, nil)
+	req := projectThemeRequest()
+	suite.mockStore.On("IsThemeHandleConflict", testCtx(), req.Handle, "").Return(false, nil)
+	suite.mockStore.On("CreateTheme", testCtx(), mock.AnythingOfType("string"),
+		mock.MatchedBy(func(r CreateThemeRequest) bool { return r.ProjectID == testProjectID })).Return(nil)
+
+	result, err := service.CreateTheme(testCtx(), req)
+
+	suite.Nil(err)
+	suite.Equal(testProjectID, result.ProjectID)
+}
+
+// expectThemeUpdate sets up an update of a theme in the given project.
+func (suite *ThemeServiceTestSuite) expectThemeUpdate(existingProjectID string) {
+	suite.mockStore.On("IsThemeDeclarative", testCtx(), "theme-123").Return(false)
+	suite.mockStore.On("GetTheme", testCtx(), "theme-123").
+		Return(Theme{ID: "theme-123", Handle: "my-theme", ProjectID: existingProjectID}, nil)
+}
+
+// projectThemeUpdate returns an update request that names the given project.
+func projectThemeUpdate(projectID string) UpdateThemeRequest {
+	return UpdateThemeRequest{
+		DisplayName: "Updated Theme",
+		ProjectID:   projectID,
+		Theme:       json.RawMessage(`{"colors": {"primary": "#00ff00"}}`),
+	}
+}
+
+// An update that names no project, or the same one, keeps the theme in its project without checking it.
+func (suite *ThemeServiceTestSuite) TestUpdateTheme_KeepsProject() {
+	suite.expectThemeUpdate(testProjectID)
+	suite.mockStore.On("UpdateTheme", testCtx(), "theme-123", projectThemeUpdate(testProjectID)).Return(nil)
+
+	for _, projectID := range []string{"", testProjectID} {
+		result, err := suite.service.UpdateTheme(testCtx(), "theme-123", projectThemeUpdate(projectID))
+		suite.Nil(err)
+		suite.Equal(testProjectID, result.ProjectID)
+	}
+	suite.mockProjects.AssertNotCalled(suite.T(), "ProjectExists", mock.Anything, mock.Anything)
+}
+
+// An update that names another project moves the theme there once the project is found.
+func (suite *ThemeServiceTestSuite) TestUpdateTheme_MovesProject() {
+	suite.expectThemeUpdate("")
+	suite.mockProjects.On("ProjectExists", testCtx(), testProjectID).Return(true, nil)
+	suite.mockStore.On("UpdateTheme", testCtx(), "theme-123", projectThemeUpdate(testProjectID)).Return(nil)
+
+	result, err := suite.service.UpdateTheme(testCtx(), "theme-123", projectThemeUpdate(testProjectID))
+
+	suite.Nil(err)
+	suite.Equal(testProjectID, result.ProjectID)
+}
+
+// An update that names a project that does not exist, or one that cannot be checked, is refused.
+func (suite *ThemeServiceTestSuite) TestUpdateTheme_ProjectErrors() {
+	suite.expectThemeUpdate("")
+	suite.mockProjects.On("ProjectExists", testCtx(), "missing").Return(false, nil)
+	suite.mockProjects.On("ProjectExists", testCtx(), "broken").Return(false, &tidcommon.InternalServerError)
+
+	_, err := suite.service.UpdateTheme(testCtx(), "theme-123", projectThemeUpdate("missing"))
+	suite.Equal(&ErrorInvalidProject, err)
+	_, err = suite.service.UpdateTheme(testCtx(), "theme-123", projectThemeUpdate("broken"))
+	suite.Equal(&tidcommon.InternalServerError, err)
+	suite.mockStore.AssertNotCalled(suite.T(), "UpdateTheme", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (suite *ThemeServiceTestSuite) TestGetThemeListByProject_Success() {
+	themes := []Theme{{ID: "theme-1", ProjectID: testProjectID}}
+	suite.mockStore.On("GetThemeListCountByProject", testCtx(), testProjectID).Return(3, nil)
+	suite.mockStore.On("GetThemeListByProject", testCtx(), testProjectID, 1, 1).Return(themes, nil)
+
+	result, err := suite.service.GetThemeListByProject(testCtx(), testProjectID, 1, 1)
+
+	suite.Nil(err)
+	suite.Equal(3, result.TotalResults)
+	suite.Equal(1, result.Count)
+	suite.Equal(2, result.StartIndex)
+	suite.Equal(themes, result.Themes)
+	suite.Equal([]Link{
+		{Href: "/design/themes?limit=1&offset=0&projectId=project-1", Rel: "previous"},
+		{Href: "/design/themes?limit=1&offset=2&projectId=project-1", Rel: "next"},
+	}, result.Links)
+}
+
+// A list without a project ID is empty, and does not reach the store.
+func (suite *ThemeServiceTestSuite) TestGetThemeListByProject_EmptyProject() {
+	result, err := suite.service.GetThemeListByProject(testCtx(), "", 10, 0)
+
+	suite.Nil(err)
+	suite.Zero(result.TotalResults)
+	suite.Empty(result.Themes)
+}
+
+func (suite *ThemeServiceTestSuite) TestGetThemeListByProject_Errors() {
+	_, err := suite.service.GetThemeListByProject(testCtx(), testProjectID, 0, 0)
+	suite.Equal(ErrorInvalidLimitValue.Code, err.Code)
+
+	suite.mockStore.On("GetThemeListCountByProject", testCtx(), "count-fails").Return(0, errors.New("db"))
+	_, err = suite.service.GetThemeListByProject(testCtx(), "count-fails", 10, 0)
+	suite.Equal(&tidcommon.InternalServerError, err)
+
+	suite.mockStore.On("GetThemeListCountByProject", testCtx(), "list-fails").Return(1, nil)
+	suite.mockStore.On("GetThemeListByProject", testCtx(), "list-fails", 10, 0).Return(nil, errors.New("db"))
+	_, err = suite.service.GetThemeListByProject(testCtx(), "list-fails", 10, 0)
+	suite.Equal(&tidcommon.InternalServerError, err)
 }

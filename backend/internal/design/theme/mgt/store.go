@@ -20,6 +20,8 @@ var errThemeNotFound = errors.New("theme not found")
 type themeMgtStoreInterface interface {
 	GetThemeListCount(ctx context.Context) (int, error)
 	GetThemeList(ctx context.Context, limit, offset int) ([]Theme, error)
+	GetThemeListCountByProject(ctx context.Context, projectID string) (int, error)
+	GetThemeListByProject(ctx context.Context, projectID string, limit, offset int) ([]Theme, error)
 	CreateTheme(ctx context.Context, id string, theme CreateThemeRequest) error
 	GetTheme(ctx context.Context, id string) (Theme, error)
 	IsThemeExist(ctx context.Context, id string) (bool, error)
@@ -75,7 +77,43 @@ func (s *themeMgtStore) GetThemeList(ctx context.Context, limit, offset int) ([]
 		return nil, fmt.Errorf("failed to execute theme list query: %w", err)
 	}
 
-	themes := make([]Theme, 0)
+	return s.buildThemeListFromResultRows(results)
+}
+
+// GetThemeListCountByProject retrieves the number of themes of a project.
+func (s *themeMgtStore) GetThemeListCountByProject(ctx context.Context, projectID string) (int, error) {
+	dbClient, err := s.getConfigDBClient()
+	if err != nil {
+		return 0, err
+	}
+
+	countResults, err := dbClient.Query(queryGetThemeListCountByProject, s.scope(ctx), projectID)
+	if err != nil {
+		return 0, fmt.Errorf("failed to execute count query: %w", err)
+	}
+
+	return parseCountResult(countResults)
+}
+
+// GetThemeListByProject retrieves a page of the themes of a project.
+func (s *themeMgtStore) GetThemeListByProject(ctx context.Context, projectID string, limit, offset int) (
+	[]Theme, error) {
+	dbClient, err := s.getConfigDBClient()
+	if err != nil {
+		return nil, err
+	}
+
+	results, err := dbClient.Query(queryGetThemeListByProject, limit, offset, s.scope(ctx), projectID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute theme list query: %w", err)
+	}
+
+	return s.buildThemeListFromResultRows(results)
+}
+
+// buildThemeListFromResultRows builds the themes of a list from its database result rows.
+func (s *themeMgtStore) buildThemeListFromResultRows(results []map[string]interface{}) ([]Theme, error) {
+	themes := make([]Theme, 0, len(results))
 	for _, row := range results {
 		theme, err := s.buildThemeListItemFromResultRow(row)
 		if err != nil {
@@ -100,7 +138,7 @@ func (s *themeMgtStore) CreateTheme(ctx context.Context, id string, theme Create
 	}
 
 	_, err = dbClient.Execute(queryCreateTheme, id, theme.Handle, theme.DisplayName, theme.Description,
-		themeJSON, s.scope(ctx))
+		themeJSON, s.scope(ctx), nullableString(theme.ProjectID))
 	if err != nil {
 		return fmt.Errorf("failed to execute query: %w", err)
 	}
@@ -167,7 +205,8 @@ func (s *themeMgtStore) UpdateTheme(ctx context.Context, id string, theme Update
 		return fmt.Errorf("failed to marshal theme: %w", err)
 	}
 
-	_, err = dbClient.Execute(queryUpdateTheme, theme.DisplayName, theme.Description, themeJSON, id, s.scope(ctx))
+	_, err = dbClient.Execute(queryUpdateTheme, theme.DisplayName, theme.Description, themeJSON, id, s.scope(ctx),
+		nullableString(theme.ProjectID))
 	if err != nil {
 		return fmt.Errorf("failed to execute query: %w", err)
 	}
@@ -234,6 +273,20 @@ func parseCountResult(results []map[string]interface{}) (int, error) {
 	return count, nil
 }
 
+// nullableString stores an empty value as NULL, so a theme in no project has no project ID.
+func nullableString(value string) interface{} {
+	if value == "" {
+		return nil
+	}
+	return value
+}
+
+// projectIDFromRow reads the project ID of a database result row. A theme in no project has none.
+func projectIDFromRow(row map[string]interface{}) string {
+	projectID, _ := row["project_id"].(string)
+	return projectID
+}
+
 // getTimestamp safely extracts a timestamp value from a database row and formats it as ISO 8601.
 func (s *themeMgtStore) getTimestamp(row map[string]interface{}, key string) (string, error) {
 	val := row[key]
@@ -295,6 +348,7 @@ func (s *themeMgtStore) buildThemeListItemFromResultRow(row map[string]interface
 		Handle:      handle,
 		DisplayName: displayName,
 		Description: description,
+		ProjectID:   projectIDFromRow(row),
 		Theme:       themeJSON,
 		CreatedAt:   createdAt,
 		UpdatedAt:   updatedAt,
@@ -353,6 +407,7 @@ func (s *themeMgtStore) buildThemeFromResultRow(row map[string]interface{}) (The
 		Handle:      handle,
 		DisplayName: displayName,
 		Description: description,
+		ProjectID:   projectIDFromRow(row),
 		Theme:       theme,
 		CreatedAt:   createdAt,
 		UpdatedAt:   updatedAt,

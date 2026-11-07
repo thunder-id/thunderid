@@ -14,9 +14,12 @@ import (
 )
 
 // Initialize initializes the theme management service and registers its routes.
+//
+// projectChecker is nil on a deployment that serves no projects, where a project ID is kept unchecked.
 func Initialize(
 	mux *http.ServeMux,
 	mcpServer *mcp.Server,
+	projectChecker projectChecker,
 ) (ThemeMgtServiceInterface, declarativeresource.ResourceExporter, error) {
 	// Step 1: Initialize store based on configuration
 	themeMgtStore, err := initializeStore()
@@ -25,7 +28,7 @@ func Initialize(
 	}
 
 	// Step 2: Create service with store
-	themeMgtService := newThemeMgtService(themeMgtStore)
+	themeMgtService := newThemeMgtService(themeMgtStore, projectChecker)
 	themeMgtHandler := newThemeMgtHandler(themeMgtService)
 	registerRoutes(mux, themeMgtHandler)
 

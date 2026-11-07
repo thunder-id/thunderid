@@ -503,7 +503,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	fatalOnError(ctx, logger, err, "Failed to initialize CertificateService")
 
 	// Initialize theme and layout services
-	themeMgtService, themeExporter, err := thememgt.Initialize(mux, mcpServer)
+	themeMgtService, themeExporter, err := thememgt.Initialize(mux, mcpServer, nil)
 	fatalOnError(ctx, logger, err, "Failed to initialize ThemeMgtService")
 	exporters = append(exporters, themeExporter)
 
