@@ -5,6 +5,7 @@
 package mcp
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/modelcontextprotocol/go-sdk/auth"
@@ -12,6 +13,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/oauthex"
 
 	"github.com/thunder-id/thunderid/internal/system/config"
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	mcpauth "github.com/thunder-id/thunderid/internal/system/mcp/auth"
@@ -113,7 +115,6 @@ func DefaultGuard(jwtService jwt.JWTServiceInterface, revocationEnforcer securit
 	tokenVerifier := mcpauth.NewTokenVerifier(bearerAuthenticator)
 	sdkGuard := auth.RequireBearerToken(tokenVerifier, &auth.RequireBearerTokenOptions{
 		ResourceMetadataURL: resourceMetadataURL,
-		Scopes:              []string{rootPerm},
 	})
 
 	// The go-sdk's TokenVerifier can only return a *auth.TokenInfo — it has no way to attach
@@ -122,12 +123,23 @@ func DefaultGuard(jwtService jwt.JWTServiceInterface, revocationEnforcer securit
 	// TokenInfo.Extra to get it out; this wraps the SDK's guard to pull it back out and attach it
 	// via security.WithSecurityContext, so MCP tool handlers see the same SecurityContext a REST
 	// handler would for an equivalent token.
+	// The challenge names no scope: any system permission admits the caller, so there is no single
+	// one to ask for.
+	insufficientScopeChallenge := fmt.Sprintf("%s error=%q, resource_metadata=%q",
+		serverconst.TokenTypeBearer, errorInsufficientScope, resourceMetadataURL)
 	guard := func(next http.Handler) http.Handler {
 		return sdkGuard(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if ti := auth.TokenInfoFromContext(r.Context()); ti != nil {
 				if secCtx := mcpauth.SecurityContextFromTokenInfo(ti); secCtx != nil {
 					r = r.WithContext(security.WithSecurityContext(r.Context(), secCtx))
 				}
+			}
+			// Each tool call is checked against the permission it is mapped to; the endpoint itself
+			// only needs a caller that holds some system permission.
+			if !security.HasAnySystemPermission(security.GetPermissions(r.Context())) {
+				w.Header().Set(serverconst.WWWAuthenticateHeaderName, insufficientScopeChallenge)
+				http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+				return
 			}
 			next.ServeHTTP(w, r)
 		}))

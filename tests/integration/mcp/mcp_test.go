@@ -99,17 +99,11 @@ func (ts *MCPTestSuite) SetupSuite() {
 	ts.ouID = ouID
 
 	// Registers the resource server whose identifier matches this server's real mcpURL, so a token
-	// requested with resource=mcpResourceIdentifier carries a matching "aud" claim. The "system"
-	// action mirrors the handle the bootstrapped System resource server defines, so a role can
-	// grant the same "system" permission string against this resource server too.
-	resourceServerID, err := testutils.CreateResourceServerWithActions(testutils.ResourceServer{
-		Name:        "MCP Auth Test Resource Server",
-		Description: "Resource server matching this server's own MCP endpoint identifier",
-		Identifier:  mcpResourceIdentifier,
-		OUID:        ts.ouID,
-	}, []testutils.Action{
-		{Name: "System", Handle: systemActionHandle, Description: "System resource"},
-	})
+	// requested with resource=mcpResourceIdentifier carries a matching "aud" claim. Declares the
+	// "system" root resource and the "system:app:view" permission, reproducing the fine-grained scopes
+	// used to verify MCP tool permission enforcement.
+	resourceServerID, err := testutils.CreateSystemScopedResourceServer(
+		ts.ouID, "MCP Auth Test Resource Server", mcpResourceIdentifier, "app")
 	ts.Require().NoError(err, "failed to create resource server")
 	ts.resourceServerID = resourceServerID
 
@@ -610,8 +604,8 @@ func (ts *MCPTestSuite) TestInitialize_TokenFromAnotherIssuer_Rejected() {
 	ts.Assert().Equal(http.StatusUnauthorized, resp.StatusCode)
 }
 
-// A valid token for the MCP resource whose holder lacks the "system" permission is refused with 403,
-// and the challenge names the scope the endpoint requires.
+// A valid token for the MCP resource whose holder holds no system permission is refused with 403. Any
+// system permission admits the caller, so the insufficient_scope challenge names no single scope.
 func (ts *MCPTestSuite) TestInitialize_TokenWithoutSystemPermission_Forbidden() {
 	const (
 		username = "mcp-unprivileged-operator"
@@ -631,18 +625,21 @@ func (ts *MCPTestSuite) TestInitialize_TokenWithoutSystemPermission_Forbidden() 
 
 	body, _ := io.ReadAll(resp.Body)
 	ts.Assert().Equalf(http.StatusForbidden, resp.StatusCode, "response: %s", string(body))
-	ts.Assert().Equal(systemActionHandle, challengeParam(resp.Header.Get("WWW-Authenticate"), "scope"))
+	challenge := resp.Header.Get("WWW-Authenticate")
+	ts.Assert().Equal("insufficient_scope", challengeParam(challenge, "error"))
+	ts.Assert().Empty(challengeParam(challenge, "scope"))
+	ts.Assert().Equal(testServerURL+"/.well-known/oauth-protected-resource",
+		challengeParam(challenge, "resource_metadata"))
 }
 
 // A client that follows the challenge finds protected resource metadata naming the resource tokens are
-// checked against, the scope the endpoint requires, and an authorization server that publishes
+// checked against, the scope a full administrator requests, and an authorization server that publishes
 // metadata for that same issuer.
 func (ts *MCPTestSuite) TestProtectedResourceMetadata_MatchesTheChallengeAndTheAudience() {
 	resp := ts.initializeMCPSession("")
 	_ = resp.Body.Close()
 	ts.Require().Equal(http.StatusUnauthorized, resp.StatusCode)
 	challenge := resp.Header.Get("WWW-Authenticate")
-	ts.Equal(systemActionHandle, challengeParam(challenge, "scope"))
 	metadataURL := challengeParam(challenge, "resource_metadata")
 	ts.Require().Equal(testServerURL+"/.well-known/oauth-protected-resource", metadataURL)
 
@@ -945,6 +942,50 @@ func (ts *MCPTestSuite) TestHTTPConnectionTools_MaskedPasswordReadBackIsRefused(
 	})
 	ts.Falsef(kept.Result.IsError, "the stored password must survive the refused update: %s", raw)
 	ts.NotContains(raw, password)
+}
+
+// A caller holding only system:app:view connects to the MCP server and can call list_applications,
+// but cannot call create_application or an unmapped tool that requires root.
+func (ts *MCPTestSuite) TestApplicationTools_EnforceFineGrainedPermissions() {
+	const (
+		username = "mcp-app-viewer-operator"
+		password = "McpAppViewer@123"
+	)
+	operatorID := ts.createOperator(username, password)
+
+	operatorRoleID, err := testutils.CreateRole(testutils.Role{
+		Name:        "MCP Auth Test Operator App View Role",
+		Description: "Grants system:app:view permission on the MCP auth test resource server",
+		OUID:        ts.ouID,
+		Permissions: []testutils.ResourcePermissions{
+			{ResourceServerID: ts.resourceServerID, Permissions: []string{"system:app:view"}},
+		},
+		Assignments: []testutils.Assignment{
+			{ID: operatorID, Type: "user"},
+		},
+	})
+	ts.Require().NoError(err, "failed to create operator role")
+	ts.T().Cleanup(func() { _ = testutils.DeleteRole(operatorRoleID) })
+
+	var signIn testutils.OUSignInApps
+	defer func() { _ = signIn.DeleteAll() }()
+	tokenResp, err := signIn.ObtainAccessToken(ts.ouID, "system:app:view", username, password, mcpResourceIdentifier)
+	ts.Require().NoError(err, "the operator must sign in")
+	token := tokenResp.AccessToken
+
+	// Calling a tool mapped to the permission the caller holds succeeds.
+	listResult, rawList := ts.callMCPTool(token, "list_applications", map[string]any{})
+	ts.Require().Falsef(listResult.Result.IsError, "list_applications failed: %s", rawList)
+
+	// Calling a tool requiring a different application permission is refused by toolPermissionMiddleware.
+	createResult, rawCreate := ts.callMCPTool(token, "create_application", map[string]any{"name": "Denied App"})
+	ts.Require().Truef(createResult.Result.IsError, "create_application should be refused: %s", rawCreate)
+	ts.Contains(rawCreate, "The caller is not authorized to call this tool")
+
+	// Calling an unmapped tool requiring root system permission is refused.
+	unmappedResult, rawUnmapped := ts.callMCPTool(token, "export_configuration", map[string]any{})
+	ts.Require().Truef(unmappedResult.Result.IsError, "export_configuration should be refused: %s", rawUnmapped)
+	ts.Contains(rawUnmapped, "The caller is not authorized to call this tool")
 }
 
 func (ts *MCPTestSuite) deleteHTTPConnection(id string) {

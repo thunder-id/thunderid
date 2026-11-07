@@ -39,6 +39,22 @@ func TestToolPermissionMiddleware(t *testing.T) {
 		{name: "UnmappedToolNeedsRoot", tool: "list_gateway_variables",
 			permissions: []string{"system:gateway"}, wantCalled: false},
 		{name: "NoPermissions", tool: "list_flows", permissions: nil, wantCalled: false},
+		{name: "AppRootCallsAnyTool", tool: "create_application", permissions: []string{"system"}, wantCalled: true},
+		{name: "AppExactPermission", tool: "create_application",
+			permissions: []string{"system:app:create"}, wantCalled: true},
+		{name: "AppUpdateCannotCreate", tool: "create_application",
+			permissions: []string{"system:app:update"}, wantCalled: false},
+		{name: "AppCreateCannotUpdate", tool: "update_application",
+			permissions: []string{"system:app:create"}, wantCalled: false},
+		{name: "AppParentPermission", tool: "update_application",
+			permissions: []string{"system:app"}, wantCalled: true},
+		{name: "AppViewCannotWrite", tool: "create_application",
+			permissions: []string{"system:app:view"}, wantCalled: false},
+		{name: "AppViewCanRead", tool: "list_applications",
+			permissions: []string{"system:app:view"}, wantCalled: true},
+		{name: "AppUnmappedToolNeedsRoot", tool: "list_flows",
+			permissions: []string{"system:app"}, wantCalled: false},
+		{name: "AppNoPermissions", tool: "list_applications", permissions: nil, wantCalled: false},
 	}
 
 	for _, tt := range tests {

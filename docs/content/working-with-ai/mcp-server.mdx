@@ -28,7 +28,7 @@ For requests that use `2026-07-28`, closing the connection before the response a
 
 The endpoint follows the [MCP Authorization Specification](https://modelcontextprotocol.io/specification/2025-06-18/basic/authorization). The MCP server publishes protected resource metadata at `/.well-known/oauth-protected-resource`, advertising <ProductName /> as the OAuth authorization server. If a [trusted issuer](../../guides/trusted-issuer) is configured, the metadata advertises that issuer instead. Either way, a token is accepted only when it was issued for the MCP server's resource identifier, which the metadata publishes as `resource`; a token issued for any other audience, such as the REST API's, is refused. Spec-compliant MCP clients discover this automatically and run an OAuth authorization code + PKCE flow: you sign in through the browser, and the client obtains and refreshes tokens on its own. There is no manual token handling.
 
-Access requires the `system` scope, and permissions come from the signed-in user, so sign in with an administrator account.
+Access requires a token that carries at least one system permission, and each tool call also requires the permission that tool is mapped to. See [System Permissions](../../guides/users/manage-roles#system-permissions) for the permissions. A token carries only the permissions that the client requests and that the signed-in user's roles grant. The steps on this page request the `system` scope, which suits an administrator whose role grants `system`. A user whose role grants narrower permissions, such as `system:user:view`, requests those permissions as scopes instead.
 
 To protect against DNS rebinding, the endpoint also checks the `Origin` header that browsers send. It accepts a request only from the origin of the <ProductName /> server URL (`server.public_url` when set) or from an origin allowed in the CORS configuration. It rejects any other origin with `403 Forbidden` before checking the token. Requests without an `Origin` header are not affected.
 
@@ -412,9 +412,9 @@ For MCP Inspector, the redirect URI on the application must match `http://localh
 
 ### 403 or insufficient scope after connecting
 
-The signed-in user lacks administrator permissions, or the scope was not set to `system`.
+The token carries no system permission. Either the signed-in user's roles grant none, or the client requested scopes the user's roles do not grant. A tool call that returns an authorization error means the token lacks the permission that tool is mapped to.
 
-1. Sign in with an administrator account.
+1. Sign in with a user whose roles grant the permissions the tools need. See [System Permissions](../../guides/users/manage-roles#system-permissions).
 2. For Codex, run `codex mcp login thunderid-mcp --scopes system` to sign in again with the required scope. For MCP Inspector, set **Scope** to `system`.
 
 ### MCP server not responding
