@@ -38,7 +38,6 @@ func (ts *ProjectAPITestSuite) TestCreateAgentInProject() {
 	ts.Equal(defaultOUID, inShop.OUID)
 	ts.Equal(shop.ID, inShop.ProjectID)
 	inOther := ts.createAgent(ts.agentBody("other", `"projectId":%q`, other.ID))
-	ts.createAgent(ts.agentBody("unscoped", `"ouId":%q`, defaultOUID))
 
 	shopList := ts.listAgents("?limit=100&projectId=" + url.QueryEscape(shop.ID))
 	ts.Equal([]string{inShop.ID}, ts.agentIDs(shopList))
@@ -50,6 +49,14 @@ func (ts *ProjectAPITestSuite) TestCreateAgentInProject() {
 	ts.Equal(shop.ID, fetched.ProjectID)
 }
 
+// An agent is still created without a project while the project scope does not require one.
+func (ts *ProjectAPITestSuite) TestCreateAgentWithoutProject() {
+	agent := ts.createAgent(ts.agentBody("unscoped", `"ouId":%q`, defaultOUID))
+	ts.Empty(agent.ProjectID)
+	ts.Equal(defaultOUID, agent.OUID)
+}
+
+// An agent in a project is in the system organization unit, and no other.
 func (ts *ProjectAPITestSuite) TestAgentInProjectOrganizationUnit() {
 	shop := ts.create(fmt.Sprintf(`{"handle":%q,"displayName":"Shop"}`, ts.handle("agent-ou-shop")))
 	otherRoot := ts.createRootOU("agent-ou-other")
@@ -57,22 +64,17 @@ func (ts *ProjectAPITestSuite) TestAgentInProjectOrganizationUnit() {
 
 	inDefault := ts.createAgent(ts.agentBody("ou-default", `"projectId":%q,"ouId":%q`, shop.ID, defaultOUID))
 	ts.Equal(defaultOUID, inDefault.OUID)
-	inChild := ts.createAgent(ts.agentBody("ou-child", `"projectId":%q,"ouId":%q`, shop.ID, childOUID))
-	ts.Equal(childOUID, inChild.OUID)
 
-	status, body := ts.do(http.MethodPost, "/agents",
-		ts.agentBody("ou-outside", `"projectId":%q,"ouId":%q`, shop.ID, otherRoot))
-	ts.Equal(http.StatusBadRequest, status, body)
-	ts.Equal("AGT-1048", codeOf(ts.T(), body))
+	for name, ouID := range map[string]string{"ou-child": childOUID, "ou-outside": otherRoot} {
+		status, body := ts.do(http.MethodPost, "/agents",
+			ts.agentBody(name, `"projectId":%q,"ouId":%q`, shop.ID, ouID))
+		ts.Equal(http.StatusBadRequest, status, body)
+		ts.Equal("AGT-1048", codeOf(ts.T(), body), name)
+	}
 
-	ts.ElementsMatch([]string{inDefault.ID, inChild.ID},
-		ts.agentIDs(ts.listAgents("?limit=100&projectId="+url.QueryEscape(shop.ID))))
+	ts.Equal([]string{inDefault.ID}, ts.agentIDs(ts.listAgents("?limit=100&projectId="+url.QueryEscape(shop.ID))))
 
 	list := ts.listAgents("?projectId=" + url.QueryEscape(shop.ID) + "&filter=" +
-		url.QueryEscape(fmt.Sprintf("ouId eq %q", childOUID)))
-	ts.Equal([]string{inChild.ID}, ts.agentIDs(list))
-
-	list = ts.listAgents("?projectId=" + url.QueryEscape(shop.ID) + "&filter=" +
 		url.QueryEscape(fmt.Sprintf("ouId eq %q", otherRoot)))
 	ts.Empty(list.Agents)
 }
@@ -85,8 +87,8 @@ func (ts *ProjectAPITestSuite) TestUpdateAgentWithProject() {
 	childOUID := ts.createChildOU("agent-upd-child", defaultOUID)
 	agent := ts.createAgent(ts.agentBody("updated", `"projectId":%q`, first.ID))
 
-	updated := ts.updateAgent(agent.ID, ts.agentBody("updated", `"ouId":%q`, childOUID))
-	ts.Equal(childOUID, updated.OUID)
+	updated := ts.updateAgent(agent.ID, ts.agentBody("updated", `"description":%q`, "updated"))
+	ts.Equal(defaultOUID, updated.OUID)
 	ts.Equal(first.ID, updated.ProjectID, "an update without a project keeps it")
 
 	updated = ts.updateAgent(agent.ID, ts.agentBody("updated", `"projectId":%q`, second.ID))
@@ -94,10 +96,11 @@ func (ts *ProjectAPITestSuite) TestUpdateAgentWithProject() {
 	ts.Empty(ts.agentIDs(ts.listAgents("?limit=100&projectId=" + url.QueryEscape(first.ID))))
 	ts.Equal([]string{agent.ID}, ts.agentIDs(ts.listAgents("?limit=100&projectId="+url.QueryEscape(second.ID))))
 
-	status, body := ts.do(http.MethodPut, "/agents/"+agent.ID,
-		ts.agentBody("updated", `"ouId":%q`, otherRoot))
-	ts.Equal(http.StatusBadRequest, status, body)
-	ts.Equal("AGT-1048", codeOf(ts.T(), body))
+	for _, ouID := range []string{childOUID, otherRoot} {
+		status, body := ts.do(http.MethodPut, "/agents/"+agent.ID, ts.agentBody("updated", `"ouId":%q`, ouID))
+		ts.Equal(http.StatusBadRequest, status, body)
+		ts.Equal("AGT-1048", codeOf(ts.T(), body))
+	}
 }
 
 // A project is not deleted while an agent is still in it.

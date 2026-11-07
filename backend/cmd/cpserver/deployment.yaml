@@ -9,6 +9,9 @@
 server:
   hostname: "localhost"
   port: 8095
+  # The organization unit that resources in a project are placed in. It is the organization unit the
+  # bootstrap creates. Don't change it once resources are placed in it.
+  system_ou_id: "01900000-0000-7000-8000-000000000001"
 
   security:
     # This plane issues no tokens of its own, and the management tokens it accepts come from the

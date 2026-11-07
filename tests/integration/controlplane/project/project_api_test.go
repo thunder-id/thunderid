@@ -203,7 +203,7 @@ func (ts *ProjectAPITestSuite) TestDefaultOUCannotBeDeleted() {
 	status, body := ts.do(http.MethodDelete, "/organization-units/"+defaultOUID, "")
 
 	ts.Equal(http.StatusBadRequest, status)
-	ts.Equal("OU-1006", codeOf(ts.T(), body))
+	ts.Equal("OU-1021", codeOf(ts.T(), body))
 	_, err := testutils.GetOrganizationUnit(defaultOUID)
 	ts.NoError(err)
 }

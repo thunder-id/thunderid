@@ -38,6 +38,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/cors"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/crypto/cryptomock"
 	"github.com/thunder-id/thunderid/tests/mocks/entitymock"
@@ -54,6 +55,7 @@ const testClientID = "test-client-id"
 const (
 	testOUID      = "default-ou"
 	testProjectID = "project-1"
+	testSystemOU  = "system-ou"
 )
 
 const testConflictingAppID = "app456"
@@ -176,6 +178,7 @@ func (suite *ServiceTestSuite) setupTestService() (
 	mockStore.On("ResolveInboundAuthProfileHandles", mock.Anything, mock.Anything).Maybe().Return(nil)
 	mockOUService := oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())
 	mockOUService.On("IsOrganizationUnitExists", mock.Anything, mock.Anything).Maybe().Return(true, nil)
+	mockOUService.On("GetSystemOUID", mock.Anything).Maybe().Return(testSystemOU, nil)
 	// Production always wires a sharing service, so the default service carries one too. It
 	// answers permissively: a test that cares about sharing installs its own through
 	// sharingServiceOnly.
@@ -793,11 +796,11 @@ func (suite *ServiceTestSuite) TestProjectErrorCodesMatchTheProjectService() {
 	assert.Equal(suite.T(), project.ErrorOUNotInProject.Code, ouNotInProjectErrorCode)
 }
 
-// projectResolverReturning builds a project resolver that fails with the given error.
-func (suite *ServiceTestSuite) projectResolverReturning(svcErr *tidcommon.ServiceError) func() projectOUResolver {
-	return func() projectOUResolver {
-		resolver := newProjectOUResolverMock(suite.T())
-		resolver.EXPECT().ResolveProjectOU(mock.Anything, testProjectID, mock.Anything).Return("", svcErr).Once()
+// projectValidatorReturning builds a project validator that fails with the given error.
+func (suite *ServiceTestSuite) projectValidatorReturning(svcErr *tidcommon.ServiceError) func() projectOUValidator {
+	return func() projectOUValidator {
+		resolver := newProjectOUValidatorMock(suite.T())
+		resolver.EXPECT().ValidateProjectOU(mock.Anything, testProjectID, mock.Anything).Return(svcErr).Once()
 		return resolver
 	}
 }
@@ -4323,11 +4326,18 @@ func (suite *ServiceTestSuite) TestValidateApplicationFields_OUIDWinsWhenBothPro
 
 func (suite *ServiceTestSuite) TestValidateApplicationFields_ProjectResolved() {
 	for name, tc := range map[string]struct {
-		app  *model.ApplicationDTO
-		ouID string
+		app      *model.ApplicationDTO
+		callerOU string
+		ouID     string
 	}{
 		"no organization unit": {
-			app: &model.ApplicationDTO{Name: "test-app", ProjectID: testProjectID},
+			app:  &model.ApplicationDTO{Name: "test-app", ProjectID: testProjectID},
+			ouID: testSystemOU,
+		},
+		"no organization unit from a caller in one": {
+			app:      &model.ApplicationDTO{Name: "test-app", ProjectID: testProjectID},
+			callerOU: "caller-ou",
+			ouID:     testSystemOU,
 		},
 		"an organization unit ID": {
 			app:  &model.ApplicationDTO{Name: "test-app", ProjectID: testProjectID, OUID: "child-ou"},
@@ -4340,19 +4350,129 @@ func (suite *ServiceTestSuite) TestValidateApplicationFields_ProjectResolved() {
 	} {
 		suite.Run(name, func() {
 			service, _ := suite.setupTestService()
-			resolver := newProjectOUResolverMock(suite.T())
-			resolver.EXPECT().ResolveProjectOU(mock.Anything, testProjectID, tc.ouID).Return(testOUID, nil).Once()
-			service.projectResolver = resolver
+			resolver := newProjectOUValidatorMock(suite.T())
+			resolver.EXPECT().ValidateProjectOU(mock.Anything, testProjectID, tc.ouID).Return(nil).Once()
+			service.projectValidator = resolver
 			service.ouService.(*oumock.OrganizationUnitServiceInterfaceMock).
 				On("GetOrganizationUnitByPath", mock.Anything, "child").
 				Return(ou.OrganizationUnit{ID: "child-ou"}, nil).Maybe()
 
-			svcErr := service.validateApplicationFields(context.Background(), tc.app)
+			ctx := security.WithSecurityContextTest(context.Background(),
+				security.NewSecurityContextForTest("admin-1", tc.callerOU, "", nil, nil))
+
+			svcErr := service.validateApplicationFields(ctx, tc.app)
 
 			assert.Nil(suite.T(), svcErr)
-			assert.Equal(suite.T(), testOUID, tc.app.OUID)
+			assert.Equal(suite.T(), tc.ouID, tc.app.OUID)
 		})
 	}
+}
+
+func (suite *ServiceTestSuite) TestValidateApplicationFields_DefaultOU() {
+	for name, callerOU := range map[string]string{
+		"a caller without an organization unit": "",
+		"a caller with an organization unit":    "caller-ou",
+	} {
+		suite.Run(name, func() {
+			service, _ := suite.setupTestService()
+			ctx := security.WithSecurityContextTest(context.Background(),
+				security.NewSecurityContextForTest("admin-1", callerOU, "", nil, nil))
+			app := &model.ApplicationDTO{Name: "test-app"}
+
+			svcErr := service.validateApplicationFields(ctx, app)
+
+			assert.Nil(suite.T(), svcErr)
+			assert.Equal(suite.T(), testSystemOU, app.OUID)
+		})
+	}
+}
+
+func (suite *ServiceTestSuite) TestCheckProjectGiven() {
+	for name, tc := range map[string]struct {
+		projectID       string
+		servesProjects  bool
+		projectRequired bool
+		expected        *tidcommon.ServiceError
+	}{
+		"a project":                  {projectID: testProjectID, servesProjects: true, projectRequired: true},
+		"projects not served":        {},
+		"a project not yet required": {servesProjects: true},
+		"a project required":         {servesProjects: true, projectRequired: true, expected: &ErrorProjectRequired},
+	} {
+		suite.Run(name, func() {
+			service, _ := suite.setupTestService()
+			if tc.servesProjects {
+				service.projectValidator = newProjectOUValidatorMock(suite.T())
+			}
+			service.projectRequired = tc.projectRequired
+
+			assert.Equal(suite.T(), tc.expected, service.checkProjectGiven(context.Background(), tc.projectID))
+		})
+	}
+}
+
+func (suite *ServiceTestSuite) TestCreateApplication_ProjectRequired() {
+	suite.withServerRuntime()
+	service, _ := suite.setupTestService()
+	service.projectValidator = newProjectOUValidatorMock(suite.T())
+	service.projectRequired = true
+
+	_, svcErr := service.createApplication(context.Background(), &model.ApplicationDTO{Name: "test-app"})
+
+	assert.Equal(suite.T(), &ErrorProjectRequired, svcErr)
+}
+
+// A system organization unit that is not configured or does not exist is a server error when the
+// application defaults to it.
+func (suite *ServiceTestSuite) TestValidateApplicationFields_NoSystemOU() {
+	service, _ := suite.setupTestService()
+	ouService := oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())
+	ouService.On("GetSystemOUID", mock.Anything).Return("", &tidcommon.InternalServerError)
+	service.ouService = ouService
+
+	svcErr := service.validateApplicationFields(context.Background(), &model.ApplicationDTO{Name: "test-app"})
+
+	assert.Equal(suite.T(), &tidcommon.InternalServerError, svcErr)
+}
+
+// withServerRuntime loads a server runtime with the default configuration.
+func (suite *ServiceTestSuite) withServerRuntime() {
+	cfg := &config.Config{}
+	config.ResetServerRuntime()
+	suite.Require().NoError(config.InitializeServerRuntime("/tmp/test", cfg))
+	suite.T().Cleanup(config.ResetServerRuntime)
+}
+
+func (suite *ServiceTestSuite) TestValidateApplicationForUpdate_KeepsOUWhenOmitted() {
+	testConfig := &config.Config{
+		DeclarativeResources: config.DeclarativeResources{
+			Enabled: false,
+		},
+	}
+	config.ResetServerRuntime()
+	err := config.InitializeServerRuntime("/tmp/test", testConfig)
+	require.NoError(suite.T(), err)
+	defer config.ResetServerRuntime()
+
+	service, mockStore := suite.setupTestService()
+	resolver := newProjectOUValidatorMock(suite.T())
+	resolver.EXPECT().ValidateProjectOU(mock.Anything, testProjectID, "child-ou").Return(nil)
+	service.projectValidator = resolver
+
+	existingApp := &model.ApplicationProcessedDTO{
+		ID:        testServiceAppID,
+		Name:      "Test App",
+		OUID:      "child-ou",
+		ProjectID: testProjectID,
+	}
+	app := &model.ApplicationDTO{Name: "Test App", ProjectID: testProjectID}
+
+	mockLoadFullApplication(mockStore, service, existingApp)
+
+	_, _, svcErr := service.validateApplicationForUpdate(context.Background(), testServiceAppID, app)
+
+	assert.Nil(suite.T(), svcErr)
+	assert.Equal(suite.T(), "child-ou", app.OUID)
 }
 
 func (suite *ServiceTestSuite) TestValidateApplicationFields_ProjectWithoutProjectService() {
@@ -4360,12 +4480,12 @@ func (suite *ServiceTestSuite) TestValidateApplicationFields_ProjectWithoutProje
 		ouID     string
 		expected string
 	}{
-		"no organization unit": {expected: ou.SystemOUID},
+		"no organization unit": {expected: testSystemOU},
 		"an organization unit": {ouID: "child-ou", expected: "child-ou"},
 	} {
 		suite.Run(name, func() {
 			service, _ := suite.setupTestService()
-			service.projectResolver = nil
+			service.projectValidator = nil
 			app := &model.ApplicationDTO{Name: "test-app", ProjectID: testProjectID, OUID: tc.ouID}
 
 			svcErr := service.validateApplicationFields(context.Background(), app)
@@ -4379,30 +4499,25 @@ func (suite *ServiceTestSuite) TestValidateApplicationFields_ProjectWithoutProje
 
 func (suite *ServiceTestSuite) TestValidateApplicationFields_ProjectNotResolved() {
 	for name, tc := range map[string]struct {
-		resolver func() projectOUResolver
+		resolver func() projectOUValidator
 		expected *tidcommon.ServiceError
 	}{
 		"an unknown project": {
-			resolver: suite.projectResolverReturning(&project.ErrorProjectNotFound),
+			resolver: suite.projectValidatorReturning(&project.ErrorProjectNotFound),
 			expected: &ErrorInvalidProject,
 		},
 		"an organization unit outside the project": {
-			resolver: suite.projectResolverReturning(&project.ErrorOUNotInProject),
+			resolver: suite.projectValidatorReturning(&project.ErrorOUNotInProject),
 			expected: &ErrorOUNotInProject,
 		},
-		"an unknown organization unit": {
-			resolver: suite.projectResolverReturning(
-				&tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "OU-1003"}),
-			expected: &ErrorInvalidRequestFormat,
-		},
 		"a lookup failure": {
-			resolver: suite.projectResolverReturning(&tidcommon.InternalServerError),
+			resolver: suite.projectValidatorReturning(&tidcommon.InternalServerError),
 			expected: &tidcommon.InternalServerError,
 		},
 	} {
 		suite.Run(name, func() {
 			service, _ := suite.setupTestService()
-			service.projectResolver = tc.resolver()
+			service.projectValidator = tc.resolver()
 			app := &model.ApplicationDTO{Name: "test-app", ProjectID: testProjectID, OUID: "child-ou"}
 
 			svcErr := service.validateApplicationFields(context.Background(), app)
@@ -5406,9 +5521,9 @@ func (suite *ServiceTestSuite) sharingTestService() (
 // A shared application stays in its project as well as its organization unit.
 func (suite *ServiceTestSuite) TestUpdateApplication_SharedApplicationCannotChangeProject() {
 	service, sharingMock := suite.sharingTestService()
-	resolver := newProjectOUResolverMock(suite.T())
-	resolver.EXPECT().ResolveProjectOU(mock.Anything, "project-2", "owner-ou").Return("owner-ou", nil).Once()
-	service.projectResolver = resolver
+	resolver := newProjectOUValidatorMock(suite.T())
+	resolver.EXPECT().ValidateProjectOU(mock.Anything, "project-2", "owner-ou").Return(nil).Once()
+	service.projectValidator = resolver
 	sharingMock.EXPECT().ListPolicies(mock.Anything, ApplicationSharingType, testServiceAppID).
 		Return([]sharing.Policy{{ID: "p1"}}, nil).Once()
 
@@ -5437,10 +5552,10 @@ func (suite *ServiceTestSuite) TestValidateApplicationForUpdate_KeepsItsProject(
 			mockLoadFullApplication(store, service, &model.ApplicationProcessedDTO{
 				ID: testServiceAppID, Name: "Test App", OUID: "owner-ou", ProjectID: testProjectID,
 			})
-			resolver := newProjectOUResolverMock(suite.T())
-			resolver.EXPECT().ResolveProjectOU(mock.Anything, testProjectID, "owner-ou").
-				Return("owner-ou", tc.resolveErr).Once()
-			service.projectResolver = resolver
+			resolver := newProjectOUValidatorMock(suite.T())
+			resolver.EXPECT().ValidateProjectOU(mock.Anything, testProjectID, "owner-ou").
+				Return(tc.resolveErr).Once()
+			service.projectValidator = resolver
 			app := &model.ApplicationDTO{Name: "Test App", OUID: "owner-ou"}
 
 			_, _, svcErr := service.validateApplicationForUpdate(context.Background(), testServiceAppID, app)

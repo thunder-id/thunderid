@@ -9,6 +9,9 @@ server:
   {{- if .Values.configuration.server.identifier }}
   identifier: {{ .Values.configuration.server.identifier | quote }}
   {{- end }}
+  {{- if .Values.configuration.server.systemOuId }}
+  system_ou_id: {{ .Values.configuration.server.systemOuId | quote }}
+  {{- end }}
   {{- with .Values.configuration.server.timeouts }}
   timeouts:
     read_header_seconds: {{ .readHeaderSeconds }}

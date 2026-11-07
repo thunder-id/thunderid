@@ -25,6 +25,9 @@ const (
 	handleAuthFlowHandle2 = "agent-api-handle-flow-2"
 
 	jwtBearerGrant = "urn:ietf:params:oauth:grant-type:jwt-bearer"
+
+	// systemOUID is the system organization unit the bootstrap server configuration names.
+	systemOUID = "01900000-0000-7000-8000-000000000001"
 )
 
 var testServerURL = testutils.TestServerURL
@@ -446,6 +449,14 @@ func (ts *AgentAPITestSuite) TestCreateAgentEntityOnly() {
 	ts.Require().NoError(json.NewDecoder(resp.Body).Decode(&fetched))
 	ts.Assert().Empty(fetched.InboundAuthConfig, "entity-only agent must have no inbound auth config")
 	ts.Assert().Empty(fetched.AuthFlowID, "entity-only agent must have no auth flow ID")
+}
+
+// An agent created without an organization unit goes to the system organization unit.
+func (ts *AgentAPITestSuite) TestCreateAgentWithoutOU() {
+	created, _ := ts.createAgentWithStatus(
+		Agent{Type: "default", Attributes: agentAttrs("create-without-ou", nil)}, http.StatusCreated)
+
+	ts.Equal(systemOUID, created.OUID)
 }
 
 // --- owner ---

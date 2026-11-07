@@ -161,7 +161,7 @@ func (suite *InitTestSuite) TestInitialize_WithDeclarativeResourcesDisabled() {
 		newSharingServiceStub(suite.T()),
 		nil, // valueCapturer - not needed for this test
 		nil, // governance - not needed for this test
-		nil, // projectResolver - not needed for this test
+		nil, // projectValidator - not needed for this test
 		discardingBus{},
 	)
 
@@ -211,7 +211,7 @@ func (suite *InitTestSuite) TestInitialize_WithMCPServer() {
 		newSharingServiceStub(suite.T()),
 		nil, // valueCapturer - not needed for this test
 		nil, // governance - not needed for this test
-		nil, // projectResolver - not needed for this test
+		nil, // projectValidator - not needed for this test
 		discardingBus{},
 	)
 
@@ -645,7 +645,7 @@ func TestInitialize_Standalone(t *testing.T) {
 		newSharingServiceStub(t),
 		nil, // valueCapturer - not needed for this test
 		nil, // governance - not needed for this test
-		nil, // projectResolver - not needed for this test
+		nil, // projectValidator - not needed for this test
 		discardingBus{},
 	)
 
@@ -703,7 +703,7 @@ func TestInitialize_WithDeclarativeResources_Standalone(t *testing.T) {
 		newSharingServiceStub(t),
 		nil, // valueCapturer - not needed for this test
 		nil, // governance - not needed for this test
-		nil, // projectResolver - not needed for this test
+		nil, // projectValidator - not needed for this test
 		discardingBus{},
 	)
 

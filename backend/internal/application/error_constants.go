@@ -892,6 +892,19 @@ var (
 			DefaultValue: "The Device Grant flow must call this application's configured Authentication flow",
 		},
 	}
+	// ErrorProjectRequired is returned when an application is created without a project.
+	ErrorProjectRequired = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "APP-1067",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.project_required",
+			DefaultValue: "Project required",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.project_required_description",
+			DefaultValue: "Set projectId to the project the application belongs to",
+		},
+	}
 )
 
 // errNilEventBus is returned when the service is initialized without the event bus it audits on.

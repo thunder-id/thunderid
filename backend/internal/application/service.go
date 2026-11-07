@@ -33,7 +33,9 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/filter"
 	i18nmgt "github.com/thunder-id/thunderid/internal/system/i18n/mgt"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/projectscope"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -87,9 +89,9 @@ type ApplicationServiceInterface interface {
 // duration, leaves the revocation service on its configured default.
 type artifactLifetimeResolver func(client *providers.OAuthClient) time.Duration
 
-// projectOUResolver finds the organization unit that a resource scoped to a project belongs to.
-type projectOUResolver interface {
-	ResolveProjectOU(ctx context.Context, projectID, ouID string) (string, *tidcommon.ServiceError)
+// projectOUValidator checks that the organization unit of a resource scoped to a project belongs to it.
+type projectOUValidator interface {
+	ValidateProjectOU(ctx context.Context, projectID, ouID string) *tidcommon.ServiceError
 }
 
 // ApplicationService is the default implementation of the ApplicationServiceInterface.
@@ -107,8 +109,11 @@ type applicationService struct {
 	sharingService       sharing.SharingServiceInterface
 	// governance derives the access status.
 	governance identitygovernance.IdentityGovernanceServiceInterface
-	// projectResolver is nil on a deployment that serves no projects.
-	projectResolver projectOUResolver
+	// projectValidator is nil on a deployment that serves no projects.
+	projectValidator projectOUValidator
+	// projectRequired is set when a deployment that serves projects refuses an application created without
+	// one.
+	projectRequired bool
 	// systemFlows is nil where system flows are off.
 	systemFlows systemFlowProvider
 	bus         eventbus.EventBusInterface
@@ -132,7 +137,7 @@ func newApplicationService(
 	valueCapturer declarativeresource.ValueCapturer,
 	sharingService sharing.SharingServiceInterface,
 	governance identitygovernance.IdentityGovernanceServiceInterface,
-	projectResolver projectOUResolver,
+	projectValidator projectOUValidator,
 	bus eventbus.EventBusInterface,
 ) ApplicationServiceInterface {
 	return &applicationService{
@@ -147,7 +152,8 @@ func newApplicationService(
 		valueCapturer:        valueCapturer,
 		sharingService:       sharingService,
 		governance:           governance,
-		projectResolver:      projectResolver,
+		projectValidator:     projectValidator,
+		projectRequired:      projectValidator != nil && projectscope.ProjectRequired(security.ResourceTypeApplication),
 		bus:                  bus,
 	}
 }
@@ -180,6 +186,9 @@ func (as *applicationService) createApplication(ctx context.Context, app *model.
 	// Check if store is in pure declarative mode
 	if isDeclarativeModeEnabled() {
 		return nil, &ErrorCannotModifyDeclarativeResource
+	}
+	if svcErr := as.checkProjectGiven(ctx, app.ProjectID); svcErr != nil {
+		return nil, svcErr
 	}
 
 	// Check if an application with the same ID exists and is declarative (in composite mode). An id
@@ -427,38 +436,39 @@ func (as *applicationService) GetApplicationListByProject(ctx context.Context, p
 	return as.buildApplicationList(ctx, entities, len(entities), total)
 }
 
-// resolveProjectOU returns the organization unit of the project that an application belongs to: the
-// system organization unit when ouID is empty, or ouID when it belongs to the project. It returns
-// ErrorInvalidProject when no such project exists, ErrorOUNotInProject when the organization unit is
-// outside the project, and ErrorInvalidRequestFormat when the organization unit does not exist.
+// checkProjectGiven refuses an application created without a project where projects are served and one is
+// required, and warns about it where one is not required yet.
+func (as *applicationService) checkProjectGiven(ctx context.Context, projectID string) *tidcommon.ServiceError {
+	if projectID != "" || as.projectValidator == nil {
+		return nil
+	}
+	if as.projectRequired {
+		return &ErrorProjectRequired
+	}
+	as.logger.Warn(ctx, "Application created without a project; a project will be required")
+	return nil
+}
+
+// validateProjectOU checks that an application's organization unit belongs to its project. It returns
+// ErrorInvalidProject when no such project exists, and ErrorOUNotInProject when the organization unit is
+// outside the project.
 //
 // A deployment that serves no projects, such as a Data Plane, cannot check the project. It keeps the
-// project ID as given so that imported configuration retains it, and places the application as above.
-func (as *applicationService) resolveProjectOU(
-	ctx context.Context, projectID, ouID string) (string, *tidcommon.ServiceError) {
-	if projectID == "" {
-		return "", &ErrorInvalidProject
+// project ID and organization unit as given so that imported configuration retains them.
+func (as *applicationService) validateProjectOU(ctx context.Context, projectID, ouID string) *tidcommon.ServiceError {
+	if as.projectValidator == nil {
+		return nil
 	}
-	if as.projectResolver == nil {
-		if ouID == "" {
-			return oupkg.SystemOUID, nil
-		}
-		return ouID, nil
-	}
-	resolved, svcErr := as.projectResolver.ResolveProjectOU(ctx, projectID, ouID)
-	if svcErr == nil {
-		return resolved, nil
-	}
-	if svcErr.Type != tidcommon.ClientErrorType {
-		return "", &tidcommon.InternalServerError
-	}
-	switch svcErr.Code {
-	case projectNotFoundErrorCode:
-		return "", &ErrorInvalidProject
-	case ouNotInProjectErrorCode:
-		return "", &ErrorOUNotInProject
+	svcErr := as.projectValidator.ValidateProjectOU(ctx, projectID, ouID)
+	switch {
+	case svcErr == nil:
+		return nil
+	case svcErr.Code == projectNotFoundErrorCode:
+		return &ErrorInvalidProject
+	case svcErr.Code == ouNotInProjectErrorCode:
+		return &ErrorOUNotInProject
 	default:
-		return "", &ErrorInvalidRequestFormat
+		return &tidcommon.InternalServerError
 	}
 }
 
@@ -1734,6 +1744,10 @@ func (as *applicationService) validateApplicationForUpdate(
 		}
 	}
 
+	// An update that names no organization unit keeps the application in its own.
+	if app.OUID == "" && app.OUHandle == "" {
+		app.OUID = existingApp.OUID
+	}
 	requestedProjectID := app.ProjectID
 	if svcErr := as.validateApplicationFields(ctx, app); svcErr != nil {
 		return nil, nil, svcErr
@@ -1742,7 +1756,7 @@ func (as *applicationService) validateApplicationForUpdate(
 	// must still belong to it.
 	if requestedProjectID == "" && existingApp.ProjectID != "" {
 		app.ProjectID = existingApp.ProjectID
-		if _, svcErr := as.resolveProjectOU(ctx, app.ProjectID, app.OUID); svcErr != nil {
+		if svcErr := as.validateProjectOU(ctx, app.ProjectID, app.OUID); svcErr != nil {
 			return nil, nil, svcErr
 		}
 	}
@@ -1789,14 +1803,18 @@ func (as *applicationService) validateApplicationFields(
 		}
 		app.OUID = ou.ID
 	}
-	// A project places the application in the system organization unit, or checks that the one named
-	// belongs to it.
-	if app.ProjectID != "" {
-		ouID, svcErr := as.resolveProjectOU(ctx, app.ProjectID, app.OUID)
+	if app.OUID == "" {
+		systemOUID, svcErr := as.ouService.GetSystemOUID(ctx)
 		if svcErr != nil {
 			return svcErr
 		}
-		app.OUID = ouID
+		app.OUID = systemOUID
+	}
+	// A project checks that the application's organization unit belongs to it.
+	if app.ProjectID != "" {
+		if svcErr := as.validateProjectOU(ctx, app.ProjectID, app.OUID); svcErr != nil {
+			return svcErr
+		}
 	}
 	// Resolve flow handles to IDs when the direct IDs are absent.
 	if err := as.inboundClientService.ResolveInboundAuthProfileHandles(ctx, &app.InboundAuthProfile); err != nil {

@@ -13,8 +13,6 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
-	"github.com/thunder-id/thunderid/internal/ou"
-	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/tests/mocks/oumock"
 	"github.com/thunder-id/thunderid/tests/mocks/transactionmock"
@@ -25,6 +23,7 @@ const (
 	testHandle      = "shop"
 	testDisplayName = "Shop"
 	testDescription = "Online shop"
+	testSystemOUID  = "019a0000-0000-7000-8000-0000000000aa"
 )
 
 var testCreatedAt = time.Date(2026, 10, 23, 10, 15, 0, 0, time.UTC)
@@ -44,6 +43,7 @@ func TestProjectServiceTestSuite(t *testing.T) {
 func (suite *ProjectServiceTestSuite) SetupTest() {
 	suite.mockStore = newProjectStoreInterfaceMock(suite.T())
 	suite.mockOUService = oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())
+	suite.mockOUService.On("GetSystemOUID", mock.Anything).Return(testSystemOUID, nil).Maybe()
 	suite.mockEntities = newProjectEntityReaderMock(suite.T())
 	mockTx := transactionmock.NewTransactionerMock(suite.T())
 	mockTx.On("Transact", mock.Anything, mock.Anything).
@@ -74,7 +74,6 @@ func (suite *ProjectServiceTestSuite) TestCreateProject_StoresProject() {
 	suite.Equal("shop", created.Handle)
 	suite.Equal("Shop", created.DisplayName)
 	suite.Equal(testDescription, created.Description)
-	suite.mockOUService.AssertNotCalled(suite.T(), "CreateOrganizationUnit", mock.Anything, mock.Anything)
 }
 
 func (suite *ProjectServiceTestSuite) TestCreateProject_KeepsSuppliedID() {
@@ -216,58 +215,43 @@ func (suite *ProjectServiceTestSuite) TestGetProject() {
 	})
 }
 
-func (suite *ProjectServiceTestSuite) TestResolveProjectOU() {
-	for name, tc := range map[string]struct {
-		ouID     string
-		expected string
-	}{
-		"no organization unit":                   {expected: ou.SystemOUID},
-		"an organization unit below the default": {ouID: "child-ou", expected: "child-ou"},
-	} {
-		suite.Run(name, func() {
-			suite.SetupTest()
-			suite.mockStore.On("GetProject", mock.Anything, testProjectID).Return(suite.project(), nil)
-			if tc.ouID != "" {
-				suite.mockOUService.On("IsParent", mock.Anything, ou.SystemOUID, tc.ouID).Return(true, nil)
-			}
+func (suite *ProjectServiceTestSuite) TestValidateProjectOU() {
+	suite.mockStore.On("GetProject", mock.Anything, testProjectID).Return(suite.project(), nil)
 
-			ouID, svcErr := suite.service.ResolveProjectOU(context.Background(), testProjectID, tc.ouID)
-
-			suite.Nil(svcErr)
-			suite.Equal(tc.expected, ouID)
-		})
-	}
+	suite.Nil(suite.service.ValidateProjectOU(context.Background(), testProjectID, testSystemOUID))
 }
 
-func (suite *ProjectServiceTestSuite) TestResolveProjectOU_Fails() {
-	unknownOU := &tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "OU-1003"}
+func (suite *ProjectServiceTestSuite) TestValidateProjectOU_Fails() {
 	for name, tc := range map[string]struct {
 		storeErr error
 		ouErr    *tidcommon.ServiceError
+		ouID     string
 		expected tidcommon.ServiceError
 	}{
 		"an unknown project": {storeErr: errProjectNotFound, expected: ErrorProjectNotFound},
 		"a store error": {
 			storeErr: errors.New("db"), expected: tidcommon.InternalServerError,
 		},
-		"an organization unit outside the default": {expected: ErrorOUNotInProject},
-		"an unknown organization unit":             {ouErr: unknownOU, expected: *unknownOU},
-		"a hierarchy lookup failure": {
-			ouErr: &tidcommon.InternalServerError, expected: tidcommon.InternalServerError,
+		"another organization unit": {ouID: "other-ou", expected: ErrorOUNotInProject},
+		"no organization unit":      {expected: ErrorOUNotInProject},
+		"no system organization unit": {
+			ouID: testSystemOUID, ouErr: &tidcommon.InternalServerError, expected: tidcommon.InternalServerError,
 		},
 	} {
 		suite.Run(name, func() {
 			suite.SetupTest()
+			if tc.ouErr != nil {
+				suite.mockOUService.ExpectedCalls = nil
+				suite.mockOUService.On("GetSystemOUID", mock.Anything).Return("", tc.ouErr)
+			}
 			if tc.storeErr != nil {
 				suite.mockStore.On("GetProject", mock.Anything, testProjectID).Return(Project{}, tc.storeErr)
 			} else {
 				suite.mockStore.On("GetProject", mock.Anything, testProjectID).Return(suite.project(), nil)
-				suite.mockOUService.On("IsParent", mock.Anything, ou.SystemOUID, "other-ou").Return(false, tc.ouErr)
 			}
 
-			ouID, svcErr := suite.service.ResolveProjectOU(context.Background(), testProjectID, "other-ou")
+			svcErr := suite.service.ValidateProjectOU(context.Background(), testProjectID, tc.ouID)
 
-			suite.Empty(ouID)
 			suite.Require().NotNil(svcErr)
 			suite.Equal(tc.expected, *svcErr)
 		})
@@ -384,13 +368,12 @@ func (suite *ProjectServiceTestSuite) TestUpdateProject() {
 }
 
 func (suite *ProjectServiceTestSuite) TestDeleteProject() {
-	suite.Run("deletes the project and no organization unit", func() {
+	suite.Run("deletes the project", func() {
 		suite.SetupTest()
 		suite.mockEntities.On("ProjectHasEntities", mock.Anything, testProjectID).Return(false, nil)
 		suite.mockStore.On("DeleteProject", mock.Anything, testProjectID).Return(nil)
 
 		suite.Nil(suite.service.DeleteProject(context.Background(), testProjectID))
-		suite.mockOUService.AssertNotCalled(suite.T(), "DeleteOrganizationUnit", mock.Anything, mock.Anything)
 	})
 	suite.Run("refused while resources are in the project", func() {
 		suite.SetupTest()
@@ -411,59 +394,6 @@ func (suite *ProjectServiceTestSuite) TestDeleteProject() {
 		suite.mockStore.On("DeleteProject", mock.Anything, testProjectID).Return(errors.New("db"))
 
 		suite.Equal(tidcommon.InternalServerError, *suite.service.DeleteProject(context.Background(), testProjectID))
-	})
-}
-
-func (suite *ProjectServiceTestSuite) TestGetResourceDependencies() {
-	suite.Run("other resource type", func() {
-		suite.SetupTest()
-		deps, err := suite.service.GetResourceDependencies(context.Background(),
-			resourcedependency.ResourceTypeGroup, ou.SystemOUID)
-		suite.NoError(err)
-		suite.Empty(deps)
-	})
-	suite.Run("other organization unit", func() {
-		suite.SetupTest()
-		deps, err := suite.service.GetResourceDependencies(context.Background(),
-			resourcedependency.ResourceTypeOU, "other-ou")
-		suite.NoError(err)
-		suite.Empty(deps)
-	})
-	suite.Run("a project blocks deletion of the system organization unit", func() {
-		suite.SetupTest()
-		suite.mockStore.On("GetProjectList", mock.Anything, 1, 0).
-			Return([]Project{suite.project()}, nil)
-
-		deps, err := suite.service.GetResourceDependencies(context.Background(),
-			resourcedependency.ResourceTypeOU, ou.SystemOUID)
-
-		suite.NoError(err)
-		suite.Equal([]resourcedependency.ResourceDependency{{
-			ResourceType:     resourcedependency.ResourceTypeProject,
-			ID:               testProjectID,
-			DisplayName:      "Shop",
-			BehaviorOnDelete: resourcedependency.BehaviorRestrict,
-		}}, deps)
-	})
-	suite.Run("no projects", func() {
-		suite.SetupTest()
-		suite.mockStore.On("GetProjectList", mock.Anything, 1, 0).Return([]Project{}, nil)
-
-		deps, err := suite.service.GetResourceDependencies(context.Background(),
-			resourcedependency.ResourceTypeOU, ou.SystemOUID)
-
-		suite.NoError(err)
-		suite.Empty(deps)
-	})
-	suite.Run("store error", func() {
-		suite.SetupTest()
-		suite.mockStore.On("GetProjectList", mock.Anything, 1, 0).
-			Return(nil, errors.New("db"))
-
-		_, err := suite.service.GetResourceDependencies(context.Background(),
-			resourcedependency.ResourceTypeOU, ou.SystemOUID)
-
-		suite.Error(err)
 	})
 }
 

@@ -3,9 +3,9 @@ info:
   title: Project Management API
   version: "1.0"
   description: |
-    Create and manage projects. A project groups identity configuration. Every project includes the
-    system organization unit, and a resource created in a project is placed in the system
-    organization unit unless the request names one below it.
+    Create and manage projects. A project groups identity configuration. A resource created in a
+    project is placed in the system organization unit that the `server.system_ou_id` deployment
+    configuration names. A request that names any other organization unit is refused.
 
     Projects are a Control Plane concept: only the Control Plane serves this API. The Data Plane works
     on organization unit IDs alone.

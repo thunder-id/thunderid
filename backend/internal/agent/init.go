@@ -26,7 +26,7 @@ import (
 // valueCapturer is optional. Given one, the service hands it every agent it creates or changes, so the
 // values the agent's export refers to are kept where a reference finds them.
 //
-// projectResolver is nil on a deployment that serves no projects, where a project ID is kept unchecked.
+// projectValidator is nil on a deployment that serves no projects, where a project ID is kept unchecked.
 func Initialize(
 	mux *http.ServeMux,
 	entityService entity.EntityServiceInterface,
@@ -39,14 +39,14 @@ func Initialize(
 	entityTypeService entitytype.EntityTypeServiceInterface,
 	dbProvider dbprovider.DBProviderInterface,
 	observabilitySvc observability.ObservabilityServiceInterface,
-	projectResolver projectOUResolver,
+	projectValidator projectOUValidator,
 ) (AgentServiceInterface, declarativeresource.ResourceExporter, error) {
 	transactioner, err := dbProvider.GetEntityDBTransactioner()
 	if err != nil {
 		return nil, nil, err
 	}
 	service := newAgentService(authzService, entityService, inboundClientService, ouService, roleService,
-		governance, valueCapturer, entityTypeService, transactioner, observabilitySvc, projectResolver)
+		governance, valueCapturer, entityTypeService, transactioner, observabilitySvc, projectValidator)
 
 	if err := entityService.LoadIndexedAttributes(getAgentIndexedAttributes()); err != nil {
 		return nil, nil, err

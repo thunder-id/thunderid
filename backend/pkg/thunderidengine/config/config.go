@@ -223,6 +223,7 @@ type ServerConfig struct {
 	HTTPOnly                   bool           `yaml:"http_only"  json:"http_only"`
 	PublicURL                  string         `yaml:"public_url" json:"public_url"`
 	Identifier                 string         `yaml:"identifier" json:"identifier"`
+	SystemOUID                 string         `yaml:"system_ou_id" json:"system_ou_id"`
 	SecurityConfig             SecurityConfig `yaml:"security"   json:"security"`
 	EnableOUQualifiedEndpoints bool           `yaml:"enable_ou_qualified_endpoints" json:"enable_ou_qualified_endpoints"` //nolint:lll // one tag pair
 	Timeouts                   ServerTimeouts `yaml:"timeouts"   json:"timeouts"`

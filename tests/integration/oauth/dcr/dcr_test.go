@@ -17,6 +17,9 @@ import (
 
 const (
 	dcrEndpoint = "/oauth2/dcr/register"
+
+	// systemOUID is the system organization unit the bootstrap server configuration names.
+	systemOUID = "01900000-0000-7000-8000-000000000001"
 )
 
 var testServerURL = testutils.TestServerURL
@@ -100,6 +103,29 @@ func (ts *DCRTestSuite) TestDCRRegistrationMinimalFields() {
 	ts.Assert().NotEmpty(response.ClientName)
 
 	ts.registeredAppIDs = append(ts.registeredAppIDs, response.AppID)
+}
+
+// TestDCRRegistrationWithoutOU verifies a client registered without an organization unit is placed in
+// the system organization unit.
+func (ts *DCRTestSuite) TestDCRRegistrationWithoutOU() {
+	response, statusCode := ts.registerClient(DCRRegistrationRequest{
+		RedirectURIs: []string{"https://no-ou.example.com/callback"},
+	})
+	ts.Require().Equal(http.StatusCreated, statusCode)
+	ts.registeredAppIDs = append(ts.registeredAppIDs, response.AppID)
+
+	req, err := http.NewRequest(http.MethodGet, testServerURL+"/applications/"+response.AppID, nil)
+	ts.Require().NoError(err)
+	resp, err := testutils.GetHTTPClient().Do(req)
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+	ts.Require().Equal(http.StatusOK, resp.StatusCode)
+
+	var app struct {
+		OUID string `json:"ouId"`
+	}
+	ts.Require().NoError(json.NewDecoder(resp.Body).Decode(&app))
+	ts.Equal(systemOUID, app.OUID)
 }
 
 // TestDCRRegistrationPublicClient verifies public client registration with token_endpoint_auth_method=none.
