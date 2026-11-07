@@ -351,6 +351,37 @@ func (s *AgentExporterTestSuite) TestGetResourceRulesForResource_ConfidentialCli
 	assert.Empty(s.T(), rules.ArrayVariables, "M2M agents have no redirect URIs")
 }
 
+func (s *AgentExporterTestSuite) TestGetResourceRulesForResource_ClientWithoutSecret() {
+	pr, ok := s.exporter.(declarativeresource.PerResourceRuler)
+	assert.True(s.T(), ok, "exporter should implement PerResourceRuler")
+
+	for _, method := range []providers.TokenEndpointAuthMethod{
+		providers.TokenEndpointAuthMethodPrivateKeyJWT,
+		providers.TokenEndpointAuthMethodNone,
+	} {
+		s.Run(string(method), func() {
+			a := &model.AgentGetResponse{
+				ID:      "agent1",
+				Display: "Secretless Agent",
+				InboundAuthConfig: []providers.InboundAuthConfigWithSecret{
+					{
+						OAuthConfig: &providers.OAuthConfigWithSecret{
+							ClientID:                "client-id-1",
+							TokenEndpointAuthMethod: method,
+						},
+					},
+				},
+			}
+
+			rules := pr.GetResourceRulesForResource(a)
+
+			assert.NotNil(s.T(), rules)
+			assert.Contains(s.T(), rules.Variables, "InboundAuthConfig[].OAuthConfig.ClientID")
+			assert.Empty(s.T(), rules.SecretVariables)
+		})
+	}
+}
+
 func (s *AgentExporterTestSuite) TestGetResourceRulesForResource_ConfidentialClientWithRedirectURIs() {
 	pr, ok := s.exporter.(declarativeresource.PerResourceRuler)
 	assert.True(s.T(), ok, "exporter should implement PerResourceRuler")

@@ -997,7 +997,7 @@ func (s *agentService) ValidateAgent(ctx context.Context, agent *providers.Agent
 			return "", "", inboundmodel.InboundClient{}, &ErrorAgentAlreadyExistsWithClientID
 		}
 
-		if requiresClientSecret(oauthCfg) && oauthCfg.ClientSecret == "" {
+		if inboundclient.UsesClientSecret(oauthCfg) && oauthCfg.ClientSecret == "" {
 			generated, err := oauthutils.GenerateOAuth2ClientSecret()
 			if err != nil {
 				s.logger.Error(ctx, "Failed to generate client secret", log.Error(err))
@@ -1223,7 +1223,7 @@ func (s *agentService) resolveOAuthCredentials(ctx context.Context,
 	}
 
 	clientSecret := oauthCfg.ClientSecret
-	requiresSecret := requiresClientSecret(oauthCfg)
+	requiresSecret := inboundclient.UsesClientSecret(oauthCfg)
 	if requiresSecret && clientSecret == "" {
 		existingWasSecretBased := existingOAuthMethod == string(providers.TokenEndpointAuthMethodClientSecretBasic) ||
 			existingOAuthMethod == string(providers.TokenEndpointAuthMethodClientSecretPost)
@@ -1636,26 +1636,6 @@ func pickOAuthConfig(
 		}
 	}
 	return found, nil
-}
-
-// requiresClientSecret reports whether the OAuth config implies a confidential client requiring a secret.
-func requiresClientSecret(cfg *providers.OAuthConfigWithSecret) bool {
-	if cfg == nil {
-		return false
-	}
-	if cfg.PublicClient {
-		return false
-	}
-	switch cfg.TokenEndpointAuthMethod {
-	case providers.TokenEndpointAuthMethodClientSecretBasic,
-		providers.TokenEndpointAuthMethodClientSecretPost:
-		return true
-	case providers.TokenEndpointAuthMethodNone,
-		providers.TokenEndpointAuthMethodPrivateKeyJWT:
-		return false
-	}
-	// Default to client_secret_basic when unspecified.
-	return true
 }
 
 // buildAgentEntity constructs the entity row and system credentials JSON for a new or updated agent.

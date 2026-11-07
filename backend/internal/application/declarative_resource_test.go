@@ -257,6 +257,38 @@ func (s *ApplicationExporterTestSuite) TestGetResourceRulesForResource_Confident
 	assert.Contains(s.T(), rules.ArrayVariables, "InboundAuthConfig[].OAuthConfig.RedirectURIs")
 }
 
+func (s *ApplicationExporterTestSuite) TestGetResourceRulesForResource_ClientWithoutSecret() {
+	pr, ok := s.exporter.(declarativeresource.PerResourceRuler)
+	assert.True(s.T(), ok, "exporter should implement PerResourceRuler")
+
+	for _, method := range []providers.TokenEndpointAuthMethod{
+		providers.TokenEndpointAuthMethodPrivateKeyJWT,
+		providers.TokenEndpointAuthMethodNone,
+	} {
+		s.Run(string(method), func() {
+			app := &providers.Application{
+				ID:   "app3",
+				Name: "Secretless App",
+				InboundAuthConfig: []providers.InboundAuthConfigWithSecret{
+					{
+						OAuthConfig: &providers.OAuthConfigWithSecret{
+							ClientID:                "client-id-3",
+							TokenEndpointAuthMethod: method,
+						},
+					},
+				},
+			}
+
+			rules := pr.GetResourceRulesForResource(app)
+
+			assert.NotNil(s.T(), rules)
+			assert.Contains(s.T(), rules.Variables, "InboundAuthConfig[].OAuthConfig.ClientID")
+			assert.NotContains(s.T(), rules.SecretVariables, "InboundAuthConfig[].OAuthConfig.ClientSecret")
+			assert.Contains(s.T(), rules.ArrayVariables, "InboundAuthConfig[].OAuthConfig.RedirectURIs")
+		})
+	}
+}
+
 func (s *ApplicationExporterTestSuite) TestGetResourceRulesForResource_NonApplicationType() {
 	pr, ok := s.exporter.(declarativeresource.PerResourceRuler)
 	assert.True(s.T(), ok, "exporter should implement PerResourceRuler")

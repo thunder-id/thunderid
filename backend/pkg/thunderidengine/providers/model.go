@@ -668,7 +668,7 @@ type UserInfoConfig struct {
 // Certificate is a user-supplied certificate input.
 type Certificate struct {
 	Type  CertificateType `json:"type,omitempty"  yaml:"type,omitempty"  jsonschema:"Certificate type (PEM, JWK, etc.)."`
-	Value string          `json:"value,omitempty" yaml:"value,omitempty" jsonschema:"Certificate value in the format specified by type."`
+	Value string          `json:"value,omitempty" yaml:"value,omitempty" yamlfmt:"quoted" jsonschema:"Certificate value in the format specified by type."`
 }
 
 // AttestationConfig holds per-application platform attestation settings used to verify the binary

@@ -1393,14 +1393,11 @@ func normalizeAgentOAuthConfigForImport(ctx context.Context, req *agentmodel.Age
 		return
 	}
 
-	if oauthConfig.PublicClient &&
-		oauthConfig.TokenEndpointAuthMethod == providers.TokenEndpointAuthMethodNone &&
-		oauthConfig.ClientSecret != "" {
-		log.GetLogger().Debug(ctx,
-			"Dropping client_secret for public agent import with token endpoint auth method 'none'",
+	if dropUnusedClientSecret(oauthConfig) {
+		log.GetLogger().Debug(ctx, "Dropping client_secret for agent import that does not use a client secret",
 			log.String("agentID", req.ID),
-			log.String("clientID", oauthConfig.ClientID))
-		oauthConfig.ClientSecret = ""
+			log.String("clientID", oauthConfig.ClientID),
+			log.String("tokenEndpointAuthMethod", string(oauthConfig.TokenEndpointAuthMethod)))
 	}
 }
 

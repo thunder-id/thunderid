@@ -2800,6 +2800,41 @@ func TestImportResources_KeepsClientSecretForConfidentialClient(t *testing.T) {
 	assert.Equal(t, statusSuccess, resp.Results[0].Status)
 }
 
+func TestImportResources_StripsClientSecretForPrivateKeyJWTClient(t *testing.T) {
+	content := strings.Join([]string{
+		"resource_type: application",
+		"id: app-1",
+		"name: My App",
+		"authFlowId: flow-1",
+		"inboundAuthConfig:",
+		"  - type: oauth2",
+		"    config:",
+		"      clientId: app-client",
+		"      clientSecret: should-be-removed",
+		"      redirectUris:",
+		"        - https://localhost:3000/callback",
+		"      grantTypes:",
+		"        - authorization_code",
+		"      responseTypes:",
+		"        - code",
+		"      tokenEndpointAuthMethod: private_key_jwt",
+		"      publicClient: false",
+		"      certificate:",
+		"        type: JWKS_URI",
+		"        value: https://localhost:3000/jwks",
+		"",
+	}, "\n")
+	appSvc, resp, err := runOAuthClientSecretImport(t, content)
+
+	require.Nil(t, err)
+	require.NotNil(t, resp)
+	require.Len(t, appSvc.created, 1)
+	require.Len(t, appSvc.created[0].InboundAuthConfig, 1)
+	require.NotNil(t, appSvc.created[0].InboundAuthConfig[0].OAuthConfig)
+	assert.Equal(t, "", appSvc.created[0].InboundAuthConfig[0].OAuthConfig.ClientSecret)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status)
+}
+
 func TestImportResources_CarriesOAuthTokenBindingFlags(t *testing.T) {
 	content := strings.Join([]string{
 		"resource_type: application",
@@ -3517,6 +3552,42 @@ func TestImportAgent_StripsClientSecretForPublicAgentWithNoneAuthMethod(t *testi
 		"      clientSecret: should-be-removed",
 		"      tokenEndpointAuthMethod: none",
 		"      publicClient: true",
+		"",
+	}, "\n")
+
+	resp, svcErr := svc.ImportResources(context.Background(), &ImportRequest{Content: content})
+
+	require.Nil(t, svcErr)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status)
+	require.Len(t, agentSvc.created, 1)
+	require.Len(t, agentSvc.created[0].InboundAuthConfig, 1)
+	require.NotNil(t, agentSvc.created[0].InboundAuthConfig[0].OAuthConfig)
+	assert.Equal(t, "", agentSvc.created[0].InboundAuthConfig[0].OAuthConfig.ClientSecret)
+}
+
+func TestImportAgent_StripsClientSecretForPrivateKeyJWTAgent(t *testing.T) {
+	agentSvc := &fakeAgentService{existing: map[string]*agentmodel.AgentGetResponse{}}
+	svc := newImportService(
+		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, agentSvc, nil, nil, nil, nil, nil)
+
+	content := strings.Join([]string{
+		"resource_type: agent",
+		"id: agent-pkjwt",
+		"type: default",
+		"ouId: root",
+		"attributes:",
+		"  name: Private Key JWT Agent",
+		"inboundAuthConfig:",
+		"  - type: oauth2",
+		"    config:",
+		"      clientId: pkjwt-client",
+		"      clientSecret: should-be-removed",
+		"      tokenEndpointAuthMethod: private_key_jwt",
+		"      publicClient: false",
+		"      certificate:",
+		"        type: JWKS_URI",
+		"        value: https://localhost:3000/jwks",
 		"",
 	}, "\n")
 
@@ -6803,4 +6874,34 @@ func TestImportAgent_DryRunSetsNoCredentials(t *testing.T) {
 	assert.Equal(t, statusSuccess, resp.Results[0].Status)
 	assert.Empty(t, agentSvc.credentials)
 	assert.Empty(t, agentSvc.created)
+}
+
+func TestDropUnusedClientSecret(t *testing.T) {
+	tests := []struct {
+		name        string
+		config      *providers.OAuthConfigWithSecret
+		wantDropped bool
+		wantSecret  string
+	}{
+		{"nil config", nil, false, ""},
+		{"no secret", &providers.OAuthConfigWithSecret{
+			TokenEndpointAuthMethod: providers.TokenEndpointAuthMethodPrivateKeyJWT}, false, ""},
+		{"client_secret_basic keeps secret", &providers.OAuthConfigWithSecret{
+			TokenEndpointAuthMethod: providers.TokenEndpointAuthMethodClientSecretBasic,
+			ClientSecret:            "s"}, false, "s"},
+		{"private_key_jwt drops secret", &providers.OAuthConfigWithSecret{
+			TokenEndpointAuthMethod: providers.TokenEndpointAuthMethodPrivateKeyJWT,
+			ClientSecret:            "s"}, true, ""},
+		{"public none drops secret", &providers.OAuthConfigWithSecret{
+			PublicClient: true, TokenEndpointAuthMethod: providers.TokenEndpointAuthMethodNone,
+			ClientSecret: "s"}, true, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.wantDropped, dropUnusedClientSecret(tt.config))
+			if tt.config != nil {
+				assert.Equal(t, tt.wantSecret, tt.config.ClientSecret)
+			}
+		})
+	}
 }

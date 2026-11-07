@@ -202,22 +202,22 @@ func (e *agentExporter) GetResourceRules() *declarativeresource.ResourceRules {
 }
 
 // GetResourceRulesForResource returns per-resource parameterization rules.
-// Public clients omit ClientSecret. RedirectURIs are only parameterized when present
-// (e.g. M2M agents using client_credentials have no redirect URIs).
+// Clients without a client secret (public, private_key_jwt or none) omit ClientSecret. RedirectURIs
+// are only parameterized when present (e.g. M2M agents using client_credentials have no redirect URIs).
 func (e *agentExporter) GetResourceRulesForResource(resource interface{}) *declarativeresource.ResourceRules {
 	a, ok := resource.(*model.AgentGetResponse)
 	if !ok {
 		return e.GetResourceRules()
 	}
 
-	isPublicClient := false
+	hasNoClientSecret := false
 	hasRedirectURIs := false
 	for _, inbound := range a.InboundAuthConfig {
 		if inbound.OAuthConfig == nil {
 			continue
 		}
-		if inbound.OAuthConfig.PublicClient {
-			isPublicClient = true
+		if !inboundclient.UsesClientSecret(inbound.OAuthConfig) {
+			hasNoClientSecret = true
 		}
 		if len(inbound.OAuthConfig.RedirectURIs) > 0 {
 			hasRedirectURIs = true
@@ -226,7 +226,7 @@ func (e *agentExporter) GetResourceRulesForResource(resource interface{}) *decla
 
 	variables := []string{"InboundAuthConfig[].OAuthConfig.ClientID"}
 	var secrets []string
-	if !isPublicClient {
+	if !hasNoClientSecret {
 		secrets = append(secrets, "InboundAuthConfig[].OAuthConfig.ClientSecret")
 	}
 
