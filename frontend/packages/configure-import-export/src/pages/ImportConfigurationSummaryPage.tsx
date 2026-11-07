@@ -452,7 +452,6 @@ export default function ImportConfigurationSummaryPage(): JSX.Element {
   const navigate = useNavigate();
   const location = useLocation();
   const routes = useImportExportRoutes();
-  const isWelcomeFlow = location.pathname.startsWith(routes.welcome.root());
   const logger = useLogger('ImportConfigurationSummaryPage');
   const {showToast} = useToast();
   const {config} = useConfig();
@@ -784,22 +783,10 @@ export default function ImportConfigurationSummaryPage(): JSX.Element {
           </IconButton>
           <AppBreadcrumbs
             items={[
-              ...(isWelcomeFlow
-                ? [
-                    {
-                      key: 'welcome',
-                      label: t('common:welcome.header'),
-                      onClick: () => void navigate(routes.welcome.root()),
-                    },
-                  ]
-                : []),
               {
                 key: 'import-configuration',
                 label: t('upload.breadcrumb.openProject'),
-                onClick: () =>
-                  void navigate(
-                    isWelcomeFlow ? routes.welcome.importConfigurationUpload() : routes.importConfiguration.upload(),
-                  ),
+                onClick: () => void navigate(routes.importConfiguration.upload()),
               },
               {key: 'summary', label: t('summary.breadcrumb')},
             ]}

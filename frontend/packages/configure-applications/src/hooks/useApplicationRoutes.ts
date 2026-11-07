@@ -25,11 +25,6 @@ export interface ApplicationRoutePaths {
     list: () => string;
     detail: (flowId: string) => string;
   };
-  welcome: {
-    root: () => string;
-    createProject: () => string;
-    getStarted: () => string;
-  };
 }
 
 /**
@@ -48,11 +43,6 @@ export const defaultApplicationRoutePaths: ApplicationRoutePaths = {
     list: () => '/flows',
     detail: (flowId) => `/flows/${flowId}`,
   },
-  welcome: {
-    root: () => '/welcome',
-    createProject: () => '/welcome/create-project',
-    getStarted: () => '/welcome/get-started',
-  },
 };
 
 /**
@@ -62,13 +52,12 @@ export const defaultApplicationRoutePaths: ApplicationRoutePaths = {
  * @public
  */
 export default function useApplicationRoutes(): ApplicationRoutePaths {
-  const {applications, flows, welcome} = useRoutes<Partial<ApplicationRoutePaths>>();
+  const {applications, flows} = useRoutes<Partial<ApplicationRoutePaths>>();
   return useMemo(
     () => ({
       applications: applications ?? defaultApplicationRoutePaths.applications,
       flows: flows ?? defaultApplicationRoutePaths.flows,
-      welcome: welcome ?? defaultApplicationRoutePaths.welcome,
     }),
-    [applications, flows, welcome],
+    [applications, flows],
   );
 }

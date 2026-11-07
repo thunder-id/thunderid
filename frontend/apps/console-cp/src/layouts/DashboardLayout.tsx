@@ -432,13 +432,6 @@ export default function DashboardLayout({collapseSidebar = false}: DashboardLayo
                       avatar={avatar}
                     />
                     <UserMenu.Divider />
-                    <UserMenu.Item
-                      label={t('common:userMenu.welcome')}
-                      onClick={() => {
-                        void navigate(RouteConfig.welcome.root());
-                      }}
-                    />
-                    <UserMenu.Divider />
                     <SignOutButton>
                       {({signOut}) => (
                         <UserMenu.Logout

@@ -30,7 +30,6 @@ const h = vi.hoisted(() => ({
   http: {request: vi.fn<(config: unknown) => Promise<{data: unknown}>>()},
   logger: {debug: vi.fn(), error: vi.fn(), info: vi.fn(), warn: vi.fn()},
   navigate: vi.fn(),
-  pathname: {current: '/agents/create'},
   resetFlow: vi.fn(),
   handleSubmit: vi.fn<(action: unknown, inputs?: Record<string, string>) => Promise<void>>(),
   showToast: vi.fn<(message: string, severity?: string) => void>(),
@@ -124,7 +123,6 @@ vi.mock('@thunderid/logger/react', async (importOriginal) => ({
 
 vi.mock('react-router', async (importOriginal) => ({
   ...(await importOriginal<typeof import('react-router')>()),
-  useLocation: () => ({pathname: h.pathname.current}),
   useNavigate: () => h.navigate,
 }));
 
@@ -222,7 +220,6 @@ describe('AgentOnboardPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     h.flowProps.current = null;
-    h.pathname.current = '/agents/create';
     h.step.components = [];
     h.step.additionalData = {};
     h.step.values = {};
@@ -1083,18 +1080,6 @@ describe('AgentOnboardPage', () => {
       expect(h.navigate).toHaveBeenCalledWith(defaultAgentRoutePaths.agents.list());
     });
 
-    // The same page is mounted inside the welcome experience, where the agent list is not where the
-    // administrator came from.
-    it('should return to the get started page when opened from the welcome flow', async () => {
-      h.pathname.current = defaultAgentRoutePaths.welcome.getStartedAgentsCreate();
-
-      render(<AgentOnboardPage />);
-
-      (await screen.findByRole('button', {name: 'Close'})).click();
-
-      expect(h.navigate).toHaveBeenCalledWith(defaultAgentRoutePaths.welcome.getStarted());
-    });
-
     it('should hand the close to the host instead of navigating when it supplies one', async () => {
       credentialsStep();
       const onClose = vi.fn();
@@ -1125,7 +1110,6 @@ describe('AgentOnboardPage', () => {
 describe('AgentOnboardPage breadcrumbs', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    h.pathname.current = '/agents/create';
     h.users.current = [];
     h.fetchUsers.mockImplementation(serveUsers);
     h.resolve.mockResolvedValue({flowId: 'flow-1', handle: 'default-agent-onboarding-flow'});
@@ -1178,7 +1162,6 @@ describe('AgentOnboardPage owner default', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    h.pathname.current = '/agents/create';
     h.signedInUser.current = null;
     h.users.current = [{display: 'Ada Lovelace', id: 'user-1'}];
     h.fetchUsers.mockImplementation(serveUsers);

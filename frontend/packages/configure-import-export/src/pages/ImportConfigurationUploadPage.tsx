@@ -8,7 +8,7 @@ import {Box, Button, IconButton, LinearProgress, Stack, Typography, Alert, AppBr
 import {Upload, X} from '@wso2/oxygen-ui-icons-react';
 import {useState, useCallback, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
-import {useLocation, useNavigate} from 'react-router';
+import {useNavigate} from 'react-router';
 import yaml from 'yaml';
 import {ALLOWED_RESOURCE_TYPES, type ResourceType} from '../constants/resource-types';
 import useImportExportRoutes from '../hooks/useImportExportRoutes';
@@ -22,9 +22,7 @@ export default function ImportConfigurationUploadPage(): JSX.Element {
   const {config} = useConfig();
   const configFileName = getConfigFileName(config.brand.product_name);
   const envFileName = getEnvFileName(config.brand.product_name);
-  const {pathname} = useLocation();
   const routes = useImportExportRoutes();
-  const isWelcomeFlow = pathname.startsWith(routes.welcome.root());
   const [dragActive, setDragActive] = useState(false);
   const [envDragActive, setEnvDragActive] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -280,7 +278,7 @@ export default function ImportConfigurationUploadPage(): JSX.Element {
       }
 
       // Navigate to validation page
-      await navigate(routes.welcome.importConfigurationValidate(), {
+      await navigate(routes.importConfiguration.validate(), {
         state: {
           method: 'file',
           file: selectedFile,
@@ -326,21 +324,11 @@ export default function ImportConfigurationUploadPage(): JSX.Element {
           </IconButton>
           <AppBreadcrumbs
             items={[
-              ...(isWelcomeFlow
-                ? [
-                    {
-                      key: 'welcome',
-                      label: t('common:welcome.header'),
-                      onClick: () => void navigate(routes.welcome.root()),
-                    },
-                  ]
-                : [
-                    {
-                      key: 'import-export',
-                      label: t('landing.title', 'Import / Export'),
-                      onClick: () => void navigate(routes.importExport.list()),
-                    },
-                  ]),
+              {
+                key: 'import-export',
+                label: t('landing.title', 'Import / Export'),
+                onClick: () => void navigate(routes.importExport.list()),
+              },
               {key: 'import-configuration', label: t('upload.breadcrumb.openProject')},
             ]}
           />

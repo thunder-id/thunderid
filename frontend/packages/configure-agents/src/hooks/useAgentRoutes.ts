@@ -29,10 +29,6 @@ export interface AgentRoutePaths {
   roles: {
     list: () => string;
   };
-  welcome: {
-    getStarted: () => string;
-    getStartedAgentsCreate: () => string;
-  };
 }
 
 /**
@@ -55,10 +51,6 @@ export const defaultAgentRoutePaths: AgentRoutePaths = {
   roles: {
     list: () => '/roles',
   },
-  welcome: {
-    getStarted: () => '/welcome/get-started',
-    getStartedAgentsCreate: () => '/welcome/get-started/agents/create',
-  },
 };
 
 /**
@@ -68,15 +60,14 @@ export const defaultAgentRoutePaths: AgentRoutePaths = {
  * @public
  */
 export default function useAgentRoutes(): AgentRoutePaths {
-  const {agents, agentTypes, groups, roles, welcome} = useRoutes<Partial<AgentRoutePaths>>();
+  const {agents, agentTypes, groups, roles} = useRoutes<Partial<AgentRoutePaths>>();
   return useMemo(
     () => ({
       agents: agents ?? defaultAgentRoutePaths.agents,
       agentTypes: agentTypes ?? defaultAgentRoutePaths.agentTypes,
       groups: groups ?? defaultAgentRoutePaths.groups,
       roles: roles ?? defaultAgentRoutePaths.roles,
-      welcome: welcome ?? defaultAgentRoutePaths.welcome,
     }),
-    [agents, agentTypes, groups, roles, welcome],
+    [agents, agentTypes, groups, roles],
   );
 }

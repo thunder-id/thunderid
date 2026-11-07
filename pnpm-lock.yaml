@@ -2838,9 +2838,6 @@ importers:
       '@thunderid/configure-applications':
         specifier: workspace:^
         version: link:../configure-applications
-      '@thunderid/configure-import-export':
-        specifier: workspace:^
-        version: link:../configure-import-export
       '@thunderid/configure-users':
         specifier: workspace:^
         version: link:../configure-users
@@ -2850,15 +2847,9 @@ importers:
       '@thunderid/eslint-plugin':
         specifier: workspace:^
         version: link:../eslint-plugin
-      '@thunderid/hooks':
-        specifier: workspace:^
-        version: link:../hooks
       '@thunderid/i18n':
         specifier: workspace:^
         version: link:../i18n
-      '@thunderid/logger':
-        specifier: workspace:^
-        version: link:../logger
       '@thunderid/prettier-config':
         specifier: workspace:^
         version: link:../prettier-config
@@ -2871,9 +2862,6 @@ importers:
       '@thunderid/types':
         specifier: workspace:^
         version: link:../types
-      '@thunderid/utils':
-        specifier: workspace:^
-        version: link:../utils
       '@types/node':
         specifier: 'catalog:'
         version: 24.7.2
