@@ -14,19 +14,19 @@ vi.mock('@thunderid/components', () => ({
 // The target pickers are out of scope for this component; these are mocked only so the always-present
 // Roles/Groups/Permissions grant fields and the resource server select don't need a real React Query
 // provider or network calls.
-vi.mock('../../api/useGetRolesForMapping', () => ({
-  default: () => ({
+const {useGetRolesForMapping, useGetGroupsForMapping} = vi.hoisted(() => ({
+  useGetRolesForMapping: vi.fn(() => ({
     data: {
       roles: [
         {id: 'role-1', name: 'Admins'},
         {id: 'role-2', name: 'Editors'},
       ],
     },
-  }),
+  })),
+  useGetGroupsForMapping: vi.fn(() => ({data: {groups: [{id: 'group-1', name: 'Engineering'}]}})),
 }));
-vi.mock('../../api/useGetGroupsForMapping', () => ({
-  default: () => ({data: {groups: [{id: 'group-1', name: 'Engineering'}]}}),
-}));
+vi.mock('../../api/useGetRolesForMapping', () => ({default: useGetRolesForMapping}));
+vi.mock('../../api/useGetGroupsForMapping', () => ({default: useGetGroupsForMapping}));
 vi.mock('@thunderid/configure-resource-servers', () => ({
   PermissionCatalog: () => <div data-testid="permission-catalog" />,
   removePermissions: () => [],
@@ -240,6 +240,14 @@ describe('AuthorizationMappingSection', () => {
       fireEvent.click(screen.getByRole('button', {name: ADD_MAPPING}));
       fireEvent.click(screen.getByRole('switch', {name: ADVANCED_TOGGLE}));
     }
+
+    it("offers only the roles and groups of the connection's organization unit", () => {
+      render(<AuthorizationMappingSection ouId="ou-1" onRuleChange={onRuleChange} onDirectChange={onDirectChange} />);
+      addAdvancedRow();
+
+      expect(useGetRolesForMapping).toHaveBeenCalledWith({limit: 100, ouId: 'ou-1'});
+      expect(useGetGroupsForMapping).toHaveBeenCalledWith({limit: 100, ouId: 'ou-1'});
+    });
 
     it('shows the Delimiter field only for value type String, hiding it for Number, Boolean, and Array', () => {
       render(<AuthorizationMappingSection onRuleChange={onRuleChange} onDirectChange={onDirectChange} />);

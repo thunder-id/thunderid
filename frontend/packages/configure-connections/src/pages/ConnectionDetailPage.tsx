@@ -809,6 +809,7 @@ export default function ConnectionDetailPage(): JSX.Element | null {
                 />
                 <AuthorizationMappingSection
                   key={`authz-${resolvedId}-${attrsKey}`}
+                  ouId={data?.ouId}
                   initialRuleConfig={baselineAuthzMappings}
                   initialDirectConfig={baselineDirectMappings}
                   onRuleChange={(mappings, isValid) => {
