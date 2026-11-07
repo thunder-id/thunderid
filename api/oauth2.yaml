@@ -867,6 +867,12 @@ paths:
                 $ref: '#/components/schemas/OAuthError'
         "401":
           description: Unauthorized — missing or insufficient access token (when DCR is not insecure).
+          headers:
+            WWW-Authenticate:
+              description: '`Bearer` when no token was sent, `Bearer error="invalid_token"` when a token was sent.'
+              schema:
+                type: string
+              example: 'Bearer error="invalid_token"'
           content:
             application/json:
               schema:
@@ -912,6 +918,12 @@ paths:
                 $ref: '#/components/schemas/DCRRegistrationResponse'
         "401":
           description: Unauthorized, the caller does not hold the required system-level permission.
+          headers:
+            WWW-Authenticate:
+              description: '`Bearer` when no token was sent, `Bearer error="invalid_token"` when a token was sent.'
+              schema:
+                type: string
+              example: 'Bearer error="invalid_token"'
           content:
             application/json:
               schema:
@@ -976,6 +988,12 @@ paths:
                 $ref: '#/components/schemas/OAuthError'
         "401":
           description: Unauthorized, the caller does not hold the required system-level permission.
+          headers:
+            WWW-Authenticate:
+              description: '`Bearer` when no token was sent, `Bearer error="invalid_token"` when a token was sent.'
+              schema:
+                type: string
+              example: 'Bearer error="invalid_token"'
           content:
             application/json:
               schema:
@@ -1002,6 +1020,12 @@ paths:
           description: Client registration deleted.
         "401":
           description: Unauthorized, the caller does not hold the required system-level permission.
+          headers:
+            WWW-Authenticate:
+              description: '`Bearer` when no token was sent, `Bearer error="invalid_token"` when a token was sent.'
+              schema:
+                type: string
+              example: 'Bearer error="invalid_token"'
           content:
             application/json:
               schema:
