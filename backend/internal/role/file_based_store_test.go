@@ -526,3 +526,38 @@ func (suite *RoleFileBasedStoreTestSuite) TestGetRolesByIDs() {
 	suite.Require().NoError(err)
 	suite.Equal([]Role{{ID: "role1", Name: "Auditor", OUID: "ou1"}}, roles)
 }
+
+func (suite *RoleFileBasedStoreTestSuite) TestGetRoleListByProject() {
+	suite.seedRole(RoleWithPermissionsAndAssignments{ID: "role1", Name: "Shop Admin", OUID: "ou1", ProjectID: "proj1"})
+	suite.seedRole(RoleWithPermissionsAndAssignments{ID: "role2", Name: "Shop Viewer", OUID: "ou2", ProjectID: "proj1"})
+	suite.seedRole(RoleWithPermissionsAndAssignments{ID: "role3", Name: "Org Admin", OUID: "ou1"})
+	ctx := context.Background()
+
+	count, err := suite.store.GetRoleListCountByProject(ctx, "proj1", "")
+	suite.NoError(err)
+	suite.Equal(2, count)
+
+	roles, err := suite.store.GetRoleListByProject(ctx, "proj1", "", 10, 0)
+	suite.NoError(err)
+	suite.Len(roles, 2)
+	for _, role := range roles {
+		suite.Equal("proj1", role.ProjectID)
+	}
+
+	roles, err = suite.store.GetRoleListByProject(ctx, "proj1", "ou2", 10, 0)
+	suite.NoError(err)
+	suite.Require().Len(roles, 1)
+	suite.Equal("role2", roles[0].ID)
+
+	roles, err = suite.store.GetRoleListByProject(ctx, "proj1", "", 1, 1)
+	suite.NoError(err)
+	suite.Len(roles, 1)
+
+	roles, err = suite.store.GetRoleListByProject(ctx, "proj1", "", 10, 5)
+	suite.NoError(err)
+	suite.Empty(roles)
+
+	role, err := suite.store.GetRole(ctx, "role1")
+	suite.NoError(err)
+	suite.Equal("proj1", role.ProjectID)
+}

@@ -24,6 +24,8 @@ type roleStoreInterface interface {
 	GetRoleList(ctx context.Context, limit, offset int) ([]Role, error)
 	GetRoleListCountByOUID(ctx context.Context, ouID string) (int, error)
 	GetRoleListByOUID(ctx context.Context, ouID string, limit, offset int) ([]Role, error)
+	GetRoleListCountByProject(ctx context.Context, projectID, ouID string) (int, error)
+	GetRoleListByProject(ctx context.Context, projectID, ouID string, limit, offset int) ([]Role, error)
 	CreateRole(ctx context.Context, id string, role RoleCreationDetail) error
 	GetRole(ctx context.Context, id string) (RoleWithPermissions, error)
 	GetRolesByNames(ctx context.Context, names []string) ([]Role, error)
@@ -187,6 +189,61 @@ func (s *roleStore) GetRoleListByOUID(ctx context.Context, ouID string, limit, o
 	return roles, nil
 }
 
+// GetRoleListCountByProject retrieves the total count of the roles of a project, narrowed to the ones an
+// organization unit owns when ouID is set.
+func (s *roleStore) GetRoleListCountByProject(ctx context.Context, projectID, ouID string) (int, error) {
+	dbClient, err := s.getConfigDBClient()
+	if err != nil {
+		return 0, err
+	}
+
+	var countResults []map[string]interface{}
+	if ouID == "" {
+		countResults, err = dbClient.QueryContext(ctx, queryGetRoleListCountByProject, projectID, s.scope(ctx))
+	} else {
+		countResults, err = dbClient.QueryContext(ctx, queryGetRoleListCountByProjectAndOUID,
+			projectID, ouID, s.scope(ctx))
+	}
+	if err != nil {
+		return 0, fmt.Errorf("failed to execute count query: %w", err)
+	}
+
+	return parseCountResult(countResults)
+}
+
+// GetRoleListByProject retrieves the roles of a project with pagination, narrowed to the ones an
+// organization unit owns when ouID is set.
+func (s *roleStore) GetRoleListByProject(
+	ctx context.Context, projectID, ouID string, limit, offset int,
+) ([]Role, error) {
+	dbClient, err := s.getConfigDBClient()
+	if err != nil {
+		return nil, err
+	}
+
+	var results []map[string]interface{}
+	if ouID == "" {
+		results, err = dbClient.QueryContext(ctx, queryGetRoleListByProject, projectID, limit, offset, s.scope(ctx))
+	} else {
+		results, err = dbClient.QueryContext(ctx, queryGetRoleListByProjectAndOUID,
+			projectID, ouID, limit, offset, s.scope(ctx))
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute role list query: %w", err)
+	}
+
+	roles := make([]Role, 0, len(results))
+	for _, row := range results {
+		role, err := buildRoleBasicInfoFromResultRow(row)
+		if err != nil {
+			return nil, fmt.Errorf("failed to build role from result row: %w", err)
+		}
+		roles = append(roles, role)
+	}
+
+	return roles, nil
+}
+
 // CreateRole creates a new role in the database.
 func (s *roleStore) CreateRole(ctx context.Context, id string, role RoleCreationDetail) error {
 	dbClient, err := s.getConfigDBClient()
@@ -198,6 +255,7 @@ func (s *roleStore) CreateRole(ctx context.Context, id string, role RoleCreation
 		queryCreateRole,
 		id,
 		role.OUID,
+		nullableString(role.ProjectID),
 		role.Name,
 		role.Description,
 		s.scope(ctx),
@@ -258,6 +316,7 @@ func (s *roleStore) GetRole(ctx context.Context, id string) (RoleWithPermissions
 		Name:        roleBasicInfo.Name,
 		Description: roleBasicInfo.Description,
 		OUID:        roleBasicInfo.OUID,
+		ProjectID:   roleBasicInfo.ProjectID,
 		Permissions: permissions,
 	}, nil
 }
@@ -475,6 +534,7 @@ func (s *roleStore) UpdateRole(ctx context.Context, id string, role RoleUpdateDe
 	rowsAffected, err := dbClient.ExecuteContext(ctx,
 		queryUpdateRole,
 		role.OUID,
+		nullableString(role.ProjectID),
 		role.Name,
 		role.Description,
 		id,
@@ -822,12 +882,24 @@ func buildRoleBasicInfoFromResultRow(row map[string]interface{}) (Role, error) {
 		return Role{}, err
 	}
 
+	// A role in no project has no project ID.
+	projectID, _ := row["project_id"].(string)
+
 	return Role{
 		ID:          fields[0],
 		Name:        fields[1],
 		Description: fields[2],
 		OUID:        fields[3],
+		ProjectID:   projectID,
 	}, nil
+}
+
+// nullableString stores an empty value as NULL.
+func nullableString(value string) interface{} {
+	if value == "" {
+		return nil
+	}
+	return value
 }
 
 // addPermissionsToRole adds a list of permissions to a role.

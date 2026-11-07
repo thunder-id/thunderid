@@ -125,6 +125,50 @@ func (c *compositeRoleStore) GetRoleListCountByOUID(ctx context.Context, ouID st
 	return len(roles), nil
 }
 
+// GetRoleListCountByProject returns the count of the roles of a project across both stores, narrowed to the
+// ones an organization unit owns when ouID is set. A role ID is unique across the stores, so the counts add
+// up exactly.
+func (c *compositeRoleStore) GetRoleListCountByProject(ctx context.Context, projectID, ouID string) (int, error) {
+	dbCount, err := c.dbStore.GetRoleListCountByProject(ctx, projectID, ouID)
+	if err != nil {
+		return 0, err
+	}
+	fileCount, err := c.fileStore.GetRoleListCountByProject(ctx, projectID, ouID)
+	if err != nil {
+		return 0, err
+	}
+	if dbCount+fileCount > serverconst.MaxCompositeStoreRecords {
+		return 0, errResultLimitExceededInCompositeMode
+	}
+	return dbCount + fileCount, nil
+}
+
+// GetRoleListByProject retrieves the roles of a project from both stores and merges them, narrowed to the
+// ones an organization unit owns when ouID is set.
+func (c *compositeRoleStore) GetRoleListByProject(
+	ctx context.Context, projectID, ouID string, limit, offset int,
+) ([]Role, error) {
+	roles, limitExceeded, err := declarativeresource.CompositeMergeListHelperWithLimit(
+		func() (int, error) { return c.dbStore.GetRoleListCountByProject(ctx, projectID, ouID) },
+		func() (int, error) { return c.fileStore.GetRoleListCountByProject(ctx, projectID, ouID) },
+		func(count int) ([]Role, error) { return c.dbStore.GetRoleListByProject(ctx, projectID, ouID, count, 0) },
+		func(count int) ([]Role, error) {
+			return c.fileStore.GetRoleListByProject(ctx, projectID, ouID, count, 0)
+		},
+		mergeRoles,
+		limit,
+		offset,
+		serverconst.MaxCompositeStoreRecords,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if limitExceeded {
+		return nil, errResultLimitExceededInCompositeMode
+	}
+	return roles, nil
+}
+
 // GetRoleListByOUID retrieves roles belonging to the given organization unit from both stores
 // and merges them.
 func (c *compositeRoleStore) GetRoleListByOUID(

@@ -11,8 +11,10 @@ export interface CreateRoleRequest {
   name: string;
   /** Optional description */
   description?: string;
-  /** ID of the organization unit this role belongs to */
-  ouId: string;
+  /** ID of the organization unit this role belongs to; the system organization unit when omitted */
+  ouId?: string;
+  /** Places the role in the project, in the system organization unit */
+  projectId?: string;
   /** Optional initial permissions */
   permissions?: ResourcePermissions[];
   /** Optional initial assignments */
@@ -49,6 +51,8 @@ export interface RoleListParams {
   limit?: number;
   /** Number of records to skip */
   offset?: number;
+  /** Lists only the roles of this project */
+  projectId?: string;
 }
 
 /**

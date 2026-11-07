@@ -1196,3 +1196,85 @@ func (suite *RoleHandlerTestSuite) TestOverlayRulesReadsTheUnitFromTheQuery() {
 	suite.Equal(true, body["visible"])
 	suite.NotNil(body["rules"], "an absent rule set is an empty object, not null")
 }
+
+func (suite *RoleHandlerTestSuite) TestHandleRoleListRequest_ByProject() {
+	suite.mockService.On("GetRoleListByProject", mock.Anything, "project-1", 10, 0,
+		map[string]interface{}{"ouId": "ou1"}).Return(&RoleList{
+		TotalResults: 1, StartIndex: 1, Count: 1,
+		Roles: []Role{{ID: "role1", Name: "Shop Admin", OUID: "ou1", ProjectID: "project-1", IsOwnedByOU: true}},
+		Links: []utils.Link{},
+	}, nil)
+
+	req := httptest.NewRequest(http.MethodGet,
+		"/roles?limit=10&offset=0&projectId=project-1&filter="+url.QueryEscape(`ouId eq "ou1"`), nil)
+	w := httptest.NewRecorder()
+
+	suite.handler.HandleRoleListRequest(w, req)
+
+	suite.Equal(http.StatusOK, w.Code)
+	var response RoleListResponse
+	suite.NoError(json.NewDecoder(w.Body).Decode(&response))
+	suite.Require().Len(response.Roles, 1)
+	suite.Equal("project-1", response.Roles[0].ProjectID)
+	suite.mockService.AssertNotCalled(suite.T(), "GetRoleList", mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything)
+}
+
+func (suite *RoleHandlerTestSuite) TestHandleRolePostRequest_WithProject() {
+	suite.mockService.On("CreateRole", mock.Anything, mock.MatchedBy(func(r RoleCreationDetail) bool {
+		return r.ProjectID == "project-1" && r.OUID == ""
+	})).Return(&RoleWithPermissionsAndAssignments{
+		ID: "role1", Name: "Shop Admin", OUID: "system-ou", ProjectID: "project-1",
+	}, nil)
+
+	body, _ := json.Marshal(CreateRoleRequest{Name: "Shop Admin", ProjectID: "project-1"})
+	req := httptest.NewRequest(http.MethodPost, "/roles", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	suite.handler.HandleRolePostRequest(w, req)
+
+	suite.Equal(http.StatusCreated, w.Code)
+	var response CreateRoleResponse
+	suite.NoError(json.NewDecoder(w.Body).Decode(&response))
+	suite.Equal("project-1", response.ProjectID)
+	suite.Equal("system-ou", response.OUID)
+}
+
+func (suite *RoleHandlerTestSuite) TestHandleRolePostRequest_ProjectErrors() {
+	for _, svcErr := range []*tidcommon.ServiceError{&ErrorInvalidProject, &ErrorOUNotInProject} {
+		suite.Run(svcErr.Code, func() {
+			suite.SetupTest()
+			suite.mockService.On("CreateRole", mock.Anything, mock.Anything).Return(nil, svcErr)
+
+			body, _ := json.Marshal(CreateRoleRequest{Name: "Shop Admin", ProjectID: "project-1"})
+			req := httptest.NewRequest(http.MethodPost, "/roles", bytes.NewBuffer(body))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+
+			suite.handler.HandleRolePostRequest(w, req)
+
+			suite.Equal(http.StatusBadRequest, w.Code)
+			suite.Contains(w.Body.String(), svcErr.Code)
+		})
+	}
+}
+
+func (suite *RoleHandlerTestSuite) TestHandleRolePutRequest_WithProject() {
+	suite.mockService.On("UpdateRoleWithPermissions", mock.Anything, "role1",
+		mock.MatchedBy(func(r RoleUpdateDetail) bool { return r.ProjectID == "project-1" && r.OUID == "" })).
+		Return(&RoleWithPermissions{ID: "role1", Name: "Shop Admin", OUID: "system-ou", ProjectID: "project-1"}, nil)
+
+	body, _ := json.Marshal(UpdateRoleRequest{Name: "Shop Admin", ProjectID: "project-1"})
+	req := httptest.NewRequest(http.MethodPut, "/roles/role1", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.SetPathValue("id", "role1")
+	w := httptest.NewRecorder()
+
+	suite.handler.HandleRolePutRequest(w, req)
+
+	suite.Equal(http.StatusOK, w.Code)
+	var response RoleResponse
+	suite.NoError(json.NewDecoder(w.Body).Decode(&response))
+	suite.Equal("project-1", response.ProjectID)
+}

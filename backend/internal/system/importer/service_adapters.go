@@ -78,6 +78,7 @@ type roleDeclarativeYAML struct {
 	Description     string                     `yaml:"description,omitempty"`
 	OUID            string                     `yaml:"ouId,omitempty"`
 	OUHandle        string                     `yaml:"ouHandle,omitempty"`
+	ProjectID       string                     `yaml:"projectId,omitempty"`
 	Permissions     []role.ResourcePermissions `yaml:"permissions"`
 	SharingPolicies []sharing.PolicyRequest    `yaml:"sharingPolicies,omitempty"`
 	Assignments     []role.RoleAssignment      `yaml:"assignments,omitempty"`
@@ -351,12 +352,14 @@ func (s *importService) importRole(
 		Name:        req.Name,
 		Description: req.Description,
 		OUID:        req.OUID,
+		ProjectID:   req.ProjectID,
 		Permissions: req.Permissions,
 	}
 	updateReq := role.RoleUpdateDetail{
 		Name:        req.Name,
 		Description: req.Description,
 		OUID:        req.OUID,
+		ProjectID:   req.ProjectID,
 		Permissions: req.Permissions,
 	}
 

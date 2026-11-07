@@ -196,6 +196,7 @@ func (suite *RoleExporterTestSuite) TestGetResourceByID_Success() {
 		Name:        "Admin",
 		Description: "Admin role",
 		OUID:        "ou1",
+		ProjectID:   "project-1",
 		Permissions: []ResourcePermissions{
 			{ResourceServerID: "rs1", Permissions: []string{"read", "write"}},
 		},
@@ -230,6 +231,7 @@ func (suite *RoleExporterTestSuite) TestGetResourceByID_Success() {
 	role, ok := resource.(*roleDeclarativeResource)
 	assert.True(suite.T(), ok)
 	assert.Equal(suite.T(), "role1", role.ID)
+	assert.Equal(suite.T(), "project-1", role.ProjectID)
 	assert.Equal(suite.T(), []RoleAssignment{
 		{ID: "user1", Type: AssigneeTypeUser, OUID: "ou1"},
 		{ID: "group1", Type: AssigneeTypeGroup, OUID: "ou-child"},
@@ -355,6 +357,7 @@ id: role1
 name: Admin
 description: Admin role
 ouId: ou1
+projectId: project-1
 permissions:
   - resourceServerId: rs1
     permissions:
@@ -373,6 +376,7 @@ assignments:
 	assert.Equal(suite.T(), "Admin", role.Name)
 	assert.Equal(suite.T(), "Admin role", role.Description)
 	assert.Equal(suite.T(), "ou1", role.OUID)
+	assert.Equal(suite.T(), "project-1", role.ProjectID)
 	assert.Len(suite.T(), role.Permissions, 1)
 	assert.Len(suite.T(), role.Assignments, 1)
 }
