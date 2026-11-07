@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -48,6 +49,10 @@ type change struct {
 	Needs        []string `json:"needs"`
 	Required     bool     `json:"required"`
 	RequiredBy   string   `json:"requiredBy"`
+	Lines        []struct {
+		Kind string `json:"kind"`
+		Text string `json:"text"`
+	} `json:"lines"`
 }
 
 type diffResult struct {
@@ -289,6 +294,54 @@ func (ts *GatewayVersionsTestSuite) TestTheDiffComparesWithWhatTheGatewayHolds()
 	for _, c := range diff.Changes {
 		ts.Equal("added", c.Change, "nothing held, so everything is added")
 	}
+}
+
+// The diff shows which attributes a user has without what they hold: each value is masked, the
+// username aside, and so is what an object attribute nests.
+func (ts *GatewayVersionsTestSuite) TestTheDiffMasksAUsersAttributeValues() {
+	suffix := fmt.Sprintf("%d", time.Now().UnixNano())
+	ouID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
+		Handle: "masked-" + suffix, Name: "Masked",
+	})
+	ts.Require().NoError(err)
+	defer func() { _ = testutils.DeleteOrganizationUnit(ouID) }()
+	typeID, err := testutils.CreateUserType(testutils.UserType{
+		Handle: "masked-person-" + suffix, DisplayName: "Masked person", OUID: ouID,
+		Schema: map[string]any{
+			"username":    map[string]any{"type": "string"},
+			"national_id": map[string]any{"type": "string"},
+			"address": map[string]any{
+				"type":       "object",
+				"properties": map[string]any{"city": map[string]any{"type": "string"}},
+			},
+		},
+	})
+	ts.Require().NoError(err)
+	defer func() { _ = testutils.DeleteUserType(typeID) }()
+	username, nationalID, city := "masked-"+suffix, "TEST-ID-"+suffix, "City-"+suffix
+	userID, err := testutils.CreateUser(testutils.User{
+		Type: "masked-person-" + suffix, OUID: ouID,
+		Attributes: json.RawMessage(fmt.Sprintf(`{"username": %q, "national_id": %q, "address": {"city": %q}}`,
+			username, nationalID, city)),
+	})
+	ts.Require().NoError(err)
+	defer func() { _ = testutils.DeleteUser(userID) }()
+
+	captured := ts.capture("with a user")
+	ts.Contains(captured.Resources, nationalID, "the version does not hold the user's attributes")
+	ts.Contains(captured.Resources, city, "the version does not hold the user's object attribute")
+
+	user := ts.changeIn(ts.diff(captured.Version), "user/"+userID)
+	ts.Require().NotNil(user, "the diff does not report the user")
+	var masked, named bool
+	for _, line := range user.Lines {
+		ts.NotContains(line.Text, nationalID, "the diff shows a user's attribute value")
+		ts.NotContains(line.Text, city, "the diff shows a value an object attribute nests")
+		masked = masked || strings.HasSuffix(line.Text, "national_id: ********")
+		named = named || strings.HasSuffix(line.Text, fmt.Sprintf("username: %q", username))
+	}
+	ts.True(masked, "the diff does not show the attribute masked")
+	ts.True(named, "the diff does not show the username")
 }
 
 // Captured versions are listed newest first and read back with their content.

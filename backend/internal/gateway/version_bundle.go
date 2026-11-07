@@ -63,10 +63,19 @@ var (
 		`)([A-Za-z_][A-Za-z0-9_]*)['"]?\s*$`)
 	// keyOnly reads a line that opens a mapping or a list under a key.
 	keyOnly = regexp.MustCompile(`^(\s*)(?:-\s+)?` + mappingKey + `\s*:\s*$`)
+	// keyedValue reads a mapping's key and the value after it. The groups are what is kept, the key
+	// and the value.
+	keyedValue = regexp.MustCompile(`^(\s*` + mappingKey + `\s*:\s+)(\S.*)$`)
 )
+
+// maskedValue is what a diff shows in place of a value it keeps to itself.
+const maskedValue = "********"
 
 // resourceTypeUser is the resource type an export writes a user under.
 const resourceTypeUser = "user"
+
+// usernameAttribute is the attribute a user is known by.
+const usernameAttribute = "username"
 
 // mappingKey reads a block mapping's key, quoted or plain, so a key such as `"a.b"` or `a.b` is read
 // as one. A plain key starts with no character that would open a list, flow style or a comment.
@@ -134,13 +143,13 @@ func diffBundles(held, applied []bundleResource) []Change {
 			}
 		}
 		change := changeOf(resource, kind)
-		change.Lines = lineDiff(previous.Content, resource.Content)
+		change.Lines = documentDiff(resource.Type, previous.Content, resource.Content)
 		changes = append(changes, change)
 	}
 	for _, resource := range held {
 		if _, ok := appliedByKey[resource.key()]; !ok {
 			change := changeOf(resource, ChangeDeleted)
-			change.Lines = lineDiff(resource.Content, "")
+			change.Lines = documentDiff(resource.Type, resource.Content, "")
 			changes = append(changes, change)
 		}
 	}
@@ -163,6 +172,73 @@ func sortChanges(changes []Change) {
 // left to compare is reported as its old lines removed and its new lines added: still a correct diff,
 // if not the smallest, so a large document that changed throughout cannot hold up a request.
 const maxDiffSteps = 1 << 22
+
+// documentDiff diffs a resource's documents line by line. A user's attribute values are personal
+// data, so a user's diff shows them masked: which attributes changed stays visible, not what they
+// hold. The lines are compared as they are, so a changed value still shows as removed and added.
+func documentDiff(resourceType, from, to string) []LineOp {
+	ops := lineDiff(from, to)
+	if resourceType != resourceTypeUser || ops == nil {
+		return ops
+	}
+	shownFrom, shownTo := maskAttributeValues(splitLines(from)), maskAttributeValues(splitLines(to))
+	i, j := 0, 0
+	for k := range ops {
+		switch ops[k].Kind {
+		case " ":
+			ops[k].Text = shownFrom[i]
+			i++
+			j++
+		case "-":
+			ops[k].Text = shownFrom[i]
+			i++
+		case "+":
+			ops[k].Text = shownTo[j]
+			j++
+		}
+	}
+	return ops
+}
+
+// maskAttributeValues returns a user's document lines with each value under its attributes masked.
+// Each attribute's key stays, and so does the username, since it is how the user is known. A line
+// nested deeper than the attributes is part of a value whatever its shape, so it is masked whole.
+func maskAttributeValues(lines []string) []string {
+	masked := make([]string, len(lines))
+	inside, indent := false, ""
+	for i, line := range lines {
+		masked[i] = line
+		trimmed := strings.TrimLeft(line, " \t")
+		if trimmed == "" {
+			continue
+		}
+		lineIndent := line[:len(line)-len(trimmed)]
+		if lineIndent == "" {
+			inside, indent = strings.TrimRight(line, " ") == "attributes:", ""
+			continue
+		}
+		if !inside {
+			continue
+		}
+		if indent == "" {
+			indent = lineIndent
+		}
+		if lineIndent != indent {
+			masked[i] = lineIndent + maskedValue
+			continue
+		}
+		if match := keyedValue.FindStringSubmatch(line); match != nil {
+			if unquoteKey(match[2]) != usernameAttribute {
+				masked[i] = match[1] + maskedValue
+			}
+			continue
+		}
+		if !keyOnly.MatchString(line) {
+			masked[i] = lineIndent + maskedValue
+		}
+	}
+	return masked
+}
 
 // lineDiff diffs two documents line by line, with the fewest lines removed and added. Identical
 // documents have no line diff.
@@ -486,9 +562,9 @@ func labelOf(resource bundleResource) string {
 	var keys []string
 	switch resource.Type {
 	case resourceTypeUser:
-		keys = []string{"username", "email", "name"}
+		keys = []string{usernameAttribute, "email", "name"}
 	case resourceTypeAgent:
-		keys = []string{"name", "username", "email"}
+		keys = []string{"name", usernameAttribute, "email"}
 	}
 	for _, key := range keys {
 		if label := attributeOf(resource.Content, key); label != "" {
