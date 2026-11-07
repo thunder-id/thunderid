@@ -1196,8 +1196,25 @@ func (s *importService) importFlowDefinition(
 	}
 
 	if options.IsUpsertEnabled() && req.ID != "" {
-		updated, svcErr := s.updateImportedFlow(ctx, req.ID, flowDef, policies)
-		if svcErr == nil {
+		// The flow is looked up, by ID and then by handle as the dry run does, before it is updated or created,
+		// so the flow service never records a failed update or create on the way to the one that is applied.
+		existingID := ""
+		if _, svcErr := s.flowService.GetFlow(ctx, req.ID); svcErr == nil {
+			existingID = req.ID
+		} else if !isNotFoundServiceError(svcErr) {
+			return serviceErrorOutcome(resourceTypeFlow, req.ID, req.Name, operationUpdate, svcErr)
+		} else if existingByHandle, handleErr := s.flowService.GetFlowByHandle(
+			ctx, req.Handle, req.FlowType); handleErr == nil {
+			existingID = existingByHandle.ID
+		} else if !isNotFoundServiceError(handleErr) {
+			return serviceErrorOutcome(resourceTypeFlow, req.ID, req.Name, operationUpdate, handleErr)
+		}
+
+		if existingID != "" {
+			updated, svcErr := s.updateImportedFlow(ctx, existingID, flowDef, policies)
+			if svcErr != nil {
+				return serviceErrorOutcome(resourceTypeFlow, existingID, req.Name, operationUpdate, svcErr)
+			}
 			return ImportItemOutcome{
 				ResourceType: resourceTypeFlow,
 				ResourceID:   updated.ID,
@@ -1206,60 +1223,10 @@ func (s *importService) importFlowDefinition(
 				Status:       statusSuccess,
 			}
 		}
-
-		if !isNotFoundServiceError(svcErr) {
-			return ImportItemOutcome{
-				ResourceType: resourceTypeFlow,
-				ResourceID:   req.ID,
-				ResourceName: req.Name,
-				Operation:    operationUpdate,
-				Status:       statusFailed,
-				Code:         svcErr.Code,
-				Message:      svcErr.Error.DefaultValue,
-			}
-		}
 	}
 
 	created, svcErr := s.flowService.CreateFlow(ctx, flowDef)
 	if svcErr != nil {
-		if options.IsUpsertEnabled() && req.ID != "" && svcErr.Code == flowmgt.ErrorDuplicateFlowHandle.Code {
-			existingByHandle, handleErr := s.flowService.GetFlowByHandle(ctx, req.Handle, req.FlowType)
-			if handleErr == nil {
-				updated, updateErr := s.updateImportedFlow(ctx, existingByHandle.ID, flowDef, policies)
-				if updateErr != nil {
-					return ImportItemOutcome{
-						ResourceType: resourceTypeFlow,
-						ResourceID:   existingByHandle.ID,
-						ResourceName: req.Name,
-						Operation:    operationUpdate,
-						Status:       statusFailed,
-						Code:         updateErr.Code,
-						Message:      updateErr.Error.DefaultValue,
-					}
-				}
-
-				return ImportItemOutcome{
-					ResourceType: resourceTypeFlow,
-					ResourceID:   updated.ID,
-					ResourceName: updated.Name,
-					Operation:    operationUpdate,
-					Status:       statusSuccess,
-				}
-			}
-
-			if !isNotFoundServiceError(handleErr) {
-				return ImportItemOutcome{
-					ResourceType: resourceTypeFlow,
-					ResourceID:   req.ID,
-					ResourceName: req.Name,
-					Operation:    operationUpdate,
-					Status:       statusFailed,
-					Code:         handleErr.Code,
-					Message:      handleErr.Error.DefaultValue,
-				}
-			}
-		}
-
 		return ImportItemOutcome{
 			ResourceType: resourceTypeFlow,
 			ResourceID:   req.ID,

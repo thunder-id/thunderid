@@ -11,6 +11,8 @@ import (
 	"time"
 
 	syscontext "github.com/thunder-id/thunderid/internal/system/context"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
+	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/observability/event"
 	"github.com/thunder-id/thunderid/internal/system/security"
@@ -54,6 +56,7 @@ type serverConfigService struct {
 	handlers map[ConfigName]ServerConfigHandlerInterface
 	// observability receives a SERVER_CONFIG_UPDATED event per write. Optional.
 	observability providers.ObservabilityProvider
+	bus           eventbus.EventBusInterface
 	logger        *log.Logger
 	configMu      sync.Mutex
 }
@@ -63,11 +66,12 @@ type serverConfigService struct {
 // implementation depending on the configured store mode.
 func newServerConfigService(store serverConfigStoreInterface,
 	handlers map[ConfigName]ServerConfigHandlerInterface,
-	observability providers.ObservabilityProvider) ServerConfigService {
+	observability providers.ObservabilityProvider, bus eventbus.EventBusInterface) ServerConfigService {
 	return &serverConfigService{
 		store:         store,
 		handlers:      handlers,
 		observability: observability,
+		bus:           bus,
 		logger:        log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName)),
 	}
 }
@@ -160,6 +164,14 @@ func (s *serverConfigService) getConfigLayer(ctx context.Context, name string,
 // SetConfig decodes and validates an incoming value against the current layers and persists the raw
 // bytes to the writable layer. A bad incoming value is a client error; the stored bytes are kept as-is.
 func (s *serverConfigService) SetConfig(ctx context.Context,
+	name ConfigName, value json.RawMessage) *common.ServiceError {
+	svcErr := s.setConfig(ctx, name, value)
+	s.publishServerConfigEvent(ctx, name, svcErr)
+	return svcErr
+}
+
+// setConfig writes a section without publishing its audit event.
+func (s *serverConfigService) setConfig(ctx context.Context,
 	name ConfigName, value json.RawMessage) (svcErr *common.ServiceError) {
 	handler, svcErr := s.handlerFor(ctx, name)
 	if svcErr != nil {
@@ -202,6 +214,14 @@ func (s *serverConfigService) SetConfig(ctx context.Context,
 // UpdateConfig changes a section's writable layer from the one it holds, with a conditional write that
 // loses to any write made since the read, and reads and tries again when it does.
 func (s *serverConfigService) UpdateConfig(ctx context.Context, name ConfigName,
+	updater ConfigUpdater) *common.ServiceError {
+	svcErr := s.updateConfig(ctx, name, updater)
+	s.publishServerConfigEvent(ctx, name, svcErr)
+	return svcErr
+}
+
+// updateConfig changes a section from the one it holds without publishing its audit event.
+func (s *serverConfigService) updateConfig(ctx context.Context, name ConfigName,
 	updater ConfigUpdater) (svcErr *common.ServiceError) {
 	handler, svcErr := s.handlerFor(ctx, name)
 	if svcErr != nil {
@@ -260,6 +280,19 @@ func (s *serverConfigService) UpdateConfig(ctx context.Context, name ConfigName,
 		}
 	}
 	return &ErrorConfigWriteConflict
+}
+
+// publishServerConfigEvent publishes the audit event of an attempt to change the section name, after the
+// change was stored or refused. The target is the section, never its value, since a section may hold
+// secrets.
+func (s *serverConfigService) publishServerConfigEvent(ctx context.Context, name ConfigName,
+	svcErr *common.ServiceError) {
+	// A failed attempt keeps the name the caller asked for, even one that is not a section, as forensic
+	// evidence of what was probed; the payload caps it and the sink escapes it.
+	target := audit.Ref{Type: audit.TargetTypeServerConfig, ID: string(name)}
+	eventbus.TryPublish(ctx, s.bus,
+		eventbus.NewEvent(ctx, audit.EventServerConfigUpdate).With(
+			audit.ChangePayload(ctx, target, audit.ActionUpdate, svcErr)))
 }
 
 // publishConfigWrite records who wrote which section and the outcome. It never records the value,

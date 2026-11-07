@@ -38,12 +38,13 @@ func (suite *ServiceTestSuite) SetupTest() {
 	suite.mockStore = newServerConfigStoreInterfaceMock(suite.T())
 	suite.mockHandler = NewServerConfigHandlerInterfaceMock(suite.T())
 	suite.service = newServerConfigService(suite.mockStore,
-		map[ConfigName]ServerConfigHandlerInterface{ConfigNameCORS: suite.mockHandler}, nil)
+		map[ConfigName]ServerConfigHandlerInterface{ConfigNameCORS: suite.mockHandler}, nil, discardingBus{})
 }
 
 // serviceWithoutHandlers builds a service with no registered handlers, sharing the suite store mock.
 func (suite *ServiceTestSuite) serviceWithoutHandlers() ServerConfigService {
-	return newServerConfigService(suite.mockStore, map[ConfigName]ServerConfigHandlerInterface{}, nil)
+	return newServerConfigService(suite.mockStore, map[ConfigName]ServerConfigHandlerInterface{}, nil,
+		discardingBus{})
 }
 
 // Raw (byte) layers shared across the store tests, plus an incoming PUT value.
@@ -84,7 +85,7 @@ func (suite *ServiceTestSuite) TestListConfigNames_NoHandlers() {
 func (suite *ServiceTestSuite) TestListConfigNames_NilHandler() {
 	service := newServerConfigService(suite.mockStore, map[ConfigName]ServerConfigHandlerInterface{
 		ConfigNameCORS: nil,
-	}, nil)
+	}, nil, discardingBus{})
 
 	names, svcErr := service.ListConfigNames(suite.ctx)
 
@@ -317,7 +318,8 @@ func (suite *ServiceTestSuite) auditedService() (ServerConfigService, *[]*provid
 	obs.EXPECT().PublishEvent(mock.Anything, mock.Anything).
 		Run(func(_ context.Context, evt *providers.Event) { published = append(published, evt) })
 	return newServerConfigService(suite.mockStore,
-		map[ConfigName]ServerConfigHandlerInterface{ConfigNameCORS: suite.mockHandler}, obs), &published
+		map[ConfigName]ServerConfigHandlerInterface{ConfigNameCORS: suite.mockHandler}, obs,
+		discardingBus{}), &published
 }
 
 // A write is recorded with the section and the outcome, never the value, which may hold secrets.
@@ -360,7 +362,7 @@ func (suite *ServiceTestSuite) TestSetConfig_PublishesARejection() {
 func (suite *ServiceTestSuite) TestSetConfig_UnknownNamePublishesNothing() {
 	obs := observabilityprovidermock.NewObservabilityProviderMock(suite.T())
 	svc := newServerConfigService(suite.mockStore,
-		map[ConfigName]ServerConfigHandlerInterface{ConfigNameCORS: suite.mockHandler}, obs)
+		map[ConfigName]ServerConfigHandlerInterface{ConfigNameCORS: suite.mockHandler}, obs, discardingBus{})
 
 	suite.NotNil(svc.SetConfig(suite.ctx, ConfigName("no-such-section"), incomingRaw))
 }
@@ -429,7 +431,7 @@ func (suite *ServiceTestSuite) TestSetConfig_PublishesNothingWithoutObservabilit
 		obs := observabilityprovidermock.NewObservabilityProviderMock(suite.T())
 		obs.EXPECT().IsEnabled().Return(false).Once()
 		svc := newServerConfigService(suite.mockStore,
-			map[ConfigName]ServerConfigHandlerInterface{ConfigNameCORS: suite.mockHandler}, obs)
+			map[ConfigName]ServerConfigHandlerInterface{ConfigNameCORS: suite.mockHandler}, obs, discardingBus{})
 
 		suite.Nil(svc.SetConfig(suite.ctx, ConfigNameCORS, incomingRaw))
 		obs.AssertNotCalled(suite.T(), "PublishEvent", mock.Anything, mock.Anything)

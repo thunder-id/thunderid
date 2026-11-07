@@ -165,7 +165,7 @@ func (s *SystemFlowTestSuite) TestGetSystemFlow() {
 	s.validator.EXPECT().ValidateSystemFlowDefinition(mock.Anything, mock.Anything).Return(nil)
 	flows, err := loadSystemFlows(context.Background(), systemFlowFiles, s.validator)
 	s.Require().NoError(err)
-	service := &flowMgtService{systemFlows: flows}
+	service := &flowMgtService{systemFlows: flows, bus: discardingBus{}}
 
 	flow, svcErr := service.GetSystemFlow(context.Background(), testSystemFlowHandle)
 	s.Require().Nil(svcErr)

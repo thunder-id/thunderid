@@ -42,7 +42,8 @@ func (suite *InitTestSuite) TearDownTest() {
 func (suite *InitTestSuite) TestInitialize() {
 	cacheManager := cache.Initialize(config.GetServerRuntime().Config.Cache, "test-deployment")
 
-	svc, exporter, err := Initialize(suite.mux, cacheManager, map[ConfigName]ServerConfigHandlerInterface{}, nil)
+	svc, exporter, err := Initialize(suite.mux, cacheManager, map[ConfigName]ServerConfigHandlerInterface{}, nil,
+		discardingBus{})
 	suite.Require().NoError(err)
 	suite.Require().NotNil(svc)
 	suite.Require().NotNil(exporter)
@@ -58,4 +59,12 @@ func (suite *InitTestSuite) TestInitialize() {
 	suite.mux.ServeHTTP(w, req)
 
 	assert.Equal(suite.T(), http.StatusNoContent, w.Code)
+}
+
+func (suite *InitTestSuite) TestInitialize_RefusesANilEventBus() {
+	svc, exporter, err := Initialize(suite.mux, nil, map[ConfigName]ServerConfigHandlerInterface{}, nil, nil)
+
+	suite.ErrorIs(err, errNilEventBus)
+	suite.Nil(svc)
+	suite.Nil(exporter)
 }
