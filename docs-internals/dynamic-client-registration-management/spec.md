@@ -1,7 +1,7 @@
 # Dynamic Client Registration Management Specification
 
 - **Status:** Final
-- **Version:** 1.0
+- **Version:** 1.1
 - **Related documents:**
   - Feature issue: [#5150](https://github.com/thunder-id/thunderid/issues/5150)
   - [RFC 7592](https://www.rfc-editor.org/rfc/rfc7592) OAuth 2.0 Dynamic Client Registration Management Protocol
@@ -45,7 +45,7 @@ The driving consumer is what settles this. An API or application portal register
 
 Every operation follows the same sequence: authorize the caller, then resolve the client named in the request path, then act. Authorizing first means an unauthorized caller cannot learn which client identifiers exist, since every unauthorized request fails the same way whether or not the client is real.
 
-Failure behavior: a caller without the system permission is unauthorized. The response is `401` and carries an RFC 6750 `WWW-Authenticate` challenge naming an invalid token, so a caller that presented a credential learns the credential was the problem. There is no `403` path. A caller either holds the permission that governs every registration or holds nothing, so there is no state in which a caller is authenticated for one registration and refused another.
+Failure behavior: a caller without the system permission is unauthorized. The response is `401` and carries an RFC 6750 `WWW-Authenticate` challenge. A caller that presented a credential gets a challenge naming an invalid token, so it learns the credential was the problem. A caller that presented no credential gets a bare `Bearer` challenge, since RFC 6750 §3.1 says an unauthenticated request should get no error code. There is no `403` path. A caller either holds the permission that governs every registration or holds nothing, so there is no state in which a caller is authenticated for one registration and refused another.
 
 The permission is checked per request and nothing about it is bound to a particular client, which is also why deleting a client does not need to invalidate any credential. A deleted client no longer resolves, so every subsequent operation on it reports the client as not found.
 
@@ -126,7 +126,7 @@ Error responses:
 | Status | Condition | Notes |
 |---|---|---|
 | `400` | Invalid client metadata, a `client_id` that does not match the request path, or a `client_secret` that does not match the issued secret | Same error vocabulary as registration |
-| `401` | Caller does not hold the system permission | Carries a `WWW-Authenticate` challenge naming an invalid token |
+| `401` | Caller does not hold the system permission | Error code `unauthorized_client`. The `WWW-Authenticate` challenge names an invalid token when a credential was presented, and is a bare `Bearer` otherwise |
 | `404` | No such registration, including one already deleted | |
 | `500` | Server failure | |
 
@@ -194,3 +194,4 @@ This feature adds no configuration keys. The existing dynamic client registratio
 | Version | Date | Change |
 |---|---|---|
 | 1.0 | 2026-09-21 | Initial specification. |
+| 1.1 | 2026-11-07 | A request with no credential gets a bare `Bearer` challenge. |

@@ -269,6 +269,54 @@ func (ts *DCRTestSuite) TestDCRRegistrationInvalidJSON() {
 	ts.Assert().Equal(http.StatusBadRequest, resp.StatusCode)
 }
 
+// TestDCRRegistrationWithoutToken verifies that a registration without a token is rejected with a
+// bare Bearer challenge.
+func (ts *DCRTestSuite) TestDCRRegistrationWithoutToken() {
+	resp, errResp := ts.registerWithAuthorization("")
+
+	ts.Assert().Equal(http.StatusUnauthorized, resp.StatusCode)
+	ts.Assert().Equal("Bearer", resp.Header.Get("WWW-Authenticate"))
+	ts.Assert().Equal("unauthorized_client", errResp.Error)
+}
+
+// TestDCRRegistrationWithInvalidToken verifies that a registration with a rejected token is
+// challenged with invalid_token.
+func (ts *DCRTestSuite) TestDCRRegistrationWithInvalidToken() {
+	resp, errResp := ts.registerWithAuthorization("Bearer not-a-real-token")
+
+	ts.Assert().Equal(http.StatusUnauthorized, resp.StatusCode)
+	ts.Assert().Equal(`Bearer error="invalid_token"`, resp.Header.Get("WWW-Authenticate"))
+	ts.Assert().Equal("unauthorized_client", errResp.Error)
+}
+
+// registerWithAuthorization sends a public client registration with the given Authorization header,
+// or none when it is empty.
+func (ts *DCRTestSuite) registerWithAuthorization(authorization string) (*http.Response, DCRErrorResponse) {
+	requestJSON, err := json.Marshal(DCRRegistrationRequest{
+		RedirectURIs:            []string{"http://localhost:6274/oauth/callback"},
+		GrantTypes:              []string{"authorization_code"},
+		ResponseTypes:           []string{"code"},
+		ClientName:              "Unauthenticated Client",
+		TokenEndpointAuthMethod: "none",
+	})
+	ts.Require().NoError(err)
+
+	req, err := http.NewRequest("POST", testServerURL+dcrEndpoint, bytes.NewReader(requestJSON))
+	ts.Require().NoError(err)
+	req.Header.Set("Content-Type", "application/json")
+	if authorization != "" {
+		req.Header.Set("Authorization", authorization)
+	}
+
+	resp, err := testutils.GetHTTPClient().Do(req)
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+
+	var errResp DCRErrorResponse
+	ts.Require().NoError(json.NewDecoder(resp.Body).Decode(&errResp))
+	return resp, errResp
+}
+
 // TestDCRRegistrationInvalidTokenEndpointAuthMethod verifies rejection of unsupported auth methods.
 func (ts *DCRTestSuite) TestDCRRegistrationInvalidTokenEndpointAuthMethod() {
 	request := DCRRegistrationRequest{
