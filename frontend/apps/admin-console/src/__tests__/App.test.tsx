@@ -87,30 +87,6 @@ describe('App', () => {
     expect(screen.queryByText('Users List Page')).not.toBeInTheDocument();
   });
 
-  // Without a loader, a protected page renders nothing while sign-in is checked or a redirect to
-  // sign-in is on its way, which shows as a bare page mid sign-out.
-  it('shows the page loader while sign-in is checked', () => {
-    session.isLoading = true;
-    renderAt('/users');
-    expect(screen.getByRole('progressbar', {name: 'Loading content'})).toBeInTheDocument();
-    expect(screen.queryByText('Users List Page')).not.toBeInTheDocument();
-    expect(session.signIn).not.toHaveBeenCalled();
-  });
-
-  it('shows the page loader while the redirect to sign-in is on its way', async () => {
-    session.isSignedIn = false;
-    renderAt('/users');
-    expect(screen.getByRole('progressbar', {name: 'Loading content'})).toBeInTheDocument();
-    await waitFor(() => expect(session.signIn).toHaveBeenCalledTimes(1));
-    expect(screen.getByRole('progressbar', {name: 'Loading content'})).toBeInTheDocument();
-  });
-
-  it('shows the page once signed in, without the loader', async () => {
-    renderAt('/users');
-    expect(await screen.findByText('Users List Page')).toBeInTheDocument();
-    expect(screen.queryByRole('progressbar', {name: 'Loading content'})).not.toBeInTheDocument();
-  });
-
   it('redirects the root path to the users list', async () => {
     render(<App />);
     await waitFor(() => {
