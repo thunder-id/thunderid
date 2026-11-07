@@ -14,7 +14,7 @@ describe('RouteConfig', () => {
     expect(RouteConfig.deploy.list()).toBe('/deploy');
     expect(RouteConfig.deploy.explore('gw 1')).toBe('/deploy/gateways/gw%201/explore');
     expect(RouteConfig.deploy.values('gw-1')).toBe('/deploy/gateways/gw-1/values');
-    expect(RouteConfig.deploy.gateway('gw 1', 'p 1')).toBe('/projects/p%201/deploy/gateways/gw%201');
+    expect(RouteConfig.deploy.gateway('gw 1')).toBe('/deploy/gateways/gw%201');
     expect(RouteConfig.deploy.gateway('gw-1')).toBe('/deploy/gateways/gw-1');
     expect(RouteConfig.deploy.project?.('p-1')).toBe('/projects/p-1');
     expect(RouteConfig.projects.home('p 1')).toBe('/projects/p%201');
@@ -162,7 +162,6 @@ describe('RouteConfig', () => {
       const {default: configured} = await import('../RouteConfig');
 
       expect(configured.deploy.gateway('gw-1')).toBe('/environments/gw-1');
-      expect(configured.deploy.gateway('gw-1', 'p-1')).toBe('/projects/p-1/environments/gw-1');
       // The explorer and values pages stay where they are.
       expect(configured.deploy.explore('gw-1')).toBe('/deploy/gateways/gw-1/explore');
     });

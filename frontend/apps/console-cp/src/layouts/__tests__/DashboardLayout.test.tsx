@@ -262,7 +262,7 @@ describe('DashboardLayout', () => {
 
   it("shows the gateway's own navigation on its pages, back to the project", () => {
     mockUseProjectSelection.mockReturnValue(inShop());
-    mockPath = '/projects/p-shop/deploy/gateways/gw-dev/values';
+    mockPath = '/deploy/gateways/gw-dev/values';
     render(<DashboardLayout />);
 
     // The way back names the project.
@@ -280,47 +280,45 @@ describe('DashboardLayout', () => {
     expect(screen.queryByText('navigation:pages.applications')).not.toBeInTheDocument();
   });
 
-  it("switches between the project's configuration and its gateways from the header", async () => {
-    mockUseProjectSelection.mockReturnValue(inShop());
+  it("shows a gateway's own navigation without a project, back to the organization's overview", () => {
+    mockPath = '/deploy/gateways/gw-dev';
     render(<DashboardLayout />);
 
-    const switcher = screen.getByTestId('gateway-switcher');
-    expect(switcher).toHaveTextContent('common:header.projectConfiguration');
-    expect(screen.queryByTestId('header-read-only')).not.toBeInTheDocument();
-    await userEvent.click(switcher);
-    expect(await screen.findByText('v37 · common:header.changesBehind')).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('menuitem', {name: /DEVELOPMENT/}));
-    expect(mockNavigate).toHaveBeenCalledWith('/projects/p-shop/deploy/gateways/gw-dev');
+    expect(screen.getByText('navigation:categories.gateway')).toBeInTheDocument();
+    expect(screen.getByText('navigation:pages.deploymentHistory')).toBeInTheDocument();
+    expect(screen.getAllByText('navigation:pages.overview')).toHaveLength(2);
+    expect(screen.queryByText('navigation:pages.applications')).not.toBeInTheDocument();
   });
 
-  it('leads the sidebar with Projects once the project selection is cleared, with nothing read-only', () => {
+  it("offers switching gateways from the header on a gateway's pages only", () => {
+    mockUseProjectSelection.mockReturnValue(inShop());
+    const {unmount} = render(<DashboardLayout />);
+
+    expect(screen.queryByTestId('gateway-switcher')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('header-read-only')).not.toBeInTheDocument();
+    unmount();
+
+    mockPath = '/deploy/gateways/gw-dev';
+    render(<DashboardLayout />);
+    expect(screen.getByTestId('gateway-switcher')).toBeInTheDocument();
+  });
+
+  it('leaves Projects out of the sidebar, and keeps settings in its own group at the end', () => {
     mockUseProjectSelection.mockReturnValue(projectSelection({projects: [shop], isCleared: true}));
     mockPath = '/home';
 
     render(<DashboardLayout />);
 
-    expect(screen.getByText('navigation:pages.projects')).toBeInTheDocument();
-    expect(screen.queryByTestId('gateway-switcher')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('header-read-only')).not.toBeInTheDocument();
-  });
-
-  it('leads the sidebar with Projects when there are no projects yet', () => {
-    render(<DashboardLayout />);
-
-    expect(screen.getByText('navigation:pages.projects')).toBeInTheDocument();
-  });
-
-  it('leaves Projects out of the sidebar while the projects are loading', () => {
-    mockUseProjectSelection.mockReturnValue(projectSelection({isLoading: true}));
-
-    render(<DashboardLayout />);
-
     expect(screen.queryByText('navigation:pages.projects')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('gateway-switcher')).not.toBeInTheDocument();
+    const system = screen.getByText('navigation:categories.system');
+    const settings = screen.getByText('navigation:pages.settings');
+    expect(system.compareDocumentPosition(settings) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it('names the gateway open, and says its configuration is read-only there', () => {
     mockUseProjectSelection.mockReturnValue(inShop());
-    mockPath = '/projects/p-shop/deploy/gateways/gw-dev';
+    mockPath = '/deploy/gateways/gw-dev';
     render(<DashboardLayout />);
 
     expect(screen.getByTestId('gateway-switcher')).toHaveTextContent('DEVELOPMENT');

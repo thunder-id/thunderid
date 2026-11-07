@@ -30,7 +30,6 @@ import {
 } from '@wso2/oxygen-ui';
 import {
   Bot,
-  BoxIcon,
   Building,
   FolderKanban,
   Group,
@@ -63,7 +62,7 @@ import {useEffect, useMemo, useState, type JSX, type ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
 import {Link as NavigateLink, Outlet, useLocation, useMatch, useNavigate} from 'react-router';
 import GatewaySwitcher from './components/GatewaySwitcher';
-import SessionExpiredBanner from '../components/SessionExpiredBanner';
+import SignInOnUnauthorized from '../components/SignInOnUnauthorized';
 import RouteConfig, {ROUTE_SEGMENTS} from '../configs/RouteConfig';
 
 const ICON_BUTTON_SX = {
@@ -183,14 +182,11 @@ export default function DashboardLayout({collapseSidebar = false}: DashboardLayo
 
 function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps): ReactNode {
   const {clearSession, discovery} = useThunderID();
-  const {projects, selectedProject: project, isCleared, isLoading, error, clearSelection} = useProjectSelection();
-  // Once the project selection is cleared, the navigation leads with the projects page so another
-  // project can be opened. With no projects yet, it leads there too, where the first one is added.
-  const showProjects = isCleared || (!isLoading && !error && projects.length === 0);
+  const {projects, selectedProject: project, clearSelection} = useProjectSelection();
   // How many of the project's own applications and agents the first gateway does not run yet.
   const undeployed = useProjectChanges();
   // On one of a gateway's pages, the navigation is the gateway's.
-  const gatewayMatch = useMatch(`/${ROUTE_SEGMENTS.projects}/:projectId/${ROUTE_SEGMENTS.deployTargets}/:gatewayId/*`);
+  const gatewayMatch = useMatch(`/${ROUTE_SEGMENTS.deployTargets}/:gatewayId/*`);
   const gatewayId = gatewayMatch?.params.gatewayId;
   const pipeline = usePipeline();
   const deployRoutes = useDeployRoutes();
@@ -262,22 +258,28 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
     };
     const badgeOf = (count: number | undefined): string | undefined =>
       count ? t('navigation:badges.undeployed', '{{count}} undeployed', {count}) : undefined;
-    // A selected project is all the navigation shows: its gateways, then its applications and
-    // agents, which belong to projects only, and its resource servers and roles. The organization's
-    // sections, which list every resource server and role, come back once it is left.
-    if (project && gateway && gatewayId) {
+    // On a gateway's pages the navigation is the gateway's, the same from wherever it was opened: a
+    // gateway belongs to the organization. The way back leads to the project it was opened from, if any.
+    if (gateway && gatewayId) {
       const section = (name: 'overview' | 'values' | 'endpoints' | 'history' | 'explore'): string =>
-        gatewaySectionOf(deployRoutes, gatewayId, project.id, name);
+        gatewaySectionOf(deployRoutes, gatewayId, undefined, name);
       const color = gatewayColor(gatewayIndex);
       return [
         {
           routes: [
-            {
-              id: 'gateway-back',
-              text: project.displayName,
-              icon: <ArrowLeft />,
-              path: RouteConfig.projects.home(project.id),
-            },
+            project
+              ? {
+                  id: 'gateway-back',
+                  text: project.displayName,
+                  icon: <ArrowLeft />,
+                  path: RouteConfig.projects.home(project.id),
+                }
+              : {
+                  id: 'gateway-back',
+                  text: t('navigation:pages.overview', 'Overview'),
+                  icon: <ArrowLeft />,
+                  path: RouteConfig.home.list(),
+                },
           ],
         },
         {
@@ -371,16 +373,6 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
     return [
       {
         routes: [
-          ...(showProjects
-            ? [
-                {
-                  id: 'projects',
-                  text: t('navigation:pages.projects', 'Projects'),
-                  icon: <BoxIcon />,
-                  path: RouteConfig.projects.list(),
-                },
-              ]
-            : []),
           {
             id: 'home',
             text: t('navigation:pages.overview', 'Overview'),
@@ -403,12 +395,6 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
             text: t('navigation:pages.gateways', 'Deployment'),
             icon: <Network />,
             path: RouteConfig.gateways.list(),
-          },
-          {
-            id: 'settings',
-            text: t('navigation:pages.settings'),
-            icon: <Settings />,
-            path: RouteConfig.settings.list(),
           },
         ],
       },
@@ -509,11 +495,21 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
           },
         ],
       },
+      {
+        category: t('navigation:categories.system', 'System'),
+        routes: [
+          {
+            id: 'settings',
+            text: t('navigation:pages.settings', 'Settings'),
+            icon: <Settings />,
+            path: RouteConfig.settings.list(),
+          },
+        ],
+      },
     ];
   }, [
     t,
     project,
-    showProjects,
     undeployed.application,
     undeployed.agent,
     undeployed.resource_server,
@@ -588,7 +584,8 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
           )}
           <Header.Spacer />
           <Header.Actions>
-            <GatewaySwitcher />
+            {/* Switching gateways is offered on a gateway's own pages only. */}
+            {gateway && <GatewaySwitcher />}
             {gateway && (
               <Chip
                 size="small"
@@ -632,7 +629,8 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
       </AppShell.Navbar>
 
       <AppShell.Sidebar>
-        <Sidebar activeItem={activeItem} expandedMenus={expandedMenus} onToggleExpand={handleToggleExpand}>
+        {/* Wide enough for the longest page names, such as a gateway's deployed configuration, to show whole. */}
+        <Sidebar width={272} activeItem={activeItem} expandedMenus={expandedMenus} onToggleExpand={handleToggleExpand}>
           <Sidebar.Nav>
             {appRoutes.map((categoryGroup) => (
               <Sidebar.Category key={categoryGroup.category}>
@@ -678,7 +676,7 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
       </AppShell.Sidebar>
 
       <AppShell.Main>
-        <SessionExpiredBanner />
+        <SignInOnUnauthorized />
         <Outlet />
       </AppShell.Main>
 

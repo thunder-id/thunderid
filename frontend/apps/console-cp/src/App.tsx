@@ -115,8 +115,8 @@ const GroupEditPage = lazy(() => import('@thunderid/configure-groups').then((m) 
 const GroupsListPage = lazy(() => import('@thunderid/configure-groups').then((m) => ({default: m.GroupsListPage})));
 const OrganizationHomePage = lazy(() => import('./pages/OrganizationHomePage'));
 const ProjectHomePage = lazy(() => import('./pages/ProjectHomePage'));
-const ProjectGatewayPage = lazy(() => import('./pages/ProjectGatewayPage'));
-const ProjectExplorerPage = lazy(() => import('./pages/ProjectExplorerPage'));
+const OrganizationGatewayPage = lazy(() => import('./pages/OrganizationGatewayPage'));
+const OrganizationExplorerPage = lazy(() => import('./pages/OrganizationExplorerPage'));
 const ExportPage = lazy(() =>
   import('./lib/monaco-setup').then(() =>
     import('@thunderid/configure-import-export').then((m) => ({default: m.ExportPage})),
@@ -143,7 +143,6 @@ const GatewayDetailPage = lazy(() =>
   import('@thunderid/configure-gateways').then((m) => ({default: m.GatewayDetailPage})),
 );
 const DeployPage = lazy(() => import('@thunderid/configure-gateways').then((m) => ({default: m.DeployPage})));
-const GatewayPage = lazy(() => import('@thunderid/configure-gateways').then((m) => ({default: m.GatewayPage})));
 const GatewayExplorerPage = lazy(() =>
   import('@thunderid/configure-gateways').then((m) => ({default: m.GatewayExplorerPage})),
 );
@@ -276,22 +275,18 @@ export default function App(): JSX.Element {
                   <Route path={ROUTE_SEGMENTS.projects} element={<ProjectsListPage />} />
                   <Route path={ROUTE_SEGMENTS.gateways} element={<GatewaysListPage />} />
                   <Route path={`${ROUTE_SEGMENTS.gateways}/:gatewayId`} element={<GatewayDetailPage />} />
-                  <Route path={`${ROUTE_SEGMENTS.deployTargets}/:gatewayId`} element={<GatewayPage />} />
+                  <Route path={`${ROUTE_SEGMENTS.deployTargets}/:gatewayId`} element={<OrganizationGatewayPage />} />
                   <Route
-                    path={`${ROUTE_SEGMENTS.projects}/:projectId/${ROUTE_SEGMENTS.deployTargets}/:gatewayId`}
-                    element={<ProjectGatewayPage />}
+                    path={`${ROUTE_SEGMENTS.deployTargets}/:gatewayId/values`}
+                    element={<OrganizationGatewayPage section="values" />}
                   />
                   <Route
-                    path={`${ROUTE_SEGMENTS.projects}/:projectId/${ROUTE_SEGMENTS.deployTargets}/:gatewayId/values`}
-                    element={<ProjectGatewayPage section="values" />}
+                    path={`${ROUTE_SEGMENTS.deployTargets}/:gatewayId/endpoints`}
+                    element={<OrganizationGatewayPage section="endpoints" />}
                   />
                   <Route
-                    path={`${ROUTE_SEGMENTS.projects}/:projectId/${ROUTE_SEGMENTS.deployTargets}/:gatewayId/endpoints`}
-                    element={<ProjectGatewayPage section="endpoints" />}
-                  />
-                  <Route
-                    path={`${ROUTE_SEGMENTS.projects}/:projectId/${ROUTE_SEGMENTS.deployTargets}/:gatewayId/history`}
-                    element={<ProjectGatewayPage section="history" />}
+                    path={`${ROUTE_SEGMENTS.deployTargets}/:gatewayId/history`}
+                    element={<OrganizationGatewayPage section="history" />}
                   />
                 </Route>
                 {/* Organization Units - wrapped in OrganizationUnitProvider to preserve tree state across navigation */}
@@ -377,14 +372,14 @@ export default function App(): JSX.Element {
                   <Route path="gateways/:gatewayId/values" element={<GatewayValuesPage />} />
                 </Route>
                 <Route
-                  path={`${ROUTE_SEGMENTS.projects}/:projectId/${ROUTE_SEGMENTS.deployTargets}/:gatewayId/explore`}
+                  path={`${ROUTE_SEGMENTS.deployTargets}/:gatewayId/explore`}
                   element={
                     <ProtectedRoute>
                       <FullScreenLayout />
                     </ProtectedRoute>
                   }
                 >
-                  <Route index element={<ProjectExplorerPage />} />
+                  <Route index element={<OrganizationExplorerPage />} />
                 </Route>
                 <Route
                   path={RouteConfig.userTypes.create()}

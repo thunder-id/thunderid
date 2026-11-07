@@ -2,15 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {useQueries, useQuery} from '@tanstack/react-query';
-import {DocumentTitle} from '@thunderid/components';
-import {
-  gatewayColor,
-  useAutoApply,
-  usePipeline,
-  useProjects,
-  type PipelineStage,
-  type Project,
-} from '@thunderid/configure-gateways';
+import {DocumentTitle, QueryErrorNotice} from '@thunderid/components';
+import {gatewayColor, usePipeline, useProjects, type PipelineStage, type Project} from '@thunderid/configure-gateways';
 import {useProjectSelection} from '@thunderid/configure-projects';
 import {useConfig} from '@thunderid/contexts';
 import {User, useThunderID} from '@thunderid/react';
@@ -28,8 +21,22 @@ import {
   Radio,
   Stack,
   Typography,
+  alpha,
 } from '@wso2/oxygen-ui';
-import {ArrowRight, RefreshCw, Rocket, Send} from '@wso2/oxygen-ui-icons-react';
+import {
+  ArrowRight,
+  Bot,
+  ExternalLink,
+  Globe,
+  LayoutGrid,
+  Plus,
+  Rocket,
+  MoveRight,
+  Server,
+  SlidersHorizontal,
+  Smartphone,
+  Users,
+} from '@wso2/oxygen-ui-icons-react';
 import {Fragment, useEffect, useState, type JSX, type ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
 import {Link, useNavigate} from 'react-router';
@@ -212,17 +219,147 @@ function PickerOption({
 /** What the project picker was opened for: a deploy, or a new application or agent. */
 type Pick = 'deploy' | 'application' | 'agent';
 
-/** The arrow from one step of the path to the next, named for what moves configuration along it. */
-function Joint({label, icon}: {label: string; icon: ReactNode}): JSX.Element {
+/** The rounded buttons of the overview, as the design draws them. */
+const PILL = {minHeight: 40, px: 2, borderRadius: '20px', fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap'};
+
+/** Where configuration enters the first gateway, in that gateway's color. */
+function DeployArrow({label, color}: {label: string; color: string}): JSX.Element {
   return (
-    <Stack alignItems="center" justifyContent="center" spacing={0.5} sx={{color: 'primary.main', px: 0.5}}>
-      <Typography variant="caption" fontWeight={600} color="inherit">
+    <Stack alignItems="center" spacing={0.25} sx={{flex: '0 0 auto', pt: 1.25, color}}>
+      <Typography color="inherit" sx={{fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap'}}>
         {label}
       </Typography>
-      <Stack direction="row" spacing={0.5} alignItems="center" aria-hidden>
-        {icon}
-        <ArrowRight size={16} />
+      <MoveRight size={28} />
+    </Stack>
+  );
+}
+
+/** Where promotion starts: a dashed divide, broken where the arrow crosses it. */
+function PromoteArrow({label}: {label: string}): JSX.Element {
+  const dash = {borderLeft: '1px dashed', borderColor: 'divider'};
+  return (
+    <Stack alignItems="center" sx={{flex: '0 0 auto', alignSelf: 'stretch', width: 96, color: 'text.secondary'}}>
+      <Box aria-hidden sx={{...dash, height: 10}} />
+      <Stack alignItems="center" spacing={0.25} sx={{py: 0.5}}>
+        <Typography color="inherit" sx={{fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap'}}>
+          {label}
+        </Typography>
+        <MoveRight size={28} />
       </Stack>
+      <Box aria-hidden sx={{...dash, flex: 1}} />
+    </Stack>
+  );
+}
+
+/** The dashed lines from this console to the two kinds of resource configured in it. */
+function ForkLines(): JSX.Element {
+  return (
+    <Box component="span" sx={{display: 'block', color: 'primary.main', opacity: 0.55}}>
+      <svg
+        aria-hidden="true"
+        width="160"
+        height="22"
+        viewBox="0 0 160 22"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeDasharray="3 3"
+        strokeLinecap="round"
+        style={{display: 'block'}}
+      >
+        <path d="M80 1 L40 21" />
+        <path d="M80 1 L120 21" />
+      </svg>
+    </Box>
+  );
+}
+
+/** One step of the path: its mark, its name and what it is for, and what hangs below it. */
+function PathStep({
+  mark,
+  color,
+  name,
+  role,
+  square = false,
+  mono = false,
+  dashed = false,
+  testId = undefined,
+  children,
+}: {
+  mark: ReactNode;
+  color: string;
+  name: string;
+  role: string;
+  square?: boolean;
+  mono?: boolean;
+  dashed?: boolean;
+  testId?: string;
+  children: ReactNode;
+}): JSX.Element {
+  return (
+    <Stack
+      alignItems="center"
+      spacing={0.75}
+      sx={{flex: '0 0 auto', width: 180, textAlign: 'center'}}
+      data-testid={testId}
+    >
+      <Box
+        sx={{
+          width: 52,
+          height: 52,
+          borderRadius: square ? '14px' : '50%',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color,
+          border: dashed ? '1.5px dashed' : '1.5px solid',
+          borderColor: color,
+          bgcolor: square ? (theme) => alpha(theme.palette.primary.main, 0.12) : 'action.hover',
+        }}
+      >
+        {mark}
+      </Box>
+      <Stack sx={{lineHeight: 1.3}}>
+        <Typography
+          sx={{color, fontSize: 13, fontWeight: 600, lineHeight: 1.3, fontFamily: mono ? 'monospace' : undefined}}
+        >
+          {name}
+        </Typography>
+        <Typography
+          color="text.secondary"
+          sx={{fontSize: 12, lineHeight: 1.3, minHeight: '1.3em'}}
+          data-testid={testId ? 'organization-gateway-role' : undefined}
+        >
+          {role}
+        </Typography>
+      </Stack>
+      {children}
+    </Stack>
+  );
+}
+
+/** What a step holds or serves, hanging below it. */
+function PathLeaf({icon, label, accent = false}: {icon: ReactNode; label: string; accent?: boolean}): JSX.Element {
+  return (
+    <Stack alignItems="center" spacing={1} sx={{width: 80}}>
+      <Box
+        sx={{
+          width: 34,
+          height: 34,
+          borderRadius: '50%',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: accent ? 'primary.light' : 'text.secondary',
+          border: '1px dashed',
+          borderColor: accent ? (theme) => alpha(theme.palette.primary.main, 0.45) : 'text.disabled',
+        }}
+      >
+        {icon}
+      </Box>
+      <Typography color="text.secondary" sx={{fontSize: 12, lineHeight: 1.3, minHeight: '2.6em'}}>
+        {label}
+      </Typography>
     </Stack>
   );
 }
@@ -265,10 +402,10 @@ export default function OrganizationHomePage({
   // The organization's home is the organization level: no project is selected while it is open.
   useEffect(() => clearSelection(), [clearSelection]);
   const projectList = useProjects();
-  const autoApply = useAutoApply();
   const applications = useAcross(projects, applicationsOf);
   const agents = useAcross(projects, agentsOf);
   const stages: PipelineStage[] = pipeline.data?.stages ?? [];
+  const manageGatewaysUrl = window.__THUNDERID_RUNTIME_CONFIG__?.deploy?.manage_environments_url;
   const [picking, setPicking] = useState<Pick | null>(null);
   const [chosen, setChosen] = useState<string | null>(null);
 
@@ -289,20 +426,10 @@ export default function OrganizationHomePage({
     else void navigate(RouteConfig.projects.home(chosen));
   };
 
-  // What a gateway is for along the path: where a deploy enters, or what it is promoted from.
-  const roleOf = (index: number): string => {
-    let role: string;
-    if (index === 0) {
-      role = autoApply.data?.enabled
-        ? t('home:organization.roleEverySave', 'Every save')
-        : t('home:organization.roleDeployFirst', 'Deploy here first');
-    } else {
-      role = t('home:organization.rolePromoteFrom', 'Promote from {{previous}}', {previous: stages[index - 1].name});
-    }
-    return index > 0 && index === stages.length - 1
-      ? `${role} · ${t('home:organization.roleLast', 'Last stage')}`
-      : role;
-  };
+  // What a gateway is for: the first is where a deploy enters. Which gateway follows which belongs to each
+  // project's pipeline, so the overview names no order for the rest.
+  const roleOf = (index: number): string =>
+    index === 0 ? t('home:organization.roleDeployFirst', 'Deploy here first') : '';
 
   const pickerText: Record<Pick, {title: string; subtitle: string; note: string}> = {
     deploy: {
@@ -333,33 +460,70 @@ export default function OrganizationHomePage({
 
   const acrossTile = (
     kind: 'applications' | 'agents',
+    icon: ReactNode,
     across: {total?: number; projects: number},
     lead: string,
     action: string,
     onAction: () => void,
   ): JSX.Element => (
-    <Card variant="outlined" sx={{p: 2.5, flex: 1, minWidth: 240}} data-testid={`organization-${kind}`}>
-      <Stack direction="row" spacing={1} alignItems="baseline">
-        <Typography variant="h4" component="span">
-          {across.total ?? '·'}
+    <Card
+      variant="outlined"
+      sx={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 2,
+        p: 2.5,
+        borderRadius: '12px',
+        bgcolor: (theme) => alpha(theme.palette.primary.main, 0.07),
+        border: '1px solid',
+        borderColor: (theme) => alpha(theme.palette.primary.main, 0.3),
+      }}
+      data-testid={`organization-${kind}`}
+    >
+      <Box
+        sx={{
+          width: 48,
+          height: 48,
+          flex: '0 0 auto',
+          borderRadius: '12px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          bgcolor: (theme) => alpha(theme.palette.primary.main, 0.14),
+          color: 'primary.main',
+        }}
+      >
+        {icon}
+      </Box>
+      <Stack spacing={0.25} sx={{flex: '1 1 auto', minWidth: 0}}>
+        <Stack direction="row" spacing={1.25} alignItems="baseline">
+          <Typography component="span" sx={{fontSize: 28, fontWeight: 500, lineHeight: 1}}>
+            {across.total ?? '·'}
+          </Typography>
+          <Typography component="span" sx={{fontSize: 16, fontWeight: 600}}>
+            {kind === 'applications'
+              ? t('home:organization.applicationsLabel', 'applications')
+              : t('home:organization.agentsLabel', 'agents')}
+          </Typography>
+        </Stack>
+        <Typography color="text.secondary" sx={{fontSize: 13}}>
+          {lead}
         </Typography>
-        <Typography variant="subtitle1" component="span">
-          {kind === 'applications'
-            ? t('home:organization.applicationsLabel', 'applications')
-            : t('home:organization.agentsLabel', 'agents')}
+        <Typography color="text.secondary" sx={{fontSize: 12, opacity: 0.8}}>
+          {t('home:organization.acrossProjects', {
+            count: across.projects,
+            defaultValue_one: 'Across {{count}} project',
+            defaultValue_other: 'Across {{count}} projects',
+          })}
         </Typography>
       </Stack>
-      <Typography variant="body2" color="text.secondary">
-        {lead}
-      </Typography>
-      <Typography variant="caption" color="text.secondary" component="div" sx={{mt: 0.5}}>
-        {t('home:organization.acrossProjects', {
-          count: across.projects,
-          defaultValue_one: 'Across {{count}} project',
-          defaultValue_other: 'Across {{count}} projects',
-        })}
-      </Typography>
-      <Button variant="outlined" size="small" sx={{mt: 1.5}} onClick={onAction} disabled={projects.length === 0}>
+      <Button
+        variant="contained"
+        startIcon={<Plus size={16} />}
+        onClick={onAction}
+        disabled={projects.length === 0}
+        sx={{...PILL, flex: '0 0 auto'}}
+      >
         {action}
       </Button>
     </Card>
@@ -387,125 +551,239 @@ export default function OrganizationHomePage({
           )}
         </User>
 
-        <Section
-          title={t('home:organization.howItWorks', 'How it works')}
-          subtitle={
-            stages.length === 1
-              ? t(
-                  'home:organization.howItWorksLeadSingle',
-                  'Configure here, then deploy to your gateway. It has its own users and the apps connected to it.',
-                )
-              : t(
-                  'home:organization.howItWorksLead',
-                  'Configure here, then deploy to your first gateway and promote through the rest. Each gateway has its own users and the apps connected to it.',
-                )
-          }
-          action={
-            projects.length > 0 ? (
+        <Card
+          variant="outlined"
+          component="figure"
+          aria-labelledby="organization-how-it-works-title"
+          sx={{
+            m: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 3.5,
+            p: '20px 24px 24px',
+            bgcolor: 'background.paper',
+            border: 1,
+            borderColor: 'divider',
+            borderRadius: '14px',
+          }}
+          data-testid="organization-how-it-works"
+        >
+          <Stack spacing={0.75}>
+            <Typography
+              id="organization-how-it-works-title"
+              color="text.secondary"
+              sx={{fontSize: 12, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase'}}
+            >
+              {t('home:organization.howItWorks', 'How it works')}
+            </Typography>
+            <Typography color="text.secondary" sx={{maxWidth: 680}}>
+              {stages.length === 1
+                ? t(
+                    'home:organization.howItWorksLeadSingle',
+                    'Configure here, then deploy to your gateway. It has its own users and the apps connected to it.',
+                  )
+                : t(
+                    'home:organization.howItWorksLead',
+                    'Configure here, then deploy to your first gateway and promote through the rest. Each gateway has its own users and the apps connected to it.',
+                  )}
+            </Typography>
+          </Stack>
+          {pipeline.isLoading && <CircularProgress size={20} />}
+          {pipeline.isError && (
+            <QueryErrorNotice
+              error={pipeline.error}
+              t={t}
+              variant="inline"
+              fallbackKey="home:organization.gatewaysFailed"
+              fallbackDefaultValue="The gateways could not be read."
+              onRetry={() => void pipeline.refetch()}
+            />
+          )}
+          <Box
+            tabIndex={0}
+            role="region"
+            aria-label={t('home:organization.flowRegion', 'Configuration flow diagram')}
+            sx={{overflowX: 'auto'}}
+          >
+            {/* Centered while it fits, as the design has it; wider than the card, it scrolls from its start. */}
+            <Box sx={{display: 'flex', alignItems: 'flex-start', width: 'max-content', mx: 'auto'}}>
+              <PathStep
+                mark={<SlidersHorizontal size={22} />}
+                color="primary.main"
+                square
+                name={t('home:organization.thisConsole', 'This console')}
+                role={t('home:organization.configureHere', 'Configure here')}
+              >
+                <ForkLines />
+                <Stack direction="row">
+                  <PathLeaf
+                    icon={<LayoutGrid size={18} />}
+                    label={t('home:organization.projectManaged', 'Project-managed resources')}
+                    accent
+                  />
+                  <PathLeaf
+                    icon={<Globe size={18} />}
+                    label={t('home:organization.globalShared', 'Global shared resources')}
+                    accent
+                  />
+                </Stack>
+              </PathStep>
+              {stages.map((stage: PipelineStage, index: number) => {
+                const color = gatewayColor(index);
+                const tag = stage.name.toUpperCase();
+                const last = index > 0 && index === stages.length - 1;
+                return (
+                  <Fragment key={stage.gateway.id}>
+                    {index === 0 && (
+                      <DeployArrow label={t('home:organization.deployJoint', 'Deploy')} color={color.light} />
+                    )}
+                    {/* One divide, as the design draws it: the first gateway, then everything promoted from it. */}
+                    {index === 1 && <PromoteArrow label={t('home:organization.promote', 'Promote')} />}
+                    <PathStep
+                      mark={<Server size={22} />}
+                      color={color.light}
+                      name={tag}
+                      mono
+                      role={roleOf(index)}
+                      testId={`organization-gateway-${stage.gateway.id}`}
+                    >
+                      {/* As tall as the fork under this console, so every step's circles line up. */}
+                      <Box aria-hidden sx={{height: 22, borderLeft: '2px dashed', borderColor: 'divider'}} />
+                      <Stack direction="row">
+                        <PathLeaf
+                          icon={<Smartphone size={18} />}
+                          label={
+                            last
+                              ? t('home:organization.liveApps', 'Live apps')
+                              : t('home:organization.testApps', 'Apps')
+                          }
+                        />
+                        <PathLeaf
+                          icon={<Users size={18} />}
+                          label={
+                            last
+                              ? t('home:organization.liveUsers', 'Customers, employees')
+                              : t('home:organization.testUsers', 'Test users')
+                          }
+                        />
+                      </Stack>
+                      {/* Its own space above, which the step's spacing would otherwise override. */}
+                      <Box sx={{pt: 2}}>
+                        <Button
+                          component={Link}
+                          to={RouteConfig.deploy.gateway(stage.gateway.id)}
+                          variant="outlined"
+                          color="inherit"
+                          endIcon={<ArrowRight size={13} />}
+                          aria-label={t('home:organization.openGatewayAt', 'Open {{tag}} ({{host}})', {
+                            tag,
+                            host: hostOf(stage.gateway.baseUrl),
+                          })}
+                          sx={{
+                            minHeight: 34,
+                            px: 1.5,
+                            borderRadius: '17px',
+                            borderColor: 'divider',
+                            fontSize: 12,
+                            fontWeight: 500,
+                            whiteSpace: 'nowrap',
+                            '& .MuiButton-endIcon': {ml: 0.75},
+                          }}
+                        >
+                          {t('home:organization.openGateway', 'Open {{tag}}', {tag})}
+                        </Button>
+                      </Box>
+                    </PathStep>
+                  </Fragment>
+                );
+              })}
+              {stages.length === 1 && (
+                <>
+                  <PromoteArrow label={t('home:organization.promote', 'Promote')} />
+                  <PathStep
+                    mark={<Plus size={22} />}
+                    color="text.secondary"
+                    dashed
+                    name={t('home:organization.addGateway', 'Add a gateway')}
+                    role={t('home:organization.noHigherGateways', 'No higher gateways')}
+                    testId="organization-gateway-more"
+                  >
+                    {manageGatewaysUrl && (
+                      <Box sx={{pt: 1}}>
+                        <Button
+                          component="a"
+                          href={manageGatewaysUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          variant="outlined"
+                          color="inherit"
+                          endIcon={<ExternalLink size={13} />}
+                          sx={{
+                            minHeight: 34,
+                            px: 1.5,
+                            borderRadius: '17px',
+                            borderColor: 'divider',
+                            fontSize: 12,
+                            fontWeight: 500,
+                            whiteSpace: 'nowrap',
+                            '& .MuiButton-endIcon': {ml: 0.75},
+                          }}
+                          data-testid="organization-manage-gateways"
+                        >
+                          {t('home:organization.manageGateways', 'Open gateway management')}
+                        </Button>
+                      </Box>
+                    )}
+                  </PathStep>
+                </>
+              )}
+            </Box>
+          </Box>
+          <Stack
+            direction="row"
+            alignItems="center"
+            justifyContent="space-between"
+            sx={{gap: 1.5, flexWrap: 'wrap', pt: 1.75, borderTop: 1, borderColor: 'divider'}}
+          >
+            <Typography color="text.secondary" sx={{fontSize: 13}}>
+              {gatewaysSource ??
+                t('home:organization.gatewaysSource', 'Gateways come from the deployment configuration.')}
+            </Typography>
+            {projects.length > 0 && (
               <Button
                 variant="contained"
-                size="small"
                 startIcon={<Rocket size={16} />}
                 onClick={() => pick('deploy')}
-                sx={{borderRadius: 100}}
+                sx={PILL}
                 data-testid="organization-deploy"
               >
                 {t('home:organization.deploy', 'Deploy')}
               </Button>
-            ) : undefined
-          }
-          testId="organization-how-it-works"
-        >
-          {pipeline.isLoading && <CircularProgress size={20} />}
-          <Stack direction="row" spacing={1.5} sx={{overflowX: 'auto', pb: 1}} alignItems="stretch">
-            <Card variant="outlined" sx={{p: 2, minWidth: 180, flexShrink: 0}}>
-              <Typography variant="overline" color="text.secondary">
-                {t('home:organization.thisConsole', 'This console')}
-              </Typography>
-              <Typography variant="subtitle1" fontWeight={600}>
-                {t('home:organization.configureHere', 'Configure here')}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                {t('home:organization.projectManaged', 'Project-managed resources')}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                {t('home:organization.globalShared', 'Global shared resources')}
-              </Typography>
-            </Card>
-            {stages.map((stage: PipelineStage, index: number) => {
-              const color = gatewayColor(index);
-              const tag = stage.name.toUpperCase();
-              const host = hostOf(stage.gateway.baseUrl);
-              return (
-                <Fragment key={stage.gateway.id}>
-                  {index === 0 ? (
-                    <Joint label={t('home:organization.autoSync', 'Auto-sync')} icon={<RefreshCw size={14} />} />
-                  ) : (
-                    <Joint label={t('home:organization.promote', 'Promote')} icon={<Send size={14} />} />
-                  )}
-                  <Card
-                    variant="outlined"
-                    sx={{p: 2, minWidth: 200, flexShrink: 0, borderTop: `3px solid ${color.light}`}}
-                    data-testid={`organization-gateway-${stage.gateway.id}`}
-                  >
-                    <Typography variant="caption" sx={{fontFamily: 'monospace', color: color.light}}>
-                      {tag}
-                    </Typography>
-                    <Typography variant="subtitle1" fontWeight={600}>
-                      {stage.name}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary" data-testid="organization-gateway-role">
-                      {roleOf(index)}
-                    </Typography>
-                    {/* Who a gateway serves: the last one live users, the ones before it testers. */}
-                    {(index > 0 && index === stages.length - 1
-                      ? [
-                          t('home:organization.liveApps', 'Live apps'),
-                          t('home:organization.liveUsers', 'Customers, employees'),
-                        ]
-                      : [t('home:organization.testApps', 'Apps'), t('home:organization.testUsers', 'Test users')]
-                    ).map((line: string) => (
-                      <Typography key={line} variant="caption" color="text.secondary" component="div">
-                        {line}
-                      </Typography>
-                    ))}
-                    {host && (
-                      <Typography variant="caption" color="text.secondary" component="div">
-                        {host}
-                      </Typography>
-                    )}
-                    <Button
-                      component={Link}
-                      to={RouteConfig.deploy.gateway(stage.gateway.id)}
-                      size="small"
-                      variant="text"
-                      endIcon={<ArrowRight size={14} />}
-                      sx={{px: 0, mt: 1}}
-                    >
-                      {t('home:organization.openGateway', 'Open {{tag}}', {tag})}
-                    </Button>
-                  </Card>
-                </Fragment>
-              );
-            })}
+            )}
           </Stack>
-          <Typography variant="caption" color="text.secondary" component="div" sx={{mt: 1}}>
-            {gatewaysSource ??
-              t('home:organization.gatewaysSource', 'Gateways come from the deployment configuration.')}
-          </Typography>
-        </Section>
+        </Card>
 
-        <Section
-          title={t('home:organization.applicationsAndAgents', 'Applications and agents')}
-          subtitle={t(
-            'home:organization.applicationsAndAgentsLead',
-            'The core of your identity setup. Every application and agent belongs to a project, which configures, deploys and promotes it.',
-          )}
-          testId="organization-applications-and-agents"
+        <Box
+          component="section"
+          aria-label={t('home:organization.applicationsAndAgents', 'Applications and agents')}
+          sx={{display: 'flex', flexDirection: 'column', gap: 2}}
+          data-testid="organization-applications-and-agents"
         >
-          <Stack direction="row" spacing={2} sx={{flexWrap: 'wrap', rowGap: 2}}>
+          <Stack spacing={0.5}>
+            <Typography component="h2" sx={{fontSize: 20, fontWeight: 600}}>
+              {t('home:organization.applicationsAndAgents', 'Applications and agents')}
+            </Typography>
+            <Typography color="text.secondary">
+              {t(
+                'home:organization.applicationsAndAgentsLead',
+                'The core of your identity setup. Every application and agent belongs to a project, which configures, deploys and promotes it.',
+              )}
+            </Typography>
+          </Stack>
+          <Box sx={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(380px, 100%), 1fr))', gap: 2}}>
             {acrossTile(
               'applications',
+              <LayoutGrid size={24} />,
               applications,
               t('home:organization.applicationsLead', 'Web, mobile and API clients that sign users in'),
               t('home:organization.newApplication', 'New application'),
@@ -513,13 +791,14 @@ export default function OrganizationHomePage({
             )}
             {acrossTile(
               'agents',
+              <Bot size={24} />,
               agents,
               t('home:organization.agentsLead', 'AI agents with their own identity and access'),
               t('home:organization.newAgent', 'New agent'),
               () => pick('agent'),
             )}
-          </Stack>
-        </Section>
+          </Box>
+        </Box>
 
         <Section
           title={t('home:organization.projectsCount', 'Projects · {{count}}', {count: projects.length})}

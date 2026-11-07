@@ -18,9 +18,9 @@ import {
   Tooltip,
   Typography,
 } from '@wso2/oxygen-ui';
-import {ChevronDown} from '@wso2/oxygen-ui-icons-react';
+import {ChevronDown, Info} from '@wso2/oxygen-ui-icons-react';
 import {useMemo, useState, type JSX, type ReactNode} from 'react';
-import {useTranslation} from 'react-i18next';
+import {Trans, useTranslation} from 'react-i18next';
 import {Link, useParams} from 'react-router';
 import useAppliedVersions from '../api/useAppliedVersions';
 import useChangedValues, {changedCount} from '../api/useChangedValues';
@@ -31,7 +31,6 @@ import useProjectStatus from '../api/useProjectStatus';
 import {useStoredValues} from '../api/useStoredValues';
 import {useVersions} from '../api/useVersions';
 import ActorName from '../components/ActorName';
-import AutoApplySwitch from '../components/AutoApplySwitch';
 import CopyableUrl from '../components/CopyableUrl';
 import DeployedResources from '../components/DeployedResources';
 import GatewayAdministration from '../components/GatewayAdministration';
@@ -217,66 +216,90 @@ function GatewayPageContent({section}: Required<GatewayPageProps>): JSX.Element 
     if (next) panels.deploy(next, gatewayId, undefined, gateways);
   };
 
-  let bannerText: string;
+  // The version in type as the design sets it, and the changes owed in the accent.
+  const bannerParts = {
+    mono: <Box component="span" sx={{fontFamily: 'monospace'}} />,
+    b: <Box component="b" sx={{fontWeight: 600, color: 'primary.light'}} />,
+  };
+  let bannerText: ReactNode;
   if (autoSyncOn) {
-    bannerText = t(
-      'gateway.bannerAutoSync',
-      "You're viewing the {{tag}} gateway. Auto-sync is on: it runs {{version}}, the latest saved configuration.",
-      {tag, version: runningLabel ?? t('gateway.nothing', 'nothing yet')},
+    bannerText = (
+      <Trans
+        t={t}
+        i18nKey="gateway.bannerAutoSync"
+        values={{tag, version: runningLabel ?? t('gateway.nothing', 'nothing yet')}}
+        components={bannerParts}
+      />
     );
   } else {
-    let runsText = t('gateway.bannerNothing', "You're viewing the {{tag}} gateway. It runs nothing yet.", {
-      tag,
-    });
+    let runsText: ReactNode = <Trans t={t} i18nKey="gateway.bannerNothing" values={{tag}} components={bannerParts} />;
     if (runningLabel && deployedAt) {
-      runsText = t(
-        'gateway.bannerRuns',
-        "You're viewing the {{tag}} gateway. It runs {{version}}, deployed {{when}}.",
-        {
-          tag,
-          version: runningLabel,
-          when: relativeTime(deployedAt),
-        },
+      runsText = (
+        <Trans
+          t={t}
+          i18nKey="gateway.bannerRuns"
+          values={{tag, version: runningLabel, when: relativeTime(deployedAt)}}
+          components={bannerParts}
+        />
       );
     } else if (runningLabel) {
-      runsText = t('gateway.bannerRunsUndated', "You're viewing the {{tag}} gateway. It runs {{version}}.", {
-        tag,
-        version: runningLabel,
-      });
+      runsText = (
+        <Trans
+          t={t}
+          i18nKey="gateway.bannerRunsUndated"
+          values={{tag, version: runningLabel}}
+          components={bannerParts}
+        />
+      );
     }
-    const pendingText =
-      pending > 0
-        ? t('gateway.bannerPending', {
-            count: pending,
-            defaultValue_one: 'Configuration has {{count}} change not deployed here.',
-            defaultValue_other: 'Configuration has {{count}} changes not deployed here.',
-          })
-        : t('gateway.bannerUpToDate', 'Everything in the configuration is deployed here.');
-    bannerText = `${runsText} ${pendingText}`;
+    bannerText = (
+      <>
+        {runsText}{' '}
+        {pending > 0 ? (
+          <Trans t={t} i18nKey="gateway.bannerPending" count={pending} components={bannerParts} />
+        ) : (
+          t('gateway.bannerUpToDate', 'Everything in the configuration is deployed here.')
+        )}
+      </>
+    );
   }
 
+  // A strip under the header across the whole page, as the design has it: how the gateway stands, and
+  // the deploy that brings it up to date while the configuration owes it changes.
   const banner = (
-    <Alert
-      severity={pending > 0 && !autoSyncOn ? 'warning' : 'info'}
+    <Box
+      role="status"
+      sx={{
+        display: 'flex',
+        flexWrap: 'wrap',
+        alignItems: 'center',
+        columnGap: 2.5,
+        rowGap: 1.5,
+        px: 3,
+        py: 1.75,
+        bgcolor: 'background.paper',
+        borderBottom: 1,
+        borderColor: 'divider',
+      }}
       data-testid="gateway-status"
-      action={
-        <Stack direction="row" spacing={2} alignItems="center">
-          {index === 0 && <AutoApplySwitch target={stage.name} targetId={stage.gateway.id} compact />}
-          <Button
-            variant="contained"
-            size="small"
-            onClick={review}
-            disabled={!next || pending === 0}
-            sx={{borderRadius: 100, whiteSpace: 'nowrap'}}
-            data-testid="gateway-deploy"
-          >
-            {index === 0 ? t('gateway.reviewAndDeploy', 'Review and deploy') : t('gateways.promote', 'Promote')}
-          </Button>
-        </Stack>
-      }
     >
-      {bannerText}
-    </Alert>
+      <Box aria-hidden sx={{display: 'flex', color: 'text.secondary'}}>
+        <Info size={20} />
+      </Box>
+      <Typography component="span" sx={{flex: '1 1 420px'}}>
+        {bannerText}
+      </Typography>
+      {next && pending > 0 && !autoSyncOn && (
+        <Button
+          variant="contained"
+          onClick={review}
+          sx={{minHeight: 40, px: 2, borderRadius: '20px', fontWeight: 600, whiteSpace: 'nowrap'}}
+          data-testid="gateway-deploy"
+        >
+          {index === 0 ? t('gateway.reviewAndDeploy', 'Review and deploy') : t('gateways.promote', 'Promote')}
+        </Button>
+      )}
+    </Box>
   );
 
   const runningOf = (change: Change): string | undefined => {
@@ -586,37 +609,39 @@ function GatewayPageContent({section}: Required<GatewayPageProps>): JSX.Element 
   };
 
   return (
-    <PageContent>
-      <DocumentTitle title={`${stage.name} · ${titles[section]}`} />
-      <Stack spacing={3}>
-        {banner}
-        <Box>
-          <Stack direction="row" spacing={1} alignItems="center" sx={{mb: 0.5}}>
-            <Box sx={{width: 8, height: 8, borderRadius: '50%', bgcolor: color.light}} />
-            <Typography
-              variant="caption"
-              sx={{fontFamily: 'monospace'}}
-              color="text.secondary"
-              data-testid="gateway-tag"
-            >
-              {runningLabel ? `${tag} · ${runningLabel}` : tag}
+    <Box sx={{display: 'flex', flexDirection: 'column', width: '100%', minWidth: 0}}>
+      {banner}
+      <PageContent>
+        <DocumentTitle title={`${stage.name} · ${titles[section]}`} />
+        <Stack spacing={3}>
+          <Box>
+            <Stack direction="row" spacing={1} alignItems="center" sx={{mb: 0.5}}>
+              <Box sx={{width: 8, height: 8, borderRadius: '50%', bgcolor: color.light}} />
+              <Typography
+                variant="caption"
+                sx={{fontFamily: 'monospace'}}
+                color="text.secondary"
+                data-testid="gateway-tag"
+              >
+                {runningLabel ? `${tag} · ${runningLabel}` : tag}
+              </Typography>
+            </Stack>
+            <Typography variant="h4" component="h1">
+              {titles[section]}
             </Typography>
-          </Stack>
-          <Typography variant="h4" component="h1">
-            {titles[section]}
-          </Typography>
-        </Box>
-        {section === 'overview' && <GatewayAdministration tag={tag} adminConsoleUrl={stage.adminConsoleUrl} />}
-        {section === 'overview' && overview}
-        {section === 'values' && values}
-        {section === 'endpoints' && (
-          <Card variant="outlined" sx={{p: 3}} data-testid="gateway-every-endpoint">
-            {endpointList(everyEndpoint)}
-          </Card>
-        )}
-        {section === 'history' && <Box data-testid="gateway-full-history">{deploys()}</Box>}
-      </Stack>
-      {panels.panels}
-    </PageContent>
+          </Box>
+          {section === 'overview' && <GatewayAdministration tag={tag} adminConsoleUrl={stage.adminConsoleUrl} />}
+          {section === 'overview' && overview}
+          {section === 'values' && values}
+          {section === 'endpoints' && (
+            <Card variant="outlined" sx={{p: 3}} data-testid="gateway-every-endpoint">
+              {endpointList(everyEndpoint)}
+            </Card>
+          )}
+          {section === 'history' && <Box data-testid="gateway-full-history">{deploys()}</Box>}
+        </Stack>
+        {panels.panels}
+      </PageContent>
+    </Box>
   );
 }

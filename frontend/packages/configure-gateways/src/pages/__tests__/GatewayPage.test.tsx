@@ -201,9 +201,7 @@ describe('GatewayPage', () => {
       expect(status).toHaveTextContent("You're viewing the DEVELOPMENT gateway. It runs v1, deployed"),
     );
     await waitFor(() => expect(status).toHaveTextContent('Configuration has 3 changes not deployed here.'));
-    expect(
-      within(status).getByText('Default for projects: auto-sync configuration to Development'),
-    ).toBeInTheDocument();
+    expect(within(status).queryByRole('switch')).not.toBeInTheDocument();
     await userEvent.click(within(status).getByRole('button', {name: 'Review and deploy'}));
 
     expect(await screen.findByRole('dialog')).toBeInTheDocument();
@@ -215,8 +213,7 @@ describe('GatewayPage', () => {
 
     const status = await screen.findByTestId('gateway-status');
     await waitFor(() => expect(status).toHaveTextContent('Everything in the configuration is deployed here.'));
-    expect(within(status).getByRole('button', {name: 'Promote'})).toBeDisabled();
-    expect(screen.queryByText('Default for projects: auto-sync configuration to Production')).not.toBeInTheDocument();
+    expect(within(status).queryByRole('button', {name: 'Promote'})).not.toBeInTheDocument();
   });
 
   it('lists the recent deployments, with a rollback on the latest', async () => {
@@ -494,32 +491,6 @@ describe('GatewayPage', () => {
     const status = await screen.findByTestId('gateway-status');
     await waitFor(() =>
       expect(status).toHaveTextContent('Auto-sync is on: it runs v2, the latest saved configuration.'),
-    );
-  });
-
-  it("offers the project's own auto-sync on its first gateway's page", async () => {
-    routes['GET /gateways/gw-dev/project-status'] = {
-      project: {versions: [], pending: 0, required: 0},
-      shared: {pending: 0, byType: []},
-      needed: {differing: 0},
-      autoSync: {enabled: false, inherited: true},
-    };
-    routes['PUT /projects/p-shop/auto-sync'] = {autoSync: true};
-
-    render(
-      <ProjectScopeProvider project={{id: 'p-shop'}}>
-        <GatewayPage />
-      </ProjectScopeProvider>,
-    );
-
-    const toggle = await screen.findByRole('checkbox', {name: 'Auto-sync from configuration'});
-    await waitFor(() => expect(toggle).toBeEnabled());
-    await userEvent.click(toggle);
-
-    await waitFor(() =>
-      expect(http.calls).toContainEqual(
-        expect.objectContaining({method: 'PUT', url: `${SERVER}/projects/p-shop/auto-sync`, data: {autoSync: true}}),
-      ),
     );
   });
 

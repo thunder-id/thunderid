@@ -1,19 +1,9 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {Box, Button, IconButton, ListItemIcon, Menu, MenuItem, Stack, Tooltip, Typography} from '@wso2/oxygen-ui';
-import {
-  CircleAlert,
-  CircleCheck,
-  Compass,
-  Ellipsis,
-  Info,
-  RefreshCw,
-  SlidersHorizontal,
-  Undo2,
-  Wrench,
-} from '@wso2/oxygen-ui-icons-react';
-import {useState, type JSX, type ReactNode} from 'react';
+import {Box, Button, IconButton, Stack, Tooltip, Typography} from '@wso2/oxygen-ui';
+import {CircleAlert, CircleCheck, Compass, Info, RefreshCw, Undo2} from '@wso2/oxygen-ui-icons-react';
+import type {JSX, ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
 import useChangedValues, {changedCount} from '../api/useChangedValues';
 import {useApplyCheck} from '../api/useGatewayVersions';
@@ -66,16 +56,11 @@ export interface GatewayCardProps {
   /** Opens the deploy or promotion that would bring what is waiting, from the needed resources line. */
   onReview?: () => void;
   onExplore: () => void;
-  onConfigure: () => void;
   onRevert: () => void;
   /** Opens the gateway's own page. */
   onOpen?: () => void;
-  /** Deploys the latest version to the gateway, offered while it is behind. */
-  onDeploy?: () => void;
-  /** Deploys the version it runs again, to take up values set since. */
-  onRedeploy?: () => void;
-  /** Deploys again the resources the gateway refused, given their keys. */
-  onRetryRefused?: (keys: string[]) => void;
+  /** Promotes what the gateway runs to the next gateway, offered while that one runs something else. */
+  onPromote?: () => void;
   /** Shown above the actions, such as the auto-sync switch. */
   extra?: ReactNode;
 }
@@ -92,10 +77,17 @@ function Highlight({
   children: ReactNode;
   testId: string;
 }): JSX.Element {
-  const color = {warning: 'warning.main', error: 'error.main', neutral: 'text.secondary', info: 'info.main'}[tone];
+  // Information reads in the muted text of the card, with only its icon in a soft accent.
+  const color = {warning: 'warning.main', error: 'error.main', neutral: 'text.secondary', info: 'text.secondary'}[tone];
   return (
     <Stack direction="row" spacing={0.75} alignItems="center" sx={{color}} data-testid={testId}>
-      {icon}
+      {tone === 'info' ? (
+        <Box component="span" sx={{display: 'flex', color: 'info.light', opacity: 0.8}}>
+          {icon}
+        </Box>
+      ) : (
+        icon
+      )}
       <Typography variant="body2" color="inherit">
         {children}
       </Typography>
@@ -157,12 +149,9 @@ export default function GatewayCard({
   previousName = undefined,
   onReview = undefined,
   onExplore,
-  onConfigure,
   onRevert,
   onOpen = undefined,
-  onDeploy = undefined,
-  onRedeploy = undefined,
-  onRetryRefused = undefined,
+  onPromote = undefined,
   extra = undefined,
 }: GatewayCardProps): JSX.Element {
   const {t} = useTranslation('deploy');
@@ -170,7 +159,6 @@ export default function GatewayCard({
   const color = gatewayColor(index);
   const hash = applied?.appliedVersion ?? undefined;
   const scoped = inProject || Boolean(projectStatus);
-  const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
   const wholeRefused = useRefused(gateway.id);
   // In a project, what the gateway refused is read from the project's check of what it runs, which
   // places each refused change in the project's sections: the project's own and what it cannot run
@@ -278,44 +266,6 @@ export default function GatewayCard({
 
   // A project can run on more than one of its versions there, when a promotion carried part of one.
   const partly = projectVersions.length > 1 ? projectVersions.slice(1).map(projectLabel).join(', ') : undefined;
-  const menuItems: {key: string; label: string; icon: ReactNode; onClick: () => void}[] = [
-    {
-      key: 'card-configure',
-      label: t('stage.configure', 'Configure'),
-      icon: <SlidersHorizontal size={14} />,
-      onClick: onConfigure,
-    },
-    ...(onRedeploy && hash && owed > 0
-      ? [
-          {
-            key: 'stage-redeploy',
-            label: t('stage.redeploy', 'Redeploy'),
-            icon: <RefreshCw size={14} />,
-            onClick: onRedeploy,
-          },
-        ]
-      : []),
-    ...(onRetryRefused && refused.length > 0
-      ? [
-          {
-            key: 'stage-retry-refused',
-            label: t('stage.retryRefused', 'Fix and retry'),
-            icon: <Wrench size={14} />,
-            onClick: () => onRetryRefused(refused.map((entry) => entry.key)),
-          },
-        ]
-      : []),
-    ...(onRedeploy && hash && changedCheck.failed
-      ? [
-          {
-            key: 'stage-changed-check-retry',
-            label: t('stage.checkAgain', 'Check again'),
-            icon: <RefreshCw size={14} />,
-            onClick: changedCheck.retry,
-          },
-        ]
-      : []),
-  ];
 
   return (
     <Stack
@@ -330,7 +280,7 @@ export default function GatewayCard({
         borderColor: 'divider',
         borderTop: `3px solid ${color.light}`,
         bgcolor: 'background.paper',
-        ...theme.applyStyles('dark', {bgcolor: '#15100D', borderTopColor: color.dark}),
+        ...theme.applyStyles('dark', {borderTopColor: color.dark}),
       })}
     >
       <Stack direction="row" alignItems="center" spacing={1}>
@@ -366,172 +316,175 @@ export default function GatewayCard({
       <Typography variant="h6" component="h3" fontWeight={500} noWrap>
         {stage.name}
       </Typography>
-      {scoped &&
-        (projectStatus && projectVersions.length > 0 ? (
-          <DeployedBy
-            at={projectStatus.deployedAt}
-            by={projectStatus.deployedBy}
-            promoted={index > 0}
-            rolledBack={projectStatus.lastAction === 'rolledBack'}
-          />
-        ) : projectStatus ? (
-          <Typography variant="body2" color="text.secondary" data-testid="card-deployed">
-            {t('card.noProjectResources', 'No project resources yet')}
-          </Typography>
-        ) : null)}
-      {!scoped &&
-        (hash && applied ? (
-          <DeployedBy at={applied.appliedAt} by={applied.appliedBy} promoted={index > 0} />
-        ) : (
-          <Typography variant="body2" color="text.secondary" data-testid="card-deployed">
-            {t('stage.nothingDeployed', 'Nothing deployed yet')}
-          </Typography>
-        ))}
-      {scoped && !projectStatus && statusFailed && (
-        <Stack direction="row" alignItems="center" spacing={1} sx={{flexWrap: 'wrap'}}>
-          <Highlight tone="error" icon={<CircleAlert size={14} />} testId="card-status-failed">
-            {t('card.statusFailed', "This project's status here could not be read.")}
+      {/* The status, as tall as four lines on every card, so the open button lines up across the pipeline. */}
+      <Stack spacing={1.5} sx={{minHeight: 116}}>
+        {scoped &&
+          (projectStatus && projectVersions.length > 0 ? (
+            <DeployedBy
+              at={projectStatus.deployedAt}
+              by={projectStatus.deployedBy}
+              promoted={index > 0}
+              rolledBack={projectStatus.lastAction === 'rolledBack'}
+            />
+          ) : projectStatus ? (
+            <Typography variant="body2" color="text.secondary" data-testid="card-deployed">
+              {t('card.noProjectResources', 'No project resources yet')}
+            </Typography>
+          ) : null)}
+        {!scoped &&
+          (hash && applied ? (
+            <DeployedBy at={applied.appliedAt} by={applied.appliedBy} promoted={index > 0} />
+          ) : (
+            <Typography variant="body2" color="text.secondary" data-testid="card-deployed">
+              {t('stage.nothingDeployed', 'Nothing deployed yet')}
+            </Typography>
+          ))}
+        {scoped && !projectStatus && statusFailed && (
+          <Stack direction="row" alignItems="center" spacing={1} sx={{flexWrap: 'wrap'}}>
+            <Highlight tone="error" icon={<CircleAlert size={14} />} testId="card-status-failed">
+              {t('card.statusFailed', "This project's status here could not be read.")}
+            </Highlight>
+            {onRetryStatus && (
+              <Button
+                variant="text"
+                size="small"
+                startIcon={<RefreshCw size={14} />}
+                onClick={onRetryStatus}
+                data-testid="card-status-retry"
+                sx={{py: 0, minHeight: 0}}
+              >
+                {t('card.retry', 'Retry')}
+              </Button>
+            )}
+          </Stack>
+        )}
+        {highlight}
+        {partly && (
+          <Highlight tone="warning" icon={<CircleAlert size={14} />} testId="card-partly">
+            {t('card.projectPartly', 'Partly on {{versions}}', {versions: partly})}
           </Highlight>
-          {onRetryStatus && (
-            <Button
-              variant="text"
-              size="small"
-              startIcon={<RefreshCw size={14} />}
-              onClick={onRetryStatus}
-              data-testid="card-status-retry"
-              sx={{py: 0, minHeight: 0}}
-            >
-              {t('card.retry', 'Retry')}
-            </Button>
-          )}
-        </Stack>
-      )}
-      {highlight}
-      {partly && (
-        <Highlight tone="warning" icon={<CircleAlert size={14} />} testId="card-partly">
-          {t('card.projectPartly', 'Partly on {{versions}}', {versions: partly})}
-        </Highlight>
-      )}
-      {projectStatus?.autoSync?.lastRun?.error && (
-        <Stack direction="row" alignItems="center" spacing={1} sx={{flexWrap: 'wrap'}}>
-          <Highlight tone="warning" icon={<CircleAlert size={14} />} testId="card-auto-sync-failed">
-            {t('card.autoSyncFailed', 'Auto-sync failed: {{message}}', {
-              message: projectStatus.autoSync.lastRun.error,
+        )}
+        {projectStatus?.autoSync?.lastRun?.error && (
+          <Stack direction="row" alignItems="center" spacing={1} sx={{flexWrap: 'wrap'}}>
+            <Highlight tone="warning" icon={<CircleAlert size={14} />} testId="card-auto-sync-failed">
+              {t('card.autoSyncFailed', 'Auto-sync failed: {{message}}', {
+                message: projectStatus.autoSync.lastRun.error,
+              })}
+            </Highlight>
+            {onReview && (
+              <Button
+                variant="text"
+                size="small"
+                startIcon={<RefreshCw size={14} />}
+                onClick={onReview}
+                data-testid="card-auto-sync-retry"
+                sx={{py: 0, minHeight: 0}}
+              >
+                {t('card.retry', 'Retry')}
+              </Button>
+            )}
+          </Stack>
+        )}
+        {projectStatus && projectStatus.shared.pending > 0 && (
+          <Tooltip
+            title={t(
+              'card.sharedHint',
+              "{{types}}. Shared resources belong to no project: they go with any project's promotion when ticked.",
+              {types: sharedTypes},
+            )}
+          >
+            <Box component="span" sx={{width: 'fit-content', cursor: 'help'}}>
+              <Highlight tone="info" icon={<Info size={14} />} testId="card-shared">
+                {t('card.sharedAvailable', {
+                  count: projectStatus.shared.pending,
+                  defaultValue_one: '{{count}} shared update available',
+                  defaultValue_other: '{{count}} shared updates available',
+                })}
+              </Highlight>
+            </Box>
+          </Tooltip>
+        )}
+        {projectStatus && projectStatus.needed.differing > 0 && previousName && (
+          <Button
+            variant="text"
+            size="small"
+            color="inherit"
+            onClick={onReview}
+            disabled={!onReview}
+            sx={{alignSelf: 'flex-start', px: 0, minHeight: 0, color: 'text.secondary', textAlign: 'left'}}
+            data-testid="card-needed-differing"
+          >
+            {t('card.neededDiffering', {
+              count: projectStatus.needed.differing,
+              previous: previousName,
+              defaultValue_one: 'Uses {{count}} needed resource in another form than {{previous}}',
+              defaultValue_other: 'Uses {{count}} needed resources in another form than {{previous}}',
+            })}
+          </Button>
+        )}
+        {!scoped && hash && applied?.complete === false && (
+          <Highlight tone="warning" icon={<CircleAlert size={14} />} testId="stage-partial">
+            {t('stage.partlyApplied', '{{version}} partly applied: {{held}} of {{total}} resources', {
+              version: running,
+              held: applied.resourcesHeld ?? 0,
+              total: applied.resourcesTotal ?? 0,
             })}
           </Highlight>
-          {onReview && (
-            <Button
-              variant="text"
-              size="small"
-              startIcon={<RefreshCw size={14} />}
-              onClick={onReview}
-              data-testid="card-auto-sync-retry"
-              sx={{py: 0, minHeight: 0}}
-            >
-              {t('card.retry', 'Retry')}
-            </Button>
-          )}
-        </Stack>
-      )}
-      {projectStatus && projectStatus.shared.pending > 0 && (
-        <Tooltip
-          title={t(
-            'card.sharedHint',
-            "{{types}}. Shared resources belong to no project: they go with any project's promotion when ticked.",
-            {types: sharedTypes},
-          )}
-        >
-          <Box component="span" sx={{width: 'fit-content', cursor: 'help'}}>
-            <Highlight tone="info" icon={<Info size={14} />} testId="card-shared">
-              {t('card.sharedAvailable', {
-                count: projectStatus.shared.pending,
-                defaultValue_one: '{{count}} shared update available',
-                defaultValue_other: '{{count}} shared updates available',
-              })}
-            </Highlight>
+        )}
+        {refused.length > 0 && (
+          <Tooltip title={refused.map((entry) => entry.label).join(', ')}>
+            <Box component="span" sx={{width: 'fit-content', cursor: 'help'}}>
+              <Highlight tone="error" icon={<CircleAlert size={14} />} testId="stage-refused">
+                {t('stage.refused', '{{count}} refused, not running', {count: refused.length})}
+              </Highlight>
+            </Box>
+          </Tooltip>
+        )}
+        {sharedRefused.length > 0 && (
+          <Tooltip title={sharedRefused.map(nameOfChange).join(', ')}>
+            <Box component="span" sx={{width: 'fit-content', cursor: 'help'}}>
+              <Highlight tone="neutral" icon={<CircleAlert size={14} />} testId="card-shared-refused">
+                {t('card.sharedRefused', {
+                  count: sharedRefused.length,
+                  defaultValue_one: '{{count}} shared resource refused',
+                  defaultValue_other: '{{count}} shared resources refused',
+                })}
+              </Highlight>
+            </Box>
+          </Tooltip>
+        )}
+        {owed > 0 && (
+          <Highlight tone="warning" icon={<CircleAlert size={14} />} testId="stage-changed">
+            {t('stage.changed', '{{count}} values changed since deploy', {count: owed})}
+          </Highlight>
+        )}
+        {extra && (
+          <Box
+            sx={(theme) => ({
+              px: 1.25,
+              py: 0.5,
+              borderRadius: '8px',
+              bgcolor: 'action.hover',
+              ...theme.applyStyles('dark', {bgcolor: 'rgba(0, 0, 0, 0.35)'}),
+            })}
+          >
+            {extra}
           </Box>
-        </Tooltip>
-      )}
-      {projectStatus && projectStatus.needed.differing > 0 && previousName && (
-        <Button
-          variant="text"
-          size="small"
-          color="inherit"
-          onClick={onReview}
-          disabled={!onReview}
-          sx={{alignSelf: 'flex-start', px: 0, minHeight: 0, color: 'text.secondary', textAlign: 'left'}}
-          data-testid="card-needed-differing"
-        >
-          {t('card.neededDiffering', {
-            count: projectStatus.needed.differing,
-            previous: previousName,
-            defaultValue_one: 'Uses {{count}} needed resource in another form than {{previous}}',
-            defaultValue_other: 'Uses {{count}} needed resources in another form than {{previous}}',
-          })}
-        </Button>
-      )}
-      {!scoped && hash && applied?.complete === false && (
-        <Highlight tone="warning" icon={<CircleAlert size={14} />} testId="stage-partial">
-          {t('stage.partlyApplied', '{{version}} partly applied: {{held}} of {{total}} resources', {
-            version: running,
-            held: applied.resourcesHeld ?? 0,
-            total: applied.resourcesTotal ?? 0,
-          })}
-        </Highlight>
-      )}
-      {refused.length > 0 && (
-        <Tooltip title={refused.map((entry) => entry.label).join(', ')}>
-          <Box component="span" sx={{width: 'fit-content', cursor: 'help'}}>
-            <Highlight tone="error" icon={<CircleAlert size={14} />} testId="stage-refused">
-              {t('stage.refused', '{{count}} refused, not running', {count: refused.length})}
-            </Highlight>
-          </Box>
-        </Tooltip>
-      )}
-      {sharedRefused.length > 0 && (
-        <Tooltip title={sharedRefused.map(nameOfChange).join(', ')}>
-          <Box component="span" sx={{width: 'fit-content', cursor: 'help'}}>
-            <Highlight tone="neutral" icon={<CircleAlert size={14} />} testId="card-shared-refused">
-              {t('card.sharedRefused', {
-                count: sharedRefused.length,
-                defaultValue_one: '{{count}} shared resource refused',
-                defaultValue_other: '{{count}} shared resources refused',
-              })}
-            </Highlight>
-          </Box>
-        </Tooltip>
-      )}
-      {owed > 0 && (
-        <Highlight tone="warning" icon={<CircleAlert size={14} />} testId="stage-changed">
-          {t('stage.changed', '{{count}} values changed since deploy', {count: owed})}
-        </Highlight>
-      )}
-      {extra && (
-        <Box
-          sx={(theme) => ({
-            px: 1.25,
-            py: 0.5,
-            borderRadius: '8px',
-            bgcolor: 'action.hover',
-            ...theme.applyStyles('dark', {bgcolor: 'rgba(0, 0, 0, 0.35)'}),
-          })}
-        >
-          {extra}
-        </Box>
-      )}
-      <Box sx={{flex: 1}} />
+        )}
+      </Stack>
       {onOpen && (
         <Button
           variant="outlined"
           size="small"
           onClick={onOpen}
-          sx={{borderRadius: 100, alignSelf: 'flex-start', whiteSpace: 'nowrap'}}
+          sx={{borderRadius: 100, alignSelf: 'center', whiteSpace: 'nowrap'}}
           data-testid="stage-open"
         >
           {t('stage.open', 'Open gateway')}
         </Button>
       )}
-      {/* The other actions keep to one row: a long rollback label gives way before the menu does. */}
+      <Box sx={{flex: 1}} />
+      {/* Rollback and promote keep to one row, promote at the end: a long rollback label gives way first. */}
       <Stack
         direction="row"
         alignItems="center"
@@ -574,43 +527,18 @@ export default function GatewayCard({
             </Button>
           </Box>
         </Tooltip>
-        {onDeploy && (
+        <Box sx={{flex: 1}} />
+        {onPromote && (
           <Button
-            variant="text"
+            variant="contained"
             size="small"
-            onClick={onDeploy}
-            sx={{flexShrink: 0, whiteSpace: 'nowrap', minWidth: 0}}
-            data-testid="card-deploy"
+            onClick={onPromote}
+            sx={{flexShrink: 0, whiteSpace: 'nowrap', minWidth: 0, borderRadius: 100}}
+            data-testid="card-promote"
           >
-            {t('pipeline.deploy', 'Deploy')}
+            {t('gateways.promote', 'Promote')}
           </Button>
         )}
-        <Box sx={{flex: 1}} />
-        <IconButton
-          size="small"
-          onClick={(event) => setMenuAnchor(event.currentTarget)}
-          aria-label={t('card.more', 'More actions for {{name}}', {name: stage.name})}
-          aria-haspopup="menu"
-          sx={{flexShrink: 0}}
-          data-testid="card-more"
-        >
-          <Ellipsis size={16} />
-        </IconButton>
-        <Menu anchorEl={menuAnchor} open={Boolean(menuAnchor)} onClose={() => setMenuAnchor(null)}>
-          {menuItems.map((item) => (
-            <MenuItem
-              key={item.key}
-              data-testid={item.key}
-              onClick={() => {
-                setMenuAnchor(null);
-                item.onClick();
-              }}
-            >
-              <ListItemIcon>{item.icon}</ListItemIcon>
-              {item.label}
-            </MenuItem>
-          ))}
-        </Menu>
       </Stack>
     </Stack>
   );

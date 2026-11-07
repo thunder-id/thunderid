@@ -94,4 +94,12 @@ window.__THUNDERID_RUNTIME_CONFIG__ = {
   // gate_client: {
   //   public_url: 'https://gate.example.com',   // or hostname/port/scheme
   // },
+
+  // Optional: where gateways are managed outside the console, such as a hosting platform's own pages.
+  // A project's pipeline links to edit_pipeline_url as "Edit pipeline", with {project} standing for the
+  // project's handle; the organization's overview links to manage_environments_url.
+  // deploy: {
+  //   edit_pipeline_url: 'https://platform.example.com/projects/{project}/pipeline',
+  //   manage_environments_url: 'https://platform.example.com/environments',
+  // },
 };

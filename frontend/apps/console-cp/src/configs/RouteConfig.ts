@@ -228,8 +228,8 @@ const RouteConfig: RouteConfig = {
     list: () => `/${ROUTE_SEGMENTS.deploy}`,
     explore: (gatewayId: string) => `/${ROUTE_SEGMENTS.deploy}/gateways/${encodeURIComponent(gatewayId)}/explore`,
     values: (gatewayId: string) => `/${ROUTE_SEGMENTS.deploy}/gateways/${encodeURIComponent(gatewayId)}/values`,
-    gateway: (gatewayId: string, projectId?: string) =>
-      `${projectId ? RouteConfig.projects.home(projectId) : ''}/${ROUTE_SEGMENTS.deployTargets}/${encodeURIComponent(gatewayId)}`,
+    // A gateway belongs to the organization, so its pages are the same from wherever they are opened.
+    gateway: (gatewayId: string) => `/${ROUTE_SEGMENTS.deployTargets}/${encodeURIComponent(gatewayId)}`,
     project: (projectId: string) => RouteConfig.projects.home(projectId),
   },
 };

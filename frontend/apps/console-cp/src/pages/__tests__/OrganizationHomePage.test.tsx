@@ -8,7 +8,8 @@ import OrganizationHomePage from '../OrganizationHomePage';
 
 const navigate = vi.fn();
 // The pipeline's stages; a test may leave only the first.
-const pipeline = vi.hoisted(() => ({only: false}));
+const pipeline = vi.hoisted(() => ({only: false, fails: false}));
+const pipelineRefetch = vi.hoisted(() => vi.fn());
 const request = vi.fn();
 vi.mock('react-router', async (importOriginal) => ({
   ...(await importOriginal<typeof import('react-router')>()),
@@ -46,7 +47,6 @@ vi.mock('@thunderid/configure-gateways', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@thunderid/configure-gateways')>();
   return {
     gatewayColor: actual.gatewayColor,
-    useAutoApply: () => ({data: {enabled: false}}),
     usePipeline: () => {
       const stages = [
         {
@@ -60,6 +60,7 @@ vi.mock('@thunderid/configure-gateways', async (importOriginal) => {
           gateway: {id: 'gw-prod', name: 'prod', baseUrl: 'https://auth.test'},
         },
       ];
+      if (pipeline.fails) return {isLoading: false, isError: true, error: new Error('down'), refetch: pipelineRefetch};
       return {isLoading: false, data: {stages: pipeline.only ? stages.slice(0, 1) : stages}};
     },
     useProjects: () => ({
@@ -99,17 +100,19 @@ describe('OrganizationHomePage', () => {
     expect(screen.getByText('Hello, Jerad')).toBeInTheDocument();
     const path = screen.getByTestId('organization-how-it-works');
     expect(within(path).getByText('Configure here')).toBeInTheDocument();
-    expect(within(path).getByText('Auto-sync')).toBeInTheDocument();
-    expect(within(path).getByText('Promote')).toBeInTheDocument();
-    const open = within(screen.getByTestId('organization-gateway-gw-dev')).getByRole('link', {
-      name: 'Open DEVELOPMENT',
-    });
-    expect(open).toHaveAttribute('href', '/deploy/gateways/gw-dev');
-    expect(open).not.toHaveAttribute('target');
+    expect(within(path).getAllByText('Deploy')).toHaveLength(2);
+    expect(within(path).getAllByText('Promote')).toHaveLength(1);
+    expect(within(path).queryByTestId('organization-gateway-more')).not.toBeInTheDocument();
+    // A gateway's page is the organization's, the same as the project home opens.
+    expect(
+      within(screen.getByTestId('organization-gateway-gw-dev')).getByRole('link', {
+        name: 'Open DEVELOPMENT (dev.auth.test)',
+      }),
+    ).toHaveAttribute('href', '/deploy/gateways/gw-dev');
     expect(within(path).getByText('Gateways come from the deployment configuration.')).toBeInTheDocument();
   });
 
-  it('says configuration deploys to the one gateway when there is no other to promote to', () => {
+  it('says configuration deploys to the one gateway, and offers to add another', () => {
     pipeline.only = true;
     render(<OrganizationHomePage />);
     pipeline.only = false;
@@ -119,7 +122,18 @@ describe('OrganizationHomePage', () => {
         'Configure here, then deploy to your gateway. It has its own users and the apps connected to it.',
       ),
     ).toBeInTheDocument();
-    expect(within(screen.getByTestId('organization-how-it-works')).queryByText('Promote')).not.toBeInTheDocument();
+    expect(screen.getByTestId('organization-gateway-more')).toHaveTextContent('Add a gateway');
+  });
+
+  it('says when the gateways could not be read, and reads them again on retry', async () => {
+    pipeline.fails = true;
+    render(<OrganizationHomePage />);
+
+    const how = screen.getByTestId('organization-how-it-works');
+    expect(within(how).getByRole('alert')).toBeInTheDocument();
+    await userEvent.click(within(how).getByRole('button', {name: /refresh/i}));
+    pipeline.fails = false;
+    expect(pipelineRefetch).toHaveBeenCalled();
   });
 
   it('lists the projects with their applications and agents, and opens one', async () => {
@@ -147,7 +161,8 @@ describe('OrganizationHomePage', () => {
     render(<OrganizationHomePage />);
 
     const roles = screen.getAllByTestId('organization-gateway-role').map((role) => role.textContent);
-    expect(roles).toEqual(['Deploy here first', 'Promote from Development · Last stage']);
+    // Which gateway follows which belongs to each project's pipeline, so only the first is named.
+    expect(roles).toEqual(['Deploy here first', '']);
     expect(screen.getByTestId('organization-gateway-gw-dev')).toHaveTextContent('AppsTest users');
     expect(screen.getByTestId('organization-gateway-gw-prod')).toHaveTextContent('Live appsCustomers, employees');
   });
