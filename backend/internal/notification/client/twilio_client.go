@@ -57,7 +57,10 @@ func newTwilioClient(ctx context.Context, sender common.NotificationSenderDTO) (
 		}
 	}
 	client.url = fmt.Sprintf(twilioURL, client.accountSID)
-	client.httpClient = syshttp.NewHTTPClientWithTimeout(httpClientTimeout)
+	// Twilio's API host is hardcoded below, so it needs no SSRF dial guard.
+	client.httpClient = syshttp.NewHTTPClient(syshttp.HTTPClientConfig{
+		Timeout: httpClientTimeout,
+	})
 
 	return client, nil
 }
