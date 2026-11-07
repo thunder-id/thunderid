@@ -234,6 +234,7 @@ func (suite *OrganizationUnitServiceTestSuite) newServiceWithResolvers(
 		transactioner: mtx,
 		userResolver:  userResolver,
 		groupResolver: groupResolver,
+		bus:           discardingBus{},
 	}
 }
 
@@ -249,6 +250,7 @@ func (suite *OrganizationUnitServiceTestSuite) newServiceWithRoleResolver(
 		authzService:  authzService,
 		transactioner: mtx,
 		roleResolver:  roleResolver,
+		bus:           discardingBus{},
 	}
 }
 
@@ -404,7 +406,7 @@ func (suite *OrganizationUnitServiceTestSuite) TestOUService_GetOrganizationUnit
 }
 
 func (suite *OrganizationUnitServiceTestSuite) TestOUService_SetResolvers() {
-	service := &organizationUnitService{}
+	service := &organizationUnitService{bus: discardingBus{}}
 
 	userResolver := new(OUUserResolverMock)
 	groupResolver := new(OUGroupResolverMock)
@@ -1778,7 +1780,7 @@ func (suite *OrganizationUnitServiceTestSuite) TestOUService_GetOrganizationUnit
 }
 
 func (suite *OrganizationUnitServiceTestSuite) TestOUService_validateOUHandle() {
-	service := &organizationUnitService{}
+	service := &organizationUnitService{bus: discardingBus{}}
 
 	suite.Run("blank handle", func() {
 		err := service.validateOUHandle("   ")
@@ -3035,7 +3037,7 @@ func (suite *OrganizationUnitServiceTestSuite) TestOUService_GetOrganizationUnit
 				tc.setupAuthz(authz)
 			}
 
-			service := &organizationUnitService{ouStore: store, authzService: authz}
+			service := &organizationUnitService{ouStore: store, authzService: authz, bus: discardingBus{}}
 			resp, err := service.GetOrganizationUnitList(context.Background(), tc.limit, tc.offset, nil)
 
 			if tc.wantErr != nil {
@@ -3185,7 +3187,7 @@ func (suite *OrganizationUnitServiceTestSuite) TestOUService_listAccessibleOrgan
 			if tc.setupStore != nil {
 				tc.setupStore(store)
 			}
-			service := &organizationUnitService{ouStore: store}
+			service := &organizationUnitService{ouStore: store, bus: discardingBus{}}
 			resp, err := service.listAccessibleOrganizationUnits(
 				context.Background(), tc.ids, "", tc.limit, tc.offset, tc.filter)
 
@@ -3207,7 +3209,7 @@ func (suite *OrganizationUnitServiceTestSuite) TestOUService_IsOrganizationUnitD
 	store := newOrganizationUnitStoreInterfaceMock(suite.T())
 	store.On("IsOrganizationUnitDeclarative", mock.Anything, "ou-1").Return(true).Once()
 
-	service := &organizationUnitService{ouStore: store}
+	service := &organizationUnitService{ouStore: store, bus: discardingBus{}}
 	res := service.IsOrganizationUnitDeclarative(context.Background(), "ou-1")
 	suite.Require().True(res)
 	store.AssertExpectations(suite.T())
@@ -3215,7 +3217,7 @@ func (suite *OrganizationUnitServiceTestSuite) TestOUService_IsOrganizationUnitD
 
 func (suite *OrganizationUnitServiceTestSuite) TestOUService_GetOrganizationUnitHandlesByIDs() {
 	suite.Run("empty ids returns empty map", func() {
-		service := &organizationUnitService{}
+		service := &organizationUnitService{bus: discardingBus{}}
 		result, svcErr := service.GetOrganizationUnitHandlesByIDs(
 			context.Background(), []string{})
 		suite.Require().Nil(svcErr)
@@ -3230,7 +3232,7 @@ func (suite *OrganizationUnitServiceTestSuite) TestOUService_GetOrganizationUnit
 				{ID: "ou-2", Handle: "handle-2"},
 			}, nil).Once()
 
-		service := &organizationUnitService{ouStore: store}
+		service := &organizationUnitService{ouStore: store, bus: discardingBus{}}
 		result, svcErr := service.GetOrganizationUnitHandlesByIDs(
 			context.Background(), []string{"ou-1", "ou-2"})
 		suite.Require().Nil(svcErr)
@@ -3245,7 +3247,7 @@ func (suite *OrganizationUnitServiceTestSuite) TestOUService_GetOrganizationUnit
 		store.On("GetOrganizationUnitsByIDs", mock.Anything, []string{"ou-1"}).
 			Return(nil, errors.New("db error")).Once()
 
-		service := &organizationUnitService{ouStore: store}
+		service := &organizationUnitService{ouStore: store, bus: discardingBus{}}
 		result, svcErr := service.GetOrganizationUnitHandlesByIDs(
 			context.Background(), []string{"ou-1"})
 		suite.Require().Nil(result)

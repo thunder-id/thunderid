@@ -271,4 +271,7 @@ var (
 	ErrCannotDeleteDeclarativeOU = errors.New("cannot delete declarative organization unit")
 	// ErrResultLimitExceededInCompositeMode is returned when the result limit is exceeded in composite mode.
 	ErrResultLimitExceededInCompositeMode = errors.New("result limit exceeded in composite mode")
+
+	// errNilEventBus is returned when the service is initialized without the event bus it audits on.
+	errNilEventBus = errors.New("the organization unit service needs an event bus")
 )

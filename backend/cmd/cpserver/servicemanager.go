@@ -161,7 +161,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	exporters = append(exporters, i18nExporter)
 
 	ouService, ouHierarchyResolver, ouEnumerator, ouExporter, err := ou.Initialize(
-		mux, mcpServer, cacheManager, ouAuthzService, true)
+		mux, mcpServer, cacheManager, ouAuthzService, true, auditBus)
 	fatalOnError(ctx, logger, err, "Failed to initialize OrganizationUnitService")
 	exporters = append(exporters, ouExporter)
 
@@ -189,7 +189,8 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		sharingService, observabilitySvc)
 	fatalOnError(ctx, logger, err, "Failed to initialize EntityService")
 
-	projectService, projectExporter, err := project.Initialize(mux, mcpServer, ouService, entityService)
+	projectService, projectExporter, err := project.Initialize(mux, mcpServer, ouService, entityService,
+		auditBus)
 	fatalOnError(ctx, logger, err, "Failed to initialize ProjectService")
 	ouService.SetProjectChecker(projectService)
 	projectService.AddResourceCheck(ouService.ProjectHasOrganizationUnits)
