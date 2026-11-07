@@ -262,7 +262,7 @@ var catalog = map[string]providers.ExecutorMeta{
 		},
 	},
 	ExecutorNameGroup: {
-		SupportedModes:     []string{ExecutorModeGroupDeletion, ExecutorModeGroupMembershipRemoval},
+		SupportedModes:     []string{ExecutorModeGroupDeletion},
 		SupportedFlowTypes: []providers.FlowType{"ADMINISTRATION"},
 	},
 	ExecutorNameActionDeletion: {

@@ -240,6 +240,30 @@ func (f *fileBasedGroupStore) GetGroupMembers(
 	return members[start:end], nil
 }
 
+// GetGroupMember returns the group's direct member with the given ID, or nil when there is none.
+func (f *fileBasedGroupStore) GetGroupMember(ctx context.Context, groupID, memberID string) (*Member, error) {
+	data, err := f.GenericFileBasedStore.Get(groupID)
+	if err != nil {
+		if isGroupNotFoundError(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	grpData, err := groupFromDeclarativeData(groupID, data)
+	if err != nil {
+		return nil, err
+	}
+
+	for i := range grpData.Members {
+		if grpData.Members[i].ID == memberID {
+			member := grpData.Members[i]
+			return &member, nil
+		}
+	}
+	return nil, nil
+}
+
 // GetGroupMemberCount returns the total count of members in a group.
 func (f *fileBasedGroupStore) GetGroupMemberCount(ctx context.Context, groupID string) (int, error) {
 	data, err := f.GenericFileBasedStore.Get(groupID)

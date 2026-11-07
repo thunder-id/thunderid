@@ -161,11 +161,6 @@ export const GROUP_EXECUTOR_MODES = [
     translationKey: 'flows:core.executions.groupExecutor.mode.groupDeletion',
     displayLabel: 'Delete Group',
   },
-  {
-    value: 'group_membership_removal',
-    translationKey: 'flows:core.executions.groupExecutor.mode.groupMembershipRemoval',
-    displayLabel: 'Remove Group Member',
-  },
 ] as const;
 
 /**

@@ -136,6 +136,33 @@ func (suite *GroupFileBasedStoreTestSuite) TestGetGroupMemberCount_NonExistentGr
 	suite.Equal(0, count)
 }
 
+func (suite *GroupFileBasedStoreTestSuite) TestGetGroupMember() {
+	suite.seedGroup(groupDeclarativeResource{
+		ID:   "grp1",
+		Name: "Admins",
+		OUID: "ou1",
+		Members: []Member{
+			{ID: "user1", Type: memberTypeEntity},
+			{ID: "group2", Type: MemberTypeGroup},
+		},
+	})
+
+	member, err := suite.store.GetGroupMember(context.Background(), "grp1", "group2")
+	suite.NoError(err)
+	suite.Equal(&Member{ID: "group2", Type: MemberTypeGroup}, member)
+
+	member, err = suite.store.GetGroupMember(context.Background(), "grp1", "user3")
+	suite.NoError(err)
+	suite.Nil(member)
+}
+
+func (suite *GroupFileBasedStoreTestSuite) TestGetGroupMember_NonExistentGroup() {
+	member, err := suite.store.GetGroupMember(context.Background(), "nonexistent", "user1")
+
+	suite.NoError(err)
+	suite.Nil(member)
+}
+
 func (suite *GroupFileBasedStoreTestSuite) TestCheckGroupNameConflictForCreate() {
 	suite.seedGroup(groupDeclarativeResource{ID: "grp1", Name: "Admins", OUID: "ou1"})
 	suite.seedGroup(groupDeclarativeResource{ID: "grp2", Name: "Admins", OUID: "ou2"})

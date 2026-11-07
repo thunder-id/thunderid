@@ -761,6 +761,10 @@ func (rs *roleService) ValidateGroupMembershipRemoval(ctx context.Context, group
 	if svcErr != nil {
 		return nil, svcErr
 	}
+	// A group that grants nothing revokes nothing, so its departing member is not expanded.
+	if len(scopes) == 0 {
+		return &revocation.AccessRevocationTarget{AssigneeType: string(member.Type)}, nil
+	}
 	entityIDs, svcErr := expandPrincipal(ctx, rs.groupService, memberID, member.Type == group.MemberTypeGroup)
 	if svcErr != nil {
 		return nil, svcErr

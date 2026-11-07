@@ -47,11 +47,10 @@ type FlowSectionConfig struct {
 	SecretRegenerationFlow FlowTypeConfig `json:"secretRegenerationFlow"`
 	AgentOnboardingFlow    FlowTypeConfig `json:"agentOnboardingFlow"`
 
-	RoleAssignmentRemovalFlow  FlowTypeConfig `json:"roleAssignmentRemovalFlow"`
-	RolePermissionRemovalFlow  FlowTypeConfig `json:"rolePermissionRemovalFlow"`
-	GroupDeletionFlow          FlowTypeConfig `json:"groupDeletionFlow"`
-	GroupMembershipRemovalFlow FlowTypeConfig `json:"groupMembershipRemovalFlow"`
-	ActionDeletionFlow         FlowTypeConfig `json:"actionDeletionFlow"`
+	RoleAssignmentRemovalFlow FlowTypeConfig `json:"roleAssignmentRemovalFlow"`
+	RolePermissionRemovalFlow FlowTypeConfig `json:"rolePermissionRemovalFlow"`
+	GroupDeletionFlow         FlowTypeConfig `json:"groupDeletionFlow"`
+	ActionDeletionFlow        FlowTypeConfig `json:"actionDeletionFlow"`
 
 	UserUnlockFlow           FlowTypeConfig `json:"userUnlockFlow"`
 	UserSuspendFlow          FlowTypeConfig `json:"userSuspendFlow"`

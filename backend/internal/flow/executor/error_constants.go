@@ -1457,20 +1457,6 @@ var (
 		},
 	}
 
-	// ErrGroupMembershipRemovalFailed is returned when a validated group membership removal was refused.
-	ErrGroupMembershipRemovalFailed = tidcommon.ServiceError{
-		Type: tidcommon.ClientErrorType,
-		Code: "FET-1107",
-		Error: tidcommon.I18nMessage{
-			Key:          "flows.executor.errors.group_membership_removal_failed",
-			DefaultValue: "Group membership removal failed",
-		},
-		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "flows.executor.errors.group_membership_removal_failed_desc",
-			DefaultValue: "The member may already be removed, or the caller may no longer change the group's members",
-		},
-	}
-
 	// ErrActionDeletionNotAllowed is returned when the action cannot be deleted.
 	ErrActionDeletionNotAllowed = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,

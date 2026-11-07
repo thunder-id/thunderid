@@ -95,6 +95,8 @@ type groupService struct {
 	sharingService     sharing.SharingServiceInterface
 	roleAssignments    RoleAssignmentResolver
 	bus                eventbus.EventBusInterface
+	// systemFlows is nil where system flows are off.
+	systemFlows systemFlowProvider
 }
 
 // newGroupServiceWithStore creates a new instance of GroupService with an externally provided store.
@@ -914,7 +916,7 @@ func (gs *groupService) addGroupMembers(
 	ctx context.Context, groupID string, members []Member) (*Group, *tidcommon.ServiceError) {
 	log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName)).
 		Debug(ctx, "Adding members to group", log.String("id", groupID))
-	return gs.modifyGroupMembers(ctx, groupID, members, true,
+	return gs.modifyGroupMembers(ctx, groupID, members, false,
 		gs.groupStore.AddGroupMembers,
 		"Failed to add members to group",
 		"Successfully added members to group",
@@ -926,7 +928,7 @@ func (gs *groupService) RemoveGroupMembers(
 	ctx context.Context, groupID string, members []Member) (*Group, *tidcommon.ServiceError) {
 	log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName)).
 		Debug(ctx, "Removing members from group", log.String("id", groupID))
-	updated, svcErr := gs.modifyGroupMembers(ctx, groupID, members, false,
+	updated, svcErr := gs.modifyGroupMembers(ctx, groupID, members, true,
 		gs.groupStore.RemoveGroupMembers,
 		"Failed to remove members from group",
 		"Successfully removed members from group",
@@ -946,17 +948,17 @@ func (gs *groupService) ValidateRemoveGroupMembers(
 
 // modifyGroupMembers is the shared implementation for AddGroupMembers and RemoveGroupMembers.
 // It validates, normalizes, and applies storeOp inside a transaction, then resolves member types.
-// isMemberOUCheckRequired refuses members the group's organization unit neither owns nor has shared
-// with it.
+// An addition checks the members' organization unit; a removal runs the removal system flows around the write.
 func (gs *groupService) modifyGroupMembers(
 	ctx context.Context,
 	groupID string,
 	members []Member,
-	isMemberOUCheckRequired bool,
+	removing bool,
 	storeOp func(context.Context, string, []Member) error,
 	errMsg, successMsg string,
 ) (*Group, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
+	isMemberOUCheckRequired := !removing
 
 	checkedOUID, svcErr := gs.validateMembershipChange(ctx, groupID, members, isMemberOUCheckRequired)
 	if svcErr != nil {
@@ -964,6 +966,12 @@ func (gs *groupService) modifyGroupMembers(
 	}
 
 	members = normalizeMembers(members)
+	var revocations []memberRevocation
+	if removing {
+		if members, revocations, svcErr = gs.revokeRemovedMembers(ctx, groupID, members); svcErr != nil {
+			return nil, svcErr
+		}
+	}
 
 	var capturedSvcErr *tidcommon.ServiceError
 	var updatedGroupDAO GroupDAO
@@ -1028,6 +1036,17 @@ func (gs *groupService) modifyGroupMembers(
 		logger.Error(ctx, errMsg, log.String("id", groupID), log.Error(err))
 		return nil, &tidcommon.InternalServerError
 	}
+	// Every member is already removed, so every post flow runs even after one fails.
+	var postErr *tidcommon.ServiceError
+	for _, revoked := range revocations {
+		if _, svcErr := gs.runSystemFlow(ctx, systemFlowRevocationPost, revoked.inputs,
+			revoked.shared); svcErr != nil && postErr == nil {
+			postErr = svcErr
+		}
+	}
+	if postErr != nil {
+		return nil, postErr
+	}
 
 	updatedGroup := convertGroupDAOToGroup(updatedGroupDAO)
 	resolvedMembers, svcErr := gs.resolveMembers(ctx, updatedGroup.Members, false, logger)
@@ -1037,6 +1056,38 @@ func (gs *groupService) modifyGroupMembers(
 	updatedGroup.Members = resolvedMembers
 	logger.Debug(ctx, successMsg, log.String("id", groupID))
 	return &updatedGroup, nil
+}
+
+// revokeRemovedMembers runs the pre flow for each requested member that is a member, and returns those members.
+func (gs *groupService) revokeRemovedMembers(ctx context.Context, groupID string, members []Member) (
+	[]Member, []memberRevocation, *tidcommon.ServiceError) {
+	if gs.systemFlows == nil {
+		return members, nil, nil
+	}
+	current, svcErr := gs.allGroupMembers(ctx, groupID)
+	if svcErr != nil {
+		return nil, nil, svcErr
+	}
+	present := make(map[string]bool, len(current))
+	for _, member := range current {
+		present[member.ID] = true
+	}
+	removed := make([]Member, 0, len(members))
+	var revocations []memberRevocation
+	for _, member := range members {
+		if !present[member.ID] {
+			continue
+		}
+		delete(present, member.ID)
+		inputs := map[string]string{systemFlowInputGroup: groupID, systemFlowInputMember: member.ID}
+		shared, svcErr := gs.runSystemFlow(ctx, systemFlowGroupMembershipRemovalPre, inputs, nil)
+		if svcErr != nil {
+			return nil, nil, svcErr
+		}
+		removed = append(removed, member)
+		revocations = append(revocations, memberRevocation{inputs: inputs, shared: shared})
+	}
+	return removed, revocations, nil
 }
 
 // validateMembershipChange runs the checks shared by adding and removing group members, and returns
@@ -1702,16 +1753,41 @@ func (gs *groupService) GetTransitiveMemberEntities(
 // GetDirectGroupMember returns the group's direct member with the given ID, or nil when there is none.
 func (gs *groupService) GetDirectGroupMember(ctx context.Context, groupID, memberID string) (
 	*Member, *tidcommon.ServiceError) {
-	members, svcErr := gs.allGroupMembers(ctx, groupID)
-	if svcErr != nil {
+	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
+
+	if groupID == "" {
+		return nil, &ErrorMissingGroupID
+	}
+
+	existingGroupDAO, err := gs.groupStore.GetGroup(ctx, groupID)
+	if err != nil {
+		if errors.Is(err, ErrGroupNotFound) {
+			logger.Debug(ctx, "Group not found", log.String("id", groupID))
+			return nil, &ErrorGroupNotFound
+		}
+		logger.Error(ctx, "Failed to retrieve group", log.String("id", groupID), log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+
+	if svcErr := gs.checkGroupAccess(ctx, security.ActionReadGroup, existingGroupDAO.OUID, groupID); svcErr != nil {
 		return nil, svcErr
 	}
-	for i := range members {
-		if members[i].ID == memberID {
-			return &members[i], nil
-		}
+
+	member, err := gs.groupStore.GetGroupMember(ctx, groupID, memberID)
+	if err != nil {
+		logger.Error(ctx, "Failed to get group member", log.String("groupID", groupID), log.Error(err))
+		return nil, &tidcommon.InternalServerError
 	}
-	return nil, nil
+	if member == nil {
+		return nil, nil
+	}
+
+	// An orphaned entity member is dropped, as a membership listing drops it.
+	resolved, svcErr := gs.resolveMembers(ctx, []Member{*member}, false, logger)
+	if svcErr != nil || len(resolved) == 0 {
+		return nil, svcErr
+	}
+	return &resolved[0], nil
 }
 
 // allGroupMembers returns every direct member of the group, reading all pages.
