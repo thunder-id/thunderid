@@ -45,6 +45,18 @@ const (
 	EventFlowDelete = "flow.delete"
 	// EventFlowRestore names an attempt to make an earlier version of a flow its current one.
 	EventFlowRestore = "flow.restore"
+	// EventNotificationSenderCreate names an attempt to create a notification sender.
+	EventNotificationSenderCreate = "notification_sender.create"
+	// EventNotificationSenderUpdate names an attempt to change a notification sender.
+	EventNotificationSenderUpdate = "notification_sender.update"
+	// EventNotificationSenderDelete names an attempt to delete a notification sender.
+	EventNotificationSenderDelete = "notification_sender.delete"
+	// EventNotificationTemplateCreate names an attempt to create a notification template.
+	EventNotificationTemplateCreate = "notification_template.create"
+	// EventNotificationTemplateUpdate names an attempt to change a notification template.
+	EventNotificationTemplateUpdate = "notification_template.update"
+	// EventNotificationTemplateDelete names an attempt to delete a notification template.
+	EventNotificationTemplateDelete = "notification_template.delete"
 	// EventRoleCreate names an attempt to create a role.
 	EventRoleCreate = "role.create"
 	// EventRoleUpdate names an attempt to change a role.
@@ -82,6 +94,10 @@ const (
 	TargetTypeAgent = "agent"
 	// TargetTypeAgentType is the target type of an event about an agent type.
 	TargetTypeAgentType = "agent_type"
+	// TargetTypeNotificationSender is the target type of an event about a notification sender.
+	TargetTypeNotificationSender = "notification_sender"
+	// TargetTypeNotificationTemplate is the target type of an event about a notification template.
+	TargetTypeNotificationTemplate = "notification_template"
 	// TargetTypeRole is the target type of an event about a role.
 	TargetTypeRole = "role"
 	// TargetTypeGroup is the target type of an event about a group.
@@ -123,10 +139,17 @@ var auditedEvents = map[string][]string{
 	EventApplicationUpdate: nil,
 	EventApplicationDelete: nil,
 
-	EventFlowCreate:  nil,
-	EventFlowUpdate:  nil,
-	EventFlowDelete:  nil,
-	EventFlowRestore: nil,
+	EventFlowCreate:               nil,
+	EventFlowUpdate:               nil,
+	EventFlowDelete:               nil,
+	EventFlowRestore:              nil,
+	EventNotificationSenderCreate: nil,
+	EventNotificationSenderUpdate: nil,
+	EventNotificationSenderDelete: nil,
+
+	EventNotificationTemplateCreate: nil,
+	EventNotificationTemplateUpdate: nil,
+	EventNotificationTemplateDelete: nil,
 
 	EventRoleCreate:           nil,
 	EventRoleUpdate:           nil,
