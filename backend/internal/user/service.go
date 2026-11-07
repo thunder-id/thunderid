@@ -689,6 +689,11 @@ func (us *userService) updateUser(
 		ctx, security.ActionUpdateUser, existingUser.OUID, userID); svcErr != nil {
 		return nil, svcErr
 	}
+	// Attributes such as an email or phone number lead to account recovery, so changing them is
+	// control over the user.
+	if svcErr := us.authzService.CanControlEntity(ctx, userID); svcErr != nil {
+		return nil, svcErr
+	}
 
 	// If the user is moving to a different OU, require authorization for the destination OU as well.
 	if user.OUID != existingUser.OUID {
@@ -843,6 +848,9 @@ func (us *userService) updateUserAttributes(
 		ctx, security.ActionUpdateUser, existingUser.OUID, userID); svcErr != nil {
 		return nil, svcErr
 	}
+	if svcErr := us.authzService.CanControlEntity(ctx, userID); svcErr != nil {
+		return nil, svcErr
+	}
 
 	// Check if user is declarative (immutable)
 	if svcErr := us.checkUserDeclarative(ctx, userID, logger); svcErr != nil {
@@ -933,6 +941,10 @@ func (us *userService) UpdateUserCredentials(
 		return svcErr
 	}
 
+	if svcErr := us.authzService.CanControlEntity(ctx, userID); svcErr != nil {
+		return svcErr
+	}
+
 	// Check if user is declarative (immutable)
 	if svcErr := us.checkUserDeclarative(ctx, userID, logger); svcErr != nil {
 		return svcErr
@@ -995,6 +1007,9 @@ func (us *userService) ValidateDeleteUser(ctx context.Context, userID string) *t
 		entityToUser(existingEntity).OUID, userID); svcErr != nil {
 		return svcErr
 	}
+	if svcErr := us.authzService.CanControlEntity(ctx, userID); svcErr != nil {
+		return svcErr
+	}
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 	if svcErr := us.checkUserDeclarative(ctx, userID, logger); svcErr != nil {
 		return svcErr
@@ -1036,6 +1051,9 @@ func (us *userService) deleteUser(ctx context.Context, userID string) *tidcommon
 	// Check authz using the user's OU ID.
 	if svcErr := us.checkUserAccess(
 		ctx, security.ActionDeleteUser, existingUser.OUID, userID); svcErr != nil {
+		return svcErr
+	}
+	if svcErr := us.authzService.CanControlEntity(ctx, userID); svcErr != nil {
 		return svcErr
 	}
 

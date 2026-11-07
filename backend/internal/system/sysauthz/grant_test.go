@@ -58,6 +58,20 @@ func (r *stubPermissionResolver) ResolveForRole(
 	return r.rolePerms, r.roleErr
 }
 
+// perEntityResolver resolves each entity to its own permissions.
+type perEntityResolver struct {
+	stubPermissionResolver
+	entities map[string]security.PermissionSet
+}
+
+func (r *perEntityResolver) ResolveForEntity(_ context.Context, entityID string) (security.PermissionSet, error) {
+	r.entityCalls++
+	if r.entityErr != nil {
+		return nil, r.entityErr
+	}
+	return r.entities[entityID], nil
+}
+
 // newGuardService returns a service with the given resolver injected.
 func newGuardService(resolver PermissionResolver) *systemAuthorizationService {
 	svc := &systemAuthorizationService{
@@ -567,5 +581,88 @@ func TestGrantableMemberships(t *testing.T) {
 		assert.Nil(t, ids)
 		require.NotNil(t, svcErr)
 		assert.Equal(t, tidcommon.InternalServerError.Code, svcErr.Code)
+	})
+}
+
+// ---------------------------------------------------------------------------
+// Entity control
+// ---------------------------------------------------------------------------
+
+func TestCanControlEntity(t *testing.T) {
+	t.Run("EntityControlsSelfWithoutLookup", func(t *testing.T) {
+		resolver := &stubPermissionResolver{}
+		svc := newGuardService(resolver)
+
+		svcErr := svc.CanControlEntity(callerWith("user1", "system:user"), "user1")
+
+		assert.Nil(t, svcErr)
+		assert.Zero(t, resolver.entityCalls, "controlling self must not trigger lookups")
+	})
+
+	t.Run("AssistantCannotControlAdministratorEntity", func(t *testing.T) {
+		resolver := &perEntityResolver{
+			entities: map[string]security.PermissionSet{
+				"david": {escRSSystem: {"system:user:update"}},
+				"admin": {escRSSystem: {"system:user", "system:group"}},
+			},
+		}
+		svc := newGuardService(resolver)
+
+		svcErr := svc.CanControlEntity(callerWith("david", "system:user:update"), "admin")
+
+		require.NotNil(t, svcErr)
+		assert.Equal(t, ErrorGrantNotPermitted.Code, svcErr.Code)
+		assert.Equal(t, 2, resolver.entityCalls)
+	})
+
+	t.Run("AdminCanControlEntityWhosePermissionsAreCovered", func(t *testing.T) {
+		resolver := &perEntityResolver{
+			entities: map[string]security.PermissionSet{
+				"admin": {escRSSystem: {"system:user"}},
+				"bob":   {escRSSystem: {"system:user:view"}},
+			},
+		}
+		svc := newGuardService(resolver)
+
+		svcErr := svc.CanControlEntity(callerWith("admin", "system:user"), "bob")
+
+		assert.Nil(t, svcErr)
+		assert.Equal(t, 2, resolver.entityCalls)
+	})
+
+	t.Run("AdminCanControlUnprivilegedEntityConferringNothing", func(t *testing.T) {
+		resolver := &perEntityResolver{
+			entities: map[string]security.PermissionSet{
+				"admin":   {escRSSystem: {"system:user"}},
+				"regular": {},
+			},
+		}
+		svc := newGuardService(resolver)
+
+		svcErr := svc.CanControlEntity(callerWith("admin", "system:user"), "regular")
+
+		assert.Nil(t, svcErr)
+		assert.Equal(t, 1, resolver.entityCalls, "unprivileged entity confers nothing, avoiding caller lookup")
+	})
+
+	t.Run("EntityLookupErrorIsRefused", func(t *testing.T) {
+		resolver := &stubPermissionResolver{entityErr: errors.New("database unavailable")}
+		svc := newGuardService(resolver)
+
+		svcErr := svc.CanControlEntity(callerWith("david", "system:user"), "otherUser")
+
+		require.NotNil(t, svcErr)
+		assert.Equal(t, tidcommon.InternalServerError.Code, svcErr.Code)
+	})
+
+	t.Run("MissingEntityIDFailsClosed", func(t *testing.T) {
+		resolver := &stubPermissionResolver{}
+		svc := newGuardService(resolver)
+
+		svcErr := svc.CanControlEntity(callerWith("david", "system:user"), "")
+
+		require.NotNil(t, svcErr)
+		assert.Equal(t, tidcommon.InternalServerError.Code, svcErr.Code)
+		assert.Zero(t, resolver.entityCalls)
 	})
 }

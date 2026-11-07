@@ -1667,6 +1667,44 @@ func (suite *RoleServiceTestSuite) TestDeleteRole_DeclarativeCheckError_Refused(
 	suite.mockStore.AssertNotCalled(suite.T(), "DeleteRole", mock.Anything, mock.Anything)
 }
 
+func (suite *RoleServiceTestSuite) TestDeleteRole_GrantRefused() {
+	authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+	authzMock.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).Return(true, nil).Maybe()
+	authzMock.On("CanGrantMembership", mock.Anything, sysauthz.PrincipalTypeRole, "role1").
+		Return(&sysauthz.ErrorGrantNotPermitted).Once()
+	suite.service = newRoleService(suite.mockStore, suite.mockEntityService, suite.mockGroupService,
+		suite.mockOUService, suite.mockResourceService, suite.transactioner, authzMock, suite.mockSharingService,
+		discardingBus{})
+
+	suite.mockStore.On("IsRoleExist", mock.Anything, "role1").Return(true, nil)
+
+	err := suite.service.DeleteRole(context.Background(), "role1")
+
+	suite.Require().NotNil(err)
+	suite.Equal(sysauthz.ErrorGrantNotPermitted.Code, err.Code)
+}
+
+func (suite *RoleServiceTestSuite) TestUpdateRoleWithPermissions_GrantRefused() {
+	authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+	authzMock.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).Return(true, nil).Maybe()
+	authzMock.On("CanGrantMembership", mock.Anything, sysauthz.PrincipalTypeRole, "role1").
+		Return(&sysauthz.ErrorGrantNotPermitted).Once()
+	suite.service = newRoleService(suite.mockStore, suite.mockEntityService, suite.mockGroupService,
+		suite.mockOUService, suite.mockResourceService, suite.transactioner, authzMock, suite.mockSharingService,
+		discardingBus{})
+
+	suite.mockStore.On("GetRole", mock.Anything, "role1").Return(RoleWithPermissions{
+		ID: "role1", Name: "Admin", OUID: "ou1",
+	}, nil)
+
+	_, err := suite.service.UpdateRoleWithPermissions(context.Background(), "role1", RoleUpdateDetail{
+		Name: "Admin", OUID: "ou1",
+	})
+
+	suite.Require().NotNil(err)
+	suite.Equal(sysauthz.ErrorGrantNotPermitted.Code, err.Code)
+}
+
 // validateAssignmentIDs Tests
 func (suite *RoleServiceTestSuite) TestValidateAssignmentIDs_UserServiceError() {
 	request := RoleCreationDetail{
@@ -2201,6 +2239,8 @@ func (s *RoleChangeValidationTestSuite) SetupTest() {
 	s.resources = resourcemock.NewResourceServiceInterfaceMock(s.T())
 	s.authz = sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(s.T())
 	s.authz.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).Return(true, nil).Maybe()
+	s.authz.On("CanGrantMembership", mock.Anything, mock.Anything, mock.Anything).
+		Return((*tidcommon.ServiceError)(nil)).Maybe()
 	s.service = newRoleService(s.store, nil, s.groups, s.ous, s.resources, &fakeTransactioner{}, s.authz, nil,
 		discardingBus{})
 }
@@ -2467,6 +2507,41 @@ func (s *RoleChangeValidationTestSuite) TestValidateUpdateRolePermissions_Refuse
 
 	s.Require().NotNil(svcErr)
 	s.Equal(tidcommon.ErrorUnauthorized.Code, svcErr.Code)
+}
+
+func (s *RoleChangeValidationTestSuite) TestValidateDeleteRole_RefusesUncoveredRolePermissions() {
+	s.authz = sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(s.T())
+	s.authz.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).Return(true, nil).Maybe()
+	s.authz.On("CanGrantMembership", mock.Anything, sysauthz.PrincipalTypeRole, targetRoleID).
+		Return(&sysauthz.ErrorGrantNotPermitted).Once()
+	s.service = newRoleService(s.store, nil, s.groups, s.ous, s.resources, &fakeTransactioner{}, s.authz, nil,
+		discardingBus{})
+
+	s.mutableRoleGranting(nil)
+
+	target, svcErr := s.service.ValidateDeleteRole(context.Background(), targetRoleID)
+
+	s.Nil(target)
+	s.Require().NotNil(svcErr)
+	s.Equal(sysauthz.ErrorGrantNotPermitted.Code, svcErr.Code)
+}
+
+func (s *RoleChangeValidationTestSuite) TestValidateUpdateRolePermissions_RefusesUncoveredExistingRolePermissions() {
+	s.authz = sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(s.T())
+	s.authz.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).Return(true, nil).Maybe()
+	s.authz.On("CanGrantMembership", mock.Anything, sysauthz.PrincipalTypeRole, targetRoleID).
+		Return(&sysauthz.ErrorGrantNotPermitted).Once()
+	s.service = newRoleService(s.store, nil, s.groups, s.ous, s.resources, &fakeTransactioner{}, s.authz, nil,
+		discardingBus{})
+
+	s.mutableRoleGranting(nil)
+
+	target, svcErr := s.service.ValidateUpdateRolePermissions(context.Background(), targetRoleID,
+		[]ResourcePermissions{{ResourceServerID: californiaRSID, Permissions: []string{"license"}}})
+
+	s.Nil(target)
+	s.Require().NotNil(svcErr)
+	s.Equal(sysauthz.ErrorGrantNotPermitted.Code, svcErr.Code)
 }
 
 func (s *RoleChangeValidationTestSuite) TestValidateUpdateRolePermissions_RefusesDeclarativeRole() {

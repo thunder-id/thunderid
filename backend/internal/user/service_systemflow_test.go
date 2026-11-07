@@ -62,6 +62,9 @@ func (s *UserDeletionSystemFlowTestSuite) expectUser(allowed bool) {
 		ID: "user-1", Category: providers.EntityCategoryUser, OUID: "ou-1",
 	}, nil).Once()
 	s.authz.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).Return(allowed, nil).Once()
+	if allowed {
+		s.authz.On("CanControlEntity", mock.Anything, "user-1").Return((*tidcommon.ServiceError)(nil)).Once()
+	}
 }
 
 // expectDeclarative reports whether user-1 is declarative.
