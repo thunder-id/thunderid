@@ -742,7 +742,8 @@ func (s *importService) importConnectionAuthZENPDP(
 	if s.authZENPDPService == nil {
 		return unsupportedAdapterOutcome(resourceTypeConnection, "AuthZEN PDP")
 	}
-	if svcErr := s.authZENPDPService.ResolveConnectionOU(ctx, req); svcErr != nil {
+	if svcErr := s.authZENPDPService.ResolveConnectionOU(ctx, req); svcErr != nil &&
+		!ownerCreatedByImport(dryRun, svcErr, &authzenpdp.ErrorInvalidOU) {
 		return authZENPDPImportServiceError(req, operationCreate, svcErr)
 	}
 	if options.IsUpsertEnabled() && req.ID != "" {
@@ -785,7 +786,8 @@ func (s *importService) importConnectionHTTP(
 	if s.httpConnectionService == nil {
 		return unsupportedAdapterOutcome(resourceTypeConnection, "HTTP connection")
 	}
-	if svcErr := s.httpConnectionService.ResolveConnectionOU(ctx, req); svcErr != nil {
+	if svcErr := s.httpConnectionService.ResolveConnectionOU(ctx, req); svcErr != nil &&
+		!ownerCreatedByImport(dryRun, svcErr, &httpconnection.ErrorInvalidOU) {
 		return serviceErrorOutcome(resourceTypeConnection, req.ID, req.Name, operationCreate, svcErr)
 	}
 	if options.IsUpsertEnabled() && req.ID != "" {
@@ -868,7 +870,8 @@ func (s *importService) importConnectionIDP(
 		}
 	}
 
-	if svcErr := s.idpService.ResolveIdentityProviderOU(ctx, req); svcErr != nil {
+	if svcErr := s.idpService.ResolveIdentityProviderOU(ctx, req); svcErr != nil &&
+		!ownerCreatedByImport(dryRun, svcErr, &idp.ErrorInvalidIDPOU) {
 		return serviceErrorOutcome(resourceTypeConnection, req.ID, req.Name, operationCreate, svcErr)
 	}
 
@@ -952,7 +955,8 @@ func (s *importService) importConnectionSender(
 		}
 	}
 
-	if svcErr := s.senderService.ResolveSenderOU(ctx, req); svcErr != nil {
+	if svcErr := s.senderService.ResolveSenderOU(ctx, req); svcErr != nil &&
+		!ownerCreatedByImport(dryRun, svcErr, &notification.ErrorInvalidSenderOU) {
 		return serviceErrorOutcome(resourceTypeConnection, req.ID, req.Name, operationCreate, svcErr)
 	}
 
@@ -1157,7 +1161,8 @@ func (s *importService) importFlowDefinition(
 		OUHandle: req.OUHandle,
 	}
 
-	if svcErr := s.flowService.ResolveFlowOU(ctx, flowDef); svcErr != nil {
+	if svcErr := s.flowService.ResolveFlowOU(ctx, flowDef); svcErr != nil &&
+		!ownerCreatedByImport(dryRun, svcErr, &flowmgt.ErrorInvalidFlowOU) {
 		return serviceErrorOutcome(resourceTypeFlow, req.ID, req.Name, operationCreate, svcErr)
 	}
 
@@ -1602,6 +1607,13 @@ func normalizeOAuthConfigForImport(ctx context.Context, appDTO *appmodel.Applica
 			log.String("clientID", oauthConfig.ClientID))
 		oauthConfig.ClientSecret = ""
 	}
+}
+
+// ownerCreatedByImport reports whether a failed owner lookup is expected in a dry run. A dry run creates nothing, so
+// an owner organization unit declared in the same import does not exist yet; only a unit that is not found is
+// tolerated, and any other failure still fails the item.
+func ownerCreatedByImport(dryRun bool, svcErr, notFound *tidcommon.ServiceError) bool {
+	return dryRun && svcErr.Code == notFound.Code
 }
 
 func isNotFoundServiceError(svcErr *tidcommon.ServiceError) bool {

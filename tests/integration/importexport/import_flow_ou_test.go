@@ -107,8 +107,13 @@ func (suite *ImportExportErrorSuite) TestImportFlowOwner() {
 			result := suite.importFlow(flowDocument(id, handle, tc.owner), false, false)
 
 			if tc.wantCode != "" {
-				suite.Equal("failed", dryRun.Status, "the dry run refuses what the import refuses")
-				suite.Equal(tc.wantCode, dryRun.Code)
+				if tc.wantCode == flowOUUnknownCode {
+					suite.Equal("success", dryRun.Status,
+						"a dry run does not fail on an owner the same import may create, message: %s", dryRun.Message)
+				} else {
+					suite.Equal("failed", dryRun.Status, "the dry run refuses what the import refuses")
+					suite.Equal(tc.wantCode, dryRun.Code)
+				}
 				suite.Equal("failed", result.Status)
 				suite.Equal(tc.wantCode, result.Code)
 				suite.Empty(suite.flowOwner(id), "a refused flow is not created")

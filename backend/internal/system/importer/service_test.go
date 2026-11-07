@@ -2277,6 +2277,26 @@ func TestImportResources_FlowOrganizationUnit(t *testing.T) {
 	}
 }
 
+func TestImportResources_DryRunToleratesFlowOwnerCreatedByImport(t *testing.T) {
+	flowSvc := &fakeFlowService{ouIDByPath: map[string]string{}}
+	svc := newImportService(
+		nil, nil, nil, flowSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	content := "resource_type: flow\nhandle: new-flow\nname: New Flow\nflowType: AUTHENTICATION\n" +
+		"ouHandle: created-here\nnodes: []\n"
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{
+		Content: content,
+		DryRun:  true,
+		Options: &ImportOptions{ContinueOnError: boolPtr(true), Target: importTargetRuntime},
+	})
+
+	require.Nil(t, err)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status)
+	assert.Equal(t, operationCreate, resp.Results[0].Operation)
+	assert.Empty(t, flowSvc.created)
+}
+
 func TestImportResources_FlowUpsertDuplicateHandleFallsBackToHandleUpdate(t *testing.T) {
 	flowSvc := &fakeFlowService{
 		byID: map[string]*providers.CompleteFlowDefinition{
@@ -5634,6 +5654,8 @@ type connectionKind struct {
 	stored  func(ouID string) any
 	// updateNotAllowedCode is the code of the error the service answers an update to another owner with.
 	updateNotAllowedCode string
+	// ownerNotFound is the error the service answers with when the owner does not exist.
+	ownerNotFound tidcommon.ServiceError
 }
 
 // ownerCall is a call to the service to resolve the owner of a connection document.
@@ -5724,6 +5746,7 @@ func (s *ImportConnectionOUTestSuite) kinds() []connectionKind {
 				return &providers.IDPDTO{ID: "conn-1", Name: "idp-one", OUID: ouID}
 			},
 			updateNotAllowedCode: idp.ErrorIDPOUUpdateNotAllowed.Code,
+			ownerNotFound:        idp.ErrorInvalidIDPOU,
 		},
 		{
 			name: "notification sender",
@@ -5738,6 +5761,7 @@ func (s *ImportConnectionOUTestSuite) kinds() []connectionKind {
 				return &ncommon.NotificationSenderDTO{ID: "conn-1", Name: "sms", OUID: ouID}
 			},
 			updateNotAllowedCode: notification.ErrorSenderOUUpdateNotAllowed.Code,
+			ownerNotFound:        notification.ErrorInvalidSenderOU,
 		},
 		{
 			name: "AuthZEN PDP",
@@ -5753,6 +5777,7 @@ func (s *ImportConnectionOUTestSuite) kinds() []connectionKind {
 				return &authzenpdp.AuthZENPDPConnection{ID: "conn-1", Name: "pdp", OUID: ouID}
 			},
 			updateNotAllowedCode: authzenpdp.ErrorOUUpdateNotAllowed.Code,
+			ownerNotFound:        authzenpdp.ErrorInvalidOU,
 		},
 	}
 }
@@ -5804,17 +5829,43 @@ func (s *ImportConnectionOUTestSuite) TestOUIDAndHandleAreBothHandedToTheService
 
 func (s *ImportConnectionOUTestSuite) TestOwnerTheServiceCannotResolveFailsTheItem() {
 	for _, kind := range s.kinds() {
-		for _, dryRun := range []bool{false, true} {
-			s.Run(fmt.Sprintf("%s dry run %t", kind.name, dryRun), func() {
-				s.SetupTest()
-				s.expectResolve(kind, ownerCall{wantHandle: "missing", svcErr: &authzenpdp.ErrorInvalidOU})
+		s.Run(kind.name, func() {
+			s.SetupTest()
+			s.expectResolve(kind, ownerCall{wantHandle: "missing", svcErr: &kind.ownerNotFound})
 
-				outcome := s.importOne(kind.doc("", "ouHandle: missing\n"), dryRun)
+			outcome := s.importOne(kind.doc("", "ouHandle: missing\n"), false)
 
-				s.Equal(statusFailed, outcome.Status)
-				s.Equal(authzenpdp.ErrorInvalidOU.Code, outcome.Code)
-			})
-		}
+			s.Equal(statusFailed, outcome.Status)
+			s.Equal(kind.ownerNotFound.Code, outcome.Code)
+		})
+	}
+}
+
+func (s *ImportConnectionOUTestSuite) TestDryRunToleratesAnOwnerTheImportCreates() {
+	for _, kind := range s.kinds() {
+		s.Run(kind.name, func() {
+			s.SetupTest()
+			s.expectResolve(kind, ownerCall{wantOUID: "ou-new", svcErr: &kind.ownerNotFound})
+
+			outcome := s.importOne(kind.doc("", "ouId: ou-new\n"), true)
+
+			s.Equal(statusSuccess, outcome.Status)
+			s.Equal(operationCreate, outcome.Operation)
+		})
+	}
+}
+
+func (s *ImportConnectionOUTestSuite) TestDryRunStillFailsOnOtherOwnerErrors() {
+	for _, kind := range s.kinds() {
+		s.Run(kind.name, func() {
+			s.SetupTest()
+			s.expectResolve(kind, ownerCall{wantOUID: "ou-1", svcErr: &tidcommon.InternalServerError})
+
+			outcome := s.importOne(kind.doc("", "ouId: ou-1\n"), true)
+
+			s.Equal(statusFailed, outcome.Status)
+			s.Equal(tidcommon.InternalServerError.Code, outcome.Code)
+		})
 	}
 }
 

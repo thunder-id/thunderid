@@ -219,10 +219,10 @@ func (s *ImportExportConnectionOUSuite) TestImportDryRunResolvesOUHandle() {
 				fmt.Sprintf("OU Dry Run Unknown %s %d", kind.vendor, time.Now().UnixNano()),
 				fmt.Sprintf("ouHandle: missing-conn-ou-%d\n", time.Now().UnixNano())), true, nil)
 			s.Require().Len(unknown.Results, 1)
-			s.Equal("failed", unknown.Results[0].Status, "an unknown handle should fail the item in a dry run")
-			s.Equal(kind.unknownCode, unknown.Results[0].Code, "message: %s", unknown.Results[0].Message)
-			s.Equal(1, unknown.Summary.Failed)
-			s.Equal(0, unknown.Summary.Imported)
+			s.Equal("success", unknown.Results[0].Status,
+				"a dry run does not fail on an owner the same import may create, message: %s",
+				unknown.Results[0].Message)
+			s.Equal(0, unknown.Summary.Failed)
 			s.Equal(http.StatusNotFound, s.connectionStatus(kind.vendor, unknownID))
 		})
 	}
