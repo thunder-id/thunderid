@@ -234,6 +234,22 @@ const sidebars: SidebarsConfig = {
         },
         {
           type: 'category',
+          label: 'Contact Verification',
+          collapsible: true,
+          collapsed: true,
+          key: 'use-cases-contact-verification',
+          items: [
+            {type: 'doc', id: 'use-cases/contact-verification/overview', label: 'Understand It', key: 'contact-verification-understand-it'},
+            {
+              type: 'doc',
+              id: 'use-cases/contact-verification/architecture-decisions',
+              label: 'Design Decisions & Alternatives',
+              key: 'contact-verification-architecture-decisions',
+            },
+          ],
+        },
+        {
+          type: 'category',
           label: 'AI Agents',
           collapsible: true,
           collapsed: true,
