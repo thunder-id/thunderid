@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -294,4 +295,16 @@ func (suite *CompositeGroupStoreTestSuite) TestGetTransitiveGroupsForEntity_File
 
 	suite.Error(err)
 	suite.Equal(testErr, err)
+}
+
+// A group whose database store alone holds more members than the composite limit is refused, not
+// listed as if it held only the limit.
+func (suite *CompositeGroupStoreTestSuite) TestGetGroupMembers_OneStoreOverTheLimit() {
+	suite.mockDBStore.On("GetGroupMemberCount", mock.Anything, "group1").
+		Return(serverconst.MaxCompositeStoreRecords+500, nil).Once()
+	suite.mockFileStore.On("GetGroupMemberCount", mock.Anything, "group1").Return(0, nil).Once()
+
+	_, err := suite.store.GetGroupMembers(context.Background(), "group1", serverconst.MaxCompositeStoreRecords+1, 0)
+
+	suite.ErrorIs(err, errResultLimitExceededInCompositeMode)
 }

@@ -192,13 +192,25 @@ func (c *compositeGroupStore) GetGroup(ctx context.Context, id string) (GroupDAO
 func (c *compositeGroupStore) GetGroupMembers(
 	ctx context.Context, groupID string, limit, offset int,
 ) ([]Member, error) {
-	return compositeMergeByID(
-		ctx, groupID,
-		c.dbStore.GetGroupMemberCount, c.fileStore.GetGroupMemberCount,
-		c.dbStore.GetGroupMembers, c.fileStore.GetGroupMembers,
+	// The counts are not clamped, so a group with more members than the limit in one store is refused
+	// rather than read as its first members.
+	members, limitExceeded, err := declarativeresource.CompositeMergeListHelperWithLimit(
+		func() (int, error) { return c.dbStore.GetGroupMemberCount(ctx, groupID) },
+		func() (int, error) { return c.fileStore.GetGroupMemberCount(ctx, groupID) },
+		func(count int) ([]Member, error) { return c.dbStore.GetGroupMembers(ctx, groupID, count, 0) },
+		func(count int) ([]Member, error) { return c.fileStore.GetGroupMembers(ctx, groupID, count, 0) },
 		mergeMembers,
-		limit, offset,
+		limit,
+		offset,
+		serverconst.MaxCompositeStoreRecords,
 	)
+	if err != nil {
+		return nil, err
+	}
+	if limitExceeded {
+		return nil, errResultLimitExceededInCompositeMode
+	}
+	return members, nil
 }
 
 // GetGroupMemberCount returns the total count of unique members across both stores.
