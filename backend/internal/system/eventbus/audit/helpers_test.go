@@ -39,6 +39,7 @@ const (
 	testAgentID      = "01900000-0000-7000-8000-000000000032"
 	testRoleID       = "01900000-0000-7000-8000-000000000033"
 	testGroupID      = "01900000-0000-7000-8000-000000000034"
+	testGatewayID    = "01900000-0000-7000-8000-000000000035"
 	eventWait        = 3 * time.Second
 )
 
@@ -47,6 +48,7 @@ var (
 	testApplication = Ref{Type: TargetTypeApplication, ID: testAppID}
 	testRole        = Ref{Type: TargetTypeRole, ID: testRoleID}
 	testGroup       = Ref{Type: TargetTypeGroup, ID: testGroupID}
+	testGateway     = Ref{Type: TargetTypeGateway, ID: testGatewayID}
 )
 
 // received is one audit event a sink was handed.

@@ -45,6 +45,10 @@ const (
 	EventFlowDelete = "flow.delete"
 	// EventFlowRestore names an attempt to make an earlier version of a flow its current one.
 	EventFlowRestore = "flow.restore"
+	// EventGatewayApply names an attempt to apply a configuration version to a gateway.
+	EventGatewayApply = "gateway.apply"
+	// EventGatewayRevert names an attempt to return a gateway to the configuration it held before.
+	EventGatewayRevert = "gateway.revert"
 	// EventRoleCreate names an attempt to create a role.
 	EventRoleCreate = "role.create"
 	// EventRoleUpdate names an attempt to change a role.
@@ -82,6 +86,8 @@ const (
 	TargetTypeAgent = "agent"
 	// TargetTypeAgentType is the target type of an event about an agent type.
 	TargetTypeAgentType = "agent_type"
+	// TargetTypeGateway is the target type of an event about a gateway.
+	TargetTypeGateway = "gateway"
 	// TargetTypeRole is the target type of an event about a role.
 	TargetTypeRole = "role"
 	// TargetTypeGroup is the target type of an event about a group.
@@ -123,10 +129,12 @@ var auditedEvents = map[string][]string{
 	EventApplicationUpdate: nil,
 	EventApplicationDelete: nil,
 
-	EventFlowCreate:  nil,
-	EventFlowUpdate:  nil,
-	EventFlowDelete:  nil,
-	EventFlowRestore: nil,
+	EventFlowCreate:    nil,
+	EventFlowUpdate:    nil,
+	EventFlowDelete:    nil,
+	EventFlowRestore:   nil,
+	EventGatewayApply:  nil,
+	EventGatewayRevert: nil,
 
 	EventRoleCreate:           nil,
 	EventRoleUpdate:           nil,

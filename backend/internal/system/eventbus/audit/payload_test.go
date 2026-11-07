@@ -197,6 +197,13 @@ func (s *PayloadTestSuite) TestValidate() {
 		{"a user type detail", EventUserTypeUpdate,
 			NewPayload(ctx, Ref{Type: TargetTypeUserType, ID: testTypeID}, ActionUpdate, OutcomeSucceeded).
 				WithDetails(map[string]string{"schema": "{}"}), errDetailNotAllowed},
+		{"a gateway apply", EventGatewayApply,
+			NewPayload(ctx, testGateway, ActionApply, OutcomeSucceeded), nil},
+		{"a gateway revert", EventGatewayRevert,
+			NewPayload(ctx, testGateway, ActionRevert, OutcomeFailed("gtw_1016")), nil},
+		{"a gateway apply detail", EventGatewayApply,
+			NewPayload(ctx, testGateway, ActionApply, OutcomeSucceeded).
+				WithDetails(map[string]string{"version": "3f2a9c1"}), errDetailNotAllowed},
 		{"an event that is not audited", "user.rename",
 			NewPayload(ctx, testTarget, ActionUpdate, OutcomeSucceeded), errUnknownEvent},
 		{"a detail the event does not allow", EventUserUpdate,

@@ -19,6 +19,8 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
+	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/export"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -101,12 +103,14 @@ type versionService struct {
 	syncRuns *syncRuns
 	// syncSettings writes each project's entry of the gateway section; a plane without one keeps none.
 	syncSettings serverconfig.ServerConfigService
+	bus          eventbus.EventBusInterface
 	logger       *log.Logger
 }
 
 func newVersionService(gateways storeInterface, versions versionStoreInterface,
 	exporter export.ExportServiceInterface, client gatewayClientInterface,
-	secretFields map[string][]string, names actorNamer, p pipeline) *versionService {
+	secretFields map[string][]string, names actorNamer, p pipeline,
+	bus eventbus.EventBusInterface) *versionService {
 	return &versionService{
 		gateways:     gateways,
 		versions:     versions,
@@ -117,6 +121,7 @@ func newVersionService(gateways storeInterface, versions versionStoreInterface,
 		pipeline:     p,
 		projects:     noProjects{},
 		syncRuns:     &syncRuns{runs: map[string]AutoSyncRun{}},
+		bus:          bus,
 		logger:       log.GetLogger().With(log.String(log.LoggerKeyComponentName, "GatewayVersionService")),
 	}
 }
@@ -428,7 +433,16 @@ func (s *versionService) Diff(ctx context.Context, gatewayID, ref, projectID str
 	return diff, nil
 }
 
+// Apply applies a version to a gateway.
 func (s *versionService) Apply(ctx context.Context, gatewayID string,
+	req ApplyRequest) (*ApplyResult, *tidcommon.ServiceError) {
+	result, svcErr := s.apply(ctx, gatewayID, req)
+	s.publishGatewayEvent(ctx, audit.EventGatewayApply, audit.ActionApply, gatewayID, req.DryRun, svcErr)
+	return result, svcErr
+}
+
+// apply applies a version to a gateway without publishing its audit event.
+func (s *versionService) apply(ctx context.Context, gatewayID string,
 	req ApplyRequest) (*ApplyResult, *tidcommon.ServiceError) {
 	gw, svcErr := s.gateway(ctx, gatewayID)
 	if svcErr != nil {
@@ -487,8 +501,16 @@ func (s *versionService) refuseUnconfirmedRemovalsOf(ctx context.Context, gw *Ga
 // Promote applies the version the source is recorded as running to the target, as far as the source
 // holds it: an addition or update is sent only when the source holds it deployed as the version has
 // it, and what the target holds back stays out. The target's master records the source as the origin
-// of each resource the promotion writes.
+// of each resource the promotion writes. It is recorded as an apply to the target, the gateway it changes.
 func (s *versionService) Promote(ctx context.Context, req PromoteRequest) (*ApplyResult, *tidcommon.ServiceError) {
+	result, svcErr := s.promote(ctx, req)
+	s.publishGatewayEvent(ctx, audit.EventGatewayApply, audit.ActionApply, req.TargetGatewayID, req.DryRun,
+		svcErr)
+	return result, svcErr
+}
+
+// promote applies the version the source runs to the target without publishing its audit event.
+func (s *versionService) promote(ctx context.Context, req PromoteRequest) (*ApplyResult, *tidcommon.ServiceError) {
 	if req.SourceGatewayID == req.TargetGatewayID {
 		return nil, &ErrorPromoteToItself
 	}
@@ -552,7 +574,16 @@ func promoteSelection(source *Master, version *Version, target *Diff) []string {
 	return selection
 }
 
+// Revert returns a gateway, or one project's resources on it, to what it held before.
 func (s *versionService) Revert(ctx context.Context, gatewayID string,
+	req RevertRequest) (*ApplyResult, *tidcommon.ServiceError) {
+	result, svcErr := s.revert(ctx, gatewayID, req)
+	s.publishGatewayEvent(ctx, audit.EventGatewayRevert, audit.ActionRevert, gatewayID, req.DryRun, svcErr)
+	return result, svcErr
+}
+
+// revert returns a gateway to what it held before without publishing its audit event.
+func (s *versionService) revert(ctx context.Context, gatewayID string,
 	req RevertRequest) (*ApplyResult, *tidcommon.ServiceError) {
 	gw, svcErr := s.gateway(ctx, gatewayID)
 	if svcErr != nil {
@@ -591,6 +622,22 @@ func (s *versionService) Revert(ctx context.Context, gatewayID string,
 		}
 	}
 	return s.write(ctx, gw, target, options)
+}
+
+// publishGatewayEvent publishes the audit event of an attempt to apply a version to the gateway with
+// gatewayID, or to revert it, once the attempt is over and what it recorded is committed. A dry run
+// changes nothing and is not recorded. An attempt that fails after the gateway took part of its import
+// is recorded as failed although the gateway may hold some of it: a known limitation.
+func (s *versionService) publishGatewayEvent(ctx context.Context, name string, action audit.Action,
+	gatewayID string, dryRun bool, svcErr *tidcommon.ServiceError) {
+	if dryRun {
+		return
+	}
+	// A failed attempt keeps the ID the caller asked for, even one that matches no gateway, as forensic
+	// evidence of what was probed; the payload caps it and the sink escapes it.
+	target := audit.Ref{Type: audit.TargetTypeGateway, ID: gatewayID}
+	eventbus.TryPublish(ctx, s.bus,
+		eventbus.NewEvent(ctx, name).With(audit.ChangePayload(ctx, target, action, svcErr)))
 }
 
 func (s *versionService) Forget(ctx context.Context, gatewayID string) {
