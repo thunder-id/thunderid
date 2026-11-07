@@ -108,6 +108,18 @@ func (suite *CompositeRoleStoreTestSuite) TestGetRoleListByOUID_DBStoreError() {
 	suite.Nil(roles)
 }
 
+// Only database assignments can be removed, so the removed set comes from the database store alone.
+func (suite *CompositeRoleStoreTestSuite) TestDeleteAssignmentsByRoleID_RemovesFromTheDBStoreOnly() {
+	removed := []RoleAssignment{{ID: "user1", Type: assigneeTypeEntity}}
+	suite.mockDBStore.On("DeleteAssignmentsByRoleID", mock.Anything, "role1").Return(removed, nil).Once()
+
+	got, err := suite.store.DeleteAssignmentsByRoleID(context.Background(), "role1")
+
+	suite.NoError(err)
+	suite.Equal(removed, got)
+	suite.mockFileStore.AssertNotCalled(suite.T(), "DeleteAssignmentsByRoleID", mock.Anything, mock.Anything)
+}
+
 func (suite *CompositeRoleStoreTestSuite) TestGetRoleAssignmentsCount_Deduplicates() {
 	dbAssignments := []RoleAssignment{
 		{ID: "user1", Type: assigneeTypeEntity},

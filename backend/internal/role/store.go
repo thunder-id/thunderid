@@ -38,7 +38,7 @@ type roleStoreInterface interface {
 	GetRoleAssignmentsCountByType(ctx context.Context, id, ouID string, assigneeType string) (int, error)
 	UpdateRole(ctx context.Context, id string, role RoleUpdateDetail) error
 	DeleteRole(ctx context.Context, id string) error
-	DeleteAssignmentsByRoleID(ctx context.Context, id string) error
+	DeleteAssignmentsByRoleID(ctx context.Context, id string) ([]RoleAssignment, error)
 	DeleteAssignmentsInOU(ctx context.Context, id, ouID string) error
 	DeleteAssignmentsByAssignee(ctx context.Context, assigneeType, assigneeID string) (int64, error)
 	HasAssigneeAssignments(ctx context.Context, assigneeType, assigneeID string) (bool, error)
@@ -516,18 +516,32 @@ func (s *roleStore) DeleteRole(ctx context.Context, id string) error {
 	return nil
 }
 
-// DeleteAssignmentsByRoleID deletes all assignments for a role. Used for cascade delete.
-func (s *roleStore) DeleteAssignmentsByRoleID(ctx context.Context, id string) error {
+// DeleteAssignmentsByRoleID deletes all assignments for a role and returns the ones it removed. Used for
+// cascade delete. Run it in a transaction: the read and the delete then see the same rows, and a row
+// committed between them fails the call rather than being removed unreported.
+func (s *roleStore) DeleteAssignmentsByRoleID(ctx context.Context, id string) ([]RoleAssignment, error) {
 	dbClient, err := s.getConfigDBClient()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	_, err = dbClient.ExecuteContext(ctx, queryDeleteAllRoleAssignments, id, s.scope(ctx))
+	results, err := dbClient.QueryContext(ctx, queryGetAllRoleAssignments, id, s.scope(ctx))
 	if err != nil {
-		return fmt.Errorf("failed to delete assignments for role: %w", err)
+		return nil, fmt.Errorf("failed to read assignments for role: %w", err)
 	}
-	return nil
+	removed, err := parseAssignmentResults(results)
+	if err != nil {
+		return nil, err
+	}
+	deleted, err := dbClient.ExecuteContext(ctx, queryDeleteAllRoleAssignments, id, s.scope(ctx))
+	if err != nil {
+		return nil, fmt.Errorf("failed to delete assignments for role: %w", err)
+	}
+	if deleted > int64(len(removed)) {
+		return nil, fmt.Errorf("assignments for role changed while being deleted: read %d, deleted %d",
+			len(removed), deleted)
+	}
+	return removed, nil
 }
 
 // DeleteAssignmentsInOU deletes the assignments made in one organization unit for a role.

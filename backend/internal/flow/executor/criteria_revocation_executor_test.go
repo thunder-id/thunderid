@@ -85,6 +85,131 @@ func (s *CriteriaRevocationExecutorTestSuite) TestAdvanceCutoff_AdvancesTheCutof
 	s.True(recorded.After(planCutoff), "advancing the cutoff must not reuse the plan's")
 }
 
+// roleDeletionPostContext is the post flow of a role deletion, handed the holders the delete removed.
+func roleDeletionPostContext(t *testing.T, plan revocationPlan, removedHolders string) *providers.NodeContext {
+	ctx := withRevocationPlan(t, ExecutorModeAdvanceCutoff, plan)
+	ctx.FlowType = providers.FlowTypeSystem
+	ctx.UserInputs = map[string]string{revocationInputRole: testRoleID}
+	if removedHolders != "" {
+		ctx.UserInputs[revocationInputRemovedHolders] = removedHolders
+	}
+	return ctx
+}
+
+// recordBatch makes the revoker record the criteria of the batch it is handed.
+func recordBatch(revoker *revocationmock.CriteriaRevokerInterfaceMock) *[]revocation.Criterion {
+	recorded := &[]revocation.Criterion{}
+	revoker.On("RevokeCriteriaBatch", mock.Anything, mock.Anything).
+		Run(func(args mock.Arguments) {
+			for _, row := range args.Get(1).([]revocation.CriteriaRevocation) {
+				*recorded = append(*recorded, row.Criterion)
+			}
+		}).Return(nil).Once()
+	return recorded
+}
+
+func holderCriterion(entityID string) revocation.Criterion {
+	return revocation.Criterion{
+		Type:  revocation.CriterionTypeEntityScope,
+		Value: revocation.EntityScopeCriterionValue(entityID, testCaliforniaAud, testLicenceScope),
+	}
+}
+
+func roleDeletionPlanWithHolderScopes() revocationPlan {
+	plan := roleDeletionPlan()
+	plan.HolderScopes = []revocation.AudienceScope{{Audience: testCaliforniaAud, Scope: testLicenceScope}}
+	return plan
+}
+
+// A holder assigned after the pre flow planned the revocation is revoked once the delete removes it.
+func (s *CriteriaRevocationExecutorTestSuite) TestAdvanceCutoff_RevokesAHolderAddedAfterThePlan() {
+	revoker := revocationmock.NewCriteriaRevokerInterfaceMock(s.T())
+	recorded := recordBatch(revoker)
+
+	resp, err := newCriteriaRevocationExecutor(s.factory, revoker).Execute(roleDeletionPostContext(s.T(),
+		roleDeletionPlanWithHolderScopes(), `["`+testAssigneeID+`","`+testMemberID+`"]`))
+
+	s.Require().NoError(err)
+	s.Equal(providers.ExecComplete, resp.Status)
+	s.Equal([]revocation.Criterion{holderCriterion(testAssigneeID), holderCriterion(testMemberID)}, *recorded)
+}
+
+// A role that had no holder when the plan was made still revokes the one assigned before the delete.
+func (s *CriteriaRevocationExecutorTestSuite) TestAdvanceCutoff_RevokesAHolderOfARoleThatHadNone() {
+	revoker := revocationmock.NewCriteriaRevokerInterfaceMock(s.T())
+	recorded := recordBatch(revoker)
+	plan := roleDeletionPlanWithHolderScopes()
+	plan.Criteria = nil
+	plan.NothingToRevoke = true
+
+	resp, err := newCriteriaRevocationExecutor(s.factory, revoker).Execute(roleDeletionPostContext(s.T(),
+		plan, `["`+testMemberID+`"]`))
+
+	s.Require().NoError(err)
+	s.Equal(providers.ExecComplete, resp.Status)
+	s.Equal([]revocation.Criterion{holderCriterion(testMemberID)}, *recorded)
+}
+
+// When nobody was assigned after the plan, the post flow writes the plan's criteria and nothing more.
+func (s *CriteriaRevocationExecutorTestSuite) TestAdvanceCutoff_AddsNothingWhenNoHolderWasAdded() {
+	for name, removed := range map[string]string{
+		"every removed holder planned": `["` + testAssigneeID + `"]`,
+		"no removed holder":            "",
+	} {
+		s.Run(name, func() {
+			revoker := revocationmock.NewCriteriaRevokerInterfaceMock(s.T())
+			recorded := recordBatch(revoker)
+
+			resp, err := newCriteriaRevocationExecutor(s.factory, revoker).Execute(roleDeletionPostContext(s.T(),
+				roleDeletionPlanWithHolderScopes(), removed))
+
+			s.Require().NoError(err)
+			s.Equal(providers.ExecComplete, resp.Status)
+			s.Equal([]revocation.Criterion{holderCriterion(testAssigneeID)}, *recorded)
+		})
+	}
+}
+
+// A role deletion plan with no scopes and no holder added writes nothing.
+func (s *CriteriaRevocationExecutorTestSuite) TestAdvanceCutoff_NothingToRevokeStaysEmpty() {
+	revoker := revocationmock.NewCriteriaRevokerInterfaceMock(s.T())
+	plan := roleDeletionPlan()
+	plan.Criteria = nil
+	plan.NothingToRevoke = true
+
+	resp, err := newCriteriaRevocationExecutor(s.factory, revoker).Execute(roleDeletionPostContext(s.T(),
+		plan, `["`+testMemberID+`"]`))
+
+	s.Require().NoError(err)
+	s.Equal(providers.ExecComplete, resp.Status)
+	revoker.AssertNotCalled(s.T(), "RevokeCriteriaBatch", mock.Anything, mock.Anything)
+}
+
+// Only a system flow, whose inputs come from the service, may name removed holders.
+func (s *CriteriaRevocationExecutorTestSuite) TestAdvanceCutoff_AdministrationFlowCannotNameHolders() {
+	revoker := revocationmock.NewCriteriaRevokerInterfaceMock(s.T())
+	recorded := recordBatch(revoker)
+	ctx := roleDeletionPostContext(s.T(), roleDeletionPlanWithHolderScopes(), `["`+testMemberID+`"]`)
+	ctx.FlowType = providers.FlowTypeAdministration
+
+	resp, err := newCriteriaRevocationExecutor(s.factory, revoker).Execute(ctx)
+
+	s.Require().NoError(err)
+	s.Equal(providers.ExecComplete, resp.Status)
+	s.Equal([]revocation.Criterion{holderCriterion(testAssigneeID)}, *recorded)
+}
+
+func (s *CriteriaRevocationExecutorTestSuite) TestAdvanceCutoff_MalformedRemovedHoldersFailTheNode() {
+	revoker := revocationmock.NewCriteriaRevokerInterfaceMock(s.T())
+
+	resp, err := newCriteriaRevocationExecutor(s.factory, revoker).Execute(roleDeletionPostContext(s.T(),
+		roleDeletionPlanWithHolderScopes(), `not-json`))
+
+	s.Nil(resp)
+	s.ErrorContains(err, "failed to decode the removed holders")
+	revoker.AssertNotCalled(s.T(), "RevokeCriteriaBatch", mock.Anything, mock.Anything)
+}
+
 func (s *CriteriaRevocationExecutorTestSuite) TestAdvanceCutoff_SkipsTerminalPlans() {
 	revoker := revocationmock.NewCriteriaRevokerInterfaceMock(s.T())
 

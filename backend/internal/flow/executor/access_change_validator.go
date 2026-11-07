@@ -28,8 +28,11 @@ type accessChange struct {
 	assigneeInput  string
 	argInputs      []string
 	deploymentWide bool
-	notAllowed     tidcommon.ServiceError
-	validate       func(e *accessChangeValidator, ctx context.Context, inputs map[string]string) (
+	// recordsHolderScopes keeps the revoked scopes on the plan, for a change whose holders may grow
+	// before it commits.
+	recordsHolderScopes bool
+	notAllowed          tidcommon.ServiceError
+	validate            func(e *accessChangeValidator, ctx context.Context, inputs map[string]string) (
 		*revocation.AccessRevocationTarget, *tidcommon.ServiceError, error)
 }
 
@@ -49,11 +52,12 @@ var accessChangesByMode = map[string]accessChange{
 		validate:      (*accessChangeValidator).validateRoleAssignmentRemoval,
 	},
 	ExecutorModeRoleDeletion: {
-		reason:      revocation.ReasonRoleDeleted,
-		inputs:      []providers.Input{requiredTextInput(revocationInputRole)},
-		targetInput: revocationInputRole,
-		notAllowed:  ErrRoleDeletionNotAllowed,
-		validate:    (*accessChangeValidator).validateRoleDeletion,
+		reason:              revocation.ReasonRoleDeleted,
+		inputs:              []providers.Input{requiredTextInput(revocationInputRole)},
+		targetInput:         revocationInputRole,
+		recordsHolderScopes: true,
+		notAllowed:          ErrRoleDeletionNotAllowed,
+		validate:            (*accessChangeValidator).validateRoleDeletion,
 	},
 	ExecutorModeRolePermissionRemoval: {
 		reason: revocation.ReasonRolePermissionRemoved,
@@ -208,6 +212,9 @@ func (e *accessChangeValidator) buildPlan(change accessChange, inputs map[string
 		}
 	}
 
+	if change.recordsHolderScopes && target != nil {
+		plan.HolderScopes = target.Scopes
+	}
 	if target == nil || len(target.Scopes) == 0 ||
 		(!change.deploymentWide && len(target.EntityIDs) == 0) {
 		plan.NothingToRevoke = true
