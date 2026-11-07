@@ -154,7 +154,7 @@ const subtitle = (label: string, id?: string): EmbeddedFlowComponent =>
 const textInput = (
   ref: string,
   label: string,
-  opts?: {required?: boolean; placeholder?: string; id?: string},
+  opts?: {required?: boolean; placeholder?: string; id?: string; validation?: {type: string; value: unknown}[]},
 ): EmbeddedFlowComponent =>
   ({
     type: 'TEXT_INPUT',
@@ -163,6 +163,7 @@ const textInput = (
     required: opts?.required ?? false,
     placeholder: opts?.placeholder ?? '',
     id: opts?.id ?? `input-${ref}`,
+    validation: opts?.validation,
   }) as unknown as EmbeddedFlowComponent;
 
 /** Build an email input component */
@@ -184,7 +185,7 @@ const emailInput = (
 const phoneInput = (
   ref: string,
   label: string,
-  opts?: {required?: boolean; placeholder?: string; id?: string},
+  opts?: {required?: boolean; placeholder?: string; id?: string; validation?: {type: string; value: unknown}[]},
 ): EmbeddedFlowComponent =>
   ({
     type: 'PHONE_INPUT',
@@ -193,6 +194,7 @@ const phoneInput = (
     required: opts?.required ?? false,
     placeholder: opts?.placeholder ?? '',
     id: opts?.id ?? `phone-${ref}`,
+    validation: opts?.validation,
   }) as unknown as EmbeddedFlowComponent;
 
 /** Build a password input component */
@@ -1038,6 +1040,111 @@ describe('UserAddPage', () => {
       await userEvent.type(input, '+1234567890');
 
       expect(mockHandleInputChange).toHaveBeenCalled();
+    });
+
+    it('should reject a mobile number without a country code', async () => {
+      mockInviteUserRenderProps.isValid = true;
+      mockInviteUserRenderProps.components = [
+        heading('Details'),
+        block([phoneInput('mobile_number', 'Mobile Number'), submitAction('Create', {variant: 'PRIMARY'})]),
+      ];
+
+      render(<UserAddPage />);
+
+      await userEvent.type(screen.getByLabelText(/mobile number/i), '0772455221');
+
+      expect(await screen.findByText(/with its country code/i)).toBeInTheDocument();
+      expect(screen.getByRole('button', {name: /create/i})).toBeDisabled();
+    });
+
+    it('should accept a mobile number in international format', async () => {
+      mockInviteUserRenderProps.isValid = true;
+      mockInviteUserRenderProps.components = [
+        heading('Details'),
+        block([phoneInput('mobile_number', 'Mobile Number'), submitAction('Create', {variant: 'PRIMARY'})]),
+      ];
+
+      render(<UserAddPage />);
+
+      await userEvent.type(screen.getByLabelText(/mobile number/i), '+94772455221');
+
+      await waitFor(() => expect(screen.getByRole('button', {name: /create/i})).not.toBeDisabled());
+      expect(screen.queryByText(/with its country code/i)).not.toBeInTheDocument();
+    });
+
+    it('should accept a cleared optional mobile number', async () => {
+      mockInviteUserRenderProps.isValid = true;
+      mockInviteUserRenderProps.components = [
+        heading('Details'),
+        block([phoneInput('mobile_number', 'Mobile Number'), submitAction('Create', {variant: 'PRIMARY'})]),
+      ];
+
+      render(<UserAddPage />);
+
+      const input = screen.getByLabelText(/mobile number/i);
+      await userEvent.type(input, '077');
+      await userEvent.clear(input);
+
+      await waitFor(() => expect(screen.getByRole('button', {name: /create/i})).not.toBeDisabled());
+      expect(screen.queryByText(/with its country code/i)).not.toBeInTheDocument();
+    });
+
+    it('should explain the country code when the flow carries the default mobile regex', async () => {
+      mockInviteUserRenderProps.isValid = true;
+      mockInviteUserRenderProps.components = [
+        heading('Details'),
+        block([
+          phoneInput('mobile_number', 'Mobile Number', {validation: [{type: 'regex', value: '^\\+[1-9]\\d{1,14}$'}]}),
+          submitAction('Create', {variant: 'PRIMARY'}),
+        ]),
+      ];
+
+      render(<UserAddPage />);
+
+      await userEvent.type(screen.getByLabelText(/mobile number/i), '0772455221');
+
+      expect(await screen.findByText(/with its country code/i)).toBeInTheDocument();
+    });
+
+    it('should skip a regex the browser cannot read as the server does', async () => {
+      mockInviteUserRenderProps.isValid = true;
+      mockInviteUserRenderProps.components = [
+        heading('Details'),
+        block([
+          textInput('code', 'Code', {validation: [{type: 'regex', value: '\\A[a-z]+\\z'}]}),
+          submitAction('Create', {variant: 'PRIMARY'}),
+        ]),
+      ];
+
+      render(<UserAddPage />);
+
+      await userEvent.type(screen.getByLabelText(/code/i), 'abc');
+
+      await waitFor(() => expect(screen.getByRole('button', {name: /create/i})).not.toBeDisabled());
+      expect(screen.queryByText(/format is invalid/i)).not.toBeInTheDocument();
+    });
+
+    it('should check an input against the regex the flow declares for it', async () => {
+      mockInviteUserRenderProps.isValid = true;
+      mockInviteUserRenderProps.components = [
+        heading('Details'),
+        block([
+          phoneInput('mobile_number', 'Mobile Number', {validation: [{type: 'regex', value: '^0\\d{9}$'}]}),
+          submitAction('Create', {variant: 'PRIMARY'}),
+        ]),
+      ];
+
+      render(<UserAddPage />);
+
+      const input = screen.getByLabelText(/mobile number/i);
+      await userEvent.type(input, '+94772455221');
+
+      expect(await screen.findByText('Mobile Number format is invalid.')).toBeInTheDocument();
+
+      await userEvent.clear(input);
+      await userEvent.type(input, '0772455221');
+
+      await waitFor(() => expect(screen.getByRole('button', {name: /create/i})).not.toBeDisabled());
     });
 
     it('should call handleInputChange when typing in an EMAIL_INPUT', async () => {

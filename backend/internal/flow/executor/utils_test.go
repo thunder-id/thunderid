@@ -101,6 +101,8 @@ func (s *UtilsTestSuite) TestInputTypeForSchemaType() {
 		{"Boolean attribute is prompted as a checkbox", entitytypemodel.TypeBoolean, providers.InputTypeBoolean},
 		{"Number attribute is prompted as a number input", entitytypemodel.TypeNumber, providers.InputTypeNumber},
 		{"String attribute is prompted as text", entitytypemodel.TypeString, providers.InputTypeText},
+		{"Email attribute is prompted as an email input", entitytypemodel.TypeEmail, providers.InputTypeEmail},
+		{"Mobile attribute is prompted as a phone input", entitytypemodel.TypeMobile, providers.InputTypePhone},
 		{"Unknown type falls back to text", "geo", providers.InputTypeText},
 		{"Empty type falls back to text", "", providers.InputTypeText},
 	}
