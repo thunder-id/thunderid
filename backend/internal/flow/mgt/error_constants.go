@@ -595,3 +595,13 @@ var (
 	errFlowNotFound    = errors.New("flow not found")
 	errVersionNotFound = errors.New("version not found")
 )
+
+// errNilEventBus is returned when the service is initialized without the event bus it audits on.
+var errNilEventBus = errors.New("the flow management service needs an event bus")
+
+// errFlowNotFoundNoop is returned by deleteFlow once it has removed what was left of the sharing of a flow
+// that does not exist. DeleteFlow turns it into a success, so it never reaches a caller.
+var errFlowNotFoundNoop = &tidcommon.ServiceError{
+	Type: tidcommon.ClientErrorType,
+	Code: ErrorFlowNotFound.Code,
+}

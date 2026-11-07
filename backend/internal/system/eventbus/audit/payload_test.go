@@ -150,6 +150,22 @@ func (s *PayloadTestSuite) TestValidate() {
 		{"an application detail", EventApplicationUpdate,
 			NewPayload(ctx, testApplication, ActionUpdate, OutcomeSucceeded).
 				WithDetails(map[string]string{"client_secret": "s3cr3t"}), errDetailNotAllowed},
+		{"a flow create", EventFlowCreate,
+			NewPayload(ctx, Ref{Type: TargetTypeFlow, ID: "flow-1"}, ActionCreate, OutcomeSucceeded), nil},
+		{"a flow update", EventFlowUpdate,
+			NewPayload(ctx, Ref{Type: TargetTypeFlow, ID: "flow-1"}, ActionUpdate, OutcomeFailed("flm_1003")), nil},
+		{"a flow delete", EventFlowDelete,
+			NewPayload(ctx, Ref{Type: TargetTypeFlow, ID: "flow-1"}, ActionDelete, OutcomeSucceeded), nil},
+		{"a flow restore", EventFlowRestore,
+			NewPayload(ctx, Ref{Type: TargetTypeFlow, ID: "flow-1"}, ActionRestore, OutcomeFailed("flm_1008")), nil},
+		{"a flow detail", EventFlowUpdate,
+			NewPayload(ctx, Ref{Type: TargetTypeFlow, ID: "flow-1"}, ActionUpdate, OutcomeSucceeded).
+				WithDetails(map[string]string{"name": "Sign In"}), errDetailNotAllowed},
+		{"a server config update", EventServerConfigUpdate,
+			NewPayload(ctx, Ref{Type: TargetTypeServerConfig, ID: "cors"}, ActionUpdate, OutcomeSucceeded), nil},
+		{"a server config value", EventServerConfigUpdate,
+			NewPayload(ctx, Ref{Type: TargetTypeServerConfig, ID: "cors"}, ActionUpdate, OutcomeSucceeded).
+				WithDetails(map[string]string{"value": "https://app.example.com"}), errDetailNotAllowed},
 		{"an event that is not audited", "user.rename",
 			NewPayload(ctx, testTarget, ActionUpdate, OutcomeSucceeded), errUnknownEvent},
 		{"a detail the event does not allow", EventUserUpdate,

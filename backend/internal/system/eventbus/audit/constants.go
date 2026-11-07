@@ -26,6 +26,8 @@ const (
 	ActionAdd Action = "add"
 	// ActionRemove takes a principal off a resource, as a role assignee or a group member.
 	ActionRemove Action = "remove"
+	// ActionRestore brings back an earlier version of a resource.
+	ActionRestore Action = "restore"
 )
 
 // ActorType is the kind of principal that acted. The set is open.

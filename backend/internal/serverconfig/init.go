@@ -9,6 +9,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/cache"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
@@ -17,15 +18,19 @@ import (
 // section injected at construction. In declarative and composite modes it loads the read-only
 // declarative resources into the file store before serving. It returns the service and the resource
 // exporter for registration at the composition root. observability is optional; when set, each write
-// is published as an administration event.
+// is published as an administration event. bus is required: the service publishes the audit event of
+// every section write on it.
 func Initialize(mux *http.ServeMux, cacheManager cache.CacheManagerInterface,
-	handlers map[ConfigName]ServerConfigHandlerInterface, observability providers.ObservabilityProvider) (
-	ServerConfigService, declarativeresource.ResourceExporter, error) {
+	handlers map[ConfigName]ServerConfigHandlerInterface, observability providers.ObservabilityProvider,
+	bus eventbus.EventBusInterface) (ServerConfigService, declarativeresource.ResourceExporter, error) {
+	if bus == nil {
+		return nil, nil, errNilEventBus
+	}
 	store, err := initializeStore(cacheManager, handlers)
 	if err != nil {
 		return nil, nil, err
 	}
-	service := newServerConfigService(store, handlers, observability)
+	service := newServerConfigService(store, handlers, observability, bus)
 
 	handler := newServerConfigHandler(service)
 	registerRoutes(mux, handler)

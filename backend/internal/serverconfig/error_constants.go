@@ -4,6 +4,8 @@
 package serverconfig
 
 import (
+	"errors"
+
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
@@ -66,3 +68,6 @@ var (
 		},
 	}
 )
+
+// errNilEventBus is returned when the service is initialized without the event bus it audits on.
+var errNilEventBus = errors.New("the server config service needs an event bus")

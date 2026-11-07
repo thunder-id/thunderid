@@ -96,7 +96,7 @@ func (refuse) Update(any) (any, error) { return nil, errors.New("no") }
 
 func newUpdateService(store *memStore) ServerConfigService {
 	return newServerConfigService(store, map[ConfigName]ServerConfigHandlerInterface{ConfigNameCORS: mapHandler{}},
-		nil)
+		nil, discardingBus{})
 }
 
 // Updates to different keys of one section, from two nodes at once, all survive: one that loses the
@@ -139,7 +139,7 @@ func TestUpdateRefusals(t *testing.T) {
 	ctx := context.Background()
 	busy := &busyStore{memStore: memStore{layers: map[ConfigName]json.RawMessage{}}}
 	svc := newServerConfigService(busy,
-		map[ConfigName]ServerConfigHandlerInterface{ConfigNameCORS: mapHandler{}}, nil)
+		map[ConfigName]ServerConfigHandlerInterface{ConfigNameCORS: mapHandler{}}, nil, discardingBus{})
 	assert.Equal(t, &ErrorConfigWriteConflict, svc.UpdateConfig(ctx, ConfigNameCORS, setKey{"a", "1"}))
 	assert.Equal(t, maxConfigUpdateAttempts, busy.writes)
 
@@ -153,7 +153,7 @@ func TestUpdateRefusals(t *testing.T) {
 
 	failing := &failingStore{}
 	svc = newServerConfigService(failing,
-		map[ConfigName]ServerConfigHandlerInterface{ConfigNameCORS: mapHandler{}}, nil)
+		map[ConfigName]ServerConfigHandlerInterface{ConfigNameCORS: mapHandler{}}, nil, discardingBus{})
 	assert.Equal(t, &common.InternalServerError, svc.UpdateConfig(ctx, ConfigNameCORS, setKey{"a", "1"}))
 }
 
@@ -176,7 +176,7 @@ func (f *failingStore) ReplaceServerConfigIf(context.Context, ServerConfig, json
 func TestAnUpdateStopsWaitingWhenItsRequestEnds(t *testing.T) {
 	busy := &busyStore{memStore: memStore{layers: map[ConfigName]json.RawMessage{}}}
 	svc := newServerConfigService(busy,
-		map[ConfigName]ServerConfigHandlerInterface{ConfigNameCORS: mapHandler{}}, nil)
+		map[ConfigName]ServerConfigHandlerInterface{ConfigNameCORS: mapHandler{}}, nil, discardingBus{})
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 

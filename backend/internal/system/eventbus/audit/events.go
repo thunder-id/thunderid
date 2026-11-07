@@ -19,6 +19,14 @@ const (
 	EventApplicationUpdate = "application.update"
 	// EventApplicationDelete names an attempt to delete an application.
 	EventApplicationDelete = "application.delete"
+	// EventFlowCreate names an attempt to create a flow.
+	EventFlowCreate = "flow.create"
+	// EventFlowUpdate names an attempt to change a flow.
+	EventFlowUpdate = "flow.update"
+	// EventFlowDelete names an attempt to delete a flow.
+	EventFlowDelete = "flow.delete"
+	// EventFlowRestore names an attempt to make an earlier version of a flow its current one.
+	EventFlowRestore = "flow.restore"
 	// EventRoleCreate names an attempt to create a role.
 	EventRoleCreate = "role.create"
 	// EventRoleUpdate names an attempt to change a role.
@@ -39,6 +47,8 @@ const (
 	EventGroupMemberAdd = "group.member.add"
 	// EventGroupMemberRemove names an attempt to remove members from a group.
 	EventGroupMemberRemove = "group.member.remove"
+	// EventServerConfigUpdate names an attempt to change a section of the server configuration.
+	EventServerConfigUpdate = "server_config.update"
 )
 
 const (
@@ -46,12 +56,17 @@ const (
 	TargetTypeUser = "user"
 	// TargetTypeApplication is the target type of an event about an application.
 	TargetTypeApplication = "application"
+	// TargetTypeFlow is the target type of an event about a flow.
+	TargetTypeFlow = "flow"
 	// TargetTypeAgent is the target type of an event about an agent.
 	TargetTypeAgent = "agent"
 	// TargetTypeRole is the target type of an event about a role.
 	TargetTypeRole = "role"
 	// TargetTypeGroup is the target type of an event about a group.
 	TargetTypeGroup = "group"
+	// TargetTypeServerConfig is the target type of an event about a section of the server configuration,
+	// identified by the section name.
+	TargetTypeServerConfig = "server_config"
 )
 
 // principalTargetTypes maps the type a role assignment or a group membership names its principal by to
@@ -74,6 +89,11 @@ var auditedEvents = map[string][]string{
 	EventApplicationUpdate: nil,
 	EventApplicationDelete: nil,
 
+	EventFlowCreate:  nil,
+	EventFlowUpdate:  nil,
+	EventFlowDelete:  nil,
+	EventFlowRestore: nil,
+
 	EventRoleCreate:           nil,
 	EventRoleUpdate:           nil,
 	EventRoleDelete:           nil,
@@ -85,4 +105,6 @@ var auditedEvents = map[string][]string{
 	EventGroupDelete:       nil,
 	EventGroupMemberAdd:    nil,
 	EventGroupMemberRemove: nil,
+
+	EventServerConfigUpdate: nil,
 }
