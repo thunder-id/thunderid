@@ -530,6 +530,36 @@ func (s *SystemAuthzTestSuite) TestGetAccessibleResources_InheritancePolicy_Retu
 	assert.ElementsMatch(s.T(), []string{"child-ou", "parent-ou", "root-ou"}, result.IDs)
 }
 
+func (s *SystemAuthzTestSuite) TestAgentTypeReadsReachEveryOU() {
+	resolver := &stubOUHierarchyResolver{isAncestorResult: false}
+	s.service.SetOUHierarchyResolver(resolver)
+	defer s.service.SetOUHierarchyResolver(nil)
+
+	ctx := buildCtxWithOU("system:agenttype", "other-ou")
+	actionCtx := &ActionContext{OUID: "owner-ou", ResourceType: security.ResourceTypeAgentType}
+
+	// A caller in an unrelated OU reads the deployment's agent type.
+	allowed, svcErr := s.service.IsActionAllowed(ctx, security.ActionReadAgentType, actionCtx)
+	s.True(allowed)
+	s.Nil(svcErr)
+
+	// It does not write it.
+	allowed, svcErr = s.service.IsActionAllowed(ctx, security.ActionUpdateAgentType, actionCtx)
+	s.False(allowed)
+	s.Nil(svcErr)
+
+	result, svcErr := s.service.GetAccessibleResources(
+		ctx, security.ActionListAgentTypes, security.ResourceTypeAgentType)
+	s.Nil(svcErr)
+	s.True(result.AllAllowed)
+
+	// The read still needs its permission.
+	allowed, svcErr = s.service.IsActionAllowed(
+		buildCtxWithOU("system:usertype", "owner-ou"), security.ActionReadAgentType, actionCtx)
+	s.False(allowed)
+	s.Nil(svcErr)
+}
+
 func (s *SystemAuthzTestSuite) TestSetOUHierarchyResolver_NilResolver_FallsBackToMembershipPolicy() {
 	// No resolver set (nil) → ouMembershipPolicy is used, same-OU access only.
 	ctx := buildCtxWithOU("system:usertype:view", "ou1")

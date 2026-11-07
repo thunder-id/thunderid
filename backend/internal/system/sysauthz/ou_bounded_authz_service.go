@@ -19,6 +19,7 @@ import (
 //   - A caller holding the root system permission reaches every existing organization unit.
 //   - User type reads also reach the ancestors of the caller's organization unit, through the
 //     inheritance policy.
+//   - Agent type reads reach every organization unit, since a deployment has a single agent type.
 //   - Any other action naming no organization unit is not checked against one.
 type ouBoundedAuthzService struct {
 	*systemAuthorizationService

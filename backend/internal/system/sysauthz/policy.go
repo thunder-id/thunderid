@@ -152,6 +152,14 @@ var inheritanceReadActions = map[security.Action]bool{
 	security.ActionListUserTypes: true,
 }
 
+// deploymentWideReadActions are the reads of a resource every organization unit depends on, so no
+// organization unit policy bounds them. A deployment has a single agent type, which the agents of every
+// organization unit take.
+var deploymentWideReadActions = map[security.Action]bool{
+	security.ActionReadAgentType:  true,
+	security.ActionListAgentTypes: true,
+}
+
 // isInheritanceEligible returns true when the action is registered for
 // inheritance-based policy evaluation.
 func isInheritanceEligible(action security.Action) bool {
@@ -159,9 +167,13 @@ func isInheritanceEligible(action security.Action) bool {
 }
 
 // selectPolicies returns the effective policy chain for the given action.
+// A deployment-wide read has no chain, so it is allowed once its permission check passes.
 // When a pre-built inheritancePolicy is available and the action is eligible,
 // that policy is used instead of the default globalPolicies.
 func selectPolicies(action security.Action, policies *policies) []authorizationPolicy {
+	if deploymentWideReadActions[action] {
+		return nil
+	}
 	if policies.inheritancePolicy != nil && isInheritanceEligible(action) {
 		return []authorizationPolicy{policies.inheritancePolicy}
 	}

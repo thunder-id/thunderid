@@ -486,6 +486,7 @@ func TestIsInheritanceEligible(t *testing.T) {
 		{"EntityType_Create_NotEligible", security.ActionCreateUserType, false},
 		{"EntityType_Update_NotEligible", security.ActionUpdateUserType, false},
 		{"EntityType_Delete_NotEligible", security.ActionDeleteUserType, false},
+		{"AgentType_Read_NotEligible", security.ActionReadAgentType, false},
 		{"OU_Read_NotEligible", security.ActionReadOU, false},
 		{"User_List_NotEligible", security.ActionListUsers, false},
 	}
@@ -507,6 +508,30 @@ func TestSelectPolicies_InheritanceEligible_UsesInheritancePolicy(t *testing.T) 
 	assert.Len(t, chain, 1)
 	_, ok := chain[0].(*ouInheritancePolicy)
 	assert.True(t, ok, "expected ouInheritancePolicy for inheritance-eligible action")
+}
+
+func TestSelectPolicies_AgentTypes(t *testing.T) {
+	membership := &ouMembershipPolicy{}
+	p := &policies{
+		membershipPolicy:  membership,
+		inheritancePolicy: &ouInheritancePolicy{resolver: &stubOUHierarchyResolver{}},
+	}
+	tests := []struct {
+		name   string
+		action security.Action
+		want   []authorizationPolicy
+	}{
+		{"Read_NoPolicy", security.ActionReadAgentType, nil},
+		{"List_NoPolicy", security.ActionListAgentTypes, nil},
+		{"Create_Membership", security.ActionCreateAgentType, []authorizationPolicy{membership}},
+		{"Update_Membership", security.ActionUpdateAgentType, []authorizationPolicy{membership}},
+		{"Delete_Membership", security.ActionDeleteAgentType, []authorizationPolicy{membership}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, selectPolicies(tt.action, p))
+		})
+	}
 }
 
 func TestSelectPolicies_NilInheritance_UsesMembershipPolicy(t *testing.T) {
