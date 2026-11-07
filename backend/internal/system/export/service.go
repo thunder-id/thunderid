@@ -16,6 +16,8 @@ import (
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
+	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
 
@@ -93,6 +95,9 @@ func (a *varNameAllocator) nameFor(resourceName string) string {
 // ExportServiceInterface defines the interface for the export service.
 type ExportServiceInterface interface {
 	ExportResources(ctx context.Context, request *ExportRequest) (*ExportResponse, *tidcommon.ServiceError)
+	// ReadResources answers as ExportResources does without recording an export, for a caller that
+	// reads the configuration on the deployment's behalf, such as a gateway capturing a version.
+	ReadResources(ctx context.Context, request *ExportRequest) (*ExportResponse, *tidcommon.ServiceError)
 	// PlaceholderValues returns the values an export of one resource would refer to by name, as
 	// variables and secrets keyed by the name the export writes, without exporting anything.
 	//
@@ -107,11 +112,12 @@ type ExportServiceInterface interface {
 type exportService struct {
 	parameterizer parameterizerInterface
 	registry      *resourceExporterRegistry
+	bus           eventbus.EventBusInterface
 }
 
 // newExportService creates a new instance of exportService.
 func newExportService(
-	exporters []declarativeresource.ResourceExporter, param parameterizerInterface,
+	exporters []declarativeresource.ResourceExporter, param parameterizerInterface, bus eventbus.EventBusInterface,
 ) ExportServiceInterface {
 	// Create registry and register all exporters
 	registry := newResourceExporterRegistry()
@@ -122,11 +128,32 @@ func newExportService(
 	return &exportService{
 		parameterizer: param,
 		registry:      registry,
+		bus:           bus,
 	}
 }
 
-// ExportResources exports the specified resources as YAML files.
+// ExportResources exports the specified resources as YAML files. The request is recorded once, as failed
+// when any resource it names could not be exported; what it names and what it returns are never recorded.
 func (es *exportService) ExportResources(
+	ctx context.Context, request *ExportRequest,
+) (*ExportResponse, *tidcommon.ServiceError) {
+	response, svcErr := es.exportResources(ctx, request)
+	itemFailed := response != nil && response.Summary != nil && len(response.Summary.Errors) > 0
+	target := audit.Ref{Type: audit.TargetTypeConfiguration}
+	eventbus.TryPublish(ctx, es.bus, eventbus.NewEvent(ctx, audit.EventConfigurationExport).With(
+		audit.BatchPayload(ctx, target, audit.ActionExport, svcErr, itemFailed)))
+	return response, svcErr
+}
+
+// ReadResources exports the specified resources as YAML files without publishing an audit event.
+func (es *exportService) ReadResources(
+	ctx context.Context, request *ExportRequest,
+) (*ExportResponse, *tidcommon.ServiceError) {
+	return es.exportResources(ctx, request)
+}
+
+// exportResources exports the specified resources as YAML files without publishing an audit event.
+func (es *exportService) exportResources(
 	ctx context.Context, request *ExportRequest,
 ) (*ExportResponse, *tidcommon.ServiceError) {
 	if request == nil {

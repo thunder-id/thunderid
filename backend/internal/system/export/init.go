@@ -8,6 +8,7 @@ import (
 	"net/http"
 
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
 )
 
@@ -16,8 +17,13 @@ import (
 // style is the plane's, and is why there are two call sites rather than a configured value: a data
 // plane holds its own configuration and exports it with the values alongside, while a control plane
 // holds only references to values a data plane keeps and has nothing to put beside the document.
+//
+// bus is required: the service publishes the audit event of every export request on it.
 func Initialize(mux *http.ServeMux, exporters []declarativeresource.ResourceExporter,
-	style PlaceholderStyle) ExportServiceInterface {
+	style PlaceholderStyle, bus eventbus.EventBusInterface) (ExportServiceInterface, error) {
+	if bus == nil {
+		return nil, errNilEventBus
+	}
 	parameterizerInstance := newParameterizer(templatingRules{}, style)
 	for _, exporter := range exporters {
 		if writer, ok := exporter.(declarativeresource.ReferenceWriter); ok {
@@ -26,7 +32,7 @@ func Initialize(mux *http.ServeMux, exporters []declarativeresource.ResourceExpo
 	}
 
 	// Create the export service with exporters
-	exportService := newExportService(exporters, parameterizerInstance)
+	exportService := newExportService(exporters, parameterizerInstance, bus)
 
 	// Create the handler
 	exportHandler := newExportHandler(exportService)
@@ -34,7 +40,7 @@ func Initialize(mux *http.ServeMux, exporters []declarativeresource.ResourceExpo
 	// Register routes
 	registerRoutes(mux, exportHandler)
 
-	return exportService
+	return exportService, nil
 }
 
 func registerRoutes(mux *http.ServeMux, exportHandler *exportHandler) {

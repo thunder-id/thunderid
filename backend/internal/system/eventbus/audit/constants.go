@@ -18,6 +18,10 @@ type Action string
 const (
 	// ActionCreate creates a resource.
 	ActionCreate Action = "create"
+	// ActionExport reads configuration out as declarative resources.
+	ActionExport Action = "export"
+	// ActionImport writes declarative resources into the configuration.
+	ActionImport Action = "import"
 	// ActionUpdate changes a resource.
 	ActionUpdate Action = "update"
 	// ActionDelete removes a resource.
@@ -66,6 +70,8 @@ const (
 	reasonForbidden = "forbidden"
 	// reasonServerError is the reason of a service error code that cannot make a valid reason.
 	reasonServerError = "server_error"
+	// reasonItemFailed is the reason of a request that completed with at least one of its items failed.
+	reasonItemFailed = "item_failed"
 )
 
 // reasonPattern is the grammar of an outcome reason: a stable lowercase code, never free text.

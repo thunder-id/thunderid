@@ -25,6 +25,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/role"
 	"github.com/thunder-id/thunderid/internal/serverconfig"
 	"github.com/thunder-id/thunderid/internal/sharing"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
 	i18nmgt "github.com/thunder-id/thunderid/internal/system/i18n/mgt"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
 	"github.com/thunder-id/thunderid/internal/system/secretresolver"
@@ -33,7 +34,8 @@ import (
 	"github.com/thunder-id/thunderid/internal/vc/presentation"
 )
 
-// Initialize wires the importer service and registers its HTTP routes.
+// Initialize wires the importer service and registers its HTTP routes. bus is required: the service
+// publishes the audit event of every import, and of every declarative resource file it deletes, on it.
 func Initialize(
 	mux *http.ServeMux,
 	applicationService application.ApplicationServiceInterface,
@@ -62,7 +64,11 @@ func Initialize(
 	httpConnectionService connection.HTTPConnectionWriterInterface,
 	projectService ProjectAdapter,
 	references *secretresolver.Resolver,
-) ImportServiceInterface {
+	bus eventbus.EventBusInterface,
+) (ImportServiceInterface, error) {
+	if bus == nil {
+		return nil, errNilEventBus
+	}
 	service := newImportService(
 		applicationService,
 		idpService,
@@ -84,6 +90,7 @@ func Initialize(
 		serverConfigService,
 		gatewayService,
 		notifTemplateService,
+		bus,
 		authZENPDPService,
 	)
 	// Set here rather than passed to newImportService, which every test constructs without one.
@@ -96,7 +103,7 @@ func Initialize(
 
 	registerRoutes(mux, importHandler)
 
-	return service
+	return service, nil
 }
 
 func registerRoutes(mux *http.ServeMux, importHandler *importHandler) {

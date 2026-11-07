@@ -99,8 +99,8 @@ func (ts *AuditLogTestSuite) TestADeleteOfAMissingApplicationWritesNoLine() {
 	ts.Empty(ts.linesPerCall(deleted)[0], "a delete that removed nothing writes no line")
 }
 
-// An import that creates an application writes the application service's event for it and nothing
-// else: the lookup that decides between update and create writes no line.
+// An import that creates an application writes the application service's event for it, then its own:
+// the lookup that decides between update and create writes no line.
 func (ts *AuditLogTestSuite) TestAnImportWritesTheEventOfTheApplicationItCreates() {
 	ouID := ts.createOrganizationUnit("app-import")
 	appID := unusedID()
@@ -118,7 +118,7 @@ func (ts *AuditLogTestSuite) TestAnImportWritesTheEventOfTheApplicationItCreates
 	ts.Require().NoError(json.Unmarshal(body, &result))
 	ts.Require().Equal(1, result.Summary.Imported, string(body))
 
-	line := ts.linesOf(imported)[0]
+	line := ts.resourceLineOfImport(imported, map[string]string{"result": "succeeded"})
 	appRef := testutils.AuditRef{Type: "application", ID: appID}
 	ts.Equal("application.create", line.Event)
 	ts.Equal(appRef, line.Target)
@@ -127,7 +127,7 @@ func (ts *AuditLogTestSuite) TestAnImportWritesTheEventOfTheApplicationItCreates
 }
 
 // An upsert import of an existing application that the application service refuses writes the service's
-// failed update and nothing else, and leaves the application as it was. The line names no subject and
+// failed update and the import's own failed line, and leaves the application as it was. The line names no subject and
 // carries none of the imported document.
 func (ts *AuditLogTestSuite) TestAnImportOfARefusedUpdateWritesTheFailedUpdate() {
 	ouID := ts.createOrganizationUnit("app-import-refused")
@@ -170,7 +170,7 @@ func (ts *AuditLogTestSuite) TestAnImportOfARefusedUpdateWritesTheFailedUpdate()
 	ts.Equal(name, unchanged.Name, "a refused update must not rename the application")
 	ts.Equal(authFlowID, unchanged.AuthFlowID, "a refused update must not change the authentication flow")
 
-	line := ts.linesOf(imported)[0]
+	line := ts.resourceLineOfImport(imported, map[string]string{"result": "failed", "reason": "item_failed"})
 	ts.Equal("application.update", line.Event)
 	ts.Equal("update", line.Action)
 	ts.Equal(testutils.AuditRef{Type: "application", ID: app.ID}, line.Target)

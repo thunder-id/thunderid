@@ -585,7 +585,8 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	_ = flowmeta.Initialize(mux, actorProvider, ouProvider, designResolveService, i18nService)
 
 	// Initialize export service with collected exporters
-	exportService := export.Initialize(mux, exporters, export.TemplatePlaceholders)
+	exportService, err := export.Initialize(mux, exporters, export.TemplatePlaceholders, auditBus)
+	fatalOnError(ctx, logger, err, "Failed to initialize export service")
 
 	// The gateways this control plane administers. Registration is bounded by server.max_gateways,
 	// which is one unless a deployment raises it.
@@ -594,7 +595,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	fatalOnError(ctx, logger, err, "Failed to initialize gateway service")
 
 	// Initialize import service
-	importService := importer.Initialize(
+	importService, err := importer.Initialize(
 		mux,
 		applicationService,
 		idpService,
@@ -626,7 +627,9 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		// secret is put only where an export of the resource keeps one, which its exporter names.
 		secretresolver.New(variablestore.Lookup(references)).
 			WithSecretFields(declarativeresource.SecretFieldsOf(exporters)),
+		auditBus,
 	)
+	fatalOnError(ctx, logger, err, "Failed to initialize import service")
 	importer.RegisterMCPTools(mcpServer, importService)
 	export.RegisterMCPTools(mcpServer, exportService)
 

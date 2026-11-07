@@ -461,7 +461,7 @@ type valuesRequest struct {
 	resource     interface{}
 }
 
-func (f *fakeExporter) ExportResources(_ context.Context,
+func (f *fakeExporter) ReadResources(_ context.Context,
 	request *export.ExportRequest) (*export.ExportResponse, *tidcommon.ServiceError) {
 	f.asked = request
 	return f.response, f.err
