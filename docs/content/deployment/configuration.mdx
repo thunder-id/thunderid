@@ -1301,6 +1301,19 @@ Without `gateway.pipeline`, the default gateway is the only stage. `GET /gateway
 
 The first stage is where auto apply deploys and where a control plane writes the values its references name. While the first entry's gateway is left out, both wait rather than going to the next stage.
 
+The Console gives each stage's gateway a page of its own, at `/deploy/gateways/{id}`, and at `/projects/{projectId}/deploy/gateways/{id}` within a project. To place these pages elsewhere, set `deploy.gateway_path` in the Console's runtime configuration (`apps/console/config.js`):
+
+```javascript
+window.__THUNDERID_RUNTIME_CONFIG__ = {
+  // ...
+  deploy: {
+    gateway_path: 'environments',
+  },
+};
+```
+
+With this value, a gateway's page is at `/environments/{id}`. The explorer and values pages of a gateway stay under `/deploy/gateways/{id}`.
+
 ### Auto Apply
 
 Auto apply makes each change captured on the control plane deploy to the first gateway. `gateway.auto_apply` sets it for the deployment, and the server-config `gateway` section turns it on or off without a restart:

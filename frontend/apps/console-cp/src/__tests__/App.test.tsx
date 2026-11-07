@@ -24,6 +24,26 @@ vi.mock('@thunderid/configure-onboarding', async (importOriginal) => ({
   HomePage: () => <div data-testid="home-page" />,
 }));
 
+vi.mock('../pages/OrganizationHomePage', () => ({
+  default: () => <div data-testid="organization-home-page" />,
+}));
+
+vi.mock('../pages/ProjectHomePage', () => ({
+  default: () => <div data-testid="project-home-page" />,
+}));
+
+vi.mock('../pages/ProjectGatewayPage', () => ({
+  default: ({section = 'overview'}: {section?: string}) => <div data-testid={`project-gateway-page-${section}`} />,
+}));
+
+vi.mock('../pages/ProjectExplorerPage', () => ({
+  default: () => <div data-testid="project-explorer-page" />,
+}));
+
+vi.mock('../pages/AdministratorsListPage', () => ({
+  default: () => <div data-testid="administrators-list-page" />,
+}));
+
 vi.mock('@thunderid/configure-gateways', () => ({
   GatewaysListPage: () => <div data-testid="gateways-list-page">Gateways List Page</div>,
   GatewayDetailPage: () => <div data-testid="gateway-detail-page">Gateway Detail Page</div>,
@@ -214,6 +234,43 @@ describe('App', () => {
     await waitFor(() => {
       expect(screen.getByTestId('import-configuration-summary-page')).toBeInTheDocument();
     });
+  });
+
+  it('lands on the organization home at the root', async () => {
+    window.history.pushState({}, '', '/');
+    render(<App />);
+    expect(await screen.findByTestId('organization-home-page')).toBeInTheDocument();
+    expect(window.location.pathname).toBe('/home');
+  });
+
+  it("loads a project's home at /projects/:projectId", async () => {
+    window.history.pushState({}, '', '/projects/p-shop');
+    render(<App />);
+    expect(await screen.findByTestId('project-home-page')).toBeInTheDocument();
+  });
+
+  it("opens each of a gateway's sections within a project", async () => {
+    for (const section of ['values', 'endpoints', 'history']) {
+      window.history.pushState({}, '', `/projects/p-shop/deploy/gateways/gw-dev/${section}`);
+      const {unmount} = render(<App />);
+      expect(await screen.findByTestId(`project-gateway-page-${section}`)).toBeInTheDocument();
+      unmount();
+    }
+    window.history.pushState({}, '', '/projects/p-shop/deploy/gateways/gw-dev');
+    render(<App />);
+    expect(await screen.findByTestId('project-gateway-page-overview')).toBeInTheDocument();
+  });
+
+  it("opens a gateway's map within a project on a full page", async () => {
+    window.history.pushState({}, '', '/projects/p-shop/deploy/gateways/gw-dev/explore');
+    render(<App />);
+    expect(await screen.findByTestId('project-explorer-page')).toBeInTheDocument();
+  });
+
+  it('lists the administrators at /users', async () => {
+    window.history.pushState({}, '', '/users');
+    render(<App />);
+    expect(await screen.findByTestId('administrators-list-page')).toBeInTheDocument();
   });
 
   it('loads ResourceServersListPage lazily at /resource-servers', async () => {

@@ -32,23 +32,63 @@ interface MockProjectSelection {
   isCleared: boolean;
   isLoading: boolean;
   error: Error | null;
+  clearSelection: () => void;
 }
 
+const mockClearSelection = vi.fn();
 const mockUseProjectSelection = vi.fn<() => MockProjectSelection>();
-const shop = {id: 'p1', displayName: 'Shop'};
+const shop = {id: 'p-shop', displayName: 'Shop'};
 
 function projectSelection(overrides: Partial<MockProjectSelection> = {}): MockProjectSelection {
-  return {projects: [], isCleared: false, isLoading: false, error: null, ...overrides};
+  return {
+    projects: [],
+    isCleared: false,
+    isLoading: false,
+    error: null,
+    clearSelection: mockClearSelection,
+    ...overrides,
+  };
 }
 
-vi.mock('@thunderid/configure-applications', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@thunderid/configure-applications')>()),
-  useGetApplications: (params: unknown) => mockUseGetApplications(params),
-}));
+/** The selection while the Shop project is open. */
+const inShop = (): MockProjectSelection => projectSelection({projects: [shop], selectedProject: shop});
 
 vi.mock('@thunderid/configure-projects', () => ({
   ProjectSwitcher: () => <div data-testid="project-switcher" />,
   useProjectSelection: () => mockUseProjectSelection(),
+}));
+
+let mockProjectChanges: Record<string, number> = {};
+
+let mockPath = '/';
+vi.mock('@thunderid/configure-gateways', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@thunderid/configure-gateways')>();
+  return {
+    gatewayColor: actual.gatewayColor,
+    gatewaySectionOf: actual.gatewaySectionOf,
+    useDeployRoutes: () => actual.defaultDeployRoutePaths,
+    usePipeline: () => ({
+      data: {stages: [{name: 'Development', gateway: {id: 'gw-dev', name: 'dev', baseUrl: 'https://dev.test'}}]},
+    }),
+    useProjectChanges: () => mockProjectChanges,
+    useProjectScope: actual.useProjectScope,
+    useProjectStatuses: () => ({
+      byGateway: {
+        'gw-dev': {
+          project: {versions: [{hash: 'h37', number: 37, resources: 2}], pending: 4, required: 1},
+          shared: {pending: 0, byType: []},
+          needed: {differing: 0},
+        },
+      },
+      isLoading: false,
+    }),
+    useVersions: () => ({data: [{version: 'h42', number: 42}]}),
+  };
+});
+
+vi.mock('@thunderid/configure-applications', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@thunderid/configure-applications')>()),
+  useGetApplications: (params: unknown) => mockUseGetApplications(params),
 }));
 
 // Mock ThunderID
@@ -79,6 +119,7 @@ vi.mock('@thunderid/contexts', async (importOriginal) => {
       isTrustedIssuerGenericOidc: () => mockIsTrustedIssuerGenericOidc,
       getTrustedIssuerClientId: () => 'test-client-id',
       getClientUrl: () => 'https://localhost:5191/console',
+      getServerUrl: () => 'https://localhost:8090',
     }),
   };
 });
@@ -106,12 +147,13 @@ vi.mock('react-router', async () => {
   return {
     ...actual,
     Outlet: () => <div data-testid="outlet">Outlet Content</div>,
-    Link: ({children, to}: {children: React.ReactNode; to: string}) => (
-      <a href={to} data-testid="router-link">
+    Link: ({children, to, onClick = undefined}: {children: React.ReactNode; to: string; onClick?: () => void}) => (
+      <a href={to} data-testid="router-link" onClick={onClick}>
         {children}
       </a>
     ),
     useNavigate: () => mockNavigate,
+    useMatch: (pattern: string) => actual.matchPath(pattern, mockPath),
   };
 });
 
@@ -119,11 +161,12 @@ describe('DashboardLayout', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     sessionStorage.clear();
-    localStorage.clear();
     mockUserData.mockReturnValue({name: 'Test User', email: 'test@example.com'});
     mockIsTrustedIssuerGenericOidc = false;
     mockDiscovery = undefined;
     mockUseProjectSelection.mockReturnValue(projectSelection());
+    mockProjectChanges = {};
+    mockPath = '/';
     mockUseGetApplications.mockReturnValue({
       data: {applications: []},
       isLoading: false,
@@ -145,91 +188,92 @@ describe('DashboardLayout', () => {
     expect(screen.getByTestId('outlet')).toHaveTextContent('Outlet Content');
   });
 
-  it('renders navigation categories', () => {
+  it('offers no project selector while there are no projects', () => {
     render(<DashboardLayout />);
 
-    // Check for category labels
-    expect(screen.getByText('navigation:categories.identities')).toBeInTheDocument();
-    expect(screen.getByText('navigation:categories.resources')).toBeInTheDocument();
-  });
-
-  it('opens the Deploy page from the header, not from the navigation', async () => {
-    render(<DashboardLayout />);
-
-    expect(screen.queryByRole('link', {name: /deploy/i})).not.toBeInTheDocument();
-    await userEvent.click(screen.getByTestId('header-deploy'));
-
-    expect(mockNavigate).toHaveBeenCalledWith('/deploy');
-  });
-
-  it('renders navigation items', () => {
-    render(<DashboardLayout />);
-
-    // Check for navigation items using translation keys
-    expect(screen.getByText('navigation:pages.users')).toBeInTheDocument();
-    expect(screen.getByText('navigation:pages.userTypes')).toBeInTheDocument();
-    expect(screen.getByText('navigation:pages.connections')).toBeInTheDocument();
-    expect(screen.getByText('navigation:pages.flows')).toBeInTheDocument();
-    expect(screen.getByText('navigation:pages.gateways')).toBeInTheDocument();
-  });
-
-  it.each([false, true])('keeps navigation icon sizes consistent when collapseSidebar is %s', (collapseSidebar) => {
-    render(<DashboardLayout collapseSidebar={collapseSidebar} />);
-
-    const usersIcon = screen.getByRole('button', {name: 'navigation:pages.users'}).querySelector('svg');
-    expect(usersIcon).toBeInTheDocument();
-
-    const navigationIcons = screen.getByRole('navigation').querySelectorAll('.MuiListItemIcon-root svg');
-    expect(navigationIcons.length).toBeGreaterThan(0);
-    navigationIcons.forEach((icon) => {
-      expect(icon).toHaveAttribute('width', usersIcon?.getAttribute('width'));
-      expect(icon).toHaveAttribute('height', usersIcon?.getAttribute('height'));
-    });
-  });
-
-  it('renders footer', () => {
-    render(<DashboardLayout />);
-
-    const currentYear = new Date().getFullYear();
-    expect(screen.getByText(new RegExp(currentYear.toString()))).toBeInTheDocument();
+    expect(screen.queryByTestId('project-switcher')).not.toBeInTheDocument();
   });
 
   it('shows the project selector in the header', () => {
-    mockUseProjectSelection.mockReturnValue(projectSelection({projects: [shop], selectedProject: shop}));
+    mockUseProjectSelection.mockReturnValue(inShop());
 
     render(<DashboardLayout />);
 
     expect(screen.getByTestId('project-switcher')).toBeInTheDocument();
   });
 
-  it('leads the sidebar with Projects once the project selection is cleared', () => {
+  it("lists the selected project's applications and agents under it, with what is not deployed yet", () => {
+    mockUseProjectSelection.mockReturnValue(inShop());
+    mockProjectChanges = {application: 2};
+    render(<DashboardLayout />);
+
+    expect(screen.getByText('navigation:categories.project')).toBeInTheDocument();
+    expect(screen.getByText('navigation:pages.deploymentPipeline')).toBeInTheDocument();
+    expect(screen.getByText('navigation:categories.build')).toBeInTheDocument();
+    expect(screen.getAllByText('navigation:pages.applications')).toHaveLength(1);
+    expect(screen.getAllByText('navigation:pages.agents')).toHaveLength(1);
+    // Nothing of the organization's is listed inside a project.
+    expect(screen.queryByText('navigation:pages.home')).not.toBeInTheDocument();
+    expect(screen.queryByText('navigation:pages.groups')).not.toBeInTheDocument();
+    expect(screen.queryByText('navigation:categories.identities')).not.toBeInTheDocument();
+    expect(screen.getByText('navigation:badges.undeployed')).toBeInTheDocument();
+  });
+
+  it('keeps the whole label beside an undeployed badge, the badge after it', () => {
+    mockUseProjectSelection.mockReturnValue(inShop());
+    mockProjectChanges = {application: 1};
+    render(<DashboardLayout />);
+
+    const label = screen.getByText('navigation:pages.applications').closest('.MuiListItemText-root')!;
+    const badge = screen.getByText('navigation:badges.undeployed').closest('.MuiChip-root')!;
+    expect(getComputedStyle(label).flexShrink).toBe('0');
+    expect(getComputedStyle(label).overflow).toBe('visible');
+    expect(getComputedStyle(badge).flexShrink).toBe('0');
+    expect(label.compareDocumentPosition(badge) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("shows the gateway's own navigation on its pages, back to the project", () => {
+    mockUseProjectSelection.mockReturnValue(inShop());
+    mockPath = '/projects/p-shop/deploy/gateways/gw-dev/values';
+    render(<DashboardLayout />);
+
+    // The way back names the project.
+    expect(screen.getByText('Shop')).toBeInTheDocument();
+    expect(screen.getByText('navigation:categories.gateway')).toBeInTheDocument();
+    for (const page of [
+      'navigation:pages.overview',
+      'navigation:pages.variablesAndSecrets',
+      'navigation:pages.endpoints',
+      'navigation:pages.deployedConfiguration',
+      'navigation:pages.deploymentHistory',
+    ]) {
+      expect(screen.getByText(page)).toBeInTheDocument();
+    }
+    expect(screen.queryByText('navigation:pages.applications')).not.toBeInTheDocument();
+  });
+
+  it("switches between the project's configuration and its gateways from the header", async () => {
+    mockUseProjectSelection.mockReturnValue(inShop());
+    render(<DashboardLayout />);
+
+    const switcher = screen.getByTestId('gateway-switcher');
+    expect(switcher).toHaveTextContent('common:header.projectConfiguration');
+    expect(screen.queryByTestId('header-read-only')).not.toBeInTheDocument();
+    await userEvent.click(switcher);
+    expect(await screen.findByText('v37 · common:header.changesBehind')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('menuitem', {name: /DEVELOPMENT/}));
+    expect(mockNavigate).toHaveBeenCalledWith('/projects/p-shop/deploy/gateways/gw-dev');
+  });
+
+  it('leads the sidebar with Projects once the project selection is cleared, with nothing read-only', () => {
     mockUseProjectSelection.mockReturnValue(projectSelection({projects: [shop], isCleared: true}));
+    mockPath = '/home';
 
     render(<DashboardLayout />);
 
     expect(screen.getByText('navigation:pages.projects')).toBeInTheDocument();
-  });
-
-  it('offers only Applications, under Resources, in the sidebar while a project is selected', () => {
-    mockUseProjectSelection.mockReturnValue(projectSelection({projects: [shop], selectedProject: shop}));
-
-    render(<DashboardLayout />);
-
-    const navigation = screen.getByRole('navigation');
-    expect(navigation.querySelectorAll('.MuiListItemIcon-root')).toHaveLength(1);
-    expect(screen.getByRole('button', {name: 'navigation:pages.applications'})).toBeInTheDocument();
-    expect(screen.getByText('navigation:categories.resources')).toBeInTheDocument();
-    expect(screen.queryByText('navigation:pages.projects')).not.toBeInTheDocument();
-    expect(screen.queryByText('navigation:pages.users')).not.toBeInTheDocument();
-  });
-
-  it('hides Applications from the sidebar while no project is selected', () => {
-    mockUseProjectSelection.mockReturnValue(projectSelection({projects: [shop], isCleared: true}));
-
-    render(<DashboardLayout />);
-
-    expect(screen.queryByText('navigation:pages.applications')).not.toBeInTheDocument();
-    expect(screen.getByText('navigation:pages.users')).toBeInTheDocument();
+    expect(screen.queryByTestId('gateway-switcher')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('header-read-only')).not.toBeInTheDocument();
   });
 
   it('leads the sidebar with Projects when there are no projects yet', () => {
@@ -244,6 +288,83 @@ describe('DashboardLayout', () => {
     render(<DashboardLayout />);
 
     expect(screen.queryByText('navigation:pages.projects')).not.toBeInTheDocument();
+  });
+
+  it('names the gateway open, and says its configuration is read-only there', () => {
+    mockUseProjectSelection.mockReturnValue(inShop());
+    mockPath = '/projects/p-shop/deploy/gateways/gw-dev';
+    render(<DashboardLayout />);
+
+    expect(screen.getByTestId('gateway-switcher')).toHaveTextContent('DEVELOPMENT');
+    expect(screen.getByTestId('header-read-only')).toHaveTextContent('common:header.readOnly');
+  });
+
+  it('leads out of a project to the organization from the top of its navigation', async () => {
+    mockUseProjectSelection.mockReturnValue(inShop());
+    render(<DashboardLayout />);
+
+    const organization = screen.getByText('navigation:pages.organizationSettings');
+    expect(organization.closest('a')).toHaveAttribute('href', '/home');
+    await userEvent.click(organization);
+
+    expect(mockClearSelection).toHaveBeenCalled();
+  });
+
+  it('renders navigation categories', () => {
+    render(<DashboardLayout />);
+
+    // The organization's navigation, grouped as its overview lays it out.
+    for (const category of [
+      'navigation:categories.administration',
+      'navigation:categories.identitySetup',
+      'navigation:categories.signInExperience',
+      'navigation:categories.apisAndCredentials',
+    ]) {
+      expect(screen.getByText(category)).toBeInTheDocument();
+    }
+    expect(screen.getByText('navigation:pages.overview')).toBeInTheDocument();
+  });
+
+  it('offers no Deploy in the header or the navigation', () => {
+    render(<DashboardLayout />);
+
+    expect(screen.queryByRole('link', {name: /deploy/i})).not.toBeInTheDocument();
+    expect(screen.queryByTestId('header-deploy')).not.toBeInTheDocument();
+  });
+
+  it('renders navigation items', () => {
+    render(<DashboardLayout />);
+
+    // Check for navigation items using translation keys
+    expect(screen.getByText('navigation:pages.administrators')).toBeInTheDocument();
+    expect(screen.getByText('navigation:pages.userTypes')).toBeInTheDocument();
+    expect(screen.getByText('navigation:pages.connections')).toBeInTheDocument();
+    // Applications and agents belong to projects, so the organization lists neither.
+    expect(screen.queryByText('navigation:pages.applications')).not.toBeInTheDocument();
+    expect(screen.queryByText('navigation:pages.agents')).not.toBeInTheDocument();
+    expect(screen.getByText('navigation:pages.flows')).toBeInTheDocument();
+    expect(screen.getByText('navigation:pages.gateways')).toBeInTheDocument();
+  });
+
+  it.each([false, true])('keeps navigation icon sizes consistent when collapseSidebar is %s', (collapseSidebar) => {
+    render(<DashboardLayout collapseSidebar={collapseSidebar} />);
+
+    const applicationIcon = screen.getByRole('button', {name: 'navigation:pages.connections'}).querySelector('svg');
+    expect(applicationIcon).toBeInTheDocument();
+
+    const navigationIcons = screen.getByRole('navigation').querySelectorAll('.MuiListItemIcon-root svg');
+    expect(navigationIcons.length).toBeGreaterThan(0);
+    navigationIcons.forEach((icon) => {
+      expect(icon).toHaveAttribute('width', applicationIcon?.getAttribute('width'));
+      expect(icon).toHaveAttribute('height', applicationIcon?.getAttribute('height'));
+    });
+  });
+
+  it('renders footer', () => {
+    render(<DashboardLayout />);
+
+    const currentYear = new Date().getFullYear();
+    expect(screen.getByText(new RegExp(currentYear.toString()))).toBeInTheDocument();
   });
 
   it('does not start a second sign-in after signing out', async () => {

@@ -33,6 +33,10 @@ export interface ConsoleRoutePaths {
   settings: {
     list: () => string;
   };
+  projects: {
+    /** A project's home: the gateways its configuration is deployed and promoted through. */
+    home: (projectId: string) => string;
+  };
 }
 
 /**
@@ -103,6 +107,8 @@ export const ROUTE_SEGMENTS = {
   projects: 'projects',
   gateways: 'gateways',
   deploy: 'deploy',
+  // Where a gateway's own page is, before its id: as the deployment sets it, else under Deploy.
+  deployTargets: window.__THUNDERID_RUNTIME_CONFIG__?.deploy?.gateway_path ?? 'deploy/gateways',
 } as const;
 
 const RouteConfig: RouteConfig = {
@@ -212,6 +218,7 @@ const RouteConfig: RouteConfig = {
   projects: {
     list: () => `/${ROUTE_SEGMENTS.projects}`,
     create: () => `/${ROUTE_SEGMENTS.projects}/create`,
+    home: (projectId: string) => `/${ROUTE_SEGMENTS.projects}/${encodeURIComponent(projectId)}`,
   },
   gateways: {
     list: () => `/${ROUTE_SEGMENTS.gateways}`,
@@ -221,10 +228,9 @@ const RouteConfig: RouteConfig = {
     list: () => `/${ROUTE_SEGMENTS.deploy}`,
     explore: (gatewayId: string) => `/${ROUTE_SEGMENTS.deploy}/gateways/${encodeURIComponent(gatewayId)}/explore`,
     values: (gatewayId: string) => `/${ROUTE_SEGMENTS.deploy}/gateways/${encodeURIComponent(gatewayId)}/values`,
-    // Gateways and projects have no pages of their own in this console yet: a gateway is shown
-    // on the Deploy page, and a project's work starts from the home page.
-    gateway: () => `/${ROUTE_SEGMENTS.deploy}`,
-    project: () => `/${ROUTE_SEGMENTS.home}`,
+    gateway: (gatewayId: string, projectId?: string) =>
+      `${projectId ? RouteConfig.projects.home(projectId) : ''}/${ROUTE_SEGMENTS.deployTargets}/${encodeURIComponent(gatewayId)}`,
+    project: (projectId: string) => RouteConfig.projects.home(projectId),
   },
 };
 

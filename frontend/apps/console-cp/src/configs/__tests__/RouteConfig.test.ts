@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {describe, it, expect} from 'vitest';
+import {afterEach, describe, it, expect, vi} from 'vitest';
 import RouteConfig, {ROUTE_SEGMENTS} from '../RouteConfig';
 
 describe('RouteConfig', () => {
@@ -14,9 +14,10 @@ describe('RouteConfig', () => {
     expect(RouteConfig.deploy.list()).toBe('/deploy');
     expect(RouteConfig.deploy.explore('gw 1')).toBe('/deploy/gateways/gw%201/explore');
     expect(RouteConfig.deploy.values('gw-1')).toBe('/deploy/gateways/gw-1/values');
-    // Gateways and projects return to pages this console has.
-    expect(RouteConfig.deploy.gateway('gw-1', 'p-1')).toBe('/deploy');
-    expect(RouteConfig.deploy.project?.('p-1')).toBe('/home');
+    expect(RouteConfig.deploy.gateway('gw 1', 'p 1')).toBe('/projects/p%201/deploy/gateways/gw%201');
+    expect(RouteConfig.deploy.gateway('gw-1')).toBe('/deploy/gateways/gw-1');
+    expect(RouteConfig.deploy.project?.('p-1')).toBe('/projects/p-1');
+    expect(RouteConfig.projects.home('p 1')).toBe('/projects/p%201');
   });
 
   it('organizationUnits builds paths from the segment', () => {
@@ -145,5 +146,25 @@ describe('RouteConfig', () => {
   it('every builder derives its path from ROUTE_SEGMENTS rather than a separate literal', () => {
     expect(RouteConfig.organizationUnits.list()).toBe(`/${ROUTE_SEGMENTS.organizationUnits}`);
     expect(RouteConfig.users.list()).toBe(`/${ROUTE_SEGMENTS.users}`);
+  });
+
+  describe('with the gateway page path the deployment sets', () => {
+    const runtimeConfig = window.__THUNDERID_RUNTIME_CONFIG__;
+
+    afterEach(() => {
+      window.__THUNDERID_RUNTIME_CONFIG__ = runtimeConfig;
+      vi.resetModules();
+    });
+
+    it("places a gateway's page there, within a project too", async () => {
+      window.__THUNDERID_RUNTIME_CONFIG__ = {...runtimeConfig!, deploy: {gateway_path: 'environments'}};
+      vi.resetModules();
+      const {default: configured} = await import('../RouteConfig');
+
+      expect(configured.deploy.gateway('gw-1')).toBe('/environments/gw-1');
+      expect(configured.deploy.gateway('gw-1', 'p-1')).toBe('/projects/p-1/environments/gw-1');
+      // The explorer and values pages stay where they are.
+      expect(configured.deploy.explore('gw-1')).toBe('/deploy/gateways/gw-1/explore');
+    });
   });
 });
