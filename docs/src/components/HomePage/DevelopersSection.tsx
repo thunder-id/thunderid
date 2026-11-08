@@ -9,6 +9,7 @@ import {Reveal, Section, SectionHeading, TextLink} from './shared';
 import useScrollAnimation from '../../hooks/useScrollAnimation';
 import type {DocusaurusProductConfig} from '@site/docusaurus.product.config';
 import {useDocsUrl} from '@site/src/hooks/useDocsUrl';
+import {useNpxCommand} from '@site/src/hooks/useNpxCommand';
 
 /* ─── Code samples ───────────────────────────────────────────────────────────
  * Lines use `{x|text}` markers for syntax colours:
@@ -226,6 +227,7 @@ function Stat({stat, delay}: {stat: (typeof STATS)[number]; delay: number}): JSX
 export default function DevelopersSection(): JSX.Element {
   const t = useHomeTokens();
   const docsUrl = useDocsUrl();
+  const npxCommand = useNpxCommand();
   const {siteConfig} = useDocusaurusContext();
   const productName = (siteConfig.customFields?.product as DocusaurusProductConfig).project.name;
   const panels = useMemo(() => buildPanels(productName), [productName]);
@@ -310,7 +312,7 @@ export default function DevelopersSection(): JSX.Element {
                   p: 0,
                 }}
               >
-                npx thunderid
+                {npxCommand}
               </Box>{' '}
               to secured agents
             </>
