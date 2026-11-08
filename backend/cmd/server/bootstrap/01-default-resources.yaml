@@ -7078,6 +7078,7 @@ id: 01900000-0000-7000-8000-0000000000a0
 channel: email
 handle: user-invite
 ouHandle: default
+projectId: 01900000-0000-7000-8000-000000000002
 displayName: User Invitation Email
 description: Sent to invite a new user to complete their registration.
 content:
@@ -7102,6 +7103,7 @@ id: 01900000-0000-7000-8000-0000000000b1
 channel: email
 handle: invitation
 ouHandle: default
+projectId: 01900000-0000-7000-8000-000000000002
 displayName: Invitation Email
 description: Sent to invite a user into an organization unit through an invitation flow.
 content:
@@ -7126,6 +7128,7 @@ id: 01900000-0000-7000-8000-0000000000a1
 channel: sms
 handle: user-invite
 ouHandle: default
+projectId: 01900000-0000-7000-8000-000000000002
 displayName: User Invitation SMS
 description: Sent to invite a new user to complete their registration.
 content:
@@ -7136,6 +7139,7 @@ id: 01900000-0000-7000-8000-0000000000a2
 channel: email
 handle: self-registration
 ouHandle: default
+projectId: 01900000-0000-7000-8000-000000000002
 displayName: Self Registration Invite Email
 description: Sent to complete a self-service registration.
 content:
@@ -7160,6 +7164,7 @@ id: 01900000-0000-7000-8000-0000000000a3
 channel: sms
 handle: self-registration
 ouHandle: default
+projectId: 01900000-0000-7000-8000-000000000002
 displayName: Self Registration Invite SMS
 description: Sent to complete a self-service registration.
 content:
@@ -7170,6 +7175,7 @@ id: 01900000-0000-7000-8000-0000000000a4
 channel: email
 handle: magic-link
 ouHandle: default
+projectId: 01900000-0000-7000-8000-000000000002
 displayName: Magic Link Sign-In Email
 description: Sent to let a user sign in through a secure link.
 content:
@@ -7195,6 +7201,7 @@ id: 01900000-0000-7000-8000-0000000000a5
 channel: email
 handle: password-recovery
 ouHandle: default
+projectId: 01900000-0000-7000-8000-000000000002
 displayName: Password Recovery Email
 description: Sent to let a user reset their account password.
 content:
@@ -7227,6 +7234,7 @@ id: 01900000-0000-7000-8000-0000000000a6
 channel: email
 handle: ciba-notification
 ouHandle: default
+projectId: 01900000-0000-7000-8000-000000000002
 displayName: CIBA Authentication Notification Email
 description: Sent to approve a backchannel authentication request.
 content:
@@ -7254,6 +7262,7 @@ id: 01900000-0000-7000-8000-0000000000a7
 channel: sms
 handle: ciba-notification
 ouHandle: default
+projectId: 01900000-0000-7000-8000-000000000002
 displayName: CIBA Authentication Notification SMS
 description: Sent to approve a backchannel authentication request.
 content:
@@ -7264,6 +7273,7 @@ id: 01900000-0000-7000-8000-0000000000a8
 channel: email
 handle: otp
 ouHandle: default
+projectId: 01900000-0000-7000-8000-000000000002
 displayName: Email OTP Verification
 description: Sent to verify a user's email address with a one-time passcode.
 content:
@@ -7289,6 +7299,7 @@ id: 01900000-0000-7000-8000-0000000000a9
 channel: sms
 handle: otp
 ouHandle: default
+projectId: 01900000-0000-7000-8000-000000000002
 displayName: SMS OTP Verification
 description: Sent to verify a user's phone number with a one-time passcode.
 content:
@@ -7299,6 +7310,7 @@ id: 01900000-0000-7000-8000-0000000000aa
 channel: email
 handle: authentication-method-locked
 ouHandle: default
+projectId: 01900000-0000-7000-8000-000000000002
 displayName: Account Temporarily Locked Email
 description: Sent when repeated failed sign-ins lock one sign-in method for a limited time.
 content:
@@ -7320,6 +7332,7 @@ id: 01900000-0000-7000-8000-0000000000ab
 channel: email
 handle: authentication-method-locked-permanent
 ouHandle: default
+projectId: 01900000-0000-7000-8000-000000000002
 displayName: Account Locked Email
 description: Sent when repeated failed sign-ins lock one sign-in method until it is released.
 content:
@@ -7341,6 +7354,7 @@ id: 01900000-0000-7000-8000-0000000000ac
 channel: email
 handle: account-locked
 ouHandle: default
+projectId: 01900000-0000-7000-8000-000000000002
 displayName: Account Sign-in Temporarily Locked Email
 description: Sent when repeated failed sign-ins lock every sign-in method on the account for a limited time.
 content:
@@ -7362,6 +7376,7 @@ id: 01900000-0000-7000-8000-0000000000ad
 channel: email
 handle: account-locked-permanent
 ouHandle: default
+projectId: 01900000-0000-7000-8000-000000000002
 displayName: Account Sign-in Locked Email
 description: Sent when repeated failed sign-ins lock every sign-in method on the account until it is released.
 content:
@@ -7383,6 +7398,7 @@ id: 01900000-0000-7000-8000-0000000000ae
 channel: email
 handle: account-suspended
 ouHandle: default
+projectId: 01900000-0000-7000-8000-000000000002
 displayName: Account Suspended Email
 description: Sent when an administrator suspends an account.
 content:
@@ -7402,6 +7418,7 @@ id: 01900000-0000-7000-8000-0000000000af
 channel: email
 handle: account-unsuspended
 ouHandle: default
+projectId: 01900000-0000-7000-8000-000000000002
 displayName: Account Suspension Lifted Email
 description: Sent when an administrator lifts a suspension. The account stays locked until it is recovered or unlocked.
 content:
@@ -7421,6 +7438,7 @@ id: 01900000-0000-7000-8000-0000000000b0
 channel: email
 handle: account-unlocked
 ouHandle: default
+projectId: 01900000-0000-7000-8000-000000000002
 displayName: Account Unlocked Email
 description: Sent when an administrator unlocks an account.
 content:
@@ -7439,6 +7457,7 @@ id: 01900000-0000-7000-8000-0000000000b2
 channel: email
 handle: self-email-verification
 ouHandle: default
+projectId: 01900000-0000-7000-8000-000000000002
 displayName: Self Email Verification Email
 description: Sent when a user asks to verify their own email address.
 content:

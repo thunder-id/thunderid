@@ -14,6 +14,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
 	"github.com/thunder-id/thunderid/internal/system/deployment"
+	"github.com/thunder-id/thunderid/internal/system/utils"
 )
 
 // notificationTemplateStoreInterface defines the persistence operations for notification templates.
@@ -28,6 +29,9 @@ type notificationTemplateStoreInterface interface {
 	ListTemplatesByOUID(ctx context.Context, channel ChannelType, ouID string, limit, offset int) (
 		[]templateDAO, error)
 	CountTemplatesByOUID(ctx context.Context, channel ChannelType, ouID string) (int, error)
+	ListTemplatesByProject(ctx context.Context, channel ChannelType, projectID string, limit, offset int) (
+		[]templateDAO, error)
+	CountTemplatesByProject(ctx context.Context, channel ChannelType, projectID string) (int, error)
 	UpdateTemplate(ctx context.Context, template templateDAO) error
 	DeleteTemplate(ctx context.Context, channel ChannelType, id string) error
 	IsHandleExists(ctx context.Context, channel ChannelType, handle string) (bool, error)
@@ -70,8 +74,8 @@ func (s *notificationTemplateStore) CreateTemplate(ctx context.Context, t templa
 	}
 
 	if _, err := dbClient.ExecuteContext(ctx, queryCreateTemplate,
-		t.ID, string(t.Channel), t.Handle, t.OUID, t.DisplayName, t.Description, string(contentJSON),
-		designJSON, s.scope(ctx)); err != nil {
+		t.ID, string(t.Channel), t.Handle, t.OUID, utils.NullableString(t.ProjectID), t.DisplayName, t.Description,
+		string(contentJSON), designJSON, s.scope(ctx)); err != nil {
 		return fmt.Errorf("failed to execute create query: %w", err)
 	}
 
@@ -191,6 +195,40 @@ func (s *notificationTemplateStore) ListTemplatesByOUID(ctx context.Context, cha
 	return templates, nil
 }
 
+// ListTemplatesByProject retrieves a page of the templates of a channel in a project.
+func (s *notificationTemplateStore) ListTemplatesByProject(ctx context.Context, channel ChannelType,
+	projectID string, limit, offset int) ([]templateDAO, error) {
+	dbClient, err := s.getConfigDBClient()
+	if err != nil {
+		return nil, err
+	}
+
+	results, err := dbClient.QueryContext(ctx, queryListTemplatesByProject, string(channel), projectID, limit,
+		offset, s.scope(ctx))
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute list by project query: %w", err)
+	}
+
+	return buildTemplatesFromRows(results)
+}
+
+// CountTemplatesByProject returns the number of templates of a channel in a project.
+func (s *notificationTemplateStore) CountTemplatesByProject(ctx context.Context, channel ChannelType,
+	projectID string) (int, error) {
+	dbClient, err := s.getConfigDBClient()
+	if err != nil {
+		return 0, err
+	}
+
+	results, err := dbClient.QueryContext(ctx, queryCountTemplatesByProject, string(channel), projectID,
+		s.scope(ctx))
+	if err != nil {
+		return 0, fmt.Errorf("failed to execute count by project query: %w", err)
+	}
+
+	return parseCountResult(results)
+}
+
 // CountTemplatesByOUID returns the number of templates of a channel an organization unit owns.
 func (s *notificationTemplateStore) CountTemplatesByOUID(ctx context.Context, channel ChannelType,
 	ouID string) (int, error) {
@@ -225,7 +263,7 @@ func (s *notificationTemplateStore) UpdateTemplate(ctx context.Context, t templa
 	}
 
 	if _, err := dbClient.ExecuteContext(ctx, queryUpdateTemplate,
-		t.DisplayName, t.Description, string(contentJSON), designJSON,
+		t.DisplayName, t.Description, string(contentJSON), designJSON, utils.NullableString(t.ProjectID),
 		t.ID, string(t.Channel), s.scope(ctx)); err != nil {
 		return fmt.Errorf("failed to execute update query: %w", err)
 	}
@@ -325,6 +363,7 @@ func buildTemplateFromRow(row map[string]interface{}) (templateDAO, error) {
 		Channel:     ChannelType(channel),
 		Handle:      handle,
 		OUID:        ouID,
+		ProjectID:   jsonColumnToString(row["project_id"]),
 		DisplayName: displayName,
 		Description: stringOrEmpty(row["description"]),
 	}
@@ -347,6 +386,19 @@ func buildTemplateFromRow(row map[string]interface{}) (templateDAO, error) {
 	}
 
 	return dao, nil
+}
+
+// buildTemplatesFromRows maps the rows of a list query to templates.
+func buildTemplatesFromRows(results []map[string]interface{}) ([]templateDAO, error) {
+	templates := make([]templateDAO, 0, len(results))
+	for _, row := range results {
+		t, err := buildTemplateFromRow(row)
+		if err != nil {
+			return nil, fmt.Errorf("failed to build template from row: %w", err)
+		}
+		templates = append(templates, t)
+	}
+	return templates, nil
 }
 
 // isUniqueViolation reports whether err is a UNIQUE-constraint violation, across both supported

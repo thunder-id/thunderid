@@ -12,6 +12,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 	"unicode/utf8"
 
@@ -22,8 +23,16 @@ import (
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/filter"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/projectscope"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/utils"
+)
+
+const (
+	// projectQueryParam is the list query parameter that names a project.
+	projectQueryParam = "projectId"
+	// maxProjectIDLength is the length of the PROJECT_ID column. A longer project ID names no project.
+	maxProjectIDLength = 36
 )
 
 // NotificationTemplateServiceInterface defines the notification template management operations.
@@ -32,6 +41,12 @@ type NotificationTemplateServiceInterface interface {
 		*TemplateListResponse, *tidcommon.ServiceError)
 	ListTemplatesByOUID(ctx context.Context, channel ChannelType, ouID string, limit, offset int) (
 		*TemplateListResponse, *tidcommon.ServiceError)
+	// ListTemplatesByProject lists a page of the templates of a channel in a project. A project that does not
+	// exist has none.
+	ListTemplatesByProject(ctx context.Context, channel ChannelType, projectID string, limit, offset int) (
+		*TemplateListResponse, *tidcommon.ServiceError)
+	// ProjectHasTemplates reports whether a template of any channel belongs to the project.
+	ProjectHasTemplates(ctx context.Context, projectID string) (bool, *tidcommon.ServiceError)
 	CreateTemplate(ctx context.Context, channel ChannelType, request CreateTemplateRequest) (
 		*Template, *tidcommon.ServiceError)
 	GetTemplate(ctx context.Context, channel ChannelType, id string) (*Template, *tidcommon.ServiceError)
@@ -52,27 +67,40 @@ type notificationTemplateService struct {
 	transactioner      providers.Transactioner
 	ouService          ou.OrganizationUnitServiceInterface
 	dependencyRegistry resourcedependency.Registry
-	logger             *log.Logger
+	// projectValidator is nil on a deployment that serves no projects.
+	projectValidator projectOUValidator
+	// projectRequired is set when a deployment that serves projects refuses a template created without one.
+	projectRequired bool
+	logger          *log.Logger
 }
 
-// newNotificationTemplateService creates a new service with the given store, transactioner, and OU
-// service. The OU service verifies the ouId at creation; a nil ouService skips that check.
+// projectOUValidator checks that a resource scoped to a project is in an organization unit the project holds.
+type projectOUValidator interface {
+	ValidateProjectOU(ctx context.Context, projectID, ouID string) *tidcommon.ServiceError
+}
+
+// newNotificationTemplateService creates a new service with the given store, transactioner, OU service and
+// project validator. The OU service verifies the ouId at creation; a nil ouService skips that check. A nil
+// projectValidator serves no projects, and a project ID is kept unchecked. projectRequired refuses a
+// template created without a project.
 func newNotificationTemplateService(store notificationTemplateStoreInterface,
-	transactioner providers.Transactioner,
-	ouService ou.OrganizationUnitServiceInterface) NotificationTemplateServiceInterface {
+	transactioner providers.Transactioner, ouService ou.OrganizationUnitServiceInterface,
+	projectValidator projectOUValidator, projectRequired bool) NotificationTemplateServiceInterface {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "NotificationTemplateService"))
 	return &notificationTemplateService{
-		store:         store,
-		transactioner: transactioner,
-		ouService:     ouService,
-		logger:        logger,
+		store:            store,
+		transactioner:    transactioner,
+		ouService:        ouService,
+		projectValidator: projectValidator,
+		projectRequired:  projectRequired,
+		logger:           logger,
 	}
 }
 
 // ListTemplates lists a page of templates of a channel.
 func (ts *notificationTemplateService) ListTemplates(ctx context.Context, channel ChannelType, limit, offset int) (
 	*TemplateListResponse, *tidcommon.ServiceError) {
-	return ts.listTemplates(ctx, channel, "", limit, offset)
+	return ts.listTemplates(ctx, channel, "", "", limit, offset)
 }
 
 // ListTemplatesByOUID lists a page of the templates of a channel an organization unit owns.
@@ -81,7 +109,49 @@ func (ts *notificationTemplateService) ListTemplatesByOUID(ctx context.Context, 
 	if ouID == "" {
 		return nil, &ErrorInvalidOU
 	}
-	return ts.listTemplates(ctx, channel, ouID, limit, offset)
+	return ts.listTemplates(ctx, channel, ouID, "", limit, offset)
+}
+
+// ListTemplatesByProject lists a page of the templates of a channel in a project. An empty project ID names
+// no project, so it lists none rather than every template.
+func (ts *notificationTemplateService) ListTemplatesByProject(ctx context.Context, channel ChannelType,
+	projectID string, limit, offset int) (*TemplateListResponse, *tidcommon.ServiceError) {
+	if projectID == "" {
+		if svcErr := validateChannel(channel); svcErr != nil {
+			return nil, svcErr
+		}
+		if svcErr := validatePagination(limit, offset); svcErr != nil {
+			return nil, svcErr
+		}
+		return &TemplateListResponse{
+			StartIndex: offset + 1,
+			Templates:  []TemplateSummary{},
+			Links: utils.BuildPaginationLinks(buildCollectionSelf(channel), limit, offset, 0,
+				"&"+projectQueryParam+"="),
+		}, nil
+	}
+	return ts.listTemplates(ctx, channel, "", projectID, limit, offset)
+}
+
+// ProjectHasTemplates reports whether a template of any channel belongs to the project.
+func (ts *notificationTemplateService) ProjectHasTemplates(ctx context.Context, projectID string) (
+	bool, *tidcommon.ServiceError) {
+	for channel := range channelRulesByChannel {
+		count, err := ts.store.CountTemplatesByProject(ctx, channel, projectID)
+		if err != nil {
+			// A project with more templates than a composite read returns still has templates.
+			if errors.Is(err, errResultLimitExceededInCompositeMode) {
+				return true, nil
+			}
+			ts.logger.Error(ctx, "Failed to count the templates of a project", log.String("projectID", projectID),
+				log.Error(err))
+			return false, &tidcommon.InternalServerError
+		}
+		if count > 0 {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // CreateTemplate creates a new template with a server-assigned id. The handle-uniqueness check and the
@@ -98,7 +168,8 @@ func (ts *notificationTemplateService) CreateTemplate(ctx context.Context, chann
 	if svcErr := validateHandle(request.Handle); svcErr != nil {
 		return nil, svcErr
 	}
-	if svcErr := ts.resolveOU(ctx, request.OUID); svcErr != nil {
+	ouID, svcErr := ts.resolveTemplateOU(ctx, request.ProjectID, request.OUID)
+	if svcErr != nil {
 		return nil, svcErr
 	}
 
@@ -108,7 +179,8 @@ func (ts *notificationTemplateService) CreateTemplate(ctx context.Context, chann
 		return nil, svcErr
 	}
 	dao.Handle = request.Handle
-	dao.OUID = request.OUID
+	dao.OUID = ouID
+	dao.ProjectID = request.ProjectID
 
 	id := request.ID
 	if id == "" {
@@ -188,7 +260,7 @@ func (ts *notificationTemplateService) ValidateTemplate(ctx context.Context, cha
 		return svcErr
 	}
 
-	if svcErr := ts.resolveOU(ctx, request.OUID); svcErr != nil {
+	if _, svcErr := ts.resolveTemplateOU(ctx, request.ProjectID, request.OUID); svcErr != nil {
 		return svcErr
 	}
 	_, svcErr := buildValidatedDAO(channel, "", request.DisplayName, request.Description,
@@ -215,6 +287,7 @@ func (ts *notificationTemplateService) UpdateTemplate(ctx context.Context, chann
 	}
 
 	var notFound bool
+	var projectErr *tidcommon.ServiceError
 	txErr := ts.transactioner.Transact(ctx, func(txCtx context.Context) error {
 		existing, err := ts.store.GetTemplate(txCtx, channel, id)
 		if err != nil {
@@ -233,11 +306,26 @@ func (ts *notificationTemplateService) UpdateTemplate(ctx context.Context, chann
 		// The handle and ouId are immutable; carry the stored values so the response reflects them.
 		dao.Handle = existing.Handle
 		dao.OUID = existing.OUID
+
+		// An update that names no project, or the current one, keeps the template in its project without
+		// checking it again. A different project has to hold the template's organization unit.
+		dao.ProjectID = request.ProjectID
+		if dao.ProjectID == "" {
+			dao.ProjectID = existing.ProjectID
+		}
+		if dao.ProjectID != existing.ProjectID {
+			if projectErr = ts.validateProjectOU(txCtx, dao.ProjectID, dao.OUID); projectErr != nil {
+				return errProjectRefused
+			}
+		}
 		return ts.store.UpdateTemplate(txCtx, dao)
 	})
 	if txErr != nil {
 		if notFound {
 			return nil, &ErrorTemplateNotFound
+		}
+		if projectErr != nil {
+			return nil, projectErr
 		}
 		if errors.Is(txErr, errDeclarativeTemplate) {
 			return nil, &ErrorTemplateReadOnly
@@ -358,8 +446,8 @@ func (ts *notificationTemplateService) GetResourceDependencies(
 }
 
 // listTemplates lists a page of templates of a channel, only the ones an organization unit owns when
-// an organization unit is given.
-func (ts *notificationTemplateService) listTemplates(ctx context.Context, channel ChannelType, ouID string,
+// an organization unit is given, or only the ones in a project when a project is given.
+func (ts *notificationTemplateService) listTemplates(ctx context.Context, channel ChannelType, ouID, projectID string,
 	limit, offset int) (*TemplateListResponse, *tidcommon.ServiceError) {
 	if svcErr := validateChannel(channel); svcErr != nil {
 		return nil, svcErr
@@ -370,9 +458,12 @@ func (ts *notificationTemplateService) listTemplates(ctx context.Context, channe
 
 	var total int
 	var err error
-	if ouID == "" {
+	switch {
+	case projectID != "":
+		total, err = ts.store.CountTemplatesByProject(ctx, channel, projectID)
+	case ouID == "":
 		total, err = ts.store.CountTemplates(ctx, channel)
-	} else {
+	default:
 		total, err = ts.store.CountTemplatesByOUID(ctx, channel, ouID)
 	}
 	if err != nil {
@@ -385,9 +476,13 @@ func (ts *notificationTemplateService) listTemplates(ctx context.Context, channe
 
 	var templates []templateDAO
 	extraQuery := ""
-	if ouID == "" {
+	switch {
+	case projectID != "":
+		templates, err = ts.store.ListTemplatesByProject(ctx, channel, projectID, limit, offset)
+		extraQuery = "&" + projectQueryParam + "=" + url.QueryEscape(projectID)
+	case ouID == "":
 		templates, err = ts.store.ListTemplates(ctx, channel, limit, offset)
-	} else {
+	default:
 		templates, err = ts.store.ListTemplatesByOUID(ctx, channel, ouID, limit, offset)
 		extraQuery = utils.FilterQueryParam(map[string]any{filter.AttributeOUID: ouID})
 	}
@@ -406,6 +501,7 @@ func (ts *notificationTemplateService) listTemplates(ctx context.Context, channe
 			Handle:      t.Handle,
 			DisplayName: t.DisplayName,
 			Description: t.Description,
+			ProjectID:   t.ProjectID,
 			Self:        buildSelf(channel, t.ID),
 		})
 	}
@@ -520,6 +616,7 @@ func daoToTemplate(dao templateDAO) *Template {
 	return &Template{
 		ID:          dao.ID,
 		OUID:        dao.OUID,
+		ProjectID:   dao.ProjectID,
 		Handle:      dao.Handle,
 		DisplayName: dao.DisplayName,
 		Description: dao.Description,
@@ -548,6 +645,61 @@ func (ts *notificationTemplateService) resolveOU(ctx context.Context, ouID strin
 		return &ErrorInvalidOU
 	}
 	return nil
+}
+
+// resolveTemplateOU returns the organization unit a new template is placed in. A deployment that requires a
+// project refuses a template without one. A template in a project may leave the organization unit out to be
+// placed in the system organization unit, and one it names has to belong to the project.
+func (ts *notificationTemplateService) resolveTemplateOU(ctx context.Context, projectID, ouID string) (
+	string, *tidcommon.ServiceError) {
+	if projectID == "" {
+		if ts.projectRequired {
+			return "", &ErrorProjectRequired
+		}
+		return ouID, ts.resolveOU(ctx, ouID)
+	}
+
+	if strings.TrimSpace(ouID) == "" && ts.ouService != nil {
+		systemOUID, svcErr := ts.ouService.GetSystemOUID(ctx)
+		if svcErr != nil {
+			ts.logger.Error(ctx, "Failed to get the system organization unit", log.String("code", svcErr.Code))
+			return "", &tidcommon.InternalServerError
+		}
+		ouID = systemOUID
+	} else if svcErr := ts.resolveOU(ctx, ouID); svcErr != nil {
+		return "", svcErr
+	}
+	return ouID, ts.validateProjectOU(ctx, projectID, ouID)
+}
+
+// validateProjectOU checks that a template's organization unit belongs to its project. It returns
+// ErrorInvalidProject when no such project exists, and ErrorOUNotInProject when the organization unit is
+// outside the project.
+//
+// A deployment that serves no projects, such as a Data Plane, cannot check the project. It keeps the project
+// ID as given so that imported configuration retains it.
+func (ts *notificationTemplateService) validateProjectOU(ctx context.Context, projectID,
+	ouID string) *tidcommon.ServiceError {
+	// The column holds 36 characters, so a longer ID is refused on every deployment, checked or not.
+	if utf8.RuneCountInString(projectID) > maxProjectIDLength {
+		return &ErrorInvalidProject
+	}
+	if ts.projectValidator == nil {
+		return nil
+	}
+	svcErr := ts.projectValidator.ValidateProjectOU(ctx, projectID, ouID)
+	switch {
+	case svcErr == nil:
+		return nil
+	case svcErr.Code == projectscope.ProjectNotFoundErrorCode:
+		return &ErrorInvalidProject
+	case svcErr.Code == projectscope.OUNotInProjectErrorCode:
+		return &ErrorOUNotInProject
+	default:
+		ts.logger.Error(ctx, "Failed to check the project of a template",
+			log.String("projectID", projectID), log.String("code", svcErr.Code))
+		return &tidcommon.InternalServerError
+	}
 }
 
 // buildSelf builds the relative URL of a template resource.

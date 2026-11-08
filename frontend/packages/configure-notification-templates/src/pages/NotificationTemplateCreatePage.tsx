@@ -7,6 +7,7 @@ import {
   useGetOrganizationUnit,
   useHasMultipleOUs,
 } from '@thunderid/configure-organization-units';
+import {useProjectScope} from '@thunderid/contexts';
 import {getErrorMessage} from '@thunderid/utils';
 import {Alert, Box, Button, CircularProgress, Stack} from '@wso2/oxygen-ui';
 import {Home} from '@wso2/oxygen-ui-icons-react';
@@ -32,6 +33,19 @@ import type {CreateTemplateRequest} from '../models/requests';
 type CreateStep = 'organizationUnit' | 'template' | 'identity' | 'content';
 
 /**
+ * Props for the {@link NotificationTemplateCreatePage} component.
+ *
+ * @public
+ */
+export interface NotificationTemplateCreatePageProps {
+  /**
+   * Whether a template is created in a project only. When set, the page returns to the list outside a
+   * selected project, since a template created there would be refused.
+   */
+  createInProjectsOnly?: boolean;
+}
+
+/**
  * Full-screen wizard to create a notification template. When the deployment has more than one
  * organization unit, the first step picks the owning OU (set at creation, immutable); single-OU
  * deployments skip it and adopt the only OU. The remaining steps choose a starting point (an empty
@@ -40,7 +54,9 @@ type CreateStep = 'organizationUnit' | 'template' | 'identity' | 'content';
  *
  * @public
  */
-export default function NotificationTemplateCreatePage(): JSX.Element {
+export default function NotificationTemplateCreatePage({
+  createInProjectsOnly = false,
+}: NotificationTemplateCreatePageProps): JSX.Element {
   const {t} = useTranslation('notificationTemplates');
   const navigate = useNavigate();
   const routes = useNotificationTemplateRoutes();
@@ -58,7 +74,14 @@ export default function NotificationTemplateCreatePage(): JSX.Element {
     [templatesData],
   );
 
-  const {hasMultipleOUs, isLoading: isOuLoading, ouList} = useHasMultipleOUs();
+  // Inside a project the template is created with the project alone, and the API places it in the system
+  // organization unit, so there is no organization unit to pick.
+  const ouLookup = useHasMultipleOUs();
+  const {projectId} = useProjectScope();
+  const isInProject = Boolean(projectId);
+  const hasMultipleOUs = !isInProject && ouLookup.hasMultipleOUs;
+  const isOuLoading = !isInProject && ouLookup.isLoading;
+  const {ouList} = ouLookup;
 
   const [step, setStep] = useState<CreateStep>('organizationUnit');
   const [ouId, setOuId] = useState('');
@@ -77,7 +100,7 @@ export default function NotificationTemplateCreatePage(): JSX.Element {
   const effectiveOuId: string = ouId !== '' ? ouId : soleOuId;
   const {data: resolvedOrganizationUnit, isLoading: isResolvedOuLoading} = useGetOrganizationUnit(
     effectiveOuId,
-    Boolean(effectiveOuId),
+    !isInProject && Boolean(effectiveOuId),
   );
 
   const contentReady = (!isEmail || subject.trim() !== '') && body.trim() !== '';
@@ -118,7 +141,11 @@ export default function NotificationTemplateCreatePage(): JSX.Element {
     if (!identityReady || !contentReady) return;
     setSubmitError(null);
 
-    const base = {handle: handle.trim(), ouId: effectiveOuId, displayName: displayName.trim()};
+    const base = {
+      handle: handle.trim(),
+      ...(isInProject ? {projectId} : {ouId: effectiveOuId}),
+      displayName: displayName.trim(),
+    };
     const data: CreateTemplateRequest = isEmail
       ? {...base, design: {colorScheme}, content: {subject: subject.trim(), body}}
       : {...base, content: {body}};
@@ -157,6 +184,9 @@ export default function NotificationTemplateCreatePage(): JSX.Element {
   // An unknown channel segment is not a real page; send it to the canonical list.
   if (!channelValid) {
     return <Navigate to={routes.notificationTemplates.list()} replace />;
+  }
+  if (createInProjectsOnly && !isInProject) {
+    return <Navigate to={routes.notificationTemplates.channel(channel)} replace />;
   }
 
   const stepIndex = steps.indexOf(effectiveStep);

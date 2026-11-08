@@ -42,7 +42,7 @@ func (s *InitTestSuite) TestSelectStoreDeclarative() {
 	cfg.Notification.Template.Store = "declarative"
 	s.Require().NoError(config.InitializeServerRuntime(serverHome, cfg))
 
-	store, err := selectStore(nil)
+	store, err := selectStore(nil, false, nil)
 	s.Require().NoError(err)
 
 	got, err := store.GetTemplateByHandle(context.Background(), ChannelTypeEmail, "welcome")

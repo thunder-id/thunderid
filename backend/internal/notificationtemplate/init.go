@@ -13,14 +13,17 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
+	"github.com/thunder-id/thunderid/internal/system/projectscope"
+	"github.com/thunder-id/thunderid/internal/system/security"
 )
 
 // Initialize wires up the notification template service, renderer, and exporter and registers routes.
 // Only the DB store is wrapped with a read cache for the runtime hot path; the file store is already
-// in memory.
+// in memory. projectValidator is nil on a deployment that serves no projects, where a template needs no
+// project and a project ID is kept unchecked.
 func Initialize(mux *http.ServeMux, cacheManager cache.CacheManagerInterface,
-	ouService ou.OrganizationUnitServiceInterface,
-	translation translationResolver) (NotificationTemplateServiceInterface, TemplateRendererInterface,
+	ouService ou.OrganizationUnitServiceInterface, translation translationResolver,
+	projectValidator projectOUValidator) (NotificationTemplateServiceInterface, TemplateRendererInterface,
 	declarativeresource.ResourceExporter, error) {
 	transactioner, err := provider.GetDBProvider().GetConfigDBTransactioner()
 	if err != nil {
@@ -28,12 +31,14 @@ func Initialize(mux *http.ServeMux, cacheManager cache.CacheManagerInterface,
 	}
 
 	byHandle := cache.GetCache[templateDAO](cacheManager, "NotificationTemplateByHandleCache")
-	store, err := selectStore(byHandle)
+	requireProject := projectValidator != nil &&
+		projectscope.ProjectRequired(security.ResourceTypeNotificationTemplate)
+	store, err := selectStore(byHandle, requireProject, ouService)
 	if err != nil {
 		return nil, nil, nil, err
 	}
 
-	service := newNotificationTemplateService(store, transactioner, ouService)
+	service := newNotificationTemplateService(store, transactioner, ouService, projectValidator, requireProject)
 	handler := newNotificationTemplateHandler(service)
 	registerRoutes(mux, handler)
 
@@ -45,7 +50,10 @@ func Initialize(mux *http.ServeMux, cacheManager cache.CacheManagerInterface,
 
 // selectStore builds the store for the configured mode, loading declared templates at startup. The
 // DB store is wrapped with the read cache (the file store is already in memory, so it is not cached).
-func selectStore(byHandle cache.CacheInterface[templateDAO]) (notificationTemplateStoreInterface, error) {
+// requireProject refuses a declared template without a project, and systemOUs places a declared template in a
+// project without an ouId.
+func selectStore(byHandle cache.CacheInterface[templateDAO], requireProject bool, systemOUs systemOUProvider) (
+	notificationTemplateStoreInterface, error) {
 	mode, err := getStoreMode()
 	if err != nil {
 		return nil, err
@@ -62,7 +70,7 @@ func selectStore(byHandle cache.CacheInterface[templateDAO]) (notificationTempla
 
 	// Load declared templates once; in composite mode dbStore is non-nil so a declared handle already
 	// taken by a database template fails the load.
-	if err := loadDeclarativeTemplates(fileStore, dbStore); err != nil {
+	if err := loadDeclarativeTemplates(fileStore, dbStore, requireProject, systemOUs); err != nil {
 		return nil, err
 	}
 

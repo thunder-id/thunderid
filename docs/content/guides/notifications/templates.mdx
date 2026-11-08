@@ -22,7 +22,7 @@ The content is not fixed text. It carries placeholders that <ProductName /> reso
 
 Templates live in the config database, and you work with them from the Console or over the API.
 
-In the Console, open **Customize → Notifications**, which splits into **Email Templates** and **SMS Templates**. Use **New template** to create one, or open an existing template to edit its display name, description, content, and, for email, its light or dark color scheme. Preview the result before you save. You can delete a template, unless a flow still references it. **Import / Export** moves templates as declarative resources for a GitOps workflow.
+In the Console, open **Customize → Notifications**, which splits into **Email Templates** and **SMS Templates**. On the control plane, open the project first: **Notifications** is under **Customize** and lists the templates of that project. Use **New template** to create one, or open an existing template to edit its display name, description, content, and, for email, its light or dark color scheme. Preview the result before you save. You can delete a template, unless a flow still references it. **Import / Export** moves templates as declarative resources for a GitOps workflow.
 
 Over the API, manage templates under `/notification-templates/{channel}/templates`, where `{channel}` is `email` or `sms`:
 
@@ -35,6 +35,20 @@ Over the API, manage templates under `/notification-templates/{channel}/template
 | `DELETE` | `/notification-templates/{channel}/templates/{id}` | Delete a template, unless a flow references it. |
 
 By default a template is a database row you edit freely through the Console and API, and any template declared in a file is merged in as a read-only entry. To keep templates in version control only, set `notification.template.store` to `declarative`, where templates come from files alone and the API and Console refuse writes with a `403`. To use the database alone and ignore file-declared templates, set it to `mutable`. See [Import Declarative Resources](../declarative-configurations/import-resources.mdx#notification-templates).
+
+## Templates in Projects
+
+On the control plane, every notification template belongs to a project.
+
+- **Create**: set `projectId` in the request body of `POST /notification-templates/{channel}/templates`. The template goes into the system organization unit, so `ouId` can be left out. A request without `projectId` fails with `NTM-1031`, a project that does not exist fails with `NTM-1029`, and any organization unit other than the system one fails with `NTM-1030`.
+- **List**: `GET /notification-templates/{channel}/templates?projectId=<project-id>` returns the templates of the project. A project that does not exist returns an empty list.
+- **Update**: an update without `projectId` keeps the template in its current project. A different `projectId` moves the template to that project. A project that does not exist fails with `NTM-1029`, and a template outside the system organization unit cannot move into a project (`NTM-1030`).
+- **Delete a project**: deleting a project that still has templates fails with `PRJ-1013`.
+- **Declarative files**: a template file must set `projectId`, and can leave `ouId` out to be placed in the system organization unit. A file without `projectId` stops the server from starting. Export and import keep `projectId`.
+
+The built-in templates belong to the **Default** project. A flow finds its template by handle, and handles are unique across the deployment, so a flow in another project can use them. A deploy of a project sends only its own resources, so deploy the **Default** project to a gateway before projects whose flows use its templates.
+
+A server without projects, such as the all-in-one server, does not require a project and keeps the `projectId` it receives without checking it.
 
 ## Writing Template Content
 

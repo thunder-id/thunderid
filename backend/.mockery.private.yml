@@ -588,6 +588,7 @@ packages:
       NotificationTemplateServiceInterface:
       translationResolver:
       designResolver:
+      projectOUValidator:
 
   github.com/thunder-id/thunderid/internal/system/importer:
     config:

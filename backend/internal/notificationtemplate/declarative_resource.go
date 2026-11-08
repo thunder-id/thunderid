@@ -35,6 +35,7 @@ type declaredNotificationTemplate struct {
 	Channel     string          `yaml:"channel"`
 	Handle      string          `yaml:"handle"`
 	OUID        string          `yaml:"ouId"`
+	ProjectID   string          `yaml:"projectId,omitempty"`
 	DisplayName string          `yaml:"displayName"`
 	Description string          `yaml:"description"`
 	Content     TemplateContent `yaml:"content"`
@@ -83,13 +84,23 @@ func declaredToDAO(declared *declaredNotificationTemplate) (templateDAO, error) 
 	}
 	dao.Handle = declared.Handle
 	dao.OUID = declared.OUID
+	dao.ProjectID = declared.ProjectID
 	return dao, nil
+}
+
+// systemOUProvider gives the system organization unit, which a declared template in a project is placed in when it
+// names no organization unit.
+type systemOUProvider interface {
+	GetSystemOUID(ctx context.Context) (string, *tidcommon.ServiceError)
 }
 
 // newDeclaredTemplateValidator returns the loader's Validator. It rejects duplicate ids and
 // (channel, handle) pairs within the load, tracking what it has seen so each check is O(1). dbStore is
 // set only in composite mode, where a declared id or handle must not collide with a database template.
-func newDeclaredTemplateValidator(dbStore notificationTemplateStoreInterface) func(interface{}) error {
+// requireProject refuses a declared template without a project, on a deployment that requires one. A
+// declared template in a project without an ouId is placed in the system organization unit systemOUs gives.
+func newDeclaredTemplateValidator(dbStore notificationTemplateStoreInterface, requireProject bool,
+	systemOUs systemOUProvider) func(interface{}) error {
 	seenIDs := make(map[string]bool)
 	seenHandles := make(map[string]bool)
 	return func(data interface{}) error {
@@ -97,9 +108,22 @@ func newDeclaredTemplateValidator(dbStore notificationTemplateStoreInterface) fu
 		if !ok {
 			return fmt.Errorf("invalid data type: expected *declaredNotificationTemplate")
 		}
+		// The loader stores the declaration it validated, so the organization unit set here is the one stored.
+		if strings.TrimSpace(declared.ProjectID) != "" && strings.TrimSpace(declared.OUID) == "" && systemOUs != nil {
+			systemOUID, svcErr := systemOUs.GetSystemOUID(context.Background())
+			if svcErr != nil {
+				return fmt.Errorf("system organization unit of notification template %q could not be resolved: %s",
+					declared.Handle, svcErrReason(svcErr))
+			}
+			declared.OUID = systemOUID
+		}
 		dao, err := declaredToDAO(declared)
 		if err != nil {
 			return err
+		}
+		if requireProject && strings.TrimSpace(dao.ProjectID) == "" {
+			return fmt.Errorf("notification template %q (channel %q) is missing the required projectId",
+				dao.Handle, dao.Channel)
 		}
 
 		handleKey := string(dao.Channel) + "\x00" + dao.Handle
@@ -150,13 +174,15 @@ func checkDeclaredTemplateAgainstDB(dbStore notificationTemplateStoreInterface, 
 
 // loadDeclarativeTemplates reads every declared template into the in-memory store. dbStore is passed
 // only in composite mode so a declared handle already used by a database template fails the load. The
-// file store is handed to the loader directly as its sink.
-func loadDeclarativeTemplates(fileStore *templateFileBasedStore, dbStore notificationTemplateStoreInterface) error {
+// file store is handed to the loader directly as its sink. requireProject refuses a declared template
+// without a project, and systemOUs places a declared template in a project without an ouId.
+func loadDeclarativeTemplates(fileStore *templateFileBasedStore, dbStore notificationTemplateStoreInterface,
+	requireProject bool, systemOUs systemOUProvider) error {
 	loader := declarativeresource.NewResourceLoader(declarativeresource.ResourceConfig{
 		ResourceType:  paramTypeNotificationTemplate,
 		DirectoryName: "notification_templates",
 		Parser:        parseDeclaredTemplate,
-		Validator:     newDeclaredTemplateValidator(dbStore),
+		Validator:     newDeclaredTemplateValidator(dbStore, requireProject, systemOUs),
 		IDExtractor: func(data interface{}) string {
 			if declared, ok := data.(*declaredNotificationTemplate); ok {
 				return declared.ID
@@ -304,6 +330,7 @@ func templateToDeclared(channel ChannelType, t *Template) *declaredNotificationT
 		Channel:     string(channel),
 		Handle:      t.Handle,
 		OUID:        t.OUID,
+		ProjectID:   t.ProjectID,
 		DisplayName: t.DisplayName,
 		Description: t.Description,
 		Content:     t.Content,

@@ -585,6 +585,162 @@ func (_c *NotificationTemplateServiceInterfaceMock_ListTemplatesByOUID_Call) Run
 	return _c
 }
 
+// ListTemplatesByProject provides a mock function for the type NotificationTemplateServiceInterfaceMock
+func (_mock *NotificationTemplateServiceInterfaceMock) ListTemplatesByProject(ctx context.Context, channel ChannelType, projectID string, limit int, offset int) (*TemplateListResponse, *common.ServiceError) {
+	ret := _mock.Called(ctx, channel, projectID, limit, offset)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListTemplatesByProject")
+	}
+
+	var r0 *TemplateListResponse
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, ChannelType, string, int, int) (*TemplateListResponse, *common.ServiceError)); ok {
+		return returnFunc(ctx, channel, projectID, limit, offset)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, ChannelType, string, int, int) *TemplateListResponse); ok {
+		r0 = returnFunc(ctx, channel, projectID, limit, offset)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*TemplateListResponse)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, ChannelType, string, int, int) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, channel, projectID, limit, offset)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// NotificationTemplateServiceInterfaceMock_ListTemplatesByProject_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ListTemplatesByProject'
+type NotificationTemplateServiceInterfaceMock_ListTemplatesByProject_Call struct {
+	*mock.Call
+}
+
+// ListTemplatesByProject is a helper method to define mock.On call
+//   - ctx context.Context
+//   - channel ChannelType
+//   - projectID string
+//   - limit int
+//   - offset int
+func (_e *NotificationTemplateServiceInterfaceMock_Expecter) ListTemplatesByProject(ctx any, channel any, projectID any, limit any, offset any) *NotificationTemplateServiceInterfaceMock_ListTemplatesByProject_Call {
+	return &NotificationTemplateServiceInterfaceMock_ListTemplatesByProject_Call{Call: _e.mock.On("ListTemplatesByProject", ctx, channel, projectID, limit, offset)}
+}
+
+func (_c *NotificationTemplateServiceInterfaceMock_ListTemplatesByProject_Call) Run(run func(ctx context.Context, channel ChannelType, projectID string, limit int, offset int)) *NotificationTemplateServiceInterfaceMock_ListTemplatesByProject_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 ChannelType
+		if args[1] != nil {
+			arg1 = args[1].(ChannelType)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		var arg3 int
+		if args[3] != nil {
+			arg3 = args[3].(int)
+		}
+		var arg4 int
+		if args[4] != nil {
+			arg4 = args[4].(int)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+			arg4,
+		)
+	})
+	return _c
+}
+
+func (_c *NotificationTemplateServiceInterfaceMock_ListTemplatesByProject_Call) Return(templateListResponse *TemplateListResponse, serviceError *common.ServiceError) *NotificationTemplateServiceInterfaceMock_ListTemplatesByProject_Call {
+	_c.Call.Return(templateListResponse, serviceError)
+	return _c
+}
+
+func (_c *NotificationTemplateServiceInterfaceMock_ListTemplatesByProject_Call) RunAndReturn(run func(ctx context.Context, channel ChannelType, projectID string, limit int, offset int) (*TemplateListResponse, *common.ServiceError)) *NotificationTemplateServiceInterfaceMock_ListTemplatesByProject_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ProjectHasTemplates provides a mock function for the type NotificationTemplateServiceInterfaceMock
+func (_mock *NotificationTemplateServiceInterfaceMock) ProjectHasTemplates(ctx context.Context, projectID string) (bool, *common.ServiceError) {
+	ret := _mock.Called(ctx, projectID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ProjectHasTemplates")
+	}
+
+	var r0 bool
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (bool, *common.ServiceError)); ok {
+		return returnFunc(ctx, projectID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) bool); ok {
+		r0 = returnFunc(ctx, projectID)
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, projectID)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// NotificationTemplateServiceInterfaceMock_ProjectHasTemplates_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ProjectHasTemplates'
+type NotificationTemplateServiceInterfaceMock_ProjectHasTemplates_Call struct {
+	*mock.Call
+}
+
+// ProjectHasTemplates is a helper method to define mock.On call
+//   - ctx context.Context
+//   - projectID string
+func (_e *NotificationTemplateServiceInterfaceMock_Expecter) ProjectHasTemplates(ctx any, projectID any) *NotificationTemplateServiceInterfaceMock_ProjectHasTemplates_Call {
+	return &NotificationTemplateServiceInterfaceMock_ProjectHasTemplates_Call{Call: _e.mock.On("ProjectHasTemplates", ctx, projectID)}
+}
+
+func (_c *NotificationTemplateServiceInterfaceMock_ProjectHasTemplates_Call) Run(run func(ctx context.Context, projectID string)) *NotificationTemplateServiceInterfaceMock_ProjectHasTemplates_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *NotificationTemplateServiceInterfaceMock_ProjectHasTemplates_Call) Return(b bool, serviceError *common.ServiceError) *NotificationTemplateServiceInterfaceMock_ProjectHasTemplates_Call {
+	_c.Call.Return(b, serviceError)
+	return _c
+}
+
+func (_c *NotificationTemplateServiceInterfaceMock_ProjectHasTemplates_Call) RunAndReturn(run func(ctx context.Context, projectID string) (bool, *common.ServiceError)) *NotificationTemplateServiceInterfaceMock_ProjectHasTemplates_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // SetDependencyRegistry provides a mock function for the type NotificationTemplateServiceInterfaceMock
 func (_mock *NotificationTemplateServiceInterfaceMock) SetDependencyRegistry(r resourcedependency.Registry) {
 	_mock.Called(r)

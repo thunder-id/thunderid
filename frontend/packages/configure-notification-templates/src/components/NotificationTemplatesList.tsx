@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {QueryErrorNotice} from '@thunderid/components';
+import {useProjectScope} from '@thunderid/contexts';
 import {useDataGridLocaleText} from '@thunderid/hooks';
 import {useLogger} from '@thunderid/logger/react';
 import {Box, DataGrid, IconButton, ListingTable, Tooltip, Typography} from '@wso2/oxygen-ui';
@@ -40,9 +41,11 @@ export default function NotificationTemplatesList({channel}: NotificationTemplat
   const dataGridLocaleText = useDataGridLocaleText();
 
   const [paginationModel, setPaginationModel] = useState<DataGrid.GridPaginationModel>({pageSize: 10, page: 0});
+  const {projectId} = useProjectScope();
   const {data, isLoading, error, refetch} = useGetNotificationTemplates(channel, {
     limit: paginationModel.pageSize,
     offset: paginationModel.page * paginationModel.pageSize,
+    projectId,
   });
 
   const rows = useMemo(() => data?.templates ?? [], [data?.templates]);

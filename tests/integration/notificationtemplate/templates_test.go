@@ -369,3 +369,73 @@ func (ts *TemplatesTestSuite) TestInvalidColorScheme() {
 	ts.Require().Equal(http.StatusBadRequest, status)
 	ts.Require().Equal("NTM-1017", errorCode(body))
 }
+
+// TestProjectScope covers templates in projects on a server without projects: the server keeps the
+// project unchecked and places a template without an organization unit in the system one, lists a
+// project's templates, keeps or moves the project on update, and refuses a project ID longer than the
+// column.
+func (ts *TemplatesTestSuite) TestProjectScope() {
+	const (
+		projectA = "019a0000-0000-7000-8000-0000000000a1"
+		projectB = "019a0000-0000-7000-8000-0000000000b2"
+	)
+	path := "/notification-templates/email/templates"
+	content := map[string]string{"subject": "Hello", "body": "<p>Hello</p>"}
+
+	status, body := ts.do(http.MethodPost, path, map[string]interface{}{
+		"handle": "it-project-scoped", "displayName": "Project scoped", "projectId": projectA, "content": content,
+	})
+	ts.Require().Equalf(http.StatusCreated, status, "body: %s", body)
+	id := idOf(body)
+	ts.createdIDs = append(ts.createdIDs, channelID{channel: "email", id: id})
+	ts.Equal(ts.ouID, ouIDOf(body), "a template in a project without an organization unit is in the system one")
+	ts.Equal(projectA, projectIDOf(body))
+
+	ts.Equal([]string{id}, ts.listIDs(path+"?limit=100&projectId="+projectA))
+	ts.Empty(ts.listIDs(path + "?projectId=" + projectB))
+	ts.Empty(ts.listIDs(path+"?projectId="), "an empty project lists no template")
+
+	status, body = ts.do(http.MethodPut, path+"/"+id,
+		map[string]interface{}{"displayName": "Project scoped", "content": content})
+	ts.Require().Equalf(http.StatusOK, status, "body: %s", body)
+	ts.Equal(projectA, projectIDOf(body), "an update without a project keeps it")
+
+	status, body = ts.do(http.MethodPut, path+"/"+id,
+		map[string]interface{}{"displayName": "Project scoped", "projectId": projectB, "content": content})
+	ts.Require().Equalf(http.StatusOK, status, "body: %s", body)
+	ts.Equal(projectB, projectIDOf(body))
+	ts.Equal([]string{id}, ts.listIDs(path+"?limit=100&projectId="+projectB))
+	ts.Empty(ts.listIDs(path + "?projectId=" + projectA))
+
+	status, body = ts.do(http.MethodPost, path, map[string]interface{}{
+		"handle": "it-project-overlong", "displayName": "Overlong", "content": content,
+		"projectId": strings.Repeat("p", 37),
+	})
+	ts.Equal(http.StatusBadRequest, status)
+	ts.Equal("NTM-1029", errorCode(body))
+}
+
+func projectIDOf(body []byte) string {
+	var resp struct {
+		ProjectID string `json:"projectId"`
+	}
+	_ = json.Unmarshal(body, &resp)
+	return resp.ProjectID
+}
+
+// listIDs lists templates at the given path and query and returns their IDs.
+func (ts *TemplatesTestSuite) listIDs(pathAndQuery string) []string {
+	status, body := ts.do(http.MethodGet, pathAndQuery, nil)
+	ts.Require().Equalf(http.StatusOK, status, "body: %s", body)
+	var resp struct {
+		Templates []struct {
+			ID string `json:"id"`
+		} `json:"templates"`
+	}
+	ts.Require().NoError(json.Unmarshal(body, &resp))
+	ids := []string{}
+	for _, template := range resp.Templates {
+		ids = append(ids, template.ID)
+	}
+	return ids
+}

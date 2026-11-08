@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {DocumentTitle} from '@thunderid/components';
+import {useProjectScope} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {Button, PageContent, PageTitle} from '@wso2/oxygen-ui';
 import {Plus} from '@wso2/oxygen-ui-icons-react';
@@ -13,18 +14,35 @@ import useNotificationTemplateRoutes from '../hooks/useNotificationTemplateRoute
 import {isNotificationChannel} from '../models/notification-template';
 
 /**
+ * Props for the {@link NotificationTemplatesListPage} component.
+ *
+ * @public
+ */
+export interface NotificationTemplatesListPageProps {
+  /**
+   * Whether a template is created in a project only. When set, a template can be created inside a selected
+   * project and not outside one.
+   */
+  createInProjectsOnly?: boolean;
+}
+
+/**
  * Landing page for a single notification channel's templates. The channel is read from the
  * `:channel` route parameter; the Email and SMS variants are reached from the sidebar.
  *
  * @public
  */
-export default function NotificationTemplatesListPage(): JSX.Element {
+export default function NotificationTemplatesListPage({
+  createInProjectsOnly = false,
+}: NotificationTemplatesListPageProps): JSX.Element {
   const {t} = useTranslation('notificationTemplates');
   const navigate = useNavigate();
   const logger = useLogger('NotificationTemplatesListPage');
   const routes = useNotificationTemplateRoutes();
   const {channel: channelParam} = useParams<{channel: string}>();
   const channel = isNotificationChannel(channelParam) ? channelParam : 'email';
+  const {projectId} = useProjectScope();
+  const canCreate = !createInProjectsOnly || Boolean(projectId);
 
   const handleCreate = (): void => {
     (async (): Promise<void> => {
@@ -53,16 +71,18 @@ export default function NotificationTemplatesListPage(): JSX.Element {
       <PageTitle>
         <PageTitle.Header>{title}</PageTitle.Header>
         <PageTitle.SubHeader>{subtitle}</PageTitle.SubHeader>
-        <PageTitle.Actions>
-          <Button
-            data-testid="notification-template-add-button"
-            variant="contained"
-            startIcon={<Plus size={18} />}
-            onClick={handleCreate}
-          >
-            {t('listing.addTemplate', 'New template')}
-          </Button>
-        </PageTitle.Actions>
+        {canCreate && (
+          <PageTitle.Actions>
+            <Button
+              data-testid="notification-template-add-button"
+              variant="contained"
+              startIcon={<Plus size={18} />}
+              onClick={handleCreate}
+            >
+              {t('listing.addTemplate', 'New template')}
+            </Button>
+          </PageTitle.Actions>
+        )}
       </PageTitle>
 
       {/* Keyed by channel so switching Email↔SMS remounts the list, resetting pagination and any

@@ -5016,6 +5016,92 @@ content:
 	s.Equal("01900000-0000-7000-8000-0000000000a0", outcome.ResourceID)
 }
 
+// importedProjectID is the project the notification template import tests place templates in.
+const importedProjectID = "proj-1"
+
+func (s *ImportNotificationTemplateTestSuite) TestImportKeepsTheProject() {
+	doc, err := parseDocuments(`
+resource_type: notification_template
+channel: email
+handle: user-invite
+projectId: proj-1
+displayName: User Invitation Email
+content:
+  subject: Welcome
+  body: "<p>{{ctx(inviteLink)}}</p>"
+`)
+	s.Require().NoError(err)
+	s.mockAdapter.EXPECT().
+		ValidateTemplate(mock.Anything, notificationtemplate.ChannelTypeEmail,
+			mock.MatchedBy(func(req notificationtemplate.CreateTemplateRequest) bool {
+				return req.ProjectID == importedProjectID
+			})).
+		Return(nil).Once()
+	s.mockAdapter.EXPECT().
+		GetTemplateByHandle(mock.Anything, notificationtemplate.ChannelTypeEmail, "user-invite").
+		Return(&notificationtemplate.Template{ID: "existing-id", Handle: "user-invite"}, nil).Once()
+	s.mockAdapter.EXPECT().
+		UpdateTemplate(mock.Anything, notificationtemplate.ChannelTypeEmail, "existing-id",
+			mock.MatchedBy(func(req notificationtemplate.UpdateTemplateRequest) bool {
+				return req.ProjectID == importedProjectID
+			})).
+		Return(&notificationtemplate.Template{ID: "existing-id", Handle: "user-invite"}, nil).Once()
+
+	outcome := s.svc.importNotificationTemplate(s.ctx, doc[0], &ImportOptions{Upsert: boolPtr(true)}, false)
+
+	s.Equal(statusSuccess, outcome.Status)
+	s.Equal(operationUpdate, outcome.Operation)
+}
+
+// A template exported before templates had projects names none; an upsert of an existing one keeps its project.
+func (s *ImportNotificationTemplateTestSuite) TestUpsertWithoutProjectKeepsTheStoredProject() {
+	s.mockAdapter.EXPECT().
+		ValidateTemplate(mock.Anything, notificationtemplate.ChannelTypeEmail,
+			mock.MatchedBy(func(req notificationtemplate.CreateTemplateRequest) bool { return req.ProjectID == "" })).
+		Return(&notificationtemplate.ErrorProjectRequired).Once()
+	s.mockAdapter.EXPECT().
+		ValidateTemplate(mock.Anything, notificationtemplate.ChannelTypeEmail,
+			mock.MatchedBy(func(req notificationtemplate.CreateTemplateRequest) bool {
+				return req.ProjectID == importedProjectID
+			})).
+		Return(nil).Once()
+	s.mockAdapter.EXPECT().
+		GetTemplateByHandle(mock.Anything, notificationtemplate.ChannelTypeEmail, "user-invite").
+		Return(&notificationtemplate.Template{
+			ID: "existing-id", Handle: "user-invite", ProjectID: importedProjectID,
+		}, nil).
+		Twice()
+	s.mockAdapter.EXPECT().
+		UpdateTemplate(mock.Anything, notificationtemplate.ChannelTypeEmail, "existing-id",
+			mock.MatchedBy(func(req notificationtemplate.UpdateTemplateRequest) bool { return req.ProjectID == "" })).
+		Return(&notificationtemplate.Template{
+			ID: "existing-id", Handle: "user-invite", ProjectID: importedProjectID,
+		}, nil).
+		Once()
+
+	outcome := s.svc.importNotificationTemplate(
+		s.ctx, parseFirstDoc(s.T()), &ImportOptions{Upsert: boolPtr(true)}, false)
+
+	s.Equal(statusSuccess, outcome.Status)
+	s.Equal(operationUpdate, outcome.Operation)
+}
+
+// A new template that names no project is still refused where one is required.
+func (s *ImportNotificationTemplateTestSuite) TestUpsertWithoutProjectOfNewTemplateFails() {
+	s.mockAdapter.EXPECT().
+		ValidateTemplate(mock.Anything, notificationtemplate.ChannelTypeEmail, mock.Anything).
+		Return(&notificationtemplate.ErrorProjectRequired).Once()
+	s.mockAdapter.EXPECT().
+		GetTemplateByHandle(mock.Anything, notificationtemplate.ChannelTypeEmail, "user-invite").
+		Return(nil, &notificationtemplate.ErrorTemplateNotFound).Once()
+
+	outcome := s.svc.importNotificationTemplate(
+		s.ctx, parseFirstDoc(s.T()), &ImportOptions{Upsert: boolPtr(true)}, false)
+
+	s.Equal(statusFailed, outcome.Status)
+	s.Equal(notificationtemplate.ErrorProjectRequired.Code, outcome.Code)
+}
+
 func (s *ImportNotificationTemplateTestSuite) TestUpsertUpdatesExisting() {
 	s.expectValidateSucceeds()
 	s.mockAdapter.EXPECT().

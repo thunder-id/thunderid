@@ -328,3 +328,22 @@ func (s *CacheBackedStoreTestSuite) TestTemplateDAO_JSONRoundTrip() {
 	s.Require().NoError(json.Unmarshal(data, &round))
 	s.Equal(original, round)
 }
+
+func (s *CacheBackedStoreTestSuite) TestListTemplatesByProject_Delegates() {
+	s.mockStore.On("ListTemplatesByProject", mock.Anything, ChannelTypeEmail, "proj-1", 10, 0).
+		Return([]templateDAO{emailDAO("t1", "A")}, nil).Once()
+
+	out, err := s.store.ListTemplatesByProject(s.ctx, ChannelTypeEmail, "proj-1", 10, 0)
+	s.NoError(err)
+	s.Len(out, 1)
+	s.mockStore.AssertExpectations(s.T())
+}
+
+func (s *CacheBackedStoreTestSuite) TestCountTemplatesByProject_Delegates() {
+	s.mockStore.On("CountTemplatesByProject", mock.Anything, ChannelTypeEmail, "proj-1").Return(3, nil).Once()
+
+	n, err := s.store.CountTemplatesByProject(s.ctx, ChannelTypeEmail, "proj-1")
+	s.NoError(err)
+	s.Equal(3, n)
+	s.mockStore.AssertExpectations(s.T())
+}

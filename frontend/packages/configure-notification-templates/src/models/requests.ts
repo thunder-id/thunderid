@@ -10,8 +10,13 @@ import type {EmailTemplateContent, SmsTemplateContent, TemplateDesign} from './n
  */
 export interface CreateEmailTemplateRequest {
   handle: string;
-  /** The organization unit this template belongs to. Set at creation and immutable thereafter. */
-  ouId: string;
+  /**
+   * The organization unit this template belongs to. Set at creation and immutable thereafter. A template in a
+   * project leaves it out and is placed in the system organization unit.
+   */
+  ouId?: string;
+  /** The project this template belongs to. Required on the control plane. */
+  projectId?: string;
   displayName: string;
   description?: string;
   design?: TemplateDesign;
@@ -25,8 +30,13 @@ export interface CreateEmailTemplateRequest {
  */
 export interface CreateSmsTemplateRequest {
   handle: string;
-  /** The organization unit this template belongs to. Set at creation and immutable thereafter. */
-  ouId: string;
+  /**
+   * The organization unit this template belongs to. Set at creation and immutable thereafter. A template in a
+   * project leaves it out and is placed in the system organization unit.
+   */
+  ouId?: string;
+  /** The project this template belongs to. Required on the control plane. */
+  projectId?: string;
   displayName: string;
   description?: string;
   content: SmsTemplateContent;

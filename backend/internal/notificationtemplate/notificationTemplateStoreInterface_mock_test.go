@@ -184,6 +184,78 @@ func (_c *notificationTemplateStoreInterfaceMock_CountTemplatesByOUID_Call) RunA
 	return _c
 }
 
+// CountTemplatesByProject provides a mock function for the type notificationTemplateStoreInterfaceMock
+func (_mock *notificationTemplateStoreInterfaceMock) CountTemplatesByProject(ctx context.Context, channel ChannelType, projectID string) (int, error) {
+	ret := _mock.Called(ctx, channel, projectID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for CountTemplatesByProject")
+	}
+
+	var r0 int
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, ChannelType, string) (int, error)); ok {
+		return returnFunc(ctx, channel, projectID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, ChannelType, string) int); ok {
+		r0 = returnFunc(ctx, channel, projectID)
+	} else {
+		r0 = ret.Get(0).(int)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, ChannelType, string) error); ok {
+		r1 = returnFunc(ctx, channel, projectID)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// notificationTemplateStoreInterfaceMock_CountTemplatesByProject_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CountTemplatesByProject'
+type notificationTemplateStoreInterfaceMock_CountTemplatesByProject_Call struct {
+	*mock.Call
+}
+
+// CountTemplatesByProject is a helper method to define mock.On call
+//   - ctx context.Context
+//   - channel ChannelType
+//   - projectID string
+func (_e *notificationTemplateStoreInterfaceMock_Expecter) CountTemplatesByProject(ctx any, channel any, projectID any) *notificationTemplateStoreInterfaceMock_CountTemplatesByProject_Call {
+	return &notificationTemplateStoreInterfaceMock_CountTemplatesByProject_Call{Call: _e.mock.On("CountTemplatesByProject", ctx, channel, projectID)}
+}
+
+func (_c *notificationTemplateStoreInterfaceMock_CountTemplatesByProject_Call) Run(run func(ctx context.Context, channel ChannelType, projectID string)) *notificationTemplateStoreInterfaceMock_CountTemplatesByProject_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 ChannelType
+		if args[1] != nil {
+			arg1 = args[1].(ChannelType)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *notificationTemplateStoreInterfaceMock_CountTemplatesByProject_Call) Return(n int, err error) *notificationTemplateStoreInterfaceMock_CountTemplatesByProject_Call {
+	_c.Call.Return(n, err)
+	return _c
+}
+
+func (_c *notificationTemplateStoreInterfaceMock_CountTemplatesByProject_Call) RunAndReturn(run func(ctx context.Context, channel ChannelType, projectID string) (int, error)) *notificationTemplateStoreInterfaceMock_CountTemplatesByProject_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // CreateTemplate provides a mock function for the type notificationTemplateStoreInterfaceMock
 func (_mock *notificationTemplateStoreInterfaceMock) CreateTemplate(ctx context.Context, template templateDAO) error {
 	ret := _mock.Called(ctx, template)
@@ -682,6 +754,92 @@ func (_c *notificationTemplateStoreInterfaceMock_ListTemplatesByOUID_Call) Retur
 }
 
 func (_c *notificationTemplateStoreInterfaceMock_ListTemplatesByOUID_Call) RunAndReturn(run func(ctx context.Context, channel ChannelType, ouID string, limit int, offset int) ([]templateDAO, error)) *notificationTemplateStoreInterfaceMock_ListTemplatesByOUID_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ListTemplatesByProject provides a mock function for the type notificationTemplateStoreInterfaceMock
+func (_mock *notificationTemplateStoreInterfaceMock) ListTemplatesByProject(ctx context.Context, channel ChannelType, projectID string, limit int, offset int) ([]templateDAO, error) {
+	ret := _mock.Called(ctx, channel, projectID, limit, offset)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListTemplatesByProject")
+	}
+
+	var r0 []templateDAO
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, ChannelType, string, int, int) ([]templateDAO, error)); ok {
+		return returnFunc(ctx, channel, projectID, limit, offset)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, ChannelType, string, int, int) []templateDAO); ok {
+		r0 = returnFunc(ctx, channel, projectID, limit, offset)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]templateDAO)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, ChannelType, string, int, int) error); ok {
+		r1 = returnFunc(ctx, channel, projectID, limit, offset)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// notificationTemplateStoreInterfaceMock_ListTemplatesByProject_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ListTemplatesByProject'
+type notificationTemplateStoreInterfaceMock_ListTemplatesByProject_Call struct {
+	*mock.Call
+}
+
+// ListTemplatesByProject is a helper method to define mock.On call
+//   - ctx context.Context
+//   - channel ChannelType
+//   - projectID string
+//   - limit int
+//   - offset int
+func (_e *notificationTemplateStoreInterfaceMock_Expecter) ListTemplatesByProject(ctx any, channel any, projectID any, limit any, offset any) *notificationTemplateStoreInterfaceMock_ListTemplatesByProject_Call {
+	return &notificationTemplateStoreInterfaceMock_ListTemplatesByProject_Call{Call: _e.mock.On("ListTemplatesByProject", ctx, channel, projectID, limit, offset)}
+}
+
+func (_c *notificationTemplateStoreInterfaceMock_ListTemplatesByProject_Call) Run(run func(ctx context.Context, channel ChannelType, projectID string, limit int, offset int)) *notificationTemplateStoreInterfaceMock_ListTemplatesByProject_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 ChannelType
+		if args[1] != nil {
+			arg1 = args[1].(ChannelType)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		var arg3 int
+		if args[3] != nil {
+			arg3 = args[3].(int)
+		}
+		var arg4 int
+		if args[4] != nil {
+			arg4 = args[4].(int)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+			arg4,
+		)
+	})
+	return _c
+}
+
+func (_c *notificationTemplateStoreInterfaceMock_ListTemplatesByProject_Call) Return(templateDAOMoqParams []templateDAO, err error) *notificationTemplateStoreInterfaceMock_ListTemplatesByProject_Call {
+	_c.Call.Return(templateDAOMoqParams, err)
+	return _c
+}
+
+func (_c *notificationTemplateStoreInterfaceMock_ListTemplatesByProject_Call) RunAndReturn(run func(ctx context.Context, channel ChannelType, projectID string, limit int, offset int) ([]templateDAO, error)) *notificationTemplateStoreInterfaceMock_ListTemplatesByProject_Call {
 	_c.Call.Return(run)
 	return _c
 }
