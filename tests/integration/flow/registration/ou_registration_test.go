@@ -5,6 +5,7 @@ package registration
 
 import (
 	"fmt"
+	"maps"
 	"testing"
 	"time"
 
@@ -342,6 +343,19 @@ var (
 		},
 	}
 
+	generatedOUHandleApp = testutils.Application{
+		Name:                      "OU Registration Generated Handle Test Application",
+		Description:               "Application for testing OU registration with a generated handle",
+		IsRegistrationFlowEnabled: true,
+		ClientID:                  "ou_reg_generated_handle_test_client",
+		ClientSecret:              "ou_reg_generated_handle_test_secret",
+		RedirectURIs:              []string{"http://localhost:3000/callback"},
+		AllowedUserTypes:          []string{dynamicEntityType.Handle},
+		AssertionConfig: map[string]interface{}{
+			"userAttributes": []string{"userTypeHandle", "ouId", "ouName", "ouHandle"},
+		},
+	}
+
 	smsApp = testutils.Application{
 		Name:                      "OU SMS Registration Flow Test Application",
 		Description:               "Application for testing OU SMS registration flows",
@@ -402,6 +416,7 @@ type OURegistrationFlowTestSuite struct {
 	mockServer         *testutils.MockNotificationServer
 	createdOUs         []string
 	basicFlowTestAppID string
+	genHandleAppID     string
 	basicFlowTestOUID  string
 	smsFlowTestAppID   string
 	smsFlowTestOUID    string
@@ -483,6 +498,12 @@ func (ts *OURegistrationFlowTestSuite) SetupSuite() {
 	smsNodes[4]["properties"].(map[string]interface{})["senderId"] = senderID
 	smsRegistrationFlowWithOU.Nodes = smsNodes
 
+	// Create a registration flow that generates the OU handle from the name
+	generatedHandleFlowID, err := testutils.CreateFlow(withGeneratedOUHandle(basicRegistrationFlowWithOU))
+	ts.Require().NoError(err, "Failed to create registration flow with a generated OU handle")
+	ts.config.CreatedFlowIDs = append(ts.config.CreatedFlowIDs, generatedHandleFlowID)
+	generatedOUHandleApp.RegistrationFlowID = generatedHandleFlowID
+
 	// Create SMS registration flow with OU
 	smsFlowID, err := testutils.CreateFlow(smsRegistrationFlowWithOU)
 	ts.Require().NoError(err, "Failed to create SMS registration flow with OU")
@@ -494,6 +515,7 @@ func (ts *OURegistrationFlowTestSuite) SetupSuite() {
 	ts.Require().NoError(err, "Failed to create isolated auth flow")
 	ts.config.CreatedFlowIDs = append(ts.config.CreatedFlowIDs, isolatedAuthID)
 	ouRegTestApp.AuthFlowID = isolatedAuthID
+	generatedOUHandleApp.AuthFlowID = isolatedAuthID
 	smsApp.AuthFlowID = isolatedAuthID
 
 	// Create test applications with allowed user types
@@ -503,6 +525,11 @@ func (ts *OURegistrationFlowTestSuite) SetupSuite() {
 		ts.T().Fatalf("Failed to create test application during setup: %v", err)
 	}
 	ts.basicFlowTestAppID = appID
+
+	generatedOUHandleApp.OUID = ts.basicFlowTestOUID
+	generatedHandleAppID, err := testutils.CreateApplication(generatedOUHandleApp)
+	ts.Require().NoError(err, "Failed to create generated handle test application")
+	ts.genHandleAppID = generatedHandleAppID
 
 	smsApp.OUID = ts.smsFlowTestOUID
 	smsAppID, err := testutils.CreateApplication(smsApp)
@@ -537,6 +564,11 @@ func (ts *OURegistrationFlowTestSuite) TearDownSuite() {
 	if ts.basicFlowTestAppID != "" {
 		if err := testutils.DeleteApplication(ts.basicFlowTestAppID); err != nil {
 			ts.T().Logf("Failed to delete test application during teardown: %v", err)
+		}
+	}
+	if ts.genHandleAppID != "" {
+		if err := testutils.DeleteApplication(ts.genHandleAppID); err != nil {
+			ts.T().Logf("Failed to delete generated handle test application during teardown: %v", err)
 		}
 	}
 	if ts.smsFlowTestAppID != "" {
@@ -708,6 +740,114 @@ func (ts *OURegistrationFlowTestSuite) TestBasicRegistrationFlowWithOUCreationDu
 			}
 
 			flowStep, err := common.InitiateRegistrationFlow(ts.basicFlowTestAppID, false, inputs, "")
+			ts.Require().NoError(err)
+			ts.Require().Equal("INCOMPLETE", flowStep.FlowStatus)
+			ts.Require().Empty(flowStep.Assertion)
+			ts.Require().NotNil(flowStep.Error)
+			ts.Require().Contains(flowStep.Error.Description.DefaultValue, tc.expectedErrorSubstr)
+		})
+	}
+}
+
+func (ts *OURegistrationFlowTestSuite) TestRegistrationFlowWithGeneratedOUHandle() {
+	suffix := generateUniqueHandle("gen")
+	testCases := []struct {
+		name           string
+		ouName         string
+		ouHandle       string
+		expectedHandle string
+	}{
+		{
+			name:           "HandleGeneratedFromName",
+			ouName:         "Northstar Logistics " + suffix,
+			expectedHandle: "northstar-logistics-" + suffix,
+		},
+		{
+			name:           "ProvidedHandleKept",
+			ouName:         "Provided Handle OU " + suffix,
+			ouHandle:       "provided-" + suffix,
+			expectedHandle: "provided-" + suffix,
+		},
+	}
+
+	for _, tc := range testCases {
+		ts.Run(tc.name, func() {
+			username := common.GenerateUniqueUsername("genhandle")
+			inputs := map[string]string{
+				"username":    username,
+				"password":    "testpassword123",
+				"ouName":      tc.ouName,
+				"given_name":  "Test",
+				"family_name": "User",
+				"email":       username + "@example.com",
+			}
+			if tc.ouHandle != "" {
+				inputs["ouHandle"] = tc.ouHandle
+			}
+
+			flowStep, err := common.InitiateRegistrationFlow(ts.genHandleAppID, false, inputs, "")
+			ts.Require().NoError(err)
+			ts.Require().Equal("COMPLETE", flowStep.FlowStatus)
+
+			jwtClaims, err := testutils.DecodeJWT(flowStep.Assertion)
+			ts.Require().NoError(err)
+			ts.Require().NotEmpty(jwtClaims.OUID)
+			ts.createdOUs = append(ts.createdOUs, jwtClaims.OUID)
+
+			user, err := testutils.FindUserByAttribute("username", username)
+			ts.Require().NoError(err)
+			if user != nil {
+				ts.config.CreatedUserIDs = append(ts.config.CreatedUserIDs, user.ID)
+			}
+
+			ou, err := testutils.GetOrganizationUnit(jwtClaims.OUID)
+			ts.Require().NoError(err)
+			ts.Require().Equal(tc.ouName, ou.Name)
+			ts.Require().Equal(tc.expectedHandle, ou.Handle)
+		})
+	}
+}
+
+func (ts *OURegistrationFlowTestSuite) TestRegistrationFlowWithGeneratedOUHandleError() {
+	existingHandle := generateUniqueHandle("taken-handle")
+	existingOUID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
+		Handle: existingHandle,
+		Name:   "Existing OU " + existingHandle,
+		Parent: &ts.basicFlowTestOUID,
+	})
+	ts.Require().NoError(err)
+	ts.createdOUs = append(ts.createdOUs, existingOUID)
+
+	testCases := []struct {
+		name                string
+		ouName              string
+		expectedErrorSubstr string
+	}{
+		{
+			name:                "GeneratedHandleTaken",
+			ouName:              existingHandle,
+			expectedErrorSubstr: "An organization unit with the same handle already exists",
+		},
+		{
+			name:                "NoHandleFromName",
+			ouName:              "株式会社",
+			expectedErrorSubstr: "A handle could not be created from the organization unit name",
+		},
+	}
+
+	for _, tc := range testCases {
+		ts.Run(tc.name, func() {
+			username := common.GenerateUniqueUsername("genhandleerr")
+			inputs := map[string]string{
+				"username":    username,
+				"password":    "testpassword123",
+				"ouName":      tc.ouName,
+				"given_name":  "Test",
+				"family_name": "User",
+				"email":       username + "@example.com",
+			}
+
+			flowStep, err := common.InitiateRegistrationFlow(ts.genHandleAppID, false, inputs, "")
 			ts.Require().NoError(err)
 			ts.Require().Equal("INCOMPLETE", flowStep.FlowStatus)
 			ts.Require().Empty(flowStep.Assertion)
@@ -924,6 +1064,22 @@ func (ts *OURegistrationFlowTestSuite) TestSMSRegistrationFlowWithOUCreationDupl
 			ts.Require().Contains(flowStep.Error.Description.DefaultValue, tc.expectedErrorSubstr)
 		})
 	}
+}
+
+// withGeneratedOUHandle returns a copy of the flow whose OU creation node generates the OU handle.
+func withGeneratedOUHandle(flow testutils.Flow) testutils.Flow {
+	nodes := make([]map[string]interface{}, 0)
+	for _, node := range flow.Nodes.([]map[string]interface{}) {
+		if node["id"] == "ou_creation" {
+			node = maps.Clone(node)
+			node["properties"] = map[string]interface{}{"generateOuHandle": true}
+		}
+		nodes = append(nodes, node)
+	}
+	flow.Name += " Generated Handle"
+	flow.Handle += "_generated_handle"
+	flow.Nodes = nodes
+	return flow
 }
 
 func generateUniqueHandle(prefix string) string {

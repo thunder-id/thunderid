@@ -1859,6 +1859,20 @@ var (
 			DefaultValue: "The provided {{param(attribute)}} does not match the required format",
 		},
 	}
+
+	// ErrOUHandleNotGenerated is returned when no organization unit handle can be generated from the name.
+	ErrOUHandleNotGenerated = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1138",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.ou_handle_not_generated",
+			DefaultValue: "Organization unit handle required",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.ou_handle_not_generated_desc",
+			DefaultValue: "A handle could not be created from the organization unit name. Enter a handle",
+		},
+	}
 )
 
 // errForEntityCategory returns a copy of err whose messages name the entity category they are

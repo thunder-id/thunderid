@@ -6,6 +6,7 @@ package executor
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -14,6 +15,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	systemutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
 
 const (
@@ -58,6 +60,7 @@ func newOUExecutor(
 		defaultInputs, []providers.Input{}, &providers.ExecutorMeta{
 			SupportedProperties: []providers.ExecutorSupportedProperties{
 				{Property: "parentOuId"},
+				{Property: propertyKeyGenerateOUHandle},
 			},
 		})
 
@@ -109,14 +112,26 @@ func (o *ouExecutor) Execute(ctx *providers.NodeContext) (*providers.ExecutorRes
 		}
 	}
 
-	if !o.HasRequiredInputs(ctx, execResp) {
+	if !o.hasRequiredInputs(ctx, execResp) {
 		logger.Debug(ctx.Context, "Required inputs for OU creation is not provided")
 		execResp.Status = providers.ExecUserInputRequired
 		return execResp, nil
 	}
 
+	handle := ctx.UserInputs[userInputOuHandle]
+	if strings.TrimSpace(handle) == "" && isOUHandleGenerationEnabled(ctx) {
+		handle = systemutils.GenerateHandle(ctx.UserInputs[userInputOuName])
+		if handle == "" {
+			logger.Debug(ctx.Context, "Could not generate an organization unit handle from the name")
+			execResp.Status = providers.ExecUserInputRequired
+			execResp.Inputs = o.GetRequiredInputs(ctx)
+			execResp.Error = &ErrOUHandleNotGenerated
+			return execResp, nil
+		}
+	}
+
 	// Create the OU using the OU service.
-	ouRequest, err := o.getOrganizationUnitRequest(ctx)
+	ouRequest, err := o.getOrganizationUnitRequest(ctx, handle)
 	if err != nil {
 		logger.Error(ctx.Context, "Failed to build organization unit request",
 			log.String("error", err.Error()))
@@ -162,13 +177,48 @@ func (o *ouExecutor) Execute(ctx *providers.NodeContext) (*providers.ExecutorRes
 	return execResp, nil
 }
 
-// getOrganizationUnitRequest constructs an OrganizationUnitRequest from the NodeContext.
+// hasRequiredInputs checks the required inputs for OU creation. When the node generates the handle,
+// a missing handle does not block the node, and the handle is requested as an optional input.
+func (o *ouExecutor) hasRequiredInputs(ctx *providers.NodeContext, execResp *providers.ExecutorResponse) bool {
+	if !isOUHandleGenerationEnabled(ctx) {
+		return o.HasRequiredInputs(ctx, execResp)
+	}
+
+	withoutHandle := *ctx
+	withoutHandle.NodeInputs = nil
+	var optionalHandle []providers.Input
+	for _, input := range o.GetRequiredInputs(ctx) {
+		if input.Identifier == userInputOuHandle {
+			input.Required = false
+			optionalHandle = append(optionalHandle, input)
+			continue
+		}
+		withoutHandle.NodeInputs = append(withoutHandle.NodeInputs, input)
+	}
+
+	// The base check falls back to the default inputs when the node inputs are empty.
+	if len(withoutHandle.NodeInputs) == 0 || o.HasRequiredInputs(&withoutHandle, execResp) {
+		return true
+	}
+	if _, provided := ctx.UserInputs[userInputOuHandle]; !provided {
+		execResp.Inputs = append(execResp.Inputs, optionalHandle...)
+	}
+	return false
+}
+
+// isOUHandleGenerationEnabled reports whether the node generates the OU handle from the name.
+func isOUHandleGenerationEnabled(ctx *providers.NodeContext) bool {
+	enabled, _ := ctx.NodeProperties[propertyKeyGenerateOUHandle].(bool)
+	return enabled
+}
+
+// getOrganizationUnitRequest constructs an OrganizationUnitRequest from the NodeContext and the handle.
 func (o *ouExecutor) getOrganizationUnitRequest(
-	ctx *providers.NodeContext,
+	ctx *providers.NodeContext, handle string,
 ) (providers.OrganizationUnitRequestWithID, error) {
 	ouRequest := providers.OrganizationUnitRequestWithID{
 		Name:        ctx.UserInputs[userInputOuName],
-		Handle:      ctx.UserInputs[userInputOuHandle],
+		Handle:      handle,
 		Description: ctx.UserInputs[userInputOuDesc],
 	}
 

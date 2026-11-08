@@ -4532,6 +4532,9 @@ const translations = {
     'core.executions.ouExecutor.parentOuId.label': 'Parent OU ID',
     'core.executions.ouExecutor.parentOuId.placeholder': 'Override the default parent OU',
     'core.executions.ouExecutor.parentOuId.hint': 'Overrides the default OU for new OU creation.',
+    'core.executions.ouExecutor.generateOuHandle.label': 'Generate handle from name',
+    'core.executions.ouExecutor.generateOuHandle.hint':
+      'Create the OU handle from the OU name when the user does not enter one.',
 
     // User Type Resolver executor
     'core.executions.userTypeResolver.description': 'Configure the user type resolver settings.',
