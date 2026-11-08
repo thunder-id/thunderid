@@ -1518,3 +1518,30 @@ func (suite *OUResolverExecutorTestSuite) TestExecute_Prompt_Pick_AccessCheckCli
 	suite.Equal(&ErrApplicationNotInOU, result.Error)
 	suite.NotContains(result.RuntimeData, ouIDKey)
 }
+
+// An onboarding admin may hold no OU permission, so the units to choose from are read with the server's
+// authority, still as that admin, and the admin's own context is left as it was.
+func (suite *OUResolverExecutorTestSuite) TestExecute_Prompt_ReadsUnitsWithServerAuthority() {
+	ctx := &providers.NodeContext{
+		Context:     adminContext(),
+		ExecutionID: "flow-123",
+		FlowType:    providers.FlowTypeUserOnboarding,
+		NodeProperties: map[string]interface{}{
+			common.NodePropertyOUResolveFrom: ouResolveFromPrompt,
+		},
+		RuntimeData: map[string]string{defaultOUIDKey: testParentOUID},
+		UserInputs:  map[string]string{},
+	}
+	serverAuthority := mock.MatchedBy(func(c context.Context) bool {
+		return security.IsRuntimeContext(c) && security.GetSubject(c) == "admin-1"
+	})
+	suite.mockOUService.On("GetOrganizationUnitChildren", serverAuthority, testParentOUID, 1, 0, mock.Anything).
+		Return(&providers.OrganizationUnitListResponse{TotalResults: 2}, (*tidcommon.ServiceError)(nil))
+
+	result, err := suite.executor.Execute(ctx)
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecUserInputRequired, result.Status)
+	suite.mockOUService.AssertExpectations(suite.T())
+	suite.False(security.IsRuntimeContext(ctx.Context), "the caller's own context must stay as it was")
+}

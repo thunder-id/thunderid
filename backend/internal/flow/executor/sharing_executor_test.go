@@ -130,12 +130,14 @@ func (s *SharingExecutorTestSuite) TestValidate_RefusalCarriesTheProvidersErrorA
 	s.NotContains(resp.RuntimeData, common.RuntimeKeyAuthorizedShare)
 }
 
-// An authorizer run without the admin's token allows everything, so validate needs the starter's own context.
-func (s *SharingExecutorTestSuite) TestValidate_RefusesAnyCallerButTheStarter() {
+// An authorizer run without the admin's token allows everything, so validate needs the inviter's own context.
+func (s *SharingExecutorTestSuite) TestValidate_RefusesAnyCallerButTheInviter() {
 	for name, callerCtx := range map[string]context.Context{
 		"runtime": security.WithRuntimeContext(context.Background()),
 		"other": security.WithSecurityContextTest(context.Background(),
 			security.NewSecurityContextForTest("admin-2", "ou-a", "token", nil, map[string]interface{}{})),
+		// A step the invitee sends runs as the recorded inviter, who did not send it.
+		"recorded": security.WithRecordedCaller(context.Background(), "admin-1", "ou-a", []string{"system"}),
 	} {
 		s.Run(name, func() {
 			resp, err := s.executor.Execute(s.nodeContext(callerCtx, ExecutorModeValidate, existingUserProperties()))

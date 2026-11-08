@@ -29,6 +29,7 @@ type SecurityContext struct {
 	revocationAppKey    string
 	revocationAudiences []string
 	selfIssued          bool
+	recorded            bool
 	establishedAt       time.Time
 	permissions         []string
 	attributes          map[string]interface{}
@@ -183,7 +184,16 @@ func WithRecordedCaller(ctx context.Context, subject, ouID string, permissions [
 		ctx = context.Background()
 	}
 	ctx = context.WithValue(ctx, runtimeContextKey, false)
-	return withSecurityContext(ctx, newSecurityContext(subject, ouID, "", permissions, nil))
+	sc := newSecurityContext(subject, ouID, "", permissions, nil)
+	sc.recorded = true
+	return withSecurityContext(ctx, sc)
+}
+
+// IsRecordedCaller reports whether the caller was rebuilt by WithRecordedCaller rather than presenting a
+// credential on this request.
+func IsRecordedCaller(ctx context.Context) bool {
+	authCtx := getSecurityContext(ctx)
+	return authCtx != nil && authCtx.recorded
 }
 
 // WithRuntimeContext marks the context as an internal runtime caller.

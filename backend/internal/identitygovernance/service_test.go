@@ -1774,11 +1774,14 @@ func (s *ServiceTestSuite) TestLifecycleSelfTargetRefusedBeforeTheAuthorizer() {
 	}
 }
 
-func (s *ServiceTestSuite) TestApplicationHasNoSystemAuthorizationVocabulary() {
-	authz := s.authorizer(false)
-	s.Require().Nil(newTestService(s.T(), nil, accountAccessValue{}, nil, authz).
-		authorize(callerContext("operator"), governedSubject(providers.EntityCategoryApp)))
-	authz.AssertNotCalled(s.T(), "IsActionAllowed", mock.Anything, mock.Anything, mock.Anything)
+// An application is governed in its own organization unit, as its update is.
+func (s *ServiceTestSuite) TestApplicationLifecycleNeedsApplicationUpdate() {
+	authz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(s.T())
+	authz.EXPECT().IsActionAllowed(mock.Anything, security.ActionUpdateApplication, &sysauthz.ActionContext{
+		ResourceType: security.ResourceTypeApplication, OUID: "ou-a", ResourceID: "e1",
+	}).Return(false, nil).Once()
+	s.requireServiceError(newTestService(s.T(), nil, accountAccessValue{}, nil, authz).
+		authorize(callerContext("operator"), governedSubject(providers.EntityCategoryApp)), tidcommon.ErrorUnauthorized)
 }
 
 func (s *ServiceTestSuite) TestEmbeddableGovernanceWithoutAuthorization() {

@@ -178,7 +178,7 @@ func handleFlowError(ctx context.Context, w http.ResponseWriter, flowErr *tidcom
 		switch flowErr.Code {
 		case ErrorDirectFlowInitiationNotPermitted.Code, ErrorFlowIDExecutionNotPermitted.Code,
 			ErrorAdministrationPermissionRequired.Code, ErrorFlowApplicationNotUsable.Code,
-			ErrorInvitationOUMissing.Code, ErrorFlowNotSharedWithOU.Code:
+			ErrorInvitationOUMissing.Code, ErrorFlowNotSharedWithOU.Code, ErrorFlowStartedByAnotherCaller.Code:
 			statusCode = http.StatusForbidden
 		case ErrorFlowSecretRequired.Code, ErrorFlowSecretInvalid.Code,
 			ErrorAttestationRequired.Code, ErrorAttestationInvalid.Code,

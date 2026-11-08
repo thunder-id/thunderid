@@ -5,6 +5,7 @@ package sysauthz
 
 import (
 	"context"
+	"fmt"
 	"slices"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -73,21 +74,44 @@ func (s *systemAuthorizationService) CanGrantPermissions(
 func (s *systemAuthorizationService) CanGrantMembership(
 	ctx context.Context, principalType PrincipalType, containerID string,
 ) *tidcommon.ServiceError {
-	logger := s.logger.WithContext(ctx)
+	return s.requireCovers(ctx, containerID, string(principalType), s.conferredBy(principalType))
+}
 
+// CanControlEntity enforces that the caller may only take control of an entity, such as by changing
+// its credentials or attributes or by deleting it, when it already holds every permission the entity holds.
+func (s *systemAuthorizationService) CanControlEntity(
+	ctx context.Context, entityID string,
+) *tidcommon.ServiceError {
+	// An entity always holds its own permissions, so acting on itself needs no lookup.
+	if sub := security.GetSubject(ctx); sub != "" && sub == entityID {
+		return nil
+	}
+	return s.requireCovers(ctx, entityID, "entity",
+		func(ctx context.Context, id string) (security.PermissionSet, error) {
+			return s.permissionResolver.ResolveForEntity(ctx, id)
+		})
+}
+
+// requireCovers refuses unless the caller holds every permission resolve returns for the target.
+func (s *systemAuthorizationService) requireCovers(ctx context.Context, id, what string,
+	resolve func(context.Context, string) (security.PermissionSet, error),
+) *tidcommon.ServiceError {
 	if decision, decided := s.shortCircuitGrant(ctx); decided {
 		return decision
 	}
 
-	if containerID == "" {
-		logger.Error(ctx, "Membership grant check called without a container ID",
-			log.String("principalType", string(principalType)))
+	logger := s.logger.WithContext(ctx)
+	if id == "" {
+		logger.Error(ctx, "Grant check called without a target ID", log.String("target", what))
 		return &tidcommon.InternalServerError
 	}
 
-	conferred, svcErr := s.resolveConferredPermissions(ctx, principalType, containerID)
-	if svcErr != nil {
-		return svcErr
+	conferred, err := resolve(ctx, id)
+	if err != nil {
+		// A failed lookup is not the same as an empty result, so it must not be treated as one.
+		logger.Error(ctx, "Failed to resolve the permissions of the grant target",
+			log.String("target", what), log.String("targetID", id), log.Error(err))
+		return &tidcommon.InternalServerError
 	}
 
 	return s.requireCoverage(ctx, conferred)
@@ -174,32 +198,32 @@ func (s *systemAuthorizationService) shortCircuitGrant(
 func (s *systemAuthorizationService) resolveConferredPermissions(
 	ctx context.Context, principalType PrincipalType, containerID string,
 ) (security.PermissionSet, *tidcommon.ServiceError) {
-	logger := s.logger.WithContext(ctx)
-
-	var conferred security.PermissionSet
-	var err error
-
-	switch principalType {
-	case PrincipalTypeGroup:
-		conferred, err = s.permissionResolver.ResolveForGroup(ctx, containerID)
-	case PrincipalTypeRole:
-		conferred, err = s.permissionResolver.ResolveForRole(ctx, containerID)
-	default:
-		logger.Error(ctx, "Membership grant check called with an unknown principal type",
-			log.String("principalType", string(principalType)))
-		return nil, &tidcommon.InternalServerError
-	}
-
+	conferred, err := s.conferredBy(principalType)(ctx, containerID)
 	if err != nil {
 		// A failed lookup is not the same as an empty result, so it must not be treated as one.
-		logger.Error(ctx, "Failed to resolve permissions conferred by container",
+		s.logger.WithContext(ctx).Error(ctx, "Failed to resolve permissions conferred by container",
 			log.String("principalType", string(principalType)),
 			log.String("containerID", containerID),
 			log.Error(err))
 		return nil, &tidcommon.InternalServerError
 	}
-
 	return conferred, nil
+}
+
+// conferredBy returns the lookup for what membership in a container of the given type confers. The
+// resolver is read when the lookup runs, after shortCircuitGrant has confirmed it is set.
+func (s *systemAuthorizationService) conferredBy(
+	principalType PrincipalType,
+) func(context.Context, string) (security.PermissionSet, error) {
+	return func(ctx context.Context, containerID string) (security.PermissionSet, error) {
+		switch principalType {
+		case PrincipalTypeGroup:
+			return s.permissionResolver.ResolveForGroup(ctx, containerID)
+		case PrincipalTypeRole:
+			return s.permissionResolver.ResolveForRole(ctx, containerID)
+		}
+		return nil, fmt.Errorf("unknown principal type %q", principalType)
+	}
 }
 
 // requireCoverage refuses unless the caller's permissions cover every permission being granted.

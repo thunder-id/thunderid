@@ -220,6 +220,7 @@ func allowAllAuthz(t interface {
 	m.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).Return(true, nil).Maybe()
 	m.On("GetAccessibleResources", mock.Anything, mock.Anything, mock.Anything).
 		Return(&sysauthz.AccessibleResources{AllAllowed: true}, nil).Maybe()
+	m.On("CanControlEntity", mock.Anything, mock.Anything).Return(nil).Maybe()
 	return m
 }
 
@@ -5302,6 +5303,7 @@ func (suite *ServiceTestSuite) TestValidateDeleteApplication_RefusesDeclarativeR
 		inboundClientService: mockStore,
 		entityService:        mockEntityService,
 		dependencyRegistry:   noopDepRegistry{},
+		authzService:         allowAllAuthz(suite.T()),
 	}
 
 	target, svcErr := service.ValidateDeleteApplication(context.Background(), testServiceAppID)
@@ -5365,6 +5367,64 @@ func (suite *ServiceTestSuite) TestValidateDeleteApplication_RefusesUnreadableSy
 	assert.Equal(suite.T(), tidcommon.InternalServerError.Code, svcErr.Code)
 }
 
+func (suite *ServiceTestSuite) TestValidateRegenerateClientSecret_RefusesUncoveredApplicationPermissions() {
+	service, _ := suite.newFlowTargetTestService(appEntityWithClientID("client-1"))
+	authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+	authzMock.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).Return(true, nil).Maybe()
+	authzMock.On("CanControlEntity", mock.Anything, testServiceAppID).
+		Return(&sysauthz.ErrorGrantNotPermitted).Once()
+	service.authzService = authzMock
+
+	target, svcErr := service.ValidateCredentialAction(
+		context.Background(), testServiceAppID, model.CredentialActionRegenerate)
+
+	assert.Nil(suite.T(), target)
+	assert.NotNil(suite.T(), svcErr)
+	assert.Equal(suite.T(), sysauthz.ErrorGrantNotPermitted.Code, svcErr.Code)
+}
+
+func (suite *ServiceTestSuite) TestValidateDeleteApplication_RefusesUncoveredApplicationPermissions() {
+	service, _ := suite.newFlowTargetTestService(appEntityWithClientID("client-1"))
+	authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+	authzMock.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).Return(true, nil).Maybe()
+	authzMock.On("CanControlEntity", mock.Anything, testServiceAppID).
+		Return(&sysauthz.ErrorGrantNotPermitted).Once()
+	service.authzService = authzMock
+
+	target, svcErr := service.ValidateDeleteApplication(context.Background(), testServiceAppID)
+
+	assert.Nil(suite.T(), target)
+	assert.NotNil(suite.T(), svcErr)
+	assert.Equal(suite.T(), sysauthz.ErrorGrantNotPermitted.Code, svcErr.Code)
+}
+
+// Any update can set a client secret, switch the authentication method or replace the certificate, so
+// every update needs the caller to hold the application's permissions, not just a secret rotation.
+func (suite *ServiceTestSuite) TestUpdateApplication_RefusesUncoveredApplicationPermissions() {
+	service, mockStore := suite.setupTestService()
+	authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+	authzMock.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).Return(true, nil).Maybe()
+	authzMock.On("CanControlEntity", mock.Anything, testServiceAppID).
+		Return(&sysauthz.ErrorGrantNotPermitted).Once()
+	service.authzService = authzMock
+
+	app, svcErr := service.UpdateApplication(context.Background(), testServiceAppID, &model.ApplicationDTO{
+		Name: "app",
+		InboundAuthConfig: []providers.InboundAuthConfigWithSecret{{
+			Type: providers.OAuthInboundAuthType,
+			OAuthConfig: &providers.OAuthConfigWithSecret{
+				GrantTypes:              []providers.GrantType{providers.GrantTypeClientCredentials},
+				TokenEndpointAuthMethod: providers.TokenEndpointAuthMethodPrivateKeyJWT,
+			},
+		}},
+	})
+
+	suite.Nil(app)
+	suite.Require().NotNil(svcErr)
+	suite.Equal(sysauthz.ErrorGrantNotPermitted.Code, svcErr.Code)
+	suite.Empty(mockStore.Calls)
+}
+
 // An unset token endpoint auth method defaults to client_secret_basic when the client is written, so such
 // a client does hold a secret to rotate. Both paths read one predicate so they cannot disagree on it.
 func (suite *ServiceTestSuite) TestValidateRegenerateClientSecret_AllowsUnspecifiedAuthMethod() {
@@ -5409,6 +5469,7 @@ func (suite *ServiceTestSuite) TestRegenerateClientSecret_PersistsAndReturnsNewS
 		inboundClientService: mockStore,
 		entityService:        mockEntityService,
 		dependencyRegistry:   noopDepRegistry{},
+		authzService:         allowAllAuthz(suite.T()),
 	}
 
 	secret, svcErr := service.ApplyCredentialAction(
@@ -6335,4 +6396,48 @@ func (suite *ServiceTestSuite) TestUpdateApplication_SharingLookupFailureOnMove(
 	suite.Nil(result)
 	suite.Require().NotNil(svcErr)
 	suite.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+}
+
+// A flow's application deletion and secret regeneration are refused unless the caller may act on applications in
+// the application's unit.
+func (suite *ServiceTestSuite) TestFlowValidations_RequireTheApplicationActionInItsUnit() {
+	cases := map[string]struct {
+		action   security.Action
+		validate func(*applicationService) *tidcommon.ServiceError
+	}{
+		"deletion": {security.ActionDeleteApplication, func(s *applicationService) *tidcommon.ServiceError {
+			_, svcErr := s.ValidateDeleteApplication(context.Background(), testServiceAppID)
+			return svcErr
+		}},
+		"secret regeneration": {security.ActionUpdateApplication, func(s *applicationService) *tidcommon.ServiceError {
+			_, svcErr := s.ValidateCredentialAction(context.Background(), testServiceAppID,
+				model.CredentialActionRegenerate)
+			return svcErr
+		}},
+	}
+	for name, tc := range cases {
+		for outcome, authzErr := range map[string]*tidcommon.ServiceError{
+			"denied": nil, "check failure": &tidcommon.InternalServerError,
+		} {
+			suite.Run(name+" "+outcome, func() {
+				entity := appEntityWithClientID("client-1")
+				entity.OUID = "ou-app"
+				service, _ := suite.newFlowTargetTestService(entity)
+				authz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+				authz.On("IsActionAllowed", mock.Anything, tc.action,
+					&sysauthz.ActionContext{ResourceType: security.ResourceTypeApplication, OUID: "ou-app"}).
+					Return(false, authzErr)
+				service.authzService = authz
+
+				svcErr := tc.validate(service)
+
+				suite.Require().NotNil(svcErr)
+				if authzErr == nil {
+					suite.Equal(tidcommon.ErrorUnauthorized.Code, svcErr.Code)
+				} else {
+					suite.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+				}
+			})
+		}
+	}
 }

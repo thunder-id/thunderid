@@ -4,7 +4,6 @@
 package governance
 
 import (
-	"fmt"
 	"net/http"
 	"testing"
 
@@ -29,20 +28,18 @@ const (
 	// The action the boundary suite's recovery flow submits a subject with.
 	submitSubjectAction = "action_submit_subject"
 
-	// adminAuthenticationRequiredCode is the administration gate's answer to a caller without root.
-	// /flow/execute is a public path, so the middleware drops a token that fails its root check and
-	// the gate sees an anonymous caller.
-	adminAuthenticationRequiredCode = "FES-1017"
+	// systemPermissionRequiredCode is the administration gate's answer to a caller holding no system
+	// permission.
+	systemPermissionRequiredCode = "FES-1019"
 )
 
-// rootRequired is the answer the administration gate gives a caller without the root permission.
-var rootRequired = flowAnswer{status: http.StatusUnauthorized, code: adminAuthenticationRequiredCode}
+// systemPermissionRequired is the answer the administration gate gives a caller holding no system permission.
+var systemPermissionRequired = flowAnswer{status: http.StatusForbidden, code: systemPermissionRequiredCode}
 
 // LifecycleBoundaryTestSuite checks who may run suspend, unsuspend and unlock, on whom and from
 // which flow. Each refusal checks the answer that refused it, that the target's state is unchanged and
-// that its tokens still work. The cross-unit and undecidable-authorization branches are
-// unit-tested in identitygovernance: the administration gate admits only root, which is outside every
-// boundary, so no caller a test can mint reaches them. It runs under the shipped lockout policy.
+// that its tokens still work. The undecidable-authorization branch is unit-tested in
+// identitygovernance. It runs under the shipped lockout policy.
 type LifecycleBoundaryTestSuite struct {
 	suite.Suite
 	unitA, unitB *userFixture
@@ -62,7 +59,7 @@ func TestLifecycleBoundaryTestSuite(t *testing.T) {
 func (ts *LifecycleBoundaryTestSuite) SetupSuite() {
 	t := ts.T()
 	schema := testutils.UserType{Schema: credentialsSchema(map[string]interface{}{"email": stringAttribute})}
-	ts.unitA = newUserFixture(t, "boundary_a", schema)
+	ts.unitA = newOperatorFixture(t, "boundary_a", schema)
 	ts.unitB = newUserFixture(t, "boundary_b", schema)
 
 	// Only the recovery application uses this one: a custom recovery flow beside the default
@@ -119,30 +116,31 @@ func (ts *LifecycleBoundaryTestSuite) TestAnOperatorCannotGovernThemselves() {
 	ts.intact(own, "a refused self-suspend must revoke nothing")
 }
 
-// Administration is root-only, so an operator holding user management in one unit is
-// refused at the administration gate for a target in another unit and in their own, and revokes
-// nothing in either. The target is locked first, so a refused unlock is seen to release nothing.
-func (ts *LifecycleBoundaryTestSuite) TestAnOperatorWithoutRootIsRefusedInAndOutsideTheirUnit() {
-	for _, target := range []struct {
-		name     string
-		unit     *userFixture
-		clientID string
-	}{{"a", ts.unitA, boundaryClientID}, {"b", ts.unitB, boundaryClientIDB}} {
-		targetID, username, password := target.unit.newUser(ts.T(), "scoped_target", nil)
-		held := ts.signInThrough(target.clientID, username, password)
-		failAuthentication(ts.T(), "username", username, shippedUserLockThreshold)
-		ts.Require().Equal("LOCKED", readStatus(ts.T(), targetID).Value,
-			"unit %s: the target must be locked first", target.name)
+// An operator holding user management in one unit unlocks a user of that unit.
+func (ts *LifecycleBoundaryTestSuite) TestAScopedOperatorGovernsTheirOwnUnit() {
+	targetID, username, _ := ts.unitA.newUser(ts.T(), "scoped_own", nil)
+	failAuthentication(ts.T(), "username", username, shippedUserLockThreshold)
+	ts.Require().Equal("LOCKED", readStatus(ts.T(), targetID).Value, "the target must be locked first")
 
-		for _, handle := range []string{suspendFlowHandle, unlockFlowHandle} {
-			ts.refused(ts.scopedToken, handle, targetID, rootRequired,
-				"unit %s: %s must be refused without root", target.name, handle)
-		}
+	runAdministrationFlowAs(ts.T(), ts.scopedToken, unlockFlowHandle, map[string]string{subjectInput: targetID})
 
-		ts.Equal("LOCKED", readStatus(ts.T(), targetID).Value, "unit %s: the lock must stay", target.name)
-		ts.intactThrough(target.clientID, held, fmt.Sprintf("unit %s: a refused suspend must revoke nothing",
-			target.name))
+	ts.Equal("ACTIVE", readStatus(ts.T(), targetID).Value, "the unlock must release the lock")
+}
+
+// The same operator is refused by the authority for a target in another unit, and revokes nothing there. The
+// target is locked first, so a refused unlock is seen to release nothing.
+func (ts *LifecycleBoundaryTestSuite) TestAScopedOperatorIsRefusedOutsideTheirUnit() {
+	targetID, username, password := ts.unitB.newUser(ts.T(), "scoped_target", nil)
+	held := ts.signInThrough(boundaryClientIDB, username, password)
+	failAuthentication(ts.T(), "username", username, shippedUserLockThreshold)
+	ts.Require().Equal("LOCKED", readStatus(ts.T(), targetID).Value, "the target must be locked first")
+
+	for _, handle := range []string{suspendFlowHandle, unlockFlowHandle} {
+		ts.refused(ts.scopedToken, handle, targetID, governanceRefusal, "%s must be refused outside the unit", handle)
 	}
+
+	ts.Equal("LOCKED", readStatus(ts.T(), targetID).Value, "the lock must stay")
+	ts.intactThrough(boundaryClientIDB, held, "a refused suspend must revoke nothing")
 }
 
 // An unlock started without a subject asks for one and releases nothing.
@@ -173,7 +171,7 @@ func (ts *LifecycleBoundaryTestSuite) TestOwningTheAccountDoesNotAuthorizeItsLif
 	ts.Require().Equal("LOCKED", readStatus(ts.T(), ownerID).Value, "the holder must be locked first")
 
 	for _, handle := range []string{unlockFlowHandle, suspendFlowHandle, unsuspendFlowHandle} {
-		ts.refused(holderToken.AccessToken, handle, ownerID, rootRequired, "the holder's own %s", handle)
+		ts.refused(holderToken.AccessToken, handle, ownerID, systemPermissionRequired, "the holder's own %s", handle)
 	}
 
 	ts.Equal("LOCKED", readStatus(ts.T(), ownerID).Value, "the holder must not have released their lock")

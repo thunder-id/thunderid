@@ -770,6 +770,10 @@ func (rs *roleService) updateRoleWithPermissions(
 		return nil, &ErrorSharedRoleNotEditable
 	}
 
+	if svcErr := rs.authzService.CanGrantMembership(ctx, sysauthz.PrincipalTypeRole, id); svcErr != nil {
+		return nil, svcErr
+	}
+
 	// Validate permissions exist in resource management system
 	if err := rs.validatePermissions(ctx, role.Permissions); err != nil {
 		return nil, err
@@ -884,6 +888,10 @@ func (rs *roleService) deleteRole(ctx context.Context, id string) *tidcommon.Ser
 		return svcErr
 	}
 
+	if svcErr := rs.authzService.CanGrantMembership(ctx, sysauthz.PrincipalTypeRole, id); svcErr != nil {
+		return svcErr
+	}
+
 	if svcErr := rs.validateRoleMutable(ctx, id); svcErr != nil {
 		return svcErr
 	}
@@ -951,7 +959,14 @@ func (rs *roleService) ValidateDeleteRole(ctx context.Context, id string) (
 	if svcErr != nil {
 		return nil, svcErr
 	}
+	if svcErr := checkRoleAccess(ctx, rs.authzService, rs.logger, security.ActionDeleteRole,
+		role.OUID); svcErr != nil {
+		return nil, svcErr
+	}
 	if svcErr := rs.validateRoleMutable(ctx, id); svcErr != nil {
+		return nil, svcErr
+	}
+	if svcErr := rs.authzService.CanGrantMembership(ctx, sysauthz.PrincipalTypeRole, id); svcErr != nil {
 		return nil, svcErr
 	}
 	if svcErr := rs.requireRoleNotMandated(ctx, id); svcErr != nil {
@@ -986,6 +1001,9 @@ func (rs *roleService) ValidateUpdateRolePermissions(ctx context.Context, id str
 		return nil, svcErr
 	}
 	if svcErr := rs.validateRoleMutable(ctx, id); svcErr != nil {
+		return nil, svcErr
+	}
+	if svcErr := rs.authzService.CanGrantMembership(ctx, sysauthz.PrincipalTypeRole, id); svcErr != nil {
 		return nil, svcErr
 	}
 	if svcErr := rs.validatePermissions(ctx, permissions); svcErr != nil {

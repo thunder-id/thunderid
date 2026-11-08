@@ -173,7 +173,8 @@ type GroupMembershipProvider interface {
 	GetTransitiveAncestorGroups(ctx context.Context, groupID string) ([]string, error)
 }
 
-// entityService is the default implementation of EntityServiceInterface.
+// entityService is the default implementation of EntityServiceInterface. The entity service trusts its
+// caller; the flow-facing provider and the domain services are the boundaries.
 type entityService struct {
 	store                   entityStoreInterface
 	runtimeStore            entityRuntimeStoreInterface

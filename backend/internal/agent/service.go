@@ -942,9 +942,10 @@ func (s *agentService) updateAgent(ctx context.Context, agentID string,
 		return nil, svcErr
 	}
 
-	// Check authz using the existing agent's OU ID.
-	if svcErr := s.checkAgentAccess(
-		ctx, security.ActionUpdateAgent, existing.OUID, agentID, ""); svcErr != nil {
+	// Check authz using the existing agent's OU ID. An update can replace the agent's
+	// credentials, so it is control over the agent.
+	if svcErr := s.checkAgentControl(
+		ctx, security.ActionUpdateAgent, existing.OUID, agentID); svcErr != nil {
 		return fail(svcErr)
 	}
 
@@ -1243,8 +1244,8 @@ func (s *agentService) deleteAgent(ctx context.Context, agentID string) *tidcomm
 	}
 
 	// Check authz before the cascade below, which is not transactional with the entity delete.
-	if svcErr := s.checkAgentAccess(
-		ctx, security.ActionDeleteAgent, existing.OUID, agentID, ""); svcErr != nil {
+	if svcErr := s.checkAgentControl(
+		ctx, security.ActionDeleteAgent, existing.OUID, agentID); svcErr != nil {
 		return svcErr
 	}
 
@@ -1716,6 +1717,16 @@ func (s *agentService) checkAgentAccess(
 		return &tidcommon.ErrorUnauthorized
 	}
 	return nil
+}
+
+// checkAgentControl checks the action on the agent and that the caller may control the agent.
+func (s *agentService) checkAgentControl(
+	ctx context.Context, action security.Action, ouID string, agentID string,
+) *tidcommon.ServiceError {
+	if svcErr := s.checkAgentAccess(ctx, action, ouID, agentID, ""); svcErr != nil {
+		return svcErr
+	}
+	return s.authzService.CanControlEntity(ctx, agentID)
 }
 
 // validateOUExists returns an error if the given OU is empty or does not exist.

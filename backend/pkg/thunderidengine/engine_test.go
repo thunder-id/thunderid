@@ -56,6 +56,7 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/idpprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/observabilityprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/ouprovidermock"
+	"github.com/thunder-id/thunderid/tests/mocks/permissionprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/resourceserverprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/runtimestoreprovidermock"
 )
@@ -490,6 +491,15 @@ func (suite *EngineTestSuite) TestWithAuthorizationDetailProvider() {
 	WithAuthorizationDetailProvider(provider)(ctx)
 
 	suite.Equal(provider, ctx.authzDetailProvider)
+}
+
+func (suite *EngineTestSuite) TestWithPermissionProvider() {
+	provider := permissionprovidermock.NewPermissionProviderMock(suite.T())
+	ctx := &engineContext{}
+
+	WithPermissionProvider(provider)(ctx)
+
+	suite.Equal(provider, ctx.permissionProvider)
 }
 
 // TestNew_InitializesRuntimeStoreWhenNotInjected drives New() without WithRuntimeStoreProvider,

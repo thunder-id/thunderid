@@ -100,6 +100,15 @@ func (s *SecurityContextTestSuite) TestHasSufficientSystemPermission_ControlPlan
 // HasSufficientPermission
 // ---------------------------------------------------------------------------
 
+func (s *SecurityContextTestSuite) TestHeldPermissions() {
+	current := PermissionSet{"rs-1": {"system:user"}, "rs-2": {"orders:read"}}
+
+	held := HeldPermissions([]string{"openid", "system:user:view", "system:group:view", "orders:read"}, current)
+
+	s.Equal([]string{"system:user:view", "orders:read"}, held)
+	s.Empty(HeldPermissions([]string{"system"}, nil))
+}
+
 func (s *SecurityContextTestSuite) TestHasSufficientPermission() {
 	tests := []struct {
 		name            string
@@ -1263,7 +1272,8 @@ func TestRouteTableUsesCatalogPermissions(t *testing.T) {
 		"GET /scim/v2/Me": true, "PUT /scim/v2/Me": true,
 		"GET /scim/v2/Schemas": true, "GET /scim/v2/Schemas/**": true,
 		"GET /scim/v2/ResourceTypes": true, "GET /scim/v2/ResourceTypes/**": true,
-		"GET /capabilities": true,
+		"GET /capabilities":  true,
+		"POST /flow/execute": true,
 	}
 	root := map[string]bool{
 		"GET /variables": true, "POST /variables": true, "GET /variables/**": true,

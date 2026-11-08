@@ -2217,3 +2217,32 @@ func (suite *RoleAssignmentServiceTestSuite) TestGetDirectAssignment() {
 		suite.Equal(code, err.Code, id)
 	}
 }
+
+// A caller who may not change role assignments in the unit is offered no role there, and nothing else is read.
+func (suite *RoleAssignmentServiceTestSuite) TestListAssignableRoles_CallerWhoMayNotUpdateRolesGetsNone() {
+	authz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+	authz.On("IsActionAllowed", mock.Anything, security.ActionUpdateRole,
+		&sysauthz.ActionContext{ResourceType: security.ResourceTypeRole, OUID: testShareeOU}).Return(false, nil).Once()
+	suite.service = newRoleAssignmentService(suite.mockStore, suite.mockEntityService, suite.mockGroupService,
+		suite.mockEntityTypeService, nil, suite.transactioner, authz, suite.mockSharingService, discardingBus{})
+
+	roles, svcErr := suite.service.ListAssignableRoles(context.Background(), testShareeOU)
+
+	suite.Nil(svcErr)
+	suite.Empty(roles)
+	suite.mockStore.AssertNotCalled(suite.T(), "GetRoleListCountByOUID", mock.Anything, mock.Anything)
+}
+
+func (suite *RoleAssignmentServiceTestSuite) TestListAssignableRoles_UnreadableAuthorizationIsAServerError() {
+	authz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+	authz.On("IsActionAllowed", mock.Anything, security.ActionUpdateRole, mock.Anything).
+		Return(false, &tidcommon.InternalServerError).Once()
+	suite.service = newRoleAssignmentService(suite.mockStore, suite.mockEntityService, suite.mockGroupService,
+		suite.mockEntityTypeService, nil, suite.transactioner, authz, suite.mockSharingService, discardingBus{})
+
+	roles, svcErr := suite.service.ListAssignableRoles(context.Background(), testShareeOU)
+
+	suite.Nil(roles)
+	suite.Require().NotNil(svcErr)
+	suite.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+}

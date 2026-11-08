@@ -94,6 +94,22 @@ func TestResolveForEntity(t *testing.T) {
 	})
 }
 
+func TestGetEntityPermissions(t *testing.T) {
+	ctx := context.Background()
+	entitySvc := entitymock.NewEntityServiceInterfaceMock(t)
+	roleSvc := NewRoleServiceInterfaceMock(t)
+	entitySvc.EXPECT().GetTransitiveEntityGroups(ctx, "david").
+		Return([]providers.EntityGroup{{ID: "grpA"}}, nil).Once()
+	roleSvc.EXPECT().GetAllPermissions(ctx, "david", []string{"grpA"}).
+		Return(security.PermissionSet{testRSSystem: {"system:group"}}, nil).Once()
+	var provider providers.PermissionProvider = NewEffectivePermissionResolver(roleSvc, nil, entitySvc, nil)
+
+	result, err := provider.GetEntityPermissions(ctx, "david")
+
+	require.NoError(t, err)
+	assert.Equal(t, map[string][]string{testRSSystem: {"system:group"}}, result)
+}
+
 func TestResolveForGroup(t *testing.T) {
 	ctx := context.Background()
 

@@ -648,8 +648,9 @@ func (s *identityGovernanceService) authorize(ctx context.Context, entity Govern
 		action, resourceType = security.ActionUpdateUser, security.ResourceTypeUser
 	case providers.EntityCategoryAgent:
 		action, resourceType = security.ActionUpdateAgent, security.ResourceTypeAgent
+	case providers.EntityCategoryApp:
+		action, resourceType = security.ActionUpdateApplication, security.ResourceTypeApplication
 	default:
-		// Applications have no system authorization resource.
 		return nil
 	}
 	// A non-runtime caller may not govern itself.

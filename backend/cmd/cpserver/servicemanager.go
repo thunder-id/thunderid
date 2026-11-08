@@ -196,7 +196,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	projectService.AddResourceCheck(ouService.ProjectHasOrganizationUnits)
 	exporters = append(exporters, projectExporter)
 
-	entityProvider := entityprovider.InitializeEntityProvider(entityService)
+	entityProvider := entityprovider.InitializeEntityProvider(entityService, ouAuthzService)
 
 	attributeVerificationService := attributeverification.Initialize(entityService, entityTypeService,
 		observabilitySvc)

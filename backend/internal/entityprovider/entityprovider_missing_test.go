@@ -50,6 +50,7 @@ func (suite *DefaultEntityProviderTestSuite) TestSearchEntities() {
 }
 
 func (suite *DefaultEntityProviderTestSuite) TestUpdateAttributes() {
+	suite.allowWrites()
 	attrs := json.RawMessage(`{"displayName":"Alice"}`)
 
 	// Test Success

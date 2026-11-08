@@ -627,10 +627,8 @@ func activatePermissions(p *SystemPermissions) {
 		{"POST /register/passkey/**", ""},
 		// MCP checks each tool call against the permission the tool is mapped to, so a token reaches it as its caller.
 		{"* /mcp/**", ""},
-		// Flow execution is public. A token holding the administration flow permission reaches the flow as
-		// its caller, so an administration flow can authorize it; any other token is handed on as a
-		// runtime caller.
-		{"POST /flow/execute", p.AdministrationFlow},
+		// Flow execution: a token reaches the flow engine as its caller, which decides what each flow type needs.
+		{"POST /flow/execute", ""},
 
 		// Organization unit APIs. "/tree/{path...}" addresses an organization unit by its handle path.
 		{"GET /organization-units", p.OUView},
@@ -1118,6 +1116,21 @@ func Covers(actor, required PermissionSet, delimiters map[string]string) bool {
 		}
 	}
 	return true
+}
+
+// HeldPermissions returns the recorded permissions that current still covers on some resource server. A
+// permission revoked since it was recorded is left out, and so is a scope no resource server holds.
+func HeldPermissions(recorded []string, current PermissionSet) []string {
+	held := make([]string, 0, len(recorded))
+	for _, permission := range recorded {
+		for _, onServer := range current {
+			if HasSufficientPermission(onServer, permission) {
+				held = append(held, permission)
+				break
+			}
+		}
+	}
+	return held
 }
 
 // ResolveActionPermission returns the minimum permission required to perform the given

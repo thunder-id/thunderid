@@ -70,6 +70,12 @@ type RoleAuthzTestSuite struct {
 
 	// HTTP client carrying the scoped administrator's non-root token.
 	scopedClient *http.Client
+
+	// A role manager holding org on a resource server of its own, so nothing on the scoped one, and its token.
+	roleManagerRSID   string
+	roleManagerID     string
+	roleManagerRoleID string
+	roleManagerClient *http.Client
 }
 
 const (
@@ -83,6 +89,10 @@ const (
 
 	roleAuthzAssigneeUsername = "authz-role-assignee"
 	roleAuthzAssigneePassword = "Assignee@123"
+
+	roleAuthzManagerUsername     = "authz-role-manager"
+	roleAuthzManagerPassword     = "RoleManager@123"
+	roleAuthzManagerRSIdentifier = "https://authz-test.example.com/role-manager"
 
 	// The permissions the scoped administrator holds and requests in its token. Deliberately
 	// excludes both the root "system" permission and "org:user".
@@ -276,6 +286,38 @@ func (ts *RoleAuthzTestSuite) SetupSuite() {
 		"the scoped administrator must not hold org:user, or the suite proves nothing")
 
 	ts.scopedClient = testutils.GetHTTPClientWithToken(tokenResp.AccessToken)
+
+	managerID, err := testutils.CreateUser(testutils.User{
+		Type: roleAuthzTypeName,
+		OUID: ts.authzOUID,
+		Attributes: json.RawMessage(fmt.Sprintf(
+			`{"username": %q, "password": %q, "display_name": "Role Manager"}`,
+			roleAuthzManagerUsername, roleAuthzManagerPassword,
+		)),
+	})
+	ts.Require().NoError(err, "create role manager")
+	ts.roleManagerID = managerID
+
+	managerRSID, err := testutils.CreateOrgScopedResourceServer(
+		ts.authzOUID, "Authz Test RS (role manager)", roleAuthzManagerRSIdentifier)
+	ts.Require().NoError(err, "create role manager resource server")
+	ts.roleManagerRSID = managerRSID
+
+	managerRoleID, err := testutils.CreateRole(testutils.Role{
+		Name: "authz-role-manager-role",
+		OUID: ts.authzOUID,
+		Permissions: []testutils.ResourcePermissions{
+			{ResourceServerID: managerRSID, Permissions: []string{"org"}},
+		},
+		Assignments: []testutils.Assignment{{ID: ts.roleManagerID, Type: "user"}},
+	})
+	ts.Require().NoError(err, "create role manager role")
+	ts.roleManagerRoleID = managerRoleID
+
+	managerToken, err := ts.signIn.ObtainAccessToken(ts.authzOUID,
+		"org", roleAuthzManagerUsername, roleAuthzManagerPassword, roleAuthzManagerRSIdentifier)
+	ts.Require().NoError(err, "obtain role manager token")
+	ts.roleManagerClient = testutils.GetHTTPClientWithToken(managerToken.AccessToken)
 }
 
 // ---------------------------------------------------------------------------
@@ -296,7 +338,7 @@ func (ts *RoleAuthzTestSuite) TearDownSuite() {
 	// be deleted.
 	for _, id := range []string{
 		ts.scopedAdminRole, ts.harmlessRoleID, ts.privilegedRoleID,
-		ts.inheritedRoleID, ts.privilegedGroupRoleID,
+		ts.inheritedRoleID, ts.privilegedGroupRoleID, ts.roleManagerRoleID,
 	} {
 		if id != "" {
 			if err := testutils.DeleteRole(id); err != nil {
@@ -304,9 +346,11 @@ func (ts *RoleAuthzTestSuite) TearDownSuite() {
 			}
 		}
 	}
-	if ts.scopedRSID != "" {
-		if err := testutils.DeleteResourceServer(ts.scopedRSID); err != nil {
-			ts.T().Logf("teardown: delete scoped resource server: %v", err)
+	for _, id := range []string{ts.scopedRSID, ts.roleManagerRSID} {
+		if id != "" {
+			if err := testutils.DeleteResourceServer(id); err != nil {
+				ts.T().Logf("teardown: delete resource server %s: %v", id, err)
+			}
 		}
 	}
 	for _, id := range []string{ts.inheritedGroupID, ts.privilegedGroupID} {
@@ -316,7 +360,7 @@ func (ts *RoleAuthzTestSuite) TearDownSuite() {
 			}
 		}
 	}
-	for _, id := range []string{ts.scopedAdminID, ts.assigneeUserID} {
+	for _, id := range []string{ts.scopedAdminID, ts.assigneeUserID, ts.roleManagerID} {
 		if id != "" {
 			if err := testutils.DeleteUser(id); err != nil {
 				ts.T().Logf("teardown: delete user %s: %v", id, err)
@@ -342,6 +386,12 @@ func (ts *RoleAuthzTestSuite) TearDownSuite() {
 // doScoped issues a request as the scoped administrator.
 func (ts *RoleAuthzTestSuite) doScoped(method, path string, body []byte) *http.Response {
 	ts.T().Helper()
+	return ts.doAs(ts.scopedClient, method, path, body)
+}
+
+// doAs issues a request with the given client.
+func (ts *RoleAuthzTestSuite) doAs(client *http.Client, method, path string, body []byte) *http.Response {
+	ts.T().Helper()
 
 	var bodyReader io.Reader
 	if body != nil {
@@ -354,7 +404,7 @@ func (ts *RoleAuthzTestSuite) doScoped(method, path string, body []byte) *http.R
 		req.Header.Set("Content-Type", "application/json")
 	}
 
-	resp, err := ts.scopedClient.Do(req)
+	resp, err := client.Do(req)
 	ts.Require().NoError(err)
 	return resp
 }
@@ -650,6 +700,33 @@ func (ts *RoleAuthzTestSuite) TestScopedAdministratorCanAddMemberToInheritedGrou
 	ts.Require().NoError(err)
 	ts.Equalf(http.StatusOK, removeResp.StatusCode,
 		"removal is held to the same requirement and must also be allowed here, body: %s", removeBody)
+}
+
+// TestRoleManagerCannotUpdatePrivilegedRole passes the middleware with org, so the refusal comes from
+// the grant guard: the role confers org:user on a resource server the role manager holds nothing on.
+func (ts *RoleAuthzTestSuite) TestRoleManagerCannotUpdatePrivilegedRole() {
+	payload := ts.mustMarshal(UpdateRoleRequest{
+		Name:        "authz-role-privileged",
+		Description: "Role conferring org:user",
+		OUID:        ts.authzOUID,
+		Permissions: []ResourcePermissions{
+			{ResourceServerID: ts.scopedRSID, Permissions: []string{"org:user"}},
+		},
+	})
+
+	resp := ts.doAs(ts.roleManagerClient, http.MethodPut, rolesBasePath+"/"+ts.privilegedRoleID, payload)
+	defer resp.Body.Close()
+
+	ts.requireRefusedWithCode(resp, errCodeGrantNotPermitted)
+}
+
+func (ts *RoleAuthzTestSuite) TestRoleManagerCannotDeletePrivilegedRole() {
+	resp := ts.doAs(ts.roleManagerClient, http.MethodDelete, rolesBasePath+"/"+ts.privilegedRoleID, nil)
+	defer resp.Body.Close()
+
+	ts.requireRefusedWithCode(resp, errCodeGrantNotPermitted)
+	ts.Equal(http.StatusOK, ts.rootRoleStatus(ts.privilegedRoleID),
+		"the privileged role must survive the refused delete")
 }
 
 // ---------------------------------------------------------------------------

@@ -850,6 +850,42 @@ type userFixture struct {
 // governance_<name>_user as userType describes it.
 func newUserFixture(t *testing.T, name string, userType testutils.UserType) *userFixture {
 	t.Helper()
+	return newUserFixtureUnder(t, name, userType, nil)
+}
+
+// newOperatorFixture creates a user fixture whose organization unit sits under the default one and is shared the
+// shipped user governance flows, so an operator without the root permission signed in there can start them: for
+// such a caller an administration flow starts only in a unit that owns it or was shared it.
+func newOperatorFixture(t *testing.T, name string, userType testutils.UserType) *userFixture {
+	t.Helper()
+
+	defaultOUID, err := testutils.DefaultOUID()
+	require.NoError(t, err, "failed to find the default organization unit")
+	f := newUserFixtureUnder(t, name, userType, &defaultOUID)
+	for _, handle := range []string{unlockFlowHandle, suspendFlowHandle, unsuspendFlowHandle} {
+		flowID, err := testutils.GetFlowIDByHandle(handle, administrationFlowType)
+		require.NoError(t, err, "the %s flow must ship", handle)
+		status, body := sendManagement(t, http.MethodPost, "/flows/"+flowID+"/sharing-policies",
+			map[string]interface{}{"childUnits": map[string]interface{}{"mode": "selected",
+				"units": []map[string]interface{}{{"ouId": f.ouID, "reach": "unit"}}}})
+		require.Equal(t, http.StatusCreated, status, "failed to share %s with the fixture: %s", handle, body)
+		var policy struct {
+			ID string `json:"id"`
+		}
+		require.NoError(t, json.Unmarshal([]byte(body), &policy))
+		// Registered after the fixture's, so the share goes before the organization unit.
+		t.Cleanup(func() {
+			if status, body := sendManagement(t, http.MethodDelete,
+				"/flows/"+flowID+"/sharing-policies/"+policy.ID, nil); status != http.StatusNoContent {
+				t.Logf("cleanup: failed to remove the share of %s: %d %s", handle, status, body)
+			}
+		})
+	}
+	return f
+}
+
+func newUserFixtureUnder(t *testing.T, name string, userType testutils.UserType, parent *string) *userFixture {
+	t.Helper()
 
 	f := &userFixture{name: name, suffix: uniqueSuffix(), userType: "governance_" + name + "_user"}
 	t.Cleanup(func() { f.tearDown(t) })
@@ -857,6 +893,7 @@ func newUserFixture(t *testing.T, name string, userType testutils.UserType) *use
 		Handle:      "governance_" + name + "_ou",
 		Name:        "Governance " + name + " OU",
 		Description: "Organization unit for the " + name + " governance tests",
+		Parent:      parent,
 	})
 	require.NoError(t, err, "failed to create the test organization unit")
 	f.ouID = ouID
@@ -1153,10 +1190,21 @@ func copyShippedFlowWithSenders(t *testing.T, handle, flowType string, senders, 
 // body, whatever they are.
 func putManagement(t *testing.T, path string, body interface{}) (int, string) {
 	t.Helper()
+	return sendManagement(t, http.MethodPut, path, body)
+}
 
-	payload, err := json.Marshal(body)
-	require.NoError(t, err)
-	req, err := http.NewRequest(http.MethodPut, testServerURL+path, bytes.NewReader(payload))
+// sendManagement sends one management request as the administrator and returns the status and the body, whatever
+// they are. A nil body sends none.
+func sendManagement(t *testing.T, method, path string, body interface{}) (int, string) {
+	t.Helper()
+
+	var payload []byte
+	if body != nil {
+		var err error
+		payload, err = json.Marshal(body)
+		require.NoError(t, err)
+	}
+	req, err := http.NewRequest(method, testServerURL+path, bytes.NewReader(payload))
 	require.NoError(t, err)
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := testutils.GetHTTPClient().Do(req)

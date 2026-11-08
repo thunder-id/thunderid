@@ -204,7 +204,8 @@ const (
 	RuntimeKeyUserAmbiguous = "userAmbiguous"
 	// RuntimeKeyRevocationPlan holds the trusted revocation plan an administrative flow's
 	// pre-processing node produces for the executors that follow. It travels on the engine context's
-	// cross-frame store, so it survives a CALL into another flow.
+	// cross-frame store, so it survives a CALL into another flow. Its consumers do not authorize, so its
+	// publisher must.
 	RuntimeKeyRevocationPlan = "revocationPlan"
 	// RuntimeKeyProvenSubject holds the identity whose control was proven in this execution. The
 	// credential setter writes it after a credential write; a node acting on proof reads it here.
