@@ -57,6 +57,7 @@ func (suite *RoleFileBasedStoreTestSuite) TestGetRoleListCountAndList() {
 	roleIDs := map[string]bool{}
 	for _, role := range roles {
 		roleIDs[role.ID] = true
+		suite.True(role.IsReadOnly, "a declarative role is read-only")
 	}
 	suite.True(roleIDs["role1"])
 	suite.True(roleIDs["role2"])
@@ -97,6 +98,7 @@ func (suite *RoleFileBasedStoreTestSuite) TestGetRoleListCountByOUIDAndListByOUI
 	for _, role := range roles {
 		roleIDs[role.ID] = true
 		suite.Equal("ou1", role.OUID)
+		suite.True(role.IsReadOnly, "a declarative role is read-only")
 	}
 	suite.True(roleIDs["role1"])
 	suite.True(roleIDs["role2"])
@@ -525,6 +527,23 @@ func (suite *RoleFileBasedStoreTestSuite) TestGetRolesByIDs() {
 
 	suite.Require().NoError(err)
 	suite.Equal([]Role{{ID: "role1", Name: "Auditor", OUID: "ou1"}}, roles)
+}
+
+func (suite *RoleFileBasedStoreTestSuite) TestGetRolesByPermission() {
+	suite.seedRole(RoleWithPermissionsAndAssignments{
+		ID: "role1", Name: "Order Viewer", OUID: "ou1",
+		Permissions: []ResourcePermissions{{ResourceServerID: "rs1", Permissions: []string{"orders:read"}}},
+	})
+	suite.seedRole(RoleWithPermissionsAndAssignments{
+		ID: "role2", Name: "Order Admin", OUID: "ou1",
+		Permissions: []ResourcePermissions{{ResourceServerID: "rs1", Permissions: []string{"orders:delete"}}},
+	})
+
+	roles, err := suite.store.GetRolesByPermission(context.Background(), "rs1", "orders:read")
+
+	suite.NoError(err)
+	suite.Equal([]Role{{ID: "role1", Name: "Order Viewer", OUID: "ou1", IsReadOnly: true}}, roles,
+		"a declared role is read-only")
 }
 
 func (suite *RoleFileBasedStoreTestSuite) TestGetRoleListByProject() {

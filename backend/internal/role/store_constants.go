@@ -305,6 +305,14 @@ var (
 		Query: `SELECT COUNT(*) as count FROM "ROLE_ASSIGNMENT" ` +
 			`WHERE ASSIGNEE_TYPE = $1 AND ASSIGNEE_ID = $2 AND DEPLOYMENT_ID = $3`,
 	}
+
+	// queryGetRolesByPermission retrieves the roles that grant a permission on a resource server.
+	queryGetRolesByPermission = dbmodel.DBQuery{
+		ID: "RLQ-ROLE_MGT-44",
+		Query: `SELECT DISTINCT R.ID, R.OU_ID, R.NAME, R.DESCRIPTION FROM "ROLE" R ` +
+			`JOIN "ROLE_PERMISSION" P ON P.ROLE_ID = R.ID AND P.DEPLOYMENT_ID = R.DEPLOYMENT_ID ` +
+			`WHERE P.RESOURCE_SERVER_ID = $1 AND P.PERMISSION = $2 AND R.DEPLOYMENT_ID = $3 ORDER BY R.NAME`,
+	}
 )
 
 // buildGetRolesByNamesQuery constructs a query to fetch roles by a list of names, regardless of
