@@ -84,6 +84,7 @@ type OrganizationUnit struct {
 	Name            string  `json:"name"`
 	Description     string  `json:"description,omitempty"`
 	Parent          *string `json:"parent,omitempty"`
+	ProjectID       string  `json:"projectId,omitempty"`
 	LogoURL         string  `json:"logoUrl,omitempty"`
 	TosURI          string  `json:"tosUri,omitempty"`
 	PolicyURI       string  `json:"policyUri,omitempty"`

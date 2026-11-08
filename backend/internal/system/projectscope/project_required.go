@@ -15,6 +15,7 @@ var projectRequired = map[security.ResourceType]bool{
 	security.ResourceTypeAgent:                false,
 	security.ResourceTypeFlow:                 false,
 	security.ResourceTypeNotificationTemplate: true,
+	security.ResourceTypeOU:                   true,
 	security.ResourceTypeVerifiableCredential: true,
 }
 

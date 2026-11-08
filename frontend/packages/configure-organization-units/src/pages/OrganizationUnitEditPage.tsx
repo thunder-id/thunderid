@@ -8,7 +8,7 @@ import {
   ResourceAvatar,
   UnsavedChangesBar,
 } from '@thunderid/components';
-import {useCapabilitiesContext} from '@thunderid/contexts';
+import {useCapabilitiesContext, useProjectScope} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {getErrorMessage, isEqualIgnoringEmpty} from '@thunderid/utils';
 import {
@@ -28,7 +28,7 @@ import {ArrowLeft, Edit} from '@wso2/oxygen-ui-icons-react';
 import {useState, useCallback, useMemo} from 'react';
 import type {ReactNode, SyntheticEvent, JSX} from 'react';
 import {useTranslation} from 'react-i18next';
-import {useNavigate, useParams, useLocation, Link} from 'react-router';
+import {Navigate, useNavigate, useParams, useLocation, Link} from 'react-router';
 import useGetOrganizationUnit from '../api/useGetOrganizationUnit';
 import useUpdateOrganizationUnit from '../api/useUpdateOrganizationUnit';
 import EditChildOrganizationUnitSettings from '../components/edit-organization-unit/child-organization-unit-settings/EditChildOrganizationUnitSettings';
@@ -110,6 +110,7 @@ export default function OrganizationUnitEditPage({
   const {data: organizationUnit, isLoading, error: fetchError, refetch} = useGetOrganizationUnit(id);
   const updateOrganizationUnit = useUpdateOrganizationUnit();
   const {resetTreeState} = useOrganizationUnit();
+  const {projectId} = useProjectScope();
 
   const [tabState, setTabState] = useState<{organizationUnitId: string | undefined; value: number}>({
     organizationUnitId: id,
@@ -294,6 +295,12 @@ export default function OrganizationUnitEditPage({
         </Button>
       </PageContent>
     );
+  }
+
+  // Another project's organization unit is not shown in the selected one: a deep link, a stale tab or a switch
+  // of project goes to the selected project's organization units instead.
+  if (projectId && organizationUnit.projectId !== projectId) {
+    return <Navigate to={listUrl} replace />;
   }
 
   return (

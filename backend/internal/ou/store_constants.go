@@ -121,7 +121,7 @@ func buildRootOUCountQuery(g *tidcommon.FilterGroup) (dbmodel.DBQuery, []interfa
 // buildRootOUListQuery constructs the paginated root-OU list query with an optional filter group.
 // Args order: limit=$1, offset=$2, deploymentID=$3 [, filterArgs...]
 func buildRootOUListQuery(g *tidcommon.FilterGroup) (dbmodel.DBQuery, []interface{}, error) {
-	query := `SELECT OU_ID, HANDLE, NAME, DESCRIPTION, PARENT_ID, METADATA, CREATED_AT, UPDATED_AT ` +
+	query := `SELECT OU_ID, PROJECT_ID, HANDLE, NAME, DESCRIPTION, PARENT_ID, METADATA, CREATED_AT, UPDATED_AT ` +
 		`FROM "ORGANIZATION_UNIT" ` +
 		`WHERE PARENT_ID IS NULL AND DEPLOYMENT_ID = $3`
 
@@ -139,6 +139,57 @@ func buildRootOUListQuery(g *tidcommon.FilterGroup) (dbmodel.DBQuery, []interfac
 	// comes back in the same order every time.
 	query += " ORDER BY NAME, OU_ID LIMIT $1 OFFSET $2"
 	return dbmodel.DBQuery{ID: "OUQ-OU_MGT-02", Query: query}, filterArgs, nil
+}
+
+// projectTopOUCondition keeps the organization units of a project whose parent is not in the project: its
+// root organization units, and any unit whose parent belongs to no project or to another one. Every other
+// unit of the project is listed under its parent.
+const projectTopOUCondition = `NOT EXISTS (SELECT 1 FROM "ORGANIZATION_UNIT" P ` +
+	`WHERE P.OU_ID = OU.PARENT_ID AND P.DEPLOYMENT_ID = OU.DEPLOYMENT_ID AND P.PROJECT_ID = OU.PROJECT_ID)`
+
+// buildProjectOUCountQuery constructs a count query for the top organization units of a project with an
+// optional filter group.
+// Args order: projectID=$1 [, filterArgs...], deploymentID=$N
+func buildProjectOUCountQuery(g *tidcommon.FilterGroup) (dbmodel.DBQuery, []any, error) {
+	query := `SELECT COUNT(*) as total FROM "ORGANIZATION_UNIT" OU ` +
+		`WHERE OU.PROJECT_ID = $1 AND ` + projectTopOUCondition
+
+	filterArgs := []any{}
+	if g != nil {
+		cond, args, err := buildOUFilterGroup(g, 2)
+		if err != nil {
+			return dbmodel.DBQuery{}, nil, err
+		}
+		query += cond
+		filterArgs = append(filterArgs, args...)
+	}
+	query += fmt.Sprintf(" AND OU.DEPLOYMENT_ID = $%d", 2+len(filterArgs))
+
+	return dbmodel.DBQuery{ID: "OUQ-OU_MGT-22", Query: query}, filterArgs, nil
+}
+
+// buildProjectOUListQuery constructs the paginated list query for the top organization units of a project
+// with an optional filter group.
+// Args order: limit=$1, offset=$2, projectID=$3 [, filterArgs...], deploymentID=$N
+func buildProjectOUListQuery(g *tidcommon.FilterGroup) (dbmodel.DBQuery, []any, error) {
+	query := `SELECT OU.OU_ID, OU.PROJECT_ID, OU.HANDLE, OU.NAME, OU.DESCRIPTION, OU.PARENT_ID, OU.METADATA, ` +
+		`OU.CREATED_AT, OU.UPDATED_AT FROM "ORGANIZATION_UNIT" OU ` +
+		`WHERE OU.PROJECT_ID = $3 AND ` + projectTopOUCondition
+
+	filterArgs := []any{}
+	if g != nil {
+		cond, args, err := buildOUFilterGroup(g, 4)
+		if err != nil {
+			return dbmodel.DBQuery{}, nil, err
+		}
+		query += cond
+		filterArgs = append(filterArgs, args...)
+	}
+	query += fmt.Sprintf(" AND OU.DEPLOYMENT_ID = $%d", 4+len(filterArgs))
+
+	// OU_ID breaks a tie between units sharing a name, as the root listing does.
+	query += " ORDER BY OU.NAME, OU.OU_ID LIMIT $1 OFFSET $2"
+	return dbmodel.DBQuery{ID: "OUQ-OU_MGT-23", Query: query}, filterArgs, nil
 }
 
 // buildChildrenOUCountQuery constructs a count query for child OUs under a parent with an optional filter group.
@@ -162,8 +213,8 @@ func buildChildrenOUCountQuery(g *tidcommon.FilterGroup) (dbmodel.DBQuery, []int
 // buildChildrenOUListQuery constructs the paginated child-OU list query with an optional filter group.
 // Args order: parentID=$1, limit=$2, offset=$3, deploymentID=$4 [, filterArgs...]
 func buildChildrenOUListQuery(g *tidcommon.FilterGroup) (dbmodel.DBQuery, []interface{}, error) {
-	query := `SELECT OU_ID, HANDLE, NAME, DESCRIPTION, METADATA, CREATED_AT, UPDATED_AT FROM "ORGANIZATION_UNIT" ` +
-		`WHERE PARENT_ID = $1 AND DEPLOYMENT_ID = $4`
+	query := `SELECT OU_ID, PROJECT_ID, HANDLE, NAME, DESCRIPTION, METADATA, CREATED_AT, UPDATED_AT ` +
+		`FROM "ORGANIZATION_UNIT" WHERE PARENT_ID = $1 AND DEPLOYMENT_ID = $4`
 
 	filterArgs := []interface{}{}
 	if g != nil {
@@ -185,16 +236,17 @@ var (
 	queryCreateOrganizationUnit = dbmodel.DBQuery{
 		ID: "OUQ-OU_MGT-03",
 		Query: `INSERT INTO "ORGANIZATION_UNIT" (
-			OU_ID, PARENT_ID, HANDLE, NAME, DESCRIPTION, METADATA, DEPLOYMENT_ID, CREATED_AT, UPDATED_AT
+			OU_ID, PARENT_ID, HANDLE, NAME, DESCRIPTION, METADATA, CREATED_AT, UPDATED_AT, PROJECT_ID,
+			DEPLOYMENT_ID
 		) VALUES (
-			$1, $2, $3, $4, $5, $6, $7, $8, $9
+			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10
 		)`,
 	}
 
 	// queryGetOrganizationUnitByID is the query to get an organization unit by id.
 	queryGetOrganizationUnitByID = dbmodel.DBQuery{
 		ID: "OUQ-OU_MGT-04",
-		Query: `SELECT OU_ID, PARENT_ID, HANDLE, NAME, DESCRIPTION, METADATA, CREATED_AT, UPDATED_AT
+		Query: `SELECT OU_ID, PARENT_ID, PROJECT_ID, HANDLE, NAME, DESCRIPTION, METADATA, CREATED_AT, UPDATED_AT
 		FROM "ORGANIZATION_UNIT"
 		WHERE OU_ID = $1 AND DEPLOYMENT_ID = $2`,
 	}
@@ -202,7 +254,7 @@ var (
 	// queryGetRootOrganizationUnitByHandle is the query to get a root organization unit by handle.
 	queryGetRootOrganizationUnitByHandle = dbmodel.DBQuery{
 		ID: "OUQ-OU_MGT-05",
-		Query: `SELECT OU_ID, PARENT_ID, HANDLE, NAME, DESCRIPTION, METADATA, CREATED_AT, UPDATED_AT
+		Query: `SELECT OU_ID, PARENT_ID, PROJECT_ID, HANDLE, NAME, DESCRIPTION, METADATA, CREATED_AT, UPDATED_AT
 		FROM "ORGANIZATION_UNIT"
 		WHERE HANDLE = $1 AND PARENT_ID IS NULL AND DEPLOYMENT_ID = $2`,
 	}
@@ -210,7 +262,7 @@ var (
 	// queryGetOrganizationUnitByHandle is the query to get an organization unit by handle and parent.
 	queryGetOrganizationUnitByHandle = dbmodel.DBQuery{
 		ID: "OUQ-OU_MGT-06",
-		Query: `SELECT OU_ID, PARENT_ID, HANDLE, NAME, DESCRIPTION, METADATA, CREATED_AT, UPDATED_AT
+		Query: `SELECT OU_ID, PARENT_ID, PROJECT_ID, HANDLE, NAME, DESCRIPTION, METADATA, CREATED_AT, UPDATED_AT
 		FROM "ORGANIZATION_UNIT"
 		WHERE HANDLE = $1 AND PARENT_ID = $2 AND DEPLOYMENT_ID = $3`,
 	}
@@ -225,8 +277,8 @@ var (
 	queryUpdateOrganizationUnit = dbmodel.DBQuery{
 		ID: "OUQ-OU_MGT-08",
 		Query: `UPDATE "ORGANIZATION_UNIT" SET PARENT_ID = $2, HANDLE = $3, NAME = $4, DESCRIPTION = $5, ` +
-			`METADATA = $6, UPDATED_AT = $7 ` +
-			`WHERE OU_ID = $1 AND DEPLOYMENT_ID = $8`,
+			`METADATA = $6, UPDATED_AT = $7, PROJECT_ID = $8 ` +
+			`WHERE OU_ID = $1 AND DEPLOYMENT_ID = $9`,
 	}
 
 	// queryDeleteOrganizationUnit is the query to delete an organization unit.
@@ -291,11 +343,31 @@ func buildGetOrganizationUnitsByIDsQuery(ids []string) dbmodel.DBQuery {
 
 	return dbmodel.DBQuery{
 		ID: "OUQ-OU_MGT-21",
-		PostgresQuery: `SELECT OU_ID, HANDLE, NAME, DESCRIPTION, METADATA, CREATED_AT, UPDATED_AT ` +
+		PostgresQuery: `SELECT OU_ID, PROJECT_ID, HANDLE, NAME, DESCRIPTION, METADATA, CREATED_AT, UPDATED_AT ` +
 			`FROM "ORGANIZATION_UNIT" ` +
 			`WHERE OU_ID IN (` + pgInClause + `) AND DEPLOYMENT_ID = ` + deploymentIDParam + ` ORDER BY NAME`,
-		SQLiteQuery: `SELECT OU_ID, HANDLE, NAME, DESCRIPTION, METADATA, CREATED_AT, UPDATED_AT ` +
+		SQLiteQuery: `SELECT OU_ID, PROJECT_ID, HANDLE, NAME, DESCRIPTION, METADATA, CREATED_AT, UPDATED_AT ` +
 			`FROM "ORGANIZATION_UNIT" ` +
 			`WHERE OU_ID IN (` + sqliteInClause + `) AND DEPLOYMENT_ID = ? ORDER BY NAME`,
+	}
+}
+
+// buildUpdateOrganizationUnitsProjectQuery builds the query that moves a set of organization units to a project.
+// Args order: projectID=$1, updatedAt=$2, ids=$3..$N+2, deploymentID=$N+3
+func buildUpdateOrganizationUnitsProjectQuery(ids []string) dbmodel.DBQuery {
+	pgPlaceholders := make([]string, len(ids))
+	sqlitePlaceholders := make([]string, len(ids))
+	for i := range ids {
+		pgPlaceholders[i] = fmt.Sprintf("$%d", i+3)
+		sqlitePlaceholders[i] = "?"
+	}
+
+	return dbmodel.DBQuery{
+		ID: "OUQ-OU_MGT-24",
+		PostgresQuery: `UPDATE "ORGANIZATION_UNIT" SET PROJECT_ID = $1, UPDATED_AT = $2 ` +
+			`WHERE OU_ID IN (` + strings.Join(pgPlaceholders, ", ") + `) ` +
+			fmt.Sprintf("AND DEPLOYMENT_ID = $%d", len(ids)+3),
+		SQLiteQuery: `UPDATE "ORGANIZATION_UNIT" SET PROJECT_ID = ?, UPDATED_AT = ? ` +
+			`WHERE OU_ID IN (` + strings.Join(sqlitePlaceholders, ", ") + `) AND DEPLOYMENT_ID = ?`,
 	}
 }

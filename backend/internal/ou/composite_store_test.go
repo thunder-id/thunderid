@@ -8,7 +8,11 @@ import (
 
 	"errors"
 	"testing"
+	"time"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/declarative_resource/entity"
 
 	"github.com/stretchr/testify/mock"
@@ -1038,4 +1042,127 @@ func (suite *CompositeStoreCoverageTestSuite) TestCompositeStore_GetOrganization
 		suite.Equal(dbErr, err)
 		suite.Empty(result)
 	})
+}
+
+// A project's organization units are counted and listed across both stores, and a unit whose parent the other
+// store holds in the same project is listed under its parent, not at the top.
+func (suite *CompositeStoreTestSuite) TestCompositeStore_ProjectListing() {
+	ctx := context.Background()
+	fileOUID := "file-ou"
+	systemOUID := testSystemOUID
+	reset := func() {
+		_ = entity.GetInstance().Clear()
+		suite.fileStore, _ = newFileBasedStore()
+		suite.dbStoreMock = newOrganizationUnitStoreInterfaceMock(suite.T())
+		suite.compositeStore = newCompositeOUStore(suite.fileStore, suite.dbStoreMock)
+		_ = suite.fileStore.CreateOrganizationUnit(ctx, OrganizationUnit{
+			ID: fileOUID, Handle: "file", Name: "File", ProjectID: "project-1",
+		})
+	}
+	expectDBTops := func(tops ...OrganizationUnitBasic) {
+		suite.dbStoreMock.On("GetOrganizationUnitListCountByProject", mock.Anything, "project-1",
+			(*tidcommon.FilterGroup)(nil)).Return(len(tops), nil).Once()
+		if len(tops) > 0 {
+			suite.dbStoreMock.On("GetOrganizationUnitListByProject", mock.Anything, "project-1", len(tops), 0,
+				(*tidcommon.FilterGroup)(nil)).Return(tops, nil).Once()
+		}
+	}
+
+	suite.Run("counts and lists from both stores", func() {
+		reset()
+		expectDBTops(OrganizationUnitBasic{ID: "db-ou", Name: "Db"})
+		count, err := suite.compositeStore.GetOrganizationUnitListCountByProject(ctx, "project-1", nil)
+		suite.NoError(err)
+		suite.Equal(2, count)
+
+		expectDBTops(OrganizationUnitBasic{ID: "db-ou", Name: "Db"})
+		list, err := suite.compositeStore.GetOrganizationUnitListByProject(ctx, "project-1", 1, 1, nil)
+		suite.NoError(err)
+		suite.Require().Len(list, 1)
+		suite.Equal(fileOUID, list[0].ID)
+	})
+
+	suite.Run("lists a database unit under its declared parent of the same project", func() {
+		reset()
+		expectDBTops(
+			OrganizationUnitBasic{ID: "db-child", Name: "Child", Parent: &fileOUID},
+			OrganizationUnitBasic{ID: "db-under-system", Name: "Under system", Parent: &systemOUID},
+		)
+		suite.dbStoreMock.On("GetOrganizationUnit", mock.Anything, fileOUID).
+			Return(OrganizationUnit{}, ErrOrganizationUnitNotFound).Once()
+		suite.dbStoreMock.On("GetOrganizationUnit", mock.Anything, systemOUID).
+			Return(OrganizationUnit{ID: systemOUID}, nil).Once()
+
+		list, err := suite.compositeStore.GetOrganizationUnitListByProject(ctx, "project-1", 10, 0, nil)
+
+		suite.NoError(err)
+		ids := make([]string, 0, len(list))
+		for _, ou := range list {
+			ids = append(ids, ou.ID)
+		}
+		suite.ElementsMatch([]string{"db-under-system", fileOUID}, ids)
+	})
+
+	suite.Run("fails when a parent cannot be read", func() {
+		reset()
+		expectDBTops(OrganizationUnitBasic{ID: "db-child", Name: "Child", Parent: &systemOUID})
+		suite.dbStoreMock.On("GetOrganizationUnit", mock.Anything, systemOUID).
+			Return(OrganizationUnit{}, errors.New("boom")).Once()
+
+		_, err := suite.compositeStore.GetOrganizationUnitListByProject(ctx, "project-1", 10, 0, nil)
+
+		suite.Error(err)
+	})
+
+	suite.Run("returns no page past the end", func() {
+		reset()
+		expectDBTops()
+
+		list, err := suite.compositeStore.GetOrganizationUnitListByProject(ctx, "project-1", 10, 5, nil)
+
+		suite.NoError(err)
+		suite.Empty(list)
+	})
+
+	suite.Run("reports a listing over the limit", func() {
+		reset()
+		suite.dbStoreMock.On("GetOrganizationUnitListCountByProject", mock.Anything, "project-1",
+			(*tidcommon.FilterGroup)(nil)).Return(serverconst.MaxCompositeStoreRecords, nil).Once()
+
+		_, err := suite.compositeStore.GetOrganizationUnitListCountByProject(ctx, "project-1", nil)
+
+		suite.ErrorIs(err, ErrResultLimitExceededInCompositeMode)
+	})
+
+	suite.Run("fails when the database store fails", func() {
+		reset()
+		suite.dbStoreMock.On("GetOrganizationUnitListCountByProject", mock.Anything, "project-1",
+			(*tidcommon.FilterGroup)(nil)).Return(0, errors.New("boom")).Once()
+
+		_, err := suite.compositeStore.GetOrganizationUnitListByProject(ctx, "project-1", 10, 0, nil)
+
+		suite.Error(err)
+	})
+
+	suite.Run("fails when the database list fails", func() {
+		reset()
+		suite.dbStoreMock.On("GetOrganizationUnitListCountByProject", mock.Anything, "project-1",
+			(*tidcommon.FilterGroup)(nil)).Return(1, nil).Once()
+		suite.dbStoreMock.On("GetOrganizationUnitListByProject", mock.Anything, "project-1", 1, 0,
+			(*tidcommon.FilterGroup)(nil)).Return(nil, errors.New("boom")).Once()
+
+		_, err := suite.compositeStore.GetOrganizationUnitListByProject(ctx, "project-1", 10, 0, nil)
+
+		suite.Error(err)
+	})
+}
+
+// A move to another project goes to the database store.
+func (suite *CompositeStoreTestSuite) TestCompositeStore_UpdateOrganizationUnitsProject() {
+	updatedAt := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	suite.dbStoreMock.On("UpdateOrganizationUnitsProject", mock.Anything, []string{"ou-1"}, "project-1", updatedAt).
+		Return(nil).Once()
+
+	suite.NoError(suite.compositeStore.UpdateOrganizationUnitsProject(context.Background(), []string{"ou-1"},
+		"project-1", updatedAt))
 }

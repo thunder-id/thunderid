@@ -222,6 +222,7 @@ func (ts *ControlPlaneTestSuite) TestAnApplyOfTheLatestVersionIsQueuedBehindARun
 	gatewayID := ts.registerGateway(g.server)
 	unit, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
 		Handle: unique("queued-apply"), Name: "Queued apply", Parent: &ts.ouID,
+		ProjectID: defaultProjectID,
 	})
 	ts.Require().NoError(err)
 	defer func() { _ = testutils.DeleteOrganizationUnit(unit) }()
@@ -238,6 +239,7 @@ func (ts *ControlPlaneTestSuite) TestAnApplyOfTheLatestVersionIsQueuedBehindARun
 	// what the gateway lacks, and the running one is sending everything else.
 	later, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
 		Handle: unique("queued-later"), Name: "Queued later", Parent: &ts.ouID,
+		ProjectID: defaultProjectID,
 	})
 	ts.Require().NoError(err)
 	defer func() { _ = testutils.DeleteOrganizationUnit(later) }()

@@ -300,12 +300,14 @@ export default function App(): JSX.Element {
                   path={RouteConfig.organizationUnits.list()}
                   element={
                     <ProtectedRoute>
-                      <OrganizationUnitProvider />
+                      <SelectedProjectScope>
+                        <OrganizationUnitProvider />
+                      </SelectedProjectScope>
                     </ProtectedRoute>
                   }
                 >
                   <Route element={<DashboardLayout />}>
-                    <Route index element={<OrganizationUnitsListPage />} />
+                    <Route index element={<OrganizationUnitsListPage createInProjectsOnly />} />
                     <Route
                       path=":id"
                       element={
@@ -316,7 +318,7 @@ export default function App(): JSX.Element {
                     />
                   </Route>
                   <Route path="create" element={<FullScreenLayout />}>
-                    <Route index element={<CreateOrganizationUnitPage />} />
+                    <Route index element={<CreateOrganizationUnitPage createInProjectsOnly />} />
                   </Route>
                 </Route>
                 <Route

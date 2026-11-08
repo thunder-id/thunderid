@@ -18,6 +18,7 @@ import (
 	dbmodel "github.com/thunder-id/thunderid/internal/system/database/model"
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/utils"
 )
 
 const storeLoggerComponentName = "OrganizationUnitStore"
@@ -27,6 +28,10 @@ type organizationUnitStoreInterface interface {
 	GetOrganizationUnitListCount(ctx context.Context, f *tidcommon.FilterGroup) (int, error)
 	GetOrganizationUnitList(
 		ctx context.Context, limit, offset int, f *tidcommon.FilterGroup,
+	) ([]OrganizationUnitBasic, error)
+	GetOrganizationUnitListCountByProject(ctx context.Context, projectID string, f *tidcommon.FilterGroup) (int, error)
+	GetOrganizationUnitListByProject(
+		ctx context.Context, projectID string, limit, offset int, f *tidcommon.FilterGroup,
 	) ([]OrganizationUnitBasic, error)
 	GetOrganizationUnitsByIDs(ctx context.Context, ids []string) ([]OrganizationUnitBasic, error)
 	CreateOrganizationUnit(ctx context.Context, ou OrganizationUnit) error
@@ -38,6 +43,7 @@ type organizationUnitStoreInterface interface {
 	CheckOrganizationUnitNameConflict(ctx context.Context, name string, parent *string) (bool, error)
 	CheckOrganizationUnitHandleConflict(ctx context.Context, handle string, parent *string) (bool, error)
 	UpdateOrganizationUnit(ctx context.Context, ou OrganizationUnit) error
+	UpdateOrganizationUnitsProject(ctx context.Context, ids []string, projectID string, updatedAt time.Time) error
 	DeleteOrganizationUnit(ctx context.Context, id string) error
 	GetOrganizationUnitChildrenCount(ctx context.Context, id string, f *tidcommon.FilterGroup) (int, error)
 	GetOrganizationUnitChildrenList(
@@ -134,6 +140,73 @@ func (s *organizationUnitStore) GetOrganizationUnitList(
 	return ous, nil
 }
 
+// GetOrganizationUnitListCountByProject retrieves the count of the top organization units of a project: those
+// whose parent is not in the project.
+func (s *organizationUnitStore) GetOrganizationUnitListCountByProject(
+	ctx context.Context, projectID string, f *tidcommon.FilterGroup,
+) (int, error) {
+	dbClient, err := s.dbProvider.GetEntityDBClient()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get database client: %w", err)
+	}
+
+	query, filterArgs, err := buildProjectOUCountQuery(f)
+	if err != nil {
+		return 0, fmt.Errorf("failed to build count query: %w", err)
+	}
+	args := append(append([]any{projectID}, filterArgs...), s.scope(ctx))
+
+	results, err := dbClient.QueryContext(ctx, query, args...)
+	if err != nil {
+		return 0, fmt.Errorf("failed to execute count query: %w", err)
+	}
+
+	var total int
+	if len(results) > 0 {
+		count, ok := results[0]["total"].(int64)
+		if !ok {
+			return 0, fmt.Errorf("unexpected type for total: %T", results[0]["total"])
+		}
+		total = int(count)
+	}
+
+	return total, nil
+}
+
+// GetOrganizationUnitListByProject retrieves the top organization units of a project with pagination.
+//
+//nolint:dupl // Same steps as GetOrganizationUnitChildrenList, over the units of a project instead of a parent
+func (s *organizationUnitStore) GetOrganizationUnitListByProject(
+	ctx context.Context, projectID string, limit, offset int, f *tidcommon.FilterGroup,
+) ([]OrganizationUnitBasic, error) {
+	dbClient, err := s.dbProvider.GetEntityDBClient()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get database client: %w", err)
+	}
+
+	query, filterArgs, err := buildProjectOUListQuery(f)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build list query: %w", err)
+	}
+	args := append(append([]any{limit, offset, projectID}, filterArgs...), s.scope(ctx))
+
+	results, err := dbClient.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute query: %w", err)
+	}
+
+	ous := make([]OrganizationUnitBasic, 0, len(results))
+	for _, row := range results {
+		ou, err := buildOrganizationUnitBasicFromResultRow(row)
+		if err != nil {
+			return nil, fmt.Errorf("failed to build organization unit basic: %w", err)
+		}
+		ous = append(ous, ou)
+	}
+
+	return ous, nil
+}
+
 // GetOrganizationUnitsByIDs retrieves organization units matching the given IDs.
 func (s *organizationUnitStore) GetOrganizationUnitsByIDs(
 	ctx context.Context, ids []string,
@@ -192,9 +265,10 @@ func (s *organizationUnitStore) CreateOrganizationUnit(ctx context.Context, ou O
 		ou.Name,
 		ou.Description,
 		string(ouMetadataBytes),
-		s.scope(ctx),
 		ou.CreatedAt,
 		ou.UpdatedAt,
+		utils.NullableString(ou.ProjectID),
+		s.scope(ctx),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to execute query: %w", err)
@@ -389,10 +463,39 @@ func (s *organizationUnitStore) UpdateOrganizationUnit(ctx context.Context, ou O
 		ou.Description,
 		string(ouMetadataBytes),
 		ou.UpdatedAt,
+		utils.NullableString(ou.ProjectID),
 		s.scope(ctx),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to execute query: %w", err)
+	}
+
+	return nil
+}
+
+// updateProjectPageSize is how many organization units one statement moves to another project.
+const updateProjectPageSize = 100
+
+// UpdateOrganizationUnitsProject moves a set of organization units to a project, a page of them per statement.
+func (s *organizationUnitStore) UpdateOrganizationUnitsProject(
+	ctx context.Context, ids []string, projectID string, updatedAt time.Time,
+) error {
+	dbClient, err := s.dbProvider.GetEntityDBClient()
+	if err != nil {
+		return fmt.Errorf("failed to get database client: %w", err)
+	}
+
+	for start := 0; start < len(ids); start += updateProjectPageSize {
+		page := ids[start:min(start+updateProjectPageSize, len(ids))]
+		args := make([]any, 0, len(page)+3)
+		args = append(args, utils.NullableString(projectID), updatedAt)
+		for _, id := range page {
+			args = append(args, id)
+		}
+		args = append(args, s.scope(ctx))
+		if _, err := dbClient.ExecuteContext(ctx, buildUpdateOrganizationUnitsProjectQuery(page), args...); err != nil {
+			return fmt.Errorf("failed to execute query: %w", err)
+		}
 	}
 
 	return nil
@@ -447,6 +550,8 @@ func (s *organizationUnitStore) GetOrganizationUnitChildrenCount(
 }
 
 // GetOrganizationUnitChildrenList retrieves a paginated list of child organization units for a given parent ID.
+//
+//nolint:dupl // Same steps as GetOrganizationUnitListByProject, over the children of a parent instead
 func (s *organizationUnitStore) GetOrganizationUnitChildrenList(ctx context.Context,
 	parentID string, limit, offset int, f *tidcommon.FilterGroup,
 ) ([]OrganizationUnitBasic, error) {
@@ -530,6 +635,12 @@ func buildOrganizationUnitBasicFromResultRow(
 		}
 	}
 
+	projectID, _ := row["project_id"].(string)
+	var parentID *string
+	if parent, ok := row["parent_id"].(string); ok {
+		parentID = &parent
+	}
+
 	ouMetadataData, err := parseOUMetadata(row)
 	if err != nil {
 		return OrganizationUnitBasic{}, fmt.Errorf("failed to parse OU Metadata: %w", err)
@@ -555,6 +666,8 @@ func buildOrganizationUnitBasicFromResultRow(
 		Handle:      handle,
 		Name:        name,
 		Description: description,
+		ProjectID:   projectID,
+		Parent:      parentID,
 		LogoURL:     logoURL,
 		CreatedAt:   createdAt,
 		UpdatedAt:   updatedAt,
@@ -665,6 +778,7 @@ func buildOrganizationUnitFromResultRow(
 		Name:                      ou.Name,
 		Description:               ou.Description,
 		Parent:                    parentID,
+		ProjectID:                 ou.ProjectID,
 		ThemeID:                   themeID,
 		LayoutID:                  layoutID,
 		AuthFlowID:                authFlowID,

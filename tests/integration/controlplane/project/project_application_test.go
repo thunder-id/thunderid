@@ -248,18 +248,21 @@ func (ts *ProjectAPITestSuite) appIDs(list projectApplicationList) []string {
 	return ids
 }
 
-// createRootOU creates a root organization unit outside every project and records it for cleanup.
+// createRootOU creates a root organization unit in the Default project and records it for cleanup.
 func (ts *ProjectAPITestSuite) createRootOU(name string) string {
-	id, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{Handle: ts.handle(name), Name: name})
+	id, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
+		Handle: ts.handle(name), Name: name, ProjectID: defaultProjectID,
+	})
 	ts.Require().NoError(err)
 	ts.ous = append(ts.ous, id)
 	return id
 }
 
-// createChildOU creates an organization unit below the given parent and records it for cleanup.
+// createChildOU creates an organization unit in the Default project below the given parent and records it for
+// cleanup.
 func (ts *ProjectAPITestSuite) createChildOU(name, parentID string) string {
 	id, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
-		Handle: ts.handle(name), Name: name, Parent: &parentID,
+		Handle: ts.handle(name), Name: name, Parent: &parentID, ProjectID: defaultProjectID,
 	})
 	ts.Require().NoError(err)
 	ts.ous = append(ts.ous, id)

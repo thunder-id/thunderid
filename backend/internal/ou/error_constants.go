@@ -204,6 +204,61 @@ var (
 			DefaultValue: "The deployment configuration names this organization unit in server.system_ou_id",
 		},
 	}
+	// ErrorInvalidProject is returned when an organization unit names a project that does not exist.
+	ErrorInvalidProject = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "OU-1022",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.ouservice.invalid_project",
+			DefaultValue: "Invalid project",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.ouservice.invalid_project_description",
+			DefaultValue: "No project exists with the given project ID",
+		},
+	}
+	// ErrorProjectRequired is returned when an organization unit is created without a project on a deployment
+	// that requires one.
+	ErrorProjectRequired = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "OU-1023",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.ouservice.project_required",
+			DefaultValue: "Project required",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.ouservice.project_required_description",
+			DefaultValue: "An organization unit must belong to a project. " +
+				"Set projectId to the project it belongs to",
+		},
+	}
+	// ErrorParentInAnotherProject is returned when an organization unit names a parent that is not in its project.
+	ErrorParentInAnotherProject = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "OU-1024",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.ouservice.parent_in_another_project",
+			DefaultValue: "Parent in another project",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.ouservice.parent_in_another_project_description",
+			DefaultValue: "An organization unit must be in the same project as its parent, " +
+				"unless its parent is the system organization unit",
+		},
+	}
+	// ErrorSystemOUInProject is returned when the system organization unit names a project.
+	ErrorSystemOUInProject = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "OU-1025",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.ouservice.system_ou_in_project",
+			DefaultValue: "System organization unit in a project",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.ouservice.system_ou_in_project_description",
+			DefaultValue: "The system organization unit is shared by every project and cannot belong to one",
+		},
+	}
 )
 
 // Error variables

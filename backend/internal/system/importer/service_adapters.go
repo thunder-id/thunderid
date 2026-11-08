@@ -164,6 +164,7 @@ func (s *importService) importOrganizationUnit(
 		Name:                      req.Name,
 		Description:               req.Description,
 		Parent:                    req.Parent,
+		ProjectID:                 req.ProjectID,
 		ThemeID:                   req.ThemeID,
 		LayoutID:                  req.LayoutID,
 		AuthFlowID:                req.AuthFlowID,

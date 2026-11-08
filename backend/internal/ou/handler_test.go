@@ -282,6 +282,29 @@ func (suite *OrganizationUnitHandlerTestSuite) TestOUHandler_HandleOUListRequest
 			},
 		},
 		{
+			name: "lists a project's organization units",
+			url:  "/organization-units?projectId=project-1",
+			setup: func(serviceMock *OrganizationUnitServiceInterfaceMock) {
+				serviceMock.
+					On("GetOrganizationUnitListByProject", mock.Anything, "project-1",
+						serverconst.DefaultPageSize, 0, mock.Anything).
+					Return(&OrganizationUnitListResponse{
+						TotalResults:      1,
+						OrganizationUnits: []OrganizationUnitBasic{{ID: "ou-1", ProjectID: "project-1"}},
+					}, nil).
+					Once()
+			},
+			assert: func(recorder *httptest.ResponseRecorder) {
+				suite.Equal(http.StatusOK, recorder.Code)
+				var resp OrganizationUnitListResponse
+				suite.NoError(json.Unmarshal(recorder.Body.Bytes(), &resp))
+				suite.Equal("project-1", resp.OrganizationUnits[0].ProjectID)
+			},
+			assertService: func(serviceMock *OrganizationUnitServiceInterfaceMock) {
+				serviceMock.AssertNotCalled(suite.T(), "GetOrganizationUnitList", mock.Anything)
+			},
+		},
+		{
 			name: "default limit applied",
 			url:  "/organization-units?offset=1",
 			setup: func(serviceMock *OrganizationUnitServiceInterfaceMock) {

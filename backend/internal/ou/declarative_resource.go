@@ -165,7 +165,10 @@ func (e *ouExporter) GetResourceRules() *declarativeresource.ResourceRules {
 
 // loadDeclarativeResources loads immutable organization unit resources from files.
 // The dbStore parameter is optional (can be nil) and is used for duplicate checking in composite mode.
-func loadDeclarativeResources(fileStore organizationUnitStoreInterface, dbStore organizationUnitStoreInterface) error {
+// requireProject refuses a declared organization unit, other than the system one, that names no project.
+func loadDeclarativeResources(
+	fileStore organizationUnitStoreInterface, dbStore organizationUnitStoreInterface, requireProject bool,
+) error {
 	// Type assert to get the file-based store for resource loading
 	store, ok := fileStore.(*fileBasedStore)
 	if !ok {
@@ -177,7 +180,7 @@ func loadDeclarativeResources(fileStore organizationUnitStoreInterface, dbStore 
 		DirectoryName: "organization_units",
 		Parser:        parseToOUWrapper,
 		Validator: func(data interface{}) error {
-			return validateOUWrapper(data, store, dbStore)
+			return validateOUWrapper(data, store, dbStore, requireProject)
 		},
 		IDExtractor: func(data interface{}) string {
 			return data.(*OrganizationUnit).ID
@@ -189,6 +192,40 @@ func loadDeclarativeResources(fileStore organizationUnitStoreInterface, dbStore 
 		return fmt.Errorf("failed to load organization unit resources: %w", err)
 	}
 
+	if requireProject {
+		return validateDeclaredOUPlacement(store, dbStore)
+	}
+	return nil
+}
+
+// validateDeclaredOUPlacement checks, once every file is loaded, that each declared organization unit in a project
+// has its parent in the same project or under the system organization unit, as the API requires. The parent may
+// be declared in another file or held by the database store. Whether the project exists is not checked here:
+// declarative organization units load before the projects do.
+func validateDeclaredOUPlacement(fileStore *fileBasedStore, dbStore organizationUnitStoreInterface) error {
+	ctx := context.Background()
+	list, err := fileStore.GenericFileBasedStore.List()
+	if err != nil {
+		return fmt.Errorf("failed to list declared organization units: %w", err)
+	}
+	for _, item := range list {
+		ou, ok := item.Data.(*OrganizationUnit)
+		if !ok || ou.Parent == nil || ou.ProjectID == "" {
+			continue
+		}
+		parent, err := fileStore.GetOrganizationUnit(ctx, *ou.Parent)
+		if err != nil && dbStore != nil {
+			parent, err = dbStore.GetOrganizationUnit(ctx, *ou.Parent)
+		}
+		if err != nil {
+			// A parent that exists nowhere is not a placement question.
+			continue
+		}
+		if parent.ProjectID != ou.ProjectID && parent.ID != configuredSystemOUID() {
+			return fmt.Errorf("organization unit '%s' in project '%s' has its parent '%s' in another project",
+				ou.ID, ou.ProjectID, parent.ID)
+		}
+	}
 	return nil
 }
 
@@ -212,7 +249,9 @@ func parseToOU(data []byte) (*OrganizationUnit, error) {
 // Checks for duplicate IDs in both the file store and optionally the database store.
 // In declarative mode, dbStore is nil and only file store is checked.
 // In composite mode, both stores are checked to prevent conflicts.
-func validateOUWrapper(data interface{}, fileStore *fileBasedStore, dbStore organizationUnitStoreInterface) error {
+func validateOUWrapper(
+	data interface{}, fileStore *fileBasedStore, dbStore organizationUnitStoreInterface, requireProject bool,
+) error {
 	ou, ok := data.(*OrganizationUnit)
 	if !ok {
 		return fmt.Errorf("invalid type: expected *OrganizationUnit")
@@ -228,6 +267,17 @@ func validateOUWrapper(data interface{}, fileStore *fileBasedStore, dbStore orga
 
 	if ou.Handle == "" {
 		return fmt.Errorf("organization unit handle is required")
+	}
+
+	// Where projects are served, an organization unit file names its project, except the system organization
+	// unit, which belongs to no project. The project is not checked here: declarative organization units load
+	// before the projects do.
+	if ou.ID == configuredSystemOUID() {
+		if ou.ProjectID != "" {
+			return fmt.Errorf("the system organization unit '%s' cannot name a projectId", ou.ID)
+		}
+	} else if requireProject && ou.ProjectID == "" {
+		return fmt.Errorf("organization unit '%s' must name its projectId", ou.ID)
 	}
 
 	// Check for duplicate ID in the file store

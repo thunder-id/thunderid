@@ -40,13 +40,14 @@ func (ts *ProjectAPITestSuite) TestBootstrapCreatesTheDefaultProject() {
 	ts.Equal("Default", defaultProject.DisplayName)
 }
 
-// A root organization unit imported without a project document creates no project, and an export of
-// organization units alone carries no project.
+// A root organization unit imported in a project without a project document creates no project, and an
+// export of organization units alone carries no project.
 func (ts *ProjectAPITestSuite) TestOUImportCreatesNoProject() {
 	rootID := "019a0000-0000-7000-8000-0000000001a0"
 	_ = testutils.DeleteOrganizationUnit(rootID)
-	ts.importContent(fmt.Sprintf("resource_type: organization_unit\nid: %s\nhandle: %s\nname: Imported\n",
-		rootID, ts.handle("imported")))
+	ts.importContent(fmt.Sprintf(
+		"resource_type: organization_unit\nid: %s\nhandle: %s\nname: Imported\nprojectId: %s\n",
+		rootID, ts.handle("imported"), defaultProjectID))
 	ts.ous = append(ts.ous, rootID)
 	ts.Nil(ts.projectWithHandle(ts.handle("imported")), "only a declared project is imported")
 

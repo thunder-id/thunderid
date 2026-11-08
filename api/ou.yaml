@@ -30,13 +30,27 @@ paths:
       tags:
         - Organization Units
       summary: List root organization units
+      description: |
+        Lists the root organization units. With `projectId`, lists the top organization units of the
+        project instead: its root organization units, and any organization unit whose parent is not in the
+        project. The other organization units of the project are listed under their parent. A project that
+        does not exist has no organization units. A caller who may list only some organization units gets
+        every organization unit of the project it may list, at any level, as the list without `projectId`
+        does.
       parameters:
         - $ref: '#/components/parameters/limitQueryParam'
         - $ref: '#/components/parameters/offsetQueryParam'
         - $ref: '#/components/parameters/ouFilterParam'
+        - in: query
+          name: projectId
+          required: false
+          description: ID of the project whose organization units are listed.
+          schema:
+            type: string
+            maxLength: 36
       responses:
         "200":
-          description: List of root organization units
+          description: List of root organization units, or of the top organization units of a project
           content:
             application/json:
               schema:
@@ -50,6 +64,7 @@ paths:
                     handle: "engineering"
                     name: "Engineering"
                     description: "Engineering Unit"
+                    projectId: "019a3000-0000-7000-8000-0000000000a1"
                     logoUrl: "https://example.com/logos/engineering.png"
                   - id: "b7c40de6-95cd-4c45-8725-9c7cb5b9cafd"
                     handle: "sales"
@@ -117,6 +132,7 @@ paths:
                   name: "Engineering"
                   description: "Engineering Unit"
                   parent: null
+                  projectId: "019a3000-0000-7000-8000-0000000000a1"
               nested-ou:
                 summary: Nested organization unit
                 value:
@@ -124,6 +140,7 @@ paths:
                   name: "Frontend Team"
                   description: "Handles UI/UX work"
                   parent: "afc77cfd-620b-4cf0-a31c-7377b0ea8902"
+                  projectId: "019a3000-0000-7000-8000-0000000000a1"
       responses:
         "201":
           description: Organization unit created
@@ -140,6 +157,7 @@ paths:
                     name: "Engineering"
                     description: "Engineering Unit"
                     parent: null
+                    projectId: "019a3000-0000-7000-8000-0000000000a1"
                 nested-ou:
                   summary: Nested organization unit
                   value:
@@ -148,6 +166,7 @@ paths:
                     name: "Frontend Team"
                     description: "Handles UI/UX work"
                     parent: "afc77cfd-620b-4cf0-a31c-7377b0ea8902"
+                    projectId: "019a3000-0000-7000-8000-0000000000a1"
         "400":
           description: Bad request
           content:
@@ -185,6 +204,46 @@ paths:
                     description:
                       key: "error.ouservice.circular_dependency_detected_description"
                       defaultValue: "Setting this parent would create a circular dependency"
+                project-required:
+                  summary: Project required on the Control Plane
+                  value:
+                    code: "OU-1023"
+                    message:
+                      key: "error.ouservice.project_required"
+                      defaultValue: "Project required"
+                    description:
+                      key: "error.ouservice.project_required_description"
+                      defaultValue: "An organization unit must belong to a project. Set projectId to the project it belongs to"
+                invalid-project:
+                  summary: Project does not exist
+                  value:
+                    code: "OU-1022"
+                    message:
+                      key: "error.ouservice.invalid_project"
+                      defaultValue: "Invalid project"
+                    description:
+                      key: "error.ouservice.invalid_project_description"
+                      defaultValue: "No project exists with the given project ID"
+                parent-in-another-project:
+                  summary: Parent in another project
+                  value:
+                    code: "OU-1024"
+                    message:
+                      key: "error.ouservice.parent_in_another_project"
+                      defaultValue: "Parent in another project"
+                    description:
+                      key: "error.ouservice.parent_in_another_project_description"
+                      defaultValue: "An organization unit must be in the same project as its parent, unless its parent is the system organization unit"
+                system-ou-in-project:
+                  summary: System organization unit in a project
+                  value:
+                    code: "OU-1025"
+                    message:
+                      key: "error.ouservice.system_ou_in_project"
+                      defaultValue: "System organization unit in a project"
+                    description:
+                      key: "error.ouservice.system_ou_in_project_description"
+                      defaultValue: "The system organization unit is shared by every project and cannot belong to one"
         "403":
           description: |
             The caller may not create an organization unit under the parent. On a data plane, no token
@@ -296,6 +355,7 @@ paths:
               name: "Engineering Team"
               description: "Engineering unit that handles all engineering tasks"
               parent: null
+              projectId: "019a3000-0000-7000-8000-0000000000a1"
       responses:
         "200":
           description: Organization unit updated
@@ -346,6 +406,46 @@ paths:
                     description:
                       key: "error.ouservice.circular_dependency_detected_description"
                       defaultValue: "Setting this parent would create a circular dependency"
+                invalid-project:
+                  summary: Project does not exist
+                  value:
+                    code: "OU-1022"
+                    message:
+                      key: "error.ouservice.invalid_project"
+                      defaultValue: "Invalid project"
+                    description:
+                      key: "error.ouservice.invalid_project_description"
+                      defaultValue: "No project exists with the given project ID"
+                parent-in-another-project:
+                  summary: Parent in another project
+                  value:
+                    code: "OU-1024"
+                    message:
+                      key: "error.ouservice.parent_in_another_project"
+                      defaultValue: "Parent in another project"
+                    description:
+                      key: "error.ouservice.parent_in_another_project_description"
+                      defaultValue: "An organization unit must be in the same project as its parent, unless its parent is the system organization unit"
+                system-ou-in-project:
+                  summary: System organization unit in a project
+                  value:
+                    code: "OU-1025"
+                    message:
+                      key: "error.ouservice.system_ou_in_project"
+                      defaultValue: "System organization unit in a project"
+                    description:
+                      key: "error.ouservice.system_ou_in_project_description"
+                      defaultValue: "The system organization unit is shared by every project and cannot belong to one"
+                declarative-descendant:
+                  summary: Project move reaches a declarative descendant
+                  value:
+                    code: "OU-1012"
+                    message:
+                      key: "error.ouservice.cannot_modify_declarative_resource"
+                      defaultValue: "Cannot modify declarative resource"
+                    description:
+                      key: "error.ouservice.cannot_modify_declarative_resource_description"
+                      defaultValue: "The organization unit is declarative and cannot be modified or deleted"
         "403":
           description: |
             The caller may not update the organization unit. Moving it to the root also needs the
@@ -1554,6 +1654,10 @@ components:
           type: string
         description:
           type: string
+        projectId:
+          type: string
+          maxLength: 36
+          description: "ID of the project the organization unit belongs to. The system organization unit belongs to none."
         logoUrl:
           type: string
           format: uri
@@ -1590,6 +1694,10 @@ components:
           type: string
           format: uuid
           nullable: true
+        projectId:
+          type: string
+          maxLength: 36
+          description: "ID of the project the organization unit belongs to. The system organization unit belongs to none."
         themeId:
           type: string
           format: uuid
@@ -1722,6 +1830,18 @@ components:
           type: string
           description: "Optional description of the organization unit"
           example: "Team responsible for frontend development and UI/UX"
+        projectId:
+          type: string
+          maxLength: 36
+          description: |
+            ID of the project the organization unit belongs to. Its parent is in the same project or is the
+            system organization unit, which every project shares and which belongs to no project. On the
+            Control Plane, every organization unit but the system one belongs to a project, so a create
+            without `projectId` fails with `OU-1023`, and a project that does not exist fails with
+            `OU-1022`. An update without `projectId` keeps the organization unit in its project, and an update
+            that names another project moves the organization unit and its descendants there. A move
+            that reaches a declarative descendant moves nothing and fails with `OU-1012`.
+            A server without projects keeps the `projectId` it receives without checking it.
         themeId:
           type: string
           format: uuid
@@ -1785,6 +1905,18 @@ components:
           type: string
           description: "Optional description of the organization unit"
           example: "Team responsible for frontend development and UI/UX"
+        projectId:
+          type: string
+          maxLength: 36
+          description: |
+            ID of the project the organization unit belongs to. Its parent is in the same project or is the
+            system organization unit, which every project shares and which belongs to no project. On the
+            Control Plane, every organization unit but the system one belongs to a project, so a create
+            without `projectId` fails with `OU-1023`, and a project that does not exist fails with
+            `OU-1022`. An update without `projectId` keeps the organization unit in its project, and an update
+            that names another project moves the organization unit and its descendants there. A move
+            that reaches a declarative descendant moves nothing and fails with `OU-1012`.
+            A server without projects keeps the `projectId` it receives without checking it.
         themeId:
           type: string
           format: uuid

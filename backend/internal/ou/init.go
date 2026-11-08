@@ -15,25 +15,31 @@ import (
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
+	"github.com/thunder-id/thunderid/internal/system/projectscope"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 )
 
 // Initialize initializes the organization unit service and registers its routes.
 // It returns the service, a hierarchy resolver (for injection into the authz service to
-// avoid an import cycle), and the declarative resource exporter.
+// avoid an import cycle), and the declarative resource exporter. servesProjects is set on a deployment that
+// serves projects, which injects the project check with SetProjectChecker once the project service is
+// initialized. There, every organization unit but the system one belongs to a project.
 func Initialize(
 	mux *http.ServeMux,
 	mcpServer *mcp.Server,
 	cacheManager cache.CacheManagerInterface,
 	authzService sysauthz.SystemAuthorizationServiceInterface,
+	servesProjects bool,
 ) (ConfigurableOUService, sysauthz.OUHierarchyResolver, HierarchyEnumeratorInterface,
 	declarativeresource.ResourceExporter, error) {
-	ouStore, transactioner, err := initializeStore(cacheManager)
+	projectRequired := servesProjects && projectscope.ProjectRequired(security.ResourceTypeOU)
+	ouStore, transactioner, err := initializeStore(cacheManager, projectRequired)
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
 
-	ouService := newOrganizationUnitService(authzService, ouStore, transactioner)
+	ouService := newOrganizationUnitService(authzService, ouStore, transactioner, projectRequired)
 
 	ouHandler := newOrganizationUnitHandler(ouService)
 	registerRoutes(mux, ouHandler)
@@ -83,7 +89,7 @@ func Initialize(
 //   - If immutable_resources.enabled = true: behaves as IMMUTABLE mode
 //   - If immutable_resources.enabled = false: behaves as MUTABLE mode
 func initializeStore(
-	cacheManager cache.CacheManagerInterface,
+	cacheManager cache.CacheManagerInterface, projectRequired bool,
 ) (organizationUnitStoreInterface, providers.Transactioner, error) {
 	storeMode := getOrganizationUnitStoreMode()
 
@@ -96,14 +102,14 @@ func initializeStore(
 		}
 		cachedDBStore := wrapWithCache(dbStore, cacheManager)
 		ouStore := newCompositeOUStore(fileStore, cachedDBStore)
-		if err := loadDeclarativeResources(fileStore, cachedDBStore); err != nil {
+		if err := loadDeclarativeResources(fileStore, cachedDBStore, projectRequired); err != nil {
 			return nil, nil, err
 		}
 		return ouStore, transactioner, nil
 
 	case serverconst.StoreModeDeclarative:
 		fileStore, transactioner := newFileBasedStore()
-		if err := loadDeclarativeResources(fileStore, nil); err != nil {
+		if err := loadDeclarativeResources(fileStore, nil, projectRequired); err != nil {
 			return nil, nil, err
 		}
 		return fileStore, transactioner, nil

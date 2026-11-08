@@ -1,7 +1,7 @@
 // Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {CapabilitiesProvider} from '@thunderid/contexts';
+import {CapabilitiesProvider, ProjectScopeProvider} from '@thunderid/contexts';
 import {screen, fireEvent, waitFor, within, renderWithProviders, renderHook} from '@thunderid/test-utils';
 import {useTranslation} from 'react-i18next';
 import {describe, it, expect, vi, beforeEach, beforeAll} from 'vitest';
@@ -28,8 +28,8 @@ vi.mock('@thunderid/logger/react', () => ({
 // Mock the API hook
 const mockUseGetOrganizationUnits = vi.fn();
 vi.mock('@/api/useGetOrganizationUnits', () => ({
-  default: () =>
-    mockUseGetOrganizationUnits() as {
+  default: (...args: unknown[]) =>
+    mockUseGetOrganizationUnits(...args) as {
       data: OrganizationUnitListResponse | undefined;
       isLoading: boolean;
       error: Error | null;
@@ -136,6 +136,19 @@ describe('OrganizationUnitsTreeView', () => {
       expect(screen.getByText('Root Organization')).toBeInTheDocument();
       expect(screen.getByText('Engineering')).toBeInTheDocument();
     });
+  });
+
+  it("lists only the selected project's organization units", async () => {
+    renderWithProviders(
+      <ProjectScopeProvider project={{id: 'project-1'}}>
+        <OrganizationUnitsTreeView />
+      </ProjectScopeProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Root Organization')).toBeInTheDocument();
+    });
+    expect(mockUseGetOrganizationUnits).toHaveBeenCalledWith({projectId: 'project-1'});
   });
 
   it('should show error state when fetch fails', async () => {
@@ -268,6 +281,33 @@ describe('OrganizationUnitsTreeView', () => {
     expect(screen.queryByLabelText(t('common:actions.edit'))).not.toBeInTheDocument();
     expect(screen.queryByLabelText(t('common:actions.delete'))).not.toBeInTheDocument();
     expect(screen.queryByText(t('organizationUnits:listing.addRootOrganizationUnit'))).not.toBeInTheDocument();
+  });
+
+  it('offers no create action outside a project when organization units are created only in projects', async () => {
+    renderWithProviders(<OrganizationUnitsTreeView createInProjectsOnly />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Root Organization')).toBeInTheDocument();
+    });
+
+    expect(screen.queryByLabelText(t('organizationUnits:listing.treeView.addChild'))).not.toBeInTheDocument();
+    expect(screen.queryByText(t('organizationUnits:listing.addRootOrganizationUnit'))).not.toBeInTheDocument();
+    expect(screen.getAllByLabelText(t('common:actions.edit'))).toHaveLength(2);
+  });
+
+  it('offers the create actions inside a project when organization units are created only in projects', async () => {
+    renderWithProviders(
+      <ProjectScopeProvider project={{id: 'project-1'}}>
+        <OrganizationUnitsTreeView createInProjectsOnly />
+      </ProjectScopeProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Root Organization')).toBeInTheDocument();
+    });
+
+    expect(screen.getAllByLabelText(t('organizationUnits:listing.treeView.addChild'))).toHaveLength(2);
+    expect(screen.getByText(t('organizationUnits:listing.addRootOrganizationUnit'))).toBeInTheDocument();
   });
 
   it('should navigate to create page with parentId when add child action is clicked', async () => {
