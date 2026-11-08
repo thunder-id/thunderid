@@ -27,6 +27,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/application"
 	"github.com/thunder-id/thunderid/internal/attributeverification"
 	authzdetailmgt "github.com/thunder-id/thunderid/internal/authzdetail/mgt"
+	"github.com/thunder-id/thunderid/internal/capability"
 	"github.com/thunder-id/thunderid/internal/cert"
 	"github.com/thunder-id/thunderid/internal/cimd"
 	"github.com/thunder-id/thunderid/internal/connection"
@@ -411,6 +412,9 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	}, applicationService, agentService, flowMgtService, roleAssignmentService, roleService,
 		groupService, ouService, ouUserResolver, ouGroupResolver, entityTypeService, resourceService,
 		sharingService, notifTemplateSvc, ouDependencyProvider)
+
+	// Capabilities are answered by the authorization service the management APIs use.
+	capability.Initialize(mux, ouAuthzService)
 
 	// Initialize export service with collected exporters
 	// This plane authors configuration and does not hold the values it refers to, so an export

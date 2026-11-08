@@ -661,3 +661,40 @@ func (s *SystemAuthzTestSuite) TestGetAccessibleResourcesDeploymentBoundary() {
 	assert.False(t, result.AllAllowed)
 	assert.Empty(t, result.IDs)
 }
+
+// ---------------------------------------------------------------------------
+// GetBoundary and record-independent checks
+// ---------------------------------------------------------------------------
+
+func (s *SystemAuthzTestSuite) TestGetBoundary() {
+	ctx := buildCtxWithOU("system", "ou-1")
+
+	s.Equal(Boundary{Type: BoundaryTypeOU, OUID: "ou-1"}, newOUBoundedAuthzService().GetBoundary(ctx))
+	s.Equal(Boundary{Type: BoundaryTypeDeployment}, newDeploymentBoundedAuthzService().GetBoundary(ctx))
+}
+
+func (s *SystemAuthzTestSuite) TestIsActionAllowedWithoutRecord() {
+	boundaries := map[string]SystemAuthorizationServiceInterface{
+		"ou":         newOUBoundedAuthzService(),
+		"deployment": newDeploymentBoundedAuthzService(),
+	}
+	tests := []struct {
+		name        string
+		permissions string
+		action      security.Action
+		wantAllowed bool
+	}{
+		{"catalog view grants read", "system:app:view", security.ActionReadApplication, true},
+		{"catalog view does not grant update", "system:app:view", security.ActionUpdateApplication, false},
+		{"resource permission grants every action", "system:project", security.ActionDeleteProject, true},
+	}
+	for boundaryName, service := range boundaries {
+		for _, tc := range tests {
+			s.Run(boundaryName+"/"+tc.name, func() {
+				allowed, svcErr := service.IsActionAllowed(buildCtxWithOU(tc.permissions, "ou-1"), tc.action, nil)
+				s.Nil(svcErr)
+				s.Equal(tc.wantAllowed, allowed)
+			})
+		}
+	}
+}

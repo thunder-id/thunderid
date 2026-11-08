@@ -51,6 +51,11 @@ func (s *deploymentBoundedAuthzService) GetAccessibleResources(ctx context.Conte
 	return &AccessibleResources{AllAllowed: true}, nil
 }
 
+// GetBoundary returns the deployment boundary, which confines a caller to no organization unit.
+func (s *deploymentBoundedAuthzService) GetBoundary(context.Context) Boundary {
+	return Boundary{Type: BoundaryTypeDeployment}
+}
+
 // SetOUHierarchyResolver ignores the resolver, since the deployment boundary never consults the
 // organization unit hierarchy.
 func (s *deploymentBoundedAuthzService) SetOUHierarchyResolver(OUHierarchyResolver) {}

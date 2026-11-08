@@ -4367,6 +4367,12 @@ importers:
       '@playwright/test':
         specifier: 'catalog:'
         version: 1.60.0
+      '@tanstack/react-query':
+        specifier: 'catalog:'
+        version: 5.90.5(react@19.2.3)
+      '@thunderid/contexts':
+        specifier: workspace:^
+        version: link:../contexts
       '@thunderid/eslint-plugin':
         specifier: workspace:^
         version: link:../eslint-plugin
@@ -4376,6 +4382,9 @@ importers:
       '@thunderid/prettier-config':
         specifier: workspace:^
         version: link:../prettier-config
+      '@thunderid/react':
+        specifier: 'catalog:'
+        version: 1.17.1(@types/react@19.2.14)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(supports-color@10.2.2)
       '@thunderid/test-utils':
         specifier: workspace:^
         version: link:../test-utils

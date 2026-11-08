@@ -40,6 +40,7 @@ import (
 	authzdetailexec "github.com/thunder-id/thunderid/internal/authzdetail/exec"
 	authzdetailmgt "github.com/thunder-id/thunderid/internal/authzdetail/mgt"
 	"github.com/thunder-id/thunderid/internal/authzen"
+	"github.com/thunder-id/thunderid/internal/capability"
 	"github.com/thunder-id/thunderid/internal/cert"
 	"github.com/thunder-id/thunderid/internal/cimd"
 	"github.com/thunder-id/thunderid/internal/connection"
@@ -588,6 +589,9 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 
 	// Initialize flow metadata service
 	_ = flowmeta.Initialize(mux, actorProvider, ouProvider, designResolveService, i18nService)
+
+	// Capabilities are answered by the authorization service the management APIs use.
+	capability.Initialize(mux, ouAuthzService)
 
 	// Initialize export service with collected exporters
 	exportService := export.Initialize(mux, exporters, export.TemplatePlaceholders)

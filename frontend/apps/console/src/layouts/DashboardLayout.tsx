@@ -3,9 +3,11 @@
 
 import {getInitials} from '@thunderid/components';
 import {useConfig} from '@thunderid/contexts';
+import {useCapabilities} from '@thunderid/hooks';
 import {useLogger} from '@thunderid/logger/react';
 import {SignOutButton, User, useThunderID} from '@thunderid/react';
 import {
+  Alert,
   AppShell,
   Box,
   Button,
@@ -69,6 +71,8 @@ interface NavRoute {
   text: string;
   icon: JSX.Element;
   path?: string;
+  /** The catalog resource the page shows; the entry is hidden from admins who can't view it. */
+  resource?: string;
   children?: NavRoute[];
 }
 
@@ -81,6 +85,11 @@ function SidebarFooterButtons(): ReactNode {
   const {t} = useTranslation();
   const navigate = useNavigate();
   const {collapsed} = useSidebar();
+  const {canManageRoot, isLoading} = useCapabilities();
+
+  if (!isLoading && !canManageRoot) {
+    return null;
+  }
 
   const buttonSx = collapsed ? ICON_BUTTON_SX : FULL_BUTTON_SX;
 
@@ -205,18 +214,21 @@ export default function DashboardLayout({collapseSidebar = false}: DashboardLayo
         routes: [
           {
             id: 'applications',
+            resource: 'app',
             text: t('navigation:pages.applications'),
             icon: <LayoutGrid />,
             path: RouteConfig.applications.list(),
           },
           {
             id: 'resource-servers',
+            resource: 'rs',
             text: t('navigation:pages.resourceServers', 'Resource servers'),
             icon: <Server />,
             path: RouteConfig.resourceServers.list(),
           },
           {
             id: 'authorization-detail-types',
+            resource: 'authzdetail',
             text: t('navigation:pages.authorizationDetailTypes', 'Intents'),
             icon: <ListChecks />,
             path: RouteConfig.authorizationDetailTypes.list(),
@@ -228,30 +240,35 @@ export default function DashboardLayout({collapseSidebar = false}: DashboardLayo
         routes: [
           {
             id: 'users',
+            resource: 'user',
             text: t('navigation:pages.users'),
             icon: <UsersRound />,
             path: RouteConfig.users.list(),
           },
           {
             id: 'agents',
+            resource: 'agent',
             text: t('navigation:pages.agents', 'Agents'),
             icon: <Bot />,
             path: RouteConfig.agents.list(),
           },
           {
             id: 'groups',
+            resource: 'group',
             text: t('navigation:pages.groups'),
             icon: <Group />,
             path: RouteConfig.groups.list(),
           },
           {
             id: 'roles',
+            resource: 'role',
             text: t('navigation:pages.roles'),
             icon: <ShieldCheck />,
             path: RouteConfig.roles.list(),
           },
           {
             id: 'user-types',
+            resource: 'usertype',
             text: t('navigation:pages.userTypes'),
             icon: <UserRoundCog />,
             path: RouteConfig.userTypes.list(),
@@ -263,18 +280,21 @@ export default function DashboardLayout({collapseSidebar = false}: DashboardLayo
         routes: [
           {
             id: 'organization-units',
+            resource: 'ou',
             text: t('navigation:pages.organizationUnits'),
             icon: <Building />,
             path: RouteConfig.organizationUnits.list(),
           },
           {
             id: 'flows',
+            resource: 'flow',
             text: t('navigation:pages.flows'),
             icon: <Workflow />,
             path: RouteConfig.flows.list(),
           },
           {
             id: 'connections',
+            resource: 'connection',
             text: t('navigation:pages.connections'),
             icon: <Layers />,
             path: RouteConfig.connections.list(),
@@ -286,12 +306,14 @@ export default function DashboardLayout({collapseSidebar = false}: DashboardLayo
             children: [
               {
                 id: 'credentials',
+                resource: 'vc',
                 text: t('navigation:pages.credentials'),
                 icon: <IdCard />,
                 path: RouteConfig.verifiableCredentials.list(),
               },
               {
                 id: 'presentations',
+                resource: 'vc',
                 text: t('navigation:pages.presentations'),
                 icon: <ShieldCheck />,
                 path: RouteConfig.verifiablePresentations.list(),
@@ -305,6 +327,7 @@ export default function DashboardLayout({collapseSidebar = false}: DashboardLayo
         routes: [
           {
             id: 'design',
+            resource: 'design',
             text: t('navigation:pages.design', 'Design'),
             icon: <Palette />,
             path: RouteConfig.design.list(),
@@ -316,12 +339,14 @@ export default function DashboardLayout({collapseSidebar = false}: DashboardLayo
             children: [
               {
                 id: 'email-templates',
+                resource: 'notificationtemplate',
                 text: t('navigation:pages.emailTemplates', 'Email templates'),
                 icon: <Mail />,
                 path: RouteConfig.notificationTemplates.channel('email'),
               },
               {
                 id: 'sms-templates',
+                resource: 'notificationtemplate',
                 text: t('navigation:pages.smsTemplates', 'SMS templates'),
                 icon: <MessageSquare />,
                 path: RouteConfig.notificationTemplates.channel('sms'),
@@ -330,6 +355,7 @@ export default function DashboardLayout({collapseSidebar = false}: DashboardLayo
           },
           {
             id: 'translations',
+            resource: 'i18n',
             text: t('navigation:pages.translations'),
             icon: <Languages />,
             path: RouteConfig.translations.list(),
@@ -341,6 +367,7 @@ export default function DashboardLayout({collapseSidebar = false}: DashboardLayo
         routes: [
           {
             id: 'settings',
+            resource: 'serverconfig',
             text: t('navigation:pages.settings'),
             icon: <Settings />,
             path: RouteConfig.settings.list(),
@@ -350,6 +377,21 @@ export default function DashboardLayout({collapseSidebar = false}: DashboardLayo
     ],
     [t],
   );
+
+  const {can, isLoading: isLoadingCapabilities} = useCapabilities();
+
+  // The navigation the admin may see: entries for pages they can't view, and groups left empty, are hidden.
+  const visibleRoutes: NavCategory[] = useMemo(() => {
+    const isVisible = (route: NavRoute): boolean => isLoadingCapabilities || !route.resource || can(route.resource);
+    return appRoutes
+      .map((group) => ({
+        ...group,
+        routes: group.routes
+          .map((route) => (route.children ? {...route, children: route.children.filter(isVisible)} : route))
+          .filter((route) => (route.children ? route.children.length > 0 : isVisible(route))),
+      }))
+      .filter((group) => group.routes.length > 0);
+  }, [appRoutes, can, isLoadingCapabilities]);
 
   const {pathname} = useLocation();
 
@@ -365,6 +407,15 @@ export default function DashboardLayout({collapseSidebar = false}: DashboardLayo
       .sort((a, b) => b.path.length - a.path.length)[0];
     return match?.id;
   }, [appRoutes, pathname]);
+
+  const activeResource = useMemo(
+    () =>
+      appRoutes
+        .flatMap((group) => group.routes.flatMap((route) => route.children ?? [route]))
+        .find((route) => route.id === activeItem)?.resource,
+    [appRoutes, activeItem],
+  );
+  const isPageForbidden = !isLoadingCapabilities && activeResource !== undefined && !can(activeResource);
 
   const [expandedMenus, setExpandedMenus] = useState<Record<string, boolean>>({});
   const handleToggleExpand = (id: string): void => {
@@ -445,7 +496,7 @@ export default function DashboardLayout({collapseSidebar = false}: DashboardLayo
       <AppShell.Sidebar>
         <Sidebar activeItem={activeItem} expandedMenus={expandedMenus} onToggleExpand={handleToggleExpand}>
           <Sidebar.Nav>
-            {appRoutes.map((categoryGroup) => (
+            {visibleRoutes.map((categoryGroup) => (
               <Sidebar.Category key={categoryGroup.category}>
                 {categoryGroup.category && <Sidebar.CategoryLabel>{categoryGroup.category}</Sidebar.CategoryLabel>}
                 {categoryGroup.routes.map((route) =>
@@ -477,7 +528,15 @@ export default function DashboardLayout({collapseSidebar = false}: DashboardLayo
       </AppShell.Sidebar>
 
       <AppShell.Main>
-        <Outlet />
+        {isPageForbidden ? (
+          <Box sx={{p: 3}}>
+            <Alert severity="warning">
+              {t('navigation:forbidden.description', 'You do not have permission to view this page.')}
+            </Alert>
+          </Box>
+        ) : (
+          <Outlet />
+        )}
       </AppShell.Main>
 
       <AppShell.Footer>
