@@ -267,6 +267,12 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
       icon: <Workflow />,
       path: RouteConfig.flows.list(),
     };
+    const groups: NavRoute = {
+      id: 'groups',
+      text: t('navigation:pages.groups', 'Groups'),
+      icon: <Group />,
+      path: RouteConfig.groups.list(),
+    };
     const badgeOf = (count: number | undefined): string | undefined =>
       count ? t('navigation:badges.undeployed', '{{count}} undeployed', {count}) : undefined;
     // On a gateway's pages the navigation is the gateway's, the same from wherever it was opened: a
@@ -377,6 +383,54 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
             {...resourceServers, badge: badgeOf(undeployed.resource_server)},
             {...roles, badge: badgeOf(undeployed.role)},
             {...flows, badge: badgeOf(undeployed.flow)},
+            {
+              id: 'verifiable-credentials',
+              text: t('navigation:pages.verifiableCredentials', 'Verifiable credentials'),
+              icon: <Wallet />,
+              children: [
+                {
+                  id: 'credentials',
+                  text: t('navigation:pages.credentials', 'Templates'),
+                  icon: <IdCard />,
+                  path: RouteConfig.verifiableCredentials.list(),
+                },
+                {
+                  id: 'presentations',
+                  text: t('navigation:pages.presentations', 'Presentations'),
+                  icon: <ShieldCheck />,
+                  path: RouteConfig.verifiablePresentations.list(),
+                },
+              ],
+            },
+          ],
+        },
+        {
+          category: t('navigation:categories.identities', 'Identities'),
+          routes: [
+            {
+              id: 'users',
+              text: t('navigation:pages.users', 'Users'),
+              icon: <UsersRound />,
+              path: RouteConfig.users.list(),
+            },
+            groups,
+            {
+              id: 'organization-units',
+              text: t('navigation:pages.organizationUnits', 'Organization units'),
+              icon: <Building />,
+              path: RouteConfig.organizationUnits.list(),
+            },
+          ],
+        },
+        {
+          category: t('navigation:categories.customize', 'Customize'),
+          routes: [
+            {
+              id: 'design',
+              text: t('navigation:pages.design', 'Design'),
+              icon: <Palette />,
+              path: RouteConfig.design.list(),
+            },
           ],
         },
       ];
@@ -413,12 +467,7 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
       {
         category: t('navigation:categories.identitySetup', 'Identity setup'),
         routes: [
-          {
-            id: 'groups',
-            text: t('navigation:pages.groups'),
-            icon: <Group />,
-            path: RouteConfig.groups.list(),
-          },
+          groups,
           {
             id: 'user-types',
             text: t('navigation:pages.userTypes'),
@@ -426,12 +475,6 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
             path: RouteConfig.userTypes.list(),
           },
           roles,
-          {
-            id: 'organization-units',
-            text: t('navigation:pages.organizationUnits'),
-            icon: <Building />,
-            path: RouteConfig.organizationUnits.list(),
-          },
         ],
       },
       {
@@ -442,12 +485,6 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
             text: t('navigation:pages.connections'),
             icon: <Layers />,
             path: RouteConfig.connections.list(),
-          },
-          {
-            id: 'design',
-            text: t('navigation:pages.design', 'Design'),
-            icon: <Palette />,
-            path: RouteConfig.design.list(),
           },
           {
             id: 'notifications',
@@ -478,28 +515,7 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
       },
       {
         category: t('navigation:categories.apisAndCredentials', 'APIs and credentials'),
-        routes: [
-          resourceServers,
-          {
-            id: 'verifiable-credentials',
-            text: t('navigation:pages.verifiableCredentials'),
-            icon: <Wallet />,
-            children: [
-              {
-                id: 'credentials',
-                text: t('navigation:pages.credentials'),
-                icon: <IdCard />,
-                path: RouteConfig.verifiableCredentials.list(),
-              },
-              {
-                id: 'presentations',
-                text: t('navigation:pages.presentations'),
-                icon: <ShieldCheck />,
-                path: RouteConfig.verifiablePresentations.list(),
-              },
-            ],
-          },
-        ],
+        routes: [resourceServers],
       },
       {
         category: t('navigation:categories.system', 'System'),

@@ -216,11 +216,27 @@ describe('DashboardLayout', () => {
     expect(screen.getAllByText('navigation:pages.agents')).toHaveLength(1);
     expect(screen.getAllByText('navigation:pages.resourceServers')).toHaveLength(1);
     expect(screen.getAllByText('navigation:pages.flows')).toHaveLength(1);
-    // Nothing of the organization's is listed inside a project.
+    // Nothing of the organization's own is listed inside a project.
     expect(screen.queryByText('navigation:pages.home')).not.toBeInTheDocument();
-    expect(screen.queryByText('navigation:pages.groups')).not.toBeInTheDocument();
-    expect(screen.queryByText('navigation:categories.identities')).not.toBeInTheDocument();
+    expect(screen.queryByText('navigation:pages.administrators')).not.toBeInTheDocument();
+    expect(screen.queryByText('navigation:pages.userTypes')).not.toBeInTheDocument();
     expect(screen.getByText('navigation:badges.undeployed')).toBeInTheDocument();
+  });
+
+  it("lists the project's users, groups, organization units, design and verifiable credentials", () => {
+    mockUseProjectSelection.mockReturnValue(inShop());
+    render(<DashboardLayout />);
+
+    expect(screen.getByText('navigation:categories.identities')).toBeInTheDocument();
+    expect(screen.getByText('navigation:pages.users').closest('a')).toHaveAttribute('href', '/users');
+    expect(screen.getByText('navigation:pages.groups').closest('a')).toHaveAttribute('href', '/groups');
+    expect(screen.getByText('navigation:pages.organizationUnits').closest('a')).toHaveAttribute(
+      'href',
+      '/organization-units',
+    );
+    expect(screen.getByText('navigation:categories.customize')).toBeInTheDocument();
+    expect(screen.getByText('navigation:pages.design').closest('a')).toHaveAttribute('href', '/design');
+    expect(screen.getByText('navigation:pages.verifiableCredentials')).toBeInTheDocument();
   });
 
   it("badges the selected project's resource servers that are not deployed yet", () => {
@@ -383,6 +399,12 @@ describe('DashboardLayout', () => {
     expect(screen.queryByText('navigation:pages.flows')).not.toBeInTheDocument();
     expect(screen.getByText('navigation:pages.resourceServers')).toBeInTheDocument();
     expect(screen.getByText('navigation:pages.gateways')).toBeInTheDocument();
+    // Users and groups are listed in projects as well as the organization.
+    expect(screen.getByText('navigation:pages.groups')).toBeInTheDocument();
+    // Organization units, design and verifiable credentials belong to projects.
+    expect(screen.queryByText('navigation:pages.organizationUnits')).not.toBeInTheDocument();
+    expect(screen.queryByText('navigation:pages.design')).not.toBeInTheDocument();
+    expect(screen.queryByText('navigation:pages.verifiableCredentials')).not.toBeInTheDocument();
   });
 
   it.each([false, true])('keeps navigation icon sizes consistent when collapseSidebar is %s', (collapseSidebar) => {
