@@ -169,7 +169,7 @@ func (s *versionService) capture(ctx context.Context, req CaptureRequest) (*Vers
 	if svcErr != nil {
 		return nil, svcErr
 	}
-	// A resource the export could not write, such as a user without a username, is left out of the
+	// A resource the export could not write, such as a user whose type is gone, is left out of the
 	// version as the export leaves it out of its own answer, and is named in the capture's answer so
 	// the administrator sees what the version is missing.
 	var skipped []declarativeresource.ExportError
