@@ -768,10 +768,14 @@ func (t *roleTools) confirmPermissionsRemoved(ctx context.Context, roleID, serve
 	return nil
 }
 
-// revokeRole removes one role from one assignee. The role assignment service checks that the assignee
-// holds the role directly, refusing one the role is only mandated to by a sharing policy, and on a server
-// that runs system flows it runs the role assignment removal flow, which revokes the affected tokens.
+// revokeRole removes one role from one assignee. A removal that would change nothing succeeds in the role
+// assignment service, so it is checked first: an assignee without the role, or with it only through a
+// sharing policy, is refused rather than reported revoked. On a server that runs system flows the service
+// runs the role assignment removal flow, which revokes the affected tokens.
 func (t *roleTools) revokeRole(ctx context.Context, roleID, ouID string, assignee roleAssigneeMCPInput) error {
+	if _, svcErr := t.assignmentService.ValidateRemoveAssignment(ctx, roleID, ouID, assignee.ID); svcErr != nil {
+		return errors.New(svcErr.ErrorDescription.String())
+	}
 	if svcErr := t.assignmentService.RemoveAssignments(ctx, roleID, ouID,
 		[]RoleAssignment{{ID: assignee.ID, Type: AssigneeType(assignee.Type)}}); svcErr != nil {
 		return errors.New(svcErr.ErrorDescription.String())

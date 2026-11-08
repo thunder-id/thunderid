@@ -14,6 +14,7 @@ import (
 
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	resourcepkg "github.com/thunder-id/thunderid/internal/resource"
+	"github.com/thunder-id/thunderid/internal/revocation"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -395,6 +396,8 @@ func (s *RoleToolsTestSuite) TestUpdateRoleAssignments() {
 	assignees := []any{map[string]any{"id": "u1", "type": "user"}}
 
 	s.Run("revokes, then grants", func() {
+		s.assignments.On("ValidateRemoveAssignment", mock.Anything, "viewer", "", "u1").
+			Return(&revocation.AccessRevocationTarget{}, (*tidcommon.ServiceError)(nil)).Once()
 		s.assignments.On("RemoveAssignments", mock.Anything, "viewer", "",
 			[]RoleAssignment{{ID: "u1", Type: AssigneeTypeUser}}).Return((*tidcommon.ServiceError)(nil)).Once()
 		s.assignments.On("AddAssignments", mock.Anything, "support", "",
@@ -411,18 +414,33 @@ func (s *RoleToolsTestSuite) TestUpdateRoleAssignments() {
 
 	s.Run("a role held only through a sharing policy is refused, and nothing is granted", func() {
 		s.connect(true)
-		s.assignments.On("RemoveAssignments", mock.Anything, "viewer", "", mock.Anything).
-			Return(&ErrorAssignmentMandated).Once()
+		s.assignments.On("ValidateRemoveAssignment", mock.Anything, "viewer", "", "u1").
+			Return((*revocation.AccessRevocationTarget)(nil), &ErrorAssignmentMandated).Once()
 		text := s.errorText(s.call("update_role_assignments", map[string]any{"assignees": assignees,
 			"grant": []string{"support"}, "revoke": []string{"viewer"}}))
 		s.Contains(text, ErrorAssignmentMandated.ErrorDescription.DefaultValue)
 		s.Contains(text, "Nothing was granted")
+		s.assignments.AssertNotCalled(s.T(), "RemoveAssignments", mock.Anything, mock.Anything, mock.Anything,
+			mock.Anything)
 		s.assignments.AssertNotCalled(s.T(), "AddAssignments", mock.Anything, mock.Anything, mock.Anything,
+			mock.Anything)
+	})
+
+	s.Run("a role the assignee doesn't hold is refused rather than reported revoked", func() {
+		s.connect(true)
+		s.assignments.On("ValidateRemoveAssignment", mock.Anything, "viewer", "", "u1").
+			Return((*revocation.AccessRevocationTarget)(nil), &ErrorRoleAssignmentNotFound).Once()
+		text := s.errorText(s.call("update_role_assignments", map[string]any{"assignees": assignees,
+			"revoke": []string{"viewer"}}))
+		s.Contains(text, "Revoked so far: none")
+		s.assignments.AssertNotCalled(s.T(), "RemoveAssignments", mock.Anything, mock.Anything, mock.Anything,
 			mock.Anything)
 	})
 
 	s.Run("revokes in the given unit", func() {
 		s.connect(true)
+		s.assignments.On("ValidateRemoveAssignment", mock.Anything, "viewer", "ou-2", "u1").
+			Return(&revocation.AccessRevocationTarget{}, (*tidcommon.ServiceError)(nil)).Once()
 		s.assignments.On("RemoveAssignments", mock.Anything, "viewer", "ou-2",
 			[]RoleAssignment{{ID: "u1", Type: AssigneeTypeUser}}).Return((*tidcommon.ServiceError)(nil)).Once()
 		var out updateRoleAssignmentsMCPResponse
