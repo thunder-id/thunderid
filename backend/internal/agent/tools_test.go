@@ -907,15 +907,18 @@ func (s *AgentToolsTestSuite) TestChangedFields() {
 
 // Every agent tool needs the agent permission its API needs, so none falls back to root by accident.
 func (s *AgentToolsTestSuite) TestToolsRequireTheAgentAPIPermissions() {
-	security.InitSystemPermissions("")
-	p := security.GetSystemPermissions()
 	s.connect(toolOwnerID, true)
 	tools, err := s.session.ListTools(context.Background(), nil)
 	s.Require().NoError(err)
 	s.Require().NotEmpty(tools.Tools)
-	for _, registered := range tools.Tools {
-		s.Contains([]string{p.AgentView, p.AgentCreate, p.AgentUpdate},
-			security.ResolveMCPToolPermission(registered.Name),
-			"tool %q must require an agent permission", registered.Name)
-	}
+	security.ForEachPermissionPlaneForTest(func(plane string) {
+		s.Run(plane, func() {
+			p := security.GetSystemPermissions()
+			for _, registered := range tools.Tools {
+				s.Contains([]string{p.AgentView, p.AgentCreate, p.AgentUpdate},
+					security.ResolveMCPToolPermission(registered.Name),
+					"tool %q must require an agent permission", registered.Name)
+			}
+		})
+	})
 }

@@ -780,7 +780,7 @@ func TestCreateHTTPServer_AuditsTheEventAServicePublishes(t *testing.T) {
 			config.ResetServerRuntime()
 			require.NoError(t, config.InitializeServerRuntime("", cfg))
 			t.Cleanup(config.ResetServerRuntime)
-			security.InitSystemPermissions("")
+			security.InitDataPlanePermissions("")
 			enforcer, _, err := revocationcache.Initialize(revocationcache.Config{})
 			require.NoError(t, err)
 
@@ -831,6 +831,29 @@ func TestCreateHTTPServer_AuditsTheEventAServicePublishes(t *testing.T) {
 					assert.NotContains(t, lines[i], `"client"`, "a line without a client has no client key")
 				}
 			}
+		})
+	}
+}
+
+// The server runs as a Data Plane, so it enforces the Data Plane's permissions: the deployment-wide system
+// root and the org tree.
+func TestInitSystemPermissions_UsesTheDataPlaneSet(t *testing.T) {
+	t.Cleanup(func() { security.InitControlPlanePermissions("") })
+	for prefix, want := range map[string]struct{ root, org string }{
+		"":     {"system", "org"},
+		"mgmt": {"mgmt:system", "mgmt:org"},
+	} {
+		t.Run("prefix="+prefix, func(t *testing.T) {
+			cfg := &config.Config{}
+			cfg.Server.SecurityConfig.SystemPermissionPrefix = prefix
+
+			initSystemPermissions(cfg)
+
+			p := security.GetSystemPermissions()
+			assert.Equal(t, want.root, p.Root)
+			assert.Equal(t, want.org, p.Org)
+			assert.Equal(t, want.org+":user:view", p.UserView)
+			assert.Equal(t, want.org, p.AdministrationFlow)
 		})
 	}
 }

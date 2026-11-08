@@ -37,7 +37,7 @@ func toolPermissionMiddleware(next mcp.MethodHandler) mcp.MethodHandler {
 	return func(ctx context.Context, method string, req mcp.Request) (mcp.Result, error) {
 		if call, ok := req.(*mcp.CallToolRequest); ok {
 			required := security.ResolveMCPToolPermission(call.Params.Name)
-			if !security.HasSufficientPermission(security.GetPermissions(ctx), required) {
+			if !security.HasSufficientSystemPermission(security.GetPermissions(ctx), required) {
 				return &mcp.CallToolResult{
 					IsError: true,
 					Content: []mcp.Content{&mcp.TextContent{

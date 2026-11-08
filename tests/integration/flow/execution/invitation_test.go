@@ -42,7 +42,7 @@ const (
 )
 
 // InvitationTestSuite runs the sample invitation flow. The user type lives in parent; the admins
-// hold the root permission through a role in their own unit, and their tokens carry that unit as ouId.
+// hold the org permission through a role in their own unit, and their tokens carry that unit as ouId.
 type InvitationTestSuite struct {
 	suite.Suite
 
@@ -63,6 +63,7 @@ type InvitationTestSuite struct {
 	otherTypeID string
 
 	childAdminToken      string
+	childAdminRSID       string
 	grandchildAdminToken string
 	siblingAdminToken    string
 	limitedAdminToken    string
@@ -124,15 +125,16 @@ func (ts *InvitationTestSuite) SetupSuite() {
 	})
 	ts.Require().NoError(err, "create the other user type")
 
-	childAdmin := ts.adminToken(ts.childOUID, "child", []string{"system"})
+	childAdmin := ts.adminToken(ts.childOUID, "child", []string{"org"})
 	ts.childAdminToken = childAdmin.token
-	ts.grandchildAdminToken = ts.adminToken(ts.grandchildOUID, "grandchild", []string{"system"}).token
-	ts.siblingAdminToken = ts.adminToken(ts.siblingOUID, "sibling", []string{"system"}).token
-	ts.limitedAdminToken = ts.adminToken(ts.childOUID, "limited", []string{"system:user"}).token
+	ts.childAdminRSID = childAdmin.rsID
+	ts.grandchildAdminToken = ts.adminToken(ts.grandchildOUID, "grandchild", []string{"org"}).token
+	ts.siblingAdminToken = ts.adminToken(ts.siblingOUID, "sibling", []string{"org"}).token
+	ts.limitedAdminToken = ts.adminToken(ts.childOUID, "limited", []string{"org:user"}).token
 
 	s := &ts.Suite
 	ts.ownedRoleID = createRole(s, &ts.roleIDs, ts.childOUID, childAdmin.rsID, "User Invitation Viewer",
-		[]string{"system:user:view"})
+		[]string{"org:user:view"})
 	ts.closedRoleID = createRole(s, &ts.roleIDs, ts.parentOUID, "", "User Invitation Closed", nil)
 	status, raw := ts.request(testutils.GetHTTPClient(), http.MethodPost,
 		"/roles/"+ts.closedRoleID+"/sharing-policies", map[string]interface{}{
@@ -234,16 +236,19 @@ func (ts *InvitationTestSuite) TestExistingUser_AcceptSharesIntoAAndAssignsRoles
 	ts.Contains(ts.assigneesInChild(ts.ownedRoleID), userID)
 }
 
-// An admin who loses the root permission after inviting assigns no roles: the roles were selected with a copy
+// An admin who loses the org permission after inviting assigns no roles: the roles were selected with a copy
 // of their token, which acceptance checks against what they hold now. The share, on the owner's authority, stays.
-func (ts *InvitationTestSuite) TestAdminWhoLostTheRootPermission_AssignsNoRoles() {
-	admin := ts.adminToken(ts.childOUID, "revoked", []string{"system"})
+func (ts *InvitationTestSuite) TestAdminWhoLostTheOrgPermission_AssignsNoRoles() {
+	// The admin holds the org permission on the resource server the owned role grants on, as an organization's
+	// admins all hold it on the System resource server.
+	admin := ts.adminTokenOn(ts.childOUID, "revoked", []string{"org"}, ts.childAdminRSID,
+		invitationRSIdentifier("child"))
 	email := "invitation-revoked@thunderid.test"
 	userID := ts.createUser(ts.parentOUID, "invitation-revoked", email)
 	executionID := ts.invite(admin.token, email, ts.ownedRoleID, branchExisting)
 
 	ts.Require().NoError(testutils.RemoveRoleAssignments(admin.roleID,
-		[]testutils.Assignment{{ID: admin.userID, Type: "user"}}), "revoke the admin's root permission")
+		[]testutils.Assignment{{ID: admin.userID, Type: "user"}}), "revoke the admin's org permission")
 	step := ts.accept(executionID, "action_accept_"+branchExisting)
 
 	ts.NotEqual("ERROR", step.FlowStatus, "%+v", step)
@@ -306,8 +311,8 @@ func (ts *InvitationTestSuite) TestTokenWithoutAnOU_Refused() {
 		}
 	}()
 	token, err := testutils.ObtainAccessTokenWithPassword(clientID, testutils.OUSignInRedirectURI,
-		"system system:user", "invitation-child-admin", invitationPassword, true, "",
-		"https://invitation-test.example.com/child")
+		"org org:user", "invitation-child-admin", invitationPassword, true, "",
+		invitationRSIdentifier("child"))
 	ts.Require().NoError(err, "sign the child admin in")
 
 	status, _, errResp := ts.execute(token.AccessToken, map[string]interface{}{"flowId": ts.flowID})
@@ -344,8 +349,8 @@ func (ts *InvitationTestSuite) TestAnonymousStart_Refused() {
 	ts.Equal(errCodeInvitationAuthRequired, errResp.Code)
 }
 
-// Without the root permission the middleware hands the request on as a runtime caller, which is refused.
-func (ts *InvitationTestSuite) TestStarterWithoutRootPermission_Refused() {
+// Without the org permission the middleware hands the request on as a runtime caller, which is refused.
+func (ts *InvitationTestSuite) TestStarterWithoutOrgPermission_Refused() {
 	status, _, errResp := ts.execute(ts.limitedAdminToken, map[string]interface{}{"flowId": ts.flowID})
 
 	ts.Equal(http.StatusUnauthorized, status)
@@ -353,7 +358,7 @@ func (ts *InvitationTestSuite) TestStarterWithoutRootPermission_Refused() {
 	ts.Equal(errCodeInvitationAuthRequired, errResp.Code)
 }
 
-// The child's admin holds the root permission, but runs only a flow its unit owns or was shared.
+// The child's admin holds the org permission, but runs only a flow its unit owns or was shared.
 func (ts *InvitationTestSuite) TestFlowNotSharedWithTheAdminsUnit_Refused() {
 	status, _, errResp := ts.execute(ts.childAdminToken, map[string]interface{}{"flowId": ts.unsharedFlowID})
 
@@ -435,16 +440,23 @@ type invitationAdmin struct {
 // adminToken makes a user of ouID hold permissions there through a role on a resource server of its own,
 // and returns them with their token, issued with ouID as its ouId, with that resource server.
 func (ts *InvitationTestSuite) adminToken(ouID, name string, permissions []string) invitationAdmin {
-	username := "invitation-" + name + "-admin"
-	userID := ts.createUser(ouID, username, username+"@thunderid.test")
-	identifier := "https://invitation-test.example.com/" + name
-	rsID, err := testutils.CreateSystemScopedResourceServer(ouID, "User Invitation "+name+" RS", identifier, "user")
+	identifier := invitationRSIdentifier(name)
+	rsID, err := testutils.CreateOrgScopedResourceServer(ouID, "User Invitation "+name+" RS", identifier, "user")
 	ts.Require().NoError(err, "create resource server for %s", name)
 	ts.rsIDs = append(ts.rsIDs, rsID)
+	return ts.adminTokenOn(ouID, name, permissions, rsID, identifier)
+}
+
+// adminTokenOn makes a user of ouID hold permissions there through a role on the resource server rsID, identified
+// by identifier, and returns them with their token, issued with ouID as its ouId, with that resource server.
+func (ts *InvitationTestSuite) adminTokenOn(ouID, name string, permissions []string, rsID,
+	identifier string) invitationAdmin {
+	username := "invitation-" + name + "-admin"
+	userID := ts.createUser(ouID, username, username+"@thunderid.test")
 	roleID := createRole(&ts.Suite, &ts.roleIDs, ouID, rsID, "User Invitation "+name+" Admin", permissions,
 		testutils.Assignment{ID: userID, Type: "user"})
 
-	token, err := ts.signIn.ObtainAccessToken(ouID, "system system:user", username, invitationPassword, identifier)
+	token, err := ts.signIn.ObtainAccessToken(ouID, "org org:user", username, invitationPassword, identifier)
 	ts.Require().NoError(err, "obtain token for %s", name)
 	return invitationAdmin{token: token.AccessToken, rsID: rsID, roleID: roleID, userID: userID}
 }
@@ -661,4 +673,9 @@ func (ts *InvitationTestSuite) request(client *http.Client, method, path string,
 	raw, err := io.ReadAll(resp.Body)
 	ts.Require().NoError(err)
 	return resp.StatusCode, raw
+}
+
+// invitationRSIdentifier is the identifier of the resource server the admin named name holds permissions on.
+func invitationRSIdentifier(name string) string {
+	return "https://invitation-test.example.com/" + name
 }

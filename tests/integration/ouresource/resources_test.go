@@ -317,96 +317,11 @@ func (ts *OUResourceTestSuite) TestVCInParentOU() {
 	}
 }
 
-// A configuration version captured by an administrator of one OU holds every OU's resources.
-func (ts *OUResourceTestSuite) TestCaptureHoldsEveryOU() {
-	ts.createAsRoot(templatesPath, templateIn("ou-resource-capture-other", ts.ou2ID))
-
-	status, body := ts.admin(http.MethodPost, "/configuration-versions", map[string]interface{}{})
-	ts.Require().Containsf([]int{http.StatusCreated, http.StatusOK}, status, "capture: %s", body)
-	var captured struct {
-		Resources string `json:"resources"`
-	}
-	ts.Require().NoError(json.Unmarshal(body, &captured))
-	ts.Contains(captured.Resources, "ou-resource-capture-other")
-
-	body = ts.requireStatus(http.StatusOK, http.MethodGet, "/configuration-versions/current", nil)
-	ts.Require().NoError(json.Unmarshal(body, &captured))
-	ts.Contains(captured.Resources, "ou-resource-capture-other")
-}
-
-// An administrator holding resource server update without view deletes an action of its own OU's server.
-func (ts *OUResourceTestSuite) TestDeleteActionWithUpdateOnly() {
-	// The suite's resource server declares only view, so the update permission is added here.
-	systemID := ts.resourceByHandle("", "system")
-	rsResourceID := ts.resourceByHandle(systemID, "rs")
-	status, body := ts.root(http.MethodPost, "/resource-servers/"+ts.rsID+"/resources/"+rsResourceID+"/actions",
-		map[string]string{"name": "Update", "handle": "update"})
-	ts.Require().Equal(http.StatusCreated, status, string(body))
-
-	roleID, err := testutils.CreateRole(testutils.Role{
-		Name: "ou-resource-rs-update-role",
-		OUID: ts.ou1ID,
-		Permissions: []testutils.ResourcePermissions{
-			{ResourceServerID: ts.rsID, Permissions: []string{"system:rs:update"}},
-		},
-		Assignments: []testutils.Assignment{{ID: ts.adminID, Type: "user"}},
-	})
-	ts.Require().NoError(err)
-	ts.cleanups = append(ts.cleanups, func() { _ = testutils.DeleteRole(roleID) })
-
-	token, err := ts.signIn.ObtainAccessToken(ts.ou1ID, "system:rs:update", adminUsername, adminPassword,
-		rsIdentifier)
-	ts.Require().NoError(err)
-	client := testutils.GetHTTPClientWithToken(token.AccessToken)
-
-	target, err := testutils.CreateResourceServerWithActions(testutils.ResourceServer{
-		Name: "OU Resource Action Delete RS", Identifier: "https://ou-resource-action-delete.example.com",
-		OUID: ts.ou1ID,
-	}, []testutils.Action{{Name: "Read", Handle: "read"}})
-	ts.Require().NoError(err)
-	ts.cleanups = append(ts.cleanups, func() { _ = testutils.DeleteResourceServerWithChildren(target) })
-
-	status, body = ts.root(http.MethodGet, "/resource-servers/"+target+"/actions?limit=100", nil)
-	ts.Require().Equal(http.StatusOK, status, string(body))
-	var actions struct {
-		Actions []struct {
-			ID string `json:"id"`
-		} `json:"actions"`
-	}
-	ts.Require().NoError(json.Unmarshal(body, &actions))
-	ts.Require().Len(actions.Actions, 1)
-
-	status, body = ts.send(client, http.MethodGet, "/resource-servers/"+target, nil)
-	ts.Equal(http.StatusForbidden, status, string(body))
-	status, body = ts.send(client, http.MethodDelete,
-		"/resource-servers/"+target+"/actions/"+actions.Actions[0].ID, nil)
-	ts.Equal(http.StatusNoContent, status, string(body))
-}
-
-// resourceByHandle returns the ID of the resource with the handle under parentID in the suite's resource
-// server, or among its top-level resources when parentID is empty.
-func (ts *OUResourceTestSuite) resourceByHandle(parentID, handle string) string {
-	ts.T().Helper()
-	path := "/resource-servers/" + ts.rsID + "/resources?limit=100"
-	if parentID != "" {
-		path += "&parentId=" + url.QueryEscape(parentID)
-	}
-	status, body := ts.root(http.MethodGet, path, nil)
-	ts.Require().Equal(http.StatusOK, status, string(body))
-	var resources struct {
-		Resources []struct {
-			ID     string `json:"id"`
-			Handle string `json:"handle"`
-		} `json:"resources"`
-	}
-	ts.Require().NoError(json.Unmarshal(body, &resources))
-	for _, r := range resources.Resources {
-		if r.Handle == handle {
-			return r.ID
-		}
-	}
-	ts.Require().Failf("resource not found", "no resource %q under %q: %s", handle, parentID, body)
-	return ""
+// A configuration version holds every OU's resources, so capturing and reading one needs the system
+// permission. The org root does not reach them.
+func (ts *OUResourceTestSuite) TestConfigurationVersionsNeedSystem() {
+	ts.requireStatus(http.StatusForbidden, http.MethodPost, "/configuration-versions", map[string]interface{}{})
+	ts.requireStatus(http.StatusForbidden, http.MethodGet, "/configuration-versions/current", nil)
 }
 
 // The administrator reads and lists the resource servers of the OU above its own, which its roles take

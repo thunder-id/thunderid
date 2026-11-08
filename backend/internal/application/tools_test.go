@@ -467,8 +467,6 @@ func (suite *ApplicationToolsTestSuite) TestRegisterMCPTools() {
 // TestRegisteredToolsRequireApplicationPermissions verifies that every application MCP tool is mapped
 // to an application catalog permission, so none falls back to root by accident.
 func (suite *ApplicationToolsTestSuite) TestRegisteredToolsRequireApplicationPermissions() {
-	security.InitSystemPermissions("")
-	p := security.GetSystemPermissions()
 	server := mcp.NewServer(&mcp.Implementation{Name: "test-server", Version: "1.0.0"}, nil)
 	registerMCPTools(server, NewApplicationServiceInterfaceMock(suite.T()))
 
@@ -484,11 +482,16 @@ func (suite *ApplicationToolsTestSuite) TestRegisteredToolsRequireApplicationPer
 	suite.Require().NoError(err)
 
 	suite.Require().NotEmpty(tools.Tools)
-	for _, registered := range tools.Tools {
-		assert.Contains(suite.T(), []string{p.AppView, p.AppCreate, p.AppUpdate, p.AppDelete},
-			security.ResolveMCPToolPermission(registered.Name),
-			"tool %q must require an application permission", registered.Name)
-	}
+	security.ForEachPermissionPlaneForTest(func(plane string) {
+		suite.Run(plane, func() {
+			p := security.GetSystemPermissions()
+			for _, registered := range tools.Tools {
+				assert.Contains(suite.T(), []string{p.AppView, p.AppCreate, p.AppUpdate, p.AppDelete},
+					security.ResolveMCPToolPermission(registered.Name),
+					"tool %q must require an application permission", registered.Name)
+			}
+		})
+	})
 }
 
 func (suite *ApplicationToolsTestSuite) TestGetCommonSchemaModifiers() {

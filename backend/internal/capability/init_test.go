@@ -25,7 +25,7 @@ func TestInitTestSuite(t *testing.T) {
 }
 
 func (s *InitTestSuite) TestInitializeRegistersRoutes() {
-	security.InitSystemPermissions("")
+	security.InitControlPlanePermissions("")
 	authz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(s.T())
 	authz.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).Return(false, nil).Maybe()
 	authz.On("GetBoundary", mock.Anything).Return(sysauthz.Boundary{Type: sysauthz.BoundaryTypeDeployment}).Maybe()

@@ -2338,16 +2338,15 @@ func createActionUnderResource(resourceServerID, resourceID string, action Actio
 	return created.ID, nil
 }
 
-// CreateSystemScopedResourceServer creates a custom resource server that reproduces the
-// hierarchical "system:<handle>:view" permission strings used by the built-in system management
-// APIs. The product ships only the root "system" scope by default; this helper simulates an
-// operator declaring fine-grained scopes, letting the authz suites verify that resource-level
-// permissions still enforce when configured. It builds a "system" root resource, then one child
-// resource per handle (each with a "view" action), yielding the permissions "system",
-// "system:<handle>" and "system:<handle>:view". Returns the resource server ID; delete it with
+// CreateOrgScopedResourceServer creates a custom resource server that reproduces the Data Plane's
+// permission strings, so the authz suites can grant a caller fine-grained scopes. It builds a
+// "system" root resource, which reaches every organization unit, and an "org" root resource bounded to
+// the organization unit the token names, with one child resource per handle under "org" (each with a
+// "view" action). That yields the permissions "system", "org", "org:<handle>" and
+// "org:<handle>:view". Returns the resource server ID; delete it with
 // DeleteResourceServerWithChildren during teardown — a plain DeleteResourceServer is refused with
 // RES-1006 while the resources and actions built here still exist.
-func CreateSystemScopedResourceServer(ouID, name, identifier string, childHandles ...string) (string, error) {
+func CreateOrgScopedResourceServer(ouID, name, identifier string, childHandles ...string) (string, error) {
 	rsID, err := createResourceServer(ResourceServer{
 		Name:       name,
 		Identifier: identifier,
@@ -2357,13 +2356,16 @@ func CreateSystemScopedResourceServer(ouID, name, identifier string, childHandle
 		return "", fmt.Errorf("failed to create resource server: %w", err)
 	}
 
-	systemID, err := CreateResource(rsID, "System", "system", "")
-	if err != nil {
+	if _, err := CreateResource(rsID, "System", "system", ""); err != nil {
 		return "", rollbackResourceServer(rsID, fmt.Errorf("failed to create system resource: %w", err))
+	}
+	orgID, err := CreateResource(rsID, "Organization", "org", "")
+	if err != nil {
+		return "", rollbackResourceServer(rsID, fmt.Errorf("failed to create org resource: %w", err))
 	}
 
 	for _, handle := range childHandles {
-		childID, err := CreateResource(rsID, handle, handle, systemID)
+		childID, err := CreateResource(rsID, handle, handle, orgID)
 		if err != nil {
 			return "", rollbackResourceServer(rsID, fmt.Errorf("failed to create %q resource: %w", handle, err))
 		}
@@ -2386,11 +2388,11 @@ func rollbackResourceServer(rsID string, cause error) error {
 
 // DeleteResourceServerWithChildren removes a resource server together with its resource tree and
 // every action it owns. A plain DELETE on a resource server that still has dependencies is refused
-// with RES-1006, so any server built by CreateSystemScopedResourceServer or
+// with RES-1006, so any server built by CreateOrgScopedResourceServer or
 // CreateResourceServerWithActions must be torn down through here or it survives in the shared
 // database.
 //
-// Actions live at two levels and both block deletion: CreateSystemScopedResourceServer attaches them
+// Actions live at two levels and both block deletion: CreateOrgScopedResourceServer attaches them
 // to resources, while CreateResourceServerWithActions attaches them directly to the server.
 func DeleteResourceServerWithChildren(rsID string) error {
 	// Collect the tree depth-first so children are always deleted before their parents. The list

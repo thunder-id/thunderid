@@ -88,7 +88,7 @@ func main() {
 	cacheManager := cache.Initialize(cfg.Cache, cfg.Server.Identifier)
 
 	// Initialize system permission strings before any service or middleware uses them.
-	security.InitSystemPermissions(cfg.Server.SecurityConfig.SystemPermissionPrefix)
+	initSystemPermissions(cfg)
 
 	// Create a new HTTP multiplexer.
 	mux := http.NewServeMux()
@@ -165,6 +165,11 @@ func main() {
 	<-sigChan
 	logger.Info(ctx, "Shutting down server...")
 	gracefulShutdown(ctx, logger, server, cacheManager, revocationSyncer, auditStopper)
+}
+
+// initSystemPermissions activates the Control Plane's permissions: the system root and its children.
+func initSystemPermissions(cfg *config.Config) {
+	security.InitControlPlanePermissions(cfg.Server.SecurityConfig.SystemPermissionPrefix)
 }
 
 // initAuditBus builds the audit event bus with the default stdout sink. A failure stops startup, so

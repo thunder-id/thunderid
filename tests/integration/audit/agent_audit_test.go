@@ -87,7 +87,7 @@ func (ts *AuditLogTestSuite) TestAChangeOfAMissingAgentIsRecordedAsFailed() {
 	}
 }
 
-// An agent manager scoped to one organization unit passes the security layer with system:agent, and
+// An agent manager scoped to one organization unit passes the security layer with org:agent, and
 // the agent service refuses its changes to an agent in a sibling unit, which are recorded as denied. A
 // refused update or delete names an agent that exists, so it is the subject; a refused create made no
 // agent and has none. A create the agent service rejects is recorded as failed.
@@ -100,7 +100,7 @@ func (ts *AuditLogTestSuite) TestEveryAgentChangeRecordsItsOutcome() {
 	})
 	ts.Require().NoError(err)
 	ts.T().Cleanup(func() { _ = testutils.DeleteAgent(siblingAgentID) })
-	manager := ts.createScopedManager("agent-scoped", []string{"agent"}, []string{"system:agent"})
+	manager := ts.createScopedManager("agent-scoped", []string{"agent"}, []string{"org:agent"})
 	managerClient := manager.client
 	managerRef := testutils.AuditRef{Type: "user", ID: manager.id}
 	siblingRef := testutils.AuditRef{Type: "agent", ID: siblingAgentID}

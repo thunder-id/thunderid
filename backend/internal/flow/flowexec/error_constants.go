@@ -322,7 +322,7 @@ var ErrorAdministrationPermissionRequired = tidcommon.ServiceError{
 	},
 	ErrorDescription: tidcommon.I18nMessage{
 		Key:          "error.flowexecservice.administration_permission_required_description",
-		DefaultValue: "Administrative flows require the system permission",
+		DefaultValue: "The caller lacks the permission required to run administrative flows",
 	},
 }
 

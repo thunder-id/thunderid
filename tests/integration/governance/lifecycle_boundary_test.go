@@ -82,7 +82,7 @@ func (ts *LifecycleBoundaryTestSuite) SetupSuite() {
 	// An operator holding user management in unit A only, the closest thing to a delegated
 	// administrator the product can express.
 	scopedID, scopedUsername, scopedPassword := ts.unitA.newUser(t, "scoped", nil)
-	rsID, err := testutils.CreateSystemScopedResourceServer(ts.unitA.ouID,
+	rsID, err := testutils.CreateOrgScopedResourceServer(ts.unitA.ouID,
 		"Governance Boundary RS "+ts.unitA.suffix, boundaryScopedRSHandle, "user")
 	ts.Require().NoError(err, "failed to create the scoped resource server")
 	t.Cleanup(func() {
@@ -94,14 +94,14 @@ func (ts *LifecycleBoundaryTestSuite) SetupSuite() {
 		Name: "Boundary User Manager " + ts.unitA.suffix,
 		OUID: ts.unitA.ouID,
 		Permissions: []testutils.ResourcePermissions{
-			{ResourceServerID: rsID, Permissions: []string{"system:user", "system:user:view"}},
+			{ResourceServerID: rsID, Permissions: []string{"org:user", "org:user:view"}},
 		},
 		Assignments: []testutils.Assignment{{ID: scopedID, Type: "user"}},
 	})
 	ts.Require().NoError(err, "failed to grant user management")
 	cleanupRole(t, roleID)
 	scoped, err := testutils.ObtainAccessTokenWithPassword(ts.unitA.signInClientID, testutils.OUSignInRedirectURI,
-		"system:user system:user:view", scopedUsername, scopedPassword, true, "", boundaryScopedRSHandle)
+		"org:user org:user:view", scopedUsername, scopedPassword, true, "", boundaryScopedRSHandle)
 	ts.Require().NoError(err, "the scoped operator must sign in")
 	ts.scopedToken = scoped.AccessToken
 }
@@ -350,7 +350,7 @@ func buildSuspendFlowWithoutPlan() testutils.Flow {
 		Nodes: []map[string]interface{}{
 			startNode("permission_validator"),
 			taskNode("permission_validator", "PermissionValidator", "", "access_governance", map[string]interface{}{
-				"properties": map[string]interface{}{"requiredScopes": []string{"system:user"}},
+				"properties": map[string]interface{}{"requiredScopes": []string{"org:user"}},
 			}),
 			taskNode("access_governance", "IdentityGovernanceExecutor", "suspend", "end", nil),
 			endNode(),

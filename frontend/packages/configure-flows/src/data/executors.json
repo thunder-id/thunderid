@@ -930,7 +930,7 @@
         "onIncomplete": ""
       },
       "properties": {
-        "requiredScopes": ["system"]
+        "requiredScopes": ["system", "org"]
       }
     }
   },

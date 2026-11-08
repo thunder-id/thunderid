@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -21,8 +20,8 @@ import (
 // OUResourceTestSuite verifies that an administrator holding resource permissions in one
 // organization unit manages that unit's resources only.
 //
-// The product ships only the root "system" scope, so the suite declares the fine-grained system
-// permissions on a resource server of its own and grants them to an administrator in OU1:
+// The suite declares the Data Plane's permissions on a resource server of its own and grants the org
+// root to an administrator in OU1:
 //
 //	Parent (handle: ou-resource-parent)
 //	└── OU1 (handle: ou-resource-ou1)  ← administrator belongs here
@@ -59,20 +58,9 @@ const (
 	rsIdentifier = "https://ou-resource.example.com/system"
 )
 
-// adminPermissions are the permissions the administrator holds in OU1, one per resource type the
-// suite exercises.
-var adminPermissions = []string{
-	"system:notificationtemplate",
-	"system:app",
-	"system:role",
-	"system:flow",
-	"system:connection",
-	"system:rs",
-	"system:vc",
-	"system:agenttype",
-	"system:configversion",
-	"system:ou:view",
-}
+// adminPermissions are the permissions the administrator holds in OU1. Most resource types the suite
+// exercises have no permission below the org root, so it covers all of them.
+var adminPermissions = []string{"org"}
 
 func TestOUResourceTestSuite(t *testing.T) {
 	suite.Run(t, new(OUResourceTestSuite))
@@ -121,12 +109,7 @@ func (ts *OUResourceTestSuite) SetupSuite() {
 	ts.Require().NoError(err, "create administrator")
 	ts.adminID = adminID
 
-	children := make([]string, 0, len(adminPermissions))
-	for _, p := range adminPermissions {
-		children = append(children, strings.SplitN(p, ":", 3)[1])
-	}
-	rsID, err := testutils.CreateSystemScopedResourceServer(ts.ou1ID, "OU Resource RS", rsIdentifier,
-		children...)
+	rsID, err := testutils.CreateOrgScopedResourceServer(ts.ou1ID, "OU Resource RS", rsIdentifier)
 	ts.Require().NoError(err, "create resource server")
 	ts.rsID = rsID
 

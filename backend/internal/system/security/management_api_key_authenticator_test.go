@@ -26,7 +26,7 @@ var testManagementAPIKeyHash = cryptolib.HashToken(testManagementAPIKey)
 
 func newTestManagementAuthenticator(t *testing.T, keyHash string) *managementAPIKeyAuthenticator {
 	t.Helper()
-	InitSystemPermissions("")
+	InitControlPlanePermissions("")
 	authenticator, err := newManagementAPIKeyAuthenticator(keyHash, managementAPIKeyPaths)
 	require.NoError(t, err)
 	return authenticator
@@ -223,7 +223,7 @@ func TestTheHeaderValueIsTrimmedButNotOtherwiseNormalized(t *testing.T) {
 // permission would still be refused.
 func newPipelineWithManagementAPIKey(t *testing.T) *securityService {
 	t.Helper()
-	InitSystemPermissions("")
+	InitControlPlanePermissions("")
 
 	managementAuthenticator, err := newManagementAPIKeyAuthenticator(
 		testManagementAPIKeyHash, managementAPIKeyPaths)

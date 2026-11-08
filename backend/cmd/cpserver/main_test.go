@@ -768,7 +768,7 @@ func TestCreateHTTPServer_AuditsTheEventAServicePublishes(t *testing.T) {
 			config.ResetServerRuntime()
 			require.NoError(t, config.InitializeServerRuntime("", cfg))
 			t.Cleanup(config.ResetServerRuntime)
-			security.InitSystemPermissions("")
+			security.InitControlPlanePermissions("")
 			enforcer, _, err := revocationcache.Initialize(revocationcache.Config{})
 			require.NoError(t, err)
 
@@ -819,6 +819,26 @@ func TestCreateHTTPServer_AuditsTheEventAServicePublishes(t *testing.T) {
 					assert.NotContains(t, lines[i], `"client"`, "a line without a client has no client key")
 				}
 			}
+		})
+	}
+}
+
+// The Control Plane enforces the system root and its children, and has no org tree.
+func TestInitSystemPermissions_UsesTheControlPlaneSet(t *testing.T) {
+	t.Cleanup(func() { security.InitControlPlanePermissions("") })
+	for prefix, root := range map[string]string{"": "system", "mgmt": "mgmt:system"} {
+		t.Run("prefix="+prefix, func(t *testing.T) {
+			security.InitDataPlanePermissions("")
+			cfg := &config.Config{}
+			cfg.Server.SecurityConfig.SystemPermissionPrefix = prefix
+
+			initSystemPermissions(cfg)
+
+			p := security.GetSystemPermissions()
+			assert.Equal(t, root, p.Root)
+			assert.Empty(t, p.Org)
+			assert.Equal(t, root+":user:view", p.UserView)
+			assert.Equal(t, root, p.AdministrationFlow)
 		})
 	}
 }

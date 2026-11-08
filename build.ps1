@@ -884,6 +884,9 @@ function Prepare-Cp-Backend-For-Packaging {
     Copy-Item -Path (Join-Path $BACKEND_DIR "bootstrap") -Destination $package_folder -Recurse -Force
     # Never ship the dev-only CORS seed that Run stages into the source bootstrap dir.
     Remove-Item -Path (Join-Path $package_folder "bootstrap/03-dev-server-configurations.yaml") -Force -ErrorAction SilentlyContinue
+    # Ship the Control Plane resource server for the identity provider that signs operators into the
+    # Control Plane. It sits outside bootstrap/ because the Control Plane must not import it.
+    Copy-Item -Path (Join-Path $CPSERVER_DIR "idp-bootstrap") -Destination $package_folder -Recurse -Force
 
     # Key material is not generated into the distribution; setup-cp.ps1 generates it per deployment.
 }
@@ -1145,13 +1148,10 @@ function Package-Quickstart {
 
     # The Control Plane's console signs in through auth-dp as a trusted issuer, and asks for a token
     # for the Control Plane's own URL (the RFC 8707 "resource" parameter). auth-dp refuses a resource
-    # no resource server is registered for, so its System resource server, whose permissions the
-    # admin role already holds, is identified by that URL instead of the default Data Plane one.
-    $auth_dp_resources = Join-Path $auth_dp_dir "bootstrap/01-default-resources.yaml"
-    Write-QuickstartFile -Path $auth_dp_resources -Content ([regex]::Replace(
-            (Read-QuickstartFile $auth_dp_resources),
-            '(?m)^identifier: https://localhost:8090/mcp$',
-            "identifier: https://localhost:$QUICKSTART_CP_PORT"))
+    # no resource server is registered for, so it imports the Control Plane resource server, which
+    # is identified by that URL and declares the permissions the Control Plane enforces. The
+    # quickstart's 05-quickstart-cp-administrator.yaml grants its system root to the admin group.
+    Copy-Item -Path (Join-Path $CPSERVER_DIR "idp-bootstrap/*.yaml") -Destination (Join-Path $auth_dp_dir "bootstrap") -Force
     Remove-Item -Path (Join-Path $auth_dp_dir $CONSOLE_APP_DIST_DIR) -Recurse -Force -ErrorAction SilentlyContinue
 
     # Layer the Data Plane's own admin console application onto the managed dp and the cp. It is
@@ -1216,7 +1216,7 @@ function Package-Quickstart {
     Write-QuickstartFile -Path $cp_deployment -Content (
         (Read-QuickstartFile $cp_deployment).TrimEnd("`n") + "`n`ngateway:`n  auto_apply: true`n  allow_private_addresses: true`n")
 
-    Assert-QuickstartPatch (Join-Path $auth_dp_dir "bootstrap/01-default-resources.yaml") "identifier: https://localhost:$QUICKSTART_CP_PORT"
+    Assert-QuickstartPatch (Join-Path $auth_dp_dir "bootstrap/control-plane-resource-server.yaml") "identifier: https://localhost:$QUICKSTART_CP_PORT"
     Assert-QuickstartPatch (Join-Path $auth_dp_dir "deployment.yaml") "port: $QUICKSTART_AUTH_DP_PORT"
     Assert-QuickstartPatch (Join-Path $dp_dir "bootstrap/01-default-resources.yaml") "Service Desk Administrators"
     Assert-QuickstartPatch (Join-Path $cp_dir "bootstrap/01-default-resources.yaml") "Service Desk Administrators"

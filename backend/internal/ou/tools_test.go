@@ -111,8 +111,6 @@ func (suite *OUToolsTestSuite) TestListOrganizationUnits_Error() {
 // TestRegisteredToolsRequireOUPermissions verifies that every organization unit MCP tool is mapped to an
 // organization unit catalog permission, so none falls back to root by accident.
 func (suite *OUToolsTestSuite) TestRegisteredToolsRequireOUPermissions() {
-	security.InitSystemPermissions("")
-	p := security.GetSystemPermissions()
 	server := mcp.NewServer(&mcp.Implementation{Name: "test-server", Version: "1.0.0"}, nil)
 	registerMCPTools(server, NewOrganizationUnitServiceInterfaceMock(suite.T()))
 
@@ -128,11 +126,16 @@ func (suite *OUToolsTestSuite) TestRegisteredToolsRequireOUPermissions() {
 	suite.Require().NoError(err)
 
 	suite.Require().NotEmpty(tools.Tools)
-	for _, registered := range tools.Tools {
-		suite.Contains([]string{p.OUView, p.OUCreate, p.OUUpdate, p.OUDelete},
-			security.ResolveMCPToolPermission(registered.Name),
-			"tool %q must require an organization unit permission", registered.Name)
-	}
+	security.ForEachPermissionPlaneForTest(func(plane string) {
+		suite.Run(plane, func() {
+			p := security.GetSystemPermissions()
+			for _, registered := range tools.Tools {
+				suite.Contains([]string{p.OUView, p.OUCreate, p.OUUpdate, p.OUDelete},
+					security.ResolveMCPToolPermission(registered.Name),
+					"tool %q must require an organization unit permission", registered.Name)
+			}
+		})
+	})
 }
 
 // With a project, the tool lists the project's organization units.

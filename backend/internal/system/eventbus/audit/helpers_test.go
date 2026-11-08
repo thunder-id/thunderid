@@ -140,7 +140,7 @@ func newRequest(method, target, bearer, apiKey string) *http.Request {
 func securedContext(t *testing.T, r *http.Request) context.Context {
 	t.Helper()
 	withServerRuntime(t)
-	security.InitSystemPermissions("")
+	security.InitControlPlanePermissions("")
 
 	jwtService := jwtmock.NewJWTServiceInterfaceMock(t)
 	jwtService.EXPECT().VerifyJWT(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()

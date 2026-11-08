@@ -87,7 +87,7 @@ func (ts *AuditLogTestSuite) TestADeleteOfAMissingUserTypeWritesNoLine() {
 	ts.Empty(ts.linesPerCall(deleted)[0], "a delete that removed nothing writes no line")
 }
 
-// A user type manager scoped to one organization unit passes the security layer with system:usertype,
+// A user type manager scoped to one organization unit passes the security layer with org:usertype,
 // and the entity type service refuses its changes to a user type in a sibling unit, which are recorded
 // as denied with the type as subject; a refused create made no type and has none. A create the service
 // rejects is recorded as failed.
@@ -100,7 +100,7 @@ func (ts *AuditLogTestSuite) TestEveryUserTypeChangeRecordsItsOutcome() {
 	})
 	ts.Require().NoError(err)
 	ts.T().Cleanup(func() { _ = testutils.DeleteUserType(siblingID) })
-	manager := ts.createScopedManager("type-scoped", []string{"usertype"}, []string{"system:usertype"})
+	manager := ts.createScopedManager("type-scoped", []string{"usertype"}, []string{"org:usertype"})
 	managerClient := manager.client
 	managerRef := testutils.AuditRef{Type: "user", ID: manager.id}
 	siblingRef := testutils.AuditRef{Type: "user_type", ID: siblingID}

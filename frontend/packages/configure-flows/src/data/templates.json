@@ -14140,7 +14140,7 @@
           "id": "permission_validator",
           "type": "TASK_EXECUTION",
           "properties": {
-            "requiredScopes": ["system"]
+            "requiredScopes": ["system", "org"]
           },
           "executor": {
             "name": "PermissionValidator"
@@ -14849,7 +14849,7 @@
           "id": "permission_validator",
           "type": "TASK_EXECUTION",
           "properties": {
-            "requiredScopes": ["system"]
+            "requiredScopes": ["system", "org"]
           },
           "executor": {
             "name": "PermissionValidator"
@@ -19063,7 +19063,7 @@
           "id": "validate-permission",
           "type": "TASK_EXECUTION",
           "executor": {"name": "PermissionValidator"},
-          "properties": {"requiredScopes": ["system"]},
+          "properties": {"requiredScopes": ["system", "org"]},
           "onSuccess": "end",
           "layout": {
             "size": {"width": 180, "height": 80},

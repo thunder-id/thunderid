@@ -24,7 +24,7 @@ type PermissionValidatorTestSuite struct {
 }
 
 func (suite *PermissionValidatorTestSuite) SetupTest() {
-	security.InitSystemPermissions("")
+	security.InitControlPlanePermissions("")
 
 	suite.mockFlowFactory = coremock.NewFlowFactoryInterfaceMock(suite.T())
 	mockBaseExecutor := coremock.NewExecutorInterfaceMock(suite.T())
@@ -352,6 +352,54 @@ func (suite *PermissionValidatorTestSuite) TestExecute_ScopesWithUnexpectedType(
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), providers.ExecFailure, resp.Status)
 	assert.Equal(suite.T(), ErrInsufficientPermissions.Error.DefaultValue, resp.Error.Error.DefaultValue)
+}
+
+// A bootstrap flow lists each plane's permission for the same resource, and a node with no required
+// scopes falls back to the permission each plane names for administration flows.
+func (suite *PermissionValidatorTestSuite) TestExecute_PerPlaneScopes() {
+	both := []interface{}{"system:user", "org:user"}
+	cases := map[string][]struct {
+		permission string
+		required   []interface{}
+		want       providers.ExecutorStatus
+	}{
+		"ControlPlane": {
+			{"system", both, providers.ExecComplete},
+			{"system:user", both, providers.ExecComplete},
+			{"org:group", both, providers.ExecFailure},
+			{"system", nil, providers.ExecComplete},
+			{"org", nil, providers.ExecFailure},
+		},
+		"DataPlane": {
+			{"system", both, providers.ExecComplete},
+			{"org", both, providers.ExecComplete},
+			{"org:user", both, providers.ExecComplete},
+			{"org:user:update", both, providers.ExecFailure},
+			{"org:group", both, providers.ExecFailure},
+			{"system", nil, providers.ExecComplete},
+			{"org", nil, providers.ExecComplete},
+			{"org:user", nil, providers.ExecFailure},
+		},
+	}
+	security.ForEachPermissionPlaneForTest(func(plane string) {
+		suite.Run(plane, func() {
+			for _, tc := range cases[plane] {
+				ctx := &providers.NodeContext{
+					ExecutionID: "test-flow",
+					Context: security.WithSecurityContextTest(context.Background(),
+						security.NewSecurityContextForTest("user1", "ou1", "token", []string{tc.permission}, nil)),
+				}
+				if tc.required != nil {
+					ctx.NodeProperties = map[string]interface{}{propertyKeyRequiredScopes: tc.required}
+				}
+
+				resp, err := suite.executor.Execute(ctx)
+
+				suite.NoError(err)
+				suite.Equal(tc.want, resp.Status, "%s with required %v", tc.permission, tc.required)
+			}
+		})
+	})
 }
 
 func TestPermissionValidatorSuite(t *testing.T) {

@@ -19,8 +19,6 @@ import (
 // TestRegisteredToolsRequireDesignPermissions verifies that every theme MCP tool is mapped to a design
 // catalog permission, so none falls back to root by accident.
 func TestRegisteredToolsRequireDesignPermissions(t *testing.T) {
-	security.InitSystemPermissions("")
-	p := security.GetSystemPermissions()
 	server := mcp.NewServer(&mcp.Implementation{Name: "test-server", Version: "1.0.0"}, nil)
 	registerMCPTools(server, NewThemeMgtServiceInterfaceMock(t))
 
@@ -36,11 +34,16 @@ func TestRegisteredToolsRequireDesignPermissions(t *testing.T) {
 	require.NoError(t, err)
 
 	require.NotEmpty(t, tools.Tools)
-	for _, registered := range tools.Tools {
-		assert.Contains(t, []string{p.DesignView, p.DesignCreate, p.DesignUpdate, p.DesignDelete},
-			security.ResolveMCPToolPermission(registered.Name),
-			"tool %q must require a design permission", registered.Name)
-	}
+	security.ForEachPermissionPlaneForTest(func(plane string) {
+		t.Run(plane, func(t *testing.T) {
+			p := security.GetSystemPermissions()
+			for _, registered := range tools.Tools {
+				assert.Contains(t, []string{p.DesignView, p.DesignCreate, p.DesignUpdate, p.DesignDelete},
+					security.ResolveMCPToolPermission(registered.Name),
+					"tool %q must require a design permission", registered.Name)
+			}
+		})
+	})
 }
 
 // list_themes with a projectId lists the themes of that project, and get_theme_by_id carries the project.

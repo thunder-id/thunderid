@@ -21,7 +21,7 @@ func TestActionsTestSuite(t *testing.T) {
 }
 
 func (s *ActionsTestSuite) SetupTest() {
-	security.InitSystemPermissions("")
+	security.InitControlPlanePermissions("")
 }
 
 // catalogActions reads each catalog resource and the actions declared on it from the catalog

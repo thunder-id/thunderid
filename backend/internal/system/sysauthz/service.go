@@ -119,7 +119,7 @@ func (s *systemAuthorizationService) authorizeCaller(ctx context.Context, action
 
 	// Step 4: Resolve required permission for the action and evaluate using hierarchical matching.
 	requiredPermission := security.ResolveActionPermission(action)
-	if !security.HasSufficientPermission(security.GetPermissions(ctx), requiredPermission) {
+	if !security.HasSufficientSystemPermission(security.GetPermissions(ctx), requiredPermission) {
 		if logger.IsDebugEnabled() {
 			logger.Debug(ctx, "Authorization denied: insufficient permissions",
 				log.String("action", string(action)),
@@ -156,7 +156,7 @@ func (s *systemAuthorizationService) authorizeListCaller(ctx context.Context, ac
 
 	// Step 3: Verify the caller holds an adequate permission for the action using hierarchical matching.
 	requiredPermission := security.ResolveActionPermission(action)
-	if !security.HasSufficientPermission(security.GetPermissions(ctx), requiredPermission) {
+	if !security.HasSufficientSystemPermission(security.GetPermissions(ctx), requiredPermission) {
 		if logger.IsDebugEnabled() {
 			logger.Debug(ctx, "GetAccessibleResources denied: insufficient permissions",
 				log.String("action", string(action)),

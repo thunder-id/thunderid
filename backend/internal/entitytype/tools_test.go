@@ -109,8 +109,6 @@ func (suite *EntityTypeToolsTestSuite) TestListUserTypes_ServiceError() {
 // TestRegisteredToolsRequireUserTypePermissions verifies that every entity type MCP tool is mapped to a user
 // type or agent type catalog permission, so none falls back to root by accident.
 func (suite *EntityTypeToolsTestSuite) TestRegisteredToolsRequireUserTypePermissions() {
-	security.InitSystemPermissions("")
-	p := security.GetSystemPermissions()
 	server := mcp.NewServer(&mcp.Implementation{Name: "test-server", Version: "1.0.0"}, nil)
 	registerMCPTools(server, NewEntityTypeServiceInterfaceMock(suite.T()))
 
@@ -126,11 +124,16 @@ func (suite *EntityTypeToolsTestSuite) TestRegisteredToolsRequireUserTypePermiss
 	suite.Require().NoError(err)
 
 	suite.Require().NotEmpty(tools.Tools)
-	for _, registered := range tools.Tools {
-		suite.Contains([]string{p.UserTypeView, p.UserTypeCreate, p.UserTypeUpdate, p.UserTypeDelete,
-			p.AgentTypeView}, security.ResolveMCPToolPermission(registered.Name),
-			"tool %q must require a user type or agent type permission", registered.Name)
-	}
+	security.ForEachPermissionPlaneForTest(func(plane string) {
+		suite.Run(plane, func() {
+			p := security.GetSystemPermissions()
+			for _, registered := range tools.Tools {
+				suite.Contains([]string{p.UserTypeView, p.UserTypeCreate, p.UserTypeUpdate, p.UserTypeDelete,
+					p.AgentTypeView}, security.ResolveMCPToolPermission(registered.Name),
+					"tool %q must require a user type or agent type permission", registered.Name)
+			}
+		})
+	})
 }
 
 func (suite *EntityTypeToolsTestSuite) TestListAgentTypes_Success() {

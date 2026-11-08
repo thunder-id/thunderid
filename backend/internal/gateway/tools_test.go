@@ -258,8 +258,6 @@ func (s *GatewayToolsTestSuite) TestGatewayValues() {
 // or configuration version catalog permission, except the variable and secret tools, which require root
 // as their APIs do.
 func (s *GatewayToolsTestSuite) TestRegisteredToolsRequireGatewayPermissions() {
-	security.InitSystemPermissions("")
-	p := security.GetSystemPermissions()
 	rootTools := map[string]bool{
 		"list_gateway_variables": true, "set_gateway_variable": true, "delete_gateway_variable": true,
 		"list_gateway_secrets": true, "set_gateway_secret": true, "delete_gateway_secret": true,
@@ -268,13 +266,18 @@ func (s *GatewayToolsTestSuite) TestRegisteredToolsRequireGatewayPermissions() {
 	s.Require().NoError(err)
 
 	s.Require().NotEmpty(tools.Tools)
-	for _, registered := range tools.Tools {
-		if rootTools[registered.Name] {
-			s.Equal(p.Root, security.ResolveMCPToolPermission(registered.Name), registered.Name)
-			continue
-		}
-		s.Contains([]string{p.GatewayView, p.GatewayUpdate, p.ConfigVersionView, p.ConfigVersionCreate},
-			security.ResolveMCPToolPermission(registered.Name),
-			"tool %q must require a gateway or configuration version permission", registered.Name)
-	}
+	security.ForEachPermissionPlaneForTest(func(plane string) {
+		s.Run(plane, func() {
+			p := security.GetSystemPermissions()
+			for _, registered := range tools.Tools {
+				if rootTools[registered.Name] {
+					s.Equal(p.Root, security.ResolveMCPToolPermission(registered.Name), registered.Name)
+					continue
+				}
+				s.Contains([]string{p.GatewayView, p.GatewayUpdate, p.ConfigVersionView, p.ConfigVersionCreate},
+					security.ResolveMCPToolPermission(registered.Name),
+					"tool %q must require a gateway or configuration version permission", registered.Name)
+			}
+		})
+	})
 }

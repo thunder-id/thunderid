@@ -29,7 +29,7 @@ func TestHandlerTestSuite(t *testing.T) {
 }
 
 func (s *HandlerTestSuite) SetupTest() {
-	security.InitSystemPermissions("")
+	security.InitControlPlanePermissions("")
 	s.authz = sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(s.T())
 }
 

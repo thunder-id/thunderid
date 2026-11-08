@@ -152,7 +152,7 @@ func (s *securityService) authorize(r *http.Request) error {
 		return nil
 	}
 	permissions := GetPermissions(r.Context())
-	if !HasSufficientPermission(permissions, required) {
+	if !HasSufficientSystemPermission(permissions, required) {
 		return errInsufficientPermissions
 	}
 	return nil

@@ -19,7 +19,7 @@ import (
 // ---------------------------------------------------------------------------
 
 func (s *SecurityContextTestSuite) TestHasSystemPermission() {
-	InitSystemPermissions("")
+	InitControlPlanePermissions("")
 
 	tests := []struct {
 		name        string
@@ -71,17 +71,29 @@ func (s *SecurityContextTestSuite) TestHasSystemPermission() {
 }
 
 func (s *SecurityContextTestSuite) TestHasAnySystemPermission() {
-	InitSystemPermissions("")
+	InitControlPlanePermissions("")
 
 	s.True(HasAnySystemPermission([]string{"system"}))
 	s.True(HasAnySystemPermission([]string{"openid", "system:user:create"}))
 	s.False(HasAnySystemPermission([]string{"openid", "systemx", "app:system"}))
 	s.False(HasAnySystemPermission(nil))
+	// The control plane has no organization tree.
+	s.False(HasAnySystemPermission([]string{"org", "org:user:view"}))
 
-	InitSystemPermissions("mgmt")
+	InitControlPlanePermissions("mgmt")
 	s.True(HasAnySystemPermission([]string{"mgmt:system:group:view"}))
 	s.False(HasAnySystemPermission([]string{"system:group:view"}))
-	InitSystemPermissions("")
+	InitControlPlanePermissions("")
+}
+
+func (s *SecurityContextTestSuite) TestHasSufficientSystemPermission_ControlPlane() {
+	InitControlPlanePermissions("")
+
+	s.True(HasSufficientSystemPermission([]string{"system"}, "system:user:view"))
+	s.True(HasSufficientSystemPermission([]string{"system:user"}, "system:user:view"))
+	s.False(HasSufficientSystemPermission([]string{"system:user:view"}, "system:user"))
+	s.False(HasSufficientSystemPermission([]string{"org"}, "system:user:view"))
+	s.True(HasSufficientSystemPermission(nil, ""))
 }
 
 // ---------------------------------------------------------------------------
@@ -201,7 +213,7 @@ func (s *SecurityContextTestSuite) TestHasSufficientPermission() {
 // ---------------------------------------------------------------------------
 
 func (s *SecurityContextTestSuite) TestResolveActionPermission() {
-	InitSystemPermissions("")
+	InitControlPlanePermissions("")
 	p := GetSystemPermissions()
 
 	tests := []struct {
@@ -325,7 +337,7 @@ func (s *SecurityContextTestSuite) TestResolveActionPermission() {
 // TestResolveActionPermission_CoversAllMappedActions ensures every entry in
 // actionPermissionMap is reachable and returns the expected permission.
 func (s *SecurityContextTestSuite) TestResolveActionPermission_CoversAllMappedActions() {
-	InitSystemPermissions("")
+	InitControlPlanePermissions("")
 	for action, expectedPerm := range actionPermissionMap {
 		s.Run(string(action), func() {
 			s.Equal(expectedPerm, ResolveActionPermission(action))
@@ -334,7 +346,7 @@ func (s *SecurityContextTestSuite) TestResolveActionPermission_CoversAllMappedAc
 }
 
 // ---------------------------------------------------------------------------
-// InitSystemPermissions
+// InitControlPlanePermissions
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
@@ -342,24 +354,28 @@ func (s *SecurityContextTestSuite) TestResolveActionPermission_CoversAllMappedAc
 // ---------------------------------------------------------------------------
 
 func (s *SecurityContextTestSuite) TestGetSystemRootPermission_AfterInitEmptyHandle() {
-	InitSystemPermissions("")
+	InitControlPlanePermissions("")
 	s.Equal("system", GetSystemRootPermission())
 }
 
 func (s *SecurityContextTestSuite) TestGetSystemRootPermission_AfterInitNonEmptyHandle() {
-	InitSystemPermissions("mgmt")
-	defer InitSystemPermissions("")
+	InitControlPlanePermissions("mgmt")
+	defer InitControlPlanePermissions("")
 	s.Equal("mgmt:system", GetSystemRootPermission())
 }
 
 // ---------------------------------------------------------------------------
 
-func TestInitSystemPermissions_EmptyHandle(t *testing.T) {
-	InitSystemPermissions("")
+func TestInitControlPlanePermissions_EmptyHandle(t *testing.T) {
+	InitControlPlanePermissions("")
 	p := GetSystemPermissions()
 	require.NotNil(t, p)
 
 	assert.Equal(t, "system", p.Root)
+	assert.Empty(t, p.Org)
+	assert.Equal(t, "system", p.AdministrationFlow)
+	assert.Equal(t, "system:app:create", p.AppCreate)
+	assert.Equal(t, "system:design:view", p.DesignView)
 	assert.Equal(t, "system:ou", p.OU)
 	assert.Equal(t, "system:ou:view", p.OUView)
 	assert.Equal(t, "system:user", p.User)
@@ -372,8 +388,8 @@ func TestInitSystemPermissions_EmptyHandle(t *testing.T) {
 	assert.Equal(t, "system:agenttype:view", p.AgentTypeView)
 }
 
-func TestInitSystemPermissions_NonEmptyHandle(t *testing.T) {
-	InitSystemPermissions("mgmt")
+func TestInitControlPlanePermissions_NonEmptyHandle(t *testing.T) {
+	InitControlPlanePermissions("mgmt")
 	p := GetSystemPermissions()
 	require.NotNil(t, p)
 
@@ -390,20 +406,20 @@ func TestInitSystemPermissions_NonEmptyHandle(t *testing.T) {
 	assert.Equal(t, "mgmt:system:agenttype:view", p.AgentTypeView)
 
 	// Restore default for other tests.
-	InitSystemPermissions("")
+	InitControlPlanePermissions("")
 }
 
-func TestInitSystemPermissions_RebuildsActionMap(t *testing.T) {
-	InitSystemPermissions("x")
+func TestInitControlPlanePermissions_RebuildsActionMap(t *testing.T) {
+	InitControlPlanePermissions("x")
 	assert.Equal(t, "x:system:ou:create", ResolveActionPermission(ActionCreateOU))
 
-	InitSystemPermissions("")
+	InitControlPlanePermissions("")
 	assert.Equal(t, "system:ou:create", ResolveActionPermission(ActionCreateOU))
 }
 
 func TestHasSystemPermission_WithCustomHandle(t *testing.T) {
-	InitSystemPermissions("mgmt")
-	defer InitSystemPermissions("")
+	InitControlPlanePermissions("mgmt")
+	defer InitControlPlanePermissions("")
 
 	assert.True(t, HasSystemPermission([]string{"mgmt:system"}))
 	assert.False(t, HasSystemPermission([]string{"system"}))
@@ -414,7 +430,7 @@ func TestHasSystemPermission_WithCustomHandle(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestGetRequiredPermissionForAPI(t *testing.T) {
-	InitSystemPermissions("")
+	InitControlPlanePermissions("")
 	p := GetSystemPermissions()
 
 	svc, err := newSecurityService(nil, nil, []string{}, apiPermissionEntries)
@@ -893,7 +909,7 @@ const (
 )
 
 func TestCovers(t *testing.T) {
-	InitSystemPermissions("")
+	InitControlPlanePermissions("")
 
 	tests := []struct {
 		name     string
@@ -1062,7 +1078,7 @@ func TestCovers(t *testing.T) {
 // TestCoversIsNotSymmetric documents that coverage is a partial order, not an equivalence:
 // incomparable sets cover each other in neither direction.
 func TestCoversIsNotSymmetric(t *testing.T) {
-	InitSystemPermissions("")
+	InitControlPlanePermissions("")
 
 	groupAdmin := PermissionSet{rsSystem: {"system:group"}}
 	userAdmin := PermissionSet{rsSystem: {"system:user"}}
@@ -1074,8 +1090,8 @@ func TestCoversIsNotSymmetric(t *testing.T) {
 // TestCoversHonoursConfiguredPermissionPrefix verifies that coverage is computed from the
 // permission strings themselves, so a non-empty SystemPermissionPrefix needs no special handling.
 func TestCoversHonoursConfiguredPermissionPrefix(t *testing.T) {
-	InitSystemPermissions("mgmt")
-	t.Cleanup(func() { InitSystemPermissions("") })
+	InitControlPlanePermissions("mgmt")
+	t.Cleanup(func() { InitControlPlanePermissions("") })
 
 	p := GetSystemPermissions()
 	require.Equal(t, "mgmt:system", p.Root)
@@ -1099,13 +1115,21 @@ func TestCoversHonoursConfiguredPermissionPrefix(t *testing.T) {
 // Permission catalog
 // ---------------------------------------------------------------------------
 
-const bootstrapBundlePath = "../../../cmd/server/bootstrap/01-default-resources.yaml"
+const (
+	bootstrapBundlePath = "../../../cmd/server/bootstrap/01-default-resources.yaml"
+	// controlPlaneResourceServerPath is the Control Plane resource server, imported into the
+	// identity provider that signs operators into the Control Plane.
+	controlPlaneResourceServerPath = "../../../cmd/cpserver/idp-bootstrap/control-plane-resource-server.yaml"
+	rsControlPlane                 = "01900000-0000-7000-8000-000000000021"
+)
 
-// bootstrapSystemPermissions returns the delimiter of the System resource server in the bootstrap
-// bundle and every permission declared under its root resource.
-func bootstrapSystemPermissions(t *testing.T) (string, []string) {
+// declaredPermissions returns the delimiter of the resource server with the given ID in the bundle at
+// path, and every permission it declares other than the system root. The first resource must be the
+// system root. Every other resource either is one of roots, with no parent, or sits directly under the
+// system root or one of roots.
+func declaredPermissions(t *testing.T, path, id string, roots ...string) (string, []string) {
 	t.Helper()
-	content, err := os.ReadFile(bootstrapBundlePath)
+	content, err := os.ReadFile(path) // #nosec G304 -- test reads a fixed bundle in the repository.
 	require.NoError(t, err)
 
 	type action struct {
@@ -1123,34 +1147,55 @@ func bootstrapSystemPermissions(t *testing.T) (string, []string) {
 		Resources []resource `yaml:"resources"`
 	}
 	for _, doc := range strings.Split(string(content), "\n---\n") {
-		if !strings.Contains(doc, "id: "+rsSystem) {
+		if !strings.Contains(doc, "id: "+id) {
 			continue
 		}
 		require.NoError(t, yaml.Unmarshal([]byte(doc), &server))
 	}
-	require.Equal(t, rsSystem, server.ID, "System resource server not found in the bootstrap bundle")
+	require.Equal(t, id, server.ID, "resource server %s not found in %s", id, path)
 	require.NotEmpty(t, server.Resources)
 	require.Equal(t, resource{Name: "System", Handle: "system"}, server.Resources[0])
 
+	parents := append([]string{"system"}, roots...)
 	var permissions []string
 	for _, res := range server.Resources[1:] {
-		require.Equal(t, "system", res.Parent, "resource %q must sit directly under the root", res.Handle)
 		require.NotEmpty(t, res.Name, "resource %q needs a display name", res.Handle)
-		path := res.Parent + server.Delimiter + res.Handle
-		permissions = append(permissions, path)
+		if res.Parent == "" {
+			require.Contains(t, roots, res.Handle, "resource %q must not be a root", res.Handle)
+			permissions = append(permissions, res.Handle)
+			continue
+		}
+		require.Contains(t, parents, res.Parent,
+			"resource %q must sit directly under one of %v", res.Handle, parents)
+		resourcePath := res.Parent + server.Delimiter + res.Handle
+		permissions = append(permissions, resourcePath)
 		for _, a := range res.Actions {
-			permissions = append(permissions, path+server.Delimiter+a.Handle)
+			permissions = append(permissions, resourcePath+server.Delimiter+a.Handle)
 		}
 	}
 	return server.Delimiter, permissions
 }
 
-// TestSystemCatalogMatchesBootstrapBundle verifies that the Go catalog and the System resource
-// server declared in the bootstrap bundle hold the same permissions.
-func TestSystemCatalogMatchesBootstrapBundle(t *testing.T) {
-	InitSystemPermissions("")
+// TestDataPlaneCatalogMatchesBootstrapBundle verifies that the System resource server in the bootstrap
+// bundle is the Data Plane's representation: the system root with no children, the org root and its
+// children. Both planes import this bundle, and the Control Plane publishes roles built on it to the
+// Data Planes.
+func TestDataPlaneCatalogMatchesBootstrapBundle(t *testing.T) {
+	InitDataPlanePermissions("")
+	defer InitControlPlanePermissions("")
 
-	delimiter, declared := bootstrapSystemPermissions(t)
+	delimiter, declared := declaredPermissions(t, bootstrapBundlePath, rsSystem, "org")
+	assert.Equal(t, ":", delimiter)
+	assert.ElementsMatch(t, GetSystemPermissions().Catalog, declared)
+}
+
+// TestControlPlaneCatalogMatchesResourceServer verifies that the Control Plane resource server, which
+// the identity provider of the Control Plane issues tokens for, declares the Control Plane's catalog
+// and nothing else.
+func TestControlPlaneCatalogMatchesResourceServer(t *testing.T) {
+	InitControlPlanePermissions("")
+
+	delimiter, declared := declaredPermissions(t, controlPlaneResourceServerPath, rsControlPlane)
 	assert.Equal(t, ":", delimiter)
 	assert.ElementsMatch(t, GetSystemPermissions().Catalog, declared)
 }
@@ -1159,7 +1204,7 @@ func TestSystemCatalogMatchesBootstrapBundle(t *testing.T) {
 // enforced before it existed, unchanged, and that it honors the configured prefix.
 func TestSystemCatalogKeepsExistingPermissions(t *testing.T) {
 	for _, prefix := range []string{"", "mgmt"} {
-		InitSystemPermissions(prefix)
+		InitControlPlanePermissions(prefix)
 		p := GetSystemPermissions()
 		for _, existing := range []string{
 			p.OU, p.OUView, p.User, p.UserView, p.Group, p.GroupView, p.Agent, p.AgentView,
@@ -1172,7 +1217,7 @@ func TestSystemCatalogKeepsExistingPermissions(t *testing.T) {
 			assert.True(t, strings.HasPrefix(perm, p.Root+":"), "%q is not under %q", perm, p.Root)
 		}
 	}
-	InitSystemPermissions("")
+	InitControlPlanePermissions("")
 	assert.Contains(t, GetSystemPermissions().Catalog, "system:user:view")
 }
 
@@ -1180,7 +1225,7 @@ func TestSystemCatalogKeepsExistingPermissions(t *testing.T) {
 // permission, or is one of the listed root or self-service rules. A route mapped to root or opened
 // to any authenticated caller has to be added to these lists on purpose.
 func TestRouteTableUsesCatalogPermissions(t *testing.T) {
-	InitSystemPermissions("")
+	InitControlPlanePermissions("")
 	p := GetSystemPermissions()
 
 	selfService := map[string]bool{
@@ -1200,6 +1245,8 @@ func TestRouteTableUsesCatalogPermissions(t *testing.T) {
 		"PUT /secrets/**": true, "DELETE /secrets/**": true,
 		"POST /import": true, "POST /import/delete": true,
 		"GET /users/*/ous": true,
+		// The administration flow permission is the root permission on the control plane.
+		"POST /flow/execute": true,
 		// A gateway's variable and secret stores hold credentials, as the server's own does.
 		"GET /gateways/*/variables/**": true, "POST /gateways/*/variables/**": true,
 		"PUT /gateways/*/variables/**": true, "DELETE /gateways/*/variables/**": true,
@@ -1224,7 +1271,7 @@ func TestRouteTableUsesCatalogPermissions(t *testing.T) {
 // of that resource's catalog permissions, so a fine-grained administrator is never sent to another
 // resource's permission. Root rules are checked by TestRouteTableUsesCatalogPermissions.
 func TestResourceRoutesUseResourcePermissions(t *testing.T) {
-	InitSystemPermissions("")
+	InitControlPlanePermissions("")
 	p := GetSystemPermissions()
 
 	resources := []struct {
@@ -1284,16 +1331,21 @@ func TestResourceRoutesUseResourcePermissions(t *testing.T) {
 }
 
 // TestMCPToolPermissionsUseCatalogPermissions verifies that every mapped MCP tool requires a catalog
-// permission, and that an unmapped tool requires root.
+// permission, except execute_flow, which requires the administration flow permission, and that an
+// unmapped tool requires root.
 func TestMCPToolPermissionsUseCatalogPermissions(t *testing.T) {
 	for _, prefix := range []string{"", "mgmt"} {
-		InitSystemPermissions(prefix)
+		InitControlPlanePermissions(prefix)
 		p := GetSystemPermissions()
 		for name, perm := range mcpToolPermissions {
+			if name == "execute_flow" {
+				assert.Equal(t, p.AdministrationFlow, perm)
+				continue
+			}
 			assert.Contains(t, p.Catalog, perm, "MCP tool %q requires a permission outside the catalog", name)
 			assert.Equal(t, perm, ResolveMCPToolPermission(name))
 		}
 		assert.Equal(t, p.Root, ResolveMCPToolPermission("unmapped_tool"))
 	}
-	InitSystemPermissions("")
+	InitControlPlanePermissions("")
 }

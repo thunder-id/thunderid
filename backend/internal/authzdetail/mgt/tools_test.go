@@ -145,13 +145,16 @@ func (s *TypeToolsTestSuite) TestToolsOverMCP() {
 		"update_authorization_detail_type"}, names)
 
 	// Every tool is mapped to an authorization detail type permission, so none falls back to root.
-	security.InitSystemPermissions("")
-	p := security.GetSystemPermissions()
-	for _, name := range names {
-		s.Contains([]string{p.AuthzDetailView, p.AuthzDetailCreate, p.AuthzDetailUpdate, p.AuthzDetailDelete},
-			security.ResolveMCPToolPermission(name),
-			"tool %q must require an authorization detail type permission", name)
-	}
+	security.ForEachPermissionPlaneForTest(func(plane string) {
+		s.Run(plane, func() {
+			p := security.GetSystemPermissions()
+			for _, name := range names {
+				s.Contains([]string{p.AuthzDetailView, p.AuthzDetailCreate, p.AuthzDetailUpdate, p.AuthzDetailDelete},
+					security.ResolveMCPToolPermission(name),
+					"tool %q must require an authorization detail type permission", name)
+			}
+		})
+	})
 
 	created := toolsTestType()
 	var received json.RawMessage

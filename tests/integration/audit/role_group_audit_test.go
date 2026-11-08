@@ -192,14 +192,14 @@ func (ts *AuditLogTestSuite) TestADeleteOfAMissingRoleWritesNoLine() {
 	ts.Empty(ts.linesPerCall(deleted)[0], "a delete that removed nothing writes no line")
 }
 
-// A group manager scoped to one organization unit passes the security layer with system:group, and the
+// A group manager scoped to one organization unit passes the security layer with org:group, and the
 // group service refuses its changes to a group in a sibling unit, and its addition of a member to a group
 // in its own unit that confers a permission the manager does not hold. Each refusal is recorded as
 // denied. A refused change to a group names the group it found as subject; a refused membership change
 // names none, since it granted nothing.
 func (ts *AuditLogTestSuite) TestAGroupChangeTheGroupServiceRefusesIsRecordedAsDenied() {
 	manager := ts.createScopedManager("group-scoped", []string{"group", "user"},
-		[]string{"system:group", "system:group:view"})
+		[]string{"org:group", "org:group:view"})
 	siblingOU := ts.createOrganizationUnit("group-sibling")
 	siblingID := ts.createGroup(siblingOU, auditGroupName)
 	privilegedID := ts.createGroup(manager.ouID, "Audit Privileged Readers")
@@ -207,7 +207,7 @@ func (ts *AuditLogTestSuite) TestAGroupChangeTheGroupServiceRefusesIsRecordedAsD
 		Name: "Audit User Admin",
 		OUID: manager.ouID,
 		Permissions: []testutils.ResourcePermissions{
-			{ResourceServerID: manager.resourceServerID, Permissions: []string{"system:user"}},
+			{ResourceServerID: manager.resourceServerID, Permissions: []string{"org:user"}},
 		},
 		Assignments: []testutils.Assignment{{ID: privilegedID, Type: "group"}},
 	})

@@ -93,7 +93,7 @@ func (s *AgentTypeScopedAdminTestSuite) SetupSuite() {
 	s.Require().NoError(err)
 	s.userID = userID
 
-	rsID, err := testutils.CreateSystemScopedResourceServer(
+	rsID, err := testutils.CreateOrgScopedResourceServer(
 		s.childOUID, "Scoped Admin Test RS (agenttype)", scopedAdminRSIdentity, "agent", "agenttype")
 	s.Require().NoError(err)
 	s.scopedRSID = rsID
@@ -102,7 +102,7 @@ func (s *AgentTypeScopedAdminTestSuite) SetupSuite() {
 		Name: "Agent Type Scoped Admin Role",
 		OUID: s.childOUID,
 		Permissions: []testutils.ResourcePermissions{
-			{ResourceServerID: rsID, Permissions: []string{"system:agent", "system:agenttype:view"}},
+			{ResourceServerID: rsID, Permissions: []string{"org:agent", "org:agenttype:view"}},
 		},
 		Assignments: []testutils.Assignment{{ID: s.userID, Type: "user"}},
 	})
@@ -113,12 +113,12 @@ func (s *AgentTypeScopedAdminTestSuite) SetupSuite() {
 	s.Require().NoError(err)
 
 	tokenResp, err := testutils.ObtainAccessTokenWithPassword(
-		scopedAdminClientID, testutils.OUSignInRedirectURI, "system:agent system:agenttype:view",
+		scopedAdminClientID, testutils.OUSignInRedirectURI, "org:agent org:agenttype:view",
 		scopedAdminUsername, scopedAdminPassword, true, "", scopedAdminRSIdentity)
 	s.Require().NoError(err)
 	granted := strings.Fields(tokenResp.Scope)
-	s.Require().Contains(granted, "system:agenttype:view", "token must carry the agent type view scope")
-	s.Require().Contains(granted, "system:agent", "token must carry the agent scope")
+	s.Require().Contains(granted, "org:agenttype:view", "token must carry the agent type view scope")
+	s.Require().Contains(granted, "org:agent", "token must carry the agent scope")
 	s.scopedClient = testutils.GetHTTPClientWithToken(tokenResp.AccessToken)
 }
 
