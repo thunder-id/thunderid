@@ -197,7 +197,7 @@ export default function VersionsCard({
         );
         return (
           <Box
-            key={version.version}
+            key={`${version.version}-${String(version.number)}`}
             data-testid={`deploy-version-${version.version}`}
             data-latest={index === 0 ? 'true' : undefined}
             data-open={isOpen ? 'true' : undefined}

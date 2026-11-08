@@ -128,11 +128,6 @@ func (f *fakeVersionStore) Add(_ context.Context, version Version) (*Version, er
 	if f.err != nil {
 		return nil, f.err
 	}
-	for _, kept := range f.versions {
-		if kept.Hash == version.Hash {
-			return nil, errors.New("duplicate hash")
-		}
-	}
 	v := version
 	v.Seq = len(f.versions) + 1
 	v.CreatedAt = testCreatedAt
@@ -196,8 +191,10 @@ func (f *fakeVersionStore) Find(_ context.Context, prefix string) ([]int, error)
 		return nil, f.err
 	}
 	found := []int{}
+	seen := map[string]bool{}
 	for i := len(f.versions) - 1; i >= 0 && len(found) < 2; i-- {
-		if strings.HasPrefix(f.versions[i].Hash, prefix) {
+		if strings.HasPrefix(f.versions[i].Hash, prefix) && !seen[f.versions[i].Hash] {
+			seen[f.versions[i].Hash] = true
 			found = append(found, f.versions[i].Seq)
 		}
 	}
@@ -868,6 +865,45 @@ func TestTheSameConfigurationIsTheSameVersion(t *testing.T) {
 	assert.True(t, again.Unchanged)
 	assert.Equal(t, first.Hash, again.Hash)
 	assert.Equal(t, "Spring", again.Name, "an unchanged capture renamed the version it matched")
+	assert.Len(t, f.versions.versions, 1)
+}
+
+// Going back to what an older version holds, as when a change is undone, is a new version: the latest,
+// so applying the latest version undoes the change on a gateway too. Both versions keep the same hash,
+// which names the newer of them.
+func TestGoingBackToAnOlderConfigurationIsANewVersion(t *testing.T) {
+	f := newVersionFixture(t)
+	older := f.capture(t, "ou-a")
+	f.capture(t, "ou-a", "ou-b")
+
+	back := f.capture(t, "ou-a")
+
+	assert.False(t, back.Unchanged)
+	assert.Equal(t, 3, back.Seq)
+	assert.Equal(t, older.Hash, back.Hash)
+	latest, svcErr := f.svc.GetVersion(context.Background(), "latest")
+	require.Nil(t, svcErr)
+	assert.Equal(t, 3, latest.Seq)
+	byHash, svcErr := f.svc.GetVersion(context.Background(), older.Hash[:7])
+	require.Nil(t, svcErr)
+	assert.Equal(t, 3, byHash.Seq)
+
+	// Capturing it again while it is the latest keeps nothing new.
+	again := f.capture(t, "ou-a")
+	assert.True(t, again.Unchanged)
+	assert.Equal(t, 3, again.Seq)
+}
+
+// A capture refuses when the latest version cannot be read to compare with, rather than keeping another.
+func TestACaptureRefusesWhenTheLatestVersionCannotBeRead(t *testing.T) {
+	f := newVersionFixture(t)
+	// The store's latest number names a version it no longer has.
+	f.versions.versions = []Version{{Seq: 5, Hash: "abc1234", Resources: "kept"}}
+
+	_, svcErr := f.svc.Capture(context.Background(), CaptureRequest{})
+
+	require.NotNil(t, svcErr)
+	assert.Equal(t, ErrorVersionNotFound.Code, svcErr.Code)
 	assert.Len(t, f.versions.versions, 1)
 }
 

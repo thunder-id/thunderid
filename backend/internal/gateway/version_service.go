@@ -198,7 +198,7 @@ func (s *versionService) capture(ctx context.Context, req CaptureRequest) (*Vers
 		return nil, misplacedSecretError(misplaced)
 	}
 	hash := versionHash(content)
-	if kept, svcErr := s.versionWithHash(ctx, hash); svcErr != nil || kept != nil {
+	if kept, svcErr := s.latestWithHash(ctx, hash); svcErr != nil || kept != nil {
 		return kept, svcErr
 	}
 
@@ -209,9 +209,9 @@ func (s *versionService) capture(ctx context.Context, req CaptureRequest) (*Vers
 		// captures on every change leaves one version for them rather than one each.
 		replaced, err := s.versions.ReplaceCurrent(ctx, captured)
 		if err != nil {
-			// A capture of the same configuration at the same moment collides on its hash; the one
-			// refused answers with the version the other kept.
-			if kept, svcErr := s.versionWithHash(ctx, hash); svcErr == nil && kept != nil {
+			// A capture of the same configuration at the same moment can be refused; it answers with
+			// the version the other kept.
+			if kept, svcErr := s.latestWithHash(ctx, hash); svcErr == nil && kept != nil {
 				return kept, nil
 			}
 			s.logger.Error(ctx, "Failed to replace the current version", log.Error(err))
@@ -227,9 +227,9 @@ func (s *versionService) capture(ctx context.Context, req CaptureRequest) (*Vers
 
 	version, err := s.versions.Add(ctx, captured)
 	if err != nil {
-		// Two captures of the same configuration at once collide on its hash; the one refused answers
-		// with the version the other kept.
-		if kept, svcErr := s.versionWithHash(ctx, hash); svcErr == nil && kept != nil {
+		// Two captures at once collide on the number they take; when they captured the same
+		// configuration, the one refused answers with the version the other kept.
+		if kept, svcErr := s.latestWithHash(ctx, hash); svcErr == nil && kept != nil {
 			return kept, nil
 		}
 		s.logger.Error(ctx, "Failed to capture a version", log.Error(err))
@@ -262,19 +262,25 @@ func versionHash(content string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// versionWithHash reads the version a hash already names, marked unchanged, or nil when none does.
-func (s *versionService) versionWithHash(ctx context.Context, hash string) (*Version, *tidcommon.ServiceError) {
-	found, err := s.versions.Find(ctx, hash)
+// latestWithHash reads the latest version, marked unchanged, when it holds the configuration a hash
+// names, or nil when it does not. An older version holding it does not count: a configuration that
+// went back to what an older version holds, as when a change is undone, is a new version, the latest,
+// so applying the latest version undoes the change on a gateway too.
+func (s *versionService) latestWithHash(ctx context.Context, hash string) (*Version, *tidcommon.ServiceError) {
+	latest, err := s.versions.Latest(ctx)
 	if err != nil {
-		s.logger.Error(ctx, "Failed to look for a version", log.Error(err))
+		s.logger.Error(ctx, "Failed to read the latest version", log.Error(err))
 		return nil, &tidcommon.InternalServerError
 	}
-	if len(found) == 0 {
+	if latest == 0 {
 		return nil, nil
 	}
-	version, svcErr := s.bySeq(ctx, found[0])
+	version, svcErr := s.bySeq(ctx, latest)
 	if svcErr != nil {
 		return nil, svcErr
+	}
+	if version.Hash != hash {
+		return nil, nil
 	}
 	version.Unchanged = true
 	return version, nil
