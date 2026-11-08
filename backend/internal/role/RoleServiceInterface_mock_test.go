@@ -1027,6 +1027,82 @@ func (_c *RoleServiceInterfaceMock_GetRolesByNames_Call) RunAndReturn(run func(c
 	return _c
 }
 
+// GetRolesByPermission provides a mock function for the type RoleServiceInterfaceMock
+func (_mock *RoleServiceInterfaceMock) GetRolesByPermission(ctx context.Context, resourceServerID string, permission string) ([]Role, *common.ServiceError) {
+	ret := _mock.Called(ctx, resourceServerID, permission)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetRolesByPermission")
+	}
+
+	var r0 []Role
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) ([]Role, *common.ServiceError)); ok {
+		return returnFunc(ctx, resourceServerID, permission)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) []Role); ok {
+		r0 = returnFunc(ctx, resourceServerID, permission)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]Role)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, resourceServerID, permission)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// RoleServiceInterfaceMock_GetRolesByPermission_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetRolesByPermission'
+type RoleServiceInterfaceMock_GetRolesByPermission_Call struct {
+	*mock.Call
+}
+
+// GetRolesByPermission is a helper method to define mock.On call
+//   - ctx context.Context
+//   - resourceServerID string
+//   - permission string
+func (_e *RoleServiceInterfaceMock_Expecter) GetRolesByPermission(ctx any, resourceServerID any, permission any) *RoleServiceInterfaceMock_GetRolesByPermission_Call {
+	return &RoleServiceInterfaceMock_GetRolesByPermission_Call{Call: _e.mock.On("GetRolesByPermission", ctx, resourceServerID, permission)}
+}
+
+func (_c *RoleServiceInterfaceMock_GetRolesByPermission_Call) Run(run func(ctx context.Context, resourceServerID string, permission string)) *RoleServiceInterfaceMock_GetRolesByPermission_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *RoleServiceInterfaceMock_GetRolesByPermission_Call) Return(roles []Role, serviceError *common.ServiceError) *RoleServiceInterfaceMock_GetRolesByPermission_Call {
+	_c.Call.Return(roles, serviceError)
+	return _c
+}
+
+func (_c *RoleServiceInterfaceMock_GetRolesByPermission_Call) RunAndReturn(run func(ctx context.Context, resourceServerID string, permission string) ([]Role, *common.ServiceError)) *RoleServiceInterfaceMock_GetRolesByPermission_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetSharingPolicy provides a mock function for the type RoleServiceInterfaceMock
 func (_mock *RoleServiceInterfaceMock) GetSharingPolicy(ctx context.Context, roleID string, policyID string) (sharing.Policy, *common.ServiceError) {
 	ret := _mock.Called(ctx, roleID, policyID)
