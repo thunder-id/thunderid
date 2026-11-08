@@ -18,6 +18,9 @@ on:
       - '.github/workflows/frontend-packages-cache.yml'
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 # A queued run is replaced by a newer push, but a running one finishes so its cache gets saved.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
