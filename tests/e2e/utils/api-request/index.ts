@@ -77,3 +77,26 @@ export async function sendOk(
   }
   return response;
 }
+
+/**
+ * Writes a server configuration section through an import with the Data Plane's management API
+ * key (MANAGEMENT_API_KEY), the only way a Data Plane takes one. Fails unless the section imports.
+ */
+export async function importServerConfigOk(request: APIRequestContext, name: string, value: unknown): Promise<void> {
+  const apiKey = process.env.MANAGEMENT_API_KEY;
+  if (!apiKey) {
+    throw new Error("MANAGEMENT_API_KEY environment variable is required to write server configuration");
+  }
+  const response = await request.post(`${serverUrl}/import`, {
+    headers: { "API-Key": apiKey },
+    ignoreHTTPSErrors: true,
+    data: {
+      content: JSON.stringify({ resource_type: "server_config", name, value }),
+      options: { upsert: true },
+    },
+  });
+  const body = await response.text();
+  if (!response.ok() || JSON.parse(body).summary?.failed !== 0) {
+    throw new Error(`Importing server config ${name} failed (${response.status()}): ${body}`);
+  }
+}

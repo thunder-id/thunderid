@@ -13,10 +13,12 @@ CP_PORT=8095
 
 # new_gateway_key generates the management key the managed Data Plane trusts and the Control
 # Plane's gateway resource (quickstart/bootstrap/cp/00-quickstart-gateway.yaml) registers it with,
-# so no key is committed to the repository. It sets QUICKSTART_GATEWAY_KEY and its SHA-256 hex
-# digest QUICKSTART_GATEWAY_KEY_HASH, and exports the key for the bootstrap template.
+# so no key is committed to the repository. A key already in QUICKSTART_GATEWAY_KEY is kept, which
+# is how a test pipeline learns the key it later imports deployment-wide resources with. It sets
+# QUICKSTART_GATEWAY_KEY and its SHA-256 hex digest QUICKSTART_GATEWAY_KEY_HASH, and exports the
+# key for the bootstrap template.
 new_gateway_key() {
-    QUICKSTART_GATEWAY_KEY="$(openssl rand -hex 32)"
+    QUICKSTART_GATEWAY_KEY="${QUICKSTART_GATEWAY_KEY:-$(openssl rand -hex 32)}"
     QUICKSTART_GATEWAY_KEY_HASH="$(printf '%s' "$QUICKSTART_GATEWAY_KEY" | openssl dgst -sha256 | awk '{print $NF}')"
     export QUICKSTART_GATEWAY_KEY
 }

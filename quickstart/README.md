@@ -91,7 +91,7 @@ The two sets of scripts do the same work; [bootstrap.ps1](bootstrap.ps1) is the 
 `setup.sh` runs once, in order:
 
 1. Prompts for the two accounts' usernames and passwords (a generated password is offered for each): `admin` (default username `admin`) and Service Desk Admin (default `servicedeskadmin`). Set `ADMIN_USERNAME` and `ADMIN_PASSWORD` for the first, and `SERVICE_DESK_USERNAME` and `SERVICE_DESK_PASSWORD` for the second, to skip the prompts, for example in CI. With nothing supplied and no terminal, passwords are generated and printed at the end.
-2. Sets up auth-dp, shares its certificate and signing keys with dp and cp, generates the management key the Control Plane uses to reach dp (dp trusts its SHA-256 digest, written into dp's `deployment.yaml`), then sets up dp and cp.
+2. Sets up auth-dp, shares its certificate and signing keys with dp and cp, generates the management key the Control Plane uses to reach dp (dp trusts its SHA-256 digest, written into dp's `deployment.yaml`), then sets up dp and cp. A key already in `QUICKSTART_GATEWAY_KEY` is used instead of a generated one, which is how the E2E pipeline gets the key it imports deployment-wide resources with.
 3. Starts dp briefly to seed the values it has to hold before the first sync: the Admin Console's client ID and redirect URIs, the System resource server's identifier, and the Service Desk Admin's password secret. The Control Plane's bootstrap runs before dp is up, so it cannot hand these over itself.
 
 `start.sh` then starts all three and prints the URLs. It does not repeat the setup, so settings changed since (for example the onboarding flow) survive a restart. Running `setup.sh` again resets them.
