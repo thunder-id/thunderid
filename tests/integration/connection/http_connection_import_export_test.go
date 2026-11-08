@@ -129,6 +129,11 @@ func (s *HTTPConnectionAPITestSuite) importConnectionsWith(
 	return outcome
 }
 
+// httpConnVariable is how an export names a value of the HTTP connection with this ID.
+func httpConnVariable(id, field string) string {
+	return testutils.ExportVariableName("CONNECTION", id, field)
+}
+
 // passwordVariable returns the single .env variable a basic connection exports, its password.
 func (s *HTTPConnectionAPITestSuite) passwordVariable(env map[string]string) string {
 	s.T().Helper()
@@ -152,15 +157,16 @@ func withoutLinesContaining(content, token string) string {
 	return strings.Join(kept, "\n")
 }
 
-// A deployment pipeline supplies the password by this variable name, derived as for SMTP connections.
+// A deployment pipeline supplies the password by this variable name: the connection's type and ID, then the
+// field, joined by double underscores.
 func (s *HTTPConnectionAPITestSuite) TestExportWritesThePasswordAsAnEnvParameter() {
-	const passwordVariable = "CONNECTION_HTTP_CONN_IE_EXPORT_PASSWORD"
 	created, _ := s.create(httpConnRequest{
 		Name: "http-conn-ie-export", Description: "exported", URL: "https://export.ext.example.com/hook",
 		TimeoutMS: 2500, Headers: []httpConnHeader{{Name: "X-Tenant", Value: "t-1"}},
 		Authentication: basicConnAuth(httpConnBasicUser, httpConnBasicPassword),
 	})
 
+	passwordVariable := httpConnVariable(created.ID, "PASSWORD")
 	resources, env := s.exportConnection(created.ID)
 
 	s.NotContains(resources, httpConnBasicPassword, "The exported YAML must not contain the password")
@@ -407,10 +413,10 @@ func (s *HTTPConnectionAPITestSuite) TestCreateIsRefusedWhenTheConnectionStoreIs
 // so a later import keeping the header by its mask under the canonical name finds the stored value.
 func (s *HTTPConnectionAPITestSuite) TestImportStoresAnAPIKeyHeaderNameCanonical() {
 	const (
-		id       = "http-conn-ie-apikey-canonical"
-		url      = "https://apikey-canonical.ext.example.com/hook"
-		variable = "CONNECTION_HTTP_CONN_IE_APIKEY_CANONICAL_X_TENANT_KEY"
+		id  = "http-conn-ie-apikey-canonical"
+		url = "https://apikey-canonical.ext.example.com/hook"
 	)
+	variable := httpConnVariable(id, "X_TENANT_KEY")
 	document := "resource_type: connection\nid: " + id + "\nouId: " + s.ouID + "\ntype: http\nname: " + id +
 		"\nurl: " + url +
 		"\nauthentication:\n  type: api_key\n  properties:\n    x-tenant-key: " + httpConnAPIKeyValue + "\n"
@@ -468,7 +474,7 @@ func (s *HTTPConnectionAPITestSuite) TestBearerAndAPIKeySecretsRoundTripThroughT
 	for _, tc := range []struct {
 		context string
 		request httpConnRequest
-		env     map[string]string
+		env     func(id string) map[string]string
 		props   map[string]interface{}
 		stored  []string
 	}{
@@ -479,7 +485,9 @@ func (s *HTTPConnectionAPITestSuite) TestBearerAndAPIKeySecretsRoundTripThroughT
 				Headers:        []httpConnHeader{{Name: "X-Tenant", Value: "t-3"}},
 				Authentication: bearerConnAuth(httpConnBearerToken),
 			},
-			env:    map[string]string{"CONNECTION_HTTP_CONN_IE_BEARER_TOKEN": httpConnBearerToken},
+			env: func(id string) map[string]string {
+				return map[string]string{httpConnVariable(id, "TOKEN"): httpConnBearerToken}
+			},
 			props:  map[string]interface{}{"token": "__redacted__"},
 			stored: []string{httpConnStoredBearerToken},
 		},
@@ -490,9 +498,11 @@ func (s *HTTPConnectionAPITestSuite) TestBearerAndAPIKeySecretsRoundTripThroughT
 				Authentication: apiKeyConnAuth(map[string]string{
 					httpConnAPIKeyHeader: httpConnAPIKeyValue, httpConnAPIKeyHeader2: httpConnAPIKeyValue2}),
 			},
-			env: map[string]string{
-				"CONNECTION_HTTP_CONN_IE_APIKEY_X_TENANT_KEY": httpConnAPIKeyValue,
-				"CONNECTION_HTTP_CONN_IE_APIKEY_X_REGION_KEY": httpConnAPIKeyValue2,
+			env: func(id string) map[string]string {
+				return map[string]string{
+					httpConnVariable(id, "X_TENANT_KEY"): httpConnAPIKeyValue,
+					httpConnVariable(id, "X_REGION_KEY"): httpConnAPIKeyValue2,
+				}
 			},
 			props: map[string]interface{}{
 				httpConnAPIKeyHeader: "__redacted__", httpConnAPIKeyHeader2: "__redacted__"},
@@ -508,8 +518,9 @@ func (s *HTTPConnectionAPITestSuite) TestBearerAndAPIKeySecretsRoundTripThroughT
 			s.NotContains(resources, secret, "%s: the exported YAML must not contain a secret", tc.context)
 		}
 		s.NotContains(resources, maskedSecretValue, "%s: the exported YAML must not carry the mask", tc.context)
-		s.Equal(tc.env, env, "%s: the .env should carry every secret, and only the secrets", tc.context)
-		for name := range tc.env {
+		wantEnv := tc.env(created.ID)
+		s.Equal(wantEnv, env, "%s: the .env should carry every secret, and only the secrets", tc.context)
+		for name := range wantEnv {
 			s.Contains(resources, "{{."+name+"}}", "%s: the YAML should reference %s", tc.context, name)
 		}
 		auth, ok := s.exportedDocument(resources, created.ID)["authentication"].(map[string]interface{})
@@ -520,7 +531,8 @@ func (s *HTTPConnectionAPITestSuite) TestBearerAndAPIKeySecretsRoundTripThroughT
 
 		res, err := doRequest(http.MethodDelete, httpConnPath+"/"+created.ID, nil)
 		s.Require().NoError(err, "%s: delete request failed", tc.context)
-		s.Require().Equal(http.StatusNoContent, res.status, "%s: delete before import: %s", tc.context, string(res.body))
+		s.Require().Equal(http.StatusNoContent, res.status, "%s: delete before import: %s", tc.context,
+			string(res.body))
 
 		outcome := s.importConnections(resources, env, false)
 		s.Require().Equal(httpConnImportStatusSuccess, outcome.Status, "%s: import: %s", tc.context, outcome.Message)
@@ -533,17 +545,17 @@ func (s *HTTPConnectionAPITestSuite) TestBearerAndAPIKeySecretsRoundTripThroughT
 		for _, property := range tc.stored {
 			s.storedSecretValue(created.ID, property)
 		}
-		s.assertExportedSecrets(created.ID, tc.env, tc.context+": the imported connection")
+		s.assertExportedSecrets(created.ID, wantEnv, tc.context+": the imported connection")
 	}
 }
 
 // Otherwise an import could point a bearer connection at another server and collect its token.
 func (s *HTTPConnectionAPITestSuite) TestImportWithoutTheBearerTokenKeepsItOnlyForTheSameOrigin() {
 	const originalURL = "https://bearer-origin.ext.example.com/hook"
-	const tokenVariable = "CONNECTION_HTTP_CONN_IE_BEARER_ORIGIN_TOKEN"
 	created, _ := s.create(httpConnRequest{
 		Name: "http-conn-ie-bearer-origin", URL: originalURL, Authentication: bearerConnAuth(httpConnBearerToken),
 	})
+	tokenVariable := httpConnVariable(created.ID, "TOKEN")
 	original, readable := s.storedSecretValue(created.ID, httpConnStoredBearerToken)
 	resources, env := s.exportConnection(created.ID)
 	s.Require().Equal(map[string]string{tokenVariable: httpConnBearerToken}, env, "The token is the only secret")
@@ -580,13 +592,13 @@ func (s *HTTPConnectionAPITestSuite) TestImportWithoutTheBearerTokenKeepsItOnlyF
 // value on the same origin, a header the document leaves out is removed, and a new origin is refused.
 func (s *HTTPConnectionAPITestSuite) TestImportOfAnAPIKeyConnectionKeepsAMaskedHeaderAndDropsAnOmittedOne() {
 	const originalURL = "https://apikey-keep.ext.example.com/hook"
-	const keptVariable = "CONNECTION_HTTP_CONN_IE_APIKEY_KEEP_X_TENANT_KEY"
-	const droppedVariable = "CONNECTION_HTTP_CONN_IE_APIKEY_KEEP_X_REGION_KEY"
 	const droppedProperty = "authentication_" + httpConnAPIKeyHeader2
 	created, _ := s.create(httpConnRequest{
 		Name: "http-conn-ie-apikey-keep", URL: originalURL, Authentication: apiKeyConnAuth(map[string]string{
 			httpConnAPIKeyHeader: httpConnAPIKeyValue, httpConnAPIKeyHeader2: httpConnAPIKeyValue2}),
 	})
+	keptVariable := httpConnVariable(created.ID, "X_TENANT_KEY")
+	droppedVariable := httpConnVariable(created.ID, "X_REGION_KEY")
 	original, readable := s.storedSecretValue(created.ID, httpConnStoredAPIKeyHeader)
 	resources, env := s.exportConnection(created.ID)
 	s.Require().Equal(map[string]string{keptVariable: httpConnAPIKeyValue, droppedVariable: httpConnAPIKeyValue2},

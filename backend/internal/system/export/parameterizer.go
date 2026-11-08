@@ -72,6 +72,9 @@ type parameterizer struct {
 	// set per call on a copy rather than on the shared instance, so concurrent exports of different
 	// resource types cannot read each other's value.
 	resourceType string
+	// resourceID is the ID of the resource being parameterized, which every variable name it emits is
+	// qualified by. It is set per call on the same copy as resourceType.
+	resourceID string
 	// secrets collects the variable names this call emitted for a credential. It lives on the
 	// per-call copy for the same reason resourceType does.
 	secrets map[string]bool
@@ -87,6 +90,15 @@ func newParameterizer(rules templatingRules, style PlaceholderStyle) *parameteri
 // stands would point a credential at the collection a read reaches. Rewriting the prefix instead
 // would name a secret that was never stored, so the export refuses rather than guess.
 var errCredentialHeldAsVariable = errors.New("a credential refers to a variable rather than a secret")
+
+// errResourceHasNoID is returned when a resource whose export names values has no ID to name them by.
+var errResourceHasNoID = errors.New("a resource without an ID cannot have its values named")
+
+// namesValues reports whether rules ask for any value to be named.
+func namesValues(rules *declarativeresource.ResourceRules) bool {
+	return rules != nil && (len(rules.Variables) > 0 || len(rules.ArrayVariables) > 0 ||
+		len(rules.SecretVariables) > 0 || len(rules.DynamicPropertyFields) > 0)
+}
 
 // keepsStoredReference reports whether a stored value is a reference that must be written out as
 // it stands.
@@ -141,11 +153,12 @@ func (p *parameterizer) placeholderFor(varName string, isSecret bool) string {
 	return valueref.VariableReference(varName)
 }
 
-// forResourceType returns a copy bound to the given resource type, leaving the shared instance
+// forResource returns a copy bound to the given resource type and ID, leaving the shared instance
 // untouched.
-func (p *parameterizer) forResourceType(resourceType string) *parameterizer {
+func (p *parameterizer) forResource(resourceType, resourceID string) *parameterizer {
 	clone := *p
 	clone.resourceType = resourceType
+	clone.resourceID = resourceID
 	clone.secrets = map[string]bool{}
 	return &clone
 }
@@ -162,10 +175,14 @@ func (p *parameterizer) markAsCredential(name string) {
 // where a read cannot return it: the values map alone cannot be told apart, and the isSecret marker
 // the template carries is only readable by parsing the text back.
 func (p *parameterizer) ToParameterizedYAML(ctx context.Context, obj interface{},
-	resourceType string, resourceName string,
+	resourceType, resourceID string,
 	rules *declarativeresource.ResourceRules) (string, map[string]string, map[string]bool, error) {
-	// Every variable name this call emits is qualified by the resource type.
-	p = p.forResourceType(resourceType)
+	// A name without the resource's ID is not its own, and two resources could share it.
+	if resourceID == "" && namesValues(rules) {
+		return "", nil, nil, errResourceHasNoID
+	}
+	// Every variable name this call emits is qualified by the resource type and ID.
+	p = p.forResource(resourceType, resourceID)
 
 	// Convert imported type to local type for compatibility
 	var localRules *resourceRules
@@ -181,7 +198,7 @@ func (p *parameterizer) ToParameterizedYAML(ctx context.Context, obj interface{}
 	// Convert object to yaml.Node directly to preserve field order and handle omitempty
 	// Pass rules so fields in parameterization rules bypass omitempty
 	var node yaml.Node
-	if err := p.structToNodeIgnoringOmitempty(obj, &node, localRules, "", resourceName); err != nil {
+	if err := p.structToNodeIgnoringOmitempty(obj, &node, localRules, ""); err != nil {
 		return "", nil, nil, fmt.Errorf("failed to convert object to node: %w", err)
 	}
 
@@ -206,17 +223,17 @@ func (p *parameterizer) ToParameterizedYAML(ctx context.Context, obj interface{}
 	// Capture original values before parameterization replaces them.
 	// Dynamic property values must be extracted from the original struct here because
 	// structToNodeIgnoringOmitempty already baked template placeholders into their nodes.
-	variableValues := p.extractValuesFromNode(&node, rulesWithYAMLPaths, resourceName)
+	variableValues := p.extractValuesFromNode(&node, rulesWithYAMLPaths)
 	// A dynamic property's value is read only for the .env a template-style export carries. Reading
 	// it decrypts a secret, and a reference-style export writes no value beside the document.
 	if p.style == TemplatePlaceholders {
-		for k, v := range p.extractDynamicPropertyValues(obj, localRules, resourceName) {
+		for k, v := range p.extractDynamicPropertyValues(obj, localRules) {
 			variableValues[k] = v
 		}
 	}
 
 	// Apply parameterization to the node tree
-	if err := p.parameterizeNode(&node, rulesWithYAMLPaths, resourceName); err != nil {
+	if err := p.parameterizeNode(&node, rulesWithYAMLPaths); err != nil {
 		return "", nil, nil, err
 	}
 
@@ -249,7 +266,7 @@ func (p *parameterizer) ToParameterizedYAML(ctx context.Context, obj interface{}
 //     referring to, so nothing is stored under the list's name and the reference is not copied into
 //     a store that holds values.
 func (p *parameterizer) PlaceholderValues(ctx context.Context, obj interface{},
-	resourceType string, resourceName string,
+	resourceType, resourceID string,
 	rules *declarativeresource.ResourceRules) (map[string]string, map[string]string, error) {
 	variables, secrets := map[string]string{}, map[string]string{}
 	if rules == nil {
@@ -258,17 +275,17 @@ func (p *parameterizer) PlaceholderValues(ctx context.Context, obj interface{},
 
 	reader := *p
 	reader.style = TemplatePlaceholders
-	_, values, credentials, err := reader.ToParameterizedYAML(ctx, obj, resourceType, resourceName, rules)
+	_, values, credentials, err := reader.ToParameterizedYAML(ctx, obj, resourceType, resourceID, rules)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	// A list is named from its YAML path, as every value is when it is read.
-	named := p.forResourceType(resourceType)
+	named := p.forResource(resourceType, resourceID)
 	yamlPaths := named.convertStructPathsToYAMLPaths(ctx, obj, &resourceRules{ArrayVariables: rules.ArrayVariables})
 	lists := make(map[string]bool, len(yamlPaths.ArrayVariables))
 	for _, path := range yamlPaths.ArrayVariables {
-		lists[named.pathToVariableName(resourceName, path)] = true
+		lists[named.pathToVariableName(path)] = true
 	}
 	for name, value := range values {
 		if lists[name] {
@@ -287,7 +304,7 @@ func (p *parameterizer) PlaceholderValues(ctx context.Context, obj interface{},
 		}
 	}
 
-	for name, value := range named.mappedCredentials(obj, rules, resourceName) {
+	for name, value := range named.mappedCredentials(obj, rules) {
 		if value != "" && !valueref.IsWellFormedReference(value) {
 			secrets[name] = value
 		}
@@ -324,7 +341,7 @@ func holdsReference(items []string) bool {
 // dynamic property field. A map whose values are not strings, such as a presentation definition's list
 // of allowed values per claim, holds no value a single name can stand for and is skipped.
 func (p *parameterizer) mappedCredentials(
-	obj interface{}, rules *declarativeresource.ResourceRules, resourceName string,
+	obj interface{}, rules *declarativeresource.ResourceRules,
 ) map[string]string {
 	values := map[string]string{}
 	v := reflect.ValueOf(obj)
@@ -356,7 +373,7 @@ func (p *parameterizer) mappedCredentials(
 			if entry.Kind() != reflect.String {
 				continue
 			}
-			values[p.generatePropertyVarName(resourceName, iter.Key().String())] = entry.String()
+			values[p.generatePropertyVarName(iter.Key().String())] = entry.String()
 		}
 	}
 	return values
@@ -365,7 +382,7 @@ func (p *parameterizer) mappedCredentials(
 // extractValuesFromNode reads the original values of parameterization variables from the node
 // tree before they are replaced with template placeholders.
 func (p *parameterizer) extractValuesFromNode(
-	node *yaml.Node, rules *resourceRules, resourceName string,
+	node *yaml.Node, rules *resourceRules,
 ) map[string]string {
 	values := make(map[string]string)
 	if node.Kind != yaml.DocumentNode || len(node.Content) == 0 {
@@ -374,7 +391,7 @@ func (p *parameterizer) extractValuesFromNode(
 	root := node.Content[0]
 
 	for _, path := range rules.Variables {
-		varName := p.pathToVariableName(resourceName, path)
+		varName := p.pathToVariableName(path)
 		if val := p.getScalarFromNode(root, path); val != "" {
 			values[varName] = val
 		}
@@ -383,14 +400,14 @@ func (p *parameterizer) extractValuesFromNode(
 	// A secret variable is read exactly as an ordinary one. Which names are reported as credentials
 	// is decided where each value is written, since a kept reference is reported under its own name.
 	for _, path := range rules.SecretVariables {
-		varName := p.pathToVariableName(resourceName, path)
+		varName := p.pathToVariableName(path)
 		if val := p.getScalarFromNode(root, path); val != "" {
 			values[varName] = val
 		}
 	}
 
 	for _, path := range rules.ArrayVariables {
-		varName := p.pathToVariableName(resourceName, path)
+		varName := p.pathToVariableName(path)
 		if vals := p.getArrayFromNode(root, path); vals != nil {
 			jsonBytes, err := json.Marshal(vals)
 			if err == nil {
@@ -405,9 +422,9 @@ func (p *parameterizer) extractValuesFromNode(
 // extractDynamicPropertyValues reads actual property values from the original struct before
 // structToNodeIgnoringOmitempty converts them to template placeholders.
 // It navigates each DynamicPropertyFields path, iterates the []cmodels.Property slice found
-// there, and maps generatePropertyVarName(resourceName, propName) → actual value.
+// there, and maps generatePropertyVarName(propName) → actual value.
 func (p *parameterizer) extractDynamicPropertyValues(
-	obj interface{}, rules *resourceRules, resourceName string,
+	obj interface{}, rules *resourceRules,
 ) map[string]string {
 	values := make(map[string]string)
 	if rules == nil || len(rules.DynamicPropertyFields) == 0 {
@@ -462,7 +479,7 @@ func (p *parameterizer) extractDynamicPropertyValues(
 			}
 			propValue := valueResults[0].String()
 
-			varName := p.generatePropertyVarName(resourceName, propName)
+			varName := p.generatePropertyVarName(propName)
 			values[varName] = propValue
 		}
 	}
@@ -573,7 +590,7 @@ func (p *parameterizer) getArrayFromNode(node *yaml.Node, path string) []string 
 // structToNodeIgnoringOmitempty converts a struct to yaml.Node while preserving field order
 // and respecting omitempty tags (skip empty fields unless they're in parameterization rules)
 func (p *parameterizer) structToNodeIgnoringOmitempty(
-	obj interface{}, node *yaml.Node, rules *resourceRules, currentPath string, resourceName string,
+	obj interface{}, node *yaml.Node, rules *resourceRules, currentPath string,
 ) error {
 	v := reflect.ValueOf(obj)
 	if v.Kind() == reflect.Pointer {
@@ -631,7 +648,7 @@ func (p *parameterizer) structToNodeIgnoringOmitempty(
 		// Mirror yaml.v3's `yaml:",inline"` semantics: flatten the embedded struct's fields
 		// into the current mapping rather than nesting them under an empty key.
 		if isInline {
-			err := p.appendInlineStructFields(mappingNode, fieldValue, rules, currentPath, resourceName)
+			err := p.appendInlineStructFields(mappingNode, fieldValue, rules, currentPath)
 			if err != nil {
 				return err
 			}
@@ -657,7 +674,7 @@ func (p *parameterizer) structToNodeIgnoringOmitempty(
 		}
 
 		// Create value node
-		valueNode, err := p.fieldToNode(fieldValue, rules, fieldPath, resourceName)
+		valueNode, err := p.fieldToNode(fieldValue, rules, fieldPath)
 		if err != nil {
 			return err
 		}
@@ -676,7 +693,7 @@ func (p *parameterizer) structToNodeIgnoringOmitempty(
 // given mapping node, honoring per-field omitempty / rules / yamlfmt as the regular walkers do.
 func (p *parameterizer) appendInlineStructFields(
 	mapping *yaml.Node, fieldValue reflect.Value,
-	rules *resourceRules, currentPath, resourceName string,
+	rules *resourceRules, currentPath string,
 ) error {
 	v := fieldValue
 	if v.Kind() == reflect.Pointer {
@@ -718,7 +735,7 @@ func (p *parameterizer) appendInlineStructFields(
 		}
 
 		if isInline {
-			if err := p.appendInlineStructFields(mapping, innerValue, rules, currentPath, resourceName); err != nil {
+			if err := p.appendInlineStructFields(mapping, innerValue, rules, currentPath); err != nil {
 				return err
 			}
 			continue
@@ -729,7 +746,7 @@ func (p *parameterizer) appendInlineStructFields(
 		}
 
 		keyNode := &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: yamlFieldName}
-		valueNode, err := p.fieldToNode(innerValue, rules, nestedPath, resourceName)
+		valueNode, err := p.fieldToNode(innerValue, rules, nestedPath)
 		if err != nil {
 			return err
 		}
@@ -845,7 +862,7 @@ func (p *parameterizer) isFieldDynamicProperty(rules *resourceRules, fieldPath s
 }
 
 // propertyToYAMLNode converts a Property interface to a YAML node
-func (p *parameterizer) propertyToYAMLNode(propValue reflect.Value, resourceName string) (*yaml.Node, error) {
+func (p *parameterizer) propertyToYAMLNode(propValue reflect.Value) (*yaml.Node, error) {
 	node := &yaml.Node{Kind: yaml.MappingNode}
 
 	// Property has methods: GetName(), GetValue(), IsSecret()
@@ -873,7 +890,7 @@ func (p *parameterizer) propertyToYAMLNode(propValue reflect.Value, resourceName
 	}
 
 	// Generate template variable name
-	propVarName := p.generatePropertyVarName(resourceName, propName)
+	propVarName := p.generatePropertyVarName(propName)
 	propValueStr := p.placeholderFor(propVarName, isSecret)
 	credentialName := ""
 	if isSecret {
@@ -926,15 +943,8 @@ func (p *parameterizer) propertyToYAMLNode(propValue reflect.Value, resourceName
 }
 
 // generatePropertyVarName generates a context-aware variable name for a property
-// e.g., "Export Test IDP" + "client_id" -> "EXPORT_TEST_IDP_CLIENT_ID"
-func (p *parameterizer) generatePropertyVarName(resourceName, propertyName string) string {
-	return varname.DeriveVariableName(p.resourceType, resourceName, propertyName)
-}
-
-// VarPrefix returns the variable name prefix derived from a resource name, e.g. "My App" ->
-// "MY_APP". Callers use it to detect resource names that normalize to the same prefix.
-func (p *parameterizer) VarPrefix(resourceName string) string {
-	return p.sanitizeVarName(p.toSnakeCase(strings.ReplaceAll(resourceName, " ", "_")))
+func (p *parameterizer) generatePropertyVarName(propertyName string) string {
+	return varname.DeriveVariableName(p.resourceType, p.resourceID, propertyName)
 }
 
 // handleInterfaceValue handles interface{} types by JSON-encoding them.
@@ -979,7 +989,7 @@ func applyYAMLFormat(field reflect.StructField, valueNode *yaml.Node) {
 
 // handleStructNode converts a struct reflect.Value to a YAML mapping node.
 func (p *parameterizer) handleStructNode(
-	v reflect.Value, rules *resourceRules, currentPath string, resourceName string) (*yaml.Node, error) {
+	v reflect.Value, rules *resourceRules, currentPath string) (*yaml.Node, error) {
 	node := &yaml.Node{Kind: yaml.MappingNode}
 	t := v.Type()
 
@@ -1010,7 +1020,7 @@ func (p *parameterizer) handleStructNode(
 		fieldValue := v.Field(i)
 
 		if isInline {
-			if err := p.appendInlineStructFields(node, fieldValue, rules, currentPath, resourceName); err != nil {
+			if err := p.appendInlineStructFields(node, fieldValue, rules, currentPath); err != nil {
 				return nil, err
 			}
 			continue
@@ -1032,7 +1042,7 @@ func (p *parameterizer) handleStructNode(
 			Tag:   "!!str",
 			Value: yamlFieldName,
 		}
-		valueNode, err := p.fieldToNode(fieldValue, rules, nestedFieldPath, resourceName)
+		valueNode, err := p.fieldToNode(fieldValue, rules, nestedFieldPath)
 		if err != nil {
 			return nil, err
 		}
@@ -1044,7 +1054,7 @@ func (p *parameterizer) handleStructNode(
 
 // handleSliceOrArrayNode converts a slice or array reflect.Value to a YAML node.
 func (p *parameterizer) handleSliceOrArrayNode(
-	v reflect.Value, rules *resourceRules, currentPath string, resourceName string) (*yaml.Node, error) {
+	v reflect.Value, rules *resourceRules, currentPath string) (*yaml.Node, error) {
 	// Check if this is json.RawMessage ([]byte) and handle it specially
 	if v.Type() == reflect.TypeOf(json.RawMessage{}) {
 		return p.handleJSONRawMessage(v)
@@ -1060,7 +1070,7 @@ func (p *parameterizer) handleSliceOrArrayNode(
 			if propValue.CanAddr() {
 				propValue = propValue.Addr()
 			}
-			propNode, err := p.propertyToYAMLNode(propValue, resourceName)
+			propNode, err := p.propertyToYAMLNode(propValue)
 			if err != nil {
 				return nil, err
 			}
@@ -1072,7 +1082,7 @@ func (p *parameterizer) handleSliceOrArrayNode(
 	// Convert regular slices/arrays
 	node := &yaml.Node{Kind: yaml.SequenceNode}
 	for i := 0; i < v.Len(); i++ {
-		itemNode, err := p.fieldToNode(v.Index(i), rules, currentPath, resourceName)
+		itemNode, err := p.fieldToNode(v.Index(i), rules, currentPath)
 		if err != nil {
 			return nil, err
 		}
@@ -1111,7 +1121,7 @@ func (p *parameterizer) handleJSONRawMessage(v reflect.Value) (*yaml.Node, error
 // order: Go randomizes map iteration, which would otherwise make a re-export of unchanged data
 // produce a different document and churn GitOps diffs.
 func (p *parameterizer) handleMapNode(
-	v reflect.Value, rules *resourceRules, currentPath string, resourceName string) (*yaml.Node, error) {
+	v reflect.Value, rules *resourceRules, currentPath string) (*yaml.Node, error) {
 	keys := v.MapKeys()
 	sort.Slice(keys, func(i, j int) bool {
 		return fmt.Sprintf("%v", keys[i].Interface()) < fmt.Sprintf("%v", keys[j].Interface())
@@ -1124,7 +1134,7 @@ func (p *parameterizer) handleMapNode(
 			Tag:   "!!str",
 			Value: fmt.Sprintf("%v", key.Interface()),
 		}
-		valueNode, err := p.fieldToNode(v.MapIndex(key), rules, currentPath, resourceName)
+		valueNode, err := p.fieldToNode(v.MapIndex(key), rules, currentPath)
 		if err != nil {
 			return nil, err
 		}
@@ -1135,7 +1145,7 @@ func (p *parameterizer) handleMapNode(
 
 // fieldToNode converts a reflect.Value to yaml.Node
 func (p *parameterizer) fieldToNode(
-	v reflect.Value, rules *resourceRules, currentPath string, resourceName string) (*yaml.Node, error) {
+	v reflect.Value, rules *resourceRules, currentPath string) (*yaml.Node, error) {
 	// Handle nil pointers
 	if v.Kind() == reflect.Pointer && v.IsNil() {
 		return &yaml.Node{
@@ -1157,13 +1167,13 @@ func (p *parameterizer) fieldToNode(
 
 	switch v.Kind() {
 	case reflect.Struct:
-		return p.handleStructNode(v, rules, currentPath, resourceName)
+		return p.handleStructNode(v, rules, currentPath)
 
 	case reflect.Slice, reflect.Array:
-		return p.handleSliceOrArrayNode(v, rules, currentPath, resourceName)
+		return p.handleSliceOrArrayNode(v, rules, currentPath)
 
 	case reflect.Map:
-		return p.handleMapNode(v, rules, currentPath, resourceName)
+		return p.handleMapNode(v, rules, currentPath)
 
 	case reflect.String:
 		return &yaml.Node{
@@ -1426,7 +1436,7 @@ func (p *parameterizer) convertPathToYAMLPath(objType reflect.Type, path string)
 }
 
 // parameterizeNode applies templating rules to yaml.Node tree
-func (p *parameterizer) parameterizeNode(node *yaml.Node, rules *resourceRules, resourceName string) error {
+func (p *parameterizer) parameterizeNode(node *yaml.Node, rules *resourceRules) error {
 	if node.Kind != yaml.DocumentNode || len(node.Content) == 0 {
 		return nil
 	}
@@ -1435,7 +1445,7 @@ func (p *parameterizer) parameterizeNode(node *yaml.Node, rules *resourceRules, 
 
 	// Process simple variables
 	for _, path := range rules.Variables {
-		placeholder := p.placeholderFor(p.pathToVariableName(resourceName, path), false)
+		placeholder := p.placeholderFor(p.pathToVariableName(path), false)
 		if err := p.forEachValue(root, path, func(value *yaml.Node) error {
 			if !p.keepsStoredReference(value.Value) {
 				setPlaceholder(value, placeholder)
@@ -1452,7 +1462,7 @@ func (p *parameterizer) parameterizeNode(node *yaml.Node, rules *resourceRules, 
 	// Secret variables are replaced the same way. What makes one a secret is how it is written and
 	// reported, not whether it is replaced: leaving it out would leave the credential in the clear.
 	for _, path := range rules.SecretVariables {
-		varName := p.pathToVariableName(resourceName, path)
+		varName := p.pathToVariableName(path)
 		placeholder := p.placeholderFor(varName, true)
 		if err := p.forEachValue(root, path, func(value *yaml.Node) error {
 			if !p.keepsStoredReference(value.Value) {
@@ -1477,7 +1487,7 @@ func (p *parameterizer) parameterizeNode(node *yaml.Node, rules *resourceRules, 
 	// expands into the items its variable holds. Nothing here is a credential: what is parameterized
 	// as an array is an address list.
 	for _, path := range rules.ArrayVariables {
-		varName := p.pathToVariableName(resourceName, path)
+		varName := p.pathToVariableName(path)
 		if err := p.replaceArrayNode(root, path, varName); err != nil {
 			return err
 		}
@@ -1506,76 +1516,11 @@ func (p *parameterizer) referToList(list *yaml.Node, varName string) {
 	list.Content = []*yaml.Node{{Kind: yaml.ScalarNode, Tag: "!!str", Value: valueref.VariableReference(varName)}}
 }
 
-// pathToVariableName converts path to uppercase variable name with app name prefix
-// e.g., "My App", "InboundAuthConfig.oauth.RedirectURIs" -> "MY_APP_REDIRECT_URIS"
-func (p *parameterizer) pathToVariableName(appName, path string) string {
+// pathToVariableName names the value a field path reaches, from the last segment of the path.
+func (p *parameterizer) pathToVariableName(path string) string {
 	parts := strings.Split(path, ".")
 	lastPart := parts[len(parts)-1]
-	return varname.DeriveVariableName(p.resourceType, appName, lastPart)
-}
-
-// sanitizeVarName replaces characters that are not valid in a Go template field name (for
-// example the hyphen in "MY-APP") with underscores, collapsing consecutive underscores, so that
-// the exported placeholders can be parsed again on import. A leading digit is also prefixed
-// with an underscore.
-// Trailing underscores are trimmed so that a prefix keyed by varNameAllocator matches the name
-// that ends up in the placeholder: "MY_APP" and "MY_APP_" are distinct prefixes but both would
-// render as MY_APP_CLIENT_ID once joined with a property name. A leading underscore is kept,
-// since that is the escape for a name starting with a digit.
-func (p *parameterizer) sanitizeVarName(name string) string {
-	var result strings.Builder
-	lastWasUnderscore := false
-	for _, r := range name {
-		switch {
-		case r >= 'A' && r <= 'Z', r >= 'a' && r <= 'z', r >= '0' && r <= '9':
-			result.WriteRune(r)
-			lastWasUnderscore = false
-		default:
-			if !lastWasUnderscore {
-				result.WriteRune('_')
-				lastWasUnderscore = true
-			}
-		}
-	}
-
-	sanitized := strings.TrimRight(result.String(), "_")
-	if sanitized != "" && sanitized[0] >= '0' && sanitized[0] <= '9' {
-		return "_" + sanitized
-	}
-
-	return sanitized
-}
-
-// toSnakeCase converts camelCase/PascalCase to UPPER_SNAKE_CASE
-func (p *parameterizer) toSnakeCase(s string) string {
-	var result strings.Builder
-	runes := []rune(s)
-
-	for i := 0; i < len(runes); i++ {
-		r := runes[i]
-
-		// Add underscore before uppercase letter if:
-		// 1. Not at the beginning (i > 0)
-		// 2. Previous character is lowercase (not underscore or uppercase) OR
-		// 3. Next character exists and is lowercase (handles acronyms like "ClientID" -> "CLIENT_ID")
-		if i > 0 && r >= 'A' && r <= 'Z' {
-			prev := runes[i-1]
-			// Check if previous char is lowercase (skip if it's underscore or uppercase)
-			if prev >= 'a' && prev <= 'z' {
-				result.WriteRune('_')
-			} else if prev != '_' && i+1 < len(runes) {
-				// Previous is uppercase (but not underscore), check next
-				next := runes[i+1]
-				if next >= 'a' && next <= 'z' {
-					result.WriteRune('_')
-				}
-			}
-		}
-
-		result.WriteRune(r)
-	}
-
-	return strings.ToUpper(result.String())
+	return varname.DeriveVariableName(p.resourceType, p.resourceID, lastPart)
 }
 
 // forEachValue calls visit with every value node the path reaches. A segment ending in "[]"

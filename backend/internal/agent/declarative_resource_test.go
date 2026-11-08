@@ -20,6 +20,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/entity"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/varname"
 	"github.com/thunder-id/thunderid/tests/mocks/agentmock"
 	"github.com/thunder-id/thunderid/tests/mocks/entitymock"
 
@@ -140,6 +141,11 @@ func (s *AgentExporterTestSuite) TestGetResourceByID_Success() {
 	assert.Nil(s.T(), expected.Credentials, "an agent with no credential set exports none")
 }
 
+// agentVar is the variable an export names a credential of the agent these tests export: agent1.
+func agentVar(credential string) string {
+	return varname.DeriveVariableName("agent", "agent1", credential)
+}
+
 // Each credential the agent holds is exported as a placeholder named after the agent, never as its
 // stored hash.
 func (s *AgentExporterTestSuite) TestGetResourceByID_ExportsHeldCredentialsAsPlaceholders() {
@@ -150,7 +156,7 @@ func (s *AgentExporterTestSuite) TestGetResourceByID_ExportsHeldCredentialsAsPla
 	resource, _, err := s.exporter.GetResourceByID(context.Background(), "agent1")
 
 	assert.Nil(s.T(), err)
-	assert.Equal(s.T(), map[string]interface{}{"password": "{{.AGENT_MY_AGENT_PASSWORD}}"},
+	assert.Equal(s.T(), map[string]interface{}{"password": "{{." + agentVar("password") + "}}"},
 		resource.(*model.AgentGetResponse).Credentials)
 }
 
@@ -166,7 +172,7 @@ func (s *AgentExporterTestSuite) TestGetResourceByID_WritesCredentialReferences(
 	resource, _, err := s.exporter.GetResourceByID(context.Background(), "agent1")
 
 	assert.Nil(s.T(), err)
-	assert.Equal(s.T(), map[string]interface{}{"password": "sec:AGENT_MY_AGENT_PASSWORD"},
+	assert.Equal(s.T(), map[string]interface{}{"password": "sec:" + agentVar("password")},
 		resource.(*model.AgentGetResponse).Credentials)
 }
 

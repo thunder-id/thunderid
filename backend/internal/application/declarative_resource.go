@@ -145,6 +145,14 @@ func (e *applicationExporter) ValidateResource(ctx context.Context,
 	return app.Name, nil
 }
 
+// GetResourceID returns the ID of an exported application.
+func (e *applicationExporter) GetResourceID(resource interface{}) string {
+	if app, ok := applicationOf(resource); ok {
+		return app.ID
+	}
+	return ""
+}
+
 // ViewResource shows an exported application as a read of it returns it.
 func (e *applicationExporter) ViewResource(ctx context.Context, document *yaml.Node) (interface{}, error) {
 	return declarativeresource.DecodeView(document, func(app *providers.Application) (interface{}, error) {

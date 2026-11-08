@@ -79,27 +79,32 @@ func TestToParameterizedYAML_WithOmitemptyFields(t *testing.T) {
 
 	parameterizer := newParameterizer(rules, TemplatePlaceholders)
 	result, _, _, err := parameterizer.ToParameterizedYAML(context.Background(),
-		app, "Application", "TestApp", toDeclarativeResourceRules(rules.Application))
+		app, "Application", testResourceID, toDeclarativeResourceRules(rules.Application))
 
 	require.NoError(t, err)
 	require.NotEmpty(t, result)
 
 	// Verify that omitempty fields are included and parameterized
 	assert.Contains(t, result, "clientId:", "ClientID field should be present even though it's empty")
-	assert.Contains(t, result, "{{.APPLICATION_TEST_APP_CLIENT_ID}}", "ClientID should be parameterized")
+	assert.Contains(t, result, "{{."+tv("APPLICATION", "CLIENT_ID")+"}}",
+		"ClientID should be parameterized")
 
 	assert.Contains(t, result, "redirectUri:", "RedirectURI field should be present even though it's empty")
-	assert.Contains(t, result, "{{.APPLICATION_TEST_APP_REDIRECT_URI}}", "RedirectURI should be parameterized")
+	assert.Contains(t, result, "{{."+tv("APPLICATION", "REDIRECT_URI")+"}}",
+		"RedirectURI should be parameterized")
 
 	assert.Contains(t, result, "clientSecret:", "ClientSecret field should be present even though it's empty")
-	assert.Contains(t, result, "{{.APPLICATION_TEST_APP_CLIENT_SECRET}}", "ClientSecret should be parameterized")
+	assert.Contains(t, result, "{{."+tv("APPLICATION", "CLIENT_SECRET")+"}}",
+		"ClientSecret should be parameterized")
 
 	// Verify array parameterization
 	assert.Contains(t, result, "grantTypes:", "GrantTypes field should be present")
-	assert.Contains(t, result, "{{- range .APPLICATION_TEST_APP_GRANT_TYPES}}", "GrantTypes should have range template")
+	assert.Contains(t, result, "{{- range ."+tv("APPLICATION", "GRANT_TYPES")+"}}",
+		"GrantTypes should have range template")
 
 	assert.Contains(t, result, "scopes:", "Scopes field should be present")
-	assert.Contains(t, result, "{{- range .APPLICATION_TEST_APP_SCOPES}}", "Scopes should have range template")
+	assert.Contains(t, result, "{{- range ."+tv("APPLICATION", "SCOPES")+"}}",
+		"Scopes should have range template")
 }
 
 func TestToParameterizedYAML_WithPopulatedFields(t *testing.T) {
@@ -131,26 +136,31 @@ func TestToParameterizedYAML_WithPopulatedFields(t *testing.T) {
 
 	parameterizer := newParameterizer(rules, TemplatePlaceholders)
 	result, _, _, err := parameterizer.ToParameterizedYAML(context.Background(),
-		app, "Application", "TestApp", toDeclarativeResourceRules(rules.Application))
+		app, "Application", testResourceID, toDeclarativeResourceRules(rules.Application))
 
 	require.NoError(t, err)
 	require.NotEmpty(t, result)
 
 	// Verify parameterization replaced actual values
-	assert.Contains(t, result, "{{.APPLICATION_TEST_APP_CLIENT_ID}}", "ClientID should be parameterized")
+	assert.Contains(t, result, "{{."+tv("APPLICATION", "CLIENT_ID")+"}}",
+		"ClientID should be parameterized")
 	assert.NotContains(t, result, "test-client-id", "Original ClientID value should be replaced")
 
-	assert.Contains(t, result, "{{.APPLICATION_TEST_APP_REDIRECT_URI}}", "RedirectURI should be parameterized")
+	assert.Contains(t, result, "{{."+tv("APPLICATION", "REDIRECT_URI")+"}}",
+		"RedirectURI should be parameterized")
 	assert.NotContains(t, result, "https://example.com/callback", "Original RedirectURI should be replaced")
 
-	assert.Contains(t, result, "{{.APPLICATION_TEST_APP_CLIENT_SECRET}}", "ClientSecret should be parameterized")
+	assert.Contains(t, result, "{{."+tv("APPLICATION", "CLIENT_SECRET")+"}}",
+		"ClientSecret should be parameterized")
 	assert.NotContains(t, result, "secret123", "Original ClientSecret should be replaced")
 
 	// Verify array parameterization
-	assert.Contains(t, result, "{{- range .APPLICATION_TEST_APP_GRANT_TYPES}}", "GrantTypes should have range template")
+	assert.Contains(t, result, "{{- range ."+tv("APPLICATION", "GRANT_TYPES")+"}}",
+		"GrantTypes should have range template")
 	assert.NotContains(t, result, "authorization_code", "Original grant type should be replaced")
 
-	assert.Contains(t, result, "{{- range .APPLICATION_TEST_APP_SCOPES}}", "Scopes should have range template")
+	assert.Contains(t, result, "{{- range ."+tv("APPLICATION", "SCOPES")+"}}",
+		"Scopes should have range template")
 	assert.NotContains(t, result, "openid", "Original scope should be replaced")
 }
 
@@ -183,26 +193,31 @@ func TestToParameterizedYAML_MixedEmptyAndPopulated(t *testing.T) {
 
 	parameterizer := newParameterizer(rules, TemplatePlaceholders)
 	result, _, _, err := parameterizer.ToParameterizedYAML(context.Background(),
-		app, "Application", "TestApp", toDeclarativeResourceRules(rules.Application))
+		app, "Application", testResourceID, toDeclarativeResourceRules(rules.Application))
 
 	require.NoError(t, err)
 	require.NotEmpty(t, result)
 
 	// All fields should be parameterized regardless of whether they were empty
 	assert.Contains(t, result, "clientId:", "ClientID field should be present")
-	assert.Contains(t, result, "{{.APPLICATION_TEST_APP_CLIENT_ID}}", "ClientID should be parameterized")
+	assert.Contains(t, result, "{{."+tv("APPLICATION", "CLIENT_ID")+"}}",
+		"ClientID should be parameterized")
 
 	assert.Contains(t, result, "redirectUri:", "RedirectURI field should be present even though empty")
-	assert.Contains(t, result, "{{.APPLICATION_TEST_APP_REDIRECT_URI}}", "RedirectURI should be parameterized")
+	assert.Contains(t, result, "{{."+tv("APPLICATION", "REDIRECT_URI")+"}}",
+		"RedirectURI should be parameterized")
 
 	assert.Contains(t, result, "clientSecret:", "ClientSecret field should be present even though empty")
-	assert.Contains(t, result, "{{.APPLICATION_TEST_APP_CLIENT_SECRET}}", "ClientSecret should be parameterized")
+	assert.Contains(t, result, "{{."+tv("APPLICATION", "CLIENT_SECRET")+"}}",
+		"ClientSecret should be parameterized")
 
 	assert.Contains(t, result, "grantTypes:", "GrantTypes should be present")
-	assert.Contains(t, result, "{{- range .APPLICATION_TEST_APP_GRANT_TYPES}}", "GrantTypes should have range template")
+	assert.Contains(t, result, "{{- range ."+tv("APPLICATION", "GRANT_TYPES")+"}}",
+		"GrantTypes should have range template")
 
 	assert.Contains(t, result, "scopes:", "Scopes should be present even though nil")
-	assert.Contains(t, result, "{{- range .APPLICATION_TEST_APP_SCOPES}}", "Scopes should have range template")
+	assert.Contains(t, result, "{{- range ."+tv("APPLICATION", "SCOPES")+"}}",
+		"Scopes should have range template")
 }
 
 func TestStructToMapIgnoringOmitempty(t *testing.T) {
@@ -265,73 +280,79 @@ func TestConvertFieldToInterface_NestedStructs(t *testing.T) {
 }
 
 func TestPathToVariableName(t *testing.T) {
-	parameterizer := newParameterizer(templatingRules{}, TemplatePlaceholders).forResourceType("Application")
+	parameterizer := newParameterizer(templatingRules{}, TemplatePlaceholders).
+		forResource("Application", testResourceID)
 
 	tests := []struct {
-		appName  string
 		path     string
 		expected string
 	}{
-		{"TestApp", "ClientID", "APPLICATION_TEST_APP_CLIENT_ID"},
-		{"TestApp", "RedirectURI", "APPLICATION_TEST_APP_REDIRECT_URI"},
-		{"TestApp", "OAuth.ClientSecret", "APPLICATION_TEST_APP_CLIENT_SECRET"},
-		{"TestApp", "OAuth.GrantTypes", "APPLICATION_TEST_APP_GRANT_TYPES"},
-		{"TestApp", "InboundAuthConfig.OAuth.ClientID", "APPLICATION_TEST_APP_CLIENT_ID"},
-		{"TestApp", "simpleField", "APPLICATION_TEST_APP_SIMPLE_FIELD"},
-		{"TestApp", "ALLCAPS", "APPLICATION_TEST_APP_ALLCAPS"},
-		{"My App", "ClientID", "APPLICATION_MY_APP_CLIENT_ID"},
-		{"My Test App", "RedirectURI", "APPLICATION_MY_TEST_APP_REDIRECT_URI"},
+		{"ClientID", tv("APPLICATION", "CLIENT_ID")},
+		{"RedirectURI", tv("APPLICATION", "REDIRECT_URI")},
+		{"OAuth.ClientSecret", tv("APPLICATION", "CLIENT_SECRET")},
+		{"OAuth.GrantTypes", tv("APPLICATION", "GRANT_TYPES")},
+		{"InboundAuthConfig.OAuth.ClientID", tv("APPLICATION", "CLIENT_ID")},
+		{"simpleField", tv("APPLICATION", "SIMPLE_FIELD")},
+		{"ALLCAPS", tv("APPLICATION", "ALLCAPS")},
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.appName+"_"+tt.path, func(t *testing.T) {
-			result := parameterizer.pathToVariableName(tt.appName, tt.path)
+		t.Run(tt.path, func(t *testing.T) {
+			result := parameterizer.pathToVariableName(tt.path)
 			assert.Equal(t, tt.expected, result)
 		})
 	}
 }
 
 func TestGeneratePropertyVarName(t *testing.T) {
-	parameterizer := newParameterizer(templatingRules{}, TemplatePlaceholders)
+	parameterizer := newParameterizer(templatingRules{}, TemplatePlaceholders).
+		forResource("IdentityProvider", testResourceID)
+	expected := tv("IDENTITY_PROVIDER", "CLIENT_ID")
 
-	tests := []struct {
-		resourceName string
-		propertyName string
-		expected     string
-	}{
-		{"Google IDP", "client_id", "GOOGLE_IDP_CLIENT_ID"},
-		{"Google-IDP", "client_id", "GOOGLE_IDP_CLIENT_ID"},
-		{"Google IDP", "client-id", "GOOGLE_IDP_CLIENT_ID"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.resourceName+"_"+tt.propertyName, func(t *testing.T) {
-			result := parameterizer.generatePropertyVarName(tt.resourceName, tt.propertyName)
-			assert.Equal(t, tt.expected, result)
+	for _, propertyName := range []string{"client_id", "client-id", "ClientID"} {
+		t.Run(propertyName, func(t *testing.T) {
+			assert.Equal(t, expected, parameterizer.generatePropertyVarName(propertyName))
 		})
 	}
 }
 
-// TestVarPrefixMatchesGeneratedVarName asserts the invariant varNameAllocator relies on: the
-// prefix it keys resources by is exactly the prefix of the generated variable name. A resource
-// name ending in a separator used to produce a different prefix ("MY_APP_") from the name it
-// rendered as ("MY_APP_CLIENT_ID"), letting two resources share one variable.
-func TestVarPrefixMatchesGeneratedVarName(t *testing.T) {
-	parameterizer := newParameterizer(templatingRules{}, TemplatePlaceholders)
+// A field named by a rule and a dynamic property are named by different code, and a value captured
+// for one must find the name the export wrote for it, so they must agree.
+func TestFieldAndPropertyNamesAgree(t *testing.T) {
+	parameterizer := newParameterizer(templatingRules{}, TemplatePlaceholders).
+		forResource("Application", testResourceID)
 
-	names := []string{
-		"My App", "My App-", "My App.", "My App ", "My App!",
-		"2FA App", "Wayfinder-Concierge-", "My.App+1",
-	}
+	assert.Equal(t, parameterizer.pathToVariableName("ClientID"),
+		parameterizer.generatePropertyVarName("client_id"))
+}
 
-	for _, name := range names {
-		t.Run(name, func(t *testing.T) {
-			assert.Equal(t, parameterizer.VarPrefix(name)+"_CLIENT_ID",
-				parameterizer.pathToVariableName(name, "ClientID"))
-			assert.Equal(t, parameterizer.VarPrefix(name)+"_CLIENT_ID",
-				parameterizer.generatePropertyVarName(name, "client_id"))
-		})
-	}
+// Two resources of one type must not share a variable for one field.
+func TestVariableNamesOfTwoResourcesDiffer(t *testing.T) {
+	base := newParameterizer(templatingRules{}, TemplatePlaceholders)
+	victim := base.forResource("User", testResourceID).generatePropertyVarName("password")
+	attacker := base.forResource("User", "0198f3a1-7c2e-7b10-9a44-5d3e8f21c6b8").
+		generatePropertyVarName("password")
+
+	assert.NotEqual(t, victim, attacker)
+}
+
+func TestToParameterizedYAMLRefusesAResourceWithoutAnID(t *testing.T) {
+	app := &TestApp{Name: "TestApp", ClientID: "client"}
+	rules := &declarativeresource.ResourceRules{Variables: []string{"ClientID"}}
+
+	_, _, _, err := newParameterizer(templatingRules{}, TemplatePlaceholders).
+		ToParameterizedYAML(context.Background(), app, "Application", "", rules)
+
+	assert.ErrorIs(t, err, errResourceHasNoID)
+}
+
+func TestToParameterizedYAMLWithoutRulesNeedsNoID(t *testing.T) {
+	app := &TestApp{Name: "TestApp"}
+
+	_, _, _, err := newParameterizer(templatingRules{}, TemplatePlaceholders).
+		ToParameterizedYAML(context.Background(), app, "Application", "", nil)
+
+	assert.NoError(t, err)
 }
 
 // =============================================================================
@@ -354,7 +375,8 @@ func TestOmitempty_EmptyFieldsWithoutRules(t *testing.T) {
 
 	// No parameterization rules - omitempty should work normally
 	parameterizer := newParameterizer(templatingRules{}, TemplatePlaceholders)
-	result, _, _, err := parameterizer.ToParameterizedYAML(context.Background(), app, "Application", "TestApp", nil)
+	result, _, _, err := parameterizer.ToParameterizedYAML(context.Background(), app, "Application", testResourceID,
+		nil)
 
 	require.NoError(t, err)
 	require.NotEmpty(t, result)
@@ -381,7 +403,8 @@ func TestOmitempty_EmptyArraysOmitted(t *testing.T) {
 	}
 
 	parameterizer := newParameterizer(templatingRules{}, TemplatePlaceholders)
-	result, _, _, err := parameterizer.ToParameterizedYAML(context.Background(), app, "Application", "TestApp", nil)
+	result, _, _, err := parameterizer.ToParameterizedYAML(context.Background(), app, "Application", testResourceID,
+		nil)
 
 	require.NoError(t, err)
 	assert.NotContains(t, result, "grantTypes:", "Empty GrantTypes array should be omitted")
@@ -399,7 +422,8 @@ func TestOmitempty_NilSlicesOmitted(t *testing.T) {
 	}
 
 	parameterizer := newParameterizer(templatingRules{}, TemplatePlaceholders)
-	result, _, _, err := parameterizer.ToParameterizedYAML(context.Background(), app, "Application", "TestApp", nil)
+	result, _, _, err := parameterizer.ToParameterizedYAML(context.Background(), app, "Application", testResourceID,
+		nil)
 
 	require.NoError(t, err)
 	assert.NotContains(t, result, "grantTypes:", "Nil GrantTypes should be omitted")
@@ -414,7 +438,8 @@ func TestOmitempty_NilPointersOmitted(t *testing.T) {
 	}
 
 	parameterizer := newParameterizer(templatingRules{}, TemplatePlaceholders)
-	result, _, _, err := parameterizer.ToParameterizedYAML(context.Background(), app, "Application", "TestApp", nil)
+	result, _, _, err := parameterizer.ToParameterizedYAML(context.Background(), app, "Application", testResourceID,
+		nil)
 
 	require.NoError(t, err)
 	assert.NotContains(t, result, "oauth:", "Nil OAuth pointer should be omitted")
@@ -445,16 +470,18 @@ func TestParameterization_OverridesOmitemptyForVariables(t *testing.T) {
 
 	parameterizer := newParameterizer(rules, TemplatePlaceholders)
 	result, _, _, err := parameterizer.ToParameterizedYAML(context.Background(),
-		app, "Application", "TestApp", toDeclarativeResourceRules(rules.Application))
+		app, "Application", testResourceID, toDeclarativeResourceRules(rules.Application))
 
 	require.NoError(t, err)
 
 	// These fields should be present and parameterized despite being empty
 	assert.Contains(t, result, "clientId:", "ClientID should be present (in rules)")
-	assert.Contains(t, result, "{{.APPLICATION_TEST_APP_CLIENT_ID}}", "ClientID should be parameterized")
+	assert.Contains(t, result, "{{."+tv("APPLICATION", "CLIENT_ID")+"}}",
+		"ClientID should be parameterized")
 
 	assert.Contains(t, result, "redirectUri:", "RedirectURI should be present (in rules)")
-	assert.Contains(t, result, "{{.APPLICATION_TEST_APP_REDIRECT_URI}}", "RedirectURI should be parameterized")
+	assert.Contains(t, result, "{{."+tv("APPLICATION", "REDIRECT_URI")+"}}",
+		"RedirectURI should be parameterized")
 }
 
 // TestParameterization_OverridesOmitemptyForArrays verifies that empty array
@@ -475,13 +502,14 @@ func TestParameterization_OverridesOmitemptyForArrays(t *testing.T) {
 
 	parameterizer := newParameterizer(rules, TemplatePlaceholders)
 	result, _, _, err := parameterizer.ToParameterizedYAML(context.Background(),
-		app, "Application", "TestApp", toDeclarativeResourceRules(rules.Application))
+		app, "Application", testResourceID, toDeclarativeResourceRules(rules.Application))
 
 	require.NoError(t, err)
 
 	// Scopes should be present and parameterized despite being nil
 	assert.Contains(t, result, "scopes:", "Scopes should be present (in rules)")
-	assert.Contains(t, result, "{{- range .APPLICATION_TEST_APP_SCOPES}}", "Scopes should be parameterized")
+	assert.Contains(t, result, "{{- range ."+tv("APPLICATION", "SCOPES")+"}}",
+		"Scopes should be parameterized")
 }
 
 // TestParameterization_NestedFieldsWithOmitempty verifies nested empty fields
@@ -508,16 +536,18 @@ func TestParameterization_NestedFieldsWithOmitempty(t *testing.T) {
 
 	parameterizer := newParameterizer(rules, TemplatePlaceholders)
 	result, _, _, err := parameterizer.ToParameterizedYAML(context.Background(),
-		app, "Application", "TestApp", toDeclarativeResourceRules(rules.Application))
+		app, "Application", testResourceID, toDeclarativeResourceRules(rules.Application))
 
 	require.NoError(t, err)
 
 	// Nested fields should be present and parameterized
 	assert.Contains(t, result, "oauth:", "OAuth should be present")
 	assert.Contains(t, result, "clientSecret:", "ClientSecret should be present (in rules)")
-	assert.Contains(t, result, "{{.APPLICATION_TEST_APP_CLIENT_SECRET}}", "ClientSecret should be parameterized")
+	assert.Contains(t, result, "{{."+tv("APPLICATION", "CLIENT_SECRET")+"}}",
+		"ClientSecret should be parameterized")
 	assert.Contains(t, result, "grantTypes:", "GrantTypes should be present (in rules)")
-	assert.Contains(t, result, "{{- range .APPLICATION_TEST_APP_GRANT_TYPES}}", "GrantTypes should be parameterized")
+	assert.Contains(t, result, "{{- range ."+tv("APPLICATION", "GRANT_TYPES")+"}}",
+		"GrantTypes should be parameterized")
 }
 
 // TestParameterization_MixedRulesAndOmitempty verifies correct behavior when
@@ -545,15 +575,17 @@ func TestParameterization_MixedRulesAndOmitempty(t *testing.T) {
 
 	parameterizer := newParameterizer(rules, TemplatePlaceholders)
 	result, _, _, err := parameterizer.ToParameterizedYAML(context.Background(),
-		app, "Application", "TestApp", toDeclarativeResourceRules(rules.Application))
+		app, "Application", testResourceID, toDeclarativeResourceRules(rules.Application))
 
 	require.NoError(t, err)
 
 	// Fields in rules should be present
 	assert.Contains(t, result, "clientId:", "ClientID should be present (in rules)")
-	assert.Contains(t, result, "{{.APPLICATION_TEST_APP_CLIENT_ID}}", "ClientID should be parameterized")
+	assert.Contains(t, result, "{{."+tv("APPLICATION", "CLIENT_ID")+"}}",
+		"ClientID should be parameterized")
 	assert.Contains(t, result, "clientSecret:", "ClientSecret should be present (in rules)")
-	assert.Contains(t, result, "{{.APPLICATION_TEST_APP_CLIENT_SECRET}}", "ClientSecret should be parameterized")
+	assert.Contains(t, result, "{{."+tv("APPLICATION", "CLIENT_SECRET")+"}}",
+		"ClientSecret should be parameterized")
 
 	// Fields NOT in rules should be omitted
 	assert.NotContains(t, result, "redirectUri:", "RedirectURI should be omitted (not in rules)")
@@ -584,7 +616,8 @@ func TestFieldOrder_TopLevelFieldsPreserved(t *testing.T) {
 	}
 
 	parameterizer := newParameterizer(templatingRules{}, TemplatePlaceholders)
-	result, _, _, err := parameterizer.ToParameterizedYAML(context.Background(), obj, "Application", "TestApp", nil)
+	result, _, _, err := parameterizer.ToParameterizedYAML(context.Background(), obj, "Application", testResourceID,
+		nil)
 
 	require.NoError(t, err)
 
@@ -612,7 +645,8 @@ func TestFieldOrder_WithOmittedFields(t *testing.T) {
 	}
 
 	parameterizer := newParameterizer(templatingRules{}, TemplatePlaceholders)
-	result, _, _, err := parameterizer.ToParameterizedYAML(context.Background(), obj, "Application", "TestApp", nil)
+	result, _, _, err := parameterizer.ToParameterizedYAML(context.Background(), obj, "Application", testResourceID,
+		nil)
 
 	require.NoError(t, err)
 
@@ -647,7 +681,7 @@ func TestFieldOrder_MapKeysSorted(t *testing.T) {
 	var firstResult string
 	for attempt := 0; attempt < 20; attempt++ {
 		result, _, _, err := parameterizer.ToParameterizedYAML(
-			context.Background(), obj, "Application", "TestApp", nil)
+			context.Background(), obj, "Application", testResourceID, nil)
 		require.NoError(t, err)
 
 		for index := 1; index < len(sortedKeys); index++ {
@@ -690,7 +724,8 @@ func TestFieldOrder_NestedFieldsPreserved(t *testing.T) {
 	}
 
 	parameterizer := newParameterizer(templatingRules{}, TemplatePlaceholders)
-	result, _, _, err := parameterizer.ToParameterizedYAML(context.Background(), obj, "Application", "TestApp", nil)
+	result, _, _, err := parameterizer.ToParameterizedYAML(context.Background(), obj, "Application", testResourceID,
+		nil)
 
 	require.NoError(t, err)
 
@@ -750,7 +785,8 @@ func TestEdgeCase_DeeplyNestedStructures(t *testing.T) {
 	}
 
 	parameterizer := newParameterizer(templatingRules{}, TemplatePlaceholders)
-	result, _, _, err := parameterizer.ToParameterizedYAML(context.Background(), obj, "Application", "TestApp", nil)
+	result, _, _, err := parameterizer.ToParameterizedYAML(context.Background(), obj, "Application", testResourceID,
+		nil)
 
 	require.NoError(t, err)
 	assert.Contains(t, result, "level1:")
@@ -782,7 +818,8 @@ func TestEdgeCase_ArraysOfStructs(t *testing.T) {
 	}
 
 	parameterizer := newParameterizer(templatingRules{}, TemplatePlaceholders)
-	result, _, _, err := parameterizer.ToParameterizedYAML(context.Background(), obj, "Application", "TestApp", nil)
+	result, _, _, err := parameterizer.ToParameterizedYAML(context.Background(), obj, "Application", testResourceID,
+		nil)
 
 	require.NoError(t, err)
 	assert.Contains(t, result, "items:")
@@ -805,7 +842,8 @@ func TestEdgeCase_EmptyStructWithOmitempty(t *testing.T) {
 	}
 
 	parameterizer := newParameterizer(templatingRules{}, TemplatePlaceholders)
-	result, _, _, err := parameterizer.ToParameterizedYAML(context.Background(), app, "Application", "TestApp", nil)
+	result, _, _, err := parameterizer.ToParameterizedYAML(context.Background(), app, "Application", testResourceID,
+		nil)
 
 	require.NoError(t, err)
 
@@ -872,7 +910,8 @@ func TestIsEmptyValue_IntegerTypes(t *testing.T) {
 	}
 
 	parameterizer := newParameterizer(templatingRules{}, TemplatePlaceholders)
-	result, _, _, err := parameterizer.ToParameterizedYAML(context.Background(), obj, "Application", "TestApp", nil)
+	result, _, _, err := parameterizer.ToParameterizedYAML(context.Background(), obj, "Application", testResourceID,
+		nil)
 
 	require.NoError(t, err)
 
@@ -895,7 +934,8 @@ func TestIsEmptyValue_UnsignedIntegerTypes(t *testing.T) {
 	}
 
 	parameterizer := newParameterizer(templatingRules{}, TemplatePlaceholders)
-	result, _, _, err := parameterizer.ToParameterizedYAML(context.Background(), obj, "Application", "TestApp", nil)
+	result, _, _, err := parameterizer.ToParameterizedYAML(context.Background(), obj, "Application", testResourceID,
+		nil)
 
 	require.NoError(t, err)
 
@@ -915,7 +955,8 @@ func TestIsEmptyValue_FloatTypes(t *testing.T) {
 	}
 
 	parameterizer := newParameterizer(templatingRules{}, TemplatePlaceholders)
-	result, _, _, err := parameterizer.ToParameterizedYAML(context.Background(), obj, "Application", "TestApp", nil)
+	result, _, _, err := parameterizer.ToParameterizedYAML(context.Background(), obj, "Application", testResourceID,
+		nil)
 
 	require.NoError(t, err)
 
@@ -931,7 +972,8 @@ func TestIsEmptyValue_BoolType(t *testing.T) {
 	}
 
 	parameterizer := newParameterizer(templatingRules{}, TemplatePlaceholders)
-	result, _, _, err := parameterizer.ToParameterizedYAML(context.Background(), obj, "Application", "TestApp", nil)
+	result, _, _, err := parameterizer.ToParameterizedYAML(context.Background(), obj, "Application", testResourceID,
+		nil)
 
 	require.NoError(t, err)
 
@@ -950,7 +992,8 @@ func TestIsEmptyValue_NonZeroValues(t *testing.T) {
 	}
 
 	parameterizer := newParameterizer(templatingRules{}, TemplatePlaceholders)
-	result, _, _, err := parameterizer.ToParameterizedYAML(context.Background(), obj, "Application", "TestApp", nil)
+	result, _, _, err := parameterizer.ToParameterizedYAML(context.Background(), obj, "Application", testResourceID,
+		nil)
 
 	require.NoError(t, err)
 
@@ -1032,7 +1075,7 @@ func TestHandleMapNode_EmitsKeysInSortedOrder(t *testing.T) {
 
 	parameterizer := newParameterizer(templatingRules{}, TemplatePlaceholders)
 	for i := 0; i < 10; i++ {
-		node, err := parameterizer.handleMapNode(reflect.ValueOf(data), &resourceRules{}, "", "test")
+		node, err := parameterizer.handleMapNode(reflect.ValueOf(data), &resourceRules{}, "")
 		require.NoError(t, err)
 
 		keys := make([]string, 0, len(node.Content)/2)
@@ -1126,14 +1169,14 @@ func TestRenderNode_ComplexTemplateStructures(t *testing.T) {
 
 	parameterizer := newParameterizer(rules, TemplatePlaceholders)
 	result, _, _, err := parameterizer.ToParameterizedYAML(context.Background(),
-		obj, "Application", "TestApp", toDeclarativeResourceRules(rules.Application))
+		obj, "Application", testResourceID, toDeclarativeResourceRules(rules.Application))
 
 	require.NoError(t, err)
 
 	// Check template replacements
-	assert.Contains(t, result, "{{.APPLICATION_TEST_APP_TEMPLATE_FIELD}}")
-	assert.Contains(t, result, "{{.APPLICATION_TEST_APP_VALUE}}")
-	assert.Contains(t, result, "{{- range .APPLICATION_TEST_APP_TEMPLATE_ARR}}")
+	assert.Contains(t, result, "{{."+tv("APPLICATION", "TEMPLATE_FIELD")+"}}")
+	assert.Contains(t, result, "{{."+tv("APPLICATION", "VALUE")+"}}")
+	assert.Contains(t, result, "{{- range ."+tv("APPLICATION", "TEMPLATE_ARR")+"}}")
 	assert.Contains(t, result, "{{- end}}")
 }
 
@@ -1148,7 +1191,8 @@ func TestRenderNode_ArrayOfMaps(t *testing.T) {
 	}
 
 	parameterizer := newParameterizer(templatingRules{}, TemplatePlaceholders)
-	result, _, _, err := parameterizer.ToParameterizedYAML(context.Background(), obj, "Application", "TestApp", nil)
+	result, _, _, err := parameterizer.ToParameterizedYAML(context.Background(), obj, "Application", testResourceID,
+		nil)
 
 	require.NoError(t, err)
 
@@ -1167,7 +1211,8 @@ func TestToParameterizedYAML_NilRules(t *testing.T) {
 	}
 
 	parameterizer := newParameterizer(templatingRules{}, TemplatePlaceholders)
-	result, _, _, err := parameterizer.ToParameterizedYAML(context.Background(), obj, "Application", "TestApp", nil)
+	result, _, _, err := parameterizer.ToParameterizedYAML(context.Background(), obj, "Application", testResourceID,
+		nil)
 
 	require.NoError(t, err)
 	require.NotEmpty(t, result)
@@ -1191,7 +1236,7 @@ func TestToParameterizedYAML_NilRulesWithOmitempty(t *testing.T) {
 
 	parameterizer := newParameterizer(rules, TemplatePlaceholders)
 	result, _, _, err := parameterizer.ToParameterizedYAML(context.Background(),
-		obj, "Application", "TestApp", toDeclarativeResourceRules(rules.Application))
+		obj, "Application", testResourceID, toDeclarativeResourceRules(rules.Application))
 
 	require.NoError(t, err)
 	require.NotEmpty(t, result)
@@ -1240,7 +1285,8 @@ func TestRenderNode_NestedArraysInSequence(t *testing.T) {
 	}
 
 	parameterizer := newParameterizer(templatingRules{}, TemplatePlaceholders)
-	result, _, _, err := parameterizer.ToParameterizedYAML(context.Background(), obj, "Application", "TestApp", nil)
+	result, _, _, err := parameterizer.ToParameterizedYAML(context.Background(), obj, "Application", testResourceID,
+		nil)
 
 	require.NoError(t, err)
 
@@ -1260,7 +1306,8 @@ func TestFieldToNode_NilPointer(t *testing.T) {
 	}
 
 	parameterizer := newParameterizer(templatingRules{}, TemplatePlaceholders)
-	result, _, _, err := parameterizer.ToParameterizedYAML(context.Background(), obj, "Application", "TestApp", nil)
+	result, _, _, err := parameterizer.ToParameterizedYAML(context.Background(), obj, "Application", testResourceID,
+		nil)
 
 	require.NoError(t, err)
 
@@ -1285,7 +1332,7 @@ func TestConvertPathToYAMLPath_NonStructType(t *testing.T) {
 
 	parameterizer := newParameterizer(rules, TemplatePlaceholders)
 	result, _, _, err := parameterizer.ToParameterizedYAML(context.Background(),
-		obj, "Application", "TestApp", toDeclarativeResourceRules(rules.Application))
+		obj, "Application", testResourceID, toDeclarativeResourceRules(rules.Application))
 
 	require.NoError(t, err)
 	// Should still generate output, even though path doesn't fully resolve
@@ -1308,7 +1355,7 @@ func TestFindFieldByNameCaseInsensitive_NotFound(t *testing.T) {
 
 	parameterizer := newParameterizer(rules, TemplatePlaceholders)
 	result, _, _, err := parameterizer.ToParameterizedYAML(context.Background(),
-		obj, "Application", "TestApp", toDeclarativeResourceRules(rules.Application))
+		obj, "Application", testResourceID, toDeclarativeResourceRules(rules.Application))
 
 	require.NoError(t, err)
 	// Should generate output without the non-existent field
@@ -1326,7 +1373,7 @@ func TestToParameterizedYAML_InvalidStruct(t *testing.T) {
 	// Pass non-struct type
 	var notAStruct int = 42
 
-	_, _, _, err := p.ToParameterizedYAML(context.Background(), notAStruct, "Application", "Test", nil)
+	_, _, _, err := p.ToParameterizedYAML(context.Background(), notAStruct, "Application", testResourceID, nil)
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to convert object to node")
@@ -1641,7 +1688,7 @@ func TestFieldToNode_JSONRawMessage(t *testing.T) {
 	jsonObj := json.RawMessage(
 		`{"username":{"type":"string","required":true},"email":{"type":"string","required":true}}`)
 	v := reflect.ValueOf(jsonObj)
-	node, err := p.fieldToNode(v, nil, "", "TestSchema")
+	node, err := p.fieldToNode(v, nil, "")
 
 	require.NoError(t, err)
 	require.NotNil(t, node)
@@ -1660,7 +1707,7 @@ func TestFieldToNode_JSONRawMessageArray(t *testing.T) {
 	// Test with a JSON array - should be exported as a JSON string
 	jsonArr := json.RawMessage(`["item1","item2","item3"]`)
 	v := reflect.ValueOf(jsonArr)
-	node, err := p.fieldToNode(v, nil, "", "TestSchema")
+	node, err := p.fieldToNode(v, nil, "")
 
 	require.NoError(t, err)
 	require.NotNil(t, node)
@@ -1678,7 +1725,7 @@ func TestFieldToNode_JSONRawMessageEmpty(t *testing.T) {
 	// Test with empty JSON
 	jsonEmpty := json.RawMessage(``)
 	v := reflect.ValueOf(jsonEmpty)
-	node, err := p.fieldToNode(v, nil, "", "TestSchema")
+	node, err := p.fieldToNode(v, nil, "")
 
 	require.NoError(t, err)
 	require.NotNil(t, node)
@@ -1695,7 +1742,7 @@ func TestFieldToNode_JSONRawMessageNil(t *testing.T) {
 	// Test with nil json.RawMessage (nil slice)
 	var jsonNil json.RawMessage // nil slice
 	v := reflect.ValueOf(jsonNil)
-	node, err := p.fieldToNode(v, nil, "", "TestSchema")
+	node, err := p.fieldToNode(v, nil, "")
 
 	require.NoError(t, err)
 	require.NotNil(t, node)
@@ -1712,7 +1759,7 @@ func TestFieldToNode_JSONRawMessageInvalid(t *testing.T) {
 	// Test with invalid JSON
 	jsonInvalid := json.RawMessage(`{invalid json}`)
 	v := reflect.ValueOf(jsonInvalid)
-	node, err := p.fieldToNode(v, nil, "", "TestSchema")
+	node, err := p.fieldToNode(v, nil, "")
 
 	// Should return an error for invalid JSON
 	require.Error(t, err)
@@ -1739,7 +1786,8 @@ func TestToParameterizedYAML_JSONRawMessageInvalid(t *testing.T) {
 	}
 
 	// Should return an error
-	result, _, _, err := p.ToParameterizedYAML(context.Background(), schema, "EntityType", "TestSchema", nil)
+	result, _, _, err := p.ToParameterizedYAML(context.Background(), schema, "EntityType", testResourceID,
+		nil)
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid JSON in RawMessage")
@@ -1771,7 +1819,7 @@ func TestToParameterizedYAML_NestedStructWithInvalidJSON(t *testing.T) {
 	}
 
 	// Should return an error from the nested structure
-	result, _, _, err := p.ToParameterizedYAML(context.Background(), obj, "Config", "TestConfig", nil)
+	result, _, _, err := p.ToParameterizedYAML(context.Background(), obj, "Config", testResourceID, nil)
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid JSON in RawMessage")
@@ -1816,7 +1864,8 @@ func TestEntityTypeImportExportSymmetry(t *testing.T) {
 
 	// Export using the parameterizer
 	p := newParameterizer(templatingRules{}, TemplatePlaceholders)
-	yamlOutput, _, _, err := p.ToParameterizedYAML(context.Background(), originalSchema, "EntityType", "Person", nil)
+	yamlOutput, _, _, err := p.ToParameterizedYAML(context.Background(), originalSchema, "EntityType", testResourceID,
+		nil)
 	require.NoError(t, err)
 
 	t.Logf("Exported YAML:\n%s", yamlOutput)
@@ -1897,7 +1946,7 @@ func TestRenderNode_I18nRefsInSequenceItemAreQuoted(t *testing.T) {
 	p := newParameterizer(templatingRules{}, TemplatePlaceholders)
 	// Use empty (non-nil) rules to exercise the custom renderNode path (same as flows)
 	result, _, _, err := p.ToParameterizedYAML(context.Background(),
-		obj, "Flow", "User Onboarding Flow",
+		obj, "Flow", testResourceID,
 		toDeclarativeResourceRules(&resourceRules{}))
 	require.NoError(t, err)
 
@@ -1931,19 +1980,19 @@ func TestRenderMappingValue_I18nRefsAreQuoted(t *testing.T) {
 	obj := &Resource{
 		Name:     "Test",
 		Message:  "{{ t(signup:forms.credentials.title) }}",
-		Callback: "{{.APPLICATION_TEST_CALLBACK_URL}}",
+		Callback: "{{." + tv("APPLICATION", "CALLBACK_URL") + "}}",
 	}
 
 	p := newParameterizer(templatingRules{}, TemplatePlaceholders)
 	result, _, _, err := p.ToParameterizedYAML(context.Background(),
-		obj, "Application", "Test",
+		obj, "Application", testResourceID,
 		toDeclarativeResourceRules(&resourceRules{Variables: []string{"Callback"}}))
 	require.NoError(t, err)
 
 	// i18n reference must be single-quoted.
 	assert.Contains(t, result, `message: '{{ t(signup:forms.credentials.title) }}'`)
 	// Real parameterization variable must remain unquoted (Go template syntax).
-	assert.Contains(t, result, `callbackUrl: {{.APPLICATION_TEST_CALLBACK_URL}}`)
+	assert.Contains(t, result, `callbackUrl: {{.`+tv("APPLICATION", "CALLBACK_URL")+`}}`)
 }
 
 func TestEntityTypeExportFormat(t *testing.T) {
@@ -1964,7 +2013,7 @@ func TestEntityTypeExportFormat(t *testing.T) {
 	}
 
 	p := newParameterizer(templatingRules{}, TemplatePlaceholders)
-	yamlOutput, _, _, err := p.ToParameterizedYAML(context.Background(), schema, "EntityType", "TestSchema", nil)
+	yamlOutput, _, _, err := p.ToParameterizedYAML(context.Background(), schema, "EntityType", testResourceID, nil)
 	require.NoError(t, err)
 
 	// Verify the schema field is a plain string in the YAML, not a structured object
@@ -2009,34 +2058,35 @@ func TestResourceServerExport_IdentifierIsParameterized(t *testing.T) {
 	rs := exportableResourceServer(":")
 
 	p := newParameterizer(templatingRules{}, TemplatePlaceholders)
-	result, vars, secrets, err := p.ToParameterizedYAML(context.Background(), rs, "ResourceServer",
-		rs.Name, resourceServerRules)
+	result, vars, secrets, err := p.ToParameterizedYAML(context.Background(), rs, "ResourceServer", testResourceID,
+		resourceServerRules)
 	require.NoError(t, err)
-	assert.Contains(t, result, "identifier: {{.RESOURCE_SERVER_ORDERS_API_IDENTIFIER}}\n")
+	assert.Contains(t, result, "identifier: {{."+tv("RESOURCE_SERVER", "IDENTIFIER")+"}}\n")
 	assert.Contains(t, result, "ouId: 019ddcf3-c5d8-7375-80e3-c5bf524257c8\n")
-	assert.Equal(t, map[string]string{"RESOURCE_SERVER_ORDERS_API_IDENTIFIER": "https://orders.example.com"}, vars)
+	assert.Equal(t, map[string]string{tv("RESOURCE_SERVER", "IDENTIFIER"): "https://orders.example.com"},
+		vars)
 	assert.Empty(t, secrets)
 
 	p = newParameterizer(templatingRules{}, ValueReferences)
-	result, _, _, err = p.ToParameterizedYAML(context.Background(), rs, "ResourceServer", rs.Name,
+	result, _, _, err = p.ToParameterizedYAML(context.Background(), rs, "ResourceServer", testResourceID,
 		resourceServerRules)
 	require.NoError(t, err)
-	assert.Contains(t, result, "identifier: var:RESOURCE_SERVER_ORDERS_API_IDENTIFIER\n")
+	assert.Contains(t, result, "identifier: var:"+tv("RESOURCE_SERVER", "IDENTIFIER")+"\n")
 }
 
 // A stored reference is written out as it stands rather than named again, so a resource server
-// imported into a control plane exports the name it was imported with.
+// imported into a control plane exports the name it was imported with, even one an earlier naming scheme gave it.
 func TestResourceServerExport_KeepsAStoredIdentifierReference(t *testing.T) {
+	const stored = "RESOURCE_SERVER_OLD_API_IDENTIFIER"
 	rs := exportableResourceServer(":")
-	rs.Name = "Renamed API"
-	rs.Identifier = valueref.VariableReference("RESOURCE_SERVER_ORDERS_API_IDENTIFIER")
+	rs.Identifier = valueref.VariableReference(stored)
 
 	p := newParameterizer(templatingRules{}, ValueReferences)
-	result, _, secrets, err := p.ToParameterizedYAML(context.Background(), rs, "ResourceServer", rs.Name,
+	result, _, secrets, err := p.ToParameterizedYAML(context.Background(), rs, "ResourceServer", testResourceID,
 		resourceServerRules)
 	require.NoError(t, err)
-	assert.Contains(t, result, "identifier: var:RESOURCE_SERVER_ORDERS_API_IDENTIFIER\n")
-	assert.NotContains(t, result, "RENAMED_API")
+	assert.Contains(t, result, "identifier: var:"+stored+"\n")
+	assert.NotContains(t, result, testResourceIDSegment)
 	assert.Empty(t, secrets)
 }
 
@@ -2049,13 +2099,13 @@ func TestResourceServerExport_DelimiterIsQuoted(t *testing.T) {
 			rs := exportableResourceServer(delimiter)
 			for _, style := range []PlaceholderStyle{TemplatePlaceholders, ValueReferences} {
 				p := newParameterizer(templatingRules{}, style)
-				result, _, _, err := p.ToParameterizedYAML(context.Background(), rs, "ResourceServer",
-					rs.Name, resourceServerRules)
+				result, _, _, err := p.ToParameterizedYAML(context.Background(), rs, "ResourceServer", testResourceID,
+					resourceServerRules)
 				require.NoError(t, err)
 				assert.Contains(t, result, "delimiter: "+strconv.Quote(delimiter)+"\n")
 
 				// A template placeholder is filled before the document is read.
-				result = strings.ReplaceAll(result, "{{.RESOURCE_SERVER_ORDERS_API_IDENTIFIER}}",
+				result = strings.ReplaceAll(result, "{{."+tv("RESOURCE_SERVER", "IDENTIFIER")+"}}",
 					"https://orders.example.com")
 				var parsed providers.ResourceServer
 				require.NoError(t, yaml.Unmarshal([]byte(result), &parsed), result)
@@ -2072,7 +2122,8 @@ func TestResourceServerExport_DelimiterIsQuotedWithoutRules(t *testing.T) {
 	rs := exportableResourceServer(":")
 
 	p := newParameterizer(templatingRules{}, TemplatePlaceholders)
-	result, vars, _, err := p.ToParameterizedYAML(context.Background(), rs, "ResourceServer", rs.Name, nil)
+	result, vars, _, err := p.ToParameterizedYAML(context.Background(), rs, "ResourceServer", testResourceID,
+		nil)
 	require.NoError(t, err)
 	assert.Contains(t, result, `delimiter: ":"`)
 	assert.Contains(t, result, "identifier: https://orders.example.com")
@@ -2159,7 +2210,7 @@ func TestInlineEmbed_TopLevelFlattensFields(t *testing.T) {
 	}
 
 	p := newParameterizer(templatingRules{}, TemplatePlaceholders)
-	out, _, _, err := p.ToParameterizedYAML(context.Background(), obj, "Application", "MyApp", nil)
+	out, _, _, err := p.ToParameterizedYAML(context.Background(), obj, "Application", testResourceID, nil)
 	require.NoError(t, err)
 
 	// Bug signature: a bare-colon line (empty key holding the embedded struct).
@@ -2183,7 +2234,7 @@ type inlinePtrParent struct {
 func TestInlineEmbed_NilPointerSkipped(t *testing.T) {
 	obj := &inlinePtrParent{Name: "App", Inner: nil}
 	p := newParameterizer(templatingRules{}, TemplatePlaceholders)
-	out, _, _, err := p.ToParameterizedYAML(context.Background(), obj, "Application", "App", nil)
+	out, _, _, err := p.ToParameterizedYAML(context.Background(), obj, "Application", testResourceID, nil)
 	require.NoError(t, err)
 
 	assert.Contains(t, out, "name: App")
@@ -2197,7 +2248,7 @@ func TestInlineEmbed_NilPointerSkipped(t *testing.T) {
 func TestInlineEmbed_PointerDereferenced(t *testing.T) {
 	obj := &inlinePtrParent{Name: "App", Inner: &inlineInner{A: "alpha"}}
 	p := newParameterizer(templatingRules{}, TemplatePlaceholders)
-	out, _, _, err := p.ToParameterizedYAML(context.Background(), obj, "Application", "App", nil)
+	out, _, _, err := p.ToParameterizedYAML(context.Background(), obj, "Application", testResourceID, nil)
 	require.NoError(t, err)
 
 	assert.NotContains(t, out, "\n:\n")
@@ -2224,7 +2275,7 @@ type recParent struct {
 func TestInlineEmbed_RecursivelyFlattensNestedInline(t *testing.T) {
 	obj := &recParent{Name: "App", Mid: recMiddle{Inner: recInner{Deep: "value"}, Mid: "middle"}}
 	p := newParameterizer(templatingRules{}, TemplatePlaceholders)
-	out, _, _, err := p.ToParameterizedYAML(context.Background(), obj, "Application", "App", nil)
+	out, _, _, err := p.ToParameterizedYAML(context.Background(), obj, "Application", testResourceID, nil)
 	require.NoError(t, err)
 
 	assert.NotContains(t, out, "\n:\n")
@@ -2244,8 +2295,7 @@ func TestInlineEmbed_RuleOverridesOmitemptyForInlineField(t *testing.T) {
 	out, _, _, err := p.ToParameterizedYAML(
 		context.Background(),
 		obj,
-		"Application",
-		"App",
+		"Application", testResourceID,
 		toDeclarativeResourceRules(rules))
 	require.NoError(t, err)
 
@@ -2269,7 +2319,7 @@ type inlineQuotedParent struct {
 func TestInlineEmbed_QuotedFieldHonored(t *testing.T) {
 	obj := &inlineQuotedParent{Name: "App", Inner: inlineQuotedInner{Delim: ":"}}
 	p := newParameterizer(templatingRules{}, TemplatePlaceholders)
-	out, _, _, err := p.ToParameterizedYAML(context.Background(), obj, "Application", "App", nil)
+	out, _, _, err := p.ToParameterizedYAML(context.Background(), obj, "Application", testResourceID, nil)
 	require.NoError(t, err)
 
 	assert.Contains(t, out, `delim: ":"`)
@@ -2287,7 +2337,7 @@ type bogusInlineParent struct {
 func TestInlineEmbed_NonStructValueSkipped(t *testing.T) {
 	obj := &bogusInlineParent{Name: "App", Foo: 42}
 	p := newParameterizer(templatingRules{}, TemplatePlaceholders)
-	out, _, _, err := p.ToParameterizedYAML(context.Background(), obj, "Application", "App", nil)
+	out, _, _, err := p.ToParameterizedYAML(context.Background(), obj, "Application", testResourceID, nil)
 	require.NoError(t, err)
 
 	assert.Contains(t, out, "name: App")
@@ -2313,7 +2363,7 @@ func TestInlineEmbed_HiddenAndUntaggedFieldsSkipped(t *testing.T) {
 		Inner: skipFieldInner{Visible: "yes", Skipped: "secret", NoTag: "untagged"},
 	}
 	p := newParameterizer(templatingRules{}, TemplatePlaceholders)
-	out, _, _, err := p.ToParameterizedYAML(context.Background(), obj, "Application", "App", nil)
+	out, _, _, err := p.ToParameterizedYAML(context.Background(), obj, "Application", testResourceID, nil)
 	require.NoError(t, err)
 
 	assert.Contains(t, out, "visible: yes")
@@ -2340,7 +2390,7 @@ func TestInlineEmbed_InsideNestedStructFlattened(t *testing.T) {
 		Child: nestedInlineChild{Y: "outer", Inner: inlineInner{A: "alpha"}},
 	}
 	p := newParameterizer(templatingRules{}, TemplatePlaceholders)
-	out, _, _, err := p.ToParameterizedYAML(context.Background(), obj, "Application", "App", nil)
+	out, _, _, err := p.ToParameterizedYAML(context.Background(), obj, "Application", testResourceID, nil)
 	require.NoError(t, err)
 
 	// No empty-key nesting inside the child mapping.
@@ -2365,7 +2415,7 @@ func TestSecretVariablesAreReportedAsCredentials(t *testing.T) {
 	p := newParameterizer(templatingRules{}, TemplatePlaceholders)
 	doc, values, secrets, err := p.ToParameterizedYAML(context.Background(),
 		&app{Name: "My App", OAuth: &oauth{ClientID: "the-id", ClientSecret: "the-secret"}},
-		"Application", "My App",
+		"Application", testResourceID,
 		&declarativeresource.ResourceRules{
 			Variables:       []string{"OAuth.ClientID"},
 			SecretVariables: []string{"OAuth.ClientSecret"},
@@ -2374,7 +2424,7 @@ func TestSecretVariablesAreReportedAsCredentials(t *testing.T) {
 		t.Fatalf("parameterizing failed: %v", err)
 	}
 
-	const idVar, secretVar = "APPLICATION_MY_APP_CLIENT_ID", "APPLICATION_MY_APP_CLIENT_SECRET"
+	var idVar, secretVar = tv("APPLICATION", "CLIENT_ID"), tv("APPLICATION", "CLIENT_SECRET")
 
 	// Both are parameterized: the secret one is not treated differently in the document.
 	for _, name := range []string{idVar, secretVar} {
@@ -2406,7 +2456,7 @@ func TestNoSecretVariablesReportsNoCredentials(t *testing.T) {
 	p := newParameterizer(templatingRules{}, TemplatePlaceholders)
 	_, _, secrets, err := p.ToParameterizedYAML(context.Background(),
 		&app{Name: "My App", Home: "https://app.test"},
-		"Application", "My App",
+		"Application", testResourceID,
 		&declarativeresource.ResourceRules{Variables: []string{"Home"}})
 	if err != nil {
 		t.Fatalf("parameterizing failed: %v", err)
@@ -2436,20 +2486,20 @@ func TestTheTwoPlanesWriteDifferentPlaceholders(t *testing.T) {
 	}
 
 	dataPlane, _, _, err := newParameterizer(templatingRules{}, TemplatePlaceholders).
-		ToParameterizedYAML(context.Background(), resource(), "Application", "My App", rules)
+		ToParameterizedYAML(context.Background(), resource(), "Application", testResourceID, rules)
 	require.NoError(t, err)
 
 	controlPlane, _, _, err := newParameterizer(templatingRules{}, ValueReferences).
-		ToParameterizedYAML(context.Background(), resource(), "Application", "My App", rules)
+		ToParameterizedYAML(context.Background(), resource(), "Application", testResourceID, rules)
 	require.NoError(t, err)
 
 	// The data plane exports exactly as it did.
-	assert.Contains(t, dataPlane, "{{.APPLICATION_MY_APP_CLIENT_ID}}")
-	assert.Contains(t, dataPlane, "{{.APPLICATION_MY_APP_CLIENT_SECRET}}")
+	assert.Contains(t, dataPlane, "{{."+tv("APPLICATION", "CLIENT_ID")+"}}")
+	assert.Contains(t, dataPlane, "{{."+tv("APPLICATION", "CLIENT_SECRET")+"}}")
 
 	// The control plane names where each value is held, and the prefix is what says which.
-	assert.Contains(t, controlPlane, "var:APPLICATION_MY_APP_CLIENT_ID")
-	assert.Contains(t, controlPlane, "sec:APPLICATION_MY_APP_CLIENT_SECRET")
+	assert.Contains(t, controlPlane, "var:"+tv("APPLICATION", "CLIENT_ID"))
+	assert.Contains(t, controlPlane, "sec:"+tv("APPLICATION", "CLIENT_SECRET"))
 	assert.NotContains(t, controlPlane, "{{.", "a reference export carried a template placeholder")
 
 	// Neither carries the value it replaced.
@@ -2465,18 +2515,19 @@ func TestAReferenceExportReportsNoEnvFile(t *testing.T) {
 	svc := &exportService{parameterizer: newParameterizer(templatingRules{}, ValueReferences)}
 
 	envFile := svc.generateEnvFile([]ExportFile{{
-		Content: "clientId: var:APPLICATION_MY_APP_CLIENT_ID\nclientSecret: sec:APPLICATION_MY_APP_CLIENT_SECRET\n",
-	}}, map[string]string{"APPLICATION_MY_APP_CLIENT_ID": "the-id"})
+		Content: "clientId: var:" + tv("APPLICATION", "CLIENT_ID") + "\nclientSecret: sec:" +
+			tv("APPLICATION", "CLIENT_SECRET") + "\n",
+	}}, map[string]string{tv("APPLICATION", "CLIENT_ID"): "the-id"})
 
 	assert.Nil(t, envFile, "a reference export produced a .env")
 }
 
 // A value already held as a reference is written out as it stands, not derived again.
 //
-// The name in a reference is where the value actually went. Deriving a new one from the resource as
-// it is now would rewrite that name after a rename, and the document would then point at a value the
-// data plane has never held.
-func TestAStoredReferenceSurvivesARename(t *testing.T) {
+// The name in a reference is where the value actually went. Deriving a new one would rewrite a name an
+// earlier naming scheme gave it, and the document would then point at a value the data plane has never
+// held. So the reference here has an old-format name, which only a kept reference can still carry.
+func TestAStoredReferenceKeepsItsName(t *testing.T) {
 	type oauth struct {
 		ClientID     string `yaml:"clientId"`
 		ClientSecret string `yaml:"clientSecret"`
@@ -2486,10 +2537,10 @@ func TestAStoredReferenceSurvivesARename(t *testing.T) {
 		OAuth *oauth `yaml:"oauth"`
 	}
 
-	// Placed while the application was called "Old Name", and renamed since.
+	const storedClientID, storedClientSecret = "APPLICATION_OLD_NAME_CLIENT_ID", "APPLICATION_OLD_NAME_CLIENT_SECRET"
 	stored := &app{Name: "New Name", OAuth: &oauth{
-		ClientID:     "var:APPLICATION_OLD_NAME_CLIENT_ID",
-		ClientSecret: "sec:APPLICATION_OLD_NAME_CLIENT_SECRET",
+		ClientID:     "var:" + storedClientID,
+		ClientSecret: "sec:" + storedClientSecret,
 	}}
 	rules := &declarativeresource.ResourceRules{
 		Variables:       []string{"OAuth.ClientID"},
@@ -2497,16 +2548,17 @@ func TestAStoredReferenceSurvivesARename(t *testing.T) {
 	}
 
 	doc, _, secrets, err := newParameterizer(templatingRules{}, ValueReferences).
-		ToParameterizedYAML(context.Background(), stored, "Application", "New Name", rules)
+		ToParameterizedYAML(context.Background(), stored, "Application", testResourceID, rules)
 	require.NoError(t, err)
 
-	assert.Contains(t, doc, "var:APPLICATION_OLD_NAME_CLIENT_ID")
-	assert.Contains(t, doc, "sec:APPLICATION_OLD_NAME_CLIENT_SECRET")
-	assert.NotContains(t, doc, "NEW_NAME", "a stored reference was re-derived from the current name")
+	assert.Contains(t, doc, "var:"+storedClientID)
+	assert.Contains(t, doc, "sec:"+storedClientSecret)
+	assert.NotContains(t, doc, testResourceIDSegment, "a stored reference was derived again")
 
 	// The credential is still reported as one, under the name it is actually held by.
-	assert.True(t, secrets["APPLICATION_OLD_NAME_CLIENT_SECRET"],
-		"the stored credential was not reported as one")
+	assert.True(t, secrets[storedClientSecret], "the stored credential was not reported as one")
+	assert.False(t, secrets[tv("APPLICATION", "CLIENT_SECRET")],
+		"the credential was also reported under a derived name")
 }
 
 // A value that is not yet a reference is still parameterized, so this only preserves what was
@@ -2523,11 +2575,11 @@ func TestAValueThatIsNotAReferenceIsStillParameterized(t *testing.T) {
 	doc, _, _, err := newParameterizer(templatingRules{}, ValueReferences).
 		ToParameterizedYAML(context.Background(),
 			&app{Name: "My App", OAuth: &oauth{ClientSecret: "a-literal-secret"}},
-			"Application", "My App",
+			"Application", testResourceID,
 			&declarativeresource.ResourceRules{SecretVariables: []string{"OAuth.ClientSecret"}})
 	require.NoError(t, err)
 
-	assert.Contains(t, doc, "sec:APPLICATION_MY_APP_CLIENT_SECRET")
+	assert.Contains(t, doc, "sec:"+tv("APPLICATION", "CLIENT_SECRET"))
 	assert.NotContains(t, doc, "a-literal-secret")
 }
 
@@ -2574,25 +2626,25 @@ func TestADynamicPropertyIsParameterizedInBothStyles(t *testing.T) {
 	}
 
 	dataPlane, _, dataPlaneSecrets, err := newParameterizer(templatingRules{}, TemplatePlaceholders).
-		ToParameterizedYAML(context.Background(), resource(), "Connection", "My Connection", rules)
+		ToParameterizedYAML(context.Background(), resource(), "Connection", testResourceID, rules)
 	require.NoError(t, err)
 
 	controlPlane, _, controlPlaneSecrets, err := newParameterizer(templatingRules{}, ValueReferences).
-		ToParameterizedYAML(context.Background(), resource(), "Connection", "My Connection", rules)
+		ToParameterizedYAML(context.Background(), resource(), "Connection", testResourceID, rules)
 	require.NoError(t, err)
 
-	assert.Contains(t, dataPlane, "{{.CONNECTION_MY_CONNECTION_HOST}}")
-	assert.Contains(t, dataPlane, "{{.CONNECTION_MY_CONNECTION_API_KEY}}")
+	assert.Contains(t, dataPlane, "{{."+tv("CONNECTION", "HOST")+"}}")
+	assert.Contains(t, dataPlane, "{{."+tv("CONNECTION", "API_KEY")+"}}")
 
-	assert.Contains(t, controlPlane, "var:CONNECTION_MY_CONNECTION_HOST")
-	assert.Contains(t, controlPlane, "sec:CONNECTION_MY_CONNECTION_API_KEY")
+	assert.Contains(t, controlPlane, "var:"+tv("CONNECTION", "HOST"))
+	assert.Contains(t, controlPlane, "sec:"+tv("CONNECTION", "API_KEY"))
 	assert.NotContains(t, controlPlane, "{{.", "a reference export carried a template placeholder")
 
 	// The credential is reported as one either way, and neither document carries a value.
 	for _, secrets := range []map[string]bool{dataPlaneSecrets, controlPlaneSecrets} {
-		assert.True(t, secrets["CONNECTION_MY_CONNECTION_API_KEY"],
+		assert.True(t, secrets[tv("CONNECTION", "API_KEY")],
 			"the property marked secret was not reported as a credential")
-		assert.False(t, secrets["CONNECTION_MY_CONNECTION_HOST"],
+		assert.False(t, secrets[tv("CONNECTION", "HOST")],
 			"an ordinary property was reported as a credential")
 	}
 	for _, doc := range []string{dataPlane, controlPlane} {
@@ -2602,33 +2654,30 @@ func TestADynamicPropertyIsParameterizedInBothStyles(t *testing.T) {
 }
 
 // A dynamic property already holding a reference keeps it, for the same reason a named field does:
-// the name in it is where the value actually went, and a name derived from the resource as it is
-// now would stop agreeing with it after a rename.
-func TestAStoredReferenceInADynamicPropertySurvivesARename(t *testing.T) {
-	// Placed while the connection was called "Old Name", and renamed since.
+// the name in it is where the value actually went, and a name derived now could disagree with it,
+// as one stored under an earlier naming scheme does.
+func TestAStoredReferenceInADynamicPropertyKeepsItsName(t *testing.T) {
+	storedHost, storedKey := "CONNECTION_OLD_NAME_HOST", "CONNECTION_OLD_NAME_API_KEY"
 	stored := &connectionWithProperties{
 		Name: "New Name",
 		Properties: newProperties(t,
-			propertySpec{name: "host", value: valueref.VariableReference("CONNECTION_OLD_NAME_HOST")},
-			propertySpec{
-				name: "apiKey", value: valueref.SecretReference("CONNECTION_OLD_NAME_API_KEY"), isSecret: true,
-			},
+			propertySpec{name: "host", value: valueref.VariableReference(storedHost)},
+			propertySpec{name: "apiKey", value: valueref.SecretReference(storedKey), isSecret: true},
 		),
 	}
 
 	doc, _, secrets, err := newParameterizer(templatingRules{}, ValueReferences).
-		ToParameterizedYAML(context.Background(), stored, "Connection", "New Name",
+		ToParameterizedYAML(context.Background(), stored, "Connection", testResourceID,
 			&declarativeresource.ResourceRules{DynamicPropertyFields: []string{"Properties"}})
 	require.NoError(t, err)
 
-	assert.Contains(t, doc, "var:CONNECTION_OLD_NAME_HOST")
-	assert.Contains(t, doc, "sec:CONNECTION_OLD_NAME_API_KEY")
-	assert.NotContains(t, doc, "NEW_NAME", "a stored reference was re-derived from the current name")
+	assert.Contains(t, doc, "var:"+storedHost)
+	assert.Contains(t, doc, "sec:"+storedKey)
+	assert.NotContains(t, doc, testResourceIDSegment, "a stored reference was re-derived")
 
 	// The credential is reported under the name it is actually held by, not the derived one.
-	assert.True(t, secrets["CONNECTION_OLD_NAME_API_KEY"],
-		"the stored credential was not reported under its stored name")
-	assert.False(t, secrets["CONNECTION_NEW_NAME_API_KEY"],
+	assert.True(t, secrets[storedKey], "the stored credential was not reported under its stored name")
+	assert.False(t, secrets[tv("CONNECTION", "API_KEY")],
 		"the credential was also reported under a name nothing holds")
 }
 
@@ -2638,15 +2687,15 @@ func TestADataPlaneDoesNotPreserveAStoredReferenceInADynamicProperty(t *testing.
 	stored := &connectionWithProperties{
 		Name: "New Name",
 		Properties: newProperties(t,
-			propertySpec{name: "host", value: valueref.VariableReference("CONNECTION_OLD_NAME_HOST")}),
+			propertySpec{name: "host", value: valueref.VariableReference(tv("CONNECTION", "HOST"))}),
 	}
 
 	doc, _, _, err := newParameterizer(templatingRules{}, TemplatePlaceholders).
-		ToParameterizedYAML(context.Background(), stored, "Connection", "New Name",
+		ToParameterizedYAML(context.Background(), stored, "Connection", testResourceID,
 			&declarativeresource.ResourceRules{DynamicPropertyFields: []string{"Properties"}})
 	require.NoError(t, err)
 
-	assert.Contains(t, doc, "{{.CONNECTION_NEW_NAME_HOST}}")
+	assert.Contains(t, doc, "{{."+tv("CONNECTION", "HOST")+"}}")
 	assert.NotContains(t, doc, "var:", "a template export carried a reference")
 }
 
@@ -2660,12 +2709,12 @@ func TestADynamicPropertyWhoseValueCannotBeReadIsStillParameterized(t *testing.T
 	}
 
 	doc, _, secrets, err := newParameterizer(templatingRules{}, ValueReferences).
-		ToParameterizedYAML(context.Background(), unreadable, "Connection", "My Connection",
+		ToParameterizedYAML(context.Background(), unreadable, "Connection", testResourceID,
 			&declarativeresource.ResourceRules{DynamicPropertyFields: []string{"Properties"}})
 	require.NoError(t, err)
 
-	assert.Contains(t, doc, "sec:CONNECTION_MY_CONNECTION_API_KEY")
-	assert.True(t, secrets["CONNECTION_MY_CONNECTION_API_KEY"],
+	assert.Contains(t, doc, "sec:"+tv("CONNECTION", "API_KEY"))
+	assert.True(t, secrets[tv("CONNECTION", "API_KEY")],
 		"an unreadable credential was not reported as one")
 }
 
@@ -2708,29 +2757,29 @@ var inboundRules = &declarativeresource.ResourceRules{
 func TestEachElementOfAListIsJudgedOnItsOwn(t *testing.T) {
 	app := &inboundApp{Name: "My App", InboundAuthConfig: []inboundConfig{
 		{OAuthConfig: &inboundOAuth{
-			ClientID:     valueref.VariableReference("APPLICATION_MY_APP_PLACED_CLIENT_ID"),
-			ClientSecret: valueref.SecretReference("APPLICATION_MY_APP_PLACED_CLIENT_SECRET"),
+			ClientID:     valueref.VariableReference(tv("APPLICATION", "PLACED_CLIENT_ID")),
+			ClientSecret: valueref.SecretReference(tv("APPLICATION", "PLACED_CLIENT_SECRET")),
 		}},
 		{OAuthConfig: &inboundOAuth{ClientID: "a-literal-id", ClientSecret: "a-literal-secret"}},
 	}}
 
 	doc, _, secrets, err := newParameterizer(templatingRules{}, ValueReferences).
-		ToParameterizedYAML(context.Background(), app, "Application", "My App", inboundRules)
+		ToParameterizedYAML(context.Background(), app, "Application", testResourceID, inboundRules)
 	require.NoError(t, err)
 
 	// The literals in the second element are replaced, not carried through.
 	assert.NotContains(t, doc, "a-literal-secret", "a literal credential was exported in the clear")
 	assert.NotContains(t, doc, "a-literal-id", "a literal value was exported rather than referenced")
-	assert.Contains(t, doc, "sec:APPLICATION_MY_APP_CLIENT_SECRET")
-	assert.Contains(t, doc, "var:APPLICATION_MY_APP_CLIENT_ID")
+	assert.Contains(t, doc, "sec:"+tv("APPLICATION", "CLIENT_SECRET"))
+	assert.Contains(t, doc, "var:"+tv("APPLICATION", "CLIENT_ID"))
 
 	// And the references already placed in the first element are kept as they are.
-	assert.Contains(t, doc, "sec:APPLICATION_MY_APP_PLACED_CLIENT_SECRET")
-	assert.Contains(t, doc, "var:APPLICATION_MY_APP_PLACED_CLIENT_ID")
+	assert.Contains(t, doc, "sec:"+tv("APPLICATION", "PLACED_CLIENT_SECRET"))
+	assert.Contains(t, doc, "var:"+tv("APPLICATION", "PLACED_CLIENT_ID"))
 
 	// Both credentials are reported, each under the name it is held by.
-	assert.True(t, secrets["APPLICATION_MY_APP_PLACED_CLIENT_SECRET"], "the kept credential was not reported")
-	assert.True(t, secrets["APPLICATION_MY_APP_CLIENT_SECRET"], "the replaced credential was not reported")
+	assert.True(t, secrets[tv("APPLICATION", "PLACED_CLIENT_SECRET")], "the kept credential was not reported")
+	assert.True(t, secrets[tv("APPLICATION", "CLIENT_SECRET")], "the replaced credential was not reported")
 }
 
 // The order of the elements must not matter: a literal ahead of a reference is replaced just the
@@ -2738,16 +2787,16 @@ func TestEachElementOfAListIsJudgedOnItsOwn(t *testing.T) {
 func TestALiteralAheadOfAReferenceIsStillReplaced(t *testing.T) {
 	app := &inboundApp{Name: "My App", InboundAuthConfig: []inboundConfig{
 		{OAuthConfig: &inboundOAuth{ClientSecret: "a-literal-secret"}},
-		{OAuthConfig: &inboundOAuth{ClientSecret: valueref.SecretReference("APPLICATION_MY_APP_PLACED_CLIENT_SECRET")}},
+		{OAuthConfig: &inboundOAuth{ClientSecret: valueref.SecretReference(tv("APPLICATION", "PLACED_CLIENT_SECRET"))}},
 	}}
 
 	doc, _, _, err := newParameterizer(templatingRules{}, ValueReferences).
-		ToParameterizedYAML(context.Background(), app, "Application", "My App", inboundRules)
+		ToParameterizedYAML(context.Background(), app, "Application", testResourceID, inboundRules)
 	require.NoError(t, err)
 
 	assert.NotContains(t, doc, "a-literal-secret")
-	assert.Contains(t, doc, "sec:APPLICATION_MY_APP_CLIENT_SECRET")
-	assert.Contains(t, doc, "sec:APPLICATION_MY_APP_PLACED_CLIENT_SECRET")
+	assert.Contains(t, doc, "sec:"+tv("APPLICATION", "CLIENT_SECRET"))
+	assert.Contains(t, doc, "sec:"+tv("APPLICATION", "PLACED_CLIENT_SECRET"))
 }
 
 // A stored credential reference is reported under the name it is held by and no other. Reporting the
@@ -2765,13 +2814,13 @@ func TestARenamedCredentialIsReportedOnlyUnderItsStoredName(t *testing.T) {
 	_, _, secrets, err := newParameterizer(templatingRules{}, ValueReferences).
 		ToParameterizedYAML(context.Background(),
 			&app{Name: "New Name", OAuth: &oauth{
-				ClientSecret: valueref.SecretReference("APPLICATION_OLD_NAME_CLIENT_SECRET"),
+				ClientSecret: valueref.SecretReference(tv("APPLICATION", "CLIENT_SECRET")),
 			}},
-			"Application", "New Name",
+			"Application", testResourceID,
 			&declarativeresource.ResourceRules{SecretVariables: []string{"OAuth.ClientSecret"}})
 	require.NoError(t, err)
 
-	assert.Equal(t, map[string]bool{"APPLICATION_OLD_NAME_CLIENT_SECRET": true}, secrets)
+	assert.Equal(t, map[string]bool{tv("APPLICATION", "CLIENT_SECRET"): true}, secrets)
 }
 
 // A value designated a credential that refers to an ordinary variable is refused. A variable is
@@ -2789,9 +2838,9 @@ func TestACredentialReferringToAVariableIsRefused(t *testing.T) {
 	doc, _, _, err := newParameterizer(templatingRules{}, ValueReferences).
 		ToParameterizedYAML(context.Background(),
 			&app{Name: "My App", OAuth: &oauth{
-				ClientSecret: valueref.VariableReference("APPLICATION_MY_APP_CLIENT_SECRET"),
+				ClientSecret: valueref.VariableReference(tv("APPLICATION", "CLIENT_SECRET")),
 			}},
-			"Application", "My App",
+			"Application", testResourceID,
 			&declarativeresource.ResourceRules{SecretVariables: []string{"OAuth.ClientSecret"}})
 
 	require.Error(t, err)
@@ -2805,12 +2854,13 @@ func TestASecretPropertyReferringToAVariableIsRefused(t *testing.T) {
 		Name: "My Connection",
 		Properties: newProperties(t,
 			propertySpec{
-				name: "apiKey", value: valueref.VariableReference("CONNECTION_MY_CONNECTION_API_KEY"), isSecret: true,
+				name: "apiKey", value: valueref.VariableReference(tv("CONNECTION", "API_KEY")),
+				isSecret: true,
 			}),
 	}
 
 	_, _, _, err := newParameterizer(templatingRules{}, ValueReferences).
-		ToParameterizedYAML(context.Background(), stored, "Connection", "My Connection",
+		ToParameterizedYAML(context.Background(), stored, "Connection", testResourceID,
 			&declarativeresource.ResourceRules{DynamicPropertyFields: []string{"Properties"}})
 
 	require.Error(t, err)
@@ -2831,10 +2881,10 @@ func TestADataPlaneExportsACredentialReferringToAVariable(t *testing.T) {
 	doc, _, _, err := newParameterizer(templatingRules{}, TemplatePlaceholders).
 		ToParameterizedYAML(context.Background(),
 			&app{Name: "My App", OAuth: &oauth{ClientSecret: valueref.VariableReference("SOMETHING")}},
-			"Application", "My App",
+			"Application", testResourceID,
 			&declarativeresource.ResourceRules{SecretVariables: []string{"OAuth.ClientSecret"}})
 	require.NoError(t, err)
-	assert.Contains(t, doc, "{{.APPLICATION_MY_APP_CLIENT_SECRET}}")
+	assert.Contains(t, doc, "{{."+tv("APPLICATION", "CLIENT_SECRET")+"}}")
 }
 
 // A variable field whose stored reference is into the secret collection names a credential, and is
@@ -2847,11 +2897,11 @@ func TestAKeptSecretReferenceInAVariableIsReported(t *testing.T) {
 
 	_, _, secrets, err := newParameterizer(templatingRules{}, ValueReferences).
 		ToParameterizedYAML(context.Background(),
-			&app{Name: "My App", Home: valueref.SecretReference("APPLICATION_MY_APP_HOME")},
-			"Application", "My App",
+			&app{Name: "My App", Home: valueref.SecretReference(tv("APPLICATION", "HOME"))},
+			"Application", testResourceID,
 			&declarativeresource.ResourceRules{Variables: []string{"Home"}})
 	require.NoError(t, err)
-	assert.True(t, secrets["APPLICATION_MY_APP_HOME"])
+	assert.True(t, secrets[tv("APPLICATION", "HOME")])
 }
 
 // countingCrypto delegates to the real provider and counts decrypts, each a round trip to whatever
@@ -2883,7 +2933,8 @@ func TestAnExportDecryptsEachSecretPropertyOnce(t *testing.T) {
 			t.Cleanup(func() { cmodels.SetConfigCryptoProvider(testConfigCrypto) })
 
 			_, _, _, err := newParameterizer(templatingRules{}, style).
-				ToParameterizedYAML(context.Background(), resource, "Connection", "My Connection", rules)
+				ToParameterizedYAML(context.Background(), resource, "Connection", testResourceID,
+					rules)
 
 			require.NoError(t, err)
 			assert.Equal(t, 1, counter.decrypts, "the secret property was decrypted more than once")
@@ -2902,12 +2953,12 @@ func TestACredentialThatLooksLikeAReferenceIsNotExported(t *testing.T) {
 	rules := &declarativeresource.ResourceRules{DynamicPropertyFields: []string{"Properties"}}
 
 	doc, _, secrets, err := newParameterizer(templatingRules{}, ValueReferences).
-		ToParameterizedYAML(context.Background(), resource, "Connection", "My Connection", rules)
+		ToParameterizedYAML(context.Background(), resource, "Connection", testResourceID, rules)
 
 	require.NoError(t, err)
 	assert.NotContains(t, doc, credential, "a credential was written into the document")
-	assert.Contains(t, doc, "sec:CONNECTION_MY_CONNECTION_API_KEY")
-	assert.True(t, secrets["CONNECTION_MY_CONNECTION_API_KEY"])
+	assert.Contains(t, doc, "sec:"+tv("CONNECTION", "API_KEY"))
+	assert.True(t, secrets[tv("CONNECTION", "API_KEY")])
 }
 
 // Go randomizes map iteration, so map keys must be emitted in sorted order for a re-export of
@@ -2925,7 +2976,7 @@ func TestToParameterizedYAML_SortsMapKeys(t *testing.T) {
 	parameterizer := newParameterizer(templatingRules{}, TemplatePlaceholders)
 	export := func() string {
 		result, _, _, err := parameterizer.ToParameterizedYAML(context.Background(),
-			&withMap{Labels: labels}, "Application", "TestApp", &declarativeresource.ResourceRules{})
+			&withMap{Labels: labels}, "Application", testResourceID, &declarativeresource.ResourceRules{})
 		require.NoError(t, err)
 		return result
 	}
@@ -2978,65 +3029,68 @@ func TestAListBecomesAReferenceToTheVariableHoldingIt(t *testing.T) {
 	}
 
 	controlPlane, _, secrets, err := newParameterizer(templatingRules{}, ValueReferences).
-		ToParameterizedYAML(context.Background(), resource(), "Application", "My App", listRules)
+		ToParameterizedYAML(context.Background(), resource(), "Application", testResourceID, listRules)
 	require.NoError(t, err)
 	dataPlane, _, _, err := newParameterizer(templatingRules{}, TemplatePlaceholders).
-		ToParameterizedYAML(context.Background(), resource(), "Application", "My App", listRules)
+		ToParameterizedYAML(context.Background(), resource(), "Application", testResourceID, listRules)
 	require.NoError(t, err)
 
 	var exported listApp
 	require.NoError(t, yaml.Unmarshal([]byte(controlPlane), &exported))
-	assert.Equal(t, []string{"var:APPLICATION_MY_APP_REDIRECT_URIS"},
+	assert.Equal(t, []string{"var:" + tv("APPLICATION", "REDIRECT_URIS")},
 		exported.InboundAuthConfig[0].OAuthConfig.RedirectURIs)
 	assert.NotContains(t, controlPlane, "one.test", "an address was exported rather than referenced")
 	assert.Empty(t, secrets, "an address list was reported as a credential")
 
-	assert.Contains(t, dataPlane, "{{- range .APPLICATION_MY_APP_REDIRECT_URIS}}")
+	assert.Contains(t, dataPlane, "{{- range ."+tv("APPLICATION", "REDIRECT_URIS")+"}}")
 }
 
 // A list that already holds a reference keeps it, so a resource written from an import exports the
-// reference it was written with rather than one derived from its current name.
+// reference it was written with rather than one derived now.
 func TestAListHoldingAReferenceKeepsIt(t *testing.T) {
+	stored := "APPLICATION_OLD_NAME_REDIRECT_URIS"
 	app := &listApp{Name: "Renamed", InboundAuthConfig: []listConfig{{OAuthConfig: &listOAuth{
-		RedirectURIs: []string{valueref.VariableReference("APPLICATION_ORIGINAL_REDIRECT_URIS")},
+		RedirectURIs: []string{valueref.VariableReference(stored)},
 	}}}}
 
 	doc, _, _, err := newParameterizer(templatingRules{}, ValueReferences).
-		ToParameterizedYAML(context.Background(), app, "Application", "Renamed", listRules)
+		ToParameterizedYAML(context.Background(), app, "Application", testResourceID, listRules)
 	require.NoError(t, err)
 
-	assert.Contains(t, doc, "var:APPLICATION_ORIGINAL_REDIRECT_URIS")
-	assert.NotContains(t, doc, "APPLICATION_RENAMED_REDIRECT_URIS")
+	assert.Contains(t, doc, "var:"+stored)
+	assert.NotContains(t, doc, tv("APPLICATION", "REDIRECT_URIS"))
 }
 
 // A list holding a secret reference keeps it as a list holding a variable reference does: rewriting it
 // would lose the secret, and refer to a variable the capture never fills, since it leaves the list out.
 func TestAListHoldingASecretReferenceKeepsIt(t *testing.T) {
 	app := &listApp{Name: "Sealed", InboundAuthConfig: []listConfig{{OAuthConfig: &listOAuth{
-		RedirectURIs: []string{valueref.SecretReference("APPLICATION_SEALED_REDIRECT_URI"), "https://kept.test/cb"},
+		RedirectURIs: []string{valueref.SecretReference(tv("APPLICATION", "REDIRECT_URI")),
+			"https://kept.test/cb"},
 	}}}}
 
 	doc, _, _, err := newParameterizer(templatingRules{}, ValueReferences).
-		ToParameterizedYAML(context.Background(), app, "Application", "Sealed", listRules)
+		ToParameterizedYAML(context.Background(), app, "Application", testResourceID, listRules)
 	require.NoError(t, err)
 
-	assert.Contains(t, doc, "sec:APPLICATION_SEALED_REDIRECT_URI")
+	assert.Contains(t, doc, "sec:"+tv("APPLICATION", "REDIRECT_URI"))
 	assert.Contains(t, doc, "https://kept.test/cb")
-	assert.NotContains(t, doc, "var:APPLICATION_SEALED_REDIRECT_URIS")
+	assert.NotContains(t, doc, "var:"+tv("APPLICATION", "REDIRECT_URIS"))
 }
 
 // A list mixing a reference with literal items keeps both, so an import expands the reference beside
 // the literal items rather than losing them.
 func TestAListMixingAReferenceWithLiteralsKeepsThem(t *testing.T) {
 	app := &listApp{Name: "Mixed", InboundAuthConfig: []listConfig{{OAuthConfig: &listOAuth{
-		RedirectURIs: []string{valueref.VariableReference("APPLICATION_MIXED_REDIRECT_URIS"), "https://kept.test/cb"},
+		RedirectURIs: []string{valueref.VariableReference(tv("APPLICATION", "REDIRECT_URIS")),
+			"https://kept.test/cb"},
 	}}}}
 
 	doc, _, _, err := newParameterizer(templatingRules{}, ValueReferences).
-		ToParameterizedYAML(context.Background(), app, "Application", "Mixed", listRules)
+		ToParameterizedYAML(context.Background(), app, "Application", testResourceID, listRules)
 	require.NoError(t, err)
 
-	assert.Contains(t, doc, "var:APPLICATION_MIXED_REDIRECT_URIS")
+	assert.Contains(t, doc, "var:"+tv("APPLICATION", "REDIRECT_URIS"))
 	assert.Contains(t, doc, "https://kept.test/cb")
 }
 
@@ -3064,7 +3118,7 @@ func TestInlineJWKSCertificateIsExportedAsString(t *testing.T) {
 
 	for _, style := range []PlaceholderStyle{ValueReferences, TemplatePlaceholders} {
 		doc, _, _, err := newParameterizer(templatingRules{}, style).
-			ToParameterizedYAML(context.Background(), in, "Application", "My App", rules)
+			ToParameterizedYAML(context.Background(), in, "Application", testResourceID, rules)
 		require.NoError(t, err)
 		doc = templateVariablePattern.ReplaceAllString(doc, "value")
 
@@ -3074,4 +3128,17 @@ func TestInlineJWKSCertificateIsExportedAsString(t *testing.T) {
 		require.NotNil(t, out.InboundAuthConfig[0].OAuthConfig.Certificate)
 		assert.Equal(t, jwks, out.InboundAuthConfig[0].OAuthConfig.Certificate.Value)
 	}
+}
+
+// testResourceID is the ID the parameterizer tests give the resource they export, and
+// testResourceIDSegment is how a variable name spells it.
+const (
+	testResourceID        = "0198f3a1-7c2e-7b10-9a44-5d3e8f21c6b7"
+	testResourceIDSegment = "0198F3A17C2E7B109A445D3E8F21C6B7"
+)
+
+// tv is the variable name an export gives a field of the resource these tests export: its type, the
+// test ID and the field.
+func tv(resourceType, field string) string {
+	return resourceType + "__" + testResourceIDSegment + "__" + field
 }

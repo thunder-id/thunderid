@@ -41,35 +41,6 @@ function Set-GatewayKeyTrust {
     }
 }
 
-# Get-UserPasswordSecretName returns the name a user's password is held under in a gateway's
-# secret store, which the Control Plane's export derives from the username the same way:
-# USER_<USERNAME>_PASSWORD, with a word boundary wherever the case changes (ServiceDesk becomes
-# SERVICE_DESK) and every character that is not a letter or digit as an underscore. See
-# DeriveVariableName in backend/internal/system/varname.
-function Get-UserPasswordSecretName {
-    param([string]$Username)
-
-    $out = ""
-    $n = $Username.Length
-    for ($i = 0; $i -lt $n; $i++) {
-        $c = $Username[$i]
-        if ($i -gt 0 -and $c -cmatch '[A-Z]') {
-            $p = $Username[$i - 1]
-            if ($p -cmatch '[a-z]') {
-                $out += "_"
-            }
-            elseif ($p -ne '_' -and ($i + 1) -lt $n -and $Username[$i + 1] -cmatch '[a-z]') {
-                $out += "_"
-            }
-        }
-        $out += $c
-    }
-    $name = "USER_$($out.ToUpper())_PASSWORD"
-    $name = $name -replace '[^A-Za-z0-9]', '_'
-    $name = $name -replace '__+', '_'
-    return $name.Trim('_')
-}
-
 # Set-ConsoleUrls exports the console redirect URIs the bootstrap resources are templated with:
 # CP_CONSOLE_URL for the CP_CONSOLE application on auth-dp, and ADMIN_CONSOLE_URL for the
 # ADMIN_CONSOLE application on the Data Plane and the Control Plane. Call it before the first
@@ -136,11 +107,11 @@ function Set-DpValues {
         catch { Start-Sleep -Milliseconds 500 }
     }
     if (-not $ready) { throw "The Data Plane did not become ready, so its bootstrap values were not seeded." }
-    Invoke-DpPut -Path "/variables/APPLICATION_ADMIN_CONSOLE_CLIENT_ID" -Value "ADMIN_CONSOLE"
-    Invoke-DpPut -Path "/variables/APPLICATION_ADMIN_CONSOLE_REDIRECT_URIS" `
+    Invoke-DpPut -Path "/variables/APPLICATION__019000000000700080000000000000F1__CLIENT_ID" -Value "ADMIN_CONSOLE"
+    Invoke-DpPut -Path "/variables/APPLICATION__019000000000700080000000000000F1__REDIRECT_URIS" `
         -Value (ConvertTo-Json -Compress -InputObject @($env:ADMIN_CONSOLE_URL))
-    Invoke-DpPut -Path "/variables/RESOURCE_SERVER_SYSTEM_IDENTIFIER" -Value "https://localhost:$DP_PORT/mcp"
-    Invoke-DpPut -Path "/secrets/$(Get-UserPasswordSecretName $env:SERVICE_DESK_USERNAME)" `
+    Invoke-DpPut -Path "/variables/RESOURCE_SERVER__01900000000070008000000000000020__IDENTIFIER" -Value "https://localhost:$DP_PORT/mcp"
+    Invoke-DpPut -Path "/secrets/USER__019000000000700080000000000000F3__PASSWORD" `
         -Value $env:SERVICE_DESK_PASSWORD
 }
 

@@ -27,7 +27,7 @@ import {useDeleteStoredValue, useSetStoredValue} from '../api/useStoredValues';
 import type {StoredValue, ValueKind, ValueReference} from '../models/deploy';
 import groupByResource, {humanize, type ResourceGroup, type TypeGroup} from '../utils/groupByResource';
 import {fromListText, toListText} from '../utils/listValue';
-import {fieldLabel} from '../utils/valueLabels';
+import {fieldLabel, parseValueName} from '../utils/valueLabels';
 
 /** One name a gateway holds or is asked to hold, with what refers to it. */
 export interface ValueRow {
@@ -36,6 +36,11 @@ export interface ValueRow {
   stored?: StoredValue;
   /** The places the running version refers to it. */
   references: ValueReference[];
+  /**
+   * The places the configuration as it stands refers to it, kept only for a name the running version does
+   * not refer to, so that it can be shown with the resource it belongs to.
+   */
+  current: ValueReference[];
 }
 
 export interface ValuesTableProps {
@@ -62,6 +67,9 @@ const TYPE_LABELS: Record<string, string> = {
   user: 'Users',
   user_type: 'User types',
 };
+
+/** Where a row's value is used: by the running version if it is, otherwise by the current configuration. */
+const placesOf = (row: ValueRow): ValueReference[] => (row.references.length > 0 ? row.references : row.current);
 
 const isHeld = (row: ValueRow, secret: boolean): boolean =>
   secret ? Boolean(row.stored) && row.stored?.exists !== false : row.stored?.value !== undefined;
@@ -106,8 +114,7 @@ export default function ValuesTable({gatewayId, kind, rows}: ValuesTableProps): 
     setEditing(row.name);
     setDraft(secret ? '' : toListText(row.stored?.value ?? ''));
   };
-  const isList = (row: ValueRow): boolean =>
-    row.references.some((reference: ValueReference) => reference.list === true);
+  const isList = (row: ValueRow): boolean => placesOf(row).some((reference: ValueReference) => reference.list === true);
   const save = async (row: ValueRow): Promise<void> => {
     setError(null);
     try {
@@ -149,9 +156,20 @@ export default function ValuesTable({gatewayId, kind, rows}: ValuesTableProps): 
   }
 
   const nameCell = (row: ValueRow): JSX.Element => {
+    const places = placesOf(row);
+    // The running version does not use it: the current configuration does, or nothing does.
+    const notRunning = row.references.length === 0;
+    // A name the server derived reads back as a type and a field, which says more than the name does.
+    const derived = places.length === 0 ? parseValueName(row.name) : null;
+    let title = row.name;
+    if (places.length > 0) {
+      title = labelOf(places[0].field);
+    } else if (derived) {
+      title = `${t(`values.typeNames.${derived.resourceType}`, {defaultValue: humanize(derived.resourceType)})} · ${labelOf(derived.field)}`;
+    }
     const others = [
       ...new Set(
-        row.references
+        places
           .slice(1)
           .map((reference: ValueReference) =>
             [reference.resourceName ?? reference.resourceId, labelOf(reference.field)].filter(Boolean).join(' · '),
@@ -162,8 +180,11 @@ export default function ValuesTable({gatewayId, kind, rows}: ValuesTableProps): 
       <Box>
         <Stack direction="row" spacing={1} alignItems="center">
           <Typography variant="body2" sx={{fontWeight: 500}}>
-            {row.references.length > 0 ? labelOf(row.references[0].field) : row.name}
+            {title}
           </Typography>
+          {notRunning && places.length > 0 && (
+            <Chip size="small" variant="outlined" label={t('values.notRunning', 'Not used by the running version')} />
+          )}
           {others.length > 0 && (
             <Tooltip title={others.join(', ')}>
               <Typography component="span" variant="body2" color="text.secondary">
@@ -172,7 +193,7 @@ export default function ValuesTable({gatewayId, kind, rows}: ValuesTableProps): 
             </Tooltip>
           )}
         </Stack>
-        {row.references.length > 0 && (
+        {(places.length > 0 || derived) && (
           <Typography variant="caption" color="text.secondary" sx={{fontFamily: 'monospace'}}>
             {row.name}
           </Typography>

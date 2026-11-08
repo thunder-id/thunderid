@@ -9,6 +9,7 @@ import {useNavigate, useParams} from 'react-router';
 import useGateways from '../api/useGateways';
 import {useRunningReferences} from '../api/useGatewayVersions';
 import {useStoredValues} from '../api/useStoredValues';
+import {useVersion} from '../api/useVersions';
 import DeployCard from '../components/DeployCard';
 import FullScreenHeader from '../components/FullScreenHeader';
 import ValuesTable, {type ValueRow} from '../components/ValuesTable';
@@ -32,12 +33,19 @@ export default function GatewayValuesPage(): JSX.Element {
   const running = useRunningReferences(gatewayId);
   const variables = useStoredValues(gatewayId, 'variable');
   const secrets = useStoredValues(gatewayId, 'secret');
+  // The configuration as it stands names the resource a value belongs to when the version this gateway runs
+  // does not refer to it. It only labels rows, so it neither holds the page back nor fails it.
+  const current = useVersion('current');
   const references = useMemo(() => running.data ?? [], [running.data]);
+  const currentReferences = useMemo(() => current.data?.references ?? [], [current.data]);
   const variableRows = useMemo(
-    () => valueRowsOf('variable', variables.data ?? [], references),
-    [variables.data, references],
+    () => valueRowsOf('variable', variables.data ?? [], references, currentReferences),
+    [variables.data, references, currentReferences],
   );
-  const secretRows = useMemo(() => valueRowsOf('secret', secrets.data ?? [], references), [secrets.data, references]);
+  const secretRows = useMemo(
+    () => valueRowsOf('secret', secrets.data ?? [], references, currentReferences),
+    [secrets.data, references, currentReferences],
+  );
   const missing = [...variableRows, ...secretRows].filter(
     (row: ValueRow) => !row.stored && row.references.length > 0,
   ).length;

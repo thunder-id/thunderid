@@ -26,6 +26,19 @@ export interface ResourceValues {
   values: ResourceValue[];
 }
 
+// A name the server derives for a value: the resource type, the resource ID and the field, in upper case,
+// joined by double underscores. No part holds a double underscore, so the parts read back exactly.
+const VALUE_NAME = /^([A-Z][A-Z0-9_]*?)__H?[0-9A-F]{32}__([A-Z0-9_]+)$/;
+
+/**
+ * Reads the resource type and field back from a value's name when the server derived it, as in
+ * `APPLICATION__019000000000700080000000000000F1__CLIENT_ID`. A name someone chose does not read back.
+ */
+export function parseValueName(name: string): {resourceType: string; field: string} | null {
+  const match = VALUE_NAME.exec(name);
+  return match ? {resourceType: match[1].toLowerCase(), field: match[2]} : null;
+}
+
 /** What a field is called for a person: `clientSecret` reads "Client secret". */
 export function fieldLabel(t: Translate, field: string | undefined): string {
   return field

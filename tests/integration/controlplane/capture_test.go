@@ -153,9 +153,9 @@ func (ts *ControlPlaneTestSuite) withDefaultGateway() *capturingGateway {
 	return g
 }
 
-// variableName is how an export names a resource's value: its type, its name and the field.
-func variableName(resourceType, name, field string) string {
-	return resourceType + "_" + strings.ToUpper(strings.NewReplacer(" ", "_", "-", "_").Replace(name)) + "_" + field
+// variableName is how an export names a resource's value, as testutils.ExportVariableName spells it.
+func variableName(resourceType, id, field string) string {
+	return testutils.ExportVariableName(resourceType, id, field)
 }
 
 // An application written on the control plane leaves its client ID and secret in the default
@@ -176,13 +176,13 @@ func (ts *ControlPlaneTestSuite) TestAWrittenApplicationsValuesReachTheDefaultGa
 	ts.Require().NoError(err)
 	defer func() { _ = testutils.DeleteApplication(appID) }()
 
-	held, ok := g.heldSoon("variables", variableName("APPLICATION", name, "CLIENT_ID"))
+	held, ok := g.heldSoon("variables", variableName("APPLICATION", appID, "CLIENT_ID"))
 	ts.True(ok, "the client ID was not captured")
 	ts.Equal(clientID, held)
-	held, ok = g.heldSoon("secrets", variableName("APPLICATION", name, "CLIENT_SECRET"))
+	held, ok = g.heldSoon("secrets", variableName("APPLICATION", appID, "CLIENT_SECRET"))
 	ts.True(ok, "the client secret was not captured")
 	ts.Equal(clientSecret, held)
-	held, ok = g.heldSoon("variables", variableName("APPLICATION", name, "REDIRECT_URIS"))
+	held, ok = g.heldSoon("variables", variableName("APPLICATION", appID, "REDIRECT_URIS"))
 	ts.True(ok, "the redirect URIs were not captured")
 	ts.JSONEq(`["https://cp-capture.example.com/callback"]`, held)
 }
@@ -205,10 +205,10 @@ func (ts *ControlPlaneTestSuite) TestACapturedValueRefusedOnceIsWrittenAgain() {
 	ts.Require().NoError(err)
 	defer func() { _ = testutils.DeleteApplication(appID) }()
 
-	held, ok := g.heldSoon("variables", variableName("APPLICATION", name, "CLIENT_ID"))
+	held, ok := g.heldSoon("variables", variableName("APPLICATION", appID, "CLIENT_ID"))
 	ts.True(ok, "the client ID was not captured after the store refused it once")
 	ts.Equal(clientID, held)
-	ts.GreaterOrEqual(g.attemptsAt("variables", variableName("APPLICATION", name, "CLIENT_ID")), 2,
+	ts.GreaterOrEqual(g.attemptsAt("variables", variableName("APPLICATION", appID, "CLIENT_ID")), 2,
 		"the refused write was not tried again")
 }
 
@@ -236,10 +236,10 @@ func (ts *ControlPlaneTestSuite) TestAnApplicationWithoutRedirectURIsAsksNoGatew
 	ts.Require().NoError(err)
 	defer func() { _ = testutils.DeleteApplication(appID) }()
 
-	held, ok := g.heldSoon("variables", variableName("APPLICATION", name, "CLIENT_ID"))
+	held, ok := g.heldSoon("variables", variableName("APPLICATION", appID, "CLIENT_ID"))
 	ts.True(ok, "the client ID was not captured")
 	ts.Equal(clientID, held)
-	_, ok = g.held("variables", variableName("APPLICATION", name, "REDIRECT_URIS"))
+	_, ok = g.held("variables", variableName("APPLICATION", appID, "REDIRECT_URIS"))
 	ts.False(ok, "a value was captured for redirect URIs the application does not have")
 
 	var exported struct {
@@ -247,7 +247,7 @@ func (ts *ControlPlaneTestSuite) TestAnApplicationWithoutRedirectURIsAsksNoGatew
 	}
 	status, raw := ts.call(http.MethodPost, "/export", map[string]any{"applications": []string{appID}}, &exported)
 	ts.Require().Equal(http.StatusOK, status, string(raw))
-	ts.NotContains(exported.Resources, variableName("APPLICATION", name, "REDIRECT_URIS"),
+	ts.NotContains(exported.Resources, variableName("APPLICATION", appID, "REDIRECT_URIS"),
 		"the export refers to redirect URIs the application does not have")
 }
 
@@ -343,10 +343,10 @@ func (ts *ControlPlaneTestSuite) TestAWrittenAgentsCredentialsReachTheDefaultGat
 	ts.Require().NoError(err)
 	defer func() { _ = testutils.DeleteAgent(agentID) }()
 
-	held, ok := g.heldSoon("variables", variableName("AGENT", name, "CLIENT_ID"))
+	held, ok := g.heldSoon("variables", variableName("AGENT", agentID, "CLIENT_ID"))
 	ts.True(ok, "the agent's client ID was not captured")
 	ts.Equal(clientID, held)
-	held, ok = g.heldSoon("secrets", variableName("AGENT", name, "CLIENT_SECRET"))
+	held, ok = g.heldSoon("secrets", variableName("AGENT", agentID, "CLIENT_SECRET"))
 	ts.True(ok, "the agent's client secret was not captured")
 	ts.Equal(clientSecret, held)
 }
@@ -371,7 +371,6 @@ func (ts *ControlPlaneTestSuite) TestAWrittenAgentsPasswordReachesTheDefaultGate
 	})
 	ts.Require().NoError(err)
 	name := unique("CP Capture Password Agent")
-	secretName := variableName("AGENT", name, "PASSWORD")
 	password := unique("Cp-Agent-Pass1!")
 
 	agentID, err := testutils.CreateAgent(testutils.Agent{
@@ -381,6 +380,7 @@ func (ts *ControlPlaneTestSuite) TestAWrittenAgentsPasswordReachesTheDefaultGate
 	})
 	ts.Require().NoError(err)
 	defer func() { _ = testutils.DeleteAgent(agentID) }()
+	secretName := variableName("AGENT", agentID, "PASSWORD")
 
 	held, ok := g.heldSoon("secrets", secretName)
 	ts.True(ok, "the agent's password was not captured")
@@ -442,9 +442,9 @@ func (ts *ControlPlaneTestSuite) TestAWrittenResourceServersIdentifierReachesThe
 	g := ts.withDefaultGateway()
 	name := unique("CP Capture Orders")
 	identifier := "https://" + unique("cp-capture-orders") + ".example.com"
-	variable := variableName("RESOURCE_SERVER", name, "IDENTIFIER")
 
 	rsID := ts.createResourceServer(name, identifier)
+	variable := variableName("RESOURCE_SERVER", rsID, "IDENTIFIER")
 
 	held, ok := g.heldSoon("variables", variable)
 	ts.True(ok, "the identifier was not captured")
@@ -559,7 +559,7 @@ func (ts *ControlPlaneTestSuite) TestAnHTTPConnectionsPasswordIsCapturedOnEveryW
 	}
 	created := unique("cp-http-basic-secret")
 	id := ts.createHTTPConnection(map[string]any{"name": name, "url": url, "authentication": basic(created)})
-	secret := variableName("CONNECTION", name, "PASSWORD")
+	secret := variableName("CONNECTION", id, "PASSWORD")
 	held, ok := g.heldSoon("secrets", secret)
 	ts.Require().True(ok, "the password was not captured")
 	ts.Require().Equal(created, held, "the captured password is not the connection's")
@@ -591,10 +591,10 @@ func (ts *ControlPlaneTestSuite) TestAnHTTPConnectionsPasswordIsCapturedOnEveryW
 func (ts *ControlPlaneTestSuite) captureBarrier(g *capturingGateway) string {
 	ts.T().Helper()
 	name := unique("cp-http-barrier")
-	ts.createHTTPConnection(map[string]any{"name": name, "url": "https://cp-http-barrier.example.com/hook",
+	id := ts.createHTTPConnection(map[string]any{"name": name, "url": "https://cp-http-barrier.example.com/hook",
 		"authentication": map[string]any{"type": "bearer", "properties": map[string]any{
 			"token": unique("cp-http-barrier-token")}}})
-	secret := variableName("CONNECTION", name, "TOKEN")
+	secret := variableName("CONNECTION", id, "TOKEN")
 	_, ok := g.heldSoon("secrets", secret)
 	ts.Require().True(ok, "the barrier connection's token was not captured")
 	return "secrets/" + secret

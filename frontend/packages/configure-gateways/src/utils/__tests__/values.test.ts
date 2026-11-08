@@ -7,6 +7,7 @@ import type {Gateway} from '../../models/gateway';
 import {errorReasonOf} from '../apiError';
 import {aboutOwner, aboutValues, type MissingField} from '../missingValues';
 import runnersOf from '../runners';
+import {parseValueName} from '../valueLabels';
 import valueRowsOf from '../valueRows';
 
 describe('valueRowsOf', () => {
@@ -27,6 +28,68 @@ describe('valueRowsOf', () => {
     expect(rows.map((row) => row.name)).toEqual(['Z_UNSET', 'A_SET', 'B_SET']);
     expect(rows[2].references).toHaveLength(1);
     expect(rows[0].stored).toBeUndefined();
+  });
+});
+
+describe('valueRowsOf with the current configuration', () => {
+  const stored = [{name: 'APPLICATION__AB__CLIENT_ID', value: 'x'}] as never;
+  const current = [
+    {
+      name: 'APPLICATION__AB__CLIENT_ID',
+      kind: 'variable' as const,
+      resourceType: 'application',
+      resourceName: 'Orders',
+    },
+    {name: 'APPLICATION__AB__CLIENT_ID', kind: 'secret' as const, resourceType: 'application', resourceName: 'Other'},
+  ];
+
+  it('says which resource a value belongs to when the running version does not refer to it', () => {
+    const [row] = valueRowsOf('variable', stored, [], current);
+
+    expect(row.references).toEqual([]);
+    expect(row.current.map((reference) => reference.resourceName)).toEqual(['Orders']);
+  });
+
+  it('leaves a value the running version refers to with the places it refers to it', () => {
+    const running = [
+      {
+        name: 'APPLICATION__AB__CLIENT_ID',
+        kind: 'variable' as const,
+        resourceType: 'application',
+        resourceName: 'Live',
+      },
+    ];
+    const [row] = valueRowsOf('variable', stored, running, current);
+
+    expect(row.references.map((reference) => reference.resourceName)).toEqual(['Live']);
+    expect(row.current).toEqual([]);
+  });
+
+  it('does not add a row for a name only the current configuration refers to', () => {
+    expect(valueRowsOf('variable', [], [], current)).toEqual([]);
+  });
+});
+
+describe('parseValueName', () => {
+  it('reads the resource type and field back from a name the server derived', () => {
+    expect(parseValueName('APPLICATION__019000000000700080000000000000F1__CLIENT_ID')).toEqual({
+      resourceType: 'application',
+      field: 'CLIENT_ID',
+    });
+    expect(parseValueName('RESOURCE_SERVER__01900000000070008000000000000020__IDENTIFIER')).toEqual({
+      resourceType: 'resource_server',
+      field: 'IDENTIFIER',
+    });
+    expect(parseValueName('USER__H0123456789ABCDEF0123456789ABCDEF__PASSWORD')).toEqual({
+      resourceType: 'user',
+      field: 'PASSWORD',
+    });
+  });
+
+  it('does not read a name someone chose', () => {
+    expect(parseValueName('APPLICATION_MY_APP_CLIENT_ID')).toBeNull();
+    expect(parseValueName('DB_PASSWORD')).toBeNull();
+    expect(parseValueName('APPLICATION__NOT_AN_ID__CLIENT_ID')).toBeNull();
   });
 });
 

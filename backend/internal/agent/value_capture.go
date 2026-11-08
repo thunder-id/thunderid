@@ -50,8 +50,7 @@ func (s *agentService) captureCredentials(ctx context.Context, agent *providers.
 		agent.Attributes, credentials)
 }
 
-// capture names an agent by its display value, as the export does, and hands it to the value capturer
-// with its credentials.
+// capture hands an agent to the value capturer with its credentials, in the shape the export reads back.
 func (s *agentService) capture(ctx context.Context, resource *model.AgentGetResponse,
 	attributes json.RawMessage, credentials map[string]string) {
 	displayPaths := s.resolveDisplayPaths(ctx, []string{resource.Type})

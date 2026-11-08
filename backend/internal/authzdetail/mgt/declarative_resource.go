@@ -152,6 +152,14 @@ func (e *typeExporter) ValidateResource(ctx context.Context,
 	return t.Name, nil
 }
 
+// GetResourceID returns the ID of an exported authorization details type.
+func (e *typeExporter) GetResourceID(resource interface{}) string {
+	if t, ok := resource.(*typeDeclarativeResource); ok {
+		return t.ID
+	}
+	return ""
+}
+
 // GetResourceRules returns the parameterization rules for authorization details types.
 func (e *typeExporter) GetResourceRules() *declarativeresource.ResourceRules {
 	return nil

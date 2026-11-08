@@ -266,7 +266,7 @@ paths:
         application. A console shows the configuration as the gateway runs it from this, rather than
         as this deployment holds it now, which may have moved on since the apply.
 
-        A value the version refers to, such as `var:APPLICATION_ORDERS_CLIENT_ID`, is returned as the
+        A value the version refers to, such as `var:APPLICATION__0198F3A17C2E7B109A445D3E8F21C6B7__CLIENT_ID`, is returned as the
         reference: the version does not hold the value. A secret the resource's own read masks is
         masked the same way, and user credentials are never returned. A gateway nothing was applied to
         runs nothing: `resources` is empty and there is no `version`.

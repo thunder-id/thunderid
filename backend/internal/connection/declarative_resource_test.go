@@ -27,6 +27,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/outboundauth"
 	"github.com/thunder-id/thunderid/internal/system/secretresolver"
+	"github.com/thunder-id/thunderid/internal/system/varname"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/connection/authzenpdpmock"
@@ -1342,6 +1343,11 @@ func exportConnection(exporter *connectionExporter) (*export.ExportResponse, *ti
 	})
 }
 
+// riskEngineVar is the variable an export names a header of the connection c-1.
+func riskEngineVar(header string) string {
+	return varname.DeriveVariableName("connection", "c-1", header)
+}
+
 func (s *DeclarativeResourceTestSuite) TestAPIKeyHeadersTheExportCannotNameAreRefused() {
 	cases := map[string]struct {
 		headers map[string]string
@@ -1352,7 +1358,7 @@ func (s *DeclarativeResourceTestSuite) TestAPIKeyHeadersTheExportCannotNameAreRe
 		"headers deriving one parameter": {
 			map[string]string{"X-Region_Key": "first-s3cret", "X_Region-Key": "second-s3cret"},
 			"the API-key headers 'X-Region_Key' and 'X_Region-Key' map to the same parameter " +
-				"CONNECTION_RISK_ENGINE_X_REGION_KEY"},
+				riskEngineVar("X-Region-Key")},
 	}
 	for _, vendor := range []string{httpVendorName, smsGatewayVendorName, authZENPDPVendorName} {
 		for name, tc := range cases {
@@ -1389,13 +1395,13 @@ func (s *DeclarativeResourceTestSuite) TestAPIKeyHeadersExportAsParameters() {
 			s.Require().Nil(svcErr)
 			s.Require().Len(result.Files, 1)
 			content := result.Files[0].Content
-			s.Contains(content, "X-Tenant-Key: {{.CONNECTION_RISK_ENGINE_X_TENANT_KEY}}")
-			s.Contains(content, "X-Region-Key: {{.CONNECTION_RISK_ENGINE_X_REGION_KEY}}")
+			s.Contains(content, "X-Tenant-Key: {{."+riskEngineVar("X-Tenant-Key")+"}}")
+			s.Contains(content, "X-Region-Key: {{."+riskEngineVar("X-Region-Key")+"}}")
 			s.NotContains(content, "tenant-s3cret")
 			s.NotContains(content, "region-s3cret")
 			s.Require().NotNil(result.EnvFile)
-			s.Contains(result.EnvFile.Content, "CONNECTION_RISK_ENGINE_X_TENANT_KEY=tenant-s3cret")
-			s.Contains(result.EnvFile.Content, "CONNECTION_RISK_ENGINE_X_REGION_KEY=region-s3cret")
+			s.Contains(result.EnvFile.Content, riskEngineVar("X-Tenant-Key")+"=tenant-s3cret")
+			s.Contains(result.EnvFile.Content, riskEngineVar("X-Region-Key")+"=region-s3cret")
 		})
 	}
 }

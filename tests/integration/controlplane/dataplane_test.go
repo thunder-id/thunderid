@@ -92,10 +92,9 @@ func (ts *ControlPlaneTestSuite) TestADataPlaneImportsTheExportWithItsOwnValues(
 	}, &exported)
 	ts.Require().Equal(http.StatusOK, status, string(raw))
 
-	variable := strings.ToUpper(strings.NewReplacer(" ", "_", "-", "_").Replace(name))
-	clientIDName := "APPLICATION_" + variable + "_CLIENT_ID"
-	clientSecretName := "APPLICATION_" + variable + "_CLIENT_SECRET"
-	redirectURIsName := "APPLICATION_" + variable + "_REDIRECT_URIS"
+	clientIDName := variableName("APPLICATION", appID, "CLIENT_ID")
+	clientSecretName := variableName("APPLICATION", appID, "CLIENT_SECRET")
+	redirectURIsName := variableName("APPLICATION", appID, "REDIRECT_URIS")
 
 	outcome := ts.importToDataPlane(exported.Resources)
 	ts.Equal(1, outcome.Summary.Failed, "an application was imported with no values for its references")
@@ -182,7 +181,7 @@ func (ts *ControlPlaneTestSuite) TestADataPlaneHoldsAResourceServerUnderItsOwnId
 	ts.Equal(1, outcome.Summary.Failed, "a resource server was imported with no value for its identifier")
 
 	identifier := "https://" + unique("dp-orders") + ".example.com"
-	variable := variableName("RESOURCE_SERVER", name, "IDENTIFIER")
+	variable := variableName("RESOURCE_SERVER", created.ID, "IDENTIFIER")
 	status, raw = ts.toDataPlane(http.MethodPut, "/variables/"+variable, map[string]any{"value": identifier})
 	ts.Require().Less(status, http.StatusBadRequest, string(raw))
 

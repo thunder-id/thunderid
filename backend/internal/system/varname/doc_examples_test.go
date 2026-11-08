@@ -23,18 +23,16 @@ import "testing"
 // The examples in docs/content/guides/resource-export.mdx are pinned here, so a change to the naming
 // rule fails a test rather than leaving the guide quietly wrong.
 func TestDocumentedExamples(t *testing.T) {
-	cases := []struct{ resourceType, resourceName, field, want string }{
-		{"application", "My App", "ClientId", "APPLICATION_MY_APP_CLIENT_ID"},
-		{"application", "My-App", "ClientId", "APPLICATION_MY_APP_CLIENT_ID"},
-		{"application", "My App-", "ClientId", "APPLICATION_MY_APP_CLIENT_ID"},
-		{"agent", "My App", "ClientId", "AGENT_MY_APP_CLIENT_ID"},
-		{"user", "alice@example.com", "password", "USER_ALICE_EXAMPLE_COM_PASSWORD"},
-		{"application", "2FA App", "ClientId", "APPLICATION_2FA_APP_CLIENT_ID"},
+	cases := []struct{ resourceType, resourceID, field, want string }{
+		{"application", idAlice, "ClientId", "APPLICATION__0198F3A17C2E7B109A445D3E8F21C6B7__CLIENT_ID"},
+		{"agent", idAlice, "ClientId", "AGENT__0198F3A17C2E7B109A445D3E8F21C6B7__CLIENT_ID"},
+		{"user", idAlice, "password", "USER__0198F3A17C2E7B109A445D3E8F21C6B7__PASSWORD"},
+		{"resource_server", idAlice, "identifier", "RESOURCE_SERVER__0198F3A17C2E7B109A445D3E8F21C6B7__IDENTIFIER"},
 	}
 	for _, c := range cases {
-		if got := DeriveVariableName(c.resourceType, c.resourceName, c.field); got != c.want {
+		if got := DeriveVariableName(c.resourceType, c.resourceID, c.field); got != c.want {
 			t.Errorf("DeriveVariableName(%q, %q, %q) = %q, want %q",
-				c.resourceType, c.resourceName, c.field, got, c.want)
+				c.resourceType, c.resourceID, c.field, got, c.want)
 		}
 	}
 }

@@ -131,9 +131,17 @@ func (e *agentExporter) GetResourceByID(
 		return nil, "", &tidcommon.InternalServerError
 	}
 	if len(held) > 0 {
-		a.Credentials = declarativeresource.CredentialPlaceholders(resourceTypeAgent, a.Display, held, e.references)
+		a.Credentials = declarativeresource.CredentialPlaceholders(resourceTypeAgent, a.ID, held, e.references)
 	}
 	return a, a.Display, nil
+}
+
+// GetResourceID returns the ID of an exported agent.
+func (e *agentExporter) GetResourceID(resource interface{}) string {
+	if a, ok := resource.(*model.AgentGetResponse); ok {
+		return a.ID
+	}
+	return ""
 }
 
 // ValidateResource validates an agent resource prior to export.

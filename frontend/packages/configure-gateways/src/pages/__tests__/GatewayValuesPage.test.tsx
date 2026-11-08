@@ -96,6 +96,101 @@ describe('GatewayValuesPage', () => {
     expect(await screen.findByTestId('value-row-LEFTOVER')).toBeInTheDocument();
   });
 
+  it('names the resource a value belongs to from the current configuration when the running version does not refer to it', async () => {
+    const adminConsole = 'APPLICATION__019000000000700080000000000000F1__CLIENT_ID';
+    routes['GET /gateways/gw-dev/applied-version'] = {gatewayId: 'gw-dev'};
+    routes['GET /configuration-versions/current'] = {
+      version: 'current',
+      createdAt: '2026-10-12T13:52:47Z',
+      references: [
+        {
+          name: adminConsole,
+          kind: 'variable',
+          resourceType: 'application',
+          resourceId: '01900000-0000-7000-8000-0000000000f1',
+          resourceName: 'Admin Console',
+          field: 'clientId',
+        },
+      ],
+    };
+    routes['GET /gateways/gw-dev/variables'] = page('variables', [
+      {name: adminConsole, value: 'ADMIN_CONSOLE'},
+      {name: 'LEFTOVER', value: 'x'},
+    ]);
+    render(<GatewayValuesPage />);
+
+    await userEvent.click(await screen.findByRole('button', {name: 'Applications'}));
+    const row = await screen.findByTestId(`value-row-${adminConsole}`);
+    expect(screen.getByText('Admin Console')).toBeInTheDocument();
+    expect(within(row).getByText('Client ID')).toBeInTheDocument();
+    expect(within(row).getByText(adminConsole)).toBeInTheDocument();
+    expect(within(row).getByText('Not used by the running version')).toBeInTheDocument();
+    expect(screen.queryByText(/refers to .* values it does not hold/)).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', {name: 'Not used by the version this gateway runs'}));
+    expect(await screen.findByTestId('value-row-LEFTOVER')).toBeInTheDocument();
+  });
+
+  it('saves a list value of a row labelled from the current configuration as a JSON list', async () => {
+    const redirectUris = 'APPLICATION__019000000000700080000000000000F1__REDIRECT_URIS';
+    routes['GET /gateways/gw-dev/applied-version'] = {gatewayId: 'gw-dev'};
+    routes['GET /configuration-versions/current'] = {
+      version: 'current',
+      createdAt: '2026-10-12T13:52:47Z',
+      references: [
+        {
+          name: redirectUris,
+          kind: 'variable',
+          resourceType: 'application',
+          resourceName: 'Admin Console',
+          field: 'redirectUris',
+          list: true,
+        },
+      ],
+    };
+    routes['GET /gateways/gw-dev/variables'] = page('variables', [
+      {name: redirectUris, value: '["https://a.test/cb"]'},
+    ]);
+    routes[`PUT /gateways/gw-dev/variables/${redirectUris}`] = {name: redirectUris};
+    render(<GatewayValuesPage />);
+
+    await userEvent.click(await screen.findByRole('button', {name: 'Applications'}));
+    await userEvent.click(await screen.findByRole('button', {name: `Set ${redirectUris}`}));
+    const field = screen.getByLabelText(redirectUris);
+    await userEvent.clear(field);
+    await userEvent.type(field, 'https://a.test/cb{enter}https://a.test/alt');
+    await userEvent.click(screen.getByRole('button', {name: 'Save'}));
+
+    await waitFor(() =>
+      expect(
+        http.calls
+          .filter((call: Call) => call.method === 'PUT')
+          .map((call: Call) => [call.url.replace(SERVER, ''), call.data]),
+      ).toEqual([
+        [
+          `/gateways/gw-dev/variables/${redirectUris}`,
+          {value: '["https://a.test/cb","https://a.test/alt"]', description: undefined},
+        ],
+      ]),
+    );
+  });
+
+  it('reads the type and field back from a name the server derived when nothing refers to it', async () => {
+    const derived = 'APPLICATION__019000000000700080000000000000F1__CLIENT_ID';
+    routes['GET /gateways/gw-dev/applied-version'] = {gatewayId: 'gw-dev'};
+    routes['GET /gateways/gw-dev/variables'] = page('variables', [
+      {name: derived, value: 'ADMIN_CONSOLE'},
+      {name: 'LEFTOVER', value: 'x'},
+    ]);
+    render(<GatewayValuesPage />);
+
+    await userEvent.click(await screen.findByRole('button', {name: 'Not used by the version this gateway runs'}));
+    const row = await screen.findByTestId(`value-row-${derived}`);
+    expect(within(row).getByText('Application · Client ID')).toBeInTheDocument();
+    expect(within(row).getByText(derived)).toBeInTheDocument();
+    expect(within(await screen.findByTestId('value-row-LEFTOVER')).getByText('LEFTOVER')).toBeInTheDocument();
+  });
+
   it('sets a list one item per line, and a secret without reading it back', async () => {
     routes['PUT /gateways/gw-dev/variables/APP_ORDERS_REDIRECT_URIS'] = {name: 'APP_ORDERS_REDIRECT_URIS'};
     routes['PUT /gateways/gw-dev/secrets/APP_ORDERS_CLIENT_SECRET'] = {name: 'APP_ORDERS_CLIENT_SECRET', exists: true};
