@@ -115,18 +115,31 @@ func TestAChangeCaptureAppliesTheVersionItCaptured(t *testing.T) {
 	assert.Len(t, f.client.sent, 1)
 }
 
-// A revert captures a configuration an older version already holds, so the capture answers with that
-// version while "latest" is still the one being reverted. The default gateway gets the one captured.
-func TestAutoApplyAppliesTheCapturedVersionWhenItIsNotTheLatest(t *testing.T) {
+// Going back to what an older version holds, as a revert does, captures a new version, the latest, and
+// the default gateway gets it.
+func TestAutoApplyAppliesTheVersionTheConfigurationWentBackTo(t *testing.T) {
 	f := autoApplyFixture(t, true, true)
 	svc := f.svc.(*versionService)
 	f.capture(t, "ou-b")
-	reverted := f.capture(t, "ou-a")
-	require.True(t, reverted.Unchanged)
-	require.Equal(t, 1, reverted.Seq)
+	back := f.capture(t, "ou-a")
+	require.False(t, back.Unchanged)
+	require.Equal(t, 3, back.Seq)
 
-	svc.applyToFirstGateway(context.Background(), reverted)
+	svc.applyToFirstGateway(context.Background(), back)
 
 	held, _ := f.svc.GetApplied(context.Background(), "gw-1")
-	assert.Equal(t, 1, held.AppliedVersion)
+	assert.Equal(t, 3, held.AppliedVersion)
+}
+
+// When another capture came in after it, the captured version is applied by its hash, not as "latest".
+func TestAutoApplyAppliesTheCapturedVersionWhenItIsNotTheLatest(t *testing.T) {
+	f := autoApplyFixture(t, true, true)
+	svc := f.svc.(*versionService)
+	captured := f.capture(t, "ou-b")
+	f.capture(t, "ou-c")
+
+	svc.applyToFirstGateway(context.Background(), captured)
+
+	held, _ := f.svc.GetApplied(context.Background(), "gw-1")
+	assert.Equal(t, captured.Seq, held.AppliedVersion)
 }

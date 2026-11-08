@@ -33,10 +33,9 @@ func (s *versionService) applyToFirstGateway(ctx context.Context, captured *Vers
 	}
 }
 
-// autoApplyRef names the version to apply. A capture of a configuration an older version already
-// holds, as a revert leaves it, answers with that older version, which "latest" would not name. It is
-// named by its hash then; otherwise "latest" is asked for, which a burst of changes folds into the
-// apply already running.
+// autoApplyRef names the version to apply. A capture answers with the latest version, so "latest" is
+// asked for, which a burst of changes folds into the apply already running; should another capture
+// have come in between, the captured version is named by its hash.
 func (s *versionService) autoApplyRef(ctx context.Context, captured *Version) string {
 	if captured == nil || captured.Hash == "" {
 		return latestVersion

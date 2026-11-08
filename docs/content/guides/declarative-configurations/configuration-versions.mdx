@@ -36,8 +36,12 @@ placeholders, not the values those stand for. Values differ from one gateway to 
 to a value alone is not a new version. Any prefix of at least seven characters that no other version
 shares also names it, and so does `latest`.
 
-- **Capturing unchanged configuration keeps nothing new.** The answer is `200` with the existing version,
-  marked `unchanged`, instead of `201`.
+- **Capturing unchanged configuration keeps nothing new.** When the configuration matches the latest
+  version, the answer is `200` with that version, marked `unchanged`, instead of `201`.
+- **Going back is a new version.** When the configuration goes back to what an older version holds, for
+  example after a change is undone, the capture keeps a new version, the latest, with the same hash as
+  the older one. Applying `latest` then undoes the change on a gateway too. A hash shared by two
+  versions names the newer one.
 - **A resource the export cannot write is left out.** For example, a user with no username. The answer
   lists it under `skipped` with the reason.
 - **A version holds references, not values.** A client secret or a user's password appears as a

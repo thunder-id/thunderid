@@ -154,12 +154,13 @@ var (
 			`APPLIED_AT = datetime('now'), APPLIED_BY = excluded.APPLIED_BY, HELD_VALUES = excluded.HELD_VALUES, ` +
 			appliedStateUpdate + `WHERE "GATEWAY_APPLIED_VERSION".APPLIED_SEQ = $9`,
 	}
-	// queryFindVersions finds the versions whose hash starts with a prefix, newest first. Two are enough
-	// to tell a prefix that names one version from one that names several.
+	// queryFindVersions finds the versions whose hash starts with a prefix, newest first, the newest of
+	// each hash alone: versions that hold the same configuration are named by it as the newest of them.
+	// Two are enough to tell a prefix that names one configuration from one that names several.
 	queryFindVersions = dbmodel.DBQuery{
 		ID: "GTV_MGT-13",
-		Query: `SELECT SEQ FROM "CONFIGURATION_VERSION" WHERE HASH LIKE $1 AND DEPLOYMENT_ID = $2 ` +
-			`ORDER BY SEQ DESC LIMIT 2`,
+		Query: `SELECT MAX(SEQ) AS SEQ FROM "CONFIGURATION_VERSION" WHERE HASH LIKE $1 AND DEPLOYMENT_ID = $2 ` +
+			`GROUP BY HASH ORDER BY MAX(SEQ) DESC LIMIT 2`,
 	}
 	// queryDeleteAppliedVersion forgets what a removed gateway held.
 	queryDeleteAppliedVersion = dbmodel.DBQuery{
@@ -214,7 +215,8 @@ type versionStoreInterface interface {
 	// Get reads one version with its content, or nil when the deployment has no such version.
 	Get(ctx context.Context, seq int) (*Version, error)
 	Latest(ctx context.Context) (int, error)
-	// Find returns the places of up to two versions whose hash starts with prefix, newest first.
+	// Find returns the places of up to two versions whose hash starts with prefix, newest first, the
+	// newest of each hash alone.
 	Find(ctx context.Context, prefix string) ([]int, error)
 	// Prune removes versions numbered up to and including through, except those a gateway holds or
 	// could be reverted to.

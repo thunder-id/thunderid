@@ -534,7 +534,8 @@ CREATE UNIQUE INDEX idx_gateway_default_deployment
 -- A captured state of this deployment's configuration, named by a hash of what it captured and
 -- ordered per deployment. It is what is applied to a gateway. Its values, when the export carried
 -- any, are held encrypted as one secret. CREATED_BY is the id of the user it was
--- captured for; their name is read from the trusted issuer when shown, never stored.
+-- captured for; their name is read from the trusted issuer when shown, never stored. Two versions can
+-- hold the same configuration: going back to what an older version holds is a new version.
 CREATE TABLE "CONFIGURATION_VERSION" (
     DEPLOYMENT_ID VARCHAR(255) NOT NULL,
     ID VARCHAR(36) PRIMARY KEY,
@@ -547,9 +548,10 @@ CREATE TABLE "CONFIGURATION_VERSION" (
     IS_CURRENT CHAR(1) NOT NULL DEFAULT '0',
     CREATED_AT TEXT DEFAULT (datetime('now')),
     CREATED_BY VARCHAR(255),
-    UNIQUE (DEPLOYMENT_ID, SEQ),
-    UNIQUE (DEPLOYMENT_ID, HASH)
+    UNIQUE (DEPLOYMENT_ID, SEQ)
 );
+
+CREATE INDEX idx_configuration_version_hash ON "CONFIGURATION_VERSION" (DEPLOYMENT_ID, HASH);
 
 -- The configuration version each gateway holds, and the one it held before, which is what a revert
 -- returns it to, with who applied it. A gateway declared in a file has no GATEWAY row, so there is no foreign key.

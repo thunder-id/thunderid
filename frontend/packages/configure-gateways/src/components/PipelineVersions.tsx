@@ -79,7 +79,7 @@ export default function PipelineVersions({
         : when;
     return (
       <Stack
-        key={version.version}
+        key={`${version.version}-${String(version.number)}`}
         direction="row"
         alignItems="center"
         spacing={1.25}
