@@ -47,6 +47,10 @@ const (
 	EventFlowRestore = "flow.restore"
 	// EventClientAuthenticate names a refused attempt by an OAuth client to authenticate.
 	EventClientAuthenticate = "client.authenticate"
+	// EventGatewayApply names an attempt to apply a configuration version to a gateway.
+	EventGatewayApply = "gateway.apply"
+	// EventGatewayRevert names an attempt to return a gateway to the configuration it held before.
+	EventGatewayRevert = "gateway.revert"
 	// EventRoleCreate names an attempt to create a role.
 	EventRoleCreate = "role.create"
 	// EventRoleUpdate names an attempt to change a role.
@@ -88,6 +92,8 @@ const (
 	TargetTypeAgent = "agent"
 	// TargetTypeAgentType is the target type of an event about an agent type.
 	TargetTypeAgentType = "agent_type"
+	// TargetTypeGateway is the target type of an event about a gateway.
+	TargetTypeGateway = "gateway"
 	// TargetTypeRole is the target type of an event about a role.
 	TargetTypeRole = "role"
 	// TargetTypeGroup is the target type of an event about a group.
@@ -139,6 +145,9 @@ var auditedEvents = map[string][]string{
 	EventFlowDelete:         nil,
 	EventFlowRestore:        nil,
 	EventClientAuthenticate: nil,
+
+	EventGatewayApply:  nil,
+	EventGatewayRevert: nil,
 
 	EventRoleCreate:           nil,
 	EventRoleUpdate:           nil,
