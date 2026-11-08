@@ -143,6 +143,19 @@ resources:
         handle: update
       - name: Delete
         handle: delete
+  - name: User Sharing
+    handle: sharing
+    parent: system:user
+    description: User sharing management
+    actions:
+      - name: View
+        handle: view
+      - name: Create
+        handle: create
+      - name: Update
+        handle: update
+      - name: Delete
+        handle: delete
   - name: Groups
     handle: group
     parent: system
@@ -221,10 +234,36 @@ resources:
         handle: update
       - name: Delete
         handle: delete
+  - name: Application Sharing
+    handle: sharing
+    parent: system:app
+    description: Application sharing management
+    actions:
+      - name: View
+        handle: view
+      - name: Create
+        handle: create
+      - name: Update
+        handle: update
+      - name: Delete
+        handle: delete
   - name: Roles
     handle: role
     parent: system
     description: Role and role assignment management
+    actions:
+      - name: View
+        handle: view
+      - name: Create
+        handle: create
+      - name: Update
+        handle: update
+      - name: Delete
+        handle: delete
+  - name: Role Sharing
+    handle: sharing
+    parent: system:role
+    description: Role sharing management
     actions:
       - name: View
         handle: view
@@ -260,10 +299,36 @@ resources:
         handle: update
       - name: Delete
         handle: delete
+  - name: Connection Sharing
+    handle: sharing
+    parent: system:connection
+    description: Connection sharing management
+    actions:
+      - name: View
+        handle: view
+      - name: Create
+        handle: create
+      - name: Update
+        handle: update
+      - name: Delete
+        handle: delete
   - name: Flows
     handle: flow
     parent: system
     description: Flow management
+    actions:
+      - name: View
+        handle: view
+      - name: Create
+        handle: create
+      - name: Update
+        handle: update
+      - name: Delete
+        handle: delete
+  - name: Flow Sharing
+    handle: sharing
+    parent: system:flow
+    description: Flow sharing management
     actions:
       - name: View
         handle: view
