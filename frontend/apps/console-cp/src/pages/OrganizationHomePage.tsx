@@ -1,13 +1,13 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {useQueries, useQuery} from '@tanstack/react-query';
+import {useQueries} from '@tanstack/react-query';
 import {DocumentTitle, QueryErrorNotice} from '@thunderid/components';
 import {gatewayColor, usePipeline, useProjects, type PipelineStage, type Project} from '@thunderid/configure-gateways';
 import {useProjectSelection} from '@thunderid/configure-projects';
-import {useConfig} from '@thunderid/contexts';
-import {User, useThunderID} from '@thunderid/react';
+import {User} from '@thunderid/react';
 import {
+  Avatar,
   Box,
   Button,
   ButtonBase,
@@ -31,7 +31,6 @@ import {
   Globe,
   LayoutGrid,
   Plus,
-  Rocket,
   MoveRight,
   Server,
   SlidersHorizontal,
@@ -42,34 +41,10 @@ import {Fragment, useState, type JSX, type ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
 import {Link, useNavigate} from 'react-router';
 import RouteConfig from '../configs/RouteConfig';
+import useProjectCounts, {agentsPath, applicationsPath, useCountReader} from '../hooks/useProjectCounts';
 
-/** Reads how many of a listed resource there are, from a list of one. */
-function useCountReader(): (path: string) => Promise<number> {
-  const {http} = useThunderID();
-  const {getServerUrl} = useConfig();
-  return async (path: string): Promise<number> => {
-    const separator = path.includes('?') ? '&' : '?';
-    const response = (await http.request({
-      url: `${getServerUrl()}${path}${separator}limit=1&offset=0`,
-      method: 'GET',
-    } as unknown as Parameters<typeof http.request>[0])) as {data: {totalResults?: number}};
-    return response.data.totalResults ?? 0;
-  };
-}
-
-/** How many of a listed resource there are. */
-function useCount(path: string): number | undefined {
-  const read = useCountReader();
-  return useQuery<number>({
-    queryKey: ['organization-home-count', path],
-    queryFn: () => read(path),
-    retry: false,
-    staleTime: 60_000,
-  }).data;
-}
-
-const applicationsOf = (project: Project): string => `/applications?projectId=${encodeURIComponent(project.id)}`;
-const agentsOf = (project: Project): string => `/agents?projectId=${encodeURIComponent(project.id)}`;
+const applicationsOf = (project: Project): string => applicationsPath(project.id);
+const agentsOf = (project: Project): string => agentsPath(project.id);
 
 /** How many applications or agents the projects hold together, and how many projects hold any. */
 function useAcross(projects: Project[], pathOf: (project: Project) => string): {total?: number; projects: number} {
@@ -124,27 +99,9 @@ function Section({
   );
 }
 
-/** How many applications and agents a project holds, as a person reads it. */
-function useProjectCounts(project: Project): string {
-  const {t} = useTranslation();
-  const applications = useCount(applicationsOf(project));
-  const agents = useCount(agentsOf(project));
-  const countOf = (count: number | undefined, key: string, one: string, other: string, none: string): string => {
-    if (count === undefined) return '';
-    if (count === 0) return t(`home:organization.${key}None`, none);
-    return t(`home:organization.${key}`, {count, defaultValue_one: one, defaultValue_other: other});
-  };
-  return [
-    countOf(applications, 'applications', '{{count}} application', '{{count}} applications', 'No applications'),
-    countOf(agents, 'agents', '{{count}} agent', '{{count}} agents', 'No agents'),
-  ]
-    .filter(Boolean)
-    .join(' · ');
-}
-
 /** One project, with how many applications and agents it holds; it opens the project. */
 function ProjectRow({project, onOpen}: {project: Project; onOpen: () => void}): JSX.Element {
-  const counts = useProjectCounts(project);
+  const counts = useProjectCounts(project.id);
   return (
     <ButtonBase
       onClick={onOpen}
@@ -184,7 +141,7 @@ function PickerOption({
   checked: boolean;
   onChoose: () => void;
 }): JSX.Element {
-  const counts = useProjectCounts(project);
+  const counts = useProjectCounts(project.id);
   return (
     <ButtonBase
       onClick={onChoose}
@@ -217,20 +174,29 @@ function PickerOption({
   );
 }
 
-/** What the project picker was opened for: a deploy, or a new application or agent. */
-type Pick = 'deploy' | 'application' | 'agent';
+/** What the project picker was opened for: a new application or agent. */
+type Pick = 'application' | 'agent';
 
 /** The rounded buttons of the overview, as the design draws them. */
 const PILL = {minHeight: 40, px: 2, borderRadius: '20px', fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap'};
 
-/** Where configuration enters the first gateway, in that gateway's color. */
-function DeployArrow({label, color}: {label: string; color: string}): JSX.Element {
+/** The label and arrow of a joint between steps, set close together. */
+function Joint({label}: {label: string}): JSX.Element {
   return (
-    <Stack alignItems="center" spacing={0.25} sx={{flex: '0 0 auto', pt: 1.25, color}}>
-      <Typography color="inherit" sx={{fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap'}}>
+    <Stack alignItems="center" sx={{lineHeight: 1}}>
+      <Typography color="inherit" sx={{fontSize: 11, fontWeight: 600, lineHeight: 1.3, whiteSpace: 'nowrap'}}>
         {label}
       </Typography>
       <MoveRight size={28} />
+    </Stack>
+  );
+}
+
+/** Where configuration enters the first gateway: deployed when asked. */
+function DeployArrow({label}: {label: string}): JSX.Element {
+  return (
+    <Stack alignItems="center" sx={{flex: '0 0 auto', pt: 1.25, px: 1, color: 'primary.main'}}>
+      <Joint label={label} />
     </Stack>
   );
 }
@@ -240,13 +206,10 @@ function PromoteArrow({label}: {label: string}): JSX.Element {
   const dash = {borderLeft: '1px dashed', borderColor: 'divider'};
   return (
     <Stack alignItems="center" sx={{flex: '0 0 auto', alignSelf: 'stretch', width: 96, color: 'text.secondary'}}>
-      <Box aria-hidden sx={{...dash, height: 10}} />
-      <Stack alignItems="center" spacing={0.25} sx={{py: 0.5}}>
-        <Typography color="inherit" sx={{fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap'}}>
-          {label}
-        </Typography>
-        <MoveRight size={28} />
-      </Stack>
+      <Box aria-hidden sx={{...dash, height: 6}} />
+      <Box sx={{py: 0.75}}>
+        <Joint label={label} />
+      </Box>
       <Box aria-hidden sx={{...dash, flex: 1}} />
     </Stack>
   );
@@ -413,8 +376,8 @@ export default function OrganizationHomePage({
     const handle = handleOf(id);
     if (handle) select(handle);
   };
-  const pick = (purpose: Pick): void => {
-    setChosen(projects[0]?.id ?? null);
+  const pick = (purpose: Pick, preferred: string | undefined = undefined): void => {
+    setChosen(preferred ?? projects[0]?.id ?? null);
     setPicking(purpose);
   };
   const proceed = (): void => {
@@ -428,21 +391,12 @@ export default function OrganizationHomePage({
 
   // What a gateway is for: the first is where a deploy enters. Which gateway follows which belongs to each
   // project's pipeline, so the overview names no order for the rest.
-  const roleOf = (index: number): string =>
-    index === 0 ? t('home:organization.roleDeployFirst', 'Deploy here first') : '';
+  const roleOf = (index: number): string => {
+    if (index > 0) return '';
+    return t('home:organization.roleDeployFirst', 'Deploy here first');
+  };
 
   const pickerText: Record<Pick, {title: string; subtitle: string; note: string}> = {
-    deploy: {
-      title: t('home:organization.deploy', 'Deploy'),
-      subtitle: t(
-        'home:organization.pickDeploySubtitle',
-        'Choose the project to deploy. Each project deploys through its own pipeline.',
-      ),
-      note: t(
-        'home:organization.pickDeployNote',
-        'Its latest version enters the pipeline at the first gateway, together with shared resources.',
-      ),
-    },
     application: {
       title: t('home:organization.newApplication', 'New application'),
       subtitle: t(
@@ -474,27 +428,25 @@ export default function OrganizationHomePage({
         gap: 2,
         p: 2.5,
         borderRadius: '12px',
-        bgcolor: (theme) => alpha(theme.palette.primary.main, 0.07),
-        border: '1px solid',
-        borderColor: (theme) => alpha(theme.palette.primary.main, 0.3),
+        // The same surface as the How it works card below it.
+        bgcolor: 'background.paper',
+        border: 1,
+        borderColor: 'divider',
       }}
       data-testid={`organization-${kind}`}
     >
-      <Box
+      <Avatar
+        variant="rounded"
         sx={{
           width: 48,
           height: 48,
-          flex: '0 0 auto',
           borderRadius: '12px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
           bgcolor: (theme) => alpha(theme.palette.primary.main, 0.14),
           color: 'primary.main',
         }}
       >
         {icon}
-      </Box>
+      </Avatar>
       <Stack spacing={0.25} sx={{flex: '1 1 auto', minWidth: 0}}>
         <Stack direction="row" spacing={1.25} alignItems="baseline">
           <Typography component="span" sx={{fontSize: 28, fontWeight: 500, lineHeight: 1}}>
@@ -544,12 +496,36 @@ export default function OrganizationHomePage({
               <Typography variant="body1" color="text.secondary">
                 {t(
                   'home:organization.lead',
-                  'Shared settings here apply to every project. Each project builds its own applications and agents and runs them through its pipeline.',
+                  'Shared settings here apply to every project. Each project manages its resources in isolation and propagates them to production through a dedicated pipeline.',
                 )}
               </Typography>
             </Box>
           )}
         </User>
+
+        <Box
+          component="section"
+          aria-label={t('home:organization.applicationsAndAgents', 'Applications and agents')}
+          sx={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(380px, 100%), 1fr))', gap: 2}}
+          data-testid="organization-applications-and-agents"
+        >
+          {acrossTile(
+            'applications',
+            <LayoutGrid size={24} />,
+            applications,
+            t('home:organization.applicationsLead', 'Web, mobile and API clients that sign users in'),
+            t('home:organization.newApplication', 'New application'),
+            () => pick('application'),
+          )}
+          {acrossTile(
+            'agents',
+            <Bot size={24} />,
+            agents,
+            t('home:organization.agentsLead', 'AI agents with their own identity and access'),
+            t('home:organization.newAgent', 'New agent'),
+            () => pick('agent'),
+          )}
+        </Box>
 
         <Card
           variant="outlined"
@@ -580,15 +556,14 @@ export default function OrganizationHomePage({
               {stages.length === 1
                 ? t(
                     'home:organization.howItWorksLeadSingle',
-                    'Configure here, then deploy to your gateway. It has its own users and the apps connected to it.',
+                    'Configure here, then deploy to your gateway. It has its own users and apps.',
                   )
                 : t(
                     'home:organization.howItWorksLead',
-                    'Configure here, then deploy to your first gateway and promote through the rest. Each gateway has its own users and the apps connected to it.',
+                    'Configure here, deploy to your first gateway, then promote through the rest. Each gateway has its own users and apps.',
                   )}
             </Typography>
           </Stack>
-          {pipeline.isLoading && <CircularProgress size={20} />}
           {pipeline.isError && (
             <QueryErrorNotice
               error={pipeline.error}
@@ -599,7 +574,14 @@ export default function OrganizationHomePage({
               onRetry={() => void pipeline.refetch()}
             />
           )}
+          {/* While the gateways are read, the diagram's place holds a spinner as tall as the diagram. */}
+          {pipeline.isLoading && (
+            <Box sx={{display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 236}}>
+              <CircularProgress size={28} aria-label={t('home:organization.gatewaysLoading', 'Reading the gateways')} />
+            </Box>
+          )}
           <Box
+            hidden={pipeline.isLoading}
             tabIndex={0}
             role="region"
             aria-label={t('home:organization.flowRegion', 'Configuration flow diagram')}
@@ -630,13 +612,11 @@ export default function OrganizationHomePage({
               </PathStep>
               {stages.map((stage: PipelineStage, index: number) => {
                 const color = gatewayColor(index);
-                const tag = stage.name.toUpperCase();
+                const tag = stage.name;
                 const last = index > 0 && index === stages.length - 1;
                 return (
                   <Fragment key={stage.gateway.id}>
-                    {index === 0 && (
-                      <DeployArrow label={t('home:organization.deployJoint', 'Deploy')} color={color.light} />
-                    )}
+                    {index === 0 && <DeployArrow label={t('home:organization.deployJoint', 'Deploy')} />}
                     {/* One divide, as the design draws it: the first gateway, then everything promoted from it. */}
                     {index === 1 && <PromoteArrow label={t('home:organization.promote', 'Promote')} />}
                     <PathStep
@@ -690,7 +670,7 @@ export default function OrganizationHomePage({
                             '& .MuiButton-endIcon': {ml: 0.75},
                           }}
                         >
-                          {t('home:organization.openGateway', 'Open {{tag}}', {tag})}
+                          {t('home:organization.openGateway', 'Open gateway')}
                         </Button>
                       </Box>
                     </PathStep>
@@ -763,57 +743,9 @@ export default function OrganizationHomePage({
                   <ExternalLink size={13} />
                 </TextLink>
               )}
-              {projects.length > 0 && (
-                <Button
-                  variant="contained"
-                  startIcon={<Rocket size={16} />}
-                  onClick={() => pick('deploy')}
-                  sx={PILL}
-                  data-testid="organization-deploy"
-                >
-                  {t('home:organization.deploy', 'Deploy')}
-                </Button>
-              )}
             </Stack>
           </Stack>
         </Card>
-
-        <Box
-          component="section"
-          aria-label={t('home:organization.applicationsAndAgents', 'Applications and agents')}
-          sx={{display: 'flex', flexDirection: 'column', gap: 2}}
-          data-testid="organization-applications-and-agents"
-        >
-          <Stack spacing={0.5}>
-            <Typography component="h2" sx={{fontSize: 20, fontWeight: 600}}>
-              {t('home:organization.applicationsAndAgents', 'Applications and agents')}
-            </Typography>
-            <Typography color="text.secondary">
-              {t(
-                'home:organization.applicationsAndAgentsLead',
-                'The core of your identity setup. Every application and agent belongs to a project, which configures, deploys and promotes it.',
-              )}
-            </Typography>
-          </Stack>
-          <Box sx={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(380px, 100%), 1fr))', gap: 2}}>
-            {acrossTile(
-              'applications',
-              <LayoutGrid size={24} />,
-              applications,
-              t('home:organization.applicationsLead', 'Web, mobile and API clients that sign users in'),
-              t('home:organization.newApplication', 'New application'),
-              () => pick('application'),
-            )}
-            {acrossTile(
-              'agents',
-              <Bot size={24} />,
-              agents,
-              t('home:organization.agentsLead', 'AI agents with their own identity and access'),
-              t('home:organization.newAgent', 'New agent'),
-              () => pick('agent'),
-            )}
-          </Box>
-        </Box>
 
         <Section
           title={t('home:organization.projectsCount', 'Projects · {{count}}', {count: projects.length})}

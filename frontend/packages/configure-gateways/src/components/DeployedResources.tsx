@@ -13,7 +13,7 @@ import {
   Tooltip,
   Typography,
 } from '@wso2/oxygen-ui';
-import {ChevronDown} from '@wso2/oxygen-ui-icons-react';
+import {Check, ChevronDown} from '@wso2/oxygen-ui-icons-react';
 import {useMemo, useState, type JSX, type ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
 import {laneOfType} from '../explorer/model';
@@ -220,7 +220,9 @@ export default function DeployedResources({
             key={key}
             label={`${name} · ${count}`}
             color={filter === key ? 'primary' : 'default'}
-            variant={filter === key ? 'filled' : 'outlined'}
+            // The selected filter is marked by a check as well as its colour.
+            icon={filter === key ? <Check size={14} /> : undefined}
+            variant="outlined"
             onClick={() => setFilter(key)}
             aria-pressed={filter === key}
             data-testid={`gateway-filter-${key}`}

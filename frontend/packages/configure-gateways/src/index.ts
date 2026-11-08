@@ -62,7 +62,12 @@ export {default as useGatewaySource} from './api/gatewaySource';
 export {default as useGateways} from './api/useGateways';
 export {usePipeline, useProjects, useAutoApply, useSetAutoApply} from './api/usePipeline';
 export {default as useProjectScope} from './contexts/ProjectScope';
-export {default as useProjectStatus, useProjectChanges, useProjectStatuses} from './api/useProjectStatus';
+export {
+  default as useProjectStatus,
+  useProjectChanges,
+  useProjectStatuses,
+  useProjectsPending,
+} from './api/useProjectStatus';
 export type {ProjectStatus, ProjectVersionShare} from './models/projectStatus';
 export {default as useDeployPanels} from './hooks/useDeployPanels';
 export type {DeployPanels} from './hooks/useDeployPanels';

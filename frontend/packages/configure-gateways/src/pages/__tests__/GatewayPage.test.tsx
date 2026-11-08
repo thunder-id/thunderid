@@ -133,7 +133,9 @@ describe('GatewayPage', () => {
     render(<GatewayPage />);
 
     expect(await screen.findByRole('heading', {name: 'Development gateway'})).toBeInTheDocument();
-    expect(screen.getByTestId('gateway-tag')).toHaveTextContent('DEVELOPMENT · v1');
+    expect(screen.getByTestId('gateway-tag')).toHaveTextContent('Development · v1');
+    // How the gateway stands is told resource by resource, without a banner across the page.
+    expect(screen.queryByTestId('gateway-status')).not.toBeInTheDocument();
     const endpoints = screen.getByTestId('gateway-endpoints');
     expect(within(endpoints).getByText('Issuer')).toBeInTheDocument();
     expect(within(endpoints).getByText('https://dev.test/.well-known/openid-configuration')).toBeInTheDocument();
@@ -159,7 +161,7 @@ describe('GatewayPage', () => {
     render(<GatewayPage />);
 
     const portal = await screen.findByTestId('gateway-admin-portal');
-    expect(within(portal).getByRole('heading', {name: 'DEVELOPMENT admin portal'})).toBeInTheDocument();
+    expect(within(portal).getByRole('heading', {name: 'Development admin portal'})).toBeInTheDocument();
     expect(portal).toHaveTextContent('dev.test');
     expect(portal).toHaveTextContent(
       'Manage the resources that live in this gateway, such as its users, groups, agents and roles.',
@@ -173,7 +175,7 @@ describe('GatewayPage', () => {
 
     const administrators = screen.getByTestId('gateway-administrators');
     await waitFor(() => expect(administrators).toHaveTextContent('Administrators 13'));
-    expect(administrators).toHaveTextContent('They can sign in to the DEVELOPMENT admin portal');
+    expect(administrators).toHaveTextContent('They can sign in to the Development admin portal');
     expect(within(administrators).getByRole('link', {name: 'View all'})).toHaveAttribute('href', '/users');
     const jerad = within(administrators).getByTestId('gateway-administrator-u-1');
     expect(jerad).toHaveTextContent('Jerad');
@@ -191,29 +193,6 @@ describe('GatewayPage', () => {
 
     expect(await screen.findByTestId('gateway-every-endpoint')).toBeInTheDocument();
     expect(screen.queryByTestId('gateway-administration')).not.toBeInTheDocument();
-  });
-
-  it('says how the gateway stands, and offers the deploy that brings it up to date', async () => {
-    render(<GatewayPage />);
-
-    const status = await screen.findByTestId('gateway-status');
-    await waitFor(() =>
-      expect(status).toHaveTextContent("You're viewing the DEVELOPMENT gateway. It runs v1, deployed"),
-    );
-    await waitFor(() => expect(status).toHaveTextContent('Configuration has 3 changes not deployed here.'));
-    expect(within(status).queryByRole('switch')).not.toBeInTheDocument();
-    await userEvent.click(within(status).getByRole('button', {name: 'Review and deploy'}));
-
-    expect(await screen.findByRole('dialog')).toBeInTheDocument();
-  });
-
-  it('has nothing to promote to a later gateway that runs what the one before runs', async () => {
-    gatewayId = 'gw-prod';
-    render(<GatewayPage />);
-
-    const status = await screen.findByTestId('gateway-status');
-    await waitFor(() => expect(status).toHaveTextContent('Everything in the configuration is deployed here.'));
-    expect(within(status).queryByRole('button', {name: 'Promote'})).not.toBeInTheDocument();
   });
 
   it('lists the recent deployments, with a rollback on the latest', async () => {
@@ -295,8 +274,6 @@ describe('GatewayPage', () => {
       </ProjectScopeProvider>,
     );
 
-    const status = await screen.findByTestId('gateway-status');
-    await waitFor(() => expect(status).toHaveTextContent('Configuration has 1 change not deployed here.'));
     expect(await screen.findByTestId('gateway-resource-application/a-1')).toBeInTheDocument();
     // What the project needs is listed apart, edited in the organization's settings, and another
     // project's resources not at all. In sync, it shows once every resource is.
@@ -312,7 +289,7 @@ describe('GatewayPage', () => {
     expect(screen.queryByTestId('gateway-resource-application/b-1')).not.toBeInTheDocument();
   });
 
-  it("reads when and by whom, and the rollback, from inside the project's status as the control plane answers", async () => {
+  it("reads the version and the rollback from inside the project's status as the control plane answers", async () => {
     routes['GET /gateways/gw-dev/project-status'] = {
       project: {
         versions: [{hash: v2, number: 2, resources: 1}],
@@ -332,8 +309,7 @@ describe('GatewayPage', () => {
       </ProjectScopeProvider>,
     );
 
-    const status = await screen.findByTestId('gateway-status');
-    await waitFor(() => expect(status).toHaveTextContent('It runs v2, deployed 2 hours ago.'));
+    await waitFor(() => expect(screen.getByTestId('gateway-tag')).toHaveTextContent('Development · v2'));
     expect(await screen.findByTestId('gateway-rollback')).toBeEnabled();
   });
 
@@ -448,7 +424,7 @@ describe('GatewayPage', () => {
     );
   });
 
-  it("names the versions a project's own resources came from, without a time when none is recorded", async () => {
+  it("names the versions a project's own resources came from beside the gateway's name", async () => {
     routes['GET /gateways/gw-dev/project-status'] = {
       project: {
         versions: [
@@ -468,30 +444,7 @@ describe('GatewayPage', () => {
       </ProjectScopeProvider>,
     );
 
-    const status = await screen.findByTestId('gateway-status');
-    await waitFor(() =>
-      expect(status).toHaveTextContent("You're viewing the DEVELOPMENT gateway. It runs v2, partly v1. "),
-    );
-  });
-
-  it('says auto-sync keeps the first gateway on the latest configuration', async () => {
-    routes['GET /gateways/gw-dev/project-status'] = {
-      project: {versions: [{hash: v2, number: 2, resources: 1}], pending: 0, required: 0},
-      shared: {pending: 0, byType: []},
-      needed: {differing: 0},
-      autoSync: {enabled: true, inherited: false},
-    };
-
-    render(
-      <ProjectScopeProvider project={{id: 'p-shop'}}>
-        <GatewayPage />
-      </ProjectScopeProvider>,
-    );
-
-    const status = await screen.findByTestId('gateway-status');
-    await waitFor(() =>
-      expect(status).toHaveTextContent('Auto-sync is on: it runs v2, the latest saved configuration.'),
-    );
+    await waitFor(() => expect(screen.getByTestId('gateway-tag')).toHaveTextContent('Development · v2, partly v1'));
   });
 
   it('says so when no gateway runs on the gateway', async () => {

@@ -1,8 +1,8 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {Box, Button, IconButton, Stack, Tooltip, Typography} from '@wso2/oxygen-ui';
-import {CircleAlert, CircleCheck, Compass, Info, RefreshCw, Undo2} from '@wso2/oxygen-ui-icons-react';
+import {Box, Button, Stack, Tooltip, Typography} from '@wso2/oxygen-ui';
+import {CircleAlert, CircleCheck, Info, RefreshCw, Rocket, Undo2} from '@wso2/oxygen-ui-icons-react';
 import type {JSX, ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
 import useChangedValues, {changedCount} from '../api/useChangedValues';
@@ -55,7 +55,6 @@ export interface GatewayCardProps {
   previousName?: string;
   /** Opens the deploy or promotion that would bring what is waiting, from the needed resources line. */
   onReview?: () => void;
-  onExplore: () => void;
   onRevert: () => void;
   /** Opens the gateway's own page. */
   onOpen?: () => void;
@@ -148,7 +147,6 @@ export default function GatewayCard({
   onRetryStatus = undefined,
   previousName = undefined,
   onReview = undefined,
-  onExplore,
   onRevert,
   onOpen = undefined,
   onPromote = undefined,
@@ -283,39 +281,17 @@ export default function GatewayCard({
         ...theme.applyStyles('dark', {borderTopColor: color.dark}),
       })}
     >
+      {/* The gateway's name once, with the version it runs beside it; the top border carries its colour. */}
       <Stack direction="row" alignItems="center" spacing={1}>
-        <Typography
-          noWrap
-          sx={(theme) => ({
-            flex: 1,
-            minWidth: 0,
-            fontFamily: 'monospace',
-            fontSize: 13,
-            fontWeight: 500,
-            color: color.light,
-            ...theme.applyStyles('dark', {color: color.dark}),
-          })}
-        >
-          {stage.name.toUpperCase()}
+        <Typography variant="h6" component="h3" fontWeight={500} noWrap sx={{flex: 1, minWidth: 0}}>
+          {stage.name}
         </Typography>
         {running && (
           <Typography sx={{fontFamily: 'monospace', fontSize: 12}} color="text.secondary" data-testid="card-version">
             {running}
           </Typography>
         )}
-        <Tooltip title={t('card.explore', 'Explore')}>
-          <IconButton
-            size="small"
-            onClick={onExplore}
-            aria-label={t('stage.exploreLabel', 'Explore {{name}}', {name: stage.name})}
-          >
-            <Compass size={16} />
-          </IconButton>
-        </Tooltip>
       </Stack>
-      <Typography variant="h6" component="h3" fontWeight={500} noWrap>
-        {stage.name}
-      </Typography>
       {/* The status, as tall as four lines on every card, so the open button lines up across the pipeline. */}
       <Stack spacing={1.5} sx={{minHeight: 116}}>
         {scoped &&
@@ -472,18 +448,19 @@ export default function GatewayCard({
           </Box>
         )}
       </Stack>
+      {/* The open button and the actions keep to the foot of the card, as the design places them. */}
+      <Box sx={{flex: 1}} />
       {onOpen && (
         <Button
           variant="outlined"
-          size="small"
+          color="inherit"
           onClick={onOpen}
-          sx={{borderRadius: 100, alignSelf: 'center', whiteSpace: 'nowrap'}}
+          sx={{borderRadius: 100, alignSelf: 'flex-start', whiteSpace: 'nowrap', borderColor: 'divider'}}
           data-testid="stage-open"
         >
           {t('stage.open', 'Open gateway')}
         </Button>
       )}
-      <Box sx={{flex: 1}} />
       {/* Rollback and promote keep to one row, promote at the end: a long rollback label gives way first. */}
       <Stack
         direction="row"
@@ -527,13 +504,13 @@ export default function GatewayCard({
             </Button>
           </Box>
         </Tooltip>
-        <Box sx={{flex: 1}} />
         {onPromote && (
           <Button
-            variant="contained"
+            variant="text"
             size="small"
+            startIcon={<Rocket size={14} />}
             onClick={onPromote}
-            sx={{flexShrink: 0, whiteSpace: 'nowrap', minWidth: 0, borderRadius: 100}}
+            sx={{flexShrink: 0, whiteSpace: 'nowrap', minWidth: 0}}
             data-testid="card-promote"
           >
             {t('gateways.promote', 'Promote')}

@@ -126,3 +126,39 @@ export function useProjectChanges(): Record<string, number> {
     return counts;
   }, [check.data]);
 }
+
+/**
+ * How many changes each of the projects has that a gateway does not run yet, and how many of the
+ * resources no project owns, each project read against the latest version.
+ */
+export function useProjectsPending(
+  targetId: string,
+  projects: string[],
+): {byProject: Record<string, number>; shared: number; isLoading: boolean; isError: boolean} {
+  const source = useDeploySource();
+  const results = useQueries({
+    queries: projects.map((project: string) => ({
+      queryKey: [DeployQueryKeys.PROJECT_STATUS, targetId, project, undefined],
+      queryFn: async (): Promise<ProjectStatus> =>
+        readProjectStatus((await source.projectStatus(targetId, project)) as ProjectStatusAnswer),
+      enabled: Boolean(targetId),
+      retry: false,
+    })),
+  });
+  // The results array is new on every render; when each was last read, or failed, is what changes.
+  const readAt = results.map((result) => `${result.dataUpdatedAt}:${result.errorUpdatedAt}:${result.isError}`).join();
+  const loading = results.some((result) => result.isLoading);
+  return useMemo(
+    () => ({
+      byProject: Object.fromEntries(
+        projects.map((project: string, index: number) => [project, results[index]?.data?.project.pending ?? 0]),
+      ),
+      shared: Math.max(0, ...results.map((result) => result.data?.shared.pending ?? 0)),
+      // While any project is still being read, or once one could not be, the counts above fall short.
+      isLoading: loading,
+      isError: results.some((result) => result.isError),
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [projects, readAt, loading],
+  );
+}

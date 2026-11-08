@@ -21,6 +21,7 @@ import {
 import {ProtectedRoute} from '@thunderid/react-router';
 import {lazy, Suspense, type JSX} from 'react';
 import {BrowserRouter, Navigate, Outlet, Route, Routes} from 'react-router';
+import DefaultProjectRedirect from './components/DefaultProjectRedirect';
 import RouteProjectScope from './components/RouteProjectScope';
 import RouteConfig, {ROUTE_SEGMENTS} from './configs/RouteConfig';
 import DashboardLayout from './layouts/DashboardLayout';
@@ -122,6 +123,7 @@ const GroupEditPage = lazy(() => import('@thunderid/configure-groups').then((m) 
 const GroupsListPage = lazy(() => import('@thunderid/configure-groups').then((m) => ({default: m.GroupsListPage})));
 const OrganizationHomePage = lazy(() => import('./pages/OrganizationHomePage'));
 const ProjectHomePage = lazy(() => import('./pages/ProjectHomePage'));
+const ProjectPipelinePage = lazy(() => import('./pages/ProjectPipelinePage'));
 const OrganizationGatewayPage = lazy(() => import('./pages/OrganizationGatewayPage'));
 const OrganizationExplorerPage = lazy(() => import('./pages/OrganizationExplorerPage'));
 const ExportPage = lazy(() =>
@@ -402,7 +404,8 @@ export default function App(): JSX.Element {
                     </ProtectedRoute>
                   }
                 >
-                  <Route index element={<Navigate to={RouteConfig.home.list()} replace />} />
+                  {/* Opening the console leads into the default project. */}
+                  <Route index element={<DefaultProjectRedirect />} />
                   <Route path={ROUTE_SEGMENTS.home} element={<OrganizationHomePage />} />
                   <Route path={ROUTE_SEGMENTS.userTypes} element={<UserTypesListPage />} />
                   <Route path={`${ROUTE_SEGMENTS.userTypes}/:id`} element={<ViewUserTypePage />} />
@@ -433,6 +436,7 @@ export default function App(): JSX.Element {
                 >
                   <Route element={<DashboardLayout />}>
                     <Route index element={<ProjectHomePage />} />
+                    <Route path="pipeline" element={<ProjectPipelinePage />} />
                     {projectDashboardRoutes()}
                   </Route>
                   {projectFullScreenRoutes()}

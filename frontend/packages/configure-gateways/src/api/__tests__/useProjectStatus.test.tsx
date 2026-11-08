@@ -4,7 +4,7 @@
 import {renderHook, waitFor} from '@thunderid/test-utils';
 import {beforeEach, describe, expect, it, vi} from 'vitest';
 import {fakeHttp, SERVER, type Call} from '../../__tests__/fakeHttp';
-import useProjectStatus, {useProjectChanges} from '../useProjectStatus';
+import useProjectStatus, {useProjectChanges, useProjectsPending} from '../useProjectStatus';
 
 let http = fakeHttp({});
 const scope = vi.hoisted(() => ({projectId: undefined as string | undefined}));
@@ -72,5 +72,44 @@ describe('useProjectChanges', () => {
     const {result} = renderHook(() => useProjectChanges());
 
     await waitFor(() => expect(result.current).toEqual({application: 2}));
+  });
+});
+
+describe('useProjectsPending', () => {
+  it("counts each project's own pending changes on a gateway, and the shared ones once", async () => {
+    http = fakeHttp({
+      'GET /gateways/gw-dev/project-status': (call: Call) => ({
+        ...status,
+        project: {versions: [], pending: call.url.includes('project=p-shop') ? 3 : 0, required: 0},
+        shared: {pending: 2, byType: []},
+      }),
+    });
+    const projects = ['p-shop', 'p-bill'];
+    const {result} = renderHook(() => useProjectsPending('gw-dev', projects));
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current).toEqual({
+      byProject: {'p-shop': 3, 'p-bill': 0},
+      shared: 2,
+      isLoading: false,
+      isError: false,
+    });
+  });
+
+  it('says when a project could not be read', async () => {
+    http = fakeHttp({});
+    const projects = ['p-shop'];
+    const {result} = renderHook(() => useProjectsPending('gw-dev', projects));
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(result.current.byProject).toEqual({'p-shop': 0});
+  });
+
+  it('asks nothing before the gateway is known', () => {
+    http = fakeHttp({});
+    const projects = ['p-shop'];
+    renderHook(() => useProjectsPending('', projects));
+
+    expect(http.calls).toHaveLength(0);
   });
 });

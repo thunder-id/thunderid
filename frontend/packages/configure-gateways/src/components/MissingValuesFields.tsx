@@ -164,8 +164,6 @@ export default function MissingValuesFields({
         borderRadius: 2,
         border: 1,
         borderColor: done ? 'divider' : `rgba(${WARNING} / 0.45)`,
-        borderLeft: 4,
-        borderLeftColor: done ? 'success.main' : 'warning.main',
         bgcolor: done ? 'transparent' : `rgba(${WARNING} / 0.06)`,
         transition: 'background-color 0.2s, border-color 0.2s',
       }}

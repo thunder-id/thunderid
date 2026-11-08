@@ -3,7 +3,7 @@
 
 import {Alert, Box, CircularProgress, Stack, Typography} from '@wso2/oxygen-ui';
 import {MoveRight} from '@wso2/oxygen-ui-icons-react';
-import {Fragment, useMemo, type JSX} from 'react';
+import {Fragment, useMemo, type JSX, type ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
 import GatewayCard, {type GatewayStanding} from './GatewayCard';
@@ -17,7 +17,7 @@ import {useProjectStatuses} from '../api/useProjectStatus';
 import {useVersions} from '../api/useVersions';
 import useProjectScope from '../contexts/ProjectScope';
 import useDeployPanels from '../hooks/useDeployPanels';
-import useDeployRoutes, {gatewaySectionOf} from '../hooks/useDeployRoutes';
+import useDeployRoutes from '../hooks/useDeployRoutes';
 import type {AppliedVersion, Change, Version} from '../models/deploy';
 import type {Gateway} from '../models/gateway';
 import type {PipelineStage} from '../models/pipeline';
@@ -32,6 +32,20 @@ export interface GatewaysOverviewProps {
   eyebrow?: string;
   /** Where the gateways and the pipeline between them are edited; linked beside the gateways when set. */
   editPipelineUrl?: string;
+  /** The headline, in place of the one about deploying like code. */
+  headline?: string;
+  /** What the headline is followed by, in place of the one about the pipeline. */
+  lead?: string;
+  /** Shown between the headline and the pipeline, such as what to set up first. */
+  beforePipeline?: ReactNode;
+  /** A heading over the versions and the gateways. */
+  pipelineTitle?: string;
+  /** Controls shown in the gateways' header, such as a switch for the whole pipeline. */
+  pipelineActions?: ReactNode;
+  /** Shows the eyebrow, headline and lead, and what follows them. */
+  showIntro?: boolean;
+  /** Shows the versions and the gateways they are deployed and promoted through. */
+  showPipeline?: boolean;
 }
 
 /** No gateways, for when there is no project to read the status of. */
@@ -98,7 +112,14 @@ function changeCount(changes: Change[] | undefined): number | undefined {
 export default function GatewaysOverview({
   onOpenGateway = undefined,
   eyebrow = undefined,
+  headline = undefined,
+  lead = undefined,
+  beforePipeline = undefined,
+  pipelineTitle = undefined,
   editPipelineUrl = undefined,
+  showIntro = true,
+  showPipeline = true,
+  pipelineActions = undefined,
 }: GatewaysOverviewProps): JSX.Element {
   const {t} = useTranslation('deploy');
   const navigate = useNavigate();
@@ -226,12 +247,8 @@ export default function GatewaysOverview({
             : version && (() => panels.deploy(version, gateway.id, undefined, [gateway]))
         }
         onOpen={() =>
-          onOpenGateway ? onOpenGateway(gateway.id) : void navigate(routes.deploy.gateway(gateway.id, project))
-        }
-        onExplore={() =>
-          void navigate(
-            project ? gatewaySectionOf(routes, gateway.id, project, 'explore') : routes.deploy.explore(gateway.id),
-          )
+          // A gateway belongs to the organization, so it opens on its own pages, never a project's.
+          onOpenGateway ? onOpenGateway(gateway.id) : void navigate(routes.deploy.gateway(gateway.id))
         }
         onRevert={() => {
           const back = projectRollbackOf(statusOf(gateway.id));
@@ -270,69 +287,84 @@ export default function GatewaysOverview({
 
   return (
     <Stack spacing={5} component="section" aria-label={t('gateways.title', 'Gateways')}>
-      <Stack spacing={1.25} sx={{maxWidth: 900}}>
-        <Typography variant="overline" color="primary" sx={{fontWeight: 600, letterSpacing: '0.08em'}}>
-          {(eyebrow ?? t('pipeline.eyebrow', 'Gateways')).toUpperCase()}
-        </Typography>
-        <Typography variant="h1" sx={{fontSize: {xs: '2rem', md: '2.5rem'}, fontWeight: 400, lineHeight: 1.15}}>
-          {t('pipeline.headline', 'Identity and access, deployed like code')}
-        </Typography>
-        <Typography variant="body1" color="text.secondary">
-          {single
-            ? t(
-                'pipeline.leadProjectSingle',
-                'This project runs in one gateway. Your configuration deploys straight to it.',
-              )
-            : stages.length > 1
-              ? lastIsProduction
+      {showIntro && (
+        <Stack spacing={1.25} sx={{maxWidth: 900}}>
+          <Typography variant="overline" color="primary" sx={{fontWeight: 600, letterSpacing: '0.08em'}}>
+            {(eyebrow ?? t('pipeline.eyebrow', 'Gateways')).toUpperCase()}
+          </Typography>
+          <Typography variant="h1" sx={{fontSize: {xs: '2rem', md: '2.5rem'}, fontWeight: 400, lineHeight: 1.15}}>
+            {headline ?? t('pipeline.headline', 'Identity and access, deployed like code')}
+          </Typography>
+          <Typography variant="body1" color="text.secondary">
+            {lead ??
+              (single
                 ? t(
-                    'pipeline.leadProduction',
-                    'Set up your applications, sign-in flows and access rules once. Deploy them to your first gateway, then promote them through each gateway to production, just like a CI/CD pipeline. Changes go live in a gateway only when you deploy them there.',
+                    'pipeline.leadProjectSingle',
+                    'This project runs in one gateway. Your configuration deploys straight to it.',
                   )
-                : t(
-                    'pipeline.lead',
-                    'Set up your applications, sign-in flows and access rules once. Deploy them to your first gateway, then promote them through each gateway to the last, just like a CI/CD pipeline. Changes go live in a gateway only when you deploy them there.',
-                  )
-              : t(
-                  'pipeline.leadSingle',
-                  'Set up your applications, sign-in flows and access rules once, then deploy them to your gateway. Changes go live there only when you deploy them.',
-                )}
-        </Typography>
-      </Stack>
-      {pipeline.isError && <Alert severity="error">{t('gateways.failed', 'The gateways could not be read.')}</Alert>}
-      {versions.isError && (
-        <Alert severity="error">{t('page.versionsFailed', 'The configuration versions could not be read.')}</Alert>
+                : stages.length > 1
+                  ? lastIsProduction
+                    ? t(
+                        'pipeline.leadProduction',
+                        'Set up your applications, sign-in flows and access rules once. Deploy them to your first gateway, then promote them through each gateway to production, just like a CI/CD pipeline. Changes go live in a gateway only when you deploy them there.',
+                      )
+                    : t(
+                        'pipeline.lead',
+                        'Set up your applications, sign-in flows and access rules once. Deploy them to your first gateway, then promote them through each gateway to the last, just like a CI/CD pipeline. Changes go live in a gateway only when you deploy them there.',
+                      )
+                  : t(
+                      'pipeline.leadSingle',
+                      'Set up your applications, sign-in flows and access rules once, then deploy them to your gateway. Changes go live there only when you deploy them.',
+                    ))}
+          </Typography>
+        </Stack>
       )}
-      {pipeline.isLoading && (
-        <Box sx={{display: 'flex', justifyContent: 'center', py: 6}}>
-          <CircularProgress size={28} />
-        </Box>
+      {showIntro && beforePipeline}
+      {showPipeline && (
+        <>
+          {pipelineTitle && (
+            <Typography component="h2" sx={{fontSize: 20, fontWeight: 600, mb: -2}}>
+              {pipelineTitle}
+            </Typography>
+          )}
+          {pipeline.isError && (
+            <Alert severity="error">{t('gateways.failed', 'The gateways could not be read.')}</Alert>
+          )}
+          {versions.isError && (
+            <Alert severity="error">{t('page.versionsFailed', 'The configuration versions could not be read.')}</Alert>
+          )}
+          {pipeline.isLoading && (
+            <Box sx={{display: 'flex', justifyContent: 'center', py: 6}}>
+              <CircularProgress size={28} />
+            </Box>
+          )}
+          {pipeline.isSuccess && stages.length === 0 && (
+            <Alert severity="info">{t('gateways.none', 'Register a gateway to have a gateway to deploy to.')}</Alert>
+          )}
+          {first && (
+            <Box
+              component="section"
+              aria-label={t('pipeline.region', 'Deployment pipeline')}
+              sx={{display: 'flex', flexWrap: 'wrap', alignItems: 'stretch', gap: 2}}
+            >
+              {deployEntry}
+              <GatewaysStrip count={stages.length} editUrl={editPipelineUrl} actions={pipelineActions}>
+                {stages.map((stage: PipelineStage, index: number) => {
+                  const {gateway} = stage;
+                  const version = index === 0 ? undefined : promotable(index);
+                  return (
+                    <Fragment key={gateway.id}>
+                      {index > 0 && <PromoteJoint testId={`gateway-promote-${gateway.id}`} />}
+                      {cardOf(stage, index, version)}
+                    </Fragment>
+                  );
+                })}
+              </GatewaysStrip>
+            </Box>
+          )}
+          {panels.panels}
+        </>
       )}
-      {pipeline.isSuccess && stages.length === 0 && (
-        <Alert severity="info">{t('gateways.none', 'Register a gateway to have a gateway to deploy to.')}</Alert>
-      )}
-      {first && (
-        <Box
-          component="section"
-          aria-label={t('pipeline.region', 'Deployment pipeline')}
-          sx={{display: 'flex', flexWrap: 'wrap', alignItems: 'stretch', gap: 2}}
-        >
-          {deployEntry}
-          <GatewaysStrip count={stages.length} editUrl={editPipelineUrl}>
-            {stages.map((stage: PipelineStage, index: number) => {
-              const {gateway} = stage;
-              const version = index === 0 ? undefined : promotable(index);
-              return (
-                <Fragment key={gateway.id}>
-                  {index > 0 && <PromoteJoint testId={`gateway-promote-${gateway.id}`} />}
-                  {cardOf(stage, index, version)}
-                </Fragment>
-              );
-            })}
-          </GatewaysStrip>
-        </Box>
-      )}
-      {panels.panels}
     </Stack>
   );
 }

@@ -68,8 +68,8 @@ export default function GatewayAdministration({
         gridTemplateColumns: {xs: '1fr', md: 'repeat(auto-fit, minmax(340px, 1fr))'},
         borderRadius: '14px',
         border: 1,
-        borderColor: 'rgba(var(--oxygen-palette-primary-mainChannel) / 0.3)',
-        bgcolor: 'rgba(var(--oxygen-palette-primary-mainChannel) / 0.07)',
+        borderColor: 'divider',
+        bgcolor: 'background.paper',
         overflow: 'hidden',
       }}
     >
