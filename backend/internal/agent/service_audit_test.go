@@ -453,6 +453,43 @@ func (s *AgentServiceAuditTestSuite) TestDeleteAgent_PublishesOneEventPerAttempt
 	}
 }
 
+// Rotating an agent's client secret is a change to the agent, so each attempt is recorded as an update.
+func (s *AgentServiceAuditTestSuite) TestRegenerateAgentSecret_PublishesOneEventPerAttempt() {
+	cases := []struct {
+		name    string
+		arrange func()
+		outcome audit.Outcome
+	}{
+		{
+			name: "the caller may not change the agent",
+			arrange: func() {
+				s.existing()
+				s.access(false)
+			},
+			outcome: audit.OutcomeDenied("forbidden"),
+		},
+		{
+			name: "the agent does not exist",
+			arrange: func() {
+				s.entities.On("GetEntityProfile", mock.Anything, testAgentID).
+					Return((*providers.Entity)(nil), entity.ErrEntityNotFound).Once()
+			},
+			outcome: audit.OutcomeFailed("agt_1004"),
+		},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			published := s.record()
+			tc.arrange()
+
+			_, svcErr := s.service.RegenerateAgentSecret(adminContext(), testAgentID)
+
+			s.Equal(tc.outcome == audit.OutcomeSucceeded, svcErr == nil)
+			s.requireOnlyEvent(published(), audit.EventAgentUpdate, audit.ActionUpdate, testAgentID, tc.outcome)
+		})
+	}
+}
+
 // A bus that cannot take the event never fails the change it describes.
 func (s *AgentServiceAuditTestSuite) TestDeleteAgent_SucceedsWhenTheBusRefusesTheEvent() {
 	failing := eventbusmock.NewEventBusInterfaceMock(s.T())

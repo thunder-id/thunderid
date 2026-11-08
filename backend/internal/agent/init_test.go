@@ -99,8 +99,8 @@ func (suite *InitializeTestSuite) TestInitialize_EntityLoadError_AllDeclarativeM
 			mockEntity.On("LoadDeclarativeResources", mock.Anything).
 				Return(errors.New("entity load error")).Once()
 
-			svc, exporter, err := Initialize(http.NewServeMux(), mockEntity, mockInbound, mockOU, mockRole,
-				newAllowAllAuthz(suite.T()), nil, nil, nil,
+			svc, exporter, err := Initialize(http.NewServeMux(), nil, mockEntity, mockInbound, mockOU, mockRole,
+				nil, nil, newAllowAllAuthz(suite.T()), nil, nil, nil,
 				newEntityDBProvider(suite.T()), nil, nil, discardingBus{})
 
 			suite.EqualError(err, "entity load error")
@@ -131,8 +131,8 @@ func (suite *InitializeTestSuite) TestInitialize_InboundLoadError_AllDeclarative
 
 			mux := http.NewServeMux()
 			svc, exporter, err := Initialize(
-				mux, mockEntity, mockInbound, mockOU, mockRole, newAllowAllAuthz(suite.T()), nil, nil, nil,
-				newEntityDBProvider(suite.T()), nil, nil, discardingBus{})
+				mux, nil, mockEntity, mockInbound, mockOU, mockRole, nil, nil, newAllowAllAuthz(suite.T()), nil, nil,
+				nil, newEntityDBProvider(suite.T()), nil, nil, discardingBus{})
 
 			suite.Error(err)
 			suite.Equal("inbound load error", err.Error())
@@ -158,8 +158,8 @@ func (suite *InitializeTestSuite) TestInitialize_DeclarativeMode_Success() {
 
 	mux := http.NewServeMux()
 	svc, exporter, err := Initialize(
-		mux, mockEntity, mockInbound, mockOU, mockRole, newAllowAllAuthz(suite.T()), nil, nil, nil,
-		newEntityDBProvider(suite.T()), nil, nil, discardingBus{})
+		mux, nil, mockEntity, mockInbound, mockOU, mockRole, nil, nil, newAllowAllAuthz(suite.T()), nil, nil,
+		nil, newEntityDBProvider(suite.T()), nil, nil, discardingBus{})
 
 	suite.NoError(err)
 	suite.NotNil(svc)
@@ -179,8 +179,8 @@ func (suite *InitializeTestSuite) TestInitialize_MutableMode_SkipsDeclarativeLoa
 
 	mux := http.NewServeMux()
 	svc, exporter, err := Initialize(
-		mux, mockEntity, mockInbound, mockOU, mockRole, newAllowAllAuthz(suite.T()), nil, nil, nil,
-		newEntityDBProvider(suite.T()), nil, nil, discardingBus{})
+		mux, nil, mockEntity, mockInbound, mockOU, mockRole, nil, nil, newAllowAllAuthz(suite.T()), nil, nil,
+		nil, newEntityDBProvider(suite.T()), nil, nil, discardingBus{})
 
 	suite.NoError(err)
 	suite.NotNil(svc)
@@ -201,8 +201,8 @@ func (suite *InitializeTestSuite) TestInitialize_IndexedAttributesLoadError() {
 	mockEntity.On("LoadIndexedAttributes", []string{"name"}).Return(errors.New("indexed load error")).Once()
 
 	svc, exporter, err := Initialize(
-		http.NewServeMux(), mockEntity, mockInbound, mockOU, mockRole, newAllowAllAuthz(suite.T()), nil, nil, nil,
-		newEntityDBProvider(suite.T()), nil, nil, discardingBus{})
+		http.NewServeMux(), nil, mockEntity, mockInbound, mockOU, mockRole, nil, nil, newAllowAllAuthz(suite.T()),
+		nil, nil, nil, newEntityDBProvider(suite.T()), nil, nil, discardingBus{})
 
 	suite.EqualError(err, "indexed load error")
 	suite.Nil(svc)
@@ -216,10 +216,10 @@ func (suite *InitializeTestSuite) TestInitialize_TransactionerError() {
 	dbProvider.On("GetEntityDBTransactioner").Return(nil, errors.New("entity db unavailable")).Once()
 	mockEntity := entitymock.NewEntityServiceInterfaceMock(suite.T())
 
-	svc, exporter, err := Initialize(http.NewServeMux(), mockEntity,
+	svc, exporter, err := Initialize(http.NewServeMux(), nil, mockEntity,
 		inboundclientmock.NewInboundClientServiceInterfaceMock(suite.T()),
-		oumock.NewOrganizationUnitServiceInterfaceMock(suite.T()), rolemock.NewRoleServiceInterfaceMock(suite.T()),
-		newAllowAllAuthz(suite.T()), nil, nil, nil, dbProvider, nil, nil, discardingBus{})
+		oumock.NewOrganizationUnitServiceInterfaceMock(suite.T()), rolemock.NewRoleServiceInterfaceMock(suite.T()), nil,
+		nil, newAllowAllAuthz(suite.T()), nil, nil, nil, dbProvider, nil, nil, discardingBus{})
 
 	suite.EqualError(err, "entity db unavailable")
 	suite.Nil(svc)
@@ -235,7 +235,8 @@ func newEntityDBProvider(t *testing.T) *providermock.DBProviderInterfaceMock {
 }
 
 func (suite *InitializeTestSuite) TestInitialize_RefusesANilEventBus() {
-	svc, exporter, err := Initialize(http.NewServeMux(), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	svc, exporter, err := Initialize(http.NewServeMux(), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
+		nil, nil, nil)
 
 	suite.ErrorIs(err, errNilEventBus)
 	suite.Nil(svc)
