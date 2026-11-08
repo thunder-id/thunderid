@@ -1681,6 +1681,25 @@ components:
         queuedVersion:
           type: string
           description: With `queued`, the version that will be applied.
+        droppedPolicies:
+          type: array
+          description: |
+            Sharing policies the version no longer carries for resources it sends again. They are
+            sent to the gateway to remove, and count toward the removals that need confirmation. A
+            gateway that does not say it acts on them is an older one, and the resources they were for
+            are recorded as failed (`GTW-1043`) so they are offered again.
+          items:
+            type: object
+            properties:
+              resourceType:
+                type: string
+              resourceId:
+                type: string
+              resourceName:
+                type: string
+              initiatingOuId:
+                type: string
+                description: The organization unit that issued the policy. Omitted for the resource's owner.
     Master:
       type: object
       description: |

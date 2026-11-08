@@ -288,6 +288,10 @@ type ApplyResult struct {
 	// gateway runs, and will be applied once that finishes. QueuedVersion is the version it will be.
 	Queued        bool   `json:"queued,omitempty"`
 	QueuedVersion string `json:"queuedVersion,omitempty"`
+	// DroppedPolicies lists the sharing policies the version no longer carries for resources it sends again. The
+	// gateway removes them, with the reshares its organization units issued beneath them where those lose their
+	// standing, and they count toward the removals a deployment asks to be confirmed.
+	DroppedPolicies []DroppedPolicy `json:"droppedPolicies,omitempty"`
 }
 
 // ChangedValues are the variables and secrets a version refers to whose values were set on a gateway

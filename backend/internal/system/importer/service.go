@@ -200,6 +200,8 @@ type roleAssignmentAdapter interface {
 type sharingPolicyAdapter interface {
 	ReplacePoliciesForResource(ctx context.Context, rt sharing.ResourceType, resourceID, owningOUID string,
 		requests []sharing.PolicyRequest) (sharing.PolicyReplay, *sharing.PolicyReplayError)
+	RemovePolicies(ctx context.Context, rt sharing.ResourceType, resourceID string,
+		initiatingOUIDs, stillNamed []string) (sharing.PolicyReplay, *sharing.PolicyReplayError)
 }
 
 type groupAdapter interface {
@@ -443,15 +445,9 @@ func (s *importService) ImportResources(
 }
 
 // importResources imports the resources the request carries without publishing its audit event.
-func (s *importService) importResources(
-	ctx context.Context, request *ImportRequest,
-) (*ImportResponse, *tidcommon.ServiceError) {
-	if request == nil || (request.Content == "" && len(request.Deletions) == 0) {
-		return nil, tidcommon.CustomServiceError(ErrorInvalidImportRequest,
-			tidcommon.I18nMessage{Key: "error.import.emptyContent", DefaultValue: "import content cannot be empty"})
-	}
-
-	options := request.Options
+// withImportDefaults returns the options of a request with what it leaves out filled in: upsert and continue on error
+// are on, and the target is the runtime.
+func withImportDefaults(options *ImportOptions) *ImportOptions {
 	if options == nil {
 		options = &ImportOptions{}
 	}
@@ -466,7 +462,38 @@ func (s *importService) importResources(
 	if options.Target == "" {
 		options.Target = importTargetRuntime
 	}
+	return options
+}
 
+// withForcedSharingEdits marks the context when the request asks for sharing edits the API refuses to be applied.
+func withForcedSharingEdits(ctx context.Context, options *ImportOptions) context.Context {
+	if options.ForceSharingEdits {
+		return sharing.WithForcedEdits(ctx)
+	}
+	return ctx
+}
+
+// listRemovedSharing lists on a successful outcome what the replays run for its document removed to match it.
+func listRemovedSharing(outcome *ImportItemOutcome, report *sharing.ReplayReport) {
+	if outcome.Status != statusSuccess {
+		return
+	}
+	for _, removed := range report.Removed() {
+		outcome.RemovedSharing = append(outcome.RemovedSharing, RemovedSharingPolicy{
+			PolicyID: removed.PolicyID, InitiatingOUID: removed.InitiatingOUID, Reshare: removed.Reshare})
+	}
+}
+
+func (s *importService) importResources(
+	ctx context.Context, request *ImportRequest,
+) (*ImportResponse, *tidcommon.ServiceError) {
+	if request == nil || (request.Content == "" && len(request.Deletions) == 0) {
+		return nil, tidcommon.CustomServiceError(ErrorInvalidImportRequest,
+			tidcommon.I18nMessage{Key: "error.import.emptyContent", DefaultValue: "import content cannot be empty"})
+	}
+
+	options := withImportDefaults(request.Options)
+	ctx = withForcedSharingEdits(ctx, options)
 	if options.Target == importTargetFile {
 		return nil, tidcommon.CustomServiceError(
 			ErrorInvalidImportRequest,
@@ -493,6 +520,8 @@ func (s *importService) importResources(
 		}
 	}
 
+	plan := newRemovalPlan(request.SharingRemovals, docs, request.DryRun)
+
 	results := make([]ImportItemOutcome, 0, len(docs))
 	imported := 0
 	failed := 0
@@ -511,10 +540,13 @@ func (s *importService) importResources(
 		}
 
 		pendingBefore := len(mandating)
-		outcome, resolved := s.resolveReferences(ctx, doc)
+		docCtx, replayReport := sharing.WithReplayReport(ctx)
+		outcome, resolved := s.resolveReferences(docCtx, doc)
 		if resolved {
-			outcome = s.importDocument(ctx, doc, options, request.DryRun, flowIDAliases, &mandating)
+			outcome = s.importDocument(docCtx, doc, options, request.DryRun, flowIDAliases, &mandating,
+				plan)
 		}
+		listRemovedSharing(&outcome, replayReport)
 		if outcome.Status == statusSuccess {
 			switch doc.ResourceType {
 			case resourceTypeUser, resourceTypeAgent, resourceTypeApplication:
@@ -551,6 +583,12 @@ func (s *importService) importResources(
 	imported -= refused
 	failed += refused
 
+	// A policy the document dropped is removed once its resource is written, and a refusal turns the resource's
+	// outcome into a failure, so it is counted as one.
+	refusedRemovals := s.removeDroppedSharing(ctx, plan, results, request.DryRun)
+	imported -= refusedRemovals
+	failed += refusedRemovals
+
 	// Deletions run after the upserts so that resources moved or replaced by this same request are in
 	// place before their predecessors are pruned.
 	deleted := 0
@@ -570,7 +608,8 @@ func (s *importService) importResources(
 			Failed:         failed,
 			ImportedAt:     time.Now().UTC(),
 		},
-		Results: results,
+		Results:                 results,
+		SharingRemovalsAccepted: len(request.SharingRemovals) > 0,
 	}, nil
 }
 
@@ -671,7 +710,7 @@ func (s *importService) publishConfigurationEvent(ctx context.Context, name stri
 
 func (s *importService) importDocument(
 	ctx context.Context, doc parsedDocument, options *ImportOptions, dryRun bool, flowIDAliases map[string]string,
-	mandating *[]userSharingReplay,
+	mandating *[]userSharingReplay, plan *removalPlan,
 ) ImportItemOutcome {
 	switch doc.ResourceType {
 	case resourceTypeApplication:
@@ -679,7 +718,7 @@ func (s *importService) importDocument(
 	case resourceTypeConnection:
 		return s.importConnection(ctx, doc, options, dryRun)
 	case resourceTypeFlow:
-		return s.importFlow(ctx, doc, options, dryRun)
+		return s.importFlow(ctx, doc, options, dryRun, plan)
 	case resourceTypeOrganizationUnit:
 		return s.importOrganizationUnit(ctx, doc, options, dryRun)
 	case resourceTypeProject:
@@ -1088,7 +1127,7 @@ func (s *importService) importConnectionSender(
 }
 
 func (s *importService) importFlow(
-	ctx context.Context, doc parsedDocument, options *ImportOptions, dryRun bool,
+	ctx context.Context, doc parsedDocument, options *ImportOptions, dryRun bool, plan *removalPlan,
 ) ImportItemOutcome {
 	policies, values, err := flowmgt.ParseFlowSharing(doc.Node)
 	if err != nil {
@@ -1100,7 +1139,7 @@ func (s *importService) importFlow(
 		return decodeErrorOutcome(resourceTypeFlow, head.ID, head.Name, err)
 	}
 
-	outcome := s.importFlowDefinition(ctx, doc, options, dryRun, policies)
+	outcome := s.importFlowDefinition(ctx, doc, options, dryRun, policies, plan)
 	if dryRun || outcome.Status != statusSuccess {
 		return outcome
 	}
@@ -1190,6 +1229,7 @@ func (s *importService) updateImportedFlow(
 // importFlowDefinition creates or updates the flow a "flow" document describes.
 func (s *importService) importFlowDefinition(
 	ctx context.Context, doc parsedDocument, options *ImportOptions, dryRun bool, policies []sharing.PolicyRequest,
+	plan *removalPlan,
 ) ImportItemOutcome {
 	if s.flowService == nil {
 		return ImportItemOutcome{
@@ -1277,16 +1317,31 @@ func (s *importService) importFlowDefinition(
 		}
 
 		if existingID != "" {
+			// The policies the document dropped go before the flow is written. The write checks the policies the flow
+			// holds against its new definition, and one the document drops may no longer fit it.
+			var removed []RemovedSharingPolicy
+			if initiators := plan.initiators(resourceTypeFlow, req.ID, existingID); len(initiators) > 0 {
+				var failure *sharingRemovalFailure
+				if removed, failure = s.removeSharingOf(ctx, resourceTypeFlow, existingID, initiators,
+					plan.stillNamed(resourceTypeFlow, req.ID, existingID)); failure != nil {
+					return ImportItemOutcome{ResourceType: resourceTypeFlow, ResourceID: existingID,
+						ResourceName: req.Name, Operation: operationUpdate, Status: statusFailed, Code: failure.Code,
+						Message: failure.Message}
+				}
+			}
 			updated, svcErr := s.updateImportedFlow(ctx, existingID, flowDef, policies)
 			if svcErr != nil {
-				return serviceErrorOutcome(resourceTypeFlow, existingID, req.Name, operationUpdate, svcErr)
+				failed := serviceErrorOutcome(resourceTypeFlow, existingID, req.Name, operationUpdate, svcErr)
+				failed.RemovedSharing = removed
+				return failed
 			}
 			return ImportItemOutcome{
-				ResourceType: resourceTypeFlow,
-				ResourceID:   updated.ID,
-				ResourceName: updated.Name,
-				Operation:    operationUpdate,
-				Status:       statusSuccess,
+				ResourceType:   resourceTypeFlow,
+				ResourceID:     updated.ID,
+				ResourceName:   updated.Name,
+				Operation:      operationUpdate,
+				Status:         statusSuccess,
+				RemovedSharing: removed,
 			}
 		}
 	}

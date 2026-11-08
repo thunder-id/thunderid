@@ -96,6 +96,9 @@ carrying neither is rejected.
 - `options.target`:
   - Omitted: defaults to `runtime`.
   - `runtime` is currently supported.
+- `options.forceSharingEdits`:
+  - Omitted: defaults to `false`, and a change the sharing policies API refuses, such as a different reach, fails the document.
+  - `true`: the policy is rewritten in place instead, and the reshares that lose their standing are removed.
 
 ## Removing Resources
 
@@ -179,6 +182,27 @@ and is skipped: for example a user deleted since, or a unit the role is no longe
 or group that is already gone is reported as `resource already absent`. Each entry gets one outcome,
 with the role or group id as `resourceId`. Everyone an entry names is checked before anyone is taken
 off, so when one is refused, the entry fails and the role or group is left as it was.
+
+## Removing Sharing Policies
+
+A policy left out of a document is not removed. To remove one, name it in `sharingRemovals`, with the resource type, the resource id, and the organization unit that issued it (omit it for the owner). Each removal runs once its resource is written, or just before it for a flow, and the reshares that lose their standing go with it. The result for the resource lists them in `removedSharing`. If a removal fails, the resource's result fails. The response carries `sharingRemovalsAccepted: true` when the deployment acts on `sharingRemovals`, and an older deployment omits it, which lets the sender tell its removals were ignored.
+
+```json
+{
+  "content": "...",
+  "sharingRemovals": [
+    { "resourceType": "flow", "id": "550e8400-e29b-41d4-a716-446655440000" },
+    {
+      "resourceType": "flow",
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "initiatingOuId": "7f3c1d52-8a4e-4b6a-9c21-0d5e6f7a8b90"
+    }
+  ],
+  "options": { "forceSharingEdits": true }
+}
+```
+
+The first entry removes the owner's policy, since it has no `initiatingOuId`. The second removes the policy that organization unit issued.
 
 ## Response Model
 

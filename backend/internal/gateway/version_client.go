@@ -30,12 +30,18 @@ type gatewayImportRequest struct {
 	DryRun    bool                   `json:"dryRun,omitempty"`
 	Options   gatewayImportOptions   `json:"options"`
 	Deletions []gatewayDeletion      `json:"deletions,omitempty"`
+	// SharingRemovals names the sharing policies the content no longer carries for the resources it sends again. A
+	// gateway removes only what it is told to, never a policy for being left out of a document.
+	SharingRemovals []gatewaySharingRemoval `json:"sharingRemovals,omitempty"`
 }
 
 type gatewayImportOptions struct {
 	Upsert          bool   `json:"upsert"`
 	ContinueOnError bool   `json:"continueOnError"`
 	Target          string `json:"target"`
+	// ForceSharingEdits has the gateway apply a change to a sharing policy that its own API refuses, such as a
+	// different reach, by rewriting the policy, since the version is the source of truth for it.
+	ForceSharingEdits bool `json:"forceSharingEdits"`
 }
 
 // gatewayDeletion asks the gateway to remove one resource by id, or, for a member removal, to take
@@ -51,6 +57,13 @@ type gatewayMember struct {
 	ID   string `json:"id" yaml:"id"`
 	Type string `json:"type" yaml:"type"`
 	OUID string `json:"ouId,omitempty" yaml:"ouId,omitempty"`
+}
+
+// gatewaySharingRemoval asks the gateway to remove one sharing policy of a resource it is also sent.
+type gatewaySharingRemoval struct {
+	ResourceType   string `json:"resourceType"`
+	ID             string `json:"id"`
+	InitiatingOUID string `json:"initiatingOuId,omitempty"`
 }
 
 // errGatewayRefused is a gateway answering an import with something other than success.

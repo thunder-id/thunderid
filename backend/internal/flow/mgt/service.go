@@ -2431,6 +2431,11 @@ func (s *flowMgtService) replaceSharing(
 			log.String("initiatingOUID", skipped.InitiatingOUID),
 			log.String("declaredPolicyID", skipped.DeclaredPolicyID))
 	}
+	for _, removed := range replay.Removed {
+		s.logger.Info(ctx, "Sharing policy removed to match the document",
+			log.String(logKeyFlowID, flowID), log.String("policyID", removed.PolicyID),
+			log.String("initiatingOUID", removed.InitiatingOUID), log.Bool("reshare", removed.Reshare))
+	}
 	if replayErr != nil {
 		// A document names its policies only by position, so the refusal says which one.
 		return tidcommon.CustomServiceError(*replayErr.Err, tidcommon.I18nMessage{

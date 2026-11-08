@@ -32,6 +32,7 @@ import (
 	thememgt "github.com/thunder-id/thunderid/internal/design/theme/mgt"
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	flowmgt "github.com/thunder-id/thunderid/internal/flow/mgt"
+	"github.com/thunder-id/thunderid/internal/gateway"
 	"github.com/thunder-id/thunderid/internal/group"
 	"github.com/thunder-id/thunderid/internal/idp"
 	"github.com/thunder-id/thunderid/internal/notification"
@@ -387,6 +388,9 @@ type fakeFlowService struct {
 	// withSharing records the policies each update that came with them carried, and updateSharingErr refuses them.
 	withSharing      [][]sharing.PolicyRequest
 	updateSharingErr *tidcommon.ServiceError
+	// updateCheck, when set, runs as an update starts and refuses it with what it returns, as the real service
+	// does when a policy the flow holds no longer fits the new definition.
+	updateCheck func() *tidcommon.ServiceError
 	// valuesSet records the values each unit was given, in order, and valuesErr refuses them.
 	valuesSet []flowmgt.SetVariablesRequest
 	valuesErr *tidcommon.ServiceError
@@ -963,6 +967,12 @@ func (f *fakeFlowService) GetFlowByHandle(
 func (f *fakeFlowService) UpdateFlow(
 	_ context.Context, flowID string, flowDef *flowmgt.FlowDefinition,
 ) (*providers.CompleteFlowDefinition, *tidcommon.ServiceError) {
+	if f.updateCheck != nil {
+		if svcErr := f.updateCheck(); svcErr != nil {
+			f.refused = append(f.refused, "update:"+flowID)
+			return nil, svcErr
+		}
+	}
 	if _, ok := f.byID[flowID]; !ok {
 		f.refused = append(f.refused, "update:"+flowID)
 		return nil, &tidcommon.ServiceError{
@@ -1029,8 +1039,14 @@ func (f *fakeFlowService) ResolveFlowOU(_ context.Context, flowDef *flowmgt.Flow
 // fakeSharingService records what the importer asked it to replay.
 type fakeSharingService struct {
 	calls   []sharingReplayCall
+	removed []sharingRemoveCall
 	replay  sharing.PolicyReplay
 	failure *sharing.PolicyReplayError
+	// removal is what a removal answers, and removalFailure what it refuses with. onRemove runs as a removal is made,
+	// so a test can see what had been written by then.
+	removal        sharing.PolicyReplay
+	removalFailure *sharing.PolicyReplayError
+	onRemove       func()
 	// refuse, when set, answers each replay in place of failure.
 	refuse func(call sharingReplayCall) *sharing.PolicyReplayError
 }
@@ -1042,16 +1058,38 @@ type sharingReplayCall struct {
 	policies     []sharing.PolicyRequest
 }
 
+type sharingRemoveCall struct {
+	resourceType sharing.ResourceType
+	resourceID   string
+	initiators   []string
+	stillNamed   []string
+}
+
+func (f *fakeSharingService) RemovePolicies(
+	_ context.Context, rt sharing.ResourceType, resourceID string, initiatingOUIDs, stillNamed []string,
+) (sharing.PolicyReplay, *sharing.PolicyReplayError) {
+	f.removed = append(f.removed, sharingRemoveCall{
+		resourceType: rt, resourceID: resourceID, initiators: initiatingOUIDs, stillNamed: stillNamed})
+	if f.onRemove != nil {
+		f.onRemove()
+	}
+	return f.removal, f.removalFailure
+}
+
 func (f *fakeSharingService) ReplacePoliciesForResource(
-	_ context.Context, rt sharing.ResourceType, resourceID, owningOUID string,
+	ctx context.Context, rt sharing.ResourceType, resourceID, owningOUID string,
 	requests []sharing.PolicyRequest,
 ) (sharing.PolicyReplay, *sharing.PolicyReplayError) {
 	call := sharingReplayCall{resourceType: rt, resourceID: resourceID, owningOUID: owningOUID, policies: requests}
 	f.calls = append(f.calls, call)
+	failure := f.failure
 	if f.refuse != nil {
-		return f.replay, f.refuse(call)
+		failure = f.refuse(call)
 	}
-	return f.replay, f.failure
+	if failure == nil {
+		sharing.RecordRemoved(ctx, f.replay.Removed)
+	}
+	return f.replay, failure
 }
 
 // newTestImportServiceWithSharing is newTestImportService with a sharing adapter installed, the way
@@ -5833,6 +5871,24 @@ func (s *ImportUserMandatedRolesTestSuite) TestImportExistingUserDefersItsMandat
 	s.Assert().Empty(userSvc.deleted)
 }
 
+// What the deferred replay of an existing user's policies removed is listed on the user's result, like an immediate
+// replay's.
+func (s *ImportUserMandatedRolesTestSuite) TestImportExistingUserReportsRemovalsFromItsDeferredReplay() {
+	userSvc := &fakeUserService{existing: map[string]bool{"user-8": true}}
+	sharingSvc := &fakeSharingService{replay: sharing.PolicyReplay{Removed: []sharing.RemovedPolicy{
+		{PolicyID: "p-1", InitiatingOUID: "ou-child", Reshare: true}}}}
+	svc := newTestUserImportWithSharing(userSvc, sharingSvc)
+
+	resp, err := svc.ImportResources(context.Background(),
+		&ImportRequest{Content: mandatingUserDoc("user-8", "role-a"), Options: &ImportOptions{Upsert: boolPtr(true)}})
+
+	s.Require().Nil(err)
+	s.Require().Len(resp.Results, 1)
+	s.Assert().Equal(statusSuccess, resp.Results[0].Status)
+	s.Assert().Equal([]RemovedSharingPolicy{{PolicyID: "p-1", InitiatingOUID: "ou-child", Reshare: true}},
+		resp.Results[0].RemovedSharing)
+}
+
 // Stripping the roles for the first replay leaves the document's own policies as they were.
 func (s *ImportUserMandatedRolesTestSuite) TestWithoutMandatedRolesCopies() {
 	roles := []string{"role-a"}
@@ -7495,4 +7551,224 @@ func TestImportResourceServer_UpdateRemovesChildrenTheDocumentDropped(t *testing
 	}
 	require.Nil(t, svc.importResourceServerChildren(context.Background(), "rs-1", rs, true))
 	assert.Equal(t, []string{"action:a-read", "resource:r-orders"}, rsSvc.deleted)
+}
+
+type ImportSharingRemovalsTestSuite struct {
+	suite.Suite
+}
+
+func TestImportSharingRemovalsTestSuite(t *testing.T) {
+	suite.Run(t, new(ImportSharingRemovalsTestSuite))
+}
+
+// flowDocWithoutPolicies is the flow document the sharing tests use, with its policies dropped.
+func flowDocWithoutPolicies() string {
+	return strings.Replace(
+		flowDocWithPolicies(), "sharingPolicies:\n  - childUnits:\n      mode: all\n", "", 1)
+}
+
+// A policy the document dropped is removed once its flow is written, and listed on the flow's outcome.
+func (s *ImportSharingRemovalsTestSuite) TestImportRemovesTheSharingPoliciesTheRequestNames() {
+	flowSvc := existingFlowService()
+	sharingSvc := &fakeSharingService{removal: sharing.PolicyReplay{Removed: []sharing.RemovedPolicy{
+		{PolicyID: "p-1", InitiatingOUID: "ou-1"}, {PolicyID: "p-2", InitiatingOUID: "ou-2", Reshare: true}}}}
+	svc := newTestFlowImportWithSharing(flowSvc, sharingSvc)
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{Content: flowDocWithoutPolicies(),
+		SharingRemovals: []SharingPolicyRemoval{{ResourceType: "flow", ID: "flow-1"}, {
+			ResourceType: "flow", ID: "flow-1", InitiatingOUID: "ou-2"}}})
+
+	s.Require().Nil(err)
+	s.Require().Len(resp.Results, 1)
+	s.Equal(statusSuccess, resp.Results[0].Status)
+	s.Equal([]RemovedSharingPolicy{
+		{PolicyID: "p-1", InitiatingOUID: "ou-1"}, {PolicyID: "p-2", InitiatingOUID: "ou-2", Reshare: true},
+	}, resp.Results[0].RemovedSharing)
+	s.Require().Len(sharingSvc.removed, 1, "one call for the resource, naming every unit")
+	s.Equal([]string{"", "ou-2"}, sharingSvc.removed[0].initiators)
+	s.Equal(1, resp.Summary.Imported)
+}
+
+// A refused removal fails the resource's outcome, so the caller keeps the resource as not accepted.
+func (s *ImportSharingRemovalsTestSuite) TestImportARefusedSharingRemovalFailsTheResource() {
+	flowSvc := existingFlowService()
+	sharingSvc := &fakeSharingService{removalFailure: &sharing.PolicyReplayError{
+		InitiatingOUID: "ou-2", Err: &tidcommon.InternalServerError}}
+	svc := newTestFlowImportWithSharing(flowSvc, sharingSvc)
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{Content: flowDocWithoutPolicies(),
+		SharingRemovals: []SharingPolicyRemoval{{ResourceType: "flow", ID: "flow-1", InitiatingOUID: "ou-2"}}})
+
+	s.Require().Nil(err)
+	s.Equal(statusFailed, resp.Results[0].Status)
+	s.Equal(tidcommon.InternalServerError.Code, resp.Results[0].Code)
+	s.Equal(0, resp.Summary.Imported)
+	s.Equal(1, resp.Summary.Failed)
+}
+
+// A dry run removes nothing, and a resource the request did not write is left alone.
+func (s *ImportSharingRemovalsTestSuite) TestImportDoesNotRemoveSharingOnADryRunOrForAResourceItDidNotWrite() {
+	flowSvc := existingFlowService()
+	sharingSvc := &fakeSharingService{}
+	svc := newTestFlowImportWithSharing(flowSvc, sharingSvc)
+
+	_, err := svc.ImportResources(context.Background(), &ImportRequest{Content: flowDocWithoutPolicies(),
+		DryRun:          true,
+		SharingRemovals: []SharingPolicyRemoval{{ResourceType: "flow", ID: "flow-1"}}})
+	s.Require().Nil(err)
+	_, err = svc.ImportResources(context.Background(), &ImportRequest{Content: flowDocWithoutPolicies(),
+		SharingRemovals: []SharingPolicyRemoval{{ResourceType: "flow", ID: "another-flow"}}})
+	s.Require().Nil(err)
+
+	s.Empty(sharingSvc.removed)
+}
+
+// A flow's dropped policies are removed before the flow is written: the write checks the policies the flow holds
+// against its new definition, and one the document drops may no longer fit it.
+func (s *ImportSharingRemovalsTestSuite) TestImportRemovesAFlowsDroppedPoliciesBeforeWritingIt() {
+	flowSvc := existingFlowService()
+	sharingSvc := &fakeSharingService{}
+	updatedWhenRemoved := -1
+	sharingSvc.onRemove = func() { updatedWhenRemoved = len(flowSvc.updated) }
+	svc := newTestFlowImportWithSharing(flowSvc, sharingSvc)
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{Content: flowDocWithoutPolicies(),
+		SharingRemovals: []SharingPolicyRemoval{{ResourceType: "flow", ID: "flow-1"}}})
+
+	s.Require().Nil(err)
+	s.Equal(statusSuccess, resp.Results[0].Status)
+	s.Equal(0, updatedWhenRemoved, "the flow had already been written when its policy was removed")
+	s.Len(flowSvc.updated, 1)
+	s.Require().Len(sharingSvc.removed, 1, "removed once, not again after the write")
+}
+
+// A refused removal stops the flow from being written, and fails its outcome.
+func (s *ImportSharingRemovalsTestSuite) TestImportDoesNotWriteAFlowWhoseDroppedPolicyCannotBeRemoved() {
+	flowSvc := existingFlowService()
+	sharingSvc := &fakeSharingService{removalFailure: &sharing.PolicyReplayError{
+		Err: &tidcommon.InternalServerError}}
+	svc := newTestFlowImportWithSharing(flowSvc, sharingSvc)
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{Content: flowDocWithoutPolicies(),
+		SharingRemovals: []SharingPolicyRemoval{{ResourceType: "flow", ID: "flow-1"}}})
+
+	s.Require().Nil(err)
+	s.Equal(statusFailed, resp.Results[0].Status)
+	s.Equal(operationUpdate, resp.Results[0].Operation)
+	s.Empty(flowSvc.updated, "the flow was written although its policy could not be removed")
+	s.Equal(1, resp.Summary.Failed)
+}
+
+// A flow the DP does not hold has nothing to remove, so the removal is not attempted and the flow is created.
+func (s *ImportSharingRemovalsTestSuite) TestImportDoesNotRemoveSharingFromAFlowItCreates() {
+	flowSvc := newFakeFlowService()
+	sharingSvc := &fakeSharingService{}
+	svc := newTestFlowImportWithSharing(flowSvc, sharingSvc)
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{Content: flowDocWithoutPolicies(),
+		SharingRemovals: []SharingPolicyRemoval{{ResourceType: "flow", ID: "flow-1"}}})
+
+	s.Require().Nil(err)
+	s.Equal(statusSuccess, resp.Results[0].Status)
+	s.Equal(operationCreate, resp.Results[0].Operation)
+	s.Empty(sharingSvc.removed)
+}
+
+// A deployment that acts on sharing removals says so, so a caller can tell an older one that ignored them.
+func (s *ImportSharingRemovalsTestSuite) TestImportSaysItAcceptedTheSharingRemovals() {
+	svc := newTestFlowImportWithSharing(existingFlowService(), &fakeSharingService{})
+
+	with, err := svc.ImportResources(context.Background(), &ImportRequest{Content: flowDocWithoutPolicies(),
+		SharingRemovals: []SharingPolicyRemoval{{ResourceType: "flow", ID: "flow-1"}}})
+	s.Require().Nil(err)
+	without, err := svc.ImportResources(context.Background(), &ImportRequest{Content: flowDocWithoutPolicies()})
+	s.Require().Nil(err)
+
+	s.True(with.SharingRemovalsAccepted)
+	s.False(without.SharingRemovalsAccepted, "nothing was asked, so nothing is acknowledged")
+}
+
+// The removal is told which units the document still carries a policy for, so it can tell a unit written differently in
+// two versions from one that was dropped. A flow's are read before the flow is written.
+func (s *ImportSharingRemovalsTestSuite) TestImportTellsAFlowsRemovalWhatItsDocumentStillNames() {
+	sharingSvc := &fakeSharingService{}
+	svc := newTestFlowImportWithSharing(existingFlowService(), sharingSvc)
+	content := strings.Replace(flowDocWithPolicies(), "  - childUnits:",
+		"  - initiatingOuId: ou-owner\n    childUnits:", 1)
+
+	_, err := svc.ImportResources(context.Background(), &ImportRequest{Content: content,
+		SharingRemovals: []SharingPolicyRemoval{{ResourceType: "flow", ID: "flow-1"}}})
+
+	s.Require().Nil(err)
+	s.Require().Len(sharingSvc.removed, 1)
+	s.Equal([]string{""}, sharingSvc.removed[0].initiators)
+	s.Equal([]string{"ou-owner"}, sharingSvc.removed[0].stillNamed)
+}
+
+// The same for a resource whose removals run after it is written.
+func (s *ImportSharingRemovalsTestSuite) TestImportTellsAnotherResourcesRemovalWhatItsDocumentStillNames() {
+	userSvc := &fakeUserService{existing: map[string]bool{"user-1": true}}
+	sharingSvc := &fakeSharingService{}
+	svc := newTestUserImportWithSharing(userSvc, sharingSvc)
+	content := strings.Replace(userDocWithPolicies("user-1"), "  - childUnits:",
+		"  - initiatingOuId: ou-owner\n    childUnits:", 1)
+
+	_, err := svc.ImportResources(context.Background(), &ImportRequest{Content: content,
+		Options:         &ImportOptions{Upsert: boolPtr(true)},
+		SharingRemovals: []SharingPolicyRemoval{{ResourceType: "user", ID: "user-1"}}})
+
+	s.Require().Nil(err)
+	s.Require().Len(sharingSvc.removed, 1)
+	s.Equal([]string{"ou-owner"}, sharingSvc.removed[0].stillNamed)
+}
+
+// The control plane names removals only for the types it lists, and the importer can remove sharing only from the types
+// it maps. The two lists have to agree: a type only the importer maps is never sent a removal, and a type only the
+// control plane lists makes the resource fail.
+func (s *ImportSharingRemovalsTestSuite) TestTheControlPlanesSharedTypesAreTheOnesTheImporterMaps() {
+	listed := gateway.SharedResourceTypes()
+	for _, resourceType := range listed {
+		_, mapped := sharingTypeOf(resourceType)
+		s.True(mapped, "the control plane sends removals for %q, which the importer cannot apply", resourceType)
+	}
+	for _, resourceType := range resourceDependencyOrder {
+		if _, mapped := sharingTypeOf(resourceType); mapped {
+			s.Contains(listed, resourceType,
+				"the importer applies sharing for %q, but the control plane never sends it a removal", resourceType)
+		}
+	}
+}
+
+// A policy the flow holds can stop fitting the flow's new definition, and the flow service refuses the update while it
+// is held. The document drops the policy, so the control plane names it in the removals, which run before the flow is
+// written and let the update through. Without the removal the same update is refused.
+func (s *ImportSharingRemovalsTestSuite) TestImportWritesAFlowWhoseHeldPolicyNoLongerFitsOnceItIsRemoved() {
+	setup := func() (*fakeFlowService, *fakeSharingService) {
+		held := true
+		flowSvc := existingFlowService()
+		flowSvc.updateCheck = func() *tidcommon.ServiceError {
+			if held {
+				return &flowmgt.ErrorFlowConflictsWithSharingPolicy
+			}
+			return nil
+		}
+		return flowSvc, &fakeSharingService{onRemove: func() { held = false }}
+	}
+
+	flowSvc, sharingSvc := setup()
+	resp, err := newTestFlowImportWithSharing(flowSvc, sharingSvc).ImportResources(context.Background(),
+		&ImportRequest{Content: flowDocWithoutPolicies(),
+			SharingRemovals: []SharingPolicyRemoval{{ResourceType: "flow", ID: "flow-1"}}})
+	s.Require().Nil(err)
+	s.Equal(statusSuccess, resp.Results[0].Status)
+	s.Len(flowSvc.updated, 1)
+
+	flowSvc, sharingSvc = setup()
+	resp, err = newTestFlowImportWithSharing(flowSvc, sharingSvc).ImportResources(context.Background(),
+		&ImportRequest{Content: flowDocWithoutPolicies()})
+	s.Require().Nil(err)
+	s.Equal(statusFailed, resp.Results[0].Status)
+	s.Equal(flowmgt.ErrorFlowConflictsWithSharingPolicy.Code, resp.Results[0].Code)
+	s.Empty(flowSvc.updated)
+	s.Empty(sharingSvc.removed)
 }

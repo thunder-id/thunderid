@@ -508,7 +508,8 @@ func (s *versionService) refuseUnconfirmedRemovalsOf(ctx context.Context, gw *Ga
 	if svcErr := refuseRemovalsInUse(sent, master, parseBundle(sent.content)); svcErr != nil {
 		return svcErr
 	}
-	return s.refuseUnconfirmedRemovals(ctx, gw, len(sent.deletions), applyOptions{})
+	dropped, _ := droppedPolicies(parseBundle(master.Resources), parseBundle(sent.content))
+	return s.refuseUnconfirmedRemovals(ctx, gw, len(sent.deletions)+len(dropped), applyOptions{})
 }
 
 // Promote applies the version the source is recorded as running to the target, as far as the source
@@ -780,8 +781,14 @@ func (s *versionService) write(ctx context.Context, gw *Gateway, target *Version
 	}
 	options.withDependencies = withDependencies
 	sent, sentDocuments, svcErr := shipmentOf(diff, target, previous, selection, options)
+	dropped, unreadable := droppedPolicies(parseBundle(previous.Resources), sentDocuments)
+	for _, resource := range unreadable {
+		s.logger.Warn(ctx, "Could not read the sharing policies of a resource, so none of its dropped policies are "+
+			"sent to the gateway", log.String("gatewayID", gw.ID), log.String("resourceType", resource.Type),
+			log.String("resourceID", resource.ID))
+	}
 	if svcErr == nil {
-		svcErr = s.refuseUnconfirmedRemovals(ctx, gw, len(sent.deletions), options)
+		svcErr = s.refuseUnconfirmedRemovals(ctx, gw, len(sent.deletions)+len(dropped), options)
 	}
 	if svcErr != nil {
 		return nil, svcErr
@@ -811,8 +818,11 @@ func (s *versionService) write(ctx context.Context, gw *Gateway, target *Version
 		Content:   sent.content,
 		Variables: variables,
 		DryRun:    dryRun,
-		Options:   gatewayImportOptions{Upsert: true, ContinueOnError: true, Target: "runtime"},
-		Deletions: now,
+		Options: gatewayImportOptions{
+			Upsert: true, ContinueOnError: true, Target: "runtime", ForceSharingEdits: true,
+		},
+		Deletions:       now,
+		SharingRemovals: sharingRemovalsOf(dropped),
 	}
 	if !dryRun {
 		if svcErr := s.mayStillSend(ctx, gw, target, token, prepared); svcErr != nil {
@@ -830,6 +840,7 @@ func (s *versionService) write(ctx context.Context, gw *Gateway, target *Version
 	}
 
 	result := applyResultOf(gw, dryRun, diff, answer, missing, changed)
+	result.DroppedPolicies = dropped
 	if dryRun {
 		return result, nil
 	}
@@ -961,12 +972,16 @@ func (s *versionService) send(ctx context.Context, gw *Gateway, key string, requ
 	if request.DryRun {
 		request.Deletions = append(request.Deletions, after...)
 		answer, err := s.client.Import(ctx, gw, key, *request)
-		return answer, false, err
+		if err != nil {
+			return answer, false, err
+		}
+		return rejectUnacceptedRemovals(answer, request.SharingRemovals), false, nil
 	}
 	answer, err := s.client.Import(ctx, gw, key, *request)
 	if err != nil {
 		return nil, mayHaveWritten(err), err
 	}
+	answer = rejectUnacceptedRemovals(answer, request.SharingRemovals)
 	released := releasedRemovals(after, awaiting, answer)
 	if len(released) == 0 || !stillHolds() {
 		return answer, true, nil

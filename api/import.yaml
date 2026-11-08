@@ -316,6 +316,25 @@ components:
             same configuration a no-op. A request may carry deletions and no `content`.
           items:
             $ref: '#/components/schemas/ResourceDeletion'
+        sharingRemovals:
+          type: array
+          description: >
+            Sharing policies the content no longer carries for the resources it writes. Each is
+            removed once its resource is written, a flow's just before it is written. A policy left
+            out of a document is never removed otherwise.
+          items:
+            type: object
+            required: [resourceType, id]
+            properties:
+              resourceType:
+                type: string
+                description: The type of the resource the policy governs, such as `flow`.
+              id:
+                type: string
+                description: The id of the resource.
+              initiatingOuId:
+                type: string
+                description: The organization unit that issued the policy. Omit for the resource's owner.
         options:
           $ref: '#/components/schemas/ImportOptions'
 
@@ -393,6 +412,12 @@ components:
             Target storage for imported resources.
             - `runtime`: Imports into runtime stores (database/in-memory)
             Currently only `runtime` is supported.
+        forceSharingEdits:
+          type: boolean
+          default: false
+          description: >
+            When true, a change to a sharing policy that the sharing policies API refuses, such as a
+            different reach, is applied by rewriting the policy.
 
     ImportResponse:
       type: object
@@ -406,6 +431,11 @@ components:
           items:
             $ref: '#/components/schemas/ImportItemOutcome'
           description: Detailed outcome for each imported resource document.
+        sharingRemovalsAccepted:
+          type: boolean
+          description: >
+            Present and true when the request carried `sharingRemovals`, to say this deployment acts
+            on them. An older deployment ignores the field and omits this one.
 
     ImportSummary:
       type: object
@@ -485,6 +515,21 @@ components:
             Contains error details when status is `failed`. Successful user, agent and application
             imports include a warning here when a non-empty top-level `state` was ignored.
           example: "Resource created successfully"
+        removedSharing:
+          type: array
+          description: Sharing policies removed from the resource, with the reshares that lost their standing.
+          items:
+            type: object
+            required: [policyId, reshare]
+            properties:
+              policyId:
+                type: string
+              initiatingOuId:
+                type: string
+                description: The organization unit that issued the policy. Omitted for the resource's owner.
+              reshare:
+                type: boolean
+                description: True if an organization unit issued the policy to pass the resource on.
 
     DeleteResourceRequest:
       type: object

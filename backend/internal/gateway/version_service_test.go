@@ -1002,6 +1002,7 @@ func TestApplySendsTheVersionAndRecordsIt(t *testing.T) {
 	assert.Equal(t, "the-key", f.client.keys[0], "the stored key was not opened before presenting it")
 	assert.Contains(t, f.client.last().Content, "ou-a")
 	assert.Equal(t, "runtime", f.client.last().Options.Target)
+	assert.True(t, f.client.last().Options.ForceSharingEdits)
 	held, _ := f.svc.GetApplied(context.Background(), "gw-1")
 	assert.Equal(t, 1, held.AppliedVersion)
 	assert.Zero(t, held.PreviousVersion)
@@ -1781,6 +1782,105 @@ func TestAnApplyRemovingManyResourcesNeedsConfirmation(t *testing.T) {
 	_, svcErr = f.svc.Revert(context.Background(), "gw-1", RevertRequest{})
 	require.NotNil(t, svcErr)
 	assert.Equal(t, ErrorRemovalsNeedConfirmation.Code, svcErr.Code, "a revert removing many was not refused")
+}
+
+// flowsWithPolicy exports one flow per id, each carrying an owner sharing policy when shared is true.
+func flowsWithPolicy(shared bool, ids ...string) *export.ExportResponse {
+	response := &export.ExportResponse{}
+	for _, id := range ids {
+		content := "resource_type: flow\nid: " + id + "\nname: " + id + "\nouId: ou-owner\n"
+		if shared {
+			content += "sharingPolicies:\n  - childUnits:\n      mode: all\n"
+		}
+		response.Files = append(response.Files, export.ExportFile{Content: content})
+	}
+	return response
+}
+
+// A version that drops the sharing policy of many resources it sends again counts those policies as removals: it
+// needs confirmation, a dry run lists them, and the apply names each one to the gateway, since a gateway removes only
+// what it is told to. No resource is recorded as removed for it.
+func TestAnApplyDroppingManyPoliciesNeedsConfirmationAndNamesThemToTheGateway(t *testing.T) {
+	f := newVersionFixture(t)
+	ids := []string{"f-a", "f-b", "f-c", "f-d", "f-e", "f-f", "f-g"}
+	f.client.imported = json.RawMessage(`{"summary":{"failed":0},"results":[],"sharingRemovalsAccepted":true}`)
+	f.exporter.response = flowsWithPolicy(true, ids...)
+	_, svcErr := f.svc.Capture(context.Background(), CaptureRequest{})
+	require.Nil(t, svcErr)
+	_, svcErr = f.svc.Apply(context.Background(), "gw-1", ApplyRequest{Version: f.hash(1)})
+	require.Nil(t, svcErr)
+	f.exporter.response = flowsWithPolicy(false, ids...)
+	_, svcErr = f.svc.Capture(context.Background(), CaptureRequest{})
+	require.Nil(t, svcErr)
+
+	_, svcErr = f.svc.Apply(context.Background(), "gw-1", ApplyRequest{Version: f.hash(2)})
+	require.NotNil(t, svcErr)
+	assert.Equal(t, ErrorRemovalsNeedConfirmation.Code, svcErr.Code)
+	assert.Len(t, f.client.sent, 1, "the import was sent without confirmation")
+
+	preview, svcErr := f.svc.Apply(context.Background(), "gw-1", ApplyRequest{Version: f.hash(2), DryRun: true})
+	require.Nil(t, svcErr)
+	assert.Len(t, preview.DroppedPolicies, len(ids))
+	assert.Zero(t, preview.Diff.Summary.Deleted, "no resource was removed, only their policies")
+
+	result, svcErr := f.svc.Apply(context.Background(), "gw-1",
+		ApplyRequest{Version: f.hash(2), ConfirmRemovals: true})
+	require.Nil(t, svcErr)
+	assert.True(t, result.Recorded)
+	assert.Len(t, result.DroppedPolicies, len(ids))
+	sent := f.client.last()
+	require.Len(t, sent.SharingRemovals, len(ids))
+	assert.Equal(t, gatewaySharingRemoval{ResourceType: "flow", ID: "f-a"}, sent.SharingRemovals[0])
+	assert.Empty(t, sent.Deletions, "a policy is not a resource, and must not be sent as a removal of one")
+}
+
+// dropPolicyFrom captures a version with a shared flow, applies it, then captures one that drops the policy.
+func dropPolicyFrom(t *testing.T, f *versionFixture, id string) {
+	t.Helper()
+	f.exporter.response = flowsWithPolicy(true, id)
+	_, svcErr := f.svc.Capture(context.Background(), CaptureRequest{})
+	require.Nil(t, svcErr)
+	_, svcErr = f.svc.Apply(context.Background(), "gw-1", ApplyRequest{Version: f.hash(1)})
+	require.Nil(t, svcErr)
+	f.exporter.response = flowsWithPolicy(false, id)
+	_, svcErr = f.svc.Capture(context.Background(), CaptureRequest{})
+	require.Nil(t, svcErr)
+}
+
+// A gateway that does not say it acts on sharing removals is an older one: it ignores them and answers success, so
+// recording the new document would hide the dropped policy for good, even once the gateway is upgraded. The resource
+// is refused instead, and stays as the gateway last accepted it.
+func TestAnApplyWhoseSharingRemovalsAnOlderGatewayIgnoredRefusesTheResource(t *testing.T) {
+	f := newVersionFixture(t)
+	dropPolicyFrom(t, f, "f-a")
+
+	result, svcErr := f.svc.Apply(context.Background(), "gw-1", ApplyRequest{Version: f.hash(2)})
+
+	require.Nil(t, svcErr)
+	require.Len(t, f.client.last().SharingRemovals, 1)
+	master, svcErr := f.svc.GetMaster(context.Background(), "gw-1")
+	require.Nil(t, svcErr)
+	require.Len(t, master.Entries, 1)
+	assert.Equal(t, EntryFailed, master.Entries[0].State)
+	assert.Equal(t, sharingRemovalsNotAcceptedCode, master.Entries[0].Failure.Code)
+	assert.Contains(t, master.Resources, "sharingPolicies", "the document the gateway last accepted was dropped")
+	assert.Contains(t, string(result.Import), sharingRemovalsNotAcceptedCode)
+}
+
+// A gateway that says it acts on them records the new document as deployed.
+func TestAnApplyWhoseSharingRemovalsTheGatewayAcceptedRecordsTheResource(t *testing.T) {
+	f := newVersionFixture(t)
+	dropPolicyFrom(t, f, "f-a")
+	f.client.imported = json.RawMessage(`{"summary":{"failed":0},"results":[],"sharingRemovalsAccepted":true}`)
+
+	_, svcErr := f.svc.Apply(context.Background(), "gw-1", ApplyRequest{Version: f.hash(2)})
+
+	require.Nil(t, svcErr)
+	master, svcErr := f.svc.GetMaster(context.Background(), "gw-1")
+	require.Nil(t, svcErr)
+	require.Len(t, master.Entries, 1)
+	assert.Equal(t, EntryDeployed, master.Entries[0].State)
+	assert.NotContains(t, master.Resources, "sharingPolicies")
 }
 
 // An apply reports the values the version refers to that were set on the gateway after the version

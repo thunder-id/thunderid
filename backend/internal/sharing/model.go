@@ -5,7 +5,9 @@ package sharing
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"sync"
 
 	"github.com/thunder-id/thunderid/internal/system/utils"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -890,11 +892,72 @@ func ToResolvedOverlayResponse(overlay ResolvedOverlay) ResolvedOverlayResponse 
 	}
 }
 
+type forcedEditsKey struct{}
+
+// WithForcedEdits marks a context so that replaying a document applies an edit the update rules of the API refuse, such
+// as a different reach, as a rewrite of the policy. The reshares the new policy still covers are kept and the rest are
+// removed, as a delete and a create would leave them. Without it a replay edits under the rules of the API.
+func WithForcedEdits(ctx context.Context) context.Context {
+	return context.WithValue(ctx, forcedEditsKey{}, true)
+}
+
+func forcedEdits(ctx context.Context) bool {
+	v, _ := ctx.Value(forcedEditsKey{}).(bool)
+	return v
+}
+
+type replayReportKey struct{}
+
+// ReplayReport collects what the replays run under a context removed, so a caller that cannot see inside a service
+// that replays on its behalf can still say what the change cost.
+type ReplayReport struct {
+	mu      sync.Mutex
+	removed []RemovedPolicy
+}
+
+// Removed returns the policies removed by replays that finished under the context.
+func (r *ReplayReport) Removed() []RemovedPolicy {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]RemovedPolicy(nil), r.removed...)
+}
+
+func (r *ReplayReport) add(removed []RemovedPolicy) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.removed = append(r.removed, removed...)
+}
+
+// RecordRemoved adds policies a replay took away to the report on the context, when there is one. A removal reports
+// through the replay it returns, so it is not recorded here, and a caller is never told of one twice.
+func RecordRemoved(ctx context.Context, removed []RemovedPolicy) {
+	if report, ok := ctx.Value(replayReportKey{}).(*ReplayReport); ok && len(removed) > 0 {
+		report.add(removed)
+	}
+}
+
+// WithReplayReport returns a context under which replays record what they removed, and the report they record to.
+func WithReplayReport(ctx context.Context) (context.Context, *ReplayReport) {
+	report := &ReplayReport{}
+	return context.WithValue(ctx, replayReportKey{}, report), report
+}
+
 // PolicyReplay reports what a replay did that its caller has to say something about. A policy the
 // document carries for an organization unit a declaration already governs is dropped, and the
 // replay still succeeds, so the caller is told which ones lost rather than discovering it later.
 type PolicyReplay struct {
 	Skipped []SkippedPolicy
+	// Removed lists the policies the replay took away: those it was told to remove and the
+	// reshares that lost their standing with them or with an edit.
+	Removed []RemovedPolicy
+}
+
+// RemovedPolicy is one policy a replay removed.
+type RemovedPolicy struct {
+	PolicyID       string
+	InitiatingOUID string
+	// Reshare is true for a policy a sharee issued, false for one the owner issued.
+	Reshare bool
 }
 
 // SkippedPolicy is one policy a replay left out, named the way a document names it: by position.
