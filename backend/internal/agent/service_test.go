@@ -151,6 +151,8 @@ func (suite *AgentServiceTestSuite) setupService() (
 		Maybe().Return(oupkg.OrganizationUnit{ID: testOUID}, (*tidcommon.ServiceError)(nil))
 	mockOU.On("GetOrganizationUnitHandlesByIDs", mock.Anything, mock.Anything).
 		Maybe().Return(map[string]string{}, (*tidcommon.ServiceError)(nil))
+	mockOU.On("IsParent", mock.Anything, mock.Anything, mock.Anything).
+		Maybe().Return(true, (*tidcommon.ServiceError)(nil))
 
 	mockOU.On("GetSystemOUID", mock.Anything).Maybe().Return(testSystemOU, (*tidcommon.ServiceError)(nil))
 
@@ -171,9 +173,21 @@ func (suite *AgentServiceTestSuite) setupService() (
 		dependencyRegistry:   noopDepRegistry{},
 		roleService:          mockRole,
 		governance:           governance,
+		entityTypeService:    suite.newEntityTypeMock(),
 		transactioner:        transaction.NewNoOpTransactioner(),
 	}
 	return svc, mockEntity, mockInbound, mockOU, mockRole
+}
+
+// newEntityTypeMock returns an entity type service that places every agent type in testOUID and
+// declares no display attribute. Tests narrow it as needed.
+func (suite *AgentServiceTestSuite) newEntityTypeMock() *entitytypemock.EntityTypeServiceInterfaceMock {
+	mockType := entitytypemock.NewEntityTypeServiceInterfaceMock(suite.T())
+	mockType.On("GetEntityTypeByHandle", mock.Anything, entitytype.TypeCategoryAgent, mock.Anything).
+		Maybe().Return(&entitytype.EntityType{Handle: testAgentType, OUID: testOUID}, (*tidcommon.ServiceError)(nil))
+	mockType.On("GetDisplayAttributesByHandles", mock.Anything, entitytype.TypeCategoryAgent, mock.Anything).
+		Maybe().Return(map[string]string{}, (*tidcommon.ServiceError)(nil))
+	return mockType
 }
 
 // activeReads answers a governance read with ACTIVE for every entity.
@@ -1996,6 +2010,8 @@ func (suite *AgentServiceTestSuite) TestTranslateInboundClientFKError() {
 		{"ThemeNotFound", inboundclient.ErrFKThemeNotFound, ErrorThemeNotFound.Code},
 		{"LayoutNotFound", inboundclient.ErrFKLayoutNotFound, ErrorLayoutNotFound.Code},
 		{"InvalidUserType", inboundclient.ErrFKInvalidUserType, ErrorInvalidUserType.Code},
+		{"InvalidAgentType", inboundclient.ErrFKInvalidAgentType, ErrorInvalidAllowedAgentType.Code},
+		{"AnyAgentTypeNotAlone", inboundclient.ErrFKAnyAgentTypeNotAlone, ErrorAnyAgentTypeNotAlone.Code},
 		{"UserSchemaLookupFailed", inboundclient.ErrUserSchemaLookupFailed, tidcommon.InternalServerError.Code},
 		{"InvalidUserAttribute", inboundclient.ErrInvalidUserAttribute, ErrorInvalidUserAttribute.Code},
 	}
@@ -2962,6 +2978,22 @@ func (suite *AgentServiceTestSuite) TestValidateAgent_OUHandleInternalError() {
 	assert.Equal(suite.T(), tidcommon.InternalServerError.Code, svcErr.Code)
 }
 
+// Declarative agents are validated through ValidateAgent, so an agent file outside its agent type's
+// organization unit tree is refused when the server loads it.
+func (suite *AgentServiceTestSuite) TestValidateAgent_OutsideAgentTypeTree() {
+	svc, _, _, mockOU, _ := suite.setupService()
+	svc.entityTypeService = suite.placementTypeMock(&entitytype.EntityType{Handle: testAgentType, OUID: "type-ou"}, nil)
+	clearMockCalls(mockOU, "IsParent")
+	mockOU.On("IsParent", mock.Anything, "type-ou", testOUID).Return(false, (*tidcommon.ServiceError)(nil))
+
+	req := &providers.Agent{
+		Type: testAgentType, OUID: testOUID, Attributes: json.RawMessage(`{"name":"declared-agent"}`),
+	}
+	_, _, _, svcErr := svc.ValidateAgent(security.WithRuntimeContext(context.Background()), req, "")
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), ErrorOrganizationUnitMismatch.Code, svcErr.Code)
+}
+
 // --- resolveUpdateOUID via UpdateAgent ---
 
 func (suite *AgentServiceTestSuite) TestUpdateAgent_OUHandleResolution_OUNotFound() {
@@ -3163,6 +3195,194 @@ func (suite *AgentServiceTestSuite) TestGetResourceDependencies_ByOwner_Error() 
 	result, err := svc.GetResourceDependencies(context.Background(), resourcedependency.ResourceTypeUser, "user-1")
 	assert.Nil(suite.T(), result)
 	assert.Error(suite.T(), err)
+}
+
+// Agent type dependencies are the agents of the type and the agents that allow it to sign in. Both name the
+// agent type by its handle, and every one of them blocks the delete.
+func (suite *AgentServiceTestSuite) TestGetResourceDependencies_ByAgentType_Success() {
+	svc, mockEntity, mockInbound, _, _ := suite.setupService()
+	suite.withDisplayPaths(svc, "name")
+
+	attrs, _ := json.Marshal(map[string]interface{}{"name": "Agent One"})
+	mockEntity.On("GetEntityListByType", mock.Anything, providers.EntityCategoryAgent, testAgentType,
+		serverconst.MaxCompositeStoreRecords).
+		Return([]providers.Entity{
+			{ID: "agent-1", Category: providers.EntityCategoryAgent, Type: testAgentType, Attributes: attrs},
+		}, nil)
+	mockInbound.On("GetEntityIDsByReference", mock.Anything, resourcedependency.ResourceTypeAgentType,
+		testAgentType, serverconst.MaxCompositeStoreRecords, 0).
+		Return([]string{"agent-1", "agent-2", "app-1"}, 3, nil)
+	mockEntity.On("GetEntitiesByIDs", mock.Anything, []string{"agent-1", "agent-2", "app-1"}).
+		Return([]providers.Entity{
+			{ID: "agent-1", Category: providers.EntityCategoryAgent, Type: testAgentType, Attributes: attrs},
+			{ID: "agent-2", Category: providers.EntityCategoryAgent, Type: testAgentType},
+			{ID: "app-1", Category: providers.EntityCategoryApp},
+		}, nil)
+
+	result, err := svc.GetResourceDependencies(
+		context.Background(), resourcedependency.ResourceTypeAgentType, testAgentType)
+	assert.NoError(suite.T(), err)
+	suite.Require().Len(result, 2, "an agent that is of the type and allows it is listed once")
+	assert.Equal(suite.T(), "agent-1", result[0].ID)
+	assert.Equal(suite.T(), "Agent One", result[0].DisplayName)
+	assert.Equal(suite.T(), "agent-2", result[1].ID)
+	for _, usage := range result {
+		assert.Equal(suite.T(), resourcedependency.ResourceTypeAgent, usage.ResourceType)
+		assert.Equal(suite.T(), resourcedependency.BehaviorRestrict, usage.BehaviorOnDelete)
+	}
+}
+
+func (suite *AgentServiceTestSuite) TestGetResourceDependencies_ByAgentType_Empty() {
+	svc, mockEntity, mockInbound, _, _ := suite.setupService()
+	mockEntity.On("GetEntityListByType", mock.Anything, providers.EntityCategoryAgent, "unused",
+		serverconst.MaxCompositeStoreRecords).
+		Return([]providers.Entity{}, nil)
+	mockInbound.On("GetEntityIDsByReference", mock.Anything, resourcedependency.ResourceTypeAgentType,
+		"unused", serverconst.MaxCompositeStoreRecords, 0).Return([]string{}, 0, nil)
+
+	result, err := svc.GetResourceDependencies(context.Background(), resourcedependency.ResourceTypeAgentType, "unused")
+	assert.NoError(suite.T(), err)
+	assert.Empty(suite.T(), result)
+}
+
+func (suite *AgentServiceTestSuite) TestGetResourceDependencies_ByAgentType_Errors() {
+	svc, mockEntity, mockInbound, _, _ := suite.setupService()
+	mockEntity.On("GetEntityListByType", mock.Anything, providers.EntityCategoryAgent, testAgentType,
+		serverconst.MaxCompositeStoreRecords).
+		Return(nil, errors.New("store error")).Once()
+
+	result, err := svc.GetResourceDependencies(
+		context.Background(), resourcedependency.ResourceTypeAgentType, testAgentType)
+	assert.Nil(suite.T(), result)
+	assert.Error(suite.T(), err, "agents of the type cannot be listed")
+
+	mockEntity.On("GetEntityListByType", mock.Anything, providers.EntityCategoryAgent, testAgentType,
+		serverconst.MaxCompositeStoreRecords).
+		Return([]providers.Entity{}, nil).Once()
+	mockInbound.On("GetEntityIDsByReference", mock.Anything, resourcedependency.ResourceTypeAgentType,
+		testAgentType, serverconst.MaxCompositeStoreRecords, 0).Return(nil, 0, errors.New("store error")).Once()
+
+	result, err = svc.GetResourceDependencies(
+		context.Background(), resourcedependency.ResourceTypeAgentType, testAgentType)
+	assert.Nil(suite.T(), result)
+	assert.Error(suite.T(), err, "agents allowing the type cannot be listed")
+}
+
+// placementTypeMock returns an entity type service that answers the agent type lookup with the given type
+// or error.
+func (suite *AgentServiceTestSuite) placementTypeMock(
+	agentType *entitytype.EntityType, svcErr *tidcommon.ServiceError,
+) *entitytypemock.EntityTypeServiceInterfaceMock {
+	mockType := entitytypemock.NewEntityTypeServiceInterfaceMock(suite.T())
+	mockType.On("GetEntityTypeByHandle", mock.Anything, entitytype.TypeCategoryAgent, testAgentType).
+		Return(agentType, svcErr)
+	mockType.On("GetDisplayAttributesByHandles", mock.Anything, entitytype.TypeCategoryAgent, mock.Anything).
+		Maybe().Return(map[string]string{}, (*tidcommon.ServiceError)(nil))
+	return mockType
+}
+
+func (suite *AgentServiceTestSuite) TestCreateAgent_AgentTypePlacement() {
+	otherTreeType := &entitytype.EntityType{Handle: testAgentType, OUID: "type-ou"}
+	testCases := []struct {
+		name         string
+		agentType    *entitytype.EntityType
+		lookupErr    *tidcommon.ServiceError
+		isParent     bool
+		isParentErr  *tidcommon.ServiceError
+		expectedCode string
+	}{
+		{name: "type in an ancestor organization unit", agentType: otherTreeType, isParent: true},
+		{name: "type in another tree", agentType: otherTreeType, expectedCode: ErrorOrganizationUnitMismatch.Code},
+		{name: "unknown type", lookupErr: &entitytype.ErrorAgentTypeNotFound,
+			expectedCode: ErrorAgentTypeNotFound.Code},
+		{name: "type the caller cannot read reads as unknown", lookupErr: &tidcommon.ErrorUnauthorized,
+			expectedCode: ErrorAgentTypeNotFound.Code},
+		{name: "type lookup fails", lookupErr: &tidcommon.InternalServerError,
+			expectedCode: tidcommon.InternalServerError.Code},
+		{name: "hierarchy lookup fails", agentType: otherTreeType, isParentErr: &tidcommon.InternalServerError,
+			expectedCode: tidcommon.InternalServerError.Code},
+		{name: "hierarchy lookup finds no organization unit", agentType: otherTreeType,
+			isParentErr: &oupkg.ErrorOrganizationUnitNotFound, expectedCode: ErrorOrganizationUnitNotFound.Code},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			svc, _, _, mockOU, _ := suite.setupService()
+			svc.entityTypeService = suite.placementTypeMock(tc.agentType, tc.lookupErr)
+			clearMockCalls(mockOU, "IsParent")
+			mockOU.On("IsParent", mock.Anything, "type-ou", testOUID).Return(tc.isParent, tc.isParentErr).Maybe()
+
+			resp, svcErr := svc.CreateAgent(context.Background(), &providers.Agent{
+				Type: testAgentType, OUID: testOUID, Attributes: json.RawMessage(`{"name":"placed-agent"}`),
+			})
+
+			if tc.expectedCode == "" {
+				suite.Require().Nil(svcErr)
+				suite.NotNil(resp)
+				return
+			}
+			suite.Nil(resp)
+			suite.Require().NotNil(svcErr)
+			suite.Equal(tc.expectedCode, svcErr.Code)
+		})
+	}
+}
+
+func (suite *AgentServiceTestSuite) TestUpdateAgent_AgentTypePlacement() {
+	misplacedType := &entitytype.EntityType{Handle: testAgentType, OUID: "type-ou"}
+	testCases := []struct {
+		name         string
+		request      model.UpdateAgentRequest
+		expectedCode string
+	}{
+		{
+			name:    "neither the organization unit nor the type changes",
+			request: model.UpdateAgentRequest{Type: testAgentType, OUID: testOUID},
+		},
+		{
+			name:         "the organization unit changes",
+			request:      model.UpdateAgentRequest{Type: testAgentType, OUID: "moved-ou"},
+			expectedCode: ErrorOrganizationUnitMismatch.Code,
+		},
+		{
+			name:         "the type changes",
+			request:      model.UpdateAgentRequest{Type: "other-type", OUID: testOUID},
+			expectedCode: ErrorOrganizationUnitMismatch.Code,
+		},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			svc, mockEntity, _, mockOU, _ := suite.setupService()
+			mockType := entitytypemock.NewEntityTypeServiceInterfaceMock(suite.T())
+			mockType.On("GetEntityTypeByHandle", mock.Anything, entitytype.TypeCategoryAgent, mock.Anything).
+				Return(misplacedType, (*tidcommon.ServiceError)(nil)).Maybe()
+			mockType.On("GetDisplayAttributesByHandles", mock.Anything, entitytype.TypeCategoryAgent,
+				mock.Anything).Maybe().Return(map[string]string{}, (*tidcommon.ServiceError)(nil))
+			svc.entityTypeService = mockType
+			clearMockCalls(mockOU, "IsParent")
+			mockOU.On("IsParent", mock.Anything, "type-ou", mock.Anything).
+				Return(false, (*tidcommon.ServiceError)(nil)).Maybe()
+			// The stored agent is already outside its type's tree.
+			clearMockCalls(mockEntity, "GetEntityProfile")
+			mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).
+				Return(buildAgentEntityFixture("misplaced-agent", "", "", ""), nil)
+
+			req := tc.request
+			req.Attributes = json.RawMessage(`{"name":"misplaced-agent"}`)
+			resp, svcErr := svc.UpdateAgent(context.Background(), testAgentID, &req)
+
+			if tc.expectedCode == "" {
+				suite.Require().Nil(svcErr)
+				suite.NotNil(resp)
+				mockType.AssertNotCalled(suite.T(), "GetEntityTypeByHandle",
+					mock.Anything, mock.Anything, mock.Anything)
+				return
+			}
+			suite.Require().NotNil(svcErr)
+			suite.Equal(tc.expectedCode, svcErr.Code)
+		})
+	}
 }
 
 // --- error-branch coverage ---
@@ -3923,6 +4143,8 @@ func (suite *AgentServiceTestSuite) withDisplayPaths(svc *agentService, path str
 	mockType := entitytypemock.NewEntityTypeServiceInterfaceMock(suite.T())
 	mockType.On("GetDisplayAttributesByHandles", mock.Anything, entitytype.TypeCategoryAgent,
 		mock.Anything).Return(map[string]string{testAgentType: path}, (*tidcommon.ServiceError)(nil)).Maybe()
+	mockType.On("GetEntityTypeByHandle", mock.Anything, entitytype.TypeCategoryAgent, mock.Anything).
+		Maybe().Return(&entitytype.EntityType{Handle: testAgentType, OUID: testOUID}, (*tidcommon.ServiceError)(nil))
 	svc.entityTypeService = mockType
 }
 

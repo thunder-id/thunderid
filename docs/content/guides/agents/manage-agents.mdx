@@ -123,6 +123,8 @@ The Console uses this flow for subsequent agent creation. A missing default or a
 
 Creating an agent gives that agent its own identity in <ProductName />, with its own owner, attributes, and lifecycle, separate from any user.
 
+Every agent belongs to an **Organization Unit (OU)** and has an **agent type**. Each agent type belongs to a specific OU. An agent of that type can only be created under that OU or one of its descendants, and an update that moves the agent or changes its type must keep it there. Otherwise the request fails with error `AGT-1053`, and an agent type that does not exist, or that the caller cannot view, fails with error `AGT-1054`. Moving an agent type to another OU does not move its agents or check them again. Because the check reads the agent type, creating an agent, or changing its OU or type, also needs permission to view agent types (`system:agenttype:view`) in addition to `system:agent`.
+
 <Tabs groupId="agent-config">
 <TabItem value="console" label="Console" default>
 
@@ -186,7 +188,7 @@ curl -X POST https://localhost:8090/agents \
   }'
 ```
 
-Set `TOKEN` to an access token with permission to create agents. Replace the organization unit and owner placeholders with existing IDs. The top-level `type` field is required; the default agent schema also requires a unique `attributes.name` value.
+Set `TOKEN` to an access token with permission to create agents. Replace the organization unit and owner placeholders with existing IDs. The top-level `type` field is required and names the agent type by its handle. <ProductName /> ships one agent type, `default`, and you can add others; see [Agent Schema](../agent-schema). The default agent schema also requires a unique `attributes.name` value.
 
 Specify an organization unit with `ouId` or `ouHandle`, unless you pass `projectId` to use the project's root organization unit. See [Scope agents to a project](#scope-agents-to-a-project). Omit `owner` to use the authenticated caller. `validUntil` is optional and sets when the agent's lifespan ends; see [Set an Agent's Lifespan](../agent-lifespan).
 
@@ -287,7 +289,7 @@ The **Advanced** tab gathers the agent's OAuth and operational settings:
 
 ## Agent schema
 
-The custom attributes every agent carries come from the agent schema, a single built-in schema shared by all agents. See [Agent Schema](../agent-schema) to view the default attributes and change what an agent holds.
+The custom attributes an agent carries come from its agent type's schema. Each agent type has its own schema, shared by the agents of that type. See [Agent Schema](../agent-schema) to view the default attributes and change what an agent holds.
 
 ## Set a lifespan
 

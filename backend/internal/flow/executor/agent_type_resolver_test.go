@@ -134,7 +134,7 @@ func (suite *AgentTypeResolverTestSuite) TestSubmittedHandleResolves() {
 func (suite *AgentTypeResolverTestSuite) TestAllowedAgentTypesNarrowsTheChoice() {
 	ctx := agentTypeNodeContext()
 	ctx.NodeProperties = map[string]interface{}{
-		propertyKeyAllowedAgentTypes: []interface{}{"default"},
+		common.NodePropertyAllowedAgentTypes: []interface{}{"default"},
 	}
 	suite.listReturns(
 		entitytype.EntityTypeListItem{Handle: "default", OUID: "ou-agents"},
@@ -184,7 +184,7 @@ func (suite *AgentTypeResolverTestSuite) TestSupportedFlowTypes() {
 	suite.Equal([]providers.FlowType{providers.FlowTypeAdministration, providers.FlowTypeAuthentication},
 		meta.SupportedFlowTypes)
 	suite.Require().Len(meta.SupportedProperties, 1)
-	suite.Equal(propertyKeyAllowedAgentTypes, meta.SupportedProperties[0].Property)
+	suite.Equal(common.NodePropertyAllowedAgentTypes, meta.SupportedProperties[0].Property)
 }
 
 // An agent is created by an administrator, so a registration flow is refused rather than served.

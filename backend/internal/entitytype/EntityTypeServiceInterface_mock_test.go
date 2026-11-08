@@ -955,6 +955,46 @@ func (_c *EntityTypeServiceInterfaceMock_ResolveEntityTypeHandles_Call) RunAndRe
 	return _c
 }
 
+// SetDependencyRegistry provides a mock function for the type EntityTypeServiceInterfaceMock
+func (_mock *EntityTypeServiceInterfaceMock) SetDependencyRegistry(r resourcedependency.Registry) {
+	_mock.Called(r)
+	return
+}
+
+// EntityTypeServiceInterfaceMock_SetDependencyRegistry_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetDependencyRegistry'
+type EntityTypeServiceInterfaceMock_SetDependencyRegistry_Call struct {
+	*mock.Call
+}
+
+// SetDependencyRegistry is a helper method to define mock.On call
+//   - r resourcedependency.Registry
+func (_e *EntityTypeServiceInterfaceMock_Expecter) SetDependencyRegistry(r any) *EntityTypeServiceInterfaceMock_SetDependencyRegistry_Call {
+	return &EntityTypeServiceInterfaceMock_SetDependencyRegistry_Call{Call: _e.mock.On("SetDependencyRegistry", r)}
+}
+
+func (_c *EntityTypeServiceInterfaceMock_SetDependencyRegistry_Call) Run(run func(r resourcedependency.Registry)) *EntityTypeServiceInterfaceMock_SetDependencyRegistry_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 resourcedependency.Registry
+		if args[0] != nil {
+			arg0 = args[0].(resourcedependency.Registry)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *EntityTypeServiceInterfaceMock_SetDependencyRegistry_Call) Return() *EntityTypeServiceInterfaceMock_SetDependencyRegistry_Call {
+	_c.Call.Return()
+	return _c
+}
+
+func (_c *EntityTypeServiceInterfaceMock_SetDependencyRegistry_Call) RunAndReturn(run func(r resourcedependency.Registry)) *EntityTypeServiceInterfaceMock_SetDependencyRegistry_Call {
+	_c.Run(run)
+	return _c
+}
+
 // UpdateEntityType provides a mock function for the type EntityTypeServiceInterfaceMock
 func (_mock *EntityTypeServiceInterfaceMock) UpdateEntityType(ctx context.Context, category TypeCategory, schemaID string, request UpdateEntityTypeRequest) (*EntityType, *common.ServiceError) {
 	ret := _mock.Called(ctx, category, schemaID, request)

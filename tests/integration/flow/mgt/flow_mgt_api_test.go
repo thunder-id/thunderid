@@ -680,6 +680,88 @@ func (suite *FlowMgtAPITestSuite) TestCreateFlow_OUResolverIgnoredPropertiesReje
 	}
 }
 
+// An AgentTypeResolver node reads its allowed agent types as handles, so "*" there would match no agent type.
+// The shipped agent onboarding flow with "*" on that node is refused when it is saved, as an update and as a
+// new flow.
+func (suite *FlowMgtAPITestSuite) TestAgentTypeWildcardOnFlowNodeRejected() {
+	flowID, err := testutils.GetFlowIDByHandle("default-agent-onboarding-flow", "ADMINISTRATION")
+	suite.Require().NoError(err)
+
+	req, err := http.NewRequest(http.MethodGet, testServerURL+flowsEndpoint+"/"+flowID, nil)
+	suite.Require().NoError(err)
+	resp, err := testutils.GetHTTPClient().Do(req)
+	suite.Require().NoError(err)
+	defer resp.Body.Close()
+	suite.Require().Equal(http.StatusOK, resp.StatusCode)
+	var stored map[string]interface{}
+	suite.Require().NoError(json.NewDecoder(resp.Body).Decode(&stored))
+
+	nodes, _ := stored["nodes"].([]interface{})
+	found := false
+	for _, n := range nodes {
+		node, _ := n.(map[string]interface{})
+		if executor, _ := node["executor"].(map[string]interface{}); executor["name"] == "AgentTypeResolver" {
+			node["properties"] = map[string]interface{}{"allowedAgentTypes": []string{"*"}}
+			found = true
+		}
+	}
+	suite.Require().True(found, "the shipped agent onboarding flow has an AgentTypeResolver node")
+	flow := map[string]interface{}{
+		"name": stored["name"], "handle": stored["handle"], "flowType": stored["flowType"],
+		"ouId": stored["ouId"], "nodes": nodes,
+	}
+
+	// send expects the save to be refused, and returns the body so a save that went through can be undone.
+	send := func(method, path string, body interface{}) (int, []byte) {
+		payload, err := json.Marshal(body)
+		suite.Require().NoError(err)
+		req, err := http.NewRequest(method, testServerURL+path, bytes.NewReader(payload))
+		suite.Require().NoError(err)
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := testutils.GetHTTPClient().Do(req)
+		suite.Require().NoError(err)
+		defer resp.Body.Close()
+		raw, err := io.ReadAll(resp.Body)
+		suite.Require().NoError(err)
+
+		suite.Equal(http.StatusBadRequest, resp.StatusCode, "body: %s", string(raw))
+		var errorResp ErrorResponse
+		suite.Require().NoError(json.Unmarshal(raw, &errorResp))
+		suite.Equal("FLM-1023", errorResp.Code, "body: %s", string(raw))
+		suite.Contains(string(raw), "allowedAgentTypes", "the refusal names the property")
+		return resp.StatusCode, raw
+	}
+
+	suite.Run("update", func() {
+		if status, _ := send(http.MethodPut, flowsEndpoint+"/"+flowID, flow); status == http.StatusOK {
+			// The shipped flow is shared with the execution suites, so a save that went through is undone.
+			original := map[string]interface{}{
+				"name": stored["name"], "handle": stored["handle"], "flowType": stored["flowType"],
+				"ouId": stored["ouId"], "nodes": stored["nodes"],
+			}
+			payload, err := json.Marshal(original)
+			suite.Require().NoError(err)
+			req, err := http.NewRequest(http.MethodPut, testServerURL+flowsEndpoint+"/"+flowID,
+				bytes.NewReader(payload))
+			suite.Require().NoError(err)
+			req.Header.Set("Content-Type", "application/json")
+			resp, err := testutils.GetHTTPClient().Do(req)
+			suite.Require().NoError(err)
+			_ = resp.Body.Close()
+			suite.Equal(http.StatusOK, resp.StatusCode, "restoring the shipped onboarding flow failed")
+		}
+	})
+	suite.Run("create", func() {
+		flow["handle"] = generateUniqueHandle("agent-onboarding-wildcard")
+		if status, raw := send(http.MethodPost, flowsEndpoint, flow); status == http.StatusCreated {
+			var created CompleteFlowDefinition
+			if json.Unmarshal(raw, &created) == nil && created.ID != "" {
+				suite.trackFlow(created.ID)
+			}
+		}
+	})
+}
+
 // In direct children mode the resolver reads a single required ouId or ouHandle input declared on the node.
 func (suite *FlowMgtAPITestSuite) TestCreateFlow_OUResolverInputsRejected() {
 	idInput := InputDefinition{Ref: "ou_id", Type: "TEXT_INPUT", Identifier: "ouId", Required: true}

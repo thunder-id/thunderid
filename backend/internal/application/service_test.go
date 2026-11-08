@@ -4183,6 +4183,16 @@ func (suite *ServiceTestSuite) TestTranslateInboundClientFKError() {
 			wantCode: ErrorInvalidUserType.Code,
 		},
 		{
+			name:     "InvalidAgentType",
+			err:      inboundclient.ErrFKInvalidAgentType,
+			wantCode: ErrorInvalidAgentType.Code,
+		},
+		{
+			name:     "AnyAgentTypeNotAlone",
+			err:      inboundclient.ErrFKAnyAgentTypeNotAlone,
+			wantCode: ErrorAnyAgentTypeNotAlone.Code,
+		},
+		{
 			name:     "UserSchemaLookupFailed",
 			err:      inboundclient.ErrUserSchemaLookupFailed,
 			wantCode: tidcommon.InternalServerError.Code,
@@ -4636,6 +4646,28 @@ func (suite *ServiceTestSuite) TestGetResourceDependencies_Success() {
 	assert.Equal(suite.T(), "Portal App", result[0].DisplayName)
 	assert.Equal(suite.T(), "app-2", result[1].ID)
 	assert.Equal(suite.T(), "Admin App", result[1].DisplayName)
+}
+
+// An application that allows an agent type blocks its deletion: the handle could otherwise be recreated
+// in another organization unit and inherit the allowance.
+func (suite *ServiceTestSuite) TestGetResourceDependencies_AllowedAgentTypeBlocksDelete() {
+	service, mockStore := suite.setupTestService()
+	mockStore.EXPECT().
+		GetEntityIDsByReference(
+			mock.Anything, resourcedependency.ResourceTypeAgentType, "support-agents",
+			serverconst.MaxCompositeStoreRecords, 0).
+		Return([]string{"app-1"}, 1, nil)
+
+	ep := resetEntityServiceMethod(service, "GetEntitiesByIDs")
+	ep.On("GetEntitiesByIDs", mock.Anything, []string{"app-1"}).Return([]providers.Entity{
+		{ID: "app-1", Category: providers.EntityCategoryApp},
+	}, nil)
+
+	result, err := service.GetResourceDependencies(
+		context.Background(), resourcedependency.ResourceTypeAgentType, "support-agents")
+	assert.NoError(suite.T(), err)
+	require.Len(suite.T(), result, 1)
+	assert.Equal(suite.T(), resourcedependency.BehaviorRestrict, result[0].BehaviorOnDelete)
 }
 
 // Agents share the inbound-client store; the application provider must skip non-app entities.

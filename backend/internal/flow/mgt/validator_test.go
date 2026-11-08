@@ -2775,6 +2775,44 @@ func (s *ValidatorTestSuite) TestValidateOUResolverExecutor() {
 	}
 }
 
+func (s *ValidatorTestSuite) TestValidateAgentTypeResolverExecutor() {
+	const wildcard = "error.flowmgtservice.agent_type_wildcard_not_supported_description"
+
+	tests := []struct {
+		name       string
+		properties map[string]interface{}
+		wantKey    string
+	}{
+		{"NoProperties", nil, ""},
+		{"Handles", map[string]interface{}{"allowedAgentTypes": []interface{}{"default", "support-agents"}}, ""},
+		{"EmptyList", map[string]interface{}{"allowedAgentTypes": []interface{}{}}, ""},
+		{"WildcardAlone", map[string]interface{}{"allowedAgentTypes": []interface{}{"*"}}, wildcard},
+		{"WildcardWithHandles", map[string]interface{}{"allowedAgentTypes": []interface{}{"default", "*"}}, wildcard},
+	}
+	for _, tc := range tests {
+		s.Run(tc.name, func() {
+			nodes := []providers.NodeDefinition{{
+				ID: "agent_type", Type: string(common.NodeTypeTaskExecution),
+				Executor:   &providers.ExecutorDefinition{Name: executor.ExecutorNameAgentTypeResolver},
+				Properties: tc.properties,
+			}}
+
+			err := s.v.validateExecutorSpecificConstraints(
+				&nodes[0], nodeIndexFor(nodes), nodes, providers.FlowTypeAdministration)
+
+			if tc.wantKey == "" {
+				s.Nil(err)
+				return
+			}
+			s.Require().NotNil(err)
+			s.Equal(ErrorInvalidExecutorConfig.Code, err.Code)
+			s.Equal(tc.wantKey, err.ErrorDescription.Key)
+			s.Equal("agent_type", err.ErrorDescription.Params["nodeID"])
+			s.Equal("allowedAgentTypes", err.ErrorDescription.Params["propertyKey"])
+		})
+	}
+}
+
 // attributeVerificationNodes is a flow running AttributeVerificationExecutor in each of the given modes.
 func attributeVerificationNodes(modes ...string) []providers.NodeDefinition {
 	names := make([]string, len(modes))

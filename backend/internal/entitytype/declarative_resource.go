@@ -202,7 +202,10 @@ func loadDeclarativeResources(
 		return fmt.Errorf("failed to load entity type resources: %w", err)
 	}
 
-	return validateUniqueDeclarativeHandles(fileBasedStore, dbStore)
+	if err := validateUniqueDeclarativeHandles(fileBasedStore, dbStore); err != nil {
+		return err
+	}
+	return validateOneDeclarativeAgentTypePerOU(fileBasedStore, dbStore)
 }
 
 // validateUniqueDeclarativeHandles ensures no two declarative entity types of the same category share
@@ -237,6 +240,47 @@ func validateUniqueDeclarativeHandles(
 		}
 		if !errors.Is(err, ErrEntityTypeNotFound) {
 			return fmt.Errorf("failed to check for duplicate entity type handle %q: %w", entityType.Handle, err)
+		}
+	}
+
+	return nil
+}
+
+// validateOneDeclarativeAgentTypePerOU ensures no two declarative agent types belong to the same
+// organization unit. In composite mode, it also ensures the organization unit has no agent type in the DB
+// store.
+func validateOneDeclarativeAgentTypePerOU(
+	fileBasedStore *entityTypeFileBasedStore, dbStore entityTypeStoreInterface) error {
+	list, err := fileBasedStore.GenericFileBasedStore.List()
+	if err != nil {
+		return fmt.Errorf("failed to list entity type resources: %w", err)
+	}
+
+	seen := make(map[string]string, len(list))
+	for _, item := range list {
+		entityType, ok := item.Data.(*EntityType)
+		if !ok || entityType.Category != TypeCategoryAgent {
+			continue
+		}
+		if existingHandle, exists := seen[entityType.OUID]; exists {
+			return fmt.Errorf("agent types %q and %q in declarative resources belong to the same "+
+				"organization unit: an organization unit can have only one agent type",
+				existingHandle, entityType.Handle)
+		}
+		seen[entityType.OUID] = entityType.Handle
+
+		if dbStore == nil {
+			continue
+		}
+		existing, err := dbStore.GetEntityTypeListByOUIDs(
+			context.Background(), TypeCategoryAgent, []string{entityType.OUID}, 1, 0)
+		if err != nil {
+			return fmt.Errorf("failed to check the organization unit of agent type %q: %w", entityType.Handle, err)
+		}
+		if len(existing) > 0 {
+			return fmt.Errorf("agent type %q belongs to an organization unit that already has agent type %q "+
+				"in the database store: an organization unit can have only one agent type",
+				entityType.Handle, existing[0].Handle)
 		}
 	}
 

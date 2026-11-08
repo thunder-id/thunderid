@@ -453,8 +453,19 @@ func (ts *AgentAPITestSuite) TestCreateAgentEntityOnly() {
 
 // An agent created without an organization unit goes to the system organization unit.
 func (ts *AgentAPITestSuite) TestCreateAgentWithoutOU() {
+	// The suite moves the default agent type into its own organization unit, and an agent is placed within
+	// its agent type's organization unit tree, so an agent type in the system organization unit stands in.
+	// Its clean-up is registered first so it runs after the agent's.
+	typeHandle := "create-without-ou-agents"
+	typeID, err := testutils.CreateNewAgentType(testutils.UserType{
+		Handle: typeHandle, DisplayName: "Create Without OU Agents", OUID: systemOUID,
+		Schema: map[string]interface{}{"name": map[string]interface{}{"type": "string", "required": true}},
+	})
+	ts.Require().NoError(err)
+	ts.T().Cleanup(func() { _ = testutils.DeleteAgentType(typeID) })
+
 	created, _ := ts.createAgentWithStatus(
-		Agent{Type: "default", Attributes: agentAttrs("create-without-ou", nil)}, http.StatusCreated)
+		Agent{Type: typeHandle, Attributes: agentAttrs("create-without-ou", nil)}, http.StatusCreated)
 
 	ts.Equal(systemOUID, created.OUID)
 }

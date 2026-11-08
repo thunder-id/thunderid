@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"sort"
 	"strings"
 	"testing"
@@ -27,6 +28,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 
 	"github.com/thunder-id/thunderid/tests/mocks/oumock"
+	"github.com/thunder-id/thunderid/tests/mocks/resourcedependencymock"
 	"github.com/thunder-id/thunderid/tests/mocks/sysauthzmock"
 )
 
@@ -1613,105 +1615,379 @@ func TestDeleteEntityType(t *testing.T) {
 	storeMock.AssertExpectations(t)
 }
 
-func TestCreateEntityType_AgentTypeRejectsNonDefaultHandle(t *testing.T) {
-	testConfig := &config.Config{
-		DeclarativeResources: config.DeclarativeResources{Enabled: false},
+// newAgentTypeWriteService builds a service whose organization unit lookups succeed, for the agent
+// type create and update tests.
+func (s *EntityTypeServiceTestSuite) newAgentTypeWriteService(
+	storeMock *entityTypeStoreInterfaceMock, ouIDs ...string,
+) *entityTypeService {
+	ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(s.T())
+	for _, ouID := range ouIDs {
+		ouServiceMock.On("IsOrganizationUnitExists", mock.Anything, ouID).
+			Return(true, (*tidcommon.ServiceError)(nil)).Once()
 	}
-	config.ResetServerRuntime()
-	require.NoError(t, config.InitializeServerRuntime("/tmp/test", testConfig))
-	defer config.ResetServerRuntime()
-
-	service := &entityTypeService{
-		bus:             discardingBus{},
-		entityTypeStore: newEntityTypeStoreInterfaceMock(t),
-		transactioner:   &mockTransactioner{},
-		authzService:    newAllowAllAuthz(t),
-	}
-
-	req := CreateEntityTypeRequestWithID{
-		Handle:      "tool-agent",
-		DisplayName: "tool-agent",
-		OUID:        testOUID1,
-		Schema:      json.RawMessage(`{"name":{"type":"string"}}`),
-	}
-	_, svcErr := service.CreateEntityType(context.Background(), TypeCategoryAgent, req)
-	require.NotNil(t, svcErr)
-	require.Equal(t, ErrorAgentTypeOnlyDefaultAllowed.Code, svcErr.Code)
-}
-
-func TestUpdateEntityType_AgentTypeRejectsNonDefaultHandle(t *testing.T) {
-	initEntityTypeTestRuntime(t)
-
-	service := &entityTypeService{
-		bus:             discardingBus{},
-		entityTypeStore: newEntityTypeStoreInterfaceMock(t),
-		transactioner:   &mockTransactioner{},
-		authzService:    newAllowAllAuthz(t),
-	}
-
-	req := UpdateEntityTypeRequest{
-		Handle:      "tool-agent",
-		DisplayName: "Tool Agent",
-		OUID:        testOUID1,
-		Schema:      json.RawMessage(`{"name":{"type":"string"}}`),
-	}
-	_, svcErr := service.UpdateEntityType(context.Background(), TypeCategoryAgent, "schema-1", req)
-	require.NotNil(t, svcErr)
-	require.Equal(t, ErrorAgentTypeOnlyDefaultAllowed.Code, svcErr.Code)
-}
-
-func TestUpdateEntityType_AgentTypeOmittedHandleKeepsDefault(t *testing.T) {
-	initEntityTypeTestRuntime(t)
-
-	storeMock := newEntityTypeStoreInterfaceMock(t)
-	ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
-	storeMock.On("IsEntityTypeDeclarative", TypeCategoryAgent, "schema-id").Return(false).Once()
-	ouServiceMock.On("IsOrganizationUnitExists", mock.Anything, testOUID1).
-		Return(true, (*tidcommon.ServiceError)(nil)).Once()
-	storeMock.On("GetEntityTypeByID", mock.Anything, TypeCategoryAgent, "schema-id").
-		Return(EntityType{ID: "schema-id", Handle: DefaultAgentTypeHandle, DisplayName: "Default",
-			OUID: testOUID1}, nil).Once()
-	storeMock.On("UpdateEntityTypeByID", mock.Anything, TypeCategoryAgent, "schema-id",
-		mock.MatchedBy(func(e EntityType) bool {
-			return e.Handle == DefaultAgentTypeHandle && e.DisplayName == "Assistants"
-		})).Return(nil).Once()
-
-	service := &entityTypeService{
+	return &entityTypeService{
 		bus:             discardingBus{},
 		entityTypeStore: storeMock,
 		ouService:       ouServiceMock,
 		transactioner:   &mockTransactioner{},
-		authzService:    newAllowAllAuthz(t),
+		authzService:    newAllowAllAuthz(s.T()),
 	}
-
-	result, svcErr := service.UpdateEntityType(context.Background(), TypeCategoryAgent, "schema-id",
-		UpdateEntityTypeRequest{
-			DisplayName: "Assistants",
-			OUID:        testOUID1,
-			Schema:      json.RawMessage(`{"name":{"type":"string"}}`),
-		})
-
-	require.Nil(t, svcErr)
-	require.Equal(t, DefaultAgentTypeHandle, result.Handle)
 }
 
-func TestDeleteEntityType_AgentTypeAlwaysRejected(t *testing.T) {
-	testConfig := &config.Config{
-		DeclarativeResources: config.DeclarativeResources{Enabled: false},
+// newAgentTypeCreateRequest returns a valid agent type create request in testOUID1.
+func newAgentTypeCreateRequest(handle string) CreateEntityTypeRequestWithID {
+	return CreateEntityTypeRequestWithID{
+		Handle:      handle,
+		DisplayName: "Tool Agent",
+		OUID:        testOUID1,
+		Schema:      json.RawMessage(`{"name":{"type":"string"}}`),
 	}
-	config.ResetServerRuntime()
-	require.NoError(t, config.InitializeServerRuntime("/tmp/test", testConfig))
-	defer config.ResetServerRuntime()
+}
 
+// newAgentTypeUpdateRequest returns a valid agent type update request into the given organization unit.
+func newAgentTypeUpdateRequest(ouID string) UpdateEntityTypeRequest {
+	return UpdateEntityTypeRequest{
+		DisplayName: "Tool Agent",
+		OUID:        ouID,
+		Schema:      json.RawMessage(`{"name":{"type":"string"}}`),
+	}
+}
+
+func (s *EntityTypeServiceTestSuite) TestCreateEntityType_AgentTypeAcceptsAnyHandle() {
+	initEntityTypeTestRuntime(s.T())
+
+	storeMock := newEntityTypeStoreInterfaceMock(s.T())
+	storeMock.On("GetEntityTypeByHandle", mock.Anything, TypeCategoryAgent, "tool-agent").
+		Return(EntityType{}, ErrEntityTypeNotFound).Once()
+	storeMock.On("GetEntityTypeListByOUIDs", mock.Anything, TypeCategoryAgent, []string{testOUID1},
+		1, 0).Return([]EntityTypeListItem{}, nil).Once()
+	storeMock.On("CreateEntityType", mock.Anything, mock.MatchedBy(func(e EntityType) bool {
+		return e.Category == TypeCategoryAgent && e.Handle == "tool-agent" && e.OUID == testOUID1
+	})).Return(nil).Once()
+	service := s.newAgentTypeWriteService(storeMock, testOUID1)
+
+	result, svcErr := service.CreateEntityType(context.Background(), TypeCategoryAgent,
+		newAgentTypeCreateRequest("tool-agent"))
+
+	s.Require().Nil(svcErr)
+	s.Equal("tool-agent", result.Handle)
+}
+
+func (s *EntityTypeServiceTestSuite) TestCreateEntityType_AgentTypeRejectedWhenOUHasAgentType() {
+	initEntityTypeTestRuntime(s.T())
+
+	storeMock := newEntityTypeStoreInterfaceMock(s.T())
+	storeMock.On("GetEntityTypeByHandle", mock.Anything, TypeCategoryAgent, "tool-agent").
+		Return(EntityType{}, ErrEntityTypeNotFound).Once()
+	storeMock.On("GetEntityTypeListByOUIDs", mock.Anything, TypeCategoryAgent, []string{testOUID1},
+		1, 0).Return([]EntityTypeListItem{{ID: "existing", Handle: "default"}}, nil).Once()
+	service := s.newAgentTypeWriteService(storeMock, testOUID1)
+
+	result, svcErr := service.CreateEntityType(context.Background(), TypeCategoryAgent,
+		newAgentTypeCreateRequest("tool-agent"))
+
+	s.Nil(result)
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorAgentTypeAlreadyExistsInOU.Code, svcErr.Code)
+	s.Equal("USRS-1021", svcErr.Code)
+	storeMock.AssertNotCalled(s.T(), "CreateEntityType", mock.Anything, mock.Anything)
+}
+
+func (s *EntityTypeServiceTestSuite) TestCreateEntityType_AgentTypeOUIndexViolationRejected() {
+	initEntityTypeTestRuntime(s.T())
+
+	storeMock := newEntityTypeStoreInterfaceMock(s.T())
+	storeMock.On("GetEntityTypeByHandle", mock.Anything, TypeCategoryAgent, "tool-agent").
+		Return(EntityType{}, ErrEntityTypeNotFound).Once()
+	storeMock.On("GetEntityTypeListByOUIDs", mock.Anything, TypeCategoryAgent, []string{testOUID1},
+		1, 0).Return([]EntityTypeListItem{}, nil).Once()
+	storeMock.On("CreateEntityType", mock.Anything, mock.Anything).
+		Return(fmt.Errorf("%w: unique violation", errAgentTypeExistsInOU)).Once()
+	service := s.newAgentTypeWriteService(storeMock, testOUID1)
+
+	_, svcErr := service.CreateEntityType(context.Background(), TypeCategoryAgent,
+		newAgentTypeCreateRequest("tool-agent"))
+
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorAgentTypeAlreadyExistsInOU.Code, svcErr.Code)
+}
+
+func (s *EntityTypeServiceTestSuite) TestCreateEntityType_AgentTypeOUCheckStoreErrorReturnsServerError() {
+	initEntityTypeTestRuntime(s.T())
+
+	storeMock := newEntityTypeStoreInterfaceMock(s.T())
+	storeMock.On("GetEntityTypeByHandle", mock.Anything, TypeCategoryAgent, "tool-agent").
+		Return(EntityType{}, ErrEntityTypeNotFound).Once()
+	storeMock.On("GetEntityTypeListByOUIDs", mock.Anything, TypeCategoryAgent, []string{testOUID1},
+		1, 0).Return(nil, errors.New("db down")).Once()
+	service := s.newAgentTypeWriteService(storeMock, testOUID1)
+
+	_, svcErr := service.CreateEntityType(context.Background(), TypeCategoryAgent,
+		newAgentTypeCreateRequest("tool-agent"))
+
+	s.Require().NotNil(svcErr)
+	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+	storeMock.AssertNotCalled(s.T(), "CreateEntityType", mock.Anything, mock.Anything)
+}
+
+func (s *EntityTypeServiceTestSuite) TestCreateEntityType_UserTypeSkipsOUCheck() {
+	initEntityTypeTestRuntime(s.T())
+
+	storeMock := newEntityTypeStoreInterfaceMock(s.T())
+	storeMock.On("GetEntityTypeByHandle", mock.Anything, TypeCategoryUser, "employee").
+		Return(EntityType{}, ErrEntityTypeNotFound).Once()
+	storeMock.On("CreateEntityType", mock.Anything, mock.Anything).Return(nil).Once()
+	service := s.newAgentTypeWriteService(storeMock, testOUID1)
+
+	_, svcErr := service.CreateEntityType(context.Background(), TypeCategoryUser,
+		newAgentTypeCreateRequest("employee"))
+
+	s.Require().Nil(svcErr)
+	storeMock.AssertNotCalled(s.T(), "GetEntityTypeListByOUIDs",
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (s *EntityTypeServiceTestSuite) TestUpdateEntityType_AgentTypeHandleChangeRejected() {
+	initEntityTypeTestRuntime(s.T())
+
+	storeMock := newEntityTypeStoreInterfaceMock(s.T())
+	storeMock.On("IsEntityTypeDeclarative", TypeCategoryAgent, "schema-1").Return(false).Once()
+	storeMock.On("GetEntityTypeByID", mock.Anything, TypeCategoryAgent, "schema-1").
+		Return(EntityType{ID: "schema-1", Handle: "tool-agent", OUID: testOUID1}, nil).Once()
+	service := s.newAgentTypeWriteService(storeMock, testOUID1)
+
+	req := newAgentTypeUpdateRequest(testOUID1)
+	req.Handle = "renamed-agent"
+	_, svcErr := service.UpdateEntityType(context.Background(), TypeCategoryAgent, "schema-1", req)
+
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorEntityTypeHandleUpdateNotAllowed.Code, svcErr.Code)
+}
+
+func (s *EntityTypeServiceTestSuite) TestUpdateEntityType_AgentTypeMovedToOUWithAgentTypeRejected() {
+	initEntityTypeTestRuntime(s.T())
+
+	storeMock := newEntityTypeStoreInterfaceMock(s.T())
+	storeMock.On("IsEntityTypeDeclarative", TypeCategoryAgent, "schema-1").Return(false).Once()
+	storeMock.On("GetEntityTypeByID", mock.Anything, TypeCategoryAgent, "schema-1").
+		Return(EntityType{ID: "schema-1", Handle: "tool-agent", OUID: testOUID1}, nil).Once()
+	storeMock.On("GetEntityTypeListByOUIDs", mock.Anything, TypeCategoryAgent, []string{testOUID2},
+		1, 0).Return([]EntityTypeListItem{{ID: "schema-2", Handle: "default"}}, nil).Once()
+	service := s.newAgentTypeWriteService(storeMock, testOUID2)
+
+	_, svcErr := service.UpdateEntityType(context.Background(), TypeCategoryAgent, "schema-1",
+		newAgentTypeUpdateRequest(testOUID2))
+
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorAgentTypeAlreadyExistsInOU.Code, svcErr.Code)
+	storeMock.AssertNotCalled(s.T(), "UpdateEntityTypeByID",
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (s *EntityTypeServiceTestSuite) TestUpdateEntityType_AgentTypeMovedToOUWithoutAgentTypeUpdated() {
+	initEntityTypeTestRuntime(s.T())
+
+	storeMock := newEntityTypeStoreInterfaceMock(s.T())
+	storeMock.On("IsEntityTypeDeclarative", TypeCategoryAgent, "schema-1").Return(false).Once()
+	storeMock.On("GetEntityTypeByID", mock.Anything, TypeCategoryAgent, "schema-1").
+		Return(EntityType{ID: "schema-1", Handle: "tool-agent", OUID: testOUID1}, nil).Once()
+	storeMock.On("GetEntityTypeListByOUIDs", mock.Anything, TypeCategoryAgent, []string{testOUID2},
+		1, 0).Return([]EntityTypeListItem{}, nil).Once()
+	storeMock.On("UpdateEntityTypeByID", mock.Anything, TypeCategoryAgent, "schema-1",
+		mock.MatchedBy(func(e EntityType) bool { return e.OUID == testOUID2 })).Return(nil).Once()
+	service := s.newAgentTypeWriteService(storeMock, testOUID2)
+
+	result, svcErr := service.UpdateEntityType(context.Background(), TypeCategoryAgent, "schema-1",
+		newAgentTypeUpdateRequest(testOUID2))
+
+	s.Require().Nil(svcErr)
+	s.Equal(testOUID2, result.OUID)
+	s.Equal("tool-agent", result.Handle, "an omitted handle keeps the existing one")
+}
+
+func (s *EntityTypeServiceTestSuite) TestUpdateEntityType_AgentTypeOUIndexViolationRejected() {
+	initEntityTypeTestRuntime(s.T())
+
+	storeMock := newEntityTypeStoreInterfaceMock(s.T())
+	storeMock.On("IsEntityTypeDeclarative", TypeCategoryAgent, "schema-1").Return(false).Once()
+	storeMock.On("GetEntityTypeByID", mock.Anything, TypeCategoryAgent, "schema-1").
+		Return(EntityType{ID: "schema-1", Handle: "tool-agent", OUID: testOUID1}, nil).Once()
+	storeMock.On("GetEntityTypeListByOUIDs", mock.Anything, TypeCategoryAgent, []string{testOUID2},
+		1, 0).Return([]EntityTypeListItem{}, nil).Once()
+	storeMock.On("UpdateEntityTypeByID", mock.Anything, TypeCategoryAgent, "schema-1", mock.Anything).
+		Return(fmt.Errorf("%w: unique violation", errAgentTypeExistsInOU)).Once()
+	service := s.newAgentTypeWriteService(storeMock, testOUID2)
+
+	_, svcErr := service.UpdateEntityType(context.Background(), TypeCategoryAgent, "schema-1",
+		newAgentTypeUpdateRequest(testOUID2))
+
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorAgentTypeAlreadyExistsInOU.Code, svcErr.Code)
+}
+
+func (s *EntityTypeServiceTestSuite) TestUpdateEntityType_AgentTypeInSameOUSkipsOUCheck() {
+	initEntityTypeTestRuntime(s.T())
+
+	storeMock := newEntityTypeStoreInterfaceMock(s.T())
+	storeMock.On("IsEntityTypeDeclarative", TypeCategoryAgent, "schema-1").Return(false).Once()
+	storeMock.On("GetEntityTypeByID", mock.Anything, TypeCategoryAgent, "schema-1").
+		Return(EntityType{ID: "schema-1", Handle: "tool-agent", OUID: testOUID1}, nil).Once()
+	storeMock.On("UpdateEntityTypeByID", mock.Anything, TypeCategoryAgent, "schema-1", mock.Anything).
+		Return(nil).Once()
+	service := s.newAgentTypeWriteService(storeMock, testOUID1)
+
+	_, svcErr := service.UpdateEntityType(context.Background(), TypeCategoryAgent, "schema-1",
+		newAgentTypeUpdateRequest(testOUID1))
+
+	s.Require().Nil(svcErr)
+	storeMock.AssertNotCalled(s.T(), "GetEntityTypeListByOUIDs",
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+// newAgentTypeDeleteService builds a service holding one deletable agent type, schema-1 with handle
+// tool-agent, and the given dependency registry.
+func (s *EntityTypeServiceTestSuite) newAgentTypeDeleteService(
+	storeMock *entityTypeStoreInterfaceMock, registry resourcedependency.Registry,
+) *entityTypeService {
+	storeMock.On("GetEntityTypeByID", mock.Anything, TypeCategoryAgent, "schema-1").
+		Return(EntityType{ID: "schema-1", Handle: "tool-agent", OUID: testOUID1}, nil).Once()
+	storeMock.On("IsEntityTypeDeclarative", TypeCategoryAgent, "schema-1").Return(false).Once()
 	service := &entityTypeService{
 		bus:             discardingBus{},
-		entityTypeStore: newEntityTypeStoreInterfaceMock(t),
-		authzService:    newAllowAllAuthz(t),
+		entityTypeStore: storeMock,
+		transactioner:   &mockTransactioner{},
+		authzService:    newAllowAllAuthz(s.T()),
+	}
+	service.SetDependencyRegistry(registry)
+	return service
+}
+
+// dependenciesResponse builds a registry response holding the given usages.
+func dependenciesResponse(usages ...resourcedependency.ResourceDependency) *resourcedependency.DependenciesResponse {
+	total := len(usages)
+	return &resourcedependency.DependenciesResponse{TotalResults: &total, Count: total, Usages: usages}
+}
+
+func (s *EntityTypeServiceTestSuite) TestDeleteEntityType_AgentTypeNotInUseDeleted() {
+	initEntityTypeTestRuntime(s.T())
+
+	storeMock := newEntityTypeStoreInterfaceMock(s.T())
+	registryMock := resourcedependencymock.NewRegistryMock(s.T())
+	registryMock.On("GetDependencies", mock.Anything, resourcedependency.ResourceTypeAgentType, "tool-agent").
+		Return(dependenciesResponse(), nil).Once()
+	storeMock.On("DeleteEntityTypeByID", mock.Anything, TypeCategoryAgent, "schema-1").Return(nil).Once()
+	service := s.newAgentTypeDeleteService(storeMock, registryMock)
+
+	svcErr := service.DeleteEntityType(context.Background(), TypeCategoryAgent, "schema-1")
+
+	s.Nil(svcErr)
+}
+
+func (s *EntityTypeServiceTestSuite) TestDeleteEntityType_AgentTypeInUseRejected() {
+	initEntityTypeTestRuntime(s.T())
+
+	storeMock := newEntityTypeStoreInterfaceMock(s.T())
+	registryMock := resourcedependencymock.NewRegistryMock(s.T())
+	registryMock.On("GetDependencies", mock.Anything, resourcedependency.ResourceTypeAgentType, "tool-agent").
+		Return(dependenciesResponse(resourcedependency.ResourceDependency{
+			ResourceType:     resourcedependency.ResourceTypeAgent,
+			ID:               "agent-1",
+			BehaviorOnDelete: resourcedependency.BehaviorRestrict,
+		}), nil).Once()
+	service := s.newAgentTypeDeleteService(storeMock, registryMock)
+
+	svcErr := service.DeleteEntityType(context.Background(), TypeCategoryAgent, "schema-1")
+
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorAgentTypeInUse.Code, svcErr.Code)
+	s.Equal("USRS-1022", svcErr.Code)
+	storeMock.AssertNotCalled(s.T(), "DeleteEntityTypeByID", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (s *EntityTypeServiceTestSuite) TestDeleteEntityType_AgentTypeWithFallbackUsageDeleted() {
+	initEntityTypeTestRuntime(s.T())
+
+	storeMock := newEntityTypeStoreInterfaceMock(s.T())
+	registryMock := resourcedependencymock.NewRegistryMock(s.T())
+	registryMock.On("GetDependencies", mock.Anything, resourcedependency.ResourceTypeAgentType, "tool-agent").
+		Return(dependenciesResponse(resourcedependency.ResourceDependency{
+			ResourceType:     resourcedependency.ResourceTypeApplication,
+			ID:               "app-1",
+			BehaviorOnDelete: resourcedependency.BehaviorFallback,
+		}), nil).Once()
+	storeMock.On("DeleteEntityTypeByID", mock.Anything, TypeCategoryAgent, "schema-1").Return(nil).Once()
+	service := s.newAgentTypeDeleteService(storeMock, registryMock)
+
+	svcErr := service.DeleteEntityType(context.Background(), TypeCategoryAgent, "schema-1")
+
+	s.Nil(svcErr)
+}
+
+func (s *EntityTypeServiceTestSuite) TestDeleteEntityType_AgentTypeDependencyCheckFailsClosed() {
+	testCases := []struct {
+		name     string
+		registry func() resourcedependency.Registry
+	}{
+		{
+			name:     "registry not set",
+			registry: func() resourcedependency.Registry { return nil },
+		},
+		{
+			name: "registry error",
+			registry: func() resourcedependency.Registry {
+				registryMock := resourcedependencymock.NewRegistryMock(s.T())
+				registryMock.On("GetDependencies", mock.Anything, mock.Anything, mock.Anything).
+					Return(nil, errors.New("lookup failed")).Once()
+				return registryMock
+			},
+		},
+		{
+			name: "dependency data unavailable",
+			registry: func() resourcedependency.Registry {
+				registryMock := resourcedependencymock.NewRegistryMock(s.T())
+				registryMock.On("GetDependencies", mock.Anything, mock.Anything, mock.Anything).
+					Return(&resourcedependency.DependenciesResponse{}, nil).Once()
+				return registryMock
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		s.Run(tc.name, func() {
+			initEntityTypeTestRuntime(s.T())
+
+			storeMock := newEntityTypeStoreInterfaceMock(s.T())
+			service := s.newAgentTypeDeleteService(storeMock, tc.registry())
+
+			svcErr := service.DeleteEntityType(context.Background(), TypeCategoryAgent, "schema-1")
+
+			s.Require().NotNil(svcErr)
+			s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+			storeMock.AssertNotCalled(s.T(), "DeleteEntityTypeByID", mock.Anything, mock.Anything, mock.Anything)
+		})
+	}
+}
+
+func (s *EntityTypeServiceTestSuite) TestDeleteEntityType_DeclarativeAgentTypeRejected() {
+	initEntityTypeTestRuntime(s.T())
+
+	storeMock := newEntityTypeStoreInterfaceMock(s.T())
+	storeMock.On("GetEntityTypeByID", mock.Anything, TypeCategoryAgent, "schema-1").
+		Return(EntityType{ID: "schema-1", Handle: "tool-agent", OUID: testOUID1}, nil).Once()
+	storeMock.On("IsEntityTypeDeclarative", TypeCategoryAgent, "schema-1").Return(true).Once()
+	registryMock := resourcedependencymock.NewRegistryMock(s.T())
+	service := &entityTypeService{
+		bus:                discardingBus{},
+		entityTypeStore:    storeMock,
+		transactioner:      &mockTransactioner{},
+		authzService:       newAllowAllAuthz(s.T()),
+		dependencyRegistry: registryMock,
 	}
 
 	svcErr := service.DeleteEntityType(context.Background(), TypeCategoryAgent, "schema-1")
-	require.NotNil(t, svcErr)
-	require.Equal(t, ErrorAgentTypeCannotDelete.Code, svcErr.Code)
+
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorCannotModifyDeclarativeResource.Code, svcErr.Code)
 }
 
 func TestValidateDisplayAttribute_NilSystemAttributes(t *testing.T) {

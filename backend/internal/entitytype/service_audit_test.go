@@ -17,10 +17,12 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/system/eventbus"
 	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
+	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/tests/mocks/eventbusmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oumock"
+	"github.com/thunder-id/thunderid/tests/mocks/resourcedependencymock"
 	"github.com/thunder-id/thunderid/tests/mocks/sysauthzmock"
 )
 
@@ -151,8 +153,12 @@ func (s *EntityTypeServiceAuditTestSuite) ouExists() {
 func (s *EntityTypeServiceAuditTestSuite) created(category TypeCategory, storeErr error) {
 	s.ouExists()
 	s.access(true)
-	s.store.On("GetEntityTypeByHandle", mock.Anything, category, createRequest(category).Handle).
+	s.store.On("GetEntityTypeByHandle", mock.Anything, category, createRequest().Handle).
 		Return(EntityType{}, ErrEntityTypeNotFound).Once()
+	if category == TypeCategoryAgent {
+		s.store.On("GetEntityTypeListByOUIDs", mock.Anything, TypeCategoryAgent, []string{testOUID1}, 1, 0).
+			Return([]EntityTypeListItem{}, nil).Once()
+	}
 	s.store.On("CreateEntityType", mock.Anything, mock.Anything).Return(storeErr).Once()
 }
 
@@ -167,13 +173,9 @@ func auditedSchema() json.RawMessage {
 	return json.RawMessage(`{"` + testAuditAttribute + `":{"type":"string","unique":true}}`)
 }
 
-func createRequest(category TypeCategory) CreateEntityTypeRequestWithID {
-	handle := "contractor"
-	if category == TypeCategoryAgent {
-		handle = DefaultAgentTypeHandle
-	}
+func createRequest() CreateEntityTypeRequestWithID {
 	return CreateEntityTypeRequestWithID{
-		Handle: handle, DisplayName: testAuditDisplayName, OUID: testOUID1, Schema: auditedSchema(),
+		Handle: "contractor", DisplayName: testAuditDisplayName, OUID: testOUID1, Schema: auditedSchema(),
 	}
 }
 
@@ -183,7 +185,7 @@ func updateRequest() UpdateEntityTypeRequest {
 
 // storedType is the entity type the store holds under testAuditTypeID.
 func storedType(category TypeCategory) EntityType {
-	return EntityType{ID: testAuditTypeID, Category: category, Handle: createRequest(category).Handle,
+	return EntityType{ID: testAuditTypeID, Category: category, Handle: createRequest().Handle,
 		DisplayName: "Contractors", OUID: testOUID1, Schema: auditedSchema()}
 }
 
@@ -219,7 +221,7 @@ func (s *EntityTypeServiceAuditTestSuite) TestCreateEntityType_PublishesTheCreat
 			s.created(events.category, nil)
 
 			created, svcErr := s.service.CreateEntityType(adminContext(), events.category,
-				createRequest(events.category))
+				createRequest())
 
 			s.Require().Nil(svcErr)
 			s.requireOnlyEvent(published(), events.create, events.targetType, audit.ActionCreate, created.ID,
@@ -240,33 +242,37 @@ func (s *EntityTypeServiceAuditTestSuite) TestCreateEntityType_PublishesTheSameN
 			name:   "the handle is invalid",
 			events: userTypeEvents,
 			request: func() CreateEntityTypeRequestWithID {
-				req := createRequest(TypeCategoryUser)
+				req := createRequest()
 				req.Handle = "Not A Handle"
 				return req
 			},
 			outcome: audit.OutcomeFailed("usrs_1016"),
 		},
 		{
-			name:   "an agent type other than the default one",
-			events: agentTypeEvents,
-			request: func() CreateEntityTypeRequestWithID {
-				req := createRequest(TypeCategoryAgent)
-				req.Handle = "tools"
-				return req
+			name:    "the organization unit already has an agent type",
+			events:  agentTypeEvents,
+			request: createRequest,
+			arrange: func() {
+				s.ouExists()
+				s.access(true)
+				s.store.On("GetEntityTypeByHandle", mock.Anything, TypeCategoryAgent, "contractor").
+					Return(EntityType{}, ErrEntityTypeNotFound).Once()
+				s.store.On("GetEntityTypeListByOUIDs", mock.Anything, TypeCategoryAgent, []string{testOUID1}, 1, 0).
+					Return([]EntityTypeListItem{{ID: "other-agent-type"}}, nil).Once()
 			},
-			outcome: audit.OutcomeFailed("usrs_1014"),
+			outcome: audit.OutcomeFailed("usrs_1021"),
 		},
 		{
 			name:    "the store fails",
 			events:  userTypeEvents,
-			request: func() CreateEntityTypeRequestWithID { return createRequest(TypeCategoryUser) },
+			request: createRequest,
 			arrange: func() { s.created(TypeCategoryUser, errors.New("store failure")) },
 			outcome: audit.OutcomeFailed("sse_5000"),
 		},
 		{
 			name:    "the caller may not create in the organization unit",
 			events:  userTypeEvents,
-			request: func() CreateEntityTypeRequestWithID { return createRequest(TypeCategoryUser) },
+			request: createRequest,
 			arrange: func() {
 				s.ouExists()
 				s.access(false)
@@ -426,10 +432,40 @@ func (s *EntityTypeServiceAuditTestSuite) TestDeleteEntityType_PublishesOneEvent
 			outcome: audit.OutcomeFailed("sse_5000"),
 		},
 		{
-			name:    "an agent type is never deleted",
-			events:  agentTypeEvents,
-			arrange: func() {},
-			outcome: audit.OutcomeFailed("usrs_1015"),
+			name:   "an agent type no one uses is deleted",
+			events: agentTypeEvents,
+			arrange: func() {
+				s.store.On("GetEntityTypeByID", mock.Anything, TypeCategoryAgent, testAuditTypeID).
+					Return(storedType(TypeCategoryAgent), nil).Once()
+				s.access(true)
+				s.store.On("IsEntityTypeDeclarative", TypeCategoryAgent, testAuditTypeID).Return(false).Once()
+				registry := resourcedependencymock.NewRegistryMock(s.T())
+				registry.On("GetDependencies", mock.Anything, resourcedependency.ResourceTypeAgentType, "contractor").
+					Return(dependenciesResponse(), nil).Once()
+				s.service.dependencyRegistry = registry
+				s.store.On("DeleteEntityTypeByID", mock.Anything, TypeCategoryAgent, testAuditTypeID).
+					Return(nil).Once()
+			},
+			outcome: audit.OutcomeSucceeded,
+		},
+		{
+			name:   "the agent type is in use",
+			events: agentTypeEvents,
+			arrange: func() {
+				s.store.On("GetEntityTypeByID", mock.Anything, TypeCategoryAgent, testAuditTypeID).
+					Return(storedType(TypeCategoryAgent), nil).Once()
+				s.access(true)
+				s.store.On("IsEntityTypeDeclarative", TypeCategoryAgent, testAuditTypeID).Return(false).Once()
+				registry := resourcedependencymock.NewRegistryMock(s.T())
+				registry.On("GetDependencies", mock.Anything, resourcedependency.ResourceTypeAgentType, "contractor").
+					Return(dependenciesResponse(resourcedependency.ResourceDependency{
+						ResourceType:     resourcedependency.ResourceTypeAgent,
+						ID:               "agent-1",
+						BehaviorOnDelete: resourcedependency.BehaviorRestrict,
+					}), nil).Once()
+				s.service.dependencyRegistry = registry
+			},
+			outcome: audit.OutcomeFailed("usrs_1022"),
 		},
 	}
 	for _, tc := range cases {
@@ -484,7 +520,7 @@ func (s *EntityTypeServiceAuditTestSuite) TestCreateEntityType_SucceedsWhenTheBu
 	s.created(TypeCategoryUser, nil)
 
 	created, svcErr := s.service.CreateEntityType(adminContext(), TypeCategoryUser,
-		createRequest(TypeCategoryUser))
+		createRequest())
 
 	s.Nil(svcErr)
 	s.NotEmpty(created.ID)

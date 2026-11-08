@@ -569,6 +569,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		resource:       resourceService,
 		notifTemplate:  notifTemplateSvc,
 		httpConnection: httpConnectionService,
+		entityType:     entityTypeService,
 	}, applicationService, agentService, flowMgtService, roleAssignmentService, roleService,
 		groupService, ouService, ouUserResolver, ouGroupResolver, entityTypeService, resourceService,
 		sharingService, notifTemplateSvc, ouDependencyProvider)
@@ -717,6 +718,7 @@ type dependencyConsumers struct {
 	resource       resource.ResourceServiceInterface
 	notifTemplate  notificationtemplate.NotificationTemplateServiceInterface
 	httpConnection httpconnection.HTTPConnectionServiceInterface
+	entityType     entitytype.EntityTypeServiceInterface
 }
 
 // registerDependencyRegistry builds the dependency registry from the given providers and wires it
@@ -736,6 +738,7 @@ func registerDependencyRegistry(consumers dependencyConsumers, providers ...reso
 	consumers.resource.SetDependencyRegistry(registry)
 	consumers.notifTemplate.SetDependencyRegistry(registry)
 	consumers.httpConnection.SetDependencyRegistry(registry)
+	consumers.entityType.SetDependencyRegistry(registry)
 }
 
 // unregisterServices unregisters all services that require cleanup during shutdown.

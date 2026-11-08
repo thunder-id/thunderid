@@ -257,6 +257,12 @@ func (s *cacheBackedEntityStore) GetEntityListBySystemAttributesAndOUIDs(ctx con
 	return s.store.GetEntityListBySystemAttributesAndOUIDs(ctx, category, sysQuery, ouIDs, limit, offset)
 }
 
+// GetEntityListByType passes through to the underlying store; the list is not cached.
+func (s *cacheBackedEntityStore) GetEntityListByType(ctx context.Context,
+	category, entityType string, limit int) ([]providers.Entity, error) {
+	return s.store.GetEntityListByType(ctx, category, entityType, limit)
+}
+
 func (s *cacheBackedEntityStore) ValidateEntityIDs(ctx context.Context,
 	entityIDs []string) ([]string, error) {
 	return s.store.ValidateEntityIDs(ctx, entityIDs)

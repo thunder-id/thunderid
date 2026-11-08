@@ -269,6 +269,10 @@ func (ec EntityCategory) String() string {
 	return string(ec)
 }
 
+// AnyAgentType is the allowed agent types entry that admits an agent of any agent type. It is valid
+// only as the sole entry of the list.
+const AnyAgentType = "*"
+
 // IDTokenResponseType is the response format of the ID token.
 type IDTokenResponseType string
 

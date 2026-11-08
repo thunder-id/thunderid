@@ -120,8 +120,19 @@ func (ts *GatewayVersionsTestSuite) TestAppliedApplicationsAndAgentsShowAsTheirR
 	})
 	ts.Require().NoError(err)
 	defer func() { _ = testutils.DeleteApplication(m2mID) }()
+	// An agent is placed within its agent type's organization unit tree, so it is of a type of the unit.
+	agentTypeID, err := testutils.CreateNewAgentType(testutils.UserType{
+		Handle: "viewed-agents-" + suffix, DisplayName: "Viewed Agents", OUID: ouID,
+		Schema: map[string]interface{}{
+			"name":          map[string]interface{}{"type": "string", "required": true},
+			"modelProvider": map[string]interface{}{"type": "string"},
+			"model":         map[string]interface{}{"type": "string"},
+		},
+	})
+	ts.Require().NoError(err)
+	defer func() { _ = testutils.DeleteAgentType(agentTypeID) }()
 	agentID, err := testutils.CreateAgent(testutils.Agent{
-		Type: "default", OUID: ouID, Description: "Viewed agent",
+		Type: "viewed-agents-" + suffix, OUID: ouID, Description: "Viewed agent",
 		Attributes: map[string]any{"name": "viewed-agent-" + suffix, "modelProvider": "anthropic", "model": "viewed-model"},
 		InboundAuthConfig: []testutils.AgentInboundAuthConfig{{
 			Type: "oauth2",

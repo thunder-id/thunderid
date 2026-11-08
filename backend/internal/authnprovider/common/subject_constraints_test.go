@@ -41,6 +41,16 @@ func (suite *SubjectTypeConstraintsTestSuite) TestPermitsSubject() {
 			"empty agent list accepts no agent",
 			SubjectTypeConstraints{}, providers.EntityCategoryAgent, "default", false,
 		},
+		{
+			"any agent type accepts every agent type",
+			SubjectTypeConstraints{AllowedAgentTypes: []string{providers.AnyAgentType}},
+			providers.EntityCategoryAgent, "privileged", true,
+		},
+		{
+			"any agent type with another entry is not a wildcard",
+			SubjectTypeConstraints{AllowedAgentTypes: []string{providers.AnyAgentType, "default"}},
+			providers.EntityCategoryAgent, "privileged", false,
+		},
 	}
 
 	for _, tc := range testCases {

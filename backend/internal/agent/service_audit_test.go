@@ -17,6 +17,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/agent/model"
 	"github.com/thunder-id/thunderid/internal/entity"
+	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/identitygovernance"
 	"github.com/thunder-id/thunderid/internal/inboundclient"
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
@@ -28,6 +29,7 @@ import (
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/entitymock"
+	"github.com/thunder-id/thunderid/tests/mocks/entitytypemock"
 	"github.com/thunder-id/thunderid/tests/mocks/eventbusmock"
 	"github.com/thunder-id/thunderid/tests/mocks/identitygovernancemock"
 	"github.com/thunder-id/thunderid/tests/mocks/inboundclientmock"
@@ -94,6 +96,7 @@ type AgentServiceAuditTestSuite struct {
 	ous        *oumock.OrganizationUnitServiceInterfaceMock
 	authz      *sysauthzmock.SystemAuthorizationServiceInterfaceMock
 	governance *identitygovernancemock.IdentityGovernanceServiceInterfaceMock
+	types      *entitytypemock.EntityTypeServiceInterfaceMock
 	service    *agentService
 }
 
@@ -115,11 +118,16 @@ func (s *AgentServiceAuditTestSuite) reset() {
 	s.ous = oumock.NewOrganizationUnitServiceInterfaceMock(s.T())
 	s.authz = sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(s.T())
 	s.governance = identitygovernancemock.NewIdentityGovernanceServiceInterfaceMock(s.T())
+	// The agent's type sits in the agent's organization unit, so the placement check passes.
+	s.types = entitytypemock.NewEntityTypeServiceInterfaceMock(s.T())
+	s.types.On("GetEntityTypeByHandle", mock.Anything, entitytype.TypeCategoryAgent, mock.Anything).
+		Maybe().Return(&entitytype.EntityType{Handle: testAgentType, OUID: testOUID}, (*tidcommon.ServiceError)(nil))
 	s.service = &agentService{
 		logger:               log.GetLogger().With(log.String(log.LoggerKeyComponentName, "AgentService")),
 		authzService:         s.authz,
 		entityService:        s.entities,
 		inboundClientService: s.inbound,
+		entityTypeService:    s.types,
 		ouService:            s.ous,
 		dependencyRegistry:   noopDepRegistry{},
 		governance:           s.governance,
@@ -141,10 +149,14 @@ func (s *AgentServiceAuditTestSuite) access(allowed bool) {
 		Return(allowed, (*tidcommon.ServiceError)(nil)).Once()
 }
 
-// validatedForCreate makes the checks a create runs before its access check pass once.
-func (s *AgentServiceAuditTestSuite) validatedForCreate() {
+// ouResolvedForCreate makes the organization unit check a create runs before its access check pass once.
+func (s *AgentServiceAuditTestSuite) ouResolvedForCreate() {
 	s.ous.On("IsOrganizationUnitExists", mock.Anything, testOUID).
 		Return(true, (*tidcommon.ServiceError)(nil)).Once()
+}
+
+// validatedForCreate makes the checks a create runs after its access check pass once.
+func (s *AgentServiceAuditTestSuite) validatedForCreate() {
 	s.inbound.On("ResolveInboundAuthProfileHandles", mock.Anything, mock.Anything).Return(nil).Once()
 	s.inbound.On("Validate", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(nil).Once()
@@ -240,8 +252,9 @@ func (s *AgentServiceAuditTestSuite) requireOnlyEvent(events []publishedEvent, n
 
 func (s *AgentServiceAuditTestSuite) TestCreateAgent_PublishesTheCreatedAgent() {
 	published := s.record()
-	s.validatedForCreate()
+	s.ouResolvedForCreate()
 	s.access(true)
+	s.validatedForCreate()
 	s.entities.On("CreateEntity", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(buildAgentEntityFixture(testAuditAgentName, "", "", ""), nil).Once()
 	s.inbound.On("CreateInboundClient", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
@@ -280,8 +293,9 @@ func (s *AgentServiceAuditTestSuite) TestCreateAgent_PublishesTheSameNameWhenItD
 			name:  "the store fails",
 			agent: confidentialAgent,
 			arrange: func() {
-				s.validatedForCreate()
+				s.ouResolvedForCreate()
 				s.access(true)
+				s.validatedForCreate()
 				s.entities.On("CreateEntity", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 					Return((*providers.Entity)(nil), errors.New("store failure")).Once()
 			},
@@ -291,7 +305,7 @@ func (s *AgentServiceAuditTestSuite) TestCreateAgent_PublishesTheSameNameWhenItD
 			name:  "the caller may not create agents in the organization unit",
 			agent: confidentialAgent,
 			arrange: func() {
-				s.validatedForCreate()
+				s.ouResolvedForCreate()
 				s.access(false)
 			},
 			outcome: audit.OutcomeDenied("forbidden"),

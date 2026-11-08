@@ -18,7 +18,8 @@ import (
 type SubjectTypeConstraints struct {
 	// AllowedUserTypes are the user type handles accepted as a subject
 	AllowedUserTypes []string
-	// AllowedAgentTypes are the agent type handles accepted as a subject. Empty accepts no agent.
+	// AllowedAgentTypes are the agent type handles accepted as a subject. Empty accepts no agent, and
+	// providers.AnyAgentType as the only entry accepts an agent of any agent type.
 	AllowedAgentTypes []string
 }
 
@@ -27,7 +28,8 @@ type SubjectTypeConstraints struct {
 // Constraints on user types can be enforced after ongoing discussions are complete on the topic.
 func (c SubjectTypeConstraints) PermitsSubject(category providers.EntityCategory, entityType string) bool {
 	if category == providers.EntityCategoryAgent {
-		return slices.Contains(c.AllowedAgentTypes, entityType)
+		return slices.Equal(c.AllowedAgentTypes, []string{providers.AnyAgentType}) ||
+			slices.Contains(c.AllowedAgentTypes, entityType)
 	}
 	return true
 }

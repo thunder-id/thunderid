@@ -905,6 +905,20 @@ var (
 			DefaultValue: "Set projectId to the project the application belongs to",
 		},
 	}
+	// ErrorAnyAgentTypeNotAlone is the error returned when * is combined with other entries in
+	// allowedAgentTypes.
+	ErrorAnyAgentTypeNotAlone = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "APP-1068",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.any_agent_type_not_alone",
+			DefaultValue: "Invalid allowed agent types",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.any_agent_type_not_alone_description",
+			DefaultValue: "* must be the only entry in allowedAgentTypes",
+		},
+	}
 )
 
 // errNilEventBus is returned when the service is initialized without the event bus it audits on.

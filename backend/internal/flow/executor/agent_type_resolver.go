@@ -5,6 +5,7 @@ package executor
 
 import (
 	"github.com/thunder-id/thunderid/internal/entitytype"
+	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -49,7 +50,7 @@ func newAgentTypeResolver(
 				providers.FlowTypeAuthentication,
 			},
 			SupportedProperties: []providers.ExecutorSupportedProperties{
-				{Property: propertyKeyAllowedAgentTypes},
+				{Property: common.NodePropertyAllowedAgentTypes},
 			},
 		})
 

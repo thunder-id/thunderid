@@ -22,17 +22,18 @@ const (
 // ID or name, appears in any line, including the update that replaces the client secret.
 func (ts *AuditLogTestSuite) TestAnAgentLifecycleWritesOneLinePerChange() {
 	ouID := ts.createOrganizationUnit("agent-lifecycle")
+	agentType := ts.createAgentTypeIn(ouID, "agent-lifecycle")
 	adminID := ts.adminUserID()
 	name := ts.prefix + "lifecycle-agent"
 	clientID := ts.prefix + "lifecycle-agent-client"
 
 	created, body := ts.exchange(testutils.GetHTTPClient(), http.MethodPost, "/agents",
-		ts.agentBody(name, ouID, clientID, auditAgentSecret))
+		ts.agentBody(agentType, name, ouID, clientID, auditAgentSecret))
 	ts.Require().Equal(http.StatusCreated, created.StatusCode, string(body))
 	agentID := ts.idOf(body)
 	ts.T().Cleanup(func() { _ = testutils.DeleteAgent(agentID) })
 	updated, body := ts.exchange(testutils.GetHTTPClient(), http.MethodPut, "/agents/"+agentID,
-		ts.agentBody(name+"-renamed", ouID, clientID, auditAgentRotatedSecret))
+		ts.agentBody(agentType, name+"-renamed", ouID, clientID, auditAgentRotatedSecret))
 	ts.Require().Equal(http.StatusOK, updated.StatusCode, string(body))
 	deleted := ts.send(http.MethodDelete, "/agents/"+agentID, "")
 	ts.Require().Equal(http.StatusNoContent, deleted.StatusCode)
@@ -69,7 +70,7 @@ func (ts *AuditLogTestSuite) TestAChangeOfAMissingAgentIsRecordedAsFailed() {
 	ouID := ts.createOrganizationUnit("agent-missing")
 
 	updated, body := ts.exchange(testutils.GetHTTPClient(), http.MethodPut, "/agents/"+missing,
-		ts.agentBody(ts.prefix+"missing-agent", ouID, ts.prefix+"missing-agent-client", auditAgentSecret))
+		ts.agentBody("default", ts.prefix+"missing-agent", ouID, ts.prefix+"missing-agent-client", auditAgentSecret))
 	ts.Require().Equal(http.StatusNotFound, updated.StatusCode, string(body))
 	deleted := ts.send(http.MethodDelete, "/agents/"+missing, "")
 	ts.Require().Equal(http.StatusNotFound, deleted.StatusCode)
@@ -92,9 +93,10 @@ func (ts *AuditLogTestSuite) TestAChangeOfAMissingAgentIsRecordedAsFailed() {
 // agent and has none. A create the agent service rejects is recorded as failed.
 func (ts *AuditLogTestSuite) TestEveryAgentChangeRecordsItsOutcome() {
 	siblingOU := ts.createOrganizationUnit("agent-sibling")
+	siblingType := ts.createAgentTypeIn(siblingOU, "agent-sibling")
 	siblingName := ts.prefix + "sibling-agent"
 	siblingAgentID, err := testutils.CreateAgent(testutils.Agent{
-		OUID: siblingOU, Type: "default", Attributes: map[string]interface{}{"name": siblingName},
+		OUID: siblingOU, Type: siblingType, Attributes: map[string]interface{}{"name": siblingName},
 	})
 	ts.Require().NoError(err)
 	ts.T().Cleanup(func() { _ = testutils.DeleteAgent(siblingAgentID) })
@@ -103,7 +105,7 @@ func (ts *AuditLogTestSuite) TestEveryAgentChangeRecordsItsOutcome() {
 	managerRef := testutils.AuditRef{Type: "user", ID: manager.id}
 	siblingRef := testutils.AuditRef{Type: "agent", ID: siblingAgentID}
 	noAgent := testutils.AuditRef{Type: "agent"}
-	intruderBody := ts.agentBody(ts.prefix+"intruder-agent", siblingOU, ts.prefix+"intruder-client",
+	intruderBody := ts.agentBody(siblingType, ts.prefix+"intruder-agent", siblingOU, ts.prefix+"intruder-client",
 		auditAgentSecret)
 
 	cases := []struct {
@@ -141,7 +143,7 @@ func (ts *AuditLogTestSuite) TestEveryAgentChangeRecordsItsOutcome() {
 		{
 			name: "a create in an organization unit that does not exist", client: testutils.GetHTTPClient(),
 			method: http.MethodPost, path: "/agents",
-			body: ts.agentBody(ts.prefix+"orphan-agent", unusedID(), ts.prefix+"orphan-client",
+			body: ts.agentBody("default", ts.prefix+"orphan-agent", unusedID(), ts.prefix+"orphan-client",
 				auditAgentSecret),
 			status: http.StatusBadRequest, event: "agent.create",
 			outcome: map[string]string{"result": "failed", "reason": "agt_1005"}, target: noAgent,
@@ -177,11 +179,12 @@ func (ts *AuditLogTestSuite) TestEveryAgentChangeRecordsItsOutcome() {
 // that decides between update and create writes no line, and the import itself is not audited.
 func (ts *AuditLogTestSuite) TestAnImportWritesTheEventOfTheAgentItCreates() {
 	ouID := ts.createOrganizationUnit("agent-import")
+	agentType := ts.createAgentTypeIn(ouID, "agent-import")
 	agentID := unusedID()
 	name := ts.prefix + "imported-agent"
 	request, err := json.Marshal(testutils.ImportRequest{
-		Content: fmt.Sprintf("resource_type: agent\nid: %s\nouId: %s\ntype: default\nattributes:\n  name: %s\n",
-			agentID, ouID, name),
+		Content: fmt.Sprintf("resource_type: agent\nid: %s\nouId: %s\ntype: %s\nattributes:\n  name: %s\n",
+			agentID, ouID, agentType, name),
 		Options: testutils.ImportOptions{Upsert: true, ContinueOnError: true, Target: "runtime"},
 	})
 	ts.Require().NoError(err)
@@ -212,11 +215,11 @@ func (ts *AuditLogTestSuite) requireNoAgentValue(line testutils.AuditLine, name,
 	ts.NotContains(line.Raw, name, "no attribute of the agent is recorded")
 }
 
-// agentBody is the request body of an agent of the default type with a confidential OAuth client.
-func (ts *AuditLogTestSuite) agentBody(name, ouID, clientID, clientSecret string) string {
+// agentBody is the request body of an agent of the given type with a confidential OAuth client.
+func (ts *AuditLogTestSuite) agentBody(agentType, name, ouID, clientID, clientSecret string) string {
 	ts.T().Helper()
 	body, err := json.Marshal(map[string]interface{}{
-		"type":       "default",
+		"type":       agentType,
 		"ouId":       ouID,
 		"attributes": map[string]interface{}{"name": name},
 		"inboundAuthConfig": []map[string]interface{}{{
@@ -231,4 +234,19 @@ func (ts *AuditLogTestSuite) agentBody(name, ouID, clientID, clientSecret string
 	})
 	ts.Require().NoError(err)
 	return string(body)
+}
+
+// createAgentTypeIn creates an agent type in ouID, removed when the test ends, and returns its handle. An
+// agent is placed within its agent type's organization unit tree, so an agent in an organization unit of
+// its own needs an agent type there.
+func (ts *AuditLogTestSuite) createAgentTypeIn(ouID, name string) string {
+	ts.T().Helper()
+	handle := ts.prefix + name + "-agents"
+	agentTypeID, err := testutils.CreateNewAgentType(testutils.UserType{
+		Handle: handle, DisplayName: "Audit Log Test Agents " + name, OUID: ouID,
+		Schema: map[string]interface{}{"name": map[string]interface{}{"type": "string", "required": true}},
+	})
+	ts.Require().NoError(err)
+	ts.T().Cleanup(func() { _ = testutils.DeleteAgentType(agentTypeID) })
+	return handle
 }

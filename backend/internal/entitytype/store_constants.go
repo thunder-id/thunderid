@@ -10,6 +10,13 @@ import (
 	dbmodel "github.com/thunder-id/thunderid/internal/system/database/model"
 )
 
+const (
+	// agentTypeOUIndexName is the partial unique index that keeps an organization unit to one agent
+	// type, and agentTypeOUIndexColumns its column list as SQLite reports it.
+	agentTypeOUIndexName    = "idx_entity_types_agent_deployment_ou"
+	agentTypeOUIndexColumns = "ENTITY_TYPES.DEPLOYMENT_ID, ENTITY_TYPES.OU_ID"
+)
+
 var (
 	// queryGetEntityTypeCount retrieves the total count of entity types for a category.
 	queryGetEntityTypeCount = dbmodel.DBQuery{

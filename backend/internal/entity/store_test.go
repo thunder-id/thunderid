@@ -1639,3 +1639,24 @@ func (s *StoreHelpersTestSuite) TestValidateIndexedValueCounts_IgnoresNonIndexed
 	s.Require().NoError(json.Unmarshal(emailArrayAttrs(maxIndexedValuesPerAttribute+1), &attrMap))
 	s.NoError(validateIndexedValueCounts(attrMap, map[string]bool{"username": true}))
 }
+
+func (s *DBStoreTestSuite) TestGetEntityListByType() {
+	s.expectClientError()
+	_, err := s.store.GetEntityListByType(s.ctx, "agent", "default", 10)
+	s.Error(err, "provider error")
+
+	s.SetupTest()
+	s.expectClient()
+	s.onQueryAny(nil, errors.New("query failed"))
+	_, err = s.store.GetEntityListByType(s.ctx, "agent", "default", 10)
+	s.Error(err, "query error")
+
+	s.SetupTest()
+	s.expectClient()
+	s.client.On("QueryContext", mock.Anything, queryGetEntityListByType,
+		"agent", "default", mock.Anything, 10).
+		Return([]map[string]interface{}{dbEntityRow()}, nil).Once()
+	list, err := s.store.GetEntityListByType(s.ctx, "agent", "default", 10)
+	s.NoError(err)
+	s.Len(list, 1)
+}

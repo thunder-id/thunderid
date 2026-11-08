@@ -138,6 +138,8 @@ func (s *InlineStubEntityTypeService) GetResourceDependencies(
 	return nil, nil
 }
 
+func (s *InlineStubEntityTypeService) SetDependencyRegistry(_ resourcedependency.Registry) {}
+
 // --- POST ENDPOINT TESTS ---
 
 func TestHandleEntityTypePostRequest_Success(t *testing.T) {
@@ -208,6 +210,25 @@ func TestHandleEntityTypePostRequest_HandleConflictError(t *testing.T) {
 
 	handler.HandleEntityTypePostRequest(w, req)
 	assert.Equal(t, http.StatusConflict, w.Code)
+}
+
+// An organization unit that already has an agent type is a conflict, as a taken handle is.
+func TestHandleEntityTypePostRequest_AgentTypeExistsInOUIsAConflict(t *testing.T) {
+	stub := &InlineStubEntityTypeService{
+		OnCreateEntityType: func(
+			ctx context.Context, cat TypeCategory, req CreateEntityTypeRequestWithID,
+		) (*EntityType, *tidcommon.ServiceError) {
+			return nil, &ErrorAgentTypeAlreadyExistsInOU
+		},
+	}
+	handler := newEntityTypeHandler(stub, TypeCategoryAgent)
+	goodJSON := `{"handle": "support-agents", "displayName": "Support Agents", "ouId": "ou-123", "schema": {}}`
+	req := httptest.NewRequest(http.MethodPost, "/agent-types", bytes.NewBufferString(goodJSON))
+	w := httptest.NewRecorder()
+
+	handler.HandleEntityTypePostRequest(w, req)
+	assert.Equal(t, http.StatusConflict, w.Code)
+	assert.Contains(t, w.Body.String(), ErrorAgentTypeAlreadyExistsInOU.Code)
 }
 
 func TestHandleEntityTypePostRequest_MissingDisplayName(t *testing.T) {
@@ -415,6 +436,23 @@ func TestHandleEntityTypeDeleteRequest_Success(t *testing.T) {
 
 	handler.HandleEntityTypeDeleteRequest(w, req)
 	assert.Equal(t, http.StatusNoContent, w.Code)
+}
+
+// An agent type that agents or configurations still use is a conflict with that state.
+func TestHandleEntityTypeDeleteRequest_AgentTypeInUseIsAConflict(t *testing.T) {
+	stub := &InlineStubEntityTypeService{
+		OnDeleteEntityType: func(ctx context.Context, cat TypeCategory, id string) *tidcommon.ServiceError {
+			return &ErrorAgentTypeInUse
+		},
+	}
+	handler := newEntityTypeHandler(stub, TypeCategoryAgent)
+	req := httptest.NewRequest(http.MethodDelete, "/agent-types/type-123", nil)
+	req.SetPathValue("id", "type-123")
+	w := httptest.NewRecorder()
+
+	handler.HandleEntityTypeDeleteRequest(w, req)
+	assert.Equal(t, http.StatusConflict, w.Code)
+	assert.Contains(t, w.Body.String(), ErrorAgentTypeInUse.Code)
 }
 
 func TestHandleEntityTypeDeleteRequest_MissingID(t *testing.T) {

@@ -1,7 +1,7 @@
 # Agent Onboarding Flow Specification
 
 - **Status:** Draft
-- **Version:** 0.3
+- **Version:** 0.5
 
 ## Summary
 
@@ -89,7 +89,7 @@ The supplied flow also includes **Permission Validator**. Agent creation remains
 
 An entity category identifies the kind of resource, such as an agent. An entity type identifies the schema within that category. The onboarding flow must resolve both the agent schema type and the organization unit (OU) in which to create the agent.
 
-**Agent Type Resolver** offers agent types that are compatible with the chosen organization unit. A flow author can use `allowedAgentTypes` to restrict that choice; leaving the list empty adds no restriction. The type must belong to the target organization unit or one of its ancestors. Type discovery currently considers the first 100 catalog entries, which can limit the choices in a deployment with more agent types.
+**Agent Type Resolver** offers agent types that are compatible with the chosen organization unit. A flow author can use `allowedAgentTypes` to restrict that choice; leaving the list empty adds no restriction. The entries are handles, so `*` is not one: a flow that lists it is rejected when it is saved (`FLM-1023`). The type must belong to the target organization unit or one of its ancestors. Type discovery currently considers the first 100 catalog entries, which can limit the choices in a deployment with more agent types (#6603).
 
 The resolver will handle the remaining candidates as follows:
 
@@ -99,7 +99,7 @@ The resolver will handle the remaining candidates as follows:
 | One | Resolve the type without displaying a selection screen. |
 | Several | Request a selection and provide the eligible options. |
 
-ThunderID validates a submitted type against the agent category, the flow's allowed types, and the selected organization unit. The default flow resolves the type first, then lets **Organization Unit Resolver** choose a compatible target. When there is no choice to make, the flow can continue without showing a selection screen.
+ThunderID validates a submitted type against the agent category, the flow's allowed types, and the selected organization unit. The default flow resolves the type first, then lets **Organization Unit Resolver** choose a compatible target. When there is no choice to make, the flow can continue without showing a selection screen. The agent service enforces the same placement on every create path, so a flow that skips the organization unit resolver cannot place an agent outside its type's organization unit tree: the agent's organization unit must be the type's organization unit or one of its descendants, otherwise provisioning fails with `AGT-1053`.
 
 The flow's allowed-type list controls administration onboarding. Application restrictions on the types that may sign in do not decide which agent types an administrator can create here.
 
@@ -289,7 +289,7 @@ flowchart TD
 The flow keeps orchestration in the executor layer and creation ownership in the management layer. `ProvisioningExecutor` collects the flow result and calls `AgentMgtProvider` only when the required information is available. The provider delegates to the agent service, which validates the creation request, applies the grant policy, and coordinates the entity, inbound client, and authentication profile. A successful service result supplies the identifiers and secret used by the credentials prompt.
 
 1. Validate the administrator's permission.
-2. Resolve the agent schema type, initially restricted to the `default` agent type.
+2. Resolve the agent schema type from the agent types the administrator can read, up to the first 100.
 3. Resolve the target OU.
 4. Resolve the owner.
 5. Collect the agent details, including the name defined by the schema.
@@ -377,7 +377,7 @@ The templates include Agent Type Resolver before provisioning. An author can use
 | `user_mgt_provider.type` | Default service-backed provider | Deployment | `disabled` must reject user provisioning. |
 | `agent_mgt_provider.type` | Default service-backed provider | Deployment | `disabled` must reject agent provisioning. |
 | Provisioning `delegated` | `false` | Flow node | Fallback for agent delegation intent; runtime data and submitted values take precedence. |
-| Agent resolver `allowedAgentTypes` | `default` in the shipped flow | Flow node | Restrict the candidate schema types; an empty list adds no restriction. |
+| Agent resolver `allowedAgentTypes` | Unset in the shipped flow | Flow node | Restrict the candidate schema types; an empty list adds no restriction, and `*` is rejected on save. |
 | Provisioning `includeOptional` | `true` in the shipped flow | Flow node | Include optional schema attributes in collection. |
 
 The Console must read the `merged` configuration layer. A missing handle, a handle that does not resolve to an administration flow, and a configuration request failure are distinct conditions. Missing configuration will identify the setting to configure; a missing flow will identify the configured handle. A request failure must not be reported as an empty setting.
@@ -538,3 +538,5 @@ The default flow and its configuration will be bootstrap resources. Existing dep
 | 0.2 | 2026-09-23 | Correct five statements against the implementation: the category defaulting rule, the credentials disclosure wording, the owner of the provisioning failure connection, how the Console renders a step failure, and the scope of the builder template. |
 | 0.2 | 2026-10-26 | Every flow is owned by exactly one organization unit. A flow names its owner with `ouId` on create, or with `ouId` or `ouHandle` in a bootstrap or declarative file, and the default onboarding flow carries `ouHandle: default` (AC11.8). |
 | 0.3 | 2026-10-29 | Describe the complete administration onboarding design: management-provider creation, runtime category resolution, schema-based agent names, delegation and grant policy, reusable SDK and Console selectors, and the three onboarding templates. |
+| 0.4 | 2026-11-05 | The shipped flow no longer restricts `AgentTypeResolver` to the `default` agent type, since a deployment can hold one agent type per organization unit, and the agent service rejects an agent outside its agent type's organization unit tree (#6020). |
+| 0.5 | 2026-11-08 | A flow whose `AgentTypeResolver` lists `*` in `allowedAgentTypes` is rejected when it is saved (`FLM-1023`): the node reads entries as handles, and an empty list already allows every agent type. |
