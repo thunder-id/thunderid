@@ -11,7 +11,7 @@ import {
 } from '@thunderid/configure-applications';
 import {Alert, Link, Stack, Typography} from '@wso2/oxygen-ui';
 import {Lock} from '@wso2/oxygen-ui-icons-react';
-import {useEffect, useState, type JSX} from 'react';
+import {useEffect, useMemo, useState, type JSX} from 'react';
 import {Trans, useTranslation} from 'react-i18next';
 import AgentAccessTokenSection from './AgentAccessTokenSection';
 import type {Agent, OAuthAgentConfig} from '../../../models/agent';
@@ -67,6 +67,11 @@ export default function EditTokensSettings({
   }, [isUnlocked, userTabHasError, agentTabHasError, onValidationChange]);
 
   const appLikeAgent = {...agent, isReadOnly: agent.isReadOnly ?? false} as unknown as Application;
+  // Only the unsaved allowed user types are passed on, since they decide which attributes can be added.
+  const pendingAllowedUserTypes = useMemo<Partial<Application>>(
+    () => (editedAgent.allowedUserTypes !== undefined ? {allowedUserTypes: editedAgent.allowedUserTypes} : {}),
+    [editedAgent.allowedUserTypes],
+  );
   const appHandleFieldChange = onFieldChange as unknown as (field: keyof Application, value: unknown) => void;
 
   // One line per grant, rather than translated sentences joined into one string.
@@ -150,6 +155,7 @@ export default function EditTokensSettings({
         <Stack spacing={3}>
           <EditTokenSettings
             application={appLikeAgent}
+            editedApp={pendingAllowedUserTypes}
             oauth2Config={oauth2Config}
             onFieldChange={appHandleFieldChange}
             onValidationChange={setUserTabHasError}
