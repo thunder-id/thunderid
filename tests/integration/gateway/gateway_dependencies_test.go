@@ -107,3 +107,54 @@ func (ts *GatewayVersionsTestSuite) TestRemovingAUnitAMoveFreesGoesAfterTheMove(
 	ts.Nil(child["parent"], "the unit was not moved out")
 	ts.Contains(string(result.Import), `"operation":"delete"`, "the answer lacks the second import's")
 }
+
+// A resource server deleted and created again under the same name, with an action under it, is replaced
+// in one apply that selects only the new one: the control plane takes in the old one's removal and has
+// the gateway remove it, with its action, before writing the new one, which it would otherwise refuse
+// for the name.
+func (ts *GatewayVersionsTestSuite) TestAResourceCreatedAgainUnderItsNameIsReplacedInOneApply() {
+	suffix := fmt.Sprintf("%d", time.Now().UnixNano())
+	ouID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
+		Handle: "replaced-" + suffix, Name: "replaced-" + suffix})
+	ts.Require().NoError(err)
+	defer func() { _ = testutils.DeleteOrganizationUnit(ouID) }()
+	server := testutils.ResourceServer{Name: "replaced " + suffix, Identifier: "replaced-" + suffix, OUID: ouID}
+	actions := []testutils.Action{{Name: "read", Handle: "read"}}
+	oldID, err := testutils.CreateResourceServerWithActions(server, actions)
+	ts.Require().NoError(err)
+	defer func() { _ = testutils.DeleteResourceServerWithChildren(oldID) }()
+	withOld := ts.capture("a resource server")
+	ts.Require().NoError(testutils.DeleteResourceServerWithChildren(oldID))
+	newID, err := testutils.CreateResourceServerWithActions(server, actions)
+	ts.Require().NoError(err)
+	defer func() { _ = testutils.DeleteResourceServerWithChildren(newID) }()
+	withNew := ts.capture("the resource server created again under its name")
+	oldKey, newKey := "resource_server/"+oldID, "resource_server/"+newID
+
+	// The gateway takes the old one back, as one that ran the earlier version holds it.
+	ts.Require().NoError(testutils.DeleteResourceServerWithChildren(newID))
+	ts.applySelecting(withOld.Version, func(key string) bool { return key == oldKey })
+	ts.Require().Equal(http.StatusOK, ts.call(http.MethodGet, "/resource-servers/"+oldID, nil, nil))
+	if added := ts.changeIn(ts.diff(withNew.Version), newKey); ts.NotNil(added) {
+		ts.Equal(oldKey, added.Replaces)
+	}
+
+	var result applyResult
+	ts.Require().Equal(http.StatusOK, ts.call(http.MethodPost, "/gateways/"+ts.gatewayID+"/apply",
+		map[string]any{"version": withNew.Version, "selection": []string{newKey}}, &result))
+	ts.True(result.Recorded, "the apply was not recorded: %s", result.Import)
+	ts.NotContains(string(result.Import), `"status":"failed"`, "the replacement was refused")
+	if removed := ts.changeIn(result.Diff, oldKey); ts.NotNil(removed) {
+		ts.True(removed.Selected, "the old one's removal was not taken in")
+		ts.Equal(newKey, removed.RequiredBy)
+	}
+	ts.Equal(http.StatusNotFound, ts.call(http.MethodGet, "/resource-servers/"+oldID, nil, nil),
+		"the old resource server was not removed")
+	ts.Equal(http.StatusOK, ts.call(http.MethodGet, "/resource-servers/"+newID, nil, nil),
+		"the new resource server was not written")
+	for _, c := range ts.diff(withNew.Version).Changes {
+		if (c.Key == oldKey || c.Key == newKey) && c.Change != "unchanged" {
+			ts.Failf("still offered", "%s is still offered as %s", c.Key, c.Change)
+		}
+	}
+}

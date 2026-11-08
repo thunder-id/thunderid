@@ -71,6 +71,53 @@ function projectCheck(sent: unknown[], extra: unknown[] = []): void {
   });
 }
 
+function replacementCheck(sent: unknown[]): void {
+  http = fakeHttp({
+    'POST /gateways/gw-dev/apply': (call: Call) => {
+      const data = call.data as {dryRun?: boolean};
+      if (!data.dryRun) {
+        sent.push(call.data);
+        return {gatewayId: 'gw-dev', dryRun: false};
+      }
+      return {
+        gatewayId: 'gw-dev',
+        dryRun: true,
+        diff: {
+          toVersion: version.version,
+          changes: [
+            {
+              key: 'resource_server/rs-new',
+              resourceType: 'resource_server',
+              id: 'rs-new',
+              name: 'Orders API',
+              change: 'added',
+              section: 'shared',
+              failed: true,
+              replaces: 'resource_server/rs-old',
+            },
+            {
+              key: 'resource_server/rs-old',
+              resourceType: 'resource_server',
+              id: 'rs-old',
+              name: 'Orders API',
+              change: 'deleted',
+              section: 'shared',
+            },
+            {
+              key: 'resource_server/rs-gone',
+              resourceType: 'resource_server',
+              id: 'rs-gone',
+              name: 'Retired API',
+              change: 'deleted',
+              section: 'shared',
+            },
+          ],
+        },
+      };
+    },
+  });
+}
+
 describe('ApplyPanel', () => {
   it("retries what a project's gateway refused with what it needs, scoped to the project", async () => {
     const sent: unknown[] = [];
@@ -276,5 +323,38 @@ describe('ApplyPanel', () => {
     await userEvent.click(screen.getByRole('checkbox', {name: /Billing/}));
 
     expect(screen.getByRole('button', {name: 'Nothing to deploy'})).toBeInTheDocument();
+  });
+
+  it.each([
+    ['a deploy', undefined],
+    ['a retry of the refused addition', ['resource_server/rs-new']],
+  ])('sends, in %s, the removal of the resource an addition replaces, locked to it', async (_, only) => {
+    const sent: unknown[] = [];
+    replacementCheck(sent);
+    render(
+      <ProjectScopeProvider project={{id: 'p-shop'}}>
+        <ApplyPanel
+          version={version}
+          label="v2"
+          gateways={[gateway]}
+          gatewayId="gw-dev"
+          only={only}
+          onClose={vi.fn()}
+          onDeployed={vi.fn()}
+        />
+      </ProjectScopeProvider>,
+    );
+
+    const panel = await screen.findByTestId('deploy-apply-panel');
+    const rows = await within(panel).findAllByRole('checkbox', {name: /Orders API/});
+    expect(rows).toHaveLength(2);
+    rows.forEach((row: HTMLElement) => expect(row).toBeChecked());
+    expect(rows.filter((row: HTMLElement) => (row as HTMLInputElement).disabled)).toHaveLength(1);
+    expect(within(panel).getByRole('checkbox', {name: /Retired API/})).not.toBeChecked();
+    await userEvent.click(await within(panel).findByRole('button', {name: /^Deploy/}));
+
+    await waitFor(() => expect(sent).toHaveLength(1));
+    const request = sent[0] as {selection: string[]};
+    expect([...request.selection].sort()).toEqual(['resource_server/rs-new', 'resource_server/rs-old']);
   });
 });

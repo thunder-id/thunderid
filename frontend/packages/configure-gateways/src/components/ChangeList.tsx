@@ -69,8 +69,11 @@ export default function ChangeList({
     const change = changes.find((entry: Change) => entry.key === key);
     return change ? nameOfChange(change) : key;
   };
-  // A change the source holds back can never be applied, so it is not one to tick.
-  const keys = active.filter((change: Change) => !change.sourceExcluded).map((change: Change) => change.key);
+  // A change the source holds back can never be applied, and one a ticked change brings goes with it, so
+  // neither is one to tick.
+  const keys = active
+    .filter((change: Change) => !change.sourceExcluded && !required?.has(change.key))
+    .map((change: Change) => change.key);
   const allChecked = keys.length > 0 && keys.every((key: string) => selected?.has(key));
   const someChecked = keys.some((key: string) => selected?.has(key));
 
@@ -150,7 +153,7 @@ export default function ChangeList({
                   <Checkbox
                     size="small"
                     checked={!change.sourceExcluded && selected.has(change.key)}
-                    disabled={change.sourceExcluded}
+                    disabled={change.sourceExcluded === true || required?.has(change.key) === true}
                     onClick={(event) => event.stopPropagation()}
                     onChange={() => onToggle?.(change.key)}
                     inputProps={{'aria-label': t('changes.selectOne', 'Write {{name}}', {name})}}

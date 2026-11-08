@@ -292,6 +292,18 @@ flow that the version also removes, is sent in a second import once the gateway 
 update; if the gateway refuses the update, the resource stays in place and the diff offers the removal
 again.
 
+A resource deleted and created again under the same name, such as a resource server, gets a new id, so
+the diff offers the old one's removal and the new one's addition. The addition names the removal in
+`replaces` when both have the same type and name, in the same organization unit, project and parent.
+A selection that names the addition takes in that removal, marked `required`, with or without
+`withDependencies` and with a `project` too, unless the gateway holds the removal back: the new
+resource is then refused for its name until a selection names the removal. The apply removes the old
+resource, with what is under it, in an import of its own before the documents, since the gateway
+refuses the new one while the old one holds the name. A removed resource that names the old one goes
+in that import too when the apply removes it; one the apply leaves in place still names the old
+resource, so the apply is refused with `409` (`GTW-1033`). This removal does not wait for updates that
+stop naming the old resource.
+
 One version cannot replace an organization unit's agent type and move its agents to the new one. The
 new agent type is refused while the old one is in the unit, the agents cannot move to an agent type the
 gateway does not have yet, and the old one cannot be removed while it is in use, so every apply fails

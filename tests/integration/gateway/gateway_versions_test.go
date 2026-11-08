@@ -49,6 +49,7 @@ type change struct {
 	Needs        []string `json:"needs"`
 	Required     bool     `json:"required"`
 	RequiredBy   string   `json:"requiredBy"`
+	Replaces     string   `json:"replaces"`
 	Lines        []struct {
 		Kind string `json:"kind"`
 		Text string `json:"text"`

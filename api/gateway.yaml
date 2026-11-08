@@ -1327,7 +1327,9 @@ components:
             The keys (`Change.key`) of the changes to apply in this apply. The other changes are
             neither written nor removed, and stay on offer to the next diff. Omitted, every change is
             applied except those held back (`Change.heldBack`); empty, none is. A key that names no
-            change in the diff is refused with `400` (`GTW-1025`).
+            change in the diff is refused with `400` (`GTW-1025`). A selected addition that replaces a
+            removed resource (`Change.replaces`) brings that removal along, with or without
+            `withDependencies` and with a `project` too, unless the gateway holds the removal back.
         leaveOut:
           type: array
           items:
@@ -1535,11 +1537,15 @@ components:
           type: boolean
           description: |
             On a diff or apply scoped to a project, a needed change the gateway lacks or refused, which
-            the project's resources cannot run without. On an apply's answer otherwise, a change sent
-            because a selected resource needs it, with `requiredBy` the selected key.
+            the project's resources cannot run without. On an apply's answer, also a change sent with a
+            selected one, with `requiredBy` that selected key: on an apply not scoped to a project, one
+            the selected resource needs, and on any apply, the removal of the resource a selected
+            addition replaces (`replaces`).
         requiredBy:
           type: string
-          description: On an apply's answer, the selected key whose resource needed this change.
+          description: |
+            On an apply's answer, the selected key whose resource needed this change, or whose addition
+            replaces the resource this change removes.
         needs:
           type: array
           items:
@@ -1547,6 +1553,15 @@ components:
           description: |
             The keys of the resources this one names by id in the version, which it needs on the gateway
             to run, so a console can show what deploying it brings too.
+        replaces:
+          type: string
+          description: |
+            On an added change, the key of a removed resource of the same type and name, in the same
+            organization unit, project and parent, which this one replaces, as when a resource is
+            deleted and created again. The gateway refuses the new resource while the old one holds its
+            name, so an apply that sends this change also removes that one, first, unless the gateway
+            holds the removal back (`heldBack`): the new resource is then refused for its name until a
+            selection names the removal.
         usedBy:
           type: array
           items:
