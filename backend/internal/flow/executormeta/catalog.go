@@ -151,6 +151,7 @@ var catalog = map[string]providers.ExecutorMeta{
 	ExecutorNameOUCreation: {
 		SupportedProperties: []providers.ExecutorSupportedProperties{
 			{Property: "parentOuId"},
+			{Property: "generateOuHandle"},
 		},
 	},
 	ExecutorNameOUResolver: {

@@ -1509,6 +1509,32 @@ describe('ExecutionExtendedProperties', () => {
 
       expect(screen.getByLabelText('flows:core.executions.ouExecutor.parentOuId.label')).toHaveValue('existing-ou');
     });
+
+    it('should toggle generateOuHandle', () => {
+      render(<ExecutionExtendedProperties resource={ouResource} onChange={mockOnChange} />);
+
+      const checkbox = screen.getByRole('checkbox', {name: 'flows:core.executions.ouExecutor.generateOuHandle.label'});
+      expect(checkbox).not.toBeChecked();
+      fireEvent.click(checkbox);
+
+      expect(mockOnChange).toHaveBeenCalledWith('data.properties.generateOuHandle', true, ouResource);
+    });
+
+    it('should show generateOuHandle as checked when enabled', () => {
+      const resourceWithGeneration = {
+        ...ouResource,
+        data: {
+          ...(ouResource as unknown as {data: object}).data,
+          properties: {generateOuHandle: true},
+        },
+      } as unknown as Resource;
+
+      render(<ExecutionExtendedProperties resource={resourceWithGeneration} onChange={mockOnChange} />);
+
+      expect(
+        screen.getByRole('checkbox', {name: 'flows:core.executions.ouExecutor.generateOuHandle.label'}),
+      ).toBeChecked();
+    });
   });
 
   describe('User Type Resolver Executor', () => {

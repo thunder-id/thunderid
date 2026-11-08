@@ -246,6 +246,9 @@ const (
 	// the Deny button or by letting the prompt time out. This applies even when every prompted
 	// element is optional.
 	propertyKeyConsentFailOnDeny = "failOnDeny"
+	// propertyKeyGenerateOUHandle, when set to boolean true on an OU creation node, makes the executor
+	// generate the organization unit handle from the name when the handle is not provided.
+	propertyKeyGenerateOUHandle = "generateOuHandle"
 
 	propertyKeyResourceType = "resourceType"
 	propertyKeyResourceID   = "resourceId"

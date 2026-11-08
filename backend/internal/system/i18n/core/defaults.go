@@ -2175,6 +2175,8 @@ var defaultMessages = map[string]string{
 	"flows.executor.errors.ou_creation_prereq_failed_desc": "The prerequisites for creating an organization unit have not been met",
 	"flows.executor.errors.ou_handle_conflict": "Organization unit with the same handle already exists",
 	"flows.executor.errors.ou_handle_conflict_desc": "An organization unit with the same handle already exists in this context",
+	"flows.executor.errors.ou_handle_not_generated": "Organization unit handle required",
+	"flows.executor.errors.ou_handle_not_generated_desc": "A handle could not be created from the organization unit name. Enter a handle",
 	"flows.executor.errors.ou_name_conflict": "Organization unit with the same name already exists",
 	"flows.executor.errors.ou_name_conflict_desc": "An organization unit with the same name already exists in this context",
 	"flows.executor.errors.ou_not_direct_child": "The selected organization unit is not a direct child of the parent organization unit.",

@@ -4,6 +4,7 @@
 import {Stack, Typography} from '@wso2/oxygen-ui';
 import {useMemo, type ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
+import CheckboxWithHint from './CheckboxWithHint';
 import DraftTextField from './DraftTextField';
 import type {CommonResourcePropertiesPropsInterface} from './types';
 import type {StepData} from '../../../../models/steps';
@@ -32,6 +33,13 @@ function OUExecutorProperties({resource, onChange}: CommonResourcePropertiesProp
         placeholder={t('flows:core.executions.ouExecutor.parentOuId.placeholder')}
         fullWidth
         size="small"
+      />
+
+      <CheckboxWithHint
+        checked={properties['generateOuHandle'] === true}
+        label={t('flows:core.executions.ouExecutor.generateOuHandle.label')}
+        hint={t('flows:core.executions.ouExecutor.generateOuHandle.hint')}
+        onChange={(checked) => onChange('data.properties.generateOuHandle', checked, resource)}
       />
     </Stack>
   );
