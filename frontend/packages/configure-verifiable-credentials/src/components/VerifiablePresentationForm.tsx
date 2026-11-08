@@ -3,6 +3,7 @@
 
 import {SettingsCard, UnsavedChangesBar} from '@thunderid/components';
 import {OrganizationUnitTreePicker, useHasMultipleOUs} from '@thunderid/configure-organization-units';
+import {useCapabilitiesContext} from '@thunderid/contexts';
 import {
   Box,
   Button,
@@ -109,6 +110,7 @@ export default function VerifiablePresentationForm({
   onErrorClear = undefined,
 }: VerifiablePresentationFormProps): JSX.Element {
   const {t} = useTranslation('verifiable-presentations');
+  const {can} = useCapabilitiesContext();
 
   const {hasMultipleOUs, ouList} = useHasMultipleOUs();
 
@@ -290,7 +292,7 @@ export default function VerifiablePresentationForm({
         <Tab label={t('form.tabs.protocolSettings')} />
         <Tab label={t('form.tabs.claims')} />
         <Tab label={t('form.tabs.issuerTrust')} />
-        {definitionId && onDelete && <Tab label={t('form.tabs.advanced', 'Advanced')} />}
+        {definitionId && onDelete && can('vc', 'delete') && <Tab label={t('form.tabs.advanced', 'Advanced')} />}
       </Tabs>
 
       <TabPanel value={tab} index={0}>
@@ -561,7 +563,7 @@ export default function VerifiablePresentationForm({
         </SettingsCard>
       </TabPanel>
 
-      {definitionId && onDelete && (
+      {definitionId && onDelete && can('vc', 'delete') && (
         <TabPanel value={tab} index={4}>
           <SettingsCard title={t('form.dangerZone.title')} description={t('form.dangerZone.description')}>
             <Typography variant="h6" gutterBottom color="error">
@@ -591,7 +593,7 @@ export default function VerifiablePresentationForm({
           saveLabel={submitLabel}
           savingLabel={t('common:status.saving')}
           isSaving={submitting}
-          saveDisabled={!valid}
+          saveDisabled={!valid || !can('vc', 'update')}
           error={error}
           onReset={handleReset}
           onSave={handleSubmit}

@@ -27,6 +27,13 @@ const mockUseGetApplications = vi.fn<(params: unknown) => MockUseGetApplications
 let mockDiscovery: {wellKnown?: {end_session_endpoint?: string}} | undefined;
 let mockIsTrustedIssuerGenericOidc = false;
 let mockSdkConfig: Record<string, unknown> | undefined;
+let mockCapabilities: {can: (resource: string, action?: string) => boolean; canManageRoot: boolean; isLoading: boolean};
+let mockPathname: string | undefined;
+
+vi.mock('@thunderid/hooks', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@thunderid/hooks')>()),
+  useCapabilities: () => mockCapabilities,
+}));
 interface MockProjectSelection {
   projects: {id: string; displayName: string}[];
   selectedProject?: {id: string; displayName: string};
@@ -146,15 +153,21 @@ vi.mock('@thunderid/logger/react', () => ({
 // Mock Outlet
 vi.mock('react-router', async () => {
   const actual = await vi.importActual<typeof import('react-router')>('react-router');
+  const {useCapabilitiesContext} = await vi.importActual<typeof import('@thunderid/contexts')>('@thunderid/contexts');
   return {
     ...actual,
-    Outlet: () => <div data-testid="outlet">Outlet Content</div>,
+    Outlet: () => (
+      <div data-testid="outlet" data-can-delete-app={String(useCapabilitiesContext().can('app', 'delete'))}>
+        Outlet Content
+      </div>
+    ),
     Link: ({children, to, onClick = undefined}: {children: React.ReactNode; to: string; onClick?: () => void}) => (
       <a href={to} data-testid="router-link" onClick={onClick}>
         {children}
       </a>
     ),
     useNavigate: () => mockNavigate,
+    useLocation: () => (mockPathname ? {...actual.useLocation(), pathname: mockPathname} : actual.useLocation()),
     useMatch: (pattern: string) => actual.matchPath(pattern, mockPath),
   };
 });
@@ -169,6 +182,8 @@ describe('DashboardLayout', () => {
     mockUseProjectSelection.mockReturnValue(projectSelection());
     mockProjectChanges = {};
     mockPath = '/';
+    mockCapabilities = {can: () => true, canManageRoot: true, isLoading: false};
+    mockPathname = undefined;
     mockUseGetApplications.mockReturnValue({
       data: {applications: []},
       isLoading: false,
@@ -478,6 +493,114 @@ describe('DashboardLayout', () => {
     navigationIcons.forEach((icon) => {
       expect(icon).toHaveAttribute('width', applicationIcon?.getAttribute('width'));
       expect(icon).toHaveAttribute('height', applicationIcon?.getAttribute('height'));
+    });
+  });
+
+  describe('capabilities', () => {
+    it('hands the capabilities to the page', () => {
+      mockCapabilities = {
+        can: (_resource, action = 'view') => action === 'view',
+        canManageRoot: false,
+        isLoading: false,
+      };
+      render(<DashboardLayout />);
+
+      expect(screen.getByTestId('outlet')).toHaveAttribute('data-can-delete-app', 'false');
+    });
+
+    it('hides the pages the admin cannot view, and groups left empty', () => {
+      mockCapabilities = {can: (resource) => resource === 'user', canManageRoot: false, isLoading: false};
+      render(<DashboardLayout />);
+
+      expect(screen.getByText('navigation:pages.administrators')).toBeInTheDocument();
+      expect(screen.getByText('navigation:pages.overview')).toBeInTheDocument();
+      expect(screen.queryByText('navigation:pages.gateways')).not.toBeInTheDocument();
+      expect(screen.queryByText('navigation:categories.system')).not.toBeInTheDocument();
+      expect(screen.queryByText('navigation:categories.identitySetup')).not.toBeInTheDocument();
+      expect(screen.queryByText('navigation:pages.notifications')).not.toBeInTheDocument();
+    });
+
+    it('keeps the navigation while the capabilities load', () => {
+      mockCapabilities = {can: () => false, canManageRoot: false, isLoading: true};
+      render(<DashboardLayout />);
+
+      expect(screen.getByText('navigation:pages.administrators')).toBeInTheDocument();
+      expect(screen.getByText('navigation:pages.gateways')).toBeInTheDocument();
+    });
+
+    it('keeps a parent entry while one of its children is visible', () => {
+      mockUseProjectSelection.mockReturnValue(inShop());
+      mockCapabilities = {can: (resource) => resource === 'vc', canManageRoot: false, isLoading: false};
+      render(<DashboardLayout />);
+
+      expect(screen.getByText('navigation:pages.verifiableCredentials')).toBeInTheDocument();
+    });
+
+    it("hides the project's pages the admin cannot view", () => {
+      mockUseProjectSelection.mockReturnValue(inShop());
+      mockCapabilities = {can: (resource) => resource === 'app', canManageRoot: false, isLoading: false};
+      render(<DashboardLayout />);
+
+      expect(screen.getByText('navigation:pages.applications')).toBeInTheDocument();
+      expect(screen.queryByText('navigation:pages.agents')).not.toBeInTheDocument();
+      expect(screen.queryByText('navigation:pages.deploymentPipeline')).not.toBeInTheDocument();
+      expect(screen.getByText('navigation:pages.organizationSettings')).toBeInTheDocument();
+    });
+
+    it("offers a gateway's variables and secrets only to admins who can manage root-only APIs", () => {
+      mockUseProjectSelection.mockReturnValue(inShop());
+      mockPath = '/deploy/gateways/gw-dev';
+      mockCapabilities = {can: () => true, canManageRoot: false, isLoading: false};
+      render(<DashboardLayout />);
+
+      expect(screen.getByText('navigation:pages.overview')).toBeInTheDocument();
+      expect(screen.getByText('navigation:pages.deploymentHistory')).toBeInTheDocument();
+      expect(screen.queryByText('navigation:pages.variablesAndSecrets')).not.toBeInTheDocument();
+    });
+
+    it("hides a gateway's releases from admins who cannot view configuration versions", () => {
+      mockUseProjectSelection.mockReturnValue(inShop());
+      mockPath = '/deploy/gateways/gw-dev';
+      mockCapabilities = {can: (resource) => resource !== 'configversion', canManageRoot: true, isLoading: false};
+      render(<DashboardLayout />);
+
+      expect(screen.queryByText('navigation:categories.releases')).not.toBeInTheDocument();
+      expect(screen.queryByText('navigation:pages.deploymentHistory')).not.toBeInTheDocument();
+    });
+
+    it('offers Import / Export only to admins who can manage root-only APIs', () => {
+      mockCapabilities = {can: () => true, canManageRoot: false, isLoading: false};
+      render(<DashboardLayout />);
+
+      expect(screen.queryByRole('button', {name: 'navigation:pages.importExport'})).not.toBeInTheDocument();
+    });
+
+    it('shows a notice instead of a page the admin cannot view', () => {
+      mockCapabilities = {can: (resource) => resource !== 'gateway', canManageRoot: false, isLoading: false};
+      mockPathname = '/gateways';
+      render(<DashboardLayout />);
+
+      expect(screen.queryByTestId('outlet')).not.toBeInTheDocument();
+      expect(screen.getByText('navigation:forbidden.description')).toBeInTheDocument();
+    });
+
+    it('shows a notice instead of a root-only page the admin cannot manage', () => {
+      mockUseProjectSelection.mockReturnValue(inShop());
+      mockPath = '/deploy/gateways/gw-dev/values';
+      mockPathname = mockPath;
+      mockCapabilities = {can: () => true, canManageRoot: false, isLoading: false};
+      render(<DashboardLayout />);
+
+      expect(screen.queryByTestId('outlet')).not.toBeInTheDocument();
+      expect(screen.getByText('navigation:forbidden.description')).toBeInTheDocument();
+    });
+
+    it('shows the page while the capabilities load', () => {
+      mockCapabilities = {can: () => false, canManageRoot: false, isLoading: true};
+      mockPathname = '/gateways';
+      render(<DashboardLayout />);
+
+      expect(screen.getByTestId('outlet')).toBeInTheDocument();
     });
   });
 

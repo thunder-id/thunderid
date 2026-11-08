@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-return, @typescript-eslint/no-explicit-any */
+import {CapabilitiesProvider} from '@thunderid/contexts';
 import {fireEvent, render, screen, waitFor, within, userEvent} from '@thunderid/test-utils';
 import type {ReactNode} from 'react';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
@@ -142,6 +143,12 @@ const addAttribute = async (user: ReturnType<typeof userEvent.setup>, id: string
   await waitFor(() => {
     expect(panel.queryByRole('button', {name: new RegExp(`^${id}$`, 'i')})).not.toBeInTheDocument();
   });
+};
+
+const viewOnly = {
+  can: (_resource: string, action = 'view') => action === 'view',
+  canManageRoot: false,
+  isLoading: false,
 };
 
 describe('ViewUserTypePage', () => {
@@ -722,6 +729,23 @@ describe('ViewUserTypePage', () => {
       await waitFor(() => {
         expect(screen.getAllByRole('button', {name: /remove property/i})).toHaveLength(countBefore - 1);
       });
+    });
+  });
+
+  describe('Without write access', () => {
+    it('hides delete and disables save when the admin may only view user types', async () => {
+      const user = userEvent.setup();
+      render(
+        <CapabilitiesProvider capabilities={viewOnly}>
+          <ViewUserTypePage />
+        </CapabilitiesProvider>,
+      );
+
+      await user.click(screen.getByTestId('select-ou-child'));
+      expect(await screen.findByRole('button', {name: /^save$/i})).toBeDisabled();
+
+      await user.click(screen.getByRole('tab', {name: /advanced/i}));
+      expect(screen.queryByRole('button', {name: /^delete$/i})).not.toBeInTheDocument();
     });
   });
 

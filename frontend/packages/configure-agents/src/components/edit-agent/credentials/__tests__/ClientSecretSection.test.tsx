@@ -3,6 +3,7 @@
 
 import {render, screen} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import {CapabilitiesProvider} from '@thunderid/contexts';
 import {describe, it, expect, vi} from 'vitest';
 import type {OAuthAgentConfig} from '../../../../models/agent';
 import ClientSecretSection from '../ClientSecretSection';
@@ -36,6 +37,12 @@ vi.mock('../../../ClientSecretSuccessDialog', () => ({
       </div>
     ) : null,
 }));
+
+const viewOnly = {
+  can: (_resource: string, action = 'view') => action === 'view',
+  canManageRoot: false,
+  isLoading: false,
+};
 
 describe('ClientSecretSection', () => {
   it('shows the regenerate button for confidential clients', () => {
@@ -96,6 +103,20 @@ describe('ClientSecretSection', () => {
     await user.click(screen.getByRole('button', {name: /close/i}));
 
     expect(screen.queryByTestId('secret-success-dialog')).not.toBeInTheDocument();
+  });
+
+  it('disables the regenerate button when the admin may not update agents', () => {
+    const oauth2Config = {
+      clientId: 'client-123',
+      tokenEndpointAuthMethod: 'client_secret_basic',
+    } as OAuthAgentConfig;
+    render(
+      <CapabilitiesProvider capabilities={viewOnly}>
+        <ClientSecretSection agentId="agent-1" oauth2Config={oauth2Config} />
+      </CapabilitiesProvider>,
+    );
+
+    expect(screen.getByRole('button', {name: /regenerate client secret/i})).toBeDisabled();
   });
 
   it('disables the regenerate button when disabled', () => {

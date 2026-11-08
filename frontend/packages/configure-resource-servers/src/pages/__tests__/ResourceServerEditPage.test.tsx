@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import * as componentsModule from '@thunderid/components';
+import {CapabilitiesProvider} from '@thunderid/contexts';
 import {renderWithProviders, screen, fireEvent, waitFor} from '@thunderid/test-utils';
 import type {ReactNode} from 'react';
 import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
@@ -200,6 +201,12 @@ const mockMcpResourceServer: ResourceServer = {
   type: 'MCP',
 };
 
+const viewOnly = {
+  can: (_resource: string, action = 'view') => action === 'view',
+  canManageRoot: false,
+  isLoading: false,
+};
+
 describe('ResourceServerEditPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -387,6 +394,24 @@ describe('ResourceServerEditPage', () => {
     fireEvent.click(screen.getByRole('tab', {name: 'Advanced'}));
 
     expect(screen.getByRole('button', {name: /Delete resource server/i})).toBeInTheDocument();
+  });
+
+  it('omits the Danger Zone and disables Save when the admin may only view resource servers', async () => {
+    renderWithProviders(
+      <CapabilitiesProvider capabilities={viewOnly}>
+        <ResourceServerEditPage />
+      </CapabilitiesProvider>,
+    );
+
+    fireEvent.click(screen.getByRole('tab', {name: 'Advanced'}));
+
+    expect(screen.queryByText('Danger zone')).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('Identifier'), {target: {value: 'https://new-api.example.com'}});
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', {name: 'Save'})).toBeDisabled();
+    });
   });
 
   it('does not render the Danger Zone for a read-only server', () => {

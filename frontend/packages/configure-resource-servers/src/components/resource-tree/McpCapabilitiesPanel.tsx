@@ -1,6 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {useCapabilitiesContext} from '@thunderid/contexts';
 import {
   Box,
   Button,
@@ -34,6 +35,7 @@ interface McpCapabilitiesPanelProps {
 
 export default function McpCapabilitiesPanel({resourceServer, onRefresh}: McpCapabilitiesPanelProps): JSX.Element {
   const {t} = useTranslation();
+  const {can} = useCapabilitiesContext();
   const [selectedNode, setSelectedNode] = useState<SelectedNode | null>(null);
   const [addDialog, setAddDialog] = useState<{
     mode: AddNodeMode;
@@ -60,7 +62,7 @@ export default function McpCapabilitiesPanel({resourceServer, onRefresh}: McpCap
 
   const isLoading = loadingActions;
   const isEmpty = serverActions.length === 0;
-  const readOnly = Boolean(resourceServer.isReadOnly);
+  const readOnly = Boolean(resourceServer.isReadOnly) || !can('rs', 'update');
 
   const effectiveSelectedNode = useMemo<SelectedNode | null>(() => {
     if (selectedNode) return selectedNode;

@@ -4,7 +4,7 @@
 import type {UseQueryResult, UseMutationResult} from '@tanstack/react-query';
 import userEvent from '@testing-library/user-event';
 import {useGetFlows} from '@thunderid/configure-flows';
-import {ProjectScopeProvider} from '@thunderid/contexts';
+import {CapabilitiesProvider, ProjectScopeProvider} from '@thunderid/contexts';
 import {render, screen, waitFor, fireEvent, within} from '@thunderid/test-utils';
 import {useState} from 'react';
 import {useNavigate} from 'react-router';
@@ -365,6 +365,12 @@ async function editFieldAndResetSection<P>(
 
   return {initialKey, keyAfterReset};
 }
+
+const viewOnly = {
+  can: (_resource: string, action = 'view') => action === 'view',
+  canManageRoot: false,
+  isLoading: false,
+};
 
 describe('ApplicationEditPage', () => {
   const mockApplication: Application = {
@@ -1199,6 +1205,25 @@ describe('ApplicationEditPage', () => {
 
       await waitFor(() => {
         expect(screen.getByRole('button', {name: /save changes/i})).toBeEnabled();
+      });
+    });
+
+    it('disables save when the admin may not update applications', async () => {
+      const user = userEvent.setup();
+      render(
+        <CapabilitiesProvider capabilities={viewOnly}>
+          <ApplicationEditPage />
+        </CapabilitiesProvider>,
+      );
+
+      const nameSection = screen.getByText('Test Application').closest('div');
+      await user.click(nameSection!.querySelector('button')!);
+      const nameInput = screen.getByRole('textbox');
+      await user.clear(nameInput);
+      await user.type(nameInput, 'Updated Application{Enter}');
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', {name: /save changes/i})).toBeDisabled();
       });
     });
 

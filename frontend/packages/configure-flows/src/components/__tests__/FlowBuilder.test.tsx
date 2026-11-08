@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {act, render, screen, fireEvent, waitFor} from '@testing-library/react';
-import {ProjectScopeProvider} from '@thunderid/contexts';
+import {CapabilitiesProvider, ProjectScopeProvider} from '@thunderid/contexts';
 import type {Node, Edge} from '@xyflow/react';
 import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
 import FlowConstants from '../../constants/FlowConstants';
@@ -172,7 +172,7 @@ vi.mock('../FlowCanvas', () => ({
     flowTitle: string;
     flowHandle: string;
     onFlowTitleChange: (name: string) => void;
-    onSave: (data: {nodes: Node[]; edges: Edge[]; viewport: {x: number; y: number; zoom: number}}) => void;
+    onSave?: (data: {nodes: Node[]; edges: Edge[]; viewport: {x: number; y: number; zoom: number}}) => void;
     nodes: Node[];
     edges: Edge[];
     onNodesChange: (changes: unknown[]) => void;
@@ -195,6 +195,7 @@ vi.mock('../FlowCanvas', () => ({
         <div data-testid="auto-layout">{String(triggerAutoLayoutOnLoad)}</div>
         <div data-testid="is-dirty">{String(Boolean(isDirty))}</div>
         <div data-testid="save-blocked">{saveBlockedReason ?? ''}</div>
+        <div data-testid="can-save">{String(Boolean(onSave))}</div>
         <div data-testid="nodes-count">{nodes.length}</div>
         <div data-testid="edges-count">{edges.length}</div>
         <button data-testid="change-title-btn" onClick={() => onFlowTitleChange('New Flow Name')} type="button">
@@ -202,7 +203,7 @@ vi.mock('../FlowCanvas', () => ({
         </button>
         <button
           data-testid="save-btn"
-          onClick={() => onSave({nodes, edges, viewport: {x: 0, y: 0, zoom: 1}})}
+          onClick={() => onSave?.({nodes, edges, viewport: {x: 0, y: 0, zoom: 1}})}
           type="button"
         >
           Save
@@ -1196,6 +1197,12 @@ describe('Save Functionality with Validation', () => {
   });
 });
 
+const viewOnly = {
+  can: (_resource: string, action = 'view') => action === 'view',
+  canManageRoot: false,
+  isLoading: false,
+};
+
 describe('Update Existing Flow', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -1224,6 +1231,25 @@ describe('Update Existing Flow', () => {
     await waitFor(() => {
       expect(mockUpdateFlowMutate).toHaveBeenCalled();
     });
+  });
+
+  it('withholds Save when the admin may not update flows', () => {
+    mockUseParams.mockReturnValue({flowId: 'existing-flow-123'});
+    mockExistingFlowData.value = {
+      id: 'existing-flow-123',
+      ouId: 'ou-1',
+      name: 'Existing Flow',
+      handle: 'existing-flow',
+      nodes: [],
+    };
+
+    render(
+      <CapabilitiesProvider capabilities={viewOnly}>
+        <FlowBuilder />
+      </CapabilitiesProvider>,
+    );
+
+    expect(screen.getByTestId('can-save')).toHaveTextContent('false');
   });
 
   it('should call createFlow for new flows without flowId', async () => {

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import userEvent from '@testing-library/user-event';
-import {ProjectScopeProvider} from '@thunderid/contexts';
+import {CapabilitiesProvider, ProjectScopeProvider} from '@thunderid/contexts';
 import {render, screen} from '@thunderid/test-utils';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import ThemeBuilderPage from '../ThemeBuilderPage';
@@ -96,6 +96,12 @@ vi.mock('../../components/themes/ThemeDeleteDialog', () => ({
     ) : null,
 }));
 
+const viewOnly = {
+  can: (_resource: string, action = 'view') => action === 'view',
+  canManageRoot: false,
+  isLoading: false,
+};
+
 describe('ThemeBuilderPage', () => {
   beforeEach(() => {
     mockThemeBuilderState.projectId = 'project-1';
@@ -158,6 +164,18 @@ describe('ThemeBuilderPage', () => {
       mockThemeBuilderState.isReadOnly = true;
       render(<ThemeBuilderPage />);
       expect(screen.queryByRole('button', {name: 'Delete'})).not.toBeInTheDocument();
+    });
+
+    it('hides Delete and disables Save when the admin may only view designs', () => {
+      mockThemeBuilderState.isDirty = true;
+      render(
+        <CapabilitiesProvider capabilities={viewOnly}>
+          <ThemeBuilderPage />
+        </CapabilitiesProvider>,
+      );
+
+      expect(screen.queryByRole('button', {name: 'Delete'})).not.toBeInTheDocument();
+      expect(screen.getByRole('button', {name: 'Save'})).toBeDisabled();
     });
 
     it('opens the delete dialog when Delete is clicked', async () => {

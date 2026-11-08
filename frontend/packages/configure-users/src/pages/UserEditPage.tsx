@@ -13,7 +13,7 @@ import {
   getInitials,
 } from '@thunderid/components';
 import {useOrganizationAccess} from '@thunderid/configure-resource-sharing';
-import {useProjectScope} from '@thunderid/contexts';
+import {useCapabilitiesContext, useProjectScope} from '@thunderid/contexts';
 import {useResolveDisplayName} from '@thunderid/hooks';
 import {useLogger} from '@thunderid/logger/react';
 import {useThunderID} from '@thunderid/react';
@@ -84,6 +84,7 @@ interface TabConfig {
 export default function UserEditPage() {
   const navigate = useNavigate();
   const {t} = useTranslation();
+  const {can} = useCapabilitiesContext();
   const logger = useLogger('UserEditPage');
   const {resolveDisplayName} = useResolveDisplayName({handlers: {t}});
   const {userId} = useParams<{userId: string}>();
@@ -463,7 +464,7 @@ export default function UserEditPage() {
     render: () => <EditOrganizationAccessSettings user={user} access={organizationAccess} />,
   });
 
-  if (!user.isReadOnly) {
+  if (!user.isReadOnly && can('user', 'delete')) {
     tabs.push({
       key: 'advanced',
       label: t('users:manageUser.tabs.advanced', 'Advanced'),
@@ -576,7 +577,7 @@ export default function UserEditPage() {
           savingLabel={t('users:manageUser.saving', 'Saving…')}
           isSaving={isSubmitting || updateUserMutation.isPending || organizationAccess.isSaving}
           resetDisabled={isSubmitting || updateUserMutation.isPending || organizationAccess.isSaving}
-          saveDisabled={user.isReadOnly === true}
+          saveDisabled={user.isReadOnly === true || !can('user', 'update')}
           error={
             (updateUserMutation.error
               ? getUserErrorMessage(

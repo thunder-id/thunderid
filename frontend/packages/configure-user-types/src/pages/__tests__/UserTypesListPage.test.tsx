@@ -1,6 +1,7 @@
 // Copyright 2025 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {CapabilitiesProvider} from '@thunderid/contexts';
 import {render, screen, waitFor, userEvent} from '@thunderid/test-utils';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import UserTypesListPage from '../UserTypesListPage';
@@ -36,6 +37,12 @@ vi.mock('../../components/UserTypesList', () => ({
   ),
 }));
 
+const viewOnly = {
+  can: (_resource: string, action = 'view') => action === 'view',
+  canManageRoot: false,
+  isLoading: false,
+};
+
 describe('UserTypesListPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -65,6 +72,16 @@ describe('UserTypesListPage', () => {
 
     const createButton = screen.getByRole('button', {name: /create user type/i});
     expect(createButton).toBeInTheDocument();
+  });
+
+  it('hides the create user type button when the admin may not create user types', () => {
+    render(
+      <CapabilitiesProvider capabilities={viewOnly}>
+        <UserTypesListPage />
+      </CapabilitiesProvider>,
+    );
+
+    expect(screen.queryByRole('button', {name: /create user type/i})).not.toBeInTheDocument();
   });
 
   it('renders UserTypesList component', () => {

@@ -1,6 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {CapabilitiesProvider} from '@thunderid/contexts';
 import {act, renderWithProviders, screen, userEvent, waitFor} from '@thunderid/test-utils';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import {page} from 'vitest/browser';
@@ -66,6 +67,12 @@ const types: AuthorizationDetailType[] = [
   },
 ];
 
+const viewOnly = {
+  can: (_resource: string, action = 'view') => action === 'view',
+  canManageRoot: false,
+  isLoading: false,
+};
+
 describe('AuthorizationDetailTypesList', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -127,6 +134,17 @@ describe('AuthorizationDetailTypesList', () => {
     expect(mockNavigate).toHaveBeenCalledTimes(1);
     expect(mockNavigate).toHaveBeenCalledWith('/authorization-detail-types/type-2');
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('hides the edit and delete actions when the admin may only view intents', () => {
+    renderWithProviders(
+      <CapabilitiesProvider capabilities={viewOnly}>
+        <AuthorizationDetailTypesList />
+      </CapabilitiesProvider>,
+    );
+
+    expect(screen.queryByRole('button', {name: 'Edit'})).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', {name: 'Delete'})).not.toBeInTheDocument();
   });
 
   it('opens the edit page of a type when its row is clicked', async () => {

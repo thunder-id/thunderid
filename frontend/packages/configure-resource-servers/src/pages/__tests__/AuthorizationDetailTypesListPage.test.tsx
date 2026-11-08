@@ -1,6 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {CapabilitiesProvider} from '@thunderid/contexts';
 import {renderWithProviders, screen, userEvent, waitFor} from '@thunderid/test-utils';
 import {beforeEach, describe, expect, it, vi} from 'vitest';
 import type {AuthorizationDetailTypeListResponse} from '../../models/authorization-detail-type';
@@ -52,6 +53,12 @@ const page: AuthorizationDetailTypeListResponse = {
   ],
 };
 
+const viewOnly = {
+  can: (_resource: string, action = 'view') => action === 'view',
+  canManageRoot: false,
+  isLoading: false,
+};
+
 describe('AuthorizationDetailTypesListPage', () => {
   beforeEach(() => {
     mockHttpRequest.mockReset();
@@ -84,6 +91,16 @@ describe('AuthorizationDetailTypesListPage', () => {
     await user.click(screen.getByRole('button', {name: 'Add intent'}));
     expect(mockNavigate).toHaveBeenCalledWith('/authorization-detail-types/create');
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('hides the add button when the admin may not create intents', () => {
+    renderWithProviders(
+      <CapabilitiesProvider capabilities={viewOnly}>
+        <AuthorizationDetailTypesListPage />
+      </CapabilitiesProvider>,
+    );
+
+    expect(screen.queryByRole('button', {name: 'Add intent'})).not.toBeInTheDocument();
   });
 
   it('sets the document title', async () => {

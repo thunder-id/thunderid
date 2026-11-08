@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {ProjectScopeProvider} from '@thunderid/contexts';
+import {CapabilitiesProvider, ProjectScopeProvider} from '@thunderid/contexts';
 import {fireEvent, render, screen, waitFor} from '@thunderid/test-utils';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import DesignPage from '../DesignPage';
@@ -64,6 +64,12 @@ vi.mock('@thunderid/design', () => ({
   useDeleteTheme: () => ({mutate: vi.fn(), reset: vi.fn(), isPending: false, isError: false}),
   useGetThemeUsages: () => ({data: undefined, isLoading: false}),
 }));
+
+const viewOnly = {
+  can: (_resource: string, action = 'view') => action === 'view',
+  canManageRoot: false,
+  isLoading: false,
+};
 
 describe('DesignPage', () => {
   beforeEach(() => {
@@ -178,6 +184,19 @@ describe('DesignPage', () => {
     await waitFor(() => {
       expect(mockNavigate).toHaveBeenCalledWith('/design/themes/create');
     });
+  });
+
+  it('hides Add theme and theme delete actions when the admin may only view designs', () => {
+    themesList = [{id: 'theme-1', displayName: 'Midnight'}];
+    render(
+      <CapabilitiesProvider capabilities={viewOnly}>
+        <DesignPage />
+      </CapabilitiesProvider>,
+    );
+
+    expect(screen.getByText('Midnight')).toBeInTheDocument();
+    expect(screen.queryByRole('button', {name: 'Add theme'})).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', {name: 'Delete'})).not.toBeInTheDocument();
   });
 
   it('renders skeleton placeholders while themes are loading', () => {

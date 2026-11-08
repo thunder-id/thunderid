@@ -1,6 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {useCapabilitiesContext} from '@thunderid/contexts';
 import {
   Box,
   CircularProgress,
@@ -42,6 +43,7 @@ interface ResourceTreeProps {
 
 function GenericResourceTree({resourceServer, onRefresh}: ResourceTreeProps): JSX.Element {
   const {t} = useTranslation();
+  const {can} = useCapabilitiesContext();
   const [selectedNode, setSelectedNode] = useState<SelectedNode | null>(null);
   const [addDialog, setAddDialog] = useState<{
     mode: AddNodeMode;
@@ -66,7 +68,7 @@ function GenericResourceTree({resourceServer, onRefresh}: ResourceTreeProps): JS
 
   const isLoading = loadingResources || loadingActions;
   const isEmpty = resources.length === 0 && serverActions.length === 0;
-  const readOnly = Boolean(resourceServer.isReadOnly);
+  const readOnly = Boolean(resourceServer.isReadOnly) || !can('rs', 'update');
 
   const effectiveSelectedNode = useMemo<SelectedNode | null>(() => {
     if (selectedNode) return selectedNode;

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {render, screen, fireEvent} from '@testing-library/react';
+import {CapabilitiesProvider} from '@thunderid/contexts';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import type {Application} from '../../../../models/application';
 import type {OAuth2Config} from '../../../../models/oauth';
@@ -76,6 +77,12 @@ vi.mock('../../../ClientSecretSuccessDialog', () => ({
       </div>
     ) : null,
 }));
+
+const viewOnly = {
+  can: (_resource: string, action = 'view') => action === 'view',
+  canManageRoot: false,
+  isLoading: false,
+};
 
 describe('EditCredentialsSettings', () => {
   const mockOnFieldChange = vi.fn();
@@ -242,6 +249,21 @@ describe('EditCredentialsSettings', () => {
           oauth2Config={confidentialOAuth2Config}
           onFieldChange={mockOnFieldChange}
         />,
+      );
+
+      expect(screen.getByRole('button', {name: /regenerate/i})).toBeDisabled();
+    });
+
+    it('disables the Regenerate button when the admin may not update applications', () => {
+      render(
+        <CapabilitiesProvider capabilities={viewOnly}>
+          <EditCredentialsSettings
+            application={buildApplication()}
+            editedApp={{}}
+            oauth2Config={confidentialOAuth2Config}
+            onFieldChange={mockOnFieldChange}
+          />
+        </CapabilitiesProvider>,
       );
 
       expect(screen.getByRole('button', {name: /regenerate/i})).toBeDisabled();

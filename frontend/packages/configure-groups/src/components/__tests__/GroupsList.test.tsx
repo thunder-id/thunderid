@@ -3,6 +3,7 @@
 
 import {screen, waitFor} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import {CapabilitiesProvider} from '@thunderid/contexts';
 import {renderWithProviders} from '@thunderid/test-utils';
 import type * as OxygenUI from '@wso2/oxygen-ui';
 import {describe, it, expect, beforeEach, afterEach, vi} from 'vitest';
@@ -122,6 +123,12 @@ const mockLogger = {error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn()
 vi.mock('@thunderid/logger/react', () => ({
   useLogger: () => mockLogger,
 }));
+
+const viewOnly = {
+  can: (_resource: string, action = 'view') => action === 'view',
+  canManageRoot: false,
+  isLoading: false,
+};
 
 describe('GroupsList', () => {
   const mockGroupsData: GroupListResponse = {
@@ -244,6 +251,17 @@ describe('GroupsList', () => {
     const deleteButtons = screen.getAllByRole('button', {name: /Delete/i});
     expect(editButtons.length).toBeGreaterThanOrEqual(2);
     expect(deleteButtons.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('should hide the edit and delete row actions when the admin may only view groups', () => {
+    renderWithProviders(
+      <CapabilitiesProvider capabilities={viewOnly}>
+        <GroupsList />
+      </CapabilitiesProvider>,
+    );
+
+    expect(screen.queryByRole('button', {name: /Edit/i})).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', {name: /Delete/i})).not.toBeInTheDocument();
   });
 
   it('should navigate to group on edit button click', async () => {

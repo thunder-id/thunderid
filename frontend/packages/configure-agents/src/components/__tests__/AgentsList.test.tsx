@@ -3,6 +3,7 @@
 
 import userEvent from '@testing-library/user-event';
 import {DeployStatusProvider} from '@thunderid/components';
+import {CapabilitiesProvider} from '@thunderid/contexts';
 import {render, screen, waitFor} from '@thunderid/test-utils';
 import type {NavigateFunction} from 'react-router';
 import {describe, it, expect, beforeEach, vi} from 'vitest';
@@ -144,6 +145,12 @@ vi.mock('@thunderid/logger/react', async (importOriginal) => ({
 const {default: useGetAgents} = await import('../../api/useGetAgents');
 const {useNavigate} = await import('react-router');
 const {useDataGridLocaleText} = await import('@thunderid/hooks');
+
+const viewOnly = {
+  can: (_resource: string, action = 'view') => action === 'view',
+  canManageRoot: false,
+  isLoading: false,
+};
 
 describe('AgentsList', () => {
   let mockNavigate: ReturnType<typeof vi.fn>;
@@ -384,6 +391,24 @@ describe('AgentsList', () => {
     renderComponent();
 
     expect(screen.getByText('-')).toBeInTheDocument();
+  });
+
+  it('hides the edit and delete row actions when the admin may only view agents', () => {
+    vi.mocked(useGetAgents).mockReturnValue({
+      data: mockAgentsData,
+      isLoading: false,
+      error: null,
+    } as ReturnType<typeof useGetAgents>);
+
+    render(
+      <CapabilitiesProvider capabilities={viewOnly}>
+        <AgentsList />
+      </CapabilitiesProvider>,
+    );
+
+    expect(screen.getByRole('grid')).toBeInTheDocument();
+    expect(screen.queryByRole('button', {name: /delete/i})).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', {name: /edit/i})).not.toBeInTheDocument();
   });
 
   it('should open delete dialog when clicking Delete action', async () => {

@@ -11,10 +11,12 @@ import {
   type PipelineStage,
 } from '@thunderid/configure-gateways';
 import {ProjectSwitcher, useProjectSelection} from '@thunderid/configure-projects';
-import {ProjectScopeProvider, useConfig} from '@thunderid/contexts';
+import {CapabilitiesProvider, ProjectScopeProvider, useConfig} from '@thunderid/contexts';
+import {useCapabilities} from '@thunderid/hooks';
 import {useLogger} from '@thunderid/logger/react';
 import {SignOutButton, User, useThunderID} from '@thunderid/react';
 import {
+  Alert,
   AppShell,
   Box,
   Button,
@@ -58,7 +60,7 @@ import {
   Wallet,
   Workflow,
 } from '@wso2/oxygen-ui-icons-react';
-import {useEffect, useMemo, useState, type JSX, type ReactNode} from 'react';
+import {useCallback, useEffect, useMemo, useState, type JSX, type ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
 import {Link as NavigateLink, Outlet, useLocation, useMatch, useNavigate} from 'react-router';
 import GatewaySwitcher from './components/GatewaySwitcher';
@@ -88,6 +90,10 @@ interface NavRoute {
   text: string;
   icon: JSX.Element;
   path?: string;
+  /** The catalog resource the page shows; the entry is hidden from admins who can't view it. */
+  resource?: string;
+  /** Shown only to admins who can manage the APIs only the root `system` permission reaches. */
+  rootOnly?: boolean;
   children?: NavRoute[];
   /** A short note beside the entry, such as how many of its changes are not deployed yet. */
   badge?: string;
@@ -106,6 +112,11 @@ function SidebarFooterButtons(): ReactNode {
   const {t} = useTranslation();
   const navigate = useNavigate();
   const {collapsed} = useSidebar();
+  const {canManageRoot, isLoading} = useCapabilities();
+
+  if (!isLoading && !canManageRoot) {
+    return null;
+  }
 
   const buttonSx = collapsed ? ICON_BUTTON_SX : FULL_BUTTON_SX;
 
@@ -241,42 +252,49 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
   const appRoutes: NavCategory[] = useMemo(() => {
     const applications: NavRoute = {
       id: 'applications',
+      resource: 'app',
       text: t('navigation:pages.applications'),
       icon: <LayoutGrid />,
       path: RouteConfig.applications.list(),
     };
     const agents: NavRoute = {
       id: 'agents',
+      resource: 'agent',
       text: t('navigation:pages.agents', 'Agents'),
       icon: <Bot />,
       path: RouteConfig.agents.list(),
     };
     const resourceServers: NavRoute = {
       id: 'resource-servers',
+      resource: 'rs',
       text: t('navigation:pages.resourceServers', 'Resource servers'),
       icon: <Server />,
       path: RouteConfig.resourceServers.list(),
     };
     const roles: NavRoute = {
       id: 'roles',
+      resource: 'role',
       text: t('navigation:pages.roles'),
       icon: <ShieldCheck />,
       path: RouteConfig.roles.list(),
     };
     const flows: NavRoute = {
       id: 'flows',
+      resource: 'flow',
       text: t('navigation:pages.flows'),
       icon: <Workflow />,
       path: RouteConfig.flows.list(),
     };
     const groups: NavRoute = {
       id: 'groups',
+      resource: 'group',
       text: t('navigation:pages.groups', 'Groups'),
       icon: <Group />,
       path: RouteConfig.groups.list(),
     };
     const design: NavRoute = {
       id: 'design',
+      resource: 'design',
       text: t('navigation:pages.design', 'Design'),
       icon: <Palette />,
       path: RouteConfig.design.list(),
@@ -288,12 +306,14 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
       children: [
         {
           id: 'email-templates',
+          resource: 'notificationtemplate',
           text: t('navigation:pages.emailTemplates', 'Email templates'),
           icon: <Mail />,
           path: RouteConfig.notificationTemplates.channel('email'),
         },
         {
           id: 'sms-templates',
+          resource: 'notificationtemplate',
           text: t('navigation:pages.smsTemplates', 'SMS templates'),
           icon: <MessageSquare />,
           path: RouteConfig.notificationTemplates.channel('sms'),
@@ -332,6 +352,7 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
           routes: [
             {
               id: 'gateway-overview',
+              resource: 'gateway',
               text: t('navigation:pages.overview', 'Overview'),
               icon: <Circle fill={color.light} stroke={color.light} />,
               path: section('overview'),
@@ -343,6 +364,7 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
           routes: [
             {
               id: 'gateway-values',
+              rootOnly: true,
               text: t('navigation:pages.variablesAndSecrets', 'Variables & secrets'),
               icon: <KeyRound />,
               path: section('values'),
@@ -354,6 +376,7 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
           routes: [
             {
               id: 'gateway-endpoints',
+              resource: 'gateway',
               text: t('navigation:pages.endpoints', 'Endpoints'),
               icon: <Globe />,
               path: section('endpoints'),
@@ -365,12 +388,14 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
           routes: [
             {
               id: 'gateway-explore',
+              resource: 'configversion',
               text: t('navigation:pages.deployedConfiguration', 'Deployed configuration'),
               icon: <Compass />,
               path: section('explore'),
             },
             {
               id: 'gateway-history',
+              resource: 'configversion',
               text: t('navigation:pages.deploymentHistory', 'Deployment history'),
               icon: <History />,
               path: section('history'),
@@ -397,6 +422,7 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
           routes: [
             {
               id: 'project-gateways',
+              resource: 'project',
               text: t('navigation:pages.deploymentPipeline', 'Deployment pipeline'),
               icon: <FolderKanban />,
               path: RouteConfig.projects.home(project.id),
@@ -423,6 +449,7 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
               children: [
                 {
                   id: 'credentials',
+                  resource: 'vc',
                   text: t('navigation:pages.credentials', 'Templates'),
                   icon: <IdCard />,
                   path: RouteConfig.verifiableCredentials.list(),
@@ -430,6 +457,7 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
                 },
                 {
                   id: 'presentations',
+                  resource: 'vc',
                   text: t('navigation:pages.presentations', 'Presentations'),
                   icon: <ShieldCheck />,
                   path: RouteConfig.verifiablePresentations.list(),
@@ -444,6 +472,7 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
           routes: [
             {
               id: 'users',
+              resource: 'user',
               text: t('navigation:pages.users', 'Users'),
               icon: <UsersRound />,
               path: RouteConfig.users.list(),
@@ -451,6 +480,7 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
             groups,
             {
               id: 'organization-units',
+              resource: 'ou',
               text: t('navigation:pages.organizationUnits', 'Organization units'),
               icon: <Building />,
               path: RouteConfig.organizationUnits.list(),
@@ -483,12 +513,14 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
         routes: [
           {
             id: 'users',
+            resource: 'user',
             text: t('navigation:pages.administrators', 'Administrators'),
             icon: <UsersRound />,
             path: RouteConfig.users.list(),
           },
           {
             id: 'gateways',
+            resource: 'gateway',
             text: t('navigation:pages.gateways', 'Deployment'),
             icon: <Network />,
             path: RouteConfig.gateways.list(),
@@ -501,6 +533,7 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
           groups,
           {
             id: 'user-types',
+            resource: 'usertype',
             text: t('navigation:pages.userTypes'),
             icon: <UserRoundCog />,
             path: RouteConfig.userTypes.list(),
@@ -513,12 +546,14 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
         routes: [
           {
             id: 'connections',
+            resource: 'connection',
             text: t('navigation:pages.connections'),
             icon: <Layers />,
             path: RouteConfig.connections.list(),
           },
           {
             id: 'translations',
+            resource: 'i18n',
             text: t('navigation:pages.translations'),
             icon: <Languages />,
             path: RouteConfig.translations.list(),
@@ -534,6 +569,7 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
         routes: [
           {
             id: 'settings',
+            resource: 'serverconfig',
             text: t('navigation:pages.settings', 'Settings'),
             icon: <Settings />,
             path: RouteConfig.settings.list(),
@@ -561,6 +597,28 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
     clearSelection,
   ]);
 
+  const capabilities = useCapabilities();
+  const {can, canManageRoot, isLoading: isLoadingCapabilities} = capabilities;
+  const isVisible = useCallback(
+    (route: NavRoute): boolean =>
+      isLoadingCapabilities || (route.rootOnly ? canManageRoot : !route.resource || can(route.resource)),
+    [can, canManageRoot, isLoadingCapabilities],
+  );
+
+  // The navigation the admin may see: entries for pages they can't view, and groups left empty, are hidden.
+  const visibleRoutes: NavCategory[] = useMemo(
+    () =>
+      appRoutes
+        .map((group) => ({
+          ...group,
+          routes: group.routes
+            .map((route) => (route.children ? {...route, children: route.children.filter(isVisible)} : route))
+            .filter((route) => (route.children ? route.children.length > 0 : isVisible(route))),
+        }))
+        .filter((group) => group.routes.length > 0),
+    [appRoutes, isVisible],
+  );
+
   const {pathname} = useLocation();
 
   // Resolve the active leaf item by the longest matching path prefix, so nested
@@ -575,6 +633,15 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
       .sort((a, b) => b.path.length - a.path.length)[0];
     return match?.id;
   }, [appRoutes, pathname]);
+
+  const activeRoute = useMemo(
+    () =>
+      appRoutes
+        .flatMap((group) => group.routes.flatMap((route) => route.children ?? [route]))
+        .find((route) => route.id === activeItem),
+    [appRoutes, activeItem],
+  );
+  const isPageForbidden = !isLoadingCapabilities && activeRoute !== undefined && !isVisible(activeRoute);
 
   const [expandedMenus, setExpandedMenus] = useState<Record<string, boolean>>({});
   const handleToggleExpand = (id: string): void => {
@@ -687,7 +754,7 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
         {/* Wide enough for the longest page names, such as a gateway's deployed configuration, to show whole. */}
         <Sidebar width={272} activeItem={activeItem} expandedMenus={expandedMenus} onToggleExpand={handleToggleExpand}>
           <Sidebar.Nav>
-            {appRoutes.map((categoryGroup) => (
+            {visibleRoutes.map((categoryGroup) => (
               <Sidebar.Category key={categoryGroup.category}>
                 {categoryGroup.category && <Sidebar.CategoryLabel>{categoryGroup.category}</Sidebar.CategoryLabel>}
                 {categoryGroup.routes.map((route) =>
@@ -724,7 +791,17 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
 
       <AppShell.Main>
         <SignInOnUnauthorized />
-        <Outlet />
+        {isPageForbidden ? (
+          <Box sx={{p: 3}}>
+            <Alert severity="warning">
+              {t('navigation:forbidden.description', 'You do not have permission to view this page.')}
+            </Alert>
+          </Box>
+        ) : (
+          <CapabilitiesProvider capabilities={capabilities}>
+            <Outlet />
+          </CapabilitiesProvider>
+        )}
       </AppShell.Main>
 
       <AppShell.Footer>

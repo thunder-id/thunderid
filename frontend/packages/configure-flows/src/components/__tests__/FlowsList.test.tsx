@@ -4,7 +4,7 @@
 /* eslint-disable react/require-default-props */
 
 import {render, screen, fireEvent, waitFor} from '@testing-library/react';
-import {ProjectScopeProvider} from '@thunderid/contexts';
+import {CapabilitiesProvider, ProjectScopeProvider} from '@thunderid/contexts';
 import {DataGrid} from '@wso2/oxygen-ui';
 import {MemoryRouter} from 'react-router';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
@@ -227,6 +227,12 @@ vi.mock('@wso2/oxygen-ui', async () => {
     },
   };
 });
+
+const viewOnly = {
+  can: (_resource: string, action = 'view') => action === 'view',
+  canManageRoot: false,
+  isLoading: false,
+};
 
 describe('FlowsList', () => {
   beforeEach(() => {
@@ -494,6 +500,24 @@ describe('FlowsList', () => {
         actionsColumn!.renderCell!({row: mockFlowsData.flows[1]} as DataGrid.GridRenderCellParams<BasicFlowDefinition>),
       );
       expect(regContainer.querySelectorAll('button').length).toBeGreaterThan(0);
+    });
+
+    it('omits the delete row action when the admin may not delete flows', () => {
+      render(
+        <CapabilitiesProvider capabilities={viewOnly}>
+          <MemoryRouter>
+            <FlowsList />
+          </MemoryRouter>
+        </CapabilitiesProvider>,
+      );
+
+      const actionsColumn = capturedColumns.value.find((col) => col.field === 'actions');
+      const {container} = render(
+        actionsColumn!.renderCell!({row: mockFlowsData.flows[0]} as DataGrid.GridRenderCellParams<BasicFlowDefinition>),
+      );
+
+      expect(container.querySelectorAll('button').length).toBe(1);
+      expect(container.querySelector('[aria-label="Delete"]')).toBeNull();
     });
 
     it('should render a read-only flow with a single view action that navigates', async () => {

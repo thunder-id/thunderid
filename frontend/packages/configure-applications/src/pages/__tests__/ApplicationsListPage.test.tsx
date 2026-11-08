@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import userEvent from '@testing-library/user-event';
+import {CapabilitiesProvider} from '@thunderid/contexts';
 import {render, screen, waitFor} from '@thunderid/test-utils';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import ApplicationsListPage from '../ApplicationsListPage';
@@ -36,6 +37,12 @@ vi.mock('react-i18next', () => ({
   }),
 }));
 
+const viewOnly = {
+  can: (_resource: string, action = 'view') => action === 'view',
+  canManageRoot: false,
+  isLoading: false,
+};
+
 describe('ApplicationsListPage', () => {
   const renderWithProviders = () => render(<ApplicationsListPage />);
 
@@ -66,6 +73,16 @@ describe('ApplicationsListPage', () => {
       renderWithProviders();
 
       expect(screen.getByRole('button', {name: /Create Application/i})).toBeInTheDocument();
+    });
+
+    it('hides the Create Application button when the admin may not create applications', () => {
+      render(
+        <CapabilitiesProvider capabilities={viewOnly}>
+          <ApplicationsListPage />
+        </CapabilitiesProvider>,
+      );
+
+      expect(screen.queryByRole('button', {name: /Create Application/i})).not.toBeInTheDocument();
     });
 
     it('should render the ApplicationsList component', () => {

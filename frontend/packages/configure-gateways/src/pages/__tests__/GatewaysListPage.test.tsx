@@ -3,6 +3,7 @@
 
 import {focusManager} from '@tanstack/react-query';
 import userEvent from '@testing-library/user-event';
+import {CapabilitiesProvider} from '@thunderid/contexts';
 import {renderWithProviders, screen, waitFor, within} from '@thunderid/test-utils';
 import {beforeEach, describe, expect, it, vi} from 'vitest';
 import {apiError, createHttpRouter, SERVER_URL, type HttpCall} from '../../__tests__/http';
@@ -46,6 +47,12 @@ beforeEach(() => {
   mockNavigate.mockResolvedValue(undefined);
 });
 
+const viewOnly = {
+  can: (_resource: string, action = 'view') => action === 'view',
+  canManageRoot: false,
+  isLoading: false,
+};
+
 describe('GatewaysListPage', () => {
   it('lists the gateways, marking the default, and nothing about what they run', async () => {
     mockHttpRequest.mockImplementation(createHttpRouter(routes));
@@ -71,6 +78,20 @@ describe('GatewaysListPage', () => {
 
     await user.click(screen.getAllByRole('button', {name: 'Edit'})[1]);
     expect(mockNavigate).toHaveBeenCalledWith('/gateways/gw-2');
+  });
+
+  it('offers no register, edit or delete when the admin may only view gateways', async () => {
+    mockHttpRequest.mockImplementation(createHttpRouter(routes));
+    renderWithProviders(
+      <CapabilitiesProvider capabilities={viewOnly}>
+        <GatewaysListPage />
+      </CapabilitiesProvider>,
+    );
+
+    expect(await screen.findByText('production')).toBeInTheDocument();
+    expect(screen.queryByRole('button', {name: 'Register gateway'})).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', {name: 'Edit'})).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', {name: 'Delete'})).not.toBeInTheDocument();
   });
 
   it('confirms before removing a gateway', async () => {

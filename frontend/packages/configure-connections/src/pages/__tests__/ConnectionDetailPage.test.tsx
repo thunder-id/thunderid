@@ -1,6 +1,7 @@
 // Copyright 2025 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {CapabilitiesProvider} from '@thunderid/contexts';
 import {fireEvent, render, screen, waitFor, within} from '@thunderid/test-utils';
 import {type ReactNode, useEffect} from 'react';
 import {beforeEach, describe, expect, it, vi} from 'vitest';
@@ -460,6 +461,12 @@ vi.mock('../../components/SubjectMappingSection', () => ({
   },
 }));
 
+const viewOnly = {
+  can: (_resource: string, action = 'view') => action === 'view',
+  canManageRoot: false,
+  isLoading: false,
+};
+
 describe('ConnectionDetailPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -686,6 +693,19 @@ describe('ConnectionDetailPage', () => {
     render(<ConnectionDetailPage />);
     fireEvent.click(screen.getByTestId('connection-tab-advanced'));
     expect(screen.getByTestId('connection-delete-button')).toBeInTheDocument();
+  });
+
+  it('omits the advanced tab and disables save when the admin may only view connections', () => {
+    render(
+      <CapabilitiesProvider capabilities={viewOnly}>
+        <ConnectionDetailPage />
+      </CapabilitiesProvider>,
+    );
+
+    expect(screen.queryByTestId('connection-tab-advanced')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('edit-client-id'));
+    expect(screen.getByTestId('save-bar')).toBeDisabled();
   });
 
   it('shows the Configured status under the name in the card style, with no redundant subtitle', () => {

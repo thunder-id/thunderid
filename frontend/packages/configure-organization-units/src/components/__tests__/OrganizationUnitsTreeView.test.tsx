@@ -1,6 +1,7 @@
 // Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {CapabilitiesProvider} from '@thunderid/contexts';
 import {screen, fireEvent, waitFor, within, renderWithProviders, renderHook} from '@thunderid/test-utils';
 import {useTranslation} from 'react-i18next';
 import {describe, it, expect, vi, beforeEach, beforeAll} from 'vitest';
@@ -89,6 +90,12 @@ vi.mock('@/api/useDeleteOrganizationUnit', () => ({
 }));
 
 const mockRefetchOrganizationUnits = vi.fn();
+
+const viewOnly = {
+  can: (_resource: string, action = 'view') => action === 'view',
+  canManageRoot: false,
+  isLoading: false,
+};
 
 describe('OrganizationUnitsTreeView', () => {
   let t: (key: string) => string;
@@ -244,6 +251,23 @@ describe('OrganizationUnitsTreeView', () => {
     expect(screen.getAllByLabelText(t('organizationUnits:listing.treeView.addChild'))).toHaveLength(2);
     expect(screen.getAllByLabelText(t('common:actions.edit'))).toHaveLength(2);
     expect(screen.getAllByLabelText(t('common:actions.delete'))).toHaveLength(2);
+  });
+
+  it('should hide the add, edit and delete actions when the admin may only view organization units', async () => {
+    renderWithProviders(
+      <CapabilitiesProvider capabilities={viewOnly}>
+        <OrganizationUnitsTreeView />
+      </CapabilitiesProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Root Organization')).toBeInTheDocument();
+    });
+
+    expect(screen.queryByLabelText(t('organizationUnits:listing.treeView.addChild'))).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(t('common:actions.edit'))).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(t('common:actions.delete'))).not.toBeInTheDocument();
+    expect(screen.queryByText(t('organizationUnits:listing.addRootOrganizationUnit'))).not.toBeInTheDocument();
   });
 
   it('should navigate to create page with parentId when add child action is clicked', async () => {
@@ -644,6 +668,31 @@ describe('OrganizationUnitsTreeView', () => {
     await waitFor(() => {
       expect(screen.getByText(t('organizationUnits:listing.treeView.addChildOrganizationUnit'))).toBeInTheDocument();
     });
+  });
+
+  it('should not add the add child row to an expanded node when the admin may not create organization units', async () => {
+    mockHttpRequest.mockResolvedValue({
+      data: {totalResults: 0, startIndex: 1, count: 0, organizationUnits: []} satisfies OrganizationUnitListResponse,
+    });
+
+    renderWithProviders(
+      <CapabilitiesProvider capabilities={viewOnly}>
+        <OrganizationUnitsTreeView />
+      </CapabilitiesProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Root Organization')).toBeInTheDocument();
+    });
+
+    fireEvent.click(document.querySelectorAll('.MuiTreeItem-iconContainer')[0]);
+
+    await waitFor(() => {
+      expect(mockHttpRequest).toHaveBeenCalled();
+    });
+    expect(
+      screen.queryByText(t('organizationUnits:listing.treeView.addChildOrganizationUnit')),
+    ).not.toBeInTheDocument();
   });
 
   it('should show add root row in empty state', async () => {

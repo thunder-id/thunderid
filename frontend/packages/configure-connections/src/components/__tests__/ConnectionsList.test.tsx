@@ -1,6 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {CapabilitiesProvider} from '@thunderid/contexts';
 import {fireEvent, render, screen, within} from '@thunderid/test-utils';
 import {beforeEach, describe, expect, it, vi} from 'vitest';
 import type {ConnectionInstance} from '../../models/connection';
@@ -56,6 +57,12 @@ function chipLabels(): string[] {
 function selectCategory(label: string): void {
   fireEvent.click(within(screen.getByTestId('connection-category-filters')).getByText(label));
 }
+
+const viewOnly = {
+  can: (_resource: string, action = 'view') => action === 'view',
+  canManageRoot: false,
+  isLoading: false,
+};
 
 describe('ConnectionsList', () => {
   beforeEach(() => {
@@ -144,6 +151,19 @@ describe('ConnectionsList', () => {
     render(<ConnectionsList />);
 
     expect(screen.getByTestId('connection-add-custom-card')).toBeInTheDocument();
+  });
+
+  it('offers only configured connections when the admin may not create connections', () => {
+    mockConnections([OIDC_FEDERATION]);
+    render(
+      <CapabilitiesProvider capabilities={viewOnly}>
+        <ConnectionsList />
+      </CapabilitiesProvider>,
+    );
+
+    expect(screen.getByTestId('connection-card-oidc:c1')).toBeInTheDocument();
+    expect(screen.queryByTestId('connection-card-google')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('connection-add-custom-card')).not.toBeInTheDocument();
   });
 
   it('opens the create wizard when the add-custom card is activated', () => {

@@ -1,7 +1,7 @@
 // Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {useConfig} from '@thunderid/contexts';
+import {useCapabilitiesContext, useConfig} from '@thunderid/contexts';
 import {Stack} from '@wso2/oxygen-ui';
 import {useState} from 'react';
 import AudienceSection from './AudienceSection';
@@ -94,6 +94,7 @@ export default function EditAdvancedSettings({
   onDeleteSuccess = undefined,
 }: EditAdvancedSettingsProps) {
   const {config} = useConfig();
+  const {can} = useCapabilitiesContext();
 
   // Redirect URIs, identity assertions, and passkeys validate independently; each is tracked
   // separately so one resolving doesn't clobber the other's still-invalid state when both report
@@ -186,9 +187,11 @@ export default function EditAdvancedSettings({
           onValidationChange={setPasskeysInvalid}
         />
         <MetadataSection application={application} />
-        {!application.isReadOnly && !isSystemConsoleClient(oauth2Config?.clientId, config?.client?.client_id) && (
-          <DangerZoneSection onDeleteClick={() => setDeleteDialogOpen(true)} />
-        )}
+        {!application.isReadOnly &&
+          can('app', 'delete') &&
+          !isSystemConsoleClient(oauth2Config?.clientId, config?.client?.client_id) && (
+            <DangerZoneSection onDeleteClick={() => setDeleteDialogOpen(true)} />
+          )}
       </Stack>
 
       {/* Delete Application Confirmation Dialog */}

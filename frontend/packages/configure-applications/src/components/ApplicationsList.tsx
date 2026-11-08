@@ -8,7 +8,7 @@ import {
   ResourceDeployStatus,
   useDeployStatusSource,
 } from '@thunderid/components';
-import {useConfig} from '@thunderid/contexts';
+import {useCapabilitiesContext, useConfig} from '@thunderid/contexts';
 import {useDataGridLocaleText} from '@thunderid/hooks';
 import {useLogger} from '@thunderid/logger/react';
 import {Box, Chip, IconButton, Tooltip, Typography, ListingTable, DataGrid} from '@wso2/oxygen-ui';
@@ -29,6 +29,7 @@ export default function ApplicationsList(): JSX.Element {
   const routes = useApplicationRoutes();
   const navigate = useNavigate();
   const {config} = useConfig();
+  const {can} = useCapabilitiesContext();
   const {t} = useTranslation();
   const logger = useLogger('ApplicationsList');
   const dataGridLocaleText = useDataGridLocaleText();
@@ -175,19 +176,21 @@ export default function ApplicationsList(): JSX.Element {
               </Tooltip>
             ) : (
               <>
-                <Tooltip title={t('common:actions.edit', 'Edit')}>
-                  <IconButton
-                    aria-label={t('common:actions.edit', 'Edit')}
-                    size="small"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleEditClick(params.row.id);
-                    }}
-                  >
-                    <Pencil size={16} />
-                  </IconButton>
-                </Tooltip>
-                {!isSystemConsoleClient(params.row.clientId, consoleClientId) && (
+                {can('app', 'update') && (
+                  <Tooltip title={t('common:actions.edit', 'Edit')}>
+                    <IconButton
+                      aria-label={t('common:actions.edit', 'Edit')}
+                      size="small"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleEditClick(params.row.id);
+                      }}
+                    >
+                      <Pencil size={16} />
+                    </IconButton>
+                  </Tooltip>
+                )}
+                {can('app', 'delete') && !isSystemConsoleClient(params.row.clientId, consoleClientId) && (
                   <Tooltip title={t('common:actions.delete', 'Delete')}>
                     <IconButton
                       aria-label={t('common:actions.delete', 'Delete')}
@@ -208,7 +211,7 @@ export default function ApplicationsList(): JSX.Element {
         ),
       },
     ],
-    [consoleClientId, deploys, handleDeleteClick, handleEditClick, t],
+    [can, consoleClientId, deploys, handleDeleteClick, handleEditClick, t],
   );
 
   if (error) {

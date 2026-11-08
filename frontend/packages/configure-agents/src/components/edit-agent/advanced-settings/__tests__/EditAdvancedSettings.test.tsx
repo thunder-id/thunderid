@@ -3,6 +3,7 @@
 
 import userEvent from '@testing-library/user-event';
 import type {OAuth2Config, OAuth2Token} from '@thunderid/configure-applications';
+import {CapabilitiesProvider} from '@thunderid/contexts';
 import {render, screen} from '@thunderid/test-utils';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import type {Agent, AgentInboundAuthConfig, OAuthAgentConfig} from '../../../../models/agent';
@@ -90,6 +91,12 @@ vi.mock('../../../AgentDeleteDialog', () => ({
       </button>
     ) : null,
 }));
+
+const viewOnly = {
+  can: (_resource: string, action = 'view') => action === 'view',
+  canManageRoot: false,
+  isLoading: false,
+};
 
 describe('EditAdvancedSettings', () => {
   const mockAgent: Agent = {
@@ -621,6 +628,21 @@ describe('EditAdvancedSettings', () => {
           oauth2Config={{grantTypes: ['authorization_code'], responseTypes: ['code']}}
           onFieldChange={mockOnFieldChange}
         />,
+      );
+
+      expect(screen.queryByTestId('danger-zone-section')).not.toBeInTheDocument();
+    });
+
+    it('does not render the Danger Zone when the admin may not delete agents', () => {
+      render(
+        <CapabilitiesProvider capabilities={viewOnly}>
+          <EditAdvancedSettings
+            agent={mockAgent}
+            editedAgent={{}}
+            oauth2Config={{grantTypes: ['authorization_code'], responseTypes: ['code']}}
+            onFieldChange={mockOnFieldChange}
+          />
+        </CapabilitiesProvider>,
       );
 
       expect(screen.queryByTestId('danger-zone-section')).not.toBeInTheDocument();

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-return */
+import {CapabilitiesProvider} from '@thunderid/contexts';
 import {render, screen, waitFor, userEvent} from '@thunderid/test-utils';
 import type * as OxygenUI from '@wso2/oxygen-ui';
 import {type ReactElement, type ReactNode} from 'react';
@@ -173,6 +174,12 @@ vi.mock('../../../organization-units/api/useGetOrganizationUnits', () => ({
   default: () => mockUseGetOrganizationUnits(),
 }));
 
+const viewOnly = {
+  can: (_resource: string, action = 'view') => action === 'view',
+  canManageRoot: false,
+  isLoading: false,
+};
+
 describe('UserTypesList', () => {
   const mockUserTypesData: UserTypeListResponse = {
     totalResults: 2,
@@ -336,6 +343,18 @@ describe('UserTypesList', () => {
     // The component uses inline delete buttons instead of a menu
     const deleteButtons = screen.getAllByRole('button', {name: /delete/i});
     expect(deleteButtons.length).toBeGreaterThan(0);
+  });
+
+  it('hides the edit and delete row actions when the admin may only view user types', () => {
+    render(
+      <CapabilitiesProvider capabilities={viewOnly}>
+        <UserTypesList />
+      </CapabilitiesProvider>,
+    );
+
+    expect(screen.getByTestId('row-schema1')).toHaveTextContent('Employee Schema');
+    expect(screen.queryByRole('button', {name: /edit/i})).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', {name: /delete/i})).not.toBeInTheDocument();
   });
 
   it('navigates to edit page when row is clicked', async () => {

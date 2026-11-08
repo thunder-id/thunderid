@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {DocumentTitle, ExternalLink} from '@thunderid/components';
+import {useCapabilitiesContext} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {Stack, Button, PageContent, PageTitle} from '@wso2/oxygen-ui';
 import {Plus} from '@wso2/oxygen-ui-icons-react';
@@ -16,6 +17,7 @@ export default function RolesListPage(): JSX.Element {
   const {t} = useTranslation();
   const logger = useLogger('RolesListPage');
   const routes = useRoleRoutes();
+  const {can} = useCapabilitiesContext();
 
   return (
     <PageContent>
@@ -27,19 +29,21 @@ export default function RolesListPage(): JSX.Element {
         </PageTitle.SubHeader>
         <PageTitle.Actions>
           <Stack direction="row" spacing={2}>
-            <Button
-              variant="contained"
-              startIcon={<Plus size={18} />}
-              onClick={() => {
-                (async () => {
-                  await navigate(routes.roles.create());
-                })().catch((error: unknown) => {
-                  logger.error('Failed to navigate to create role page', {error});
-                });
-              }}
-            >
-              {t('roles:listing.addRole')}
-            </Button>
+            {can('role', 'create') && (
+              <Button
+                variant="contained"
+                startIcon={<Plus size={18} />}
+                onClick={() => {
+                  (async () => {
+                    await navigate(routes.roles.create());
+                  })().catch((error: unknown) => {
+                    logger.error('Failed to navigate to create role page', {error});
+                  });
+                }}
+              >
+                {t('roles:listing.addRole')}
+              </Button>
+            )}
           </Stack>
         </PageTitle.Actions>
       </PageTitle>

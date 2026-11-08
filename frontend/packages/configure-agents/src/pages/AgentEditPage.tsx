@@ -19,7 +19,7 @@ import {
   validateBackchannelLogoutUri,
 } from '@thunderid/configure-applications';
 import {dropNonConformingOptionalAttributes} from '@thunderid/configure-users';
-import {useProjectScope} from '@thunderid/contexts';
+import {useCapabilitiesContext, useProjectScope} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {getErrorMessage, isEqualIgnoringEmpty} from '@thunderid/utils';
 import {
@@ -86,6 +86,7 @@ function TabPanel({children = null, value, index, ...other}: TabPanelProps) {
 export default function AgentEditPage(): JSX.Element {
   const routes = useAgentRoutes();
   const {t} = useTranslation();
+  const {can} = useCapabilitiesContext();
   const navigate = useNavigate();
   const location = useLocation();
   const logger = useLogger('AgentEditPage');
@@ -595,7 +596,7 @@ export default function AgentEditPage(): JSX.Element {
           saveLabel={t('agents:edit.page.save', 'Save')}
           savingLabel={t('agents:edit.page.saving', 'Saving…')}
           isSaving={updateAgent.isPending}
-          saveDisabled={hasAnyValidationError || agent.isReadOnly === true}
+          saveDisabled={hasAnyValidationError || agent.isReadOnly === true || !can('agent', 'update')}
           error={
             updateAgent.error
               ? (getBackchannelLogoutUriServerError(updateAgent.error, tForErrors) ??

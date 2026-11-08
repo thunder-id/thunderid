@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {ProjectScopeProvider} from '@thunderid/contexts';
+import {CapabilitiesProvider, ProjectScopeProvider} from '@thunderid/contexts';
 import {render, screen} from '@thunderid/test-utils';
 import {describe, it, expect, vi} from 'vitest';
 import VerifiableCredentialsListPage from '../VerifiableCredentialsListPage';
@@ -12,7 +12,23 @@ vi.mock('../../components/VerifiableCredentialsList', () => ({
   ),
 }));
 
+const viewOnly = {
+  can: (_resource: string, action = 'view') => action === 'view',
+  canManageRoot: false,
+  isLoading: false,
+};
+
 describe('VerifiableCredentialsListPage', () => {
+  it('hides the Add template button when the admin may not create templates', () => {
+    render(
+      <CapabilitiesProvider capabilities={viewOnly}>
+        <VerifiableCredentialsListPage />
+      </CapabilitiesProvider>,
+    );
+
+    expect(screen.queryByRole('button', {name: 'Add template'})).not.toBeInTheDocument();
+  });
+
   it('hides the wallet QR action in the list by default', () => {
     render(<VerifiableCredentialsListPage />);
 

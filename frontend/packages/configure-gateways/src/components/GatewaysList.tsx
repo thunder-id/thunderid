@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {QueryErrorNotice} from '@thunderid/components';
+import {useCapabilitiesContext} from '@thunderid/contexts';
 import {useDataGridLocaleText} from '@thunderid/hooks';
 import {useLogger} from '@thunderid/logger/react';
 import {Chip, DataGrid, IconButton, ListingTable, Stack, Tooltip, Typography} from '@wso2/oxygen-ui';
@@ -22,6 +23,7 @@ export default function GatewaysList(): JSX.Element {
   const {t} = useTranslation();
   const tForErrors = useGatewayErrorTranslator();
   const logger = useLogger('GatewaysList');
+  const {can} = useCapabilitiesContext();
   const dataGridLocaleText = useDataGridLocaleText();
   const {data, isLoading, error, refetch} = useGetGateways();
   const [deleteTarget, setDeleteTarget] = useState<Gateway | null>(null);
@@ -87,36 +89,40 @@ export default function GatewaysList(): JSX.Element {
         hideable: false,
         renderCell: (params: DataGrid.GridRenderCellParams<Gateway>): JSX.Element => (
           <ListingTable.RowActions>
-            <Tooltip title={t('common:actions.edit', 'Edit')}>
-              <IconButton
-                size="small"
-                aria-label={t('common:actions.edit', 'Edit')}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  openDetail(params.row.id);
-                }}
-              >
-                <Pencil size={16} />
-              </IconButton>
-            </Tooltip>
-            <Tooltip title={t('common:actions.delete', 'Delete')}>
-              <IconButton
-                size="small"
-                color="error"
-                aria-label={t('common:actions.delete', 'Delete')}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setDeleteTarget(params.row);
-                }}
-              >
-                <Trash2 size={16} />
-              </IconButton>
-            </Tooltip>
+            {can('gateway', 'update') && (
+              <Tooltip title={t('common:actions.edit', 'Edit')}>
+                <IconButton
+                  size="small"
+                  aria-label={t('common:actions.edit', 'Edit')}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    openDetail(params.row.id);
+                  }}
+                >
+                  <Pencil size={16} />
+                </IconButton>
+              </Tooltip>
+            )}
+            {can('gateway', 'delete') && (
+              <Tooltip title={t('common:actions.delete', 'Delete')}>
+                <IconButton
+                  size="small"
+                  color="error"
+                  aria-label={t('common:actions.delete', 'Delete')}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setDeleteTarget(params.row);
+                  }}
+                >
+                  <Trash2 size={16} />
+                </IconButton>
+              </Tooltip>
+            )}
           </ListingTable.RowActions>
         ),
       },
     ],
-    [t, openDetail],
+    [can, t, openDetail],
   );
 
   // A refetch that fails keeps the gateways already read, so the list stays and says so above it.

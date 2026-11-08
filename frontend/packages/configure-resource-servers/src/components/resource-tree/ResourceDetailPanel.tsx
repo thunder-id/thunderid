@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {useToast} from '@thunderid/contexts';
+import {useCapabilitiesContext, useToast} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {getErrorMessage} from '@thunderid/utils';
 import {
@@ -53,6 +53,7 @@ interface DetailFormProps {
 
 function DetailForm({selectedNode, resourceServer, onRefresh}: DetailFormProps): JSX.Element {
   const {t} = useTranslation();
+  const {can} = useCapabilitiesContext();
   const {showToast} = useToast();
   const logger = useLogger('ResourceDetailPanel');
 
@@ -410,7 +411,7 @@ function DetailForm({selectedNode, resourceServer, onRefresh}: DetailFormProps):
           <Button variant="outlined" size="small" onClick={resetForm} disabled={isPending}>
             {t('common:actions.reset', 'Reset')}
           </Button>
-          <Button variant="contained" size="small" onClick={handleSave} disabled={isPending}>
+          <Button variant="contained" size="small" onClick={handleSave} disabled={isPending || !can('rs', 'update')}>
             {isPending ? t('common:saving', 'Saving…') : t('common:save', 'Save')}
           </Button>
         </Box>

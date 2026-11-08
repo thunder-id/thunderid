@@ -8,7 +8,7 @@ import {
   SettingsCard,
   UnsavedChangesBar,
 } from '@thunderid/components';
-import {useProjectScope, useToast} from '@thunderid/contexts';
+import {useCapabilitiesContext, useProjectScope, useToast} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {getErrorMessage, isEqualIgnoringEmpty} from '@thunderid/utils';
 import {
@@ -77,6 +77,7 @@ export default function ResourceServerEditPage(): JSX.Element {
   const navigate = useNavigate();
   const routes = useResourceServerRoutes();
   const {t} = useTranslation();
+  const {can} = useCapabilitiesContext();
   const {showToast} = useToast();
   const logger = useLogger('ResourceServerEditPage');
 
@@ -460,7 +461,7 @@ export default function ResourceServerEditPage(): JSX.Element {
           onPDPConnectionChange={(v) => handleFieldChange('pdpConnectionId', v)}
         />
 
-        {!resourceServer.isReadOnly && (
+        {!resourceServer.isReadOnly && can('rs', 'delete') && (
           <SettingsCard
             title={t('resourceServers:edit.dangerZone.title', 'Danger zone')}
             description={
@@ -515,7 +516,7 @@ export default function ResourceServerEditPage(): JSX.Element {
           saveLabel={t('common:save', 'Save')}
           savingLabel={t('common:saving', 'Saving…')}
           isSaving={updateRs.isPending}
-          saveDisabled={Boolean(resourceServer.isReadOnly) || isIdentifierInvalid}
+          saveDisabled={Boolean(resourceServer.isReadOnly) || isIdentifierInvalid || !can('rs', 'update')}
           error={
             updateRs.error
               ? getErrorMessage(updateRs.error, tForErrors, 'edit.saveError', 'Failed to save changes.')

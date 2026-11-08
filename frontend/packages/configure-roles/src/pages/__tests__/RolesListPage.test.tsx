@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import userEvent from '@testing-library/user-event';
+import {CapabilitiesProvider} from '@thunderid/contexts';
 import {render, screen, waitFor} from '@thunderid/test-utils';
 import type {NavigateFunction} from 'react-router';
 import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
@@ -45,6 +46,12 @@ vi.mock('react-i18next', () => ({
 
 const {useNavigate} = await import('react-router');
 
+const viewOnly = {
+  can: (_resource: string, action = 'view') => action === 'view',
+  canManageRoot: false,
+  isLoading: false,
+};
+
 describe('RolesListPage', () => {
   let mockNavigate: ReturnType<typeof vi.fn>;
 
@@ -73,6 +80,16 @@ describe('RolesListPage', () => {
     render(<RolesListPage />);
 
     expect(screen.getByRole('button', {name: /add role/i})).toBeInTheDocument();
+  });
+
+  it('should hide the Add Role button when the admin may not create roles', () => {
+    render(
+      <CapabilitiesProvider capabilities={viewOnly}>
+        <RolesListPage />
+      </CapabilitiesProvider>,
+    );
+
+    expect(screen.queryByRole('button', {name: /add role/i})).not.toBeInTheDocument();
   });
 
   it('should navigate to create page when Add Role button is clicked', async () => {

@@ -9,6 +9,7 @@ import {
   SettingsCard,
   UnsavedChangesBar,
 } from '@thunderid/components';
+import {useCapabilitiesContext} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {
   Alert,
@@ -163,6 +164,7 @@ function AuthorizationDetailTypeEditor({
   const navigate = useNavigate();
   const routes = useAuthorizationDetailTypeRoutes();
   const {t} = useTranslation();
+  const {can} = useCapabilitiesContext();
   const logger = useLogger('AuthorizationDetailTypeEditPage');
   const updateType = useUpdateAuthorizationDetailType();
   const form = useAuthorizationDetailTypeForm(detailType);
@@ -552,7 +554,7 @@ function AuthorizationDetailTypeEditor({
             />
           ))}
           {/* A read-only type has nothing to show on the Advanced tab. */}
-          {!readOnly && (
+          {!readOnly && can('authzdetail', 'delete') && (
             <Tab
               label={t('authorizationDetailTypes:edit.tab.advanced', 'Advanced')}
               id={`authorization-detail-type-tab-${TAB_ADVANCED}`}
@@ -608,7 +610,7 @@ function AuthorizationDetailTypeEditor({
           </SettingsCard>
         </TabPanel>
 
-        {!readOnly && (
+        {!readOnly && can('authzdetail', 'delete') && (
           <TabPanel value={activeTab} index={TAB_ADVANCED}>
             <SettingsCard
               title={t('authorizationDetailTypes:edit.dangerZone.title', 'Danger zone')}
@@ -657,7 +659,7 @@ function AuthorizationDetailTypeEditor({
           saveLabel={t('common:save', 'Save')}
           savingLabel={t('common:saving', 'Saving…')}
           isSaving={saving}
-          saveDisabled={readOnly || remote === 'deleted'}
+          saveDisabled={readOnly || remote === 'deleted' || !can('authzdetail', 'update')}
           error={
             // An error about one value is shown beside the value, so the bar shows only the others.
             (form.saveErrorTarget ? null : form.saveError) ??

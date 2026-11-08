@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {DocumentTitle, PageLoadingAnimation, QueryErrorNotice, UnsavedChangesBar} from '@thunderid/components';
+import {useCapabilitiesContext} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {
   getContactTypesMissingRegex,
@@ -141,6 +142,7 @@ export default function ViewUserTypePage(): JSX.Element {
   const navigate = useNavigate();
   const {t} = useTranslation();
   const logger = useLogger('ViewUserTypePage');
+  const {can} = useCapabilitiesContext();
   const {id} = useParams<{id: string}>();
   const routes = useUserTypeRoutes();
   const listUrl = routes.list();
@@ -573,7 +575,11 @@ export default function ViewUserTypePage(): JSX.Element {
         </TabPanel>
 
         <TabPanel value={activeTab} index={2}>
-          <EditAdvancedSettings onDeleteClick={userType.isReadOnly ? undefined : () => setDeleteDialogOpen(true)} />
+          <EditAdvancedSettings
+            onDeleteClick={
+              userType.isReadOnly || !can('usertype', 'delete') ? undefined : () => setDeleteDialogOpen(true)
+            }
+          />
         </TabPanel>
       </>
 
@@ -625,7 +631,7 @@ export default function ViewUserTypePage(): JSX.Element {
           saveLabel={t('common:actions.save', 'Save')}
           savingLabel={t('common:status.saving', 'Saving...')}
           isSaving={updateUserTypeMutation.isPending}
-          saveDisabled={userType.isReadOnly === true}
+          saveDisabled={userType.isReadOnly === true || !can('usertype', 'update')}
           error={
             validationError ??
             (updateUserTypeMutation.error

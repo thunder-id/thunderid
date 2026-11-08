@@ -3,6 +3,7 @@
 
 import {screen, waitFor, fireEvent} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import {CapabilitiesProvider} from '@thunderid/contexts';
 import {renderWithProviders} from '@thunderid/test-utils';
 import type {ReactNode} from 'react';
 import {describe, it, expect, beforeEach, afterEach, vi} from 'vitest';
@@ -122,11 +123,13 @@ vi.mock('../../components/edit-group/members-settings/EditMembersSettings', () =
 }));
 
 vi.mock('../../components/edit-group/advanced-settings/EditAdvancedSettings', () => ({
-  default: ({onDeleteClick}: {onDeleteClick: () => void}) => (
+  default: ({onDeleteClick = undefined}: {onDeleteClick?: () => void}) => (
     <div data-testid="advanced-settings">
-      <button type="button" data-testid="delete-click" onClick={onDeleteClick}>
-        Delete
-      </button>
+      {onDeleteClick && (
+        <button type="button" data-testid="delete-click" onClick={onDeleteClick}>
+          Delete
+        </button>
+      )}
     </div>
   ),
 }));
@@ -137,6 +140,12 @@ const mockGroup = {
   description: 'A test group',
   ouId: 'ou-1',
   members: [],
+};
+
+const viewOnly = {
+  can: (_resource: string, action = 'view') => action === 'view',
+  canManageRoot: false,
+  isLoading: false,
 };
 
 describe('GroupEditPage', () => {
@@ -259,6 +268,27 @@ describe('GroupEditPage', () => {
     await waitFor(() => {
       expect(screen.getByTestId('delete-dialog')).toBeInTheDocument();
     });
+  });
+
+  it('should hide delete and disable save when the admin may only view groups', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(
+      <CapabilitiesProvider capabilities={viewOnly}>
+        <GroupEditPage />
+      </CapabilitiesProvider>,
+    );
+
+    await user.click(screen.getByText('Advanced'));
+    expect(screen.queryByTestId('delete-click')).not.toBeInTheDocument();
+
+    const h3Heading = screen.getAllByText('Test Group').find((el) => el.tagName === 'H3');
+    await user.click(h3Heading!.parentElement!.querySelector('button')!);
+    const nameInput = screen.getByDisplayValue('Test Group');
+    await user.clear(nameInput);
+    await user.type(nameInput, 'New Name');
+    await user.keyboard('{Enter}');
+
+    expect(await screen.findByRole('button', {name: 'Save changes'})).toBeDisabled();
   });
 
   it('should close delete dialog', async () => {

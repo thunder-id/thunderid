@@ -1,6 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {useCapabilitiesContext} from '@thunderid/contexts';
 import {formatRelativeTime} from '@thunderid/utils';
 import {ListingCard} from '@wso2/oxygen-ui';
 import type {ReactNode} from 'react';
@@ -21,6 +22,7 @@ export interface ProjectCardProps {
  */
 export default function ProjectCard({project, selected = false, onOpen, onDelete}: ProjectCardProps): ReactNode {
   const {t, i18n} = useTranslation();
+  const {can} = useCapabilitiesContext();
   const created = new Date(project.createdAt);
   const hasCreated = !Number.isNaN(created.getTime());
 
@@ -30,7 +32,7 @@ export default function ProjectCard({project, selected = false, onOpen, onDelete
       description={project.description ?? project.handle}
       selected={selected}
       onClick={() => onOpen(project)}
-      onDelete={() => onDelete(project)}
+      onDelete={can('project', 'delete') ? () => onDelete(project) : undefined}
       deleteLabel={t('projects:delete.action', 'Delete {{name}}', {name: project.displayName})}
       {...(hasCreated && {
         updatedLabel: t('projects:listing.created', 'Created'),

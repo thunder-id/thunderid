@@ -1,6 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {CapabilitiesProvider} from '@thunderid/contexts';
 import {render, screen, userEvent, within} from '@thunderid/test-utils';
 import {describe, it, expect, beforeEach, vi} from 'vitest';
 import {PROJECT_SELECTION_STORAGE_KEY} from '../../hooks/useProjectSelection';
@@ -33,6 +34,12 @@ vi.mock('react-i18next', () => ({
 function project(id: string, displayName: string): Project {
   return {id, handle: id, displayName, createdAt: new Date().toISOString()};
 }
+
+const viewOnly = {
+  can: (_resource: string, action = 'view') => action === 'view',
+  canManageRoot: false,
+  isLoading: false,
+};
 
 describe('ProjectsListPage', () => {
   beforeEach(() => {
@@ -111,6 +118,18 @@ describe('ProjectsListPage', () => {
 
     expect(screen.getByRole('dialog')).toHaveTextContent('projects:delete.title');
     expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it('hides the add button and card delete actions when the admin may only view projects', () => {
+    render(
+      <CapabilitiesProvider capabilities={viewOnly}>
+        <ProjectsListPage />
+      </CapabilitiesProvider>,
+    );
+
+    expect(screen.getByTestId('project-card-shop')).toBeInTheDocument();
+    expect(screen.queryByRole('button', {name: 'projects:listing.add'})).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', {name: 'projects:delete.action'})).not.toBeInTheDocument();
   });
 
   it('says so when there are no projects', () => {

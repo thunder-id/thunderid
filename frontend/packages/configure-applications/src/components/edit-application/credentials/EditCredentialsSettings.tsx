@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {SettingsCard} from '@thunderid/components';
-import {useConfig} from '@thunderid/contexts';
+import {useCapabilitiesContext, useConfig} from '@thunderid/contexts';
 import {Button, FormControl, FormLabel, Stack, TextField, Typography} from '@wso2/oxygen-ui';
 import {useCallback, useState} from 'react';
 import {useTranslation} from 'react-i18next';
@@ -76,6 +76,7 @@ export default function EditCredentialsSettings({
   onValidationChange = undefined,
 }: EditCredentialsSettingsProps) {
   const {config} = useConfig();
+  const {can} = useCapabilitiesContext();
   const {t} = useTranslation();
 
   const [regenerateDialogOpen, setRegenerateDialogOpen] = useState(false);
@@ -248,7 +249,7 @@ export default function EditCredentialsSettings({
                   variant="contained"
                   color="error"
                   onClick={handleSecretRegenerateClick}
-                  disabled={Boolean(application.isReadOnly) || isConsoleClient}
+                  disabled={Boolean(application.isReadOnly) || isConsoleClient || !can('app', 'update')}
                   sx={{flex: '0 0 20%'}}
                 >
                   {t('applications:edit.general.sections.dangerZone.regenerateSecret.button', 'Regenerate')}

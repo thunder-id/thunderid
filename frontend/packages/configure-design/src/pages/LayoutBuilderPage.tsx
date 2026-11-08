@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {BuilderLayout, BuilderStaticPanel, DocumentTitle} from '@thunderid/components';
-import {useProjectScope} from '@thunderid/contexts';
+import {useCapabilitiesContext, useProjectScope} from '@thunderid/contexts';
 import {useGetThemes, useGetTheme, type Stylesheet} from '@thunderid/design';
 import {Autocomplete, Box, Button, IconButton, TextField, Tooltip, Typography, useColorScheme} from '@wso2/oxygen-ui';
 import {ArrowLeft, Crosshair, Layers, Save} from '@wso2/oxygen-ui-icons-react';
@@ -24,6 +24,7 @@ export default function LayoutBuilderPage(): JSX.Element {
   const {mode, systemMode} = useColorScheme();
   const navigate = useNavigate();
   const routes = useDesignRoutes();
+  const {can} = useCapabilitiesContext();
 
   const {
     layoutId,
@@ -268,7 +269,7 @@ export default function LayoutBuilderPage(): JSX.Element {
         <Button
           variant="contained"
           // size="small"
-          disabled={!isDirty}
+          disabled={!isDirty || !can('design', 'update')}
           startIcon={<Save size={18} />}
           onClick={() => saveHandlerRef.current()}
         >

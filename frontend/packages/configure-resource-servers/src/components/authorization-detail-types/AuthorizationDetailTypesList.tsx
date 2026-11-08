@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {QueryErrorNotice} from '@thunderid/components';
+import {useCapabilitiesContext} from '@thunderid/contexts';
 import {useDataGridLocaleText} from '@thunderid/hooks';
 import {useLogger} from '@thunderid/logger/react';
 import {Box, DataGrid, IconButton, ListingTable, Stack, Tooltip, Typography} from '@wso2/oxygen-ui';
@@ -24,6 +25,7 @@ export default function AuthorizationDetailTypesList(): JSX.Element {
   const routes = useAuthorizationDetailTypeRoutes();
   const logger = useLogger('AuthorizationDetailTypesList');
   const dataGridLocaleText = useDataGridLocaleText();
+  const {can} = useCapabilitiesContext();
   const [paginationModel, setPaginationModel] = useState<DataGrid.GridPaginationModel>({pageSize: 10, page: 0});
   const {data, isLoading, isPlaceholderData, error, refetch} = useGetAuthorizationDetailTypes({
     limit: paginationModel.pageSize,
@@ -142,38 +144,42 @@ export default function AuthorizationDetailTypesList(): JSX.Element {
               </Tooltip>
             ) : (
               <>
-                <Tooltip title={t('common:actions.edit', 'Edit')}>
-                  <IconButton
-                    size="small"
-                    aria-label={t('common:actions.edit', 'Edit')}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      openEditor(params.row);
-                    }}
-                  >
-                    <Pencil size={16} />
-                  </IconButton>
-                </Tooltip>
-                <Tooltip title={t('common:actions.delete', 'Delete')}>
-                  <IconButton
-                    size="small"
-                    color="error"
-                    aria-label={t('common:actions.delete', 'Delete')}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setDeleteTarget(params.row);
-                    }}
-                  >
-                    <Trash2 size={16} />
-                  </IconButton>
-                </Tooltip>
+                {can('authzdetail', 'update') && (
+                  <Tooltip title={t('common:actions.edit', 'Edit')}>
+                    <IconButton
+                      size="small"
+                      aria-label={t('common:actions.edit', 'Edit')}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openEditor(params.row);
+                      }}
+                    >
+                      <Pencil size={16} />
+                    </IconButton>
+                  </Tooltip>
+                )}
+                {can('authzdetail', 'delete') && (
+                  <Tooltip title={t('common:actions.delete', 'Delete')}>
+                    <IconButton
+                      size="small"
+                      color="error"
+                      aria-label={t('common:actions.delete', 'Delete')}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDeleteTarget(params.row);
+                      }}
+                    >
+                      <Trash2 size={16} />
+                    </IconButton>
+                  </Tooltip>
+                )}
               </>
             )}
           </ListingTable.RowActions>
         ),
       },
     ],
-    [t, openEditor],
+    [can, t, openEditor],
   );
 
   return (

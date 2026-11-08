@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import userEvent from '@testing-library/user-event';
-import {ProjectScopeProvider} from '@thunderid/contexts';
+import {CapabilitiesProvider, ProjectScopeProvider} from '@thunderid/contexts';
 import {render, screen, waitFor} from '@thunderid/test-utils';
 import type {NavigateFunction} from 'react-router';
 import {describe, it, expect, beforeEach, vi} from 'vitest';
@@ -131,6 +131,12 @@ const {default: useGetRoles} = await import('../../api/useGetRoles');
 const {useNavigate} = await import('react-router');
 const {useDataGridLocaleText} = await import('@thunderid/hooks');
 
+const viewOnly = {
+  can: (_resource: string, action = 'view') => action === 'view',
+  canManageRoot: false,
+  isLoading: false,
+};
+
 describe('RolesList', () => {
   let mockNavigate: ReturnType<typeof vi.fn>;
 
@@ -218,6 +224,24 @@ describe('RolesList', () => {
 
     const dashElements = screen.getAllByText('-');
     expect(dashElements.length).toBeGreaterThan(0);
+  });
+
+  it('should hide the edit and delete row actions when the admin may only view roles', () => {
+    vi.mocked(useGetRoles).mockReturnValue({
+      data: mockRolesData,
+      isLoading: false,
+      error: null,
+    } as ReturnType<typeof useGetRoles>);
+
+    render(
+      <CapabilitiesProvider capabilities={viewOnly}>
+        <RolesList />
+      </CapabilitiesProvider>,
+    );
+
+    expect(screen.getByText('Admin Role')).toBeInTheDocument();
+    expect(screen.queryByRole('button', {name: /edit/i})).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', {name: /delete/i})).not.toBeInTheDocument();
   });
 
   it('should open delete dialog when clicking Delete action', async () => {

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {DocumentTitle} from '@thunderid/components';
-import {useProjectScope} from '@thunderid/contexts';
+import {useCapabilitiesContext, useProjectScope} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {Button, PageContent, PageTitle} from '@wso2/oxygen-ui';
 import {Plus} from '@wso2/oxygen-ui-icons-react';
@@ -39,6 +39,7 @@ export default function NotificationTemplatesListPage({
   const navigate = useNavigate();
   const logger = useLogger('NotificationTemplatesListPage');
   const routes = useNotificationTemplateRoutes();
+  const {can} = useCapabilitiesContext();
   const {channel: channelParam} = useParams<{channel: string}>();
   const channel = isNotificationChannel(channelParam) ? channelParam : 'email';
   const {projectId} = useProjectScope();
@@ -71,7 +72,7 @@ export default function NotificationTemplatesListPage({
       <PageTitle>
         <PageTitle.Header>{title}</PageTitle.Header>
         <PageTitle.SubHeader>{subtitle}</PageTitle.SubHeader>
-        {canCreate && (
+        {canCreate && can('notificationtemplate', 'create') && (
           <PageTitle.Actions>
             <Button
               data-testid="notification-template-add-button"

@@ -9,6 +9,7 @@ import {
   applyGrantTypesChange,
   isIdJagEnabled,
 } from '@thunderid/configure-applications';
+import {useCapabilitiesContext} from '@thunderid/contexts';
 import {Box, FormControlLabel, Stack, Switch, Typography} from '@wso2/oxygen-ui';
 import {useEffect, useState} from 'react';
 import {useTranslation} from 'react-i18next';
@@ -44,6 +45,7 @@ export default function EditAdvancedSettings({
   onIdentityAssertionsValidationChange = undefined,
 }: EditAdvancedSettingsProps) {
   const {t} = useTranslation();
+  const {can} = useCapabilitiesContext();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const isUnlocked = hasDelegationGrant(oauth2Config?.grantTypes);
 
@@ -154,7 +156,9 @@ export default function EditAdvancedSettings({
           onValidationChange={onIdentityAssertionsValidationChange}
         />
       )}
-      {!agent.isReadOnly && <DangerZoneSection onDeleteClick={() => setDeleteDialogOpen(true)} />}
+      {!agent.isReadOnly && can('agent', 'delete') && (
+        <DangerZoneSection onDeleteClick={() => setDeleteDialogOpen(true)} />
+      )}
 
       <AgentDeleteDialog
         open={deleteDialogOpen}

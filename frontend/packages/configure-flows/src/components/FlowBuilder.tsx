@@ -9,7 +9,7 @@ import {
 } from '@thunderid/components';
 import {useEmailProviders, useIdentityProviders, useSMSProviders} from '@thunderid/configure-connections';
 import {useOrganizationAccess} from '@thunderid/configure-resource-sharing';
-import {useProjectScope} from '@thunderid/contexts';
+import {useCapabilitiesContext, useProjectScope} from '@thunderid/contexts';
 import {getErrorMessage} from '@thunderid/utils';
 import {Alert, Box, Snackbar, Stack} from '@wso2/oxygen-ui';
 import type {Edge, Node, NodeChange} from '@xyflow/react';
@@ -68,6 +68,7 @@ function FlowBuilder() {
   const location = useLocation();
   const navigate = useNavigate();
   const flowRoutes = useFlowRoutes();
+  const {can} = useCapabilitiesContext();
   const draftFlow = (location.state as {draftFlow?: CreateFlowRequest} | null)?.draftFlow;
   const isDraftFlow = routeFlowId === 'new' && Boolean(draftFlow);
   const flowId = isDraftFlow ? undefined : routeFlowId;
@@ -900,7 +901,7 @@ function FlowBuilder() {
             onWidgetLoad={handleWidgetLoad}
             onStepLoad={handleStepLoad}
             onResourceAdd={handleResourceAdd}
-            onSave={existingFlowData?.isReadOnly ? undefined : saveFlow}
+            onSave={existingFlowData?.isReadOnly || !can('flow', flowId ? 'update' : 'create') ? undefined : saveFlow}
             nodes={displayNodes}
             sourceNodes={nodes}
             sourceEdges={edges}

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import userEvent from '@testing-library/user-event';
+import {CapabilitiesProvider} from '@thunderid/contexts';
 import {render, screen} from '@thunderid/test-utils';
 import type {NavigateFunction, Params} from 'react-router';
 import {describe, it, expect, beforeEach, vi} from 'vitest';
@@ -89,6 +90,12 @@ const mockIdJagEnabled = (idJagEnabled: boolean): void => {
     isError: false,
     refetch: mockRefetch,
   } as unknown as ReturnType<typeof useTrustedIssuer>);
+};
+
+const viewOnly = {
+  can: (_resource: string, action = 'view') => action === 'view',
+  canManageRoot: false,
+  isLoading: false,
 };
 
 describe('TrustedIssuerDetailPage', () => {
@@ -275,6 +282,23 @@ describe('TrustedIssuerDetailPage', () => {
 
     expect(mockMutate).toHaveBeenCalledWith(expect.objectContaining({name: 'Updated Acme Okta'}), expect.any(Object));
     expect(mockMutate.mock.calls[0]?.[0]).not.toHaveProperty('ouId');
+  });
+
+  it('should hide delete and disable save when the admin may only view connections', async () => {
+    const user = userEvent.setup();
+    render(
+      <CapabilitiesProvider capabilities={viewOnly}>
+        <TrustedIssuerDetailPage />
+      </CapabilitiesProvider>,
+    );
+
+    expect(screen.queryByTestId('trusted-issuer-delete-button')).not.toBeInTheDocument();
+
+    const nameField = screen.getByLabelText(/^Name/);
+    await user.clear(nameField);
+    await user.type(nameField, 'Updated Acme Okta');
+
+    expect(await screen.findByRole('button', {name: 'Save changes'})).toBeDisabled();
   });
 
   it('should navigate back to connections when Back is clicked', async () => {

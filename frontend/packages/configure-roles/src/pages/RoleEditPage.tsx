@@ -5,7 +5,7 @@ import {useIsMutating} from '@tanstack/react-query';
 import {DocumentTitle, PageLoadingAnimation, QueryErrorNotice, UnsavedChangesBar} from '@thunderid/components';
 import {arePermissionsEqual, type ResourcePermissions} from '@thunderid/configure-resource-servers';
 import {useOrganizationAccess} from '@thunderid/configure-resource-sharing';
-import {useProjectScope} from '@thunderid/contexts';
+import {useCapabilitiesContext, useProjectScope} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {getErrorMessage, isEqualIgnoringEmpty} from '@thunderid/utils';
 import {
@@ -68,6 +68,7 @@ export default function RoleEditPage(): JSX.Element {
   const routes = useRoleRoutes();
   const {t} = useTranslation('roles');
   const logger = useLogger('RoleEditPage');
+  const {can} = useCapabilitiesContext();
 
   const {data: role, isLoading, error: fetchError, refetch} = useGetRole(roleId ?? '');
   const {projectId} = useProjectScope();
@@ -414,7 +415,11 @@ export default function RoleEditPage(): JSX.Element {
         </TabPanel>
 
         <TabPanel value={activeTab} index={2}>
-          <EditAssignmentsSettings roleId={role.id} ouId={role.ouId} isReadOnly={role.isReadOnly} />
+          <EditAssignmentsSettings
+            roleId={role.id}
+            ouId={role.ouId}
+            isReadOnly={role.isReadOnly === true || !can('role', 'update')}
+          />
         </TabPanel>
 
         <TabPanel value={activeTab} index={ORGANIZATION_ACCESS_TAB_INDEX}>
@@ -422,7 +427,9 @@ export default function RoleEditPage(): JSX.Element {
         </TabPanel>
 
         <TabPanel value={activeTab} index={4}>
-          <EditAdvancedSettings onDeleteClick={role.isReadOnly ? undefined : () => setDeleteDialogOpen(true)} />
+          <EditAdvancedSettings
+            onDeleteClick={role.isReadOnly || !can('role', 'delete') ? undefined : () => setDeleteDialogOpen(true)}
+          />
         </TabPanel>
       </>
 
@@ -443,7 +450,7 @@ export default function RoleEditPage(): JSX.Element {
           savingLabel={t('edit.page.saving', 'Saving...')}
           isSaving={isSubmitting || updateRole.isPending || organizationAccess.isSaving}
           resetDisabled={isSubmitting || updateRole.isPending || organizationAccess.isSaving}
-          saveDisabled={isRoleUpdating || role.isReadOnly === true}
+          saveDisabled={isRoleUpdating || role.isReadOnly === true || !can('role', 'update')}
           error={
             (updateRole.error
               ? getErrorMessage(updateRole.error, t, 'update.error', 'Failed to update role. Please try again.')

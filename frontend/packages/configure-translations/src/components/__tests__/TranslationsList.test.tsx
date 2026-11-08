@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import userEvent from '@testing-library/user-event';
+import {CapabilitiesProvider} from '@thunderid/contexts';
 import {render, renderHook, screen, fireEvent} from '@thunderid/test-utils';
 import {useTranslation} from 'react-i18next';
 import {describe, expect, it, vi, beforeAll, beforeEach} from 'vitest';
@@ -106,6 +107,12 @@ vi.mock('@/components/TranslationDeleteDialog', () => ({
   },
 }));
 
+const viewOnly = {
+  can: (_resource: string, action = 'view') => action === 'view',
+  canManageRoot: false,
+  isLoading: false,
+};
+
 describe('TranslationsList', () => {
   let t: (key: string) => string;
 
@@ -122,6 +129,17 @@ describe('TranslationsList', () => {
 
     expect(screen.getByTestId('row-fr-FR')).toBeInTheDocument();
     expect(screen.getByTestId('row-de-DE')).toBeInTheDocument();
+  });
+
+  it('hides the edit and delete row actions when the admin may only view translations', () => {
+    render(
+      <CapabilitiesProvider capabilities={viewOnly}>
+        <TranslationsList />
+      </CapabilitiesProvider>,
+    );
+
+    expect(screen.queryByRole('button', {name: /edit/i})).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', {name: /delete/i})).not.toBeInTheDocument();
   });
 
   it('navigates to the edit page when a row is clicked', () => {
