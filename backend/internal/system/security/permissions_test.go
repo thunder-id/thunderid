@@ -779,6 +779,7 @@ func TestGetRequiredPermissionForAPI(t *testing.T) {
 		// ---- Self-service paths (empty permission = any authenticated user) ----
 		{name: "GET /users/me self-service", method: http.MethodGet, path: "/users/me", wantPerm: ""},
 		{name: "PUT /users/me self-service", method: http.MethodPut, path: "/users/me", wantPerm: ""},
+		{name: "GET /capabilities self-service", method: http.MethodGet, path: "/capabilities", wantPerm: ""},
 		{
 			name:     "POST /users/me/update-credentials self-service",
 			method:   http.MethodPost,
@@ -1190,6 +1191,7 @@ func TestRouteTableUsesCatalogPermissions(t *testing.T) {
 		"GET /scim/v2/Me": true, "PUT /scim/v2/Me": true,
 		"GET /scim/v2/Schemas": true, "GET /scim/v2/Schemas/**": true,
 		"GET /scim/v2/ResourceTypes": true, "GET /scim/v2/ResourceTypes/**": true,
+		"GET /capabilities": true,
 	}
 	root := map[string]bool{
 		"GET /variables": true, "POST /variables": true, "GET /variables/**": true,

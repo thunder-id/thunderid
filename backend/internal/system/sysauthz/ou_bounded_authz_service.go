@@ -126,6 +126,11 @@ func (s *ouBoundedAuthzService) GetAccessibleResources(ctx context.Context, acti
 	return result, nil
 }
 
+// GetBoundary returns the organization unit the caller's token names.
+func (s *ouBoundedAuthzService) GetBoundary(ctx context.Context) Boundary {
+	return Boundary{Type: BoundaryTypeOU, OUID: security.GetOUID(ctx)}
+}
+
 // SetOUHierarchyResolver injects the OU hierarchy resolver into the service.
 // It is called once at application startup after the ou package is initialized.
 // The ouInheritancePolicy is built once here and reused for every subsequent authz call.

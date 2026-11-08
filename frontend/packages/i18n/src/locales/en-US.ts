@@ -602,6 +602,7 @@ const translations = {
     'pages.settings': 'Settings',
     'pages.gateways': 'Deployment',
     'breadcrumb.console': 'Console',
+    'forbidden.description': 'You do not have permission to view this page.',
   },
 
   // ============================================================================

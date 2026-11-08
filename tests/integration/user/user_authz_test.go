@@ -279,6 +279,27 @@ func (ts *UserAuthzTestSuite) doUser(method, path string, body []byte) *http.Res
 	return resp
 }
 
+// TestCapabilitiesReportTheManagerPermissions verifies the capabilities endpoint reports what the
+// manager's token allows, confined to the manager's OU.
+func (ts *UserAuthzTestSuite) TestCapabilitiesReportTheManagerPermissions() {
+	resp := ts.doUser(http.MethodGet, "/capabilities", nil)
+	defer resp.Body.Close()
+	ts.Require().Equal(http.StatusOK, resp.StatusCode)
+
+	var body testutils.CapabilitiesResponse
+	ts.Require().NoError(json.NewDecoder(resp.Body).Decode(&body))
+
+	ts.Equal("ou", body.Scope.Type)
+	ts.Equal(ts.userOU1ID, body.Scope.OUID)
+	// Creating a user in the Console also lists organization units, which the manager can't.
+	ts.Equal(map[string]bool{"view": true, "create": false, "update": true, "delete": true},
+		body.Resources["user"])
+	ts.Equal(map[string]bool{"view": true, "create": false, "update": false, "delete": false},
+		body.Resources["usertype"])
+	ts.False(body.Resources["app"]["view"])
+	ts.False(body.Root.Manage)
+}
+
 // ---------------------------------------------------------------------------
 // Tests — READ operations (system:user:view implied by system:user)
 // ---------------------------------------------------------------------------

@@ -17,13 +17,16 @@ vi.mock('@thunderid/react', () => ({
     children({signOut: mockSignOut}),
   User: ({children}: {children: (user: unknown) => React.ReactNode}) =>
     children({email: 'admin@example.com', name: 'Admin User'}),
-  useGrantedPermissions: () => ({
-    can: (required: string): boolean =>
-      mockPermissions.some((permission: string) => required === permission || required.startsWith(`${permission}:`)),
-    isLoading: false,
-    permissions: mockPermissions,
-  }),
   useThunderID: () => ({clearSession: mockClearSession, discovery: mockDiscovery}),
+}));
+
+vi.mock('@thunderid/hooks', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@thunderid/hooks')>()),
+  useCapabilities: () => ({
+    can: (resource: string): boolean => mockPermissions.includes(`system:${resource}:view`),
+    canManageRoot: false,
+    isLoading: false,
+  }),
 }));
 
 vi.mock('@thunderid/contexts', async (importOriginal) => ({
@@ -78,8 +81,9 @@ describe('AdminLayout', () => {
     expect(screen.getByText('Default')).toBeInTheDocument();
   });
 
-  it('links every page the admin may view', () => {
+  it('links every page the admin may view', async () => {
     render(<AdminLayout />);
+    await screen.findByText('navigation:pages.users');
 
     expect(
       ['navigation:pages.users', 'navigation:pages.agents', 'navigation:pages.groups', 'navigation:pages.roles'].map(
@@ -88,11 +92,11 @@ describe('AdminLayout', () => {
     ).toEqual(['/users', '/agents', '/groups', '/roles']);
   });
 
-  it('leaves out pages the admin may not view', () => {
+  it('leaves out pages the admin may not view', async () => {
     mockPermissions = ['system:role:view'];
     render(<AdminLayout />);
 
-    expect(screen.getByText('navigation:pages.roles')).toBeInTheDocument();
+    expect(await screen.findByText('navigation:pages.roles')).toBeInTheDocument();
     expect(screen.queryByText('navigation:pages.users')).not.toBeInTheDocument();
     expect(screen.queryByText('navigation:pages.agents')).not.toBeInTheDocument();
     expect(screen.queryByText('navigation:pages.groups')).not.toBeInTheDocument();

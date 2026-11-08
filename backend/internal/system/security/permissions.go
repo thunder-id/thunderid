@@ -358,6 +358,17 @@ const (
 	ActionDeleteAuthzDetail Action = "authzdetail:delete"
 	// ActionListAuthzDetails lists authorization detail types.
 	ActionListAuthzDetails Action = "authzdetail:list"
+
+	// ActionCreateProject creates a new project.
+	ActionCreateProject Action = "project:create"
+	// ActionReadProject reads a project.
+	ActionReadProject Action = "project:read"
+	// ActionUpdateProject updates a project.
+	ActionUpdateProject Action = "project:update"
+	// ActionDeleteProject deletes a project.
+	ActionDeleteProject Action = "project:delete"
+	// ActionListProjects lists projects.
+	ActionListProjects Action = "project:list"
 )
 
 // ---- Permissions ----
@@ -697,6 +708,13 @@ func InitSystemPermissions(handle string) {
 		ActionUpdateAuthzDetail: p.AuthzDetailUpdate,
 		ActionDeleteAuthzDetail: p.AuthzDetailDelete,
 		ActionListAuthzDetails:  p.AuthzDetailView,
+
+		// Project actions.
+		ActionCreateProject: p.ProjectCreate,
+		ActionReadProject:   p.ProjectView,
+		ActionUpdateProject: p.ProjectUpdate,
+		ActionDeleteProject: p.ProjectDelete,
+		ActionListProjects:  p.ProjectView,
 	}
 
 	apiPermissionEntries = []apiPermissionEntry{
@@ -707,6 +725,7 @@ func InitSystemPermissions(handle string) {
 		{"GET /users/me/**", ""},
 		{"PUT /users/me/**", ""},
 		{"POST /users/me/update-credentials", ""},
+		{"GET /capabilities", ""},
 		{"GET /register/passkey/**", ""},
 		{"POST /register/passkey/**", ""},
 		// MCP checks each tool call against the permission the tool is mapped to, so a token reaches it as its caller.
