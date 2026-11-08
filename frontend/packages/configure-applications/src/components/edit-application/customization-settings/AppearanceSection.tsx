@@ -48,8 +48,9 @@ export default function AppearanceSection({
   entityLabel = 'application',
 }: AppearanceSectionProps) {
   const {t} = useTranslation();
-  const {data: themesData, isLoading: loadingThemes} = useGetThemes();
+  // Inside a project, the application picks from the project's themes and layouts.
   const {projectId} = useProjectScope();
+  const {data: themesData, isLoading: loadingThemes} = useGetThemes({projectId});
   const {data: layoutsData, isLoading: loadingLayouts} = useGetLayouts({projectId});
 
   const themeOptions = themesData?.themes ?? [];

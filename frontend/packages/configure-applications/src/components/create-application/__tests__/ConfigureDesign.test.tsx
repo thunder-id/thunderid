@@ -374,7 +374,7 @@ describe('ConfigureDesign', () => {
     });
   });
 
-  it("lists the selected project's layouts", () => {
+  it("lists the selected project's themes and layouts", () => {
     render(
       <ProjectScopeProvider project={{id: 'project-1'}}>
         <ConfigureDesign {...defaultProps} />
@@ -382,5 +382,6 @@ describe('ConfigureDesign', () => {
     );
 
     expect(vi.mocked(useGetLayouts)).toHaveBeenCalledWith({limit: 100, projectId: 'project-1'});
+    expect(vi.mocked(useGetThemes)).toHaveBeenCalledWith({limit: 100, projectId: 'project-1'});
   });
 });

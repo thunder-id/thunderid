@@ -132,7 +132,7 @@ func (suite *ThemeStoreTestSuite) TestGetThemeList_DBClientError() {
 func (suite *ThemeStoreTestSuite) TestCreateTheme_Success() {
 	suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
 	suite.mockDBClient.On("Execute", mock.Anything, "theme-1", "classic", "Test", "Desc",
-		mock.Anything, "test-deployment").Return(int64(1), nil)
+		mock.Anything, nil, "test-deployment").Return(int64(1), nil)
 
 	err := suite.store.CreateTheme(context.Background(), "theme-1", CreateThemeRequest{
 		Handle:      "classic",
@@ -568,4 +568,108 @@ func (suite *ThemeStoreTestSuite) TestGetThemeListCount_ScopesByTheRequestDeploy
 
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), 5, count)
+}
+
+// A theme in a project is stored with its project ID.
+func (suite *ThemeStoreTestSuite) TestCreateTheme_InProject() {
+	suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
+	suite.mockDBClient.On("Execute", queryCreateTheme, "theme-1", "classic", "Test", "",
+		mock.Anything, "project-1", "test-deployment").Return(int64(1), nil)
+
+	err := suite.store.CreateTheme(context.Background(), "theme-1", CreateThemeRequest{
+		Handle:      "classic",
+		DisplayName: "Test",
+		ProjectID:   "project-1",
+		Theme:       json.RawMessage(`{}`),
+	})
+
+	assert.NoError(suite.T(), err)
+}
+
+// An update writes the project ID, and an empty one as NULL.
+func (suite *ThemeStoreTestSuite) TestUpdateTheme_ProjectID() {
+	suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
+	suite.mockDBClient.On("Execute", queryUpdateTheme, "Test", "", mock.Anything, "project-1",
+		"theme-1", "test-deployment").Return(int64(1), nil).Once()
+	suite.mockDBClient.On("Execute", queryUpdateTheme, "Test", "", mock.Anything, nil,
+		"theme-1", "test-deployment").Return(int64(1), nil).Once()
+
+	suite.NoError(suite.store.UpdateTheme(context.Background(), "theme-1",
+		UpdateThemeRequest{DisplayName: "Test", ProjectID: "project-1", Theme: json.RawMessage(`{}`)}))
+	suite.NoError(suite.store.UpdateTheme(context.Background(), "theme-1",
+		UpdateThemeRequest{DisplayName: "Test", Theme: json.RawMessage(`{}`)}))
+}
+
+// A read returns the project ID, and none for a theme whose PROJECT_ID is NULL.
+func (suite *ThemeStoreTestSuite) TestGetTheme_ProjectID() {
+	row := func(projectID interface{}) []map[string]interface{} {
+		return []map[string]interface{}{{
+			"id": "theme-1", "handle": "classic", "display_name": "Test", "description": "",
+			"project_id": projectID, "theme": `{}`,
+			"created_at": "2024-01-15T10:30:00Z", "updated_at": "2024-01-15T10:30:00Z",
+		}}
+	}
+	suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
+	suite.mockDBClient.On("Query", queryGetThemeByID, "theme-1", "test-deployment").
+		Return(row("project-1"), nil).Once()
+	suite.mockDBClient.On("Query", queryGetThemeByID, "theme-1", "test-deployment").
+		Return(row(nil), nil).Once()
+
+	inProject, err := suite.store.GetTheme(context.Background(), "theme-1")
+	suite.NoError(err)
+	suite.Equal("project-1", inProject.ProjectID)
+
+	unscoped, err := suite.store.GetTheme(context.Background(), "theme-1")
+	suite.NoError(err)
+	suite.Empty(unscoped.ProjectID)
+}
+
+func (suite *ThemeStoreTestSuite) TestGetThemeListByProject_Success() {
+	results := []map[string]interface{}{{
+		"id": "theme-1", "handle": "classic", "display_name": "Test", "description": "",
+		"project_id": "project-1", "theme": `{}`,
+		"created_at": "2024-01-15T10:30:00Z", "updated_at": "2024-01-15T10:30:00Z",
+	}}
+	suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
+	suite.mockDBClient.On("Query", queryGetThemeListByProject, 10, 0, "project-1", "test-deployment").
+		Return(results, nil)
+
+	themes, err := suite.store.GetThemeListByProject(context.Background(), "project-1", 10, 0)
+
+	suite.NoError(err)
+	suite.Require().Len(themes, 1)
+	suite.Equal("theme-1", themes[0].ID)
+	suite.Equal("project-1", themes[0].ProjectID)
+}
+
+func (suite *ThemeStoreTestSuite) TestGetThemeListByProject_Errors() {
+	suite.mockDBProvider.On("GetConfigDBClient").Return(nil, errors.New("connection error")).Once()
+	themes, err := suite.store.GetThemeListByProject(context.Background(), "project-1", 10, 0)
+	suite.Error(err)
+	suite.Nil(themes)
+
+	suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
+	suite.mockDBClient.On("Query", queryGetThemeListByProject, 10, 0, "project-1", "test-deployment").
+		Return(nil, errors.New("query error"))
+	themes, err = suite.store.GetThemeListByProject(context.Background(), "project-1", 10, 0)
+	suite.Error(err)
+	suite.Nil(themes)
+}
+
+func (suite *ThemeStoreTestSuite) TestGetThemeListCountByProject() {
+	suite.mockDBProvider.On("GetConfigDBClient").Return(nil, errors.New("connection error")).Once()
+	_, err := suite.store.GetThemeListCountByProject(context.Background(), "project-1")
+	suite.Error(err)
+
+	suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
+	suite.mockDBClient.On("Query", queryGetThemeListCountByProject, "project-1", "test-deployment").
+		Return([]map[string]interface{}{{"total": int64(3)}}, nil).Once()
+	count, err := suite.store.GetThemeListCountByProject(context.Background(), "project-1")
+	suite.NoError(err)
+	suite.Equal(3, count)
+
+	suite.mockDBClient.On("Query", queryGetThemeListCountByProject, "project-1", "test-deployment").
+		Return(nil, errors.New("query error")).Once()
+	_, err = suite.store.GetThemeListCountByProject(context.Background(), "project-1")
+	suite.Error(err)
 }

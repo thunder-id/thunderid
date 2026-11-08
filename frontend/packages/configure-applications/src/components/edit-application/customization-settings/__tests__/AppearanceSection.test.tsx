@@ -47,6 +47,24 @@ describe('AppearanceSection', () => {
     } as UseQueryResult<ThemeListResponse>);
   });
 
+  describe('Project', () => {
+    it("should offer the selected project's themes", () => {
+      render(
+        <ProjectScopeProvider project={{id: 'project-1'}}>
+          <AppearanceSection application={mockApplication} editedApp={{}} onFieldChange={mockOnFieldChange} />
+        </ProjectScopeProvider>,
+      );
+
+      expect(vi.mocked(useGetThemes)).toHaveBeenCalledWith({projectId: 'project-1'});
+    });
+
+    it('should offer every theme outside a project', () => {
+      render(<AppearanceSection application={mockApplication} editedApp={{}} onFieldChange={mockOnFieldChange} />);
+
+      expect(vi.mocked(useGetThemes)).toHaveBeenCalledWith({projectId: undefined});
+    });
+  });
+
   describe('Rendering', () => {
     it('should render the appearance section', () => {
       render(<AppearanceSection application={mockApplication} editedApp={{}} onFieldChange={mockOnFieldChange} />);

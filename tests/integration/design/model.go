@@ -15,6 +15,7 @@ type CreateThemeRequest struct {
 	Handle      string          `json:"handle"`
 	DisplayName string          `json:"displayName"`
 	Description string          `json:"description,omitempty"`
+	ProjectID   string          `json:"projectId,omitempty"`
 	Theme       json.RawMessage `json:"theme"`
 }
 
@@ -32,6 +33,7 @@ type ThemeResponse struct {
 	Handle      string          `json:"handle"`
 	DisplayName string          `json:"displayName"`
 	Description string          `json:"description,omitempty"`
+	ProjectID   string          `json:"projectId,omitempty"`
 	Theme       json.RawMessage `json:"theme"`
 }
 
@@ -40,6 +42,7 @@ type ThemeListItem struct {
 	ID          string `json:"id"`
 	Handle      string `json:"handle"`
 	DisplayName string `json:"displayName"`
+	ProjectID   string `json:"projectId,omitempty"`
 }
 
 // ThemeListResponse represents the response for listing themes.

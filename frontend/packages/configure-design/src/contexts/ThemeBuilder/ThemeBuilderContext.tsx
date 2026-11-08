@@ -25,6 +25,11 @@ export interface ThemeBuilderContextType {
   handle: string | null;
 
   /**
+   * The ID of the project the theme belongs to, or null when it belongs to none
+   */
+  projectId: string | null;
+
+  /**
    * The original theme configuration from the API
    */
   originalTheme: Theme | null;

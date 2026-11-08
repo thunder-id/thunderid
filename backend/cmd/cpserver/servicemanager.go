@@ -349,8 +349,9 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	certservice, err := cert.Initialize(cacheManager, dbprovider.GetDBProvider())
 	fatalOnError(ctx, logger, err, "Failed to initialize CertificateService")
 
-	themeMgtService, themeExporter, err := thememgt.Initialize(mux, mcpServer, auditBus)
+	themeMgtService, themeExporter, err := thememgt.Initialize(mux, mcpServer, auditBus, projectService)
 	fatalOnError(ctx, logger, err, "Failed to initialize ThemeMgtService")
+	projectService.AddResourceCheck(themeMgtService.ProjectHasThemes)
 	exporters = append(exporters, themeExporter)
 
 	layoutMgtService, layoutExporter, err := layoutmgt.Initialize(mux, auditBus, projectService)

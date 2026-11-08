@@ -1,10 +1,11 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {BuilderLayout, BuilderStaticPanel, DocumentTitle} from '@thunderid/components';
+import {BuilderLayout, BuilderStaticPanel, DocumentTitle, PageLoadingAnimation} from '@thunderid/components';
+import {useProjectScope} from '@thunderid/contexts';
 import {Box, Button, useColorScheme} from '@wso2/oxygen-ui';
 import {ArrowLeft, Save, Trash, Undo2} from '@wso2/oxygen-ui-icons-react';
-import {useCallback, useRef, useState, type JSX} from 'react';
+import {useCallback, useEffect, useRef, useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
 import ThemeConfigPanel from '../components/ThemeConfigPanel';
@@ -23,6 +24,7 @@ export default function ThemeBuilderPage(): JSX.Element {
 
   const {
     themeId,
+    projectId: themeProjectId,
     displayName,
     isReadOnly,
     activeSection,
@@ -33,6 +35,13 @@ export default function ThemeBuilderPage(): JSX.Element {
     setIsDirty,
     resetDraft,
   } = useThemeBuilder();
+
+  // Inside a project, a theme of another project is not shown: the builder returns to the list.
+  const {projectId} = useProjectScope();
+  const isOtherProject = Boolean(projectId && themeId && themeProjectId !== projectId);
+  useEffect(() => {
+    if (isOtherProject) void navigate(routes.design.list(), {replace: true});
+  }, [isOtherProject, navigate, routes.design]);
 
   const saveHandlerRef = useRef<() => void>(() => null);
   const [isSaving, setIsSaving] = useState(false);
@@ -67,6 +76,10 @@ export default function ThemeBuilderPage(): JSX.Element {
       setActiveSection={setActiveSection}
     />
   );
+
+  if (isOtherProject) {
+    return <PageLoadingAnimation />;
+  }
 
   return (
     <>

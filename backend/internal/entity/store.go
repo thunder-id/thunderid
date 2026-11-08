@@ -16,6 +16,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
 	"github.com/thunder-id/thunderid/internal/system/deployment"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -179,7 +180,7 @@ func (es *entityDBStore) CreateEntity(ctx context.Context, entity providers.Enti
 		string(entity.Category),
 		entity.Type,
 		entity.OUID,
-		nullableString(entity.ProjectID),
+		sysutils.NullableString(entity.ProjectID),
 		string(attributes),
 		systemAttrs,
 		credsJSON,
@@ -278,7 +279,7 @@ func (es *entityDBStore) UpdateEntity(ctx context.Context, entity *providers.Ent
 	rowsAffected, err := dbClient.ExecuteContext(
 		ctx,
 		QueryUpdateEntity,
-		entity.ID, entity.OUID, nullableString(entity.ProjectID), entity.Type,
+		entity.ID, entity.OUID, sysutils.NullableString(entity.ProjectID), entity.Type,
 		string(attributes), systemAttrs, time.Now().UTC(), es.scope(ctx),
 	)
 	if err != nil {
@@ -363,7 +364,7 @@ func (es *entityDBStore) UpdateOwnership(ctx context.Context, entityID, ouID, pr
 	}
 
 	rowsAffected, err := dbClient.ExecuteContext(ctx, QueryUpdateOwnership,
-		entityID, ouID, nullableString(projectID), time.Now().UTC(), es.scope(ctx))
+		entityID, ouID, sysutils.NullableString(projectID), time.Now().UTC(), es.scope(ctx))
 	if err != nil {
 		return fmt.Errorf("failed to execute query: %w", err)
 	}
@@ -1118,14 +1119,6 @@ func buildEntitiesFromResults(results []map[string]interface{}) ([]providers.Ent
 		entities = append(entities, entity)
 	}
 	return entities, nil
-}
-
-// nullableString returns nil for an empty value, so that the column is stored as NULL.
-func nullableString(value string) interface{} {
-	if value == "" {
-		return nil
-	}
-	return value
 }
 
 // optionalStringColumn reads a nullable string column, returning an empty string for NULL.

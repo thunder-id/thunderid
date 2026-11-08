@@ -11,6 +11,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
 	"github.com/thunder-id/thunderid/internal/system/deployment"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -259,7 +260,7 @@ func (s *roleStore) CreateRole(ctx context.Context, id string, role RoleCreation
 		queryCreateRole,
 		id,
 		role.OUID,
-		nullableString(role.ProjectID),
+		sysutils.NullableString(role.ProjectID),
 		role.Name,
 		role.Description,
 		s.scope(ctx),
@@ -538,7 +539,7 @@ func (s *roleStore) UpdateRole(ctx context.Context, id string, role RoleUpdateDe
 	rowsAffected, err := dbClient.ExecuteContext(ctx,
 		queryUpdateRole,
 		role.OUID,
-		nullableString(role.ProjectID),
+		sysutils.NullableString(role.ProjectID),
 		role.Name,
 		role.Description,
 		id,
@@ -942,14 +943,6 @@ func buildRoleBasicInfoFromResultRow(row map[string]interface{}) (Role, error) {
 		OUID:        fields[3],
 		ProjectID:   projectID,
 	}, nil
-}
-
-// nullableString stores an empty value as NULL.
-func nullableString(value string) interface{} {
-	if value == "" {
-		return nil
-	}
-	return value
 }
 
 // addPermissionsToRole adds a list of permissions to a role.

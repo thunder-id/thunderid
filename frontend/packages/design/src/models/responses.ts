@@ -14,6 +14,8 @@ export interface ThemeListItem {
   handle: string;
   displayName: string;
   description?: string;
+  /** ID of the project the theme belongs to, when it belongs to one */
+  projectId?: string;
   defaultColorScheme?: string;
   primaryColor?: string;
   createdAt?: string;
@@ -52,6 +54,8 @@ export interface ThemeResponse {
   handle: string;
   displayName: string;
   description?: string;
+  /** ID of the project the theme belongs to, when it belongs to one */
+  projectId?: string;
   theme: Theme;
   isReadOnly?: boolean;
 }

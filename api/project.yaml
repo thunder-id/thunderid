@@ -263,7 +263,7 @@ paths:
         "204":
           description: Project deleted, or no project exists with the given ID.
         "409":
-          description: The project still has applications, agents, flows or layouts.
+          description: The project still has applications, agents, flows, layouts or themes.
           content:
             application/json:
               schema:
@@ -275,7 +275,7 @@ paths:
                   defaultValue: "Project is not empty"
                 description:
                   key: "error.projectservice.project_not_empty_description"
-                  defaultValue: "Delete or move the project's applications, agents, flows and layouts before deleting the project"
+                  defaultValue: "Delete or move the project's applications, agents, flows, layouts and themes before deleting the project"
         "500":
           $ref: '#/components/responses/InternalServerError'
 

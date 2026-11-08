@@ -16,10 +16,13 @@ import (
 
 // Initialize initializes the theme management service and registers its routes. bus is required: the
 // service publishes the audit event of every theme it creates, updates or deletes on it.
+//
+// projectChecker is nil on a deployment that serves no projects, where a project ID is kept unchecked.
 func Initialize(
 	mux *http.ServeMux,
 	mcpServer *mcp.Server,
 	bus eventbus.EventBusInterface,
+	projectChecker projectChecker,
 ) (ThemeMgtServiceInterface, declarativeresource.ResourceExporter, error) {
 	if bus == nil {
 		return nil, nil, errNilEventBus
@@ -32,7 +35,7 @@ func Initialize(
 	}
 
 	// Step 2: Create service with store
-	themeMgtService := newThemeMgtService(themeMgtStore, bus)
+	themeMgtService := newThemeMgtService(themeMgtStore, bus, projectChecker)
 	themeMgtHandler := newThemeMgtHandler(themeMgtService)
 	registerRoutes(mux, themeMgtHandler)
 

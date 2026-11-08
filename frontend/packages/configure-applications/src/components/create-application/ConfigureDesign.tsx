@@ -130,8 +130,9 @@ export default function ConfigureDesign({
   const {brand} = config;
   const {product_name: productName} = brand || {};
   const {ouDefaults, selectedTemplateConfig, appName} = useApplicationCreateContext();
-  const {data: themesData, isLoading: loadingThemes} = useGetThemes({limit: 100});
+  // Inside a project, the application picks from the project's themes and layouts.
   const {projectId} = useProjectScope();
+  const {data: themesData, isLoading: loadingThemes} = useGetThemes({limit: 100, projectId});
   const {data: layoutsData} = useGetLayouts({limit: 100, projectId});
 
   const [selectedThemeId, setSelectedThemeId] = useState<string | null>(externallyProvidedThemeId ?? null);

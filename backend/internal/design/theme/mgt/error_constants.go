@@ -205,6 +205,34 @@ var (
 			DefaultValue: "The theme handle cannot be changed after creation",
 		},
 	}
+
+	// ErrorInvalidProject is returned when a theme names a project that does not exist.
+	ErrorInvalidProject = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "THM-1018",
+		Error: tidcommon.I18nMessage{
+			Key:          "theme.error.invalid_project",
+			DefaultValue: "Invalid project",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "theme.error.invalid_project_description",
+			DefaultValue: "No project exists with the given project ID",
+		},
+	}
+
+	// ErrorProjectRequired is returned when a deployment that serves projects is asked for a theme in none.
+	ErrorProjectRequired = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "THM-1019",
+		Error: tidcommon.I18nMessage{
+			Key:          "theme.error.project_required",
+			DefaultValue: "Project required",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "theme.error.project_required_description",
+			DefaultValue: "Set projectId to the project the theme belongs to",
+		},
+	}
 )
 
 // errNilEventBus is returned when the service is initialized without the event bus it audits on.

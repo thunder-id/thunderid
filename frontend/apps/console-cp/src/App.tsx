@@ -540,7 +540,9 @@ export default function App(): JSX.Element {
                   path={RouteConfig.design.list()}
                   element={
                     <ProtectedRoute>
-                      <DashboardLayout />
+                      <SelectedProjectScope>
+                        <DashboardLayout />
+                      </SelectedProjectScope>
                     </ProtectedRoute>
                   }
                 >
@@ -557,7 +559,9 @@ export default function App(): JSX.Element {
                   path={RouteConfig.design.themesCreate()}
                   element={
                     <ProtectedRoute>
-                      <FullScreenLayout />
+                      <SelectedProjectScope>
+                        <FullScreenLayout />
+                      </SelectedProjectScope>
                     </ProtectedRoute>
                   }
                 >
@@ -567,9 +571,11 @@ export default function App(): JSX.Element {
                   path={`/${ROUTE_SEGMENTS.design}/themes/:themeId`}
                   element={
                     <ProtectedRoute>
-                      <ThemeBuilderProvider>
-                        <DashboardLayout />
-                      </ThemeBuilderProvider>
+                      <SelectedProjectScope>
+                        <ThemeBuilderProvider>
+                          <DashboardLayout />
+                        </ThemeBuilderProvider>
+                      </SelectedProjectScope>
                     </ProtectedRoute>
                   }
                 >

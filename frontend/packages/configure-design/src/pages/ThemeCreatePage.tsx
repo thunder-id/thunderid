@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {DocumentTitle, FullScreenCreationWizardLayout} from '@thunderid/components';
+import {useProjectScope} from '@thunderid/contexts';
 import {useCreateTheme, useGetTheme, useGetThemes, type Theme} from '@thunderid/design';
 import {getErrorMessage, kebabCase} from '@thunderid/utils';
 import {Alert, Box, Button, CircularProgress} from '@wso2/oxygen-ui';
@@ -50,6 +51,8 @@ export default function ThemeCreatePage(): JSX.Element {
   const navigate = useNavigate();
   const routes = useDesignRoutes();
   const createTheme = useCreateTheme();
+  // Inside a project, the theme is created in it.
+  const {projectId} = useProjectScope();
   const {data: themesData} = useGetThemes();
 
   const STEPS: Record<ThemeCreateStep, {label: string}> = {
@@ -133,6 +136,7 @@ export default function ThemeCreatePage(): JSX.Element {
       {
         handle,
         displayName: themeName.trim(),
+        ...(projectId ? {projectId} : {}),
         theme: buildThemeFromPrimaryColor(effectiveBaseTheme, primaryColor),
       },
       {
