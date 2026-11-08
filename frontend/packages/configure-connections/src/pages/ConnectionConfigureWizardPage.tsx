@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {DocumentTitle, FullScreenCreationWizardLayout} from '@thunderid/components';
-import {useConfig} from '@thunderid/contexts';
+import {useGateCallbackUrl} from '@thunderid/contexts';
 import {getErrorMessage} from '@thunderid/utils';
 import {Alert, Box, Button, CircularProgress, Paper, Stack, Typography} from '@wso2/oxygen-ui';
 import {type JSX, useEffect, useMemo, useState} from 'react';
@@ -32,7 +32,6 @@ export default function ConnectionConfigureWizardPage(): JSX.Element | null {
   const {t} = useTranslation('connections');
   const navigate = useNavigate();
   const routes = useConnectionRoutes();
-  const {getGateCallbackUrl} = useConfig();
   const {type} = useParams<{type: string}>();
 
   const connectionType = type as ConnectionType;
@@ -53,7 +52,7 @@ export default function ConnectionConfigureWizardPage(): JSX.Element | null {
   }, [meta, navigate, routes]);
 
   const fields = useMemo(() => (meta ? CONNECTION_FORM_FIELDS[connectionType] : []), [meta, connectionType]);
-  const redirectUri = getGateCallbackUrl();
+  const redirectUri = useGateCallbackUrl();
   const emptyValues = useMemo(() => emptyFormValues(fields, redirectUri), [fields, redirectUri]);
 
   if (!meta) {
