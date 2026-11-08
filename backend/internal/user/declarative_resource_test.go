@@ -253,7 +253,8 @@ func (suite *DeclarativeResourceTestSuite) TestGetResourceRules_IncludesCredenti
 	suite.Contains(rules.DynamicPropertyFields, "Credentials")
 }
 
-func (suite *DeclarativeResourceTestSuite) TestValidateResource_MissingUsername() {
+// A user whose type has no username, such as one known only by email, is exported under its ID.
+func (suite *DeclarativeResourceTestSuite) TestValidateResource_MissingUsernameNamesTheFileAfterTheID() {
 	exporter := newUserExporter(
 		NewUserServiceInterfaceMock(suite.T()), entitymock.NewEntityServiceInterfaceMock(suite.T()), nil)
 
@@ -261,11 +262,32 @@ func (suite *DeclarativeResourceTestSuite) TestValidateResource_MissingUsername(
 		ID:         "user-1",
 		Type:       "person",
 		OUID:       "ou-1",
-		Attributes: map[string]interface{}{},
+		Attributes: map[string]interface{}{"email": "nameless@example.com"},
 	}
 
-	_, err := exporter.ValidateResource(context.Background(), resource, "user-1", log.GetLogger())
-	suite.NotNil(err)
+	name, err := exporter.ValidateResource(context.Background(), resource, "user-1", log.GetLogger())
+	suite.Nil(err)
+	suite.Equal("user-1", name)
+}
+
+func (suite *DeclarativeResourceTestSuite) TestMakeUserValidator_AcceptsAUserWithoutAUsername() {
+	attrs, err := json.Marshal(map[string]interface{}{"email": "nameless@example.com"})
+	suite.Require().NoError(err)
+
+	e := &providers.Entity{
+		ID:         "user-1",
+		Type:       "person",
+		OUID:       "ou-1",
+		Attributes: attrs,
+	}
+
+	svcMock := entitymock.NewEntityServiceInterfaceMock(suite.T())
+	svcMock.On("GetEntityProfile", context.Background(), "user-1").
+		Return((*providers.Entity)(nil), entitypkg.ErrEntityNotFound)
+
+	validator := makeUserValidator()
+	err = validator(e, svcMock)
+	suite.NoError(err)
 }
 
 func (suite *DeclarativeResourceTestSuite) TestMakeUserValidator_Success() {

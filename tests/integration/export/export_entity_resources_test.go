@@ -280,10 +280,9 @@ func (ts *ExportEntityResourcesTestSuite) TestUserWhoseTypeIsGoneIsLeftOut() {
 	ts.Assert().Contains(err.Error(), "EXP-1002", "the export must hold no resources")
 }
 
-// TestUserWithoutAUsernameIsLeftOut verifies a user with no username is left out of the export
-// rather than exported without one, since a user with no username cannot be identified on import. The
-// rest of the export still goes through.
-func (ts *ExportEntityResourcesTestSuite) TestUserWithoutAUsernameIsLeftOut() {
+// TestUserWithoutAUsernameIsExported verifies a user with no username, such as one whose type knows
+// it only by email, is exported under its ID with its credentials, alongside the rest of the export.
+func (ts *ExportEntityResourcesTestSuite) TestUserWithoutAUsernameIsExported() {
 	userID, err := testutils.CreateUser(testutils.User{
 		Type: entityExportUserTypeName,
 		OUID: ts.ouID,
@@ -298,8 +297,9 @@ func (ts *ExportEntityResourcesTestSuite) TestUserWithoutAUsernameIsLeftOut() {
 
 	ts.Assert().Contains(yamlContent, `username: "`+entityExportUsername+`"`,
 		"the other user must still be exported")
-	ts.Assert().NotContains(yamlContent, "export-entity-nameless@example.com",
-		"a user without a username must not be exported")
+	ts.Assert().Contains(yamlContent, "export-entity-nameless@example.com",
+		"a user without a username must be exported")
+	ts.Assert().Contains(yamlContent, userID, "a user without a username must be exported under its ID")
 }
 
 // TestUserExportNamesTwoUsersWithOneNormalizedUsernameApart verifies two users whose usernames normalize

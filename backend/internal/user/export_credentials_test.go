@@ -104,14 +104,16 @@ func TestEveryCredentialAUserHoldsIsExported(t *testing.T) {
 	}, user.Credentials)
 }
 
-// Without a username there is nothing to name the variable after, so no credential is exported and
-// the store is not consulted.
-func TestAUserWithoutAUsernameExportsNoCredentials(t *testing.T) {
+// A user whose type has no username still exports its credentials, since each is named after the
+// user ID.
+func TestAUserWithoutAUsernameExportsItsCredentials(t *testing.T) {
 	c := newCredentialExport(t, "")
+	c.userHolds("password")
 
 	user := c.exportUser(t)
 
-	assert.Empty(t, user.Credentials)
+	assert.Equal(t, map[string]interface{}{"password": "{{." + aliceVar("password") + "}}"},
+		user.Credentials)
 }
 
 // A failure to read which credentials the user holds is reported rather than exporting the user as

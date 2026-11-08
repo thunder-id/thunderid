@@ -126,8 +126,8 @@ func TestCreateUser_WithoutCredentialsCapturesNothing(t *testing.T) {
 	assert.Empty(t, capturer.resources)
 }
 
-// Credentials are named after the username, so a user without one has nothing captured.
-func TestCreateUser_WithoutAUsernameCapturesNothing(t *testing.T) {
+// Credentials are named after the user ID, so a user whose type has no username is captured too.
+func TestCreateUser_WithoutAUsernameCapturesTheSubmittedCredentials(t *testing.T) {
 	entities := entitymock.NewEntityServiceInterfaceMock(t)
 	entities.On("CreateEntity", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(&providers.Entity{Attributes: json.RawMessage(`{"email":"a@x.test"}`)}, nil)
@@ -140,7 +140,9 @@ func TestCreateUser_WithoutAUsernameCapturesNothing(t *testing.T) {
 	})
 	require.Nil(t, svcErr)
 
-	assert.Empty(t, capturer.resources)
+	user := capturer.captured(t)
+	assert.Equal(t, map[string]interface{}{"email": "a@x.test"}, user.Attributes)
+	assert.Equal(t, map[string]interface{}{"password": "s3cret"}, user.Credentials)
 }
 
 // A rotated credential is captured, so the store does not keep serving the one from creation.

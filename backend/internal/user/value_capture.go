@@ -36,8 +36,7 @@ func (us *userService) captureSubmittedCredentials(ctx context.Context, user *pr
 
 // captureCredentials hands a user's credentials to the value capturer, in the shape its exporter
 // reads back: the attributes, which name the user, and the credentials beside them. The export names
-// each credential after the user's ID. A user without a username is not exported, so nothing is captured
-// for it either.
+// each credential after the user's ID.
 func (us *userService) captureCredentials(ctx context.Context, user *providers.User,
 	attributes json.RawMessage, credentials map[string]string) {
 	if us.valueCapturer == nil || len(credentials) == 0 {
@@ -45,9 +44,6 @@ func (us *userService) captureCredentials(ctx context.Context, user *providers.U
 	}
 	var attrs map[string]interface{}
 	if err := json.Unmarshal(attributes, &attrs); err != nil {
-		return
-	}
-	if username, _ := attrs["username"].(string); username == "" {
 		return
 	}
 	resource := &userDeclarativeResource{

@@ -130,7 +130,7 @@ func (e *userExporter) GetResourceByID(
 		attributesMap = make(map[string]interface{})
 	}
 
-	credentials, svcErr := e.exportableCredentials(ctx, user.ID, username)
+	credentials, svcErr := e.exportableCredentials(ctx, user.ID)
 	if svcErr != nil {
 		return nil, "", svcErr
 	}
@@ -169,13 +169,8 @@ func (e *userExporter) GetResourceByID(
 // declares are considered, which leaves out device-bound ones such as a passkey: those mean nothing
 // on another deployment.
 func (e *userExporter) exportableCredentials(
-	ctx context.Context, userID, username string,
+	ctx context.Context, userID string,
 ) (map[string]interface{}, *tidcommon.ServiceError) {
-	if username == "" {
-		// A user with no username cannot be exported, so it carries no credentials either.
-		return map[string]interface{}{}, nil
-	}
-
 	held, err := e.entityService.GetHeldCredentialTypes(ctx, userID)
 	if err != nil {
 		if svcErr := mapEntityError(err); svcErr != nil {
@@ -196,33 +191,20 @@ func (e *userExporter) GetResourceID(resource interface{}) string {
 	return ""
 }
 
-// ValidateResource validates a user resource.
-func (e *userExporter) ValidateResource(ctx context.Context,
-	resource interface{}, id string, logger *log.Logger,
+// ValidateResource validates a user resource and returns the name its file is given: the username,
+// or the user ID for a user whose type has no username.
+func (e *userExporter) ValidateResource(_ context.Context,
+	resource interface{}, id string, _ *log.Logger,
 ) (string, *declarativeresource.ExportError) {
 	user, ok := resource.(*userDeclarativeResource)
 	if !ok {
 		return "", declarativeresource.CreateTypeError(resourceTypeUser, id)
 	}
 
-	// Extract username for validation
-	var username string
-	if un, ok := user.Attributes["username"].(string); ok {
-		username = un
+	if username, _ := user.Attributes["username"].(string); username != "" {
+		return username, nil
 	}
-
-	if username == "" {
-		logger.Warn(ctx, "USER_VALIDATION_ERROR: Missing username",
-			log.MaskedString(log.LoggerKeyUserID, id))
-		return "", &declarativeresource.ExportError{
-			ResourceType: resourceTypeUser,
-			ResourceID:   id,
-			Code:         "USER_VALIDATION_ERROR",
-			Error:        fmt.Sprintf("User '%s' validation failed: missing username", id),
-		}
-	}
-
-	return username, nil
+	return id, nil
 }
 
 // ViewResource shows an exported user as a read of it returns it. A read never returns a user's
@@ -361,11 +343,6 @@ func makeUserValidator() func(e *providers.Entity, svc entity.EntityServiceInter
 		var attrs map[string]interface{}
 		if err := json.Unmarshal(e.Attributes, &attrs); err != nil {
 			return fmt.Errorf("failed to parse user attributes: %w", err)
-		}
-
-		un, ok := attrs["username"].(string)
-		if !ok || un == "" {
-			return fmt.Errorf("username is required in user attributes")
 		}
 
 		// Check for duplicates in the store (covers both DB and already-loaded file resources)
