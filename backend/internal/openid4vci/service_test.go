@@ -24,6 +24,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
 	"github.com/thunder-id/thunderid/internal/system/kmprovider/defaultkm"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/vc/credential"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -90,7 +91,7 @@ func (s *ServiceTestSuite) TestNewOpenID4VCIService() {
 func (s *ServiceTestSuite) TestGetMetadata() {
 	s.Run("Success", func() {
 		creds := credentialmock.NewCredentialConfigurationServiceInterfaceMock(s.T())
-		creds.EXPECT().ListCredentialConfigurations(context.Background()).
+		creds.EXPECT().ListCredentialConfigurations(inRuntimeContext).
 			Return([]credential.CredentialConfigurationDTO{{Handle: "h", VCT: "v"}}, nil)
 		svc := &openid4vciService{cfg: serviceConfig{CredentialIssuer: testIssuer, BaseURL: "https://i"}, creds: creds}
 
@@ -102,7 +103,7 @@ func (s *ServiceTestSuite) TestGetMetadata() {
 
 	s.Run("ListError", func() {
 		creds := credentialmock.NewCredentialConfigurationServiceInterfaceMock(s.T())
-		creds.EXPECT().ListCredentialConfigurations(context.Background()).
+		creds.EXPECT().ListCredentialConfigurations(inRuntimeContext).
 			Return(nil, &tidcommon.ServiceError{Code: "boom"})
 		svc := &openid4vciService{cfg: serviceConfig{CredentialIssuer: testIssuer, BaseURL: "https://i"}, creds: creds}
 
@@ -270,7 +271,7 @@ func (s *OfferTestSuite) TestGenerateCredentialOfferSuccess() {
 	ctx := context.Background()
 	store := s.newOfferStore()
 	creds := credentialmock.NewCredentialConfigurationServiceInterfaceMock(s.T())
-	creds.EXPECT().GetCredentialConfigurationByHandle(ctx, "eudi-pid").
+	creds.EXPECT().GetCredentialConfigurationByHandle(inRuntimeContext, "eudi-pid").
 		Return(&credential.CredentialConfigurationDTO{Handle: "eudi-pid", VCT: "v"}, nil)
 	svc := &openid4vciService{
 		cfg:   serviceConfig{CredentialIssuer: testIssuer, BaseURL: "https://issuer.example"},
@@ -289,7 +290,7 @@ func (s *OfferTestSuite) TestGenerateCredentialOfferSuccess() {
 func (s *OfferTestSuite) TestGenerateCredentialOfferUnknownConfig() {
 	ctx := context.Background()
 	creds := credentialmock.NewCredentialConfigurationServiceInterfaceMock(s.T())
-	creds.EXPECT().GetCredentialConfigurationByHandle(ctx, "missing").
+	creds.EXPECT().GetCredentialConfigurationByHandle(inRuntimeContext, "missing").
 		Return(nil, &tidcommon.ServiceError{Code: "not-found"})
 	svc := &openid4vciService{cfg: serviceConfig{CredentialIssuer: testIssuer}, creds: creds}
 
@@ -302,7 +303,7 @@ func (s *OfferTestSuite) TestGenerateCredentialOfferStoreError() {
 	store := newOpenID4VCIStoreInterfaceMock(s.T())
 	store.EXPECT().SaveOffer(mock.Anything, mock.Anything, mock.Anything).Return(errors.New("store failed"))
 	creds := credentialmock.NewCredentialConfigurationServiceInterfaceMock(s.T())
-	creds.EXPECT().GetCredentialConfigurationByHandle(ctx, "eudi-pid").
+	creds.EXPECT().GetCredentialConfigurationByHandle(inRuntimeContext, "eudi-pid").
 		Return(&credential.CredentialConfigurationDTO{Handle: "eudi-pid", VCT: "v"}, nil)
 	svc := &openid4vciService{
 		cfg:   serviceConfig{CredentialIssuer: testIssuer, BaseURL: "https://i"},
@@ -515,7 +516,7 @@ func (s *CredentialTestSuite) TestAuthorizedCredentialByConfigID() {
 
 	s.Run("Success", func() {
 		creds := credentialmock.NewCredentialConfigurationServiceInterfaceMock(s.T())
-		creds.EXPECT().GetCredentialConfigurationByHandle(ctx, "eudi-pid").
+		creds.EXPECT().GetCredentialConfigurationByHandle(inRuntimeContext, "eudi-pid").
 			Return(&credential.CredentialConfigurationDTO{Handle: "eudi-pid", VCT: "v"}, nil)
 		svc := &openid4vciService{cfg: serviceConfig{}, creds: creds}
 		cfg, err := svc.authorizedCredential(ctx, "eudi-pid", nil)
@@ -525,7 +526,7 @@ func (s *CredentialTestSuite) TestAuthorizedCredentialByConfigID() {
 
 	s.Run("Unknown", func() {
 		creds := credentialmock.NewCredentialConfigurationServiceInterfaceMock(s.T())
-		creds.EXPECT().GetCredentialConfigurationByHandle(ctx, "missing").
+		creds.EXPECT().GetCredentialConfigurationByHandle(inRuntimeContext, "missing").
 			Return(nil, &tidcommon.ServiceError{Code: "x"})
 		svc := &openid4vciService{cfg: serviceConfig{}, creds: creds}
 		_, err := svc.authorizedCredential(ctx, "missing", nil)
@@ -534,7 +535,7 @@ func (s *CredentialTestSuite) TestAuthorizedCredentialByConfigID() {
 
 	s.Run("ScopeEnforcedNotAuthorized", func() {
 		creds := credentialmock.NewCredentialConfigurationServiceInterfaceMock(s.T())
-		creds.EXPECT().GetCredentialConfigurationByHandle(ctx, "eudi-pid").
+		creds.EXPECT().GetCredentialConfigurationByHandle(inRuntimeContext, "eudi-pid").
 			Return(&credential.CredentialConfigurationDTO{Handle: "eudi-pid", VCT: "v"}, nil)
 		svc := &openid4vciService{cfg: serviceConfig{EnforceScope: true}, creds: creds}
 		_, err := svc.authorizedCredential(ctx, "eudi-pid", []string{"other"})
@@ -543,7 +544,7 @@ func (s *CredentialTestSuite) TestAuthorizedCredentialByConfigID() {
 
 	s.Run("ScopeEnforcedAuthorized", func() {
 		creds := credentialmock.NewCredentialConfigurationServiceInterfaceMock(s.T())
-		creds.EXPECT().GetCredentialConfigurationByHandle(ctx, "eudi-pid").
+		creds.EXPECT().GetCredentialConfigurationByHandle(inRuntimeContext, "eudi-pid").
 			Return(&credential.CredentialConfigurationDTO{Handle: "eudi-pid", VCT: "v"}, nil)
 		svc := &openid4vciService{cfg: serviceConfig{EnforceScope: true}, creds: creds}
 		cfg, err := svc.authorizedCredential(ctx, "eudi-pid", []string{"eudi-pid"})
@@ -557,7 +558,7 @@ func (s *CredentialTestSuite) TestAuthorizedCredentialByScope() {
 
 	s.Run("MatchesScope", func() {
 		creds := credentialmock.NewCredentialConfigurationServiceInterfaceMock(s.T())
-		creds.EXPECT().ListCredentialConfigurations(ctx).Return([]credential.CredentialConfigurationDTO{
+		creds.EXPECT().ListCredentialConfigurations(inRuntimeContext).Return([]credential.CredentialConfigurationDTO{
 			{Handle: "a", VCT: "va"},
 			{Handle: "b", VCT: "vb"},
 		}, nil)
@@ -569,7 +570,7 @@ func (s *CredentialTestSuite) TestAuthorizedCredentialByScope() {
 
 	s.Run("NoScopeMatch", func() {
 		creds := credentialmock.NewCredentialConfigurationServiceInterfaceMock(s.T())
-		creds.EXPECT().ListCredentialConfigurations(ctx).Return([]credential.CredentialConfigurationDTO{
+		creds.EXPECT().ListCredentialConfigurations(inRuntimeContext).Return([]credential.CredentialConfigurationDTO{
 			{Handle: "a", VCT: "va"},
 		}, nil)
 		svc := &openid4vciService{cfg: serviceConfig{}, creds: creds}
@@ -579,7 +580,7 @@ func (s *CredentialTestSuite) TestAuthorizedCredentialByScope() {
 
 	s.Run("ListError", func() {
 		creds := credentialmock.NewCredentialConfigurationServiceInterfaceMock(s.T())
-		creds.EXPECT().ListCredentialConfigurations(ctx).Return(nil, &tidcommon.ServiceError{Code: "x"})
+		creds.EXPECT().ListCredentialConfigurations(inRuntimeContext).Return(nil, &tidcommon.ServiceError{Code: "x"})
 		svc := &openid4vciService{cfg: serviceConfig{}, creds: creds}
 		_, err := svc.authorizedCredential(ctx, "", []string{"a"})
 		s.ErrorIs(err, ErrIssuance)
@@ -627,7 +628,7 @@ func (s *CredentialTestSuite) TestIssueCredentialErrors() {
 	s.Run("MissingProof", func() {
 		token, tokenVal := stubAccessToken(s.T(), ctx, testWalletClientID, "eudi-pid")
 		creds := credentialmock.NewCredentialConfigurationServiceInterfaceMock(s.T())
-		creds.EXPECT().GetCredentialConfigurationByHandle(ctx, "eudi-pid").
+		creds.EXPECT().GetCredentialConfigurationByHandle(inRuntimeContext, "eudi-pid").
 			Return(&credential.CredentialConfigurationDTO{Handle: "eudi-pid", VCT: "v"}, nil)
 		svc := &openid4vciService{
 			cfg: serviceConfig{BatchSize: 5}, tokenValidator: tokenVal, creds: creds, actors: walletApps(s.T(), ctx),
@@ -640,7 +641,7 @@ func (s *CredentialTestSuite) TestIssueCredentialErrors() {
 	s.Run("BatchSizeExceeded", func() {
 		token, tokenVal := stubAccessToken(s.T(), ctx, testWalletClientID, "eudi-pid")
 		creds := credentialmock.NewCredentialConfigurationServiceInterfaceMock(s.T())
-		creds.EXPECT().GetCredentialConfigurationByHandle(ctx, "eudi-pid").
+		creds.EXPECT().GetCredentialConfigurationByHandle(inRuntimeContext, "eudi-pid").
 			Return(&credential.CredentialConfigurationDTO{Handle: "eudi-pid", VCT: "v"}, nil)
 		svc := &openid4vciService{
 			cfg: serviceConfig{BatchSize: 1}, tokenValidator: tokenVal, creds: creds, actors: walletApps(s.T(), ctx),
@@ -693,7 +694,7 @@ func (s *CredentialTestSuite) TestIssueCredentialNonWalletClient() {
 				ID: "app-1", Properties: map[string]interface{}{"template": "wallet-embedded"},
 			}, nil)
 		creds := credentialmock.NewCredentialConfigurationServiceInterfaceMock(s.T())
-		creds.EXPECT().GetCredentialConfigurationByHandle(ctx, "eudi-pid").
+		creds.EXPECT().GetCredentialConfigurationByHandle(inRuntimeContext, "eudi-pid").
 			Return(&credential.CredentialConfigurationDTO{Handle: "eudi-pid", VCT: "v"}, nil)
 		svc := &openid4vciService{
 			cfg: serviceConfig{BatchSize: 5}, tokenValidator: tokenVal, creds: creds, actors: apps,
@@ -709,7 +710,7 @@ func (s *CredentialTestSuite) TestIssueCredentialUnauthorizedCredential() {
 	ctx := context.Background()
 	token, tokenVal := stubAccessToken(s.T(), ctx, testWalletClientID, "missing")
 	creds := credentialmock.NewCredentialConfigurationServiceInterfaceMock(s.T())
-	creds.EXPECT().GetCredentialConfigurationByHandle(ctx, "missing").
+	creds.EXPECT().GetCredentialConfigurationByHandle(inRuntimeContext, "missing").
 		Return(nil, &tidcommon.ServiceError{Code: "x"})
 	svc := &openid4vciService{
 		cfg: serviceConfig{BatchSize: 5}, tokenValidator: tokenVal, creds: creds, actors: walletApps(s.T(), ctx),
@@ -724,7 +725,7 @@ func (s *CredentialTestSuite) TestIssueCredentialVerifyProofsError() {
 	store := newStatefulStore(s.T())
 	token, tokenVal := stubAccessToken(s.T(), ctx, testWalletClientID, "eudi-pid")
 	creds := credentialmock.NewCredentialConfigurationServiceInterfaceMock(s.T())
-	creds.EXPECT().GetCredentialConfigurationByHandle(ctx, "eudi-pid").
+	creds.EXPECT().GetCredentialConfigurationByHandle(inRuntimeContext, "eudi-pid").
 		Return(&credential.CredentialConfigurationDTO{Handle: "eudi-pid", VCT: "v"}, nil)
 	svc := &openid4vciService{
 		cfg:            serviceConfig{CredentialIssuer: testIssuer, ProofMaxAge: time.Minute, BatchSize: 5},
@@ -752,7 +753,7 @@ func (s *CredentialTestSuite) TestIssueCredentialResolveClaimsError() {
 	s.Require().NoError(store.SaveNonce(ctx, nonce, &nonceRecord{ExpiresAt: time.Now().Add(time.Minute)}))
 	token, tokenVal := stubAccessToken(s.T(), ctx, testWalletClientID, "eudi-pid")
 	creds := credentialmock.NewCredentialConfigurationServiceInterfaceMock(s.T())
-	creds.EXPECT().GetCredentialConfigurationByHandle(ctx, "eudi-pid").
+	creds.EXPECT().GetCredentialConfigurationByHandle(inRuntimeContext, "eudi-pid").
 		Return(&credential.CredentialConfigurationDTO{Handle: "eudi-pid", VCT: "v"}, nil)
 	userSvc := usermock.NewUserServiceInterfaceMock(s.T())
 	userSvc.EXPECT().GetUser(ctx, "u1", false).Return(nil, &tidcommon.ServiceError{Code: "x"})
@@ -785,7 +786,7 @@ func (s *CredentialTestSuite) TestIssueCredentialSignError() {
 
 	validity := 3600
 	creds := credentialmock.NewCredentialConfigurationServiceInterfaceMock(s.T())
-	creds.EXPECT().GetCredentialConfigurationByHandle(ctx, "eudi-pid").
+	creds.EXPECT().GetCredentialConfigurationByHandle(inRuntimeContext, "eudi-pid").
 		Return(&credential.CredentialConfigurationDTO{
 			Handle: "eudi-pid", VCT: "urn:v", Format: credential.DefaultCredentialFormat,
 			ValiditySeconds: &validity,
@@ -837,7 +838,7 @@ func (s *CredentialTestSuite) TestIssueCredentialSuccess() {
 	token, tokenVal := stubAccessToken(s.T(), ctx, testWalletClientID, "eudi-pid")
 
 	creds := credentialmock.NewCredentialConfigurationServiceInterfaceMock(s.T())
-	creds.EXPECT().GetCredentialConfigurationByHandle(ctx, "eudi-pid").
+	creds.EXPECT().GetCredentialConfigurationByHandle(inRuntimeContext, "eudi-pid").
 		Return(&credential.CredentialConfigurationDTO{
 			Handle: "eudi-pid", VCT: "urn:v", Format: credential.DefaultCredentialFormat,
 			Claims: []credential.ClaimMapping{{Name: "given_name"}},
@@ -1190,3 +1191,6 @@ func (s *ProofTestSuite) TestHolderProofsPrefersBatchThenSingle() {
 		})
 	}
 }
+
+// inRuntimeContext matches the runtime context the issuer reads credential configurations with.
+var inRuntimeContext = mock.MatchedBy(security.IsRuntimeContext)

@@ -11,11 +11,14 @@ import (
 
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 	_ "modernc.org/sqlite"
 
 	"github.com/thunder-id/thunderid/internal/system/config"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/tests/mocks/oumock"
+	"github.com/thunder-id/thunderid/tests/mocks/sysauthzmock"
 )
 
 // fakeTransactioner is a test double for providers.Transactioner
@@ -76,7 +79,8 @@ func (suite *InitTestSuite) TestInitialize() {
 	mux := http.NewServeMux()
 
 	// Execute
-	service, exporter, err := Initialize(mux, suite.mockOUService, nil, nil, nil, discardingBus{})
+	service, exporter, err := Initialize(mux, suite.mockOUService, nil, nil, nil, discardingBus{},
+		allowAllAuthz(suite.T()))
 
 	// Assert
 	suite.NoError(err)
@@ -305,7 +309,7 @@ func (suite *InitTestSuite) TestNewResourceService() {
 	// Execute
 	mockTransactioner := &fakeTransactioner{}
 	service, err := newResourceService(
-		suite.mockOUService, mockStore, mockTransactioner, nil, nil, nil, discardingBus{},
+		suite.mockOUService, mockStore, mockTransactioner, nil, nil, nil, discardingBus{}, allowAllAuthz(suite.T()),
 	)
 
 	// Assert
@@ -375,7 +379,7 @@ func (suite *InitTestSuite) TestInitialize_IntegrationFlow() {
 	mux := http.NewServeMux()
 
 	// Execute
-	service, _, err := Initialize(mux, suite.mockOUService, nil, nil, nil, discardingBus{})
+	service, _, err := Initialize(mux, suite.mockOUService, nil, nil, nil, discardingBus{}, allowAllAuthz(suite.T()))
 
 	// Assert service is created
 	suite.NoError(err)
@@ -684,4 +688,17 @@ func (suite *InitTestSuite) TestInitializeStore_FallbackToGlobalConfig() {
 			}
 		})
 	}
+}
+
+// allowAllAuthz returns an authorization mock that allows every action and every list, so tests not
+// about authorization reach the logic they cover.
+func allowAllAuthz(t interface {
+	mock.TestingT
+	Cleanup(func())
+}) *sysauthzmock.SystemAuthorizationServiceInterfaceMock {
+	m := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
+	m.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).Return(true, nil).Maybe()
+	m.On("GetAccessibleResources", mock.Anything, mock.Anything, mock.Anything).
+		Return(&sysauthz.AccessibleResources{AllAllowed: true}, nil).Maybe()
+	return m
 }

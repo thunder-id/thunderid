@@ -177,6 +177,8 @@ func handleError(ctx context.Context, w http.ResponseWriter, svcErr *tidcommon.S
 		case ErrorTemplateReadOnly.Code, ErrorDeclarativeModeCreateNotAllowed.Code:
 			// The store is declarative/read-only, so the write is refused rather than a bad request.
 			statusCode = http.StatusForbidden
+		case tidcommon.ErrorUnauthorized.Code:
+			statusCode = http.StatusForbidden
 		default:
 			statusCode = http.StatusBadRequest
 		}

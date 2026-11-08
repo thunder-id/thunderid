@@ -10,6 +10,9 @@ import (
 	"github.com/thunder-id/thunderid/internal/group"
 	resourcepkg "github.com/thunder-id/thunderid/internal/resource"
 	"github.com/thunder-id/thunderid/internal/revocation"
+	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/security"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
@@ -21,7 +24,9 @@ func resolveScopes(ctx context.Context, resourceService resourcepkg.ResourceServ
 		if len(resource.Permissions) == 0 {
 			continue
 		}
-		resourceServer, svcErr := resourceService.GetResourceServer(ctx, resource.ResourceServerID)
+		// The audience is read whichever organization unit owns the resource server.
+		resourceServer, svcErr := resourceService.GetResourceServer(
+			security.WithRuntimeContext(ctx), resource.ResourceServerID)
 		if svcErr != nil {
 			return nil, svcErr
 		}
@@ -82,4 +87,20 @@ func grantsPermission(permissions []ResourcePermissions, resourceServerID, permi
 		}
 	}
 	return false
+}
+
+// checkRoleAccess checks the caller may perform the action on a role of the organization unit.
+func checkRoleAccess(ctx context.Context, authzService sysauthz.SystemAuthorizationServiceInterface,
+	logger *log.Logger, action security.Action, ouID string) *tidcommon.ServiceError {
+	allowed, svcErr := authzService.IsActionAllowed(ctx, action,
+		&sysauthz.ActionContext{ResourceType: security.ResourceTypeRole, OUID: ouID})
+	if svcErr != nil {
+		logger.Error(ctx, "Failed to check authorization for action",
+			log.String("action", string(action)), log.Any("error", svcErr))
+		return &tidcommon.InternalServerError
+	}
+	if !allowed {
+		return &tidcommon.ErrorUnauthorized
+	}
+	return nil
 }

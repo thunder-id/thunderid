@@ -27,6 +27,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/kmprovider/defaultkm"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -35,6 +36,7 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/idp/idpmock"
 	"github.com/thunder-id/thunderid/tests/mocks/notification/notificationmock"
 	"github.com/thunder-id/thunderid/tests/mocks/sharingmock"
+	"github.com/thunder-id/thunderid/tests/mocks/sysauthzmock"
 )
 
 // testCryptoKey is the shared key used so secret property encryption works in tests.
@@ -63,10 +65,10 @@ func newConnectionTestHandler(t *testing.T) (*handler, *idpmock.IDPServiceInterf
 	t.Cleanup(config.ResetServerRuntime)
 	mockIDP := idpmock.NewIDPServiceInterfaceMock(t)
 	mockNotif := notificationmock.NewNotificationSenderMgtSvcInterfaceMock(t)
-	return newHandler(newService(
+	return newHandler(withAllowAllAuthz(t, newService(
 		mockIDP, mockNotif, &testResourceServerLister{},
 		newAuthZENPDPServiceMock(t), newHTTPConnectionServiceMock(t),
-	)), mockIDP, mockNotif
+	))), mockIDP, mockNotif
 }
 
 // newAuthZENPDPServiceMock returns an AuthZEN PDP service mock that lists no connections, for tests that list every
@@ -137,7 +139,7 @@ func (s *InitTestSuite) SetupTest() {
 	s.mockHTTP = httpconnectionmock.NewHTTPConnectionServiceInterfaceMock(s.T())
 	s.mux = http.NewServeMux()
 	_, _, _, err := Initialize(s.mux, nil, s.mockIDP, s.mockNotif, s.mockResource,
-		s.authZENPDP, s.mockHTTP, nil, newSharingServiceMock(s.T()))
+		s.authZENPDP, s.mockHTTP, nil, newSharingServiceMock(s.T()), allowAllAuthz(s.T()))
 	s.Require().NoError(err)
 }
 
@@ -158,7 +160,7 @@ func (s *InitTestSuite) TestInitializeFailsWhenDeclarativeResourcesCannotBeLoade
 	}))
 
 	exporter, provider, _, err := Initialize(http.NewServeMux(), nil, s.mockIDP, s.mockNotif, s.mockResource,
-		s.authZENPDP, s.mockHTTP, nil, newSharingServiceMock(s.T()))
+		s.authZENPDP, s.mockHTTP, nil, newSharingServiceMock(s.T()), allowAllAuthz(s.T()))
 
 	s.ErrorContains(err, "failed to load connection resources")
 	s.Nil(exporter)
@@ -179,7 +181,7 @@ func (s *InitTestSuite) TestInitializeFailsWhenADeclarativeConnectionIsInvalid()
 	}))
 
 	_, _, _, err := Initialize(http.NewServeMux(), nil, s.mockIDP, s.mockNotif, s.mockResource, nil, s.mockHTTP, nil,
-		newSharingServiceMock(s.T()))
+		newSharingServiceMock(s.T()), allowAllAuthz(s.T()))
 
 	s.ErrorContains(err, "failed to load connection resources")
 	s.ErrorContains(err, "needs an organization unit")
@@ -379,4 +381,26 @@ func (s *InitTestSuite) TestRouteTable() {
 		s.mux.ServeHTTP(rr, req)
 		s.Equal(tc.want, rr.Code, "%s %s", tc.method, tc.path)
 	}
+}
+
+// allowAllAuthz returns an authorization mock that allows every action and every list, so tests not
+// about authorization reach the logic they cover.
+func allowAllAuthz(t interface {
+	mock.TestingT
+	Cleanup(func())
+}) *sysauthzmock.SystemAuthorizationServiceInterfaceMock {
+	m := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
+	m.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).Return(true, nil).Maybe()
+	m.On("GetAccessibleResources", mock.Anything, mock.Anything, mock.Anything).
+		Return(&sysauthz.AccessibleResources{AllAllowed: true}, nil).Maybe()
+	return m
+}
+
+// withAllowAllAuthz gives the service an authorization mock that allows everything.
+func withAllowAllAuthz(t interface {
+	mock.TestingT
+	Cleanup(func())
+}, svc *service) *service {
+	svc.authzService = allowAllAuthz(t)
+	return svc
 }

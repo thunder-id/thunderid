@@ -730,13 +730,7 @@ func (t *roleTools) revokeRole(ctx context.Context, roleID, ouID string, assigne
 
 // describeRole reads a role and names the APIs it grants permissions on.
 func (t *roleTools) describeRole(ctx context.Context, roleID, ouID string) (*roleMCPDetails, error) {
-	var role *RoleWithPermissions
-	var svcErr *tidcommon.ServiceError
-	if ouID != "" {
-		role, svcErr = t.roleService.GetRoleInOU(ctx, roleID, ouID)
-	} else {
-		role, svcErr = t.roleService.GetRoleWithPermissions(ctx, roleID)
-	}
+	role, svcErr := t.roleService.GetRoleInOU(ctx, roleID, ouID)
 	if svcErr != nil {
 		return nil, errors.New(svcErr.ErrorDescription.String())
 	}

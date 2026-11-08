@@ -131,3 +131,63 @@ func yamlFieldNames(t reflect.Type) map[string]bool {
 	}
 	return names
 }
+
+// ListReadablePolicies returns one page of the sharing policies of a resource that the caller may read. A
+// caller who may read the resource in its owning organization unit reads every policy. Any other caller
+// reads the policies its own organization units made, and is refused with tidcommon.ErrorUnauthorized
+// when it made none. A resource holds at most one policy per organization unit, so those are paged in
+// memory. mayRead checks the caller may read the resource in an organization unit, and translate maps an
+// error of the sharing framework to the resource type's own codes.
+func ListReadablePolicies(ctx context.Context, sharingService SharingServiceInterface, rt ResourceType,
+	resourceID, owningOUID string, limit, offset int, mayRead func(ouID string) *tidcommon.ServiceError,
+	translate func(*tidcommon.ServiceError) *tidcommon.ServiceError,
+) (PolicyList, *tidcommon.ServiceError) {
+	svcErr := mayRead(owningOUID)
+	if svcErr == nil {
+		list, svcErr := sharingService.GetPolicyList(ctx, rt, resourceID, limit, offset)
+		if svcErr != nil {
+			return PolicyList{}, translate(svcErr)
+		}
+		return list, nil
+	}
+	if svcErr.Code != tidcommon.ErrorUnauthorized.Code {
+		return PolicyList{}, svcErr
+	}
+
+	if svcErr := validatePaginationParams(limit, offset); svcErr != nil {
+		return PolicyList{}, translate(svcErr)
+	}
+	policies, svcErr := sharingService.ListPolicies(ctx, rt, resourceID)
+	if svcErr != nil {
+		return PolicyList{}, translate(svcErr)
+	}
+	own := make([]Policy, 0, len(policies))
+	for _, p := range policies {
+		svcErr := mayRead(p.InitiatingOUID)
+		if svcErr == nil {
+			own = append(own, p)
+			continue
+		}
+		if svcErr.Code != tidcommon.ErrorUnauthorized.Code {
+			return PolicyList{}, svcErr
+		}
+	}
+	if len(own) == 0 {
+		return PolicyList{}, &tidcommon.ErrorUnauthorized
+	}
+	return pagePolicies(own, limit, offset), nil
+}
+
+// pagePolicies returns one page of a set of policies narrowed in memory.
+func pagePolicies(policies []Policy, limit, offset int) PolicyList {
+	page := []Policy{}
+	if offset < len(policies) {
+		page = policies[offset : offset+min(limit, len(policies)-offset)]
+	}
+	return PolicyList{
+		TotalResults: len(policies),
+		StartIndex:   offset + 1,
+		Count:        len(page),
+		Policies:     page,
+	}
+}

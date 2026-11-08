@@ -177,6 +177,8 @@ func writeServiceError(ctx context.Context, w http.ResponseWriter, svcErr *tidco
 			ErrorSharingPolicyExists.Code,
 			ErrorSharingPolicyVersionMismatch.Code:
 			status = http.StatusConflict
+		case tidcommon.ErrorUnauthorized.Code:
+			status = http.StatusForbidden
 		default:
 			status = http.StatusBadRequest
 		}

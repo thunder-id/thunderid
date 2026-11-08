@@ -13,6 +13,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/projectscope"
 	"github.com/thunder-id/thunderid/internal/system/security"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
@@ -60,6 +61,7 @@ type credentialConfigurationDeclarativeService interface {
 type configurationService struct {
 	store     credentialStoreInterface
 	ouService ou.OrganizationUnitServiceInterface
+	authzSvc  sysauthz.SystemAuthorizationServiceInterface
 	// projectValidator is nil on a deployment that serves no projects.
 	projectValidator projectOUValidator
 	// projectRequired is set on a deployment that serves projects, where every configuration belongs to one.
@@ -78,11 +80,13 @@ type projectOUValidator interface {
 // configuration created without a project.
 func newCredentialConfigurationService(
 	store credentialStoreInterface, ouService ou.OrganizationUnitServiceInterface,
-	projectValidator projectOUValidator, projectRequired bool,
+	authzSvc sysauthz.SystemAuthorizationServiceInterface, projectValidator projectOUValidator,
+	projectRequired bool,
 ) *configurationService {
 	return &configurationService{
 		store:            store,
 		ouService:        ouService,
+		authzSvc:         authzSvc,
 		projectValidator: projectValidator,
 		projectRequired:  projectRequired,
 		logger: log.GetLogger().With(
@@ -182,6 +186,9 @@ func (s *configurationService) CreateCredentialConfiguration(
 	if svcErr := s.resolvePlacement(ctx, dto); svcErr != nil {
 		return nil, svcErr
 	}
+	if svcErr := s.checkAccess(ctx, security.ActionCreateVC, dto.OUID); svcErr != nil {
+		return nil, svcErr
+	}
 
 	existing, err := s.store.GetCredentialConfigurationByHandle(ctx, dto.Handle)
 	if err != nil && !errors.Is(err, ErrNotFound) {
@@ -234,6 +241,9 @@ func (s *configurationService) GetCredentialConfiguration(
 		s.logger.Error(ctx, "Failed to get credential configuration", log.Error(err))
 		return nil, &tidcommon.InternalServerError
 	}
+	if svcErr := s.checkAccess(ctx, security.ActionReadVC, dto.OUID); svcErr != nil {
+		return nil, svcErr
+	}
 	s.populateOUHandle(ctx, dto)
 	return dto, nil
 }
@@ -250,6 +260,9 @@ func (s *configurationService) GetCredentialConfigurationByHandle(
 		s.logger.Error(ctx, "Failed to get credential configuration by handle", log.Error(err))
 		return nil, &tidcommon.InternalServerError
 	}
+	if svcErr := s.checkAccess(ctx, security.ActionReadVC, dto.OUID); svcErr != nil {
+		return nil, svcErr
+	}
 	return dto, nil
 }
 
@@ -265,6 +278,12 @@ func (s *configurationService) ListCredentialConfigurations(
 		s.logger.Error(ctx, "Failed to list credential configurations", log.Error(err))
 		return nil, &tidcommon.InternalServerError
 	}
+	listOU, visible, svcErr := sysauthz.ResolveListOU(ctx, s.authzSvc, s.logger, security.ActionListVCs, "")
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	configs = sysauthz.FilterByListOU(configs, listOU, visible,
+		func(d CredentialConfigurationDTO) string { return d.OUID })
 	ptrs := make([]*CredentialConfigurationDTO, len(configs))
 	for i := range configs {
 		ptrs[i] = &configs[i]
@@ -277,7 +296,20 @@ func (s *configurationService) ListCredentialConfigurations(
 func (s *configurationService) ListCredentialConfigurationSummaries(
 	ctx context.Context,
 ) ([]CredentialConfigurationList, *tidcommon.ServiceError) {
-	summaries, err := s.store.ListCredentialConfigurationSummaries(ctx)
+	listOU, visible, svcErr := sysauthz.ResolveListOU(ctx, s.authzSvc, s.logger, security.ActionListVCs, "")
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	if !visible {
+		return []CredentialConfigurationList{}, nil
+	}
+	var summaries []CredentialConfigurationList
+	var err error
+	if listOU == "" {
+		summaries, err = s.store.ListCredentialConfigurationSummaries(ctx)
+	} else {
+		summaries, err = s.store.ListCredentialConfigurationSummariesByOUID(ctx, listOU)
+	}
 	if err != nil {
 		if errors.Is(err, ErrResultLimitExceededInCompositeMode) {
 			return nil, &ErrorConfigurationResultLimitExceeded
@@ -306,6 +338,12 @@ func (s *configurationService) ListCredentialConfigurationSummariesByOUID(
 			log.String("ouID", ouID), log.Error(err))
 		return nil, &tidcommon.InternalServerError
 	}
+	listOU, visible, svcErr := sysauthz.ResolveListOU(ctx, s.authzSvc, s.logger, security.ActionListVCs, ouID)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	summaries = sysauthz.FilterByListOU(summaries, listOU, visible,
+		func(d CredentialConfigurationList) string { return d.OUID })
 	s.populateSummaryOUHandles(ctx, summaries)
 	return summaries, nil
 }
@@ -465,6 +503,9 @@ func (s *configurationService) UpdateCredentialConfiguration(
 		s.logger.Error(ctx, "Failed to load credential configuration", log.Error(err))
 		return nil, &tidcommon.InternalServerError
 	}
+	if svcErr := s.checkAccess(ctx, security.ActionUpdateVC, existing.OUID); svcErr != nil {
+		return nil, svcErr
+	}
 
 	// An update that names no project keeps the configuration's project, and one in a project that names no
 	// organization unit keeps its organization unit.
@@ -496,6 +537,13 @@ func (s *configurationService) UpdateCredentialConfiguration(
 	}
 
 	dto.ID = id
+	// Moving the credential configuration places it in another organization unit, which the caller must be
+	// allowed to act for too.
+	if dto.OUID != existing.OUID {
+		if svcErr := s.checkAccess(ctx, security.ActionUpdateVC, dto.OUID); svcErr != nil {
+			return nil, svcErr
+		}
+	}
 	if err := s.store.UpdateCredentialConfiguration(ctx, *dto); err != nil {
 		if errors.Is(err, ErrConfigurationIsImmutable) {
 			return nil, &ErrorConfigurationImmutable
@@ -513,12 +561,16 @@ func (s *configurationService) DeleteCredentialConfiguration(
 	if strings.TrimSpace(id) == "" {
 		return &ErrorConfigurationInvalidRequest
 	}
-	if _, err := s.store.GetCredentialConfigurationByID(ctx, id); err != nil {
+	existing, err := s.store.GetCredentialConfigurationByID(ctx, id)
+	if err != nil {
 		if errors.Is(err, ErrNotFound) {
 			return nil // idempotent
 		}
 		s.logger.Error(ctx, "Failed to load credential configuration", log.Error(err))
 		return &tidcommon.InternalServerError
+	}
+	if svcErr := s.checkAccess(ctx, security.ActionDeleteVC, existing.OUID); svcErr != nil {
+		return svcErr
 	}
 	if err := s.store.DeleteCredentialConfiguration(ctx, id); err != nil {
 		if errors.Is(err, ErrConfigurationIsImmutable) {
@@ -582,6 +634,22 @@ func validateClaims(claims []ClaimMapping) *tidcommon.ServiceError {
 			return ErrorConfigurationDuplicateClaim.WithParams(map[string]string{"claim": name})
 		}
 		seen[name] = true
+	}
+	return nil
+}
+
+// checkAccess checks the caller may perform the action on a credential configuration of the organization unit.
+func (s *configurationService) checkAccess(ctx context.Context, action security.Action,
+	ouID string) *tidcommon.ServiceError {
+	allowed, svcErr := s.authzSvc.IsActionAllowed(ctx, action,
+		&sysauthz.ActionContext{ResourceType: security.ResourceTypeVerifiableCredential, OUID: ouID})
+	if svcErr != nil {
+		s.logger.Error(ctx, "Failed to check authorization for action",
+			log.String("action", string(action)), log.Any("error", svcErr))
+		return &tidcommon.InternalServerError
+	}
+	if !allowed {
+		return &tidcommon.ErrorUnauthorized
 	}
 	return nil
 }

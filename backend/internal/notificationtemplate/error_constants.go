@@ -26,6 +26,10 @@ var (
 	// errProjectRefused rolls back an update whose new project is refused; the service returns the refusal.
 	errProjectRefused = errors.New("the project of the notification template was refused")
 
+	// errTemplateAccessDenied rolls back a transaction when the caller may not act on the template; the
+	// service surfaces the authorization error.
+	errTemplateAccessDenied = errors.New("the caller may not act on the notification template")
+
 	// errResultLimitExceededInCompositeMode is returned when composite store results exceed the configured limit.
 	errResultLimitExceededInCompositeMode = errors.New("result limit exceeded in composite mode")
 )

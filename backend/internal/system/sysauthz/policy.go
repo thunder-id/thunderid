@@ -152,6 +152,9 @@ var inheritanceReadActions = map[security.Action]bool{
 	security.ActionListUserTypes:  true,
 	security.ActionReadAgentType:  true,
 	security.ActionListAgentTypes: true,
+	// Flows reference the templates of the organization units above their own by handle.
+	security.ActionReadNotificationTemplate:  true,
+	security.ActionListNotificationTemplates: true,
 }
 
 // isInheritanceEligible returns true when the action is registered for

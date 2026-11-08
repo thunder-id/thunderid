@@ -1013,6 +1013,9 @@ func (ous *organizationUnitService) GetOrganizationUnitGroups(
 func (ous *organizationUnitService) GetOrganizationUnitRoles(
 	ctx context.Context, id string, limit, offset int,
 ) (*RoleListResponse, *tidcommon.ServiceError) {
+	if svcErr := ous.checkOUAccess(ctx, security.ActionReadRole, id); svcErr != nil {
+		return nil, svcErr
+	}
 	if ous.roleResolver == nil {
 		return nil, &tidcommon.InternalServerError
 	}
@@ -1210,6 +1213,10 @@ func (ous *organizationUnitService) GetOrganizationUnitRolesByPath(
 		}
 		logger.Error(ctx, "Failed to get organization unit by path", log.Error(err))
 		return nil, &tidcommon.InternalServerError
+	}
+
+	if svcErr := ous.checkOUAccess(ctx, security.ActionReadRole, ou.ID); svcErr != nil {
+		return nil, svcErr
 	}
 
 	items, totalCount, svcErr := ous.getResourceListWithExistenceCheck(

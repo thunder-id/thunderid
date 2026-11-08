@@ -206,7 +206,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	fatalOnError(ctx, logger, err, "Failed to initialize AuthZENPDPService")
 
 	resourceService, resourceExporter, err := resource.Initialize(mux, ouService, authZENPDPService, valueCapture,
-		projectService, auditBus, resource.KeepingValueReferences())
+		projectService, auditBus, ouAuthzService, resource.KeepingValueReferences())
 	fatalOnError(ctx, logger, err, "Failed to initialize Resource Service")
 	exporters = append(exporters, resourceExporter)
 
@@ -307,7 +307,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	fatalOnError(ctx, logger, err, "Failed to initialize IDPService")
 
 	notifTemplateSvc, _, notifTemplateExporter, err := notificationtemplate.Initialize(
-		mux, cacheManager, ouService, i18nService, projectService)
+		mux, cacheManager, ouService, ouAuthzService, i18nService, projectService)
 	fatalOnError(ctx, logger, err, "Failed to initialize NotificationTemplateService")
 	projectService.AddResourceCheck(notifTemplateSvc.ProjectHasTemplates)
 	exporters = append(exporters, notifTemplateExporter)
@@ -316,21 +316,21 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	// notification-sender management services.
 	connectionExporter, ouDependencyProvider, httpConnectionWriter, err := connection.Initialize(
 		mux, mcpServer, idpService, notifSenderMgtSvc, resourceService, authZENPDPService, httpConnectionService,
-		valueCapture, sharingService)
+		valueCapture, sharingService, ouAuthzService)
 	fatalOnError(ctx, logger, err, "Failed to initialize connection declarative resources")
 	exporters = append(exporters, connectionExporter)
 
 	// Verifiable-credential DEFINITION management. Presentation definitions and credential
 	// configurations are authored here; the OpenID4VP verifier and OpenID4VCI issuer runtimes are
 	// data plane concerns and are dropped.
-	openid4vpDefSvc, vpDefExp, err := presentation.Initialize(mux, ouService, projectService)
+	openid4vpDefSvc, vpDefExp, err := presentation.Initialize(mux, ouService, ouAuthzService, projectService)
 	fatalOnError(ctx, logger, err, "Failed to initialize presentation definition service")
 	projectService.AddResourceCheck(openid4vpDefSvc.ProjectHasPresentationDefinitions)
 	if vpDefExp != nil {
 		exporters = append(exporters, vpDefExp)
 	}
 
-	openid4vciCredSvc, vciCredExp, err := credential.Initialize(mux, ouService, projectService)
+	openid4vciCredSvc, vciCredExp, err := credential.Initialize(mux, ouService, ouAuthzService, projectService)
 	fatalOnError(ctx, logger, err, "Failed to initialize credential configuration service")
 	projectService.AddResourceCheck(openid4vciCredSvc.ProjectHasCredentialConfigurations)
 	if vciCredExp != nil {
@@ -344,7 +344,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	flowMgtService, flowMgtExporter, err := flowmgt.Initialize(
 		mux, mcpServer, cacheManager, flowFactory, execRegistry, interceptorRegistry, graphBuilder,
 		serverConfigService, ouService, notifTemplateSvc, httpConnectionService, flowConfigHandler, idpService,
-		false, sharingService, auditBus, projectService)
+		false, sharingService, auditBus, projectService, ouAuthzService)
 	fatalOnError(ctx, logger, err, "Failed to initialize FlowMgtService")
 	projectService.AddResourceCheck(flowMgtService.ProjectHasFlows)
 
@@ -375,8 +375,8 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	// deny list, and this plane issues and revokes no tokens. application treats nil as "no opinion".
 	applicationService, applicationExporter, err := application.Initialize(
 		mux, mcpServer, entityService, inboundClientService, ouService, i18nService,
-		runtimeCryptoSvc, serverConfigService, nil, sharingService, valueCapture, governanceService, projectService,
-		auditBus)
+		runtimeCryptoSvc, serverConfigService, nil, sharingService, ouAuthzService, valueCapture,
+		governanceService, projectService, auditBus)
 	fatalOnError(ctx, logger, err, "Failed to initialize ApplicationService")
 	exporters = append(exporters, applicationExporter)
 

@@ -92,18 +92,18 @@ func (c *compositeStore) CountTemplates(ctx context.Context, channel ChannelType
 	return len(merged), nil
 }
 
-// ListTemplatesByOUID returns a page over the merged set of templates an organization unit owns,
+// ListTemplatesByOUIDs returns a page over the merged set of templates the given organization units own,
 // rejecting a source that exceeds the composite cap.
-func (c *compositeStore) ListTemplatesByOUID(ctx context.Context, channel ChannelType, ouID string,
+func (c *compositeStore) ListTemplatesByOUIDs(ctx context.Context, channel ChannelType, ouIDs []string,
 	limit, offset int) ([]templateDAO, error) {
-	return mergedPage(c.ouSources(ctx, channel, ouID), limit, offset)
+	return mergedPage(c.ouSources(ctx, channel, ouIDs), limit, offset)
 }
 
-// CountTemplatesByOUID returns the merged count of templates an organization unit owns, rejecting a
+// CountTemplatesByOUIDs returns the merged count of templates the given organization units own, rejecting a
 // source that exceeds the composite cap.
-func (c *compositeStore) CountTemplatesByOUID(ctx context.Context, channel ChannelType, ouID string) (
+func (c *compositeStore) CountTemplatesByOUIDs(ctx context.Context, channel ChannelType, ouIDs []string) (
 	int, error) {
-	return mergedCount(c.ouSources(ctx, channel, ouID))
+	return mergedCount(c.ouSources(ctx, channel, ouIDs))
 }
 
 // ListTemplatesByProject returns a page over the merged set of templates in a project, rejecting a
@@ -126,16 +126,16 @@ type templateSources struct {
 	listFile, listDB   func(count int) ([]templateDAO, error)
 }
 
-// ouSources reads the templates of a channel an organization unit owns.
-func (c *compositeStore) ouSources(ctx context.Context, channel ChannelType, ouID string) templateSources {
+// ouSources reads the templates of a channel the given organization units own.
+func (c *compositeStore) ouSources(ctx context.Context, channel ChannelType, ouIDs []string) templateSources {
 	return templateSources{
-		countFile: func() (int, error) { return c.fileStore.CountTemplatesByOUID(ctx, channel, ouID) },
-		countDB:   func() (int, error) { return c.dbStore.CountTemplatesByOUID(ctx, channel, ouID) },
+		countFile: func() (int, error) { return c.fileStore.CountTemplatesByOUIDs(ctx, channel, ouIDs) },
+		countDB:   func() (int, error) { return c.dbStore.CountTemplatesByOUIDs(ctx, channel, ouIDs) },
 		listFile: func(count int) ([]templateDAO, error) {
-			return c.fileStore.ListTemplatesByOUID(ctx, channel, ouID, count, 0)
+			return c.fileStore.ListTemplatesByOUIDs(ctx, channel, ouIDs, count, 0)
 		},
 		listDB: func(count int) ([]templateDAO, error) {
-			return c.dbStore.ListTemplatesByOUID(ctx, channel, ouID, count, 0)
+			return c.dbStore.ListTemplatesByOUIDs(ctx, channel, ouIDs, count, 0)
 		},
 	}
 }

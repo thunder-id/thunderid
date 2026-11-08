@@ -53,7 +53,8 @@ func (s *SharingTestSuite) SetupTest() {
 	s.mockPDP = authzenpdpmock.NewAuthZENPDPServiceInterfaceMock(s.T())
 	s.mockHTTP = httpconnectionmock.NewHTTPConnectionServiceInterfaceMock(s.T())
 	s.mockSharing = sharingmock.NewSharingServiceInterfaceMock(s.T())
-	s.svc = newService(s.mockIDP, s.mockNotif, &testResourceServerLister{}, s.mockPDP, s.mockHTTP)
+	s.svc = withAllowAllAuthz(s.T(), newService(s.mockIDP, s.mockNotif, &testResourceServerLister{},
+		s.mockPDP, s.mockHTTP))
 	s.svc.sharingService = s.mockSharing
 }
 

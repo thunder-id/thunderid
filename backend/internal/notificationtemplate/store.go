@@ -26,9 +26,9 @@ type notificationTemplateStoreInterface interface {
 	GetTemplateByHandle(ctx context.Context, channel ChannelType, handle string) (templateDAO, error)
 	ListTemplates(ctx context.Context, channel ChannelType, limit, offset int) ([]templateDAO, error)
 	CountTemplates(ctx context.Context, channel ChannelType) (int, error)
-	ListTemplatesByOUID(ctx context.Context, channel ChannelType, ouID string, limit, offset int) (
+	ListTemplatesByOUIDs(ctx context.Context, channel ChannelType, ouIDs []string, limit, offset int) (
 		[]templateDAO, error)
-	CountTemplatesByOUID(ctx context.Context, channel ChannelType, ouID string) (int, error)
+	CountTemplatesByOUIDs(ctx context.Context, channel ChannelType, ouIDs []string) (int, error)
 	ListTemplatesByProject(ctx context.Context, channel ChannelType, projectID string, limit, offset int) (
 		[]templateDAO, error)
 	CountTemplatesByProject(ctx context.Context, channel ChannelType, projectID string) (int, error)
@@ -169,16 +169,22 @@ func (s *notificationTemplateStore) CountTemplates(ctx context.Context, channel 
 	return parseCountResult(results)
 }
 
-// ListTemplatesByOUID retrieves a page of the templates of a channel an organization unit owns.
-func (s *notificationTemplateStore) ListTemplatesByOUID(ctx context.Context, channel ChannelType, ouID string,
-	limit, offset int) ([]templateDAO, error) {
+// ListTemplatesByOUIDs retrieves a page of the templates of a channel the given organization units own.
+func (s *notificationTemplateStore) ListTemplatesByOUIDs(ctx context.Context, channel ChannelType,
+	ouIDs []string, limit, offset int) ([]templateDAO, error) {
+	if len(ouIDs) == 0 {
+		return []templateDAO{}, nil
+	}
 	dbClient, err := s.getConfigDBClient()
 	if err != nil {
 		return nil, err
 	}
 
-	results, err := dbClient.QueryContext(ctx, queryListTemplatesByOUID, string(channel), ouID, limit, offset,
-		s.scope(ctx))
+	args := []interface{}{string(channel), s.scope(ctx), limit, offset}
+	for _, ouID := range ouIDs {
+		args = append(args, ouID)
+	}
+	results, err := dbClient.QueryContext(ctx, buildListTemplatesByOUIDsQuery(len(ouIDs)), args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute list by organization unit query: %w", err)
 	}
@@ -229,15 +235,22 @@ func (s *notificationTemplateStore) CountTemplatesByProject(ctx context.Context,
 	return parseCountResult(results)
 }
 
-// CountTemplatesByOUID returns the number of templates of a channel an organization unit owns.
-func (s *notificationTemplateStore) CountTemplatesByOUID(ctx context.Context, channel ChannelType,
-	ouID string) (int, error) {
+// CountTemplatesByOUIDs returns the number of templates of a channel the given organization units own.
+func (s *notificationTemplateStore) CountTemplatesByOUIDs(ctx context.Context, channel ChannelType,
+	ouIDs []string) (int, error) {
+	if len(ouIDs) == 0 {
+		return 0, nil
+	}
 	dbClient, err := s.getConfigDBClient()
 	if err != nil {
 		return 0, err
 	}
 
-	results, err := dbClient.QueryContext(ctx, queryCountTemplatesByOUID, string(channel), ouID, s.scope(ctx))
+	args := []interface{}{string(channel), s.scope(ctx)}
+	for _, ouID := range ouIDs {
+		args = append(args, ouID)
+	}
+	results, err := dbClient.QueryContext(ctx, buildCountTemplatesByOUIDsQuery(len(ouIDs)), args...)
 	if err != nil {
 		return 0, fmt.Errorf("failed to execute count by organization unit query: %w", err)
 	}

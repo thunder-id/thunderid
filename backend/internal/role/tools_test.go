@@ -80,7 +80,10 @@ func toolRole(permissions ...string) *RoleWithPermissions {
 
 func (s *RoleToolsTestSuite) existingRole(permissions ...string) *RoleWithPermissions {
 	role := toolRole(permissions...)
-	s.roles.On("GetRoleWithPermissions", mock.Anything, toolRoleID).Return(role, (*tidcommon.ServiceError)(nil))
+	s.roles.On("GetRoleInOU", mock.Anything, toolRoleID, mock.Anything).Return(role, (*tidcommon.ServiceError)(nil)).
+		Maybe()
+	s.roles.On("GetRoleWithPermissions", mock.Anything, toolRoleID).Return(role, (*tidcommon.ServiceError)(nil)).
+		Maybe()
 	s.roles.On("IsRoleDeclarative", mock.Anything, toolRoleID).Return(false, (*tidcommon.ServiceError)(nil)).Maybe()
 	return role
 }

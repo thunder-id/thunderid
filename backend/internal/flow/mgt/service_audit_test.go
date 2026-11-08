@@ -167,7 +167,7 @@ func (s *FlowMgtServiceAuditTestSuite) service(bus eventbus.EventBusInterface) *
 	return newFlowMgtService(s.mockStore, newFlowInferenceServiceInterfaceMock(s.T()), s.mockGraphBuilder,
 		executormock.NewExecutorRegistryInterfaceMock(s.T()),
 		interceptormock.NewInterceptorRegistryInterfaceMock(s.T()), s.mockValidator, nil, &stubTransactioner{},
-		nil, s.mockOU, nil, nil, s.mockSharing, nil, bus, nil)
+		nil, s.mockOU, nil, nil, s.mockSharing, nil, bus, nil, allowAllAuthz(s.T()))
 }
 
 // requireOnlyEvent checks that exactly one event was published, named name, for an attempt by the admin
@@ -450,6 +450,8 @@ func (s *FlowMgtServiceAuditTestSuite) TestRestoreFlowVersion_PublishesOneEventP
 			name:    "the flow has no such version",
 			version: 7,
 			arrange: func() {
+				s.mockStore.EXPECT().GetFlowByID(mock.Anything, testAuditFlowID).
+					Return(storedFlow(auditedFlowDefinition(), 2), nil).Once()
 				s.mockStore.EXPECT().GetFlowVersion(mock.Anything, testAuditFlowID, 7).
 					Return(nil, errVersionNotFound).Once()
 			},

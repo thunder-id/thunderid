@@ -15,6 +15,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/middleware"
 	"github.com/thunder-id/thunderid/internal/system/projectscope"
 	"github.com/thunder-id/thunderid/internal/system/security"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 )
 
 // Initialize builds the presentation-definition store and service, registers the
@@ -38,7 +39,9 @@ import (
 //
 // projectValidator is nil on a deployment that serves no projects.
 func Initialize(
-	mux *http.ServeMux, ouService ou.OrganizationUnitServiceInterface, projectValidator projectOUValidator,
+	mux *http.ServeMux, ouService ou.OrganizationUnitServiceInterface,
+	authzService sysauthz.SystemAuthorizationServiceInterface,
+	projectValidator projectOUValidator,
 ) (PresentationDefinitionServiceInterface, declarativeresource.ResourceExporter, error) {
 	store, fileStore, dbStore, err := initializeStore()
 	if err != nil {
@@ -46,7 +49,8 @@ func Initialize(
 	}
 	projectRequired := projectValidator != nil &&
 		projectscope.ProjectRequired(security.ResourceTypeVerifiableCredential)
-	svc := newPresentationDefinitionService(store, ouService, projectValidator, projectRequired)
+	svc := newPresentationDefinitionService(store, ouService, authzService, projectValidator,
+		projectRequired)
 	if fileStore != nil {
 		if err := loadDeclarativeResources(fileStore, dbStore, svc); err != nil {
 			return nil, nil, err

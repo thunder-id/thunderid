@@ -15,6 +15,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/middleware"
 	"github.com/thunder-id/thunderid/internal/system/projectscope"
 	"github.com/thunder-id/thunderid/internal/system/security"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 )
 
 // Initialize builds the credential-configuration store and service, registers the
@@ -25,7 +26,9 @@ import (
 // "declarative" (file-based, read-only), or "composite" (file-based immutable +
 // database mutable). When unset it follows the global declarative_resources setting.
 func Initialize(
-	mux *http.ServeMux, ouService ou.OrganizationUnitServiceInterface, projectValidator projectOUValidator,
+	mux *http.ServeMux, ouService ou.OrganizationUnitServiceInterface,
+	authzService sysauthz.SystemAuthorizationServiceInterface,
+	projectValidator projectOUValidator,
 ) (CredentialConfigurationServiceInterface, declarativeresource.ResourceExporter, error) {
 	store, fileStore, dbStore, err := initializeStore()
 	if err != nil {
@@ -33,7 +36,8 @@ func Initialize(
 	}
 	projectRequired := projectValidator != nil &&
 		projectscope.ProjectRequired(security.ResourceTypeVerifiableCredential)
-	svc := newCredentialConfigurationService(store, ouService, projectValidator, projectRequired)
+	svc := newCredentialConfigurationService(store, ouService, authzService, projectValidator,
+		projectRequired)
 	if fileStore != nil {
 		if err := loadDeclarativeResources(fileStore, dbStore, svc); err != nil {
 			return nil, nil, err

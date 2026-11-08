@@ -232,7 +232,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	fatalOnError(ctx, logger, err, "Failed to initialize NotificationService")
 
 	notifTemplateSvc, notifTemplateRenderer, notifTemplateExporter, err :=
-		notificationtemplate.Initialize(mux, cacheManager, ouService, i18nService, nil)
+		notificationtemplate.Initialize(mux, cacheManager, ouService, ouAuthzService, i18nService, nil)
 	fatalOnError(ctx, logger, err, "Failed to initialize NotificationTemplateService")
 	exporters = append(exporters, notifTemplateExporter)
 
@@ -245,7 +245,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	fatalOnError(ctx, logger, err, "Failed to initialize AuthZENPDPService")
 
 	resourceService, resourceExporter, err := resource.Initialize(mux, ouService, authZENPDPService, nil, nil,
-		auditBus)
+		auditBus, ouAuthzService)
 	fatalOnError(ctx, logger, err, "Failed to initialize Resource Service")
 	exporters = append(exporters, resourceExporter)
 
@@ -362,7 +362,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	// notification-sender services.
 	connectionExporter, ouDependencyProvider, httpConnectionWriter, err := connection.Initialize(
 		mux, mcpServer, idpService, notifSenderMgtSvc, resourceService, authZENPDPService, httpConnectionService,
-		nil, sharingService)
+		nil, sharingService, ouAuthzService)
 	fatalOnError(ctx, logger, err, "Failed to initialize connection declarative resources")
 	exporters = append(exporters, connectionExporter)
 
@@ -403,7 +403,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 
 	openid4vpSvc, openid4vpDefSvc, openid4vciCredSvc, exporters :=
 		initializeVCServices(ctx, logger, mux, runtimeCryptoSvc, configCryptoSvc, jwtService,
-			ouService, runtimeStoreProvider, exporters)
+			ouService, ouAuthzService, runtimeStoreProvider, exporters)
 
 	defaultProvider := defaultprovider.Initialize(entityService, passkeyService,
 		otpCoreService, magicLinkService, openid4vpSvc, federatedAuths, governanceService,
@@ -500,7 +500,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	flowMgtService, flowMgtExporter, err := flowmgt.Initialize(
 		mux, mcpServer, cacheManager, flowFactory, execRegistry, interceptorRegistry, graphBuilder,
 		serverConfigService, ouService, notifTemplateSvc, httpConnectionService, flowConfigHandler, idpService,
-		true, sharingService, auditBus, nil)
+		true, sharingService, auditBus, nil, ouAuthzService)
 	fatalOnError(ctx, logger, err, "Failed to initialize FlowMgtService")
 
 	exporters = append(exporters, flowMgtExporter)
@@ -534,8 +534,8 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 
 	applicationService, applicationExporter, err := application.Initialize(
 		mux, mcpServer, entityService, inboundClientService, ouService, i18nService,
-		runtimeCryptoSvc, serverConfigService, artifactLifetime, sharingService, nil, governanceService, nil,
-		auditBus)
+		runtimeCryptoSvc, serverConfigService, artifactLifetime, sharingService, ouAuthzService, nil,
+		governanceService, nil, auditBus)
 	fatalOnError(ctx, logger, err, "Failed to initialize ApplicationService")
 	// Two-phase initialization: inject the application service into the executors that act on it.
 	fatalOnError(ctx, logger, executor.SetApplicationProvider(execRegistry, applicationService),
@@ -839,11 +839,12 @@ func initializeVCServices(
 	runtimeCrypto providers.RuntimeCryptoProvider, configCrypto kmprovider.ConfigCryptoProvider,
 	jwtService jwt.JWTServiceInterface,
 	ouService ou.OrganizationUnitServiceInterface,
+	authzService sysauthz.SystemAuthorizationServiceInterface,
 	runtimeStoreProvider providers.RuntimeStoreProvider,
 	exporters []declarativeresource.ResourceExporter,
 ) (openid4vp.OpenID4VPServiceInterface, presentation.PresentationDefinitionServiceInterface,
 	credential.CredentialConfigurationServiceInterface, []declarativeresource.ResourceExporter) {
-	openid4vpDefSvc, vpDefExp, err := presentation.Initialize(mux, ouService, nil)
+	openid4vpDefSvc, vpDefExp, err := presentation.Initialize(mux, ouService, authzService, nil)
 	fatalOnError(ctx, logger, err, "Failed to initialize presentation definition service")
 	if vpDefExp != nil {
 		exporters = append(exporters, vpDefExp)
@@ -853,7 +854,7 @@ func initializeVCServices(
 		runtimeStoreProvider)
 	fatalOnError(ctx, logger, err, "Failed to initialize OpenID4VP verifier service")
 
-	openid4vciCredSvc, vciCredExp, err := credential.Initialize(mux, ouService, nil)
+	openid4vciCredSvc, vciCredExp, err := credential.Initialize(mux, ouService, authzService, nil)
 	fatalOnError(ctx, logger, err, "Failed to initialize credential configuration service")
 	if vciCredExp != nil {
 		exporters = append(exporters, vciCredExp)

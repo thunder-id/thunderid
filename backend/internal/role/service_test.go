@@ -1428,8 +1428,8 @@ func (suite *RoleServiceTestSuite) TestUpdateRole_PermissionValidationErrors() {
 
 // DeleteRole Tests
 func (suite *RoleServiceTestSuite) TestDeleteRole_Success() {
-	suite.mockStore.On("IsRoleExist", mock.Anything,
-		"role1").Return(true, nil)
+	suite.mockStore.On("GetRole", mock.Anything,
+		"role1").Return(RoleWithPermissions{ID: "role1", OUID: testOwnerOU}, nil)
 	suite.unmandated()
 	suite.mockSharingService.EXPECT().DeletePoliciesForResource(mock.Anything, RoleSharingType, "role1").
 		Return(nil).Once()
@@ -1444,8 +1444,8 @@ func (suite *RoleServiceTestSuite) TestDeleteRole_Success() {
 }
 
 func (suite *RoleServiceTestSuite) TestDeleteRole_WithAssignments() {
-	suite.mockStore.On("IsRoleExist", mock.Anything,
-		"role1").Return(true, nil)
+	suite.mockStore.On("GetRole", mock.Anything,
+		"role1").Return(RoleWithPermissions{ID: "role1", OUID: testOwnerOU}, nil)
 	suite.unmandated()
 	suite.mockSharingService.EXPECT().DeletePoliciesForResource(mock.Anything, RoleSharingType, "role1").
 		Return(nil).Once()
@@ -1460,8 +1460,8 @@ func (suite *RoleServiceTestSuite) TestDeleteRole_WithAssignments() {
 }
 
 func (suite *RoleServiceTestSuite) TestDeleteRole_NotFound_ReturnsNil() {
-	suite.mockStore.On("IsRoleExist", mock.Anything,
-		"nonexistent").Return(false, nil)
+	suite.mockStore.On("GetRole", mock.Anything,
+		"nonexistent").Return(RoleWithPermissions{}, ErrRoleNotFound)
 
 	err := suite.service.DeleteRole(context.Background(), "nonexistent")
 
@@ -1476,8 +1476,8 @@ func (suite *RoleServiceTestSuite) TestDeleteRole_MissingID() {
 }
 
 func (suite *RoleServiceTestSuite) TestDeleteRole_GetRoleError() {
-	suite.mockStore.On("IsRoleExist", mock.Anything,
-		"role1").Return(false, errors.New("database error"))
+	suite.mockStore.On("GetRole", mock.Anything,
+		"role1").Return(RoleWithPermissions{}, errors.New("database error"))
 
 	err := suite.service.DeleteRole(context.Background(), "role1")
 
@@ -1486,8 +1486,8 @@ func (suite *RoleServiceTestSuite) TestDeleteRole_GetRoleError() {
 }
 
 func (suite *RoleServiceTestSuite) TestDeleteRole_GetAssignmentsCountError() {
-	suite.mockStore.On("IsRoleExist", mock.Anything,
-		"role1").Return(true, nil)
+	suite.mockStore.On("GetRole", mock.Anything,
+		"role1").Return(RoleWithPermissions{ID: "role1", OUID: testOwnerOU}, nil)
 	suite.unmandated()
 	suite.mockSharingService.EXPECT().DeletePoliciesForResource(mock.Anything, RoleSharingType, "role1").
 		Return(nil).Once()
@@ -1501,8 +1501,8 @@ func (suite *RoleServiceTestSuite) TestDeleteRole_GetAssignmentsCountError() {
 }
 
 func (suite *RoleServiceTestSuite) TestDeleteRole_StoreError() {
-	suite.mockStore.On("IsRoleExist", mock.Anything,
-		"role1").Return(true, nil)
+	suite.mockStore.On("GetRole", mock.Anything,
+		"role1").Return(RoleWithPermissions{ID: "role1", OUID: testOwnerOU}, nil)
 	suite.unmandated()
 	suite.mockSharingService.EXPECT().DeletePoliciesForResource(mock.Anything, RoleSharingType, "role1").
 		Return(nil).Once()
@@ -1520,7 +1520,8 @@ func (suite *RoleServiceTestSuite) TestDeleteRole_StoreError() {
 // The role's sharing policies go before the role does, and a failure to remove them leaves the
 // role in place to retry.
 func (suite *RoleServiceTestSuite) TestDeleteRole_SharingPolicyRemovalFails() {
-	suite.mockStore.On("IsRoleExist", mock.Anything, "role1").Return(true, nil)
+	suite.mockStore.On("GetRole", mock.Anything, "role1").
+		Return(RoleWithPermissions{ID: "role1", OUID: testOwnerOU}, nil)
 	suite.unmandated()
 	suite.mockSharingService.EXPECT().DeletePoliciesForResource(mock.Anything, RoleSharingType, "role1").
 		Return(&tidcommon.InternalServerError).Once()
@@ -1553,7 +1554,8 @@ func (suite *RoleServiceTestSuite) TestDeleteRole_RefusedWhileMandated() {
 		suite.mockOUService, suite.mockResourceService, txr, newAllowAllRoleAuthz(suite.T()),
 		suite.mockSharingService, discardingBus{}, nil)
 	inTx := mock.MatchedBy(func(ctx context.Context) bool { return ctx.Value(txKey{}) != nil })
-	suite.mockStore.On("IsRoleExist", mock.Anything, "role1").Return(true, nil)
+	suite.mockStore.On("GetRole", mock.Anything, "role1").
+		Return(RoleWithPermissions{ID: "role1", OUID: testOwnerOU}, nil)
 	suite.mockStore.On("ListMandatedAssignmentsForRole", inTx, "role1", "").Return([]RoleAssignment{
 		{ID: testUserID1, Type: assigneeTypeEntity, OUID: "ou-child", PolicyID: "user-policy"},
 	}, nil)
@@ -1570,7 +1572,8 @@ func (suite *RoleServiceTestSuite) TestDeleteRole_RefusedWhileMandated() {
 }
 
 func (suite *RoleServiceTestSuite) TestDeleteRole_MandateCheckFailureIsAServerError() {
-	suite.mockStore.On("IsRoleExist", mock.Anything, "role1").Return(true, nil)
+	suite.mockStore.On("GetRole", mock.Anything, "role1").
+		Return(RoleWithPermissions{ID: "role1", OUID: testOwnerOU}, nil)
 	suite.mockStore.On("ListMandatedAssignmentsForRole", mock.Anything, "role1", "").
 		Return(nil, errors.New("db down"))
 
@@ -1596,7 +1599,8 @@ func (suite *RoleServiceTestSuite) TestDeleteRole_PurgesPoliciesInTheRoleTransac
 		suite.mockOUService, suite.mockResourceService, txr, newAllowAllRoleAuthz(suite.T()),
 		suite.mockSharingService, discardingBus{}, nil)
 	inTx := mock.MatchedBy(func(ctx context.Context) bool { return ctx.Value(txKey{}) != nil })
-	suite.mockStore.On("IsRoleExist", mock.Anything, "role1").Return(true, nil)
+	suite.mockStore.On("GetRole", mock.Anything, "role1").
+		Return(RoleWithPermissions{ID: "role1", OUID: testOwnerOU}, nil)
 	suite.unmandated()
 	suite.mockSharingService.EXPECT().DeletePoliciesForResource(inTx, RoleSharingType, "role1").Return(nil).Once()
 	suite.mockStore.On("DeleteAssignmentsByRoleID", inTx, "role1").Return(nil)
@@ -1626,7 +1630,8 @@ func (suite *RoleServiceTestSuite) TestDeleteRole_DeclarativeMode_Denied() {
 	}
 	defer config.ResetServerRuntime()
 
-	suite.mockStore.On("IsRoleExist", mock.Anything, "role1").Return(true, nil)
+	suite.mockStore.On("GetRole", mock.Anything, "role1").
+		Return(RoleWithPermissions{ID: "role1", OUID: testOwnerOU}, nil)
 	suite.mockStore.On("IsRoleDeclarative", mock.Anything, "role1").Return(true, nil)
 
 	err2 := suite.service.DeleteRole(context.Background(), "role1")
@@ -1637,7 +1642,8 @@ func (suite *RoleServiceTestSuite) TestDeleteRole_DeclarativeMode_Denied() {
 
 func (suite *RoleServiceTestSuite) TestDeleteRole_DeclarativeCheckError_Refused() {
 	config.GetServerRuntime().Config.Role.Store = string(serverconst.StoreModeComposite)
-	suite.mockStore.On("IsRoleExist", mock.Anything, "role1").Return(true, nil)
+	suite.mockStore.On("GetRole", mock.Anything, "role1").
+		Return(RoleWithPermissions{ID: "role1", OUID: testOwnerOU}, nil)
 	suite.mockStore.On("IsRoleDeclarative", mock.Anything, "role1").Return(false, errors.New("db down"))
 
 	err := suite.service.DeleteRole(context.Background(), "role1")
@@ -2145,8 +2151,19 @@ func (suite *RoleServiceTestSuite) TestCascadeDeleteDependencies_DeleteError() {
 
 // newAllowAllRoleAuthz returns an authz mock that permits every grant check, so that
 // tests unrelated to the guard need not configure it.
+// allowOUAccess lets the mock allow every organization unit check, so a test about something else
+// reaches the logic it covers.
+func allowOUAccess(
+	m *sysauthzmock.SystemAuthorizationServiceInterfaceMock,
+) *sysauthzmock.SystemAuthorizationServiceInterfaceMock {
+	m.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).Return(true, nil).Maybe()
+	m.On("GetAccessibleResources", mock.Anything, mock.Anything, mock.Anything).
+		Return(&sysauthz.AccessibleResources{AllAllowed: true}, nil).Maybe()
+	return m
+}
+
 func newAllowAllRoleAuthz(t *testing.T) sysauthz.SystemAuthorizationServiceInterface {
-	mockAuthz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
+	mockAuthz := allowOUAccess(sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t))
 	mockAuthz.On("CanGrantPermissions", mock.Anything, mock.Anything).
 		Return((*tidcommon.ServiceError)(nil)).Maybe()
 	mockAuthz.On("CanGrantMembership", mock.Anything, mock.Anything, mock.Anything).
@@ -2178,7 +2195,7 @@ func (s *RoleChangeValidationTestSuite) SetupTest() {
 	s.groups = groupmock.NewGroupServiceInterfaceMock(s.T())
 	s.ous = oumock.NewOrganizationUnitServiceInterfaceMock(s.T())
 	s.resources = resourcemock.NewResourceServiceInterfaceMock(s.T())
-	s.authz = sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(s.T())
+	s.authz = allowOUAccess(sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(s.T()))
 	s.service = newRoleService(s.store, nil, s.groups, s.ous, s.resources, &fakeTransactioner{}, s.authz, nil,
 		discardingBus{}, nil)
 }

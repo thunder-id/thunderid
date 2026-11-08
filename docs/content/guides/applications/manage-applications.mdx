@@ -151,7 +151,7 @@ A data plane has no projects. It rejects a `projectId` in a create or update req
 
 ## Permissions
 
-To manage applications, you need the root `system` permission or one of the application permissions, such as `system:app:view` to read applications or `system:app` for every action. The same permissions authorize Dynamic Client Registration and its client configuration endpoint. Application permissions reach the applications in every organization unit. See [System Permissions](../users/manage-roles.mdx#system-permissions).
+To manage applications, you need the root `system` permission or one of the application permissions, such as `system:app:view` to read applications or `system:app` for every action. The same permissions authorize Dynamic Client Registration and its client configuration endpoint. Through the management APIs, application permissions reach only the applications of the organization unit the caller holds them in. See [System Permissions](../users/manage-roles.mdx#system-permissions).
 
 ## Next Steps
 

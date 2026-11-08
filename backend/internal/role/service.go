@@ -168,11 +168,27 @@ func (rs *roleService) GetRoleList(
 	if err != nil || len(rest) > 0 {
 		return nil, &ErrorInvalidFilter
 	}
+	requestedOUID := ouID
+	ouID, visible, svcErr := sysauthz.ResolveListOU(ctx, rs.authzService, rs.logger, security.ActionListRoles, ouID)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	if !visible && requestedOUID == "" {
+		return &RoleList{
+			Roles:      []Role{},
+			StartIndex: offset + 1,
+			Links:      utils.BuildPaginationLinks("/roles", limit, offset, 0, utils.FilterQueryParam(filters)),
+		}, nil
+	}
 
 	var roles []Role
 	var totalCount int
-	if ouID != "" {
-		var svcErr *tidcommon.ServiceError
+	if !visible {
+		roles, totalCount, svcErr = rs.listReadableSharedRolesInOU(ctx, requestedOUID, limit, offset)
+		if svcErr != nil {
+			return nil, svcErr
+		}
+	} else if ouID != "" {
 		roles, totalCount, svcErr = rs.listRolesInOU(ctx, ouID, limit, offset)
 		if svcErr != nil {
 			return nil, svcErr
@@ -227,7 +243,11 @@ func (rs *roleService) GetRoleListByProject(
 	}
 
 	extraQuery := "&" + projectIDQueryParam + "=" + url.QueryEscape(projectID) + utils.FilterQueryParam(filters)
-	if projectID == "" {
+	ouID, visible, svcErr := sysauthz.ResolveListOU(ctx, rs.authzService, rs.logger, security.ActionListRoles, ouID)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	if projectID == "" || !visible {
 		return &RoleList{
 			Roles:      []Role{},
 			StartIndex: offset + 1,
@@ -389,6 +409,9 @@ func (rs *roleService) createRole(
 		}
 		role.OUID = systemOUID
 	}
+	if svcErr := checkRoleAccess(ctx, rs.authzService, rs.logger, security.ActionCreateRole, role.OUID); svcErr != nil {
+		return nil, svcErr
+	}
 
 	// A project checks that the role's organization unit belongs to it.
 	if role.ProjectID != "" {
@@ -489,6 +512,19 @@ func (rs *roleService) createRole(
 // GetRoleWithPermissions retrieves a specific role by its id.
 func (rs *roleService) GetRoleWithPermissions(ctx context.Context, id string) (
 	*RoleWithPermissions, *tidcommon.ServiceError) {
+	role, svcErr := rs.getRoleWithPermissions(ctx, id)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	if svcErr := checkRoleAccess(ctx, rs.authzService, rs.logger, security.ActionReadRole, role.OUID); svcErr != nil {
+		return nil, svcErr
+	}
+	return role, nil
+}
+
+// getRoleWithPermissions retrieves a role by its id without checking the caller.
+func (rs *roleService) getRoleWithPermissions(ctx context.Context, id string) (
+	*RoleWithPermissions, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 	logger.Debug(ctx, "Retrieving role", log.String("id", id))
 
@@ -526,9 +562,20 @@ func (rs *roleService) GetRoleWithPermissions(ctx context.Context, id string) (
 // nothing a shared organization unit sets for itself: its assignments there are read separately.
 func (rs *roleService) GetRoleInOU(ctx context.Context, id, ouID string) (
 	*RoleWithPermissions, *tidcommon.ServiceError) {
-	role, svcErr := rs.GetRoleWithPermissions(ctx, id)
-	if svcErr != nil || ouID == "" || role.OUID == ouID {
-		return role, svcErr
+	role, svcErr := rs.getRoleWithPermissions(ctx, id)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	if ouID == "" || role.OUID == ouID {
+		if svcErr := checkRoleAccess(ctx, rs.authzService, rs.logger, security.ActionReadRole,
+			role.OUID); svcErr != nil {
+			return nil, svcErr
+		}
+		return role, nil
+	}
+	if svcErr := sysauthz.CheckActionInAnyOU(ctx, rs.authzService, rs.logger, security.ActionReadRole,
+		security.ResourceTypeRole, role.OUID, ouID); svcErr != nil {
+		return nil, svcErr
 	}
 
 	visible, svcErr := rs.sharingService.IsVisible(ctx, RoleSharingType, id, ouID)
@@ -580,6 +627,10 @@ func (rs *roleService) GetRolesByNames(
 		logger.Error(ctx, "Failed to get roles by names", log.Error(err))
 		return nil, &tidcommon.InternalServerError
 	}
+	roles, svcErr := rs.readableRoles(ctx, roles)
+	if svcErr != nil {
+		return nil, svcErr
+	}
 
 	result := make(map[string][]*Role, len(roles))
 	for i := range roles {
@@ -603,6 +654,10 @@ func (rs *roleService) GetRolesByPermission(
 		log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName)).
 			Error(ctx, "Failed to get roles by permission", log.Error(err))
 		return nil, &tidcommon.InternalServerError
+	}
+	roles, svcErr := rs.readableRoles(ctx, roles)
+	if svcErr != nil {
+		return nil, svcErr
 	}
 	for i := range roles {
 		roles[i].IsOwnedByOU = true
@@ -640,10 +695,22 @@ func (rs *roleService) updateRoleWithPermissions(
 		logger.Error(ctx, "Failed to read the role being updated", log.String("id", id), log.Error(err))
 		return nil, &tidcommon.InternalServerError
 	}
+	if svcErr := checkRoleAccess(ctx, rs.authzService, rs.logger, security.ActionUpdateRole,
+		stored.OUID); svcErr != nil {
+		return nil, svcErr
+	}
 	// An update that names no organization unit keeps the role in its own, and one that names no project
 	// keeps it in its project.
 	if role.OUID == "" {
 		role.OUID = stored.OUID
+	}
+	// Moving the role places it in another organization unit, which the caller must be allowed to act
+	// for too.
+	if role.OUID != stored.OUID {
+		if svcErr := checkRoleAccess(ctx, rs.authzService, rs.logger, security.ActionUpdateRole,
+			role.OUID); svcErr != nil {
+			return nil, svcErr
+		}
 	}
 	if role.ProjectID == "" {
 		role.ProjectID = stored.ProjectID
@@ -760,14 +827,18 @@ func (rs *roleService) deleteRole(ctx context.Context, id string) *tidcommon.Ser
 		return &ErrorMissingRoleID
 	}
 
-	exists, err := rs.roleStore.IsRoleExist(ctx, id)
+	existing, err := rs.roleStore.GetRole(ctx, id)
 	if err != nil {
+		if errors.Is(err, ErrRoleNotFound) {
+			logger.Debug(ctx, "Role not found", log.String("id", id))
+			return errRoleNotFoundNoop
+		}
 		logger.Error(ctx, "Failed to check role existence", log.String("id", id), log.Error(err))
 		return &tidcommon.InternalServerError
 	}
-	if !exists {
-		logger.Debug(ctx, "Role not found", log.String("id", id))
-		return errRoleNotFoundNoop
+	if svcErr := checkRoleAccess(ctx, rs.authzService, rs.logger, security.ActionDeleteRole,
+		existing.OUID); svcErr != nil {
+		return svcErr
 	}
 
 	if svcErr := rs.validateRoleMutable(ctx, id); svcErr != nil {
@@ -833,7 +904,7 @@ func (rs *roleService) publishRoleEvent(ctx context.Context, name string, action
 // ValidateDeleteRole reports whether the role may be deleted and returns what the deletion revokes.
 func (rs *roleService) ValidateDeleteRole(ctx context.Context, id string) (
 	*revocation.AccessRevocationTarget, *tidcommon.ServiceError) {
-	role, svcErr := rs.GetRoleWithPermissions(ctx, id)
+	role, svcErr := rs.getRoleWithPermissions(ctx, id)
 	if svcErr != nil {
 		return nil, svcErr
 	}
@@ -863,7 +934,7 @@ func (rs *roleService) requireRoleNotMandated(ctx context.Context, id string) *t
 // ValidateUpdateRolePermissions runs the checks UpdateRoleWithPermissions runs on the new permissions.
 func (rs *roleService) ValidateUpdateRolePermissions(ctx context.Context, id string,
 	permissions []ResourcePermissions) (*revocation.AccessRevocationTarget, *tidcommon.ServiceError) {
-	role, svcErr := rs.GetRoleWithPermissions(ctx, id)
+	role, svcErr := rs.getRoleWithPermissions(ctx, id)
 	if svcErr != nil {
 		return nil, svcErr
 	}
@@ -1343,12 +1414,22 @@ func (rs *roleService) CascadeDeleteDependencies(
 	return deleted, nil
 }
 
-// CreateSharingPolicy records which organization units a role is shared with.
+// CreateSharingPolicy records which organization units a role is shared with. A policy is the
+// initiating organization unit's decision, so that unit is the one the caller must be allowed to act
+// for.
 func (rs *roleService) CreateSharingPolicy(
 	ctx context.Context, roleID string, req sharing.PolicyRequest,
 ) (sharing.Policy, *tidcommon.ServiceError) {
 	owningOUID, svcErr := rs.requireSharing(ctx, roleID)
 	if svcErr != nil {
+		return sharing.Policy{}, svcErr
+	}
+	initiatingOUID := req.InitiatingOUID
+	if initiatingOUID == "" {
+		initiatingOUID = owningOUID
+	}
+	if svcErr := checkRoleAccess(ctx, rs.authzService, rs.logger, security.ActionUpdateRole,
+		initiatingOUID); svcErr != nil {
 		return sharing.Policy{}, svcErr
 	}
 	// Roles that load from resource files only have all their sharing declared there.
@@ -1367,47 +1448,71 @@ func (rs *roleService) CreateSharingPolicy(
 	return policy, translateSharingError(svcErr)
 }
 
-// GetSharingPolicy returns one of the role's sharing policies.
+// GetSharingPolicy returns one of the role's sharing policies. The owner sees every decision about its
+// role; any other organization unit sees its own.
 func (rs *roleService) GetSharingPolicy(
 	ctx context.Context, roleID, policyID string,
 ) (sharing.Policy, *tidcommon.ServiceError) {
-	return rs.requireOwnPolicy(ctx, roleID, policyID)
+	owningOUID, policy, svcErr := rs.requireOwnPolicy(ctx, roleID, policyID)
+	if svcErr != nil {
+		return sharing.Policy{}, svcErr
+	}
+	if svcErr := sysauthz.CheckActionInAnyOU(ctx, rs.authzService, rs.logger, security.ActionReadRole,
+		security.ResourceTypeRole, owningOUID, policy.InitiatingOUID); svcErr != nil {
+		return sharing.Policy{}, svcErr
+	}
+	return policy, nil
 }
 
-// ListSharingPolicies returns one page of the role's sharing policies.
+// ListSharingPolicies returns one page of the role's sharing policies. A caller who may read roles in
+// the owning organization unit sees them all; any other caller sees the ones its own organization
+// units made.
 func (rs *roleService) ListSharingPolicies(
 	ctx context.Context, roleID string, limit, offset int,
 ) (sharing.PolicyList, *tidcommon.ServiceError) {
-	if _, svcErr := rs.requireSharing(ctx, roleID); svcErr != nil {
+	owningOUID, svcErr := rs.requireSharing(ctx, roleID)
+	if svcErr != nil {
 		return sharing.PolicyList{}, svcErr
 	}
-	list, svcErr := rs.sharingService.GetPolicyList(ctx, RoleSharingType, roleID, limit, offset)
-	return list, translateSharingError(svcErr)
+	return sharing.ListReadablePolicies(ctx, rs.sharingService, RoleSharingType, roleID, owningOUID, limit,
+		offset, func(ouID string) *tidcommon.ServiceError {
+			return checkRoleAccess(ctx, rs.authzService, rs.logger, security.ActionReadRole, ouID)
+		}, translateSharingError)
 }
 
-// UpdateSharingPolicy replaces a sharing policy's contents.
+// UpdateSharingPolicy replaces a sharing policy's contents. Only the organization unit whose decision
+// it is may change it.
 func (rs *roleService) UpdateSharingPolicy(
 	ctx context.Context, roleID, policyID string, req sharing.PolicyRequest,
 ) (sharing.Policy, *tidcommon.ServiceError) {
-	if _, svcErr := rs.requireOwnPolicy(ctx, roleID, policyID); svcErr != nil {
+	_, policy, svcErr := rs.requireOwnPolicy(ctx, roleID, policyID)
+	if svcErr != nil {
+		return sharing.Policy{}, svcErr
+	}
+	if svcErr := checkRoleAccess(ctx, rs.authzService, rs.logger, security.ActionUpdateRole,
+		policy.InitiatingOUID); svcErr != nil {
 		return sharing.Policy{}, svcErr
 	}
 	if isDeclarativeModeEnabled() {
 		return sharing.Policy{}, &ErrorImmutableRole
 	}
-	policy, svcErr := rs.sharingService.UpdatePolicy(ctx, policyID, req)
-	return policy, translateSharingError(svcErr)
+	updated, svcErr := rs.sharingService.UpdatePolicy(ctx, policyID, req)
+	return updated, translateSharingError(svcErr)
 }
 
 // DeleteSharingPolicy removes a sharing policy and the reshares issued beneath it.
 func (rs *roleService) DeleteSharingPolicy(
 	ctx context.Context, roleID, policyID string,
 ) *tidcommon.ServiceError {
-	policy, svcErr := rs.requireOwnPolicy(ctx, roleID, policyID)
+	_, policy, svcErr := rs.requireOwnPolicy(ctx, roleID, policyID)
 	if svcErr != nil {
 		if svcErr.Code == ErrorSharingPolicyNotFound.Code {
 			return nil
 		}
+		return svcErr
+	}
+	if svcErr := checkRoleAccess(ctx, rs.authzService, rs.logger, security.ActionUpdateRole,
+		policy.InitiatingOUID); svcErr != nil {
 		return svcErr
 	}
 	if isDeclarativeModeEnabled() {
@@ -1424,11 +1529,16 @@ func (rs *roleService) DeleteSharingPolicy(
 func (rs *roleService) ResolveSharingOverlay(
 	ctx context.Context, roleID, ouID string,
 ) (sharing.ResolvedOverlay, *tidcommon.ServiceError) {
-	if _, svcErr := rs.requireSharing(ctx, roleID); svcErr != nil {
+	owningOUID, svcErr := rs.requireSharing(ctx, roleID)
+	if svcErr != nil {
 		return sharing.ResolvedOverlay{}, svcErr
 	}
 	if ouID == "" {
 		return sharing.ResolvedOverlay{}, &ErrorMissingOUIDParameter
+	}
+	if svcErr := sysauthz.CheckActionInAnyOU(ctx, rs.authzService, rs.logger, security.ActionReadRole,
+		security.ResourceTypeRole, owningOUID, ouID); svcErr != nil {
+		return sharing.ResolvedOverlay{}, svcErr
 	}
 	overlay, svcErr := rs.sharingService.ResolveOverlayRules(ctx, RoleSharingType, roleID, ouID)
 	if svcErr != nil {
@@ -1454,7 +1564,7 @@ func (rs *roleService) requireSharing(
 	if roleID == "" {
 		return "", &ErrorMissingRoleID
 	}
-	role, svcErr := rs.GetRoleWithPermissions(ctx, roleID)
+	role, svcErr := rs.getRoleWithPermissions(ctx, roleID)
 	if svcErr != nil {
 		return "", svcErr
 	}
@@ -1465,18 +1575,19 @@ func (rs *roleService) requireSharing(
 // policy id alone would reach any policy in the deployment through any role's path.
 func (rs *roleService) requireOwnPolicy(
 	ctx context.Context, roleID, policyID string,
-) (sharing.Policy, *tidcommon.ServiceError) {
-	if _, svcErr := rs.requireSharing(ctx, roleID); svcErr != nil {
-		return sharing.Policy{}, svcErr
+) (string, sharing.Policy, *tidcommon.ServiceError) {
+	owningOUID, svcErr := rs.requireSharing(ctx, roleID)
+	if svcErr != nil {
+		return "", sharing.Policy{}, svcErr
 	}
 	policy, svcErr := rs.sharingService.GetPolicy(ctx, policyID)
 	if svcErr != nil {
-		return sharing.Policy{}, translateSharingError(svcErr)
+		return "", sharing.Policy{}, translateSharingError(svcErr)
 	}
 	if policy.ResourceType != RoleSharingType || policy.ResourceID != roleID {
-		return sharing.Policy{}, &ErrorSharingPolicyNotFound
+		return "", sharing.Policy{}, &ErrorSharingPolicyNotFound
 	}
-	return policy, nil
+	return owningOUID, policy, nil
 }
 
 // requireRoleMovable refuses to move a shared role to another organization unit or project, and an
@@ -1641,4 +1752,55 @@ func (rs *roleService) revokeDroppedPermissions(ctx context.Context, id string,
 		return nil, nil, svcErr
 	}
 	return inputs, shared, nil
+}
+
+// listReadableSharedRolesInOU lists, for a caller who may not list an organization unit's roles, the
+// roles shared with it whose owning organization unit the caller may read. The organization unit that
+// shares a role chooses the roles it mandates there from these.
+func (rs *roleService) listReadableSharedRolesInOU(
+	ctx context.Context, ouID string, limit, offset int,
+) ([]Role, int, *tidcommon.ServiceError) {
+	sharedIDs, svcErr := rs.sharingService.ListVisibleResourceIDs(ctx, RoleSharingType, ouID)
+	if svcErr != nil {
+		// An organization unit that does not exist has nothing shared with it.
+		if svcErr.Code == oupkg.ErrorOrganizationUnitNotFound.Code {
+			return []Role{}, 0, nil
+		}
+		return nil, 0, translateSharingError(svcErr)
+	}
+	if len(sharedIDs) == 0 {
+		return []Role{}, 0, nil
+	}
+	shared, err := rs.roleStore.GetRolesByIDs(ctx, sharedIDs)
+	if err != nil {
+		rs.logger.Error(ctx, "Failed to read the roles shared with an organization unit",
+			log.String("ouID", ouID), log.Error(err))
+		return nil, 0, &tidcommon.InternalServerError
+	}
+	readable, svcErr := rs.readableRoles(ctx, shared)
+	if svcErr != nil {
+		return nil, 0, svcErr
+	}
+	for i := range readable {
+		readable[i].OUID = ouID
+		readable[i].IsOwnedByOU = false
+		readable[i].IsReadOnly = true
+	}
+	return pageOf(readable, limit, offset), len(readable), nil
+}
+
+// readableRoles keeps the roles the caller may read.
+func (rs *roleService) readableRoles(ctx context.Context, roles []Role) ([]Role, *tidcommon.ServiceError) {
+	readable := make([]Role, 0, len(roles))
+	for _, role := range roles {
+		svcErr := checkRoleAccess(ctx, rs.authzService, rs.logger, security.ActionReadRole, role.OUID)
+		if svcErr == nil {
+			readable = append(readable, role)
+			continue
+		}
+		if svcErr.Code != tidcommon.ErrorUnauthorized.Code {
+			return nil, svcErr
+		}
+	}
+	return readable, nil
 }

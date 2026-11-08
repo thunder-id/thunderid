@@ -133,7 +133,7 @@ func newStatefulDefinitionStore(t *testing.T) *definitionStoreInterfaceMock {
 
 func newTestDefinitionService(t *testing.T) (*definitionService, *definitionStoreInterfaceMock) {
 	store := newStatefulDefinitionStore(t)
-	svc := newPresentationDefinitionService(store, nil, nil, false)
+	svc := newPresentationDefinitionService(store, nil, allowAllAuthz(t), nil, false)
 	return svc, store
 }
 
@@ -207,7 +207,8 @@ func (suite *DefinitionServiceTestSuite) TestDefinitionServiceRequiresAndValidat
 		map[string]bool{"ou-1": true},
 		map[string]string{"default": "ou-1"},
 		map[string]string{"ou-1": "default"})
-	svc := newPresentationDefinitionService(newStatefulDefinitionStore(suite.T()), resolver, nil, false)
+	svc := newPresentationDefinitionService(
+		newStatefulDefinitionStore(suite.T()), resolver, allowAllAuthz(suite.T()), nil, false)
 	ctx := context.Background()
 
 	_, err := svc.CreatePresentationDefinition(ctx, &PresentationDefinitionDTO{
@@ -328,7 +329,8 @@ func (suite *DefinitionServiceTestSuite) TestDefinitionServiceListSummaries() {
 		map[string]bool{"ou-1": true},
 		map[string]string{"default": "ou-1"},
 		map[string]string{"ou-1": "default"})
-	svc := newPresentationDefinitionService(newStatefulDefinitionStore(suite.T()), resolver, nil, false)
+	svc := newPresentationDefinitionService(
+		newStatefulDefinitionStore(suite.T()), resolver, allowAllAuthz(suite.T()), nil, false)
 	ctx := context.Background()
 
 	_, svcErr := svc.CreatePresentationDefinition(ctx, &PresentationDefinitionDTO{
@@ -380,7 +382,8 @@ func (suite *DefinitionServiceTestSuite) TestDefinitionServiceGetUpdateDeleteNot
 
 func (suite *DefinitionServiceTestSuite) TestDefinitionServiceRejectsMissingOUID() {
 	resolver := newFailingOUServiceMock(suite.T())
-	svc := newPresentationDefinitionService(newStatefulDefinitionStore(suite.T()), resolver, nil, false)
+	svc := newPresentationDefinitionService(
+		newStatefulDefinitionStore(suite.T()), resolver, allowAllAuthz(suite.T()), nil, false)
 	ctx := context.Background()
 
 	_, svcErr := svc.CreatePresentationDefinition(ctx, &PresentationDefinitionDTO{
@@ -392,7 +395,8 @@ func (suite *DefinitionServiceTestSuite) TestDefinitionServiceRejectsMissingOUID
 
 func (suite *DefinitionServiceTestSuite) TestDefinitionServiceResolveOUExistsCheckFails() {
 	resolver := newFailingOUServiceMock(suite.T())
-	svc := newPresentationDefinitionService(newStatefulDefinitionStore(suite.T()), resolver, nil, false)
+	svc := newPresentationDefinitionService(
+		newStatefulDefinitionStore(suite.T()), resolver, allowAllAuthz(suite.T()), nil, false)
 	ctx := context.Background()
 
 	// OUID is supplied directly, so existence verification runs and returns an error.
@@ -406,7 +410,8 @@ func (suite *DefinitionServiceTestSuite) TestDefinitionServiceResolveOUExistsChe
 func (suite *DefinitionServiceTestSuite) TestDefinitionServiceResolveOUNotExists() {
 	resolver := newOUServiceMock(suite.T(),
 		map[string]bool{"ou-1": false}, nil, nil)
-	svc := newPresentationDefinitionService(newStatefulDefinitionStore(suite.T()), resolver, nil, false)
+	svc := newPresentationDefinitionService(
+		newStatefulDefinitionStore(suite.T()), resolver, allowAllAuthz(suite.T()), nil, false)
 	ctx := context.Background()
 
 	_, svcErr := svc.CreatePresentationDefinition(ctx, &PresentationDefinitionDTO{
@@ -440,7 +445,7 @@ func (suite *DefinitionServiceTestSuite) TestDefinitionServiceCreateIDLookupErro
 	store := newDefinitionStoreInterfaceMock(suite.T())
 	store.EXPECT().GetPresentationDefinitionByHandle(mock.Anything, mock.Anything).Return(nil, ErrNotFound)
 	store.EXPECT().GetPresentationDefinitionByID(mock.Anything, "imported-id").Return(nil, errors.New("db boom"))
-	svc := newPresentationDefinitionService(store, nil, nil, false)
+	svc := newPresentationDefinitionService(store, nil, allowAllAuthz(suite.T()), nil, false)
 
 	_, svcErr := svc.CreatePresentationDefinition(context.Background(),
 		&PresentationDefinitionDTO{ID: "imported-id", Handle: "h", VCT: "v"})
@@ -450,7 +455,7 @@ func (suite *DefinitionServiceTestSuite) TestDefinitionServiceCreateIDLookupErro
 
 func (suite *DefinitionServiceTestSuite) TestDefinitionServiceCreateHandleLookupError() {
 	svc := newPresentationDefinitionService(
-		newErroringDefinitionStore(suite.T(), errors.New("db boom")), nil, nil, false)
+		newErroringDefinitionStore(suite.T(), errors.New("db boom")), nil, allowAllAuthz(suite.T()), nil, false)
 	ctx := context.Background()
 
 	_, svcErr := svc.CreatePresentationDefinition(ctx, &PresentationDefinitionDTO{Handle: "h", VCT: "v"})
@@ -462,7 +467,7 @@ func (suite *DefinitionServiceTestSuite) TestDefinitionServiceCreatePersistError
 	store := newDefinitionStoreInterfaceMock(suite.T())
 	store.EXPECT().GetPresentationDefinitionByHandle(mock.Anything, mock.Anything).Return(nil, ErrNotFound)
 	store.EXPECT().CreatePresentationDefinition(mock.Anything, mock.Anything).Return(errors.New("insert failed"))
-	svc := newPresentationDefinitionService(store, nil, nil, false)
+	svc := newPresentationDefinitionService(store, nil, allowAllAuthz(suite.T()), nil, false)
 	ctx := context.Background()
 
 	_, svcErr := svc.CreatePresentationDefinition(ctx, &PresentationDefinitionDTO{Handle: "h", VCT: "v"})
@@ -473,7 +478,7 @@ func (suite *DefinitionServiceTestSuite) TestDefinitionServiceCreatePersistError
 func (suite *DefinitionServiceTestSuite) TestDefinitionServiceCreateUUIDError() {
 	store := newDefinitionStoreInterfaceMock(suite.T())
 	store.EXPECT().GetPresentationDefinitionByHandle(mock.Anything, mock.Anything).Return(nil, ErrNotFound)
-	svc := newPresentationDefinitionService(store, nil, nil, false)
+	svc := newPresentationDefinitionService(store, nil, allowAllAuthz(suite.T()), nil, false)
 	svc.uuid = func() (string, error) { return "", errors.New("uuid failed") }
 	ctx := context.Background()
 
@@ -491,7 +496,7 @@ func (suite *DefinitionServiceTestSuite) TestDefinitionServiceGetInvalidRequest(
 
 func (suite *DefinitionServiceTestSuite) TestDefinitionServiceGetStoreError() {
 	svc := newPresentationDefinitionService(
-		newErroringDefinitionStore(suite.T(), errors.New("db boom")), nil, nil, false)
+		newErroringDefinitionStore(suite.T(), errors.New("db boom")), nil, allowAllAuthz(suite.T()), nil, false)
 	_, svcErr := svc.GetPresentationDefinition(context.Background(), "id-1")
 	suite.Require().NotNil(svcErr)
 	suite.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
@@ -499,7 +504,7 @@ func (suite *DefinitionServiceTestSuite) TestDefinitionServiceGetStoreError() {
 
 func (suite *DefinitionServiceTestSuite) TestDefinitionServiceGetByHandleStoreError() {
 	svc := newPresentationDefinitionService(
-		newErroringDefinitionStore(suite.T(), errors.New("db boom")), nil, nil, false)
+		newErroringDefinitionStore(suite.T(), errors.New("db boom")), nil, allowAllAuthz(suite.T()), nil, false)
 	_, svcErr := svc.GetPresentationDefinitionByHandle(context.Background(), "h")
 	suite.Require().NotNil(svcErr)
 	suite.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
@@ -507,7 +512,7 @@ func (suite *DefinitionServiceTestSuite) TestDefinitionServiceGetByHandleStoreEr
 
 func (suite *DefinitionServiceTestSuite) TestDefinitionServiceListStoreError() {
 	svc := newPresentationDefinitionService(
-		newErroringDefinitionStore(suite.T(), errors.New("db boom")), nil, nil, false)
+		newErroringDefinitionStore(suite.T(), errors.New("db boom")), nil, allowAllAuthz(suite.T()), nil, false)
 	_, svcErr := svc.ListPresentationDefinitions(context.Background())
 	suite.Require().NotNil(svcErr)
 	suite.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
@@ -515,7 +520,8 @@ func (suite *DefinitionServiceTestSuite) TestDefinitionServiceListStoreError() {
 
 func (suite *DefinitionServiceTestSuite) TestDefinitionServiceListResultLimitExceeded() {
 	svc := newPresentationDefinitionService(
-		newErroringDefinitionStore(suite.T(), ErrResultLimitExceededInCompositeMode), nil, nil, false)
+		newErroringDefinitionStore(suite.T(), ErrResultLimitExceededInCompositeMode), nil,
+		allowAllAuthz(suite.T()), nil, false)
 	_, svcErr := svc.ListPresentationDefinitions(context.Background())
 	suite.Require().NotNil(svcErr)
 	suite.Equal(ErrorDefinitionResultLimitExceeded.Code, svcErr.Code)
@@ -523,7 +529,7 @@ func (suite *DefinitionServiceTestSuite) TestDefinitionServiceListResultLimitExc
 
 func (suite *DefinitionServiceTestSuite) TestDefinitionServiceListSummariesStoreError() {
 	svc := newPresentationDefinitionService(
-		newErroringDefinitionStore(suite.T(), errors.New("db boom")), nil, nil, false)
+		newErroringDefinitionStore(suite.T(), errors.New("db boom")), nil, allowAllAuthz(suite.T()), nil, false)
 	_, svcErr := svc.ListPresentationDefinitionSummaries(context.Background())
 	suite.Require().NotNil(svcErr)
 	suite.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
@@ -531,7 +537,8 @@ func (suite *DefinitionServiceTestSuite) TestDefinitionServiceListSummariesStore
 
 func (suite *DefinitionServiceTestSuite) TestDefinitionServiceListSummariesResultLimitExceeded() {
 	svc := newPresentationDefinitionService(
-		newErroringDefinitionStore(suite.T(), ErrResultLimitExceededInCompositeMode), nil, nil, false)
+		newErroringDefinitionStore(suite.T(), ErrResultLimitExceededInCompositeMode), nil,
+		allowAllAuthz(suite.T()), nil, false)
 	_, svcErr := svc.ListPresentationDefinitionSummaries(context.Background())
 	suite.Require().NotNil(svcErr)
 	suite.Equal(ErrorDefinitionResultLimitExceeded.Code, svcErr.Code)
@@ -542,7 +549,8 @@ func (suite *DefinitionServiceTestSuite) TestDefinitionServiceListPopulatesOUHan
 		map[string]bool{"ou-1": true},
 		map[string]string{"default": "ou-1"},
 		map[string]string{"ou-1": "default"})
-	svc := newPresentationDefinitionService(newStatefulDefinitionStore(suite.T()), resolver, nil, false)
+	svc := newPresentationDefinitionService(
+		newStatefulDefinitionStore(suite.T()), resolver, allowAllAuthz(suite.T()), nil, false)
 	ctx := context.Background()
 
 	_, svcErr := svc.CreatePresentationDefinition(ctx, &PresentationDefinitionDTO{
@@ -562,7 +570,7 @@ func (suite *DefinitionServiceTestSuite) TestDefinitionServiceListSummariesPopul
 	suite.Require().NoError(store.CreatePresentationDefinition(context.Background(), PresentationDefinitionDTO{
 		ID: "id-1", Handle: "h", VCT: "v", OUID: "ou-1", Format: DefaultCredentialFormat,
 	}))
-	svc := newPresentationDefinitionService(store, resolver, nil, false)
+	svc := newPresentationDefinitionService(store, resolver, allowAllAuthz(suite.T()), nil, false)
 	ctx := context.Background()
 
 	// Handle resolution fails, but the summaries still return with unresolved handles.
@@ -578,7 +586,7 @@ func (suite *DefinitionServiceTestSuite) TestDefinitionServicePopulateOUHandleRe
 	suite.Require().NoError(store.CreatePresentationDefinition(context.Background(), PresentationDefinitionDTO{
 		ID: "id-1", Handle: "h", VCT: "v", OUID: "ou-1", Format: DefaultCredentialFormat,
 	}))
-	svc := newPresentationDefinitionService(store, resolver, nil, false)
+	svc := newPresentationDefinitionService(store, resolver, allowAllAuthz(suite.T()), nil, false)
 	ctx := context.Background()
 
 	// Handle resolution fails, but the get still succeeds with an unresolved handle.
@@ -608,7 +616,7 @@ func (suite *DefinitionServiceTestSuite) TestDefinitionServiceUpdateValidationFa
 
 func (suite *DefinitionServiceTestSuite) TestDefinitionServiceUpdateLoadStoreError() {
 	svc := newPresentationDefinitionService(
-		newErroringDefinitionStore(suite.T(), errors.New("db boom")), nil, nil, false)
+		newErroringDefinitionStore(suite.T(), errors.New("db boom")), nil, allowAllAuthz(suite.T()), nil, false)
 	_, svcErr := svc.UpdatePresentationDefinition(context.Background(), "id-1",
 		&PresentationDefinitionDTO{Handle: "h", VCT: "v"})
 	suite.Require().NotNil(svcErr)
@@ -621,7 +629,7 @@ func (suite *DefinitionServiceTestSuite) TestDefinitionServiceUpdateHandleClashL
 		&PresentationDefinitionDTO{ID: "id-1", Handle: "old", VCT: "v"}, nil)
 	store.EXPECT().GetPresentationDefinitionByHandle(mock.Anything, mock.Anything).Return(
 		nil, errors.New("db boom"))
-	svc := newPresentationDefinitionService(store, nil, nil, false)
+	svc := newPresentationDefinitionService(store, nil, allowAllAuthz(suite.T()), nil, false)
 
 	_, svcErr := svc.UpdatePresentationDefinition(context.Background(), "id-1",
 		&PresentationDefinitionDTO{Handle: "new", VCT: "v"})
@@ -635,7 +643,7 @@ func (suite *DefinitionServiceTestSuite) TestDefinitionServiceUpdateHandleClashC
 		&PresentationDefinitionDTO{ID: "id-1", Handle: "old", VCT: "v"}, nil)
 	store.EXPECT().GetPresentationDefinitionByHandle(mock.Anything, mock.Anything).Return(
 		&PresentationDefinitionDTO{ID: "id-2", Handle: "new", VCT: "v"}, nil)
-	svc := newPresentationDefinitionService(store, nil, nil, false)
+	svc := newPresentationDefinitionService(store, nil, allowAllAuthz(suite.T()), nil, false)
 
 	_, svcErr := svc.UpdatePresentationDefinition(context.Background(), "id-1",
 		&PresentationDefinitionDTO{Handle: "new", VCT: "v"})
@@ -648,7 +656,7 @@ func (suite *DefinitionServiceTestSuite) TestDefinitionServiceUpdateImmutable() 
 	store.EXPECT().GetPresentationDefinitionByID(mock.Anything, mock.Anything).Return(
 		&PresentationDefinitionDTO{ID: "id-1", Handle: "h", VCT: "v"}, nil)
 	store.EXPECT().UpdatePresentationDefinition(mock.Anything, mock.Anything).Return(ErrDefinitionIsImmutable)
-	svc := newPresentationDefinitionService(store, nil, nil, false)
+	svc := newPresentationDefinitionService(store, nil, allowAllAuthz(suite.T()), nil, false)
 
 	_, svcErr := svc.UpdatePresentationDefinition(context.Background(), "id-1",
 		&PresentationDefinitionDTO{Handle: "h", VCT: "v"})
@@ -661,7 +669,7 @@ func (suite *DefinitionServiceTestSuite) TestDefinitionServiceUpdatePersistError
 	store.EXPECT().GetPresentationDefinitionByID(mock.Anything, mock.Anything).Return(
 		&PresentationDefinitionDTO{ID: "id-1", Handle: "h", VCT: "v"}, nil)
 	store.EXPECT().UpdatePresentationDefinition(mock.Anything, mock.Anything).Return(errors.New("update failed"))
-	svc := newPresentationDefinitionService(store, nil, nil, false)
+	svc := newPresentationDefinitionService(store, nil, allowAllAuthz(suite.T()), nil, false)
 
 	_, svcErr := svc.UpdatePresentationDefinition(context.Background(), "id-1",
 		&PresentationDefinitionDTO{Handle: "h", VCT: "v"})
@@ -678,7 +686,7 @@ func (suite *DefinitionServiceTestSuite) TestDefinitionServiceDeleteInvalidReque
 
 func (suite *DefinitionServiceTestSuite) TestDefinitionServiceDeleteLoadStoreError() {
 	svc := newPresentationDefinitionService(
-		newErroringDefinitionStore(suite.T(), errors.New("db boom")), nil, nil, false)
+		newErroringDefinitionStore(suite.T(), errors.New("db boom")), nil, allowAllAuthz(suite.T()), nil, false)
 	svcErr := svc.DeletePresentationDefinition(context.Background(), "id-1")
 	suite.Require().NotNil(svcErr)
 	suite.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
@@ -689,7 +697,7 @@ func (suite *DefinitionServiceTestSuite) TestDefinitionServiceDeleteImmutable() 
 	store.EXPECT().GetPresentationDefinitionByID(mock.Anything, mock.Anything).Return(
 		&PresentationDefinitionDTO{ID: "id-1", Handle: "h", VCT: "v"}, nil)
 	store.EXPECT().DeletePresentationDefinition(mock.Anything, mock.Anything).Return(ErrDefinitionIsImmutable)
-	svc := newPresentationDefinitionService(store, nil, nil, false)
+	svc := newPresentationDefinitionService(store, nil, allowAllAuthz(suite.T()), nil, false)
 
 	svcErr := svc.DeletePresentationDefinition(context.Background(), "id-1")
 	suite.Require().NotNil(svcErr)
@@ -701,7 +709,7 @@ func (suite *DefinitionServiceTestSuite) TestDefinitionServiceDeletePersistError
 	store.EXPECT().GetPresentationDefinitionByID(mock.Anything, mock.Anything).Return(
 		&PresentationDefinitionDTO{ID: "id-1", Handle: "h", VCT: "v"}, nil)
 	store.EXPECT().DeletePresentationDefinition(mock.Anything, mock.Anything).Return(errors.New("delete failed"))
-	svc := newPresentationDefinitionService(store, nil, nil, false)
+	svc := newPresentationDefinitionService(store, nil, allowAllAuthz(suite.T()), nil, false)
 
 	svcErr := svc.DeletePresentationDefinition(context.Background(), "id-1")
 	suite.Require().NotNil(svcErr)
@@ -710,7 +718,7 @@ func (suite *DefinitionServiceTestSuite) TestDefinitionServiceDeletePersistError
 
 func (suite *DefinitionServiceTestSuite) TestDefinitionServiceIsDeclarativeStoreError() {
 	svc := newPresentationDefinitionService(
-		newErroringDefinitionStore(suite.T(), errors.New("db boom")), nil, nil, false)
+		newErroringDefinitionStore(suite.T(), errors.New("db boom")), nil, allowAllAuthz(suite.T()), nil, false)
 	_, svcErr := svc.IsPresentationDefinitionDeclarative(context.Background(), "id-1")
 	suite.Require().NotNil(svcErr)
 	suite.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
@@ -718,7 +726,7 @@ func (suite *DefinitionServiceTestSuite) TestDefinitionServiceIsDeclarativeStore
 
 func (suite *DefinitionServiceTestSuite) TestDefinitionServiceIsDeclarativeSuccess() {
 	store := newStatefulDefinitionStore(suite.T())
-	svc := newPresentationDefinitionService(store, nil, nil, false)
+	svc := newPresentationDefinitionService(store, nil, allowAllAuthz(suite.T()), nil, false)
 	isDeclarative, svcErr := svc.IsPresentationDefinitionDeclarative(context.Background(), "id-1")
 	suite.Require().Nil(svcErr)
 	suite.False(isDeclarative)
@@ -911,7 +919,7 @@ func (suite *DefinitionServiceTestSuite) TestDefinitionServiceUpdateKeepsStoredE
 	store.EXPECT().UpdatePresentationDefinition(mock.Anything, mock.MatchedBy(func(dto PresentationDefinitionDTO) bool {
 		return len(dto.TrustedAuthorities) == 1 && dto.TrustedAuthorities[0].Certificate == expired
 	})).Return(nil)
-	svc := newPresentationDefinitionService(store, nil, nil, false)
+	svc := newPresentationDefinitionService(store, nil, allowAllAuthz(suite.T()), nil, false)
 
 	_, svcErr := svc.UpdatePresentationDefinition(context.Background(), "id-1", &PresentationDefinitionDTO{
 		Handle: "h", VCT: "v", Name: "renamed", TrustedAuthorities: []TrustedAuthority{{Name: "old"}},
@@ -953,7 +961,8 @@ func (suite *DefinitionServiceTestSuite) TestListSummariesByOUID() {
 		map[string]bool{"ou-1": true, "ou-2": true},
 		map[string]string{},
 		map[string]string{"ou-1": "default"})
-	svc := newPresentationDefinitionService(newStatefulDefinitionStore(suite.T()), resolver, nil, false)
+	svc := newPresentationDefinitionService(
+		newStatefulDefinitionStore(suite.T()), resolver, allowAllAuthz(suite.T()), nil, false)
 	ctx := context.Background()
 	first := &PresentationDefinitionDTO{Handle: "first", VCT: "v1", OUID: "ou-1"}
 	_, svcErr := svc.CreatePresentationDefinition(ctx, first)
@@ -989,7 +998,8 @@ func (suite *DefinitionServiceTestSuite) TestListSummariesByOUIDErrors() {
 
 	for _, tc := range testCases {
 		suite.Run(tc.name, func() {
-			svc := newPresentationDefinitionService(newErroringDefinitionStore(suite.T(), tc.storeErr), nil, nil, false)
+			svc := newPresentationDefinitionService(
+				newErroringDefinitionStore(suite.T(), tc.storeErr), nil, allowAllAuthz(suite.T()), nil, false)
 			_, svcErr := svc.ListPresentationDefinitionSummariesByOUID(context.Background(), tc.ouID)
 			suite.Require().NotNil(svcErr)
 			suite.Equal(tc.expectedCode, svcErr.Code)
@@ -1007,7 +1017,8 @@ func (suite *DefinitionServiceTestSuite) newProjectDefinitionService(
 ) *definitionService {
 	ouMock := newOUServiceMock(suite.T(), map[string]bool{"sys-ou": true, "ou-1": true}, nil, nil)
 	ouMock.EXPECT().GetSystemOUID(mock.Anything).Return("sys-ou", nil).Maybe()
-	return newPresentationDefinitionService(newStatefulDefinitionStore(suite.T()), ouMock, validator, true)
+	return newPresentationDefinitionService(
+		newStatefulDefinitionStore(suite.T()), ouMock, allowAllAuthz(suite.T()), validator, true)
 }
 
 func (suite *DefinitionServiceTestSuite) TestCreateInProjectPlacesTheDefinitionInTheSystemOU() {
@@ -1071,7 +1082,7 @@ func (suite *DefinitionServiceTestSuite) TestCreateRequiresAProjectWhereProjects
 func (suite *DefinitionServiceTestSuite) TestCreateFailsWhenTheSystemOUCannotBeRead() {
 	ouMock := oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())
 	ouMock.EXPECT().GetSystemOUID(mock.Anything).Return("", &tidcommon.InternalServerError)
-	svc := newPresentationDefinitionService(newStatefulDefinitionStore(suite.T()), ouMock,
+	svc := newPresentationDefinitionService(newStatefulDefinitionStore(suite.T()), ouMock, allowAllAuthz(suite.T()),
 		newProjectOUValidatorMock(suite.T()), true)
 
 	_, err := svc.CreatePresentationDefinition(context.Background(), &PresentationDefinitionDTO{
@@ -1159,7 +1170,7 @@ func (suite *DefinitionServiceTestSuite) TestListByProject() {
 	suite.Empty(summaries, "an empty project lists no definition")
 
 	errSvc := newPresentationDefinitionService(
-		newErroringDefinitionStore(suite.T(), errors.New("db boom")), nil, nil, false)
+		newErroringDefinitionStore(suite.T(), errors.New("db boom")), nil, allowAllAuthz(suite.T()), nil, false)
 	_, err = errSvc.ListPresentationDefinitionSummariesByProject(context.Background(), testProjectID)
 	suite.Require().NotNil(err)
 	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
@@ -1167,7 +1178,8 @@ func (suite *DefinitionServiceTestSuite) TestListByProject() {
 	suite.Require().NotNil(err)
 
 	limitSvc := newPresentationDefinitionService(
-		newErroringDefinitionStore(suite.T(), ErrResultLimitExceededInCompositeMode), nil, nil, false)
+		newErroringDefinitionStore(suite.T(), ErrResultLimitExceededInCompositeMode), nil,
+		allowAllAuthz(suite.T()), nil, false)
 	_, err = limitSvc.ListPresentationDefinitionSummariesByProject(context.Background(), testProjectID)
 	suite.Require().NotNil(err)
 	suite.Equal(ErrorDefinitionResultLimitExceeded.Code, err.Code)

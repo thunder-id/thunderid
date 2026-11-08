@@ -159,6 +159,7 @@ func (suite *InitTestSuite) TestInitialize_WithDeclarativeResourcesDisabled() {
 		nil, // serverConfigSvc - not needed for this test
 		nil, // artifactLifetime - not needed for this test
 		newSharingServiceStub(suite.T()),
+		nil, // authzService - not needed for this test
 		nil, // valueCapturer - not needed for this test
 		nil, // governance - not needed for this test
 		nil, // projectValidator - not needed for this test
@@ -209,6 +210,7 @@ func (suite *InitTestSuite) TestInitialize_WithMCPServer() {
 		nil, // serverConfigSvc - not needed for this test
 		nil, // artifactLifetime - not needed for this test
 		newSharingServiceStub(suite.T()),
+		nil, // authzService - not needed for this test
 		nil, // valueCapturer - not needed for this test
 		nil, // governance - not needed for this test
 		nil, // projectValidator - not needed for this test
@@ -643,6 +645,7 @@ func TestInitialize_Standalone(t *testing.T) {
 		nil, // serverConfigSvc - not needed for this test
 		nil, // artifactLifetime - not needed for this test
 		newSharingServiceStub(t),
+		nil, // authzService - not needed for this test
 		nil, // valueCapturer - not needed for this test
 		nil, // governance - not needed for this test
 		nil, // projectValidator - not needed for this test
@@ -701,6 +704,7 @@ func TestInitialize_WithDeclarativeResources_Standalone(t *testing.T) {
 		nil, // serverConfigSvc - not needed for this test
 		nil, // artifactLifetime - not needed for this test
 		newSharingServiceStub(t),
+		nil, // authzService - not needed for this test
 		nil, // valueCapturer - not needed for this test
 		nil, // governance - not needed for this test
 		nil, // projectValidator - not needed for this test
@@ -940,7 +944,7 @@ func (suite *InitTestSuite) TestInitializeReportsAFailureLoadingApplications() {
 	service, _, err := Initialize(
 		http.NewServeMux(), nil, mockEntityService,
 		inboundclientmock.NewInboundClientServiceInterfaceMock(suite.T()),
-		nil, nil, nil, nil, nil, newSharingServiceStub(suite.T()), nil, nil, nil, discardingBus{},
+		nil, nil, nil, nil, nil, newSharingServiceStub(suite.T()), nil, nil, nil, nil, discardingBus{},
 	)
 
 	assert.ErrorIs(suite.T(), err, assert.AnError)
@@ -963,7 +967,7 @@ func (suite *InitTestSuite) TestInitializeReportsAFailureLoadingSharingPolicies(
 
 	service, _, err := Initialize(
 		http.NewServeMux(), nil, mockEntityService, mockInboundClient,
-		nil, nil, nil, nil, nil, sharingService, nil, nil, nil, discardingBus{},
+		nil, nil, nil, nil, nil, sharingService, nil, nil, nil, nil, discardingBus{},
 	)
 
 	assert.ErrorIs(suite.T(), err, assert.AnError)
@@ -972,7 +976,7 @@ func (suite *InitTestSuite) TestInitializeReportsAFailureLoadingSharingPolicies(
 
 func (suite *InitTestSuite) TestInitialize_RefusesANilEventBus() {
 	service, exporter, err := Initialize(http.NewServeMux(), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
-		nil, nil)
+		nil, nil, nil)
 
 	suite.ErrorIs(err, errNilEventBus)
 	suite.Nil(service)

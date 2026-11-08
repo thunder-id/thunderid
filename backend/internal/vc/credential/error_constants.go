@@ -259,6 +259,8 @@ func configurationClientErrorStatus(code string) int {
 		return http.StatusNotFound
 	case ErrorConfigurationAlreadyExists.Code, ErrorConfigurationImmutable.Code, ErrorConfigurationIDConflict.Code:
 		return http.StatusConflict
+	case tidcommon.ErrorUnauthorized.Code:
+		return http.StatusForbidden
 	default:
 		return http.StatusBadRequest
 	}

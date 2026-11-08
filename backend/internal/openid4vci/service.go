@@ -21,6 +21,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/jose/sdjwt"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/user"
 	"github.com/thunder-id/thunderid/internal/vc/credential"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -105,7 +106,7 @@ const (
 // GetMetadata builds the OpenID4VCI credential issuer metadata from the managed
 // credential configurations.
 func (s *openid4vciService) GetMetadata(ctx context.Context) map[string]interface{} {
-	configs, svcErr := s.creds.ListCredentialConfigurations(ctx)
+	configs, svcErr := s.creds.ListCredentialConfigurations(security.WithRuntimeContext(ctx))
 	if svcErr != nil {
 		log.GetLogger().Error(ctx, "Failed to list credential configurations for issuer metadata")
 	}
@@ -130,7 +131,7 @@ func (s *openid4vciService) GenerateNonce(ctx context.Context) (string, error) {
 func (s *openid4vciService) GenerateCredentialOffer(
 	ctx context.Context, configID string,
 ) (map[string]interface{}, string, error) {
-	cred, svcErr := s.creds.GetCredentialConfigurationByHandle(ctx, configID)
+	cred, svcErr := s.creds.GetCredentialConfigurationByHandle(security.WithRuntimeContext(ctx), configID)
 	if svcErr != nil {
 		return nil, "", fmt.Errorf("%w: %s", ErrUnsupportedCredential, configID)
 	}
@@ -396,7 +397,7 @@ func (s *openid4vciService) authorizedCredential(
 	}
 
 	if configID != "" {
-		dto, svcErr := s.creds.GetCredentialConfigurationByHandle(ctx, configID)
+		dto, svcErr := s.creds.GetCredentialConfigurationByHandle(security.WithRuntimeContext(ctx), configID)
 		if svcErr != nil {
 			return credentialConfig{}, fmt.Errorf("%w: %s", ErrUnsupportedCredential, configID)
 		}
@@ -406,7 +407,7 @@ func (s *openid4vciService) authorizedCredential(
 		return dtoToCredentialConfig(*dto), nil
 	}
 
-	configs, svcErr := s.creds.ListCredentialConfigurations(ctx)
+	configs, svcErr := s.creds.ListCredentialConfigurations(security.WithRuntimeContext(ctx))
 	if svcErr != nil {
 		return credentialConfig{}, fmt.Errorf("%w: failed to resolve credential configurations", ErrIssuance)
 	}
