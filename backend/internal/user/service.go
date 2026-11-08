@@ -1870,49 +1870,10 @@ func (us *userService) ListSharingPolicies(
 	if svcErr != nil {
 		return sharing.PolicyList{}, svcErr
 	}
-	svcErr = us.checkSharingAccess(ctx, security.ActionReadUser, owningOUID)
-	if svcErr == nil {
-		list, svcErr := us.sharingService.GetPolicyList(ctx, UserSharingType, userID, limit, offset)
-		return list, translateSharingError(svcErr)
-	}
-	if svcErr.Code != tidcommon.ErrorUnauthorized.Code {
-		return sharing.PolicyList{}, svcErr
-	}
-	return us.listOwnSharingPolicies(ctx, userID, limit, offset)
-}
-
-// listOwnSharingPolicies pages, in memory, the policies the caller's own organization units made.
-// A user holds at most one policy per organization unit, so the full set is small.
-func (us *userService) listOwnSharingPolicies(
-	ctx context.Context, userID string, limit, offset int,
-) (sharing.PolicyList, *tidcommon.ServiceError) {
-	policies, svcErr := us.sharingService.ListPolicies(ctx, UserSharingType, userID)
-	if svcErr != nil {
-		return sharing.PolicyList{}, translateSharingError(svcErr)
-	}
-	own := make([]sharing.Policy, 0, len(policies))
-	for _, p := range policies {
-		svcErr := us.checkSharingAccess(ctx, security.ActionReadUser, p.InitiatingOUID)
-		if svcErr == nil {
-			own = append(own, p)
-			continue
-		}
-		if svcErr.Code != tidcommon.ErrorUnauthorized.Code {
-			return sharing.PolicyList{}, svcErr
-		}
-	}
-	// A caller who made none of them has no standing to read the user's sharing at all.
-	if len(own) == 0 {
-		return sharing.PolicyList{}, &tidcommon.ErrorUnauthorized
-	}
-
-	page := own[min(offset, len(own)):min(offset+limit, len(own))]
-	return sharing.PolicyList{
-		TotalResults: len(own),
-		StartIndex:   offset + 1,
-		Count:        len(page),
-		Policies:     page,
-	}, nil
+	return sharing.ListReadablePolicies(ctx, us.sharingService, UserSharingType, userID, owningOUID, limit,
+		offset, func(ouID string) *tidcommon.ServiceError {
+			return us.checkSharingAccess(ctx, security.ActionReadUser, ouID)
+		}, translateSharingError)
 }
 
 // UpdateSharingPolicy replaces a sharing policy's contents. Only the organization unit whose

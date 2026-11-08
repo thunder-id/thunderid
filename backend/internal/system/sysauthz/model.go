@@ -5,6 +5,7 @@ package sysauthz
 
 import (
 	"context"
+	"slices"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
@@ -70,4 +71,47 @@ type Boundary struct {
 	Type BoundaryType
 	// OUID is the organization unit the caller is confined to. Empty for a deployment boundary.
 	OUID string
+}
+
+// listOU decides which organization unit a list of organization unit owned resources serves, for a
+// store that lists one organization unit at a time. The accessible resources must be organization
+// units. requestedOUID is the organization unit the request filters by, or empty when it names none.
+//
+// It returns the organization unit to list, where empty means every organization unit, and false
+// when the list is empty because the caller may not list the requested organization unit, or any.
+// It returns errMultipleListOUs when the caller may list several organization units and the request
+// names none, which such a store cannot serve in one list.
+func (r *AccessibleResources) listOU(requestedOUID string) (string, bool, error) {
+	if r.AllAllowed {
+		return requestedOUID, true, nil
+	}
+	if requestedOUID != "" {
+		return requestedOUID, slices.Contains(r.IDs, requestedOUID), nil
+	}
+	switch len(r.IDs) {
+	case 0:
+		return "", false, nil
+	case 1:
+		return r.IDs[0], true, nil
+	default:
+		return "", false, errMultipleListOUs
+	}
+}
+
+// FilterByListOU keeps the items of the organization unit a list serves, as ResolveListOU
+// decides it. An empty organization unit keeps every item, and a list the caller may not see keeps none.
+func FilterByListOU[T any](items []T, listOUID string, visible bool, ouOf func(T) string) []T {
+	if !visible {
+		return []T{}
+	}
+	if listOUID == "" {
+		return items
+	}
+	kept := make([]T, 0, len(items))
+	for _, item := range items {
+		if ouOf(item) == listOUID {
+			kept = append(kept, item)
+		}
+	}
+	return kept
 }

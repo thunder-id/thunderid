@@ -399,6 +399,9 @@ func (s *inboundClientService) ResolveInboundAuthProfileHandles(
 	if s.flowMgt == nil {
 		return nil
 	}
+	// A profile may name a flow of another organization unit, such as a default flow, so the flows are
+	// read without the caller's authorization.
+	ctx = security.WithRuntimeContext(ctx)
 	if profile.AuthFlowID == "" && profile.AuthFlowHandle != "" {
 		flow, svcErr := s.flowMgt.GetFlowByHandle(ctx, profile.AuthFlowHandle, providers.FlowTypeAuthentication)
 		if svcErr != nil {

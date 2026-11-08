@@ -3,7 +3,12 @@
 
 package notificationtemplate
 
-import dbmodel "github.com/thunder-id/thunderid/internal/system/database/model"
+import (
+	"fmt"
+	"strings"
+
+	dbmodel "github.com/thunder-id/thunderid/internal/system/database/model"
+)
 
 // A template and its design are stored in a single NOTIFICATION_TEMPLATE row: the content is a JSON
 // column (CONTENT) and the design is a JSON column (DESIGN), an empty JSON object ({}) when a channel
@@ -75,25 +80,6 @@ var (
 			`FROM "NOTIFICATION_TEMPLATE" ` +
 			`WHERE HANDLE = $1 AND CHANNEL = $2 AND DEPLOYMENT_ID = $3`,
 	}
-
-	// queryListTemplatesByOUID retrieves a page of the templates of a channel an organization unit owns.
-	// It selects the same summary columns as queryListTemplates.
-	queryListTemplatesByOUID = dbmodel.DBQuery{
-		ID: "NTQ-NOTIF_TMPL-09",
-		Query: `SELECT ID, CHANNEL, HANDLE, OU_ID, PROJECT_ID, DISPLAY_NAME, DESCRIPTION ` +
-			`FROM "NOTIFICATION_TEMPLATE" ` +
-			`WHERE CHANNEL = $1 AND OU_ID = $2 AND DEPLOYMENT_ID = $5 ` +
-			`ORDER BY CREATED_AT DESC, ID DESC LIMIT $3 OFFSET $4`,
-	}
-
-	// queryCountTemplatesByOUID counts the templates of a channel an organization unit owns, for
-	// pagination totals.
-	queryCountTemplatesByOUID = dbmodel.DBQuery{
-		ID: "NTQ-NOTIF_TMPL-10",
-		Query: `SELECT COUNT(*) as total FROM "NOTIFICATION_TEMPLATE" ` +
-			`WHERE CHANNEL = $1 AND OU_ID = $2 AND DEPLOYMENT_ID = $3`,
-	}
-
 	// queryListTemplatesByProject retrieves a page of the templates of a channel in a project. It selects
 	// the same summary columns as queryListTemplates.
 	queryListTemplatesByProject = dbmodel.DBQuery{
@@ -111,3 +97,35 @@ var (
 			`WHERE CHANNEL = $1 AND PROJECT_ID = $2 AND DEPLOYMENT_ID = $3`,
 	}
 )
+
+// buildListTemplatesByOUIDsQuery builds the query that retrieves a page of the templates of a channel
+// the given number of organization units own. It selects the same summary columns as
+// queryListTemplates. The organization unit IDs are bound from $5.
+func buildListTemplatesByOUIDsQuery(ouCount int) dbmodel.DBQuery {
+	return dbmodel.DBQuery{
+		ID: "NTQ-NOTIF_TMPL-09",
+		Query: `SELECT ID, CHANNEL, HANDLE, OU_ID, PROJECT_ID, DISPLAY_NAME, DESCRIPTION ` +
+			`FROM "NOTIFICATION_TEMPLATE" ` +
+			`WHERE CHANNEL = $1 AND DEPLOYMENT_ID = $2 AND OU_ID IN (` + ouPlaceholders(5, ouCount) + `) ` +
+			`ORDER BY CREATED_AT DESC, ID DESC LIMIT $3 OFFSET $4`,
+	}
+}
+
+// buildCountTemplatesByOUIDsQuery builds the query that counts the templates of a channel the given
+// number of organization units own, for pagination totals. The organization unit IDs are bound from $3.
+func buildCountTemplatesByOUIDsQuery(ouCount int) dbmodel.DBQuery {
+	return dbmodel.DBQuery{
+		ID: "NTQ-NOTIF_TMPL-10",
+		Query: `SELECT COUNT(*) as total FROM "NOTIFICATION_TEMPLATE" ` +
+			`WHERE CHANNEL = $1 AND DEPLOYMENT_ID = $2 AND OU_ID IN (` + ouPlaceholders(3, ouCount) + `)`,
+	}
+}
+
+// ouPlaceholders returns count positional placeholders numbered from first.
+func ouPlaceholders(first, count int) string {
+	placeholders := make([]string, count)
+	for i := range placeholders {
+		placeholders[i] = fmt.Sprintf("$%d", first+i)
+	}
+	return strings.Join(placeholders, ", ")
+}

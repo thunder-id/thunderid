@@ -15,6 +15,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/middleware"
 	"github.com/thunder-id/thunderid/internal/system/projectscope"
 	"github.com/thunder-id/thunderid/internal/system/security"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 )
 
 // Initialize wires up the notification template service, renderer, and exporter and registers routes.
@@ -22,7 +23,8 @@ import (
 // in memory. projectValidator is nil on a deployment that serves no projects, where a template needs no
 // project and a project ID is kept unchecked.
 func Initialize(mux *http.ServeMux, cacheManager cache.CacheManagerInterface,
-	ouService ou.OrganizationUnitServiceInterface, translation translationResolver,
+	ouService ou.OrganizationUnitServiceInterface,
+	authzService sysauthz.SystemAuthorizationServiceInterface, translation translationResolver,
 	projectValidator projectOUValidator) (NotificationTemplateServiceInterface, TemplateRendererInterface,
 	declarativeresource.ResourceExporter, error) {
 	transactioner, err := provider.GetDBProvider().GetConfigDBTransactioner()
@@ -38,7 +40,8 @@ func Initialize(mux *http.ServeMux, cacheManager cache.CacheManagerInterface,
 		return nil, nil, nil, err
 	}
 
-	service := newNotificationTemplateService(store, transactioner, ouService, projectValidator, requireProject)
+	service := newNotificationTemplateService(store, transactioner, ouService, authzService, projectValidator,
+		requireProject)
 	handler := newNotificationTemplateHandler(service)
 	registerRoutes(mux, handler)
 

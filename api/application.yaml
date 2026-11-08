@@ -33,9 +33,11 @@ paths:
         - Applications
       summary: List applications
       description: |
-        Retrieve a list of all applications. An `ouId` filter lists the applications the organization
-        unit owns, followed by the applications shared into it. A `projectId` lists the project's
-        applications, narrowed to the organization unit in the `ouId` filter when one is given.
+        Retrieve a list of all applications. A caller whose permission is limited to an organization
+        unit lists that unit's applications instead. An `ouId` filter lists the applications the
+        organization unit owns, followed by the applications shared into it, and none for a unit the
+        caller may not list. A `projectId` lists the project's applications, narrowed to the
+        organization unit in the `ouId` filter when one is given.
       parameters:
         - $ref: '#/components/parameters/limitQueryParam'
         - $ref: '#/components/parameters/offsetQueryParam'
@@ -321,6 +323,8 @@ paths:
                     description:
                       key: "error.applicationservice.invalid_grant_type_description"
                       defaultValue: "One or more provided grant types are invalid"
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "500":
           description: Internal server error
           content:
@@ -442,6 +446,8 @@ paths:
                 description:
                   key: "error.applicationservice.invalid_application_id_description"
                   defaultValue: "The provided application ID is invalid or empty"
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "404":
           description: Application not found
           content:
@@ -707,6 +713,8 @@ paths:
                     description:
                       key: "error.applicationservice.shared_application_cannot_move_description"
                       defaultValue: "The application is shared into other organization units. Delete its sharing policies before moving it to another organization unit"
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "404":
           description: Application not found
           content:
@@ -770,6 +778,8 @@ paths:
                 description:
                   key: "error.applicationservice.invalid_application_id_description"
                   defaultValue: "The provided application ID is invalid or empty"
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "500":
           description: Internal server error
           content:
@@ -881,6 +891,8 @@ paths:
                   excludedOuIds: ["acme-trial-customers"]
         "400":
           $ref: '#/components/responses/ApplicationSharingPolicyCreateBadRequest'
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "404":
           $ref: '#/components/responses/ApplicationNotFound'
         "409":
@@ -940,6 +952,8 @@ paths:
                 links: []
         "400":
           $ref: '#/components/responses/ApplicationSharingPolicyListBadRequest'
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "404":
           $ref: '#/components/responses/ApplicationNotFound'
         "500":
@@ -970,6 +984,8 @@ paths:
                 childUnits:
                   mode: all
                   excludedOuIds: ["acme-trial-customers"]
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "404":
           $ref: '#/components/responses/ApplicationSharingPolicyNotFound'
         "500":
@@ -1038,6 +1054,8 @@ paths:
                   excludedOuIds: ["acme-trial-customers"]
         "400":
           $ref: '#/components/responses/ApplicationSharingPolicyUpdateBadRequest'
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "404":
           $ref: '#/components/responses/ApplicationSharingPolicyNotFound'
         "409":
@@ -1062,6 +1080,8 @@ paths:
             Sharing policy deleted, or the application holds no policy under that id.
         "400":
           $ref: '#/components/responses/ApplicationSharingPolicyDeleteBadRequest'
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "404":
           $ref: '#/components/responses/ApplicationNotFound'
         "500":
@@ -1115,6 +1135,8 @@ paths:
                     rules: {}
         "400":
           $ref: '#/components/responses/ApplicationOverlayRulesBadRequest'
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "404":
           $ref: '#/components/responses/ApplicationOverlayNotResolvable'
         "500":
@@ -1199,6 +1221,22 @@ components:
       example: "0195a2c0-6f3e-7a21-9f2a-2c4f8f1d9a10"
 
   responses:
+    Forbidden:
+      description: |
+        The caller may not perform the operation in the organization unit of the resource, or for an update
+        that moves the resource, in the organization unit it moves to
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: "SSE-4030"
+            message:
+              key: "error.unauthorized"
+              defaultValue: "Unauthorized"
+            description:
+              key: "error.unauthorized_description"
+              defaultValue: "The caller is not authorized to perform this operation"
     ApplicationSharingPolicyCreateBadRequest:
       description: |
         The policy is not one the issuing organization unit may write. The code says which kind of

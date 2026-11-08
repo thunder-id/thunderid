@@ -333,6 +333,8 @@ func definitionClientErrorStatus(code string) int {
 		return http.StatusNotFound
 	case ErrorDefinitionAlreadyExists.Code, ErrorDefinitionImmutable.Code, ErrorDefinitionIDConflict.Code:
 		return http.StatusConflict
+	case tidcommon.ErrorUnauthorized.Code:
+		return http.StatusForbidden
 	default:
 		return http.StatusBadRequest
 	}

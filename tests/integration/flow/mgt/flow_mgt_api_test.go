@@ -1334,7 +1334,7 @@ func (suite *FlowMgtAPITestSuite) TestRestoreFlowVersion_VersionNotFound() {
 func (suite *FlowMgtAPITestSuite) TestRestoreFlowVersion_FlowNotFound() {
 	restoreReq := RestoreVersionRequest{Version: 1}
 
-	suite.restoreFlowVersionExpectError("non-existent-id", restoreReq, http.StatusNotFound, "FLM-1008")
+	suite.restoreFlowVersionExpectError("non-existent-id", restoreReq, http.StatusNotFound, "FLM-1003")
 }
 
 // AttributeVerificationExecutor must prepare and record in the same flow, in any flow type: a flow

@@ -13,6 +13,7 @@ import (
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/eventbus"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -41,6 +42,7 @@ func Initialize(
 	valueCapturer declarativeresource.ValueCapturer,
 	projectValidator projectOUValidator,
 	bus eventbus.EventBusInterface,
+	authzService sysauthz.SystemAuthorizationServiceInterface,
 	options ...Option,
 ) (ResourceServiceInterface, declarativeresource.ResourceExporter, error) {
 	if bus == nil {
@@ -54,7 +56,7 @@ func Initialize(
 	}
 
 	resourceService, err := newResourceService(ouService, resourceStore, transactioner, authZENPDPService,
-		valueCapturer, projectValidator, bus, options...)
+		valueCapturer, projectValidator, bus, authzService, options...)
 	if err != nil {
 		return nil, nil, err
 	}

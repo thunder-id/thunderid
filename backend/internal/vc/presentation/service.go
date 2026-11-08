@@ -16,6 +16,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/projectscope"
 	"github.com/thunder-id/thunderid/internal/system/security"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
@@ -61,6 +62,7 @@ type presentationDefinitionDeclarativeService interface {
 type definitionService struct {
 	store     definitionStoreInterface
 	ouService ou.OrganizationUnitServiceInterface
+	authzSvc  sysauthz.SystemAuthorizationServiceInterface
 	// projectValidator is nil on a deployment that serves no projects.
 	projectValidator projectOUValidator
 	// projectRequired is set on a deployment that serves projects, where every definition belongs to one.
@@ -79,11 +81,13 @@ type projectOUValidator interface {
 // definition created without a project.
 func newPresentationDefinitionService(
 	store definitionStoreInterface, ouService ou.OrganizationUnitServiceInterface,
-	projectValidator projectOUValidator, projectRequired bool,
+	authzSvc sysauthz.SystemAuthorizationServiceInterface, projectValidator projectOUValidator,
+	projectRequired bool,
 ) *definitionService {
 	return &definitionService{
 		store:            store,
 		ouService:        ouService,
+		authzSvc:         authzSvc,
 		projectValidator: projectValidator,
 		projectRequired:  projectRequired,
 		logger:           log.GetLogger().With(log.String(log.LoggerKeyComponentName, "OpenID4VPDefinitionService")),
@@ -185,6 +189,9 @@ func (s *definitionService) CreatePresentationDefinition(
 	if svcErr := s.resolvePlacement(ctx, dto); svcErr != nil {
 		return nil, svcErr
 	}
+	if svcErr := s.checkAccess(ctx, security.ActionCreateVC, dto.OUID); svcErr != nil {
+		return nil, svcErr
+	}
 
 	existing, err := s.store.GetPresentationDefinitionByHandle(ctx, dto.Handle)
 	if err != nil && !errors.Is(err, ErrNotFound) {
@@ -237,6 +244,9 @@ func (s *definitionService) GetPresentationDefinition(
 		s.logger.Error(ctx, "Failed to get presentation definition", log.Error(err))
 		return nil, &tidcommon.InternalServerError
 	}
+	if svcErr := s.checkAccess(ctx, security.ActionReadVC, dto.OUID); svcErr != nil {
+		return nil, svcErr
+	}
 	s.populateOUHandle(ctx, dto)
 	return dto, nil
 }
@@ -253,6 +263,9 @@ func (s *definitionService) GetPresentationDefinitionByHandle(
 		s.logger.Error(ctx, "Failed to get presentation definition by handle", log.Error(err))
 		return nil, &tidcommon.InternalServerError
 	}
+	if svcErr := s.checkAccess(ctx, security.ActionReadVC, dto.OUID); svcErr != nil {
+		return nil, svcErr
+	}
 	return dto, nil
 }
 
@@ -268,6 +281,11 @@ func (s *definitionService) ListPresentationDefinitions(
 		s.logger.Error(ctx, "Failed to list presentation definitions", log.Error(err))
 		return nil, &tidcommon.InternalServerError
 	}
+	listOU, visible, svcErr := sysauthz.ResolveListOU(ctx, s.authzSvc, s.logger, security.ActionListVCs, "")
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	defs = sysauthz.FilterByListOU(defs, listOU, visible, func(d PresentationDefinitionDTO) string { return d.OUID })
 	ptrs := make([]*PresentationDefinitionDTO, len(defs))
 	for i := range defs {
 		ptrs[i] = &defs[i]
@@ -280,7 +298,20 @@ func (s *definitionService) ListPresentationDefinitions(
 func (s *definitionService) ListPresentationDefinitionSummaries(
 	ctx context.Context,
 ) ([]PresentationDefinitionList, *tidcommon.ServiceError) {
-	summaries, err := s.store.ListPresentationDefinitionSummaries(ctx)
+	listOU, visible, svcErr := sysauthz.ResolveListOU(ctx, s.authzSvc, s.logger, security.ActionListVCs, "")
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	if !visible {
+		return []PresentationDefinitionList{}, nil
+	}
+	var summaries []PresentationDefinitionList
+	var err error
+	if listOU == "" {
+		summaries, err = s.store.ListPresentationDefinitionSummaries(ctx)
+	} else {
+		summaries, err = s.store.ListPresentationDefinitionSummariesByOUID(ctx, listOU)
+	}
 	if err != nil {
 		if errors.Is(err, ErrResultLimitExceededInCompositeMode) {
 			return nil, &ErrorDefinitionResultLimitExceeded
@@ -309,6 +340,12 @@ func (s *definitionService) ListPresentationDefinitionSummariesByOUID(
 			log.String("ouID", ouID), log.Error(err))
 		return nil, &tidcommon.InternalServerError
 	}
+	listOU, visible, svcErr := sysauthz.ResolveListOU(ctx, s.authzSvc, s.logger, security.ActionListVCs, ouID)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	summaries = sysauthz.FilterByListOU(summaries, listOU, visible,
+		func(d PresentationDefinitionList) string { return d.OUID })
 	s.populateSummaryOUHandles(ctx, summaries)
 	return summaries, nil
 }
@@ -395,6 +432,9 @@ func (s *definitionService) UpdatePresentationDefinition(
 		s.logger.Error(ctx, "Failed to load presentation definition", log.Error(err))
 		return nil, &tidcommon.InternalServerError
 	}
+	if svcErr := s.checkAccess(ctx, security.ActionUpdateVC, existing.OUID); svcErr != nil {
+		return nil, svcErr
+	}
 
 	if svcErr := carryStoredCertificates(dto.TrustedAuthorities, existing.TrustedAuthorities); svcErr != nil {
 		return nil, svcErr
@@ -432,6 +472,13 @@ func (s *definitionService) UpdatePresentationDefinition(
 	}
 
 	dto.ID = id
+	// Moving the presentation definition places it in another organization unit, which the caller must be
+	// allowed to act for too.
+	if dto.OUID != existing.OUID {
+		if svcErr := s.checkAccess(ctx, security.ActionUpdateVC, dto.OUID); svcErr != nil {
+			return nil, svcErr
+		}
+	}
 	if err := s.store.UpdatePresentationDefinition(ctx, *dto); err != nil {
 		if errors.Is(err, ErrDefinitionIsImmutable) {
 			return nil, &ErrorDefinitionImmutable
@@ -447,12 +494,16 @@ func (s *definitionService) DeletePresentationDefinition(ctx context.Context, id
 	if strings.TrimSpace(id) == "" {
 		return &ErrorDefinitionInvalidRequest
 	}
-	if _, err := s.store.GetPresentationDefinitionByID(ctx, id); err != nil {
+	existing, err := s.store.GetPresentationDefinitionByID(ctx, id)
+	if err != nil {
 		if errors.Is(err, ErrNotFound) {
 			return nil // idempotent
 		}
 		s.logger.Error(ctx, "Failed to load presentation definition", log.Error(err))
 		return &tidcommon.InternalServerError
+	}
+	if svcErr := s.checkAccess(ctx, security.ActionDeleteVC, existing.OUID); svcErr != nil {
+		return svcErr
 	}
 	if err := s.store.DeletePresentationDefinition(ctx, id); err != nil {
 		if errors.Is(err, ErrDefinitionIsImmutable) {
@@ -658,6 +709,22 @@ func carryStoredCertificates(requested, stored []TrustedAuthority) *tidcommon.Se
 				map[string]string{"name": authority.Name})
 		}
 		requested[i].Certificate = certificate
+	}
+	return nil
+}
+
+// checkAccess checks the caller may perform the action on a presentation definition of the organization unit.
+func (s *definitionService) checkAccess(ctx context.Context, action security.Action,
+	ouID string) *tidcommon.ServiceError {
+	allowed, svcErr := s.authzSvc.IsActionAllowed(ctx, action,
+		&sysauthz.ActionContext{ResourceType: security.ResourceTypeVerifiableCredential, OUID: ouID})
+	if svcErr != nil {
+		s.logger.Error(ctx, "Failed to check authorization for action",
+			log.String("action", string(action)), log.Any("error", svcErr))
+		return &tidcommon.InternalServerError
+	}
+	if !allowed {
+		return &tidcommon.ErrorUnauthorized
 	}
 	return nil
 }

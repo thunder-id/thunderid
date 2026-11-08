@@ -25,6 +25,7 @@ import (
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/eventbus"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 )
 
 // serverConfigProvider is the minimal subset of serverconfig.ServerConfigService consumed by flowmgt.
@@ -54,6 +55,7 @@ func Initialize(
 	sharingSvc sharing.SharingServiceInterface,
 	bus eventbus.EventBusInterface,
 	projectValidator projectOUValidator,
+	authzService sysauthz.SystemAuthorizationServiceInterface,
 ) (FlowMgtServiceInterface, declarativeresource.ResourceExporter, error) {
 	if bus == nil {
 		return nil, nil, errNilEventBus
@@ -82,7 +84,7 @@ func Initialize(
 	service := newFlowMgtService(
 		store, inferenceService, graphBuilder, executorRegistry,
 		interceptorRegistry, flowValidator, compositeStore, transactioner, serverConfigSvc, ouSvc,
-		templateResolver, systemFlows, sharingSvc, idpProvider, bus, projectValidator,
+		templateResolver, systemFlows, sharingSvc, idpProvider, bus, projectValidator, authzService,
 	)
 	if err := service.loadDeclarativeSharing(); err != nil {
 		return nil, nil, err
@@ -91,7 +93,7 @@ func Initialize(
 	// TODO: Check whether this can be improved to avoid injecting configHandler to flow mgt service
 	if configHandler != nil {
 		configHandler.SetHandleValidator(func(ctx context.Context, handle string, flowType providers.FlowType) bool {
-			_, svcErr := service.GetFlowByHandle(ctx, handle, flowType)
+			_, svcErr := service.getFlowByHandle(ctx, handle, flowType)
 			return svcErr == nil
 		})
 	}

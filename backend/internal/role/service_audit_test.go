@@ -144,7 +144,7 @@ func (s *RoleServiceAuditTestSuite) SetupTest() {
 	s.mockResourceService = resourcemock.NewResourceServiceInterfaceMock(s.T())
 	s.mockEntityTypeService = entitytypemock.NewEntityTypeServiceInterfaceMock(s.T())
 	s.mockSharingService = sharingmock.NewSharingServiceInterfaceMock(s.T())
-	s.authz = sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(s.T())
+	s.authz = allowOUAccess(sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(s.T()))
 	s.transactioner = &fakeTransactioner{}
 	s.bus, s.published = newRecordingBus(s.T())
 	s.service = s.newRoleService(s.bus)
@@ -371,7 +371,8 @@ func (s *RoleServiceAuditTestSuite) TestDeleteRole_PublishesOneEventPerAttempt()
 		{
 			name: "the role is deleted with its assignments",
 			arrange: func() {
-				s.mockStore.On("IsRoleExist", mock.Anything, "role1").Return(true, nil).Once()
+				s.mockStore.On("GetRole", mock.Anything, "role1").
+					Return(RoleWithPermissions{ID: "role1", OUID: testOwnerOU}, nil).Once()
 				s.mockStore.On("ListMandatedAssignmentsForRole", mock.Anything, "role1", "").
 					Return([]RoleAssignment{}, nil).Once()
 				s.mockSharingService.EXPECT().DeletePoliciesForResource(mock.Anything, RoleSharingType,
@@ -385,7 +386,8 @@ func (s *RoleServiceAuditTestSuite) TestDeleteRole_PublishesOneEventPerAttempt()
 		{
 			name: "the role cannot be read",
 			arrange: func() {
-				s.mockStore.On("IsRoleExist", mock.Anything, "role1").Return(false, errors.New("store failure")).Once()
+				s.mockStore.On("GetRole", mock.Anything, "role1").
+					Return(RoleWithPermissions{}, errors.New("store failure")).Once()
 			},
 			outcome: audit.OutcomeFailed("sse_5000"),
 		},
@@ -407,7 +409,7 @@ func (s *RoleServiceAuditTestSuite) TestDeleteRole_PublishesOneEventPerAttempt()
 // A delete of a role that does not exist succeeds without an event, so no caller can record the deletion
 // of an ID it made up.
 func (s *RoleServiceAuditTestSuite) TestDeleteRole_PublishesNothingWhenTheRoleIsMissing() {
-	s.mockStore.On("IsRoleExist", mock.Anything, "role1").Return(false, nil).Once()
+	s.mockStore.On("GetRole", mock.Anything, "role1").Return(RoleWithPermissions{}, ErrRoleNotFound).Once()
 
 	svcErr := s.service.DeleteRole(adminContext(), "role1")
 

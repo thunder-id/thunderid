@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 	"gopkg.in/yaml.v3"
 
@@ -199,4 +200,137 @@ func (suite *UtilsTestSuite) TestPolicyRequestYAML_RefusesAnUnknownField() {
 			suite.Require().Error(node.Content[0].Decode(&doc))
 		})
 	}
+}
+
+const ownPoliciesType ResourceType = "application"
+
+// ListReadablePoliciesTestSuite covers listing the policies of a resource a caller may read.
+type ListReadablePoliciesTestSuite struct {
+	suite.Suite
+	svc *SharingServiceInterfaceMock
+}
+
+func TestListReadablePoliciesTestSuite(t *testing.T) {
+	suite.Run(t, new(ListReadablePoliciesTestSuite))
+}
+
+func (s *ListReadablePoliciesTestSuite) SetupTest() {
+	s.svc = NewSharingServiceInterfaceMock(s.T())
+}
+
+// mayReadOU lets the caller read in the given organization units only.
+func mayReadOU(ouIDs ...string) func(string) *tidcommon.ServiceError {
+	return func(ouID string) *tidcommon.ServiceError {
+		for _, allowed := range ouIDs {
+			if allowed == ouID {
+				return nil
+			}
+		}
+		return &tidcommon.ErrorUnauthorized
+	}
+}
+
+// untranslated returns the sharing error as it is, so a test sees which errors went through translate.
+func untranslated(svcErr *tidcommon.ServiceError) *tidcommon.ServiceError { return svcErr }
+
+func (s *ListReadablePoliciesTestSuite) policies(ouIDs ...string) {
+	policies := make([]Policy, 0, len(ouIDs))
+	for i, ouID := range ouIDs {
+		policies = append(policies, Policy{ID: string(rune('a' + i)), InitiatingOUID: ouID})
+	}
+	s.svc.On("ListPolicies", mock.Anything, ownPoliciesType, "res-1").Return(policies, nil)
+}
+
+func (s *ListReadablePoliciesTestSuite) TestKeepsTheCallersOwn() {
+	s.policies("ou-1", "ou-2", "ou-1")
+
+	list, svcErr := ListReadablePolicies(context.Background(), s.svc, ownPoliciesType, "res-1", "owner-ou", 10, 0,
+		mayReadOU("ou-1"), untranslated)
+	s.Require().Nil(svcErr)
+	s.Equal(2, list.TotalResults)
+	s.Equal(2, list.Count)
+	s.Equal(1, list.StartIndex)
+	s.Equal([]string{"a", "c"}, []string{list.Policies[0].ID, list.Policies[1].ID})
+}
+
+func (s *ListReadablePoliciesTestSuite) TestPages() {
+	s.policies("ou-1", "ou-1", "ou-1")
+
+	list, svcErr := ListReadablePolicies(context.Background(), s.svc, ownPoliciesType, "res-1", "owner-ou", 2, 2,
+		mayReadOU("ou-1"), untranslated)
+	s.Require().Nil(svcErr)
+	s.Equal(3, list.TotalResults)
+	s.Equal(1, list.Count)
+	s.Equal("c", list.Policies[0].ID)
+
+	list, svcErr = ListReadablePolicies(context.Background(), s.svc, ownPoliciesType, "res-1", "owner-ou", 2, 5,
+		mayReadOU("ou-1"), untranslated)
+	s.Require().Nil(svcErr)
+	s.Equal(3, list.TotalResults)
+	s.Empty(list.Policies)
+}
+
+func (s *ListReadablePoliciesTestSuite) TestRefusesACallerWhoMadeNone() {
+	s.policies("ou-2")
+
+	_, svcErr := ListReadablePolicies(context.Background(), s.svc, ownPoliciesType, "res-1", "owner-ou", 10, 0,
+		mayReadOU("ou-1"), untranslated)
+	s.Require().NotNil(svcErr)
+	s.Equal(tidcommon.ErrorUnauthorized.Code, svcErr.Code)
+}
+
+func (s *ListReadablePoliciesTestSuite) TestPassesOnAReadFailure() {
+	s.policies("ou-1")
+
+	_, svcErr := ListReadablePolicies(context.Background(), s.svc, ownPoliciesType, "res-1", "owner-ou", 10, 0,
+		func(ouID string) *tidcommon.ServiceError {
+			if ouID == "owner-ou" {
+				return &tidcommon.ErrorUnauthorized
+			}
+			return &tidcommon.InternalServerError
+		},
+		func(*tidcommon.ServiceError) *tidcommon.ServiceError { return &ErrorPolicyNotFound })
+	s.Require().NotNil(svcErr)
+	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+}
+
+func (s *ListReadablePoliciesTestSuite) TestTranslatesSharingErrors() {
+	s.svc.On("ListPolicies", mock.Anything, ownPoliciesType, "res-1").Return(nil, &ErrorPolicyNotFound)
+	translated := &tidcommon.ServiceError{Code: "APP-0000", Type: tidcommon.ClientErrorType}
+	translate := func(*tidcommon.ServiceError) *tidcommon.ServiceError { return translated }
+
+	_, svcErr := ListReadablePolicies(context.Background(), s.svc, ownPoliciesType, "res-1", "owner-ou", 10, 0,
+		mayReadOU("ou-1"), translate)
+	s.Equal(translated, svcErr)
+
+	_, svcErr = ListReadablePolicies(context.Background(), s.svc, ownPoliciesType, "res-1", "owner-ou", 0, 0,
+		mayReadOU("ou-1"), translate)
+	s.Equal(translated, svcErr)
+}
+
+func (s *ListReadablePoliciesTestSuite) TestReadsEveryPolicyForAnOwnerReader() {
+	page := PolicyList{TotalResults: 3, Count: 1, Policies: []Policy{{ID: "a"}}}
+	s.svc.On("GetPolicyList", mock.Anything, ownPoliciesType, "res-1", 1, 0).Return(page, nil)
+
+	list, svcErr := ListReadablePolicies(context.Background(), s.svc, ownPoliciesType, "res-1", "owner-ou", 1, 0,
+		mayReadOU("owner-ou"), untranslated)
+	s.Require().Nil(svcErr)
+	s.Equal(page, list)
+}
+
+func (s *ListReadablePoliciesTestSuite) TestTranslatesAnOwnerReadFailure() {
+	s.svc.On("GetPolicyList", mock.Anything, ownPoliciesType, "res-1", 10, 0).
+		Return(PolicyList{}, &ErrorPolicyNotFound)
+	translated := &tidcommon.ServiceError{Code: "APP-0000", Type: tidcommon.ClientErrorType}
+
+	_, svcErr := ListReadablePolicies(context.Background(), s.svc, ownPoliciesType, "res-1", "owner-ou", 10, 0,
+		mayReadOU("owner-ou"), func(*tidcommon.ServiceError) *tidcommon.ServiceError { return translated })
+	s.Equal(translated, svcErr)
+}
+
+func (s *ListReadablePoliciesTestSuite) TestPassesOnAnOwnerCheckFailure() {
+	_, svcErr := ListReadablePolicies(context.Background(), s.svc, ownPoliciesType, "res-1", "owner-ou", 10, 0,
+		func(string) *tidcommon.ServiceError { return &tidcommon.InternalServerError }, untranslated)
+	s.Require().NotNil(svcErr)
+	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
 }

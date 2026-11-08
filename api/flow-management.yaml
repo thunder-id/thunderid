@@ -73,7 +73,9 @@ paths:
       tags:
         - Flow Management
       summary: List all flows
-      description: Retrieves a paginated list of all flow definitions
+      description: |
+        Retrieves a paginated list of all flow definitions. A caller whose permission is limited to an
+        organization unit lists that unit's flows instead.
       operationId: listFlows
       parameters:
         - name: flowType

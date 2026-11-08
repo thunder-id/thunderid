@@ -31,8 +31,11 @@ paths:
         - Roles
       summary: List roles
       description: |
-        Lists every role in the deployment. A `filter` naming an organization unit lists the roles that
-        unit owns, followed by the roles shared with it. Each role says whether the listed unit owns it.
+        Lists every role in the deployment. A caller whose permission is limited to an organization unit
+        lists that unit's roles instead. A `filter` naming an organization unit lists the roles that unit
+        owns, followed by the roles shared with it. Each role says whether the listed unit owns it. For a
+        unit whose roles the caller may not list, it lists the roles shared with the unit that the caller
+        can read, as read only.
       parameters:
         - $ref: '#/components/parameters/limitQueryParam'
         - $ref: '#/components/parameters/offsetQueryParam'
@@ -373,6 +376,8 @@ paths:
                 description:
                   key: "error.roleservice.missing_role_id_description"
                   defaultValue: "Role ID is required"
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "404":
           description: Role not found, or not shared with the organization unit named in ouId
           content:
@@ -735,6 +740,8 @@ paths:
                     description:
                       key: "error.roleservice.result_limit_exceeded_in_composite_mode_description"
                       defaultValue: "The total number of records exceeds the maximum limit in composite mode"
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "404":
           description: Role not found
           content:
@@ -882,6 +889,8 @@ paths:
                     description:
                       key: "error.roleservice.invalid_offset_parameter_description"
                       defaultValue: "The offset parameter must be a non-negative integer"
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "404":
           description: Role not found
           content:
@@ -1291,6 +1300,8 @@ paths:
                   excludedOuIds: ["acme-trial-customers"]
         "400":
           $ref: '#/components/responses/RoleSharingPolicyCreateBadRequest'
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "404":
           $ref: '#/components/responses/RoleNotFound'
         "409":
@@ -1350,6 +1361,8 @@ paths:
                 links: []
         "400":
           $ref: '#/components/responses/RoleSharingPolicyListBadRequest'
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "404":
           $ref: '#/components/responses/RoleNotFound'
         "500":
@@ -1380,6 +1393,8 @@ paths:
                 childUnits:
                   mode: all
                   excludedOuIds: ["acme-trial-customers"]
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "404":
           $ref: '#/components/responses/RoleSharingPolicyNotFound'
         "500":
@@ -1448,6 +1463,8 @@ paths:
                   excludedOuIds: ["acme-trial-customers"]
         "400":
           $ref: '#/components/responses/RoleSharingPolicyUpdateBadRequest'
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "404":
           $ref: '#/components/responses/RoleSharingPolicyNotFound'
         "409":
@@ -1471,6 +1488,8 @@ paths:
             Sharing policy deleted, or the role holds no policy under that id.
         "400":
           $ref: '#/components/responses/RoleSharingPolicyDeleteBadRequest'
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "404":
           $ref: '#/components/responses/RoleNotFound'
         "409":
@@ -1530,6 +1549,8 @@ paths:
                         editable: true
         "400":
           $ref: '#/components/responses/RoleOverlayRulesBadRequest'
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "404":
           $ref: '#/components/responses/RoleOverlayNotResolvable'
         "500":
@@ -1654,6 +1675,20 @@ components:
       example: "0195a2c0-6f3e-7a21-9f2a-2c4f8f1d9a10"
 
   responses:
+    Forbidden:
+      description: The caller may not perform the operation in the organization unit of the resource
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: "SSE-4030"
+            message:
+              key: "error.unauthorized"
+              defaultValue: "Unauthorized"
+            description:
+              key: "error.unauthorized_description"
+              defaultValue: "The caller is not authorized to perform this operation"
     RoleSharingPolicyCreateBadRequest:
       description: |
         The policy is not one the issuing organization unit may write. The code says which kind of

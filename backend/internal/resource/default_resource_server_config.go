@@ -6,6 +6,8 @@ package resource
 import (
 	"context"
 	"encoding/json"
+
+	"github.com/thunder-id/thunderid/internal/system/security"
 )
 
 // DefaultResourceServerConfig contains the default resource server configuration.
@@ -49,7 +51,9 @@ func (h *DefaultResourceServerConfigHandler) Validate(ctx context.Context, incom
 	if cfg.ResourceServerID == "" {
 		return nil
 	}
-	if _, svcErr := h.resourceService.GetResourceServer(ctx, cfg.ResourceServerID); svcErr != nil {
+	// Only the resource server's existence is checked, whichever organization unit owns it.
+	if _, svcErr := h.resourceService.GetResourceServer(
+		security.WithRuntimeContext(ctx), cfg.ResourceServerID); svcErr != nil {
 		if svcErr.Code == ErrorResourceServerNotFound.Code {
 			return errUnknownDefaultResourceServer
 		}

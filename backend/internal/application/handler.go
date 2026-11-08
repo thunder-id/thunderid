@@ -481,6 +481,8 @@ func (ah *applicationHandler) handleError(ctx context.Context, w http.ResponseWr
 		case ErrorSharingPolicyExists.Code, ErrorSharingPolicyVersionMismatch.Code:
 			// Both are conflicts with state the caller has not seen, not malformed requests.
 			statusCode = http.StatusConflict
+		case tidcommon.ErrorUnauthorized.Code:
+			statusCode = http.StatusForbidden
 		default:
 			statusCode = http.StatusBadRequest
 		}

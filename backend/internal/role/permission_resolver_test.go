@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -181,6 +182,9 @@ func TestResolveForGroup(t *testing.T) {
 	})
 }
 
+// inRuntimeContext matches a context marked as the server's own runtime caller.
+var inRuntimeContext = mock.MatchedBy(security.IsRuntimeContext)
+
 func TestResolveForRole(t *testing.T) {
 	ctx := context.Background()
 
@@ -195,7 +199,7 @@ func TestResolveForRole(t *testing.T) {
 
 	t.Run("GroupsPermissionsByResourceServer", func(t *testing.T) {
 		roleSvc := NewRoleServiceInterfaceMock(t)
-		roleSvc.EXPECT().GetRoleWithPermissions(ctx, "librarian").Return(&RoleWithPermissions{
+		roleSvc.EXPECT().GetRoleWithPermissions(inRuntimeContext, "librarian").Return(&RoleWithPermissions{
 			ID: "librarian",
 			Permissions: []ResourcePermissions{
 				{ResourceServerID: testRSSystem, Permissions: []string{"system:user", "system:group"}},
@@ -213,7 +217,7 @@ func TestResolveForRole(t *testing.T) {
 
 	t.Run("RoleWithNoPermissions", func(t *testing.T) {
 		roleSvc := NewRoleServiceInterfaceMock(t)
-		roleSvc.EXPECT().GetRoleWithPermissions(ctx, "empty").Return(&RoleWithPermissions{
+		roleSvc.EXPECT().GetRoleWithPermissions(inRuntimeContext, "empty").Return(&RoleWithPermissions{
 			ID:          "empty",
 			Permissions: []ResourcePermissions{},
 		}, nil).Once()
@@ -228,7 +232,7 @@ func TestResolveForRole(t *testing.T) {
 	// A missing role must not read as "confers nothing", which would permit assigning it.
 	t.Run("LookupErrorPropagates", func(t *testing.T) {
 		roleSvc := NewRoleServiceInterfaceMock(t)
-		roleSvc.EXPECT().GetRoleWithPermissions(ctx, "gone").
+		roleSvc.EXPECT().GetRoleWithPermissions(inRuntimeContext, "gone").
 			Return(nil, &ErrorRoleNotFound).Once()
 		resolver := NewEffectivePermissionResolver(roleSvc, nil, nil)
 

@@ -36,7 +36,8 @@ func (suite *RoleServiceTestSuite) recordSystemFlows(failing string, err *tidcom
 
 // expectRoleRemoval sets up a role that exists and may be deleted, recording its removal in order.
 func (suite *RoleServiceTestSuite) expectRoleRemoval(order *[]string, deleteErr error) {
-	suite.mockStore.On("IsRoleExist", mock.Anything, "role1").Return(true, nil).Once()
+	suite.mockStore.On("GetRole", mock.Anything, "role1").
+		Return(RoleWithPermissions{ID: "role1", OUID: testOwnerOU}, nil).Once()
 	suite.unmandated()
 	suite.mockSharingService.EXPECT().DeletePoliciesForResource(mock.Anything, RoleSharingType, "role1").
 		Return(nil).Once()
@@ -69,7 +70,8 @@ func (suite *RoleServiceTestSuite) TestDeleteRole_RunsThePreAndPostFlowsAroundTh
 func (suite *RoleServiceTestSuite) TestDeleteRole_RefusedPreFlowRemovesNothing() {
 	order := []string{}
 	suite.recordSystemFlows(systemFlowRoleDeletePre, &ErrorMandatedRoleCannotBeDeleted, &order, 1)
-	suite.mockStore.On("IsRoleExist", mock.Anything, "role1").Return(true, nil).Once()
+	suite.mockStore.On("GetRole", mock.Anything, "role1").
+		Return(RoleWithPermissions{ID: "role1", OUID: testOwnerOU}, nil).Once()
 
 	err := suite.service.DeleteRole(context.Background(), "role1")
 
@@ -108,7 +110,7 @@ func (suite *RoleServiceTestSuite) TestDeleteRole_FailedPostFlowIsReported() {
 // A role that is already gone runs no flow, so a retry after a partial delete revokes nothing again.
 func (suite *RoleServiceTestSuite) TestDeleteRole_MissingRoleRunsNoFlow() {
 	suite.Require().NoError(SetSystemFlowProvider(suite.service, newSystemFlowProviderMock(suite.T())))
-	suite.mockStore.On("IsRoleExist", mock.Anything, "nonexistent").Return(false, nil).Once()
+	suite.mockStore.On("GetRole", mock.Anything, "nonexistent").Return(RoleWithPermissions{}, ErrRoleNotFound).Once()
 
 	err := suite.service.DeleteRole(context.Background(), "nonexistent")
 

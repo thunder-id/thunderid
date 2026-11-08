@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
@@ -89,10 +90,11 @@ func (f *templateFileBasedStore) CountTemplates(_ context.Context, channel Chann
 	return len(filtered), nil
 }
 
-// ListTemplatesByOUID returns a page of the declared templates of a channel an organization unit owns.
-func (f *templateFileBasedStore) ListTemplatesByOUID(_ context.Context, channel ChannelType, ouID string,
+// ListTemplatesByOUIDs returns a page of the declared templates of a channel the given organization units
+// own.
+func (f *templateFileBasedStore) ListTemplatesByOUIDs(_ context.Context, channel ChannelType, ouIDs []string,
 	limit, offset int) ([]templateDAO, error) {
-	filtered, err := f.listByChannelAndOU(channel, ouID)
+	filtered, err := f.listByChannelAndOUs(channel, ouIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -103,10 +105,11 @@ func (f *templateFileBasedStore) ListTemplatesByOUID(_ context.Context, channel 
 	return filtered[offset:end], nil
 }
 
-// CountTemplatesByOUID returns the number of declared templates of a channel an organization unit owns.
-func (f *templateFileBasedStore) CountTemplatesByOUID(_ context.Context, channel ChannelType, ouID string) (
+// CountTemplatesByOUIDs returns the number of declared templates of a channel the given organization units
+// own.
+func (f *templateFileBasedStore) CountTemplatesByOUIDs(_ context.Context, channel ChannelType, ouIDs []string) (
 	int, error) {
-	filtered, err := f.listByChannelAndOU(channel, ouID)
+	filtered, err := f.listByChannelAndOUs(channel, ouIDs)
 	if err != nil {
 		return 0, err
 	}
@@ -202,14 +205,14 @@ func (f *templateFileBasedStore) listAll() ([]templateDAO, error) {
 
 // listByChannelAndOU returns the declared templates of a channel an organization unit owns, ordered by
 // handle for stable pagination.
-func (f *templateFileBasedStore) listByChannelAndOU(channel ChannelType, ouID string) ([]templateDAO, error) {
+func (f *templateFileBasedStore) listByChannelAndOUs(channel ChannelType, ouIDs []string) ([]templateDAO, error) {
 	inChannel, err := f.listByChannel(channel)
 	if err != nil {
 		return nil, err
 	}
 	filtered := make([]templateDAO, 0, len(inChannel))
 	for _, t := range inChannel {
-		if t.OUID == ouID {
+		if slices.Contains(ouIDs, t.OUID) {
 			filtered = append(filtered, t)
 		}
 	}

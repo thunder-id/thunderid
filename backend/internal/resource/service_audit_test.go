@@ -122,7 +122,8 @@ func (s *ResourceServiceAuditTestSuite) resetMocks() {
 
 // newService returns a resource service over the store mock that publishes on bus.
 func (s *ResourceServiceAuditTestSuite) newService(bus eventbus.EventBusInterface) ResourceServiceInterface {
-	service, err := newResourceService(s.ou, s.store, &fakeTransactioner{}, nil, nil, s.project, bus)
+	service, err := newResourceService(s.ou, s.store, &fakeTransactioner{}, nil, nil, s.project, bus,
+		allowAllAuthz(s.T()))
 	s.Require().NoError(err)
 	service.SetDependencyRegistry(resourcedependency.Initialize(service))
 	return service
@@ -703,7 +704,7 @@ func (s *ResourceServiceAuditTestSuite) TestCreateResourceServer_SucceedsWhenThe
 }
 
 func (s *ResourceServiceAuditTestSuite) TestInitialize_RefusesANilEventBus() {
-	service, exporter, err := Initialize(http.NewServeMux(), s.ou, nil, nil, nil, nil)
+	service, exporter, err := Initialize(http.NewServeMux(), s.ou, nil, nil, nil, nil, nil)
 
 	s.ErrorIs(err, errNilEventBus)
 	s.Nil(service)

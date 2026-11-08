@@ -23,6 +23,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 	"github.com/thunder-id/thunderid/internal/system/valuecompare"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -954,7 +955,7 @@ func (is *idpService) validateAuthorizationRuleMappingTargetsExist(
 	}
 
 	for roleID := range roleIDs {
-		if _, svcErr := is.roleService.GetRoleWithPermissions(ctx, roleID); svcErr != nil {
+		if _, svcErr := is.roleService.GetRoleWithPermissions(security.WithRuntimeContext(ctx), roleID); svcErr != nil {
 			if svcErr.Type == tidcommon.ServerErrorType {
 				return svcErr
 			}
@@ -1168,7 +1169,9 @@ func (is *idpService) validateAuthorizationDirectMappings(
 					Params: map[string]string{"claim": mapping.Claim},
 				})
 			}
-			if _, svcErr := is.resourceService.GetResourceServer(ctx, mapping.ResourceServerID); svcErr != nil {
+			// Only the resource server's existence is checked, whichever organization unit owns it.
+			if _, svcErr := is.resourceService.GetResourceServer(
+				security.WithRuntimeContext(ctx), mapping.ResourceServerID); svcErr != nil {
 				if svcErr.Type == tidcommon.ServerErrorType {
 					return svcErr
 				}

@@ -174,30 +174,31 @@ content:
   body: k
 `
 
-func (s *FileBasedStoreTestSuite) TestListTemplatesByOUID() {
+func (s *FileBasedStoreTestSuite) TestListTemplatesByOUIDs() {
 	loadDeclared(s.T(), s.fileStore, declaredZebraYAML)
 	loadDeclared(s.T(), s.fileStore, declaredAlphaYAML)
 	loadDeclared(s.T(), s.fileStore, declaredOtherOUYAML)
 	loadDeclared(s.T(), s.fileStore, declaredSMSYAML)
 	ouID := testDeclaredOUID
 
-	all, err := s.fileStore.ListTemplatesByOUID(s.ctx, ChannelTypeEmail, ouID, 10, 0)
+	all, err := s.fileStore.ListTemplatesByOUIDs(s.ctx, ChannelTypeEmail, []string{ouID}, 10, 0)
 	s.Require().NoError(err)
 	s.Require().Equal([]string{"alpha", "zebra"}, handlesOf(all))
 
-	page, err := s.fileStore.ListTemplatesByOUID(s.ctx, ChannelTypeEmail, ouID, 1, 1)
+	page, err := s.fileStore.ListTemplatesByOUIDs(s.ctx, ChannelTypeEmail, []string{ouID}, 1, 1)
 	s.Require().NoError(err)
 	s.Require().Equal([]string{"zebra"}, handlesOf(page))
 
-	beyond, err := s.fileStore.ListTemplatesByOUID(s.ctx, ChannelTypeEmail, ouID, 10, 5)
+	beyond, err := s.fileStore.ListTemplatesByOUIDs(s.ctx, ChannelTypeEmail, []string{ouID}, 10, 5)
 	s.Require().NoError(err)
 	s.Require().Empty(beyond)
 
-	count, err := s.fileStore.CountTemplatesByOUID(s.ctx, ChannelTypeEmail, ouID)
+	count, err := s.fileStore.CountTemplatesByOUIDs(s.ctx, ChannelTypeEmail, []string{ouID})
 	s.Require().NoError(err)
 	s.Require().Equal(2, count)
 
-	count, err = s.fileStore.CountTemplatesByOUID(s.ctx, ChannelTypeEmail, "01900000-0000-7000-8000-000000000002")
+	count, err = s.fileStore.CountTemplatesByOUIDs(s.ctx, ChannelTypeEmail,
+		[]string{"01900000-0000-7000-8000-000000000002"})
 	s.Require().NoError(err)
 	s.Require().Equal(1, count)
 }

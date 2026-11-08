@@ -26,6 +26,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/filter"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 )
@@ -129,14 +130,24 @@ func (as *roleAssignmentService) GetRoleAssignmentsByType(ctx context.Context, i
 		return nil, &ErrorMissingRoleID
 	}
 
-	exists, err := as.roleStore.IsRoleExist(ctx, id)
+	role, err := as.roleStore.GetRole(ctx, id)
 	if err != nil {
+		if errors.Is(err, ErrRoleNotFound) {
+			logger.Debug(ctx, "Role not found", log.String("id", id))
+			return nil, &ErrorRoleNotFound
+		}
 		logger.Error(ctx, "Failed to check role existence", log.String("id", id), log.Error(err))
 		return nil, &tidcommon.InternalServerError
 	}
-	if !exists {
-		logger.Debug(ctx, "Role not found", log.String("id", id))
-		return nil, &ErrorRoleNotFound
+	// An assignment belongs to the organization unit it is made in. Listing every organization unit's is
+	// for the organization unit that owns the role.
+	assignmentOUID := ouID
+	if assignmentOUID == "" {
+		assignmentOUID = role.OUID
+	}
+	if svcErr := checkRoleAccess(ctx, as.authzService, as.logger, security.ActionReadRole,
+		assignmentOUID); svcErr != nil {
+		return nil, svcErr
 	}
 
 	// user/app/agent filters require fetching all entity assignments and post-filtering by category.
@@ -283,7 +294,9 @@ func (as *roleAssignmentService) getAssignmentsByEntityCategory(
 // Assignments can be added to both mutable (DB-backed) and declarative (file-backed) roles.
 func (as *roleAssignmentService) AddAssignments(
 	ctx context.Context, id, ouID string, assignments []RoleAssignment) *tidcommon.ServiceError {
-	svcErr := as.addAssignments(ctx, id, ouID, assignments)
+	svcErr := as.modifyAssignments(ctx, id, ouID, assignments, true, true,
+		as.roleStore.AddAssignments,
+		"add assignments to role", "added assignments to role")
 	publishAssignmentEvents(ctx, as.bus, audit.EventRoleAssignmentAdd, audit.ActionAdd, id, assignments, svcErr)
 	return svcErr
 }
@@ -291,7 +304,7 @@ func (as *roleAssignmentService) AddAssignments(
 // addAssignments adds assignments to a role in an organization unit without publishing their audit events.
 func (as *roleAssignmentService) addAssignments(
 	ctx context.Context, id, ouID string, assignments []RoleAssignment) *tidcommon.ServiceError {
-	return as.modifyAssignments(ctx, id, ouID, assignments, true,
+	return as.modifyAssignments(ctx, id, ouID, assignments, true, false,
 		as.roleStore.AddAssignments,
 		"add assignments to role", "added assignments to role")
 }
@@ -300,7 +313,7 @@ func (as *roleAssignmentService) addAssignments(
 // Assignments can be removed from both mutable (DB-backed) and declarative (file-backed) roles.
 func (as *roleAssignmentService) RemoveAssignments(
 	ctx context.Context, id, ouID string, assignments []RoleAssignment) *tidcommon.ServiceError {
-	svcErr := as.modifyAssignments(ctx, id, ouID, assignments, false,
+	svcErr := as.modifyAssignments(ctx, id, ouID, assignments, false, true,
 		as.roleStore.RemoveAssignments,
 		"remove assignments from role", "removed assignments from role")
 	// The store does not report which assignments it removed, so the removal of a principal that did not
@@ -351,6 +364,9 @@ func (as *roleAssignmentService) ValidateRemoveAssignment(ctx context.Context, i
 	if ouID == "" {
 		ouID = role.OUID
 	}
+	if svcErr := checkRoleAccess(ctx, as.authzService, as.logger, security.ActionUpdateRole, ouID); svcErr != nil {
+		return nil, svcErr
+	}
 	if ouID != role.OUID {
 		if svcErr := as.requireAssignableInOU(ctx, id, ouID, false); svcErr != nil {
 			return nil, svcErr
@@ -374,7 +390,7 @@ func (as *roleAssignmentService) ValidateRemoveAssignment(ctx context.Context, i
 		return nil, &ErrorRoleAssignmentNotFound
 	}
 	if _, svcErr := as.prepareAssignments(
-		ctx, id, ouID, []RoleAssignment{{ID: assignment.ID, Type: assignment.Type}}, false,
+		ctx, id, ouID, []RoleAssignment{{ID: assignment.ID, Type: assignment.Type}}, false, false,
 	); svcErr != nil {
 		return nil, svcErr
 	}
@@ -403,7 +419,7 @@ func (as *roleAssignmentService) modifyAssignments(
 	ctx context.Context,
 	id, ouID string,
 	assignments []RoleAssignment,
-	adding bool,
+	adding, checkCaller bool,
 	storeOp func(context.Context, string, []RoleAssignment) error,
 	action, successAction string,
 ) *tidcommon.ServiceError {
@@ -415,7 +431,7 @@ func (as *roleAssignmentService) modifyAssignments(
 		return svcErr
 	}
 
-	normalized, svcErr := as.prepareAssignments(ctx, id, ouID, assignments, adding)
+	normalized, svcErr := as.prepareAssignments(ctx, id, ouID, assignments, adding, checkCaller)
 	if svcErr != nil {
 		return svcErr
 	}
@@ -634,7 +650,7 @@ func (as *roleAssignmentService) addInEachOU(
 // Unlike the previous role service implementation, this allows modifying assignments for
 // both mutable and declarative (file-backed) roles.
 func (as *roleAssignmentService) prepareAssignments(
-	ctx context.Context, id, ouID string, assignments []RoleAssignment, adding bool,
+	ctx context.Context, id, ouID string, assignments []RoleAssignment, adding, checkCaller bool,
 ) ([]RoleAssignment, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, assignmentLoggerComponentName))
 
@@ -660,6 +676,13 @@ func (as *roleAssignmentService) prepareAssignments(
 	}
 	if ouID == "" {
 		ouID = role.OUID
+	}
+	// An assignment belongs to the organization unit it is made in, so that is the one the caller must
+	// be allowed to act for.
+	if checkCaller {
+		if svcErr := checkRoleAccess(ctx, as.authzService, as.logger, security.ActionUpdateRole, ouID); svcErr != nil {
+			return nil, svcErr
+		}
 	}
 	if ouID != role.OUID {
 		if svcErr := as.requireAssignableInOU(ctx, id, ouID, adding); svcErr != nil {

@@ -16,6 +16,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/sharing"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/security"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
@@ -98,13 +99,15 @@ func (s *service) owningOUID(ctx context.Context, id string) (string, *tidcommon
 
 // ownerLookup resolves the organization unit owning a connection as one vendor's route sees it. A
 // vendor's route must answer not found for the id of another vendor's connection, the same as its
-// get route does, so each vendor passes a lookup scoped to its own kind.
+// get route does, so each vendor passes a lookup scoped to its own kind. It reads the connection
+// without the caller's authorization, because a sharing call is authorized against the organization
+// unit whose decision it concerns, which need not be the connection's own.
 type ownerLookup func(ctx context.Context, connectionID string) (string, *tidcommon.ServiceError)
 
 // idpOwner returns the lookup for identity-provider-backed connections of one type.
 func (s *service) idpOwner(idpType providers.IDPType) ownerLookup {
 	return func(ctx context.Context, id string) (string, *tidcommon.ServiceError) {
-		dto, svcErr := s.getByType(ctx, idpType, id)
+		dto, svcErr := s.findByType(ctx, idpType, id)
 		if svcErr != nil {
 			return "", svcErr
 		}
@@ -117,7 +120,7 @@ func (s *service) senderOwner(
 	senderType ncommon.NotificationSenderType, provider ncommon.NotificationProviderType,
 ) ownerLookup {
 	return func(ctx context.Context, id string) (string, *tidcommon.ServiceError) {
-		dto, svcErr := s.getSenderByProvider(ctx, senderType, provider, id)
+		dto, svcErr := s.findSenderByProvider(ctx, senderType, provider, id)
 		if svcErr != nil {
 			return "", svcErr
 		}
@@ -127,7 +130,7 @@ func (s *service) senderOwner(
 
 // authZENPDPOwner is the lookup for AuthZEN PDP connections.
 func (s *service) authZENPDPOwner(ctx context.Context, id string) (string, *tidcommon.ServiceError) {
-	connection, svcErr := s.getAuthZENPDP(ctx, id)
+	connection, svcErr := s.findAuthZENPDP(ctx, id)
 	if svcErr != nil {
 		return "", svcErr
 	}
@@ -136,7 +139,10 @@ func (s *service) authZENPDPOwner(ctx context.Context, id string) (string, *tidc
 
 // httpOwner is the lookup for HTTP connections.
 func (s *service) httpOwner(ctx context.Context, id string) (string, *tidcommon.ServiceError) {
-	connection, svcErr := s.getHTTP(ctx, id)
+	if s.httpService == nil {
+		return "", &tidcommon.InternalServerError
+	}
+	connection, svcErr := s.httpService.GetHTTPConnection(ctx, id)
 	if svcErr != nil {
 		return "", svcErr
 	}
@@ -163,26 +169,35 @@ func translateSharingError(svcErr *tidcommon.ServiceError) *tidcommon.ServiceErr
 // policy id alone would reach any policy in the deployment through any connection's path.
 func (s *service) requireOwnPolicy(
 	ctx context.Context, owner ownerLookup, connectionID, policyID string,
-) (sharing.Policy, *tidcommon.ServiceError) {
-	if _, svcErr := owner(ctx, connectionID); svcErr != nil {
-		return sharing.Policy{}, svcErr
+) (string, sharing.Policy, *tidcommon.ServiceError) {
+	owningOUID, svcErr := owner(ctx, connectionID)
+	if svcErr != nil {
+		return "", sharing.Policy{}, svcErr
 	}
 	policy, svcErr := s.sharingService.GetPolicy(ctx, policyID)
 	if svcErr != nil {
-		return sharing.Policy{}, translateSharingError(svcErr)
+		return "", sharing.Policy{}, translateSharingError(svcErr)
 	}
 	if policy.ResourceType != ConnectionSharingType || policy.ResourceID != connectionID {
-		return sharing.Policy{}, &ErrorSharingPolicyNotFound
+		return "", sharing.Policy{}, &ErrorSharingPolicyNotFound
 	}
-	return policy, nil
+	return owningOUID, policy, nil
 }
 
-// createSharingPolicy records which organization units may use a connection.
+// createSharingPolicy records which organization units may use a connection. A policy is the initiating
+// organization unit's decision, so that unit is the one the caller must be allowed to act for.
 func (s *service) createSharingPolicy(
 	ctx context.Context, owner ownerLookup, connectionID string, req sharing.PolicyRequest,
 ) (sharing.Policy, *tidcommon.ServiceError) {
 	owningOUID, svcErr := owner(ctx, connectionID)
 	if svcErr != nil {
+		return sharing.Policy{}, svcErr
+	}
+	initiatingOUID := req.InitiatingOUID
+	if initiatingOUID == "" {
+		initiatingOUID = owningOUID
+	}
+	if svcErr := s.checkConnectionAccess(ctx, security.ActionUpdateConnection, initiatingOUID); svcErr != nil {
 		return sharing.Policy{}, svcErr
 	}
 	if svcErr := declarativeresource.CheckDeclarativeCreate(); svcErr != nil {
@@ -192,47 +207,71 @@ func (s *service) createSharingPolicy(
 	return policy, translateSharingError(svcErr)
 }
 
-// getSharingPolicy returns one of the connection's sharing policies.
+// getSharingPolicy returns one of the connection's sharing policies. The owner sees every decision about
+// its connection; any other organization unit sees its own.
 func (s *service) getSharingPolicy(
 	ctx context.Context, owner ownerLookup, connectionID, policyID string,
 ) (sharing.Policy, *tidcommon.ServiceError) {
-	return s.requireOwnPolicy(ctx, owner, connectionID, policyID)
+	owningOUID, policy, svcErr := s.requireOwnPolicy(ctx, owner, connectionID, policyID)
+	if svcErr != nil {
+		return sharing.Policy{}, svcErr
+	}
+	if svcErr := sysauthz.CheckActionInAnyOU(ctx, s.authzService, s.logger, security.ActionReadConnection,
+		security.ResourceTypeConnection, owningOUID, policy.InitiatingOUID); svcErr != nil {
+		return sharing.Policy{}, svcErr
+	}
+	return policy, nil
 }
 
-// listSharingPolicies returns one page of the connection's sharing policies.
+// listSharingPolicies returns one page of the connection's sharing policies. A caller who may read
+// connections in the owning organization unit sees them all; any other caller sees the ones its own
+// organization units made.
 func (s *service) listSharingPolicies(
 	ctx context.Context, owner ownerLookup, connectionID string, limit, offset int,
 ) (sharing.PolicyList, *tidcommon.ServiceError) {
-	if _, svcErr := owner(ctx, connectionID); svcErr != nil {
+	owningOUID, svcErr := owner(ctx, connectionID)
+	if svcErr != nil {
 		return sharing.PolicyList{}, svcErr
 	}
-	list, svcErr := s.sharingService.GetPolicyList(ctx, ConnectionSharingType, connectionID, limit, offset)
-	return list, translateSharingError(svcErr)
+	return sharing.ListReadablePolicies(ctx, s.sharingService, ConnectionSharingType, connectionID, owningOUID, limit,
+		offset, func(ouID string) *tidcommon.ServiceError {
+			return s.checkConnectionAccess(ctx, security.ActionReadConnection, ouID)
+		}, translateSharingError)
 }
 
-// updateSharingPolicy replaces a sharing policy's contents.
+// updateSharingPolicy replaces a sharing policy's contents. Only the organization unit whose decision it
+// is may change it.
 func (s *service) updateSharingPolicy(
 	ctx context.Context, owner ownerLookup, connectionID, policyID string, req sharing.PolicyRequest,
 ) (sharing.Policy, *tidcommon.ServiceError) {
-	if _, svcErr := s.requireOwnPolicy(ctx, owner, connectionID, policyID); svcErr != nil {
+	_, policy, svcErr := s.requireOwnPolicy(ctx, owner, connectionID, policyID)
+	if svcErr != nil {
+		return sharing.Policy{}, svcErr
+	}
+	if svcErr := s.checkConnectionAccess(ctx, security.ActionUpdateConnection,
+		policy.InitiatingOUID); svcErr != nil {
 		return sharing.Policy{}, svcErr
 	}
 	if svcErr := declarativeresource.CheckDeclarativeUpdate(); svcErr != nil {
 		return sharing.Policy{}, svcErr
 	}
-	policy, svcErr := s.sharingService.UpdatePolicy(ctx, policyID, req)
-	return policy, translateSharingError(svcErr)
+	updated, svcErr := s.sharingService.UpdatePolicy(ctx, policyID, req)
+	return updated, translateSharingError(svcErr)
 }
 
 // deleteSharingPolicy removes a sharing policy and everything that depended on it.
 func (s *service) deleteSharingPolicy(
 	ctx context.Context, owner ownerLookup, connectionID, policyID string,
 ) *tidcommon.ServiceError {
-	policy, svcErr := s.requireOwnPolicy(ctx, owner, connectionID, policyID)
+	_, policy, svcErr := s.requireOwnPolicy(ctx, owner, connectionID, policyID)
 	if svcErr != nil {
 		if svcErr.Code == ErrorSharingPolicyNotFound.Code {
 			return nil
 		}
+		return svcErr
+	}
+	if svcErr := s.checkConnectionAccess(ctx, security.ActionUpdateConnection,
+		policy.InitiatingOUID); svcErr != nil {
 		return svcErr
 	}
 	if svcErr := declarativeresource.CheckDeclarativeDelete(); svcErr != nil {
@@ -249,11 +288,16 @@ func (s *service) deleteSharingPolicy(
 func (s *service) resolveSharingOverlay(
 	ctx context.Context, owner ownerLookup, connectionID, ouID string,
 ) (sharing.ResolvedOverlay, *tidcommon.ServiceError) {
-	if _, svcErr := owner(ctx, connectionID); svcErr != nil {
+	owningOUID, svcErr := owner(ctx, connectionID)
+	if svcErr != nil {
 		return sharing.ResolvedOverlay{}, svcErr
 	}
 	if ouID == "" {
 		return sharing.ResolvedOverlay{}, &ErrorMissingOUIDParameter
+	}
+	if svcErr := sysauthz.CheckActionInAnyOU(ctx, s.authzService, s.logger, security.ActionReadConnection,
+		security.ResourceTypeConnection, owningOUID, ouID); svcErr != nil {
+		return sharing.ResolvedOverlay{}, svcErr
 	}
 	overlay, svcErr := s.sharingService.ResolveOverlayRules(ctx, ConnectionSharingType, connectionID, ouID)
 	if svcErr != nil {

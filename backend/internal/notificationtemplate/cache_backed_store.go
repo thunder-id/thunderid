@@ -74,16 +74,16 @@ func (s *cacheBackedStore) CountTemplates(ctx context.Context, channel ChannelTy
 	return s.inner.CountTemplates(ctx, channel)
 }
 
-// ListTemplatesByOUID always delegates; the list is not cached.
-func (s *cacheBackedStore) ListTemplatesByOUID(ctx context.Context, channel ChannelType, ouID string,
+// ListTemplatesByOUIDs always delegates; the list is not cached.
+func (s *cacheBackedStore) ListTemplatesByOUIDs(ctx context.Context, channel ChannelType, ouIDs []string,
 	limit, offset int) ([]templateDAO, error) {
-	return s.inner.ListTemplatesByOUID(ctx, channel, ouID, limit, offset)
+	return s.inner.ListTemplatesByOUIDs(ctx, channel, ouIDs, limit, offset)
 }
 
-// CountTemplatesByOUID always delegates; the count is not cached.
-func (s *cacheBackedStore) CountTemplatesByOUID(ctx context.Context, channel ChannelType, ouID string) (
+// CountTemplatesByOUIDs always delegates; the count is not cached.
+func (s *cacheBackedStore) CountTemplatesByOUIDs(ctx context.Context, channel ChannelType, ouIDs []string) (
 	int, error) {
-	return s.inner.CountTemplatesByOUID(ctx, channel, ouID)
+	return s.inner.CountTemplatesByOUIDs(ctx, channel, ouIDs)
 }
 
 // ListTemplatesByProject always delegates; the list is not cached.

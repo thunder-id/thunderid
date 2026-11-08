@@ -16,9 +16,11 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/projectscope"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/tests/mocks/oumock"
 	"github.com/thunder-id/thunderid/tests/mocks/resourcedependencymock"
+	"github.com/thunder-id/thunderid/tests/mocks/sysauthzmock"
 	"github.com/thunder-id/thunderid/tests/mocks/transactionmock"
 )
 
@@ -33,6 +35,19 @@ func executingTransactioner(t interface {
 		func(ctx context.Context, txFunc func(context.Context) error) error {
 			return txFunc(ctx)
 		}).Maybe()
+	return m
+}
+
+// allowAllAuthz returns an authorization mock that allows every action and every list, so tests not
+// about authorization reach the logic they cover.
+func allowAllAuthz(t interface {
+	mock.TestingT
+	Cleanup(func())
+}) *sysauthzmock.SystemAuthorizationServiceInterfaceMock {
+	m := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
+	m.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).Return(true, nil).Maybe()
+	m.On("GetAccessibleResources", mock.Anything, mock.Anything, mock.Anything).
+		Return(&sysauthz.AccessibleResources{AllAllowed: true}, nil).Maybe()
 	return m
 }
 
@@ -63,7 +78,8 @@ func initMutableTestRuntime(t interface {
 func (s *NotificationTemplateServiceTestSuite) SetupTest() {
 	initMutableTestRuntime(s.T())
 	s.mockStore = newNotificationTemplateStoreInterfaceMock(s.T())
-	s.svc = newNotificationTemplateService(s.mockStore, executingTransactioner(s.T()), nil, nil, false)
+	s.svc = newNotificationTemplateService(s.mockStore, executingTransactioner(s.T()), nil, allowAllAuthz(s.T()),
+		nil, false)
 	s.ctx = context.Background()
 }
 
@@ -110,7 +126,8 @@ func (s *NotificationTemplateServiceTestSuite) TestCreateTemplate_KeepsProvidedI
 // exercised (the shared SetupTest service has a nil OU service that skips the check).
 func (s *NotificationTemplateServiceTestSuite) svcWithOU(
 	ouMock *oumock.OrganizationUnitServiceInterfaceMock) NotificationTemplateServiceInterface {
-	return newNotificationTemplateService(s.mockStore, executingTransactioner(s.T()), ouMock, nil, false)
+	return newNotificationTemplateService(s.mockStore, executingTransactioner(s.T()), ouMock,
+		allowAllAuthz(s.T()), nil, false)
 }
 
 // TestCreateTemplate_StoresOU verifies a valid ouId is checked against the OU service and persisted on
@@ -599,8 +616,8 @@ func (s *NotificationTemplateServiceTestSuite) TestListTemplatesByOUID() {
 		{ID: "a", Channel: ChannelTypeEmail, Handle: "a", OUID: "ou-1", DisplayName: "a"},
 		{ID: "b", Channel: ChannelTypeEmail, Handle: "b", OUID: "ou-1", DisplayName: "b"},
 	}
-	s.mockStore.On("CountTemplatesByOUID", mock.Anything, ChannelTypeEmail, "ou-1").Return(3, nil)
-	s.mockStore.On("ListTemplatesByOUID", mock.Anything, ChannelTypeEmail, "ou-1", 2, 0).Return(daos, nil)
+	s.mockStore.On("CountTemplatesByOUIDs", mock.Anything, ChannelTypeEmail, []string{"ou-1"}).Return(3, nil)
+	s.mockStore.On("ListTemplatesByOUIDs", mock.Anything, ChannelTypeEmail, []string{"ou-1"}, 2, 0).Return(daos, nil)
 
 	page, err := s.svc.ListTemplatesByOUID(s.ctx, ChannelTypeEmail, "ou-1", 2, 0)
 	s.Require().Nil(err)
@@ -642,9 +659,10 @@ func (s *NotificationTemplateServiceTestSuite) TestListTemplatesByOUID_StoreErro
 	for _, tc := range testCases {
 		s.Run(tc.name, func() {
 			s.SetupTest()
-			s.mockStore.On("CountTemplatesByOUID", mock.Anything, ChannelTypeEmail, "ou-1").Return(2, tc.countErr)
+			s.mockStore.On("CountTemplatesByOUIDs", mock.Anything, ChannelTypeEmail, []string{"ou-1"}).Return(2,
+				tc.countErr)
 			if tc.countErr == nil {
-				s.mockStore.On("ListTemplatesByOUID", mock.Anything, ChannelTypeEmail, "ou-1", 10, 0).
+				s.mockStore.On("ListTemplatesByOUIDs", mock.Anything, ChannelTypeEmail, []string{"ou-1"}, 10, 0).
 					Return(nil, tc.listErr)
 			}
 
@@ -938,7 +956,8 @@ const testProjectID = "proj-1"
 // project validator mocks.
 func (s *NotificationTemplateServiceTestSuite) svcInProjects(ouMock *oumock.OrganizationUnitServiceInterfaceMock,
 	validator *projectOUValidatorMock) NotificationTemplateServiceInterface {
-	return newNotificationTemplateService(s.mockStore, executingTransactioner(s.T()), ouMock, validator, true)
+	return newNotificationTemplateService(s.mockStore, executingTransactioner(s.T()), ouMock, allowAllAuthz(s.T()),
+		validator, true)
 }
 
 func (s *NotificationTemplateServiceTestSuite) projectRequest(ouID string) CreateTemplateRequest {

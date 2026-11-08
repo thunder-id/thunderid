@@ -2222,6 +2222,38 @@ func (suite *OrganizationUnitServiceTestSuite) TestOUService_GetOrganizationUnit
 	}
 }
 
+func (suite *OrganizationUnitServiceTestSuite) TestOUService_GetOrganizationUnitRoles_AccessDenied() {
+	store := newOrganizationUnitStoreInterfaceMock(suite.T())
+	authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+	authzMock.On("IsActionAllowed", mock.Anything, security.ActionReadRole, mock.Anything).
+		Return(false, nil).Once()
+
+	service := suite.newServiceWithResolvers(store, authzMock, nil, nil)
+	service.roleResolver = NewOURoleResolverMock(suite.T())
+
+	resp, err := service.GetOrganizationUnitRoles(context.Background(), "ou-1", 5, 0)
+	suite.Require().Nil(resp)
+	suite.Require().Equal(tidcommon.ErrorUnauthorized.Code, err.Code)
+	store.AssertNumberOfCalls(suite.T(), "IsOrganizationUnitExists", 0)
+}
+
+func (suite *OrganizationUnitServiceTestSuite) TestOUService_GetOrganizationUnitRolesByPath_AccessDenied() {
+	store := newOrganizationUnitStoreInterfaceMock(suite.T())
+	store.On("GetOrganizationUnitByPath", mock.Anything, []string{"root"}).
+		Return(OrganizationUnit{ID: "ou-1"}, nil).Once()
+
+	authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+	authzMock.On("IsActionAllowed", mock.Anything, security.ActionReadRole, mock.Anything).
+		Return(false, nil).Once()
+
+	service := suite.newServiceWithResolvers(store, authzMock, nil, nil)
+	service.roleResolver = NewOURoleResolverMock(suite.T())
+
+	resp, err := service.GetOrganizationUnitRolesByPath(context.Background(), "root", 5, 0)
+	suite.Require().Nil(resp)
+	suite.Require().Equal(tidcommon.ErrorUnauthorized.Code, err.Code)
+}
+
 func (suite *OrganizationUnitServiceTestSuite) TestOUService_GetOrganizationUnitUsersByPath_AccessDenied() {
 	store := newOrganizationUnitStoreInterfaceMock(suite.T())
 	store.On("GetOrganizationUnitByPath", mock.Anything, []string{"root"}).

@@ -213,6 +213,8 @@ paths:
                     description:
                       key: "error.resourceservice.invalid_mcp_identifier_description"
                       defaultValue: "Use an http or https URL with no fragment, such as https://mcp.example.com/mcp"
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "409":
           description: Conflict
           content:
@@ -297,6 +299,8 @@ paths:
                 description:
                   key: "error.resourceservice.missing_id_description"
                   defaultValue: "Resource server ID is required"
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "404":
           description: Resource server not found
           content:
@@ -429,6 +433,8 @@ paths:
                     description:
                       key: "error.resourceservice.invalid_mcp_identifier_description"
                       defaultValue: "Use an http or https URL with no fragment, such as https://mcp.example.com/mcp"
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "404":
           description: Resource server not found
           content:
@@ -537,6 +543,8 @@ paths:
                     description:
                       key: "error.resourceservice.cannot_modify_declarative_resource_server_description"
                       defaultValue: "Resource server is defined in declarative configuration and cannot be modified"
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "500":
           description: Internal server error
           content:
@@ -666,6 +674,8 @@ paths:
                     description:
                       key: "error.resourceservice.result_limit_exceeded_in_composite_mode_description"
                       defaultValue: "The total number of records exceeds the maximum limit in composite mode"
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "404":
           description: Resource server not found
           content:
@@ -784,6 +794,8 @@ paths:
                     description:
                       key: "error.resourceservice.parent_resource_not_found_description"
                       defaultValue: "The specified parent resource does not exist"
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "404":
           description: Resource server not found
           content:
@@ -875,6 +887,8 @@ paths:
                 description:
                   key: "error.resourceservice.missing_id_description"
                   defaultValue: "Resource ID is required"
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "404":
           description: Resource or resource server not found
           content:
@@ -997,6 +1011,8 @@ paths:
                     description:
                       key: "error.resourceservice.cannot_modify_declarative_resource_description"
                       defaultValue: "Resource is defined in declarative configuration and cannot be modified"
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "404":
           description: Resource or resource server not found
           content:
@@ -1099,6 +1115,8 @@ paths:
                     description:
                       key: "error.resourceservice.cannot_modify_declarative_resource_description"
                       defaultValue: "Resource is defined in declarative configuration and cannot be modified"
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "500":
           description: Internal server error
           content:
@@ -1238,6 +1256,8 @@ paths:
                     description:
                       key: "error.resourceservice.invalid_request_format_description"
                       defaultValue: "The request body is malformed or contains invalid data"
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "404":
           description: Resource server not found
           content:
@@ -1340,6 +1360,8 @@ paths:
                     description:
                       key: "error.resourceservice.delimiter_conflict_in_handle_description"
                       defaultValue: "Handle cannot contain the delimiter character"
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "404":
           description: Resource server not found
           content:
@@ -1430,6 +1452,8 @@ paths:
                 description:
                   key: "error.resourceservice.missing_id_description"
                   defaultValue: "Action ID is required"
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "404":
           description: Action or resource server not found
           content:
@@ -1550,6 +1574,8 @@ paths:
                     description:
                       key: "error.resourceservice.cannot_modify_declarative_action_description"
                       defaultValue: "Action is defined in declarative configuration and cannot be modified"
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "404":
           description: Action or resource server not found
           content:
@@ -1642,6 +1668,8 @@ paths:
                     description:
                       key: "error.resourceservice.cannot_modify_declarative_action_description"
                       defaultValue: "Action is defined in declarative configuration and cannot be modified"
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "500":
           description: Internal server error
           content:
@@ -1782,6 +1810,8 @@ paths:
                     description:
                       key: "error.resourceservice.invalid_request_format_description"
                       defaultValue: "The request body is malformed or contains invalid data"
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "404":
           description: Resource or resource server not found
           content:
@@ -1894,6 +1924,8 @@ paths:
                     description:
                       key: "error.resourceservice.delimiter_conflict_in_handle_description"
                       defaultValue: "Handle must contain only valid characters (a-z A-Z 0-9 . _ : - /) and cannot contain the delimiter character"
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "404":
           description: Resource or resource server not found
           content:
@@ -2004,6 +2036,8 @@ paths:
                 description:
                   key: "error.resourceservice.missing_id_description"
                   defaultValue: "Action ID is required"
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "404":
           description: Action, resource, or resource server not found
           content:
@@ -2141,6 +2175,8 @@ paths:
                     description:
                       key: "error.resourceservice.cannot_modify_declarative_action_description"
                       defaultValue: "Action is defined in declarative configuration and cannot be modified"
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "404":
           description: Action, resource, or resource server not found
           content:
@@ -2250,6 +2286,8 @@ paths:
                     description:
                       key: "error.resourceservice.cannot_modify_declarative_action_description"
                       defaultValue: "Action is defined in declarative configuration and cannot be modified"
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "500":
           description: Internal server error
           content:
@@ -2325,6 +2363,23 @@ components:
           summary: Resource servers an organization unit owns
           value: 'ouId eq "a839f4bd-39dc-4eaa-b5cc-210d8ecaee87"'
 
+  responses:
+    Forbidden:
+      description: |
+        The caller may not perform the operation in the organization unit of the resource, or for an update
+        that moves the resource, in the organization unit it moves to
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: "SSE-4030"
+            message:
+              key: "error.unauthorized"
+              defaultValue: "Unauthorized"
+            description:
+              key: "error.unauthorized_description"
+              defaultValue: "The caller is not authorized to perform this operation"
   schemas:
     ResourceServer:
       type: object

@@ -491,6 +491,11 @@ func TestIsInheritanceEligible(t *testing.T) {
 		{"AgentType_Create_NotEligible", security.ActionCreateAgentType, false},
 		{"AgentType_Update_NotEligible", security.ActionUpdateAgentType, false},
 		{"AgentType_Delete_NotEligible", security.ActionDeleteAgentType, false},
+		{"NotificationTemplate_Read_Eligible", security.ActionReadNotificationTemplate, true},
+		{"NotificationTemplate_List_Eligible", security.ActionListNotificationTemplates, true},
+		{"NotificationTemplate_Create_NotEligible", security.ActionCreateNotificationTemplate, false},
+		{"NotificationTemplate_Update_NotEligible", security.ActionUpdateNotificationTemplate, false},
+		{"NotificationTemplate_Delete_NotEligible", security.ActionDeleteNotificationTemplate, false},
 		{"OU_Read_NotEligible", security.ActionReadOU, false},
 		{"User_List_NotEligible", security.ActionListUsers, false},
 	}
