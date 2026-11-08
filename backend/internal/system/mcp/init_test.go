@@ -338,7 +338,7 @@ func (suite *DefaultGuardTestSuite) waitFor(ch <-chan struct{}, failure string) 
 // TestInitialize_ClosedResponseStreamCancelsToolCall covers MCP 2026-07-28 Streamable HTTP
 // cancellation: a client closing a request's response stream cancels the request.
 func (suite *DefaultGuardTestSuite) TestInitialize_ClosedResponseStreamCancelsToolCall() {
-	server := NewServer()
+	server := newServer("test")
 	call := addBlockingTool(server, "block")
 	defer call.unblock()
 	httpServer := suite.serveMCP(server)
@@ -354,7 +354,7 @@ func (suite *DefaultGuardTestSuite) TestInitialize_ClosedResponseStreamCancelsTo
 }
 
 func (suite *DefaultGuardTestSuite) TestInitialize_ClosedResponseStreamLeavesOtherCallsRunning() {
-	server := NewServer()
+	server := newServer("test")
 	closedCall := addBlockingTool(server, "closed")
 	openCall := addBlockingTool(server, "open")
 	defer closedCall.unblock()

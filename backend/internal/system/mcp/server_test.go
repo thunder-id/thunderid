@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/security"
 )
 
@@ -94,4 +95,44 @@ func TestToolPermissionMiddleware_OtherMethodsPassThrough(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.True(t, called)
+}
+
+func TestServerName(t *testing.T) {
+	tests := []struct {
+		productName string
+		want        string
+	}{
+		{productName: "ThunderID", want: "thunderid-mcp"},
+		{productName: "Identity and Access Management", want: "identity-and-access-management-mcp"},
+		{productName: "  Acme IAM 2.0 ", want: "acme-iam-2-0-mcp"},
+		{productName: "", want: "mcp"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.productName, func(t *testing.T) {
+			assert.Equal(t, tt.want, serverName(tt.productName))
+		})
+	}
+}
+
+func TestNewServer_ReportsNameFromProductName(t *testing.T) {
+	config.ResetServerRuntime()
+	t.Cleanup(config.ResetServerRuntime)
+	cfg := &config.Config{}
+	cfg.Server.ProductName = "Acme IAM"
+	require.NoError(t, config.InitializeServerRuntime("", cfg))
+
+	ctx := context.Background()
+	serverTransport, clientTransport := mcp.NewInMemoryTransports()
+	serverSession, err := NewServer().Connect(ctx, serverTransport, nil)
+	require.NoError(t, err)
+	defer func() { _ = serverSession.Close() }()
+
+	session, err := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "1.0.0"}, nil).
+		Connect(ctx, clientTransport, nil)
+	require.NoError(t, err)
+	defer func() { _ = session.Close() }()
+
+	info := session.InitializeResult().ServerInfo
+	require.NotNil(t, info)
+	assert.Equal(t, "acme-iam-mcp", info.Name)
 }

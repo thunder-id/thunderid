@@ -222,6 +222,7 @@ type ServerConfig struct {
 	Port                       int            `yaml:"port"       json:"port"`
 	HTTPOnly                   bool           `yaml:"http_only"  json:"http_only"`
 	PublicURL                  string         `yaml:"public_url" json:"public_url"`
+	ProductName                string         `yaml:"product_name" json:"product_name"`
 	Identifier                 string         `yaml:"identifier" json:"identifier"`
 	SystemOUID                 string         `yaml:"system_ou_id" json:"system_ou_id"`
 	SecurityConfig             SecurityConfig `yaml:"security"   json:"security"`
