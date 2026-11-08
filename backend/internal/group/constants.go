@@ -22,3 +22,9 @@ const (
 	// defaultGroupPageSize is the number of groups a list returns when no limit is given.
 	defaultGroupPageSize = 30
 )
+
+// maxProjectIDLength is the length of the PROJECT_ID column of GROUP. A longer project ID names no project.
+const maxProjectIDLength = 36
+
+// projectIDQueryParam is the query parameter that lists the groups of one project.
+const projectIDQueryParam = "projectId"

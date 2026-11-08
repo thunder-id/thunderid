@@ -89,6 +89,7 @@ func (e *groupExporter) GetResourceByID(
 		Name:        grp.Name,
 		Description: grp.Description,
 		OUID:        grp.OUID,
+		ProjectID:   grp.ProjectID,
 		Members:     members,
 	}
 
@@ -157,6 +158,7 @@ func (e *groupExporter) ViewResource(_ context.Context, document *yaml.Node) (in
 			Name:        exported.Name,
 			Description: exported.Description,
 			OUID:        exported.OUID,
+			ProjectID:   exported.ProjectID,
 		}, nil
 	})
 }
@@ -196,6 +198,7 @@ type groupDeclarativeResource struct {
 	Description string   `yaml:"description,omitempty"`
 	OUID        string   `yaml:"ouId,omitempty"`
 	OUHandle    string   `yaml:"ouHandle,omitempty"`
+	ProjectID   string   `yaml:"projectId,omitempty"`
 	Members     []Member `yaml:"members,omitempty"`
 }
 

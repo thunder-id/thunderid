@@ -128,7 +128,7 @@ func (s *GroupServiceAuditTestSuite) TearDownTest() {
 
 // newService returns a group service on the suite's mocks and recording bus.
 func (s *GroupServiceAuditTestSuite) newService() *groupService {
-	service := newGroupServiceWithStore(s.store, s.ous, s.entities, nil, s.authz, &stubTransactioner{}, nil, s.bus)
+	service := newGroupServiceWithStore(s.store, s.ous, s.entities, nil, s.authz, &stubTransactioner{}, nil, s.bus, nil)
 	service.dependencyRegistry = noopDepRegistry{}
 	return service
 }
@@ -594,7 +594,7 @@ func (s *GroupServiceAuditTestSuite) TestCreateGroup_SucceedsWhenTheBusRefusesTh
 }
 
 func (s *GroupServiceAuditTestSuite) TestInitialize_RefusesANilEventBus() {
-	groupService, resolver, exporter, err := Initialize(http.NewServeMux(), nil, nil, nil, nil, nil, nil, nil)
+	groupService, resolver, exporter, err := Initialize(http.NewServeMux(), nil, nil, nil, nil, nil, nil, nil, nil)
 
 	s.Require().ErrorIs(err, errNilEventBus)
 	s.Require().Nil(groupService)

@@ -237,8 +237,6 @@ export default function App(): JSX.Element {
                     element={<Navigate to={RouteConfig.connections.list()} replace />}
                   />
                   <Route path={`${ROUTE_SEGMENTS.trustedIssuers}/:id`} element={<TrustedIssuerDetailPage />} />
-                  <Route path={ROUTE_SEGMENTS.groups} element={<GroupsListPage />} />
-                  <Route path={`${ROUTE_SEGMENTS.groups}/:groupId`} element={<GroupEditPage />} />
                   <Route
                     element={
                       <SelectedProjectScope>
@@ -259,6 +257,8 @@ export default function App(): JSX.Element {
                     <Route path={`${ROUTE_SEGMENTS.roles}/:roleId`} element={<RoleEditPage />} />
                     <Route path={ROUTE_SEGMENTS.users} element={<UsersListPage />} />
                     <Route path={`${ROUTE_SEGMENTS.users}/:userId`} element={<UserEditPage />} />
+                    <Route path={ROUTE_SEGMENTS.groups} element={<GroupsListPage />} />
+                    <Route path={`${ROUTE_SEGMENTS.groups}/:groupId`} element={<GroupEditPage />} />
                     <Route path={ROUTE_SEGMENTS.flows} element={<FlowsListPage />} />
                     <Route
                       path={ROUTE_SEGMENTS.verifiablePresentations}
@@ -323,9 +323,11 @@ export default function App(): JSX.Element {
                   path={RouteConfig.groups.create()}
                   element={
                     <ProtectedRoute>
-                      <GroupCreateProvider>
-                        <FullScreenLayout />
-                      </GroupCreateProvider>
+                      <SelectedProjectScope>
+                        <GroupCreateProvider>
+                          <FullScreenLayout />
+                        </GroupCreateProvider>
+                      </SelectedProjectScope>
                     </ProtectedRoute>
                   }
                 >

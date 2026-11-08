@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"strings"
 	"testing"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -24,6 +25,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/projectscope"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
@@ -4023,4 +4025,394 @@ func (suite *GroupServiceTestSuite) TestGetDirectGroupMember_CarriesTheReadError
 	suite.Require().NotNil(svcErr)
 	suite.Equal(ErrorGroupNotFound.Code, svcErr.Code)
 	suite.Nil(member)
+}
+
+const (
+	testProjectID      = "project-1"
+	testOtherProjectID = "project-2"
+)
+
+// newProjectGroupService returns a group service whose organization units all exist, that creates and updates
+// groups in the given store, and that checks projects with the given validator.
+func newProjectGroupService(t *testing.T, storeMock *groupStoreInterfaceMock,
+	validator projectOUValidator) (*groupService, *oumock.OrganizationUnitServiceInterfaceMock) {
+	ouMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
+	ouMock.On("IsOrganizationUnitExists", mock.Anything, mock.Anything).
+		Return(true, (*tidcommon.ServiceError)(nil)).Maybe()
+	return &groupService{
+		bus:              discardingBus{},
+		authzService:     newAllowAllAuthz(t),
+		groupStore:       storeMock,
+		ouService:        ouMock,
+		transactioner:    &stubTransactioner{},
+		projectValidator: validator,
+	}, ouMock
+}
+
+func (suite *GroupServiceTestSuite) TestCreateGroup_InProject() {
+	t := suite.T()
+	validator := newProjectOUValidatorMock(t)
+	validator.EXPECT().ValidateProjectOU(mock.Anything, testProjectID, testOUID1).
+		Return((*tidcommon.ServiceError)(nil)).Once()
+	storeMock := newGroupStoreInterfaceMock(t)
+	storeMock.On("CheckGroupNameConflictForCreate", mock.Anything, "Shoppers", testOUID1).Return(nil).Once()
+	storeMock.On("CreateGroup", mock.Anything, mock.MatchedBy(func(g GroupDAO) bool {
+		return g.ProjectID == testProjectID && g.OUID == testOUID1
+	})).Return(nil).Once()
+	service, _ := newProjectGroupService(t, storeMock, validator)
+
+	created, err := service.CreateGroup(context.Background(),
+		CreateGroupRequest{Name: "Shoppers", OUID: testOUID1, ProjectID: testProjectID})
+
+	require.Nil(t, err)
+	require.Equal(t, testProjectID, created.ProjectID)
+}
+
+// A group in a project that names no organization unit goes to the system organization unit.
+func (suite *GroupServiceTestSuite) TestCreateGroup_InProjectWithoutOUGoesToTheSystemOU() {
+	t := suite.T()
+	validator := newProjectOUValidatorMock(t)
+	validator.EXPECT().ValidateProjectOU(mock.Anything, testProjectID, testOUID2).
+		Return((*tidcommon.ServiceError)(nil)).Once()
+	storeMock := newGroupStoreInterfaceMock(t)
+	storeMock.On("CheckGroupNameConflictForCreate", mock.Anything, "Shoppers", testOUID2).Return(nil).Once()
+	storeMock.On("CreateGroup", mock.Anything, mock.MatchedBy(func(g GroupDAO) bool {
+		return g.OUID == testOUID2
+	})).Return(nil).Once()
+	service, ouMock := newProjectGroupService(t, storeMock, validator)
+	ouMock.On("GetSystemOUID", mock.Anything).Return(testOUID2, (*tidcommon.ServiceError)(nil)).Once()
+
+	created, err := service.CreateGroup(context.Background(),
+		CreateGroupRequest{Name: "Shoppers", ProjectID: testProjectID})
+
+	require.Nil(t, err)
+	require.Equal(t, testOUID2, created.OUID)
+}
+
+func (suite *GroupServiceTestSuite) TestCreateGroup_InProjectSystemOUFailure() {
+	t := suite.T()
+	service, ouMock := newProjectGroupService(t, newGroupStoreInterfaceMock(t), newProjectOUValidatorMock(t))
+	ouMock.On("GetSystemOUID", mock.Anything).Return("", &tidcommon.InternalServerError).Once()
+
+	_, err := service.CreateGroup(context.Background(), CreateGroupRequest{Name: "Shoppers", ProjectID: testProjectID})
+
+	require.NotNil(t, err)
+	require.Equal(t, tidcommon.InternalServerError.Code, err.Code)
+}
+
+// A group without a project or an organization unit is refused, as before.
+func (suite *GroupServiceTestSuite) TestCreateGroup_WithoutOUOrProjectIsRefused() {
+	t := suite.T()
+	service, _ := newProjectGroupService(t, newGroupStoreInterfaceMock(t), newProjectOUValidatorMock(t))
+
+	_, err := service.CreateGroup(context.Background(), CreateGroupRequest{Name: "Shoppers"})
+
+	require.NotNil(t, err)
+	require.Equal(t, ErrorInvalidRequestFormat.Code, err.Code)
+}
+
+func (suite *GroupServiceTestSuite) TestCreateGroup_InProjectRefused() {
+	for name, tc := range map[string]struct {
+		validatorErr *tidcommon.ServiceError
+		expected     string
+	}{
+		"missing project": {
+			validatorErr: &tidcommon.ServiceError{Code: projectscope.ProjectNotFoundErrorCode},
+			expected:     ErrorInvalidProject.Code,
+		},
+		"organization unit outside project": {
+			validatorErr: &tidcommon.ServiceError{Code: projectscope.OUNotInProjectErrorCode},
+			expected:     ErrorOUNotInProject.Code,
+		},
+		"validator failure": {
+			validatorErr: &tidcommon.InternalServerError,
+			expected:     tidcommon.InternalServerError.Code,
+		},
+	} {
+		suite.Run(name, func() {
+			t := suite.T()
+			validator := newProjectOUValidatorMock(t)
+			validator.EXPECT().ValidateProjectOU(mock.Anything, testProjectID, testOUID1).
+				Return(tc.validatorErr).Once()
+			service, _ := newProjectGroupService(t, newGroupStoreInterfaceMock(t), validator)
+
+			_, err := service.CreateGroup(context.Background(),
+				CreateGroupRequest{Name: "Shoppers", OUID: testOUID1, ProjectID: testProjectID})
+
+			require.NotNil(t, err)
+			require.Equal(t, tc.expected, err.Code)
+		})
+	}
+}
+
+// A deployment that serves no projects keeps the project as given.
+func (suite *GroupServiceTestSuite) TestCreateGroup_InProjectWithoutValidator() {
+	t := suite.T()
+	storeMock := newGroupStoreInterfaceMock(t)
+	storeMock.On("CheckGroupNameConflictForCreate", mock.Anything, "Shoppers", testOUID1).Return(nil).Once()
+	storeMock.On("CreateGroup", mock.Anything, mock.MatchedBy(func(g GroupDAO) bool {
+		return g.ProjectID == testProjectID
+	})).Return(nil).Once()
+	service, _ := newProjectGroupService(t, storeMock, nil)
+
+	_, err := service.CreateGroup(context.Background(),
+		CreateGroupRequest{Name: "Shoppers", OUID: testOUID1, ProjectID: testProjectID})
+
+	require.Nil(t, err)
+}
+
+// newProjectUpdateStore returns a store holding the mutable group grp-001 in testOUID1 and the given project.
+func newProjectUpdateStore(t *testing.T, storedProjectID string) *groupStoreInterfaceMock {
+	storeMock := newGroupStoreInterfaceMock(t)
+	storeMock.On("IsGroupDeclarative", mock.Anything, "grp-001").Return(false, nil).Once()
+	storeMock.On("GetGroup", mock.Anything, "grp-001").Return(GroupDAO{
+		ID: "grp-001", Name: "Shoppers", OUID: testOUID1, ProjectID: storedProjectID}, nil).Once()
+	return storeMock
+}
+
+// An update that names no project keeps the group in its project, without checking it again.
+func (suite *GroupServiceTestSuite) TestUpdateGroup_KeepsTheProject() {
+	t := suite.T()
+	storeMock := newProjectUpdateStore(t, testProjectID)
+	storeMock.On("UpdateGroup", mock.Anything, mock.MatchedBy(func(g GroupDAO) bool {
+		return g.ProjectID == testProjectID
+	})).Return(nil).Once()
+	service, _ := newProjectGroupService(t, storeMock, newProjectOUValidatorMock(t))
+
+	updated, err := service.UpdateGroup(context.Background(), "grp-001",
+		UpdateGroupRequest{Name: "Shoppers", OUID: testOUID1})
+
+	require.Nil(t, err)
+	require.Equal(t, testProjectID, updated.ProjectID)
+}
+
+func (suite *GroupServiceTestSuite) TestUpdateGroup_MovesToAProject() {
+	t := suite.T()
+	validator := newProjectOUValidatorMock(t)
+	validator.EXPECT().ValidateProjectOU(mock.Anything, testOtherProjectID, testOUID1).
+		Return((*tidcommon.ServiceError)(nil)).Once()
+	storeMock := newProjectUpdateStore(t, testProjectID)
+	storeMock.On("UpdateGroup", mock.Anything, mock.MatchedBy(func(g GroupDAO) bool {
+		return g.ProjectID == testOtherProjectID
+	})).Return(nil).Once()
+	service, _ := newProjectGroupService(t, storeMock, validator)
+
+	updated, err := service.UpdateGroup(context.Background(), "grp-001",
+		UpdateGroupRequest{Name: "Shoppers", OUID: testOUID1, ProjectID: testOtherProjectID})
+
+	require.Nil(t, err)
+	require.Equal(t, testOtherProjectID, updated.ProjectID)
+}
+
+func (suite *GroupServiceTestSuite) TestUpdateGroup_RefusesAMissingProject() {
+	t := suite.T()
+	validator := newProjectOUValidatorMock(t)
+	validator.EXPECT().ValidateProjectOU(mock.Anything, testProjectID, testOUID1).
+		Return(&tidcommon.ServiceError{Code: projectscope.ProjectNotFoundErrorCode}).Once()
+	service, _ := newProjectGroupService(t, newProjectUpdateStore(t, ""), validator)
+
+	_, err := service.UpdateGroup(context.Background(), "grp-001",
+		UpdateGroupRequest{Name: "Shoppers", OUID: testOUID1, ProjectID: testProjectID})
+
+	require.NotNil(t, err)
+	require.Equal(t, ErrorInvalidProject.Code, err.Code)
+}
+
+// newProjectListService returns a group service whose caller can list groups in the given organization units,
+// or in all of them when allAllowed is set.
+func newProjectListService(t *testing.T, allAllowed bool, ouIDs []string,
+	storeMock *groupStoreInterfaceMock) *groupService {
+	authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
+	authzMock.On("GetAccessibleResources", mock.Anything, security.ActionListGroups, security.ResourceTypeOU).
+		Return(&sysauthz.AccessibleResources{AllAllowed: allAllowed, IDs: ouIDs}, (*tidcommon.ServiceError)(nil)).
+		Maybe()
+	return &groupService{authzService: authzMock, groupStore: storeMock}
+}
+
+func (suite *GroupServiceTestSuite) TestGetGroupListByProject() {
+	t := suite.T()
+	storeMock := newGroupStoreInterfaceMock(t)
+	storeMock.On("GetGroupListCountByProject", mock.Anything, testProjectID, []string(nil)).Return(3, nil).Once()
+	storeMock.On("GetGroupListByProject", mock.Anything, testProjectID, []string(nil), 1, 0).
+		Return([]GroupBasicDAO{{ID: "grp-001", OUID: testOUID1, ProjectID: testProjectID}}, nil).Once()
+	service := newProjectListService(t, true, nil, storeMock)
+
+	resp, err := service.GetGroupListByProject(context.Background(), testProjectID, 1, 0, nil, false)
+
+	require.Nil(t, err)
+	require.Equal(t, 3, resp.TotalResults)
+	require.Equal(t, testProjectID, resp.Groups[0].ProjectID)
+	require.Contains(t, resp.Links[0].Href, "projectId="+testProjectID)
+}
+
+// A caller limited to some organization units lists only the project's groups in those units, and an
+// organization unit filter narrows the list to that unit.
+func (suite *GroupServiceTestSuite) TestGetGroupListByProject_NarrowedToOrganizationUnits() {
+	t := suite.T()
+	storeMock := newGroupStoreInterfaceMock(t)
+	storeMock.On("GetGroupListCountByProject", mock.Anything, testProjectID, []string{testOUID1}).
+		Return(0, nil).Twice()
+	storeMock.On("GetGroupListByProject", mock.Anything, testProjectID, []string{testOUID1}, 10, 0).
+		Return([]GroupBasicDAO{}, nil).Twice()
+
+	_, err := newProjectListService(t, false, []string{testOUID1}, storeMock).
+		GetGroupListByProject(context.Background(), testProjectID, 10, 0, nil, false)
+	require.Nil(t, err)
+
+	_, err = newProjectListService(t, true, nil, storeMock).GetGroupListByProject(context.Background(),
+		testProjectID, 10, 0, map[string]interface{}{"ouId": testOUID1}, false)
+	require.Nil(t, err)
+}
+
+// Some lists have nothing to show without reading the store.
+func (suite *GroupServiceTestSuite) TestGetGroupListByProject_ListsNone() {
+	for name, tc := range map[string]struct {
+		projectID string
+		ouIDs     []string
+		filters   map[string]interface{}
+	}{
+		"no project": {ouIDs: []string{testOUID1}},
+		"organization unit out of reach": {projectID: testProjectID, ouIDs: []string{testOUID2},
+			filters: map[string]interface{}{"ouId": testOUID1}},
+		"no organization unit in reach": {projectID: testProjectID},
+	} {
+		suite.Run(name, func() {
+			service := newProjectListService(suite.T(), false, tc.ouIDs, newGroupStoreInterfaceMock(suite.T()))
+
+			resp, err := service.GetGroupListByProject(context.Background(), tc.projectID, 10, 0, tc.filters, false)
+
+			require.Nil(suite.T(), err)
+			require.Zero(suite.T(), resp.TotalResults)
+			require.Empty(suite.T(), resp.Groups)
+		})
+	}
+}
+
+func (suite *GroupServiceTestSuite) TestGetGroupListByProject_Errors() {
+	t := suite.T()
+	service := newProjectListService(t, true, nil, newGroupStoreInterfaceMock(t))
+	_, err := service.GetGroupListByProject(context.Background(), testProjectID, -1, 0, nil, false)
+	require.Equal(t, ErrorInvalidLimit.Code, err.Code)
+	_, err = service.GetGroupListByProject(context.Background(), testProjectID, 10, 0,
+		map[string]interface{}{"name": "Shoppers"}, false)
+	require.Equal(t, ErrorInvalidFilter.Code, err.Code)
+
+	_, err = (&groupService{authzService: newAuthzError(t)}).GetGroupListByProject(context.Background(),
+		testProjectID, 10, 0, nil, false)
+	require.Equal(t, tidcommon.InternalServerError.Code, err.Code)
+
+	storeMock := newGroupStoreInterfaceMock(t)
+	storeMock.On("GetGroupListCountByProject", mock.Anything, "count-fails", []string(nil)).
+		Return(0, errors.New("db fail")).Once()
+	storeMock.On("GetGroupListCountByProject", mock.Anything, "list-fails", []string(nil)).Return(1, nil).Once()
+	storeMock.On("GetGroupListByProject", mock.Anything, "list-fails", []string(nil), 10, 0).
+		Return(nil, errors.New("db fail")).Once()
+	service = newProjectListService(t, true, nil, storeMock)
+	_, err = service.GetGroupListByProject(context.Background(), "count-fails", 10, 0, nil, false)
+	require.Equal(t, tidcommon.InternalServerError.Code, err.Code)
+	_, err = service.GetGroupListByProject(context.Background(), "list-fails", 10, 0, nil, false)
+	require.Equal(t, tidcommon.InternalServerError.Code, err.Code)
+}
+
+// A project ID longer than the column is refused on every deployment, even one that checks no project.
+func (suite *GroupServiceTestSuite) TestCreateGroup_RefusesATooLongProjectID() {
+	t := suite.T()
+	for name, validator := range map[string]projectOUValidator{
+		"without a validator": nil,
+		"with a validator":    newProjectOUValidatorMock(t),
+	} {
+		suite.Run(name, func() {
+			service, _ := newProjectGroupService(suite.T(), newGroupStoreInterfaceMock(suite.T()), validator)
+
+			_, err := service.CreateGroup(context.Background(), CreateGroupRequest{
+				Name: "Shoppers", OUID: testOUID1, ProjectID: strings.Repeat("p", maxProjectIDLength+1)})
+
+			require.NotNil(suite.T(), err)
+			require.Equal(suite.T(), ErrorInvalidProject.Code, err.Code)
+		})
+	}
+}
+
+// newOUMoveStore returns a store holding the empty group grp-001 in testOUID1 and testProjectID, which is free
+// to move to another organization unit.
+func newOUMoveStore(t *testing.T) *groupStoreInterfaceMock {
+	storeMock := newProjectUpdateStore(t, testProjectID)
+	storeMock.On("GetGroupMemberCount", mock.Anything, "grp-001").Return(0, nil).Once()
+	storeMock.On("GetDirectGroupParents", mock.Anything, []string{"grp-001"}).Return([]string{}, nil).Once()
+	return storeMock
+}
+
+// An update that moves a project group to another organization unit checks that unit against the group's
+// project, and refuses one outside it.
+func (suite *GroupServiceTestSuite) TestUpdateGroup_ChecksTheProjectWhenOnlyTheOUChanges() {
+	t := suite.T()
+	validator := newProjectOUValidatorMock(t)
+	validator.EXPECT().ValidateProjectOU(mock.Anything, testProjectID, testOUID2).
+		Return(&tidcommon.ServiceError{Code: projectscope.OUNotInProjectErrorCode}).Once()
+	resolver := NewRoleAssignmentResolverMock(t)
+	resolver.On("HasGroupRoleAssignments", mock.Anything, "grp-001").
+		Return(false, (*tidcommon.ServiceError)(nil)).Once()
+	service, _ := newProjectGroupService(t, newOUMoveStore(t), validator)
+	service.roleAssignments = resolver
+
+	_, err := service.UpdateGroup(context.Background(), "grp-001",
+		UpdateGroupRequest{Name: "Shoppers", OUID: testOUID2})
+
+	require.NotNil(t, err)
+	require.Equal(t, ErrorOUNotInProject.Code, err.Code)
+}
+
+func (suite *GroupServiceTestSuite) TestUpdateGroup_MovesOUWithinTheProject() {
+	t := suite.T()
+	validator := newProjectOUValidatorMock(t)
+	validator.EXPECT().ValidateProjectOU(mock.Anything, testProjectID, testOUID2).
+		Return((*tidcommon.ServiceError)(nil)).Once()
+	resolver := NewRoleAssignmentResolverMock(t)
+	resolver.On("HasGroupRoleAssignments", mock.Anything, "grp-001").
+		Return(false, (*tidcommon.ServiceError)(nil)).Once()
+	storeMock := newOUMoveStore(t)
+	storeMock.On("CheckGroupNameConflictForUpdate", mock.Anything, "Shoppers", testOUID2, "grp-001").Return(nil).Once()
+	storeMock.On("UpdateGroup", mock.Anything, mock.MatchedBy(func(g GroupDAO) bool {
+		return g.OUID == testOUID2 && g.ProjectID == testProjectID
+	})).Return(nil).Once()
+	service, _ := newProjectGroupService(t, storeMock, validator)
+	service.roleAssignments = resolver
+
+	updated, err := service.UpdateGroup(context.Background(), "grp-001",
+		UpdateGroupRequest{Name: "Shoppers", OUID: testOUID2})
+
+	require.Nil(t, err)
+	require.Equal(t, testOUID2, updated.OUID)
+	require.Equal(t, testProjectID, updated.ProjectID)
+}
+
+func (suite *GroupServiceTestSuite) TestProjectHasGroups() {
+	for name, tc := range map[string]struct {
+		count    int
+		err      error
+		expected bool
+		svcErr   bool
+	}{
+		"groups":                   {count: 2, expected: true},
+		"no groups":                {count: 0, expected: false},
+		"more than can be counted": {err: errResultLimitExceededInCompositeMode, expected: true},
+		"store failure":            {err: errors.New("db fail"), svcErr: true},
+	} {
+		suite.Run(name, func() {
+			storeMock := newGroupStoreInterfaceMock(suite.T())
+			storeMock.On("GetGroupListCountByProject", mock.Anything, testProjectID, []string(nil)).
+				Return(tc.count, tc.err).Once()
+			service := &groupService{groupStore: storeMock}
+
+			has, svcErr := service.ProjectHasGroups(context.Background(), testProjectID)
+
+			if tc.svcErr {
+				require.NotNil(suite.T(), svcErr)
+				require.Equal(suite.T(), tidcommon.InternalServerError.Code, svcErr.Code)
+				return
+			}
+			require.Nil(suite.T(), svcErr)
+			require.Equal(suite.T(), tc.expected, has)
+		})
+	}
 }

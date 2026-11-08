@@ -717,6 +717,92 @@ func (_c *groupStoreInterfaceMock_GetGroupListByOUIDs_Call) RunAndReturn(run fun
 	return _c
 }
 
+// GetGroupListByProject provides a mock function for the type groupStoreInterfaceMock
+func (_mock *groupStoreInterfaceMock) GetGroupListByProject(ctx context.Context, projectID string, ouIDs []string, limit int, offset int) ([]group.GroupBasicDAO, error) {
+	ret := _mock.Called(ctx, projectID, ouIDs, limit, offset)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetGroupListByProject")
+	}
+
+	var r0 []group.GroupBasicDAO
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, []string, int, int) ([]group.GroupBasicDAO, error)); ok {
+		return returnFunc(ctx, projectID, ouIDs, limit, offset)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, []string, int, int) []group.GroupBasicDAO); ok {
+		r0 = returnFunc(ctx, projectID, ouIDs, limit, offset)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]group.GroupBasicDAO)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, []string, int, int) error); ok {
+		r1 = returnFunc(ctx, projectID, ouIDs, limit, offset)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// groupStoreInterfaceMock_GetGroupListByProject_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetGroupListByProject'
+type groupStoreInterfaceMock_GetGroupListByProject_Call struct {
+	*mock.Call
+}
+
+// GetGroupListByProject is a helper method to define mock.On call
+//   - ctx context.Context
+//   - projectID string
+//   - ouIDs []string
+//   - limit int
+//   - offset int
+func (_e *groupStoreInterfaceMock_Expecter) GetGroupListByProject(ctx any, projectID any, ouIDs any, limit any, offset any) *groupStoreInterfaceMock_GetGroupListByProject_Call {
+	return &groupStoreInterfaceMock_GetGroupListByProject_Call{Call: _e.mock.On("GetGroupListByProject", ctx, projectID, ouIDs, limit, offset)}
+}
+
+func (_c *groupStoreInterfaceMock_GetGroupListByProject_Call) Run(run func(ctx context.Context, projectID string, ouIDs []string, limit int, offset int)) *groupStoreInterfaceMock_GetGroupListByProject_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 []string
+		if args[2] != nil {
+			arg2 = args[2].([]string)
+		}
+		var arg3 int
+		if args[3] != nil {
+			arg3 = args[3].(int)
+		}
+		var arg4 int
+		if args[4] != nil {
+			arg4 = args[4].(int)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+			arg4,
+		)
+	})
+	return _c
+}
+
+func (_c *groupStoreInterfaceMock_GetGroupListByProject_Call) Return(groupBasicDAOs []group.GroupBasicDAO, err error) *groupStoreInterfaceMock_GetGroupListByProject_Call {
+	_c.Call.Return(groupBasicDAOs, err)
+	return _c
+}
+
+func (_c *groupStoreInterfaceMock_GetGroupListByProject_Call) RunAndReturn(run func(ctx context.Context, projectID string, ouIDs []string, limit int, offset int) ([]group.GroupBasicDAO, error)) *groupStoreInterfaceMock_GetGroupListByProject_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetGroupListCount provides a mock function for the type groupStoreInterfaceMock
 func (_mock *groupStoreInterfaceMock) GetGroupListCount(ctx context.Context) (int, error) {
 	ret := _mock.Called(ctx)
@@ -839,6 +925,78 @@ func (_c *groupStoreInterfaceMock_GetGroupListCountByOUIDs_Call) Return(n int, e
 }
 
 func (_c *groupStoreInterfaceMock_GetGroupListCountByOUIDs_Call) RunAndReturn(run func(ctx context.Context, ouIDs []string) (int, error)) *groupStoreInterfaceMock_GetGroupListCountByOUIDs_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetGroupListCountByProject provides a mock function for the type groupStoreInterfaceMock
+func (_mock *groupStoreInterfaceMock) GetGroupListCountByProject(ctx context.Context, projectID string, ouIDs []string) (int, error) {
+	ret := _mock.Called(ctx, projectID, ouIDs)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetGroupListCountByProject")
+	}
+
+	var r0 int
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, []string) (int, error)); ok {
+		return returnFunc(ctx, projectID, ouIDs)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, []string) int); ok {
+		r0 = returnFunc(ctx, projectID, ouIDs)
+	} else {
+		r0 = ret.Get(0).(int)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, []string) error); ok {
+		r1 = returnFunc(ctx, projectID, ouIDs)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// groupStoreInterfaceMock_GetGroupListCountByProject_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetGroupListCountByProject'
+type groupStoreInterfaceMock_GetGroupListCountByProject_Call struct {
+	*mock.Call
+}
+
+// GetGroupListCountByProject is a helper method to define mock.On call
+//   - ctx context.Context
+//   - projectID string
+//   - ouIDs []string
+func (_e *groupStoreInterfaceMock_Expecter) GetGroupListCountByProject(ctx any, projectID any, ouIDs any) *groupStoreInterfaceMock_GetGroupListCountByProject_Call {
+	return &groupStoreInterfaceMock_GetGroupListCountByProject_Call{Call: _e.mock.On("GetGroupListCountByProject", ctx, projectID, ouIDs)}
+}
+
+func (_c *groupStoreInterfaceMock_GetGroupListCountByProject_Call) Run(run func(ctx context.Context, projectID string, ouIDs []string)) *groupStoreInterfaceMock_GetGroupListCountByProject_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 []string
+		if args[2] != nil {
+			arg2 = args[2].([]string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *groupStoreInterfaceMock_GetGroupListCountByProject_Call) Return(n int, err error) *groupStoreInterfaceMock_GetGroupListCountByProject_Call {
+	_c.Call.Return(n, err)
+	return _c
+}
+
+func (_c *groupStoreInterfaceMock_GetGroupListCountByProject_Call) RunAndReturn(run func(ctx context.Context, projectID string, ouIDs []string) (int, error)) *groupStoreInterfaceMock_GetGroupListCountByProject_Call {
 	_c.Call.Return(run)
 	return _c
 }

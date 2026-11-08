@@ -455,6 +455,7 @@ func (s *importService) importGroup(
 		Description string         `yaml:"description,omitempty"`
 		OUID        string         `yaml:"ouId,omitempty"`
 		OUHandle    string         `yaml:"ouHandle,omitempty"`
+		ProjectID   string         `yaml:"projectId,omitempty"`
 		Members     []group.Member `yaml:"members,omitempty"`
 	}
 	if err := doc.Node.Decode(&raw); err != nil {
@@ -473,12 +474,14 @@ func (s *importService) importGroup(
 		Name:        raw.Name,
 		Description: raw.Description,
 		OUID:        raw.OUID,
+		ProjectID:   raw.ProjectID,
 	}
 
 	updateReq := group.UpdateGroupRequest{
 		Name:        raw.Name,
 		Description: raw.Description,
 		OUID:        raw.OUID,
+		ProjectID:   raw.ProjectID,
 	}
 
 	if dryRun {
@@ -495,8 +498,12 @@ func (s *importService) importGroup(
 	}
 
 	if options.IsUpsertEnabled() && raw.ID != "" {
-		_, svcErr := s.groupService.GetGroup(ctx, raw.ID, false)
+		existing, svcErr := s.groupService.GetGroup(ctx, raw.ID, false)
 		if svcErr == nil {
+			// A document that names a project and no organization unit keeps the group in its own.
+			if updateReq.OUID == "" {
+				updateReq.OUID = existing.OUID
+			}
 			updated, updateErr := s.groupService.UpdateGroup(ctx, raw.ID, updateReq)
 			if updateErr != nil {
 				return serviceErrorOutcome(resourceTypeGroup, raw.ID, raw.Name, operationUpdate, updateErr)

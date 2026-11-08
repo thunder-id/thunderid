@@ -11,8 +11,10 @@ export interface CreateGroupRequest {
   name: string;
   /** Optional description */
   description?: string;
-  /** ID of the organization unit this group belongs to */
-  ouId: string;
+  /** ID of the organization unit this group belongs to; the system organization unit when omitted */
+  ouId?: string;
+  /** Places the group in the project, in the system organization unit */
+  projectId?: string;
   /** Optional initial members */
   members?: Member[];
 }
@@ -40,4 +42,6 @@ export interface GroupListParams {
   offset?: number;
   /** Filter expression, for example `ouId eq "<id>"` */
   filter?: string;
+  /** Lists only the groups of this project */
+  projectId?: string;
 }

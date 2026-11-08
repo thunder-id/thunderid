@@ -842,6 +842,7 @@ func (suite *GroupStoreTestSuite) TestGroupStore_UpdateGroup() {
 						QueryUpdateGroup,
 						groupDAO.ID,
 						groupDAO.OUID,
+						nil,
 						groupDAO.Name,
 						groupDAO.Description,
 						mock.Anything,
@@ -884,6 +885,7 @@ func (suite *GroupStoreTestSuite) TestGroupStore_UpdateGroup() {
 						QueryUpdateGroup,
 						groupMinimal.ID,
 						groupMinimal.OUID,
+						nil,
 						groupMinimal.Name,
 						groupMinimal.Description,
 						mock.Anything,
@@ -912,6 +914,7 @@ func (suite *GroupStoreTestSuite) TestGroupStore_UpdateGroup() {
 						QueryUpdateGroup,
 						groupDAO.ID,
 						groupDAO.OUID,
+						nil,
 						groupDAO.Name,
 						groupDAO.Description,
 						mock.Anything,
@@ -2066,4 +2069,98 @@ func (suite *GroupStoreTestSuite) SetupTest() {
 	_ = config.InitializeServerRuntime("", &config.Config{
 		Server: engineconfig.ServerConfig{Identifier: testDeploymentID},
 	})
+}
+
+func (suite *GroupStoreTestSuite) TestGroupStore_CreateGroupWritesTheProject() {
+	providerMock := providermock.NewDBProviderInterfaceMock(suite.T())
+	dbClientMock := providermock.NewDBClientInterfaceMock(suite.T())
+	providerMock.On("GetEntityDBClient").Return(dbClientMock, nil).Once()
+	dbClientMock.On("ExecuteContext", mock.Anything, QueryCreateGroup, "grp-001", "ou-1", "project-1",
+		"Engineering", "", testDeploymentID, mock.Anything, mock.Anything).Return(int64(1), nil).Once()
+	store := &groupStore{dbProvider: providerMock}
+
+	err := store.CreateGroup(context.Background(),
+		GroupDAO{ID: "grp-001", OUID: "ou-1", ProjectID: "project-1", Name: "Engineering"})
+
+	suite.Require().NoError(err)
+}
+
+func (suite *GroupStoreTestSuite) TestGroupStore_GetGroupReadsTheProject() {
+	providerMock := providermock.NewDBProviderInterfaceMock(suite.T())
+	dbClientMock := providermock.NewDBClientInterfaceMock(suite.T())
+	providerMock.On("GetEntityDBClient").Return(dbClientMock, nil).Once()
+	dbClientMock.On("QueryContext", mock.Anything, QueryGetGroupByID, "grp-001", testDeploymentID).
+		Return([]map[string]interface{}{{"id": "grp-001", "name": "Engineering", "description": "",
+			"ou_id": "ou-1", "project_id": "project-1"}}, nil).Once()
+	store := &groupStore{dbProvider: providerMock}
+
+	group, err := store.GetGroup(context.Background(), "grp-001")
+
+	suite.Require().NoError(err)
+	suite.Require().Equal("project-1", group.ProjectID)
+}
+
+func (suite *GroupStoreTestSuite) TestGroupStore_GetGroupListByProject() {
+	providerMock := providermock.NewDBProviderInterfaceMock(suite.T())
+	dbClientMock := providermock.NewDBClientInterfaceMock(suite.T())
+	providerMock.On("GetEntityDBClient").Return(dbClientMock, nil).Twice()
+	countQuery, countArgs := buildGetGroupsCountByProjectQuery("project-1", []string{"ou-1"}, testDeploymentID)
+	dbClientMock.On("QueryContext", append([]interface{}{mock.Anything, countQuery}, countArgs...)...).
+		Return([]map[string]interface{}{{"total": int64(1)}}, nil).Once()
+	listQuery, listArgs := buildGetGroupsByProjectQuery("project-1", []string{"ou-1"}, 10, 0, testDeploymentID)
+	dbClientMock.On("QueryContext", append([]interface{}{mock.Anything, listQuery}, listArgs...)...).
+		Return([]map[string]interface{}{{"id": "grp-001", "name": "Engineering", "description": "",
+			"ou_id": "ou-1", "project_id": "project-1"}}, nil).Once()
+	store := &groupStore{dbProvider: providerMock}
+
+	count, err := store.GetGroupListCountByProject(context.Background(), "project-1", []string{"ou-1"})
+	suite.Require().NoError(err)
+	suite.Require().Equal(1, count)
+
+	groups, err := store.GetGroupListByProject(context.Background(), "project-1", []string{"ou-1"}, 10, 0)
+	suite.Require().NoError(err)
+	suite.Require().Equal([]GroupBasicDAO{{ID: "grp-001", Name: "Engineering", OUID: "ou-1",
+		ProjectID: "project-1"}}, groups)
+}
+
+func (suite *GroupStoreTestSuite) TestGroupStore_GetGroupListByProjectErrors() {
+	for name, setup := range map[string]func(*providermock.DBProviderInterfaceMock,
+		*providermock.DBClientInterfaceMock){
+		"client": func(providerMock *providermock.DBProviderInterfaceMock, _ *providermock.DBClientInterfaceMock) {
+			providerMock.On("GetEntityDBClient").Return(nil, errors.New("client fail")).Twice()
+		},
+		"query": func(providerMock *providermock.DBProviderInterfaceMock,
+			dbClientMock *providermock.DBClientInterfaceMock) {
+			providerMock.On("GetEntityDBClient").Return(dbClientMock, nil).Twice()
+			dbClientMock.On("QueryContext", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+				Return(nil, errors.New("query fail")).Once()
+			dbClientMock.On("QueryContext", mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+				mock.Anything, mock.Anything).Return(nil, errors.New("query fail")).Once()
+		},
+	} {
+		suite.Run(name, func() {
+			providerMock := providermock.NewDBProviderInterfaceMock(suite.T())
+			dbClientMock := providermock.NewDBClientInterfaceMock(suite.T())
+			setup(providerMock, dbClientMock)
+			store := &groupStore{dbProvider: providerMock}
+
+			_, err := store.GetGroupListCountByProject(context.Background(), "project-1", nil)
+			suite.Require().Error(err)
+			_, err = store.GetGroupListByProject(context.Background(), "project-1", nil, 10, 0)
+			suite.Require().Error(err)
+		})
+	}
+}
+
+func (suite *GroupStoreTestSuite) TestGroupStore_GetGroupListByProjectRefusesABadRow() {
+	providerMock := providermock.NewDBProviderInterfaceMock(suite.T())
+	dbClientMock := providermock.NewDBClientInterfaceMock(suite.T())
+	providerMock.On("GetEntityDBClient").Return(dbClientMock, nil).Once()
+	dbClientMock.On("QueryContext", mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything).Return([]map[string]interface{}{{"name": "group"}}, nil).Once()
+	store := &groupStore{dbProvider: providerMock}
+
+	_, err := store.GetGroupListByProject(context.Background(), "project-1", nil, 10, 0)
+
+	suite.Require().ErrorContains(err, "failed to build group from result row")
 }

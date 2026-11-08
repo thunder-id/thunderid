@@ -3,7 +3,7 @@
 
 import {screen, waitFor} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import {CapabilitiesProvider} from '@thunderid/contexts';
+import {CapabilitiesProvider, ProjectScopeProvider} from '@thunderid/contexts';
 import {renderWithProviders} from '@thunderid/test-utils';
 import type * as OxygenUI from '@wso2/oxygen-ui';
 import {describe, it, expect, beforeEach, afterEach, vi} from 'vitest';
@@ -152,6 +152,22 @@ describe('GroupsList', () => {
 
   afterEach(() => {
     vi.clearAllMocks();
+  });
+
+  it('should list the groups of the selected project', () => {
+    renderWithProviders(
+      <ProjectScopeProvider project={{id: 'project-1'}}>
+        <GroupsList />
+      </ProjectScopeProvider>,
+    );
+
+    expect(mockUseGetGroups).toHaveBeenCalledWith(expect.objectContaining({projectId: 'project-1'}));
+  });
+
+  it('should list every group without a selected project', () => {
+    renderWithProviders(<GroupsList />);
+
+    expect(mockUseGetGroups).toHaveBeenCalledWith(expect.objectContaining({projectId: undefined}));
   });
 
   it('should render groups in the data grid', () => {

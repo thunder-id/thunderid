@@ -49,6 +49,7 @@ type GroupBasic struct {
 	Description string `json:"description,omitempty"`
 	OUID        string `json:"ouId"`
 	OUHandle    string `json:"ouHandle,omitempty"`
+	ProjectID   string `json:"projectId,omitempty"`
 	IsReadOnly  bool   `json:"isReadOnly"`
 }
 
@@ -58,6 +59,7 @@ type GroupBasicDAO struct {
 	Name        string
 	Description string
 	OUID        string
+	ProjectID   string
 	IsReadOnly  bool
 }
 
@@ -68,6 +70,7 @@ type Group struct {
 	Description string   `json:"description,omitempty"`
 	OUID        string   `json:"ouId"`
 	OUHandle    string   `json:"ouHandle,omitempty"`
+	ProjectID   string   `json:"projectId,omitempty"`
 	Members     []Member `json:"members,omitempty"`
 	IsReadOnly  bool     `json:"isReadOnly"`
 }
@@ -78,6 +81,7 @@ type GroupDAO struct {
 	Name        string
 	Description string
 	OUID        string
+	ProjectID   string
 	Members     []Member
 	IsReadOnly  bool
 }
@@ -92,7 +96,8 @@ type CreateGroupRequest struct {
 	ID          string   `json:"-"`
 	Name        string   `json:"name" native:"required,min=1,max=100"`
 	Description string   `json:"description,omitempty"`
-	OUID        string   `json:"ouId" native:"required"`
+	OUID        string   `json:"ouId,omitempty"`
+	ProjectID   string   `json:"projectId,omitempty"`
 	Members     []Member `json:"members,omitempty" native:"dive"`
 }
 
@@ -101,6 +106,7 @@ type UpdateGroupRequest struct {
 	Name        string `json:"name" native:"required,min=1,max=100"`
 	Description string `json:"description,omitempty"`
 	OUID        string `json:"ouId" native:"required"`
+	ProjectID   string `json:"projectId,omitempty"`
 }
 
 // GroupListResponse represents the response for listing groups with pagination.

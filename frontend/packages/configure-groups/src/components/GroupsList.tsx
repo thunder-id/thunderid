@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {QueryErrorNotice} from '@thunderid/components';
-import {useCapabilitiesContext} from '@thunderid/contexts';
+import {useCapabilitiesContext, useProjectScope} from '@thunderid/contexts';
 import {useDataGridLocaleText} from '@thunderid/hooks';
 import {useLogger} from '@thunderid/logger/react';
 import {IconButton, Typography, Tooltip, DataGrid, ListingTable} from '@wso2/oxygen-ui';
@@ -26,13 +26,15 @@ export default function GroupsList(): JSX.Element {
   const routes = useGroupRoutes();
   const {can} = useCapabilitiesContext();
   const [paginationModel, setPaginationModel] = useState<DataGrid.GridPaginationModel>({pageSize: 10, page: 0});
+  const {projectId} = useProjectScope();
 
   const groupsParams = useMemo(
     () => ({
       limit: paginationModel.pageSize,
       offset: paginationModel.page * paginationModel.pageSize,
+      projectId,
     }),
-    [paginationModel],
+    [paginationModel, projectId],
   );
   const {data, isLoading, error, refetch} = useGetGroups(groupsParams);
 

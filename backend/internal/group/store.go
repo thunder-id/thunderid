@@ -25,6 +25,9 @@ type groupStoreInterface interface {
 	GetGroupList(ctx context.Context, limit, offset int) ([]GroupBasicDAO, error)
 	GetGroupListCountByOUIDs(ctx context.Context, ouIDs []string) (int, error)
 	GetGroupListByOUIDs(ctx context.Context, ouIDs []string, limit, offset int) ([]GroupBasicDAO, error)
+	GetGroupListCountByProject(ctx context.Context, projectID string, ouIDs []string) (int, error)
+	GetGroupListByProject(ctx context.Context, projectID string, ouIDs []string, limit, offset int) (
+		[]GroupBasicDAO, error)
 	CreateGroup(ctx context.Context, group GroupDAO) error
 	GetGroup(ctx context.Context, id string) (GroupDAO, error)
 	GetGroupMembers(ctx context.Context, groupID string, limit, offset int) ([]Member, error)
@@ -156,6 +159,7 @@ func (s *groupStore) GetGroupList(ctx context.Context, limit, offset int) ([]Gro
 			Name:        group.Name,
 			Description: group.Description,
 			OUID:        group.OUID,
+			ProjectID:   group.ProjectID,
 		}
 
 		groups = append(groups, groupBasic)
@@ -224,11 +228,69 @@ func (s *groupStore) GetGroupListByOUIDs(
 			Name:        group.Name,
 			Description: group.Description,
 			OUID:        group.OUID,
+			ProjectID:   group.ProjectID,
 		}
 
 		groups = append(groups, groupBasic)
 	}
 
+	return groups, nil
+}
+
+// GetGroupListCountByProject retrieves the total count of the groups of a project, narrowed to the ones the
+// given organization units own when ouIDs is not empty.
+func (s *groupStore) GetGroupListCountByProject(ctx context.Context, projectID string, ouIDs []string) (int, error) {
+	dbClient, err := s.dbProvider.GetEntityDBClient()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get database client for counter query: %w", err)
+	}
+
+	query, args := buildGetGroupsCountByProjectQuery(projectID, ouIDs, s.scope(ctx))
+	countResults, err := dbClient.QueryContext(ctx, query, args...)
+	if err != nil {
+		return 0, err
+	}
+
+	var count int
+	if len(countResults) > 0 {
+		if countVal, ok := countResults[0]["total"].(int64); ok {
+			count = int(countVal)
+		} else if countVal, ok := countResults[0]["total"].(float64); ok { // sqlite count result type
+			count = int(countVal)
+		}
+	}
+	return count, nil
+}
+
+// GetGroupListByProject retrieves the groups of a project with pagination, narrowed to the ones the given
+// organization units own when ouIDs is not empty.
+func (s *groupStore) GetGroupListByProject(
+	ctx context.Context, projectID string, ouIDs []string, limit, offset int) ([]GroupBasicDAO, error) {
+	dbClient, err := s.dbProvider.GetEntityDBClient()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get database client for query: %w", err)
+	}
+
+	query, args := buildGetGroupsByProjectQuery(projectID, ouIDs, limit, offset, s.scope(ctx))
+	results, err := dbClient.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+
+	groups := make([]GroupBasicDAO, 0, len(results))
+	for _, row := range results {
+		group, err := buildGroupFromResultRow(row)
+		if err != nil {
+			return nil, fmt.Errorf("failed to build group from result row: %w", err)
+		}
+		groups = append(groups, GroupBasicDAO{
+			ID:          group.ID,
+			Name:        group.Name,
+			Description: group.Description,
+			OUID:        group.OUID,
+			ProjectID:   group.ProjectID,
+		})
+	}
 	return groups, nil
 }
 
@@ -245,6 +307,7 @@ func (s *groupStore) CreateGroup(ctx context.Context, group GroupDAO) error {
 		QueryCreateGroup,
 		group.ID,
 		group.OUID,
+		nullableString(group.ProjectID),
 		group.Name,
 		group.Description,
 		s.scope(ctx),
@@ -376,6 +439,7 @@ func (s *groupStore) UpdateGroup(ctx context.Context, group GroupDAO) error {
 		QueryUpdateGroup,
 		group.ID,
 		group.OUID,
+		nullableString(group.ProjectID),
 		group.Name,
 		group.Description,
 		time.Now().UTC(),
@@ -529,6 +593,7 @@ func (s *groupStore) GetGroupsByOrganizationUnit(
 		groups = append(groups, GroupBasicDAO{
 			ID:          group.ID,
 			OUID:        group.OUID,
+			ProjectID:   group.ProjectID,
 			Name:        group.Name,
 			Description: group.Description,
 		})
@@ -640,6 +705,7 @@ func (s *groupStore) getGroupsInBatches(
 				Name:        group.Name,
 				Description: group.Description,
 				OUID:        group.OUID,
+				ProjectID:   group.ProjectID,
 			})
 		}
 	}
@@ -747,14 +813,26 @@ func buildGroupFromResultRow(row map[string]interface{}) (GroupDAO, error) {
 		return GroupDAO{}, fmt.Errorf("failed to parse ou_id as string")
 	}
 
+	// A group in no project has no project ID.
+	projectID, _ := row["project_id"].(string)
+
 	group := GroupDAO{
 		ID:          groupID,
 		Name:        name,
 		Description: description,
 		OUID:        ouID,
+		ProjectID:   projectID,
 	}
 
 	return group, nil
+}
+
+// nullableString stores an empty value as NULL.
+func nullableString(value string) interface{} {
+	if value == "" {
+		return nil
+	}
+	return value
 }
 
 // addMembersToGroup adds a list of members to a group.
