@@ -216,8 +216,8 @@ vi.mock('@thunderid/contexts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@thunderid/contexts')>()),
   useConfig: () => ({
     config: {brand: {product_name: 'ThunderID'}},
-    getGateCallbackUrl: () => 'https://id.acme.io/gate/callback',
   }),
+  useGateCallbackUrl: () => 'https://id.acme.io/gate/callback',
   useToast: () => ({showToast: vi.fn()}),
 }));
 vi.mock('@thunderid/components', async (importOriginal) => ({
