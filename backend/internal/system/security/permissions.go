@@ -949,6 +949,12 @@ func InitSystemPermissions(handle string) {
 		// Organization unit tools.
 		"list_organization_units": p.OUView,
 
+		// User tools, at the permissions of the user API they act through.
+		"list_users":  p.UserView,
+		"get_user":    p.UserView,
+		"update_user": p.UserUpdate,
+		"create_user": p.UserCreate,
+
 		// User type tools.
 		"list_user_types": p.UserTypeView,
 
