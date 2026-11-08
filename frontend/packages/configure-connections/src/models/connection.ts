@@ -503,7 +503,7 @@ export interface ConnectionVendorMeta {
   supportsAttributeMapping?: boolean;
   /** Whether this connection exposes outbound service authentication settings. */
   supportsAuthentication?: boolean;
-  /** Changing the `url` origin requires the stored credentials to be entered again. */
+  /** Changing the `url` origin, or an SMTP host or port, requires the stored credentials to be entered again. */
   reentersCredentialsOnOriginChange?: boolean;
   /** Whether the detail page lists the resources that use this connection. */
   showsUsages?: boolean;
