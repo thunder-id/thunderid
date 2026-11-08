@@ -28,6 +28,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/eventbus"
 	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/projectscope"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
@@ -2383,7 +2384,7 @@ func TestUserService_GetUsersByPath_WithIncludeDisplay(t *testing.T) {
 }
 
 func TestNewFunctions(t *testing.T) {
-	svc := newUserService(nil, nil, nil, nil, nil, nil, nil, nil, discardingBus{})
+	svc := newUserService(nil, nil, nil, nil, nil, nil, nil, nil, discardingBus{}, nil)
 	require.NotNil(t, svc)
 
 	handler := newUserHandler(svc)
@@ -5043,7 +5044,7 @@ func TestSharingPolicy_ResolveOverlayCarriesTheMandatedRoles(t *testing.T) {
 // that waited for it.
 func TestSetRoleAssignmentService_AppliesTheWaitingDeclaredMandates(t *testing.T) {
 	sharingMock := sharingmock.NewSharingServiceInterfaceMock(t)
-	service := newUserService(nil, nil, nil, nil, nil, nil, nil, sharingMock, discardingBus{})
+	service := newUserService(nil, nil, nil, nil, nil, nil, nil, sharingMock, discardingBus{}, nil)
 	roles := []string{"role-a"}
 	declared := userPolicy(shareOwnerOU)
 	declared.Declared = true
@@ -6258,4 +6259,378 @@ func TestUserService_AFailingBusDoesNotFailTheChange(t *testing.T) {
 	require.NotEmpty(t, created.ID)
 
 	require.Nil(t, deletingUserService(t, failing, true).DeleteUser(adminContext(), svcTestUserID1))
+}
+
+const (
+	testProjectID      = "project-1"
+	testOtherProjectID = "project-2"
+)
+
+// newProjectCreateService returns a user service that creates a user of testUserType in testOrgID and
+// stores whatever entity it is handed.
+func newProjectCreateService(t *testing.T, validator projectOUValidator,
+	storeMock *entitymock.EntityServiceInterfaceMock) *userService {
+	ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
+	ouServiceMock.On("IsOrganizationUnitExists", mock.Anything, testOrgID).
+		Return(true, (*tidcommon.ServiceError)(nil)).Maybe()
+	entityTypeMock := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
+	entityTypeMock.On("GetEntityTypeByHandle", mock.Anything, mock.Anything, testUserType).
+		Return(&entitytype.EntityType{OUID: testOrgID}, (*tidcommon.ServiceError)(nil)).Maybe()
+	return &userService{
+		bus:               discardingBus{},
+		entityService:     storeMock,
+		ouService:         ouServiceMock,
+		entityTypeService: entityTypeMock,
+		authzService:      newAllowAllAuthz(t),
+		uuidGenerator:     utils.GenerateUUIDv7,
+		projectValidator:  validator,
+	}
+}
+
+func TestUserService_CreateUser_InProject(t *testing.T) {
+	validator := newProjectOUValidatorMock(t)
+	validator.EXPECT().ValidateProjectOU(mock.Anything, testProjectID, testOrgID).
+		Return((*tidcommon.ServiceError)(nil)).Once()
+	storeMock := entitymock.NewEntityServiceInterfaceMock(t)
+	storeMock.On("CreateEntity", mock.Anything, mock.MatchedBy(func(e *providers.Entity) bool {
+		return e.ProjectID == testProjectID && e.OUID == testOrgID
+	}), mock.Anything, mock.Anything).
+		Return(&providers.Entity{OUID: testOrgID, ProjectID: testProjectID, Type: testUserType}, nil).Once()
+	service := newProjectCreateService(t, validator, storeMock)
+
+	created, err := service.CreateUser(context.Background(),
+		&providers.User{Type: testUserType, OUID: testOrgID, ProjectID: testProjectID})
+
+	require.Nil(t, err)
+	require.Equal(t, testProjectID, created.ProjectID)
+}
+
+// A user in no project belongs to the organization, and no project is checked.
+func TestUserService_CreateUser_WithoutProjectSkipsTheProjectCheck(t *testing.T) {
+	validator := newProjectOUValidatorMock(t)
+	storeMock := entitymock.NewEntityServiceInterfaceMock(t)
+	storeMock.On("CreateEntity", mock.Anything, mock.MatchedBy(func(e *providers.Entity) bool {
+		return e.ProjectID == ""
+	}), mock.Anything, mock.Anything).
+		Return(&providers.Entity{OUID: testOrgID, Type: testUserType}, nil).Once()
+	service := newProjectCreateService(t, validator, storeMock)
+
+	created, err := service.CreateUser(context.Background(), &providers.User{Type: testUserType, OUID: testOrgID})
+
+	require.Nil(t, err)
+	require.Empty(t, created.ProjectID)
+}
+
+// A deployment that serves no projects keeps the project as given.
+func TestUserService_CreateUser_InProjectWithoutValidator(t *testing.T) {
+	storeMock := entitymock.NewEntityServiceInterfaceMock(t)
+	storeMock.On("CreateEntity", mock.Anything, mock.MatchedBy(func(e *providers.Entity) bool {
+		return e.ProjectID == testProjectID
+	}), mock.Anything, mock.Anything).
+		Return(&providers.Entity{OUID: testOrgID, ProjectID: testProjectID, Type: testUserType}, nil).Once()
+	service := newProjectCreateService(t, nil, storeMock)
+
+	_, err := service.CreateUser(context.Background(),
+		&providers.User{Type: testUserType, OUID: testOrgID, ProjectID: testProjectID})
+
+	require.Nil(t, err)
+}
+
+func TestUserService_CreateUser_InProjectRefused(t *testing.T) {
+	for name, tc := range map[string]struct {
+		validatorErr *tidcommon.ServiceError
+		expected     string
+	}{
+		"missing project": {
+			validatorErr: &tidcommon.ServiceError{Code: projectscope.ProjectNotFoundErrorCode},
+			expected:     ErrorInvalidProject.Code,
+		},
+		"organization unit outside project": {
+			validatorErr: &tidcommon.ServiceError{Code: projectscope.OUNotInProjectErrorCode},
+			expected:     ErrorOUNotInProject.Code,
+		},
+		"validator failure": {
+			validatorErr: &tidcommon.InternalServerError,
+			expected:     tidcommon.InternalServerError.Code,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			validator := newProjectOUValidatorMock(t)
+			validator.EXPECT().ValidateProjectOU(mock.Anything, testProjectID, testOrgID).
+				Return(tc.validatorErr).Once()
+			service := newProjectCreateService(t, validator, entitymock.NewEntityServiceInterfaceMock(t))
+
+			_, err := service.CreateUser(context.Background(),
+				&providers.User{Type: testUserType, OUID: testOrgID, ProjectID: testProjectID})
+
+			require.NotNil(t, err)
+			require.Equal(t, tc.expected, err.Code)
+		})
+	}
+}
+
+// newProjectUpdateService returns a user service that updates svcTestUserID1, stored in testOrgID and
+// the given project.
+func newProjectUpdateService(t *testing.T, storedProjectID string, validator projectOUValidator,
+	sharingService sharing.SharingServiceInterface) (*userService, *entitymock.EntityServiceInterfaceMock) {
+	storeMock := entitymock.NewEntityServiceInterfaceMock(t)
+	storeMock.On("GetEntityProfile", mock.Anything, svcTestUserID1).Return(&providers.Entity{
+		Category: providers.EntityCategoryUser, ID: svcTestUserID1, OUID: testOrgID, ProjectID: storedProjectID,
+		Type: testUserType,
+	}, nil).Once()
+	storeMock.On("IsEntityDeclarative", mock.Anything, svcTestUserID1).Return(false, nil).Maybe()
+	verification := attributeverificationmock.NewAttributeVerificationServiceInterfaceMock(t)
+	verification.On("GetVerifiedAttributes", mock.Anything, mock.Anything).
+		Return(map[string]providers.VerifiedAttribute{}).Maybe()
+	ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
+	ouServiceMock.On("IsOrganizationUnitExists", mock.Anything, testOrgID).
+		Return(true, (*tidcommon.ServiceError)(nil)).Maybe()
+	entityTypeMock := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
+	entityTypeMock.On("GetEntityTypeByHandle", mock.Anything, mock.Anything, testUserType).
+		Return(&entitytype.EntityType{OUID: testOrgID}, (*tidcommon.ServiceError)(nil)).Maybe()
+	return &userService{
+		bus:               discardingBus{},
+		entityService:     storeMock,
+		verification:      verification,
+		ouService:         ouServiceMock,
+		entityTypeService: entityTypeMock,
+		authzService:      newAllowAllAuthz(t),
+		governance:        activeGovernance(t),
+		sharingService:    sharingService,
+		projectValidator:  validator,
+	}, storeMock
+}
+
+// An update that names no project keeps the user in its project, without checking it again.
+func TestUserService_UpdateUser_KeepsTheProject(t *testing.T) {
+	service, storeMock := newProjectUpdateService(t, testProjectID, newProjectOUValidatorMock(t),
+		unsharedSharing(t))
+	storeMock.On("UpdateEntity", mock.Anything, svcTestUserID1, mock.MatchedBy(func(e *providers.Entity) bool {
+		return e.ProjectID == testProjectID
+	})).Return(&providers.Entity{ID: svcTestUserID1, ProjectID: testProjectID}, nil).Once()
+
+	updated, err := service.UpdateUser(context.Background(), svcTestUserID1,
+		&providers.User{OUID: testOrgID, Type: testUserType})
+
+	require.Nil(t, err)
+	require.Equal(t, testProjectID, updated.ProjectID)
+}
+
+func TestUserService_UpdateUser_MovesToAProject(t *testing.T) {
+	validator := newProjectOUValidatorMock(t)
+	validator.EXPECT().ValidateProjectOU(mock.Anything, testOtherProjectID, testOrgID).
+		Return((*tidcommon.ServiceError)(nil)).Once()
+	service, storeMock := newProjectUpdateService(t, testProjectID, validator, unsharedSharing(t))
+	storeMock.On("UpdateEntity", mock.Anything, svcTestUserID1, mock.MatchedBy(func(e *providers.Entity) bool {
+		return e.ProjectID == testOtherProjectID
+	})).Return(&providers.Entity{ID: svcTestUserID1, ProjectID: testOtherProjectID}, nil).Once()
+
+	updated, err := service.UpdateUser(context.Background(), svcTestUserID1,
+		&providers.User{OUID: testOrgID, ProjectID: testOtherProjectID, Type: testUserType})
+
+	require.Nil(t, err)
+	require.Equal(t, testOtherProjectID, updated.ProjectID)
+}
+
+func TestUserService_UpdateUser_RefusesAMissingProject(t *testing.T) {
+	validator := newProjectOUValidatorMock(t)
+	validator.EXPECT().ValidateProjectOU(mock.Anything, testProjectID, testOrgID).
+		Return(&tidcommon.ServiceError{Code: projectscope.ProjectNotFoundErrorCode}).Once()
+	service, _ := newProjectUpdateService(t, "", validator, unsharedSharing(t))
+
+	_, err := service.UpdateUser(context.Background(), svcTestUserID1,
+		&providers.User{OUID: testOrgID, ProjectID: testProjectID, Type: testUserType})
+
+	require.NotNil(t, err)
+	require.Equal(t, ErrorInvalidProject.Code, err.Code)
+}
+
+// A shared user stays in its project, since its policies were issued against it.
+func TestUserService_UpdateUser_ASharedUserCannotMoveProject(t *testing.T) {
+	sharingMock := sharingmock.NewSharingServiceInterfaceMock(t)
+	sharingMock.On("ListPolicies", mock.Anything, UserSharingType, svcTestUserID1).
+		Return([]sharing.Policy{userPolicy(testOrgID)}, (*tidcommon.ServiceError)(nil)).Once()
+	service, _ := newProjectUpdateService(t, testProjectID, newProjectOUValidatorMock(t), sharingMock)
+
+	_, err := service.UpdateUser(context.Background(), svcTestUserID1,
+		&providers.User{OUID: testOrgID, ProjectID: testOtherProjectID, Type: testUserType})
+
+	require.NotNil(t, err)
+	require.Equal(t, ErrorSharedUserCannotMove.Code, err.Code)
+}
+
+// newProjectListService returns a user service whose caller can list users in the given organization
+// units, or in all of them when allAllowed is set.
+func newProjectListService(t *testing.T, allAllowed bool, ouIDs []string,
+	storeMock *entitymock.EntityServiceInterfaceMock) *userService {
+	authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
+	authzMock.On("GetAccessibleResources", mock.Anything, security.ActionListUsers, security.ResourceTypeOU).
+		Return(&sysauthz.AccessibleResources{AllAllowed: allAllowed, IDs: ouIDs}, nil).Maybe()
+	verification := attributeverificationmock.NewAttributeVerificationServiceInterfaceMock(t)
+	verification.On("GetVerifiedAttributes", mock.Anything, mock.Anything).
+		Return(map[string]providers.VerifiedAttribute{}).Maybe()
+	return &userService{
+		entityService: storeMock,
+		verification:  verification,
+		authzService:  authzMock,
+		governance:    activeGovernance(t),
+		logger:        log.GetLogger(),
+	}
+}
+
+func TestUserService_GetUserListByProject(t *testing.T) {
+	storeMock := entitymock.NewEntityServiceInterfaceMock(t)
+	storeMock.On("GetEntityListCountByProject", mock.Anything, providers.EntityCategoryUser, testProjectID,
+		[]string(nil)).Return(2, nil).Once()
+	storeMock.On("GetEntityListByProject", mock.Anything, providers.EntityCategoryUser, testProjectID,
+		[]string(nil), 10, 0).
+		Return([]providers.Entity{{ID: svcTestUserID1, OUID: testOrgID, ProjectID: testProjectID}}, nil).Once()
+	service := newProjectListService(t, true, nil, storeMock)
+
+	resp, err := service.GetUserListByProject(context.Background(), testProjectID, 10, 0, nil, false)
+
+	require.Nil(t, err)
+	require.Equal(t, 2, resp.TotalResults)
+	require.Len(t, resp.Users, 1)
+	require.Equal(t, testProjectID, resp.Users[0].ProjectID)
+	require.True(t, *resp.Users[0].IsOwnedByOU)
+}
+
+// A caller limited to some organization units lists only the project's users in those units.
+func TestUserService_GetUserListByProject_ScopedCaller(t *testing.T) {
+	ouIDs := []string{testOrgID}
+	storeMock := entitymock.NewEntityServiceInterfaceMock(t)
+	storeMock.On("GetEntityListCountByProject", mock.Anything, providers.EntityCategoryUser, testProjectID,
+		ouIDs).Return(0, nil).Once()
+	storeMock.On("GetEntityListByProject", mock.Anything, providers.EntityCategoryUser, testProjectID,
+		ouIDs, 10, 0).Return([]providers.Entity{}, nil).Once()
+	service := newProjectListService(t, false, ouIDs, storeMock)
+
+	resp, err := service.GetUserListByProject(context.Background(), testProjectID, 10, 0, nil, false)
+
+	require.Nil(t, err)
+	require.Zero(t, resp.TotalResults)
+}
+
+func TestUserService_GetUserListByProject_FilteredByOU(t *testing.T) {
+	storeMock := entitymock.NewEntityServiceInterfaceMock(t)
+	storeMock.On("GetEntityListCountByProject", mock.Anything, providers.EntityCategoryUser, testProjectID,
+		[]string{testOrgID}).Return(3, nil).Once()
+	storeMock.On("GetEntityListByProject", mock.Anything, providers.EntityCategoryUser, testProjectID,
+		[]string{testOrgID}, 1, 0).Return([]providers.Entity{{ID: svcTestUserID1, OUID: testOrgID}}, nil).Once()
+	service := newProjectListService(t, true, nil, storeMock)
+
+	resp, err := service.GetUserListByProject(context.Background(), testProjectID, 1, 0,
+		map[string]interface{}{"ouId": testOrgID}, false)
+
+	require.Nil(t, err)
+	require.Equal(t, 3, resp.TotalResults)
+	require.Contains(t, resp.Links[0].Href, "projectId="+testProjectID)
+}
+
+// Some lists have nothing to show without reading the store.
+func TestUserService_GetUserListByProject_ListsNone(t *testing.T) {
+	for name, tc := range map[string]struct {
+		projectID string
+		ouIDs     []string
+		filters   map[string]interface{}
+	}{
+		"no project": {ouIDs: []string{testOrgID}},
+		"organization unit out of reach": {projectID: testProjectID, ouIDs: []string{"ou-x"},
+			filters: map[string]interface{}{"ouId": testOrgID}},
+		"no organization unit in reach": {projectID: testProjectID},
+	} {
+		t.Run(name, func(t *testing.T) {
+			service := newProjectListService(t, false, tc.ouIDs, entitymock.NewEntityServiceInterfaceMock(t))
+
+			resp, err := service.GetUserListByProject(context.Background(), tc.projectID, 10, 0, tc.filters, false)
+
+			require.Nil(t, err)
+			require.Zero(t, resp.TotalResults)
+			require.Empty(t, resp.Users)
+		})
+	}
+}
+
+func TestUserService_GetUserListByProject_Refused(t *testing.T) {
+	service := newProjectListService(t, true, nil, entitymock.NewEntityServiceInterfaceMock(t))
+
+	_, err := service.GetUserListByProject(context.Background(), testProjectID, -1, 0, nil, false)
+	require.NotNil(t, err)
+	require.Equal(t, ErrorInvalidLimit.Code, err.Code)
+
+	_, err = service.GetUserListByProject(context.Background(), testProjectID, 10, 0,
+		map[string]interface{}{"email": "a@example.com"}, false)
+	require.NotNil(t, err)
+	require.Equal(t, ErrorInvalidFilter.Code, err.Code)
+}
+
+func TestUserService_GetUserListByProject_StoreErrors(t *testing.T) {
+	t.Run("count", func(t *testing.T) {
+		storeMock := entitymock.NewEntityServiceInterfaceMock(t)
+		storeMock.On("GetEntityListCountByProject", mock.Anything, providers.EntityCategoryUser, testProjectID,
+			[]string(nil)).Return(0, errors.New("db down")).Once()
+		service := newProjectListService(t, true, nil, storeMock)
+
+		_, err := service.GetUserListByProject(context.Background(), testProjectID, 10, 0, nil, false)
+
+		require.NotNil(t, err)
+		require.Equal(t, tidcommon.InternalServerError.Code, err.Code)
+	})
+	t.Run("list", func(t *testing.T) {
+		storeMock := entitymock.NewEntityServiceInterfaceMock(t)
+		storeMock.On("GetEntityListCountByProject", mock.Anything, providers.EntityCategoryUser, testProjectID,
+			[]string(nil)).Return(1, nil).Once()
+		storeMock.On("GetEntityListByProject", mock.Anything, providers.EntityCategoryUser, testProjectID,
+			[]string(nil), 10, 0).Return(nil, errors.New("db down")).Once()
+		service := newProjectListService(t, true, nil, storeMock)
+
+		_, err := service.GetUserListByProject(context.Background(), testProjectID, 10, 0, nil, false)
+
+		require.NotNil(t, err)
+		require.Equal(t, tidcommon.InternalServerError.Code, err.Code)
+	})
+	t.Run("accessible resources", func(t *testing.T) {
+		authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
+		authzMock.On("GetAccessibleResources", mock.Anything, security.ActionListUsers, security.ResourceTypeOU).
+			Return(nil, &tidcommon.InternalServerError).Once()
+		service := &userService{authzService: authzMock, logger: log.GetLogger()}
+
+		_, err := service.GetUserListByProject(context.Background(), testProjectID, 10, 0, nil, false)
+
+		require.NotNil(t, err)
+		require.Equal(t, tidcommon.InternalServerError.Code, err.Code)
+	})
+}
+
+// A user in a project that names no organization unit goes to the system organization unit.
+func TestUserService_CreateUser_InProjectWithoutOUGoesToTheSystemOU(t *testing.T) {
+	validator := newProjectOUValidatorMock(t)
+	validator.EXPECT().ValidateProjectOU(mock.Anything, testProjectID, testOrgID).
+		Return((*tidcommon.ServiceError)(nil)).Once()
+	storeMock := entitymock.NewEntityServiceInterfaceMock(t)
+	storeMock.On("CreateEntity", mock.Anything, mock.MatchedBy(func(e *providers.Entity) bool {
+		return e.OUID == testOrgID && e.ProjectID == testProjectID
+	}), mock.Anything, mock.Anything).
+		Return(&providers.Entity{OUID: testOrgID, ProjectID: testProjectID, Type: testUserType}, nil).Once()
+	service := newProjectCreateService(t, validator, storeMock)
+	service.ouService.(*oumock.OrganizationUnitServiceInterfaceMock).On("GetSystemOUID", mock.Anything).
+		Return(testOrgID, (*tidcommon.ServiceError)(nil)).Once()
+
+	created, err := service.CreateUser(context.Background(),
+		&providers.User{Type: testUserType, ProjectID: testProjectID})
+
+	require.Nil(t, err)
+	require.Equal(t, testOrgID, created.OUID)
+}
+
+func TestUserService_CreateUser_InProjectWithoutOUSystemOUFailure(t *testing.T) {
+	service := newProjectCreateService(t, newProjectOUValidatorMock(t), entitymock.NewEntityServiceInterfaceMock(t))
+	service.ouService.(*oumock.OrganizationUnitServiceInterfaceMock).On("GetSystemOUID", mock.Anything).
+		Return("", &tidcommon.InternalServerError).Once()
+
+	_, err := service.CreateUser(context.Background(), &providers.User{Type: testUserType, ProjectID: testProjectID})
+
+	require.NotNil(t, err)
+	require.Equal(t, tidcommon.InternalServerError.Code, err.Code)
 }

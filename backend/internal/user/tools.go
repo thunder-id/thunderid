@@ -14,6 +14,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	"github.com/thunder-id/thunderid/internal/entity"
@@ -48,6 +49,7 @@ type listUsersMCPInput struct {
 	Attribute string `json:"attribute,omitempty" jsonschema:"An attribute to match, such as email or username. Give it with value."`
 	Value     string `json:"value,omitempty" jsonschema:"The exact value the attribute has, such as alice@example.com"`
 	OUID      string `json:"ouId,omitempty" jsonschema:"ID of an organization unit, to list its users. Can't be combined with attribute."`
+	ProjectID string `json:"projectId,omitempty" jsonschema:"ID of a project, from list_projects, to list its users. Can't be combined with attribute."`
 	Limit     int    `json:"limit,omitempty" jsonschema:"Maximum number of users to return, at most 100"`
 	Offset    int    `json:"offset,omitempty" jsonschema:"Number of users to skip"`
 }
@@ -75,17 +77,19 @@ type createUserMCPInput struct {
 	UserType   string         `json:"userType" jsonschema:"Handle of the user type, from list_user_types"`
 	Attributes map[string]any `json:"attributes" jsonschema:"The user's attributes, such as username and email, as the user type defines them. Credentials such as a password can't be given here."`
 	OUID       string         `json:"ouId,omitempty" jsonschema:"ID of the organization unit the user belongs to. Defaults to the Default organization unit."`
+	ProjectID  string         `json:"projectId,omitempty" jsonschema:"ID of the project the user belongs to, from list_projects. Leave it out for a user of the organization. Without ouId, a user in a project goes to the system organization unit."`
 	Roles      []string       `json:"roles,omitempty" jsonschema:"IDs of roles to grant the user, from list_roles"`
 	Groups     []string       `json:"groups,omitempty" jsonschema:"IDs of groups to add the user to, from list_groups"`
 }
 
 // userMCPItem is one user in a list.
 type userMCPItem struct {
-	ID     string `json:"id"`
-	Name   string `json:"name,omitempty"`
-	Type   string `json:"type"`
-	OUID   string `json:"ouId"`
-	Status string `json:"status,omitempty"`
+	ID        string `json:"id"`
+	Name      string `json:"name,omitempty"`
+	Type      string `json:"type"`
+	OUID      string `json:"ouId"`
+	ProjectID string `json:"projectId,omitempty"`
+	Status    string `json:"status,omitempty"`
 }
 
 // userListMCPResponse is the list_users output.
@@ -121,6 +125,7 @@ type userMCPDetails struct {
 	Name        string                   `json:"name,omitempty"`
 	Type        string                   `json:"type"`
 	OUID        string                   `json:"ouId"`
+	ProjectID   string                   `json:"projectId,omitempty"`
 	Status      string                   `json:"status,omitempty"`
 	ReadOnly    bool                     `json:"readOnly"`
 	Attributes  map[string]any           `json:"attributes,omitempty"`
@@ -235,6 +240,9 @@ func (t *userTools) listUsers(ctx context.Context, _ *mcp.CallToolRequest, input
 	if input.Attribute != "" && input.OUID != "" {
 		return nil, nil, errors.New("failed to list users: ouId can't be combined with attribute")
 	}
+	if input.Attribute != "" && input.ProjectID != "" {
+		return nil, nil, errors.New("failed to list users: projectId can't be combined with attribute")
+	}
 	limit := input.Limit
 	if limit == 0 {
 		limit = defaultUserPageSize
@@ -246,14 +254,20 @@ func (t *userTools) listUsers(ctx context.Context, _ *mcp.CallToolRequest, input
 	if input.OUID != "" {
 		filters[filter.AttributeOUID] = input.OUID
 	}
-	list, svcErr := t.userService.GetUserList(ctx, limit, input.Offset, filters, true)
+	var list *UserListResponse
+	var svcErr *tidcommon.ServiceError
+	if input.ProjectID != "" {
+		list, svcErr = t.userService.GetUserListByProject(ctx, input.ProjectID, limit, input.Offset, filters, true)
+	} else {
+		list, svcErr = t.userService.GetUserList(ctx, limit, input.Offset, filters, true)
+	}
 	if svcErr != nil {
 		return nil, nil, fmt.Errorf("failed to list users: %s", svcErr.ErrorDescription)
 	}
 	users := make([]userMCPItem, 0, len(list.Users))
 	for _, u := range list.Users {
 		users = append(users, userMCPItem{ID: u.ID, Name: u.Display, Type: u.Type, OUID: u.OUID,
-			Status: statusOf(u.Status)})
+			ProjectID: u.ProjectID, Status: statusOf(u.Status)})
 	}
 	return nil, &userListMCPResponse{TotalResults: list.TotalResults, Users: users}, nil
 }
@@ -340,7 +354,8 @@ func (t *userTools) createUser(ctx context.Context, _ *mcp.CallToolRequest, inpu
 	}
 
 	ouID := input.OUID
-	if ouID == "" {
+	// A user in a project goes to the system organization unit, which the user service resolves.
+	if ouID == "" && input.ProjectID == "" {
 		ou, svcErr := t.ouService.GetOrganizationUnitByPath(ctx, defaultOUHandle)
 		if svcErr != nil {
 			return nil, nil, errors.New("failed to create user: the Default organization unit wasn't found, " +
@@ -353,7 +368,7 @@ func (t *userTools) createUser(ctx context.Context, _ *mcp.CallToolRequest, inpu
 		return nil, nil, errors.New("failed to create user: the attributes are not valid JSON")
 	}
 	created, svcErr := t.userService.CreateUser(ctx, &providers.User{Type: input.UserType, OUID: ouID,
-		Attributes: raw})
+		ProjectID: input.ProjectID, Attributes: raw})
 	if svcErr != nil {
 		return nil, nil, fmt.Errorf("failed to create user: %s", svcErr.ErrorDescription)
 	}
@@ -436,8 +451,9 @@ func withoutCredentials(schema []entitytype.AttributeInfo, attributes map[string
 
 // describeUser describes a user without their credentials.
 func describeUser(u *providers.User, schema []entitytype.AttributeInfo) *userMCPDetails {
-	return &userMCPDetails{ID: u.ID, Name: u.Display, Type: u.Type, OUID: u.OUID, Status: statusOf(u.Status),
-		ReadOnly: u.IsReadOnly, Attributes: withoutCredentials(schema, decodeAttributes(u.Attributes))}
+	return &userMCPDetails{ID: u.ID, Name: u.Display, Type: u.Type, OUID: u.OUID, ProjectID: u.ProjectID,
+		Status: statusOf(u.Status), ReadOnly: u.IsReadOnly,
+		Attributes: withoutCredentials(schema, decodeAttributes(u.Attributes))}
 }
 
 // addUserDetails adds the sections include asks for, and names the ones left out.

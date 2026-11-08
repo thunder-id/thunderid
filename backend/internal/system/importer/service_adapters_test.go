@@ -16,6 +16,7 @@ import (
 	agentmodel "github.com/thunder-id/thunderid/internal/agent/model"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/agentmock"
+	"github.com/thunder-id/thunderid/tests/mocks/usermock"
 )
 
 type ServiceAdaptersTestSuite struct {
@@ -33,6 +34,18 @@ func agentDoc(t *testing.T, body string) parsedDocument {
 		t.Fatalf("parsing the document: %v", err)
 	}
 	return parsedDocument{ResourceType: resourceTypeAgent, Node: node.Content[0]}
+}
+
+// testUserProjectID is the project the imported users name.
+const testUserProjectID = "project-1"
+
+func userDoc(t *testing.T, body string) parsedDocument {
+	t.Helper()
+	var node yaml.Node
+	if err := yaml.Unmarshal([]byte(body), &node); err != nil {
+		t.Fatalf("parsing the document: %v", err)
+	}
+	return parsedDocument{ResourceType: resourceTypeUser, Node: node.Content[0]}
 }
 
 func noUpsert() *ImportOptions {
@@ -103,4 +116,38 @@ func (suite *ServiceAdaptersTestSuite) TestImportAgent_MalformedLifespanFailsDry
 	assert.Equal(t, statusFailed, outcome.Status)
 	assert.Equal(t, agent.ErrorInvalidLifespan.Code, outcome.Code)
 	agentSvc.AssertNotCalled(t, "CreateAgent", mock.Anything, mock.Anything)
+}
+
+// An exported user's project reaches the user service, so the import keeps it in the project.
+func (suite *ServiceAdaptersTestSuite) TestImportUser_KeepsProject() {
+	t := suite.T()
+	userSvc := usermock.NewUserServiceInterfaceMock(t)
+	userSvc.On("CreateUser", mock.Anything, mock.MatchedBy(func(u *providers.User) bool {
+		return u.ProjectID == testUserProjectID
+	})).Return(&providers.User{ID: "user-1", OUID: "ou-1", ProjectID: testUserProjectID}, nil).Once()
+	svc := &importService{userService: userSvc}
+
+	outcome := svc.importUser(context.Background(), userDoc(t,
+		"id: user-1\ntype: person\nouId: ou-1\nprojectId: "+testUserProjectID+"\nattributes:\n  username: alice\n"),
+		noUpsert(), false, nil)
+
+	assert.Equal(t, statusSuccess, outcome.Status)
+}
+
+// An upsert onto an existing user keeps the project the document names.
+func (suite *ServiceAdaptersTestSuite) TestImportUser_UpsertKeepsProject() {
+	t := suite.T()
+	userSvc := usermock.NewUserServiceInterfaceMock(t)
+	userSvc.On("GetUser", mock.Anything, "user-1", false).Return(&providers.User{ID: "user-1"}, nil).Once()
+	userSvc.On("UpdateUser", mock.Anything, "user-1", mock.MatchedBy(func(u *providers.User) bool {
+		return u.ProjectID == testUserProjectID
+	})).Return(&providers.User{ID: "user-1", OUID: "ou-1", ProjectID: testUserProjectID}, nil).Once()
+	svc := &importService{userService: userSvc}
+	upsert := true
+
+	outcome := svc.importUser(context.Background(), userDoc(t,
+		"id: user-1\ntype: person\nouId: ou-1\nprojectId: "+testUserProjectID+"\nattributes:\n  username: alice\n"),
+		&ImportOptions{Upsert: &upsert}, false, nil)
+
+	assert.Equal(t, statusSuccess, outcome.Status)
 }

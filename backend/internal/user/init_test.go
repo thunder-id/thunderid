@@ -184,7 +184,8 @@ func TestRegisterRoutes_UserOrganizationUnits(t *testing.T) {
 }
 
 func TestInitialize_RefusesANilEventBus(t *testing.T) {
-	userService, resolver, exporter, err := Initialize(http.NewServeMux(), nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	userService, resolver, exporter, err := Initialize(
+		http.NewServeMux(), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	require.ErrorIs(t, err, errNilEventBus)
 	require.Nil(t, userService)

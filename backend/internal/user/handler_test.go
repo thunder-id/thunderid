@@ -516,6 +516,41 @@ func TestHandleUserListRequest_Success(t *testing.T) {
 	require.Equal(t, expectedResp.TotalResults, resp.TotalResults)
 }
 
+func TestHandleUserListRequest_ByProject(t *testing.T) {
+	mockSvc := NewUserServiceInterfaceMock(t)
+	expectedResp := &UserListResponse{
+		TotalResults: 1,
+		Users:        []providers.User{{ID: "user-1", ProjectID: "project-1"}},
+	}
+	mockSvc.On("GetUserListByProject", mock.Anything, "project-1", 10, 0, mock.Anything, false).
+		Return(expectedResp, nil).Once()
+
+	handler := newUserHandler(mockSvc)
+	req := httptest.NewRequest(http.MethodGet, "/users?limit=10&offset=0&projectId=project-1", nil)
+	rr := httptest.NewRecorder()
+
+	handler.HandleUserListRequest(rr, req)
+
+	require.Equal(t, http.StatusOK, rr.Code)
+	var resp UserListResponse
+	require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
+	require.Equal(t, "project-1", resp.Users[0].ProjectID)
+}
+
+func TestHandleUserListRequest_ByProjectError(t *testing.T) {
+	mockSvc := NewUserServiceInterfaceMock(t)
+	mockSvc.On("GetUserListByProject", mock.Anything, "project-1", 10, 0, mock.Anything, false).
+		Return(nil, &ErrorInvalidFilter).Once()
+
+	handler := newUserHandler(mockSvc)
+	req := httptest.NewRequest(http.MethodGet, "/users?limit=10&offset=0&projectId=project-1", nil)
+	rr := httptest.NewRecorder()
+
+	handler.HandleUserListRequest(rr, req)
+
+	require.Equal(t, http.StatusBadRequest, rr.Code)
+}
+
 func TestHandleUserListRequest_WithIncludeDisplay(t *testing.T) {
 	mockSvc := NewUserServiceInterfaceMock(t)
 	expectedResp := &UserListResponse{
@@ -698,6 +733,51 @@ func TestHandleUserDeleteRequest_Success(t *testing.T) {
 	handler.HandleUserDeleteRequest(rr, req)
 
 	require.Equal(t, http.StatusNoContent, rr.Code)
+}
+
+// A user in no project must name its organization unit, so a create without ouId or projectId is refused
+// before it reaches the service.
+func TestHandleUserPostRequest_WithoutOUOrProject(t *testing.T) {
+	mockSvc := NewUserServiceInterfaceMock(t)
+	handler := newUserHandler(mockSvc)
+	for name, projectID := range map[string]string{"no project": "", "blank project": "   "} {
+		t.Run(name, func(t *testing.T) {
+			body, _ := json.Marshal(&CreateUserRequest{ProjectID: projectID, Type: "employee",
+				Attributes: json.RawMessage(`{"username":"bob"}`)})
+			req := httptest.NewRequest(http.MethodPost, "/users", bytes.NewBuffer(body))
+			rr := httptest.NewRecorder()
+
+			handler.HandleUserPostRequest(rr, req)
+
+			require.Equal(t, http.StatusBadRequest, rr.Code)
+			var resp map[string]interface{}
+			require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
+			require.Equal(t, "Validation Failed", resp["message"])
+			require.Contains(t, resp["errors"], "ouId")
+		})
+	}
+	mockSvc.AssertNotCalled(t, "CreateUser", mock.Anything, mock.Anything)
+}
+
+func TestHandleUserPostRequest_InProject(t *testing.T) {
+	mockSvc := NewUserServiceInterfaceMock(t)
+	mockSvc.On("CreateUser", mock.Anything, mock.MatchedBy(func(u *providers.User) bool {
+		return u.ProjectID == "project-1" && u.OUID == "ou-system"
+	})).Return(&providers.User{ID: "user-bob", OUID: "ou-system", ProjectID: "project-1", Type: "employee"}, nil).
+		Once()
+
+	handler := newUserHandler(mockSvc)
+	body, _ := json.Marshal(&CreateUserRequest{OUID: "ou-system", ProjectID: "project-1", Type: "employee",
+		Attributes: json.RawMessage(`{"username":"bob"}`)})
+	req := httptest.NewRequest(http.MethodPost, "/users", bytes.NewBuffer(body))
+	rr := httptest.NewRecorder()
+
+	handler.HandleUserPostRequest(rr, req)
+
+	require.Equal(t, http.StatusCreated, rr.Code)
+	var resp providers.User
+	require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
+	require.Equal(t, "project-1", resp.ProjectID)
 }
 
 func TestHandleUserListByPathRequest_Success(t *testing.T) {

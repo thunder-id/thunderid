@@ -230,6 +230,21 @@ func (suite *DeclarativeResourceTestSuite) TestMakeUserParser_ParsesYAMLToEntity
 	suite.NotEmpty(systemCreds)
 }
 
+func (suite *DeclarativeResourceTestSuite) TestMakeUserParser_ReadsTheProject() {
+	userYAML := []byte("" +
+		"id: user-1\n" +
+		"type: person\n" +
+		"ouId: ou-1\n" +
+		"projectId: project-1\n" +
+		"attributes:\n" +
+		"  username: alice\n")
+
+	e, _, _, err := makeUserParser(nil)(userYAML)
+
+	suite.NoError(err)
+	suite.Equal("project-1", e.ProjectID)
+}
+
 func (suite *DeclarativeResourceTestSuite) TestGetResourceRules_IncludesCredentials() {
 	exporter := newUserExporter(
 		NewUserServiceInterfaceMock(suite.T()), entitymock.NewEntityServiceInterfaceMock(suite.T()), nil)
@@ -554,4 +569,25 @@ func TestUnreadableSharingFailsTheUsersExport(t *testing.T) {
 
 	require.NotNil(t, svcErr)
 	assert.Equal(t, tidcommon.InternalServerError.Code, svcErr.Code)
+}
+
+// A user's project travels with its export, so a deploy scoped to the project carries the user.
+func TestAUsersProjectIsExported(t *testing.T) {
+	users := NewUserServiceInterfaceMock(t)
+	entities := entitymock.NewEntityServiceInterfaceMock(t)
+	sharingMock := sharingmock.NewSharingServiceInterfaceMock(t)
+	users.On("GetUser", context.Background(), "user-1", false).Return(&providers.User{ID: "user-1",
+		Type: "person", OUID: "ou-1", ProjectID: "project-1", Attributes: json.RawMessage(`{"username":"alice"}`)},
+		(*tidcommon.ServiceError)(nil)).Once()
+	entities.On("GetHeldCredentialTypes", context.Background(), "user-1").Return([]string{}, nil).Once()
+	sharingMock.On("ExportPolicies", context.Background(), UserSharingType, "user-1").
+		Return([]sharing.ReplayablePolicy(nil), (*tidcommon.ServiceError)(nil)).Once()
+
+	resource, _, svcErr := newUserExporter(users, entities, sharingMock).
+		GetResourceByID(context.Background(), "user-1")
+
+	require.Nil(t, svcErr)
+	doc, err := yaml.Marshal(resource)
+	require.NoError(t, err)
+	assert.Contains(t, string(doc), "projectId: project-1")
 }

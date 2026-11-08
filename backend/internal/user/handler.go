@@ -65,7 +65,13 @@ func (uh *userHandler) HandleUserListRequest(w http.ResponseWriter, r *http.Requ
 	includeDisplay := r.URL.Query().Get(sysutils.QueryParamInclude) == sysutils.IncludeValueDisplay
 
 	// Get the user list using the user service.
-	userListResponse, svcErr := uh.userService.GetUserList(ctx, limit, offset, filters, includeDisplay)
+	var userListResponse *UserListResponse
+	if query := r.URL.Query(); query.Has(queryParamProjectID) {
+		userListResponse, svcErr = uh.userService.GetUserListByProject(ctx,
+			sysutils.SanitizeString(query.Get(queryParamProjectID)), limit, offset, filters, includeDisplay)
+	} else {
+		userListResponse, svcErr = uh.userService.GetUserList(ctx, limit, offset, filters, includeDisplay)
+	}
 	if svcErr != nil {
 		handleError(ctx, w, svcErr)
 		return
@@ -100,8 +106,18 @@ func (uh *userHandler) HandleUserPostRequest(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	// A user in no project must name its organization unit; one in a project may leave it to the system
+	// organization unit.
+	projectID := sysutils.SanitizeString(createRequest.ProjectID)
+	if createRequest.OUID == "" && projectID == "" {
+		sysutils.WriteStructuredErrorResponse(w, http.StatusBadRequest, "Validation Failed",
+			map[string]string{"ouId": "The field 'ouId' is missing but is strictly required."})
+		return
+	}
+
 	user := &providers.User{
 		OUID:       createRequest.OUID,
+		ProjectID:  projectID,
 		Type:       createRequest.Type,
 		Attributes: createRequest.Attributes,
 	}

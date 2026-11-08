@@ -163,11 +163,32 @@ func (s *UserToolsTestSuite) TestListUsers() {
 		s.Equal(12, out.TotalResults)
 	})
 
+	s.Run("by project", func() {
+		inProject := alice()
+		inProject.ProjectID = "project-1"
+		s.users.On("GetUserListByProject", mock.Anything, "project-1", 30, 0, map[string]interface{}{}, true).
+			Return(&UserListResponse{TotalResults: 1, Users: []providers.User{*inProject}},
+				(*tidcommon.ServiceError)(nil)).Once()
+		var out userListMCPResponse
+		s.structured(s.call("list_users", map[string]any{"projectId": "project-1"}), &out)
+		s.Equal(1, out.TotalResults)
+		s.Equal("project-1", out.Users[0].ProjectID)
+	})
+
+	s.Run("by project failing", func() {
+		s.users.On("GetUserListByProject", mock.Anything, "project-1", 30, 0, map[string]interface{}{}, true).
+			Return(nil, &ErrorInvalidFilter).Once()
+		s.Contains(s.errorText(s.call("list_users", map[string]any{"projectId": "project-1"})),
+			"failed to list users")
+	})
+
 	s.Run("refusals", func() {
 		s.Contains(s.errorText(s.call("list_users", map[string]any{"attribute": "email"})),
 			"attribute and value together")
 		s.Contains(s.errorText(s.call("list_users", map[string]any{"attribute": "email", "value": "a",
 			"ouId": "ou-1"})), "can't be combined")
+		s.Contains(s.errorText(s.call("list_users", map[string]any{"attribute": "email", "value": "a",
+			"projectId": "project-1"})), "projectId can't be combined")
 	})
 }
 
@@ -248,11 +269,35 @@ func (s *UserToolsTestSuite) TestCreateUser() {
 			"roles":      []string{"r1"}, "groups": []string{"g1"}}), &out)
 		s.Require().NotNil(created)
 		s.Equal("ou-default", created.OUID)
+		s.Empty(created.ProjectID)
 		s.JSONEq(`{"username":"bob","email":"bob@example.com"}`, string(created.Attributes))
 		s.Equal("new-1", out.User.ID)
 		s.Equal([]string{"r1"}, out.RolesGranted)
 		s.Equal([]string{"g1"}, out.GroupsJoined)
 		s.Contains(out.Notice, "No password")
+	})
+
+	// A user in a project that names no organization unit is left for the user service to place in the
+	// system organization unit, so the Default organization unit is not looked up.
+	s.Run("in a project, without an organization unit", func() {
+		s.connect(true)
+		var created *providers.User
+		s.users.On("CreateUser", mock.Anything, mock.Anything).
+			Run(func(args mock.Arguments) { created = args.Get(1).(*providers.User) }).
+			Return(&providers.User{ID: "new-2", Type: "person", OUID: "ou-system", ProjectID: "project-1"},
+				(*tidcommon.ServiceError)(nil)).Once()
+		s.users.On("GetUser", mock.Anything, "new-2", true).Return(&providers.User{ID: "new-2", Type: "person",
+			OUID: "ou-system", ProjectID: "project-1"}, (*tidcommon.ServiceError)(nil)).Once()
+
+		var out createUserMCPResponse
+		s.structured(s.call("create_user", map[string]any{"userType": "person",
+			"attributes": map[string]any{"username": "carol", "email": "carol@example.com"},
+			"projectId":  "project-1"}), &out)
+		s.Require().NotNil(created)
+		s.Empty(created.OUID)
+		s.Equal("project-1", created.ProjectID)
+		s.Equal("project-1", out.User.ProjectID)
+		s.ous.AssertNotCalled(s.T(), "GetOrganizationUnitByPath", mock.Anything, mock.Anything)
 	})
 
 	s.Run("every problem at once, nothing created", func() {

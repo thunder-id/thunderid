@@ -61,6 +61,10 @@ type ProjectAPITestSuite struct {
 	presentationDefinitions []string
 	// credentialConfigurations are the credential configurations a test created.
 	credentialConfigurations []string
+	// users are the users a test created.
+	users []string
+	// userTypes are the user types a test created.
+	userTypes []string
 }
 
 func TestProjectAPITestSuite(t *testing.T) {
@@ -72,8 +76,8 @@ func (ts *ProjectAPITestSuite) SetupSuite() {
 }
 
 // TearDownTest removes what a test created: applications, agents, flows, resource servers, roles, layouts,
-// themes, notification templates, presentation definitions and credential configurations first, then
-// organization units, the latest first so that children go before their parents.
+// themes, notification templates, presentation definitions, credential configurations, users and user types
+// first, then organization units, the latest first so that children go before their parents.
 func (ts *ProjectAPITestSuite) TearDownTest() {
 	for _, id := range ts.apps {
 		_ = testutils.DeleteApplication(id)
@@ -105,6 +109,12 @@ func (ts *ProjectAPITestSuite) TearDownTest() {
 	for _, id := range ts.credentialConfigurations {
 		ts.do(http.MethodDelete, configurationsPath+"/"+id, "")
 	}
+	for _, id := range ts.users {
+		_ = testutils.DeleteUser(id)
+	}
+	for _, id := range ts.userTypes {
+		_ = testutils.DeleteUserType(id)
+	}
 	for _, id := range slices.Backward(ts.ous) {
 		_ = testutils.DeleteOrganizationUnit(id)
 	}
@@ -114,6 +124,7 @@ func (ts *ProjectAPITestSuite) TearDownTest() {
 	ts.projects, ts.ous, ts.apps, ts.agents, ts.flows, ts.resourceServers, ts.roles, ts.layouts =
 		nil, nil, nil, nil, nil, nil, nil, nil
 	ts.themes, ts.templates, ts.presentationDefinitions, ts.credentialConfigurations = nil, nil, nil, nil
+	ts.users, ts.userTypes = nil, nil
 }
 
 func (ts *ProjectAPITestSuite) handle(name string) string {

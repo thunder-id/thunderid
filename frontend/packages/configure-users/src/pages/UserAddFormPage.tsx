@@ -3,6 +3,7 @@
 
 import {DocumentTitle, FullScreenCreationWizardLayout} from '@thunderid/components';
 import {OrganizationUnitTreePicker} from '@thunderid/configure-organization-units';
+import {useProjectScope} from '@thunderid/contexts';
 import {useResolveDisplayName} from '@thunderid/hooks';
 import {
   Alert,
@@ -43,6 +44,10 @@ export default function UserAddFormPage(): JSX.Element {
   const routes = useUserRoutes();
   const {resolveDisplayName} = useResolveDisplayName({handlers: {t}});
   const createUser = useCreateUser();
+  const {projectId} = useProjectScope();
+  // Inside a project the user is created with the project alone, and the API places it in the system
+  // organization unit, so there is no organization unit to pick.
+  const isInProject = Boolean(projectId);
 
   const [typeId, setTypeId] = useState<string>('');
   const [ouId, setOuId] = useState<string>('');
@@ -72,7 +77,7 @@ export default function UserAddFormPage(): JSX.Element {
     );
 
     createUser.mutate(
-      {ouId, type: selectedType?.handle ?? '', attributes},
+      {...(isInProject ? {projectId} : {ouId}), type: selectedType?.handle ?? '', attributes},
       {
         onSuccess: () => {
           void navigate(routes.list());
@@ -151,7 +156,7 @@ export default function UserAddFormPage(): JSX.Element {
               </Select>
             </FormControl>
 
-            {selectedType && (
+            {selectedType && !isInProject && (
               <FormControl fullWidth required>
                 <FormLabel htmlFor="user-ou">{t('users:addForm.organizationUnit')}</FormLabel>
                 {/* A user of a type belongs to the type's organization unit or one beneath it. */}
@@ -175,7 +180,7 @@ export default function UserAddFormPage(): JSX.Element {
               <Button
                 type="submit"
                 variant="contained"
-                disabled={!selectedType || !ouId || !userType || createUser.isPending}
+                disabled={!selectedType || (!isInProject && !ouId) || !userType || createUser.isPending}
               >
                 {createUser.isPending ? t('users:addForm.creating') : t('users:addForm.submit')}
               </Button>

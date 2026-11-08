@@ -1,6 +1,7 @@
 // Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {ProjectScopeProvider} from '@thunderid/contexts';
 import {render, screen, waitFor, within, userEvent} from '@thunderid/test-utils';
 import type {User} from '@thunderid/types';
 import type {ReactNode} from 'react';
@@ -296,6 +297,57 @@ describe('UserEditPage', () => {
     // A fresh object per call, like useMutation. A stable stand-in hides identity churn.
     mockUseUpdateUser.mockImplementation(() => ({...defaultUpdateReturn}));
     mockUseDeleteUser.mockReturnValue({...defaultDeleteReturn});
+  });
+
+  describe('inside a project', () => {
+    it('returns to the list for a user of another project', async () => {
+      mockUseGetUser.mockReturnValue({
+        data: {...mockUserData, projectId: 'project-2'},
+        isLoading: false,
+        error: null,
+        refetch: mockRefetch,
+      });
+
+      render(
+        <ProjectScopeProvider project={{id: 'project-1'}}>
+          <UserEditPage />
+        </ProjectScopeProvider>,
+      );
+
+      await waitFor(() => {
+        expect(mockNavigate).toHaveBeenCalledWith('/users', {replace: true});
+      });
+    });
+
+    it('returns to the list for a user of the organization', async () => {
+      render(
+        <ProjectScopeProvider project={{id: 'project-1'}}>
+          <UserEditPage />
+        </ProjectScopeProvider>,
+      );
+
+      await waitFor(() => {
+        expect(mockNavigate).toHaveBeenCalledWith('/users', {replace: true});
+      });
+    });
+
+    it('shows a user of the selected project', () => {
+      mockUseGetUser.mockReturnValue({
+        data: {...mockUserData, projectId: 'project-1'},
+        isLoading: false,
+        error: null,
+        refetch: mockRefetch,
+      });
+
+      render(
+        <ProjectScopeProvider project={{id: 'project-1'}}>
+          <UserEditPage />
+        </ProjectScopeProvider>,
+      );
+
+      expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+      expect(mockNavigate).not.toHaveBeenCalledWith('/users', {replace: true});
+    });
   });
 
   describe('Loading and Error States', () => {
