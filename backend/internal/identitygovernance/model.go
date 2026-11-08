@@ -8,6 +8,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/notification"
+	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -207,6 +208,8 @@ type lifecycleAudit struct {
 	operatorNoteRecorded *bool
 	// appliedBy is whose suspension was placed or lifted.
 	appliedBy providers.SuspensionAppliedBy
+	// auditAction names the operation on the audit event bus.
+	auditAction audit.Action
 }
 
 // lockNotice is one queued lock email. It holds no address; the address is read at delivery.
