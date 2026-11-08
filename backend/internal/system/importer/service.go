@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -35,6 +36,8 @@ import (
 	"github.com/thunder-id/thunderid/internal/resource"
 	"github.com/thunder-id/thunderid/internal/role"
 	"github.com/thunder-id/thunderid/internal/sharing"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
+	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/secretresolver"
 	"github.com/thunder-id/thunderid/internal/vc/credential"
@@ -354,6 +357,7 @@ type importService struct {
 	notifTemplateService           notificationTemplateAdapter
 	authorizationDetailTypeService authorizationDetailTypeAdapter
 	httpConnectionService          httpConnectionAdapter
+	bus                            eventbus.EventBusInterface
 	// references replaces a var: or sec: reference with the value this deployment holds. Nil leaves
 	// references in place, which is what a control plane wants: it keeps configuration as references
 	// and holds no values.
@@ -381,6 +385,7 @@ func newImportService(
 	serverConfigService serverConfigAdapter,
 	gatewayService gatewayAdapter,
 	notifTemplateService notificationTemplateAdapter,
+	bus eventbus.EventBusInterface,
 	authZENPDPServices ...authZENPDPAdapter,
 ) ImportServiceInterface {
 	var authZENPDPService authZENPDPAdapter
@@ -409,10 +414,26 @@ func newImportService(
 		serverConfigService:            serverConfigService,
 		gatewayService:                 gatewayService,
 		notifTemplateService:           notifTemplateService,
+		bus:                            bus,
 	}
 }
 
+// ImportResources imports the resources the request carries and removes the ones it names. Each
+// resource is recorded by the service that writes it; the request itself is recorded once, as failed
+// when any of its items failed, and a dry run, which writes nothing, is recorded too.
 func (s *importService) ImportResources(
+	ctx context.Context, request *ImportRequest,
+) (*ImportResponse, *tidcommon.ServiceError) {
+	response, svcErr := s.importResources(ctx, request)
+	itemFailed := response != nil && response.Summary != nil && response.Summary.Failed > 0
+	dryRun := request != nil && request.DryRun
+	s.publishConfigurationEvent(ctx, audit.EventConfigurationImport, audit.ActionImport, svcErr, itemFailed,
+		map[string]string{audit.DetailDryRun: strconv.FormatBool(dryRun)})
+	return response, svcErr
+}
+
+// importResources imports the resources the request carries without publishing its audit event.
+func (s *importService) importResources(
 	ctx context.Context, request *ImportRequest,
 ) (*ImportResponse, *tidcommon.ServiceError) {
 	if request == nil || (request.Content == "" && len(request.Deletions) == 0) {
@@ -593,7 +614,18 @@ func documentName(doc parsedDocument) string {
 	return named.Name
 }
 
+// DeleteResource deletes the declarative resource file the request names.
 func (s *importService) DeleteResource(
+	ctx context.Context, request *DeleteResourceRequest,
+) (*DeleteResourceResponse, *tidcommon.ServiceError) {
+	response, svcErr := s.deleteResource(ctx, request)
+	s.publishConfigurationEvent(ctx, audit.EventConfigurationDelete, audit.ActionDelete, svcErr, false, nil)
+	return response, svcErr
+}
+
+// deleteResource deletes the declarative resource file the request names without publishing its audit
+// event.
+func (s *importService) deleteResource(
 	ctx context.Context, request *DeleteResourceRequest,
 ) (*DeleteResourceResponse, *tidcommon.ServiceError) {
 	if request == nil || request.ResourceType == "" || request.ResourceKey == "" {
@@ -616,6 +648,15 @@ func (s *importService) DeleteResource(
 		ResourceKey:  request.ResourceKey,
 		DeletedFile:  deletedFile,
 	}, nil
+}
+
+// publishConfigurationEvent publishes the audit event of a request on the configuration as a whole, after
+// it completed or was refused. The event names no resource: what a request carries is never recorded.
+func (s *importService) publishConfigurationEvent(ctx context.Context, name string, action audit.Action,
+	svcErr *tidcommon.ServiceError, itemFailed bool, details map[string]string) {
+	target := audit.Ref{Type: audit.TargetTypeConfiguration}
+	eventbus.TryPublish(ctx, s.bus, eventbus.NewEvent(ctx, name).With(
+		audit.BatchPayload(ctx, target, action, svcErr, itemFailed).WithDetails(details)))
 }
 
 func (s *importService) importDocument(

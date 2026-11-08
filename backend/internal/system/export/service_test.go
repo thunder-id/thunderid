@@ -112,7 +112,7 @@ func (suite *ExportServiceTestSuite) SetupTest() {
 	// Create parameterizer instance
 	parameterizer := newParameterizer(templatingRules{}, TemplatePlaceholders)
 
-	suite.exportService = newExportService(exporters, parameterizer)
+	suite.exportService = newExportService(exporters, parameterizer, discardingBus{})
 }
 
 func (suite *ExportServiceTestSuite) TearDownTest() {
@@ -1318,7 +1318,7 @@ func (suite *ExportServiceTestSuite) TestExportResources_TemplateGenerationError
 	}
 
 	// Create a new export service with the mock parameterizer
-	exportServiceWithMock := newExportService(exporters, mockParameterizer)
+	exportServiceWithMock := newExportService(exporters, mockParameterizer, discardingBus{})
 
 	result, err := exportServiceWithMock.ExportResources(context.Background(), request)
 
@@ -2901,7 +2901,7 @@ func TestExport_AuthorizationDetailTypeRoundTrips(t *testing.T) {
 	service.EXPECT().GetAuthorizationDetailType(mock.Anything, "adt-1").Return(original, nil)
 	exportService := newExportService([]declarativeresource.ResourceExporter{
 		authzdetailmgt.NewTypeExporterForTest(service),
-	}, newParameterizer(templatingRules{}, TemplatePlaceholders))
+	}, newParameterizer(templatingRules{}, TemplatePlaceholders), discardingBus{})
 
 	resp, svcErr := exportService.ExportResources(context.Background(),
 		&ExportRequest{AuthorizationDetailTypes: []string{"adt-1"}})
@@ -2950,7 +2950,7 @@ func TestExport_AuthorizationDetailTypeProcessorCredentialIsAVariable(t *testing
 	service.EXPECT().GetAuthorizationDetailType(mock.Anything, "adt-1").Return(original, nil)
 	exportService := newExportService([]declarativeresource.ResourceExporter{
 		authzdetailmgt.NewTypeExporterForTest(service),
-	}, newParameterizer(templatingRules{}, TemplatePlaceholders))
+	}, newParameterizer(templatingRules{}, TemplatePlaceholders), discardingBus{})
 
 	resp, svcErr := exportService.ExportResources(context.Background(),
 		&ExportRequest{AuthorizationDetailTypes: []string{"adt-1"}})
@@ -2984,7 +2984,7 @@ func (suite *ExportServiceTestSuite) TestExportResources_HTTPConnectionPasswordI
 	exportService := newExportService([]declarativeresource.ResourceExporter{
 		connection.NewConnectionExporterForTest(suite.idpServiceMock, suite.mockNotificationService, nil,
 			httpService),
-	}, newParameterizer(templatingRules{}, TemplatePlaceholders))
+	}, newParameterizer(templatingRules{}, TemplatePlaceholders), discardingBus{})
 
 	result, svcErr := exportService.ExportResources(context.Background(), &ExportRequest{
 		Connections: []string{"http-1"}, Options: &ExportOptions{Format: "yaml"},
@@ -3048,7 +3048,7 @@ func (suite *ExportServiceTestSuite) TestExportResources_HTTPConnectionBearerAnd
 			exportService := newExportService([]declarativeresource.ResourceExporter{
 				connection.NewConnectionExporterForTest(suite.idpServiceMock, suite.mockNotificationService, nil,
 					httpService),
-			}, newParameterizer(templatingRules{}, TemplatePlaceholders))
+			}, newParameterizer(templatingRules{}, TemplatePlaceholders), discardingBus{})
 
 			result, svcErr := exportService.ExportResources(context.Background(), &ExportRequest{
 				Connections: []string{"http-1"}, Options: &ExportOptions{Format: "yaml"},

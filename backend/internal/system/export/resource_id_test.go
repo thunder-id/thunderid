@@ -39,7 +39,7 @@ func TestPlaceholderValuesRefuseAnExporterThatCannotReadAnID(t *testing.T) {
 		rules: &declarativeresource.ResourceRules{Variables: []string{"Field"}},
 	}
 	svc := newExportService([]declarativeresource.ResourceExporter{exporter},
-		newParameterizer(templatingRules{}, ValueReferences))
+		newParameterizer(templatingRules{}, ValueReferences), discardingBus{})
 
 	_, _, err := svc.PlaceholderValues(context.Background(), "thing", struct{ Field string }{Field: "value"})
 

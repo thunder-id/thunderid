@@ -22,6 +22,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/export"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/tests/mocks/eventbusmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oumock"
 )
 
@@ -409,9 +410,11 @@ func (s *ExporterTestSuite) TestExportMultilineBodyRoundTrips() {
 	s.service.On("GetTemplate", mock.Anything, ChannelTypeSMS, "welcome-email").
 		Return(nil, &ErrorTemplateNotFound).Maybe()
 
-	exportSvc := export.Initialize(http.NewServeMux(),
-		[]declarativeresource.ResourceExporter{s.exporter}, export.TemplatePlaceholders)
-	result, svcErr := exportSvc.ExportResources(s.ctx,
+	exportSvc, err := export.Initialize(http.NewServeMux(),
+		[]declarativeresource.ResourceExporter{s.exporter}, export.TemplatePlaceholders,
+		eventbusmock.NewEventBusInterfaceMock(s.T()))
+	s.Require().NoError(err)
+	result, svcErr := exportSvc.ReadResources(s.ctx,
 		&export.ExportRequest{NotificationTemplates: []string{"welcome-email"}})
 	s.Require().Nil(svcErr)
 	s.Require().Len(result.Files, 1)

@@ -5,6 +5,8 @@
 package importer
 
 import (
+	"errors"
+
 	"github.com/thunder-id/thunderid/internal/agent"
 	"github.com/thunder-id/thunderid/internal/application"
 	authzdetailmgt "github.com/thunder-id/thunderid/internal/authzdetail/mgt"
@@ -132,4 +134,7 @@ var (
 			DefaultValue: "A secret reference may only stand in a field that holds a credential",
 		},
 	}
+
+	// errNilEventBus is returned when the service is initialized without the event bus it audits on.
+	errNilEventBus = errors.New("the import service needs an event bus")
 )

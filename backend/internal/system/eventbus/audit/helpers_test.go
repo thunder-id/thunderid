@@ -50,6 +50,8 @@ var (
 	testGroup       = Ref{Type: TargetTypeGroup, ID: testGroupID}
 	testToken       = Ref{Type: TargetTypeToken}
 	testGateway     = Ref{Type: TargetTypeGateway, ID: testGatewayID}
+	// testConfiguration is the configuration as a whole, which has no ID.
+	testConfiguration = Ref{Type: TargetTypeConfiguration}
 )
 
 // received is one audit event a sink was handed.
