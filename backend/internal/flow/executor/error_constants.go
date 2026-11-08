@@ -1429,20 +1429,6 @@ var (
 		},
 	}
 
-	// ErrActionDeletionFailed is returned when a validated action deletion was refused.
-	ErrActionDeletionFailed = tidcommon.ServiceError{
-		Type: tidcommon.ClientErrorType,
-		Code: "FET-1109",
-		Error: tidcommon.I18nMessage{
-			Key:          "flows.executor.errors.action_deletion_failed",
-			DefaultValue: "Action deletion failed",
-		},
-		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "flows.executor.errors.action_deletion_failed_desc",
-			DefaultValue: "The action may already be deleted, or it changed after the request was validated",
-		},
-	}
-
 	// ErrInvalidRolePermissions is returned when the permission set for a role permission change is malformed.
 	ErrInvalidRolePermissions = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,

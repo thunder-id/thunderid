@@ -50,7 +50,6 @@ const (
 	ExecutorNameClientSecret                 = "ClientSecretExecutor"
 	ExecutorNameAccessChangeValidator        = "AccessChangeValidator"
 	ExecutorNameRole                         = "RoleExecutor"
-	ExecutorNameActionDeletion               = "ActionDeletionExecutor"
 	ExecutorNameIdentityGovernance           = "IdentityGovernanceExecutor"
 	ExecutorNamePreSuspend                   = "PreSuspendExecutor"
 	ExecutorNameExtension                    = "ExtensionExecutor"

@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
+	flowcommon "github.com/thunder-id/thunderid/internal/flow/common"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/eventbus"
@@ -559,24 +560,40 @@ func (s *ResourceServiceAuditTestSuite) TestDeleteAction_PublishesOneEventPerAtt
 	cases := []struct {
 		name    string
 		err     error
+		preErr  *tidcommon.ServiceError
+		postErr *tidcommon.ServiceError
 		outcome audit.Outcome
 	}{
 		{name: "the action is deleted", outcome: audit.OutcomeSucceeded},
 		{name: "the store fails", err: errors.New("store failure"), outcome: audit.OutcomeFailed("sse_5000")},
+		{name: "the system flow before the deletion refuses the caller", preErr: &tidcommon.ErrorUnauthorized,
+			outcome: audit.OutcomeDenied("forbidden")},
+		{name: "the system flow after the deletion fails", postErr: &tidcommon.InternalServerError,
+			outcome: audit.OutcomeSucceeded},
 	}
 	for _, tc := range cases {
 		s.Run(tc.name, func() {
 			bus, published := newRecordingBus(s.T())
 			service := s.newService(bus)
+			flows := newSystemFlowProviderMock(s.T())
+			s.Require().NoError(SetSystemFlowProvider(service, flows))
+			flows.EXPECT().ExecuteSystemFlow(mock.Anything, isHandle(systemFlowActionDeletePre)).
+				Return(&flowcommon.SystemFlowResult{}, tc.preErr).Once()
 			s.store.On("GetResourceServer", mock.Anything, testAuditServerID).Return(storedServer(), nil)
 			s.store.On("IsActionExist", mock.Anything, testAuditActionID, testAuditServerID, (*string)(nil)).
 				Return(true, nil)
-			s.store.On("DeleteAction", mock.Anything, testAuditActionID, testAuditServerID, (*string)(nil)).
-				Return(tc.err)
+			if tc.preErr == nil {
+				s.store.On("DeleteAction", mock.Anything, testAuditActionID, testAuditServerID, (*string)(nil)).
+					Return(tc.err)
+			}
+			if tc.preErr == nil && tc.err == nil {
+				flows.EXPECT().ExecuteSystemFlow(mock.Anything, isHandle(systemFlowRevocationPost)).
+					Return(&flowcommon.SystemFlowResult{}, tc.postErr).Once()
+			}
 
 			svcErr := service.DeleteAction(adminContext(), testAuditServerID, nil, testAuditActionID)
 
-			s.Equal(tc.outcome == audit.OutcomeSucceeded, svcErr == nil)
+			s.Equal(tc.outcome == audit.OutcomeSucceeded && tc.postErr == nil, svcErr == nil)
 			s.requireOnlyEvent(published(), audit.EventResourceServerActionDelete, audit.ActionDelete,
 				audit.Ref{Type: audit.TargetTypeAction, ID: testAuditActionID}, tc.outcome)
 		})

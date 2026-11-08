@@ -15,6 +15,7 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	"github.com/thunder-id/thunderid/internal/connection/authzenpdp"
+	flowcommon "github.com/thunder-id/thunderid/internal/flow/common"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/revocation"
 	"github.com/thunder-id/thunderid/internal/system/config"
@@ -142,11 +143,19 @@ type resourceService struct {
 	// keepsReferences is set on a control plane, which keeps a value reference where a value belongs.
 	keepsReferences bool
 	bus             eventbus.EventBusInterface
+	// systemFlows is nil where system flows are off.
+	systemFlows systemFlowProvider
 }
 
 // projectOUValidator checks that the organization unit of a resource scoped to a project belongs to it.
 type projectOUValidator interface {
 	ValidateProjectOU(ctx context.Context, projectID, ouID string) *tidcommon.ServiceError
+}
+
+// systemFlowProvider runs a system flow to completion. The flow engine implements it.
+type systemFlowProvider interface {
+	ExecuteSystemFlow(ctx context.Context, sysCtx *flowcommon.SystemFlowContext) (*flowcommon.SystemFlowResult,
+		*tidcommon.ServiceError)
 }
 
 // authZENPDPConnectionLookup retrieves AuthZEN PDP connections for resource-server validation.
@@ -1520,7 +1529,7 @@ func (rs *resourceService) DeleteAction(
 	ctx context.Context,
 	resourceServerID string, resourceID *string, id string,
 ) *tidcommon.ServiceError {
-	svcErr := rs.deleteAction(ctx, resourceServerID, resourceID, id)
+	inputs, shared, svcErr := rs.deleteAction(ctx, resourceServerID, resourceID, id)
 	// A delete that found nothing to remove succeeds without an event, so no caller can record a
 	// deletion of an ID it made up.
 	if svcErr == errActionNotFoundNoop {
@@ -1528,25 +1537,33 @@ func (rs *resourceService) DeleteAction(
 	}
 	rs.publishEvent(ctx, audit.EventResourceServerActionDelete, audit.TargetTypeAction, audit.ActionDelete, id,
 		svcErr)
+	if svcErr != nil {
+		return svcErr
+	}
+
+	// The cutoff moves once the removal is committed, so a token issued before the action was gone for
+	// every request is revoked too. A failure here is reported, but the action is already removed.
+	_, svcErr = rs.runSystemFlow(ctx, systemFlowRevocationPost, inputs, shared)
 	return svcErr
 }
 
-// deleteAction deletes an action without publishing its audit event.
+// deleteAction deletes an action without publishing its audit event or running the revocation post flow.
+// It returns the post flow's inputs and what the pre flow shared.
 func (rs *resourceService) deleteAction(
 	ctx context.Context,
 	resourceServerID string, resourceID *string, id string,
-) *tidcommon.ServiceError {
+) (map[string]string, map[string]string, *tidcommon.ServiceError) {
 	if svcErr := rs.validateActionDelete(ctx, resourceServerID, resourceID, id); svcErr != nil {
-		return svcErr
+		return nil, nil, svcErr
 	}
 
 	// Validate resource server exists
 	_, svcErr := rs.validateAndGetResourceServer(ctx, resourceServerID)
 	if svcErr != nil {
 		if svcErr.Code == ErrorResourceServerNotFound.Code {
-			return errActionNotFoundNoop // Idempotent delete
+			return nil, nil, errActionNotFoundNoop // Idempotent delete
 		}
-		return svcErr
+		return nil, nil, svcErr
 	}
 
 	// Validate resource if provided
@@ -1555,9 +1572,9 @@ func (rs *resourceService) deleteAction(
 		_, svcErr := rs.validateAndGetResourceByID(ctx, *resourceID, resourceServerID)
 		if svcErr != nil {
 			if svcErr.Code == ErrorResourceNotFound.Code {
-				return errActionNotFoundNoop // Idempotent delete
+				return nil, nil, errActionNotFoundNoop // Idempotent delete
 			}
-			return svcErr
+			return nil, nil, svcErr
 		}
 		resID = resourceID
 	}
@@ -1566,10 +1583,20 @@ func (rs *resourceService) deleteAction(
 	exists, err := rs.resourceStore.IsActionExist(ctx, id, resourceServerID, resID)
 	if err != nil {
 		rs.logger.Error(ctx, "Failed to check action existence", log.Error(err))
-		return &tidcommon.InternalServerError
+		return nil, nil, &tidcommon.InternalServerError
 	}
 	if !exists {
-		return errActionNotFoundNoop // Idempotent delete
+		return nil, nil, errActionNotFoundNoop // Idempotent delete
+	}
+
+	// Revokes every token carrying the action's scope before the action is removed.
+	inputs := map[string]string{systemFlowInputResourceServer: resourceServerID, systemFlowInputAction: id}
+	if resID != nil {
+		inputs[systemFlowInputResource] = *resID
+	}
+	shared, svcErr := rs.runSystemFlow(ctx, systemFlowActionDeletePre, inputs, nil)
+	if svcErr != nil {
+		return nil, nil, svcErr
 	}
 
 	// Use transaction for write operation
@@ -1580,10 +1607,10 @@ func (rs *resourceService) deleteAction(
 		}
 		return rs.cascadeDeleteDependents(txCtx, resourcedependency.ResourceTypeAction, id)
 	}); err != nil {
-		return &tidcommon.InternalServerError
+		return nil, nil, &tidcommon.InternalServerError
 	}
 
-	return nil
+	return inputs, shared, nil
 }
 
 // publishEvent publishes the audit event of an attempt on the resource server, resource or action with id,
@@ -1691,6 +1718,21 @@ func (rs *resourceService) ResolveResourceServerOUHandle(
 		server.OUID = ou.ID
 	}
 	return nil
+}
+
+// runSystemFlow runs a system flow with the given inputs, starting from what an earlier run shared, and
+// returns what this run shared. With system flows off it runs nothing.
+func (rs *resourceService) runSystemFlow(ctx context.Context, handle string,
+	inputs, runtimeData map[string]string) (map[string]string, *tidcommon.ServiceError) {
+	if rs.systemFlows == nil {
+		return nil, nil
+	}
+	result, svcErr := rs.systemFlows.ExecuteSystemFlow(ctx, &flowcommon.SystemFlowContext{
+		Handle: handle, Inputs: inputs, RuntimeData: runtimeData})
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	return result.RuntimeData, nil
 }
 
 // Validation helper methods

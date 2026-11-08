@@ -416,10 +416,6 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 				newRoleExecutor(deps.FlowFactory, deps.RoleAssignmentService,
 					deps.PermissionResolver))
 		},
-		ExecutorNameActionDeletion: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
-			reg.RegisterExecutor(ExecutorNameActionDeletion,
-				newActionDeletionExecutor(deps.FlowFactory, deps.ResourceMgtService))
-		},
 		ExecutorNameSessionRevocation: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameSessionRevocation,
 				newSessionRevocationExecutor(deps.FlowFactory, deps.SessionService))
@@ -592,9 +588,8 @@ type sharingAdminProvider interface {
 		resourceID, targetOUID string) *tidcommon.ServiceError
 }
 
-// resourceAdminProvider is the resource seam the action deletion validator and executor consume.
+// resourceAdminProvider is the resource seam the action deletion validator consumes.
 type resourceAdminProvider interface {
 	ValidateDeleteAction(ctx context.Context, resourceServerID string, resourceID *string, id string) (
 		*revocation.AccessRevocationTarget, *tidcommon.ServiceError)
-	DeleteAction(ctx context.Context, resourceServerID string, resourceID *string, id string) *tidcommon.ServiceError
 }

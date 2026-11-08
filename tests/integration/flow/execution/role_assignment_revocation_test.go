@@ -18,10 +18,7 @@ import (
 
 const roleTargetInput = "targetRoleId"
 
-const (
-	errCodeRoleNotFound                         = "ROL-1003"
-	errCodeAdministrationAuthenticationRequired = "FES-1017"
-)
+const errCodeRoleNotFound = "ROL-1003"
 
 const roleFlowResourceID = "https://roleflow.dmv.test"
 
