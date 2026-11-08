@@ -72,11 +72,11 @@ const inView = (element: Element): boolean => {
 const cardOrder = (): (string | null)[] =>
   screen.getAllByRole('treeitem').map((item) => item.getAttribute('aria-label'));
 
-// dnd-kit animates a drop for 250ms, and a drag started before it ends is lost.
+// dnd-kit animates a drop, and a drag started before it ends is lost. Until it ends, a placeholder copy of
+// the dragged field stays in the card, with the field's drop gaps, so their test IDs match twice. dnd-kit
+// removes the placeholder when the animation ends, which a fixed delay can miss on a slow machine.
 const dropAnimation = (): Promise<void> =>
-  new Promise((resolve) => {
-    setTimeout(resolve, 300);
-  });
+  waitFor(() => expect(document.querySelector('[data-dnd-placeholder]')).toBeNull());
 
 const lastSchema = (mock: ReturnType<typeof vi.fn>): Record<string, unknown> =>
   mock.mock.calls[mock.mock.calls.length - 1][0] as Record<string, unknown>;
