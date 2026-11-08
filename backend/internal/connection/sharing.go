@@ -203,6 +203,12 @@ func (s *service) createSharingPolicy(
 	if svcErr := declarativeresource.CheckDeclarativeCreate(); svcErr != nil {
 		return sharing.Policy{}, svcErr
 	}
+	// A deployed connection's own sharing is deployed with it.
+	if initiatingOUID == owningOUID {
+		if svcErr := s.refuseManaged(ctx, connectionID); svcErr != nil {
+			return sharing.Policy{}, svcErr
+		}
+	}
 	policy, svcErr := s.sharingService.CreatePolicy(ctx, ConnectionSharingType, connectionID, owningOUID, req)
 	return policy, translateSharingError(svcErr)
 }
@@ -244,7 +250,7 @@ func (s *service) listSharingPolicies(
 func (s *service) updateSharingPolicy(
 	ctx context.Context, owner ownerLookup, connectionID, policyID string, req sharing.PolicyRequest,
 ) (sharing.Policy, *tidcommon.ServiceError) {
-	_, policy, svcErr := s.requireOwnPolicy(ctx, owner, connectionID, policyID)
+	owningOUID, policy, svcErr := s.requireOwnPolicy(ctx, owner, connectionID, policyID)
 	if svcErr != nil {
 		return sharing.Policy{}, svcErr
 	}
@@ -255,6 +261,11 @@ func (s *service) updateSharingPolicy(
 	if svcErr := declarativeresource.CheckDeclarativeUpdate(); svcErr != nil {
 		return sharing.Policy{}, svcErr
 	}
+	if policy.InitiatingOUID == owningOUID {
+		if svcErr := s.refuseManaged(ctx, connectionID); svcErr != nil {
+			return sharing.Policy{}, svcErr
+		}
+	}
 	updated, svcErr := s.sharingService.UpdatePolicy(ctx, policyID, req)
 	return updated, translateSharingError(svcErr)
 }
@@ -263,7 +274,7 @@ func (s *service) updateSharingPolicy(
 func (s *service) deleteSharingPolicy(
 	ctx context.Context, owner ownerLookup, connectionID, policyID string,
 ) *tidcommon.ServiceError {
-	_, policy, svcErr := s.requireOwnPolicy(ctx, owner, connectionID, policyID)
+	owningOUID, policy, svcErr := s.requireOwnPolicy(ctx, owner, connectionID, policyID)
 	if svcErr != nil {
 		if svcErr.Code == ErrorSharingPolicyNotFound.Code {
 			return nil
@@ -276,6 +287,11 @@ func (s *service) deleteSharingPolicy(
 	}
 	if svcErr := declarativeresource.CheckDeclarativeDelete(); svcErr != nil {
 		return svcErr
+	}
+	if policy.InitiatingOUID == owningOUID {
+		if svcErr := s.refuseManaged(ctx, connectionID); svcErr != nil {
+			return svcErr
+		}
 	}
 	if policy.Declared {
 		return &ErrorSharingPolicyDeclared

@@ -838,7 +838,7 @@ func (s *versionService) write(ctx context.Context, gw *Gateway, target *Version
 		}
 	}
 	stillHolds := func() bool { return s.mayStillSend(ctx, gw, target, token, prepared) == nil }
-	answer, wrote, err := s.send(ctx, gw, key, &request, after, awaiting, stillHolds)
+	answer, wrote, plain, err := s.send(ctx, gw, key, &request, after, awaiting, stillHolds)
 	// Once the gateway may have written any of it, the version is kept as it is.
 	delivered = wrote || mayHaveWritten(err)
 	if err != nil {
@@ -849,6 +849,7 @@ func (s *versionService) write(ctx context.Context, gw *Gateway, target *Version
 
 	result := applyResultOf(gw, dryRun, diff, answer, missing, changed)
 	result.DroppedPolicies = dropped
+	result.PlainImport = plain
 	if dryRun {
 		return result, nil
 	}
@@ -973,44 +974,44 @@ func levelWith(master *Master, version *Version) appliedState {
 // written. The request is left naming every removal sent.
 func (s *versionService) send(ctx context.Context, gw *Gateway, key string, request *gatewayImportRequest,
 	after []gatewayDeletion, awaiting map[string][]bundleResource, stillHolds func() bool) (
-	json.RawMessage, bool, error) {
+	json.RawMessage, bool, bool, error) {
 	if request.Content == "" && len(request.Deletions) == 0 && len(after) == 0 {
-		return json.RawMessage(`{"results":[]}`), false, nil
+		return json.RawMessage(`{"results":[]}`), false, false, nil
 	}
 	if request.DryRun {
 		request.Deletions = append(request.Deletions, after...)
-		answer, err := s.client.Import(ctx, gw, key, *request)
+		answer, plain, err := s.client.Import(ctx, gw, key, *request)
 		if err != nil {
-			return answer, false, err
+			return answer, false, plain, err
 		}
-		return rejectUnacceptedRemovals(answer, request.SharingRemovals), false, nil
+		return rejectUnacceptedRemovals(answer, request.SharingRemovals), false, plain, nil
 	}
-	answer, err := s.client.Import(ctx, gw, key, *request)
+	answer, plain, err := s.client.Import(ctx, gw, key, *request)
 	if err != nil {
-		return nil, mayHaveWritten(err), err
+		return nil, mayHaveWritten(err), plain, err
 	}
 	answer = rejectUnacceptedRemovals(answer, request.SharingRemovals)
 	released := releasedRemovals(after, awaiting, answer)
 	if len(released) == 0 || !stillHolds() {
-		return answer, true, nil
+		return answer, true, plain, nil
 	}
 	// The first import's outcomes stand whatever becomes of the second: what it wrote is recorded. The
 	// removals the second was for are recorded only from an answer that says how they went; otherwise
 	// they stay pending, offered again by the next diff, since the gateway may or may not have made them.
-	more, err := s.client.Import(ctx, gw, key, gatewayImportRequest{Options: request.Options, Deletions: released})
+	more, _, err := s.client.Import(ctx, gw, key, gatewayImportRequest{Options: request.Options, Deletions: released})
 	if err != nil {
 		s.logger.Warn(ctx, "The removals an update freed were not confirmed, so they stay pending",
 			log.String("gatewayID", gw.ID), log.Error(err))
-		return answer, true, nil
+		return answer, true, plain, nil
 	}
 	merged, ok := mergeAnswers(answer, more)
 	if !ok {
 		s.logger.Warn(ctx, "The gateway's answer to the removals an update freed could not be read, so they "+
 			"stay pending", log.String("gatewayID", gw.ID))
-		return answer, true, nil
+		return answer, true, plain, nil
 	}
 	request.Deletions = append(request.Deletions, released...)
-	return merged, true, nil
+	return merged, true, plain, nil
 }
 
 // mayStillSend reports whether an apply may send its import now. A lease held longer than an apply

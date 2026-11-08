@@ -132,6 +132,8 @@ curl -X POST https://localhost:8090/gateways/<gateway_id>/apply \
   -d '{"version": "latest"}'
 ```
 
+The version is sent to the gateway's [managed import](./import-resources.mdx#managed-import), so what it deploys is read only on the gateway: its own console and APIs refuse to change it, and only a later apply does. Upgrade a gateway before the control plane that deploys to it. A gateway on a release without the managed import answers `404` for it, and the control plane sends the same import to the gateway's plain `POST /import` instead. That deploy succeeds, but what it writes is editable on that gateway. Upgrading the gateway does not make it read only: a resource is marked only when a managed import writes it, and an apply sends only what changed, so each of these resources stays editable until the control plane next deploys a change to it. The result of such an apply carries `"plainImport": true`, and the control plane logs a warning.
+
 Only what differs is sent: the resources the gateway's master says it lacks or holds in another form,
 and the removal of what the master records that the version no longer has. A resource the gateway
 holds as the version has it is not sent again, and the control plane never removes something it did

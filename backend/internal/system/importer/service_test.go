@@ -787,6 +787,20 @@ func (f *fakeRoleAssignmentService) AddAssigneesToRoles(
 	return nil
 }
 
+// ResolveAssignmentOUs places an assignment that names no unit in "owner-ou".
+func (f *fakeRoleAssignmentService) ResolveAssignmentOUs(
+	_ context.Context, assignments []role.RoleAssignment,
+) ([]role.RoleAssignment, *tidcommon.ServiceError) {
+	resolved := make([]role.RoleAssignment, len(assignments))
+	for i, a := range assignments {
+		if a.OUID == "" {
+			a.OUID = "owner-ou"
+		}
+		resolved[i] = a
+	}
+	return resolved, nil
+}
+
 type fakeGroupService struct {
 	created   []group.CreateGroupRequest
 	members   []group.Member

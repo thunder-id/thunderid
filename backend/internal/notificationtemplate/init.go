@@ -13,6 +13,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/eventbus"
+	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
 	"github.com/thunder-id/thunderid/internal/system/projectscope"
 	"github.com/thunder-id/thunderid/internal/system/security"
@@ -49,6 +50,7 @@ func Initialize(mux *http.ServeMux, cacheManager cache.CacheManagerInterface,
 
 	service := newNotificationTemplateService(store, transactioner, ouService, authzService, projectValidator,
 		requireProject, bus)
+	service.(*notificationTemplateService).managed = managedresource.GetStore()
 	handler := newNotificationTemplateHandler(service)
 	registerRoutes(mux, handler)
 

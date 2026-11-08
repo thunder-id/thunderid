@@ -751,3 +751,18 @@ CREATE TABLE "NOTIFICATION_TEMPLATE" (
 
 -- Composite index for listing the notification templates of a project
 CREATE INDEX idx_notification_template_project ON "NOTIFICATION_TEMPLATE" (DEPLOYMENT_ID, PROJECT_ID);
+
+-- What a control plane deployed to this data plane, through the managed import. A resource named
+-- here is read only on the data plane: only a later managed import changes or removes it. PART is
+-- empty for the resource itself; for an entry of a resource that is owned one by one, such as a
+-- group's member or a role's assignment, PART names the collection and PART_KEY the entry. A
+-- resource or entry created on the data plane has no row and stays editable.
+CREATE TABLE "MANAGED_RESOURCE" (
+    DEPLOYMENT_ID VARCHAR(255) NOT NULL,
+    RESOURCE_TYPE VARCHAR(64)  NOT NULL,
+    RESOURCE_ID   VARCHAR(255) NOT NULL,
+    PART          VARCHAR(64)  NOT NULL DEFAULT '',
+    PART_KEY      VARCHAR(512) NOT NULL DEFAULT '',
+    MARKED_AT     TEXT         DEFAULT (datetime('now')),
+    PRIMARY KEY (DEPLOYMENT_ID, RESOURCE_ID, RESOURCE_TYPE, PART, PART_KEY)
+);

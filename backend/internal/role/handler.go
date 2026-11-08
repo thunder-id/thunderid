@@ -247,7 +247,7 @@ func (rh *roleHandler) HandleRoleAssignmentsGetRequest(w http.ResponseWriter, r 
 	httpAssignments := make([]AssignmentResponse, len(serviceResponse.Assignments))
 	for i, sa := range serviceResponse.Assignments {
 		httpAssignments[i] = AssignmentResponse{
-			ID: sa.ID, Type: sa.Type, OUID: sa.OUID, Display: sa.Display, IsReadOnly: sa.PolicyID != "",
+			ID: sa.ID, Type: sa.Type, OUID: sa.OUID, Display: sa.Display, IsReadOnly: sa.PolicyID != "" || sa.IsManaged,
 		}
 	}
 

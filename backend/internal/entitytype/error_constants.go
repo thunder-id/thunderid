@@ -251,6 +251,20 @@ var (
 				"agents' and flows' allowed agent types, first",
 		},
 	}
+	// ErrorManagedEntityType is returned when attempting to change a type a control plane deployed. Only a
+	// deploy from the control plane changes or removes it.
+	ErrorManagedEntityType = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "USRS-1023",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.entitytypeservice.cannot_modify_managed_resource",
+			DefaultValue: "Cannot modify a type deployed by the control plane",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.entitytypeservice.cannot_modify_managed_resource_description",
+			DefaultValue: "The type was deployed by the control plane and can only be changed there",
+		},
+	}
 )
 
 // Per-category ServiceError constants — used as the actual returned errors.

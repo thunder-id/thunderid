@@ -20,6 +20,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/eventbus"
 	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
@@ -99,6 +100,51 @@ type entityTypeService struct {
 	authzService       sysauthz.SystemAuthorizationServiceInterface
 	bus                eventbus.EventBusInterface
 	dependencyRegistry resourcedependency.Registry
+	// managed says which types a control plane deployed, which stay read only here. Nil where nothing
+	// is deployed from one.
+	managed managedresource.StoreInterface
+}
+
+// setManagedStore gives the service the record of what a control plane deployed.
+func setManagedStore(service EntityTypeServiceInterface, managed managedresource.StoreInterface) {
+	if us, ok := service.(*entityTypeService); ok {
+		us.managed = managed
+	}
+}
+
+// managedType is the type a control plane marks the types of a category with.
+func managedType(category TypeCategory) string {
+	if category == TypeCategoryAgent {
+		return managedresource.TypeAgentType
+	}
+	return managedresource.TypeUserType
+}
+
+// refuseManaged refuses a change to a type a control plane deployed, unless the change is the managed
+// import's: only a deploy from the control plane changes or removes it.
+func (us *entityTypeService) refuseManaged(
+	ctx context.Context, category TypeCategory, schemaID string) *tidcommon.ServiceError {
+	managed, err := managedresource.IsReadOnly(ctx, us.managed, schemaID, managedType(category))
+	if err != nil {
+		log.GetLogger().Error(ctx, "Failed to read whether a control plane deployed the type",
+			log.String("id", schemaID), log.Error(err))
+		return &tidcommon.InternalServerError
+	}
+	if managed {
+		return &ErrorManagedEntityType
+	}
+	return nil
+}
+
+// withManaged reports a type a control plane deployed as read only. A failed read of that is logged and
+// taken as not: every write to such a type is refused whatever the read says.
+func (us *entityTypeService) withManaged(ctx context.Context, category TypeCategory, entityType *EntityType) {
+	deployed, err := managedresource.IsDeployed(ctx, us.managed, entityType.ID, managedType(category))
+	if err != nil {
+		log.GetLogger().Error(ctx, "Failed to read whether a control plane deployed the type",
+			log.String("id", entityType.ID), log.Error(err))
+	}
+	entityType.IsReadOnly = deployed
 }
 
 // newEntityTypeService creates a new instance of entityTypeService.
@@ -137,13 +183,24 @@ func (us *entityTypeService) GetEntityTypeList(ctx context.Context, category Typ
 		return nil, svcErr
 	}
 
+	var list *EntityTypeListResponse
 	if accessible.AllAllowed {
 		logger.Debug(ctx, "Caller has access to all entity types, retrieving without OU filtering",
 			log.String("category", string(category)))
-		return us.listAllEntityTypes(ctx, category, limit, offset, includeDisplay, logger)
+		list, svcErr = us.listAllEntityTypes(ctx, category, limit, offset, includeDisplay, logger)
+	} else {
+		list, svcErr = us.listAccessibleEntityTypes(ctx, category, accessible.IDs, limit, offset,
+			includeDisplay, logger)
 	}
-
-	return us.listAccessibleEntityTypes(ctx, category, accessible.IDs, limit, offset, includeDisplay, logger)
+	if list != nil {
+		if err := managedresource.MarkDeployed(ctx, us.managed, list.Types,
+			func(t *EntityTypeListItem) string { return t.ID },
+			func(t *EntityTypeListItem) { t.IsReadOnly = true }, managedType(category)); err != nil {
+			// Every write to such a type is refused whatever the list says, so it is served without the flag.
+			logger.Error(ctx, "Failed to read which types a control plane deployed", log.Error(err))
+		}
+	}
+	return list, svcErr
 }
 
 // listAllEntityTypes retrieves entity types without authorization filtering.
@@ -356,6 +413,7 @@ func (us *entityTypeService) GetEntityType(
 			entityType.OUHandle = handle
 		}
 	}
+	us.withManaged(ctx, category, &entityType)
 
 	return &entityType, nil
 }
@@ -411,6 +469,7 @@ func (us *entityTypeService) GetEntityTypeByHandle(
 		ctx, category, readActionForCategory(category), entityType.OUID); svcErr != nil {
 		return nil, svcErr
 	}
+	us.withManaged(ctx, category, &entityType)
 
 	return &entityType, nil
 }
@@ -478,6 +537,9 @@ func (us *entityTypeService) updateEntityType(ctx context.Context, category Type
 
 	if svcErr := us.checkEntityTypeAccess(
 		ctx, category, updateActionForCategory(category), existingSchema.OUID); svcErr != nil {
+		return nil, svcErr
+	}
+	if svcErr := us.refuseManaged(ctx, category, schemaID); svcErr != nil {
 		return nil, svcErr
 	}
 
@@ -567,6 +629,9 @@ func (us *entityTypeService) deleteEntityType(ctx context.Context, category Type
 
 	if us.entityTypeStore.IsEntityTypeDeclarative(category, schemaID) {
 		return &ErrorCannotModifyDeclarativeResource
+	}
+	if svcErr := us.refuseManaged(ctx, category, schemaID); svcErr != nil {
+		return svcErr
 	}
 
 	if category == TypeCategoryAgent {

@@ -9,6 +9,7 @@ import (
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/eventbus"
+	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 )
@@ -37,6 +38,7 @@ func Initialize(mux *http.ServeMux, bus eventbus.EventBusInterface, projectCheck
 
 	// Step 2: Create service with store
 	layoutMgtService := newLayoutMgtService(layoutMgtStore, bus, projectChecker, requireProject, authzService)
+	setManagedStore(layoutMgtService, managedresource.GetStore())
 	layoutMgtHandler := newLayoutMgtHandler(layoutMgtService)
 	registerRoutes(mux, layoutMgtHandler)
 

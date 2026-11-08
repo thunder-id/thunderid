@@ -27,6 +27,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/filter"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	"github.com/thunder-id/thunderid/internal/system/projectscope"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/security"
@@ -111,6 +112,9 @@ type groupService struct {
 	systemFlows systemFlowProvider
 	// projectValidator is nil on a deployment that serves no projects.
 	projectValidator projectOUValidator
+	// managed says which groups and members a control plane deployed, which stay read only here. Nil
+	// where nothing is deployed from one.
+	managed managedresource.StoreInterface
 }
 
 // newGroupServiceWithStore creates a new instance of GroupService with an externally provided store.
@@ -272,6 +276,7 @@ func (gs *groupService) listAllGroups(ctx context.Context, limit, offset int, in
 	for _, groupDAO := range groups {
 		groupBasics = append(groupBasics, buildGroupBasic(groupDAO))
 	}
+	gs.markManagedReadOnly(ctx, groupBasics, logger)
 
 	if includeDisplay {
 		gs.populateGroupOUHandles(ctx, groupBasics, logger)
@@ -328,6 +333,7 @@ func (gs *groupService) listGroupsByOUIDs(ctx context.Context, ouIDs []string, l
 	for _, groupDAO := range groups {
 		groupBasics = append(groupBasics, buildGroupBasic(groupDAO))
 	}
+	gs.markManagedReadOnly(ctx, groupBasics, logger)
 
 	if includeDisplay {
 		gs.populateGroupOUHandles(ctx, groupBasics, logger)
@@ -393,6 +399,7 @@ func (gs *groupService) GetGroupsByPath(
 		}
 		groupBasics = append(groupBasics, g)
 	}
+	gs.markManagedReadOnly(ctx, groupBasics, logger)
 
 	displayQuery := utils.DisplayQueryParam(includeDisplay)
 	response := &GroupListResponse{
@@ -631,6 +638,15 @@ func (gs *groupService) GetGroup(
 	}
 
 	group := convertGroupDAOToGroup(groupDAO)
+	if !group.IsReadOnly {
+		deployed, err := managedresource.IsDeployed(ctx, gs.managed, groupID, managedresource.TypeGroup)
+		if err != nil {
+			// Every write to such a group is refused whatever the read says, so it is served without the flag.
+			logger.Error(ctx, "Failed to read whether a control plane deployed the group",
+				log.String("id", groupID), log.Error(err))
+		}
+		group.IsReadOnly = deployed
+	}
 
 	resolvedMembers, svcErr := gs.resolveMembers(ctx, group.Members, includeDisplay, logger)
 	if svcErr != nil {
@@ -683,6 +699,9 @@ func (gs *groupService) updateGroup(
 	} else if isDeclarative {
 		logger.Debug(ctx, "Cannot update declarative group", log.String("id", groupID))
 		return nil, &ErrorImmutableGroup
+	}
+	if svcErr := gs.refuseManagedGroup(ctx, groupID, logger); svcErr != nil {
+		return nil, svcErr
 	}
 
 	var updatedGroup *Group
@@ -884,6 +903,9 @@ func (gs *groupService) ValidateDeleteGroup(ctx context.Context, groupID string)
 		logger.Debug(ctx, "Cannot delete declarative group", log.String("id", groupID))
 		return &ErrorImmutableGroup
 	}
+	if svcErr := gs.refuseManagedGroup(ctx, groupID, logger); svcErr != nil {
+		return svcErr
+	}
 
 	existingGroupDAO, err := gs.groupStore.GetGroup(ctx, groupID)
 	if err != nil {
@@ -1056,8 +1078,8 @@ func (gs *groupService) addGroupMembers(
 // RemoveGroupMembers removes members from a group.
 func (gs *groupService) RemoveGroupMembers(
 	ctx context.Context, groupID string, members []Member) (*Group, *tidcommon.ServiceError) {
-	log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName)).
-		Debug(ctx, "Removing members from group", log.String("id", groupID))
+	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
+	logger.Debug(ctx, "Removing members from group", log.String("id", groupID))
 	updated, svcErr := gs.modifyGroupMembers(ctx, groupID, members, true,
 		gs.groupStore.RemoveGroupMembers,
 		"Failed to remove members from group",
@@ -1075,7 +1097,11 @@ func (gs *groupService) ValidateRemoveGroupMembers(
 	if _, svcErr := gs.validateMembershipChange(ctx, groupID, members, false); svcErr != nil {
 		return svcErr
 	}
-	return gs.checkMembersRemovable(ctx, groupID, members)
+	if svcErr := gs.checkMembersRemovable(ctx, groupID, members); svcErr != nil {
+		return svcErr
+	}
+	return gs.refuseManagedMembers(ctx, groupID, members,
+		log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName)))
 }
 
 // checkMembersRemovable refuses a removal that names a member the group's declaration lists. Such a
@@ -1125,6 +1151,14 @@ func (gs *groupService) modifyGroupMembers(
 	checkedOUID, svcErr := gs.validateMembershipChange(ctx, groupID, members, isMemberOUCheckRequired)
 	if svcErr != nil {
 		return nil, svcErr
+	}
+
+	// After the caller is authorized, so a caller who may not change the group learns nothing of what a
+	// control plane deployed to it, and before the members are normalized, which the marks are not.
+	if removing {
+		if svcErr := gs.refuseManagedMembers(ctx, groupID, members, logger); svcErr != nil {
+			return nil, svcErr
+		}
 	}
 
 	members = normalizeMembers(members)
@@ -1799,6 +1833,73 @@ func (gs *groupService) addMembersToGroups(
 		return &tidcommon.InternalServerError
 	}
 	return nil
+}
+
+// refuseManagedGroup refuses a change to a group a control plane deployed, unless the change is the
+// managed import's: only a deploy from the control plane changes or removes such a group.
+func (gs *groupService) refuseManagedGroup(
+	ctx context.Context, groupID string, logger *log.Logger) *tidcommon.ServiceError {
+	readOnly, err := managedresource.IsReadOnly(ctx, gs.managed, groupID, managedresource.TypeGroup)
+	if err != nil {
+		logger.Error(ctx, "Failed to read whether a control plane deployed the group",
+			log.String("groupID", groupID), log.Error(err))
+		return &tidcommon.InternalServerError
+	}
+	if readOnly {
+		logger.Debug(ctx, "Cannot change a group a control plane deployed", log.String("id", groupID))
+		return &ErrorManagedGroup
+	}
+	return nil
+}
+
+// refuseManagedMembers refuses removing a member a control plane deployed to the group, unless the
+// managed import removes it. Members added here stay removable, even on a deployed group.
+func (gs *groupService) refuseManagedMembers(
+	ctx context.Context, groupID string, members []Member, logger *log.Logger) *tidcommon.ServiceError {
+	if gs.managed == nil || managedresource.IsManagedImport(ctx) {
+		return nil
+	}
+	keys, err := gs.managed.PartKeys(ctx, managedresource.TypeGroup, groupID, managedresource.PartMember)
+	if err != nil {
+		logger.Error(ctx, "Failed to read the members a control plane deployed to the group",
+			log.String("groupID", groupID), log.Error(err))
+		return &tidcommon.InternalServerError
+	}
+	deployed := make(map[string]struct{}, len(keys))
+	for _, key := range keys {
+		deployed[key] = struct{}{}
+	}
+	for _, member := range members {
+		if _, ok := deployed[MemberKey(member)]; ok {
+			return &ErrorManagedGroupMember
+		}
+	}
+	return nil
+}
+
+// MemberKey is how a member of a group is named among the entries a control plane deployed to it.
+func MemberKey(member Member) string {
+	return string(member.Type) + "/" + member.ID
+}
+
+// ParseMemberKey reads a member back from its MemberKey.
+func ParseMemberKey(key string) (Member, bool) {
+	memberType, memberID, ok := strings.Cut(key, "/")
+	if !ok || memberType == "" || memberID == "" {
+		return Member{}, false
+	}
+	return Member{ID: memberID, Type: MemberType(memberType)}, true
+}
+
+// markManagedReadOnly reports the listed groups a control plane deployed as read only.
+func (gs *groupService) markManagedReadOnly(ctx context.Context, groups []GroupBasic, logger *log.Logger) {
+	if err := managedresource.MarkDeployed(ctx, gs.managed, groups,
+		func(g *GroupBasic) string { return g.ID }, func(g *GroupBasic) { g.IsReadOnly = true },
+		managedresource.TypeGroup); err != nil {
+		// The list is still right about everything else, and every write to such a group is refused
+		// whatever the list said, so it is served without the flag rather than failed.
+		logger.Error(ctx, "Failed to read which groups a control plane deployed", log.Error(err))
+	}
 }
 
 // convertGroupDAOToGroup constructs a Group from a GroupDAO.

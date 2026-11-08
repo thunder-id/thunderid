@@ -12,6 +12,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
 
@@ -28,6 +29,25 @@ func newImportHandler(service ImportServiceInterface) *importHandler {
 }
 
 func (ih *importHandler) HandleImportRequest(w http.ResponseWriter, r *http.Request) {
+	ih.handleImport(w, r, false)
+}
+
+// HandleManagedImportRequest serves the import a control plane deploys through. It runs the same
+// import, and what it writes becomes read only here. Only the management API key may call it.
+func (ih *importHandler) HandleManagedImportRequest(w http.ResponseWriter, r *http.Request) {
+	if !security.IsManagementAPIKey(r.Context()) {
+		errResp := apierror.ErrorResponse{
+			Code:        ErrorManagedImportNotAllowed.Code,
+			Message:     ErrorManagedImportNotAllowed.Error,
+			Description: ErrorManagedImportNotAllowed.ErrorDescription,
+		}
+		sysutils.WriteErrorResponse(r.Context(), w, http.StatusForbidden, errResp)
+		return
+	}
+	ih.handleImport(w, r, true)
+}
+
+func (ih *importHandler) handleImport(w http.ResponseWriter, r *http.Request, managed bool) {
 	// An import writes every resource it carries, which can take longer than the server's write
 	// timeout allows any request.
 	if err := sysutils.ExtendWriteDeadline(w, config.GetServerRuntime().Config.Import.Timeout()); err != nil {
@@ -44,6 +64,7 @@ func (ih *importHandler) HandleImportRequest(w http.ResponseWriter, r *http.Requ
 		sysutils.WriteErrorResponse(r.Context(), w, http.StatusBadRequest, errResp)
 		return
 	}
+	importRequest.Managed = managed
 
 	importResponse, svcErr := ih.service.ImportResources(r.Context(), importRequest)
 	if svcErr != nil {

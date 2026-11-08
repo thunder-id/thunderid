@@ -9,6 +9,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 )
@@ -39,6 +40,7 @@ func Initialize(mux *http.ServeMux,
 	}
 
 	service := newI18nService(store, authzService)
+	service.(*i18nService).managed = managedresource.GetStore()
 
 	handler := newI18nHandler(service)
 	registerRoutes(mux, handler)

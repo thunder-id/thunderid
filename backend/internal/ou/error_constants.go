@@ -272,6 +272,21 @@ var (
 	// ErrResultLimitExceededInCompositeMode is returned when the result limit is exceeded in composite mode.
 	ErrResultLimitExceededInCompositeMode = errors.New("result limit exceeded in composite mode")
 
+	// ErrorManagedOrganizationUnit is the error returned when attempting to change an organization unit a
+	// control plane deployed. Only a deploy from the control plane changes or removes it.
+	ErrorManagedOrganizationUnit = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "OU-1026",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.ouservice.cannot_modify_managed_resource",
+			DefaultValue: "Cannot modify an organization unit deployed by the control plane",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.ouservice.cannot_modify_managed_resource_description",
+			DefaultValue: "The organization unit was deployed by the control plane and can only be changed there",
+		},
+	}
+
 	// errNilEventBus is returned when the service is initialized without the event bus it audits on.
 	errNilEventBus = errors.New("the organization unit service needs an event bus")
 )

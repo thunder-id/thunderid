@@ -71,6 +71,7 @@ type RoleResponse struct {
 	OUHandle    string                `json:"ouHandle,omitempty"`
 	ProjectID   string                `json:"projectId,omitempty"`
 	IsOwnedByOU bool                  `json:"isOwnedByOU"`
+	IsReadOnly  bool                  `json:"isReadOnly"`
 	Permissions []ResourcePermissions `json:"permissions"`
 }
 
@@ -200,6 +201,8 @@ type RoleAssignmentWithDisplay struct {
 	Display string
 	// PolicyID is the sharing policy that mandates the assignment. Empty for a direct assignment.
 	PolicyID string
+	// IsManaged marks an assignment a control plane deployed, which only it can remove.
+	IsManaged bool
 }
 
 // Role represents basic role information used internally by the service layer.
@@ -223,6 +226,8 @@ type RoleWithPermissions struct {
 	OUHandle    string
 	ProjectID   string
 	IsOwnedByOU bool
+	// IsReadOnly marks a role a control plane deployed.
+	IsReadOnly  bool
 	Permissions []ResourcePermissions
 }
 

@@ -38,6 +38,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/filter"
 	syshttp "github.com/thunder-id/thunderid/internal/system/http"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	"github.com/thunder-id/thunderid/internal/system/observability"
 	"github.com/thunder-id/thunderid/internal/system/projectscope"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
@@ -115,6 +116,9 @@ type agentService struct {
 	bus             eventbus.EventBusInterface
 	revoker         revocation.CriteriaRevoker
 	resolveLifetime artifactLifetimeResolver
+	// managed says which agents a control plane deployed, which stay read only here. Nil where nothing is
+	// deployed from one.
+	managed managedresource.StoreInterface
 }
 
 // artifactLifetimeResolver reports how long an artifact issued to the given OAuth client can remain valid, so a
@@ -480,6 +484,9 @@ func (s *agentService) updateOwnedAgent(ctx context.Context, ownerID, agentID st
 	if e.IsReadOnly {
 		return nil, &ErrorCannotModifyDeclarativeResource
 	}
+	if svcErr := s.refuseManaged(ctx, agentID); svcErr != nil {
+		return nil, svcErr
+	}
 
 	client, oauthProfile, svcErr := s.ownedAgentOAuthUpdate(ctx, agentID, sysAttrs.ClientID, kind, req)
 	if svcErr != nil {
@@ -622,6 +629,9 @@ func (s *agentService) deleteOwnedAgent(ctx context.Context, ownerID, agentID st
 	}
 	if e.IsReadOnly {
 		return &ErrorCannotModifyDeclarativeResource
+	}
+	if svcErr := s.refuseManaged(ctx, agentID); svcErr != nil {
+		return svcErr
 	}
 	return s.removeAgent(ctx, agentID)
 }
@@ -1092,9 +1102,9 @@ func (s *agentService) updateAgent(ctx context.Context, agentID string,
 	now := time.Now()
 	lifespan := newLifespanUpdate(existing.SystemAttributes, req.ValidUntil)
 
-	if existing.IsReadOnly {
+	if svcErr := s.refuseReadOnly(ctx, existing); svcErr != nil {
 		s.refuseLifespanUpdate(ctx, agentID, lifespan, lifespanFailureReadOnly)
-		return nil, &ErrorCannotModifyDeclarativeResource
+		return nil, svcErr
 	}
 
 	// fail publishes a requested lifespan change as failed with the update.
@@ -1105,8 +1115,7 @@ func (s *agentService) updateAgent(ctx context.Context, agentID string,
 
 	// Check authz using the existing agent's OU ID. An update can replace the agent's
 	// credentials, so it is control over the agent.
-	if svcErr := s.checkAgentControl(
-		ctx, security.ActionUpdateAgent, existing.OUID, agentID); svcErr != nil {
+	if svcErr := s.authorizeUpdate(ctx, existing, agentID); svcErr != nil {
 		return fail(svcErr)
 	}
 
@@ -1268,11 +1277,14 @@ func (s *agentService) UpdateAgentCredentials(ctx context.Context, agentID strin
 	if existing.Category != providers.EntityCategoryAgent {
 		return &ErrorAgentNotFound
 	}
-	if existing.IsReadOnly {
-		return &ErrorCannotModifyDeclarativeResource
+	if svcErr := s.refuseReadOnly(ctx, existing); svcErr != nil {
+		return svcErr
 	}
 	if svcErr := s.checkAgentAccess(
 		ctx, security.ActionUpdateAgent, existing.OUID, agentID, ""); svcErr != nil {
+		return svcErr
+	}
+	if svcErr := s.refuseManaged(ctx, agentID); svcErr != nil {
 		return svcErr
 	}
 
@@ -1317,10 +1329,13 @@ func (s *agentService) regenerateAgentSecret(ctx context.Context, agentID string
 	if existing.Category != providers.EntityCategoryAgent {
 		return "", &ErrorAgentNotFound
 	}
-	if existing.IsReadOnly {
-		return "", &ErrorCannotModifyDeclarativeResource
+	if svcErr := s.refuseReadOnly(ctx, existing); svcErr != nil {
+		return "", svcErr
 	}
 	if svcErr := s.checkAgentAccess(ctx, security.ActionUpdateAgent, existing.OUID, agentID, ""); svcErr != nil {
+		return "", svcErr
+	}
+	if svcErr := s.refuseManaged(ctx, agentID); svcErr != nil {
 		return "", svcErr
 	}
 
@@ -1400,13 +1415,16 @@ func (s *agentService) deleteAgent(ctx context.Context, agentID string) *tidcomm
 	if existing.Category != providers.EntityCategoryAgent {
 		return &ErrorAgentNotFound
 	}
-	if existing.IsReadOnly {
-		return &ErrorCannotModifyDeclarativeResource
+	if svcErr := s.refuseReadOnly(ctx, existing); svcErr != nil {
+		return svcErr
 	}
 
 	// Check authz before the cascade below, which is not transactional with the entity delete.
 	if svcErr := s.checkAgentControl(
 		ctx, security.ActionDeleteAgent, existing.OUID, agentID); svcErr != nil {
+		return svcErr
+	}
+	if svcErr := s.refuseManaged(ctx, agentID); svcErr != nil {
 		return svcErr
 	}
 
@@ -2597,6 +2615,39 @@ func (s *agentService) composeGetResponse(ctx context.Context, e *providers.Enti
 }
 
 // buildListResponse builds the paged agent list response from a slice of entities and pagination metadata.
+// authorizeUpdate checks the caller may update the agent, and only then refuses the update for an agent a
+// control plane deployed, so a caller who may not update it learns nothing of what was deployed.
+func (s *agentService) authorizeUpdate(ctx context.Context, existing *providers.Entity, agentID string,
+) *tidcommon.ServiceError {
+	if svcErr := s.checkAgentControl(ctx, security.ActionUpdateAgent, existing.OUID, agentID); svcErr != nil {
+		return svcErr
+	}
+	return s.refuseManaged(ctx, agentID)
+}
+
+// refuseReadOnly refuses a change to an agent declared in a file.
+func (s *agentService) refuseReadOnly(_ context.Context, existing *providers.Entity) *tidcommon.ServiceError {
+	if existing.IsReadOnly {
+		return &ErrorCannotModifyDeclarativeResource
+	}
+	return nil
+}
+
+// refuseManaged refuses a change to an agent a control plane deployed, unless the change is the managed
+// import's: only a deploy from the control plane changes or removes it.
+func (s *agentService) refuseManaged(ctx context.Context, agentID string) *tidcommon.ServiceError {
+	managed, err := managedresource.IsReadOnly(ctx, s.managed, agentID, managedresource.TypeAgent)
+	if err != nil {
+		s.logger.Error(ctx, "Failed to read whether a control plane deployed the agent",
+			log.String("agentID", agentID), log.Error(err))
+		return &tidcommon.InternalServerError
+	}
+	if managed {
+		return &ErrorManagedAgent
+	}
+	return nil
+}
+
 // The first ownedCount entities are owned by the listed organization unit and the rest are shared into it.
 func (s *agentService) buildListResponse(ctx context.Context, entities []providers.Entity,
 	ownedCount, totalCount, limit, offset int, includeDisplay bool, listQuery string) *model.AgentListResponse {
@@ -2640,6 +2691,13 @@ func (s *agentService) buildListResponse(ctx context.Context, entities []provide
 				agents[i].ID, agents[i].Type, agents[i].Attributes, displayPaths)
 		}
 		s.populateOUHandlesForList(ctx, agents)
+	}
+
+	if err := managedresource.MarkDeployed(ctx, s.managed, agents,
+		func(a *model.BasicAgentResponse) string { return a.ID },
+		func(a *model.BasicAgentResponse) { a.IsReadOnly = true }, managedresource.TypeAgent); err != nil {
+		// Every write to such an agent is refused whatever the list says, so it is served without the flag.
+		s.logger.Error(ctx, "Failed to read which agents a control plane deployed", log.Error(err))
 	}
 
 	return &model.AgentListResponse{

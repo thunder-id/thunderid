@@ -11,6 +11,7 @@ import (
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/eventbus"
+	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 )
@@ -38,6 +39,7 @@ func Initialize(
 
 	// Step 2: Create service with store
 	themeMgtService := newThemeMgtService(themeMgtStore, bus, projectChecker, authzService)
+	setManagedStore(themeMgtService, managedresource.GetStore())
 	themeMgtHandler := newThemeMgtHandler(themeMgtService)
 	registerRoutes(mux, themeMgtHandler)
 

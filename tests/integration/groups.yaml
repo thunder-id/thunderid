@@ -12,7 +12,6 @@ groups:
       - application
       - consent
       - openid4vp
-      - mcp
       - usertype
       - inboundclient
     suites:
@@ -47,7 +46,6 @@ groups:
   - name: g3
     packages:
       - attributeverification
-      - gateway
       - agent
       - oauth/introspect
       - authorizationdetail
@@ -87,3 +85,11 @@ groups:
       - composite
       - variablestore
       - notificationtemplate
+
+  # These suites deploy this server's own configuration to a gateway that is this server, through the
+  # managed import, which makes everything on it read only. They get a server of their own so the
+  # suites of no other group meet that.
+  - name: g6
+    packages:
+      - gateway
+      - mcp

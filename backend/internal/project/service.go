@@ -17,6 +17,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/eventbus"
 	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -63,6 +64,9 @@ type projectService struct {
 	resourceChecks []ResourceCheck
 	logger         *log.Logger
 	bus            eventbus.EventBusInterface
+	// managed says which projects a control plane deployed, which stay read only here. Nil where
+	// nothing is deployed from one.
+	managed managedresource.StoreInterface
 }
 
 // newProjectService creates a project service.
@@ -199,6 +203,9 @@ func (s *projectService) updateProject(
 	if request.Handle != "" && request.Handle != project.Handle {
 		return nil, &ErrorHandleChangeNotAllowed
 	}
+	if svcErr := s.refuseManaged(ctx, id); svcErr != nil {
+		return nil, svcErr
+	}
 
 	project.DisplayName = request.DisplayName
 	project.Description = request.Description
@@ -228,6 +235,9 @@ func (s *projectService) DeleteProject(ctx context.Context, id string) *tidcommo
 
 // deleteProject deletes a project without publishing its audit event.
 func (s *projectService) deleteProject(ctx context.Context, id string) *tidcommon.ServiceError {
+	if svcErr := s.refuseManaged(ctx, id); svcErr != nil {
+		return svcErr
+	}
 	for _, check := range s.resourceChecks {
 		hasResources, svcErr := check(ctx, id)
 		if svcErr != nil {
@@ -448,6 +458,21 @@ func validateDetails(request ProjectRequest) *tidcommon.ServiceError {
 	}
 	if utf8.RuneCountInString(request.Description) > maxDescriptionLength {
 		return &ErrorInvalidDescription
+	}
+	return nil
+}
+
+// refuseManaged refuses a change to a project a control plane deployed, unless the change is the managed
+// import's: only a deploy from the control plane changes or removes it.
+func (s *projectService) refuseManaged(ctx context.Context, id string) *tidcommon.ServiceError {
+	managed, err := managedresource.IsReadOnly(ctx, s.managed, id, managedresource.TypeProject)
+	if err != nil {
+		s.logger.Error(ctx, "Failed to read whether a control plane deployed the project",
+			log.String("projectID", id), log.Error(err))
+		return &tidcommon.InternalServerError
+	}
+	if managed {
+		return &ErrorManagedProject
 	}
 	return nil
 }

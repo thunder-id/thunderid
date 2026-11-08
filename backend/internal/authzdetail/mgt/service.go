@@ -23,6 +23,7 @@ import (
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	"github.com/thunder-id/thunderid/internal/system/outboundauth"
 	"github.com/thunder-id/thunderid/internal/system/outboundauth/httpauth"
 	"github.com/thunder-id/thunderid/internal/system/security"
@@ -82,6 +83,9 @@ type authorizationDetailMgtService struct {
 	typeStore     typeStoreInterface
 	valueCapturer declarativeresource.ValueCapturer
 	logger        *log.Logger
+	// managed says which types a control plane deployed, which stay read only here. Nil where nothing
+	// is deployed from one.
+	managed managedresource.StoreInterface
 }
 
 // newAuthorizationDetailMgtService creates a new authorizationDetailMgtService.
@@ -160,7 +164,53 @@ func (s *authorizationDetailMgtService) GetAuthorizationDetailType(ctx context.C
 		s.logger.Error(ctx, "Failed to get authorization details type", log.String("id", id), log.Error(err))
 		return nil, &tidcommon.InternalServerError
 	}
+	if !t.IsReadOnly {
+		deployed, err := managedresource.IsDeployed(ctx, s.managed, id, managedresource.TypeAuthorizationDetailType)
+		if err != nil {
+			// Every write to such a type is refused whatever the read says, so it is served without the flag.
+			s.logger.Error(ctx, "Failed to read whether a control plane deployed the authorization details type",
+				log.String("id", id), log.Error(err))
+		}
+		t.IsReadOnly = deployed
+	}
 	return &t, nil
+}
+
+// getType reads a type, and whether a control plane deployed it. The type's own IsReadOnly says only
+// whether it is declared in a file.
+func (s *authorizationDetailMgtService) getType(ctx context.Context,
+	id string) (*providers.AuthorizationDetailType, bool, *tidcommon.ServiceError) {
+	t, err := s.typeStore.GetTypeByID(ctx, id)
+	if err != nil {
+		if errors.Is(err, errTypeNotFound) {
+			return nil, false, &ErrorTypeNotFound
+		}
+		s.logger.Error(ctx, "Failed to get authorization details type", log.String("id", id), log.Error(err))
+		return nil, false, &tidcommon.InternalServerError
+	}
+	if t.IsReadOnly {
+		return &t, false, nil
+	}
+	deployed, err := managedresource.IsDeployed(ctx, s.managed, id, managedresource.TypeAuthorizationDetailType)
+	if err != nil {
+		s.logger.Error(ctx, "Failed to read whether a control plane deployed the authorization details type",
+			log.String("id", id), log.Error(err))
+		return nil, false, &tidcommon.InternalServerError
+	}
+	return &t, deployed, nil
+}
+
+// refuseReadOnly refuses a change to a type declared in a file, or to one a control plane deployed unless
+// the change is the managed import's.
+func refuseReadOnly(ctx context.Context, t *providers.AuthorizationDetailType,
+	deployed bool) *tidcommon.ServiceError {
+	if t.IsReadOnly {
+		return &ErrorImmutableType
+	}
+	if deployed && !managedresource.IsManagedImport(ctx) {
+		return &ErrorManagedType
+	}
+	return nil
 }
 
 // ListAuthorizationDetailTypes lists the registered types, a page at a time.
@@ -185,6 +235,14 @@ func (s *authorizationDetailMgtService) ListAuthorizationDetailTypes(ctx context
 		s.logger.Error(ctx, "Failed to list authorization details types", log.Error(err))
 		return nil, &tidcommon.InternalServerError
 	}
+	if err := managedresource.MarkDeployed(ctx, s.managed, types,
+		func(t *providers.AuthorizationDetailType) string { return t.ID },
+		func(t *providers.AuthorizationDetailType) { t.IsReadOnly = true },
+		managedresource.TypeAuthorizationDetailType); err != nil {
+		// Every write to such a type is refused whatever the list says, so it is served without the flag.
+		s.logger.Error(ctx, "Failed to read which authorization details types a control plane deployed",
+			log.Error(err))
+	}
 	return &AuthorizationDetailTypePage{TotalResults: total, Types: types}, nil
 }
 
@@ -195,12 +253,12 @@ func (s *authorizationDetailMgtService) UpdateAuthorizationDetailType(ctx contex
 	if svcErr := s.checkWriteAccess(ctx, security.ActionUpdateAuthzDetail); svcErr != nil {
 		return nil, svcErr
 	}
-	existing, svcErr := s.GetAuthorizationDetailType(ctx, id)
+	existing, deployed, svcErr := s.getType(ctx, id)
 	if svcErr != nil {
 		return nil, svcErr
 	}
-	if existing.IsReadOnly {
-		return nil, &ErrorImmutableType
+	if svcErr := refuseReadOnly(ctx, existing, deployed); svcErr != nil {
+		return nil, svcErr
 	}
 	if t.Type != existing.Type {
 		return nil, &ErrorTypeValueImmutable
@@ -294,15 +352,15 @@ func (s *authorizationDetailMgtService) DeleteAuthorizationDetailType(ctx contex
 	if svcErr := s.checkWriteAccess(ctx, security.ActionDeleteAuthzDetail); svcErr != nil {
 		return svcErr
 	}
-	existing, svcErr := s.GetAuthorizationDetailType(ctx, id)
+	existing, deployed, svcErr := s.getType(ctx, id)
 	if svcErr != nil {
 		if svcErr.Code == ErrorTypeNotFound.Code {
 			return nil
 		}
 		return svcErr
 	}
-	if existing.IsReadOnly {
-		return &ErrorImmutableType
+	if svcErr := refuseReadOnly(ctx, existing, deployed); svcErr != nil {
+		return svcErr
 	}
 	if err := s.typeStore.DeleteType(ctx, id); err != nil {
 		s.logger.Error(ctx, "Failed to delete authorization details type", log.String("id", id), log.Error(err))

@@ -19,6 +19,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/eventbus"
 	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
@@ -60,6 +61,16 @@ type layoutMgtService struct {
 	projectRequired bool
 	logger          *log.Logger
 	bus             eventbus.EventBusInterface
+	// managed says which layouts a control plane deployed, which stay read only here. Nil where nothing
+	// is deployed from one.
+	managed managedresource.StoreInterface
+}
+
+// setManagedStore gives the service the record of what a control plane deployed.
+func setManagedStore(service LayoutMgtServiceInterface, managed managedresource.StoreInterface) {
+	if ls, ok := service.(*layoutMgtService); ok {
+		ls.managed = managed
+	}
 }
 
 // projectChecker reports whether the project a layout names exists.
@@ -99,6 +110,13 @@ func (ls *layoutMgtService) GetLayoutList(ctx context.Context, limit, offset int
 	if err != nil {
 		ls.logger.Error(ctx, "Failed to list layouts", log.Error(err))
 		return nil, &tidcommon.InternalServerError
+	}
+
+	if err := managedresource.MarkDeployed(ctx, ls.managed, layouts,
+		func(t *Layout) string { return t.ID }, func(t *Layout) { t.IsReadOnly = true },
+		managedresource.TypeLayout); err != nil {
+		// Every write to such a layout is refused whatever the list says, so it is served without the flag.
+		ls.logger.Error(ctx, "Failed to read which layouts a control plane deployed", log.Error(err))
 	}
 
 	response := &LayoutList{
@@ -273,8 +291,33 @@ func (ls *layoutMgtService) GetLayout(ctx context.Context, id string) (*Layout, 
 		return nil, &tidcommon.InternalServerError
 	}
 
+	if !layout.IsReadOnly {
+		deployed, err := managedresource.IsDeployed(ctx, ls.managed, id, managedresource.TypeLayout)
+		if err != nil {
+			// Every write to such a layout is refused whatever the read says, so it is served without the flag.
+			ls.logger.Error(ctx, "Failed to read whether a control plane deployed the layout",
+				log.String("id", id), log.Error(err))
+		}
+		layout.IsReadOnly = deployed
+	}
+
 	ls.logger.Debug(ctx, "Successfully retrieved layout", log.String("id", layout.ID))
 	return &layout, nil
+}
+
+// refuseManaged refuses a change to a layout a control plane deployed, unless the change is the managed
+// import's: only a deploy from the control plane changes or removes it.
+func (ls *layoutMgtService) refuseManaged(ctx context.Context, id string) *tidcommon.ServiceError {
+	managed, err := managedresource.IsReadOnly(ctx, ls.managed, id, managedresource.TypeLayout)
+	if err != nil {
+		ls.logger.Error(ctx, "Failed to read whether a control plane deployed the layout",
+			log.String("id", id), log.Error(err))
+		return &tidcommon.InternalServerError
+	}
+	if managed {
+		return &ErrorManagedLayout
+	}
+	return nil
 }
 
 // UpdateLayout updates an existing layout configuration.
@@ -305,6 +348,9 @@ func (ls *layoutMgtService) updateLayout(ctx context.Context,
 	// Check if the layout is declarative (read-only)
 	if ls.layoutMgtStore.IsLayoutDeclarative(ctx, id) {
 		return nil, &ErrorCannotModifyDeclarativeResource
+	}
+	if svcErr := ls.refuseManaged(ctx, id); svcErr != nil {
+		return nil, svcErr
 	}
 
 	// Fetch existing layout to enforce handle immutability
@@ -381,6 +427,9 @@ func (ls *layoutMgtService) deleteLayout(ctx context.Context, id string) *tidcom
 	// Check if the layout is declarative (read-only)
 	if ls.layoutMgtStore.IsLayoutDeclarative(ctx, id) {
 		return &ErrorCannotModifyDeclarativeResource
+	}
+	if svcErr := ls.refuseManaged(ctx, id); svcErr != nil {
+		return svcErr
 	}
 
 	// Check if layout exists. Return success for non-existing layouts (idempotent delete).

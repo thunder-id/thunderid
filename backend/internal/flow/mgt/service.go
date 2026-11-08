@@ -33,6 +33,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/filter"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	"github.com/thunder-id/thunderid/internal/system/projectscope"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/security"
@@ -177,6 +178,9 @@ type flowMgtService struct {
 	projectRequired bool
 	authzService    sysauthz.SystemAuthorizationServiceInterface
 	logger          *log.Logger
+	// managed says which flows a control plane deployed, which stay read only here. Nil where nothing is
+	// deployed from one.
+	managed managedresource.StoreInterface
 }
 
 // notificationTemplateProvider maps a template handle (within a channel) to its id.
@@ -273,6 +277,7 @@ func (s *flowMgtService) ListFlows(ctx context.Context, limit, offset int, flowT
 		flows[i].IsOwnedByOU = new(true)
 	}
 
+	s.markManaged(ctx, flows)
 	listResponse := &FlowListResponse{
 		TotalResults: totalCount,
 		StartIndex:   offset + 1,
@@ -335,6 +340,7 @@ func (s *flowMgtService) ListFlowsByProject(
 		flows[i].IsOwnedByOU = new(true)
 	}
 
+	s.markManaged(ctx, flows)
 	return buildFlowListResponse(flows, totalCount, limit, offset, extraQuery), nil
 }
 
@@ -508,6 +514,15 @@ func (s *flowMgtService) getFlow(ctx context.Context, flowID string) (
 		}
 		s.logger.Error(ctx, "Failed to get flow", log.String(logKeyFlowID, flowID), log.Error(err))
 		return nil, &tidcommon.InternalServerError
+	}
+	if !flow.IsReadOnly {
+		deployed, err := managedresource.IsDeployed(ctx, s.managed, flowID, managedresource.TypeFlow)
+		if err != nil {
+			// Every write to such a flow is refused whatever the read says, so it is served without the flag.
+			s.logger.Error(ctx, "Failed to read whether a control plane deployed the flow",
+				log.String(logKeyFlowID, flowID), log.Error(err))
+		}
+		flow.IsReadOnly = deployed
 	}
 
 	return flow, nil
@@ -1138,6 +1153,9 @@ func (s *flowMgtService) deleteFlow(ctx context.Context, flowID string) *tidcomm
 	if existingFlow.IsReadOnly {
 		return &ErrorFlowDeclarativeReadOnly
 	}
+	if svcErr := s.refuseManaged(ctx, flowID); svcErr != nil {
+		return svcErr
+	}
 
 	err = s.store.DeleteFlow(ctx, flowID)
 	if err != nil {
@@ -1253,6 +1271,10 @@ func (s *flowMgtService) restoreFlowVersion(ctx context.Context, flowID string, 
 			return err
 		}
 		if svcErr := s.authorizeFlowAction(txCtx, security.ActionUpdateFlow, current.OUID); svcErr != nil {
+			conflictSvcErr = svcErr
+			return errClientValidation
+		}
+		if svcErr := s.refuseManaged(txCtx, flowID); svcErr != nil {
 			conflictSvcErr = svcErr
 			return errClientValidation
 		}
@@ -1769,10 +1791,36 @@ func (s *flowMgtService) listFlowsForOU(
 		flow.OUID = ouID
 		entries = append(entries, flow)
 	}
+	s.markManaged(ctx, entries)
 	return buildFlowListResponse(entries, ownedCount+len(sharedIDs), limit, offset, extraQuery), nil
 }
 
 // buildFlowListResponse builds the response for one page of a flow list.
+// refuseManaged refuses a change to a flow a control plane deployed, unless the change is the managed
+// import's: only a deploy from the control plane changes, restores or removes it.
+func (s *flowMgtService) refuseManaged(ctx context.Context, flowID string) *tidcommon.ServiceError {
+	managed, err := managedresource.IsReadOnly(ctx, s.managed, flowID, managedresource.TypeFlow)
+	if err != nil {
+		s.logger.Error(ctx, "Failed to read whether a control plane deployed the flow",
+			log.String(logKeyFlowID, flowID), log.Error(err))
+		return &tidcommon.InternalServerError
+	}
+	if managed {
+		return &ErrorManagedFlow
+	}
+	return nil
+}
+
+// markManaged reports the listed flows a control plane deployed as read only.
+func (s *flowMgtService) markManaged(ctx context.Context, flows []BasicFlowDefinition) {
+	if err := managedresource.MarkDeployed(ctx, s.managed, flows,
+		func(f *BasicFlowDefinition) string { return f.ID },
+		func(f *BasicFlowDefinition) { f.IsReadOnly = true }, managedresource.TypeFlow); err != nil {
+		// Every write to such a flow is refused whatever the list says, so it is served without the flag.
+		s.logger.Error(ctx, "Failed to read which flows a control plane deployed", log.Error(err))
+	}
+}
+
 func buildFlowListResponse(
 	flows []BasicFlowDefinition, total, limit, offset int, extraQuery string,
 ) *FlowListResponse {
@@ -2232,6 +2280,9 @@ func (s *flowMgtService) CreateSharingPolicy(
 	if svcErr := s.authorizeFlowAction(ctx, security.ActionUpdateFlow, initiatingOUID); svcErr != nil {
 		return sharing.Policy{}, svcErr
 	}
+	if svcErr := s.refuseManaged(ctx, flowID); svcErr != nil {
+		return sharing.Policy{}, svcErr
+	}
 	if svcErr := s.validatePolicyVariables(ctx, flow, req); svcErr != nil {
 		return sharing.Policy{}, svcErr
 	}
@@ -2282,6 +2333,9 @@ func (s *flowMgtService) UpdateSharingPolicy(
 	if svcErr := s.authorizeFlowAction(ctx, security.ActionUpdateFlow, policy.InitiatingOUID); svcErr != nil {
 		return sharing.Policy{}, svcErr
 	}
+	if svcErr := s.refuseManaged(ctx, flowID); svcErr != nil {
+		return sharing.Policy{}, svcErr
+	}
 	// The issuer of a policy is not part of an edit: it is the one the policy already has.
 	req.InitiatingOUID = policy.InitiatingOUID
 	if svcErr := s.validatePolicyVariables(ctx, flow, req); svcErr != nil {
@@ -2301,6 +2355,9 @@ func (s *flowMgtService) DeleteSharingPolicy(ctx context.Context, flowID, policy
 		return svcErr
 	}
 	if svcErr := s.authorizeFlowAction(ctx, security.ActionUpdateFlow, policy.InitiatingOUID); svcErr != nil {
+		return svcErr
+	}
+	if svcErr := s.refuseManaged(ctx, flowID); svcErr != nil {
 		return svcErr
 	}
 	if policy.Declared {
@@ -2738,7 +2795,8 @@ func (s *flowMgtService) authorizeFlowAction(ctx context.Context, action securit
 	return nil
 }
 
-// checkFlowWritable checks the caller may update the flow and that it is not declared in a file.
+// checkFlowWritable checks the caller may update the flow and that it is not declared in a file or deployed
+// by a control plane, unless the change is the managed import's.
 func (s *flowMgtService) checkFlowWritable(
 	ctx context.Context, flow *providers.CompleteFlowDefinition,
 ) *tidcommon.ServiceError {
@@ -2748,5 +2806,5 @@ func (s *flowMgtService) checkFlowWritable(
 	if flow.IsReadOnly {
 		return &ErrorFlowDeclarativeReadOnly
 	}
-	return nil
+	return s.refuseManaged(ctx, flow.ID)
 }

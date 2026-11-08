@@ -21,6 +21,9 @@ const (
 	// server.security.management_api_key_hash in the integration deployment. The deployment holds
 	// only the digest, so this value appears nowhere in its configuration.
 	managementAPIKey = "integration-management-api-key"
+	// managedImportPath is the import a control plane deploys through. The key opens the plain import too, but
+	// only this one marks what it writes as read only.
+	managedImportPath = "/import/managed"
 )
 
 var testServerURL = testutils.TestServerURL
@@ -33,12 +36,12 @@ func TestManagementAPIKeyTestSuite(t *testing.T) {
 	suite.Run(t, new(ManagementAPIKeyTestSuite))
 }
 
-// The key authenticates a call to the import API, which is what it exists for: a deployment
-// pipeline pushing configuration without first obtaining OAuth client credentials. It also proves
-// the hashing round trip end to end: the server was configured with a digest and still recognized
-// the key presented here.
-func (ts *ManagementAPIKeyTestSuite) TestTheKeyAuthenticatesTheImportAPI() {
-	status := ts.post("/import", managementAPIKey, `{"content":"","dryRun":true}`)
+// The key authenticates a call to the managed import, which is what it exists for: a control plane
+// deploying configuration without first obtaining OAuth client credentials. It also proves the hashing
+// round trip end to end: the server was configured with a digest and still recognized the key presented
+// here.
+func (ts *ManagementAPIKeyTestSuite) TestTheKeyAuthenticatesTheManagedImport() {
+	status := ts.post(managedImportPath, managementAPIKey, `{"content":"","dryRun":true}`)
 
 	// Whatever the import makes of an empty document, it was let through the gate: an unauthenticated
 	// call is refused with 401 before the body is read at all.
@@ -48,7 +51,7 @@ func (ts *ManagementAPIKeyTestSuite) TestTheKeyAuthenticatesTheImportAPI() {
 
 // Without it, the same call is refused.
 func (ts *ManagementAPIKeyTestSuite) TestNoCredentialIsRefused() {
-	ts.Equal(http.StatusUnauthorized, ts.post("/import", "", `{"content":""}`))
+	ts.Equal(http.StatusUnauthorized, ts.post(managedImportPath, "", `{"content":""}`))
 }
 
 // Presenting a key is a claim to be authenticated by it, so an API-Key value that is not the key is
@@ -60,7 +63,7 @@ func (ts *ManagementAPIKeyTestSuite) TestAWrongKeyIsRefused() {
 		managementAPIKey + "x",
 		managementAPIKey[:len(managementAPIKey)-1],
 	} {
-		ts.Equal(http.StatusUnauthorized, ts.post("/import", wrong, `{"content":""}`),
+		ts.Equal(http.StatusUnauthorized, ts.post(managedImportPath, wrong, `{"content":""}`),
 			"an API-Key value of %q must not authenticate", wrong)
 	}
 }
@@ -70,13 +73,13 @@ func (ts *ManagementAPIKeyTestSuite) TestAWrongKeyIsRefused() {
 func (ts *ManagementAPIKeyTestSuite) TestTheConfiguredDigestIsNotItselfACredential() {
 	digest := "4955d93012fc5e2ee07b527f13ffe55de32900c410cc198f4d7a9971bb3a9a2d"
 
-	ts.Equal(http.StatusUnauthorized, ts.post("/import", digest, `{"content":""}`),
+	ts.Equal(http.StatusUnauthorized, ts.post(managedImportPath, digest, `{"content":""}`),
 		"the configured digest must not authenticate as though it were the key")
 }
 
 // The key belongs in its own header. Presented as a bearer token it is just an unknown token.
 func (ts *ManagementAPIKeyTestSuite) TestTheKeyIsNotAcceptedAsABearerToken() {
-	req, err := http.NewRequest(http.MethodPost, testServerURL+"/import",
+	req, err := http.NewRequest(http.MethodPost, testServerURL+managedImportPath,
 		bytes.NewReader([]byte(`{"content":""}`)))
 	ts.Require().NoError(err)
 	req.Header.Set("Content-Type", "application/json")
@@ -102,13 +105,37 @@ func (ts *ManagementAPIKeyTestSuite) TestTheKeyOpensNothingElse() {
 	} {
 		status := ts.get(path, managementAPIKey)
 		ts.Equal(http.StatusUnauthorized, status,
-			"GET %s accepted the management API key; it is trusted only for import and the variable store",
+			"GET %s accepted the management API key; it is trusted only for the import and the "+
+				"variable store",
 			path)
 	}
 }
 
-// An OAuth token still works on the paths the management API key also opens.
-func (ts *ManagementAPIKeyTestSuite) TestOAuthStillWorksOnTheSamePaths() {
+// The key also opens the plain import, for a pipeline that deploys editable resources, and a data plane
+// that a control plane without the managed import still deploys to.
+func (ts *ManagementAPIKeyTestSuite) TestTheKeyOpensThePlainImport() {
+	ts.NotEqual(http.StatusUnauthorized, ts.post("/import", managementAPIKey, `{"content":"","dryRun":true}`))
+	ts.NotEqual(http.StatusUnauthorized, ts.post("/import/delete", managementAPIKey, `{}`))
+}
+
+// The managed import is the control plane's: an administrator's token is refused there, root permission
+// or not.
+func (ts *ManagementAPIKeyTestSuite) TestAnAdministratorCannotUseTheManagedImport() {
+	req, err := http.NewRequest(http.MethodPost, testServerURL+managedImportPath,
+		bytes.NewReader([]byte(`{"content":"","dryRun":true}`)))
+	ts.Require().NoError(err)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := testutils.GetHTTPClient().Do(req)
+	ts.Require().NoError(err)
+	defer func() { _ = resp.Body.Close() }()
+
+	ts.Equal(http.StatusForbidden, resp.StatusCode)
+	ts.Equal("IMP-1008", errorCode(ts.T(), resp))
+}
+
+// An OAuth token still works on the plain import.
+func (ts *ManagementAPIKeyTestSuite) TestOAuthStillWorksOnThePlainImport() {
 	req, err := http.NewRequest(http.MethodPost, testServerURL+"/import",
 		bytes.NewReader([]byte(`{"content":"","dryRun":true}`)))
 	ts.Require().NoError(err)
@@ -119,7 +146,7 @@ func (ts *ManagementAPIKeyTestSuite) TestOAuthStillWorksOnTheSamePaths() {
 	defer func() { _ = resp.Body.Close() }()
 
 	ts.NotEqual(http.StatusUnauthorized, resp.StatusCode,
-		"the management API key must not have displaced OAuth on this path")
+		"OAuth must still open the plain import")
 }
 
 func (ts *ManagementAPIKeyTestSuite) post(path, key, body string) int {

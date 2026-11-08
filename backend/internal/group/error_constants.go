@@ -289,4 +289,32 @@ var (
 
 	// errNilEventBus is returned when the service is initialized without the event bus it audits on.
 	errNilEventBus = errors.New("the group service needs an event bus")
+	// ErrorManagedGroup is the error returned when attempting to change a group a control plane
+	// deployed. Only a deploy from the control plane changes or removes it.
+	ErrorManagedGroup = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "GRP-1023",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.groupservice.cannot_modify_managed_group",
+			DefaultValue: "Cannot modify a group deployed by the control plane",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.groupservice.cannot_modify_managed_group_description",
+			DefaultValue: "The group was deployed by the control plane and can only be changed there",
+		},
+	}
+	// ErrorManagedGroupMember is the error returned when attempting to remove a member a control plane
+	// deployed to a group. Members added on this deployment stay removable.
+	ErrorManagedGroupMember = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "GRP-1024",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.groupservice.cannot_remove_managed_member",
+			DefaultValue: "Cannot remove a member deployed by the control plane",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.groupservice.cannot_remove_managed_member_description",
+			DefaultValue: "The member was deployed to the group by the control plane and can only be removed there",
+		},
+	}
 )

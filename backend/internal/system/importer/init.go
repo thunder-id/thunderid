@@ -27,6 +27,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/sharing"
 	"github.com/thunder-id/thunderid/internal/system/eventbus"
 	i18nmgt "github.com/thunder-id/thunderid/internal/system/i18n/mgt"
+	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
 	"github.com/thunder-id/thunderid/internal/system/secretresolver"
 	"github.com/thunder-id/thunderid/internal/user"
@@ -99,6 +100,7 @@ func Initialize(
 	service.(*importService).authorizationDetailTypeService = authorizationDetailService
 	service.(*importService).httpConnectionService = httpConnectionService
 	service.(*importService).projectService = projectService
+	service.(*importService).managed = managedresource.GetStore()
 	importHandler := newImportHandler(service)
 
 	registerRoutes(mux, importHandler)
@@ -121,6 +123,16 @@ func registerRoutes(mux *http.ServeMux, importHandler *importHandler) {
 		func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusNoContent)
 		}, opts))
+
+	// Only where what a control plane deploys is kept read only: a control plane has no managed import.
+	if managedresource.GetStore() != nil {
+		mux.HandleFunc(middleware.WithCORS("POST /import/managed",
+			importHandler.HandleManagedImportRequest, opts))
+		mux.HandleFunc(middleware.WithCORS("OPTIONS /import/managed",
+			func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusNoContent)
+			}, opts))
+	}
 
 	mux.HandleFunc(middleware.WithCORS("POST /import/delete",
 		importHandler.HandleDeleteImportRequest, opts))

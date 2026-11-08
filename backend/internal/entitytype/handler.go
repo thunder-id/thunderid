@@ -226,7 +226,7 @@ func handleError(ctx context.Context, w http.ResponseWriter, svcErr *tidcommon.S
 			ErrorAgentTypeAlreadyExistsInOU.Code,
 			ErrorAgentTypeInUse.Code:
 			statusCode = http.StatusConflict
-		case ErrorCannotModifyDeclarativeResource.Code:
+		case ErrorCannotModifyDeclarativeResource.Code, ErrorManagedEntityType.Code:
 			statusCode = http.StatusForbidden
 		case tidcommon.ErrorUnauthorized.Code:
 			statusCode = http.StatusForbidden

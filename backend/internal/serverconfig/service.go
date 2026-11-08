@@ -14,6 +14,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/eventbus"
 	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	"github.com/thunder-id/thunderid/internal/system/observability/event"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
@@ -61,6 +62,9 @@ type serverConfigService struct {
 	bus           eventbus.EventBusInterface
 	logger        *log.Logger
 	configMu      sync.Mutex
+	// managed says which sections a control plane deployed, which a write through SetConfig leaves as they
+	// are. Nil where nothing is deployed from one.
+	managed managedresource.StoreInterface
 }
 
 // newServerConfigService creates a new instance of serverConfigService. Handlers are injected at
@@ -171,10 +175,29 @@ func (s *serverConfigService) SetConfig(ctx context.Context,
 	name ConfigName, value json.RawMessage) *common.ServiceError {
 	svcErr := s.checkWriteAccess(ctx, name)
 	if svcErr == nil {
+		svcErr = s.refuseManaged(ctx, name)
+	}
+	if svcErr == nil {
 		svcErr = s.setConfig(ctx, name, value)
 	}
 	s.publishServerConfigEvent(ctx, name, svcErr)
 	return svcErr
+}
+
+// refuseManaged refuses a write to a section a control plane deployed, unless the write is the managed
+// import's. Only SetConfig is refused: a section a control plane deployed still takes the updates the
+// server makes itself, such as another resource's origins, through UpdateConfig.
+func (s *serverConfigService) refuseManaged(ctx context.Context, name ConfigName) *common.ServiceError {
+	managed, err := managedresource.IsReadOnly(ctx, s.managed, string(name), managedresource.TypeServerConfig)
+	if err != nil {
+		s.logger.Error(ctx, "Failed to read whether a control plane deployed the configuration section",
+			log.String("name", string(name)), log.Error(err))
+		return &common.InternalServerError
+	}
+	if managed {
+		return &ErrorManagedConfig
+	}
+	return nil
 }
 
 // setConfig writes a section without publishing its audit event.

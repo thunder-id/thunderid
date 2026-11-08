@@ -53,6 +53,20 @@ var (
 			DefaultValue: "Other writes kept changing the section. Try again.",
 		},
 	}
+	// ErrorManagedConfig is the error returned when the API attempts to change a configuration section a
+	// control plane deployed. Only a deploy from the control plane changes it.
+	ErrorManagedConfig = common.ServiceError{
+		Type: common.ClientErrorType,
+		Code: "SCF-1006",
+		Error: common.I18nMessage{
+			Key:          "error.serverconfigservice.managed_config",
+			DefaultValue: "Cannot modify a configuration section deployed by the control plane",
+		},
+		ErrorDescription: common.I18nMessage{
+			Key:          "error.serverconfigservice.managed_config_description",
+			DefaultValue: "The section was deployed by the control plane and can only be changed there",
+		},
+	}
 
 	// ErrorInvalidRequestFormat is the error returned when the request body is malformed.
 	ErrorInvalidRequestFormat = common.ServiceError{

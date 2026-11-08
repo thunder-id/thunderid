@@ -21,6 +21,7 @@ import (
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/eventbus"
 	i18nmgt "github.com/thunder-id/thunderid/internal/system/i18n/mgt"
+	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -59,6 +60,7 @@ func Initialize(
 		inboundClient, entityService, ouService, i18nService, cryptoSvc, serverConfigSvc, artifactLifetime,
 		valueCapturer, sharingService, authzService, governance, projectValidator, bus,
 	)
+	appService.(*applicationService).managed = managedresource.GetStore()
 
 	// Registered before declarative resources load, because loading seeds the sharing policies those
 	// files declare and the framework refuses a type it does not know.

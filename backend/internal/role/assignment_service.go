@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"strings"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -25,6 +26,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/filter"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
@@ -71,6 +73,10 @@ type RoleAssignmentServiceInterface interface {
 	CascadeDeleteDependencies(ctx context.Context, resourceType, id string) (int, error)
 	// HasGroupRoleAssignments reports whether the group is assigned any role.
 	HasGroupRoleAssignments(ctx context.Context, groupID string) (bool, *tidcommon.ServiceError)
+	// ResolveAssignmentOUs returns the assignments each with the organization unit AddAssigneesToRoles
+	// makes it in.
+	ResolveAssignmentOUs(ctx context.Context, assignments []RoleAssignment) (
+		[]RoleAssignment, *tidcommon.ServiceError)
 }
 
 // roleAssignmentService is the default implementation of RoleAssignmentServiceInterface.
@@ -87,6 +93,9 @@ type roleAssignmentService struct {
 	logger            *log.Logger
 	// systemFlows is nil where system flows are off.
 	systemFlows systemFlowProvider
+	// managed says which assignments a control plane deployed, which stay read only here. Nil where
+	// nothing is deployed from one.
+	managed managedresource.StoreInterface
 }
 
 // newRoleAssignmentService creates a new instance of roleAssignmentService.
@@ -194,6 +203,7 @@ func (as *roleAssignmentService) GetRoleAssignmentsByType(ctx context.Context, i
 	if svcErr != nil {
 		return nil, svcErr
 	}
+	as.markManagedAssignments(ctx, id, serviceAssignments)
 
 	baseURL := fmt.Sprintf("/roles/%s/assignments", id)
 	extraQuery := assignmentFilterQuery(ouID) + utils.DisplayQueryParam(includeDisplay)
@@ -280,6 +290,7 @@ func (as *roleAssignmentService) getAssignmentsByEntityCategory(
 	if svcErr != nil {
 		return nil, svcErr
 	}
+	as.markManagedAssignments(ctx, id, serviceAssignments)
 
 	baseURL := fmt.Sprintf("/roles/%s/assignments", id)
 	extraQuery := assignmentFilterQuery(ouID) + utils.DisplayQueryParam(includeDisplay) + "&type=" + category
@@ -377,6 +388,11 @@ func (as *roleAssignmentService) ValidateRemoveAssignment(ctx context.Context, i
 		}
 	}
 
+	if svcErr := as.refuseManagedAssignments(
+		ctx, id, []RoleAssignment{{ID: assigneeID, OUID: ouID}}, logger); svcErr != nil {
+		return nil, svcErr
+	}
+
 	// Removing an assignment that is not there changes nothing, so it must not revoke anything.
 	assignment, svcErr := as.directAssignment(ctx, id, ouID, assigneeID)
 	if svcErr != nil {
@@ -442,6 +458,9 @@ func (as *roleAssignmentService) modifyAssignments(
 	}
 	var revocations []assignmentRevocation
 	if !adding {
+		if svcErr := as.refuseManagedAssignments(ctx, id, normalized, logger); svcErr != nil {
+			return svcErr
+		}
 		direct, svcErr := as.directAssignees(ctx, id, normalized)
 		if svcErr != nil {
 			return svcErr
@@ -1396,4 +1415,91 @@ func assignmentFilterQuery(ouID string) string {
 		return ""
 	}
 	return utils.FilterQueryParam(map[string]interface{}{filter.AttributeOUID: ouID})
+}
+
+// AssignmentKey is how an assignment of a role is named among the entries a control plane deployed to
+// it: the organization unit it is made in, and its assignee's type and id.
+func AssignmentKey(assignment RoleAssignment) string {
+	return assignment.OUID + "/" + string(assignment.Type) + "/" + assignment.ID
+}
+
+// ParseAssignmentKey reads an assignment back from its AssignmentKey.
+func ParseAssignmentKey(key string) (RoleAssignment, bool) {
+	parts := strings.SplitN(key, "/", 3)
+	if len(parts) != 3 {
+		return RoleAssignment{}, false
+	}
+	return RoleAssignment{OUID: parts[0], Type: AssigneeType(parts[1]), ID: parts[2]}, true
+}
+
+// holdsManagedAssignment reports whether the keys name the assignee's assignment in the organization
+// unit, whatever its type, which a removal by assignee id alone does not know.
+func holdsManagedAssignment(keys []string, ouID, assigneeID string) bool {
+	for _, key := range keys {
+		if a, ok := ParseAssignmentKey(key); ok && a.OUID == ouID && a.ID == assigneeID {
+			return true
+		}
+	}
+	return false
+}
+
+// ResolveAssignmentOUs returns the assignments each with the organization unit it is made in: the one
+// it names, or the one owning its assignee when it names none, as AddAssigneesToRoles places it.
+func (as *roleAssignmentService) ResolveAssignmentOUs(
+	ctx context.Context, assignments []RoleAssignment) ([]RoleAssignment, *tidcommon.ServiceError) {
+	ouIDs, byOU, svcErr := as.assignmentsByOU(ctx, assignments)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	resolved := make([]RoleAssignment, 0, len(assignments))
+	for _, ouID := range ouIDs {
+		for _, a := range byOU[ouID] {
+			a.OUID = ouID
+			resolved = append(resolved, a)
+		}
+	}
+	return resolved, nil
+}
+
+// refuseManagedAssignments refuses removing an assignment a control plane deployed to the role, unless
+// the managed import removes it. Each assignment names the organization unit it is made in.
+// Assignments made here stay removable, even on a deployed role.
+func (as *roleAssignmentService) refuseManagedAssignments(ctx context.Context, roleID string,
+	assignments []RoleAssignment, logger *log.Logger) *tidcommon.ServiceError {
+	if as.managed == nil || managedresource.IsManagedImport(ctx) {
+		return nil
+	}
+	keys, err := as.managed.PartKeys(ctx, managedresource.TypeRole, roleID, managedresource.PartAssignment)
+	if err != nil {
+		logger.Error(ctx, "Failed to read the assignments a control plane deployed to the role",
+			log.String("roleID", roleID), log.Error(err))
+		return &tidcommon.InternalServerError
+	}
+	for _, a := range assignments {
+		if holdsManagedAssignment(keys, a.OUID, a.ID) {
+			return &ErrorManagedRoleAssignment
+		}
+	}
+	return nil
+}
+
+// markManagedAssignments reports the listed assignments a control plane deployed as read only.
+func (as *roleAssignmentService) markManagedAssignments(
+	ctx context.Context, roleID string, assignments []RoleAssignmentWithDisplay) {
+	if as.managed == nil || len(assignments) == 0 {
+		return
+	}
+	keys, err := as.managed.PartKeys(ctx, managedresource.TypeRole, roleID, managedresource.PartAssignment)
+	if err != nil {
+		// Every removal of such an assignment is refused whatever the list says, so it is served without
+		// the flag.
+		as.logger.Error(ctx, "Failed to read the assignments a control plane deployed to the role",
+			log.String("roleID", roleID), log.Error(err))
+		return
+	}
+	for i := range assignments {
+		if holdsManagedAssignment(keys, assignments[i].OUID, assignments[i].ID) {
+			assignments[i].IsManaged = true
+		}
+	}
 }

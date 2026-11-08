@@ -10,30 +10,32 @@ import (
 	"io"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/thunder-id/thunderid/internal/system/managedresource"
 )
 
 const (
-	resourceTypeOrganizationUnit        = "organization_unit"
-	resourceTypeProject                 = "project"
-	resourceTypeEntityType              = "user_type"
-	resourceTypeAgentType               = "agent_type"
-	resourceTypeResourceServer          = "resource_server"
-	resourceTypeAuthorizationDetailType = "authorization_detail_type"
-	resourceTypeRole                    = "role"
-	resourceTypeGroup                   = "group"
-	resourceTypeConnection              = "connection"
-	resourceTypeFlow                    = "flow"
-	resourceTypeTheme                   = "theme"
-	resourceTypeLayout                  = "layout"
-	resourceTypeApplication             = "application"
-	resourceTypeUser                    = "user"
-	resourceTypeTranslation             = "translation"
-	resourceTypeAgent                   = "agent"
-	resourceTypePresentationDefinition  = "presentation_definition"
-	resourceTypeCredentialConfiguration = "credential_configuration" //nolint:gosec
-	resourceTypeServerConfig            = "server_config"
-	resourceTypeGateway                 = "gateway"
-	resourceTypeNotificationTemplate    = "notification_template"
+	resourceTypeOrganizationUnit        = managedresource.TypeOrganizationUnit
+	resourceTypeProject                 = managedresource.TypeProject
+	resourceTypeEntityType              = managedresource.TypeUserType
+	resourceTypeAgentType               = managedresource.TypeAgentType
+	resourceTypeResourceServer          = managedresource.TypeResourceServer
+	resourceTypeAuthorizationDetailType = managedresource.TypeAuthorizationDetailType
+	resourceTypeRole                    = managedresource.TypeRole
+	resourceTypeGroup                   = managedresource.TypeGroup
+	resourceTypeConnection              = managedresource.TypeConnection
+	resourceTypeFlow                    = managedresource.TypeFlow
+	resourceTypeTheme                   = managedresource.TypeTheme
+	resourceTypeLayout                  = managedresource.TypeLayout
+	resourceTypeApplication             = managedresource.TypeApplication
+	resourceTypeUser                    = managedresource.TypeUser
+	resourceTypeTranslation             = managedresource.TypeTranslation
+	resourceTypeAgent                   = managedresource.TypeAgent
+	resourceTypePresentationDefinition  = managedresource.TypePresentationDefinition
+	resourceTypeCredentialConfiguration = managedresource.TypeCredentialConfiguration
+	resourceTypeServerConfig            = managedresource.TypeServerConfig
+	resourceTypeGateway                 = managedresource.TypeGateway
+	resourceTypeNotificationTemplate    = managedresource.TypeNotificationTemplate
 	resourceTypeUnknown                 = "unknown"
 )
 

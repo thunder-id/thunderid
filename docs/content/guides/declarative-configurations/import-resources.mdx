@@ -50,9 +50,45 @@ The key is off by default. To turn it on, set [`server.security.management_api_k
 API-Key: <management_api_key>
 ```
 
+The key opens the import APIs (`/import`, `/import/managed` and `/import/delete`), the variable store (`/variables`) and the secret store (`/secrets`), and nothing else. Only the managed import marks what it writes as read only.
+
+## Managed Import
+
+`POST /import/managed` takes the same request and returns the same response as `POST /import`. It exists on a data plane only: a control plane does not serve it, and neither does a data plane on an older release, which answers `404`. A control plane that gets that `404` deploys through the plain `POST /import` instead, so what it writes is editable on that data plane (see [Apply a Version](./configuration-versions.mdx#apply-a-version)). It is the import a control plane uses to deploy to a data plane. Only the management API key may call it. A token is refused with `IMP-1008`.
+
+Everything a managed import writes is read only on the data plane. The data plane's own APIs, and so its console, refuse to update or delete it, and refuse changes to what it holds, such as the resources and actions of a resource server. Only a later managed import changes or removes it. A plain `POST /import` is refused the same way for a resource a managed import wrote. Each refusal has an error code of its own for the type of resource, for example `GRP-1023` for a group and `AGT-1063` for an agent.
+
+The refusal answers `403` on update and delete, and on the other writes to the resource, and carries the code of the resource's type:
+
+| Resource | Code | Resource | Code |
+| --- | --- | --- | --- |
+| Agent | `AGT-1063` | Notification template | `NTM-1032` |
+| Application | `APP-1069` | Organization unit | `OU-1026` |
+| Authorization detail type | `RAR-1030` | Project | `PRJ-1014` |
+| Connection | `CON-1040` | Resource server | `RES-1028` |
+| Credential configuration | `VCI-2016` | Role, role assignee | `ROL-1043`, `ROL-1044` |
+| Flow | `FLM-1048` | Server configuration | `SCF-1006` |
+| Group, group member | `GRP-1023`, `GRP-1024` | Theme | `THM-1020` |
+| Language (translations) | `I18N-1009` | User | `USR-1044` |
+| Layout | `LAY-1021` | User type, agent type | `USRS-1023` |
+| Presentation definition | `VP-2021` | SCIM (any of the above) | `SCIM-1042` |
+
+A managed import that finds a flow with the same handle that no control plane deployed does not take it over. It reports that item as failed with `IMP-1009`, because the control plane could not later remove a resource it does not know by its own ID. Rename or remove the flow on the data plane first.
+
+A deployed user is read only the same way, which includes setting a password through the data plane's credential APIs and recovery flows. A deployed user cannot change their own password on the data plane until a later deploy changes it.
+
+What a plain import, or a call to the data plane's own APIs, creates stays editable.
+
+- **Group members and role assignments are owned one by one.** A managed import removes the members of a group, and the assignees of a role, that an earlier managed import deployed and no longer sends. Members and assignees added on the data plane stay, even on a group or role that was deployed. Removing a member or assignee that a managed import deployed through the API is refused with `GRP-1024` or `ROL-1044`.
+- **Server configuration and translations.** The API refuses to write a server configuration section, or a translation language, that a managed import deployed. The server's own updates, such as the localized names of an application, still go through.
+- **Reads show it.** Lists and reads return `isReadOnly: true` for what was deployed. Application and agent details, connections, projects, credential and presentation configurations, translations and server configuration sections do not carry the field in their responses yet. The writes to them are refused all the same.
+
+A managed import marks a resource only after it writes it successfully, and not on a dry run. When it cannot mark one, it reports that item as failed.
+
 ## Endpoint Summary
 
 - `POST /import`: Imports one or more YAML documents into runtime stores.
+- `POST /import/managed`: Imports the same documents as a control plane deploys them, which makes them read only on the data plane. Management API key only.
 - `POST /import/delete`: Deletes a file-backed declarative resource file by type and key.
 
 ## Request Model

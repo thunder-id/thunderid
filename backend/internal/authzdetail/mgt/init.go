@@ -11,6 +11,7 @@ import (
 
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 )
@@ -25,6 +26,7 @@ func Initialize(
 ) (AuthorizationDetailMgtServiceInterface, declarativeresource.ResourceExporter, error) {
 	typeStore, fileStore, dbStore := initializeStore()
 	service := newAuthorizationDetailMgtService(typeStore, valueCapturer, authzService)
+	service.(*authorizationDetailMgtService).managed = managedresource.GetStore()
 
 	if fileStore != nil {
 		if err := loadDeclarativeResources(fileStore, dbStore); err != nil {

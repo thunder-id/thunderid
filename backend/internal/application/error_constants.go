@@ -919,6 +919,20 @@ var (
 			DefaultValue: "* must be the only entry in allowedAgentTypes",
 		},
 	}
+	// ErrorManagedApplication is the error returned when attempting to change an application a control
+	// plane deployed. Only a deploy from the control plane changes or removes it.
+	ErrorManagedApplication = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "APP-1069",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.managed_application",
+			DefaultValue: "Cannot modify an application deployed by the control plane",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.managed_application_description",
+			DefaultValue: "The application was deployed by the control plane and can only be changed there",
+		},
+	}
 )
 
 // errNilEventBus is returned when the service is initialized without the event bus it audits on.

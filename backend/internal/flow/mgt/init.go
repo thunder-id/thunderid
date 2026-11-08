@@ -24,6 +24,7 @@ import (
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/eventbus"
+	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 )
@@ -86,6 +87,7 @@ func Initialize(
 		interceptorRegistry, flowValidator, compositeStore, transactioner, serverConfigSvc, ouSvc,
 		templateResolver, systemFlows, sharingSvc, idpProvider, bus, projectValidator, authzService,
 	)
+	service.managed = managedresource.GetStore()
 	if err := service.loadDeclarativeSharing(); err != nil {
 		return nil, nil, err
 	}

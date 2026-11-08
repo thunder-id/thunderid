@@ -40,13 +40,14 @@ func requestWithAPIKey(method, path, key string) *http.Request {
 	return request
 }
 
-// The key opens the import and variable store APIs, and those only.
+// The key opens the import APIs, managed or plain, and the variable store APIs, and those only.
 func TestManagementAPIKeyHandlesOnlyTheTrustedPaths(t *testing.T) {
 	authenticator := newTestManagementAuthenticator(t, testManagementAPIKeyHash)
 
 	trusted := []struct{ method, path string }{
 		{http.MethodPost, "/import"},
 		{http.MethodPost, "/import/delete"},
+		{http.MethodPost, "/import/managed"},
 		{http.MethodGet, "/variables"},
 		{http.MethodPut, "/variables/API_URL"},
 		{http.MethodDelete, "/variables/API_URL"},
@@ -94,7 +95,7 @@ func TestAPlaintextKeyInTheConfigurationAuthenticatesNothing(t *testing.T) {
 	// not accidentally work: the presented key is compared against it as a digest and will not match.
 	authenticator := newTestManagementAuthenticator(t, testManagementAPIKey)
 
-	_, err := authenticator.Authenticate(requestWithAPIKey(http.MethodPost, "/import", testManagementAPIKey))
+	_, err := authenticator.Authenticate(requestWithAPIKey(http.MethodPost, "/import/managed", testManagementAPIKey))
 	assert.Error(t, err)
 }
 
@@ -113,7 +114,7 @@ func TestAWrongAPIKeyIsRefusedRatherThanIgnored(t *testing.T) {
 		strings.ToUpper(testManagementAPIKey),
 		testManagementAPIKeyHash,
 	} {
-		request := requestWithAPIKey(http.MethodPost, "/import", presented)
+		request := requestWithAPIKey(http.MethodPost, "/import/managed", presented)
 		assert.True(t, authenticator.CanHandle(request),
 			"an API-Key value of %q is presented, so it is this mechanism's to judge", presented)
 		_, err := authenticator.Authenticate(request)
@@ -122,7 +123,7 @@ func TestAWrongAPIKeyIsRefusedRatherThanIgnored(t *testing.T) {
 
 	// No key presented at all is a different case: there is nothing to judge, so the request is
 	// left to whichever mechanism the caller did present a credential for.
-	assert.False(t, authenticator.CanHandle(requestWithAPIKey(http.MethodPost, "/import", "")))
+	assert.False(t, authenticator.CanHandle(requestWithAPIKey(http.MethodPost, "/import/managed", "")))
 }
 
 // The key belongs in its own header. Presenting it the way a bearer token is presented must not
@@ -135,7 +136,7 @@ func TestTheKeyIsNotAcceptedInTheAuthorizationHeader(t *testing.T) {
 		testManagementAPIKey,
 		"Bearer " + testManagementAPIKeyHash,
 	} {
-		request := httptest.NewRequest(http.MethodPost, "/import", nil)
+		request := httptest.NewRequest(http.MethodPost, "/import/managed", nil)
 		request.Header.Set(constants.AuthorizationHeaderName, header)
 		assert.False(t, authenticator.CanHandle(request),
 			"Authorization: %q must not be claimed by the API key authenticator", header)
@@ -147,14 +148,14 @@ func TestTheKeyIsNotAcceptedInTheAuthorizationHeader(t *testing.T) {
 func TestAKeyIsClaimedEvenAlongsideABearerToken(t *testing.T) {
 	authenticator := newTestManagementAuthenticator(t, testManagementAPIKeyHash)
 
-	request := requestWithAPIKey(http.MethodPost, "/import", testManagementAPIKey)
+	request := requestWithAPIKey(http.MethodPost, "/import/managed", testManagementAPIKey)
 	request.Header.Set(constants.AuthorizationHeaderName, "Bearer some.jwt.token")
 	assert.True(t, authenticator.CanHandle(request))
 	_, err := authenticator.Authenticate(request)
 	assert.NoError(t, err)
 
 	// The bearer token is no second chance. A request that presents a key is judged on that key.
-	stale := requestWithAPIKey(http.MethodPost, "/import", "stale-key")
+	stale := requestWithAPIKey(http.MethodPost, "/import/managed", "stale-key")
 	stale.Header.Set(constants.AuthorizationHeaderName, "Bearer some.jwt.token")
 	assert.True(t, authenticator.CanHandle(stale))
 	_, err = authenticator.Authenticate(stale)
@@ -165,8 +166,8 @@ func TestAKeyIsClaimedEvenAlongsideABearerToken(t *testing.T) {
 func TestNoConfiguredAPIKeyHandlesNothing(t *testing.T) {
 	authenticator := newTestManagementAuthenticator(t, "")
 
-	assert.False(t, authenticator.CanHandle(requestWithAPIKey(http.MethodPost, "/import", "")))
-	assert.False(t, authenticator.CanHandle(requestWithAPIKey(http.MethodPost, "/import", "anything")))
+	assert.False(t, authenticator.CanHandle(requestWithAPIKey(http.MethodPost, "/import/managed", "")))
+	assert.False(t, authenticator.CanHandle(requestWithAPIKey(http.MethodPost, "/import/managed", "anything")))
 	// An empty configured digest must not be matched by an empty presented key.
 	assert.False(t, hasManagementAPIKey(""))
 	assert.False(t, hasManagementAPIKey("   "))
@@ -176,7 +177,7 @@ func TestAuthenticateGrantsTheRootSystemPermission(t *testing.T) {
 	authenticator := newTestManagementAuthenticator(t, testManagementAPIKeyHash)
 
 	securityCtx, err := authenticator.Authenticate(
-		requestWithAPIKey(http.MethodPost, "/import", testManagementAPIKey))
+		requestWithAPIKey(http.MethodPost, "/import/managed", testManagementAPIKey))
 
 	require.NoError(t, err)
 	require.NotNil(t, securityCtx)
@@ -195,7 +196,7 @@ func TestAuthenticateGrantsTheRootSystemPermission(t *testing.T) {
 func TestAuthenticateRefusesWhatItCannotHandle(t *testing.T) {
 	authenticator := newTestManagementAuthenticator(t, testManagementAPIKeyHash)
 
-	_, err := authenticator.Authenticate(requestWithAPIKey(http.MethodPost, "/import", "wrong"))
+	_, err := authenticator.Authenticate(requestWithAPIKey(http.MethodPost, "/import/managed", "wrong"))
 	assert.Error(t, err)
 
 	// Which paths this mechanism is trusted for is CanHandle's to decide, so the service never
@@ -209,11 +210,11 @@ func TestTheHeaderValueIsTrimmedButNotOtherwiseNormalized(t *testing.T) {
 	authenticator := newTestManagementAuthenticator(t, testManagementAPIKeyHash)
 
 	_, err := authenticator.Authenticate(
-		requestWithAPIKey(http.MethodPost, "/import", "  "+testManagementAPIKey+"  "))
+		requestWithAPIKey(http.MethodPost, "/import/managed", "  "+testManagementAPIKey+"  "))
 	assert.NoError(t, err, "surrounding whitespace is trimmed")
 
 	_, err = authenticator.Authenticate(
-		requestWithAPIKey(http.MethodPost, "/import", strings.ToUpper(testManagementAPIKey)))
+		requestWithAPIKey(http.MethodPost, "/import/managed", strings.ToUpper(testManagementAPIKey)))
 	assert.Error(t, err, "the value is otherwise compared as presented")
 }
 
@@ -246,7 +247,7 @@ func TestPipelineAdmitsTheKeyOnTheTrustedPaths(t *testing.T) {
 	service := newPipelineWithManagementAPIKey(t)
 
 	for _, request := range []struct{ method, path string }{
-		{http.MethodPost, "/import"},
+		{http.MethodPost, "/import/managed"},
 		{http.MethodGet, "/variables"},
 		{http.MethodPut, "/variables/API_URL"},
 		{http.MethodPost, "/secrets"},

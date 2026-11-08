@@ -1616,6 +1616,13 @@ components:
         import:
           type: object
           description: The gateway's own account of the import, as it answered.
+        plainImport:
+          type: boolean
+          description: |
+            Present and `true` when the gateway has no managed import, which only a gateway on an older
+            release lacks, so the apply went through its plain import. It succeeded, but what it wrote is
+            not read only on that gateway. Upgrading the gateway does not change that: a resource is marked
+            only when a managed import writes it, and an apply sends only what changed.
         recorded:
           type: boolean
           description: |

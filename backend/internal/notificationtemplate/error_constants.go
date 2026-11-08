@@ -484,6 +484,21 @@ var (
 				"Set projectId to the project it belongs to",
 		},
 	}
+
+	// ErrorManagedTemplate is the error returned when attempting to change a template a control plane
+	// deployed. Only a deploy from the control plane changes or removes it.
+	ErrorManagedTemplate = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "NTM-1032",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.notificationtemplateservice.managed_template",
+			DefaultValue: "Cannot modify a template deployed by the control plane",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.notificationtemplateservice.managed_template_description",
+			DefaultValue: "The template was deployed by the control plane and can only be changed there",
+		},
+	}
 )
 
 // errNilEventBus is returned when the service is initialized without the event bus it audits on.

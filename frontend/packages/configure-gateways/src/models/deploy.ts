@@ -192,6 +192,11 @@ export interface ApplyResult {
   dryRun: boolean;
   diff: Diff;
   import?: ImportResult;
+  /**
+   * Set when the target has no managed import, so the deploy went through its plain import and what it wrote
+   * is not read only on the target until the target is upgraded.
+   */
+  plainImport?: boolean;
   recorded?: boolean;
   /** The hash of the master the target holds after the deploy. */
   master?: string;

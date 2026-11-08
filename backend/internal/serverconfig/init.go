@@ -10,6 +10,7 @@ import (
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/eventbus"
+	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -33,9 +34,9 @@ func Initialize(mux *http.ServeMux, cacheManager cache.CacheManagerInterface,
 		return nil, nil, err
 	}
 	service := newServerConfigService(store, handlers, observability, bus, authzService)
+	service.(*serverConfigService).managed = managedresource.GetStore()
 
-	handler := newServerConfigHandler(service)
-	registerRoutes(mux, handler)
+	registerRoutes(mux, newServerConfigHandler(service))
 
 	return service, newServerConfigExporter(service, handlers), nil
 }

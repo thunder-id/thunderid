@@ -29,6 +29,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/filter"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	"github.com/thunder-id/thunderid/internal/system/projectscope"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/security"
@@ -126,6 +127,9 @@ type roleService struct {
 	systemFlows systemFlowProvider
 	// projectValidator is nil on a deployment that serves no projects.
 	projectValidator projectOUValidator
+	// managed says which roles a control plane deployed, which stay read only here. Nil where nothing
+	// is deployed from one.
+	managed managedresource.StoreInterface
 }
 
 // projectOUValidator checks that the organization unit of a resource scoped to a project belongs to it.
@@ -233,6 +237,7 @@ func (rs *roleService) GetRoleList(
 	}
 
 	rs.resolveRoleOUHandles(ctx, roles)
+	rs.markManagedRoles(ctx, roles)
 
 	response := &RoleList{
 		TotalResults: totalCount,
@@ -293,6 +298,7 @@ func (rs *roleService) GetRoleListByProject(
 		roles[i].IsOwnedByOU = true
 	}
 	rs.resolveRoleOUHandles(ctx, roles)
+	rs.markManagedRoles(ctx, roles)
 
 	return &RoleList{
 		TotalResults: totalCount,
@@ -594,6 +600,7 @@ func (rs *roleService) getRoleWithPermissions(ctx context.Context, id string) (
 	}
 
 	role.IsOwnedByOU = true
+	role.IsReadOnly = rs.isReadOnlyRole(ctx, id, logger)
 
 	logger.Debug(ctx, "Successfully retrieved role",
 		log.String("id", role.ID), log.String("name", role.Name))
@@ -1526,22 +1533,68 @@ func (rs *roleService) groupScopes(ctx context.Context, groupID string) (
 
 // validateRoleMutable refuses a change to a declarative role, failing closed when the check errors.
 func (rs *roleService) validateRoleMutable(ctx context.Context, roleID string) *tidcommon.ServiceError {
-	// Check the store mode - if it's mutable, no roles are declarative
-	if getRoleStoreMode() == serverconst.StoreModeMutable {
-		return nil
+	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
+
+	// In mutable store mode no role is declarative.
+	if getRoleStoreMode() != serverconst.StoreModeMutable {
+		isDeclarative, err := rs.roleStore.IsRoleDeclarative(ctx, roleID)
+		if err != nil {
+			logger.Error(ctx, "Failed to check if role is declarative", log.String("roleID", roleID), log.Error(err))
+			return &tidcommon.InternalServerError
+		}
+		if isDeclarative {
+			logger.Debug(ctx, "Cannot modify declarative role", log.String("roleID", roleID))
+			return &ErrorImmutableRole
+		}
 	}
 
+	// Checked whatever the store mode: a role a control plane deployed lives in the database.
+	return rs.refuseManagedRole(ctx, roleID)
+}
+
+// refuseManagedRole refuses a change to a role a control plane deployed, unless the change is the managed
+// import's, failing closed when the check errors.
+func (rs *roleService) refuseManagedRole(ctx context.Context, roleID string) *tidcommon.ServiceError {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
-	isDeclarative, err := rs.roleStore.IsRoleDeclarative(ctx, roleID)
+	managed, err := managedresource.IsReadOnly(ctx, rs.managed, roleID, managedresource.TypeRole)
 	if err != nil {
-		logger.Error(ctx, "Failed to check if role is declarative", log.String("roleID", roleID), log.Error(err))
+		logger.Error(ctx, "Failed to read whether a control plane deployed the role",
+			log.String("roleID", roleID), log.Error(err))
 		return &tidcommon.InternalServerError
 	}
-	if isDeclarative {
-		logger.Debug(ctx, "Cannot modify declarative role", log.String("roleID", roleID))
-		return &ErrorImmutableRole
+	if managed {
+		logger.Debug(ctx, "Cannot modify a role a control plane deployed", log.String("roleID", roleID))
+		return &ErrorManagedRole
 	}
 	return nil
+}
+
+// setManagedStore gives the role service the record of what a control plane deployed.
+func setManagedStore(service RoleServiceInterface, managed managedresource.StoreInterface) {
+	if rs, ok := service.(*roleService); ok {
+		rs.managed = managed
+	}
+}
+
+// isReadOnlyRole reports whether a control plane deployed the role, which is shown as read only. A failed
+// read of that is logged and taken as not: every write to such a role is refused whatever the read says.
+func (rs *roleService) isReadOnlyRole(ctx context.Context, roleID string, logger *log.Logger) bool {
+	deployed, err := managedresource.IsDeployed(ctx, rs.managed, roleID, managedresource.TypeRole)
+	if err != nil {
+		logger.Error(ctx, "Failed to read whether a control plane deployed the role",
+			log.String("roleID", roleID), log.Error(err))
+	}
+	return deployed
+}
+
+// markManagedRoles reports the listed roles a control plane deployed as read only.
+func (rs *roleService) markManagedRoles(ctx context.Context, roles []Role) {
+	if err := managedresource.MarkDeployed(ctx, rs.managed, roles,
+		func(r *Role) string { return r.ID }, func(r *Role) { r.IsReadOnly = true },
+		managedresource.TypeRole); err != nil {
+		// Every write to such a role is refused whatever the list says, so it is served without the flag.
+		rs.logger.Error(ctx, "Failed to read which roles a control plane deployed", log.Error(err))
+	}
 }
 
 // GetResourceDependencies implements resourcedependency.Provider. Role permissions are cleaned up
@@ -1665,7 +1718,7 @@ func (rs *roleService) ListSharingPolicies(
 func (rs *roleService) UpdateSharingPolicy(
 	ctx context.Context, roleID, policyID string, req sharing.PolicyRequest,
 ) (sharing.Policy, *tidcommon.ServiceError) {
-	_, policy, svcErr := rs.requireOwnPolicy(ctx, roleID, policyID)
+	owningOUID, policy, svcErr := rs.requireOwnPolicy(ctx, roleID, policyID)
 	if svcErr != nil {
 		return sharing.Policy{}, svcErr
 	}
@@ -1676,6 +1729,12 @@ func (rs *roleService) UpdateSharingPolicy(
 	if isDeclarativeModeEnabled() {
 		return sharing.Policy{}, &ErrorImmutableRole
 	}
+	// A deployed role's own sharing is deployed with it.
+	if policy.InitiatingOUID == owningOUID {
+		if svcErr := rs.refuseManagedRole(ctx, roleID); svcErr != nil {
+			return sharing.Policy{}, svcErr
+		}
+	}
 	updated, svcErr := rs.sharingService.UpdatePolicy(ctx, policyID, req)
 	return updated, translateSharingError(svcErr)
 }
@@ -1684,7 +1743,7 @@ func (rs *roleService) UpdateSharingPolicy(
 func (rs *roleService) DeleteSharingPolicy(
 	ctx context.Context, roleID, policyID string,
 ) *tidcommon.ServiceError {
-	_, policy, svcErr := rs.requireOwnPolicy(ctx, roleID, policyID)
+	owningOUID, policy, svcErr := rs.requireOwnPolicy(ctx, roleID, policyID)
 	if svcErr != nil {
 		if svcErr.Code == ErrorSharingPolicyNotFound.Code {
 			return nil
@@ -1697,6 +1756,12 @@ func (rs *roleService) DeleteSharingPolicy(
 	}
 	if isDeclarativeModeEnabled() {
 		return &ErrorImmutableRole
+	}
+	// A deployed role's own sharing is deployed with it.
+	if policy.InitiatingOUID == owningOUID {
+		if svcErr := rs.refuseManagedRole(ctx, roleID); svcErr != nil {
+			return svcErr
+		}
 	}
 	if policy.Declared {
 		return &ErrorSharingPolicyDeclared

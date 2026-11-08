@@ -530,6 +530,20 @@ var (
 
 	// errNilEventBus is returned when the service is initialized without the event bus it audits on.
 	errNilEventBus = errors.New("the user service needs an event bus")
+	// ErrorManagedUser is the error returned when attempting to change a user a control plane deployed,
+	// its credentials and attributes included. Only a deploy from the control plane changes or removes it.
+	ErrorManagedUser = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "USR-1044",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.userservice.managed_user",
+			DefaultValue: "Cannot modify a user deployed by the control plane",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.userservice.managed_user_description",
+			DefaultValue: "The user was deployed by the control plane and can only be changed there",
+		},
+	}
 )
 
 // errSharingPolicyNotFoundNoop is returned by deleteSharingPolicy when the user holds no policy under the

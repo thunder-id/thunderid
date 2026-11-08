@@ -11,6 +11,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/ou"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/eventbus"
+	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
 )
 
@@ -30,6 +31,7 @@ func Initialize(
 	}
 
 	service := newProjectService(store, transactioner, ouService, entities, bus)
+	service.managed = managedresource.GetStore()
 	registerRoutes(mux, newProjectHandler(service))
 	if mcpServer != nil {
 		registerMCPTools(mcpServer, service)

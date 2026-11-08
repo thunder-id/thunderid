@@ -21,6 +21,7 @@ import (
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/filter"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	"github.com/thunder-id/thunderid/internal/system/outboundauth"
 	"github.com/thunder-id/thunderid/internal/system/outboundauth/httpauth"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
@@ -44,6 +45,9 @@ type service struct {
 	sharingService      sharing.SharingServiceInterface
 	authzService        sysauthz.SystemAuthorizationServiceInterface
 	logger              *log.Logger
+	// managed says which connections a control plane deployed, which stay read only here. Nil where
+	// nothing is deployed from one.
+	managed managedresource.StoreInterface
 }
 
 // newService creates a connection service over the given identity-provider and
@@ -61,6 +65,21 @@ func newService(idpService idp.IDPServiceInterface,
 		httpService:         httpService,
 		logger:              log.GetLogger().With(log.String(log.LoggerKeyComponentName, "ConnectionService")),
 	}
+}
+
+// refuseManaged refuses a change to a connection a control plane deployed, unless the change is the
+// managed import's: only a deploy from the control plane changes or removes it.
+func (s *service) refuseManaged(ctx context.Context, id string) *tidcommon.ServiceError {
+	managed, err := managedresource.IsReadOnly(ctx, s.managed, id, managedresource.TypeConnection)
+	if err != nil {
+		log.GetLogger().Error(ctx, "Failed to read whether a control plane deployed the connection",
+			log.String("id", id), log.Error(err))
+		return &tidcommon.InternalServerError
+	}
+	if managed {
+		return &ErrorManagedConnection
+	}
+	return nil
 }
 
 // listByType returns the configured instances of the given identity-provider type.
@@ -398,6 +417,9 @@ func (s *service) update(ctx context.Context, idpType providers.IDPType, id stri
 	if svcErr := s.checkConnectionAccess(ctx, security.ActionUpdateConnection, existing.OUID); svcErr != nil {
 		return nil, svcErr
 	}
+	if svcErr := s.refuseManaged(ctx, id); svcErr != nil {
+		return nil, svcErr
+	}
 	dto.Properties = mergeStoredSecrets(dto.Properties, existing.Properties)
 	updated, svcErr := s.idpService.UpdateIdentityProvider(ctx, id, dto)
 	if svcErr == nil {
@@ -419,6 +441,9 @@ func (s *service) deleteByType(ctx context.Context, idpType providers.IDPType, i
 		return &idp.ErrorIDPNotFound
 	}
 	if svcErr := s.checkConnectionAccess(ctx, security.ActionDeleteConnection, dto.OUID); svcErr != nil {
+		return svcErr
+	}
+	if svcErr := s.refuseManaged(ctx, id); svcErr != nil {
 		return svcErr
 	}
 	if svcErr := s.idpService.DeleteIdentityProvider(ctx, id); svcErr != nil {
@@ -506,6 +531,9 @@ func (s *service) updateSender(ctx context.Context, senderType ncommon.Notificat
 	if svcErr := s.checkConnectionAccess(ctx, security.ActionUpdateConnection, existing.OUID); svcErr != nil {
 		return nil, svcErr
 	}
+	if svcErr := s.refuseManaged(ctx, id); svcErr != nil {
+		return nil, svcErr
+	}
 	storedProperties := existing.Properties
 	if senderType == ncommon.NotificationSenderTypeMessage && provider == ncommon.NotificationProviderTypeCustom {
 		var err error
@@ -574,6 +602,9 @@ func (s *service) deleteSenderByProvider(ctx context.Context, senderType ncommon
 		return &notification.ErrorSenderNotFound
 	}
 	if svcErr := s.checkConnectionAccess(ctx, security.ActionDeleteConnection, dto.OUID); svcErr != nil {
+		return svcErr
+	}
+	if svcErr := s.refuseManaged(ctx, id); svcErr != nil {
 		return svcErr
 	}
 	if svcErr := s.notificationService.DeleteSender(ctx, id); svcErr != nil {
@@ -659,6 +690,9 @@ func (s *service) updateAuthZENPDP(
 		if svcErr := s.checkConnectionAccess(ctx, security.ActionUpdateConnection, existing.OUID); svcErr != nil {
 			return nil, svcErr
 		}
+		if svcErr := s.refuseManaged(ctx, id); svcErr != nil {
+			return nil, svcErr
+		}
 	} else if svcErr.Code != authzenpdp.ErrorNotFound.Code {
 		return nil, svcErr
 	}
@@ -675,6 +709,9 @@ func (s *service) deleteAuthZENPDP(ctx context.Context, id string) *tidcommon.Se
 		return svcErr
 	}
 	if svcErr := s.checkConnectionAccess(ctx, security.ActionDeleteConnection, existing.OUID); svcErr != nil {
+		return svcErr
+	}
+	if svcErr := s.refuseManaged(ctx, id); svcErr != nil {
 		return svcErr
 	}
 	usages, svcErr := s.authZENPDPUsages(ctx, id)
@@ -765,6 +802,9 @@ func (s *service) updateStoredHTTP(ctx context.Context, existing *httpconnection
 	if svcErr := s.checkConnectionAccess(ctx, security.ActionUpdateConnection, existing.OUID); svcErr != nil {
 		return nil, svcErr
 	}
+	if svcErr := s.refuseManaged(ctx, existing.ID); svcErr != nil {
+		return nil, svcErr
+	}
 	var svcErr *tidcommon.ServiceError
 	if connection.AuthProperties, svcErr = keepStoredHTTPSecrets(connection, *existing); svcErr != nil {
 		return nil, svcErr
@@ -816,6 +856,9 @@ func (s *service) deleteHTTP(ctx context.Context, id string) *tidcommon.ServiceE
 		return svcErr
 	}
 	if svcErr := s.checkConnectionAccess(ctx, security.ActionDeleteConnection, existing.OUID); svcErr != nil {
+		return svcErr
+	}
+	if svcErr := s.refuseManaged(ctx, id); svcErr != nil {
 		return svcErr
 	}
 	if svcErr := s.httpService.DeleteHTTPConnection(ctx, id); svcErr != nil {

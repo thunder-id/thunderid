@@ -252,4 +252,19 @@ var (
 	errResultLimitExceededInCompositeMode = errors.New("result limit exceeded in composite mode")
 	// errTypeDataCorrupted is returned when a declarative entry does not hold a type.
 	errTypeDataCorrupted = errors.New("authorization details type data is corrupted")
+	// ErrorManagedType is the error returned when attempting to change a type a control plane deployed.
+	// Only a deploy from the control plane changes or removes it.
+	ErrorManagedType = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "RAR-1030",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.authorizationdetailservice.managed_type",
+			DefaultValue: "Cannot modify a type deployed by the control plane",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.authorizationdetailservice.managed_type_description",
+			DefaultValue: "The authorization details type was deployed by the control plane and can only " +
+				"be changed there",
+		},
+	}
 )

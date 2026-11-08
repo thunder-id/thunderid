@@ -29,6 +29,7 @@ import (
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	i18nmgt "github.com/thunder-id/thunderid/internal/system/i18n/mgt"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	"github.com/thunder-id/thunderid/internal/user"
 	"github.com/thunder-id/thunderid/internal/vc/credential"
 	"github.com/thunder-id/thunderid/internal/vc/presentation"
@@ -424,14 +425,28 @@ func (s *importService) importRole(
 func (s *importService) addRoleAssignments(
 	ctx context.Context, roleID string, assignments []role.RoleAssignment,
 ) *tidcommon.ServiceError {
-	if len(assignments) == 0 {
+	managed := s.managed != nil && managedresource.IsManagedImport(ctx)
+	if len(assignments) == 0 && !managed {
 		return nil
 	}
 	if s.roleAssignmentService == nil {
 		return tidcommon.CustomServiceError(tidcommon.InternalServerError,
 			tidcommon.I18nMessage{DefaultValue: "roleAssignmentService not configured"})
 	}
-	return s.roleAssignmentService.AddAssigneesToRoles(ctx, assignments, []string{roleID})
+	if len(assignments) > 0 {
+		if managed {
+			// Placed now, as the add places them, so each is recorded under the unit it is made in.
+			resolved, svcErr := s.roleAssignmentService.ResolveAssignmentOUs(ctx, assignments)
+			if svcErr != nil {
+				return svcErr
+			}
+			assignments = resolved
+		}
+		if svcErr := s.roleAssignmentService.AddAssigneesToRoles(ctx, assignments, []string{roleID}); svcErr != nil {
+			return svcErr
+		}
+	}
+	return s.reconcileManagedAssignments(ctx, roleID, assignments)
 }
 
 func (s *importService) importGroup(
@@ -507,6 +522,9 @@ func (s *importService) importGroup(
 					return serviceErrorOutcome(resourceTypeGroup, updated.ID, updated.Name, operationUpdate, memberErr)
 				}
 			}
+			if memberErr := s.reconcileManagedMembers(ctx, updated.ID, raw.Members); memberErr != nil {
+				return serviceErrorOutcome(resourceTypeGroup, updated.ID, updated.Name, operationUpdate, memberErr)
+			}
 			return successOutcome(resourceTypeGroup, updated.ID, updated.Name, operationUpdate)
 		}
 		if !isNotFoundServiceError(svcErr) {
@@ -522,6 +540,9 @@ func (s *importService) importGroup(
 		if _, memberErr := s.groupService.AddGroupMembers(ctx, grp.ID, raw.Members); memberErr != nil {
 			return serviceErrorOutcome(resourceTypeGroup, grp.ID, grp.Name, operationCreate, memberErr)
 		}
+	}
+	if memberErr := s.reconcileManagedMembers(ctx, grp.ID, raw.Members); memberErr != nil {
+		return serviceErrorOutcome(resourceTypeGroup, grp.ID, grp.Name, operationCreate, memberErr)
 	}
 	return successOutcome(resourceTypeGroup, grp.ID, grp.Name, operationCreate)
 }

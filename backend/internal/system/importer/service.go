@@ -40,6 +40,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/eventbus"
 	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	"github.com/thunder-id/thunderid/internal/system/secretresolver"
 	"github.com/thunder-id/thunderid/internal/vc/credential"
 	"github.com/thunder-id/thunderid/internal/vc/presentation"
@@ -194,6 +195,8 @@ type roleAssignmentAdapter interface {
 	ValidateRemoveAssignment(ctx context.Context, id, ouID, assigneeID string) (
 		*revocation.AccessRevocationTarget, *tidcommon.ServiceError)
 	RemoveAssignments(ctx context.Context, id, ouID string, assignments []role.RoleAssignment) *tidcommon.ServiceError
+	ResolveAssignmentOUs(ctx context.Context, assignments []role.RoleAssignment) (
+		[]role.RoleAssignment, *tidcommon.ServiceError)
 }
 
 // sharingPolicyAdapter applies the sharing policies a document carries for one resource.
@@ -374,6 +377,8 @@ type importService struct {
 	// references in place, which is what a control plane wants: it keeps configuration as references
 	// and holds no values.
 	references *secretresolver.Resolver
+	// managed records what a managed import writes as deployed by a control plane. Nil marks nothing.
+	managed managedresource.StoreInterface
 }
 
 func newImportService(
@@ -494,6 +499,7 @@ func (s *importService) importResources(
 
 	options := withImportDefaults(request.Options)
 	ctx = withForcedSharingEdits(ctx, options)
+	ctx = withManagedImport(ctx, request)
 	if options.Target == importTargetFile {
 		return nil, tidcommon.CustomServiceError(
 			ErrorInvalidImportRequest,
@@ -547,6 +553,7 @@ func (s *importService) importResources(
 				plan)
 		}
 		listRemovedSharing(&outcome, replayReport)
+		outcome = s.markManaged(ctx, request, doc.ResourceType, outcome)
 		if outcome.Status == statusSuccess {
 			switch doc.ResourceType {
 			case resourceTypeUser, resourceTypeAgent, resourceTypeApplication:
@@ -1286,6 +1293,10 @@ func (s *importService) importFlowDefinition(
 
 			existingByHandle, handleErr := s.flowService.GetFlowByHandle(ctx, req.Handle, req.FlowType)
 			if handleErr == nil {
+				if refusal := s.refuseUnmarkedAdoption(ctx, existingByHandle.ID); refusal != nil {
+					return serviceErrorOutcome(resourceTypeFlow, existingByHandle.ID, req.Name,
+						operationUpdate, refusal)
+				}
 				if existingByHandle.OUID != flowDef.OUID {
 					return serviceErrorOutcome(resourceTypeFlow, existingByHandle.ID, req.Name, operationUpdate,
 						&flowmgt.ErrorOUUpdateNotAllowed)
@@ -1311,6 +1322,9 @@ func (s *importService) importFlowDefinition(
 			return serviceErrorOutcome(resourceTypeFlow, req.ID, req.Name, operationUpdate, svcErr)
 		} else if existingByHandle, handleErr := s.flowService.GetFlowByHandle(
 			ctx, req.Handle, req.FlowType); handleErr == nil {
+			if refusal := s.refuseUnmarkedAdoption(ctx, existingByHandle.ID); refusal != nil {
+				return serviceErrorOutcome(resourceTypeFlow, existingByHandle.ID, req.Name, operationUpdate, refusal)
+			}
 			existingID = existingByHandle.ID
 		} else if !isNotFoundServiceError(handleErr) {
 			return serviceErrorOutcome(resourceTypeFlow, req.ID, req.Name, operationUpdate, handleErr)

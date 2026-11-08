@@ -16,6 +16,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/eventbus"
+	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -51,6 +52,7 @@ func Initialize(
 		store, ouService, entityService, entityTypeService, authzService, transactioner, sharingService, bus,
 		projectValidator,
 	)
+	groupService.managed = managedresource.GetStore()
 
 	// Step 3: Load declarative resources into file store (if applicable).
 	if fileStore != nil {

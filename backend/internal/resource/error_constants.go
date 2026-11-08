@@ -339,6 +339,22 @@ var (
 			DefaultValue: "The filter must be a single ouId eq expression with a quoted organization unit ID",
 		},
 	}
+	// ErrorManagedResourceServer is the error returned when attempting to change a resource server a
+	// control plane deployed, or its resources or actions. Only a deploy from the control plane changes
+	// them.
+	ErrorManagedResourceServer = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "RES-1028",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.resourceservice.cannot_modify_managed_resource_server",
+			DefaultValue: "Cannot modify a resource server deployed by the control plane",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.resourceservice.cannot_modify_managed_resource_server_description",
+			DefaultValue: "Resource server {{param(id)}} was deployed by the control plane and can only be " +
+				"changed there",
+		},
+	}
 )
 
 // Internal error constants.

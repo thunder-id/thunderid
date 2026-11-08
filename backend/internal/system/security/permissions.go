@@ -859,6 +859,7 @@ func activatePermissions(p *SystemPermissions) {
 		// Import APIs.
 		{"POST /import", p.Root},
 		{"POST /import/delete", p.Root},
+		{"POST /import/managed", p.Root},
 	}
 
 	mcpToolPermissions = map[string]string{

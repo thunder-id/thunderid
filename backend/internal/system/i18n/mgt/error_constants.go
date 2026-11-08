@@ -112,5 +112,19 @@ var (
 			Key:          "error.i18nservice.empty_translations_description",
 			DefaultValue: "At least one translation must be provided",
 		},
+	} // ErrorManagedLanguage is the error returned when attempting to change the translations of a language a
+	// control plane deployed. Only a deploy from the control plane changes them.
+	ErrorManagedLanguage = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "I18N-1009",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.i18nservice.managed_language",
+			DefaultValue: "Cannot modify a language deployed by the control plane",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.i18nservice.managed_language_description",
+			DefaultValue: "The language's translations were deployed by the control plane and can only be " +
+				"changed there",
+		},
 	}
 )

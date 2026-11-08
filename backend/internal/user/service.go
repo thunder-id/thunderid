@@ -33,6 +33,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/filter"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	"github.com/thunder-id/thunderid/internal/system/projectscope"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/security"
@@ -117,6 +118,9 @@ type userService struct {
 	systemFlows systemFlowProvider
 	// projectValidator is nil on a deployment that serves no projects.
 	projectValidator projectOUValidator
+	// managed says which users a control plane deployed, which stay read only here, credentials included.
+	// Nil where nothing is deployed from one.
+	managed managedresource.StoreInterface
 }
 
 // systemFlowProvider runs a system flow to completion. The flow engine implements it.
@@ -195,6 +199,7 @@ func (us *userService) GetUserList(ctx context.Context, limit, offset int,
 		if listErr != nil {
 			return nil, listErr
 		}
+		us.markManaged(ctx, users, logger)
 		return buildUserListResponse(users, totalCount, limit, offset, listQuery), nil
 	}
 
@@ -291,6 +296,7 @@ func (us *userService) listAllUsers(
 		us.populateOUHandles(ctx, users, logger)
 	}
 
+	us.markManaged(ctx, users, logger)
 	return buildUserListResponse(users, totalCount, limit, offset, listQuery), nil
 }
 
@@ -321,6 +327,7 @@ func (us *userService) listUsersByOUIDs(
 		us.populateOUHandles(ctx, users, logger)
 	}
 
+	us.markManaged(ctx, users, logger)
 	return buildUserListResponse(users, totalCount, limit, offset, listQuery), nil
 }
 
@@ -410,6 +417,7 @@ func (us *userService) GetUsersByPath(
 		return nil, svcErr
 	}
 
+	us.markManaged(ctx, users, logger)
 	return &UserListResponse{
 		TotalResults: totalCount,
 		StartIndex:   offset + 1,
@@ -565,6 +573,15 @@ func (us *userService) GetUser(
 		return nil, svcErr
 	}
 	us.completeUserRead(ctx, e, &user, includeDisplay, logger)
+	if !user.IsReadOnly {
+		deployed, err := managedresource.IsDeployed(ctx, us.managed, user.ID, managedresource.TypeUser)
+		if err != nil {
+			// Every write to such a user is refused whatever the read says, so it is served without the flag.
+			logger.Error(ctx, "Failed to read whether a control plane deployed the user",
+				log.MaskedString(log.LoggerKeyUserID, user.ID), log.Error(err))
+		}
+		user.IsReadOnly = deployed
+	}
 
 	logger.Debug(ctx, "Successfully retrieved user", log.MaskedString(log.LoggerKeyUserID, userID))
 	return &user, nil
@@ -613,6 +630,15 @@ func (us *userService) GetUserInOU(
 	// A shared user is read under the organization unit it is shared into, as the user list does.
 	user.OUID = ouID
 	us.completeUserRead(ctx, e, &user, includeDisplay, logger)
+	if !user.IsReadOnly {
+		deployed, err := managedresource.IsDeployed(ctx, us.managed, user.ID, managedresource.TypeUser)
+		if err != nil {
+			// Every write to such a user is refused whatever the read says, so it is served without the flag.
+			logger.Error(ctx, "Failed to read whether a control plane deployed the user",
+				log.MaskedString(log.LoggerKeyUserID, user.ID), log.Error(err))
+		}
+		user.IsReadOnly = deployed
+	}
 
 	logger.Debug(ctx, "Successfully retrieved user in organization unit",
 		log.MaskedString(log.LoggerKeyUserID, userID), log.String("ouID", ouID))
@@ -798,7 +824,7 @@ func (us *userService) updateUser(
 	}
 
 	// Check if user is declarative (immutable)
-	if svcErr := us.checkUserDeclarative(ctx, userID, logger); svcErr != nil {
+	if svcErr := us.checkUserMutable(ctx, userID, logger); svcErr != nil {
 		return nil, svcErr
 	}
 
@@ -960,7 +986,7 @@ func (us *userService) updateUserAttributes(
 	}
 
 	// Check if user is declarative (immutable)
-	if svcErr := us.checkUserDeclarative(ctx, userID, logger); svcErr != nil {
+	if svcErr := us.checkUserMutable(ctx, userID, logger); svcErr != nil {
 		return nil, svcErr
 	}
 
@@ -1053,7 +1079,7 @@ func (us *userService) UpdateUserCredentials(
 	}
 
 	// Check if user is declarative (immutable)
-	if svcErr := us.checkUserDeclarative(ctx, userID, logger); svcErr != nil {
+	if svcErr := us.checkUserMutable(ctx, userID, logger); svcErr != nil {
 		return svcErr
 	}
 
@@ -1171,7 +1197,7 @@ func (us *userService) ValidateDeleteUser(ctx context.Context, userID string) *t
 		return svcErr
 	}
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
-	if svcErr := us.checkUserDeclarative(ctx, userID, logger); svcErr != nil {
+	if svcErr := us.checkUserMutable(ctx, userID, logger); svcErr != nil {
 		return svcErr
 	}
 	return us.ensureNoBlockingDependencies(ctx, userID, logger)
@@ -1218,7 +1244,7 @@ func (us *userService) deleteUser(ctx context.Context, userID string) *tidcommon
 	}
 
 	// Check if user is declarative (immutable)
-	if svcErr := us.checkUserDeclarative(ctx, userID, logger); svcErr != nil {
+	if svcErr := us.checkUserMutable(ctx, userID, logger); svcErr != nil {
 		return svcErr
 	}
 
@@ -1688,8 +1714,9 @@ func mapOUServiceError(ctx context.Context,
 	return &tidcommon.InternalServerError
 }
 
-// checkUserDeclarative checks if a user is declarative and returns an error if it is.
-func (us *userService) checkUserDeclarative(
+// checkUserMutable refuses a change to a user declared in a file, or deployed by a control plane unless
+// the change is the managed import's. Either way the user's credentials and attributes stay as they are.
+func (us *userService) checkUserMutable(
 	ctx context.Context, userID string, logger *log.Logger,
 ) *tidcommon.ServiceError {
 	isDeclarative, err := us.entityService.IsEntityDeclarative(ctx, userID)
@@ -1704,7 +1731,34 @@ func (us *userService) checkUserDeclarative(
 	if isDeclarative {
 		return &ErrorCannotModifyDeclarativeResource
 	}
+	return us.refuseManaged(ctx, userID, logger)
+}
+
+// refuseManaged refuses a change to a user a control plane deployed, unless the change is the managed
+// import's: only a deploy from the control plane changes or removes it.
+func (us *userService) refuseManaged(
+	ctx context.Context, userID string, logger *log.Logger,
+) *tidcommon.ServiceError {
+	managed, err := managedresource.IsReadOnly(ctx, us.managed, userID, managedresource.TypeUser)
+	if err != nil {
+		logger.Error(ctx, "Failed to read whether a control plane deployed the user",
+			log.MaskedString(log.LoggerKeyUserID, userID), log.Error(err))
+		return &tidcommon.InternalServerError
+	}
+	if managed {
+		return &ErrorManagedUser
+	}
 	return nil
+}
+
+// markManaged reports the listed users a control plane deployed as read only.
+func (us *userService) markManaged(ctx context.Context, users []providers.User, logger *log.Logger) {
+	if err := managedresource.MarkDeployed(ctx, us.managed, users,
+		func(u *providers.User) string { return u.ID }, func(u *providers.User) { u.IsReadOnly = true },
+		managedresource.TypeUser); err != nil {
+		// Every write to such a user is refused whatever the list says, so it is served without the flag.
+		logger.Error(ctx, "Failed to read which users a control plane deployed", log.Error(err))
+	}
 }
 
 // authorizeShareInto refuses unless the caller may create users in targetOUID. Users that load from resource files,
@@ -1719,7 +1773,7 @@ func (us *userService) authorizeShareInto(ctx context.Context, userID, targetOUI
 	if userID == "" {
 		return nil
 	}
-	return us.checkUserDeclarative(ctx, userID, us.logger)
+	return us.checkUserMutable(ctx, userID, us.logger)
 }
 
 // checkUserAccess validates that the caller is authorized to perform the given action on a user.
@@ -1862,7 +1916,7 @@ func (us *userService) createSharingPolicy(
 	// A declared user's own sharing is declared with it; a unit it is shared into may still reshare.
 	if initiatingOUID == owningOUID {
 		logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
-		if svcErr := us.checkUserDeclarative(ctx, userID, logger); svcErr != nil {
+		if svcErr := us.checkUserMutable(ctx, userID, logger); svcErr != nil {
 			return sharing.Policy{}, svcErr
 		}
 	}
@@ -1924,7 +1978,7 @@ func (us *userService) UpdateSharingPolicy(
 func (us *userService) updateSharingPolicy(
 	ctx context.Context, userID, policyID string, req sharing.PolicyRequest,
 ) (sharing.Policy, *tidcommon.ServiceError) {
-	_, policy, svcErr := us.requireOwnPolicy(ctx, userID, policyID)
+	owningOUID, policy, svcErr := us.requireOwnPolicy(ctx, userID, policyID)
 	if svcErr != nil {
 		return sharing.Policy{}, svcErr
 	}
@@ -1933,6 +1987,12 @@ func (us *userService) updateSharingPolicy(
 	}
 	if isDeclarativeModeEnabled() {
 		return sharing.Policy{}, &ErrorCannotModifyDeclarativeResource
+	}
+	// A deployed user's own sharing is deployed with it; a unit the user is shared into may still reshare.
+	if policy.InitiatingOUID == owningOUID {
+		if svcErr := us.refuseManaged(ctx, userID, us.logger); svcErr != nil {
+			return sharing.Policy{}, svcErr
+		}
 	}
 	updated, svcErr := us.sharingService.UpdatePolicy(ctx, policyID, req)
 	return updated, translateSharingError(svcErr)
@@ -1954,7 +2014,7 @@ func (us *userService) DeleteSharingPolicy(ctx context.Context, userID, policyID
 
 // deleteSharingPolicy removes a sharing policy of a user without publishing its audit event.
 func (us *userService) deleteSharingPolicy(ctx context.Context, userID, policyID string) *tidcommon.ServiceError {
-	_, policy, svcErr := us.requireOwnPolicy(ctx, userID, policyID)
+	owningOUID, policy, svcErr := us.requireOwnPolicy(ctx, userID, policyID)
 	if svcErr != nil {
 		if svcErr.Code == ErrorSharingPolicyNotFound.Code {
 			return errSharingPolicyNotFoundNoop
@@ -1966,6 +2026,11 @@ func (us *userService) deleteSharingPolicy(ctx context.Context, userID, policyID
 	}
 	if isDeclarativeModeEnabled() {
 		return &ErrorCannotModifyDeclarativeResource
+	}
+	if policy.InitiatingOUID == owningOUID {
+		if svcErr := us.refuseManaged(ctx, userID, us.logger); svcErr != nil {
+			return svcErr
+		}
 	}
 	if policy.Declared {
 		return &ErrorSharingPolicyDeclared
