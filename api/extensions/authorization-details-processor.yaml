@@ -13,7 +13,12 @@ info:
 
     Field names follow the OpenID AuthZEN Authorization API where it has one: `subject` with `type` and `id`, a boolean `decision`, and reasons in `context`.
 
-    ThunderID authenticates to the processor with the credential configured on the type's processor: none, a bearer token, an API key or Basic. A processor configured without a credential is called unauthenticated, so it should accept calls only from ThunderID's network.
+    ThunderID authenticates to the processor with the credential configured on the type's processor: none, a bearer token, an API key or Basic. An API key credential sends each configured header under the name the configuration gives it, so it has no fixed security scheme here. A processor configured without a credential is called unauthenticated, so it should accept calls only from ThunderID's network.
+
+security:
+  - {}
+  - BearerAuth: []
+  - BasicAuth: []
 
 paths:
   /process:
@@ -73,6 +78,15 @@ paths:
                           reason_admin: "Limit rule DL-7 for account 0648489890"
 
 components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      description: "The `bearer` credential configured on the type's processor, sent as `Authorization: Bearer <token>`."
+    BasicAuth:
+      type: http
+      scheme: basic
+      description: The `basic` credential configured on the type's processor.
   schemas:
     ProcessRequest:
       type: object
