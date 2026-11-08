@@ -172,6 +172,22 @@ the options object, e.g. `t('applications:foo.bar', {defaultValue: 'Fallback tex
 prefer whichever the surrounding code already uses. This matches the existing convention across the codebase and ensures
 the UI degrades gracefully if a key or locale is missing.
 
+## Product Name
+
+Never write `ThunderID` in text a user can see or hear: i18n values, `t()` fallbacks, JSX text, and `alt`, `aria-label`,
+`title`, or `placeholder` attributes. Deployments rebrand through the runtime brand config, so read the name from it. In
+a translation, use the `{{productName}}` placeholder and pass the value at the call site:
+
+```tsx
+const {config} = useConfig(); // from @thunderid/contexts
+t('settings:page.subtitle', 'Settings that apply across your entire {{productName}} deployment.', {
+  productName: config.brand.product_name,
+});
+```
+
+Elsewhere, use `config.brand.product_name` directly. License headers, import paths, identifiers, test fixtures, and the
+default `product_name` in an app's `public/config.js` are exempt.
+
 ## Browser Automation
 
 Load [.agent/skills/console/SKILL.md](../.agent/skills/console/SKILL.md) only when browser navigation or UI verification

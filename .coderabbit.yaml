@@ -42,8 +42,9 @@ reviews:
       instructions: |
         Scan for hardcoded occurrences of the string literals `Thunder` or `ThunderID` in this file.
         For each occurrence, flag it and ask: **"Is this hardcoded brand name intentional?"**
-        If it can be replaced, suggest using a named constant or a value sourced from runtime config
-        (e.g., an environment variable or a config struct field) rather than a raw string literal.
+        If it can be replaced, suggest reading the configured product name,
+        `config.GetServerRuntime().Config.Server.ProductName` (the `server.product_name` key), rather
+        than a raw string literal.
         Do not flag occurrences inside comments or import paths.
 
         Check whether this change introduces or modifies any of the following:
@@ -68,6 +69,21 @@ reviews:
         - <item 1>: <what needs to be documented and which file to update or create>
         - <item 2>: <what needs to be documented and which file to update or create>
         - ..."
+
+    - path: "backend/{internal,pkg,cmd}/**/*.go"
+      instructions: |
+        Text a client, an agent, or a user reads must not name the product, so a deployment can rebrand
+        through `server.product_name`. Flag every `ThunderID` in an MCP tool or prompt description, a
+        `jsonschema` struct tag, an HTTP response body, a notification, or any other text the server
+        sends out as a **blocking issue** using this format:
+
+        "🔴 **Hardcoded product name**: read it from `server.product_name` with
+        `config.GetServerRuntime().Config.Server.ProductName`. A struct tag is fixed at compile time, so
+        reword it to leave the name out."
+
+        Do not flag license headers, comments, import paths, package names, type or identifier names,
+        SDK names such as `@thunderid/react`, `ThunderIDProvider`, or `useThunderID`, the default
+        `product_name` in `cmd/server/config/default.json`, or test files and their fixtures.
 
     - path: "**/*_test.go"
       instructions: |
@@ -145,18 +161,35 @@ reviews:
       instructions: |
         Scan for hardcoded occurrences of the string literals `Thunder` or `ThunderID` in this file.
         For each occurrence, flag it and ask: **"Is this hardcoded brand name intentional?"**
-        If it can be replaced, suggest reading the value from the app's config system using the
-        `useConfig` hook (e.g., `const { productName } = useConfig();`) rather than a raw string literal.
+        If it can be replaced, suggest reading the value from the runtime brand config rather than a raw
+        string literal: under `frontend/`, `const {config} = useConfig();` (from `@thunderid/contexts`)
+        and then `config.brand.product_name`; under `docs/`, follow the `docs/**` instructions.
         Do not flag occurrences inside comments, type names, or import paths.
 
     - path: "**/*.tsx"
       instructions: |
         Scan for hardcoded occurrences of the string literals `Thunder` or `ThunderID` in this file.
         For each occurrence, flag it and ask: **"Is this hardcoded brand name intentional?"**
-        If it can be replaced, suggest reading the value from the app's config system using the
-        `useConfig` hook (e.g., `const { productName } = useConfig();`) rather than a raw string literal.
-        For JSX string content, prefer the `<ProductName />` component if it is available in this context.
+        If it can be replaced, suggest reading the value from the runtime brand config rather than a raw
+        string literal: under `frontend/`, `const {config} = useConfig();` (from `@thunderid/contexts`)
+        and then `config.brand.product_name`; under `docs/`, follow the `docs/**` instructions, which
+        prefer the `<ProductName />` component for JSX content. `frontend/` has no such component.
         Do not flag occurrences inside comments, type names, or import paths.
+
+    - path: "frontend/{apps,packages}/**/*.{ts,tsx}"
+      instructions: |
+        User-facing text must not name the product, so a deployment can rebrand through the runtime
+        brand config. Flag every `ThunderID` in an i18n locale value, a `t()` fallback string, JSX text,
+        or an `alt`, `aria-label`, `title`, `placeholder`, `label`, `helperText`, or toast message as a
+        **blocking issue** using this format:
+
+        "🔴 **Hardcoded product name**: read it from the brand config. In a translation, use the
+        `{{productName}}` placeholder and pass `{productName: config.brand.product_name}` at the call
+        site (`config` from `useConfig()` in `@thunderid/contexts`). Elsewhere, use
+        `config.brand.product_name` directly."
+
+        Do not flag license headers, comments, import paths, package names, type or identifier names,
+        or test files and their fixtures.
 
     - path: "frontend/apps/**/*.{ts,tsx}"
       instructions: |

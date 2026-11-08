@@ -339,6 +339,15 @@ Run through this on the diff:
       It also matches `<Trans defaults="...">` fallbacks and JSDoc examples, which are fine. It reports every line in a
       touched file, so fix the hits on lines you wrote and list older ones as a follow-up rather than rewriting them.
       It cannot see strings built in plain variables, so still read your diff for any text a user will see.
+- [ ] No `ThunderID` in user-facing text, including i18n locale values and `t()` fallbacks. The command above passes
+      translated text, so check for the product name separately and read it from the brand config instead
+      (frontend/AGENTS.md, Product Name). This lists `ThunderID` on the lines you added:
+
+      ```bash
+      remote=$(git remote -v | awk '/thunder-id\/thunderid(\.git)? \(fetch\)/ {print $1; exit}')
+      git diff "$(git merge-base HEAD "$remote/main")" -- frontend \
+        | grep -n -E '^\+[^+](.*[^A-Za-z])?ThunderID([^A-Za-z]|$)' | grep -v 'Copyright'
+      ```
 - [ ] Every control has an accessible name, nothing clickable is a `Box` or `Typography`, and focus styles are intact.
 - [ ] Walked the screen with the keyboard only: Tab reaches every control in order, Enter or Space activates it, and
       Escape closes dialogs and menus.
