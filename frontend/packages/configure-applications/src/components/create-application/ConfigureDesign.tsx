@@ -478,7 +478,7 @@ export default function ConfigureDesign({
                               light: `${import.meta.env.BASE_URL.replace(/\/$/, '')}/assets/images/logo-mini.svg`,
                               dark: `${import.meta.env.BASE_URL.replace(/\/$/, '')}/assets/images/logo-mini-inverted.svg`,
                             }}
-                            alt={{light: 'ThunderID', dark: 'ThunderID'}}
+                            alt={{light: productName, dark: productName}}
                             height={20}
                             width="auto"
                           />

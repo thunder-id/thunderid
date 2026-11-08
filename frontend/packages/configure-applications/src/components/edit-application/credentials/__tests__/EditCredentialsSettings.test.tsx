@@ -11,6 +11,9 @@ vi.mock('@thunderid/contexts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@thunderid/contexts')>()),
   useConfig: () => ({
     config: {
+      brand: {
+        product_name: 'Acme IAM',
+      },
       client: {
         client_id: 'CONSOLE',
       },
@@ -20,7 +23,8 @@ vi.mock('@thunderid/contexts', async (importOriginal) => ({
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string, fallback?: string) => fallback ?? key,
+    t: (key: string, fallback?: string, options?: Record<string, string>) =>
+      (fallback ?? key).replace(/\{\{(\w+)\}\}/g, (match: string, name: string) => options?.[name] ?? match),
   }),
 }));
 
@@ -143,6 +147,23 @@ describe('EditCredentialsSettings', () => {
 
       expect(screen.getByLabelText('Application ID')).toHaveDisplayValue('app-123');
       expect(screen.queryByLabelText('Client ID')).not.toBeInTheDocument();
+    });
+
+    it('names the configured product in the Application ID hint', () => {
+      render(
+        <EditCredentialsSettings
+          application={buildApplication({type: 'mobile'})}
+          editedApp={{}}
+          oauth2Config={publicOAuth2Config}
+          onFieldChange={mockOnFieldChange}
+        />,
+      );
+
+      expect(
+        screen.getByText(
+          "Acme IAM's internal identifier for this application. Use it when calling the Management API.",
+        ),
+      ).toBeInTheDocument();
     });
 
     it('falls back to the Application ID when there is no OAuth2 client ID', () => {

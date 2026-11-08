@@ -3370,7 +3370,7 @@ const translations = {
     'edit.mcp.connect.redirectUris.optionalHint':
       'Each URI must be a loopback address (http://localhost or http://127.0.0.1) or use HTTPS. Needed only for the authorization code grant.',
     'edit.mcp.connect.sections.endpoints': 'Endpoints',
-    'edit.mcp.connect.sections.endpoints.description': 'ThunderID OAuth 2.1 endpoints for this client.',
+    'edit.mcp.connect.sections.endpoints.description': '{{productName}} OAuth 2.1 endpoints for this client.',
     'edit.mcp.connect.clientUri.label': 'Client URI',
     'edit.mcp.connect.clientUri.hint': 'Public homepage of this client (optional).',
     'edit.mcp.connect.clientUri.error.invalid': 'Please enter a valid URL',
@@ -3445,7 +3445,7 @@ const translations = {
     'edit.general.labels.applicationId': 'Application ID',
     'edit.general.labels.clientId': 'Client ID',
     'edit.general.hints.applicationId':
-      "ThunderID's internal identifier for this application. Use it when calling the Management API.",
+      "{{productName}}'s internal identifier for this application. Use it when calling the Management API.",
     'edit.general.hints.clientId':
       'The public OAuth2 client identifier this application uses to authenticate as a client.',
     'edit.general.labels.allowedUserTypes': 'Allowed user types',
@@ -3837,7 +3837,7 @@ const translations = {
     'landing.title': 'Import / Export',
     'landing.subtitle': 'Choose whether to import a configuration file or export your current one.',
     'landing.type.import.label': 'Import',
-    'landing.type.import.description': 'Bring in an existing ThunderID configuration file.',
+    'landing.type.import.description': 'Bring in an existing {{productName}} configuration file.',
     'landing.type.export.label': 'Export',
     'landing.type.export.description': 'Download your current configuration as a file.',
 
@@ -7330,7 +7330,7 @@ const translations = {
   },
   settings: {
     'page.title': 'Settings',
-    'page.subtitle': 'Settings that apply across your entire ThunderID deployment.',
+    'page.subtitle': 'Settings that apply across your entire {{productName}} deployment.',
     'tabs.ariaLabel': 'Settings sections',
     'tabs.cors': 'CORS',
     'tabs.accountSecurity': 'Account security',

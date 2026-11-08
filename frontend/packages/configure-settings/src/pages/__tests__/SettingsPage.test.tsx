@@ -4,7 +4,7 @@
 import {screen, waitFor} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {renderWithProviders} from '@thunderid/test-utils';
-import {describe, it, expect, vi} from 'vitest';
+import {beforeEach, describe, it, expect, vi} from 'vitest';
 
 vi.mock('../../components/cors/CorsSection', () => ({
   default: () => (
@@ -18,9 +18,32 @@ vi.mock('../../components/accountSecurity/AccountSecuritySection', () => ({
   default: () => <div data-testid="account-security-section" />,
 }));
 
+const mockConfig = vi.hoisted(() => ({productName: ''}));
+
+vi.mock('@thunderid/contexts', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@thunderid/contexts')>();
+  return {
+    ...actual,
+    useConfig: () => {
+      const context = actual.useConfig();
+      if (!mockConfig.productName) {
+        return context;
+      }
+      return {
+        ...context,
+        config: {...context.config, brand: {...context.config.brand, product_name: mockConfig.productName}},
+      };
+    },
+  };
+});
+
 const {default: SettingsPage} = await import('../SettingsPage');
 
 describe('SettingsPage', () => {
+  beforeEach(() => {
+    mockConfig.productName = '';
+  });
+
   it('renders the title, subtitle, the CORS tab, and the CORS panel', () => {
     renderWithProviders(<SettingsPage />);
 
@@ -28,6 +51,13 @@ describe('SettingsPage', () => {
     expect(screen.getByText('Settings that apply across your entire ThunderID deployment.')).toBeInTheDocument();
     expect(screen.getByRole('tab', {name: 'CORS'})).toBeInTheDocument();
     expect(screen.getByTestId('cors-section')).toBeInTheDocument();
+  });
+
+  it('names the configured product in the subtitle', () => {
+    mockConfig.productName = 'Acme IAM';
+    renderWithProviders(<SettingsPage />);
+
+    expect(screen.getByText('Settings that apply across your entire Acme IAM deployment.')).toBeInTheDocument();
   });
 
   it('sets the document title', async () => {
