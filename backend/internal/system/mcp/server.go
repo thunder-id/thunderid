@@ -5,21 +5,30 @@ package mcp
 
 import (
 	"context"
+	"strings"
+	"unicode"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/thunder-id/thunderid/internal/system/security"
 )
 
-// newServer creates a new MCP server.
-func newServer() *mcp.Server {
-	// Create the MCP server instance.
+// newServer creates an MCP server that reports a name derived from productName to clients.
+func newServer(productName string) *mcp.Server {
 	server := mcp.NewServer(&mcp.Implementation{
-		Name:    "thunderid-mcp",
+		Name:    serverName(productName),
 		Version: "1.0.0",
 	}, nil)
 	server.AddReceivingMiddleware(toolPermissionMiddleware)
 	return server
+}
+
+// serverName derives the MCP server name from the product name. Ex: "Acme IAM" becomes "acme-iam-mcp".
+func serverName(productName string) string {
+	words := strings.FieldsFunc(strings.ToLower(productName), func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsDigit(r)
+	})
+	return strings.Join(append(words, "mcp"), "-")
 }
 
 // toolPermissionMiddleware refuses a tool call unless the caller holds the permission the tool is

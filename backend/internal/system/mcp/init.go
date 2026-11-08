@@ -26,7 +26,7 @@ import (
 // HTTP routes (which may depend on services, such as token revocation, that aren't ready this
 // early in startup).
 func NewServer() *mcpsdk.Server {
-	return newServer()
+	return newServer(config.GetServerRuntime().Config.Server.ProductName)
 }
 
 // Initialize mounts mcpServer's routes on mux, securing them with an Origin check and the given
