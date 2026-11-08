@@ -119,7 +119,8 @@ func (o *ouExecutor) Execute(ctx *providers.NodeContext) (*providers.ExecutorRes
 	}
 
 	handle := ctx.UserInputs[userInputOuHandle]
-	if strings.TrimSpace(handle) == "" && isOUHandleGenerationEnabled(ctx) {
+	handleGenerated := strings.TrimSpace(handle) == "" && isOUHandleGenerationEnabled(ctx)
+	if handleGenerated {
 		handle = systemutils.GenerateHandle(ctx.UserInputs[userInputOuName])
 		if handle == "" {
 			logger.Debug(ctx.Context, "Could not generate an organization unit handle from the name")
@@ -138,6 +139,12 @@ func (o *ouExecutor) Execute(ctx *providers.NodeContext) (*providers.ExecutorRes
 		return nil, err
 	}
 	createdOU, svcErr := o.ouService.CreateOrganizationUnit(ctx.Context, ouRequest)
+	if handleGenerated && svcErr != nil && svcErr.Code == providers.ErrorOrganizationUnitHandleConflict.Code {
+		if ouRequest.Handle, err = systemutils.AddRandomHandleSuffix(handle); err != nil {
+			return nil, err
+		}
+		createdOU, svcErr = o.ouService.CreateOrganizationUnit(ctx.Context, ouRequest)
+	}
 	if svcErr != nil {
 		if svcErr.Type == tidcommon.ClientErrorType {
 			execResp.Status = providers.ExecUserInputRequired

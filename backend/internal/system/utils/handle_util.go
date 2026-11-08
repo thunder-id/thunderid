@@ -4,6 +4,9 @@
 package utils
 
 import (
+	"crypto/rand"
+	"fmt"
+	"math/big"
 	"regexp"
 	"strings"
 	"unicode"
@@ -16,6 +19,12 @@ const maxHandleLength = 100
 
 // handleSeparator joins the words of a generated handle.
 const handleSeparator = '-'
+
+// minHandleSuffix and handleSuffixRange define the random three-digit suffix of a handle.
+const (
+	minHandleSuffix   = 100
+	handleSuffixRange = 900
+)
 
 // handleRegex matches lowercase alphanumeric handles that may contain hyphens and underscores,
 // but must start and end with an alphanumeric character.
@@ -54,4 +63,19 @@ func GenerateHandle(name string) string {
 		handle = strings.TrimRight(handle[:maxHandleLength], string(handleSeparator))
 	}
 	return handle
+}
+
+// AddRandomHandleSuffix appends a random three-digit suffix to a handle, shortening the handle when
+// the result would exceed the maximum handle length.
+func AddRandomHandleSuffix(handle string) (string, error) {
+	n, err := rand.Int(rand.Reader, big.NewInt(handleSuffixRange))
+	if err != nil {
+		return "", fmt.Errorf("failed to generate handle suffix: %w", err)
+	}
+
+	suffix := fmt.Sprintf("%c%d", handleSeparator, minHandleSuffix+n.Int64())
+	if keep := maxHandleLength - len(suffix); len(handle) > keep {
+		handle = strings.TrimRight(handle[:keep], string(handleSeparator))
+	}
+	return handle + suffix, nil
 }
