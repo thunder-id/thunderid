@@ -12,6 +12,7 @@ import (
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
 	"github.com/thunder-id/thunderid/internal/system/projectscope"
 	"github.com/thunder-id/thunderid/internal/system/security"
@@ -22,11 +23,17 @@ import (
 // Only the DB store is wrapped with a read cache for the runtime hot path; the file store is already
 // in memory. projectValidator is nil on a deployment that serves no projects, where a template needs no
 // project and a project ID is kept unchecked.
+//
+// bus is required: the service publishes the audit event of every template it creates, updates or
+// deletes on it.
 func Initialize(mux *http.ServeMux, cacheManager cache.CacheManagerInterface,
 	ouService ou.OrganizationUnitServiceInterface,
 	authzService sysauthz.SystemAuthorizationServiceInterface, translation translationResolver,
-	projectValidator projectOUValidator) (NotificationTemplateServiceInterface, TemplateRendererInterface,
-	declarativeresource.ResourceExporter, error) {
+	projectValidator projectOUValidator, bus eventbus.EventBusInterface) (NotificationTemplateServiceInterface,
+	TemplateRendererInterface, declarativeresource.ResourceExporter, error) {
+	if bus == nil {
+		return nil, nil, nil, errNilEventBus
+	}
 	transactioner, err := provider.GetDBProvider().GetConfigDBTransactioner()
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("failed to get config database transactioner: %w", err)
@@ -41,7 +48,7 @@ func Initialize(mux *http.ServeMux, cacheManager cache.CacheManagerInterface,
 	}
 
 	service := newNotificationTemplateService(store, transactioner, ouService, authzService, projectValidator,
-		requireProject)
+		requireProject, bus)
 	handler := newNotificationTemplateHandler(service)
 	registerRoutes(mux, handler)
 

@@ -85,6 +85,18 @@ const (
 	EventConfigurationDelete = "configuration.delete"
 	// EventConfigurationExport names an attempt to export configuration, which can carry secrets.
 	EventConfigurationExport = "configuration.export"
+	// EventNotificationSenderCreate names an attempt to create a notification sender.
+	EventNotificationSenderCreate = "notification_sender.create"
+	// EventNotificationSenderUpdate names an attempt to change a notification sender.
+	EventNotificationSenderUpdate = "notification_sender.update"
+	// EventNotificationSenderDelete names an attempt to delete a notification sender.
+	EventNotificationSenderDelete = "notification_sender.delete"
+	// EventNotificationTemplateCreate names an attempt to create a notification template.
+	EventNotificationTemplateCreate = "notification_template.create"
+	// EventNotificationTemplateUpdate names an attempt to change a notification template.
+	EventNotificationTemplateUpdate = "notification_template.update"
+	// EventNotificationTemplateDelete names an attempt to delete a notification template.
+	EventNotificationTemplateDelete = "notification_template.delete"
 	// EventRoleCreate names an attempt to create a role.
 	EventRoleCreate = "role.create"
 	// EventRoleUpdate names an attempt to change a role.
@@ -153,6 +165,10 @@ const (
 	TargetTypeAgentType = "agent_type"
 	// TargetTypeGateway is the target type of an event about a gateway.
 	TargetTypeGateway = "gateway"
+	// TargetTypeNotificationSender is the target type of an event about a notification sender.
+	TargetTypeNotificationSender = "notification_sender"
+	// TargetTypeNotificationTemplate is the target type of an event about a notification template.
+	TargetTypeNotificationTemplate = "notification_template"
 	// TargetTypeRole is the target type of an event about a role.
 	TargetTypeRole = "role"
 	// TargetTypeGroup is the target type of an event about a group.
@@ -231,6 +247,14 @@ var auditedEvents = map[string][]string{
 	EventConfigurationImport: {DetailDryRun},
 	EventConfigurationDelete: nil,
 	EventConfigurationExport: nil,
+
+	EventNotificationSenderCreate: nil,
+	EventNotificationSenderUpdate: nil,
+	EventNotificationSenderDelete: nil,
+
+	EventNotificationTemplateCreate: nil,
+	EventNotificationTemplateUpdate: nil,
+	EventNotificationTemplateDelete: nil,
 
 	EventRoleCreate:           nil,
 	EventRoleUpdate:           nil,

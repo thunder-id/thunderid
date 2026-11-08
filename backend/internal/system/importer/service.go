@@ -1039,7 +1039,18 @@ func (s *importService) importConnectionSender(
 		return successOutcome(resourceTypeConnection, req.ID, req.Name, operationCreate)
 	}
 
+	// The upsert looks the sender up rather than attempting an update, so a create is not preceded by an
+	// audited failed update.
+	exists := false
 	if options.IsUpsertEnabled() && req.ID != "" {
+		_, svcErr := s.senderService.GetSender(ctx, req.ID)
+		if svcErr != nil && !isNotFoundServiceError(svcErr) {
+			return serviceErrorOutcome(resourceTypeConnection, req.ID, req.Name, operationUpdate, svcErr)
+		}
+		exists = svcErr == nil
+	}
+
+	if exists {
 		updated, svcErr := s.senderService.UpdateSender(ctx, req.ID, *req)
 		if svcErr == nil {
 			return ImportItemOutcome{
@@ -1051,17 +1062,7 @@ func (s *importService) importConnectionSender(
 			}
 		}
 
-		if !isNotFoundServiceError(svcErr) {
-			return ImportItemOutcome{
-				ResourceType: resourceTypeConnection,
-				ResourceID:   req.ID,
-				ResourceName: req.Name,
-				Operation:    operationUpdate,
-				Status:       statusFailed,
-				Code:         svcErr.Code,
-				Message:      svcErr.Error.DefaultValue,
-			}
-		}
+		return serviceErrorOutcome(resourceTypeConnection, req.ID, req.Name, operationUpdate, svcErr)
 	}
 
 	created, svcErr := s.senderService.CreateSender(ctx, *req)

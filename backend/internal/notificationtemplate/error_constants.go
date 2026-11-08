@@ -485,3 +485,13 @@ var (
 		},
 	}
 )
+
+// errNilEventBus is returned when the service is initialized without the event bus it audits on.
+var errNilEventBus = errors.New("the notification template service needs an event bus")
+
+// errTemplateNotFoundNoop is returned by deleteTemplate when the template does not exist. DeleteTemplate
+// turns it into a success, so it never reaches a caller.
+var errTemplateNotFoundNoop = &tidcommon.ServiceError{
+	Type: tidcommon.ClientErrorType,
+	Code: ErrorTemplateNotFound.Code,
+}

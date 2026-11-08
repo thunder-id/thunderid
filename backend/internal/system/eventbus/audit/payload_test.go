@@ -127,6 +127,8 @@ func (s *PayloadTestSuite) TestTheActorComesFromTheVerifiedToken() {
 func (s *PayloadTestSuite) TestValidate() {
 	const testTypeID = "01900000-0000-7000-8000-000000000033"
 	ctx := context.Background()
+	testNotificationSender := Ref{Type: TargetTypeNotificationSender, ID: "0196a1b2-0000-7000-8000-000000000001"}
+	testNotificationTemplate := Ref{Type: TargetTypeNotificationTemplate, ID: "0196a1b2-0000-7000-8000-000000000002"}
 	cases := []struct {
 		name    string
 		event   string
@@ -293,6 +295,24 @@ func (s *PayloadTestSuite) TestValidate() {
 		{"an export carries no dry run", EventConfigurationExport,
 			NewPayload(ctx, testConfiguration, ActionExport, OutcomeSucceeded).
 				WithDetails(map[string]string{DetailDryRun: "true"}), errDetailNotAllowed},
+		{"a notification sender create", EventNotificationSenderCreate,
+			NewPayload(ctx, testNotificationSender, ActionCreate, OutcomeSucceeded), nil},
+		{"a notification sender update", EventNotificationSenderUpdate,
+			NewPayload(ctx, testNotificationSender, ActionUpdate, OutcomeFailed("mns_1005")), nil},
+		{"a notification sender delete", EventNotificationSenderDelete,
+			NewPayload(ctx, testNotificationSender, ActionDelete, OutcomeSucceeded), nil},
+		{"a notification sender property", EventNotificationSenderUpdate,
+			NewPayload(ctx, testNotificationSender, ActionUpdate, OutcomeSucceeded).
+				WithDetails(map[string]string{"auth_token": "s3cr3t"}), errDetailNotAllowed},
+		{"a notification template create", EventNotificationTemplateCreate,
+			NewPayload(ctx, testNotificationTemplate, ActionCreate, OutcomeSucceeded), nil},
+		{"a notification template update", EventNotificationTemplateUpdate,
+			NewPayload(ctx, testNotificationTemplate, ActionUpdate, OutcomeFailed("ntm_1004")), nil},
+		{"a notification template delete", EventNotificationTemplateDelete,
+			NewPayload(ctx, testNotificationTemplate, ActionDelete, OutcomeSucceeded), nil},
+		{"a notification template content", EventNotificationTemplateUpdate,
+			NewPayload(ctx, testNotificationTemplate, ActionUpdate, OutcomeSucceeded).
+				WithDetails(map[string]string{"subject": "Welcome"}), errDetailNotAllowed},
 		{"an event that is not audited", "user.rename",
 			NewPayload(ctx, testTarget, ActionUpdate, OutcomeSucceeded), errUnknownEvent},
 		{"a detail the event does not allow", EventUserUpdate,
