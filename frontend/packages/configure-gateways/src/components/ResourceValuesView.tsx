@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {Alert, Box, Button, Card, Chip, Stack, TextField, Typography} from '@wso2/oxygen-ui';
+import {Alert, Box, Button, Card, Chip, Stack, TextField, Tooltip, Typography} from '@wso2/oxygen-ui';
 import {useMemo, useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import LaneIcon from './LaneIcon';
@@ -118,13 +118,17 @@ export default function ResourceValuesView({
             <Typography variant="body2" fontWeight={500}>
               {fieldLabel(t, value.field)}
             </Typography>
-            <Typography
-              variant="caption"
-              color="text.secondary"
-              sx={{display: 'block', fontFamily: 'monospace', overflowWrap: 'anywhere'}}
-            >
-              {value.name}
-            </Typography>
+            <Tooltip title={value.name}>
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                noWrap
+                component="div"
+                sx={{fontFamily: 'monospace'}}
+              >
+                {value.name}
+              </Typography>
+            </Tooltip>
           </Box>
           {!isEditing &&
             (isSet ? (
