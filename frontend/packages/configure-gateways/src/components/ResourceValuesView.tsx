@@ -118,7 +118,11 @@ export default function ResourceValuesView({
             <Typography variant="body2" fontWeight={500}>
               {fieldLabel(t, value.field)}
             </Typography>
-            <Typography variant="caption" color="text.secondary" sx={{fontFamily: 'monospace'}}>
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{display: 'block', fontFamily: 'monospace', overflowWrap: 'anywhere'}}
+            >
               {value.name}
             </Typography>
           </Box>
