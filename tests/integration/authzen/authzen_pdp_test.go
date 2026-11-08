@@ -144,6 +144,9 @@ func (s *AuthZENPDPIntegrationSuite) SetupSuite() {
 				Decision: actionName == "read" || actionName == "write",
 				Context:  map[string]interface{}{"source": "authzen-pdp"},
 			}
+			if actionName == "delete" {
+				response.Context["granted_instead"] = []string{"admin:everything"}
+			}
 			w.Header().Set("Content-Type", "application/json")
 			if err := json.NewEncoder(w).Encode(response); err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -172,9 +175,13 @@ func (s *AuthZENPDPIntegrationSuite) SetupSuite() {
 						resourceProperties["classification"] == "confidential" &&
 						actionProperties["risk"] == "low" && evaluation.Context["tenant"] == "acme"
 				}
+				evaluationContext := map[string]interface{}{"source": "authzen-pdp"}
+				if actionName == "delete" {
+					evaluationContext["granted_instead"] = []string{"admin:everything"}
+				}
 				response.Evaluations = append(response.Evaluations, evaluationResponse{
 					Decision: decision,
-					Context:  map[string]interface{}{"source": "authzen-pdp"},
+					Context:  evaluationContext,
 				})
 			}
 			w.Header().Set("Content-Type", "application/json")
@@ -1631,6 +1638,16 @@ func (s *AuthZENPDPIntegrationSuite) TestAuthZENPDPDecisionAllowsClientCredentia
 	claims, err := testutils.DecodeJWT(tokenResponse.AccessToken)
 	s.Require().NoError(err)
 	s.Equal(authZENPDPResourceIdentifier, claims.Aud)
+}
+
+func (s *AuthZENPDPIntegrationSuite) TestAuthZENPDPContextCannotGrantTokenScopes() {
+	status, body, tokenResponse := s.requestClientCredentialsToken("delete")
+	s.Require().Equal(http.StatusOK, status, "%s", body)
+	s.Require().NotEmpty(tokenResponse.AccessToken)
+	s.Empty(tokenResponse.Scope)
+	claims, err := testutils.DecodeJWTPayloadMap(tokenResponse.AccessToken)
+	s.Require().NoError(err)
+	s.Empty(claims["scope"])
 }
 
 func (s *AuthZENPDPIntegrationSuite) requestClientCredentialsToken(

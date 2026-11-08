@@ -869,12 +869,29 @@ func BuildAccessEvaluationsRequest(
 	return providers.AccessEvaluationsRequest{Evaluations: evaluations}
 }
 
-// FilterAuthorizedScopes returns the scopes whose corresponding evaluation (by index) was granted.
+// FilterAuthorizedScopes returns approved requests and held alternatives for denied parents.
+// Alternatives do not grant the denied parent.
 func FilterAuthorizedScopes(scopes []string, evaluations []providers.AccessEvaluationResponse) []string {
 	authorizedScopes := make([]string, 0, len(evaluations))
+	seen := make(map[string]bool, len(evaluations))
+	appendScope := func(scope string) {
+		if scope == "" || seen[scope] {
+			return
+		}
+		seen[scope] = true
+		authorizedScopes = append(authorizedScopes, scope)
+	}
+
 	for i, evaluation := range evaluations {
-		if evaluation.Decision && i < len(scopes) {
-			authorizedScopes = append(authorizedScopes, scopes[i])
+		if i >= len(scopes) {
+			continue
+		}
+		if evaluation.Decision {
+			appendScope(scopes[i])
+			continue
+		}
+		for _, substituted := range evaluation.GrantedInstead {
+			appendScope(substituted)
 		}
 	}
 	return authorizedScopes

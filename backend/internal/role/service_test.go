@@ -107,6 +107,13 @@ func (suite *RoleServiceTestSuite) SetupTest() {
 	)
 }
 
+// allowAnyCatalogCheck declares every permission an ancestor confers to be one the resource
+// server lists, for the cases that are about coverage rather than about an undeclared permission.
+func (suite *RoleServiceTestSuite) allowAnyCatalogCheck() {
+	suite.mockResourceService.On("ValidatePermissions", mock.Anything, mock.Anything, mock.Anything).
+		Return([]string{}, nil).Maybe()
+}
+
 // TearDownTest cleans up after each test
 func (suite *RoleServiceTestSuite) TearDownTest() {
 	config.ResetServerRuntime()
@@ -2355,6 +2362,20 @@ func (s *RoleChangeValidationTestSuite) TestValidateDeleteRole_CarriesAResourceS
 	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
 }
 
+func (s *RoleChangeValidationTestSuite) TestValidateDeleteRole_ResourceServerLookupFailureStopsDeletion() {
+	s.mutableRoleGranting([]ResourcePermissions{{ResourceServerID: californiaRSID, Permissions: []string{"license"}}})
+	s.resources.On("GetResourceServer", mock.Anything, californiaRSID).
+		Return((*providers.ResourceServer)(nil), &tidcommon.InternalServerError).Once()
+	s.store.On("GetRoleAssignmentsCount", mock.Anything, targetRoleID).Return(0, nil).Maybe()
+
+	target, svcErr := s.service.ValidateDeleteRole(context.Background(), targetRoleID)
+
+	s.Require().NotNil(svcErr)
+	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+	s.Nil(target)
+	s.store.AssertNotCalled(s.T(), "DeleteRole", mock.Anything, mock.Anything)
+}
+
 func (s *RoleChangeValidationTestSuite) TestValidateDeleteRole_AssignmentReadFailures() {
 	cases := map[string]struct {
 		setup func()
@@ -2428,6 +2449,9 @@ func (s *RoleChangeValidationTestSuite) TestValidateUpdateRolePermissions_DropsA
 func (s *RoleChangeValidationTestSuite) TestValidateUpdateRolePermissions_NothingDroppedRevokesNothing() {
 	s.mutableRoleGranting([]ResourcePermissions{{ResourceServerID: californiaRSID, Permissions: []string{"license"}}})
 	s.mayChangePermissions(security.PermissionSet{californiaRSID: {"license", "permits"}})
+	// Read to decide whether what the role still grants covers what it stopped listing.
+	s.resources.On("GetResourceServer", mock.Anything, californiaRSID).
+		Return(&providers.ResourceServer{ID: californiaRSID, Identifier: californiaAud}, nil)
 
 	target, svcErr := s.service.ValidateUpdateRolePermissions(context.Background(), targetRoleID,
 		[]ResourcePermissions{{ResourceServerID: californiaRSID, Permissions: []string{"license", "permits"}}})
@@ -3472,4 +3496,465 @@ func (suite *RoleServiceTestSuite) TestUpdateRole_DeclarativeRoleRefusedBeforePr
 	suite.Require().NotNil(err)
 	suite.Equal(ErrorImmutableRole.Code, err.Code)
 	validator.AssertNotCalled(suite.T(), "ValidateProjectOU", mock.Anything, mock.Anything, mock.Anything)
+}
+
+// A role that grants a parent permission authorizes a request for anything beneath it. The store is
+// asked about the requested permission and each of its ancestors, and whichever of those the role
+// holds authorizes the permission that was actually requested.
+func (suite *RoleServiceTestSuite) TestGetAuthorizedPermissions_ParentCoversDescendants() {
+	suite.allowAnyCatalogCheck()
+	const resourceServerID = "booking-api"
+
+	suite.mockResourceService.On("GetResourceServer", mock.Anything, resourceServerID).
+		Return(&providers.ResourceServer{
+			ID: resourceServerID, Delimiter: ":", HierarchicalPermissions: true,
+		}, nil).Once()
+
+	// The role holds only "reservations", so that is the sole candidate the store matches.
+	suite.mockStore.On("GetAuthorizedPermissionsByResourceServer", mock.Anything,
+		testUserID1, []string{}, []string{}, "", resourceServerID,
+		[]string{"reservations:online:create", "reservations:online", "reservations"}).
+		Return([]string{"reservations"}, nil).Once()
+
+	result, err := suite.service.GetAuthorizedPermissionsByResourceServer(
+		context.Background(), testUserID1, nil, nil, "", resourceServerID,
+		[]string{"reservations:online:create"})
+
+	suite.Nil(err)
+	suite.Equal([]string{"reservations:online:create"}, result)
+}
+
+// Coverage runs downwards only. Holding a descendant must never authorize a request for the
+// resource it sits under, which is a permission in its own right.
+func (suite *RoleServiceTestSuite) TestGetAuthorizedPermissions_ChildDoesNotCoverParent() {
+	const resourceServerID = "booking-api"
+
+	suite.mockResourceService.On("GetResourceServer", mock.Anything, resourceServerID).
+		Return(&providers.ResourceServer{
+			ID: resourceServerID, Delimiter: ":", HierarchicalPermissions: true,
+		}, nil).Once()
+
+	// "reservations" has no ancestors, so it is the only candidate; the role holds only a child.
+	suite.mockStore.On("GetAuthorizedPermissionsByResourceServer", mock.Anything,
+		testUserID1, []string{}, []string{}, "", resourceServerID,
+		[]string{"reservations"}).
+		Return([]string{}, nil).Once()
+
+	result, err := suite.service.GetAuthorizedPermissionsByResourceServer(
+		context.Background(), testUserID1, nil, nil, "", resourceServerID,
+		[]string{"reservations"})
+
+	suite.Nil(err)
+	suite.Empty(result)
+}
+
+// One held ancestor authorizes every requested permission beneath it, and the result reports the
+// permissions that were requested rather than the ancestor that matched.
+func (suite *RoleServiceTestSuite) TestGetAuthorizedPermissions_OneAncestorCoversSeveralRequests() {
+	suite.allowAnyCatalogCheck()
+	const resourceServerID = "booking-api"
+
+	suite.mockResourceService.On("GetResourceServer", mock.Anything, resourceServerID).
+		Return(&providers.ResourceServer{
+			ID: resourceServerID, Delimiter: ":", HierarchicalPermissions: true,
+		}, nil).Once()
+
+	suite.mockStore.On("GetAuthorizedPermissionsByResourceServer", mock.Anything,
+		testUserID1, []string{}, []string{}, "", resourceServerID,
+		[]string{"reservations:create", "reservations", "reservations:view", "invoices:read", "invoices"}).
+		Return([]string{"reservations"}, nil).Once()
+
+	result, err := suite.service.GetAuthorizedPermissionsByResourceServer(
+		context.Background(), testUserID1, nil, nil, "", resourceServerID,
+		[]string{"reservations:create", "reservations:view", "invoices:read"})
+
+	suite.Nil(err)
+	suite.Equal([]string{"reservations:create", "reservations:view"}, result)
+}
+
+// The delimiter comes from the resource server, not from an assumed colon.
+func (suite *RoleServiceTestSuite) TestGetAuthorizedPermissions_HonoursResourceServerDelimiter() {
+	suite.allowAnyCatalogCheck()
+	const resourceServerID = "booking-api"
+
+	suite.mockResourceService.On("GetResourceServer", mock.Anything, resourceServerID).
+		Return(&providers.ResourceServer{
+			ID: resourceServerID, Delimiter: "/", HierarchicalPermissions: true,
+		}, nil).Once()
+
+	suite.mockStore.On("GetAuthorizedPermissionsByResourceServer", mock.Anything,
+		testUserID1, []string{}, []string{}, "", resourceServerID,
+		[]string{"reservations/create", "reservations"}).
+		Return([]string{"reservations"}, nil).Once()
+
+	result, err := suite.service.GetAuthorizedPermissionsByResourceServer(
+		context.Background(), testUserID1, nil, nil, "", resourceServerID,
+		[]string{"reservations/create"})
+
+	suite.Nil(err)
+	suite.Equal([]string{"reservations/create"}, result)
+}
+
+// A resource server that cannot be read yields no delimiter, which reduces matching to equality.
+// That denies a parent-covered permission rather than granting one, so the failure is closed.
+func (suite *RoleServiceTestSuite) TestGetAuthorizedPermissions_UnresolvedResourceServerMatchesExactly() {
+	const resourceServerID = "booking-api"
+
+	suite.mockResourceService.On("GetResourceServer", mock.Anything, resourceServerID).
+		Return(nil, &tidcommon.InternalServerError).Once()
+
+	suite.mockStore.On("GetAuthorizedPermissionsByResourceServer", mock.Anything,
+		testUserID1, []string{}, []string{}, "", resourceServerID,
+		[]string{"reservations:create"}).
+		Return([]string{}, nil).Once()
+
+	result, err := suite.service.GetAuthorizedPermissionsByResourceServer(
+		context.Background(), testUserID1, nil, nil, "", resourceServerID,
+		[]string{"reservations:create"})
+
+	suite.Nil(err)
+	suite.Empty(result)
+}
+
+// A resource server that has not declared its permissions hierarchical matches them exactly, so a
+// granted resource authorizes nothing but itself. What a scope string means belongs to the resource
+// server, and most do not nest.
+func (suite *RoleServiceTestSuite) TestGetAuthorizedPermissions_ExactWhenNotHierarchical() {
+	const resourceServerID = "booking-api"
+
+	suite.mockResourceService.On("GetResourceServer", mock.Anything, resourceServerID).
+		Return(&providers.ResourceServer{ID: resourceServerID, Delimiter: ":"}, nil).Once()
+
+	// No ancestors are asked about, so the store sees only what was requested.
+	suite.mockStore.On("GetAuthorizedPermissionsByResourceServer", mock.Anything,
+		testUserID1, []string{}, []string{}, "", resourceServerID, []string{"reservations:create"}).
+		Return([]string{}, nil).Once()
+
+	authorized, svcErr := suite.service.GetAuthorizedPermissionsByResourceServer(
+		context.Background(), testUserID1, nil, nil, "", resourceServerID, []string{"reservations:create"})
+
+	suite.Nil(svcErr)
+	suite.Empty(authorized)
+}
+
+// A role may grant on a resource server whose permissions nest and on one whose permissions do not.
+// Each is answered by its own resource server's rules, and one resource server's delimiter must
+// never stand in for another's.
+func (suite *RoleServiceTestSuite) TestGetAuthorizedPermissions_MixedResourceServersAreIndependent() {
+	suite.allowAnyCatalogCheck()
+	const nestingRS = "booking-api"
+	const flatRS = "legacy-api"
+
+	suite.mockResourceService.On("GetResourceServer", mock.Anything, nestingRS).
+		Return(&providers.ResourceServer{ID: nestingRS, Delimiter: ":", HierarchicalPermissions: true}, nil).Once()
+	suite.mockResourceService.On("GetResourceServer", mock.Anything, flatRS).
+		Return(&providers.ResourceServer{ID: flatRS, Delimiter: ":"}, nil).Once()
+
+	// The nesting one is asked about the request and its ancestors.
+	suite.mockStore.On("GetAuthorizedPermissionsByResourceServer", mock.Anything,
+		testUserID1, []string{}, []string{}, "", nestingRS,
+		[]string{"reservations:create", "reservations"}).
+		Return([]string{"reservations"}, nil).Once()
+
+	// The flat one is asked about the request alone, so the identical grant confers nothing.
+	suite.mockStore.On("GetAuthorizedPermissionsByResourceServer", mock.Anything,
+		testUserID1, []string{}, []string{}, "", flatRS, []string{"reservations:create"}).
+		Return([]string{}, nil).Once()
+
+	nesting, err := suite.service.GetAuthorizedPermissionsByResourceServer(
+		context.Background(), testUserID1, nil, nil, "", nestingRS, []string{"reservations:create"})
+	suite.Nil(err)
+	suite.Equal([]string{"reservations:create"}, nesting)
+
+	flat, err := suite.service.GetAuthorizedPermissionsByResourceServer(
+		context.Background(), testUserID1, nil, nil, "", flatRS, []string{"reservations:create"})
+	suite.Nil(err)
+	suite.Empty(flat)
+}
+
+// stubHeldRoles declares a hierarchical resource server and the roles the subject holds in the unit,
+// each granting the given permissions on it.
+func (suite *RoleServiceTestSuite) stubHeldRoles(resourceServerID, assignmentOUID string,
+	rolePermissions map[string][]string) {
+	suite.mockResourceService.On("GetResourceServer", mock.Anything, resourceServerID).
+		Return(&providers.ResourceServer{ID: resourceServerID, Delimiter: ":", HierarchicalPermissions: true}, nil)
+	held := []string{}
+	for _, permissions := range rolePermissions {
+		held = append(held, permissions...)
+	}
+	suite.mockStore.On("GetHeldPermissionsByResourceServer", mock.Anything, testUserID1, []string{},
+		[]string(nil), assignmentOUID, resourceServerID).Return(held, nil).Once()
+}
+
+// A request for a resource the subject does not hold is answered with what it does hold beneath
+// that resource, so a client asking for the resource gets the part of it the subject has.
+func (suite *RoleServiceTestSuite) TestExpandHeldDescendants_ReturnsWhatIsHeldBeneath() {
+	const resourceServerID = "booking-api"
+	suite.stubHeldRoles(resourceServerID, "", map[string][]string{
+		"role-1": {"reservations:view", "invoices:read"},
+		"role-2": {"reservations:create", "reservations:view"},
+	})
+	suite.mockResourceService.On("ValidatePermissions", mock.Anything, resourceServerID,
+		[]string{"reservations:create", "reservations:view"}).Return([]string{}, nil).Once()
+
+	expanded, err := suite.service.ExpandHeldDescendants(
+		context.Background(), testUserID1, []string{}, nil, "", resourceServerID, []string{"reservations"})
+
+	suite.Nil(err)
+	// The resource itself is withheld: holding everything beneath it is not holding it, which would
+	// also confer whatever is added beneath it later.
+	suite.Equal(map[string][]string{
+		"reservations": {"reservations:create", "reservations:view"},
+	}, expanded)
+}
+
+func (suite *RoleServiceTestSuite) TestExpandHeldDescendants_PreservesBuiltInSystemPermissions() {
+	security.InitControlPlanePermissions("")
+	const resourceServerID = serverconst.SystemResourceServerID
+	suite.stubHeldRoles(resourceServerID, "", map[string][]string{"admin": {"system:ou", "system:user:view"}})
+
+	expanded, err := suite.service.ExpandHeldDescendants(
+		context.Background(), testUserID1, []string{}, nil, "", resourceServerID, []string{"system"})
+
+	suite.Nil(err)
+	suite.Equal(map[string][]string{"system": {"system:ou", "system:user:view"}}, expanded)
+	suite.mockResourceService.AssertNotCalled(suite.T(), "ValidatePermissions",
+		mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (suite *RoleServiceTestSuite) TestExpandHeldDescendants_RejectsUndeclaredAlternatives() {
+	for _, resourceServerID := range []string{"booking-api", serverconst.SystemResourceServerID} {
+		suite.Run(resourceServerID, func() {
+			suite.SetupTest()
+			security.InitControlPlanePermissions("")
+			suite.stubHeldRoles(resourceServerID, "", map[string][]string{
+				"role-1": {"system:retired", "system:user:view", "unrelated:read"},
+			})
+			checked := []string{"system:retired", "system:user:view"}
+			if resourceServerID == serverconst.SystemResourceServerID {
+				checked = []string{"system:retired"}
+			}
+			suite.mockResourceService.On("ValidatePermissions", mock.Anything, resourceServerID, checked).
+				Return(checked, nil).Once()
+
+			expanded, svcErr := suite.service.ExpandHeldDescendants(
+				context.Background(), testUserID1, []string{}, nil, "", resourceServerID, []string{"system"})
+
+			suite.Nil(svcErr)
+			if resourceServerID == serverconst.SystemResourceServerID {
+				suite.Equal(map[string][]string{"system": {"system:user:view"}}, expanded)
+			} else {
+				suite.Empty(expanded)
+			}
+		})
+	}
+}
+
+func (suite *RoleServiceTestSuite) TestExpandHeldDescendants_FailsClosedOnCatalogError() {
+	const resourceServerID = "booking-api"
+	suite.stubHeldRoles(resourceServerID, "", map[string][]string{
+		"role-1": {"reservations:view", "reservations:create"},
+	})
+	suite.mockResourceService.On("ValidatePermissions", mock.Anything, resourceServerID,
+		[]string{"reservations:create", "reservations:view"}).Return(nil, &tidcommon.InternalServerError).Once()
+
+	expanded, svcErr := suite.service.ExpandHeldDescendants(
+		context.Background(), testUserID1, []string{}, nil, "", resourceServerID, []string{"reservations"})
+
+	suite.Nil(svcErr)
+	suite.Empty(expanded)
+}
+
+func (suite *RoleServiceTestSuite) TestExpandHeldDescendants_ValidatesMultipleBranchesTogether() {
+	const resourceServerID = "booking-api"
+	suite.mockResourceService.On("GetResourceServer", mock.Anything, resourceServerID).
+		Return(&providers.ResourceServer{ID: resourceServerID, Delimiter: "/", HierarchicalPermissions: true}, nil)
+	suite.mockStore.On("GetHeldPermissionsByResourceServer", mock.Anything, testUserID1, []string{},
+		[]string(nil), "", resourceServerID).Return([]string{
+		"reservations/create", "reservations/retired", "invoices/view", "invoices/view", "unrelated/view",
+	}, nil).Once()
+	suite.mockResourceService.On("ValidatePermissions", mock.Anything, resourceServerID,
+		[]string{"invoices/view", "reservations/create", "reservations/retired"}).
+		Return([]string{"reservations/retired"}, nil).Once()
+
+	expanded, svcErr := suite.service.ExpandHeldDescendants(
+		context.Background(), testUserID1, []string{}, nil, "", resourceServerID,
+		[]string{"reservations", "invoices"})
+
+	suite.Nil(svcErr)
+	suite.Equal(map[string][]string{
+		"reservations": {"reservations/create"}, "invoices": {"invoices/view"},
+	}, expanded)
+}
+
+// A shared user's alternatives come only from the assignments made in the unit the request is for,
+// as its own authorization does.
+func (suite *RoleServiceTestSuite) TestExpandHeldDescendants_CountsOnlyTheRequestedUnitsAssignments() {
+	const resourceServerID = "booking-api"
+	suite.stubHeldRoles(resourceServerID, "ou-y", map[string][]string{})
+
+	expanded, err := suite.service.ExpandHeldDescendants(
+		context.Background(), testUserID1, []string{}, nil, "ou-y", resourceServerID, []string{"reservations"})
+
+	suite.Nil(err)
+	suite.Nil(expanded)
+	suite.mockStore.AssertCalled(suite.T(), "GetHeldPermissionsByResourceServer",
+		mock.Anything, testUserID1, []string{}, []string(nil), "ou-y", resourceServerID)
+}
+
+// Permissions do not nest on a resource server that did not declare it, so nothing sits "beneath"
+// anything and there is nothing to substitute.
+func (suite *RoleServiceTestSuite) TestExpandHeldDescendants_IsInertWhenPermissionsDoNotNest() {
+	const resourceServerID = "booking-api"
+
+	suite.mockResourceService.On("GetResourceServer", mock.Anything, resourceServerID).
+		Return(&providers.ResourceServer{ID: resourceServerID, Delimiter: ":"}, nil)
+
+	expanded, err := suite.service.ExpandHeldDescendants(
+		context.Background(), testUserID1, []string{}, nil, "", resourceServerID, []string{"reservations"})
+
+	suite.Nil(err)
+	suite.Nil(expanded)
+	suite.mockStore.AssertNotCalled(suite.T(), "GetHeldPermissionsByResourceServer",
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+// A permission whose name merely starts with the requested one is not beneath it: the delimiter has
+// to follow, or two sibling names would be read as parent and child.
+func (suite *RoleServiceTestSuite) TestExpandHeldDescendants_IgnoresPermissionsOutsideTheSubtree() {
+	const resourceServerID = "booking-api"
+	suite.stubHeldRoles(resourceServerID, "", map[string][]string{"role-1": {"reservations-archive", "invoices:read"}})
+
+	expanded, err := suite.service.ExpandHeldDescendants(
+		context.Background(), testUserID1, []string{}, nil, "", resourceServerID, []string{"reservations"})
+
+	suite.Nil(err)
+	suite.Nil(expanded)
+}
+
+// Turning the declaration off narrows what a grant already made confers, on the next evaluation,
+// without rewriting the role. Nothing is remembered between the two calls, which is the point of
+// reading the resource server per evaluation rather than caching it.
+func (suite *RoleServiceTestSuite) TestGetAuthorizedPermissions_WithdrawingTheDeclarationNarrowsAnExistingGrant() {
+	suite.allowAnyCatalogCheck()
+	const resourceServerID = "booking-api"
+
+	suite.mockResourceService.On("GetResourceServer", mock.Anything, resourceServerID).
+		Return(&providers.ResourceServer{
+			ID: resourceServerID, Delimiter: ":", HierarchicalPermissions: true,
+		}, nil).Once()
+	suite.mockStore.On("GetAuthorizedPermissionsByResourceServer", mock.Anything,
+		testUserID1, []string{}, []string{}, "", resourceServerID,
+		[]string{"reservations:create", "reservations"}).
+		Return([]string{"reservations"}, nil).Once()
+
+	granted, err := suite.service.GetAuthorizedPermissionsByResourceServer(
+		context.Background(), testUserID1, nil, nil, "", resourceServerID, []string{"reservations:create"})
+	suite.Nil(err)
+	suite.Equal([]string{"reservations:create"}, granted)
+
+	// The same role and the same request, with the declaration withdrawn.
+	suite.mockResourceService.On("GetResourceServer", mock.Anything, resourceServerID).
+		Return(&providers.ResourceServer{ID: resourceServerID, Delimiter: ":"}, nil).Once()
+	suite.mockStore.On("GetAuthorizedPermissionsByResourceServer", mock.Anything,
+		testUserID1, []string{}, []string{}, "", resourceServerID, []string{"reservations:create"}).
+		Return([]string{}, nil).Once()
+
+	granted, err = suite.service.GetAuthorizedPermissionsByResourceServer(
+		context.Background(), testUserID1, nil, nil, "", resourceServerID, []string{"reservations:create"})
+	suite.Nil(err)
+	suite.Empty(granted)
+}
+
+// A permission nothing grants by name is only authorized because an ancestor covers it, so it is
+// checked against the catalog before being issued. Without that, any string beneath a held
+// permission would authorize itself and a client could mint a scope the resource server never
+// declared.
+func (suite *RoleServiceTestSuite) TestGetAuthorizedPermissions_RefusesAPermissionTheCatalogDoesNotDeclare() {
+	const resourceServerID = "booking-api"
+
+	suite.mockResourceService.ExpectedCalls = nil
+	suite.mockResourceService.On("GetResourceServer", mock.Anything, resourceServerID).
+		Return(&providers.ResourceServer{
+			ID: resourceServerID, Delimiter: ":", HierarchicalPermissions: true,
+		}, nil)
+	suite.mockStore.On("GetAuthorizedPermissionsByResourceServer", mock.Anything,
+		testUserID1, []string{}, []string{}, "", resourceServerID,
+		[]string{"reservations:invented", "reservations", "reservations:create"}).
+		Return([]string{"reservations"}, nil).Once()
+	suite.mockResourceService.On("ValidatePermissions", mock.Anything, resourceServerID,
+		[]string{"reservations:invented", "reservations:create"}).
+		Return([]string{"reservations:invented"}, nil).Once()
+
+	granted, err := suite.service.GetAuthorizedPermissionsByResourceServer(
+		context.Background(), testUserID1, nil, nil, "", resourceServerID,
+		[]string{"reservations:invented", "reservations:create"})
+
+	suite.Nil(err)
+	suite.Equal([]string{"reservations:create"}, granted)
+}
+
+// A permission a role grants by name was checked against the catalog when the role was written,
+// so it is issued without asking again.
+func (suite *RoleServiceTestSuite) TestGetAuthorizedPermissions_DoesNotRecheckAPermissionGrantedByName() {
+	const resourceServerID = "booking-api"
+
+	suite.mockResourceService.ExpectedCalls = nil
+	suite.mockResourceService.On("GetResourceServer", mock.Anything, resourceServerID).
+		Return(&providers.ResourceServer{
+			ID: resourceServerID, Delimiter: ":", HierarchicalPermissions: true,
+		}, nil)
+	suite.mockStore.On("GetAuthorizedPermissionsByResourceServer", mock.Anything,
+		testUserID1, []string{}, []string{}, "", resourceServerID,
+		[]string{"reservations:create", "reservations"}).
+		Return([]string{"reservations:create"}, nil).Once()
+
+	granted, err := suite.service.GetAuthorizedPermissionsByResourceServer(
+		context.Background(), testUserID1, nil, nil, "", resourceServerID,
+		[]string{"reservations:create"})
+
+	suite.Nil(err)
+	suite.Equal([]string{"reservations:create"}, granted)
+	suite.mockResourceService.AssertNotCalled(suite.T(), "ValidatePermissions",
+		mock.Anything, mock.Anything, mock.Anything)
+}
+
+// A catalog that cannot be read refuses the permissions an ancestor conferred rather than
+// admitting them, which is the direction every other failure on this path takes.
+func (suite *RoleServiceTestSuite) TestGetAuthorizedPermissions_RefusesInheritanceOnCatalogFailure() {
+	const resourceServerID = "booking-api"
+
+	suite.mockResourceService.ExpectedCalls = nil
+	suite.mockResourceService.On("GetResourceServer", mock.Anything, resourceServerID).
+		Return(&providers.ResourceServer{
+			ID: resourceServerID, Delimiter: ":", HierarchicalPermissions: true,
+		}, nil)
+	suite.mockStore.On("GetAuthorizedPermissionsByResourceServer", mock.Anything,
+		testUserID1, []string{}, []string{}, "", resourceServerID,
+		[]string{"reservations:create", "reservations"}).
+		Return([]string{"reservations"}, nil).Once()
+	suite.mockResourceService.On("ValidatePermissions", mock.Anything, resourceServerID,
+		[]string{"reservations:create"}).
+		Return(nil, &tidcommon.InternalServerError).Once()
+
+	granted, err := suite.service.GetAuthorizedPermissionsByResourceServer(
+		context.Background(), testUserID1, nil, nil, "", resourceServerID,
+		[]string{"reservations:create"})
+
+	suite.Nil(err)
+	suite.Empty(granted)
+}
+
+func (suite *RoleServiceTestSuite) TestExpandHeldDescendants_HeldLookupErrorFailsClosed() {
+	suite.mockResourceService.On("GetResourceServer", mock.Anything, "booking-api").
+		Return(&providers.ResourceServer{ID: "booking-api", Delimiter: ":", HierarchicalPermissions: true}, nil)
+	suite.mockStore.On("GetHeldPermissionsByResourceServer", mock.Anything, testUserID1, []string{"group-1"},
+		[]string{"mapped-role"}, "ou-1", "booking-api").Return(nil, errors.New("read failed")).Once()
+	expanded, svcErr := suite.service.ExpandHeldDescendants(context.Background(), testUserID1,
+		[]string{"group-1"}, []string{"mapped-role"}, "ou-1", "booking-api", []string{"reservations"})
+	suite.Nil(expanded)
+	suite.Require().NotNil(svcErr)
+	suite.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+	suite.mockResourceService.AssertNotCalled(suite.T(), "ValidatePermissions",
+		mock.Anything, mock.Anything, mock.Anything)
 }

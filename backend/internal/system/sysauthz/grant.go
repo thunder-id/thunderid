@@ -39,6 +39,10 @@ type PermissionResolver interface {
 
 	// ResolveForRole returns the permissions a role confers on its assignees.
 	ResolveForRole(ctx context.Context, roleID string) (security.PermissionSet, error)
+
+	// ResolveDelimiters returns administrative coverage delimiters; missing entries use exact matching.
+	// The resolver avoids an import cycle between sysauthz and the resource service.
+	ResolveDelimiters(ctx context.Context, resourceServerIDs []string) map[string]string
 }
 
 // SetPermissionResolver injects the resolver used by the grant checks. Call once at startup, after
@@ -131,7 +135,8 @@ func (s *systemAuthorizationService) GrantableMemberships(
 				actorPermissions = security.PermissionSet{}
 			}
 		}
-		if security.Covers(actorPermissions, conferred) {
+		delimiters := s.permissionResolver.ResolveDelimiters(ctx, grantedResourceServerIDs(conferred))
+		if security.Covers(actorPermissions, conferred, delimiters) {
 			grantable = append(grantable, containerID)
 		}
 	}
@@ -223,7 +228,10 @@ func (s *systemAuthorizationService) requireCoverage(
 		return &tidcommon.InternalServerError
 	}
 
-	if !security.Covers(actorPermissions, granted) {
+	// Covers preserves fixed colon matching for system permissions.
+	delimiters := s.permissionResolver.ResolveDelimiters(ctx, grantedResourceServerIDs(granted))
+
+	if !security.Covers(actorPermissions, granted, delimiters) {
 		logger.Debug(ctx, "Grant refused: exceeds caller permissions",
 			log.MaskedString("subject", subject))
 		return &ErrorGrantNotPermitted
@@ -240,4 +248,17 @@ func grantsNothing(granted security.PermissionSet) bool {
 		}
 	}
 	return true
+}
+
+// grantedResourceServerIDs lists the resource servers a grant names, which are the only ones whose
+// delimiters the coverage check needs.
+func grantedResourceServerIDs(granted security.PermissionSet) []string {
+	ids := make([]string, 0, len(granted))
+	for resourceServerID, permissions := range granted {
+		if resourceServerID == "" || len(permissions) == 0 {
+			continue
+		}
+		ids = append(ids, resourceServerID)
+	}
+	return ids
 }

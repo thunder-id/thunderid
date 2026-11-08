@@ -620,6 +620,31 @@ func (c *compositeRoleStore) GetAuthorizedPermissionsByResourceServer(
 	return mergePermissions(mergePermissions(dbPerms, filePerms), crossStorePerms), nil
 }
 
+// GetHeldPermissionsByResourceServer combines database grants with declared roles and assignments.
+func (c *compositeRoleStore) GetHeldPermissionsByResourceServer(
+	ctx context.Context, entityID string, groupIDs, roleIDs []string, assignmentOUID, resourceServerID string,
+) ([]string, error) {
+	dbPermissions, err := c.dbStore.GetHeldPermissionsByResourceServer(
+		ctx, entityID, groupIDs, roleIDs, assignmentOUID, resourceServerID)
+	if err != nil {
+		return nil, err
+	}
+	declaredRoleIDs := slices.Clone(roleIDs)
+	if entityID != "" || len(groupIDs) > 0 {
+		assignedRoleIDs, err := c.dbStore.GetEntityRoleIDs(ctx, entityID, groupIDs, assignmentOUID)
+		if err != nil {
+			return nil, err
+		}
+		declaredRoleIDs = append(declaredRoleIDs, assignedRoleIDs...)
+	}
+	filePermissions, err := c.fileStore.GetHeldPermissionsByResourceServer(
+		ctx, entityID, groupIDs, declaredRoleIDs, assignmentOUID, resourceServerID)
+	if err != nil {
+		return nil, err
+	}
+	return mergePermissions(dbPermissions, filePermissions), nil
+}
+
 // crossStoreAuthorizedPermissions resolves permissions for the (declarative role definition
 // in file store) + (runtime assignment row in DB) case. It is intentionally narrow: it skips
 // any role ID that does not exist in the file store, because such roles are entirely DB-backed
@@ -768,13 +793,19 @@ func (c *compositeRoleStore) crossStoreAllPermissions(
 	return resourcePermissionsFromMap(byResourceServer), nil
 }
 
-// GetEntityRoleIDs returns the IDs of roles assigned to an entity (directly or via groups).
-// Delegates to the database store since assignments are persisted there even for declarative
-// roles. The file store has no independent record of API-added assignments.
+// GetEntityRoleIDs combines database and declared assignments in the requested organization unit.
 func (c *compositeRoleStore) GetEntityRoleIDs(
 	ctx context.Context, entityID string, groupIDs []string, assignmentOUID string,
 ) ([]string, error) {
-	return c.dbStore.GetEntityRoleIDs(ctx, entityID, groupIDs, assignmentOUID)
+	dbRoleIDs, err := c.dbStore.GetEntityRoleIDs(ctx, entityID, groupIDs, assignmentOUID)
+	if err != nil {
+		return nil, err
+	}
+	fileRoleIDs, err := c.fileStore.GetEntityRoleIDs(ctx, entityID, groupIDs, assignmentOUID)
+	if err != nil {
+		return nil, err
+	}
+	return mergePermissions(dbRoleIDs, fileRoleIDs), nil
 }
 
 // GetUserRoles retrieves role names assigned to an entity from both stores.

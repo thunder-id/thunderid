@@ -5,7 +5,6 @@ package role
 
 import (
 	"fmt"
-	"slices"
 	"sort"
 	"strings"
 
@@ -481,17 +480,19 @@ func buildAuthorizedPermissionsQuery(
 
 	// Construct PostgreSQL query: AND together the subject block, the optional
 	// resource-server scope, and the permission block.
-	postgresConditions := slices.Concat(
-		[]string{"(" + strings.Join(postgresWhere, " OR ") + ")"},
-		postgresScopeWhere,
-		[]string{fmt.Sprintf("rp.PERMISSION IN (%s)", strings.Join(permPlaceholdersPostgres, ","))})
+	postgresConditions := append([]string{"(" + strings.Join(postgresWhere, " OR ") + ")"}, postgresScopeWhere...)
+	if len(requestedPermissions) > 0 {
+		postgresConditions = append(postgresConditions,
+			fmt.Sprintf("rp.PERMISSION IN (%s)", strings.Join(permPlaceholdersPostgres, ",")))
+	}
 	postgresQuery := baseQuery + strings.Join(postgresConditions, " AND ") + " ORDER BY rp.PERMISSION"
 
 	// Construct SQLite query
-	sqliteConditions := slices.Concat(
-		[]string{"(" + strings.Join(sqliteWhere, " OR ") + ")"},
-		sqliteScopeWhere,
-		[]string{fmt.Sprintf("rp.PERMISSION IN (%s)", strings.Join(permPlaceholdersSqlite, ","))})
+	sqliteConditions := append([]string{"(" + strings.Join(sqliteWhere, " OR ") + ")"}, sqliteScopeWhere...)
+	if len(requestedPermissions) > 0 {
+		sqliteConditions = append(sqliteConditions,
+			fmt.Sprintf("rp.PERMISSION IN (%s)", strings.Join(permPlaceholdersSqlite, ",")))
+	}
 	sqliteQuery := baseQuery + strings.Join(sqliteConditions, " AND ") + " ORDER BY rp.PERMISSION"
 
 	query := dbmodel.DBQuery{

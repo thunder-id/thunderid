@@ -71,17 +71,18 @@ type CriterionType = sharedrevocation.CriterionType
 // Criterion dimensions, re-exported from the revocation package so OAuth callers need not import it
 // directly. See that package for what each dimension matches.
 const (
-	CriterionTypeTokenFamily       = sharedrevocation.CriterionTypeTokenFamily
-	CriterionTypeSubject           = sharedrevocation.CriterionTypeSubject
-	CriterionTypeApplicationID     = sharedrevocation.CriterionTypeApplicationID
-	CriterionTypeApplicationKey    = sharedrevocation.CriterionTypeApplicationKey
-	CriterionTypeOrganizationUnit  = sharedrevocation.CriterionTypeOrganizationUnit
-	CriterionTypeRole              = sharedrevocation.CriterionTypeRole
-	CriterionTypeGroup             = sharedrevocation.CriterionTypeGroup
-	CriterionTypeConsent           = sharedrevocation.CriterionTypeConsent
-	CriterionTypeCredentialVersion = sharedrevocation.CriterionTypeCredentialVersion
-	CriterionTypeEntityScope       = sharedrevocation.CriterionTypeEntityScope
-	CriterionTypeScope             = sharedrevocation.CriterionTypeScope
+	CriterionTypeTokenFamily        = sharedrevocation.CriterionTypeTokenFamily
+	CriterionTypeSubject            = sharedrevocation.CriterionTypeSubject
+	CriterionTypeApplicationID      = sharedrevocation.CriterionTypeApplicationID
+	CriterionTypeApplicationKey     = sharedrevocation.CriterionTypeApplicationKey
+	CriterionTypeOrganizationUnit   = sharedrevocation.CriterionTypeOrganizationUnit
+	CriterionTypeRole               = sharedrevocation.CriterionTypeRole
+	CriterionTypeGroup              = sharedrevocation.CriterionTypeGroup
+	CriterionTypeConsent            = sharedrevocation.CriterionTypeConsent
+	CriterionTypeCredentialVersion  = sharedrevocation.CriterionTypeCredentialVersion
+	CriterionTypeEntityScope        = sharedrevocation.CriterionTypeEntityScope
+	CriterionTypeEntityScopeSubtree = sharedrevocation.CriterionTypeEntityScopeSubtree
+	CriterionTypeScope              = sharedrevocation.CriterionTypeScope
 )
 
 // RevocationMode controls whether a criterion applies permanently or only to artifacts established

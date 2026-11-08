@@ -221,7 +221,7 @@ describe('CreateResourceServerPage', () => {
     fireEvent.click(screen.getByRole('button', {name: /Continue/i}));
 
     await waitFor(() => {
-      expect(screen.getByRole('combobox')).toBeInTheDocument();
+      expect(screen.getByRole('combobox', {name: /Permission delimiter/})).toBeInTheDocument();
     });
   });
 
@@ -378,7 +378,7 @@ describe('CreateResourceServerPage', () => {
     });
   });
 
-  it('sends the identifier in the create payload', async () => {
+  it('sends the identifier and selected matching mode in the create payload', async () => {
     renderWithProviders(<CreateResourceServerPage />);
 
     fireEvent.click(screen.getByRole('button', {name: /API/i}));
@@ -401,10 +401,15 @@ describe('CreateResourceServerPage', () => {
       expect(screen.getByRole('button', {name: /Create resource server/i})).toBeInTheDocument();
     });
 
+    fireEvent.click(screen.getByRole('checkbox', {name: 'Use hierarchy-aware matching'}));
     fireEvent.click(screen.getByRole('button', {name: /Create resource server/i}));
 
     expect(mockCreateResourceServerMutate).toHaveBeenCalledWith(
-      expect.objectContaining({name: 'Payments API', identifier: 'https://api.example.com'}),
+      expect.objectContaining({
+        name: 'Payments API',
+        identifier: 'https://api.example.com',
+        hierarchicalPermissions: true,
+      }),
       expect.any(Object),
     );
     expect(mockCreateResourceServerMutate.mock.calls[0][0]).not.toHaveProperty('handle');
@@ -867,7 +872,7 @@ describe('CreateResourceServerPage submit locking', () => {
       });
       fireEvent.click(screen.getByRole('button', {name: /Continue/i}));
       await waitFor(() => {
-        expect(screen.getByRole('combobox')).toBeInTheDocument();
+        expect(screen.getByRole('combobox', {name: /Permission delimiter/})).toBeInTheDocument();
       });
 
       fireEvent.click(screen.getByRole('button', {name: /Back/i}));

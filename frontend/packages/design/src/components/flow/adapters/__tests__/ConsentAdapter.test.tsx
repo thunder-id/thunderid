@@ -19,6 +19,17 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+const consentI18n = i18next.createInstance();
+await consentI18n.init({lng: 'en', resources: {en: {consent: {}}}});
+
+function renderConsent(ui: ReactNode) {
+  return renderWithProviders(
+    <I18nextProvider i18n={consentI18n}>
+      <ThemeProvider>{ui}</ThemeProvider>
+    </I18nextProvider>,
+  );
+}
+
 const noop = () => undefined;
 
 // The SDK's consent components read the SDK theme, which the Gate's ThunderIDProvider supplies.
@@ -55,13 +66,13 @@ const switchFor = (name: string) => screen.getByRole<HTMLInputElement>('switch',
 
 describe('ConsentAdapter — permission default state', () => {
   it('renders an untouched permission as unchecked', () => {
-    renderWithProviders(<ConsentAdapter consentData={permissionsPurpose} formValues={{}} onInputChange={noop} />);
+    renderConsent(<ConsentAdapter consentData={permissionsPurpose} formValues={{}} onInputChange={noop} />);
 
     expect(switchFor('system').checked).toBe(false);
   });
 
   it('renders a permission the user enabled as checked', () => {
-    renderWithProviders(
+    renderConsent(
       <ConsentAdapter
         consentData={permissionsPurpose}
         formValues={{[permissionKey('system')]: 'true'}}
@@ -73,7 +84,7 @@ describe('ConsentAdapter — permission default state', () => {
   });
 
   it('renders a permission the user disabled as unchecked', () => {
-    renderWithProviders(
+    renderConsent(
       <ConsentAdapter
         consentData={permissionsPurpose}
         formValues={{[permissionKey('system')]: 'false'}}
@@ -85,7 +96,7 @@ describe('ConsentAdapter — permission default state', () => {
   });
 
   it('leaves every permission in a nested tree unchecked when nothing is selected', () => {
-    renderWithProviders(<ConsentAdapter consentData={nestedPermissionsPurpose} formValues={{}} onInputChange={noop} />);
+    renderConsent(<ConsentAdapter consentData={nestedPermissionsPurpose} formValues={{}} onInputChange={noop} />);
 
     expect(switchFor('users').checked).toBe(false);
     expect(switchFor('users:read').checked).toBe(false);
@@ -97,7 +108,7 @@ describe('ConsentAdapter — permission rollup', () => {
   it('cascades a parent toggle to its descendants', () => {
     const onInputChange = vi.fn();
 
-    renderWithProviders(
+    renderConsent(
       <ConsentAdapter consentData={nestedPermissionsPurpose} formValues={{}} onInputChange={onInputChange} />,
     );
 
@@ -109,7 +120,7 @@ describe('ConsentAdapter — permission rollup', () => {
   });
 
   it('shows the parent as checked once every descendant is checked', () => {
-    renderWithProviders(
+    renderConsent(
       <ConsentAdapter
         consentData={nestedPermissionsPurpose}
         formValues={{
@@ -960,5 +971,183 @@ describe('ConsentAdapter — client hosts', () => {
     expect(screen.queryByText(/Published by/)).toBeNull();
     expect(screen.queryByText(deviceWarning)).toBeNull();
     expect(switchFor('system')).toBeTruthy();
+  });
+});
+
+describe('ConsentAdapter permission choices', () => {
+  it('offers one switch for a hierarchical branch root', () => {
+    const onInputChange = vi.fn();
+    const root = JSON.stringify([
+      {
+        purposeName: 'permissions:app1',
+        purposeId: '',
+        type: 'permissions',
+        permissionDelimiter: ':',
+        essential: null,
+        optional: [{name: 'reservations'}],
+      },
+    ]);
+    renderConsent(<ConsentAdapter consentData={root} formValues={{}} onInputChange={onInputChange} />);
+
+    expect(screen.getAllByRole('switch')).toHaveLength(1);
+    expect(screen.queryByRole('treeitem')).not.toBeInTheDocument();
+    expect(screen.getByText('Review the permissions being requested')).toBeInTheDocument();
+    expect(
+      screen.getByText('Granting a resource includes current and future permissions beneath it.'),
+    ).toBeInTheDocument();
+
+    fireEvent.click(switchFor('reservations'));
+    expect(onInputChange).toHaveBeenCalledExactlyOnceWith(permissionKey('reservations'), 'true');
+  });
+
+  it('decides each hierarchical branch independently', () => {
+    const onInputChange = vi.fn();
+    const branches = JSON.stringify([
+      {
+        purposeName: 'permissions:app1',
+        purposeId: '',
+        type: 'permissions',
+        permissionDelimiter: ':',
+        essential: null,
+        optional: [{name: 'reservations:online'}, {name: 'reservations:offline:view'}],
+      },
+    ]);
+    renderConsent(<ConsentAdapter consentData={branches} formValues={{}} onInputChange={onInputChange} />);
+
+    expect(screen.getAllByRole('switch')).toHaveLength(2);
+
+    fireEvent.click(switchFor('reservations:online'));
+    expect(onInputChange).toHaveBeenCalledExactlyOnceWith(permissionKey('reservations:online'), 'true');
+  });
+
+  it('grants a branch as a whole and shows what it carries read only', () => {
+    const onInputChange = vi.fn();
+    const tree = JSON.stringify([
+      {
+        purposeName: 'permissions:app1',
+        purposeId: '',
+        type: 'permissions',
+        permissionDelimiter: ':',
+        essential: [],
+        optional: [
+          {name: 'reservations'},
+          {name: 'reservations:online', parent: 'reservations'},
+          {name: 'reservations:online:create', parent: 'reservations:online'},
+          {name: 'reservations:view', parent: 'reservations'},
+        ],
+      },
+    ]);
+    renderConsent(<ConsentAdapter consentData={tree} formValues={{}} onInputChange={onInputChange} />);
+
+    // Only the branch root is decidable. Everything under it is shown, never chosen.
+    expect(screen.getAllByRole('switch')).toHaveLength(1);
+
+    const online = screen.getByRole('treeitem', {name: 'reservations:online'});
+    expect(online).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByRole('treeitem', {name: 'reservations:online:create'})).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText('reservations:online'));
+    expect(online).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('treeitem', {name: 'reservations:online:create'})).toBeInTheDocument();
+    expect(onInputChange).not.toHaveBeenCalled();
+
+    // Taking the root takes everything the prompt showed beneath it.
+    fireEvent.click(switchFor('reservations'));
+    expect(onInputChange.mock.calls).toEqual([
+      [permissionKey('reservations'), 'true'],
+      [permissionKey('reservations:online'), 'true'],
+      [permissionKey('reservations:online:create'), 'true'],
+      [permissionKey('reservations:view'), 'true'],
+    ]);
+  });
+
+  it('shows catalog descendants without adding child decisions', () => {
+    const onInputChange = vi.fn();
+    const data = JSON.stringify([
+      {
+        purposeName: 'permissions:app1',
+        purposeId: '',
+        type: 'permissions',
+        permissionDelimiter: ':',
+        essential: [],
+        optional: [{name: 'reservations'}],
+        displayElements: [
+          {name: 'reservations'},
+          {name: 'reservations:create', parent: 'reservations'},
+          {name: 'reservations:view', parent: 'reservations'},
+        ],
+      },
+    ]);
+    renderConsent(<ConsentAdapter consentData={data} formValues={{}} onInputChange={onInputChange} />);
+    expect(screen.getAllByRole('switch')).toHaveLength(1);
+    expect(screen.getByRole('treeitem', {name: 'reservations:view'})).toBeInTheDocument();
+    fireEvent.click(switchFor('reservations'));
+    expect(onInputChange).toHaveBeenCalledExactlyOnceWith(permissionKey('reservations'), 'true');
+  });
+
+  it('keeps exact permissions visible and selectable beside a hierarchical purpose', () => {
+    const onInputChange = vi.fn();
+    const mixed = JSON.stringify([
+      {
+        purposeName: 'permissions:hierarchical',
+        purposeId: 'hierarchical',
+        type: 'permissions',
+        permissionDelimiter: ':',
+        optional: [{name: 'reservations'}],
+        displayElements: [{name: 'reservations'}, {name: 'reservations:create', parent: 'reservations'}],
+      },
+      {
+        purposeName: 'permissions:exact',
+        purposeId: 'exact',
+        type: 'permissions',
+        optional: [{name: 'booking'}, {name: 'booking:create', parent: 'booking'}],
+      },
+    ]);
+    renderConsent(<ConsentAdapter consentData={mixed} formValues={{}} onInputChange={onInputChange} />);
+
+    expect(screen.getAllByRole('switch')).toHaveLength(3);
+    expect(switchFor('reservations')).toBeInTheDocument();
+    expect(switchFor('booking')).toBeInTheDocument();
+    expect(screen.getByRole('treeitem', {name: 'reservations:create'})).toBeInTheDocument();
+    fireEvent.click(switchFor('booking:create'));
+    expect(onInputChange).toHaveBeenCalledExactlyOnceWith('__consent_opt__exact__booking:create', 'true');
+    expect(switchFor('booking').checked).toBe(false);
+    expect(switchFor('reservations').checked).toBe(false);
+  });
+
+  it('keeps attribute consent selectable beside hierarchical permissions', () => {
+    const onInputChange = vi.fn();
+    const mixed = JSON.stringify([
+      {
+        purposeName: 'permissions:app1',
+        purposeId: 'perms',
+        type: 'permissions',
+        permissionDelimiter: ':',
+        essential: [],
+        optional: [{name: 'reservations'}],
+      },
+      {
+        purposeName: 'attributes:app1',
+        purposeId: 'attrs',
+        type: 'attributes',
+        essential: [],
+        optional: [{name: 'email'}],
+      },
+    ]);
+    renderConsent(<ConsentAdapter consentData={mixed} formValues={{}} onInputChange={onInputChange} />);
+
+    expect(screen.getAllByRole('switch')).toHaveLength(2);
+    fireEvent.click(switchFor('email'));
+    expect(onInputChange).toHaveBeenCalledExactlyOnceWith('__consent_opt__attrs__email', 'true');
+  });
+
+  it('keeps nonhierarchical permissions individually selectable', () => {
+    const onInputChange = vi.fn();
+    renderConsent(
+      <ConsentAdapter consentData={nestedPermissionsPurpose} formValues={{}} onInputChange={onInputChange} />,
+    );
+
+    fireEvent.click(switchFor('users:read'));
+    expect(onInputChange).toHaveBeenCalledExactlyOnceWith(permissionKey('users:read'), 'true');
+    expect(switchFor('users:write').checked).toBe(false);
   });
 });

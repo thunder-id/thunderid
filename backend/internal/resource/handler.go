@@ -85,13 +85,14 @@ func (h *resourceHandler) HandleResourceServerPostRequest(w http.ResponseWriter,
 
 	sanitized := sanitizeCreateResourceServerRequest(req)
 	serviceReq := providers.ResourceServer{
-		Name:        sanitized.Name,
-		Description: sanitized.Description,
-		Identifier:  sanitized.Identifier,
-		Type:        sanitized.Type,
-		OUID:        sanitized.OUID,
-		ProjectID:   sanitized.ProjectID,
-		Delimiter:   sanitized.Delimiter,
+		Name:                    sanitized.Name,
+		Description:             sanitized.Description,
+		Identifier:              sanitized.Identifier,
+		Type:                    sanitized.Type,
+		OUID:                    sanitized.OUID,
+		ProjectID:               sanitized.ProjectID,
+		Delimiter:               sanitized.Delimiter,
+		HierarchicalPermissions: sanitized.HierarchicalPermissions,
 	}
 
 	result, svcErr := h.resourceService.CreateResourceServer(ctx, serviceReq)
@@ -632,13 +633,14 @@ func handleError(ctx context.Context, w http.ResponseWriter, svcErr *tidcommon.S
 // sanitizeCreateResourceServerRequest sanitizes input for creating a resource server.
 func sanitizeCreateResourceServerRequest(req *CreateResourceServerRequest) CreateResourceServerRequest {
 	return CreateResourceServerRequest{
-		Name:        sysutils.SanitizeString(req.Name),
-		Description: sysutils.SanitizeString(req.Description),
-		Identifier:  sysutils.SanitizeString(req.Identifier),
-		Type:        req.Type,
-		OUID:        sysutils.SanitizeString(req.OUID),
-		ProjectID:   sysutils.SanitizeString(req.ProjectID),
-		Delimiter:   sysutils.SanitizeString(req.Delimiter),
+		Name:                    sysutils.SanitizeString(req.Name),
+		Description:             sysutils.SanitizeString(req.Description),
+		Identifier:              sysutils.SanitizeString(req.Identifier),
+		Type:                    req.Type,
+		OUID:                    sysutils.SanitizeString(req.OUID),
+		ProjectID:               sysutils.SanitizeString(req.ProjectID),
+		Delimiter:               sysutils.SanitizeString(req.Delimiter),
+		HierarchicalPermissions: req.HierarchicalPermissions,
 	}
 }
 
@@ -713,16 +715,17 @@ func toResourceServerResponse(rs *providers.ResourceServer) *ResourceServerRespo
 		resType = providers.ResourceServerTypeCustom
 	}
 	return &ResourceServerResponse{
-		ID:                  rs.ID,
-		Name:                rs.Name,
-		Description:         rs.Description,
-		Identifier:          rs.Identifier,
-		Type:                resType,
-		OUID:                rs.OUID,
-		ProjectID:           rs.ProjectID,
-		Delimiter:           rs.Delimiter,
-		AuthorizationEngine: rs.AuthorizationEngine,
-		IsReadOnly:          rs.IsReadOnly,
+		ID:                      rs.ID,
+		Name:                    rs.Name,
+		Description:             rs.Description,
+		Identifier:              rs.Identifier,
+		Type:                    resType,
+		OUID:                    rs.OUID,
+		ProjectID:               rs.ProjectID,
+		Delimiter:               rs.Delimiter,
+		HierarchicalPermissions: rs.HierarchicalPermissions,
+		AuthorizationEngine:     rs.AuthorizationEngine,
+		IsReadOnly:              rs.IsReadOnly,
 	}
 }
 

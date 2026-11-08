@@ -16,11 +16,14 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/deviceauth"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/revocation"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
+	sharedrevocation "github.com/thunder-id/thunderid/internal/revocation"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/attributecachemock"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/deviceauthmock"
+	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/revocationmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/tokenservicemock"
 	"github.com/thunder-id/thunderid/tests/mocks/resourcemock"
 )
@@ -438,4 +441,96 @@ func (suite *DeviceCodeGrantHandlerTestSuite) TestHandleGrantApprovedWithoutOpen
 	suite.Nil(errResp)
 	suite.Equal("access-token", response.AccessToken.Token)
 	suite.Empty(response.IDToken.Token)
+}
+
+func (suite *DeviceCodeGrantHandlerTestSuite) TestHandleGrant_CompactsOnlyHierarchicalPermissions() {
+	for _, test := range []struct {
+		name, scopes, delimiter string
+		permissions, expected   []string
+		hierarchical            bool
+	}{
+		{"parent and child", "openid booking:read booking", ":", []string{"booking:read", "booking"},
+			[]string{"openid", "booking"}, true},
+		{"exact unchanged", "openid booking booking:read", ":", []string{"booking", "booking:read"},
+			[]string{"openid", "booking", "booking:read"}, false},
+		{"child only", "openid booking:read", ":", []string{"booking:read"},
+			[]string{"openid", "booking:read"}, true},
+		{"siblings", "openid booking:read booking:write", ":", []string{"booking:read", "booking:write"},
+			[]string{"openid", "booking:read", "booking:write"}, true},
+		{"custom delimiter", "openid booking booking/read", "/", []string{"booking", "booking/read"},
+			[]string{"openid", "booking"}, true},
+		{"custom OIDC scope", "openid booking booking:history", ":", []string{"booking"},
+			[]string{"openid", "booking:history", "booking"}, true},
+	} {
+		suite.Run(test.name, func() {
+			suite.SetupTest()
+			suite.oauthApp.ScopeClaims["booking:history"] = []string{"email"}
+			record := suite.request(deviceauth.DeviceStateApproved)
+			record.AuthorizedScopes = test.scopes
+			record.Resources = []string{testGrantAudience}
+			suite.deviceService.EXPECT().GetByDeviceCode(mock.Anything, "device-code-1").Return(record, nil).Once()
+			suite.resourceService.EXPECT().GetResourceServerByIdentifier(mock.Anything, testGrantAudience).
+				Return(&providers.ResourceServer{ID: "resource-1", Identifier: testGrantAudience,
+					Delimiter: test.delimiter, HierarchicalPermissions: test.hierarchical}, nil).Once()
+			suite.resourceService.EXPECT().ValidatePermissions(mock.Anything, "resource-1", test.permissions).
+				Return(nil, nil).Once()
+			suite.tokenBuilder.EXPECT().BuildAccessToken(mock.Anything, mock.Anything).RunAndReturn(
+				func(_ context.Context, ctx *tokenservice.AccessTokenBuildContext) (*model.TokenDTO, error) {
+					suite.Equal(test.expected, ctx.Scopes)
+					suite.Equal([]string{testGrantAudience}, ctx.Audiences)
+					return &model.TokenDTO{Token: "access-token", Scopes: ctx.Scopes}, nil
+				}).Once()
+			suite.tokenBuilder.EXPECT().BuildIDToken(mock.Anything, mock.Anything).RunAndReturn(
+				func(_ context.Context, ctx *tokenservice.IDTokenBuildContext) (*model.TokenDTO, error) {
+					suite.Equal(test.expected, ctx.Scopes)
+					return &model.TokenDTO{Token: "id-token"}, nil
+				}).Once()
+			suite.deviceService.EXPECT().MarkConsumed(mock.Anything, "device-request-1").Return(true, nil).Once()
+
+			response, errResp := suite.handler.HandleGrant(context.Background(), suite.tokenRequest, suite.oauthApp)
+
+			suite.Require().Nil(errResp)
+			suite.Require().NotNil(response)
+			suite.Equal(test.expected, response.AccessToken.Scopes)
+			suite.Equal(test.scopes, record.AuthorizedScopes)
+		})
+	}
+}
+
+func (suite *DeviceCodeGrantHandlerTestSuite) TestHandleGrant_CompactsAfterRevocationChecks() {
+	record := suite.request(deviceauth.DeviceStateApproved)
+	record.AuthTime = time.Now().Add(-time.Minute)
+	record.AuthorizedScopes = "openid booking booking:read"
+	record.Resources = []string{testGrantAudience}
+	enforcement := revocationmock.NewEnforcementServiceInterfaceMock(suite.T())
+	suite.handler = newDeviceCodeGrantHandler(suite.deviceService, suite.tokenBuilder,
+		suite.attributeCache, suite.resourceService, enforcement)
+	suite.deviceService.EXPECT().GetByDeviceCode(mock.Anything, "device-code-1").Return(record, nil).Once()
+	suite.resourceService.EXPECT().GetResourceServerByIdentifier(mock.Anything, testGrantAudience).
+		Return(&providers.ResourceServer{ID: "resource-1", Identifier: testGrantAudience,
+			Delimiter: ":", HierarchicalPermissions: true}, nil).Once()
+	suite.resourceService.EXPECT().ValidatePermissions(
+		mock.Anything, "resource-1", []string{"booking", "booking:read"}).
+		Return(nil, nil).Once()
+	enforcement.EXPECT().EnsureNotRevoked(mock.Anything, mock.Anything).RunAndReturn(denyListLookup(
+		revocation.CriteriaRevocation{Criterion: revocation.Criterion{
+			Type:  revocation.CriterionTypeEntityScope,
+			Value: sharedrevocation.EntityScopeCriterionValue(testGrantSubject, testGrantAudience, "booking"),
+		}, Reason: revocation.RevocationReasonRoleAssignmentRemoved, Cutoff: time.Now()},
+	))
+	suite.tokenBuilder.EXPECT().BuildAccessToken(mock.Anything, mock.Anything).RunAndReturn(
+		func(_ context.Context, ctx *tokenservice.AccessTokenBuildContext) (*model.TokenDTO, error) {
+			suite.Equal([]string{"openid", "booking:read"}, ctx.Scopes)
+			return &model.TokenDTO{Token: "access-token", Scopes: ctx.Scopes}, nil
+		}).Once()
+	suite.tokenBuilder.EXPECT().BuildIDToken(mock.Anything, mock.Anything).
+		Return(&model.TokenDTO{Token: "id-token"}, nil).Once()
+	suite.deviceService.EXPECT().MarkConsumed(mock.Anything, "device-request-1").Return(true, nil).Once()
+
+	response, errResp := suite.handler.HandleGrant(context.Background(), suite.tokenRequest, suite.oauthApp)
+
+	suite.Require().Nil(errResp)
+	suite.Require().NotNil(response)
+	suite.Equal([]string{"openid", "booking:read"}, response.AccessToken.Scopes)
+	suite.Equal("openid booking booking:read", record.AuthorizedScopes)
 }

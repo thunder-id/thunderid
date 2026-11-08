@@ -635,7 +635,7 @@ func toAuthzAccessEvaluationRequest(
 	}
 }
 
-// buildDecisionContext returns the engine context or a default denial context.
+// buildDecisionContext preserves provider context, defaulting to a denial reason when absent.
 func buildDecisionContext(decision bool, context map[string]interface{}) map[string]interface{} {
 	if context != nil {
 		return context

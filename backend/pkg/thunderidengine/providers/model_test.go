@@ -21,6 +21,25 @@ func TestModelSuite(t *testing.T) {
 	suite.Run(t, new(ModelTestSuite))
 }
 
+func (suite *ModelTestSuite) TestAccessEvaluationResponse_AlternativesAreNotJSON() {
+	response := AccessEvaluationResponse{
+		Decision:       false,
+		Context:        map[string]interface{}{"reason": "narrower permission"},
+		GrantedInstead: []string{"reports:view"},
+	}
+	encoded, err := json.Marshal(response)
+	suite.Require().NoError(err)
+	suite.JSONEq(`{"decision":false,"context":{"reason":"narrower permission"}}`, string(encoded))
+
+	var decoded AccessEvaluationResponse
+	err = json.Unmarshal([]byte(`{"decision":false,"GrantedInstead":["admin"],
+		"grantedInstead":["admin"],"granted_instead":["admin"],
+		"context":{"granted_instead":["admin"]}}`), &decoded)
+	suite.Require().NoError(err)
+	suite.Empty(decoded.GrantedInstead)
+	suite.Contains(decoded.Context, "granted_instead")
+}
+
 func (suite *ModelTestSuite) TestSubjectJSONFields() {
 	payload, err := json.Marshal(Subject{Category: "user", Type: "Customer", ID: "user-1"})
 	suite.Require().NoError(err)

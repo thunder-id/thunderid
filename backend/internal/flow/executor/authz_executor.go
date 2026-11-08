@@ -101,13 +101,16 @@ func (a *authorizationExecutor) Execute(ctx *providers.NodeContext) (*providers.
 		return execResp, nil
 	}
 
-	// Resolve the single resource server the permission scopes are evaluated against: the OAuth layer
-	// seeds it in runtime data; a direct /flow/execute request (which does not go through the
-	// authorization endpoint) may supply it as an input; otherwise fall back to the configured default
-	// resource server. Permission evaluation must be scoped to a resource server, so when none can be
-	// resolved the requested permission scopes are dropped rather than evaluated unscoped (which could
-	// authorize a permission the user only holds on a different resource server).
-	resourceServerID := a.resolveResourceServerID(ctx)
+	// Bind permission checks to the request's resource server.
+	// An unresolved binding produces no permission grant.
+	resourceServer := a.resolveResourceServer(ctx)
+
+	resourceServerID := ""
+	execResp.RuntimeData[common.RuntimeKeyResourceServerID] = ""
+	if resourceServer != nil {
+		resourceServerID = resourceServer.ID
+		execResp.RuntimeData[common.RuntimeKeyResourceServerID] = resourceServer.ID
+	}
 	if resourceServerID == "" {
 		logger.Debug(ctx.Context,
 			"No resource server bound to the request; dropping requested permission scopes",
@@ -186,11 +189,11 @@ func (a *authorizationExecutor) Execute(ctx *providers.NodeContext) (*providers.
 	return execResp, nil
 }
 
-// resolveResourceServerID determines the internal ID of the single resource server that permission
-// scopes are evaluated against. The binding is communicated as a resource server identifier: the OAuth
-// layer seeds it in runtime data, and a direct /flow/execute request (which does not go through the
-// authorization endpoint) may supply it as an input.
-func (a *authorizationExecutor) resolveResourceServerID(ctx *providers.NodeContext) string {
+// resolveResourceServer returns the resource server the permission scopes are evaluated against, or
+// nil when none can be resolved.
+func (a *authorizationExecutor) resolveResourceServer(
+	ctx *providers.NodeContext,
+) *providers.ResourceServer {
 	identifier := common.RuntimeDataOrShared(ctx.RuntimeData, ctx.SharedRuntimeData,
 		common.RuntimeKeyResourceServerIdentifier)
 	if identifier == "" {
@@ -199,16 +202,16 @@ func (a *authorizationExecutor) resolveResourceServerID(ctx *providers.NodeConte
 	if a.resourceService == nil {
 		a.logger.Debug(ctx.Context,
 			"No resource server service available; dropping requested permission scopes")
-		return ""
+		return nil
 	}
 	rs, svcErr := a.resourceService.GetResourceServerByIdentifier(ctx.Context, identifier)
 	if svcErr != nil {
 		a.logger.Debug(ctx.Context,
 			"Resource server did not resolve; dropping requested permission scopes",
 			log.String("identifier", identifier))
-		return ""
+		return nil
 	}
-	return rs.ID
+	return rs
 }
 
 // extractRequestedPermissions extracts requested permissions from the context.
@@ -271,15 +274,32 @@ func extractMappedPermissions(ctx *providers.NodeContext, logger *log.Logger) []
 	return permissions
 }
 
-// filterAuthorizedPermissions returns the requested permissions that were allowed by the authorization service.
+// filterAuthorizedPermissions returns approved requests and held alternatives for denied parents.
+// Alternatives do not grant the denied parent.
 func (a *authorizationExecutor) filterAuthorizedPermissions(
 	requestedPermissions []string,
 	evaluations []providers.AccessEvaluationResponse,
 ) []string {
 	authorizedPermissions := make([]string, 0, len(evaluations))
+	seen := make(map[string]bool, len(evaluations))
+	appendPermission := func(permission string) {
+		if permission == "" || seen[permission] {
+			return
+		}
+		seen[permission] = true
+		authorizedPermissions = append(authorizedPermissions, permission)
+	}
+
 	for i, evaluation := range evaluations {
-		if evaluation.Decision && i < len(requestedPermissions) {
-			authorizedPermissions = append(authorizedPermissions, requestedPermissions[i])
+		if i >= len(requestedPermissions) {
+			continue
+		}
+		if evaluation.Decision {
+			appendPermission(requestedPermissions[i])
+			continue
+		}
+		for _, substituted := range evaluation.GrantedInstead {
+			appendPermission(substituted)
 		}
 	}
 	return authorizedPermissions

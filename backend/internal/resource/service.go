@@ -36,24 +36,19 @@ import (
 const (
 	loggerComponentName = "ResourceMgtService"
 
-	// ValidPermissionDelimiters defines the allowed delimiter characters in permission strings.
-	// Exported so callers parsing permission strings (e.g. consent enforcer rollup) can share the
-	// single source of truth.
-	ValidPermissionDelimiters = "._:-/"
-
 	// validPermissionCharacters defines the allowed characters for permission strings.
 	// Allowed: a-z A-Z 0-9 and delimiter characters (. _ : - /)
 	validPermissionCharacters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789" +
-		ValidPermissionDelimiters
+		serverconst.ValidPermissionDelimiters
 )
 
 // projectIDQueryParam is the query parameter that lists the resource servers of one project.
 const projectIDQueryParam = "projectId"
 
 // IsPermissionDelimiter reports whether r is one of the allowed delimiter characters in a
-// permission string (see ValidPermissionDelimiters).
+// permission string (see serverconst.ValidPermissionDelimiters).
 func IsPermissionDelimiter(r rune) bool {
-	return strings.ContainsRune(ValidPermissionDelimiters, r)
+	return strings.ContainsRune(serverconst.ValidPermissionDelimiters, r)
 }
 
 // ResourceServiceInterface defines the interface for the resource service.
@@ -90,6 +85,8 @@ type ResourceServiceInterface interface {
 	GetAllResourceList(
 		ctx context.Context, resourceServerID string,
 	) ([]providers.Resource, *tidcommon.ServiceError)
+	GetDeclaredPermissions(ctx context.Context, resourceServerID string, roots []string) (
+		[]string, *tidcommon.ServiceError)
 	UpdateResource(
 		ctx context.Context, resourceServerID, id string, res providers.Resource,
 	) (*providers.Resource, *tidcommon.ServiceError)
@@ -414,15 +411,16 @@ func (rs *resourceService) createResourceServer(
 		}
 
 		createdRS = &providers.ResourceServer{
-			ID:                  id,
-			Name:                resourceServer.Name,
-			Description:         resourceServer.Description,
-			Identifier:          resourceServer.Identifier,
-			Type:                resourceServer.Type,
-			OUID:                resourceServer.OUID,
-			ProjectID:           resourceServer.ProjectID,
-			Delimiter:           resourceServer.Delimiter,
-			AuthorizationEngine: resourceServer.AuthorizationEngine,
+			ID:                      id,
+			Name:                    resourceServer.Name,
+			Description:             resourceServer.Description,
+			Identifier:              resourceServer.Identifier,
+			Type:                    resourceServer.Type,
+			OUID:                    resourceServer.OUID,
+			ProjectID:               resourceServer.ProjectID,
+			Delimiter:               resourceServer.Delimiter,
+			HierarchicalPermissions: resourceServer.HierarchicalPermissions,
+			AuthorizationEngine:     resourceServer.AuthorizationEngine,
 		}
 		return nil
 	}); err != nil {
@@ -788,6 +786,7 @@ func (rs *resourceService) updateResourceServer(
 
 	// Delimiter is always preserved from the existing record
 	resourceServer.Delimiter = existingResServer.Delimiter
+	resourceServer.HierarchicalPermissions = existingResServer.HierarchicalPermissions
 
 	// Type is immutable and always preserved from the existing record
 	resourceServer.Type = existingResServer.Type
@@ -863,15 +862,16 @@ func (rs *resourceService) updateResourceServer(
 		}
 
 		updatedRS = &providers.ResourceServer{
-			ID:                  id,
-			Name:                resourceServer.Name,
-			Description:         resourceServer.Description,
-			Identifier:          resourceServer.Identifier,
-			Type:                resourceServer.Type,
-			OUID:                resourceServer.OUID,
-			ProjectID:           resourceServer.ProjectID,
-			Delimiter:           resourceServer.Delimiter,
-			AuthorizationEngine: resourceServer.AuthorizationEngine,
+			ID:                      id,
+			Name:                    resourceServer.Name,
+			Description:             resourceServer.Description,
+			Identifier:              resourceServer.Identifier,
+			Type:                    resourceServer.Type,
+			OUID:                    resourceServer.OUID,
+			ProjectID:               resourceServer.ProjectID,
+			Delimiter:               resourceServer.Delimiter,
+			HierarchicalPermissions: resourceServer.HierarchicalPermissions,
+			AuthorizationEngine:     resourceServer.AuthorizationEngine,
 		}
 		return nil
 	}); err != nil {
@@ -2076,7 +2076,7 @@ func validateDelimiter(delimiter string) *tidcommon.ServiceError {
 	if len(delimiter) != 1 {
 		return &ErrorInvalidDelimiter
 	}
-	if !strings.ContainsRune(ValidPermissionDelimiters, rune(delimiter[0])) {
+	if !strings.ContainsRune(serverconst.ValidPermissionDelimiters, rune(delimiter[0])) {
 		return &ErrorInvalidDelimiter
 	}
 	return nil

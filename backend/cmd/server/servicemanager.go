@@ -350,7 +350,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	// Complete the two-phase initialization of the privilege-escalation guard. The resolver spans
 	// roles, groups, and entities, so it can only be built once all three are ready. Until it is
 	// injected the guard fails closed, so this must not be skipped.
-	permissionResolver := role.NewEffectivePermissionResolver(roleService, groupService, entityService)
+	permissionResolver := role.NewEffectivePermissionResolver(roleService, groupService, entityService, resourceService)
 	ouAuthzService.SetPermissionResolver(permissionResolver)
 
 	authZService := authz.Initialize(
@@ -428,7 +428,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 
 	// Initialize authentication services.
 	authAssertGen := authnAssert.Initialize()
-	consentEnforcer := authnConsent.Initialize(jwtService, authzDetailMgtService)
+	consentEnforcer := authnConsent.Initialize(jwtService, authzDetailMgtService, resourceService)
 
 	_, directAuthGuard := authn.Initialize(mux, mcpServer, idpService, jwtService, authnProvider, authAssertGen,
 		otpCoreService, notifSenderSvc, notifTemplateRenderer, magicLinkService, oauthAuthnService,

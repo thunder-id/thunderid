@@ -16,28 +16,71 @@ import (
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
-// resolveScopes pairs each permission with the audience of its resource server.
-func resolveScopes(ctx context.Context, resourceService resourcepkg.ResourceServiceInterface,
-	permissions []ResourcePermissions) ([]revocation.AudienceScope, *tidcommon.ServiceError) {
-	scopes := make([]revocation.AudienceScope, 0, len(permissions))
-	for _, resource := range permissions {
-		if len(resource.Permissions) == 0 {
-			continue
-		}
-		// The audience is read whichever organization unit owns the resource server.
+// revokedPermissions plans exact rules or whole-subtree rules for lost hierarchical grants.
+func revokedPermissions(
+	ctx context.Context, resourceService resourcepkg.ResourceServiceInterface,
+	current, next []ResourcePermissions,
+) ([]revocation.AudienceScope, *tidcommon.ServiceError) {
+	kept := map[string][]string{}
+	for _, resource := range next {
+		kept[resource.ResourceServerID] = append(kept[resource.ResourceServerID], resource.Permissions...)
+	}
+
+	revoked := []revocation.AudienceScope{}
+	for _, resource := range current {
+		// A failed hierarchy lookup must stop revocation rather than narrow its scope.
 		resourceServer, svcErr := resourceService.GetResourceServer(
 			security.WithRuntimeContext(ctx), resource.ResourceServerID)
 		if svcErr != nil {
 			return nil, svcErr
 		}
-		if resourceServer == nil || resourceServer.Identifier == "" {
+		if resourceServer == nil {
+			return nil, &tidcommon.InternalServerError
+		}
+		delimiter := ""
+		if resourceServer.HierarchicalPermissions {
+			delimiter = resourceServer.Delimiter
+		}
+		stillGranted := func(permission string) bool {
+			return security.AnyPermissionCovers(kept[resource.ResourceServerID], permission, delimiter)
+		}
+
+		removed := []string{}
+		for _, permission := range resource.Permissions {
+			if !stillGranted(permission) {
+				removed = append(removed, permission)
+			}
+		}
+		if len(removed) == 0 {
 			continue
 		}
-		for _, permission := range resource.Permissions {
-			scopes = append(scopes, revocation.AudienceScope{Audience: resourceServer.Identifier, Scope: permission})
+
+		roots := removed
+		if delimiter != "" {
+			roots = []string{}
+			for _, permission := range removed {
+				covered := false
+				for _, other := range removed {
+					if other != permission && security.PermissionCovers(other, permission, delimiter) {
+						covered = true
+						break
+					}
+				}
+				if !covered {
+					roots = append(roots, permission)
+				}
+			}
+		}
+		if resourceServer.Identifier == "" {
+			continue
+		}
+		for _, permission := range roots {
+			revoked = append(revoked, revocation.AudienceScope{
+				Audience: resourceServer.Identifier, Scope: permission, SubtreeDelimiter: delimiter,
+			})
 		}
 	}
-	return scopes, nil
+	return revoked, nil
 }
 
 // droppedPermissions returns the permissions in current that next no longer grants.

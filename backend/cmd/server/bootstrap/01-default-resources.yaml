@@ -112,6 +112,7 @@ name: System
 description: System resource server
 identifier: https://localhost:8090/mcp
 ouHandle: default
+hierarchicalPermissions: true
 delimiter: ":"
 resources:
   - name: System

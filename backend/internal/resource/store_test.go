@@ -8,6 +8,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
@@ -4074,4 +4075,45 @@ func (suite *ResourceStoreTestSuite) TestGetResourceServerListCountByProject() {
 	count, err = suite.store.GetResourceServerListCountByProject(ctx, "proj1", "ou2")
 	suite.NoError(err)
 	suite.Equal(1, count)
+}
+
+func (suite *ResourceStoreTestSuite) TestGetDeclaredPermissionsUsesOneScopedQuery() {
+	suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil).Once()
+	suite.mockDBClient.On("QueryContext", mock.Anything, queryGetDeclaredPermissions,
+		"api", "test-deployment", `["reports","invoices"]`, "_").Return([]map[string]interface{}{
+		{"permission": "invoices"}, {"permission": "reports"}, {"permission": "reports_view"},
+	}, nil).Once()
+	permissions, err := suite.store.GetDeclaredPermissions(context.Background(), "api",
+		[]string{"reports", "invoices"}, "_")
+	suite.NoError(err)
+	suite.Equal([]string{"invoices", "reports", "reports_view"}, permissions)
+}
+
+func (suite *ResourceStoreTestSuite) TestGetDeclaredPermissionsRejectsReadFailures() {
+	for _, test := range []struct {
+		name string
+		rows []map[string]interface{}
+		err  error
+	}{
+		{name: "database", err: errors.New("query failed")},
+		{name: "malformed row", rows: []map[string]interface{}{{"permission": 3}}},
+	} {
+		suite.Run(test.name, func() {
+			suite.SetupTest()
+			suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil).Once()
+			suite.mockDBClient.On("QueryContext", mock.Anything, queryGetDeclaredPermissions,
+				"api", "test-deployment", `["reports"]`, ":").Return(test.rows, test.err).Once()
+			permissions, err := suite.store.GetDeclaredPermissions(
+				context.Background(), "api", []string{"reports"}, ":")
+			suite.Error(err)
+			suite.Empty(permissions)
+		})
+	}
+}
+
+func (suite *ResourceStoreTestSuite) TestGetDeclaredPermissionsSkipsEmptyRoots() {
+	permissions, err := suite.store.GetDeclaredPermissions(context.Background(), "api", nil, ":")
+	suite.NoError(err)
+	suite.Empty(permissions)
+	suite.mockDBProvider.AssertNotCalled(suite.T(), "GetConfigDBClient")
 }

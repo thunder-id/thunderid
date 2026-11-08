@@ -5,6 +5,7 @@ package resource
 
 import (
 	"context"
+	"slices"
 
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
@@ -60,6 +61,26 @@ func (c *compositeResourceStore) GetResourceServer(ctx context.Context, id strin
 		errResourceServerNotFound,
 	)
 	return server, err
+}
+
+// GetDeclaredPermissions combines the covered permission names from both stores.
+func (c *compositeResourceStore) GetDeclaredPermissions(
+	ctx context.Context, resServerID string, roots []string, delimiter string,
+) ([]string, error) {
+	if len(roots) == 0 {
+		return nil, nil
+	}
+	dbPermissions, err := c.dbStore.GetDeclaredPermissions(ctx, resServerID, roots, delimiter)
+	if err != nil {
+		return nil, err
+	}
+	filePermissions, err := c.fileStore.GetDeclaredPermissions(ctx, resServerID, roots, delimiter)
+	if err != nil {
+		return nil, err
+	}
+	permissions := slices.Concat(dbPermissions, filePermissions)
+	slices.Sort(permissions)
+	return slices.Compact(permissions), nil
 }
 
 // GetResourceServerList returns a paginated, deduplicated list of resource servers from both stores.

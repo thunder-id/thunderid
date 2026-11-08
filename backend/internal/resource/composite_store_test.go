@@ -6,6 +6,7 @@ package resource
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -1393,4 +1394,36 @@ func (s *CompositeResourceStoreTestSuite) TestGetResourceServerListCountByProjec
 	file.On("GetResourceServerListCountByProject", s.ctx, "proj1", "ou1").Return(0, storeErr)
 	_, err = newCompositeResourceStore(file, db).GetResourceServerListCountByProject(s.ctx, "proj1", "ou1")
 	s.ErrorIs(err, storeErr)
+}
+
+func (s *CompositeResourceStoreTestSuite) TestGetDeclaredPermissionsMergesBothStores() {
+	roots := []string{"reports"}
+	s.dbStoreMock.On("GetDeclaredPermissions", s.ctx, "api", roots, ":").
+		Return([]string{"reports", "reports:view"}, nil).Once()
+	s.fileStoreMock.On("GetDeclaredPermissions", s.ctx, "api", roots, ":").
+		Return([]string{"reports", "reports:create"}, nil).Once()
+	permissions, err := s.compositeStore.GetDeclaredPermissions(s.ctx, "api", roots, ":")
+	s.NoError(err)
+	s.Equal([]string{"reports", "reports:create", "reports:view"}, permissions)
+}
+
+func (s *CompositeResourceStoreTestSuite) TestGetDeclaredPermissionsPropagatesStoreErrors() {
+	for _, fileFailure := range []bool{false, true} {
+		s.Run(fmt.Sprint(fileFailure), func() {
+			s.SetupTest()
+			failure := errors.New("read failed")
+			if fileFailure {
+				s.dbStoreMock.On("GetDeclaredPermissions", s.ctx, "api", []string{"reports"}, ":").
+					Return([]string{"reports"}, nil).Once()
+				s.fileStoreMock.On("GetDeclaredPermissions", s.ctx, "api", []string{"reports"}, ":").
+					Return([]string(nil), failure).Once()
+			} else {
+				s.dbStoreMock.On("GetDeclaredPermissions", s.ctx, "api", []string{"reports"}, ":").
+					Return([]string(nil), failure).Once()
+			}
+			permissions, err := s.compositeStore.GetDeclaredPermissions(s.ctx, "api", []string{"reports"}, ":")
+			s.ErrorIs(err, failure)
+			s.Empty(permissions)
+		})
+	}
 }

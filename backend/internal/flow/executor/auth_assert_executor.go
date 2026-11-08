@@ -30,6 +30,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/role"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/security"
 )
 
 const (
@@ -47,6 +48,7 @@ type authAssertExecutor struct {
 	attributeCacheSvc   attributecache.AttributeCacheServiceInterface
 	roleService         role.RoleServiceInterface
 	entityTypeService   entitytype.EntityTypeServiceInterface
+	resourceService     providers.ResourceServerProvider
 	accessGuard         *accessGuard
 	logger              *log.Logger
 }
@@ -64,6 +66,7 @@ func newAuthAssertExecutor(
 	attributeCacheSvc attributecache.AttributeCacheServiceInterface,
 	roleService role.RoleServiceInterface,
 	entityTypeService entitytype.EntityTypeServiceInterface,
+	resourceService providers.ResourceServerProvider,
 	accessGuard *accessGuard,
 ) *authAssertExecutor {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, authAssertLoggerComponentName),
@@ -86,6 +89,7 @@ func newAuthAssertExecutor(
 		attributeCacheSvc:   attributeCacheSvc,
 		roleService:         roleService,
 		entityTypeService:   entityTypeService,
+		resourceService:     resourceService,
 		accessGuard:         accessGuard,
 		logger:              logger,
 	}
@@ -363,7 +367,11 @@ func (a *authAssertExecutor) generateAuthAssertion(ctx *providers.NodeContext,
 	}
 
 	// Include permissions in the JWT (see resolvePermissionsForClaim for the precedence chain).
-	if permissions := a.resolvePermissionsForClaim(ctx); permissions != "" {
+	permissions, permissionErr := a.resolvePermissionsForClaim(ctx)
+	if permissionErr != nil {
+		return "", permissionErr
+	}
+	if permissions != "" {
 		jwtClaims["authorized_permissions"] = permissions
 	}
 
@@ -903,32 +911,54 @@ func (a *authAssertExecutor) appendRolesToClaims(
 // authz decision is available to intersect against). Otherwise the authorized set is returned
 // directly. Raw requested permissions are intentionally not used — the authz executor must
 // validate them first.
-func (a *authAssertExecutor) resolvePermissionsForClaim(ctx *providers.NodeContext) string {
-	if v, ok := ctx.RuntimeData[common.RuntimeKeyConsentedPermissions]; ok {
-		if authorized, hasAuthorized := ctx.RuntimeData["authorized_permissions"]; hasAuthorized {
-			return intersectPermissionSpaceList(v, authorized)
-		}
-		return v
+func (a *authAssertExecutor) resolvePermissionsForClaim(ctx *providers.NodeContext) (string, error) {
+	authorized, hasAuthorized := ctx.RuntimeData["authorized_permissions"]
+	consented, hasConsented := ctx.RuntimeData[common.RuntimeKeyConsentedPermissions]
+	if !hasConsented {
+		return authorized, nil
 	}
-	return ctx.RuntimeData["authorized_permissions"]
+	if !hasAuthorized {
+		return consented, nil
+	}
+	if authorized == "" || consented == "" {
+		return "", nil
+	}
+	delimiter := ""
+	if resourceServerID := ctx.RuntimeData[common.RuntimeKeyResourceServerID]; resourceServerID != "" {
+		if a.resourceService == nil {
+			return "", errors.New("resource server provider is not configured")
+		}
+		server, svcErr := a.resourceService.GetResourceServer(
+			security.WithRuntimeContext(ctx.Context), resourceServerID)
+		if svcErr != nil {
+			return "", fmt.Errorf("failed to resolve permission resource server: %s", svcErr.Code)
+		}
+		if server == nil {
+			return "", errors.New("permission resource server resolved to nothing")
+		}
+		if server.HierarchicalPermissions {
+			delimiter = server.Delimiter
+		}
+	}
+	return consentedSubset(authorized, consented, delimiter), nil
 }
 
-// intersectPermissionSpaceList returns the space-separated set of permissions present in both
-// inputs, preserving the order of `a`. Empty inputs are handled as empty sets.
-func intersectPermissionSpaceList(a, b string) string {
-	if a == "" || b == "" {
+// consentedSubset returns the authorized permissions that a consented permission covers, so an
+// approved resource answers for the authorized permissions beneath it. An empty delimiter preserves
+// exact matching.
+func consentedSubset(authorized, consented, delimiter string) string {
+	if authorized == "" || consented == "" {
 		return ""
 	}
-	allowed := make(map[string]bool)
-	for _, p := range strings.Fields(b) {
-		allowed[p] = true
-	}
-	out := make([]string, 0, len(allowed))
-	for _, p := range strings.Fields(a) {
-		if allowed[p] {
-			out = append(out, p)
-			delete(allowed, p)
+	approved := strings.Fields(consented)
+
+	authorizedPermissions := strings.Fields(authorized)
+	out := make([]string, 0, len(authorizedPermissions))
+	for _, permission := range authorizedPermissions {
+		if slices.Contains(out, permission) || !security.AnyPermissionCovers(approved, permission, delimiter) {
+			continue
 		}
+		out = append(out, permission)
 	}
 	return strings.Join(out, " ")
 }

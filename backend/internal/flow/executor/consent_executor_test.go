@@ -2579,3 +2579,20 @@ func (suite *ConsentExecutorTestSuite) TestOfferVerificationClaims_SchemaNotRead
 	suite.mockEntityTypeSvc.AssertNotCalled(suite.T(), "GetAttributes", mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything)
 }
+
+func (suite *ConsentExecutorTestSuite) TestExecute_BindsPermissionsToResourceServer() {
+	ctx := buildConsentNodeContext()
+	ctx.RuntimeData["authorized_permissions"] = "reports reports:view"
+	ctx.RuntimeData[common.RuntimeKeyResourceServerID] = "reports-api"
+	suite.setupDefaultAuthnProviderMocks()
+	suite.expectConsentInputs(ctx, false)
+	suite.mockConsentEnforcer.On("ResolveConsent", mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+		[]providers.AuthorizedResourcePermissions{{
+			ResourceServerID: "reports-api", Permissions: []string{"reports", "reports:view"},
+		}},
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Once()
+	response, err := suite.executor.Execute(ctx)
+	suite.NoError(err)
+	suite.Equal(providers.ExecComplete, response.Status)
+}

@@ -877,3 +877,42 @@ func (suite *JWTBearerGrantHandlerTestSuite) TestHandleGrant_MappedRoleGrantsSco
 	assert.NotNil(suite.T(), result)
 	assert.Equal(suite.T(), []string{testScopeRead, testScopeWrite}, result.AccessToken.Scopes)
 }
+
+func (suite *JWTBearerGrantHandlerTestSuite) TestHandleGrant_CompactsOnlyHierarchicalPermissions() {
+	for _, hierarchical := range []bool{true, false} {
+		suite.Run(fmt.Sprintf("Hierarchy_%t", hierarchical), func() {
+			suite.SetupTest()
+			const audience = "https://booking.example.com"
+			scopes := []string{"openid", "reservations", "reservations:create", "invoices:read"}
+			permissions := scopes[1:]
+			expected := scopes
+			if hierarchical {
+				expected = []string{"openid", "reservations", "invoices:read"}
+			}
+			suite.mockTokenValidator.On("ValidateIDJAGAssertion", mock.Anything, testAssertion, testClientID).
+				Return(&tokenservice.IDJAGAssertionClaims{
+					Sub: testUserID, Iss: testCustomIssuer, Scopes: scopes, Resources: []string{audience},
+				}, nil).Once()
+			suite.mockResourceService.On("GetResourceServerByIdentifier", mock.Anything, audience).
+				Return(&providers.ResourceServer{
+					ID: "booking-api", Identifier: audience, Delimiter: ":", HierarchicalPermissions: hierarchical,
+				}, nil).Once()
+			suite.mockResourceService.On("ValidatePermissions", mock.Anything, "booking-api", permissions).
+				Return([]string{}, nil).Once()
+			suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
+				mock.MatchedBy(func(build *tokenservice.AccessTokenBuildContext) bool {
+					return assert.Equal(suite.T(), expected, build.Scopes) &&
+						assert.Equal(suite.T(), []string{audience}, build.Audiences)
+				})).Return(&model.TokenDTO{
+				Token: testTokenExchangeJWT, Scopes: expected, Subject: testUserID,
+			}, nil).Once()
+			result, errResp := suite.handler.HandleGrant(context.Background(), &model.TokenRequest{
+				GrantType: string(providers.GrantTypeJWTBearer), ClientID: testClientID,
+				Assertion: testAssertion, Scope: tokenservice.JoinScopes(scopes),
+			}, suite.oauthApp)
+			suite.Require().Nil(errResp)
+			suite.Require().NotNil(result)
+			suite.Equal(expected, result.AccessToken.Scopes)
+		})
+	}
+}

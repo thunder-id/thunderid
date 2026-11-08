@@ -181,6 +181,10 @@ type consentPromptPurpose struct {
 	Type        string                 `json:"type"`
 	Essential   []consentPromptElement `json:"essential"`
 	Optional    []consentPromptElement `json:"optional"`
+	// PermissionDelimiter is set only when the resource server declared its permissions
+	// hierarchical, which is what makes a displayed permission answer for everything beneath it.
+	PermissionDelimiter string                 `json:"permissionDelimiter"`
+	DisplayElements     []consentPromptElement `json:"displayElements"`
 }
 
 type consentElementDecision struct {

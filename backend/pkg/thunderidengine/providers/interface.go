@@ -218,8 +218,11 @@ type ConsentProvider interface {
 	// for all required claims and details regardless of existing active consent. Returning nil grants
 	// every requested authorization detail, so a provider must prompt for or refuse any detail no
 	// earlier approval covers.
+	// Permission matching settings are resolved from each resource server's ID.
+	// The built-in provider currently supports a single resource server per call.
 	ResolveConsent(ctx context.Context, ouID, appID, appName, userID string,
-		essentialAttributes, optionalAttributes, authorizedPermissions []string,
+		essentialAttributes, optionalAttributes []string,
+		authorizedPermissions []AuthorizedResourcePermissions,
 		authorizationDetails []AuthorizationDetail,
 		availableAttributes *AttributesResponse, forceReprompt bool,
 		runtimeMetadata map[string][]string) (

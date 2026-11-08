@@ -1189,6 +1189,86 @@ func (_c *resourceStoreInterfaceMock_GetActionListCount_Call) RunAndReturn(run f
 	return _c
 }
 
+// GetDeclaredPermissions provides a mock function for the type resourceStoreInterfaceMock
+func (_mock *resourceStoreInterfaceMock) GetDeclaredPermissions(ctx context.Context, resServerID string, roots []string, delimiter string) ([]string, error) {
+	ret := _mock.Called(ctx, resServerID, roots, delimiter)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetDeclaredPermissions")
+	}
+
+	var r0 []string
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, []string, string) ([]string, error)); ok {
+		return returnFunc(ctx, resServerID, roots, delimiter)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, []string, string) []string); ok {
+		r0 = returnFunc(ctx, resServerID, roots, delimiter)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]string)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, []string, string) error); ok {
+		r1 = returnFunc(ctx, resServerID, roots, delimiter)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// resourceStoreInterfaceMock_GetDeclaredPermissions_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetDeclaredPermissions'
+type resourceStoreInterfaceMock_GetDeclaredPermissions_Call struct {
+	*mock.Call
+}
+
+// GetDeclaredPermissions is a helper method to define mock.On call
+//   - ctx context.Context
+//   - resServerID string
+//   - roots []string
+//   - delimiter string
+func (_e *resourceStoreInterfaceMock_Expecter) GetDeclaredPermissions(ctx any, resServerID any, roots any, delimiter any) *resourceStoreInterfaceMock_GetDeclaredPermissions_Call {
+	return &resourceStoreInterfaceMock_GetDeclaredPermissions_Call{Call: _e.mock.On("GetDeclaredPermissions", ctx, resServerID, roots, delimiter)}
+}
+
+func (_c *resourceStoreInterfaceMock_GetDeclaredPermissions_Call) Run(run func(ctx context.Context, resServerID string, roots []string, delimiter string)) *resourceStoreInterfaceMock_GetDeclaredPermissions_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 []string
+		if args[2] != nil {
+			arg2 = args[2].([]string)
+		}
+		var arg3 string
+		if args[3] != nil {
+			arg3 = args[3].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *resourceStoreInterfaceMock_GetDeclaredPermissions_Call) Return(strings []string, err error) *resourceStoreInterfaceMock_GetDeclaredPermissions_Call {
+	_c.Call.Return(strings, err)
+	return _c
+}
+
+func (_c *resourceStoreInterfaceMock_GetDeclaredPermissions_Call) RunAndReturn(run func(ctx context.Context, resServerID string, roots []string, delimiter string) ([]string, error)) *resourceStoreInterfaceMock_GetDeclaredPermissions_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetResource provides a mock function for the type resourceStoreInterfaceMock
 func (_mock *resourceStoreInterfaceMock) GetResource(ctx context.Context, id string, resServerID string) (providers.Resource, error) {
 	ret := _mock.Called(ctx, id, resServerID)

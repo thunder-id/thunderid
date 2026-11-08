@@ -356,16 +356,12 @@ func (suite *RoleFileBasedStoreTestSuite) TestCreate_SetsIDFromParameter() {
 	suite.Equal("param-role-id", retrievedRole.ID)
 }
 
-// GetEntityRoleIDs on the file-based store is a deliberate no-op: API-added role
-// assignments are persisted in the DB, never in YAML, so the file store has no record
-// to surface. Composite callers rely on this returning an empty (non-nil) slice so
-// the union of (db, file) sources stays correct.
-func (suite *RoleFileBasedStoreTestSuite) TestGetEntityRoleIDs_AlwaysEmpty() {
+func (suite *RoleFileBasedStoreTestSuite) TestGetEntityRoleIDs_DeclaredAssignments() {
 	suite.seedRole(RoleWithPermissionsAndAssignments{
 		ID: "r1", Name: "R1", OUID: "ou1",
 		Assignments: []RoleAssignment{
 			{ID: "user-x", Type: assigneeTypeEntity},
-			{ID: "group-y", Type: AssigneeTypeGroup},
+			{ID: "group-y", Type: AssigneeTypeGroup, OUID: "ou2"},
 		},
 	})
 
@@ -373,20 +369,31 @@ func (suite *RoleFileBasedStoreTestSuite) TestGetEntityRoleIDs_AlwaysEmpty() {
 		name     string
 		entityID string
 		groupIDs []string
+		ouID     string
+		expected []string
 	}{
-		{"populated entity matches YAML", "user-x", []string{"group-y"}},
-		{"populated entity no match", "user-z", []string{"group-z"}},
-		{"empty entity, populated groups", "", []string{"group-y"}},
-		{"empty both", "", nil},
+		{"direct and group assignment deduplicated", "user-x", []string{"group-y"}, "", []string{"r1"}},
+		{"unassigned subject", "user-z", []string{"group-z"}, "", []string{}},
+		{"group assignment", "", []string{"group-y"}, "ou2", []string{"r1"}},
+		{"owner unit fallback", "user-x", nil, "ou1", []string{"r1"}},
+		{"other unit excluded", "user-x", nil, "ou2", []string{}},
+		{"group in other unit excluded", "", []string{"group-y"}, "ou1", []string{}},
+		{"empty subject", "", nil, "", []string{}},
 	}
 	for _, tc := range cases {
 		suite.Run(tc.name, func() {
-			roleIDs, err := suite.store.GetEntityRoleIDs(context.Background(), tc.entityID, tc.groupIDs, "")
+			roleIDs, err := suite.store.GetEntityRoleIDs(context.Background(), tc.entityID, tc.groupIDs, tc.ouID)
 			suite.NoError(err)
-			suite.Empty(roleIDs)
-			suite.NotNil(roleIDs, "must return [] not nil for safe composite union")
+			suite.ElementsMatch(tc.expected, roleIDs)
 		})
 	}
+}
+
+func (suite *RoleFileBasedStoreTestSuite) TestGetEntityRoleIDs_MalformedRole() {
+	suite.Require().NoError(suite.store.GenericFileBasedStore.Create("broken-role", "not a role"))
+	roleIDs, err := suite.store.GetEntityRoleIDs(context.Background(), "user1", nil, "")
+	suite.Error(err)
+	suite.Nil(roleIDs)
 }
 
 // A malformed declarative role must fail the enumeration rather than being skipped. This method
@@ -603,4 +610,52 @@ func (suite *RoleFileBasedStoreTestSuite) TestGetDirectAssignments() {
 
 	suite.NoError(err)
 	suite.Empty(assignments)
+}
+
+func (suite *RoleFileBasedStoreTestSuite) TestGetHeldPermissionsByResourceServer_DeclaredAndMappedRoles() {
+	suite.seedRole(RoleWithPermissionsAndAssignments{
+		ID: "assigned-role", OUID: "ou-1",
+		Assignments: []RoleAssignment{
+			{ID: "user-1", Type: assigneeTypeEntity, OUID: "ou-1"},
+			{ID: "group-1", Type: AssigneeTypeGroup, OUID: "ou-2"},
+		},
+		Permissions: []ResourcePermissions{
+			{ResourceServerID: "booking-api", Permissions: []string{"reservations:view", "reservations:view"}},
+			{ResourceServerID: "other-api", Permissions: []string{"other:read"}},
+		},
+	})
+	suite.seedRole(RoleWithPermissionsAndAssignments{
+		ID: "mapped-role", OUID: "ou-1",
+		Permissions: []ResourcePermissions{
+			{ResourceServerID: "booking-api", Permissions: []string{"reservations:create"}},
+		},
+	})
+	tests := []struct {
+		name          string
+		entityID      string
+		groups, roles []string
+		ouID          string
+		expected      []string
+	}{
+		{name: "Direct", entityID: "user-1", ouID: "ou-1", expected: []string{"reservations:view"}},
+		{name: "Group", groups: []string{"group-1"}, ouID: "ou-2", expected: []string{"reservations:view"}},
+		{name: "WrongOU", entityID: "user-1", ouID: "ou-2", expected: []string{}},
+		{name: "MappedWithoutAssignments", roles: []string{"mapped-role"}, ouID: "ou-2",
+			expected: []string{"reservations:create"}},
+		{name: "Combined", entityID: "user-1", groups: []string{"group-1"}, roles: []string{"mapped-role"},
+			expected: []string{"reservations:create", "reservations:view"}},
+		{name: "NoSubject", expected: []string{}},
+	}
+	for _, tc := range tests {
+		suite.Run(tc.name, func() {
+			permissions, err := suite.store.GetHeldPermissionsByResourceServer(
+				context.Background(), tc.entityID, tc.groups, tc.roles, tc.ouID, "booking-api")
+			suite.NoError(err)
+			if len(tc.expected) == 0 {
+				suite.Empty(permissions)
+			} else {
+				suite.Equal(tc.expected, permissions)
+			}
+		})
+	}
 }
