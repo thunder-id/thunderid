@@ -348,4 +348,26 @@ describe('useGetUsers', () => {
     expect(result.current.isFetching).toBe(false);
     expect(result.current.data).toEqual(mockUserListResponse);
   });
+
+  it('should list only the users of the given project', async () => {
+    mockHttpRequest.mockResolvedValue({data: mockUserListResponse});
+
+    renderHook(() => useGetUsers({projectId: 'project-1'}));
+
+    await waitFor(() => {
+      expect(mockHttpRequest).toHaveBeenCalled();
+    });
+    expect((mockHttpRequest.mock.calls[0][0] as {url: string}).url).toContain('projectId=project-1');
+  });
+
+  it('should list every user without a project', async () => {
+    mockHttpRequest.mockResolvedValue({data: mockUserListResponse});
+
+    renderHook(() => useGetUsers());
+
+    await waitFor(() => {
+      expect(mockHttpRequest).toHaveBeenCalled();
+    });
+    expect((mockHttpRequest.mock.calls[0][0] as {url: string}).url).not.toContain('projectId');
+  });
 });

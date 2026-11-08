@@ -89,6 +89,7 @@ type userDeclarativeYAML struct {
 	Type            string                  `yaml:"type"`
 	OUID            string                  `yaml:"ouId,omitempty"`
 	OUHandle        string                  `yaml:"ouHandle,omitempty"`
+	ProjectID       string                  `yaml:"projectId,omitempty"`
 	Attributes      map[string]interface{}  `yaml:"attributes"`
 	Credentials     map[string]interface{}  `yaml:"credentials,omitempty"`
 	SharingPolicies []sharing.PolicyRequest `yaml:"sharingPolicies,omitempty"`
@@ -809,6 +810,7 @@ func (s *importService) importUser(
 	userReq := &providers.User{
 		ID:         req.ID,
 		OUID:       req.OUID,
+		ProjectID:  req.ProjectID,
 		Type:       req.Type,
 		Attributes: attributesJSON,
 	}

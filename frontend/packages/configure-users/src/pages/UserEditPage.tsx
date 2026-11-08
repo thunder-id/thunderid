@@ -13,6 +13,7 @@ import {
   getInitials,
 } from '@thunderid/components';
 import {useOrganizationAccess} from '@thunderid/configure-resource-sharing';
+import {useProjectScope} from '@thunderid/contexts';
 import {useResolveDisplayName} from '@thunderid/hooks';
 import {useLogger} from '@thunderid/logger/react';
 import {useThunderID} from '@thunderid/react';
@@ -98,6 +99,13 @@ export default function UserEditPage() {
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const {data: user, isLoading: isUserLoading, error: userError, refetch} = useGetUser(userId);
+  const {projectId} = useProjectScope();
+  // Inside a project, a user of another project or of the organization is not shown: the page returns to
+  // the list.
+  const isOtherProject = Boolean(projectId && user && user.projectId !== projectId);
+  useEffect(() => {
+    if (isOtherProject) void navigate(routes.list(), {replace: true});
+  }, [isOtherProject, navigate, routes]);
   const updateUserMutation = useUpdateUser();
   const {user: signedInUser} = useThunderID() as {user?: Record<string, unknown> | null};
   // The server refuses every lifecycle operation on the operator's own account.
@@ -261,7 +269,7 @@ export default function UserEditPage() {
   };
 
   // Loading state
-  if (isUserLoading || isUserTypeListLoading || isSchemaLoading) {
+  if (isUserLoading || isOtherProject || isUserTypeListLoading || isSchemaLoading) {
     return (
       <>
         <DocumentTitle title={t('navigation:pages.users', 'Users')} />

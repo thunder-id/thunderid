@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"net/url"
 	"path"
 	"slices"
 	"sort"
@@ -32,6 +33,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/filter"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/projectscope"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
@@ -43,6 +45,8 @@ const loggerComponentName = "UserService"
 // UserServiceInterface defines the interface for the user service.
 type UserServiceInterface interface {
 	GetUserList(ctx context.Context, limit, offset int,
+		filters map[string]interface{}, includeDisplay bool) (*UserListResponse, *tidcommon.ServiceError)
+	GetUserListByProject(ctx context.Context, projectID string, limit, offset int,
 		filters map[string]interface{}, includeDisplay bool) (*UserListResponse, *tidcommon.ServiceError)
 	GetUsersByPath(ctx context.Context, handlePath string, limit, offset int,
 		filters map[string]interface{}, includeDisplay bool) (*UserListResponse, *tidcommon.ServiceError)
@@ -89,6 +93,11 @@ type ConfigurableUserService interface {
 	SetRoleAssignmentService(ctx context.Context, roleAssignments role.RoleAssignmentServiceInterface) error
 }
 
+// projectOUValidator checks that the organization unit of a resource scoped to a project belongs to it.
+type projectOUValidator interface {
+	ValidateProjectOU(ctx context.Context, projectID, ouID string) *tidcommon.ServiceError
+}
+
 // userService is the default implementation of the UserServiceInterface.
 type userService struct {
 	authzService       sysauthz.SystemAuthorizationServiceInterface
@@ -106,6 +115,8 @@ type userService struct {
 	bus                eventbus.EventBusInterface
 	// systemFlows is nil where system flows are off.
 	systemFlows systemFlowProvider
+	// projectValidator is nil on a deployment that serves no projects.
+	projectValidator projectOUValidator
 }
 
 // systemFlowProvider runs a system flow to completion. The flow engine implements it.
@@ -125,6 +136,7 @@ func newUserService(
 	valueCapturer declarativeresource.ValueCapturer,
 	sharingService sharing.SharingServiceInterface,
 	bus eventbus.EventBusInterface,
+	projectValidator projectOUValidator,
 ) *userService {
 	us := &userService{
 		authzService:      authzService,
@@ -138,6 +150,7 @@ func newUserService(
 		sharingService:    sharingService,
 		logger:            log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName)),
 		bus:               bus,
+		projectValidator:  projectValidator,
 	}
 	us.sharingDeclaration = newUserSharingDeclaration(us, sharingService, us.authorizeShareInto)
 	return us
@@ -192,6 +205,68 @@ func (us *userService) GetUserList(ctx context.Context, limit, offset int,
 
 	// Filtered path: return users belonging to the accessible OUs.
 	return us.listUsersByOUIDs(ctx, accessible.IDs, limit, offset, filters, includeDisplay, listQuery, logger)
+}
+
+// GetUserListByProject returns a paginated list of the users of a project, narrowed to those an
+// organization unit owns when the filter names one. A project that does not exist has none. A caller
+// limited to some organization units lists only the project's users in those units.
+func (us *userService) GetUserListByProject(ctx context.Context, projectID string, limit, offset int,
+	filters map[string]interface{}, includeDisplay bool) (*UserListResponse, *tidcommon.ServiceError) {
+	if err := validatePaginationParams(limit, offset); err != nil {
+		return nil, err
+	}
+
+	listQuery := "&" + queryParamProjectID + "=" + url.QueryEscape(projectID) +
+		utils.FilterQueryParam(filters) + utils.DisplayQueryParam(includeDisplay)
+	ouID, rest, err := filter.SplitOUIDFilter(filters)
+	if err != nil || len(rest) > 0 {
+		return nil, &ErrorInvalidFilter
+	}
+	empty := buildUserListResponse([]providers.User{}, 0, limit, offset, listQuery)
+	if projectID == "" {
+		return empty, nil
+	}
+
+	accessible, svcErr := us.authzService.GetAccessibleResources(
+		ctx, security.ActionListUsers, security.ResourceTypeOU)
+	if svcErr != nil {
+		us.logger.Error(ctx, "Failed to resolve accessible resources for listing users",
+			log.Any("error", svcErr))
+		return nil, &tidcommon.InternalServerError
+	}
+	var ouIDs []string
+	switch {
+	case ouID != "" && !accessible.AllAllowed && !slices.Contains(accessible.IDs, ouID):
+		return empty, nil
+	case ouID != "":
+		ouIDs = []string{ouID}
+	case !accessible.AllAllowed:
+		if len(accessible.IDs) == 0 {
+			return empty, nil
+		}
+		ouIDs = append([]string{}, accessible.IDs...)
+	}
+
+	totalCount, err := us.entityService.GetEntityListCountByProject(
+		ctx, providers.EntityCategoryUser, projectID, ouIDs)
+	if err != nil {
+		return nil, logErrorAndReturnServerError(ctx, us.logger, "Failed to count project users", err,
+			log.String("projectID", projectID))
+	}
+	entities, err := us.entityService.GetEntityListByProject(
+		ctx, providers.EntityCategoryUser, projectID, ouIDs, limit, offset)
+	if err != nil {
+		return nil, logErrorAndReturnServerError(ctx, us.logger, "Failed to list project users", err,
+			log.String("projectID", projectID))
+	}
+
+	users := us.usersWithAccess(ctx, entities)
+	markOwned(users, true)
+	if includeDisplay {
+		us.populateUserDisplayNames(ctx, users, us.logger)
+		us.populateOUHandles(ctx, users, us.logger)
+	}
+	return buildUserListResponse(users, totalCount, limit, offset, listQuery), nil
 }
 
 // listAllUsers retrieves users without OU filtering.
@@ -366,6 +441,15 @@ func (us *userService) createUser(
 		return nil, &ErrorInvalidRequestFormat
 	}
 
+	// A user in a project that names no organization unit goes to the system organization unit.
+	if user.OUID == "" && user.ProjectID != "" {
+		systemOUID, svcErr := us.ouService.GetSystemOUID(ctx)
+		if svcErr != nil {
+			return nil, svcErr
+		}
+		user.OUID = systemOUID
+	}
+
 	// Check if caller is authorized to create users in the target OU.
 	if svcErr := us.checkUserAccess(ctx, security.ActionCreateUser, user.OUID, ""); svcErr != nil {
 		return nil, svcErr
@@ -373,6 +457,14 @@ func (us *userService) createUser(
 
 	if svcErr := us.validateOrganizationUnitForUserType(ctx, user.Type, user.OUID, logger); svcErr != nil {
 		return nil, svcErr
+	}
+
+	// A project checks that the user's organization unit belongs to it. A user in no project belongs to
+	// the organization.
+	if user.ProjectID != "" {
+		if svcErr := us.validateProjectOU(ctx, user.ProjectID, user.OUID); svcErr != nil {
+			return nil, svcErr
+		}
 	}
 
 	// Schema validation and uniqueness checks are handled by entity service in CreateEntity.
@@ -705,8 +797,13 @@ func (us *userService) updateUser(
 		return nil, svcErr
 	}
 
-	// A shared user stays in its organization unit: its policies were issued against that unit.
-	if user.OUID != existingUser.OUID {
+	// An update that names no project keeps the user in its project.
+	if user.ProjectID == "" {
+		user.ProjectID = existingUser.ProjectID
+	}
+
+	// A shared user stays in its organization unit and project: its policies were issued against them.
+	if user.OUID != existingUser.OUID || user.ProjectID != existingUser.ProjectID {
 		policies, svcErr := us.sharingService.ListPolicies(ctx, UserSharingType, userID)
 		if svcErr != nil {
 			return nil, translateSharingError(svcErr)
@@ -723,6 +820,14 @@ func (us *userService) updateUser(
 		ctx, user.Type, user.OUID, logger,
 	); svcErr != nil {
 		return nil, svcErr
+	}
+
+	// A project checks that the user's organization unit belongs to it. It is checked only when the update
+	// changes the project or the organization unit, so a user whose project is gone can still be edited.
+	if user.ProjectID != "" && (user.ProjectID != existingUser.ProjectID || user.OUID != existingUser.OUID) {
+		if svcErr := us.validateProjectOU(ctx, user.ProjectID, user.OUID); svcErr != nil {
+			return nil, svcErr
+		}
 	}
 
 	// Reject credential fields: this endpoint is for attribute and user metadata updates only.
@@ -1364,6 +1469,29 @@ func (us *userService) validateOrganizationUnitForUserType(
 	}
 
 	return nil
+}
+
+// validateProjectOU checks that a user's organization unit belongs to its project. It returns
+// ErrorInvalidProject when no such project exists, and ErrorOUNotInProject when the organization unit is
+// outside the project.
+//
+// A deployment that serves no projects, such as a Data Plane, cannot check the project. It keeps the
+// project ID and organization unit as given so that imported configuration retains them.
+func (us *userService) validateProjectOU(ctx context.Context, projectID, ouID string) *tidcommon.ServiceError {
+	if us.projectValidator == nil {
+		return nil
+	}
+	svcErr := us.projectValidator.ValidateProjectOU(ctx, projectID, ouID)
+	switch {
+	case svcErr == nil:
+		return nil
+	case svcErr.Code == projectscope.ProjectNotFoundErrorCode:
+		return &ErrorInvalidProject
+	case svcErr.Code == projectscope.OUNotInProjectErrorCode:
+		return &ErrorOUNotInProject
+	default:
+		return &tidcommon.InternalServerError
+	}
 }
 
 // markOwned records on each user whether the listed organization unit owns it.

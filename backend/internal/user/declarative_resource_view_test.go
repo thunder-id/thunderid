@@ -26,7 +26,7 @@ func viewDocument(t *testing.T, content string) *yaml.Node {
 // credentials the export carries.
 func TestViewResourceShowsAnExportedUserAsItsRead(t *testing.T) {
 	exported, err := yaml.Marshal(&userDeclarativeResource{
-		ID: "user-1", Type: "employee", OUID: "ou-1",
+		ID: "user-1", Type: "employee", OUID: "ou-1", ProjectID: "project-1",
 		Attributes:  map[string]interface{}{"username": "alice", "email": "var:USER_ALICE_EMAIL"},
 		Credentials: map[string]interface{}{"password": "sec:USER_ALICE_PASSWORD"},
 	})
@@ -41,6 +41,7 @@ func TestViewResourceShowsAnExportedUserAsItsRead(t *testing.T) {
 	assert.Equal(t, "user-1", u.ID)
 	assert.Equal(t, "employee", u.Type)
 	assert.Equal(t, "ou-1", u.OUID)
+	assert.Equal(t, "project-1", u.ProjectID)
 	assert.JSONEq(t, `{"username":"alice","email":"var:USER_ALICE_EMAIL"}`, string(u.Attributes))
 	assert.NotContains(t, string(u.Attributes), "USER_ALICE_PASSWORD")
 	encoded, err := json.Marshal(u)

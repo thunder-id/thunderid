@@ -150,6 +150,7 @@ func (e *userExporter) GetResourceByID(
 		ID:              user.ID,
 		Type:            user.Type,
 		OUID:            user.OUID,
+		ProjectID:       user.ProjectID,
 		Attributes:      attributesMap,
 		Credentials:     credentials,
 		SharingPolicies: policies,
@@ -234,6 +235,7 @@ func (e *userExporter) ViewResource(_ context.Context, document *yaml.Node) (int
 		return &providers.User{
 			ID:                 exported.ID,
 			OUID:               exported.OUID,
+			ProjectID:          exported.ProjectID,
 			Type:               exported.Type,
 			Attributes:         attributes,
 			VerifiedAttributes: map[string]providers.VerifiedAttribute{},
@@ -386,6 +388,7 @@ type userDeclarativeResource struct {
 	Type            string                  `yaml:"type"`
 	OUID            string                  `yaml:"ouId,omitempty"`
 	OUHandle        string                  `yaml:"ouHandle,omitempty"`
+	ProjectID       string                  `yaml:"projectId,omitempty"`
 	Attributes      map[string]interface{}  `yaml:"attributes"`
 	Credentials     map[string]interface{}  `yaml:"credentials,omitempty"` // Flexible format for YAML
 	SharingPolicies []sharing.PolicyRequest `yaml:"sharingPolicies,omitempty"`
@@ -410,6 +413,7 @@ func parseToUser(data []byte) (providers.User, Credentials, error) {
 		Type:       userRes.Type,
 		OUID:       userRes.OUID,
 		OUHandle:   userRes.OUHandle,
+		ProjectID:  userRes.ProjectID,
 		Attributes: json.RawMessage(attributesJSON),
 	}
 

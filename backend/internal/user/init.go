@@ -40,6 +40,7 @@ func Initialize(
 	sharingService sharing.SharingServiceInterface,
 	valueCapturer declarativeresource.ValueCapturer,
 	bus eventbus.EventBusInterface,
+	projectValidator projectOUValidator,
 ) (ConfigurableUserService, oupkg.OUUserResolver, declarativeresource.ResourceExporter, error) {
 	if bus == nil {
 		return nil, nil, nil, errNilEventBus
@@ -47,7 +48,7 @@ func Initialize(
 
 	// Step 1: Create service with entity service
 	userService := newUserService(authzService, entityService, ouService, entityTypeService, governance,
-		verification, valueCapturer, sharingService, bus)
+		verification, valueCapturer, sharingService, bus, projectValidator)
 	sharingService.RegisterResourceType(userService.sharingDeclaration)
 	entityService.RegisterSharedCategory(providers.EntityCategoryUser, UserSharingType)
 

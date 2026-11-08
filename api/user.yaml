@@ -40,6 +40,7 @@ paths:
         - $ref: '#/components/parameters/limitQueryParam'
         - $ref: '#/components/parameters/offsetQueryParam'
         - $ref: '#/components/parameters/userFilterParam'
+        - $ref: '#/components/parameters/userProjectIdQueryParam'
         - $ref: '#/components/parameters/includeQueryParam'
       responses:
         "200":
@@ -249,6 +250,26 @@ paths:
                     description:
                       key: "error.userservice.organization_unit_mismatch_description"
                       defaultValue: "The organization unit does not match the user type configuration"
+                invalid-project:
+                  summary: The project does not exist
+                  value:
+                    code: "USR-1042"
+                    message:
+                      key: "error.userservice.invalid_project"
+                      defaultValue: "Invalid project"
+                    description:
+                      key: "error.userservice.invalid_project_description"
+                      defaultValue: "No project exists with the given project ID"
+                ou-not-in-project:
+                  summary: The organization unit is outside the project
+                  value:
+                    code: "USR-1043"
+                    message:
+                      key: "error.userservice.ou_not_in_project"
+                      defaultValue: "Organization unit not in project"
+                    description:
+                      key: "error.userservice.ou_not_in_project_description"
+                      defaultValue: "A user in a project must be in the system organization unit"
                 invalid-credential:
                   summary: Invalid credential fields
                   value:
@@ -477,6 +498,26 @@ paths:
                     description:
                       key: "error.userservice.organization_unit_mismatch_description"
                       defaultValue: "The organization unit does not match the user type configuration"
+                invalid-project:
+                  summary: The project does not exist
+                  value:
+                    code: "USR-1042"
+                    message:
+                      key: "error.userservice.invalid_project"
+                      defaultValue: "Invalid project"
+                    description:
+                      key: "error.userservice.invalid_project_description"
+                      defaultValue: "No project exists with the given project ID"
+                ou-not-in-project:
+                  summary: The organization unit is outside the project
+                  value:
+                    code: "USR-1043"
+                    message:
+                      key: "error.userservice.ou_not_in_project"
+                      defaultValue: "Organization unit not in project"
+                    description:
+                      key: "error.userservice.ou_not_in_project_description"
+                      defaultValue: "A user in a project must be in the system organization unit"
                 invalid-credential:
                   summary: Invalid credential fields
                   value:
@@ -515,7 +556,7 @@ paths:
                       key: "error.userservice.attribute_conflict_description"
                       defaultValue: "A user with the same unique attribute value already exists"
                 shared-user-move:
-                  summary: Moving a user with sharing policies to another organization unit
+                  summary: Moving a user with sharing policies to another organization unit or project
                   value:
                     code: "USR-1038"
                     message:
@@ -523,7 +564,7 @@ paths:
                       defaultValue: "User with sharing policies cannot be moved"
                     description:
                       key: "error.userservice.shared_user_cannot_move_description"
-                      defaultValue: "The user is shared into other organization units. Delete its sharing policies before moving it to another organization unit"
+                      defaultValue: "The user is shared into other organization units. Delete its sharing policies before moving it to another organization unit or project"
         "404":
           description: User not found
           content:
@@ -2696,6 +2737,15 @@ components:
           - display
       description: |
         Optional parameter to include additional display information in the response. The exact fields included depend on the endpoint. See each endpoint's response schema for details on which fields are enriched.
+    userProjectIdQueryParam:
+      in: query
+      name: projectId
+      required: false
+      description: |
+        Lists the users of the project. A project that does not exist has no users.
+      schema:
+        type: string
+      example: "7c9e6679-7425-40de-944b-e07fc1f90ae7"
     userFilterParam:
       in: query
       name: filter
@@ -2709,7 +2759,8 @@ components:
         - `age eq 25` - Users with age = 25
         - `address.city eq "Mountain View"` - Users with address.city = "Mountain View"
         - `ouId eq "456e8400-e29b-41d4-a716-446655440001"` - Users the organization unit owns,
-          followed by the users shared into it.
+          followed by the users shared into it. With `projectId`, only the project's users that
+          organization unit owns, and no other filter.
       schema:
         type: string
       examples:
@@ -3221,6 +3272,9 @@ components:
           type: string
           readOnly: true
           description: "Human-readable handle of the organization unit (only included when include=display query parameter is used)."
+        projectId:
+          type: string
+          description: "ID of the project this user belongs to. Absent when the user belongs to the organization."
         type:
           type: string
         verifiedAttributes:
@@ -3518,12 +3572,15 @@ components:
 
     CreateUserRequest:
       type: object
-      required: [ouId, type]
+      required: [type]
       properties:
         ouId:
           type: string
           format: uuid
-          description: "The organization unit ID where the user will be created"
+          description: "The organization unit ID where the user will be created. Required unless projectId is given, which places the user in the system organization unit when ouId is left out."
+        projectId:
+          type: string
+          description: "ID of the project the user belongs to. Leave it out for a user of the organization. A user in a project must be in the system organization unit."
         type:
           type: string
           description: "The handle of the user type"
@@ -3540,6 +3597,9 @@ components:
           type: string
           format: uuid
           description: "The organization unit ID where the user belongs"
+        projectId:
+          type: string
+          description: "ID of the project the user belongs to. An update that leaves it out keeps the user's project."
         type:
           type: string
           description: "The handle of the user type"

@@ -226,8 +226,6 @@ export default function App(): JSX.Element {
                   <Route index element={<Navigate to={RouteConfig.home.list()} replace />} />
                   <Route path={ROUTE_SEGMENTS.home} element={<OrganizationHomePage />} />
                   <Route path={`${ROUTE_SEGMENTS.projects}/:projectId`} element={<ProjectHomePage />} />
-                  <Route path={ROUTE_SEGMENTS.users} element={<UsersListPage />} />
-                  <Route path={`${ROUTE_SEGMENTS.users}/:userId`} element={<UserEditPage />} />
                   <Route path={ROUTE_SEGMENTS.userTypes} element={<UserTypesListPage />} />
                   <Route path={`${ROUTE_SEGMENTS.userTypes}/:id`} element={<ViewUserTypePage />} />
                   <Route path={`${ROUTE_SEGMENTS.agentTypes}/:id`} element={<ViewAgentTypePage />} />
@@ -259,6 +257,8 @@ export default function App(): JSX.Element {
                     />
                     <Route path={ROUTE_SEGMENTS.roles} element={<RolesListPage />} />
                     <Route path={`${ROUTE_SEGMENTS.roles}/:roleId`} element={<RoleEditPage />} />
+                    <Route path={ROUTE_SEGMENTS.users} element={<UsersListPage />} />
+                    <Route path={`${ROUTE_SEGMENTS.users}/:userId`} element={<UserEditPage />} />
                     <Route path={ROUTE_SEGMENTS.flows} element={<FlowsListPage />} />
                     <Route
                       path={ROUTE_SEGMENTS.verifiablePresentations}
@@ -359,7 +359,9 @@ export default function App(): JSX.Element {
                   path={RouteConfig.users.add()}
                   element={
                     <ProtectedRoute>
-                      <FullScreenLayout />
+                      <SelectedProjectScope>
+                        <FullScreenLayout />
+                      </SelectedProjectScope>
                     </ProtectedRoute>
                   }
                 >

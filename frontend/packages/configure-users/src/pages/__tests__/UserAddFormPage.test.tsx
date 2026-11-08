@@ -1,6 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {ProjectScopeProvider} from '@thunderid/contexts';
 import {render, screen, waitFor, userEvent, within} from '@thunderid/test-utils';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import UserAddFormPage from '../UserAddFormPage';
@@ -184,6 +185,30 @@ describe('UserAddFormPage', () => {
     await user.click(within(await screen.findByRole('listbox')).getByText('Customer'));
     await screen.findByRole('textbox', {name: /username/i});
     expect(submit).toBeEnabled();
+  });
+
+  it('creates the user in the selected project, without an organization unit to pick', async () => {
+    const user = userEvent.setup();
+    render(
+      <ProjectScopeProvider project={{id: 'project-1'}}>
+        <UserAddFormPage />
+      </ProjectScopeProvider>,
+    );
+
+    await user.click(await screen.findByRole('combobox'));
+    await user.click(within(await screen.findByRole('listbox')).getByText('Customer'));
+    await user.type(await screen.findByRole('textbox', {name: /username/i}), 'dave');
+
+    expect(screen.queryByTestId('ou-picker')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', {name: 'users:addForm.submit'}));
+
+    await waitFor(() => {
+      expect(requests().find((request) => request.method === 'POST')?.data).toEqual({
+        projectId: 'project-1',
+        type: 'customer',
+        attributes: {username: 'dave'},
+      });
+    });
   });
 
   it("preselects the chosen type's organization unit and posts it when no other is picked", async () => {

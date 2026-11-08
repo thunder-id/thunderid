@@ -28,6 +28,11 @@ export interface User {
   ouHandle?: string;
 
   /**
+   * Identifier of the project the user belongs to; absent when the user belongs to the organization.
+   */
+  projectId?: string;
+
+  /**
    * User category or classification.
    */
   type: string;

@@ -256,7 +256,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 
 	userService, ouUserResolver, userExporter, err := user.Initialize(
 		mux, entityService, ouService, entityTypeService, ouAuthzService, governanceService,
-		attributeVerificationService, sharingService, valueCapture, auditBus,
+		attributeVerificationService, sharingService, valueCapture, auditBus, projectService,
 	)
 	fatalOnError(ctx, logger, err, "Failed to initialize UserService")
 	exporters = append(exporters, userExporter)

@@ -447,7 +447,7 @@ var (
 		ErrorDescription: tidcommon.I18nMessage{
 			Key: "error.userservice.shared_user_cannot_move_description",
 			DefaultValue: "The user is shared into other organization units. Delete its sharing policies " +
-				"before moving it to another organization unit",
+				"before moving it to another organization unit or project",
 		},
 	}
 	// ErrorRolesNotOnNamedUnit is returned when roles are mandated off a named child unit of reach unit.
@@ -489,6 +489,33 @@ var (
 		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "error.userservice.invalid_credential_value_description",
 			DefaultValue: "The credential value does not meet the requirements of the user type",
+		},
+	}
+	// ErrorInvalidProject is the error returned when a user names a project that does not exist.
+	ErrorInvalidProject = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "USR-1042",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.userservice.invalid_project",
+			DefaultValue: "Invalid project",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.userservice.invalid_project_description",
+			DefaultValue: "No project exists with the given project ID",
+		},
+	}
+	// ErrorOUNotInProject is the error returned when a user names an organization unit outside the
+	// project it names.
+	ErrorOUNotInProject = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "USR-1043",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.userservice.ou_not_in_project",
+			DefaultValue: "Organization unit not in project",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.userservice.ou_not_in_project_description",
+			DefaultValue: "A user in a project must be in the system organization unit",
 		},
 	}
 )

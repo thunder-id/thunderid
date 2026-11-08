@@ -33,7 +33,10 @@ export interface UserListResponse {
  * Create user request payload
  */
 export interface CreateUserRequest {
-  ouId: string;
+  /** ID of the organization unit; the system organization unit when omitted with a project */
+  ouId?: string;
+  /** Places the user in the project, in the system organization unit unless ouId names it */
+  projectId?: string;
   type: string;
   groups?: string[];
   attributes?: Record<string, unknown>;
