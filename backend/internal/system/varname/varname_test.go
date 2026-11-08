@@ -20,8 +20,16 @@ package varname
 
 import (
 	"regexp"
+	"strings"
 	"testing"
 )
+
+const (
+	idAlice = "0198f3a1-7c2e-7b10-9a44-5d3e8f21c6b7"
+	idOther = "0198f3a1-7c2e-7b10-9a44-5d3e8f21c6b8"
+)
+
+var templateIdentifier = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 // TestDeriveVariableName locks the placeholder-naming contract that the export parameterizer and the
 // Control Plane secret auto-capture both depend on. If this changes, captured secret keys and export
@@ -29,59 +37,107 @@ import (
 func TestDeriveVariableName(t *testing.T) {
 	cases := []struct {
 		resourceType string
-		resourceName string
+		resourceID   string
 		fieldName    string
 		want         string
 	}{
-		{"application", "My App", "ClientSecret", "APPLICATION_MY_APP_CLIENT_SECRET"},
-		{"connection", "Export Test IDP", "client_id", "CONNECTION_EXPORT_TEST_IDP_CLIENT_ID"},
-		{"user", "alice", "password", "USER_ALICE_PASSWORD"},
-		{"agent", "ClientID", "value", "AGENT_CLIENT_ID_VALUE"},
-		// An unqualified call keeps the old shape, so a caller with no type still produces a name.
-		{"", "My App", "ClientSecret", "MY_APP_CLIENT_SECRET"},
+		{"application", idAlice, "ClientSecret", "APPLICATION__0198F3A17C2E7B109A445D3E8F21C6B7__CLIENT_SECRET"},
+		{"connection", idAlice, "client_id", "CONNECTION__0198F3A17C2E7B109A445D3E8F21C6B7__CLIENT_ID"},
+		{"user", idAlice, "password", "USER__0198F3A17C2E7B109A445D3E8F21C6B7__PASSWORD"},
+		{"resource_server", idAlice, "identifier", "RESOURCE_SERVER__0198F3A17C2E7B109A445D3E8F21C6B7__IDENTIFIER"},
+		// An unqualified call still produces a name, and one that is not an invalid identifier.
+		{"", idAlice, "password", "_0198F3A17C2E7B109A445D3E8F21C6B7__PASSWORD"},
 	}
 	for _, c := range cases {
-		if got := DeriveVariableName(c.resourceType, c.resourceName, c.fieldName); got != c.want {
+		if got := DeriveVariableName(c.resourceType, c.resourceID, c.fieldName); got != c.want {
 			t.Errorf("DeriveVariableName(%q, %q, %q) = %q, want %q",
-				c.resourceType, c.resourceName, c.fieldName, got, c.want)
+				c.resourceType, c.resourceID, c.fieldName, got, c.want)
 		}
 	}
 }
 
-// The whole point of the type prefix: two resources of different types may share a name.
-func TestDeriveVariableNameSeparatesTypesThatShareAName(t *testing.T) {
-	app := DeriveVariableName("application", "dummy", "ClientID")
-	agent := DeriveVariableName("agent", "dummy", "ClientID")
+// The reason an ID is the name: resources whose names or usernames differ only in case, dots, at signs,
+// hyphens or underscores read the same once sanitized, and must not share a name. Their IDs differ.
+func TestDeriveVariableNameSeparatesResourcesOfOneType(t *testing.T) {
+	victim := DeriveVariableName("user", idAlice, "password")
+	other := DeriveVariableName("user", idOther, "password")
+	if victim == other {
+		t.Fatalf("two users must not share a name: %q", victim)
+	}
+}
+
+func TestDeriveVariableNameIsTheSameForTheSameResource(t *testing.T) {
+	first := DeriveVariableName("user", idAlice, "password")
+	second := DeriveVariableName("user", idAlice, "password")
+	if first != second {
+		t.Fatalf("a resource must derive one name, got %q and %q", first, second)
+	}
+}
+
+// The type prefix still keeps two resources of different types that share an ID apart.
+func TestDeriveVariableNameSeparatesTypesThatShareAnID(t *testing.T) {
+	app := DeriveVariableName("application", idAlice, "ClientID")
+	agent := DeriveVariableName("agent", idAlice, "ClientID")
 	if app == agent {
-		t.Fatalf("an application and an agent named the same must not share a variable: %q", app)
+		t.Fatalf("an application and an agent with one ID must not share a variable: %q", app)
+	}
+}
+
+func TestDeriveVariableNameSeparatesFieldsOfOneResource(t *testing.T) {
+	id := DeriveVariableName("application", idAlice, "ClientID")
+	secret := DeriveVariableName("application", idAlice, "ClientSecret")
+	if id == secret {
+		t.Fatalf("two fields of one resource must not share a variable: %q", id)
+	}
+}
+
+// An ID that is not a lower-case UUID is hashed: a declarative file may name resources "my-app" and
+// "my_app", which sanitizing alone would make the same.
+func TestDeriveVariableNameSeparatesIDsThatSanitizeAlike(t *testing.T) {
+	first := DeriveVariableName("application", "my-app", "ClientID")
+	second := DeriveVariableName("application", "my_app", "ClientID")
+	third := DeriveVariableName("application", "MY-APP", "ClientID")
+	if first == second || first == third || second == third {
+		t.Fatalf("IDs that sanitize alike must not share a name: %q %q %q", first, second, third)
+	}
+}
+
+// A hashed ID segment can never be the spelling of a UUID, since it starts with a letter no hex digit has.
+func TestDeriveVariableNameKeepsHashedAndUUIDSegmentsApart(t *testing.T) {
+	if got := idSegment("not-a-uuid"); !strings.HasPrefix(got, hashedIDPrefix) {
+		t.Fatalf("a free-form ID must be hashed, got %q", got)
+	}
+	if got := idSegment(idAlice); strings.HasPrefix(got, hashedIDPrefix) {
+		t.Fatalf("a lower-case UUID must not be hashed, got %q", got)
+	}
+	if upper := strings.ToUpper(idAlice); idSegment(upper) == idSegment(idAlice) {
+		t.Fatalf("an upper-case UUID is a different ID and must not share a spelling with the lower-case one")
 	}
 }
 
 func TestDeriveVariableNameProducesValidTemplateIdentifiers(t *testing.T) {
-	// A username is commonly an email address, whose characters cannot appear in a template variable.
-	if got := DeriveVariableName("user", "user@example.com", "password"); got != "USER_USER_EXAMPLE_COM_PASSWORD" {
-		t.Fatalf("email based name not sanitized: %q", got)
-	}
-	if got := DeriveVariableName("application", "My App", "ClientSecret"); got != "APPLICATION_MY_APP_CLIENT_SECRET" {
-		t.Fatalf("regression on the ordinary case: %q", got)
-	}
-	// Runs of separators collapse rather than producing empty segments.
-	if got := DeriveVariableName("", "a..b--c", "password"); got != "A_B_C_PASSWORD" {
-		t.Fatalf("separators not collapsed: %q", got)
-	}
-	// A leading digit would be an invalid identifier.
-	if got := DeriveVariableName("", "1app", "password"); got != "_1APP_PASSWORD" {
-		t.Fatalf("leading digit not handled: %q", got)
-	}
-
-	// Every derived name must be a valid Go template identifier.
 	for _, name := range []string{
-		DeriveVariableName("user", "user@example.com", "password"),
-		DeriveVariableName("", "a..b--c", "password"),
-		DeriveVariableName("", "1app", "password"),
+		DeriveVariableName("user", idAlice, "password"),
+		DeriveVariableName("", "free-form", "password"),
+		DeriveVariableName("user", "", "password"),
 	} {
-		if !regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`).MatchString(name) {
+		if !templateIdentifier.MatchString(name) {
 			t.Fatalf("%q is not a valid template identifier", name)
+		}
+	}
+}
+
+// Every part is sanitized on its own and joined with a separator no part can hold, so a name always
+// reads back as exactly one resource type, ID and field.
+func TestDeriveVariableNameSeparatorNeverAppearsInsideAPart(t *testing.T) {
+	name := DeriveVariableName("user", "a__b", "pass__word")
+	parts := strings.Split(name, segmentSeparator)
+	if len(parts) != 3 {
+		t.Fatalf("want 3 parts, got %d in %q", len(parts), name)
+	}
+	for _, part := range parts {
+		if part == "" || strings.Contains(part, segmentSeparator) {
+			t.Fatalf("a part must be non-empty and free of the separator: %q in %q", part, name)
 		}
 	}
 }

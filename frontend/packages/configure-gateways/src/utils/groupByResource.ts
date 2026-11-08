@@ -51,7 +51,7 @@ export default function groupByResource(rows: ValueRow[]): TypeGroup[] {
   [...rows]
     .sort((a: ValueRow, b: ValueRow) => a.name.localeCompare(b.name))
     .forEach((row: ValueRow) => {
-      const reference = row.references[0];
+      const reference = row.references[0] ?? row.current[0];
       const resourceType = reference?.resourceType ?? null;
       const key = `${resourceType ?? ''}/${reference ? (reference.resourceId ?? reference.resourceName ?? '') : ''}`;
       const resources = types.get(resourceType) ?? new Map<string, ResourceGroup>();

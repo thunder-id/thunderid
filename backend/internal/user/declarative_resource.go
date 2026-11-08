@@ -159,7 +159,7 @@ func (e *userExporter) GetResourceByID(
 }
 
 // exportableCredentials describes the credentials an exported user carries: a placeholder for each
-// credential the user's type declares and the user has set, named after the username.
+// credential the user's type declares and the user has set, named after the user ID.
 //
 // The importing server fills each placeholder from its own secret provider or environment before
 // hashing it, which leaves the imported user able to sign in with it. A credential the user has not
@@ -171,7 +171,7 @@ func (e *userExporter) exportableCredentials(
 	ctx context.Context, userID, username string,
 ) (map[string]interface{}, *tidcommon.ServiceError) {
 	if username == "" {
-		// The placeholder is named after the username, so there is nothing to name it after.
+		// A user with no username cannot be exported, so it carries no credentials either.
 		return map[string]interface{}{}, nil
 	}
 
@@ -184,7 +184,15 @@ func (e *userExporter) exportableCredentials(
 			log.MaskedString(log.LoggerKeyUserID, userID), log.Error(err))
 		return nil, &tidcommon.InternalServerError
 	}
-	return declarativeresource.CredentialPlaceholders(resourceTypeUser, username, held, e.references), nil
+	return declarativeresource.CredentialPlaceholders(resourceTypeUser, userID, held, e.references), nil
+}
+
+// GetResourceID returns the ID of an exported user.
+func (e *userExporter) GetResourceID(resource interface{}) string {
+	if user, ok := resource.(*userDeclarativeResource); ok {
+		return user.ID
+	}
+	return ""
 }
 
 // ValidateResource validates a user resource.

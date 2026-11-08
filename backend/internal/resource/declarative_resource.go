@@ -166,6 +166,14 @@ func (e *resourceServerExporter) ValidateResource(ctx context.Context,
 	return server.Name, nil
 }
 
+// GetResourceID returns the ID of an exported resource server.
+func (e *resourceServerExporter) GetResourceID(resource interface{}) string {
+	if server, ok := resource.(*providers.ResourceServer); ok {
+		return server.ID
+	}
+	return ""
+}
+
 // GetResourceRules returns the parameterization rules for resource servers.
 // The identifier is the audience each deployment serves under, so it is parameterized and every
 // deployment supplies its own.

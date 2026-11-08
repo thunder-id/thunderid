@@ -666,14 +666,15 @@ func (s *AgentImportExportSuite) TestImportAgent_RefusesANewAgentsUnusableCreden
 	}
 }
 
-// Two agents whose display names normalize alike would claim one password variable, and so one
-// password, so the export holding both is refused rather than written.
-func (s *AgentImportExportSuite) TestExportAgent_RefusesTwoAgentsWithOnePasswordVariable() {
+// Two agents whose display names normalize alike each carry their own ID in the password variable, so
+// the export holding both is written and each agent keeps a password variable of its own.
+func (s *AgentImportExportSuite) TestExportAgent_NamesTwoAgentsWithOneNormalizedNameApart() {
 	// Without a display attribute an agent is named by its ID, which no other agent shares.
 	s.Require().NoError(s.installAgentType(&testutils.UserTypeSystemAttributes{Display: "name"}))
 	defer func() { s.NoError(s.installAgentType(nil)) }()
 	var ids []string
-	for _, name := range []string{"Agent Clash " + s.handleSuffix, "Agent-Clash-" + s.handleSuffix} {
+	names := []string{"Agent Clash " + s.handleSuffix, "Agent-Clash-" + s.handleSuffix}
+	for _, name := range names {
 		id, err := s.createAgent(Agent{
 			OUID:       s.ouID,
 			Type:       "default",
@@ -684,10 +685,14 @@ func (s *AgentImportExportSuite) TestExportAgent_RefusesTwoAgentsWithOnePassword
 		ids = append(ids, id)
 	}
 
-	_, err := s.exportAgents(agentExportRequest{Agents: ids})
+	exported, err := s.exportAgents(agentExportRequest{Agents: ids})
 
-	s.Require().Error(err, "expected the export to be refused")
-	s.Contains(err.Error(), "EXP-1003", "the refusal must name the duplicate template variable error")
+	s.Require().NoError(err, "agents whose names normalize alike must not refuse the export")
+	first := testutils.ExportVariableName("AGENT", ids[0], "PASSWORD")
+	second := testutils.ExportVariableName("AGENT", ids[1], "PASSWORD")
+	s.NotEqual(first, second, "the two agents must not share a password variable")
+	s.Contains(exported.Resources, "{{."+first+"}}")
+	s.Contains(exported.Resources, "{{."+second+"}}")
 }
 
 // ---------------------------------------------------------------------------

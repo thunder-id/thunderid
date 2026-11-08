@@ -37,29 +37,6 @@ trust_gateway_key() {
     }
 }
 
-# user_password_secret_name prints the name a user's password is held under in a gateway's secret
-# store, which the Control Plane's export derives from the username the same way:
-# USER_<USERNAME>_PASSWORD, with a word boundary wherever the case changes (ServiceDesk becomes
-# SERVICE_DESK) and every character that is not a letter or digit as an underscore. See
-# DeriveVariableName in backend/internal/system/varname.
-user_password_secret_name() {
-    local snake
-    snake="$(awk -v s="$1" 'BEGIN {
-        n = length(s); out = ""
-        for (i = 1; i <= n; i++) {
-            c = substr(s, i, 1)
-            if (i > 1 && c ~ /[A-Z]/) {
-                p = substr(s, i - 1, 1)
-                if (p ~ /[a-z]/) out = out "_"
-                else if (p != "_" && i < n && substr(s, i + 1, 1) ~ /[a-z]/) out = out "_"
-            }
-            out = out c
-        }
-        print toupper(out)
-    }')"
-    printf '%s' "USER_${snake}_PASSWORD" | sed 's/[^A-Za-z0-9]/_/g; s/__*/_/g; s/^_//; s/_$//'
-}
-
 # export_console_urls exports the console redirect URIs the bootstrap resources are templated with:
 # CP_CONSOLE_URL for the CP_CONSOLE application on auth-dp, and ADMIN_CONSOLE_URL for the
 # ADMIN_CONSOLE application on the Data Plane and the Control Plane. Call it before the first
@@ -96,7 +73,9 @@ export_dp_ca_certificate() {
 #   - the identifier of the System resource server, which a gateway holds for itself and is
 #     the Data Plane's own MCP URL;
 #   - the Service Desk Admin's password. A version carries that user to the Data Plane like any
-#     other, and the Data Plane fills its password in from this secret.
+#     other, and the Data Plane fills its password in from this secret. The pack gives that user
+#     the ID 01900000-0000-7000-8000-0000000000f3 (build.sh renames the default admin), and the
+#     secret is named after the ID.
 #
 # All are set directly on the gateway's own stores. Needs SERVICE_DESK_USERNAME and
 # SERVICE_DESK_PASSWORD to be exported.
@@ -117,11 +96,11 @@ seed_dp_values() {
             -H "Content-Type: application/json" \
             -d "$2" || { echo "❌ Failed to seed $1 on the Data Plane."; failed=true; }
     }
-    dp_put "/variables/APPLICATION_ADMIN_CONSOLE_CLIENT_ID" '{"value":"ADMIN_CONSOLE"}'
-    dp_put "/variables/APPLICATION_ADMIN_CONSOLE_REDIRECT_URIS" "{\"value\":\"[\\\"$ADMIN_CONSOLE_URL\\\"]\"}"
-    dp_put "/variables/RESOURCE_SERVER_SYSTEM_IDENTIFIER" "{\"value\":\"https://localhost:$DP_PORT/mcp\"}"
+    dp_put "/variables/APPLICATION__019000000000700080000000000000F1__CLIENT_ID" '{"value":"ADMIN_CONSOLE"}'
+    dp_put "/variables/APPLICATION__019000000000700080000000000000F1__REDIRECT_URIS" "{\"value\":\"[\\\"$ADMIN_CONSOLE_URL\\\"]\"}"
+    dp_put "/variables/RESOURCE_SERVER__01900000000070008000000000000020__IDENTIFIER" "{\"value\":\"https://localhost:$DP_PORT/mcp\"}"
     password_json="$(printf '%s' "$SERVICE_DESK_PASSWORD" | sed 's/\\/\\\\/g; s/"/\\"/g')"
-    dp_put "/secrets/$(user_password_secret_name "$SERVICE_DESK_USERNAME")" "{\"value\":\"$password_json\"}"
+    dp_put "/secrets/USER__019000000000700080000000000000F3__PASSWORD" "{\"value\":\"$password_json\"}"
     [ "$failed" != "true" ]
 }
 

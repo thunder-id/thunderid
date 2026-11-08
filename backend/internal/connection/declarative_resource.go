@@ -245,7 +245,7 @@ func (e *connectionExporter) ValidateResource(ctx context.Context,
 	); err != nil {
 		return "", err
 	}
-	if reason := unexportableCredentialNames(model.Name, model.Authentication); reason != "" {
+	if reason := unexportableCredentialNames(model.ID, model.Authentication); reason != "" {
 		return "", &declarativeresource.ExportError{
 			ResourceType: resourceTypeConnection,
 			ResourceID:   id,
@@ -255,6 +255,14 @@ func (e *connectionExporter) ValidateResource(ctx context.Context,
 	}
 
 	return model.Name, nil
+}
+
+// GetResourceID returns the ID of an exported connection.
+func (e *connectionExporter) GetResourceID(resource interface{}) string {
+	if model, ok := resource.(*connectionExportModel); ok {
+		return model.ID
+	}
+	return ""
 }
 
 // GetResourceRules returns the default (no-secret) parameterization rules for connections.
@@ -320,7 +328,7 @@ func authenticationResourceRules(
 // as API-key headers, cannot each be exported as a parameter of their own, or "" when they can. The
 // parameterizer reads a dot as a path separator, and two names deriving one parameter would share a
 // value, so either would leave a secret in the YAML or lose one.
-func unexportableCredentialNames(connectionName string, auth *outboundauth.Authentication) string {
+func unexportableCredentialNames(connectionID string, auth *outboundauth.Authentication) string {
 	if auth == nil {
 		return ""
 	}
@@ -337,7 +345,7 @@ func unexportableCredentialNames(connectionName string, auth *outboundauth.Authe
 		if strings.Contains(name, ".") {
 			return fmt.Sprintf("the API-key header '%s' contains a dot", name)
 		}
-		parameter := varname.DeriveVariableName(paramTypeConnection, connectionName, name)
+		parameter := varname.DeriveVariableName(paramTypeConnection, connectionID, name)
 		if other, taken := derivedFrom[parameter]; taken {
 			return fmt.Sprintf("the API-key headers '%s' and '%s' map to the same parameter %s", other, name,
 				parameter)

@@ -14,7 +14,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -305,9 +304,8 @@ func (ts *ControlPlaneTestSuite) TestExportRefersToValuesAndImportKeepsTheRefere
 	status, raw := ts.call(http.MethodPost, "/export", map[string]any{"applications": []string{appID}}, &exported)
 	ts.Require().Equal(http.StatusOK, status, string(raw))
 
-	variable := strings.ToUpper(strings.NewReplacer(" ", "_", "-", "_").Replace(name))
-	clientIDRef := "var:APPLICATION_" + variable + "_CLIENT_ID"
-	clientSecretRef := "sec:APPLICATION_" + variable + "_CLIENT_SECRET"
+	clientIDRef := "var:" + variableName("APPLICATION", appID, "CLIENT_ID")
+	clientSecretRef := "sec:" + variableName("APPLICATION", appID, "CLIENT_SECRET")
 	ts.Contains(exported.Resources, clientIDRef)
 	ts.Contains(exported.Resources, clientSecretRef)
 	ts.NotContains(exported.Resources, clientID, "the export carried the client ID")
@@ -366,8 +364,8 @@ func (ts *ControlPlaneTestSuite) TestExportRefersToAListAsOneReference() {
 	status, raw := ts.call(http.MethodPost, "/export", map[string]any{"applications": []string{appID}}, &exported)
 	ts.Require().Equal(http.StatusOK, status, string(raw))
 
-	variable := strings.ToUpper(strings.NewReplacer(" ", "_", "-", "_").Replace(name))
-	ts.Regexp(`redirectUris:\s*\n\s*- var:APPLICATION_`+variable+`_REDIRECT_URIS\s*\n`, exported.Resources)
+	redirectURIs := variableName("APPLICATION", appID, "REDIRECT_URIS")
+	ts.Regexp(`redirectUris:\s*\n\s*- var:`+redirectURIs+`\s*\n`, exported.Resources)
 	ts.NotContains(exported.Resources, "cp-list-one.example.com", "the export carried an address")
 	ts.NotContains(exported.Resources, "cp-list-two.example.com", "the export carried an address")
 }
@@ -384,7 +382,7 @@ func (ts *ControlPlaneTestSuite) TestAnImportedResourceServerKeepsItsIdentifierR
 	}
 	status, raw := ts.call(http.MethodPost, "/export", map[string]any{"resourceServers": []string{rsID}}, &exported)
 	ts.Require().Equal(http.StatusOK, status, string(raw))
-	reference := "var:" + variableName("RESOURCE_SERVER", name, "IDENTIFIER")
+	reference := "var:" + variableName("RESOURCE_SERVER", rsID, "IDENTIFIER")
 	ts.Require().Contains(exported.Resources, "identifier: "+reference)
 
 	ts.Require().NoError(testutils.DeleteResourceServer(rsID))
@@ -440,7 +438,7 @@ func (ts *ControlPlaneTestSuite) TestAnImportedMCPResourceServerKeepsItsIdentifi
 	}
 	status, raw = ts.call(http.MethodPost, "/export", map[string]any{"resourceServers": []string{rsID}}, &exported)
 	ts.Require().Equal(http.StatusOK, status, string(raw))
-	reference := "var:" + variableName("RESOURCE_SERVER", name, "IDENTIFIER")
+	reference := "var:" + variableName("RESOURCE_SERVER", rsID, "IDENTIFIER")
 	ts.Require().Contains(exported.Resources, "identifier: "+reference)
 
 	ts.Require().NoError(testutils.DeleteResourceServer(rsID))
@@ -467,7 +465,7 @@ func (ts *ControlPlaneTestSuite) TestAnImportedMCPResourceServerKeepsItsIdentifi
 	}
 	status, raw = ts.call(http.MethodPut, "/resource-servers/"+rsID, map[string]any{
 		"name":       name,
-		"identifier": "sec:" + variableName("RESOURCE_SERVER", name, "IDENTIFIER"),
+		"identifier": "sec:" + variableName("RESOURCE_SERVER", rsID, "IDENTIFIER"),
 		"ouId":       ts.ouID,
 	}, nil)
 	ts.Require().Equal(http.StatusBadRequest, status, string(raw))

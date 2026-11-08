@@ -9,7 +9,6 @@ import (
 	"regexp"
 	"slices"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -20,9 +19,9 @@ import (
 )
 
 // templateVariablePattern matches only uppercase-only parameter names in the exact forms
-// "{{.NAME}}" and "{{- range .NAME}}". This relies on the parameterizer normalizing names
-// via toSnakeCase() (which calls strings.ToUpper()) and only emitting those two template
-// forms in parameterizer.go. Adding lowercase names or new actions like "if"/"with" will
+// "{{.NAME}}" and "{{- range .NAME}}". This relies on variable names being upper case, as
+// varname.DeriveVariableName writes them, and on parameterizer.go only emitting those two template
+// forms. Adding lowercase names or new actions like "if"/"with" will
 // require updating this regex.
 var templateVariablePattern = regexp.MustCompile(`\{\{\.([A-Z0-9_]+)\}\}|\{\{\-\s*range\s+\.([A-Z0-9_]+)\s*\}\}`)
 
@@ -55,39 +54,11 @@ const (
 // parameterizerInterface defines the interface for template parameterization.
 type parameterizerInterface interface {
 	ToParameterizedYAML(ctx context.Context, obj interface{},
-		resourceType string, resourceName string,
+		resourceType, resourceID string,
 		rules *declarativeresource.ResourceRules) (string, map[string]string, map[string]bool, error)
 	PlaceholderValues(ctx context.Context, obj interface{},
-		resourceType string, resourceName string,
+		resourceType, resourceID string,
 		rules *declarativeresource.ResourceRules) (map[string]string, map[string]string, error)
-	VarPrefix(resourceName string) string
-}
-
-// varNameAllocator hands out a unique template variable prefix per exported resource. Resource
-// names that normalize to the same prefix (for example "My-App", "My App" and "My_App", or an
-// application and a connection sharing a name) would otherwise share .env entries and silently
-// overwrite each other's values.
-type varNameAllocator struct {
-	parameterizer parameterizerInterface
-	taken         map[string]struct{}
-}
-
-func newVarNameAllocator(param parameterizerInterface) *varNameAllocator {
-	return &varNameAllocator{parameterizer: param, taken: make(map[string]struct{})}
-}
-
-// nameFor claims a variable prefix for the given resource name and returns the name to use for
-// variable naming, numerically suffixed when the prefix is already claimed by another resource.
-func (a *varNameAllocator) nameFor(resourceName string) string {
-	candidate := resourceName
-	for i := 2; ; i++ {
-		prefix := a.parameterizer.VarPrefix(candidate)
-		if _, claimed := a.taken[prefix]; !claimed {
-			a.taken[prefix] = struct{}{}
-			return candidate
-		}
-		candidate = resourceName + "_" + strconv.Itoa(i)
-	}
 }
 
 // ExportServiceInterface defines the interface for the export service.
@@ -151,7 +122,6 @@ func (es *exportService) ExportResources(
 	var exportErrors []declarativeresource.ExportError
 	allVariables := make(map[string]string)
 	resourceCounts := make(map[string]int)
-	varNames := newVarNameAllocator(es.parameterizer)
 
 	// Map resource types to their IDs from the request
 	resourceMap := map[string][]string{
@@ -203,7 +173,7 @@ func (es *exportService) ExportResources(
 		}
 
 		files, vars, errors, duplicate := es.exportResourcesWithExporter(ctx, exporter, resourceIDs, options,
-			varNames, variableOwners)
+			variableOwners)
 		if duplicate != nil {
 			return nil, tidcommon.CustomServiceError(ErrorDuplicateTemplateVariable, tidcommon.I18nMessage{
 				Key: "error.exportservice.duplicate_template_variable_description",
@@ -316,7 +286,6 @@ func (es *exportService) exportResourcesWithExporter(
 	exporter declarativeresource.ResourceExporter,
 	resourceIDs []string,
 	options *ExportOptions,
-	varNames *varNameAllocator,
 	variableOwners map[string]string,
 ) ([]ExportFile, map[string]string, []declarativeresource.ExportError, *duplicateVariable) {
 	logger := log.GetLogger().With(log.String("component", "ExportService"))
@@ -373,7 +342,7 @@ func (es *exportService) exportResourcesWithExporter(
 		}
 
 		templateContent, vars, err := es.generateTemplateFromStruct(ctx,
-			resource, exporter.GetParameterizerType(), varNames.nameFor(validatedName), exporter)
+			resource, exporter.GetParameterizerType(), resourceID, exporter)
 		if err != nil {
 			logger.Warn(ctx, "Failed to generate template from struct",
 				log.String("resourceType", resourceType),
@@ -417,9 +386,8 @@ func (es *exportService) exportResourcesWithExporter(
 	return exportFiles, variableValues, exportErrors, nil
 }
 
-// PlaceholderValues names each value the way an export of the resource alone would. An export of
-// several resources can suffix a name to keep two resources whose names normalize alike apart, and
-// which of them is suffixed depends on what else that export holds, so it cannot be known here.
+// PlaceholderValues names each value the way an export of the resource would, from the resource's own
+// type and ID.
 func (es *exportService) PlaceholderValues(ctx context.Context, resourceType string,
 	resource interface{}) (map[string]string, map[string]string, error) {
 	exporter, exists := es.registry.Get(resourceType)
@@ -427,12 +395,20 @@ func (es *exportService) PlaceholderValues(ctx context.Context, resourceType str
 		return nil, nil, fmt.Errorf("no exporter is registered for resource type %q", resourceType)
 	}
 	logger := log.GetLogger().With(log.String("component", "ExportService"))
-	name, exportErr := exporter.ValidateResource(ctx, resource, "", logger)
+	_, exportErr := exporter.ValidateResource(ctx, resource, "", logger)
 	if exportErr != nil {
 		return nil, nil, fmt.Errorf("the %s cannot be exported: %s", resourceType, exportErr.Error)
 	}
-	return es.parameterizer.PlaceholderValues(ctx, resource, exporter.GetParameterizerType(), name,
-		rulesFor(exporter, resource))
+	return es.parameterizer.PlaceholderValues(ctx, resource, exporter.GetParameterizerType(),
+		resourceIDOf(exporter, resource), rulesFor(exporter, resource))
+}
+
+// resourceIDOf returns the ID of a resource, read by an exporter that can, or "" when it cannot.
+func resourceIDOf(exporter declarativeresource.ResourceExporter, resource interface{}) string {
+	if identifier, ok := exporter.(declarativeresource.ResourceIdentifier); ok {
+		return identifier.GetResourceID(resource)
+	}
+	return ""
 }
 
 // rulesFor returns the parameterization rules an exporter applies to one resource.
@@ -445,10 +421,10 @@ func rulesFor(exporter declarativeresource.ResourceExporter,
 }
 
 func (es *exportService) generateTemplateFromStruct(ctx context.Context, data interface{},
-	paramResourceType string, resourceName string,
+	paramResourceType, resourceID string,
 	exporter declarativeresource.ResourceExporter) (string, map[string]string, error) {
 	template, vars, _, err := es.parameterizer.ToParameterizedYAML(ctx,
-		data, paramResourceType, resourceName, rulesFor(exporter, data))
+		data, paramResourceType, resourceID, rulesFor(exporter, data))
 	if err != nil {
 		return "", nil, err
 	}
@@ -567,8 +543,8 @@ func templateVariableNames(content string) []string {
 }
 
 // duplicateVariable names two resources that derive one template variable, and the variable itself.
-// The name is carried for the log and deliberately not returned to the caller, because it is derived
-// from the resource name, which for a user is their username.
+// The name is carried for the log and not returned to the caller, which only needs to know which two
+// resources clashed.
 type duplicateVariable struct {
 	owner    string
 	previous string

@@ -18,12 +18,13 @@ deployment's variable store.
 
 ```yaml
 resource_type: application
+id: 0198f3a1-7c2e-7b10-9a44-5d3e8f21c6b7
 name: Orders
 inboundAuthConfig:
   - type: oauth2
     config:
-      clientId: var:APPLICATION_ORDERS_CLIENT_ID
-      clientSecret: sec:APPLICATION_ORDERS_CLIENT_SECRET
+      clientId: var:APPLICATION__0198F3A17C2E7B109A445D3E8F21C6B7__CLIENT_ID
+      clientSecret: sec:APPLICATION__0198F3A17C2E7B109A445D3E8F21C6B7__CLIENT_SECRET
 ```
 
 The two are independent collections, so the same name may exist in both. The prefix is what says
@@ -43,10 +44,10 @@ deployment can have as many as it needs. A variable holding a plain string stand
 
 ```yaml
 redirectUris:
-  - var:APPLICATION_ORDERS_REDIRECT_URIS
+  - var:APPLICATION__0198F3A17C2E7B109A445D3E8F21C6B7__REDIRECT_URIS
 ```
 
-With `APPLICATION_ORDERS_REDIRECT_URIS` set to `["https://orders.example.com/callback", "https://orders.example.com/silent"]`,
+With `APPLICATION__0198F3A17C2E7B109A445D3E8F21C6B7__REDIRECT_URIS` set to `["https://orders.example.com/callback", "https://orders.example.com/silent"]`,
 the application is written with both URIs. A list item that is not a reference is kept beside them.
 Only a `var:` reference expands into items. A `sec:` reference is always one value, even when the
 secret it names reads as a JSON list.

@@ -45,7 +45,7 @@ shares also names it, and so does `latest`.
 - **A resource the export cannot write is left out.** For example, a user with no username. The answer
   lists it under `skipped` with the reason.
 - **A version holds references, not values.** A client secret or a user's password appears as a
-  [value reference](./value-references.mdx) such as `sec:APPLICATION_ORDERS_CLIENT_SECRET`. The gateway
+  [value reference](./value-references.mdx) such as `sec:APPLICATION__0198F3A17C2E7B109A445D3E8F21C6B7__CLIENT_SECRET`. The gateway
   fills it in from its own store when the version is applied.
 - **The current version is kept up to date in place.** A control plane captures the configuration on
   its own shortly after each change to it: it waits about two seconds after the last of a run of
@@ -383,7 +383,7 @@ curl -k https://localhost:8095/gateways/{id}/applied-configuration \
 }
 ```
 
-- A value the version refers to, such as `var:APPLICATION_ORDERS_CLIENT_ID`, is returned as the reference:
+- A value the version refers to, such as `var:APPLICATION__0198F3A17C2E7B109A445D3E8F21C6B7__CLIENT_ID`, is returned as the reference:
   the version does not hold the value. A secret the resource's own read masks is masked the same way, and
   the credentials of users and agents are never returned.
 - `parts` carries the collections a resource's own API serves apart from it, as one page holding every
@@ -491,7 +491,7 @@ and returns the gateway's answer unchanged.
 As on the gateway, a secret's value is never returned, only its name and whether it is set.
 
 ```bash
-curl -X PUT https://localhost:8090/gateways/<gateway_id>/secrets/APPLICATION_ORDERS_CLIENT_SECRET \
+curl -X PUT https://localhost:8090/gateways/<gateway_id>/secrets/APPLICATION__0198F3A17C2E7B109A445D3E8F21C6B7__CLIENT_SECRET \
   -H "Authorization: Bearer <access_token>" \
   -H "Content-Type: application/json" \
   -d '{"value": "<client_secret>"}'
