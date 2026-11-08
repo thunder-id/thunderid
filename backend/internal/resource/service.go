@@ -20,6 +20,8 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
+	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/filter"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/projectscope"
@@ -139,6 +141,7 @@ type resourceService struct {
 	projectValidator projectOUValidator
 	// keepsReferences is set on a control plane, which keeps a value reference where a value belongs.
 	keepsReferences bool
+	bus             eventbus.EventBusInterface
 }
 
 // projectOUValidator checks that the organization unit of a resource scoped to a project belongs to it.
@@ -248,6 +251,7 @@ func newResourceService(
 	authZENPDPService authZENPDPConnectionLookup,
 	valueCapturer declarativeresource.ValueCapturer,
 	projectValidator projectOUValidator,
+	bus eventbus.EventBusInterface,
 	options ...Option,
 ) (ResourceServiceInterface, error) {
 	// Load default delimiter from config
@@ -265,6 +269,7 @@ func newResourceService(
 		transactioner:     transactionerInstance,
 		valueCapturer:     valueCapturer,
 		projectValidator:  projectValidator,
+		bus:               bus,
 	}
 	for _, option := range options {
 		option(service)
@@ -276,6 +281,21 @@ func newResourceService(
 
 // CreateResourceServer creates a new resource server.
 func (rs *resourceService) CreateResourceServer(
+	ctx context.Context,
+	resourceServer providers.ResourceServer,
+) (*providers.ResourceServer, *tidcommon.ServiceError) {
+	created, svcErr := rs.createResourceServer(ctx, resourceServer)
+	var id string
+	if svcErr == nil {
+		id = created.ID
+	}
+	rs.publishEvent(ctx, audit.EventResourceServerCreate, audit.TargetTypeResourceServer, audit.ActionCreate, id,
+		svcErr)
+	return created, svcErr
+}
+
+// createResourceServer creates a new resource server without publishing its audit event.
+func (rs *resourceService) createResourceServer(
 	ctx context.Context,
 	resourceServer providers.ResourceServer,
 ) (*providers.ResourceServer, *tidcommon.ServiceError) {
@@ -596,6 +616,17 @@ func (rs *resourceService) UpdateResourceServer(
 	ctx context.Context,
 	id string, resourceServer providers.ResourceServer,
 ) (*providers.ResourceServer, *tidcommon.ServiceError) {
+	updated, svcErr := rs.updateResourceServer(ctx, id, resourceServer)
+	rs.publishEvent(ctx, audit.EventResourceServerUpdate, audit.TargetTypeResourceServer, audit.ActionUpdate, id,
+		svcErr)
+	return updated, svcErr
+}
+
+// updateResourceServer updates a resource server without publishing its audit event.
+func (rs *resourceService) updateResourceServer(
+	ctx context.Context,
+	id string, resourceServer providers.ResourceServer,
+) (*providers.ResourceServer, *tidcommon.ServiceError) {
 	if id == "" {
 		return nil, &ErrorMissingID
 	}
@@ -734,6 +765,19 @@ func (rs *resourceService) UpdateResourceServer(
 
 // DeleteResourceServer deletes a resource server.
 func (rs *resourceService) DeleteResourceServer(ctx context.Context, id string) *tidcommon.ServiceError {
+	svcErr := rs.deleteResourceServer(ctx, id)
+	// A delete that found nothing to remove succeeds without an event, so no caller can record a
+	// deletion of an ID it made up.
+	if svcErr == errResourceServerNotFoundNoop {
+		return nil
+	}
+	rs.publishEvent(ctx, audit.EventResourceServerDelete, audit.TargetTypeResourceServer, audit.ActionDelete, id,
+		svcErr)
+	return svcErr
+}
+
+// deleteResourceServer deletes a resource server without publishing its audit event.
+func (rs *resourceService) deleteResourceServer(ctx context.Context, id string) *tidcommon.ServiceError {
 	if id == "" {
 		return &ErrorMissingID
 	}
@@ -747,7 +791,7 @@ func (rs *resourceService) DeleteResourceServer(ctx context.Context, id string) 
 	_, err := rs.resourceStore.GetResourceServer(ctx, id)
 	if err != nil {
 		if errors.Is(err, errResourceServerNotFound) {
-			return nil // Idempotent delete
+			return errResourceServerNotFoundNoop // Idempotent delete
 		}
 		rs.logger.Error(ctx, "Failed to check resource server existence", log.Error(err))
 		return &tidcommon.InternalServerError
@@ -783,6 +827,21 @@ func (rs *resourceService) IsResourceServerDeclarative(id string) bool {
 
 // CreateResource creates a new resource under a resource server.
 func (rs *resourceService) CreateResource(
+	ctx context.Context,
+	resourceServerID string, resource providers.Resource,
+) (*providers.Resource, *tidcommon.ServiceError) {
+	created, svcErr := rs.createResource(ctx, resourceServerID, resource)
+	var id string
+	if svcErr == nil {
+		id = created.ID
+	}
+	rs.publishEvent(ctx, audit.EventResourceServerResourceCreate, audit.TargetTypeResource, audit.ActionCreate, id,
+		svcErr)
+	return created, svcErr
+}
+
+// createResource creates a new resource under a resource server without publishing its audit event.
+func (rs *resourceService) createResource(
 	ctx context.Context,
 	resourceServerID string, resource providers.Resource,
 ) (*providers.Resource, *tidcommon.ServiceError) {
@@ -993,6 +1052,17 @@ func (rs *resourceService) UpdateResource(
 	ctx context.Context,
 	resourceServerID, id string, resource providers.Resource,
 ) (*providers.Resource, *tidcommon.ServiceError) {
+	updated, svcErr := rs.updateResource(ctx, resourceServerID, id, resource)
+	rs.publishEvent(ctx, audit.EventResourceServerResourceUpdate, audit.TargetTypeResource, audit.ActionUpdate, id,
+		svcErr)
+	return updated, svcErr
+}
+
+// updateResource updates a resource without publishing its audit event.
+func (rs *resourceService) updateResource(
+	ctx context.Context,
+	resourceServerID, id string, resource providers.Resource,
+) (*providers.Resource, *tidcommon.ServiceError) {
 	if id == "" || resourceServerID == "" {
 		return nil, &ErrorMissingID
 	}
@@ -1057,6 +1127,20 @@ func (rs *resourceService) UpdateResource(
 // DeleteResource deletes a resource.
 func (rs *resourceService) DeleteResource(
 	ctx context.Context, resourceServerID, id string) *tidcommon.ServiceError {
+	svcErr := rs.deleteResource(ctx, resourceServerID, id)
+	// A delete that found nothing to remove succeeds without an event, so no caller can record a
+	// deletion of an ID it made up.
+	if svcErr == errResourceNotFoundNoop {
+		return nil
+	}
+	rs.publishEvent(ctx, audit.EventResourceServerResourceDelete, audit.TargetTypeResource, audit.ActionDelete, id,
+		svcErr)
+	return svcErr
+}
+
+// deleteResource deletes a resource without publishing its audit event.
+func (rs *resourceService) deleteResource(
+	ctx context.Context, resourceServerID, id string) *tidcommon.ServiceError {
 	if id == "" || resourceServerID == "" {
 		return &ErrorMissingID
 	}
@@ -1074,7 +1158,7 @@ func (rs *resourceService) DeleteResource(
 	_, err := rs.resourceStore.GetResourceServer(ctx, resourceServerID)
 	if err != nil {
 		if errors.Is(err, errResourceServerNotFound) {
-			return nil // Idempotent delete
+			return errResourceNotFoundNoop // Idempotent delete
 		}
 		rs.logger.Error(ctx, "Failed to check resource server", log.Error(err))
 		return &tidcommon.InternalServerError
@@ -1083,7 +1167,7 @@ func (rs *resourceService) DeleteResource(
 	// Check resource exists
 	if _, err := rs.resourceStore.GetResource(ctx, id, resourceServerID); err != nil {
 		if errors.Is(err, errResourceNotFound) {
-			return nil // Idempotent delete
+			return errResourceNotFoundNoop // Idempotent delete
 		}
 		rs.logger.Error(ctx, "Failed to check resource existence", log.Error(err))
 		return &tidcommon.InternalServerError
@@ -1115,6 +1199,21 @@ func (rs *resourceService) DeleteResource(
 // If resourceID is nil, creates action at resource server level.
 // If resourceID is provided, creates action at resource level.
 func (rs *resourceService) CreateAction(
+	ctx context.Context,
+	resourceServerID string, resourceID *string, action providers.Action,
+) (*providers.Action, *tidcommon.ServiceError) {
+	created, svcErr := rs.createAction(ctx, resourceServerID, resourceID, action)
+	var id string
+	if svcErr == nil {
+		id = created.ID
+	}
+	rs.publishEvent(ctx, audit.EventResourceServerActionCreate, audit.TargetTypeAction, audit.ActionCreate, id,
+		svcErr)
+	return created, svcErr
+}
+
+// createAction creates an action without publishing its audit event.
+func (rs *resourceService) createAction(
 	ctx context.Context,
 	resourceServerID string, resourceID *string, action providers.Action,
 ) (*providers.Action, *tidcommon.ServiceError) {
@@ -1327,6 +1426,17 @@ func (rs *resourceService) UpdateAction(
 	ctx context.Context,
 	resourceServerID string, resourceID *string, id string, action providers.Action,
 ) (*providers.Action, *tidcommon.ServiceError) {
+	updated, svcErr := rs.updateAction(ctx, resourceServerID, resourceID, id, action)
+	rs.publishEvent(ctx, audit.EventResourceServerActionUpdate, audit.TargetTypeAction, audit.ActionUpdate, id,
+		svcErr)
+	return updated, svcErr
+}
+
+// updateAction updates an action without publishing its audit event.
+func (rs *resourceService) updateAction(
+	ctx context.Context,
+	resourceServerID string, resourceID *string, id string, action providers.Action,
+) (*providers.Action, *tidcommon.ServiceError) {
 	if id == "" || resourceServerID == "" {
 		return nil, &ErrorMissingID
 	}
@@ -1410,6 +1520,22 @@ func (rs *resourceService) DeleteAction(
 	ctx context.Context,
 	resourceServerID string, resourceID *string, id string,
 ) *tidcommon.ServiceError {
+	svcErr := rs.deleteAction(ctx, resourceServerID, resourceID, id)
+	// A delete that found nothing to remove succeeds without an event, so no caller can record a
+	// deletion of an ID it made up.
+	if svcErr == errActionNotFoundNoop {
+		return nil
+	}
+	rs.publishEvent(ctx, audit.EventResourceServerActionDelete, audit.TargetTypeAction, audit.ActionDelete, id,
+		svcErr)
+	return svcErr
+}
+
+// deleteAction deletes an action without publishing its audit event.
+func (rs *resourceService) deleteAction(
+	ctx context.Context,
+	resourceServerID string, resourceID *string, id string,
+) *tidcommon.ServiceError {
 	if svcErr := rs.validateActionDelete(ctx, resourceServerID, resourceID, id); svcErr != nil {
 		return svcErr
 	}
@@ -1418,7 +1544,7 @@ func (rs *resourceService) DeleteAction(
 	_, svcErr := rs.validateAndGetResourceServer(ctx, resourceServerID)
 	if svcErr != nil {
 		if svcErr.Code == ErrorResourceServerNotFound.Code {
-			return nil // Idempotent delete
+			return errActionNotFoundNoop // Idempotent delete
 		}
 		return svcErr
 	}
@@ -1429,7 +1555,7 @@ func (rs *resourceService) DeleteAction(
 		_, svcErr := rs.validateAndGetResourceByID(ctx, *resourceID, resourceServerID)
 		if svcErr != nil {
 			if svcErr.Code == ErrorResourceNotFound.Code {
-				return nil // Idempotent delete
+				return errActionNotFoundNoop // Idempotent delete
 			}
 			return svcErr
 		}
@@ -1443,7 +1569,7 @@ func (rs *resourceService) DeleteAction(
 		return &tidcommon.InternalServerError
 	}
 	if !exists {
-		return nil // Idempotent delete
+		return errActionNotFoundNoop // Idempotent delete
 	}
 
 	// Use transaction for write operation
@@ -1458,6 +1584,19 @@ func (rs *resourceService) DeleteAction(
 	}
 
 	return nil
+}
+
+// publishEvent publishes the audit event of an attempt on the resource server, resource or action with id,
+// after the change committed or was refused. Names, identifiers, handles and permission strings are never
+// recorded. A delete removes the permissions roles hold on what it deletes without an event of their
+// own: a known limitation.
+func (rs *resourceService) publishEvent(ctx context.Context, name, targetType string, action audit.Action,
+	id string, svcErr *tidcommon.ServiceError) {
+	// A failed attempt keeps the ID the caller asked for, even one that matches nothing, as forensic
+	// evidence of what was probed; the payload caps it and the sink escapes it.
+	target := audit.Ref{Type: targetType, ID: id}
+	eventbus.TryPublish(ctx, rs.bus,
+		eventbus.NewEvent(ctx, name).With(audit.ChangePayload(ctx, target, action, svcErr)))
 }
 
 // ValidateDeleteAction runs DeleteAction's checks and returns the action's scope, revoked deployment-wide.

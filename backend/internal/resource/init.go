@@ -11,6 +11,7 @@ import (
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
@@ -30,14 +31,22 @@ func KeepingValueReferences() Option {
 // valueCapturer is optional. Given one, the service hands it every resource server it creates or
 // changes, so the values the resource server's export refers to are kept where a reference finds them.
 // projectValidator is nil on a deployment that serves no projects, where a project ID is kept unchecked.
+//
+// bus is required: the service publishes the audit event of every resource server, resource and action
+// it creates, updates or deletes on it.
 func Initialize(
 	mux *http.ServeMux,
 	ouService oupkg.OrganizationUnitServiceInterface,
 	authZENPDPService authzenpdp.AuthZENPDPServiceInterface,
 	valueCapturer declarativeresource.ValueCapturer,
 	projectValidator projectOUValidator,
+	bus eventbus.EventBusInterface,
 	options ...Option,
 ) (ResourceServiceInterface, declarativeresource.ResourceExporter, error) {
+	if bus == nil {
+		return nil, nil, errNilEventBus
+	}
+
 	// Initialize store and transactioner based on store mode
 	resourceStore, transactioner, err := initializeStore()
 	if err != nil {
@@ -45,7 +54,7 @@ func Initialize(
 	}
 
 	resourceService, err := newResourceService(ouService, resourceStore, transactioner, authZENPDPService,
-		valueCapturer, projectValidator, options...)
+		valueCapturer, projectValidator, bus, options...)
 	if err != nil {
 		return nil, nil, err
 	}

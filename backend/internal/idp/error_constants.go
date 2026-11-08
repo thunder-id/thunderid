@@ -231,3 +231,13 @@ var (
 		},
 	}
 )
+
+// errNilEventBus is returned when the service is initialized without the event bus it audits on.
+var errNilEventBus = errors.New("the identity provider service needs an event bus")
+
+// errIDPNotFoundNoop is returned by deleteIdentityProvider when the identity provider does not exist.
+// DeleteIdentityProvider turns it into a success, so it never reaches a caller.
+var errIDPNotFoundNoop = &tidcommon.ServiceError{
+	Type: tidcommon.ClientErrorType,
+	Code: ErrorIDPNotFound.Code,
+}

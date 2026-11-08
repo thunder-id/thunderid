@@ -1424,6 +1424,31 @@ func TestImportResources_ConnectionIDPUpsertFallsBackToCreateOnNotFound(t *testi
 	require.Len(t, idpSvc.created, 1)
 }
 
+// An upsert of an identity provider that does not exist looks it up rather than attempting an update, so
+// the create is not preceded by a failed update: an update attempted here would fail with updateErr.
+func TestImportResources_ConnectionIDPUpsertOfAMissingIDPAttemptsNoUpdate(t *testing.T) {
+	idpSvc := &fakeIDPService{
+		byID: map[string]*providers.IDPDTO{}, byName: map[string]*providers.IDPDTO{},
+		updateErr: &tidcommon.ServiceError{
+			Type: tidcommon.ServerErrorType, Code: "IDP-5000",
+			Error: tidcommon.I18nMessage{DefaultValue: "internal error"},
+		},
+	}
+	svc := newImportService(
+		nil, idpSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{
+		Content: "resource_type: connection\nid: missing-idp\nname: idp-one\ntype: google\nclientId: abc\n",
+		Options: &ImportOptions{Upsert: boolPtr(true), ContinueOnError: boolPtr(true), Target: importTargetRuntime},
+	})
+
+	require.Nil(t, err)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status, resp.Results[0].Message)
+	assert.Equal(t, operationCreate, resp.Results[0].Operation)
+	require.Len(t, idpSvc.created, 1)
+}
+
 func TestImportResources_DryRunConnectionIDPCreateWithoutWrite(t *testing.T) {
 	idpSvc := &fakeIDPService{byID: map[string]*providers.IDPDTO{}, byName: map[string]*providers.IDPDTO{}}
 	svc := newImportService(
@@ -3794,6 +3819,8 @@ func TestGetAgentOAuthConfigForImport_NilRequest(t *testing.T) {
 type fakeResourceServerService struct {
 	created []providers.ResourceServer
 	updated []providers.ResourceServer
+	// servers are the IDs of the resource servers that already exist.
+	servers []string
 	// resources are the resources created under a server, in the order they were written.
 	resources []providers.Resource
 	// actions are the actions created under a server, in the order they were written, each with the
@@ -3825,6 +3852,9 @@ func (f *fakeResourceServerService) CreateResourceServer(
 func (f *fakeResourceServerService) GetResourceServer(
 	_ context.Context, id string,
 ) (*providers.ResourceServer, *tidcommon.ServiceError) {
+	if slices.Contains(f.servers, id) {
+		return &providers.ResourceServer{ID: id}, nil
+	}
 	return nil, &tidcommon.ServiceError{
 		Type:  tidcommon.ClientErrorType,
 		Code:  resource.ErrorResourceServerNotFound.Code,
@@ -4468,6 +4498,7 @@ func TestImportResourceServer_SameHandleUnderDifferentParents(t *testing.T) {
 // new resources under that root and their actions.
 func TestImportResourceServer_UpsertAddsResourcesUnderExistingRoot(t *testing.T) {
 	rsSvc := &fakeResourceServerService{
+		servers:      []string{"rs-system"},
 		resourceErrs: map[string]*tidcommon.ServiceError{"system": &resource.ErrorHandleConflict},
 		existing:     []providers.Resource{{ID: "id-existing-system", Handle: "system"}},
 	}
@@ -4521,6 +4552,7 @@ func TestImportResourceServer_UpsertAddsResourcesUnderExistingRoot(t *testing.T)
 func TestImportResourceServer_UpsertAddsActionsToExistingResource(t *testing.T) {
 	systemID := "id-existing-system"
 	rsSvc := &fakeResourceServerService{
+		servers: []string{"rs-system"},
 		resourceErrs: map[string]*tidcommon.ServiceError{
 			"system": &resource.ErrorHandleConflict,
 			"app":    &resource.ErrorHandleConflict,
@@ -4566,6 +4598,26 @@ func TestImportResourceServer_UpsertAddsActionsToExistingResource(t *testing.T) 
 			Name: "Update", Handle: "update", Permission: "system:app:update",
 		}},
 	}, rsSvc.actions)
+}
+
+// An upsert of a resource server that does not exist looks it up rather than attempting an update, so
+// the create is not preceded by a failed update.
+func TestImportResourceServer_UpsertOfAMissingServerAttemptsNoUpdate(t *testing.T) {
+	rsSvc := &fakeResourceServerService{}
+	svc := newImportService(
+		nil, nil, nil, nil, nil, nil, nil, nil, nil, rsSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{
+		Content: "resource_type: resource_server\nid: rs-new\nname: New\nidentifier: new-rs\nouId: ou-explicit\n",
+		Options: &ImportOptions{Upsert: boolPtr(true)},
+	})
+
+	require.Nil(t, err)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status, resp.Results[0].Message)
+	assert.Equal(t, operationCreate, resp.Results[0].Operation)
+	assert.Empty(t, rsSvc.updated)
+	require.Len(t, rsSvc.created, 1)
 }
 
 // TestImportResourceServer_ServerActions verifies that the actions declared on a resource server

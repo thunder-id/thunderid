@@ -895,8 +895,14 @@ func (s *importService) importConnectionIDP(
 	}
 
 	if options.IsUpsertEnabled() && req.ID != "" {
-		updated, svcErr := s.idpService.UpdateIdentityProvider(ctx, req.ID, req)
+		// The upsert looks the identity provider up rather than attempting an update, so a create is not
+		// preceded by an audited failed update.
+		_, svcErr := s.idpService.GetIdentityProvider(ctx, req.ID)
 		if svcErr == nil {
+			var updated *providers.IDPDTO
+			if updated, svcErr = s.idpService.UpdateIdentityProvider(ctx, req.ID, req); svcErr != nil {
+				return serviceErrorOutcome(resourceTypeConnection, req.ID, req.Name, operationUpdate, svcErr)
+			}
 			return ImportItemOutcome{
 				ResourceType: resourceTypeConnection,
 				ResourceID:   updated.ID,

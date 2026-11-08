@@ -3,7 +3,11 @@
 
 package authzenpdp
 
-import tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+import (
+	"errors"
+
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+)
 
 var (
 	// ErrorNotFound is returned when an AuthZEN PDP connection does not exist.
@@ -156,3 +160,16 @@ var (
 		},
 	}
 )
+
+// errConnectionNotFound reports that a delete matched no AuthZEN PDP connection.
+var errConnectionNotFound = errors.New("AuthZEN PDP connection not found")
+
+// errNilEventBus is returned when the service is initialized without the event bus it audits on.
+var errNilEventBus = errors.New("the AuthZEN PDP connection service needs an event bus")
+
+// errNotFoundNoop is returned by deleteAuthZENPDPConnection when the connection does not exist.
+// DeleteAuthZENPDPConnection turns it into a success, so it never reaches a caller.
+var errNotFoundNoop = &tidcommon.ServiceError{
+	Type: tidcommon.ClientErrorType,
+	Code: ErrorNotFound.Code,
+}

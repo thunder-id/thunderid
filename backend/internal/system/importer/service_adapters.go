@@ -556,8 +556,14 @@ func (s *importService) importResourceServer(
 	}
 
 	if options.IsUpsertEnabled() && req.ID != "" {
-		updated, svcErr := s.resourceService.UpdateResourceServer(ctx, req.ID, req)
+		// The upsert looks the resource server up rather than attempting an update, so a create is not
+		// preceded by an audited failed update.
+		_, svcErr := s.resourceService.GetResourceServer(ctx, req.ID)
 		if svcErr == nil {
+			var updated *providers.ResourceServer
+			if updated, svcErr = s.resourceService.UpdateResourceServer(ctx, req.ID, req); svcErr != nil {
+				return serviceErrorOutcome(resourceTypeResourceServer, req.ID, req.Name, operationUpdate, svcErr)
+			}
 			if err := s.importResourceServerChildren(ctx, updated.ID, req); err != nil {
 				return serviceErrorOutcome(resourceTypeResourceServer, updated.ID, updated.Name, operationUpdate, err)
 			}

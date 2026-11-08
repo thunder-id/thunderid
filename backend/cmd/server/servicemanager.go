@@ -241,10 +241,11 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	err = governanceCfg.Validate()
 	fatalOnError(ctx, logger, err, "Invalid account_access configuration")
 
-	authZENPDPService, err := authzenpdp.Initialize(runtime.Config.AuthZENPDP, entityTypeService, ouService)
+	authZENPDPService, err := authzenpdp.Initialize(runtime.Config.AuthZENPDP, entityTypeService, ouService, auditBus)
 	fatalOnError(ctx, logger, err, "Failed to initialize AuthZENPDPService")
 
-	resourceService, resourceExporter, err := resource.Initialize(mux, ouService, authZENPDPService, nil, nil)
+	resourceService, resourceExporter, err := resource.Initialize(mux, ouService, authZENPDPService, nil, nil,
+		auditBus)
 	fatalOnError(ctx, logger, err, "Failed to initialize Resource Service")
 	exporters = append(exporters, resourceExporter)
 
@@ -317,7 +318,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	fatalOnError(ctx, logger, err, "Failed to initialize GroupService")
 	exporters = append(exporters, groupExporter)
 
-	httpConnectionService, err := httpconnection.Initialize(runtime.Config.HTTPConnection, ouService)
+	httpConnectionService, err := httpconnection.Initialize(runtime.Config.HTTPConnection, ouService, auditBus)
 	fatalOnError(ctx, logger, err, "Failed to initialize HTTPConnectionService")
 
 	roleService, roleAssignmentService, ouRoleResolver, roleExporter, err := role.Initialize(
@@ -354,7 +355,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		roleService, resourceService, entityService, authZENPDPService)
 
 	idpService, err := idp.Initialize(
-		cacheManager, entityTypeService, roleService, groupService, resourceService, ouService)
+		cacheManager, entityTypeService, roleService, groupService, resourceService, ouService, auditBus)
 	fatalOnError(ctx, logger, err, "Failed to initialize IDPService")
 
 	// Register the /connections API as a thin layer over the identity-provider and
