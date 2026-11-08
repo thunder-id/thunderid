@@ -11,6 +11,8 @@ import (
 	"time"
 
 	syscontext "github.com/thunder-id/thunderid/internal/system/context"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
+	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/observability/event"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
@@ -148,15 +150,17 @@ type identityGovernanceService struct {
 	observability providers.ObservabilityProvider
 	// dependencyRegistry names the identities suspended together with another. Optional.
 	dependencyRegistry resourcedependency.Registry
-	logger             *log.Logger
-	now                func() time.Time
+	// bus receives the audit event of every lifecycle operation and lock formation.
+	bus    eventbus.EventBusInterface
+	logger *log.Logger
+	now    func() time.Time
 }
 
 // newIdentityGovernanceService builds the governance service.
 func newIdentityGovernanceService(entityState entityStateProvider, source accountAccessSourceInterface,
 	transactioner providers.Transactioner, notifier LockNotifierInterface,
 	authorizer sysauthz.SystemAuthorizationServiceInterface,
-	observability providers.ObservabilityProvider) *identityGovernanceService {
+	observability providers.ObservabilityProvider, bus eventbus.EventBusInterface) *identityGovernanceService {
 	return &identityGovernanceService{
 		entityState:   entityState,
 		source:        source,
@@ -164,6 +168,7 @@ func newIdentityGovernanceService(entityState entityStateProvider, source accoun
 		notifier:      notifier,
 		authorizer:    authorizer,
 		observability: observability,
+		bus:           bus,
 		logger:        log.GetLogger().With(log.String(log.LoggerKeyComponentName, "IdentityGovernanceService")),
 		now:           func() time.Time { return time.Now().UTC() },
 	}
@@ -287,7 +292,7 @@ func (s *identityGovernanceService) AdmitSignIn(ctx context.Context,
 // suspension. A runtime-context caller is a recovery flow, so its unlock is recorded as self-service.
 func (s *identityGovernanceService) Unlock(ctx context.Context, entityID string) (svcErr *tidcommon.ServiceError) {
 	record := lifecycleAudit{succeeded: event.EventTypeIdentityUnlocked,
-		failed: event.EventTypeIdentityUnlockFailed, entityID: entityID}
+		failed: event.EventTypeIdentityUnlockFailed, auditAction: audit.ActionUnlock, entityID: entityID}
 	if security.IsRuntimeContext(ctx) {
 		record.succeeded, record.failed = event.EventTypeIdentitySelfUnlocked, event.EventTypeIdentitySelfUnlockFailed
 	}
@@ -310,8 +315,8 @@ func (s *identityGovernanceService) Suspend(ctx context.Context,
 	noteRecorded := operatorNote != ""
 	appliedBy := suspensionApplier(ctx)
 	record := lifecycleAudit{succeeded: event.EventTypeIdentitySuspended,
-		failed: event.EventTypeIdentitySuspensionFailed, entityID: entityID, operatorNoteRecorded: &noteRecorded,
-		appliedBy: appliedBy}
+		failed: event.EventTypeIdentitySuspensionFailed, auditAction: audit.ActionSuspend,
+		entityID: entityID, operatorNoteRecorded: &noteRecorded, appliedBy: appliedBy}
 	defer func() { s.audit(ctx, &record, svcErr) }()
 
 	entity, svcErr := s.governedForLifecycle(ctx, entityID, &record)
@@ -349,7 +354,8 @@ func (s *identityGovernanceService) Suspend(ctx context.Context,
 // ValidateSuspend runs Suspend's checks without writing. Only a refusal is audited.
 func (s *identityGovernanceService) ValidateSuspend(ctx context.Context,
 	entityID, operatorNote string) (svcErr *tidcommon.ServiceError) {
-	record := lifecycleAudit{failed: event.EventTypeIdentitySuspensionFailed, entityID: entityID}
+	record := lifecycleAudit{failed: event.EventTypeIdentitySuspensionFailed,
+		auditAction: audit.ActionSuspend, entityID: entityID}
 	defer func() {
 		if svcErr != nil {
 			s.audit(ctx, &record, svcErr)
@@ -371,7 +377,8 @@ func (s *identityGovernanceService) Unsuspend(ctx context.Context,
 	entityID string) (svcErr *tidcommon.ServiceError) {
 	appliedBy := suspensionApplier(ctx)
 	record := lifecycleAudit{succeeded: event.EventTypeIdentityUnsuspended,
-		failed: event.EventTypeIdentityUnsuspensionFailed, entityID: entityID, appliedBy: appliedBy}
+		failed: event.EventTypeIdentityUnsuspensionFailed, auditAction: audit.ActionUnsuspend,
+		entityID: entityID, appliedBy: appliedBy}
 	defer func() { s.audit(ctx, &record, svcErr) }()
 
 	entity, svcErr := s.governedForLifecycle(ctx, entityID, &record)
@@ -713,14 +720,16 @@ func (s *identityGovernanceService) cascadeSuspension(ctx context.Context, entit
 		}
 
 		record := lifecycleAudit{succeeded: event.EventTypeIdentitySuspended,
-			failed: event.EventTypeIdentitySuspensionFailed, entityID: dependentID, category: dependent.Category,
-			message: messageCascadedSuspensionPlaced, appliedBy: providers.SuspensionAppliedByCascade}
+			failed: event.EventTypeIdentitySuspensionFailed, auditAction: audit.ActionSuspend, entityID: dependentID,
+			category: dependent.Category, message: messageCascadedSuspensionPlaced,
+			appliedBy: providers.SuspensionAppliedByCascade}
 		var changed bool
 		if suspend {
 			changed, err = s.entityState.SetCascadeSuspension(ctx, dependentID, s.now())
 		} else {
 			record.succeeded, record.failed = event.EventTypeIdentityUnsuspended,
 				event.EventTypeIdentityUnsuspensionFailed
+			record.auditAction = audit.ActionUnsuspend
 			record.message = messageCascadedSuspensionReleased
 			changed, err = s.entityState.ClearCascadeSuspension(ctx, dependentID)
 		}
@@ -803,9 +812,15 @@ func (s *identityGovernanceService) authorize(ctx context.Context, entity Govern
 	return nil
 }
 
-// audit publishes one lifecycle operation as an event. The actor is the caller's subject, left empty
-// under a runtime context.
+// audit publishes one lifecycle operation as an audit event and an observability event. The
+// observability actor is the caller's subject, left empty under a runtime context.
 func (s *identityGovernanceService) audit(ctx context.Context, record *lifecycleAudit, svcErr *tidcommon.ServiceError) {
+	if name, ok := auditEventNames[record.category][record.auditAction]; ok {
+		target := audit.Ref{Type: auditTargetTypes[record.category], ID: record.entityID}
+		eventbus.TryPublish(ctx, s.bus, eventbus.NewEvent(ctx, name).
+			With(audit.ChangePayload(ctx, target, record.auditAction, svcErr)))
+	}
+
 	eventType, status := record.succeeded, providers.StatusSuccess
 	if svcErr != nil {
 		eventType, status = record.failed, providers.StatusFailure
@@ -851,10 +866,17 @@ func (s *identityGovernanceService) audit(ctx context.Context, record *lifecycle
 	s.observability.PublishEvent(ctx, evt)
 }
 
-// auditLockFormed records one committed lock formation as a log line and, when observability is on, an
-// event. Failed authentication is the trigger, so there is no actor.
+// auditLockFormed records one committed lock formation as an audit event, a log line and, when
+// observability is on, an event. Failed authentication is the trigger, so there is no actor.
 func (s *identityGovernanceService) auditLockFormed(ctx context.Context, entity GovernedEntity,
 	method providers.AuthenticationMethod, episode LockEpisode) {
+	if name, ok := auditEventNames[entity.Category][audit.ActionLock]; ok {
+		target := audit.Ref{Type: auditTargetTypes[entity.Category], ID: entity.ID}
+		eventbus.TryPublish(ctx, s.bus, eventbus.NewEvent(ctx, name).
+			With(audit.NewPayload(ctx, target, audit.ActionLock, audit.OutcomeSucceeded).WithSubject(target).
+				WithDetails(map[string]string{audit.DetailAuthenticationMethod: string(method)})))
+	}
+
 	permanent := episode.UnlockAt == permanentUnlockAt
 	if s.logger.IsDebugEnabled() {
 		s.logger.Debug(ctx, "Account access lock formed",

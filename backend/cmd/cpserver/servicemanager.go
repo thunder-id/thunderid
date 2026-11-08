@@ -256,7 +256,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	// Identity governance derives the status management reads report. The Control Plane sends no lock
 	// email.
 	governanceService, _, err := identitygovernance.Initialize(dbprovider.GetDBProvider(), entityService,
-		serverConfigService, governanceCfg, nil, ouAuthzService, observabilitySvc)
+		serverConfigService, governanceCfg, nil, ouAuthzService, observabilitySvc, auditBus)
 	fatalOnError(ctx, logger, err, "Failed to initialize IdentityGovernanceService")
 
 	userService, ouUserResolver, userExporter, err := user.Initialize(
