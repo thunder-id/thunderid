@@ -55,8 +55,9 @@ jobs:
 
       - name: 🏷️ Set Version (if provided)
         if: ${{ github.event.inputs.version != '' && github.event.inputs.version != null }}
+        env:
+          VERSION: ${{ github.event.inputs.version }}
         run: |
-          VERSION="${{ github.event.inputs.version }}"
           echo "$VERSION" > version.txt
           echo "Set version to: $VERSION"
 
@@ -90,12 +91,14 @@ jobs:
     steps:
       - name: 📥 Download Distribution
         id: download
+        env:
+          DIST_URL: ${{ github.event.inputs.distribution-url }}
         run: |
-          DIST_URL="${{ github.event.inputs.distribution-url }}"
-          DIST_FILENAME="product-distribution.zip"
+          # Keep the URL's file name: the integration tests look for thunderid-*-<os>-<arch>.zip.
+          DIST_FILENAME=$(basename "${DIST_URL%%\?*}")
           
           echo "Downloading distribution from: $DIST_URL"
-          curl -L -o "$DIST_FILENAME" "$DIST_URL"
+          curl -fL -o "$DIST_FILENAME" "$DIST_URL"
           
           # Verify the download
           if [ ! -f "$DIST_FILENAME" ]; then
@@ -105,6 +108,13 @@ jobs:
           
           echo "✅ Distribution downloaded successfully"
           echo "distribution-path=$DIST_FILENAME" >> $GITHUB_OUTPUT
+
+      - name: 📦 Upload Downloaded Distribution
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: product-distribution
+          path: ${{ steps.download.outputs.distribution-path }}
+          if-no-files-found: error
 
   test-postgres:
     name: 🧪 PostgreSQL Integration Tests
