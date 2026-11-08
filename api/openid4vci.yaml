@@ -21,8 +21,10 @@ paths:
     get:
       tags: [Credential Configurations]
       summary: List credential configurations
-      description: Returns credential configuration summaries with resolved organization-unit handles.
+      description: Returns credential configuration summaries with resolved organization-unit handles, or the summaries of one project's configurations when projectId is given.
       operationId: listCredentialConfigurations
+      parameters:
+        - $ref: '#/components/parameters/VCIProjectID'
       responses:
         "200":
           description: Credential configuration summaries
@@ -46,7 +48,7 @@ paths:
             schema: {$ref: '#/components/schemas/VCICredentialConfigurationRequest'}
             example:
               handle: example-pid
-              ouId: 01900000-0000-7000-8000-000000000001
+              projectId: 01900000-0000-7000-8000-000000000002
               vct: urn:example:pid:1
               claims:
                 - name: given_name
@@ -136,6 +138,12 @@ components:
       required: true
       description: Credential configuration ID.
       schema: {type: string}
+    VCIProjectID:
+      name: projectId
+      in: query
+      required: false
+      description: List only the credential configurations of this project. A project that does not exist has none.
+      schema: {type: string}
   responses:
     VCIUnauthorized:
       description: Authentication is required.
@@ -148,14 +156,35 @@ components:
         application/json:
           schema: {$ref: '#/components/schemas/VCIError'}
     VCIInvalidRequest:
-      description: The request is malformed, omits a required field, uses an unsupported format, references an invalid organization unit, or contains invalid claims.
+      description: The request is malformed, omits a required field, uses an unsupported format, references an invalid organization unit, contains invalid claims, or names no project, a project that does not exist, or an organization unit outside its project.
       content:
         application/json:
           schema: {$ref: '#/components/schemas/VCIError'}
-          example:
-            code: VCI-2001
-            message: {key: error.vci.configuration_invalid_request, defaultValue: Invalid request}
-            description: {key: error.vci.configuration_invalid_request_description, defaultValue: The credential configuration request is missing required fields or is malformed}
+          examples:
+            invalidRequest:
+              summary: Malformed request
+              value:
+                code: VCI-2001
+                message: {key: error.vci.configuration_invalid_request, defaultValue: Invalid request}
+                description: {key: error.vci.configuration_invalid_request_description, defaultValue: The credential configuration request is missing required fields or is malformed}
+            projectRequired:
+              summary: No project on the Control Plane
+              value:
+                code: VCI-2015
+                message: {key: error.vci.configuration_project_required, defaultValue: Project required}
+                description: {key: error.vci.configuration_project_required_description, defaultValue: A credential configuration must belong to a project. Set projectId to the project it belongs to}
+            invalidProject:
+              summary: Project does not exist
+              value:
+                code: VCI-2013
+                message: {key: error.vci.configuration_invalid_project, defaultValue: Invalid project}
+                description: {key: error.vci.configuration_invalid_project_description, defaultValue: No project exists with the given project ID}
+            ouNotInProject:
+              summary: Organization unit outside the project
+              value:
+                code: VCI-2014
+                message: {key: error.vci.configuration_ou_not_in_project, defaultValue: Organization unit not in project}
+                description: {key: error.vci.configuration_ou_not_in_project_description, defaultValue: The organization unit must belong to the project}
     VCINotFound:
       description: No credential configuration exists for the supplied ID.
       content:
@@ -188,10 +217,11 @@ components:
   schemas:
     VCICredentialConfigurationRequest:
       type: object
-      required: [handle, ouId, vct]
+      required: [handle, vct]
       properties:
         handle: {type: string, description: Unique credential configuration handle.}
-        ouId: {type: string, description: ID of the organization unit that owns this configuration.}
+        ouId: {type: string, description: ID of the organization unit that owns this configuration. Required unless projectId is given; a configuration in a project is in the system organization unit.}
+        projectId: {type: string, description: "ID of the project this configuration belongs to. Required on the Control Plane, where a request without it fails with VCI-2015 and a project that does not exist fails with VCI-2013. On update, leaving it out keeps the configuration's project."}
         name: {type: string}
         description: {type: string}
         format: {type: string, enum: [dc+sd-jwt], default: dc+sd-jwt, description: Credential format.}
@@ -219,6 +249,7 @@ components:
           handle: {type: string}
           ouId: {type: string}
           ouHandle: {type: string, readOnly: true}
+          projectId: {type: string}
           format: {type: string}
           vct: {type: string}
           name: {type: string}

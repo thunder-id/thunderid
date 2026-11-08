@@ -518,6 +518,76 @@ func (_c *PresentationDefinitionServiceInterfaceMock_ListPresentationDefinitionS
 	return _c
 }
 
+// ListPresentationDefinitionSummariesByProject provides a mock function for the type PresentationDefinitionServiceInterfaceMock
+func (_mock *PresentationDefinitionServiceInterfaceMock) ListPresentationDefinitionSummariesByProject(ctx context.Context, projectID string) ([]PresentationDefinitionList, *common.ServiceError) {
+	ret := _mock.Called(ctx, projectID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListPresentationDefinitionSummariesByProject")
+	}
+
+	var r0 []PresentationDefinitionList
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) ([]PresentationDefinitionList, *common.ServiceError)); ok {
+		return returnFunc(ctx, projectID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) []PresentationDefinitionList); ok {
+		r0 = returnFunc(ctx, projectID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]PresentationDefinitionList)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, projectID)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// PresentationDefinitionServiceInterfaceMock_ListPresentationDefinitionSummariesByProject_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ListPresentationDefinitionSummariesByProject'
+type PresentationDefinitionServiceInterfaceMock_ListPresentationDefinitionSummariesByProject_Call struct {
+	*mock.Call
+}
+
+// ListPresentationDefinitionSummariesByProject is a helper method to define mock.On call
+//   - ctx context.Context
+//   - projectID string
+func (_e *PresentationDefinitionServiceInterfaceMock_Expecter) ListPresentationDefinitionSummariesByProject(ctx any, projectID any) *PresentationDefinitionServiceInterfaceMock_ListPresentationDefinitionSummariesByProject_Call {
+	return &PresentationDefinitionServiceInterfaceMock_ListPresentationDefinitionSummariesByProject_Call{Call: _e.mock.On("ListPresentationDefinitionSummariesByProject", ctx, projectID)}
+}
+
+func (_c *PresentationDefinitionServiceInterfaceMock_ListPresentationDefinitionSummariesByProject_Call) Run(run func(ctx context.Context, projectID string)) *PresentationDefinitionServiceInterfaceMock_ListPresentationDefinitionSummariesByProject_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *PresentationDefinitionServiceInterfaceMock_ListPresentationDefinitionSummariesByProject_Call) Return(presentationDefinitionLists []PresentationDefinitionList, serviceError *common.ServiceError) *PresentationDefinitionServiceInterfaceMock_ListPresentationDefinitionSummariesByProject_Call {
+	_c.Call.Return(presentationDefinitionLists, serviceError)
+	return _c
+}
+
+func (_c *PresentationDefinitionServiceInterfaceMock_ListPresentationDefinitionSummariesByProject_Call) RunAndReturn(run func(ctx context.Context, projectID string) ([]PresentationDefinitionList, *common.ServiceError)) *PresentationDefinitionServiceInterfaceMock_ListPresentationDefinitionSummariesByProject_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // ListPresentationDefinitions provides a mock function for the type PresentationDefinitionServiceInterfaceMock
 func (_mock *PresentationDefinitionServiceInterfaceMock) ListPresentationDefinitions(ctx context.Context) ([]PresentationDefinitionDTO, *common.ServiceError) {
 	ret := _mock.Called(ctx)
@@ -578,6 +648,74 @@ func (_c *PresentationDefinitionServiceInterfaceMock_ListPresentationDefinitions
 }
 
 func (_c *PresentationDefinitionServiceInterfaceMock_ListPresentationDefinitions_Call) RunAndReturn(run func(ctx context.Context) ([]PresentationDefinitionDTO, *common.ServiceError)) *PresentationDefinitionServiceInterfaceMock_ListPresentationDefinitions_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ProjectHasPresentationDefinitions provides a mock function for the type PresentationDefinitionServiceInterfaceMock
+func (_mock *PresentationDefinitionServiceInterfaceMock) ProjectHasPresentationDefinitions(ctx context.Context, projectID string) (bool, *common.ServiceError) {
+	ret := _mock.Called(ctx, projectID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ProjectHasPresentationDefinitions")
+	}
+
+	var r0 bool
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (bool, *common.ServiceError)); ok {
+		return returnFunc(ctx, projectID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) bool); ok {
+		r0 = returnFunc(ctx, projectID)
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, projectID)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// PresentationDefinitionServiceInterfaceMock_ProjectHasPresentationDefinitions_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ProjectHasPresentationDefinitions'
+type PresentationDefinitionServiceInterfaceMock_ProjectHasPresentationDefinitions_Call struct {
+	*mock.Call
+}
+
+// ProjectHasPresentationDefinitions is a helper method to define mock.On call
+//   - ctx context.Context
+//   - projectID string
+func (_e *PresentationDefinitionServiceInterfaceMock_Expecter) ProjectHasPresentationDefinitions(ctx any, projectID any) *PresentationDefinitionServiceInterfaceMock_ProjectHasPresentationDefinitions_Call {
+	return &PresentationDefinitionServiceInterfaceMock_ProjectHasPresentationDefinitions_Call{Call: _e.mock.On("ProjectHasPresentationDefinitions", ctx, projectID)}
+}
+
+func (_c *PresentationDefinitionServiceInterfaceMock_ProjectHasPresentationDefinitions_Call) Run(run func(ctx context.Context, projectID string)) *PresentationDefinitionServiceInterfaceMock_ProjectHasPresentationDefinitions_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *PresentationDefinitionServiceInterfaceMock_ProjectHasPresentationDefinitions_Call) Return(b bool, serviceError *common.ServiceError) *PresentationDefinitionServiceInterfaceMock_ProjectHasPresentationDefinitions_Call {
+	_c.Call.Return(b, serviceError)
+	return _c
+}
+
+func (_c *PresentationDefinitionServiceInterfaceMock_ProjectHasPresentationDefinitions_Call) RunAndReturn(run func(ctx context.Context, projectID string) (bool, *common.ServiceError)) *PresentationDefinitionServiceInterfaceMock_ProjectHasPresentationDefinitions_Call {
 	_c.Call.Return(run)
 	return _c
 }

@@ -1,6 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {ProjectScopeProvider} from '@thunderid/contexts';
 import {render, screen} from '@thunderid/test-utils';
 import {describe, it, expect, vi} from 'vitest';
 import VerifiableCredentialsListPage from '../VerifiableCredentialsListPage';
@@ -16,6 +17,28 @@ describe('VerifiableCredentialsListPage', () => {
     render(<VerifiableCredentialsListPage />);
 
     expect(screen.getByTestId('credentials-list')).toHaveAttribute('data-show-wallet-qr', 'false');
+  });
+
+  it('offers the create action by default', () => {
+    render(<VerifiableCredentialsListPage />);
+
+    expect(screen.getByTestId('vc-add-button')).toBeInTheDocument();
+  });
+
+  it('offers no create action outside a project when configurations are created in projects only', () => {
+    render(<VerifiableCredentialsListPage createInProjectsOnly />);
+
+    expect(screen.queryByTestId('vc-add-button')).not.toBeInTheDocument();
+  });
+
+  it('offers the create action inside a project when configurations are created in projects only', () => {
+    render(
+      <ProjectScopeProvider project={{id: 'project-1'}}>
+        <VerifiableCredentialsListPage createInProjectsOnly />
+      </ProjectScopeProvider>,
+    );
+
+    expect(screen.getByTestId('vc-add-button')).toBeInTheDocument();
   });
 
   it('passes showWalletQr through to the list', () => {

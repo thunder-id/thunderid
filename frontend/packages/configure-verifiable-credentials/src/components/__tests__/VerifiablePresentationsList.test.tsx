@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import userEvent from '@testing-library/user-event';
+import {ProjectScopeProvider} from '@thunderid/contexts';
 import {render, screen} from '@thunderid/test-utils';
 import {describe, it, expect, beforeEach, vi} from 'vitest';
 import type {VerifiablePresentationSummary} from '../../models/vp';
@@ -73,6 +74,16 @@ describe('VerifiablePresentationsList', () => {
       error: null,
       refetch: vi.fn(),
     } as unknown as ReturnType<typeof useGetVerifiablePresentations>);
+  });
+
+  it("lists only the selected project's presentation definitions", () => {
+    render(
+      <ProjectScopeProvider project={{id: 'project-1'}}>
+        <VerifiablePresentationsList />
+      </ProjectScopeProvider>,
+    );
+
+    expect(useGetVerifiablePresentations).toHaveBeenCalledWith('project-1');
   });
 
   it('hides the verify action and does not mount the verification dialog by default', () => {

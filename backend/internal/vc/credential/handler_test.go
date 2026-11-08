@@ -51,13 +51,44 @@ func (s *ConfigurationHandlerTestSuite) TestHandleCreate_InvalidBody() {
 	s.Equal(http.StatusBadRequest, rec.Code)
 }
 
-func (s *ConfigurationHandlerTestSuite) TestHandleCreate_RequiresOUID() {
+func (s *ConfigurationHandlerTestSuite) TestHandleCreate_WithoutOUIDIsLeftToTheService() {
+	s.service.EXPECT().CreateCredentialConfiguration(mock.Anything,
+		mock.MatchedBy(func(dto *CredentialConfigurationDTO) bool { return dto.OUID == "" && dto.ProjectID == "" })).
+		Return(nil, &ErrorConfigurationInvalidOU)
+
 	req := httptest.NewRequest(http.MethodPost, configurationsPath,
 		strings.NewReader(`{"handle":"eudi-pid","vct":"v","ouHandle":"default"}`))
 	rec := httptest.NewRecorder()
 	s.handler.HandleCreate(rec, req)
 
 	s.Equal(http.StatusBadRequest, rec.Code)
+	s.Contains(rec.Body.String(), ErrorConfigurationInvalidOU.Code)
+}
+
+func (s *ConfigurationHandlerTestSuite) TestHandleCreate_PassesTheProject() {
+	s.service.EXPECT().CreateCredentialConfiguration(mock.Anything,
+		mock.MatchedBy(func(dto *CredentialConfigurationDTO) bool { return dto.ProjectID == "proj-1" })).
+		Return(&CredentialConfigurationDTO{ID: "cfg-1", Handle: "h", VCT: "v", ProjectID: "proj-1"}, nil)
+
+	req := httptest.NewRequest(http.MethodPost, configurationsPath,
+		strings.NewReader(`{"handle":"h","vct":"v","projectId":"proj-1"}`))
+	rec := httptest.NewRecorder()
+	s.handler.HandleCreate(rec, req)
+
+	s.Equal(http.StatusCreated, rec.Code)
+	s.Contains(rec.Body.String(), `"projectId":"proj-1"`)
+}
+
+func (s *ConfigurationHandlerTestSuite) TestHandleList_ByProject() {
+	s.service.EXPECT().ListCredentialConfigurationSummariesByProject(mock.Anything, "proj-1").
+		Return([]CredentialConfigurationList{{ID: "cfg-1", Handle: "h", ProjectID: "proj-1"}}, nil)
+
+	req := httptest.NewRequest(http.MethodGet, configurationsPath+"?projectId=proj-1", nil)
+	rec := httptest.NewRecorder()
+	s.handler.HandleList(rec, req)
+
+	s.Equal(http.StatusOK, rec.Code)
+	s.Contains(rec.Body.String(), `"projectId":"proj-1"`)
 }
 
 func (s *ConfigurationHandlerTestSuite) TestHandleCreate_ServiceError() {

@@ -50,7 +50,7 @@ The protocol uses a polling model: a **back-channel** between <ProductName /> an
 
 A **presentation definition** specifies the credential type to request and which claims the wallet must or may disclose. Its `handle` is the `definition_id` used when initiating a verification.
 
-Manage definitions in **Verifiable Credentials → Presentations** in the <ProductName /> Console, or declare them in YAML for file-based deployments (`resource_type: presentation_definition`).
+Manage definitions in **Verifiable Credentials → Presentations** in the <ProductName /> Console, or declare them in YAML for file-based deployments (`resource_type: presentation_definition`). On the control plane, open the project first, where **Verifiable Credentials** is under **Build**.
 
 | Field | Description |
 |---|---|
@@ -95,6 +95,20 @@ trustedAuthorities:
       MIIB...
       -----END CERTIFICATE-----
 ```
+
+### Presentation Definitions in Projects
+
+On the control plane, every presentation definition belongs to a project.
+
+- **Create**: set `projectId` in the request body of `POST /openid4vp/presentation-definitions`. The definition goes into the system organization unit, so `ouId` can be left out. A request without `projectId` fails with `VP-2020`, a project that does not exist fails with `VP-2018`, and any organization unit other than the system one fails with `VP-2019`.
+- **List**: `GET /openid4vp/presentation-definitions?projectId=<project-id>` returns the definitions of the project. A project that does not exist returns an empty list.
+- **Update**: an update without `projectId` keeps the definition in its current project, and one without `ouId` keeps its organization unit. A different `projectId` moves the definition to that project after the same checks.
+- **Delete a project**: deleting a project that still has presentation definitions fails with `PRJ-1013`.
+- **Declarative files**: a definition file must set `projectId`, and can leave `ouId` out to be placed in the system organization unit. A file without `projectId` stops the server from starting. Export and import keep `projectId`.
+
+A flow finds its definition by handle, and handles are unique across the deployment. A deploy of a project sends only its own definitions, so a flow in a project uses a definition of the same project.
+
+A server without projects, such as the all-in-one server, does not require a project and keeps the `projectId` it receives without checking that the project exists. A `projectId` longer than 36 characters still fails with `VP-2018`.
 
 ## Server Configurations
 

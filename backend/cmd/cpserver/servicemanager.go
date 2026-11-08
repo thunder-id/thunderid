@@ -322,14 +322,16 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	// Verifiable-credential DEFINITION management. Presentation definitions and credential
 	// configurations are authored here; the OpenID4VP verifier and OpenID4VCI issuer runtimes are
 	// data plane concerns and are dropped.
-	openid4vpDefSvc, vpDefExp, err := presentation.Initialize(mux, ouService)
+	openid4vpDefSvc, vpDefExp, err := presentation.Initialize(mux, ouService, projectService)
 	fatalOnError(ctx, logger, err, "Failed to initialize presentation definition service")
+	projectService.AddResourceCheck(openid4vpDefSvc.ProjectHasPresentationDefinitions)
 	if vpDefExp != nil {
 		exporters = append(exporters, vpDefExp)
 	}
 
-	openid4vciCredSvc, vciCredExp, err := credential.Initialize(mux, ouService)
+	openid4vciCredSvc, vciCredExp, err := credential.Initialize(mux, ouService, projectService)
 	fatalOnError(ctx, logger, err, "Failed to initialize credential configuration service")
+	projectService.AddResourceCheck(openid4vciCredSvc.ProjectHasCredentialConfigurations)
 	if vciCredExp != nil {
 		exporters = append(exporters, vciCredExp)
 	}

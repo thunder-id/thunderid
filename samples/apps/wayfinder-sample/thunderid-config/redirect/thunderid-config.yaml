@@ -1899,6 +1899,8 @@ resource_type: credential_configuration
 # disclosable (SD-JWT); the lounge requests only a subset at verification time.
 id: wayfinder-skypass
 handle: wayfinder-skypass
+# A Control Plane requires a project; this is its Default project.
+projectId: 01900000-0000-7000-8000-000000000002
 ouHandle: default
 vct: urn:wayfinder:skypass:1
 name: Wayfinder Sky Pass
@@ -1925,6 +1927,8 @@ resource_type: presentation_definition
 # the wallet discloses nothing else from the pass.
 id: wayfinder-skypass
 handle: wayfinder-skypass
+# A Control Plane requires a project; this is its Default project.
+projectId: 01900000-0000-7000-8000-000000000002
 ouHandle: default
 name: Skyline Lounge Access
 vct: urn:wayfinder:skypass:1

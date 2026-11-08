@@ -26,6 +26,7 @@ type PresentationDefinitionDTO struct {
 	Handle          string   `json:"handle" yaml:"handle"`
 	OUID            string   `json:"ouId" yaml:"ouId,omitempty"`
 	OUHandle        string   `json:"ouHandle,omitempty" yaml:"ouHandle,omitempty"`
+	ProjectID       string   `json:"projectId,omitempty" yaml:"projectId,omitempty"`
 	Name            string   `json:"name,omitempty" yaml:"name,omitempty"`
 	Description     string   `json:"description,omitempty" yaml:"description,omitempty"`
 	VCT             string   `json:"vct" yaml:"vct"`
@@ -43,10 +44,12 @@ type PresentationDefinitionDTO struct {
 	TrustedAuthorities []TrustedAuthority `json:"trustedAuthorities,omitempty" yaml:"trustedAuthorities,omitempty"`
 }
 
-// presentationDefinitionRequest is the API request body for create/update.
+// presentationDefinitionRequest is the API request body for create/update. A definition in a project may
+// leave ouId out to be placed in the system organization unit.
 type presentationDefinitionRequest struct {
 	Handle               string              `json:"handle"`
-	OUID                 string              `json:"ouId" native:"required"`
+	OUID                 string              `json:"ouId"`
+	ProjectID            string              `json:"projectId"`
 	Name                 string              `json:"name"`
 	Description          string              `json:"description"`
 	VCT                  string              `json:"vct"`
@@ -66,6 +69,7 @@ type presentationDefinitionResponse struct {
 	Handle               string              `json:"handle"`
 	OUID                 string              `json:"ouId"`
 	OUHandle             string              `json:"ouHandle,omitempty"`
+	ProjectID            string              `json:"projectId,omitempty"`
 	Name                 string              `json:"name,omitempty"`
 	Description          string              `json:"description,omitempty"`
 	VCT                  string              `json:"vct"`
@@ -85,6 +89,7 @@ func toResponse(dto PresentationDefinitionDTO) presentationDefinitionResponse {
 		Handle:               dto.Handle,
 		OUID:                 dto.OUID,
 		OUHandle:             dto.OUHandle,
+		ProjectID:            dto.ProjectID,
 		Name:                 dto.Name,
 		Description:          dto.Description,
 		VCT:                  dto.VCT,
@@ -113,24 +118,26 @@ func trustedAuthorityNames(authorities []TrustedAuthority) []string {
 // PresentationDefinitionList is the minimal projection returned by the list
 // endpoint. It contains only the fields the management UI renders in the table.
 type PresentationDefinitionList struct {
-	ID       string `json:"id"`
-	Handle   string `json:"handle"`
-	OUID     string `json:"ouId"`
-	OUHandle string `json:"ouHandle,omitempty"`
-	Name     string `json:"name,omitempty"`
-	VCT      string `json:"vct"`
-	Format   string `json:"format"`
+	ID        string `json:"id"`
+	Handle    string `json:"handle"`
+	OUID      string `json:"ouId"`
+	OUHandle  string `json:"ouHandle,omitempty"`
+	ProjectID string `json:"projectId,omitempty"`
+	Name      string `json:"name,omitempty"`
+	VCT       string `json:"vct"`
+	Format    string `json:"format"`
 }
 
 // toSummary projects a full DTO to a list summary.
 func toSummary(dto PresentationDefinitionDTO) PresentationDefinitionList {
 	return PresentationDefinitionList{
-		ID:       dto.ID,
-		Handle:   dto.Handle,
-		OUID:     dto.OUID,
-		OUHandle: dto.OUHandle,
-		Name:     dto.Name,
-		VCT:      dto.VCT,
-		Format:   dto.Format,
+		ID:        dto.ID,
+		Handle:    dto.Handle,
+		OUID:      dto.OUID,
+		OUHandle:  dto.OUHandle,
+		ProjectID: dto.ProjectID,
+		Name:      dto.Name,
+		VCT:       dto.VCT,
+		Format:    dto.Format,
 	}
 }

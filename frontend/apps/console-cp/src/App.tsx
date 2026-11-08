@@ -241,16 +241,6 @@ export default function App(): JSX.Element {
                   <Route path={`${ROUTE_SEGMENTS.trustedIssuers}/:id`} element={<TrustedIssuerDetailPage />} />
                   <Route path={ROUTE_SEGMENTS.groups} element={<GroupsListPage />} />
                   <Route path={`${ROUTE_SEGMENTS.groups}/:groupId`} element={<GroupEditPage />} />
-                  <Route path={ROUTE_SEGMENTS.verifiablePresentations} element={<VerifiablePresentationsListPage />} />
-                  <Route
-                    path={`${ROUTE_SEGMENTS.verifiablePresentations}/:vpId`}
-                    element={<VerifiablePresentationEditPage />}
-                  />
-                  <Route path={ROUTE_SEGMENTS.verifiableCredentials} element={<VerifiableCredentialsListPage />} />
-                  <Route
-                    path={`${ROUTE_SEGMENTS.verifiableCredentials}/:vcId`}
-                    element={<VerifiableCredentialEditPage />}
-                  />
                   <Route
                     element={
                       <SelectedProjectScope>
@@ -270,6 +260,22 @@ export default function App(): JSX.Element {
                     <Route path={ROUTE_SEGMENTS.roles} element={<RolesListPage />} />
                     <Route path={`${ROUTE_SEGMENTS.roles}/:roleId`} element={<RoleEditPage />} />
                     <Route path={ROUTE_SEGMENTS.flows} element={<FlowsListPage />} />
+                    <Route
+                      path={ROUTE_SEGMENTS.verifiablePresentations}
+                      element={<VerifiablePresentationsListPage createInProjectsOnly />}
+                    />
+                    <Route
+                      path={`${ROUTE_SEGMENTS.verifiablePresentations}/:vpId`}
+                      element={<VerifiablePresentationEditPage />}
+                    />
+                    <Route
+                      path={ROUTE_SEGMENTS.verifiableCredentials}
+                      element={<VerifiableCredentialsListPage createInProjectsOnly />}
+                    />
+                    <Route
+                      path={`${ROUTE_SEGMENTS.verifiableCredentials}/:vcId`}
+                      element={<VerifiableCredentialEditPage />}
+                    />
                   </Route>
                   <Route path={ROUTE_SEGMENTS.settings} element={<SettingsPage />} />
                   <Route path={ROUTE_SEGMENTS.projects} element={<ProjectsListPage />} />
@@ -397,21 +403,25 @@ export default function App(): JSX.Element {
                   path={RouteConfig.verifiablePresentations.create()}
                   element={
                     <ProtectedRoute>
-                      <FullScreenLayout />
+                      <SelectedProjectScope>
+                        <FullScreenLayout />
+                      </SelectedProjectScope>
                     </ProtectedRoute>
                   }
                 >
-                  <Route index element={<VerifiablePresentationCreatePage />} />
+                  <Route index element={<VerifiablePresentationCreatePage createInProjectsOnly />} />
                 </Route>
                 <Route
                   path={RouteConfig.verifiableCredentials.create()}
                   element={
                     <ProtectedRoute>
-                      <FullScreenLayout />
+                      <SelectedProjectScope>
+                        <FullScreenLayout />
+                      </SelectedProjectScope>
                     </ProtectedRoute>
                   }
                 >
-                  <Route index element={<VerifiableCredentialCreatePage />} />
+                  <Route index element={<VerifiableCredentialCreatePage createInProjectsOnly />} />
                 </Route>
                 <Route
                   element={

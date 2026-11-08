@@ -279,6 +279,51 @@ var (
 			DefaultValue: "A presentation definition with the specified ID already exists",
 		},
 	}
+
+	// ErrorDefinitionInvalidProject is returned when a presentation definition names a project that does not exist.
+	ErrorDefinitionInvalidProject = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "VP-2018",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.vp.definition_invalid_project",
+			DefaultValue: "Invalid project",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.vp.definition_invalid_project_description",
+			DefaultValue: "No project exists with the given project ID",
+		},
+	}
+
+	// ErrorDefinitionOUNotInProject is returned when a presentation definition names an organization unit outside
+	// its project.
+	ErrorDefinitionOUNotInProject = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "VP-2019",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.vp.definition_ou_not_in_project",
+			DefaultValue: "Organization unit not in project",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.vp.definition_ou_not_in_project_description",
+			DefaultValue: "The organization unit must belong to the project",
+		},
+	}
+
+	// ErrorDefinitionProjectRequired is returned when a presentation definition is created without a project on a
+	// deployment that requires one.
+	ErrorDefinitionProjectRequired = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "VP-2020",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.vp.definition_project_required",
+			DefaultValue: "Project required",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.vp.definition_project_required_description",
+			DefaultValue: "A presentation definition must belong to a project. " +
+				"Set projectId to the project it belongs to",
+		},
+	}
 )
 
 // definitionClientErrorStatus maps a client-facing definition error to its HTTP status.

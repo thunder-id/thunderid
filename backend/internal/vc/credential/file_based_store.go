@@ -114,6 +114,36 @@ func (f *credentialFileBasedStore) ListCredentialConfigurationSummariesByOUID(
 	return owned, nil
 }
 
+// ListCredentialConfigurationSummariesByProject retrieves minimal listing data for the credential configurations
+// of a project from the file-based store.
+func (f *credentialFileBasedStore) ListCredentialConfigurationSummariesByProject(
+	ctx context.Context, projectID string,
+) ([]CredentialConfigurationList, error) {
+	summaries, err := f.ListCredentialConfigurationSummaries(ctx)
+	if err != nil {
+		return nil, err
+	}
+	inProject := make([]CredentialConfigurationList, 0, len(summaries))
+	for _, summary := range summaries {
+		if summary.ProjectID == projectID {
+			inProject = append(inProject, summary)
+		}
+	}
+	return inProject, nil
+}
+
+// CountCredentialConfigurationsByProject returns the number of credential configurations of a project in the file-based
+// store.
+func (f *credentialFileBasedStore) CountCredentialConfigurationsByProject(
+	ctx context.Context, projectID string,
+) (int, error) {
+	summaries, err := f.ListCredentialConfigurationSummariesByProject(ctx, projectID)
+	if err != nil {
+		return 0, err
+	}
+	return len(summaries), nil
+}
+
 // List retrieves all credential configurations from the file-based store.
 func (f *credentialFileBasedStore) ListCredentialConfigurations(
 	_ context.Context,

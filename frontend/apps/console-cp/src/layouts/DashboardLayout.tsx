@@ -91,6 +91,8 @@ interface NavRoute {
   children?: NavRoute[];
   /** A short note beside the entry, such as how many of its changes are not deployed yet. */
   badge?: string;
+  /** A short note beside a parent entry while it is collapsed, standing in for its entries' own badges. */
+  collapsedBadge?: string;
   /** Done as well as going to the entry's page, such as leaving the selected project. */
   onSelect?: () => void;
 }
@@ -300,6 +302,7 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
     };
     const badgeOf = (count: number | undefined): string | undefined =>
       count ? t('navigation:badges.undeployed', '{{count}} undeployed', {count}) : undefined;
+    const countOf = (count: number): string | undefined => (count ? String(count) : undefined);
     // On a gateway's pages the navigation is the gateway's, the same from wherever it was opened: a
     // gateway belongs to the organization. The way back leads to the project it was opened from, if any.
     if (gateway && gatewayId) {
@@ -412,18 +415,25 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
               id: 'verifiable-credentials',
               text: t('navigation:pages.verifiableCredentials', 'Verifiable credentials'),
               icon: <Wallet />,
+              // The entry's name leaves no room for a full badge, so it shows the count while collapsed and each
+              // entry shows its own once expanded.
+              collapsedBadge: countOf(
+                (undeployed.credential_configuration ?? 0) + (undeployed.presentation_definition ?? 0),
+              ),
               children: [
                 {
                   id: 'credentials',
                   text: t('navigation:pages.credentials', 'Templates'),
                   icon: <IdCard />,
                   path: RouteConfig.verifiableCredentials.list(),
+                  badge: badgeOf(undeployed.credential_configuration),
                 },
                 {
                   id: 'presentations',
                   text: t('navigation:pages.presentations', 'Presentations'),
                   icon: <ShieldCheck />,
                   path: RouteConfig.verifiablePresentations.list(),
+                  badge: badgeOf(undeployed.presentation_definition),
                 },
               ],
             },
@@ -542,6 +552,8 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
     undeployed.layout,
     undeployed.theme,
     undeployed.notification_template,
+    undeployed.presentation_definition,
+    undeployed.credential_configuration,
     gateway,
     gatewayId,
     gatewayIndex,
@@ -579,6 +591,21 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
       });
     });
   }, [appRoutes, activeItem]);
+
+  // An entry's label, with its badge after it. With a badge the label keeps its whole width and the badge follows it.
+  // The Sidebar picks an item's parts out of its direct children, so they are returned as a list, not a fragment.
+  const labelOf = (text: string, badge: string | undefined): JSX.Element[] => [
+    <Sidebar.ItemLabel key="label" sx={badge ? {flex: '0 0 auto', overflow: 'visible'} : undefined}>
+      {text}
+    </Sidebar.ItemLabel>,
+    ...(badge
+      ? [
+          <Sidebar.ItemBadge key="badge" color="warning" sx={{ml: 1, flexShrink: 0, '& .MuiChip-label': {px: 0.75}}}>
+            {badge}
+          </Sidebar.ItemBadge>,
+        ]
+      : []),
+  ];
 
   return (
     // `collapseSidebar` seeds AppShell's own state rather than force-controlling the
@@ -667,18 +694,11 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
                   route.children ? (
                     <Sidebar.Item key={route.id} id={route.id}>
                       <Sidebar.ItemIcon>{route.icon}</Sidebar.ItemIcon>
-                      <Sidebar.ItemLabel sx={route.badge ? {flex: '0 0 auto', overflow: 'visible'} : undefined}>
-                        {route.text}
-                      </Sidebar.ItemLabel>
-                      {route.badge && (
-                        <Sidebar.ItemBadge color="warning" sx={{ml: 1, flexShrink: 0, '& .MuiChip-label': {px: 0.75}}}>
-                          {route.badge}
-                        </Sidebar.ItemBadge>
-                      )}
+                      {labelOf(route.text, route.badge ?? (expandedMenus[route.id] ? undefined : route.collapsedBadge))}
                       {route.children.map((child) => (
                         <Sidebar.Item key={child.id} id={child.id} link={<NavigateLink to={child.path ?? ''} />}>
                           <Sidebar.ItemIcon>{child.icon}</Sidebar.ItemIcon>
-                          <Sidebar.ItemLabel>{child.text}</Sidebar.ItemLabel>
+                          {labelOf(child.text, child.badge)}
                         </Sidebar.Item>
                       ))}
                     </Sidebar.Item>
@@ -689,15 +709,7 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
                       link={<NavigateLink to={route.path ?? ''} onClick={route.onSelect} />}
                     >
                       <Sidebar.ItemIcon>{route.icon}</Sidebar.ItemIcon>
-                      {/* With a badge the label keeps its whole width and the badge follows it. */}
-                      <Sidebar.ItemLabel sx={route.badge ? {flex: '0 0 auto', overflow: 'visible'} : undefined}>
-                        {route.text}
-                      </Sidebar.ItemLabel>
-                      {route.badge && (
-                        <Sidebar.ItemBadge color="warning" sx={{ml: 1, flexShrink: 0, '& .MuiChip-label': {px: 0.75}}}>
-                          {route.badge}
-                        </Sidebar.ItemBadge>
-                      )}
+                      {labelOf(route.text, route.badge)}
                     </Sidebar.Item>
                   ),
                 )}

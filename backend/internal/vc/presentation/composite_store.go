@@ -95,6 +95,33 @@ func (c *compositeDefinitionStore) ListPresentationDefinitionSummariesByOUID(
 	return mergeSummaries(dbSummaries, fileSummaries)
 }
 
+// ListPresentationDefinitionSummariesByProject retrieves minimal listing data for the presentation definitions of
+// a project from both stores and merges the results.
+func (c *compositeDefinitionStore) ListPresentationDefinitionSummariesByProject(
+	ctx context.Context, projectID string,
+) ([]PresentationDefinitionList, error) {
+	dbSummaries, err := c.dbStore.ListPresentationDefinitionSummariesByProject(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+	fileSummaries, err := c.fileStore.ListPresentationDefinitionSummariesByProject(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+	return mergeSummaries(dbSummaries, fileSummaries)
+}
+
+// CountPresentationDefinitionsByProject returns the number of presentation definitions of a project in both stores.
+// An ID is unique across the stores, so the counts add up exactly.
+func (c *compositeDefinitionStore) CountPresentationDefinitionsByProject(
+	ctx context.Context, projectID string,
+) (int, error) {
+	return declarativeresource.CompositeMergeCountHelper(
+		func() (int, error) { return c.dbStore.CountPresentationDefinitionsByProject(ctx, projectID) },
+		func() (int, error) { return c.fileStore.CountPresentationDefinitionsByProject(ctx, projectID) },
+	)
+}
+
 // List retrieves presentation definitions from both stores and merges the results.
 func (c *compositeDefinitionStore) ListPresentationDefinitions(
 	ctx context.Context,

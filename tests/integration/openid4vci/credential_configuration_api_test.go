@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -412,7 +413,7 @@ func (ts *CredentialConfigurationAPITestSuite) TestCreate_RequiresOUID() {
 	})
 
 	ts.Equalf(http.StatusBadRequest, res.StatusCode, "create: %s", string(res.Body))
-	ts.Equal(codeConfigInvalidRequest, ts.errorCodeOf(res.Body))
+	ts.Equal(codeConfigInvalidOU, ts.errorCodeOf(res.Body))
 }
 
 // TestUpdate_RequiresOUID verifies that an output-only OU handle cannot select
@@ -429,7 +430,7 @@ func (ts *CredentialConfigurationAPITestSuite) TestUpdate_RequiresOUID() {
 	})
 
 	ts.Equalf(http.StatusBadRequest, updateRes.StatusCode, "update: %s", string(updateRes.Body))
-	ts.Equal(codeConfigInvalidRequest, ts.errorCodeOf(updateRes.Body))
+	ts.Equal(codeConfigInvalidOU, ts.errorCodeOf(updateRes.Body))
 }
 
 // TestDelete verifies a deleted configuration is no longer readable, and that
@@ -527,7 +528,7 @@ func (ts *CredentialConfigurationAPITestSuite) TestCreate_ValidationErrors() {
 			mutate: func(c *testutils.CredentialConfiguration) {
 				c.OUID = ""
 			},
-			wantCode: codeConfigInvalidRequest,
+			wantCode: codeConfigInvalidOU,
 		},
 		{
 			name: "empty claim name",
@@ -721,4 +722,61 @@ func (ts *CredentialConfigurationAPITestSuite) TestUnauthenticated() {
 	defer resp.Body.Close()
 
 	ts.Equal(http.StatusUnauthorized, resp.StatusCode)
+}
+
+// TestProjectScope covers credential configurations in projects on a server without projects: the server keeps
+// the project unchecked and places a configuration without an organization unit in the system one, lists a
+// project's configurations, keeps or moves the project on update, and refuses a project ID longer than the
+// column.
+func (ts *CredentialConfigurationAPITestSuite) TestProjectScope() {
+	const (
+		projectA = "019a0000-0000-7000-8000-0000000000a1"
+		projectB = "019a0000-0000-7000-8000-0000000000b2"
+	)
+	systemOUID, err := testutils.FindBootstrapOUID()
+	ts.Require().NoError(err)
+
+	cfg := testutils.CredentialConfiguration{Handle: "cfg_project_scoped", VCT: crudConfigVCT, ProjectID: projectA}
+	res, created := ts.createConfig(cfg)
+	ts.Require().Equalf(http.StatusCreated, res.StatusCode, "create: %s", string(res.Body))
+	id, _ := created["id"].(string)
+	ts.Equal(systemOUID, created["ouId"],
+		"a configuration in a project without an organization unit is in the system one")
+	ts.Equal(projectA, created["projectId"])
+
+	ts.Equal([]string{id}, ts.listIDs("?projectId="+projectA))
+	ts.Empty(ts.listIDs("?projectId=" + projectB))
+	ts.Empty(ts.listIDs("?projectId="), "an empty project lists no configuration")
+
+	cfg.ProjectID = ""
+	res = ts.configRequest(http.MethodPut, configAPIBasePath+"/"+id, cfg)
+	ts.Require().Equalf(http.StatusOK, res.StatusCode, "update: %s", string(res.Body))
+	ts.Equal(projectA, ts.decode(res.Body)["projectId"], "an update without a project keeps it")
+
+	cfg.ProjectID = projectB
+	res = ts.configRequest(http.MethodPut, configAPIBasePath+"/"+id, cfg)
+	ts.Require().Equalf(http.StatusOK, res.StatusCode, "update: %s", string(res.Body))
+	ts.Equal(projectB, ts.decode(res.Body)["projectId"])
+	ts.Equal([]string{id}, ts.listIDs("?projectId="+projectB))
+
+	overlong := testutils.CredentialConfiguration{Handle: "cfg_project_overlong", VCT: crudConfigVCT,
+		ProjectID: strings.Repeat("p", 37)}
+	res, _ = ts.createConfig(overlong)
+	ts.Equal(http.StatusBadRequest, res.StatusCode)
+	ts.Equal("VCI-2013", ts.errorCodeOf(res.Body))
+}
+
+// listIDs lists credential configurations with the given query and returns their IDs.
+func (ts *CredentialConfigurationAPITestSuite) listIDs(query string) []string {
+	res := ts.configRequest(http.MethodGet, configAPIBasePath+query, nil)
+	ts.Require().Equalf(http.StatusOK, res.StatusCode, "list: %s", string(res.Body))
+	var summaries []struct {
+		ID string `json:"id"`
+	}
+	ts.Require().NoError(json.Unmarshal(res.Body, &summaries))
+	ids := []string{}
+	for _, summary := range summaries {
+		ids = append(ids, summary.ID)
+	}
+	return ids
 }

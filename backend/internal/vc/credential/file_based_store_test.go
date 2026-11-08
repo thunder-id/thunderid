@@ -203,3 +203,30 @@ func (s *CredentialFileBasedStoreTestSuite) TestListSummariesByOUID() {
 	s.Require().NoError(err)
 	s.Empty(summaries)
 }
+
+func (s *CredentialFileBasedStoreTestSuite) TestListSummariesByProject() {
+	for _, dto := range []CredentialConfigurationDTO{
+		{ID: "id-1", Handle: "h1", VCT: "v1", OUID: "ou-1", ProjectID: "proj-1"},
+		{ID: "id-2", Handle: "h2", VCT: "v2", OUID: "ou-1"},
+	} {
+		s.Require().NoError(s.storer.Create(dto.ID, &dto))
+	}
+
+	summaries, err := s.store.ListCredentialConfigurationSummariesByProject(s.ctx, "proj-1")
+	s.Require().NoError(err)
+	s.Require().Len(summaries, 1)
+	s.Equal("proj-1", summaries[0].ProjectID)
+}
+
+func (s *CredentialFileBasedStoreTestSuite) TestCountByProject() {
+	for _, dto := range []CredentialConfigurationDTO{
+		{ID: "id-1", Handle: "h1", VCT: "v1", OUID: "ou-1", ProjectID: "proj-1"},
+		{ID: "id-2", Handle: "h2", VCT: "v2", OUID: "ou-1"},
+	} {
+		s.Require().NoError(s.storer.Create(dto.ID, &dto))
+	}
+
+	count, err := s.store.CountCredentialConfigurationsByProject(s.ctx, "proj-1")
+	s.Require().NoError(err)
+	s.Equal(1, count)
+}

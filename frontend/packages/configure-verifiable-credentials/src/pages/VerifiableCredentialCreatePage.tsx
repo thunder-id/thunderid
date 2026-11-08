@@ -7,6 +7,7 @@ import {
   useGetOrganizationUnit,
   useHasMultipleOUs,
 } from '@thunderid/configure-organization-units';
+import {useProjectScope} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {getErrorMessage} from '@thunderid/utils';
 import {
@@ -26,7 +27,7 @@ import {
 import {Home} from '@wso2/oxygen-ui-icons-react';
 import {useMemo, useState, type ChangeEvent, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
-import {useNavigate} from 'react-router';
+import {Navigate, useNavigate} from 'react-router';
 import useCreateVerifiableCredential from '../api/useCreateVerifiableCredential';
 import ConfigureName from '../components/create-verifiable-credential/ConfigureName';
 import ClaimsEditor from '../components/CredentialClaimsEditor';
@@ -40,14 +41,34 @@ import {
 
 type Step = 'ORGANIZATION_UNIT' | 'NAME' | 'DETAILS' | 'CLAIMS';
 
-export default function VerifiableCredentialCreatePage(): JSX.Element {
+/**
+ * Props for the {@link VerifiableCredentialCreatePage} component.
+ */
+export interface VerifiableCredentialCreatePageProps {
+  /**
+   * Whether a credential configuration is created in a project only. When set, the page returns to the list
+   * outside a selected project, since a configuration created there would be refused.
+   */
+  createInProjectsOnly?: boolean;
+}
+
+export default function VerifiableCredentialCreatePage({
+  createInProjectsOnly = false,
+}: VerifiableCredentialCreatePageProps): JSX.Element {
   const navigate = useNavigate();
   const {t} = useTranslation('verifiable-credentials');
   const logger = useLogger('VerifiableCredentialCreatePage');
   const routes = useVerifiableCredentialRoutes();
   const createVC = useCreateVerifiableCredential();
 
-  const {hasMultipleOUs, isLoading: isOuLoading, ouList} = useHasMultipleOUs();
+  // Inside a project the configuration is created with the project alone, and the API places it in the system
+  // organization unit, so there is no organization unit to pick.
+  const ouLookup = useHasMultipleOUs();
+  const {projectId} = useProjectScope();
+  const isInProject = Boolean(projectId);
+  const hasMultipleOUs = !isInProject && ouLookup.hasMultipleOUs;
+  const isOuLoading = !isInProject && ouLookup.isLoading;
+  const {ouList} = ouLookup;
 
   const [step, setStep] = useState<Step>('ORGANIZATION_UNIT');
   const [name, setName] = useState<string>('');
@@ -93,7 +114,7 @@ export default function VerifiableCredentialCreatePage(): JSX.Element {
   // The organization unit whose name is shown in the Details step's summary chip.
   const {data: resolvedOrganizationUnit, isLoading: isResolvedOuLoading} = useGetOrganizationUnit(
     effectiveOuId,
-    Boolean(effectiveOuId),
+    !isInProject && Boolean(effectiveOuId),
   );
 
   // The organization unit is the wizard's first step whenever there's a choice to make. Single-OU
@@ -119,7 +140,7 @@ export default function VerifiableCredentialCreatePage(): JSX.Element {
   const stepReady: Record<Step, boolean> = {
     ORGANIZATION_UNIT: effectiveOuId !== '',
     NAME: name.trim() !== '' && handle.trim() !== '',
-    DETAILS: vct.trim() !== '' && effectiveOuId !== '',
+    DETAILS: vct.trim() !== '' && (isInProject || effectiveOuId !== ''),
     CLAIMS: claims.some((c) => c.name.trim() !== '') && Object.keys(claimNameErrors).length === 0,
   };
 
@@ -133,7 +154,7 @@ export default function VerifiableCredentialCreatePage(): JSX.Element {
 
   const buildRequest = () => ({
     handle: handle.trim(),
-    ouId: effectiveOuId,
+    ...(isInProject ? {projectId} : {ouId: effectiveOuId}),
     name: name.trim() || undefined,
     vct: vct.trim(),
     format: format.trim() || undefined,
@@ -239,6 +260,10 @@ export default function VerifiableCredentialCreatePage(): JSX.Element {
   };
 
   const pageTitle = t('create.title', 'New credential template');
+
+  if (createInProjectsOnly && !isInProject) {
+    return <Navigate to={routes.verifiableCredentials.list()} replace />;
+  }
 
   if (effectiveStep === 'ORGANIZATION_UNIT') {
     if (isOuLoading || !hasMultipleOUs) {

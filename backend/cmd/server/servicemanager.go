@@ -837,7 +837,7 @@ func initializeVCServices(
 	exporters []declarativeresource.ResourceExporter,
 ) (openid4vp.OpenID4VPServiceInterface, presentation.PresentationDefinitionServiceInterface,
 	credential.CredentialConfigurationServiceInterface, []declarativeresource.ResourceExporter) {
-	openid4vpDefSvc, vpDefExp, err := presentation.Initialize(mux, ouService)
+	openid4vpDefSvc, vpDefExp, err := presentation.Initialize(mux, ouService, nil)
 	fatalOnError(ctx, logger, err, "Failed to initialize presentation definition service")
 	if vpDefExp != nil {
 		exporters = append(exporters, vpDefExp)
@@ -847,7 +847,7 @@ func initializeVCServices(
 		runtimeStoreProvider)
 	fatalOnError(ctx, logger, err, "Failed to initialize OpenID4VP verifier service")
 
-	openid4vciCredSvc, vciCredExp, err := credential.Initialize(mux, ouService)
+	openid4vciCredSvc, vciCredExp, err := credential.Initialize(mux, ouService, nil)
 	fatalOnError(ctx, logger, err, "Failed to initialize credential configuration service")
 	if vciCredExp != nil {
 		exporters = append(exporters, vciCredExp)

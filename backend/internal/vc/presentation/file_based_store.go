@@ -116,6 +116,36 @@ func (f *definitionFileBasedStore) ListPresentationDefinitionSummariesByOUID(
 	return owned, nil
 }
 
+// ListPresentationDefinitionSummariesByProject retrieves minimal listing data for the presentation definitions
+// of a project from the file-based store.
+func (f *definitionFileBasedStore) ListPresentationDefinitionSummariesByProject(
+	ctx context.Context, projectID string,
+) ([]PresentationDefinitionList, error) {
+	summaries, err := f.ListPresentationDefinitionSummaries(ctx)
+	if err != nil {
+		return nil, err
+	}
+	inProject := make([]PresentationDefinitionList, 0, len(summaries))
+	for _, summary := range summaries {
+		if summary.ProjectID == projectID {
+			inProject = append(inProject, summary)
+		}
+	}
+	return inProject, nil
+}
+
+// CountPresentationDefinitionsByProject returns the number of presentation definitions of a project in the file-based
+// store.
+func (f *definitionFileBasedStore) CountPresentationDefinitionsByProject(
+	ctx context.Context, projectID string,
+) (int, error) {
+	summaries, err := f.ListPresentationDefinitionSummariesByProject(ctx, projectID)
+	if err != nil {
+		return 0, err
+	}
+	return len(summaries), nil
+}
+
 // List retrieves all presentation definitions from the file-based store.
 func (f *definitionFileBasedStore) ListPresentationDefinitions(_ context.Context) ([]PresentationDefinitionDTO, error) {
 	list, err := f.GenericFileBasedStore.List()

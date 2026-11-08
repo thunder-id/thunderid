@@ -6,6 +6,7 @@ package credential
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/mock"
@@ -14,6 +15,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	"github.com/thunder-id/thunderid/internal/system/projectscope"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
 	"github.com/thunder-id/thunderid/tests/mocks/oumock"
@@ -93,6 +95,26 @@ func newStatefulCredentialStore(t *testing.T) *credentialStoreInterfaceMock {
 			}
 			return out, nil
 		}).Maybe()
+	m.EXPECT().ListCredentialConfigurationSummariesByProject(mock.Anything, mock.Anything).RunAndReturn(
+		func(_ context.Context, projectID string) ([]CredentialConfigurationList, error) {
+			out := make([]CredentialConfigurationList, 0, len(byID))
+			for _, dto := range byID {
+				if dto.ProjectID == projectID {
+					out = append(out, toConfigSummary(dto))
+				}
+			}
+			return out, nil
+		}).Maybe()
+	m.EXPECT().CountCredentialConfigurationsByProject(mock.Anything, mock.Anything).RunAndReturn(
+		func(_ context.Context, projectID string) (int, error) {
+			count := 0
+			for _, dto := range byID {
+				if dto.ProjectID == projectID {
+					count++
+				}
+			}
+			return count, nil
+		}).Maybe()
 	m.EXPECT().UpdateCredentialConfiguration(mock.Anything, mock.Anything).RunAndReturn(
 		func(_ context.Context, dto CredentialConfigurationDTO) error {
 			byID[dto.ID] = dto
@@ -111,7 +133,7 @@ func newStatefulCredentialStore(t *testing.T) *credentialStoreInterfaceMock {
 }
 
 func (s *ConfigurationServiceTestSuite) newService() CredentialConfigurationServiceInterface {
-	return newCredentialConfigurationService(newStatefulCredentialStore(s.T()), nil)
+	return newCredentialConfigurationService(newStatefulCredentialStore(s.T()), nil, nil, false)
 }
 
 // newOUServiceMock returns an OrganizationUnitServiceInterface mock backed by the
@@ -213,7 +235,7 @@ func (s *ConfigurationServiceTestSuite) TestCreateIDCheckStoreError() {
 	m := newCredentialStoreInterfaceMock(s.T())
 	m.EXPECT().GetCredentialConfigurationByHandle(mock.Anything, mock.Anything).Return(nil, ErrNotFound)
 	m.EXPECT().GetCredentialConfigurationByID(mock.Anything, "imported-id").Return(nil, errors.New("boom"))
-	svc := newCredentialConfigurationService(m, nil)
+	svc := newCredentialConfigurationService(m, nil, nil, false)
 	dto := s.validDTO()
 	dto.ID = "imported-id"
 	_, err := svc.CreateCredentialConfiguration(context.Background(), dto)
@@ -246,7 +268,7 @@ func (s *ConfigurationServiceTestSuite) TestListAndListSummaries() {
 		map[string]bool{testOUID: true},
 		map[string]string{"default": testOUID},
 		map[string]string{testOUID: "default"})
-	svc := newCredentialConfigurationService(newStatefulCredentialStore(s.T()), resolver)
+	svc := newCredentialConfigurationService(newStatefulCredentialStore(s.T()), resolver, nil, false)
 
 	dto := s.validDTO()
 	dto.OUID = testOUID
@@ -325,7 +347,7 @@ func (s *ConfigurationServiceTestSuite) TestGetByHandleNotFound() {
 
 func (s *ConfigurationServiceTestSuite) TestUpdateImmutableMapsToImmutableError() {
 	store := s.newImmutableStore()
-	svc := newCredentialConfigurationService(store, nil)
+	svc := newCredentialConfigurationService(store, nil, nil, false)
 	_, err := svc.UpdateCredentialConfiguration(context.Background(), "cfg-1", s.validDTO())
 	s.Require().NotNil(err)
 	s.Equal(ErrorConfigurationImmutable.Code, err.Code)
@@ -333,7 +355,7 @@ func (s *ConfigurationServiceTestSuite) TestUpdateImmutableMapsToImmutableError(
 
 func (s *ConfigurationServiceTestSuite) TestDeleteImmutableMapsToImmutableError() {
 	store := s.newImmutableStore()
-	svc := newCredentialConfigurationService(store, nil)
+	svc := newCredentialConfigurationService(store, nil, nil, false)
 	err := svc.DeleteCredentialConfiguration(context.Background(), "cfg-1")
 	s.Require().NotNil(err)
 	s.Equal(ErrorConfigurationImmutable.Code, err.Code)
@@ -371,6 +393,8 @@ func (s *ConfigurationServiceTestSuite) newErrorStore(err error) *credentialStor
 	m.EXPECT().ListCredentialConfigurations(mock.Anything).Return(nil, err).Maybe()
 	m.EXPECT().ListCredentialConfigurationSummaries(mock.Anything).Return(nil, err).Maybe()
 	m.EXPECT().ListCredentialConfigurationSummariesByOUID(mock.Anything, mock.Anything).Return(nil, err).Maybe()
+	m.EXPECT().ListCredentialConfigurationSummariesByProject(mock.Anything, mock.Anything).Return(nil, err).Maybe()
+	m.EXPECT().CountCredentialConfigurationsByProject(mock.Anything, mock.Anything).Return(0, err).Maybe()
 	m.EXPECT().UpdateCredentialConfiguration(mock.Anything, mock.Anything).Return(err).Maybe()
 	m.EXPECT().DeleteCredentialConfiguration(mock.Anything, mock.Anything).Return(err).Maybe()
 	m.EXPECT().IsCredentialConfigurationDeclarative(mock.Anything, mock.Anything).Return(false, err).Maybe()
@@ -388,7 +412,7 @@ func (s *ConfigurationServiceTestSuite) TestCreateRejectsNegativeValidity() {
 }
 
 func (s *ConfigurationServiceTestSuite) TestCreateHandleCheckStoreError() {
-	svc := newCredentialConfigurationService(s.newErrorStore(errors.New("boom")), nil)
+	svc := newCredentialConfigurationService(s.newErrorStore(errors.New("boom")), nil, nil, false)
 	_, err := svc.CreateCredentialConfiguration(context.Background(), s.validDTO())
 	s.Require().NotNil(err)
 	s.Equal(tidcommon.InternalServerError.Code, err.Code)
@@ -399,7 +423,7 @@ func (s *ConfigurationServiceTestSuite) TestCreateStoreError() {
 	m.EXPECT().GetCredentialConfigurationByHandle(mock.Anything, mock.Anything).Return(nil, ErrNotFound).Maybe()
 	m.EXPECT().CreateCredentialConfiguration(mock.Anything, mock.Anything).
 		Return(errors.New("insert failed")).Maybe()
-	svc := newCredentialConfigurationService(m, nil)
+	svc := newCredentialConfigurationService(m, nil, nil, false)
 	_, err := svc.CreateCredentialConfiguration(context.Background(), s.validDTO())
 	s.Require().NotNil(err)
 	s.Equal(tidcommon.InternalServerError.Code, err.Code)
@@ -409,7 +433,7 @@ func (s *ConfigurationServiceTestSuite) TestCreateOUVerificationError() {
 	resolver := oumock.NewOrganizationUnitServiceInterfaceMock(s.T())
 	resolver.EXPECT().IsOrganizationUnitExists(mock.Anything, mock.Anything).
 		Return(false, &tidcommon.InternalServerError).Maybe()
-	svc := newCredentialConfigurationService(newStatefulCredentialStore(s.T()), resolver)
+	svc := newCredentialConfigurationService(newStatefulCredentialStore(s.T()), resolver, nil, false)
 	dto := s.validDTO()
 	dto.OUID = testOUID
 	_, err := svc.CreateCredentialConfiguration(context.Background(), dto)
@@ -420,7 +444,7 @@ func (s *ConfigurationServiceTestSuite) TestCreateOUVerificationError() {
 func (s *ConfigurationServiceTestSuite) TestCreateRejectsMissingOUID() {
 	resolver := newOUServiceMock(s.T(),
 		map[string]bool{}, map[string]string{}, map[string]string{})
-	svc := newCredentialConfigurationService(newStatefulCredentialStore(s.T()), resolver)
+	svc := newCredentialConfigurationService(newStatefulCredentialStore(s.T()), resolver, nil, false)
 	dto := s.validDTO()
 	_, err := svc.CreateCredentialConfiguration(context.Background(), dto)
 	s.Require().NotNil(err)
@@ -435,21 +459,21 @@ func (s *ConfigurationServiceTestSuite) TestGetEmptyID() {
 }
 
 func (s *ConfigurationServiceTestSuite) TestGetStoreError() {
-	svc := newCredentialConfigurationService(s.newErrorStore(errors.New("boom")), nil)
+	svc := newCredentialConfigurationService(s.newErrorStore(errors.New("boom")), nil, nil, false)
 	_, err := svc.GetCredentialConfiguration(context.Background(), "cfg-1")
 	s.Require().NotNil(err)
 	s.Equal(tidcommon.InternalServerError.Code, err.Code)
 }
 
 func (s *ConfigurationServiceTestSuite) TestGetByHandleStoreError() {
-	svc := newCredentialConfigurationService(s.newErrorStore(errors.New("boom")), nil)
+	svc := newCredentialConfigurationService(s.newErrorStore(errors.New("boom")), nil, nil, false)
 	_, err := svc.GetCredentialConfigurationByHandle(context.Background(), "h")
 	s.Require().NotNil(err)
 	s.Equal(tidcommon.InternalServerError.Code, err.Code)
 }
 
 func (s *ConfigurationServiceTestSuite) TestListStoreError() {
-	svc := newCredentialConfigurationService(s.newErrorStore(errors.New("boom")), nil)
+	svc := newCredentialConfigurationService(s.newErrorStore(errors.New("boom")), nil, nil, false)
 	_, err := svc.ListCredentialConfigurations(context.Background())
 	s.Require().NotNil(err)
 	s.Equal(tidcommon.InternalServerError.Code, err.Code)
@@ -457,14 +481,14 @@ func (s *ConfigurationServiceTestSuite) TestListStoreError() {
 
 func (s *ConfigurationServiceTestSuite) TestListResultLimitExceeded() {
 	svc := newCredentialConfigurationService(
-		s.newErrorStore(ErrResultLimitExceededInCompositeMode), nil)
+		s.newErrorStore(ErrResultLimitExceededInCompositeMode), nil, nil, false)
 	_, err := svc.ListCredentialConfigurations(context.Background())
 	s.Require().NotNil(err)
 	s.Equal(ErrorConfigurationResultLimitExceeded.Code, err.Code)
 }
 
 func (s *ConfigurationServiceTestSuite) TestListSummariesStoreError() {
-	svc := newCredentialConfigurationService(s.newErrorStore(errors.New("boom")), nil)
+	svc := newCredentialConfigurationService(s.newErrorStore(errors.New("boom")), nil, nil, false)
 	_, err := svc.ListCredentialConfigurationSummaries(context.Background())
 	s.Require().NotNil(err)
 	s.Equal(tidcommon.InternalServerError.Code, err.Code)
@@ -472,7 +496,7 @@ func (s *ConfigurationServiceTestSuite) TestListSummariesStoreError() {
 
 func (s *ConfigurationServiceTestSuite) TestListSummariesResultLimitExceeded() {
 	svc := newCredentialConfigurationService(
-		s.newErrorStore(ErrResultLimitExceededInCompositeMode), nil)
+		s.newErrorStore(ErrResultLimitExceededInCompositeMode), nil, nil, false)
 	_, err := svc.ListCredentialConfigurationSummaries(context.Background())
 	s.Require().NotNil(err)
 	s.Equal(ErrorConfigurationResultLimitExceeded.Code, err.Code)
@@ -482,7 +506,7 @@ func (s *ConfigurationServiceTestSuite) TestUpdateLoadStoreError() {
 	m := newCredentialStoreInterfaceMock(s.T())
 	m.EXPECT().GetCredentialConfigurationByID(mock.Anything, mock.Anything).
 		Return(nil, errors.New("boom")).Maybe()
-	svc := newCredentialConfigurationService(m, nil)
+	svc := newCredentialConfigurationService(m, nil, nil, false)
 	_, err := svc.UpdateCredentialConfiguration(context.Background(), "cfg-1", s.validDTO())
 	s.Require().NotNil(err)
 	s.Equal(tidcommon.InternalServerError.Code, err.Code)
@@ -500,7 +524,7 @@ func (s *ConfigurationServiceTestSuite) TestUpdateHandleClashCheckStoreError() {
 		}).Maybe()
 	m.EXPECT().GetCredentialConfigurationByHandle(mock.Anything, mock.Anything).
 		Return(nil, errors.New("boom")).Maybe()
-	svc := newCredentialConfigurationService(m, nil)
+	svc := newCredentialConfigurationService(m, nil, nil, false)
 	_, err := svc.UpdateCredentialConfiguration(context.Background(), "cfg-1", s.validDTO())
 	s.Require().NotNil(err)
 	s.Equal(tidcommon.InternalServerError.Code, err.Code)
@@ -518,7 +542,7 @@ func (s *ConfigurationServiceTestSuite) TestUpdateStoreError() {
 		}).Maybe()
 	m.EXPECT().UpdateCredentialConfiguration(mock.Anything, mock.Anything).
 		Return(errors.New("update failed")).Maybe()
-	svc := newCredentialConfigurationService(m, nil)
+	svc := newCredentialConfigurationService(m, nil, nil, false)
 	_, err := svc.UpdateCredentialConfiguration(context.Background(), "cfg-1", s.validDTO())
 	s.Require().NotNil(err)
 	s.Equal(tidcommon.InternalServerError.Code, err.Code)
@@ -543,7 +567,7 @@ func (s *ConfigurationServiceTestSuite) TestDeleteLoadStoreError() {
 	m := newCredentialStoreInterfaceMock(s.T())
 	m.EXPECT().GetCredentialConfigurationByID(mock.Anything, mock.Anything).
 		Return(nil, errors.New("boom")).Maybe()
-	svc := newCredentialConfigurationService(m, nil)
+	svc := newCredentialConfigurationService(m, nil, nil, false)
 	err := svc.DeleteCredentialConfiguration(context.Background(), "cfg-1")
 	s.Require().NotNil(err)
 	s.Equal(tidcommon.InternalServerError.Code, err.Code)
@@ -559,14 +583,14 @@ func (s *ConfigurationServiceTestSuite) TestDeleteStoreError() {
 		}).Maybe()
 	m.EXPECT().DeleteCredentialConfiguration(mock.Anything, mock.Anything).
 		Return(errors.New("delete failed")).Maybe()
-	svc := newCredentialConfigurationService(m, nil)
+	svc := newCredentialConfigurationService(m, nil, nil, false)
 	err := svc.DeleteCredentialConfiguration(context.Background(), "cfg-1")
 	s.Require().NotNil(err)
 	s.Equal(tidcommon.InternalServerError.Code, err.Code)
 }
 
 func (s *ConfigurationServiceTestSuite) TestIsDeclarativeStoreError() {
-	svc := newCredentialConfigurationService(s.newErrorStore(errors.New("boom")), nil)
+	svc := newCredentialConfigurationService(s.newErrorStore(errors.New("boom")), nil, nil, false)
 	_, err := svc.IsCredentialConfigurationDeclarative(context.Background(), "cfg-1")
 	s.Require().NotNil(err)
 	s.Equal(tidcommon.InternalServerError.Code, err.Code)
@@ -581,7 +605,7 @@ func (s *ConfigurationServiceTestSuite) TestPopulateOUHandleResolveError() {
 		}).Maybe()
 	resolver.EXPECT().GetOrganizationUnitHandlesByIDs(mock.Anything, mock.Anything).
 		Return(nil, &tidcommon.InternalServerError).Maybe()
-	svc := newCredentialConfigurationService(newStatefulCredentialStore(s.T()), resolver)
+	svc := newCredentialConfigurationService(newStatefulCredentialStore(s.T()), resolver, nil, false)
 
 	dto := s.validDTO()
 	dto.OUID = testOUID
@@ -603,7 +627,7 @@ func (s *ConfigurationServiceTestSuite) TestCreateResolvesAndValidatesOU() {
 		map[string]bool{testOUID: true},
 		map[string]string{"default": testOUID},
 		map[string]string{testOUID: "default"})
-	svc := newCredentialConfigurationService(newStatefulCredentialStore(s.T()), resolver)
+	svc := newCredentialConfigurationService(newStatefulCredentialStore(s.T()), resolver, nil, false)
 
 	dto := s.validDTO()
 	_, err := svc.CreateCredentialConfiguration(context.Background(), dto)
@@ -684,7 +708,7 @@ func (s *ConfigurationServiceTestSuite) TestListSummariesByOUID() {
 		map[string]bool{"ou-1": true, "ou-2": true},
 		map[string]string{},
 		map[string]string{"ou-1": "default"})
-	svc := newCredentialConfigurationService(newStatefulCredentialStore(s.T()), resolver)
+	svc := newCredentialConfigurationService(newStatefulCredentialStore(s.T()), resolver, nil, false)
 	ctx := context.Background()
 	first := s.validDTO()
 	first.OUID = "ou-1"
@@ -724,10 +748,180 @@ func (s *ConfigurationServiceTestSuite) TestListSummariesByOUIDErrors() {
 
 	for _, tc := range testCases {
 		s.Run(tc.name, func() {
-			svc := newCredentialConfigurationService(s.newErrorStore(tc.storeErr), nil)
+			svc := newCredentialConfigurationService(s.newErrorStore(tc.storeErr), nil, nil, false)
 			_, svcErr := svc.ListCredentialConfigurationSummariesByOUID(context.Background(), tc.ouID)
 			s.Require().NotNil(svcErr)
 			s.Equal(tc.expectedCode, svcErr.Code)
 		})
 	}
+}
+
+// testProjectID is the project the project tests place credential configurations in.
+const testProjectID = "proj-1"
+
+// newProjectService builds a service on a deployment that serves projects, where the system organization unit
+// is sys-ou and the given validator checks projects.
+func (s *ConfigurationServiceTestSuite) newProjectService(validator *projectOUValidatorMock) *configurationService {
+	ouMock := newOUServiceMock(s.T(), map[string]bool{"sys-ou": true, testOUID: true}, nil, nil)
+	ouMock.EXPECT().GetSystemOUID(mock.Anything).Return("sys-ou", nil).Maybe()
+	return newCredentialConfigurationService(newStatefulCredentialStore(s.T()), ouMock, validator, true)
+}
+
+// inProject returns a valid configuration in the test project.
+func (s *ConfigurationServiceTestSuite) inProject(projectID string) *CredentialConfigurationDTO {
+	dto := s.validDTO()
+	dto.ProjectID = projectID
+	return dto
+}
+
+func (s *ConfigurationServiceTestSuite) TestCreateInProjectPlacesTheConfigurationInTheSystemOU() {
+	validator := newProjectOUValidatorMock(s.T())
+	validator.EXPECT().ValidateProjectOU(mock.Anything, testProjectID, "sys-ou").Return(nil)
+	svc := s.newProjectService(validator)
+
+	created, err := svc.CreateCredentialConfiguration(context.Background(), s.inProject(testProjectID))
+	s.Require().Nil(err)
+	s.Equal("sys-ou", created.OUID)
+	s.Equal(testProjectID, created.ProjectID)
+
+	summaries, err := svc.ListCredentialConfigurationSummariesByProject(context.Background(), testProjectID)
+	s.Require().Nil(err)
+	s.Require().Len(summaries, 1)
+	s.Equal(testProjectID, summaries[0].ProjectID)
+
+	has, err := svc.ProjectHasCredentialConfigurations(context.Background(), testProjectID)
+	s.Require().Nil(err)
+	s.True(has)
+	has, err = svc.ProjectHasCredentialConfigurations(context.Background(), "proj-2")
+	s.Require().Nil(err)
+	s.False(has)
+}
+
+func (s *ConfigurationServiceTestSuite) TestCreateRefusesTheProjectsTheValidatorRefuses() {
+	for code, expected := range map[string]string{
+		"PRJ-1002": ErrorConfigurationInvalidProject.Code,
+		"PRJ-1010": ErrorConfigurationOUNotInProject.Code,
+		"PRJ-9999": tidcommon.InternalServerError.Code,
+	} {
+		validator := newProjectOUValidatorMock(s.T())
+		validator.EXPECT().ValidateProjectOU(mock.Anything, testProjectID, testOUID).
+			Return(&tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: code})
+		svc := s.newProjectService(validator)
+
+		dto := s.inProject(testProjectID)
+		dto.OUID = testOUID
+		_, err := svc.CreateCredentialConfiguration(context.Background(), dto)
+		s.Require().NotNil(err, code)
+		s.Equal(expected, err.Code, code)
+	}
+}
+
+func (s *ConfigurationServiceTestSuite) TestCreateRequiresAProjectWhereProjectsAreServed() {
+	svc := s.newProjectService(newProjectOUValidatorMock(s.T()))
+
+	dto := s.validDTO()
+	dto.OUID = testOUID
+	_, err := svc.CreateCredentialConfiguration(context.Background(), dto)
+	s.Require().NotNil(err)
+	s.Equal(ErrorConfigurationProjectRequired.Code, err.Code)
+
+	err = svc.ResolveCredentialConfigurationOUHandle(context.Background(), &CredentialConfigurationDTO{OUID: testOUID})
+	s.Require().NotNil(err)
+	s.Equal(ErrorConfigurationProjectRequired.Code, err.Code)
+}
+
+func (s *ConfigurationServiceTestSuite) TestCreateFailsWhenTheSystemOUCannotBeRead() {
+	ouMock := oumock.NewOrganizationUnitServiceInterfaceMock(s.T())
+	ouMock.EXPECT().GetSystemOUID(mock.Anything).Return("", &tidcommon.InternalServerError)
+	svc := newCredentialConfigurationService(newStatefulCredentialStore(s.T()), ouMock,
+		newProjectOUValidatorMock(s.T()), true)
+
+	_, err := svc.CreateCredentialConfiguration(context.Background(), s.inProject(testProjectID))
+	s.Require().NotNil(err)
+	s.Equal(tidcommon.InternalServerError.Code, err.Code)
+}
+
+func (s *ConfigurationServiceTestSuite) TestCreateWithoutProjectsKeepsTheProjectUnchecked() {
+	svc := s.newService()
+
+	created, err := svc.CreateCredentialConfiguration(context.Background(), s.inProject(testProjectID))
+	s.Require().Nil(err)
+	s.Equal(testProjectID, created.ProjectID)
+
+	overlong := s.inProject(fmt.Sprintf("%037d", 0))
+	overlong.Handle = "eudi-pid-2"
+	_, err = svc.CreateCredentialConfiguration(context.Background(), overlong)
+	s.Require().NotNil(err)
+	s.Equal(ErrorConfigurationInvalidProject.Code, err.Code)
+}
+
+// An update that moves a configuration to another organization unit of the same project checks the project again.
+func (s *ConfigurationServiceTestSuite) TestUpdateToAnotherOUInTheProjectIsChecked() {
+	validator := newProjectOUValidatorMock(s.T())
+	validator.EXPECT().ValidateProjectOU(mock.Anything, testProjectID, "sys-ou").Return(nil).Once()
+	validator.EXPECT().ValidateProjectOU(mock.Anything, testProjectID, testOUID).
+		Return(&tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: projectscope.OUNotInProjectErrorCode}).
+		Once()
+	svc := s.newProjectService(validator)
+	ctx := context.Background()
+	created, err := svc.CreateCredentialConfiguration(ctx, s.inProject(testProjectID))
+	s.Require().Nil(err)
+
+	moved := s.inProject(testProjectID)
+	moved.OUID = testOUID
+	_, err = svc.UpdateCredentialConfiguration(ctx, created.ID, moved)
+	s.Require().NotNil(err)
+	s.Equal(ErrorConfigurationOUNotInProject.Code, err.Code)
+
+	stored, err := svc.GetCredentialConfiguration(ctx, created.ID)
+	s.Require().Nil(err)
+	s.Equal("sys-ou", stored.OUID)
+}
+
+func (s *ConfigurationServiceTestSuite) TestUpdateKeepsOrMovesTheProject() {
+	validator := newProjectOUValidatorMock(s.T())
+	validator.EXPECT().ValidateProjectOU(mock.Anything, testProjectID, "sys-ou").Return(nil).Once()
+	validator.EXPECT().ValidateProjectOU(mock.Anything, "proj-2", "sys-ou").Return(nil).Once()
+	validator.EXPECT().ValidateProjectOU(mock.Anything, "proj-gone", "sys-ou").
+		Return(&tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "PRJ-1002"}).Once()
+	svc := s.newProjectService(validator)
+	ctx := context.Background()
+	created, err := svc.CreateCredentialConfiguration(ctx, s.inProject(testProjectID))
+	s.Require().Nil(err)
+
+	renamed := s.validDTO()
+	renamed.Name = "Renamed"
+	updated, err := svc.UpdateCredentialConfiguration(ctx, created.ID, renamed)
+	s.Require().Nil(err)
+	s.Equal(testProjectID, updated.ProjectID, "an update without a project keeps it")
+	s.Equal("sys-ou", updated.OUID, "an update without an organization unit keeps it")
+
+	updated, err = svc.UpdateCredentialConfiguration(ctx, created.ID, s.inProject("proj-2"))
+	s.Require().Nil(err)
+	s.Equal("proj-2", updated.ProjectID)
+
+	_, err = svc.UpdateCredentialConfiguration(ctx, created.ID, s.inProject("proj-gone"))
+	s.Require().NotNil(err)
+	s.Equal(ErrorConfigurationInvalidProject.Code, err.Code)
+}
+
+func (s *ConfigurationServiceTestSuite) TestListByProject() {
+	svc := s.newService()
+
+	summaries, err := svc.ListCredentialConfigurationSummariesByProject(context.Background(), "")
+	s.Require().Nil(err)
+	s.Empty(summaries, "an empty project lists no configuration")
+
+	errSvc := newCredentialConfigurationService(s.newErrorStore(errors.New("db boom")), nil, nil, false)
+	_, err = errSvc.ListCredentialConfigurationSummariesByProject(context.Background(), testProjectID)
+	s.Require().NotNil(err)
+	s.Equal(tidcommon.InternalServerError.Code, err.Code)
+	_, err = errSvc.ProjectHasCredentialConfigurations(context.Background(), testProjectID)
+	s.Require().NotNil(err)
+
+	limitSvc := newCredentialConfigurationService(
+		s.newErrorStore(ErrResultLimitExceededInCompositeMode), nil, nil, false)
+	_, err = limitSvc.ListCredentialConfigurationSummariesByProject(context.Background(), testProjectID)
+	s.Require().NotNil(err)
+	s.Equal(ErrorConfigurationResultLimitExceeded.Code, err.Code)
 }

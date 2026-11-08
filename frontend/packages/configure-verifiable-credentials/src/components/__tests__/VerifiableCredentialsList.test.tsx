@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import userEvent from '@testing-library/user-event';
+import {ProjectScopeProvider} from '@thunderid/contexts';
 import {render, screen} from '@thunderid/test-utils';
 import {describe, it, expect, beforeEach, vi} from 'vitest';
 import type {VerifiableCredentialSummary} from '../../models/vc';
@@ -73,6 +74,16 @@ describe('VerifiableCredentialsList', () => {
       error: null,
       refetch: vi.fn(),
     } as unknown as ReturnType<typeof useGetVerifiableCredentials>);
+  });
+
+  it("lists only the selected project's credential configurations", () => {
+    render(
+      <ProjectScopeProvider project={{id: 'project-1'}}>
+        <VerifiableCredentialsList />
+      </ProjectScopeProvider>,
+    );
+
+    expect(useGetVerifiableCredentials).toHaveBeenCalledWith('project-1');
   });
 
   it('hides the offer action and does not mount the credential offer dialog by default', () => {

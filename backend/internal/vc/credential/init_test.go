@@ -107,7 +107,7 @@ func (s *InitTestSuite) TestDeclarativeModeRejectsCreate() {
 	fileStore, _, _, err := initializeStore()
 	s.Require().NoError(err)
 
-	svc := newCredentialConfigurationService(fileStore, ouSvc)
+	svc := newCredentialConfigurationService(fileStore, ouSvc, nil, false)
 	_, svcErr := svc.CreateCredentialConfiguration(context.Background(), &CredentialConfigurationDTO{
 		Handle: "decl-mode-create",
 		OUID:   "ou-1",

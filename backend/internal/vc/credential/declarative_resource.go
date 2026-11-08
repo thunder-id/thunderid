@@ -109,6 +109,7 @@ type configurationRequestWithID struct {
 	Handle          string             `yaml:"handle"`
 	OUID            string             `yaml:"ouId"`
 	OUHandle        string             `yaml:"ouHandle"`
+	ProjectID       string             `yaml:"projectId"`
 	Name            string             `yaml:"name"`
 	Description     string             `yaml:"description"`
 	Format          string             `yaml:"format"`
@@ -154,6 +155,7 @@ func parseToConfigurationDTOWrapper(data []byte) (interface{}, error) {
 		Handle:          req.Handle,
 		OUID:            req.OUID,
 		OUHandle:        req.OUHandle,
+		ProjectID:       req.ProjectID,
 		Name:            req.Name,
 		Description:     req.Description,
 		Format:          req.Format,
@@ -183,6 +185,13 @@ func validateConfigurationWrapper(
 	}
 	if service != nil {
 		if svcErr := service.ResolveCredentialConfigurationOUHandle(context.Background(), cfg); svcErr != nil {
+			if svcErr.Code == ErrorConfigurationProjectRequired.Code {
+				return fmt.Errorf("credential configuration '%s' is missing the required projectId", cfg.Handle)
+			}
+			if cfg.ProjectID != "" && cfg.OUID == "" && strings.TrimSpace(cfg.OUHandle) == "" {
+				return fmt.Errorf("failed to place credential configuration '%s' in the system organization unit",
+					cfg.Handle)
+			}
 			if cfg.OUID != "" {
 				return fmt.Errorf("organization unit '%s' does not exist for credential configuration '%s'",
 					cfg.OUID, cfg.Handle)

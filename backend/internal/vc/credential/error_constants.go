@@ -205,6 +205,51 @@ var (
 			DefaultValue: "A credential configuration with the specified ID already exists",
 		},
 	}
+
+	// ErrorConfigurationInvalidProject is returned when a credential configuration names a project that does not exist.
+	ErrorConfigurationInvalidProject = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "VCI-2013",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.vci.configuration_invalid_project",
+			DefaultValue: "Invalid project",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.vci.configuration_invalid_project_description",
+			DefaultValue: "No project exists with the given project ID",
+		},
+	}
+
+	// ErrorConfigurationOUNotInProject is returned when a credential configuration names an organization unit
+	// outside its project.
+	ErrorConfigurationOUNotInProject = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "VCI-2014",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.vci.configuration_ou_not_in_project",
+			DefaultValue: "Organization unit not in project",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.vci.configuration_ou_not_in_project_description",
+			DefaultValue: "The organization unit must belong to the project",
+		},
+	}
+
+	// ErrorConfigurationProjectRequired is returned when a credential configuration is created without a project on a
+	// deployment that requires one.
+	ErrorConfigurationProjectRequired = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "VCI-2015",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.vci.configuration_project_required",
+			DefaultValue: "Project required",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.vci.configuration_project_required_description",
+			DefaultValue: "A credential configuration must belong to a project. " +
+				"Set projectId to the project it belongs to",
+		},
+	}
 )
 
 // configurationClientErrorStatus maps a client-facing error to its HTTP status.

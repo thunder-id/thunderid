@@ -99,7 +99,7 @@ func TestDeclarativeModeRejectsCreate(t *testing.T) {
 	store, _, _, err := initializeStore()
 	require.NoError(t, err)
 
-	svc := newPresentationDefinitionService(store, ouSvc)
+	svc := newPresentationDefinitionService(store, ouSvc, nil, false)
 	_, svcErr := svc.CreatePresentationDefinition(context.Background(), &PresentationDefinitionDTO{
 		Handle: "decl-mode-create",
 		OUID:   "ou-1",

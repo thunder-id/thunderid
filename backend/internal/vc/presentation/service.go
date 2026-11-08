@@ -10,13 +10,18 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/projectscope"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
+
+// maxProjectIDLength is the length of the PROJECT_ID column. A longer project ID names no project.
+const maxProjectIDLength = 36
 
 // PresentationDefinitionServiceInterface manages OpenID4VP presentation
 // definitions in the configdb store, which the verifier engine reads on demand.
@@ -32,6 +37,13 @@ type PresentationDefinitionServiceInterface interface {
 	ListPresentationDefinitionSummariesByOUID(
 		ctx context.Context, ouID string,
 	) ([]PresentationDefinitionList, *tidcommon.ServiceError)
+	// ListPresentationDefinitionSummariesByProject returns summaries of the presentation definitions of a project.
+	// A project that does not exist has none.
+	ListPresentationDefinitionSummariesByProject(
+		ctx context.Context, projectID string,
+	) ([]PresentationDefinitionList, *tidcommon.ServiceError)
+	// ProjectHasPresentationDefinitions reports whether a presentation definition belongs to the project.
+	ProjectHasPresentationDefinitions(ctx context.Context, projectID string) (bool, *tidcommon.ServiceError)
 	UpdatePresentationDefinition(ctx context.Context, id string, dto *PresentationDefinitionDTO) (
 		*PresentationDefinitionDTO, *tidcommon.ServiceError)
 	DeletePresentationDefinition(ctx context.Context, id string) *tidcommon.ServiceError
@@ -49,26 +61,48 @@ type presentationDefinitionDeclarativeService interface {
 type definitionService struct {
 	store     definitionStoreInterface
 	ouService ou.OrganizationUnitServiceInterface
-	logger    *log.Logger
-	uuid      func() (string, error)
+	// projectValidator is nil on a deployment that serves no projects.
+	projectValidator projectOUValidator
+	// projectRequired is set on a deployment that serves projects, where every definition belongs to one.
+	projectRequired bool
+	logger          *log.Logger
+	uuid            func() (string, error)
 }
 
-// newPresentationDefinitionService builds a presentation-definition service over the given store.
+// projectOUValidator checks that a resource scoped to a project is in an organization unit the project holds.
+type projectOUValidator interface {
+	ValidateProjectOU(ctx context.Context, projectID, ouID string) *tidcommon.ServiceError
+}
+
+// newPresentationDefinitionService builds a presentation-definition service over the given store. A nil
+// projectValidator serves no projects, and a project ID is kept unchecked; projectRequired refuses a
+// definition created without a project.
 func newPresentationDefinitionService(
 	store definitionStoreInterface, ouService ou.OrganizationUnitServiceInterface,
+	projectValidator projectOUValidator, projectRequired bool,
 ) *definitionService {
 	return &definitionService{
-		store:     store,
-		ouService: ouService,
-		logger:    log.GetLogger().With(log.String(log.LoggerKeyComponentName, "OpenID4VPDefinitionService")),
-		uuid:      utils.GenerateUUIDv7,
+		store:            store,
+		ouService:        ouService,
+		projectValidator: projectValidator,
+		projectRequired:  projectRequired,
+		logger:           log.GetLogger().With(log.String(log.LoggerKeyComponentName, "OpenID4VPDefinitionService")),
+		uuid:             utils.GenerateUUIDv7,
 	}
 }
 
-// ResolvePresentationDefinitionOUHandle resolves a declarative OU handle to its ID.
+// ResolvePresentationDefinitionOUHandle resolves a declarative OU handle to its ID. A declarative definition
+// needs a project where one is required, and one in a project without an organization unit is placed in the
+// system organization unit.
 func (s *definitionService) ResolvePresentationDefinitionOUHandle(
 	ctx context.Context, dto *PresentationDefinitionDTO,
 ) *tidcommon.ServiceError {
+	if strings.TrimSpace(dto.ProjectID) == "" && s.projectRequired {
+		return &ErrorDefinitionProjectRequired
+	}
+	if dto.ProjectID != "" && dto.OUID == "" && strings.TrimSpace(dto.OUHandle) == "" {
+		return s.placeInSystemOU(ctx, dto)
+	}
 	if dto.OUID != "" {
 		return s.resolveOU(ctx, dto)
 	}
@@ -148,7 +182,7 @@ func (s *definitionService) CreatePresentationDefinition(
 	if svcErr := rejectExpiredCertificates(dto.TrustedAuthorities); svcErr != nil {
 		return nil, svcErr
 	}
-	if svcErr := s.resolveOU(ctx, dto); svcErr != nil {
+	if svcErr := s.resolvePlacement(ctx, dto); svcErr != nil {
 		return nil, svcErr
 	}
 
@@ -279,6 +313,40 @@ func (s *definitionService) ListPresentationDefinitionSummariesByOUID(
 	return summaries, nil
 }
 
+// ListPresentationDefinitionSummariesByProject returns summaries of the presentation definitions of a project,
+// with resolved OU handles. An empty project ID names no project, so it lists none rather than every definition.
+func (s *definitionService) ListPresentationDefinitionSummariesByProject(
+	ctx context.Context, projectID string,
+) ([]PresentationDefinitionList, *tidcommon.ServiceError) {
+	if projectID == "" {
+		return []PresentationDefinitionList{}, nil
+	}
+	summaries, err := s.store.ListPresentationDefinitionSummariesByProject(ctx, projectID)
+	if err != nil {
+		if errors.Is(err, ErrResultLimitExceededInCompositeMode) {
+			return nil, &ErrorDefinitionResultLimitExceeded
+		}
+		s.logger.Error(ctx, "Failed to list presentation definition summaries in project",
+			log.String("projectID", projectID), log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+	s.populateSummaryOUHandles(ctx, summaries)
+	return summaries, nil
+}
+
+// ProjectHasPresentationDefinitions reports whether a presentation definition belongs to the project.
+func (s *definitionService) ProjectHasPresentationDefinitions(
+	ctx context.Context, projectID string,
+) (bool, *tidcommon.ServiceError) {
+	count, err := s.store.CountPresentationDefinitionsByProject(ctx, projectID)
+	if err != nil {
+		s.logger.Error(ctx, "Failed to check the presentation definitions of a project",
+			log.String("projectID", projectID), log.Error(err))
+		return false, &tidcommon.InternalServerError
+	}
+	return count > 0, nil
+}
+
 // populateSummaryOUHandles resolves each summary's owning OU handle for display.
 func (s *definitionService) populateSummaryOUHandles(ctx context.Context, summaries []PresentationDefinitionList) {
 	if s.ouService == nil {
@@ -334,8 +402,22 @@ func (s *definitionService) UpdatePresentationDefinition(
 	if svcErr := validateDefinition(dto); svcErr != nil {
 		return nil, svcErr
 	}
+	// An update that names no project keeps the definition's project, and one in a project that names no
+	// organization unit keeps its organization unit.
+	if dto.ProjectID == "" {
+		dto.ProjectID = existing.ProjectID
+	}
+	if dto.ProjectID != "" && strings.TrimSpace(dto.OUID) == "" {
+		dto.OUID = existing.OUID
+	}
 	if svcErr := s.resolveOU(ctx, dto); svcErr != nil {
 		return nil, svcErr
+	}
+	// The project is checked again only when the definition moves to another project or organization unit.
+	if dto.ProjectID != "" && (dto.ProjectID != existing.ProjectID || dto.OUID != existing.OUID) {
+		if svcErr := s.validateProjectOU(ctx, dto.ProjectID, dto.OUID); svcErr != nil {
+			return nil, svcErr
+		}
 	}
 
 	if existing.Handle != dto.Handle {
@@ -392,6 +474,74 @@ func (s *definitionService) IsPresentationDefinitionDeclarative(
 		return false, &tidcommon.InternalServerError
 	}
 	return isDeclarative, nil
+}
+
+// resolvePlacement sets the organization unit and checks the project of a new presentation definition. A
+// deployment that requires a project refuses a definition without one. A definition in a project may leave the
+// organization unit out to be placed in the system organization unit, and one it names has to belong to the
+// project.
+func (s *definitionService) resolvePlacement(
+	ctx context.Context, dto *PresentationDefinitionDTO,
+) *tidcommon.ServiceError {
+	if dto.ProjectID == "" {
+		if s.projectRequired {
+			return &ErrorDefinitionProjectRequired
+		}
+		return s.resolveOU(ctx, dto)
+	}
+	if strings.TrimSpace(dto.OUID) == "" {
+		if svcErr := s.placeInSystemOU(ctx, dto); svcErr != nil {
+			return svcErr
+		}
+	} else if svcErr := s.resolveOU(ctx, dto); svcErr != nil {
+		return svcErr
+	}
+	return s.validateProjectOU(ctx, dto.ProjectID, dto.OUID)
+}
+
+// placeInSystemOU places a presentation definition in the system organization unit. Without an OU service,
+// as in tests, the organization unit is left as given.
+func (s *definitionService) placeInSystemOU(
+	ctx context.Context, dto *PresentationDefinitionDTO,
+) *tidcommon.ServiceError {
+	if s.ouService == nil {
+		return nil
+	}
+	systemOUID, svcErr := s.ouService.GetSystemOUID(ctx)
+	if svcErr != nil {
+		s.logger.Error(ctx, "Failed to get the system organization unit", log.String("code", svcErr.Code))
+		return &tidcommon.InternalServerError
+	}
+	dto.OUID = systemOUID
+	return nil
+}
+
+// validateProjectOU checks that a presentation definition's organization unit belongs to its project. It returns
+// ErrorDefinitionInvalidProject when no such project exists, and ErrorDefinitionOUNotInProject when the
+// organization unit is outside the project.
+//
+// A deployment that serves no projects, such as a Data Plane, cannot check the project. It keeps the project ID
+// as given so that imported configuration retains it, but refuses one longer than the column holds.
+func (s *definitionService) validateProjectOU(ctx context.Context, projectID, ouID string) *tidcommon.ServiceError {
+	if utf8.RuneCountInString(projectID) > maxProjectIDLength {
+		return &ErrorDefinitionInvalidProject
+	}
+	if s.projectValidator == nil {
+		return nil
+	}
+	svcErr := s.projectValidator.ValidateProjectOU(ctx, projectID, ouID)
+	switch {
+	case svcErr == nil:
+		return nil
+	case svcErr.Code == projectscope.ProjectNotFoundErrorCode:
+		return &ErrorDefinitionInvalidProject
+	case svcErr.Code == projectscope.OUNotInProjectErrorCode:
+		return &ErrorDefinitionOUNotInProject
+	default:
+		s.logger.Error(ctx, "Failed to check the project of a presentation definition",
+			log.String("projectID", projectID), log.String("code", svcErr.Code))
+		return &tidcommon.InternalServerError
+	}
 }
 
 // validateDefinition enforces the required fields of a presentation definition.

@@ -7,6 +7,7 @@ import {
   useGetOrganizationUnit,
   useHasMultipleOUs,
 } from '@thunderid/configure-organization-units';
+import {useProjectScope} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {getErrorMessage} from '@thunderid/utils';
 import {
@@ -26,7 +27,7 @@ import {
 import {Home} from '@wso2/oxygen-ui-icons-react';
 import {useMemo, useState, type ChangeEvent, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
-import {useNavigate} from 'react-router';
+import {Navigate, useNavigate} from 'react-router';
 import useCreateVerifiablePresentation from '../api/useCreateVerifiablePresentation';
 import ConfigureName from '../components/create-verifiable-presentation/ConfigureName';
 import ClaimsEditor from '../components/PresentationClaimsEditor';
@@ -35,14 +36,34 @@ import {claimRowsToRequest, emptyClaimRow, findDuplicateClaimNames, type ClaimRo
 
 type Step = 'ORGANIZATION_UNIT' | 'NAME' | 'DETAILS' | 'CLAIMS';
 
-export default function VerifiablePresentationCreatePage(): JSX.Element {
+/**
+ * Props for the {@link VerifiablePresentationCreatePage} component.
+ */
+export interface VerifiablePresentationCreatePageProps {
+  /**
+   * Whether a presentation definition is created in a project only. When set, the page returns to the list
+   * outside a selected project, since a definition created there would be refused.
+   */
+  createInProjectsOnly?: boolean;
+}
+
+export default function VerifiablePresentationCreatePage({
+  createInProjectsOnly = false,
+}: VerifiablePresentationCreatePageProps): JSX.Element {
   const navigate = useNavigate();
   const {t} = useTranslation('verifiable-presentations');
   const logger = useLogger('VerifiablePresentationCreatePage');
   const routes = useVerifiableCredentialRoutes();
   const createVP = useCreateVerifiablePresentation();
 
-  const {hasMultipleOUs, isLoading: isOuLoading, ouList} = useHasMultipleOUs();
+  // Inside a project the definition is created with the project alone, and the API places it in the system
+  // organization unit, so there is no organization unit to pick.
+  const ouLookup = useHasMultipleOUs();
+  const {projectId} = useProjectScope();
+  const isInProject = Boolean(projectId);
+  const hasMultipleOUs = !isInProject && ouLookup.hasMultipleOUs;
+  const isOuLoading = !isInProject && ouLookup.isLoading;
+  const {ouList} = ouLookup;
 
   const [step, setStep] = useState<Step>('ORGANIZATION_UNIT');
   const [name, setName] = useState<string>('');
@@ -58,7 +79,7 @@ export default function VerifiablePresentationCreatePage(): JSX.Element {
   // The organization unit whose name is shown in the Details step's summary chip.
   const {data: resolvedOrganizationUnit, isLoading: isResolvedOuLoading} = useGetOrganizationUnit(
     effectiveOuId,
-    Boolean(effectiveOuId),
+    !isInProject && Boolean(effectiveOuId),
   );
 
   // The organization unit is the wizard's first step whenever there's a choice to make. Single-OU
@@ -84,7 +105,7 @@ export default function VerifiablePresentationCreatePage(): JSX.Element {
   const stepReady: Record<Step, boolean> = {
     ORGANIZATION_UNIT: effectiveOuId !== '',
     NAME: name.trim() !== '' && handle.trim() !== '',
-    DETAILS: vct.trim() !== '' && effectiveOuId !== '',
+    DETAILS: vct.trim() !== '' && (isInProject || effectiveOuId !== ''),
     CLAIMS: claims.some((c) => c.name.trim() !== '') && Object.keys(duplicateClaimNames).length === 0,
   };
 
@@ -105,7 +126,7 @@ export default function VerifiablePresentationCreatePage(): JSX.Element {
     createVP.mutate(
       {
         handle: handle.trim(),
-        ouId: effectiveOuId,
+        ...(isInProject ? {projectId} : {ouId: effectiveOuId}),
         name: name.trim() || undefined,
         vct: vct.trim(),
         format: format.trim() || undefined,
@@ -230,6 +251,10 @@ export default function VerifiablePresentationCreatePage(): JSX.Element {
   };
 
   const pageTitle = t('create.title', 'New presentation definition');
+
+  if (createInProjectsOnly && !isInProject) {
+    return <Navigate to={routes.verifiablePresentations.list()} replace />;
+  }
 
   if (effectiveStep === 'ORGANIZATION_UNIT') {
     if (isOuLoading || !hasMultipleOUs) {

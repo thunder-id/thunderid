@@ -22,6 +22,8 @@ export interface VerifiableCredential {
   handle: string;
   ouId: string;
   ouHandle?: string;
+  /** The project this configuration belongs to. */
+  projectId?: string;
   name?: string;
   description?: string;
   format: string;
@@ -40,6 +42,8 @@ export interface VerifiableCredentialSummary {
   handle: string;
   ouId: string;
   ouHandle?: string;
+  /** The project this configuration belongs to. */
+  projectId?: string;
   format: string;
   vct: string;
   name?: string;

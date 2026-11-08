@@ -21,6 +21,9 @@ type credentialStoreInterface interface {
 	ListCredentialConfigurations(ctx context.Context) ([]CredentialConfigurationDTO, error)
 	ListCredentialConfigurationSummaries(ctx context.Context) ([]CredentialConfigurationList, error)
 	ListCredentialConfigurationSummariesByOUID(ctx context.Context, ouID string) ([]CredentialConfigurationList, error)
+	ListCredentialConfigurationSummariesByProject(
+		ctx context.Context, projectID string) ([]CredentialConfigurationList, error)
+	CountCredentialConfigurationsByProject(ctx context.Context, projectID string) (int, error)
 	UpdateCredentialConfiguration(ctx context.Context, dto CredentialConfigurationDTO) error
 	DeleteCredentialConfiguration(ctx context.Context, id string) error
 	IsCredentialConfigurationDeclarative(ctx context.Context, id string) (bool, error)
@@ -55,7 +58,7 @@ func (s *credentialStore) CreateCredentialConfiguration(ctx context.Context, dto
 	}
 	_, err = dbClient.ExecuteContext(ctx, queryCreateConfiguration,
 		dto.ID, dto.Handle, dto.OUID, dto.Name, dto.Description, dto.Format, dto.VCT, claimsJSON, displayJSON,
-		nullableInt(dto.ValiditySeconds), s.scope(ctx))
+		nullableInt(dto.ValiditySeconds), nullableString(dto.ProjectID), s.scope(ctx))
 	if err != nil {
 		return fmt.Errorf("failed to create credential configuration: %w", err)
 	}
@@ -130,6 +133,40 @@ func (s *credentialStore) ListCredentialConfigurationSummariesByOUID(
 	return s.listSummaries(ctx, queryListConfigurationSummariesByOUID, ouID, s.scope(ctx))
 }
 
+// ListCredentialConfigurationSummariesByProject returns summary rows for the credential configurations of a
+// project in the config database.
+func (s *credentialStore) ListCredentialConfigurationSummariesByProject(
+	ctx context.Context, projectID string,
+) ([]CredentialConfigurationList, error) {
+	return s.listSummaries(ctx, queryListConfigurationSummariesByProject, projectID, s.scope(ctx))
+}
+
+// CountCredentialConfigurationsByProject returns the number of credential configurations of a project in the config
+// database.
+func (s *credentialStore) CountCredentialConfigurationsByProject(ctx context.Context, projectID string) (int, error) {
+	dbClient, err := s.dbProvider.GetConfigDBClient()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get database client: %w", err)
+	}
+	results, err := dbClient.QueryContext(ctx, queryCountConfigurationsByProject, projectID, s.scope(ctx))
+	if err != nil {
+		return 0, fmt.Errorf("failed to count the credential configurations of a project: %w", err)
+	}
+	if len(results) == 0 {
+		return 0, fmt.Errorf("no result from the count of the credential configurations of a project")
+	}
+	switch total := results[0]["total"].(type) {
+	case int64:
+		return int(total), nil
+	case int:
+		return total, nil
+	case float64:
+		return int(total), nil
+	default:
+		return 0, fmt.Errorf("unexpected count type %T", total)
+	}
+}
+
 // UpdateCredentialConfiguration persists changes to an existing credential configuration in the database.
 func (s *credentialStore) UpdateCredentialConfiguration(ctx context.Context, dto CredentialConfigurationDTO) error {
 	dbClient, err := s.dbProvider.GetConfigDBClient()
@@ -142,7 +179,7 @@ func (s *credentialStore) UpdateCredentialConfiguration(ctx context.Context, dto
 	}
 	_, err = dbClient.ExecuteContext(ctx, queryUpdateConfiguration,
 		dto.ID, dto.Handle, dto.OUID, dto.Name, dto.Description, dto.Format, dto.VCT, claimsJSON, displayJSON,
-		nullableInt(dto.ValiditySeconds), s.scope(ctx))
+		nullableInt(dto.ValiditySeconds), nullableString(dto.ProjectID), s.scope(ctx))
 	if err != nil {
 		return fmt.Errorf("failed to update credential configuration: %w", err)
 	}
@@ -182,12 +219,13 @@ func (s *credentialStore) listSummaries(
 	summaries := make([]CredentialConfigurationList, 0, len(results))
 	for _, row := range results {
 		summaries = append(summaries, CredentialConfigurationList{
-			ID:     columnString(row["id"]),
-			Handle: columnString(row["handle"]),
-			OUID:   columnString(row["ou_id"]),
-			Name:   columnString(row["name"]),
-			Format: columnString(row["format"]),
-			VCT:    columnString(row["vct"]),
+			ID:        columnString(row["id"]),
+			Handle:    columnString(row["handle"]),
+			OUID:      columnString(row["ou_id"]),
+			ProjectID: columnString(row["project_id"]),
+			Name:      columnString(row["name"]),
+			Format:    columnString(row["format"]),
+			VCT:       columnString(row["vct"]),
 		})
 	}
 	return summaries, nil
@@ -212,6 +250,14 @@ func marshalConfiguration(dto CredentialConfigurationDTO) (claims, display inter
 	return claims, display, nil
 }
 
+// nullableString stores an empty string as NULL.
+func nullableString(value string) interface{} {
+	if value == "" {
+		return nil
+	}
+	return value
+}
+
 // nullableInt maps an optional int to its SQL value, preserving NULL.
 func nullableInt(v *int) interface{} {
 	if v == nil {
@@ -226,6 +272,7 @@ func buildConfigurationDTOFromRow(row map[string]interface{}) (*CredentialConfig
 		ID:          columnString(row["id"]),
 		Handle:      columnString(row["handle"]),
 		OUID:        columnString(row["ou_id"]),
+		ProjectID:   columnString(row["project_id"]),
 		Name:        columnString(row["name"]),
 		Description: columnString(row["description"]),
 		Format:      columnString(row["format"]),
