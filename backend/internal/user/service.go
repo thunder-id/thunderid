@@ -77,6 +77,8 @@ type UserServiceInterface interface {
 	ResolveSharingOverlay(ctx context.Context, userID, ouID string) (sharing.ResolvedOverlay, *tidcommon.ServiceError)
 	GetAccessibleOrganizationUnits(ctx context.Context, scope string,
 		limit, offset int) (*AccessibleOrganizationUnitListResponse, *tidcommon.ServiceError)
+	GetUserOrganizationUnits(ctx context.Context, userID string,
+		limit, offset int) (*UserOrganizationUnitListResponse, *tidcommon.ServiceError)
 }
 
 // ConfigurableUserService extends UserServiceInterface with the role assignment service injected at startup. It is
@@ -1837,12 +1839,8 @@ func (us *userService) GetAccessibleOrganizationUnits(
 	if scope != "" && scope != accessibleOUScopeSiblings {
 		return nil, &ErrorInvalidScope
 	}
-	if limit < 1 || limit > serverconst.MaxPageSize {
-		return nil, &ErrorInvalidLimit
-	}
-	// An offset this close to MaxInt would overflow the page bounds, the start index and the links.
-	if offset < 0 || offset > math.MaxInt-limit {
-		return nil, &ErrorInvalidOffset
+	if svcErr := validateOUPage(limit, offset); svcErr != nil {
+		return nil, svcErr
 	}
 
 	userID := security.GetSubject(ctx)
@@ -1856,30 +1854,14 @@ func (us *userService) GetAccessibleOrganizationUnits(
 	if svcErr != nil {
 		return nil, svcErr
 	}
-	reached, svcErr := us.sharingService.ListResourceSharedOUIDs(ctx, UserSharingType, userID)
+	units := newOUReader(us.ouService)
+	accessible, svcErr := us.accessibleOUs(ctx, units, user)
 	if svcErr != nil {
-		return nil, translateSharingError(svcErr)
+		return nil, svcErr
 	}
-	// The reach comes in no particular order, so it is sorted for a page to fall in the same place on
-	// every request.
-	slices.Sort(reached)
 	current := security.GetOUID(ctx)
 	if current == "" {
 		current = user.OUID
-	}
-
-	units := newOUReader(us.ouService)
-	accessible := make([]oupkg.OrganizationUnit, 0, len(reached)+1)
-	for _, ouID := range append([]string{user.OUID}, reached...) {
-		ou, found, svcErr := units.get(internalCtx, ouID)
-		if svcErr != nil {
-			return nil, svcErr
-		}
-		// A unit removed since it was shared is no longer anywhere to go.
-		if !found {
-			continue
-		}
-		accessible = append(accessible, ou)
 	}
 
 	inScope := accessible
@@ -1896,26 +1878,95 @@ func (us *userService) GetAccessibleOrganizationUnits(
 		}
 	}
 
-	page := inScope[min(offset, len(inScope)):min(offset+limit, len(inScope))]
-	items := make([]AccessibleOrganizationUnit, 0, len(page))
-	for _, ou := range page {
-		items = append(items, AccessibleOrganizationUnit{ID: ou.ID, Handle: ou.Handle, Name: ou.Name,
-			LogoURL: ou.LogoURL})
-	}
-
 	scopeQuery := ""
 	if scope != "" {
 		scopeQuery = "&scope=" + scope
 	}
 	return &AccessibleOrganizationUnitListResponse{
-		Current:           current,
-		TotalResults:      len(inScope),
+		Current:                          current,
+		UserOrganizationUnitListResponse: pageOUs(inScope, "/users/me/ous", limit, offset, scopeQuery),
+	}, nil
+}
+
+// GetUserOrganizationUnits lists the organization units a user can access: the one it lives in and
+// every one it is shared into. The caller must be able to read the user.
+func (us *userService) GetUserOrganizationUnits(
+	ctx context.Context, userID string, limit, offset int,
+) (*UserOrganizationUnitListResponse, *tidcommon.ServiceError) {
+	if svcErr := validateOUPage(limit, offset); svcErr != nil {
+		return nil, svcErr
+	}
+	user, svcErr := us.GetUser(ctx, userID, false)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	accessible, svcErr := us.accessibleOUs(ctx, newOUReader(us.ouService), user)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	page := pageOUs(accessible, "/users/"+userID+"/ous", limit, offset, "")
+	return &page, nil
+}
+
+// validateOUPage refuses a limit outside its bounds, and an offset so close to MaxInt that it would
+// overflow the page bounds, the start index and the links.
+func validateOUPage(limit, offset int) *tidcommon.ServiceError {
+	if limit < 1 || limit > serverconst.MaxPageSize {
+		return &ErrorInvalidLimit
+	}
+	if offset < 0 || offset > math.MaxInt-limit {
+		return &ErrorInvalidOffset
+	}
+	return nil
+}
+
+// accessibleOUs reads the organization units a user can access: its own first, then the ones it is
+// shared into, by ID.
+func (us *userService) accessibleOUs(
+	ctx context.Context, units *ouReader, user *providers.User,
+) ([]oupkg.OrganizationUnit, *tidcommon.ServiceError) {
+	reached, svcErr := us.sharingService.ListResourceSharedOUIDs(ctx, UserSharingType, user.ID)
+	if svcErr != nil {
+		return nil, translateSharingError(svcErr)
+	}
+	// The reach comes in no particular order, so it is sorted for a page to fall in the same place on
+	// every request.
+	slices.Sort(reached)
+
+	// Read as the runtime, as the caller may not read the units the user is shared into.
+	internalCtx := security.WithRuntimeContext(ctx)
+	accessible := make([]oupkg.OrganizationUnit, 0, len(reached)+1)
+	for _, ouID := range append([]string{user.OUID}, reached...) {
+		ou, found, svcErr := units.get(internalCtx, ouID)
+		if svcErr != nil {
+			return nil, svcErr
+		}
+		// A unit removed since it was shared is no longer anywhere to go.
+		if !found {
+			continue
+		}
+		accessible = append(accessible, ou)
+	}
+	return accessible, nil
+}
+
+// pageOUs returns one page of the listed organization units, linked under path.
+func pageOUs(
+	ous []oupkg.OrganizationUnit, path string, limit, offset int, query string,
+) UserOrganizationUnitListResponse {
+	page := ous[min(offset, len(ous)):min(offset+limit, len(ous))]
+	items := make([]AccessibleOrganizationUnit, 0, len(page))
+	for _, ou := range page {
+		items = append(items, AccessibleOrganizationUnit{ID: ou.ID, Handle: ou.Handle, Name: ou.Name,
+			LogoURL: ou.LogoURL})
+	}
+	return UserOrganizationUnitListResponse{
+		TotalResults:      len(ous),
 		StartIndex:        offset + 1,
 		Count:             len(items),
 		OrganizationUnits: items,
-		Links: utils.BuildPaginationLinks(
-			"/users/me/ous", limit, offset, len(inScope), scopeQuery),
-	}, nil
+		Links:             utils.BuildPaginationLinks(path, limit, offset, len(ous), query),
+	}
 }
 
 // sameParent reports whether two units sit under the same parent, top-level units included.

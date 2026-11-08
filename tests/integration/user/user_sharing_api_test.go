@@ -547,6 +547,104 @@ func (ts *UserSharingAPITestSuite) TestAnUnsharedUserListsOnlyItsOwnUnit() {
 	}
 }
 
+// usersUnits lists, as the given client, the units the given user can access, with the raw body.
+func (ts *UserSharingAPITestSuite) usersUnits(
+	client *http.Client, userID, query string,
+) (accessibleUnits, []string, []byte) {
+	ts.T().Helper()
+	status, raw := ts.do(client, http.MethodGet, "/users/"+userID+"/ous"+query, nil)
+	ts.Require().Equal(http.StatusOK, status, string(raw))
+	var list accessibleUnits
+	ts.Require().NoError(json.Unmarshal(raw, &list))
+	ids := make([]string, 0, len(list.OrganizationUnits))
+	for _, ou := range list.OrganizationUnits {
+		ids = append(ids, ou.ID)
+	}
+	return list, ids, raw
+}
+
+// Root lists the units a user can access: the ones the user lists for itself, in the same order, with
+// nothing relative to a token.
+func (ts *UserSharingAPITestSuite) TestRootListsTheUnitsAUserCanAccess() {
+	share := ts.share(ts.rootClient, ts.sharedUserID, namedChild(ts.childOUID, "unit"))
+	defer ts.do(ts.rootClient, http.MethodDelete, policyPath(ts.sharedUserID, share.ID), nil)
+	reshareBody := namedChild(ts.grandchildOUID, "unit")
+	reshareBody["initiatingOuId"] = ts.childOUID
+	ts.share(ts.rootClient, ts.sharedUserID, reshareBody)
+
+	_, ids, raw := ts.usersUnits(ts.rootClient, ts.sharedUserID, "")
+	ts.ElementsMatch([]string{ts.parentOUID, ts.childOUID, ts.grandchildOUID}, ids)
+	ts.Equal(ts.parentOUID, ids[0], "the user's own unit comes first")
+	ts.NotContains(string(raw), `"current"`)
+
+	userClient, err := ts.signIn.HTTPClientForUser(ts.parentOUID, "user-sharing-target", sharingTestPassword)
+	ts.Require().NoError(err, "sign in as the shared user")
+	_, ownIDs := ts.accessible(userClient, "")
+	ts.Equal(ownIDs, ids, "the user lists the same units in the same order")
+
+	// Taking the share away takes the reshare beneath it.
+	status, _ := ts.do(ts.rootClient, http.MethodDelete, policyPath(ts.sharedUserID, share.ID), nil)
+	ts.Require().Equal(http.StatusNoContent, status)
+	_, ids, _ = ts.usersUnits(ts.rootClient, ts.sharedUserID, "")
+	ts.Equal([]string{ts.parentOUID}, ids)
+}
+
+// The list pages under the user's own path.
+func (ts *UserSharingAPITestSuite) TestTheUnitsAUserCanAccessPage() {
+	share := ts.share(ts.rootClient, ts.sharedUserID, namedChild(ts.childOUID, "unit"))
+	defer ts.do(ts.rootClient, http.MethodDelete, policyPath(ts.sharedUserID, share.ID), nil)
+	reshareBody := namedChild(ts.grandchildOUID, "unit")
+	reshareBody["initiatingOuId"] = ts.childOUID
+	ts.share(ts.rootClient, ts.sharedUserID, reshareBody)
+	path := "/users/" + ts.sharedUserID + "/ous"
+
+	first, firstIDs, _ := ts.usersUnits(ts.rootClient, ts.sharedUserID, "?limit=2")
+	ts.Equal(3, first.TotalResults)
+	ts.Equal(1, first.StartIndex)
+	ts.Len(firstIDs, 2)
+	next := first.link("next")
+	ts.Require().True(strings.HasPrefix(next, path+"?"), "next link: %q", next)
+
+	second, secondIDs, _ := ts.usersUnits(ts.rootClient, ts.sharedUserID, strings.TrimPrefix(next, path))
+	ts.Equal(3, second.StartIndex)
+	ts.Empty(second.link("next"), "the last page links no further")
+	ts.ElementsMatch([]string{ts.parentOUID, ts.childOUID, ts.grandchildOUID}, append(firstIDs, secondIDs...))
+}
+
+// Only the root permission lists a user's units. The user permissions held in the unit the user lives in, or
+// in one it is shared into, are not enough, and neither is being the user.
+func (ts *UserSharingAPITestSuite) TestOnlyRootListsTheUnitsAUserCanAccess() {
+	share := ts.share(ts.rootClient, ts.sharedUserID, namedChild(ts.childOUID, "unit"))
+	defer ts.do(ts.rootClient, http.MethodDelete, policyPath(ts.sharedUserID, share.ID), nil)
+	userClient, err := ts.signIn.HTTPClientForUser(ts.parentOUID, "user-sharing-target", sharingTestPassword)
+	ts.Require().NoError(err, "sign in as the shared user")
+
+	callers := []struct {
+		name   string
+		client *http.Client
+	}{
+		{name: "the owning unit's admin", client: ts.parentClient},
+		{name: "the admin of a unit the user is shared into", client: ts.childClient},
+		{name: "the user", client: userClient},
+	}
+	for _, caller := range callers {
+		status, raw := ts.do(caller.client, http.MethodGet, "/users/"+ts.sharedUserID+"/ous", nil)
+		ts.Require().Equal(http.StatusForbidden, status, "%s: %s", caller.name, raw)
+		var e sharingError
+		ts.Require().NoError(json.Unmarshal(raw, &e))
+		ts.Equal("AUTH-4030", e.Code, caller.name)
+	}
+
+	// The owning unit's admin still reads the user itself.
+	status, raw := ts.do(ts.parentClient, http.MethodGet, "/users/"+ts.sharedUserID, nil)
+	ts.Equal(http.StatusOK, status, string(raw))
+}
+
+func (ts *UserSharingAPITestSuite) TestTheUnitsOfAnUnknownUserAreNotFound() {
+	status, raw := ts.do(ts.rootClient, http.MethodGet, "/users/00000000-0000-0000-0000-000000000000/ous", nil)
+	ts.expectError(status, raw, http.StatusNotFound, "USR-1003")
+}
+
 // A user declared in a resource file declares its sharing there too. The declared policy reads like
 // any other but cannot be changed or removed here, and the owner may not add another; a unit the
 // file shares the user into may still reshare, since there is nowhere else to record that.

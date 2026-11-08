@@ -812,6 +812,10 @@ func TestGetRequiredPermissionForAPI(t *testing.T) {
 			method: http.MethodGet, path: "/users/user-456", wantPerm: p.UserView,
 		},
 		{
+			name:   "GET /users/{id}/ous needs root, not user view",
+			method: http.MethodGet, path: "/users/user-456/ous", wantPerm: p.Root,
+		},
+		{
 			name:   "PUT /users/{id} prefix",
 			method: http.MethodPut, path: "/users/user-456", wantPerm: p.UserUpdate,
 		},
@@ -1193,6 +1197,7 @@ func TestRouteTableUsesCatalogPermissions(t *testing.T) {
 		"GET /secrets": true, "POST /secrets": true, "GET /secrets/**": true,
 		"PUT /secrets/**": true, "DELETE /secrets/**": true,
 		"POST /import": true, "POST /import/delete": true,
+		"GET /users/*/ous": true,
 		// A gateway's variable and secret stores hold credentials, as the server's own does.
 		"GET /gateways/*/variables/**": true, "POST /gateways/*/variables/**": true,
 		"PUT /gateways/*/variables/**": true, "DELETE /gateways/*/variables/**": true,

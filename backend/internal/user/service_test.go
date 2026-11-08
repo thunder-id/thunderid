@@ -5145,9 +5145,9 @@ func newAccessFixture(t *testing.T, tokenOU string, reached ...string) (*userSer
 }
 
 // unitIDs returns the ids of the listed units, in order.
-func unitIDs(list *AccessibleOrganizationUnitListResponse) []string {
-	ids := make([]string, 0, len(list.OrganizationUnits))
-	for _, ou := range list.OrganizationUnits {
+func unitIDs(units []AccessibleOrganizationUnit) []string {
+	ids := make([]string, 0, len(units))
+	for _, ou := range units {
 		ids = append(ids, ou.ID)
 	}
 	return ids
@@ -5175,7 +5175,7 @@ func TestGetAccessibleOrganizationUnits_Scopes(t *testing.T) {
 
 			require.Nil(t, err)
 			require.Equal(t, tc.tokenOU, list.Current)
-			require.Equal(t, tc.expected, unitIDs(list))
+			require.Equal(t, tc.expected, unitIDs(list.OrganizationUnits))
 			require.Equal(t, len(tc.expected), list.TotalResults)
 		})
 	}
@@ -5187,7 +5187,7 @@ func TestGetAccessibleOrganizationUnits_OwnUnitFirstThenTheReachByID(t *testing.
 	list, err := service.GetAccessibleOrganizationUnits(ctx, "", 30, 0)
 
 	require.Nil(t, err)
-	require.Equal(t, []string{"ou-p", "ou-c", "ou-g", "ou-x"}, unitIDs(list))
+	require.Equal(t, []string{"ou-p", "ou-c", "ou-g", "ou-x"}, unitIDs(list.OrganizationUnits))
 }
 
 func TestGetAccessibleOrganizationUnits_CurrentFallsBackToTheUsersOwnUnit(t *testing.T) {
@@ -5197,7 +5197,7 @@ func TestGetAccessibleOrganizationUnits_CurrentFallsBackToTheUsersOwnUnit(t *tes
 
 	require.Nil(t, err)
 	require.Equal(t, "ou-p", list.Current)
-	require.Equal(t, []string{"ou-p"}, unitIDs(list))
+	require.Equal(t, []string{"ou-p"}, unitIDs(list.OrganizationUnits))
 }
 
 func TestGetAccessibleOrganizationUnits_NoSiblingsWhenTheCurrentUnitIsGone(t *testing.T) {
@@ -5216,7 +5216,7 @@ func TestGetAccessibleOrganizationUnits_SkipsARemovedUnit(t *testing.T) {
 	list, err := service.GetAccessibleOrganizationUnits(ctx, "", 30, 0)
 
 	require.Nil(t, err)
-	require.Equal(t, []string{"ou-p", "ou-c"}, unitIDs(list))
+	require.Equal(t, []string{"ou-p", "ou-c"}, unitIDs(list.OrganizationUnits))
 }
 
 func TestGetAccessibleOrganizationUnits_Pages(t *testing.T) {
@@ -5225,7 +5225,7 @@ func TestGetAccessibleOrganizationUnits_Pages(t *testing.T) {
 	list, err := service.GetAccessibleOrganizationUnits(ctx, "", 2, 1)
 
 	require.Nil(t, err)
-	require.Equal(t, []string{"ou-c", "ou-g"}, unitIDs(list))
+	require.Equal(t, []string{"ou-c", "ou-g"}, unitIDs(list.OrganizationUnits))
 	require.Equal(t, 4, list.TotalResults)
 	require.Equal(t, 2, list.StartIndex)
 	require.Equal(t, 2, list.Count)
@@ -5254,7 +5254,7 @@ func TestGetAccessibleOrganizationUnits_PageLinksKeepTheScope(t *testing.T) {
 	list, err := service.GetAccessibleOrganizationUnits(ctx, "siblings", 1, 0)
 
 	require.Nil(t, err)
-	require.Equal(t, []string{"ou-c"}, unitIDs(list))
+	require.Equal(t, []string{"ou-c"}, unitIDs(list.OrganizationUnits))
 	require.Equal(t, 2, list.TotalResults)
 	var next string
 	for _, link := range list.Links {
@@ -5295,6 +5295,99 @@ func TestGetAccessibleOrganizationUnits_RefusesABadRequest(t *testing.T) {
 			service, ctx := newAccessFixture(t, "ou-p")
 
 			_, err := service.GetAccessibleOrganizationUnits(ctx, tc.scope, tc.limit, tc.offset)
+
+			require.NotNil(t, err)
+			require.Equal(t, tc.expected, err.Code)
+		})
+	}
+}
+
+func TestGetUserOrganizationUnits_OwnUnitFirstThenTheReachByID(t *testing.T) {
+	service, ctx := newAccessFixture(t, "ou-r", "ou-x", "ou-g", "ou-c")
+
+	list, err := service.GetUserOrganizationUnits(ctx, svcTestUserID1, 30, 0)
+
+	require.Nil(t, err)
+	require.Equal(t, []string{"ou-p", "ou-c", "ou-g", "ou-x"}, unitIDs(list.OrganizationUnits))
+	require.Equal(t, 4, list.TotalResults)
+	require.Equal(t, 1, list.StartIndex)
+	require.Equal(t, 4, list.Count)
+}
+
+func TestGetUserOrganizationUnits_SkipsARemovedUnit(t *testing.T) {
+	service, ctx := newAccessFixture(t, "ou-r", "ou-c", "ou-removed")
+
+	list, err := service.GetUserOrganizationUnits(ctx, svcTestUserID1, 30, 0)
+
+	require.Nil(t, err)
+	require.Equal(t, []string{"ou-p", "ou-c"}, unitIDs(list.OrganizationUnits))
+}
+
+func TestGetUserOrganizationUnits_PagesUnderTheUsersPath(t *testing.T) {
+	service, ctx := newAccessFixture(t, "ou-r", "ou-c", "ou-g", "ou-x")
+
+	list, err := service.GetUserOrganizationUnits(ctx, svcTestUserID1, 2, 1)
+
+	require.Nil(t, err)
+	require.Equal(t, []string{"ou-c", "ou-g"}, unitIDs(list.OrganizationUnits))
+	require.Equal(t, 4, list.TotalResults)
+	require.Equal(t, 2, list.StartIndex)
+	require.Equal(t, 2, list.Count)
+	var next string
+	for _, link := range list.Links {
+		if link.Rel == "next" {
+			next = link.Href
+		}
+	}
+	require.Equal(t, "/users/"+svcTestUserID1+"/ous?offset=3&limit=2", next)
+}
+
+// The caller is checked as for reading the user, against the organization unit the user lives in.
+func TestGetUserOrganizationUnits_RefusesACallerWhoCannotReadTheUser(t *testing.T) {
+	service, ctx := newAccessFixture(t, "ou-r", "ou-c")
+	authz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
+	authz.EXPECT().IsActionAllowed(mock.Anything, security.ActionReadUser, &sysauthz.ActionContext{
+		ResourceType: security.ResourceTypeUser, OUID: "ou-p", ResourceID: svcTestUserID1,
+	}).Return(false, nil).Once()
+	service.authzService = authz
+
+	list, err := service.GetUserOrganizationUnits(ctx, svcTestUserID1, 30, 0)
+
+	require.Nil(t, list)
+	require.NotNil(t, err)
+	require.Equal(t, tidcommon.ErrorUnauthorized.Code, err.Code)
+}
+
+func TestGetUserOrganizationUnits_UnknownUser(t *testing.T) {
+	service, ctx := newAccessFixture(t, "ou-r")
+	store := entitymock.NewEntityServiceInterfaceMock(t)
+	store.On("GetEntity", mock.Anything, "missing-user").Return(nil, entitypkg.ErrEntityNotFound).Once()
+	service.entityService = store
+
+	_, err := service.GetUserOrganizationUnits(ctx, "missing-user", 30, 0)
+
+	require.NotNil(t, err)
+	require.Equal(t, ErrorUserNotFound.Code, err.Code)
+}
+
+func TestGetUserOrganizationUnits_RefusesABadRequest(t *testing.T) {
+	cases := []struct {
+		name          string
+		userID        string
+		limit, offset int
+		expected      string
+	}{
+		{name: "MissingUserID", userID: "", limit: 30, expected: ErrorMissingUserID.Code},
+		{name: "ZeroLimit", userID: svcTestUserID1, limit: 0, expected: ErrorInvalidLimit.Code},
+		{name: "NegativeOffset", userID: svcTestUserID1, limit: 30, offset: -1, expected: ErrorInvalidOffset.Code},
+		{name: "OffsetThatWouldOverflow", userID: svcTestUserID1, limit: 30, offset: math.MaxInt,
+			expected: ErrorInvalidOffset.Code},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			service, ctx := newAccessFixture(t, "ou-r")
+
+			_, err := service.GetUserOrganizationUnits(ctx, tc.userID, tc.limit, tc.offset)
 
 			require.NotNil(t, err)
 			require.Equal(t, tc.expected, err.Code)

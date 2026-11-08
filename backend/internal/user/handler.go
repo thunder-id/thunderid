@@ -477,6 +477,27 @@ func (uh *userHandler) HandleSelfOrganizationUnitsGetRequest(w http.ResponseWrit
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, list)
 }
 
+// HandleUserOrganizationUnitsGetRequest lists the organization units a user can access.
+func (uh *userHandler) HandleUserOrganizationUnitsGetRequest(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	limit, offset, svcErr := parsePaginationParams(r.URL.Query())
+	if svcErr != nil {
+		handleError(ctx, w, svcErr)
+		return
+	}
+	if limit == 0 {
+		limit = serverconst.DefaultPageSize
+	}
+
+	list, svcErr := uh.userService.GetUserOrganizationUnits(ctx, r.PathValue("id"), limit, offset)
+	if svcErr != nil {
+		handleError(ctx, w, svcErr)
+		return
+	}
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, list)
+}
+
 // HandleSelfUserCredentialUpdateRequest handles the credential update for the authenticated user.
 func (uh *userHandler) HandleSelfUserCredentialUpdateRequest(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()

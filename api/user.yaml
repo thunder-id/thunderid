@@ -859,6 +859,138 @@ paths:
                   key: "error.internal_server_error_description"
                   defaultValue: "An unexpected error occurred while processing the request"
 
+  /users/{id}/ous:
+    get:
+      tags:
+        - Users
+      summary: List the organization units a user can access
+      description: |
+        Lists the organization units the user can access: the one the user lives in, first, then
+        every one the user is shared into, directly or through a reshare, ordered by ID. A unit
+        deleted since it was shared is left out. It is the list `GET /users/me/ous` gives the user,
+        without `current` and `scope`, which are relative to the caller's own token.
+
+        Requires the **root system permission**, the one named by
+        `server.security.system_permission_prefix` plus `system` (so `system` by default). A user
+        permission is not enough, wherever it is held.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: "The unique identifier of the user"
+          example: "9a475e1e-b0cb-4b29-8df5-2e5b24fb0ed3"
+        - $ref: '#/components/parameters/limitQueryParam'
+        - $ref: '#/components/parameters/offsetQueryParam'
+      responses:
+        "200":
+          description: Organization units the user can access
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserOrganizationUnitListResponse'
+              example:
+                totalResults: 3
+                startIndex: 1
+                count: 2
+                organizationUnits:
+                  - id: "4f3c2a1b-0d9e-4c8b-9a7f-6e5d4c3b2a10"
+                    handle: "customers"
+                    name: "Customers"
+                  - id: "7b6a5c4d-3e2f-4a1b-8c9d-0e1f2a3b4c5d"
+                    handle: "acme-ou-1"
+                    name: "Acme OU 1"
+                links:
+                  - href: "/users/9a475e1e-b0cb-4b29-8df5-2e5b24fb0ed3/ous?offset=2&limit=2"
+                    rel: "next"
+                  - href: "/users/9a475e1e-b0cb-4b29-8df5-2e5b24fb0ed3/ous?offset=2&limit=2"
+                    rel: "last"
+        "400":
+          description: Invalid pagination parameter
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalid-limit:
+                  summary: A limit outside its bounds
+                  value:
+                    code: "USR-1011"
+                    message:
+                      key: "error.userservice.invalid_limit_parameter"
+                      defaultValue: "Invalid pagination parameter"
+                    description:
+                      key: "error.userservice.invalid_limit_parameter_description"
+                      defaultValue: "The limit parameter must be a positive integer"
+                invalid-offset:
+                  summary: A negative offset
+                  value:
+                    code: "USR-1012"
+                    message:
+                      key: "error.userservice.invalid_offset_parameter"
+                      defaultValue: "Invalid pagination parameter"
+                    description:
+                      key: "error.userservice.invalid_offset_parameter_description"
+                      defaultValue: "The offset parameter must be a non-negative integer"
+        "401":
+          description: Unauthorized - missing or invalid authentication token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "AUTH-4010"
+                message:
+                  key: "error.unauthorized"
+                  defaultValue: "Unauthorized"
+                description:
+                  key: "error.unauthorized_description"
+                  defaultValue: "Authentication is required to access this resource"
+        "403":
+          description: The caller's token does not hold the root system permission
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "AUTH-4030"
+                message:
+                  key: "error.auth.forbidden"
+                  defaultValue: "Forbidden"
+                description:
+                  key: "error.auth.forbidden_description"
+                  defaultValue: "You do not have sufficient permissions to access this resource"
+        "404":
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "USR-1003"
+                message:
+                  key: "error.userservice.user_not_found"
+                  defaultValue: "User not found"
+                description:
+                  key: "error.userservice.user_not_found_description"
+                  defaultValue: "The user with the specified id does not exist"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "USR-5000"
+                message:
+                  key: "error.internal_server_error"
+                  defaultValue: "Internal server error"
+                description:
+                  key: "error.internal_server_error_description"
+                  defaultValue: "An unexpected error occurred while processing the request"
+
   /users/{id}/sharing-policies:
     parameters:
       - $ref: '#/components/parameters/userIdPathParam'
@@ -3251,6 +3383,28 @@ components:
           type: string
           format: uuid
           description: The organization unit the list is relative to.
+        totalResults:
+          type: integer
+          description: "Number of results that match the listing operation."
+        startIndex:
+          type: integer
+          description: "Index of the first element of the page, which will be equal to offset + 1."
+        count:
+          type: integer
+          description: "Number of elements in the returned page."
+        organizationUnits:
+          type: array
+          items:
+            $ref: '#/components/schemas/AccessibleOrganizationUnit'
+        links:
+          type: array
+          items:
+            $ref: '#/components/schemas/Link'
+
+    UserOrganizationUnitListResponse:
+      type: object
+      required: [totalResults, startIndex, count, organizationUnits, links]
+      properties:
         totalResults:
           type: integer
           description: "Number of results that match the listing operation."
