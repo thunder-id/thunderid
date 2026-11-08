@@ -16,6 +16,7 @@ import {
   outboundAuthenticationFromFormValues,
   HTTPS_REQUIRED_WITH_AUTHENTICATION_ERROR,
   responseToFormValues,
+  smtpServerChanged,
   urlOriginChanged,
   validateConnectionForm,
 } from '../connectionFormMapping';
@@ -1107,5 +1108,20 @@ describe('urlOriginChanged', () => {
 
   it('treats a URL that cannot be parsed as changed', () => {
     expect(urlOriginChanged('https://risk.example.com', 'risk.example.com')).toBe(true);
+  });
+});
+
+describe('smtpServerChanged', () => {
+  const stored = {host: 'smtp.example.com', port: '587', fromAddress: 'noreply@example.com'};
+
+  it('ignores changes to other fields and surrounding whitespace', () => {
+    expect(smtpServerChanged(stored, {...stored, host: ' smtp.example.com ', fromAddress: 'ops@example.com'})).toBe(
+      false,
+    );
+  });
+
+  it('detects a change of host or port', () => {
+    expect(smtpServerChanged(stored, {...stored, host: 'smtp.example.net'})).toBe(true);
+    expect(smtpServerChanged(stored, {...stored, port: '465'})).toBe(true);
   });
 });

@@ -76,6 +76,7 @@ import {
   formValuesToRequest,
   HTTPS_REQUIRED_WITH_AUTHENTICATION_ERROR,
   responseToFormValues,
+  smtpServerChanged,
   urlOriginChanged,
   validateConnectionForm,
 } from '../utils/connectionFormMapping';
@@ -285,17 +286,23 @@ export default function ConnectionDetailPage(): JSX.Element | null {
     (values[AUTH_TYPE_FIELD] || AUTH_TYPE_NONE) === data?.authentication?.type &&
     Object.values(data?.authentication?.properties ?? {}).includes(MASKED_SECRET);
   const reentersCredentialsOnOriginChange: boolean = meta?.reentersCredentialsOnOriginChange ?? false;
-  // The stored credentials must not follow the URL to another origin, so they are entered again.
-  const credentialsMustBeReentered: boolean =
-    reentersCredentialsOnOriginChange &&
-    hasStoredOutboundCredential &&
-    urlOriginChanged(baseline['url'] ?? '', values['url'] ?? '');
   const selectedOutboundMethod: OutboundAuthMethod | undefined = authenticationMethods.find(
     (method) => method.type === (values[AUTH_TYPE_FIELD] || AUTH_TYPE_NONE),
   );
   const selectedOutboundFields: OutboundAuthField[] = selectedOutboundMethod?.fields ?? [];
   const outboundAdditionalProperties = decodeKeyValuePairs(values[AUTH_ADDITIONAL_PROPERTIES_FIELD] ?? '', 'pairs');
   const outboundFieldValue = (field: OutboundAuthField): string => (values[authPropertyField(field.key)] ?? '').trim();
+  const smtpUsernameChanged: boolean = selectedOutboundFields.some(
+    (field) => !field.credential && outboundFieldValue(field) !== (baseline[authPropertyField(field.key)] ?? '').trim(),
+  );
+  // The stored credentials must not follow the URL to another origin, or an SMTP password to another
+  // server or username, so they are entered again.
+  const credentialsMustBeReentered: boolean =
+    reentersCredentialsOnOriginChange &&
+    hasStoredOutboundCredential &&
+    (connectionType === ConnectionTypes.SMTP
+      ? smtpServerChanged(baseline, values) || smtpUsernameChanged
+      : urlOriginChanged(baseline['url'] ?? '', values['url'] ?? ''));
   // A credential typed while the origin gate was engaged stays visible if the URL is changed back.
   const outboundSecretReplacing: boolean =
     secretReplacing ||
@@ -651,10 +658,15 @@ export default function ConnectionDetailPage(): JSX.Element | null {
                 />
                 {credentialsMustBeReentered && (
                   <Alert severity="warning" sx={{mt: 2}}>
-                    {t(
-                      'detail.authentication.originChanged',
-                      'The URL origin changed. Enter the credentials again under Authentication before saving.',
-                    )}
+                    {connectionType === ConnectionTypes.SMTP
+                      ? t(
+                          'detail.authentication.smtpServerChanged',
+                          'The SMTP host, port, or username changed. Enter the password again under Authentication before saving.',
+                        )
+                      : t(
+                          'detail.authentication.originChanged',
+                          'The URL origin changed. Enter the credentials again under Authentication before saving.',
+                        )}
                   </Alert>
                 )}
               </SettingsCard>

@@ -271,6 +271,13 @@ export function urlOriginChanged(previous: string, next: string): boolean {
   }
 }
 
+/**
+ * Whether an SMTP connection's host or port differs, which is where its credentials are sent.
+ */
+export function smtpServerChanged(previous: ConnectionFormValues, next: ConnectionFormValues): boolean {
+  return ['host', 'port'].some((name) => (previous[name] ?? '').trim() !== (next[name] ?? '').trim());
+}
+
 export interface ToRequestOptions {
   mode: 'create' | 'edit';
   /** On edit, whether the user chose to replace the stored secret. */

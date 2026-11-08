@@ -141,6 +141,8 @@ const HTTP_LOCAL_CONNECTION = {
 };
 
 const ORIGIN_CHANGED_HINT = 'The URL origin changed. Enter the credentials again under Authentication before saving.';
+const SMTP_SERVER_CHANGED_HINT =
+  'The SMTP host, port, or username changed. Enter the password again under Authentication before saving.';
 const HTTPS_REQUIRED = 'Use an https URL when an authentication method is set, or set the method to None.';
 const PASSWORD_FIELD_ID = 'connection-field-authentication.properties.password';
 const USERNAME_FIELD_ID = 'connection-field-authentication.properties.username';
@@ -332,6 +334,9 @@ vi.mock('../../components/ConnectionForm', () => ({
           onClick={() => onFieldChange('url', 'https://risk.example.com/evaluate')}
         >
           edit url back
+        </button>
+        <button type="button" data-testid="edit-smtp-port" onClick={() => onFieldChange('port', '465')}>
+          edit SMTP port
         </button>
         {nameError && <div data-testid="stub-name-error">{nameError}</div>}
       </div>
@@ -593,6 +598,80 @@ describe('ConnectionDetailPage', () => {
     render(<ConnectionDetailPage />);
     expect(document.getElementById('connection-field-authentication.properties.password')).not.toBeDisabled();
     expect(screen.queryByTestId('connection-field-authentication.properties.password-replace')).not.toBeInTheDocument();
+  });
+
+  it('keeps the stored SMTP password by omitting it when the host and port are unchanged', () => {
+    mockParams.type = 'email-smtp';
+    mockParams.id = 'sm1';
+    mockConn.data = smtpConnection({username: 'mailer', password: '******'});
+    mockMeta.methods = SMTP_METHODS;
+    render(<ConnectionDetailPage />);
+
+    fireEvent.click(screen.getByTestId('edit-name'));
+    expect(screen.queryByText(SMTP_SERVER_CHANGED_HINT)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('save-bar'));
+
+    expect(updateMock.mock.calls[0][0]).toMatchObject({
+      port: 587,
+      authentication: {type: 'basic', properties: {username: 'mailer'}},
+    });
+  });
+
+  // The stored password is not sent to a different SMTP server, so a port change asks for it again.
+  it('blocks Save after an SMTP port change until the password is entered again', () => {
+    mockParams.type = 'email-smtp';
+    mockParams.id = 'sm1';
+    mockConn.data = smtpConnection({username: 'mailer', password: '******'});
+    mockMeta.methods = SMTP_METHODS;
+    render(<ConnectionDetailPage />);
+
+    fireEvent.click(screen.getByTestId('edit-smtp-port'));
+
+    expect(screen.getByTestId('save-bar')).toBeDisabled();
+    expect(screen.getByText(SMTP_SERVER_CHANGED_HINT)).toBeInTheDocument();
+    expect(document.getElementById(PASSWORD_FIELD_ID)).not.toBeDisabled();
+
+    fireEvent.change(document.getElementById(PASSWORD_FIELD_ID)!, {target: {value: 'new-pw'}});
+    expect(screen.getByTestId('save-bar')).not.toBeDisabled();
+    fireEvent.click(screen.getByTestId('save-bar'));
+
+    expect(updateMock.mock.calls[0][0]).toMatchObject({
+      port: 465,
+      authentication: {type: 'basic', properties: {username: 'mailer', password: 'new-pw'}},
+    });
+  });
+
+  it('blocks Save after an SMTP username change until the password is entered again', () => {
+    mockParams.type = 'email-smtp';
+    mockParams.id = 'sm1';
+    mockConn.data = smtpConnection({username: 'mailer', password: '******'});
+    mockMeta.methods = SMTP_METHODS;
+    render(<ConnectionDetailPage />);
+
+    fireEvent.change(document.getElementById(USERNAME_FIELD_ID)!, {target: {value: 'ops'}});
+
+    expect(screen.getByTestId('save-bar')).toBeDisabled();
+    expect(screen.getByText(SMTP_SERVER_CHANGED_HINT)).toBeInTheDocument();
+
+    fireEvent.change(document.getElementById(PASSWORD_FIELD_ID)!, {target: {value: 'new-pw'}});
+    fireEvent.click(screen.getByTestId('save-bar'));
+
+    expect(updateMock.mock.calls[0][0]).toMatchObject({
+      authentication: {type: 'basic', properties: {username: 'ops', password: 'new-pw'}},
+    });
+  });
+
+  it('blocks Save while the SMTP username is empty', () => {
+    mockParams.type = 'email-smtp';
+    mockParams.id = 'sm1';
+    mockConn.data = smtpConnection({username: 'mailer', password: '******'});
+    mockMeta.methods = SMTP_METHODS;
+    render(<ConnectionDetailPage />);
+
+    fireEvent.change(document.getElementById(USERNAME_FIELD_ID)!, {target: {value: ''}});
+    fireEvent.change(document.getElementById(PASSWORD_FIELD_ID)!, {target: {value: 'new-pw'}});
+
+    expect(screen.getByTestId('save-bar')).toBeDisabled();
   });
 
   // The authentication card reports a failed metadata read instead of disappearing.

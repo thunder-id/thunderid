@@ -2174,6 +2174,8 @@ const translations = {
       'Configure how {{productName}} authenticates requests sent to this SMS gateway.',
     'detail.authentication.originChanged':
       'The URL origin changed. Enter the credentials again under Authentication before saving.',
+    'detail.authentication.smtpServerChanged':
+      'The SMTP host, port, or username changed. Enter the password again under Authentication before saving.',
     'detail.authentication.method.label': 'Authentication method',
     'detail.authentication.method.none': 'None',
     'detail.outboundAuthentication.description':
