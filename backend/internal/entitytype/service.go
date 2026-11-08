@@ -178,7 +178,7 @@ func (us *entityTypeService) GetEntityTypeList(ctx context.Context, category Typ
 		return nil, err
 	}
 
-	accessible, svcErr := us.getAccessibleResources(ctx, listActionForCategory(category))
+	accessible, svcErr := us.getAccessibleResources(ctx, category)
 	if svcErr != nil {
 		return nil, svcErr
 	}
@@ -982,20 +982,16 @@ func (us *entityTypeService) checkEntityTypeAccess(
 	return nil
 }
 
-// getAccessibleResources returns the set of OU IDs the caller is permitted to access for the
-// given list action. The action implies the resource type (entity type vs agent schema).
+// getAccessibleResources returns the set of OU IDs in which the caller may list entity types of the
+// given category.
 func (us *entityTypeService) getAccessibleResources(
-	ctx context.Context, action security.Action,
+	ctx context.Context, category TypeCategory,
 ) (*sysauthz.AccessibleResources, *tidcommon.ServiceError) {
 	if us.authzService == nil {
 		return &sysauthz.AccessibleResources{AllAllowed: true}, nil
 	}
-	resourceType := security.ResourceTypeUserType
-	if action == security.ActionListAgentTypes {
-		resourceType = security.ResourceTypeAgentType
-	}
 	accessible, svcErr := us.authzService.GetAccessibleResources(
-		ctx, action, resourceType)
+		ctx, listActionForCategory(category), resourceTypeForCategory(category))
 	if svcErr != nil {
 		return nil, &tidcommon.InternalServerError
 	}
@@ -1121,50 +1117,74 @@ func validateCategory(category TypeCategory) *tidcommon.ServiceError {
 // listActionForCategory returns the sysauthz list action that gates listing schemas of the given
 // category.
 func listActionForCategory(category TypeCategory) security.Action {
-	if category == TypeCategoryAgent {
+	switch category {
+	case TypeCategoryAgent:
 		return security.ActionListAgentTypes
+	case TypeCategoryOU:
+		return security.ActionListOUTypes
+	default:
+		return security.ActionListUserTypes
 	}
-	return security.ActionListUserTypes
 }
 
 // createActionForCategory returns the sysauthz create action for the given category.
 func createActionForCategory(category TypeCategory) security.Action {
-	if category == TypeCategoryAgent {
+	switch category {
+	case TypeCategoryAgent:
 		return security.ActionCreateAgentType
+	case TypeCategoryOU:
+		return security.ActionCreateOUType
+	default:
+		return security.ActionCreateUserType
 	}
-	return security.ActionCreateUserType
 }
 
 // readActionForCategory returns the sysauthz read action for the given category.
 func readActionForCategory(category TypeCategory) security.Action {
-	if category == TypeCategoryAgent {
+	switch category {
+	case TypeCategoryAgent:
 		return security.ActionReadAgentType
+	case TypeCategoryOU:
+		return security.ActionReadOUType
+	default:
+		return security.ActionReadUserType
 	}
-	return security.ActionReadUserType
 }
 
 // updateActionForCategory returns the sysauthz update action for the given category.
 func updateActionForCategory(category TypeCategory) security.Action {
-	if category == TypeCategoryAgent {
+	switch category {
+	case TypeCategoryAgent:
 		return security.ActionUpdateAgentType
+	case TypeCategoryOU:
+		return security.ActionUpdateOUType
+	default:
+		return security.ActionUpdateUserType
 	}
-	return security.ActionUpdateUserType
 }
 
 // deleteActionForCategory returns the sysauthz delete action for the given category.
 func deleteActionForCategory(category TypeCategory) security.Action {
-	if category == TypeCategoryAgent {
+	switch category {
+	case TypeCategoryAgent:
 		return security.ActionDeleteAgentType
+	case TypeCategoryOU:
+		return security.ActionDeleteOUType
+	default:
+		return security.ActionDeleteUserType
 	}
-	return security.ActionDeleteUserType
 }
 
 // resourceTypeForCategory returns the sysauthz resource type for the given category.
 func resourceTypeForCategory(category TypeCategory) security.ResourceType {
-	if category == TypeCategoryAgent {
+	switch category {
+	case TypeCategoryAgent:
 		return security.ResourceTypeAgentType
+	case TypeCategoryOU:
+		return security.ResourceTypeOUType
+	default:
+		return security.ResourceTypeUserType
 	}
-	return security.ResourceTypeUserType
 }
 
 // createEventForCategory returns the audit event of an attempt to create an entity type of the given

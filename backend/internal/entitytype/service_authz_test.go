@@ -119,6 +119,35 @@ func (s *AuthzTestSuite) TestGetEntityTypeList_FilteredByOUIDs() {
 	s.Equal("s1", resp.Types[0].ID)
 }
 
+func (s *AuthzTestSuite) TestGetEntityTypeList_OUTypesFilteredByOUIDs() {
+	storeMock := newEntityTypeStoreInterfaceMock(s.T())
+	storeMock.On("GetEntityTypeListCountByOUIDs", mock.Anything, TypeCategoryOU, []string{testOUID1}).
+		Return(1, nil)
+	storeMock.On("GetEntityTypeListByOUIDs", mock.Anything, TypeCategoryOU, []string{testOUID1}, 10, 0).
+		Return([]EntityTypeListItem{
+			{ID: "o1", Handle: "partner", DisplayName: "Partner", OUID: testOUID1},
+		}, nil)
+
+	authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(s.T())
+	authzMock.On("GetAccessibleResources", mock.Anything, security.ActionListOUTypes,
+		security.ResourceTypeOUType).
+		Return(&sysauthz.AccessibleResources{AllAllowed: false, IDs: []string{testOUID1}}, nil)
+
+	svc := &entityTypeService{
+		bus:             discardingBus{},
+		entityTypeStore: storeMock,
+		transactioner:   &mockTransactioner{},
+		authzService:    authzMock,
+	}
+
+	resp, svcErr := svc.GetEntityTypeList(context.Background(), TypeCategoryOU, 10, 0, false)
+	s.Require().Nil(svcErr)
+	s.Require().NotNil(resp)
+	s.Equal(1, resp.TotalResults)
+	s.Len(resp.Types, 1)
+	s.Equal("o1", resp.Types[0].ID)
+}
+
 func (s *AuthzTestSuite) TestGetEntityTypeList_EmptyAccessibleOUIDs() {
 	authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(s.T())
 	authzMock.On("GetAccessibleResources", mock.Anything, security.ActionListUserTypes,

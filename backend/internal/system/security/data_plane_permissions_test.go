@@ -54,6 +54,9 @@ func (s *DataPlanePermissionsTestSuite) TestOrgChildrenForOUConfinedResources() 
 	s.Equal("org:agent:view", p.AgentView)
 	s.Equal("org:usertype:delete", p.UserTypeDelete)
 	s.Equal("org:agenttype:delete", p.AgentTypeDelete)
+	s.Equal("org:outype", p.OUType)
+	s.Equal("org:outype:view", p.OUTypeView)
+	s.Equal("org:outype:create", p.OUTypeCreate)
 }
 
 func (s *DataPlanePermissionsTestSuite) TestOtherOUOwnedResourcesRequireOrgRoot() {
@@ -147,6 +150,7 @@ func (s *DataPlanePermissionsTestSuite) TestCatalogIsTheOrgTree() {
 		"org:usertype:delete",
 		"org:agenttype", "org:agenttype:view", "org:agenttype:create", "org:agenttype:update",
 		"org:agenttype:delete",
+		"org:outype", "org:outype:view", "org:outype:create", "org:outype:update", "org:outype:delete",
 	}, p.Catalog)
 }
 

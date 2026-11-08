@@ -51,6 +51,12 @@ var requiredActions = map[security.ResourceType]map[string][]security.Action{
 		"update": {security.ActionUpdateAgentType},
 		"delete": {security.ActionDeleteAgentType},
 	},
+	security.ResourceTypeOUType: {
+		"view":   {security.ActionReadOUType},
+		"create": {security.ActionCreateOUType, security.ActionReadOU},
+		"update": {security.ActionUpdateOUType},
+		"delete": {security.ActionDeleteOUType},
+	},
 	security.ResourceTypeNotificationTemplate: {
 		"view":   {security.ActionReadNotificationTemplate},
 		"create": {security.ActionCreateNotificationTemplate, security.ActionReadOU},
