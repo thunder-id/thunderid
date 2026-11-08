@@ -2758,6 +2758,30 @@ func (suite *RoleStoreTestSuite) TestDirectAndMandatedQueriesDiffer() {
 	suite.Contains(queryGetMandatedRoleUnits.Query, "SHARING_POLICY_ID <> ''")
 }
 
+func (suite *RoleStoreTestSuite) TestGetRolesByPermission() {
+	suite.Run("returns the roles granting the permission", func() {
+		suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil).Once()
+		suite.mockDBClient.On("QueryContext", mock.Anything, queryGetRolesByPermission, "rs1", "orders:read",
+			testDeploymentID).Return([]map[string]interface{}{
+			{"id": "role1", "name": "Order Viewer", "description": "Reads orders", "ou_id": "ou1"},
+		}, nil).Once()
+
+		roles, err := suite.store.GetRolesByPermission(context.Background(), "rs1", "orders:read")
+
+		suite.NoError(err)
+		suite.Equal([]Role{{ID: "role1", Name: "Order Viewer", Description: "Reads orders", OUID: "ou1"}}, roles)
+	})
+
+	suite.Run("query error is propagated", func() {
+		suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil).Once()
+		suite.mockDBClient.On("QueryContext", mock.Anything, queryGetRolesByPermission, "rs1", "orders:read",
+			testDeploymentID).Return(nil, errors.New("db down")).Once()
+
+		_, err := suite.store.GetRolesByPermission(context.Background(), "rs1", "orders:read")
+
+		suite.ErrorContains(err, "db down")
+	})
+}
 func (suite *RoleStoreTestSuite) TestGetRoleListByProject() {
 	ctx := context.Background()
 

@@ -475,6 +475,22 @@ func (c *compositeRoleStore) GetReferencedPermissions(ctx context.Context) ([]Re
 	return c.dbStore.GetReferencedPermissions(ctx)
 }
 
+// GetRolesByPermission returns the roles that grant a permission on a resource server, from both stores.
+func (c *compositeRoleStore) GetRolesByPermission(
+	ctx context.Context, resourceServerID, permission string) ([]Role, error) {
+	dbRoles, err := c.dbStore.GetRolesByPermission(ctx, resourceServerID, permission)
+	if err != nil {
+		return nil, err
+	}
+
+	fileRoles, err := c.fileStore.GetRolesByPermission(ctx, resourceServerID, permission)
+	if err != nil {
+		return nil, err
+	}
+
+	return mergeRoles(dbRoles, fileRoles), nil
+}
+
 // DeleteRolePermission removes the permission from the database store only.
 func (c *compositeRoleStore) DeleteRolePermission(
 	ctx context.Context, resourceServerID, permission string) (int64, error) {
