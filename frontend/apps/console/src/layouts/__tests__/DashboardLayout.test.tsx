@@ -27,6 +27,13 @@ const mockUseGetApplications = vi.fn<(params: unknown) => MockUseGetApplications
 let mockDiscovery: {wellKnown?: {end_session_endpoint?: string}} | undefined;
 let mockIsTrustedIssuerGenericOidc = false;
 let mockSdkConfig: Record<string, unknown> | undefined;
+let mockCapabilities: {can: (resource: string) => boolean; canManageRoot: boolean; isLoading: boolean};
+let mockPathname: string | undefined;
+
+vi.mock('@thunderid/hooks', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@thunderid/hooks')>()),
+  useCapabilities: () => mockCapabilities,
+}));
 
 vi.mock('@thunderid/configure-applications', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@thunderid/configure-applications')>()),
@@ -95,6 +102,7 @@ vi.mock('react-router', async () => {
       </a>
     ),
     useNavigate: () => mockNavigate,
+    useLocation: () => (mockPathname ? {...actual.useLocation(), pathname: mockPathname} : actual.useLocation()),
   };
 });
 
@@ -105,6 +113,8 @@ describe('DashboardLayout', () => {
     mockUserData.mockReturnValue({name: 'Test User', email: 'test@example.com'});
     mockIsTrustedIssuerGenericOidc = false;
     mockDiscovery = undefined;
+    mockCapabilities = {can: () => true, canManageRoot: true, isLoading: false};
+    mockPathname = undefined;
     mockUseGetApplications.mockReturnValue({
       data: {applications: []},
       isLoading: false,
@@ -167,6 +177,51 @@ describe('DashboardLayout', () => {
     navigationIcons.forEach((icon) => {
       expect(icon).toHaveAttribute('width', applicationIcon?.getAttribute('width'));
       expect(icon).toHaveAttribute('height', applicationIcon?.getAttribute('height'));
+    });
+  });
+
+  describe('capabilities', () => {
+    it('hides the pages the admin cannot view, and groups left empty', () => {
+      mockCapabilities = {can: (resource) => resource === 'user', canManageRoot: false, isLoading: false};
+      render(<DashboardLayout />);
+
+      expect(screen.getByText('navigation:pages.users')).toBeInTheDocument();
+      expect(screen.getByText('navigation:pages.home')).toBeInTheDocument();
+      expect(screen.queryByText('navigation:pages.applications')).not.toBeInTheDocument();
+      expect(screen.queryByText('navigation:pages.flows')).not.toBeInTheDocument();
+      expect(screen.queryByText('navigation:categories.resources')).not.toBeInTheDocument();
+      expect(screen.queryByText('navigation:pages.notifications')).not.toBeInTheDocument();
+    });
+
+    it('keeps a parent entry while one of its children is visible', () => {
+      mockCapabilities = {can: (resource) => resource === 'vc', canManageRoot: false, isLoading: false};
+      render(<DashboardLayout />);
+
+      expect(screen.getByText('navigation:pages.verifiableCredentials')).toBeInTheDocument();
+    });
+
+    it('offers Import / Export only to admins who can manage root-only APIs', () => {
+      mockCapabilities = {can: () => true, canManageRoot: false, isLoading: false};
+      render(<DashboardLayout />);
+
+      expect(screen.queryByRole('button', {name: 'navigation:pages.importExport'})).not.toBeInTheDocument();
+    });
+
+    it('shows a notice instead of a page the admin cannot view', () => {
+      mockCapabilities = {can: (resource) => resource !== 'app', canManageRoot: false, isLoading: false};
+      mockPathname = '/applications';
+      render(<DashboardLayout />);
+
+      expect(screen.queryByTestId('outlet')).not.toBeInTheDocument();
+      expect(screen.getByText('navigation:forbidden.description')).toBeInTheDocument();
+    });
+
+    it('shows the page while the capabilities load', () => {
+      mockCapabilities = {can: () => false, canManageRoot: false, isLoading: true};
+      mockPathname = '/applications';
+      render(<DashboardLayout />);
+
+      expect(screen.getByTestId('outlet')).toBeInTheDocument();
     });
   });
 

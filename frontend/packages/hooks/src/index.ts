@@ -12,3 +12,5 @@ export {
 } from './useCopyToClipboard';
 
 export {default as useDataGridLocaleText} from './useDataGridLocaleText';
+
+export {default as useCapabilities, type Capabilities, type CapabilitiesResponse} from './useCapabilities';

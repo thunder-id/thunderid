@@ -53,3 +53,21 @@ type AccessibleResources struct {
 	// Only populated when AllAllowed is false.
 	IDs []string
 }
+
+// BoundaryType names where a boundary lets a caller act.
+type BoundaryType string
+
+const (
+	// BoundaryTypeDeployment lets a caller act on every organization unit in the deployment.
+	BoundaryTypeDeployment BoundaryType = "deployment"
+	// BoundaryTypeOU confines a caller to the organization unit its token names.
+	BoundaryTypeOU BoundaryType = "ou"
+)
+
+// Boundary says where a caller may act.
+type Boundary struct {
+	// Type is the kind of boundary.
+	Type BoundaryType
+	// OUID is the organization unit the caller is confined to. Empty for a deployment boundary.
+	OUID string
+}

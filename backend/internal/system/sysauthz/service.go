@@ -31,6 +31,9 @@ type SystemAuthorizationServiceInterface interface {
 	GetAccessibleResources(ctx context.Context, action security.Action,
 		resourceType security.ResourceType) (*AccessibleResources, *tidcommon.ServiceError)
 
+	// GetBoundary returns where the authenticated caller may act.
+	GetBoundary(ctx context.Context) Boundary
+
 	// SetOUHierarchyResolver injects the OU hierarchy resolver used by inheritance-based
 	// policies. This must be called once at application startup after the ou package has
 	// been initialized, completing the two-phase initialization that avoids an import cycle

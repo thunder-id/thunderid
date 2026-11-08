@@ -1,25 +1,25 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {useGrantedPermissions} from '@thunderid/react';
+import {useCapabilities} from '@thunderid/hooks';
 import {MANAGED_RESOURCES, type ManagedResource} from '../configs/RouteConfig';
 
 /**
- * The permission a page needs: an admin whose token lacks it never sees the page. The server still
- * decides every request.
+ * The catalog resource each page shows: an admin who may not view it never sees the page. The server
+ * still decides every request.
  */
-const VIEW_PERMISSIONS: Record<ManagedResource, string> = {
-  agents: 'system:agent:view',
-  groups: 'system:group:view',
-  roles: 'system:role:view',
-  users: 'system:user:view',
+const CATALOG_RESOURCES: Record<ManagedResource, string> = {
+  agents: 'agent',
+  groups: 'group',
+  roles: 'role',
+  users: 'user',
 };
 
 /**
- * Reading the configured administration flows needs the server configuration, which only the root
- * `system` permission may read. Lifecycle actions are offered only to admins who hold it.
+ * Reading the configured administration flows needs the server configuration, so lifecycle actions are
+ * offered only to admins who may view it.
  */
-const LIFECYCLE_PERMISSION = 'system';
+const LIFECYCLE_RESOURCE = 'serverconfig';
 
 export interface VisibleResources {
   /**
@@ -37,14 +37,14 @@ export interface VisibleResources {
 }
 
 /**
- * Decides which pages the signed-in admin sees, from the permissions their token carries.
+ * Decides which pages the signed-in admin sees, from the server's capabilities endpoint.
  */
 export default function useVisibleResources(): VisibleResources {
-  const {can, isLoading} = useGrantedPermissions();
+  const {can, isLoading} = useCapabilities();
 
   return {
-    canRunLifecycle: can(LIFECYCLE_PERMISSION),
+    canRunLifecycle: can(LIFECYCLE_RESOURCE),
     isLoading,
-    visible: MANAGED_RESOURCES.filter((resource: ManagedResource) => can(VIEW_PERMISSIONS[resource])),
+    visible: MANAGED_RESOURCES.filter((resource: ManagedResource) => can(CATALOG_RESOURCES[resource])),
   };
 }

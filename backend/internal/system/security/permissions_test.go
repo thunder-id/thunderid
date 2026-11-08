@@ -353,6 +353,33 @@ func (s *SecurityContextTestSuite) TestGetSystemRootPermission_AfterInitNonEmpty
 }
 
 // ---------------------------------------------------------------------------
+// CatalogActions
+// ---------------------------------------------------------------------------
+
+func (s *SecurityContextTestSuite) TestCatalogActionsResolveToTheirCatalogPermission() {
+	InitSystemPermissions("")
+
+	actions := CatalogActions()
+	count := 0
+	for _, entry := range systemCatalog {
+		count += len(entry.actions)
+	}
+	s.Len(actions, count)
+	for _, catalogAction := range actions {
+		s.Contains(actionPermissionMap, catalogAction.Action, "%s falls back to root", catalogAction.Action)
+		s.Equal("system:"+string(catalogAction.Resource)+":"+catalogAction.Name,
+			ResolveActionPermission(catalogAction.Action))
+	}
+}
+
+func (s *SecurityContextTestSuite) TestRootOnlyActionsRequireRoot() {
+	InitSystemPermissions("")
+
+	s.Equal("system", ResolveActionPermission(ActionViewRootOnly))
+	s.Equal("system", ResolveActionPermission(ActionManageRootOnly))
+}
+
+// ---------------------------------------------------------------------------
 
 func TestInitSystemPermissions_EmptyHandle(t *testing.T) {
 	InitSystemPermissions("")
@@ -779,6 +806,7 @@ func TestGetRequiredPermissionForAPI(t *testing.T) {
 		// ---- Self-service paths (empty permission = any authenticated user) ----
 		{name: "GET /users/me self-service", method: http.MethodGet, path: "/users/me", wantPerm: ""},
 		{name: "PUT /users/me self-service", method: http.MethodPut, path: "/users/me", wantPerm: ""},
+		{name: "GET /capabilities self-service", method: http.MethodGet, path: "/capabilities", wantPerm: ""},
 		{
 			name:     "POST /users/me/update-credentials self-service",
 			method:   http.MethodPost,
@@ -1186,6 +1214,7 @@ func TestRouteTableUsesCatalogPermissions(t *testing.T) {
 		"GET /scim/v2/Me": true, "PUT /scim/v2/Me": true,
 		"GET /scim/v2/Schemas": true, "GET /scim/v2/Schemas/**": true,
 		"GET /scim/v2/ResourceTypes": true, "GET /scim/v2/ResourceTypes/**": true,
+		"GET /capabilities": true,
 	}
 	root := map[string]bool{
 		"GET /variables": true, "POST /variables": true, "GET /variables/**": true,

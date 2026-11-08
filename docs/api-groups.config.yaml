@@ -68,6 +68,7 @@ fileGroupNames:
   application.yaml: Applications
   cimd.yaml: Applications         # Client ID Metadata Document preview, used to register applications
   authzen.yaml: Access Control
+  capability.yaml: ~             # Capabilities claimed by Access Control
   authentication.yaml: ~         # all tags claimed by Authentication
   configuration-version.yaml: ~  # Configuration Versions claimed by System
   connections.yaml: Connections
@@ -117,6 +118,7 @@ explicitSubGroups:
       - Resources
       - Actions
       - Permissions
+      - Capabilities
 
   # ── Authentication mechanisms ─────────────────────────────────────────────────
   - name: Authentication

@@ -701,3 +701,16 @@ type ImportItem struct {
 	Code         string `json:"code,omitempty"`
 	Message      string `json:"message,omitempty"`
 }
+
+// CapabilitiesResponse is the body of GET /capabilities.
+type CapabilitiesResponse struct {
+	Scope struct {
+		Type string `json:"type"`
+		OUID string `json:"ouId"`
+	} `json:"scope"`
+	Resources map[string]map[string]bool `json:"resources"`
+	Root      struct {
+		View   bool `json:"view"`
+		Manage bool `json:"manage"`
+	} `json:"root"`
+}

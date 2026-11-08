@@ -643,6 +643,7 @@ const translations = {
     loading: 'Loading',
     'empty.title': 'Nothing to manage',
     'empty.description': 'You do not have permission to manage anything here.',
+    'forbidden.description': 'You do not have permission to view this page.',
   },
 
   // ============================================================================

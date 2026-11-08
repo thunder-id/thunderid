@@ -358,6 +358,22 @@ const (
 	ActionDeleteAuthzDetail Action = "authzdetail:delete"
 	// ActionListAuthzDetails lists authorization detail types.
 	ActionListAuthzDetails Action = "authzdetail:list"
+
+	// ActionCreateProject creates a new project.
+	ActionCreateProject Action = "project:create"
+	// ActionReadProject reads a project.
+	ActionReadProject Action = "project:read"
+	// ActionUpdateProject updates a project.
+	ActionUpdateProject Action = "project:update"
+	// ActionDeleteProject deletes a project.
+	ActionDeleteProject Action = "project:delete"
+	// ActionListProjects lists projects.
+	ActionListProjects Action = "project:list"
+
+	// ActionViewRootOnly reads the APIs only the root system permission reaches.
+	ActionViewRootOnly Action = "root:view"
+	// ActionManageRootOnly changes what the APIs only the root system permission reaches hold.
+	ActionManageRootOnly Action = "root:manage"
 )
 
 // ---- Permissions ----
@@ -697,6 +713,15 @@ func InitSystemPermissions(handle string) {
 		ActionUpdateAuthzDetail: p.AuthzDetailUpdate,
 		ActionDeleteAuthzDetail: p.AuthzDetailDelete,
 		ActionListAuthzDetails:  p.AuthzDetailView,
+
+		// Project actions.
+		ActionCreateProject: p.ProjectCreate,
+		ActionReadProject:   p.ProjectView,
+		ActionUpdateProject: p.ProjectUpdate,
+		ActionDeleteProject: p.ProjectDelete,
+		ActionListProjects:  p.ProjectView,
+
+		// ActionViewRootOnly and ActionManageRootOnly are left out, so they require the root permission.
 	}
 
 	apiPermissionEntries = []apiPermissionEntry{
@@ -707,6 +732,7 @@ func InitSystemPermissions(handle string) {
 		{"GET /users/me/**", ""},
 		{"PUT /users/me/**", ""},
 		{"POST /users/me/update-credentials", ""},
+		{"GET /capabilities", ""},
 		{"GET /register/passkey/**", ""},
 		{"POST /register/passkey/**", ""},
 		// MCP checks each tool call against the permission the tool is mapped to, so a token reaches it as its caller.
@@ -1141,6 +1167,36 @@ func Covers(actor, required PermissionSet) bool {
 		}
 	}
 	return true
+}
+
+// CatalogAction is an action declared on a resource in the system permission catalog.
+type CatalogAction struct {
+	// Resource is the catalog resource the action is declared on.
+	Resource ResourceType
+	// Name is the action's handle in the catalog, such as "view".
+	Name string
+	// Action is the system action the catalog action authorizes.
+	Action Action
+}
+
+// CatalogActions returns every action declared in the system permission catalog, in declaration order.
+// A catalog "view" authorizes the resource's read action.
+func CatalogActions() []CatalogAction {
+	var actions []CatalogAction
+	for _, entry := range systemCatalog {
+		for _, name := range entry.actions {
+			verb := name
+			if name == catalogActionView {
+				verb = "read"
+			}
+			actions = append(actions, CatalogAction{
+				Resource: entry.resource,
+				Name:     name,
+				Action:   Action(string(entry.resource) + ":" + verb),
+			})
+		}
+	}
+	return actions
 }
 
 // ResolveActionPermission returns the minimum permission required to perform the given

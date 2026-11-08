@@ -1,0 +1,123 @@
+openapi: 3.0.3
+info:
+  title: Capabilities API
+  version: "1.0"
+  description: >-
+    Reports which management actions the caller's access token allows, so a client can decide which
+    pages and actions to offer. It is for display only: every management API still authorizes each
+    request, including the organization unit of the record it acts on.
+  license:
+    name: Apache 2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0.html
+
+servers:
+  - url: https://{host}:{port}
+    variables:
+      host:
+        default: "localhost"
+      port:
+        default: "8090"
+
+tags:
+  - name: Capabilities
+    description: Management actions the caller may perform.
+
+security:
+  - OAuth2: []
+
+paths:
+  /capabilities:
+    get:
+      tags:
+        - Capabilities
+      summary: Get the caller's capabilities
+      description: >-
+        Returns, for each resource in the system permission catalog, whether the caller's access
+        token allows each action declared on it. Any authenticated caller can call it. The answer
+        depends only on the token and the server, so a client can keep it until the token changes.
+      responses:
+        "200":
+          description: The caller's capabilities.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CapabilitiesResponse'
+              example:
+                scope:
+                  type: ou
+                  ouId: "0b6f7b4e-5a2d-4c1e-9f3a-2d8e6c4a1b7f"
+                resources:
+                  app:
+                    view: true
+                    create: false
+                    update: true
+                    delete: false
+                  serverconfig:
+                    view: false
+                    update: false
+                root:
+                  view: false
+                  manage: false
+        "401":
+          description: The caller is not authenticated.
+
+components:
+  securitySchemes:
+    OAuth2:
+      type: oauth2
+      flows:
+        clientCredentials:
+          tokenUrl: https://localhost:8090/oauth2/token
+          scopes:
+            system: Access to system management APIs
+
+  schemas:
+    CapabilitiesResponse:
+      type: object
+      required:
+        - scope
+        - resources
+        - root
+      properties:
+        scope:
+          $ref: '#/components/schemas/CapabilityScope'
+        resources:
+          type: object
+          description: >-
+            Each catalog resource (for example `app`, `user` or `serverconfig`), mapped to each
+            action declared on it (`view`, `create`, `update` or `delete`) and whether the caller
+            may perform it.
+          additionalProperties:
+            type: object
+            additionalProperties:
+              type: boolean
+        root:
+          $ref: '#/components/schemas/RootCapabilities'
+
+    CapabilityScope:
+      type: object
+      description: Where the reported actions apply.
+      required:
+        - type
+      properties:
+        type:
+          type: string
+          enum: [deployment, ou]
+          description: >-
+            `deployment` when the actions apply to every organization unit in the deployment.
+            `ou` when they apply only to the organization unit in `ouId`.
+        ouId:
+          type: string
+          description: The organization unit the actions apply to. Present when `type` is `ou`.
+
+    RootCapabilities:
+      type: object
+      description: Access to the APIs only the root `system` permission reaches, such as import, export, variables and secrets.
+      required:
+        - view
+        - manage
+      properties:
+        view:
+          type: boolean
+        manage:
+          type: boolean

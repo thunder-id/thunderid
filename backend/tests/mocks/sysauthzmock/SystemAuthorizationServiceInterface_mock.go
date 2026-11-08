@@ -249,6 +249,57 @@ func (_c *SystemAuthorizationServiceInterfaceMock_GetAccessibleResources_Call) R
 	return _c
 }
 
+// GetBoundary provides a mock function for the type SystemAuthorizationServiceInterfaceMock
+func (_mock *SystemAuthorizationServiceInterfaceMock) GetBoundary(ctx context.Context) sysauthz.Boundary {
+	ret := _mock.Called(ctx)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetBoundary")
+	}
+
+	var r0 sysauthz.Boundary
+	if returnFunc, ok := ret.Get(0).(func(context.Context) sysauthz.Boundary); ok {
+		r0 = returnFunc(ctx)
+	} else {
+		r0 = ret.Get(0).(sysauthz.Boundary)
+	}
+	return r0
+}
+
+// SystemAuthorizationServiceInterfaceMock_GetBoundary_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetBoundary'
+type SystemAuthorizationServiceInterfaceMock_GetBoundary_Call struct {
+	*mock.Call
+}
+
+// GetBoundary is a helper method to define mock.On call
+//   - ctx context.Context
+func (_e *SystemAuthorizationServiceInterfaceMock_Expecter) GetBoundary(ctx any) *SystemAuthorizationServiceInterfaceMock_GetBoundary_Call {
+	return &SystemAuthorizationServiceInterfaceMock_GetBoundary_Call{Call: _e.mock.On("GetBoundary", ctx)}
+}
+
+func (_c *SystemAuthorizationServiceInterfaceMock_GetBoundary_Call) Run(run func(ctx context.Context)) *SystemAuthorizationServiceInterfaceMock_GetBoundary_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *SystemAuthorizationServiceInterfaceMock_GetBoundary_Call) Return(boundary sysauthz.Boundary) *SystemAuthorizationServiceInterfaceMock_GetBoundary_Call {
+	_c.Call.Return(boundary)
+	return _c
+}
+
+func (_c *SystemAuthorizationServiceInterfaceMock_GetBoundary_Call) RunAndReturn(run func(ctx context.Context) sysauthz.Boundary) *SystemAuthorizationServiceInterfaceMock_GetBoundary_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GrantableMemberships provides a mock function for the type SystemAuthorizationServiceInterfaceMock
 func (_mock *SystemAuthorizationServiceInterfaceMock) GrantableMemberships(ctx context.Context, principalType sysauthz.PrincipalType, containerIDs []string) ([]string, *common.ServiceError) {
 	ret := _mock.Called(ctx, principalType, containerIDs)
