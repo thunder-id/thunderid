@@ -33,6 +33,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/notificationtemplate"
 	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/resource"
+	"github.com/thunder-id/thunderid/internal/revocation"
 	"github.com/thunder-id/thunderid/internal/role"
 	"github.com/thunder-id/thunderid/internal/sharing"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -185,6 +186,11 @@ type roleAdapter interface {
 type roleAssignmentAdapter interface {
 	AddAssigneesToRoles(ctx context.Context, assignments []role.RoleAssignment,
 		roleIDs []string) *tidcommon.ServiceError
+	GetDirectAssignment(ctx context.Context, id, ouID, assigneeID string) (
+		*role.RoleAssignmentWithDisplay, *tidcommon.ServiceError)
+	ValidateRemoveAssignment(ctx context.Context, id, ouID, assigneeID string) (
+		*revocation.AccessRevocationTarget, *tidcommon.ServiceError)
+	RemoveAssignments(ctx context.Context, id, ouID string, assignments []role.RoleAssignment) *tidcommon.ServiceError
 }
 
 // sharingPolicyAdapter applies the sharing policies a document carries for one resource.
@@ -199,6 +205,9 @@ type groupAdapter interface {
 	UpdateGroup(ctx context.Context, groupID string, request group.UpdateGroupRequest) (
 		*group.Group, *tidcommon.ServiceError)
 	AddGroupMembers(ctx context.Context, groupID string, members []group.Member) (
+		*group.Group, *tidcommon.ServiceError)
+	GetDirectGroupMember(ctx context.Context, groupID, memberID string) (*group.Member, *tidcommon.ServiceError)
+	RemoveGroupMembers(ctx context.Context, groupID string, members []group.Member) (
 		*group.Group, *tidcommon.ServiceError)
 	DeleteGroup(ctx context.Context, groupID string) *tidcommon.ServiceError
 }

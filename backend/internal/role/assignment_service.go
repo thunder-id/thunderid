@@ -43,6 +43,10 @@ type RoleAssignmentServiceInterface interface {
 		includeDisplay bool, assigneeType string) (*AssignmentList, *tidcommon.ServiceError)
 	AddAssignments(ctx context.Context, id, ouID string, assignments []RoleAssignment) *tidcommon.ServiceError
 	RemoveAssignments(ctx context.Context, id, ouID string, assignments []RoleAssignment) *tidcommon.ServiceError
+	// GetDirectAssignment returns the assignee's direct assignment of the role in the organization unit, or
+	// nil when it holds none there. An assignment a sharing policy mandates is not direct.
+	GetDirectAssignment(ctx context.Context, id, ouID, assigneeID string) (
+		*RoleAssignmentWithDisplay, *tidcommon.ServiceError)
 	// ValidateRemoveAssignment reports whether the assignee may be unassigned in the organization unit
 	// named in ouID, or in the role's owner when it is empty, and what that revokes.
 	ValidateRemoveAssignment(ctx context.Context, id, ouID, assigneeID string) (
@@ -645,7 +649,7 @@ func (as *roleAssignmentService) prepareAssignments(
 	if err := as.validateAssignmentsRequest(assignments); err != nil {
 		return nil, err
 	}
-	if !adding && len(assignments) > maxRemovedAssignments {
+	if !adding && len(assignments) > MaxRemovedAssignments {
 		return nil, &ErrorTooManyAssignments
 	}
 
@@ -1045,6 +1049,24 @@ func (as *roleAssignmentService) resolveAssignments(
 		result = append(result, ra)
 	}
 	return result, nil
+}
+
+// GetDirectAssignment returns the assignee's direct assignment of the role in the organization unit, or nil
+// when it holds none there.
+func (as *roleAssignmentService) GetDirectAssignment(ctx context.Context, id, ouID, assigneeID string) (
+	*RoleAssignmentWithDisplay, *tidcommon.ServiceError) {
+	if id == "" {
+		return nil, &ErrorMissingRoleID
+	}
+	exists, err := as.roleStore.IsRoleExist(ctx, id)
+	if err != nil {
+		as.logger.Error(ctx, "Failed to check role existence", log.String("id", id), log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+	if !exists {
+		return nil, &ErrorRoleNotFound
+	}
+	return as.directAssignment(ctx, id, ouID, assigneeID)
 }
 
 // directAssignment returns the role's direct assignment to the assignee, or nil when there is none.

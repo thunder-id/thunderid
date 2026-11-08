@@ -162,6 +162,41 @@ func (s *MasterTestSuite) TestARefusedUpdateKeepsTheDocumentTheGatewayRuns() {
 	s.Equal(unit("ou-a"), next.Resources)
 }
 
+// A role whose update the gateway refused keeps that refusal, whatever became of its member removal, and a
+// removal the answer does not name is failed when the gateway refused something it did not name.
+func (s *MasterTestSuite) TestAMemberRemovalFailsItsRoleUnlessTheRoleAlreadyFailed() {
+	previous := masterOfVersion("gw-1", &Version{Hash: "v1", Resources: roleWith("user-1", "user-2")}, nil,
+		masterAt, nil)
+	removal := []gatewayDeletion{{ResourceType: "role_assignment", ID: "role-1",
+		Members: []gatewayMember{{ID: "user-1", Type: "user", OUID: "ou-1"}}}}
+	updateRefused := importOutcome{ResourceType: "role", ResourceID: "role-1", Operation: "update",
+		Status: outcomeFailed, Code: "ROL-1001"}
+	removalRefused := importOutcome{ResourceType: "role_assignment", ResourceID: "role-1",
+		Operation: operationDeleted, Status: outcomeFailed, Code: "ROL-1040"}
+	unnamed := importOutcome{ResourceType: "translation", Status: outcomeFailed, Code: "T-1"}
+
+	cases := []struct {
+		name   string
+		answer json.RawMessage
+		code   string
+	}{
+		{"the update and the removal refused", answerOf(updateRefused, removalRefused), "ROL-1001"},
+		{"the update refused and the removal unnamed", answerOf(updateRefused, unnamed), "ROL-1001"},
+		{"the update unnamed and the removal unnamed", answerOf(unnamed), ""},
+	}
+	for _, tc := range cases {
+		next := nextMaster(previous, masterWrite{sent: parseBundle(roleWith("user-2")), deletions: removal,
+			answer: tc.answer, source: "v2", at: masterAt})
+
+		entry, ok := entryOf(next, "role/role-1")
+		s.Require().True(ok, tc.name)
+		s.Equal(EntryFailed, entry.State, tc.name)
+		s.Equal(tc.code, entry.Failure.Code, tc.name)
+		s.Equal(contentHash(roleWith("user-1", "user-2")), entry.ContentHash, tc.name)
+		s.Len(next.Entries, 1, "%s: the removal was recorded as a resource of its own", tc.name)
+	}
+}
+
 // A resource sent again as the gateway already holds it keeps its entry, so an apply that sends a
 // version whole does not rewrite where every resource came from; one the gateway refuses this time is
 // recorded failed all the same.

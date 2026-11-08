@@ -37,6 +37,12 @@ const (
 	resourceTypeUnknown                 = "unknown"
 )
 
+// Removal types that take assignees off a role or members off a group, leaving the role or group.
+const (
+	removalTypeRoleAssignment = "role_assignment"
+	removalTypeGroupMember    = "group_member"
+)
+
 type parsedDocument struct {
 	ResourceType string
 	Node         *yaml.Node

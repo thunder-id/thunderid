@@ -5,6 +5,7 @@ package importer
 
 import (
 	"context"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -14,8 +15,11 @@ import (
 	"github.com/thunder-id/thunderid/internal/connection/authzenpdp"
 	"github.com/thunder-id/thunderid/internal/connection/httpconnection"
 	"github.com/thunder-id/thunderid/internal/entitytype"
+	"github.com/thunder-id/thunderid/internal/group"
 	"github.com/thunder-id/thunderid/internal/notification"
 	ncommon "github.com/thunder-id/thunderid/internal/notification/common"
+	"github.com/thunder-id/thunderid/internal/revocation"
+	"github.com/thunder-id/thunderid/internal/role"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -72,6 +76,53 @@ func (f *fakeRoleService) DeleteRole(_ context.Context, id string) *tidcommon.Se
 }
 
 func (f *fakeGroupService) DeleteGroup(context.Context, string) *tidcommon.ServiceError { return nil }
+
+func (f *fakeGroupService) GetDirectGroupMember(
+	_ context.Context, _, memberID string) (*group.Member, *tidcommon.ServiceError) {
+	if f.lookupErr != nil {
+		return nil, f.lookupErr
+	}
+	for i := range f.held {
+		if f.held[i].ID == memberID {
+			return &f.held[i], nil
+		}
+	}
+	return nil, nil
+}
+
+func (f *fakeGroupService) RemoveGroupMembers(
+	_ context.Context, _ string, members []group.Member) (*group.Group, *tidcommon.ServiceError) {
+	if f.removeErr != nil {
+		return nil, f.removeErr
+	}
+	f.removed = append(f.removed, members...)
+	return &group.Group{}, nil
+}
+
+func (f *fakeRoleAssignmentService) GetDirectAssignment(
+	_ context.Context, _, ouID, assigneeID string) (*role.RoleAssignmentWithDisplay, *tidcommon.ServiceError) {
+	if f.lookupErr != nil {
+		return nil, f.lookupErr
+	}
+	for i := range f.held {
+		if f.held[i].OUID == ouID && f.held[i].ID == assigneeID {
+			return &f.held[i], nil
+		}
+	}
+	return nil, nil
+}
+
+func (f *fakeRoleAssignmentService) ValidateRemoveAssignment(
+	_ context.Context, _, ouID, _ string) (*revocation.AccessRevocationTarget, *tidcommon.ServiceError) {
+	return &revocation.AccessRevocationTarget{}, f.refused[ouID]
+}
+
+// RemoveAssignments records every call, refused or not, so a test sees what was attempted.
+func (f *fakeRoleAssignmentService) RemoveAssignments(
+	_ context.Context, roleID, ouID string, assignments []role.RoleAssignment) *tidcommon.ServiceError {
+	f.removals = append(f.removals, roleAssignmentRemoval{roleID: roleID, ouID: ouID, assignments: assignments})
+	return f.removalErr
+}
 
 func (f *fakeAgentService) DeleteAgent(_ context.Context, id string) *tidcommon.ServiceError {
 	f.deleted = append(f.deleted, id)
@@ -303,6 +354,238 @@ func TestOrderDeletionsByDependencies_ReversesImportOrder(t *testing.T) {
 		resourceTypeConnection,
 		resourceTypeOrganizationUnit,
 	}, got)
+}
+
+func TestOrderDeletionsByDependencies_TakesMembersOffFirst(t *testing.T) {
+	ordered := orderDeletionsByDependencies([]ResourceDeletion{
+		{ResourceType: resourceTypeUser, ID: "user"},
+		{ResourceType: removalTypeRoleAssignment, ID: "role"},
+		{ResourceType: resourceTypeRole, ID: "other-role"},
+		{ResourceType: removalTypeGroupMember, ID: "group"},
+	})
+
+	got := make([]string, 0, len(ordered))
+	for _, deletion := range ordered {
+		got = append(got, deletion.ResourceType)
+	}
+
+	assert.Equal(t, []string{
+		removalTypeRoleAssignment,
+		removalTypeGroupMember,
+		resourceTypeRole,
+		resourceTypeUser,
+	}, got)
+}
+
+func newMemberRemovalTestService(
+	roleAssignments *fakeRoleAssignmentService, groups *fakeGroupService) ImportServiceInterface {
+	svc := newDeleteTestService(nil, nil, nil).(*importService)
+	if roleAssignments != nil {
+		svc.roleAssignmentService = roleAssignments
+	}
+	if groups != nil {
+		svc.groupService = groups
+	}
+	return svc
+}
+
+// directlyHeld is a role assigned to user-1 in each of the given organization units.
+func directlyHeld(ouIDs ...string) []role.RoleAssignmentWithDisplay {
+	held := make([]role.RoleAssignmentWithDisplay, 0, len(ouIDs))
+	for _, ouID := range ouIDs {
+		held = append(held, role.RoleAssignmentWithDisplay{ID: "user-1", Type: role.AssigneeTypeUser, OUID: ouID})
+	}
+	return held
+}
+
+// Only an assignee that holds the role directly in the named unit is taken off: one deleted since and one in a
+// unit the role is no longer shared with have nothing to remove.
+func TestImportResources_RemovesOnlyTheAssigneesTheRoleHolds(t *testing.T) {
+	held := directlyHeld("ou-1")
+	held = append(held, role.RoleAssignmentWithDisplay{ID: "group-1", Type: role.AssigneeTypeGroup, OUID: "ou-2"})
+	roleAssignments := &fakeRoleAssignmentService{held: held}
+	svc := newMemberRemovalTestService(roleAssignments, nil)
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{
+		Deletions: []ResourceDeletion{{ResourceType: removalTypeRoleAssignment, ID: "role-1", Members: []RemovedMember{
+			{ID: "user-1", Type: "user", OUID: "ou-1"},
+			{ID: "deleted", Type: "user", OUID: "ou-1"},
+			{ID: "user-1", Type: "user", OUID: "unshared"},
+			{ID: "group-1", Type: "group", OUID: "ou-2"},
+		}}},
+		Options: deleteOptions(),
+	})
+
+	require.Nil(t, err)
+	assert.Equal(t, 1, resp.Summary.Deleted)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, ImportItemOutcome{ResourceType: removalTypeRoleAssignment, ResourceID: "role-1",
+		Operation: operationDelete, Status: statusSuccess}, resp.Results[0])
+	assert.Equal(t, []roleAssignmentRemoval{
+		{roleID: "role-1", ouID: "ou-1",
+			assignments: []role.RoleAssignment{{ID: "user-1", Type: role.AssigneeTypeUser}}},
+		{roleID: "role-1", ouID: "ou-2",
+			assignments: []role.RoleAssignment{{ID: "group-1", Type: role.AssigneeTypeGroup}}},
+	}, roleAssignments.removals)
+}
+
+// Every assignee is checked before any is taken off, so a refusal leaves the role as it was.
+func TestImportResources_ARefusedAssigneeLeavesTheRoleAsItWas(t *testing.T) {
+	roleAssignments := &fakeRoleAssignmentService{held: directlyHeld("ou-1", "ou-2"),
+		refused: map[string]*tidcommon.ServiceError{"ou-2": &role.ErrorAssignmentMandated}}
+	svc := newMemberRemovalTestService(roleAssignments, nil)
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{
+		Deletions: []ResourceDeletion{{ResourceType: removalTypeRoleAssignment, ID: "role-1", Members: []RemovedMember{
+			{ID: "user-1", Type: "user", OUID: "ou-1"}, {ID: "user-1", Type: "user", OUID: "ou-2"}}}},
+		Options: deleteOptions(),
+	})
+
+	require.Nil(t, err)
+	assert.Equal(t, statusFailed, resp.Results[0].Status)
+	assert.Equal(t, role.ErrorAssignmentMandated.Code, resp.Results[0].Code)
+	assert.Empty(t, roleAssignments.removals, "an assignee was taken off before the refusal was found")
+}
+
+// An organization unit's assignees are taken off in as few requests as the role service takes.
+func TestImportResources_RemovesAssigneesInBatches(t *testing.T) {
+	members := make([]RemovedMember, 0, role.MaxRemovedAssignments+1)
+	roleAssignments := &fakeRoleAssignmentService{}
+	for i := range role.MaxRemovedAssignments + 1 {
+		id := "user-" + strconv.Itoa(i)
+		members = append(members, RemovedMember{ID: id, Type: "user", OUID: "ou-1"})
+		roleAssignments.held = append(roleAssignments.held,
+			role.RoleAssignmentWithDisplay{ID: id, Type: role.AssigneeTypeUser, OUID: "ou-1"})
+	}
+
+	resp, err := newMemberRemovalTestService(roleAssignments, nil).ImportResources(context.Background(),
+		&ImportRequest{Deletions: []ResourceDeletion{{ResourceType: removalTypeRoleAssignment, ID: "role-1",
+			Members: members}}, Options: deleteOptions()})
+
+	require.Nil(t, err)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status)
+	require.Len(t, roleAssignments.removals, 2)
+	assert.Len(t, roleAssignments.removals[0].assignments, role.MaxRemovedAssignments)
+	assert.Len(t, roleAssignments.removals[1].assignments, 1)
+}
+
+func TestImportResources_RemovesOnlyTheMembersTheGroupHolds(t *testing.T) {
+	groups := &fakeGroupService{held: []group.Member{{ID: "user-1", Type: group.MemberTypeUser},
+		{ID: "group-2", Type: group.MemberTypeGroup}, {ID: "user-3", Type: group.MemberTypeUser}}}
+	svc := newMemberRemovalTestService(nil, groups)
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{
+		Deletions: []ResourceDeletion{{ResourceType: removalTypeGroupMember, ID: "group-1", Members: []RemovedMember{
+			{ID: "user-1", Type: "user"}, {ID: "deleted", Type: "user"}, {ID: "group-2", Type: "group"}}}},
+		Options: deleteOptions(),
+	})
+
+	require.Nil(t, err)
+	assert.Equal(t, 1, resp.Summary.Deleted)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status)
+	assert.Equal(t, []group.Member{{ID: "user-1", Type: group.MemberTypeUser},
+		{ID: "group-2", Type: group.MemberTypeGroup}}, groups.removed)
+
+	groups = &fakeGroupService{held: []group.Member{{ID: "user-3", Type: group.MemberTypeUser}}}
+	resp, err = newMemberRemovalTestService(nil, groups).ImportResources(context.Background(), &ImportRequest{
+		Deletions: []ResourceDeletion{{ResourceType: removalTypeGroupMember, ID: "group-1",
+			Members: []RemovedMember{{ID: "deleted", Type: "user"}}}},
+		Options: deleteOptions(),
+	})
+
+	require.Nil(t, err)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status)
+	assert.Nil(t, groups.removed, "a group no longer holding the member was asked to remove it")
+}
+
+func TestImportResources_MemberRemovalOutcomes(t *testing.T) {
+	assignee := []RemovedMember{{ID: "user-1", Type: "user", OUID: "ou-1"}}
+	cases := []struct {
+		name            string
+		deletion        ResourceDeletion
+		roleAssignments *fakeRoleAssignmentService
+		groups          *fakeGroupService
+		dryRun          bool
+		status          string
+		code            string
+		message         string
+	}{
+		{
+			name:            "a role already gone has no assignees left to remove",
+			deletion:        ResourceDeletion{ResourceType: removalTypeRoleAssignment, ID: "role-1", Members: assignee},
+			roleAssignments: &fakeRoleAssignmentService{lookupErr: &role.ErrorRoleNotFound},
+			status:          statusSuccess,
+			message:         "resource already absent",
+		},
+		{
+			name:     "a group already gone has no members left to remove",
+			deletion: ResourceDeletion{ResourceType: removalTypeGroupMember, ID: "group-1", Members: assignee},
+			groups:   &fakeGroupService{lookupErr: &group.ErrorGroupNotFound},
+			status:   statusSuccess,
+			message:  "resource already absent",
+		},
+		{
+			name:     "a removal the group service refuses is reported",
+			deletion: ResourceDeletion{ResourceType: removalTypeGroupMember, ID: "group-1", Members: assignee},
+			groups: &fakeGroupService{held: []group.Member{{ID: "user-1", Type: group.MemberTypeUser}},
+				removeErr: &group.ErrorInvalidMemberID},
+			status:  statusFailed,
+			code:    group.ErrorInvalidMemberID.Code,
+			message: group.ErrorInvalidMemberID.Error.DefaultValue,
+		},
+		{
+			name:     "a deployment without a group service cannot remove members",
+			deletion: ResourceDeletion{ResourceType: removalTypeGroupMember, ID: "group-1", Members: assignee},
+			status:   statusFailed,
+			code:     ErrorDeleteNotSupported.Code,
+		},
+		{
+			name:     "a dry run removes nothing",
+			deletion: ResourceDeletion{ResourceType: removalTypeRoleAssignment, ID: "role-1", Members: assignee},
+			roleAssignments: &fakeRoleAssignmentService{held: directlyHeld("ou-1"),
+				removalErr: &role.ErrorAssignmentMandated},
+			dryRun: true,
+			status: statusSuccess,
+		},
+		{
+			name:            "a removal names at least one member",
+			deletion:        ResourceDeletion{ResourceType: removalTypeRoleAssignment, ID: "role-1"},
+			roleAssignments: &fakeRoleAssignmentService{},
+			status:          statusFailed,
+			code:            ErrorInvalidImportRequest.Code,
+		},
+		{
+			name: "a role's assignee names the unit it was assigned in",
+			deletion: ResourceDeletion{ResourceType: removalTypeRoleAssignment, ID: "role-1",
+				Members: []RemovedMember{{ID: "user-1", Type: "user"}}},
+			roleAssignments: &fakeRoleAssignmentService{held: directlyHeld("ou-1")},
+			status:          statusFailed,
+			code:            ErrorInvalidImportRequest.Code,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			svc := newMemberRemovalTestService(tc.roleAssignments, tc.groups)
+
+			resp, err := svc.ImportResources(context.Background(), &ImportRequest{
+				Deletions: []ResourceDeletion{tc.deletion},
+				DryRun:    tc.dryRun,
+				Options:   deleteOptions(),
+			})
+
+			require.Nil(t, err)
+			require.Len(t, resp.Results, 1)
+			assert.Equal(t, tc.status, resp.Results[0].Status)
+			assert.Equal(t, tc.code, resp.Results[0].Code)
+			if tc.message != "" {
+				assert.Equal(t, tc.message, resp.Results[0].Message)
+			}
+			assert.Equal(t, 0, resp.Summary.Deleted)
+			if tc.roleAssignments != nil {
+				assert.Empty(t, tc.roleAssignments.removals)
+			}
+		})
+	}
 }
 
 func TestImportResources_EmptyRequestStillRejected(t *testing.T) {

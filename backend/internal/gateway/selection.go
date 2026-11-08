@@ -8,6 +8,8 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/thunder-id/thunderid/internal/system/log"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -143,6 +145,77 @@ func shipmentOf(diff *Diff, target *Version, previous *Master, selection *[]stri
 	default:
 		return shipment{}, nil, removalsInUse(referenced)
 	}
+}
+
+// memberRemovalTypes maps a resource type whose document lists who belongs to it to the removal that
+// takes them off it.
+var memberRemovalTypes = map[string]string{resourceTypeRole: "role_assignment", resourceTypeGroup: "group_member"}
+
+// memberRemovals works out, for each role and group an apply writes over a document the master holds,
+// the assignees or members that document has and the written one no longer does. An import adds who a
+// document names but never takes off who it leaves out, so they are removed on their own. Only those
+// the master recorded are removed: an assignee or member the gateway added itself stays.
+func memberRemovals(held, written []bundleResource) []gatewayDeletion {
+	previous := make(map[string]string, len(held))
+	for _, resource := range held {
+		previous[resource.key()] = resource.Content
+	}
+	var removals []gatewayDeletion
+	for _, resource := range written {
+		removalType, lists := memberRemovalTypes[resource.Type]
+		was, isHeld := previous[resource.key()]
+		if !lists || !isHeld || resource.ID == "" {
+			continue
+		}
+		before, unit, readBefore := membersOf(resource.Type, was)
+		after, _, readAfter := membersOf(resource.Type, resource.Content)
+		if !readBefore || !readAfter {
+			continue
+		}
+		// A role assignment captured before assignments named their organization unit has none, so an
+		// assignee without one matches the same assignee in any unit.
+		kept := make(map[gatewayMember]bool, len(after))
+		inAnyUnit := make(map[gatewayMember]bool, len(after))
+		withoutUnit := make(map[gatewayMember]bool, len(after))
+		for _, member := range after {
+			kept[member] = true
+			assignee := gatewayMember{ID: member.ID, Type: member.Type}
+			inAnyUnit[assignee] = true
+			withoutUnit[assignee] = withoutUnit[assignee] || member.OUID == ""
+		}
+		var removed []gatewayMember
+		for _, member := range before {
+			assignee := gatewayMember{ID: member.ID, Type: member.Type}
+			if kept[member] || withoutUnit[assignee] || (member.OUID == "" && inAnyUnit[assignee]) {
+				continue
+			}
+			if member.OUID == "" {
+				member.OUID = unit
+			}
+			removed = append(removed, member)
+		}
+		if len(removed) > 0 {
+			removals = append(removals, gatewayDeletion{ResourceType: removalType, ID: resource.ID, Members: removed})
+		}
+	}
+	return removals
+}
+
+// membersOf reads the assignees a role document lists or the members a group document lists, the
+// organization unit owning a role, and whether the document could be read.
+func membersOf(resourceType, document string) ([]gatewayMember, string, bool) {
+	var listed struct {
+		OUID        string          `yaml:"ouId"`
+		Assignments []gatewayMember `yaml:"assignments"`
+		Members     []gatewayMember `yaml:"members"`
+	}
+	if err := yaml.Unmarshal([]byte(quotePlaceholders(document)), &listed); err != nil {
+		return nil, "", false
+	}
+	if resourceType == resourceTypeRole {
+		return listed.Assignments, listed.OUID, true
+	}
+	return listed.Members, "", true
 }
 
 // refuseRemovalsInUse refuses removals that a document the gateway keeps still names once this apply's

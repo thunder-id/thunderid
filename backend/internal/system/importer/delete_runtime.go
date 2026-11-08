@@ -6,11 +6,14 @@ package importer
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sort"
 
 	"github.com/thunder-id/thunderid/internal/entitytype"
+	"github.com/thunder-id/thunderid/internal/group"
 	"github.com/thunder-id/thunderid/internal/idp"
 	"github.com/thunder-id/thunderid/internal/notificationtemplate"
+	"github.com/thunder-id/thunderid/internal/role"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
@@ -62,12 +65,15 @@ func (s *importService) logDeletionFailure(
 	log.GetLogger().Error(ctx, "Import failed to delete a resource", fields...)
 }
 
-// orderDeletionsByDependencies sorts deletions into the reverse of the import dependency order.
+// orderDeletionsByDependencies sorts deletions into the reverse of the import dependency order. A
+// role's assignees and a group's members are taken off first, while every one of them still exists.
 func orderDeletionsByDependencies(deletions []ResourceDeletion) []ResourceDeletion {
-	priority := make(map[string]int, len(resourceDependencyOrder))
+	priority := make(map[string]int, len(resourceDependencyOrder)+2)
 	for i, resourceType := range resourceDependencyOrder {
 		priority[resourceType] = i
 	}
+	priority[removalTypeRoleAssignment] = len(resourceDependencyOrder)
+	priority[removalTypeGroupMember] = len(resourceDependencyOrder)
 
 	ordered := make([]ResourceDeletion, len(deletions))
 	copy(ordered, deletions)
@@ -109,8 +115,20 @@ func (s *importService) deleteRuntimeResource(
 		outcome.Message = "resourceType and id are required to delete a resource"
 		return outcome, false
 	}
+	removesMembers := deletion.ResourceType == removalTypeRoleAssignment ||
+		deletion.ResourceType == removalTypeGroupMember
+	if removesMembers && !namesEveryMember(deletion) {
+		outcome.Status = statusFailed
+		outcome.Code = ErrorInvalidImportRequest.Code
+		outcome.Message = "members are required to remove a role's assignees or a group's members, each with " +
+			"its id and type, and a role's assignee with the ouId it was assigned in"
+		return outcome, false
+	}
 
 	deleteFn := s.deleterFor(deletion.ResourceType)
+	if removesMembers {
+		deleteFn = s.memberRemoverFor(deletion)
+	}
 	if deleteFn == nil {
 		svcErr := deleteUnsupportedError(deletion.ResourceType)
 		outcome.Status = statusFailed
@@ -209,6 +227,97 @@ func (s *importService) deleterFor(resourceType string) deleteFunc {
 		}
 	}
 	return nil
+}
+
+// namesEveryMember reports whether a removal of a role's assignees or a group's members names at least
+// one, each by its id and type, and each of a role's in the organization unit it was assigned in.
+func namesEveryMember(deletion ResourceDeletion) bool {
+	if len(deletion.Members) == 0 {
+		return false
+	}
+	for _, member := range deletion.Members {
+		if member.ID == "" || member.Type == "" ||
+			(deletion.ResourceType == removalTypeRoleAssignment && member.OUID == "") {
+			return false
+		}
+	}
+	return true
+}
+
+// memberRemoverFor returns the removal of the assignees or members a deletion names from the role or
+// group it names, or nil when this deployment cannot make it.
+func (s *importService) memberRemoverFor(deletion ResourceDeletion) deleteFunc {
+	switch deletion.ResourceType {
+	case removalTypeRoleAssignment:
+		if s.roleAssignmentService != nil {
+			return func(ctx context.Context, roleID string) *tidcommon.ServiceError {
+				return s.removeRoleAssignments(ctx, roleID, deletion.Members)
+			}
+		}
+	case removalTypeGroupMember:
+		if s.groupService != nil {
+			return func(ctx context.Context, groupID string) *tidcommon.ServiceError {
+				return s.removeGroupMembers(ctx, groupID, deletion.Members)
+			}
+		}
+	}
+	return nil
+}
+
+// removeRoleAssignments takes assignees off a role, each in the organization unit it was assigned in. As
+// with a group's members, every assignee is checked before any is taken off, so a refusal leaves the role
+// as it was. One that no longer holds the role there directly is already off it and is skipped, such as
+// one deleted since or one in a unit the role is no longer shared with.
+func (s *importService) removeRoleAssignments(
+	ctx context.Context, roleID string, members []RemovedMember) *tidcommon.ServiceError {
+	gone := map[string][]role.RoleAssignment{}
+	units := []string{}
+	for _, member := range members {
+		held, svcErr := s.roleAssignmentService.GetDirectAssignment(ctx, roleID, member.OUID, member.ID)
+		if svcErr != nil {
+			return svcErr
+		}
+		if held == nil {
+			continue
+		}
+		if _, svcErr := s.roleAssignmentService.ValidateRemoveAssignment(
+			ctx, roleID, member.OUID, member.ID); svcErr != nil {
+			return svcErr
+		}
+		if _, listed := gone[member.OUID]; !listed {
+			units = append(units, member.OUID)
+		}
+		gone[member.OUID] = append(gone[member.OUID], role.RoleAssignment{ID: held.ID, Type: held.Type})
+	}
+	for _, unit := range units {
+		for batch := range slices.Chunk(gone[unit], role.MaxRemovedAssignments) {
+			if svcErr := s.roleAssignmentService.RemoveAssignments(ctx, roleID, unit, batch); svcErr != nil {
+				return svcErr
+			}
+		}
+	}
+	return nil
+}
+
+// removeGroupMembers takes members off a group. One that is no longer a member, such as one deleted
+// since, is already off it and is skipped.
+func (s *importService) removeGroupMembers(
+	ctx context.Context, groupID string, members []RemovedMember) *tidcommon.ServiceError {
+	gone := make([]group.Member, 0, len(members))
+	for _, member := range members {
+		held, svcErr := s.groupService.GetDirectGroupMember(ctx, groupID, member.ID)
+		if svcErr != nil {
+			return svcErr
+		}
+		if held != nil {
+			gone = append(gone, group.Member{ID: member.ID, Type: group.MemberType(member.Type)})
+		}
+	}
+	if len(gone) == 0 {
+		return nil
+	}
+	_, svcErr := s.groupService.RemoveGroupMembers(ctx, groupID, gone)
+	return svcErr
 }
 
 // deleteNotificationTemplate deletes a template by id on every channel. A template id is unique across

@@ -128,6 +128,39 @@ types, `user_type` and `agent_type`, as they are in `content`.
 Deletions follow `options.continueOnError` as documents do: by default one refused removal does not
 hold back the rest.
 
+### Removing Role Assignees and Group Members
+
+A `role` document's `assignments` and a `group` document's `members` are added on import, but an
+assignee or member the document leaves out is not taken off. To take one off while the role or group
+stays, name it in a `role_assignment` or `group_member` entry. `id` is the role or group, and
+`members` lists who to take off, each by `id` and `type`. A role assignment also gives the
+organization unit it was made in as `ouId`, which is required.
+
+```json
+{
+  "deletions": [
+    {
+      "resourceType": "role_assignment",
+      "id": "770e8400-e29b-41d4-a716-446655440002",
+      "members": [{ "id": "880e8400-e29b-41d4-a716-446655440003", "type": "user", "ouId": "990e8400-e29b-41d4-a716-446655440004" }]
+    },
+    {
+      "resourceType": "group_member",
+      "id": "aa0e8400-e29b-41d4-a716-446655440005",
+      "members": [{ "id": "880e8400-e29b-41d4-a716-446655440003", "type": "user" }]
+    }
+  ]
+}
+```
+
+These run before any resource is removed, so an assignee removed in the same request is still there
+to be named. Each goes through the role or group service as a removal through its API does. Someone
+who no longer holds the role directly in that unit, or is no longer in the group, is already off it
+and is skipped: for example a user deleted since, or a unit the role is no longer shared with. A role
+or group that is already gone is reported as `resource already absent`. Each entry gets one outcome,
+with the role or group id as `resourceId`. Everyone an entry names is checked before anyone is taken
+off, so when one is refused, the entry fails and the role or group is left as it was.
+
 ## Response Model
 
 A successful import returns summary metrics and per-document outcomes.

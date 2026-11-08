@@ -146,6 +146,104 @@ func (ts *GatewayVersionsTestSuite) TestApplyAddsAndRemovesWhatTheVersionsDiffer
 	ts.Equal(http.StatusOK, ts.unitStatus(ouID), "a refused revert changed the gateway")
 }
 
+// Applying a version takes off a role or a group whoever the version no longer lists there, and only
+// them: an assignee or member the gateway added itself stays.
+func (ts *GatewayVersionsTestSuite) TestApplyTakesOffWhoARoleOrGroupNoLongerLists() {
+	suffix := fmt.Sprint(time.Now().UnixNano())
+	ouID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{Handle: "members-" + suffix,
+		Name: "Members"})
+	ts.Require().NoError(err)
+	defer func() { _ = testutils.DeleteOrganizationUnit(ouID) }()
+	typeID, err := testutils.CreateUserType(testutils.UserType{Handle: "members-" + suffix, DisplayName: "Members",
+		OUID: ouID, Schema: map[string]any{"email": map[string]any{"type": "string"}}})
+	ts.Require().NoError(err)
+	defer func() { _ = testutils.DeleteUserType(typeID) }()
+	person := func(name string) string {
+		id, err := testutils.CreateUser(testutils.User{Type: "members-" + suffix, OUID: ouID,
+			Attributes: json.RawMessage(fmt.Sprintf(`{"email": "%s-%s@example.com"}`, name, suffix))})
+		ts.Require().NoError(err)
+		return id
+	}
+	dropped, kept := person("dropped"), person("kept")
+	defer func() {
+		_ = testutils.DeleteUser(dropped)
+		_ = testutils.DeleteUser(kept)
+	}()
+	groupID, err := testutils.CreateGroup(testutils.Group{Name: "members-" + suffix, OUID: ouID,
+		Members: []testutils.Member{{Id: dropped, Type: "user"}}})
+	ts.Require().NoError(err)
+	defer func() { _ = testutils.DeleteGroup(groupID) }()
+	roleID, err := testutils.CreateRole(testutils.Role{Name: "members-" + suffix, OUID: ouID,
+		Assignments: []testutils.Assignment{{ID: dropped, Type: "user"}}})
+	ts.Require().NoError(err)
+	defer func() { _ = testutils.DeleteRole(roleID) }()
+	only := func(id string) map[string]any {
+		return map[string]any{"id": id, "type": "user"}
+	}
+
+	listed := ts.capture("with the user")
+	ts.Require().Equal(http.StatusNoContent, ts.call(http.MethodPost, "/roles/"+roleID+"/assignments/remove",
+		map[string]any{"assignments": []any{only(dropped)}}, nil))
+	ts.Require().Equal(http.StatusOK, ts.call(http.MethodPost, "/groups/"+groupID+"/members/remove",
+		map[string]any{"members": []any{only(dropped)}}, nil))
+	unlisted := ts.capture("without the user")
+
+	ts.True(ts.apply(listed.Version, false).Recorded)
+	ts.ElementsMatch([]string{dropped}, ts.assignees(roleID))
+	ts.ElementsMatch([]string{dropped}, ts.members(groupID))
+	ts.Require().Equal(http.StatusNoContent, ts.call(http.MethodPost, "/roles/"+roleID+"/assignments/add",
+		map[string]any{"assignments": []any{only(kept)}}, nil))
+	ts.Require().Equal(http.StatusOK, ts.call(http.MethodPost, "/groups/"+groupID+"/members/add",
+		map[string]any{"members": []any{only(kept)}}, nil))
+
+	dryRun := ts.apply(unlisted.Version, true)
+	ts.Contains(string(dryRun.Import), `"resourceType":"role_assignment"`, "the dry run did not report the removal")
+	ts.ElementsMatch([]string{dropped, kept}, ts.assignees(roleID), "a dry run took an assignee off")
+
+	applied := ts.apply(unlisted.Version, false)
+	ts.True(applied.Recorded, "the apply was not recorded: %s", applied.Import)
+	ts.ElementsMatch([]string{kept}, ts.assignees(roleID), "the role kept who the version dropped")
+	ts.ElementsMatch([]string{kept}, ts.members(groupID), "the group kept who the version dropped")
+	after := ts.diff(unlisted.Version)
+	for _, key := range []string{"role/" + roleID, "group/" + groupID} {
+		if held := ts.changeIn(after, key); ts.NotNil(held, "the diff does not report %s", key) {
+			ts.Equal("unchanged", held.Change, "%s is still on offer", key)
+		}
+	}
+}
+
+// assignees lists the ids of a role's assignees.
+func (ts *GatewayVersionsTestSuite) assignees(roleID string) []string {
+	ts.T().Helper()
+	var listed struct {
+		Assignments []struct {
+			ID string `json:"id"`
+		} `json:"assignments"`
+	}
+	ts.Require().Equal(http.StatusOK, ts.call(http.MethodGet, "/roles/"+roleID+"/assignments", nil, &listed))
+	ids := make([]string, 0, len(listed.Assignments))
+	for _, assignment := range listed.Assignments {
+		ids = append(ids, assignment.ID)
+	}
+	return ids
+}
+
+// members lists the ids of a group's members.
+func (ts *GatewayVersionsTestSuite) members(groupID string) []string {
+	ts.T().Helper()
+	var listed struct {
+		Members []struct {
+			ID string `json:"id"`
+		} `json:"members"`
+	}
+	ts.Require().Equal(http.StatusOK, ts.call(http.MethodGet, "/groups/"+groupID+"/members", nil, &listed))
+	ids := make([]string, 0, len(listed.Members))
+	for _, member := range listed.Members {
+		ids = append(ids, member.ID)
+	}
+	return ids
+}
+
 // Without a user lookup at a trusted issuer, a version names no one and neither does the gateway that
 // holds it: the caller's id alone is not given out, though it is recorded.
 func (ts *GatewayVersionsTestSuite) TestWithoutALookupNoUserIsNamed() {

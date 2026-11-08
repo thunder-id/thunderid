@@ -69,7 +69,7 @@ func (suite *RoleAssignmentServiceTestSuite) TestRemoveAssignments_RunsThePreAnd
 
 // A removal naming more assignments than a request may remove is refused before anything is read.
 func (suite *RoleAssignmentServiceTestSuite) TestRemoveAssignments_TooManyAssignmentsIsRefused() {
-	request := make([]RoleAssignment, maxRemovedAssignments+1)
+	request := make([]RoleAssignment, MaxRemovedAssignments+1)
 	for i := range request {
 		request[i] = RoleAssignment{ID: testUserID1, Type: AssigneeTypeUser}
 	}

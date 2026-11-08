@@ -480,7 +480,9 @@ paths:
         what the gateway's master says it lacks or holds differently is sent, narrowed to `selection`
         when one is given and less what is held back. What the master records the gateway holds
         that the version no longer has is removed; a resource on the gateway that no apply recorded
-        is never removed.
+        is never removed. Likewise, an assignee or member a role or group document the master
+        records lists, and the version's no longer does, is taken off it; one the gateway added
+        itself stays. A refused removal leaves the role or group failed, and the next apply retries it.
 
         The gateway then holds the version, and the one it held before becomes what a revert returns
         it to. A dry run sends the import as a dry run and records nothing. The gateway's own account

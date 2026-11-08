@@ -321,7 +321,9 @@ components:
 
     ResourceDeletion:
       type: object
-      description: Identifies a runtime resource to remove during an import.
+      description: >
+        Identifies a runtime resource to remove during an import, or, with `role_assignment` or
+        `group_member`, the assignees or members to take off a role or group that stays.
       required: [resourceType, id]
       properties:
         resourceType:
@@ -329,12 +331,40 @@ components:
           description: >
             Type of the resource to remove. A type with no runtime delete operation, such as
             `translation` or `server_config`, is reported as an unsupported outcome rather than
-            silently skipped.
+            silently skipped. `role_assignment` takes the assignees in `members` off the role `id`
+            names, and `group_member` takes the members in `members` off the group `id` names.
+            These run before any resource is removed. One that no longer holds the role directly in
+            that organization unit, or is no longer in the group, is skipped as already removed.
           example: "application"
         id:
           type: string
-          description: Identifier of the resource to remove.
+          description: Identifier of the resource to remove, or of the role or group to take `members` off.
           example: "550e8400-e29b-41d4-a716-446655440000"
+        members:
+          type: array
+          description: >
+            Required for `role_assignment` and `group_member`: who to take off the role or group.
+          items:
+            $ref: '#/components/schemas/RemovedMember'
+
+    RemovedMember:
+      type: object
+      description: An assignee to take off a role, or a member to take off a group.
+      required: [id, type]
+      properties:
+        id:
+          type: string
+          description: Identifier of the assignee or member.
+          example: "550e8400-e29b-41d4-a716-446655440001"
+        type:
+          type: string
+          description: Type of the assignee or member, such as `user` or `group`.
+          example: "user"
+        ouId:
+          type: string
+          description: >
+            For a role assignment, the organization unit the assignment was made in. Required for
+            `role_assignment`.
 
     ImportOptions:
       type: object

@@ -242,6 +242,55 @@ func (suite *ImportDeletionsSuite) TestEveryDeletableTypeResolves() {
 	suite.LessOrEqual(result.Summary.Deleted, len(deletable))
 }
 
+// Taking an assignee off a role, or a member off a group, succeeds for one deleted since, which lost the
+// assignment and the membership with it, and still takes off the others.
+func (suite *ImportDeletionsSuite) TestRemovingMembersSkipsThoseAlreadyGone() {
+	suffix := fmt.Sprint(time.Now().UnixNano())
+	ouID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{Handle: "removal-" + suffix,
+		Name: "Removal"})
+	suite.Require().NoError(err)
+	defer func() { _ = testutils.DeleteOrganizationUnit(ouID) }()
+	typeID, err := testutils.CreateUserType(testutils.UserType{Handle: "removal-" + suffix, DisplayName: "Removal",
+		OUID: ouID, Schema: map[string]any{"email": map[string]any{"type": "string"}}})
+	suite.Require().NoError(err)
+	defer func() { _ = testutils.DeleteUserType(typeID) }()
+	person := func(name string) string {
+		id, err := testutils.CreateUser(testutils.User{Type: "removal-" + suffix, OUID: ouID,
+			Attributes: json.RawMessage(fmt.Sprintf(`{"email": "%s-%s@example.com"}`, name, suffix))})
+		suite.Require().NoError(err)
+		return id
+	}
+	kept, gone := person("kept"), person("gone")
+	defer func() { _ = testutils.DeleteUser(kept) }()
+	groupID, err := testutils.CreateGroup(testutils.Group{Name: "removal-" + suffix, OUID: ouID,
+		Members: []testutils.Member{{Id: kept, Type: "user"}, {Id: gone, Type: "user"}}})
+	suite.Require().NoError(err)
+	defer func() { _ = testutils.DeleteGroup(groupID) }()
+	roleID, err := testutils.CreateRole(testutils.Role{Name: "removal-" + suffix, OUID: ouID,
+		Assignments: []testutils.Assignment{{ID: kept, Type: "user"}, {ID: gone, Type: "user"}}})
+	suite.Require().NoError(err)
+	defer func() { _ = testutils.DeleteRole(roleID) }()
+	suite.Require().NoError(testutils.DeleteUser(gone))
+
+	result := suite.importWith(testutils.ImportRequest{Deletions: []testutils.ResourceDeletion{
+		{ResourceType: "role_assignment", ID: roleID, Members: []testutils.RemovedMember{
+			{ID: kept, Type: "user", OUID: ouID}, {ID: gone, Type: "user", OUID: ouID}}},
+		{ResourceType: "group_member", ID: groupID, Members: []testutils.RemovedMember{
+			{ID: kept, Type: "user"}, {ID: gone, Type: "user"}}},
+	}})
+
+	suite.Require().Len(result.Results, 2)
+	for _, outcome := range result.Results {
+		suite.Equal("success", outcome.Status, "%s: %s", outcome.ResourceType, outcome.Message)
+	}
+	assignees, err := testutils.GetRoleAssignments(roleID)
+	suite.Require().NoError(err)
+	suite.Empty(assignees, "the role kept an assignee the import took off")
+	members, err := testutils.GetGroupMembers(groupID)
+	suite.Require().NoError(err)
+	suite.Empty(members, "the group kept a member the import took off")
+}
+
 // An agent type deletion reaches the entity type service in the agent category, which refuses it while
 // an agent is of the agent type. The refusal is reported with the service's own reason rather than
 // skipped, so a configuration that dropped an agent type still in use does not look reconciled. Once

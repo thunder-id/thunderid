@@ -70,6 +70,8 @@ type masterWrite struct {
 // import's outcomes. For each resource sent, a success replaces or adds its document and records it
 // deployed; a refusal keeps the document the gateway last accepted and records the failure. For each
 // removal, a success drops the document and records it removed; a refusal keeps it with the failure.
+// A role or group the gateway did not take every removed assignee or member off is recorded refused,
+// with the document it held before, so the next diff offers it, and the removal, again.
 // Every other document is carried over as it was, as is a sent resource the gateway already held as it
 // is, which keeps where it came from. A resource the answer does not name is deployed when the
 // gateway refused nothing it did not name, and failed otherwise, since it is not known.
@@ -78,10 +80,12 @@ func nextMaster(previous *Master, write masterWrite) *Master {
 	matcher := newOutcomeMatcher(outcomes)
 
 	documents := map[string]string{}
+	held := map[string]string{}
 	entries := map[string]MasterEntry{}
 	if previous != nil {
 		for _, resource := range parseBundle(previous.Resources) {
 			documents[resource.key()] = resource.Content
+			held[resource.key()] = resource.Content
 		}
 		for _, entry := range previous.Entries {
 			entries[entry.Key] = entry
@@ -134,8 +138,18 @@ func nextMaster(previous *Master, write masterWrite) *Master {
 		}
 		record(resource, outcome, false)
 	}
+	type memberRemoval struct {
+		key     string
+		outcome *importOutcome
+	}
+	var memberRemovalsSent []memberRemoval
 	for _, deletion := range write.deletions {
 		resource := bundleResource{Type: deletion.ResourceType, ID: deletion.ID}
+		if listType, ok := memberListOf(deletion.ResourceType); ok {
+			memberRemovalsSent = append(memberRemovalsSent, memberRemoval{key: resourceKey(listType, deletion.ID, ""),
+				outcome: matcher.take(resource, true)})
+			continue
+		}
 		if entry, ok := entries[resource.key()]; ok {
 			resource.Name = entry.Name
 		}
@@ -154,8 +168,36 @@ func nextMaster(previous *Master, write masterWrite) *Master {
 	for _, item := range unanswered {
 		record(item.resource, assumed, item.removal)
 	}
+	for _, removal := range memberRemovalsSent {
+		outcome := removal.outcome
+		if outcome == nil {
+			outcome = assumed
+		}
+		entry, ok := entries[removal.key]
+		if !ok || outcome.Status == outcomeSuccess || entry.State == EntryFailed {
+			continue
+		}
+		entry.State = EntryFailed
+		entry.Failure = &EntryFailure{Code: outcome.Code, Message: outcome.Message, Description: outcome.Description}
+		entry.ContentHash = ""
+		if kept, ok := held[removal.key]; ok {
+			documents[removal.key] = kept
+			entry.ContentHash = contentHash(kept)
+		}
+		entries[removal.key] = entry
+	}
 
 	return assemble(previous, entries, documents, write)
+}
+
+// memberListOf returns the resource type whose assignees or members a removal type takes off.
+func memberListOf(removalType string) (string, bool) {
+	for resourceType, removal := range memberRemovalTypes {
+		if removal == removalType {
+			return resourceType, true
+		}
+	}
+	return "", false
 }
 
 // heldAsIs reports whether a master records a resource deployed with the same content.
