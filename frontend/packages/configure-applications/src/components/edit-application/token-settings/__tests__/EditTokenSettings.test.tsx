@@ -872,6 +872,49 @@ describe('EditTokenSettings', () => {
     });
   });
 
+  describe('Unsaved allowed user types', () => {
+    beforeEach(() => {
+      mockHttp.request.mockImplementation(({url}: {url: string}) => {
+        if (url.includes('/user-types/schema-1')) {
+          return Promise.resolve({
+            data: {id: 'schema-1', handle: 'default', displayName: 'Default', schema: {email: {type: 'string'}}},
+          });
+        }
+
+        return Promise.resolve({
+          data: {totalResults: 1, startIndex: 0, count: 1, types: [{id: 'schema-1', handle: 'default'}]},
+        });
+      });
+    });
+
+    it('should offer the attributes of an allowed user type that is not saved yet', async () => {
+      render(
+        <EditTokenSettings
+          application={{...mockApplication, allowedUserTypes: []}}
+          editedApp={{allowedUserTypes: ['default']}}
+          onFieldChange={mockOnFieldChange}
+        />,
+      );
+
+      await waitFor(() => expect(screen.getByTestId('user-attributes-list')).toHaveTextContent('email'));
+    });
+
+    it('should stop offering attributes when the allowed user types are cleared but not saved yet', async () => {
+      const {rerender} = render(<EditTokenSettings application={mockApplication} onFieldChange={mockOnFieldChange} />);
+      await waitFor(() => expect(screen.getByTestId('user-attributes-list')).toHaveTextContent('email'));
+
+      rerender(
+        <EditTokenSettings
+          application={mockApplication}
+          editedApp={{allowedUserTypes: []}}
+          onFieldChange={mockOnFieldChange}
+        />,
+      );
+
+      await waitFor(() => expect(screen.getByTestId('user-attributes-list')).toBeEmptyDOMElement());
+    });
+  });
+
   describe('Token Validity reset', () => {
     const mockOAuth2Config: OAuth2Config = {
       token: {
