@@ -429,22 +429,57 @@ func (c *Client) availableVersions(data *releasesData) string {
 	return " (available: " + strings.Join(versions, ", ") + ")"
 }
 
-func downloadFile(url, destPath string, onProgress func(received, total int64)) error {
-	req, err := http.NewRequest(http.MethodGet, url, nil)
-	if err != nil {
-		return err
-	}
-	req.Header.Set("User-Agent", product.Slug+"-cli")
+// downloadAttempts and downloadRetryDelay bound how often a transient failure is retried. They are
+// variables so tests can retry without waiting.
+var (
+	downloadAttempts   = 3
+	downloadRetryDelay = 2 * time.Second
+)
 
-	resp, err := http.DefaultClient.Do(req)
+// isTransientStatus reports whether a status is a server-side hiccup worth retrying, such as the
+// 502 and 504 responses GitHub's release CDN returns now and then.
+func isTransientStatus(code int) bool {
+	return code == http.StatusTooManyRequests || code >= http.StatusInternalServerError
+}
+
+// getForDownload requests url, retrying connection failures and transient statuses with a growing
+// delay. Any other status fails at once.
+func getForDownload(url string) (*http.Response, error) {
+	var lastErr error
+	for attempt := 1; attempt <= downloadAttempts; attempt++ {
+		if attempt > 1 {
+			time.Sleep(time.Duration(attempt-1) * downloadRetryDelay)
+		}
+
+		req, err := http.NewRequest(http.MethodGet, url, nil)
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("User-Agent", product.Slug+"-cli")
+
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		if resp.StatusCode == http.StatusOK {
+			return resp, nil
+		}
+		_ = resp.Body.Close()
+		lastErr = fmt.Errorf("HTTP %d downloading %s", resp.StatusCode, url)
+		if !isTransientStatus(resp.StatusCode) {
+			return nil, lastErr
+		}
+	}
+	return nil, lastErr
+}
+
+func downloadFile(url, destPath string, onProgress func(received, total int64)) error {
+	resp, err := getForDownload(url)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("HTTP %d downloading %s", resp.StatusCode, url)
-	}
 
 	f, err := os.CreateTemp(filepath.Dir(destPath), "."+filepath.Base(destPath)+"-*")
 	if err != nil {

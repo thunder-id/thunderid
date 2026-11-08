@@ -85,6 +85,70 @@ func TestDownloadFile_KeepsCompleteFile(t *testing.T) {
 	assert.Equal(t, "complete", string(data))
 }
 
+// noRetryDelay lets a test exercise retries without waiting between attempts.
+func noRetryDelay(t *testing.T) {
+	t.Helper()
+	orig := downloadRetryDelay
+	downloadRetryDelay = 0
+	t.Cleanup(func() { downloadRetryDelay = orig })
+}
+
+// GitHub's release CDN answers with a 504 now and then, which used to fail a download outright.
+func TestDownloadFile_RetriesTransientServerError(t *testing.T) {
+	noRetryDelay(t)
+	hits := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hits++
+		if hits == 1 {
+			w.WriteHeader(http.StatusGatewayTimeout)
+			return
+		}
+		_, _ = w.Write([]byte("complete"))
+	}))
+	defer srv.Close()
+
+	dest := filepath.Join(t.TempDir(), "release.zip")
+	require.NoError(t, downloadFile(srv.URL, dest, nil))
+
+	data, err := os.ReadFile(dest)
+	require.NoError(t, err)
+	assert.Equal(t, "complete", string(data))
+	assert.Equal(t, 2, hits)
+}
+
+func TestDownloadFile_GivesUpAfterRepeatedServerErrors(t *testing.T) {
+	noRetryDelay(t)
+	hits := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hits++
+		w.WriteHeader(http.StatusBadGateway)
+	}))
+	defer srv.Close()
+
+	err := downloadFile(srv.URL, filepath.Join(t.TempDir(), "release.zip"), nil)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "HTTP 502")
+	assert.Equal(t, downloadAttempts, hits)
+}
+
+// A missing asset will not appear on a second try, so it must fail at once.
+func TestDownloadFile_DoesNotRetryClientError(t *testing.T) {
+	noRetryDelay(t)
+	hits := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hits++
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	err := downloadFile(srv.URL, filepath.Join(t.TempDir(), "release.zip"), nil)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "HTTP 404")
+	assert.Equal(t, 1, hits)
+}
+
 // unreachableURL returns the address of a server that is no longer listening, so a
 // request to it fails at dial time without touching the network.
 func unreachableURL(t *testing.T) string {
