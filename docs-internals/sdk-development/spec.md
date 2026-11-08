@@ -1,7 +1,7 @@
 # SDK Development Specification
 
 - **Status:** Draft
-- **Version:** 0.9
+- **Version:** 0.10
 - **Related documents:**
   [threat-model.md](threat-model.md),
   [#5305](https://github.com/thunder-id/thunderid/issues/5305),
@@ -437,9 +437,9 @@ Requirements:
    decision, and the token needs the permissions the server requires for that resource.
 2. The management API can run on a different host from the authorization server. The request
    URL for each resource MUST come from, in order: an explicit URL passed to the call, then an
-   `endpoints` override for that resource's collection (`applications`, `users`, `agents`),
-   then `baseUrl` followed by the collection path. A single resource is addressed as the
-   collection URL followed by its identifier.
+   `endpoints` override for that resource's collection (`applications`, `users`, `agents`,
+   `sessions`), then `baseUrl` followed by the collection path. A single resource is addressed
+   as the collection URL followed by its identifier.
 3. The transport MUST be replaceable by the application through a `fetcher`. A `fetcher` passed
    to a single call takes precedence over `http.fetcher` supplied at initialization, which takes
    precedence over the SDK's default authenticated transport. `http.fetcher` applies to
@@ -455,6 +455,19 @@ Requirements:
    NOT reuse a type name the SDK already uses for the authenticated user.
 7. HTTP 403 and 404 MUST surface as distinct API error codes, so a caller can tell a missing
    permission from a missing resource.
+
+Sessions are also a management resource, with their own operations. A session is created by a
+sign-in, never through the API, so it has no create, get, or update:
+
+| Operation | Contract |
+|---|---|
+| List sessions | Returns one page of live sessions, with the total count. Takes exactly one of `userId` or `appId`, and accepts `limit` and `offset`. Each session carries its participating applications and the recorded client metadata. |
+| Revoke session | Ends one session by identifier. Returns nothing. A session that is already gone succeeds. |
+| Revoke user sessions | Ends every session of one user, given `userId`. Returns nothing. |
+
+The requirements above apply to them, with `sessions` as the collection. Revoking a session
+ends it on the server the way sign-out does. The SDK MUST NOT clear its own local session state
+as a result, even when the revoked session is the signed-in user's.
 
 #### Self user attribute verification
 
@@ -1252,3 +1265,4 @@ server recorded and nothing else.
 | 0.7 | 2026-10-26 | The `backchannelLogout` key applies only to an SDK that mounts the handler itself; an SDK that exposes the handler takes the store on it. A `sub`-only logout token also ends sessions that began within the clock tolerance after it was issued. As reviewed in #5777. |
 | 0.8 | 2026-10-26 | `authorizationDetails` configuration key (RFC 9396), sent on the authorization, silent sign-in, CIBA, and `client_credentials` requests. Granted details surfaced on the token response and the access token. Consent rendering of authorization details elements for SDKs that render consent, and decisions only in server-rendered consent. |
 | 0.9 | 2026-11-03 | Self user attribute verification added as an optional capability (R10). |
+| 0.10 | 2026-11-06 | Session management operations added: list sessions by user or application, revoke one session, and revoke a user's sessions. |
