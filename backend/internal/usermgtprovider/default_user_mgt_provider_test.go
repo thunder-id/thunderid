@@ -5,6 +5,7 @@ package usermgtprovider
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/mock"
@@ -167,4 +168,23 @@ func (suite *DefaultUserMgtProviderTestSuite) TestCreateUserHandlesEmptyServiceR
 
 	suite.Nil(svcErr)
 	suite.Nil(resp)
+}
+
+// The update reaches the user service as a runtime caller, since a flow sets credentials without a
+// signed-in user, and the service's answer is returned unchanged.
+func (suite *DefaultUserMgtProviderTestSuite) TestUpdateUserCredentialsDelegatesAsARuntimeCaller() {
+	credentials := json.RawMessage(`{"password":"Rotated@123"}`)
+	for name, svcErr := range map[string]*tidcommon.ServiceError{
+		"success": nil,
+		"refusal": &user.ErrorInvalidCredentialValue,
+	} {
+		suite.Run(name, func() {
+			suite.SetupTest()
+			suite.mockService.On("UpdateUserCredentials",
+				mock.MatchedBy(security.IsRuntimeContext),
+				testUserID, credentials).Return(svcErr).Once()
+
+			suite.Equal(svcErr, suite.provider.UpdateUserCredentials(context.Background(), testUserID, credentials))
+		})
+	}
 }

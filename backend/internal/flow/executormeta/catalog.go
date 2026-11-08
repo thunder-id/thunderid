@@ -186,6 +186,11 @@ var catalog = map[string]providers.ExecutorMeta{
 		SupportedModes:     []string{"revoke_all"},
 		SupportedFlowTypes: []providers.FlowType{"SYSTEM"},
 	},
+	ExecutorNamePreCredentialUpdate: {
+		DefaultMode:        ExecutorModeRevokeBeforeAction,
+		SupportedModes:     []string{ExecutorModeRevokeBeforeAction},
+		SupportedFlowTypes: []providers.FlowType{"SYSTEM"},
+	},
 	ExecutorNamePreSuspend: {
 		SupportedFlowTypes: []providers.FlowType{"ADMINISTRATION"},
 	},

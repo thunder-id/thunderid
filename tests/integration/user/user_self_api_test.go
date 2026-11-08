@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/suite"
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
@@ -196,6 +197,9 @@ func (s *SelfUserEndpointsSuite) TestSelfUserUpdateCredentials() {
 
 	s.Require().Equal(http.StatusNoContent, resp.StatusCode)
 
+	// The change revokes the user's tokens up to a sub-second cutoff, while a grant's issue time has second
+	// granularity and the comparison is at or before.
+	time.Sleep(1100 * time.Millisecond)
 	client, err := s.signIn.HTTPClientForUser(s.ouID, s.username, newPassword)
 	s.Require().NoError(err)
 	s.userClient = client

@@ -239,28 +239,34 @@ var requiredExecutorsByFlowType = map[providers.FlowType][]string{
 	},
 }
 
-// companionExecutor is an executor that must appear alongside another, running in the given mode.
+// companionExecutor is an executor that must appear alongside another, running in the given mode. In a
+// system flow, systemMode satisfies the dependency too, when it is set.
 type companionExecutor struct {
-	name string
-	mode string
+	name       string
+	mode       string
+	systemMode string
 }
 
-// companionExecutors maps an executor to executors that must appear alongside it in the same flow,
-// independent of flow type.
+// companionExecutors maps an executor to executors that must appear alongside it in the same flow.
 //
 // SessionRevocationExecutor terminates a subject's SSO sessions but records no revocation itself. The
 // tokens those sessions hold are covered by the subject criterion that CriteriaRevocationExecutor
 // persists, which is why session termination does not enumerate token families per application. A
 // flow that terminates without it would therefore delete sessions while their tokens stay live, so
 // the pairing is required rather than conventional. Only the revoke mode counts: the advance_cutoff
-// mode writes nothing for a revoke-all plan, so it alone would leave those tokens live.
+// mode writes nothing for a revoke-all plan, so it alone would leave those tokens live. A system flow is
+// the exception. It is built into the server, and a service runs a system post flow only with the plan
+// of a pre flow that already revoked, so a post flow may end sessions after advancing the cutoff.
 //
 // AttributeVerificationExecutor has no default mode, so each of its nodes prepares or records. A flow
 // that prepares must record, or it completes without verifying anything, and a flow that records must
 // prepare, or it has no pin to record.
 var companionExecutors = map[string][]companionExecutor{
 	executormeta.ExecutorNameSessionRevocation: {
-		{name: executormeta.ExecutorNameCriteriaRevocation, mode: executormeta.ExecutorModeRevoke},
+		{
+			name: executormeta.ExecutorNameCriteriaRevocation, mode: executormeta.ExecutorModeRevoke,
+			systemMode: executormeta.ExecutorModeAdvanceCutoff,
+		},
 	},
 	executormeta.ExecutorNameAttributeVerification: {
 		{name: executormeta.ExecutorNameAttributeVerification, mode: executormeta.ExecutorModePrepare},
@@ -311,7 +317,7 @@ func (v *flowValidator) validateFlowTypeBasedConstraints(
 			return svcErr
 		}
 	}
-	return v.validateCompanionExecutors(nodes)
+	return v.validateCompanionExecutors(flowType, nodes)
 }
 
 // validateOUResolverPlacement refuses an authentication flow that can reach an OU resolver node from a session
@@ -488,7 +494,7 @@ func validateDeviceGrantAuthenticationCall(nodes []providers.NodeDefinition) *ti
 // validateCompanionExecutors returns an error when an executor is present without an executor it
 // depends on.
 func (v *flowValidator) validateCompanionExecutors(
-	nodes []providers.NodeDefinition,
+	flowType providers.FlowType, nodes []providers.NodeDefinition,
 ) *tidcommon.ServiceError {
 	presentExecutors := collectPresentExecutors(nodes)
 	for _, name := range slices.Sorted(maps.Keys(companionExecutors)) {
@@ -497,6 +503,10 @@ func (v *flowValidator) validateCompanionExecutors(
 		}
 		for _, companion := range companionExecutors[name] {
 			if hasExecutorInMode(nodes, companion.name, companion.mode) {
+				continue
+			}
+			if flowType == providers.FlowTypeSystem && companion.systemMode != "" &&
+				hasExecutorInMode(nodes, companion.name, companion.systemMode) {
 				continue
 			}
 			return tidcommon.CustomServiceError(ErrorInvalidExecutorConfig, tidcommon.I18nMessage{

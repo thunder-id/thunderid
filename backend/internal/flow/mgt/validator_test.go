@@ -1740,7 +1740,7 @@ func companionNodes(executorNames ...string) []providers.NodeDefinition {
 func (s *ValidatorTestSuite) TestValidateCompanionExecutors_SessionRevocationWithoutCriteriaRevocation() {
 	nodes := companionNodes(executor.ExecutorNameSessionRevocation)
 
-	err := s.v.validateCompanionExecutors(nodes)
+	err := s.v.validateCompanionExecutors(providers.FlowTypeAdministration, nodes)
 
 	s.Require().NotNil(err)
 	s.Equal(ErrorInvalidExecutorConfig.Code, err.Code)
@@ -1750,7 +1750,7 @@ func (s *ValidatorTestSuite) TestValidateCompanionExecutors_SessionRevocationWit
 	nodes := companionNodes(
 		executor.ExecutorNameCriteriaRevocation, executor.ExecutorNameSessionRevocation)
 
-	s.Nil(s.v.validateCompanionExecutors(nodes))
+	s.Nil(s.v.validateCompanionExecutors(providers.FlowTypeAdministration, nodes))
 }
 
 func (s *ValidatorTestSuite) TestValidateCompanionExecutors_CriteriaRevocationInRevokeMode() {
@@ -1758,7 +1758,7 @@ func (s *ValidatorTestSuite) TestValidateCompanionExecutors_CriteriaRevocationIn
 		executor.ExecutorNameCriteriaRevocation, executor.ExecutorNameSessionRevocation)
 	nodes[1].Executor.Mode = executor.ExecutorModeRevoke
 
-	s.Nil(s.v.validateCompanionExecutors(nodes))
+	s.Nil(s.v.validateCompanionExecutors(providers.FlowTypeAdministration, nodes))
 }
 
 func (s *ValidatorTestSuite) TestValidateCompanionExecutors_CriteriaRevocationOnlyAdvancingTheCutoff() {
@@ -1766,7 +1766,25 @@ func (s *ValidatorTestSuite) TestValidateCompanionExecutors_CriteriaRevocationOn
 		executor.ExecutorNameCriteriaRevocation, executor.ExecutorNameSessionRevocation)
 	nodes[1].Executor.Mode = executor.ExecutorModeAdvanceCutoff
 
-	err := s.v.validateCompanionExecutors(nodes)
+	err := s.v.validateCompanionExecutors(providers.FlowTypeAdministration, nodes)
+
+	s.Require().NotNil(err)
+	s.Equal(ErrorInvalidExecutorConfig.Code, err.Code)
+}
+
+// A system post flow ends sessions after advancing the cutoff of a plan its pre flow already revoked.
+func (s *ValidatorTestSuite) TestValidateCompanionExecutors_SystemFlowAdvancingTheCutoff() {
+	nodes := companionNodes(
+		executor.ExecutorNameCriteriaRevocation, executor.ExecutorNameSessionRevocation)
+	nodes[1].Executor.Mode = executor.ExecutorModeAdvanceCutoff
+
+	s.Nil(s.v.validateCompanionExecutors(providers.FlowTypeSystem, nodes))
+}
+
+// A system flow still needs a criteria revocation beside its session revocation.
+func (s *ValidatorTestSuite) TestValidateCompanionExecutors_SystemFlowWithoutCriteriaRevocation() {
+	err := s.v.validateCompanionExecutors(providers.FlowTypeSystem,
+		companionNodes(executor.ExecutorNameSessionRevocation))
 
 	s.Require().NotNil(err)
 	s.Equal(ErrorInvalidExecutorConfig.Code, err.Code)
@@ -1774,11 +1792,12 @@ func (s *ValidatorTestSuite) TestValidateCompanionExecutors_CriteriaRevocationOn
 
 // Criteria revocation stands on its own; only the session executor carries the dependency.
 func (s *ValidatorTestSuite) TestValidateCompanionExecutors_CriteriaRevocationAlone() {
-	s.Nil(s.v.validateCompanionExecutors(companionNodes(executor.ExecutorNameCriteriaRevocation)))
+	s.Nil(s.v.validateCompanionExecutors(providers.FlowTypeAdministration,
+		companionNodes(executor.ExecutorNameCriteriaRevocation)))
 }
 
 func (s *ValidatorTestSuite) TestValidateCompanionExecutors_UnrelatedFlowUnaffected() {
-	s.Nil(s.v.validateCompanionExecutors(companionNodes("AuthAssertExecutor")))
+	s.Nil(s.v.validateCompanionExecutors(providers.FlowTypeAdministration, companionNodes("AuthAssertExecutor")))
 }
 
 // ---------------------------------------------------------------------------
@@ -2851,7 +2870,7 @@ func attributeVerificationNodes(modes ...string) []providers.NodeDefinition {
 
 // A flow of any type that prepares a contact must record it, and one that records must prepare.
 func (s *ValidatorTestSuite) TestValidateCompanionExecutors_AttributeVerificationPair() {
-	s.Nil(s.v.validateCompanionExecutors(
+	s.Nil(s.v.validateCompanionExecutors(providers.FlowTypeAdministration,
 		attributeVerificationNodes(executor.ExecutorModePrepare, executor.ExecutorModeRecord)))
 
 	for name, test := range map[string]struct {
@@ -2864,7 +2883,8 @@ func (s *ValidatorTestSuite) TestValidateCompanionExecutors_AttributeVerificatio
 			executor.ExecutorModeRecord},
 	} {
 		s.Run(name, func() {
-			err := s.v.validateCompanionExecutors(attributeVerificationNodes(test.modes...))
+			err := s.v.validateCompanionExecutors(providers.FlowTypeAdministration,
+				attributeVerificationNodes(test.modes...))
 
 			s.Require().NotNil(err)
 			s.Equal(ErrorInvalidExecutorConfig.Code, err.Code)
@@ -2884,7 +2904,7 @@ func (s *ValidatorTestSuite) TestValidateCompanionExecutors_ReportsInNameOrder()
 	})
 
 	for range 20 {
-		err := s.v.validateCompanionExecutors(nodes)
+		err := s.v.validateCompanionExecutors(providers.FlowTypeAdministration, nodes)
 
 		s.Require().NotNil(err)
 		s.Equal(executor.ExecutorNameAttributeVerification, err.ErrorDescription.Params["executorName"])

@@ -5,28 +5,33 @@ package executor
 
 import (
 	"cmp"
+	"context"
 	"encoding/json"
+	"fmt"
 
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/user"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // credentialSetter allows users to set their credentials for an existing user account.
 type credentialSetter struct {
 	providers.Executor
-	entityProvider entityprovider.EntityProviderInterface
-	authnProvider  providers.AuthnProviderManager
-	accessGuard    *accessGuard
-	logger         *log.Logger
+	entityProvider  entityprovider.EntityProviderInterface
+	userMgtProvider providers.UserMgtProvider
+	authnProvider   providers.AuthnProviderManager
+	accessGuard     *accessGuard
+	logger          *log.Logger
 }
 
 // newCredentialSetter creates a new instance of the credential setter executor.
 func newCredentialSetter(
 	flowFactory core.FlowFactoryInterface,
 	entityProvider entityprovider.EntityProviderInterface,
+	userMgtProvider providers.UserMgtProvider,
 	authnProvider providers.AuthnProviderManager,
 	accessGuard *accessGuard,
 ) *credentialSetter {
@@ -51,11 +56,12 @@ func newCredentialSetter(
 		&providers.ExecutorMeta{},
 	)
 	return &credentialSetter{
-		Executor:       base,
-		entityProvider: entityProvider,
-		authnProvider:  authnProvider,
-		accessGuard:    accessGuard,
-		logger:         logger,
+		Executor:        base,
+		entityProvider:  entityProvider,
+		userMgtProvider: userMgtProvider,
+		authnProvider:   authnProvider,
+		accessGuard:     accessGuard,
+		logger:          logger,
 	}
 }
 
@@ -141,20 +147,20 @@ func (e *credentialSetter) Execute(ctx *providers.NodeContext) (*providers.Execu
 		return execResp, nil
 	}
 
-	// Update user credentials
-	if providerErr := e.entityProvider.UpdateCredentials(ctx.Context, userID, credentials); providerErr != nil {
-		if providerErr.Code == entityprovider.ErrorCodeSchemaValidationFailed {
-			logger.Debug(ctx.Context, "Credential value does not meet the schema requirements",
-				log.String("credentialKey", credentialKey))
-			execResp.Status = providers.ExecUserInputRequired
-			execResp.Inputs = []providers.Input{input}
-			execResp.Error = errForAttribute(ErrCredentialValueInvalid, credentialKey)
-			return execResp, nil
-		}
+	refused, err := e.setCredentials(ctx.Context, userID, credentials)
+	if err != nil {
 		logger.Debug(ctx.Context, "Failed to update user credentials",
-			log.MaskedString(log.LoggerKeyUserID, userID))
+			log.MaskedString(log.LoggerKeyUserID, userID), log.Error(err))
 		execResp.Status = providers.ExecFailure
 		execResp.Error = &ErrCredentialSetFailed
+		return execResp, nil
+	}
+	if refused {
+		logger.Debug(ctx.Context, "Credential value does not meet the schema requirements",
+			log.String("credentialKey", credentialKey))
+		execResp.Status = providers.ExecUserInputRequired
+		execResp.Inputs = []providers.Input{input}
+		execResp.Error = errForAttribute(ErrCredentialValueInvalid, credentialKey)
 		return execResp, nil
 	}
 
@@ -165,4 +171,31 @@ func (e *credentialSetter) Execute(ctx *providers.NodeContext) (*providers.Execu
 		log.MaskedString(log.LoggerKeyUserID, userID))
 	execResp.Status = providers.ExecComplete
 	return execResp, nil
+}
+
+// setCredentials writes the entity's credentials and reports whether the value was refused. A user's go
+// through the user management provider, so the user service revokes what the user holds. Any other
+// entity's are written through the entity provider.
+func (e *credentialSetter) setCredentials(ctx context.Context, entityID string,
+	credentials json.RawMessage) (bool, error) {
+	entity, providerErr := e.entityProvider.GetEntity(ctx, entityID)
+	if providerErr != nil {
+		return false, fmt.Errorf("failed to get entity: %w", providerErr)
+	}
+	if entity.Category == providers.EntityCategoryUser {
+		if svcErr := e.userMgtProvider.UpdateUserCredentials(ctx, entityID, credentials); svcErr != nil {
+			if svcErr.Code == user.ErrorInvalidCredentialValue.Code {
+				return true, nil
+			}
+			return false, fmt.Errorf("failed to update user credentials: %s", svcErr.Code)
+		}
+		return false, nil
+	}
+	if providerErr := e.entityProvider.UpdateCredentials(ctx, entityID, credentials); providerErr != nil {
+		if providerErr.Code == entityprovider.ErrorCodeSchemaValidationFailed {
+			return true, nil
+		}
+		return false, fmt.Errorf("failed to update entity credentials: %w", providerErr)
+	}
+	return false, nil
 }

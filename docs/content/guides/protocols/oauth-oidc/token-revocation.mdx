@@ -99,6 +99,16 @@ Deleting a user revokes every token issued to them by subject and terminates the
 
 The revocation runs as a **system flow**, built into the <ProductName /> binary, that the user service runs before it removes the record. It is not a resource: it is never stored, it cannot be edited or started through any API, and it never asks for input. If the revocation fails, the user is not deleted and the request returns an error, so the deletion can be retried. If the revocation succeeds but the removal then fails, the user stays, and their tokens and sessions stay revoked, including tokens issued to them afterwards, so retry the deletion. The revocation has no cutoff, so no system flow runs after the record is removed.
 
+### Credential Update
+
+Changing a user's password, or any other credential their user type declares, revokes the tokens issued to them before the change and terminates their sessions. This happens whichever way the credential changes: through the `POST /users/{id}/update-credentials` API, through the `POST /users/me/update-credentials` API, through the import API, or in a recovery flow. A self-service change revokes the token that made the request too. An import that carries the password of an existing user sets it on every apply, so each apply revokes.
+
+Only a change that replaces a credential the user already holds revokes. Setting a credential for the first time, such as the password of a user an import creates, revokes nothing.
+
+The revocation runs as two system flows, as for an [application secret change](#application-deletion-and-secret-regeneration). The first runs before the credential is written. A value the user type refuses is reported before this flow runs, so nothing is revoked. The second runs after the write. It moves the cutoff to that moment and ends the user's sessions again, so a token or session issued while the credential was being written is revoked too. A token's issue time is in whole seconds, so a token issued in the same second as the change is also revoked. A token issued after that is valid.
+
+If the first flow fails, the credential stays as it was. If the second fails, the request returns an error even though the new credential is already saved. A token or session issued while the credential was being written then stays valid until it expires, except a refresh token, which the refresh grant refuses when it was issued before the change.
+
 ### Account Suspension
 
 The suspend flow revokes tokens for the target subject and ends its sessions before placing the suspension. For an application or an agent with an OAuth client, it also revokes tokens issued through that client ID, including user tokens.

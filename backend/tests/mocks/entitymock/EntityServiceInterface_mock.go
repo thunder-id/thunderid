@@ -4012,6 +4012,69 @@ func (_c *EntityServiceInterfaceMock_UpdateSystemCredentials_Call) RunAndReturn(
 	return _c
 }
 
+// ValidateCredentials provides a mock function for the type EntityServiceInterfaceMock
+func (_mock *EntityServiceInterfaceMock) ValidateCredentials(ctx context.Context, entityID string, plaintextUpdates json.RawMessage) error {
+	ret := _mock.Called(ctx, entityID, plaintextUpdates)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ValidateCredentials")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, json.RawMessage) error); ok {
+		r0 = returnFunc(ctx, entityID, plaintextUpdates)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// EntityServiceInterfaceMock_ValidateCredentials_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ValidateCredentials'
+type EntityServiceInterfaceMock_ValidateCredentials_Call struct {
+	*mock.Call
+}
+
+// ValidateCredentials is a helper method to define mock.On call
+//   - ctx context.Context
+//   - entityID string
+//   - plaintextUpdates json.RawMessage
+func (_e *EntityServiceInterfaceMock_Expecter) ValidateCredentials(ctx any, entityID any, plaintextUpdates any) *EntityServiceInterfaceMock_ValidateCredentials_Call {
+	return &EntityServiceInterfaceMock_ValidateCredentials_Call{Call: _e.mock.On("ValidateCredentials", ctx, entityID, plaintextUpdates)}
+}
+
+func (_c *EntityServiceInterfaceMock_ValidateCredentials_Call) Run(run func(ctx context.Context, entityID string, plaintextUpdates json.RawMessage)) *EntityServiceInterfaceMock_ValidateCredentials_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 json.RawMessage
+		if args[2] != nil {
+			arg2 = args[2].(json.RawMessage)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *EntityServiceInterfaceMock_ValidateCredentials_Call) Return(err error) *EntityServiceInterfaceMock_ValidateCredentials_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *EntityServiceInterfaceMock_ValidateCredentials_Call) RunAndReturn(run func(ctx context.Context, entityID string, plaintextUpdates json.RawMessage) error) *EntityServiceInterfaceMock_ValidateCredentials_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // ValidateEntityIDs provides a mock function for the type EntityServiceInterfaceMock
 func (_mock *EntityServiceInterfaceMock) ValidateEntityIDs(ctx context.Context, entityIDs []string) ([]string, error) {
 	ret := _mock.Called(ctx, entityIDs)

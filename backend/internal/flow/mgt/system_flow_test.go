@@ -61,7 +61,8 @@ func (s *SystemFlowTestSuite) TestBuiltInSystemFlowsAreValid() {
 
 	s.Require().NoError(err)
 	// Each pre flow takes the steps its administration flow runs between the permission check and the
-	// write, and the one post flow takes the step those flows run after the write. An application
+	// write, and the shared post flow takes the step those flows run after the write. A credential update's
+	// post flow also ends the user's sessions again, so a session started during the write is ended. An application
 	// deletion is the exception: its administration flow deletes the application within the flow, so
 	// it revokes everything, while a service deletes it after the flow and runs the post flow, so its pre
 	// flow revokes what was issued before the deletion.
@@ -75,6 +76,13 @@ func (s *SystemFlowTestSuite) TestBuiltInSystemFlowsAreValid() {
 		},
 		"system-user-delete-pre": {
 			"PreDeleteExecutor:revoke_all", "CriteriaRevocationExecutor:revoke", "SessionRevocationExecutor:",
+		},
+		"system-user-credential-update-pre": {
+			"PreCredentialUpdateExecutor:revoke_before_action", "CriteriaRevocationExecutor:revoke",
+			"SessionRevocationExecutor:",
+		},
+		"system-user-credential-update-post": {
+			"CriteriaRevocationExecutor:advance_cutoff", "SessionRevocationExecutor:",
 		},
 		"system-role-delete-pre": {"AccessChangeValidator:role_deletion", "CriteriaRevocationExecutor:revoke"},
 		"system-role-assignment-removal-pre": {

@@ -59,6 +59,8 @@ type EntityServiceInterface interface {
 	UpdateOwnership(ctx context.Context, entityID, ouID, projectID string) error
 
 	// Credentials
+	// ValidateCredentials checks schema-defined credential updates as UpdateCredentials does, writing nothing.
+	ValidateCredentials(ctx context.Context, entityID string, plaintextUpdates json.RawMessage) error
 	UpdateCredentials(ctx context.Context, entityID string,
 		plaintextUpdates json.RawMessage) error
 	UpdateSystemCredentials(ctx context.Context, entityID string,
@@ -1303,35 +1305,7 @@ func (s *entityService) UpdateCredentials(ctx context.Context, entityID string,
 	if len(plaintextUpdates) == 0 {
 		return nil
 	}
-
-	// Parse and validate new credential updates.
-	var updates map[string]interface{}
-	if err := json.Unmarshal(plaintextUpdates, &updates); err != nil {
-		return fmt.Errorf("%w: failed to parse credentials", ErrInvalidCredential)
-	}
-
-	for credType, credValue := range updates {
-		switch v := credValue.(type) {
-		case string:
-			if strings.TrimSpace(v) == "" {
-				return fmt.Errorf("%w: empty value for credential type %q", ErrInvalidCredential, credType)
-			}
-		case nil:
-			return fmt.Errorf("%w: nil value for credential type %q", ErrInvalidCredential, credType)
-		default:
-			_ = v
-		}
-	}
-
-	// Load entity to route schema by category/type and enforce the credential-field allowlist.
-	existing, err := s.store.GetEntity(ctx, entityID)
-	if err != nil {
-		return err
-	}
-	if err := s.validateCredentialKeys(ctx, existing.Category, existing.Type, updates); err != nil {
-		return err
-	}
-	if err := s.validateCredentialValues(ctx, existing.Category, existing.Type, plaintextUpdates); err != nil {
+	if err := s.ValidateCredentials(ctx, entityID, plaintextUpdates); err != nil {
 		return err
 	}
 
@@ -1380,6 +1354,38 @@ func (s *entityService) UpdateCredentials(ctx context.Context, entityID string,
 		return s.setReservedAttribute(txCtx, entityID, authnprovidercm.SystemAttrCredentialUpdatedAt,
 			time.Now().UTC().Format(time.RFC3339))
 	})
+}
+
+// ValidateCredentials checks schema-defined credential updates the way UpdateCredentials does, without
+// writing them: each value is non-empty, each key is a credential the entity's schema declares, and each
+// value meets its schema definition.
+func (s *entityService) ValidateCredentials(ctx context.Context, entityID string,
+	plaintextUpdates json.RawMessage) error {
+	var updates map[string]any
+	if err := json.Unmarshal(plaintextUpdates, &updates); err != nil {
+		return fmt.Errorf("%w: failed to parse credentials", ErrInvalidCredential)
+	}
+
+	for credType, credValue := range updates {
+		switch v := credValue.(type) {
+		case string:
+			if strings.TrimSpace(v) == "" {
+				return fmt.Errorf("%w: empty value for credential type %q", ErrInvalidCredential, credType)
+			}
+		case nil:
+			return fmt.Errorf("%w: nil value for credential type %q", ErrInvalidCredential, credType)
+		}
+	}
+
+	// Load entity to route schema by category/type and enforce the credential-field allowlist.
+	existing, err := s.store.GetEntity(ctx, entityID)
+	if err != nil {
+		return err
+	}
+	if err := s.validateCredentialKeys(ctx, existing.Category, existing.Type, updates); err != nil {
+		return err
+	}
+	return s.validateCredentialValues(ctx, existing.Category, existing.Type, plaintextUpdates)
 }
 
 // validateCredentialKeys rejects any payload key that isn't declared as a credential field

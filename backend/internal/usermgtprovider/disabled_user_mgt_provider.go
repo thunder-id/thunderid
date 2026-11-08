@@ -5,6 +5,7 @@ package usermgtprovider
 
 import (
 	"context"
+	"encoding/json"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -23,4 +24,11 @@ func (p *disabledUserMgtProvider) CreateUser(
 	_ context.Context, _ *providers.User,
 ) (*providers.User, *tidcommon.ServiceError) {
 	return nil, &ErrorUserProvisioningDisabled
+}
+
+// UpdateUserCredentials rejects the update, since the provider is disabled.
+func (p *disabledUserMgtProvider) UpdateUserCredentials(
+	_ context.Context, _ string, _ json.RawMessage,
+) *tidcommon.ServiceError {
+	return &ErrorUserManagementDisabled
 }

@@ -56,6 +56,7 @@ const (
 	ExecutorNameSessionSignOut               = executormeta.ExecutorNameSessionSignOut
 	ExecutorNameOTPExecutor                  = executormeta.ExecutorNameOTPExecutor
 	ExecutorNamePreDelete                    = executormeta.ExecutorNamePreDelete
+	ExecutorNamePreCredentialUpdate          = executormeta.ExecutorNamePreCredentialUpdate
 	ExecutorNameCriteriaRevocation           = executormeta.ExecutorNameCriteriaRevocation
 	ExecutorNameSessionRevocation            = executormeta.ExecutorNameSessionRevocation
 	ExecutorNameApplicationActionValidator   = executormeta.ExecutorNameApplicationActionValidator

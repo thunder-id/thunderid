@@ -39,11 +39,13 @@ const queryParamOUID = "ouId"
 // queryParamProjectID is the query parameter that lists the users of one project.
 const queryParamProjectID = "projectId"
 
-// The system flow a user deletion runs before the user is removed, and the input naming the user it
-// acts on.
+// The system flows a user deletion and a credential update run around their writes, and the input naming
+// the user they act on.
 const (
-	systemFlowUserDeletePre = "system-user-delete-pre"
-	systemFlowInputSubject  = "subject"
+	systemFlowUserDeletePre            = "system-user-delete-pre"
+	systemFlowUserCredentialUpdatePre  = "system-user-credential-update-pre"  //nolint:gosec // flow handle
+	systemFlowUserCredentialUpdatePost = "system-user-credential-update-post" //nolint:gosec // flow handle
+	systemFlowInputSubject             = "subject"
 )
 
 // userDetail is a section get_user adds to a user only when asked.

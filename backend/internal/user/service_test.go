@@ -637,7 +637,7 @@ func TestUserService_UpdateUserCredentials_Validation(t *testing.T) {
 			}, nil).
 			Once()
 		userStoreMock.
-			On("UpdateCredentials", mock.Anything, svcTestUserID1, mock.Anything).
+			On("ValidateCredentials", mock.Anything, svcTestUserID1, mock.Anything).
 			Return(entitypkg.ErrInvalidCredential).
 			Once()
 
@@ -671,7 +671,7 @@ func TestUserService_UpdateUserCredentials_ValueFailsSchema(t *testing.T) {
 		}, nil).
 		Once()
 	userStoreMock.
-		On("UpdateCredentials", mock.Anything, svcTestUserID1, mock.Anything).
+		On("ValidateCredentials", mock.Anything, svcTestUserID1, mock.Anything).
 		Return(entitypkg.ErrSchemaValidationFailed).
 		Once()
 
@@ -715,6 +715,8 @@ func TestUserService_UpdateUserCredentials_Succeeds(t *testing.T) {
 		}, nil).
 		Once()
 
+	userStoreMock.On("ValidateCredentials", mock.Anything, svcTestUserID1, mock.Anything).Return(nil).Once()
+	userStoreMock.On("GetHeldCredentialTypes", mock.Anything, svcTestUserID1).Return([]string(nil), nil)
 	var capturedJSON json.RawMessage
 	userStoreMock.
 		On("UpdateCredentials", mock.Anything, svcTestUserID1, mock.Anything).

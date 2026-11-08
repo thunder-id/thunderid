@@ -1850,6 +1850,8 @@ var defaultMessages = map[string]string{
 	"error.userinfoservice.unsupported_signing_alg_description": "The configured userinfo_signed_response_alg is not supported by this server",
 	"error.usermgtprovider.invalid_request_format": "Invalid request format",
 	"error.usermgtprovider.invalid_request_format_description": "The user to provision must be provided",
+	"error.usermgtprovider.user_management_disabled": "User management is disabled",
+	"error.usermgtprovider.user_management_disabled_description": "The deployment is not configured to manage users from the runtime",
 	"error.usermgtprovider.user_provisioning_disabled": "User provisioning is disabled",
 	"error.usermgtprovider.user_provisioning_disabled_description": "The deployment is not configured to provision users from the runtime",
 	"error.userservice.ambiguous_user": "Ambiguous user",

@@ -34,6 +34,7 @@ const (
 	ReasonConsentRevoked               Reason = "consent_revoked"
 	ReasonUserDeleted                  Reason = "user_deleted"
 	ReasonIdentitySuspended            Reason = "identity_suspended"
+	ReasonCredentialUpdated            Reason = "credential_updated" // #nosec G101 -- reason name, not a secret
 )
 
 // CriterionType identifies an artifact attribute used for revocation.
@@ -111,6 +112,7 @@ var boundaryReasons = []Reason{
 	ReasonGroupMembershipRemoved,
 	ReasonOrganizationUnitChanged,
 	ReasonConsentRevoked,
+	ReasonCredentialUpdated,
 }
 
 // BoundaryReasons returns a copy of the boundary reasons, for callers that need the full set rather

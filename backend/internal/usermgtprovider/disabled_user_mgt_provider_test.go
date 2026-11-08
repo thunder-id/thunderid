@@ -5,6 +5,7 @@ package usermgtprovider
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -36,4 +37,12 @@ func (suite *DisabledUserMgtProviderTestSuite) TestCreateUserIsRejected() {
 	suite.Nil(resp)
 	suite.NotNil(svcErr)
 	suite.Equal(ErrorUserProvisioningDisabled.Code, svcErr.Code)
+}
+
+func (suite *DisabledUserMgtProviderTestSuite) TestUpdateUserCredentialsIsRejected() {
+	svcErr := suite.provider.UpdateUserCredentials(context.Background(), testUserID,
+		json.RawMessage(`{"password":"Rotated@123"}`))
+
+	suite.NotNil(svcErr)
+	suite.Equal(ErrorUserManagementDisabled.Code, svcErr.Code)
 }

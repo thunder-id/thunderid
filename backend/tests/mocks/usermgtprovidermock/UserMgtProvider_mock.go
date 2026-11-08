@@ -6,6 +6,7 @@ package usermgtprovidermock
 
 import (
 	"context"
+	"encoding/json"
 
 	mock "github.com/stretchr/testify/mock"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -114,6 +115,71 @@ func (_c *UserMgtProviderMock_CreateUser_Call) Return(user1 *providers.User, ser
 }
 
 func (_c *UserMgtProviderMock_CreateUser_Call) RunAndReturn(run func(ctx context.Context, user *providers.User) (*providers.User, *common.ServiceError)) *UserMgtProviderMock_CreateUser_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// UpdateUserCredentials provides a mock function for the type UserMgtProviderMock
+func (_mock *UserMgtProviderMock) UpdateUserCredentials(ctx context.Context, userID string, credentials json.RawMessage) *common.ServiceError {
+	ret := _mock.Called(ctx, userID, credentials)
+
+	if len(ret) == 0 {
+		panic("no return value specified for UpdateUserCredentials")
+	}
+
+	var r0 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, json.RawMessage) *common.ServiceError); ok {
+		r0 = returnFunc(ctx, userID, credentials)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*common.ServiceError)
+		}
+	}
+	return r0
+}
+
+// UserMgtProviderMock_UpdateUserCredentials_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'UpdateUserCredentials'
+type UserMgtProviderMock_UpdateUserCredentials_Call struct {
+	*mock.Call
+}
+
+// UpdateUserCredentials is a helper method to define mock.On call
+//   - ctx context.Context
+//   - userID string
+//   - credentials json.RawMessage
+func (_e *UserMgtProviderMock_Expecter) UpdateUserCredentials(ctx any, userID any, credentials any) *UserMgtProviderMock_UpdateUserCredentials_Call {
+	return &UserMgtProviderMock_UpdateUserCredentials_Call{Call: _e.mock.On("UpdateUserCredentials", ctx, userID, credentials)}
+}
+
+func (_c *UserMgtProviderMock_UpdateUserCredentials_Call) Run(run func(ctx context.Context, userID string, credentials json.RawMessage)) *UserMgtProviderMock_UpdateUserCredentials_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 json.RawMessage
+		if args[2] != nil {
+			arg2 = args[2].(json.RawMessage)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *UserMgtProviderMock_UpdateUserCredentials_Call) Return(serviceError *common.ServiceError) *UserMgtProviderMock_UpdateUserCredentials_Call {
+	_c.Call.Return(serviceError)
+	return _c
+}
+
+func (_c *UserMgtProviderMock_UpdateUserCredentials_Call) RunAndReturn(run func(ctx context.Context, userID string, credentials json.RawMessage) *common.ServiceError) *UserMgtProviderMock_UpdateUserCredentials_Call {
 	_c.Call.Return(run)
 	return _c
 }
