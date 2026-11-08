@@ -13,14 +13,14 @@ var (
 	queryCreateTemplate = dbmodel.DBQuery{
 		ID: "NTQ-NOTIF_TMPL-01",
 		Query: `INSERT INTO "NOTIFICATION_TEMPLATE" ` +
-			`(ID, CHANNEL, HANDLE, OU_ID, DISPLAY_NAME, DESCRIPTION, CONTENT, DESIGN, DEPLOYMENT_ID) ` +
-			`VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+			`(ID, CHANNEL, HANDLE, OU_ID, PROJECT_ID, DISPLAY_NAME, DESCRIPTION, CONTENT, DESIGN, DEPLOYMENT_ID) ` +
+			`VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
 	}
 
 	// queryGetTemplateByID retrieves a template by channel and id.
 	queryGetTemplateByID = dbmodel.DBQuery{
 		ID: "NTQ-NOTIF_TMPL-02",
-		Query: `SELECT ID, CHANNEL, HANDLE, OU_ID, DISPLAY_NAME, DESCRIPTION, CONTENT, DESIGN ` +
+		Query: `SELECT ID, CHANNEL, HANDLE, OU_ID, PROJECT_ID, DISPLAY_NAME, DESCRIPTION, CONTENT, DESIGN ` +
 			`FROM "NOTIFICATION_TEMPLATE" ` +
 			`WHERE ID = $1 AND CHANNEL = $2 AND DEPLOYMENT_ID = $3`,
 	}
@@ -31,20 +31,21 @@ var (
 	// drops it.
 	queryListTemplates = dbmodel.DBQuery{
 		ID: "NTQ-NOTIF_TMPL-03",
-		Query: `SELECT ID, CHANNEL, HANDLE, OU_ID, DISPLAY_NAME, DESCRIPTION ` +
+		Query: `SELECT ID, CHANNEL, HANDLE, OU_ID, PROJECT_ID, DISPLAY_NAME, DESCRIPTION ` +
 			`FROM "NOTIFICATION_TEMPLATE" ` +
 			`WHERE CHANNEL = $1 AND DEPLOYMENT_ID = $4 ORDER BY CREATED_AT DESC, ID DESC LIMIT $2 OFFSET $3`,
 	}
 
-	// queryUpdateTemplate updates a template's mutable fields. The handle is immutable and is not
-	// touched here.
+	// queryUpdateTemplate updates a template's mutable fields and its project. The handle is immutable
+	// and is not touched here.
 	queryUpdateTemplate = dbmodel.DBQuery{
 		ID: "NTQ-NOTIF_TMPL-04",
 		PostgresQuery: `UPDATE "NOTIFICATION_TEMPLATE" SET DISPLAY_NAME = $1, DESCRIPTION = $2, ` +
-			`CONTENT = $3, DESIGN = $4, UPDATED_AT = NOW() WHERE ID = $5 AND CHANNEL = $6 AND DEPLOYMENT_ID = $7`,
+			`CONTENT = $3, DESIGN = $4, PROJECT_ID = $5, UPDATED_AT = NOW() ` +
+			`WHERE ID = $6 AND CHANNEL = $7 AND DEPLOYMENT_ID = $8`,
 		SQLiteQuery: `UPDATE "NOTIFICATION_TEMPLATE" SET DISPLAY_NAME = $1, DESCRIPTION = $2, ` +
-			`CONTENT = $3, DESIGN = $4, UPDATED_AT = datetime('now') ` +
-			`WHERE ID = $5 AND CHANNEL = $6 AND DEPLOYMENT_ID = $7`,
+			`CONTENT = $3, DESIGN = $4, PROJECT_ID = $5, UPDATED_AT = datetime('now') ` +
+			`WHERE ID = $6 AND CHANNEL = $7 AND DEPLOYMENT_ID = $8`,
 	}
 
 	// queryDeleteTemplate deletes a template row by channel and id.
@@ -70,7 +71,7 @@ var (
 	// queryGetTemplateByHandle retrieves a template by channel and handle (the runtime lookup key).
 	queryGetTemplateByHandle = dbmodel.DBQuery{
 		ID: "NTQ-NOTIF_TMPL-08",
-		Query: `SELECT ID, CHANNEL, HANDLE, OU_ID, DISPLAY_NAME, DESCRIPTION, CONTENT, DESIGN ` +
+		Query: `SELECT ID, CHANNEL, HANDLE, OU_ID, PROJECT_ID, DISPLAY_NAME, DESCRIPTION, CONTENT, DESIGN ` +
 			`FROM "NOTIFICATION_TEMPLATE" ` +
 			`WHERE HANDLE = $1 AND CHANNEL = $2 AND DEPLOYMENT_ID = $3`,
 	}
@@ -79,7 +80,7 @@ var (
 	// It selects the same summary columns as queryListTemplates.
 	queryListTemplatesByOUID = dbmodel.DBQuery{
 		ID: "NTQ-NOTIF_TMPL-09",
-		Query: `SELECT ID, CHANNEL, HANDLE, OU_ID, DISPLAY_NAME, DESCRIPTION ` +
+		Query: `SELECT ID, CHANNEL, HANDLE, OU_ID, PROJECT_ID, DISPLAY_NAME, DESCRIPTION ` +
 			`FROM "NOTIFICATION_TEMPLATE" ` +
 			`WHERE CHANNEL = $1 AND OU_ID = $2 AND DEPLOYMENT_ID = $5 ` +
 			`ORDER BY CREATED_AT DESC, ID DESC LIMIT $3 OFFSET $4`,
@@ -91,5 +92,22 @@ var (
 		ID: "NTQ-NOTIF_TMPL-10",
 		Query: `SELECT COUNT(*) as total FROM "NOTIFICATION_TEMPLATE" ` +
 			`WHERE CHANNEL = $1 AND OU_ID = $2 AND DEPLOYMENT_ID = $3`,
+	}
+
+	// queryListTemplatesByProject retrieves a page of the templates of a channel in a project. It selects
+	// the same summary columns as queryListTemplates.
+	queryListTemplatesByProject = dbmodel.DBQuery{
+		ID: "NTQ-NOTIF_TMPL-11",
+		Query: `SELECT ID, CHANNEL, HANDLE, OU_ID, PROJECT_ID, DISPLAY_NAME, DESCRIPTION ` +
+			`FROM "NOTIFICATION_TEMPLATE" ` +
+			`WHERE CHANNEL = $1 AND PROJECT_ID = $2 AND DEPLOYMENT_ID = $5 ` +
+			`ORDER BY CREATED_AT DESC, ID DESC LIMIT $3 OFFSET $4`,
+	}
+
+	// queryCountTemplatesByProject counts the templates of a channel in a project, for pagination totals.
+	queryCountTemplatesByProject = dbmodel.DBQuery{
+		ID: "NTQ-NOTIF_TMPL-12",
+		Query: `SELECT COUNT(*) as total FROM "NOTIFICATION_TEMPLATE" ` +
+			`WHERE CHANNEL = $1 AND PROJECT_ID = $2 AND DEPLOYMENT_ID = $3`,
 	}
 )

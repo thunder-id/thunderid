@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import userEvent from '@testing-library/user-event';
+import {ProjectScopeProvider} from '@thunderid/contexts';
 import {render, renderHook, screen} from '@thunderid/test-utils';
 import {useTranslation} from 'react-i18next';
 import {describe, expect, it, vi, beforeAll, beforeEach} from 'vitest';
@@ -20,7 +21,12 @@ const {mockParams, mockNavigate, mockUseCreate, mockMutate, mockUseGetTemplates,
 
 vi.mock('react-router', async () => {
   const actual = await vi.importActual<typeof import('react-router')>('react-router');
-  return {...actual, useNavigate: () => mockNavigate, useParams: () => mockParams.current};
+  return {
+    ...actual,
+    useNavigate: () => mockNavigate,
+    useParams: () => mockParams.current,
+    Navigate: ({to}: {to: string}) => <div data-testid="navigate" data-to={to} />,
+  };
 });
 
 vi.mock('@/api/useCreateNotificationTemplate', () => ({default: mockUseCreate}));
@@ -230,6 +236,43 @@ describe('NotificationTemplateCreatePage', () => {
       }),
     );
     expect(mockNavigate).toHaveBeenCalledWith('/notification-templates/email/new-id');
+  });
+
+  it('skips the organization unit step inside a project and creates the template in the project', async () => {
+    mockUseHasMultipleOUs.mockReturnValue({hasMultipleOUs: true, isLoading: false, ouList: [{id: 'ou-a'}]});
+    const user = userEvent.setup();
+    render(
+      <ProjectScopeProvider project={{id: 'project-1'}}>
+        <NotificationTemplateCreatePage />
+      </ProjectScopeProvider>,
+    );
+
+    expect(screen.queryByTestId('ou-step')).not.toBeInTheDocument();
+    await startFromScratch(user);
+    await user.click(screen.getByTestId('fill-identity'));
+    await user.click(continueBtn());
+    await user.click(screen.getByTestId('fill-content'));
+    await user.click(createBtn());
+
+    expect(mockMutate).toHaveBeenCalledWith(
+      {
+        channel: 'email',
+        data: {
+          handle: 'otp-verification',
+          projectId: 'project-1',
+          displayName: 'OTP Verification',
+          design: {colorScheme: 'light'},
+          content: {subject: 'Your code', body: '<p>Body</p>'},
+        },
+      },
+      expect.anything(),
+    );
+  });
+
+  it('returns to the list outside a project when templates are created in projects only', () => {
+    render(<NotificationTemplateCreatePage createInProjectsOnly />);
+
+    expect(screen.getByTestId('navigate')).toHaveAttribute('data-to', '/notification-templates/email');
   });
 
   it('pre-fills the content from a chosen sample without needing the content editor', async () => {

@@ -1,7 +1,7 @@
 # Notification Templates Specification
 
 - **Status:** Draft
-- **Version:** 0.5
+- **Version:** 0.6
 - **Related documents:** [Feature issue #5337](https://github.com/thunder-id/thunderid/issues/5337), [design discussion #5388](https://github.com/thunder-id/thunderid/discussions/5388)
 
 ## Summary
@@ -96,6 +96,9 @@ Management goes through the service interface; runtime consumers (flow executors
 type NotificationTemplateServiceInterface interface {
     ListTemplates(ctx, channel ChannelType, limit, offset int) (*TemplateListResponse, *ServiceError)
     ListTemplatesByOUID(ctx, channel ChannelType, ouID string, limit, offset int) (*TemplateListResponse, *ServiceError)
+    ListTemplatesByProject(ctx, channel ChannelType, projectID string, limit, offset int) (*TemplateListResponse, *ServiceError)
+    // Registered with the project service so a project that still has templates is not deleted.
+    ProjectHasTemplates(ctx, projectID string) (bool, *ServiceError)
     CreateTemplate(ctx, channel ChannelType, req CreateTemplateRequest) (*Template, *ServiceError)
     GetTemplate(ctx, channel ChannelType, id string) (*Template, *ServiceError)
     GetTemplateByHandle(ctx, channel ChannelType, handle string) (*Template, *ServiceError)
@@ -118,7 +121,7 @@ DTO and model shapes:
 
 ```go
 type Template struct {
-    ID, OUID, Handle, DisplayName, Description string
+    ID, OUID, ProjectID, Handle, DisplayName, Description string
     IsReadOnly bool             // true for file-declared templates (read-only via the API)
     Design     *TemplateDesign  // email only; nil for SMS
     Content    TemplateContent
@@ -126,13 +129,13 @@ type Template struct {
 type TemplateContent struct { Subject, Body string } // Subject empty for SMS
 type TemplateDesign  struct { ColorScheme string }   // "light" | "dark"
 
-type CreateTemplateRequest struct { // OUID is required and immutable, set only at creation
-    OUID, Handle, DisplayName, Description string
+type CreateTemplateRequest struct { // OUID is immutable, set only at creation; optional with ProjectID
+    OUID, ProjectID, Handle, DisplayName, Description string
     Design  *TemplateDesign
     Content TemplateContent
 }
-type UpdateTemplateRequest struct { // Handle omitted: it is immutable
-    DisplayName, Description string
+type UpdateTemplateRequest struct { // Handle omitted: it is immutable; an empty ProjectID keeps the project
+    ProjectID, DisplayName, Description string
     Design  *TemplateDesign
     Content TemplateContent
 }
@@ -146,7 +149,9 @@ type ResolvedContent struct { Subject, Body string }
 
 ### Template configuration and management
 
-Each template belongs to an organization unit (`ouId`, required and immutable). Attaching a template to an organization unit records ownership; access control by organization unit is not enforced in this phase. The service can list the templates of a channel that one organization unit owns (`ListTemplatesByOUID`), for organization-unit-bounded authorization to build on; the API does not expose this list yet. The handle is unique per channel across the deployment, so a flow's reference by handle resolves to a single template; per-organization-unit or per-application overrides of the same handle are not supported in this phase.
+Each template belongs to an organization unit (`ouId`, immutable, and required unless the template is in a project, described below). Attaching a template to an organization unit records ownership; access control by organization unit is not enforced in this phase. The service can list the templates of a channel that one organization unit owns (`ListTemplatesByOUID`), for organization-unit-bounded authorization to build on; the API does not expose this list yet. The handle is unique per channel across the deployment, so a flow's reference by handle resolves to a single template; per-organization-unit or per-application overrides of the same handle are not supported in this phase.
+
+On the control plane, every template also belongs to a project (`projectId`). A create without one fails with `NTM-1031`, and a project that does not exist fails with `NTM-1029`. A template in a project is in the system organization unit: `ouId` can be left out, and any other organization unit fails with `NTM-1030`. An update without `projectId` keeps the template's project without checking it again; a different one moves the template after the same checks, so a template outside the system organization unit cannot move into a project (`NTM-1030`). `GET /notification-templates/{channel}/templates?projectId=` lists a project's templates, and a project that does not exist has none. A project that still has templates cannot be deleted (`PRJ-1013`). A file-declared template on the control plane must set `projectId`, or the server fails to start; without an `ouId` it is placed in the system organization unit. Import and export keep `projectId`, and an upsert import of an existing template that names no project, such as a file exported before templates had projects, keeps the template's project. The bootstrap templates belong to the Default project. Because handles stay unique across the deployment, a flow in any project can reference them; a project deploy sends only that project's templates, so the Default project is deployed before projects whose flows use its templates. A deployment without projects, such as the all-in-one server, does not require a project and keeps the `projectId` it receives unchecked, except that one longer than 36 characters is refused with `NTM-1029`.
 
 Editability depends on the template store mode, selected by `notification.template.store` (`mutable`, `declarative`, or `composite`). When it is unset, the mode follows the global declarative setting: `declarative` when declarative mode is enabled deployment-wide, otherwise `mutable`. An explicit value always wins, and an unrecognized one fails server startup. In `mutable` mode the bootstrap templates are seeded into the database and are ordinary editable templates. In `declarative` and `composite` modes, templates declared in files are read-only (`isReadOnly: true`): a create, update, or delete that targets a file-declared template returns `403` (`NTM-1022`), and in `declarative`-only mode creating any template through the API is refused with `403` (`NTM-1024`). A read-only template can still be read, listed, rendered, and previewed.
 
@@ -190,13 +195,13 @@ Design tokens are not fail-closed. A `{{design(...)}}` token that cannot be reso
 
 ### Data model
 
-A database template is identified by a server-assigned UUID; a file-declared template keeps the `id` given in its file, which can be any non-empty string. A template belongs to an organization unit recorded in its `ouId`, set at creation and immutable. Each template also carries a unique, immutable `handle` and a human-readable `displayName`, following the same convention as themes, layouts, and flows. It stores a channel, an optional description, and one channel-specific content definition. A single flat entity holds a template and its content; content is language-neutral, so there are no per-locale rows.
+A database template is identified by a server-assigned UUID; a file-declared template keeps the `id` given in its file, which can be any non-empty string. A template belongs to an organization unit recorded in its `ouId`, set at creation and immutable. On the control plane it also belongs to a project recorded in its `projectId`. Each template also carries a unique, immutable `handle` and a human-readable `displayName`, following the same convention as themes, layouts, and flows. It stores a channel, an optional description, and one channel-specific content definition. A single flat entity holds a template and its content; content is language-neutral, so there are no per-locale rows.
 
 The `handle` is unique per channel across the deployment: creating a second template with an existing handle in the same channel returns `409`, regardless of organization unit, so a handle resolves to a single template and there is no per-organization-unit override in this phase. The `displayName` is not unique and can be edited freely.
 
 Flows reference a template by its `handle` rather than its UUID. Because the handle is stable and deployment-independent, bootstrapped flows stay valid without fixed UUIDs, and a flow exported from one deployment remains valid when imported into another.
 
-Templates persist in the **config database** (the store uses the config DB client; the table ships in `dbscripts/configdb`). The DB store backs `mutable` mode; the file store is not removed but retained for `declarative` and `composite` modes, which load file-declared templates at startup (composite mode serves both the file store and the DB store). File-declared templates are YAML files in the `notification_templates` declarative resource directory, each with `id`, `channel`, `handle`, `ouId`, `displayName`, `description`, `content`, and `design`. A database template is a single flat row, with content and design held as JSON columns, so there are no per-locale rows:
+Templates persist in the **config database** (the store uses the config DB client; the table ships in `dbscripts/configdb`). The DB store backs `mutable` mode; the file store is not removed but retained for `declarative` and `composite` modes, which load file-declared templates at startup (composite mode serves both the file store and the DB store). File-declared templates are YAML files in the `notification_templates` declarative resource directory, each with `id`, `channel`, `handle`, `ouId`, `projectId`, `displayName`, `description`, `content`, and `design`. A database template is a single flat row, with content and design held as JSON columns, so there are no per-locale rows:
 
 ```sql
 CREATE TABLE NOTIFICATION_TEMPLATE (
@@ -205,6 +210,7 @@ CREATE TABLE NOTIFICATION_TEMPLATE (
     CHANNEL       VARCHAR(16)  NOT NULL,            -- email | sms
     HANDLE        VARCHAR(255) NOT NULL,
     OU_ID         VARCHAR(36)  NOT NULL,            -- owning organization unit
+    PROJECT_ID    VARCHAR(36),                      -- owning project, on the control plane
     DISPLAY_NAME  VARCHAR(255) NOT NULL,
     DESCRIPTION   VARCHAR(512),
     CONTENT       JSONB        NOT NULL,            -- { subject, body }
@@ -214,9 +220,11 @@ CREATE TABLE NOTIFICATION_TEMPLATE (
     PRIMARY KEY (DEPLOYMENT_ID, ID),
     UNIQUE (DEPLOYMENT_ID, CHANNEL, HANDLE)
 );
+
+CREATE INDEX idx_notification_template_project ON NOTIFICATION_TEMPLATE (DEPLOYMENT_ID, PROJECT_ID);
 ```
 
-Scoping columns are `DEPLOYMENT_ID` and the owning `OU_ID`; the `UNIQUE (DEPLOYMENT_ID, CHANNEL, HANDLE)` constraint keeps a handle unique per channel across the deployment, and the runtime lookup is by channel and handle, not by organization unit. There is no per-application column in this phase.
+Scoping columns are `DEPLOYMENT_ID`, the owning `OU_ID`, and the owning `PROJECT_ID`, which the project list and the project delete check read through `idx_notification_template_project`; the `UNIQUE (DEPLOYMENT_ID, CHANNEL, HANDLE)` constraint keeps a handle unique per channel across the deployment, and the runtime lookup is by channel and handle, not by organization unit. There is no per-application column in this phase.
 
 Templates are seeded and kept up to date as **declarative resources** (`resource_type: notification_template`) through the existing bootstrap importer (`internal/system/importer`), matched by handle for idempotent upsert. The runtime lookup (`GetTemplateByHandle`) is served through a read-through cache keyed by `channel:handle`; writes keep it coherent (create and update re-populate the entry, delete invalidates it), while list and get-by-id bypass the cache. Migration is handled by the declarative resource import itself; there is no separate code-level migration. Bootstrap always imports with upsert, so a re-run updates an existing seeded template with the bundle content, overwriting any administrator edits to it.
 
@@ -228,13 +236,13 @@ The Notification Templates API manages templates by channel. The `channel` path 
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/notification-templates/{channel}/templates` | List template summaries for the channel, with `limit` (1 to 100, default 30) and `offset` pagination. |
+| `GET` | `/notification-templates/{channel}/templates` | List template summaries for the channel, with `limit` (1 to 100, default 30) and `offset` pagination. `projectId` narrows the list to a project's templates. |
 | `POST` | `/notification-templates/{channel}/templates` | Create a template with its content. |
 | `GET` | `/notification-templates/{channel}/templates/{id}` | Get a template. |
 | `PUT` | `/notification-templates/{channel}/templates/{id}` | Update a template. The `handle` is immutable and cannot be changed. |
 | `DELETE` | `/notification-templates/{channel}/templates/{id}` | Delete a template. Idempotent, and rejected if a flow references it. |
 
-A template carries a required, immutable `ouId` (the owning organization unit), a unique, immutable `handle`, a `displayName`, an optional `description`, a read-only `isReadOnly` flag (true for file-declared templates), and channel-specific content. Email content has a `subject` and `body`; SMS content has a `body` only (plain text, no subject or design configuration). Each content field is a string that may embed `{{t(...)}}` translation placeholders and `{{ctx(...)}}` context placeholders, so a field can reference none, one, or multiple translation keys alongside literal text. An email template may also carry a `design` with a `light` or `dark` `colorScheme`, which selects the scheme its `{{design(...)}}` tokens resolve against (the theme's default scheme when no design is set); SMS supports neither a design nor a subject, and supplying either is rejected on create and update (`NTM-1013` for a design, `NTM-1012` for a subject). The `handle` and `ouId` are set at creation and are not accepted on update; a `handle` is a lowercase identifier of up to 255 characters made of letters, digits, dashes, and underscores that starts and ends with an alphanumeric, and an email template requires a `subject`. The `subject` and `body` are length-bounded by configurable per-channel limits (defaults: 1000-character subject, 50,000-character email body, 4096-character SMS body).
+A template carries an immutable `ouId` (the owning organization unit, required unless the template names a project), a `projectId` (the owning project, required on the control plane), a unique, immutable `handle`, a `displayName`, an optional `description`, a read-only `isReadOnly` flag (true for file-declared templates), and channel-specific content. Email content has a `subject` and `body`; SMS content has a `body` only (plain text, no subject or design configuration). Each content field is a string that may embed `{{t(...)}}` translation placeholders and `{{ctx(...)}}` context placeholders, so a field can reference none, one, or multiple translation keys alongside literal text. An email template may also carry a `design` with a `light` or `dark` `colorScheme`, which selects the scheme its `{{design(...)}}` tokens resolve against (the theme's default scheme when no design is set); SMS supports neither a design nor a subject, and supplying either is rejected on create and update (`NTM-1013` for a design, `NTM-1012` for a subject). The `handle` and `ouId` are set at creation and are not accepted on update; an update accepts `projectId` to move the template to another project; a `handle` is a lowercase identifier of up to 255 characters made of letters, digits, dashes, and underscores that starts and ends with an alphanumeric, and an email template requires a `subject`. The `subject` and `body` are length-bounded by configurable per-channel limits (defaults: 1000-character subject, 50,000-character email body, 4096-character SMS body).
 
 An email template response (the seeded `otp` default, body abbreviated):
 
@@ -269,7 +277,7 @@ An SMS template response (the seeded `otp` default):
 }
 ```
 
-Invalid requests return `400`, unauthorized requests `401`, forbidden requests `403`, and missing templates `404`. Placeholder validation runs on create and update: a malformed or unsupported placeholder (`NTM-1020`) or a `{{design(...)}}` placeholder in a subject or SMS (`NTM-1021`) returns `400` and the template is not stored. A write that targets a file-declared, read-only template returns `403` (`NTM-1022`), and a create attempted while the store runs in declarative-only mode returns `403` (`NTM-1024`). Creating a template whose handle already exists in the channel returns `409` (`NTM-1009`), as does deleting a template a flow references (`NTM-1010`). A create or update whose `ouId` does not reference an existing organization unit returns `400` (`NTM-1025`), a subject or body that exceeds its configured length limit returns `400` (`NTM-1027` for the subject, `NTM-1028` for the body), and a list request with a `limit` outside 1 to 100 or a negative `offset` returns `400`. Delete is idempotent: deleting a template that does not exist still returns `204`. Errors use the shared `Error` response shape with the `NTM-XXXX` code prefix for template-specific failures.
+Invalid requests return `400`, unauthorized requests `401`, forbidden requests `403`, and missing templates `404`. Placeholder validation runs on create and update: a malformed or unsupported placeholder (`NTM-1020`) or a `{{design(...)}}` placeholder in a subject or SMS (`NTM-1021`) returns `400` and the template is not stored. A write that targets a file-declared, read-only template returns `403` (`NTM-1022`), and a create attempted while the store runs in declarative-only mode returns `403` (`NTM-1024`). Creating a template whose handle already exists in the channel returns `409` (`NTM-1009`), as does deleting a template a flow references (`NTM-1010`). A create or update whose `ouId` does not reference an existing organization unit returns `400` (`NTM-1025`). On the control plane, a create without a `projectId` returns `400` (`NTM-1031`), and a create or update whose `projectId` names no project (`NTM-1029`) or whose organization unit is outside the project (`NTM-1030`) returns `400`. A subject or body that exceeds its configured length limit returns `400` (`NTM-1027` for the subject, `NTM-1028` for the body), and a list request with a `limit` outside 1 to 100 or a negative `offset` returns `400`. Delete is idempotent: deleting a template that does not exist still returns `204`. Errors use the shared `Error` response shape with the `NTM-XXXX` code prefix for template-specific failures.
 
 Previews are produced in the Console (see Preview).
 
@@ -292,7 +300,7 @@ The preview flags an unsupported or malformed token, a design token in a field t
 
 ### UI
 
-The Console adds a Notification Templates section alongside Design & Branding. The list shows templates by channel and provides actions to create, open, and delete them. The Console does not distinguish read-only templates: edit and delete show for every template, and a write to a file-declared one fails with `403`. List items do not carry `isReadOnly`. On a deployment with more than one organization unit, the creation wizard starts with an organization-unit step (skipped when there is a single OU); it then offers a **Start from scratch** option and sample templates (hardcoded in the Console and kept in sync with the bootstrap defaults).
+The Console adds a Notification Templates section alongside Design & Branding. The list shows templates by channel and provides actions to create, open, and delete them. The Console does not distinguish read-only templates: edit and delete show for every template, and a write to a file-declared one fails with `403`. List items do not carry `isReadOnly`. On a deployment with more than one organization unit, the creation wizard starts with an organization-unit step (skipped when there is a single OU); it then offers a **Start from scratch** option and sample templates (hardcoded in the Console and kept in sync with the bootstrap defaults). On the control plane, templates are managed inside a project: **Notifications** is under the project's **Customize** section and lists that project's templates, the wizard skips the organization-unit step and creates the template in the project, and an undeployed change shows a badge on the navigation item. Outside a project the Console offers no create, and opening another project's template returns to the list.
 
 The editor provides content controls appropriate to the channel, the context-token catalog and design tokens, and a live preview with language and design theme selection. The preview validates the content live and shows the warnings described under Preview. Warnings do not block saving: **Save** (editor) and **Create** (wizard) are disabled only while a required field is empty (the subject of an email, or the body). The server-side write validation enforces placeholder syntax, design placement, and the subject/body length limits.
 
@@ -370,3 +378,4 @@ The flow editor lists templates for the selected notification node’s channel s
 | 0.3 | 2026-10-24 | Aligned with the shipped defaults and rendering: seeded templates use translation and design tokens, unresolved design tokens render empty, file-declared template ids and format, bootstrap upsert, export, and preview and Console behaviour. |
 | 0.4 | 2026-11-02 | Added configurable per-channel subject/body length limits enforced at create/update (`NTM-1027` subject, `NTM-1028` body), with `notification.template.max_subject_length` (default 1000), `max_email_body_length` (default 50000 characters), and `max_sms_body_length` (default 4096). |
 | 0.5 | 2026-11-05 | Added `ListTemplatesByOUID` to the management service: it lists the templates of a channel that one organization unit owns, and is not exposed through the API yet. |
+| 0.6 | 2026-11-08 | Templates belong to a project on the control plane: `projectId` on the API, file format and `PROJECT_ID` column, the `projectId` list filter, `NTM-1029`, `NTM-1030` and `NTM-1031`, the project delete check, bootstrap templates in the Default project, and project-scoped Console management. |

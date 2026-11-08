@@ -113,6 +113,30 @@ func (f *templateFileBasedStore) CountTemplatesByOUID(_ context.Context, channel
 	return len(filtered), nil
 }
 
+// ListTemplatesByProject returns a page of the declared templates of a channel in a project.
+func (f *templateFileBasedStore) ListTemplatesByProject(_ context.Context, channel ChannelType, projectID string,
+	limit, offset int) ([]templateDAO, error) {
+	filtered, err := f.listByChannelAndProject(channel, projectID)
+	if err != nil {
+		return nil, err
+	}
+	if offset >= len(filtered) {
+		return []templateDAO{}, nil
+	}
+	end := min(offset+limit, len(filtered))
+	return filtered[offset:end], nil
+}
+
+// CountTemplatesByProject returns the number of declared templates of a channel in a project.
+func (f *templateFileBasedStore) CountTemplatesByProject(_ context.Context, channel ChannelType,
+	projectID string) (int, error) {
+	filtered, err := f.listByChannelAndProject(channel, projectID)
+	if err != nil {
+		return 0, err
+	}
+	return len(filtered), nil
+}
+
 // UpdateTemplate refuses; declared templates are read-only.
 func (f *templateFileBasedStore) UpdateTemplate(_ context.Context, _ templateDAO) error {
 	return errDeclarativeTemplate
@@ -186,6 +210,23 @@ func (f *templateFileBasedStore) listByChannelAndOU(channel ChannelType, ouID st
 	filtered := make([]templateDAO, 0, len(inChannel))
 	for _, t := range inChannel {
 		if t.OUID == ouID {
+			filtered = append(filtered, t)
+		}
+	}
+	return filtered, nil
+}
+
+// listByChannelAndProject returns the declared templates of a channel in a project, ordered by handle for
+// stable pagination.
+func (f *templateFileBasedStore) listByChannelAndProject(channel ChannelType, projectID string) (
+	[]templateDAO, error) {
+	inChannel, err := f.listByChannel(channel)
+	if err != nil {
+		return nil, err
+	}
+	filtered := make([]templateDAO, 0, len(inChannel))
+	for _, t := range inChannel {
+		if t.ProjectID == projectID {
 			filtered = append(filtered, t)
 		}
 	}

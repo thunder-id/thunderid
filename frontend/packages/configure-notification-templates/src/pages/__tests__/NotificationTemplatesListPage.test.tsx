@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import userEvent from '@testing-library/user-event';
+import {ProjectScopeProvider} from '@thunderid/contexts';
 import {render, renderHook, screen, waitFor} from '@thunderid/test-utils';
 import {useTranslation} from 'react-i18next';
 import {describe, expect, it, vi, beforeAll, beforeEach} from 'vitest';
@@ -44,6 +45,23 @@ describe('NotificationTemplatesListPage', () => {
     expect(screen.getByText(t('notificationTemplates:listing.title.email'))).toBeInTheDocument();
     expect(screen.getByText(t('notificationTemplates:listing.subtitle.email'))).toBeInTheDocument();
     expect(screen.getByTestId('templates-list')).toHaveAttribute('data-channel', 'email');
+  });
+
+  it('offers no create action outside a project when templates are created in projects only', () => {
+    render(<NotificationTemplatesListPage createInProjectsOnly />);
+
+    expect(screen.queryByTestId('notification-template-add-button')).not.toBeInTheDocument();
+    expect(screen.getByTestId('templates-list')).toBeInTheDocument();
+  });
+
+  it('offers the create action inside a project when templates are created in projects only', () => {
+    render(
+      <ProjectScopeProvider project={{id: 'project-1'}}>
+        <NotificationTemplatesListPage createInProjectsOnly />
+      </ProjectScopeProvider>,
+    );
+
+    expect(screen.getByTestId('notification-template-add-button')).toBeInTheDocument();
   });
 
   it('sets the document title for the email channel', async () => {

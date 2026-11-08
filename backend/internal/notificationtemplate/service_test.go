@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/system/config"
+	"github.com/thunder-id/thunderid/internal/system/projectscope"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/tests/mocks/oumock"
@@ -62,7 +63,7 @@ func initMutableTestRuntime(t interface {
 func (s *NotificationTemplateServiceTestSuite) SetupTest() {
 	initMutableTestRuntime(s.T())
 	s.mockStore = newNotificationTemplateStoreInterfaceMock(s.T())
-	s.svc = newNotificationTemplateService(s.mockStore, executingTransactioner(s.T()), nil)
+	s.svc = newNotificationTemplateService(s.mockStore, executingTransactioner(s.T()), nil, nil, false)
 	s.ctx = context.Background()
 }
 
@@ -109,7 +110,7 @@ func (s *NotificationTemplateServiceTestSuite) TestCreateTemplate_KeepsProvidedI
 // exercised (the shared SetupTest service has a nil OU service that skips the check).
 func (s *NotificationTemplateServiceTestSuite) svcWithOU(
 	ouMock *oumock.OrganizationUnitServiceInterfaceMock) NotificationTemplateServiceInterface {
-	return newNotificationTemplateService(s.mockStore, executingTransactioner(s.T()), ouMock)
+	return newNotificationTemplateService(s.mockStore, executingTransactioner(s.T()), ouMock, nil, false)
 }
 
 // TestCreateTemplate_StoresOU verifies a valid ouId is checked against the OU service and persisted on
@@ -928,4 +929,238 @@ func (s *NotificationTemplateServiceTestSuite) TestStoreErrorSurfaced() {
 
 	s.Require().Error(err)
 	s.Nil(usages)
+}
+
+// testProjectID is the project the project tests place templates in.
+const testProjectID = "proj-1"
+
+// svcInProjects builds a service on a deployment that serves projects, with the given OU service and
+// project validator mocks.
+func (s *NotificationTemplateServiceTestSuite) svcInProjects(ouMock *oumock.OrganizationUnitServiceInterfaceMock,
+	validator *projectOUValidatorMock) NotificationTemplateServiceInterface {
+	return newNotificationTemplateService(s.mockStore, executingTransactioner(s.T()), ouMock, validator, true)
+}
+
+func (s *NotificationTemplateServiceTestSuite) projectRequest(ouID string) CreateTemplateRequest {
+	return CreateTemplateRequest{
+		Handle:      "otp-verification",
+		OUID:        ouID,
+		ProjectID:   testProjectID,
+		DisplayName: "OTP Verification",
+		Content:     TemplateContent{Subject: "s.key", Body: "b.key"},
+	}
+}
+
+func (s *NotificationTemplateServiceTestSuite) TestCreateTemplate_InProjectWithoutOUUsesSystemOU() {
+	ouMock := oumock.NewOrganizationUnitServiceInterfaceMock(s.T())
+	ouMock.EXPECT().GetSystemOUID(mock.Anything).Return("sys-ou", nil)
+	validator := newProjectOUValidatorMock(s.T())
+	validator.EXPECT().ValidateProjectOU(mock.Anything, testProjectID, "sys-ou").Return(nil)
+	s.mockStore.On("IsHandleExists", mock.Anything, ChannelTypeEmail, "otp-verification").Return(false, nil)
+	s.mockStore.On("CreateTemplate", mock.Anything, mock.MatchedBy(func(d templateDAO) bool {
+		return d.OUID == "sys-ou" && d.ProjectID == testProjectID
+	})).Return(nil)
+
+	tmpl, err := s.svcInProjects(ouMock, validator).CreateTemplate(s.ctx, ChannelTypeEmail, s.projectRequest(""))
+	s.Require().Nil(err)
+	s.Equal("sys-ou", tmpl.OUID)
+	s.Equal(testProjectID, tmpl.ProjectID)
+}
+
+func (s *NotificationTemplateServiceTestSuite) TestCreateTemplate_InProjectRefusesAnOUOutsideIt() {
+	ouMock := oumock.NewOrganizationUnitServiceInterfaceMock(s.T())
+	ouMock.EXPECT().IsOrganizationUnitExists(mock.Anything, "ou-1").Return(true, nil)
+	validator := newProjectOUValidatorMock(s.T())
+	validator.EXPECT().ValidateProjectOU(mock.Anything, testProjectID, "ou-1").
+		Return(&tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: projectscope.OUNotInProjectErrorCode})
+
+	_, err := s.svcInProjects(ouMock, validator).CreateTemplate(s.ctx, ChannelTypeEmail, s.projectRequest("ou-1"))
+	s.Require().NotNil(err)
+	s.Equal(ErrorOUNotInProject.Code, err.Code)
+}
+
+func (s *NotificationTemplateServiceTestSuite) TestCreateTemplate_RefusesAProjectThatDoesNotExist() {
+	ouMock := oumock.NewOrganizationUnitServiceInterfaceMock(s.T())
+	ouMock.EXPECT().GetSystemOUID(mock.Anything).Return("sys-ou", nil)
+	validator := newProjectOUValidatorMock(s.T())
+	validator.EXPECT().ValidateProjectOU(mock.Anything, testProjectID, "sys-ou").
+		Return(&tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: projectscope.ProjectNotFoundErrorCode})
+
+	_, err := s.svcInProjects(ouMock, validator).CreateTemplate(s.ctx, ChannelTypeEmail, s.projectRequest(""))
+	s.Require().NotNil(err)
+	s.Equal(ErrorInvalidProject.Code, err.Code)
+}
+
+func (s *NotificationTemplateServiceTestSuite) TestCreateTemplate_FailsWhenTheProjectCannotBeChecked() {
+	ouMock := oumock.NewOrganizationUnitServiceInterfaceMock(s.T())
+	ouMock.EXPECT().GetSystemOUID(mock.Anything).Return("sys-ou", nil)
+	validator := newProjectOUValidatorMock(s.T())
+	validator.EXPECT().ValidateProjectOU(mock.Anything, testProjectID, "sys-ou").Return(&tidcommon.InternalServerError)
+
+	_, err := s.svcInProjects(ouMock, validator).CreateTemplate(s.ctx, ChannelTypeEmail, s.projectRequest(""))
+	s.Require().NotNil(err)
+	s.Equal(tidcommon.InternalServerError.Code, err.Code)
+}
+
+func (s *NotificationTemplateServiceTestSuite) TestCreateTemplate_FailsWhenTheSystemOUCannotBeRead() {
+	ouMock := oumock.NewOrganizationUnitServiceInterfaceMock(s.T())
+	ouMock.EXPECT().GetSystemOUID(mock.Anything).Return("", &tidcommon.InternalServerError)
+	validator := newProjectOUValidatorMock(s.T())
+
+	_, err := s.svcInProjects(ouMock, validator).CreateTemplate(s.ctx, ChannelTypeEmail, s.projectRequest(""))
+	s.Require().NotNil(err)
+	s.Equal(tidcommon.InternalServerError.Code, err.Code)
+}
+
+func (s *NotificationTemplateServiceTestSuite) TestCreateTemplate_RequiresAProjectWhereProjectsAreServed() {
+	validator := newProjectOUValidatorMock(s.T())
+	request := s.projectRequest("ou-1")
+	request.ProjectID = ""
+
+	_, err := s.svcInProjects(nil, validator).CreateTemplate(s.ctx, ChannelTypeEmail, request)
+	s.Require().NotNil(err)
+	s.Equal(ErrorProjectRequired.Code, err.Code)
+
+	err = s.svcInProjects(nil, validator).ValidateTemplate(s.ctx, ChannelTypeEmail, request)
+	s.Require().NotNil(err)
+	s.Equal(ErrorProjectRequired.Code, err.Code)
+}
+
+func (s *NotificationTemplateServiceTestSuite) TestCreateTemplate_KeepsTheProjectUncheckedWithoutProjects() {
+	s.mockStore.On("IsHandleExists", mock.Anything, ChannelTypeEmail, "otp-verification").Return(false, nil)
+	s.mockStore.On("CreateTemplate", mock.Anything, mock.MatchedBy(func(d templateDAO) bool {
+		return d.ProjectID == testProjectID
+	})).Return(nil)
+
+	tmpl, err := s.svc.CreateTemplate(s.ctx, ChannelTypeEmail, s.projectRequest(""))
+	s.Require().Nil(err)
+	s.Equal(testProjectID, tmpl.ProjectID)
+}
+
+func (s *NotificationTemplateServiceTestSuite) storedTemplate() templateDAO {
+	return templateDAO{ID: "id-1", Channel: ChannelTypeEmail, Handle: "otp", OUID: "sys-ou",
+		ProjectID: testProjectID, DisplayName: "OTP", Content: TemplateContent{Subject: "s", Body: "b"}}
+}
+
+func (s *NotificationTemplateServiceTestSuite) updateRequest(projectID string) UpdateTemplateRequest {
+	return UpdateTemplateRequest{ProjectID: projectID, DisplayName: "OTP 2",
+		Content: TemplateContent{Subject: "s", Body: "b"}}
+}
+
+func (s *NotificationTemplateServiceTestSuite) TestUpdateTemplate_KeepsItsProjectWithoutOne() {
+	validator := newProjectOUValidatorMock(s.T())
+	s.mockStore.On("GetTemplate", mock.Anything, ChannelTypeEmail, "id-1").Return(s.storedTemplate(), nil)
+	s.mockStore.On("UpdateTemplate", mock.Anything, mock.MatchedBy(func(d templateDAO) bool {
+		return d.ProjectID == testProjectID
+	})).Return(nil)
+
+	tmpl, err := s.svcInProjects(nil, validator).UpdateTemplate(s.ctx, ChannelTypeEmail, "id-1", s.updateRequest(""))
+	s.Require().Nil(err)
+	s.Equal(testProjectID, tmpl.ProjectID)
+}
+
+func (s *NotificationTemplateServiceTestSuite) TestUpdateTemplate_MovesToAnotherProject() {
+	validator := newProjectOUValidatorMock(s.T())
+	validator.EXPECT().ValidateProjectOU(mock.Anything, "proj-2", "sys-ou").Return(nil)
+	s.mockStore.On("GetTemplate", mock.Anything, ChannelTypeEmail, "id-1").Return(s.storedTemplate(), nil)
+	s.mockStore.On("UpdateTemplate", mock.Anything, mock.MatchedBy(func(d templateDAO) bool {
+		return d.ProjectID == "proj-2"
+	})).Return(nil)
+
+	tmpl, err := s.svcInProjects(nil, validator).UpdateTemplate(s.ctx, ChannelTypeEmail, "id-1",
+		s.updateRequest("proj-2"))
+	s.Require().Nil(err)
+	s.Equal("proj-2", tmpl.ProjectID)
+}
+
+func (s *NotificationTemplateServiceTestSuite) TestUpdateTemplate_RefusesAProjectThatDoesNotExist() {
+	validator := newProjectOUValidatorMock(s.T())
+	validator.EXPECT().ValidateProjectOU(mock.Anything, "proj-2", "sys-ou").
+		Return(&tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: projectscope.ProjectNotFoundErrorCode})
+	s.mockStore.On("GetTemplate", mock.Anything, ChannelTypeEmail, "id-1").Return(s.storedTemplate(), nil)
+
+	_, err := s.svcInProjects(nil, validator).UpdateTemplate(s.ctx, ChannelTypeEmail, "id-1",
+		s.updateRequest("proj-2"))
+	s.Require().NotNil(err)
+	s.Equal(ErrorInvalidProject.Code, err.Code)
+	s.mockStore.AssertNotCalled(s.T(), "UpdateTemplate", mock.Anything, mock.Anything)
+}
+
+func (s *NotificationTemplateServiceTestSuite) TestListTemplatesByProject() {
+	s.mockStore.On("CountTemplatesByProject", mock.Anything, ChannelTypeEmail, testProjectID).Return(2, nil)
+	s.mockStore.On("ListTemplatesByProject", mock.Anything, ChannelTypeEmail, testProjectID, 1, 0).
+		Return([]templateDAO{s.storedTemplate()}, nil)
+
+	list, err := s.svc.ListTemplatesByProject(s.ctx, ChannelTypeEmail, testProjectID, 1, 0)
+	s.Require().Nil(err)
+	s.Equal(2, list.TotalResults)
+	s.Require().Len(list.Templates, 1)
+	s.Equal(testProjectID, list.Templates[0].ProjectID)
+	s.Require().NotEmpty(list.Links)
+	s.Contains(list.Links[0].Href, "projectId="+testProjectID)
+}
+
+func (s *NotificationTemplateServiceTestSuite) TestListTemplatesByProject_StoreError() {
+	s.mockStore.On("CountTemplatesByProject", mock.Anything, ChannelTypeEmail, testProjectID).
+		Return(0, errors.New("db down"))
+
+	_, err := s.svc.ListTemplatesByProject(s.ctx, ChannelTypeEmail, testProjectID, 10, 0)
+	s.Require().NotNil(err)
+	s.Equal(tidcommon.InternalServerError.Code, err.Code)
+}
+
+func (s *NotificationTemplateServiceTestSuite) TestProjectHasTemplates() {
+	s.mockStore.On("CountTemplatesByProject", mock.Anything, ChannelTypeEmail, testProjectID).Return(0, nil).Maybe()
+	s.mockStore.On("CountTemplatesByProject", mock.Anything, ChannelTypeSMS, testProjectID).Return(1, nil)
+
+	has, err := s.svc.ProjectHasTemplates(s.ctx, testProjectID)
+	s.Require().Nil(err)
+	s.True(has)
+}
+
+func (s *NotificationTemplateServiceTestSuite) TestProjectHasTemplates_None() {
+	s.mockStore.On("CountTemplatesByProject", mock.Anything, mock.Anything, testProjectID).Return(0, nil)
+
+	has, err := s.svc.ProjectHasTemplates(s.ctx, testProjectID)
+	s.Require().Nil(err)
+	s.False(has)
+}
+
+func (s *NotificationTemplateServiceTestSuite) TestProjectHasTemplates_StoreError() {
+	s.mockStore.On("CountTemplatesByProject", mock.Anything, mock.Anything, testProjectID).
+		Return(0, errors.New("db down"))
+
+	_, err := s.svc.ProjectHasTemplates(s.ctx, testProjectID)
+	s.Require().NotNil(err)
+	s.Equal(tidcommon.InternalServerError.Code, err.Code)
+}
+
+func (s *NotificationTemplateServiceTestSuite) TestProjectHasTemplates_CompositeLimitExceeded() {
+	s.mockStore.On("CountTemplatesByProject", mock.Anything, mock.Anything, testProjectID).
+		Return(0, errResultLimitExceededInCompositeMode)
+
+	has, err := s.svc.ProjectHasTemplates(s.ctx, testProjectID)
+	s.Require().Nil(err)
+	s.True(has, "a project with more templates than a composite read returns still has templates")
+}
+
+func (s *NotificationTemplateServiceTestSuite) TestListTemplatesByProject_EmptyProjectListsNone() {
+	list, err := s.svc.ListTemplatesByProject(s.ctx, ChannelTypeEmail, "", 10, 0)
+	s.Require().Nil(err)
+	s.Zero(list.TotalResults)
+	s.Empty(list.Templates)
+	s.mockStore.AssertNotCalled(s.T(), "ListTemplates", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+
+	_, err = s.svc.ListTemplatesByProject(s.ctx, ChannelTypeEmail, "", 0, 0)
+	s.Require().NotNil(err)
+	s.Equal(ErrorInvalidLimit.Code, err.Code)
+}
+
+func (s *NotificationTemplateServiceTestSuite) TestCreateTemplate_RefusesAnOverlongProjectWithoutProjects() {
+	request := s.projectRequest("")
+	request.ProjectID = strings.Repeat("p", maxProjectIDLength+1)
+
+	_, err := s.svc.CreateTemplate(s.ctx, ChannelTypeEmail, request)
+	s.Require().NotNil(err)
+	s.Equal(ErrorInvalidProject.Code, err.Code)
 }

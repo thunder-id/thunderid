@@ -44,13 +44,14 @@ func (s *NotificationTemplateStoreTestSuite) SetupTest() {
 func (s *NotificationTemplateStoreTestSuite) TestCreateTemplate_EmailWithDesign() {
 	s.mockDBProvider.On("GetConfigDBClient").Return(s.mockDBClient, nil)
 	s.mockDBClient.On("ExecuteContext", mock.Anything, queryCreateTemplate,
-		"id-1", "email", "otp", "ou-1", "OTP", "desc",
+		"id-1", "email", "otp", "ou-1", "proj-1", "OTP", "desc",
 		`{"subject":"s","body":"b"}`, `{"colorScheme":"dark"}`, "test-deployment").Return(int64(1), nil)
 
 	err := s.store.CreateTemplate(depCtx("test-deployment"), templateDAO{
-		ID: "id-1", Channel: ChannelTypeEmail, Handle: "otp", OUID: "ou-1", DisplayName: "OTP", Description: "desc",
-		Content: TemplateContent{Subject: "s", Body: "b"},
-		Design:  &TemplateDesign{ColorScheme: colorSchemeDark},
+		ID: "id-1", Channel: ChannelTypeEmail, Handle: "otp", OUID: "ou-1", ProjectID: "proj-1", DisplayName: "OTP",
+		Description: "desc",
+		Content:     TemplateContent{Subject: "s", Body: "b"},
+		Design:      &TemplateDesign{ColorScheme: colorSchemeDark},
 	})
 	s.Require().NoError(err)
 }
@@ -59,7 +60,7 @@ func (s *NotificationTemplateStoreTestSuite) TestCreateTemplate_NoDesignStoresEm
 	s.mockDBProvider.On("GetConfigDBClient").Return(s.mockDBClient, nil)
 	// DESIGN is NOT NULL, so a template without a design persists "{}".
 	s.mockDBClient.On("ExecuteContext", mock.Anything, queryCreateTemplate,
-		"id-2", "sms", "otp", "ou-1", "OTP", "", `{"body":"b"}`, "{}", "test-deployment").Return(int64(1), nil)
+		"id-2", "sms", "otp", "ou-1", nil, "OTP", "", `{"body":"b"}`, "{}", "test-deployment").Return(int64(1), nil)
 
 	err := s.store.CreateTemplate(depCtx("test-deployment"), templateDAO{
 		ID: "id-2", Channel: ChannelTypeSMS, Handle: "otp", OUID: "ou-1", DisplayName: "OTP",
@@ -158,11 +159,11 @@ func (s *NotificationTemplateStoreTestSuite) TestIsHandleExists() {
 func (s *NotificationTemplateStoreTestSuite) TestUpdateTemplate() {
 	s.mockDBProvider.On("GetConfigDBClient").Return(s.mockDBClient, nil)
 	s.mockDBClient.On("ExecuteContext", mock.Anything, queryUpdateTemplate,
-		"OTP", "desc", `{"subject":"s","body":"b"}`, `{"colorScheme":"dark"}`,
+		"OTP", "desc", `{"subject":"s","body":"b"}`, `{"colorScheme":"dark"}`, "proj-1",
 		"id-1", "email", "test-deployment").Return(int64(1), nil)
 
 	err := s.store.UpdateTemplate(depCtx("test-deployment"), templateDAO{
-		ID: "id-1", Channel: ChannelTypeEmail, DisplayName: "OTP", Description: "desc",
+		ID: "id-1", Channel: ChannelTypeEmail, ProjectID: "proj-1", DisplayName: "OTP", Description: "desc",
 		Content: TemplateContent{Subject: "s", Body: "b"},
 		Design:  &TemplateDesign{ColorScheme: colorSchemeDark},
 	})
@@ -285,7 +286,8 @@ func (s *NotificationTemplateStoreTestSuite) TestCreateTemplate_ExecError() {
 	s.mockDBProvider.On("GetConfigDBClient").Return(s.mockDBClient, nil)
 	s.mockDBClient.On("ExecuteContext", mock.Anything, queryCreateTemplate,
 		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything,
-		mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(int64(0), errors.New("insert failed"))
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(int64(0), errors.New("insert failed"))
 
 	err := s.store.CreateTemplate(depCtx("test-deployment"), templateDAO{
 		ID: "id", Channel: ChannelTypeEmail, Handle: "h", DisplayName: "D",
@@ -318,4 +320,68 @@ func (s *NotificationTemplateStoreTestSuite) TestScopeFollowsContextDeployment()
 	s.Require().ErrorIs(errA, errTemplateNotFound)
 	_, errB := s.store.GetTemplate(depCtx("tenant-b"), ChannelTypeEmail, "id-1")
 	s.Require().ErrorIs(errB, errTemplateNotFound)
+}
+
+func (s *NotificationTemplateStoreTestSuite) TestListTemplatesByProject() {
+	s.mockDBProvider.On("GetConfigDBClient").Return(s.mockDBClient, nil)
+	s.mockDBClient.On("QueryContext", mock.Anything, queryListTemplatesByProject, "email", "proj-1", 10, 0,
+		"test-deployment").
+		Return([]map[string]interface{}{
+			{"id": "a", "channel": "email", "handle": "a", "ou_id": "ou-1", "project_id": "proj-1",
+				"display_name": "A"},
+		}, nil)
+
+	list, err := s.store.ListTemplatesByProject(depCtx("test-deployment"), ChannelTypeEmail, "proj-1", 10, 0)
+	s.Require().NoError(err)
+	s.Require().Len(list, 1)
+	s.Require().Equal("proj-1", list[0].ProjectID)
+}
+
+func (s *NotificationTemplateStoreTestSuite) TestCountTemplatesByProject() {
+	s.mockDBProvider.On("GetConfigDBClient").Return(s.mockDBClient, nil)
+	s.mockDBClient.On("QueryContext", mock.Anything, queryCountTemplatesByProject, "email", "proj-1",
+		"test-deployment").Return([]map[string]interface{}{{"total": int64(2)}}, nil)
+
+	count, err := s.store.CountTemplatesByProject(depCtx("test-deployment"), ChannelTypeEmail, "proj-1")
+	s.Require().NoError(err)
+	s.Require().Equal(2, count)
+}
+
+// TestTemplatesByProject_Errors covers the failures of the project list and count: no database client, a
+// failing query, and an unreadable row.
+func (s *NotificationTemplateStoreTestSuite) TestTemplatesByProject_Errors() {
+	ctx := depCtx("test-deployment")
+	calls := map[string]func() error{
+		"list": func() error {
+			_, err := s.store.ListTemplatesByProject(ctx, ChannelTypeEmail, "proj-1", 10, 0)
+			return err
+		},
+		"count": func() error {
+			_, err := s.store.CountTemplatesByProject(ctx, ChannelTypeEmail, "proj-1")
+			return err
+		},
+	}
+	for name, call := range calls {
+		s.Run(name+"/DBClientError", func() {
+			s.SetupTest()
+			s.mockDBProvider.On("GetConfigDBClient").Return(nil, errors.New("connection error"))
+			s.Require().Error(call())
+		})
+		s.Run(name+"/QueryError", func() {
+			s.SetupTest()
+			s.mockDBProvider.On("GetConfigDBClient").Return(s.mockDBClient, nil)
+			s.mockDBClient.On("QueryContext", mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+				mock.Anything, mock.Anything, mock.Anything).Return(nil, errors.New("query failed")).Maybe()
+			s.mockDBClient.On("QueryContext", mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+				mock.Anything).Return(nil, errors.New("query failed")).Maybe()
+			s.Require().Error(call())
+		})
+	}
+	s.Run("list/InvalidRow", func() {
+		s.SetupTest()
+		s.mockDBProvider.On("GetConfigDBClient").Return(s.mockDBClient, nil)
+		s.mockDBClient.On("QueryContext", mock.Anything, queryListTemplatesByProject, "email", "proj-1", 10, 0,
+			"test-deployment").Return([]map[string]interface{}{{"id": 1}}, nil)
+		s.Require().Error(calls["list"]())
+	})
 }

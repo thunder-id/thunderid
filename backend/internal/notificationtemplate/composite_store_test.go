@@ -319,3 +319,52 @@ func (s *CompositeStoreTestSuite) TestListTemplatesByOUID_DBError() {
 	_, err = composite.CountTemplatesByOUID(s.ctx, ChannelTypeEmail, "ou-1")
 	s.Require().ErrorIs(err, storeErr)
 }
+
+func (s *CompositeStoreTestSuite) TestListTemplatesByProject_MergesDeclaredThenDB() {
+	fileStore := newTestFileStore()
+	loadDeclared(s.T(), fileStore, declaredInProjectYAML)
+	loadDeclared(s.T(), fileStore, declaredAlphaYAML)
+
+	dbItems := []templateDAO{emailDAO("mango", "mango")}
+	db := newNotificationTemplateStoreInterfaceMock(s.T())
+	db.On("CountTemplatesByProject", mock.Anything, ChannelTypeEmail, "proj-1").Return(len(dbItems), nil)
+	db.On("ListTemplatesByProject", mock.Anything, ChannelTypeEmail, "proj-1", mock.Anything, 0).Return(
+		func(_ context.Context, _ ChannelType, _ string, limit, _ int) []templateDAO {
+			return dbItems[:min(limit, len(dbItems))]
+		}, nil)
+	composite := newCompositeStore(fileStore, db)
+
+	list, err := composite.ListTemplatesByProject(s.ctx, ChannelTypeEmail, "proj-1", 100, 0)
+	s.Require().NoError(err)
+	s.Require().Equal([]string{"plum", "mango"}, handlesOf(list))
+
+	count, err := composite.CountTemplatesByProject(s.ctx, ChannelTypeEmail, "proj-1")
+	s.Require().NoError(err)
+	s.Require().Equal(2, count)
+}
+
+func (s *CompositeStoreTestSuite) TestListTemplatesByProject_LimitExceeded() {
+	db := newNotificationTemplateStoreInterfaceMock(s.T())
+	db.On("CountTemplatesByProject", mock.Anything, ChannelTypeEmail, "proj-1").
+		Return(serverconst.MaxCompositeStoreRecords+1, nil)
+	composite := newCompositeStore(newTestFileStore(), db)
+
+	_, err := composite.ListTemplatesByProject(s.ctx, ChannelTypeEmail, "proj-1", 10, 0)
+	s.Require().ErrorIs(err, errResultLimitExceededInCompositeMode)
+
+	_, err = composite.CountTemplatesByProject(s.ctx, ChannelTypeEmail, "proj-1")
+	s.Require().ErrorIs(err, errResultLimitExceededInCompositeMode)
+}
+
+func (s *CompositeStoreTestSuite) TestListTemplatesByProject_DBError() {
+	storeErr := errors.New("db down")
+	db := newNotificationTemplateStoreInterfaceMock(s.T())
+	db.On("CountTemplatesByProject", mock.Anything, ChannelTypeEmail, "proj-1").Return(0, storeErr)
+	composite := newCompositeStore(newTestFileStore(), db)
+
+	_, err := composite.ListTemplatesByProject(s.ctx, ChannelTypeEmail, "proj-1", 10, 0)
+	s.Require().ErrorIs(err, storeErr)
+
+	_, err = composite.CountTemplatesByProject(s.ctx, ChannelTypeEmail, "proj-1")
+	s.Require().ErrorIs(err, storeErr)
+}

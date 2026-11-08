@@ -23,6 +23,9 @@ var (
 	// surfaces ErrorTemplateReadOnly.
 	errDeclarativeTemplate = errors.New("a notification template declared in a file cannot be changed through the API")
 
+	// errProjectRefused rolls back an update whose new project is refused; the service returns the refusal.
+	errProjectRefused = errors.New("the project of the notification template was refused")
+
 	// errResultLimitExceededInCompositeMode is returned when composite store results exceed the configured limit.
 	errResultLimitExceededInCompositeMode = errors.New("result limit exceeded in composite mode")
 )
@@ -431,6 +434,50 @@ var (
 		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "error.notificationtemplateservice.body_too_long_description",
 			DefaultValue: "The template body exceeds the maximum allowed length of {{param(maxLength)}} characters",
+		},
+	}
+
+	// ErrorInvalidProject is returned when a template names a project that does not exist.
+	ErrorInvalidProject = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "NTM-1029",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.notificationtemplateservice.invalid_project",
+			DefaultValue: "Invalid project",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.notificationtemplateservice.invalid_project_description",
+			DefaultValue: "No project exists with the given project ID",
+		},
+	}
+
+	// ErrorOUNotInProject is returned when a template names an organization unit outside its project.
+	ErrorOUNotInProject = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "NTM-1030",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.notificationtemplateservice.ou_not_in_project",
+			DefaultValue: "Organization unit not in project",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.notificationtemplateservice.ou_not_in_project_description",
+			DefaultValue: "The organization unit must belong to the project",
+		},
+	}
+
+	// ErrorProjectRequired is returned when a template is created without a project on a deployment that
+	// requires one.
+	ErrorProjectRequired = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "NTM-1031",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.notificationtemplateservice.project_required",
+			DefaultValue: "Project required",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.notificationtemplateservice.project_required_description",
+			DefaultValue: "A notification template must belong to a project. " +
+				"Set projectId to the project it belongs to",
 		},
 	}
 )

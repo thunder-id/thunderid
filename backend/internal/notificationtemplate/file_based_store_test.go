@@ -201,3 +201,38 @@ func (s *FileBasedStoreTestSuite) TestListTemplatesByOUID() {
 	s.Require().NoError(err)
 	s.Require().Equal(1, count)
 }
+
+// declaredInProjectYAML declares an email template in a project.
+const declaredInProjectYAML = `resource_type: notification_template
+id: plum-email
+channel: email
+handle: plum
+ouId: 01900000-0000-7000-8000-000000000001
+projectId: proj-1
+displayName: Plum
+content:
+  subject: P
+  body: p
+`
+
+func (s *FileBasedStoreTestSuite) TestListTemplatesByProject() {
+	loadDeclared(s.T(), s.fileStore, declaredAlphaYAML)
+	loadDeclared(s.T(), s.fileStore, declaredInProjectYAML)
+
+	list, err := s.fileStore.ListTemplatesByProject(s.ctx, ChannelTypeEmail, "proj-1", 10, 0)
+	s.Require().NoError(err)
+	s.Require().Equal([]string{"plum"}, handlesOf(list))
+	s.Require().Equal("proj-1", list[0].ProjectID)
+
+	beyond, err := s.fileStore.ListTemplatesByProject(s.ctx, ChannelTypeEmail, "proj-1", 10, 5)
+	s.Require().NoError(err)
+	s.Require().Empty(beyond)
+
+	count, err := s.fileStore.CountTemplatesByProject(s.ctx, ChannelTypeEmail, "proj-1")
+	s.Require().NoError(err)
+	s.Require().Equal(1, count)
+
+	count, err = s.fileStore.CountTemplatesByProject(s.ctx, ChannelTypeSMS, "proj-1")
+	s.Require().NoError(err)
+	s.Require().Zero(count)
+}

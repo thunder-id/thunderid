@@ -1,6 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {ProjectScopeProvider} from '@thunderid/contexts';
 import {render, renderHook, screen} from '@thunderid/test-utils';
 import {useTranslation} from 'react-i18next';
 import {describe, expect, it, vi, beforeAll, beforeEach} from 'vitest';
@@ -13,7 +14,11 @@ const {mockParams, mockUseGetTemplate} = vi.hoisted(() => ({
 
 vi.mock('react-router', async () => {
   const actual = await vi.importActual<typeof import('react-router')>('react-router');
-  return {...actual, useParams: () => mockParams.current};
+  return {
+    ...actual,
+    useParams: () => mockParams.current,
+    Navigate: ({to}: {to: string}) => <div data-testid="navigate" data-to={to} />,
+  };
 });
 
 vi.mock('@/api/useGetNotificationTemplate', () => ({default: mockUseGetTemplate}));
@@ -74,6 +79,39 @@ describe('NotificationTemplateEditPage', () => {
 
     expect(screen.getByText(t('notificationTemplates:editor.loadError'))).toBeInTheDocument();
     expect(screen.queryByTestId('template-editor')).not.toBeInTheDocument();
+  });
+
+  it("returns to the channel's list for a template of another project than the selected one", () => {
+    mockUseGetTemplate.mockReturnValue({
+      data: {id: 'tmpl-1', handle: 'otp', displayName: 'OTP', projectId: 'project-2', content: {body: 'b'}},
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    render(
+      <ProjectScopeProvider project={{id: 'project-1'}}>
+        <NotificationTemplateEditPage />
+      </ProjectScopeProvider>,
+    );
+
+    expect(screen.getByTestId('navigate')).toHaveAttribute('data-to', '/notification-templates/email');
+    expect(screen.queryByTestId('template-editor')).not.toBeInTheDocument();
+  });
+
+  it('opens a template of the selected project', () => {
+    mockUseGetTemplate.mockReturnValue({
+      data: {id: 'tmpl-1', handle: 'otp', displayName: 'OTP', projectId: 'project-1', content: {body: 'b'}},
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    render(
+      <ProjectScopeProvider project={{id: 'project-1'}}>
+        <NotificationTemplateEditPage />
+      </ProjectScopeProvider>,
+    );
+
+    expect(screen.getByTestId('template-editor')).toBeInTheDocument();
   });
 
   it('treats an sms route param as the sms channel', () => {

@@ -72,6 +72,8 @@ export interface EmailTemplate {
   id: string;
   /** The organization unit this template belongs to. Set at creation and immutable thereafter. */
   ouId: string;
+  /** The project this template belongs to. */
+  projectId?: string;
   handle: string;
   displayName: string;
   description?: string;
@@ -88,6 +90,8 @@ export interface SmsTemplate {
   id: string;
   /** The organization unit this template belongs to. Set at creation and immutable thereafter. */
   ouId: string;
+  /** The project this template belongs to. */
+  projectId?: string;
   handle: string;
   displayName: string;
   description?: string;
@@ -111,5 +115,7 @@ export interface TemplateSummary {
   handle: string;
   displayName: string;
   description?: string;
+  /** The project this template belongs to. */
+  projectId?: string;
   self?: string;
 }

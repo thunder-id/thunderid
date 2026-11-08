@@ -306,8 +306,9 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	fatalOnError(ctx, logger, err, "Failed to initialize IDPService")
 
 	notifTemplateSvc, _, notifTemplateExporter, err := notificationtemplate.Initialize(
-		mux, cacheManager, ouService, i18nService)
+		mux, cacheManager, ouService, i18nService, projectService)
 	fatalOnError(ctx, logger, err, "Failed to initialize NotificationTemplateService")
+	projectService.AddResourceCheck(notifTemplateSvc.ProjectHasTemplates)
 	exporters = append(exporters, notifTemplateExporter)
 
 	// Register the /connections API as a thin layer over the identity-provider and

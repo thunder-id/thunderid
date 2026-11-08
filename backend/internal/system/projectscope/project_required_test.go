@@ -13,10 +13,11 @@ import (
 
 func TestProjectRequired(t *testing.T) {
 	for resourceType, expected := range map[security.ResourceType]bool{
-		security.ResourceTypeApplication: false,
-		security.ResourceTypeAgent:       false,
-		security.ResourceTypeFlow:        false,
-		security.ResourceTypeGroup:       false,
+		security.ResourceTypeApplication:          false,
+		security.ResourceTypeAgent:                false,
+		security.ResourceTypeFlow:                 false,
+		security.ResourceTypeGroup:                false,
+		security.ResourceTypeNotificationTemplate: true,
 	} {
 		assert.Equal(t, expected, ProjectRequired(resourceType), resourceType)
 	}

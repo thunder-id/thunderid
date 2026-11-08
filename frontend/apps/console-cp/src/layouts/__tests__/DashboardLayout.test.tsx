@@ -204,7 +204,7 @@ describe('DashboardLayout', () => {
     expect(screen.getByTestId('project-switcher')).toBeInTheDocument();
   });
 
-  it("lists the selected project's applications, agents, resource servers, flows and design under it, with what is not deployed yet", () => {
+  it("lists the selected project's applications, agents, resource servers, flows, design and notifications under it, with what is not deployed yet", () => {
     mockUseProjectSelection.mockReturnValue(inShop());
     mockProjectChanges = {application: 2};
     render(<DashboardLayout />);
@@ -217,6 +217,7 @@ describe('DashboardLayout', () => {
     expect(screen.getAllByText('navigation:pages.resourceServers')).toHaveLength(1);
     expect(screen.getAllByText('navigation:pages.flows')).toHaveLength(1);
     expect(screen.getAllByText('navigation:pages.design')).toHaveLength(1);
+    expect(screen.getAllByText('navigation:pages.notifications')).toHaveLength(1);
     // Nothing of the organization's own is listed inside a project.
     expect(screen.queryByText('navigation:pages.home')).not.toBeInTheDocument();
     expect(screen.queryByText('navigation:pages.administrators')).not.toBeInTheDocument();
@@ -292,6 +293,15 @@ describe('DashboardLayout', () => {
     render(<DashboardLayout />);
 
     const item = screen.getByText('navigation:pages.design').closest('.MuiListItemButton-root')!;
+    expect(item).toHaveTextContent('navigation:badges.undeployed');
+  });
+
+  it("badges the selected project's notifications when its templates are not deployed yet", () => {
+    mockUseProjectSelection.mockReturnValue(inShop());
+    mockProjectChanges = {notification_template: 1};
+    render(<DashboardLayout />);
+
+    const item = screen.getByText('navigation:pages.notifications').closest('.MuiListItemButton-root')!;
     expect(item).toHaveTextContent('navigation:badges.undeployed');
   });
 
@@ -413,11 +423,13 @@ describe('DashboardLayout', () => {
     expect(screen.getByText('navigation:pages.administrators')).toBeInTheDocument();
     expect(screen.getByText('navigation:pages.userTypes')).toBeInTheDocument();
     expect(screen.getByText('navigation:pages.connections')).toBeInTheDocument();
-    // Applications, agents, flows and themes belong to projects, so the organization lists none of them.
+    // Applications, agents, flows, themes and notification templates belong to projects, so the organization
+    // lists none of them.
     expect(screen.queryByText('navigation:pages.applications')).not.toBeInTheDocument();
     expect(screen.queryByText('navigation:pages.agents')).not.toBeInTheDocument();
     expect(screen.queryByText('navigation:pages.flows')).not.toBeInTheDocument();
     expect(screen.queryByText('navigation:pages.design')).not.toBeInTheDocument();
+    expect(screen.queryByText('navigation:pages.notifications')).not.toBeInTheDocument();
     expect(screen.getByText('navigation:pages.resourceServers')).toBeInTheDocument();
     expect(screen.getByText('navigation:pages.gateways')).toBeInTheDocument();
     // Users and groups are listed in projects as well as the organization.

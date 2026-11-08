@@ -132,6 +132,7 @@ type notificationTemplateDeclarativeYAML struct {
 	Handle      string `yaml:"handle"`
 	OUID        string `yaml:"ouId,omitempty"`
 	OUHandle    string `yaml:"ouHandle,omitempty"`
+	ProjectID   string `yaml:"projectId,omitempty"`
 	DisplayName string `yaml:"displayName"`
 	Description string `yaml:"description"`
 	Content     struct {
@@ -1606,6 +1607,23 @@ func (s *importService) importCredentialConfiguration(
 	return successOutcome(resourceTypeCredentialConfiguration, created.ID, created.Handle, operationCreate)
 }
 
+// validateImportedTemplate validates a notification template document as a create. A template exported
+// before templates had projects names none; when the import may update an existing template, which keeps
+// its project as UpdateTemplate does, the document is validated in that project.
+func (s *importService) validateImportedTemplate(ctx context.Context, channel notificationtemplate.ChannelType,
+	createReq notificationtemplate.CreateTemplateRequest, mayUpdate bool) *tidcommon.ServiceError {
+	svcErr := s.notifTemplateService.ValidateTemplate(ctx, channel, createReq)
+	if svcErr == nil || !mayUpdate || svcErr.Code != notificationtemplate.ErrorProjectRequired.Code {
+		return svcErr
+	}
+	existing, lookupErr := s.notifTemplateService.GetTemplateByHandle(ctx, channel, createReq.Handle)
+	if lookupErr != nil || existing == nil || existing.ProjectID == "" {
+		return svcErr
+	}
+	createReq.ProjectID = existing.ProjectID
+	return s.notifTemplateService.ValidateTemplate(ctx, channel, createReq)
+}
+
 // importNotificationTemplate imports a notification_template document.
 // Templates are keyed by (channel, handle); with upsert, existing templates are matched by handle and updated.
 func (s *importService) importNotificationTemplate(
@@ -1637,6 +1655,7 @@ func (s *importService) importNotificationTemplate(
 		ID:          raw.ID,
 		Handle:      raw.Handle,
 		OUID:        raw.OUID,
+		ProjectID:   raw.ProjectID,
 		DisplayName: raw.DisplayName,
 		Description: raw.Description,
 		Design:      design,
@@ -1646,7 +1665,8 @@ func (s *importService) importNotificationTemplate(
 	// Validate before the handle lookup so an invalid or missing handle surfaces as a validation
 	// failure, consistently between a dry run and the real apply, rather than being reported by the
 	// handle-based lookup (which would otherwise mislabel it as an update).
-	if svcErr := s.notifTemplateService.ValidateTemplate(ctx, channel, createReq); svcErr != nil {
+	if svcErr := s.validateImportedTemplate(
+		ctx, channel, createReq, dryRun || options.IsUpsertEnabled()); svcErr != nil {
 		return serviceErrorOutcome(resourceTypeNotificationTemplate, "", raw.Handle, operationCreate, svcErr)
 	}
 
@@ -1717,6 +1737,7 @@ func (s *importService) importNotificationTemplate(
 
 	updated, updErr := s.notifTemplateService.UpdateTemplate(ctx, channel, existingID,
 		notificationtemplate.UpdateTemplateRequest{
+			ProjectID:   raw.ProjectID,
 			DisplayName: raw.DisplayName,
 			Description: raw.Description,
 			Design:      design,

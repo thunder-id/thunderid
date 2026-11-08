@@ -627,23 +627,27 @@ export default function App(): JSX.Element {
                   path={RouteConfig.notificationTemplates.list()}
                   element={
                     <ProtectedRoute>
-                      <DashboardLayout />
+                      <SelectedProjectScope>
+                        <DashboardLayout />
+                      </SelectedProjectScope>
                     </ProtectedRoute>
                   }
                 >
                   <Route index element={<Navigate to={RouteConfig.notificationTemplates.channel('email')} replace />} />
-                  <Route path=":channel" element={<NotificationTemplatesListPage />} />
+                  <Route path=":channel" element={<NotificationTemplatesListPage createInProjectsOnly />} />
                   <Route path=":channel/:id" element={<NotificationTemplateEditPage />} />
                 </Route>
                 <Route
                   path={RouteConfig.notificationTemplates.create(':channel' as NotificationChannel)}
                   element={
                     <ProtectedRoute>
-                      <FullScreenLayout />
+                      <SelectedProjectScope>
+                        <FullScreenLayout />
+                      </SelectedProjectScope>
                     </ProtectedRoute>
                   }
                 >
-                  <Route index element={<NotificationTemplateCreatePage />} />
+                  <Route index element={<NotificationTemplateCreatePage createInProjectsOnly />} />
                 </Route>
               </Routes>
             </Suspense>

@@ -279,6 +279,25 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
       icon: <Palette />,
       path: RouteConfig.design.list(),
     };
+    const notifications: NavRoute = {
+      id: 'notifications',
+      text: t('navigation:pages.notifications', 'Notifications'),
+      icon: <Mail />,
+      children: [
+        {
+          id: 'email-templates',
+          text: t('navigation:pages.emailTemplates', 'Email templates'),
+          icon: <Mail />,
+          path: RouteConfig.notificationTemplates.channel('email'),
+        },
+        {
+          id: 'sms-templates',
+          text: t('navigation:pages.smsTemplates', 'SMS templates'),
+          icon: <MessageSquare />,
+          path: RouteConfig.notificationTemplates.channel('sms'),
+        },
+      ],
+    };
     const badgeOf = (count: number | undefined): string | undefined =>
       count ? t('navigation:badges.undeployed', '{{count}} undeployed', {count}) : undefined;
     // On a gateway's pages the navigation is the gateway's, the same from wherever it was opened: a
@@ -430,7 +449,10 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
         },
         {
           category: t('navigation:categories.customize', 'Customize'),
-          routes: [{...design, badge: badgeOf((undeployed.layout ?? 0) + (undeployed.theme ?? 0))}],
+          routes: [
+            {...design, badge: badgeOf((undeployed.layout ?? 0) + (undeployed.theme ?? 0))},
+            {...notifications, badge: badgeOf(undeployed.notification_template)},
+          ],
         },
       ];
     }
@@ -486,25 +508,6 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
             path: RouteConfig.connections.list(),
           },
           {
-            id: 'notifications',
-            text: t('navigation:pages.notifications', 'Notifications'),
-            icon: <Mail />,
-            children: [
-              {
-                id: 'email-templates',
-                text: t('navigation:pages.emailTemplates', 'Email templates'),
-                icon: <Mail />,
-                path: RouteConfig.notificationTemplates.channel('email'),
-              },
-              {
-                id: 'sms-templates',
-                text: t('navigation:pages.smsTemplates', 'SMS templates'),
-                icon: <MessageSquare />,
-                path: RouteConfig.notificationTemplates.channel('sms'),
-              },
-            ],
-          },
-          {
             id: 'translations',
             text: t('navigation:pages.translations'),
             icon: <Languages />,
@@ -538,6 +541,7 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
     undeployed.flow,
     undeployed.layout,
     undeployed.theme,
+    undeployed.notification_template,
     gateway,
     gatewayId,
     gatewayIndex,
@@ -663,7 +667,14 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
                   route.children ? (
                     <Sidebar.Item key={route.id} id={route.id}>
                       <Sidebar.ItemIcon>{route.icon}</Sidebar.ItemIcon>
-                      <Sidebar.ItemLabel>{route.text}</Sidebar.ItemLabel>
+                      <Sidebar.ItemLabel sx={route.badge ? {flex: '0 0 auto', overflow: 'visible'} : undefined}>
+                        {route.text}
+                      </Sidebar.ItemLabel>
+                      {route.badge && (
+                        <Sidebar.ItemBadge color="warning" sx={{ml: 1, flexShrink: 0, '& .MuiChip-label': {px: 0.75}}}>
+                          {route.badge}
+                        </Sidebar.ItemBadge>
+                      )}
                       {route.children.map((child) => (
                         <Sidebar.Item key={child.id} id={child.id} link={<NavigateLink to={child.path ?? ''} />}>
                           <Sidebar.ItemIcon>{child.icon}</Sidebar.ItemIcon>
