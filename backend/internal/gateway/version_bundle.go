@@ -74,6 +74,12 @@ const maskedValue = "********"
 // resourceTypeUser is the resource type an export writes a user under.
 const resourceTypeUser = "user"
 
+// resourceTypeRole and resourceTypeGroup are the resource types an export writes a role and a group under.
+const (
+	resourceTypeRole  = "role"
+	resourceTypeGroup = "group"
+)
+
 // usernameAttribute is the attribute a user is known by.
 const usernameAttribute = "username"
 

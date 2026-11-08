@@ -26,8 +26,8 @@ const (
 	systemFlowInputAssignmentOU        = "targetAssignmentOuId"
 )
 
-// maxRemovedAssignments is the most assignments a single removal request may name.
-const maxRemovedAssignments = 100
+// MaxRemovedAssignments is the most assignments a single removal request may name.
+const MaxRemovedAssignments = 100
 
 // The system flow a role update runs before it drops a permission, and the input carrying the role's new
 // permission set.

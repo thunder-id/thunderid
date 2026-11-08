@@ -1044,6 +1044,117 @@ func TestApplyRemovesWhatTheNewVersionDropped(t *testing.T) {
 	assert.Equal(t, [2]int{2, 1}, [2]int{held.AppliedVersion, held.PreviousVersion})
 }
 
+// roleWith is a role assigned to the given users in ou-1.
+func roleWith(users ...string) string {
+	document := "resource_type: role\nid: role-1\nname: role-1\nouId: ou-1\nassignments:\n"
+	for _, user := range users {
+		document += "  - id: " + user + "\n    type: user\n    ouId: ou-1\n"
+	}
+	return document
+}
+
+// groupWith is a group with the given users as members.
+func groupWith(users ...string) string {
+	document := "resource_type: group\nid: group-1\nname: group-1\nmembers:\n"
+	for _, user := range users {
+		document += "  - id: " + user + "\n    type: user\n    display: " + user + "\n"
+	}
+	return document
+}
+
+// An import never takes anyone off a role or a group, so who the version stopped listing is removed on
+// its own, before any resource is.
+func TestApplyTakesOffWhoARoleOrGroupNoLongerLists(t *testing.T) {
+	f := newVersionFixture(t)
+	f.exporter.response = documents(roleWith("user-1", "user-2"), groupWith("user-1", "user-2"), unit("ou-9"))
+	_, svcErr := f.svc.Capture(context.Background(), CaptureRequest{})
+	require.Nil(t, svcErr)
+	_, svcErr = f.svc.Apply(context.Background(), "gw-1", ApplyRequest{})
+	require.Nil(t, svcErr)
+	assert.Empty(t, f.client.last().Deletions, "a role or group the gateway did not hold has no one to take off")
+	f.exporter.response = documents(roleWith("user-2"), groupWith("user-2"))
+	_, svcErr = f.svc.Capture(context.Background(), CaptureRequest{})
+	require.Nil(t, svcErr)
+
+	result, svcErr := f.svc.Apply(context.Background(), "gw-1", ApplyRequest{})
+
+	require.Nil(t, svcErr)
+	assert.Equal(t, []gatewayDeletion{
+		{ResourceType: "role_assignment", ID: "role-1",
+			Members: []gatewayMember{{ID: "user-1", Type: "user", OUID: "ou-1"}}},
+		{ResourceType: "group_member", ID: "group-1", Members: []gatewayMember{{ID: "user-1", Type: "user"}}},
+		{ResourceType: "organization_unit", ID: "ou-9"},
+	}, f.client.last().Deletions)
+	assert.True(t, result.Complete)
+	master, _ := f.svc.GetMaster(context.Background(), "gw-1")
+	assert.Equal(t, MasterSummary{Deployed: 2, Removed: 1}, master.Summary,
+		"a removal of members was recorded as a resource of its own")
+}
+
+// A role the gateway did not take a removed assignee off is recorded refused, with the document it
+// held before, so the next apply sends the removal again.
+func TestARefusedMemberRemovalIsSentAgain(t *testing.T) {
+	f := newVersionFixture(t)
+	f.exporter.response = documents(roleWith("user-1", "user-2"))
+	_, svcErr := f.svc.Capture(context.Background(), CaptureRequest{})
+	require.Nil(t, svcErr)
+	_, svcErr = f.svc.Apply(context.Background(), "gw-1", ApplyRequest{})
+	require.Nil(t, svcErr)
+	f.exporter.response = documents(roleWith("user-2"))
+	_, svcErr = f.svc.Capture(context.Background(), CaptureRequest{})
+	require.Nil(t, svcErr)
+	f.client.imported = answerOf(
+		importOutcome{ResourceType: "role", ResourceID: "role-1", Operation: "update", Status: outcomeSuccess},
+		importOutcome{ResourceType: "role_assignment", ResourceID: "role-1", Operation: operationDeleted,
+			Status: outcomeFailed, Code: "ROL-1040", Message: "mandated"})
+
+	result, svcErr := f.svc.Apply(context.Background(), "gw-1", ApplyRequest{})
+
+	require.Nil(t, svcErr)
+	assert.True(t, result.Recorded)
+	assert.False(t, result.Complete)
+	master, _ := f.svc.GetMaster(context.Background(), "gw-1")
+	entry, _ := entryOf(master, "role/role-1")
+	assert.Equal(t, EntryFailed, entry.State)
+	assert.Equal(t, "ROL-1040", entry.Failure.Code)
+	assert.Equal(t, contentHash(roleWith("user-1", "user-2")), entry.ContentHash)
+	assert.Equal(t, strings.TrimSpace(roleWith("user-1", "user-2")), strings.TrimSpace(master.Resources))
+
+	f.client.imported = nil
+	_, svcErr = f.svc.Apply(context.Background(), "gw-1", ApplyRequest{})
+
+	require.Nil(t, svcErr)
+	assert.Equal(t, []gatewayDeletion{{ResourceType: "role_assignment", ID: "role-1",
+		Members: []gatewayMember{{ID: "user-1", Type: "user", OUID: "ou-1"}}}}, f.client.last().Deletions)
+	master, _ = f.svc.GetMaster(context.Background(), "gw-1")
+	entry, _ = entryOf(master, "role/role-1")
+	assert.Equal(t, EntryDeployed, entry.State)
+}
+
+// A role captured before assignments named their organization unit lists them without one. An assignee
+// still listed is kept, and one dropped is taken off in the unit owning the role.
+func TestMemberRemovalsReadAssignmentsWithoutAUnit(t *testing.T) {
+	unitless := strings.ReplaceAll(roleWith("user-1", "user-2"), "    ouId: ou-1\n", "")
+
+	assert.Equal(t, []gatewayDeletion{{ResourceType: "role_assignment", ID: "role-1",
+		Members: []gatewayMember{{ID: "user-2", Type: "user", OUID: "ou-1"}}}},
+		memberRemovals(parseBundle(unitless), parseBundle(roleWith("user-1"))))
+	assert.Empty(t, memberRemovals(parseBundle(roleWith("user-1")),
+		parseBundle(strings.ReplaceAll(roleWith("user-1"), "    ouId: ou-1\n", ""))),
+		"an assignee listed without a unit was taken off")
+}
+
+func TestMemberRemovalsLeaveAloneWhatCannotBeRead(t *testing.T) {
+	unreadable := "resource_type: role\nid: role-1\nname: role-1\nassignments: [unclosed\n"
+	held := parseBundle(joinBundle([]string{roleWith("user-1"), groupWith("user-1")}))
+
+	assert.Empty(t, memberRemovals(held, parseBundle(unreadable)), "an unreadable document took everyone off")
+	assert.Empty(t, memberRemovals(parseBundle(unreadable), parseBundle(roleWith())))
+	assert.Empty(t, memberRemovals(held,
+		parseBundle(strings.ReplaceAll(groupWith("user-1"), "display: user-1", "display: renamed"))),
+		"a member shown by another name was taken off")
+}
+
 // Applying the version a gateway already holds leaves its revert target alone.
 func TestReapplyingTheHeldVersionKeepsTheRevertTarget(t *testing.T) {
 	f := newVersionFixture(t)

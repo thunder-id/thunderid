@@ -667,10 +667,18 @@ type ImportRequest struct {
 	Deletions []ResourceDeletion     `json:"deletions,omitempty"`
 }
 
-// ResourceDeletion names a resource an import should remove.
+// ResourceDeletion names a resource an import should remove, or the members to take off a role or group.
 type ResourceDeletion struct {
-	ResourceType string `json:"resourceType"`
-	ID           string `json:"id"`
+	ResourceType string          `json:"resourceType"`
+	ID           string          `json:"id"`
+	Members      []RemovedMember `json:"members,omitempty"`
+}
+
+// RemovedMember is an assignee to take off a role, or a member to take off a group.
+type RemovedMember struct {
+	ID   string `json:"id"`
+	Type string `json:"type"`
+	OUID string `json:"ouId,omitempty"`
 }
 
 // ImportOptions are the options of an import request.

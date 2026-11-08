@@ -755,6 +755,19 @@ func (f *fakeRoleService) UpdateRoleWithPermissions(
 type fakeRoleAssignmentService struct {
 	assignments   []role.RoleAssignment
 	assignmentErr *tidcommon.ServiceError
+	removals      []roleAssignmentRemoval
+	removalErr    *tidcommon.ServiceError
+	held          []role.RoleAssignmentWithDisplay
+	lookupErr     *tidcommon.ServiceError
+	// refused refuses taking off an assignee assigned in the organization unit, as the role service would.
+	refused map[string]*tidcommon.ServiceError
+}
+
+// roleAssignmentRemoval is one call taking assignees off a role in an organization unit.
+type roleAssignmentRemoval struct {
+	roleID      string
+	ouID        string
+	assignments []role.RoleAssignment
 }
 
 func (f *fakeRoleAssignmentService) AddAssigneesToRoles(
@@ -771,6 +784,10 @@ type fakeGroupService struct {
 	created   []group.CreateGroupRequest
 	members   []group.Member
 	memberErr *tidcommon.ServiceError
+	removed   []group.Member
+	removeErr *tidcommon.ServiceError
+	held      []group.Member
+	lookupErr *tidcommon.ServiceError
 }
 
 func (f *fakeGroupService) CreateGroup(

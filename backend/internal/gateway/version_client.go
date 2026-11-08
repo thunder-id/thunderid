@@ -38,10 +38,19 @@ type gatewayImportOptions struct {
 	Target          string `json:"target"`
 }
 
-// gatewayDeletion asks the gateway to remove one resource by id.
+// gatewayDeletion asks the gateway to remove one resource by id, or, for a member removal, to take
+// the members it names off the role or group with that id.
 type gatewayDeletion struct {
-	ResourceType string `json:"resourceType"`
-	ID           string `json:"id"`
+	ResourceType string          `json:"resourceType"`
+	ID           string          `json:"id"`
+	Members      []gatewayMember `json:"members,omitempty"`
+}
+
+// gatewayMember is an assignee of a role or a member of a group, as a role or group document names it.
+type gatewayMember struct {
+	ID   string `json:"id" yaml:"id"`
+	Type string `json:"type" yaml:"type"`
+	OUID string `json:"ouId,omitempty" yaml:"ouId,omitempty"`
 }
 
 // errGatewayRefused is a gateway answering an import with something other than success.

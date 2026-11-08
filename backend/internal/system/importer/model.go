@@ -34,6 +34,17 @@ type ImportRequest struct {
 type ResourceDeletion struct {
 	ResourceType string `json:"resourceType"`
 	ID           string `json:"id"`
+	// Members names, for a role_assignment or group_member removal, who to take off the role or group
+	// named by ID. The role or group itself stays.
+	Members []RemovedMember `json:"members,omitempty"`
+}
+
+// RemovedMember is an assignee taken off a role, or a member taken off a group, during an import.
+type RemovedMember struct {
+	ID   string `json:"id"`
+	Type string `json:"type"`
+	// OUID is the organization unit a role assignment was made in. A role's assignee needs it.
+	OUID string `json:"ouId,omitempty"`
 }
 
 // ImportOptions controls runtime import behavior.

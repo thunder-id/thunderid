@@ -391,6 +391,88 @@ func (_c *RoleAssignmentServiceInterfaceMock_DeleteAssignmentsInOU_Call) RunAndR
 	return _c
 }
 
+// GetDirectAssignment provides a mock function for the type RoleAssignmentServiceInterfaceMock
+func (_mock *RoleAssignmentServiceInterfaceMock) GetDirectAssignment(ctx context.Context, id string, ouID string, assigneeID string) (*RoleAssignmentWithDisplay, *common.ServiceError) {
+	ret := _mock.Called(ctx, id, ouID, assigneeID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetDirectAssignment")
+	}
+
+	var r0 *RoleAssignmentWithDisplay
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string) (*RoleAssignmentWithDisplay, *common.ServiceError)); ok {
+		return returnFunc(ctx, id, ouID, assigneeID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string) *RoleAssignmentWithDisplay); ok {
+		r0 = returnFunc(ctx, id, ouID, assigneeID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*RoleAssignmentWithDisplay)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, id, ouID, assigneeID)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// RoleAssignmentServiceInterfaceMock_GetDirectAssignment_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetDirectAssignment'
+type RoleAssignmentServiceInterfaceMock_GetDirectAssignment_Call struct {
+	*mock.Call
+}
+
+// GetDirectAssignment is a helper method to define mock.On call
+//   - ctx context.Context
+//   - id string
+//   - ouID string
+//   - assigneeID string
+func (_e *RoleAssignmentServiceInterfaceMock_Expecter) GetDirectAssignment(ctx any, id any, ouID any, assigneeID any) *RoleAssignmentServiceInterfaceMock_GetDirectAssignment_Call {
+	return &RoleAssignmentServiceInterfaceMock_GetDirectAssignment_Call{Call: _e.mock.On("GetDirectAssignment", ctx, id, ouID, assigneeID)}
+}
+
+func (_c *RoleAssignmentServiceInterfaceMock_GetDirectAssignment_Call) Run(run func(ctx context.Context, id string, ouID string, assigneeID string)) *RoleAssignmentServiceInterfaceMock_GetDirectAssignment_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		var arg3 string
+		if args[3] != nil {
+			arg3 = args[3].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *RoleAssignmentServiceInterfaceMock_GetDirectAssignment_Call) Return(roleAssignmentWithDisplay *RoleAssignmentWithDisplay, serviceError *common.ServiceError) *RoleAssignmentServiceInterfaceMock_GetDirectAssignment_Call {
+	_c.Call.Return(roleAssignmentWithDisplay, serviceError)
+	return _c
+}
+
+func (_c *RoleAssignmentServiceInterfaceMock_GetDirectAssignment_Call) RunAndReturn(run func(ctx context.Context, id string, ouID string, assigneeID string) (*RoleAssignmentWithDisplay, *common.ServiceError)) *RoleAssignmentServiceInterfaceMock_GetDirectAssignment_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetResourceDependencies provides a mock function for the type RoleAssignmentServiceInterfaceMock
 func (_mock *RoleAssignmentServiceInterfaceMock) GetResourceDependencies(ctx context.Context, resourceType string, id string) ([]resourcedependency.ResourceDependency, error) {
 	ret := _mock.Called(ctx, resourceType, id)

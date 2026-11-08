@@ -2167,3 +2167,38 @@ func (suite *RoleAssignmentServiceTestSuite) TestListAssignableRoles_SharedRoleL
 		suite.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
 	})
 }
+
+// A direct assignment is reported for the assignee holding the role in the unit and none for one that does
+// not, and a missing role is reported as one.
+func (suite *RoleAssignmentServiceTestSuite) TestGetDirectAssignment() {
+	direct := []RoleAssignment{{ID: testUserID1, Type: assigneeTypeEntity, OUID: testOwnerOU}}
+	suite.mockStore.On("IsRoleExist", mock.Anything, "role1").Return(true, nil)
+	suite.mockStore.On("IsRoleExist", mock.Anything, "missing").Return(false, nil)
+	suite.mockStore.On("IsRoleExist", mock.Anything, "broken").Return(false, errors.New("store error"))
+	suite.mockStore.On("GetDirectAssignments", mock.Anything, "role1", testOwnerOU, []string{testUserID1}).
+		Return(direct, nil)
+	suite.mockStore.On("GetDirectAssignments", mock.Anything, "role1", testOwnerOU, []string{"other"}).
+		Return([]RoleAssignment{}, nil)
+	suite.mockEntityService.On("GetEntitiesByIDs", mock.Anything, []string{testUserID1}).
+		Return([]providers.Entity{ownedUser()}, nil)
+
+	held, err := suite.service.GetDirectAssignment(context.Background(), "role1", testOwnerOU, testUserID1)
+	suite.Require().Nil(err)
+	suite.Require().NotNil(held)
+	suite.Equal(testUserID1, held.ID)
+
+	held, err = suite.service.GetDirectAssignment(context.Background(), "role1", testOwnerOU, "other")
+	suite.Nil(err)
+	suite.Nil(held)
+
+	for id, code := range map[string]string{
+		"":        ErrorMissingRoleID.Code,
+		"missing": ErrorRoleNotFound.Code,
+		"broken":  tidcommon.InternalServerError.Code,
+	} {
+		held, err = suite.service.GetDirectAssignment(context.Background(), id, testOwnerOU, testUserID1)
+		suite.Nil(held, id)
+		suite.Require().NotNil(err, id)
+		suite.Equal(code, err.Code, id)
+	}
+}

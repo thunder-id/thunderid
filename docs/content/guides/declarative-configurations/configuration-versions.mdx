@@ -137,6 +137,13 @@ and the removal of what the master records that the version no longer has. A res
 holds as the version has it is not sent again, and the control plane never removes something it did
 not deploy. An apply with nothing to send does not call the gateway.
 
+A role or group the version no longer lists someone in is sent with the removal of that assignee or
+member. Only who the master records is taken off: an assignee or member the gateway added itself,
+such as through a registration flow, stays. When the gateway refuses the removal, the master records
+the role or group as `failed`, and the next apply sends the removal again. A gateway on a release
+without these removals refuses them as unsupported, so the role or group stays `failed` until the
+gateway is upgraded. These removals do not count toward `gateway.removal_confirmation_threshold`.
+
 - **A dry run records nothing.** With `"dryRun": true`, the gateway imports as a dry run and the answer
   shows what would happen.
 - **The gateway's own report is returned.** `import` in the answer lists each resource the gateway

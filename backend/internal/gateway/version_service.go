@@ -802,8 +802,11 @@ func (s *versionService) write(ctx context.Context, gw *Gateway, target *Version
 
 	// A removal that an update in this apply frees goes after the update, once the gateway accepted it,
 	// and a removal goes before those of what it needs.
-	removals := orderedRemovals(sent.deletions, parseBundle(previous.Resources))
-	now, after, awaiting := deferredRemovals(removals, parseBundle(previous.Resources), sentDocuments)
+	heldDocuments := parseBundle(previous.Resources)
+	removals := orderedRemovals(sent.deletions, heldDocuments)
+	now, after, awaiting := deferredRemovals(removals, heldDocuments, sentDocuments)
+	// Who a role or group document no longer lists is taken off it before any resource is removed.
+	now = append(memberRemovals(heldDocuments, sentDocuments), now...)
 	request := gatewayImportRequest{
 		Content:   sent.content,
 		Variables: variables,
