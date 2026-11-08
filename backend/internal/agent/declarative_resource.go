@@ -21,6 +21,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/inboundclient"
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
+	"github.com/thunder-id/thunderid/internal/sharing"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -34,26 +35,28 @@ const (
 
 // agentExporter implements declarativeresource.ResourceExporter for agents.
 type agentExporter struct {
-	service       AgentServiceInterface
-	entityService entity.EntityServiceInterface
-	logger        *log.Logger
+	service        AgentServiceInterface
+	entityService  entity.EntityServiceInterface
+	sharingService sharing.SharingServiceInterface
+	logger         *log.Logger
 	// references writes a credential as a secret reference rather than a template placeholder, as a
 	// control plane's export does for every other credential.
 	references bool
 }
 
-func newAgentExporter(service AgentServiceInterface, entityService entity.EntityServiceInterface) *agentExporter {
-	return &agentExporter{service: service, entityService: entityService,
+func newAgentExporter(service AgentServiceInterface, entityService entity.EntityServiceInterface,
+	sharingService sharing.SharingServiceInterface) *agentExporter {
+	return &agentExporter{service: service, entityService: entityService, sharingService: sharingService,
 		logger: log.GetLogger().With(log.String(log.LoggerKeyComponentName, "AgentExporter"))}
 }
 
 // NewAgentExporterForTest exposes the exporter constructor for test packages.
 func NewAgentExporterForTest(service AgentServiceInterface,
-	entityService entity.EntityServiceInterface) *agentExporter {
+	entityService entity.EntityServiceInterface, sharingService sharing.SharingServiceInterface) *agentExporter {
 	if !testing.Testing() {
 		panic("only for tests!")
 	}
-	return newAgentExporter(service, entityService)
+	return newAgentExporter(service, entityService, sharingService)
 }
 
 // WriteValueReferences sets whether credentials are written as references or as placeholders.
@@ -132,6 +135,15 @@ func (e *agentExporter) GetResourceByID(
 	}
 	if len(held) > 0 {
 		a.Credentials = declarativeresource.CredentialPlaceholders(resourceTypeAgent, a.ID, held, e.references)
+	}
+	// An export that silently lost the agent's sharing would declare an agent no other unit can use, so
+	// a failure to read it fails the export.
+	replayable, sharingErr := e.sharingService.ExportPolicies(ctx, agentSharingType, id)
+	if sharingErr != nil {
+		return nil, "", &tidcommon.InternalServerError
+	}
+	for _, r := range replayable {
+		a.SharingPolicies = append(a.SharingPolicies, r.Request)
 	}
 	return a, a.Display, nil
 }
@@ -252,6 +264,54 @@ func makeAgentDeclarativeConfig(agentSvc AgentServiceInterface) entity.Declarati
 		Directory: "agents",
 		Category:  providers.EntityCategoryAgent,
 		Parser:    makeAgentEntityParser(agentSvc),
+	}
+}
+
+// makeAgentSharingConfig returns the loader configuration the sharing framework reads an agent's declared
+// policies with. A policy is carried inside the agent document that declares it.
+func makeAgentSharingConfig(agentSvc AgentServiceInterface) sharing.DeclarativeLoaderConfig {
+	return sharing.DeclarativeLoaderConfig{
+		ResourceType:  agentSharingType,
+		DirectoryName: "agents",
+		Parser:        makeAgentSharingParser(agentSvc),
+	}
+}
+
+// agentSharingDocument is the part of an agent document the sharing framework reads.
+type agentSharingDocument struct {
+	ID              string                  `yaml:"id"`
+	SharingPolicies []sharing.PolicyRequest `yaml:"sharingPolicies,omitempty"`
+}
+
+// makeAgentSharingParser returns a parser that reads the sharing half of one agent document. The policies
+// are declared against the unit the agent was loaded into, which the document may name by handle.
+func makeAgentSharingParser(
+	agentSvc AgentServiceInterface,
+) func([]byte) (*sharing.DeclaredResourcePolicies, error) {
+	return func(data []byte) (*sharing.DeclaredResourcePolicies, error) {
+		var doc agentSharingDocument
+		if err := yaml.Unmarshal(data, &doc); err != nil {
+			return nil, fmt.Errorf("failed to parse agent YAML: %w", err)
+		}
+		if len(doc.SharingPolicies) == 0 {
+			return &sharing.DeclaredResourcePolicies{ResourceID: doc.ID}, nil
+		}
+
+		a, svcErr := agentSvc.GetAgent(security.WithRuntimeContext(context.Background()), doc.ID, true)
+		if svcErr != nil {
+			return nil, fmt.Errorf("failed to read agent '%s' for its sharing policies: %s",
+				doc.ID, svcErr.Error.DefaultValue)
+		}
+		name := a.Display
+		if name == "" {
+			name = a.ID
+		}
+		return &sharing.DeclaredResourcePolicies{
+			ResourceID:   a.ID,
+			ResourceName: name,
+			OwningOUID:   a.OUID,
+			Policies:     doc.SharingPolicies,
+		}, nil
 	}
 }
 

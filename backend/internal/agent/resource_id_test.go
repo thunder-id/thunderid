@@ -13,7 +13,7 @@ import (
 
 // A capture names an agent's values from the agent it is handed, so the exporter must read the ID from it.
 func TestAgentExporterReadsTheResourceID(t *testing.T) {
-	exporter := newAgentExporter(nil, nil)
+	exporter := newAgentExporter(nil, nil, nil)
 
 	assert.Equal(t, "agent-1", exporter.GetResourceID(&model.AgentGetResponse{ID: "agent-1"}))
 	assert.Empty(t, exporter.GetResourceID("not an agent"))

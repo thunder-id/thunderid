@@ -3564,6 +3564,24 @@ func (suite *RoleAPITestSuite) TestSharedRole_SharedAppsAssignmentsInTheOUAreNot
 	suite.Contains(suite.clientCredentialsScopes(declSharedChildA, clientID, secret), sharedRolePermission)
 }
 
+// An agent's client is held to the same rule. A token it requests for an organization unit the agent is shared
+// with carries only what the agent holds in its owner: its assignment in that unit is not considered. The
+// agent's flow sign-in into the unit does count the assignment, see TestAgentSharingTestSuite.
+func (suite *RoleAPITestSuite) TestSharedRole_SharedAgentsAssignmentInTheOUIsNotInItsToken() {
+	// decl-agent-credentials-1 lives in decl-ou-1, and its file shares it into decl-m2m-root.
+	const agentID, clientID, secret = "decl-agent-credentials-1", "decl-agent-cred-client-1", "decl-agent-cred-secret-1"
+	request := AssignmentsRequest{OUID: declSharedRootOU,
+		Assignments: []Assignment{{ID: agentID, Type: AssigneeTypeAgent}}}
+	status, code := suite.postAssignments(declSharedRoleID, "add", request)
+	suite.Require().Equal(http.StatusNoContent, status, code)
+	defer func() {
+		status, code := suite.postAssignments(declSharedRoleID, "remove", request)
+		suite.Equal(http.StatusNoContent, status, code)
+	}()
+
+	suite.NotContains(suite.clientCredentialsScopes(declSharedRootOU, clientID, secret), sharedRolePermission)
+}
+
 // A declared role assigned through the API to an application in the application's own organization
 // unit is named in the application's roles claim, although the role lives in a file and the
 // assignment in the database.

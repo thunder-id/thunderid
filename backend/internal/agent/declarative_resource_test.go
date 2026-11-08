@@ -18,11 +18,13 @@ import (
 	"github.com/thunder-id/thunderid/internal/agent"
 	"github.com/thunder-id/thunderid/internal/agent/model"
 	"github.com/thunder-id/thunderid/internal/entity"
+	"github.com/thunder-id/thunderid/internal/sharing"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/varname"
 	"github.com/thunder-id/thunderid/tests/mocks/agentmock"
 	"github.com/thunder-id/thunderid/tests/mocks/entitymock"
+	"github.com/thunder-id/thunderid/tests/mocks/sharingmock"
 
 	"gopkg.in/yaml.v3"
 )
@@ -31,6 +33,7 @@ type AgentExporterTestSuite struct {
 	suite.Suite
 	mockService *agentmock.AgentServiceInterfaceMock
 	mockEntity  *entitymock.EntityServiceInterfaceMock
+	mockSharing *sharingmock.SharingServiceInterfaceMock
 	exporter    declarativeresource.ResourceExporter
 	logger      *log.Logger
 }
@@ -42,7 +45,8 @@ func TestAgentExporterTestSuite(t *testing.T) {
 func (s *AgentExporterTestSuite) SetupTest() {
 	s.mockService = agentmock.NewAgentServiceInterfaceMock(s.T())
 	s.mockEntity = entitymock.NewEntityServiceInterfaceMock(s.T())
-	s.exporter = agent.NewAgentExporterForTest(s.mockService, s.mockEntity)
+	s.mockSharing = sharingmock.NewSharingServiceInterfaceMock(s.T())
+	s.exporter = agent.NewAgentExporterForTest(s.mockService, s.mockEntity, s.mockSharing)
 	s.logger = log.GetLogger()
 }
 
@@ -132,6 +136,7 @@ func (s *AgentExporterTestSuite) TestGetResourceByID_Success() {
 	expected := &model.AgentGetResponse{ID: "agent1", Display: "My Agent"}
 	s.mockService.EXPECT().GetAgent(mock.Anything, "agent1", true).Return(expected, nil)
 	s.mockEntity.EXPECT().GetHeldCredentialTypes(mock.Anything, "agent1").Return(nil, nil)
+	s.mockSharing.EXPECT().ExportPolicies(mock.Anything, sharing.ResourceType("agent"), "agent1").Return(nil, nil)
 
 	resource, name, err := s.exporter.GetResourceByID(context.Background(), "agent1")
 
@@ -139,6 +144,42 @@ func (s *AgentExporterTestSuite) TestGetResourceByID_Success() {
 	assert.Equal(s.T(), "My Agent", name)
 	assert.Equal(s.T(), expected, resource)
 	assert.Nil(s.T(), expected.Credentials, "an agent with no credential set exports none")
+	assert.Nil(s.T(), expected.SharingPolicies, "an agent nobody shared exports no policies")
+}
+
+// An agent's sharing policies go with it, so an export of a declared agent keeps them.
+func (s *AgentExporterTestSuite) TestGetResourceByID_WritesTheSharingPolicies() {
+	s.mockService.EXPECT().GetAgent(mock.Anything, "agent1", true).
+		Return(&model.AgentGetResponse{ID: "agent1", Display: "My Agent"}, nil)
+	s.mockEntity.EXPECT().GetHeldCredentialTypes(mock.Anything, "agent1").Return(nil, nil)
+	request := sharing.PolicyRequest{ID: "agent1-policy-1", OtherTreeRoots: &sharing.OtherTreeRootsRequest{
+		Mode: sharing.OtherTreeRootsSelected, Units: []sharing.RootUnitRequest{{OUID: "ou-2"}}}}
+	s.mockSharing.EXPECT().ExportPolicies(mock.Anything, sharing.ResourceType("agent"), "agent1").
+		Return([]sharing.ReplayablePolicy{{InitiatingOUID: "ou-1", Request: request}}, nil)
+
+	resource, _, err := s.exporter.GetResourceByID(context.Background(), "agent1")
+	s.Require().Nil(err)
+
+	assert.Equal(s.T(), []sharing.PolicyRequest{request}, resource.(*model.AgentGetResponse).SharingPolicies)
+	document, marshalErr := yaml.Marshal(resource)
+	s.Require().NoError(marshalErr)
+	assert.Contains(s.T(), string(document), "sharingPolicies:\n    - id: agent1-policy-1\n")
+}
+
+// An export that cannot read the agent's sharing fails rather than writing the agent without it.
+func (s *AgentExporterTestSuite) TestGetResourceByID_SharingReadFailure() {
+	s.mockService.EXPECT().GetAgent(mock.Anything, "agent1", true).
+		Return(&model.AgentGetResponse{ID: "agent1", Display: "My Agent"}, nil)
+	s.mockEntity.EXPECT().GetHeldCredentialTypes(mock.Anything, "agent1").Return(nil, nil)
+	s.mockSharing.EXPECT().ExportPolicies(mock.Anything, sharing.ResourceType("agent"), "agent1").
+		Return(nil, &tidcommon.InternalServerError)
+
+	resource, name, err := s.exporter.GetResourceByID(context.Background(), "agent1")
+
+	assert.Nil(s.T(), resource)
+	assert.Empty(s.T(), name)
+	s.Require().NotNil(err)
+	assert.Equal(s.T(), tidcommon.InternalServerError.Code, err.Code)
 }
 
 // agentVar is the variable an export names a credential of the agent these tests export: agent1.
@@ -152,6 +193,7 @@ func (s *AgentExporterTestSuite) TestGetResourceByID_ExportsHeldCredentialsAsPla
 	s.mockService.EXPECT().GetAgent(mock.Anything, "agent1", true).
 		Return(&model.AgentGetResponse{ID: "agent1", Display: "My Agent"}, nil)
 	s.mockEntity.EXPECT().GetHeldCredentialTypes(mock.Anything, "agent1").Return([]string{"password"}, nil)
+	s.mockSharing.EXPECT().ExportPolicies(mock.Anything, sharing.ResourceType("agent"), "agent1").Return(nil, nil)
 
 	resource, _, err := s.exporter.GetResourceByID(context.Background(), "agent1")
 
@@ -168,6 +210,7 @@ func (s *AgentExporterTestSuite) TestGetResourceByID_WritesCredentialReferences(
 	s.mockService.EXPECT().GetAgent(mock.Anything, "agent1", true).
 		Return(&model.AgentGetResponse{ID: "agent1", Display: "My Agent"}, nil)
 	s.mockEntity.EXPECT().GetHeldCredentialTypes(mock.Anything, "agent1").Return([]string{"password"}, nil)
+	s.mockSharing.EXPECT().ExportPolicies(mock.Anything, sharing.ResourceType("agent"), "agent1").Return(nil, nil)
 
 	resource, _, err := s.exporter.GetResourceByID(context.Background(), "agent1")
 
@@ -216,6 +259,7 @@ func (s *AgentExporterTestSuite) TestGetResourceByID_ExportsUnboundedLifespan() 
 		ID: "agent1", Lifespan: &model.Lifespan{Phase: model.LifespanPhaseUnbounded},
 	}, nil)
 	s.mockEntity.EXPECT().GetHeldCredentialTypes(mock.Anything, "agent1").Return(nil, nil)
+	s.mockSharing.EXPECT().ExportPolicies(mock.Anything, sharing.ResourceType("agent"), "agent1").Return(nil, nil)
 
 	resource, _, err := s.exporter.GetResourceByID(context.Background(), "agent1")
 
@@ -228,6 +272,7 @@ func (s *AgentExporterTestSuite) TestGetResourceByID_ExportsProject() {
 	s.mockService.EXPECT().GetAgent(mock.Anything, "agent1", true).Return(
 		&model.AgentGetResponse{ID: "agent1", ProjectID: "project-1"}, nil)
 	s.mockEntity.EXPECT().GetHeldCredentialTypes(mock.Anything, "agent1").Return(nil, nil)
+	s.mockSharing.EXPECT().ExportPolicies(mock.Anything, sharing.ResourceType("agent"), "agent1").Return(nil, nil)
 
 	resource, _, err := s.exporter.GetResourceByID(context.Background(), "agent1")
 	s.Require().Nil(err)
