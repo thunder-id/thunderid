@@ -42,3 +42,24 @@ const (
 	systemFlowUserDeletePre = "system-user-delete-pre"
 	systemFlowInputSubject  = "subject"
 )
+
+// userDetail is a section get_user adds to a user only when asked.
+type userDetail string
+
+// The sections get_user adds when asked.
+const (
+	userDetailGroups      userDetail = "groups"
+	userDetailRoles       userDetail = "roles"
+	userDetailPermissions userDetail = "permissions"
+)
+
+// userDetails lists the sections get_user can add, in the order it reports them.
+var userDetails = []userDetail{userDetailGroups, userDetailRoles, userDetailPermissions}
+
+// User MCP tool defaults.
+const (
+	// defaultUserPageSize is the number of users a list returns when no limit is given.
+	defaultUserPageSize = 30
+	// defaultOUHandle is the handle of the organization unit a user is created in when none is named.
+	defaultOUHandle = "default"
+)
