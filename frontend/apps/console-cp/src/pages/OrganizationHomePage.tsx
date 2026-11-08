@@ -20,6 +20,7 @@ import {
   PageContent,
   Radio,
   Stack,
+  Link as TextLink,
   Typography,
   alpha,
 } from '@wso2/oxygen-ui';
@@ -749,17 +750,32 @@ export default function OrganizationHomePage({
               {gatewaysSource ??
                 t('home:organization.gatewaysSource', 'Gateways come from the deployment configuration.')}
             </Typography>
-            {projects.length > 0 && (
-              <Button
-                variant="contained"
-                startIcon={<Rocket size={16} />}
-                onClick={() => pick('deploy')}
-                sx={PILL}
-                data-testid="organization-deploy"
-              >
-                {t('home:organization.deploy', 'Deploy')}
-              </Button>
-            )}
+            <Stack direction="row" alignItems="center" sx={{gap: 2, flexWrap: 'wrap'}}>
+              {manageGatewaysUrl && (
+                <TextLink
+                  href={manageGatewaysUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  underline="none"
+                  sx={{display: 'inline-flex', alignItems: 'center', gap: 0.75, fontSize: 13, fontWeight: 500}}
+                  data-testid="organization-manage-runtime"
+                >
+                  {t('home:organization.manageRuntimeGateways', 'Manage gateways')}
+                  <ExternalLink size={13} />
+                </TextLink>
+              )}
+              {projects.length > 0 && (
+                <Button
+                  variant="contained"
+                  startIcon={<Rocket size={16} />}
+                  onClick={() => pick('deploy')}
+                  sx={PILL}
+                  data-testid="organization-deploy"
+                >
+                  {t('home:organization.deploy', 'Deploy')}
+                </Button>
+              )}
+            </Stack>
           </Stack>
         </Card>
 

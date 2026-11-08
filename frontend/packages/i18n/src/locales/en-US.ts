@@ -5516,6 +5516,7 @@ const translations = {
     'organization.agentsLabel': 'agents',
     'organization.addGateway': 'Add a gateway',
     'organization.manageGateways': 'Open gateway management',
+    'organization.manageRuntimeGateways': 'Manage gateways',
     'organization.noHigherGateways': 'No higher gateways',
     'organization.agentsLead': 'AI agents with their own identity and access',
     'organization.applicationsAndAgents': 'Applications and agents',

@@ -136,6 +136,22 @@ describe('OrganizationHomePage', () => {
     expect(pipelineRefetch).toHaveBeenCalled();
   });
 
+  it('links to where the gateways are managed, when the deployment says where', () => {
+    // A first render has the test providers set their whole runtime configuration, which the link adds to.
+    render(<div />).unmount();
+    const previous = window.__THUNDERID_RUNTIME_CONFIG__;
+    window.__THUNDERID_RUNTIME_CONFIG__ = {
+      ...previous!,
+      deploy: {manage_environments_url: 'https://platform.test/environments'},
+    };
+    render(<OrganizationHomePage />);
+    window.__THUNDERID_RUNTIME_CONFIG__ = previous;
+
+    const manage = within(screen.getByTestId('organization-how-it-works')).getByTestId('organization-manage-runtime');
+    expect(manage).toHaveAttribute('href', 'https://platform.test/environments');
+    expect(manage).toHaveAttribute('target', '_blank');
+  });
+
   it('lists the projects with their applications and agents, and opens one', async () => {
     render(<OrganizationHomePage />);
 
