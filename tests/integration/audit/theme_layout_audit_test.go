@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
@@ -128,7 +129,13 @@ func (ts *AuditLogTestSuite) TestAThemeAndALayoutLifecycleWritesOneLinePerChange
 			deleted := ts.importDesign(deleteDesign(resource, id), "delete")
 
 			ref := testutils.AuditRef{Type: resource.kind, ID: id}
-			lines := ts.linesOf(created, updated, tokenCreate, tokenUpdate, tokenDelete, deleted)
+			tokenLines := ts.linesOf(tokenCreate, tokenUpdate, tokenDelete)
+			lines := []testutils.AuditLine{
+				ts.resourceLineOfImport(created, succeeded),
+				ts.resourceLineOfImport(updated, succeeded),
+				tokenLines[0], tokenLines[1], tokenLines[2],
+				ts.resourceLineOfImport(deleted, succeeded),
+			}
 			for i, tc := range []struct {
 				action  string
 				target  testutils.AuditRef
@@ -147,7 +154,12 @@ func (ts *AuditLogTestSuite) TestAThemeAndALayoutLifecycleWritesOneLinePerChange
 				line := lines[i]
 				event := resource.kind + "." + tc.action
 				ts.True(strings.HasPrefix(line.Raw, auditLinePrefix), line.Raw)
-				ts.Equal(lineKeys, ts.keys(line.Raw), event)
+				keys := lineKeys
+				if tc.subject == (testutils.AuditRef{}) {
+					// A line that names no theme or layout has no subject key.
+					keys = slices.DeleteFunc(slices.Clone(lineKeys), func(key string) bool { return key == "subject" })
+				}
+				ts.Equal(keys, ts.keys(line.Raw), event)
 				ts.Equal(event, line.Event)
 				ts.Equal(tc.action, line.Action)
 				ts.Equal(tc.target, line.Target, event)
@@ -193,9 +205,9 @@ func (ts *AuditLogTestSuite) TestAFailedThemeOrLayoutChangeIsRecordedAsFailed() 
 				responses = append(responses, response)
 			}
 
-			lines := ts.linesOf(responses...)
 			for i, tc := range cases {
-				line := lines[i]
+				line := ts.resourceLineOfImport(responses[i], map[string]string{"result": "failed",
+					"reason": "item_failed"})
 				ts.Equal(resource.kind+"."+tc.operation, line.Event, tc.name)
 				ts.Equal(testutils.AuditRef{Type: resource.kind, ID: tc.target}, line.Target, tc.name)
 				ts.Equal(testutils.AuditRef{}, line.Subject, "a failed attempt has no subject: "+tc.name)
@@ -206,14 +218,16 @@ func (ts *AuditLogTestSuite) TestAFailedThemeOrLayoutChangeIsRecordedAsFailed() 
 	}
 }
 
-// A deletion of a theme or layout that does not exist still succeeds, but writes no line, so a caller
-// cannot record the deletion of an ID it made up.
+// A deletion of a theme or layout that does not exist still succeeds, but writes no line of the theme or
+// layout, so a caller cannot record the deletion of an ID it made up. The import writes only its own line.
 func (ts *AuditLogTestSuite) TestADeleteOfAMissingThemeOrLayoutWritesNoLine() {
 	for _, resource := range designResources {
 		ts.Run(resource.kind, func() {
 			deleted := ts.importDesign(deleteDesign(resource, unusedID()), "delete")
 
-			ts.Empty(ts.linesPerCall(deleted)[0], "a delete that removed nothing writes no line")
+			written := ts.linesPerCall(deleted)[0]
+			ts.Require().Len(written, 1, "a delete that removed nothing writes only the import's own line")
+			ts.Equal(importEvent, written[0].Event)
 		})
 	}
 }

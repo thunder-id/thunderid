@@ -32,7 +32,13 @@ func (ts *AuditLogTestSuite) TestAServerConfigWriteRecordsTheSectionOnly() {
 	ts.Require().Equal(http.StatusForbidden, denied.StatusCode)
 
 	managementAPIKey := testutils.AuditRef{Type: "system", ID: "management-api-key"}
-	lines := ts.linesOf(written, refused, unknown, denied)
+	failedImport := map[string]string{"result": "failed", "reason": "item_failed"}
+	lines := []testutils.AuditLine{
+		ts.resourceLineOfImport(written, map[string]string{"result": "succeeded"}),
+		ts.resourceLineOfImport(refused, failedImport),
+		ts.resourceLineOfImport(unknown, failedImport),
+		ts.linesOf(denied)[0],
+	}
 	ts.Equal(lineKeys, ts.keys(lines[0].Raw))
 	for i, tc := range []struct {
 		target  testutils.AuditRef

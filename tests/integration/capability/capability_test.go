@@ -6,6 +6,7 @@ package capability
 import (
 	"encoding/json"
 	"net/http"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -29,7 +30,17 @@ func (ts *CapabilityAPITestSuite) get(client *http.Client) *http.Response {
 	return resp
 }
 
-func (ts *CapabilityAPITestSuite) TestRootAdminGetsEveryAction() {
+// importOnlyWrites are the writes to resources that apply to the whole deployment, which a data plane takes
+// only from an import with the management API key, so no token is allowed them.
+var importOnlyWrites = map[string][]string{
+	"design":       {"create", "update", "delete"},
+	"i18n":         {"create", "update", "delete"},
+	"authzdetail":  {"create", "update", "delete"},
+	"serverconfig": {"update"},
+}
+
+// The root admin is allowed every action except the writes a data plane takes only from an import.
+func (ts *CapabilityAPITestSuite) TestRootAdminGetsEveryActionButImportOnlyWrites() {
 	resp := ts.get(testutils.GetHTTPClient())
 	defer resp.Body.Close()
 	ts.Require().Equal(http.StatusOK, resp.StatusCode)
@@ -44,10 +55,15 @@ func (ts *CapabilityAPITestSuite) TestRootAdminGetsEveryAction() {
 	for resource, actions := range body.Resources {
 		ts.NotEmpty(actions, resource)
 		for action, allowed := range actions {
-			ts.True(allowed, "%s:%s", resource, action)
+			ts.Equal(!slices.Contains(importOnlyWrites[resource], action), allowed, "%s:%s", resource, action)
 		}
 	}
-	ts.Equal(map[string]bool{"view": true, "update": true}, body.Resources["serverconfig"])
+	for resource, actions := range importOnlyWrites {
+		for _, action := range actions {
+			ts.Contains(body.Resources[resource], action, "%s:%s is reported", resource, action)
+		}
+	}
+	ts.Equal(map[string]bool{"view": true, "update": false}, body.Resources["serverconfig"])
 }
 
 func (ts *CapabilityAPITestSuite) TestUnauthenticatedCallerIsRejected() {
