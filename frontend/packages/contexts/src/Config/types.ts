@@ -290,6 +290,17 @@ export interface DeployConfig {
    * `deploy/gateways`. Within a project, the page is under the project's.
    */
   gateway_path?: string;
+  /**
+   * Where a project's gateways and the pipeline between them are edited, such as a hosting platform's own
+   * page for them, with `{project}` standing for the project's handle. When set, a project's pipeline
+   * links to it.
+   */
+  edit_pipeline_url?: string;
+  /**
+   * Where the organization's gateways are managed, such as a hosting platform's own page for them. When
+   * set, the organization's overview links to it.
+   */
+  manage_environments_url?: string;
 }
 
 /**

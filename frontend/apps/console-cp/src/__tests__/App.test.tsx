@@ -32,12 +32,12 @@ vi.mock('../pages/ProjectHomePage', () => ({
   default: () => <div data-testid="project-home-page" />,
 }));
 
-vi.mock('../pages/ProjectGatewayPage', () => ({
-  default: ({section = 'overview'}: {section?: string}) => <div data-testid={`project-gateway-page-${section}`} />,
+vi.mock('../pages/OrganizationGatewayPage', () => ({
+  default: ({section = 'overview'}: {section?: string}) => <div data-testid={`gateway-page-${section}`} />,
 }));
 
-vi.mock('../pages/ProjectExplorerPage', () => ({
-  default: () => <div data-testid="project-explorer-page" />,
+vi.mock('../pages/OrganizationExplorerPage', () => ({
+  default: () => <div data-testid="gateway-explorer-page" />,
 }));
 
 vi.mock('../pages/AdministratorsListPage', () => ({
@@ -249,22 +249,16 @@ describe('App', () => {
     expect(await screen.findByTestId('project-home-page')).toBeInTheDocument();
   });
 
-  it("opens each of a gateway's sections within a project", async () => {
+  it("opens each of a gateway's sections at the organization level", async () => {
     for (const section of ['values', 'endpoints', 'history']) {
-      window.history.pushState({}, '', `/projects/p-shop/deploy/gateways/gw-dev/${section}`);
+      window.history.pushState({}, '', `/deploy/gateways/gw-dev/${section}`);
       const {unmount} = render(<App />);
-      expect(await screen.findByTestId(`project-gateway-page-${section}`)).toBeInTheDocument();
+      expect(await screen.findByTestId(`gateway-page-${section}`)).toBeInTheDocument();
       unmount();
     }
-    window.history.pushState({}, '', '/projects/p-shop/deploy/gateways/gw-dev');
+    window.history.pushState({}, '', '/deploy/gateways/gw-dev');
     render(<App />);
-    expect(await screen.findByTestId('project-gateway-page-overview')).toBeInTheDocument();
-  });
-
-  it("opens a gateway's map within a project on a full page", async () => {
-    window.history.pushState({}, '', '/projects/p-shop/deploy/gateways/gw-dev/explore');
-    render(<App />);
-    expect(await screen.findByTestId('project-explorer-page')).toBeInTheDocument();
+    expect(await screen.findByTestId('gateway-page-overview')).toBeInTheDocument();
   });
 
   it('lists the administrators at /users', async () => {
@@ -535,12 +529,10 @@ describe('App', () => {
     });
   });
 
-  it('loads GatewayValuesPage lazily at /deploy/gateways/:gatewayId/values', async () => {
+  it("opens a gateway's values on its own page at /deploy/gateways/:gatewayId/values", async () => {
     window.history.pushState({}, '', '/deploy/gateways/gw-1/values');
     render(<App />);
-    await waitFor(() => {
-      expect(screen.getByTestId('gateway-values-page')).toBeInTheDocument();
-    });
+    expect(await screen.findByTestId('gateway-page-values')).toBeInTheDocument();
   });
 
   it('loads AgentOnboardPage lazily at /agents/create', async () => {

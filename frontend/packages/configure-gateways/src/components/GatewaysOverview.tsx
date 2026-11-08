@@ -1,12 +1,11 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {Alert, Box, Button, CircularProgress, Stack, Typography} from '@wso2/oxygen-ui';
-import {ArrowRight, Rocket, Send} from '@wso2/oxygen-ui-icons-react';
+import {Alert, Box, CircularProgress, Stack, Typography} from '@wso2/oxygen-ui';
+import {MoveRight} from '@wso2/oxygen-ui-icons-react';
 import {Fragment, useMemo, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
-import AutoApplySwitch from './AutoApplySwitch';
 import GatewayCard, {type GatewayStanding} from './GatewayCard';
 import GatewaysStrip from './GatewaysStrip';
 import type {VersionRunner} from './GatewayTag';
@@ -31,6 +30,8 @@ export interface GatewaysOverviewProps {
   onOpenGateway?: (gatewayId: string) => void;
   /** Above the headline, such as the project the gateways are shown for. */
   eyebrow?: string;
+  /** Where the gateways and the pipeline between them are edited; linked beside the gateways when set. */
+  editPipelineUrl?: string;
 }
 
 /** No gateways, for when there is no project to read the status of. */
@@ -43,56 +44,34 @@ function DeployJoint({testId}: {testId: string}): JSX.Element {
     <Stack
       alignItems="center"
       justifyContent="center"
-      spacing={0.5}
-      sx={{flex: '0 0 auto', pt: 3.5, px: 0.5, color: 'primary.main'}}
+      sx={{flex: '0 0 auto', pt: 5, px: 0.5, color: 'primary.main'}}
       data-testid={testId}
     >
       <Typography variant="caption" fontWeight={600} color="inherit">
         {t('pipeline.deployJoint', 'Deploy')}
       </Typography>
-      <Box sx={{display: 'flex', alignItems: 'center', gap: 0.5}} aria-hidden>
-        <Box sx={{display: 'flex'}} data-testid="path-rocket">
-          <Rocket size={14} />
-        </Box>
-        <ArrowRight size={18} />
+      <Box sx={{display: 'flex', alignItems: 'center', height: 16}} aria-hidden>
+        <MoveRight size={44} strokeWidth={1.5} />
       </Box>
     </Stack>
   );
 }
 
-/** What joins one gateway to the next: a promote, offered while there is something to carry. */
-function PromoteJoint({
-  onClick,
-  disabled,
-  testId,
-}: {
-  onClick: () => void;
-  disabled: boolean;
-  testId: string;
-}): JSX.Element {
+/** What joins one gateway to the next: the way promotion goes. Each gateway's card offers its own deploy. */
+function PromoteJoint({testId}: {testId: string}): JSX.Element {
   const {t} = useTranslation('deploy');
   return (
     <Stack
       alignItems="center"
       justifyContent="center"
-      spacing={0.5}
-      sx={{flex: '0 0 auto', color: disabled ? 'text.secondary' : 'primary.main'}}
+      sx={{flex: '0 0 auto', px: 0.5, color: 'text.secondary'}}
       data-testid={testId}
     >
-      <Button
-        variant="text"
-        size="small"
-        onClick={onClick}
-        disabled={disabled}
-        sx={{minWidth: 0, px: 1, borderRadius: 100, fontSize: 12}}
-      >
+      <Typography variant="caption" fontWeight={600} color="inherit">
         {t('gateways.promote', 'Promote')}
-      </Button>
-      <Box sx={{display: 'flex', alignItems: 'center', gap: 0.5}} aria-hidden>
-        <Box sx={{display: 'flex'}} data-testid="path-plane">
-          <Send size={14} />
-        </Box>
-        <ArrowRight size={18} />
+      </Typography>
+      <Box sx={{display: 'flex', alignItems: 'center', height: 16}} aria-hidden>
+        <MoveRight size={32} strokeWidth={1.5} />
       </Box>
     </Stack>
   );
@@ -119,6 +98,7 @@ function changeCount(changes: Change[] | undefined): number | undefined {
 export default function GatewaysOverview({
   onOpenGateway = undefined,
   eyebrow = undefined,
+  editPipelineUrl = undefined,
 }: GatewaysOverviewProps): JSX.Element {
   const {t} = useTranslation('deploy');
   const navigate = useNavigate();
@@ -218,6 +198,14 @@ export default function GatewaysOverview({
     if (first) panels.deploy(version, first.gateway.id, undefined, [first.gateway]);
   };
 
+  // A gateway's card promotes onward: what it runs, to the gateway after it, while that one runs something
+  // else. The last gateway has nowhere onward to promote to.
+  const promoteOnward = (index: number): (() => void) | undefined => {
+    const next = stages[index + 1];
+    const version = next ? promotable(index + 1) : undefined;
+    return next && version ? () => panels.deploy(version, next.gateway.id, undefined, [next.gateway]) : undefined;
+  };
+
   const cardOf = (stage: PipelineStage, index: number, version: Version | undefined): JSX.Element => {
     const {gateway} = stage;
     return (
@@ -245,28 +233,16 @@ export default function GatewaysOverview({
             project ? gatewaySectionOf(routes, gateway.id, project, 'explore') : routes.deploy.explore(gateway.id),
           )
         }
-        onConfigure={() =>
-          void navigate(
-            project ? gatewaySectionOf(routes, gateway.id, project, 'values') : routes.deploy.values(gateway.id),
-          )
-        }
         onRevert={() => {
           const back = projectRollbackOf(statusOf(gateway.id));
           panels.revert(gateway, back ? versionLabel(back.to.hash, back.to.number) : undefined, back?.undo);
         }}
-        onDeploy={
-          index === 0 && latest && (project ? projectOwes(gateway.id) > 0 : firstOwes)
-            ? () => deployToFirst(latest)
-            : undefined
-        }
-        onRedeploy={() => panels.redeploy(gateway)}
-        onRetryRefused={(keys: string[]) => panels.retryRefused(gateway, keys)}
-        extra={index === 0 ? <AutoApplySwitch target={stage.name} targetId={gateway.id} compact /> : undefined}
+        onPromote={promoteOnward(index)}
       />
     );
   };
 
-  // A project that runs in one gateway has no pipeline to show: its gateway stands alone.
+  // A project that runs in one gateway says so; its gateway shows as a pipeline's first does.
   const single = Boolean(project) && stages.length === 1;
   // The lead names production as where promotions end only when the last gateway is it.
   const lastIsProduction = /^prod(uction)?$/i.test(stages[stages.length - 1]?.name.trim() ?? '');
@@ -276,19 +252,21 @@ export default function GatewaysOverview({
 
   // The versions a deploy enters at the first gateway with, and the way into it, beside the gateways
   // whether there is one or more.
-  const versionsPanel = first ? (
-    <PipelineVersions
-      versions={all}
-      isLoading={versions.isLoading}
-      runners={runners}
-      firstRuns={project ? (statusOf(first.gateway.id)?.project.versions[0]?.hash ?? undefined) : firstRuns}
-      firstName={first.name}
-      latestChanges={latestChanges}
-      onDeploy={deployToFirst}
-      deploying={panels.deploying}
-    />
+  const deployEntry = first ? (
+    <>
+      <PipelineVersions
+        versions={all}
+        isLoading={versions.isLoading}
+        runners={runners}
+        firstRuns={project ? (statusOf(first.gateway.id)?.project.versions[0]?.hash ?? undefined) : firstRuns}
+        firstName={first.name}
+        latestChanges={latestChanges}
+        onDeploy={deployToFirst}
+        deploying={panels.deploying}
+      />
+      <DeployJoint testId={`gateway-connector-${first.gateway.id}`} />
+    </>
   ) : null;
-  const deployJoint = first ? <DeployJoint testId={`gateway-connector-${first.gateway.id}`} /> : null;
 
   return (
     <Stack spacing={5} component="section" aria-label={t('gateways.title', 'Gateways')}>
@@ -333,56 +311,20 @@ export default function GatewaysOverview({
       {pipeline.isSuccess && stages.length === 0 && (
         <Alert severity="info">{t('gateways.none', 'Register a gateway to have a gateway to deploy to.')}</Alert>
       )}
-      {first && single && (
-        <Box
-          component="section"
-          aria-label={t('pipeline.region', 'Deployment pipeline')}
-          // As wide as the versions, the arrow and the one card need, so the versions keep the width they
-          // have beside a pipeline instead of filling the page.
-          sx={{display: 'flex', flexWrap: 'wrap', alignItems: 'stretch', gap: 2, maxWidth: 760}}
-        >
-          {versionsPanel}
-          {/* The arrow stays with the gateway it points to when the row wraps. */}
-          <Box sx={{display: 'flex', alignItems: 'stretch', gap: 2}}>
-            {deployJoint}
-            <Stack
-              aria-label={t('pipeline.singleRegion', 'Your gateway')}
-              spacing={1.5}
-              sx={{maxWidth: 360}}
-              data-testid="single-gateway"
-            >
-              <Typography variant="overline" color="text.secondary" sx={{fontWeight: 600}}>
-                {t('pipeline.singleTitle', 'Your gateway')}
-              </Typography>
-              {cardOf(first, 0, undefined)}
-              <Typography variant="caption" color="text.secondary">
-                {t('pipeline.singleHint', 'Add another gateway to get a full deployment pipeline.')}
-              </Typography>
-            </Stack>
-          </Box>
-        </Box>
-      )}
-      {first && !single && (
+      {first && (
         <Box
           component="section"
           aria-label={t('pipeline.region', 'Deployment pipeline')}
           sx={{display: 'flex', flexWrap: 'wrap', alignItems: 'stretch', gap: 2}}
         >
-          {versionsPanel}
-          {deployJoint}
-          <GatewaysStrip count={stages.length}>
+          {deployEntry}
+          <GatewaysStrip count={stages.length} editUrl={editPipelineUrl}>
             {stages.map((stage: PipelineStage, index: number) => {
               const {gateway} = stage;
               const version = index === 0 ? undefined : promotable(index);
               return (
                 <Fragment key={gateway.id}>
-                  {index > 0 && (
-                    <PromoteJoint
-                      disabled={!version}
-                      onClick={() => version && panels.deploy(version, gateway.id, undefined, [gateway])}
-                      testId={`gateway-promote-${gateway.id}`}
-                    />
-                  )}
+                  {index > 0 && <PromoteJoint testId={`gateway-promote-${gateway.id}`} />}
                   {cardOf(stage, index, version)}
                 </Fragment>
               );

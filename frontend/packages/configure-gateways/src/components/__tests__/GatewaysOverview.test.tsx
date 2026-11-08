@@ -103,7 +103,7 @@ describe('GatewaysOverview', () => {
     expect(navigate).toHaveBeenCalledWith('/projects/p-shop/deploy/gateways/gw-dev');
   });
 
-  it("configures and explores a gateway on the project's own gateway page", async () => {
+  it("explores a gateway on the project's own gateway page", async () => {
     render(
       <ProjectScopeProvider project={{id: 'p-shop'}}>
         <GatewaysOverview />
@@ -111,25 +111,19 @@ describe('GatewaysOverview', () => {
     );
 
     const prodCard = await screen.findByTestId('deploy-stage-gw-prod');
-    await userEvent.click(within(prodCard).getByTestId('card-more'));
-    await userEvent.click(await screen.findByTestId('card-configure'));
-    expect(navigate).toHaveBeenCalledWith('/projects/p-shop/deploy/gateways/gw-prod/values');
     await userEvent.click(within(prodCard).getByRole('button', {name: 'Explore Production'}));
     expect(navigate).toHaveBeenCalledWith('/projects/p-shop/deploy/gateways/gw-prod/explore');
   });
 
-  it('configures and explores a gateway on its own pages outside a project', async () => {
+  it('explores a gateway on its own pages outside a project', async () => {
     render(<GatewaysOverview />);
 
     const prodCard = await screen.findByTestId('deploy-stage-gw-prod');
-    await userEvent.click(within(prodCard).getByTestId('card-more'));
-    await userEvent.click(await screen.findByTestId('card-configure'));
-    expect(navigate).toHaveBeenCalledWith('/deploy/gateways/gw-prod/values');
     await userEvent.click(within(prodCard).getByRole('button', {name: 'Explore Production'}));
     expect(navigate).toHaveBeenCalledWith('/deploy/gateways/gw-prod/explore');
   });
 
-  it('shows a project that runs in one gateway with that gateway alone, beside the versions to deploy to it', async () => {
+  it('shows a project that runs in one gateway as a pipeline of one, beside the versions to deploy to it', async () => {
     routes['GET /gateways/pipeline'] = {stages: [{name: 'Development', gateway: dev}]};
 
     render(
@@ -138,16 +132,14 @@ describe('GatewaysOverview', () => {
       </ProjectScopeProvider>,
     );
 
-    const single = await screen.findByTestId('single-gateway');
-    expect(within(single).getByTestId('deploy-stage-gw-dev')).toBeInTheDocument();
+    const strip = await screen.findByTestId('gateways-strip');
+    expect(within(strip).getByTestId('deploy-stage-gw-dev')).toBeInTheDocument();
+    expect(within(strip).queryByRole('button', {name: /Promote/})).not.toBeInTheDocument();
     expect(
       screen.getByText('This project runs in one gateway. Your configuration deploys straight to it.'),
     ).toBeInTheDocument();
-    expect(screen.getByText('Add another gateway to get a full deployment pipeline.')).toBeInTheDocument();
-    // The versions stay, so a version can still be deployed with auto-sync off or an earlier one again.
     expect(screen.getByText('Project versions')).toBeInTheDocument();
-    // The arrow wraps with the gateway it points to, not with the versions.
-    expect(screen.getByTestId('gateway-connector-gw-dev').parentElement).toBe(single.parentElement);
+    expect(screen.getByTestId('gateway-connector-gw-dev')).toBeInTheDocument();
   });
 
   it("names the versions as the project's on a project home", async () => {
@@ -175,7 +167,7 @@ describe('GatewaysOverview', () => {
     expect(navigate).toHaveBeenCalledWith('/projects/p-shop/deploy/gateways/gw-dev');
   });
 
-  it("configures and explores a gateway on the project's own gateway page", async () => {
+  it("explores a gateway on the project's own gateway page", async () => {
     render(
       <ProjectScopeProvider project={{id: 'p-shop'}}>
         <GatewaysOverview />
@@ -183,20 +175,14 @@ describe('GatewaysOverview', () => {
     );
 
     const prodCard = await screen.findByTestId('deploy-stage-gw-prod');
-    await userEvent.click(within(prodCard).getByTestId('card-more'));
-    await userEvent.click(await screen.findByTestId('card-configure'));
-    expect(navigate).toHaveBeenCalledWith('/projects/p-shop/deploy/gateways/gw-prod/values');
     await userEvent.click(within(prodCard).getByRole('button', {name: 'Explore Production'}));
     expect(navigate).toHaveBeenCalledWith('/projects/p-shop/deploy/gateways/gw-prod/explore');
   });
 
-  it('configures and explores a gateway on its own pages outside a project', async () => {
+  it('explores a gateway on its own pages outside a project', async () => {
     render(<GatewaysOverview />);
 
     const prodCard = await screen.findByTestId('deploy-stage-gw-prod');
-    await userEvent.click(within(prodCard).getByTestId('card-more'));
-    await userEvent.click(await screen.findByTestId('card-configure'));
-    expect(navigate).toHaveBeenCalledWith('/deploy/gateways/gw-prod/values');
     await userEvent.click(within(prodCard).getByRole('button', {name: 'Explore Production'}));
     expect(navigate).toHaveBeenCalledWith('/deploy/gateways/gw-prod/explore');
   });
@@ -214,56 +200,6 @@ describe('GatewaysOverview', () => {
     await waitFor(() => expect(within(older).getByText('Production')).toBeInTheDocument());
     expect(within(screen.getByTestId(`pipeline-version-${v2}`)).queryByText('Production')).not.toBeInTheDocument();
     expect(within(screen.getByTestId('deploy-stage-gw-prod')).getByTestId('card-version')).toHaveTextContent('v1');
-  });
-
-  it('offers auto-sync on the first gateway only, and turns it on', async () => {
-    render(<GatewaysOverview />);
-
-    const devCard = await screen.findByTestId('deploy-stage-gw-dev');
-    expect(within(screen.getByTestId('deploy-stage-gw-prod')).queryByTestId('auto-apply')).not.toBeInTheDocument();
-    expect(
-      within(devCard).getByText('Default for projects: auto-sync configuration to Development'),
-    ).toBeInTheDocument();
-    const toggle = within(devCard).getByRole('checkbox', {
-      name: 'Default for projects: auto-sync configuration to Development',
-    });
-    await waitFor(() => expect(toggle).toBeEnabled());
-    expect(toggle).not.toBeChecked();
-
-    await userEvent.click(toggle);
-
-    await waitFor(() =>
-      expect(http.calls).toContainEqual(
-        expect.objectContaining({method: 'PUT', url: `${SERVER}/server-config/gateway`, data: {autoApply: true}}),
-      ),
-    );
-  });
-
-  it("says a project's auto-sync could not be changed, without the server's own text, and puts the switch back", async () => {
-    routes['PUT /projects/p-shop/auto-sync'] = Object.assign(new Error('Request failed'), {
-      response: {status: 400, data: {code: 'ORG-4001', description: 'The project has no first gateway'}},
-    });
-    routes['GET /gateways/gw-dev/project-status'] = {
-      project: {versions: [], pending: 0, required: 0},
-      shared: {pending: 0, byType: []},
-      needed: {differing: 0},
-      autoSync: {enabled: false, inherited: true},
-    };
-
-    render(
-      <ProjectScopeProvider project={{id: 'p-shop'}}>
-        <GatewaysOverview />
-      </ProjectScopeProvider>,
-    );
-
-    const devCard = await screen.findByTestId('deploy-stage-gw-dev');
-    const toggle = within(devCard).getByRole('checkbox', {name: 'Auto-sync from configuration'});
-    await waitFor(() => expect(toggle).toBeEnabled());
-    await userEvent.click(toggle);
-
-    expect(await screen.findByText('Auto-sync could not be changed.')).toBeInTheDocument();
-    expect(screen.queryByText(/The project has no first gateway/)).not.toBeInTheDocument();
-    await waitFor(() => expect(toggle).not.toBeChecked());
   });
 
   it('says the gateway was rolled back when the project was last rolled back there', async () => {
@@ -305,8 +241,8 @@ describe('GatewaysOverview', () => {
       </ProjectScopeProvider>,
     );
 
-    const devCard = await screen.findByTestId('deploy-stage-gw-dev');
-    await userEvent.click(await within(devCard).findByTestId('card-deploy'));
+    const latest = await screen.findByTestId(`pipeline-version-${v2}`);
+    await userEvent.click(within(latest).getByRole('button', {name: 'Deploy'}));
     const steps = within(await screen.findByTestId('deploy-apply-panel')).getByTestId('pipeline-steps');
     expect(within(steps).getByText('Development').closest('li')).toHaveTextContent('Runs v1');
   });
@@ -331,7 +267,7 @@ describe('GatewaysOverview', () => {
     );
   });
 
-  it("keeps a card's rollback, deploy and more actions on one row", async () => {
+  it("keeps a card's rollback and promote on one row", async () => {
     routes['GET /gateways/gw-dev/project-status'] = {
       project: {versions: [{hash: v2, number: 2, resources: 1}], pending: 2, required: 0},
       shared: {pending: 0, byType: []},
@@ -346,99 +282,15 @@ describe('GatewaysOverview', () => {
     );
 
     const devCard = await screen.findByTestId('deploy-stage-gw-dev');
-    const deploy = await within(devCard).findByTestId('card-deploy');
+    const promote = await within(devCard).findByTestId('card-promote');
     const rollback = within(devCard).getByTestId('card-revert');
-    const more = within(devCard).getByTestId('card-more');
     await waitFor(() => expect(rollback).toHaveTextContent('Roll back to v1'));
-    // Their middles line up: none of them wrapped onto a row of its own.
+    // Their middles line up: neither wrapped onto a row of its own.
     const middle = (element: HTMLElement): number => {
       const box = element.getBoundingClientRect();
       return box.top + box.height / 2;
     };
-    expect(Math.abs(middle(deploy) - middle(more))).toBeLessThanOrEqual(4);
-    expect(Math.abs(middle(rollback) - middle(more))).toBeLessThanOrEqual(4);
-  });
-
-  it("turns a project's own auto-sync on, writing only the project's choice", async () => {
-    routes['PUT /projects/p-shop/auto-sync'] = {autoSync: true};
-    routes['GET /gateways/gw-dev/project-status'] = {
-      project: {versions: [], pending: 0, required: 0},
-      shared: {pending: 0, byType: []},
-      needed: {differing: 0},
-      autoSync: {enabled: false, inherited: true},
-    };
-
-    render(
-      <ProjectScopeProvider project={{id: 'p-shop'}}>
-        <GatewaysOverview />
-      </ProjectScopeProvider>,
-    );
-
-    const devCard = await screen.findByTestId('deploy-stage-gw-dev');
-    expect(
-      within(devCard).getByText('Changes to this project and shared resources deploy to Development on save.'),
-    ).toBeInTheDocument();
-    expect(within(devCard).getByTestId('auto-apply-inherited')).toHaveTextContent('Follows the organization default');
-    const toggle = within(devCard).getByRole('checkbox', {name: 'Auto-sync from configuration'});
-    await waitFor(() => expect(toggle).toBeEnabled());
-
-    await userEvent.click(toggle);
-
-    await waitFor(() =>
-      expect(http.calls).toContainEqual(
-        expect.objectContaining({method: 'PUT', url: `${SERVER}/projects/p-shop/auto-sync`, data: {autoSync: true}}),
-      ),
-    );
-    // The organization's section is not written for a project's choice.
-    expect(http.calls.some((call) => call.method === 'PUT' && call.url.endsWith('/server-config/gateway'))).toBe(false);
-  });
-
-  it('has a project follow the organization default again', async () => {
-    routes['PUT /projects/p-shop/auto-sync'] = '';
-    routes['GET /gateways/gw-dev/project-status'] = {
-      project: {versions: [], pending: 0, required: 0},
-      shared: {pending: 0, byType: []},
-      needed: {differing: 0},
-      autoSync: {enabled: false, inherited: false},
-    };
-
-    render(
-      <ProjectScopeProvider project={{id: 'p-shop'}}>
-        <GatewaysOverview />
-      </ProjectScopeProvider>,
-    );
-
-    await userEvent.click(await screen.findByTestId('auto-apply-use-default'));
-
-    await waitFor(() =>
-      expect(http.calls).toContainEqual(
-        expect.objectContaining({method: 'PUT', url: `${SERVER}/projects/p-shop/auto-sync`, data: {autoSync: null}}),
-      ),
-    );
-  });
-
-  it("locks a project's auto-sync when the deployment configuration sets it", async () => {
-    routes['PUT /projects/p-shop/auto-sync'] = Object.assign(new Error('declarative'), {
-      response: {status: 400, data: {code: 'SCF-1003'}},
-    });
-    routes['GET /gateways/gw-dev/project-status'] = {
-      project: {versions: [], pending: 0, required: 0},
-      shared: {pending: 0, byType: []},
-      needed: {differing: 0},
-      autoSync: {enabled: false, inherited: true},
-    };
-
-    render(
-      <ProjectScopeProvider project={{id: 'p-shop'}}>
-        <GatewaysOverview />
-      </ProjectScopeProvider>,
-    );
-
-    const toggle = await screen.findByRole('checkbox', {name: 'Auto-sync from configuration'});
-    await waitFor(() => expect(toggle).toBeEnabled());
-    await userEvent.click(toggle);
-
-    await waitFor(() => expect(toggle).toBeDisabled());
+    expect(Math.abs(middle(rollback) - middle(promote))).toBeLessThanOrEqual(4);
   });
 
   it("counts only the project's own refused resources, and says refused shared ones apart", async () => {
@@ -493,10 +345,6 @@ describe('GatewaysOverview', () => {
     const devCard = await screen.findByTestId('deploy-stage-gw-dev');
     expect(await within(devCard).findByTestId('stage-refused')).toHaveTextContent('1 refused, not running');
     expect(within(devCard).getByTestId('card-shared-refused')).toHaveTextContent('1 shared resource refused');
-
-    await userEvent.click(within(devCard).getByTestId('card-more'));
-    await userEvent.click(await screen.findByTestId('stage-retry-refused'));
-    expect(await screen.findByTestId('deploy-apply-panel')).toBeInTheDocument();
   });
 
   it('counts every refused resource of the gateway outside a project', async () => {
@@ -512,34 +360,6 @@ describe('GatewaysOverview', () => {
     const devCard = await screen.findByTestId('deploy-stage-gw-dev');
     expect(await within(devCard).findByTestId('stage-refused')).toHaveTextContent('2 refused, not running');
     expect(within(devCard).queryByTestId('card-shared-refused')).not.toBeInTheDocument();
-  });
-
-  it("offers the project's own auto-sync in its deploy drawer for the first gateway", async () => {
-    routes['GET /gateways/gw-dev/project-status'] = {
-      project: {versions: [], pending: 1, required: 0},
-      shared: {pending: 0, byType: []},
-      needed: {differing: 0},
-      autoSync: {enabled: true, inherited: false},
-    };
-    routes['PUT /projects/p-shop/auto-sync'] = '';
-
-    render(
-      <ProjectScopeProvider project={{id: 'p-shop'}}>
-        <GatewaysOverview />
-      </ProjectScopeProvider>,
-    );
-
-    const devCard = await screen.findByTestId('deploy-stage-gw-dev');
-    await userEvent.click(await within(devCard).findByTestId('card-deploy'));
-    const panel = await screen.findByTestId('deploy-apply-panel');
-    expect(await within(panel).findByRole('checkbox', {name: 'Auto-sync from configuration'})).toBeChecked();
-    await userEvent.click(within(panel).getByTestId('auto-apply-use-default'));
-
-    await waitFor(() =>
-      expect(http.calls).toContainEqual(
-        expect.objectContaining({method: 'PUT', url: `${SERVER}/projects/p-shop/auto-sync`, data: {autoSync: null}}),
-      ),
-    );
   });
 
   it("says when a project's auto-sync failed, and retries it as a deploy", async () => {
@@ -565,25 +385,10 @@ describe('GatewaysOverview', () => {
     expect(await screen.findByTestId('deploy-apply-panel')).toBeInTheDocument();
   });
 
-  it('keeps auto-sync as the deployment configuration sets it when it is set there', async () => {
-    routes['GET /server-config/gateway'] = {readOnly: {autoApply: true}, writable: null, merged: {autoApply: true}};
-
-    render(<GatewaysOverview />);
-
-    const toggle = await screen.findByRole('checkbox', {
-      name: 'Default for projects: auto-sync configuration to Development',
-    });
-    await waitFor(() => expect(toggle).toBeChecked());
-    expect(toggle).toBeDisabled();
-  });
-
   it('promotes the version the gateway before runs, to that gateway only', async () => {
     render(<GatewaysOverview />);
 
-    const promote = within(await screen.findByTestId('gateway-promote-gw-prod')).getByRole('button', {
-      name: 'Promote',
-    });
-    await waitFor(() => expect(promote).toBeEnabled());
+    const promote = await within(await screen.findByTestId('deploy-stage-gw-dev')).findByTestId('card-promote');
     await userEvent.click(promote);
 
     const dialog = await screen.findByTestId('deploy-apply-panel');
@@ -651,10 +456,7 @@ describe('GatewaysOverview', () => {
       </ProjectScopeProvider>,
     );
 
-    const promote = within(await screen.findByTestId('gateway-promote-gw-prod')).getByRole('button', {
-      name: 'Promote',
-    });
-    await waitFor(() => expect(promote).toBeEnabled());
+    const promote = await within(await screen.findByTestId('deploy-stage-gw-dev')).findByTestId('card-promote');
     await userEvent.click(promote);
     const panel = await screen.findByTestId('deploy-apply-panel');
     // A shared resource the target lacks goes by default; one it holds is replaced only when ticked.
@@ -719,10 +521,7 @@ describe('GatewaysOverview', () => {
       </ProjectScopeProvider>,
     );
 
-    const promote = within(await screen.findByTestId('gateway-promote-gw-prod')).getByRole('button', {
-      name: 'Promote',
-    });
-    await waitFor(() => expect(promote).toBeEnabled());
+    const promote = await within(await screen.findByTestId('deploy-stage-gw-dev')).findByTestId('card-promote');
     await userEvent.click(promote);
     const panel = await screen.findByTestId('deploy-apply-panel');
     await userEvent.click(await within(panel).findByRole('button', {name: /Promote 1 change to Production/}));
@@ -796,13 +595,14 @@ describe('GatewaysOverview', () => {
     expect(within(panel).getByRole('checkbox', {name: 'Write Cart'})).toBeEnabled();
   });
 
-  it('draws the path: a rocket into the first gateway and a paper plane into each later one', async () => {
+  it('draws the path: a deploy into the first gateway and a promote into each later one', async () => {
     render(<GatewaysOverview />);
 
     const into = await screen.findByTestId('gateway-connector-gw-dev');
-    expect(within(into).getByTestId('path-rocket')).toBeInTheDocument();
+    expect(within(into).getByText('Deploy')).toBeInTheDocument();
     const promote = await screen.findByTestId('gateway-promote-gw-prod');
-    expect(within(promote).getByTestId('path-plane')).toBeInTheDocument();
+    expect(within(promote).getByText('Promote')).toBeInTheDocument();
+    expect(within(promote).queryByRole('button')).not.toBeInTheDocument();
   });
 
   it('has nothing to promote while the gateways run the same version', async () => {
@@ -810,11 +610,9 @@ describe('GatewaysOverview', () => {
 
     render(<GatewaysOverview />);
 
-    const promote = within(await screen.findByTestId('gateway-promote-gw-prod')).getByRole('button', {
-      name: 'Promote',
-    });
-    await waitFor(() => expect(screen.getByTestId('deploy-stage-gw-prod')).toBeInTheDocument());
-    expect(promote).toBeDisabled();
+    const prodCard = await screen.findByTestId('deploy-stage-gw-prod');
+    await waitFor(() => expect(within(prodCard).getByTestId('card-standing')).toHaveTextContent('Matches Development'));
+    expect(within(screen.getByTestId('deploy-stage-gw-dev')).queryByTestId('card-promote')).not.toBeInTheDocument();
   });
 
   it('shows one gateway on its own, with nothing to promote or scroll', async () => {
@@ -870,7 +668,6 @@ describe('GatewaysOverview', () => {
 
     const devCard = await screen.findByTestId('deploy-stage-gw-dev');
     await waitFor(() => expect(within(devCard).getByTestId('card-standing')).toHaveTextContent('2 changes behind'));
-    expect(within(devCard).getByTestId('card-deploy')).toBeInTheDocument();
     expect(
       within(screen.getByTestId(`pipeline-version-${v2}`)).getByRole('button', {name: 'Deploy'}),
     ).toBeInTheDocument();
@@ -898,7 +695,6 @@ describe('GatewaysOverview', () => {
     const devCard = await screen.findByTestId('deploy-stage-gw-dev');
     await waitFor(() => expect(within(devCard).getByTestId('card-standing')).toHaveTextContent('2 changes behind'));
     expect(within(devCard).getByTestId('card-version')).toHaveTextContent('v2');
-    expect(within(devCard).getByTestId('card-deploy')).toBeInTheDocument();
     expect(
       within(screen.getByTestId(`pipeline-version-${v2}`)).getByText(/Latest · .* · 2 changes/),
     ).toBeInTheDocument();
@@ -946,11 +742,7 @@ describe('GatewaysOverview', () => {
       'Uses 1 needed resource in another form than Development',
     );
     // Shared updates alone are worth a promotion, though the project is up to date.
-    await waitFor(() =>
-      expect(
-        within(screen.getByTestId('gateway-promote-gw-prod')).getByRole('button', {name: 'Promote'}),
-      ).toBeEnabled(),
-    );
+    expect(await within(screen.getByTestId('deploy-stage-gw-dev')).findByTestId('card-promote')).toBeInTheDocument();
   });
 
   it('is in sync for a project with nothing of its own waiting, and offers no deploy', async () => {
@@ -1014,15 +806,13 @@ describe('GatewaysOverview', () => {
     await waitFor(() => expect(within(prodCard).getByTestId('card-standing')).toHaveTextContent('Matches Development'));
   });
 
-  it('keeps Configure in the more menu, and shows the gateway name as a heading', async () => {
+  it('offers no more actions menu on a card, and shows the gateway name as a heading', async () => {
     render(<GatewaysOverview />);
 
     const devCard = await screen.findByTestId('deploy-stage-gw-dev');
     expect(within(devCard).getByRole('heading', {level: 3, name: 'Development'})).toBeInTheDocument();
+    expect(within(devCard).queryByTestId('card-more')).not.toBeInTheDocument();
     expect(within(devCard).queryByTestId('card-configure')).not.toBeInTheDocument();
-    await userEvent.click(within(devCard).getByTestId('card-more'));
-    await userEvent.click(await screen.findByTestId('card-configure'));
-    expect(navigate).toHaveBeenCalled();
   });
 
   it('opens every version in a dialog', async () => {

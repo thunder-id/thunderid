@@ -11,9 +11,9 @@ vi.mock('react-router', async (importOriginal) => ({
   useParams: () => ({projectId: 'p-shop'}),
 }));
 
-function Overview({eyebrow = undefined}: {eyebrow?: string}) {
+function Overview({eyebrow = undefined, editPipelineUrl = undefined}: {eyebrow?: string; editPipelineUrl?: string}) {
   return (
-    <div data-testid="gateways-overview" data-project={useProjectScope().projectId}>
+    <div data-testid="gateways-overview" data-project={useProjectScope().projectId} data-edit={editPipelineUrl}>
       {eyebrow}
     </div>
   );
@@ -21,12 +21,18 @@ function Overview({eyebrow = undefined}: {eyebrow?: string}) {
 
 const selectProject = vi.fn();
 vi.mock('@thunderid/configure-projects', () => ({
-  useProjectSelection: () => ({selectProject}),
+  useProjectSelection: () => ({selectProject, projects: [{id: 'p-shop', handle: 'shop', displayName: 'Shop'}]}),
 }));
 
 vi.mock('@thunderid/configure-gateways', () => ({
   useProjects: () => ({data: [{id: 'p-shop', displayName: 'Shop'}]}),
-  GatewaysOverview: ({eyebrow = undefined}: {eyebrow?: string}) => <Overview eyebrow={eyebrow} />,
+  GatewaysOverview: ({
+    eyebrow = undefined,
+    editPipelineUrl = undefined,
+  }: {
+    eyebrow?: string;
+    editPipelineUrl?: string;
+  }) => <Overview eyebrow={eyebrow} editPipelineUrl={editPipelineUrl} />,
 }));
 
 describe('ProjectHomePage', () => {
@@ -39,6 +45,23 @@ describe('ProjectHomePage', () => {
 
     expect(screen.getByTestId('gateways-overview')).toHaveAttribute('data-project', 'p-shop');
     expect(screen.getByTestId('gateways-overview')).toHaveTextContent('Shop');
+  });
+
+  it("links to where the project's pipeline is edited, naming the project by its handle", () => {
+    // A first render has the test providers set their whole runtime configuration, which the link adds to.
+    render(<div />).unmount();
+    const previous = window.__THUNDERID_RUNTIME_CONFIG__;
+    window.__THUNDERID_RUNTIME_CONFIG__ = {
+      ...previous!,
+      deploy: {edit_pipeline_url: 'https://platform.test/projects/{project}/pipeline'},
+    };
+    render(<ProjectHomePage />);
+    window.__THUNDERID_RUNTIME_CONFIG__ = previous;
+
+    expect(screen.getByTestId('gateways-overview')).toHaveAttribute(
+      'data-edit',
+      'https://platform.test/projects/shop/pipeline',
+    );
   });
 
   it('selects the project it is opened for, so a link opens the console in the project', async () => {

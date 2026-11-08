@@ -25,8 +25,9 @@ function Dot({index}: {index: number}): ReactNode {
 }
 
 /**
- * The header's gateway switcher within a project: the project's configuration, and each gateway
- * of its pipeline with how it stands, to open one. It names the gateway open, or the configuration.
+ * The header's gateway switcher on a gateway's pages: each gateway, to open one, and with a project
+ * selected, the project's configuration and how each gateway stands with the project. It names the
+ * gateway open.
  */
 export default function GatewaySwitcher(): ReactNode {
   const {t} = useTranslation();
@@ -37,10 +38,10 @@ export default function GatewaySwitcher(): ReactNode {
   const versions = useVersions();
   const stages: PipelineStage[] = pipeline.data?.stages ?? [];
   const statuses = useProjectStatuses(stages);
-  const match = useMatch(`/${ROUTE_SEGMENTS.projects}/:projectId/${ROUTE_SEGMENTS.deployTargets}/:gatewayId/*`);
+  const match = useMatch(`/${ROUTE_SEGMENTS.deployTargets}/:gatewayId/*`);
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
 
-  if (!project || stages.length === 0) {
+  if (stages.length === 0) {
     return null;
   }
 
@@ -54,7 +55,8 @@ export default function GatewaySwitcher(): ReactNode {
     setAnchor(null);
     void navigate(path);
   };
-  const standing = (stage: PipelineStage, index: number): string => {
+  const standing = (stage: PipelineStage, index: number): string | undefined => {
+    if (!project) return undefined;
     const status = statuses.byGateway[stage.gateway.id];
     const runs = status?.project.versions[0];
     const runsText = runs?.number ? `v${runs.number}` : t('common:header.runsNothing', 'Nothing deployed');
@@ -94,29 +96,33 @@ export default function GatewaySwitcher(): ReactNode {
         {open ? open.name.toUpperCase() : t('common:header.projectConfiguration', 'Project configuration')}
       </Button>
       <Menu anchorEl={anchor} open={Boolean(anchor)} onClose={() => setAnchor(null)}>
-        <ListSubheader>{t('common:header.configure', 'Configure')}</ListSubheader>
-        <MenuItem onClick={() => go(RouteConfig.projects.home(project))}>
-          <Stack>
-            <Typography variant="body2">{t('common:header.projectConfiguration', 'Project configuration')}</Typography>
-            <Typography variant="caption" color="text.secondary">
-              {latest?.number
-                ? t('common:header.configVersion', {
-                    version: `v${latest.number}`,
-                    count: notDeployed,
-                    defaultValue_one: 'Config {{version}} · {{count}} change not deployed',
-                    defaultValue_other: 'Config {{version}} · {{count}} changes not deployed',
-                  })
-                : t('common:header.configNoVersion', 'Nothing captured yet')}
-            </Typography>
-          </Stack>
-        </MenuItem>
-        <Divider />
+        {project && <ListSubheader>{t('common:header.configure', 'Configure')}</ListSubheader>}
+        {project && (
+          <MenuItem onClick={() => go(RouteConfig.projects.home(project))}>
+            <Stack>
+              <Typography variant="body2">
+                {t('common:header.projectConfiguration', 'Project configuration')}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                {latest?.number
+                  ? t('common:header.configVersion', {
+                      version: `v${latest.number}`,
+                      count: notDeployed,
+                      defaultValue_one: 'Config {{version}} · {{count}} change not deployed',
+                      defaultValue_other: 'Config {{version}} · {{count}} changes not deployed',
+                    })
+                  : t('common:header.configNoVersion', 'Nothing captured yet')}
+              </Typography>
+            </Stack>
+          </MenuItem>
+        )}
+        {project && <Divider />}
         <ListSubheader>{t('common:header.gateways', 'Gateways')}</ListSubheader>
         {stages.map((stage: PipelineStage, index: number) => (
           <MenuItem
             key={stage.gateway.id}
             selected={stage.gateway.id === open?.gateway.id}
-            onClick={() => go(gatewaySectionOf(routes, stage.gateway.id, project, 'overview'))}
+            onClick={() => go(gatewaySectionOf(routes, stage.gateway.id, undefined, 'overview'))}
           >
             <Stack direction="row" spacing={1.5} alignItems="center">
               <Dot index={index} />

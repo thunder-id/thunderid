@@ -6,7 +6,6 @@ import {useCallback, useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useProjectStatuses} from '../api/useProjectStatus';
 import ApplyPanel from '../components/ApplyPanel';
-import AutoApplySwitch from '../components/AutoApplySwitch';
 import PipelineSteps from '../components/PipelineSteps';
 import ResourceNamesProvider from '../components/ResourceNamesProvider';
 import RevertPanel from '../components/RevertPanel';
@@ -48,7 +47,7 @@ export interface DeployPanels {
 /**
  * The deploy and rollback dialogs of the deploy path, opened from its versions and stages, and the toast
  * each says it is done with. Given the pipeline, a deploy opens in a drawer that shows where along it the
- * deploy goes, with auto-sync when it goes to the first gateway.
+ * deploy goes.
  */
 export default function useDeployPanels(
   gateways: Gateway[],
@@ -148,11 +147,6 @@ export default function useDeployPanels(
       <ApplyPanel
         variant={pipeline ? 'drawer' : 'dialog'}
         before={pipeline ? <PipelineSteps stages={pipeline} targetId={targetId} runs={runs} /> : undefined}
-        after={
-          first?.gateway.id === targetId ? (
-            <AutoApplySwitch target={first.name} targetId={first.gateway.id} />
-          ) : undefined
-        }
         targetName={stage?.name}
         sourceName={promotedFrom?.name}
         subtitle={subtitle}

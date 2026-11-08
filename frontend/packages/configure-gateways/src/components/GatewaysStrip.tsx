@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {Box, IconButton, Stack, Typography} from '@wso2/oxygen-ui';
+import {Box, IconButton, Link, Stack, Typography} from '@wso2/oxygen-ui';
 import {ChevronLeft, ChevronRight} from '@wso2/oxygen-ui-icons-react';
 import {useCallback, useEffect, useRef, useState, type JSX, type ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
@@ -14,6 +14,8 @@ export interface GatewaysStripProps {
   count: number;
   /** The gateway cards, with what joins them. */
   children: ReactNode;
+  /** Where the gateways and the pipeline between them are edited, opened in a new tab. */
+  editUrl?: string;
 }
 
 const Fade = ({side}: {side: 'left' | 'right'}): JSX.Element => (
@@ -37,7 +39,7 @@ const Fade = ({side}: {side: 'left' | 'right'}): JSX.Element => (
  * The gateways, in pipeline order, on one row that scrolls sideways when they do not fit, with
  * buttons to step through them and a fade on the side there is more to see.
  */
-export default function GatewaysStrip({count, children}: GatewaysStripProps): JSX.Element {
+export default function GatewaysStrip({count, children, editUrl = undefined}: GatewaysStripProps): JSX.Element {
   const {t} = useTranslation('deploy');
   const track = useRef<HTMLDivElement>(null);
   const [atStart, setAtStart] = useState(true);
@@ -72,6 +74,18 @@ export default function GatewaysStrip({count, children}: GatewaysStripProps): JS
               defaultValue_other: '{{count}} gateways',
             })}
           </Typography>
+          {editUrl && (
+            <Link
+              href={editUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              variant="caption"
+              sx={{fontWeight: 500, mr: 1}}
+              data-testid="pipeline-edit"
+            >
+              {t('pipeline.editPipeline', 'Edit pipeline')}
+            </Link>
+          )}
           {count > 1 && (
             <>
               <IconButton
@@ -109,6 +123,7 @@ export default function GatewaysStrip({count, children}: GatewaysStripProps): JS
             flexWrap: 'nowrap',
             alignItems: 'stretch',
             gap: 1.5,
+            // A dashed frame as tall as the versions beside it, with the cards inside it.
             p: 2,
             overflowX: 'auto',
             scrollSnapType: 'x proximity',
