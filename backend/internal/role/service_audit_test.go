@@ -376,7 +376,7 @@ func (s *RoleServiceAuditTestSuite) TestDeleteRole_PublishesOneEventPerAttempt()
 					Return([]RoleAssignment{}, nil).Once()
 				s.mockSharingService.EXPECT().DeletePoliciesForResource(mock.Anything, RoleSharingType,
 					"role1").Return(nil).Once()
-				s.mockStore.On("DeleteAssignmentsByRoleID", mock.Anything, "role1").Return(nil).Once()
+				s.mockStore.On("DeleteAssignmentsByRoleID", mock.Anything, "role1").Return(nil, nil).Once()
 				s.mockStore.On("DeleteRole", mock.Anything, "role1").Return(nil).Once()
 			},
 			outcome: audit.OutcomeSucceeded,

@@ -2225,6 +2225,76 @@ func (suite *RoleStoreTestSuite) TestAssignmentReadsInOU() {
 	})
 }
 
+func (suite *RoleStoreTestSuite) TestDeleteAssignmentsByRoleID() {
+	rows := []map[string]interface{}{
+		{"assignee_id": "user1", "assignee_type": "entity", "assignment_ou_id": "ou1", "sharing_policy_id": ""},
+		{"assignee_id": "group1", "assignee_type": "group", "assignment_ou_id": "ou1", "sharing_policy_id": ""},
+	}
+	suite.Run("returns the assignments it removed", func() {
+		suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil).Once()
+		suite.mockDBClient.On("QueryContext", mock.Anything, queryGetAllRoleAssignments,
+			"role1", testDeploymentID).Return(rows, nil).Once()
+		suite.mockDBClient.On("ExecuteContext", mock.Anything, queryDeleteAllRoleAssignments,
+			"role1", testDeploymentID).Return(int64(2), nil).Once()
+
+		removed, err := suite.store.DeleteAssignmentsByRoleID(context.Background(), "role1")
+
+		suite.Require().NoError(err)
+		suite.Equal([]RoleAssignment{
+			{ID: "user1", Type: assigneeTypeEntity, OUID: "ou1"},
+			{ID: "group1", Type: AssigneeTypeGroup, OUID: "ou1"},
+		}, removed)
+	})
+	suite.Run("an assignment committed between the read and the delete fails the call", func() {
+		suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil).Once()
+		suite.mockDBClient.On("QueryContext", mock.Anything, queryGetAllRoleAssignments,
+			"role1", testDeploymentID).Return(rows, nil).Once()
+		suite.mockDBClient.On("ExecuteContext", mock.Anything, queryDeleteAllRoleAssignments,
+			"role1", testDeploymentID).Return(int64(3), nil).Once()
+
+		removed, err := suite.store.DeleteAssignmentsByRoleID(context.Background(), "role1")
+
+		suite.ErrorContains(err, "changed while being deleted")
+		suite.Nil(removed)
+	})
+	suite.Run("read error is propagated", func() {
+		suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil).Once()
+		suite.mockDBClient.On("QueryContext", mock.Anything, queryGetAllRoleAssignments,
+			"role1", testDeploymentID).Return(nil, errors.New("db error")).Once()
+
+		_, err := suite.store.DeleteAssignmentsByRoleID(context.Background(), "role1")
+
+		suite.ErrorContains(err, "failed to read assignments")
+	})
+	suite.Run("malformed row is reported", func() {
+		suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil).Once()
+		suite.mockDBClient.On("QueryContext", mock.Anything, queryGetAllRoleAssignments,
+			"role1", testDeploymentID).Return([]map[string]interface{}{{"assignee_id": 1}}, nil).Once()
+
+		_, err := suite.store.DeleteAssignmentsByRoleID(context.Background(), "role1")
+
+		suite.Error(err)
+	})
+	suite.Run("delete error is propagated", func() {
+		suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil).Once()
+		suite.mockDBClient.On("QueryContext", mock.Anything, queryGetAllRoleAssignments,
+			"role1", testDeploymentID).Return(rows, nil).Once()
+		suite.mockDBClient.On("ExecuteContext", mock.Anything, queryDeleteAllRoleAssignments,
+			"role1", testDeploymentID).Return(int64(0), errors.New("db error")).Once()
+
+		_, err := suite.store.DeleteAssignmentsByRoleID(context.Background(), "role1")
+
+		suite.ErrorContains(err, "failed to delete assignments")
+	})
+	suite.Run("db client error is propagated", func() {
+		suite.mockDBProvider.On("GetConfigDBClient").Return(nil, errors.New("no client")).Once()
+
+		_, err := suite.store.DeleteAssignmentsByRoleID(context.Background(), "role1")
+
+		suite.Error(err)
+	})
+}
+
 func (suite *RoleStoreTestSuite) TestDeleteAssignmentsInOU() {
 	suite.Run("success", func() {
 		suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil).Once()

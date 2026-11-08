@@ -119,6 +119,13 @@ var (
 			`AND SHARING_POLICY_ID = '' AND DEPLOYMENT_ID = $5`,
 	}
 
+	// queryGetAllRoleAssignments retrieves every assignment for a role, read before they are deleted.
+	queryGetAllRoleAssignments = dbmodel.DBQuery{
+		ID: "RLQ-ROLE_MGT-44",
+		Query: `SELECT ASSIGNEE_ID, ASSIGNEE_TYPE, ASSIGNMENT_OU_ID, SHARING_POLICY_ID FROM "ROLE_ASSIGNMENT" ` +
+			`WHERE ROLE_ID = $1 AND DEPLOYMENT_ID = $2`,
+	}
+
 	// queryDeleteAllRoleAssignments deletes all assignments for a role (used for cascade delete).
 	queryDeleteAllRoleAssignments = dbmodel.DBQuery{
 		ID:    "RLQ-ROLE_MGT-19",

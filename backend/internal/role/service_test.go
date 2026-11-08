@@ -1434,7 +1434,7 @@ func (suite *RoleServiceTestSuite) TestDeleteRole_Success() {
 	suite.mockSharingService.EXPECT().DeletePoliciesForResource(mock.Anything, RoleSharingType, "role1").
 		Return(nil).Once()
 	suite.mockStore.On("DeleteAssignmentsByRoleID", mock.Anything,
-		"role1").Return(nil)
+		"role1").Return(nil, nil)
 	suite.mockStore.On("DeleteRole", mock.Anything,
 		"role1").Return(nil)
 
@@ -1450,7 +1450,7 @@ func (suite *RoleServiceTestSuite) TestDeleteRole_WithAssignments() {
 	suite.mockSharingService.EXPECT().DeletePoliciesForResource(mock.Anything, RoleSharingType, "role1").
 		Return(nil).Once()
 	suite.mockStore.On("DeleteAssignmentsByRoleID", mock.Anything,
-		"role1").Return(nil)
+		"role1").Return(nil, nil)
 	suite.mockStore.On("DeleteRole", mock.Anything,
 		"role1").Return(nil)
 
@@ -1492,7 +1492,7 @@ func (suite *RoleServiceTestSuite) TestDeleteRole_GetAssignmentsCountError() {
 	suite.mockSharingService.EXPECT().DeletePoliciesForResource(mock.Anything, RoleSharingType, "role1").
 		Return(nil).Once()
 	suite.mockStore.On("DeleteAssignmentsByRoleID", mock.Anything,
-		"role1").Return(errors.New("database error"))
+		"role1").Return(nil, errors.New("database error"))
 
 	err := suite.service.DeleteRole(context.Background(), "role1")
 
@@ -1507,7 +1507,7 @@ func (suite *RoleServiceTestSuite) TestDeleteRole_StoreError() {
 	suite.mockSharingService.EXPECT().DeletePoliciesForResource(mock.Anything, RoleSharingType, "role1").
 		Return(nil).Once()
 	suite.mockStore.On("DeleteAssignmentsByRoleID", mock.Anything,
-		"role1").Return(nil)
+		"role1").Return(nil, nil)
 	suite.mockStore.On("DeleteRole", mock.Anything,
 		"role1").Return(errors.New("delete error"))
 
@@ -1599,7 +1599,7 @@ func (suite *RoleServiceTestSuite) TestDeleteRole_PurgesPoliciesInTheRoleTransac
 	suite.mockStore.On("IsRoleExist", mock.Anything, "role1").Return(true, nil)
 	suite.unmandated()
 	suite.mockSharingService.EXPECT().DeletePoliciesForResource(inTx, RoleSharingType, "role1").Return(nil).Once()
-	suite.mockStore.On("DeleteAssignmentsByRoleID", inTx, "role1").Return(nil)
+	suite.mockStore.On("DeleteAssignmentsByRoleID", inTx, "role1").Return(nil, nil)
 	suite.mockStore.On("DeleteRole", inTx, "role1").Return(errors.New("db down"))
 
 	err := suite.service.DeleteRole(context.Background(), "role1")

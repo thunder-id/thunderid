@@ -150,6 +150,9 @@ const (
 	revocationInputResourceServer = "targetResourceServerId"
 	revocationInputResource       = "targetResourceId"
 	revocationInputAction         = "targetActionId"
+	// revocationInputRemovedHolders lists, as a JSON array, the entities whose access the committed change
+	// removed. Only a system post flow reads it.
+	revocationInputRemovedHolders = "removedHolderIds"
 
 	governanceInputOperatorNote = "operatorNote"
 

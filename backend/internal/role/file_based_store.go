@@ -475,8 +475,8 @@ func (f *fileBasedStore) DeleteRole(ctx context.Context, id string) error {
 }
 
 // DeleteAssignmentsByRoleID is not supported in file-based store.
-func (f *fileBasedStore) DeleteAssignmentsByRoleID(ctx context.Context, id string) error {
-	return errors.New("DeleteAssignmentsByRoleID is not supported in file-based store")
+func (f *fileBasedStore) DeleteAssignmentsByRoleID(ctx context.Context, id string) ([]RoleAssignment, error) {
+	return nil, errors.New("DeleteAssignmentsByRoleID is not supported in file-based store")
 }
 
 // DeleteAssignmentsInOU is a no-op for the file-based store: a declared assignment outside the role's

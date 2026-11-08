@@ -36,12 +36,19 @@ func (suite *RoleServiceTestSuite) recordSystemFlows(failing string, err *tidcom
 
 // expectRoleRemoval sets up a role that exists and may be deleted, recording its removal in order.
 func (suite *RoleServiceTestSuite) expectRoleRemoval(order *[]string, deleteErr error) {
+	suite.expectRoleRemovalOf(order, nil, deleteErr)
+}
+
+// expectRoleRemovalOf sets up a role that exists and may be deleted with the given assignments, recording
+// its removal in order.
+func (suite *RoleServiceTestSuite) expectRoleRemovalOf(order *[]string, removed []RoleAssignment,
+	deleteErr error) {
 	suite.mockStore.On("IsRoleExist", mock.Anything, "role1").Return(true, nil).Once()
 	suite.unmandated()
 	suite.mockSharingService.EXPECT().DeletePoliciesForResource(mock.Anything, RoleSharingType, "role1").
 		Return(nil).Once()
 	suite.mockStore.On("DeleteAssignmentsByRoleID", mock.Anything, "role1").
-		Run(func(mock.Arguments) { *order = append(*order, "assignments") }).Return(nil).Once()
+		Run(func(mock.Arguments) { *order = append(*order, "assignments") }).Return(removed, nil).Once()
 	suite.mockStore.On("DeleteRole", mock.Anything, "role1").
 		Run(func(mock.Arguments) { *order = append(*order, "role") }).Return(deleteErr).Once()
 }
@@ -63,6 +70,45 @@ func (suite *RoleServiceTestSuite) TestDeleteRole_RunsThePreAndPostFlowsAroundTh
 		{Handle: systemFlowRevocationPost, Inputs: inputs,
 			RuntimeData: map[string]string{"plan": systemFlowRoleDeletePre}},
 	}, *runs)
+}
+
+// The post flow is handed every entity whose assignment the delete removed, with groups expanded as the
+// pre flow expands them, so a holder assigned after the pre flow planned the revocation is revoked too.
+func (suite *RoleServiceTestSuite) TestDeleteRole_HandsThePostFlowTheRemovedHolders() {
+	order := []string{}
+	runs := suite.recordSystemFlows("", nil, &order, 2)
+	suite.expectRoleRemovalOf(&order, []RoleAssignment{
+		{ID: "user-1", Type: assigneeTypeEntity},
+		{ID: "late-group", Type: AssigneeTypeGroup},
+		{ID: "user-2", Type: assigneeTypeEntity},
+	}, nil)
+	suite.mockGroupService.On("GetTransitiveMemberEntities", mock.Anything, "late-group").
+		Return([]string{"user-2", "user-3"}, nil).Once()
+
+	err := suite.service.DeleteRole(context.Background(), "role1")
+
+	suite.Nil(err)
+	suite.Require().Len(*runs, 2)
+	suite.Equal(map[string]string{systemFlowInputRole: "role1"}, (*runs)[0].Inputs,
+		"the pre flow plans from the holders it reads itself")
+	suite.Equal(map[string]string{
+		systemFlowInputRole:           "role1",
+		systemFlowInputRemovedHolders: `["user-1","user-2","user-3"]`,
+	}, (*runs)[1].Inputs)
+}
+
+// A late group that cannot be expanded is reported, and no post flow runs on a partial list.
+func (suite *RoleServiceTestSuite) TestDeleteRole_UnexpandableRemovedGroupIsReported() {
+	order := []string{}
+	suite.recordSystemFlows("", nil, &order, 1)
+	suite.expectRoleRemovalOf(&order, []RoleAssignment{{ID: "late-group", Type: AssigneeTypeGroup}}, nil)
+	suite.mockGroupService.On("GetTransitiveMemberEntities", mock.Anything, "late-group").
+		Return(nil, &tidcommon.InternalServerError).Once()
+
+	err := suite.service.DeleteRole(context.Background(), "role1")
+
+	suite.Equal(&tidcommon.InternalServerError, err)
+	suite.Equal([]string{systemFlowRoleDeletePre, "assignments", "role"}, order)
 }
 
 // A refused pre flow leaves the role and its assignments as they were, and runs no post flow.

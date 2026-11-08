@@ -783,6 +783,7 @@ func (rs *roleService) deleteRole(ctx context.Context, id string) *tidcommon.Ser
 	}
 
 	var capturedSvcErr, refusal *tidcommon.ServiceError
+	var removed []RoleAssignment
 	err = rs.transactioner.Transact(ctx, func(txCtx context.Context) error {
 		if refusal = rs.requireRoleNotMandated(txCtx, id); refusal != nil {
 			return errors.New("rollback for a mandated role")
@@ -797,7 +798,8 @@ func (rs *roleService) deleteRole(ctx context.Context, id string) *tidcommon.Ser
 		// Delete all assignments for the role before deleting the role itself (cascade delete).
 		// The ROLE_ASSIGNMENT table does not have a FK constraint on ROLE_ID to allow assignments
 		// for roles that live in the file-based store, so cascade delete is handled here in code.
-		if err := rs.roleStore.DeleteAssignmentsByRoleID(txCtx, id); err != nil {
+		var err error
+		if removed, err = rs.roleStore.DeleteAssignmentsByRoleID(txCtx, id); err != nil {
 			return err
 		}
 		return rs.roleStore.DeleteRole(txCtx, id)
@@ -812,13 +814,48 @@ func (rs *roleService) deleteRole(ctx context.Context, id string) *tidcommon.Ser
 		logger.Error(ctx, "Failed to delete role", log.String("id", id), log.Error(err))
 		return &tidcommon.InternalServerError
 	}
-	// A token issued to an assignee while the role was being removed is revoked too.
-	if _, svcErr := runSystemFlow(ctx, rs.systemFlows, systemFlowRevocationPost, inputs, shared); svcErr != nil {
+	// A token issued to an assignee while the role was being removed is revoked too, and so is one issued
+	// to a holder assigned after the pre flow planned the revocation.
+	postInputs, svcErr := rs.withRemovedHolders(ctx, inputs, removed)
+	if svcErr != nil {
+		return svcErr
+	}
+	if _, svcErr := runSystemFlow(ctx, rs.systemFlows, systemFlowRevocationPost, postInputs, shared); svcErr != nil {
 		return svcErr
 	}
 
 	logger.Debug(ctx, "Successfully deleted role", log.String("id", id))
 	return nil
+}
+
+// withRemovedHolders adds to the post flow inputs the entities holding the removed assignments, with
+// groups expanded as the pre flow expands them, so the post flow revokes any it did not plan for.
+func (rs *roleService) withRemovedHolders(ctx context.Context, inputs map[string]string,
+	removed []RoleAssignment) (map[string]string, *tidcommon.ServiceError) {
+	if rs.systemFlows == nil || len(removed) == 0 {
+		return inputs, nil
+	}
+	entityIDs := []string{}
+	seen := map[string]struct{}{}
+	for _, assignment := range removed {
+		members, svcErr := expandPrincipal(ctx, rs.groupService, assignment.ID,
+			assignment.Type == AssigneeTypeGroup)
+		if svcErr != nil {
+			return nil, svcErr
+		}
+		for _, entityID := range members {
+			if _, ok := seen[entityID]; ok {
+				continue
+			}
+			seen[entityID] = struct{}{}
+			entityIDs = append(entityIDs, entityID)
+		}
+	}
+	// A list of strings always encodes.
+	encoded, _ := json.Marshal(entityIDs)
+	withHolders := maps.Clone(inputs)
+	withHolders[systemFlowInputRemovedHolders] = string(encoded)
+	return withHolders, nil
 }
 
 // publishRoleEvent publishes the audit event of an attempt on the role with id, after the change
