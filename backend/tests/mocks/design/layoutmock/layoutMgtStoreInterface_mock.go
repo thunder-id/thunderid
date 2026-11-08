@@ -307,6 +307,86 @@ func (_c *layoutMgtStoreInterfaceMock_GetLayoutList_Call) RunAndReturn(run func(
 	return _c
 }
 
+// GetLayoutListByProject provides a mock function for the type layoutMgtStoreInterfaceMock
+func (_mock *layoutMgtStoreInterfaceMock) GetLayoutListByProject(ctx context.Context, projectID string, limit int, offset int) ([]layoutmgt.Layout, error) {
+	ret := _mock.Called(ctx, projectID, limit, offset)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetLayoutListByProject")
+	}
+
+	var r0 []layoutmgt.Layout
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int) ([]layoutmgt.Layout, error)); ok {
+		return returnFunc(ctx, projectID, limit, offset)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int) []layoutmgt.Layout); ok {
+		r0 = returnFunc(ctx, projectID, limit, offset)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]layoutmgt.Layout)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, int, int) error); ok {
+		r1 = returnFunc(ctx, projectID, limit, offset)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// layoutMgtStoreInterfaceMock_GetLayoutListByProject_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetLayoutListByProject'
+type layoutMgtStoreInterfaceMock_GetLayoutListByProject_Call struct {
+	*mock.Call
+}
+
+// GetLayoutListByProject is a helper method to define mock.On call
+//   - ctx context.Context
+//   - projectID string
+//   - limit int
+//   - offset int
+func (_e *layoutMgtStoreInterfaceMock_Expecter) GetLayoutListByProject(ctx any, projectID any, limit any, offset any) *layoutMgtStoreInterfaceMock_GetLayoutListByProject_Call {
+	return &layoutMgtStoreInterfaceMock_GetLayoutListByProject_Call{Call: _e.mock.On("GetLayoutListByProject", ctx, projectID, limit, offset)}
+}
+
+func (_c *layoutMgtStoreInterfaceMock_GetLayoutListByProject_Call) Run(run func(ctx context.Context, projectID string, limit int, offset int)) *layoutMgtStoreInterfaceMock_GetLayoutListByProject_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 int
+		if args[2] != nil {
+			arg2 = args[2].(int)
+		}
+		var arg3 int
+		if args[3] != nil {
+			arg3 = args[3].(int)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *layoutMgtStoreInterfaceMock_GetLayoutListByProject_Call) Return(layouts []layoutmgt.Layout, err error) *layoutMgtStoreInterfaceMock_GetLayoutListByProject_Call {
+	_c.Call.Return(layouts, err)
+	return _c
+}
+
+func (_c *layoutMgtStoreInterfaceMock_GetLayoutListByProject_Call) RunAndReturn(run func(ctx context.Context, projectID string, limit int, offset int) ([]layoutmgt.Layout, error)) *layoutMgtStoreInterfaceMock_GetLayoutListByProject_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetLayoutListCount provides a mock function for the type layoutMgtStoreInterfaceMock
 func (_mock *layoutMgtStoreInterfaceMock) GetLayoutListCount(ctx context.Context) (int, error) {
 	ret := _mock.Called(ctx)
@@ -363,6 +443,72 @@ func (_c *layoutMgtStoreInterfaceMock_GetLayoutListCount_Call) Return(n int, err
 }
 
 func (_c *layoutMgtStoreInterfaceMock_GetLayoutListCount_Call) RunAndReturn(run func(ctx context.Context) (int, error)) *layoutMgtStoreInterfaceMock_GetLayoutListCount_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetLayoutListCountByProject provides a mock function for the type layoutMgtStoreInterfaceMock
+func (_mock *layoutMgtStoreInterfaceMock) GetLayoutListCountByProject(ctx context.Context, projectID string) (int, error) {
+	ret := _mock.Called(ctx, projectID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetLayoutListCountByProject")
+	}
+
+	var r0 int
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (int, error)); ok {
+		return returnFunc(ctx, projectID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) int); ok {
+		r0 = returnFunc(ctx, projectID)
+	} else {
+		r0 = ret.Get(0).(int)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = returnFunc(ctx, projectID)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// layoutMgtStoreInterfaceMock_GetLayoutListCountByProject_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetLayoutListCountByProject'
+type layoutMgtStoreInterfaceMock_GetLayoutListCountByProject_Call struct {
+	*mock.Call
+}
+
+// GetLayoutListCountByProject is a helper method to define mock.On call
+//   - ctx context.Context
+//   - projectID string
+func (_e *layoutMgtStoreInterfaceMock_Expecter) GetLayoutListCountByProject(ctx any, projectID any) *layoutMgtStoreInterfaceMock_GetLayoutListCountByProject_Call {
+	return &layoutMgtStoreInterfaceMock_GetLayoutListCountByProject_Call{Call: _e.mock.On("GetLayoutListCountByProject", ctx, projectID)}
+}
+
+func (_c *layoutMgtStoreInterfaceMock_GetLayoutListCountByProject_Call) Run(run func(ctx context.Context, projectID string)) *layoutMgtStoreInterfaceMock_GetLayoutListCountByProject_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *layoutMgtStoreInterfaceMock_GetLayoutListCountByProject_Call) Return(n int, err error) *layoutMgtStoreInterfaceMock_GetLayoutListCountByProject_Call {
+	_c.Call.Return(n, err)
+	return _c
+}
+
+func (_c *layoutMgtStoreInterfaceMock_GetLayoutListCountByProject_Call) RunAndReturn(run func(ctx context.Context, projectID string) (int, error)) *layoutMgtStoreInterfaceMock_GetLayoutListCountByProject_Call {
 	_c.Call.Return(run)
 	return _c
 }

@@ -544,7 +544,14 @@ export default function App(): JSX.Element {
                     </ProtectedRoute>
                   }
                 >
-                  <Route index element={<DesignPage />} />
+                  <Route
+                    index
+                    element={
+                      <SelectedProjectScope>
+                        <DesignPage />
+                      </SelectedProjectScope>
+                    }
+                  />
                 </Route>
                 <Route
                   path={RouteConfig.design.themesCreate()}
@@ -578,7 +585,14 @@ export default function App(): JSX.Element {
                     </ProtectedRoute>
                   }
                 >
-                  <Route index element={<LayoutBuilderPage />} />
+                  <Route
+                    index
+                    element={
+                      <SelectedProjectScope>
+                        <LayoutBuilderPage />
+                      </SelectedProjectScope>
+                    }
+                  />
                 </Route>
                 <Route
                   path={RouteConfig.translations.create()}

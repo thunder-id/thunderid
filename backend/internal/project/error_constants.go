@@ -190,8 +190,9 @@ var (
 			DefaultValue: "Project is not empty",
 		},
 		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "error.projectservice.project_not_empty_description",
-			DefaultValue: "Delete or move the project's applications, agents and flows before deleting the project",
+			Key: "error.projectservice.project_not_empty_description",
+			DefaultValue: "Delete or move the project's applications, agents, flows and layouts before deleting " +
+				"the project",
 		},
 	}
 )

@@ -1,15 +1,17 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {ProjectScopeProvider} from '@thunderid/contexts';
 import {fireEvent, render, screen, waitFor} from '@thunderid/test-utils';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import DesignPage from '../DesignPage';
 
-const {mockNavigate, mockShowToast, mockRefetchThemes, mockRefetchLayouts} = vi.hoisted(() => ({
+const {mockNavigate, mockShowToast, mockRefetchThemes, mockRefetchLayouts, mockUseGetLayouts} = vi.hoisted(() => ({
   mockNavigate: vi.fn(),
   mockShowToast: vi.fn(),
   mockRefetchThemes: vi.fn(),
   mockRefetchLayouts: vi.fn(),
+  mockUseGetLayouts: vi.fn(),
 }));
 
 vi.mock('react-router', async () => {
@@ -47,11 +49,14 @@ vi.mock('@thunderid/design', () => ({
     error: themesError,
     refetch: mockRefetchThemes,
   }),
-  useGetLayouts: () => ({
-    data: {layouts: layoutsList},
-    error: layoutsError,
-    refetch: mockRefetchLayouts,
-  }),
+  useGetLayouts: (params?: {projectId?: string}) => {
+    mockUseGetLayouts(params);
+    return {
+      data: {layouts: layoutsList},
+      error: layoutsError,
+      refetch: mockRefetchLayouts,
+    };
+  },
   useDeleteTheme: () => ({mutate: vi.fn(), reset: vi.fn(), isPending: false, isError: false}),
   useGetThemeUsages: () => ({data: undefined, isLoading: false}),
 }));
@@ -70,6 +75,25 @@ describe('DesignPage', () => {
     render(<DesignPage />);
     expect(screen.getByText('Themes')).toBeInTheDocument();
     expect(screen.getByText('Layouts')).toBeInTheDocument();
+  });
+
+  it("lists the selected project's layouts", () => {
+    render(
+      <ProjectScopeProvider project={{id: 'project-1'}}>
+        <DesignPage />
+      </ProjectScopeProvider>,
+    );
+
+    expect(screen.getByText('Layouts')).toBeInTheDocument();
+    expect(screen.getByText('Centered')).toBeInTheDocument();
+    expect(mockUseGetLayouts).toHaveBeenCalledWith({projectId: 'project-1'});
+  });
+
+  it('lists every layout without a selected project', () => {
+    render(<DesignPage />);
+
+    expect(screen.getByText('Centered')).toBeInTheDocument();
+    expect(mockUseGetLayouts).toHaveBeenCalledWith({projectId: undefined});
   });
 
   it('sets the document title', async () => {

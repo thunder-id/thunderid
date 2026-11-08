@@ -51,6 +51,8 @@ type ProjectAPITestSuite struct {
 	resourceServers []string
 	// roles are the roles a test created.
 	roles []string
+	// layouts are the layouts a test created.
+	layouts []string
 }
 
 func TestProjectAPITestSuite(t *testing.T) {
@@ -61,8 +63,8 @@ func (ts *ProjectAPITestSuite) SetupSuite() {
 	ts.suffix = fmt.Sprintf("%d", time.Now().UnixNano())
 }
 
-// TearDownTest removes what a test created: applications, agents, flows, resource servers and roles first,
-// then organization units, the latest first so that children go before their parents.
+// TearDownTest removes what a test created: applications, agents, flows, resource servers, roles and
+// layouts first, then organization units, the latest first so that children go before their parents.
 func (ts *ProjectAPITestSuite) TearDownTest() {
 	for _, id := range ts.apps {
 		_ = testutils.DeleteApplication(id)
@@ -79,13 +81,17 @@ func (ts *ProjectAPITestSuite) TearDownTest() {
 	for _, id := range ts.roles {
 		_ = testutils.DeleteRole(id)
 	}
+	for _, id := range ts.layouts {
+		ts.do(http.MethodDelete, "/design/layouts/"+id, "")
+	}
 	for _, id := range slices.Backward(ts.ous) {
 		_ = testutils.DeleteOrganizationUnit(id)
 	}
 	for _, id := range ts.projects {
 		ts.do(http.MethodDelete, "/projects/"+id, "")
 	}
-	ts.projects, ts.ous, ts.apps, ts.agents, ts.flows, ts.resourceServers, ts.roles = nil, nil, nil, nil, nil, nil, nil
+	ts.projects, ts.ous, ts.apps, ts.agents, ts.flows, ts.resourceServers, ts.roles, ts.layouts =
+		nil, nil, nil, nil, nil, nil, nil, nil
 }
 
 func (ts *ProjectAPITestSuite) handle(name string) string {

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import userEvent from '@testing-library/user-event';
+import {ProjectScopeProvider} from '@thunderid/contexts';
 import {render, screen} from '@thunderid/test-utils';
 import {describe, it, expect, beforeEach, vi} from 'vitest';
 import {ApplicationCreateFlowSignInApproach} from '../../../models/application-create-flow';
@@ -344,5 +345,15 @@ describe('ConfigureDesign', () => {
 
       expect(mockOnLayoutSelectLocal).toHaveBeenCalledWith('layout-1', mockLayoutDetails.layout);
     });
+  });
+
+  it("lists the selected project's layouts", () => {
+    render(
+      <ProjectScopeProvider project={{id: 'project-1'}}>
+        <ConfigureDesign {...defaultProps} />
+      </ProjectScopeProvider>,
+    );
+
+    expect(vi.mocked(useGetLayouts)).toHaveBeenCalledWith({limit: 100, projectId: 'project-1'});
   });
 });

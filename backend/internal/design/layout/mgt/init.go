@@ -14,20 +14,27 @@ import (
 
 // Initialize initializes the layout management service and registers its routes. bus is required: the
 // service publishes the audit event of every layout it creates, updates or deletes on it.
-func Initialize(mux *http.ServeMux, bus eventbus.EventBusInterface) (LayoutMgtServiceInterface,
-	declarativeresource.ResourceExporter, error) {
+//
+// projectChecker is nil on a deployment that serves no projects, where a layout needs no project and a
+// project ID is kept unchecked.
+func Initialize(mux *http.ServeMux, bus eventbus.EventBusInterface, projectChecker projectChecker) (
+	LayoutMgtServiceInterface, declarativeresource.ResourceExporter, error) {
 	if bus == nil {
 		return nil, nil, errNilEventBus
 	}
 
+	// A deployment that serves projects keeps every layout in one, whether it is loaded from a file or
+	// created through the API.
+	requireProject := projectChecker != nil
+
 	// Step 1: Initialize store based on configuration
-	layoutMgtStore, err := initializeStore()
+	layoutMgtStore, err := initializeStore(requireProject)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	// Step 2: Create service with store
-	layoutMgtService := newLayoutMgtService(layoutMgtStore, bus)
+	layoutMgtService := newLayoutMgtService(layoutMgtStore, bus, projectChecker, requireProject)
 	layoutMgtHandler := newLayoutMgtHandler(layoutMgtService)
 	registerRoutes(mux, layoutMgtHandler)
 
@@ -62,7 +69,7 @@ func Initialize(mux *http.ServeMux, bus eventbus.EventBusInterface) (LayoutMgtSe
 // - If layout.store is not specified, falls back to global declarative_resources.enabled:
 //   - If declarative_resources.enabled = true: behaves as IMMUTABLE mode
 //   - If declarative_resources.enabled = false: behaves as MUTABLE mode
-func initializeStore() (layoutMgtStoreInterface, error) {
+func initializeStore(requireProject bool) (layoutMgtStoreInterface, error) {
 	var layoutMgtStore layoutMgtStoreInterface
 
 	storeMode := getLayoutStoreMode()
@@ -72,14 +79,14 @@ func initializeStore() (layoutMgtStoreInterface, error) {
 		fileStore := newLayoutFileBasedStore()
 		dbStore := newLayoutMgtStore()
 		layoutMgtStore = newCompositeLayoutStore(fileStore, dbStore)
-		if err := loadDeclarativeResources(fileStore, dbStore); err != nil {
+		if err := loadDeclarativeResources(fileStore, dbStore, requireProject); err != nil {
 			return nil, err
 		}
 
 	case serverconst.StoreModeDeclarative:
 		fileStore := newLayoutFileBasedStore()
 		layoutMgtStore = fileStore
-		if err := loadDeclarativeResources(fileStore, nil); err != nil {
+		if err := loadDeclarativeResources(fileStore, nil, requireProject); err != nil {
 			return nil, err
 		}
 

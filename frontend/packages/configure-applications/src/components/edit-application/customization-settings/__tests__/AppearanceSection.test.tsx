@@ -4,7 +4,8 @@
 import type {UseQueryResult} from '@tanstack/react-query';
 import {render, screen, within} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import {useGetThemes, type ThemeListResponse} from '@thunderid/design';
+import {ProjectScopeProvider} from '@thunderid/contexts';
+import {useGetLayouts, useGetThemes, type ThemeListResponse} from '@thunderid/design';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import type {Application} from '../../../../models/application';
 import AppearanceSection from '../AppearanceSection';
@@ -198,5 +199,15 @@ describe('AppearanceSection', () => {
       const input = screen.getByPlaceholderText('applications:edit.customization.theme.placeholder');
       expect(input).toHaveValue('');
     });
+  });
+
+  it("lists the selected project's layouts", () => {
+    render(
+      <ProjectScopeProvider project={{id: 'project-1'}}>
+        <AppearanceSection application={mockApplication} editedApp={{}} onFieldChange={mockOnFieldChange} />
+      </ProjectScopeProvider>,
+    );
+
+    expect(vi.mocked(useGetLayouts)).toHaveBeenCalledWith({projectId: 'project-1'});
   });
 });

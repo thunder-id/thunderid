@@ -28,6 +28,8 @@ export interface LayoutListItem {
   id: string;
   handle: string;
   displayName: string;
+  /** The project the layout belongs to. */
+  projectId?: string;
   layout: LayoutConfig | null;
 }
 
@@ -72,6 +74,8 @@ export interface LayoutResponse {
   id: string;
   handle: string;
   displayName: string;
+  /** The project the layout belongs to. */
+  projectId?: string;
   layout: LayoutConfig;
 }
 

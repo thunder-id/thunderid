@@ -60,6 +60,38 @@ func (c *compositeLayoutStore) GetLayoutList(ctx context.Context, limit, offset 
 	return items, nil
 }
 
+// GetLayoutListCountByProject retrieves the number of layouts of a project from both stores. A layout ID
+// is unique across the stores, so the counts add up exactly.
+func (c *compositeLayoutStore) GetLayoutListCountByProject(ctx context.Context, projectID string) (int, error) {
+	return declarativeresource.CompositeMergeCountHelper(
+		func() (int, error) { return c.dbStore.GetLayoutListCountByProject(ctx, projectID) },
+		func() (int, error) { return c.fileStore.GetLayoutListCountByProject(ctx, projectID) },
+	)
+}
+
+// GetLayoutListByProject retrieves a page of the layouts of a project from both stores, applying the same
+// record limit as GetLayoutList.
+func (c *compositeLayoutStore) GetLayoutListByProject(ctx context.Context, projectID string, limit, offset int) (
+	[]Layout, error) {
+	items, limitExceeded, err := declarativeresource.CompositeMergeListHelperWithLimit(
+		func() (int, error) { return c.dbStore.GetLayoutListCountByProject(ctx, projectID) },
+		func() (int, error) { return c.fileStore.GetLayoutListCountByProject(ctx, projectID) },
+		func(count int) ([]Layout, error) { return c.dbStore.GetLayoutListByProject(ctx, projectID, count, 0) },
+		func(count int) ([]Layout, error) { return c.fileStore.GetLayoutListByProject(ctx, projectID, count, 0) },
+		mergeAndDeduplicateLayouts,
+		limit,
+		offset,
+		serverconst.MaxCompositeStoreRecords,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if limitExceeded {
+		return nil, errResultLimitExceededInCompositeMode
+	}
+	return items, nil
+}
+
 // CreateLayout creates a new layout in the database store only.
 // Conflict checking is handled at the service layer.
 func (c *compositeLayoutStore) CreateLayout(ctx context.Context, id string, layout CreateLayoutRequest) error {

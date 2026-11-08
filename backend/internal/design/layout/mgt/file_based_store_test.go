@@ -351,3 +351,30 @@ func (suite *LayoutFileBasedStoreTestSuite) TestIsLayoutHandleConflict_SameIDExc
 	suite.NoError(err)
 	suite.False(conflict)
 }
+
+func (suite *LayoutFileBasedStoreTestSuite) TestGetLayoutListByProject() {
+	for id, projectID := range map[string]string{"in-1": "proj-1", "in-2": "proj-1", "out": "proj-2"} {
+		req := suite.createTestLayout("Layout " + id)
+		req.ProjectID = projectID
+		suite.Require().NoError(suite.store.CreateLayout(context.Background(), id, req))
+	}
+
+	count, err := suite.store.GetLayoutListCountByProject(context.Background(), "proj-1")
+	suite.NoError(err)
+	suite.Equal(2, count)
+
+	layouts, err := suite.store.GetLayoutListByProject(context.Background(), "proj-1", 10, 0)
+	suite.NoError(err)
+	suite.Len(layouts, 2)
+	for _, layout := range layouts {
+		suite.Equal("proj-1", layout.ProjectID)
+	}
+
+	layouts, err = suite.store.GetLayoutListByProject(context.Background(), "proj-1", 1, 1)
+	suite.NoError(err)
+	suite.Len(layouts, 1)
+
+	layouts, err = suite.store.GetLayoutListByProject(context.Background(), "proj-1", 10, 5)
+	suite.NoError(err)
+	suite.Empty(layouts)
+}

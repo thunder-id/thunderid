@@ -127,12 +127,13 @@ func (suite *LayoutStoreTestSuite) TestGetLayoutList_DBClientError() {
 func (suite *LayoutStoreTestSuite) TestCreateLayout_Success() {
 	suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
 	suite.mockDBClient.On("Execute", mock.Anything, "layout-1", "classic", "Test", "Desc",
-		mock.Anything, "test-deployment").Return(int64(1), nil)
+		mock.Anything, "proj-1", "test-deployment").Return(int64(1), nil)
 
 	err := suite.store.CreateLayout(context.Background(), "layout-1", CreateLayoutRequest{
 		Handle:      "classic",
 		DisplayName: "Test",
 		Description: "Desc",
+		ProjectID:   "proj-1",
 		Layout:      json.RawMessage(`{"structure": "grid"}`),
 	})
 
@@ -456,4 +457,54 @@ func (suite *LayoutStoreTestSuite) TestGetLayoutListCount_ScopesByTheRequestDepl
 
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), 5, count)
+}
+
+func (suite *LayoutStoreTestSuite) TestGetLayoutListByProject() {
+	results := []map[string]interface{}{{
+		"id": "layout-1", "handle": "one", "display_name": "Layout 1", "project_id": "proj-1",
+		"created_at": "2024-01-15T10:30:00Z", "updated_at": "2024-01-15T10:30:00Z",
+	}}
+	suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
+	suite.mockDBClient.On("Query", queryGetLayoutListByProject, "proj-1", 10, 0, "test-deployment").
+		Return(results, nil)
+
+	layouts, err := suite.store.GetLayoutListByProject(context.Background(), "proj-1", 10, 0)
+
+	suite.NoError(err)
+	suite.Require().Len(layouts, 1)
+	suite.Equal("proj-1", layouts[0].ProjectID)
+}
+
+func (suite *LayoutStoreTestSuite) TestGetLayoutListCountByProject() {
+	suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
+	suite.mockDBClient.On("Query", queryGetLayoutListCountByProject, "proj-1", "test-deployment").
+		Return([]map[string]interface{}{{"total": int64(4)}}, nil)
+
+	count, err := suite.store.GetLayoutListCountByProject(context.Background(), "proj-1")
+
+	suite.NoError(err)
+	suite.Equal(4, count)
+}
+
+func (suite *LayoutStoreTestSuite) TestGetLayoutListByProject_QueryError() {
+	suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
+	suite.mockDBClient.On("Query", queryGetLayoutListByProject, "proj-1", 10, 0, "test-deployment").
+		Return(nil, errors.New("query failed"))
+
+	layouts, err := suite.store.GetLayoutListByProject(context.Background(), "proj-1", 10, 0)
+
+	suite.Error(err)
+	suite.Nil(layouts)
+}
+
+func (suite *LayoutStoreTestSuite) TestUpdateLayout_StoresProject() {
+	suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
+	suite.mockDBClient.On("Execute", queryUpdateLayout, "Updated", "", mock.Anything, "proj-1", "layout-1",
+		"test-deployment").Return(int64(1), nil)
+
+	err := suite.store.UpdateLayout(context.Background(), "layout-1", UpdateLayoutRequest{
+		DisplayName: "Updated", ProjectID: "proj-1", Layout: json.RawMessage(`{"a": 1}`),
+	})
+
+	suite.NoError(err)
 }

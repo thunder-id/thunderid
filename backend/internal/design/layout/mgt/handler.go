@@ -43,7 +43,14 @@ func (lh *layoutMgtHandler) HandleLayoutListRequest(w http.ResponseWriter, r *ht
 		return
 	}
 
-	layoutList, svcErr := lh.layoutMgtService.GetLayoutList(ctx, limit, offset)
+	// With a project, the list is of the project's layouts. Without one, it is of every layout.
+	var layoutList *LayoutList
+	if query := r.URL.Query(); query.Has(projectIDQueryParam) {
+		layoutList, svcErr = lh.layoutMgtService.GetLayoutListByProject(
+			ctx, sysutils.SanitizeString(query.Get(projectIDQueryParam)), limit, offset)
+	} else {
+		layoutList, svcErr = lh.layoutMgtService.GetLayoutList(ctx, limit, offset)
+	}
 	if svcErr != nil {
 		handleError(ctx, w, svcErr)
 		return
@@ -56,6 +63,7 @@ func (lh *layoutMgtHandler) HandleLayoutListRequest(w http.ResponseWriter, r *ht
 			Handle:      layout.Handle,
 			DisplayName: layout.DisplayName,
 			Description: layout.Description,
+			ProjectID:   layout.ProjectID,
 			CreatedAt:   layout.CreatedAt,
 			UpdatedAt:   layout.UpdatedAt,
 			IsReadOnly:  layout.IsReadOnly,
@@ -91,6 +99,7 @@ func (lh *layoutMgtHandler) HandleLayoutPostRequest(w http.ResponseWriter, r *ht
 		Handle:      createRequest.Handle,
 		DisplayName: createRequest.DisplayName,
 		Description: createRequest.Description,
+		ProjectID:   sysutils.SanitizeString(createRequest.ProjectID),
 		Layout:      createRequest.Layout,
 	})
 	if svcErr != nil {
@@ -103,6 +112,7 @@ func (lh *layoutMgtHandler) HandleLayoutPostRequest(w http.ResponseWriter, r *ht
 		Handle:      createdLayout.Handle,
 		DisplayName: createdLayout.DisplayName,
 		Description: createdLayout.Description,
+		ProjectID:   createdLayout.ProjectID,
 		Layout:      createdLayout.Layout,
 		CreatedAt:   createdLayout.CreatedAt,
 		UpdatedAt:   createdLayout.UpdatedAt,
@@ -140,6 +150,7 @@ func (lh *layoutMgtHandler) HandleLayoutPutRequest(w http.ResponseWriter, r *htt
 		return
 	}
 
+	updateRequest.ProjectID = sysutils.SanitizeString(updateRequest.ProjectID)
 	updatedLayout, svcErr := lh.layoutMgtService.UpdateLayout(ctx, id, *updateRequest)
 	if svcErr != nil {
 		handleError(ctx, w, svcErr)
@@ -151,6 +162,7 @@ func (lh *layoutMgtHandler) HandleLayoutPutRequest(w http.ResponseWriter, r *htt
 		Handle:      updatedLayout.Handle,
 		DisplayName: updatedLayout.DisplayName,
 		Description: updatedLayout.Description,
+		ProjectID:   updatedLayout.ProjectID,
 		Layout:      updatedLayout.Layout,
 		CreatedAt:   updatedLayout.CreatedAt,
 		UpdatedAt:   updatedLayout.UpdatedAt,
@@ -264,6 +276,7 @@ func toLayoutGetResponse(layout *Layout) Layout {
 		Handle:      layout.Handle,
 		DisplayName: layout.DisplayName,
 		Description: layout.Description,
+		ProjectID:   layout.ProjectID,
 		Layout:      layout.Layout,
 		CreatedAt:   layout.CreatedAt,
 		UpdatedAt:   layout.UpdatedAt,

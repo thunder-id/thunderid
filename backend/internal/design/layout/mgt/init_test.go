@@ -66,7 +66,7 @@ func (suite *LayoutInitTestSuite) TestInitializeStore_CompositeMode() {
 	runtime := config.GetServerRuntime()
 	runtime.Config.Layout.Store = "composite"
 
-	store, err := initializeStore()
+	store, err := initializeStore(false)
 
 	suite.NoError(err)
 	_, ok := store.(*compositeLayoutStore)
@@ -83,7 +83,7 @@ func (suite *LayoutInitTestSuite) TestInitializeStore_DeclarativeMode() {
 	runtime := config.GetServerRuntime()
 	runtime.Config.Layout.Store = "declarative"
 
-	store, err := initializeStore()
+	store, err := initializeStore(false)
 
 	suite.NoError(err)
 	_, ok := store.(*layoutFileBasedStore)
@@ -91,7 +91,7 @@ func (suite *LayoutInitTestSuite) TestInitializeStore_DeclarativeMode() {
 }
 
 func (suite *LayoutInitTestSuite) TestInitialize_RefusesANilEventBus() {
-	service, exporter, err := Initialize(http.NewServeMux(), nil)
+	service, exporter, err := Initialize(http.NewServeMux(), nil, nil)
 
 	suite.ErrorIs(err, errNilEventBus)
 	suite.Nil(service)

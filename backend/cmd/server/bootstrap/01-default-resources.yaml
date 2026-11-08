@@ -5964,6 +5964,7 @@ id: 01900000-0000-7000-8000-000000000078
 handle: centered
 displayName: Centered
 description: A centered card layout for authentication screens.
+projectId: 01900000-0000-7000-8000-000000000002
 layout: {}
 ---
 resource_type: application

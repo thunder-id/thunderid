@@ -323,6 +323,88 @@ func (_c *LayoutMgtServiceInterfaceMock_GetLayoutList_Call) RunAndReturn(run fun
 	return _c
 }
 
+// GetLayoutListByProject provides a mock function for the type LayoutMgtServiceInterfaceMock
+func (_mock *LayoutMgtServiceInterfaceMock) GetLayoutListByProject(ctx context.Context, projectID string, limit int, offset int) (*LayoutList, *common.ServiceError) {
+	ret := _mock.Called(ctx, projectID, limit, offset)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetLayoutListByProject")
+	}
+
+	var r0 *LayoutList
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int) (*LayoutList, *common.ServiceError)); ok {
+		return returnFunc(ctx, projectID, limit, offset)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int) *LayoutList); ok {
+		r0 = returnFunc(ctx, projectID, limit, offset)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*LayoutList)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, int, int) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, projectID, limit, offset)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// LayoutMgtServiceInterfaceMock_GetLayoutListByProject_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetLayoutListByProject'
+type LayoutMgtServiceInterfaceMock_GetLayoutListByProject_Call struct {
+	*mock.Call
+}
+
+// GetLayoutListByProject is a helper method to define mock.On call
+//   - ctx context.Context
+//   - projectID string
+//   - limit int
+//   - offset int
+func (_e *LayoutMgtServiceInterfaceMock_Expecter) GetLayoutListByProject(ctx any, projectID any, limit any, offset any) *LayoutMgtServiceInterfaceMock_GetLayoutListByProject_Call {
+	return &LayoutMgtServiceInterfaceMock_GetLayoutListByProject_Call{Call: _e.mock.On("GetLayoutListByProject", ctx, projectID, limit, offset)}
+}
+
+func (_c *LayoutMgtServiceInterfaceMock_GetLayoutListByProject_Call) Run(run func(ctx context.Context, projectID string, limit int, offset int)) *LayoutMgtServiceInterfaceMock_GetLayoutListByProject_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 int
+		if args[2] != nil {
+			arg2 = args[2].(int)
+		}
+		var arg3 int
+		if args[3] != nil {
+			arg3 = args[3].(int)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *LayoutMgtServiceInterfaceMock_GetLayoutListByProject_Call) Return(layoutList *LayoutList, serviceError *common.ServiceError) *LayoutMgtServiceInterfaceMock_GetLayoutListByProject_Call {
+	_c.Call.Return(layoutList, serviceError)
+	return _c
+}
+
+func (_c *LayoutMgtServiceInterfaceMock_GetLayoutListByProject_Call) RunAndReturn(run func(ctx context.Context, projectID string, limit int, offset int) (*LayoutList, *common.ServiceError)) *LayoutMgtServiceInterfaceMock_GetLayoutListByProject_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetLayoutUsages provides a mock function for the type LayoutMgtServiceInterfaceMock
 func (_mock *LayoutMgtServiceInterfaceMock) GetLayoutUsages(ctx context.Context, id string, limit int, offset int) (*resourcedependency.DependenciesResponse, *common.ServiceError) {
 	ret := _mock.Called(ctx, id, limit, offset)
@@ -469,6 +551,74 @@ func (_c *LayoutMgtServiceInterfaceMock_IsLayoutExist_Call) Return(b bool, servi
 }
 
 func (_c *LayoutMgtServiceInterfaceMock_IsLayoutExist_Call) RunAndReturn(run func(ctx context.Context, id string) (bool, *common.ServiceError)) *LayoutMgtServiceInterfaceMock_IsLayoutExist_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ProjectHasLayouts provides a mock function for the type LayoutMgtServiceInterfaceMock
+func (_mock *LayoutMgtServiceInterfaceMock) ProjectHasLayouts(ctx context.Context, projectID string) (bool, *common.ServiceError) {
+	ret := _mock.Called(ctx, projectID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ProjectHasLayouts")
+	}
+
+	var r0 bool
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (bool, *common.ServiceError)); ok {
+		return returnFunc(ctx, projectID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) bool); ok {
+		r0 = returnFunc(ctx, projectID)
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, projectID)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// LayoutMgtServiceInterfaceMock_ProjectHasLayouts_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ProjectHasLayouts'
+type LayoutMgtServiceInterfaceMock_ProjectHasLayouts_Call struct {
+	*mock.Call
+}
+
+// ProjectHasLayouts is a helper method to define mock.On call
+//   - ctx context.Context
+//   - projectID string
+func (_e *LayoutMgtServiceInterfaceMock_Expecter) ProjectHasLayouts(ctx any, projectID any) *LayoutMgtServiceInterfaceMock_ProjectHasLayouts_Call {
+	return &LayoutMgtServiceInterfaceMock_ProjectHasLayouts_Call{Call: _e.mock.On("ProjectHasLayouts", ctx, projectID)}
+}
+
+func (_c *LayoutMgtServiceInterfaceMock_ProjectHasLayouts_Call) Run(run func(ctx context.Context, projectID string)) *LayoutMgtServiceInterfaceMock_ProjectHasLayouts_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *LayoutMgtServiceInterfaceMock_ProjectHasLayouts_Call) Return(b bool, serviceError *common.ServiceError) *LayoutMgtServiceInterfaceMock_ProjectHasLayouts_Call {
+	_c.Call.Return(b, serviceError)
+	return _c
+}
+
+func (_c *LayoutMgtServiceInterfaceMock_ProjectHasLayouts_Call) RunAndReturn(run func(ctx context.Context, projectID string) (bool, *common.ServiceError)) *LayoutMgtServiceInterfaceMock_ProjectHasLayouts_Call {
 	_c.Call.Return(run)
 	return _c
 }

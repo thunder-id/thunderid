@@ -32,6 +32,7 @@ func TestLayoutHandlerTestSuite(t *testing.T) {
 // mockLayoutService implements LayoutMgtServiceInterface for handler tests
 type mockLayoutService struct {
 	getLayoutListFunc   func(limit, offset int) (*LayoutList, *tidcommon.ServiceError)
+	getByProjectFunc    func(projectID string, limit, offset int) (*LayoutList, *tidcommon.ServiceError)
 	createLayoutFunc    func(layout CreateLayoutRequestWithID) (*Layout, *tidcommon.ServiceError)
 	getLayoutFunc       func(id string) (*Layout, *tidcommon.ServiceError)
 	updateLayoutFunc    func(id string, layout UpdateLayoutRequest) (*Layout, *tidcommon.ServiceError)
@@ -44,6 +45,15 @@ type mockLayoutService struct {
 func (m *mockLayoutService) GetLayoutList(
 	_ context.Context, limit, offset int) (*LayoutList, *tidcommon.ServiceError) {
 	return m.getLayoutListFunc(limit, offset)
+}
+
+func (m *mockLayoutService) GetLayoutListByProject(
+	_ context.Context, projectID string, limit, offset int) (*LayoutList, *tidcommon.ServiceError) {
+	return m.getByProjectFunc(projectID, limit, offset)
+}
+
+func (m *mockLayoutService) ProjectHasLayouts(_ context.Context, _ string) (bool, *tidcommon.ServiceError) {
+	return false, nil
 }
 
 func (m *mockLayoutService) CreateLayout(
@@ -490,4 +500,71 @@ func (suite *LayoutHandlerTestSuite) TestHandleError_StatusCodeMapping() {
 			assert.Equal(suite.T(), tc.expectedStatus, w.Code)
 		})
 	}
+}
+
+func (suite *LayoutHandlerTestSuite) TestHandleLayoutListRequest_ByProject() {
+	var gotProjectID string
+	mockSvc := &mockLayoutService{
+		getByProjectFunc: func(projectID string, limit, offset int) (*LayoutList, *tidcommon.ServiceError) {
+			gotProjectID = projectID
+			return &LayoutList{TotalResults: 1, Count: 1,
+				Layouts: []Layout{{ID: "layout-1", ProjectID: projectID}}, Links: []Link{}}, nil
+		},
+	}
+
+	handler := newLayoutMgtHandler(mockSvc)
+	req := httptest.NewRequest(http.MethodGet, "/design/layouts?limit=10&offset=0&projectId=proj-1", nil)
+	w := httptest.NewRecorder()
+
+	handler.HandleLayoutListRequest(w, req)
+
+	suite.Equal(http.StatusOK, w.Code)
+	suite.Equal("proj-1", gotProjectID)
+	var response LayoutListResponse
+	suite.Require().NoError(json.Unmarshal(w.Body.Bytes(), &response))
+	suite.Require().Len(response.Layouts, 1)
+	suite.Equal("proj-1", response.Layouts[0].ProjectID)
+}
+
+func (suite *LayoutHandlerTestSuite) TestHandleLayoutPostRequest_WithProject() {
+	var gotProjectID string
+	mockSvc := &mockLayoutService{
+		createLayoutFunc: func(layout CreateLayoutRequestWithID) (*Layout, *tidcommon.ServiceError) {
+			gotProjectID = layout.ProjectID
+			return &Layout{ID: "layout-new", ProjectID: layout.ProjectID}, nil
+		},
+	}
+
+	handler := newLayoutMgtHandler(mockSvc)
+	body, _ := json.Marshal(CreateLayoutRequest{
+		Handle: "new", DisplayName: "New Layout", ProjectID: "proj-1", Layout: json.RawMessage(`{"a": 1}`),
+	})
+	req := httptest.NewRequest(http.MethodPost, "/design/layouts", bytes.NewBuffer(body))
+	w := httptest.NewRecorder()
+
+	handler.HandleLayoutPostRequest(w, req)
+
+	suite.Equal(http.StatusCreated, w.Code)
+	suite.Equal("proj-1", gotProjectID)
+	var response Layout
+	suite.Require().NoError(json.Unmarshal(w.Body.Bytes(), &response))
+	suite.Equal("proj-1", response.ProjectID)
+}
+
+func (suite *LayoutHandlerTestSuite) TestHandleLayoutPostRequest_ProjectRequired() {
+	mockSvc := &mockLayoutService{
+		createLayoutFunc: func(CreateLayoutRequestWithID) (*Layout, *tidcommon.ServiceError) {
+			return nil, &ErrorProjectRequired
+		},
+	}
+
+	handler := newLayoutMgtHandler(mockSvc)
+	body, _ := json.Marshal(CreateLayoutRequest{Handle: "new", DisplayName: "New", Layout: json.RawMessage(`{}`)})
+	req := httptest.NewRequest(http.MethodPost, "/design/layouts", bytes.NewBuffer(body))
+	w := httptest.NewRecorder()
+
+	handler.HandleLayoutPostRequest(w, req)
+
+	suite.Equal(http.StatusBadRequest, w.Code)
+	suite.Contains(w.Body.String(), ErrorProjectRequired.Code)
 }
