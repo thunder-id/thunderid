@@ -512,6 +512,7 @@ func TestModifyAssignments_RechecksInsideTransaction(t *testing.T) {
 	// First call succeeds (pre-transaction), second refuses (inside the transaction), simulating a
 	// concurrent role update that widened the role in between.
 	authz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
+	allowAllRoleAccess(authz)
 	call := 0
 	authz.On("CanGrantMembership", mock.Anything, sysauthz.PrincipalTypeRole, "role1").
 		Return(func(context.Context, sysauthz.PrincipalType, string) *tidcommon.ServiceError {

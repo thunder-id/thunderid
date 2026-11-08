@@ -167,10 +167,19 @@ func (rs *roleService) GetRoleList(
 		return nil, &ErrorInvalidFilter
 	}
 
+	listQuery := utils.FilterQueryParam(filters)
+	ouID, all, svcErr := rs.listableOU(ctx, ouID)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	// A caller confined to organization units it may not list roles in has none to show.
+	if !all && ouID == "" {
+		return emptyRoleList(limit, offset, listQuery), nil
+	}
+
 	var roles []Role
 	var totalCount int
 	if ouID != "" {
-		var svcErr *tidcommon.ServiceError
 		roles, totalCount, svcErr = rs.listRolesInOU(ctx, ouID, limit, offset)
 		if svcErr != nil {
 			return nil, svcErr
@@ -205,7 +214,7 @@ func (rs *roleService) GetRoleList(
 		Roles:        roles,
 		StartIndex:   offset + 1,
 		Count:        len(roles),
-		Links:        utils.BuildPaginationLinks("/roles", limit, offset, totalCount, utils.FilterQueryParam(filters)),
+		Links:        utils.BuildPaginationLinks("/roles", limit, offset, totalCount, listQuery),
 	}
 
 	return response, nil
@@ -226,11 +235,14 @@ func (rs *roleService) GetRoleListByProject(
 
 	extraQuery := "&" + projectIDQueryParam + "=" + url.QueryEscape(projectID) + utils.FilterQueryParam(filters)
 	if projectID == "" {
-		return &RoleList{
-			Roles:      []Role{},
-			StartIndex: offset + 1,
-			Links:      utils.BuildPaginationLinks("/roles", limit, offset, 0, extraQuery),
-		}, nil
+		return emptyRoleList(limit, offset, extraQuery), nil
+	}
+	ouID, all, svcErr := rs.listableOU(ctx, ouID)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	if !all && ouID == "" {
+		return emptyRoleList(limit, offset, extraQuery), nil
 	}
 
 	totalCount, err := rs.roleStore.GetRoleListCountByProject(ctx, projectID, ouID)
@@ -388,6 +400,10 @@ func (rs *roleService) createRole(
 		role.OUID = systemOUID
 	}
 
+	if svcErr := rs.checkRoleAccess(ctx, security.ActionCreateRole, role.OUID, ""); svcErr != nil {
+		return nil, svcErr
+	}
+
 	// A project checks that the role's organization unit belongs to it.
 	if role.ProjectID != "" {
 		if svcErr := rs.validateProjectOU(ctx, role.ProjectID, role.OUID); svcErr != nil {
@@ -397,8 +413,9 @@ func (rs *roleService) createRole(
 
 	responseAssignments := role.Assignments
 
-	// Validate organization unit exists using OU service
-	ou, svcErr := rs.ouService.GetOrganizationUnit(ctx, role.OUID)
+	// Validate organization unit exists using OU service. Read as the runtime: the caller was authorized on the
+	// unit's roles, and may not read the unit itself.
+	ou, svcErr := rs.ouService.GetOrganizationUnit(security.WithRuntimeContext(ctx), role.OUID)
 	if svcErr != nil {
 		if svcErr.Code == oupkg.ErrorOrganizationUnitNotFound.Code {
 			logger.Debug(ctx, "Organization unit not found", log.String("ouID", role.OUID))
@@ -487,36 +504,35 @@ func (rs *roleService) createRole(
 // GetRoleWithPermissions retrieves a specific role by its id.
 func (rs *roleService) GetRoleWithPermissions(ctx context.Context, id string) (
 	*RoleWithPermissions, *tidcommon.ServiceError) {
-	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
-	logger.Debug(ctx, "Retrieving role", log.String("id", id))
-
-	if id == "" {
-		return nil, &ErrorMissingRoleID
-	}
-
-	role, err := rs.roleStore.GetRole(ctx, id)
-	if err != nil {
-		if errors.Is(err, ErrRoleNotFound) {
-			logger.Debug(ctx, "Role not found", log.String("id", id))
-			return nil, &ErrorRoleNotFound
-		}
-		logger.Error(ctx, "Failed to retrieve role", log.String("id", id), log.Error(err))
-		return nil, &tidcommon.InternalServerError
-	}
-
-	ou, svcErr := rs.ouService.GetOrganizationUnit(ctx, role.OUID)
+	role, svcErr := rs.loadRole(ctx, id)
 	if svcErr != nil {
-		logger.Warn(ctx, "Failed to resolve OU handle for role, skipping",
-			log.String("id", id), log.Any("error", svcErr))
-	} else {
-		role.OUHandle = ou.Handle
+		return nil, svcErr
 	}
 
-	role.IsOwnedByOU = true
-
-	logger.Debug(ctx, "Successfully retrieved role",
-		log.String("id", role.ID), log.String("name", role.Name))
-	return &role, nil
+	svcErr = rs.checkRoleAccess(ctx, security.ActionReadRole, role.OUID, id)
+	if svcErr == nil {
+		return role, nil
+	}
+	if svcErr.Code != tidcommon.ErrorUnauthorized.Code {
+		return nil, svcErr
+	}
+	// A caller confined to another organization unit reads the role there when it is shared into that unit.
+	callerOUID := security.GetOUID(ctx)
+	if callerOUID == "" || callerOUID == role.OUID {
+		return nil, svcErr
+	}
+	if svcErr := rs.checkRoleAccess(ctx, security.ActionReadRole, callerOUID, id); svcErr != nil {
+		return nil, svcErr
+	}
+	shared, svcErr := rs.roleAsSeenBy(ctx, role, callerOUID)
+	if svcErr != nil {
+		// Answered as a refusal, so a caller cannot tell a role it may not read from one that is not shared.
+		if svcErr.Code == ErrorRoleNotSharedToOU.Code {
+			return nil, &tidcommon.ErrorUnauthorized
+		}
+		return nil, svcErr
+	}
+	return shared, nil
 }
 
 // GetRoleInOU retrieves a role as an organization unit sees it: the role itself in the organization
@@ -524,33 +540,17 @@ func (rs *roleService) GetRoleWithPermissions(ctx context.Context, id string) (
 // nothing a shared organization unit sets for itself: its assignments there are read separately.
 func (rs *roleService) GetRoleInOU(ctx context.Context, id, ouID string) (
 	*RoleWithPermissions, *tidcommon.ServiceError) {
-	role, svcErr := rs.GetRoleWithPermissions(ctx, id)
-	if svcErr != nil || ouID == "" || role.OUID == ouID {
+	if ouID == "" {
+		return rs.GetRoleWithPermissions(ctx, id)
+	}
+	if svcErr := rs.checkRoleAccess(ctx, security.ActionReadRole, ouID, ""); svcErr != nil {
+		return nil, svcErr
+	}
+	role, svcErr := rs.loadRole(ctx, id)
+	if svcErr != nil || role.OUID == ouID {
 		return role, svcErr
 	}
-
-	visible, svcErr := rs.sharingService.IsVisible(ctx, RoleSharingType, id, ouID)
-	if svcErr != nil {
-		if svcErr.Code == oupkg.ErrorOrganizationUnitNotFound.Code {
-			return nil, &ErrorRoleNotSharedToOU
-		}
-		return nil, translateSharingError(svcErr)
-	}
-	if !visible {
-		return nil, &ErrorRoleNotSharedToOU
-	}
-
-	role.OUID = ouID
-	role.OUHandle = ""
-	role.IsOwnedByOU = false
-	ou, svcErr := rs.ouService.GetOrganizationUnit(ctx, ouID)
-	if svcErr != nil {
-		rs.logger.Warn(ctx, "Failed to resolve OU handle for shared role, skipping",
-			log.String("id", id), log.Any("error", svcErr))
-	} else {
-		role.OUHandle = ou.Handle
-	}
-	return role, nil
+	return rs.roleAsSeenBy(ctx, role, ouID)
 }
 
 // GetRolesByNames retrieves roles by a list of names, keyed by name. A name may resolve to more than
@@ -626,6 +626,16 @@ func (rs *roleService) updateRoleWithPermissions(
 		role.ProjectID = stored.ProjectID
 	}
 
+	if svcErr := rs.checkRoleAccess(ctx, security.ActionUpdateRole, stored.OUID, id); svcErr != nil {
+		return nil, svcErr
+	}
+	// Moving a role puts it in another organization unit, which the caller must be able to create roles in.
+	if role.OUID != stored.OUID {
+		if svcErr := rs.checkRoleAccess(ctx, security.ActionCreateRole, role.OUID, ""); svcErr != nil {
+			return nil, svcErr
+		}
+	}
+
 	// A role's name, description and permissions stay with the organization unit that owns it, so an
 	// update naming one it is shared with is refused. Any other organization unit is somewhere to
 	// move the role to.
@@ -661,8 +671,9 @@ func (rs *roleService) updateRoleWithPermissions(
 		}
 	}
 
-	// Validate organization unit exists using OU service
-	ou, svcErr := rs.ouService.GetOrganizationUnit(ctx, role.OUID)
+	// Validate organization unit exists using OU service. Read as the runtime: the caller was authorized on the
+	// unit's roles, and may not read the unit itself.
+	ou, svcErr := rs.ouService.GetOrganizationUnit(security.WithRuntimeContext(ctx), role.OUID)
 	if svcErr != nil {
 		if svcErr.Code == oupkg.ErrorOrganizationUnitNotFound.Code {
 			logger.Debug(ctx, "Organization unit not found", log.String("ouID", role.OUID))
@@ -726,14 +737,22 @@ func (rs *roleService) deleteRole(ctx context.Context, id string) *tidcommon.Ser
 		return &ErrorMissingRoleID
 	}
 
-	exists, err := rs.roleStore.IsRoleExist(ctx, id)
+	stored, err := rs.roleStore.GetRole(ctx, id)
 	if err != nil {
-		logger.Error(ctx, "Failed to check role existence", log.String("id", id), log.Error(err))
-		return &tidcommon.InternalServerError
-	}
-	if !exists {
+		if !errors.Is(err, ErrRoleNotFound) {
+			logger.Error(ctx, "Failed to read the role being deleted", log.String("id", id), log.Error(err))
+			return &tidcommon.InternalServerError
+		}
+		// Checked before answering, so a caller who may not delete roles cannot probe which IDs exist.
+		if svcErr := rs.checkRoleAccess(ctx, security.ActionDeleteRole, "", ""); svcErr != nil {
+			return svcErr
+		}
 		logger.Debug(ctx, "Role not found", log.String("id", id))
 		return errRoleNotFoundNoop
+	}
+
+	if svcErr := rs.checkRoleAccess(ctx, security.ActionDeleteRole, stored.OUID, id); svcErr != nil {
+		return svcErr
 	}
 
 	if svcErr := rs.validateRoleMutable(ctx, id); svcErr != nil {
@@ -799,8 +818,11 @@ func (rs *roleService) publishRoleEvent(ctx context.Context, name string, action
 // ValidateDeleteRole reports whether the role may be deleted and returns what the deletion revokes.
 func (rs *roleService) ValidateDeleteRole(ctx context.Context, id string) (
 	*revocation.AccessRevocationTarget, *tidcommon.ServiceError) {
-	role, svcErr := rs.GetRoleWithPermissions(ctx, id)
+	role, svcErr := rs.loadRole(ctx, id)
 	if svcErr != nil {
+		return nil, svcErr
+	}
+	if svcErr := rs.checkRoleAccess(ctx, security.ActionDeleteRole, role.OUID, id); svcErr != nil {
 		return nil, svcErr
 	}
 	if svcErr := rs.validateRoleMutable(ctx, id); svcErr != nil {
@@ -829,8 +851,11 @@ func (rs *roleService) requireRoleNotMandated(ctx context.Context, id string) *t
 // ValidateUpdateRolePermissions runs the checks UpdateRoleWithPermissions runs on the new permissions.
 func (rs *roleService) ValidateUpdateRolePermissions(ctx context.Context, id string,
 	permissions []ResourcePermissions) (*revocation.AccessRevocationTarget, *tidcommon.ServiceError) {
-	role, svcErr := rs.GetRoleWithPermissions(ctx, id)
+	role, svcErr := rs.loadRole(ctx, id)
 	if svcErr != nil {
+		return nil, svcErr
+	}
+	if svcErr := rs.checkRoleAccess(ctx, security.ActionUpdateRole, role.OUID, id); svcErr != nil {
 		return nil, svcErr
 	}
 	if svcErr := rs.validateRoleMutable(ctx, id); svcErr != nil {
@@ -1091,6 +1116,15 @@ func (rs *roleService) validateAssignmentsRequest(assignments []RoleAssignment) 
 	}
 
 	return nil
+}
+
+// emptyRoleList is a page holding no roles.
+func emptyRoleList(limit, offset int, extraQuery string) *RoleList {
+	return &RoleList{
+		Roles:      []Role{},
+		StartIndex: offset + 1,
+		Links:      utils.BuildPaginationLinks("/roles", limit, offset, 0, extraQuery),
+	}
 }
 
 // validatePaginationParams validates pagination parameters.
@@ -1416,7 +1450,8 @@ func (rs *roleService) requireSharing(
 	if roleID == "" {
 		return "", &ErrorMissingRoleID
 	}
-	role, svcErr := rs.GetRoleWithPermissions(ctx, roleID)
+	// Sharing policies are not confined to the caller's organization unit, so the role is read unchecked.
+	role, svcErr := rs.loadRole(ctx, roleID)
 	if svcErr != nil {
 		return "", svcErr
 	}
@@ -1542,6 +1577,111 @@ func (rs *roleService) resolveUpdateTarget(
 		return "", false, translateSharingError(svcErr)
 	}
 	return stored.OUID, visible, nil
+}
+
+// listableOU decides which organization unit's roles a list returns, given the organization unit a filter names.
+// all reports that the caller may list roles in every organization unit, in which case ouID is the filter's,
+// possibly empty. Otherwise ouID is the filtered organization unit when the caller may list roles there, the
+// caller's own when no filter names one, or empty when the caller may list roles in neither.
+func (rs *roleService) listableOU(ctx context.Context, filterOUID string) (
+	ouID string, all bool, svcErr *tidcommon.ServiceError) {
+	accessible, svcErr := rs.authzService.GetAccessibleResources(ctx, security.ActionListRoles,
+		security.ResourceTypeOU)
+	if svcErr != nil {
+		rs.logger.Error(ctx, "Failed to resolve the organization units the caller may list roles in",
+			log.Any("error", svcErr))
+		return "", false, &tidcommon.InternalServerError
+	}
+	if accessible.AllAllowed {
+		return filterOUID, true, nil
+	}
+	if filterOUID == "" {
+		filterOUID = security.GetOUID(ctx)
+	}
+	if filterOUID != "" && slices.Contains(accessible.IDs, filterOUID) {
+		return filterOUID, false, nil
+	}
+	return "", false, nil
+}
+
+// loadRole reads a role with its organization unit's handle, without checking the caller's access to it.
+func (rs *roleService) loadRole(ctx context.Context, id string) (*RoleWithPermissions, *tidcommon.ServiceError) {
+	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
+	logger.Debug(ctx, "Retrieving role", log.String("id", id))
+
+	if id == "" {
+		return nil, &ErrorMissingRoleID
+	}
+
+	role, err := rs.roleStore.GetRole(ctx, id)
+	if err != nil {
+		if errors.Is(err, ErrRoleNotFound) {
+			logger.Debug(ctx, "Role not found", log.String("id", id))
+			return nil, &ErrorRoleNotFound
+		}
+		logger.Error(ctx, "Failed to retrieve role", log.String("id", id), log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+
+	// Read as the runtime, as a caller confined to its own organization unit may not read the unit's details.
+	ou, svcErr := rs.ouService.GetOrganizationUnit(security.WithRuntimeContext(ctx), role.OUID)
+	if svcErr != nil {
+		logger.Warn(ctx, "Failed to resolve OU handle for role, skipping",
+			log.String("id", id), log.Any("error", svcErr))
+	} else {
+		role.OUHandle = ou.Handle
+	}
+
+	role.IsOwnedByOU = true
+	return &role, nil
+}
+
+// roleAsSeenBy returns the role as an organization unit it is shared into sees it, or ErrorRoleNotSharedToOU
+// when it is not shared into that unit.
+func (rs *roleService) roleAsSeenBy(
+	ctx context.Context, role *RoleWithPermissions, ouID string,
+) (*RoleWithPermissions, *tidcommon.ServiceError) {
+	// Asked as the runtime, as the caller may not read the organization units above its own.
+	visible, svcErr := rs.sharingService.IsVisible(security.WithRuntimeContext(ctx), RoleSharingType, role.ID, ouID)
+	if svcErr != nil {
+		if svcErr.Code == oupkg.ErrorOrganizationUnitNotFound.Code {
+			return nil, &ErrorRoleNotSharedToOU
+		}
+		return nil, translateSharingError(svcErr)
+	}
+	if !visible {
+		return nil, &ErrorRoleNotSharedToOU
+	}
+
+	role.OUID = ouID
+	role.OUHandle = ""
+	role.IsOwnedByOU = false
+	ou, svcErr := rs.ouService.GetOrganizationUnit(security.WithRuntimeContext(ctx), ouID)
+	if svcErr != nil {
+		rs.logger.Warn(ctx, "Failed to resolve OU handle for shared role, skipping",
+			log.String("id", role.ID), log.Any("error", svcErr))
+	} else {
+		role.OUHandle = ou.Handle
+	}
+	return role, nil
+}
+
+// checkRoleAccess refuses a caller who may not take the action on roles in the organization unit. roleID names the
+// role acted on, or is empty for an action on the organization unit's roles as a whole.
+func (rs *roleService) checkRoleAccess(
+	ctx context.Context, action security.Action, ouID, roleID string,
+) *tidcommon.ServiceError {
+	allowed, svcErr := rs.authzService.IsActionAllowed(ctx, action,
+		&sysauthz.ActionContext{ResourceType: security.ResourceTypeRole, OUID: ouID, ResourceID: roleID})
+	if svcErr != nil {
+		rs.logger.Error(ctx, "Failed to check authorization for a role action",
+			log.String("action", string(action)), log.Any("error", svcErr))
+		return &tidcommon.InternalServerError
+	}
+	if !allowed {
+		return &tidcommon.ErrorUnauthorized
+	}
+	return nil
 }
 
 // translateSharingError maps a sharing framework error into this service's own codes. A refusal this

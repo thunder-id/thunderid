@@ -8,6 +8,7 @@ import (
 	"errors"
 
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
+	"github.com/thunder-id/thunderid/internal/system/security"
 )
 
 // ouRoleResolverAdapter implements oupkg.OURoleResolver using the role service, so the OU package
@@ -26,7 +27,9 @@ func newOURoleResolver(service RoleServiceInterface) oupkg.OURoleResolver {
 func (a *ouRoleResolverAdapter) GetRoleListByOUID(
 	ctx context.Context, ouID string, limit, offset int,
 ) ([]oupkg.Role, int, error) {
-	list, svcErr := a.service.GetRoleList(ctx, limit, offset, map[string]interface{}{"ouId": ouID})
+	// Listed as the runtime: the organization unit service has already authorized the caller on the unit.
+	list, svcErr := a.service.GetRoleList(security.WithRuntimeContext(ctx), limit, offset,
+		map[string]interface{}{"ouId": ouID})
 	if svcErr != nil {
 		return nil, 0, errors.New(svcErr.Error.DefaultValue)
 	}

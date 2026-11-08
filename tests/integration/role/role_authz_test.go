@@ -17,11 +17,10 @@ import (
 
 // RoleAuthzTestSuite pins the authorization boundary of the role management API.
 //
-// Unlike /groups and /users, /roles has no entry in the API permission table
-// (internal/system/security/permissions.go), so every role path falls back to the root "system"
-// permission. A scoped administrator holding the fine-grained system permissions is therefore
-// refused on every role endpoint, read and write alike, by the security middleware (AUTH-4030) and
-// never reaches the handler.
+// The role paths require the `system:role` permissions of the API permission table
+// (internal/system/security/permissions.go). The scoped administrator here holds other fine-grained
+// system permissions but not `system:role`, so it is refused on every role endpoint, read and write
+// alike, by the security middleware (AUTH-4030) and never reaches the handler.
 //
 // The refusals are asserted on the error code, not just the status, because two different layers
 // answer 403 here:
@@ -29,12 +28,12 @@ import (
 //	AUTH-4030 — the security middleware: the caller lacks the permission the path requires.
 //	SAZ-4030  — sysauthz's grant guard: the operation would confer permissions the caller lacks.
 //
-// Distinguishing them matters. Because the role API admits only root callers, and
-// sysauthz.CanGrantMembership short-circuits for root, the role privilege-escalation guard
-// (CanGrantMembership with PrincipalTypeRole, and CanGrantPermissions on role create/update) cannot
-// fire for any HTTP caller in the shipped configuration. Should /roles later gain fine-grained
-// permission entries, TestScopedAdministratorCannotAddAssignmentToPrivilegedRole starts exercising
-// the guard, and the expected code becomes SAZ-4030 rather than AUTH-4030.
+// Distinguishing them matters. Because this administrator never reaches the role handler, the role
+// privilege-escalation guard (CanGrantMembership with PrincipalTypeRole, and CanGrantPermissions on role
+// create/update) cannot fire for it. Granted `system:role`,
+// TestScopedAdministratorCannotAddAssignmentToPrivilegedRole would start exercising the guard, and the
+// expected code would become SAZ-4030 rather than AUTH-4030. RoleOUConfinementTestSuite covers callers
+// that hold `system:role`.
 //
 // Fixture topology, all within one OU:
 //

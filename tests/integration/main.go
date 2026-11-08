@@ -200,8 +200,8 @@ func parseFlags() {
 
 // useTrustedIssuerTokens makes the trusted issuer's tokens the ones the Control Plane suites send:
 // one carrying the system scope for every test client, one without it for the test that it is
-// refused, one for a user the issuer's user endpoint does not know, and the ones the MCP endpoint's
-// tests send.
+// refused, one for a user the issuer's user endpoint does not know, one carrying only the
+// system:role scope, and the ones the MCP endpoint's tests send.
 func useTrustedIssuerTokens(issuer *testutils.TrustedIssuer) error {
 	admin, err := testutils.IssueManagementToken(issuer, "system", managementTokenLifetime)
 	if err != nil {
@@ -223,6 +223,13 @@ func useTrustedIssuerTokens(issuer *testutils.TrustedIssuer) error {
 		return err
 	}
 	if err := os.Setenv(testutils.StrangerTokenEnv, stranger); err != nil {
+		return err
+	}
+	roleScoped, err := testutils.IssueManagementToken(issuer, "system:role", managementTokenLifetime)
+	if err != nil {
+		return err
+	}
+	if err := os.Setenv(testutils.RoleScopedTokenEnv, roleScoped); err != nil {
 		return err
 	}
 

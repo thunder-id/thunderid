@@ -27,6 +27,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/filter"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 )
@@ -128,14 +129,23 @@ func (as *roleAssignmentService) GetRoleAssignmentsByType(ctx context.Context, i
 		return nil, &ErrorMissingRoleID
 	}
 
-	exists, err := as.roleStore.IsRoleExist(ctx, id)
+	role, err := as.roleStore.GetRole(ctx, id)
 	if err != nil {
+		if errors.Is(err, ErrRoleNotFound) {
+			logger.Debug(ctx, "Role not found", log.String("id", id))
+			return nil, &ErrorRoleNotFound
+		}
 		logger.Error(ctx, "Failed to check role existence", log.String("id", id), log.Error(err))
 		return nil, &tidcommon.InternalServerError
 	}
-	if !exists {
-		logger.Debug(ctx, "Role not found", log.String("id", id))
-		return nil, &ErrorRoleNotFound
+
+	// Assignments are read in the organization unit named, or in the one owning the role.
+	accessOUID := ouID
+	if accessOUID == "" {
+		accessOUID = role.OUID
+	}
+	if svcErr := as.checkRoleAccess(ctx, security.ActionReadRole, accessOUID, id); svcErr != nil {
+		return nil, svcErr
 	}
 
 	// user/app/agent filters require fetching all entity assignments and post-filtering by category.
@@ -350,6 +360,9 @@ func (as *roleAssignmentService) ValidateRemoveAssignment(ctx context.Context, i
 	if ouID == "" {
 		ouID = role.OUID
 	}
+	if svcErr := as.checkRoleAccess(ctx, security.ActionUpdateRole, ouID, id); svcErr != nil {
+		return nil, svcErr
+	}
 	if ouID != role.OUID {
 		if svcErr := as.requireAssignableInOU(ctx, id, ouID, false); svcErr != nil {
 			return nil, svcErr
@@ -372,8 +385,8 @@ func (as *roleAssignmentService) ValidateRemoveAssignment(ctx context.Context, i
 		}
 		return nil, &ErrorRoleAssignmentNotFound
 	}
-	if _, svcErr := as.prepareAssignments(
-		ctx, id, ouID, []RoleAssignment{{ID: assignment.ID, Type: assignment.Type}}, false,
+	if _, svcErr := as.prepareAssignmentsForRole(
+		ctx, id, &role, ouID, []RoleAssignment{{ID: assignment.ID, Type: assignment.Type}}, false,
 	); svcErr != nil {
 		return nil, svcErr
 	}
@@ -414,7 +427,18 @@ func (as *roleAssignmentService) modifyAssignments(
 		return svcErr
 	}
 
-	normalized, svcErr := as.prepareAssignments(ctx, id, ouID, assignments, adding)
+	role, svcErr := as.loadRoleForAssignments(ctx, id, assignments)
+	if svcErr != nil {
+		return svcErr
+	}
+	if ouID == "" {
+		ouID = role.OUID
+	}
+	if svcErr := as.checkRoleAccess(ctx, security.ActionUpdateRole, ouID, id); svcErr != nil {
+		return svcErr
+	}
+
+	normalized, svcErr := as.prepareAssignmentsForRole(ctx, id, role, ouID, assignments, adding)
 	if svcErr != nil {
 		return svcErr
 	}
@@ -571,19 +595,13 @@ func (as *roleAssignmentService) addInEachOU(
 	return nil
 }
 
-// prepareAssignments validates and normalizes assignments before a mutation, placing each in ouID,
-// or in the role's owner when ouID is empty.
-// Unlike the previous role service implementation, this allows modifying assignments for
-// both mutable and declarative (file-backed) roles.
-func (as *roleAssignmentService) prepareAssignments(
-	ctx context.Context, id, ouID string, assignments []RoleAssignment, adding bool,
-) ([]RoleAssignment, *tidcommon.ServiceError) {
-	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, assignmentLoggerComponentName))
-
+// loadRoleForAssignments validates an assignment request and reads the role it names.
+func (as *roleAssignmentService) loadRoleForAssignments(
+	ctx context.Context, id string, assignments []RoleAssignment,
+) (*RoleWithPermissions, *tidcommon.ServiceError) {
 	if id == "" {
 		return nil, &ErrorMissingRoleID
 	}
-
 	if err := as.validateAssignmentsRequest(assignments); err != nil {
 		return nil, err
 	}
@@ -591,15 +609,23 @@ func (as *roleAssignmentService) prepareAssignments(
 	role, err := as.roleStore.GetRole(ctx, id)
 	if err != nil {
 		if errors.Is(err, ErrRoleNotFound) {
-			logger.Debug(ctx, "Role not found", log.String("id", id))
+			as.logger.Debug(ctx, "Role not found", log.String("id", id))
 			return nil, &ErrorRoleNotFound
 		}
-		logger.Error(ctx, "Failed to retrieve role", log.String("id", id), log.Error(err))
+		as.logger.Error(ctx, "Failed to retrieve role", log.String("id", id), log.Error(err))
 		return nil, &tidcommon.InternalServerError
 	}
-	if ouID == "" {
-		ouID = role.OUID
-	}
+	return &role, nil
+}
+
+// prepareAssignmentsForRole validates and normalizes assignments to the role with id before a mutation, placing
+// each in ouID.
+// Unlike the previous role service implementation, this allows modifying assignments for
+// both mutable and declarative (file-backed) roles.
+func (as *roleAssignmentService) prepareAssignmentsForRole(
+	ctx context.Context, id string, role *RoleWithPermissions, ouID string, assignments []RoleAssignment,
+	adding bool,
+) ([]RoleAssignment, *tidcommon.ServiceError) {
 	if ouID != role.OUID {
 		if svcErr := as.requireAssignableInOU(ctx, id, ouID, adding); svcErr != nil {
 			return nil, svcErr
@@ -650,6 +676,13 @@ func (as *roleAssignmentService) requireAssignableInOU(
 func (as *roleAssignmentService) ListAssignableRoles(
 	ctx context.Context, ouID string,
 ) ([]Role, *tidcommon.ServiceError) {
+	// A caller who may not assign roles in the organization unit has none to assign there.
+	if svcErr := as.checkRoleAccess(ctx, security.ActionUpdateRole, ouID, ""); svcErr != nil {
+		if svcErr.Code == tidcommon.ErrorUnauthorized.Code {
+			return []Role{}, nil
+		}
+		return nil, svcErr
+	}
 	ownedCount, err := as.roleStore.GetRoleListCountByOUID(ctx, ouID)
 	if err != nil {
 		return nil, as.listError(ctx, ouID, err)
@@ -1289,6 +1322,24 @@ func (as *roleAssignmentService) HasGroupRoleAssignments(
 		return false, &tidcommon.InternalServerError
 	}
 	return found, nil
+}
+
+// checkRoleAccess refuses a caller who may not take the action on roles in the organization unit. roleID names the
+// role acted on, or is empty for an action on the organization unit's roles as a whole.
+func (as *roleAssignmentService) checkRoleAccess(
+	ctx context.Context, action security.Action, ouID, roleID string,
+) *tidcommon.ServiceError {
+	allowed, svcErr := as.authzService.IsActionAllowed(ctx, action,
+		&sysauthz.ActionContext{ResourceType: security.ResourceTypeRole, OUID: ouID, ResourceID: roleID})
+	if svcErr != nil {
+		as.logger.Error(ctx, "Failed to check authorization for a role action",
+			log.String("action", string(action)), log.Any("error", svcErr))
+		return &tidcommon.InternalServerError
+	}
+	if !allowed {
+		return &tidcommon.ErrorUnauthorized
+	}
+	return nil
 }
 
 // assignmentFilterQuery returns the filter an assignment list was narrowed by, for its pagination

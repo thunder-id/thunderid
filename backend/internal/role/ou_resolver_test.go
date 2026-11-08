@@ -19,7 +19,7 @@ func TestOURoleResolver_GetRoleListByOUID(t *testing.T) {
 
 	t.Run("owned roles come first, then shared ones", func(t *testing.T) {
 		service := NewRoleServiceInterfaceMock(t)
-		service.On("GetRoleList", context.Background(), 10, 0, ouFilter).
+		service.On("GetRoleList", runtimeContext, 10, 0, ouFilter).
 			Return(&RoleList{
 				TotalResults: 7,
 				Roles: []Role{
@@ -43,7 +43,7 @@ func TestOURoleResolver_GetRoleListByOUID(t *testing.T) {
 
 	t.Run("service error", func(t *testing.T) {
 		service := NewRoleServiceInterfaceMock(t)
-		service.On("GetRoleList", context.Background(), 10, 0, ouFilter).
+		service.On("GetRoleList", runtimeContext, 10, 0, ouFilter).
 			Return((*RoleList)(nil), &tidcommon.InternalServerError).Once()
 
 		resolver := newOURoleResolver(service)
@@ -55,7 +55,7 @@ func TestOURoleResolver_GetRoleListByOUID(t *testing.T) {
 
 	t.Run("empty results", func(t *testing.T) {
 		service := NewRoleServiceInterfaceMock(t)
-		service.On("GetRoleList", context.Background(), 10, 0, ouFilter).
+		service.On("GetRoleList", runtimeContext, 10, 0, ouFilter).
 			Return(&RoleList{Roles: []Role{}}, (*tidcommon.ServiceError)(nil)).Once()
 
 		resolver := newOURoleResolver(service)

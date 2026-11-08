@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
@@ -211,13 +212,17 @@ func (r *registry) RegisterProvider(p Provider) {
 // GetDependencies queries every registered provider for resources that reference
 // (resourceType, id) and aggregates the results. If any provider fails, the
 // response reports the result as unknown (nil TotalResults and Summary).
+//
+// Providers are asked under the runtime context: the caller has already been authorized on the
+// resource it asks about, and the dependents it cannot manage itself still have to be counted.
 func (r *registry) GetDependencies(
 	ctx context.Context, resourceType, id string) (*DependenciesResponse, error) {
 	usages := make([]ResourceDependency, 0)
 	summary := make(map[string]int)
+	runtimeCtx := security.WithRuntimeContext(ctx)
 
 	for _, p := range r.providers {
-		providerUsages, err := p.GetResourceDependencies(ctx, resourceType, id)
+		providerUsages, err := p.GetResourceDependencies(runtimeCtx, resourceType, id)
 		if err != nil {
 			r.logger.Error(ctx, "Failed to get dependencies from provider",
 				log.String("resourceType", resourceType), log.String("id", id), log.Error(err))
@@ -246,15 +251,17 @@ func (r *registry) GetDependencies(
 
 // CascadeDelete asks every provider that implements CascadeDeleter to remove its cascade-behavior
 // dependents of (resourceType, id), returning the total number removed. It stops and returns the
-// error on the first provider failure, so the caller can abort the target deletion.
+// error on the first provider failure, so the caller can abort the target deletion. Providers run
+// under the runtime context, since the caller has already been authorized to delete the resource.
 func (r *registry) CascadeDelete(ctx context.Context, resourceType, id string) (int, error) {
 	total := 0
+	runtimeCtx := security.WithRuntimeContext(ctx)
 	for _, p := range r.providers {
 		cascader, ok := p.(CascadeDeleter)
 		if !ok {
 			continue
 		}
-		deleted, err := cascader.CascadeDeleteDependencies(ctx, resourceType, id)
+		deleted, err := cascader.CascadeDeleteDependencies(runtimeCtx, resourceType, id)
 		if err != nil {
 			r.logger.Error(ctx, "Failed to cascade-delete dependencies from provider",
 				log.String("resourceType", resourceType), log.String("id", id), log.Error(err))

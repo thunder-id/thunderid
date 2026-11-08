@@ -2424,6 +2424,42 @@ func (suite *OrganizationUnitServiceTestSuite) TestOUService_GetOrganizationUnit
 	suite.Require().Equal(tidcommon.ErrorUnauthorized.Code, err.Code)
 }
 
+// A caller that may not read roles in the organization unit sees none of them, whether it names the unit by ID
+// or by path.
+func (suite *OrganizationUnitServiceTestSuite) TestOUService_GetOrganizationUnitRoles_RefusedWithoutRoleRead() {
+	refusingAuthz := func() *sysauthzmock.SystemAuthorizationServiceInterfaceMock {
+		authz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+		authz.On("IsActionAllowed", mock.Anything, security.ActionReadRole,
+			&sysauthz.ActionContext{ResourceType: security.ResourceTypeOU, OUID: "ou-1"}).Return(false, nil).Once()
+		return authz
+	}
+
+	suite.Run("by ID", func() {
+		roleRes := new(OURoleResolverMock)
+		service := suite.newServiceWithRoleResolver(newOrganizationUnitStoreInterfaceMock(suite.T()),
+			refusingAuthz(), roleRes)
+
+		_, svcErr := service.GetOrganizationUnitRoles(context.Background(), "ou-1", 5, 0)
+
+		suite.Equal(&tidcommon.ErrorUnauthorized, svcErr)
+		roleRes.AssertNotCalled(suite.T(), "GetRoleListByOUID", mock.Anything, mock.Anything, mock.Anything,
+			mock.Anything)
+	})
+	suite.Run("by path", func() {
+		store := newOrganizationUnitStoreInterfaceMock(suite.T())
+		store.On("GetOrganizationUnitByPath", mock.Anything, []string{"root"}).
+			Return(OrganizationUnit{ID: "ou-1", Handle: "root"}, nil).Once()
+		roleRes := new(OURoleResolverMock)
+		service := suite.newServiceWithRoleResolver(store, refusingAuthz(), roleRes)
+
+		_, svcErr := service.GetOrganizationUnitRolesByPath(context.Background(), "root", 5, 0)
+
+		suite.Equal(&tidcommon.ErrorUnauthorized, svcErr)
+		roleRes.AssertNotCalled(suite.T(), "GetRoleListByOUID", mock.Anything, mock.Anything, mock.Anything,
+			mock.Anything)
+	})
+}
+
 func (suite *OrganizationUnitServiceTestSuite) TestOUService_GetOrganizationUnitRoles() {
 	testCases := []struct {
 		name          string

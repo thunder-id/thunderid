@@ -21,6 +21,7 @@ import (
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 	"github.com/thunder-id/thunderid/internal/system/valuecompare"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -900,7 +901,8 @@ func (is *idpService) validateAuthorizationRuleMappingTargetsExist(
 	}
 
 	for roleID := range roleIDs {
-		if _, svcErr := is.roleService.GetRoleWithPermissions(ctx, roleID); svcErr != nil {
+		// Read as the runtime: a mapping may name a role of another organization unit.
+		if _, svcErr := is.roleService.GetRoleWithPermissions(security.WithRuntimeContext(ctx), roleID); svcErr != nil {
 			if svcErr.Type == tidcommon.ServerErrorType {
 				return svcErr
 			}

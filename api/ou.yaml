@@ -790,6 +790,22 @@ paths:
                     description:
                       key: "error.ouservice.invalid_offset_parameter_description"
                       defaultValue: "The offset parameter must be a non-negative integer"
+        "403":
+          description: |
+            The caller may not read roles in the organization unit. On a data plane, a token without the
+            root `system` permission reads only the roles of the organization unit it names.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "SSE-4030"
+                message:
+                  key: "error.unauthorized"
+                  defaultValue: "Unauthorized"
+                description:
+                  key: "error.unauthorized_description"
+                  defaultValue: "The caller is not authorized to perform this operation"
         "404":
           description: Organization unit not found
           content:
@@ -1421,6 +1437,22 @@ paths:
                     description:
                       key: "error.ouservice.invalid_offset_parameter_description"
                       defaultValue: "The offset parameter must be a non-negative integer"
+        "403":
+          description: |
+            The caller may not read roles in the organization unit. On a data plane, a token without the
+            root `system` permission reads only the roles of the organization unit it names.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "SSE-4030"
+                message:
+                  key: "error.unauthorized"
+                  defaultValue: "Unauthorized"
+                description:
+                  key: "error.unauthorized_description"
+                  defaultValue: "The caller is not authorized to perform this operation"
         "404":
           description: Organization unit not found
           content:

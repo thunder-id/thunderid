@@ -49,6 +49,9 @@ const (
 	UnscopedTokenEnv = "TEST_CP_UNSCOPED_TOKEN"
 	// StrangerTokenEnv carries a token the trusted issuer signed for TrustedIssuerStrangerSubject.
 	StrangerTokenEnv = "TEST_CP_STRANGER_TOKEN"
+	// RoleScopedTokenEnv carries a token the trusted issuer signed with only the system:role scope, for the
+	// tests that the Control Plane does not confine a fine-grained token to an organization unit.
+	RoleScopedTokenEnv = "TEST_CP_ROLE_SCOPED_TOKEN"
 
 	// MCPScopedTokenEnv, MCPUnscopedTokenEnv and MCPExpiredTokenEnv carry tokens the trusted issuer
 	// signed for MCPResource: one with the system scope, one without it, and one with the scope that

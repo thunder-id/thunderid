@@ -195,7 +195,7 @@ func TestResolveForRole(t *testing.T) {
 
 	t.Run("GroupsPermissionsByResourceServer", func(t *testing.T) {
 		roleSvc := NewRoleServiceInterfaceMock(t)
-		roleSvc.EXPECT().GetRoleWithPermissions(ctx, "librarian").Return(&RoleWithPermissions{
+		roleSvc.EXPECT().GetRoleWithPermissions(runtimeContext, "librarian").Return(&RoleWithPermissions{
 			ID: "librarian",
 			Permissions: []ResourcePermissions{
 				{ResourceServerID: testRSSystem, Permissions: []string{"system:user", "system:group"}},
@@ -213,7 +213,7 @@ func TestResolveForRole(t *testing.T) {
 
 	t.Run("RoleWithNoPermissions", func(t *testing.T) {
 		roleSvc := NewRoleServiceInterfaceMock(t)
-		roleSvc.EXPECT().GetRoleWithPermissions(ctx, "empty").Return(&RoleWithPermissions{
+		roleSvc.EXPECT().GetRoleWithPermissions(runtimeContext, "empty").Return(&RoleWithPermissions{
 			ID:          "empty",
 			Permissions: []ResourcePermissions{},
 		}, nil).Once()
@@ -228,7 +228,7 @@ func TestResolveForRole(t *testing.T) {
 	// A missing role must not read as "confers nothing", which would permit assigning it.
 	t.Run("LookupErrorPropagates", func(t *testing.T) {
 		roleSvc := NewRoleServiceInterfaceMock(t)
-		roleSvc.EXPECT().GetRoleWithPermissions(ctx, "gone").
+		roleSvc.EXPECT().GetRoleWithPermissions(runtimeContext, "gone").
 			Return(nil, &ErrorRoleNotFound).Once()
 		resolver := NewEffectivePermissionResolver(roleSvc, nil, nil)
 

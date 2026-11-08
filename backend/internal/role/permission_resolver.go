@@ -98,7 +98,8 @@ func (r *EffectivePermissionResolver) ResolveForRole(
 		return security.PermissionSet{}, nil
 	}
 
-	role, svcErr := r.roleService.GetRoleWithPermissions(ctx, roleID)
+	// Read as the runtime: this resolves what a grant would confer, for the authorization service itself.
+	role, svcErr := r.roleService.GetRoleWithPermissions(security.WithRuntimeContext(ctx), roleID)
 	if svcErr != nil {
 		return nil, fmt.Errorf("failed to resolve permissions for role: %s",
 			svcErr.Error.DefaultValue)

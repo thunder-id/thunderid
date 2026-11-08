@@ -33,6 +33,10 @@ paths:
       description: |
         Lists every role in the deployment. A `filter` naming an organization unit lists the roles that
         unit owns, followed by the roles shared with it. Each role says whether the listed unit owns it.
+
+        On a data plane, a token without the root `system` permission is confined to the organization unit
+        it names: with no filter, it lists that unit's roles, owned first and then shared, as the filter
+        would. A filter naming another organization unit lists no roles.
       parameters:
         - $ref: '#/components/parameters/limitQueryParam'
         - $ref: '#/components/parameters/offsetQueryParam'
@@ -277,19 +281,35 @@ paths:
                       key: "error.roleservice.cannot_create_role_in_declarative_only_mode_description"
                       defaultValue: "Role creation is not allowed when running in declarative-only mode. Roles must be defined in declarative configuration files"
         "403":
-          description: Forbidden
+          description: |
+            Forbidden. On a data plane, a token without the root `system` permission may only act on
+            roles in the organization unit it names. The operation is also refused when it would grant
+            permissions the caller does not hold.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-              example:
-                code: "SAZ-4030"
-                message:
-                  key: "error.sysauthz.grant_not_permitted"
-                  defaultValue: "Insufficient privileges to grant these permissions"
-                description:
-                  key: "error.sysauthz.grant_not_permitted_description"
-                  defaultValue: "The operation would grant permissions that the caller does not hold"
+              examples:
+                organization-unit:
+                  summary: The caller may not take this action in the organization unit
+                  value:
+                    code: "SSE-4030"
+                    message:
+                      key: "error.unauthorized"
+                      defaultValue: "Unauthorized"
+                    description:
+                      key: "error.unauthorized_description"
+                      defaultValue: "The caller is not authorized to perform this operation"
+                grant:
+                  summary: The operation would grant permissions the caller does not hold
+                  value:
+                    code: "SAZ-4030"
+                    message:
+                      key: "error.sysauthz.grant_not_permitted"
+                      defaultValue: "Insufficient privileges to grant these permissions"
+                    description:
+                      key: "error.sysauthz.grant_not_permitted_description"
+                      defaultValue: "The operation would grant permissions that the caller does not hold"
         "409":
           description: Conflict
           content:
@@ -328,6 +348,10 @@ paths:
         Returns role metadata with permissions list. With `ouId`, returns the role as that organization
         unit sees it: the role itself when the unit owns it, and the shared role, read under the unit,
         when the role is shared with it. A role not shared with the unit is not found.
+
+        On a data plane, a token without the root `system` permission reads a role owned by the
+        organization unit it names, or a role shared into that unit, which it receives as the unit sees
+        it. Any other role is forbidden.
       parameters:
         - in: path
           name: id
@@ -373,6 +397,22 @@ paths:
                 description:
                   key: "error.roleservice.missing_role_id_description"
                   defaultValue: "Role ID is required"
+        "403":
+          description: |
+            On a data plane, a token without the root `system` permission may only act on roles in the
+            organization unit it names.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "SSE-4030"
+                message:
+                  key: "error.unauthorized"
+                  defaultValue: "Unauthorized"
+                description:
+                  key: "error.unauthorized_description"
+                  defaultValue: "The caller is not authorized to perform this operation"
         "404":
           description: Role not found, or not shared with the organization unit named in ouId
           content:
@@ -594,19 +634,35 @@ paths:
                       key: "error.roleservice.shared_role_not_editable_description"
                       defaultValue: "A role's name, description and permissions can be changed only in the organization unit that owns it, not in one it is shared with"
         "403":
-          description: Forbidden
+          description: |
+            Forbidden. On a data plane, a token without the root `system` permission may only act on
+            roles in the organization unit it names. The operation is also refused when it would grant
+            permissions the caller does not hold.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-              example:
-                code: "SAZ-4030"
-                message:
-                  key: "error.sysauthz.grant_not_permitted"
-                  defaultValue: "Insufficient privileges to grant these permissions"
-                description:
-                  key: "error.sysauthz.grant_not_permitted_description"
-                  defaultValue: "The operation would grant permissions that the caller does not hold"
+              examples:
+                organization-unit:
+                  summary: The caller may not take this action in the organization unit
+                  value:
+                    code: "SSE-4030"
+                    message:
+                      key: "error.unauthorized"
+                      defaultValue: "Unauthorized"
+                    description:
+                      key: "error.unauthorized_description"
+                      defaultValue: "The caller is not authorized to perform this operation"
+                grant:
+                  summary: The operation would grant permissions the caller does not hold
+                  value:
+                    code: "SAZ-4030"
+                    message:
+                      key: "error.sysauthz.grant_not_permitted"
+                      defaultValue: "Insufficient privileges to grant these permissions"
+                    description:
+                      key: "error.sysauthz.grant_not_permitted_description"
+                      defaultValue: "The operation would grant permissions that the caller does not hold"
         "404":
           description: Role not found
           content:
@@ -721,6 +777,22 @@ paths:
                     description:
                       key: "error.roleservice.result_limit_exceeded_in_composite_mode_description"
                       defaultValue: "The total number of records exceeds the maximum limit in composite mode"
+        "403":
+          description: |
+            On a data plane, a token without the root `system` permission may only act on roles in the
+            organization unit it names.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "SSE-4030"
+                message:
+                  key: "error.unauthorized"
+                  defaultValue: "Unauthorized"
+                description:
+                  key: "error.unauthorized_description"
+                  defaultValue: "The caller is not authorized to perform this operation"
         "404":
           description: Role not found
           content:
@@ -868,6 +940,22 @@ paths:
                     description:
                       key: "error.roleservice.invalid_offset_parameter_description"
                       defaultValue: "The offset parameter must be a non-negative integer"
+        "403":
+          description: |
+            On a data plane, a token without the root `system` permission may only act on roles in the
+            organization unit it names.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "SSE-4030"
+                message:
+                  key: "error.unauthorized"
+                  defaultValue: "Unauthorized"
+                description:
+                  key: "error.unauthorized_description"
+                  defaultValue: "The caller is not authorized to perform this operation"
         "404":
           description: Role not found
           content:
@@ -989,19 +1077,35 @@ paths:
                       key: "error.roleservice.shared_role_field_not_editable_description"
                       defaultValue: "An organization unit the role is shared with can only change what the role's sharing policies make editable there"
         "403":
-          description: Forbidden
+          description: |
+            Forbidden. On a data plane, a token without the root `system` permission may only act on
+            roles in the organization unit it names. The operation is also refused when it would grant
+            permissions the caller does not hold.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-              example:
-                code: "SAZ-4030"
-                message:
-                  key: "error.sysauthz.grant_not_permitted"
-                  defaultValue: "Insufficient privileges to grant these permissions"
-                description:
-                  key: "error.sysauthz.grant_not_permitted_description"
-                  defaultValue: "The operation would grant permissions that the caller does not hold"
+              examples:
+                organization-unit:
+                  summary: The caller may not take this action in the organization unit
+                  value:
+                    code: "SSE-4030"
+                    message:
+                      key: "error.unauthorized"
+                      defaultValue: "Unauthorized"
+                    description:
+                      key: "error.unauthorized_description"
+                      defaultValue: "The caller is not authorized to perform this operation"
+                grant:
+                  summary: The operation would grant permissions the caller does not hold
+                  value:
+                    code: "SAZ-4030"
+                    message:
+                      key: "error.sysauthz.grant_not_permitted"
+                      defaultValue: "Insufficient privileges to grant these permissions"
+                    description:
+                      key: "error.sysauthz.grant_not_permitted_description"
+                      defaultValue: "The operation would grant permissions that the caller does not hold"
         "404":
           description: Role not found, or not shared with the organization unit named in the body
           content:
@@ -1115,19 +1219,35 @@ paths:
                       key: "error.roleservice.assignment_mandated_description"
                       defaultValue: "The assignment goes away only when the sharing policy that mandates it stops naming the role"
         "403":
-          description: Forbidden
+          description: |
+            Forbidden. On a data plane, a token without the root `system` permission may only act on
+            roles in the organization unit it names. The operation is also refused when it would grant
+            permissions the caller does not hold.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-              example:
-                code: "SAZ-4030"
-                message:
-                  key: "error.sysauthz.grant_not_permitted"
-                  defaultValue: "Insufficient privileges to grant these permissions"
-                description:
-                  key: "error.sysauthz.grant_not_permitted_description"
-                  defaultValue: "The operation would grant permissions that the caller does not hold"
+              examples:
+                organization-unit:
+                  summary: The caller may not take this action in the organization unit
+                  value:
+                    code: "SSE-4030"
+                    message:
+                      key: "error.unauthorized"
+                      defaultValue: "Unauthorized"
+                    description:
+                      key: "error.unauthorized_description"
+                      defaultValue: "The caller is not authorized to perform this operation"
+                grant:
+                  summary: The operation would grant permissions the caller does not hold
+                  value:
+                    code: "SAZ-4030"
+                    message:
+                      key: "error.sysauthz.grant_not_permitted"
+                      defaultValue: "Insufficient privileges to grant these permissions"
+                    description:
+                      key: "error.sysauthz.grant_not_permitted_description"
+                      defaultValue: "The operation would grant permissions that the caller does not hold"
         "404":
           description: Role not found, or not shared with the organization unit named in the body
           content:

@@ -2006,7 +2006,9 @@ func (s *IDPServiceTestSuite) TestCreateIdentityProvider_AuthorizationRuleMappin
 // TestCreateIdentityProvider_AuthorizationRuleMapping_RoleServiceServerErrorPropagates ensures a genuine
 // server error from the role service is surfaced as-is, not folded into a client "not found" error.
 func (s *IDPServiceTestSuite) TestCreateIdentityProvider_AuthorizationRuleMapping_RoleServiceServerErrorPropagates() {
-	s.mockRole.On("GetRoleWithPermissions", mock.Anything, "role-id").
+	// Read as the runtime: the mapping may name a role of another organization unit.
+	s.mockRole.On("GetRoleWithPermissions",
+		mock.MatchedBy(security.IsRuntimeContext), "role-id").
 		Return((*role.RoleWithPermissions)(nil), &tidcommon.InternalServerError)
 
 	idp := authorizationRuleMappingIDP(providers.AuthorizationTarget{

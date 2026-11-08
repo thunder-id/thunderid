@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	"github.com/thunder-id/thunderid/internal/system/security"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
@@ -45,6 +46,30 @@ func (suite *RegistryTestSuite) newProvider(usages []ResourceDependency, err err
 }
 
 // ----- GetDependencies -----
+
+// runtimeContext matches a context carrying the runtime security context.
+var runtimeContext = mock.MatchedBy(security.IsRuntimeContext)
+
+func (suite *RegistryTestSuite) TestGetDependenciesCallsProvidersUnderRuntimeContext() {
+	reg := newRegistry()
+	p := NewProviderMock(suite.T())
+	p.EXPECT().GetResourceDependencies(runtimeContext, "theme", "t1").Return(nil, nil).Once()
+	reg.RegisterProvider(p)
+
+	_, err := reg.GetDependencies(context.Background(), "theme", "t1")
+	suite.NoError(err)
+}
+
+func (suite *RegistryTestSuite) TestCascadeDeleteCallsProvidersUnderRuntimeContext() {
+	reg := newRegistry()
+	cascader := NewCascadeDeleterMock(suite.T())
+	cascader.EXPECT().CascadeDeleteDependencies(runtimeContext, "theme", "t1").Return(2, nil).Once()
+	reg.RegisterProvider(providerCascadeMock{ProviderMock: NewProviderMock(suite.T()), CascadeDeleterMock: cascader})
+
+	deleted, err := reg.CascadeDelete(context.Background(), "theme", "t1")
+	suite.NoError(err)
+	suite.Equal(2, deleted)
+}
 
 func (suite *RegistryTestSuite) TestGetDependenciesAggregatesAcrossProviders() {
 	reg := newRegistry()

@@ -95,10 +95,19 @@ The following exceptions apply:
 - The variables and secrets of a gateway require the root `system` permission, as the server's own variable store does.
 - The variable store, import, and export require the root `system` permission.
 
-Only `ou`, `user`, `group`, `agent`, `usertype`, and `agenttype` permissions are confined to an organization unit. The other permissions aren't confined to an organization unit yet. A caller with a `system:role`, `system:flow`, or `system:app` permission, for example, can act on the roles, flows, or applications of every organization unit.
+Only `ou`, `user`, `group`, `agent`, `usertype`, `agenttype`, and `role` permissions are confined to an organization unit. The other permissions aren't confined to an organization unit yet. A caller with a `system:flow` or `system:app` permission, for example, can act on the flows or applications of every organization unit.
+
+On a data plane, a caller holding `role` permissions works with the roles of the organization unit its token names:
+
+- Listing roles without a filter returns that organization unit's own roles, then the roles shared into it.
+- A shared role reads as the organization unit sees it: under that organization unit, with `isOwnedByOU` set to `false`.
+- Creating, updating, and deleting a role, and moving a role to another organization unit, need the matching permission in the organization unit the role belongs to.
+- Role assignments are read and changed in the organization unit they're made in, so an organization unit assigns its own users to a role shared into it.
+
+A caller holding the root `system` permission, and the control plane, still reach the roles of every organization unit.
 
 :::warning
-The `flow`, `role`, `rs`, `authzdetail`, and `app` permissions are high impact, and they reach every organization unit. A flow administrator controls how users sign in and register. A role administrator decides who holds which permissions, within the permissions they hold themselves. A resource server administrator defines the permissions that roles grant to applications and APIs. An authorization detail type administrator defines what users consent to. An application administrator controls which scopes an application can request and which flows its users sign in and register through. Grant them only to administrators you trust with the whole deployment.
+The `flow`, `role`, `rs`, `authzdetail`, and `app` permissions are high impact. All of them except `role` reach every organization unit, and `role` reaches every organization unit on a control plane. A flow administrator controls how users sign in and register. A role administrator decides who holds which permissions, within the permissions they hold themselves. A resource server administrator defines the permissions that roles grant to applications and APIs. An authorization detail type administrator defines what users consent to. An application administrator controls which scopes an application can request and which flows its users sign in and register through. Grant them only to administrators you trust with the whole deployment.
 :::
 
 `system:serverconfig:update` changes deployment-wide security settings such as CORS, the content security policy, and sessions.
