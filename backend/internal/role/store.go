@@ -56,6 +56,8 @@ type roleStoreInterface interface {
 	ListMandatedRoleUnits(ctx context.Context) ([]MandatedRoleUnit, error)
 	// ListMandatedAssignmentsForRole lists a role's mandated assignments in ouID, or in every unit when it is empty.
 	ListMandatedAssignmentsForRole(ctx context.Context, roleID, ouID string) ([]RoleAssignment, error)
+	// GetDirectAssignments returns the direct assignments of the role in ouID to any of assigneeIDs.
+	GetDirectAssignments(ctx context.Context, roleID, ouID string, assigneeIDs []string) ([]RoleAssignment, error)
 	CheckRoleNameExists(ctx context.Context, ouID, name string) (bool, error)
 	CheckRoleNameExistsExcludingID(ctx context.Context, ouID, name, excludeRoleID string) (bool, error)
 	// GetAuthorizedPermissionsByResourceServer counts only assignments made in assignmentOUID when
@@ -828,6 +830,28 @@ func (s *roleStore) ListMandatedAssignmentsForRole(
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to get mandated assignments of role: %w", err)
+	}
+	return parseAssignmentResults(results)
+}
+
+// GetDirectAssignments returns the direct assignments of the role in ouID to any of assigneeIDs.
+func (s *roleStore) GetDirectAssignments(
+	ctx context.Context, roleID, ouID string, assigneeIDs []string) ([]RoleAssignment, error) {
+	if len(assigneeIDs) == 0 {
+		return []RoleAssignment{}, nil
+	}
+	dbClient, err := s.getConfigDBClient()
+	if err != nil {
+		return nil, err
+	}
+
+	query, args, err := buildGetDirectAssignmentsQuery(roleID, ouID, assigneeIDs, s.scope(ctx))
+	if err != nil {
+		return nil, fmt.Errorf("failed to build direct assignments query: %w", err)
+	}
+	results, err := dbClient.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get direct assignments of role: %w", err)
 	}
 	return parseAssignmentResults(results)
 }

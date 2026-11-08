@@ -196,12 +196,7 @@ describe.each<[string, (props: CommonResourcePropertiesPropsInterface) => ReactN
     ],
     false,
   ],
-  [
-    'RoleExecutor',
-    RoleExecutorProperties,
-    ['role_assignment_removal', 'role_permission_removal', 'role_selection', 'role_assignment'],
-    true,
-  ],
+  ['RoleExecutor', RoleExecutorProperties, ['role_permission_removal', 'role_selection', 'role_assignment'], true],
   ['GroupExecutor', GroupExecutorProperties, ['group_membership_removal'], true],
   ['CriteriaRevocationExecutor', CriteriaRevocationProperties, ['revoke', 'advance_cutoff'], false],
 ])('%s properties', (name, Component, supportedModes, pairedWithValidator) => {

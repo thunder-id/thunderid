@@ -742,6 +742,39 @@ func buildGetRolesByIDsQuery(ids []string, deploymentID string) (dbmodel.DBQuery
 	return buildGetRolesInQuery("RLQ-ROLE_MGT-35", "ID", len(ids)), toArgs(ids, deploymentID), nil
 }
 
+// buildGetDirectAssignmentsQuery constructs a query selecting the direct assignments of the role in the
+// organization unit to any of the assignee IDs.
+func buildGetDirectAssignmentsQuery(roleID, ouID string, assigneeIDs []string, deploymentID string) (
+	dbmodel.DBQuery, []interface{}, error) {
+	if len(assigneeIDs) == 0 {
+		return dbmodel.DBQuery{}, nil, fmt.Errorf("assignee ids list cannot be empty")
+	}
+	postgresPlaceholders := make([]string, len(assigneeIDs))
+	sqlitePlaceholders := make([]string, len(assigneeIDs))
+	args := make([]interface{}, 0, len(assigneeIDs)+3)
+	args = append(args, roleID, ouID)
+	for i, assigneeID := range assigneeIDs {
+		postgresPlaceholders[i] = fmt.Sprintf("$%d", i+3)
+		sqlitePlaceholders[i] = "?"
+		args = append(args, assigneeID)
+	}
+	args = append(args, deploymentID)
+
+	baseQuery := `SELECT ASSIGNEE_ID, ASSIGNEE_TYPE, ASSIGNMENT_OU_ID, SHARING_POLICY_ID FROM "ROLE_ASSIGNMENT" ` +
+		`WHERE ROLE_ID = %s AND ASSIGNMENT_OU_ID = %s AND SHARING_POLICY_ID = '' ` +
+		`AND ASSIGNEE_ID IN (%s) AND DEPLOYMENT_ID = %s`
+	postgresQuery := fmt.Sprintf(baseQuery, "$1", "$2", strings.Join(postgresPlaceholders, ","),
+		fmt.Sprintf("$%d", len(assigneeIDs)+3))
+	sqliteQuery := fmt.Sprintf(baseQuery, "?", "?", strings.Join(sqlitePlaceholders, ","), "?")
+
+	return dbmodel.DBQuery{
+		ID:            "RLQ-ROLE_MGT-48",
+		Query:         postgresQuery,
+		PostgresQuery: postgresQuery,
+		SQLiteQuery:   sqliteQuery,
+	}, args, nil
+}
+
 // resourcePermissionsFromMap converts a resource-server-keyed map into []ResourcePermissions,
 // deduplicating and sorting so the order is stable.
 func resourcePermissionsFromMap(byResourceServer map[string][]string) []ResourcePermissions {

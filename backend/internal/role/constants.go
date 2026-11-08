@@ -8,3 +8,13 @@ const systemFlowRoleDeletePre = "system-role-delete-pre"
 
 // projectIDQueryParam is the query parameter that lists the roles of one project.
 const projectIDQueryParam = "projectId"
+
+// The role assignment removal pre flow handle and its assignee and organization unit inputs.
+const (
+	systemFlowRoleAssignmentRemovalPre = "system-role-assignment-removal-pre"
+	systemFlowInputAssignee            = "targetAssigneeId"
+	systemFlowInputAssignmentOU        = "targetAssignmentOuId"
+)
+
+// maxRemovedAssignments is the most assignments a single removal request may name.
+const maxRemovedAssignments = 100

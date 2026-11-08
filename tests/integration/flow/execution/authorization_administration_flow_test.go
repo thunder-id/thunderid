@@ -169,7 +169,7 @@ func (ts *AuthorizationAdministrationFlowTestSuite) SetupSuite() {
 
 	for _, handle := range []string{
 		rolePermissionRemovalFlowHandle, groupMembershipRemovalFlowHandle,
-		actionDeletionFlowHandle, roleAssignmentRemovalFlowHandle,
+		actionDeletionFlowHandle,
 	} {
 		flowID, flowErr := testutils.GetFlowIDByHandle(handle, administrationFlowType)
 		ts.Require().NoError(flowErr, "Failed to resolve the shipped %s", handle)
@@ -814,11 +814,10 @@ func (ts *AuthorizationAdministrationFlowTestSuite) TestFlows_NestingBeyondTheDe
 		"the role's holders cannot all be reached")
 	ts.True(ts.roleExists(roleID), "A refused deletion must leave the role in place")
 
-	step = executeAsAdmin(&ts.Suite, ts.flowIDs[roleAssignmentRemovalFlowHandle], map[string]string{
-		roleTargetInput:     roleID,
-		assigneeTargetInput: top,
-	})
-	ts.requireRefused(step, errCodeGroupNestingTooDeep, "the unassigned group's members cannot all be reached")
+	// Removing the assignment runs the same revocation before the write, so it is refused too.
+	status, code := removeAssignmentThroughAPI(&ts.Suite, roleID, "", testutils.Assignment{ID: top, Type: "group"})
+	ts.Equal(http.StatusBadRequest, status, "the unassigned group's members cannot all be reached")
+	ts.Equal(errCodeGroupNestingTooDeep, code, "the unassigned group's members cannot all be reached")
 	assignments, err := testutils.GetRoleAssignments(roleID)
 	ts.Require().NoError(err, "Failed to read the role's assignments")
 	ts.Len(assignments, 1, "A refused unassignment must leave the assignment in place")

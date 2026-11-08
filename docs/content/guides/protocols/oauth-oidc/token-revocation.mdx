@@ -7,7 +7,7 @@ description: RFC 7009 token revocation in {{ProductName}}, from revoking a singl
 
 # Token Revocation
 
-**Token Revocation** ([RFC 7009](https://datatracker.ietf.org/doc/html/rfc7009)) lets a client tell <ProductName /> that a token should stop working before it expires. <ProductName /> extends this with broader scopes, so an operational event such as a sign-out, a user deletion, an account suspension, an application deletion, a role deletion, or a group deletion can invalidate many tokens at once.
+**Token Revocation** ([RFC 7009](https://datatracker.ietf.org/doc/html/rfc7009)) lets a client tell <ProductName /> that a token should stop working before it expires. <ProductName /> extends this with broader scopes, so an operational event such as a sign-out, a user deletion, an account suspension, an application deletion, a role deletion, a group deletion, or a role assignment removal can invalidate many tokens at once.
 
 Access tokens are self-contained JWTs, so a resource server that validates them locally has no way to know a token was revoked. <ProductName /> solves this with a denylist that both the authorization server and resource servers consult. The scopes below differ only in what goes on that list.
 
@@ -151,6 +151,24 @@ The deletion is refused, and the group kept, when the revocation cannot be plann
 |---|---|---|
 | `GRP-1017` | The group's members are nested too deep to walk. | Flatten the group hierarchy so that every member is within the supported depth. |
 | `RVS-1001` | The revocation needs more entries than `oauth.revocation.criteria.max_entries_per_change` allows (`10000` by default). It records about one entry for each member and each scope the group's roles grant, so 1000 members with a role of 11 scopes are refused. | Remove some of the group's members or role assignments first, then delete the group. Or raise the limit. |
+
+## Role Assignment Removal
+
+Removing a role from a user, group, agent, or application revokes the tokens that assignee carries with the role's permissions, and then removes the assignment. For a group, it revokes those tokens for every member of the group. This happens whichever way the assignment is removed: from the Console, or through the `POST /roles/{id}/assignments/remove` API. A token that carries none of the role's permission scopes is not affected.
+
+The revocation covers every scope the role grants, so a token carrying one of them is revoked even when the assignee also holds that scope through another role. A new token gets that scope again, because the other role still grants it.
+
+Removing an assignment the role does not have changes nothing and revokes nothing. Removing a direct assignment that a sharing policy also mandates revokes nothing either, because the assignee keeps the role through the mandate.
+
+The revocation runs as two system flows. The first, which only an assignment removal runs, runs before each assignment is removed and revokes the tokens issued up to that point. The second is the same flow an [application deletion](#application-deletion-and-secret-regeneration) runs; once the removal is written it moves the cutoff past it, so a token issued while the removal ran is revoked too. If a first flow fails, no assignment is removed. When a request names several assignees, the tokens that the earlier assignees' first flows already revoked stay revoked even though no assignment is removed. If a second flow fails, the request returns an error even though the assignments are already removed. A token issued after the removal is valid, so assigning the role again restores the assignee's access for the tokens it requests from then on.
+
+The removal is refused, and every assignment kept, when the request names too many assignments or the revocation of a group assignment cannot be planned:
+
+| Error | Refused when | What to do |
+|---|---|---|
+| `ROL-1042` | The request names more than 100 assignments. | Split the removal into requests of at most 100 assignments each. |
+| `GRP-1017` | The group's members are nested too deep to walk. | Flatten the group hierarchy so that every member is within the supported depth. |
+| `RVS-1001` | The revocation needs more entries than `oauth.revocation.criteria.max_entries_per_change` allows (`10000` by default). It records about one entry for each member of the group and each scope the role grants. | Remove some of the group's members first, then remove the assignment. Or raise the limit. |
 
 ## Where Revocation Is Enforced
 

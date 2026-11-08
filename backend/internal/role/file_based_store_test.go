@@ -561,3 +561,27 @@ func (suite *RoleFileBasedStoreTestSuite) TestGetRoleListByProject() {
 	suite.NoError(err)
 	suite.Equal("proj1", role.ProjectID)
 }
+
+func (suite *RoleFileBasedStoreTestSuite) TestGetDirectAssignments() {
+	suite.seedRole(RoleWithPermissionsAndAssignments{
+		ID:   "role1",
+		Name: "Admin",
+		OUID: "ou1",
+		Assignments: []RoleAssignment{
+			{ID: "user1", Type: assigneeTypeEntity},
+			{ID: "group1", Type: AssigneeTypeGroup},
+			{ID: "user2", Type: assigneeTypeEntity, OUID: "ou2"},
+		},
+	})
+
+	assignments, err := suite.store.GetDirectAssignments(context.Background(), "role1", "ou1",
+		[]string{"user1", "user2", "user3"})
+
+	suite.NoError(err)
+	suite.Equal([]RoleAssignment{{ID: "user1", Type: assigneeTypeEntity, OUID: "ou1"}}, assignments)
+
+	assignments, err = suite.store.GetDirectAssignments(context.Background(), "missing", "ou1", []string{"user1"})
+
+	suite.NoError(err)
+	suite.Empty(assignments)
+}

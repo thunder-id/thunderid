@@ -21,7 +21,6 @@ import (
 	resourcepkg "github.com/thunder-id/thunderid/internal/resource"
 	"github.com/thunder-id/thunderid/internal/revocation"
 	"github.com/thunder-id/thunderid/internal/sharing"
-	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/eventbus"
 	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/filter"
@@ -81,6 +80,8 @@ type roleAssignmentService struct {
 	sharingService    sharing.SharingServiceInterface
 	bus               eventbus.EventBusInterface
 	logger            *log.Logger
+	// systemFlows is nil where system flows are off.
+	systemFlows systemFlowProvider
 }
 
 // newRoleAssignmentService creates a new instance of roleAssignmentService.
@@ -418,8 +419,16 @@ func (as *roleAssignmentService) modifyAssignments(
 	if svcErr != nil {
 		return svcErr
 	}
+	var revocations []assignmentRevocation
 	if !adding {
-		if svcErr := as.requireDirectRemoval(ctx, id, normalized); svcErr != nil {
+		direct, svcErr := as.directAssignees(ctx, id, normalized)
+		if svcErr != nil {
+			return svcErr
+		}
+		if svcErr := as.requireDirectRemoval(ctx, id, normalized, direct); svcErr != nil {
+			return svcErr
+		}
+		if revocations, svcErr = as.revokeRemovedAssignments(ctx, id, normalized, direct); svcErr != nil {
 			return svcErr
 		}
 	}
@@ -443,10 +452,59 @@ func (as *roleAssignmentService) modifyAssignments(
 			log.String("action", action), log.String("id", id), log.Error(err))
 		return &tidcommon.InternalServerError
 	}
+	// Every post flow runs, so one assignee's failure does not leave another's revocation unfinished.
+	var postErr *tidcommon.ServiceError
+	for _, revoked := range revocations {
+		if _, svcErr := runSystemFlow(ctx, as.systemFlows, systemFlowRevocationPost, revoked.inputs,
+			revoked.shared); svcErr != nil {
+			logger.Error(ctx, "Failed to run the revocation post flow", log.String("id", id),
+				log.MaskedString("assignee", revoked.inputs[systemFlowInputAssignee]), log.String("code", svcErr.Code))
+			if postErr == nil {
+				postErr = svcErr
+			}
+		}
+	}
+	if postErr != nil {
+		return postErr
+	}
 
 	logger.Debug(ctx, "Successfully modified role assignments",
 		log.String("action", successAction), log.String("id", id))
 	return nil
+}
+
+// assignmentRevocation is a removed assignment's revocation: the inputs its flows run with and what its
+// pre flow shared, for the post flow.
+type assignmentRevocation struct {
+	inputs map[string]string
+	shared map[string]string
+}
+
+// revokeRemovedAssignments runs the removal pre flow for each named assignee holding the role directly
+// and returns the revocations whose post flows run once the removal is written.
+func (as *roleAssignmentService) revokeRemovedAssignments(ctx context.Context, id string,
+	normalized []RoleAssignment, direct map[string]bool) ([]assignmentRevocation, *tidcommon.ServiceError) {
+	if as.systemFlows == nil {
+		return nil, nil
+	}
+	ouID := normalized[0].OUID
+	revoked := make(map[string]bool, len(direct))
+	var revocations []assignmentRevocation
+	for _, assignment := range normalized {
+		if !direct[assignment.ID] || revoked[assignment.ID] {
+			continue
+		}
+		revoked[assignment.ID] = true
+		inputs := map[string]string{
+			systemFlowInputRole: id, systemFlowInputAssignee: assignment.ID, systemFlowInputAssignmentOU: ouID,
+		}
+		shared, svcErr := runSystemFlow(ctx, as.systemFlows, systemFlowRoleAssignmentRemovalPre, inputs, nil)
+		if svcErr != nil {
+			return nil, svcErr
+		}
+		revocations = append(revocations, assignmentRevocation{inputs: inputs, shared: shared})
+	}
+	return revocations, nil
 }
 
 // AddAssigneesToRoles adds assignees to multiple roles in a single transaction.
@@ -587,6 +645,9 @@ func (as *roleAssignmentService) prepareAssignments(
 	if err := as.validateAssignmentsRequest(assignments); err != nil {
 		return nil, err
 	}
+	if !adding && len(assignments) > maxRemovedAssignments {
+		return nil, &ErrorTooManyAssignments
+	}
 
 	role, err := as.roleStore.GetRole(ctx, id)
 	if err != nil {
@@ -714,29 +775,15 @@ func (as *roleAssignmentService) listError(ctx context.Context, ouID string, err
 
 // requireDirectRemoval refuses a removal naming an assignee who holds the role in the unit only through a mandate.
 func (as *roleAssignmentService) requireDirectRemoval(
-	ctx context.Context, id string, normalized []RoleAssignment,
+	ctx context.Context, id string, normalized []RoleAssignment, direct map[string]bool,
 ) *tidcommon.ServiceError {
 	ouID := normalized[0].OUID
 	mandated, svcErr := as.mandatedAssignments(ctx, id, ouID)
 	if svcErr != nil {
 		return svcErr
 	}
-	var held []string
 	for _, a := range normalized {
-		if mandatesAssignee(mandated, a.ID) {
-			held = append(held, a.ID)
-		}
-	}
-	if len(held) == 0 {
-		return nil
-	}
-
-	direct, svcErr := as.directAssignees(ctx, id, ouID)
-	if svcErr != nil {
-		return svcErr
-	}
-	for _, assigneeID := range held {
-		if !direct[assigneeID] {
+		if mandatesAssignee(mandated, a.ID) && !direct[a.ID] {
 			return &ErrorAssignmentMandated
 		}
 	}
@@ -761,29 +808,27 @@ func (as *roleAssignmentService) mandatedAssignments(
 	return mandated, nil
 }
 
-// directAssignees returns the IDs of the assignees holding a direct assignment of the role in the organization unit.
+// directAssignees returns which of the named assignees hold a direct assignment of the role in the
+// organization unit the assignments are removed from.
 func (as *roleAssignmentService) directAssignees(
-	ctx context.Context, id, ouID string,
+	ctx context.Context, id string, normalized []RoleAssignment,
 ) (map[string]bool, *tidcommon.ServiceError) {
-	direct := make(map[string]bool)
-	for offset := 0; ; offset += serverconst.MaxPageSize {
-		page, err := as.roleStore.GetRoleAssignments(ctx, id, ouID, serverconst.MaxPageSize, offset)
-		if err != nil {
-			if errors.Is(err, errResultLimitExceededInCompositeMode) {
-				return nil, &ResultLimitExceededInCompositeMode
-			}
-			as.logger.Error(ctx, "Failed to get role assignments", log.String("id", id), log.Error(err))
-			return nil, &tidcommon.InternalServerError
-		}
-		for _, a := range page {
-			if a.PolicyID == "" {
-				direct[a.ID] = true
-			}
-		}
-		if len(page) < serverconst.MaxPageSize {
-			return direct, nil
-		}
+	assigneeIDs := make([]string, 0, len(normalized))
+	for _, a := range normalized {
+		assigneeIDs = append(assigneeIDs, a.ID)
 	}
+	assignments, err := as.roleStore.GetDirectAssignments(ctx, id, normalized[0].OUID,
+		utils.UniqueStrings(assigneeIDs))
+	if err != nil {
+		as.logger.Error(ctx, "Failed to get the direct assignments of the role", log.String("id", id),
+			log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+	direct := make(map[string]bool, len(assignments))
+	for _, a := range assignments {
+		direct[a.ID] = true
+	}
+	return direct, nil
 }
 
 // validateAssignmentsRequest validates the assignments request.
@@ -1005,20 +1050,20 @@ func (as *roleAssignmentService) resolveAssignments(
 // directAssignment returns the role's direct assignment to the assignee, or nil when there is none.
 func (as *roleAssignmentService) directAssignment(ctx context.Context, id, ouID, assigneeID string) (
 	*RoleAssignmentWithDisplay, *tidcommon.ServiceError) {
-	for offset := 0; ; offset += serverconst.MaxPageSize {
-		page, svcErr := as.GetRoleAssignments(ctx, id, ouID, serverconst.MaxPageSize, offset, false)
-		if svcErr != nil {
-			return nil, svcErr
-		}
-		for i := range page.Assignments {
-			if page.Assignments[i].ID == assigneeID && page.Assignments[i].PolicyID == "" {
-				return &page.Assignments[i], nil
-			}
-		}
-		if offset+serverconst.MaxPageSize >= page.TotalResults {
-			return nil, nil
-		}
+	assignments, err := as.roleStore.GetDirectAssignments(ctx, id, ouID, []string{assigneeID})
+	if err != nil {
+		as.logger.Error(ctx, "Failed to get the direct assignments of the role", log.String("id", id),
+			log.Error(err))
+		return nil, &tidcommon.InternalServerError
 	}
+	if len(assignments) == 0 {
+		return nil, nil
+	}
+	resolved, svcErr := as.resolveAssignments(ctx, assignments[:1], false)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	return &resolved[0], nil
 }
 
 // resolveAppDisplay extracts a display name for an app entity from its system attributes.

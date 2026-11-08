@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
 	"testing"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -620,6 +621,8 @@ func (suite *RoleAssignmentServiceTestSuite) TestRemoveAssignments_InSharedOU_As
 	suite.mockEntityService.On("GetEntitiesByIDs", mock.Anything, []string{testUserID1}).Return([]providers.Entity{
 		{ID: testUserID1, Category: providers.EntityCategoryUser, OUID: "elsewhere"},
 	}, nil)
+	suite.mockStore.On("GetDirectAssignments", mock.Anything, "role1", testShareeOU, []string{testUserID1}).
+		Return([]RoleAssignment{{ID: testUserID1, Type: assigneeTypeEntity, OUID: testShareeOU}}, nil)
 	suite.mockStore.On("ListMandatedAssignmentsForRole", mock.Anything, "role1", testShareeOU).
 		Return([]RoleAssignment{}, nil)
 	suite.mockStore.On("RemoveAssignments", mock.Anything, "role1", []RoleAssignment{
@@ -847,6 +850,8 @@ func (suite *RoleAssignmentServiceTestSuite) TestModifyAssignments_StoreError() 
 		Return([]providers.Entity{ownedUser()}, nil)
 	suite.ownedRole("role1")
 	suite.mockStore.On("AddAssignments", mock.Anything, "role1", normalized).Return(errors.New("store error"))
+	suite.mockStore.On("GetDirectAssignments", mock.Anything, "role1", testOwnerOU, []string{testUserID1}).
+		Return(normalized, nil)
 	suite.mockStore.On("ListMandatedAssignmentsForRole", mock.Anything, "role1", testOwnerOU).
 		Return([]RoleAssignment{}, nil)
 	suite.mockStore.On("RemoveAssignments", mock.Anything, "role1", normalized).Return(errors.New("store error"))
@@ -876,6 +881,8 @@ func (suite *RoleAssignmentServiceTestSuite) TestRemoveAssignments_Success() {
 		ownedUser(),
 	}, nil)
 	suite.ownedRole("role1")
+	suite.mockStore.On("GetDirectAssignments", mock.Anything, "role1", testOwnerOU, []string{testUserID1}).
+		Return(normalized, nil)
 	suite.mockStore.On("ListMandatedAssignmentsForRole", mock.Anything, "role1", testOwnerOU).
 		Return([]RoleAssignment{}, nil)
 	suite.mockStore.On("RemoveAssignments", mock.Anything,
@@ -1462,15 +1469,18 @@ func (suite *RoleAssignmentServiceTestSuite) removingInChild(rows ...RoleAssignm
 	suite.mockEntityService.On("GetEntitiesByIDs", mock.Anything, []string{testUserID1}).Return(
 		[]providers.Entity{{ID: testUserID1, Category: providers.EntityCategoryUser, OUID: testOwnerOU}}, nil)
 	var mandatedRows []RoleAssignment
+	direct := []RoleAssignment{}
 	for _, row := range rows {
 		if row.PolicyID != "" {
 			mandatedRows = append(mandatedRows, row)
+		} else {
+			direct = append(direct, row)
 		}
 	}
 	suite.mockStore.On("ListMandatedAssignmentsForRole", mock.Anything, "role1", testShareeOU).
 		Return(mandatedRows, nil)
-	suite.mockStore.On("GetRoleAssignments", mock.Anything, "role1", testShareeOU, serverconst.MaxPageSize, 0).
-		Return(rows, nil)
+	suite.mockStore.On("GetDirectAssignments", mock.Anything, "role1", testShareeOU, []string{testUserID1}).
+		Return(direct, nil).Once()
 }
 
 // The organization unit cannot take away an assignment a sharing policy mandates.
@@ -1565,25 +1575,32 @@ func (s *RoleAssignmentRemovalValidationTestSuite) roleGranting(permissions []Re
 		Return(RoleWithPermissions{ID: targetRoleID, OUID: testOwnerOU, Permissions: permissions}, nil)
 }
 
-func (s *RoleAssignmentRemovalValidationTestSuite) assignedOnPage(total, offset int,
+// assigned stubs the role's assignments in any organization unit, each entity assignee of the given category.
+func (s *RoleAssignmentRemovalValidationTestSuite) assigned(
 	category providers.EntityCategory, assignments ...RoleAssignment) {
-	s.store.On("GetRoleAssignments", mock.Anything, targetRoleID, mock.Anything, serverconst.MaxPageSize, offset).
-		Return(assignments, nil)
-	entities := []providers.Entity{}
-	entityIDs := []string{}
+	s.directlyAssigned(mock.Anything, assignments)
 	for _, assignment := range assignments {
 		if assignment.Type == assigneeTypeEntity {
-			entityIDs = append(entityIDs, assignment.ID)
-			entities = append(entities, providers.Entity{ID: assignment.ID, Category: category})
+			s.entities.On("GetEntitiesByIDs", mock.Anything, []string{assignment.ID}).
+				Return([]providers.Entity{{ID: assignment.ID, Category: category}}, nil).Maybe()
 		}
 	}
-	if len(entityIDs) > 0 {
-		s.entities.On("GetEntitiesByIDs", mock.Anything, entityIDs).Return(entities, nil)
-	}
-	s.store.On("IsRoleExist", mock.Anything, targetRoleID).Return(true, nil)
-	s.store.On("GetRoleAssignmentsCount", mock.Anything, targetRoleID, mock.Anything).Return(total, nil)
 	s.store.On("ListMandatedAssignmentsForRole", mock.Anything, targetRoleID, mock.Anything).
 		Return(mandatedRowsOf(assignments), nil).Maybe()
+}
+
+// directlyAssigned stubs the store's read of the named assignees' direct assignments in ouID.
+func (s *RoleAssignmentRemovalValidationTestSuite) directlyAssigned(ouID any, assignments []RoleAssignment) {
+	s.store.EXPECT().GetDirectAssignments(mock.Anything, targetRoleID, ouID, mock.Anything).RunAndReturn(
+		func(_ context.Context, _, _ string, assigneeIDs []string) ([]RoleAssignment, error) {
+			direct := []RoleAssignment{}
+			for _, assignment := range assignments {
+				if assignment.PolicyID == "" && slices.Contains(assigneeIDs, assignment.ID) {
+					direct = append(direct, assignment)
+				}
+			}
+			return direct, nil
+		}).Maybe()
 }
 
 // mandatedRowsOf keeps the rows a sharing policy mandates.
@@ -1603,7 +1620,7 @@ func (s *RoleAssignmentRemovalValidationTestSuite) TestPairsEachPermissionWithIt
 		{ResourceServerID: californiaRSID, Permissions: []string{"license"}},
 		{ResourceServerID: ohioRSID, Permissions: []string{"license"}},
 	})
-	s.assignedOnPage(1, 0, providers.EntityCategoryUser, RoleAssignment{ID: targetUserID, Type: assigneeTypeEntity})
+	s.assigned(providers.EntityCategoryUser, RoleAssignment{ID: targetUserID, Type: assigneeTypeEntity})
 	stubResourceServer(s.resources, californiaRSID, californiaAud)
 	stubResourceServer(s.resources, ohioRSID, ohioAud)
 
@@ -1621,7 +1638,7 @@ func (s *RoleAssignmentRemovalValidationTestSuite) TestPairsEachPermissionWithIt
 func (s *RoleAssignmentRemovalValidationTestSuite) TestExpandsAGroupAssignee() {
 	s.mayChangeAssignments()
 	s.roleGranting([]ResourcePermissions{{ResourceServerID: californiaRSID, Permissions: []string{"license"}}})
-	s.assignedOnPage(1, 0, "", RoleAssignment{ID: targetGroupID, Type: AssigneeTypeGroup})
+	s.assigned("", RoleAssignment{ID: targetGroupID, Type: AssigneeTypeGroup})
 	s.groups.On("ValidateGroupIDs", mock.Anything, []string{targetGroupID}).Return(nil)
 	stubResourceServer(s.resources, californiaRSID, californiaAud)
 	stubGroupEntities(s.groups, targetGroupID, "member-1", "member-2")
@@ -1636,7 +1653,7 @@ func (s *RoleAssignmentRemovalValidationTestSuite) TestExpandsAGroupAssignee() {
 func (s *RoleAssignmentRemovalValidationTestSuite) TestRoleWithoutPermissionsYieldsNoScopes() {
 	s.mayChangeAssignments()
 	s.roleGranting(nil)
-	s.assignedOnPage(1, 0, providers.EntityCategoryApp, RoleAssignment{ID: targetUserID, Type: assigneeTypeEntity})
+	s.assigned(providers.EntityCategoryApp, RoleAssignment{ID: targetUserID, Type: assigneeTypeEntity})
 
 	target, svcErr := s.service.ValidateRemoveAssignment(context.Background(), targetRoleID, "", targetUserID)
 
@@ -1648,7 +1665,7 @@ func (s *RoleAssignmentRemovalValidationTestSuite) TestRoleWithoutPermissionsYie
 func (s *RoleAssignmentRemovalValidationTestSuite) TestRefusesAnAssigneeThatDoesNotHoldTheRole() {
 	s.mayChangeAssignments()
 	s.roleGranting(nil)
-	s.assignedOnPage(1, 0, providers.EntityCategoryUser, RoleAssignment{ID: "someone-else", Type: assigneeTypeEntity})
+	s.assigned(providers.EntityCategoryUser, RoleAssignment{ID: "someone-else", Type: assigneeTypeEntity})
 
 	_, svcErr := s.service.ValidateRemoveAssignment(context.Background(), targetRoleID, "", targetUserID)
 
@@ -1668,10 +1685,7 @@ func (s *RoleAssignmentRemovalValidationTestSuite) sharedWithSharee(assignmentsO
 
 // assignedIn stubs the assignments made in one organization unit, and only there.
 func (s *RoleAssignmentRemovalValidationTestSuite) assignedIn(ouID string, assignments ...RoleAssignment) {
-	s.store.On("GetRoleAssignments", mock.Anything, targetRoleID, ouID, serverconst.MaxPageSize, 0).
-		Return(assignments, nil)
-	s.store.On("GetRoleAssignmentsCount", mock.Anything, targetRoleID, ouID).Return(len(assignments), nil)
-	s.store.On("IsRoleExist", mock.Anything, targetRoleID).Return(true, nil)
+	s.directlyAssigned(ouID, assignments)
 	s.store.On("ListMandatedAssignmentsForRole", mock.Anything, targetRoleID, ouID).
 		Return(mandatedRowsOf(assignments), nil).Maybe()
 }
@@ -1702,8 +1716,8 @@ func (s *RoleAssignmentRemovalValidationTestSuite) TestFindsTheAssignmentInTheOU
 			s.Require().Nil(svcErr)
 			s.Equal([]string{targetUserID}, target.EntityIDs)
 			s.Equal(string(AssigneeTypeUser), target.AssigneeType)
-			s.store.AssertNotCalled(s.T(), "GetRoleAssignments",
-				mock.Anything, targetRoleID, testOwnerOU, mock.Anything, mock.Anything)
+			s.store.AssertNotCalled(s.T(), "GetDirectAssignments",
+				mock.Anything, targetRoleID, testOwnerOU, mock.Anything)
 		})
 	}
 }
@@ -1719,28 +1733,46 @@ func (s *RoleAssignmentRemovalValidationTestSuite) TestRefusesAnOUTheRoleIsNotSh
 
 	s.Require().NotNil(svcErr)
 	s.Equal(ErrorRoleNotSharedToOU.Code, svcErr.Code)
-	s.store.AssertNotCalled(s.T(), "GetRoleAssignments",
-		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+	s.store.AssertNotCalled(s.T(), "GetDirectAssignments",
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 }
 
-func (s *RoleAssignmentRemovalValidationTestSuite) TestFindsAnAssignmentOnALaterPage() {
+// The assignment is read for the named assignee alone, never by paging through the role's assignments.
+func (s *RoleAssignmentRemovalValidationTestSuite) TestReadsOnlyTheNamedAssigneesAssignment() {
 	s.mayChangeAssignments()
 	s.roleGranting(nil)
-	s.assignedOnPage(serverconst.MaxPageSize+1, 0, providers.EntityCategoryUser,
-		RoleAssignment{ID: "someone-else", Type: assigneeTypeEntity})
-	s.assignedOnPage(serverconst.MaxPageSize+1, serverconst.MaxPageSize, providers.EntityCategoryUser,
-		RoleAssignment{ID: targetUserID, Type: assigneeTypeEntity})
+	s.store.EXPECT().GetDirectAssignments(mock.Anything, targetRoleID, testOwnerOU, []string{targetUserID}).
+		Return([]RoleAssignment{{ID: targetUserID, Type: assigneeTypeEntity, OUID: testOwnerOU}}, nil).Once()
+	s.entities.On("GetEntitiesByIDs", mock.Anything, []string{targetUserID}).
+		Return([]providers.Entity{{ID: targetUserID, Category: providers.EntityCategoryUser}}, nil)
+	s.store.On("ListMandatedAssignmentsForRole", mock.Anything, targetRoleID, testOwnerOU).
+		Return([]RoleAssignment{}, nil)
 
 	target, svcErr := s.service.ValidateRemoveAssignment(context.Background(), targetRoleID, "", targetUserID)
 
 	s.Require().Nil(svcErr)
 	s.Equal([]string{targetUserID}, target.EntityIDs)
+	s.store.AssertNotCalled(s.T(), "GetRoleAssignments",
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+// A failed read of the assignment is a server error.
+func (s *RoleAssignmentRemovalValidationTestSuite) TestAssignmentReadFailureIsAServerError() {
+	s.mayChangeAssignments()
+	s.roleGranting(nil)
+	s.store.EXPECT().GetDirectAssignments(mock.Anything, targetRoleID, testOwnerOU, []string{targetUserID}).
+		Return(nil, errors.New("db down")).Once()
+
+	_, svcErr := s.service.ValidateRemoveAssignment(context.Background(), targetRoleID, "", targetUserID)
+
+	s.Require().NotNil(svcErr)
+	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
 }
 
 func (s *RoleAssignmentRemovalValidationTestSuite) TestRunsTheRemovalsAssigneeChecks() {
 	s.mayChangeAssignments()
 	s.roleGranting(nil)
-	s.assignedOnPage(1, 0, "", RoleAssignment{ID: targetGroupID, Type: AssigneeTypeGroup})
+	s.assigned("", RoleAssignment{ID: targetGroupID, Type: AssigneeTypeGroup})
 	s.groups.On("ValidateGroupIDs", mock.Anything, []string{targetGroupID}).
 		Return(&group.ErrorInvalidGroupMemberID)
 
@@ -1837,7 +1869,7 @@ assignments:
 func (s *RoleAssignmentRemovalValidationTestSuite) TestRefusesAMandatedOnlyAssignment() {
 	s.mayChangeAssignments()
 	s.roleGranting(nil)
-	s.assignedOnPage(1, 0, providers.EntityCategoryUser,
+	s.assigned(providers.EntityCategoryUser,
 		RoleAssignment{ID: targetUserID, Type: assigneeTypeEntity, PolicyID: testPolicyID})
 
 	_, svcErr := s.service.ValidateRemoveAssignment(context.Background(), targetRoleID, "", targetUserID)
@@ -1851,7 +1883,7 @@ func (s *RoleAssignmentRemovalValidationTestSuite) TestRefusesAMandatedOnlyAssig
 func (s *RoleAssignmentRemovalValidationTestSuite) TestADirectAssignmentKeptByAMandateRevokesNothing() {
 	s.mayChangeAssignments()
 	s.roleGranting([]ResourcePermissions{{ResourceServerID: californiaRSID, Permissions: []string{"license"}}})
-	s.assignedOnPage(2, 0, providers.EntityCategoryUser,
+	s.assigned(providers.EntityCategoryUser,
 		RoleAssignment{ID: targetUserID, Type: assigneeTypeEntity, PolicyID: testPolicyID},
 		RoleAssignment{ID: targetUserID, Type: assigneeTypeEntity})
 	s.entities.On("GetEntitiesByIDs", mock.Anything, []string{targetUserID}).

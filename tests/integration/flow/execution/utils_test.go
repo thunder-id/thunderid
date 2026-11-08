@@ -4,7 +4,9 @@
 package execution
 
 import (
+	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"strings"
 
@@ -90,4 +92,34 @@ func executeAsAdmin(s *suite.Suite, flowID string, inputs map[string]string) *co
 func requireCompleted(s *suite.Suite, step *common.FlowStep) {
 	s.T().Helper()
 	s.Require().Equal("COMPLETE", step.FlowStatus, "Flow response: %+v", step)
+}
+
+// removeAssignmentThroughAPI removes the assignment through the management API, in the organization unit
+// named or the role's owner when none is, and returns the response status and the error code it carried.
+func removeAssignmentThroughAPI(s *suite.Suite, roleID, ouID string, assignee testutils.Assignment) (int, string) {
+	s.T().Helper()
+
+	request := map[string]interface{}{"assignments": []testutils.Assignment{assignee}}
+	if ouID != "" {
+		request["ouId"] = ouID
+	}
+	body, err := json.Marshal(request)
+	s.Require().NoError(err)
+	req, err := http.NewRequest(http.MethodPost, testutils.TestServerURL+"/roles/"+roleID+"/assignments/remove",
+		bytes.NewReader(body))
+	s.Require().NoError(err)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := testutils.GetHTTPClient().Do(req)
+	s.Require().NoError(err, "Failed to remove the assignment")
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	s.Require().NoError(err)
+	var apiErr struct {
+		Code string `json:"code"`
+	}
+	if len(respBody) > 0 {
+		_ = json.Unmarshal(respBody, &apiErr)
+	}
+	return resp.StatusCode, apiErr.Code
 }

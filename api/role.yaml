@@ -1050,7 +1050,8 @@ paths:
         - Roles
       summary: Remove assignments from a role
       description: |
-        Removes one or more user or group assignments from the specified role.
+        Removes one or more user or group assignments from the specified role. A request can
+        name at most 100 assignments.
 
         An assignment that a user share mandates goes only when the user share stops naming the
         role. A direct assignment of the same role to the same user in the same organization unit
@@ -1104,6 +1105,16 @@ paths:
                     description:
                       key: "error.roleservice.empty_assignments_list_description"
                       defaultValue: "At least one assignment must be provided"
+                too-many-assignments:
+                  summary: More assignments than one request can remove
+                  value:
+                    code: "ROL-1042"
+                    message:
+                      key: "error.roleservice.too_many_assignments"
+                      defaultValue: "Too many assignments"
+                    description:
+                      key: "error.roleservice.too_many_assignments_description"
+                      defaultValue: "A request can remove at most 100 assignments"
                 assignment-mandated:
                   summary: The assignment exists only because a user share mandates it
                   value:

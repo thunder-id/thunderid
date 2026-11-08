@@ -968,34 +968,6 @@ func (ts *UserMandatedRolesTestSuite) TestMandatingARoleTheCallerCannotGrantIsRe
 	ts.Len(ts.assignments(harmless, ts.childAOUID), 1)
 }
 
-// R9: the role assignment removal flow refuses an assignment only a share mandates, and leaves it.
-func (ts *UserMandatedRolesTestSuite) TestTheRemovalFlowRefusesAnAssignmentOnlyAShareMandates() {
-	roleID, userID, _ := ts.mandatedInChildA("mandate-r9")
-
-	step := ts.runAdministrationFlow("default-role-assignment-removal-flow", map[string]string{
-		"targetRoleId": roleID, "targetAssigneeId": userID, "targetAssignmentOuId": ts.childAOUID,
-	})
-
-	ts.NotEqual("COMPLETE", step.FlowStatus)
-	ts.Require().NotNil(step.Error, "the refusal is reported: %+v", step)
-	ts.Equal("ROL-1036", step.Error.Code)
-	ts.Equal([]mandateAssignment{mandatedRow(userID, ts.childAOUID)}, ts.assignments(roleID, ts.childAOUID))
-}
-
-// R10: the removal flow takes a direct assignment a share also mandates, and the mandated one stays.
-func (ts *UserMandatedRolesTestSuite) TestTheRemovalFlowTakesTheDirectAssignmentBesideAMandate() {
-	roleID, userID, _ := ts.mandatedInChildA("mandate-r10")
-	status, raw := ts.assignInUnit("add", roleID, ts.childAOUID, userID)
-	ts.Require().Equal(http.StatusNoContent, status, string(raw))
-
-	step := ts.runAdministrationFlow("default-role-assignment-removal-flow", map[string]string{
-		"targetRoleId": roleID, "targetAssigneeId": userID, "targetAssignmentOuId": ts.childAOUID,
-	})
-
-	ts.Equal("COMPLETE", step.FlowStatus, "the direct assignment is removed: %+v", step.Error)
-	ts.Equal([]mandateAssignment{mandatedRow(userID, ts.childAOUID)}, ts.assignments(roleID, ts.childAOUID))
-}
-
 // R12: at startup, a mandate whose share is gone, or whose role no longer reaches its unit, is removed,
 // and one its share still holds is kept.
 func (ts *UserMandatedRolesTestSuite) TestStartupRemovesMandatesNothingHoldsAnyLonger() {

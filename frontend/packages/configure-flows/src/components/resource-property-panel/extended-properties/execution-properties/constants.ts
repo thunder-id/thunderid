@@ -115,11 +115,6 @@ export const ACCESS_CHANGE_VALIDATOR_MODES = [
  */
 export const ROLE_EXECUTOR_MODES = [
   {
-    value: 'role_assignment_removal',
-    translationKey: 'flows:core.executions.roleExecutor.mode.roleAssignmentRemoval',
-    displayLabel: 'Remove Role Assignment',
-  },
-  {
     value: 'role_permission_removal',
     translationKey: 'flows:core.executions.roleExecutor.mode.rolePermissionRemoval',
     displayLabel: 'Change Role Permissions',

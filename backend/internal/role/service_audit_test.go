@@ -515,6 +515,8 @@ func (s *RoleServiceAuditTestSuite) TestRemoveAssignments_PublishesEachRemovedAs
 		Return(RoleWithPermissions{ID: "role1", OUID: testOwnerOU}, nil).Once()
 	s.mockEntityService.On("GetEntitiesByIDs", mock.Anything, []string{testUserID1}).
 		Return([]providers.Entity{ownedUser()}, nil).Once()
+	s.mockStore.On("GetDirectAssignments", mock.Anything, "role1", testOwnerOU, []string{testUserID1}).
+		Return([]RoleAssignment{{ID: testUserID1, Type: assigneeTypeEntity, OUID: testOwnerOU}}, nil).Once()
 	s.mockStore.On("ListMandatedAssignmentsForRole", mock.Anything, "role1", testOwnerOU).
 		Return([]RoleAssignment{}, nil).Once()
 	s.mockStore.On("RemoveAssignments", mock.Anything, "role1", mock.Anything).Return(nil).Once()
