@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"sort"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -567,7 +568,7 @@ func (s *importService) importResourceServer(
 			if updated, svcErr = s.resourceService.UpdateResourceServer(ctx, req.ID, req); svcErr != nil {
 				return serviceErrorOutcome(resourceTypeResourceServer, req.ID, req.Name, operationUpdate, svcErr)
 			}
-			if err := s.importResourceServerChildren(ctx, updated.ID, req); err != nil {
+			if err := s.importResourceServerChildren(ctx, updated.ID, req, true); err != nil {
 				return serviceErrorOutcome(resourceTypeResourceServer, updated.ID, updated.Name, operationUpdate, err)
 			}
 			return successOutcome(resourceTypeResourceServer, updated.ID, updated.Name, operationUpdate)
@@ -583,7 +584,7 @@ func (s *importService) importResourceServer(
 		return serviceErrorOutcome(resourceTypeResourceServer, req.ID, req.Name, operationCreate, svcErr)
 	}
 
-	if err := s.importResourceServerChildren(ctx, created.ID, req); err != nil {
+	if err := s.importResourceServerChildren(ctx, created.ID, req, false); err != nil {
 		return serviceErrorOutcome(resourceTypeResourceServer, created.ID, created.Name, operationCreate, err)
 	}
 
@@ -1061,11 +1062,12 @@ func (s *importService) importTranslation(ctx context.Context, doc parsedDocumen
 // importResourceServerChildren creates the actions of a resource server and the resources and actions
 // nested under it. It first computes permission strings via ProcessResourceServer, then calls the
 // resource service for each resource and action.  Existing resources/actions (on upsert paths) are
-// silently skipped.
+// silently skipped. When prune is set, the resources and actions the document no longer holds are
+// deleted afterwards.
 func (s *importService) importResourceServerChildren(
-	ctx context.Context, serverID string, rs providers.ResourceServer,
+	ctx context.Context, serverID string, rs providers.ResourceServer, prune bool,
 ) *tidcommon.ServiceError {
-	if len(rs.Actions) == 0 && len(rs.Resources) == 0 {
+	if len(rs.Actions) == 0 && len(rs.Resources) == 0 && !prune {
 		return nil
 	}
 
@@ -1157,6 +1159,9 @@ func (s *importService) importResourceServerChildren(
 		}
 	}
 
+	if prune {
+		return s.pruneResourceServerChildren(ctx, serverID, rs)
+	}
 	return nil
 }
 
@@ -1168,6 +1173,102 @@ func (s *importService) importResourceServerAction(
 	_, svcErr := s.resourceService.CreateAction(ctx, serverID, resourceID, action)
 	if svcErr != nil && svcErr.Code != resource.ErrorHandleConflict.Code {
 		return svcErr
+	}
+	return nil
+}
+
+// deleteResourceServer removes a resource server together with its resources and actions. A promotion
+// carries a resource server as one document, so its children have no deletions of their own.
+func (s *importService) deleteResourceServer(ctx context.Context, id string) *tidcommon.ServiceError {
+	if svcErr := s.pruneResourceServerChildren(ctx, id, providers.ResourceServer{}); svcErr != nil {
+		return svcErr
+	}
+	return s.resourceService.DeleteResourceServer(ctx, id)
+}
+
+// pruneResourceServerChildren deletes the resources and actions of a resource server that the given
+// document, with its permissions already computed, no longer holds. Children are matched by
+// permission. A resource is deleted after the resources nested under it.
+func (s *importService) pruneResourceServerChildren(
+	ctx context.Context, serverID string, doc providers.ResourceServer,
+) *tidcommon.ServiceError {
+	keptResources := make(map[string]bool, len(doc.Resources))
+	keptActions := make(map[string]bool, len(doc.Actions))
+	for _, action := range doc.Actions {
+		keptActions[action.Permission] = true
+	}
+	for _, res := range doc.Resources {
+		keptResources[res.Permission] = true
+		for _, action := range res.Actions {
+			keptActions[action.Permission] = true
+		}
+	}
+
+	resources, svcErr := s.resourceService.GetAllResourceList(ctx, serverID)
+	if svcErr != nil {
+		return svcErr
+	}
+
+	if svcErr := s.pruneActions(ctx, serverID, nil, keptActions); svcErr != nil {
+		return svcErr
+	}
+	for i := range resources {
+		if svcErr := s.pruneActions(ctx, serverID, &resources[i].ID, keptActions); svcErr != nil {
+			return svcErr
+		}
+	}
+
+	parentByID := make(map[string]*string, len(resources))
+	for _, res := range resources {
+		parentByID[res.ID] = res.Parent
+	}
+	depth := func(id string) int {
+		n := 0
+		for p := parentByID[id]; p != nil && n <= len(resources); p = parentByID[*p] {
+			n++
+		}
+		return n
+	}
+	sort.SliceStable(resources, func(i, j int) bool { return depth(resources[i].ID) > depth(resources[j].ID) })
+
+	for _, res := range resources {
+		if keptResources[res.Permission] {
+			continue
+		}
+		if svcErr := s.resourceService.DeleteResource(ctx, serverID, res.ID); svcErr != nil {
+			return svcErr
+		}
+	}
+	return nil
+}
+
+// pruneActions deletes the actions of a resource, or of the resource server itself when resourceID is
+// nil, whose permission is not in kept. They are listed in full before any is deleted so that deleting
+// does not shift the pages.
+func (s *importService) pruneActions(
+	ctx context.Context, serverID string, resourceID *string, kept map[string]bool,
+) *tidcommon.ServiceError {
+	var stale []string
+	for offset := 0; ; offset += serverconst.MaxPageSize {
+		list, svcErr := s.resourceService.GetActionList(
+			ctx, serverID, resourceID, "", serverconst.MaxPageSize, offset)
+		if svcErr != nil {
+			return svcErr
+		}
+		for _, action := range list.Actions {
+			if !kept[action.Permission] {
+				stale = append(stale, action.ID)
+			}
+		}
+		if len(list.Actions) < serverconst.MaxPageSize {
+			break
+		}
+	}
+
+	for _, id := range stale {
+		if svcErr := s.resourceService.DeleteAction(ctx, serverID, resourceID, id); svcErr != nil {
+			return svcErr
+		}
 	}
 	return nil
 }

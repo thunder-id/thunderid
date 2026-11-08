@@ -179,7 +179,7 @@ func (s *importService) deleterFor(resourceType string) deleteFunc {
 		}
 	case resourceTypeResourceServer:
 		if s.resourceService != nil {
-			return s.resourceService.DeleteResourceServer
+			return s.deleteResourceServer
 		}
 	case resourceTypeAuthorizationDetailType:
 		if s.authorizationDetailTypeService != nil {

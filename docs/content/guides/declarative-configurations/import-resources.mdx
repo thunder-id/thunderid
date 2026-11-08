@@ -497,6 +497,14 @@ resources:
   - { name: Lead, handle: lead, parent: "app:team:member" }
 ```
 
+### Upserting and Removing Resource Servers
+
+A `resource_server` document describes the whole resource server, so an upsert makes the stored resources and actions match it. Resources and actions that the document no longer lists are deleted, matched by their permission. A document that lists no resources or actions removes all of the server's resources and actions. Resources and actions that the document lists are created if absent and left as they are otherwise.
+
+A `deletions` entry of type `resource_server` removes the resource server's actions, then its resources, deepest first, then the resource server. This differs from `DELETE /resource-servers/{id}`, which still refuses with `RES-1006` while the resource server has resources or actions.
+
+These removals run one at a time, not in a single transaction. If one fails, the resource server can be left with some of its children removed. Send the same request again to finish the removal.
+
 ## Delete File-Backed Declarative Resource
 
 `POST /import/delete` removes a declarative file-backed resource by `resourceType` and `resourceKey`.
