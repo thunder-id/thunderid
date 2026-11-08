@@ -14,6 +14,8 @@ import (
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
+	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/utils"
@@ -39,14 +41,17 @@ type themeMgtService struct {
 	themeMgtStore      themeMgtStoreInterface
 	dependencyRegistry resourcedependency.Registry
 	logger             *log.Logger
+	bus                eventbus.EventBusInterface
 }
 
 // newThemeMgtService creates a new instance of ThemeMgtService with injected dependencies.
-func newThemeMgtService(themeMgtStore themeMgtStoreInterface) ThemeMgtServiceInterface {
+func newThemeMgtService(themeMgtStore themeMgtStoreInterface,
+	bus eventbus.EventBusInterface) ThemeMgtServiceInterface {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 	return &themeMgtService{
 		themeMgtStore: themeMgtStore,
 		logger:        logger,
+		bus:           bus,
 	}
 }
 
@@ -81,6 +86,18 @@ func (ts *themeMgtService) GetThemeList(ctx context.Context, limit, offset int) 
 
 // CreateTheme creates a new theme configuration.
 func (ts *themeMgtService) CreateTheme(ctx context.Context, theme CreateThemeRequestWithID) (*Theme,
+	*tidcommon.ServiceError) {
+	created, svcErr := ts.createTheme(ctx, theme)
+	var themeID string
+	if svcErr == nil {
+		themeID = created.ID
+	}
+	ts.publishThemeEvent(ctx, audit.EventThemeCreate, audit.ActionCreate, themeID, svcErr)
+	return created, svcErr
+}
+
+// createTheme creates a new theme configuration without publishing its audit event.
+func (ts *themeMgtService) createTheme(ctx context.Context, theme CreateThemeRequestWithID) (*Theme,
 	*tidcommon.ServiceError) {
 	ts.logger.Debug(ctx, "Creating theme configuration")
 
@@ -169,6 +186,14 @@ func (ts *themeMgtService) GetTheme(ctx context.Context, id string) (*Theme, *ti
 // UpdateTheme updates an existing theme configuration.
 func (ts *themeMgtService) UpdateTheme(ctx context.Context, id string, theme UpdateThemeRequest) (*Theme,
 	*tidcommon.ServiceError) {
+	updated, svcErr := ts.updateTheme(ctx, id, theme)
+	ts.publishThemeEvent(ctx, audit.EventThemeUpdate, audit.ActionUpdate, id, svcErr)
+	return updated, svcErr
+}
+
+// updateTheme updates an existing theme configuration without publishing its audit event.
+func (ts *themeMgtService) updateTheme(ctx context.Context, id string, theme UpdateThemeRequest) (*Theme,
+	*tidcommon.ServiceError) {
 	ts.logger.Debug(ctx, "Updating theme", log.String("id", id))
 
 	if id == "" {
@@ -222,6 +247,18 @@ func (ts *themeMgtService) UpdateTheme(ctx context.Context, id string, theme Upd
 
 // DeleteTheme deletes a theme configuration.
 func (ts *themeMgtService) DeleteTheme(ctx context.Context, id string) *tidcommon.ServiceError {
+	svcErr := ts.deleteTheme(ctx, id)
+	// A delete that found nothing to remove succeeds without an event, so no caller can record a
+	// deletion of an ID it made up.
+	if svcErr == errThemeNotFoundNoop {
+		return nil
+	}
+	ts.publishThemeEvent(ctx, audit.EventThemeDelete, audit.ActionDelete, id, svcErr)
+	return svcErr
+}
+
+// deleteTheme deletes a theme configuration without publishing its audit event.
+func (ts *themeMgtService) deleteTheme(ctx context.Context, id string) *tidcommon.ServiceError {
 	ts.logger.Debug(ctx, "Deleting theme", log.String("id", id))
 
 	if id == "" {
@@ -242,7 +279,7 @@ func (ts *themeMgtService) DeleteTheme(ctx context.Context, id string) *tidcommo
 
 	if !exists {
 		ts.logger.Debug(ctx, "Theme not found for deletion, returning success", log.String("id", id))
-		return nil
+		return errThemeNotFoundNoop
 	}
 
 	// A theme can be deleted even while applications reference it: those applications keep their
@@ -255,6 +292,17 @@ func (ts *themeMgtService) DeleteTheme(ctx context.Context, id string) *tidcommo
 
 	ts.logger.Debug(ctx, "Successfully deleted theme", log.String("id", id))
 	return nil
+}
+
+// publishThemeEvent publishes the audit event of an attempt on the theme with id, after the change was
+// stored or refused. Only the ID is recorded, never the theme's handle, names or content.
+func (ts *themeMgtService) publishThemeEvent(ctx context.Context, name string, action audit.Action,
+	id string, svcErr *tidcommon.ServiceError) {
+	// A failed attempt keeps the ID the caller asked for, even one that matches no theme, as forensic
+	// evidence of what was probed; the payload caps it and the sink escapes it.
+	target := audit.Ref{Type: audit.TargetTypeTheme, ID: id}
+	eventbus.TryPublish(ctx, ts.bus,
+		eventbus.NewEvent(ctx, name).With(audit.ChangePayload(ctx, target, action, svcErr)))
 }
 
 // IsThemeExist checks if a theme exists.

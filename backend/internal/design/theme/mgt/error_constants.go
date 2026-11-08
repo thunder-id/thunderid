@@ -207,6 +207,16 @@ var (
 	}
 )
 
+// errNilEventBus is returned when the service is initialized without the event bus it audits on.
+var errNilEventBus = errors.New("the theme management service needs an event bus")
+
+// errThemeNotFoundNoop is returned by deleteTheme for a theme that does not exist. DeleteTheme turns it
+// into a success, so it never reaches a caller.
+var errThemeNotFoundNoop = &tidcommon.ServiceError{
+	Type: tidcommon.ClientErrorType,
+	Code: ErrorThemeNotFound.Code,
+}
+
 // errCannotUpdateDeclarativeTheme is an internal error for composite store operations.
 var errCannotUpdateDeclarativeTheme = errors.New("cannot update declarative theme")
 

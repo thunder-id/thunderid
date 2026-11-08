@@ -43,7 +43,7 @@ func (suite *LayoutServiceTestSuite) SetupTest() {
 	}
 
 	suite.mockStore = newLayoutMgtStoreInterfaceMock(suite.T())
-	suite.service = newLayoutMgtService(suite.mockStore)
+	suite.service = newLayoutMgtService(suite.mockStore, discardingBus{})
 }
 
 // Test GetLayoutList - Success
