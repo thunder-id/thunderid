@@ -73,7 +73,8 @@ const mockWriteText = vi.fn();
 const mockFetch = vi.fn();
 
 const promptFixtures: Record<string, string> = {
-  'https://thunderid.dev/prompts/react/redirect-based.txt': 'Integrate {{productName}} with clientId: {{clientId}}',
+  'https://thunderid.dev/prompts/react/redirect-based.txt':
+    'Integrate {{productName}} at {{baseUrl}} with clientId: {{clientId}}',
   'https://thunderid.dev/prompts/nextjs/redirect-based.txt': 'Integrate {{productName}} with Next.js',
 };
 
@@ -250,6 +251,20 @@ describe('IntegrationGuides', () => {
     expect(copiedText).toContain('client-123');
     expect(copiedText).toContain('ThunderID');
     expect(copiedText).not.toContain('{{clientId}}');
+  });
+
+  it('copies the coding agent prompt with the runtime URL as the base URL', async () => {
+    mockGetRuntimeUrl.mockReturnValue('https://gateway.example.com');
+
+    renderWithProviders(<IntegrationGuides application={reactApplication} oauth2Config={oauth2Config} />);
+
+    fireEvent.click(screen.getByRole('button', {name: /Copy prompt/i}));
+
+    await waitFor(() => {
+      expect(mockWriteText).toHaveBeenCalledWith(
+        'Integrate ThunderID at https://gateway.example.com with clientId: client-123',
+      );
+    });
   });
 
   it('renders application identifiers and OIDC endpoints using the configured server URL', () => {

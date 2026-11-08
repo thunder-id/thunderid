@@ -57,7 +57,7 @@ export interface IntegrationGuide {
    * `{{documentation.links key}}` reference (e.g.
    * '{{applications.templates.react.llmPrompt.redirectBased}}') resolved against the configured
    * docs site, same convention as {@link QuickstartLink.docsUrl}. The referenced document is
-   * fetched at render time and may contain `{{productName}}`, `{{clientId}}`, and
+   * fetched at render time and may contain `{{productName}}`, `{{baseUrl}}`, `{{clientId}}`, and
    * `{{applicationId}}` placeholders.
    */
   docsUrl?: string;

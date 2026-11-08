@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {GradientBorderButton} from '@thunderid/components';
-import {useConfig} from '@thunderid/contexts';
+import {useConfig, useRuntimeUrl} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger';
 import {Box, Typography, Stack, Card, CardContent, Tooltip} from '@wso2/oxygen-ui';
 import {Sparkles, Copy} from '@wso2/oxygen-ui-icons-react';
@@ -64,6 +64,7 @@ export default function TechnologyGuide({
   const {t} = useTranslation();
   const {config, getDocumentationLink} = useConfig();
   const productName = config.brand.product_name;
+  const runtimeUrl = useRuntimeUrl();
 
   const [copiedPrompt, setCopiedPrompt] = useState<boolean>(false);
   const [isFetchingPrompt, setIsFetchingPrompt] = useState<boolean>(false);
@@ -85,7 +86,7 @@ export default function TechnologyGuide({
   const promptUrl = resolveTemplateLink(llmPrompt.docsUrl, getDocumentationLink);
 
   const replacePlaceholders = (text: string): string => {
-    let result = text;
+    let result = text.replace(/\{\{baseUrl\}\}/g, runtimeUrl);
 
     if (productName && productName.trim() !== '') {
       result = result.replace(/\{\{productName\}\}/g, productName);
