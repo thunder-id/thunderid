@@ -56,7 +56,21 @@ func (s *RoleExecutorTestSuite) TestMetaDeclaresEveryModeAndNoDefault() {
 	s.Empty(catalogMeta.DefaultMode)
 	s.Equal([]string{ExecutorModeRoleAssignment, ExecutorModeRoleSelection}, meta.SupportedModes)
 	s.Equal(catalogMeta.SupportedModes, meta.SupportedModes)
-	s.Equal([]providers.FlowType{providers.FlowTypeInvitation}, meta.SupportedFlowTypes)
+	s.Equal([]providers.FlowType{providers.FlowTypeInvitation, providers.FlowTypeRegistration},
+		meta.SupportedFlowTypes)
+	s.Equal(catalogMeta.SupportedFlowTypes, meta.SupportedFlowTypes)
+}
+
+// A sign-up flow has no admin to pick roles, so it can only assign the ones its node names.
+func (s *RoleExecutorTestSuite) TestSelectInASignUpFlowIsAnError() {
+	ctx := s.signUpContext("role-1")
+	ctx.ExecutorMode = ExecutorModeRoleSelection
+
+	_, err := s.executor().Execute(ctx)
+
+	s.Require().Error(err)
+	s.Contains(err.Error(), "is not supported in REGISTRATION flows")
+	s.assignments.AssertNotCalled(s.T(), "ListAssignableRoles", mock.Anything, mock.Anything)
 }
 
 func (s *RoleExecutorTestSuite) TestAnInvitationModeOutsideAnInvitationFlowIsAnError() {
@@ -392,7 +406,7 @@ func (s *RoleExecutorTestSuite) TestAssign_WithoutTheFlowsUnitOrUserIsAnError() 
 // configuredSelection is a role selection node whose roles property names the given value.
 func (s *RoleExecutorTestSuite) configuredSelection(roles string, inputs map[string]string) *providers.NodeContext {
 	ctx := s.nodeContext(adminWithPermissions(), ExecutorModeRoleSelection, inputs)
-	ctx.NodeProperties = map[string]interface{}{propertyKeyRoles: roles}
+	ctx.NodeProperties = map[string]interface{}{common.NodePropertyRoles: roles}
 	return ctx
 }
 
@@ -443,7 +457,94 @@ func (s *RoleExecutorTestSuite) TestSelect_AnUnresolvedRolesPropertyIsAnError() 
 	s.assignments.AssertNotCalled(s.T(), "ListAssignableRoles", mock.Anything, mock.Anything)
 }
 
+// signUpContext is a sign-up flow's role assignment node naming the given roles, after the flow created the
+// organization unit and the user.
+func (s *RoleExecutorTestSuite) signUpContext(roles string) *providers.NodeContext {
+	return &providers.NodeContext{
+		Context:        security.WithRuntimeContext(context.Background()),
+		FlowType:       providers.FlowTypeRegistration,
+		ExecutorMode:   ExecutorModeRoleAssignment,
+		NodeProperties: map[string]interface{}{common.NodePropertyRoles: roles},
+		UserInputs:     map[string]string{},
+		RuntimeData: map[string]string{
+			common.RuntimeKeyOUID: "org-1",
+			userAttributeUserID:   "user-1",
+		},
+	}
+}
+
+// A sign-up assigns the roles its node names to the new user in the flow's unit, with no admin to record.
+func (s *RoleExecutorTestSuite) TestSignUpAssign_AssignsTheNamedRolesInTheFlowsUnit() {
+	user := []role.RoleAssignment{{ID: "user-1", Type: role.AssigneeTypeUser, OUID: "org-1"}}
+	s.assignments.EXPECT().AddAssigneesToRoles(mock.MatchedBy(security.IsRuntimeContext), user,
+		[]string{"role-2", "role-1"}).Return(nil).Once()
+
+	resp, err := s.executor().Execute(s.signUpContext("role-2 role-1 role-2"))
+
+	s.Require().NoError(err)
+	s.Equal(providers.ExecComplete, resp.Status)
+	s.permissions.AssertNotCalled(s.T(), "ResolveForEntity", mock.Anything, mock.Anything)
+}
+
+// The roles come from the node alone: a selection recorded in the runtime data is not assigned.
+func (s *RoleExecutorTestSuite) TestSignUpAssign_IgnoresARecordedSelection() {
+	ctx := s.signUpContext("role-1")
+	ctx.RuntimeData[common.RuntimeKeySelectedRoles] = "role-9"
+	ctx.RuntimeData[common.RuntimeKeyRolesSelectedBy] = recordedAdmin
+	s.assignments.EXPECT().AddAssigneesToRoles(mock.Anything, mock.Anything, []string{"role-1"}).Return(nil).Once()
+
+	resp, err := s.executor().Execute(ctx)
+
+	s.Require().NoError(err)
+	s.Equal(providers.ExecComplete, resp.Status)
+}
+
+func (s *RoleExecutorTestSuite) TestSignUpAssign_WithoutRolesIsAnError() {
+	for name, roles := range map[string]string{"none": "", "unresolved": "{{ctx(missing)}}"} {
+		s.Run(name, func() {
+			_, err := s.executor().Execute(s.signUpContext(roles))
+
+			s.Require().Error(err)
+		})
+	}
+	s.assignments.AssertNotCalled(s.T(), "AddAssigneesToRoles", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (s *RoleExecutorTestSuite) TestSignUpAssign_WithoutTheFlowsUnitOrUserIsAnError() {
+	for _, key := range []string{common.RuntimeKeyOUID, userAttributeUserID} {
+		s.Run(key, func() {
+			ctx := s.signUpContext("role-1")
+			delete(ctx.RuntimeData, key)
+
+			_, err := s.executor().Execute(ctx)
+
+			s.Require().Error(err)
+		})
+	}
+	s.assignments.AssertNotCalled(s.T(), "AddAssigneesToRoles", mock.Anything, mock.Anything, mock.Anything)
+}
+
+// A role the unit cannot assign fails the step, and a server failure fails the flow.
+func (s *RoleExecutorTestSuite) TestSignUpAssign_AFailureIsReported() {
+	s.assignments.EXPECT().AddAssigneesToRoles(mock.Anything, mock.Anything, mock.Anything).Return(
+		&tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "ROL-1010"}).Once()
+
+	resp, err := s.executor().Execute(s.signUpContext("role-1"))
+
+	s.Require().NoError(err)
+	s.Equal(providers.ExecFailure, resp.Status)
+	s.Equal(ErrRoleAssignmentFailed.Code, resp.Error.Code)
+
+	s.assignments.EXPECT().AddAssigneesToRoles(mock.Anything, mock.Anything, mock.Anything).
+		Return(&tidcommon.InternalServerError).Once()
+
+	_, err = s.executor().Execute(s.signUpContext("role-1"))
+
+	s.Require().Error(err)
+	s.Contains(err.Error(), "failed to assign the named roles")
+}
+
 func (s *RoleExecutorTestSuite) TestMetaDeclaresTheRolesProperty() {
 	s.Contains(s.executor().GetMeta().SupportedProperties,
-		providers.ExecutorSupportedProperties{Property: propertyKeyRoles})
+		providers.ExecutorSupportedProperties{Property: common.NodePropertyRoles})
 }

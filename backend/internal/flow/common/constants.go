@@ -156,6 +156,9 @@ const (
 	// NodePropertyOUDirectChildrenOnly limits the "prompt" strategy to the direct children of the parent OU: the one
 	// named by NodePropertyOUParent or, when the node sets none, the default OU set by UserTypeResolver.
 	NodePropertyOUDirectChildrenOnly = "directChildrenOnly"
+	// NodePropertyRoles names, separated by spaces, the roles a role executor node records in an invitation flow
+	// instead of prompting for them, or assigns in a sign-up flow.
+	NodePropertyRoles = "roles"
 	// NodePropertyAuthMethodMapping maps authentication classes to action refs on login_options PROMPT nodes.
 	NodePropertyAuthMethodMapping = "authMethodMapping"
 	// NodePropertySkipInterceptors indicates whether to skip interceptor execution for the current node.

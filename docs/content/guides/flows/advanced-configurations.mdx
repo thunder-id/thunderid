@@ -2368,17 +2368,25 @@ Without the `roles` property and with no role the admin can assign, it completes
 <details>
 <summary>Assign Roles</summary>
 
-Assigns the roles **Select Roles** recorded to the user in the flow's OU, as the recorded admin. The role service checks each assignment as that admin. This is the `role_assignment` mode of the **Role** executor, which runs only in invitation flows.
+In an invitation flow, assigns the roles **Select Roles** recorded to the user in the flow's OU, as the recorded admin. The role service checks each assignment as that admin. In a sign-up flow, which has no admin, assigns the roles the node's `roles` property names instead. This is the `role_assignment` mode of the **Role** executor, which runs in invitation and sign-up flows.
 
-**When to use:** In the invitee's part of an invitation flow, after **Share**.
+**When to use:** In the invitee's part of an invitation flow, after **Share**. In a sign-up flow, to give the new user roles in the OU the flow created or resolved, after **Provisioning** and, when the user lives in another OU, after **Share**.
 
-**Prerequisites:** **Select Roles** earlier in the same flow. With nothing recorded, it completes without assigning.
+**Prerequisites:** In an invitation flow, **Select Roles** earlier in the same flow. With nothing recorded, it completes without assigning. In a sign-up flow, the `roles` property, which the flow can't be saved without.
 
 **How it works:**
 1. Reads the recorded roles and admin from runtime data, never from user inputs
 2. Keeps the permissions the admin's token carried when they selected the roles that the admin still holds. A permission revoked since then, or a scope no resource server holds, such as `openid`, is left out
 3. Assigns each role to the user in the flow's OU, as the admin with the permissions kept, which the role service checks each assignment against
 4. Assigns every role or none. When an assignment is refused, none is assigned and the share stays in place
+
+In a sign-up flow, it skips the first two steps. It assigns the roles `roles` names to the user in the flow's OU, as the **Provisioning** executor assigns its role, and every role or none. Each role must be assignable in that OU: owned by it, or shared with it with its assignments editable. A role owned by a parent OU and shared with all of its child OUs covers an OU the flow just created.
+
+**Executor properties:**
+
+| Property | UI Label | Required | Default | Description |
+|---|---|---|---|---|
+| `roles` | Roles | Yes, in a sign-up flow | - | IDs of the roles assigned to the new user, separated by spaces. An invitation flow ignores it here and sets it on **Select Roles** |
 
 **Example:**
 
@@ -2398,7 +2406,7 @@ Assigns the roles **Select Roles** recorded to the user in the flow's OU, as the
 **Failure conditions:**
 - Roles are recorded without the admin who selected them (`FET-1134`)
 - The admin holds none of the permissions they selected the roles with, or no longer exists (`FET-1134`)
-- A role cannot be assigned (`FET-1134`)
+- A role cannot be assigned (`FET-1134`), including, in a sign-up flow, a role the OU can't assign
 
 </details>
 

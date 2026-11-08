@@ -6056,6 +6056,18 @@ translations:
     forms.credentials.links.sign_up.label: Sign up
     forms.schema_attrs.title: Tell us about you
     forms.schema_attrs.actions.continue.label: Continue
+    forms.credentials.actions.enterprise_sso.label: Sign in with SSO
+    forms.enterprise_sso.title: Sign In with SSO
+    forms.enterprise_sso.description: Enter your organization's handle to continue with its identity provider.
+    forms.enterprise_sso.fields.handle.label: Organization Handle
+    forms.enterprise_sso.fields.handle.placeholder: Enter your organization's handle
+    forms.enterprise_sso.actions.continue.label: Continue
+    forms.enterprise_sso.actions.back.label: Back to sign in
+    forms.organization_select.title: Choose an Organization
+    forms.organization_select.description: You belong to more than one organization. Choose the one to sign in to.
+    forms.organization_select.fields.organization.label: Organization
+    forms.organization_select.fields.organization.placeholder: Select an organization
+    forms.organization_select.actions.continue.label: Continue
   deviceGrant:
     forms.user_code.title: Enter the code shown on your device
     forms.user_code.fields.code.label: Verification code
@@ -6189,6 +6201,13 @@ translations:
     forms.email_otp.description: Enter the verification code sent to your email
     forms.magic_link.email_sent.title: Check Your Email
     forms.magic_link.email_sent.description: We sent you a verification link. Please check your inbox and click the link to continue.
+    forms.organization.title: Create Your Organization
+    forms.organization.description: Name your organization. Its handle is how its members find it when they sign in.
+    forms.organization.fields.name.label: Organization Name
+    forms.organization.fields.name.placeholder: Enter your organization's name
+    forms.organization.fields.handle.label: Organization Handle
+    forms.organization.fields.handle.placeholder: Leave empty to make one from the name
+    forms.organization.actions.submit.label: Create Organization
   recovery:
     forms.username.title: Password Recovery
     forms.username.subtitle: Enter your username to start the password recovery

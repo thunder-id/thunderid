@@ -1643,7 +1643,7 @@ func (s *ValidatorTestSuite) TestValidateModeFlowTypes_AccessChangeValidator() {
 	}
 }
 
-// The role executor selects and assigns roles only in an invitation flow.
+// The role executor selects roles only in an invitation flow, and assigns them only there or in a sign-up flow.
 func (s *ValidatorTestSuite) TestValidateModeFlowTypes_RoleExecutor() {
 	cases := []struct {
 		mode     string
@@ -1673,6 +1673,19 @@ func (s *ValidatorTestSuite) TestValidateModeFlowTypes_RoleExecutor() {
 	}
 }
 
+// A sign-up flow has no admin to pick roles, so it takes role assignment but not role selection.
+func (s *ValidatorTestSuite) TestValidateModeFlowTypes_RoleAssignmentRunsInASignUp() {
+	assign := companionNodes(executor.ExecutorNameRole)
+	assign[1].Executor.Mode = executor.ExecutorModeRoleAssignment
+	s.Nil(s.v.validateModeFlowTypes(providers.FlowTypeRegistration, assign))
+
+	selection := companionNodes(executor.ExecutorNameRole)
+	selection[1].Executor.Mode = executor.ExecutorModeRoleSelection
+	err := s.v.validateModeFlowTypes(providers.FlowTypeRegistration, selection)
+	s.Require().NotNil(err)
+	s.Equal("error.flowmgtservice.unsupported_executor_mode_flow_type_description", err.ErrorDescription.Key)
+}
+
 // The sharing executor authorizes a share only in an invitation flow, and applies one there or, for what a
 // sign-up created, in a sign-in or registration flow.
 func (s *ValidatorTestSuite) TestValidateModeFlowTypes_SharingExecutor() {
@@ -1697,6 +1710,42 @@ func (s *ValidatorTestSuite) TestValidateModeFlowTypes_SharingExecutor() {
 			s.Require().NotNil(err, "%s in %s", mode, flowType)
 			s.Equal("error.flowmgtservice.unsupported_executor_mode_flow_type_description", err.ErrorDescription.Key)
 		}
+	}
+}
+
+// A sign-up flow has no admin to pick roles, so its role assignment node must name them, while an invitation flow's
+// assigns what the admin picked.
+func (s *ValidatorTestSuite) TestValidateExecutorSpecificConstraints_RoleAssignmentNamesItsRolesInASignUp() {
+	cases := []struct {
+		name     string
+		flowType providers.FlowType
+		roles    interface{}
+		allowed  bool
+	}{
+		{"sign-up with roles", providers.FlowTypeRegistration, "role-1 role-2", true},
+		{"sign-up without roles", providers.FlowTypeRegistration, nil, false},
+		{"sign-up with blank roles", providers.FlowTypeRegistration, "  ", false},
+		{"invitation without roles", providers.FlowTypeInvitation, nil, true},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			node := companionNodes(executor.ExecutorNameRole)[1]
+			node.Executor.Mode = executor.ExecutorModeRoleAssignment
+			if tc.roles != nil {
+				node.Properties = map[string]interface{}{common.NodePropertyRoles: tc.roles}
+			}
+
+			err := s.v.validateExecutorSpecificConstraints(&node, nil, nil, tc.flowType)
+
+			if tc.allowed {
+				s.Nil(err)
+				return
+			}
+			s.Require().NotNil(err)
+			s.Equal(ErrorInvalidExecutorConfig.Code, err.Code)
+			s.Equal("error.flowmgtservice.missing_required_executor_property_description", err.ErrorDescription.Key)
+			s.Equal(common.NodePropertyRoles, err.ErrorDescription.Params["propertyKey"])
+		})
 	}
 }
 

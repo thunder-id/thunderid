@@ -168,6 +168,28 @@ A flow has no effect until it is assigned to an application.
 </details>
 
 <details>
+  <summary>Build flows for an application that serves many organizations</summary>
+
+  When each customer of your application is an organization unit beneath one parent OU, three templates cover sign-up and sign-in:
+
+  - **Organization Sign-up** (Self sign-up): a new customer creates their account and their organization in a single sign-up. The flow asks for the account details first, then for the organization's name and, optionally, a handle, which is made from the name when left empty. It creates the organization beneath the user type's OU, creates the user inside that organization, and assigns the roles you set on the **Assign Roles** step. The user belongs only to the organization they created.
+  - **Organization Sign-up with Shared Account** (Self sign-up): the same sign-up, but the account stays outside the organization. The flow creates the user in the user type's OU, affiliates the user with the new organization on its **Share** step, and then assigns the roles there. Because the account is not tied to one organization, it can be affiliated with more organizations later. A user can be shared only into a direct child of the OU that owns them, so this template always creates the organization directly beneath the user type's OU.
+  - **Basic + Enterprise SSO** (Sign in): a password sign-in, or **Sign in with SSO**, which asks for the organization's handle and signs in through the OpenID Connect connection that organization chose. A first-time SSO user is created in the organization.
+
+  These templates name values only your deployment has, so the canvas opens them unsaved. Before you click **Save**, set these values:
+
+  - In both sign-up templates, set the role IDs on the **Assign Roles** step.
+  - In the sign-in template, set the parent OU on both **Resolve OU** steps.
+
+  To make them work across your organizations:
+
+  - Share the roles from the parent OU with all of its child OUs, with their assignments editable, so a role can be assigned in an organization the sign-up just created. See [Share a Role With Other Organization Units](../users/manage-roles.mdx#share-a-role-with-other-organization-units).
+  - Share the sign-in flow with the child OUs and make its `enterpriseIdp` variable editable, so each organization sets its own connection. See [Share a Flow](./share-a-flow.mdx).
+  - Share the application with the child OUs, so a sign-in can land in any of them.
+
+</details>
+
+<details>
   <summary>Build and configure a recovery flow</summary>
 
   A recovery flow lets users regain access to their account, for example, via email-based password reset. To create one:

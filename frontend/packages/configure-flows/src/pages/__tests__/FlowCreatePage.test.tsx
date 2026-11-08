@@ -388,6 +388,44 @@ describe('FlowCreatePage', () => {
       );
     });
 
+    // A template that names values only the deployment has would be refused if saved as it is, so it opens unsaved.
+    it('should open a template that is configured before saving as an unsaved draft', () => {
+      render(<FlowCreatePage />);
+
+      navigateToTemplateStep();
+      act(() => {
+        (capturedTemplateProps['onTemplateChange'] as (t: unknown) => void)({
+          type: 'BASIC_ENTERPRISE_SSO',
+          flowType: 'AUTHENTICATION',
+          configureBeforeSave: true,
+          config: {nodes: [{id: 'start'}]},
+        });
+      });
+      fireEvent.click(screen.getByText('Continue'));
+      act(() => {
+        (capturedConfigureProps['onChange'] as (v: {name: string; handle: string}) => void)({
+          name: 'Enterprise SSO',
+          handle: 'enterprise-sso',
+        });
+        (capturedConfigureProps['onReadyChange'] as (ready: boolean) => void)(true);
+      });
+
+      fireEvent.click(screen.getByText('Create'));
+
+      expect(mockMutate).not.toHaveBeenCalled();
+      expect(mockNavigate).toHaveBeenCalledWith('/flows/new', {
+        state: {
+          draftFlow: {
+            name: 'Enterprise SSO',
+            handle: 'enterprise-sso',
+            flowType: 'AUTHENTICATION',
+            ouId: 'ou-root',
+            nodes: [{id: 'start'}],
+          },
+        },
+      });
+    });
+
     it('should navigate to flow builder on successful creation', async () => {
       mockMutate.mockImplementation((_req: unknown, options: {onSuccess: (flow: {id: string}) => void}) => {
         options.onSuccess({id: 'flow-123'});
