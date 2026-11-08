@@ -1716,6 +1716,7 @@ const translations = {
     'switch.cantRestore.everyUnit':
       '"Every organization unit" can only be set in a resource file or by importing. Once you save, it can\'t be chosen again here.',
     'switch.cleared.childUnitExclusions': 'Child organization unit exceptions: {{names}}',
+    'switch.cleared.childUnitRules': 'Terms for every granted child organization unit',
     'switch.cleared.childUnits': 'Granted child organization units: {{names}}',
     'switch.cleared.everyTree': 'Every tree',
     'switch.cleared.everyTreeWithExceptions': 'Every tree, with its exceptions: {{names}}',
@@ -4757,6 +4758,10 @@ const translations = {
     'core.validation.ouResolver.afterSession':
       'Resolve OU step <code>{{id}}</code> comes after a Save / Load Session step, so the flow will be rejected on save. Place it between the sign-in steps and Save / Load Session, or before Check SSO Session.',
 
+    // Validation messages - Resolve Variables
+    'core.validation.variables.noneDeclared':
+      'Resolve Variables step <code>{{id}}</code> declares no variables, so the flow will be rejected on save. Add at least one variable to a Resolve Variables step.',
+
     // Validation messages - sign out
     'core.validation.signOut.confirmNotConnected':
       'Sign-out button <code>{{id}}</code> is not connected, so it will not sign the user out. Connect it to the session sign-out step, or change its action.',
@@ -4939,6 +4944,7 @@ const translations = {
     'core.headerPanel.goBack': 'Go back to flows',
     'core.headerPanel.autoLayout': 'Auto layout',
     'core.headerPanel.save': 'Save',
+    'core.headerPanel.sharingInvalidTooltip': 'Fix the organization unit defaults marked in Share before saving',
     'core.headerPanel.unsavedChanges': 'You have unsaved changes',
     'core.headerPanel.undo': 'Undo',
     'core.headerPanel.undoTooltip': 'Undo (Ctrl+Z / Cmd+Z)',
@@ -5024,6 +5030,132 @@ const translations = {
     // Rule
     'core.rule.conditionalRule': 'Conditional rule',
     'core.rule.remove': 'Remove',
+
+    // Variables
+    'core.variables.label': 'Resolve Variables',
+    'core.variables.count_one': '{{count}} variable',
+    'core.variables.count_other': '{{count}} variables',
+    'core.variables.tooltip.configure': 'Configure variables',
+    'core.variables.properties.title': 'Variables',
+    'core.variables.properties.preview': 'Preview',
+    'core.variables.connections.loadError': 'Failed to load connections.',
+    'core.variables.change.removeTitle': 'Remove {{identifier}}?',
+    'core.variables.change.removeUsed_one': '{{count}} step uses this variable and will be unbound.',
+    'core.variables.change.removeUsed_other': '{{count}} steps use this variable and will be unbound.',
+    'core.variables.change.renameTitle': 'Rename to {{identifier}}?',
+    'core.variables.change.renameConfirm': 'Rename',
+    'core.variables.change.renameUsed_one': '{{count}} step uses this variable and will follow the new identifier.',
+    'core.variables.change.renameUsed_other': '{{count}} steps use this variable and will follow the new identifier.',
+    'core.variables.deleteNode.title': 'Delete this step?',
+    'core.variables.deleteNode.used_one': '{{count}} step uses its variables and will be unbound.',
+    'core.variables.deleteNode.used_other': '{{count}} steps use its variables and will be unbound.',
+    'core.variables.deleteNode.shared':
+      'Sharing terms and values saved by organization units for its variables are deleted when you save.',
+    'core.variables.change.shared':
+      'Sharing terms and values saved by organization units for this variable are deleted when you save.',
+    'core.variables.properties.empty': 'This node declares no variables yet. Add one to start.',
+    'core.variables.preview.title': 'How a delegated admin will see it',
+    'core.variables.preview.connectionsNote':
+      'A delegated admin sees only the connections their own organization unit owns or has been shared.',
+    'core.variables.preview.empty': 'Add a variable to see it here.',
+    'core.headerPanel.share': 'Share',
+    'core.sharing.dialog.title': 'Share flow',
+    'core.sharing.dialog.saveError': 'Failed to update how the flow is shared. Please try again.',
+    'core.sharing.dialog.saved': 'Sharing updated.',
+    'core.sharing.dialog.savedWithFlow': 'These changes are saved when you save the flow.',
+    'core.sharing.dialog.termsDropped':
+      'A variable you removed took its sharing terms with it, so your sharing changes were discarded. Share the flow again.',
+    'core.sharing.variables.title': 'Terms for every granted child organization unit',
+    'core.sharing.variables.description':
+      'Without a rule, a variable works as the flow sets it. Lock a variable, or let the organization units choose within limits you set.',
+    'core.sharing.variables.editable': 'Editable',
+    'core.sharing.variables.summaryChoose': 'Organization units start with {{value}} and can set their own.',
+    'core.sharing.variables.summaryChooseDefault':
+      "Organization units start with the flow's default and can set their own.",
+    'core.sharing.variables.summaryLocked': "Organization units always use {{value}} and can't change it.",
+    'core.sharing.variables.summaryLockedDefault':
+      "Organization units always use the flow's default and can't change it.",
+    'core.sharing.variables.allowed': 'Choices they may pick from',
+    'core.sharing.variables.allowedHint': 'Leave empty to allow every choice.',
+    'core.sharing.variables.excluded': 'Choices taken away',
+    'core.sharing.variables.excludedHint': 'Removed from the choices above.',
+    'core.sharing.variables.choicesPlaceholder': 'Select choices',
+    'core.sharing.variables.unitDefault': 'Organization unit default',
+    'core.sharing.variables.unitDefaultHint':
+      "Customize the default for this share. Leave blank to use the default from the flow's variable definition.",
+    'core.sharing.variables.unitDefaultInvalid': 'Enter a default that is valid for this input.',
+    'core.sharing.variables.useFlowDefault': "Use the flow's default",
+    'core.sharing.terms.noVariables':
+      'No terms are available. This flow declares no variables, so there is nothing for the organization units to set. Add a Variables step to the flow to offer some.',
+    'core.sharing.terms.intro':
+      'Without a rule, a variable works as the flow sets it. Lock a variable, or let the organization unit choose within limits you set.',
+    'core.sharing.terms.copyTo': 'Copy to {{count}} organization units',
+    'core.sharing.terms.replaceTitle': 'Replace the terms of your organization units?',
+    'core.sharing.terms.replaceDetail':
+      'Some organization units already have their own terms. Copying the starting terms replaces them for every organization unit.',
+    'core.sharing.terms.replaceConfirm': 'Replace',
+    'core.sharing.terms.setStarting': 'Set starting terms',
+    'core.sharing.terms.edit': 'Edit terms',
+    'core.sharing.terms.editFor': 'Edit terms for {{name}}',
+    'core.sharing.terms.startingTitle': 'Starting terms for {{count}} granted organization units',
+    'core.sharing.terms.startingSubtitle':
+      'Fill them in once and they are copied to every organization unit below. Afterwards each organization unit keeps its own copy, changed from its own row.',
+    'core.sharing.variables.needsChildUnits':
+      'Share the flow with child organization units to choose what they may do with its variables.',
+    'core.executions.variableBinding.tooltip': 'Use a variable',
+    'core.executions.variableBinding.clear': 'Use a fixed value',
+    'core.executions.variableBinding.tooltipFor': 'Use a variable for {{label}}',
+    'core.executions.variableBinding.add': 'Add variable',
+    'core.executions.variableBinding.needsNode': 'Add a Variables step to the flow first.',
+    'core.executions.variableBinding.noneMatching': 'No variable of a matching type',
+    'core.executions.variableBinding.noneBefore': 'No variables declared before this step',
+    'core.executions.variableBinding.noneDeclared': 'No variables declared yet',
+    'core.variables.types.TEXT_INPUT': 'Text Input',
+    'core.variables.types.EMAIL_INPUT': 'Email Input',
+    'core.variables.types.PHONE_INPUT': 'Phone Input',
+    'core.variables.types.NUMBER_INPUT': 'Number Input',
+    'core.variables.types.DATE_INPUT': 'Date Input',
+    'core.variables.types.BOOLEAN_INPUT': 'Checkbox',
+    'core.variables.types.SELECT': 'Select',
+    'core.variables.types.CONNECTION_SELECT': 'Connection',
+    'core.variables.editor.identifier': 'Identifier',
+    'core.variables.editor.identifierHelp': 'Steps read it as {{placeholder}}.',
+    'core.variables.editor.identifierInvalid':
+      'Start with a letter, then use letters, digits and underscores, up to 64 characters.',
+    'core.variables.editor.identifierEdit': 'Edit identifier',
+    'core.variables.editor.identifierSave': 'Save identifier',
+    'core.variables.editor.identifierTaken': 'Another variable already uses this identifier.',
+    'core.variables.editor.type': 'Type',
+    'core.variables.editor.label': 'Label',
+    'core.variables.editor.description': 'Description',
+    'core.variables.editor.options': 'Options',
+    'core.variables.editor.optionsHelp': 'One option per line.',
+    'core.variables.editor.min': 'Minimum',
+    'core.variables.editor.max': 'Maximum',
+    'core.variables.editor.connectionTypes': 'Allowed connection types',
+    'core.variables.editor.connectionTypesAll': 'All',
+    'core.variables.editor.connectionTypesHelp': 'Limit the connections offered to these types. Leave empty for all.',
+    'core.variables.editor.defaultValue': 'Default value',
+    'core.variables.editor.defaultOn': 'On by default',
+    'core.variables.editor.blankDefault': 'None',
+    'core.variables.editor.blankDefaultHelp':
+      'With no default, the flow stops with an error wherever no connection is set, in your own applications as well as in the units it is shared with.',
+    'core.variables.editor.selectDefault': 'Select a default',
+    'core.variables.editor.defaultInvalid': 'Enter a default that is valid for this input.',
+    'core.variables.editor.rules': 'Rules',
+    'core.variables.editor.minLength': 'Minimum length',
+    'core.variables.editor.maxLength': 'Maximum length',
+    'core.variables.editor.regex': 'Pattern (regular expression)',
+    'core.variables.editor.defaultPlaceholder': 'No default',
+    'core.variables.editor.identifierPlaceholder': 'support_email',
+    'core.variables.editor.labelPlaceholder': 'Support email',
+    'core.variables.editor.descriptionPlaceholder': 'Shown to the delegated admin under the label',
+    'core.variables.editor.optionsPlaceholder': 'Option one\nOption two',
+    'core.variables.editor.minPlaceholder': 'No minimum',
+    'core.variables.editor.maxPlaceholder': 'No maximum',
+    'core.variables.editor.minLengthPlaceholder': 'No minimum',
+    'core.variables.editor.maxLengthPlaceholder': 'No maximum',
+    'core.variables.editor.regexPlaceholder': '^[a-z]+$',
 
     // Field extended properties
     'core.fieldExtendedProperties.attribute': 'Attribute',

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {Box, Checkbox, FormControlLabel, Typography} from '@wso2/oxygen-ui';
-import type {ReactElement} from 'react';
+import type {ReactElement, ReactNode} from 'react';
 
 /**
  * Props interface of {@link CheckboxWithHint}
@@ -15,7 +15,7 @@ export interface CheckboxWithHintProps {
   /**
    * The checkbox label.
    */
-  label: string;
+  label: ReactNode;
   /**
    * Explanatory caption shown underneath the label, aligned with it.
    */

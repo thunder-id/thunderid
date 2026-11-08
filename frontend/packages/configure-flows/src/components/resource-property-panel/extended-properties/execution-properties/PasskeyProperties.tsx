@@ -7,6 +7,8 @@ import {useTranslation} from 'react-i18next';
 import {PASSKEY_MODES, PASSKEY_MODES_WITH_RELYING_PARTY} from './constants';
 import DraftTextField from './DraftTextField';
 import type {CommonResourcePropertiesPropsInterface} from './types';
+import VariableBinding from './VariableBinding';
+import {TEXT_VARIABLES} from './variableBindingTypes';
 import type {StepData} from '../../../../models/steps';
 
 function PasskeyProperties({resource, onChange}: CommonResourcePropertiesPropsInterface): ReactNode {
@@ -80,29 +82,49 @@ function PasskeyProperties({resource, onChange}: CommonResourcePropertiesPropsIn
 
       {showRelyingPartyConfig && (
         <>
-          <DraftTextField
-            labelPlacement="top"
+          <VariableBinding
+            resource={resource}
+            onChange={onChange}
+            propertyKey="relyingPartyId"
+            accepts={TEXT_VARIABLES}
             label={t('flows:core.executions.passkey.relyingPartyId.label')}
-            helperText={t('flows:core.executions.passkey.relyingPartyId.hint')}
-            id="relying-party-id"
-            value={currentRelyingPartyId}
-            onCommit={(value) => onChange('data.properties.relyingPartyId', value, resource)}
-            placeholder={t('flows:core.executions.passkey.relyingPartyId.placeholder')}
-            fullWidth
-            size="small"
-          />
+          >
+            {({commit, label}) => (
+              <DraftTextField
+                labelPlacement="top"
+                label={label}
+                helperText={t('flows:core.executions.passkey.relyingPartyId.hint')}
+                id="relying-party-id"
+                value={currentRelyingPartyId}
+                onCommit={commit}
+                placeholder={t('flows:core.executions.passkey.relyingPartyId.placeholder')}
+                fullWidth
+                size="small"
+              />
+            )}
+          </VariableBinding>
 
-          <DraftTextField
-            labelPlacement="top"
+          <VariableBinding
+            resource={resource}
+            onChange={onChange}
+            propertyKey="relyingPartyName"
+            accepts={TEXT_VARIABLES}
             label={t('flows:core.executions.passkey.relyingPartyName.label')}
-            helperText={t('flows:core.executions.passkey.relyingPartyName.hint')}
-            id="relying-party-name"
-            value={currentRelyingPartyName}
-            onCommit={(value) => onChange('data.properties.relyingPartyName', value, resource)}
-            placeholder={t('flows:core.executions.passkey.relyingPartyName.placeholder')}
-            fullWidth
-            size="small"
-          />
+          >
+            {({commit, label}) => (
+              <DraftTextField
+                labelPlacement="top"
+                label={label}
+                helperText={t('flows:core.executions.passkey.relyingPartyName.hint')}
+                id="relying-party-name"
+                value={currentRelyingPartyName}
+                onCommit={commit}
+                placeholder={t('flows:core.executions.passkey.relyingPartyName.placeholder')}
+                fullWidth
+                size="small"
+              />
+            )}
+          </VariableBinding>
         </>
       )}
     </Stack>

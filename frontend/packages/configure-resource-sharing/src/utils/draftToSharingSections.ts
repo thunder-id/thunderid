@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type {OrganizationAccessDraft} from '../models/organization-access';
-import type {SharingOverlayRules, SharingPolicySections} from '../models/sharing-policy';
+import type {EditsRule, SharingOverlayRules, SharingPolicySections} from '../models/sharing-policy';
 
 function withExclusions<T extends object>(section: T, excluded: string[]): T & {excludedOuIds?: string[]} {
   return excluded.length > 0 ? {...section, excludedOuIds: [...excluded]} : section;
@@ -10,13 +10,17 @@ function withExclusions<T extends object>(section: T, excluded: string[]): T & {
 
 /**
  * The rules of a saved section or unit that the screen doesn't edit, which a save keeps as they are.
- * The screen edits only a user's mandated `roles`, so everything else, such as a role's
- * `assignments`, is kept.
+ * The screen edits a user's mandated `roles`, so everything else, such as a role's `assignments`, is kept. For child
+ * units it also edits the rules the resource says it edits, which the draft supplies afresh, so those are not kept
+ * there. Every other section keeps them, since the draft holds none for them.
  */
-function keptOverlayRules(rules: SharingOverlayRules | undefined): SharingOverlayRules {
-  const {roles: _roles, ...kept} = rules ?? {};
+function keptOverlayRules(
+  rules: SharingOverlayRules | undefined,
+  editsRule: EditsRule = () => false,
+): SharingOverlayRules {
+  const {roles: _roles, ...others} = rules ?? {};
   void _roles;
-  return kept;
+  return Object.fromEntries(Object.entries(others).filter(([field]) => !editsRule(field)));
 }
 
 function withOverlayRules<T extends object>(
@@ -46,11 +50,13 @@ export function hasNoSharingSections(sections: SharingPolicySections): boolean {
  *
  * @param draft - The draft to write
  * @param saved - The policy the draft started from, whose rules the screen doesn't edit are kept
+ * @param editsRule - Tells which rules the resource's screen edits, which the draft supplies; none by default
  * @returns The policy sections the draft amounts to
  */
 export default function draftToSharingSections(
   draft: OrganizationAccessDraft,
   saved?: SharingPolicySections,
+  editsRule: EditsRule = () => false,
 ): SharingPolicySections {
   if (draft.scope === 'owner') {
     return {};
@@ -68,11 +74,13 @@ export default function draftToSharingSections(
   const savedChildUnits = saved?.childUnits;
   const savedTrees = saved?.otherTreeRoots;
 
+  const rules = draft.childUnitRules && Object.keys(draft.childUnitRules).length > 0 ? draft.childUnitRules : undefined;
+
   if (draft.childUnitsAccess === 'all') {
-    sections.childUnits = withOverlayRules(
-      withExclusions({mode: 'all' as const}, draft.childUnitExclusions),
-      keptOverlayRules(savedChildUnits?.mode === 'all' ? savedChildUnits.overlayRules : undefined),
-    );
+    sections.childUnits = withOverlayRules(withExclusions({mode: 'all' as const}, draft.childUnitExclusions), {
+      ...keptOverlayRules(savedChildUnits?.mode === 'all' ? savedChildUnits.overlayRules : undefined, editsRule),
+      ...(rules ?? {}),
+    });
   }
   if (draft.childUnitsAccess === 'selected' && draft.childUnits.length > 0) {
     sections.childUnits = {
@@ -82,12 +90,15 @@ export default function draftToSharingSections(
           savedChildUnits?.mode === 'selected'
             ? savedChildUnits.units.find((candidate) => candidate.ouId === unit.ouId)
             : undefined;
-        const rules = keptOverlayRules(savedUnit?.overlayRules);
+        const unitRules: SharingOverlayRules = {
+          ...keptOverlayRules(savedUnit?.overlayRules, editsRule),
+          ...(unit.rules ?? {}),
+        };
         // The server refuses a roles rule on a subtree, so one is only written for a unit-only reach.
         if (unit.reach === 'unit' && unit.roles && unit.roles.length > 0) {
-          rules.roles = {editable: false, value: [...unit.roles]};
+          unitRules.roles = {editable: false, value: [...unit.roles]};
         }
-        return withOverlayRules({ouId: unit.ouId, reach: unit.reach}, rules);
+        return withOverlayRules({ouId: unit.ouId, reach: unit.reach}, unitRules);
       }),
     };
   }

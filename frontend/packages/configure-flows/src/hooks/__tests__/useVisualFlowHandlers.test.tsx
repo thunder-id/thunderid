@@ -814,6 +814,46 @@ describe('useVisualFlowHandlers', () => {
           expect(onDeleteRefused).not.toHaveBeenCalled();
         });
 
+        it('should ask before a deletion that takes more with it, and go ahead once it is confirmed', async () => {
+          mockGetNodes.mockReturnValue(buildNodes());
+          mockGetEdges.mockReturnValue([] as Edge[]);
+          const confirmNodesDelete = vi.fn().mockResolvedValue(true);
+          const deleted = {nodes: [{id: 'node-4'} as Node], edges: []};
+
+          const result = renderHandlers({confirmNodesDelete});
+
+          await expect(result.current.handleBeforeDelete(deleted)).resolves.toEqual(deleted);
+          expect(confirmNodesDelete).toHaveBeenCalledWith(deleted.nodes);
+        });
+
+        it('should keep the nodes when the deletion is not confirmed', async () => {
+          mockGetNodes.mockReturnValue(buildNodes());
+          mockGetEdges.mockReturnValue([] as Edge[]);
+          const confirmNodesDelete = vi.fn().mockResolvedValue(false);
+
+          const result = renderHandlers({confirmNodesDelete});
+
+          await expect(result.current.handleBeforeDelete({nodes: [{id: 'node-4'} as Node], edges: []})).resolves.toBe(
+            false,
+          );
+        });
+
+        it('should not ask about a deletion it already refuses', async () => {
+          mockGetNodes.mockReturnValue(buildNodes());
+          mockGetEdges.mockReturnValue([
+            {id: 'edge-2', source: 'node-2', target: 'node-3'},
+            {id: 'edge-3', source: 'node-2', target: 'node-4'},
+          ] as Edge[]);
+          const confirmNodesDelete = vi.fn().mockResolvedValue(true);
+
+          const result = renderHandlers({confirmNodesDelete, onDeleteRefused: vi.fn()});
+
+          await expect(result.current.handleBeforeDelete({nodes: [{id: 'node-2'} as Node], edges: []})).resolves.toBe(
+            false,
+          );
+          expect(confirmNodesDelete).not.toHaveBeenCalled();
+        });
+
         it('should refuse a deletion when the skip target has several successors', async () => {
           mockGetNodes.mockReturnValue(buildNodes());
           mockGetEdges.mockReturnValue([

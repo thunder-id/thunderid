@@ -17,6 +17,8 @@ import {PROVISIONING_OU_RESOLVED, PROVISIONING_OU_USER_TYPE} from './constants';
 import DraftTextField from './DraftTextField';
 import type {CommonResourcePropertiesPropsInterface} from './types';
 import {clampToInteger} from './utils';
+import VariableBinding from './VariableBinding';
+import {BOOLEAN_VARIABLES, NUMBER_VARIABLES, TEXT_VARIABLES} from './variableBindingTypes';
 import type {StepData} from '../../../../models/steps';
 
 function ProvisioningProperties({resource, onChange}: CommonResourcePropertiesPropsInterface): ReactNode {
@@ -27,23 +29,9 @@ function ProvisioningProperties({resource, onChange}: CommonResourcePropertiesPr
     return stepData?.properties ?? {};
   }, [resource]);
 
-  const handleBooleanPropertyChange = useCallback(
-    (propertyName: string, value: boolean): void => {
-      onChange(`data.properties.${propertyName}`, value, resource);
-    },
-    [resource, onChange],
-  );
-
   const handleStringPropertyChange = useCallback(
     (propertyName: string, value: string): void => {
       onChange(`data.properties.${propertyName}`, value, resource);
-    },
-    [resource, onChange],
-  );
-
-  const handleNumberPropertyChange = useCallback(
-    (propertyName: string, value: string): void => {
-      onChange(`data.properties.${propertyName}`, Number(value), resource);
     },
     [resource, onChange],
   );
@@ -62,34 +50,48 @@ function ProvisioningProperties({resource, onChange}: CommonResourcePropertiesPr
         {t('flows:core.executions.provisioning.description')}
       </Typography>
 
-      <FormControlLabel
-        control={
-          <Checkbox
-            checked={properties['delegated'] === true}
-            onChange={(e) => handleBooleanPropertyChange('delegated', e.target.checked)}
-            size="small"
-          />
-        }
+      <VariableBinding
+        inline
+        resource={resource}
+        onChange={onChange}
+        propertyKey="delegated"
+        accepts={BOOLEAN_VARIABLES}
         label={t('flows:core.executions.provisioning.delegated.label', 'Delegated mode')}
-      />
-      <FormHelperText>
-        {t(
-          'flows:core.executions.provisioning.delegated.hint',
-          'When enabled, agents created by this node act on behalf of a signed-in user. A value collected by the flow takes precedence.',
+      >
+        {({commit, label, value: stored}) => (
+          <>
+            <FormControlLabel
+              control={<Checkbox checked={stored === true} onChange={(e) => commit(e.target.checked)} size="small" />}
+              label={label}
+            />
+            <FormHelperText>
+              {t(
+                'flows:core.executions.provisioning.delegated.hint',
+                'When enabled, agents created by this node act on behalf of a signed-in user. A value collected by the flow takes precedence.',
+              )}
+            </FormHelperText>
+          </>
         )}
-      </FormHelperText>
+      </VariableBinding>
 
-      <FormControlLabel
-        control={
-          <Checkbox
-            checked={!!properties['allowCrossOUProvisioning']}
-            onChange={(e) => handleBooleanPropertyChange('allowCrossOUProvisioning', e.target.checked)}
-            size="small"
-          />
-        }
+      <VariableBinding
+        inline
+        resource={resource}
+        onChange={onChange}
+        propertyKey="allowCrossOUProvisioning"
+        accepts={BOOLEAN_VARIABLES}
         label={t('flows:core.executions.federation.allowCrossOUProvisioning.label')}
-      />
-      <FormHelperText>{t('flows:core.executions.federation.allowCrossOUProvisioning.hint')}</FormHelperText>
+      >
+        {({commit, label, value: stored}) => (
+          <>
+            <FormControlLabel
+              control={<Checkbox checked={!!stored} onChange={(e) => commit(e.target.checked)} size="small" />}
+              label={label}
+            />
+            <FormHelperText>{t('flows:core.executions.federation.allowCrossOUProvisioning.hint')}</FormHelperText>
+          </>
+        )}
+      </VariableBinding>
 
       <div>
         <FormLabel id="provisioning-ou-label" htmlFor="provisioning-ou-select">
@@ -117,94 +119,152 @@ function ProvisioningProperties({resource, onChange}: CommonResourcePropertiesPr
         </FormHelperText>
       </div>
 
-      <FormControlLabel
-        control={
-          <Checkbox
-            checked={!!properties['includeOptional']}
-            onChange={(e) => handleBooleanPropertyChange('includeOptional', e.target.checked)}
-            size="small"
-          />
-        }
+      <VariableBinding
+        inline
+        resource={resource}
+        onChange={onChange}
+        propertyKey="includeOptional"
+        accepts={BOOLEAN_VARIABLES}
         label={t('flows:core.executions.provisioning.includeOptional.label')}
-      />
-      <FormHelperText>{t('flows:core.executions.provisioning.includeOptional.hint')}</FormHelperText>
+      >
+        {({commit, label, value: stored}) => (
+          <>
+            <FormControlLabel
+              control={<Checkbox checked={!!stored} onChange={(e) => commit(e.target.checked)} size="small" />}
+              label={label}
+            />
+            <FormHelperText>{t('flows:core.executions.provisioning.includeOptional.hint')}</FormHelperText>
+          </>
+        )}
+      </VariableBinding>
 
-      <FormControlLabel
-        control={
-          <Checkbox
-            checked={!!properties['includeOptionalCredentials']}
-            onChange={(e) => handleBooleanPropertyChange('includeOptionalCredentials', e.target.checked)}
-            size="small"
-          />
-        }
+      <VariableBinding
+        inline
+        resource={resource}
+        onChange={onChange}
+        propertyKey="includeOptionalCredentials"
+        accepts={BOOLEAN_VARIABLES}
         label={t('flows:core.executions.provisioning.includeOptionalCredentials.label')}
-      />
-      <FormHelperText>{t('flows:core.executions.provisioning.includeOptionalCredentials.hint')}</FormHelperText>
+      >
+        {({commit, label, value: stored}) => (
+          <>
+            <FormControlLabel
+              control={<Checkbox checked={!!stored} onChange={(e) => commit(e.target.checked)} size="small" />}
+              label={label}
+            />
+            <FormHelperText>{t('flows:core.executions.provisioning.includeOptionalCredentials.hint')}</FormHelperText>
+          </>
+        )}
+      </VariableBinding>
 
-      <DraftTextField
-        labelPlacement="top"
+      <VariableBinding
+        resource={resource}
+        onChange={onChange}
+        propertyKey="maxPerPrompt"
+        accepts={NUMBER_VARIABLES}
         label={t('flows:core.executions.provisioning.maxPerPrompt.label')}
-        helperText={t('flows:core.executions.provisioning.maxPerPrompt.hint')}
-        id="max-per-prompt"
-        type="number"
-        value={String(maxPerPromptValue)}
-        onCommit={(value) => handleNumberPropertyChange('maxPerPrompt', value)}
-        normalize={(raw) => clampToInteger(raw, 0)}
-        placeholder={t('flows:core.executions.provisioning.maxPerPrompt.placeholder')}
-        fullWidth
-        size="small"
-        slotProps={{
-          htmlInput: {
-            min: 0,
-          },
-        }}
-      />
+      >
+        {({commit, label}) => (
+          <DraftTextField
+            labelPlacement="top"
+            label={label}
+            helperText={t('flows:core.executions.provisioning.maxPerPrompt.hint')}
+            id="max-per-prompt"
+            type="number"
+            value={String(maxPerPromptValue)}
+            onCommit={(value) => commit(Number(value))}
+            normalize={(raw) => clampToInteger(raw, 0)}
+            placeholder={t('flows:core.executions.provisioning.maxPerPrompt.placeholder')}
+            fullWidth
+            size="small"
+            slotProps={{
+              htmlInput: {
+                min: 0,
+              },
+            }}
+          />
+        )}
+      </VariableBinding>
 
-      <DraftTextField
-        labelPlacement="top"
+      <VariableBinding
+        resource={resource}
+        onChange={onChange}
+        propertyKey="assignGroup"
+        accepts={TEXT_VARIABLES}
         label={t('flows:core.executions.provisioning.assignGroup.label')}
-        id="assign-group"
-        value={(properties['assignGroup'] as string) || ''}
-        onCommit={(value) => handleStringPropertyChange('assignGroup', value)}
-        placeholder={t('flows:core.executions.provisioning.assignGroup.placeholder')}
-        fullWidth
-        size="small"
-      />
+      >
+        {({commit, label, value: stored}) => (
+          <DraftTextField
+            labelPlacement="top"
+            label={label}
+            id="assign-group"
+            value={(stored as string) || ''}
+            onCommit={commit}
+            placeholder={t('flows:core.executions.provisioning.assignGroup.placeholder')}
+            fullWidth
+            size="small"
+          />
+        )}
+      </VariableBinding>
 
-      <DraftTextField
-        labelPlacement="top"
+      <VariableBinding
+        resource={resource}
+        onChange={onChange}
+        propertyKey="assignRole"
+        accepts={TEXT_VARIABLES}
         label={t('flows:core.executions.provisioning.assignRole.label')}
-        id="assign-role"
-        value={(properties['assignRole'] as string) || ''}
-        onCommit={(value) => handleStringPropertyChange('assignRole', value)}
-        placeholder={t('flows:core.executions.provisioning.assignRole.placeholder')}
-        fullWidth
-        size="small"
-      />
-
-      <FormControlLabel
-        control={
-          <Checkbox
-            checked={!!properties['seedGroupsFromMapping']}
-            onChange={(e) => handleBooleanPropertyChange('seedGroupsFromMapping', e.target.checked)}
+      >
+        {({commit, label, value: stored}) => (
+          <DraftTextField
+            labelPlacement="top"
+            label={label}
+            id="assign-role"
+            value={(stored as string) || ''}
+            onCommit={commit}
+            placeholder={t('flows:core.executions.provisioning.assignRole.placeholder')}
+            fullWidth
             size="small"
           />
-        }
+        )}
+      </VariableBinding>
+
+      <VariableBinding
+        inline
+        resource={resource}
+        onChange={onChange}
+        propertyKey="seedGroupsFromMapping"
+        accepts={BOOLEAN_VARIABLES}
         label={t('flows:core.executions.provisioning.seedGroupsFromMapping.label')}
-      />
-      <FormHelperText>{t('flows:core.executions.provisioning.seedGroupsFromMapping.hint')}</FormHelperText>
+      >
+        {({commit, label, value: stored}) => (
+          <>
+            <FormControlLabel
+              control={<Checkbox checked={!!stored} onChange={(e) => commit(e.target.checked)} size="small" />}
+              label={label}
+            />
+            <FormHelperText>{t('flows:core.executions.provisioning.seedGroupsFromMapping.hint')}</FormHelperText>
+          </>
+        )}
+      </VariableBinding>
 
-      <FormControlLabel
-        control={
-          <Checkbox
-            checked={!!properties['seedRolesFromMapping']}
-            onChange={(e) => handleBooleanPropertyChange('seedRolesFromMapping', e.target.checked)}
-            size="small"
-          />
-        }
+      <VariableBinding
+        inline
+        resource={resource}
+        onChange={onChange}
+        propertyKey="seedRolesFromMapping"
+        accepts={BOOLEAN_VARIABLES}
         label={t('flows:core.executions.provisioning.seedRolesFromMapping.label')}
-      />
-      <FormHelperText>{t('flows:core.executions.provisioning.seedRolesFromMapping.hint')}</FormHelperText>
+      >
+        {({commit, label, value: stored}) => (
+          <>
+            <FormControlLabel
+              control={<Checkbox checked={!!stored} onChange={(e) => commit(e.target.checked)} size="small" />}
+              label={label}
+            />
+            <FormHelperText>{t('flows:core.executions.provisioning.seedRolesFromMapping.hint')}</FormHelperText>
+          </>
+        )}
+      </VariableBinding>
     </Stack>
   );
 }

@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import type {SharingPolicySections} from './sharing-policy';
+import type {OverlayRules, SharingPolicySections} from './sharing-policy';
 
 /**
  * Who can use a resource, at the top level: only its owner, the units chosen in the child-unit and
@@ -33,6 +33,11 @@ export interface GrantedChildUnit {
    * Roles the share mandates in this unit. Only meaningful with reach `unit`.
    */
   roles?: string[];
+  /**
+   * The terms this unit holds the resource on, kept apart from every other unit's. Left out for a resource whose
+   * units hold no such terms.
+   */
+  rules?: OverlayRules;
 }
 
 /**
@@ -53,6 +58,12 @@ export interface OrganizationAccessDraft {
    * Units granted under `selected`.
    */
   childUnits: GrantedChildUnit[];
+  /**
+   * The terms every child unit reached holds the resource on under `all`, such as which variables of a flow it may
+   * set. Under `selected` each granted unit holds its own in `childUnits`. Left out for a resource whose units hold no
+   * such terms.
+   */
+  childUnitRules?: OverlayRules;
   /**
    * Units carved out of the `everyUnit` scope, at any depth and in any tree.
    */
@@ -114,7 +125,7 @@ export type SharingPolicySavePlan =
  * One group of settings a choice switch clears, named by kind so the dialog can describe it.
  */
 export interface ClearedAccessItem {
-  kind: 'childUnitExclusions' | 'childUnits' | 'everyUnit' | 'trees' | 'everyTree';
+  kind: 'childUnitExclusions' | 'childUnitRules' | 'childUnits' | 'everyUnit' | 'trees' | 'everyTree';
   ouIds: string[];
 }
 

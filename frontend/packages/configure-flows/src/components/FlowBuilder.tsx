@@ -8,7 +8,9 @@ import {
   ResourceDeployStatus,
 } from '@thunderid/components';
 import {useEmailProviders, useIdentityProviders, useSMSProviders} from '@thunderid/configure-connections';
+import {useOrganizationAccess} from '@thunderid/configure-resource-sharing';
 import {useProjectScope} from '@thunderid/contexts';
+import {getErrorMessage} from '@thunderid/utils';
 import {Alert, Box, Snackbar, Stack} from '@wso2/oxygen-ui';
 import type {Edge, Node, NodeChange} from '@xyflow/react';
 import {useEdgesState, useNodesState, useUpdateNodeInternals} from '@xyflow/react';
@@ -20,6 +22,12 @@ import '@xyflow/react/dist/style.css';
 import FlowCanvas from './FlowCanvas';
 import useGetFlowBuilderResources from '../api/useGetFlowBuilderResources';
 import useGetFlowById from '../api/useGetFlowById';
+import {
+  declaredVariablesOf,
+  editsVariableRule,
+  hasInvalidUnitDefaults,
+  hasTermsForRemovedVariable,
+} from '../components/flow-sharing/variableRules';
 import {EXECUTOR_TO_IDP_TYPE_MAP} from '../components/resource-property-panel/extended-properties/execution-properties/constants';
 import SsoDisableConfirmDialog from '../components/SsoDisableConfirmDialog';
 import SsoToggle from '../components/SsoToggle';
@@ -403,6 +411,63 @@ function FlowBuilder() {
     };
   }, []);
 
+  // Only a flow that is saved, and so has an owner, can be shared.
+  const sharedFlow = useMemo(
+    () =>
+      flowId && existingFlowData?.ouId
+        ? {
+            id: flowId,
+            isReadOnly: existingFlowData.isReadOnly,
+            name: existingFlowData.name,
+            ouId: existingFlowData.ouId,
+          }
+        : undefined,
+    [flowId, existingFlowData?.isReadOnly, existingFlowData?.name, existingFlowData?.ouId],
+  );
+
+  // The flow's organization access is held here, not in the Share view, so the flow's own Save saves it too, after the
+  // flow: the server checks the terms against the stored flow, which has to hold the variables they name first.
+  const sharingAccess = useOrganizationAccess({
+    resourcePath: `flows/${sharedFlow?.id ?? ''}`,
+    enabled: sharedFlow !== undefined,
+    editsRule: editsVariableRule,
+  });
+  // The server refuses a default a unit starts with when it breaks the rules of its variable, so the editor does not
+  // save over it. Saving the flow is held back too, as the sharing is saved with it.
+  const hasInvalidSharing: boolean = useMemo(
+    () =>
+      sharingAccess.hasChanges &&
+      !sharingAccess.isDeclared &&
+      hasInvalidUnitDefaults(sharingAccess.draft, declaredVariablesOf(nodes)),
+    [sharingAccess.draft, sharingAccess.hasChanges, sharingAccess.isDeclared, nodes],
+  );
+  const saveBlockedReason: string | undefined = hasInvalidSharing
+    ? t(
+        'flows:core.headerPanel.sharingInvalidTooltip',
+        'Fix the organization unit defaults marked in Share before saving',
+      )
+    : undefined;
+  const sharingAccessRef = useRef(sharingAccess);
+  useEffect(() => {
+    sharingAccessRef.current = sharingAccess;
+  }, [sharingAccess]);
+
+  const saveSharing = useCallback((): void => {
+    sharingAccessRef.current
+      .save()
+      .then(() => showSuccess(t('flows:core.sharing.dialog.saved', 'Sharing updated.')))
+      .catch((err: Error) =>
+        showError(
+          getErrorMessage(
+            err,
+            tForErrors,
+            'core.sharing.dialog.saveError',
+            'Failed to update how the flow is shared. Please try again.',
+          ),
+        ),
+      );
+  }, [showError, showSuccess, t, tForErrors]);
+
   // Rebase the clean baseline on the canvas snapshot that was actually
   // persisted — the user may have kept editing while the save request was in
   // flight, and those edits must stay dirty. History is intentionally NOT
@@ -410,11 +475,41 @@ function FlowBuilder() {
   // A save is read back, which settles the graph once more (normalized fields, node internals); that
   // settle is taken as the clean baseline too, unless the user interacted after the save was sent or
   // interacts before it settles.
-  const handleSaved = useCallback((savedCanvas: {nodes: Node[]; edges: Edge[]}) => {
-    hasInteractedRef.current = true;
-    setSavedSignature(computeGraphSignature(savedCanvas.nodes, savedCanvas.edges));
-    if (interactionsRef.current === interactionsAtSaveRef.current) setIsBaselineRebasePending(true);
-  }, []);
+  const handleSaved = useCallback(
+    (savedCanvas: {nodes: Node[]; edges: Edge[]}) => {
+      hasInteractedRef.current = true;
+      setSavedSignature(computeGraphSignature(savedCanvas.nodes, savedCanvas.edges));
+      if (interactionsRef.current === interactionsAtSaveRef.current) setIsBaselineRebasePending(true);
+
+      // The flow is stored now, so the sharing changes made beside it can be saved against it.
+      const shared = sharingAccessRef.current;
+
+      // A variable the flow no longer declares took its sharing terms with it on the server, so the policy held here is
+      // out of date, with or without changes of its own. It is read again, and a draft built on it is dropped rather
+      // than saved over the server's version.
+      if (hasTermsForRemovedVariable(shared.savedPolicy, savedCanvas.nodes)) {
+        const hadChanges: boolean = shared.hasChanges;
+
+        shared.reset();
+
+        if (hadChanges) {
+          showError(
+            t(
+              'flows:core.sharing.dialog.termsDropped',
+              'A variable you removed took its sharing terms with it, so your sharing changes were discarded. Share the flow again.',
+            ),
+          );
+        }
+
+        return;
+      }
+
+      if (shared.hasChanges) {
+        saveSharing();
+      }
+    },
+    [saveSharing, showError, t],
+  );
 
   // Flow save hook
   const {handleSave} = useFlowSave({
@@ -437,9 +532,21 @@ function FlowBuilder() {
   const saveFlow = useCallback(
     (canvasData: Parameters<typeof handleSave>[0]): void => {
       interactionsAtSaveRef.current = interactionsRef.current;
+
+      if (saveBlockedReason) {
+        showError(saveBlockedReason);
+        return;
+      }
+
+      // Only how the flow is shared changed, so there is nothing of the flow itself to save.
+      if (!isDirty && sharingAccess.hasChanges) {
+        saveSharing();
+        return;
+      }
+
       handleSave(canvasData);
     },
-    [handleSave],
+    [handleSave, isDirty, saveBlockedReason, saveSharing, sharingAccess.hasChanges, showError],
   );
   // Kept the same while the flow is, so the resource panel is not drawn again on every edit.
   const flowStatus = useMemo(
@@ -814,7 +921,10 @@ function FlowBuilder() {
             onRedo={redo}
             canUndo={canUndo}
             canRedo={canRedo}
-            isDirty={isDirty}
+            isDirty={isDirty || sharingAccess.hasChanges}
+            sharing={sharedFlow}
+            sharingAccess={sharingAccess}
+            saveBlockedReason={saveBlockedReason}
           />
         </CompactStacksContext.Provider>
       </FlowTypeContext.Provider>

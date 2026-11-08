@@ -113,6 +113,7 @@ export {default as NameSuggestion} from './lab/components/NameSuggestion';
 export type {NameSuggestionProps} from './lab/components/NameSuggestion';
 export {default as PageLoadingAnimation} from './lab/components/PageLoadingAnimation';
 export {default as ResourceAvatar} from './lab/components/ResourceAvatar';
+export {default as SdkTheme} from './SdkTheme/SdkTheme';
 export {default as SettingsCard} from './lab/components/SettingsCard';
 export {default as UnsavedChangesBar} from './lab/components/UnsavedChangesBar';
 

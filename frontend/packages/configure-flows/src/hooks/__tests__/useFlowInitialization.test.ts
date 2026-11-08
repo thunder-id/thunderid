@@ -643,6 +643,28 @@ describe('useFlowInitialization', () => {
       expect(endNode?.deletable).toBe(false);
     });
 
+    it('should leave a variables node deletable in an existing flow', () => {
+      mockTransformFlowToCanvas.mockReturnValueOnce({
+        nodes: [
+          {id: 'start', type: StaticStepTypes.Start, position: {x: 0, y: 0}, data: {}},
+          {id: 'vars', type: StaticStepTypes.Variables, position: {x: 100, y: 0}, data: {inputs: []}},
+          {id: 'END', type: StepTypes.End, position: {x: 200, y: 0}, data: {}},
+        ],
+        edges: [],
+        viewport: {x: 0, y: 0, zoom: 1},
+      });
+
+      renderUseFlowInitialization({
+        flowId: 'flow-1',
+        existingFlowData: createMockExistingFlowData(),
+        isLoadingExistingFlow: false,
+      });
+
+      const nodesCall = mockSetNodes.mock.calls[0][0] as Node[];
+
+      expect(nodesCall.find((n: Node) => n.type === StaticStepTypes.Variables)?.deletable).toBe(true);
+    });
+
     it('should map edges with edgeStyle when loading existing flow with edges', () => {
       // Override the flowToCanvasTransformer mock to return edges
       mockTransformFlowToCanvas.mockReturnValueOnce({

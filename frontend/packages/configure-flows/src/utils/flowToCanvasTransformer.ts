@@ -333,8 +333,7 @@ function transformNodeToCanvas(apiNode: FlowNode): CanvasNode {
           height: apiNode.layout.size.height,
         }
       : undefined,
-    deletable:
-      stepType !== StaticStepTypes.Start && stepType !== StaticStepTypes.Variables && stepType !== StepTypes.End,
+    deletable: stepType !== StaticStepTypes.Start && stepType !== StepTypes.End,
     data: {},
   };
 
@@ -352,7 +351,6 @@ function transformNodeToCanvas(apiNode: FlowNode): CanvasNode {
       displayOnly: true,
       inputs: apiNode.inputs ?? [],
     };
-    canvasNode.deletable = false;
   }
 
   // Handle PROMPT/VIEW nodes with UI components

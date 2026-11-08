@@ -13,6 +13,7 @@ import ExecutionExtendedProperties from './extended-properties/ExecutionExtended
 import FieldExtendedProperties from './extended-properties/FieldExtendedProperties';
 import UserSelectExtendedProperties from './extended-properties/UserSelectExtendedProperties';
 import RulesProperties from './nodes/RulesProperties';
+import VariablesProperties from './nodes/VariablesProperties';
 import PropertySection from './PropertySection';
 import ResourcePropertyFactory from './ResourcePropertyFactory';
 import TextPropertyField from './TextPropertyField';
@@ -22,7 +23,7 @@ import type {ResourcePropertiesProps} from '../../context/FlowBuilderCoreProvide
 import type {FieldKey, FieldValue} from '../../models/base';
 import {ElementCategories, ElementTypes, type Element} from '../../models/elements';
 import type {Resource} from '../../models/resources';
-import {StepCategories, StepTypes} from '../../models/steps';
+import {StaticStepTypes, StepCategories, StepTypes} from '../../models/steps';
 
 /**
  * Factory to generate the property configurator for the given password recovery flow resource.
@@ -180,6 +181,14 @@ function ResourceProperties({
 
       return null;
     case StepCategories.Workflow:
+      if (resource.type === StaticStepTypes.Variables) {
+        return (
+          <>
+            {renderElementId()}
+            <VariablesProperties key={resource.id} resource={resource} onChange={handleChange} />
+          </>
+        );
+      }
       if (resource.type === StepTypes.Call) {
         return (
           <>

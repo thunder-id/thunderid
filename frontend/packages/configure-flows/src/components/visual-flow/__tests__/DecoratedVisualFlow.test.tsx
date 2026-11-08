@@ -3,12 +3,16 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-assignment, react/require-default-props */
 
+import type {OrganizationAccessState} from '@thunderid/configure-resource-sharing';
 import {render, screen, fireEvent, waitFor, cleanup, act} from '@thunderid/test-utils';
 import type {Node, Edge} from '@xyflow/react';
 import React from 'react';
 import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
+import FlowVariablesContext from '../../../context/FlowVariablesContext';
 import type {Resources} from '../../../models/resources';
 import DecoratedVisualFlow from '../DecoratedVisualFlow';
+
+const sharingAccess = {hasChanges: false} as unknown as OrganizationAccessState;
 
 const mockNavigate = vi.fn();
 
@@ -90,12 +94,20 @@ vi.mock('../../../hooks/useConfirmPasswordField', () => ({
   default: () => null,
 }));
 
+const handlerProps = vi.hoisted(() => ({
+  current: undefined as {confirmNodesDelete?: (nodes: unknown[]) => Promise<boolean>} | undefined,
+}));
+
 vi.mock('../../../hooks/useVisualFlowHandlers', () => ({
-  default: () => ({
-    handleConnect: vi.fn(),
-    handleNodesDelete: vi.fn(),
-    handleEdgesDelete: vi.fn(),
-  }),
+  default: (props: {confirmNodesDelete?: (nodes: unknown[]) => Promise<boolean>}) => {
+    handlerProps.current = props;
+
+    return {
+      handleConnect: vi.fn(),
+      handleNodesDelete: vi.fn(),
+      handleEdgesDelete: vi.fn(),
+    };
+  },
 }));
 
 const {mockAddToViewAtIndex, mockAddToFormAtIndex} = vi.hoisted(() => ({
@@ -142,16 +154,17 @@ vi.mock('@thunderid/configure-connections', async (importOriginal) => ({
 }));
 
 // Use vi.hoisted for mocks that need to be referenced in vi.mock
-const {mockToObject, mockGetNodes, mockGetEdges, mockUpdateNodeData, mockFitView, mockUpdateNodeInternals} = vi.hoisted(
-  () => ({
+const {mockToObject, mockGetNodes, mockGetEdges, mockUpdateNodeData, mockFitView, mockUpdateNodeInternals, mockStore} =
+  vi.hoisted(() => ({
     mockToObject: vi.fn(() => ({viewport: {x: 0, y: 0, zoom: 1}})),
     mockGetNodes: vi.fn((): Node[] => []),
     mockGetEdges: vi.fn((): Edge[] => []),
     mockUpdateNodeData: vi.fn(),
     mockFitView: vi.fn().mockResolvedValue(undefined),
     mockUpdateNodeInternals: vi.fn(),
-  }),
-);
+    // The nodes the React Flow store holds, which the flow reads its variables from.
+    mockStore: {nodes: [] as Node[]},
+  }));
 
 vi.mock('@xyflow/react', () => ({
   Position: {Bottom: 'bottom', Left: 'left', Right: 'right', Top: 'top'},
@@ -162,7 +175,8 @@ vi.mock('@xyflow/react', () => ({
     updateNodeData: mockUpdateNodeData,
     fitView: mockFitView,
   }),
-  useStore: (selector: (state: {nodes: never[]; edges: never[]}) => unknown) => selector({edges: [], nodes: []}),
+  useStore: (selector: (state: {nodes: Node[]; edges: never[]}) => unknown) =>
+    selector({edges: [], nodes: mockStore.nodes}),
   useStoreApi: () => ({
     getState: () => ({edges: [], nodeLookup: new Map(), nodes: []}),
   }),
@@ -263,6 +277,30 @@ vi.mock('classnames', () => ({
 }));
 
 // Mock child components
+// Reads the variables the flow hands to the steps, and offers a button for each way a step can change them.
+function VariablesProbe() {
+  const {countBindings, ownerOuId, removeBindings, renameBindings, variablesBefore, variablesNodeBefore} =
+    React.useContext(FlowVariablesContext);
+
+  return (
+    <div data-testid="variables-probe" data-bound-count={countBindings('old')} data-owner={ownerOuId ?? ''}>
+      <span
+        data-testid="variables-scope"
+        data-before={variablesBefore('step-1')
+          .map((variable) => variable.identifier)
+          .join(',')}
+        data-nearest={variablesNodeBefore('step-1') ?? ''}
+      />
+      <button type="button" data-testid="rename-bindings-trigger" onClick={() => renameBindings('old', 'fresh')}>
+        Rename bindings
+      </button>
+      <button type="button" data-testid="remove-bindings-trigger" onClick={() => removeBindings('old')}>
+        Remove bindings
+      </button>
+    </div>
+  );
+}
+
 vi.mock('../VisualFlow', () => ({
   default: ({nodes, edges, onNodeDragStop, onNodeClick}: any) => (
     <div
@@ -271,6 +309,7 @@ vi.mock('../VisualFlow', () => ({
       data-edges={JSON.stringify(edges)}
       data-has-drag-stop={!!onNodeDragStop}
     >
+      <VariablesProbe />
       <button data-testid="node-drag-stop-trigger" onClick={onNodeDragStop}>
         Node Drag Stop
       </button>
@@ -356,6 +395,16 @@ vi.mock('../FormRequiresViewDialog', () => ({
   ),
 }));
 
+vi.mock('../../flow-sharing/useSharedVariables', () => ({
+  default: () => new Set<string>(),
+}));
+
+vi.mock('../../flow-sharing/FlowSharingDialog', () => ({
+  default: ({flow, open, variables}: {flow: {id: string}; open: boolean; variables: unknown[]}) => (
+    <div data-testid="flow-sharing-dialog" data-open={open} data-flow={flow.id} data-count={variables.length} />
+  ),
+}));
+
 vi.mock('../../../utils/generateResourceId', () => ({
   default: (prefix: string) => `${prefix}_test123`,
 }));
@@ -389,11 +438,19 @@ describe('DecoratedVisualFlow', () => {
     onFlowTitleChange: vi.fn(),
   };
 
+  // The graph after the last update made to the flow's own nodes, which is where bindings are rewritten.
+  const afterLastNodesUpdate = (graph: Node[]): Node[] => {
+    const updater = defaultProps.setNodes.mock.calls.at(-1)?.[0] as (current: Node[]) => Node[];
+
+    return updater(graph);
+  };
+
   beforeEach(() => {
     vi.clearAllMocks();
     dragOverlaySource.current = undefined;
     mockGetNodes.mockReturnValue([]);
     mockGetEdges.mockReturnValue([]);
+    mockStore.nodes = [];
     mockFlowConfigState.isVerboseMode = true;
     // Reset applyAutoLayout to return a resolved promise by default
     mockApplyAutoLayout.mockResolvedValue([]);
@@ -411,6 +468,323 @@ describe('DecoratedVisualFlow', () => {
       });
     });
     cleanup();
+  });
+
+  describe('Deleting a variables step', () => {
+    const variablesStep = {
+      id: 'vars',
+      type: 'VARIABLES',
+      position: {x: 0, y: 0},
+      data: {inputs: [{identifier: 'region', type: 'TEXT_INPUT'}]},
+    } as Node;
+    const user = (id: string, properties: Record<string, unknown>): Node =>
+      ({id, type: 'TASK_EXECUTION', position: {x: 0, y: 0}, data: {properties}}) as Node;
+
+    const askAboutDeleting = (): Promise<boolean> => {
+      let answer: Promise<boolean> | undefined;
+
+      act(() => {
+        answer = handlerProps.current?.confirmNodesDelete?.([variablesStep]);
+      });
+
+      return answer!;
+    };
+
+    it('should delete without asking when nothing uses the variables', async () => {
+      mockGetNodes.mockReturnValue([variablesStep, user('step-1', {a: 'plain'})]);
+
+      renderComponent(<DecoratedVisualFlow {...defaultProps} />);
+
+      await expect(askAboutDeleting()).resolves.toBe(true);
+      expect(screen.queryByTestId('variable-change-dialog')).not.toBeInTheDocument();
+    });
+
+    it('should ask, and unbind the steps that use the variables once it is confirmed', async () => {
+      mockGetNodes.mockReturnValue([
+        variablesStep,
+        user('step-1', {a: '{{var(region)}}', keep: 'plain'}),
+        user('step-2', {b: '{{var(region)}}'}),
+      ]);
+
+      renderComponent(<DecoratedVisualFlow {...defaultProps} />);
+      const answer = askAboutDeleting();
+
+      expect(await screen.findByTestId('variable-change-dialog')).toHaveTextContent('2 steps use its variables');
+
+      fireEvent.click(screen.getByTestId('variable-change-confirm'));
+
+      await expect(answer).resolves.toBe(true);
+
+      const graph = [
+        variablesStep,
+        user('step-1', {a: '{{var(region)}}', keep: 'plain'}),
+        user('step-2', {b: '{{var(region)}}'}),
+      ];
+
+      expect(afterLastNodesUpdate(graph).map((node) => (node.data as {properties?: unknown}).properties)).toEqual([
+        undefined,
+        {keep: 'plain'},
+        {},
+      ]);
+    });
+
+    it('should keep the step and the bindings when the deletion is declined', async () => {
+      mockGetNodes.mockReturnValue([variablesStep, user('step-1', {a: '{{var(region)}}'})]);
+
+      renderComponent(<DecoratedVisualFlow {...defaultProps} />);
+      const answer = askAboutDeleting();
+
+      fireEvent.click(await screen.findByRole('button', {name: 'Cancel'}));
+
+      await expect(answer).resolves.toBe(false);
+      expect(defaultProps.setNodes).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Flow variables for the steps', () => {
+    const bound = (id: string, properties: Record<string, unknown>): Node =>
+      ({id, position: {x: 0, y: 0}, data: {properties}}) as Node;
+
+    it('should tell the steps which organization unit owns the flow, once it can be shared', () => {
+      renderComponent(
+        <DecoratedVisualFlow
+          {...defaultProps}
+          sharing={{id: 'flow-1', name: 'Flow', ouId: 'ou-root'}}
+          sharingAccess={sharingAccess}
+        />,
+      );
+
+      expect(screen.getByTestId('variables-probe')).toHaveAttribute('data-owner', 'ou-root');
+    });
+
+    it('should leave the owner out for a flow that is not saved yet', () => {
+      renderComponent(<DecoratedVisualFlow {...defaultProps} />);
+
+      expect(screen.getByTestId('variables-probe')).toHaveAttribute('data-owner', '');
+    });
+
+    it('should offer a step only the variables every route passes before it', () => {
+      const variables = (id: string, identifier: string): Node =>
+        ({id, type: 'VARIABLES', position: {x: 0, y: 0}, data: {inputs: [{identifier, type: 'TEXT_INPUT'}]}}) as Node;
+      const graph = [
+        {id: 'start', type: 'START', position: {x: 0, y: 0}, data: {}} as Node,
+        variables('vars-1', 'before'),
+        {id: 'step-1', type: 'TASK_EXECUTION', position: {x: 0, y: 0}, data: {}} as Node,
+        variables('vars-2', 'beside'),
+      ];
+
+      mockStore.nodes = graph;
+      mockGetNodes.mockReturnValue(graph);
+      mockGetEdges.mockReturnValue([
+        {id: 'e1', source: 'start', target: 'vars-1'},
+        {id: 'e2', source: 'vars-1', target: 'step-1'},
+        {id: 'e3', source: 'start', target: 'vars-2'},
+      ]);
+
+      renderComponent(<DecoratedVisualFlow {...defaultProps} />);
+
+      expect(screen.getByTestId('variables-scope')).toHaveAttribute('data-before', 'before');
+      expect(screen.getByTestId('variables-scope')).toHaveAttribute('data-nearest', 'vars-1');
+    });
+
+    it('should offer nothing to a step a variables node can be bypassed to reach', () => {
+      const graph = [
+        {id: 'start', type: 'START', position: {x: 0, y: 0}, data: {}} as Node,
+        {
+          id: 'vars-1',
+          type: 'VARIABLES',
+          position: {x: 0, y: 0},
+          data: {inputs: [{identifier: 'a', type: 'TEXT_INPUT'}]},
+        } as Node,
+        {id: 'step-1', type: 'TASK_EXECUTION', position: {x: 0, y: 0}, data: {}} as Node,
+      ];
+
+      mockStore.nodes = graph;
+      mockGetNodes.mockReturnValue(graph);
+      mockGetEdges.mockReturnValue([
+        {id: 'e1', source: 'start', target: 'vars-1'},
+        {id: 'e2', source: 'vars-1', target: 'step-1'},
+        {id: 'e3', source: 'start', target: 'step-1'},
+      ]);
+
+      renderComponent(<DecoratedVisualFlow {...defaultProps} />);
+
+      expect(screen.getByTestId('variables-scope')).toHaveAttribute('data-before', '');
+      expect(screen.getByTestId('variables-scope')).toHaveAttribute('data-nearest', '');
+    });
+
+    it('should count the steps that hold a property bound to a variable', () => {
+      mockGetNodes.mockReturnValue([
+        bound('step-1', {a: '{{var(old)}}'}),
+        bound('step-2', {a: '{{var(other)}}'}),
+        bound('step-3', {a: '{{var(old)}}', b: '{{var(old)}}'}),
+      ]);
+
+      renderComponent(<DecoratedVisualFlow {...defaultProps} />);
+
+      expect(screen.getByTestId('variables-probe')).toHaveAttribute('data-bound-count', '2');
+    });
+
+    it('should point the bound properties of every step at a renamed variable', () => {
+      mockGetNodes.mockReturnValue([
+        bound('step-1', {a: '{{var(old)}}', keep: 'plain'}),
+        bound('step-2', {a: '{{var(other)}}'}),
+      ]);
+
+      renderComponent(<DecoratedVisualFlow {...defaultProps} />);
+      fireEvent.click(screen.getByTestId('rename-bindings-trigger'));
+
+      const graph = [bound('step-1', {a: '{{var(old)}}', keep: 'plain'}), bound('step-2', {a: '{{var(other)}}'})];
+      const result = afterLastNodesUpdate(graph);
+
+      expect((result[0].data as {properties: unknown}).properties).toEqual({a: '{{var(fresh)}}', keep: 'plain'});
+      // A step bound to another variable is the very same node, untouched.
+      expect(result[1]).toBe(graph[1]);
+    });
+
+    it('should rewrite the steps a compact stack hides, which the canvas cannot reach', () => {
+      const hidden = bound('hidden-member', {a: '{{var(old)}}'});
+      const shown = bound('shown', {a: '{{var(old)}}'});
+
+      // The canvas shows only one of the two steps, as it does with a stack collapsed.
+      mockGetNodes.mockReturnValue([shown]);
+      mockStore.nodes = [shown];
+
+      renderComponent(<DecoratedVisualFlow {...defaultProps} nodes={[shown]} sourceNodes={[shown, hidden]} />);
+
+      expect(screen.getByTestId('variables-probe')).toHaveAttribute('data-bound-count', '2');
+
+      fireEvent.click(screen.getByTestId('rename-bindings-trigger'));
+
+      const result = afterLastNodesUpdate([shown, hidden]);
+
+      expect(result.map((node) => (node.data as {properties: unknown}).properties)).toEqual([
+        {a: '{{var(fresh)}}'},
+        {a: '{{var(fresh)}}'},
+      ]);
+      expect(mockUpdateNodeData).not.toHaveBeenCalled();
+    });
+
+    it('should take the bound properties off a removed variable', () => {
+      mockGetNodes.mockReturnValue([bound('step-1', {a: '{{var(old)}}', keep: 'plain'})]);
+
+      renderComponent(<DecoratedVisualFlow {...defaultProps} />);
+      fireEvent.click(screen.getByTestId('remove-bindings-trigger'));
+
+      const result = afterLastNodesUpdate([bound('step-1', {a: '{{var(old)}}', keep: 'plain'})]);
+
+      expect((result[0].data as {properties: unknown}).properties).toEqual({keep: 'plain'});
+    });
+  });
+
+  describe('Save blocked by the sharing', () => {
+    const sharing = {id: 'flow-1', name: 'Enterprise sign-in', ouId: 'ou-root'};
+
+    it('should disable Save while a reason blocks it, and mark the Share button', () => {
+      renderComponent(
+        <DecoratedVisualFlow
+          {...defaultProps}
+          onSave={vi.fn()}
+          sharing={sharing}
+          sharingAccess={sharingAccess}
+          saveBlockedReason="Fix the defaults first"
+        />,
+      );
+
+      expect(screen.getByTestId('save-flow-button')).toBeDisabled();
+      expect(screen.getByTestId('share-flow-button')).toHaveClass('MuiButton-colorError');
+    });
+
+    it('should leave Save enabled, and Share unmarked, when nothing blocks it', () => {
+      renderComponent(
+        <DecoratedVisualFlow {...defaultProps} onSave={vi.fn()} sharing={sharing} sharingAccess={sharingAccess} />,
+      );
+
+      expect(screen.getByTestId('save-flow-button')).toBeEnabled();
+      expect(screen.getByTestId('share-flow-button')).not.toHaveClass('MuiButton-colorError');
+    });
+  });
+
+  describe('Share button', () => {
+    const sharing = {id: 'flow-1', name: 'Enterprise sign-in', ouId: 'ou-root'};
+    const variablesNode = {
+      id: 'variables-1',
+      type: 'VARIABLES',
+      position: {x: 0, y: 0},
+      data: {inputs: [{identifier: 'connection1'}]},
+    } as Node;
+
+    it('should not render for a flow that cannot be shared yet', () => {
+      renderComponent(<DecoratedVisualFlow {...defaultProps} />);
+
+      expect(screen.queryByTestId('share-flow-button')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('flow-sharing-dialog')).not.toBeInTheDocument();
+    });
+
+    it('should render beside the other header buttons for a flow that can be shared', () => {
+      renderComponent(<DecoratedVisualFlow {...defaultProps} sharing={sharing} sharingAccess={sharingAccess} />);
+
+      expect(screen.getByTestId('share-flow-button')).toBeInTheDocument();
+    });
+
+    it('should open the sharing dialog for the flow, with its variables', () => {
+      mockStore.nodes = [variablesNode];
+      renderComponent(
+        <DecoratedVisualFlow
+          {...defaultProps}
+          nodes={[variablesNode]}
+          sharing={sharing}
+          sharingAccess={sharingAccess}
+        />,
+      );
+
+      expect(screen.getByTestId('flow-sharing-dialog')).toHaveAttribute('data-open', 'false');
+
+      fireEvent.click(screen.getByTestId('share-flow-button'));
+
+      const dialog = screen.getByTestId('flow-sharing-dialog');
+
+      expect(dialog).toHaveAttribute('data-open', 'true');
+      expect(dialog).toHaveAttribute('data-flow', 'flow-1');
+      expect(dialog).toHaveAttribute('data-count', '1');
+    });
+
+    it('should share a flow with no variables node with no variables', () => {
+      renderComponent(<DecoratedVisualFlow {...defaultProps} sharing={sharing} sharingAccess={sharingAccess} />);
+
+      expect(screen.getByTestId('flow-sharing-dialog')).toHaveAttribute('data-count', '0');
+    });
+  });
+
+  describe('Variables node', () => {
+    const variablesNode = {
+      id: 'variables-1',
+      type: 'VARIABLES',
+      position: {x: 0, y: 0},
+      data: {inputs: [{identifier: 'connection'}, {identifier: 'support_email'}]},
+    } as Node;
+
+    it('should share the flow with the variables of every variables node', () => {
+      const secondNode = {
+        id: 'variables-2',
+        type: 'VARIABLES',
+        position: {x: 0, y: 200},
+        data: {inputs: [{identifier: 'phone'}]},
+      } as Node;
+
+      mockStore.nodes = [variablesNode, secondNode];
+
+      renderComponent(
+        <DecoratedVisualFlow
+          {...defaultProps}
+          nodes={[variablesNode, secondNode]}
+          sharing={{id: 'flow-1', name: 'Flow', ouId: 'ou-root'}}
+          sharingAccess={sharingAccess}
+        />,
+      );
+
+      expect(screen.getByTestId('flow-sharing-dialog')).toHaveAttribute('data-count', '3');
+    });
   });
 
   describe('Rendering', () => {

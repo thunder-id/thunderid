@@ -13,6 +13,8 @@ const policyWith = (sections: SharingPolicySections): SharingPolicy => ({
   ...sections,
 });
 
+const editsTerms = (field: string): boolean => field.startsWith('terms.');
+
 describe('switchOrganizationAccess', () => {
   it('clears the exceptions when leaving all child units', () => {
     const saved = policyWith({childUnits: {mode: 'all', excludedOuIds: ['trials']}});
@@ -172,5 +174,36 @@ describe('getBlockedNoneReason', () => {
 
   it('blocks nothing outside the chosen scope', () => {
     expect(getBlockedNoneReason(sharingPolicyToDraft(undefined), 'childUnitsAccess', undefined)).toBeNull();
+  });
+
+  it('drops the shared terms, and says so, when switching from all to selected child units', () => {
+    const rules = {'terms.region': {editable: true}};
+    const saved = policyWith({childUnits: {mode: 'all', overlayRules: rules}});
+    const result = switchOrganizationAccess(
+      sharingPolicyToDraft(saved, editsTerms),
+      'childUnitsAccess',
+      'selected',
+      saved,
+      editsTerms,
+    );
+
+    expect(result.next.childUnitRules).toEqual({});
+    expect(result.cleared).toContainEqual({kind: 'childUnitRules', ouIds: []});
+  });
+
+  it('drops the terms when no child unit is reached any more', () => {
+    const saved = policyWith({
+      childUnits: {mode: 'all', overlayRules: {'terms.region': {editable: true}}},
+      otherTreeRoots: {mode: 'selected', units: [{ouId: 'northwind'}]},
+    });
+    const result = switchOrganizationAccess(
+      sharingPolicyToDraft(saved, editsTerms),
+      'childUnitsAccess',
+      'none',
+      saved,
+      editsTerms,
+    );
+
+    expect(result.next.childUnitRules).toEqual({});
   });
 });

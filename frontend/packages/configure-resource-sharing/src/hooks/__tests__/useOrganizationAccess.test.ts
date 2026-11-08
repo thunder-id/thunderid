@@ -189,6 +189,21 @@ describe('useOrganizationAccess', () => {
     expect(result.current.draft.childUnitsAccess).toBe('all');
     expect(result.current.hasChanges).toBe(true);
   });
+  it('shows no unsaved changes for a policy with an assignments rule until it is edited', async () => {
+    const off = {assignments: {editable: false}};
+    serve([{...owned, childUnits: {mode: 'all', excludedOuIds: ['trials'], overlayRules: off}}]);
+    const {result} = renderHook(() => useOrganizationAccess({resourcePath: 'applications/app-1'}));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.hasChanges).toBe(false);
+
+    act(() => {
+      result.current.updateDraft((draft) => ({...draft, childUnitExclusions: []}));
+    });
+
+    expect(result.current.hasChanges).toBe(true);
+  });
+
   it("keeps a role's assignments rule when an edit saves the policy", async () => {
     const off = {assignments: {editable: false}};
     serve([{...owned, childUnits: {mode: 'all', excludedOuIds: ['trials'], overlayRules: off}}]);

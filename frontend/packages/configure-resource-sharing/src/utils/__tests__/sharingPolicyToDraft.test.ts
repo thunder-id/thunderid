@@ -12,6 +12,8 @@ const policyWith = (sections: SharingPolicySections): SharingPolicy => ({
   ...sections,
 });
 
+const editsTerms = (field: string): boolean => field.startsWith('terms.');
+
 describe('sharingPolicyToDraft', () => {
   it('reads a missing policy as owner-only access', () => {
     expect(sharingPolicyToDraft(undefined)).toEqual(EMPTY_ORGANIZATION_ACCESS_DRAFT);
@@ -81,5 +83,41 @@ describe('sharingPolicyToDraft', () => {
     first.trees.push('x');
 
     expect(sharingPolicyToDraft(undefined).trees).toEqual([]);
+  });
+
+  it('reads the terms of all child units', () => {
+    const rules = {'terms.region': {editable: true}};
+    const draft = sharingPolicyToDraft(policyWith({childUnits: {mode: 'all', overlayRules: rules}}), editsTerms);
+
+    expect(draft.childUnitRules).toEqual(rules);
+  });
+
+  it('reads only the rules the resource says its screen edits', () => {
+    const rules = {'terms.region': {editable: true}, 'other.rule': {editable: false}};
+    const policy = policyWith({childUnits: {mode: 'all', overlayRules: rules}});
+
+    expect(sharingPolicyToDraft(policy, editsTerms).childUnitRules).toEqual({'terms.region': {editable: true}});
+    expect(sharingPolicyToDraft(policy).childUnitRules).toBeUndefined();
+  });
+
+  it('reads the terms of each selected child unit separately', () => {
+    const rules = {'terms.region': {editable: false, value: ['c-1']}};
+    const draft = sharingPolicyToDraft(
+      policyWith({
+        childUnits: {
+          mode: 'selected',
+          units: [
+            {ouId: 'retail', reach: 'unit'},
+            {ouId: 'banking', reach: 'unit', overlayRules: rules},
+          ],
+        },
+      }),
+      editsTerms,
+    );
+
+    expect(draft.childUnits).toEqual([
+      {ouId: 'retail', reach: 'unit'},
+      {ouId: 'banking', reach: 'unit', rules},
+    ]);
   });
 });

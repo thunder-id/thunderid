@@ -2,13 +2,15 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {Checkbox, FormControlLabel, FormLabel, MenuItem, Select, Stack, Typography} from '@wso2/oxygen-ui';
-import {useCallback, useMemo, type ReactNode} from 'react';
+import {useMemo, type ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
 import {HTTP_METHODS} from './constants';
 import DraftTextField from './DraftTextField';
 import KeyValueEditor from './KeyValueEditor';
 import type {CommonResourcePropertiesPropsInterface} from './types';
 import {clampToInteger} from './utils';
+import VariableBinding from './VariableBinding';
+import {NUMBER_VARIABLES, TEXT_VARIABLES} from './variableBindingTypes';
 import type {StepData} from '../../../../models/steps';
 
 function HttpRequestProperties({resource, onChange}: CommonResourcePropertiesPropsInterface): ReactNode {
@@ -30,20 +32,6 @@ function HttpRequestProperties({resource, onChange}: CommonResourcePropertiesPro
       retryDelay?: number;
     }) || {};
 
-  const handleStringPropertyChange = useCallback(
-    (propertyName: string, value: string): void => {
-      onChange(`data.properties.${propertyName}`, value, resource);
-    },
-    [resource, onChange],
-  );
-
-  const handleNumberPropertyChange = useCallback(
-    (propertyName: string, value: string): void => {
-      onChange(`data.properties.${propertyName}`, Number(value), resource);
-    },
-    [resource, onChange],
-  );
-
   const entriesToRecord = (entries: [string, string][]): Record<string, string> => Object.fromEntries(entries);
 
   const updateHeaderEntries = (updater: (prev: [string, string][]) => [string, string][]): void => {
@@ -60,32 +48,53 @@ function HttpRequestProperties({resource, onChange}: CommonResourcePropertiesPro
         {t('flows:core.executions.httpRequest.description')}
       </Typography>
 
-      <DraftTextField
-        labelPlacement="top"
+      <VariableBinding
+        resource={resource}
+        onChange={onChange}
+        propertyKey="url"
+        accepts={TEXT_VARIABLES}
         label={t('flows:core.executions.httpRequest.url.label')}
-        id="http-url"
-        value={(properties['url'] as string) || ''}
-        onCommit={(value) => handleStringPropertyChange('url', value)}
-        placeholder={t('flows:core.executions.httpRequest.url.placeholder')}
-        fullWidth
-        size="small"
-      />
+      >
+        {({commit, label, value: stored}) => (
+          <DraftTextField
+            labelPlacement="top"
+            label={label}
+            id="http-url"
+            value={(stored as string) || ''}
+            onCommit={commit}
+            placeholder={t('flows:core.executions.httpRequest.url.placeholder')}
+            fullWidth
+            size="small"
+          />
+        )}
+      </VariableBinding>
 
-      <div>
-        <FormLabel htmlFor="http-method">{t('flows:core.executions.httpRequest.method.label')}</FormLabel>
-        <Select
-          id="http-method"
-          value={(properties['method'] as string) || 'GET'}
-          onChange={(e) => onChange('data.properties.method', e.target.value, resource)}
-          fullWidth
-        >
-          {HTTP_METHODS.map((method) => (
-            <MenuItem key={method} value={method}>
-              {method}
-            </MenuItem>
-          ))}
-        </Select>
-      </div>
+      <VariableBinding
+        resource={resource}
+        onChange={onChange}
+        propertyKey="method"
+        accepts={TEXT_VARIABLES}
+        showLabel
+        labelId="http-method-label"
+        htmlFor="http-method"
+        label={t('flows:core.executions.httpRequest.method.label')}
+      >
+        {({commit, value: stored}) => (
+          <Select
+            labelId="http-method-label"
+            id="http-method"
+            value={(stored as string) || 'GET'}
+            onChange={(e) => commit(e.target.value)}
+            fullWidth
+          >
+            {HTTP_METHODS.map((method) => (
+              <MenuItem key={method} value={method}>
+                {method}
+              </MenuItem>
+            ))}
+          </Select>
+        )}
+      </VariableBinding>
 
       <div>
         <FormLabel>{t('flows:core.executions.httpRequest.headers.label')}</FormLabel>
@@ -108,46 +117,62 @@ function HttpRequestProperties({resource, onChange}: CommonResourcePropertiesPro
         />
       </div>
 
-      <DraftTextField
-        labelPlacement="top"
+      <VariableBinding
+        resource={resource}
+        onChange={onChange}
+        propertyKey="body"
+        accepts={TEXT_VARIABLES}
         label={t('flows:core.executions.httpRequest.body.label')}
-        id="http-body"
-        value={
-          typeof properties['body'] === 'string'
-            ? properties['body']
-            : JSON.stringify(properties['body'] ?? {}, null, 2)
-        }
-        // Committing on blur also means a half-typed body is not repeatedly parsed and
-        // stored as a raw string on the way to becoming valid JSON.
-        onCommit={(value) => {
-          try {
-            const parsed: unknown = JSON.parse(value);
-            onChange('data.properties.body', parsed, resource);
-          } catch {
-            onChange('data.properties.body', value, resource);
-          }
-        }}
-        placeholder={t('flows:core.executions.httpRequest.body.placeholder')}
-        fullWidth
-        size="small"
-        multiline
-        minRows={3}
-      />
+      >
+        {({commit, label, value: stored}) => (
+          <DraftTextField
+            labelPlacement="top"
+            label={label}
+            id="http-body"
+            value={typeof stored === 'string' ? stored : JSON.stringify(stored ?? {}, null, 2)}
+            // Committing on blur also means a half-typed body is not repeatedly parsed and
+            // stored as a raw string on the way to becoming valid JSON.
+            onCommit={(value) => {
+              try {
+                const parsed: unknown = JSON.parse(value);
+                commit(parsed);
+              } catch {
+                commit(value);
+              }
+            }}
+            placeholder={t('flows:core.executions.httpRequest.body.placeholder')}
+            fullWidth
+            size="small"
+            multiline
+            minRows={3}
+          />
+        )}
+      </VariableBinding>
 
-      <DraftTextField
-        labelPlacement="top"
+      <VariableBinding
+        resource={resource}
+        onChange={onChange}
+        propertyKey="timeout"
+        accepts={NUMBER_VARIABLES}
         label={t('flows:core.executions.httpRequest.timeout.label')}
-        helperText={t('flows:core.executions.httpRequest.timeout.hint')}
-        id="http-timeout"
-        value={String((properties['timeout'] as number | string | undefined) ?? 10)}
-        onCommit={(value) => handleNumberPropertyChange('timeout', value)}
-        normalize={(raw) => clampToInteger(raw, 1, 20)}
-        placeholder={t('flows:core.executions.httpRequest.timeout.placeholder')}
-        fullWidth
-        size="small"
-        type="number"
-        inputProps={{min: 1, max: 20}}
-      />
+      >
+        {({commit, label, value: stored}) => (
+          <DraftTextField
+            labelPlacement="top"
+            label={label}
+            helperText={t('flows:core.executions.httpRequest.timeout.hint')}
+            id="http-timeout"
+            value={String((stored as number | string | undefined) ?? 10)}
+            onCommit={(value) => commit(Number(value))}
+            normalize={(raw) => clampToInteger(raw, 1, 20)}
+            placeholder={t('flows:core.executions.httpRequest.timeout.placeholder')}
+            fullWidth
+            size="small"
+            type="number"
+            inputProps={{min: 1, max: 20}}
+          />
+        )}
+      </VariableBinding>
 
       <div>
         <FormLabel>{t('flows:core.executions.httpRequest.responseMapping.label')}</FormLabel>
