@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {DocumentTitle, ExternalLink} from '@thunderid/components';
+import {useCapabilitiesContext} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {Button, PageContent, PageTitle} from '@wso2/oxygen-ui';
 import {Plus} from '@wso2/oxygen-ui-icons-react';
@@ -16,6 +17,7 @@ export default function FlowsListPage(): JSX.Element {
   const flowRoutes = useFlowRoutes();
   const {t} = useTranslation();
   const logger = useLogger('FlowsListPage');
+  const {can} = useCapabilitiesContext();
 
   return (
     <PageContent>
@@ -27,21 +29,23 @@ export default function FlowsListPage(): JSX.Element {
           {t('flows:listing.subtitle')} <ExternalLink docKey="flows" confirmBeforeNavigate={false} />
         </PageTitle.SubHeader>
         <PageTitle.Actions>
-          <Button
-            variant="contained"
-            startIcon={<Plus size={18} />}
-            onClick={() => {
-              const handler = async () => {
-                await navigate(flowRoutes.flows.create());
-              };
+          {can('flow', 'create') && (
+            <Button
+              variant="contained"
+              startIcon={<Plus size={18} />}
+              onClick={() => {
+                const handler = async () => {
+                  await navigate(flowRoutes.flows.create());
+                };
 
-              handler().catch((error: unknown) => {
-                logger.error('Failed to navigate to flow builder page', {error});
-              });
-            }}
-          >
-            {t('flows:listing.addFlow')}
-          </Button>
+                handler().catch((error: unknown) => {
+                  logger.error('Failed to navigate to flow builder page', {error});
+                });
+              }}
+            >
+              {t('flows:listing.addFlow')}
+            </Button>
+          )}
         </PageTitle.Actions>
       </PageTitle>
 

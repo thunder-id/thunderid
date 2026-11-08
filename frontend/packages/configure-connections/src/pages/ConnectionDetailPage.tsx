@@ -13,7 +13,7 @@ import {
   SettingsCard,
   UnsavedChangesBar,
 } from '@thunderid/components';
-import {useConfig} from '@thunderid/contexts';
+import {useCapabilitiesContext, useConfig} from '@thunderid/contexts';
 import {getErrorMessage} from '@thunderid/utils';
 import {
   Alert,
@@ -119,6 +119,7 @@ function canonicalAttr(config: AttributeConfiguration | undefined): string {
 
 export default function ConnectionDetailPage(): JSX.Element | null {
   const {t} = useTranslation('connections');
+  const {can} = useCapabilitiesContext();
   const navigate = useNavigate();
   const routes = useConnectionRoutes();
   const {config: appConfig, getGateCallbackUrl} = useConfig();
@@ -603,11 +604,13 @@ export default function ConnectionDetailPage(): JSX.Element | null {
                 data-testid="connection-tab-subject-mapping"
               />
             )}
-            <Tab
-              label={t('detail.tabs.advanced', 'Advanced')}
-              sx={{textTransform: 'none'}}
-              data-testid="connection-tab-advanced"
-            />
+            {can('connection', 'delete') && (
+              <Tab
+                label={t('detail.tabs.advanced', 'Advanced')}
+                sx={{textTransform: 'none'}}
+                data-testid="connection-tab-advanced"
+              />
+            )}
           </Tabs>
 
           <TabPanel value={activeTab} index={0}>
@@ -804,30 +807,32 @@ export default function ConnectionDetailPage(): JSX.Element | null {
             </TabPanel>
           )}
 
-          <TabPanel value={activeTab} index={advancedTabIndex}>
-            <Stack direction="column" spacing={4}>
-              <SettingsCard title={t('detail.dangerZone.title')} description={t('detail.dangerZone.description')}>
-                <Typography variant="h6" gutterBottom color="error">
-                  {t('detail.dangerZone.delete.title')}
-                </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{mb: 3}}>
-                  {t(meta.deleteDescriptionKey ?? 'detail.dangerZone.delete.description')}
-                </Typography>
-                <Button
-                  variant="contained"
-                  color="error"
-                  startIcon={<Trash2 size={16} />}
-                  onClick={() => {
-                    setDeleteError(null);
-                    setDeleteOpen(true);
-                  }}
-                  data-testid="connection-delete-button"
-                >
-                  {t('form.actions.delete')}
-                </Button>
-              </SettingsCard>
-            </Stack>
-          </TabPanel>
+          {can('connection', 'delete') && (
+            <TabPanel value={activeTab} index={advancedTabIndex}>
+              <Stack direction="column" spacing={4}>
+                <SettingsCard title={t('detail.dangerZone.title')} description={t('detail.dangerZone.description')}>
+                  <Typography variant="h6" gutterBottom color="error">
+                    {t('detail.dangerZone.delete.title')}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{mb: 3}}>
+                    {t(meta.deleteDescriptionKey ?? 'detail.dangerZone.delete.description')}
+                  </Typography>
+                  <Button
+                    variant="contained"
+                    color="error"
+                    startIcon={<Trash2 size={16} />}
+                    onClick={() => {
+                      setDeleteError(null);
+                      setDeleteOpen(true);
+                    }}
+                    data-testid="connection-delete-button"
+                  >
+                    {t('form.actions.delete')}
+                  </Button>
+                </SettingsCard>
+              </Stack>
+            </TabPanel>
+          )}
 
           {dirty && (
             <UnsavedChangesBar
@@ -836,7 +841,7 @@ export default function ConnectionDetailPage(): JSX.Element | null {
               saveLabel={t('detail.saveBar.save', 'Save changes')}
               savingLabel={t('detail.saveBar.saving', 'Saving changes...')}
               isSaving={updateMutation.isPending}
-              saveDisabled={!valid}
+              saveDisabled={!valid || !can('connection', 'update')}
               onReset={resetEdits}
               onSave={handleSave}
             />

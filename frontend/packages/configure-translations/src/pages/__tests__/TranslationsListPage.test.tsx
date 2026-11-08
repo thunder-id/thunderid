@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import userEvent from '@testing-library/user-event';
+import {CapabilitiesProvider} from '@thunderid/contexts';
 import {useGetLanguages} from '@thunderid/i18n';
 import {render, renderHook, screen, fireEvent} from '@thunderid/test-utils';
 import {useTranslation} from 'react-i18next';
@@ -89,6 +90,12 @@ vi.mock('@wso2/oxygen-ui', async () => {
 
 const mockUseGetLanguages = vi.mocked(useGetLanguages);
 
+const viewOnly = {
+  can: (_resource: string, action = 'view') => action === 'view',
+  canManageRoot: false,
+  isLoading: false,
+};
+
 describe('TranslationsListPage', () => {
   let t: (key: string) => string;
 
@@ -121,6 +128,16 @@ describe('TranslationsListPage', () => {
       render(<TranslationsListPage />);
 
       expect(screen.getByRole('button', {name: t('translations:listing.addLanguage')})).toBeInTheDocument();
+    });
+
+    it('hides the Add Language button when the admin may not create translations', () => {
+      render(
+        <CapabilitiesProvider capabilities={viewOnly}>
+          <TranslationsListPage />
+        </CapabilitiesProvider>,
+      );
+
+      expect(screen.queryByRole('button', {name: /add language/i})).not.toBeInTheDocument();
     });
 
     it('renders the data grid', () => {

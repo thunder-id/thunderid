@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {QueryErrorNotice} from '@thunderid/components';
-import {useProjectScope} from '@thunderid/contexts';
+import {useCapabilitiesContext, useProjectScope} from '@thunderid/contexts';
 import {useDataGridLocaleText} from '@thunderid/hooks';
 import {useLogger} from '@thunderid/logger/react';
 import {Box, Chip, DataGrid, IconButton, ListingTable, Menu, MenuItem, Tooltip, Typography} from '@wso2/oxygen-ui';
@@ -25,6 +25,7 @@ export default function ResourceServersList(): JSX.Element {
   const logger = useLogger('ResourceServersList');
   const dataGridLocaleText = useDataGridLocaleText();
   const {projectId} = useProjectScope();
+  const {can} = useCapabilitiesContext();
 
   // Resolves an error through the `resourceServers` catalog. `t` defaults to the `common`
   // namespace, so this forwards explicit `ns:` prefixes unchanged and prefixes bare keys with
@@ -181,35 +182,39 @@ export default function ResourceServersList(): JSX.Element {
               </Tooltip>
             ) : (
               <>
-                <Tooltip title={t('common:actions.edit', 'Edit')}>
-                  <IconButton
-                    aria-label={t('common:actions.edit', 'Edit')}
-                    size="small"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      (async (): Promise<void> => {
-                        await navigate(routes.detail(params.row.id));
-                      })().catch((err: unknown) => {
-                        logger.error('Failed to navigate to resource server detail', {error: err});
-                      });
-                    }}
-                  >
-                    <Pencil size={16} />
-                  </IconButton>
-                </Tooltip>
-                <Tooltip title={t('common:actions.delete', 'Delete')}>
-                  <IconButton
-                    aria-label={t('common:actions.delete', 'Delete')}
-                    size="small"
-                    color="error"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setDeleteTarget(params.row);
-                    }}
-                  >
-                    <Trash2 size={16} />
-                  </IconButton>
-                </Tooltip>
+                {can('rs', 'update') && (
+                  <Tooltip title={t('common:actions.edit', 'Edit')}>
+                    <IconButton
+                      aria-label={t('common:actions.edit', 'Edit')}
+                      size="small"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        (async (): Promise<void> => {
+                          await navigate(routes.detail(params.row.id));
+                        })().catch((err: unknown) => {
+                          logger.error('Failed to navigate to resource server detail', {error: err});
+                        });
+                      }}
+                    >
+                      <Pencil size={16} />
+                    </IconButton>
+                  </Tooltip>
+                )}
+                {can('rs', 'delete') && (
+                  <Tooltip title={t('common:actions.delete', 'Delete')}>
+                    <IconButton
+                      aria-label={t('common:actions.delete', 'Delete')}
+                      size="small"
+                      color="error"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDeleteTarget(params.row);
+                      }}
+                    >
+                      <Trash2 size={16} />
+                    </IconButton>
+                  </Tooltip>
+                )}
                 <Tooltip title={t('resourceServers:listing.actions.more', 'More actions')}>
                   <IconButton
                     size="small"
@@ -225,7 +230,7 @@ export default function ResourceServersList(): JSX.Element {
         ),
       },
     ],
-    [t, navigate, routes, logger, defaultId, handleMenuOpen],
+    [can, t, navigate, routes, logger, defaultId, handleMenuOpen],
   );
 
   if (error) {

@@ -8,6 +8,7 @@ import {
   ResourceAvatar,
   UnsavedChangesBar,
 } from '@thunderid/components';
+import {useCapabilitiesContext} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {getErrorMessage, isEqualIgnoringEmpty} from '@thunderid/utils';
 import {
@@ -91,6 +92,7 @@ export default function OrganizationUnitEditPage({
   const routes = useOrganizationUnitRoutes();
   const {t} = useTranslation();
   const logger = useLogger('OrganizationUnitEditPage');
+  const {can} = useCapabilitiesContext();
 
   // Resolves an error through the `organizationUnits` catalog. `t` defaults to the `common`
   // namespace, so this forwards explicit `ns:` prefixes unchanged and prefixes bare keys with
@@ -525,7 +527,9 @@ export default function OrganizationUnitEditPage({
 
         {/* Advanced Tab */}
         <TabPanel value={activeTab} index={renderDefaultFlowsSettings ? 6 : 5}>
-          {!organizationUnit.isReadOnly && <DangerZoneSection onDeleteClick={() => setDeleteDialogOpen(true)} />}
+          {!organizationUnit.isReadOnly && can('ou', 'delete') && (
+            <DangerZoneSection onDeleteClick={() => setDeleteDialogOpen(true)} />
+          )}
         </TabPanel>
       </>
 
@@ -545,7 +549,7 @@ export default function OrganizationUnitEditPage({
           saveLabel={t('organizationUnits:edit.actions.save.label')}
           savingLabel={t('organizationUnits:edit.actions.saving.label')}
           isSaving={updateOrganizationUnit.isPending}
-          saveDisabled={organizationUnit.isReadOnly === true}
+          saveDisabled={organizationUnit.isReadOnly === true || !can('ou', 'update')}
           error={
             updateOrganizationUnit.error
               ? getErrorMessage(

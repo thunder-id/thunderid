@@ -13,7 +13,7 @@ import {
 } from '@thunderid/components';
 import {FlowType, useGetFlows} from '@thunderid/configure-flows';
 import {useOrganizationAccess} from '@thunderid/configure-resource-sharing';
-import {useConfig, useProjectScope} from '@thunderid/contexts';
+import {useCapabilitiesContext, useConfig, useProjectScope} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {isEqualIgnoringEmpty} from '@thunderid/utils';
 import {
@@ -106,6 +106,7 @@ export default function ApplicationEditPage() {
   const logger = useLogger('ApplicationEditPage');
   const {t} = useTranslation();
   const {config} = useConfig();
+  const {can} = useCapabilitiesContext();
   const navigate = useNavigate();
   const location = useLocation();
   const {applicationId} = useParams<{applicationId: string}>();
@@ -912,7 +913,8 @@ export default function ApplicationEditPage() {
             isMissingDeviceGrantFlow ||
             isInvalidBackchannelLogoutUri ||
             isMissingCertificate ||
-            application.isReadOnly === true
+            application.isReadOnly === true ||
+            !can('app', 'update')
           }
           error={
             (updateApplication.error

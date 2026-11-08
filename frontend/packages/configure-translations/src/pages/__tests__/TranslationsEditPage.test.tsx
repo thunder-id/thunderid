@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import userEvent from '@testing-library/user-event';
+import {CapabilitiesProvider} from '@thunderid/contexts';
 import {act, render, screen} from '@thunderid/test-utils';
 import {describe, expect, it, vi, beforeEach} from 'vitest';
 import TranslationsEditPage from '@/pages/TranslationsEditPage';
@@ -133,6 +134,12 @@ const sampleTranslations = {
   },
 };
 
+const viewOnly = {
+  can: (_resource: string, action = 'view') => action === 'view',
+  canManageRoot: false,
+  isLoading: false,
+};
+
 describe('TranslationsEditPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -244,6 +251,19 @@ describe('TranslationsEditPage', () => {
       await user.click(screen.getByText('change field'));
 
       expect(screen.getByText('Save changes')).toBeInTheDocument();
+    });
+
+    it('disables Save when the admin may not update translations', async () => {
+      const user = userEvent.setup();
+      render(
+        <CapabilitiesProvider capabilities={viewOnly}>
+          <TranslationsEditPage />
+        </CapabilitiesProvider>,
+      );
+
+      await user.click(screen.getByText('change field'));
+
+      expect(screen.getByText('Save changes').closest('button')).toBeDisabled();
     });
 
     it('resets dirty changes after Discard is clicked', async () => {

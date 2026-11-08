@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {QueryErrorNotice, SettingsCard, UnsavedChangesBar} from '@thunderid/components';
+import {useCapabilitiesContext} from '@thunderid/contexts';
 import {getErrorMessage} from '@thunderid/utils';
 import {Box, Skeleton, Stack, Typography} from '@wso2/oxygen-ui';
 import {InfoIcon} from '@wso2/oxygen-ui-icons-react';
@@ -41,6 +42,7 @@ export default function AccountSecuritySection(): JSX.Element {
   const {data, isLoading, error, refetch} = useGetAccountAccessConfig();
   const updateConfig = useUpdateAccountAccessConfig();
   const draft = useAccountLockDraft(data);
+  const {can} = useCapabilitiesContext();
   const declarative = Boolean(data?.readOnly.user ?? data?.readOnly.agent);
   // Resolves an error through the `settings` catalog, per getErrorMessage's namespace contract, with
   // backend codes read from this section's own `accountLock.errors.*` keys.
@@ -153,7 +155,7 @@ export default function AccountSecuritySection(): JSX.Element {
           saveLabel={t('settings:accountLock.save', 'Save changes')}
           savingLabel={t('settings:accountLock.saving', 'Saving...')}
           isSaving={updateConfig.isPending}
-          saveDisabled={draft.hasErrors}
+          saveDisabled={draft.hasErrors || !can('serverconfig', 'update')}
           error={
             updateConfig.error
               ? getErrorMessage(

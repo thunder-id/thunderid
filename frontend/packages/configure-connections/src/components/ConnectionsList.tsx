@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {QueryErrorNotice} from '@thunderid/components';
+import {useCapabilitiesContext} from '@thunderid/contexts';
 import {Button, Grid, InputAdornment, Paper, Skeleton, Stack, TextField, Typography} from '@wso2/oxygen-ui';
 import {Search, SearchX, X} from '@wso2/oxygen-ui-icons-react';
 import {type JSX, useMemo, useState} from 'react';
@@ -23,6 +24,7 @@ export default function ConnectionsList(): JSX.Element {
   const {t} = useTranslation('connections');
   const navigate = useNavigate();
   const routes = useConnectionRoutes();
+  const {can} = useCapabilitiesContext();
 
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState<CategoryFilterValue>('all');
@@ -39,8 +41,8 @@ export default function ConnectionsList(): JSX.Element {
         CONNECTION_VENDOR_META,
         routes,
         defaultEmailSenderId,
-      ),
-    [connectionsQuery.data?.connections, routes, defaultEmailSenderId],
+      ).filter((card) => card.status === 'configured' || can('connection', 'create')),
+    [can, connectionsQuery.data?.connections, routes, defaultEmailSenderId],
   );
 
   const availableCategories: ConnectionCategory[] = useMemo(() => getAvailableConnectionCategories(cards), [cards]);
@@ -168,7 +170,7 @@ export default function ConnectionsList(): JSX.Element {
               <ConnectionCard card={card} onAction={handleAction} />
             </Grid>
           ))}
-          {!hasFilters && (
+          {!hasFilters && can('connection', 'create') && (
             <Grid size={{xs: 12, sm: 6, md: 4, xl: 3}}>
               <AddCustomConnectionCard onClick={() => void navigate(routes.connections.create())} />
             </Grid>

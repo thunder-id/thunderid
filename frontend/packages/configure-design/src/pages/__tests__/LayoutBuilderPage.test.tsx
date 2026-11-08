@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import userEvent from '@testing-library/user-event';
-import {ProjectScopeProvider} from '@thunderid/contexts';
+import {CapabilitiesProvider, ProjectScopeProvider} from '@thunderid/contexts';
 import {render, screen} from '@thunderid/test-utils';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import LayoutBuilderPage from '../LayoutBuilderPage';
@@ -109,6 +109,12 @@ function makeBuilderState(overrides: Partial<BuilderState> = {}): BuilderState {
   };
 }
 
+const viewOnly = {
+  can: (_resource: string, action = 'view') => action === 'view',
+  canManageRoot: false,
+  isLoading: false,
+};
+
 describe('LayoutBuilderPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -184,6 +190,17 @@ describe('LayoutBuilderPage', () => {
 
   it('disables the Save button when there are no unsaved changes', () => {
     render(<LayoutBuilderPage />);
+
+    expect(screen.getByRole('button', {name: 'Save'})).toBeDisabled();
+  });
+
+  it('disables the Save button when the admin may not update designs', () => {
+    mockUseLayoutBuilder.mockReturnValue(makeBuilderState({isDirty: true}));
+    render(
+      <CapabilitiesProvider capabilities={viewOnly}>
+        <LayoutBuilderPage />
+      </CapabilitiesProvider>,
+    );
 
     expect(screen.getByRole('button', {name: 'Save'})).toBeDisabled();
   });

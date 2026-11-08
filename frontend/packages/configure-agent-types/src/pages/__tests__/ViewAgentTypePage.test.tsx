@@ -1,6 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {CapabilitiesProvider} from '@thunderid/contexts';
 import {render, screen, waitFor, within, userEvent} from '@thunderid/test-utils';
 import type {ReactNode} from 'react';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
@@ -208,6 +209,12 @@ vi.mock('@thunderid/contexts', async (importOriginal) => {
   };
 });
 
+const viewOnly = {
+  can: (_resource: string, action = 'view') => action === 'view',
+  canManageRoot: false,
+  isLoading: false,
+};
+
 describe('ViewAgentTypePage', () => {
   const baseAgentType: ApiAgentType = {
     id: 'schema-1',
@@ -375,6 +382,19 @@ describe('ViewAgentTypePage', () => {
   });
 
   describe('Save', () => {
+    it('disables Save when the admin may not update agent types', async () => {
+      const user = userEvent.setup();
+      render(
+        <CapabilitiesProvider capabilities={viewOnly}>
+          <ViewAgentTypePage />
+        </CapabilitiesProvider>,
+      );
+
+      await user.click(screen.getByText('Update Properties'));
+
+      expect(await screen.findByRole('button', {name: /^Save$/i})).toBeDisabled();
+    });
+
     it('saves schema changes via the unsaved-changes bar', async () => {
       const user = userEvent.setup();
       render(<ViewAgentTypePage />);

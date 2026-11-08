@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {DocumentTitle, ExternalLink} from '@thunderid/components';
+import {useCapabilitiesContext} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {Button, PageContent, PageTitle} from '@wso2/oxygen-ui';
 import {Plus} from '@wso2/oxygen-ui-icons-react';
@@ -23,6 +24,7 @@ export default function UsersListPage({title = undefined, notice = undefined}: U
   const {t} = useTranslation();
   const logger = useLogger('UsersListPage');
   const routes = useUserRoutes();
+  const {can} = useCapabilitiesContext();
 
   return (
     <PageContent>
@@ -34,19 +36,21 @@ export default function UsersListPage({title = undefined, notice = undefined}: U
           {t('users:subtitle')} <ExternalLink docKey="users" />
         </PageTitle.SubHeader>
         <PageTitle.Actions>
-          <Button
-            variant="contained"
-            startIcon={<Plus size={20} />}
-            onClick={() => {
-              (async () => {
-                await navigate(routes.add());
-              })().catch((error: unknown) => {
-                logger.error('Failed to navigate to add user page', {error});
-              });
-            }}
-          >
-            {t('users:addUser')}
-          </Button>
+          {can('user', 'create') && (
+            <Button
+              variant="contained"
+              startIcon={<Plus size={20} />}
+              onClick={() => {
+                (async () => {
+                  await navigate(routes.add());
+                })().catch((error: unknown) => {
+                  logger.error('Failed to navigate to add user page', {error});
+                });
+              }}
+            >
+              {t('users:addUser')}
+            </Button>
+          )}
         </PageTitle.Actions>
       </PageTitle>
 

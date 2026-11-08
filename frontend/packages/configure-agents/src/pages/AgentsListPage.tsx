@@ -3,6 +3,7 @@
 
 import {DocumentTitle, ExternalLink} from '@thunderid/components';
 import {useGetAgentTypes} from '@thunderid/configure-agent-types';
+import {useCapabilitiesContext} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {Button, PageContent, PageTitle} from '@wso2/oxygen-ui';
 import {FileCog, Plus} from '@wso2/oxygen-ui-icons-react';
@@ -18,6 +19,7 @@ export default function AgentsListPage(): JSX.Element {
   const navigate = useNavigate();
   const {t} = useTranslation();
   const logger = useLogger('AgentsListPage');
+  const {can} = useCapabilitiesContext();
 
   // Agent types are restricted to a single bootstrap-provisioned `default` schema; the Schema
   // button jumps to its edit page so operators can manage attribute definitions in place.
@@ -52,20 +54,22 @@ export default function AgentsListPage(): JSX.Element {
           >
             {t('agents:listing.schema', 'Schema')}
           </Button>
-          <Button
-            data-testid="agent-add-button"
-            variant="contained"
-            startIcon={<Plus size={18} />}
-            onClick={() => {
-              (async () => {
-                await navigate(routes.agents.create());
-              })().catch((error: unknown) => {
-                logger.error('Failed to navigate to create agent page', {error});
-              });
-            }}
-          >
-            {t('agents:listing.addAgent', 'Add agent')}
-          </Button>
+          {can('agent', 'create') && (
+            <Button
+              data-testid="agent-add-button"
+              variant="contained"
+              startIcon={<Plus size={18} />}
+              onClick={() => {
+                (async () => {
+                  await navigate(routes.agents.create());
+                })().catch((error: unknown) => {
+                  logger.error('Failed to navigate to create agent page', {error});
+                });
+              }}
+            >
+              {t('agents:listing.addAgent', 'Add agent')}
+            </Button>
+          )}
         </PageTitle.Actions>
       </PageTitle>
 

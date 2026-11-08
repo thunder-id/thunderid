@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {DocumentTitle, QueryErrorNotice, ResourceAvatar, SettingsCard, UnsavedChangesBar} from '@thunderid/components';
-import {useConfig} from '@thunderid/contexts';
+import {useCapabilitiesContext, useConfig} from '@thunderid/contexts';
 import {getErrorMessage} from '@thunderid/utils';
 import {
   Alert,
@@ -40,6 +40,7 @@ import validateTrustedIssuerForm, {
 
 export default function TrustedIssuerDetailPage(): JSX.Element {
   const {t} = useTranslation();
+  const {can} = useCapabilitiesContext();
   const navigate = useNavigate();
   const {id} = useParams<{id: string}>();
   const {config} = useConfig();
@@ -349,29 +350,31 @@ export default function TrustedIssuerDetailPage(): JSX.Element {
               )}
             </SettingsCard>
 
-            <SettingsCard title={t('trustedIssuers:detail.dangerZone.title', 'Danger zone')}>
-              <Typography variant="h6" gutterBottom color="error">
-                {t('trustedIssuers:detail.dangerZone.delete.title', 'Delete trusted issuer')}
-              </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{mb: 3}}>
-                {t(
-                  'trustedIssuers:detail.dangerZone.delete.description',
-                  'Applications relying on assertions from this issuer will stop receiving tokens. This cannot be undone.',
-                )}
-              </Typography>
-              <Button
-                variant="contained"
-                color="error"
-                startIcon={<Trash2 size={16} />}
-                onClick={() => {
-                  setDeleteError(null);
-                  setDeleteOpen(true);
-                }}
-                data-testid="trusted-issuer-delete-button"
-              >
-                {t('common:actions.delete')}
-              </Button>
-            </SettingsCard>
+            {can('connection', 'delete') && (
+              <SettingsCard title={t('trustedIssuers:detail.dangerZone.title', 'Danger zone')}>
+                <Typography variant="h6" gutterBottom color="error">
+                  {t('trustedIssuers:detail.dangerZone.delete.title', 'Delete trusted issuer')}
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{mb: 3}}>
+                  {t(
+                    'trustedIssuers:detail.dangerZone.delete.description',
+                    'Applications relying on assertions from this issuer will stop receiving tokens. This cannot be undone.',
+                  )}
+                </Typography>
+                <Button
+                  variant="contained"
+                  color="error"
+                  startIcon={<Trash2 size={16} />}
+                  onClick={() => {
+                    setDeleteError(null);
+                    setDeleteOpen(true);
+                  }}
+                  data-testid="trusted-issuer-delete-button"
+                >
+                  {t('common:actions.delete')}
+                </Button>
+              </SettingsCard>
+            )}
           </Stack>
 
           {dirty && (
@@ -381,7 +384,7 @@ export default function TrustedIssuerDetailPage(): JSX.Element {
               saveLabel={t('trustedIssuers:detail.saveBar.save', 'Save changes')}
               savingLabel={t('common:status.saving', 'Saving...')}
               isSaving={updateMutation.isPending}
-              saveDisabled={!valid}
+              saveDisabled={!valid || !can('connection', 'update')}
               onReset={resetEdits}
               onSave={handleSave}
             />

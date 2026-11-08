@@ -3,6 +3,7 @@
 
 import {fireEvent, screen, waitFor} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import {CapabilitiesProvider} from '@thunderid/contexts';
 import {renderWithProviders} from '@thunderid/test-utils';
 import {describe, it, expect, beforeEach, afterEach, vi} from 'vitest';
 import type {CorsConfigResponse} from '../../../models/responses';
@@ -32,6 +33,12 @@ function makeData(overrides?: Partial<CorsConfigResponse>): CorsConfigResponse {
     ...overrides,
   };
 }
+
+const viewOnly = {
+  can: (_resource: string, action = 'view') => action === 'view',
+  canManageRoot: false,
+  isLoading: false,
+};
 
 describe('CorsSection', () => {
   beforeEach(() => {
@@ -179,6 +186,25 @@ describe('CorsSection', () => {
     expect(screen.queryByPlaceholderText('https://app.example.com')).toBeNull();
     await user.click(screen.getByRole('button', {name: 'Add origin'}));
     expect(screen.getByPlaceholderText('https://app.example.com')).toBeInTheDocument();
+  });
+
+  it('disables Save when the admin may not update server configuration', async () => {
+    const user = userEvent.setup();
+    mockUseGetCorsConfig.mockReturnValue({
+      data: makeData({readOnly: {allowedOrigins: []}, writable: {allowedOrigins: []}}),
+      isLoading: false,
+      error: null,
+    });
+    renderWithProviders(
+      <CapabilitiesProvider capabilities={viewOnly}>
+        <CorsSection />
+      </CapabilitiesProvider>,
+    );
+
+    await user.click(screen.getByRole('button', {name: 'Add origin'}));
+    await user.type(screen.getByPlaceholderText('https://app.example.com'), 'https://new.example.com');
+
+    expect(await screen.findByRole('button', {name: 'Save changes'})).toBeDisabled();
   });
 
   it('saves the edited origins via the update mutation and clears the unsaved bar on success', async () => {

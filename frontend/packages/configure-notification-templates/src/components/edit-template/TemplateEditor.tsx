@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {UnsavedChangesBar} from '@thunderid/components';
+import {useCapabilitiesContext} from '@thunderid/contexts';
 import {getErrorMessage} from '@thunderid/utils';
 import {Box, Button, IconButton, PageTitle, Stack, TextField, Typography} from '@wso2/oxygen-ui';
 import {ArrowLeft, Edit} from '@wso2/oxygen-ui-icons-react';
@@ -43,6 +44,7 @@ export default function TemplateEditor({channel, template}: TemplateEditorProps)
   const navigate = useNavigate();
   const routes = useNotificationTemplateRoutes();
   const update = useUpdateNotificationTemplate();
+  const {can} = useCapabilitiesContext();
   const isEmail = channel === 'email';
 
   // Loaded values, used to seed state and to detect unsaved changes. The editor is keyed by
@@ -274,7 +276,7 @@ export default function TemplateEditor({channel, template}: TemplateEditorProps)
           saveLabel={t('editor.save', 'Save changes')}
           savingLabel={t('common:status.saving', 'Saving...')}
           isSaving={update.isPending}
-          saveDisabled={!contentValid}
+          saveDisabled={!contentValid || !can('notificationtemplate', 'update')}
           error={saveError ?? validationError}
           onReset={handleReset}
           onSave={handleSave}

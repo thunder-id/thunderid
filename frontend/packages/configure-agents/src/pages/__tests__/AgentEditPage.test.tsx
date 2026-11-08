@@ -4,7 +4,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-return */
 import userEvent from '@testing-library/user-event';
 import {DeployStatusProvider} from '@thunderid/components';
-import {ProjectScopeProvider} from '@thunderid/contexts';
+import {CapabilitiesProvider, ProjectScopeProvider} from '@thunderid/contexts';
 import {fireEvent, render, screen, waitFor} from '@thunderid/test-utils';
 import type {ComponentProps, ReactNode} from 'react';
 import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
@@ -250,6 +250,12 @@ const fetchWithStubbedServerMetadata = (input: RequestInfo | URL, init?: Request
       ? new Response(JSON.stringify(serverMetadata.body), {status: 200, headers: {'Content-Type': 'application/json'}})
       : new Response(null, {status: 404}),
   );
+};
+
+const viewOnly = {
+  can: (_resource: string, action = 'view') => action === 'view',
+  canManageRoot: false,
+  isLoading: false,
 };
 
 describe('AgentEditPage', () => {
@@ -935,6 +941,20 @@ describe('AgentEditPage', () => {
           }),
         );
       });
+    });
+
+    it('disables the page-level Save button when the admin may not update agents', async () => {
+      const user = userEvent.setup();
+      render(
+        <CapabilitiesProvider capabilities={viewOnly}>
+          <AgentEditPage />
+        </CapabilitiesProvider>,
+      );
+
+      await user.click(screen.getByRole('tab', {name: 'Attributes'}));
+      await user.click(screen.getByText('Edit an attribute'));
+
+      expect(screen.getByRole('button', {name: 'Save'})).toBeDisabled();
     });
 
     it('keeps the unsaved-changes bar and edited state when saving fails', async () => {

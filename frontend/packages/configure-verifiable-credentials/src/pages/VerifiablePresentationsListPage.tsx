@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {DocumentTitle, ExternalLink} from '@thunderid/components';
-import {useProjectScope} from '@thunderid/contexts';
+import {useCapabilitiesContext, useProjectScope} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {PageContent, PageTitle, Stack, Button} from '@wso2/oxygen-ui';
 import {Plus} from '@wso2/oxygen-ui-icons-react';
@@ -32,6 +32,7 @@ export default function VerifiablePresentationsListPage({
   const {t} = useTranslation();
   const logger = useLogger('VerifiablePresentationsListPage');
   const routes = useVerifiableCredentialRoutes();
+  const {can} = useCapabilitiesContext();
 
   return (
     <PageContent>
@@ -42,7 +43,7 @@ export default function VerifiablePresentationsListPage({
           {t('verifiable-presentations:listing.subtitle')}{' '}
           <ExternalLink docKey="verifiableCredentials.presentations" confirmBeforeNavigate={false} />
         </PageTitle.SubHeader>
-        {canCreate && (
+        {canCreate && can('vc', 'create') && (
           <PageTitle.Actions>
             <Stack direction="row" spacing={2}>
               <Button

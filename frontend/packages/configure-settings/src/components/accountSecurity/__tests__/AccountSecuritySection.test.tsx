@@ -3,6 +3,7 @@
 
 import {screen, within} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import {CapabilitiesProvider} from '@thunderid/contexts';
 import {renderWithProviders} from '@thunderid/test-utils';
 import {afterEach, describe, it, expect, vi} from 'vitest';
 
@@ -47,6 +48,12 @@ const {default: AccountSecuritySection} = await import('../AccountSecuritySectio
 
 /** The SettingsCard holding a title. */
 const card = (title: string): HTMLElement => screen.getByText(title).closest<HTMLElement>('.MuiPaper-root')!;
+
+const viewOnly = {
+  can: (_resource: string, action = 'view') => action === 'view',
+  canManageRoot: false,
+  isLoading: false,
+};
 
 describe('AccountSecuritySection', () => {
   afterEach(() => {
@@ -108,6 +115,21 @@ describe('AccountSecuritySection', () => {
       },
       expect.anything(),
     );
+  });
+
+  it('disables Save when the admin may not update server configuration', async () => {
+    config.merged = {
+      user: {default: {enabled: true, threshold: 5, failureWindowSeconds: 900, lockDurationsSeconds: [300]}},
+    };
+    config.writable = {};
+    renderWithProviders(
+      <CapabilitiesProvider capabilities={viewOnly}>
+        <AccountSecuritySection />
+      </CapabilitiesProvider>,
+    );
+
+    await userEvent.click(screen.getByRole('switch', {name: 'Automatic lock for Users'}));
+    expect(screen.getByRole('button', {name: 'Save changes'})).toBeDisabled();
   });
 
   // A declarative accountAccess locks the section on the server, so nothing here may look editable.

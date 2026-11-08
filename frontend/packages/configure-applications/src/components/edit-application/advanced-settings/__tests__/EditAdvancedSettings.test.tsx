@@ -3,6 +3,7 @@
 
 import {fireEvent, render, screen} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import {CapabilitiesProvider} from '@thunderid/contexts';
 import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
 import type {Application} from '../../../../models/application';
 import type {OAuth2Config} from '../../../../models/oauth';
@@ -72,6 +73,12 @@ vi.mock('../../../ApplicationDeleteDialog', () => ({
       </div>
     ) : null,
 }));
+
+const viewOnly = {
+  can: (_resource: string, action = 'view') => action === 'view',
+  canManageRoot: false,
+  isLoading: false,
+};
 
 describe('EditAdvancedSettings', () => {
   const mockApplication: Application = {
@@ -611,6 +618,21 @@ describe('EditAdvancedSettings', () => {
           oauth2Config={confidentialConfig}
           onFieldChange={mockOnFieldChange}
         />,
+      );
+
+      expect(screen.queryByTestId('danger-zone-section')).not.toBeInTheDocument();
+    });
+
+    it('should not render DangerZoneSection when the admin may not delete applications', () => {
+      render(
+        <CapabilitiesProvider capabilities={viewOnly}>
+          <EditAdvancedSettings
+            application={mockApplication}
+            editedApp={{}}
+            oauth2Config={confidentialConfig}
+            onFieldChange={mockOnFieldChange}
+          />
+        </CapabilitiesProvider>,
       );
 
       expect(screen.queryByTestId('danger-zone-section')).not.toBeInTheDocument();

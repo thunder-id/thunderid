@@ -3,6 +3,7 @@
 
 /* eslint-disable @typescript-eslint/no-unsafe-return */
 import userEvent from '@testing-library/user-event';
+import {CapabilitiesProvider} from '@thunderid/contexts';
 import {render, screen, waitFor} from '@thunderid/test-utils';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import AgentsListPage from '../AgentsListPage';
@@ -50,6 +51,12 @@ vi.mock('react-i18next', () => ({
   }),
 }));
 
+const viewOnly = {
+  can: (_resource: string, action = 'view') => action === 'view',
+  canManageRoot: false,
+  isLoading: false,
+};
+
 describe('AgentsListPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -77,6 +84,17 @@ describe('AgentsListPage', () => {
 
     expect(screen.getByTestId('agent-schema-button')).toBeInTheDocument();
     expect(screen.getByTestId('agent-add-button')).toBeInTheDocument();
+  });
+
+  it('hides the Add agent button when the admin may not create agents', () => {
+    render(
+      <CapabilitiesProvider capabilities={viewOnly}>
+        <AgentsListPage />
+      </CapabilitiesProvider>,
+    );
+
+    expect(screen.getByTestId('agent-schema-button')).toBeInTheDocument();
+    expect(screen.queryByTestId('agent-add-button')).not.toBeInTheDocument();
   });
 
   it('renders the AgentsList component', () => {

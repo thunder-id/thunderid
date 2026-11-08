@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {DocumentTitle, PageLoadingAnimation, QueryErrorNotice} from '@thunderid/components';
+import {useCapabilitiesContext} from '@thunderid/contexts';
 import {Button, Grid, PageContent, PageTitle, SearchBar, Stack, Typography} from '@wso2/oxygen-ui';
 import {Plus} from '@wso2/oxygen-ui-icons-react';
 import {useMemo, useState, type ReactNode} from 'react';
@@ -21,6 +22,7 @@ export default function ProjectsListPage(): ReactNode {
   const {t} = useTranslation();
   const navigate = useNavigate();
   const routes = useProjectRoutes();
+  const {can} = useCapabilitiesContext();
   const {projects, selectedProject, isLoading, error, refetch, selectProject} = useProjectSelection();
   const [search, setSearch] = useState('');
   const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
@@ -87,13 +89,15 @@ export default function ProjectsListPage(): ReactNode {
         <PageTitle.Header>{title}</PageTitle.Header>
         <PageTitle.SubHeader>{t('projects:listing.subtitle', 'Choose a project to work in.')}</PageTitle.SubHeader>
         <PageTitle.Actions>
-          <Button
-            variant="contained"
-            startIcon={<Plus size={18} />}
-            onClick={() => void navigate(routes.projects.create())}
-          >
-            {t('projects:listing.add', 'Add project')}
-          </Button>
+          {can('project', 'create') && (
+            <Button
+              variant="contained"
+              startIcon={<Plus size={18} />}
+              onClick={() => void navigate(routes.projects.create())}
+            >
+              {t('projects:listing.add', 'Add project')}
+            </Button>
+          )}
         </PageTitle.Actions>
       </PageTitle>
       <Stack spacing={3}>

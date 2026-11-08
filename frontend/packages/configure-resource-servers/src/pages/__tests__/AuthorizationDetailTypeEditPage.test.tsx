@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import * as componentsModule from '@thunderid/components';
+import {CapabilitiesProvider} from '@thunderid/contexts';
 import {act, renderWithProviders, screen, userEvent, fireEvent, waitFor, within} from '@thunderid/test-utils';
 import type {MouseEvent, ReactNode} from 'react';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
@@ -139,6 +140,12 @@ async function typeDescription(user: User, text: string): Promise<void> {
   await user.keyboard('{Control>}{Enter}{/Control}');
 }
 
+const viewOnly = {
+  can: (_resource: string, action = 'view') => action === 'view',
+  canManageRoot: false,
+  isLoading: false,
+};
+
 describe('AuthorizationDetailTypeEditPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -191,6 +198,20 @@ describe('AuthorizationDetailTypeEditPage', () => {
 
     await user.click(screen.getByRole('tab', {name: 'External processor'}));
     expect(screen.getByLabelText(/^Endpoint URL/)).toHaveValue('https://bank.example.com/process');
+  });
+
+  it('omits the Advanced tab and disables Save when the admin may only view intents', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(
+      <CapabilitiesProvider capabilities={viewOnly}>
+        <AuthorizationDetailTypeEditPage />
+      </CapabilitiesProvider>,
+    );
+
+    expect(screen.queryByRole('tab', {name: 'Advanced'})).not.toBeInTheDocument();
+
+    await typeName(user, ' v2');
+    expect(screen.getByRole('button', {name: 'Save'})).toBeDisabled();
   });
 
   it('saves an edited name with the whole type, then starts again from what was saved', async () => {

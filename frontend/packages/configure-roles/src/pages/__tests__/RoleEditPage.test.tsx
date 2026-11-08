@@ -3,7 +3,7 @@
 
 import userEvent from '@testing-library/user-event';
 import type {ResourcePermissions} from '@thunderid/configure-resource-servers';
-import {ProjectScopeProvider} from '@thunderid/contexts';
+import {CapabilitiesProvider, ProjectScopeProvider} from '@thunderid/contexts';
 import {fireEvent, render, screen, waitFor} from '@thunderid/test-utils';
 import type {NavigateFunction} from 'react-router';
 import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
@@ -33,11 +33,13 @@ vi.mock('../../components/edit-role/general-settings/EditGeneralSettings', () =>
 }));
 
 vi.mock('../../components/edit-role/advanced-settings/EditAdvancedSettings', () => ({
-  default: ({onDeleteClick}: {onDeleteClick: () => void}) => (
+  default: ({onDeleteClick = undefined}: {onDeleteClick?: () => void}) => (
     <div data-testid="edit-advanced-settings">
-      <button type="button" onClick={onDeleteClick}>
-        Delete
-      </button>
+      {onDeleteClick && (
+        <button type="button" onClick={onDeleteClick}>
+          Delete
+        </button>
+      )}
     </div>
   ),
 }));
@@ -62,7 +64,11 @@ vi.mock('../../components/edit-role/organization-access/EditOrganizationAccessSe
 }));
 
 vi.mock('../../components/edit-role/assignments-settings/EditAssignmentsSettings', () => ({
-  default: () => <div data-testid="edit-assignments-settings">Assignments Settings</div>,
+  default: ({isReadOnly = false}: {isReadOnly?: boolean}) => (
+    <div data-testid="edit-assignments-settings" data-readonly={String(isReadOnly)}>
+      Assignments Settings
+    </div>
+  ),
 }));
 
 vi.mock('../../components/edit-role/permissions-settings/EditPermissionsSettings', () => ({
@@ -167,6 +173,12 @@ const {default: useGetRole} = await import('../../api/useGetRole');
 const {default: useUpdateRole} = await import('../../api/useUpdateRole');
 const {useParams, useNavigate} = await import('react-router');
 const {useIsMutating} = await import('@tanstack/react-query');
+
+const viewOnly = {
+  can: (_resource: string, action = 'view') => action === 'view',
+  canManageRoot: false,
+  isLoading: false,
+};
 
 describe('RoleEditPage', () => {
   let mockNavigate: ReturnType<typeof vi.fn>;
@@ -401,6 +413,31 @@ describe('RoleEditPage', () => {
       await user.click(deleteButton);
 
       expect(screen.getByTestId('delete-dialog')).toBeInTheDocument();
+    });
+  });
+
+  describe('without write access', () => {
+    it('should hide delete, lock assignments and disable save when the admin may only view roles', async () => {
+      const user = userEvent.setup();
+      render(
+        <CapabilitiesProvider capabilities={viewOnly}>
+          <RoleEditPage />
+        </CapabilitiesProvider>,
+      );
+
+      await user.click(screen.getByRole('tab', {name: 'Advanced'}));
+      expect(screen.queryByRole('button', {name: 'Delete'})).not.toBeInTheDocument();
+
+      await user.click(screen.getByRole('tab', {name: 'Assignments'}));
+      expect(screen.getByTestId('edit-assignments-settings')).toHaveAttribute('data-readonly', 'true');
+
+      await user.click(screen.getByRole('button', {name: 'Edit role name'}));
+      const nameInput = screen.getByRole('textbox');
+      await user.clear(nameInput);
+      await user.type(nameInput, 'New Name');
+      await user.tab();
+
+      expect(screen.getByRole('button', {name: 'Save changes'})).toBeDisabled();
     });
   });
 

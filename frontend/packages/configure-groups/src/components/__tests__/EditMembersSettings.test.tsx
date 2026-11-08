@@ -3,6 +3,7 @@
 
 import {screen, waitFor} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import {CapabilitiesProvider} from '@thunderid/contexts';
 import {renderWithProviders} from '@thunderid/test-utils';
 import {describe, it, expect, beforeEach, afterEach, vi} from 'vitest';
 import type {Group} from '../../models/group';
@@ -65,6 +66,12 @@ vi.mock('../../api/useRemoveGroupMember', () => ({
   default: () => ({mutate: mockRemoveMutate}),
 }));
 
+const viewOnly = {
+  can: (_resource: string, action = 'view') => action === 'view',
+  canManageRoot: false,
+  isLoading: false,
+};
+
 describe('EditMembersSettings', () => {
   const mockGroup: Group = {
     id: 'g1',
@@ -90,6 +97,16 @@ describe('EditMembersSettings', () => {
     renderWithProviders(<EditMembersSettings group={mockGroup} />);
 
     expect(screen.getByText('Add member')).toBeInTheDocument();
+  });
+
+  it('should hide the Add Member button when the admin may not update groups', () => {
+    renderWithProviders(
+      <CapabilitiesProvider capabilities={viewOnly}>
+        <EditMembersSettings group={mockGroup} />
+      </CapabilitiesProvider>,
+    );
+
+    expect(screen.queryByText('Add member')).not.toBeInTheDocument();
   });
 
   it('should open add member dialog when button clicked', async () => {

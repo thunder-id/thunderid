@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {render, screen, fireEvent, waitFor} from '@testing-library/react';
+import {CapabilitiesProvider} from '@thunderid/contexts';
 import {MemoryRouter} from 'react-router';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import FlowsListPage from '../FlowsListPage';
@@ -57,6 +58,12 @@ vi.mock('@thunderid/contexts', async (importOriginal) => {
   };
 });
 
+const viewOnly = {
+  can: (_resource: string, action = 'view') => action === 'view',
+  canManageRoot: false,
+  isLoading: false,
+};
+
 describe('FlowsListPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -101,6 +108,18 @@ describe('FlowsListPage', () => {
       );
 
       expect(screen.getByRole('button', {name: /add flow/i})).toBeInTheDocument();
+    });
+
+    it('hides the Add Flow button when the admin may not create flows', () => {
+      render(
+        <CapabilitiesProvider capabilities={viewOnly}>
+          <MemoryRouter>
+            <FlowsListPage />
+          </MemoryRouter>
+        </CapabilitiesProvider>,
+      );
+
+      expect(screen.queryByRole('button', {name: /add flow/i})).not.toBeInTheDocument();
     });
 
     it('should render FlowsList component', () => {

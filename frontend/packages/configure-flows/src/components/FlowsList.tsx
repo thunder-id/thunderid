@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {QueryErrorNotice, useFlowListColumns} from '@thunderid/components';
-import {useProjectScope} from '@thunderid/contexts';
+import {useCapabilitiesContext, useProjectScope} from '@thunderid/contexts';
 import {useDataGridLocaleText} from '@thunderid/hooks';
 import {useLogger} from '@thunderid/logger/react';
 import {ListingTable} from '@wso2/oxygen-ui';
@@ -21,6 +21,7 @@ export default function FlowsList(): JSX.Element {
   const logger = useLogger('FlowsList');
   const dataGridLocaleText = useDataGridLocaleText();
   const {projectId} = useProjectScope();
+  const {can} = useCapabilitiesContext();
   const {data, isLoading, error, refetch} = useGetFlows({projectId});
   const visibleFlows = data?.flows ?? [];
 
@@ -56,7 +57,10 @@ export default function FlowsList(): JSX.Element {
     [flowRoutes, logger, navigate],
   );
 
-  const columns = useFlowListColumns<BasicFlowDefinition>({onOpen: handleOpenClick, onDelete: handleDeleteClick});
+  const columns = useFlowListColumns<BasicFlowDefinition>({
+    onOpen: handleOpenClick,
+    onDelete: can('flow', 'delete') ? handleDeleteClick : undefined,
+  });
 
   if (error) {
     return (

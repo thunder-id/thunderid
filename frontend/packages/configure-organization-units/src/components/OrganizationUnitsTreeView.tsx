@@ -3,7 +3,7 @@
 
 import {useQueryClient} from '@tanstack/react-query';
 import {PageLoadingAnimation, QueryErrorNotice, ResourceAvatar} from '@thunderid/components';
-import {useConfig} from '@thunderid/contexts';
+import {useCapabilitiesContext, useConfig} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {useThunderID} from '@thunderid/react';
 import {Box, IconButton, Typography, CircularProgress, TreeView, useTheme, Avatar, Tooltip} from '@wso2/oxygen-ui';
@@ -77,6 +77,7 @@ function CustomTreeItem(allProps: CustomTreeItemProps): JSX.Element {
   } = allProps;
   const treeItemProps = {itemId, label, ...restProps};
   const theme = useTheme();
+  const {can} = useCapabilitiesContext();
   const {t} = useTranslation();
   const labelStr = typeof label === 'string' ? label : '';
   const itemData = itemMapProp?.get(itemId);
@@ -300,47 +301,53 @@ function CustomTreeItem(allProps: CustomTreeItemProps): JSX.Element {
             </Tooltip>
           ) : (
             <>
-              <Tooltip title={addChildTooltip}>
-                <IconButton
-                  size="small"
-                  aria-label={addChildTooltip}
-                  onClick={(e: MouseEvent<HTMLButtonElement>) => {
-                    e.stopPropagation();
-                    onAddChild?.(e as unknown as MouseEvent<HTMLElement>, {
-                      id: itemId,
-                      name: labelStr,
-                      handle: itemData?.handle ?? '',
-                    });
-                  }}
-                >
-                  <Plus size={16} />
-                </IconButton>
-              </Tooltip>
-              <Tooltip title={editTooltip}>
-                <IconButton
-                  size="small"
-                  aria-label={editTooltip}
-                  onClick={(e: MouseEvent<HTMLButtonElement>) => {
-                    e.stopPropagation();
-                    onEdit?.(e as unknown as MouseEvent<HTMLElement>, {id: itemId, name: labelStr});
-                  }}
-                >
-                  <Pencil size={16} />
-                </IconButton>
-              </Tooltip>
-              <Tooltip title={deleteTooltip}>
-                <IconButton
-                  size="small"
-                  color="error"
-                  aria-label={deleteTooltip}
-                  onClick={(e: MouseEvent<HTMLButtonElement>) => {
-                    e.stopPropagation();
-                    onDelete?.(e as unknown as MouseEvent<HTMLElement>, {id: itemId, name: labelStr});
-                  }}
-                >
-                  <Trash2 size={16} />
-                </IconButton>
-              </Tooltip>
+              {can('ou', 'create') && (
+                <Tooltip title={addChildTooltip}>
+                  <IconButton
+                    size="small"
+                    aria-label={addChildTooltip}
+                    onClick={(e: MouseEvent<HTMLButtonElement>) => {
+                      e.stopPropagation();
+                      onAddChild?.(e as unknown as MouseEvent<HTMLElement>, {
+                        id: itemId,
+                        name: labelStr,
+                        handle: itemData?.handle ?? '',
+                      });
+                    }}
+                  >
+                    <Plus size={16} />
+                  </IconButton>
+                </Tooltip>
+              )}
+              {can('ou', 'update') && (
+                <Tooltip title={editTooltip}>
+                  <IconButton
+                    size="small"
+                    aria-label={editTooltip}
+                    onClick={(e: MouseEvent<HTMLButtonElement>) => {
+                      e.stopPropagation();
+                      onEdit?.(e as unknown as MouseEvent<HTMLElement>, {id: itemId, name: labelStr});
+                    }}
+                  >
+                    <Pencil size={16} />
+                  </IconButton>
+                </Tooltip>
+              )}
+              {can('ou', 'delete') && (
+                <Tooltip title={deleteTooltip}>
+                  <IconButton
+                    size="small"
+                    color="error"
+                    aria-label={deleteTooltip}
+                    onClick={(e: MouseEvent<HTMLButtonElement>) => {
+                      e.stopPropagation();
+                      onDelete?.(e as unknown as MouseEvent<HTMLElement>, {id: itemId, name: labelStr});
+                    }}
+                  >
+                    <Trash2 size={16} />
+                  </IconButton>
+                </Tooltip>
+              )}
             </>
           )}
         </Box>
@@ -357,6 +364,7 @@ export default function OrganizationUnitsTreeView(): JSX.Element {
   const logger = useLogger('OrganizationUnitsTreeView');
   const {http} = useThunderID();
   const {getServerUrl} = useConfig();
+  const {can} = useCapabilitiesContext();
   const queryClient = useQueryClient();
   const {data, isLoading, error, refetch} = useGetOrganizationUnits();
   const {treeItems, setTreeItems, expandedItems, setExpandedItems, loadedItems, setLoadedItems, resetTreeState} =
@@ -408,7 +416,7 @@ export default function OrganizationUnitsTreeView(): JSX.Element {
       const childOUs = result.organizationUnits;
       const parentItem = findTreeItem(treeItemsRef.current, parentId);
       const addChildItem = buildAddChildItem(parentId, parentItem?.label ?? '', parentItem?.handle ?? '');
-      const items = childOUs.length > 0 ? [addChildItem, ...buildTreeItems(childOUs)] : [addChildItem];
+      const items = [...(can('ou', 'create') ? [addChildItem] : []), ...buildTreeItems(childOUs)];
 
       if (childOUs.length < result.totalResults) {
         items.push({
@@ -421,7 +429,7 @@ export default function OrganizationUnitsTreeView(): JSX.Element {
 
       return items;
     },
-    [fetchChildPage],
+    [can, fetchChildPage],
   );
 
   // Fetch and update state for user-triggered node expansion
@@ -804,6 +812,75 @@ export default function OrganizationUnitsTreeView(): JSX.Element {
           <Typography variant="body2" color="text.secondary" sx={{mb: 2}}>
             {t('organizationUnits:listing.treeView.empty')}
           </Typography>
+          {can('ou', 'create') && (
+            <Box
+              role="button"
+              tabIndex={0}
+              onClick={handleAddRootClick}
+              onKeyDown={(e: KeyboardEvent) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  handleAddRootClick();
+                }
+              }}
+              sx={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 1.5,
+                border: '1px dashed',
+                borderColor: theme.vars?.palette.primary.main,
+                borderRadius: 1,
+                py: 1,
+                px: 2,
+                cursor: 'pointer',
+                transition: 'all 0.15s ease-in-out',
+                '&:hover': {
+                  backgroundColor: theme.vars?.palette.primary.main,
+                  '& .add-root-avatar': {
+                    backgroundColor: theme.vars?.palette.primary.contrastText,
+                    color: theme.vars?.palette.primary.main,
+                  },
+                  '& .add-root-text': {
+                    color: theme.vars?.palette.primary.contrastText,
+                  },
+                },
+              }}
+            >
+              <Avatar
+                className="add-root-avatar"
+                sx={{
+                  p: 0.5,
+                  backgroundColor: theme.vars?.palette.primary.main,
+                  color: theme.vars?.palette.primary.contrastText,
+                  width: 32,
+                  height: 32,
+                  fontSize: '0.875rem',
+                  transition: 'all 0.15s ease-in-out',
+                }}
+              >
+                <Plus size={14} />
+              </Avatar>
+              <Typography
+                className="add-root-text"
+                variant="body2"
+                sx={{fontWeight: 500, transition: 'color 0.15s ease-in-out'}}
+              >
+                {t('organizationUnits:listing.addRootOrganizationUnit')}
+              </Typography>
+            </Box>
+          )}
+        </Box>
+      );
+    }
+
+    // Still loading tree items
+    return <PageLoadingAnimation />;
+  }
+
+  return (
+    <>
+      <Box sx={{width: '100%', minHeight: 400}}>
+        {can('ou', 'create') && (
           <Box
             role="button"
             tabIndex={0}
@@ -815,14 +892,16 @@ export default function OrganizationUnitsTreeView(): JSX.Element {
               }
             }}
             sx={{
-              display: 'inline-flex',
+              display: 'flex',
               alignItems: 'center',
               gap: 1.5,
               border: '1px dashed',
               borderColor: theme.vars?.palette.primary.main,
               borderRadius: 1,
               py: 1,
-              px: 2,
+              pl: 5,
+              pr: 1.5,
+              mb: 0.75,
               cursor: 'pointer',
               transition: 'all 0.15s ease-in-out',
               '&:hover': {
@@ -859,74 +938,7 @@ export default function OrganizationUnitsTreeView(): JSX.Element {
               {t('organizationUnits:listing.addRootOrganizationUnit')}
             </Typography>
           </Box>
-        </Box>
-      );
-    }
-
-    // Still loading tree items
-    return <PageLoadingAnimation />;
-  }
-
-  return (
-    <>
-      <Box sx={{width: '100%', minHeight: 400}}>
-        <Box
-          role="button"
-          tabIndex={0}
-          onClick={handleAddRootClick}
-          onKeyDown={(e: KeyboardEvent) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault();
-              handleAddRootClick();
-            }
-          }}
-          sx={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 1.5,
-            border: '1px dashed',
-            borderColor: theme.vars?.palette.primary.main,
-            borderRadius: 1,
-            py: 1,
-            pl: 5,
-            pr: 1.5,
-            mb: 0.75,
-            cursor: 'pointer',
-            transition: 'all 0.15s ease-in-out',
-            '&:hover': {
-              backgroundColor: theme.vars?.palette.primary.main,
-              '& .add-root-avatar': {
-                backgroundColor: theme.vars?.palette.primary.contrastText,
-                color: theme.vars?.palette.primary.main,
-              },
-              '& .add-root-text': {
-                color: theme.vars?.palette.primary.contrastText,
-              },
-            },
-          }}
-        >
-          <Avatar
-            className="add-root-avatar"
-            sx={{
-              p: 0.5,
-              backgroundColor: theme.vars?.palette.primary.main,
-              color: theme.vars?.palette.primary.contrastText,
-              width: 32,
-              height: 32,
-              fontSize: '0.875rem',
-              transition: 'all 0.15s ease-in-out',
-            }}
-          >
-            <Plus size={14} />
-          </Avatar>
-          <Typography
-            className="add-root-text"
-            variant="body2"
-            sx={{fontWeight: 500, transition: 'color 0.15s ease-in-out'}}
-          >
-            {t('organizationUnits:listing.addRootOrganizationUnit')}
-          </Typography>
-        </Box>
+        )}
         <TreeView.RichTreeView
           items={treeItems}
           expandedItems={expandedItems}

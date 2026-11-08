@@ -3,6 +3,7 @@
 
 import {DocumentTitle, PageLoadingAnimation, QueryErrorNotice, UnsavedChangesBar} from '@thunderid/components';
 import {getBreakingSchemaChanges} from '@thunderid/configure-user-types';
+import {useCapabilitiesContext} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {
   getContactTypesMissingRegex,
@@ -111,6 +112,7 @@ export default function ViewAgentTypePage(): JSX.Element {
   const navigate = useNavigate();
   const routes = useAgentTypeRoutes();
   const {t} = useTranslation();
+  const {can} = useCapabilitiesContext();
   const logger = useLogger('ViewAgentTypePage');
   const {id} = useParams<{id: string}>();
   // Agent types are restricted to a single `default` schema; there is no agent-types listing
@@ -385,6 +387,7 @@ export default function ViewAgentTypePage(): JSX.Element {
           saveLabel={t('common:actions.save', 'Save')}
           savingLabel={t('common:status.saving', 'Saving...')}
           isSaving={updateAgentTypeMutation.isPending}
+          saveDisabled={!can('agenttype', 'update')}
           error={
             validationError ??
             (updateAgentTypeMutation.error

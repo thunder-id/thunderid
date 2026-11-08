@@ -3,6 +3,7 @@
 
 import {screen, waitFor} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import {CapabilitiesProvider} from '@thunderid/contexts';
 import {renderWithProviders} from '@thunderid/test-utils';
 import {describe, it, expect, beforeEach, afterEach, vi} from 'vitest';
 import GroupsListPage from '../GroupsListPage';
@@ -19,6 +20,12 @@ vi.mock('react-router', async () => {
     useNavigate: () => mockNavigate,
   };
 });
+
+const viewOnly = {
+  can: (_resource: string, action = 'view') => action === 'view',
+  canManageRoot: false,
+  isLoading: false,
+};
 
 describe('GroupsListPage', () => {
   beforeEach(() => {
@@ -47,6 +54,16 @@ describe('GroupsListPage', () => {
     renderWithProviders(<GroupsListPage />);
 
     expect(screen.getByText('Add group')).toBeInTheDocument();
+  });
+
+  it('should hide the add group button when the admin may not create groups', () => {
+    renderWithProviders(
+      <CapabilitiesProvider capabilities={viewOnly}>
+        <GroupsListPage />
+      </CapabilitiesProvider>,
+    );
+
+    expect(screen.queryByText('Add group')).not.toBeInTheDocument();
   });
 
   it('should navigate to create page on add group click', async () => {

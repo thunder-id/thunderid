@@ -8,6 +8,7 @@ import {
   SettingsCard,
   UnsavedChangesBar,
 } from '@thunderid/components';
+import {useCapabilitiesContext} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {getErrorMessage} from '@thunderid/utils';
 import {Button, Chip, PageContent, PageTitle, Stack, TextField, Typography} from '@wso2/oxygen-ui';
@@ -40,6 +41,7 @@ function GatewayDetail({gatewayId}: {gatewayId: string}): JSX.Element {
   const navigate = useNavigate();
   const routes = useGatewayRoutes();
   const logger = useLogger('GatewayDetailPage');
+  const {can} = useCapabilitiesContext();
   const {data: gateway, isLoading, error, refetch} = useGetGateway(gatewayId);
   const updateGateway = useUpdateGateway();
   const [edited, setEdited] = useState<Partial<Record<EditableField, string>>>({});
@@ -204,9 +206,11 @@ function GatewayDetail({gatewayId}: {gatewayId: string}): JSX.Element {
             'The key presented to this gateway is never shown after it is set. Rotate it to replace it.',
           )}
           headerAction={
-            <Button variant="outlined" startIcon={<KeyRound size={16} />} onClick={() => setRotateOpen(true)}>
-              {t('gateways:rotateKey.action', 'Rotate key')}
-            </Button>
+            can('gateway', 'update') && (
+              <Button variant="outlined" startIcon={<KeyRound size={16} />} onClick={() => setRotateOpen(true)}>
+                {t('gateways:rotateKey.action', 'Rotate key')}
+              </Button>
+            )
           }
         >
           <Typography variant="body2" color="text.secondary">
@@ -217,25 +221,27 @@ function GatewayDetail({gatewayId}: {gatewayId: string}): JSX.Element {
           </Typography>
         </SettingsCard>
 
-        <SettingsCard
-          title={t('gateways:detail.dangerZone.title', 'Danger zone')}
-          description={t(
-            'gateways:detail.dangerZone.description',
-            'Removing the registration stops this deployment administering the gateway.',
-          )}
-          headerAction={
-            <Button variant="contained" color="error" onClick={() => setDeleteOpen(true)}>
-              {t('gateways:delete.title', 'Remove gateway')}
-            </Button>
-          }
-        >
-          <Typography variant="body2" color="text.secondary">
-            {t(
-              'gateways:delete.disclaimer',
-              'The gateway itself is not changed. It keeps running with the configuration it already holds.',
+        {can('gateway', 'delete') && (
+          <SettingsCard
+            title={t('gateways:detail.dangerZone.title', 'Danger zone')}
+            description={t(
+              'gateways:detail.dangerZone.description',
+              'Removing the registration stops this deployment administering the gateway.',
             )}
-          </Typography>
-        </SettingsCard>
+            headerAction={
+              <Button variant="contained" color="error" onClick={() => setDeleteOpen(true)}>
+                {t('gateways:delete.title', 'Remove gateway')}
+              </Button>
+            }
+          >
+            <Typography variant="body2" color="text.secondary">
+              {t(
+                'gateways:delete.disclaimer',
+                'The gateway itself is not changed. It keeps running with the configuration it already holds.',
+              )}
+            </Typography>
+          </SettingsCard>
+        )}
       </Stack>
 
       {(hasChanges || isInvalid) && (
@@ -245,7 +251,7 @@ function GatewayDetail({gatewayId}: {gatewayId: string}): JSX.Element {
           saveLabel={t('common:actions.save', 'Save')}
           savingLabel={t('common:status.saving', 'Saving...')}
           isSaving={updateGateway.isPending}
-          saveDisabled={isInvalid}
+          saveDisabled={isInvalid || !can('gateway', 'update')}
           error={
             updateGateway.error
               ? getErrorMessage(updateGateway.error, tForErrors, 'edit.error', 'The gateway could not be updated.')

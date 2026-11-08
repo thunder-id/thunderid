@@ -1,6 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {CapabilitiesProvider} from '@thunderid/contexts';
 import * as thunderIdReactModule from '@thunderid/react';
 import {renderWithProviders, screen, fireEvent} from '@thunderid/test-utils';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
@@ -89,6 +90,12 @@ const twoRowsResponse: ResourceServerListResponse = {
   ],
 };
 
+const viewOnly = {
+  can: (_resource: string, action = 'view') => action === 'view',
+  canManageRoot: false,
+  isLoading: false,
+};
+
 describe('ResourceServersList', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -136,6 +143,17 @@ describe('ResourceServersList', () => {
 
     expect(screen.getByRole('button', {name: 'Edit'})).toBeInTheDocument();
     expect(screen.getByRole('button', {name: 'Delete'})).toBeInTheDocument();
+  });
+
+  it('hides the Edit and Delete buttons when the admin may only view resource servers', () => {
+    renderWithProviders(
+      <CapabilitiesProvider capabilities={viewOnly}>
+        <ResourceServersList />
+      </CapabilitiesProvider>,
+    );
+
+    expect(screen.queryByRole('button', {name: 'Edit'})).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', {name: 'Delete'})).not.toBeInTheDocument();
   });
 
   it('shows a Read Only button for the read-only row', () => {

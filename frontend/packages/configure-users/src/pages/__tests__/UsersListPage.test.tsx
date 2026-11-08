@@ -1,6 +1,7 @@
 // Copyright 2025 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {CapabilitiesProvider} from '@thunderid/contexts';
 import {render, screen, waitFor, userEvent} from '@thunderid/test-utils';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import UsersListPage from '../UsersListPage';
@@ -32,6 +33,12 @@ vi.mock('@/components/UsersList', () => ({
   default: () => <div data-testid="users-list">Users List Component</div>,
 }));
 
+const viewOnly = {
+  can: (_resource: string, action = 'view') => action === 'view',
+  canManageRoot: false,
+  isLoading: false,
+};
+
 describe('UsersListPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -61,6 +68,16 @@ describe('UsersListPage', () => {
 
     const createButton = screen.getByRole('button', {name: /add user/i});
     expect(createButton).toBeInTheDocument();
+  });
+
+  it('hides the add user button when the admin may not create users', () => {
+    render(
+      <CapabilitiesProvider capabilities={viewOnly}>
+        <UsersListPage />
+      </CapabilitiesProvider>,
+    );
+
+    expect(screen.queryByRole('button', {name: /add user/i})).not.toBeInTheDocument();
   });
 
   it('navigates to add user flow when create button is clicked', async () => {

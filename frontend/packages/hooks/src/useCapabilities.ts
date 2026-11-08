@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {useQuery} from '@tanstack/react-query';
-import {useConfig} from '@thunderid/contexts';
+import {useConfig, type Capabilities} from '@thunderid/contexts';
 import {useGrantedPermissions, useThunderID, useUser} from '@thunderid/react';
 import {useCallback} from 'react';
+
+export type {Capabilities};
 
 /**
  * The body of `GET /capabilities`: the management actions the signed-in admin's token allows.
@@ -14,17 +16,6 @@ export interface CapabilitiesResponse {
   /** Each catalog resource (`app`, `user`, ...) mapped to its actions (`view`, `create`, ...). */
   resources: Record<string, Record<string, boolean>>;
   root: {manage: boolean};
-}
-
-export interface Capabilities {
-  /**
-   * Whether the admin may perform `action` on the catalog `resource`. False while loading. True when the
-   * capabilities can't be read, since the server still decides every request.
-   */
-  can: (resource: string, action?: string) => boolean;
-  /** Whether the admin may manage the APIs only the root `system` permission reaches. */
-  canManageRoot: boolean;
-  isLoading: boolean;
 }
 
 /**

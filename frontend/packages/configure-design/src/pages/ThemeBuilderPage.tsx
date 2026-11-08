@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {BuilderLayout, BuilderStaticPanel, DocumentTitle, PageLoadingAnimation} from '@thunderid/components';
-import {useProjectScope} from '@thunderid/contexts';
+import {useCapabilitiesContext, useProjectScope} from '@thunderid/contexts';
 import {Box, Button, useColorScheme} from '@wso2/oxygen-ui';
 import {ArrowLeft, Save, Trash, Undo2} from '@wso2/oxygen-ui-icons-react';
 import {useCallback, useEffect, useRef, useState, type JSX} from 'react';
@@ -21,6 +21,7 @@ export default function ThemeBuilderPage(): JSX.Element {
   const {mode, systemMode} = useColorScheme();
   const navigate = useNavigate();
   const routes = useDesignRoutes();
+  const {can} = useCapabilitiesContext();
 
   const {
     themeId,
@@ -110,7 +111,7 @@ export default function ThemeBuilderPage(): JSX.Element {
           {/* Portal target — the PreviewToolbar from GatePreview renders here */}
           <Box ref={setToolbarPortal} sx={{flex: 1, display: 'flex', justifyContent: 'center'}} />
           <Box sx={{display: 'flex', gap: 2}}>
-            {!isReadOnly && (
+            {!isReadOnly && can('design', 'delete') && (
               <Button
                 variant="text"
                 color="error"
@@ -130,7 +131,7 @@ export default function ThemeBuilderPage(): JSX.Element {
             </Button>
             <Button
               variant="contained"
-              disabled={!isDirty}
+              disabled={!isDirty || !can('design', 'update')}
               startIcon={<Save size={18} />}
               onClick={() => saveHandlerRef.current()}
             >

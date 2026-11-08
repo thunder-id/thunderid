@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import userEvent from '@testing-library/user-event';
+import {CapabilitiesProvider} from '@thunderid/contexts';
 import {render, screen} from '@thunderid/test-utils';
 import {describe, expect, it, vi, beforeEach} from 'vitest';
 import TranslationEditorHeader from '@/components/edit-translation/TranslationEditorHeader';
@@ -18,6 +19,12 @@ const defaultProps = {
   hasNamespace: true,
   onBack: vi.fn(),
   onResetToDefault: vi.fn(),
+};
+
+const viewOnly = {
+  can: (_resource: string, action = 'view') => action === 'view',
+  canManageRoot: false,
+  isLoading: false,
 };
 
 describe('TranslationEditorHeader', () => {
@@ -49,6 +56,16 @@ describe('TranslationEditorHeader', () => {
       render(<TranslationEditorHeader {...defaultProps} isFallbackLanguage={false} />);
 
       expect(screen.getByText('Reset to default')).toBeInTheDocument();
+    });
+
+    it('hides Reset to Default when the admin may not update translations', () => {
+      render(
+        <CapabilitiesProvider capabilities={viewOnly}>
+          <TranslationEditorHeader {...defaultProps} />
+        </CapabilitiesProvider>,
+      );
+
+      expect(screen.queryByText('Reset to default')).not.toBeInTheDocument();
     });
 
     it('hides Reset to Default button when isFallbackLanguage is true', () => {

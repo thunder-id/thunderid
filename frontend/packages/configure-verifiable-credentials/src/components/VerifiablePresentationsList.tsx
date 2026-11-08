@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {QueryErrorNotice} from '@thunderid/components';
-import {useProjectScope} from '@thunderid/contexts';
+import {useCapabilitiesContext, useProjectScope} from '@thunderid/contexts';
 import {useDataGridLocaleText} from '@thunderid/hooks';
 import {useLogger} from '@thunderid/logger/react';
 import {IconButton, Typography, Tooltip, DataGrid, ListingTable} from '@wso2/oxygen-ui';
@@ -33,6 +33,7 @@ export default function VerifiablePresentationsList({
   const {t} = useTranslation();
   const logger = useLogger('VerifiablePresentationsList');
   const dataGridLocaleText = useDataGridLocaleText();
+  const {can} = useCapabilitiesContext();
   const routes = useVerifiableCredentialRoutes();
 
   // Resolves an error through the `verifiable-presentations` catalog. `t` defaults to the `common`
@@ -119,36 +120,40 @@ export default function VerifiablePresentationsList({
                 </IconButton>
               </Tooltip>
             )}
-            <Tooltip title={t('common:actions.edit', 'Edit')}>
-              <IconButton
-                aria-label={t('common:actions.edit', 'Edit')}
-                size="small"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleEditClick(params.row.id);
-                }}
-              >
-                <Pencil size={16} />
-              </IconButton>
-            </Tooltip>
-            <Tooltip title={t('common:actions.delete', 'Delete')}>
-              <IconButton
-                aria-label={t('common:actions.delete', 'Delete')}
-                size="small"
-                color="error"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleDeleteClick(params.row.id);
-                }}
-              >
-                <Trash2 size={16} />
-              </IconButton>
-            </Tooltip>
+            {can('vc', 'update') && (
+              <Tooltip title={t('common:actions.edit', 'Edit')}>
+                <IconButton
+                  aria-label={t('common:actions.edit', 'Edit')}
+                  size="small"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleEditClick(params.row.id);
+                  }}
+                >
+                  <Pencil size={16} />
+                </IconButton>
+              </Tooltip>
+            )}
+            {can('vc', 'delete') && (
+              <Tooltip title={t('common:actions.delete', 'Delete')}>
+                <IconButton
+                  aria-label={t('common:actions.delete', 'Delete')}
+                  size="small"
+                  color="error"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDeleteClick(params.row.id);
+                  }}
+                >
+                  <Trash2 size={16} />
+                </IconButton>
+              </Tooltip>
+            )}
           </ListingTable.RowActions>
         ),
       },
     ],
-    [handleDeleteClick, handleEditClick, showWalletQr, t],
+    [can, handleDeleteClick, handleEditClick, showWalletQr, t],
   );
 
   if (error) {

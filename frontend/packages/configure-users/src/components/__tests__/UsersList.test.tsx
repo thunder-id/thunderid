@@ -1,7 +1,7 @@
 // Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {ProjectScopeProvider} from '@thunderid/contexts';
+import {CapabilitiesProvider, ProjectScopeProvider} from '@thunderid/contexts';
 import {render, screen, waitFor, userEvent} from '@thunderid/test-utils';
 import type * as OxygenUI from '@wso2/oxygen-ui';
 import {DataGrid} from '@wso2/oxygen-ui';
@@ -189,6 +189,12 @@ vi.mock('@/components/UserDeleteDialog', () => ({
     ) : null,
 }));
 
+const viewOnly = {
+  can: (_resource: string, action = 'view') => action === 'view',
+  canManageRoot: false,
+  isLoading: false,
+};
+
 describe('UsersList', () => {
   const mockUsersData: UserListResponse = {
     totalResults: 2,
@@ -327,6 +333,21 @@ describe('UsersList', () => {
 
     const deleteButtons = screen.getAllByRole('button', {name: /delete/i});
     expect(deleteButtons.length).toBeGreaterThan(0);
+  });
+
+  it('hides the edit and delete row actions when the admin may only view users', async () => {
+    render(
+      <CapabilitiesProvider capabilities={viewOnly}>
+        <UsersList />
+      </CapabilitiesProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('row-user1')).toHaveTextContent('John Doe');
+    });
+
+    expect(screen.queryByRole('button', {name: /delete/i})).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', {name: /edit/i})).not.toBeInTheDocument();
   });
 
   it('navigates to view page when row is clicked', async () => {

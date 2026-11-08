@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {DocumentTitle, ExternalLink, QueryErrorNotice} from '@thunderid/components';
-import {useProjectScope} from '@thunderid/contexts';
+import {useCapabilitiesContext, useProjectScope} from '@thunderid/contexts';
 import {useGetThemes, useGetLayouts} from '@thunderid/design';
 import {Box, Button, Grid, PageContent, PageTitle, Skeleton, Typography} from '@wso2/oxygen-ui';
 import {ArrowUpRight, LayoutTemplate, Palette, Plus} from '@wso2/oxygen-ui-icons-react';
@@ -30,6 +30,7 @@ export default function DesignPage(): JSX.Element {
   const {projectId} = useProjectScope();
   const navigate = useNavigate();
   const routes = useDesignRoutes();
+  const {can} = useCapabilitiesContext();
   const {
     data: themesData,
     isLoading: themesLoading,
@@ -66,20 +67,22 @@ export default function DesignPage(): JSX.Element {
           count={allThemes.length}
           icon={<Palette size={18} />}
           action={
-            <Button
-              variant="contained"
-              size="small"
-              startIcon={<Plus size={16} />}
-              onClick={() => {
-                (async () => {
-                  await navigate(routes.design.themesCreate());
-                })().catch(() => {
-                  // Ignore navigation errors
-                });
-              }}
-            >
-              {t('themes.actions.add.label', 'Add theme')}
-            </Button>
+            can('design', 'create') && (
+              <Button
+                variant="contained"
+                size="small"
+                startIcon={<Plus size={16} />}
+                onClick={() => {
+                  (async () => {
+                    await navigate(routes.design.themesCreate());
+                  })().catch(() => {
+                    // Ignore navigation errors
+                  });
+                }}
+              >
+                {t('themes.actions.add.label', 'Add theme')}
+              </Button>
+            )
           }
         />
 
@@ -109,7 +112,7 @@ export default function DesignPage(): JSX.Element {
                             });
                           }}
                           onDelete={
-                            theme.isReadOnly
+                            theme.isReadOnly || !can('design', 'delete')
                               ? undefined
                               : () => setDeleteTarget({id: theme.id, name: theme.displayName})
                           }

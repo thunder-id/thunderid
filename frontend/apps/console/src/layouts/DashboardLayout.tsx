@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {getInitials} from '@thunderid/components';
-import {useConfig} from '@thunderid/contexts';
+import {CapabilitiesProvider, useConfig} from '@thunderid/contexts';
 import {useCapabilities} from '@thunderid/hooks';
 import {useLogger} from '@thunderid/logger/react';
 import {SignOutButton, User, useThunderID} from '@thunderid/react';
@@ -378,7 +378,8 @@ export default function DashboardLayout({collapseSidebar = false}: DashboardLayo
     [t],
   );
 
-  const {can, isLoading: isLoadingCapabilities} = useCapabilities();
+  const capabilities = useCapabilities();
+  const {can, isLoading: isLoadingCapabilities} = capabilities;
 
   // The navigation the admin may see: entries for pages they can't view, and groups left empty, are hidden.
   const visibleRoutes: NavCategory[] = useMemo(() => {
@@ -535,7 +536,9 @@ export default function DashboardLayout({collapseSidebar = false}: DashboardLayo
             </Alert>
           </Box>
         ) : (
-          <Outlet />
+          <CapabilitiesProvider capabilities={capabilities}>
+            <Outlet />
+          </CapabilitiesProvider>
         )}
       </AppShell.Main>
 

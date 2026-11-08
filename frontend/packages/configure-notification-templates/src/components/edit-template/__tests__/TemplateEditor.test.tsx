@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import userEvent from '@testing-library/user-event';
+import {CapabilitiesProvider} from '@thunderid/contexts';
 import {render, renderHook, screen} from '@thunderid/test-utils';
 import {useTranslation} from 'react-i18next';
 import {describe, expect, it, vi, beforeAll, beforeEach} from 'vitest';
@@ -44,6 +45,12 @@ const smsTemplate: SmsTemplate = {
   handle: 'otp-sms',
   displayName: 'OTP SMS',
   content: {body: 'Your code is {{ctx(otp.code)}}'},
+};
+
+const viewOnly = {
+  can: (_resource: string, action = 'view') => action === 'view',
+  canManageRoot: false,
+  isLoading: false,
 };
 
 describe('TemplateEditor', () => {
@@ -167,6 +174,19 @@ describe('TemplateEditor', () => {
 
       expect(screen.getByRole('button', {name: t('notificationTemplates:editor.save')})).toBeInTheDocument();
       expect(screen.getByText('You have unsaved changes')).toBeInTheDocument();
+    });
+
+    it('disables Save when the admin may not update templates', async () => {
+      const user = userEvent.setup();
+      render(
+        <CapabilitiesProvider capabilities={viewOnly}>
+          <TemplateEditor channel="email" template={emailTemplate} />
+        </CapabilitiesProvider>,
+      );
+
+      await makeDirty(user, 'OTP Verification', 'OTP Verification v2');
+
+      expect(screen.getByRole('button', {name: t('notificationTemplates:editor.save')})).toBeDisabled();
     });
 
     it('saves an email template with the design color scheme and full content', async () => {

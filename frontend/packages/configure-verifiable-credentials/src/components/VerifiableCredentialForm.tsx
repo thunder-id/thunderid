@@ -3,6 +3,7 @@
 
 import {SettingsCard, UnsavedChangesBar} from '@thunderid/components';
 import {OrganizationUnitTreePicker, useHasMultipleOUs} from '@thunderid/configure-organization-units';
+import {useCapabilitiesContext} from '@thunderid/contexts';
 import {
   Box,
   Button,
@@ -93,6 +94,7 @@ export default function VerifiableCredentialForm({
   onErrorClear = undefined,
 }: VerifiableCredentialFormProps): JSX.Element {
   const {t} = useTranslation('verifiable-credentials');
+  const {can} = useCapabilitiesContext();
 
   const {hasMultipleOUs, ouList} = useHasMultipleOUs();
 
@@ -237,7 +239,7 @@ export default function VerifiableCredentialForm({
         <Tab label={t('form.tabs.general')} />
         <Tab label={t('form.tabs.protocolSettings')} />
         <Tab label={t('form.tabs.claims')} />
-        {initial?.id && onDelete && <Tab label={t('form.tabs.advanced', 'Advanced')} />}
+        {initial?.id && onDelete && can('vc', 'delete') && <Tab label={t('form.tabs.advanced', 'Advanced')} />}
       </Tabs>
 
       <TabPanel value={tab} index={0}>
@@ -425,7 +427,7 @@ export default function VerifiableCredentialForm({
         <ClaimsEditor claims={claims} onChange={handleClaimsChange} nameErrors={claimNameErrors} />
       </TabPanel>
 
-      {initial?.id && onDelete && (
+      {initial?.id && onDelete && can('vc', 'delete') && (
         <TabPanel value={tab} index={3}>
           <SettingsCard title={t('form.dangerZone.title')} description={t('form.dangerZone.description')}>
             <Typography variant="h6" gutterBottom color="error">
@@ -448,7 +450,7 @@ export default function VerifiableCredentialForm({
           saveLabel={submitLabel}
           savingLabel={t('common:status.saving')}
           isSaving={submitting}
-          saveDisabled={!valid}
+          saveDisabled={!valid || !can('vc', 'update')}
           error={error}
           onReset={handleReset}
           onSave={(): void => onSubmit(buildRequest())}

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import userEvent from '@testing-library/user-event';
+import {CapabilitiesProvider} from '@thunderid/contexts';
 import {render, screen, waitFor, within} from '@thunderid/test-utils';
 import {describe, it, expect, vi, afterEach} from 'vitest';
 import type {VerifiablePresentation} from '../../models/vp';
@@ -75,6 +76,35 @@ async function addValidCertificate(user: ReturnType<typeof userEvent.setup>, cer
   await addCertificate(user, certificateName, PEM);
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
 }
+
+const viewOnly = {
+  can: (_resource: string, action = 'view') => action === 'view',
+  canManageRoot: false,
+  isLoading: false,
+};
+
+describe('VerifiablePresentationForm capabilities', () => {
+  it('omits the Advanced tab and disables Save when the admin may only view', () => {
+    render(
+      <CapabilitiesProvider capabilities={viewOnly}>
+        <VerifiablePresentationForm
+          initial={definition}
+          name="Renamed"
+          description=""
+          onNameChange={vi.fn()}
+          onDescriptionChange={vi.fn()}
+          submitting={false}
+          submitLabel="Save"
+          onSubmit={onSubmit}
+          onDelete={vi.fn()}
+        />
+      </CapabilitiesProvider>,
+    );
+
+    expect(screen.queryByRole('tab', {name: 'Advanced'})).not.toBeInTheDocument();
+    expect(screen.getByRole('button', {name: 'Save'})).toBeDisabled();
+  });
+});
 
 describe('VerifiablePresentationForm issuer trust', () => {
   afterEach(() => {

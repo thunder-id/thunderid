@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {QueryErrorNotice} from '@thunderid/components';
-import {useProjectScope} from '@thunderid/contexts';
+import {useCapabilitiesContext, useProjectScope} from '@thunderid/contexts';
 import {useDataGridLocaleText} from '@thunderid/hooks';
 import {useLogger} from '@thunderid/logger/react';
 import {Box, DataGrid, IconButton, ListingTable, Tooltip, Typography} from '@wso2/oxygen-ui';
@@ -39,6 +39,7 @@ export default function NotificationTemplatesList({channel}: NotificationTemplat
   const logger = useLogger('NotificationTemplatesList');
   const routes = useNotificationTemplateRoutes();
   const dataGridLocaleText = useDataGridLocaleText();
+  const {can} = useCapabilitiesContext();
 
   const [paginationModel, setPaginationModel] = useState<DataGrid.GridPaginationModel>({pageSize: 10, page: 0});
   const {projectId} = useProjectScope();
@@ -89,36 +90,40 @@ export default function NotificationTemplatesList({channel}: NotificationTemplat
         hideable: false,
         renderCell: (params: DataGrid.GridRenderCellParams<TemplateSummary>): JSX.Element => (
           <ListingTable.RowActions>
-            <Tooltip title={t('common:actions.edit', 'Edit')}>
-              <IconButton
-                size="small"
-                aria-label={t('common:actions.edit', 'Edit')}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleEditClick(params.row.id);
-                }}
-              >
-                <Pencil size={16} />
-              </IconButton>
-            </Tooltip>
-            <Tooltip title={t('common:actions.delete', 'Delete')}>
-              <IconButton
-                size="small"
-                color="error"
-                aria-label={t('common:actions.delete', 'Delete')}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleDeleteClick(params.row);
-                }}
-              >
-                <Trash2 size={16} />
-              </IconButton>
-            </Tooltip>
+            {can('notificationtemplate', 'update') && (
+              <Tooltip title={t('common:actions.edit', 'Edit')}>
+                <IconButton
+                  size="small"
+                  aria-label={t('common:actions.edit', 'Edit')}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleEditClick(params.row.id);
+                  }}
+                >
+                  <Pencil size={16} />
+                </IconButton>
+              </Tooltip>
+            )}
+            {can('notificationtemplate', 'delete') && (
+              <Tooltip title={t('common:actions.delete', 'Delete')}>
+                <IconButton
+                  size="small"
+                  color="error"
+                  aria-label={t('common:actions.delete', 'Delete')}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDeleteClick(params.row);
+                  }}
+                >
+                  <Trash2 size={16} />
+                </IconButton>
+              </Tooltip>
+            )}
           </ListingTable.RowActions>
         ),
       },
     ],
-    [handleDeleteClick, handleEditClick, t],
+    [can, handleDeleteClick, handleEditClick, t],
   );
 
   if (error) {

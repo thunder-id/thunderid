@@ -8,6 +8,7 @@ import {
   ResourceDeployStatus,
   useDeployStatusSource,
 } from '@thunderid/components';
+import {useCapabilitiesContext} from '@thunderid/contexts';
 import {useDataGridLocaleText} from '@thunderid/hooks';
 import {useLogger} from '@thunderid/logger/react';
 import {Box, IconButton, Tooltip, Typography, ListingTable, DataGrid} from '@wso2/oxygen-ui';
@@ -26,6 +27,7 @@ export default function AgentsList(): JSX.Element {
   const routes = useAgentRoutes();
   const navigate = useNavigate();
   const {t} = useTranslation();
+  const {can} = useCapabilitiesContext();
   const logger = useLogger('AgentsList');
   const dataGridLocaleText = useDataGridLocaleText();
   const lifespanEndText = useLifespanEndText();
@@ -168,38 +170,42 @@ export default function AgentsList(): JSX.Element {
               </Tooltip>
             ) : (
               <>
-                <Tooltip title={t('common:actions.edit', 'Edit')}>
-                  <IconButton
-                    aria-label={t('common:actions.edit', 'Edit')}
-                    size="small"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleEditClick(params.row.id);
-                    }}
-                  >
-                    <Pencil size={16} />
-                  </IconButton>
-                </Tooltip>
-                <Tooltip title={t('common:actions.delete', 'Delete')}>
-                  <IconButton
-                    aria-label={t('common:actions.delete', 'Delete')}
-                    size="small"
-                    color="error"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDeleteClick(params.row.id);
-                    }}
-                  >
-                    <Trash2 size={16} />
-                  </IconButton>
-                </Tooltip>
+                {can('agent', 'update') && (
+                  <Tooltip title={t('common:actions.edit', 'Edit')}>
+                    <IconButton
+                      aria-label={t('common:actions.edit', 'Edit')}
+                      size="small"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleEditClick(params.row.id);
+                      }}
+                    >
+                      <Pencil size={16} />
+                    </IconButton>
+                  </Tooltip>
+                )}
+                {can('agent', 'delete') && (
+                  <Tooltip title={t('common:actions.delete', 'Delete')}>
+                    <IconButton
+                      aria-label={t('common:actions.delete', 'Delete')}
+                      size="small"
+                      color="error"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteClick(params.row.id);
+                      }}
+                    >
+                      <Trash2 size={16} />
+                    </IconButton>
+                  </Tooltip>
+                )}
               </>
             )}
           </ListingTable.RowActions>
         ),
       },
     ],
-    [deploys, handleDeleteClick, handleEditClick, lifespanHint, t],
+    [can, deploys, handleDeleteClick, handleEditClick, lifespanHint, t],
   );
 
   if (error) {

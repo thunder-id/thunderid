@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {DocumentTitle, PageLoadingAnimation, QueryErrorNotice, UnsavedChangesBar} from '@thunderid/components';
+import {useCapabilitiesContext} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {getErrorMessage, isEqualIgnoringEmpty} from '@thunderid/utils';
 import {
@@ -56,6 +57,7 @@ export default function GroupEditPage(): JSX.Element {
   const navigate = useNavigate();
   const {t} = useTranslation('groups');
   const logger = useLogger('GroupEditPage');
+  const {can} = useCapabilitiesContext();
 
   const {data: group, isLoading, error: fetchError, refetch} = useGetGroup(groupId ?? '');
   const updateGroup = useUpdateGroup();
@@ -354,7 +356,9 @@ export default function GroupEditPage(): JSX.Element {
         </TabPanel>
 
         <TabPanel value={activeTab} index={2}>
-          <EditAdvancedSettings onDeleteClick={group.isReadOnly ? undefined : () => setDeleteDialogOpen(true)} />
+          <EditAdvancedSettings
+            onDeleteClick={group.isReadOnly || !can('group', 'delete') ? undefined : () => setDeleteDialogOpen(true)}
+          />
         </TabPanel>
       </>
 
@@ -374,7 +378,7 @@ export default function GroupEditPage(): JSX.Element {
           saveLabel={t('edit.page.save', 'Save changes')}
           savingLabel={t('edit.page.saving', 'Saving...')}
           isSaving={updateGroup.isPending}
-          saveDisabled={group.isReadOnly === true}
+          saveDisabled={group.isReadOnly === true || !can('group', 'update')}
           error={
             updateGroup.error
               ? getErrorMessage(updateGroup.error, t, 'update.error', 'Failed to update group. Please try again.')

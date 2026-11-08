@@ -1,6 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {CapabilitiesProvider} from '@thunderid/contexts';
 import {renderWithProviders, screen, fireEvent, waitFor} from '@thunderid/test-utils';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import type {ResourceListResponse, ActionListResponse} from '../../../models/resource-server';
@@ -154,6 +155,12 @@ const withMcpMixed: ActionListResponse = {
   ],
 };
 
+const viewOnly = {
+  can: (_resource: string, action = 'view') => action === 'view',
+  canManageRoot: false,
+  isLoading: false,
+};
+
 describe('ResourceTree (API type — generic tree)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -208,6 +215,16 @@ describe('ResourceTree (API type — generic tree)', () => {
     renderWithProviders(<ResourceTree resourceServer={mockResourceServer} onRefresh={vi.fn()} />);
 
     expect(screen.getByRole('button', {name: /Add/i})).toBeInTheDocument();
+  });
+
+  it('hides the toolbar Add button when the admin may not update resource servers', () => {
+    renderWithProviders(
+      <CapabilitiesProvider capabilities={viewOnly}>
+        <ResourceTree resourceServer={mockResourceServer} onRefresh={vi.fn()} />
+      </CapabilitiesProvider>,
+    );
+
+    expect(screen.queryByRole('button', {name: /Add/i})).not.toBeInTheDocument();
   });
 
   it('opens the add menu when the toolbar Add button is clicked', async () => {
@@ -330,6 +347,17 @@ describe('ResourceTree (MCP type — Capabilities panel)', () => {
     expect(screen.getByText(/No capabilities have been added to this MCP server yet/)).toBeInTheDocument();
     expect(screen.getByRole('button', {name: 'Add tool permission'})).toBeInTheDocument();
     expect(screen.getByRole('button', {name: 'Add resource permission'})).toBeInTheDocument();
+  });
+
+  it('hides the MCP add buttons when the admin may not update resource servers', () => {
+    renderWithProviders(
+      <CapabilitiesProvider capabilities={viewOnly}>
+        <ResourceTree resourceServer={mockMcpResourceServer} onRefresh={vi.fn()} />
+      </CapabilitiesProvider>,
+    );
+
+    expect(screen.queryByRole('button', {name: 'Add tool permission'})).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', {name: 'Add resource permission'})).not.toBeInTheDocument();
   });
 
   it('does not render the filter chips toolbar when there are no capabilities', () => {

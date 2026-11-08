@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import userEvent from '@testing-library/user-event';
-import {ProjectScopeProvider} from '@thunderid/contexts';
+import {CapabilitiesProvider, ProjectScopeProvider} from '@thunderid/contexts';
 import {render, renderHook, screen, waitFor} from '@thunderid/test-utils';
 import {useTranslation} from 'react-i18next';
 import {describe, expect, it, vi, beforeAll, beforeEach} from 'vitest';
@@ -26,6 +26,12 @@ vi.mock('@thunderid/logger/react', () => ({
 vi.mock('@/components/NotificationTemplatesList', () => ({
   default: ({channel}: {channel: string}) => <div data-testid="templates-list" data-channel={channel} />,
 }));
+
+const viewOnly = {
+  can: (_resource: string, action = 'view') => action === 'view',
+  canManageRoot: false,
+  isLoading: false,
+};
 
 describe('NotificationTemplatesListPage', () => {
   let t: (key: string) => string;
@@ -83,6 +89,16 @@ describe('NotificationTemplatesListPage', () => {
     render(<NotificationTemplatesListPage />);
 
     expect(screen.queryByTestId('templates-list')).not.toBeInTheDocument();
+  });
+
+  it('hides the New template button when the admin may not create templates', () => {
+    render(
+      <CapabilitiesProvider capabilities={viewOnly}>
+        <NotificationTemplatesListPage />
+      </CapabilitiesProvider>,
+    );
+
+    expect(screen.queryByTestId('notification-template-add-button')).not.toBeInTheDocument();
   });
 
   it('navigates to the create page for the channel when New template is clicked', async () => {

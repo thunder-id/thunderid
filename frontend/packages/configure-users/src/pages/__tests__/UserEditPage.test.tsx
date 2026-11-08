@@ -1,7 +1,7 @@
 // Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {ProjectScopeProvider} from '@thunderid/contexts';
+import {CapabilitiesProvider, ProjectScopeProvider} from '@thunderid/contexts';
 import {render, screen, waitFor, within, userEvent} from '@thunderid/test-utils';
 import type {User} from '@thunderid/types';
 import type {ReactNode} from 'react';
@@ -210,6 +210,12 @@ vi.mock('@/components/edit-user/CredentialsTabPanel', () => ({
     </div>
   ),
 }));
+
+const viewOnly = {
+  can: (_resource: string, action = 'view') => action === 'view',
+  canManageRoot: false,
+  isLoading: false,
+};
 
 describe('UserEditPage', () => {
   const mockUserData: User = {
@@ -674,6 +680,21 @@ describe('UserEditPage', () => {
 
       await user.click(screen.getByRole('tab', {name: 'Advanced'}));
       expect(screen.getByRole('button', {name: /^delete$/i})).toBeInTheDocument();
+    });
+
+    it('omits the Advanced tab and disables Save when the admin may only view users', async () => {
+      const user = userEvent.setup();
+      render(
+        <CapabilitiesProvider capabilities={viewOnly}>
+          <UserEditPage />
+        </CapabilitiesProvider>,
+      );
+
+      expect(screen.queryByRole('tab', {name: 'Advanced'})).not.toBeInTheDocument();
+
+      await user.click(screen.getByRole('tab', {name: 'Attributes'}));
+      await user.click(screen.getByText('Edit an attribute'));
+      expect(screen.getByRole('button', {name: 'Save'})).toBeDisabled();
     });
 
     it('shows the read-only attributes summary and QuickCopy on the General tab', () => {

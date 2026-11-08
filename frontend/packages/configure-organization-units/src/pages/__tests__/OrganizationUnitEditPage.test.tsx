@@ -1,6 +1,7 @@
 // Copyright 2025 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {CapabilitiesProvider} from '@thunderid/contexts';
 import {screen, fireEvent, waitFor, renderWithProviders, renderHook} from '@thunderid/test-utils';
 import type {ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
@@ -131,6 +132,7 @@ vi.mock('@thunderid/components', async (importOriginal) => {
         saveLabel,
         savingLabel,
         isSaving,
+        saveDisabled = false,
         error = undefined,
         onReset,
         onSave,
@@ -140,6 +142,7 @@ vi.mock('@thunderid/components', async (importOriginal) => {
         saveLabel: string;
         savingLabel: string;
         isSaving: boolean;
+        saveDisabled?: boolean;
         error?: string;
         onReset: () => void;
         onSave: () => void;
@@ -150,7 +153,7 @@ vi.mock('@thunderid/components', async (importOriginal) => {
           <button type="button" onClick={onReset}>
             {resetLabel}
           </button>
-          <button type="button" onClick={onSave} disabled={isSaving}>
+          <button type="button" onClick={onSave} disabled={isSaving || saveDisabled}>
             {isSaving ? savingLabel : saveLabel}
           </button>
         </div>
@@ -212,6 +215,12 @@ vi.mock('@thunderid/components', async (importOriginal) => {
     },
   };
 });
+
+const viewOnly = {
+  can: (_resource: string, action = 'view') => action === 'view',
+  canManageRoot: false,
+  isLoading: false,
+};
 
 describe('OrganizationUnitEditPage', () => {
   let t: (key: string) => string;
@@ -1349,6 +1358,37 @@ describe('OrganizationUnitEditPage', () => {
       await waitFor(() => {
         expect(screen.getByText('Test Organization Unit')).toBeInTheDocument();
       });
+    });
+  });
+
+  describe('Without write access', () => {
+    it('should hide delete and disable save when the admin may only view organization units', async () => {
+      renderWithProviders(
+        <CapabilitiesProvider capabilities={viewOnly}>
+          <OrganizationUnitEditPage />
+        </CapabilitiesProvider>,
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText('Test Organization Unit')).toBeInTheDocument();
+      });
+
+      const descEditButton = screen
+        .getAllByRole('button')
+        .find((btn) => btn.querySelector('svg') && btn.closest('div')?.textContent?.includes('A test description'));
+      fireEvent.click(descEditButton!);
+      const descInput = screen.getByDisplayValue('A test description');
+      fireEvent.change(descInput, {target: {value: 'New description'}});
+      fireEvent.blur(descInput);
+
+      await waitFor(() => {
+        expect(screen.getByText(t('organizationUnits:edit.actions.save.label'))).toBeDisabled();
+      });
+
+      fireEvent.click(screen.getByRole('tab', {name: t('organizationUnits:edit.page.tabs.advanced')}));
+      expect(
+        screen.queryByRole('button', {name: t('organizationUnits:edit.general.dangerZone.delete.button.label')}),
+      ).not.toBeInTheDocument();
     });
   });
 

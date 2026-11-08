@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {QueryErrorNotice, SettingsCard, UnsavedChangesBar} from '@thunderid/components';
+import {useCapabilitiesContext} from '@thunderid/contexts';
 import {getErrorMessage} from '@thunderid/utils';
 import {Box, Button, Divider, Skeleton, Stack, Typography} from '@wso2/oxygen-ui';
 import {InfoIcon, Plus} from '@wso2/oxygen-ui-icons-react';
@@ -19,6 +20,7 @@ export default function CorsSection(): JSX.Element {
   const {data, isLoading, error, refetch} = useGetCorsConfig();
   const updateCors = useUpdateCorsConfig();
   const origins = useAllowedOriginsDraft(data);
+  const {can} = useCapabilitiesContext();
 
   // Resolves an error through the `settings` catalog. `t` defaults to the `common` namespace, so
   // this forwards explicit `ns:` prefixes unchanged and prefixes bare keys with `settings:`, per
@@ -167,7 +169,7 @@ export default function CorsSection(): JSX.Element {
           saveLabel={t('settings:cors.save', 'Save changes')}
           savingLabel={t('settings:cors.saving', 'Saving...')}
           isSaving={updateCors.isPending}
-          saveDisabled={origins.hasErrors}
+          saveDisabled={origins.hasErrors || !can('serverconfig', 'update')}
           error={
             updateCors.error
               ? getErrorMessage(updateCors.error, tForErrors, 'cors.save.error', 'Failed to update allowed origins.')

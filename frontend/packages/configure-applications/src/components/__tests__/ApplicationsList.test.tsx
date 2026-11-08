@@ -3,6 +3,7 @@
 
 import userEvent from '@testing-library/user-event';
 import {DeployStatusProvider} from '@thunderid/components';
+import {CapabilitiesProvider} from '@thunderid/contexts';
 import {render, screen, waitFor} from '@thunderid/test-utils';
 import type {NavigateFunction} from 'react-router';
 import {describe, it, expect, beforeEach, vi} from 'vitest';
@@ -132,6 +133,12 @@ vi.mock('@thunderid/logger/react', async (importOriginal) => ({
 const {default: useGetApplications} = await import('../../api/useGetApplications');
 const {useNavigate} = await import('react-router');
 const {useDataGridLocaleText} = await import('@thunderid/hooks');
+
+const viewOnly = {
+  can: (_resource: string, action = 'view') => action === 'view',
+  canManageRoot: false,
+  isLoading: false,
+};
 
 describe('ApplicationsList', () => {
   let mockNavigate: ReturnType<typeof vi.fn>;
@@ -305,6 +312,24 @@ describe('ApplicationsList', () => {
 
     const dashElements = screen.getAllByText('-');
     expect(dashElements.length).toBeGreaterThan(0);
+  });
+
+  it('hides the edit and delete row actions when the admin may only view applications', () => {
+    vi.mocked(useGetApplications).mockReturnValue({
+      data: mockApplicationsData,
+      isLoading: false,
+      error: null,
+    } as ReturnType<typeof useGetApplications>);
+
+    render(
+      <CapabilitiesProvider capabilities={viewOnly}>
+        <ApplicationsList />
+      </CapabilitiesProvider>,
+    );
+
+    expect(screen.getByText('Test App 1')).toBeInTheDocument();
+    expect(screen.queryByRole('button', {name: /delete/i})).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', {name: /edit/i})).not.toBeInTheDocument();
   });
 
   it('should open delete dialog when clicking Delete action', async () => {
