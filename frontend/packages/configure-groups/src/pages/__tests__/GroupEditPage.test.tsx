@@ -3,7 +3,7 @@
 
 import {screen, waitFor, fireEvent} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import {CapabilitiesProvider} from '@thunderid/contexts';
+import {CapabilitiesProvider, ProjectScopeProvider} from '@thunderid/contexts';
 import {renderWithProviders} from '@thunderid/test-utils';
 import type {ReactNode} from 'react';
 import {describe, it, expect, beforeEach, afterEach, vi} from 'vitest';
@@ -179,6 +179,57 @@ describe('GroupEditPage', () => {
       value: originalClipboard,
       writable: true,
       configurable: true,
+    });
+  });
+
+  describe('inside a project', () => {
+    it('should return to the list for a group of another project', async () => {
+      mockUseGetGroup.mockReturnValue({
+        data: {...mockGroup, projectId: 'project-2'},
+        isLoading: false,
+        error: null,
+        refetch: mockRefetch,
+      });
+
+      renderWithProviders(
+        <ProjectScopeProvider project={{id: 'project-1'}}>
+          <GroupEditPage />
+        </ProjectScopeProvider>,
+      );
+
+      await waitFor(() => {
+        expect(mockNavigate).toHaveBeenCalledWith('/groups', {replace: true});
+      });
+    });
+
+    it('should return to the list for a group of the organization', async () => {
+      renderWithProviders(
+        <ProjectScopeProvider project={{id: 'project-1'}}>
+          <GroupEditPage />
+        </ProjectScopeProvider>,
+      );
+
+      await waitFor(() => {
+        expect(mockNavigate).toHaveBeenCalledWith('/groups', {replace: true});
+      });
+    });
+
+    it('should show a group of the selected project', () => {
+      mockUseGetGroup.mockReturnValue({
+        data: {...mockGroup, projectId: 'project-1'},
+        isLoading: false,
+        error: null,
+        refetch: mockRefetch,
+      });
+
+      renderWithProviders(
+        <ProjectScopeProvider project={{id: 'project-1'}}>
+          <GroupEditPage />
+        </ProjectScopeProvider>,
+      );
+
+      expect(screen.getAllByText('Test Group').length).toBeGreaterThan(0);
+      expect(mockNavigate).not.toHaveBeenCalledWith('/groups', {replace: true});
     });
   });
 

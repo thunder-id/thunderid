@@ -3,6 +3,7 @@
 
 import {fireEvent, screen, waitFor} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import {ProjectScopeProvider} from '@thunderid/contexts';
 import {renderWithProviders} from '@thunderid/test-utils';
 import type {ComponentProps, JSX} from 'react';
 import {useEffect} from 'react';
@@ -423,6 +424,41 @@ describe('CreateGroupPage', () => {
       await submitWithName('a'.repeat(GroupConstraints.NAME_MAX_LENGTH + 1));
 
       await expectSubmitRefused(`Group name cannot exceed ${GroupConstraints.NAME_MAX_LENGTH} characters`);
+    });
+  });
+
+  describe('inside a project', () => {
+    beforeEach(() => {
+      mockUseHasMultipleOUs.mockReturnValue({
+        hasMultipleOUs: true,
+        isLoading: false,
+        ouList: [
+          {id: 'ou-1', name: 'Default OU'},
+          {id: 'ou-2', name: 'Other OU'},
+        ],
+      });
+    });
+
+    it('should create the group in the project, without an organization unit step', async () => {
+      const user = userEvent.setup();
+      renderWithProviders(
+        <ProjectScopeProvider project={{id: 'project-1'}}>
+          <GroupCreateProvider>
+            <CreateGroupPage />
+          </GroupCreateProvider>
+        </ProjectScopeProvider>,
+      );
+
+      expect(screen.queryByTestId('configure-organization-unit')).not.toBeInTheDocument();
+      await user.type(screen.getByPlaceholderText('Enter group name'), 'Shoppers');
+      await waitFor(() => {
+        expect(screen.getByRole('button', {name: 'Continue'})).not.toBeDisabled();
+      });
+      await user.click(screen.getByRole('button', {name: 'Continue'}));
+
+      await waitFor(() => {
+        expect(mockMutateAsync).toHaveBeenCalledWith({name: 'Shoppers', projectId: 'project-1'});
+      });
     });
   });
 });

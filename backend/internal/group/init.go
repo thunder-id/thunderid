@@ -34,6 +34,7 @@ func Initialize(
 	authzService sysauthz.SystemAuthorizationServiceInterface,
 	sharingService sharing.SharingServiceInterface,
 	bus eventbus.EventBusInterface,
+	projectValidator projectOUValidator,
 ) (GroupServiceInterface, oupkg.OUGroupResolver, declarativeresource.ResourceExporter, error) {
 	if bus == nil {
 		return nil, nil, nil, errNilEventBus
@@ -48,6 +49,7 @@ func Initialize(
 	// Step 2: Create service with store.
 	groupService := newGroupServiceWithStore(
 		store, ouService, entityService, entityTypeService, authzService, transactioner, sharingService, bus,
+		projectValidator,
 	)
 
 	// Step 3: Load declarative resources into file store (if applicable).

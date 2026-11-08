@@ -116,6 +116,22 @@ func (s *GroupToolsTestSuite) TestListGroups() {
 		s.Nil(out.Groups[0].Direct)
 	})
 
+	s.Run("by project", func() {
+		s.groups.On("GetGroupListByProject", mock.Anything, "project-1", 30, 0, map[string]interface{}(nil), false).
+			Return(&GroupListResponse{TotalResults: 1, Groups: []GroupBasic{
+				{ID: "g1", Name: "Shoppers", OUID: "ou-1", ProjectID: "project-1"}}},
+				(*tidcommon.ServiceError)(nil)).Once()
+		var out groupListMCPResponse
+		s.structured(s.call("list_groups", map[string]any{"projectId": "project-1"}), &out)
+		s.Equal(1, out.TotalResults)
+		s.Equal("project-1", out.Groups[0].ProjectID)
+	})
+
+	s.Run("by project, refused alongside a name", func() {
+		s.Contains(s.errorText(s.call("list_groups", map[string]any{"projectId": "project-1", "name": "Support"})),
+			"projectId can't be combined")
+	})
+
 	s.Run("by member, direct and nested, leaving out what the caller can't read", func() {
 		s.entities.On("GetTransitiveEntityGroups", mock.Anything, "u1").Return([]providers.EntityGroup{
 			{ID: "g1"}, {ID: "g2"}, {ID: "g3"}}, nil).Once()
@@ -197,6 +213,29 @@ func (s *GroupToolsTestSuite) TestCreateGroup() {
 		s.Equal([]Member{{ID: "u1", Type: MemberTypeUser}}, request.Members)
 		s.Equal("g1", out.ID)
 		s.Equal(1, out.MembersTotal)
+	})
+
+	s.Run("in a project, leaving the organization unit to the service", func() {
+		var request CreateGroupRequest
+		s.groups.On("CreateGroup", mock.Anything, mock.Anything).
+			Run(func(args mock.Arguments) { request = args.Get(1).(CreateGroupRequest) }).
+			Return(&Group{ID: "g2", Name: "Shoppers", OUID: "ou-system", ProjectID: "project-1"},
+				(*tidcommon.ServiceError)(nil)).Once()
+
+		var out groupMCPDetails
+		s.structured(s.call("create_group", map[string]any{"name": "Shoppers", "projectId": "project-1"}), &out)
+		s.Empty(request.OUID)
+		s.Equal("project-1", request.ProjectID)
+		s.Equal("project-1", out.ProjectID)
+	})
+
+	s.Run("the name is taken in a project's system organization unit", func() {
+		s.groups.On("CreateGroup", mock.Anything, mock.Anything).Return((*Group)(nil), &ErrorGroupNameConflict).Once()
+		s.ous.On("GetSystemOUID", mock.Anything).Return("ou-system", (*tidcommon.ServiceError)(nil)).Once()
+		s.groups.On("GetGroupsByNames", mock.Anything, []string{"Shoppers"}).Return(map[string][]*Group{
+			"Shoppers": {{ID: "g8", OUID: "ou-system"}}}, (*tidcommon.ServiceError)(nil)).Once()
+		text := s.errorText(s.call("create_group", map[string]any{"name": "Shoppers", "projectId": "project-1"}))
+		s.Contains(text, `a group named "Shoppers" already exists in this organization unit (g8)`)
 	})
 
 	s.Run("the name is taken in the unit", func() {

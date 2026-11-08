@@ -1754,3 +1754,56 @@ func (suite *GroupHandlerTestSuite) TestGroupHandler_ValidationError_NameTooLong
 	// Confirms validation intercepted the flow and short-circuited the mock service call
 	serviceMock.AssertNotCalled(suite.T(), "CreateGroup", mock.Anything, mock.Anything)
 }
+
+func (suite *GroupHandlerTestSuite) TestGroupHandler_HandleGroupListRequest_ByProject() {
+	serviceMock := NewGroupServiceInterfaceMock(suite.T())
+	serviceMock.On("GetGroupListByProject", mock.Anything, "project-1", 10, 0, mock.Anything, false).
+		Return(&GroupListResponse{TotalResults: 1, Groups: []GroupBasic{{ID: "grp-001", ProjectID: "project-1"}}},
+			(*tidcommon.ServiceError)(nil)).Once()
+	handler := newGroupHandler(serviceMock)
+	req := httptest.NewRequest(http.MethodGet, "/groups?limit=10&projectId=project-1", nil)
+	recorder := httptest.NewRecorder()
+
+	handler.HandleGroupListRequest(recorder, req)
+
+	suite.Require().Equal(http.StatusOK, recorder.Code)
+	var body GroupListResponse
+	suite.Require().NoError(json.Unmarshal(recorder.Body.Bytes(), &body))
+	suite.Require().Equal("project-1", body.Groups[0].ProjectID)
+}
+
+func (suite *GroupHandlerTestSuite) TestGroupHandler_ProjectErrorsAreBadRequests() {
+	for _, svcErr := range []tidcommon.ServiceError{ErrorInvalidProject, ErrorOUNotInProject} {
+		serviceMock := NewGroupServiceInterfaceMock(suite.T())
+		serviceMock.On("CreateGroup", mock.Anything, mock.MatchedBy(func(r CreateGroupRequest) bool {
+			return r.ProjectID == "project-1" && r.OUID == ""
+		})).Return(nil, &svcErr).Once()
+		handler := newGroupHandler(serviceMock)
+		req := httptest.NewRequest(http.MethodPost, "/groups",
+			strings.NewReader(`{"name":"Shoppers","projectId":"project-1"}`))
+		recorder := httptest.NewRecorder()
+
+		handler.HandleGroupPostRequest(recorder, req)
+
+		suite.Require().Equal(http.StatusBadRequest, recorder.Code)
+		var body apierror.ErrorResponse
+		suite.Require().NoError(json.Unmarshal(recorder.Body.Bytes(), &body))
+		suite.Require().Equal(svcErr.Code, body.Code)
+	}
+}
+
+func (suite *GroupHandlerTestSuite) TestGroupHandler_HandleGroupPutRequest_PassesTheProject() {
+	serviceMock := NewGroupServiceInterfaceMock(suite.T())
+	serviceMock.On("UpdateGroup", mock.Anything, "grp-001", mock.MatchedBy(func(r UpdateGroupRequest) bool {
+		return r.ProjectID == "project-1"
+	})).Return(&Group{ID: "grp-001", ProjectID: "project-1"}, (*tidcommon.ServiceError)(nil)).Once()
+	handler := newGroupHandler(serviceMock)
+	req := httptest.NewRequest(http.MethodPut, "/groups/grp-001",
+		strings.NewReader(`{"name":"Shoppers","ouId":"ou-1","projectId":"project-1"}`))
+	req.SetPathValue("id", "grp-001")
+	recorder := httptest.NewRecorder()
+
+	handler.HandleGroupPutRequest(recorder, req)
+
+	suite.Require().Equal(http.StatusOK, recorder.Code)
+}

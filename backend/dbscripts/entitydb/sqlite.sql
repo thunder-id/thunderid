@@ -67,6 +67,7 @@ CREATE TABLE "GROUP" (
     DEPLOYMENT_ID   VARCHAR(255) NOT NULL,
     ID          VARCHAR(36) NOT NULL,
     OU_ID       VARCHAR(36)        NOT NULL,
+    PROJECT_ID  VARCHAR(36),
     NAME        VARCHAR(50)        NOT NULL,
     DESCRIPTION VARCHAR(255),
     CREATED_AT  TEXT NOT NULL,
@@ -76,6 +77,9 @@ CREATE TABLE "GROUP" (
 
 -- Composite index for name conflict checks within an OU (QueryCheckGroupNameConflict)
 CREATE INDEX idx_group_name_ou_deployment ON "GROUP" (DEPLOYMENT_ID, OU_ID, NAME);
+
+-- Composite index for listing the groups of a project
+CREATE INDEX idx_group_project ON "GROUP" (DEPLOYMENT_ID, PROJECT_ID);
 
 -- Table to store Group member assignments
 CREATE TABLE "GROUP_MEMBER_REFERENCE" (

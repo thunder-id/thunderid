@@ -14,8 +14,10 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/agent"
 	agentmodel "github.com/thunder-id/thunderid/internal/agent/model"
+	"github.com/thunder-id/thunderid/internal/group"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/agentmock"
+	"github.com/thunder-id/thunderid/tests/mocks/groupmock"
 	"github.com/thunder-id/thunderid/tests/mocks/usermock"
 )
 
@@ -148,6 +150,70 @@ func (suite *ServiceAdaptersTestSuite) TestImportUser_UpsertKeepsProject() {
 	outcome := svc.importUser(context.Background(), userDoc(t,
 		"id: user-1\ntype: person\nouId: ou-1\nprojectId: "+testUserProjectID+"\nattributes:\n  username: alice\n"),
 		&ImportOptions{Upsert: &upsert}, false, nil)
+
+	assert.Equal(t, statusSuccess, outcome.Status)
+}
+
+// testGroupProjectID is the project the imported groups name.
+const testGroupProjectID = "project-1"
+
+func groupDoc(t *testing.T, body string) parsedDocument {
+	t.Helper()
+	var node yaml.Node
+	if err := yaml.Unmarshal([]byte(body), &node); err != nil {
+		t.Fatalf("parsing the document: %v", err)
+	}
+	return parsedDocument{ResourceType: resourceTypeGroup, Node: node.Content[0]}
+}
+
+// An exported group's project reaches the group service, so the import keeps it in the project.
+func (suite *ServiceAdaptersTestSuite) TestImportGroup_KeepsProject() {
+	t := suite.T()
+	groupSvc := groupmock.NewGroupServiceInterfaceMock(t)
+	groupSvc.On("CreateGroup", mock.Anything, mock.MatchedBy(func(r group.CreateGroupRequest) bool {
+		return r.ProjectID == testGroupProjectID
+	})).Return(&group.Group{ID: "group-1", Name: "Shoppers"}, nil).Once()
+	svc := &importService{groupService: groupSvc}
+
+	outcome := svc.importGroup(context.Background(), groupDoc(t,
+		"id: group-1\nname: Shoppers\nouId: ou-1\nprojectId: "+testGroupProjectID+"\n"), noUpsert(), false)
+
+	assert.Equal(t, statusSuccess, outcome.Status)
+}
+
+// An upsert onto an existing group keeps the project the document names.
+func (suite *ServiceAdaptersTestSuite) TestImportGroup_UpsertKeepsProject() {
+	t := suite.T()
+	groupSvc := groupmock.NewGroupServiceInterfaceMock(t)
+	groupSvc.On("GetGroup", mock.Anything, "group-1", false).Return(&group.Group{ID: "group-1"}, nil).Once()
+	groupSvc.On("UpdateGroup", mock.Anything, "group-1", mock.MatchedBy(func(r group.UpdateGroupRequest) bool {
+		return r.ProjectID == testGroupProjectID
+	})).Return(&group.Group{ID: "group-1", Name: "Shoppers"}, nil).Once()
+	svc := &importService{groupService: groupSvc}
+	upsert := true
+
+	outcome := svc.importGroup(context.Background(), groupDoc(t,
+		"id: group-1\nname: Shoppers\nouId: ou-1\nprojectId: "+testGroupProjectID+"\n"),
+		&ImportOptions{Upsert: &upsert}, false)
+
+	assert.Equal(t, statusSuccess, outcome.Status)
+}
+
+// A re-import of a group document that names a project and no organization unit keeps the group in its own,
+// since an update needs one.
+func (suite *ServiceAdaptersTestSuite) TestImportGroup_UpsertWithoutOUKeepsTheGroupsOU() {
+	t := suite.T()
+	groupSvc := groupmock.NewGroupServiceInterfaceMock(t)
+	groupSvc.On("GetGroup", mock.Anything, "group-1", false).
+		Return(&group.Group{ID: "group-1", OUID: "ou-system", ProjectID: testGroupProjectID}, nil).Once()
+	groupSvc.On("UpdateGroup", mock.Anything, "group-1", mock.MatchedBy(func(r group.UpdateGroupRequest) bool {
+		return r.OUID == "ou-system" && r.ProjectID == testGroupProjectID
+	})).Return(&group.Group{ID: "group-1", Name: "Shoppers"}, nil).Once()
+	svc := &importService{groupService: groupSvc}
+	upsert := true
+
+	outcome := svc.importGroup(context.Background(), groupDoc(t,
+		"id: group-1\nname: Shoppers\nprojectId: "+testGroupProjectID+"\n"), &ImportOptions{Upsert: &upsert}, false)
 
 	assert.Equal(t, statusSuccess, outcome.Status)
 }

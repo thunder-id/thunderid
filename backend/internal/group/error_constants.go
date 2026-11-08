@@ -212,6 +212,33 @@ var (
 				"Remove its members, its memberships in other groups and its role assignments before moving it",
 		},
 	}
+	// ErrorInvalidProject is the error returned when a group names a project that does not exist.
+	ErrorInvalidProject = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "GRP-1021",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.groupservice.invalid_project",
+			DefaultValue: "Invalid project",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.groupservice.invalid_project_description",
+			DefaultValue: "No project exists with the given project ID",
+		},
+	}
+	// ErrorOUNotInProject is the error returned when a group names an organization unit outside the
+	// project it names.
+	ErrorOUNotInProject = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "GRP-1022",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.groupservice.ou_not_in_project",
+			DefaultValue: "Organization unit not in project",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.groupservice.ou_not_in_project_description",
+			DefaultValue: "A group in a project must be in the system organization unit",
+		},
+	}
 )
 
 // Declarative mode errors for group management operations.

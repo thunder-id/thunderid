@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
+	"gopkg.in/yaml.v3"
 
 	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/system/config"
@@ -216,6 +217,21 @@ func (suite *GroupExporterTestSuite) TestGetResourceByID_NoMembers() {
 	assert.True(suite.T(), ok)
 	assert.Empty(suite.T(), exported.Members)
 	suite.mockService.AssertExpectations(suite.T())
+}
+
+// A group's project travels with its export, so a deploy scoped to the project carries the group.
+func (suite *GroupExporterTestSuite) TestGetResourceByID_KeepsTheProject() {
+	grp := &Group{ID: "group1", Name: "Admins", OUID: "ou1", ProjectID: "project-1"}
+	suite.mockService.On("GetGroup", suite.ctx, "group1", false).Return(grp, nil)
+	suite.mockService.On("GetGroupMembers", suite.ctx, "group1", serverconst.MaxPageSize, 0, false).
+		Return(&MemberListResponse{Members: []Member{}}, nil)
+
+	resource, _, err := suite.exporter.GetResourceByID(suite.ctx, "group1")
+
+	suite.Nil(err)
+	doc, marshalErr := yaml.Marshal(resource)
+	suite.Require().NoError(marshalErr)
+	assert.Contains(suite.T(), string(doc), "projectId: project-1")
 }
 
 // Test GetResourceByID - members fetched across multiple pages

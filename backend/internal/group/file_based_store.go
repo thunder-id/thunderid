@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
@@ -72,6 +73,7 @@ func (f *fileBasedGroupStore) GetGroupList(ctx context.Context, limit, offset in
 			Name:        grpData.Name,
 			Description: grpData.Description,
 			OUID:        grpData.OUID,
+			ProjectID:   grpData.ProjectID,
 			IsReadOnly:  true,
 		})
 	}
@@ -118,6 +120,69 @@ func (f *fileBasedGroupStore) GetGroupListCountByOUIDs(ctx context.Context, ouID
 	return count, nil
 }
 
+// GetGroupListCountByProject returns the number of declared groups of a project, narrowed to the ones the
+// given organization units own when ouIDs is not empty.
+func (f *fileBasedGroupStore) GetGroupListCountByProject(
+	ctx context.Context, projectID string, ouIDs []string,
+) (int, error) {
+	groups, err := f.groupsByProject(ctx, projectID, ouIDs)
+	if err != nil {
+		return 0, err
+	}
+	return len(groups), nil
+}
+
+// GetGroupListByProject returns a page of the declared groups of a project, narrowed to the ones the given
+// organization units own when ouIDs is not empty.
+func (f *fileBasedGroupStore) GetGroupListByProject(
+	ctx context.Context, projectID string, ouIDs []string, limit, offset int,
+) ([]GroupBasicDAO, error) {
+	groups, err := f.groupsByProject(ctx, projectID, ouIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	start := max(offset, 0)
+	if start >= len(groups) {
+		return []GroupBasicDAO{}, nil
+	}
+	end := min(start+max(limit, 0), len(groups))
+	return groups[start:end], nil
+}
+
+// groupsByProject returns the declared groups of a project, narrowed to the ones the given organization
+// units own when ouIDs is not empty.
+func (f *fileBasedGroupStore) groupsByProject(
+	ctx context.Context, projectID string, ouIDs []string,
+) ([]GroupBasicDAO, error) {
+	list, err := f.GenericFileBasedStore.List()
+	if err != nil {
+		return nil, err
+	}
+
+	groups := make([]GroupBasicDAO, 0, len(list))
+	for _, item := range list {
+		grpData, err := groupFromDeclarativeData(item.ID.ID, item.Data)
+		if err != nil {
+			log.GetLogger().Warn(ctx, "Skipping malformed group in groupsByProject",
+				log.String("groupID", item.ID.ID), log.Error(err))
+			continue
+		}
+		if grpData.ProjectID != projectID || (len(ouIDs) > 0 && !slices.Contains(ouIDs, grpData.OUID)) {
+			continue
+		}
+		groups = append(groups, GroupBasicDAO{
+			ID:          grpData.ID,
+			Name:        grpData.Name,
+			Description: grpData.Description,
+			OUID:        grpData.OUID,
+			ProjectID:   grpData.ProjectID,
+			IsReadOnly:  true,
+		})
+	}
+	return groups, nil
+}
+
 // GetGroupListByOUIDs returns a paginated list of groups belonging to any of the given OUs.
 func (f *fileBasedGroupStore) GetGroupListByOUIDs(
 	ctx context.Context, ouIDs []string, limit, offset int,
@@ -148,6 +213,7 @@ func (f *fileBasedGroupStore) GetGroupListByOUIDs(
 				Name:        grpData.Name,
 				Description: grpData.Description,
 				OUID:        grpData.OUID,
+				ProjectID:   grpData.ProjectID,
 				IsReadOnly:  true,
 			})
 		}
@@ -198,6 +264,7 @@ func (f *fileBasedGroupStore) GetGroup(ctx context.Context, id string) (GroupDAO
 		Name:        grpData.Name,
 		Description: grpData.Description,
 		OUID:        grpData.OUID,
+		ProjectID:   grpData.ProjectID,
 		Members:     members,
 		IsReadOnly:  true,
 	}, nil
@@ -402,6 +469,7 @@ func (f *fileBasedGroupStore) GetGroupsByOrganizationUnit(
 				Name:        grpData.Name,
 				Description: grpData.Description,
 				OUID:        grpData.OUID,
+				ProjectID:   grpData.ProjectID,
 				IsReadOnly:  true,
 			})
 		}
@@ -475,6 +543,7 @@ func (f *fileBasedGroupStore) GetGroupsByIDs(ctx context.Context, groupIDs []str
 			Name:        grpData.Name,
 			Description: grpData.Description,
 			OUID:        grpData.OUID,
+			ProjectID:   grpData.ProjectID,
 			IsReadOnly:  true,
 		})
 	}
@@ -515,6 +584,7 @@ func (f *fileBasedGroupStore) GetGroupsByNames(ctx context.Context, names []stri
 			Name:        grpData.Name,
 			Description: grpData.Description,
 			OUID:        grpData.OUID,
+			ProjectID:   grpData.ProjectID,
 			IsReadOnly:  true,
 		})
 	}

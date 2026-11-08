@@ -9,9 +9,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"slices"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -25,6 +27,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/filter"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/projectscope"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
@@ -43,6 +46,10 @@ type RoleAssignmentResolver interface {
 type GroupServiceInterface interface {
 	GetGroupList(ctx context.Context, limit, offset int, filters map[string]interface{},
 		includeDisplay bool) (*GroupListResponse, *tidcommon.ServiceError)
+	GetGroupListByProject(ctx context.Context, projectID string, limit, offset int,
+		filters map[string]interface{}, includeDisplay bool) (*GroupListResponse, *tidcommon.ServiceError)
+	// ProjectHasGroups reports whether any group, runtime or declared, belongs to the project.
+	ProjectHasGroups(ctx context.Context, projectID string) (bool, *tidcommon.ServiceError)
 	GetGroupsByPath(ctx context.Context, handlePath string, limit, offset int, includeDisplay bool) (
 		*GroupListResponse, *tidcommon.ServiceError)
 	CreateGroup(ctx context.Context, request CreateGroupRequest) (*Group, *tidcommon.ServiceError)
@@ -83,6 +90,11 @@ type GroupServiceInterface interface {
 	SetRoleAssignmentResolver(r RoleAssignmentResolver)
 }
 
+// projectOUValidator checks that the organization unit of a resource scoped to a project belongs to it.
+type projectOUValidator interface {
+	ValidateProjectOU(ctx context.Context, projectID, ouID string) *tidcommon.ServiceError
+}
+
 // groupService is the default implementation of the GroupServiceInterface.
 type groupService struct {
 	groupStore         groupStoreInterface
@@ -97,6 +109,8 @@ type groupService struct {
 	bus                eventbus.EventBusInterface
 	// systemFlows is nil where system flows are off.
 	systemFlows systemFlowProvider
+	// projectValidator is nil on a deployment that serves no projects.
+	projectValidator projectOUValidator
 }
 
 // newGroupServiceWithStore creates a new instance of GroupService with an externally provided store.
@@ -109,6 +123,7 @@ func newGroupServiceWithStore(
 	transactioner providers.Transactioner,
 	sharingService sharing.SharingServiceInterface,
 	bus eventbus.EventBusInterface,
+	projectValidator projectOUValidator,
 ) *groupService {
 	return &groupService{
 		groupStore:        store,
@@ -119,6 +134,7 @@ func newGroupServiceWithStore(
 		transactioner:     transactioner,
 		sharingService:    sharingService,
 		bus:               bus,
+		projectValidator:  projectValidator,
 	}
 }
 
@@ -154,6 +170,87 @@ func (gs *groupService) GetGroupList(ctx context.Context, limit, offset int, fil
 	}
 
 	return gs.listGroupsByOUIDs(ctx, accessibleOUs.IDs, limit, offset, includeDisplay, listQuery)
+}
+
+// GetGroupListByProject returns a paginated list of the groups of a project, narrowed to those an
+// organization unit owns when the filter names one. A project that does not exist has none. A caller
+// limited to some organization units lists only the project's groups in those units.
+func (gs *groupService) GetGroupListByProject(ctx context.Context, projectID string, limit, offset int,
+	filters map[string]interface{}, includeDisplay bool) (*GroupListResponse, *tidcommon.ServiceError) {
+	if err := validatePaginationParams(limit, offset); err != nil {
+		return nil, err
+	}
+
+	ouID, rest, err := filter.SplitOUIDFilter(filters)
+	if err != nil || len(rest) > 0 {
+		return nil, &ErrorInvalidFilter
+	}
+	listQuery := "&" + projectIDQueryParam + "=" + url.QueryEscape(projectID) +
+		utils.FilterQueryParam(filters) + utils.DisplayQueryParam(includeDisplay)
+	empty := &GroupListResponse{Groups: []GroupBasic{}, StartIndex: offset + 1, Links: []utils.Link{}}
+	if projectID == "" {
+		return empty, nil
+	}
+
+	accessibleOUs, svcErr := gs.getAccessibleOUs(ctx, security.ActionListGroups)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	var ouIDs []string
+	switch {
+	case ouID != "" && !accessibleOUs.AllAllowed && !slices.Contains(accessibleOUs.IDs, ouID):
+		return empty, nil
+	case ouID != "":
+		ouIDs = []string{ouID}
+	case !accessibleOUs.AllAllowed:
+		if len(accessibleOUs.IDs) == 0 {
+			return empty, nil
+		}
+		ouIDs = append([]string{}, accessibleOUs.IDs...)
+	}
+
+	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
+	totalCount, err := gs.groupStore.GetGroupListCountByProject(ctx, projectID, ouIDs)
+	if err != nil {
+		logger.Error(ctx, "Failed to count project groups", log.String("projectID", projectID), log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+	groups, err := gs.groupStore.GetGroupListByProject(ctx, projectID, ouIDs, limit, offset)
+	if err != nil {
+		logger.Error(ctx, "Failed to list project groups", log.String("projectID", projectID), log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+
+	groupBasics := make([]GroupBasic, 0, len(groups))
+	for _, groupDAO := range groups {
+		groupBasics = append(groupBasics, buildGroupBasic(groupDAO))
+	}
+	if includeDisplay {
+		gs.populateGroupOUHandles(ctx, groupBasics, logger)
+	}
+
+	return &GroupListResponse{
+		TotalResults: totalCount,
+		Groups:       groupBasics,
+		StartIndex:   offset + 1,
+		Count:        len(groupBasics),
+		Links:        utils.BuildPaginationLinks("/groups", limit, offset, totalCount, listQuery),
+	}, nil
+}
+
+// ProjectHasGroups reports whether any group, runtime or declared, belongs to the project. A project with more
+// groups than the composite store can count has groups.
+func (gs *groupService) ProjectHasGroups(ctx context.Context, projectID string) (bool, *tidcommon.ServiceError) {
+	count, err := gs.groupStore.GetGroupListCountByProject(ctx, projectID, nil)
+	if errors.Is(err, errResultLimitExceededInCompositeMode) {
+		return true, nil
+	}
+	if err != nil {
+		log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName)).Error(ctx,
+			"Failed to count the groups of a project", log.String("projectID", projectID), log.Error(err))
+		return false, &tidcommon.InternalServerError
+	}
+	return count > 0, nil
 }
 
 func (gs *groupService) listAllGroups(ctx context.Context, limit, offset int, includeDisplay bool,
@@ -328,12 +425,29 @@ func (gs *groupService) createGroup(ctx context.Context, request CreateGroupRequ
 		return nil, &ErrorDeclarativeModeGroupCreateNotAllowed
 	}
 
+	// A group in a project that names no organization unit goes to the system organization unit.
+	if request.OUID == "" && request.ProjectID != "" {
+		systemOUID, svcErr := gs.ouService.GetSystemOUID(ctx)
+		if svcErr != nil {
+			return nil, svcErr
+		}
+		request.OUID = systemOUID
+	}
+
 	if err := gs.validateCreateGroupRequest(request); err != nil {
 		return nil, err
 	}
 
 	if err := gs.validateOU(ctx, request.OUID); err != nil {
 		return nil, err
+	}
+
+	// A project checks that the group's organization unit belongs to it. A group in no project belongs to
+	// the organization.
+	if request.ProjectID != "" {
+		if err := gs.validateProjectOU(ctx, request.ProjectID, request.OUID); err != nil {
+			return nil, err
+		}
 	}
 
 	if err := gs.checkGroupAccess(ctx, security.ActionCreateGroup, request.OUID, ""); err != nil {
@@ -379,6 +493,7 @@ func (gs *groupService) createGroup(ctx context.Context, request CreateGroupRequ
 			Name:        request.Name,
 			Description: request.Description,
 			OUID:        request.OUID,
+			ProjectID:   request.ProjectID,
 			Members:     request.Members,
 		}
 
@@ -622,6 +737,21 @@ func (gs *groupService) updateGroup(
 			}
 		}
 
+		// An update that names no project keeps the group in its project. A project checks that the group's
+		// organization unit belongs to it. It is checked only when the update changes the project or the
+		// organization unit, so a group whose project is gone can still be edited.
+		updateProjectID := request.ProjectID
+		if updateProjectID == "" {
+			updateProjectID = existingGroupDAO.ProjectID
+		}
+		if updateProjectID != "" &&
+			(updateProjectID != existingGroupDAO.ProjectID || updateOUID != existingGroupDAO.OUID) {
+			if err := gs.validateProjectOU(txCtx, updateProjectID, updateOUID); err != nil {
+				capturedSvcErr = err
+				return errors.New("rollback for invalid project")
+			}
+		}
+
 		if existingGroup.Name != request.Name || existingGroup.OUID != request.OUID {
 			err := gs.groupStore.CheckGroupNameConflictForUpdate(
 				txCtx, request.Name, request.OUID, groupID)
@@ -641,6 +771,7 @@ func (gs *groupService) updateGroup(
 			Name:        request.Name,
 			Description: request.Description,
 			OUID:        updateOUID,
+			ProjectID:   updateProjectID,
 		}
 
 		if err := gs.groupStore.UpdateGroup(txCtx, updatedGroupDAO); err != nil {
@@ -1362,6 +1493,33 @@ func (gs *groupService) validateMembersInGroupOU(
 	return nil
 }
 
+// validateProjectOU checks that a group's organization unit belongs to its project. It returns
+// ErrorInvalidProject when no such project exists, and ErrorOUNotInProject when the organization unit is
+// outside the project.
+//
+// A deployment that serves no projects, such as a Data Plane, cannot check the project. It keeps the
+// project ID and organization unit as given so that imported configuration retains them.
+func (gs *groupService) validateProjectOU(ctx context.Context, projectID, ouID string) *tidcommon.ServiceError {
+	// The column holds 36 characters, so a longer ID is refused on every deployment, checked or not.
+	if utf8.RuneCountInString(projectID) > maxProjectIDLength {
+		return &ErrorInvalidProject
+	}
+	if gs.projectValidator == nil {
+		return nil
+	}
+	svcErr := gs.projectValidator.ValidateProjectOU(ctx, projectID, ouID)
+	switch {
+	case svcErr == nil:
+		return nil
+	case svcErr.Code == projectscope.ProjectNotFoundErrorCode:
+		return &ErrorInvalidProject
+	case svcErr.Code == projectscope.OUNotInProjectErrorCode:
+		return &ErrorOUNotInProject
+	default:
+		return &tidcommon.InternalServerError
+	}
+}
+
 // validateGroupOUChange rejects moving a group that has members, that another group contains, or that
 // is assigned roles. A group is assigned roles only in its own organization unit, so moving it would
 // carry that unit's roles to the members it gains in the new one.
@@ -1647,6 +1805,7 @@ func convertGroupDAOToGroup(groupDAO GroupDAO) Group {
 		Name:        groupDAO.Name,
 		Description: groupDAO.Description,
 		OUID:        groupDAO.OUID,
+		ProjectID:   groupDAO.ProjectID,
 		Members:     groupDAO.Members,
 		IsReadOnly:  groupDAO.IsReadOnly,
 	}
@@ -1659,6 +1818,7 @@ func buildGroupBasic(groupDAO GroupBasicDAO) GroupBasic {
 		Name:        groupDAO.Name,
 		Description: groupDAO.Description,
 		OUID:        groupDAO.OUID,
+		ProjectID:   groupDAO.ProjectID,
 		IsReadOnly:  groupDAO.IsReadOnly,
 	}
 }

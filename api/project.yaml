@@ -276,7 +276,7 @@ paths:
                   defaultValue: "Project is not empty"
                 description:
                   key: "error.projectservice.project_not_empty_description"
-                  defaultValue: "Delete or move the project's applications, agents, flows, layouts, themes, notification templates, presentation definitions and credential configurations before deleting the project"
+                  defaultValue: "Delete or move the project's applications, agents, flows, layouts, themes, notification templates, presentation definitions, credential configurations and groups before deleting the project"
         "500":
           $ref: '#/components/responses/InternalServerError'
 

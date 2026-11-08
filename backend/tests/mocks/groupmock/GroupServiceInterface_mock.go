@@ -707,6 +707,100 @@ func (_c *GroupServiceInterfaceMock_GetGroupList_Call) RunAndReturn(run func(ctx
 	return _c
 }
 
+// GetGroupListByProject provides a mock function for the type GroupServiceInterfaceMock
+func (_mock *GroupServiceInterfaceMock) GetGroupListByProject(ctx context.Context, projectID string, limit int, offset int, filters map[string]interface{}, includeDisplay bool) (*group.GroupListResponse, *common.ServiceError) {
+	ret := _mock.Called(ctx, projectID, limit, offset, filters, includeDisplay)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetGroupListByProject")
+	}
+
+	var r0 *group.GroupListResponse
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int, map[string]interface{}, bool) (*group.GroupListResponse, *common.ServiceError)); ok {
+		return returnFunc(ctx, projectID, limit, offset, filters, includeDisplay)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int, map[string]interface{}, bool) *group.GroupListResponse); ok {
+		r0 = returnFunc(ctx, projectID, limit, offset, filters, includeDisplay)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*group.GroupListResponse)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, int, int, map[string]interface{}, bool) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, projectID, limit, offset, filters, includeDisplay)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// GroupServiceInterfaceMock_GetGroupListByProject_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetGroupListByProject'
+type GroupServiceInterfaceMock_GetGroupListByProject_Call struct {
+	*mock.Call
+}
+
+// GetGroupListByProject is a helper method to define mock.On call
+//   - ctx context.Context
+//   - projectID string
+//   - limit int
+//   - offset int
+//   - filters map[string]interface{}
+//   - includeDisplay bool
+func (_e *GroupServiceInterfaceMock_Expecter) GetGroupListByProject(ctx any, projectID any, limit any, offset any, filters any, includeDisplay any) *GroupServiceInterfaceMock_GetGroupListByProject_Call {
+	return &GroupServiceInterfaceMock_GetGroupListByProject_Call{Call: _e.mock.On("GetGroupListByProject", ctx, projectID, limit, offset, filters, includeDisplay)}
+}
+
+func (_c *GroupServiceInterfaceMock_GetGroupListByProject_Call) Run(run func(ctx context.Context, projectID string, limit int, offset int, filters map[string]interface{}, includeDisplay bool)) *GroupServiceInterfaceMock_GetGroupListByProject_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 int
+		if args[2] != nil {
+			arg2 = args[2].(int)
+		}
+		var arg3 int
+		if args[3] != nil {
+			arg3 = args[3].(int)
+		}
+		var arg4 map[string]interface{}
+		if args[4] != nil {
+			arg4 = args[4].(map[string]interface{})
+		}
+		var arg5 bool
+		if args[5] != nil {
+			arg5 = args[5].(bool)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+			arg4,
+			arg5,
+		)
+	})
+	return _c
+}
+
+func (_c *GroupServiceInterfaceMock_GetGroupListByProject_Call) Return(groupListResponse *group.GroupListResponse, serviceError *common.ServiceError) *GroupServiceInterfaceMock_GetGroupListByProject_Call {
+	_c.Call.Return(groupListResponse, serviceError)
+	return _c
+}
+
+func (_c *GroupServiceInterfaceMock_GetGroupListByProject_Call) RunAndReturn(run func(ctx context.Context, projectID string, limit int, offset int, filters map[string]interface{}, includeDisplay bool) (*group.GroupListResponse, *common.ServiceError)) *GroupServiceInterfaceMock_GetGroupListByProject_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetGroupMembers provides a mock function for the type GroupServiceInterfaceMock
 func (_mock *GroupServiceInterfaceMock) GetGroupMembers(ctx context.Context, groupID string, limit int, offset int, includeDisplay bool) (*group.MemberListResponse, *common.ServiceError) {
 	ret := _mock.Called(ctx, groupID, limit, offset, includeDisplay)
@@ -1233,6 +1327,74 @@ func (_c *GroupServiceInterfaceMock_GetTransitiveMemberEntities_Call) Return(str
 }
 
 func (_c *GroupServiceInterfaceMock_GetTransitiveMemberEntities_Call) RunAndReturn(run func(ctx context.Context, groupID string) ([]string, *common.ServiceError)) *GroupServiceInterfaceMock_GetTransitiveMemberEntities_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ProjectHasGroups provides a mock function for the type GroupServiceInterfaceMock
+func (_mock *GroupServiceInterfaceMock) ProjectHasGroups(ctx context.Context, projectID string) (bool, *common.ServiceError) {
+	ret := _mock.Called(ctx, projectID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ProjectHasGroups")
+	}
+
+	var r0 bool
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (bool, *common.ServiceError)); ok {
+		return returnFunc(ctx, projectID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) bool); ok {
+		r0 = returnFunc(ctx, projectID)
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, projectID)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// GroupServiceInterfaceMock_ProjectHasGroups_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ProjectHasGroups'
+type GroupServiceInterfaceMock_ProjectHasGroups_Call struct {
+	*mock.Call
+}
+
+// ProjectHasGroups is a helper method to define mock.On call
+//   - ctx context.Context
+//   - projectID string
+func (_e *GroupServiceInterfaceMock_Expecter) ProjectHasGroups(ctx any, projectID any) *GroupServiceInterfaceMock_ProjectHasGroups_Call {
+	return &GroupServiceInterfaceMock_ProjectHasGroups_Call{Call: _e.mock.On("ProjectHasGroups", ctx, projectID)}
+}
+
+func (_c *GroupServiceInterfaceMock_ProjectHasGroups_Call) Run(run func(ctx context.Context, projectID string)) *GroupServiceInterfaceMock_ProjectHasGroups_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *GroupServiceInterfaceMock_ProjectHasGroups_Call) Return(b bool, serviceError *common.ServiceError) *GroupServiceInterfaceMock_ProjectHasGroups_Call {
+	_c.Call.Return(b, serviceError)
+	return _c
+}
+
+func (_c *GroupServiceInterfaceMock_ProjectHasGroups_Call) RunAndReturn(run func(ctx context.Context, projectID string) (bool, *common.ServiceError)) *GroupServiceInterfaceMock_ProjectHasGroups_Call {
 	_c.Call.Return(run)
 	return _c
 }

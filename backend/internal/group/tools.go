@@ -42,11 +42,12 @@ type groupMemberMCPInput struct {
 //
 //nolint:lll
 type listGroupsMCPInput struct {
-	Name   string               `json:"name,omitempty" jsonschema:"Exact name of the group"`
-	Member *groupMemberMCPInput `json:"member,omitempty" jsonschema:"A user, app, agent or group, to list the groups it belongs to, directly or through a group nested in another"`
-	OUID   string               `json:"ouId,omitempty" jsonschema:"ID of an organization unit, to list the groups it owns. Narrows a name or member search."`
-	Limit  int                  `json:"limit,omitempty" jsonschema:"Maximum number of groups to return, at most 100"`
-	Offset int                  `json:"offset,omitempty" jsonschema:"Number of groups to skip"`
+	Name      string               `json:"name,omitempty" jsonschema:"Exact name of the group"`
+	Member    *groupMemberMCPInput `json:"member,omitempty" jsonschema:"A user, app, agent or group, to list the groups it belongs to, directly or through a group nested in another"`
+	OUID      string               `json:"ouId,omitempty" jsonschema:"ID of an organization unit, to list the groups it owns. Narrows a name or member search."`
+	ProjectID string               `json:"projectId,omitempty" jsonschema:"ID of a project, from list_projects, to list its groups. Can't be combined with name or member."`
+	Limit     int                  `json:"limit,omitempty" jsonschema:"Maximum number of groups to return, at most 100"`
+	Offset    int                  `json:"offset,omitempty" jsonschema:"Number of groups to skip"`
 }
 
 // getGroupMCPInput is the input of the get_group tool.
@@ -65,7 +66,8 @@ type getGroupMCPInput struct {
 type createGroupMCPInput struct {
 	Name        string                `json:"name" jsonschema:"Name of the group, unique in its organization unit"`
 	Description string                `json:"description,omitempty" jsonschema:"What the group is for"`
-	OUID        string                `json:"ouId,omitempty" jsonschema:"ID of the organization unit that owns the group. Defaults to the Default organization unit."`
+	OUID        string                `json:"ouId,omitempty" jsonschema:"ID of the organization unit that owns the group. Defaults to the Default organization unit, or to the system organization unit for a group in a project."`
+	ProjectID   string                `json:"projectId,omitempty" jsonschema:"ID of the project the group belongs to, from list_projects. Leave it out for a group of the organization."`
 	Members     []groupMemberMCPInput `json:"members,omitempty" jsonschema:"Users, apps, agents and groups to put in the group when it is created"`
 }
 
@@ -84,6 +86,7 @@ type groupMCPItem struct {
 	Name        string `json:"name"`
 	Description string `json:"description,omitempty"`
 	OUID        string `json:"ouId"`
+	ProjectID   string `json:"projectId,omitempty"`
 	ReadOnly    bool   `json:"readOnly"`
 	// Direct is set when the list answers which groups a member belongs to, and tells a group the member
 	// is in directly from one it is in through a nested group.
@@ -109,6 +112,7 @@ type groupMCPDetails struct {
 	Name         string                `json:"name"`
 	Description  string                `json:"description,omitempty"`
 	OUID         string                `json:"ouId"`
+	ProjectID    string                `json:"projectId,omitempty"`
 	ReadOnly     bool                  `json:"readOnly"`
 	Members      *[]groupMemberMCPItem `json:"members,omitempty"`
 	MembersTotal int                   `json:"membersTotal,omitempty"`
@@ -215,19 +219,29 @@ func (t *groupTools) listGroups(ctx context.Context, _ *mcp.CallToolRequest, inp
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to list groups: %w", err)
 	}
+	if input.ProjectID != "" && (input.Name != "" || input.Member != nil) {
+		return nil, nil, errors.New("failed to list groups: projectId can't be combined with name or member")
+	}
 	if input.Name == "" && input.Member == nil {
 		var filters map[string]interface{}
 		if input.OUID != "" {
 			filters = map[string]interface{}{filter.AttributeOUID: input.OUID}
 		}
-		list, svcErr := t.groupService.GetGroupList(ctx, limit, input.Offset, filters, false)
+		var list *GroupListResponse
+		var svcErr *tidcommon.ServiceError
+		if input.ProjectID != "" {
+			list, svcErr = t.groupService.GetGroupListByProject(ctx, input.ProjectID, limit, input.Offset, filters,
+				false)
+		} else {
+			list, svcErr = t.groupService.GetGroupList(ctx, limit, input.Offset, filters, false)
+		}
 		if svcErr != nil {
 			return nil, nil, fmt.Errorf("failed to list groups: %s", svcErr.ErrorDescription)
 		}
 		groups := make([]groupMCPItem, 0, len(list.Groups))
 		for _, g := range list.Groups {
 			groups = append(groups, groupMCPItem{ID: g.ID, Name: g.Name, Description: g.Description, OUID: g.OUID,
-				ReadOnly: g.IsReadOnly})
+				ProjectID: g.ProjectID, ReadOnly: g.IsReadOnly})
 		}
 		return nil, &groupListMCPResponse{TotalResults: list.TotalResults, Groups: groups}, nil
 	}
@@ -251,7 +265,7 @@ func (t *groupTools) listGroups(ctx context.Context, _ *mcp.CallToolRequest, inp
 			continue
 		}
 		item := groupMCPItem{ID: g.ID, Name: g.Name, Description: g.Description, OUID: g.OUID,
-			ReadOnly: g.IsReadOnly}
+			ProjectID: g.ProjectID, ReadOnly: g.IsReadOnly}
 		if input.Member != nil {
 			member, svcErr := t.groupService.GetDirectGroupMember(ctx, id, input.Member.ID)
 			if svcErr != nil {
@@ -339,7 +353,8 @@ func (t *groupTools) getGroup(ctx context.Context, _ *mcp.CallToolRequest, input
 func (t *groupTools) createGroup(ctx context.Context, _ *mcp.CallToolRequest, input createGroupMCPInput) (
 	*mcp.CallToolResult, *groupMCPDetails, error) {
 	ouID := input.OUID
-	if ouID == "" {
+	// A group in a project goes to the system organization unit unless ouId names another.
+	if ouID == "" && input.ProjectID == "" {
 		ou, svcErr := t.ouService.GetOrganizationUnitByPath(ctx, defaultOUHandle)
 		if svcErr != nil {
 			return nil, nil, errors.New("failed to create group: the Default organization unit wasn't found, " +
@@ -348,9 +363,16 @@ func (t *groupTools) createGroup(ctx context.Context, _ *mcp.CallToolRequest, in
 		ouID = ou.ID
 	}
 	created, svcErr := t.groupService.CreateGroup(ctx, CreateGroupRequest{
-		Name: input.Name, Description: input.Description, OUID: ouID, Members: membersOf(input.Members)})
+		Name: input.Name, Description: input.Description, OUID: ouID, ProjectID: input.ProjectID,
+		Members: membersOf(input.Members)})
 	if svcErr != nil {
 		if svcErr.Code == ErrorGroupNameConflict.Code {
+			// A group in a project that names no organization unit was refused in the system organization unit.
+			if ouID == "" && input.ProjectID != "" {
+				if systemOUID, ouErr := t.ouService.GetSystemOUID(ctx); ouErr == nil {
+					ouID = systemOUID
+				}
+			}
 			if id := t.groupNamed(ctx, ouID, input.Name); id != "" {
 				return nil, nil, fmt.Errorf("no group was created: a group named %q already exists in this "+
 					"organization unit (%s), so add members to it with update_group_memberships, or choose "+
@@ -460,7 +482,7 @@ func pageOf[T any](items []T, limit, offset int) []T {
 // describeGroup describes a group without its members.
 func describeGroup(g *Group) *groupMCPDetails {
 	return &groupMCPDetails{ID: g.ID, Name: g.Name, Description: g.Description, OUID: g.OUID,
-		ReadOnly: g.IsReadOnly}
+		ProjectID: g.ProjectID, ReadOnly: g.IsReadOnly}
 }
 
 // membersOf turns the tool's member inputs into group members.

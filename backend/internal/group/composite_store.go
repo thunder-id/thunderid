@@ -163,6 +163,54 @@ func (c *compositeGroupStore) GetGroupListByOUIDs(
 	return groups, nil
 }
 
+// GetGroupListCountByProject returns the count of the groups of a project across both stores, narrowed to the
+// ones the given organization units own when ouIDs is not empty. A group ID is unique across the stores, so
+// the counts add up exactly.
+func (c *compositeGroupStore) GetGroupListCountByProject(
+	ctx context.Context, projectID string, ouIDs []string,
+) (int, error) {
+	dbCount, err := c.dbStore.GetGroupListCountByProject(ctx, projectID, ouIDs)
+	if err != nil {
+		return 0, err
+	}
+	fileCount, err := c.fileStore.GetGroupListCountByProject(ctx, projectID, ouIDs)
+	if err != nil {
+		return 0, err
+	}
+	if dbCount+fileCount > serverconst.MaxCompositeStoreRecords {
+		return 0, errResultLimitExceededInCompositeMode
+	}
+	return dbCount + fileCount, nil
+}
+
+// GetGroupListByProject retrieves the groups of a project from both stores and merges them, narrowed to the
+// ones the given organization units own when ouIDs is not empty.
+func (c *compositeGroupStore) GetGroupListByProject(
+	ctx context.Context, projectID string, ouIDs []string, limit, offset int,
+) ([]GroupBasicDAO, error) {
+	groups, limitExceeded, err := declarativeresource.CompositeMergeListHelperWithLimit(
+		func() (int, error) { return c.dbStore.GetGroupListCountByProject(ctx, projectID, ouIDs) },
+		func() (int, error) { return c.fileStore.GetGroupListCountByProject(ctx, projectID, ouIDs) },
+		func(count int) ([]GroupBasicDAO, error) {
+			return c.dbStore.GetGroupListByProject(ctx, projectID, ouIDs, count, 0)
+		},
+		func(count int) ([]GroupBasicDAO, error) {
+			return c.fileStore.GetGroupListByProject(ctx, projectID, ouIDs, count, 0)
+		},
+		mergeGroupBasicDAOs,
+		limit,
+		offset,
+		serverconst.MaxCompositeStoreRecords,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if limitExceeded {
+		return nil, errResultLimitExceededInCompositeMode
+	}
+	return groups, nil
+}
+
 // CreateGroup creates a group in the database store only.
 func (c *compositeGroupStore) CreateGroup(ctx context.Context, group GroupDAO) error {
 	return c.dbStore.CreateGroup(ctx, group)

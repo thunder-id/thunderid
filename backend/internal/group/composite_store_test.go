@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -358,4 +359,54 @@ func (suite *CompositeGroupStoreTestSuite) TestGetTransitiveGroupsForEntity_File
 
 	suite.Error(err)
 	suite.Equal(testErr, err)
+}
+
+func (suite *CompositeGroupStoreTestSuite) TestGetGroupListByProject_MergesBothStores() {
+	ouIDs := []string{"ou1"}
+	suite.mockDBStore.On("GetGroupListCountByProject", mock.Anything, "project-1", ouIDs).Return(1, nil)
+	suite.mockFileStore.On("GetGroupListCountByProject", mock.Anything, "project-1", ouIDs).Return(1, nil)
+	suite.mockDBStore.On("GetGroupListByProject", mock.Anything, "project-1", ouIDs, 1, 0).
+		Return([]GroupBasicDAO{{ID: "grp1", ProjectID: "project-1"}}, nil)
+	suite.mockFileStore.On("GetGroupListByProject", mock.Anything, "project-1", ouIDs, 1, 0).
+		Return([]GroupBasicDAO{{ID: "grp2", ProjectID: "project-1"}}, nil)
+
+	count, err := suite.store.GetGroupListCountByProject(context.Background(), "project-1", ouIDs)
+	suite.NoError(err)
+	suite.Equal(2, count)
+
+	groups, err := suite.store.GetGroupListByProject(context.Background(), "project-1", ouIDs, 10, 0)
+	suite.NoError(err)
+	suite.Len(groups, 2)
+}
+
+func (suite *CompositeGroupStoreTestSuite) TestGetGroupListCountByProject_Errors() {
+	suite.mockDBStore.On("GetGroupListCountByProject", mock.Anything, "project-1", []string(nil)).
+		Return(0, errors.New("db fail")).Once()
+	_, err := suite.store.GetGroupListCountByProject(context.Background(), "project-1", nil)
+	suite.Error(err)
+
+	suite.mockDBStore.On("GetGroupListCountByProject", mock.Anything, "project-2", []string(nil)).Return(1, nil)
+	suite.mockFileStore.On("GetGroupListCountByProject", mock.Anything, "project-2", []string(nil)).
+		Return(0, errors.New("file fail"))
+	_, err = suite.store.GetGroupListCountByProject(context.Background(), "project-2", nil)
+	suite.Error(err)
+
+	suite.mockDBStore.On("GetGroupListCountByProject", mock.Anything, "project-3", []string(nil)).
+		Return(serverconst.MaxCompositeStoreRecords, nil)
+	suite.mockFileStore.On("GetGroupListCountByProject", mock.Anything, "project-3", []string(nil)).Return(1, nil)
+	_, err = suite.store.GetGroupListCountByProject(context.Background(), "project-3", nil)
+	suite.ErrorIs(err, errResultLimitExceededInCompositeMode)
+}
+
+func (suite *CompositeGroupStoreTestSuite) TestGetGroupListByProject_Errors() {
+	suite.mockDBStore.On("GetGroupListCountByProject", mock.Anything, "project-1", []string(nil)).
+		Return(0, errors.New("db fail"))
+	_, err := suite.store.GetGroupListByProject(context.Background(), "project-1", nil, 10, 0)
+	suite.Error(err)
+
+	suite.mockDBStore.On("GetGroupListCountByProject", mock.Anything, "project-2", []string(nil)).
+		Return(serverconst.MaxCompositeStoreRecords, nil)
+	suite.mockFileStore.On("GetGroupListCountByProject", mock.Anything, "project-2", []string(nil)).Return(1, nil)
+	_, err = suite.store.GetGroupListByProject(context.Background(), "project-2", nil, 10, 0)
+	suite.ErrorIs(err, errResultLimitExceededInCompositeMode)
 }

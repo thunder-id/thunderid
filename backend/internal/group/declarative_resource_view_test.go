@@ -23,7 +23,7 @@ func exportedGroup(t *testing.T, members []Member) *yaml.Node {
 	t.Helper()
 	exported, err := yaml.Marshal(&groupDeclarativeResource{
 		ID: "group-1", Name: "Admins", Description: "var:GROUP_ADMINS_DESCRIPTION", OUID: "ou-1",
-		Members: members,
+		ProjectID: "project-1", Members: members,
 	})
 	require.NoError(t, err)
 	return viewDocument(t, "resource_type: group\n"+string(exported))
@@ -41,6 +41,7 @@ func TestViewResourceShowsAnExportedGroupAsItsRead(t *testing.T) {
 	assert.Equal(t, "Admins", grp.Name)
 	assert.Equal(t, "var:GROUP_ADMINS_DESCRIPTION", grp.Description)
 	assert.Equal(t, "ou-1", grp.OUID)
+	assert.Equal(t, "project-1", grp.ProjectID)
 	assert.Empty(t, grp.Members)
 }
 
