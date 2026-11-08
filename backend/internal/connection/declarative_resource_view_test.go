@@ -12,6 +12,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/thunder-id/thunderid/internal/connection/authzenpdp"
+	ncommon "github.com/thunder-id/thunderid/internal/notification/common"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/outboundauth"
 )
@@ -92,6 +93,32 @@ func TestViewResourceShowsAnSMSConnectionAsItsVendorRead(t *testing.T) {
 	assert.Equal(t, "https://sms.example", gateway.URL)
 }
 
+// An exported SMTP email connection is shown as its read returns it, its password masked.
+func TestViewResourceShowsAnEmailSMTPConnectionAsItsRead(t *testing.T) {
+	view, err := newViewTestExporter(t).ViewResource(context.Background(),
+		viewConnectionDocument(t, connectionExportModel{
+			ID: "smtp-1", Type: emailSMTPVendorName, Name: "Mail", Host: "smtp.example.com", Port: 587,
+			FromAddress: "no-reply@example.com", TLS: "starttls",
+			Authentication: &outboundauth.Authentication{Type: string(outboundauth.TypeBasic),
+				Properties: map[string]string{
+					outboundauth.FieldBasicUsername: "mailer",
+					outboundauth.FieldBasicPassword: "sec:CONNECTION_MAIL_PASSWORD",
+				}},
+		}))
+
+	require.NoError(t, err)
+	resp, ok := view.(emailSMTPConnectionResponse)
+	require.True(t, ok)
+	assert.Equal(t, "smtp-1", resp.ID)
+	assert.Equal(t, emailSMTPVendorName, resp.Type)
+	assert.Equal(t, "smtp.example.com", resp.Host)
+	assert.Equal(t, 587, resp.Port)
+	assert.Equal(t, "no-reply@example.com", resp.FromAddress)
+	require.NotNil(t, resp.Authentication)
+	assert.Equal(t, "mailer", resp.Authentication.Properties[outboundauth.FieldBasicUsername])
+	assert.Equal(t, maskedSecretValue, resp.Authentication.Properties[outboundauth.FieldBasicPassword])
+}
+
 // An exported AuthZEN PDP connection is shown as its read returns it.
 func TestViewResourceShowsAnAuthZENPDPConnectionAsItsRead(t *testing.T) {
 	retries := 2
@@ -123,6 +150,14 @@ func TestViewResourceRefusesAnUnreadableConnection(t *testing.T) {
 	_, err = exporter.ViewResource(context.Background(),
 		viewConnectionDocument(t, connectionExportModel{ID: "conn-9", Type: "unknown", Name: "U"}))
 	assert.Error(t, err)
+}
+
+// A notification sender whose provider has no connection view is refused.
+func TestViewSenderConnectionRefusesAnUnsupportedProvider(t *testing.T) {
+	_, err := viewSenderConnection(ncommon.NotificationSenderDTO{ID: "sender-1", Provider: "unknown"})
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unsupported notification provider for connection view: unknown")
 }
 
 func (s *DeclarativeResourceTestSuite) TestViewResourceShowsAnHTTPConnectionAsItsRead() {
