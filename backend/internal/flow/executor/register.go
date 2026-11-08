@@ -413,7 +413,7 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 		},
 		ExecutorNameRole: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameRole,
-				newRoleExecutor(deps.FlowFactory, deps.RoleService, deps.RoleAssignmentService,
+				newRoleExecutor(deps.FlowFactory, deps.RoleAssignmentService,
 					deps.PermissionResolver))
 		},
 		ExecutorNameActionDeletion: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
@@ -564,9 +564,6 @@ type roleAdminProvider interface {
 	ValidateDeleteRole(ctx context.Context, id string) (*revocation.AccessRevocationTarget, *tidcommon.ServiceError)
 	ValidateUpdateRolePermissions(ctx context.Context, id string, permissions []role.ResourcePermissions) (
 		*revocation.AccessRevocationTarget, *tidcommon.ServiceError)
-	GetRoleWithPermissions(ctx context.Context, id string) (*role.RoleWithPermissions, *tidcommon.ServiceError)
-	UpdateRoleWithPermissions(ctx context.Context, id string, role role.RoleUpdateDetail) (
-		*role.RoleWithPermissions, *tidcommon.ServiceError)
 	ValidateGroupDeletion(ctx context.Context, groupID string) (
 		*revocation.AccessRevocationTarget, *tidcommon.ServiceError)
 	ValidateGroupMembershipRemoval(ctx context.Context, groupID, memberID string) (

@@ -6,6 +6,7 @@ package role
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
@@ -705,6 +706,12 @@ func (rs *roleService) updateRoleWithPermissions(
 		return nil, svcErr
 	}
 
+	// Dropping a permission revokes what it granted before the update is written, and again once it is.
+	inputs, shared, svcErr := rs.revokeDroppedPermissions(ctx, id, stored.Permissions, role.Permissions, logger)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+
 	err = rs.transactioner.Transact(ctx, func(txCtx context.Context) error {
 		return rs.roleStore.UpdateRole(txCtx, id, role)
 	})
@@ -712,6 +719,11 @@ func (rs *roleService) updateRoleWithPermissions(
 	if err != nil {
 		logger.Error(ctx, "Failed to update role", log.Error(err))
 		return nil, &tidcommon.InternalServerError
+	}
+	if inputs != nil {
+		if _, svcErr := runSystemFlow(ctx, rs.systemFlows, systemFlowRevocationPost, inputs, shared); svcErr != nil {
+			return nil, svcErr
+		}
 	}
 
 	logger.Debug(ctx, "Successfully updated role", log.String("id", id), log.String("name", role.Name))
@@ -1600,4 +1612,33 @@ func (rs *roleService) validateProjectOU(ctx context.Context, projectID, ouID st
 	default:
 		return &tidcommon.InternalServerError
 	}
+}
+
+// revokeDroppedPermissions runs the permission removal pre flow when the update drops one of the role's
+// current permissions, and returns the inputs it ran with and what it shared, for the post flow to run
+// once the update is written. An update that drops nothing, or a service with system flows off, runs no
+// flow and returns no inputs. A refusal leaves the role as it was.
+func (rs *roleService) revokeDroppedPermissions(ctx context.Context, id string,
+	current, permissions []ResourcePermissions, logger *log.Logger) (map[string]string, map[string]string,
+	*tidcommon.ServiceError) {
+	if rs.systemFlows == nil {
+		return nil, nil, nil
+	}
+	if len(droppedPermissions(current, permissions)) == 0 {
+		return nil, nil, nil
+	}
+	if permissions == nil {
+		permissions = []ResourcePermissions{}
+	}
+	encoded, err := json.Marshal(permissions)
+	if err != nil {
+		logger.Error(ctx, "Failed to encode role permissions", log.String("id", id), log.Error(err))
+		return nil, nil, &tidcommon.InternalServerError
+	}
+	inputs := map[string]string{systemFlowInputRole: id, systemFlowInputPermissions: string(encoded)}
+	shared, svcErr := runSystemFlow(ctx, rs.systemFlows, systemFlowRolePermissionRemovalPre, inputs, nil)
+	if svcErr != nil {
+		return nil, nil, svcErr
+	}
+	return inputs, shared, nil
 }

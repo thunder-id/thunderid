@@ -176,14 +176,6 @@ packages:
       pkgname: core
       filename: "{{.InterfaceName}}_mock_test.go"
 
-  github.com/thunder-id/thunderid/internal/flow/adminflow:
-    config:
-      all: true
-      dir: internal/flow/adminflow
-      structname: '{{.InterfaceName}}Mock'
-      pkgname: adminflow
-      filename: "{{.InterfaceName}}_mock_test.go"
-
   github.com/thunder-id/thunderid/internal/flow/flowexec:
     config:
       all: true

@@ -1,16 +1,9 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {
-  AdministrationFlowConfigKey,
-  AdministrationFlowInput,
-  executeAdministrationFlow,
-  resolveAdministrationFlowHandle,
-  resolveAdministrationFlowId,
-  type HttpLike,
-} from '@thunderid/utils';
+import type {HttpLike} from '@thunderid/utils';
 import type {UpdateRoleRequest} from '../models/requests';
-import type {ResourcePermissions, Role, RoleAssignment} from '../models/role';
+import type {Role, RoleAssignment} from '../models/role';
 
 export type {HttpLike};
 
@@ -42,26 +35,6 @@ export async function removeRoleAssignmentNatively(
 }
 
 /**
- * Reports whether the new permission set removes any permission. Only a removal has anything to revoke.
- */
-export function permissionsRemoved(
-  current: ResourcePermissions[] | undefined,
-  next: ResourcePermissions[] | undefined,
-): boolean {
-  const retained = new Set<string>();
-
-  for (const resource of next ?? []) {
-    for (const permission of resource.permissions ?? []) {
-      retained.add(`${resource.resourceServerId}\u0000${permission}`);
-    }
-  }
-
-  return (current ?? []).some((resource) =>
-    (resource.permissions ?? []).some((permission) => !retained.has(`${resource.resourceServerId}\u0000${permission}`)),
-  );
-}
-
-/**
  * Updates a role through the native endpoint.
  */
 export async function updateRoleNatively(
@@ -78,56 +51,4 @@ export async function updateRoleNatively(
   });
 
   return response.data as Role;
-}
-
-/**
- * Updates a role, running a permission removal through the configured flow and everything else through
- * the native endpoint.
- *
- * `current` is the role as the caller last read it; it decides whether anything is removed.
- */
-export async function updateRoleViaFlow(
-  http: HttpLike,
-  serverUrl: string,
-  roleId: string,
-  data: UpdateRoleRequest,
-  current: Role,
-): Promise<Role> {
-  if (!permissionsRemoved(current.permissions, data.permissions)) {
-    return updateRoleNatively(http, serverUrl, roleId, data);
-  }
-  const handle = await resolveAdministrationFlowHandle(
-    http,
-    serverUrl,
-    AdministrationFlowConfigKey.ROLE_PERMISSION_REMOVAL,
-  );
-
-  if (!handle) {
-    return updateRoleNatively(http, serverUrl, roleId, data);
-  }
-
-  const flowId = await resolveAdministrationFlowId(http, serverUrl, handle, 'role permission change');
-
-  // The flow writes only permissions and the writes are not atomic, so other fields go first and a
-  // rejected rename fails before anything is revoked.
-  const otherFieldsChanged: boolean =
-    data.name !== current.name ||
-    (data.description ?? '') !== (current.description ?? '') ||
-    data.ouId !== current.ouId;
-  const updated: Role = otherFieldsChanged
-    ? await updateRoleNatively(http, serverUrl, roleId, {...data, permissions: current.permissions ?? []})
-    : current;
-
-  await executeAdministrationFlow(
-    http,
-    serverUrl,
-    flowId,
-    {
-      [AdministrationFlowInput.PERMISSIONS]: JSON.stringify(data.permissions ?? []),
-      [AdministrationFlowInput.ROLE]: roleId,
-    },
-    'role permission change',
-  );
-
-  return {...updated, permissions: data.permissions};
 }

@@ -69,15 +69,20 @@ func createRole(s *suite.Suite, created *[]string, ouID, resourceServerID, name 
 	return roleID
 }
 
-// permissionSet encodes permissions on one resource server as the role permission flow input.
-func permissionSet(s *suite.Suite, resourceServerID string, permissions ...string) string {
-	s.T().Helper()
-
-	encoded, err := json.Marshal([]map[string]interface{}{
-		{"resourceServerId": resourceServerID, "permissions": permissions},
-	})
-	s.Require().NoError(err)
-	return string(encoded)
+// updateRolePermissions replaces what a role made by createRole grants on the resource server through
+// `PUT /roles/{id}`, keeping its name and organization unit.
+func updateRolePermissions(roleID, ouID, resourceServerID, name string, permissions ...string) error {
+	role := testutils.Role{
+		Name:        name,
+		Description: "Role created for flow execution testing",
+		OUID:        ouID,
+	}
+	if len(permissions) > 0 {
+		role.Permissions = []testutils.ResourcePermissions{
+			{ResourceServerID: resourceServerID, Permissions: permissions},
+		}
+	}
+	return testutils.UpdateRole(roleID, role)
 }
 
 func executeAsAdmin(s *suite.Suite, flowID string, inputs map[string]string) *common.FlowStep {

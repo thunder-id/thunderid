@@ -1385,21 +1385,6 @@ var (
 		},
 	}
 
-	// ErrRolePermissionRemovalFailed is returned when a validated role permission change was refused.
-	ErrRolePermissionRemovalFailed = tidcommon.ServiceError{
-		Type: tidcommon.ClientErrorType,
-		Code: "FET-1103",
-		Error: tidcommon.I18nMessage{
-			Key:          "flows.executor.errors.role_permission_removal_failed",
-			DefaultValue: "Role permission change failed",
-		},
-		ErrorDescription: tidcommon.I18nMessage{
-			Key: "flows.executor.errors.role_permission_removal_failed_desc",
-			DefaultValue: "The role changed after the request was validated, or the caller may no longer grant the " +
-				"new permissions",
-		},
-	}
-
 	// ErrGroupDeletionNotAllowed is returned when the group cannot be deleted.
 	ErrGroupDeletionNotAllowed = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,

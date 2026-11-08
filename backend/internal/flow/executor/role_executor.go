@@ -14,7 +14,6 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
-	"github.com/thunder-id/thunderid/internal/revocation"
 	"github.com/thunder-id/thunderid/internal/role"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/security"
@@ -22,45 +21,10 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
-// roleAction is the role change made for one mode and the refusal reported when the service names none.
-type roleAction struct {
-	reason revocation.Reason
-	failed tidcommon.ServiceError
-	act    func(ctx context.Context, e *roleExecutor, plan revocationPlan) (*tidcommon.ServiceError, error)
-}
-
-// roleActionsByMode maps the node's mode to the role change it makes.
-var roleActionsByMode = map[string]roleAction{
-	ExecutorModeRolePermissionRemoval: {
-		reason: revocation.ReasonRolePermissionRemoved,
-		failed: ErrRolePermissionRemovalFailed,
-		act: func(ctx context.Context, e *roleExecutor, plan revocationPlan) (*tidcommon.ServiceError, error) {
-			permissions, err := decodeRolePermissions(plan.ActionArgs[revocationInputPermissions])
-			if err != nil {
-				return nil, err
-			}
-			current, svcErr := e.roles.GetRoleWithPermissions(ctx, plan.TargetID)
-			if svcErr != nil {
-				return svcErr, nil
-			}
-			// The update replaces the whole role, so the attributes not being changed are carried over.
-			_, svcErr = e.roles.UpdateRoleWithPermissions(ctx, plan.TargetID, role.RoleUpdateDetail{
-				Name:        current.Name,
-				Description: current.Description,
-				OUID:        current.OUID,
-				Permissions: permissions,
-			})
-			return svcErr, nil
-		},
-	},
-}
-
-// roleModeFlowTypes maps each mode to the flow type it serves: the revocation plan modes administration flows,
-// and role selection and assignment invitation flows.
+// roleModeFlowTypes maps each mode to the flow type it serves: role selection and assignment serve invitation flows.
 var roleModeFlowTypes = map[string][]providers.FlowType{
-	ExecutorModeRoleAssignment:        {providers.FlowTypeInvitation},
-	ExecutorModeRolePermissionRemoval: {providers.FlowTypeAdministration},
-	ExecutorModeRoleSelection:         {providers.FlowTypeInvitation},
+	ExecutorModeRoleAssignment: {providers.FlowTypeInvitation},
+	ExecutorModeRoleSelection:  {providers.FlowTypeInvitation},
 }
 
 // recordedCaller is the admin an invitation flow records, to assign its roles as at acceptance.
@@ -76,11 +40,9 @@ type roleOption struct {
 	Name string `json:"name"`
 }
 
-// roleExecutor changes roles. In an administration flow it performs the role change named in the trusted
-// revocation plan; in an invitation flow it records the roles an admin picks and assigns them as that admin.
+// roleExecutor records the roles an admin picks in an invitation flow and assigns them as that admin.
 type roleExecutor struct {
 	providers.Executor
-	roles       roleAdminProvider
 	assignments roleAssignmentAdminProvider
 	permissions entityPermissionResolver
 	logger      *log.Logger
@@ -88,20 +50,19 @@ type roleExecutor struct {
 
 var _ providers.Executor = (*roleExecutor)(nil)
 
-// newRoleExecutor creates the executor that changes roles in administration and invitation flows.
-func newRoleExecutor(factory core.FlowFactoryInterface, roles roleAdminProvider,
-	assignments roleAssignmentAdminProvider, permissions entityPermissionResolver) *roleExecutor {
+// newRoleExecutor creates the executor that selects and assigns roles in invitation flows.
+func newRoleExecutor(factory core.FlowFactoryInterface, assignments roleAssignmentAdminProvider,
+	permissions entityPermissionResolver) *roleExecutor {
 	base := factory.CreateExecutor(ExecutorNameRole, providers.ExecutorTypeUtility, nil, nil,
 		&providers.ExecutorMeta{
 			SupportedModes:     slices.Sorted(maps.Keys(roleModeFlowTypes)),
-			SupportedFlowTypes: []providers.FlowType{providers.FlowTypeAdministration, providers.FlowTypeInvitation},
+			SupportedFlowTypes: []providers.FlowType{providers.FlowTypeInvitation},
 			SupportedProperties: []providers.ExecutorSupportedProperties{
 				{Property: propertyKeyRoles},
 			},
 		})
 	return &roleExecutor{
 		Executor:    base,
-		roles:       roles,
 		assignments: assignments,
 		permissions: permissions,
 		logger: log.GetLogger().With(log.String(log.LoggerKeyComponentName, ExecutorNameRole),
@@ -119,40 +80,13 @@ func (e *roleExecutor) Execute(ctx *providers.NodeContext) (*providers.ExecutorR
 	if !slices.Contains(flowTypes, ctx.FlowType) {
 		return nil, fmt.Errorf("mode %q of %s is not supported in %s flows", mode, ExecutorNameRole, ctx.FlowType)
 	}
-	switch mode {
-	case ExecutorModeRoleSelection, ExecutorModeRoleAssignment:
-		if e.assignments == nil {
-			return nil, errors.New("role assignment service is not configured")
-		}
-		if mode == ExecutorModeRoleSelection {
-			return e.selectRoles(ctx)
-		}
-		return e.assign(ctx)
-	default:
-		return e.applyRevocationPlan(ctx, roleActionsByMode[mode])
+	if e.assignments == nil {
+		return nil, errors.New("role assignment service is not configured")
 	}
-}
-
-// applyRevocationPlan performs the change identified by the trusted revocation plan.
-func (e *roleExecutor) applyRevocationPlan(ctx *providers.NodeContext,
-	action roleAction) (*providers.ExecutorResponse, error) {
-	if e.roles == nil {
-		return nil, errors.New("role service is not configured")
+	if mode == ExecutorModeRoleSelection {
+		return e.selectRoles(ctx)
 	}
-	plan, err := revocationPlanFor(ctx.SharedRuntimeData, action.reason)
-	if err != nil {
-		return nil, err
-	}
-
-	svcErr, err := action.act(ctx.Context, e, plan)
-	if err != nil {
-		return nil, err
-	}
-	if svcErr != nil {
-		return refusalResponse(&providers.ExecutorResponse{}, svcErr, action.failed,
-			fmt.Sprintf("failed to perform %s", action.reason))
-	}
-	return &providers.ExecutorResponse{Status: providers.ExecComplete}, nil
+	return e.assign(ctx)
 }
 
 // selectRoles records the roles the node names, or else prompts for roles the caller may assign in the flow's unit,

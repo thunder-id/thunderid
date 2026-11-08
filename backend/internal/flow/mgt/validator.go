@@ -270,18 +270,20 @@ var companionExecutors = map[string][]companionExecutor{
 
 // modeFlowTypes limits an executor mode to fewer flow types than the executor supports. Identity
 // governance suspends and unsuspends only in an administration flow; a recovery flow runs only unlock.
-// The role executor applies a revocation plan only in an administration flow, and selects and assigns
-// roles only in an invitation flow. The sharing executor authorizes a share only in an invitation flow.
+// The access change validator plans a role permission change only in a system flow. The role executor
+// selects and assigns roles only in an invitation flow. The sharing executor authorizes a share only in an
+// invitation flow.
 var modeFlowTypes = map[string]map[string][]providers.FlowType{
+	executormeta.ExecutorNameAccessChangeValidator: {
+		executormeta.ExecutorModeRolePermissionRemoval: {providers.FlowTypeSystem},
+	},
 	executormeta.ExecutorNameIdentityGovernance: {
 		executormeta.ExecutorModeSuspend:   {providers.FlowTypeAdministration},
 		executormeta.ExecutorModeUnsuspend: {providers.FlowTypeAdministration},
 	},
 	executormeta.ExecutorNameRole: {
-		executormeta.ExecutorModeRoleAssignmentRemoval: {providers.FlowTypeAdministration},
-		executormeta.ExecutorModeRolePermissionRemoval: {providers.FlowTypeAdministration},
-		executormeta.ExecutorModeRoleSelection:         {providers.FlowTypeInvitation},
-		executormeta.ExecutorModeRoleAssignment:        {providers.FlowTypeInvitation},
+		executormeta.ExecutorModeRoleSelection:  {providers.FlowTypeInvitation},
+		executormeta.ExecutorModeRoleAssignment: {providers.FlowTypeInvitation},
 	},
 	executormeta.ExecutorNameSharing: {
 		executormeta.ExecutorModeValidate: {providers.FlowTypeInvitation},

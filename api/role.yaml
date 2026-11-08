@@ -428,6 +428,10 @@ paths:
         A shared organization unit manages its own assignments of the role through
         `/roles/{id}/assignments`. Any other organization unit is somewhere to move the role to, which
         is refused while the role has sharing policies or assignments.
+
+        An update that drops a permission revokes it from the role's holders' tokens first. When the
+        server reads roles from both files and the database and the role has more assignments than it
+        can read in that mode, such an update is refused with ROL-1017 and the role is left as it was.
       parameters:
         - in: path
           name: id
@@ -593,6 +597,16 @@ paths:
                     description:
                       key: "error.roleservice.shared_role_not_editable_description"
                       defaultValue: "A role's name, description and permissions can be changed only in the organization unit that owns it, not in one it is shared with"
+                composite-limit-exceeded:
+                  summary: Permission dropped from a role with more assignments than composite mode can read
+                  value:
+                    code: "ROL-1017"
+                    message:
+                      key: "error.roleservice.result_limit_exceeded_in_composite_mode"
+                      defaultValue: "Result limit exceeded in composite mode"
+                    description:
+                      key: "error.roleservice.result_limit_exceeded_in_composite_mode_description"
+                      defaultValue: "The total number of records exceeds the maximum limit in composite mode"
         "403":
           description: Forbidden
           content:
