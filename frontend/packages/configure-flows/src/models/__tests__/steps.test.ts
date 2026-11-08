@@ -206,7 +206,6 @@ describe('steps models', () => {
     it('should have the administration flow types', () => {
       expect(ExecutionTypes.AccessChangeValidator).toBe('AccessChangeValidator');
       expect(ExecutionTypes.RoleExecutor).toBe('RoleExecutor');
-      expect(ExecutionTypes.GroupExecutor).toBe('GroupExecutor');
       expect(ExecutionTypes.ActionDeletion).toBe('ActionDeletionExecutor');
       expect(ExecutionTypes.CriteriaRevocation).toBe('CriteriaRevocationExecutor');
     });
@@ -227,8 +226,8 @@ describe('steps models', () => {
       expect(ExecutionTypes.AttributeVerification).toBe('AttributeVerificationExecutor');
     });
 
-    it('should have exactly 42 execution types', () => {
-      expect(Object.keys(ExecutionTypes)).toHaveLength(42);
+    it('should have exactly 41 execution types', () => {
+      expect(Object.keys(ExecutionTypes)).toHaveLength(41);
     });
   });
 

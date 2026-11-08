@@ -222,7 +222,7 @@ After connecting, ask your agent to use the <ProductName /> MCP server for tasks
 | `agents` | Find and inspect agents, change how they prove who they are and act for users, and rotate their credentials. On a control plane, also onboard an agent directly |
 | `flow_execution` | On a data plane, onboard an agent or a user by running the configured onboarding flow step by step, as the Console does |
 | `agent_types` | List the agent type and its required, unique, and credential attributes |
-| `groups` | Find groups by name or by who belongs to them, see who is in a group, create groups, and add and remove members in one call. On the data plane, removing a member runs the configured administration flow, which by default revokes the affected tokens. On the control plane, or on a data plane with no flow configured, the removal is written directly and tokens already issued stay valid until they expire |
+| `groups` | Find groups by name or by who belongs to them, see who is in a group, create groups, and add and remove members in one call. On the data plane, removing a member revokes the tokens that carried the access the group gave, as the API does. On the control plane, which issues no tokens, the removal is written directly |
 | `react_sdk` | Get tailored integration code for the <ProductName /> React SDK |
 | `deployments` | List gateways and configuration versions, capture a version, compare it with what a gateway runs, deploy, promote, or roll back a gateway, list, set, and remove a gateway's variables and secrets, and export and import declarative configuration |
 

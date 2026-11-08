@@ -251,18 +251,17 @@ func everyAdministrationFlow(prefix string) flowconfig.FlowSectionConfig {
 		return flowconfig.FlowTypeConfig{DefaultHandle: prefix + "-" + name}
 	}
 	return flowconfig.FlowSectionConfig{
-		SecretRegenerationFlow:     handle("secret-regeneration"),
-		RolePermissionRemovalFlow:  handle("role-permission-removal"),
-		GroupMembershipRemovalFlow: handle("group-membership-removal"),
-		ActionDeletionFlow:         handle("action-deletion"),
-		UserUnlockFlow:             handle("user-unlock"),
-		UserSuspendFlow:            handle("user-suspend"),
-		UserUnsuspendFlow:          handle("user-unsuspend"),
-		AgentUnlockFlow:            handle("agent-unlock"),
-		AgentSuspendFlow:           handle("agent-suspend"),
-		AgentUnsuspendFlow:         handle("agent-unsuspend"),
-		ApplicationSuspendFlow:     handle("application-suspend"),
-		ApplicationUnsuspendFlow:   handle("application-unsuspend"),
+		SecretRegenerationFlow:    handle("secret-regeneration"),
+		RolePermissionRemovalFlow: handle("role-permission-removal"),
+		ActionDeletionFlow:        handle("action-deletion"),
+		UserUnlockFlow:            handle("user-unlock"),
+		UserSuspendFlow:           handle("user-suspend"),
+		UserUnsuspendFlow:         handle("user-unsuspend"),
+		AgentUnlockFlow:           handle("agent-unlock"),
+		AgentSuspendFlow:          handle("agent-suspend"),
+		AgentUnsuspendFlow:        handle("agent-unsuspend"),
+		ApplicationSuspendFlow:    handle("application-suspend"),
+		ApplicationUnsuspendFlow:  handle("application-unsuspend"),
 	}
 }
 

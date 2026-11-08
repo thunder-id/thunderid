@@ -426,6 +426,7 @@ func (s *GroupServiceAuditTestSuite) TestGroupMembers_PublishEachMember() {
 			// A removal checks only that a nested group exists, not where it lives.
 			arrange: func() {
 				s.store.On("ValidateGroupIDs", mock.Anything, []string{testAuditNestedID}).Return(nil, nil).Once()
+				s.store.On("IsGroupDeclarative", mock.Anything, testAuditGroupID).Return(false, nil).Once()
 			},
 			call: func(service *groupService) (*Group, *tidcommon.ServiceError) {
 				return service.RemoveGroupMembers(adminContext(), testAuditGroupID, auditedMembers())

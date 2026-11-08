@@ -22,8 +22,6 @@ value:
     defaultHandle: default-agent-onboarding-flow
   rolePermissionRemovalFlow:
     defaultHandle: default-role-permission-removal-flow
-  groupMembershipRemovalFlow:
-    defaultHandle: default-group-membership-removal-flow
   actionDeletionFlow:
     defaultHandle: default-action-deletion-flow
   userUnlockFlow:

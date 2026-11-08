@@ -843,6 +843,80 @@ func (_c *groupStoreInterfaceMock_GetGroupListCountByOUIDs_Call) RunAndReturn(ru
 	return _c
 }
 
+// GetGroupMember provides a mock function for the type groupStoreInterfaceMock
+func (_mock *groupStoreInterfaceMock) GetGroupMember(ctx context.Context, groupID string, memberID string) (*group.Member, error) {
+	ret := _mock.Called(ctx, groupID, memberID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetGroupMember")
+	}
+
+	var r0 *group.Member
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) (*group.Member, error)); ok {
+		return returnFunc(ctx, groupID, memberID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) *group.Member); ok {
+		r0 = returnFunc(ctx, groupID, memberID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*group.Member)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string) error); ok {
+		r1 = returnFunc(ctx, groupID, memberID)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// groupStoreInterfaceMock_GetGroupMember_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetGroupMember'
+type groupStoreInterfaceMock_GetGroupMember_Call struct {
+	*mock.Call
+}
+
+// GetGroupMember is a helper method to define mock.On call
+//   - ctx context.Context
+//   - groupID string
+//   - memberID string
+func (_e *groupStoreInterfaceMock_Expecter) GetGroupMember(ctx any, groupID any, memberID any) *groupStoreInterfaceMock_GetGroupMember_Call {
+	return &groupStoreInterfaceMock_GetGroupMember_Call{Call: _e.mock.On("GetGroupMember", ctx, groupID, memberID)}
+}
+
+func (_c *groupStoreInterfaceMock_GetGroupMember_Call) Run(run func(ctx context.Context, groupID string, memberID string)) *groupStoreInterfaceMock_GetGroupMember_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *groupStoreInterfaceMock_GetGroupMember_Call) Return(member *group.Member, err error) *groupStoreInterfaceMock_GetGroupMember_Call {
+	_c.Call.Return(member, err)
+	return _c
+}
+
+func (_c *groupStoreInterfaceMock_GetGroupMember_Call) RunAndReturn(run func(ctx context.Context, groupID string, memberID string) (*group.Member, error)) *groupStoreInterfaceMock_GetGroupMember_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetGroupMemberCount provides a mock function for the type groupStoreInterfaceMock
 func (_mock *groupStoreInterfaceMock) GetGroupMemberCount(ctx context.Context, groupID string) (int, error) {
 	ret := _mock.Called(ctx, groupID)
@@ -1469,6 +1543,78 @@ func (_c *groupStoreInterfaceMock_IsGroupDeclarative_Call) Return(b bool, err er
 }
 
 func (_c *groupStoreInterfaceMock_IsGroupDeclarative_Call) RunAndReturn(run func(ctx context.Context, id string) (bool, error)) *groupStoreInterfaceMock_IsGroupDeclarative_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// IsGroupMemberDeclarative provides a mock function for the type groupStoreInterfaceMock
+func (_mock *groupStoreInterfaceMock) IsGroupMemberDeclarative(ctx context.Context, groupID string, memberID string) (bool, error) {
+	ret := _mock.Called(ctx, groupID, memberID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for IsGroupMemberDeclarative")
+	}
+
+	var r0 bool
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) (bool, error)); ok {
+		return returnFunc(ctx, groupID, memberID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) bool); ok {
+		r0 = returnFunc(ctx, groupID, memberID)
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string) error); ok {
+		r1 = returnFunc(ctx, groupID, memberID)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// groupStoreInterfaceMock_IsGroupMemberDeclarative_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'IsGroupMemberDeclarative'
+type groupStoreInterfaceMock_IsGroupMemberDeclarative_Call struct {
+	*mock.Call
+}
+
+// IsGroupMemberDeclarative is a helper method to define mock.On call
+//   - ctx context.Context
+//   - groupID string
+//   - memberID string
+func (_e *groupStoreInterfaceMock_Expecter) IsGroupMemberDeclarative(ctx any, groupID any, memberID any) *groupStoreInterfaceMock_IsGroupMemberDeclarative_Call {
+	return &groupStoreInterfaceMock_IsGroupMemberDeclarative_Call{Call: _e.mock.On("IsGroupMemberDeclarative", ctx, groupID, memberID)}
+}
+
+func (_c *groupStoreInterfaceMock_IsGroupMemberDeclarative_Call) Run(run func(ctx context.Context, groupID string, memberID string)) *groupStoreInterfaceMock_IsGroupMemberDeclarative_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *groupStoreInterfaceMock_IsGroupMemberDeclarative_Call) Return(b bool, err error) *groupStoreInterfaceMock_IsGroupMemberDeclarative_Call {
+	_c.Call.Return(b, err)
+	return _c
+}
+
+func (_c *groupStoreInterfaceMock_IsGroupMemberDeclarative_Call) RunAndReturn(run func(ctx context.Context, groupID string, memberID string) (bool, error)) *groupStoreInterfaceMock_IsGroupMemberDeclarative_Call {
 	_c.Call.Return(run)
 	return _c
 }

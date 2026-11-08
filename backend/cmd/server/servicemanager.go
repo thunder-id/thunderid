@@ -649,7 +649,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	fatalOnError(ctx, logger, err, "Failed to inject the system flow provider into the application service")
 	adminFlowRunner := adminflow.Initialize(serverConfigService, flowMgtService, flowExecService)
 	role.RegisterMCPTools(mcpServer, roleService, roleAssignmentService, resourceService, ouService, adminFlowRunner)
-	group.RegisterMCPTools(mcpServer, groupService, entityService, ouService, adminFlowRunner)
+	group.RegisterMCPTools(mcpServer, groupService, entityService, ouService, true)
 	err = user.SetSystemFlowProvider(userService, flowExecService)
 	fatalOnError(ctx, logger, err, "Failed to inject the system flow provider into the user service")
 	err = role.SetSystemFlowProvider(roleService, flowExecService)

@@ -127,3 +127,9 @@ type CreateGroupByPathRequest struct {
 	Description string   `json:"description,omitempty"`
 	Members     []Member `json:"members,omitempty"`
 }
+
+// memberRevocation is a removed member's flow inputs and what its pre flow shared for its post flow.
+type memberRevocation struct {
+	inputs map[string]string
+	shared map[string]string
+}

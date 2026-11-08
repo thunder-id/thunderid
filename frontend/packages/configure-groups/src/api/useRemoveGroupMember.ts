@@ -2,17 +2,15 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {useMutation, useQueryClient, type UseMutationResult} from '@tanstack/react-query';
-import {AdministrationModes, useAdministrationOperation, useConfig, useToast} from '@thunderid/contexts';
+import {useAdministrationOperation, useConfig, useToast} from '@thunderid/contexts';
 import {useThunderID} from '@thunderid/react';
 import {useTranslation} from 'react-i18next';
 import GroupQueryKeys from '../constants/group-query-keys';
 import type {Member} from '../models/group';
-import {removeGroupMemberNatively, removeGroupMemberViaFlow, type HttpLike} from '../utils/groupAdministrationFlow';
+import {removeGroupMemberNatively, type HttpLike} from '../utils/groupAdministrationFlow';
 
 /**
  * Variables for the remove group member mutation.
- *
- * One member per call: a loop of flow executions could not be rolled back if one failed.
  */
 export interface RemoveGroupMemberVariables {
   groupId: string;
@@ -21,6 +19,9 @@ export interface RemoveGroupMemberVariables {
 
 /**
  * Custom React hook to remove a member from an existing group.
+ *
+ * The removal calls `POST /groups/{id}/members/remove`; the server revokes what the member got from the
+ * group before the member is removed. A console that declares its own operation runs that instead.
  *
  * @returns TanStack Query mutation object for removing a group member
  */
@@ -41,11 +42,7 @@ export default function useRemoveGroupMember(): UseMutationResult<void, Error, R
         await mode(variables);
         return;
       }
-      if (mode === AdministrationModes.NATIVE) {
-        await removeGroupMemberNatively(client, getServerUrl(), groupId, member);
-        return;
-      }
-      await removeGroupMemberViaFlow(client, getServerUrl(), groupId, member);
+      await removeGroupMemberNatively(client, getServerUrl(), groupId, member);
     },
     onSuccess: (_data, {groupId}) => {
       queryClient.invalidateQueries({queryKey: [GroupQueryKeys.GROUP, groupId]}).catch(() => {

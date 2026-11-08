@@ -21,8 +21,8 @@ func (ts *MCPTestSuite) createGroupForTest(token string, args map[string]any) ma
 }
 
 // The group tools carry a member between teams over MCP: a group created with a first member lists as
-// that member's group, and one call moves the member to another group, the removal running through the
-// data plane's membership removal flow.
+// that member's group, and one call moves the member to another group, the removal revoking what the
+// first group gave.
 func (ts *MCPTestSuite) TestGroupTools_MoveMemberBetweenTeams() {
 	token := ts.mcpScopedAdminToken()
 	suffix := time.Now().UnixNano()

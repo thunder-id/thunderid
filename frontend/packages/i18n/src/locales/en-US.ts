@@ -280,7 +280,6 @@ const translations = {
     'errors.FET-1103': 'The permissions of this role could not be changed. Please try again.',
     'errors.FET-1104': 'This group cannot be deleted in its current state.',
     'errors.FET-1106': 'This member cannot be removed from the group in its current state.',
-    'errors.FET-1107': 'The member could not be removed from the group. Please try again.',
     'errors.FET-1108': 'This action cannot be deleted in its current state.',
     'errors.FET-1109': 'The action could not be deleted. Please try again.',
     'errors.FET-1110': 'The permissions supplied for this role are not valid. Refresh the page and try again.',
@@ -4383,14 +4382,6 @@ const translations = {
       'Must match the mode of the access change validator earlier in the flow. A mismatched pair is refused at runtime.',
     'core.executions.roleExecutor.description':
       'In an administration flow, apply the role change named by the trusted revocation plan. In an invitation flow, Select roles offers the roles the admin can assign in the organization unit and records the choice, and Assign roles assigns them, as that admin, once the invitee accepts.',
-
-    // Group executor modes
-    'core.executions.groupExecutor.mode.groupMembershipRemoval': 'Remove group member',
-    'core.executions.groupExecutor.mode.label': 'Mode',
-    'core.executions.groupExecutor.mode.placeholder': 'Select a mode',
-    'core.executions.groupExecutor.mode.hint':
-      'Must match the mode of the access change validator earlier in the flow. A mismatched pair is refused at runtime.',
-    'core.executions.groupExecutor.description': 'Apply the group change named by the trusted revocation plan.',
 
     // Identity governance executor operations
     'core.executions.identityGovernance.mode.suspend': 'Suspend',

@@ -210,6 +210,16 @@ func (c *compositeGroupStore) GetGroupMemberCount(ctx context.Context, groupID s
 	return len(members), nil
 }
 
+// GetGroupMember returns the group's direct member with the given ID from either store, checking the
+// database store first.
+func (c *compositeGroupStore) GetGroupMember(ctx context.Context, groupID, memberID string) (*Member, error) {
+	member, err := c.dbStore.GetGroupMember(ctx, groupID, memberID)
+	if err != nil || member != nil {
+		return member, err
+	}
+	return c.fileStore.GetGroupMember(ctx, groupID, memberID)
+}
+
 // UpdateGroup updates a group in the database store only.
 // Immutability checks are handled at the service layer.
 func (c *compositeGroupStore) UpdateGroup(ctx context.Context, group GroupDAO) error {
@@ -386,6 +396,12 @@ func (c *compositeGroupStore) GetGroupsByNames(ctx context.Context, names []stri
 // IsGroupDeclarative checks if the group exists in the file-based store.
 func (c *compositeGroupStore) IsGroupDeclarative(ctx context.Context, id string) (bool, error) {
 	return c.fileStore.IsGroupDeclarative(ctx, id)
+}
+
+// IsGroupMemberDeclarative reports whether the member is declared in the file-based store, where it
+// cannot be removed. A member added through the API is held by the database store.
+func (c *compositeGroupStore) IsGroupMemberDeclarative(ctx context.Context, groupID, memberID string) (bool, error) {
+	return c.fileStore.IsGroupMemberDeclarative(ctx, groupID, memberID)
 }
 
 // GetTransitiveGroupsForEntity returns all groups an entity belongs to across both stores,

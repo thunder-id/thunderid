@@ -2499,6 +2499,21 @@ func (s *RoleChangeValidationTestSuite) TestValidateGroupMembershipRemoval_Expan
 	s.Equal(string(group.MemberTypeGroup), target.AssigneeType)
 }
 
+func (s *RoleChangeValidationTestSuite) TestValidateGroupMembershipRemoval_GroupGrantingNothingExpandsNoMember() {
+	departing := group.Member{ID: "child-group", Type: group.MemberTypeGroup}
+	stubDirectMember(s.groups, "child-group", &departing)
+	s.mayRemoveMember(departing)
+	s.groups.On("GetTransitiveAncestorGroups", mock.Anything, targetGroupID).Return([]string{}, nil).Once()
+	s.store.On("GetAllPermissionsForAssignees", mock.Anything, "", []string{targetGroupID}).
+		Return([]ResourcePermissions{}, nil).Once()
+
+	target, svcErr := s.service.ValidateGroupMembershipRemoval(context.Background(), targetGroupID, "child-group")
+
+	s.Require().Nil(svcErr)
+	s.Equal(&revocation.AccessRevocationTarget{AssigneeType: string(group.MemberTypeGroup)}, target)
+	s.groups.AssertNotCalled(s.T(), "GetTransitiveMemberEntities", mock.Anything, mock.Anything)
+}
+
 func (s *RoleChangeValidationTestSuite) TestValidateGroupMembershipRemoval_RefusesANonMember() {
 	stubDirectMember(s.groups, targetUserID, nil)
 
