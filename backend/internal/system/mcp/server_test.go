@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/security"
 )
 
@@ -94,4 +95,29 @@ func TestToolPermissionMiddleware_OtherMethodsPassThrough(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.True(t, called)
+}
+
+// A client that connects learns the configured server name and the version from the handshake.
+func TestNewServer_IntroducesItselfWithTheConfiguredName(t *testing.T) {
+	config.ResetServerRuntime()
+	t.Cleanup(config.ResetServerRuntime)
+	cfg := &config.Config{}
+	cfg.MCP.ServerName = "acme-iam"
+	require.NoError(t, config.InitializeServerRuntime("", cfg))
+
+	ctx := context.Background()
+	serverTransport, clientTransport := mcp.NewInMemoryTransports()
+	serverSession, err := NewServer().Connect(ctx, serverTransport, nil)
+	require.NoError(t, err)
+	defer func() { _ = serverSession.Close() }()
+
+	session, err := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "1.0.0"}, nil).
+		Connect(ctx, clientTransport, nil)
+	require.NoError(t, err)
+	defer func() { _ = session.Close() }()
+
+	info := session.InitializeResult().ServerInfo
+	require.NotNil(t, info)
+	assert.Equal(t, "acme-iam", info.Name)
+	assert.Equal(t, "1.0.0", info.Version)
 }

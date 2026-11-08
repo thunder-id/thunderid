@@ -11,11 +11,10 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/security"
 )
 
-// newServer creates a new MCP server.
-func newServer() *mcp.Server {
-	// Create the MCP server instance.
+// newServer creates an MCP server that reports name to clients when they connect.
+func newServer(name string) *mcp.Server {
 	server := mcp.NewServer(&mcp.Implementation{
-		Name:    "thunderid-mcp",
+		Name:    name,
 		Version: "1.0.0",
 	}, nil)
 	server.AddReceivingMiddleware(toolPermissionMiddleware)

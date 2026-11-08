@@ -355,6 +355,9 @@
   "resource_sharing": {
     "allow_child_ou_cross_tree_sharing": false
   },
+  "mcp": {
+    "server_name": "iam-mcp"
+  },
   "account_access": {
     "user": {
       "lock_granularity": "authentication_method",

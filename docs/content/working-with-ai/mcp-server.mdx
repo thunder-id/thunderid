@@ -78,7 +78,7 @@ export NODE_EXTRA_CA_CERTS=<THUNDERID_HOME>/config/certs/server.cert
 ### Add the MCP Server to Claude Code
 
 ```bash
-claude mcp add --transport http thunderid-mcp https://localhost:8090/mcp
+claude mcp add --transport http iam-mcp https://localhost:8090/mcp
 ```
 
 Verify it was added:
@@ -87,7 +87,7 @@ Verify it was added:
 claude mcp list
 ```
 
-You should see `thunderid-mcp` in the list.
+You should see `iam-mcp` in the list.
 
 ### Authenticate with <ProductName />
 
@@ -96,7 +96,7 @@ You should see `thunderid-mcp` in the list.
    claude
    ```
 2. Run `/mcp` inside the Claude Code prompt.
-3. Select `thunderid-mcp` and choose the authenticate option.
+3. Select `iam-mcp` and choose the authenticate option.
 4. A browser tab opens with the <ProductName /> sign-in page. Sign in with your administrator account.
 5. Review and approve the requested permissions on the consent screen.
 
@@ -108,7 +108,7 @@ Ask Claude Code to use a tool, for example:
 
 > "List the applications registered in <ProductName />"
 
-Claude Code calls the matching tool and returns the list of registered applications. To remove the server later, run `claude mcp remove "thunderid-mcp" -s local`.
+Claude Code calls the matching tool and returns the list of registered applications. To remove the server later, run `claude mcp remove "iam-mcp" -s local`, using the name you registered it under if it differs. `claude mcp list` shows it.
 
 </Stepper>
 
@@ -148,7 +148,7 @@ Replace `<THUNDERID_HOME>` with the absolute path to your <ProductName /> distri
 ### Add the MCP Server to Codex
 
 ```bash
-codex mcp add thunderid-mcp --url https://localhost:8090/mcp
+codex mcp add iam-mcp --url https://localhost:8090/mcp
 ```
 
 If Codex starts OAuth sign-in during this command, complete it with your administrator account. If it does not, run the command in the next step.
@@ -158,12 +158,12 @@ If Codex starts OAuth sign-in during this command, complete it with your adminis
 If the previous step completed sign-in, continue to [Verify Codex Access](#verify-codex-access). Otherwise, run:
 
 ```bash
-codex mcp login thunderid-mcp --scopes system
+codex mcp login iam-mcp --scopes system
 ```
 
 Open the authorization URL printed by Codex in your browser. Sign in with your administrator account. If a consent screen appears, review the permissions before approving them.
 
-Codex prints `Successfully logged in to MCP server 'thunderid-mcp'.` after sign-in. It stores the OAuth credentials and refreshes access tokens for subsequent connections.
+Codex prints `Successfully logged in to MCP server 'iam-mcp'.` after sign-in. It stores the OAuth credentials and refreshes access tokens for subsequent connections.
 
 ### Verify Codex Access
 
@@ -181,11 +181,11 @@ codex
 
 Run `/mcp` to inspect the connected server and its tools. Ask Codex:
 
-> "Use the thunderid-mcp server to list the applications registered in <ProductName />."
+> "Use the iam-mcp server to list the applications registered in <ProductName />."
 
 Codex calls `list_applications` and returns your registered applications. You can then ask it to integrate authentication into your project using the [example prompts](#what-you-can-do) below.
 
-To delete the local server configuration later, run `codex mcp remove thunderid-mcp`.
+To delete the local server configuration later, run `codex mcp remove iam-mcp`, using the name you registered it under if it differs. `codex mcp list` shows it.
 
 </Stepper>
 
@@ -372,6 +372,8 @@ If the connection fails, see the [Troubleshooting](#troubleshooting) section bel
 
 ## Troubleshooting
 
+The commands in this guide use `iam-mcp`, the name it registers the server under. If you registered it under another name, such as `thunderid-mcp` from an earlier version of this guide, use that name instead. Run `codex mcp list` or `claude mcp list` to see the names your client uses.
+
 ### Browser shows a CORS error or the connection hangs
 
 The Inspector origin is missing from the CORS configuration.
@@ -408,8 +410,8 @@ Client registration is disabled or requires authentication.
 A new Dynamic Client Registration request can conflict with an application created during an earlier sign-in. <ProductName /> rejects duplicate application names.
 
 1. In the <ProductName /> Console, navigate to **Applications**.
-2. Identify the application from your previous client registration, such as **Codex** or **Claude Code (thunderid-mcp)**. Delete it only if you no longer need that registration.
-3. Retry sign-in with `codex mcp login thunderid-mcp --scopes system`, or authenticate Claude Code from `/mcp`.
+2. Identify the application from your previous client registration, such as **Codex** or **Claude Code (iam-mcp)**. Delete it only if you no longer need that registration.
+3. Retry sign-in with `codex mcp login iam-mcp --scopes system`, or authenticate Claude Code from `/mcp`.
 
 ### Redirect URI error during sign-in
 
@@ -423,7 +425,7 @@ For MCP Inspector, the redirect URI on the application must match `http://localh
 The token carries no system permission. Either the signed-in user's roles grant none, or the client requested scopes the user's roles do not grant. A tool call that returns an authorization error means the token lacks the permission that tool is mapped to.
 
 1. Sign in with a user whose roles grant the permissions the tools need. See [System Permissions](../../guides/users/manage-roles#system-permissions).
-2. For Codex, run `codex mcp login thunderid-mcp --scopes system` to sign in again with the required scope. For MCP Inspector, set **Scope** to `system`.
+2. For Codex, run `codex mcp login iam-mcp --scopes system` to sign in again with the required scope. For MCP Inspector, set **Scope** to `system`.
 
 ### MCP server not responding
 

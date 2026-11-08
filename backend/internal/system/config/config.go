@@ -920,8 +920,15 @@ type Config struct {
 	Notification               NotificationConfig                `yaml:"notification"          json:"notification"`
 	AttributeCache             engineconfig.AttributeCacheConfig `yaml:"attribute_cache" json:"attribute_cache"`
 	ResourceSharing            ResourceSharingConfig             `yaml:"resource_sharing"      json:"resource_sharing"`
+	MCP                        MCPConfig                         `yaml:"mcp"                   json:"mcp"`
 	AccountAccess              AccountAccessConfig               `yaml:"account_access"        json:"account_access"`
 	IdentityGovernanceProvider IdentityGovernanceProviderConfig  `yaml:"identity_governance_provider" json:"identity_governance_provider"` //nolint:lll
+}
+
+// MCPConfig configures the built-in MCP server.
+type MCPConfig struct {
+	// ServerName is the name the MCP server reports to clients when they connect.
+	ServerName string `yaml:"server_name" json:"server_name"`
 }
 
 // ResourceSharingConfig configures how resources may be shared across organization units.
