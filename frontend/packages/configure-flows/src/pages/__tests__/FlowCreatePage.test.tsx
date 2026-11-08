@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {render, screen, fireEvent, waitFor, act} from '@testing-library/react';
-import {describe, it, expect, vi, beforeEach} from 'vitest';
+import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
 import FlowCreatePage from '../FlowCreatePage';
 
 // Mock @thunderid/logger/react
@@ -27,9 +27,12 @@ vi.mock('react-i18next', async (importOriginal) => ({
   }),
 }));
 
+const mockUseProjectScope = vi.fn<() => {projectId?: string}>(() => ({}));
+
 vi.mock('@thunderid/contexts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@thunderid/contexts')>()),
   useConfig: () => ({config: {brand: {product_name: 'ThunderID'}}}),
+  useProjectScope: () => mockUseProjectScope(),
 }));
 
 // Mock useNavigate
@@ -587,6 +590,56 @@ describe('FlowCreatePage', () => {
 
       expect(mockMutate).not.toHaveBeenCalled();
       expect(screen.getByText('Organization unit is required')).toBeInTheDocument();
+    });
+
+    describe('inside a project', () => {
+      beforeEach(() => {
+        mockUseProjectScope.mockReturnValue({projectId: 'project-1'});
+        ouState.hasMultipleOUs = true;
+        ouState.ouList = [{id: 'ou-a'}, {id: 'ou-b'}];
+      });
+
+      afterEach(() => {
+        mockUseProjectScope.mockReturnValue({});
+      });
+
+      it('skips the organization unit step even when there are several organization units', () => {
+        render(<FlowCreatePage />);
+
+        expect(screen.queryByTestId('ou-step')).not.toBeInTheDocument();
+        expect(screen.getByTestId('select-flow-type')).toBeInTheDocument();
+      });
+
+      it('creates the flow in the project, without an organization unit', () => {
+        render(<FlowCreatePage />);
+
+        fillConfigureStep();
+        fireEvent.click(screen.getByText('Create'));
+
+        expect(mockMutate).toHaveBeenCalledWith(
+          expect.objectContaining({name: 'My Flow', projectId: 'project-1'}),
+          expect.any(Object),
+        );
+        expect(mockMutate.mock.calls[0][0]).not.toHaveProperty('ouId');
+      });
+
+      it('carries the project into the Device Grant draft', () => {
+        render(<FlowCreatePage />);
+
+        navigateToDeviceGrantConfigureStep();
+        act(() => {
+          (capturedConfigureProps['onChange'] as (v: {name: string; handle: string}) => void)({
+            name: 'Device Flow',
+            handle: 'device-flow',
+          });
+          (capturedConfigureProps['onReadyChange'] as (ready: boolean) => void)(true);
+        });
+        fireEvent.click(screen.getByText('Create'));
+
+        const draftFlow = (mockNavigate.mock.calls.at(-1) as [string, {state: {draftFlow: object}}])[1].state.draftFlow;
+        expect(draftFlow).toMatchObject({projectId: 'project-1'});
+        expect(draftFlow).not.toHaveProperty('ouId');
+      });
     });
   });
 });

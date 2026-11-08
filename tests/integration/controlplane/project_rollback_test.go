@@ -31,6 +31,20 @@ func (ts *ControlPlaneTestSuite) statusOf(gatewayID, projectID string) projectSt
 	return status
 }
 
+// defaultProjectID is the project the bootstrap creates, which holds the default flows.
+const defaultProjectID = "01900000-0000-7000-8000-000000000002"
+
+// deployDefaultProject captures a version and deploys the default project to the gateway. Its default flows
+// are what other projects' applications sign in through, and a project deploy does not send another project's
+// resources.
+func (ts *ControlPlaneTestSuite) deployDefaultProject(gatewayID string) {
+	ts.T().Helper()
+	code, raw := ts.call(http.MethodPost, "/configuration-versions", map[string]any{"note": "the default flows"}, nil)
+	ts.Require().Contains([]int{http.StatusCreated, http.StatusOK}, code, string(raw))
+	code, raw = ts.call(http.MethodPost, "/gateways/"+gatewayID+"/apply", map[string]any{"project": defaultProjectID}, nil)
+	ts.Require().Equal(http.StatusOK, code, string(raw))
+}
+
 // addProjectApp creates an application in the project, captures and deploys the project.
 func (ts *ControlPlaneTestSuite) addProjectApp(gatewayID, projectID string) string {
 	ts.T().Helper()
@@ -51,6 +65,7 @@ func (ts *ControlPlaneTestSuite) addProjectApp(gatewayID, projectID string) stri
 // last write; its rollback point outlives the bound on kept masters.
 func (ts *ControlPlaneTestSuite) TestAProjectIsDeployedReportedAndRolledBack() {
 	gatewayID := ts.registerDataPlane()
+	ts.deployDefaultProject(gatewayID)
 	var created struct{ ID string }
 	handle := unique("rollback")
 	code, raw := ts.call(http.MethodPost, "/projects", map[string]any{"handle": handle, "displayName": handle},

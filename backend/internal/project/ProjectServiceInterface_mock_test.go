@@ -47,6 +47,46 @@ func (_m *ProjectServiceInterfaceMock) EXPECT() *ProjectServiceInterfaceMock_Exp
 	return &ProjectServiceInterfaceMock_Expecter{mock: &_m.Mock}
 }
 
+// AddResourceCheck provides a mock function for the type ProjectServiceInterfaceMock
+func (_mock *ProjectServiceInterfaceMock) AddResourceCheck(check ResourceCheck) {
+	_mock.Called(check)
+	return
+}
+
+// ProjectServiceInterfaceMock_AddResourceCheck_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'AddResourceCheck'
+type ProjectServiceInterfaceMock_AddResourceCheck_Call struct {
+	*mock.Call
+}
+
+// AddResourceCheck is a helper method to define mock.On call
+//   - check ResourceCheck
+func (_e *ProjectServiceInterfaceMock_Expecter) AddResourceCheck(check any) *ProjectServiceInterfaceMock_AddResourceCheck_Call {
+	return &ProjectServiceInterfaceMock_AddResourceCheck_Call{Call: _e.mock.On("AddResourceCheck", check)}
+}
+
+func (_c *ProjectServiceInterfaceMock_AddResourceCheck_Call) Run(run func(check ResourceCheck)) *ProjectServiceInterfaceMock_AddResourceCheck_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 ResourceCheck
+		if args[0] != nil {
+			arg0 = args[0].(ResourceCheck)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *ProjectServiceInterfaceMock_AddResourceCheck_Call) Return() *ProjectServiceInterfaceMock_AddResourceCheck_Call {
+	_c.Call.Return()
+	return _c
+}
+
+func (_c *ProjectServiceInterfaceMock_AddResourceCheck_Call) RunAndReturn(run func(check ResourceCheck)) *ProjectServiceInterfaceMock_AddResourceCheck_Call {
+	_c.Run(run)
+	return _c
+}
+
 // CreateProject provides a mock function for the type ProjectServiceInterfaceMock
 func (_mock *ProjectServiceInterfaceMock) CreateProject(ctx context.Context, request ProjectRequest) (*Project, *common.ServiceError) {
 	ret := _mock.Called(ctx, request)

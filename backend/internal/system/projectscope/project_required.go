@@ -13,6 +13,7 @@ import "github.com/thunder-id/thunderid/internal/system/security"
 var projectRequired = map[security.ResourceType]bool{
 	security.ResourceTypeApplication: false,
 	security.ResourceTypeAgent:       false,
+	security.ResourceTypeFlow:        false,
 }
 
 // ProjectRequired reports whether a resource of the given type must be created in a project.

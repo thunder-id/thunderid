@@ -253,6 +253,7 @@ func parseToCompleteFlowDefinition(data []byte) (interface{}, error) {
 // validateFlowGraphWrapper returns a validator closure that uses the flowValidator
 // to validate flow definitions, matching the ResourceConfig.Validator signature. A flow has to name its
 // organization unit by ouId or ouHandle. The handle is resolved to the unit's id, so the flow is stored with the id.
+// A flow in a project that names no organization unit is placed in the system organization unit.
 func validateFlowGraphWrapper(v FlowValidatorInterface, ouSvc ouProvider) func(interface{}) error {
 	return func(dto interface{}) error {
 		flowDef, ok := dto.(*providers.CompleteFlowDefinition)
@@ -273,22 +274,41 @@ func validateFlowGraphWrapper(v FlowValidatorInterface, ouSvc ouProvider) func(i
 			return fmt.Errorf("validation failed: %s - %s", svcErr.Code, svcErr.Error)
 		}
 
-		if flowDef.OUID == "" && flowDef.OUHandle == "" {
-			return fmt.Errorf("flow resource %q needs an organization unit, give its ouId or ouHandle", flowDef.ID)
-		}
 		// Declarative resources load at startup with no authenticated subject, so the owner is resolved with the
 		// runtime context.
-		ouID, ouErr := ouSvc.ResolveOwner(
-			security.WithRuntimeContext(context.Background()), flowDef.OUID, flowDef.OUHandle, flowOwnerErrors)
-		if ouErr != nil {
-			return fmt.Errorf("organization unit of flow resource %q could not be resolved: %s",
-				flowDef.ID, ouErr.ErrorDescription.DefaultValue)
+		ouID, err := resolveDocumentOU(security.WithRuntimeContext(context.Background()), ouSvc,
+			flowDef.ID, flowDef.OUID, flowDef.OUHandle, flowDef.ProjectID)
+		if err != nil {
+			return err
 		}
 		flowDef.OUID = ouID
 		flowDef.OUHandle = ""
 
 		return nil
 	}
+}
+
+// resolveDocumentOU returns the organization unit a flow document is owned by: the one it names by ouId or ouHandle,
+// or the system organization unit when it names none but gives a project.
+func resolveDocumentOU(ctx context.Context, ouSvc ouProvider, flowID, ouID, ouHandle, projectID string) (
+	string, error) {
+	if ouID == "" && ouHandle == "" {
+		if projectID == "" {
+			return "", fmt.Errorf("flow resource %q needs an organization unit, give its ouId or ouHandle", flowID)
+		}
+		systemOUID, svcErr := ouSvc.GetSystemOUID(ctx)
+		if svcErr != nil {
+			return "", fmt.Errorf("system organization unit of flow resource %q could not be resolved: %s",
+				flowID, svcErr.ErrorDescription.DefaultValue)
+		}
+		return systemOUID, nil
+	}
+	resolved, svcErr := ouSvc.ResolveOwner(ctx, ouID, ouHandle, flowOwnerErrors)
+	if svcErr != nil {
+		return "", fmt.Errorf("organization unit of flow resource %q could not be resolved: %s",
+			flowID, svcErr.ErrorDescription.DefaultValue)
+	}
+	return resolved, nil
 }
 
 // ParseFlowSharing decodes the sharing policies a flow document carries and the values the organization units saved.
@@ -326,13 +346,9 @@ func (s *flowMgtService) parseFlowSharing(data []byte) (*sharing.DeclaredResourc
 	}
 
 	ctx := security.WithRuntimeContext(context.Background())
-	if doc.OUID == "" && doc.OUHandle == "" {
-		return nil, fmt.Errorf("flow resource %q needs an organization unit, give its ouId or ouHandle", doc.ID)
-	}
-	ouID, svcErr := s.ouSvc.ResolveOwner(ctx, doc.OUID, doc.OUHandle, flowOwnerErrors)
-	if svcErr != nil {
-		return nil, fmt.Errorf("organization unit of flow resource %q could not be resolved: %s",
-			doc.ID, svcErr.ErrorDescription.DefaultValue)
+	ouID, err := resolveDocumentOU(ctx, s.ouSvc, doc.ID, doc.OUID, doc.OUHandle, doc.ProjectID)
+	if err != nil {
+		return nil, err
 	}
 	doc.OUID = ouID
 	for _, policy := range doc.SharingPolicies {

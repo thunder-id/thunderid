@@ -261,6 +261,12 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
       icon: <ShieldCheck />,
       path: RouteConfig.roles.list(),
     };
+    const flows: NavRoute = {
+      id: 'flows',
+      text: t('navigation:pages.flows'),
+      icon: <Workflow />,
+      path: RouteConfig.flows.list(),
+    };
     const badgeOf = (count: number | undefined): string | undefined =>
       count ? t('navigation:badges.undeployed', '{{count}} undeployed', {count}) : undefined;
     // On a gateway's pages the navigation is the gateway's, the same from wherever it was opened: a
@@ -370,6 +376,7 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
             {...agents, badge: badgeOf(undeployed.agent)},
             {...resourceServers, badge: badgeOf(undeployed.resource_server)},
             {...roles, badge: badgeOf(undeployed.role)},
+            {...flows, badge: badgeOf(undeployed.flow)},
           ],
         },
       ];
@@ -430,12 +437,6 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
       {
         category: t('navigation:categories.signInExperience', 'Sign-in experience'),
         routes: [
-          {
-            id: 'flows',
-            text: t('navigation:pages.flows'),
-            icon: <Workflow />,
-            path: RouteConfig.flows.list(),
-          },
           {
             id: 'connections',
             text: t('navigation:pages.connections'),
@@ -519,6 +520,7 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
     undeployed.agent,
     undeployed.resource_server,
     undeployed.role,
+    undeployed.flow,
     gateway,
     gatewayId,
     gatewayIndex,

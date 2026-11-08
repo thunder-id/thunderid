@@ -32,6 +32,10 @@ export interface UseGetFlowsParams {
    * Fetch every page matching the filters instead of returning only one page.
    */
   fetchAllPages?: boolean;
+  /**
+   * List only the flows of this project. Without it, every flow is listed.
+   */
+  projectId?: string;
 }
 
 /**
@@ -46,6 +50,7 @@ export interface UseGetFlowsParams {
  * @param params.limit - Maximum number of records to return (default: 30, max: 100)
  * @param params.offset - Number of records to skip for pagination (default: 0)
  * @param params.fetchAllPages - Whether to fetch and combine every matching page
+ * @param params.projectId - List only the flows of this project
  * @returns TanStack Query result object containing flows list data, loading state, and error information
  *
  * @example
@@ -100,10 +105,13 @@ export interface UseGetFlowsParams {
 export default function useGetFlows(params?: UseGetFlowsParams): UseQueryResult<FlowListResponse> {
   const {http} = useThunderID();
   const {getServerUrl} = useConfig();
-  const {flowType, limit = 30, offset = 0, enabled = true, fetchAllPages = false} = params ?? {};
+  const {flowType, limit = 30, offset = 0, enabled = true, fetchAllPages = false, projectId} = params ?? {};
 
   return useQuery<FlowListResponse>({
-    queryKey: [FlowQueryKeys.FLOWS, {flowType, limit, offset, ...(fetchAllPages ? {fetchAllPages} : {})}],
+    queryKey: [
+      FlowQueryKeys.FLOWS,
+      {flowType, limit, offset, ...(fetchAllPages ? {fetchAllPages} : {}), ...(projectId ? {projectId} : {})},
+    ],
     enabled,
     queryFn: async (): Promise<FlowListResponse> => {
       const serverUrl: string = getServerUrl();
@@ -115,6 +123,9 @@ export default function useGetFlows(params?: UseGetFlowsParams): UseQueryResult<
 
         if (flowType) {
           queryParams.append('flowType', flowType);
+        }
+        if (projectId) {
+          queryParams.append('projectId', projectId);
         }
 
         const response: {

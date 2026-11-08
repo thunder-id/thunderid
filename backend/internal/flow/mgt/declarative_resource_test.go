@@ -125,6 +125,23 @@ func (s *DeclarativeResourceTestSuite) TestValidateFlowGraphWrapper_IDWinsOverHa
 	assert.Equal(s.T(), "ou-1", flow.OUID)
 }
 
+// TestValidateFlowGraphWrapper_ProjectWithoutOU tests that a flow in a project with no owner is placed in the system
+// organization unit
+func (s *DeclarativeResourceTestSuite) TestValidateFlowGraphWrapper_ProjectWithoutOU() {
+	flow := &providers.CompleteFlowDefinition{
+		ID: "flow-001", Handle: "basic-auth", Name: "Basic Auth", FlowType: "AUTHENTICATION",
+		Nodes: validFlowNodes(), ProjectID: "project-1",
+	}
+
+	s.mockValidator.EXPECT().ValidateFlowDefinition(mock.Anything, mock.Anything).Return(nil)
+	s.mockOU.EXPECT().GetSystemOUID(mock.Anything).Return("system-ou", nil)
+
+	err := validateFlowGraphWrapper(s.mockValidator, s.mockOU)(flow)
+	assert.NoError(s.T(), err)
+	assert.Equal(s.T(), "system-ou", flow.OUID)
+	assert.Equal(s.T(), "project-1", flow.ProjectID)
+}
+
 // TestValidateFlowGraphWrapper_MissingOU tests that a flow without an owner is refused
 func (s *DeclarativeResourceTestSuite) TestValidateFlowGraphWrapper_MissingOU() {
 	flow := &providers.CompleteFlowDefinition{

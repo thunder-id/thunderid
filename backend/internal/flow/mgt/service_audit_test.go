@@ -167,7 +167,7 @@ func (s *FlowMgtServiceAuditTestSuite) service(bus eventbus.EventBusInterface) *
 	return newFlowMgtService(s.mockStore, newFlowInferenceServiceInterfaceMock(s.T()), s.mockGraphBuilder,
 		executormock.NewExecutorRegistryInterfaceMock(s.T()),
 		interceptormock.NewInterceptorRegistryInterfaceMock(s.T()), s.mockValidator, nil, &stubTransactioner{},
-		nil, s.mockOU, nil, nil, s.mockSharing, nil, bus)
+		nil, s.mockOU, nil, nil, s.mockSharing, nil, bus, nil)
 }
 
 // requireOnlyEvent checks that exactly one event was published, named name, for an attempt by the admin

@@ -333,8 +333,9 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	flowMgtService, flowMgtExporter, err := flowmgt.Initialize(
 		mux, mcpServer, cacheManager, flowFactory, execRegistry, interceptorRegistry, graphBuilder,
 		serverConfigService, ouService, notifTemplateSvc, httpConnectionService, flowConfigHandler, idpService,
-		false, sharingService, auditBus)
+		false, sharingService, auditBus, projectService)
 	fatalOnError(ctx, logger, err, "Failed to initialize FlowMgtService")
+	projectService.AddResourceCheck(flowMgtService.ProjectHasFlows)
 
 	exporters = append(exporters, flowMgtExporter)
 

@@ -34,7 +34,8 @@ type serverConfigProvider interface {
 
 // Initialize initializes the flow management service and registers HTTP routes. withSystemFlows loads
 // the system flows, for a server that executes flows. bus is required: the service publishes the audit
-// event of every flow it creates, updates, deletes or restores on it.
+// event of every flow it creates, updates, deletes or restores on it. projectValidator is nil on a
+// deployment that serves no projects, where a project ID is kept unchecked.
 func Initialize(
 	mux *http.ServeMux,
 	mcpServer *mcp.Server,
@@ -52,6 +53,7 @@ func Initialize(
 	withSystemFlows bool,
 	sharingSvc sharing.SharingServiceInterface,
 	bus eventbus.EventBusInterface,
+	projectValidator projectOUValidator,
 ) (FlowMgtServiceInterface, declarativeresource.ResourceExporter, error) {
 	if bus == nil {
 		return nil, nil, errNilEventBus
@@ -80,7 +82,7 @@ func Initialize(
 	service := newFlowMgtService(
 		store, inferenceService, graphBuilder, executorRegistry,
 		interceptorRegistry, flowValidator, compositeStore, transactioner, serverConfigSvc, ouSvc,
-		templateResolver, systemFlows, sharingSvc, idpProvider, bus,
+		templateResolver, systemFlows, sharingSvc, idpProvider, bus, projectValidator,
 	)
 	if err := service.loadDeclarativeSharing(); err != nil {
 		return nil, nil, err

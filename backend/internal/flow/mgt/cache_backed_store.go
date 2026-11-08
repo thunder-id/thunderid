@@ -54,6 +54,12 @@ func (s *cacheBackedFlowStore) ListFlowsByOU(ctx context.Context, ouID string, l
 	return s.store.ListFlowsByOU(ctx, ouID, limit, offset, flowType)
 }
 
+// ListFlowsByProject lists one page of the flows of a project. Like ListFlows, it is not cached.
+func (s *cacheBackedFlowStore) ListFlowsByProject(ctx context.Context, projectID, ouID string, limit, offset int,
+	flowType string) ([]BasicFlowDefinition, int, error) {
+	return s.store.ListFlowsByProject(ctx, projectID, ouID, limit, offset, flowType)
+}
+
 // ListFlowsByIDs reads the flows with the given IDs. Like ListFlows, it is not cached.
 func (s *cacheBackedFlowStore) ListFlowsByIDs(ctx context.Context, ids []string, flowType string) (
 	[]BasicFlowDefinition, error) {

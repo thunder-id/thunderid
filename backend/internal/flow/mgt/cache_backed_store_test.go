@@ -698,3 +698,14 @@ func (s *CacheBackedFlowStoreTestSuite) TestListFlowsByOUAndByIDsAreNotCached() 
 	s.NoError(err)
 	s.Equal(flows, byID)
 }
+
+func (s *CacheBackedFlowStoreTestSuite) TestListFlowsByProjectIsNotCached() {
+	flows := []BasicFlowDefinition{{ID: "flow-1", OUID: "ou-1", ProjectID: "project-1"}}
+	s.mockStore.EXPECT().ListFlowsByProject(mock.Anything, "project-1", "", 10, 0, "").Return(flows, 1, nil)
+
+	page, total, err := s.cachedStore.ListFlowsByProject(context.Background(), "project-1", "", 10, 0, "")
+
+	s.NoError(err)
+	s.Equal(1, total)
+	s.Equal(flows, page)
+}

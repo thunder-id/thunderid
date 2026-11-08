@@ -388,6 +388,38 @@ func (suite *ProjectServiceTestSuite) TestDeleteProject() {
 
 		suite.Equal(tidcommon.InternalServerError, *suite.service.DeleteProject(context.Background(), testProjectID))
 	})
+	suite.Run("refused while a resource check finds resources", func() {
+		suite.SetupTest()
+		suite.service.AddResourceCheck(func(context.Context, string) (bool, *tidcommon.ServiceError) {
+			return false, nil
+		})
+		suite.service.AddResourceCheck(func(_ context.Context, projectID string) (bool, *tidcommon.ServiceError) {
+			return projectID == testProjectID, nil
+		})
+
+		suite.Equal(ErrorProjectNotEmpty, *suite.service.DeleteProject(context.Background(), testProjectID))
+		suite.mockEntities.AssertNotCalled(suite.T(), "ProjectHasEntities", mock.Anything, mock.Anything)
+		suite.mockStore.AssertNotCalled(suite.T(), "DeleteProject", mock.Anything, mock.Anything)
+	})
+	suite.Run("deletes once no resource check finds resources", func() {
+		suite.SetupTest()
+		suite.service.AddResourceCheck(func(context.Context, string) (bool, *tidcommon.ServiceError) {
+			return false, nil
+		})
+		suite.mockEntities.On("ProjectHasEntities", mock.Anything, testProjectID).Return(false, nil)
+		suite.mockStore.On("DeleteProject", mock.Anything, testProjectID).Return(nil)
+
+		suite.Nil(suite.service.DeleteProject(context.Background(), testProjectID))
+	})
+	suite.Run("a registered resource check fails", func() {
+		suite.SetupTest()
+		suite.service.AddResourceCheck(func(context.Context, string) (bool, *tidcommon.ServiceError) {
+			return false, &tidcommon.InternalServerError
+		})
+
+		suite.Equal(tidcommon.InternalServerError, *suite.service.DeleteProject(context.Background(), testProjectID))
+		suite.mockStore.AssertNotCalled(suite.T(), "DeleteProject", mock.Anything, mock.Anything)
+	})
 	suite.Run("delete fails", func() {
 		suite.SetupTest()
 		suite.mockEntities.On("ProjectHasEntities", mock.Anything, testProjectID).Return(false, nil)

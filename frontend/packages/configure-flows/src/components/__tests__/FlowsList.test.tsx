@@ -4,6 +4,7 @@
 /* eslint-disable react/require-default-props */
 
 import {render, screen, fireEvent, waitFor} from '@testing-library/react';
+import {ProjectScopeProvider} from '@thunderid/contexts';
 import {DataGrid} from '@wso2/oxygen-ui';
 import {MemoryRouter} from 'react-router';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
@@ -94,6 +95,7 @@ const mockFlowsData: {flows: BasicFlowDefinition[]} = {
   ],
 };
 
+const mockUseGetFlowsParams = vi.fn();
 let mockUseGetFlowsReturn = {
   data: mockFlowsData,
   isLoading: false,
@@ -102,7 +104,10 @@ let mockUseGetFlowsReturn = {
 };
 
 vi.mock('../../api/useGetFlows', () => ({
-  default: () => mockUseGetFlowsReturn,
+  default: (params?: {projectId?: string}) => {
+    mockUseGetFlowsParams(params);
+    return mockUseGetFlowsReturn;
+  },
 }));
 
 // Mock FlowDeleteDialog
@@ -233,6 +238,30 @@ describe('FlowsList', () => {
       refetch: mockRefetch,
     };
     capturedColumns.value = [];
+  });
+
+  describe('Project scope', () => {
+    it('lists the flows of the selected project', () => {
+      render(
+        <MemoryRouter>
+          <ProjectScopeProvider project={{id: 'project-1'}}>
+            <FlowsList />
+          </ProjectScopeProvider>
+        </MemoryRouter>,
+      );
+
+      expect(mockUseGetFlowsParams).toHaveBeenCalledWith({projectId: 'project-1'});
+    });
+
+    it('lists every flow without a selected project', () => {
+      render(
+        <MemoryRouter>
+          <FlowsList />
+        </MemoryRouter>,
+      );
+
+      expect(mockUseGetFlowsParams).toHaveBeenCalledWith({projectId: undefined});
+    });
   });
 
   describe('Rendering', () => {

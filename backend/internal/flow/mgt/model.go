@@ -19,8 +19,9 @@ type FlowDefinition struct {
 	FlowType     providers.FlowType                `json:"flowType"                                             jsonschema:"Type of flow: 'AUTHENTICATION' for login flows or 'REGISTRATION' for signup flows"                                                        validate:"required"`
 	Interceptors []providers.InterceptorDefinition `json:"interceptors,omitempty" yaml:"interceptors,omitempty" jsonschema:"Optional array of interceptor declarations for cross-cutting concerns (e.g., CAPTCHA, rate limiting)."`
 	Nodes        []providers.NodeDefinition        `json:"nodes"                                                jsonschema:"Array of nodes defining the flow steps. Must include START and END nodes. Use get_flow on existing flows to see node structure examples." validate:"required"`
-	OUID         string                            `json:"ouId,omitempty"         yaml:"ouId,omitempty"         jsonschema:"Organization unit that owns the flow. Required on create and update, and cannot be changed afterwards."`
+	OUID         string                            `json:"ouId,omitempty"         yaml:"ouId,omitempty"         jsonschema:"Organization unit that owns the flow. Required on create unless projectId is given, and cannot be changed afterwards."`
 	OUHandle     string                            `json:"-"                      yaml:"-"`
+	ProjectID    string                            `json:"projectId,omitempty"    yaml:"projectId,omitempty"    jsonschema:"Optional project the flow belongs to. Without ouId, the flow is placed in the system organization unit; with ouId, the organization unit must belong to the project."`
 }
 
 // FlowDefinitionRequest represents the API request body for create/update flow operations.
@@ -32,6 +33,7 @@ type FlowDefinitionRequest struct {
 	Interceptors []providers.InterceptorDefinition `json:"interceptors,omitempty"`
 	Nodes        []providers.NodeDefinition        `json:"nodes"                  validate:"required"`
 	OUID         string                            `json:"ouId,omitempty"`
+	ProjectID    string                            `json:"projectId,omitempty"`
 }
 
 // BasicFlowDefinition represents basic information about a flow definition.
@@ -46,6 +48,7 @@ type BasicFlowDefinition struct {
 	IsReadOnly    bool               `json:"isReadOnly"    jsonschema:"Whether the flow is immutable (declarative)."`
 	OUID          string             `json:"ouId"          jsonschema:"Organization unit that owns the flow, or the requested one when the flow was shared with it."`
 	IsOwnedByOU   *bool              `json:"isOwnedByOU,omitempty" jsonschema:"With an organization unit in the request: whether it owns the flow. False means the flow was shared with it."`
+	ProjectID     string             `json:"projectId,omitempty"   jsonschema:"Project the flow belongs to."`
 }
 
 // OwnedFlow is a flow as the organization unit that owns it sees it: the whole definition.
@@ -135,7 +138,8 @@ type Link struct {
 // listFlowsInput represents the input for the list_flows tool.
 type listFlowsInput struct {
 	tool.PaginationInput
-	FlowType string `json:"flow_type,omitempty" jsonschema:"Filter by flow type: 'AUTHENTICATION' for login flows or 'REGISTRATION' for signup flows. Omit to see all flows."`
+	FlowType  string `json:"flow_type,omitempty"  jsonschema:"Filter by flow type: 'AUTHENTICATION' for login flows or 'REGISTRATION' for signup flows. Omit to see all flows."`
+	ProjectID string `json:"project_id,omitempty" jsonschema:"Project ID. Lists only the flows of the project. A project that does not exist has no flows."`
 }
 
 // flowListOutput represents the output for list_flows tool.
