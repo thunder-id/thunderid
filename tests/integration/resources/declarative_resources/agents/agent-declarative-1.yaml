@@ -10,3 +10,10 @@ attributes:
   name: Declarative Test Agent
   department: engineering
   environment: test
+# Shared, by its own file, into the root of another tree. Agents are shared only this way.
+sharingPolicies:
+  - id: decl-agent-1-policy-1
+    otherTreeRoots:
+      mode: selected
+      units:
+        - ouId: decl-m2m-root

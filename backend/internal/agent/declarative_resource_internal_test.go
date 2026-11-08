@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
+	"github.com/thunder-id/thunderid/internal/sharing"
 	"github.com/thunder-id/thunderid/tests/mocks/agentmock"
 
 	"gopkg.in/yaml.v3"
@@ -294,6 +295,82 @@ func (s *MakeAgentEntityParserTestSuite) TestMakeAgentEntityParser_InvalidValidU
 }
 
 // --- makeAgentInboundParser error paths ---
+
+type MakeAgentSharingParserTestSuite struct {
+	suite.Suite
+}
+
+func TestMakeAgentSharingParserTestSuite(t *testing.T) {
+	suite.Run(t, new(MakeAgentSharingParserTestSuite))
+}
+
+// Most agent documents declare no policy, and those are not read against the loaded agent.
+func (s *MakeAgentSharingParserTestSuite) TestADocumentWithoutPoliciesDeclaresNone() {
+	parser := makeAgentSharingParser(agentmock.NewAgentServiceInterfaceMock(s.T()))
+
+	declared, err := parser([]byte("id: agent-1\nouId: ou-1\ntype: service-agent\n"))
+
+	s.Require().NoError(err)
+	s.Equal(&sharing.DeclaredResourcePolicies{ResourceID: "agent-1"}, declared)
+}
+
+// The policies are declared against the unit the loaded agent lives in, which the document may name by
+// handle.
+func (s *MakeAgentSharingParserTestSuite) TestReadsThePoliciesAgainstTheAgentsUnit() {
+	mockSvc := agentmock.NewAgentServiceInterfaceMock(s.T())
+	mockSvc.EXPECT().GetAgent(asRuntime, "agent-1", true).
+		Return(&model.AgentGetResponse{ID: "agent-1", OUID: "ou-1", Display: "Agent One"}, nil).Once()
+	doc := `
+id: agent-1
+ouHandle: engineering
+type: service-agent
+sharingPolicies:
+  - id: agent-1-policy-1
+    otherTreeRoots:
+      mode: selected
+      units:
+        - ouId: ou-2
+`
+
+	declared, err := makeAgentSharingParser(mockSvc)([]byte(doc))
+
+	s.Require().NoError(err)
+	s.Equal(&sharing.DeclaredResourcePolicies{
+		ResourceID:   "agent-1",
+		ResourceName: "Agent One",
+		OwningOUID:   "ou-1",
+		Policies: []sharing.PolicyRequest{{ID: "agent-1-policy-1", OtherTreeRoots: &sharing.OtherTreeRootsRequest{
+			Mode: sharing.OtherTreeRootsSelected, Units: []sharing.RootUnitRequest{{OUID: "ou-2"}}}}},
+	}, declared)
+}
+
+func (s *MakeAgentSharingParserTestSuite) TestNamesTheAgentByIDWithoutADisplayName() {
+	mockSvc := agentmock.NewAgentServiceInterfaceMock(s.T())
+	mockSvc.EXPECT().GetAgent(asRuntime, "agent-1", true).
+		Return(&model.AgentGetResponse{ID: "agent-1", OUID: "ou-1"}, nil).Once()
+	doc := "id: agent-1\nouId: ou-1\nsharingPolicies:\n  - id: p1\n    allUnits: {}\n"
+
+	declared, err := makeAgentSharingParser(mockSvc)([]byte(doc))
+
+	s.Require().NoError(err)
+	s.Equal("agent-1", declared.ResourceName)
+}
+
+func (s *MakeAgentSharingParserTestSuite) TestRefusesPoliciesForAnAgentThatDidNotLoad() {
+	mockSvc := agentmock.NewAgentServiceInterfaceMock(s.T())
+	mockSvc.EXPECT().GetAgent(asRuntime, "agent-1", true).Return(nil, &ErrorAgentNotFound).Once()
+	doc := "id: agent-1\nouId: ou-1\nsharingPolicies:\n  - id: p1\n    allUnits: {}\n"
+
+	_, err := makeAgentSharingParser(mockSvc)([]byte(doc))
+
+	s.ErrorContains(err, "failed to read agent 'agent-1' for its sharing policies")
+}
+
+func (s *MakeAgentSharingParserTestSuite) TestRefusesMalformedYAML() {
+	_, err := makeAgentSharingParser(agentmock.NewAgentServiceInterfaceMock(s.T()))([]byte("id: [unclosed"))
+
+	s.ErrorContains(err, "failed to parse agent YAML")
+}
 
 type MakeAgentInboundParserTestSuite struct {
 	suite.Suite

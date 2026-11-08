@@ -13,6 +13,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
+	"github.com/thunder-id/thunderid/internal/sharing"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/transaction"
@@ -21,6 +24,7 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/inboundclientmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oumock"
 	"github.com/thunder-id/thunderid/tests/mocks/rolemock"
+	"github.com/thunder-id/thunderid/tests/mocks/sharingmock"
 )
 
 func setupAgentConfig(t *testing.T, agentStore string, declarativeEnabled bool) {
@@ -95,12 +99,13 @@ func (suite *InitializeTestSuite) TestInitialize_EntityLoadError_AllDeclarativeM
 			mockInbound := inboundclientmock.NewInboundClientServiceInterfaceMock(suite.T())
 			mockOU := oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())
 			mockRole := rolemock.NewRoleServiceInterfaceMock(suite.T())
+			mockSharing := newAgentSharingRegistry(suite.T(), mockEntity)
 
 			mockEntity.On("LoadDeclarativeResources", mock.Anything).
 				Return(errors.New("entity load error")).Once()
 
-			svc, exporter, err := Initialize(http.NewServeMux(), nil, mockEntity, mockInbound, mockOU, mockRole,
-				nil, nil, newAllowAllAuthz(suite.T()), nil, nil, nil,
+			svc, exporter, err := Initialize(http.NewServeMux(), nil, mockEntity, mockSharing, mockInbound, mockOU,
+				mockRole, nil, nil, newAllowAllAuthz(suite.T()), nil, nil, nil,
 				newEntityDBProvider(suite.T()), nil, nil, discardingBus{})
 
 			suite.EqualError(err, "entity load error")
@@ -124,6 +129,7 @@ func (suite *InitializeTestSuite) TestInitialize_InboundLoadError_AllDeclarative
 			mockInbound := inboundclientmock.NewInboundClientServiceInterfaceMock(suite.T())
 			mockOU := oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())
 			mockRole := rolemock.NewRoleServiceInterfaceMock(suite.T())
+			mockSharing := newAgentSharingRegistry(suite.T(), mockEntity)
 
 			mockEntity.On("LoadDeclarativeResources", mock.Anything).Return(nil).Once()
 			mockInbound.On("LoadDeclarativeResources", mock.Anything, mock.Anything).
@@ -131,8 +137,8 @@ func (suite *InitializeTestSuite) TestInitialize_InboundLoadError_AllDeclarative
 
 			mux := http.NewServeMux()
 			svc, exporter, err := Initialize(
-				mux, nil, mockEntity, mockInbound, mockOU, mockRole, nil, nil, newAllowAllAuthz(suite.T()), nil, nil,
-				nil, newEntityDBProvider(suite.T()), nil, nil, discardingBus{})
+				mux, nil, mockEntity, mockSharing, mockInbound, mockOU, mockRole, nil, nil, newAllowAllAuthz(suite.T()),
+				nil, nil, nil, newEntityDBProvider(suite.T()), nil, nil, discardingBus{})
 
 			suite.Error(err)
 			suite.Equal("inbound load error", err.Error())
@@ -152,20 +158,56 @@ func (suite *InitializeTestSuite) TestInitialize_DeclarativeMode_Success() {
 	mockInbound := inboundclientmock.NewInboundClientServiceInterfaceMock(suite.T())
 	mockOU := oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())
 	mockRole := rolemock.NewRoleServiceInterfaceMock(suite.T())
+	mockSharing := newAgentSharingRegistry(suite.T(), mockEntity)
 
 	mockEntity.On("LoadDeclarativeResources", mock.Anything).Return(nil).Once()
 	mockInbound.On("LoadDeclarativeResources", mock.Anything, mock.Anything).Return(nil).Once()
+	mockSharing.On("LoadDeclarativeResources", mock.Anything, mock.MatchedBy(isAgentSharingConfig)).
+		Return(nil).Once()
 
 	mux := http.NewServeMux()
 	svc, exporter, err := Initialize(
-		mux, nil, mockEntity, mockInbound, mockOU, mockRole, nil, nil, newAllowAllAuthz(suite.T()), nil, nil,
-		nil, newEntityDBProvider(suite.T()), nil, nil, discardingBus{})
+		mux, nil, mockEntity, mockSharing, mockInbound, mockOU, mockRole, nil, nil, newAllowAllAuthz(suite.T()),
+		nil, nil, nil, newEntityDBProvider(suite.T()), nil, nil, discardingBus{})
 
 	suite.NoError(err)
 	suite.NotNil(svc)
 	suite.NotNil(exporter)
 	mockEntity.AssertExpectations(suite.T())
 	mockInbound.AssertExpectations(suite.T())
+	mockSharing.AssertExpectations(suite.T())
+}
+
+// Declared sharing is loaded after the agents it is declared on, and a failure stops startup.
+func (suite *InitializeTestSuite) TestInitialize_SharingLoadError_AllDeclarativeModes() {
+	for _, storeMode := range []serverconst.StoreMode{
+		serverconst.StoreModeDeclarative,
+		serverconst.StoreModeComposite,
+	} {
+		suite.Run(string(storeMode), func() {
+			setupAgentConfig(suite.T(), string(storeMode), false)
+
+			mockEntity := entitymock.NewEntityServiceInterfaceMock(suite.T())
+			mockEntity.On("LoadIndexedAttributes", []string{"name"}).Return(nil).Once()
+			mockInbound := inboundclientmock.NewInboundClientServiceInterfaceMock(suite.T())
+			mockOU := oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())
+			mockRole := rolemock.NewRoleServiceInterfaceMock(suite.T())
+			mockSharing := newAgentSharingRegistry(suite.T(), mockEntity)
+
+			mockEntity.On("LoadDeclarativeResources", mock.Anything).Return(nil).Once()
+			mockInbound.On("LoadDeclarativeResources", mock.Anything, mock.Anything).Return(nil).Once()
+			mockSharing.On("LoadDeclarativeResources", mock.Anything, mock.MatchedBy(isAgentSharingConfig)).
+				Return(errors.New("sharing load error")).Once()
+
+			svc, exporter, err := Initialize(
+				http.NewServeMux(), nil, mockEntity, mockSharing, mockInbound, mockOU, mockRole, nil, nil,
+				newAllowAllAuthz(suite.T()), nil, nil, nil, newEntityDBProvider(suite.T()), nil, nil, discardingBus{})
+
+			suite.EqualError(err, "sharing load error")
+			suite.Nil(svc)
+			suite.Nil(exporter)
+		})
+	}
 }
 
 func (suite *InitializeTestSuite) TestInitialize_MutableMode_SkipsDeclarativeLoading() {
@@ -176,11 +218,12 @@ func (suite *InitializeTestSuite) TestInitialize_MutableMode_SkipsDeclarativeLoa
 	mockInbound := inboundclientmock.NewInboundClientServiceInterfaceMock(suite.T())
 	mockOU := oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())
 	mockRole := rolemock.NewRoleServiceInterfaceMock(suite.T())
+	mockSharing := newAgentSharingRegistry(suite.T(), mockEntity)
 
 	mux := http.NewServeMux()
 	svc, exporter, err := Initialize(
-		mux, nil, mockEntity, mockInbound, mockOU, mockRole, nil, nil, newAllowAllAuthz(suite.T()), nil, nil,
-		nil, newEntityDBProvider(suite.T()), nil, nil, discardingBus{})
+		mux, nil, mockEntity, mockSharing, mockInbound, mockOU, mockRole, nil, nil, newAllowAllAuthz(suite.T()),
+		nil, nil, nil, newEntityDBProvider(suite.T()), nil, nil, discardingBus{})
 
 	suite.NoError(err)
 	suite.NotNil(svc)
@@ -188,6 +231,7 @@ func (suite *InitializeTestSuite) TestInitialize_MutableMode_SkipsDeclarativeLoa
 	// No LoadDeclarativeResources calls expected in mutable mode.
 	mockEntity.AssertNotCalled(suite.T(), "LoadDeclarativeResources")
 	mockInbound.AssertNotCalled(suite.T(), "LoadDeclarativeResources")
+	mockSharing.AssertNotCalled(suite.T(), "LoadDeclarativeResources")
 }
 
 func (suite *InitializeTestSuite) TestInitialize_IndexedAttributesLoadError() {
@@ -197,12 +241,13 @@ func (suite *InitializeTestSuite) TestInitialize_IndexedAttributesLoadError() {
 	mockInbound := inboundclientmock.NewInboundClientServiceInterfaceMock(suite.T())
 	mockOU := oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())
 	mockRole := rolemock.NewRoleServiceInterfaceMock(suite.T())
+	mockSharing := sharingmock.NewSharingServiceInterfaceMock(suite.T())
 
 	mockEntity.On("LoadIndexedAttributes", []string{"name"}).Return(errors.New("indexed load error")).Once()
 
 	svc, exporter, err := Initialize(
-		http.NewServeMux(), nil, mockEntity, mockInbound, mockOU, mockRole, nil, nil, newAllowAllAuthz(suite.T()),
-		nil, nil, nil, newEntityDBProvider(suite.T()), nil, nil, discardingBus{})
+		http.NewServeMux(), nil, mockEntity, mockSharing, mockInbound, mockOU, mockRole, nil, nil,
+		newAllowAllAuthz(suite.T()), nil, nil, nil, newEntityDBProvider(suite.T()), nil, nil, discardingBus{})
 
 	suite.EqualError(err, "indexed load error")
 	suite.Nil(svc)
@@ -216,7 +261,7 @@ func (suite *InitializeTestSuite) TestInitialize_TransactionerError() {
 	dbProvider.On("GetEntityDBTransactioner").Return(nil, errors.New("entity db unavailable")).Once()
 	mockEntity := entitymock.NewEntityServiceInterfaceMock(suite.T())
 
-	svc, exporter, err := Initialize(http.NewServeMux(), nil, mockEntity,
+	svc, exporter, err := Initialize(http.NewServeMux(), nil, mockEntity, nil,
 		inboundclientmock.NewInboundClientServiceInterfaceMock(suite.T()),
 		oumock.NewOrganizationUnitServiceInterfaceMock(suite.T()), rolemock.NewRoleServiceInterfaceMock(suite.T()), nil,
 		nil, newAllowAllAuthz(suite.T()), nil, nil, nil, dbProvider, nil, nil, discardingBus{})
@@ -225,6 +270,24 @@ func (suite *InitializeTestSuite) TestInitialize_TransactionerError() {
 	suite.Nil(svc)
 	suite.Nil(exporter)
 	mockEntity.AssertNotCalled(suite.T(), "LoadIndexedAttributes", mock.Anything)
+}
+
+// newAgentSharingRegistry expects the agent declaration to be registered with the sharing framework and
+// the agent category to be registered as shared with the entity service.
+func newAgentSharingRegistry(
+	t *testing.T, mockEntity *entitymock.EntityServiceInterfaceMock,
+) *sharingmock.SharingServiceInterfaceMock {
+	mockSharing := sharingmock.NewSharingServiceInterfaceMock(t)
+	mockSharing.On("RegisterResourceType", mock.MatchedBy(func(decl sharing.ResourceOverlayFieldDeclaration) bool {
+		return decl.ResourceType() == agentSharingType
+	})).Once()
+	mockEntity.On("RegisterSharedCategory", providers.EntityCategoryAgent, agentSharingType).Once()
+	return mockSharing
+}
+
+// isAgentSharingConfig matches the loader configuration that reads agents' declared sharing.
+func isAgentSharingConfig(cfg sharing.DeclarativeLoaderConfig) bool {
+	return cfg.ResourceType == agentSharingType && cfg.DirectoryName == "agents"
 }
 
 // newEntityDBProvider returns a DB provider whose entity transactioner runs the work without a database.
@@ -236,7 +299,7 @@ func newEntityDBProvider(t *testing.T) *providermock.DBProviderInterfaceMock {
 
 func (suite *InitializeTestSuite) TestInitialize_RefusesANilEventBus() {
 	svc, exporter, err := Initialize(http.NewServeMux(), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
-		nil, nil, nil)
+		nil, nil, nil, nil)
 
 	suite.ErrorIs(err, errNilEventBus)
 	suite.Nil(svc)

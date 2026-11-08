@@ -16,8 +16,8 @@ import (
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
-// AgentOUFilterTestSuite exercises listing the agents of one organization unit. Agents cannot be
-// shared yet, so an organization unit lists only the agents it owns.
+// AgentOUFilterTestSuite exercises listing the agents of one organization unit. None of its agents is
+// shared, so each organization unit lists only the agents it owns.
 //
 // Fixture topology:
 //
@@ -41,6 +41,7 @@ type ouListedAgent struct {
 	ID          string `json:"id"`
 	OUID        string `json:"ouId"`
 	IsOwnedByOU *bool  `json:"isOwnedByOU"`
+	IsReadOnly  bool   `json:"isReadOnly"`
 }
 
 // ouAgentList is the part of an agent list response these tests read.

@@ -9,6 +9,8 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	"github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	flowmgt "github.com/thunder-id/thunderid/internal/flow/mgt"
@@ -17,6 +19,7 @@ import (
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/resource"
 	"github.com/thunder-id/thunderid/internal/role"
+	"github.com/thunder-id/thunderid/internal/sharing"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	dbprovider "github.com/thunder-id/thunderid/internal/system/database/provider"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
@@ -43,6 +46,7 @@ func Initialize(
 	mux *http.ServeMux,
 	mcpServer *mcp.Server,
 	entityService entity.EntityServiceInterface,
+	sharingService sharing.SharingServiceInterface,
 	inboundClientService inboundclient.InboundClientServiceInterface,
 	ouService oupkg.OrganizationUnitServiceInterface,
 	roleService role.RoleServiceInterface,
@@ -70,6 +74,8 @@ func Initialize(
 	if err := entityService.LoadIndexedAttributes(getAgentIndexedAttributes()); err != nil {
 		return nil, nil, err
 	}
+	sharingService.RegisterResourceType(newAgentSharingDeclaration(service))
+	entityService.RegisterSharedCategory(providers.EntityCategoryAgent, agentSharingType)
 
 	storeMode := getAgentStoreMode()
 	if storeMode == serverconst.StoreModeComposite || storeMode == serverconst.StoreModeDeclarative {
@@ -78,6 +84,11 @@ func Initialize(
 		}
 		if err := inboundClientService.LoadDeclarativeResources(
 			context.Background(), makeAgentInboundConfig(service)); err != nil {
+			return nil, nil, err
+		}
+		// Read after the agents, as each policy is declared against the unit its agent was loaded into.
+		if err := sharingService.LoadDeclarativeResources(
+			context.Background(), makeAgentSharingConfig(service)); err != nil {
 			return nil, nil, err
 		}
 	}
@@ -96,7 +107,7 @@ func Initialize(
 		})
 	}
 
-	exporter := newAgentExporter(service, entityService)
+	exporter := newAgentExporter(service, entityService, sharingService)
 	return service, exporter, nil
 }
 

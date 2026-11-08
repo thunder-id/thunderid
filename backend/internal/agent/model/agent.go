@@ -12,6 +12,7 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
+	"github.com/thunder-id/thunderid/internal/sharing"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 )
 
@@ -114,6 +115,9 @@ type AgentGetResponse struct {
 	// Credentials holds the agent's credentials by credential: a placeholder for each in an export, and
 	// each value in what a write hands the value capturer. A read never returns it.
 	Credentials map[string]interface{} `json:"-" yaml:"credentials,omitempty"`
+	// SharingPolicies holds the sharing policies an export writes with the agent. A read never returns
+	// them.
+	SharingPolicies []sharing.PolicyRequest `json:"-" yaml:"sharingPolicies,omitempty"`
 	// Status is the effective access status and what produced it, derived at read time: SUSPENDED
 	// beats LOCKED beats ACTIVE. Read-only, and excluded from the YAML export as runtime state.
 	Status *providers.AccessStatusReport `json:"status,omitempty" yaml:"-"`
