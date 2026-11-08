@@ -149,15 +149,16 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	// export and the gateways once both exist below, since the export is built from these services.
 	valueCapture := gateway.NewValueCapture()
 
-	// Initialize i18n service for internationalization support.
-	i18nService, i18nExporter, err := i18nmgt.Initialize(mux, config.GetServerRuntime().Config.Translation)
-	fatalOnError(ctx, logger, err, "Failed to initialize i18n service")
-	exporters = append(exporters, i18nExporter)
-
 	// A control plane token names the business organization unit that selects the deployment, not an
 	// organization unit of this plane, so every caller acts across the whole deployment.
 	ouAuthzService, err := sysauthz.InitializeDeploymentBoundedAuthorization()
 	fatalOnError(ctx, logger, err, "Failed to initialize system authorization service")
+
+	// Initialize i18n service for internationalization support.
+	i18nService, i18nExporter, err := i18nmgt.Initialize(mux, config.GetServerRuntime().Config.Translation,
+		ouAuthzService)
+	fatalOnError(ctx, logger, err, "Failed to initialize i18n service")
+	exporters = append(exporters, i18nExporter)
 
 	ouService, ouHierarchyResolver, ouEnumerator, ouExporter, err := ou.Initialize(
 		mux, mcpServer, cacheManager, ouAuthzService)
@@ -211,7 +212,8 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	exporters = append(exporters, resourceExporter)
 
 	// Initialize authorization details type management.
-	authzDetailMgtService, authzDetailExporter, err := authzdetailmgt.Initialize(mux, mcpServer, valueCapture)
+	authzDetailMgtService, authzDetailExporter, err := authzdetailmgt.Initialize(
+		mux, mcpServer, valueCapture, ouAuthzService)
 	fatalOnError(ctx, logger, err, "Failed to initialize AuthorizationDetailMgtService")
 	exporters = append(exporters, authzDetailExporter)
 
@@ -238,7 +240,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		serverconfig.ConfigNameGateway:               gateway.NewSettingsConfigHandler(),
 	}
 	serverConfigService, serverConfigExporter, err := serverconfig.Initialize(mux, cacheManager, serverConfigHandlers,
-		observabilitySvc, auditBus)
+		observabilitySvc, auditBus, ouAuthzService)
 	fatalOnError(ctx, logger, err, "Failed to initialize server config service")
 	exporters = append(exporters, serverConfigExporter)
 
@@ -354,12 +356,12 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	certservice, err := cert.Initialize(cacheManager, dbprovider.GetDBProvider())
 	fatalOnError(ctx, logger, err, "Failed to initialize CertificateService")
 
-	themeMgtService, themeExporter, err := thememgt.Initialize(mux, mcpServer, auditBus, projectService)
+	themeMgtService, themeExporter, err := thememgt.Initialize(mux, mcpServer, auditBus, projectService, ouAuthzService)
 	fatalOnError(ctx, logger, err, "Failed to initialize ThemeMgtService")
 	projectService.AddResourceCheck(themeMgtService.ProjectHasThemes)
 	exporters = append(exporters, themeExporter)
 
-	layoutMgtService, layoutExporter, err := layoutmgt.Initialize(mux, auditBus, projectService)
+	layoutMgtService, layoutExporter, err := layoutmgt.Initialize(mux, auditBus, projectService, ouAuthzService)
 	fatalOnError(ctx, logger, err, "Failed to initialize LayoutMgtService")
 	projectService.AddResourceCheck(layoutMgtService.ProjectHasLayouts)
 	exporters = append(exporters, layoutExporter)

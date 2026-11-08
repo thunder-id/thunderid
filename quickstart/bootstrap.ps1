@@ -12,12 +12,19 @@ $CP_PORT = 8095
 
 # New-GatewayKey generates the management key the managed Data Plane trusts and the Control Plane's
 # gateway resource (quickstart/bootstrap/cp/00-quickstart-gateway.yaml) registers it with, so no key
-# is committed to the repository. It sets $QUICKSTART_GATEWAY_KEY and its SHA-256 hex digest
-# $QUICKSTART_GATEWAY_KEY_HASH, and exports the key for the bootstrap template.
+# is committed to the repository. A key already in $env:QUICKSTART_GATEWAY_KEY is kept, which is how
+# a test pipeline learns the key it later imports deployment-wide resources with. It sets
+# $QUICKSTART_GATEWAY_KEY and its SHA-256 hex digest $QUICKSTART_GATEWAY_KEY_HASH, and exports the
+# key for the bootstrap template.
 function New-GatewayKey {
-    $bytes = New-Object 'System.Byte[]' 32
-    [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
-    $script:QUICKSTART_GATEWAY_KEY = -join ($bytes | ForEach-Object { $_.ToString('x2') })
+    if ($env:QUICKSTART_GATEWAY_KEY) {
+        $script:QUICKSTART_GATEWAY_KEY = $env:QUICKSTART_GATEWAY_KEY
+    }
+    else {
+        $bytes = New-Object 'System.Byte[]' 32
+        [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
+        $script:QUICKSTART_GATEWAY_KEY = -join ($bytes | ForEach-Object { $_.ToString('x2') })
+    }
     $digest = [System.Security.Cryptography.SHA256]::Create().ComputeHash(
         [System.Text.Encoding]::UTF8.GetBytes($script:QUICKSTART_GATEWAY_KEY))
     $script:QUICKSTART_GATEWAY_KEY_HASH = -join ($digest | ForEach-Object { $_.ToString('x2') })

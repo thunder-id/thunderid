@@ -2919,7 +2919,9 @@ func (as *applicationService) cleanupStaleI18nKeys(
 
 // syncPasskeyOriginsToCORS merges the application's passkey allowed origins into the CORS writable
 // layer so the browser can reach the ThunderID server from those origins. This is additive: origins
-// already present are skipped; origins removed from an application are not pruned here.
+// already present are skipped; origins removed from an application are not pruned here. The write runs as
+// an internal operation of the application write the caller is already authorized for, since a data plane
+// refuses a token's own write to the server configuration.
 func (as *applicationService) syncPasskeyOriginsToCORS(ctx context.Context, origins []string) {
 	if as.serverConfigService == nil || len(origins) == 0 {
 		return
@@ -2980,7 +2982,7 @@ func (as *applicationService) syncPasskeyOriginsToCORS(ctx context.Context, orig
 		return
 	}
 	if svcErr := as.serverConfigService.SetConfig(
-		ctx, serverconfig.ConfigNameCORS, json.RawMessage(newConfigJSON),
+		security.WithRuntimeContext(ctx), serverconfig.ConfigNameCORS, json.RawMessage(newConfigJSON),
 	); svcErr != nil {
 		as.logger.Warn(ctx, "Failed to update CORS config with passkey allowed origins",
 			log.String("error", svcErr.ErrorDescription.DefaultValue))

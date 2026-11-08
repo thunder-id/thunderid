@@ -115,7 +115,7 @@ func (suite *ThemeServiceAuditTestSuite) TearDownTest() {
 func (suite *ThemeServiceAuditTestSuite) resetService() {
 	bus, published := newRecordingBus(suite.T())
 	suite.store = newThemeMgtStoreInterfaceMock(suite.T())
-	suite.service = newThemeMgtService(suite.store, bus, nil)
+	suite.service = newThemeMgtService(suite.store, bus, nil, allowAllAuthz(suite.T()))
 	suite.published = published
 }
 
@@ -360,7 +360,7 @@ func (suite *ThemeServiceAuditTestSuite) TestDeleteTheme_PublishesNothingForAMis
 func (suite *ThemeServiceAuditTestSuite) TestCreateTheme_SucceedsWhenTheBusRefusesTheEvent() {
 	failing := eventbusmock.NewEventBusInterfaceMock(suite.T())
 	failing.EXPECT().Publish(mock.Anything, mock.Anything).Return(errors.New("audit queue is full")).Once()
-	suite.service = newThemeMgtService(suite.store, failing, nil)
+	suite.service = newThemeMgtService(suite.store, failing, nil, allowAllAuthz(suite.T()))
 	suite.store.On("IsThemeHandleConflict", mock.Anything, testAuditHandle, "").Return(false, nil)
 	suite.store.On("CreateTheme", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 

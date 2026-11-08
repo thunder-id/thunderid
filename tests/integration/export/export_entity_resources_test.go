@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -145,53 +144,26 @@ func (ts *ExportEntityResourcesTestSuite) TearDownSuite() {
 }
 
 // setTranslationOverride writes one override so the language becomes exportable. A language with no
-// overrides is not a resource the exporter can enumerate.
+// overrides is not a resource the exporter can enumerate. A data plane takes translations only from an
+// import with the management API key, and an import replaces every override of the language.
 func (ts *ExportEntityResourcesTestSuite) setTranslationOverride() {
 	ts.T().Helper()
 
-	body, err := json.Marshal(map[string]string{"value": entityExportValue})
-	ts.Require().NoError(err)
-
-	target := fmt.Sprintf("%s/i18n/languages/%s/translations/ns/%s/keys/%s",
-		testServerURL, url.PathEscape(entityExportLanguage),
-		url.PathEscape(entityExportNamespace), url.PathEscape(entityExportKey))
-
-	req, err := http.NewRequest(http.MethodPost, target, bytes.NewReader(body))
-	ts.Require().NoError(err)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := testutils.GetHTTPClient().Do(req)
-	ts.Require().NoError(err)
-	defer resp.Body.Close()
-
-	respBody, err := io.ReadAll(resp.Body)
-	ts.Require().NoError(err)
-	ts.Require().Equalf(http.StatusOK, resp.StatusCode,
-		"failed to seed the translation override, body: %s", respBody)
+	_, err := testutils.ImportResource("translation", map[string]any{
+		"language": entityExportLanguage,
+		"translations": map[string]map[string]string{
+			entityExportNamespace: {entityExportKey: entityExportValue},
+		},
+	}, true)
+	ts.Require().NoError(err, "failed to seed the translation override")
 }
 
 // clearTranslationLanguage removes the suite's overrides so the shared server is left as found.
 func (ts *ExportEntityResourcesTestSuite) clearTranslationLanguage() {
 	ts.T().Helper()
 
-	target := fmt.Sprintf("%s/i18n/languages/%s/translations",
-		testServerURL, url.PathEscape(entityExportLanguage))
-
-	req, err := http.NewRequest(http.MethodDelete, target, nil)
-	if err != nil {
-		ts.T().Logf("Failed to build the translation cleanup request: %v", err)
-		return
-	}
-
-	resp, err := testutils.GetHTTPClient().Do(req)
-	if err != nil {
+	if err := testutils.DeleteImportedResource("translation", entityExportLanguage); err != nil {
 		ts.T().Logf("Failed to clear the translation language: %v", err)
-		return
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusNoContent {
-		ts.T().Logf("Unexpected status clearing the translation language: %d", resp.StatusCode)
 	}
 }
 

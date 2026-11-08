@@ -20,6 +20,8 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
+	"github.com/thunder-id/thunderid/internal/system/security"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 )
 
@@ -49,6 +51,7 @@ type LayoutMgtServiceInterface interface {
 
 // layoutMgtService is the default implementation of the LayoutMgtServiceInterface.
 type layoutMgtService struct {
+	authzService       sysauthz.SystemAuthorizationServiceInterface
 	layoutMgtStore     layoutMgtStoreInterface
 	dependencyRegistry resourcedependency.Registry
 	// projectChecker is nil on a deployment that serves no projects.
@@ -66,9 +69,11 @@ type projectChecker interface {
 
 // newLayoutMgtService creates a new instance of LayoutMgtService with injected dependencies.
 func newLayoutMgtService(layoutMgtStore layoutMgtStoreInterface, bus eventbus.EventBusInterface,
-	projectChecker projectChecker, projectRequired bool) LayoutMgtServiceInterface {
+	projectChecker projectChecker, projectRequired bool,
+	authzService sysauthz.SystemAuthorizationServiceInterface) LayoutMgtServiceInterface {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 	return &layoutMgtService{
+		authzService:    authzService,
 		layoutMgtStore:  layoutMgtStore,
 		projectChecker:  projectChecker,
 		projectRequired: projectRequired,
@@ -173,6 +178,10 @@ func (ls *layoutMgtService) CreateLayout(ctx context.Context, layout CreateLayou
 func (ls *layoutMgtService) createLayout(ctx context.Context, layout CreateLayoutRequestWithID) (*Layout,
 	*tidcommon.ServiceError) {
 	ls.logger.Debug(ctx, "Creating layout configuration")
+
+	if svcErr := ls.checkWriteAccess(ctx, security.ActionCreateDesign); svcErr != nil {
+		return nil, svcErr
+	}
 
 	if layout.DisplayName == "" {
 		return nil, &ErrorMissingDisplayName
@@ -281,6 +290,10 @@ func (ls *layoutMgtService) updateLayout(ctx context.Context,
 	id string, layout UpdateLayoutRequest) (*Layout, *tidcommon.ServiceError) {
 	ls.logger.Debug(ctx, "Updating layout", log.String("id", id))
 
+	if svcErr := ls.checkWriteAccess(ctx, security.ActionUpdateDesign); svcErr != nil {
+		return nil, svcErr
+	}
+
 	if id == "" {
 		return nil, &ErrorInvalidLayoutID
 	}
@@ -356,6 +369,10 @@ func (ls *layoutMgtService) DeleteLayout(ctx context.Context, id string) *tidcom
 // deleteLayout deletes a layout configuration without publishing its audit event.
 func (ls *layoutMgtService) deleteLayout(ctx context.Context, id string) *tidcommon.ServiceError {
 	ls.logger.Debug(ctx, "Deleting layout", log.String("id", id))
+
+	if svcErr := ls.checkWriteAccess(ctx, security.ActionDeleteDesign); svcErr != nil {
+		return svcErr
+	}
 
 	if id == "" {
 		return &ErrorInvalidLayoutID
@@ -498,6 +515,19 @@ func (ls *layoutMgtService) validateLayoutPreferences(
 		return &ErrorInvalidLayoutFormat
 	}
 
+	return nil
+}
+
+// checkWriteAccess refuses a caller who may not write a layout.
+func (ls *layoutMgtService) checkWriteAccess(ctx context.Context, action security.Action) *tidcommon.ServiceError {
+	allowed, svcErr := ls.authzService.IsActionAllowed(ctx, action,
+		&sysauthz.ActionContext{ResourceType: security.ResourceTypeDesign})
+	if svcErr != nil {
+		return &tidcommon.InternalServerError
+	}
+	if !allowed {
+		return &tidcommon.ErrorUnauthorized
+	}
 	return nil
 }
 

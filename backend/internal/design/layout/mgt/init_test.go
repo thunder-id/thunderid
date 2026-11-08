@@ -91,7 +91,7 @@ func (suite *LayoutInitTestSuite) TestInitializeStore_DeclarativeMode() {
 }
 
 func (suite *LayoutInitTestSuite) TestInitialize_RefusesANilEventBus() {
-	service, exporter, err := Initialize(http.NewServeMux(), nil, nil)
+	service, exporter, err := Initialize(http.NewServeMux(), nil, nil, nil)
 
 	suite.ErrorIs(err, errNilEventBus)
 	suite.Nil(service)

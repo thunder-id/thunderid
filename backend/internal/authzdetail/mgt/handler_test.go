@@ -155,6 +155,7 @@ func (s *HandlerTestSuite) TestErrorStatusMapping() {
 		&ErrorTypeConflict:             http.StatusConflict,
 		&ErrorTypeIDConflict:           http.StatusConflict,
 		&ErrorTypeChanged:              http.StatusConflict,
+		&tidcommon.ErrorUnauthorized:   http.StatusForbidden,
 		&ErrorImmutableType:            http.StatusBadRequest,
 		&ErrorInvalidSchema:            http.StatusBadRequest,
 		&tidcommon.InternalServerError: http.StatusInternalServerError,

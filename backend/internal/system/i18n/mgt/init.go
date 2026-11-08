@@ -10,11 +10,13 @@ import (
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 )
 
 // Initialize initializes the i18n service and registers its routes.
 func Initialize(mux *http.ServeMux,
 	translationConfig config.TranslationConfig,
+	authzService sysauthz.SystemAuthorizationServiceInterface,
 ) (I18nServiceInterface, declarativeresource.ResourceExporter, error) {
 	var store i18nStoreInterface
 
@@ -36,7 +38,7 @@ func Initialize(mux *http.ServeMux,
 		store = newI18nStore()
 	}
 
-	service := newI18nService(store)
+	service := newI18nService(store, authzService)
 
 	handler := newI18nHandler(service)
 	registerRoutes(mux, handler)

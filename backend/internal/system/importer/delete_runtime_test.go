@@ -272,8 +272,8 @@ func TestImportResources_DeleteRequiresID(t *testing.T) {
 func TestImportResources_DeleteUnsupportedResourceType(t *testing.T) {
 	svc := newDeleteTestService(newAppService(), nil, nil)
 
-	// Translations and server configuration have no delete operation in their domain services, and
-	// an unknown type has nothing to delete it with at all.
+	// Server configuration has no delete operation in its domain service, a translation cannot be
+	// deleted without its adapter, and an unknown type has nothing to delete it with at all.
 	resp, err := svc.ImportResources(context.Background(), &ImportRequest{
 		Deletions: []ResourceDeletion{
 			{ResourceType: resourceTypeTranslation, ID: "fr-FR"},
@@ -290,6 +290,40 @@ func TestImportResources_DeleteUnsupportedResourceType(t *testing.T) {
 		assert.Equal(t, statusFailed, result.Status)
 		assert.Equal(t, ErrorDeleteNotSupported.Code, result.Code)
 	}
+}
+
+func TestImportResources_DeleteTranslationClearsTheLanguage(t *testing.T) {
+	translations := newTranslationAdapterMock(t)
+	translations.EXPECT().ClearTranslationOverrides(mock.Anything, "fr-FR").Return(nil).Once()
+	svc := newImportService(newAppService(), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
+		translations, nil, nil, nil, nil, nil, nil, discardingBus{})
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{
+		Deletions: []ResourceDeletion{{ResourceType: resourceTypeTranslation, ID: "fr-FR"}},
+		Options:   deleteOptions(),
+	})
+
+	require.Nil(t, err)
+	assert.Equal(t, 1, resp.Summary.Deleted)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status)
+}
+
+func TestImportResources_DeleteTranslationReportsARefusal(t *testing.T) {
+	translations := newTranslationAdapterMock(t)
+	translations.EXPECT().ClearTranslationOverrides(mock.Anything, "fr-FR").
+		Return(&tidcommon.ErrorUnauthorized).Once()
+	svc := newImportService(newAppService(), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
+		translations, nil, nil, nil, nil, nil, nil, discardingBus{})
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{
+		Deletions: []ResourceDeletion{{ResourceType: resourceTypeTranslation, ID: "fr-FR"}},
+		Options:   deleteOptions(),
+	})
+
+	require.Nil(t, err)
+	assert.Equal(t, 1, resp.Summary.Failed)
+	assert.Equal(t, statusFailed, resp.Results[0].Status)
+	assert.Equal(t, tidcommon.ErrorUnauthorized.Code, resp.Results[0].Code)
 }
 
 func TestImportResources_DeleteUnconfiguredAdapterIsReported(t *testing.T) {

@@ -4,6 +4,7 @@
 package authzdetailmgt
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -11,6 +12,7 @@ import (
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 )
 
 // Initialize initializes the authorization details type management service, routes, and MCP tools.
@@ -19,9 +21,10 @@ import (
 // processor credential the type's export refers to is kept where a reference finds it.
 func Initialize(
 	mux *http.ServeMux, mcpServer *mcp.Server, valueCapturer declarativeresource.ValueCapturer,
+	authzService sysauthz.SystemAuthorizationServiceInterface,
 ) (AuthorizationDetailMgtServiceInterface, declarativeresource.ResourceExporter, error) {
 	typeStore, fileStore, dbStore := initializeStore()
-	service := newAuthorizationDetailMgtService(typeStore, valueCapturer)
+	service := newAuthorizationDetailMgtService(typeStore, valueCapturer, authzService)
 
 	if fileStore != nil {
 		if err := loadDeclarativeResources(fileStore, dbStore); err != nil {
@@ -31,7 +34,10 @@ func Initialize(
 
 	registerRoutes(mux, newAuthorizationDetailHandler(service))
 	if mcpServer != nil {
-		registerMCPTools(mcpServer, service)
+		// Only a deployment boundary lets a token write a type; an organization unit boundary is a data
+		// plane, which takes types only from an import.
+		tokenWrites := authzService.GetBoundary(context.Background()).Type == sysauthz.BoundaryTypeDeployment
+		registerMCPTools(mcpServer, service, tokenWrites)
 	}
 	return service, newTypeExporter(service), nil
 }

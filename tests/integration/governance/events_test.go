@@ -306,7 +306,9 @@ func (ts *GovernanceEventsTestSuite) TestASectionWriteIsPublishedWithoutItsValue
 		[]byte(fmt.Sprintf(`{"user":{"lastLoginResolutionSeconds":%d}}`, marker))))
 	updated := ts.awaitEvent(eventServerConfigUpdated, "")
 	ts.Equal(accountAccessSection, updated.Str(eventKeyConfigName), "the section must be published")
-	ts.Equal(ts.adminSub, updated.Str(eventKeyActorSub), "the operator must be published")
+	// A data plane takes server configuration only from an import with the management API key, which
+	// writes as its own principal.
+	ts.Equal("management-api-key", updated.Str(eventKeyActorSub), "the operator must be published")
 	ts.NotContains(updated.Raw, fmt.Sprint(marker), "the written value must never be published")
 
 	status, body, err := testutils.PutWritableServerConfigWithStatus(accountAccessSection,

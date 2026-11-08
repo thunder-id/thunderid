@@ -4,12 +4,12 @@
 package design
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -310,44 +310,14 @@ func (suite *ThemeAPITestSuite) TearDownSuite() {
 	}
 }
 
-// Helper function to create a theme
+// createTheme creates a theme through an import with the management API key, the only way a data plane
+// takes one, and returns it as the API reads it.
 func (suite *ThemeAPITestSuite) createTheme(request CreateThemeRequest) (*ThemeResponse, error) {
-	payload, err := json.Marshal(request)
+	id, err := testutils.ImportResource("theme", request, false)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal theme request: %w", err)
+		return nil, err
 	}
-
-	req, err := http.NewRequest("POST", testServerURL+themeBasePath, bytes.NewReader(payload))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := suite.client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to send request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	bodyBytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response body: %w", err)
-	}
-
-	if resp.StatusCode != http.StatusCreated {
-		var errResp ErrorResponse
-		if err := json.Unmarshal(bodyBytes, &errResp); err == nil {
-			return nil, fmt.Errorf("expected status 201, got %d. Code: %s, Message: %s", resp.StatusCode, errResp.Code, errResp.Message.DefaultValue)
-		}
-		return nil, fmt.Errorf("expected status 201, got %d. Response: %s", resp.StatusCode, string(bodyBytes))
-	}
-
-	var theme ThemeResponse
-	if err := json.Unmarshal(bodyBytes, &theme); err != nil {
-		return nil, fmt.Errorf("failed to parse response body: %w. Response: %s", err, string(bodyBytes))
-	}
-
-	return &theme, nil
+	return suite.getTheme(id)
 }
 
 // Helper function to get a theme by ID
@@ -431,69 +401,47 @@ func (suite *ThemeAPITestSuite) listThemes(limit, offset int) (*ThemeListRespons
 	return &listResponse, nil
 }
 
-// Helper function to update a theme
+// updateTheme updates a theme through an import with the management API key and returns it as the API
+// reads it.
 func (suite *ThemeAPITestSuite) updateTheme(id string, request UpdateThemeRequest) (*ThemeResponse, error) {
-	payload, err := json.Marshal(request)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal theme request: %w", err)
+	document := themeImportDocument{ID: id, UpdateThemeRequest: request}
+	if _, err := testutils.ImportResource("theme", document, true); err != nil {
+		return nil, err
 	}
+	return suite.getTheme(id)
+}
 
-	req, err := http.NewRequest("PUT", testServerURL+themeBasePath+"/"+id, bytes.NewReader(payload))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
+// deleteTheme deletes a theme through an import deletion. Deleting an absent theme succeeds.
+func (suite *ThemeAPITestSuite) deleteTheme(id string) error {
+	return testutils.DeleteImportedResource("theme", id)
+}
+
+// importOutcome imports a raw theme document and returns the outcome, whether it succeeded or not.
+func (suite *ThemeAPITestSuite) importOutcome(document string) testutils.ImportItem {
+	item, err := testutils.ImportResourceOutcome("theme", json.RawMessage(document), true)
+	suite.Require().NoError(err)
+	return item
+}
+
+// sendWithToken sends a request with the suite's token and returns the status and the error code.
+func (suite *ThemeAPITestSuite) sendWithToken(method, target, body string) (int, string) {
+	var reader io.Reader
+	if body != "" {
+		reader = strings.NewReader(body)
 	}
+	req, err := http.NewRequest(method, target, reader)
+	suite.Require().NoError(err)
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := suite.client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to send request: %w", err)
-	}
+	suite.Require().NoError(err)
 	defer resp.Body.Close()
 
 	bodyBytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response body: %w", err)
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		var errResp ErrorResponse
-		if err := json.Unmarshal(bodyBytes, &errResp); err == nil {
-			return nil, fmt.Errorf("expected status 200, got %d. Code: %s, Message: %s", resp.StatusCode, errResp.Code, errResp.Message.DefaultValue)
-		}
-		return nil, fmt.Errorf("expected status 200, got %d. Response: %s", resp.StatusCode, string(bodyBytes))
-	}
-
-	var theme ThemeResponse
-	if err := json.Unmarshal(bodyBytes, &theme); err != nil {
-		return nil, fmt.Errorf("failed to parse response body: %w. Response: %s", err, string(bodyBytes))
-	}
-
-	return &theme, nil
-}
-
-// Helper function to delete a theme
-func (suite *ThemeAPITestSuite) deleteTheme(id string) error {
-	req, err := http.NewRequest("DELETE", testServerURL+themeBasePath+"/"+id, nil)
-	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
-	}
-
-	resp, err := suite.client.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed to send request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusNotFound {
-		bodyBytes, _ := io.ReadAll(resp.Body)
-		var errResp ErrorResponse
-		if err := json.Unmarshal(bodyBytes, &errResp); err == nil {
-			return fmt.Errorf("expected status 204 or 404, got %d. Code: %s, Message: %s", resp.StatusCode, errResp.Code, errResp.Message.DefaultValue)
-		}
-		return fmt.Errorf("expected status 204 or 404, got %d. Response: %s", resp.StatusCode, string(bodyBytes))
-	}
-
-	return nil
+	suite.Require().NoError(err)
+	var errResp ErrorResponse
+	suite.Require().NoError(json.Unmarshal(bodyBytes, &errResp), "body: %s", bodyBytes)
+	return resp.StatusCode, errResp.Code
 }
 
 // Create Theme - Success
@@ -521,57 +469,43 @@ func (suite *ThemeAPITestSuite) TestCreateTheme_Success() {
 func (suite *ThemeAPITestSuite) TestCreateTheme_ValidationErrors() {
 	testCases := []struct {
 		name        string
-		requestBody string
+		document    string
 		expectedErr string
 	}{
 		{
 			name:        "Missing DisplayName",
-			requestBody: `{"theme": {}}`,
+			document:    `{"theme": {}}`,
 			expectedErr: "THM-1005",
 		},
 		{
-			name:        "Missing Theme",
-			requestBody: `{"displayName": "Test", "handle": "test-handle"}`,
-			expectedErr: "THM-1006",
-		},
-		{
-			name:        "Invalid JSON Theme",
-			requestBody: `{"displayName": "Test", "handle": "test-handle", "theme": invalid json}`,
-			expectedErr: "THM-1001",
-		},
-		{
 			name:        "Array Instead of Object",
-			requestBody: `{"displayName": "Test", "handle": "test-handle", "theme": ["item1", "item2"]}`,
+			document:    `{"displayName": "Test", "handle": "test-handle", "theme": ["item1", "item2"]}`,
 			expectedErr: "THM-1007",
 		},
 		{
 			name:        "Primitive Instead of Object",
-			requestBody: `{"displayName": "Test", "handle": "test-handle", "theme": "string"}`,
+			document:    `{"displayName": "Test", "handle": "test-handle", "theme": "string"}`,
 			expectedErr: "THM-1007",
 		},
 	}
 
 	for _, tc := range testCases {
 		suite.Run(tc.name, func() {
-			req, err := http.NewRequest("POST", testServerURL+themeBasePath, bytes.NewReader([]byte(tc.requestBody)))
-			suite.Require().NoError(err)
-			req.Header.Set("Content-Type", "application/json")
-
-			resp, err := suite.client.Do(req)
-			suite.Require().NoError(err)
-			defer resp.Body.Close()
-
-			suite.Equal(http.StatusBadRequest, resp.StatusCode)
-
-			bodyBytes, err := io.ReadAll(resp.Body)
-			suite.Require().NoError(err)
-
-			var errResp ErrorResponse
-			err = json.Unmarshal(bodyBytes, &errResp)
-			suite.Require().NoError(err)
-			suite.Equal(tc.expectedErr, errResp.Code)
+			item := suite.importOutcome(tc.document)
+			suite.Equal("failed", item.Status)
+			suite.Equal(tc.expectedErr, item.Code)
 		})
 	}
+}
+
+// TestCreateTheme_MalformedBody checks that the handler refuses a body that is not JSON before
+// authorization, so a token is answered as on any server.
+func (suite *ThemeAPITestSuite) TestCreateTheme_MalformedBody() {
+	status, code := suite.sendWithToken(http.MethodPost, testServerURL+themeBasePath,
+		`{"displayName": "Test", "handle": "test-handle", "theme": invalid json}`)
+
+	suite.Equal(http.StatusBadRequest, status)
+	suite.Equal("THM-1001", code)
 }
 
 // Get Theme - Success
@@ -762,19 +696,37 @@ func (suite *ThemeAPITestSuite) TestUpdateTheme_Success() {
 	suite.Equal(theme.ID, retrievedTheme.ID)
 }
 
-// Update Theme - Not Found
-func (suite *ThemeAPITestSuite) TestUpdateTheme_NotFound() {
-	updateRequest := UpdateThemeRequest{
-		Handle:      "test-theme-not-found",
-		DisplayName: "Test Theme",
-		Description: "Test description",
-		Theme:       testThemeUpdate,
+// TestWritesWithTokenAreForbidden checks that a data plane takes no theme write from a token, whatever
+// its scopes, and that a refused write changes nothing.
+func (suite *ThemeAPITestSuite) TestWritesWithTokenAreForbidden() {
+	before, err := suite.getTheme(sharedThemeID)
+	suite.Require().NoError(err)
+
+	writes := []struct {
+		method string
+		target string
+		body   string
+	}{
+		{http.MethodPost, testServerURL + themeBasePath,
+			`{"handle": "token-theme", "displayName": "Token Theme", "theme": {}}`},
+		{http.MethodPut, testServerURL + themeBasePath + "/" + sharedThemeID,
+			`{"handle": "shared-test-theme", "displayName": "Renamed", "theme": {}}`},
+		{http.MethodDelete, testServerURL + themeBasePath + "/" + sharedThemeID, ""},
+	}
+	for _, write := range writes {
+		status, code := suite.sendWithToken(write.method, write.target, write.body)
+		suite.Equal(http.StatusForbidden, status, "%s %s", write.method, write.target)
+		suite.Equal("SSE-4030", code)
 	}
 
-	theme, err := suite.updateTheme("00000000-0000-0000-0000-000000000000", updateRequest)
-	suite.Error(err)
-	suite.Nil(theme)
-	suite.Contains(err.Error(), "THM-1003")
+	after, err := suite.getTheme(sharedThemeID)
+	suite.Require().NoError(err)
+	suite.Equal(before.DisplayName, after.DisplayName)
+	list, err := suite.listThemes(100, 0)
+	suite.Require().NoError(err)
+	for _, item := range list.Themes {
+		suite.NotEqual("token-theme", item.Handle)
+	}
 }
 
 // Update Theme - Validation Errors
@@ -791,57 +743,38 @@ func (suite *ThemeAPITestSuite) TestUpdateTheme_ValidationErrors() {
 
 	testCases := []struct {
 		name        string
-		requestBody string
+		document    string
 		expectedErr string
 	}{
 		{
 			name:        "Missing DisplayName",
-			requestBody: `{"theme": {}}`,
+			document:    `{"id": %q, "theme": {}}`,
 			expectedErr: "THM-1005",
 		},
 		{
-			name:        "Missing Theme",
-			requestBody: `{"displayName": "Test", "handle": "test-theme-validation"}`,
-			expectedErr: "THM-1006",
-		},
-		{
-			name:        "Invalid JSON Theme",
-			requestBody: `{"displayName": "Test", "handle": "test-theme-validation", "theme": invalid json}`,
-			expectedErr: "THM-1001",
-		},
-		{
 			name:        "Array Instead of Object",
-			requestBody: `{"displayName": "Test", "handle": "test-theme-validation", "theme": ["item1", "item2"]}`,
+			document:    `{"id": %q, "displayName": "Test", "handle": "test-theme-validation", "theme": ["item1", "item2"]}`,
 			expectedErr: "THM-1007",
 		},
 		{
 			name:        "Primitive Instead of Object",
-			requestBody: `{"displayName": "Test", "handle": "test-theme-validation", "theme": "string"}`,
+			document:    `{"id": %q, "displayName": "Test", "handle": "test-theme-validation", "theme": "string"}`,
 			expectedErr: "THM-1007",
 		},
 	}
 
 	for _, tc := range testCases {
 		suite.Run(tc.name, func() {
-			req, err := http.NewRequest("PUT", testServerURL+themeBasePath+"/"+theme.ID, bytes.NewReader([]byte(tc.requestBody)))
-			suite.Require().NoError(err)
-			req.Header.Set("Content-Type", "application/json")
-
-			resp, err := suite.client.Do(req)
-			suite.Require().NoError(err)
-			defer resp.Body.Close()
-
-			suite.Equal(http.StatusBadRequest, resp.StatusCode)
-
-			bodyBytes, err := io.ReadAll(resp.Body)
-			suite.Require().NoError(err)
-
-			var errResp ErrorResponse
-			err = json.Unmarshal(bodyBytes, &errResp)
-			suite.Require().NoError(err)
-			suite.Equal(tc.expectedErr, errResp.Code)
+			item := suite.importOutcome(fmt.Sprintf(tc.document, theme.ID))
+			suite.Equal("failed", item.Status)
+			suite.Equal(tc.expectedErr, item.Code)
 		})
 	}
+
+	status, code := suite.sendWithToken(http.MethodPut, testServerURL+themeBasePath+"/"+theme.ID,
+		`{"displayName": "Test", "handle": "test-theme-validation", "theme": invalid json}`)
+	suite.Equal(http.StatusBadRequest, status)
+	suite.Equal("THM-1001", code)
 }
 
 // Delete Theme - Success

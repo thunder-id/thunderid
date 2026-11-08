@@ -64,10 +64,11 @@ func (suite *CompositeModeSuite) TearDownSuite() {
 				suite.deleteResource(fmt.Sprintf("%s/flows/%s", testutils.TestServerURL, id))
 			case "user_type":
 				suite.deleteResource(fmt.Sprintf("%s/user-types/%s", testutils.TestServerURL, id))
-			case "theme":
-				suite.deleteResource(fmt.Sprintf("%s/design/themes/%s", testutils.TestServerURL, id))
-			case "layout":
-				suite.deleteResource(fmt.Sprintf("%s/design/layouts/%s", testutils.TestServerURL, id))
+			case "theme", "layout":
+				// A data plane removes themes and layouts only through an import.
+				if err := testutils.DeleteImportedResource(module, id); err != nil {
+					suite.T().Logf("teardown: failed to delete %s %s: %v", module, id, err)
+				}
 			}
 		}
 	}
@@ -1092,32 +1093,13 @@ func (suite *CompositeModeSuite) TestThemeCreate() {
 		},
 	}
 
-	payload, _ := json.Marshal(theme)
-	client := testutils.GetHTTPClient()
-
-	req, err := http.NewRequest(
-		"POST",
-		fmt.Sprintf("%s/design/themes", testutils.TestServerURL),
-		strings.NewReader(string(payload)),
-	)
-	suite.Require().NoError(err)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := client.Do(req)
-	suite.Require().NoError(err)
-	suite.Equal(http.StatusCreated, resp.StatusCode, "theme should be created")
-
-	var themeResp map[string]interface{}
-	json.NewDecoder(resp.Body).Decode(&themeResp)
-	resp.Body.Close()
-
-	themeID, ok := themeResp["id"].(string)
-	suite.Require().True(ok, "response should contain theme ID")
+	// A data plane takes a theme only from an import with the management API key.
+	themeID, err := testutils.ImportResource("theme", theme, false)
+	suite.Require().NoError(err, "theme should be created")
 	suite.Require().NotEmpty(themeID, "theme ID should not be empty")
 
 	// Verify retrieval
-	getReq, _ := http.NewRequest("GET", fmt.Sprintf("%s/design/themes/%s", testutils.TestServerURL, themeID), nil)
-	resp, err = client.Do(getReq)
+	resp, err := testutils.GetHTTPClient().Get(fmt.Sprintf("%s/design/themes/%s", testutils.TestServerURL, themeID))
 	suite.Require().NoError(err)
 	suite.Equal(http.StatusOK, resp.StatusCode, "created theme should be retrievable")
 	resp.Body.Close()
@@ -1134,32 +1116,13 @@ func (suite *CompositeModeSuite) TestLayoutCreate() {
 		},
 	}
 
-	payload, _ := json.Marshal(layout)
-	client := testutils.GetHTTPClient()
-
-	req, err := http.NewRequest(
-		"POST",
-		fmt.Sprintf("%s/design/layouts", testutils.TestServerURL),
-		strings.NewReader(string(payload)),
-	)
-	suite.Require().NoError(err)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := client.Do(req)
-	suite.Require().NoError(err)
-	suite.Equal(http.StatusCreated, resp.StatusCode, "layout should be created")
-
-	var layoutResp map[string]interface{}
-	json.NewDecoder(resp.Body).Decode(&layoutResp)
-	resp.Body.Close()
-
-	layoutID, ok := layoutResp["id"].(string)
-	suite.Require().True(ok, "response should contain layout ID")
+	// A data plane takes a layout only from an import with the management API key.
+	layoutID, err := testutils.ImportResource("layout", layout, false)
+	suite.Require().NoError(err, "layout should be created")
 	suite.Require().NotEmpty(layoutID, "layout ID should not be empty")
 
 	// Verify retrieval
-	getReq, _ := http.NewRequest("GET", fmt.Sprintf("%s/design/layouts/%s", testutils.TestServerURL, layoutID), nil)
-	resp, err = client.Do(getReq)
+	resp, err := testutils.GetHTTPClient().Get(fmt.Sprintf("%s/design/layouts/%s", testutils.TestServerURL, layoutID))
 	suite.Require().NoError(err)
 	suite.Equal(http.StatusOK, resp.StatusCode, "created layout should be retrievable")
 	resp.Body.Close()
@@ -1483,60 +1446,37 @@ func (suite *CompositeModeSuite) TestEntityTypeDeclarativeDeleteReject() {
 	suite.Equal("USRS-1008", errCode, "error code should be USRS-1008 for immutable user type")
 }
 
+// The declarative design rejects run through an import with the management API key, since a data plane
+// takes no theme or layout write from a token.
+
 func (suite *CompositeModeSuite) TestThemeDeclarativeUpdateReject() {
-	client := testutils.GetHTTPClient()
-	payload := map[string]interface{}{"displayName": "Updated"}
-	jsonPayload, _ := json.Marshal(payload)
-
-	req, _ := http.NewRequest("PUT", fmt.Sprintf("%s/design/themes/decl-theme-1", testutils.TestServerURL), strings.NewReader(string(jsonPayload)))
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := client.Do(req)
+	item, err := testutils.ImportResourceOutcome("theme",
+		map[string]interface{}{"id": "decl-theme-1", "displayName": "Updated"}, true)
 	suite.Require().NoError(err)
-	suite.Equal(http.StatusBadRequest, resp.StatusCode, "update of declarative theme should be rejected")
-
-	errCode := suite.extractErrorCode(resp)
-	suite.Equal("THM-1014", errCode, "error code should be THM-1014 for immutable theme")
+	suite.Equal("failed", item.Status, "update of declarative theme should be rejected")
+	suite.Equal("THM-1014", item.Code, "error code should be THM-1014 for immutable theme")
 }
 
 func (suite *CompositeModeSuite) TestThemeDeclarativeDeleteReject() {
-	client := testutils.GetHTTPClient()
-	req, _ := http.NewRequest("DELETE", fmt.Sprintf("%s/design/themes/decl-theme-1", testutils.TestServerURL), nil)
-
-	resp, err := client.Do(req)
+	item, err := testutils.DeleteImportedResourceOutcome("theme", "decl-theme-1")
 	suite.Require().NoError(err)
-	suite.Equal(http.StatusBadRequest, resp.StatusCode, "delete of declarative theme should be rejected")
-
-	errCode := suite.extractErrorCode(resp)
-	suite.Equal("THM-1014", errCode, "error code should be THM-1014 for immutable theme")
+	suite.Equal("failed", item.Status, "delete of declarative theme should be rejected")
+	suite.Equal("THM-1014", item.Code, "error code should be THM-1014 for immutable theme")
 }
 
 func (suite *CompositeModeSuite) TestLayoutDeclarativeUpdateReject() {
-	client := testutils.GetHTTPClient()
-	payload := map[string]interface{}{"displayName": "Updated"}
-	jsonPayload, _ := json.Marshal(payload)
-
-	req, _ := http.NewRequest("PUT", fmt.Sprintf("%s/design/layouts/decl-layout-1", testutils.TestServerURL), strings.NewReader(string(jsonPayload)))
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := client.Do(req)
+	item, err := testutils.ImportResourceOutcome("layout",
+		map[string]interface{}{"id": "decl-layout-1", "displayName": "Updated"}, true)
 	suite.Require().NoError(err)
-	suite.Equal(http.StatusBadRequest, resp.StatusCode, "update of declarative layout should be rejected")
-
-	errCode := suite.extractErrorCode(resp)
-	suite.Equal("LAY-1015", errCode, "error code should be LAY-1015 for immutable layout")
+	suite.Equal("failed", item.Status, "update of declarative layout should be rejected")
+	suite.Equal("LAY-1015", item.Code, "error code should be LAY-1015 for immutable layout")
 }
 
 func (suite *CompositeModeSuite) TestLayoutDeclarativeDeleteReject() {
-	client := testutils.GetHTTPClient()
-	req, _ := http.NewRequest("DELETE", fmt.Sprintf("%s/design/layouts/decl-layout-1", testutils.TestServerURL), nil)
-
-	resp, err := client.Do(req)
+	item, err := testutils.DeleteImportedResourceOutcome("layout", "decl-layout-1")
 	suite.Require().NoError(err)
-	suite.Equal(http.StatusBadRequest, resp.StatusCode, "delete of declarative layout should be rejected")
-
-	errCode := suite.extractErrorCode(resp)
-	suite.Equal("LAY-1015", errCode, "error code should be LAY-1015 for immutable layout")
+	suite.Equal("failed", item.Status, "delete of declarative layout should be rejected")
+	suite.Equal("LAY-1015", item.Code, "error code should be LAY-1015 for immutable layout")
 }
 
 // Run the test suite

@@ -313,6 +313,22 @@ paths:
                     description:
                       key: "error.authorizationdetailservice.cannot_create_type_in_declarative_only_mode_description"
                       defaultValue: "Authorization details type creation is not allowed when running in declarative-only mode. Types must be defined in declarative configuration files"
+        "403":
+          description: |
+            The caller may not write authorization details types. On a data plane, no token writes them,
+            whatever its permissions: only an import with the management API key does.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "SSE-4030"
+                message:
+                  key: "error.unauthorized"
+                  defaultValue: "Unauthorized"
+                description:
+                  key: "error.unauthorized_description"
+                  defaultValue: "The caller is not authorized to perform this operation"
         "409":
           description: Conflict
           content:
@@ -564,6 +580,22 @@ paths:
                     description:
                       key: "error.authorizationdetailservice.cannot_modify_declarative_type_description"
                       defaultValue: "The authorization details type is defined in declarative configuration and cannot be modified"
+        "403":
+          description: |
+            The caller may not write authorization details types. On a data plane, no token writes them,
+            whatever its permissions: only an import with the management API key does.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "SSE-4030"
+                message:
+                  key: "error.unauthorized"
+                  defaultValue: "Unauthorized"
+                description:
+                  key: "error.unauthorized_description"
+                  defaultValue: "The caller is not authorized to perform this operation"
         "404":
           description: Authorization details type not found
           content:
@@ -641,6 +673,22 @@ paths:
                     description:
                       key: "error.authorizationdetailservice.cannot_modify_declarative_type_description"
                       defaultValue: "The authorization details type is defined in declarative configuration and cannot be modified"
+        "403":
+          description: |
+            The caller may not write authorization details types. On a data plane, no token writes them,
+            whatever its permissions: only an import with the management API key does.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "SSE-4030"
+                message:
+                  key: "error.unauthorized"
+                  defaultValue: "Unauthorized"
+                description:
+                  key: "error.unauthorized_description"
+                  defaultValue: "The caller is not authorized to perform this operation"
         "500":
           description: Internal server error
           content:

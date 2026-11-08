@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
@@ -44,7 +45,7 @@ func designContent() map[string]interface{} {
 	return map[string]interface{}{"colors": map[string]interface{}{"primary": auditDesignColor}}
 }
 
-// designBody is the request body of a theme or layout with handle and displayName.
+// designBody is the management API request body of a theme or layout with handle and displayName.
 func (ts *AuditLogTestSuite) designBody(resource designResource, handle, displayName string) string {
 	ts.T().Helper()
 	body := map[string]interface{}{
@@ -60,20 +61,35 @@ func (ts *AuditLogTestSuite) designBody(resource designResource, handle, display
 	return string(encoded)
 }
 
-// createDesign creates a theme or layout over the management API and returns the response and its ID.
+// designDocument is the import document of a theme or layout with id, handle and displayName.
+func designDocument(resource designResource, id, handle, displayName string) string {
+	return fmt.Sprintf("resource_type: %s\nid: %s\nhandle: %s\ndisplayName: \"%s\"\n"+
+		"description: %s\n%s:\n  colors:\n    primary: \"%s\"\n",
+		resource.kind, id, handle, displayName, auditDesignDescription, resource.contentKey, auditDesignColor)
+}
+
+// upsertDesign is an upsert import of the theme or layout document.
+func upsertDesign(document string) testutils.ImportRequest {
+	return testutils.ImportRequest{Content: document,
+		Options: testutils.ImportOptions{Upsert: true, ContinueOnError: true, Target: "runtime"}}
+}
+
+// deleteDesign is an import that removes the theme or layout with id.
+func deleteDesign(resource designResource, id string) testutils.ImportRequest {
+	return testutils.ImportRequest{
+		Deletions: []testutils.ResourceDeletion{{ResourceType: resource.kind, ID: id}},
+		Options:   testutils.ImportOptions{ContinueOnError: true, Target: "runtime"}}
+}
+
+// createDesign creates a theme or layout through an import with the management API key, the only way a
+// data plane takes one, and returns the response and its ID.
 func (ts *AuditLogTestSuite) createDesign(resource designResource, handle, displayName string) (
 	*http.Response, string) {
 	ts.T().Helper()
-	created, body := ts.exchange(testutils.GetHTTPClient(), http.MethodPost, resource.path,
-		ts.designBody(resource, handle, displayName))
-	ts.Require().Equal(http.StatusCreated, created.StatusCode, string(body))
-	var design struct {
-		ID string `json:"id"`
-	}
-	ts.Require().NoError(json.Unmarshal(body, &design))
-	ts.Require().NotEmpty(design.ID)
-	ts.T().Cleanup(func() { ts.send(http.MethodDelete, resource.path+"/"+design.ID, "") })
-	return created, design.ID
+	id := unusedID()
+	created := ts.importDesign(upsertDesign(designDocument(resource, id, handle, displayName)), "create")
+	ts.T().Cleanup(func() { _ = testutils.DeleteImportedResource(resource.kind, id) })
+	return created, id
 }
 
 // requireNothingOfTheDesign checks that no handle, name, description or content of a theme or layout is
@@ -86,35 +102,70 @@ func (ts *AuditLogTestSuite) requireNothingOfTheDesign(line testutils.AuditLine,
 	ts.NotContains(line.Raw, auditDesignColor, "no content is recorded")
 }
 
-// Creating, updating and deleting a theme or a layout through the management API writes one line each,
-// with the admin as actor and the theme or layout as target and subject. No handle, name, description or
-// content appears in any line.
+// Creating, updating and deleting a theme or a layout writes one line each, with the theme or layout as
+// target and subject. A data plane takes them only from an import with the management API key, so the key
+// is the actor, and a token's write over the management API is denied with the admin as actor. No handle,
+// name, description or content appears in any line.
 func (ts *AuditLogTestSuite) TestAThemeAndALayoutLifecycleWritesOneLinePerChange() {
 	adminID := ts.adminUserID()
+	admin := testutils.AuditRef{Type: "user", ID: adminID}
+	managementAPIKey := testutils.AuditRef{Type: "system", ID: "management-api-key"}
+	succeeded := map[string]string{"result": "succeeded"}
+	denied := map[string]string{"result": "denied", "reason": "forbidden"}
 	for _, resource := range designResources {
 		ts.Run(resource.kind, func() {
 			handle := ts.prefix + resource.kind + "-lifecycle"
 			displayName := ts.prefix + resource.kind + " lifecycle name"
 			created, id := ts.createDesign(resource, handle, displayName)
-			updated, body := ts.exchange(testutils.GetHTTPClient(), http.MethodPut, resource.path+"/"+id,
-				ts.designBody(resource, handle, displayName+" renamed"))
-			ts.Require().Equal(http.StatusOK, updated.StatusCode, string(body))
-			deleted := ts.send(http.MethodDelete, resource.path+"/"+id, "")
-			ts.Require().Equal(http.StatusNoContent, deleted.StatusCode)
+			updated := ts.importDesign(upsertDesign(designDocument(resource, id, handle, displayName+" renamed")),
+				"update")
+			tokenCreate := ts.send(http.MethodPost, resource.path,
+				ts.designBody(resource, handle+"-token", displayName))
+			ts.Require().Equal(http.StatusForbidden, tokenCreate.StatusCode)
+			tokenUpdate := ts.send(http.MethodPut, resource.path+"/"+id, ts.designBody(resource, handle, displayName))
+			ts.Require().Equal(http.StatusForbidden, tokenUpdate.StatusCode)
+			tokenDelete := ts.send(http.MethodDelete, resource.path+"/"+id, "")
+			ts.Require().Equal(http.StatusForbidden, tokenDelete.StatusCode)
+			deleted := ts.importDesign(deleteDesign(resource, id), "delete")
 
 			ref := testutils.AuditRef{Type: resource.kind, ID: id}
-			lines := ts.linesOf(created, updated, deleted)
-			for i, action := range []string{"create", "update", "delete"} {
+			tokenLines := ts.linesOf(tokenCreate, tokenUpdate, tokenDelete)
+			lines := []testutils.AuditLine{
+				ts.resourceLineOfImport(created, succeeded),
+				ts.resourceLineOfImport(updated, succeeded),
+				tokenLines[0], tokenLines[1], tokenLines[2],
+				ts.resourceLineOfImport(deleted, succeeded),
+			}
+			for i, tc := range []struct {
+				action  string
+				target  testutils.AuditRef
+				subject testutils.AuditRef
+				actor   testutils.AuditRef
+				outcome map[string]string
+			}{
+				{"create", ref, ref, managementAPIKey, succeeded},
+				{"update", ref, ref, managementAPIKey, succeeded},
+				// A denied create names no theme or layout.
+				{"create", testutils.AuditRef{Type: resource.kind}, testutils.AuditRef{}, admin, denied},
+				{"update", ref, ref, admin, denied},
+				{"delete", ref, ref, admin, denied},
+				{"delete", ref, ref, managementAPIKey, succeeded},
+			} {
 				line := lines[i]
-				event := resource.kind + "." + action
+				event := resource.kind + "." + tc.action
 				ts.True(strings.HasPrefix(line.Raw, auditLinePrefix), line.Raw)
-				ts.Equal(lineKeys, ts.keys(line.Raw), event)
+				keys := lineKeys
+				if tc.subject == (testutils.AuditRef{}) {
+					// A line that names no theme or layout has no subject key.
+					keys = slices.DeleteFunc(slices.Clone(lineKeys), func(key string) bool { return key == "subject" })
+				}
+				ts.Equal(keys, ts.keys(line.Raw), event)
 				ts.Equal(event, line.Event)
-				ts.Equal(action, line.Action)
-				ts.Equal(ref, line.Target, event)
-				ts.Equal(ref, line.Subject, event)
-				ts.Equal(testutils.AuditRef{Type: "user", ID: adminID}, line.Actor, event)
-				ts.Equal(map[string]string{"result": "succeeded"}, line.Outcome, event)
+				ts.Equal(tc.action, line.Action)
+				ts.Equal(tc.target, line.Target, event)
+				ts.Equal(tc.subject, line.Subject, event)
+				ts.Equal(tc.actor, line.Actor, event)
+				ts.Equal(tc.outcome, line.Outcome, event)
 				ts.Nil(line.Client, "%s: a loopback peer is not recorded", event)
 				ts.requireNothingOfTheDesign(line, handle, displayName)
 			}
@@ -124,48 +175,40 @@ func (ts *AuditLogTestSuite) TestAThemeAndALayoutLifecycleWritesOneLinePerChange
 
 // A create or an update the theme or layout service refuses writes one failed line with the service's
 // reason and no subject. A failed create names no theme or layout; a failed update names the ID the
-// caller sent, even one that matches nothing.
+// import sent.
 func (ts *AuditLogTestSuite) TestAFailedThemeOrLayoutChangeIsRecordedAsFailed() {
 	for _, resource := range designResources {
 		ts.Run(resource.kind, func() {
 			handle := ts.prefix + resource.kind + "-failed"
 			displayName := ts.prefix + resource.kind + " failed name"
 			_, id := ts.createDesign(resource, handle, displayName)
-			missing := unusedID()
 
 			cases := []struct {
-				name   string
-				method string
-				path   string
-				body   string
-				status int
-				target string
-				reason string
+				name      string
+				operation string
+				document  string
+				target    string
+				reason    string
 			}{
-				{"a create without a display name", http.MethodPost, resource.path,
-					ts.designBody(resource, handle+"-unnamed", ""), http.StatusBadRequest, "",
-					resource.code + "_1005"},
-				{"a create with a handle in use", http.MethodPost, resource.path,
-					ts.designBody(resource, handle, displayName), http.StatusBadRequest, "", resource.handleInUse},
-				{"an update of a missing ID", http.MethodPut, resource.path + "/" + missing,
-					ts.designBody(resource, "", displayName), http.StatusNotFound, missing,
-					resource.code + "_1003"},
-				{"an update that changes the handle", http.MethodPut, resource.path + "/" + id,
-					ts.designBody(resource, handle+"-changed", displayName), http.StatusBadRequest, id,
-					resource.handleChanged},
+				{"a create without a display name", "create",
+					designDocument(resource, unusedID(), handle+"-unnamed", ""), "", resource.code + "_1005"},
+				{"a create with a handle in use", "create",
+					designDocument(resource, unusedID(), handle, displayName), "", resource.handleInUse},
+				{"an update that changes the handle", "update",
+					designDocument(resource, id, handle+"-changed", displayName), id, resource.handleChanged},
 			}
 			responses := make([]*http.Response, 0, len(cases))
 			for _, tc := range cases {
-				response, body := ts.exchange(testutils.GetHTTPClient(), tc.method, tc.path, tc.body)
-				ts.Require().Equal(tc.status, response.StatusCode, tc.name+": "+string(body))
+				response, result := ts.sendImport(upsertDesign(tc.document))
+				ts.Require().Equal("failed", result.Status, tc.name)
+				ts.Require().Equal(tc.operation, result.Operation, tc.name)
 				responses = append(responses, response)
 			}
 
-			lines := ts.linesOf(responses...)
 			for i, tc := range cases {
-				line := lines[i]
-				ts.Equal(resource.kind+"."+map[string]string{http.MethodPost: "create",
-					http.MethodPut: "update"}[tc.method], line.Event, tc.name)
+				line := ts.resourceLineOfImport(responses[i], map[string]string{"result": "failed",
+					"reason": "item_failed"})
+				ts.Equal(resource.kind+"."+tc.operation, line.Event, tc.name)
 				ts.Equal(testutils.AuditRef{Type: resource.kind, ID: tc.target}, line.Target, tc.name)
 				ts.Equal(testutils.AuditRef{}, line.Subject, "a failed attempt has no subject: "+tc.name)
 				ts.Equal(map[string]string{"result": "failed", "reason": tc.reason}, line.Outcome, tc.name)
@@ -175,15 +218,16 @@ func (ts *AuditLogTestSuite) TestAFailedThemeOrLayoutChangeIsRecordedAsFailed() 
 	}
 }
 
-// A delete of a theme or layout that does not exist still succeeds, but writes no line, so a caller
-// cannot record the deletion of an ID it made up.
+// A deletion of a theme or layout that does not exist still succeeds, but writes no line of the theme or
+// layout, so a caller cannot record the deletion of an ID it made up. The import writes only its own line.
 func (ts *AuditLogTestSuite) TestADeleteOfAMissingThemeOrLayoutWritesNoLine() {
 	for _, resource := range designResources {
 		ts.Run(resource.kind, func() {
-			deleted := ts.send(http.MethodDelete, resource.path+"/"+unusedID(), "")
-			ts.Require().Equal(http.StatusNoContent, deleted.StatusCode)
+			deleted := ts.importDesign(deleteDesign(resource, unusedID()), "delete")
 
-			ts.Empty(ts.linesPerCall(deleted)[0], "a delete that removed nothing writes no line")
+			written := ts.linesPerCall(deleted)[0]
+			ts.Require().Len(written, 1, "a delete that removed nothing writes only the import's own line")
+			ts.Equal(importEvent, written[0].Event)
 		})
 	}
 }
@@ -198,22 +242,16 @@ func (ts *AuditLogTestSuite) TestAnImportWritesTheEventOfEachThemeOrLayoutItChan
 			id := unusedID()
 			handle := ts.prefix + resource.kind + "-import"
 			displayName := ts.prefix + resource.kind + " import name"
-			document := fmt.Sprintf("resource_type: %s\nid: %s\nhandle: %s\ndisplayName: %s\n"+
-				"description: %s\n%s:\n  colors:\n    primary: \"%s\"\n",
-				resource.kind, id, handle, displayName, auditDesignDescription, resource.contentKey,
-				auditDesignColor)
-			ts.T().Cleanup(func() { ts.send(http.MethodDelete, resource.path+"/"+id, "") })
-			upsert := testutils.ImportOptions{Upsert: true, ContinueOnError: true, Target: "runtime"}
+			document := designDocument(resource, id, handle, displayName)
+			ts.T().Cleanup(func() { _ = testutils.DeleteImportedResource(resource.kind, id) })
+			dryRun := upsertDesign(document)
+			dryRun.DryRun = true
 
-			dryCreate := ts.importDesign(testutils.ImportRequest{Content: document, DryRun: true,
-				Options: upsert}, "create")
-			created := ts.importDesign(testutils.ImportRequest{Content: document, Options: upsert}, "create")
-			dryUpdate := ts.importDesign(testutils.ImportRequest{Content: document, DryRun: true,
-				Options: upsert}, "update")
-			updated := ts.importDesign(testutils.ImportRequest{Content: document, Options: upsert}, "update")
-			deleted := ts.importDesign(testutils.ImportRequest{
-				Deletions: []testutils.ResourceDeletion{{ResourceType: resource.kind, ID: id}},
-				Options:   testutils.ImportOptions{ContinueOnError: true, Target: "runtime"}}, "delete")
+			dryCreate := ts.importDesign(dryRun, "create")
+			created := ts.importDesign(upsertDesign(document), "create")
+			dryUpdate := ts.importDesign(dryRun, "update")
+			updated := ts.importDesign(upsertDesign(document), "update")
+			deleted := ts.importDesign(deleteDesign(resource, id), "delete")
 
 			ref := testutils.AuditRef{Type: resource.kind, ID: id}
 			perCall := ts.linesPerCall(dryCreate, dryUpdate)
@@ -239,17 +277,27 @@ func (ts *AuditLogTestSuite) TestAnImportWritesTheEventOfEachThemeOrLayoutItChan
 	}
 }
 
-// importDesign sends request to the import API and checks its one result succeeded as operation.
+// importDesign sends request to the import API with the management API key and checks its one result
+// succeeded as operation.
 func (ts *AuditLogTestSuite) importDesign(request testutils.ImportRequest, operation string) *http.Response {
+	ts.T().Helper()
+	imported, result := ts.sendImport(request)
+	ts.Require().Equal("success", result.Status, result.Message)
+	ts.Require().Equal(operation, result.Operation, result.Message)
+	return imported
+}
+
+// sendImport sends request to the import API with the management API key and returns the response and
+// its one result.
+func (ts *AuditLogTestSuite) sendImport(request testutils.ImportRequest) (*http.Response, testutils.ImportItem) {
 	ts.T().Helper()
 	encoded, err := json.Marshal(request)
 	ts.Require().NoError(err)
-	imported, body := ts.exchange(testutils.GetHTTPClient(), http.MethodPost, "/import", string(encoded))
+	imported, body := ts.exchange(testutils.GetManagementAPIKeyHTTPClient(), http.MethodPost, "/import",
+		string(encoded))
 	ts.Require().Equal(http.StatusOK, imported.StatusCode, string(body))
 	var result testutils.ImportResponse
 	ts.Require().NoError(json.Unmarshal(body, &result))
 	ts.Require().Len(result.Results, 1, string(body))
-	ts.Require().Equal("success", result.Results[0].Status, string(body))
-	ts.Require().Equal(operation, result.Results[0].Operation, string(body))
-	return imported
+	return imported, result.Results[0]
 }

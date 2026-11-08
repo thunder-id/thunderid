@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 	"gopkg.in/yaml.v3"
@@ -23,9 +24,11 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/outboundauth"
 	"github.com/thunder-id/thunderid/internal/system/secretresolver"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+	"github.com/thunder-id/thunderid/tests/mocks/sysauthzmock"
 )
 
 // declarativeTypeYAML has a YAML schema with a quoted numeric property name.
@@ -140,7 +143,9 @@ func (s *DeclarativeResourceTestSuite) TestInitialize_LoadsDeclarativeTypes() {
 	s.setupConfig(home, "declarative", false)
 	s.Require().NoError(newTypeFileBasedStore().ClearByType())
 	s.T().Cleanup(func() { _ = newTypeFileBasedStore().ClearByType() })
-	service, exporter, err := Initialize(http.NewServeMux(), nil, nil)
+	authz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(s.T())
+	authz.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).Return(true, nil)
+	service, exporter, err := Initialize(http.NewServeMux(), nil, nil, authz)
 	s.Require().NoError(err)
 	s.Equal(resourceTypeAuthorizationDetailType, exporter.GetResourceType())
 
@@ -161,13 +166,40 @@ func (s *DeclarativeResourceTestSuite) TestInitialize_LoadsDeclarativeTypes() {
 	s.Equal(ErrorImmutableType.Code, service.DeleteAuthorizationDetailType(s.ctx, "type-file").Code)
 }
 
+// The MCP write tools are registered only under a deployment boundary: a data plane, whose boundary is an
+// organization unit, takes a type only from an import, which no MCP caller can present.
+func (s *DeclarativeResourceTestSuite) TestInitialize_RegistersWriteToolsOnlyUnderDeploymentBoundary() {
+	readTools := []string{"list_authorization_detail_types", "get_authorization_detail_type_by_id"}
+	writeTools := []string{"create_authorization_detail_type", "update_authorization_detail_type"}
+	cases := []struct {
+		boundary sysauthz.BoundaryType
+		want     []string
+	}{
+		{sysauthz.BoundaryTypeOU, readTools},
+		{sysauthz.BoundaryTypeDeployment, append(append([]string{}, readTools...), writeTools...)},
+	}
+	for _, tc := range cases {
+		s.Run(string(tc.boundary), func() {
+			s.setupConfig("", "mutable", false)
+			authz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(s.T())
+			authz.On("GetBoundary", mock.Anything).Return(sysauthz.Boundary{Type: tc.boundary})
+			server := mcp.NewServer(&mcp.Implementation{Name: "test"}, nil)
+
+			_, _, err := Initialize(http.NewServeMux(), server, nil, authz)
+
+			s.Require().NoError(err)
+			s.ElementsMatch(tc.want, toolNames(s.T(), connectMCP(s.T(), server)))
+		})
+	}
+}
+
 func (s *DeclarativeResourceTestSuite) TestInitialize_FailsOnInvalidFile() {
 	home := s.T().TempDir()
 	s.writeResource(home, "id: type-file\ntype: payment_initiation\nname: Payment\n")
 	s.setupConfig(home, "declarative", false)
 	s.Require().NoError(newTypeFileBasedStore().ClearByType())
 
-	_, _, err := Initialize(http.NewServeMux(), nil, nil)
+	_, _, err := Initialize(http.NewServeMux(), nil, nil, nil)
 	s.Require().Error(err)
 	s.Contains(err.Error(), "failed to load authorization details type resources")
 }

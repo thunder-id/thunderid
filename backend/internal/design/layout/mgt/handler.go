@@ -253,6 +253,8 @@ func handleError(ctx context.Context, w http.ResponseWriter, svcErr *tidcommon.S
 			statusCode = http.StatusNotFound
 		case ErrorLayoutAlreadyExists.Code:
 			statusCode = http.StatusConflict
+		case tidcommon.ErrorUnauthorized.Code:
+			statusCode = http.StatusForbidden
 		case ErrorInvalidLayoutID.Code, ErrorInvalidLayoutData.Code:
 			statusCode = http.StatusBadRequest
 		default:

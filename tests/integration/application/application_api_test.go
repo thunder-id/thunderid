@@ -3866,135 +3866,35 @@ func (ts *ApplicationAPITestSuite) TestApplicationUpdateWithNilApp() {
 	ts.Assert().Equal(http.StatusBadRequest, resp.StatusCode)
 }
 
-// Helper function to create a theme configuration for testing
+// createThemeForTest creates a theme through an import with the management API key, the only way a data
+// plane takes one, and returns its ID.
 func createThemeForTest(theme []byte) (string, error) {
-	payload, err := json.Marshal(map[string]interface{}{
+	return testutils.ImportResource("theme", map[string]interface{}{
 		"handle":      fmt.Sprintf("test-theme-%d", time.Now().UnixNano()),
 		"displayName": "Test Theme",
 		"theme":       json.RawMessage(theme),
-	})
-	if err != nil {
-		return "", fmt.Errorf("failed to marshal theme request: %w", err)
-	}
-
-	req, err := http.NewRequest("POST", testServerURL+"/design/themes", bytes.NewReader(payload))
-	if err != nil {
-		return "", fmt.Errorf("failed to create request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	client := testutils.GetHTTPClient()
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("failed to send request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusCreated {
-		responseBody, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("expected status 201, got %d. Response: %s", resp.StatusCode, string(responseBody))
-	}
-
-	var themeResponse map[string]interface{}
-	err = json.NewDecoder(resp.Body).Decode(&themeResponse)
-	if err != nil {
-		return "", fmt.Errorf("failed to parse response body: %w", err)
-	}
-
-	themeID, ok := themeResponse["id"].(string)
-	if !ok {
-		return "", fmt.Errorf("response does not contain id or id is not a string")
-	}
-	return themeID, nil
+	}, false)
 }
 
-// Helper function to delete a theme configuration for testing
+// deleteThemeForTest deletes a theme through an import deletion, which tolerates an absent theme.
 func deleteThemeForTest(themeID string) error {
-	req, err := http.NewRequest("DELETE", testServerURL+"/design/themes/"+themeID, nil)
-	if err != nil {
-		return fmt.Errorf("failed to create delete request: %w", err)
-	}
-
-	client := testutils.GetHTTPClient()
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed to send delete request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusNotFound {
-		responseBody, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("expected status 204 or 404, got %d. Response: %s", resp.StatusCode, string(responseBody))
-	}
-	return nil
+	return testutils.DeleteImportedResource("theme", themeID)
 }
 
-// Helper function to create a layout configuration for testing
+// createLayoutForTest creates a layout through an import with the management API key and returns its
+// ID.
 func createLayoutForTest(layout []byte, description string) (string, error) {
-	payload, err := json.Marshal(map[string]interface{}{
+	return testutils.ImportResource("layout", map[string]interface{}{
 		"handle":      fmt.Sprintf("test-layout-%d", time.Now().UnixNano()),
 		"displayName": "Test Layout",
 		"description": description,
 		"layout":      json.RawMessage(layout),
-	})
-	if err != nil {
-		return "", fmt.Errorf("failed to marshal layout request: %w", err)
-	}
-
-	req, err := http.NewRequest("POST", testServerURL+"/design/layouts", bytes.NewReader(payload))
-	if err != nil {
-		return "", fmt.Errorf("failed to create request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	client := testutils.GetHTTPClient()
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("failed to send request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusCreated {
-		responseBody, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("expected status 201, got %d. Response: %s", resp.StatusCode, string(responseBody))
-	}
-
-	var layoutResponse map[string]interface{}
-	err = json.NewDecoder(resp.Body).Decode(&layoutResponse)
-	if err != nil {
-		return "", fmt.Errorf("failed to parse response body: %w", err)
-	}
-
-	layoutID, ok := layoutResponse["id"].(string)
-	if !ok {
-		return "", fmt.Errorf("response does not contain id or id is not a string")
-	}
-	return layoutID, nil
+	}, false)
 }
 
-// Helper function to delete a layout configuration for testing
+// deleteLayoutForTest deletes a layout through an import deletion, which tolerates an absent layout.
 func deleteLayoutForTest(layoutID string) error {
-	req, err := http.NewRequest("DELETE", testServerURL+"/design/layouts/"+layoutID, nil)
-	if err != nil {
-		return fmt.Errorf("failed to create delete request: %w", err)
-	}
-
-	client := testutils.GetHTTPClient()
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed to send delete request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusNotFound {
-		responseBody, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("expected status 204 or 404, got %d. Response: %s", resp.StatusCode, string(responseBody))
-	}
-	return nil
+	return testutils.DeleteImportedResource("layout", layoutID)
 }
 
 // TestApplicationWithThemeAndLayoutID tests creating an application with a valid theme ID and layout ID
@@ -4293,20 +4193,10 @@ func (ts *ApplicationAPITestSuite) TestThemeAndLayoutDeletableWhenAssociatedWith
 
 	// Deleting the theme while associated with an application succeeds; the application falls back
 	// to the default theme at read time.
-	themeReq, err := http.NewRequest("DELETE", testServerURL+"/design/themes/"+themeID, nil)
-	ts.Require().NoError(err)
-	themeResp, err := client.Do(themeReq)
-	ts.Require().NoError(err)
-	themeResp.Body.Close()
-	ts.Assert().Equal(http.StatusNoContent, themeResp.StatusCode)
+	ts.Require().NoError(deleteThemeForTest(themeID))
 
 	// Deleting the layout while associated with an application succeeds similarly.
-	layoutReq, err := http.NewRequest("DELETE", testServerURL+"/design/layouts/"+layoutID, nil)
-	ts.Require().NoError(err)
-	layoutResp, err := client.Do(layoutReq)
-	ts.Require().NoError(err)
-	layoutResp.Body.Close()
-	ts.Assert().Equal(http.StatusNoContent, layoutResp.StatusCode)
+	ts.Require().NoError(deleteLayoutForTest(layoutID))
 
 	// The theme and layout are gone.
 	themeGetReq, err := http.NewRequest("GET", testServerURL+"/design/themes/"+themeID, nil)

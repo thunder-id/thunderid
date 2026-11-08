@@ -115,7 +115,7 @@ func (suite *LayoutServiceAuditTestSuite) TearDownTest() {
 func (suite *LayoutServiceAuditTestSuite) resetService() {
 	bus, published := newRecordingBus(suite.T())
 	suite.store = newLayoutMgtStoreInterfaceMock(suite.T())
-	suite.service = newLayoutMgtService(suite.store, bus, nil, false)
+	suite.service = newLayoutMgtService(suite.store, bus, nil, false, allowAllAuthz(suite.T()))
 	suite.published = published
 }
 
@@ -360,7 +360,7 @@ func (suite *LayoutServiceAuditTestSuite) TestDeleteLayout_PublishesNothingForAM
 func (suite *LayoutServiceAuditTestSuite) TestCreateLayout_SucceedsWhenTheBusRefusesTheEvent() {
 	failing := eventbusmock.NewEventBusInterfaceMock(suite.T())
 	failing.EXPECT().Publish(mock.Anything, mock.Anything).Return(errors.New("audit queue is full")).Once()
-	suite.service = newLayoutMgtService(suite.store, failing, nil, false)
+	suite.service = newLayoutMgtService(suite.store, failing, nil, false, allowAllAuthz(suite.T()))
 	suite.store.On("IsLayoutHandleConflict", mock.Anything, testAuditHandle, "").Return(false, nil)
 	suite.store.On("CreateLayout", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 

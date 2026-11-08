@@ -15,6 +15,9 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/system/config"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/security"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
+	"github.com/thunder-id/thunderid/tests/mocks/sysauthzmock"
 )
 
 const (
@@ -41,7 +44,9 @@ func (suite *I18nMgtServiceTestSuite) SetupTest() {
 	}
 	_ = config.InitializeServerRuntime("/tmp/test", testConfig)
 	suite.mockStore = newI18nStoreInterfaceMock(suite.T())
-	suite.service = newI18nService(suite.mockStore)
+	authz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+	authz.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).Return(true, nil).Maybe()
+	suite.service = newI18nService(suite.mockStore, authz)
 }
 
 func (suite *I18nMgtServiceTestSuite) TearDownTest() {
@@ -999,4 +1004,44 @@ func (suite *I18nMgtServiceTestSuite) TestDeleteTranslationsByKey_Success() {
 	err := suite.service.DeleteTranslationsByKey(context.Background(), "custom", "app.test-id.name")
 
 	suite.Nil(err)
+}
+
+func (suite *I18nMgtServiceTestSuite) TestWritesRefusedWithoutWriteAccess() {
+	tests := []struct {
+		name     string
+		authzErr *tidcommon.ServiceError
+		want     *tidcommon.ServiceError
+	}{
+		{"Denied", nil, &tidcommon.ErrorUnauthorized},
+		{"AuthorizationFailure", &tidcommon.InternalServerError, &tidcommon.InternalServerError},
+	}
+	for _, tt := range tests {
+		suite.Run(tt.name, func() {
+			authz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+			actionCtx := &sysauthz.ActionContext{ResourceType: security.ResourceTypeI18n}
+			authz.On("IsActionAllowed", mock.Anything, security.ActionUpdateI18n, actionCtx).
+				Return(false, tt.authzErr).Twice()
+			authz.On("IsActionAllowed", mock.Anything, security.ActionDeleteI18n, actionCtx).
+				Return(false, tt.authzErr).Twice()
+			service := newI18nService(newI18nStoreInterfaceMock(suite.T()), authz)
+
+			_, err := service.SetTranslationOverrides(context.Background(), "en-US",
+				map[string]map[string]string{"custom": {"key": "value"}})
+			suite.Equal(tt.want, err)
+			_, err = service.SetTranslationOverrideForKey(context.Background(), "en-US", "custom", "key", "value")
+			suite.Equal(tt.want, err)
+			suite.Equal(tt.want, service.ClearTranslationOverrides(context.Background(), "en-US"))
+			suite.Equal(tt.want, service.ClearTranslationOverrideForKey(context.Background(), "en-US", "custom", "key"))
+		})
+	}
+}
+
+func (suite *I18nMgtServiceTestSuite) TestApplicationOwnedTranslationsSkipWriteAccess() {
+	authz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+	store := newI18nStoreInterfaceMock(suite.T())
+	store.On("DeleteTranslationsByKey", mock.Anything, "app-1", "name").Return(nil).Once()
+	service := newI18nService(store, authz)
+
+	suite.Nil(service.DeleteTranslationsByKey(context.Background(), "app-1", "name"))
+	authz.AssertNotCalled(suite.T(), "IsActionAllowed", mock.Anything, mock.Anything, mock.Anything)
 }

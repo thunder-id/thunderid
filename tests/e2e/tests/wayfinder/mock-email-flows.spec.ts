@@ -24,6 +24,8 @@
  * - BASE_URL: Console base URL
  * - SERVER_URL: ThunderID server URL for direct API calls (defaults to https://localhost:8090)
  * - ADMIN_USERNAME / ADMIN_PASSWORD: admin credentials
+ * - MANAGEMENT_API_KEY: the Data Plane's management API key, which the onboarding flow's server
+ *   configuration is imported with
  * - WAYFINDER_APP_URL: URL of the running Wayfinder sample app (e.g. http://localhost:5173) -
  *   only the password-recovery test needs this; it skips itself when unset (matches
  *   b2c-tryout/authentication.spec.ts's WAYFINDER_APP_URL pattern).
@@ -34,7 +36,7 @@ import { test, expect, UsersPage, UsersApi, ConsoleRoutes } from "../../fixtures
 import { TestTags } from "../../constants/test-tags";
 import { Timeouts } from "../../constants/timeouts";
 import { TestDataFactory } from "../../utils/test-data";
-import { sendOk } from "../../utils/api-request";
+import { importServerConfigOk, sendOk } from "../../utils/api-request";
 import { WayfinderAppPage, MockEmailAppPage } from "../../pages/wayfinder-sample";
 
 const baseUrl = process.env.BASE_URL;
@@ -64,7 +66,7 @@ test.describe.serial("Wayfinder Mock Email Inbox", { tag: [TestTags.WAYFINDER] }
     const response = await sendOk(request, "GET", "/server-config/flow");
     originalFlowConfig = (await response.json()).writable ?? {};
 
-    await sendOk(request, "PUT", "/server-config/flow", {
+    await importServerConfigOk(request, "flow", {
       ...originalFlowConfig,
       userOnboardingFlow: {
         ...(originalFlowConfig.userOnboardingFlow ?? {}),
@@ -75,7 +77,7 @@ test.describe.serial("Wayfinder Mock Email Inbox", { tag: [TestTags.WAYFINDER] }
 
   test.afterAll(async ({ request }) => {
     if (originalFlowConfig !== undefined) {
-      await sendOk(request, "PUT", "/server-config/flow", originalFlowConfig);
+      await importServerConfigOk(request, "flow", originalFlowConfig);
     }
 
     const usersApi = new UsersApi(request);

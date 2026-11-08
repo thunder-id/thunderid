@@ -12,6 +12,7 @@ import (
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/eventbus"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 )
 
 // Initialize initializes the theme management service and registers its routes. bus is required: the
@@ -23,6 +24,7 @@ func Initialize(
 	mcpServer *mcp.Server,
 	bus eventbus.EventBusInterface,
 	projectChecker projectChecker,
+	authzService sysauthz.SystemAuthorizationServiceInterface,
 ) (ThemeMgtServiceInterface, declarativeresource.ResourceExporter, error) {
 	if bus == nil {
 		return nil, nil, errNilEventBus
@@ -35,7 +37,7 @@ func Initialize(
 	}
 
 	// Step 2: Create service with store
-	themeMgtService := newThemeMgtService(themeMgtStore, bus, projectChecker)
+	themeMgtService := newThemeMgtService(themeMgtStore, bus, projectChecker, authzService)
 	themeMgtHandler := newThemeMgtHandler(themeMgtService)
 	registerRoutes(mux, themeMgtHandler)
 

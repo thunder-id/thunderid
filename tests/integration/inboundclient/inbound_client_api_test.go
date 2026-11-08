@@ -424,25 +424,34 @@ func (suite *InboundClientValidationSuite) assertionUserAttributes(app map[strin
 	return attrs
 }
 
-// createDesignResource creates a theme or layout and returns its ID.
+// createDesignResource creates a theme or layout through an import with the management API key, the only
+// way a data plane takes one, and returns its ID.
 func (suite *InboundClientValidationSuite) createDesignResource(
 	basePath string, body map[string]interface{},
 ) string {
-	status, respBody := suite.do(http.MethodPost, testutils.TestServerURL+basePath, body)
-	suite.Require().Equal(http.StatusCreated, status, "create %s failed: %s", basePath, respBody)
-	return suite.idOf(respBody)
+	id, err := testutils.ImportResource(designResourceType(basePath), body, false)
+	suite.Require().NoError(err, "create %s failed", basePath)
+	return id
 }
 
-// deleteDesignResource removes a theme or layout, tolerating an already-deleted resource.
+// deleteDesignResource removes a theme or layout through an import deletion, which tolerates an
+// already-deleted resource.
 func (suite *InboundClientValidationSuite) deleteDesignResource(basePath, id string) {
 	if id == "" {
 		return
 	}
 
-	status, body := suite.do(http.MethodDelete, testutils.TestServerURL+basePath+"/"+id, nil)
-	if status != http.StatusNoContent && status != http.StatusNotFound {
-		suite.T().Logf("Failed to delete %s/%s: status %d: %s", basePath, id, status, body)
+	if err := testutils.DeleteImportedResource(designResourceType(basePath), id); err != nil {
+		suite.T().Logf("Failed to delete %s/%s: %v", basePath, id, err)
 	}
+}
+
+// designResourceType returns the import resource type of the theme or layout API path.
+func designResourceType(basePath string) string {
+	if basePath == "/design/layouts" {
+		return "layout"
+	}
+	return "theme"
 }
 
 // idOf extracts the id field from a created-resource response body.

@@ -18,6 +18,8 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
+	"github.com/thunder-id/thunderid/internal/system/security"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 )
 
@@ -47,6 +49,7 @@ type ThemeMgtServiceInterface interface {
 
 // themeMgtService is the default implementation of the ThemeMgtServiceInterface.
 type themeMgtService struct {
+	authzService       sysauthz.SystemAuthorizationServiceInterface
 	themeMgtStore      themeMgtStoreInterface
 	dependencyRegistry resourcedependency.Registry
 	// projectChecker is nil on a deployment that serves no projects.
@@ -62,9 +65,10 @@ type projectChecker interface {
 
 // newThemeMgtService creates a new instance of ThemeMgtService with injected dependencies.
 func newThemeMgtService(themeMgtStore themeMgtStoreInterface, bus eventbus.EventBusInterface,
-	projectChecker projectChecker) ThemeMgtServiceInterface {
+	projectChecker projectChecker, authzService sysauthz.SystemAuthorizationServiceInterface) ThemeMgtServiceInterface {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 	return &themeMgtService{
+		authzService:   authzService,
 		themeMgtStore:  themeMgtStore,
 		projectChecker: projectChecker,
 		logger:         logger,
@@ -168,6 +172,10 @@ func (ts *themeMgtService) CreateTheme(ctx context.Context, theme CreateThemeReq
 func (ts *themeMgtService) createTheme(ctx context.Context, theme CreateThemeRequestWithID) (*Theme,
 	*tidcommon.ServiceError) {
 	ts.logger.Debug(ctx, "Creating theme configuration")
+
+	if svcErr := ts.checkWriteAccess(ctx, security.ActionCreateDesign); svcErr != nil {
+		return nil, svcErr
+	}
 
 	if theme.DisplayName == "" {
 		return nil, &ErrorMissingDisplayName
@@ -275,6 +283,10 @@ func (ts *themeMgtService) updateTheme(ctx context.Context, id string, theme Upd
 	*tidcommon.ServiceError) {
 	ts.logger.Debug(ctx, "Updating theme", log.String("id", id))
 
+	if svcErr := ts.checkWriteAccess(ctx, security.ActionUpdateDesign); svcErr != nil {
+		return nil, svcErr
+	}
+
 	if id == "" {
 		return nil, &ErrorInvalidThemeID
 	}
@@ -350,6 +362,10 @@ func (ts *themeMgtService) DeleteTheme(ctx context.Context, id string) *tidcommo
 // deleteTheme deletes a theme configuration without publishing its audit event.
 func (ts *themeMgtService) deleteTheme(ctx context.Context, id string) *tidcommon.ServiceError {
 	ts.logger.Debug(ctx, "Deleting theme", log.String("id", id))
+
+	if svcErr := ts.checkWriteAccess(ctx, security.ActionDeleteDesign); svcErr != nil {
+		return svcErr
+	}
 
 	if id == "" {
 		return &ErrorInvalidThemeID
@@ -491,6 +507,19 @@ func (ts *themeMgtService) validateThemePreferences(
 		return &ErrorInvalidThemeFormat
 	}
 
+	return nil
+}
+
+// checkWriteAccess refuses a caller who may not write a theme.
+func (ts *themeMgtService) checkWriteAccess(ctx context.Context, action security.Action) *tidcommon.ServiceError {
+	allowed, svcErr := ts.authzService.IsActionAllowed(ctx, action,
+		&sysauthz.ActionContext{ResourceType: security.ResourceTypeDesign})
+	if svcErr != nil {
+		return &tidcommon.InternalServerError
+	}
+	if !allowed {
+		return &tidcommon.ErrorUnauthorized
+	}
 	return nil
 }
 

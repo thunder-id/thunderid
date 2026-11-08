@@ -279,6 +279,7 @@ type translationAdapter interface {
 	SetTranslationOverrides(ctx context.Context, language string, translations map[string]map[string]string) (
 		*providers.LanguageTranslationsResponse,
 		*tidcommon.ServiceError)
+	ClearTranslationOverrides(ctx context.Context, language string) *tidcommon.ServiceError
 }
 
 type agentAdapter interface {

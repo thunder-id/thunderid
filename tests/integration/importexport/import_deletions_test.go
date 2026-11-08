@@ -24,8 +24,9 @@ import (
 // runtime resources through the services that own them, and are reported per resource in the same
 // results list the upserts use.
 //
-// Themes are the fixture throughout: they are created and read over plain HTTP, nothing else
-// references them, and removing one leaves the rest of the deployment alone.
+// Themes are the fixture throughout: they are read over plain HTTP, nothing else references them, and
+// removing one leaves the rest of the deployment alone. A data plane takes a theme, and its removal,
+// only from an import with the management API key, so the requests here present that key.
 type ImportDeletionsSuite struct {
 	suite.Suite
 	// created holds the themes a test made, so one that fails part way still cleans up after itself.
@@ -39,14 +40,7 @@ func TestImportDeletionsSuite(t *testing.T) {
 // TearDownTest removes whatever a test created and the deletion under test did not.
 func (suite *ImportDeletionsSuite) TearDownTest() {
 	for _, id := range suite.created {
-		req, err := http.NewRequest(http.MethodDelete, testutils.TestServerURL+"/design/themes/"+id, nil)
-		if err != nil {
-			continue
-		}
-		resp, err := testutils.GetHTTPClient().Do(req)
-		if err == nil {
-			_ = resp.Body.Close()
-		}
+		_ = testutils.DeleteImportedResource("theme", id)
 	}
 	suite.created = nil
 }
@@ -87,20 +81,50 @@ func (suite *ImportDeletionsSuite) TestDeletingSomethingAbsentSucceeds() {
 // A resource type whose service cannot remove is reported as such, rather than silently doing
 // nothing and leaving the configuration looking reconciled when it is not.
 func (suite *ImportDeletionsSuite) TestAnUndeletableTypeIsReported() {
-	for _, resourceType := range []string{"translation", "server_config"} {
-		suite.Run(resourceType, func() {
-			result := suite.importWith(testutils.ImportRequest{
-				Deletions: []testutils.ResourceDeletion{{ResourceType: resourceType, ID: "anything"}},
-			})
+	result := suite.importWith(testutils.ImportRequest{
+		Deletions: []testutils.ResourceDeletion{{ResourceType: "server_config", ID: "anything"}},
+	})
 
-			suite.Require().Len(result.Results, 1)
-			suite.Equal("failed", result.Results[0].Status,
-				"%s reported as deletable", resourceType)
-			suite.NotEmpty(result.Results[0].Message)
-			suite.Equal(1, result.Summary.Failed)
-			suite.Equal(0, result.Summary.Deleted)
-		})
-	}
+	suite.Require().Len(result.Results, 1)
+	suite.Equal("failed", result.Results[0].Status, "server_config reported as deletable")
+	suite.NotEmpty(result.Results[0].Message)
+	suite.Equal(1, result.Summary.Failed)
+	suite.Equal(0, result.Summary.Deleted)
+}
+
+// A translation is removed by its language, which clears every custom translation of that language.
+func (suite *ImportDeletionsSuite) TestATranslationDeletionClearsTheLanguage() {
+	const language, namespace = "nl-BE", "integration-import-deletions"
+	_, err := testutils.ImportResource("translation", map[string]interface{}{
+		"language":     language,
+		"translations": map[string]map[string]string{namespace: {"greeting": "Hallo"}},
+	}, true)
+	suite.Require().NoError(err)
+	suite.Equal(map[string]string{"greeting": "Hallo"}, suite.overrides(language, namespace))
+
+	result := suite.importWith(testutils.ImportRequest{
+		Deletions: []testutils.ResourceDeletion{{ResourceType: "translation", ID: language}},
+	})
+
+	suite.Require().Len(result.Results, 1)
+	suite.Equal("success", result.Results[0].Status, "message: %s", result.Results[0].Message)
+	suite.Equal(0, result.Summary.Failed)
+	suite.Empty(suite.overrides(language, namespace), "the language kept its translations")
+}
+
+// A data plane takes no theme removal from a token, so an import presenting one reports the deletion
+// refused and leaves the theme in place.
+func (suite *ImportDeletionsSuite) TestATokenCannotRemoveATheme() {
+	id := suite.plantTheme("token")
+
+	result := suite.importWithClient(testutils.GetHTTPClient(), testutils.ImportRequest{
+		Deletions: []testutils.ResourceDeletion{{ResourceType: "theme", ID: id}},
+	})
+
+	suite.Require().Len(result.Results, 1)
+	suite.Equal("failed", result.Results[0].Status)
+	suite.Equal("SSE-4030", result.Results[0].Code)
+	suite.assertPresent(id, "a token removed the theme")
 }
 
 // A resource type nothing knows about is refused, not guessed at.
@@ -153,7 +177,7 @@ func (suite *ImportDeletionsSuite) TestOneRefusalDoesNotStopTheOthers() {
 	result := suite.importWith(testutils.ImportRequest{
 		Deletions: []testutils.ResourceDeletion{
 			{ResourceType: "theme", ID: first},
-			{ResourceType: "translation", ID: "cannot-be-deleted"},
+			{ResourceType: "server_config", ID: "cannot-be-deleted"},
 			{ResourceType: "theme", ID: second},
 		},
 	})
@@ -215,14 +239,17 @@ func (suite *ImportDeletionsSuite) TestEveryDeletableTypeResolves() {
 		"agent",
 		"presentation_definition",
 		"credential_configuration",
+		"translation",
 	}
 
 	deletions := make([]testutils.ResourceDeletion, 0, len(deletable))
 	for _, resourceType := range deletable {
-		deletions = append(deletions, testutils.ResourceDeletion{
-			ResourceType: resourceType,
-			ID:           "00000000-0000-0000-0000-000000000000",
-		})
+		id := "00000000-0000-0000-0000-000000000000"
+		if resourceType == "translation" {
+			// A translation is identified by its language, here one nothing writes.
+			id = "zu-ZA"
+		}
+		deletions = append(deletions, testutils.ResourceDeletion{ResourceType: resourceType, ID: id})
 	}
 
 	result := suite.importWith(testutils.ImportRequest{Deletions: deletions})
@@ -442,42 +469,52 @@ func (suite *ImportDeletionsSuite) getStatus(path string) int {
 	return resp.StatusCode
 }
 
-// plantTheme creates a throwaway theme and returns its id, registering it for cleanup.
+// plantTheme imports a throwaway theme with the management API key and returns its id, registering it
+// for cleanup.
 func (suite *ImportDeletionsSuite) plantTheme(suffix string) string {
 	suite.T().Helper()
 
 	handle := fmt.Sprintf("import-deletions-%s-%d", suffix, time.Now().UnixNano())
-	payload, err := json.Marshal(map[string]interface{}{
+	id, err := testutils.ImportResource("theme", map[string]interface{}{
 		"handle":      handle,
 		"displayName": handle,
 		"theme":       map[string]interface{}{},
-	})
-	suite.Require().NoError(err)
-
-	req, err := http.NewRequest(http.MethodPost,
-		testutils.TestServerURL+"/design/themes", bytes.NewReader(payload))
-	suite.Require().NoError(err)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := testutils.GetHTTPClient().Do(req)
-	suite.Require().NoError(err)
-	defer func() { _ = resp.Body.Close() }()
-
-	body, err := io.ReadAll(resp.Body)
-	suite.Require().NoError(err)
-	suite.Require().Equal(http.StatusCreated, resp.StatusCode, "could not plant a theme: %s", string(body))
-
-	var created map[string]interface{}
-	suite.Require().NoError(json.Unmarshal(body, &created))
-	id, _ := created["id"].(string)
+	}, false)
+	suite.Require().NoError(err, "could not plant a theme")
 	suite.Require().NotEmpty(id)
 
 	suite.created = append(suite.created, id)
 	return id
 }
 
-// importWith posts an import request and returns the response, failing the test if it is not a 200.
+// overrides returns the custom translations a language resolves in the namespace.
+func (suite *ImportDeletionsSuite) overrides(language, namespace string) map[string]string {
+	suite.T().Helper()
+
+	resp, err := testutils.GetHTTPClient().Get(fmt.Sprintf("%s/i18n/languages/%s/translations/resolve?namespace=%s",
+		testutils.TestServerURL, language, namespace))
+	suite.Require().NoError(err)
+	defer func() { _ = resp.Body.Close() }()
+	suite.Require().Equal(http.StatusOK, resp.StatusCode)
+
+	var resolved struct {
+		Translations map[string]map[string]string `json:"translations"`
+	}
+	suite.Require().NoError(json.NewDecoder(resp.Body).Decode(&resolved))
+	return resolved.Translations[namespace]
+}
+
+// importWith posts an import request with the management API key and returns the response, failing
+// the test if it is not a 200.
 func (suite *ImportDeletionsSuite) importWith(reqBody testutils.ImportRequest) *testutils.ImportResponse {
+	suite.T().Helper()
+	return suite.importWithClient(testutils.GetManagementAPIKeyHTTPClient(), reqBody)
+}
+
+// importWithClient posts an import request with the given client and returns the response, failing the
+// test if it is not a 200.
+func (suite *ImportDeletionsSuite) importWithClient(client *http.Client,
+	reqBody testutils.ImportRequest) *testutils.ImportResponse {
 	suite.T().Helper()
 
 	if reqBody.Options.Target == "" {
@@ -495,7 +532,7 @@ func (suite *ImportDeletionsSuite) importWith(reqBody testutils.ImportRequest) *
 	suite.Require().NoError(err)
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := testutils.GetHTTPClient().Do(req)
+	resp, err := client.Do(req)
 	suite.Require().NoError(err)
 	defer func() { _ = resp.Body.Close() }()
 
@@ -525,7 +562,7 @@ func (suite *ImportDeletionsSuite) importExpectingStatus(reqBody testutils.Impor
 	suite.Require().NoError(err)
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := testutils.GetHTTPClient().Do(req)
+	resp, err := testutils.GetManagementAPIKeyHTTPClient().Do(req)
 	suite.Require().NoError(err)
 	defer func() { _ = resp.Body.Close() }()
 

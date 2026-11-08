@@ -173,8 +173,14 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	// List to collect exporters from each package
 	var exporters []declarativeresource.ResourceExporter
 
+	// This server is the data plane, which confines each management token to the organization unit it
+	// names.
+	ouAuthzService, err := sysauthz.InitializeOUBoundedAuthorization()
+	fatalOnError(ctx, logger, err, "Failed to initialize system authorization service")
+
 	// Initialize i18n service for internationalization support.
-	i18nService, i18nExporter, err := i18nmgt.Initialize(mux, config.GetServerRuntime().Config.Translation)
+	i18nService, i18nExporter, err := i18nmgt.Initialize(mux, config.GetServerRuntime().Config.Translation,
+		ouAuthzService)
 	fatalOnError(ctx, logger, err, "Failed to initialize i18n service")
 	// Add to exporters list (must be done after initializing list)
 	exporters = append(exporters, i18nExporter)
@@ -182,11 +188,6 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	// Initialize the variable store. It takes the config crypto provider directly, since that is
 	// what seals a secret before it reaches the database.
 	_, references := variablestore.Initialize(mux, configCryptoSvc, cacheManager)
-
-	// This server is the data plane, which confines each management token to the organization unit it
-	// names.
-	ouAuthzService, err := sysauthz.InitializeOUBoundedAuthorization()
-	fatalOnError(ctx, logger, err, "Failed to initialize system authorization service")
 
 	ouService, ouHierarchyResolver, ouEnumerator, ouExporter, err := ou.Initialize(
 		mux, mcpServer, cacheManager, ouAuthzService)
@@ -266,7 +267,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		serverconfig.ConfigNameNotification:          notificationConfigHandler,
 	}
 	serverConfigService, serverConfigExporter, err := serverconfig.Initialize(mux, cacheManager, serverConfigHandlers,
-		observabilitySvc, auditBus)
+		observabilitySvc, auditBus, ouAuthzService)
 	fatalOnError(ctx, logger, err, "Failed to initialize server config service")
 	exporters = append(exporters, serverConfigExporter)
 
@@ -280,7 +281,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	resourceServerProvider := resource.NewDefaultAwareResourceServerProvider(resourceService, serverConfigService)
 
 	// Initialize authorization details type management and processing.
-	authzDetailMgtService, authzDetailExporter, err := authzdetailmgt.Initialize(mux, mcpServer, nil)
+	authzDetailMgtService, authzDetailExporter, err := authzdetailmgt.Initialize(mux, mcpServer, nil, ouAuthzService)
 	fatalOnError(ctx, logger, err, "Failed to initialize AuthorizationDetailMgtService")
 	exporters = append(exporters, authzDetailExporter)
 	authzDetailService := authzdetailexec.Initialize(authzDetailMgtService,
@@ -508,11 +509,11 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	fatalOnError(ctx, logger, err, "Failed to initialize CertificateService")
 
 	// Initialize theme and layout services
-	themeMgtService, themeExporter, err := thememgt.Initialize(mux, mcpServer, auditBus, nil)
+	themeMgtService, themeExporter, err := thememgt.Initialize(mux, mcpServer, auditBus, nil, ouAuthzService)
 	fatalOnError(ctx, logger, err, "Failed to initialize ThemeMgtService")
 	exporters = append(exporters, themeExporter)
 
-	layoutMgtService, layoutExporter, err := layoutmgt.Initialize(mux, auditBus, nil)
+	layoutMgtService, layoutExporter, err := layoutmgt.Initialize(mux, auditBus, nil, ouAuthzService)
 	fatalOnError(ctx, logger, err, "Failed to initialize LayoutMgtService")
 	exporters = append(exporters, layoutExporter)
 
