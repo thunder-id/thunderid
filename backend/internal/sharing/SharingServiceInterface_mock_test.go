@@ -1277,6 +1277,92 @@ func (_c *SharingServiceInterfaceMock_RemoveField_Call) RunAndReturn(run func(ct
 	return _c
 }
 
+// RemovePolicies provides a mock function for the type SharingServiceInterfaceMock
+func (_mock *SharingServiceInterfaceMock) RemovePolicies(ctx context.Context, rt ResourceType, resourceID string, initiatingOUIDs []string, stillNamed []string) (PolicyReplay, *PolicyReplayError) {
+	ret := _mock.Called(ctx, rt, resourceID, initiatingOUIDs, stillNamed)
+
+	if len(ret) == 0 {
+		panic("no return value specified for RemovePolicies")
+	}
+
+	var r0 PolicyReplay
+	var r1 *PolicyReplayError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, ResourceType, string, []string, []string) (PolicyReplay, *PolicyReplayError)); ok {
+		return returnFunc(ctx, rt, resourceID, initiatingOUIDs, stillNamed)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, ResourceType, string, []string, []string) PolicyReplay); ok {
+		r0 = returnFunc(ctx, rt, resourceID, initiatingOUIDs, stillNamed)
+	} else {
+		r0 = ret.Get(0).(PolicyReplay)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, ResourceType, string, []string, []string) *PolicyReplayError); ok {
+		r1 = returnFunc(ctx, rt, resourceID, initiatingOUIDs, stillNamed)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*PolicyReplayError)
+		}
+	}
+	return r0, r1
+}
+
+// SharingServiceInterfaceMock_RemovePolicies_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RemovePolicies'
+type SharingServiceInterfaceMock_RemovePolicies_Call struct {
+	*mock.Call
+}
+
+// RemovePolicies is a helper method to define mock.On call
+//   - ctx context.Context
+//   - rt ResourceType
+//   - resourceID string
+//   - initiatingOUIDs []string
+//   - stillNamed []string
+func (_e *SharingServiceInterfaceMock_Expecter) RemovePolicies(ctx any, rt any, resourceID any, initiatingOUIDs any, stillNamed any) *SharingServiceInterfaceMock_RemovePolicies_Call {
+	return &SharingServiceInterfaceMock_RemovePolicies_Call{Call: _e.mock.On("RemovePolicies", ctx, rt, resourceID, initiatingOUIDs, stillNamed)}
+}
+
+func (_c *SharingServiceInterfaceMock_RemovePolicies_Call) Run(run func(ctx context.Context, rt ResourceType, resourceID string, initiatingOUIDs []string, stillNamed []string)) *SharingServiceInterfaceMock_RemovePolicies_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 ResourceType
+		if args[1] != nil {
+			arg1 = args[1].(ResourceType)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		var arg3 []string
+		if args[3] != nil {
+			arg3 = args[3].([]string)
+		}
+		var arg4 []string
+		if args[4] != nil {
+			arg4 = args[4].([]string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+			arg4,
+		)
+	})
+	return _c
+}
+
+func (_c *SharingServiceInterfaceMock_RemovePolicies_Call) Return(policyReplay PolicyReplay, policyReplayError *PolicyReplayError) *SharingServiceInterfaceMock_RemovePolicies_Call {
+	_c.Call.Return(policyReplay, policyReplayError)
+	return _c
+}
+
+func (_c *SharingServiceInterfaceMock_RemovePolicies_Call) RunAndReturn(run func(ctx context.Context, rt ResourceType, resourceID string, initiatingOUIDs []string, stillNamed []string) (PolicyReplay, *PolicyReplayError)) *SharingServiceInterfaceMock_RemovePolicies_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // ReplaceOverlayValues provides a mock function for the type SharingServiceInterfaceMock
 func (_mock *SharingServiceInterfaceMock) ReplaceOverlayValues(ctx context.Context, rt ResourceType, resourceID string, ouID string, fieldKeys []string, values map[string][]string) *OverlayReplaceError {
 	ret := _mock.Called(ctx, rt, resourceID, ouID, fieldKeys, values)

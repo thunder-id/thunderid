@@ -940,9 +940,15 @@ func (s *importService) replayMandatingUserSharing(
 ) int {
 	refused := 0
 	for _, r := range mandating {
-		outcome := s.applySharingPolicies(ctx, user.UserSharingType, resourceTypeUser,
+		replayCtx, report := sharing.WithReplayReport(ctx)
+		outcome := s.applySharingPolicies(replayCtx, user.UserSharingType, resourceTypeUser,
 			r.userID, "", r.owningOUID, r.policies, r.operation)
 		if outcome == nil {
+			for _, removed := range report.Removed() {
+				results[r.resultIndex].RemovedSharing = append(results[r.resultIndex].RemovedSharing,
+					RemovedSharingPolicy{PolicyID: removed.PolicyID, InitiatingOUID: removed.InitiatingOUID,
+						Reshare: removed.Reshare})
+			}
 			continue
 		}
 		if r.operation == operationCreate {
@@ -1530,6 +1536,12 @@ func (s *importService) applySharingPolicies(
 			log.Int("policyIndex", skipped.Index+1),
 			log.String("initiatingOUID", skipped.InitiatingOUID),
 			log.String("declaredPolicyID", skipped.DeclaredPolicyID))
+	}
+	for _, removed := range replay.Removed {
+		logger.Info(ctx, "Sharing policy removed to match the document",
+			log.String("resourceType", resourceType), log.String("resourceID", resourceID),
+			log.String("policyID", removed.PolicyID), log.String("initiatingOUID", removed.InitiatingOUID),
+			log.Bool("reshare", removed.Reshare))
 	}
 	if replayErr == nil {
 		return nil

@@ -49,6 +49,11 @@ type SharingServiceInterface interface {
 	) (Policy, *tidcommon.ServiceError)
 	// UpdatePolicy replaces a policy's contents within the limits of its scope family.
 	UpdatePolicy(ctx context.Context, policyID string, req PolicyRequest) (Policy, *tidcommon.ServiceError)
+	// RemovePolicies removes the policies the given organization units issued for one resource, the empty id
+	// meaning the owner, with the reshares beneath them that lose their standing. A unit the caller's document still
+	// names is kept, however the owner is written.
+	RemovePolicies(ctx context.Context, rt ResourceType, resourceID string, initiatingOUIDs, stillNamed []string,
+	) (PolicyReplay, *PolicyReplayError)
 	// ReplacePoliciesForResource applies the policies an imported document carries for one resource.
 	ReplacePoliciesForResource(ctx context.Context, rt ResourceType, resourceID, owningOUID string,
 		requests []PolicyRequest) (PolicyReplay, *PolicyReplayError)
@@ -1132,9 +1137,14 @@ func (s *sharingService) initiatorEffectiveRules(
 }
 
 // ReplacePoliciesForResource applies the policies a document carries for one resource, matched by
-// issuing organization unit: a missing policy is created, an existing one is edited under the API's
-// update rules. The document applies as a whole or not at all, and policies it does not name are
-// kept unless a narrowing edit removes them.
+// issuing organization unit: a missing policy is created and an existing one is edited under the
+// API's update rules. Policies the document does not name are kept unless a narrowing edit removes
+// them. A policy the document dropped is removed by RemovePolicies, which the caller is told about
+// explicitly, never inferred from what the document leaves out.
+//
+// When the context is marked with WithForcedEdits, an edit the update rules refuse, such as a different
+// reach, is applied as a rewrite that keeps the reshares the new policy still covers and removes the
+// rest.
 func (s *sharingService) ReplacePoliciesForResource(
 	ctx context.Context, rt ResourceType, resourceID, owningOUID string, requests []PolicyRequest,
 ) (PolicyReplay, *PolicyReplayError) {
@@ -1150,11 +1160,15 @@ func (s *sharingService) ReplacePoliciesForResource(
 	// are not the document's to recreate.
 	err := s.transactioner.Transact(ctx, func(txCtx context.Context) error {
 		replay = PolicyReplay{}
+		before, err := s.store.ListAllPoliciesForResource(txCtx, rt, resourceID)
+		if err != nil {
+			return err
+		}
 		failure = s.replayPolicies(txCtx, rt, resourceID, owningOUID, requests, &replay)
 		if failure != nil {
 			return errReplayRefused
 		}
-		return nil
+		return s.reportRemoved(txCtx, rt, resourceID, before, &replay)
 	})
 	// The writes inside cleared the caches before the transaction ended, so a reader in between
 	// could have cached a state the commit replaces or the rollback undoes. Cleared either way.
@@ -1169,7 +1183,112 @@ func (s *sharingService) ReplacePoliciesForResource(
 		return PolicyReplay{}, &PolicyReplayError{
 			InitiatingOUID: owningOUID, Err: &tidcommon.InternalServerError}
 	}
+	RecordRemoved(ctx, replay.Removed)
 	return replay, nil
+}
+
+// RemovePolicies removes the policies the given organization units issued for one resource, the empty
+// id meaning the owner, as one change: it applies whole or not at all. The reshares beneath a removed
+// policy go with it when their issuers lose the resource, through the cleanup a delete through the API
+// runs. A policy that is not there, or that a declaration governs, is left, and a declared one is
+// reported as skipped.
+//
+// stillNamed is the units the document the removal comes with still carries a policy for. A removal is
+// worked out by comparing how two versions of the document write each unit, so a unit written differently
+// in the two, the owner as an explicit id in one and left blank in the other, reads as dropped when it is not.
+// Both lists are resolved against the owner the resource really has, and a unit in both is kept.
+func (s *sharingService) RemovePolicies(
+	ctx context.Context, rt ResourceType, resourceID string, initiatingOUIDs, stillNamed []string,
+) (PolicyReplay, *PolicyReplayError) {
+	var replay PolicyReplay
+	if len(initiatingOUIDs) == 0 {
+		return replay, nil
+	}
+	owner, known, svcErr := s.ownerOf(ctx, rt, resourceID)
+	if svcErr != nil {
+		return replay, &PolicyReplayError{Err: svcErr}
+	}
+	resolve := func(initiator string) (string, bool) {
+		if initiator != "" {
+			return initiator, true
+		}
+		return owner, known
+	}
+	kept := make(map[string]struct{}, len(stillNamed))
+	for _, initiator := range stillNamed {
+		if unit, ok := resolve(initiator); ok {
+			kept[unit] = struct{}{}
+		}
+	}
+
+	var failure *PolicyReplayError
+	err := s.transactioner.Transact(ctx, func(txCtx context.Context) error {
+		replay = PolicyReplay{}
+		before, err := s.store.ListAllPoliciesForResource(txCtx, rt, resourceID)
+		if err != nil {
+			return err
+		}
+		for i, initiator := range initiatingOUIDs {
+			initiator, ok := resolve(initiator)
+			if !ok {
+				continue
+			}
+			if _, named := kept[initiator]; named {
+				continue
+			}
+			current, found, replayErr := s.policyOfInitiator(txCtx, rt, resourceID, initiator, i)
+			if replayErr != nil {
+				failure = replayErr
+				return errReplayRefused
+			}
+			if !found {
+				continue
+			}
+			if current.Declared {
+				replay.Skipped = append(replay.Skipped, SkippedPolicy{
+					Index: i, InitiatingOUID: initiator, DeclaredPolicyID: current.ID})
+				continue
+			}
+			if svcErr := s.deletePolicy(txCtx, current); svcErr != nil {
+				failure = &PolicyReplayError{Index: i, InitiatingOUID: initiator, Err: svcErr}
+				return errReplayRefused
+			}
+		}
+		return s.reportRemoved(txCtx, rt, resourceID, before, &replay)
+	})
+	s.clearCaches(ctx)
+	if failure != nil {
+		return PolicyReplay{}, failure
+	}
+	if err != nil {
+		s.logger.Error(ctx, "Failed to remove the sharing policies a document dropped",
+			log.String("resourceType", string(rt)), log.String("resourceID", resourceID), log.Error(err))
+		return PolicyReplay{}, &PolicyReplayError{Err: &tidcommon.InternalServerError}
+	}
+	return replay, nil
+}
+
+// reportRemoved records in the replay every policy that existed before it and is gone after it, which
+// is what the document removed and what the cleanup beneath it took along.
+func (s *sharingService) reportRemoved(
+	ctx context.Context, rt ResourceType, resourceID string, before []Policy, replay *PolicyReplay,
+) error {
+	after, err := s.store.ListAllPoliciesForResource(ctx, rt, resourceID)
+	if err != nil {
+		return err
+	}
+	remaining := make(map[string]struct{}, len(after))
+	for _, p := range after {
+		remaining[p.ID] = struct{}{}
+	}
+	for _, p := range before {
+		if _, kept := remaining[p.ID]; kept || p.Declared {
+			continue
+		}
+		replay.Removed = append(replay.Removed, RemovedPolicy{
+			PolicyID: p.ID, InitiatingOUID: p.InitiatingOUID, Reshare: p.Stage == stageReshare})
+	}
+	return nil
 }
 
 // policyOfInitiator reads the policy one organization unit holds for a resource, as it stands at
@@ -1234,7 +1353,7 @@ func (s *sharingService) replayPolicies(
 			continue
 		}
 		req.Version = current.Version
-		if _, svcErr := s.UpdatePolicy(ctx, current.ID, req); svcErr != nil {
+		if _, svcErr := s.updatePolicy(ctx, current.ID, req, forcedEdits(ctx)); svcErr != nil {
 			// These refusals name deleting the policy as the way through, which an import cannot do.
 			if svcErr.Code == ErrorScopeFamilyChange.Code || svcErr.Code == ErrorBlanketNarrowOnly.Code {
 				svcErr = withDetail(*svcErr, "an import edits an existing policy and cannot delete it; "+
@@ -1249,6 +1368,15 @@ func (s *sharingService) replayPolicies(
 // UpdatePolicy replaces a policy's contents within the limits of its scope family.
 func (s *sharingService) UpdatePolicy(
 	ctx context.Context, policyID string, req PolicyRequest,
+) (Policy, *tidcommon.ServiceError) {
+	return s.updatePolicy(ctx, policyID, req, false)
+}
+
+// updatePolicy is UpdatePolicy. A replacing edit is one a source of truth makes, so it skips the
+// refusals that protect other people's reach and instead lets the cleanup after the write remove
+// what the new policy no longer covers: the reshares beneath it and the values their units saved.
+func (s *sharingService) updatePolicy(
+	ctx context.Context, policyID string, req PolicyRequest, replacing bool,
 ) (Policy, *tidcommon.ServiceError) {
 	current, svcErr := s.GetPolicy(ctx, policyID)
 	if svcErr != nil {
@@ -1269,16 +1397,22 @@ func (s *sharingService) UpdatePolicy(
 	proposed.ID = current.ID
 	proposed.Version = current.Version
 
-	if err := validateEdit(
-		current, proposed, req.Version, current.Version,
-	); err != nil {
-		return Policy{}, mapEditError(err)
-	}
-	if svcErr := s.blanketRulesNarrowOnly(ctx, current, proposed); svcErr != nil {
-		return Policy{}, svcErr
-	}
-	if svcErr := s.requireEditLeavesFrontiersIntact(ctx, proposed); svcErr != nil {
-		return Policy{}, svcErr
+	if replacing {
+		if req.Version != current.Version {
+			return Policy{}, &ErrorVersionMismatch
+		}
+	} else {
+		if err := validateEdit(
+			current, proposed, req.Version, current.Version,
+		); err != nil {
+			return Policy{}, mapEditError(err)
+		}
+		if svcErr := s.blanketRulesNarrowOnly(ctx, current, proposed); svcErr != nil {
+			return Policy{}, svcErr
+		}
+		if svcErr := s.requireEditLeavesFrontiersIntact(ctx, proposed); svcErr != nil {
+			return Policy{}, svcErr
+		}
 	}
 
 	if err := s.transactioner.Transact(ctx, func(txCtx context.Context) error {

@@ -5278,9 +5278,7 @@ func (s *ServiceTestSuite) TestARefusedReplayLeavesNoStaleVisibility() {
 	s.True(visible, "the rolled-back replay took nothing away")
 }
 
-// A document cannot switch a section between naming units and reaching a whole group: the replay
-// edits the policy under the API's rules. The refusal says how to get there, since an import cannot
-// delete the policy itself.
+// Without an authoritative replay, a change the edit rules refuse stays refused and says how to make it.
 func (s *ServiceTestSuite) TestReplayRefusingASectionChangeSaysHowToMakeIt() {
 	ctx := context.Background()
 	s.withRollback()
@@ -5294,6 +5292,216 @@ func (s *ServiceTestSuite) TestReplayRefusingASectionChangeSaysHowToMakeIt() {
 	s.Equal(ErrorScopeFamilyChange.Code, replayErr.Err.Code)
 	s.Contains(replayErr.Err.ErrorDescription.DefaultValue,
 		"delete the policy through the sharing policies API, then import again")
+}
+
+// A replay never removes a policy for being left out of the document, with forced edits or without: removals are
+// named, through RemovePolicies.
+func (s *ServiceTestSuite) TestReplayKeepsWhatTheDocumentDoesNotName() {
+	ctx := WithForcedEdits(context.Background())
+	s.withRollback()
+	_, svcErr := s.importCreate(ctx, testResource, rootOU, PolicyRequest{ChildUnits: children(unit(childOU))})
+	s.Require().Nil(svcErr)
+
+	replay, replayErr := s.svc.ReplacePoliciesForResource(ctx, testType, testResource, rootOU, nil)
+
+	s.Require().Nil(replayErr)
+	s.Empty(replay.Removed)
+	all, _ := s.svc.ListPolicies(ctx, testType, testResource)
+	s.Len(all, 1)
+}
+
+// A change the edit rules of the API refuse, here a different reach, is applied by a replay as a
+// rewrite of the policy the owner issued, since the document is the source of truth for it.
+func (s *ServiceTestSuite) TestReplayAppliesASectionChangeTheEditRulesRefuse() {
+	ctx := WithForcedEdits(context.Background())
+	s.withRollback()
+	first, svcErr := s.importCreate(ctx, testResource, rootOU, PolicyRequest{ChildUnits: children(unit(childOU))})
+	s.Require().Nil(svcErr)
+
+	_, replayErr := s.svc.ReplacePoliciesForResource(ctx, testType, testResource, rootOU,
+		[]PolicyRequest{{InitiatingOUID: rootOU, ChildUnits: allChildren()}})
+
+	s.Require().Nil(replayErr)
+	all, _ := s.svc.ListPolicies(ctx, testType, testResource)
+	s.Require().Len(all, 1)
+	s.Equal(first.ID, all[0].ID)
+	s.Equal(ChildUnitsAll, all[0].ChildUnits.Mode)
+}
+
+// Naming the owner removes the policy it issued, and an unknown or absent one is left.
+func (s *ServiceTestSuite) TestRemovePoliciesRemovesTheNamedPolicy() {
+	ctx := context.Background()
+	s.withRollback()
+	_, svcErr := s.importCreate(ctx, testResource, rootOU, PolicyRequest{ChildUnits: children(unit(childOU))})
+	s.Require().Nil(svcErr)
+
+	replay, replayErr := s.svc.RemovePolicies(ctx, testType, testResource, []string{rootOU, otherOU}, nil)
+
+	s.Require().Nil(replayErr)
+	s.Require().Len(replay.Removed, 1)
+	s.False(replay.Removed[0].Reshare)
+	all, _ := s.svc.ListPolicies(ctx, testType, testResource)
+	s.Empty(all)
+}
+
+// A policy a removal leaves alone stays: only the named unit's policy goes.
+func (s *ServiceTestSuite) TestRemovePoliciesLeavesWhatItIsNotToldToRemove() {
+	ctx := context.Background()
+	s.withRollback()
+	_, svcErr := s.importCreate(ctx, testResource, rootOU, PolicyRequest{ChildUnits: children(unit(childOU))})
+	s.Require().Nil(svcErr)
+
+	replay, replayErr := s.svc.RemovePolicies(ctx, testType, testResource, []string{otherOU}, nil)
+
+	s.Require().Nil(replayErr)
+	s.Empty(replay.Removed)
+	all, _ := s.svc.ListPolicies(ctx, testType, testResource)
+	s.Len(all, 1)
+}
+
+// A removal comes from comparing how two versions write each unit, so the owner written as an explicit id in one and
+// left blank in the other reads as dropped. The owner is resolved on both lists, and a unit the document still names is
+// kept whichever way it is written.
+func (s *ServiceTestSuite) TestRemovePoliciesKeepsAUnitTheDocumentStillNamesWhateverTheSpelling() {
+	cases := map[string]struct{ removal, stillNamed string }{
+		"blank removed, the owner named by id":   {removal: "", stillNamed: rootOU},
+		"owner id removed, the owner left blank": {removal: rootOU, stillNamed: ""},
+		"blank removed, blank still named":       {removal: "", stillNamed: ""},
+	}
+	for name, c := range cases {
+		s.Run(name, func() {
+			ctx := context.Background()
+			s.SetupTest()
+			s.withRollback()
+			s.decl.owner = rootOU
+			_, svcErr := s.importCreate(ctx, testResource, rootOU,
+				PolicyRequest{ChildUnits: children(unit(childOU))})
+			s.Require().Nil(svcErr)
+
+			replay, replayErr := s.svc.RemovePolicies(ctx, testType, testResource,
+				[]string{c.removal}, []string{c.stillNamed})
+
+			s.Require().Nil(replayErr)
+			s.Empty(replay.Removed, "the policy the document still carries was removed")
+			all, _ := s.svc.ListPolicies(ctx, testType, testResource)
+			s.Len(all, 1)
+		})
+	}
+}
+
+// A unit the document does not name any more is still removed when another unit is named.
+func (s *ServiceTestSuite) TestRemovePoliciesStillRemovesAUnitTheDocumentDoesNotName() {
+	ctx := context.Background()
+	s.withRollback()
+	s.decl.owner = rootOU
+	_, svcErr := s.importCreate(ctx, testResource, rootOU, PolicyRequest{ChildUnits: children(unit(childOU))})
+	s.Require().Nil(svcErr)
+
+	replay, replayErr := s.svc.RemovePolicies(ctx, testType, testResource, []string{""}, []string{childOU})
+
+	s.Require().Nil(replayErr)
+	s.Len(replay.Removed, 1)
+}
+
+// A reshare goes with the policy that made its issuer see the resource, and is reported as removed.
+func (s *ServiceTestSuite) TestRemovePoliciesRemovesTheResharesOfARemovedPolicy() {
+	ctx := context.Background()
+	s.withRollback()
+	_, svcErr := s.importCreate(ctx, testResource, rootOU, PolicyRequest{ChildUnits: children(unit(childOU))})
+	s.Require().Nil(svcErr)
+	_, svcErr = s.importCreate(ctx, testResource, rootOU,
+		PolicyRequest{InitiatingOUID: childOU, ChildUnits: entry(grandOU)})
+	s.Require().Nil(svcErr)
+
+	replay, replayErr := s.svc.RemovePolicies(ctx, testType, testResource, []string{rootOU}, nil)
+
+	s.Require().Nil(replayErr)
+	s.Len(replay.Removed, 2)
+	s.Equal(1, countReshares(replay.Removed))
+	all, _ := s.svc.ListPolicies(ctx, testType, testResource)
+	s.Empty(all)
+}
+
+// What a replay took away through a rewrite is recorded to the report a caller put on the context, so a caller that
+// replays through another service can still say what the change cost.
+func (s *ServiceTestSuite) TestReplayRecordsWhatItRemovedToTheReport() {
+	ctx, report := WithReplayReport(WithForcedEdits(context.Background()))
+	s.withRollback()
+	_, svcErr := s.importCreate(ctx, testResource, rootOU, PolicyRequest{ChildUnits: children(unit(childOU))})
+	s.Require().Nil(svcErr)
+	_, svcErr = s.importCreate(ctx, testResource, rootOU,
+		PolicyRequest{InitiatingOUID: childOU, ChildUnits: entry(grandOU)})
+	s.Require().Nil(svcErr)
+
+	replay, replayErr := s.svc.ReplacePoliciesForResource(ctx, testType, testResource, rootOU,
+		[]PolicyRequest{{InitiatingOUID: rootOU, ChildUnits: allChildren(childOU)}})
+
+	s.Require().Nil(replayErr)
+	s.Equal(replay.Removed, report.Removed())
+	s.Equal(1, countReshares(report.Removed()))
+}
+
+// A removal reports what it took away through the replay it returns and not through the report, so a caller that reads
+// both is never told of one policy twice.
+func (s *ServiceTestSuite) TestRemovePoliciesDoesNotRecordToTheReport() {
+	ctx, report := WithReplayReport(context.Background())
+	s.withRollback()
+	_, svcErr := s.importCreate(ctx, testResource, rootOU, PolicyRequest{ChildUnits: children(unit(childOU))})
+	s.Require().Nil(svcErr)
+
+	replay, replayErr := s.svc.RemovePolicies(ctx, testType, testResource, []string{rootOU}, nil)
+
+	s.Require().Nil(replayErr)
+	s.Len(replay.Removed, 1)
+	s.Empty(report.Removed())
+}
+
+func countReshares(removed []RemovedPolicy) int {
+	n := 0
+	for _, r := range removed {
+		if r.Reshare {
+			n++
+		}
+	}
+	return n
+}
+
+// A reshare the new policy still covers is kept when the policy changes.
+func (s *ServiceTestSuite) TestReplayKeepsTheResharesTheNewPolicyStillCovers() {
+	ctx := WithForcedEdits(context.Background())
+	s.withRollback()
+	_, svcErr := s.importCreate(ctx, testResource, rootOU, PolicyRequest{ChildUnits: children(unit(childOU))})
+	s.Require().Nil(svcErr)
+	_, svcErr = s.importCreate(ctx, testResource, rootOU,
+		PolicyRequest{InitiatingOUID: childOU, ChildUnits: entry(grandOU)})
+	s.Require().Nil(svcErr)
+
+	replay, replayErr := s.svc.ReplacePoliciesForResource(ctx, testType, testResource, rootOU,
+		[]PolicyRequest{{InitiatingOUID: rootOU, ChildUnits: allChildren()}})
+
+	s.Require().Nil(replayErr)
+	s.Empty(replay.Removed)
+	all, _ := s.svc.ListPolicies(ctx, testType, testResource)
+	s.Len(all, 2)
+}
+
+// A reshare whose issuer the new policy no longer reaches is removed and reported.
+func (s *ServiceTestSuite) TestReplayRemovesTheResharesTheNewPolicyNoLongerCovers() {
+	ctx := WithForcedEdits(context.Background())
+	s.withRollback()
+	_, svcErr := s.importCreate(ctx, testResource, rootOU, PolicyRequest{ChildUnits: children(unit(childOU))})
+	s.Require().Nil(svcErr)
+	_, svcErr = s.importCreate(ctx, testResource, rootOU,
+		PolicyRequest{InitiatingOUID: childOU, ChildUnits: entry(grandOU)})
+	s.Require().Nil(svcErr)
+
+	replay, replayErr := s.svc.ReplacePoliciesForResource(ctx, testType, testResource, rootOU,
+		[]PolicyRequest{{InitiatingOUID: rootOU, ChildUnits: allChildren(childOU)}})
+
+	s.Require().Nil(replayErr)
+	s.Require().Len(replay.Removed, 1)
+	s.True(replay.Removed[0].Reshare)
+	s.Equal(childOU, replay.Removed[0].InitiatingOUID)
 }
 
 // requireReachMatchesVisibility checks ListResourceSharedOUIDs against the chain walk: every unit it lists

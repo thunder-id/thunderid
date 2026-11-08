@@ -3175,6 +3175,75 @@ func (s *FlowMgtServiceTestSuite) TestUpdateFlow_RefusesAChangeThatBreaksASharin
 	s.Equal("p1", err.ErrorDescription.Params["policy"])
 }
 
+// localeNodes is a flow with one select variable that offers the given values.
+func localeNodes(options ...interface{}) []providers.NodeDefinition {
+	return []providers.NodeDefinition{
+		{ID: "start", Type: "START", OnSuccess: "vars"},
+		{ID: "vars", Type: "VARIABLES", OnSuccess: "end", Inputs: []providers.VariableDefinition{{
+			Identifier: "locale", Type: providers.InputTypeSelect, DefaultValue: options[0], Options: options}}},
+		{ID: "end", Type: "END"},
+	}
+}
+
+// pinningPolicy is a policy that gives the locale variable one value.
+func pinningPolicy(value string) sharing.Policy {
+	return sharing.Policy{
+		ID: "p-locale", InitiatingOUID: "ou-1", ChildUnits: &sharing.ChildUnits{Mode: sharing.ChildUnitsAll},
+		Rules: []sharing.StoredRule{{
+			FieldKey: sharingKey("locale"), Grant: sharing.GrantRef{Section: sharing.SectionChildUnits},
+			Requested: sharing.OverlayRule{Value: &[]string{value}},
+			Resolved:  sharing.OverlayRule{Value: &[]string{value}},
+		}},
+	}
+}
+
+// A variable a flow keeps can change so that the value a policy pins no longer fits it. The update is refused while the
+// policy is held, which is why an import removes a policy its document drops before it writes the flow.
+func (s *FlowMgtServiceTestSuite) TestUpdateFlow_RefusesAChangeThatInvalidatesAValueAPolicyPins() {
+	sharingSvc := sharingmock.NewSharingServiceInterfaceMock(s.T())
+	s.withSharing(sharingSvc)
+	sharingSvc.EXPECT().ListPolicies(mock.Anything, FlowSharingType, testFlowIDService).
+		Return([]sharing.Policy{pinningPolicy("fr")}, nil)
+	existing := &providers.CompleteFlowDefinition{
+		ID: testFlowIDService, Handle: "test-handle", FlowType: providers.FlowTypeAuthentication, OUID: "ou-1",
+		Nodes: localeNodes("en", "fr"),
+	}
+	flowDef := s.newFlowDef("")
+	flowDef.Nodes = localeNodes("en")
+	s.mockValidator.EXPECT().ValidateFlowDefinition(mock.Anything, mock.Anything).Return(nil)
+	s.mockStore.EXPECT().GetFlowByID(mock.Anything, testFlowIDService).Return(existing, nil)
+
+	result, err := s.service.UpdateFlow(context.Background(), testFlowIDService, flowDef)
+
+	s.Nil(result)
+	s.Require().NotNil(err)
+	s.Equal(ErrorFlowConflictsWithSharingPolicy.Code, err.Code)
+	s.Equal("p-locale", err.ErrorDescription.Params["policy"])
+	s.Contains(err.ErrorDescription.Params["reason"], "fr")
+}
+
+// The same change goes through once the policy is gone, so removing the policy first is what lets it.
+func (s *FlowMgtServiceTestSuite) TestUpdateFlow_AcceptsThatChangeOnceThePolicyIsGone() {
+	sharingSvc := sharingmock.NewSharingServiceInterfaceMock(s.T())
+	s.withSharing(sharingSvc)
+	sharingSvc.EXPECT().ListPolicies(mock.Anything, FlowSharingType, testFlowIDService).
+		Return([]sharing.Policy{}, nil)
+	sharingSvc.EXPECT().ListOverlayValues(mock.Anything, FlowSharingType, testFlowIDService).
+		Return(map[string]map[string][]string{}, nil)
+	existing := &providers.CompleteFlowDefinition{
+		ID: testFlowIDService, Handle: "test-handle", FlowType: providers.FlowTypeAuthentication, OUID: "ou-1",
+		Nodes: localeNodes("en", "fr"),
+	}
+	flowDef := s.newFlowDef("")
+	flowDef.Nodes = localeNodes("en")
+	s.expectDocumentUpdate(existing, flowDef)
+
+	result, err := s.service.UpdateFlow(context.Background(), testFlowIDService, flowDef)
+
+	s.Nil(err)
+	s.NotNil(result)
+}
+
 func (s *FlowMgtServiceTestSuite) TestRestoreFlowVersion_RefusesAVersionThatBreaksASharingPolicy() {
 	sharingSvc := sharingmock.NewSharingServiceInterfaceMock(s.T())
 	s.withSharing(sharingSvc)

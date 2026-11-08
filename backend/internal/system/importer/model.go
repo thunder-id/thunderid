@@ -28,6 +28,9 @@ type ImportRequest struct {
 	// Deletions removes runtime resources that are no longer part of the desired configuration. It
 	// complements the declarative upsert in Content, which can create and update but never remove.
 	Deletions []ResourceDeletion `json:"deletions,omitempty"`
+	// SharingRemovals names the sharing policies the content no longer carries for the resources it writes. They are
+	// removed once the resource is written, and a policy absent from the content is never removed otherwise.
+	SharingRemovals []SharingPolicyRemoval `json:"sharingRemovals,omitempty"`
 }
 
 // ResourceDeletion identifies a runtime resource to remove during an import.
@@ -52,6 +55,10 @@ type ImportOptions struct {
 	Upsert          *bool  `json:"upsert,omitempty"`
 	ContinueOnError *bool  `json:"continueOnError,omitempty"`
 	Target          string `json:"target,omitempty"`
+	// ForceSharingEdits applies a change to a sharing policy that the sharing policies API refuses, such as a
+	// different reach, by rewriting the policy and removing the reshares that lose their standing. A control plane
+	// sets it when it publishes a version to a gateway.
+	ForceSharingEdits bool `json:"forceSharingEdits,omitempty"`
 }
 
 // IsUpsertEnabled returns whether upsert behavior is enabled.
@@ -78,6 +85,9 @@ func (o *ImportOptions) IsContinueOnErrorEnabled() bool {
 type ImportResponse struct {
 	Summary *ImportSummary      `json:"summary"`
 	Results []ImportItemOutcome `json:"results"`
+	// SharingRemovalsAccepted is set when the request carried sharingRemovals, to say this deployment acts on them.
+	// An older deployment ignores the field and does not set it, so a caller can tell its removals were not applied.
+	SharingRemovalsAccepted bool `json:"sharingRemovalsAccepted,omitempty"`
 }
 
 // DeleteResourceRequest identifies a declarative resource file to remove.
@@ -112,4 +122,15 @@ type ImportItemOutcome struct {
 	Status       string `json:"status"`
 	Code         string `json:"code,omitempty"`
 	Message      string `json:"message,omitempty"`
+	// RemovedSharing lists the sharing policies the import removed from the resource to match the document: ones
+	// the document no longer names and the reshares that lost their standing with them.
+	RemovedSharing []RemovedSharingPolicy `json:"removedSharing,omitempty"`
+}
+
+// RemovedSharingPolicy is one sharing policy an import removed.
+type RemovedSharingPolicy struct {
+	PolicyID       string `json:"policyId"`
+	InitiatingOUID string `json:"initiatingOuId,omitempty"`
+	// Reshare is true for a policy an organization unit issued beneath the owner's, false for the owner's own.
+	Reshare bool `json:"reshare"`
 }
