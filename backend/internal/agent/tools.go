@@ -30,6 +30,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/filter"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/mcp/tool"
+	"github.com/thunder-id/thunderid/internal/system/security"
 )
 
 // agentTools carries the services the agent MCP tools call.
@@ -949,6 +950,9 @@ func directGroupsOf(ctx context.Context, entityService entity.EntityServiceInter
 // approvalFlowProblems checks that the flow approval runs can reach a user who isn't there. Given no flow,
 // it only names the flows that can, since the missing authFlowId is reported with the other checks.
 func (t *agentTools) approvalFlowProblems(ctx context.Context, flowID string) ([]string, error) {
+	// An agent may name a flow of another organization unit, such as a default flow, so the flows are read
+	// without the caller's authorization.
+	ctx = security.WithRuntimeContext(ctx)
 	problems := []string{}
 	if flowID != "" {
 		flow, svcErr := t.flowService.GetFlow(ctx, flowID)

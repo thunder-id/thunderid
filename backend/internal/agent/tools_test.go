@@ -852,6 +852,22 @@ func (s *AgentToolsTestSuite) TestApprovalFlowChecks() {
 	})
 }
 
+// The approval flow and the flows suggested for it are read whatever flows the caller may read, as an
+// agent may name a flow of another organization unit.
+func (s *AgentToolsTestSuite) TestApprovalFlowProblems_ReadsFlowsAsTheRuntime() {
+	flows := flowmgtmock.NewFlowMgtServiceInterfaceMock(s.T())
+	runtime := mock.MatchedBy(security.IsRuntimeContext)
+	flows.On("GetFlow", runtime, "ciba-flow").Return(cibaFlow(), (*tidcommon.ServiceError)(nil))
+	flows.On("ListFlows", runtime, 100, 0, providers.FlowTypeAuthentication).Return(
+		&flowmgt.FlowListResponse{Flows: []flowmgt.BasicFlowDefinition{{ID: "ciba-flow", Handle: "ciba-email"}}},
+		(*tidcommon.ServiceError)(nil))
+	tools := &agentTools{logger: log.GetLogger(), flowService: flows}
+
+	problems, err := tools.approvalFlowProblems(context.Background(), "")
+	s.Require().NoError(err)
+	s.Equal([]string{"flows that can: ciba-email (ciba-flow)"}, problems)
+}
+
 // An agent whose approval flow can reach the user gets no warning.
 func (s *AgentToolsTestSuite) TestGetAgent_NoWarningWithACIBAFlow() {
 	cfg := secretConfig()

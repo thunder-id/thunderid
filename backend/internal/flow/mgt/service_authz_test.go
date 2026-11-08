@@ -111,13 +111,14 @@ func (s *FlowAuthzTestSuite) TestRestoreFlowVersion_OtherOU() {
 func (s *FlowAuthzTestSuite) TestListFlows_OwnOUOnly() {
 	expectOwnOUOnly(s.authz, security.ActionListFlows)
 	s.store.EXPECT().ListFlowsByOU(mock.Anything, authzOwnOU, defaultPageSize, 0, "").
-		Return([]BasicFlowDefinition{}, 0, nil)
-	s.sharing.EXPECT().ListVisibleResourceIDs(mock.Anything, FlowSharingType, authzOwnOU).
-		Return([]string{}, nil).Maybe()
+		Return([]BasicFlowDefinition{{ID: "flow-own", OUID: authzOwnOU}}, 1, nil)
 
-	_, svcErr := s.service.ListFlows(context.Background(), 0, 0, "")
+	resp, svcErr := s.service.ListFlows(context.Background(), 0, 0, "")
 	s.Require().Nil(svcErr)
+	s.Require().Len(resp.Flows, 1)
+	s.True(*resp.Flows[0].IsOwnedByOU)
 	s.store.AssertNotCalled(s.T(), "ListFlows", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+	s.sharing.AssertNotCalled(s.T(), "ListVisibleResourceIDs", mock.Anything, mock.Anything, mock.Anything)
 }
 
 func (s *FlowAuthzTestSuite) TestListFlowsForOU_OtherOU() {

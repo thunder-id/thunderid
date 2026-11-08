@@ -34,7 +34,7 @@ paths:
       summary: List applications
       description: |
         Retrieve a list of all applications. A caller whose permission is limited to an organization
-        unit lists that unit's applications instead. An `ouId` filter lists the applications the
+        unit lists the applications that unit owns instead. An `ouId` filter lists the applications the
         organization unit owns, followed by the applications shared into it, and none for a unit the
         caller may not list. A `projectId` lists the project's applications, narrowed to the
         organization unit in the `ouId` filter when one is given.

@@ -155,6 +155,12 @@ var inheritanceReadActions = map[security.Action]bool{
 	// Flows reference the templates of the organization units above their own by handle.
 	security.ActionReadNotificationTemplate:  true,
 	security.ActionListNotificationTemplates: true,
+	// Flows reference the presentation definitions of the organization units above their own by handle.
+	security.ActionReadVC:  true,
+	security.ActionListVCs: true,
+	// Roles take permissions from the resource servers of the organization units above their own.
+	security.ActionReadResourceServer:  true,
+	security.ActionListResourceServers: true,
 }
 
 // isInheritanceEligible returns true when the action is registered for

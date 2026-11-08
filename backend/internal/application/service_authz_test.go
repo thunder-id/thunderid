@@ -150,7 +150,7 @@ func (s *ApplicationAuthzTestSuite) TestListSharingPolicies_OnlyOwnInitiated() {
 func (s *ApplicationAuthzTestSuite) TestGetApplicationList_OwnOUOnly() {
 	expectOwnOUOnly(s.authz, security.ActionListApplications)
 	s.entities.On("GetEntityPageInOU", mock.Anything, providers.EntityCategoryApp, authzOwnOU,
-		mock.Anything, mock.Anything, 0, mock.Anything).Return(&entity.OUEntityPage{}, nil)
+		entity.OUEntityScopeOwned, mock.Anything, 0, mock.Anything).Return(&entity.OUEntityPage{}, nil)
 
 	resp, svcErr := s.svc.GetApplicationList(context.Background(), nil)
 	s.Require().Nil(svcErr)

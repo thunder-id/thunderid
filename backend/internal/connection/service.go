@@ -5,6 +5,7 @@ package connection
 
 import (
 	"context"
+	"slices"
 	"sort"
 	"strings"
 
@@ -116,13 +117,16 @@ func (s *service) listInstances(ctx context.Context, category connectionCategory
 	if !visible {
 		return emptyInstancesPage(category, ouID, limit, offset), nil
 	}
-	return s.collectInstances(ctx, category, listOU, limit, offset)
+	// Without a filter, a caller confined to an organization unit lists the connections it owns, as the
+	// user list does. The ones shared into it are listed with the organization unit filter.
+	return s.collectInstances(ctx, category, listOU, ouID != "", limit, offset)
 }
 
 // collectInstances is listInstances for a caller already allowed to list the organization unit's
-// connections, or every connection when ouID is empty.
+// connections, or every connection when ouID is empty. The connections shared into the organization
+// unit follow its own only when withShared is set.
 func (s *service) collectInstances(ctx context.Context, category connectionCategory, ouID string,
-	limit, offset int) (*connectionListResponse, *tidcommon.ServiceError) {
+	withShared bool, limit, offset int) (*connectionListResponse, *tidcommon.ServiceError) {
 	instances := make([]connectionInstance, 0)
 
 	// Skip the identity-provider fetch entirely when only sms-provider instances were
@@ -242,9 +246,12 @@ func (s *service) collectInstances(ctx context.Context, category connectionCateg
 	if category != "" {
 		extraQuery = "&category=" + string(category)
 	}
-	if ouID != "" {
+	if ouID != "" && withShared {
 		return s.listInstancesInOU(ctx, instances, ouID, limit, offset,
 			sysutils.FilterQueryParam(map[string]interface{}{filter.AttributeOUID: ouID})+extraQuery)
+	}
+	if ouID != "" {
+		instances = slices.DeleteFunc(instances, func(i connectionInstance) bool { return i.OUID != ouID })
 	}
 
 	return pageOfInstances(instances, limit, offset, extraQuery), nil

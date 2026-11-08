@@ -183,6 +183,20 @@ func (s *RoleAuthzTestSuite) TestGetRoleList_SharedIntoOUTheCallerMayNotList() {
 		mock.Anything)
 }
 
+func (s *RoleAuthzTestSuite) TestGetRoleList_OwnOUOnly() {
+	expectOwnOUOnly(s.authz, security.ActionListRoles)
+	s.store.On("GetRoleListCountByOUID", mock.Anything, authzOwnOU).Return(1, nil)
+	s.store.On("GetRoleListByOUID", mock.Anything, authzOwnOU, 10, 0).
+		Return([]Role{{ID: "role-own", OUID: authzOwnOU}}, nil)
+
+	list, svcErr := s.service.GetRoleList(context.Background(), 10, 0, nil)
+	s.Require().Nil(svcErr)
+	s.Equal(1, list.TotalResults)
+	s.Require().Len(list.Roles, 1)
+	s.True(list.Roles[0].IsOwnedByOU)
+	s.sharing.AssertNotCalled(s.T(), "ListVisibleResourceIDs", mock.Anything, mock.Anything, mock.Anything)
+}
+
 func (s *RoleAuthzTestSuite) TestGetRolesByPermission_OnlyReadable() {
 	expectOwnOUOnly(s.authz, security.ActionReadRole)
 	s.store.On("GetRolesByPermission", mock.Anything, "rs-1", "orders:read").Return([]Role{

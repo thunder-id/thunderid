@@ -20,6 +20,7 @@ import (
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/filter"
 	"github.com/thunder-id/thunderid/internal/system/mcp/tool"
+	"github.com/thunder-id/thunderid/internal/system/security"
 )
 
 // roleTools carries the services the role MCP tools call.
@@ -333,19 +334,26 @@ func (t *roleTools) listRoles(ctx context.Context, _ *mcp.CallToolRequest, input
 		return nil, nil, fmt.Errorf("failed to list roles: %w", err)
 	}
 	if input.API != "" || input.Name != "" {
+		// With an organization unit, the unit's own listing decides which roles are returned, and it holds
+		// the roles shared into the unit, which the caller may not read where they are owned. So the search
+		// runs without the caller's authorization.
+		searchCtx := ctx
+		if input.OUID != "" {
+			searchCtx = security.WithRuntimeContext(ctx)
+		}
 		var roles []Role
 		if input.API != "" {
 			server, err := t.apiByIdentifier(ctx, input.API)
 			if err != nil {
 				return nil, nil, fmt.Errorf("failed to list roles: %w", err)
 			}
-			found, svcErr := t.roleService.GetRolesByPermission(ctx, server.ID, input.Permission)
+			found, svcErr := t.roleService.GetRolesByPermission(searchCtx, server.ID, input.Permission)
 			if svcErr != nil {
 				return nil, nil, fmt.Errorf("failed to list roles: %s", svcErr.ErrorDescription)
 			}
 			roles = found
 		} else {
-			byName, svcErr := t.roleService.GetRolesByNames(ctx, []string{input.Name})
+			byName, svcErr := t.roleService.GetRolesByNames(searchCtx, []string{input.Name})
 			if svcErr != nil {
 				return nil, nil, fmt.Errorf("failed to list roles: %s", svcErr.ErrorDescription)
 			}

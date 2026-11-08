@@ -75,7 +75,8 @@ paths:
       summary: List all flows
       description: |
         Retrieves a paginated list of all flow definitions. A caller whose permission is limited to an
-        organization unit lists that unit's flows instead.
+        organization unit lists the flows that unit owns instead. The flows shared into it are listed with
+        a `filter` naming the organization unit.
       operationId: listFlows
       parameters:
         - name: flowType

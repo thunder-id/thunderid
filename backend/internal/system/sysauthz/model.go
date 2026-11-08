@@ -115,3 +115,18 @@ func FilterByListOU[T any](items []T, listOUID string, visible bool, ouOf func(T
 	}
 	return kept
 }
+
+// FilterByListOUs keeps the items of the organization units a list serves, as ResolveListOUs decides
+// them. A list that serves every organization unit keeps every item.
+func FilterByListOUs[T any](items []T, ouIDs []string, all bool, ouOf func(T) string) []T {
+	if all {
+		return items
+	}
+	kept := make([]T, 0, len(items))
+	for _, item := range items {
+		if slices.Contains(ouIDs, ouOf(item)) {
+			kept = append(kept, item)
+		}
+	}
+	return kept
+}

@@ -5,6 +5,7 @@ package sysauthz
 
 import (
 	"context"
+	"slices"
 
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/security"
@@ -29,6 +30,30 @@ func ResolveListOU(ctx context.Context, authzService SystemAuthorizationServiceI
 		return "", false, &tidcommon.InternalServerError
 	}
 	return listOUID, visible, nil
+}
+
+// ResolveListOUs returns the organization units a list of organization unit owned resources serves for
+// the caller, given the one the request filters by, and true when it serves every organization unit.
+// Unlike ResolveListOU, it serves several organization units, such as the caller's own and the ones
+// above it for an action they inherit.
+func ResolveListOUs(ctx context.Context, authzService SystemAuthorizationServiceInterface, logger *log.Logger,
+	action security.Action, requestedOUID string) ([]string, bool, *tidcommon.ServiceError) {
+	accessible, svcErr := authzService.GetAccessibleResources(ctx, action, security.ResourceTypeOU)
+	if svcErr != nil {
+		logger.Error(ctx, "Failed to resolve the organization units the caller may list",
+			log.String("action", string(action)), log.Any("error", svcErr))
+		return nil, false, &tidcommon.InternalServerError
+	}
+	switch {
+	case accessible.AllAllowed && requestedOUID == "":
+		return nil, true, nil
+	case accessible.AllAllowed || slices.Contains(accessible.IDs, requestedOUID):
+		return []string{requestedOUID}, false, nil
+	case requestedOUID != "":
+		return []string{}, false, nil
+	default:
+		return accessible.IDs, false, nil
+	}
 }
 
 // CheckActionInAnyOU checks the caller may perform the action on a resource of the type in any of

@@ -297,6 +297,174 @@ func (ts *OUResourceTestSuite) TestPresentationDefinitions() {
 	ts.requireListedOnlyOwn(listedArrayIDs(body), own, other)
 }
 
+func (ts *OUResourceTestSuite) TestVCInParentOU() {
+	for _, vc := range []struct {
+		path string
+		body func(handle, ouID string) map[string]interface{}
+	}{
+		{"/openid4vci/credential-configurations", credentialConfigurationIn},
+		{"/openid4vp/presentation-definitions", presentationDefinitionIn},
+	} {
+		id := ts.createAsRoot(vc.path, vc.body("ou_resource_parent_vc", ts.parentID))
+
+		ts.requireStatus(http.StatusOK, http.MethodGet, vc.path+"/"+id, nil)
+		ts.requireStatus(http.StatusForbidden, http.MethodPut, vc.path+"/"+id,
+			vc.body("ou_resource_parent_vc", ts.parentID))
+		ts.requireStatus(http.StatusForbidden, http.MethodDelete, vc.path+"/"+id, nil)
+
+		body := ts.requireStatus(http.StatusOK, http.MethodGet, vc.path, nil)
+		ts.Truef(listedArrayIDs(body)[id], "%s must list the parent OU's resource", vc.path)
+	}
+}
+
+// A configuration version captured by an administrator of one OU holds every OU's resources.
+func (ts *OUResourceTestSuite) TestCaptureHoldsEveryOU() {
+	ts.createAsRoot(templatesPath, templateIn("ou-resource-capture-other", ts.ou2ID))
+
+	status, body := ts.admin(http.MethodPost, "/configuration-versions", map[string]interface{}{})
+	ts.Require().Containsf([]int{http.StatusCreated, http.StatusOK}, status, "capture: %s", body)
+	var captured struct {
+		Resources string `json:"resources"`
+	}
+	ts.Require().NoError(json.Unmarshal(body, &captured))
+	ts.Contains(captured.Resources, "ou-resource-capture-other")
+
+	body = ts.requireStatus(http.StatusOK, http.MethodGet, "/configuration-versions/current", nil)
+	ts.Require().NoError(json.Unmarshal(body, &captured))
+	ts.Contains(captured.Resources, "ou-resource-capture-other")
+}
+
+// An administrator holding resource server update without view deletes an action of its own OU's server.
+func (ts *OUResourceTestSuite) TestDeleteActionWithUpdateOnly() {
+	// The suite's resource server declares only view, so the update permission is added here.
+	systemID := ts.resourceByHandle("", "system")
+	rsResourceID := ts.resourceByHandle(systemID, "rs")
+	status, body := ts.root(http.MethodPost, "/resource-servers/"+ts.rsID+"/resources/"+rsResourceID+"/actions",
+		map[string]string{"name": "Update", "handle": "update"})
+	ts.Require().Equal(http.StatusCreated, status, string(body))
+
+	roleID, err := testutils.CreateRole(testutils.Role{
+		Name: "ou-resource-rs-update-role",
+		OUID: ts.ou1ID,
+		Permissions: []testutils.ResourcePermissions{
+			{ResourceServerID: ts.rsID, Permissions: []string{"system:rs:update"}},
+		},
+		Assignments: []testutils.Assignment{{ID: ts.adminID, Type: "user"}},
+	})
+	ts.Require().NoError(err)
+	ts.cleanups = append(ts.cleanups, func() { _ = testutils.DeleteRole(roleID) })
+
+	token, err := ts.signIn.ObtainAccessToken(ts.ou1ID, "system:rs:update", adminUsername, adminPassword,
+		rsIdentifier)
+	ts.Require().NoError(err)
+	client := testutils.GetHTTPClientWithToken(token.AccessToken)
+
+	target, err := testutils.CreateResourceServerWithActions(testutils.ResourceServer{
+		Name: "OU Resource Action Delete RS", Identifier: "https://ou-resource-action-delete.example.com",
+		OUID: ts.ou1ID,
+	}, []testutils.Action{{Name: "Read", Handle: "read"}})
+	ts.Require().NoError(err)
+	ts.cleanups = append(ts.cleanups, func() { _ = testutils.DeleteResourceServerWithChildren(target) })
+
+	status, body = ts.root(http.MethodGet, "/resource-servers/"+target+"/actions?limit=100", nil)
+	ts.Require().Equal(http.StatusOK, status, string(body))
+	var actions struct {
+		Actions []struct {
+			ID string `json:"id"`
+		} `json:"actions"`
+	}
+	ts.Require().NoError(json.Unmarshal(body, &actions))
+	ts.Require().Len(actions.Actions, 1)
+
+	status, body = ts.send(client, http.MethodGet, "/resource-servers/"+target, nil)
+	ts.Equal(http.StatusForbidden, status, string(body))
+	status, body = ts.send(client, http.MethodDelete,
+		"/resource-servers/"+target+"/actions/"+actions.Actions[0].ID, nil)
+	ts.Equal(http.StatusNoContent, status, string(body))
+}
+
+// resourceByHandle returns the ID of the resource with the handle under parentID in the suite's resource
+// server, or among its top-level resources when parentID is empty.
+func (ts *OUResourceTestSuite) resourceByHandle(parentID, handle string) string {
+	ts.T().Helper()
+	path := "/resource-servers/" + ts.rsID + "/resources?limit=100"
+	if parentID != "" {
+		path += "&parentId=" + url.QueryEscape(parentID)
+	}
+	status, body := ts.root(http.MethodGet, path, nil)
+	ts.Require().Equal(http.StatusOK, status, string(body))
+	var resources struct {
+		Resources []struct {
+			ID     string `json:"id"`
+			Handle string `json:"handle"`
+		} `json:"resources"`
+	}
+	ts.Require().NoError(json.Unmarshal(body, &resources))
+	for _, r := range resources.Resources {
+		if r.Handle == handle {
+			return r.ID
+		}
+	}
+	ts.Require().Failf("resource not found", "no resource %q under %q: %s", handle, parentID, body)
+	return ""
+}
+
+// The administrator reads and lists the resource servers of the OU above its own, which its roles take
+// permissions from, and can't change them.
+func (ts *OUResourceTestSuite) TestResourceServerInParentOU() {
+	id := ts.createAsRoot("/resource-servers", resourceServerIn("ou-resource-parent-rs", ts.parentID))
+
+	ts.requireStatus(http.StatusOK, http.MethodGet, "/resource-servers/"+id, nil)
+	ts.requireStatus(http.StatusOK, http.MethodGet, "/resource-servers/"+id+"/resources", nil)
+	ts.requireStatus(http.StatusForbidden, http.MethodPut, "/resource-servers/"+id,
+		resourceServerIn("ou-resource-parent-rs", ts.parentID))
+	ts.requireStatus(http.StatusForbidden, http.MethodDelete, "/resource-servers/"+id, nil)
+	ts.requireStatus(http.StatusForbidden, http.MethodPost, "/resource-servers/"+id+"/resources",
+		map[string]interface{}{"name": "Refused", "handle": "refused"})
+
+	body := ts.requireStatus(http.StatusOK, http.MethodGet, "/resource-servers?limit=100", nil)
+	ids := listedIDs(body, "resourceServers")
+	ts.True(ids[id], "the list must include the parent OU's resource server")
+	ts.True(ids[ts.rsID], "the list must include the administrator's own resource server")
+}
+
+// A resource shared into the administrator's OU is listed with an OU filter, and left out of the list
+// without one, which holds what the OU owns.
+func (ts *OUResourceTestSuite) TestSharedResourcesListedWithOUFilter() {
+	app, err := testutils.CreateApplication(testutils.Application{Name: "ou-resource-shared-app", OUID: ts.parentID})
+	ts.Require().NoError(err)
+	ts.cleanup("/applications/" + app)
+	flow, err := testutils.CreateFlow(ouResourceFlow("ou-resource-shared-flow", ts.parentID))
+	ts.Require().NoError(err)
+	ts.cleanup("/flows/" + flow)
+	role, err := testutils.CreateRole(testutils.Role{Name: "ou-resource-shared-list-role", OUID: ts.parentID})
+	ts.Require().NoError(err)
+	ts.cleanup("/roles/" + role)
+	conn := ts.createAsRoot("/connections/http", httpConnectionIn("ou-resource-shared-http", ts.parentID))
+
+	ownOU := url.QueryEscape(`ouId eq "` + ts.ou1ID + `"`)
+	for _, r := range []struct {
+		item, list, filtered, key string
+	}{
+		{"/applications/" + app, "/applications", "/applications?filter=" + ownOU, "applications"},
+		{"/flows/" + flow, "/flows?limit=100", "/flows?limit=100&filter=" + ownOU, "flows"},
+		{"/roles/" + role, "/roles?limit=100", "/roles?limit=100&filter=" + ownOU, "roles"},
+		{"/connections/http/" + conn, "/connections?limit=100", "/connections?limit=100&filter=" + ownOU,
+			"connections"},
+	} {
+		status, body := ts.root(http.MethodPost, r.item+"/sharing-policies",
+			map[string]interface{}{"childUnits": map[string]interface{}{"mode": "all"}})
+		ts.Require().Equalf(http.StatusCreated, status, "share %s: %s", r.item, body)
+		ts.cleanup(r.item + "/sharing-policies/" + idOf(body))
+		id := r.item[strings.LastIndex(r.item, "/")+1:]
+
+		body = ts.requireStatus(http.StatusOK, http.MethodGet, r.list, nil)
+		ts.Falsef(listedIDs(body, r.key)[id], "%s without a filter must leave out the shared resource", r.list)
+		body = ts.requireStatus(http.StatusOK, http.MethodGet, r.filtered, nil)
+		ts.Truef(listedIDs(body, r.key)[id], "%s must list the shared resource", r.filtered)
+	}
+}
+
 func (ts *OUResourceTestSuite) TestAgentTypes() {
 	schema := map[string]interface{}{"name": map[string]interface{}{"type": "string"}}
 	own := ts.createAsRoot("/agent-types", map[string]interface{}{"handle": "ou-resource-own-agent-type",

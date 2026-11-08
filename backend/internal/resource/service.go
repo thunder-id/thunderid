@@ -499,16 +499,13 @@ func (rs *resourceService) GetResourceServerList(
 	if err := validatePaginationParams(limit, offset); err != nil {
 		return nil, err
 	}
-	listOU, visible, svcErr := sysauthz.ResolveListOU(ctx, rs.authzService, &rs.logger,
+	ouIDs, all, svcErr := sysauthz.ResolveListOUs(ctx, rs.authzService, &rs.logger,
 		security.ActionListResourceServers, "")
 	if svcErr != nil {
 		return nil, svcErr
 	}
-	if !visible {
-		return emptyResourceServerList(limit, offset, ""), nil
-	}
-	if listOU != "" {
-		return rs.listResourceServersByOUID(ctx, listOU, limit, offset)
+	if !all {
+		return rs.listResourceServersByOUIDs(ctx, ouIDs, limit, offset)
 	}
 
 	totalCount, err := rs.resourceStore.GetResourceServerListCount(ctx)
@@ -538,6 +535,60 @@ func (rs *resourceService) GetResourceServerList(
 	}
 
 	return response, nil
+}
+
+// listResourceServersByOUIDs lists the resource servers of the organization units, one unit after the
+// other in the given order, for a caller already allowed to list them.
+func (rs *resourceService) listResourceServersByOUIDs(
+	ctx context.Context, ouIDs []string, limit, offset int,
+) (*ResourceServerList, *tidcommon.ServiceError) {
+	counts := make([]int, len(ouIDs))
+	totalCount := 0
+	for i, ouID := range ouIDs {
+		count, err := rs.resourceStore.GetResourceServerListCountByOUID(ctx, ouID)
+		if err != nil {
+			return nil, rs.ouResourceServerListError(ctx, ouID, err)
+		}
+		counts[i] = count
+		totalCount += count
+	}
+
+	resourceServers := make([]providers.ResourceServer, 0)
+	skip := offset
+	for i, ouID := range ouIDs {
+		if len(resourceServers) == limit {
+			break
+		}
+		if skip >= counts[i] {
+			skip -= counts[i]
+			continue
+		}
+		page, err := rs.resourceStore.GetResourceServerListByOUID(ctx, ouID, limit-len(resourceServers), skip)
+		if err != nil {
+			return nil, rs.ouResourceServerListError(ctx, ouID, err)
+		}
+		resourceServers = append(resourceServers, page...)
+		skip = 0
+	}
+
+	return &ResourceServerList{
+		TotalResults:    totalCount,
+		ResourceServers: resourceServers,
+		StartIndex:      offset + 1,
+		Count:           len(resourceServers),
+		Links:           utils.BuildPaginationLinks("/resource-servers", limit, offset, totalCount, ""),
+	}, nil
+}
+
+// ouResourceServerListError answers a failure to list the resource servers of an organization unit.
+func (rs *resourceService) ouResourceServerListError(ctx context.Context, ouID string,
+	err error) *tidcommon.ServiceError {
+	if errors.Is(err, errResultLimitExceededInCompositeMode) {
+		return &ErrResultLimitExceededInCompositeMode
+	}
+	rs.logger.Error(ctx, "Failed to list resource servers in organization unit",
+		log.String("ouID", ouID), log.Error(err))
+	return &tidcommon.InternalServerError
 }
 
 // GetResourceServerListByOUID retrieves a paginated list of the resource servers an organization unit owns.
@@ -1403,7 +1454,14 @@ func (rs *resourceService) GetAction(
 	if svcErr != nil {
 		return nil, svcErr
 	}
+	return rs.getAction(ctx, resourceServerID, resourceID, id)
+}
 
+// getAction reads an action of a resource server without checking the caller may read the server.
+func (rs *resourceService) getAction(
+	ctx context.Context,
+	resourceServerID string, resourceID *string, id string,
+) (*providers.Action, *tidcommon.ServiceError) {
 	// Validate resource if provided
 	var resID *string
 	if resourceID != nil {
@@ -1709,7 +1767,7 @@ func (rs *resourceService) ValidateDeleteAction(
 	if svcErr != nil {
 		return nil, svcErr
 	}
-	action, svcErr := rs.GetAction(ctx, resourceServerID, resourceID, id)
+	action, svcErr := rs.getAction(ctx, resourceServerID, resourceID, id)
 	if svcErr != nil {
 		return nil, svcErr
 	}

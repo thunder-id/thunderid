@@ -69,6 +69,15 @@ func (s *ListOUTestSuite) TestFilterByListOU() {
 	s.Empty(FilterByListOU(items, "ou-1", false, ouOf))
 }
 
+func (s *ListOUTestSuite) TestFilterByListOUs() {
+	items := []string{"ou-1:a", "ou-2:b", "ou-3:c"}
+	ouOf := func(item string) string { return item[:4] }
+
+	s.Equal(items, FilterByListOUs(items, nil, true, ouOf))
+	s.Equal([]string{"ou-1:a", "ou-3:c"}, FilterByListOUs(items, []string{"ou-1", "ou-3"}, false, ouOf))
+	s.Empty(FilterByListOUs(items, []string{}, false, ouOf))
+}
+
 // stubAuthz answers the two calls the list and any-unit helpers make.
 type stubAuthz struct {
 	SystemAuthorizationServiceInterface
@@ -112,6 +121,43 @@ func (s *ListOUTestSuite) TestResolveListOU() {
 
 	_, _, svcErr = ResolveListOU(ctx, &stubAuthz{err: &tidcommon.InternalServerError}, logger,
 		security.ActionListRoles, "")
+	s.Require().NotNil(svcErr)
+	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+}
+
+func (s *ListOUTestSuite) TestResolveListOUs() {
+	logger := log.GetLogger()
+	ctx := context.Background()
+	several := &stubAuthz{accessible: &AccessibleResources{IDs: []string{"ou-1", "ou-2"}}}
+	every := &stubAuthz{accessible: &AccessibleResources{AllAllowed: true}}
+
+	ouIDs, all, svcErr := ResolveListOUs(ctx, several, logger, security.ActionListVCs, "")
+	s.Nil(svcErr)
+	s.False(all)
+	s.Equal([]string{"ou-1", "ou-2"}, ouIDs)
+
+	ouIDs, all, svcErr = ResolveListOUs(ctx, several, logger, security.ActionListVCs, "ou-2")
+	s.Nil(svcErr)
+	s.False(all)
+	s.Equal([]string{"ou-2"}, ouIDs)
+
+	ouIDs, all, svcErr = ResolveListOUs(ctx, several, logger, security.ActionListVCs, "ou-3")
+	s.Nil(svcErr)
+	s.False(all)
+	s.Empty(ouIDs)
+
+	ouIDs, all, svcErr = ResolveListOUs(ctx, every, logger, security.ActionListVCs, "")
+	s.Nil(svcErr)
+	s.True(all)
+	s.Nil(ouIDs)
+
+	ouIDs, all, svcErr = ResolveListOUs(ctx, every, logger, security.ActionListVCs, "ou-3")
+	s.Nil(svcErr)
+	s.False(all)
+	s.Equal([]string{"ou-3"}, ouIDs)
+
+	_, _, svcErr = ResolveListOUs(ctx, &stubAuthz{err: &tidcommon.InternalServerError}, logger,
+		security.ActionListVCs, "")
 	s.Require().NotNil(svcErr)
 	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
 }

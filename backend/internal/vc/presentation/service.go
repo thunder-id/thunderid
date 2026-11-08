@@ -281,11 +281,11 @@ func (s *definitionService) ListPresentationDefinitions(
 		s.logger.Error(ctx, "Failed to list presentation definitions", log.Error(err))
 		return nil, &tidcommon.InternalServerError
 	}
-	listOU, visible, svcErr := sysauthz.ResolveListOU(ctx, s.authzSvc, s.logger, security.ActionListVCs, "")
+	ouIDs, all, svcErr := sysauthz.ResolveListOUs(ctx, s.authzSvc, s.logger, security.ActionListVCs, "")
 	if svcErr != nil {
 		return nil, svcErr
 	}
-	defs = sysauthz.FilterByListOU(defs, listOU, visible, func(d PresentationDefinitionDTO) string { return d.OUID })
+	defs = sysauthz.FilterByListOUs(defs, ouIDs, all, func(d PresentationDefinitionDTO) string { return d.OUID })
 	ptrs := make([]*PresentationDefinitionDTO, len(defs))
 	for i := range defs {
 		ptrs[i] = &defs[i]
@@ -298,19 +298,19 @@ func (s *definitionService) ListPresentationDefinitions(
 func (s *definitionService) ListPresentationDefinitionSummaries(
 	ctx context.Context,
 ) ([]PresentationDefinitionList, *tidcommon.ServiceError) {
-	listOU, visible, svcErr := sysauthz.ResolveListOU(ctx, s.authzSvc, s.logger, security.ActionListVCs, "")
+	ouIDs, all, svcErr := sysauthz.ResolveListOUs(ctx, s.authzSvc, s.logger, security.ActionListVCs, "")
 	if svcErr != nil {
 		return nil, svcErr
 	}
-	if !visible {
+	if !all && len(ouIDs) == 0 {
 		return []PresentationDefinitionList{}, nil
 	}
 	var summaries []PresentationDefinitionList
 	var err error
-	if listOU == "" {
-		summaries, err = s.store.ListPresentationDefinitionSummaries(ctx)
+	if len(ouIDs) == 1 {
+		summaries, err = s.store.ListPresentationDefinitionSummariesByOUID(ctx, ouIDs[0])
 	} else {
-		summaries, err = s.store.ListPresentationDefinitionSummariesByOUID(ctx, listOU)
+		summaries, err = s.store.ListPresentationDefinitionSummaries(ctx)
 	}
 	if err != nil {
 		if errors.Is(err, ErrResultLimitExceededInCompositeMode) {
@@ -319,6 +319,8 @@ func (s *definitionService) ListPresentationDefinitionSummaries(
 		s.logger.Error(ctx, "Failed to list presentation definition summaries", log.Error(err))
 		return nil, &tidcommon.InternalServerError
 	}
+	summaries = sysauthz.FilterByListOUs(summaries, ouIDs, all,
+		func(d PresentationDefinitionList) string { return d.OUID })
 	s.populateSummaryOUHandles(ctx, summaries)
 	return summaries, nil
 }
@@ -340,11 +342,11 @@ func (s *definitionService) ListPresentationDefinitionSummariesByOUID(
 			log.String("ouID", ouID), log.Error(err))
 		return nil, &tidcommon.InternalServerError
 	}
-	listOU, visible, svcErr := sysauthz.ResolveListOU(ctx, s.authzSvc, s.logger, security.ActionListVCs, ouID)
+	ouIDs, all, svcErr := sysauthz.ResolveListOUs(ctx, s.authzSvc, s.logger, security.ActionListVCs, ouID)
 	if svcErr != nil {
 		return nil, svcErr
 	}
-	summaries = sysauthz.FilterByListOU(summaries, listOU, visible,
+	summaries = sysauthz.FilterByListOUs(summaries, ouIDs, all,
 		func(d PresentationDefinitionList) string { return d.OUID })
 	s.populateSummaryOUHandles(ctx, summaries)
 	return summaries, nil
