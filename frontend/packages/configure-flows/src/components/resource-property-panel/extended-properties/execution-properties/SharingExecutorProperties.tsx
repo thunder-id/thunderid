@@ -2,14 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {FormHelperText, FormLabel, Stack} from '@wso2/oxygen-ui';
-import {useMemo, type ReactNode} from 'react';
+import {useContext, useMemo, type ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
-import {useParams} from 'react-router';
 import {SHARING_EXECUTOR_MODES} from './constants';
 import DraftTextField from './DraftTextField';
 import ModeSelectorProperties from './ModeSelectorProperties';
 import type {CommonResourcePropertiesPropsInterface} from './types';
-import useGetFlowById from '../../../../api/useGetFlowById';
+import FlowTypeContext from '../../../../context/FlowTypeContext';
 import {FlowType} from '../../../../models/flows';
 import type {StepData} from '../../../../models/steps';
 
@@ -19,9 +18,8 @@ import type {StepData} from '../../../../models/steps';
  */
 function SharingExecutorProperties({resource, onChange}: CommonResourcePropertiesPropsInterface): ReactNode {
   const {t} = useTranslation();
-  const {flowId} = useParams<{flowId: string}>();
-  const {data: flow} = useGetFlowById(flowId);
-  const flowType = flow?.flowType;
+  // From the builder, which knows the type of an unsaved draft too, where there is no saved flow to read.
+  const flowType = useContext(FlowTypeContext);
   const signUp = flowType === FlowType.AUTHENTICATION || flowType === FlowType.REGISTRATION;
 
   const stepData = resource?.data as StepData | undefined;

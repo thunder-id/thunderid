@@ -1,8 +1,11 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {fireEvent, render, screen, within} from '@testing-library/react';
+import {fireEvent, render as renderInBuilder, screen, within} from '@testing-library/react';
+import type {ReactElement, ReactNode} from 'react';
 import {beforeEach, describe, expect, it, vi} from 'vitest';
+import FlowTypeContext from '../../../../../context/FlowTypeContext';
+import type {FlowType} from '../../../../../models/flows';
 import type {Resource} from '../../../../../models/resources';
 import RoleExecutorProperties from '../RoleExecutorProperties';
 
@@ -13,18 +16,21 @@ vi.mock('react-i18next', async (importOriginal) => ({
   }),
 }));
 
-vi.mock('react-router', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('react-router')>()),
-  useParams: () => ({flowId: 'flow-1'}),
-}));
+let builderFlowType: FlowType | undefined;
 
-const mockUseGetFlowById = vi.fn<(flowId?: string) => unknown>();
-vi.mock('../../../../../api/useGetFlowById', () => ({
-  default: (flowId?: string): unknown => mockUseGetFlowById(flowId),
-}));
+/**
+ * Renders inside the flow builder's flow type, which it knows for an unsaved draft too.
+ */
+function render(ui: ReactElement): ReturnType<typeof renderInBuilder> {
+  return renderInBuilder(ui, {
+    wrapper: ({children}: {children: ReactNode}) => (
+      <FlowTypeContext.Provider value={builderFlowType}>{children}</FlowTypeContext.Provider>
+    ),
+  });
+}
 
 function inFlowOfType(flowType?: string): void {
-  mockUseGetFlowById.mockReturnValue({data: flowType ? {flowType} : undefined});
+  builderFlowType = flowType as FlowType | undefined;
 }
 
 /**
@@ -61,12 +67,6 @@ describe('RoleExecutorProperties', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     inFlowOfType('ADMINISTRATION');
-  });
-
-  it('should read the type of the flow being edited', () => {
-    render(<RoleExecutorProperties resource={makeResource('role_selection')} onChange={mockOnChange} />);
-
-    expect(mockUseGetFlowById).toHaveBeenCalledWith('flow-1');
   });
 
   it('should offer only selecting and assigning roles in an invitation flow', () => {
@@ -115,6 +115,25 @@ describe('RoleExecutorProperties', () => {
       />,
     );
     expect(screen.getByLabelText('Roles')).toHaveValue('role-1 role-2');
+  });
+
+  // A sign-up flow has no admin to pick roles, so it can only assign the ones the node names.
+  it('should offer only assigning roles in a sign-up flow', () => {
+    inFlowOfType('REGISTRATION');
+    render(<RoleExecutorProperties resource={makeResource()} onChange={mockOnChange} />);
+
+    expect(offeredModes()).toEqual(['Assign Roles']);
+  });
+
+  it('should take the roles to assign in Assign Roles mode in a sign-up flow', () => {
+    inFlowOfType('REGISTRATION');
+    render(
+      <RoleExecutorProperties resource={makeResource('role_assignment', {roles: 'role-1'})} onChange={mockOnChange} />,
+    );
+
+    expect(screen.getByLabelText('Roles')).toHaveValue('role-1');
+    expect(screen.getByText(/assigned to the new user/i)).toBeInTheDocument();
+    expect(screen.queryByText(/must match the mode of the access change validator/i)).not.toBeInTheDocument();
   });
 
   it('should store the roles it is given, trimmed, as the node property', () => {

@@ -277,8 +277,8 @@ var companionExecutors = map[string][]companionExecutor{
 // modeFlowTypes limits an executor mode to fewer flow types than the executor supports. Identity
 // governance suspends and unsuspends only in an administration flow; a recovery flow runs only unlock.
 // The access change validator plans a role permission change only in a system flow. The role executor
-// selects and assigns roles only in an invitation flow. The sharing executor authorizes a share only in an
-// invitation flow.
+// selects roles only in an invitation flow, and assigns them there or in a sign-up flow. The sharing executor
+// authorizes a share only in an invitation flow.
 var modeFlowTypes = map[string]map[string][]providers.FlowType{
 	executormeta.ExecutorNameAccessChangeValidator: {
 		executormeta.ExecutorModeRolePermissionRemoval: {providers.FlowTypeSystem},
@@ -289,7 +289,7 @@ var modeFlowTypes = map[string]map[string][]providers.FlowType{
 	},
 	executormeta.ExecutorNameRole: {
 		executormeta.ExecutorModeRoleSelection:  {providers.FlowTypeInvitation},
-		executormeta.ExecutorModeRoleAssignment: {providers.FlowTypeInvitation},
+		executormeta.ExecutorModeRoleAssignment: {providers.FlowTypeInvitation, providers.FlowTypeRegistration},
 	},
 	executormeta.ExecutorNameSharing: {
 		executormeta.ExecutorModeValidate: {providers.FlowTypeInvitation},
@@ -1405,6 +1405,19 @@ func (v *flowValidator) validateExecutorSpecificConstraints(
 		return v.validateOUResolverExecutor(node, flowType)
 	case executormeta.ExecutorNameAgentTypeResolver:
 		return validateAgentTypeResolverExecutor(node)
+	case executormeta.ExecutorNameRole:
+		return validateRoleExecutor(node, flowType)
+	}
+	return nil
+}
+
+// validateRoleExecutor requires a sign-up flow's role assignment node to name its roles: no admin picks them there.
+func validateRoleExecutor(node *providers.NodeDefinition, flowType providers.FlowType) *tidcommon.ServiceError {
+	if flowType != providers.FlowTypeRegistration || node.Executor.Mode != executormeta.ExecutorModeRoleAssignment {
+		return nil
+	}
+	if roles, _ := node.Properties[common.NodePropertyRoles].(string); strings.TrimSpace(roles) == "" {
+		return missingRequiredPropertyError(node, common.NodePropertyRoles)
 	}
 	return nil
 }

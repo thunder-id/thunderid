@@ -142,7 +142,7 @@ export default function FlowCreatePage(): JSX.Element {
         nodes: selectedTemplate.config.nodes,
       };
       setError(null);
-      if (selectedType === FlowType.DEVICE_GRANT) {
+      if (selectedType === FlowType.DEVICE_GRANT || selectedTemplate.configureBeforeSave) {
         void navigate(flowRoutes.flows.detail('new'), {state: {draftFlow: flowRequest}});
         return;
       }

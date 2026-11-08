@@ -1,9 +1,12 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {fireEvent, render, screen, within} from '@testing-library/react';
+import {fireEvent, render as renderInBuilder, screen, within} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type {ReactElement, ReactNode} from 'react';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
+import FlowTypeContext from '../../../../../context/FlowTypeContext';
+import type {FlowType} from '../../../../../models/flows';
 import type {Resource} from '../../../../../models/resources';
 import SharingExecutorProperties from '../SharingExecutorProperties';
 
@@ -12,18 +15,21 @@ vi.mock('react-i18next', async (importOriginal) => ({
   useTranslation: () => ({t: (key: string) => key}),
 }));
 
-vi.mock('react-router', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('react-router')>()),
-  useParams: () => ({flowId: 'flow-1'}),
-}));
+let builderFlowType: FlowType | undefined;
 
-const mockUseGetFlowById = vi.fn<(flowId?: string) => unknown>();
-vi.mock('../../../../../api/useGetFlowById', () => ({
-  default: (flowId?: string): unknown => mockUseGetFlowById(flowId),
-}));
+/**
+ * Renders inside the flow builder's flow type, which it knows for an unsaved draft too.
+ */
+function render(ui: ReactElement): ReturnType<typeof renderInBuilder> {
+  return renderInBuilder(ui, {
+    wrapper: ({children}: {children: ReactNode}) => (
+      <FlowTypeContext.Provider value={builderFlowType}>{children}</FlowTypeContext.Provider>
+    ),
+  });
+}
 
 function inFlowOfType(flowType?: string): void {
-  mockUseGetFlowById.mockReturnValue({data: flowType ? {flowType} : undefined});
+  builderFlowType = flowType as FlowType | undefined;
 }
 
 /**
@@ -52,12 +58,6 @@ describe('SharingExecutorProperties', () => {
   beforeEach(() => {
     mockOnChange.mockClear();
     inFlowOfType('INVITATION');
-  });
-
-  it('should read the type of the flow being edited', () => {
-    render(<SharingExecutorProperties resource={createResource('share')} onChange={mockOnChange} />);
-
-    expect(mockUseGetFlowById).toHaveBeenCalledWith('flow-1');
   });
 
   it('should offer validating and sharing in an invitation flow', () => {

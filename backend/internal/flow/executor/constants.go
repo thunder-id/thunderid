@@ -254,8 +254,6 @@ const (
 	propertyKeyResourceID   = "resourceId"
 	propertyKeyOwningOUID   = "owningOuId"
 	propertyKeyTargetOUID   = "targetOuId"
-	// propertyKeyRoles names, separated by spaces, the roles role selection records instead of prompting for them.
-	propertyKeyRoles = "roles"
 	// propertyKeyProvisioningOU names the organization unit provisioning creates the entity in: the resolved one
 	// (the default) or, with provisioningOUUserType, the one the flow's user type belongs to.
 	propertyKeyProvisioningOU = "provisioningOU"

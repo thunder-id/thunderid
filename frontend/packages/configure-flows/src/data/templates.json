@@ -20059,5 +20059,1172 @@
         }
       ]
     }
+  },
+  {
+    "resourceType": "TEMPLATE",
+    "category": "PASSWORD",
+    "type": "ORGANIZATION_SIGNUP",
+    "flowType": "REGISTRATION",
+    "configureBeforeSave": true,
+    "display": {
+      "label": "Organization Sign-up",
+      "description": "Create an organization with its first user inside it, and assign that user roles there",
+      "image": "assets/images/icons/user-plus.svg",
+      "showOnResourcePanel": true
+    },
+    "config": {
+      "name": "Organization Sign-up Flow",
+      "handle": "organization-signup-flow",
+      "nodes": [
+        {
+          "id": "start",
+          "type": "START",
+          "onSuccess": "user_type_resolver"
+        },
+        {
+          "id": "user_type_resolver",
+          "type": "TASK_EXECUTION",
+          "executor": {
+            "name": "UserTypeResolver"
+          },
+          "onSuccess": "prompt_credentials",
+          "onIncomplete": "prompt_usertype"
+        },
+        {
+          "id": "prompt_usertype",
+          "type": "PROMPT",
+          "meta": {
+            "components": [
+              {
+                "alt": "{{ t(signup:images.app_logo.alt) }}",
+                "category": "DISPLAY",
+                "height": "60",
+                "id": "image_usertype",
+                "resourceType": "ELEMENT",
+                "src": "{{ meta(application.logoUrl) }}",
+                "type": "IMAGE",
+                "width": ""
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "heading_usertype",
+                "label": "{{ t(signup:forms.user_type.title) }}",
+                "variant": "HEADING_1"
+              },
+              {
+                "type": "BLOCK",
+                "id": "block_usertype",
+                "components": [
+                  {
+                    "type": "SELECT",
+                    "id": "usertype_input",
+                    "ref": "userType",
+                    "label": "{{ t(signup:forms.user_type.fields.user_type.label) }}",
+                    "placeholder": "{{ t(signup:forms.user_type.fields.user_type.placeholder) }}",
+                    "required": true,
+                    "options": []
+                  },
+                  {
+                    "type": "ACTION",
+                    "id": "action_usertype",
+                    "label": "{{ t(signup:forms.user_type.actions.continue.label) }}",
+                    "variant": "PRIMARY",
+                    "eventType": "SUBMIT"
+                  }
+                ]
+              }
+            ]
+          },
+          "prompts": [
+            {
+              "inputs": [
+                {
+                  "ref": "usertype_input",
+                  "identifier": "userType",
+                  "type": "SELECT",
+                  "required": true
+                }
+              ],
+              "action": {
+                "ref": "action_usertype",
+                "nextNode": "user_type_resolver"
+              }
+            }
+          ]
+        },
+        {
+          "id": "prompt_credentials",
+          "type": "PROMPT",
+          "meta": {
+            "components": [
+              {
+                "alt": "{{ t(signup:images.app_logo.alt) }}",
+                "category": "DISPLAY",
+                "height": "60",
+                "id": "image_credentials",
+                "resourceType": "ELEMENT",
+                "src": "{{ meta(application.logoUrl) }}",
+                "type": "IMAGE",
+                "width": ""
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "heading_credentials",
+                "label": "{{ t(signup:forms.credentials.title) }}",
+                "variant": "HEADING_1"
+              },
+              {
+                "type": "BLOCK",
+                "id": "block_credentials",
+                "components": [
+                  {
+                    "type": "TEXT_INPUT",
+                    "id": "input_username",
+                    "ref": "username",
+                    "label": "{{ t(signup:forms.credentials.fields.username.label) }}",
+                    "placeholder": "{{ t(signup:forms.credentials.fields.username.placeholder) }}",
+                    "required": true
+                  },
+                  {
+                    "type": "PASSWORD_INPUT",
+                    "id": "input_password",
+                    "ref": "password",
+                    "label": "{{ t(signup:forms.credentials.fields.password.label) }}",
+                    "placeholder": "{{ t(signup:forms.credentials.fields.password.placeholder) }}",
+                    "required": true
+                  },
+                  {
+                    "type": "ACTION",
+                    "id": "action_credentials",
+                    "label": "{{ t(signup:forms.credentials.actions.continue.label) }}",
+                    "variant": "PRIMARY",
+                    "eventType": "SUBMIT"
+                  }
+                ]
+              }
+            ]
+          },
+          "prompts": [
+            {
+              "inputs": [
+                {
+                  "ref": "input_username",
+                  "identifier": "username",
+                  "type": "TEXT_INPUT",
+                  "required": true
+                },
+                {
+                  "ref": "input_password",
+                  "identifier": "password",
+                  "type": "PASSWORD_INPUT",
+                  "required": true
+                }
+              ],
+              "action": {
+                "ref": "action_credentials",
+                "nextNode": "credentials_auth"
+              }
+            }
+          ]
+        },
+        {
+          "id": "credentials_auth",
+          "type": "TASK_EXECUTION",
+          "executor": {
+            "name": "CredentialsAuthExecutor"
+          },
+          "onSuccess": "prompt_organization",
+          "onFailure": "prompt_credentials"
+        },
+        {
+          "id": "prompt_organization",
+          "type": "PROMPT",
+          "meta": {
+            "components": [
+              {
+                "alt": "{{ t(signup:images.app_logo.alt) }}",
+                "category": "DISPLAY",
+                "height": "60",
+                "id": "image_organization",
+                "resourceType": "ELEMENT",
+                "src": "{{ meta(application.logoUrl) }}",
+                "type": "IMAGE",
+                "width": ""
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "heading_organization",
+                "label": "{{ t(signup:forms.organization.title) }}",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "text_organization",
+                "label": "{{ t(signup:forms.organization.description) }}",
+                "variant": "BODY_1"
+              },
+              {
+                "type": "BLOCK",
+                "id": "block_organization",
+                "components": [
+                  {
+                    "type": "TEXT_INPUT",
+                    "id": "input_ou_name",
+                    "ref": "ouName",
+                    "label": "{{ t(signup:forms.organization.fields.name.label) }}",
+                    "placeholder": "{{ t(signup:forms.organization.fields.name.placeholder) }}",
+                    "required": true
+                  },
+                  {
+                    "type": "TEXT_INPUT",
+                    "id": "input_ou_handle",
+                    "ref": "ouHandle",
+                    "label": "{{ t(signup:forms.organization.fields.handle.label) }}",
+                    "placeholder": "{{ t(signup:forms.organization.fields.handle.placeholder) }}",
+                    "required": false
+                  },
+                  {
+                    "type": "ACTION",
+                    "id": "action_organization",
+                    "label": "{{ t(signup:forms.organization.actions.submit.label) }}",
+                    "variant": "PRIMARY",
+                    "eventType": "SUBMIT"
+                  }
+                ]
+              }
+            ]
+          },
+          "prompts": [
+            {
+              "inputs": [
+                {
+                  "ref": "input_ou_name",
+                  "identifier": "ouName",
+                  "type": "TEXT_INPUT",
+                  "required": true
+                },
+                {
+                  "ref": "input_ou_handle",
+                  "identifier": "ouHandle",
+                  "type": "TEXT_INPUT",
+                  "required": false
+                }
+              ],
+              "action": {
+                "ref": "action_organization",
+                "nextNode": "create_organization"
+              }
+            }
+          ]
+        },
+        {
+          "id": "create_organization",
+          "type": "TASK_EXECUTION",
+          "properties": {
+            "generateOuHandle": true
+          },
+          "executor": {
+            "name": "OUExecutor",
+            "inputs": [
+              {
+                "ref": "input_ou_name",
+                "identifier": "ouName",
+                "type": "TEXT_INPUT",
+                "required": true
+              },
+              {
+                "ref": "input_ou_handle",
+                "identifier": "ouHandle",
+                "type": "TEXT_INPUT",
+                "required": false
+              }
+            ]
+          },
+          "onSuccess": "provisioning",
+          "onIncomplete": "prompt_organization"
+        },
+        {
+          "id": "provisioning",
+          "type": "TASK_EXECUTION",
+          "executor": {
+            "name": "ProvisioningExecutor"
+          },
+          "onSuccess": "assign_roles",
+          "onIncomplete": "prompt_schema_attrs"
+        },
+        {
+          "id": "prompt_schema_attrs",
+          "type": "PROMPT",
+          "meta": {
+            "components": [
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "heading_schema_attrs",
+                "label": "{{ t(signin:forms.schema_attrs.title) }}",
+                "variant": "HEADING_1"
+              },
+              {
+                "type": "BLOCK",
+                "id": "block_dynamic_user_inputs",
+                "components": [
+                  {
+                    "type": "DYNAMIC_INPUT_PLACEHOLDER",
+                    "id": "dynamic_inputs"
+                  },
+                  {
+                    "type": "ACTION",
+                    "id": "action_schema_attrs",
+                    "label": "{{ t(signin:forms.schema_attrs.actions.continue.label) }}",
+                    "variant": "PRIMARY",
+                    "eventType": "SUBMIT"
+                  }
+                ]
+              }
+            ]
+          },
+          "prompts": [
+            {
+              "inputs": [],
+              "action": {
+                "ref": "action_schema_attrs",
+                "nextNode": "provisioning"
+              }
+            }
+          ]
+        },
+        {
+          "id": "assign_roles",
+          "type": "TASK_EXECUTION",
+          "properties": {
+            "roles": ""
+          },
+          "executor": {
+            "name": "RoleExecutor",
+            "mode": "role_assignment"
+          },
+          "onSuccess": "end"
+        },
+        {
+          "id": "end",
+          "type": "END"
+        }
+      ]
+    },
+    "nodes": []
+  },
+  {
+    "resourceType": "TEMPLATE",
+    "category": "PASSWORD",
+    "type": "ORGANIZATION_SIGNUP_SHARED_ACCOUNT",
+    "flowType": "REGISTRATION",
+    "configureBeforeSave": true,
+    "display": {
+      "label": "Organization Sign-up with Shared Account",
+      "description": "Create an organization and share the new account into it with roles",
+      "image": "assets/images/icons/user-plus.svg",
+      "showOnResourcePanel": true
+    },
+    "config": {
+      "name": "Organization Sign-up with Shared Account Flow",
+      "handle": "organization-signup-shared-account-flow",
+      "nodes": [
+        {
+          "id": "start",
+          "type": "START",
+          "onSuccess": "user_type_resolver"
+        },
+        {
+          "id": "user_type_resolver",
+          "type": "TASK_EXECUTION",
+          "executor": {
+            "name": "UserTypeResolver"
+          },
+          "onSuccess": "prompt_credentials",
+          "onIncomplete": "prompt_usertype"
+        },
+        {
+          "id": "prompt_usertype",
+          "type": "PROMPT",
+          "meta": {
+            "components": [
+              {
+                "alt": "{{ t(signup:images.app_logo.alt) }}",
+                "category": "DISPLAY",
+                "height": "60",
+                "id": "image_usertype",
+                "resourceType": "ELEMENT",
+                "src": "{{ meta(application.logoUrl) }}",
+                "type": "IMAGE",
+                "width": ""
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "heading_usertype",
+                "label": "{{ t(signup:forms.user_type.title) }}",
+                "variant": "HEADING_1"
+              },
+              {
+                "type": "BLOCK",
+                "id": "block_usertype",
+                "components": [
+                  {
+                    "type": "SELECT",
+                    "id": "usertype_input",
+                    "ref": "userType",
+                    "label": "{{ t(signup:forms.user_type.fields.user_type.label) }}",
+                    "placeholder": "{{ t(signup:forms.user_type.fields.user_type.placeholder) }}",
+                    "required": true,
+                    "options": []
+                  },
+                  {
+                    "type": "ACTION",
+                    "id": "action_usertype",
+                    "label": "{{ t(signup:forms.user_type.actions.continue.label) }}",
+                    "variant": "PRIMARY",
+                    "eventType": "SUBMIT"
+                  }
+                ]
+              }
+            ]
+          },
+          "prompts": [
+            {
+              "inputs": [
+                {
+                  "ref": "usertype_input",
+                  "identifier": "userType",
+                  "type": "SELECT",
+                  "required": true
+                }
+              ],
+              "action": {
+                "ref": "action_usertype",
+                "nextNode": "user_type_resolver"
+              }
+            }
+          ]
+        },
+        {
+          "id": "prompt_credentials",
+          "type": "PROMPT",
+          "meta": {
+            "components": [
+              {
+                "alt": "{{ t(signup:images.app_logo.alt) }}",
+                "category": "DISPLAY",
+                "height": "60",
+                "id": "image_credentials",
+                "resourceType": "ELEMENT",
+                "src": "{{ meta(application.logoUrl) }}",
+                "type": "IMAGE",
+                "width": ""
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "heading_credentials",
+                "label": "{{ t(signup:forms.credentials.title) }}",
+                "variant": "HEADING_1"
+              },
+              {
+                "type": "BLOCK",
+                "id": "block_credentials",
+                "components": [
+                  {
+                    "type": "TEXT_INPUT",
+                    "id": "input_username",
+                    "ref": "username",
+                    "label": "{{ t(signup:forms.credentials.fields.username.label) }}",
+                    "placeholder": "{{ t(signup:forms.credentials.fields.username.placeholder) }}",
+                    "required": true
+                  },
+                  {
+                    "type": "PASSWORD_INPUT",
+                    "id": "input_password",
+                    "ref": "password",
+                    "label": "{{ t(signup:forms.credentials.fields.password.label) }}",
+                    "placeholder": "{{ t(signup:forms.credentials.fields.password.placeholder) }}",
+                    "required": true
+                  },
+                  {
+                    "type": "ACTION",
+                    "id": "action_credentials",
+                    "label": "{{ t(signup:forms.credentials.actions.continue.label) }}",
+                    "variant": "PRIMARY",
+                    "eventType": "SUBMIT"
+                  }
+                ]
+              }
+            ]
+          },
+          "prompts": [
+            {
+              "inputs": [
+                {
+                  "ref": "input_username",
+                  "identifier": "username",
+                  "type": "TEXT_INPUT",
+                  "required": true
+                },
+                {
+                  "ref": "input_password",
+                  "identifier": "password",
+                  "type": "PASSWORD_INPUT",
+                  "required": true
+                }
+              ],
+              "action": {
+                "ref": "action_credentials",
+                "nextNode": "credentials_auth"
+              }
+            }
+          ]
+        },
+        {
+          "id": "credentials_auth",
+          "type": "TASK_EXECUTION",
+          "executor": {
+            "name": "CredentialsAuthExecutor"
+          },
+          "onSuccess": "prompt_organization",
+          "onFailure": "prompt_credentials"
+        },
+        {
+          "id": "prompt_organization",
+          "type": "PROMPT",
+          "meta": {
+            "components": [
+              {
+                "alt": "{{ t(signup:images.app_logo.alt) }}",
+                "category": "DISPLAY",
+                "height": "60",
+                "id": "image_organization",
+                "resourceType": "ELEMENT",
+                "src": "{{ meta(application.logoUrl) }}",
+                "type": "IMAGE",
+                "width": ""
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "heading_organization",
+                "label": "{{ t(signup:forms.organization.title) }}",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "text_organization",
+                "label": "{{ t(signup:forms.organization.description) }}",
+                "variant": "BODY_1"
+              },
+              {
+                "type": "BLOCK",
+                "id": "block_organization",
+                "components": [
+                  {
+                    "type": "TEXT_INPUT",
+                    "id": "input_ou_name",
+                    "ref": "ouName",
+                    "label": "{{ t(signup:forms.organization.fields.name.label) }}",
+                    "placeholder": "{{ t(signup:forms.organization.fields.name.placeholder) }}",
+                    "required": true
+                  },
+                  {
+                    "type": "TEXT_INPUT",
+                    "id": "input_ou_handle",
+                    "ref": "ouHandle",
+                    "label": "{{ t(signup:forms.organization.fields.handle.label) }}",
+                    "placeholder": "{{ t(signup:forms.organization.fields.handle.placeholder) }}",
+                    "required": false
+                  },
+                  {
+                    "type": "ACTION",
+                    "id": "action_organization",
+                    "label": "{{ t(signup:forms.organization.actions.submit.label) }}",
+                    "variant": "PRIMARY",
+                    "eventType": "SUBMIT"
+                  }
+                ]
+              }
+            ]
+          },
+          "prompts": [
+            {
+              "inputs": [
+                {
+                  "ref": "input_ou_name",
+                  "identifier": "ouName",
+                  "type": "TEXT_INPUT",
+                  "required": true
+                },
+                {
+                  "ref": "input_ou_handle",
+                  "identifier": "ouHandle",
+                  "type": "TEXT_INPUT",
+                  "required": false
+                }
+              ],
+              "action": {
+                "ref": "action_organization",
+                "nextNode": "create_organization"
+              }
+            }
+          ]
+        },
+        {
+          "id": "create_organization",
+          "type": "TASK_EXECUTION",
+          "properties": {
+            "generateOuHandle": true
+          },
+          "executor": {
+            "name": "OUExecutor",
+            "inputs": [
+              {
+                "ref": "input_ou_name",
+                "identifier": "ouName",
+                "type": "TEXT_INPUT",
+                "required": true
+              },
+              {
+                "ref": "input_ou_handle",
+                "identifier": "ouHandle",
+                "type": "TEXT_INPUT",
+                "required": false
+              }
+            ]
+          },
+          "onSuccess": "provisioning",
+          "onIncomplete": "prompt_organization"
+        },
+        {
+          "id": "provisioning",
+          "type": "TASK_EXECUTION",
+          "properties": {
+            "provisioningOU": "userType"
+          },
+          "executor": {
+            "name": "ProvisioningExecutor"
+          },
+          "onSuccess": "share_user",
+          "onIncomplete": "prompt_schema_attrs"
+        },
+        {
+          "id": "prompt_schema_attrs",
+          "type": "PROMPT",
+          "meta": {
+            "components": [
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "heading_schema_attrs",
+                "label": "{{ t(signin:forms.schema_attrs.title) }}",
+                "variant": "HEADING_1"
+              },
+              {
+                "type": "BLOCK",
+                "id": "block_dynamic_user_inputs",
+                "components": [
+                  {
+                    "type": "DYNAMIC_INPUT_PLACEHOLDER",
+                    "id": "dynamic_inputs"
+                  },
+                  {
+                    "type": "ACTION",
+                    "id": "action_schema_attrs",
+                    "label": "{{ t(signin:forms.schema_attrs.actions.continue.label) }}",
+                    "variant": "PRIMARY",
+                    "eventType": "SUBMIT"
+                  }
+                ]
+              }
+            ]
+          },
+          "prompts": [
+            {
+              "inputs": [],
+              "action": {
+                "ref": "action_schema_attrs",
+                "nextNode": "provisioning"
+              }
+            }
+          ]
+        },
+        {
+          "id": "share_user",
+          "type": "TASK_EXECUTION",
+          "properties": {
+            "resourceType": "user",
+            "resourceId": "{{ctx(userID)}}",
+            "targetOuId": "{{ctx(ouId)}}"
+          },
+          "executor": {
+            "name": "SharingExecutor",
+            "mode": "share"
+          },
+          "onSuccess": "assign_roles"
+        },
+        {
+          "id": "assign_roles",
+          "type": "TASK_EXECUTION",
+          "properties": {
+            "roles": ""
+          },
+          "executor": {
+            "name": "RoleExecutor",
+            "mode": "role_assignment"
+          },
+          "onSuccess": "end"
+        },
+        {
+          "id": "end",
+          "type": "END"
+        }
+      ]
+    },
+    "nodes": []
+  },
+  {
+    "resourceType": "TEMPLATE",
+    "category": "SOCIAL_LOGIN",
+    "type": "BASIC_ENTERPRISE_SSO",
+    "flowType": "AUTHENTICATION",
+    "configureBeforeSave": true,
+    "display": {
+      "label": "Basic + Enterprise SSO",
+      "description": "Password sign-in, or sign-in through the identity provider each organization sets for itself",
+      "image": "assets/images/icons/link.svg",
+      "showOnResourcePanel": true
+    },
+    "config": {
+      "name": "Enterprise SSO Sign-in Flow",
+      "handle": "enterprise-sso-signin-flow",
+      "nodes": [
+        {
+          "id": "start",
+          "type": "START",
+          "onSuccess": "prompt_signin"
+        },
+        {
+          "id": "prompt_signin",
+          "type": "PROMPT",
+          "meta": {
+            "components": [
+              {
+                "alt": "{{ t(signin:images.app_logo.alt) }}",
+                "category": "DISPLAY",
+                "height": "60",
+                "id": "image_logo",
+                "resourceType": "ELEMENT",
+                "src": "{{ meta(application.logoUrl) }}",
+                "type": "IMAGE",
+                "width": ""
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "heading_signin",
+                "label": "{{ t(signin:forms.credentials.title) }}",
+                "variant": "HEADING_1"
+              },
+              {
+                "type": "BLOCK",
+                "id": "block_credentials",
+                "components": [
+                  {
+                    "type": "TEXT_INPUT",
+                    "id": "input_username",
+                    "ref": "username",
+                    "label": "{{ t(signin:forms.credentials.fields.username.label) }}",
+                    "placeholder": "{{ t(signin:forms.credentials.fields.username.placeholder) }}",
+                    "required": true
+                  },
+                  {
+                    "type": "PASSWORD_INPUT",
+                    "id": "input_password",
+                    "ref": "password",
+                    "label": "{{ t(signin:forms.credentials.fields.password.label) }}",
+                    "placeholder": "{{ t(signin:forms.credentials.fields.password.placeholder) }}",
+                    "required": true
+                  },
+                  {
+                    "type": "ACTION",
+                    "id": "action_credentials",
+                    "label": "{{ t(signin:forms.credentials.actions.submit.label) }}",
+                    "variant": "PRIMARY",
+                    "eventType": "SUBMIT"
+                  }
+                ]
+              },
+              {
+                "category": "DISPLAY",
+                "id": "divider_signin",
+                "label": "Or",
+                "resourceType": "ELEMENT",
+                "type": "DIVIDER",
+                "variant": "HORIZONTAL"
+              },
+              {
+                "type": "BLOCK",
+                "id": "block_enterprise_sso",
+                "components": [
+                  {
+                    "type": "ACTION",
+                    "id": "action_enterprise_sso",
+                    "label": "{{ t(signin:forms.credentials.actions.enterprise_sso.label) }}",
+                    "variant": "OUTLINED",
+                    "eventType": "TRIGGER"
+                  }
+                ]
+              }
+            ]
+          },
+          "prompts": [
+            {
+              "inputs": [
+                {
+                  "ref": "input_username",
+                  "identifier": "username",
+                  "type": "TEXT_INPUT",
+                  "required": true
+                },
+                {
+                  "ref": "input_password",
+                  "identifier": "password",
+                  "type": "PASSWORD_INPUT",
+                  "required": true
+                }
+              ],
+              "action": {
+                "ref": "action_credentials",
+                "nextNode": "credentials_auth"
+              }
+            },
+            {
+              "action": {
+                "ref": "action_enterprise_sso",
+                "nextNode": "resolve_organization"
+              }
+            }
+          ]
+        },
+        {
+          "id": "credentials_auth",
+          "type": "TASK_EXECUTION",
+          "executor": {
+            "name": "CredentialsAuthExecutor",
+            "inputs": [
+              {
+                "ref": "input_username",
+                "identifier": "username",
+                "type": "TEXT_INPUT",
+                "required": true
+              },
+              {
+                "ref": "input_password",
+                "identifier": "password",
+                "type": "PASSWORD_INPUT",
+                "required": true
+              }
+            ]
+          },
+          "onSuccess": "resolve_user_organization",
+          "onIncomplete": "prompt_signin"
+        },
+        {
+          "id": "resolve_organization",
+          "type": "TASK_EXECUTION",
+          "properties": {
+            "resolveFrom": "prompt",
+            "parentOuId": "",
+            "directChildrenOnly": true
+          },
+          "executor": {
+            "name": "OUResolverExecutor",
+            "inputs": [
+              {
+                "ref": "input_org_handle",
+                "identifier": "ouHandle",
+                "type": "TEXT_INPUT",
+                "required": true
+              }
+            ]
+          },
+          "onSuccess": "organization_settings",
+          "onIncomplete": "prompt_organization"
+        },
+        {
+          "id": "prompt_organization",
+          "type": "PROMPT",
+          "meta": {
+            "components": [
+              {
+                "alt": "{{ t(signin:images.app_logo.alt) }}",
+                "category": "DISPLAY",
+                "height": "60",
+                "id": "image_organization",
+                "resourceType": "ELEMENT",
+                "src": "{{ meta(application.logoUrl) }}",
+                "type": "IMAGE",
+                "width": ""
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "heading_organization",
+                "label": "{{ t(signin:forms.enterprise_sso.title) }}",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "text_organization",
+                "label": "{{ t(signin:forms.enterprise_sso.description) }}",
+                "variant": "BODY_1"
+              },
+              {
+                "type": "BLOCK",
+                "id": "block_organization",
+                "components": [
+                  {
+                    "type": "TEXT_INPUT",
+                    "id": "input_org_handle",
+                    "ref": "ouHandle",
+                    "label": "{{ t(signin:forms.enterprise_sso.fields.handle.label) }}",
+                    "placeholder": "{{ t(signin:forms.enterprise_sso.fields.handle.placeholder) }}",
+                    "required": true
+                  },
+                  {
+                    "type": "ACTION",
+                    "id": "action_organization",
+                    "label": "{{ t(signin:forms.enterprise_sso.actions.continue.label) }}",
+                    "variant": "PRIMARY",
+                    "eventType": "SUBMIT"
+                  }
+                ]
+              },
+              {
+                "type": "ACTION",
+                "id": "action_back_signin",
+                "label": "{{ t(signin:forms.enterprise_sso.actions.back.label) }}",
+                "variant": "SECONDARY",
+                "eventType": "TRIGGER"
+              }
+            ]
+          },
+          "prompts": [
+            {
+              "inputs": [
+                {
+                  "ref": "input_org_handle",
+                  "identifier": "ouHandle",
+                  "type": "TEXT_INPUT",
+                  "required": true
+                }
+              ],
+              "action": {
+                "ref": "action_organization",
+                "nextNode": "resolve_organization"
+              }
+            },
+            {
+              "action": {
+                "ref": "action_back_signin",
+                "nextNode": "prompt_signin"
+              }
+            }
+          ]
+        },
+        {
+          "id": "organization_settings",
+          "type": "VARIABLES",
+          "inputs": [
+            {
+              "identifier": "enterpriseIdp",
+              "type": "CONNECTION_SELECT",
+              "category": "IDENTITY_PROVIDER",
+              "connectionTypes": ["oidc"],
+              "description": "The OpenID Connect identity provider the organization's users sign in with",
+              "defaultValue": ""
+            }
+          ],
+          "onSuccess": "enterprise_auth"
+        },
+        {
+          "id": "enterprise_auth",
+          "type": "TASK_EXECUTION",
+          "properties": {
+            "idpId": "{{var(enterpriseIdp)}}",
+            "allowAuthenticationWithoutLocalUser": true
+          },
+          "executor": {
+            "name": "OIDCAuthExecutor"
+          },
+          "onSuccess": "provisioning"
+        },
+        {
+          "id": "provisioning",
+          "type": "TASK_EXECUTION",
+          "executor": {
+            "name": "ProvisioningExecutor"
+          },
+          "onSuccess": "authorization_check",
+          "onIncomplete": "prompt_schema_attrs"
+        },
+        {
+          "id": "prompt_schema_attrs",
+          "type": "PROMPT",
+          "meta": {
+            "components": [
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "heading_schema_attrs",
+                "label": "{{ t(signin:forms.schema_attrs.title) }}",
+                "variant": "HEADING_1"
+              },
+              {
+                "type": "BLOCK",
+                "id": "block_dynamic_user_inputs",
+                "components": [
+                  {
+                    "type": "DYNAMIC_INPUT_PLACEHOLDER",
+                    "id": "dynamic_inputs"
+                  },
+                  {
+                    "type": "ACTION",
+                    "id": "action_schema_attrs",
+                    "label": "{{ t(signin:forms.schema_attrs.actions.continue.label) }}",
+                    "variant": "PRIMARY",
+                    "eventType": "SUBMIT"
+                  }
+                ]
+              }
+            ]
+          },
+          "prompts": [
+            {
+              "inputs": [],
+              "action": {
+                "ref": "action_schema_attrs",
+                "nextNode": "provisioning"
+              }
+            }
+          ]
+        },
+        {
+          "id": "resolve_user_organization",
+          "type": "TASK_EXECUTION",
+          "properties": {
+            "resolveFrom": "prompt",
+            "parentOuId": "",
+            "directChildrenOnly": true
+          },
+          "executor": {
+            "name": "OUResolverExecutor"
+          },
+          "onSuccess": "authorization_check",
+          "onIncomplete": "prompt_user_organization"
+        },
+        {
+          "id": "prompt_user_organization",
+          "type": "PROMPT",
+          "meta": {
+            "components": [
+              {
+                "alt": "{{ t(signin:images.app_logo.alt) }}",
+                "category": "DISPLAY",
+                "height": "60",
+                "id": "image_user_organization",
+                "resourceType": "ELEMENT",
+                "src": "{{ meta(application.logoUrl) }}",
+                "type": "IMAGE",
+                "width": ""
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "heading_user_organization",
+                "label": "{{ t(signin:forms.organization_select.title) }}",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "text_user_organization",
+                "label": "{{ t(signin:forms.organization_select.description) }}",
+                "variant": "BODY_1"
+              },
+              {
+                "type": "BLOCK",
+                "id": "block_user_organization",
+                "components": [
+                  {
+                    "type": "SELECT",
+                    "id": "input_user_organization",
+                    "ref": "ouId",
+                    "label": "{{ t(signin:forms.organization_select.fields.organization.label) }}",
+                    "placeholder": "{{ t(signin:forms.organization_select.fields.organization.placeholder) }}",
+                    "required": true,
+                    "options": []
+                  },
+                  {
+                    "type": "ACTION",
+                    "id": "action_user_organization",
+                    "label": "{{ t(signin:forms.organization_select.actions.continue.label) }}",
+                    "variant": "PRIMARY",
+                    "eventType": "SUBMIT"
+                  }
+                ]
+              }
+            ]
+          },
+          "prompts": [
+            {
+              "inputs": [
+                {
+                  "ref": "input_user_organization",
+                  "identifier": "ouId",
+                  "type": "SELECT",
+                  "required": true
+                }
+              ],
+              "action": {
+                "ref": "action_user_organization",
+                "nextNode": "resolve_user_organization"
+              }
+            }
+          ]
+        },
+        {
+          "id": "authorization_check",
+          "type": "TASK_EXECUTION",
+          "executor": {
+            "name": "AuthorizationExecutor"
+          },
+          "onSuccess": "auth_assert"
+        },
+        {
+          "id": "auth_assert",
+          "type": "TASK_EXECUTION",
+          "executor": {
+            "name": "AuthAssertExecutor"
+          },
+          "onSuccess": "end"
+        },
+        {
+          "id": "end",
+          "type": "END"
+        }
+      ]
+    },
+    "nodes": []
   }
 ]

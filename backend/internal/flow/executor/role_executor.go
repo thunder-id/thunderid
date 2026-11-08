@@ -21,9 +21,10 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
-// roleModeFlowTypes maps each mode to the flow type it serves: role selection and assignment serve invitation flows.
+// roleModeFlowTypes maps each mode to the flow types it serves: role selection serves invitation flows, and
+// assignment serves them and sign-up flows.
 var roleModeFlowTypes = map[string][]providers.FlowType{
-	ExecutorModeRoleAssignment: {providers.FlowTypeInvitation},
+	ExecutorModeRoleAssignment: {providers.FlowTypeInvitation, providers.FlowTypeRegistration},
 	ExecutorModeRoleSelection:  {providers.FlowTypeInvitation},
 }
 
@@ -40,7 +41,8 @@ type roleOption struct {
 	Name string `json:"name"`
 }
 
-// roleExecutor records the roles an admin picks in an invitation flow and assigns them as that admin.
+// roleExecutor records the roles an admin picks in an invitation flow and assigns them as that admin. In a sign-up
+// flow it assigns the roles its node names.
 type roleExecutor struct {
 	providers.Executor
 	assignments roleAssignmentAdminProvider
@@ -50,15 +52,16 @@ type roleExecutor struct {
 
 var _ providers.Executor = (*roleExecutor)(nil)
 
-// newRoleExecutor creates the executor that selects and assigns roles in invitation flows.
+// newRoleExecutor creates the executor that selects and assigns roles in invitation flows and assigns them in
+// sign-up flows.
 func newRoleExecutor(factory core.FlowFactoryInterface, assignments roleAssignmentAdminProvider,
 	permissions entityPermissionResolver) *roleExecutor {
 	base := factory.CreateExecutor(ExecutorNameRole, providers.ExecutorTypeUtility, nil, nil,
 		&providers.ExecutorMeta{
 			SupportedModes:     slices.Sorted(maps.Keys(roleModeFlowTypes)),
-			SupportedFlowTypes: []providers.FlowType{providers.FlowTypeInvitation},
+			SupportedFlowTypes: []providers.FlowType{providers.FlowTypeInvitation, providers.FlowTypeRegistration},
 			SupportedProperties: []providers.ExecutorSupportedProperties{
-				{Property: propertyKeyRoles},
+				{Property: common.NodePropertyRoles},
 			},
 		})
 	return &roleExecutor{
@@ -86,7 +89,38 @@ func (e *roleExecutor) Execute(ctx *providers.NodeContext) (*providers.ExecutorR
 	if mode == ExecutorModeRoleSelection {
 		return e.selectRoles(ctx)
 	}
+	if ctx.FlowType == providers.FlowTypeRegistration {
+		return e.assignNamed(ctx)
+	}
 	return e.assign(ctx)
+}
+
+// assignNamed assigns the roles the node names to the user in the flow's unit, as the provisioning executor assigns
+// its role: a sign-up flow has no admin, so the roles are the flow designer's choice. Every role is assigned or none
+// is.
+func (e *roleExecutor) assignNamed(ctx *providers.NodeContext) (*providers.ExecutorResponse, error) {
+	configured, err := runtimeProperty(ctx, common.NodePropertyRoles)
+	if err != nil {
+		return nil, err
+	}
+	roleIDs := uniqueFields(configured)
+	if len(roleIDs) == 0 {
+		return nil, fmt.Errorf("property %q is required to assign roles in a %s flow", common.NodePropertyRoles,
+			ctx.FlowType)
+	}
+	ouID, userID := ctx.RuntimeData[common.RuntimeKeyOUID], ctx.RuntimeData[userAttributeUserID]
+	if ouID == "" || userID == "" {
+		return nil, errors.New("the flow's organization unit or user is not set")
+	}
+
+	assignee := []role.RoleAssignment{{ID: userID, Type: role.AssigneeTypeUser, OUID: ouID}}
+	if svcErr := e.assignments.AddAssigneesToRoles(ctx.Context, assignee, roleIDs); svcErr != nil {
+		if svcErr.Type == tidcommon.ServerErrorType {
+			return nil, fmt.Errorf("failed to assign the named roles: %s", svcErr.Error.DefaultValue)
+		}
+		return &providers.ExecutorResponse{Status: providers.ExecFailure, Error: &ErrRoleAssignmentFailed}, nil
+	}
+	return &providers.ExecutorResponse{Status: providers.ExecComplete}, nil
 }
 
 // selectRoles records the roles the node names, or else prompts for roles the caller may assign in the flow's unit,
@@ -99,7 +133,7 @@ func (e *roleExecutor) selectRoles(ctx *providers.NodeContext) (*providers.Execu
 	if ouID == "" {
 		return nil, errors.New("the flow's organization unit is not set")
 	}
-	configured, err := runtimeProperty(ctx, propertyKeyRoles)
+	configured, err := runtimeProperty(ctx, common.NodePropertyRoles)
 	if err != nil {
 		return nil, err
 	}

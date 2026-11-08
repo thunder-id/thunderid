@@ -4357,6 +4357,8 @@ const translations = {
     'core.executions.roleExecutor.roles.label': 'Roles',
     'core.executions.roleExecutor.roles.hint':
       'IDs of the roles to assign, separated by spaces. When set, the admin is not asked to pick roles, and the step fails if the admin may not assign one of them.',
+    'core.executions.roleExecutor.roles.signUpHint':
+      'IDs of the roles assigned to the new user, separated by spaces. Each role must be assignable in the organization unit: owned by it, or shared with it with assignments editable.',
     'core.executions.roleExecutor.mode.label': 'Mode',
     'core.executions.roleExecutor.mode.placeholder': 'Select a mode',
     'core.executions.sharing.description':
@@ -4381,7 +4383,7 @@ const translations = {
     'core.executions.roleExecutor.mode.hint':
       'Must match the mode of the access change validator earlier in the flow. A mismatched pair is refused at runtime.',
     'core.executions.roleExecutor.description':
-      'In an administration flow, apply the role change named by the trusted revocation plan. In an invitation flow, Select roles offers the roles the admin can assign in the organization unit and records the choice, and Assign roles assigns them, as that admin, once the invitee accepts.',
+      'In an administration flow, apply the role change named by the trusted revocation plan. In an invitation flow, Select roles offers the roles the admin can assign in the organization unit and records the choice, and Assign roles assigns them, as that admin, once the invitee accepts. In a sign-up flow, Assign roles assigns the roles you name to the new user in the organization unit the flow created or resolved.',
 
     // Identity governance executor operations
     'core.executions.identityGovernance.mode.suspend': 'Suspend',
