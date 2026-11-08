@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"time"
 
+	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -41,7 +42,8 @@ func newCIBAStore(store providers.RuntimeStoreProvider) CIBARequestStoreInterfac
 	return &cibaStore{store: store}
 }
 
-// Add inserts a new CIBA authentication request with a TTL derived from its expiry time.
+// Add inserts a new CIBA authentication request with a TTL covering its expiry time plus a retention
+// window for expired requests.
 // UserID is empty at creation — it is populated by MarkAuthenticated once the callback verifies
 // the assertion.
 func (s *cibaStore) Add(ctx context.Context, request *CIBAAuthRequest) error {
@@ -55,7 +57,9 @@ func (s *cibaStore) Add(ctx context.Context, request *CIBAAuthRequest) error {
 		return fmt.Errorf("CIBA request already expired")
 	}
 
-	return s.store.Put(ctx, providers.NamespaceCIBA, request.AuthReqID, data, int64(ttl.Seconds()))
+	ttlSeconds := int64(ttl.Seconds()) + oauth2const.CIBAExpiredRecordRetentionSeconds
+
+	return s.store.Put(ctx, providers.NamespaceCIBA, request.AuthReqID, data, ttlSeconds)
 }
 
 // GetByID retrieves a CIBA authentication request by ID. Returns ErrCIBARequestNotFound if absent.

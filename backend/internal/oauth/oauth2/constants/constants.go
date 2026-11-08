@@ -420,6 +420,9 @@ const (
 	CIBADefaultIntervalSeconds = 5
 	// CIBAMaxExpiresInSeconds is the maximum lifetime in seconds a client may request via requested_expiry.
 	CIBAMaxExpiresInSeconds = 600
+	// CIBAExpiredRecordRetentionSeconds keeps an expired request available long enough for the
+	// token endpoint to return expired_token instead of treating the auth_req_id as unknown.
+	CIBAExpiredRecordRetentionSeconds = 60
 	// DeviceAuthorizationDefaultExpiresInSeconds is the default lifetime for a device request.
 	DeviceAuthorizationDefaultExpiresInSeconds = 600
 	// DeviceAuthorizationDefaultIntervalSeconds is the minimum interval between token polls.
