@@ -3862,6 +3862,12 @@ type fakeResourceServerService struct {
 	existing []providers.Resource
 	// listCalls are the GetResourceList calls, each as "<parent ID>@<offset>".
 	listCalls []string
+	// stored are the resources the server already holds, and storedActions its actions by the ID of the
+	// resource they belong to, empty for an action of the server itself.
+	stored        []providers.Resource
+	storedActions map[string][]providers.Action
+	// deleted records, in order, what was removed: "resource:<id>", "action:<id>" or "server:<id>".
+	deleted []string
 }
 
 // importedAction is an action an import created, with the ID of the resource it was created under.
@@ -3929,6 +3935,34 @@ func (f *fakeResourceServerService) GetResourceList(
 		Count:        end - start,
 		Resources:    children[start:end],
 	}, nil
+}
+
+func (f *fakeResourceServerService) GetAllResourceList(
+	context.Context, string,
+) ([]providers.Resource, *tidcommon.ServiceError) {
+	return slices.Clone(f.stored), nil
+}
+
+func (f *fakeResourceServerService) GetActionList(
+	_ context.Context, _ string, resourceID *string, _ providers.ActionKind, _, _ int,
+) (*resource.ActionList, *tidcommon.ServiceError) {
+	key := ""
+	if resourceID != nil {
+		key = *resourceID
+	}
+	return &resource.ActionList{Actions: f.storedActions[key]}, nil
+}
+
+func (f *fakeResourceServerService) DeleteResource(_ context.Context, _, id string) *tidcommon.ServiceError {
+	f.deleted = append(f.deleted, "resource:"+id)
+	return nil
+}
+
+func (f *fakeResourceServerService) DeleteAction(
+	_ context.Context, _ string, _ *string, id string,
+) *tidcommon.ServiceError {
+	f.deleted = append(f.deleted, "action:"+id)
+	return nil
 }
 
 func (f *fakeResourceServerService) CreateAction(
@@ -7253,4 +7287,50 @@ func TestDropUnusedClientSecret(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestDeleteResourceServer_RemovesChildrenFirst verifies that an import deletes a resource server's
+// actions and resources, the deepest resource first, before the server itself.
+func TestDeleteResourceServer_RemovesChildrenFirst(t *testing.T) {
+	parent := "r-shop"
+	rsSvc := &fakeResourceServerService{
+		stored: []providers.Resource{
+			{ID: "r-shop", Permission: "shop"},
+			{ID: "r-orders", Permission: "shop:orders", Parent: &parent},
+		},
+		storedActions: map[string][]providers.Action{
+			"":       {{ID: "a-admin", Permission: "admin"}},
+			"r-shop": {{ID: "a-read", Permission: "shop:read"}},
+		},
+	}
+	svc := &importService{resourceService: rsSvc}
+
+	require.Nil(t, svc.deleteResourceServer(context.Background(), "rs-1"))
+	assert.Equal(t, []string{
+		"action:a-admin", "action:a-read", "resource:r-orders", "resource:r-shop", "server:rs-1",
+	}, rsSvc.deleted)
+}
+
+// TestImportResourceServer_UpdateRemovesChildrenTheDocumentDropped verifies that an upsert deletes the
+// resources and actions stored on the server that the document no longer holds, and keeps the rest.
+func TestImportResourceServer_UpdateRemovesChildrenTheDocumentDropped(t *testing.T) {
+	rsSvc := &fakeResourceServerService{
+		stored: []providers.Resource{
+			{ID: "r-shop", Permission: "shop"},
+			{ID: "r-orders", Permission: "shop:orders"},
+		},
+		storedActions: map[string][]providers.Action{
+			"":       {{ID: "a-admin", Permission: "admin"}},
+			"r-shop": {{ID: "a-read", Permission: "shop:read"}},
+		},
+	}
+	svc := &importService{resourceService: rsSvc}
+
+	rs := providers.ResourceServer{
+		ID: "rs-1", Name: "RS", Identifier: "rs", Delimiter: ":",
+		Actions:   []providers.Action{{Name: "Admin", Handle: "admin"}},
+		Resources: []providers.Resource{{Name: "Shop", Handle: "shop"}},
+	}
+	require.Nil(t, svc.importResourceServerChildren(context.Background(), "rs-1", rs, true))
+	assert.Equal(t, []string{"action:a-read", "resource:r-orders"}, rsSvc.deleted)
 }

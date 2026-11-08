@@ -215,6 +215,12 @@ type resourceServerAdapter interface {
 		*resource.ResourceList, *tidcommon.ServiceError)
 	CreateAction(ctx context.Context, resourceServerID string, resourceID *string, action providers.Action) (
 		*providers.Action, *tidcommon.ServiceError)
+	GetAllResourceList(ctx context.Context, resourceServerID string) ([]providers.Resource, *tidcommon.ServiceError)
+	GetActionList(
+		ctx context.Context, resourceServerID string, resourceID *string, kind providers.ActionKind, limit, offset int,
+	) (*resource.ActionList, *tidcommon.ServiceError)
+	DeleteResource(ctx context.Context, resourceServerID, id string) *tidcommon.ServiceError
+	DeleteAction(ctx context.Context, resourceServerID string, resourceID *string, id string) *tidcommon.ServiceError
 	DeleteResourceServer(ctx context.Context, id string) *tidcommon.ServiceError
 }
 

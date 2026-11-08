@@ -80,7 +80,8 @@ func (f *fakeAgentService) DeleteAgent(_ context.Context, id string) *tidcommon.
 
 func (f *errAgentService) DeleteAgent(context.Context, string) *tidcommon.ServiceError { return nil }
 
-func (f *fakeResourceServerService) DeleteResourceServer(context.Context, string) *tidcommon.ServiceError {
+func (f *fakeResourceServerService) DeleteResourceServer(_ context.Context, id string) *tidcommon.ServiceError {
+	f.deleted = append(f.deleted, "server:"+id)
 	return nil
 }
 
