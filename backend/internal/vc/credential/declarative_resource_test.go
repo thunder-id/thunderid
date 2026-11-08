@@ -19,6 +19,7 @@ import (
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/security"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
 	"github.com/thunder-id/thunderid/tests/mocks/oumock"
 )
@@ -37,7 +38,7 @@ func TestConfigurationExporterTestSuite(t *testing.T) {
 
 func (s *ConfigurationExporterTestSuite) SetupTest() {
 	s.store = newStatefulCredentialStore(s.T())
-	s.svc = newCredentialConfigurationService(s.store, nil)
+	s.svc = newCredentialConfigurationService(s.store, nil, nil, false)
 	s.exporter = newConfigurationExporter(s.svc)
 	s.logger = log.GetLogger()
 }
@@ -81,7 +82,7 @@ func (s *ConfigurationExporterTestSuite) TestGetAllResourceIDs_ListError() {
 	m := newCredentialStoreInterfaceMock(s.T())
 	m.EXPECT().ListCredentialConfigurations(mock.Anything).
 		Return(nil, errors.New("boom")).Maybe()
-	svc := newCredentialConfigurationService(m, nil)
+	svc := newCredentialConfigurationService(m, nil, nil, false)
 	exporter := newConfigurationExporter(svc)
 
 	ids, err := exporter.GetAllResourceIDs(context.Background())
@@ -99,7 +100,7 @@ func (s *ConfigurationExporterTestSuite) TestGetAllResourceIDs_IsDeclarativeErro
 		}).Maybe()
 	m.EXPECT().IsCredentialConfigurationDeclarative(mock.Anything, mock.Anything).
 		Return(false, errors.New("boom")).Maybe()
-	svc := newCredentialConfigurationService(m, nil)
+	svc := newCredentialConfigurationService(m, nil, nil, false)
 	exporter := newConfigurationExporter(svc)
 
 	ids, err := exporter.GetAllResourceIDs(context.Background())
@@ -288,7 +289,8 @@ func (s *ConfigurationExporterTestSuite) TestValidateResolvesOUHandle() {
 		map[string]string{"root/eng": "ou-123"}, map[string]string{"ou-123": "root/eng"})
 
 	dto := &CredentialConfigurationDTO{ID: "cfg-1", Handle: "h", VCT: "v", OUHandle: "root/eng"}
-	s.Require().NoError(validateConfigurationWrapper(dto, nil, nil, newCredentialConfigurationService(nil, ouSvc)))
+	s.Require().NoError(validateConfigurationWrapper(dto, nil, nil,
+		newCredentialConfigurationService(nil, ouSvc, nil, false)))
 	s.Equal("ou-123", dto.OUID)
 }
 
@@ -298,7 +300,7 @@ func (s *ConfigurationExporterTestSuite) TestValidateRejectsUnknownOUHandle() {
 	ouSvc := newOUServiceMock(s.T(), map[string]bool{}, map[string]string{}, map[string]string{})
 
 	dto := &CredentialConfigurationDTO{ID: "cfg-1", Handle: "h", VCT: "v", OUHandle: "no/such/ou"}
-	err := validateConfigurationWrapper(dto, nil, nil, newCredentialConfigurationService(nil, ouSvc))
+	err := validateConfigurationWrapper(dto, nil, nil, newCredentialConfigurationService(nil, ouSvc, nil, false))
 	s.Require().Error(err)
 	s.Contains(err.Error(), "no/such/ou")
 }
@@ -316,7 +318,8 @@ func (s *ConfigurationExporterTestSuite) TestValidateResolvesOUHandleUsesRuntime
 	ouSvc.EXPECT().IsOrganizationUnitExists(mock.Anything, "ou-123").Return(true, nil).Once()
 
 	cfg := &CredentialConfigurationDTO{ID: "cfg-1", Handle: "h", VCT: "v", OUHandle: "root/eng"}
-	s.Require().NoError(validateConfigurationWrapper(cfg, nil, nil, newCredentialConfigurationService(nil, ouSvc)))
+	s.Require().NoError(validateConfigurationWrapper(cfg, nil, nil,
+		newCredentialConfigurationService(nil, ouSvc, nil, false)))
 	s.Equal("ou-123", cfg.OUID)
 }
 
@@ -329,7 +332,8 @@ func (s *ConfigurationExporterTestSuite) TestValidateOUIDWinsOverOUHandle() {
 	cfg := &CredentialConfigurationDTO{
 		ID: "cfg-1", Handle: "h", VCT: "v", OUID: "ou-123", OUHandle: "wrong/path",
 	}
-	s.Require().NoError(validateConfigurationWrapper(cfg, nil, nil, newCredentialConfigurationService(nil, ouSvc)))
+	s.Require().NoError(validateConfigurationWrapper(cfg, nil, nil,
+		newCredentialConfigurationService(nil, ouSvc, nil, false)))
 	s.Equal("ou-123", cfg.OUID)
 }
 
@@ -348,7 +352,7 @@ func (s *ConfigurationExporterTestSuite) TestValidateRejectsUnknownExplicitOUID(
 	ouSvc := newOUServiceMock(s.T(), map[string]bool{}, map[string]string{}, map[string]string{})
 
 	dto := &CredentialConfigurationDTO{ID: "cfg-1", Handle: "h", VCT: "v", OUID: "no-such-ou"}
-	err := validateConfigurationWrapper(dto, nil, nil, newCredentialConfigurationService(nil, ouSvc))
+	err := validateConfigurationWrapper(dto, nil, nil, newCredentialConfigurationService(nil, ouSvc, nil, false))
 	s.Require().Error(err)
 	s.Contains(err.Error(), "no-such-ou")
 }
@@ -493,10 +497,46 @@ func (s *ConfigurationExporterTestSuite) TestLoadDeclarativeResourcesFromDisk() 
 
 	fileStore := newCredentialFileBasedStore()
 	s.Require().NoError(fileStore.GenericFileBasedStore.ClearByType())
-	s.Require().NoError(loadDeclarativeResources(fileStore, nil, newCredentialConfigurationService(nil, ouSvc)))
+	s.Require().NoError(loadDeclarativeResources(fileStore, nil,
+		newCredentialConfigurationService(nil, ouSvc, nil, false)))
 
 	got, err := fileStore.GetCredentialConfigurationByID(context.Background(), "cfg-disk")
 	s.Require().NoError(err)
 	s.Equal("disk_handle", got.Handle)
 	s.Equal("ou-123", got.OUID, "ouHandle must be resolved to an ouId at load time")
+}
+
+func (s *ConfigurationExporterTestSuite) TestDeclarativeConfigurationInAProject() {
+	parsed, err := parseToConfigurationDTOWrapper([]byte(
+		"id: cfg-p\nhandle: pid-p\nvct: urn:pid\nprojectId: proj-1\n"))
+	s.Require().NoError(err)
+	dto := parsed.(*CredentialConfigurationDTO)
+	s.Equal("proj-1", dto.ProjectID)
+
+	ouMock := oumock.NewOrganizationUnitServiceInterfaceMock(s.T())
+	ouMock.EXPECT().GetSystemOUID(mock.Anything).Return("sys-ou", nil)
+	ouMock.EXPECT().IsOrganizationUnitExists(mock.Anything, "sys-ou").Return(true, nil).Maybe()
+	svc := newCredentialConfigurationService(newCredentialStoreInterfaceMock(s.T()), ouMock,
+		newProjectOUValidatorMock(s.T()), true)
+	s.Require().NoError(validateConfigurationWrapper(dto, nil, nil, svc))
+	s.Equal("sys-ou", dto.OUID,
+		"a declarative configuration in a project without an organization unit is in the system one")
+
+	withoutProject, err := parseToConfigurationDTOWrapper([]byte(
+		"id: cfg-q\nhandle: pid-q\nvct: urn:pid\nouId: sys-ou\n"))
+	s.Require().NoError(err)
+	s.Require().ErrorContains(validateConfigurationWrapper(withoutProject, nil, nil, svc),
+		"missing the required projectId")
+}
+
+func (s *ConfigurationExporterTestSuite) TestDeclarativeInAProjectWhenTheSystemOUCannotBeRead() {
+	parsed, err := parseToConfigurationDTOWrapper([]byte("id: cfg-s\nhandle: pid-s\nvct: urn:pid\nprojectId: proj-1\n"))
+	s.Require().NoError(err)
+	dto := parsed.(*CredentialConfigurationDTO)
+
+	ouMock := oumock.NewOrganizationUnitServiceInterfaceMock(s.T())
+	ouMock.EXPECT().GetSystemOUID(mock.Anything).Return("", &tidcommon.InternalServerError)
+	svc := newCredentialConfigurationService(newCredentialStoreInterfaceMock(s.T()), ouMock,
+		newProjectOUValidatorMock(s.T()), true)
+	s.Require().ErrorContains(validateConfigurationWrapper(dto, nil, nil, svc), "in the system organization unit")
 }

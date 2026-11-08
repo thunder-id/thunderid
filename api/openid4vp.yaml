@@ -21,8 +21,10 @@ paths:
     get:
       tags: [Presentation Definitions]
       summary: List presentation definitions
-      description: Returns presentation definition summaries with resolved organization-unit handles.
+      description: Returns presentation definition summaries with resolved organization-unit handles, or the summaries of one project's definitions when projectId is given.
       operationId: listPresentationDefinitions
+      parameters:
+        - $ref: '#/components/parameters/VPProjectID'
       responses:
         "200":
           description: Presentation definition summaries
@@ -45,7 +47,7 @@ paths:
             schema: {$ref: '#/components/schemas/VPPresentationDefinitionRequest'}
             example:
               handle: example-pid
-              ouId: 01900000-0000-7000-8000-000000000001
+              projectId: 01900000-0000-7000-8000-000000000002
               vct: urn:example:pid:1
               mandatoryClaims: [given_name]
       responses:
@@ -133,6 +135,12 @@ components:
       required: true
       description: Presentation definition ID.
       schema: {type: string}
+    VPProjectID:
+      name: projectId
+      in: query
+      required: false
+      description: List only the presentation definitions of this project. A project that does not exist has none.
+      schema: {type: string}
   responses:
     VPUnauthorized:
       description: Authentication is required.
@@ -145,14 +153,35 @@ components:
         application/json:
           schema: {$ref: '#/components/schemas/VPError'}
     VPInvalidRequest:
-      description: The request is malformed, omits a required field, uses an unsupported format, references an invalid organization unit, contains invalid claim definitions, or contains an invalid, expired, or duplicate trusted authority.
+      description: The request is malformed, omits a required field, uses an unsupported format, references an invalid organization unit, contains invalid claim definitions, contains an invalid, expired, or duplicate trusted authority, or names no project, a project that does not exist, or an organization unit outside its project.
       content:
         application/json:
           schema: {$ref: '#/components/schemas/VPError'}
-          example:
-            code: VP-2001
-            message: {key: error.vp.definition_invalid_request, defaultValue: Invalid request}
-            description: {key: error.vp.definition_invalid_request_description, defaultValue: The presentation definition request is missing required fields or is malformed}
+          examples:
+            invalidRequest:
+              summary: Malformed request
+              value:
+                code: VP-2001
+                message: {key: error.vp.definition_invalid_request, defaultValue: Invalid request}
+                description: {key: error.vp.definition_invalid_request_description, defaultValue: The presentation definition request is missing required fields or is malformed}
+            projectRequired:
+              summary: No project on the Control Plane
+              value:
+                code: VP-2020
+                message: {key: error.vp.definition_project_required, defaultValue: Project required}
+                description: {key: error.vp.definition_project_required_description, defaultValue: A presentation definition must belong to a project. Set projectId to the project it belongs to}
+            invalidProject:
+              summary: Project does not exist
+              value:
+                code: VP-2018
+                message: {key: error.vp.definition_invalid_project, defaultValue: Invalid project}
+                description: {key: error.vp.definition_invalid_project_description, defaultValue: No project exists with the given project ID}
+            ouNotInProject:
+              summary: Organization unit outside the project
+              value:
+                code: VP-2019
+                message: {key: error.vp.definition_ou_not_in_project, defaultValue: Organization unit not in project}
+                description: {key: error.vp.definition_ou_not_in_project_description, defaultValue: The organization unit must belong to the project}
     VPNotFound:
       description: No presentation definition exists for the supplied ID.
       content:
@@ -185,10 +214,11 @@ components:
   schemas:
     VPPresentationDefinitionBase:
       type: object
-      required: [handle, ouId, vct]
+      required: [handle, vct]
       properties:
         handle: {type: string, description: Unique presentation definition handle.}
-        ouId: {type: string, description: ID of the organization unit that owns this definition.}
+        ouId: {type: string, description: ID of the organization unit that owns this definition. Required unless projectId is given; a definition in a project is in the system organization unit.}
+        projectId: {type: string, description: "ID of the project this definition belongs to. Required on the Control Plane, where a request without it fails with VP-2020 and a project that does not exist fails with VP-2018. On update, leaving it out keeps the definition's project."}
         name: {type: string}
         description: {type: string}
         vct: {type: string, description: Verifiable credential type URI.}
@@ -252,6 +282,7 @@ components:
           handle: {type: string}
           ouId: {type: string}
           ouHandle: {type: string, readOnly: true}
+          projectId: {type: string}
           name: {type: string}
           vct: {type: string}
           format: {type: string}

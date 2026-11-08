@@ -46,6 +46,72 @@ func (_m *definitionStoreInterfaceMock) EXPECT() *definitionStoreInterfaceMock_E
 	return &definitionStoreInterfaceMock_Expecter{mock: &_m.Mock}
 }
 
+// CountPresentationDefinitionsByProject provides a mock function for the type definitionStoreInterfaceMock
+func (_mock *definitionStoreInterfaceMock) CountPresentationDefinitionsByProject(ctx context.Context, projectID string) (int, error) {
+	ret := _mock.Called(ctx, projectID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for CountPresentationDefinitionsByProject")
+	}
+
+	var r0 int
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (int, error)); ok {
+		return returnFunc(ctx, projectID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) int); ok {
+		r0 = returnFunc(ctx, projectID)
+	} else {
+		r0 = ret.Get(0).(int)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = returnFunc(ctx, projectID)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// definitionStoreInterfaceMock_CountPresentationDefinitionsByProject_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CountPresentationDefinitionsByProject'
+type definitionStoreInterfaceMock_CountPresentationDefinitionsByProject_Call struct {
+	*mock.Call
+}
+
+// CountPresentationDefinitionsByProject is a helper method to define mock.On call
+//   - ctx context.Context
+//   - projectID string
+func (_e *definitionStoreInterfaceMock_Expecter) CountPresentationDefinitionsByProject(ctx any, projectID any) *definitionStoreInterfaceMock_CountPresentationDefinitionsByProject_Call {
+	return &definitionStoreInterfaceMock_CountPresentationDefinitionsByProject_Call{Call: _e.mock.On("CountPresentationDefinitionsByProject", ctx, projectID)}
+}
+
+func (_c *definitionStoreInterfaceMock_CountPresentationDefinitionsByProject_Call) Run(run func(ctx context.Context, projectID string)) *definitionStoreInterfaceMock_CountPresentationDefinitionsByProject_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *definitionStoreInterfaceMock_CountPresentationDefinitionsByProject_Call) Return(n int, err error) *definitionStoreInterfaceMock_CountPresentationDefinitionsByProject_Call {
+	_c.Call.Return(n, err)
+	return _c
+}
+
+func (_c *definitionStoreInterfaceMock_CountPresentationDefinitionsByProject_Call) RunAndReturn(run func(ctx context.Context, projectID string) (int, error)) *definitionStoreInterfaceMock_CountPresentationDefinitionsByProject_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // CreatePresentationDefinition provides a mock function for the type definitionStoreInterfaceMock
 func (_mock *definitionStoreInterfaceMock) CreatePresentationDefinition(ctx context.Context, dto PresentationDefinitionDTO) error {
 	ret := _mock.Called(ctx, dto)
@@ -488,6 +554,74 @@ func (_c *definitionStoreInterfaceMock_ListPresentationDefinitionSummariesByOUID
 }
 
 func (_c *definitionStoreInterfaceMock_ListPresentationDefinitionSummariesByOUID_Call) RunAndReturn(run func(ctx context.Context, ouID string) ([]PresentationDefinitionList, error)) *definitionStoreInterfaceMock_ListPresentationDefinitionSummariesByOUID_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ListPresentationDefinitionSummariesByProject provides a mock function for the type definitionStoreInterfaceMock
+func (_mock *definitionStoreInterfaceMock) ListPresentationDefinitionSummariesByProject(ctx context.Context, projectID string) ([]PresentationDefinitionList, error) {
+	ret := _mock.Called(ctx, projectID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListPresentationDefinitionSummariesByProject")
+	}
+
+	var r0 []PresentationDefinitionList
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) ([]PresentationDefinitionList, error)); ok {
+		return returnFunc(ctx, projectID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) []PresentationDefinitionList); ok {
+		r0 = returnFunc(ctx, projectID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]PresentationDefinitionList)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = returnFunc(ctx, projectID)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// definitionStoreInterfaceMock_ListPresentationDefinitionSummariesByProject_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ListPresentationDefinitionSummariesByProject'
+type definitionStoreInterfaceMock_ListPresentationDefinitionSummariesByProject_Call struct {
+	*mock.Call
+}
+
+// ListPresentationDefinitionSummariesByProject is a helper method to define mock.On call
+//   - ctx context.Context
+//   - projectID string
+func (_e *definitionStoreInterfaceMock_Expecter) ListPresentationDefinitionSummariesByProject(ctx any, projectID any) *definitionStoreInterfaceMock_ListPresentationDefinitionSummariesByProject_Call {
+	return &definitionStoreInterfaceMock_ListPresentationDefinitionSummariesByProject_Call{Call: _e.mock.On("ListPresentationDefinitionSummariesByProject", ctx, projectID)}
+}
+
+func (_c *definitionStoreInterfaceMock_ListPresentationDefinitionSummariesByProject_Call) Run(run func(ctx context.Context, projectID string)) *definitionStoreInterfaceMock_ListPresentationDefinitionSummariesByProject_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *definitionStoreInterfaceMock_ListPresentationDefinitionSummariesByProject_Call) Return(presentationDefinitionLists []PresentationDefinitionList, err error) *definitionStoreInterfaceMock_ListPresentationDefinitionSummariesByProject_Call {
+	_c.Call.Return(presentationDefinitionLists, err)
+	return _c
+}
+
+func (_c *definitionStoreInterfaceMock_ListPresentationDefinitionSummariesByProject_Call) RunAndReturn(run func(ctx context.Context, projectID string) ([]PresentationDefinitionList, error)) *definitionStoreInterfaceMock_ListPresentationDefinitionSummariesByProject_Call {
 	_c.Call.Return(run)
 	return _c
 }

@@ -6,7 +6,13 @@ import type {ClaimMapping, CredentialDisplay} from './vc';
 /** Request body for creating a credential configuration. */
 export interface CreateVerifiableCredentialRequest {
   handle: string;
-  ouId: string;
+  /**
+   * The organization unit this configuration belongs to. A configuration in a project leaves it out and is placed
+   * in the system organization unit.
+   */
+  ouId?: string;
+  /** The project this configuration belongs to. Required on the control plane. */
+  projectId?: string;
   name?: string;
   description?: string;
   format?: string;

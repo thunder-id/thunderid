@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {QueryErrorNotice} from '@thunderid/components';
+import {useProjectScope} from '@thunderid/contexts';
 import {useDataGridLocaleText} from '@thunderid/hooks';
 import {useLogger} from '@thunderid/logger/react';
 import {IconButton, Typography, Tooltip, DataGrid, ListingTable} from '@wso2/oxygen-ui';
@@ -43,7 +44,8 @@ export default function VerifiablePresentationsList({
     [t],
   );
 
-  const {data, isLoading, error, refetch} = useGetVerifiablePresentations();
+  const {projectId} = useProjectScope();
+  const {data, isLoading, error, refetch} = useGetVerifiablePresentations(projectId);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState<boolean>(false);

@@ -427,6 +427,7 @@ CREATE TABLE "PRESENTATION_DEFINITION" (
     ID VARCHAR(36) NOT NULL,
     HANDLE VARCHAR(255) NOT NULL,
     OU_ID VARCHAR(36) NOT NULL,
+    PROJECT_ID VARCHAR(36),
     NAME VARCHAR(255),
     DESCRIPTION VARCHAR(255),
     VCT VARCHAR(512) NOT NULL,
@@ -445,12 +446,16 @@ CREATE UNIQUE INDEX idx_openid4vp_pd_handle ON "PRESENTATION_DEFINITION" (DEPLOY
 -- Supports listing the presentation definitions an organization unit owns.
 CREATE INDEX idx_openid4vp_pd_ou ON "PRESENTATION_DEFINITION" (DEPLOYMENT_ID, OU_ID);
 
+-- Composite index for listing the presentation definitions of a project
+CREATE INDEX idx_openid4vp_pd_project ON "PRESENTATION_DEFINITION" (DEPLOYMENT_ID, PROJECT_ID);
+
 -- Table to store OpenID4VCI credential configurations.
 CREATE TABLE "CREDENTIAL_CONFIGURATION" (
     DEPLOYMENT_ID VARCHAR(255) NOT NULL,
     ID VARCHAR(36) NOT NULL,
     HANDLE VARCHAR(255) NOT NULL,
     OU_ID VARCHAR(36) NOT NULL,
+    PROJECT_ID VARCHAR(36),
     NAME VARCHAR(255),
     DESCRIPTION VARCHAR(255),
     FORMAT VARCHAR(64) NOT NULL DEFAULT 'dc+sd-jwt',
@@ -468,6 +473,9 @@ CREATE UNIQUE INDEX idx_openid4vci_cc_handle ON "CREDENTIAL_CONFIGURATION" (DEPL
 
 -- Supports listing the credential configurations an organization unit owns.
 CREATE INDEX idx_openid4vci_cc_ou ON "CREDENTIAL_CONFIGURATION" (DEPLOYMENT_ID, OU_ID);
+
+-- Composite index for listing the credential configurations of a project
+CREATE INDEX idx_openid4vci_cc_project ON "CREDENTIAL_CONFIGURATION" (DEPLOYMENT_ID, PROJECT_ID);
 
 -- Table to store server-wide configuration
 CREATE TABLE "SERVER_CONFIG" (

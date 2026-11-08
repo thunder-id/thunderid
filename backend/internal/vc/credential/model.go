@@ -32,6 +32,7 @@ type CredentialConfigurationDTO struct {
 	Handle          string             `json:"handle" yaml:"handle"`
 	OUID            string             `json:"ouId" yaml:"ouId,omitempty"`
 	OUHandle        string             `json:"ouHandle,omitempty" yaml:"ouHandle,omitempty"`
+	ProjectID       string             `json:"projectId,omitempty" yaml:"projectId,omitempty"`
 	Name            string             `json:"name,omitempty" yaml:"name,omitempty"`
 	Description     string             `json:"description,omitempty" yaml:"description,omitempty"`
 	Format          string             `json:"format,omitempty" yaml:"format,omitempty"`
@@ -41,10 +42,12 @@ type CredentialConfigurationDTO struct {
 	ValiditySeconds *int               `json:"validitySeconds,omitempty" yaml:"validitySeconds,omitempty"`
 }
 
-// credentialConfigurationRequest is the API request body for create/update.
+// credentialConfigurationRequest is the API request body for create/update. A configuration in a project may
+// leave ouId out to be placed in the system organization unit.
 type credentialConfigurationRequest struct {
 	Handle          string             `json:"handle"`
-	OUID            string             `json:"ouId" native:"required"`
+	OUID            string             `json:"ouId"`
+	ProjectID       string             `json:"projectId"`
 	Name            string             `json:"name"`
 	Description     string             `json:"description"`
 	Format          string             `json:"format"`
@@ -60,6 +63,7 @@ type credentialConfigurationResponse struct {
 	Handle          string             `json:"handle"`
 	OUID            string             `json:"ouId"`
 	OUHandle        string             `json:"ouHandle,omitempty"`
+	ProjectID       string             `json:"projectId,omitempty"`
 	Name            string             `json:"name,omitempty"`
 	Description     string             `json:"description,omitempty"`
 	Format          string             `json:"format"`
@@ -77,24 +81,26 @@ func toResponse(dto CredentialConfigurationDTO) credentialConfigurationResponse 
 // CredentialConfigurationList is the minimal projection returned by the list
 // endpoint. It contains only the fields the management UI renders in the table.
 type CredentialConfigurationList struct {
-	ID       string `json:"id"`
-	Handle   string `json:"handle"`
-	OUID     string `json:"ouId"`
-	OUHandle string `json:"ouHandle,omitempty"`
-	Format   string `json:"format"`
-	VCT      string `json:"vct"`
-	Name     string `json:"name,omitempty"`
+	ID        string `json:"id"`
+	Handle    string `json:"handle"`
+	OUID      string `json:"ouId"`
+	OUHandle  string `json:"ouHandle,omitempty"`
+	ProjectID string `json:"projectId,omitempty"`
+	Format    string `json:"format"`
+	VCT       string `json:"vct"`
+	Name      string `json:"name,omitempty"`
 }
 
 // toConfigSummary projects a full DTO to a list summary.
 func toConfigSummary(dto CredentialConfigurationDTO) CredentialConfigurationList {
 	return CredentialConfigurationList{
-		ID:       dto.ID,
-		Handle:   dto.Handle,
-		OUID:     dto.OUID,
-		OUHandle: dto.OUHandle,
-		Format:   dto.Format,
-		VCT:      dto.VCT,
-		Name:     dto.Name,
+		ID:        dto.ID,
+		Handle:    dto.Handle,
+		OUID:      dto.OUID,
+		OUHandle:  dto.OUHandle,
+		ProjectID: dto.ProjectID,
+		Format:    dto.Format,
+		VCT:       dto.VCT,
+		Name:      dto.Name,
 	}
 }

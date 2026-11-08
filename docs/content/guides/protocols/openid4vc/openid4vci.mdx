@@ -45,7 +45,7 @@ Credential configurations are managed resources you create through the <ProductN
 
 A **credential configuration** defines one credential type the issuer can produce. Its `handle` becomes the `credential_configuration_id` in the issuer metadata document and the OAuth scope wallets request.
 
-Manage configurations in **Verifiable Credentials → Templates** in the <ProductName /> Console, or declare them in YAML for file-based deployments (`resource_type: credential_configuration`).
+Manage configurations in **Verifiable Credentials → Templates** in the <ProductName /> Console, or declare them in YAML for file-based deployments (`resource_type: credential_configuration`). On the control plane, open the project first, where **Verifiable Credentials** is under **Build**.
 
 | Field | Description |
 |---|---|
@@ -54,6 +54,18 @@ Manage configurations in **Verifiable Credentials → Templates** in the <Produc
 | **Claims** | Each entry maps a user profile attribute name to an optional wallet display name. The attribute value is sourced from the user's profile at issuance. Every entry is advertised in the metadata `claims` array, and one with a display name also carries a `display` entry. |
 | **Display** | Wallet presentation display settings: locale (BCP 47 tag, e.g. `en-US`) and `logoUri` (a hosted image URL shown as the credential logo in the wallet). |
 | **Validity** | Lifetime of issued credentials in seconds. Overrides the server-level `credential_validity_seconds` when set. |
+
+### Credential Configurations in Projects
+
+On the control plane, every credential configuration belongs to a project.
+
+- **Create**: set `projectId` in the request body of `POST /openid4vci/credential-configurations`. The configuration goes into the system organization unit, so `ouId` can be left out. A request without `projectId` fails with `VCI-2015`, a project that does not exist fails with `VCI-2013`, and any organization unit other than the system one fails with `VCI-2014`.
+- **List**: `GET /openid4vci/credential-configurations?projectId=<project-id>` returns the configurations of the project. A project that does not exist returns an empty list.
+- **Update**: an update without `projectId` keeps the configuration in its current project, and one without `ouId` keeps its organization unit. A different `projectId` moves the configuration to that project after the same checks.
+- **Delete a project**: deleting a project that still has credential configurations fails with `PRJ-1013`.
+- **Declarative files**: a configuration file must set `projectId`, and can leave `ouId` out to be placed in the system organization unit. A file without `projectId` stops the server from starting. Export and import keep `projectId`.
+
+A server without projects, such as the all-in-one server, does not require a project and keeps the `projectId` it receives without checking that the project exists. A `projectId` longer than 36 characters still fails with `VCI-2013`.
 
 ## Server Configurations
 

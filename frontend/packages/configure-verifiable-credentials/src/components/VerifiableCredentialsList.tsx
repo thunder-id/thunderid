@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {QueryErrorNotice} from '@thunderid/components';
+import {useProjectScope} from '@thunderid/contexts';
 import {useDataGridLocaleText} from '@thunderid/hooks';
 import {useLogger} from '@thunderid/logger/react';
 import {IconButton, Typography, Tooltip, DataGrid, ListingTable} from '@wso2/oxygen-ui';
@@ -32,7 +33,8 @@ export default function VerifiableCredentialsList({showWalletQr = false}: Verifi
   const dataGridLocaleText = useDataGridLocaleText();
   const routes = useVerifiableCredentialRoutes();
 
-  const {data, isLoading, error, refetch} = useGetVerifiableCredentials();
+  const {projectId} = useProjectScope();
+  const {data, isLoading, error, refetch} = useGetVerifiableCredentials(projectId);
 
   // Resolves an error through the `verifiable-credentials` catalog. `t` defaults to the `common`
   // namespace, so this forwards explicit `ns:` prefixes unchanged and prefixes bare keys with

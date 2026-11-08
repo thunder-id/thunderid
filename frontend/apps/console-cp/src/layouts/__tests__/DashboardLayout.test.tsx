@@ -296,6 +296,33 @@ describe('DashboardLayout', () => {
     expect(item).toHaveTextContent('navigation:badges.undeployed');
   });
 
+  it("counts the selected project's undeployed verifiable credentials on the collapsed entry", () => {
+    mockUseProjectSelection.mockReturnValue(inShop());
+    mockProjectChanges = {credential_configuration: 1, presentation_definition: 2};
+    render(<DashboardLayout />);
+
+    const item = screen.getByText('navigation:pages.verifiableCredentials').closest('.MuiListItemButton-root')!;
+    expect(item).toHaveTextContent('3');
+    expect(item).not.toHaveTextContent('navigation:badges.undeployed');
+  });
+
+  it('badges the undeployed credential templates and presentation definitions once the entry is expanded', async () => {
+    mockUseProjectSelection.mockReturnValue(inShop());
+    mockProjectChanges = {credential_configuration: 1, presentation_definition: 2};
+    render(<DashboardLayout />);
+
+    const parent = screen.getByText('navigation:pages.verifiableCredentials').closest('.MuiListItemButton-root')!;
+    await userEvent.click(parent);
+
+    await waitFor(() => {
+      const templates = screen.getByText('navigation:pages.credentials').closest('.MuiListItemButton-root')!;
+      expect(templates).toHaveTextContent('navigation:badges.undeployed');
+    });
+    const presentations = screen.getByText('navigation:pages.presentations').closest('.MuiListItemButton-root')!;
+    expect(presentations).toHaveTextContent('navigation:badges.undeployed');
+    expect(parent).not.toHaveTextContent('3');
+  });
+
   it("badges the selected project's notifications when its templates are not deployed yet", () => {
     mockUseProjectSelection.mockReturnValue(inShop());
     mockProjectChanges = {notification_template: 1};

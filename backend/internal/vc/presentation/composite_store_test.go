@@ -266,3 +266,43 @@ func (s *CompositeDefinitionStoreTestSuite) TestListSummariesByOUIDStoreErrors()
 		ListPresentationDefinitionSummariesByOUID(s.ctx, "ou-1")
 	s.Error(err)
 }
+
+// A project's definitions merge across both stores, and a failing store fails the list.
+func (s *CompositeDefinitionStoreTestSuite) TestListSummariesByProject() {
+	s.Require().NoError(s.dbStore.CreatePresentationDefinition(s.ctx,
+		PresentationDefinitionDTO{ID: "db-1", Handle: "db-1", VCT: "v", OUID: "ou-1", ProjectID: "proj-1"}))
+	fileDTO := PresentationDefinitionDTO{ID: "file-1", Handle: "file-1", VCT: "v", OUID: "ou-1", ProjectID: "proj-1"}
+	s.Require().NoError((&definitionStorer{store: s.fileStore}).Create(fileDTO.ID, &fileDTO))
+
+	summaries, err := s.composite.ListPresentationDefinitionSummariesByProject(s.ctx, "proj-1")
+	s.Require().NoError(err)
+	s.Len(summaries, 2)
+
+	failing := newDefinitionStoreInterfaceMock(s.T())
+	failing.EXPECT().ListPresentationDefinitionSummariesByProject(mock.Anything, "proj-1").
+		Return(nil, errors.New("boom")).Twice()
+	_, err = newCompositeDefinitionStore(s.fileStore, failing).
+		ListPresentationDefinitionSummariesByProject(s.ctx, "proj-1")
+	s.Error(err)
+	_, err = newCompositeDefinitionStore(failing, s.dbStore).
+		ListPresentationDefinitionSummariesByProject(s.ctx, "proj-1")
+	s.Error(err)
+}
+
+// A project's definitions are counted across both stores, and a failing store fails the count.
+func (s *CompositeDefinitionStoreTestSuite) TestCountByProject() {
+	s.Require().NoError(s.dbStore.CreatePresentationDefinition(s.ctx,
+		PresentationDefinitionDTO{ID: "db-1", Handle: "db-1", VCT: "v", OUID: "ou-1", ProjectID: "proj-1"}))
+	fileDTO := PresentationDefinitionDTO{ID: "file-1", Handle: "file-1", VCT: "v", OUID: "ou-1", ProjectID: "proj-1"}
+	s.Require().NoError((&definitionStorer{store: s.fileStore}).Create(fileDTO.ID, &fileDTO))
+
+	count, err := s.composite.CountPresentationDefinitionsByProject(s.ctx, "proj-1")
+	s.Require().NoError(err)
+	s.Equal(2, count)
+
+	failing := newDefinitionStoreInterfaceMock(s.T())
+	failing.EXPECT().CountPresentationDefinitionsByProject(mock.Anything, "proj-1").
+		Return(0, errors.New("boom")).Once()
+	_, err = newCompositeDefinitionStore(s.fileStore, failing).CountPresentationDefinitionsByProject(s.ctx, "proj-1")
+	s.Error(err)
+}

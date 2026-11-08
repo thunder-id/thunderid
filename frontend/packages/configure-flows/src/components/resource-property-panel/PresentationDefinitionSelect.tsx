@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {useGetVerifiablePresentations} from '@thunderid/configure-verifiable-credentials';
+import {useProjectScope} from '@thunderid/contexts';
 import {MenuItem, TextField} from '@wso2/oxygen-ui';
 import type {ChangeEvent, ReactElement} from 'react';
 import {useTranslation} from 'react-i18next';
@@ -19,7 +20,8 @@ export interface PresentationDefinitionSelectProps {
 
 /**
  * A dropdown that lets a flow step pick a configured OpenID4VP presentation
- * definition (by handle) instead of typing a free-text id.
+ * definition (by handle) instead of typing a free-text id. Inside a project it offers the project's
+ * definitions, since a deploy of the project carries only its own.
  */
 export default function PresentationDefinitionSelect({
   propertyKey,
@@ -28,7 +30,8 @@ export default function PresentationDefinitionSelect({
   errorMessage = '',
 }: PresentationDefinitionSelectProps): ReactElement {
   const {t} = useTranslation();
-  const {data, isLoading} = useGetVerifiablePresentations();
+  const {projectId} = useProjectScope();
+  const {data, isLoading} = useGetVerifiablePresentations(projectId);
   const options = data ?? [];
   const hasError = !!errorMessage;
 

@@ -191,8 +191,9 @@ var (
 		},
 		ErrorDescription: tidcommon.I18nMessage{
 			Key: "error.projectservice.project_not_empty_description",
-			DefaultValue: "Delete or move the project's applications, agents, flows, layouts, themes and " +
-				"notification templates before deleting the project",
+			DefaultValue: "Delete or move the project's applications, agents, flows, layouts, themes, " +
+				"notification templates, presentation definitions and credential configurations before " +
+				"deleting the project",
 		},
 	}
 )

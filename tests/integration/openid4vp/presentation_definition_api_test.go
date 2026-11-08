@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -485,7 +486,7 @@ func (ts *PresentationDefinitionAPITestSuite) TestCreate_RequiresOUID() {
 	})
 
 	ts.Equalf(http.StatusBadRequest, res.StatusCode, "create: %s", string(res.Body))
-	ts.Equal(codeDefinitionInvalidRequest, ts.errorCodeOf(res.Body))
+	ts.Equal(codeDefinitionInvalidOU, ts.errorCodeOf(res.Body))
 }
 
 // TestUpdate_RequiresOUID verifies that an output-only OU handle cannot select
@@ -502,7 +503,7 @@ func (ts *PresentationDefinitionAPITestSuite) TestUpdate_RequiresOUID() {
 	})
 
 	ts.Equalf(http.StatusBadRequest, updateRes.StatusCode, "update: %s", string(updateRes.Body))
-	ts.Equal(codeDefinitionInvalidRequest, ts.errorCodeOf(updateRes.Body))
+	ts.Equal(codeDefinitionInvalidOU, ts.errorCodeOf(updateRes.Body))
 }
 
 // TestDelete verifies a deleted definition is no longer readable, and that
@@ -587,7 +588,7 @@ func (ts *PresentationDefinitionAPITestSuite) TestCreate_ValidationErrors() {
 			mutate: func(d *testutils.PresentationDefinition) {
 				d.OUID = ""
 			},
-			wantCode: codeDefinitionInvalidRequest,
+			wantCode: codeDefinitionInvalidOU,
 		},
 		{
 			name: "empty claim name",
@@ -825,4 +826,59 @@ func (ts *PresentationDefinitionAPITestSuite) TestUnauthenticated() {
 	defer resp.Body.Close()
 
 	ts.Equal(http.StatusUnauthorized, resp.StatusCode)
+}
+
+// TestProjectScope covers presentation definitions in projects on a server without projects: the server keeps
+// the project unchecked and places a definition without an organization unit in the system one, lists a
+// project's definitions, keeps or moves the project on update, and refuses a project ID longer than the column.
+func (ts *PresentationDefinitionAPITestSuite) TestProjectScope() {
+	const (
+		projectA = "019a0000-0000-7000-8000-0000000000a1"
+		projectB = "019a0000-0000-7000-8000-0000000000b2"
+	)
+	systemOUID, err := testutils.FindBootstrapOUID()
+	ts.Require().NoError(err)
+
+	def := testutils.PresentationDefinition{Handle: "it-vp-project-scoped", VCT: crudDefinitionVCT, ProjectID: projectA}
+	res, created := ts.createDefinition(def)
+	ts.Require().Equalf(http.StatusCreated, res.StatusCode, "create: %s", string(res.Body))
+	id, _ := created["id"].(string)
+	ts.Equal(systemOUID, created["ouId"], "a definition in a project without an organization unit is in the system one")
+	ts.Equal(projectA, created["projectId"])
+
+	ts.Equal([]string{id}, ts.listIDs("?projectId="+projectA))
+	ts.Empty(ts.listIDs("?projectId=" + projectB))
+	ts.Empty(ts.listIDs("?projectId="), "an empty project lists no definition")
+
+	def.ProjectID = ""
+	res = ts.definitionRequest(http.MethodPut, definitionAPIBasePath+"/"+id, def)
+	ts.Require().Equalf(http.StatusOK, res.StatusCode, "update: %s", string(res.Body))
+	ts.Equal(projectA, ts.decode(res.Body)["projectId"], "an update without a project keeps it")
+
+	def.ProjectID = projectB
+	res = ts.definitionRequest(http.MethodPut, definitionAPIBasePath+"/"+id, def)
+	ts.Require().Equalf(http.StatusOK, res.StatusCode, "update: %s", string(res.Body))
+	ts.Equal(projectB, ts.decode(res.Body)["projectId"])
+	ts.Equal([]string{id}, ts.listIDs("?projectId="+projectB))
+
+	overlong := testutils.PresentationDefinition{Handle: "it-vp-project-overlong", VCT: crudDefinitionVCT,
+		ProjectID: strings.Repeat("p", 37)}
+	res, _ = ts.createDefinition(overlong)
+	ts.Equal(http.StatusBadRequest, res.StatusCode)
+	ts.Equal("VP-2018", ts.errorCodeOf(res.Body))
+}
+
+// listIDs lists presentation definitions with the given query and returns their IDs.
+func (ts *PresentationDefinitionAPITestSuite) listIDs(query string) []string {
+	res := ts.definitionRequest(http.MethodGet, definitionAPIBasePath+query, nil)
+	ts.Require().Equalf(http.StatusOK, res.StatusCode, "list: %s", string(res.Body))
+	var summaries []struct {
+		ID string `json:"id"`
+	}
+	ts.Require().NoError(json.Unmarshal(res.Body, &summaries))
+	ids := []string{}
+	for _, summary := range summaries {
+		ids = append(ids, summary.ID)
+	}
+	return ids
 }

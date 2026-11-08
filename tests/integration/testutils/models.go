@@ -601,6 +601,7 @@ type CredentialDisplay struct {
 type CredentialConfiguration struct {
 	Handle          string             `json:"handle"`
 	OUID            string             `json:"ouId,omitempty"`
+	ProjectID       string             `json:"projectId,omitempty"`
 	Name            string             `json:"name,omitempty"`
 	Description     string             `json:"description,omitempty"`
 	Format          string             `json:"format,omitempty"`
@@ -616,6 +617,7 @@ type CredentialConfiguration struct {
 type PresentationDefinition struct {
 	Handle               string              `json:"handle"`
 	OUID                 string              `json:"ouId,omitempty"`
+	ProjectID            string              `json:"projectId,omitempty"`
 	Name                 string              `json:"name,omitempty"`
 	Description          string              `json:"description,omitempty"`
 	VCT                  string              `json:"vct"`

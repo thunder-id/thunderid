@@ -264,3 +264,42 @@ func (s *CompositeCredentialStoreTestSuite) TestListSummariesByOUIDStoreErrors()
 		ListCredentialConfigurationSummariesByOUID(s.ctx, "ou-1")
 	s.Error(err)
 }
+
+func (s *CompositeCredentialStoreTestSuite) TestListSummariesByProject() {
+	s.Require().NoError(s.dbStore.CreateCredentialConfiguration(s.ctx,
+		CredentialConfigurationDTO{ID: "db-1", Handle: "db-1", VCT: "v", OUID: "ou-1", ProjectID: "proj-1"}))
+	fileDTO := CredentialConfigurationDTO{ID: "file-1", Handle: "file-1", VCT: "v", OUID: "ou-1", ProjectID: "proj-1"}
+	s.Require().NoError((&credentialStorer{store: s.fileStore}).Create(fileDTO.ID, &fileDTO))
+
+	summaries, err := s.composite.ListCredentialConfigurationSummariesByProject(s.ctx, "proj-1")
+	s.Require().NoError(err)
+	s.Len(summaries, 2)
+
+	failing := newCredentialStoreInterfaceMock(s.T())
+	failing.EXPECT().ListCredentialConfigurationSummariesByProject(mock.Anything, "proj-1").
+		Return(nil, errors.New("boom")).Twice()
+	_, err = newCompositeCredentialStore(s.fileStore, failing).
+		ListCredentialConfigurationSummariesByProject(s.ctx, "proj-1")
+	s.Error(err)
+	_, err = newCompositeCredentialStore(failing, s.dbStore).
+		ListCredentialConfigurationSummariesByProject(s.ctx, "proj-1")
+	s.Error(err)
+}
+
+// A project's configurations are counted across both stores, and a failing store fails the count.
+func (s *CompositeCredentialStoreTestSuite) TestCountByProject() {
+	s.Require().NoError(s.dbStore.CreateCredentialConfiguration(s.ctx,
+		CredentialConfigurationDTO{ID: "db-1", Handle: "db-1", VCT: "v", OUID: "ou-1", ProjectID: "proj-1"}))
+	fileDTO := CredentialConfigurationDTO{ID: "file-1", Handle: "file-1", VCT: "v", OUID: "ou-1", ProjectID: "proj-1"}
+	s.Require().NoError((&credentialStorer{store: s.fileStore}).Create(fileDTO.ID, &fileDTO))
+
+	count, err := s.composite.CountCredentialConfigurationsByProject(s.ctx, "proj-1")
+	s.Require().NoError(err)
+	s.Equal(2, count)
+
+	failing := newCredentialStoreInterfaceMock(s.T())
+	failing.EXPECT().CountCredentialConfigurationsByProject(mock.Anything, "proj-1").
+		Return(0, errors.New("boom")).Once()
+	_, err = newCompositeCredentialStore(s.fileStore, failing).CountCredentialConfigurationsByProject(s.ctx, "proj-1")
+	s.Error(err)
+}

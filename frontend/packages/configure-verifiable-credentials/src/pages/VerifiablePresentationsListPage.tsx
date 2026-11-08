@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {DocumentTitle, ExternalLink} from '@thunderid/components';
+import {useProjectScope} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {PageContent, PageTitle, Stack, Button} from '@wso2/oxygen-ui';
 import {Plus} from '@wso2/oxygen-ui-icons-react';
@@ -13,12 +14,21 @@ import VerifiablePresentationsList, {
 } from '../components/VerifiablePresentationsList';
 import useVerifiableCredentialRoutes from '../hooks/useVerifiableCredentialRoutes';
 
-export type VerifiablePresentationsListPageProps = VerifiablePresentationsListProps;
+export interface VerifiablePresentationsListPageProps extends VerifiablePresentationsListProps {
+  /**
+   * Whether a presentation definition is created in a project only. When set, a definition can be created
+   * inside a selected project and not outside one.
+   */
+  createInProjectsOnly?: boolean;
+}
 
 export default function VerifiablePresentationsListPage({
   showWalletQr = false,
+  createInProjectsOnly = false,
 }: VerifiablePresentationsListPageProps): JSX.Element {
   const navigate = useNavigate();
+  const {projectId} = useProjectScope();
+  const canCreate = !createInProjectsOnly || Boolean(projectId);
   const {t} = useTranslation();
   const logger = useLogger('VerifiablePresentationsListPage');
   const routes = useVerifiableCredentialRoutes();
@@ -32,23 +42,26 @@ export default function VerifiablePresentationsListPage({
           {t('verifiable-presentations:listing.subtitle')}{' '}
           <ExternalLink docKey="verifiableCredentials.presentations" confirmBeforeNavigate={false} />
         </PageTitle.SubHeader>
-        <PageTitle.Actions>
-          <Stack direction="row" spacing={2}>
-            <Button
-              variant="contained"
-              startIcon={<Plus size={18} />}
-              onClick={() => {
-                (async () => {
-                  await navigate(routes.verifiablePresentations.create());
-                })().catch((error: unknown) => {
-                  logger.error('Failed to navigate to create page', {error});
-                });
-              }}
-            >
-              {t('verifiable-presentations:listing.add')}
-            </Button>
-          </Stack>
-        </PageTitle.Actions>
+        {canCreate && (
+          <PageTitle.Actions>
+            <Stack direction="row" spacing={2}>
+              <Button
+                data-testid="vp-add-button"
+                variant="contained"
+                startIcon={<Plus size={18} />}
+                onClick={() => {
+                  (async () => {
+                    await navigate(routes.verifiablePresentations.create());
+                  })().catch((error: unknown) => {
+                    logger.error('Failed to navigate to create page', {error});
+                  });
+                }}
+              >
+                {t('verifiable-presentations:listing.add')}
+              </Button>
+            </Stack>
+          </PageTitle.Actions>
+        )}
       </PageTitle>
 
       <VerifiablePresentationsList showWalletQr={showWalletQr} />

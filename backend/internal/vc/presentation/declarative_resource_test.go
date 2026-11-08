@@ -249,7 +249,7 @@ func (s *DefinitionExporterTestSuite) TestParseToDefinitionDTOInvalidYAML() {
 func (s *DefinitionExporterTestSuite) TestGetAllResourceIDsListError() {
 	store := newDefinitionStoreInterfaceMock(s.T())
 	store.EXPECT().ListPresentationDefinitions(mock.Anything).Return(nil, errors.New("db boom"))
-	svc := newPresentationDefinitionService(store, nil)
+	svc := newPresentationDefinitionService(store, nil, nil, false)
 	exporter := newDefinitionExporter(svc)
 
 	_, err := exporter.GetAllResourceIDs(context.Background())
@@ -263,7 +263,7 @@ func (s *DefinitionExporterTestSuite) TestGetAllResourceIDsIsDeclarativeError() 
 		[]PresentationDefinitionDTO{{ID: "def-1", Handle: "h", VCT: "v"}}, nil)
 	store.EXPECT().IsPresentationDefinitionDeclarative(mock.Anything, mock.Anything).Return(
 		false, errors.New("db boom"))
-	svc := newPresentationDefinitionService(store, nil)
+	svc := newPresentationDefinitionService(store, nil, nil, false)
 	exporter := newDefinitionExporter(svc)
 
 	_, err := exporter.GetAllResourceIDs(context.Background())
@@ -280,7 +280,7 @@ func (s *DefinitionExporterTestSuite) TestGetAllResourceIDsExcludesDeclarative()
 		}, nil)
 	store.EXPECT().IsPresentationDefinitionDeclarative(mock.Anything, "mutable").Return(false, nil)
 	store.EXPECT().IsPresentationDefinitionDeclarative(mock.Anything, "declarative").Return(true, nil)
-	svc := newPresentationDefinitionService(store, nil)
+	svc := newPresentationDefinitionService(store, nil, nil, false)
 	exporter := newDefinitionExporter(svc)
 
 	ids, err := exporter.GetAllResourceIDs(context.Background())
@@ -333,7 +333,8 @@ func (s *DefinitionExporterTestSuite) TestValidateResolvesOUHandle() {
 		map[string]string{"root/eng": "ou-123"}, map[string]string{"ou-123": "root/eng"})
 
 	dto := &PresentationDefinitionDTO{ID: "def-1", Handle: "h", VCT: "v", OUHandle: "root/eng"}
-	s.Require().NoError(validateDefinitionWrapper(dto, nil, nil, newPresentationDefinitionService(nil, ouSvc)))
+	s.Require().NoError(validateDefinitionWrapper(dto, nil, nil,
+		newPresentationDefinitionService(nil, ouSvc, nil, false)))
 	s.Equal("ou-123", dto.OUID)
 }
 
@@ -343,7 +344,7 @@ func (s *DefinitionExporterTestSuite) TestValidateRejectsUnknownOUHandle() {
 	ouSvc := newOUServiceMock(s.T(), map[string]bool{}, map[string]string{}, map[string]string{})
 
 	dto := &PresentationDefinitionDTO{ID: "def-1", Handle: "h", VCT: "v", OUHandle: "no/such/ou"}
-	err := validateDefinitionWrapper(dto, nil, nil, newPresentationDefinitionService(nil, ouSvc))
+	err := validateDefinitionWrapper(dto, nil, nil, newPresentationDefinitionService(nil, ouSvc, nil, false))
 	s.Require().Error(err)
 	s.Contains(err.Error(), "no/such/ou")
 }
@@ -361,7 +362,8 @@ func (s *DefinitionExporterTestSuite) TestValidateResolvesOUHandleUsesRuntimeCon
 	ouSvc.EXPECT().IsOrganizationUnitExists(mock.Anything, "ou-123").Return(true, nil).Once()
 
 	dto := &PresentationDefinitionDTO{ID: "def-1", Handle: "h", VCT: "v", OUHandle: "root/eng"}
-	s.Require().NoError(validateDefinitionWrapper(dto, nil, nil, newPresentationDefinitionService(nil, ouSvc)))
+	s.Require().NoError(validateDefinitionWrapper(dto, nil, nil,
+		newPresentationDefinitionService(nil, ouSvc, nil, false)))
 	s.Equal("ou-123", dto.OUID)
 }
 
@@ -374,7 +376,8 @@ func (s *DefinitionExporterTestSuite) TestValidateOUIDWinsOverOUHandle() {
 	dto := &PresentationDefinitionDTO{
 		ID: "def-1", Handle: "h", VCT: "v", OUID: "ou-123", OUHandle: "wrong/path",
 	}
-	s.Require().NoError(validateDefinitionWrapper(dto, nil, nil, newPresentationDefinitionService(nil, ouSvc)))
+	s.Require().NoError(validateDefinitionWrapper(dto, nil, nil,
+		newPresentationDefinitionService(nil, ouSvc, nil, false)))
 	s.Equal("ou-123", dto.OUID)
 }
 
@@ -393,7 +396,7 @@ func (s *DefinitionExporterTestSuite) TestValidateRejectsUnknownExplicitOUID() {
 	ouSvc := newOUServiceMock(s.T(), map[string]bool{}, map[string]string{}, map[string]string{})
 
 	dto := &PresentationDefinitionDTO{ID: "def-1", Handle: "h", VCT: "v", OUID: "no-such-ou"}
-	err := validateDefinitionWrapper(dto, nil, nil, newPresentationDefinitionService(nil, ouSvc))
+	err := validateDefinitionWrapper(dto, nil, nil, newPresentationDefinitionService(nil, ouSvc, nil, false))
 	s.Require().Error(err)
 	s.Contains(err.Error(), "no-such-ou")
 }
@@ -525,10 +528,42 @@ func (s *DefinitionExporterTestSuite) TestLoadDeclarativeResourcesFromDisk() {
 
 	fileStore := newDefinitionFileBasedStore()
 	s.Require().NoError(fileStore.GenericFileBasedStore.ClearByType())
-	s.Require().NoError(loadDeclarativeResources(fileStore, nil, newPresentationDefinitionService(nil, ouSvc)))
+	s.Require().NoError(loadDeclarativeResources(fileStore, nil,
+		newPresentationDefinitionService(nil, ouSvc, nil, false)))
 
 	got, err := fileStore.GetPresentationDefinitionByID(context.Background(), "def-disk")
 	s.Require().NoError(err)
 	s.Equal("disk_handle", got.Handle)
 	s.Equal("ou-123", got.OUID, "ouHandle must be resolved to an ouId at load time")
+}
+
+func (s *DefinitionExporterTestSuite) TestDeclarativeDefinitionInAProject() {
+	dto, err := parseToDefinitionDTO([]byte("id: def-p\nhandle: pid-p\nvct: urn:pid\nprojectId: proj-1\n"))
+	s.Require().NoError(err)
+	s.Equal("proj-1", dto.ProjectID)
+
+	ouMock := oumock.NewOrganizationUnitServiceInterfaceMock(s.T())
+	ouMock.EXPECT().GetSystemOUID(mock.Anything).Return("sys-ou", nil)
+	ouMock.EXPECT().IsOrganizationUnitExists(mock.Anything, "sys-ou").Return(true, nil).Maybe()
+	svc := newPresentationDefinitionService(newDefinitionStoreInterfaceMock(s.T()), ouMock,
+		newProjectOUValidatorMock(s.T()), true)
+	s.Require().NoError(validateDefinitionWrapper(dto, nil, nil, svc))
+	s.Equal("sys-ou", dto.OUID,
+		"a declarative definition in a project without an organization unit is in the system one")
+
+	withoutProject, err := parseToDefinitionDTO([]byte("id: def-q\nhandle: pid-q\nvct: urn:pid\nouId: sys-ou\n"))
+	s.Require().NoError(err)
+	s.Require().ErrorContains(validateDefinitionWrapper(withoutProject, nil, nil, svc),
+		"missing the required projectId")
+}
+
+func (s *DefinitionExporterTestSuite) TestDeclarativeInAProjectWhenTheSystemOUCannotBeRead() {
+	dto, err := parseToDefinitionDTO([]byte("id: def-s\nhandle: pid-s\nvct: urn:pid\nprojectId: proj-1\n"))
+	s.Require().NoError(err)
+
+	ouMock := oumock.NewOrganizationUnitServiceInterfaceMock(s.T())
+	ouMock.EXPECT().GetSystemOUID(mock.Anything).Return("", &tidcommon.InternalServerError)
+	svc := newPresentationDefinitionService(newDefinitionStoreInterfaceMock(s.T()), ouMock,
+		newProjectOUValidatorMock(s.T()), true)
+	s.Require().ErrorContains(validateDefinitionWrapper(dto, nil, nil, svc), "in the system organization unit")
 }

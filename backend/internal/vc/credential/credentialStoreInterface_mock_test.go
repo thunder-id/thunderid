@@ -46,6 +46,72 @@ func (_m *credentialStoreInterfaceMock) EXPECT() *credentialStoreInterfaceMock_E
 	return &credentialStoreInterfaceMock_Expecter{mock: &_m.Mock}
 }
 
+// CountCredentialConfigurationsByProject provides a mock function for the type credentialStoreInterfaceMock
+func (_mock *credentialStoreInterfaceMock) CountCredentialConfigurationsByProject(ctx context.Context, projectID string) (int, error) {
+	ret := _mock.Called(ctx, projectID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for CountCredentialConfigurationsByProject")
+	}
+
+	var r0 int
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (int, error)); ok {
+		return returnFunc(ctx, projectID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) int); ok {
+		r0 = returnFunc(ctx, projectID)
+	} else {
+		r0 = ret.Get(0).(int)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = returnFunc(ctx, projectID)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// credentialStoreInterfaceMock_CountCredentialConfigurationsByProject_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CountCredentialConfigurationsByProject'
+type credentialStoreInterfaceMock_CountCredentialConfigurationsByProject_Call struct {
+	*mock.Call
+}
+
+// CountCredentialConfigurationsByProject is a helper method to define mock.On call
+//   - ctx context.Context
+//   - projectID string
+func (_e *credentialStoreInterfaceMock_Expecter) CountCredentialConfigurationsByProject(ctx any, projectID any) *credentialStoreInterfaceMock_CountCredentialConfigurationsByProject_Call {
+	return &credentialStoreInterfaceMock_CountCredentialConfigurationsByProject_Call{Call: _e.mock.On("CountCredentialConfigurationsByProject", ctx, projectID)}
+}
+
+func (_c *credentialStoreInterfaceMock_CountCredentialConfigurationsByProject_Call) Run(run func(ctx context.Context, projectID string)) *credentialStoreInterfaceMock_CountCredentialConfigurationsByProject_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *credentialStoreInterfaceMock_CountCredentialConfigurationsByProject_Call) Return(n int, err error) *credentialStoreInterfaceMock_CountCredentialConfigurationsByProject_Call {
+	_c.Call.Return(n, err)
+	return _c
+}
+
+func (_c *credentialStoreInterfaceMock_CountCredentialConfigurationsByProject_Call) RunAndReturn(run func(ctx context.Context, projectID string) (int, error)) *credentialStoreInterfaceMock_CountCredentialConfigurationsByProject_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // CreateCredentialConfiguration provides a mock function for the type credentialStoreInterfaceMock
 func (_mock *credentialStoreInterfaceMock) CreateCredentialConfiguration(ctx context.Context, dto CredentialConfigurationDTO) error {
 	ret := _mock.Called(ctx, dto)
@@ -488,6 +554,74 @@ func (_c *credentialStoreInterfaceMock_ListCredentialConfigurationSummariesByOUI
 }
 
 func (_c *credentialStoreInterfaceMock_ListCredentialConfigurationSummariesByOUID_Call) RunAndReturn(run func(ctx context.Context, ouID string) ([]CredentialConfigurationList, error)) *credentialStoreInterfaceMock_ListCredentialConfigurationSummariesByOUID_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ListCredentialConfigurationSummariesByProject provides a mock function for the type credentialStoreInterfaceMock
+func (_mock *credentialStoreInterfaceMock) ListCredentialConfigurationSummariesByProject(ctx context.Context, projectID string) ([]CredentialConfigurationList, error) {
+	ret := _mock.Called(ctx, projectID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListCredentialConfigurationSummariesByProject")
+	}
+
+	var r0 []CredentialConfigurationList
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) ([]CredentialConfigurationList, error)); ok {
+		return returnFunc(ctx, projectID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) []CredentialConfigurationList); ok {
+		r0 = returnFunc(ctx, projectID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]CredentialConfigurationList)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = returnFunc(ctx, projectID)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// credentialStoreInterfaceMock_ListCredentialConfigurationSummariesByProject_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ListCredentialConfigurationSummariesByProject'
+type credentialStoreInterfaceMock_ListCredentialConfigurationSummariesByProject_Call struct {
+	*mock.Call
+}
+
+// ListCredentialConfigurationSummariesByProject is a helper method to define mock.On call
+//   - ctx context.Context
+//   - projectID string
+func (_e *credentialStoreInterfaceMock_Expecter) ListCredentialConfigurationSummariesByProject(ctx any, projectID any) *credentialStoreInterfaceMock_ListCredentialConfigurationSummariesByProject_Call {
+	return &credentialStoreInterfaceMock_ListCredentialConfigurationSummariesByProject_Call{Call: _e.mock.On("ListCredentialConfigurationSummariesByProject", ctx, projectID)}
+}
+
+func (_c *credentialStoreInterfaceMock_ListCredentialConfigurationSummariesByProject_Call) Run(run func(ctx context.Context, projectID string)) *credentialStoreInterfaceMock_ListCredentialConfigurationSummariesByProject_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *credentialStoreInterfaceMock_ListCredentialConfigurationSummariesByProject_Call) Return(credentialConfigurationLists []CredentialConfigurationList, err error) *credentialStoreInterfaceMock_ListCredentialConfigurationSummariesByProject_Call {
+	_c.Call.Return(credentialConfigurationLists, err)
+	return _c
+}
+
+func (_c *credentialStoreInterfaceMock_ListCredentialConfigurationSummariesByProject_Call) RunAndReturn(run func(ctx context.Context, projectID string) ([]CredentialConfigurationList, error)) *credentialStoreInterfaceMock_ListCredentialConfigurationSummariesByProject_Call {
 	_c.Call.Return(run)
 	return _c
 }

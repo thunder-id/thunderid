@@ -15,6 +15,7 @@ var projectRequired = map[security.ResourceType]bool{
 	security.ResourceTypeAgent:                false,
 	security.ResourceTypeFlow:                 false,
 	security.ResourceTypeNotificationTemplate: true,
+	security.ResourceTypeVerifiableCredential: true,
 }
 
 // ProjectRequired reports whether a resource of the given type must be created in a project.

@@ -519,6 +519,76 @@ func (_c *CredentialConfigurationServiceInterfaceMock_ListCredentialConfiguratio
 	return _c
 }
 
+// ListCredentialConfigurationSummariesByProject provides a mock function for the type CredentialConfigurationServiceInterfaceMock
+func (_mock *CredentialConfigurationServiceInterfaceMock) ListCredentialConfigurationSummariesByProject(ctx context.Context, projectID string) ([]credential.CredentialConfigurationList, *common.ServiceError) {
+	ret := _mock.Called(ctx, projectID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListCredentialConfigurationSummariesByProject")
+	}
+
+	var r0 []credential.CredentialConfigurationList
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) ([]credential.CredentialConfigurationList, *common.ServiceError)); ok {
+		return returnFunc(ctx, projectID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) []credential.CredentialConfigurationList); ok {
+		r0 = returnFunc(ctx, projectID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]credential.CredentialConfigurationList)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, projectID)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// CredentialConfigurationServiceInterfaceMock_ListCredentialConfigurationSummariesByProject_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ListCredentialConfigurationSummariesByProject'
+type CredentialConfigurationServiceInterfaceMock_ListCredentialConfigurationSummariesByProject_Call struct {
+	*mock.Call
+}
+
+// ListCredentialConfigurationSummariesByProject is a helper method to define mock.On call
+//   - ctx context.Context
+//   - projectID string
+func (_e *CredentialConfigurationServiceInterfaceMock_Expecter) ListCredentialConfigurationSummariesByProject(ctx any, projectID any) *CredentialConfigurationServiceInterfaceMock_ListCredentialConfigurationSummariesByProject_Call {
+	return &CredentialConfigurationServiceInterfaceMock_ListCredentialConfigurationSummariesByProject_Call{Call: _e.mock.On("ListCredentialConfigurationSummariesByProject", ctx, projectID)}
+}
+
+func (_c *CredentialConfigurationServiceInterfaceMock_ListCredentialConfigurationSummariesByProject_Call) Run(run func(ctx context.Context, projectID string)) *CredentialConfigurationServiceInterfaceMock_ListCredentialConfigurationSummariesByProject_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *CredentialConfigurationServiceInterfaceMock_ListCredentialConfigurationSummariesByProject_Call) Return(credentialConfigurationLists []credential.CredentialConfigurationList, serviceError *common.ServiceError) *CredentialConfigurationServiceInterfaceMock_ListCredentialConfigurationSummariesByProject_Call {
+	_c.Call.Return(credentialConfigurationLists, serviceError)
+	return _c
+}
+
+func (_c *CredentialConfigurationServiceInterfaceMock_ListCredentialConfigurationSummariesByProject_Call) RunAndReturn(run func(ctx context.Context, projectID string) ([]credential.CredentialConfigurationList, *common.ServiceError)) *CredentialConfigurationServiceInterfaceMock_ListCredentialConfigurationSummariesByProject_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // ListCredentialConfigurations provides a mock function for the type CredentialConfigurationServiceInterfaceMock
 func (_mock *CredentialConfigurationServiceInterfaceMock) ListCredentialConfigurations(ctx context.Context) ([]credential.CredentialConfigurationDTO, *common.ServiceError) {
 	ret := _mock.Called(ctx)
@@ -579,6 +649,74 @@ func (_c *CredentialConfigurationServiceInterfaceMock_ListCredentialConfiguratio
 }
 
 func (_c *CredentialConfigurationServiceInterfaceMock_ListCredentialConfigurations_Call) RunAndReturn(run func(ctx context.Context) ([]credential.CredentialConfigurationDTO, *common.ServiceError)) *CredentialConfigurationServiceInterfaceMock_ListCredentialConfigurations_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ProjectHasCredentialConfigurations provides a mock function for the type CredentialConfigurationServiceInterfaceMock
+func (_mock *CredentialConfigurationServiceInterfaceMock) ProjectHasCredentialConfigurations(ctx context.Context, projectID string) (bool, *common.ServiceError) {
+	ret := _mock.Called(ctx, projectID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ProjectHasCredentialConfigurations")
+	}
+
+	var r0 bool
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (bool, *common.ServiceError)); ok {
+		return returnFunc(ctx, projectID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) bool); ok {
+		r0 = returnFunc(ctx, projectID)
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, projectID)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// CredentialConfigurationServiceInterfaceMock_ProjectHasCredentialConfigurations_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ProjectHasCredentialConfigurations'
+type CredentialConfigurationServiceInterfaceMock_ProjectHasCredentialConfigurations_Call struct {
+	*mock.Call
+}
+
+// ProjectHasCredentialConfigurations is a helper method to define mock.On call
+//   - ctx context.Context
+//   - projectID string
+func (_e *CredentialConfigurationServiceInterfaceMock_Expecter) ProjectHasCredentialConfigurations(ctx any, projectID any) *CredentialConfigurationServiceInterfaceMock_ProjectHasCredentialConfigurations_Call {
+	return &CredentialConfigurationServiceInterfaceMock_ProjectHasCredentialConfigurations_Call{Call: _e.mock.On("ProjectHasCredentialConfigurations", ctx, projectID)}
+}
+
+func (_c *CredentialConfigurationServiceInterfaceMock_ProjectHasCredentialConfigurations_Call) Run(run func(ctx context.Context, projectID string)) *CredentialConfigurationServiceInterfaceMock_ProjectHasCredentialConfigurations_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *CredentialConfigurationServiceInterfaceMock_ProjectHasCredentialConfigurations_Call) Return(b bool, serviceError *common.ServiceError) *CredentialConfigurationServiceInterfaceMock_ProjectHasCredentialConfigurations_Call {
+	_c.Call.Return(b, serviceError)
+	return _c
+}
+
+func (_c *CredentialConfigurationServiceInterfaceMock_ProjectHasCredentialConfigurations_Call) RunAndReturn(run func(ctx context.Context, projectID string) (bool, *common.ServiceError)) *CredentialConfigurationServiceInterfaceMock_ProjectHasCredentialConfigurations_Call {
 	_c.Call.Return(run)
 	return _c
 }

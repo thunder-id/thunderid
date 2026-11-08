@@ -7,13 +7,18 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/projectscope"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
+
+// maxProjectIDLength is the length of the PROJECT_ID column. A longer project ID names no project.
+const maxProjectIDLength = 36
 
 // CredentialConfigurationServiceInterface manages OpenID4VCI credential configurations in the configdb
 // store, which the issuer engine reads on demand.
@@ -31,6 +36,13 @@ type CredentialConfigurationServiceInterface interface {
 	ListCredentialConfigurationSummariesByOUID(
 		ctx context.Context, ouID string,
 	) ([]CredentialConfigurationList, *tidcommon.ServiceError)
+	// ListCredentialConfigurationSummariesByProject returns summaries of the credential configurations of a
+	// project. A project that does not exist has none.
+	ListCredentialConfigurationSummariesByProject(
+		ctx context.Context, projectID string,
+	) ([]CredentialConfigurationList, *tidcommon.ServiceError)
+	// ProjectHasCredentialConfigurations reports whether a credential configuration belongs to the project.
+	ProjectHasCredentialConfigurations(ctx context.Context, projectID string) (bool, *tidcommon.ServiceError)
 	UpdateCredentialConfiguration(ctx context.Context, id string, dto *CredentialConfigurationDTO) (
 		*CredentialConfigurationDTO, *tidcommon.ServiceError)
 	DeleteCredentialConfiguration(ctx context.Context, id string) *tidcommon.ServiceError
@@ -48,26 +60,49 @@ type credentialConfigurationDeclarativeService interface {
 type configurationService struct {
 	store     credentialStoreInterface
 	ouService ou.OrganizationUnitServiceInterface
-	logger    *log.Logger
-	uuid      func() (string, error)
+	// projectValidator is nil on a deployment that serves no projects.
+	projectValidator projectOUValidator
+	// projectRequired is set on a deployment that serves projects, where every configuration belongs to one.
+	projectRequired bool
+	logger          *log.Logger
+	uuid            func() (string, error)
 }
 
-// newCredentialConfigurationService builds a credential-configuration service over the given store.
+// projectOUValidator checks that a resource scoped to a project is in an organization unit the project holds.
+type projectOUValidator interface {
+	ValidateProjectOU(ctx context.Context, projectID, ouID string) *tidcommon.ServiceError
+}
+
+// newCredentialConfigurationService builds a credential-configuration service over the given store. A nil
+// projectValidator serves no projects, and a project ID is kept unchecked; projectRequired refuses a
+// configuration created without a project.
 func newCredentialConfigurationService(
 	store credentialStoreInterface, ouService ou.OrganizationUnitServiceInterface,
+	projectValidator projectOUValidator, projectRequired bool,
 ) *configurationService {
 	return &configurationService{
-		store:     store,
-		ouService: ouService,
-		logger:    log.GetLogger().With(log.String(log.LoggerKeyComponentName, "OpenID4VCIConfigurationService")),
-		uuid:      utils.GenerateUUIDv7,
+		store:            store,
+		ouService:        ouService,
+		projectValidator: projectValidator,
+		projectRequired:  projectRequired,
+		logger: log.GetLogger().With(
+			log.String(log.LoggerKeyComponentName, "OpenID4VCIConfigurationService")),
+		uuid: utils.GenerateUUIDv7,
 	}
 }
 
-// ResolveCredentialConfigurationOUHandle resolves a declarative OU handle to its ID.
+// ResolveCredentialConfigurationOUHandle resolves a declarative OU handle to its ID. A declarative configuration
+// needs a project where one is required, and one in a project without an organization unit is placed in the
+// system organization unit.
 func (s *configurationService) ResolveCredentialConfigurationOUHandle(
 	ctx context.Context, dto *CredentialConfigurationDTO,
 ) *tidcommon.ServiceError {
+	if strings.TrimSpace(dto.ProjectID) == "" && s.projectRequired {
+		return &ErrorConfigurationProjectRequired
+	}
+	if dto.ProjectID != "" && dto.OUID == "" && strings.TrimSpace(dto.OUHandle) == "" {
+		return s.placeInSystemOU(ctx, dto)
+	}
 	if dto.OUID != "" {
 		return s.resolveOU(ctx, dto)
 	}
@@ -144,7 +179,7 @@ func (s *configurationService) CreateCredentialConfiguration(
 	if svcErr := validateConfiguration(dto); svcErr != nil {
 		return nil, svcErr
 	}
-	if svcErr := s.resolveOU(ctx, dto); svcErr != nil {
+	if svcErr := s.resolvePlacement(ctx, dto); svcErr != nil {
 		return nil, svcErr
 	}
 
@@ -306,6 +341,111 @@ func (s *configurationService) populateSummaryOUHandles(
 	}
 }
 
+// ListCredentialConfigurationSummariesByProject returns summaries of the credential configurations of a project,
+// with resolved OU handles. An empty project ID names no project, so it lists none rather than every
+// configuration.
+func (s *configurationService) ListCredentialConfigurationSummariesByProject(
+	ctx context.Context, projectID string,
+) ([]CredentialConfigurationList, *tidcommon.ServiceError) {
+	if projectID == "" {
+		return []CredentialConfigurationList{}, nil
+	}
+	summaries, err := s.store.ListCredentialConfigurationSummariesByProject(ctx, projectID)
+	if err != nil {
+		if errors.Is(err, ErrResultLimitExceededInCompositeMode) {
+			return nil, &ErrorConfigurationResultLimitExceeded
+		}
+		s.logger.Error(ctx, "Failed to list credential configuration summaries in project",
+			log.String("projectID", projectID), log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+	s.populateSummaryOUHandles(ctx, summaries)
+	return summaries, nil
+}
+
+// ProjectHasCredentialConfigurations reports whether a credential configuration belongs to the project.
+func (s *configurationService) ProjectHasCredentialConfigurations(
+	ctx context.Context, projectID string,
+) (bool, *tidcommon.ServiceError) {
+	count, err := s.store.CountCredentialConfigurationsByProject(ctx, projectID)
+	if err != nil {
+		s.logger.Error(ctx, "Failed to check the credential configurations of a project",
+			log.String("projectID", projectID), log.Error(err))
+		return false, &tidcommon.InternalServerError
+	}
+	return count > 0, nil
+}
+
+// resolvePlacement sets the organization unit and checks the project of a new credential configuration. A
+// deployment that requires a project refuses a configuration without one. A configuration in a project may
+// leave the organization unit out to be placed in the system organization unit, and one it names has to belong
+// to the project.
+func (s *configurationService) resolvePlacement(
+	ctx context.Context, dto *CredentialConfigurationDTO,
+) *tidcommon.ServiceError {
+	if dto.ProjectID == "" {
+		if s.projectRequired {
+			return &ErrorConfigurationProjectRequired
+		}
+		return s.resolveOU(ctx, dto)
+	}
+	if strings.TrimSpace(dto.OUID) == "" {
+		if svcErr := s.placeInSystemOU(ctx, dto); svcErr != nil {
+			return svcErr
+		}
+	} else if svcErr := s.resolveOU(ctx, dto); svcErr != nil {
+		return svcErr
+	}
+	return s.validateProjectOU(ctx, dto.ProjectID, dto.OUID)
+}
+
+// placeInSystemOU places a credential configuration in the system organization unit. Without an OU service,
+// as in tests, the organization unit is left as given.
+func (s *configurationService) placeInSystemOU(
+	ctx context.Context, dto *CredentialConfigurationDTO,
+) *tidcommon.ServiceError {
+	if s.ouService == nil {
+		return nil
+	}
+	systemOUID, svcErr := s.ouService.GetSystemOUID(ctx)
+	if svcErr != nil {
+		s.logger.Error(ctx, "Failed to get the system organization unit", log.String("code", svcErr.Code))
+		return &tidcommon.InternalServerError
+	}
+	dto.OUID = systemOUID
+	return nil
+}
+
+// validateProjectOU checks that a credential configuration's organization unit belongs to its project. It returns
+// ErrorConfigurationInvalidProject when no such project exists, and ErrorConfigurationOUNotInProject when the
+// organization unit is outside the project.
+//
+// A deployment that serves no projects, such as a Data Plane, cannot check the project. It keeps the project ID
+// as given so that imported configuration retains it, but refuses one longer than the column holds.
+func (s *configurationService) validateProjectOU(
+	ctx context.Context, projectID, ouID string,
+) *tidcommon.ServiceError {
+	if utf8.RuneCountInString(projectID) > maxProjectIDLength {
+		return &ErrorConfigurationInvalidProject
+	}
+	if s.projectValidator == nil {
+		return nil
+	}
+	svcErr := s.projectValidator.ValidateProjectOU(ctx, projectID, ouID)
+	switch {
+	case svcErr == nil:
+		return nil
+	case svcErr.Code == projectscope.ProjectNotFoundErrorCode:
+		return &ErrorConfigurationInvalidProject
+	case svcErr.Code == projectscope.OUNotInProjectErrorCode:
+		return &ErrorConfigurationOUNotInProject
+	default:
+		s.logger.Error(ctx, "Failed to check the project of a credential configuration",
+			log.String("projectID", projectID), log.String("code", svcErr.Code))
+		return &tidcommon.InternalServerError
+	}
+}
+
 // UpdateCredentialConfiguration validates and persists changes to an existing credential configuration.
 func (s *configurationService) UpdateCredentialConfiguration(
 	ctx context.Context, id string, dto *CredentialConfigurationDTO,
@@ -316,9 +456,6 @@ func (s *configurationService) UpdateCredentialConfiguration(
 	if svcErr := validateConfiguration(dto); svcErr != nil {
 		return nil, svcErr
 	}
-	if svcErr := s.resolveOU(ctx, dto); svcErr != nil {
-		return nil, svcErr
-	}
 
 	existing, err := s.store.GetCredentialConfigurationByID(ctx, id)
 	if err != nil {
@@ -327,6 +464,24 @@ func (s *configurationService) UpdateCredentialConfiguration(
 		}
 		s.logger.Error(ctx, "Failed to load credential configuration", log.Error(err))
 		return nil, &tidcommon.InternalServerError
+	}
+
+	// An update that names no project keeps the configuration's project, and one in a project that names no
+	// organization unit keeps its organization unit.
+	if dto.ProjectID == "" {
+		dto.ProjectID = existing.ProjectID
+	}
+	if dto.ProjectID != "" && strings.TrimSpace(dto.OUID) == "" {
+		dto.OUID = existing.OUID
+	}
+	if svcErr := s.resolveOU(ctx, dto); svcErr != nil {
+		return nil, svcErr
+	}
+	// The project is checked again only when the configuration moves to another project or organization unit.
+	if dto.ProjectID != "" && (dto.ProjectID != existing.ProjectID || dto.OUID != existing.OUID) {
+		if svcErr := s.validateProjectOU(ctx, dto.ProjectID, dto.OUID); svcErr != nil {
+			return nil, svcErr
+		}
 	}
 
 	if existing.Handle != dto.Handle {

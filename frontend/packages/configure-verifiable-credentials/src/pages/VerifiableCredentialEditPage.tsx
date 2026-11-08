@@ -2,12 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {DocumentTitle, PageLoadingAnimation, QueryErrorNotice} from '@thunderid/components';
+import {useProjectScope} from '@thunderid/contexts';
 import {getErrorMessage} from '@thunderid/utils';
 import {Alert, Button, IconButton, PageContent, PageTitle, Stack, TextField, Typography} from '@wso2/oxygen-ui';
 import {ArrowLeft, Edit} from '@wso2/oxygen-ui-icons-react';
 import {useCallback, useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
-import {Link, useNavigate, useParams} from 'react-router';
+import {Link, Navigate, useNavigate, useParams} from 'react-router';
 import useGetVerifiableCredential from '../api/useGetVerifiableCredential';
 import useUpdateVerifiableCredential from '../api/useUpdateVerifiableCredential';
 import VerifiableCredentialDeleteDialog from '../components/VerifiableCredentialDeleteDialog';
@@ -23,6 +24,7 @@ export default function VerifiableCredentialEditPage(): JSX.Element {
   const listUrl = routes.verifiableCredentials.list();
 
   const {data, isLoading, error, refetch} = useGetVerifiableCredential(vcId);
+  const {projectId} = useProjectScope();
   const updateVC = useUpdateVerifiableCredential();
   const [deleteOpen, setDeleteOpen] = useState<boolean>(false);
 
@@ -60,6 +62,12 @@ export default function VerifiableCredentialEditPage(): JSX.Element {
   };
 
   const resourceTypeTitle = t('verifiable-credentials:listing.title', 'Credential templates');
+
+  // Another project's configuration is not shown in the selected one: a deep link, a stale tab or a switch of
+  // project goes to the selected project's configurations instead.
+  if (projectId && data && data.projectId !== projectId) {
+    return <Navigate to={listUrl} replace />;
+  }
 
   if (isLoading) {
     return (
