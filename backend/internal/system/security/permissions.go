@@ -721,7 +721,9 @@ func InitSystemPermissions(handle string) {
 
 		// User APIs. Credentials and sharing policies are part of the user they belong to, so changing
 		// one updates the user. "/tree/{path...}" creates a user in the organization unit at that path.
+		// The units a user can access span the deployment, so listing them needs the root permission.
 		{"GET /users", p.UserView},
+		{"GET /users/*/ous", p.Root},
 		{"POST /users", p.UserCreate},
 		{"POST /users/tree/**", p.UserCreate},
 		{"POST /users/*/update-credentials", p.UserUpdate},

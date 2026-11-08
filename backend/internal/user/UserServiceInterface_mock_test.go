@@ -950,6 +950,88 @@ func (_c *UserServiceInterfaceMock_GetUserMetadata_Call) RunAndReturn(run func(c
 	return _c
 }
 
+// GetUserOrganizationUnits provides a mock function for the type UserServiceInterfaceMock
+func (_mock *UserServiceInterfaceMock) GetUserOrganizationUnits(ctx context.Context, userID string, limit int, offset int) (*UserOrganizationUnitListResponse, *common.ServiceError) {
+	ret := _mock.Called(ctx, userID, limit, offset)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetUserOrganizationUnits")
+	}
+
+	var r0 *UserOrganizationUnitListResponse
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int) (*UserOrganizationUnitListResponse, *common.ServiceError)); ok {
+		return returnFunc(ctx, userID, limit, offset)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int) *UserOrganizationUnitListResponse); ok {
+		r0 = returnFunc(ctx, userID, limit, offset)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*UserOrganizationUnitListResponse)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, int, int) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, userID, limit, offset)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// UserServiceInterfaceMock_GetUserOrganizationUnits_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetUserOrganizationUnits'
+type UserServiceInterfaceMock_GetUserOrganizationUnits_Call struct {
+	*mock.Call
+}
+
+// GetUserOrganizationUnits is a helper method to define mock.On call
+//   - ctx context.Context
+//   - userID string
+//   - limit int
+//   - offset int
+func (_e *UserServiceInterfaceMock_Expecter) GetUserOrganizationUnits(ctx any, userID any, limit any, offset any) *UserServiceInterfaceMock_GetUserOrganizationUnits_Call {
+	return &UserServiceInterfaceMock_GetUserOrganizationUnits_Call{Call: _e.mock.On("GetUserOrganizationUnits", ctx, userID, limit, offset)}
+}
+
+func (_c *UserServiceInterfaceMock_GetUserOrganizationUnits_Call) Run(run func(ctx context.Context, userID string, limit int, offset int)) *UserServiceInterfaceMock_GetUserOrganizationUnits_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 int
+		if args[2] != nil {
+			arg2 = args[2].(int)
+		}
+		var arg3 int
+		if args[3] != nil {
+			arg3 = args[3].(int)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *UserServiceInterfaceMock_GetUserOrganizationUnits_Call) Return(userOrganizationUnitListResponse *UserOrganizationUnitListResponse, serviceError *common.ServiceError) *UserServiceInterfaceMock_GetUserOrganizationUnits_Call {
+	_c.Call.Return(userOrganizationUnitListResponse, serviceError)
+	return _c
+}
+
+func (_c *UserServiceInterfaceMock_GetUserOrganizationUnits_Call) RunAndReturn(run func(ctx context.Context, userID string, limit int, offset int) (*UserOrganizationUnitListResponse, *common.ServiceError)) *UserServiceInterfaceMock_GetUserOrganizationUnits_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetUserUsages provides a mock function for the type UserServiceInterfaceMock
 func (_mock *UserServiceInterfaceMock) GetUserUsages(ctx context.Context, userID string) (*resourcedependency.DependenciesResponse, *common.ServiceError) {
 	ret := _mock.Called(ctx, userID)

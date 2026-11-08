@@ -18,6 +18,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/sharing"
 	"github.com/thunder-id/thunderid/internal/system/security"
+	"github.com/thunder-id/thunderid/internal/system/utils"
 )
 
 func TestRegisterRoutes_SelfUserMetadata(t *testing.T) {
@@ -163,6 +164,23 @@ func TestRegisterRoutes_SelfOrganizationUnits(t *testing.T) {
 	mux.ServeHTTP(rr, req)
 
 	require.Equal(t, http.StatusOK, rr.Code)
+}
+
+func TestRegisterRoutes_UserOrganizationUnits(t *testing.T) {
+	mux := http.NewServeMux()
+	mockSvc := NewUserServiceInterfaceMock(t)
+	mockSvc.On("GetUserOrganizationUnits", mock.Anything, testUserID123, 30, 0).
+		Return(&UserOrganizationUnitListResponse{TotalResults: 1, StartIndex: 1, Count: 1,
+			OrganizationUnits: []AccessibleOrganizationUnit{{ID: "ou-p", Handle: "p", Name: "P"}},
+			Links:             []utils.Link{}}, (*tidcommon.ServiceError)(nil)).Once()
+	registerRoutes(mux, newUserHandler(mockSvc))
+
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/users/"+testUserID123+"/ous", nil))
+
+	require.Equal(t, http.StatusOK, rr.Code)
+	require.JSONEq(t, `{"totalResults":1,"startIndex":1,"count":1,`+
+		`"organizationUnits":[{"id":"ou-p","handle":"p","name":"P"}],"links":[]}`, rr.Body.String())
 }
 
 func TestInitialize_RefusesANilEventBus(t *testing.T) {

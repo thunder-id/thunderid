@@ -45,17 +45,22 @@ type AccessibleOrganizationUnit struct {
 	LogoURL string `json:"logoUrl,omitempty"`
 }
 
-// AccessibleOrganizationUnitListResponse is one page of the organization units the signed-in user
-// can access.
-type AccessibleOrganizationUnitListResponse struct {
-	// Current is the organization unit the list is relative to: the one the caller's token was
-	// issued for, or the user's own.
-	Current           string                       `json:"current"`
+// UserOrganizationUnitListResponse is one page of the organization units a user can access.
+type UserOrganizationUnitListResponse struct {
 	TotalResults      int                          `json:"totalResults"`
 	StartIndex        int                          `json:"startIndex"`
 	Count             int                          `json:"count"`
 	OrganizationUnits []AccessibleOrganizationUnit `json:"organizationUnits"`
 	Links             []utils.Link                 `json:"links"`
+}
+
+// AccessibleOrganizationUnitListResponse is one page of the organization units the signed-in user
+// can access.
+type AccessibleOrganizationUnitListResponse struct {
+	// Current is the organization unit the list is relative to: the one the caller's token was
+	// issued for, or the user's own.
+	Current string `json:"current"`
+	UserOrganizationUnitListResponse
 }
 
 // UserGroup represents a group with basic information for user endpoints.
