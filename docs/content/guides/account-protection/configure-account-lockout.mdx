@@ -13,7 +13,7 @@ Set how many failed sign-in attempts lock a user or an agent, and for how long, 
 ## Prerequisites
 
 - <ProductName /> running. See [Get <ProductName />](../../../getting-started/get-thunderid).
-- An administrator account with the `system` permission.
+- An administrator account with `system:serverconfig:update` to change the policy. To unlock a user or an agent, `system:user:update` or `system:agent:update` in the organization unit the account belongs to, and `system:serverconfig:view` and `system:flow:view` to see the unlock action in the <ProductName /> Console.
 - To email users when a lock forms, an [email provider](../../notifications/email-providers).
 
 ## What Counts Toward a Lock

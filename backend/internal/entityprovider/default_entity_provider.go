@@ -11,19 +11,25 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/system/security"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
+// defaultEntityProvider is the flow-facing boundary to the entity service. It reads with the system's
+// authority and authorizes the caller's writes, which run as the caller.
 type defaultEntityProvider struct {
 	entitySvc entity.EntityServiceInterface
+	authzSvc  sysauthz.SystemAuthorizationServiceInterface
 }
 
 // newDefaultEntityProvider creates a new default entity provider.
 func newDefaultEntityProvider(
 	entitySvc entity.EntityServiceInterface,
+	authzSvc sysauthz.SystemAuthorizationServiceInterface,
 ) EntityProviderInterface {
 	return &defaultEntityProvider{
 		entitySvc: entitySvc,
+		authzSvc:  authzSvc,
 	}
 }
 
@@ -100,46 +106,14 @@ func (p *defaultEntityProvider) GetEntityProfile(
 	return toProviderEntity(result), nil
 }
 
-// UpdateEntity updates an existing entity.
-func (p *defaultEntityProvider) UpdateEntity(
-	ctx context.Context,
-	entityID string, e *providers.Entity,
-) (*providers.Entity, *EntityProviderError) {
-	if e == nil {
-		return nil, NewEntityProviderError(ErrorCodeInvalidRequestFormat, "Invalid request",
-			"Entity cannot be nil")
-	}
-	ctx = security.WithRuntimeContext(ctx)
-	svcEntity := toServiceEntity(e)
-	result, err := p.entitySvc.UpdateEntity(ctx, entityID, svcEntity)
-	if err != nil {
-		return nil, mapEntityError(err)
-	}
-	return toProviderEntity(result), nil
-}
-
-// DeleteEntity deletes an entity by ID.
-func (p *defaultEntityProvider) DeleteEntity(
-	ctx context.Context,
-	entityID string,
-) *EntityProviderError {
-	ctx = security.WithRuntimeContext(ctx)
-	err := p.entitySvc.DeleteEntity(ctx, entityID)
-	if err != nil {
-		if errors.Is(err, entity.ErrEntityNotFound) {
-			return nil
-		}
-		return mapEntityError(err)
-	}
-	return nil
-}
-
 // UpdateCredentials updates schema-defined credentials for an entity.
 func (p *defaultEntityProvider) UpdateCredentials(
 	ctx context.Context,
 	entityID string, credentials json.RawMessage,
 ) *EntityProviderError {
-	ctx = security.WithRuntimeContext(ctx)
+	if authErr := p.authorizeWrite(ctx, entityID); authErr != nil {
+		return authErr
+	}
 	err := p.entitySvc.UpdateCredentials(ctx, entityID, credentials)
 	if err != nil {
 		return mapEntityError(err)
@@ -152,7 +126,9 @@ func (p *defaultEntityProvider) UpdateAttributes(
 	ctx context.Context,
 	entityID string, attributes json.RawMessage,
 ) *EntityProviderError {
-	ctx = security.WithRuntimeContext(ctx)
+	if authErr := p.authorizeWrite(ctx, entityID); authErr != nil {
+		return authErr
+	}
 	err := p.entitySvc.UpdateAttributes(ctx, entityID, attributes)
 	if err != nil {
 		return mapEntityError(err)
@@ -275,6 +251,42 @@ func (p *defaultEntityProvider) GetEntityList(
 	return result, nil
 }
 
+// writeChecks names, for each entity category, the action that changes an entity of it and the resource type the
+// action is checked on.
+var writeChecks = map[providers.EntityCategory]struct {
+	action       security.Action
+	resourceType security.ResourceType
+}{
+	providers.EntityCategoryUser:  {security.ActionUpdateUser, security.ResourceTypeUser},
+	providers.EntityCategoryAgent: {security.ActionUpdateAgent, security.ResourceTypeAgent},
+	providers.EntityCategoryApp:   {security.ActionUpdateApplication, security.ResourceTypeApplication},
+}
+
+// authorizeWrite reads the entity with the system's authority and checks the caller may change it in its
+// organization unit.
+func (p *defaultEntityProvider) authorizeWrite(ctx context.Context, entityID string) *EntityProviderError {
+	target, err := p.entitySvc.GetEntityProfile(security.WithRuntimeContext(ctx), entityID)
+	if err != nil {
+		return mapEntityError(err)
+	}
+	check, governed := writeChecks[target.Category]
+	if !governed {
+		return NewEntityProviderError(ErrorCodeUnauthorized, "Unauthorized",
+			"No permission governs writes to this entity category")
+	}
+	allowed, svcErr := p.authzSvc.IsActionAllowed(ctx, check.action, &sysauthz.ActionContext{
+		OUID: target.OUID, ResourceType: check.resourceType, ResourceID: entityID,
+	})
+	if svcErr != nil {
+		return NewEntityProviderError(ErrorCodeSystemError, "System error", svcErr.Error.DefaultValue)
+	}
+	if !allowed {
+		return NewEntityProviderError(ErrorCodeUnauthorized, "Unauthorized",
+			"The caller is not permitted to change this entity")
+	}
+	return nil
+}
+
 // toProviderEntity converts an entity service Entity to a provider Entity.
 func toProviderEntity(e *providers.Entity) *providers.Entity {
 	if e == nil {
@@ -287,22 +299,6 @@ func toProviderEntity(e *providers.Entity) *providers.Entity {
 		State:            e.State,
 		OUID:             e.OUID,
 		OUHandle:         e.OUHandle,
-		Attributes:       e.Attributes,
-		SystemAttributes: e.SystemAttributes,
-	}
-}
-
-// toServiceEntity converts a provider Entity to an entity service Entity.
-func toServiceEntity(e *providers.Entity) *providers.Entity {
-	if e == nil {
-		return nil
-	}
-	return &providers.Entity{
-		ID:               e.ID,
-		Category:         e.Category,
-		Type:             e.Type,
-		State:            e.State,
-		OUID:             e.OUID,
 		Attributes:       e.Attributes,
 		SystemAttributes: e.SystemAttributes,
 	}

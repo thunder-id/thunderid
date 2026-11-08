@@ -22,6 +22,7 @@ import (
 	oauthutils "github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
 	i18nmgt "github.com/thunder-id/thunderid/internal/system/i18n/mgt"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
 
@@ -132,7 +133,10 @@ func (ds *dcrService) RegisterClient(ctx context.Context, request *DCRRegistrati
 	if writeErr := ds.writeLocalizedVariants(ctx, createdAppID, request, nil); writeErr != nil {
 		logger.Error(ctx, "Failed to write localized variants for DCR client; compensating by deleting app",
 			log.String("appID", createdAppID), log.String("error", writeErr.Error.DefaultValue))
-		cleanupCtx, cleanupCancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+		// The compensation undoes this service's own create, so it runs with the server's authority: the caller
+		// needs only the create permission to register.
+		cleanupCtx, cleanupCancel := context.WithTimeout(
+			security.WithRuntimeContext(context.WithoutCancel(ctx)), 10*time.Second)
 		defer cleanupCancel()
 		for _, field := range []string{"name", "logo_uri", "tos_uri", "policy_uri"} {
 			if cleanErr := ds.i18nService.DeleteTranslationsByKey(

@@ -107,6 +107,41 @@ The MCP tools require the same permissions as the matching APIs. The MCP server 
 
 If you set `server.security.system_permission_prefix`, the management APIs expect every system permission to start with that prefix, for example `mgmt:system:user:view`. The permissions declared on the System resource server don't include the prefix. To grant the prefixed permissions, declare them on a resource server of your own, for example with a root resource `mgmt` that holds `system` and its resources, and add them to your roles.
 
+### Permissions for Administration Flows
+
+Administration, user onboarding, and invitation flows run as the caller who starts them. To start one, present an access token that carries at least one system permission. The service that owns each action the flow takes authorizes that action as the caller, so you need the permission for every action, confined to your organization unit where the permission is confined to one. For example, deleting a user needs `system:user:delete`.
+
+The **Validate Permission** step at the start of a flow refuses a caller early with a clear error. The services still check each later action, so a flow can need more than the permission its **Validate Permission** step names. A **Validate Permission** step with no `requiredScopes` requires the root `system` permission.
+
+Only the caller who started a flow can continue it with a token. Another caller is refused with `403` and the code `FES-1030`. An administration flow cannot be continued without a token. A user onboarding or invitation flow that the invitee continues without a token runs with the permissions the caller who started it still holds. If that caller is suspended or locked in the meantime, the invitee's step is refused. A user onboarding or invitation flow started before an upgrade to this release has no recorded authority, so it cannot be continued and is refused with the code `FES-1032`. Start it again, for example by resending the invitation.
+
+Other flow types, such as authentication and registration flows, run with the server's authority. A flow that runs with the server's authority cannot call an administration, user onboarding, or invitation flow, and the call is refused with the code `FES-1031`.
+
+The default flows and the Console flow templates check the following permissions in their **Validate Permission** step:
+
+| Flow | Type | Permission |
+|------|------|------------|
+| `default-flow` (Default User Onboarding Flow) | User onboarding | `system:user:create` |
+| `default-user-suspend-flow`, `default-user-unsuspend-flow`, `default-user-unlock-flow` | Administration | `system:user:update` |
+| `default-agent-suspend-flow`, `default-agent-unsuspend-flow`, `default-agent-unlock-flow` | Administration | `system:agent:update` |
+| `default-agent-onboarding-flow` | Administration | `system:agent:create` |
+| `default-application-suspend-flow`, `default-application-unsuspend-flow` | Administration | `system:app:update` |
+| `default-secret-regeneration-flow` | Administration | `system:app:update` |
+| `default-group-deletion-flow` | Administration | `system:group:delete` |
+| `default-group-membership-removal-flow` | Administration | `system:group:update` |
+| `default-role-assignment-removal-flow`, `default-role-permission-removal-flow` | Administration | `system:role:update` |
+| `default-action-deletion-flow` | Administration | `system:rs:update` |
+| **Default Onboarding** template | User onboarding | `system:user:create` |
+| **Invite into Organization** template | Invitation | `system` |
+| **Agent Onboarding Flow** templates | Administration | `system:agent:create` |
+| **Blank Administrative Flow** template | Administration | `system` |
+
+The **Invite into Organization** template keeps the root `system` permission. A new invitee is created in the organization unit that owns the user type, which can be the parent of the inviter's organization unit, and only the root permission reaches that unit. The inviter is offered roles to assign only when they hold `system:role:update`, and then only the roles they may assign in their organization unit.
+
+The table lists the permissions a fresh setup ships with. A deployment upgraded from an earlier release keeps its saved default flows, whose **Validate Permission** step still requires `system` or a broader permission such as `system:user`. An administrator holding only a narrower permission is refused by those flows until you edit their `requiredScopes`.
+
+If you set `server.security.system_permission_prefix`, add the prefix to every permission in `requiredScopes`, for example `mgmt:system:user:create`. The **Validate Permission** step compares the permissions as written.
+
 ### Add System Permissions After an Upgrade
 
 A deployment set up on an earlier release has a System resource server that declares only `system`. To add the other resources and actions, import the System resource server document from `bootstrap/01-default-resources.yaml` with the [import API](../../declarative-configurations/import-resources) and `options.upsert` set to `true`. Before you import it, set `identifier`, `name`, and `description` in the document to your System resource server's current values, and set `ouHandle` to the handle of the organization unit that owns it. The upsert overwrites these fields, so any value left at the bundled default replaces yours, and a different `ouHandle` moves the server to another organization unit.

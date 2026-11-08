@@ -48,7 +48,7 @@ func (suite *InitEntityProviderTestSuite) TestInitializeEntityProvider_WithDisab
 		Type: "disabled",
 	}
 
-	provider := InitializeEntityProvider(suite.mockEntityService)
+	provider := InitializeEntityProvider(suite.mockEntityService, nil)
 
 	suite.NotNil(provider)
 	_, ok := provider.(*disabledEntityProvider)
@@ -60,7 +60,7 @@ func (suite *InitEntityProviderTestSuite) TestInitializeEntityProvider_WithDefau
 		Type: "default",
 	}
 
-	provider := InitializeEntityProvider(suite.mockEntityService)
+	provider := InitializeEntityProvider(suite.mockEntityService, nil)
 
 	suite.NotNil(provider)
 	_, ok := provider.(*defaultEntityProvider)
@@ -72,7 +72,7 @@ func (suite *InitEntityProviderTestSuite) TestInitializeEntityProvider_WithEmpty
 		Type: "",
 	}
 
-	provider := InitializeEntityProvider(suite.mockEntityService)
+	provider := InitializeEntityProvider(suite.mockEntityService, nil)
 
 	suite.NotNil(provider)
 	_, ok := provider.(*defaultEntityProvider)
@@ -84,7 +84,7 @@ func (suite *InitEntityProviderTestSuite) TestInitializeEntityProvider_WithUnkno
 		Type: "unknown",
 	}
 
-	provider := InitializeEntityProvider(suite.mockEntityService)
+	provider := InitializeEntityProvider(suite.mockEntityService, nil)
 
 	suite.NotNil(provider)
 	_, ok := provider.(*defaultEntityProvider)

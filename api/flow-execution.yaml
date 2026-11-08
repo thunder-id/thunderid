@@ -34,8 +34,13 @@ paths:
         initiating a new flow; the header is ignored for other application types.
 
         A flow is initiated by `applicationId` and `flowType`, by `flowType` and `handle` for a
-        `SELF` flow, or, for administration and invitation flows only, by `flowId`. Initiating by
-        `flowId` requires an access token carrying the `system` scope. An `INVITATION` flow also
+        `SELF` flow, or, for administration and invitation flows only, by `flowId`. An
+        `ADMINISTRATION`, `USER_ONBOARDING` or `INVITATION` flow runs as the caller who started it and
+        requires an access token carrying at least one `system` permission. Only that caller may
+        continue it with a token; another caller is refused with `403` and the code `FES-1030`. An
+        `ADMINISTRATION` flow cannot be continued without the token, while a `USER_ONBOARDING` or
+        `INVITATION` flow continued without one, by the invitee, runs with the permissions its initiator
+        still holds. An `INVITATION` flow also
         requires the token to be issued for an organization unit, which the flow then acts for, and
         that organization unit to own the flow or have it shared with it. Any other flow type is
         rejected with `403`. A `DEVICE_GRANT` request starts the Device Grant flow assigned to the
@@ -47,7 +52,6 @@ paths:
       security:
         - {}
         - FlowSecret: []
-        - OAuth2: [system]
         - OAuth2: []
       parameters:
         - in: header
@@ -274,6 +278,10 @@ paths:
             Bad Request: The request body is malformed or contains invalid data. An `ouId` sent on a
             request that does not start an `AUTHENTICATION` flow is refused with `FES-1026`, and an
             `ouId` the application is not accessible from, or that does not exist, with `FES-1028`.
+            A flow that runs with the system's authority and calls an `ADMINISTRATION`,
+            `USER_ONBOARDING` or `INVITATION` flow is refused with `FES-1031`. A `USER_ONBOARDING` or
+            `INVITATION` flow started before the server recorded who started it cannot be continued and
+            is refused with `FES-1032`; start it again.
           content:
             application/json:
               schema:
@@ -301,9 +309,11 @@ paths:
         "403":
           description: >
             Forbidden: Direct flow initiation is not permitted for this application or its OAuth
-            configuration, the application is suspended, or the flow started by `flowId` is not
-            permitted for the caller or its token: an `INVITATION` flow started with a token issued
-            for no organization unit (`FES-1027`), or for one the flow is not shared with
+            configuration, the application is suspended, the caller holds no `system` permission, or
+            for a step sent without a token the caller who started the flow no longer holds one
+            (`FES-1019`), the flow was started by another caller (`FES-1030`), or the flow started by
+            `flowId` is not permitted for the caller or its token: an `INVITATION` flow started with a
+            token issued for no organization unit (`FES-1027`), or for one the flow is not shared with
             (`FES-1029`).
           content:
             application/json:
@@ -331,8 +341,8 @@ components:
     OAuth2:
       type: oauth2
       description: >-
-        Access token. An administration flow initiated by `flowId` requires a token carrying the
-        `system` scope; a `SELF` flow requires the signed-in user's token.
+        Access token. An administration, user onboarding or invitation flow requires a token carrying
+        at least one `system` permission; a `SELF` flow requires the signed-in user's token.
       flows:
         authorizationCode:
           authorizationUrl: https://localhost:8090/oauth2/authorize
@@ -415,7 +425,7 @@ components:
       description: >-
         Initiates an administration or invitation flow by its identifier. Only flows of type
         `ADMINISTRATION` or `INVITATION` may be started this way, and the caller must present an
-        access token carrying the `system` scope. An `INVITATION` flow also requires the token to
+        access token carrying at least one `system` permission. An `INVITATION` flow also requires the token to
         be issued for an organization unit that owns the flow or was shared it.
       required:
         - flowId

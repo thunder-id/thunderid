@@ -1025,6 +1025,9 @@ func (as *applicationService) ValidateDeleteApplication(ctx context.Context, app
 	if svcErr != nil {
 		return nil, svcErr
 	}
+	if svcErr := as.checkApplicationAccess(ctx, security.ActionDeleteApplication, existing.OUID); svcErr != nil {
+		return nil, svcErr
+	}
 	if svcErr := as.checkApplicationDeclarative(ctx, appID); svcErr != nil {
 		return nil, svcErr
 	}
@@ -1087,6 +1090,9 @@ func (as *applicationService) ValidateCredentialAction(
 	}
 	existing, svcErr := as.loadApplicationEntity(ctx, appID)
 	if svcErr != nil {
+		return nil, svcErr
+	}
+	if svcErr := as.checkApplicationAccess(ctx, security.ActionUpdateApplication, existing.OUID); svcErr != nil {
 		return nil, svcErr
 	}
 	if svcErr := as.checkApplicationDeclarative(ctx, appID); svcErr != nil {

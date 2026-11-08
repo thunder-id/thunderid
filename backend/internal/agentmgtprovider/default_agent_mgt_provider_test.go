@@ -233,9 +233,8 @@ func (suite *DefaultAgentMgtProviderTestSuite) TestCreateAgentPreservesServerErr
 	suite.Equal(tidcommon.ServerErrorType, svcErr.Type)
 }
 
-// The agent service must see a runtime-marked context that still carries the caller's values, so
-// authorization is elevated without losing request-scoped data such as the trace ID.
-func (suite *DefaultAgentMgtProviderTestSuite) TestCreateAgentElevatesCallerContext() {
+// The agent service authorizes the caller, so it must see the caller's own context, not a runtime one.
+func (suite *DefaultAgentMgtProviderTestSuite) TestCreateAgentPassesTheCallerContext() {
 	type ctxKey string
 	const traceKey ctxKey = "trace-id"
 
@@ -251,8 +250,8 @@ func (suite *DefaultAgentMgtProviderTestSuite) TestCreateAgentElevatesCallerCont
 	_, svcErr := suite.provider.CreateAgent(callerCtx, newTestAgent())
 
 	suite.Nil(svcErr)
-	suite.True(security.IsRuntimeContext(observed))
-	suite.Equal("trace-789", observed.Value(traceKey))
+	suite.False(security.IsRuntimeContext(observed))
+	suite.Equal(callerCtx, observed)
 }
 
 // The generated client secret is the reason a runtime capability provisions an agent at all. It

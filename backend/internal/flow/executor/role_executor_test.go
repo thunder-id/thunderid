@@ -5,8 +5,6 @@ package executor
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
 	"slices"
 	"testing"
 
@@ -26,10 +24,7 @@ type RoleExecutorTestSuite struct {
 	suite.Suite
 	factory     core.FlowFactoryInterface
 	assignments *roleAssignmentAdminProviderMock
-	permissions *entityPermissionResolverMock
 }
-
-const recordedAdmin = `{"subject":"admin-1","ouId":"ou-a","permissions":["system:user"]}`
 
 func TestRoleExecutorTestSuite(t *testing.T) {
 	suite.Run(t, new(RoleExecutorTestSuite))
@@ -38,11 +33,10 @@ func TestRoleExecutorTestSuite(t *testing.T) {
 func (s *RoleExecutorTestSuite) SetupTest() {
 	s.factory = newAdministrationTestFactory(s.T())
 	s.assignments = newRoleAssignmentAdminProviderMock(s.T())
-	s.permissions = newEntityPermissionResolverMock(s.T())
 }
 
 func (s *RoleExecutorTestSuite) executor() *roleExecutor {
-	return newRoleExecutor(s.factory, s.assignments, s.permissions)
+	return newRoleExecutor(s.factory, s.assignments)
 }
 
 // A node must name its mode: selecting roles and assigning them are separate steps, which a default would blur.
@@ -89,7 +83,7 @@ func (s *RoleExecutorTestSuite) TestAnInvitationModeOutsideAnInvitationFlowIsAnE
 }
 
 func (s *RoleExecutorTestSuite) TestAnInvitationModeRefusesWithoutItsSeam() {
-	_, err := newRoleExecutor(s.factory, nil, s.permissions).Execute(
+	_, err := newRoleExecutor(s.factory, nil).Execute(
 		s.nodeContext(adminWithPermissions(), ExecutorModeRoleSelection, map[string]string{}))
 
 	s.EqualError(err, "role assignment service is not configured")
@@ -123,7 +117,7 @@ func (s *RoleExecutorTestSuite) nodeContext(ctx context.Context, mode string,
 	}
 }
 
-// adminWithPermissions is the starter's context, holding the permissions the select step records.
+// adminWithPermissions is the inviter's context, holding the permissions the select step records.
 func adminWithPermissions() context.Context {
 	return security.WithSecurityContextTest(context.Background(),
 		security.NewSecurityContextForTest("admin-1", "ou-a", "token", []string{"system:user"},
@@ -167,7 +161,7 @@ func (s *RoleExecutorTestSuite) TestSelect_RefusesARoleOutsideTheList() {
 	s.NotContains(resp.RuntimeData, common.RuntimeKeySelectedRoles)
 }
 
-func (s *RoleExecutorTestSuite) TestSelect_RecordsTheRolesAndTheAdmin() {
+func (s *RoleExecutorTestSuite) TestSelect_RecordsTheRoles() {
 	s.offers("role-1", "role-2")
 
 	resp, err := s.executor().Execute(s.nodeContext(adminWithPermissions(), ExecutorModeRoleSelection,
@@ -175,8 +169,7 @@ func (s *RoleExecutorTestSuite) TestSelect_RecordsTheRolesAndTheAdmin() {
 
 	s.Require().NoError(err)
 	s.Equal(providers.ExecComplete, resp.Status)
-	s.Equal("role-2 role-1", resp.RuntimeData[common.RuntimeKeySelectedRoles])
-	s.JSONEq(recordedAdmin, resp.RuntimeData[common.RuntimeKeyRolesSelectedBy])
+	s.Equal(map[string]string{common.RuntimeKeySelectedRoles: "role-2 role-1"}, resp.RuntimeData)
 }
 
 // With nothing the admin may assign, the prompt could never be answered, so no roles are recorded.
@@ -191,7 +184,7 @@ func (s *RoleExecutorTestSuite) TestSelect_NothingAssignableRecordsNothing() {
 	s.Empty(resp.RuntimeData)
 }
 
-func (s *RoleExecutorTestSuite) TestSelect_RefusesAnyCallerButTheStarter() {
+func (s *RoleExecutorTestSuite) TestSelect_RefusesAnyCallerButTheInviter() {
 	resp, err := s.executor().Execute(s.nodeContext(security.WithRuntimeContext(context.Background()),
 		ExecutorModeRoleSelection, map[string]string{userInputRoles: "role-1"}))
 
@@ -201,44 +194,38 @@ func (s *RoleExecutorTestSuite) TestSelect_RefusesAnyCallerButTheStarter() {
 	s.assignments.AssertNotCalled(s.T(), "ListAssignableRoles", mock.Anything, mock.Anything)
 }
 
-// holdsNow makes the recorded admin hold the given permissions at acceptance.
-func (s *RoleExecutorTestSuite) holdsNow(permissions ...string) {
-	s.permissions.EXPECT().ResolveForEntity(mock.Anything, "admin-1").
-		Return(security.PermissionSet{"rs-1": permissions}, nil).Once()
+// inviteeStep is the context the invitee's step runs with: the admin who started the flow, with the permissions
+// they still hold.
+func inviteeStep() context.Context {
+	return security.WithRecordedCaller(context.Background(), "admin-1", "ou-a", []string{"system:user"})
 }
 
 func (s *RoleExecutorTestSuite) recorded(ctx *providers.NodeContext) *providers.NodeContext {
 	ctx.RuntimeData[common.RuntimeKeySelectedRoles] = "role-1 role-2"
-	ctx.RuntimeData[common.RuntimeKeyRolesSelectedBy] = recordedAdmin
 	return ctx
 }
 
-// The role service checks the assignments as the recorded admin, not as the invitee's runtime context, and makes
-// all of them or none.
-func (s *RoleExecutorTestSuite) TestAssign_AssignsAsTheRecordedAdmin() {
+// The role service checks the assignments as the admin the step runs as, and makes all of them or none.
+func (s *RoleExecutorTestSuite) TestAssign_AssignsAsTheStepsCaller() {
 	asAdmin := mock.MatchedBy(func(ctx context.Context) bool {
 		return !security.IsRuntimeContext(ctx) && security.GetSubject(ctx) == "admin-1" &&
-			security.GetOUID(ctx) == "ou-a" && len(security.GetPermissions(ctx)) == 1 &&
-			security.GetPermissions(ctx)[0] == "system:user"
+			security.GetOUID(ctx) == "ou-a" && slices.Equal(security.GetPermissions(ctx), []string{"system:user"})
 	})
 	user := []role.RoleAssignment{{ID: "user-1", Type: role.AssigneeTypeUser, OUID: "ou-a"}}
-	s.holdsNow("system:user")
 	s.assignments.EXPECT().AddAssigneesToRoles(asAdmin, user, []string{"role-1", "role-2"}).Return(nil).Once()
 
 	resp, err := s.executor().Execute(s.recorded(s.nodeContext(
-		security.WithRuntimeContext(context.Background()), ExecutorModeRoleAssignment, map[string]string{})))
+		inviteeStep(), ExecutorModeRoleAssignment, map[string]string{})))
 
 	s.Require().NoError(err)
 	s.Equal(providers.ExecComplete, resp.Status)
 }
 
 func (s *RoleExecutorTestSuite) TestAssign_IgnoresInputsNamedLikeTheRecord() {
-	forged, _ := json.Marshal(map[string]interface{}{"subject": "root", "permissions": []string{"system"}})
-	ctx := s.nodeContext(security.WithRuntimeContext(context.Background()), ExecutorModeRoleAssignment,
+	ctx := s.nodeContext(inviteeStep(), ExecutorModeRoleAssignment,
 		map[string]string{
-			common.RuntimeKeySelectedRoles:   "role-9",
-			common.RuntimeKeyRolesSelectedBy: string(forged),
-			userInputRoles:                   "role-9",
+			common.RuntimeKeySelectedRoles: "role-9",
+			userInputRoles:                 "role-9",
 		})
 
 	resp, err := s.executor().Execute(ctx)
@@ -248,10 +235,10 @@ func (s *RoleExecutorTestSuite) TestAssign_IgnoresInputsNamedLikeTheRecord() {
 	s.assignments.AssertNotCalled(s.T(), "AddAssigneesToRoles", mock.Anything, mock.Anything, mock.Anything)
 }
 
-func (s *RoleExecutorTestSuite) TestAssign_RolesWithoutARecordedAdminAreRefused() {
+// Roles are never assigned with the server's authority.
+func (s *RoleExecutorTestSuite) TestAssign_WithTheServersAuthorityIsRefused() {
 	ctx := s.recorded(s.nodeContext(security.WithRuntimeContext(context.Background()), ExecutorModeRoleAssignment,
 		map[string]string{}))
-	delete(ctx.RuntimeData, common.RuntimeKeyRolesSelectedBy)
 
 	resp, err := s.executor().Execute(ctx)
 
@@ -262,107 +249,23 @@ func (s *RoleExecutorTestSuite) TestAssign_RolesWithoutARecordedAdminAreRefused(
 }
 
 func (s *RoleExecutorTestSuite) TestAssign_AFailureIsReported() {
-	s.holdsNow("system:user")
 	s.assignments.EXPECT().AddAssigneesToRoles(mock.Anything, mock.Anything, mock.Anything).Return(
 		&tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "ROL-1010"}).Once()
 
 	resp, err := s.executor().Execute(s.recorded(s.nodeContext(
-		security.WithRuntimeContext(context.Background()), ExecutorModeRoleAssignment, map[string]string{})))
+		inviteeStep(), ExecutorModeRoleAssignment, map[string]string{})))
 
 	s.Require().NoError(err)
 	s.Equal(providers.ExecFailure, resp.Status)
 	s.Equal(ErrRoleAssignmentFailed.Code, resp.Error.Code)
-}
-
-// A permission revoked since the roles were selected must not authorize their assignment at acceptance.
-func (s *RoleExecutorTestSuite) TestAssign_AnAdminWhoLostAPermissionAssignsNothing() {
-	s.holdsNow("system:user:view")
-
-	resp, err := s.executor().Execute(s.recorded(s.nodeContext(
-		security.WithRuntimeContext(context.Background()), ExecutorModeRoleAssignment, map[string]string{})))
-
-	s.Require().NoError(err)
-	s.Equal(providers.ExecFailure, resp.Status)
-	s.Equal(ErrRoleAssignmentFailed.Code, resp.Error.Code)
-	s.assignments.AssertNotCalled(s.T(), "AddAssigneesToRoles", mock.Anything, mock.Anything, mock.Anything)
-}
-
-// An admin token carries OIDC scopes no resource server holds; they are left out, and the roles are assigned with
-// the permissions the admin still holds.
-func (s *RoleExecutorTestSuite) TestAssign_ScopesNoResourceServerHoldsAreLeftOut() {
-	withHeldOnly := mock.MatchedBy(func(ctx context.Context) bool {
-		return slices.Equal(security.GetPermissions(ctx), []string{"system:user"})
-	})
-	s.holdsNow("system:user")
-	s.assignments.EXPECT().AddAssigneesToRoles(withHeldOnly, mock.Anything, mock.Anything).Return(nil).Once()
-	ctx := s.recorded(s.nodeContext(security.WithRuntimeContext(context.Background()), ExecutorModeRoleAssignment,
-		map[string]string{}))
-	ctx.RuntimeData[common.RuntimeKeyRolesSelectedBy] =
-		`{"subject":"admin-1","ouId":"ou-a","permissions":["openid","profile","email","ou","system:user"]}`
-
-	resp, err := s.executor().Execute(ctx)
-
-	s.Require().NoError(err)
-	s.Equal(providers.ExecComplete, resp.Status)
-}
-
-// A permission revoked since selection is left out too, and the role service decides with what remains.
-func (s *RoleExecutorTestSuite) TestAssign_ARevokedPermissionIsLeftOutOfTheGrant() {
-	withHeldOnly := mock.MatchedBy(func(ctx context.Context) bool {
-		return slices.Equal(security.GetPermissions(ctx), []string{"read"})
-	})
-	s.holdsNow("read")
-	s.assignments.EXPECT().AddAssigneesToRoles(withHeldOnly, mock.Anything, mock.Anything).Return(
-		&tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "ROL-1010"}).Once()
-	ctx := s.recorded(s.nodeContext(security.WithRuntimeContext(context.Background()), ExecutorModeRoleAssignment,
-		map[string]string{}))
-	ctx.RuntimeData[common.RuntimeKeyRolesSelectedBy] =
-		`{"subject":"admin-1","ouId":"ou-a","permissions":["system","read"]}`
-
-	resp, err := s.executor().Execute(ctx)
-
-	s.Require().NoError(err)
-	s.Equal(providers.ExecFailure, resp.Status)
-	s.Equal(ErrRoleAssignmentFailed.Code, resp.Error.Code)
-}
-
-func (s *RoleExecutorTestSuite) TestAssign_APermissionHeldThroughABroaderOneCounts() {
-	s.holdsNow("system")
-	s.assignments.EXPECT().AddAssigneesToRoles(mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
-
-	resp, err := s.executor().Execute(s.recorded(s.nodeContext(
-		security.WithRuntimeContext(context.Background()), ExecutorModeRoleAssignment, map[string]string{})))
-
-	s.Require().NoError(err)
-	s.Equal(providers.ExecComplete, resp.Status)
-}
-
-// A server failure fails the flow rather than reading as the user's refusal.
-func (s *RoleExecutorTestSuite) TestAssign_AFailedPermissionLookupFailsTheFlow() {
-	s.permissions.EXPECT().ResolveForEntity(mock.Anything, "admin-1").Return(nil, errors.New("store down")).Once()
-
-	_, err := s.executor().Execute(s.recorded(s.nodeContext(
-		security.WithRuntimeContext(context.Background()), ExecutorModeRoleAssignment, map[string]string{})))
-
-	s.Require().Error(err)
-	s.assignments.AssertNotCalled(s.T(), "AddAssigneesToRoles", mock.Anything, mock.Anything, mock.Anything)
-}
-
-func (s *RoleExecutorTestSuite) TestAssign_WithoutAPermissionResolverFailsTheFlow() {
-	_, err := newRoleExecutor(s.factory, s.assignments, nil).Execute(s.recorded(s.nodeContext(
-		security.WithRuntimeContext(context.Background()), ExecutorModeRoleAssignment, map[string]string{})))
-
-	s.Require().Error(err)
-	s.assignments.AssertNotCalled(s.T(), "AddAssigneesToRoles", mock.Anything, mock.Anything, mock.Anything)
 }
 
 func (s *RoleExecutorTestSuite) TestAssign_AServerFailureFailsTheFlow() {
-	s.holdsNow("system:user")
 	s.assignments.EXPECT().AddAssigneesToRoles(mock.Anything, mock.Anything, mock.Anything).
 		Return(&tidcommon.InternalServerError).Once()
 
 	_, err := s.executor().Execute(s.recorded(s.nodeContext(
-		security.WithRuntimeContext(context.Background()), ExecutorModeRoleAssignment, map[string]string{})))
+		inviteeStep(), ExecutorModeRoleAssignment, map[string]string{})))
 
 	s.Require().Error(err)
 	s.Contains(err.Error(), "failed to assign the selected roles")
@@ -391,8 +294,7 @@ func (s *RoleExecutorTestSuite) TestSelect_WithoutTheFlowsUnitIsAnError() {
 func (s *RoleExecutorTestSuite) TestAssign_WithoutTheFlowsUnitOrUserIsAnError() {
 	for _, key := range []string{common.RuntimeKeyOUID, userAttributeUserID} {
 		s.Run(key, func() {
-			ctx := s.recorded(s.nodeContext(security.WithRuntimeContext(context.Background()),
-				ExecutorModeRoleAssignment, map[string]string{}))
+			ctx := s.recorded(s.nodeContext(inviteeStep(), ExecutorModeRoleAssignment, map[string]string{}))
 			delete(ctx.RuntimeData, key)
 
 			_, err := s.executor().Execute(ctx)
@@ -419,8 +321,7 @@ func (s *RoleExecutorTestSuite) TestSelect_ConfiguredRolesAreRecordedWithoutAPro
 	s.Require().NoError(err)
 	s.Equal(providers.ExecComplete, resp.Status)
 	s.Empty(resp.Inputs)
-	s.Equal("role-2 role-1", resp.RuntimeData[common.RuntimeKeySelectedRoles])
-	s.JSONEq(recordedAdmin, resp.RuntimeData[common.RuntimeKeyRolesSelectedBy])
+	s.Equal(map[string]string{common.RuntimeKeySelectedRoles: "role-2 role-1"}, resp.RuntimeData)
 }
 
 func (s *RoleExecutorTestSuite) TestSelect_ConfiguredRolesIgnoreTheSubmittedOnes() {
@@ -483,14 +384,12 @@ func (s *RoleExecutorTestSuite) TestSignUpAssign_AssignsTheNamedRolesInTheFlowsU
 
 	s.Require().NoError(err)
 	s.Equal(providers.ExecComplete, resp.Status)
-	s.permissions.AssertNotCalled(s.T(), "ResolveForEntity", mock.Anything, mock.Anything)
 }
 
 // The roles come from the node alone: a selection recorded in the runtime data is not assigned.
 func (s *RoleExecutorTestSuite) TestSignUpAssign_IgnoresARecordedSelection() {
 	ctx := s.signUpContext("role-1")
 	ctx.RuntimeData[common.RuntimeKeySelectedRoles] = "role-9"
-	ctx.RuntimeData[common.RuntimeKeyRolesSelectedBy] = recordedAdmin
 	s.assignments.EXPECT().AddAssigneesToRoles(mock.Anything, mock.Anything, []string{"role-1"}).Return(nil).Once()
 
 	resp, err := s.executor().Execute(ctx)

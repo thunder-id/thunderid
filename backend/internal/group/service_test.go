@@ -3794,6 +3794,22 @@ func (suite *GroupServiceTestSuite) TestValidateRemoveGroupMembers_RefusesACalle
 	f.entities.AssertNotCalled(suite.T(), "GetEntitiesByIDs", mock.Anything, mock.Anything)
 }
 
+func (suite *GroupServiceTestSuite) TestValidateRemoveGroupMembers_RefusesACallerWhoMayNotUpdateTheGroup() {
+	f := newGroupChangeFixture(suite.T())
+	f.store.On("GetGroup", mock.Anything, "grp-001").Return(GroupDAO{ID: "grp-001", OUID: testOUID1}, nil)
+	f.authz.On("IsActionAllowed", mock.Anything, security.ActionUpdateGroup, &sysauthz.ActionContext{
+		ResourceType: security.ResourceTypeGroup, OUID: testOUID1, ResourceID: "grp-001",
+	}).Return(false, (*tidcommon.ServiceError)(nil))
+
+	svcErr := f.service.ValidateRemoveGroupMembers(context.Background(), "grp-001",
+		[]Member{{ID: "usr-001", Type: MemberTypeUser}})
+
+	suite.Require().NotNil(svcErr)
+	suite.Equal(tidcommon.ErrorUnauthorized.Code, svcErr.Code)
+	f.authz.AssertNotCalled(suite.T(), "CanGrantMembership", mock.Anything, mock.Anything, mock.Anything)
+	f.entities.AssertNotCalled(suite.T(), "GetEntitiesByIDs", mock.Anything, mock.Anything)
+}
+
 func (suite *GroupServiceTestSuite) TestValidateRemoveGroupMembers_RefusesAMalformedRequest() {
 	f := newGroupChangeFixture(suite.T())
 	cases := map[string]struct {

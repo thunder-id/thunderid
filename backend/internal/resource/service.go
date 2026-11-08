@@ -1767,6 +1767,10 @@ func (rs *resourceService) ValidateDeleteAction(
 	if svcErr != nil {
 		return nil, svcErr
 	}
+	if svcErr := rs.checkResourceServerAccess(ctx, security.ActionUpdateResourceServer,
+		resourceServer.OUID); svcErr != nil {
+		return nil, svcErr
+	}
 	action, svcErr := rs.getAction(ctx, resourceServerID, resourceID, id)
 	if svcErr != nil {
 		return nil, svcErr

@@ -14,6 +14,7 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
 	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
@@ -24,6 +25,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/observability/event"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/coremock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/executormock"
 	"github.com/thunder-id/thunderid/tests/mocks/observability/observabilitymock"
@@ -2961,6 +2963,56 @@ func (s *EngineTestSuite) TestCalledSelfFlowHasNoBoundSubject() {
 	s.Empty(ctx.boundSubject)
 }
 
+// A flow running with the system's authority cannot call a flow that acts for its caller, while one acting for
+// its caller may call a flow of either kind.
+func (s *EngineTestSuite) TestCallTargetMustNotActForTheCallerOfASystemAuthorityFlow() {
+	for _, tc := range []struct {
+		name       string
+		rootType   providers.FlowType
+		calleeType providers.FlowType
+		refused    bool
+	}{
+		{"registration calls administration", providers.FlowTypeRegistration, providers.FlowTypeAdministration, true},
+		{"authentication calls onboarding", providers.FlowTypeAuthentication, providers.FlowTypeUserOnboarding, true},
+		{"system calls invitation", providers.FlowTypeSystem, providers.FlowTypeInvitation, true},
+		{"administration calls authentication", providers.FlowTypeAdministration, providers.FlowTypeAuthentication,
+			false},
+		{"authentication calls authentication", providers.FlowTypeAuthentication, providers.FlowTypeAuthentication,
+			false},
+	} {
+		s.Run(tc.name, func() {
+			t := s.T()
+			callNode := coremock.NewCallNodeInterfaceMock(t)
+			flowProvider := NewFlowProviderMock(t)
+			graphBuilder := NewGraphBuilderInterfaceMock(t)
+			flow := &providers.CompleteFlowDefinition{ID: "callee-flow", FlowType: tc.calleeType}
+			flowProvider.On("GetFlow", mock.Anything, "callee-flow").Return(flow, nil)
+			if !tc.refused {
+				calleeGraph := coremock.NewGraphInterfaceMock(t)
+				callNode.On("GetID").Return("call")
+				graphBuilder.On("GetGraph", mock.Anything, flow).Return(calleeGraph, nil)
+				calleeGraph.On("GetType").Return(tc.calleeType).Maybe()
+				calleeGraph.On("GetStartNode").Return(coremock.NewNodeInterfaceMock(t), nil)
+			}
+			engine := &flowEngine{logger: log.GetLogger(), flowProvider: flowProvider, graphBuilder: graphBuilder}
+			ctx := &EngineContext{Context: context.Background(), Graph: coremock.NewGraphInterfaceMock(t),
+				CurrentNode: callNode, FlowType: tc.rootType}
+
+			_, svcErr := engine.handleCallResponse(ctx, &common.NodeResponse{
+				Status: common.NodeStatusCall, CallTargetFlowID: "callee-flow",
+			}, log.GetLogger())
+
+			if tc.refused {
+				s.Require().NotNil(svcErr)
+				s.Equal(ErrorCallTargetNotPermitted.Code, svcErr.Code)
+				graphBuilder.AssertNotCalled(t, "GetGraph", mock.Anything, mock.Anything)
+				return
+			}
+			s.Nil(svcErr)
+		})
+	}
+}
+
 func (s *EngineTestSuite) TestBoundSubjectSurvivesCallAndReturn() {
 	t := s.T()
 	callerGraph := coremock.NewGraphInterfaceMock(t)
@@ -5720,4 +5772,23 @@ func (s *EngineTestSuite) TestProcessNodeResponse_RefusedSignInCalleeLeavesNoUse
 	s.False(seen.IsAuthenticated())
 	s.Empty(seen.ProviderNames())
 	s.Empty(c.ctx.Assertion)
+}
+
+// The engine reads the flows it runs with the server's authority, whoever drives them.
+func TestDefinitionReader_ReadsWithTheServersAuthority(t *testing.T) {
+	provider := NewFlowProviderMock(t)
+	asServer := mock.MatchedBy(security.IsRuntimeContext)
+	provider.EXPECT().GetFlow(asServer, "flow-1").Return(&providers.CompleteFlowDefinition{ID: "flow-1"}, nil).Once()
+	provider.EXPECT().GetFlowByHandle(asServer, "handle-1", providers.FlowTypeInvitation).
+		Return(&providers.CompleteFlowDefinition{ID: "flow-2"}, nil).Once()
+	reader := definitionReader{provider}
+	caller := security.WithSecurityContextTest(context.Background(),
+		security.NewSecurityContextForTest("admin-1", "ou-1", "token", nil, nil))
+
+	byID, svcErr := reader.GetFlow(caller, "flow-1")
+	require.Nil(t, svcErr)
+	require.Equal(t, "flow-1", byID.ID)
+	byHandle, svcErr := reader.GetFlowByHandle(caller, "handle-1", providers.FlowTypeInvitation)
+	require.Nil(t, svcErr)
+	require.Equal(t, "flow-2", byHandle.ID)
 }

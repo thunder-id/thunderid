@@ -8,7 +8,6 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/user"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -32,12 +31,12 @@ func (p *defaultUserMgtProvider) CreateUser(
 	if u == nil {
 		return nil, &ErrorInvalidRequestFormat
 	}
-	return p.userSvc.CreateUser(security.WithRuntimeContext(ctx), u)
+	return p.userSvc.CreateUser(ctx, u)
 }
 
 // UpdateUserCredentials sets the user's schema-defined credentials through the user service.
 func (p *defaultUserMgtProvider) UpdateUserCredentials(
 	ctx context.Context, userID string, credentials json.RawMessage,
 ) *tidcommon.ServiceError {
-	return p.userSvc.UpdateUserCredentials(security.WithRuntimeContext(ctx), userID, credentials)
+	return p.userSvc.UpdateUserCredentials(ctx, userID, credentials)
 }

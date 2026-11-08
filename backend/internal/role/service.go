@@ -942,6 +942,10 @@ func (rs *roleService) ValidateDeleteRole(ctx context.Context, id string) (
 	if svcErr != nil {
 		return nil, svcErr
 	}
+	if svcErr := checkRoleAccess(ctx, rs.authzService, rs.logger, security.ActionDeleteRole,
+		role.OUID); svcErr != nil {
+		return nil, svcErr
+	}
 	if svcErr := rs.validateRoleMutable(ctx, id); svcErr != nil {
 		return nil, svcErr
 	}

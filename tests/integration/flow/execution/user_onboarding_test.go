@@ -402,10 +402,14 @@ func (ts *UserOnboardingTestSuite) setOnboardingDefaultHandle(handle string) {
 	})
 }
 
-// initiateOnboarding starts a user onboarding flow. It carries no application id, which is what
-// distinguishes an app-independent system flow from every other flow type.
+// initiateOnboarding starts a user onboarding flow as the admin. It carries no application id, which is
+// what distinguishes an app-independent system flow from every other flow type. The flow endpoint is
+// public, so the admin token is attached here rather than by the test client.
 func (ts *UserOnboardingTestSuite) initiateOnboarding(inputs map[string]string) *common.FlowStep {
 	ts.T().Helper()
+
+	token, err := testutils.GetAccessToken()
+	ts.Require().NoError(err, "Failed to obtain admin access token")
 
 	reqBody := map[string]interface{}{"flowType": "USER_ONBOARDING"}
 	if len(inputs) > 0 {
@@ -419,6 +423,7 @@ func (ts *UserOnboardingTestSuite) initiateOnboarding(inputs map[string]string) 
 	ts.Require().NoError(err)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
 
 	resp, err := testutils.GetHTTPClient().Do(req)
 	ts.Require().NoError(err, "Failed to send onboarding flow request")

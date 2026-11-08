@@ -11,6 +11,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -97,7 +98,9 @@ func (r *entityTypeResolution) resolveSubmitted(ctx *providers.NodeContext,
 		return execResp, nil
 	}
 
-	entityType, ouID, err := r.entityTypeAndOU(ctx.Context, category, selected)
+	// Reading the type grants nothing, and it may live above the caller's unit, where their token cannot read;
+	// the entity provisioned as it is authorized as the caller.
+	entityType, ouID, err := r.entityTypeAndOU(security.WithRuntimeContext(ctx.Context), category, selected)
 	if err != nil {
 		execResp.Status = providers.ExecFailure
 		execResp.Error = errForEntityCategory(ErrInvalidUserType, category)
@@ -106,7 +109,8 @@ func (r *entityTypeResolution) resolveSubmitted(ctx *providers.NodeContext,
 
 	// A selected organization unit constrains the type to one at or above it.
 	if selectedOUID, exists := ctx.RuntimeData[ouIDKey]; exists && selectedOUID != "" {
-		isValid, svcErr := r.ouService.IsParent(ctx.Context, ouID, selectedOUID)
+		// Reading the hierarchy grants nothing; the entity placed there is authorized as the caller.
+		isValid, svcErr := r.ouService.IsParent(security.WithRuntimeContext(ctx.Context), ouID, selectedOUID)
 		if svcErr != nil {
 			return nil, fmt.Errorf("failed to validate %s type against selected OU: %s",
 				category, svcErr.Error.DefaultValue)
@@ -132,8 +136,9 @@ func (r *entityTypeResolution) candidates(ctx *providers.NodeContext,
 	category entitytype.TypeCategory, allowedTypes []string, execResp *providers.ExecutorResponse,
 	logger *log.Logger,
 ) ([]entitytype.EntityTypeListItem, bool, error) {
+	// Reading the types grants nothing; the entity provisioned as one is authorized as the caller.
 	list, svcErr := r.entityTypeService.GetEntityTypeList(
-		ctx.Context, category, entityTypeCandidateLimit, 0, false)
+		security.WithRuntimeContext(ctx.Context), category, entityTypeCandidateLimit, 0, false)
 	if svcErr != nil {
 		logger.Debug(ctx.Context, "Failed to list entity types",
 			log.String("error", svcErr.Error.DefaultValue))
@@ -316,7 +321,7 @@ func (r *entityTypeResolution) filterTypesByOU(ctx *providers.NodeContext,
 ) ([]entitytype.EntityTypeListItem, error) {
 	filtered := make([]entitytype.EntityTypeListItem, 0, len(types))
 	for _, entityType := range types {
-		isValid, svcErr := r.ouService.IsParent(ctx.Context, entityType.OUID, selectedOUID)
+		isValid, svcErr := r.ouService.IsParent(security.WithRuntimeContext(ctx.Context), entityType.OUID, selectedOUID)
 		if svcErr != nil {
 			return nil, fmt.Errorf("failed to check OU ancestry for schema %s: %s",
 				entityType.Handle, svcErr.Error.DefaultValue)

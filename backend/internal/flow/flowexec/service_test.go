@@ -11,6 +11,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 
@@ -55,6 +56,7 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/jose/jwtmock"
 	"github.com/thunder-id/thunderid/tests/mocks/observability/observabilitymock"
 	"github.com/thunder-id/thunderid/tests/mocks/ouprovidermock"
+	"github.com/thunder-id/thunderid/tests/mocks/permissionprovidermock"
 )
 
 const existingExecutionID = "existing-execution-id"
@@ -220,6 +222,7 @@ func TestInitiateFlowInvalidFlowType(t *testing.T) {
 
 func TestInitiateFlowSuccessScenarios(t *testing.T) {
 	appID := testAppID
+	security.InitSystemPermissions("")
 
 	testConfig := &config.Config{}
 	_ = config.InitializeServerRuntime("/tmp/test", testConfig)
@@ -380,7 +383,7 @@ func TestInitiateFlowSuccessScenarios(t *testing.T) {
 			}
 
 			// Execute
-			executionID, svcErr := service.InitiateFlow(context.Background(), initContext)
+			executionID, svcErr := service.InitiateFlow(authenticatedAdminContext([]string{"system"}), initContext)
 
 			// Assert
 			assert.NotEmpty(t, executionID)
@@ -428,7 +431,8 @@ func (s *ServiceTestSuite) TestInitiateFlowChecksOnlyALoadedApplication() {
 		Return(flowFactory.CreateGraph("onboarding-flow-123", providers.FlowTypeUserOnboarding, 1), nil)
 	mockStore.EXPECT().StoreFlowContext(mock.Anything, mock.Anything, mock.Anything).Return(nil)
 
-	executionID, svcErr := service.InitiateFlow(context.Background(), &FlowInitContext{
+	security.InitSystemPermissions("")
+	executionID, svcErr := service.InitiateFlow(authenticatedAdminContext([]string{"system"}), &FlowInitContext{
 		ApplicationID: "not-an-application",
 		FlowType:      string(providers.FlowTypeUserOnboarding),
 	})
@@ -2697,14 +2701,14 @@ func (s *ServiceTestSuite) TestLoadNewContext_ByIDRefusesInvitationWithoutTokenO
 	s.Equal(ErrorInvitationOUMissing.Code, svcErr.Code)
 }
 
-// Every flow started by ID needs the root permission for now, checked before the flow is resolved.
-func (s *ServiceTestSuite) TestLoadNewContext_ByIDRefusesCallerWithoutRootPermission() {
+// Every flow started by ID needs a system permission, checked before the flow is resolved.
+func (s *ServiceTestSuite) TestLoadNewContext_ByIDRefusesCallerWithoutASystemPermission() {
 	security.InitSystemPermissions("")
 	mockFlowProvider := NewFlowProviderMock(s.T())
 	service := &flowExecService{flowProvider: mockFlowProvider, cfg: testFlowExecCfg}
 
 	for _, flowID := range []string{"administration-1", "invitation-1"} {
-		engineCtx, svcErr := service.loadNewContext(authenticatedAdminContext([]string{"system:user"}),
+		engineCtx, svcErr := service.loadNewContext(authenticatedAdminContext([]string{"openid", "systemx"}),
 			flowID, "", "", "", false, "", nil, "", "", log.GetLogger())
 
 		s.Nil(engineCtx)
@@ -2747,53 +2751,6 @@ func authenticatedAdminContext(permissions []string) context.Context {
 	authCtx := security.NewSecurityContextForTest(
 		"admin-1", "ou-1", "token", permissions, map[string]interface{}{})
 	return security.WithSecurityContextTest(context.Background(), authCtx)
-}
-
-func (s *ServiceTestSuite) TestValidateAdministrationCaller() {
-	security.InitSystemPermissions("")
-
-	s.Run("RejectsPublicRuntimeContext", func() {
-		svcErr := validateAdministrationCaller(
-			security.WithRuntimeContext(context.Background()), providers.FlowTypeAdministration)
-
-		s.Require().NotNil(svcErr)
-		s.Equal(ErrorFlowAuthenticationRequired.Code, svcErr.Code)
-	})
-
-	// A bare context carries no authenticated subject. The gate must assert the caller's identity
-	// positively rather than inferring it from the absence of the runtime marker.
-	s.Run("RejectsContextWithoutAuthenticatedSubject", func() {
-		svcErr := validateAdministrationCaller(context.Background(), providers.FlowTypeAdministration)
-
-		s.Require().NotNil(svcErr)
-		s.Equal(ErrorFlowAuthenticationRequired.Code, svcErr.Code)
-	})
-
-	// Authenticated but unprivileged callers are rejected here, not merely by the API permission
-	// table. /flow/execute is a public path, so this boundary must hold on its own.
-	s.Run("RejectsAuthenticatedCallerWithoutSystemPermission", func() {
-		svcErr := validateAdministrationCaller(
-			authenticatedAdminContext([]string{"system:user:view"}), providers.FlowTypeAdministration)
-
-		s.Require().NotNil(svcErr)
-		s.Equal(ErrorAdministrationPermissionRequired.Code, svcErr.Code)
-	})
-
-	s.Run("AllowsAuthenticatedCallerWithSystemPermission", func() {
-		s.Nil(validateAdministrationCaller(
-			authenticatedAdminContext([]string{"system"}), providers.FlowTypeAdministration))
-	})
-
-	s.Run("AllowsPublicInteractiveFlow", func() {
-		s.Nil(validateAdministrationCaller(
-			security.WithRuntimeContext(context.Background()), providers.FlowTypeAuthentication))
-	})
-
-	// The gate must never fire for a non-administration flow, whatever the caller holds.
-	s.Run("IgnoresNonAdministrationFlowForAuthenticatedCaller", func() {
-		s.Nil(validateAdministrationCaller(
-			authenticatedAdminContext(nil), providers.FlowTypeRegistration))
-	})
 }
 
 // Initiation entry points must apply the same gate as execution, so neither becomes a way around it.
@@ -3462,9 +3419,11 @@ func (s *ServiceTestSuite) TestExecute_ContinuationFlow_AuthCodeApp_NotBlocked()
 	s.NotNil(flowStep)
 }
 
-// The invitee continues an invitation flow without a token; the invite token carries the step instead.
+// The invitee continues an invitation flow without a token; the invite token carries the step instead, and the
+// step runs as the inviter with the permissions they still hold.
 func (s *ServiceTestSuite) TestExecute_ContinuationOfInvitationFlowWithoutToken() {
 	t := s.T()
+	security.InitSystemPermissions("")
 	config.ResetServerRuntime()
 	s.Require().NoError(config.InitializeServerRuntime(t.TempDir(), &config.Config{}))
 	flowFactory, _ := core.Initialize(cache.Initialize(config.GetServerRuntime().Config.Cache, "test-deployment"))
@@ -3483,13 +3442,21 @@ func (s *ServiceTestSuite) TestExecute_ContinuationOfInvitationFlowWithoutToken(
 		UserInputs:       map[string]string{},
 		RuntimeData:      map[string]string{common.RuntimeKeyOUID: "ou-1"},
 		ExecutionHistory: map[string]*providers.NodeExecutionRecord{},
+		authority: &flowAuthority{Subject: "admin-1", OUID: "ou-1",
+			Permissions: []string{"openid", "system:user", "system:group:view"}},
 	}))
 	mockStore.EXPECT().GetFlowContext(mock.Anything, "existing-execution-id").Return(storedCtx, nil)
 	mockFlowProvider.EXPECT().GetFlow(mock.Anything, "invitation-1").Return(
 		&providers.CompleteFlowDefinition{ID: "invitation-1", FlowType: providers.FlowTypeInvitation}, nil)
 	mockGraphBuilder.EXPECT().GetGraph(mock.Anything, mock.Anything).Return(testGraph, nil)
-	mockEngine.EXPECT().Execute(mock.Anything).Return(
-		FlowStep{Status: providers.FlowStatusComplete}, (*tidcommon.ServiceError)(nil))
+	provider := permissionprovidermock.NewPermissionProviderMock(t)
+	provider.EXPECT().GetEntityPermissions(mock.Anything, "admin-1").Return(
+		security.PermissionSet{"rs-1": {"system:user"}}, nil)
+	mockEngine.EXPECT().Execute(mock.MatchedBy(func(engineCtx *EngineContext) bool {
+		return !security.IsRuntimeContext(engineCtx.Context) && security.IsRecordedCaller(engineCtx.Context) &&
+			security.GetSubject(engineCtx.Context) == "admin-1" && security.GetOUID(engineCtx.Context) == "ou-1" &&
+			slices.Equal(security.GetPermissions(engineCtx.Context), []string{"system:user"})
+	})).Return(FlowStep{Status: providers.FlowStatusComplete}, (*tidcommon.ServiceError)(nil))
 	mockStore.EXPECT().DeleteFlowContext(mock.Anything, "existing-execution-id").Return(nil)
 
 	service := &flowExecService{
@@ -3499,7 +3466,8 @@ func (s *ServiceTestSuite) TestExecute_ContinuationOfInvitationFlowWithoutToken(
 		flowEngine:   mockEngine,
 		actorProvider: actorprovider.Initialize(inboundclientmock.NewInboundClientServiceInterfaceMock(t),
 			entityprovidermock.NewEntityProviderInterfaceMock(t), noopAuthnMgr(), nil, nil),
-		transactioner: &stubTransactioner{},
+		transactioner:      &stubTransactioner{},
+		permissionProvider: provider,
 	}
 
 	flowStep, svcErr := service.Execute(security.WithRuntimeContext(context.Background()), "",
@@ -4898,7 +4866,8 @@ func (s *ServiceTestSuite) TestLoadNewContext_OtherFlowTypesIgnoreTheHandle() {
 			UserOnboardingFlow: flowconfig.FlowTypeConfig{DefaultHandle: testUserOnboardingFlowHandle},
 		}}}
 
-	engineCtx, svcErr := service.loadNewContext(s.selfIssuedTokenContext(testSelfFlowUser), "", "",
+	security.InitSystemPermissions("")
+	engineCtx, svcErr := service.loadNewContext(authenticatedAdminContext([]string{"system:user:create"}), "", "",
 		string(providers.FlowTypeUserOnboarding), "other-handle", false, "", map[string]string{}, "", "",
 		log.GetLogger())
 
@@ -5044,4 +5013,348 @@ func (s *ServiceTestSuite) TestGetExecutionPosition() {
 
 		s.Equal(&tidcommon.InternalServerError, svcErr)
 	})
+}
+
+// --- flow authority ---
+
+func (s *ServiceTestSuite) TestStartAuthority_RunsEachFlowTypeWithItsAuthority() {
+	security.InitSystemPermissions("")
+	caller := authenticatedAdminContext([]string{"system:user:create"})
+
+	for _, flowType := range []providers.FlowType{
+		providers.FlowTypeAuthentication, providers.FlowTypeRegistration, providers.FlowTypeRecovery,
+		providers.FlowTypeSignOut, providers.FlowTypeDeviceGrant, providers.FlowTypeSelf, providers.FlowTypeSystem,
+	} {
+		s.Run(string(flowType), func() {
+			ctx, svcErr := (&flowExecService{}).startAuthority(caller, flowType)
+
+			s.Nil(svcErr)
+			s.True(security.IsRuntimeContext(ctx))
+			s.Equal("admin-1", security.GetSubject(ctx), "the subject stays for audit")
+		})
+	}
+	for _, flowType := range []providers.FlowType{
+		providers.FlowTypeAdministration, providers.FlowTypeUserOnboarding, providers.FlowTypeInvitation,
+	} {
+		s.Run(string(flowType), func() {
+			ctx, svcErr := (&flowExecService{}).startAuthority(caller, flowType)
+
+			s.Nil(svcErr)
+			s.False(security.IsRuntimeContext(ctx))
+			s.Equal([]string{"system:user:create"}, security.GetPermissions(ctx))
+		})
+	}
+}
+
+func (s *ServiceTestSuite) TestStartAuthority_FloorForAFlowThatActsForItsCaller() {
+	security.InitSystemPermissions("")
+	tests := []struct {
+		name    string
+		ctx     context.Context
+		errCode string
+	}{
+		{"NoToken", security.WithRuntimeContext(context.Background()), ErrorFlowAuthenticationRequired.Code},
+		{"NoSubject", context.Background(), ErrorFlowAuthenticationRequired.Code},
+		{"TokenWithoutASystemPermission", authenticatedAdminContext([]string{"openid"}),
+			ErrorAdministrationPermissionRequired.Code},
+		{"NarrowPermission", authenticatedAdminContext([]string{"system:user:view"}), ""},
+		{"RootPermission", authenticatedAdminContext([]string{"system"}), ""},
+	}
+	for _, tt := range tests {
+		for _, flowType := range []providers.FlowType{
+			providers.FlowTypeAdministration, providers.FlowTypeUserOnboarding,
+		} {
+			s.Run(tt.name+"/"+string(flowType), func() {
+				_, svcErr := (&flowExecService{}).startAuthority(tt.ctx, flowType)
+
+				if tt.errCode == "" {
+					s.Nil(svcErr)
+					return
+				}
+				s.Require().NotNil(svcErr)
+				s.Equal(tt.errCode, svcErr.Code)
+			})
+		}
+	}
+}
+
+func (s *ServiceTestSuite) TestLoadNewContext_ByTypeRefusesUserOnboardingWithoutAToken() {
+	security.InitSystemPermissions("")
+	flowProvider := NewFlowProviderMock(s.T())
+	service := &flowExecService{flowProvider: flowProvider, cfg: testFlowExecCfg}
+
+	engineCtx, svcErr := service.loadNewContext(security.WithRuntimeContext(context.Background()), "", "",
+		string(providers.FlowTypeUserOnboarding), "", false, "", nil, "", "", log.GetLogger())
+
+	s.Nil(engineCtx)
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorFlowAuthenticationRequired.Code, svcErr.Code)
+	flowProvider.AssertNotCalled(s.T(), "GetFlowByHandle", mock.Anything, mock.Anything, mock.Anything)
+}
+
+// A narrow administrator starts an administration flow by ID, and the flow records their authority.
+func (s *ServiceTestSuite) TestLoadNewContext_ByIDRecordsANarrowAdminsAuthority() {
+	security.InitSystemPermissions("")
+	config.ResetServerRuntime()
+	s.Require().NoError(config.InitializeServerRuntime(s.T().TempDir(), &config.Config{}))
+	flowFactory, _ := core.Initialize(cache.Initialize(config.GetServerRuntime().Config.Cache, "test-deployment"))
+	flow := &providers.CompleteFlowDefinition{
+		ID: "administration-1", FlowType: providers.FlowTypeAdministration, ActiveVersion: 1,
+	}
+	flowProvider := NewFlowProviderMock(s.T())
+	flowProvider.EXPECT().GetFlow(mock.Anything, "administration-1").Return(flow, nil).Once()
+	graphBuilder := NewGraphBuilderInterfaceMock(s.T())
+	graphBuilder.EXPECT().GetGraph(mock.Anything, flow).Return(
+		flowFactory.CreateGraph("administration-1", providers.FlowTypeAdministration, 1), nil)
+	service := &flowExecService{flowProvider: flowProvider, graphBuilder: graphBuilder, cfg: testFlowExecCfg}
+
+	engineCtx, svcErr := service.loadNewContext(authenticatedAdminContext([]string{"system:user:delete"}),
+		"administration-1", "", "", "", false, "", nil, "", "", log.GetLogger())
+
+	s.Require().Nil(svcErr)
+	s.False(security.IsRuntimeContext(engineCtx.Context))
+	s.Equal(&flowAuthority{Subject: "admin-1", OUID: "ou-1", Permissions: []string{"system:user:delete"}},
+		engineCtx.authority)
+}
+
+func (s *ServiceTestSuite) TestAuthority_PersistedWithTheContext() {
+	config.ResetServerRuntime()
+	s.Require().NoError(config.InitializeServerRuntime(s.T().TempDir(), &config.Config{}))
+	flowFactory, _ := core.Initialize(cache.Initialize(config.GetServerRuntime().Config.Cache, "test-deployment"))
+	graph := flowFactory.CreateGraph("onboarding-1", providers.FlowTypeUserOnboarding, 1)
+	authority := &flowAuthority{Subject: "admin-1", OUID: "ou-1", Permissions: []string{"system:user:create"}}
+
+	stored := &FlowContextDB{}
+	s.Require().NoError(stored.FromEngineContext(EngineContext{
+		ExecutionID: "execution-1", FlowType: providers.FlowTypeUserOnboarding, Graph: graph, authority: authority,
+	}))
+	loaded, err := stored.ToEngineContext(context.Background(), graph, nil)
+
+	s.Require().NoError(err)
+	s.Equal(authority, loaded.authority)
+}
+
+// continuationService returns a service whose permission provider must not be asked.
+func (s *ServiceTestSuite) continuationService() *flowExecService {
+	return &flowExecService{permissionProvider: permissionprovidermock.NewPermissionProviderMock(s.T()),
+		cfg: testFlowExecCfg}
+}
+
+// resolvingService returns a service whose permission provider is asked once what admin-1 holds now.
+func (s *ServiceTestSuite) resolvingService(current security.PermissionSet) *flowExecService {
+	provider := permissionprovidermock.NewPermissionProviderMock(s.T())
+	provider.EXPECT().GetEntityPermissions(mock.Anything, "admin-1").Return(current, nil).Once()
+	return &flowExecService{permissionProvider: provider, cfg: testFlowExecCfg}
+}
+
+// startedContext returns a flow of flowType that admin-1 of ou-1 started with permissions.
+func startedContext(flowType providers.FlowType, permissions ...string) *EngineContext {
+	return &EngineContext{ExecutionID: "execution-1", FlowType: flowType,
+		authority: &flowAuthority{Subject: "admin-1", OUID: "ou-1", Permissions: permissions}}
+}
+
+func (s *ServiceTestSuite) TestContinuationAuthority_RunsAFlowForWhoeverDrivesItWithTheServersAuthority() {
+	service := s.continuationService()
+
+	for _, flowType := range []providers.FlowType{
+		providers.FlowTypeAuthentication, providers.FlowTypeRecovery, providers.FlowTypeSelf,
+	} {
+		ctx, svcErr := service.continuationAuthority(authenticatedAdminContext(nil),
+			&EngineContext{FlowType: flowType}, log.GetLogger())
+
+		s.Nil(svcErr)
+		s.True(security.IsRuntimeContext(ctx))
+		s.Equal("admin-1", security.GetSubject(ctx))
+	}
+}
+
+func (s *ServiceTestSuite) TestContinuationAuthority_WithATokenRunsAsTheCaller() {
+	security.InitSystemPermissions("")
+	service := s.continuationService()
+	caller := authenticatedAdminContext([]string{"system:user:delete"})
+
+	ctx, svcErr := service.continuationAuthority(caller,
+		startedContext(providers.FlowTypeAdministration, "system:user:delete"), log.GetLogger())
+
+	s.Nil(svcErr)
+	s.Equal(caller, ctx)
+}
+
+func (s *ServiceTestSuite) TestContinuationAuthority_RefusesAnotherCaller() {
+	security.InitSystemPermissions("")
+	service := s.continuationService()
+	other := security.WithSecurityContextTest(context.Background(),
+		security.NewSecurityContextForTest("admin-2", "ou-1", "token", []string{"system"}, nil))
+
+	for _, flowType := range []providers.FlowType{
+		providers.FlowTypeAdministration, providers.FlowTypeUserOnboarding, providers.FlowTypeInvitation,
+	} {
+		_, svcErr := service.continuationAuthority(other, startedContext(flowType, "system"), log.GetLogger())
+
+		s.Require().NotNil(svcErr)
+		s.Equal(ErrorFlowStartedByAnotherCaller.Code, svcErr.Code)
+	}
+}
+
+// The token of the caller who started the flow is checked on every step, so one that no longer carries a
+// system permission is refused.
+func (s *ServiceTestSuite) TestContinuationAuthority_ReappliesTheFloorToTheCallersToken() {
+	security.InitSystemPermissions("")
+	service := s.continuationService()
+
+	_, svcErr := service.continuationAuthority(authenticatedAdminContext([]string{"openid"}),
+		startedContext(providers.FlowTypeAdministration, "system"), log.GetLogger())
+
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorAdministrationPermissionRequired.Code, svcErr.Code)
+}
+
+func (s *ServiceTestSuite) TestContinuationAuthority_RefusesATokenlessAdministrationStep() {
+	security.InitSystemPermissions("")
+	service := s.continuationService()
+
+	for name, ctx := range map[string]context.Context{
+		"runtime": security.WithRuntimeContext(context.Background()), "bare": context.Background(),
+	} {
+		s.Run(name, func() {
+			_, svcErr := service.continuationAuthority(ctx,
+				startedContext(providers.FlowTypeAdministration, "system"), log.GetLogger())
+
+			s.Require().NotNil(svcErr)
+			s.Equal(ErrorFlowAuthenticationRequired.Code, svcErr.Code)
+		})
+	}
+}
+
+// A flow that called another flow is decided by the flow the execution started, not the callee it paused in.
+func (s *ServiceTestSuite) TestContinuationAuthority_DecidesByTheRootFlow() {
+	security.InitSystemPermissions("")
+	service := s.continuationService()
+	engineCtx := startedContext(providers.FlowTypeAuthentication, "system")
+	engineCtx.frameStack = []*frame{{flowType: providers.FlowTypeAdministration}}
+
+	_, svcErr := service.continuationAuthority(security.WithRuntimeContext(context.Background()), engineCtx,
+		log.GetLogger())
+
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorFlowAuthenticationRequired.Code, svcErr.Code)
+}
+
+func (s *ServiceTestSuite) TestContinuationAuthority_TokenlessStepRunsWithTheRecordedAuthority() {
+	security.InitSystemPermissions("")
+
+	for _, flowType := range []providers.FlowType{providers.FlowTypeUserOnboarding, providers.FlowTypeInvitation} {
+		s.Run(string(flowType), func() {
+			service := s.resolvingService(security.PermissionSet{"rs-1": {"system:user:create"}})
+			ctx, svcErr := service.continuationAuthority(security.WithRuntimeContext(context.Background()),
+				startedContext(flowType, "openid", "system:user:create", "system:group:view"), log.GetLogger())
+
+			s.Require().Nil(svcErr)
+			s.False(security.IsRuntimeContext(ctx))
+			s.True(security.IsRecordedCaller(ctx))
+			s.Equal("admin-1", security.GetSubject(ctx))
+			s.Equal("ou-1", security.GetOUID(ctx))
+			s.Equal([]string{"system:user:create"}, security.GetPermissions(ctx),
+				"only what admin-1 still holds")
+		})
+	}
+}
+
+func (s *ServiceTestSuite) TestContinuationAuthority_RefusesATokenlessStepOnceTheCallerHoldsNoSystemPermission() {
+	security.InitSystemPermissions("")
+	service := s.resolvingService(security.PermissionSet{"rs-1": {"orders:read"}})
+
+	_, svcErr := service.continuationAuthority(security.WithRuntimeContext(context.Background()),
+		startedContext(providers.FlowTypeUserOnboarding, "system:user:create", "orders:read"), log.GetLogger())
+
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorAdministrationPermissionRequired.Code, svcErr.Code)
+}
+
+func (s *ServiceTestSuite) TestContinuationAuthority_RefusesAFlowWithNoRecordedAuthority() {
+	service := s.continuationService()
+
+	_, svcErr := service.continuationAuthority(security.WithRuntimeContext(context.Background()),
+		&EngineContext{FlowType: providers.FlowTypeUserOnboarding}, log.GetLogger())
+
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorFlowRestartRequired.Code, svcErr.Code)
+}
+
+func (s *ServiceTestSuite) TestContinuationAuthority_ResolverFailureIsAServerError() {
+	provider := permissionprovidermock.NewPermissionProviderMock(s.T())
+	provider.EXPECT().GetEntityPermissions(mock.Anything, "admin-1").Return(nil, errors.New("store down"))
+	service := &flowExecService{permissionProvider: provider, cfg: testFlowExecCfg}
+
+	_, svcErr := service.continuationAuthority(security.WithRuntimeContext(context.Background()),
+		startedContext(providers.FlowTypeInvitation, "system"), log.GetLogger())
+
+	s.Equal(&tidcommon.InternalServerError, svcErr)
+}
+
+func (s *ServiceTestSuite) TestContinuationAuthority_WithoutAResolverRefusesATokenlessStep() {
+	service := &flowExecService{cfg: testFlowExecCfg}
+
+	_, svcErr := service.continuationAuthority(security.WithRuntimeContext(context.Background()),
+		startedContext(providers.FlowTypeUserOnboarding, "system"), log.GetLogger())
+
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorFlowAuthenticationRequired.Code, svcErr.Code)
+}
+
+func (s *ServiceTestSuite) TestExecuteSystemFlow_RunsWithTheServersAuthorityKeepingTheSubject() {
+	service, flows, engine := s.systemFlowService()
+	flows.EXPECT().GetSystemFlow(mock.Anything, mock.Anything).Return(systemFlow(), nil)
+	engine.EXPECT().Execute(mock.MatchedBy(func(ctx *EngineContext) bool {
+		return security.IsRuntimeContext(ctx.Context) && security.GetSubject(ctx.Context) == "admin-1"
+	})).Return(FlowStep{Status: providers.FlowStatusComplete}, nil)
+
+	_, svcErr := service.ExecuteSystemFlow(authenticatedAdminContext([]string{"system:app:delete"}),
+		&common.SystemFlowContext{Handle: "system-application-delete-pre"})
+
+	s.Nil(svcErr)
+}
+
+// heldService returns a resolving service whose governance answers decision, or svcErr, for admin-1.
+func (s *ServiceTestSuite) heldService(decision providers.AccessDecision,
+	svcErr *tidcommon.ServiceError) *flowExecService {
+	service := s.resolvingService(security.PermissionSet{"rs-1": {"system:user:create"}})
+	governance := identitygovernanceprovidermock.NewIdentityGovernanceProviderMock(s.T())
+	governance.EXPECT().EvaluateAccess(mock.Anything, "admin-1", providers.AccessPlaneSession,
+		providers.AuthenticationMethod("")).Return(decision, svcErr).Once()
+	service.governance = governance
+	return service
+}
+
+func (s *ServiceTestSuite) TestContinuationAuthority_TokenlessStepRunsForAnAdmittedCaller() {
+	security.InitSystemPermissions("")
+	service := s.heldService(providers.AccessDecision{Admitted: true}, nil)
+
+	ctx, svcErr := service.continuationAuthority(security.WithRuntimeContext(context.Background()),
+		startedContext(providers.FlowTypeInvitation, "system:user:create"), log.GetLogger())
+
+	s.Require().Nil(svcErr)
+	s.True(security.IsRecordedCaller(ctx))
+}
+
+// A caller suspended after starting the flow no longer lends it their authority, as their tokens no longer would.
+func (s *ServiceTestSuite) TestContinuationAuthority_RefusesATokenlessStepOnceTheCallerIsHeld() {
+	security.InitSystemPermissions("")
+	service := s.heldService(providers.AccessDecision{Admitted: false}, nil)
+
+	_, svcErr := service.continuationAuthority(security.WithRuntimeContext(context.Background()),
+		startedContext(providers.FlowTypeInvitation, "system:user:create"), log.GetLogger())
+
+	s.Require().NotNil(svcErr)
+	s.Equal(ErrorAdministrationPermissionRequired.Code, svcErr.Code)
+}
+
+func (s *ServiceTestSuite) TestContinuationAuthority_UnreadableHoldIsAServerError() {
+	security.InitSystemPermissions("")
+	service := s.heldService(providers.AccessDecision{}, &tidcommon.InternalServerError)
+
+	_, svcErr := service.continuationAuthority(security.WithRuntimeContext(context.Background()),
+		startedContext(providers.FlowTypeInvitation, "system:user:create"), log.GetLogger())
+
+	s.Equal(&tidcommon.InternalServerError, svcErr)
 }

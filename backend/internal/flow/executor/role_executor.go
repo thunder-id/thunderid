@@ -4,7 +4,6 @@
 package executor
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -28,13 +27,6 @@ var roleModeFlowTypes = map[string][]providers.FlowType{
 	ExecutorModeRoleSelection:  {providers.FlowTypeInvitation},
 }
 
-// recordedCaller is the admin an invitation flow records, to assign its roles as at acceptance.
-type recordedCaller struct {
-	Subject     string   `json:"subject"`
-	OUID        string   `json:"ouId"`
-	Permissions []string `json:"permissions"`
-}
-
 // roleOption is a role a role selection prompt offers.
 type roleOption struct {
 	ID   string `json:"id"`
@@ -46,7 +38,6 @@ type roleOption struct {
 type roleExecutor struct {
 	providers.Executor
 	assignments roleAssignmentAdminProvider
-	permissions entityPermissionResolver
 	logger      *log.Logger
 }
 
@@ -54,8 +45,7 @@ var _ providers.Executor = (*roleExecutor)(nil)
 
 // newRoleExecutor creates the executor that selects and assigns roles in invitation flows and assigns them in
 // sign-up flows.
-func newRoleExecutor(factory core.FlowFactoryInterface, assignments roleAssignmentAdminProvider,
-	permissions entityPermissionResolver) *roleExecutor {
+func newRoleExecutor(factory core.FlowFactoryInterface, assignments roleAssignmentAdminProvider) *roleExecutor {
 	base := factory.CreateExecutor(ExecutorNameRole, providers.ExecutorTypeUtility, nil, nil,
 		&providers.ExecutorMeta{
 			SupportedModes:     slices.Sorted(maps.Keys(roleModeFlowTypes)),
@@ -67,7 +57,6 @@ func newRoleExecutor(factory core.FlowFactoryInterface, assignments roleAssignme
 	return &roleExecutor{
 		Executor:    base,
 		assignments: assignments,
-		permissions: permissions,
 		logger: log.GetLogger().With(log.String(log.LoggerKeyComponentName, ExecutorNameRole),
 			log.String(log.LoggerKeyExecutorName, ExecutorNameRole)),
 	}
@@ -152,7 +141,7 @@ func (e *roleExecutor) selectRoles(ctx *providers.NodeContext) (*providers.Execu
 		if !allOf(selected, isAssignable) {
 			return &providers.ExecutorResponse{Status: providers.ExecFailure, Error: &ErrRoleNotAssignable}, nil
 		}
-		return recordSelection(ctx, selected)
+		return recordSelection(selected), nil
 	}
 
 	// With nothing the caller may assign, the prompt could never be answered.
@@ -166,7 +155,7 @@ func (e *roleExecutor) selectRoles(ctx *providers.NodeContext) (*providers.Execu
 	if !allOf(selected, isAssignable) {
 		return rolePrompt(assignable, &ErrRoleNotAssignable)
 	}
-	return recordSelection(ctx, selected)
+	return recordSelection(selected), nil
 }
 
 // uniqueFields splits a space-separated list, dropping repeats and keeping the first occurrence's order.
@@ -190,46 +179,12 @@ func allOf(ids []string, ok func(string) bool) bool {
 	return true
 }
 
-// recordSelection records the selected roles and the caller who selected them, to assign them as at acceptance.
-func recordSelection(ctx *providers.NodeContext, selected []string) (*providers.ExecutorResponse, error) {
-	caller, err := json.Marshal(recordedCaller{
-		Subject:     security.GetSubject(ctx.Context),
-		OUID:        security.GetOUID(ctx.Context),
-		Permissions: security.GetPermissions(ctx.Context),
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to record the inviting caller: %w", err)
-	}
+// recordSelection records the selected roles, to assign them at acceptance.
+func recordSelection(selected []string) *providers.ExecutorResponse {
 	return &providers.ExecutorResponse{
-		Status: providers.ExecComplete,
-		RuntimeData: map[string]string{
-			common.RuntimeKeySelectedRoles:   strings.Join(selected, " "),
-			common.RuntimeKeyRolesSelectedBy: string(caller),
-		},
-	}, nil
-}
-
-// heldPermissions returns the recorded admin's permissions that they still hold on some resource server. The record
-// is a copy of the admin's token: a permission revoked since then is left out, and so are scopes no resource server
-// holds, such as openid.
-func (e *roleExecutor) heldPermissions(ctx context.Context, caller recordedCaller) ([]string, error) {
-	if e.permissions == nil {
-		return nil, errors.New("permission resolver is not configured")
+		Status:      providers.ExecComplete,
+		RuntimeData: map[string]string{common.RuntimeKeySelectedRoles: strings.Join(selected, " ")},
 	}
-	current, err := e.permissions.ResolveForEntity(ctx, caller.Subject)
-	if err != nil {
-		return nil, err
-	}
-	held := make([]string, 0, len(caller.Permissions))
-	for _, permission := range caller.Permissions {
-		for _, onServer := range current {
-			if security.HasSufficientPermission(onServer, permission) {
-				held = append(held, permission)
-				break
-			}
-		}
-	}
-	return held, nil
 }
 
 // rolePrompt asks for one or more of the assignable roles, with the refusal that sent the prompt back if any.
@@ -256,17 +211,17 @@ func rolePrompt(assignable []role.Role, refusal *tidcommon.ServiceError) (*provi
 	}, nil
 }
 
-// assign assigns the recorded roles to the user in the flow's unit, as the recorded admin. Every role is
-// assigned or none is, and the share the flow made stays either way.
+// assign assigns the recorded roles to the user in the flow's unit. The flow runs as the admin who started it,
+// with the permissions they still hold, so the role service checks the grant with those. Every role is assigned
+// or none is, and the share the flow made stays either way.
 func (e *roleExecutor) assign(ctx *providers.NodeContext) (*providers.ExecutorResponse, error) {
 	roleIDs := strings.Fields(ctx.RuntimeData[common.RuntimeKeySelectedRoles])
 	if len(roleIDs) == 0 {
 		return &providers.ExecutorResponse{Status: providers.ExecComplete}, nil
 	}
 	failed := &providers.ExecutorResponse{Status: providers.ExecFailure, Error: &ErrRoleAssignmentFailed}
-	var caller recordedCaller
-	if err := json.Unmarshal([]byte(ctx.RuntimeData[common.RuntimeKeyRolesSelectedBy]), &caller); err != nil ||
-		caller.Subject == "" {
+	// Roles are never assigned with the server's authority.
+	if security.IsRuntimeContext(ctx.Context) || security.GetSubject(ctx.Context) == "" {
 		return failed, nil
 	}
 	ouID, userID := ctx.RuntimeData[common.RuntimeKeyOUID], ctx.RuntimeData[userAttributeUserID]
@@ -274,19 +229,8 @@ func (e *roleExecutor) assign(ctx *providers.NodeContext) (*providers.ExecutorRe
 		return nil, errors.New("the flow's organization unit or user is not set")
 	}
 
-	held, err := e.heldPermissions(ctx.Context, caller)
-	if err != nil {
-		return nil, fmt.Errorf("failed to resolve the recorded admin's permissions: %w", err)
-	}
-	if len(held) == 0 {
-		e.logger.Debug(ctx.Context, "The recorded admin no longer holds any permission the roles were selected with")
-		return failed, nil
-	}
-
-	// The role service checks the grant with what the admin still holds.
-	adminCtx := security.WithRecordedCaller(ctx.Context, caller.Subject, caller.OUID, held)
 	assignee := []role.RoleAssignment{{ID: userID, Type: role.AssigneeTypeUser, OUID: ouID}}
-	if svcErr := e.assignments.AddAssigneesToRoles(adminCtx, assignee, roleIDs); svcErr != nil {
+	if svcErr := e.assignments.AddAssigneesToRoles(ctx.Context, assignee, roleIDs); svcErr != nil {
 		if svcErr.Type == tidcommon.ServerErrorType {
 			return nil, fmt.Errorf("failed to assign the selected roles: %s", svcErr.Error.DefaultValue)
 		}

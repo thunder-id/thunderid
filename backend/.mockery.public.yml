@@ -772,6 +772,12 @@ packages:
           structname: '{{.InterfaceName}}Mock'
           pkgname: runtimestoreprovidermock
           filename: "{{.InterfaceName}}_mock.go"
+      PermissionProvider:
+        config:
+          dir: tests/mocks/permissionprovidermock
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: permissionprovidermock
+          filename: "{{.InterfaceName}}_mock.go"
 
   github.com/thunder-id/thunderid/internal/sharing:
     config:

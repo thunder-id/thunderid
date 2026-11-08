@@ -41,19 +41,22 @@ func Initialize(
 	governance providers.IdentityGovernanceProvider,
 	variableValuesProvider variableValueProvider,
 	flowVisibility flowVisibilityProvider,
+	permissionProvider providers.PermissionProvider,
 	cfg flowconfig.Config,
 ) (FlowExecServiceInterface, error) {
 	flowStore := newFlowStore(storeProvider)
+	definitions := definitionReader{flowProvider}
 	interceptorRunner := newInterceptorRunner(interceptorRegistry)
 	flowEngine := newFlowEngine(executorRegistry, interceptorRunner, observabilitySvc,
-		flowProvider, graphBuilder, variableValuesProvider)
+		definitions, graphBuilder, variableValuesProvider)
 	// Bound the SSO handle's lifetime to the session's configured absolute timeout (same fallback as
 	// the session executor's timeouts).
 	sessionTimeouts := session.NewTimeouts(cfg.Session.IdleTimeoutSeconds, cfg.Session.AbsoluteTimeoutSeconds,
 		cfg.Session.ActivityRefreshIntervalSeconds)
-	flowExecService := newFlowExecService(flowProvider, flowStore, flowEngine,
+	flowExecService := newFlowExecService(definitions, flowStore, flowEngine,
 		actorProvider, ouProvider, observabilitySvc, transactioner, cryptoSvc, attestationVerifier,
-		graphBuilder, jwtService, serverConfigSvc, governance, flowVisibility, cfg, sessionTimeouts.Absolute)
+		graphBuilder, jwtService, serverConfigSvc, governance, flowVisibility, permissionProvider, cfg,
+		sessionTimeouts.Absolute)
 
 	handler := newFlowExecutionHandler(flowExecService, ssoTransport, sessionTimeouts.Absolute)
 	registerRoutes(mux, handler)

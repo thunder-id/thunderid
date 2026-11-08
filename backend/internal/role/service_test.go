@@ -3473,3 +3473,35 @@ func (suite *RoleServiceTestSuite) TestUpdateRole_DeclarativeRoleRefusedBeforePr
 	suite.Equal(ErrorImmutableRole.Code, err.Code)
 	validator.AssertNotCalled(suite.T(), "ValidateProjectOU", mock.Anything, mock.Anything, mock.Anything)
 }
+
+// Deleting a role from a flow is refused unless the caller may delete roles in the role's unit.
+func (s *RoleChangeValidationTestSuite) TestValidateDeleteRole_RequiresTheDeleteActionInTheRolesUnit() {
+	for name, authzErr := range map[string]*tidcommon.ServiceError{
+		"denied": nil, "check failure": &tidcommon.InternalServerError,
+	} {
+		s.Run(name, func() {
+			s.SetupTest()
+			s.authz = sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(s.T())
+			s.authz.On("IsActionAllowed", mock.Anything, security.ActionDeleteRole,
+				&sysauthz.ActionContext{ResourceType: security.ResourceTypeRole, OUID: "ou-1"}).
+				Return(false, authzErr)
+			s.service = newRoleService(s.store, nil, s.groups, s.ous, s.resources, &fakeTransactioner{}, s.authz, nil,
+				discardingBus{}, nil)
+			s.store.On("GetRole", mock.Anything, targetRoleID).
+				Return(RoleWithPermissions{ID: targetRoleID, OUID: "ou-1"}, nil)
+			s.ous.On("GetOrganizationUnit", mock.Anything, "ou-1").
+				Return(oupkg.OrganizationUnit{ID: "ou-1"}, nil).Maybe()
+
+			target, svcErr := s.service.ValidateDeleteRole(context.Background(), targetRoleID)
+
+			s.Nil(target)
+			s.Require().NotNil(svcErr)
+			if authzErr == nil {
+				s.Equal(tidcommon.ErrorUnauthorized.Code, svcErr.Code)
+			} else {
+				s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+			}
+			s.store.AssertNotCalled(s.T(), "IsRoleDeclarative", mock.Anything, mock.Anything)
+		})
+	}
+}

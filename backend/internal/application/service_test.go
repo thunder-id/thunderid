@@ -5302,6 +5302,7 @@ func (suite *ServiceTestSuite) TestValidateDeleteApplication_RefusesDeclarativeR
 		inboundClientService: mockStore,
 		entityService:        mockEntityService,
 		dependencyRegistry:   noopDepRegistry{},
+		authzService:         allowAllAuthz(suite.T()),
 	}
 
 	target, svcErr := service.ValidateDeleteApplication(context.Background(), testServiceAppID)
@@ -5409,6 +5410,7 @@ func (suite *ServiceTestSuite) TestRegenerateClientSecret_PersistsAndReturnsNewS
 		inboundClientService: mockStore,
 		entityService:        mockEntityService,
 		dependencyRegistry:   noopDepRegistry{},
+		authzService:         allowAllAuthz(suite.T()),
 	}
 
 	secret, svcErr := service.ApplyCredentialAction(
@@ -6335,4 +6337,48 @@ func (suite *ServiceTestSuite) TestUpdateApplication_SharingLookupFailureOnMove(
 	suite.Nil(result)
 	suite.Require().NotNil(svcErr)
 	suite.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+}
+
+// A flow's application deletion and secret regeneration are refused unless the caller may act on applications in
+// the application's unit.
+func (suite *ServiceTestSuite) TestFlowValidations_RequireTheApplicationActionInItsUnit() {
+	cases := map[string]struct {
+		action   security.Action
+		validate func(*applicationService) *tidcommon.ServiceError
+	}{
+		"deletion": {security.ActionDeleteApplication, func(s *applicationService) *tidcommon.ServiceError {
+			_, svcErr := s.ValidateDeleteApplication(context.Background(), testServiceAppID)
+			return svcErr
+		}},
+		"secret regeneration": {security.ActionUpdateApplication, func(s *applicationService) *tidcommon.ServiceError {
+			_, svcErr := s.ValidateCredentialAction(context.Background(), testServiceAppID,
+				model.CredentialActionRegenerate)
+			return svcErr
+		}},
+	}
+	for name, tc := range cases {
+		for outcome, authzErr := range map[string]*tidcommon.ServiceError{
+			"denied": nil, "check failure": &tidcommon.InternalServerError,
+		} {
+			suite.Run(name+" "+outcome, func() {
+				entity := appEntityWithClientID("client-1")
+				entity.OUID = "ou-app"
+				service, _ := suite.newFlowTargetTestService(entity)
+				authz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+				authz.On("IsActionAllowed", mock.Anything, tc.action,
+					&sysauthz.ActionContext{ResourceType: security.ResourceTypeApplication, OUID: "ou-app"}).
+					Return(false, authzErr)
+				service.authzService = authz
+
+				svcErr := tc.validate(service)
+
+				suite.Require().NotNil(svcErr)
+				if authzErr == nil {
+					suite.Equal(tidcommon.ErrorUnauthorized.Code, svcErr.Code)
+				} else {
+					suite.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+				}
+			})
+		}
+	}
 }

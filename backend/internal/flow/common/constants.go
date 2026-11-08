@@ -194,8 +194,6 @@ const (
 	RuntimeKeyAuthorizedShare = "authorizedShare"
 	// RuntimeKeySelectedRoles holds the space-separated IDs of the roles an invitation flow assigns.
 	RuntimeKeySelectedRoles = "selectedRoles"
-	// RuntimeKeyRolesSelectedBy holds, as JSON, the admin an invitation flow assigns its roles as.
-	RuntimeKeyRolesSelectedBy = "rolesSelectedBy"
 	// RuntimeKeyUserAutoProvisioned indicates whether the user was auto-provisioned
 	RuntimeKeyUserAutoProvisioned = "userAutoProvisioned"
 	// RuntimeKeyUserEligibleForProvisioning indicates whether the user is eligible for auto provisioning
@@ -204,7 +202,8 @@ const (
 	RuntimeKeyUserAmbiguous = "userAmbiguous"
 	// RuntimeKeyRevocationPlan holds the trusted revocation plan an administrative flow's
 	// pre-processing node produces for the executors that follow. It travels on the engine context's
-	// cross-frame store, so it survives a CALL into another flow.
+	// cross-frame store, so it survives a CALL into another flow. Its consumers do not authorize, so its
+	// publisher must.
 	RuntimeKeyRevocationPlan = "revocationPlan"
 	// RuntimeKeyProvenSubject holds the identity whose control was proven in this execution. The
 	// credential setter writes it after a credential write; a node acting on proof reads it here.

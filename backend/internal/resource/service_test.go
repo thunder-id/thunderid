@@ -24,7 +24,10 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/projectscope"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
+	"github.com/thunder-id/thunderid/internal/system/security"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/tests/mocks/oumock"
+	"github.com/thunder-id/thunderid/tests/mocks/sysauthzmock"
 )
 
 const (
@@ -6113,6 +6116,41 @@ func (suite *ResourceServiceTestSuite) TestGetResourceServerListByProject_StoreE
 			suite.Nil(result)
 			suite.Require().NotNil(err)
 			suite.Equal(tc.expectedCode, err.Code)
+		})
+	}
+}
+
+// Deleting an action from a flow is refused unless the caller may update resource servers in the server's unit.
+func (suite *ResourceServiceTestSuite) TestValidateDeleteAction_RequiresTheUpdateActionInTheServersUnit() {
+	for name, authzErr := range map[string]*tidcommon.ServiceError{
+		"denied": nil, "check failure": &tidcommon.InternalServerError,
+	} {
+		suite.Run(name, func() {
+			suite.SetupTest()
+			authz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+			authz.On("IsActionAllowed", mock.Anything, security.ActionUpdateResourceServer,
+				&sysauthz.ActionContext{ResourceType: security.ResourceTypeResourceServer, OUID: "ou-rs"}).
+				Return(false, authzErr)
+			service, err := newResourceService(
+				suite.mockOU, suite.mockStore, suite.mockTransactioner, nil, nil, nil, discardingBus{}, authz)
+			suite.Require().NoError(err)
+			suite.mockStore.On("IsResourceServerDeclarative", "rs-123").Return(false)
+			suite.mockStore.On("GetResourceServer", mock.Anything, "rs-123").
+				Return(providers.ResourceServer{
+					ID: "rs-123", OUID: "ou-rs", Identifier: "https://api.example.com",
+				}, nil)
+
+			target, svcErr := service.ValidateDeleteAction(context.Background(), "rs-123", nil, "action-123")
+
+			suite.Nil(target)
+			suite.Require().NotNil(svcErr)
+			if authzErr == nil {
+				suite.Equal(tidcommon.ErrorUnauthorized.Code, svcErr.Code)
+			} else {
+				suite.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+			}
+			suite.mockStore.AssertNotCalled(suite.T(), "GetAction",
+				mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 		})
 	}
 }

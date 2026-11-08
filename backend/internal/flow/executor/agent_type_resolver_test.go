@@ -11,6 +11,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/flow/common"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/entitytypemock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/coremock"
@@ -269,4 +270,22 @@ func (suite *AgentTypeResolverTestSuite) TestAuthenticationAllowedWhenAgentTypes
 	suite.Empty(resp.RuntimeData[categoryNameKey])
 	suite.mockEntityTypeService.AssertNotCalled(suite.T(), "GetEntityTypeList",
 		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+// An administrator may hold no agent type permission, so the types to choose from are read with the
+// server's authority.
+func (suite *AgentTypeResolverTestSuite) TestTypesAreReadWithServerAuthority() {
+	suite.mockEntityTypeService.On("GetEntityTypeList", mock.MatchedBy(security.IsRuntimeContext),
+		entitytype.TypeCategoryAgent, entityTypeCandidateLimit, 0, false).
+		Return(&entitytype.EntityTypeListResponse{
+			Types: []entitytype.EntityTypeListItem{{Handle: "default", OUID: "ou-agents"}},
+		}, nil).Once()
+	ctx := agentTypeNodeContext()
+	ctx.Context = adminContext()
+
+	resp, err := suite.executor.Execute(ctx)
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecComplete, resp.Status)
+	suite.mockEntityTypeService.AssertExpectations(suite.T())
 }

@@ -255,7 +255,7 @@ Node-level `properties` are injected into runtime data before the executor runs,
 
 A **CALL** node invokes another flow as a sub-flow. When the callee flow reaches an END node, execution resumes in the caller at the CALL node's `onSuccess` target. If the callee terminates with an error, execution resumes at `onFailure` when set; otherwise the caller flow terminates with the callee's error.
 
-Any flow can call any other flow, regardless of `flowType`. The referenced flow is resolved at runtime by its ID, so the callee can be edited independently. Nested CALLs are supported up to a fixed maximum depth of 10; exceeding it terminates the flow with a call-depth-exceeded error.
+Any flow can call any other flow, regardless of `flowType`, with one exception: a flow that runs with the server's authority, such as an authentication or registration flow, cannot call an administration, user onboarding, or invitation flow. Such a call terminates the flow with the code `FES-1031`. See [Permissions for Administration Flows](../../users/manage-roles#permissions-for-administration-flows). The referenced flow is resolved at runtime by its ID, so the callee can be edited independently. Nested CALLs are supported up to a fixed maximum depth of 10; exceeding it terminates the flow with a call-depth-exceeded error.
 
 **Node configuration**
 
@@ -1845,21 +1845,23 @@ Checks whether the authenticated user has active consent records for the require
 
 Validates that the incoming API request has the required permission/scope to proceed. This is a **request-level guard** distinct from user-level authorization. Used to enforce scope-based access control on administrative or sensitive operations.
 
-**When to use:** At the start of user onboarding or administrative flows, to prevent unauthorized callers from executing sensitive operations. For example, only admins with `user:write` scope can start user registration flows.
+**When to use:** At the start of user onboarding or administrative flows, to prevent unauthorized callers from executing sensitive operations. For example, the default user onboarding flow requires `system:user:create`.
 
 **Prerequisites:** None. Permissions are extracted automatically from the incoming request's security context (OAuth token or identity context header).
 
 **How it works:**
 1. Extracts required scopes from the `requiredScopes` node property (if configured)
 2. Reads permissions from the incoming request's security context
-3. Checks if the request has at least one of the required permissions
+3. Checks if the request has at least one of the required permissions. A parent permission satisfies its children, so `system:user` satisfies `system:user:create`, and the root `system` permission satisfies every requirement.
 4. Returns `COMPLETE` if authorized, `FAILURE` if not
+
+The step refuses an unauthorized caller early. In administration, user onboarding, and invitation flows, each later action is still authorized as the caller by the service that owns it. See [Permissions for Administration Flows](../../users/manage-roles#permissions-for-administration-flows).
 
 **Executor properties:**
 
 | Property | UI Label | Required | Default | Description |
 |---|---|---|---|---|
-| `requiredScopes` | Required Scopes | No | System root | Array of permission/scope strings required for access. If omitted, defaults to system root scope. Set to `[]` to allow any authenticated caller. |
+| `requiredScopes` | Required Scopes | No | System root | Array of permission/scope strings required for access. If omitted or empty, defaults to the root `system` permission. |
 
 **Input Configuration:** None. This executor operates on the request security context and has no configurable node input defaults.
 

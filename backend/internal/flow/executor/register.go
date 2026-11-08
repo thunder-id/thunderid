@@ -36,7 +36,6 @@ import (
 	httpservice "github.com/thunder-id/thunderid/internal/system/http"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/log"
-	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/user"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -258,7 +257,6 @@ type ExecutorDependencies struct {
 	ArtifactLifetime       artifactLifetimeResolver
 	AuthzDetailProvider    providers.AuthorizationDetailProvider
 	SharingService         sharing.SharingServiceInterface
-	PermissionResolver     entityPermissionResolver
 	tokenLeeway            time.Duration
 	DeviceCodeVerifier     providers.DeviceCodeVerifier
 }
@@ -353,7 +351,8 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 				newAccessGuard(deps.IdentityGovernance)))
 		},
 		ExecutorNamePermissionValidator: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
-			reg.RegisterExecutor(ExecutorNamePermissionValidator, newPermissionValidator(deps.FlowFactory))
+			reg.RegisterExecutor(ExecutorNamePermissionValidator,
+				newPermissionValidator(deps.FlowFactory))
 		},
 		ExecutorNameIdentifying: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			identifyingInputs := []providers.Input{
@@ -417,8 +416,7 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 		},
 		ExecutorNameRole: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameRole,
-				newRoleExecutor(deps.FlowFactory, deps.RoleAssignmentService,
-					deps.PermissionResolver))
+				newRoleExecutor(deps.FlowFactory, deps.RoleAssignmentService))
 		},
 		ExecutorNameSessionRevocation: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameSessionRevocation,
@@ -568,11 +566,6 @@ type roleAdminProvider interface {
 		*revocation.AccessRevocationTarget, *tidcommon.ServiceError)
 	ValidateGroupMembershipRemoval(ctx context.Context, groupID, memberID string) (
 		*revocation.AccessRevocationTarget, *tidcommon.ServiceError)
-}
-
-// entityPermissionResolver resolves the permissions an entity holds now, directly and through its groups.
-type entityPermissionResolver interface {
-	ResolveForEntity(ctx context.Context, entityID string) (security.PermissionSet, error)
 }
 
 // roleAssignmentAdminProvider is the assignment seam the access change validator and role executor consume.
