@@ -15,6 +15,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/resourceindicators"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
 	oauth2utils "github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
+	syscontext "github.com/thunder-id/thunderid/internal/system/context"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -148,10 +149,9 @@ func (h *clientCredentialsGrantHandler) HandleGrant(ctx context.Context, tokenRe
 			}
 			evaluationsRequest := tokenservice.BuildAccessEvaluationsRequest(
 				oauthApp.ID, oauthApp.EntityCategory.String(), groupIDs, nil, scopes, targetRS.ID, evaluationContext)
-			// Only the roles the application holds in its own organization unit count, not those an
-			// organization unit it is shared with assigned it, even when the token is for that unit.
+			ouID := evaluationOUID(ctx, oauthApp)
 			for i := range evaluationsRequest.Evaluations {
-				evaluationsRequest.Evaluations[i].OUID = oauthApp.OUID
+				evaluationsRequest.Evaluations[i].OUID = ouID
 			}
 			authzResp, svcErr := h.authzService.EvaluateAccessBatch(ctx, evaluationsRequest)
 			if svcErr != nil {
@@ -215,13 +215,25 @@ func (h *clientCredentialsGrantHandler) HandleGrant(ctx context.Context, tokenRe
 	}, nil
 }
 
+// evaluationOUID returns the organization unit whose role assignments count for the client's token. An agent's
+// token for an organization unit counts that unit's; any other token counts the client's own unit's, so an
+// application never holds what an organization unit it is shared with assigned it.
+func evaluationOUID(ctx context.Context, client *providers.OAuthClient) string {
+	if client.EntityCategory == providers.EntityCategoryAgent {
+		if ouID := syscontext.GetAccessingOUID(ctx); ouID != "" {
+			return ouID
+		}
+	}
+	return client.OUID
+}
+
 // processAuthorizationDetails has the authorization detail provider decide the prepared details with the client
 // itself as the subject, and returns the admitted details as the token carries them.
 func (h *clientCredentialsGrantHandler) processAuthorizationDetails(ctx context.Context,
 	details []providers.AuthorizationDetail, client *providers.OAuthClient,
 	resourceServer string) (json.RawMessage, *tidcommon.ServiceError) {
 	subject := providers.EntityReference{EntityID: client.ID, EntityCategory: string(client.EntityCategory),
-		OUID: client.OUID}
+		OUID: evaluationOUID(ctx, client)}
 	admitted, svcErr := h.authzDetails.ProcessAuthorizationDetails(ctx, details, subject, client.ClientID, subject,
 		resourceServer)
 	if svcErr != nil {

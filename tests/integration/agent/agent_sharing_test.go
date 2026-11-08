@@ -137,9 +137,8 @@ func (ts *AgentSharingTestSuite) TestASharedAgentsClientGetsATokenForTheUnit() {
 
 // An agent can also sign in through a flow, as a user does, to the unit that owns it and to a unit it is
 // shared with. It holds a different role in each, and each sign-in asks for both permissions: only the role
-// and the permission of the unit the sign-in lands in come through. Its client's own token does not count the
-// shared unit's role (TestSharedRole_SharedAgentsAssignmentInTheOUIsNotInItsToken). A unit the agent is not
-// shared with does not find it.
+// and the permission of the unit the sign-in lands in come through, as for its client's own token
+// (TestSharedRole_SharedAgentsTokenCountsOnlyItsUnitsRoles). A unit the agent is not shared with does not find it.
 func (ts *AgentSharingTestSuite) TestASharedAgentSignsInWithOnlyTheRolesOfEachUnit() {
 	flowID := ts.createAgentSignInFlow()
 	units := []struct {

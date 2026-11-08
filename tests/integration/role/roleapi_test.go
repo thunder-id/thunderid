@@ -3564,14 +3564,23 @@ func (suite *RoleAPITestSuite) TestSharedRole_SharedAppsAssignmentsInTheOUAreNot
 	suite.Contains(suite.clientCredentialsScopes(declSharedChildA, clientID, secret), sharedRolePermission)
 }
 
-// An agent's client is held to the same rule. A token it requests for an organization unit the agent is shared
-// with carries only what the agent holds in its owner: its assignment in that unit is not considered. The
-// agent's flow sign-in into the unit does count the assignment, see TestAgentSharingTestSuite.
-func (suite *RoleAPITestSuite) TestSharedRole_SharedAgentsAssignmentInTheOUIsNotInItsToken() {
-	// decl-agent-credentials-1 lives in decl-ou-1, and its file shares it into decl-m2m-root.
-	const agentID, clientID, secret = "decl-agent-credentials-1", "decl-agent-cred-client-1", "decl-agent-cred-secret-1"
+// decl-agent-credentials-1 lives in decl-ou-1, and its file shares it into decl-m2m-root.
+const (
+	sharedAgentID             = "decl-agent-credentials-1"
+	sharedAgentClientID       = "decl-agent-cred-client-1"
+	sharedAgentSecret         = "decl-agent-cred-secret-1"
+	sharedAgentOwnerOU        = "decl-ou-1"
+	sharedRoleWritePermission = "test-resource:write"
+)
+
+// Unlike an application's, an agent's client token for an organization unit the agent is shared with counts the
+// roles the agent holds there. Its token from the bare endpoint still counts only its own unit's roles.
+func (suite *RoleAPITestSuite) TestSharedRole_SharedAgentsAssignmentInTheOUIsInItsTokenForTheOU() {
+	suite.NotContains(suite.clientCredentialsScopes(declSharedRootOU, sharedAgentClientID, sharedAgentSecret),
+		sharedRolePermission)
+
 	request := AssignmentsRequest{OUID: declSharedRootOU,
-		Assignments: []Assignment{{ID: agentID, Type: AssigneeTypeAgent}}}
+		Assignments: []Assignment{{ID: sharedAgentID, Type: AssigneeTypeAgent}}}
 	status, code := suite.postAssignments(declSharedRoleID, "add", request)
 	suite.Require().Equal(http.StatusNoContent, status, code)
 	defer func() {
@@ -3579,7 +3588,56 @@ func (suite *RoleAPITestSuite) TestSharedRole_SharedAgentsAssignmentInTheOUIsNot
 		suite.Equal(http.StatusNoContent, status, code)
 	}()
 
-	suite.NotContains(suite.clientCredentialsScopes(declSharedRootOU, clientID, secret), sharedRolePermission)
+	suite.Contains(suite.clientCredentialsScopes(declSharedRootOU, sharedAgentClientID, sharedAgentSecret),
+		sharedRolePermission)
+	suite.NotContains(suite.clientCredentialsScopes("", sharedAgentClientID, sharedAgentSecret),
+		sharedRolePermission, "the bare endpoint counts the agent's own unit only")
+}
+
+// Each of the agent's tokens counts only the roles of its own unit: write held in the unit owning the agent, read
+// in the unit it is shared with. Both tokens ask for both permissions.
+func (suite *RoleAPITestSuite) TestSharedRole_SharedAgentsTokenCountsOnlyItsUnitsRoles() {
+	ownRole, err := suite.createRole(CreateRoleRequest{
+		Name: "Shared Agent Own Unit Role", OUID: sharedAgentOwnerOU,
+		Permissions: []ResourcePermissions{
+			{ResourceServerID: sharedRoleResourceServerID, Permissions: []string{sharedRoleWritePermission}},
+		},
+		Assignments: []Assignment{{ID: sharedAgentID, Type: AssigneeTypeAgent}},
+	})
+	suite.Require().NoError(err)
+	defer func() { suite.NoError(suite.deleteRole(ownRole.ID)) }()
+	request := AssignmentsRequest{OUID: declSharedRootOU,
+		Assignments: []Assignment{{ID: sharedAgentID, Type: AssigneeTypeAgent}}}
+	status, code := suite.postAssignments(declSharedRoleID, "add", request)
+	suite.Require().Equal(http.StatusNoContent, status, code)
+	defer func() {
+		status, code := suite.postAssignments(declSharedRoleID, "remove", request)
+		suite.Equal(http.StatusNoContent, status, code)
+	}()
+
+	suite.ElementsMatch([]string{sharedRoleWritePermission}, suite.grantedScopes("", sharedAgentClientID,
+		sharedAgentSecret, sharedRoleResourceServer, sharedRolePermission, sharedRoleWritePermission))
+	suite.ElementsMatch([]string{sharedRolePermission}, suite.grantedScopes(declSharedRootOU, sharedAgentClientID,
+		sharedAgentSecret, sharedRoleResourceServer, sharedRolePermission, sharedRoleWritePermission))
+}
+
+// A role the unit gives a group it owns counts for an agent shared into the unit that is a member of the group.
+func (suite *RoleAPITestSuite) TestSharedRole_SharedAgentsGroupRoleInTheOUIsInItsTokenForTheOU() {
+	groupID, err := testutils.CreateGroup(testutils.Group{Name: "Shared Agent Group", OUID: declSharedRootOU,
+		Members: []testutils.Member{{Id: sharedAgentID, Type: "agent"}}})
+	suite.Require().NoError(err)
+	defer func() { suite.NoError(testutils.DeleteGroup(groupID)) }()
+	request := AssignmentsRequest{OUID: declSharedRootOU,
+		Assignments: []Assignment{{ID: groupID, Type: AssigneeTypeGroup}}}
+	status, code := suite.postAssignments(declSharedRoleID, "add", request)
+	suite.Require().Equal(http.StatusNoContent, status, code)
+	defer func() {
+		status, code := suite.postAssignments(declSharedRoleID, "remove", request)
+		suite.Equal(http.StatusNoContent, status, code)
+	}()
+
+	suite.Contains(suite.clientCredentialsScopes(declSharedRootOU, sharedAgentClientID, sharedAgentSecret),
+		sharedRolePermission)
 }
 
 // A declared role assigned through the API to an application in the application's own organization
