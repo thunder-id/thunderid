@@ -30,7 +30,7 @@ func TestRevocationHandlerTestSuite(t *testing.T) {
 
 func (s *RevocationHandlerTestSuite) SetupTest() {
 	s.serviceMock = NewRevocationServiceInterfaceMock(s.T())
-	s.handler = newRevocationHandler(s.serviceMock)
+	s.handler = newRevocationHandler(s.serviceMock, discardingBus{})
 }
 
 // newRevokeRequest builds a POST /oauth2/revoke request with a form body and an authenticated client.

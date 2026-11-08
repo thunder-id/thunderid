@@ -16,6 +16,8 @@ const CategoryAudit eventbus.Category = "audit"
 type Action string
 
 const (
+	// ActionAuthenticate proves an identity.
+	ActionAuthenticate Action = "authenticate"
 	// ActionCreate creates a resource.
 	ActionCreate Action = "create"
 	// ActionUpdate changes a resource.
@@ -28,6 +30,10 @@ const (
 	ActionRemove Action = "remove"
 	// ActionRestore brings back an earlier version of a resource.
 	ActionRestore Action = "restore"
+	// ActionIssue issues a credential, such as a token.
+	ActionIssue Action = "issue"
+	// ActionRevoke withdraws a credential, such as a token.
+	ActionRevoke Action = "revoke"
 )
 
 // ActorType is the kind of principal that acted. The set is open.

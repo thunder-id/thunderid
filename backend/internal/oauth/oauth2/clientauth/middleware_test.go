@@ -71,7 +71,7 @@ func (suite *ClientAuthMiddlewareTestSuite) TestClientAuthMiddleware_Success_Cli
 	// Create middleware (authn success mock from SetupTest applies via Maybe())
 	middleware := ClientAuthMiddleware(
 		suite.actorProvider(), suite.mockAuthnProvider, nil, suite.mockJwtService, nil, testIssuer,
-		testAssertionCfg, testJWTLeeway)
+		testAssertionCfg, testJWTLeeway, discardingBus{})
 
 	// Create test handler that checks context
 	var clientInfo *OAuthClientInfo
@@ -117,7 +117,7 @@ func (suite *ClientAuthMiddlewareTestSuite) TestClientAuthMiddleware_Success_Cli
 	// Create middleware
 	middleware := ClientAuthMiddleware(
 		suite.actorProvider(), suite.mockAuthnProvider, nil, suite.mockJwtService, nil, testIssuer,
-		testAssertionCfg, testJWTLeeway)
+		testAssertionCfg, testJWTLeeway, discardingBus{})
 
 	// Create test handler
 	var clientInfo *OAuthClientInfo
@@ -146,7 +146,7 @@ func (suite *ClientAuthMiddlewareTestSuite) TestClientAuthMiddleware_MissingClie
 	// Create middleware
 	middleware := ClientAuthMiddleware(
 		suite.actorProvider(), suite.mockAuthnProvider, nil, suite.mockJwtService, nil, testIssuer,
-		testAssertionCfg, testJWTLeeway)
+		testAssertionCfg, testJWTLeeway, discardingBus{})
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -176,7 +176,7 @@ func (suite *ClientAuthMiddlewareTestSuite) TestClientAuthMiddleware_InvalidClie
 	// Create middleware
 	middleware := ClientAuthMiddleware(
 		suite.actorProvider(), suite.mockAuthnProvider, nil, suite.mockJwtService, nil, testIssuer,
-		testAssertionCfg, testJWTLeeway)
+		testAssertionCfg, testJWTLeeway, discardingBus{})
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -229,7 +229,7 @@ func (suite *ClientAuthMiddlewareTestSuite) TestClientAuthMiddleware_InvalidClie
 	// Create middleware with failing authn provider
 	middleware := ClientAuthMiddleware(
 		suite.actorProvider(), failAuthnProvider, nil, suite.mockJwtService, nil, testIssuer,
-		testAssertionCfg, testJWTLeeway)
+		testAssertionCfg, testJWTLeeway, discardingBus{})
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -264,7 +264,7 @@ func (suite *ClientAuthMiddlewareTestSuite) TestClientAuthMiddleware_HandlerNotC
 	// Create middleware
 	middleware := ClientAuthMiddleware(
 		suite.actorProvider(), suite.mockAuthnProvider, nil, suite.mockJwtService, nil, testIssuer,
-		testAssertionCfg, testJWTLeeway)
+		testAssertionCfg, testJWTLeeway, discardingBus{})
 
 	// Track if handler was called
 	handlerCalled := false
@@ -305,7 +305,7 @@ func (suite *ClientAuthMiddlewareTestSuite) TestClientAuthMiddleware_ContextProp
 	// Create middleware
 	middleware := ClientAuthMiddleware(
 		suite.actorProvider(), suite.mockAuthnProvider, nil, suite.mockJwtService, nil, testIssuer,
-		testAssertionCfg, testJWTLeeway)
+		testAssertionCfg, testJWTLeeway, discardingBus{})
 
 	// Create nested handler that also checks context
 	var clientInfo *OAuthClientInfo
@@ -345,7 +345,7 @@ func (suite *ClientAuthMiddlewareTestSuite) TestClientAuthMiddleware_BasicAuth_4
 
 	middleware := ClientAuthMiddleware(
 		suite.actorProvider(), suite.mockAuthnProvider, nil, suite.mockJwtService, nil, testIssuer,
-		testAssertionCfg, testJWTLeeway)
+		testAssertionCfg, testJWTLeeway, discardingBus{})
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
@@ -384,7 +384,7 @@ func (suite *ClientAuthMiddlewareTestSuite) TestClientAuthMiddleware_BasicAuth_I
 
 	middleware := ClientAuthMiddleware(
 		suite.actorProvider(), failAuthnProvider, nil, suite.mockJwtService, nil, testIssuer,
-		testAssertionCfg, testJWTLeeway)
+		testAssertionCfg, testJWTLeeway, discardingBus{})
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
@@ -406,7 +406,7 @@ func (suite *ClientAuthMiddlewareTestSuite) TestClientAuthMiddleware_PostAuth_40
 
 	middleware := ClientAuthMiddleware(
 		suite.actorProvider(), suite.mockAuthnProvider, nil, suite.mockJwtService, nil, testIssuer,
-		testAssertionCfg, testJWTLeeway)
+		testAssertionCfg, testJWTLeeway, discardingBus{})
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
@@ -429,7 +429,7 @@ func (suite *ClientAuthMiddlewareTestSuite) TestClientAuthMiddleware_InvalidBasi
 	// Invalid Basic auth header format should include WWW-Authenticate: Basic
 	middleware := ClientAuthMiddleware(
 		suite.actorProvider(), suite.mockAuthnProvider, nil, suite.mockJwtService, nil, testIssuer,
-		testAssertionCfg, testJWTLeeway)
+		testAssertionCfg, testJWTLeeway, discardingBus{})
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
