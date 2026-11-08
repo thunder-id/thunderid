@@ -26,9 +26,29 @@ vi.mock('@thunderid/logger/react', () => ({
   }),
 }));
 
+const mockConfig = vi.hoisted(() => ({productName: ''}));
+
+vi.mock('@thunderid/contexts', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@thunderid/contexts')>();
+  return {
+    ...actual,
+    useConfig: () => {
+      const context = actual.useConfig();
+      if (!mockConfig.productName) {
+        return context;
+      }
+      return {
+        ...context,
+        config: {...context.config, brand: {...context.config.brand, product_name: mockConfig.productName}},
+      };
+    },
+  };
+});
+
 describe('ImportExportPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockConfig.productName = '';
   });
 
   it('renders the page with title and subtitle', () => {
@@ -58,6 +78,13 @@ describe('ImportExportPage', () => {
 
     expect(screen.getByText('Bring in an existing ThunderID configuration file.')).toBeInTheDocument();
     expect(screen.getByText('Download your current configuration as a file.')).toBeInTheDocument();
+  });
+
+  it('names the configured product in the import description', () => {
+    mockConfig.productName = 'Acme IAM';
+    render(<ImportExportPage />);
+
+    expect(screen.getByText('Bring in an existing Acme IAM configuration file.')).toBeInTheDocument();
   });
 
   it('renders the close button with proper aria-label', () => {

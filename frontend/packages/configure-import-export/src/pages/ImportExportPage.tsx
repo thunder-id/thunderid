@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {DocumentTitle, ExternalLink} from '@thunderid/components';
+import {useConfig} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {AppBreadcrumbs, Box, Card, CardContent, IconButton, LinearProgress, Stack, Typography} from '@wso2/oxygen-ui';
 import {FileOutput, FileInput, X} from '@wso2/oxygen-ui-icons-react';
@@ -21,6 +22,8 @@ interface ImportExportOption {
 
 export default function ImportExportPage(): JSX.Element {
   const {t} = useTranslation('importExport');
+  const {config} = useConfig();
+  const productName: string = config.brand.product_name;
   const navigate = useNavigate();
   const logger = useLogger('ImportExportPage');
   const routes = useImportExportRoutes();
@@ -47,7 +50,7 @@ export default function ImportExportPage(): JSX.Element {
       labelKey: 'landing.type.import.label',
       labelDefault: 'Import',
       descriptionKey: 'landing.type.import.description',
-      descriptionDefault: 'Bring in an existing ThunderID configuration file.',
+      descriptionDefault: 'Bring in an existing {{productName}} configuration file.',
       icon: <FileInput size={28} />,
     },
     {
@@ -143,7 +146,7 @@ export default function ImportExportPage(): JSX.Element {
                               {t(option.labelKey, option.labelDefault)}
                             </Typography>
                             <Typography variant="body2" color="text.secondary">
-                              {t(option.descriptionKey, option.descriptionDefault)}
+                              {t(option.descriptionKey, option.descriptionDefault, {productName})}
                             </Typography>
                           </Stack>
                         </Stack>

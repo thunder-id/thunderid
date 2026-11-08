@@ -10,6 +10,25 @@ import ConfigureDesign, {type ConfigureDesignProps} from '../ConfigureDesign';
 // Mock the Packages
 vi.mock('@thunderid/design');
 
+const mockConfig = vi.hoisted(() => ({productName: ''}));
+
+vi.mock('@thunderid/contexts', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@thunderid/contexts')>();
+  return {
+    ...actual,
+    useConfig: () => {
+      const context = actual.useConfig();
+      if (!mockConfig.productName) {
+        return context;
+      }
+      return {
+        ...context,
+        config: {...context.config, brand: {...context.config.brand, product_name: mockConfig.productName}},
+      };
+    },
+  };
+});
+
 vi.mock('@/hooks/useApplicationCreateContext', () => ({
   default: () => ({
     ouDefaults: {signIn: false, signUp: false, recovery: false, signOut: false, theme: false, layout: false},
@@ -32,6 +51,7 @@ describe('ConfigureDesign', () => {
   };
 
   beforeEach(() => {
+    mockConfig.productName = '';
     vi.clearAllMocks();
 
     vi.mocked(useGetThemes).mockReturnValue({
@@ -109,6 +129,13 @@ describe('ConfigureDesign', () => {
       await user.click(screen.getAllByRole('radio')[1]);
 
       expect(onApproachChange).toHaveBeenCalledWith(ApplicationCreateFlowSignInApproach.EMBEDDED);
+    });
+
+    it('labels the hosted sign-in preview logo with the configured product name', () => {
+      mockConfig.productName = 'Acme IAM';
+      renderComponent({showApproachSection: true});
+
+      expect(screen.getAllByAltText('Acme IAM').length).toBeGreaterThan(0);
     });
 
     it('hides the embedded option when allowEmbeddedApproach is false', () => {
