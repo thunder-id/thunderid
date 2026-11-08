@@ -1064,15 +1064,21 @@ func (us *userService) UpdateUserCredentials(
 		return logErrorAndReturnServerError(ctx, logger, "Failed to marshal credentials", err,
 			log.MaskedString(log.LoggerKeyUserID, userID))
 	}
-	if err = us.entityService.UpdateCredentials(ctx, userID, plaintextJSON); err != nil {
-		if errors.Is(err, entity.ErrSchemaValidationFailed) {
-			return &ErrorInvalidCredentialValue
-		}
-		if svcErr := mapEntityError(err); svcErr != nil {
+	// Refused values are reported before anything is revoked.
+	if err = us.entityService.ValidateCredentials(ctx, userID, plaintextJSON); err != nil {
+		return us.credentialUpdateError(ctx, logger, userID, err)
+	}
+
+	replaces, svcErr := us.replacesHeldCredential(ctx, logger, userID, plaintextCreds)
+	if svcErr != nil {
+		return svcErr
+	}
+	if replaces {
+		if svcErr := us.replaceCredentials(ctx, logger, userID, plaintextJSON); svcErr != nil {
 			return svcErr
 		}
-		return logErrorAndReturnServerError(ctx, logger, "Failed to update user credentials", err,
-			log.MaskedString(log.LoggerKeyUserID, userID))
+	} else if err = us.entityService.UpdateCredentials(ctx, userID, plaintextJSON); err != nil {
+		return us.credentialUpdateError(ctx, logger, userID, err)
 	}
 
 	logger.Debug(ctx, "Successfully updated user credentials",
@@ -1080,6 +1086,53 @@ func (us *userService) UpdateUserCredentials(
 		log.Int("credentialTypesCount", len(credentialsMap)))
 	us.captureCredentials(ctx, &existingUser, existingUser.Attributes, plaintextCreds)
 	return nil
+}
+
+// replacesHeldCredential reports whether the update replaces a credential the user already holds. A
+// credential set for the first time, such as on a user an import has just created, replaces nothing.
+func (us *userService) replacesHeldCredential(ctx context.Context, logger *log.Logger, userID string,
+	credentials map[string]string) (bool, *tidcommon.ServiceError) {
+	held, err := us.entityService.GetHeldCredentialTypes(ctx, userID)
+	if err != nil {
+		return false, logErrorAndReturnServerError(ctx, logger, "Failed to read the user's credential types", err,
+			log.MaskedString(log.LoggerKeyUserID, userID))
+	}
+	for _, credType := range held {
+		if _, ok := credentials[credType]; ok {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// replaceCredentials writes credentials that replace ones the user holds, revoking the tokens and ending
+// the sessions the user was given before the change. The post flow moves the cutoff past the write and
+// ends the sessions again, so a token or session issued while the credentials were changing is revoked too.
+func (us *userService) replaceCredentials(ctx context.Context, logger *log.Logger, userID string,
+	credentials json.RawMessage) *tidcommon.ServiceError {
+	inputs := map[string]string{systemFlowInputSubject: userID}
+	shared, svcErr := us.runSystemFlow(ctx, systemFlowUserCredentialUpdatePre, inputs, nil)
+	if svcErr != nil {
+		return svcErr
+	}
+	if err := us.entityService.UpdateCredentials(ctx, userID, credentials); err != nil {
+		return us.credentialUpdateError(ctx, logger, userID, err)
+	}
+	_, svcErr = us.runSystemFlow(ctx, systemFlowUserCredentialUpdatePost, inputs, shared)
+	return svcErr
+}
+
+// credentialUpdateError maps an entity service error from a credential update to the error it reports.
+func (us *userService) credentialUpdateError(ctx context.Context, logger *log.Logger, userID string,
+	err error) *tidcommon.ServiceError {
+	if errors.Is(err, entity.ErrSchemaValidationFailed) {
+		return &ErrorInvalidCredentialValue
+	}
+	if svcErr := mapEntityError(err); svcErr != nil {
+		return svcErr
+	}
+	return logErrorAndReturnServerError(ctx, logger, "Failed to update user credentials", err,
+		log.MaskedString(log.LoggerKeyUserID, userID))
 }
 
 // ValidateDeleteUser checks whether the caller may delete the user and whether the target is deletable,
@@ -1158,8 +1211,8 @@ func (us *userService) deleteUser(ctx context.Context, userID string) *tidcommon
 
 	// Revokes every token issued to the user and ends the user's sessions before anything of the user
 	// is removed. The revocation has no cutoff, so nothing runs after the write.
-	if svcErr := us.runSystemFlow(ctx, systemFlowUserDeletePre,
-		map[string]string{systemFlowInputSubject: userID}); svcErr != nil {
+	if _, svcErr := us.runSystemFlow(ctx, systemFlowUserDeletePre,
+		map[string]string{systemFlowInputSubject: userID}, nil); svcErr != nil {
 		return svcErr
 	}
 
@@ -1214,15 +1267,19 @@ func (us *userService) publishUserEvent(ctx context.Context, name string, action
 		eventbus.NewEvent(ctx, name).With(audit.ChangePayload(ctx, target, action, svcErr)))
 }
 
-// runSystemFlow runs a system flow with the given inputs. With system flows off it runs nothing.
+// runSystemFlow runs a system flow with the given inputs, starting from what an earlier run shared, and
+// returns what this run shared. With system flows off it runs nothing.
 func (us *userService) runSystemFlow(ctx context.Context, handle string,
-	inputs map[string]string) *tidcommon.ServiceError {
+	inputs, runtimeData map[string]string) (map[string]string, *tidcommon.ServiceError) {
 	if us.systemFlows == nil {
-		return nil
+		return nil, nil
 	}
-	_, svcErr := us.systemFlows.ExecuteSystemFlow(ctx, &flowcommon.SystemFlowContext{
-		Handle: handle, Inputs: inputs})
-	return svcErr
+	result, svcErr := us.systemFlows.ExecuteSystemFlow(ctx, &flowcommon.SystemFlowContext{
+		Handle: handle, Inputs: inputs, RuntimeData: runtimeData})
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	return result.RuntimeData, nil
 }
 
 // ensureNoBlockingDependencies refuses deletion when other resources depend on the user in a way

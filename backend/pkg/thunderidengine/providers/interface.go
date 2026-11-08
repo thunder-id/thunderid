@@ -121,6 +121,9 @@ type UserMgtProvider interface {
 	// CreateUser provisions a user and returns it with its generated ID. Errors from the user
 	// service are returned unchanged so callers can distinguish the actual failure.
 	CreateUser(ctx context.Context, user *User) (*User, *common.ServiceError)
+	// UpdateUserCredentials sets schema-defined credentials, such as a password, for an existing user.
+	// Errors from the user service are returned unchanged.
+	UpdateUserCredentials(ctx context.Context, userID string, credentials json.RawMessage) *common.ServiceError
 }
 
 // I18nProvider defines the interface for the i18n provider.

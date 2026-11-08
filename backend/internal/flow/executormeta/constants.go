@@ -44,6 +44,7 @@ const (
 	ExecutorNameSessionSignOut               = "SessionSignOutExecutor"
 	ExecutorNameOTPExecutor                  = "OTPExecutor"
 	ExecutorNamePreDelete                    = "PreDeleteExecutor"
+	ExecutorNamePreCredentialUpdate          = "PreCredentialUpdateExecutor" //nolint:gosec // executor name
 	ExecutorNameCriteriaRevocation           = "CriteriaRevocationExecutor"
 	ExecutorNameSessionRevocation            = "SessionRevocationExecutor"
 	ExecutorNameApplicationActionValidator   = "ApplicationActionValidator"

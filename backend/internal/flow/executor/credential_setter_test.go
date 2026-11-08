@@ -15,23 +15,27 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/flow/common"
+	"github.com/thunder-id/thunderid/internal/user"
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
 	"github.com/thunder-id/thunderid/tests/mocks/entityprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/coremock"
+	"github.com/thunder-id/thunderid/tests/mocks/usermgtprovidermock"
 )
 
 type CredentialSetterTestSuite struct {
 	suite.Suite
-	mockFlowFactory    *coremock.FlowFactoryInterfaceMock
-	mockEntityProvider *entityprovidermock.EntityProviderInterfaceMock
-	mockAuthnProvider  *managermock.AuthnProviderManagerMock
-	mockBaseExecutor   *coremock.ExecutorInterfaceMock
-	executor           *credentialSetter
+	mockFlowFactory     *coremock.FlowFactoryInterfaceMock
+	mockEntityProvider  *entityprovidermock.EntityProviderInterfaceMock
+	mockUserMgtProvider *usermgtprovidermock.UserMgtProviderMock
+	mockAuthnProvider   *managermock.AuthnProviderManagerMock
+	mockBaseExecutor    *coremock.ExecutorInterfaceMock
+	executor            *credentialSetter
 }
 
 func (suite *CredentialSetterTestSuite) SetupTest() {
 	suite.mockFlowFactory = coremock.NewFlowFactoryInterfaceMock(suite.T())
 	suite.mockEntityProvider = entityprovidermock.NewEntityProviderInterfaceMock(suite.T())
+	suite.mockUserMgtProvider = usermgtprovidermock.NewUserMgtProviderMock(suite.T())
 	suite.mockAuthnProvider = managermock.NewAuthnProviderManagerMock(suite.T())
 	suite.mockBaseExecutor = coremock.NewExecutorInterfaceMock(suite.T())
 
@@ -47,7 +51,8 @@ func (suite *CredentialSetterTestSuite) SetupTest() {
 			},
 		}, mock.Anything).Return(suite.mockBaseExecutor)
 
-	suite.executor = newCredentialSetter(suite.mockFlowFactory, suite.mockEntityProvider, suite.mockAuthnProvider,
+	suite.executor = newCredentialSetter(suite.mockFlowFactory, suite.mockEntityProvider, suite.mockUserMgtProvider,
+		suite.mockAuthnProvider,
 		newAccessGuard(nil))
 }
 
@@ -76,7 +81,8 @@ func (suite *CredentialSetterTestSuite) TestExecute_Success() {
 	})
 
 	// Use mock.Anything for credentials JSON bytes to avoid strict byte checking
-	suite.mockEntityProvider.On("UpdateCredentials", mock.Anything, userID, mock.Anything).Return(nil)
+	suite.expectEntity(providers.EntityCategoryUser)
+	suite.mockUserMgtProvider.On("UpdateUserCredentials", mock.Anything, userID, mock.Anything).Return(nil)
 
 	resp, err := suite.executor.Execute(ctx)
 
@@ -165,8 +171,9 @@ func (suite *CredentialSetterTestSuite) TestExecute_ServiceError() {
 		},
 	})
 
-	suite.mockEntityProvider.On("UpdateCredentials", mock.Anything, userID, mock.Anything).
-		Return(entityprovider.NewEntityProviderError(entityprovider.ErrorCodeSystemError, "db error", ""))
+	suite.expectEntity(providers.EntityCategoryUser)
+	suite.mockUserMgtProvider.On("UpdateUserCredentials", mock.Anything, userID, mock.Anything).
+		Return(&tidcommon.InternalServerError)
 
 	resp, err := suite.executor.Execute(ctx)
 
@@ -194,9 +201,9 @@ func (suite *CredentialSetterTestSuite) TestExecute_SchemaValidationFailureReque
 		},
 	})
 
-	suite.mockEntityProvider.On("UpdateCredentials", mock.Anything, testUserID, mock.Anything).
-		Return(entityprovider.NewEntityProviderError(entityprovider.ErrorCodeSchemaValidationFailed,
-			"Schema validation failed", ""))
+	suite.expectEntity(providers.EntityCategoryUser)
+	suite.mockUserMgtProvider.On("UpdateUserCredentials", mock.Anything, testUserID, mock.Anything).
+		Return(&user.ErrorInvalidCredentialValue)
 
 	resp, err := suite.executor.Execute(ctx)
 
@@ -241,7 +248,8 @@ func (suite *CredentialSetterTestSuite) TestExecute_CustomAttribute() {
 
 	// Expect UpdateUserCredentials with custom attribute
 	expectedCredentialsJSON := `{"pin":"1234"}` //nolint:gosec // G101: This is test data, not a real credential
-	suite.mockEntityProvider.On("UpdateCredentials", mock.Anything, userID, mock.MatchedBy(func(data []byte) bool {
+	suite.expectEntity(providers.EntityCategoryUser)
+	suite.mockUserMgtProvider.On("UpdateUserCredentials", mock.Anything, userID, mock.MatchedBy(func(data []byte) bool {
 		return string(data) == expectedCredentialsJSON
 	})).Return(nil)
 
@@ -326,7 +334,8 @@ func (suite *CredentialSetterTestSuite) nodeContext() *providers.NodeContext {
 
 func (suite *CredentialSetterTestSuite) TestExecute_SuccessfulWriteRecordsTheProvenSubject() {
 	ctx := suite.nodeContext()
-	suite.mockEntityProvider.On("UpdateCredentials", mock.Anything, testUserID, mock.Anything).Return(nil)
+	suite.expectEntity(providers.EntityCategoryUser)
+	suite.mockUserMgtProvider.On("UpdateUserCredentials", mock.Anything, testUserID, mock.Anything).Return(nil)
 
 	resp, err := suite.executor.Execute(ctx)
 
@@ -337,8 +346,9 @@ func (suite *CredentialSetterTestSuite) TestExecute_SuccessfulWriteRecordsThePro
 
 func (suite *CredentialSetterTestSuite) TestExecute_FailedWriteRecordsNothing() {
 	ctx := suite.nodeContext()
-	suite.mockEntityProvider.On("UpdateCredentials", mock.Anything, testUserID, mock.Anything).
-		Return(&entityprovider.EntityProviderError{Code: entityprovider.ErrorCodeSystemError})
+	suite.expectEntity(providers.EntityCategoryUser)
+	suite.mockUserMgtProvider.On("UpdateUserCredentials", mock.Anything, testUserID, mock.Anything).
+		Return(&tidcommon.InternalServerError)
 
 	resp, err := suite.executor.Execute(ctx)
 
@@ -350,7 +360,8 @@ func (suite *CredentialSetterTestSuite) TestExecute_FailedWriteRecordsNothing() 
 // heldCredentialWrite runs a credential write against the given decision or fault at the recovery plane.
 func (suite *CredentialSetterTestSuite) heldCredentialWrite(decision providers.AccessDecision,
 	fault *tidcommon.ServiceError) (*providers.ExecutorResponse, error) {
-	suite.executor = newCredentialSetter(suite.mockFlowFactory, suite.mockEntityProvider, suite.mockAuthnProvider,
+	suite.executor = newCredentialSetter(suite.mockFlowFactory, suite.mockEntityProvider, suite.mockUserMgtProvider,
+		suite.mockAuthnProvider,
 		newAccessGuard(expectAccess(suite.T(), testUserID, providers.AccessPlaneRecovery, "", decision, fault)))
 	ctx := &providers.NodeContext{
 		ExecutionID: "test-flow",
@@ -381,7 +392,8 @@ func (suite *CredentialSetterTestSuite) TestExecute_HeldIdentityIsRefused() {
 			suite.Require().NoError(err)
 			suite.Equal(providers.ExecFailure, resp.Status)
 			suite.Equal(test.want, resp.Error.Code)
-			suite.mockEntityProvider.AssertNotCalled(suite.T(), "UpdateCredentials", mock.Anything, mock.Anything)
+			suite.mockUserMgtProvider.AssertNotCalled(suite.T(), "UpdateUserCredentials", mock.Anything, mock.Anything,
+				mock.Anything)
 		})
 	}
 }
@@ -394,7 +406,61 @@ func (suite *CredentialSetterTestSuite) TestExecute_GovernanceFaultFailsTheWrite
 	suite.Equal(providers.ExecFailure, resp.Status)
 	suite.Equal(ErrCredentialSetFailed.Code, resp.Error.Code)
 	suite.Empty(resp.SharedRuntimeData[common.RuntimeKeyProvenSubject])
-	suite.mockEntityProvider.AssertNotCalled(suite.T(), "UpdateCredentials", mock.Anything, mock.Anything)
+	suite.mockUserMgtProvider.AssertNotCalled(suite.T(), "UpdateUserCredentials", mock.Anything, mock.Anything,
+		mock.Anything)
+}
+
+// expectEntity makes the entity provider return the test entity with the given category.
+func (suite *CredentialSetterTestSuite) expectEntity(category providers.EntityCategory) {
+	suite.mockEntityProvider.On("GetEntity", mock.Anything, testUserID).
+		Return(&providers.Entity{ID: testUserID, Category: category}, nil).Once()
+}
+
+// An entity other than a user, such as an agent, is written through the entity provider, and a value its
+// schema refuses is asked for again.
+func (suite *CredentialSetterTestSuite) TestExecute_NonUserEntityIsWrittenThroughTheEntityProvider() {
+	for name, test := range map[string]struct {
+		providerErr *entityprovider.EntityProviderError
+		wantStatus  providers.ExecutorStatus
+	}{
+		"written": {wantStatus: providers.ExecComplete},
+		"refused": {
+			providerErr: entityprovider.NewEntityProviderError(entityprovider.ErrorCodeSchemaValidationFailed,
+				"Schema validation failed", ""),
+			wantStatus: providers.ExecUserInputRequired,
+		},
+		"failed": {
+			providerErr: entityprovider.NewEntityProviderError(entityprovider.ErrorCodeSystemError, "db error", ""),
+			wantStatus:  providers.ExecFailure,
+		},
+	} {
+		suite.Run(name, func() {
+			suite.SetupTest()
+			ctx := suite.nodeContext()
+			suite.expectEntity(providers.EntityCategoryAgent)
+			suite.mockEntityProvider.On("UpdateCredentials", mock.Anything, testUserID, mock.Anything).
+				Return(test.providerErr).Once()
+
+			resp, err := suite.executor.Execute(ctx)
+
+			suite.Require().NoError(err)
+			suite.Equal(test.wantStatus, resp.Status)
+			suite.mockUserMgtProvider.AssertNotCalled(suite.T(), "UpdateUserCredentials", mock.Anything,
+				mock.Anything, mock.Anything)
+		})
+	}
+}
+
+func (suite *CredentialSetterTestSuite) TestExecute_EntityLookupFailureFailsTheWrite() {
+	ctx := suite.nodeContext()
+	suite.mockEntityProvider.On("GetEntity", mock.Anything, testUserID).
+		Return(nil, entityprovider.NewEntityProviderError(entityprovider.ErrorCodeSystemError, "db error", "")).Once()
+
+	resp, err := suite.executor.Execute(ctx)
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecFailure, resp.Status)
+	suite.Equal(ErrCredentialSetFailed.Code, resp.Error.Code)
 }
 
 func TestCredentialSetterSuite(t *testing.T) {

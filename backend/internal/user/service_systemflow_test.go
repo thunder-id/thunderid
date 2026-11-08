@@ -5,6 +5,8 @@ package user
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/mock"
@@ -159,4 +161,176 @@ func (s *UserDeletionSystemFlowTestSuite) TestSetSystemFlowProvider() {
 	s.Equal(s.flows, service.systemFlows)
 
 	s.Error(SetSystemFlowProvider(NewUserServiceInterfaceMock(s.T()), s.flows))
+}
+
+type UserCredentialUpdateSystemFlowTestSuite struct {
+	suite.Suite
+	entities *entitymock.EntityServiceInterfaceMock
+	service  *userService
+	flows    *systemFlowProviderMock
+	order    []string
+}
+
+func TestUserCredentialUpdateSystemFlowTestSuite(t *testing.T) {
+	suite.Run(t, new(UserCredentialUpdateSystemFlowTestSuite))
+}
+
+// SetupTest builds a service around user-1, whom the caller may update. Each test states the calls its
+// update makes, so a missing or extra one fails it.
+func (s *UserCredentialUpdateSystemFlowTestSuite) SetupTest() {
+	s.order = nil
+	s.flows = newSystemFlowProviderMock(s.T())
+	s.entities = entitymock.NewEntityServiceInterfaceMock(s.T())
+	s.entities.On("GetEntityProfile", mock.Anything, "user-1").Return(&providers.Entity{
+		ID: "user-1", Category: providers.EntityCategoryUser, OUID: "ou-1",
+	}, nil).Once()
+	s.entities.On("IsEntityDeclarative", mock.Anything, "user-1").Return(false, nil).Once()
+	s.service = &userService{
+		entityService: s.entities,
+		authzService:  newAllowAllAuthz(s.T()),
+		systemFlows:   s.flows,
+	}
+}
+
+// expectValidation records the validation of the new credentials, refused with err when it is set.
+func (s *UserCredentialUpdateSystemFlowTestSuite) expectValidation(err error) {
+	s.entities.On("ValidateCredentials", mock.Anything, "user-1", mock.Anything).
+		Run(func(mock.Arguments) { s.order = append(s.order, "validate") }).Return(err).Once()
+}
+
+// expectHeld makes user-1 hold the given credential types.
+func (s *UserCredentialUpdateSystemFlowTestSuite) expectHeld(types ...string) {
+	s.entities.On("GetHeldCredentialTypes", mock.Anything, "user-1").Return(types, nil).Once()
+}
+
+// expectWrite records the credential write, failed with err when it is set.
+func (s *UserCredentialUpdateSystemFlowTestSuite) expectWrite(err error) {
+	s.entities.On("UpdateCredentials", mock.Anything, "user-1", mock.Anything).
+		Run(func(mock.Arguments) { s.order = append(s.order, "write") }).Return(err).Once()
+}
+
+// expectFlow records a run of the system flow with user-1 as its subject, starting from runtimeData.
+func (s *UserCredentialUpdateSystemFlowTestSuite) expectFlow(handle string, runtimeData,
+	shared map[string]string, svcErr *tidcommon.ServiceError) {
+	var result *flowcommon.SystemFlowResult
+	if svcErr == nil {
+		result = &flowcommon.SystemFlowResult{RuntimeData: shared}
+	}
+	s.flows.EXPECT().ExecuteSystemFlow(mock.Anything, &flowcommon.SystemFlowContext{
+		Handle: handle, Inputs: map[string]string{systemFlowInputSubject: "user-1"}, RuntimeData: runtimeData,
+	}).Run(func(context.Context, *flowcommon.SystemFlowContext) { s.order = append(s.order, handle) }).
+		Return(result, svcErr).Once()
+}
+
+func (s *UserCredentialUpdateSystemFlowTestSuite) update() *tidcommon.ServiceError {
+	return s.service.UpdateUserCredentials(context.Background(), "user-1",
+		json.RawMessage(`{"password":"Rotated@123"}`))
+}
+
+// The pre flow revokes before the write, and the post flow starts from what it shared.
+func (s *UserCredentialUpdateSystemFlowTestSuite) TestUpdateRevokesAroundTheWrite() {
+	shared := map[string]string{"revocationPlan": "plan"}
+	s.expectValidation(nil)
+	s.expectHeld("password")
+	s.expectFlow(systemFlowUserCredentialUpdatePre, nil, shared, nil)
+	s.expectWrite(nil)
+	s.expectFlow(systemFlowUserCredentialUpdatePost, shared, nil, nil)
+
+	s.Nil(s.update())
+
+	s.Equal([]string{"validate", systemFlowUserCredentialUpdatePre, "write", systemFlowUserCredentialUpdatePost},
+		s.order)
+}
+
+// A refused value is reported before anything is revoked.
+func (s *UserCredentialUpdateSystemFlowTestSuite) TestARefusedValueRunsNoFlow() {
+	s.expectValidation(entity.ErrSchemaValidationFailed)
+
+	s.Equal(&ErrorInvalidCredentialValue, s.update())
+
+	s.Equal([]string{"validate"}, s.order)
+}
+
+// A credential set for the first time replaces nothing, so nothing is revoked.
+func (s *UserCredentialUpdateSystemFlowTestSuite) TestAFirstCredentialRunsNoFlow() {
+	s.expectValidation(nil)
+	s.expectHeld("pin")
+	s.expectWrite(nil)
+
+	s.Nil(s.update())
+
+	s.Equal([]string{"validate", "write"}, s.order)
+}
+
+// A failure to read what the user holds writes nothing.
+func (s *UserCredentialUpdateSystemFlowTestSuite) TestUnreadableHeldCredentialsWriteNothing() {
+	s.expectValidation(nil)
+	s.entities.On("GetHeldCredentialTypes", mock.Anything, "user-1").Return(nil, errors.New("store down")).Once()
+
+	s.Equal(&tidcommon.InternalServerError, s.update())
+
+	s.Equal([]string{"validate"}, s.order)
+}
+
+// A refusal from the pre flow is the caller's answer, and the credentials stay as they were.
+func (s *UserCredentialUpdateSystemFlowTestSuite) TestARefusedRevocationWritesNothing() {
+	refusal := &tidcommon.ServiceError{Code: "USR-1999", Type: tidcommon.ClientErrorType}
+	s.expectValidation(nil)
+	s.expectHeld("password")
+	s.expectFlow(systemFlowUserCredentialUpdatePre, nil, nil, refusal)
+
+	s.Equal(refusal, s.update())
+
+	s.Equal([]string{"validate", systemFlowUserCredentialUpdatePre}, s.order)
+}
+
+// A failed post flow is returned, after the credentials are written.
+func (s *UserCredentialUpdateSystemFlowTestSuite) TestAFailedPostFlowIsReturned() {
+	shared := map[string]string{"revocationPlan": "plan"}
+	s.expectValidation(nil)
+	s.expectHeld("password")
+	s.expectFlow(systemFlowUserCredentialUpdatePre, nil, shared, nil)
+	s.expectWrite(nil)
+	s.expectFlow(systemFlowUserCredentialUpdatePost, shared, nil, &tidcommon.InternalServerError)
+
+	s.Equal(&tidcommon.InternalServerError, s.update())
+
+	s.Equal([]string{"validate", systemFlowUserCredentialUpdatePre, "write", systemFlowUserCredentialUpdatePost},
+		s.order)
+}
+
+// A failed write after the pre flow is returned, and the post flow doesn't run.
+func (s *UserCredentialUpdateSystemFlowTestSuite) TestAFailedWriteAfterThePreFlowRunsNoPostFlow() {
+	shared := map[string]string{"revocationPlan": "plan"}
+	s.expectValidation(nil)
+	s.expectHeld("password")
+	s.expectFlow(systemFlowUserCredentialUpdatePre, nil, shared, nil)
+	s.expectWrite(errors.New("store down"))
+
+	s.Equal(&tidcommon.InternalServerError, s.update())
+
+	s.Equal([]string{"validate", systemFlowUserCredentialUpdatePre, "write"}, s.order)
+}
+
+// A failed write of a first credential is returned.
+func (s *UserCredentialUpdateSystemFlowTestSuite) TestAFailedFirstCredentialWriteIsReturned() {
+	s.expectValidation(nil)
+	s.expectHeld("pin")
+	s.expectWrite(errors.New("store down"))
+
+	s.Equal(&tidcommon.InternalServerError, s.update())
+
+	s.Equal([]string{"validate", "write"}, s.order)
+}
+
+// A service with no provider runs no system flows and still updates the credentials.
+func (s *UserCredentialUpdateSystemFlowTestSuite) TestNoProviderRunsNoFlow() {
+	s.service.systemFlows = nil
+	s.expectValidation(nil)
+	s.expectHeld("password")
+	s.expectWrite(nil)
+
+	s.Nil(s.update())
+
+	s.Equal([]string{"validate", "write"}, s.order)
 }

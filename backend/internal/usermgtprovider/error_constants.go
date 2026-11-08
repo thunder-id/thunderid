@@ -37,4 +37,18 @@ var (
 			DefaultValue: "The deployment is not configured to provision users from the runtime",
 		},
 	}
+
+	// ErrorUserManagementDisabled is returned when the disabled provider is asked to change an existing user.
+	ErrorUserManagementDisabled = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "UMP-1003",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.usermgtprovider.user_management_disabled",
+			DefaultValue: "User management is disabled",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.usermgtprovider.user_management_disabled_description",
+			DefaultValue: "The deployment is not configured to manage users from the runtime",
+		},
+	}
 )

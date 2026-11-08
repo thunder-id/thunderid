@@ -977,6 +977,51 @@ func (s *ServiceTestSuite) TestUpdateCredentials_SchemaLookupFails() {
 	s.store.AssertNotCalled(s.T(), "UpdateCredentials", mock.Anything, mock.Anything, mock.Anything)
 }
 
+func (s *ServiceTestSuite) TestValidateCredentials() {
+	// reaches is how far each payload gets: 0 stops at parsing, 1 checks the keys against the entity's
+	// type, and 2 also checks the values against it.
+	for name, test := range map[string]struct {
+		creds   string
+		reaches int
+		valid   bool
+		wantIs  error
+	}{
+		"valid value":       {creds: `{"password":"long-enough"}`, reaches: 2, valid: true},
+		"value fails":       {creds: `{"password":"1"}`, reaches: 2, wantIs: ErrSchemaValidationFailed},
+		"undeclared key":    {creds: `{"pin":"1234"}`, reaches: 1, wantIs: ErrInvalidCredential},
+		"empty value":       {creds: `{"password":" "}`, wantIs: ErrInvalidCredential},
+		"unparseable input": {creds: `not json`, wantIs: ErrInvalidCredential},
+	} {
+		s.Run(name, func() {
+			s.SetupTest()
+			svc, ets := s.newSvcWithEntityType()
+			e := testEntity("e-validate")
+			e.Category = providers.EntityCategoryUser
+			e.Type = testCredentialEntityType
+			creds := json.RawMessage(test.creds)
+			if test.reaches >= 1 {
+				s.store.On("GetEntity", mock.Anything, e.ID).Return(*e, nil).Once()
+				ets.On("GetAttributes", mock.Anything, entitytype.TypeCategoryUser, testCredentialEntityType,
+					entitytype.AttributeFilter{AllowCredential: true}).
+					Return([]entitytype.AttributeInfo{{Attribute: "password", Credential: true}}, nil).Once()
+			}
+			if test.reaches >= 2 {
+				ets.On("ValidateEntityValues", mock.Anything, entitytype.TypeCategoryUser, testCredentialEntityType,
+					creds).Return(test.valid, nil).Once()
+			}
+
+			err := svc.ValidateCredentials(s.ctx, e.ID, creds)
+
+			if test.wantIs == nil {
+				s.NoError(err)
+			} else {
+				s.ErrorIs(err, test.wantIs)
+			}
+			s.store.AssertNotCalled(s.T(), "UpdateCredentials", mock.Anything, mock.Anything, mock.Anything)
+		})
+	}
+}
+
 // A client secret rotation stamps the entity, in the same transaction as the credential write.
 func (s *ServiceTestSuite) TestUpdateSystemCredentials_StampsOnClientSecretRotation() {
 	e := testEntity("e-cs")

@@ -334,6 +334,81 @@ func (ts *EmailLinkPasswordRecoveryTestSuite) TestBasicRecoveryFlow_UserInAnothe
 	ts.True(ok, "The new password is set on the user in the child OU")
 }
 
+// TestBasicRecoveryFlow_RevokesTheirTokens tests that a password reset through the recovery flow revokes
+// the tokens issued to the user before it. Introspection reads the deny list directly, so the answer is
+// immediate.
+func (ts *EmailLinkPasswordRecoveryTestSuite) TestBasicRecoveryFlow_RevokesTheirTokens() {
+	ts.mockSMTP.ClearEmails()
+	const (
+		password       = "BeforeRecovery123!" // #nosec G101 -- test fixture
+		newPassword    = "AfterRecovery456!"  // #nosec G101 -- test fixture
+		signInID       = "basic-recovery-revokes-sign-in-client"
+		observerID     = "basic-recovery-revokes-observer-client"
+		observerSecret = "basic-recovery-revokes-observer-secret" // #nosec G101 -- test fixture
+	)
+	username := common.GenerateUniqueUsername("recoveryrevokes")
+	userIDs, err := testutils.CreateMultipleUsers(testutils.User{
+		OUID: ts.testOUID,
+		Type: basicRecoveryUserSchema.Handle,
+		Attributes: json.RawMessage(`{
+			"username": "` + username + `",
+			"password": "` + password + `",
+			"email":    "` + username + `@example.com"
+		}`),
+	})
+	ts.Require().NoError(err, "Failed to create the user")
+	defer func() {
+		if err := testutils.CleanupUsers(userIDs); err != nil {
+			ts.T().Logf("Failed to delete the user: %v", err)
+		}
+	}()
+	signInAppID, err := testutils.CreateOUSignInApplication(ts.testOUID, signInID)
+	ts.Require().NoError(err, "Failed to create the sign-in application")
+	defer func() {
+		if err := testutils.DeleteApplication(signInAppID); err != nil {
+			ts.T().Logf("Failed to delete the sign-in application: %v", err)
+		}
+	}()
+	observerAppID, err := testutils.CreateApplication(testutils.Application{
+		Name: "basic_recovery_revokes_observer",
+		OUID: ts.testOUID,
+		Type: "fullstack",
+		InboundAuthConfig: []map[string]interface{}{{
+			"type": "oauth2",
+			"config": map[string]interface{}{
+				"clientId":                observerID,
+				"clientSecret":            observerSecret,
+				"redirectUris":            []string{"https://localhost:3000"},
+				"grantTypes":              []string{"client_credentials"},
+				"tokenEndpointAuthMethod": "client_secret_basic",
+			},
+		}},
+	})
+	ts.Require().NoError(err, "Failed to create the observer application")
+	defer func() {
+		if err := testutils.DeleteApplication(observerAppID); err != nil {
+			ts.T().Logf("Failed to delete the observer application: %v", err)
+		}
+	}()
+
+	tokenResp, err := testutils.ObtainAccessTokenWithPassword(signInID, testutils.OUSignInRedirectURI,
+		"openid", username, password, true, "")
+	ts.Require().NoError(err, "Failed to sign the user in")
+	active, err := testutils.IntrospectToken(tokenResp.AccessToken, observerID, observerSecret)
+	ts.Require().NoError(err)
+	ts.Require().True(active, "The token should be active before the password is reset")
+
+	flowStep, _ := ts.driveRecoveryToPasswordPromptAs(username)
+	finalStep, err := common.CompleteFlow(flowStep.ExecutionID, map[string]string{"password": newPassword},
+		"action_submit_password", flowStep.ChallengeToken)
+	ts.Require().NoError(err, "Failed to submit the new password")
+	ts.Require().Equal("COMPLETE", finalStep.FlowStatus, "Expected COMPLETE after setting new password")
+
+	active, err = testutils.IntrospectToken(tokenResp.AccessToken, observerID, observerSecret)
+	ts.Require().NoError(err)
+	ts.False(active, "A token issued before the password reset was still active")
+}
+
 // TestBasicRecoveryFlow_InvalidToken tests that submitting a wrong recovery token
 // causes the token verification to fail and the flow to return an error/incomplete status.
 func (ts *EmailLinkPasswordRecoveryTestSuite) TestBasicRecoveryFlow_InvalidToken() {

@@ -6,6 +6,7 @@ package usermgtprovider
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/user"
@@ -32,4 +33,11 @@ func (p *defaultUserMgtProvider) CreateUser(
 		return nil, &ErrorInvalidRequestFormat
 	}
 	return p.userSvc.CreateUser(security.WithRuntimeContext(ctx), u)
+}
+
+// UpdateUserCredentials sets the user's schema-defined credentials through the user service.
+func (p *defaultUserMgtProvider) UpdateUserCredentials(
+	ctx context.Context, userID string, credentials json.RawMessage,
+) *tidcommon.ServiceError {
+	return p.userSvc.UpdateUserCredentials(security.WithRuntimeContext(ctx), userID, credentials)
 }

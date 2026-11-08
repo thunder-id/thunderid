@@ -547,7 +547,7 @@ Authentication and registration flow settings.
 |---------|---------|-------------|
 | `flow.max_version_history` | `10` | Maximum number of flow versions to retain |
 | `flow.auto_infer_registration` | `true` | If `true`, automatically infers registration from authentication flows |
-| `flow.executors` | *(all built-in executors)* | Whitelist of built-in executor names to register at startup. Omit the key or leave the list empty to register every built-in executor. When set, only the listed executors are available; flows that reference other executors fail validation at startup. Unknown names cause startup to fail. Duplicate names are ignored. The system flows built into the server need `AccessChangeValidator`, `ApplicationActionValidator`, `CriteriaRevocationExecutor`, `PreDeleteExecutor`, and `SessionRevocationExecutor`; the server does not start without them. |
+| `flow.executors` | *(all built-in executors)* | Whitelist of built-in executor names to register at startup. Omit the key or leave the list empty to register every built-in executor. When set, only the listed executors are available; flows that reference other executors fail validation at startup. Unknown names cause startup to fail. Duplicate names are ignored. The system flows built into the server need `AccessChangeValidator`, `ApplicationActionValidator`, `CriteriaRevocationExecutor`, `PreCredentialUpdateExecutor`, `PreDeleteExecutor`, and `SessionRevocationExecutor`; the server does not start without them. |
 
 ### Built-in Executors
 
@@ -566,7 +566,7 @@ flow:
 
 **Register a subset:**
 
-List only the executor names you need, together with the five the system flows need. Built-in executors not in the list are excluded:
+List only the executor names you need, together with the six the system flows need. Built-in executors not in the list are excluded:
 
 ```yaml
 flow:
@@ -576,6 +576,7 @@ flow:
     - AccessChangeValidator
     - ApplicationActionValidator
     - CriteriaRevocationExecutor
+    - PreCredentialUpdateExecutor
     - PreDeleteExecutor
     - SessionRevocationExecutor
 ```
@@ -989,7 +990,7 @@ The runtime currently uses these providers for user and agent creation in flows.
 | `user_mgt_provider.type` | Calls the user management service | `default`, `disabled` |
 | `agent_mgt_provider.type` | Calls the agent management service | `default`, `disabled` |
 
-Configure the built-in providers in `deployment.yaml`. Setting a provider to `disabled` makes runtime creation of users or agents, respectively, fail. It does not disable the direct management API.
+Configure the built-in providers in `deployment.yaml`. Setting a provider to `disabled` makes runtime creation of users or agents, respectively, fail. A disabled user management provider also fails a credential set in a flow, such as a password reset in a recovery flow. It does not disable the direct management API.
 
 ```yaml
 user_mgt_provider:
@@ -998,7 +999,7 @@ agent_mgt_provider:
   type: default
 ```
 
-For an embedded runtime, implement `providers.UserMgtProvider` or `providers.AgentMgtProvider` and pass the implementation through `thunderidengine.WithUserMgtProvider` or `thunderidengine.WithAgentMgtProvider`. Their current operations are `CreateUser` and `CreateAgent`. Custom implementations are supplied through these Go options, not through a custom `type` value in `deployment.yaml`.
+For an embedded runtime, implement `providers.UserMgtProvider` or `providers.AgentMgtProvider` and pass the implementation through `thunderidengine.WithUserMgtProvider` or `thunderidengine.WithAgentMgtProvider`. The user provider implements `CreateUser` and `UpdateUserCredentials`, and the agent provider implements `CreateAgent`. Custom implementations are supplied through these Go options, not through a custom `type` value in `deployment.yaml`.
 
 `providers.Agent` carries schema values in its `Attributes` JSON, including `name`. The default agent type requires a unique name. A custom provider receives these values through `Attributes`, not a separate `Name` field. The Console label is resolved from the [agent type's display setting](../../guides/agents/agent-schema#display-attribute).
 

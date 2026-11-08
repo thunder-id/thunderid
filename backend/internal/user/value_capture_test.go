@@ -151,6 +151,8 @@ func TestUpdateUserCredentials_CapturesTheNewCredential(t *testing.T) {
 		Category: providers.EntityCategoryUser, ID: svcTestUserID1, Type: testUserType, OUID: testOrgID,
 		Attributes: json.RawMessage(`{"username":"alice"}`),
 	}, nil)
+	entities.On("ValidateCredentials", mock.Anything, svcTestUserID1, mock.Anything).Return(nil)
+	entities.On("GetHeldCredentialTypes", mock.Anything, svcTestUserID1).Return([]string(nil), nil)
 	entities.On("UpdateCredentials", mock.Anything, svcTestUserID1, mock.Anything).Return(nil)
 	capturer := &recordingCapturer{}
 	service := newCapturingUserService(t, capturer, entities)
