@@ -13,7 +13,7 @@ I have a Next.js application (App Router) and I want to integrate {{productName}
 
 ## Configuration
 - **Application ID**: {{applicationId}}
-- **Base URL**: https://localhost:8090 (or your {{productName}} instance URL)
+- **Base URL**: {{baseUrl}}
 - **Flow Secret**: `<your-flow-secret>`
 - **Sign In Route**: /signin
 - **Sign Up Route**: /signup

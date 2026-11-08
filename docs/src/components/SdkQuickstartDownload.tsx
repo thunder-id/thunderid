@@ -190,6 +190,7 @@ export default function SdkQuickstartDownload({
       const config = siteConfig.customFields?.product as DocusaurusProductConfig;
       const filled = text
         .replace(/\{\{productName\}\}/g, config.project.name)
+        .replace(/\{\{baseUrl\}\}/g, `https://localhost:8090 (or your ${config.project.name} instance URL)`)
         .replace(/\{\{clientId\}\}/g, '<your-client-id>');
       await navigator.clipboard.writeText(filled);
       setCopyState('copied');

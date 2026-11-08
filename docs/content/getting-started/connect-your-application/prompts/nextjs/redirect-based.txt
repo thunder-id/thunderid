@@ -13,7 +13,7 @@ I have a Next.js application (App Router) and I want to integrate {{productName}
 
 ## Configuration
 - **Client ID**: {{clientId}}
-- **Base URL**: https://localhost:8090 (or your {{productName}} instance URL)
+- **Base URL**: {{baseUrl}}
 - **Client Secret**: `<your-client-secret>`
 - **SDK**: @thunderid/nextjs
 

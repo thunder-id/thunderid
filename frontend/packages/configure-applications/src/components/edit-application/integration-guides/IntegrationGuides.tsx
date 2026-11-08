@@ -285,8 +285,12 @@ export default function IntegrationGuides({
     },
   ];
 
+  // The prompt and the endpoints below are for someone to copy into their own application, so they
+  // have to name the deployment that answers them rather than the one the console is configured against.
+  const runtimeUrl = useRuntimeUrl();
   const placeholderValues = {
     productName,
+    baseUrl: runtimeUrl,
     clientId: oauth2Config?.clientId,
     applicationId: application.id,
   };
@@ -317,9 +321,6 @@ export default function IntegrationGuides({
     }
   };
 
-  // The endpoints below are for someone to copy into their own application, so they have to
-  // name the deployment that answers them rather than the one the console is configured against.
-  const runtimeUrl = useRuntimeUrl();
   const isDirectApiEnabled = config.direct_api?.enabled !== false;
   const flowEndpoints = [
     {
