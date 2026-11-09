@@ -185,7 +185,12 @@ vi.mock('../../components/edit-agent/advanced-settings/EditAdvancedSettings', as
   return {
     default: (props: ComponentProps<typeof RealEditAdvancedSettings>) => {
       if (advancedSettings.real) return <RealEditAdvancedSettings {...props} />;
-      const {onDeleteSuccess, onBackchannelLogoutUriValidationChange, onIdentityAssertionsValidationChange} = props;
+      const {
+        onDeleteSuccess,
+        onBackchannelLogoutUriValidationChange,
+        onIdentityAssertionsValidationChange,
+        onFieldChange,
+      } = props;
       return (
         <div data-testid="edit-advanced">
           <button type="button" onClick={() => onDeleteSuccess?.()}>
@@ -196,6 +201,15 @@ vi.mock('../../components/edit-agent/advanced-settings/EditAdvancedSettings', as
           </button>
           <button type="button" onClick={() => onIdentityAssertionsValidationChange?.(true)}>
             Type an invalid ID-JAG validity period
+          </button>
+          <button type="button" onClick={() => onFieldChange('owner', {id: 'jane', idType: 'email', isLocal: false})}>
+            Enter an invalid external owner
+          </button>
+          <button
+            type="button"
+            onClick={() => onFieldChange('owner', {id: 'jane@example.com', idType: 'email', isLocal: false})}
+          >
+            Enter a valid external owner
           </button>
         </div>
       );
@@ -424,6 +438,19 @@ describe('AgentEditPage', () => {
       render(<AgentEditPage />);
 
       expect(screen.getByRole('tab', {name: /Advanced/i})).toHaveAttribute('aria-selected', 'true');
+    });
+
+    it('keeps Save off while the external owner ID is not valid, and says why', async () => {
+      mockUseLocation.mockReturnValue({state: null, search: '?tab=advanced'});
+      const user = userEvent.setup();
+      render(<AgentEditPage />);
+
+      await user.click(screen.getByText('Enter an invalid external owner'));
+      expect(screen.getByRole('button', {name: 'Save'})).toBeDisabled();
+      expect(screen.getByText(/enter a valid ID for the external owner/)).toBeInTheDocument();
+
+      await user.click(screen.getByText('Enter a valid external owner'));
+      expect(screen.getByRole('button', {name: 'Save'})).toBeEnabled();
     });
 
     it('leaves the tab a link names once another is chosen', async () => {

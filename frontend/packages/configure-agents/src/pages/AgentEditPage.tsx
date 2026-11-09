@@ -55,6 +55,7 @@ import AgentConstants from '../constants/agent-constants';
 import AgentQueryKeys from '../constants/agent-query-keys';
 import useAgentRoutes from '../hooks/useAgentRoutes';
 import type {Agent, OAuthAgentConfig} from '../models/agent';
+import {isInvalidExternalOwner} from '../utils/externalOwner';
 import isDelegatedAgent, {hasDelegationGrant} from '../utils/isDelegatedAgent';
 
 interface TabPanelProps {
@@ -301,8 +302,10 @@ export default function AgentEditPage(): JSX.Element {
     lifespanInvalid ||
     // eslint-disable-next-line react-hooks/purity -- Date.now() is intentional for checking the end is still ahead
     (typeof editedAgent.validUntil === 'string' && new Date(editedAgent.validUntil).getTime() <= Date.now());
+  const isInvalidOwner = isInvalidExternalOwner(editedAgent.owner);
   const hasAnyValidationError =
     hasAnyOtherValidationError ||
+    isInvalidOwner ||
     isMissingRedirectUri ||
     isMissingAllowedUserType ||
     isMissingCertificate ||
@@ -340,6 +343,9 @@ export default function AgentEditPage(): JSX.Element {
   }
   if (isInvalidLifespan) {
     validationIssues.push(t('agents:edit.page.validation.invalidLifespan', 'choose a lifespan end in the future'));
+  }
+  if (isInvalidOwner) {
+    validationIssues.push(t('agents:edit.page.validation.invalidOwner', 'enter a valid ID for the external owner'));
   }
   if (hasAnyOtherValidationError) {
     validationIssues.push(t('agents:edit.page.validation.tokenSettings', 'fix the token settings'));

@@ -29,9 +29,11 @@ import {useForm} from 'react-hook-form';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
 import useCreateAgent from '../api/useCreateAgent';
+import AgentOwnerField from '../components/AgentOwnerField';
 import ClientSecretSuccessDialog from '../components/ClientSecretSuccessDialog';
 import useAgentRoutes from '../hooks/useAgentRoutes';
-import type {Agent, AgentInboundAuthConfig, CreateAgentRequest} from '../models/agent';
+import type {Agent, AgentInboundAuthConfig, AgentOwner, CreateAgentRequest} from '../models/agent';
+import {isInvalidExternalOwner} from '../utils/externalOwner';
 
 type AttributeFormData = Record<string, unknown>;
 
@@ -82,6 +84,8 @@ export default function AgentAddFormPage(): JSX.Element {
   const [typeId, setTypeId] = useState<string>('');
   const [ouId, setOuId] = useState<string>('');
   const [ownerId, setOwnerId] = useState<string>('');
+  // Set while External is chosen; the user picker's choice applies otherwise.
+  const [externalOwner, setExternalOwner] = useState<AgentOwner | undefined>(undefined);
   const [issueCredentials, setIssueCredentials] = useState<boolean>(true);
   // The created agent whose secret is being shown; the agent's page opens once the secret is closed.
   const [created, setCreated] = useState<{id: string; clientSecret: string} | null>(null);
@@ -156,7 +160,8 @@ export default function AgentAddFormPage(): JSX.Element {
     const request: CreateAgentRequest = {
       ...(isInProject ? {projectId} : {ouId}),
       type: selectedType?.handle ?? '',
-      ...(ownerId ? {owner: {id: ownerId, idType: 'uuid', isLocal: true}} : {}),
+      ...(externalOwner ? {owner: externalOwner} : {}),
+      ...(!externalOwner && ownerId ? {owner: {id: ownerId, idType: 'uuid', isLocal: true}} : {}),
       ...(trimmedDescription ? {description: trimmedDescription} : {}),
       ...(Object.keys(attributes).length > 0 ? {attributes} : {}),
       // The API generates the client ID and secret for an OAuth config that names none, so only how
@@ -291,55 +296,62 @@ export default function AgentAddFormPage(): JSX.Element {
               </FormControl>
             )}
 
-            <FormControl fullWidth required={callerElsewhere}>
-              <FormLabel htmlFor="agent-owner">{t('agents:addForm.owner', 'Owner')}</FormLabel>
-              {usersError ? (
-                // A failed read is shown in place of the picker, not as an empty one: the agent would
-                // otherwise be owned by the caller with nothing said about the owners that did not load.
-                <QueryErrorNotice
-                  variant="inline"
-                  error={usersError}
-                  t={tForErrors}
-                  fallbackKey="agents:addForm.ownersError"
-                  fallbackDefaultValue="The users to choose an owner from could not be loaded."
-                  onRetry={() => {
-                    void refetchUsers();
-                  }}
-                />
-              ) : (
-                <Select
-                  id="agent-owner"
-                  value={ownerId}
-                  displayEmpty
-                  disabled={usersLoading}
-                  onChange={(event) => setOwnerId(String(event.target.value))}
-                >
-                  <MenuItem value="">
-                    <em>
-                      {callerElsewhere
-                        ? t('agents:addForm.selectOwner', 'Select an owner')
-                        : t('agents:addForm.ownerDefault', 'Me (default)')}
-                    </em>
-                  </MenuItem>
-                  {users.map((user) => (
-                    <MenuItem key={user.id} value={user.id}>
-                      {ownerLabel(user)}
-                    </MenuItem>
-                  ))}
-                </Select>
-              )}
-              {usersTruncated && (
-                <Typography variant="caption" color="text.secondary">
-                  {t('agents:addForm.ownerTruncated', 'Showing the first {{shown}} of {{total}} users.', {
-                    shown: users.length,
-                    total: userList?.totalResults,
-                  })}
-                </Typography>
-              )}
-              <Typography variant="caption" color="text.secondary">
-                {ownerHint}
-              </Typography>
-            </FormControl>
+            <AgentOwnerField
+              id="agent-owner"
+              required={callerElsewhere}
+              onExternalChange={setExternalOwner}
+              internalPicker={
+                <>
+                  {usersError ? (
+                    // A failed read is shown in place of the picker, not as an empty one: the agent would
+                    // otherwise be owned by the caller with nothing said about the owners that did not load.
+                    <QueryErrorNotice
+                      variant="inline"
+                      error={usersError}
+                      t={tForErrors}
+                      fallbackKey="agents:addForm.ownersError"
+                      fallbackDefaultValue="The users to choose an owner from could not be loaded."
+                      onRetry={() => {
+                        void refetchUsers();
+                      }}
+                    />
+                  ) : (
+                    <Select
+                      id="agent-owner-select"
+                      labelId="agent-owner-label"
+                      value={ownerId}
+                      displayEmpty
+                      disabled={usersLoading}
+                      onChange={(event) => setOwnerId(String(event.target.value))}
+                    >
+                      <MenuItem value="">
+                        <em>
+                          {callerElsewhere
+                            ? t('agents:addForm.selectOwner', 'Select an owner')
+                            : t('agents:addForm.ownerDefault', 'Me (default)')}
+                        </em>
+                      </MenuItem>
+                      {users.map((user) => (
+                        <MenuItem key={user.id} value={user.id}>
+                          {ownerLabel(user)}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  )}
+                  {usersTruncated && (
+                    <Typography variant="caption" color="text.secondary">
+                      {t('agents:addForm.ownerTruncated', 'Showing the first {{shown}} of {{total}} users.', {
+                        shown: users.length,
+                        total: userList?.totalResults,
+                      })}
+                    </Typography>
+                  )}
+                  <Typography variant="caption" color="text.secondary">
+                    {ownerHint}
+                  </Typography>
+                </>
+              }
+            />
 
             {agentTypeError && !agentType ? (
               // Without the type's schema there are no attribute fields to fill in, so Create stays off.
@@ -383,7 +395,8 @@ export default function AgentAddFormPage(): JSX.Element {
                   !selectedType ||
                   (!isInProject && !ouId) ||
                   !agentType ||
-                  (!callerCanOwn && !ownerId) ||
+                  (!externalOwner && !callerCanOwn && !ownerId) ||
+                  isInvalidExternalOwner(externalOwner) ||
                   createAgent.isPending
                 }
               >
