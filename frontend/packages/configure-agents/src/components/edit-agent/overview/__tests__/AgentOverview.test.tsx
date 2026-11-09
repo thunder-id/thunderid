@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import userEvent from '@testing-library/user-event';
-import {render, screen} from '@thunderid/test-utils';
+import {render, screen, within} from '@thunderid/test-utils';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import type {Agent, OAuthAgentConfig} from '../../../../models/agent';
 import AgentOverview from '../AgentOverview';
@@ -197,6 +197,28 @@ describe('AgentOverview', () => {
     expect(
       screen.getByDisplayValue('https://thunderid.dev/docs/next/getting-started/connect-your-agent/langchain/'),
     ).toBeInTheDocument();
+  });
+
+  describe('personal agent', () => {
+    const personalAgent = {...baseAgent, kind: 'personal-assistant', allowedUserTypes: ['person']};
+
+    it('shows its own behalf as disabled, and only its owner as allowed to sign in', () => {
+      render(<AgentOverview agent={personalAgent} oauth2Config={delegatedOauth2Config} />);
+
+      const ownRow = screen.getByText('On its own behalf').parentElement!;
+      expect(within(ownRow).getByText('Disabled')).toBeInTheDocument();
+      const delegatedRow = screen.getByText('On behalf of a user').parentElement!;
+      expect(within(delegatedRow).getByText('Enabled')).toBeInTheDocument();
+      expect(screen.getByText('Allowed users')).toBeInTheDocument();
+      expect(screen.getByText('Owner only')).toBeInTheDocument();
+      expect(screen.queryByText('Allowed user types')).not.toBeInTheDocument();
+    });
+
+    it('does not offer the LangChain quickstart, since the owner connects the agent', () => {
+      render(<AgentOverview agent={personalAgent} oauth2Config={delegatedOauth2Config} />);
+
+      expect(screen.queryByText('Connect with LangChain')).not.toBeInTheDocument();
+    });
   });
 
   it('falls back to the username attribute for the owner label when the matched user has no display name', () => {

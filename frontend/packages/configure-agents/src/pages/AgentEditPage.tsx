@@ -26,6 +26,7 @@ import {
   Alert,
   Box,
   Button,
+  Chip,
   Dialog,
   DialogContent,
   IconButton,
@@ -54,7 +55,7 @@ import ShowClientSecret from '../components/ShowClientSecret';
 import AgentConstants from '../constants/agent-constants';
 import AgentQueryKeys from '../constants/agent-query-keys';
 import useAgentRoutes from '../hooks/useAgentRoutes';
-import type {Agent, OAuthAgentConfig} from '../models/agent';
+import {PERSONAL_AGENT_KIND, type Agent, type OAuthAgentConfig} from '../models/agent';
 import {isInvalidExternalOwner} from '../utils/externalOwner';
 import isDelegatedAgent, {hasDelegationGrant} from '../utils/isDelegatedAgent';
 
@@ -546,6 +547,9 @@ export default function AgentEditPage(): JSX.Element {
         <PageTitle.Header>
           <Stack direction="row" alignItems="center" spacing={1} mb={1}>
             <Typography variant="h3">{agent.display ?? agent.id}</Typography>
+            {agent.kind === PERSONAL_AGENT_KIND && (
+              <Chip size="small" color="primary" variant="outlined" label={t('agents:kind.personal', 'Personal')} />
+            )}
           </Stack>
         </PageTitle.Header>
         <PageTitle.SubHeader>

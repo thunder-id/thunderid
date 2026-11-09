@@ -52,6 +52,10 @@ const translations = {
       'The account is suspended and cannot sign in until an administrator unsuspends it.',
     'accountStatus.suspended.hint.agent':
       'The agent is suspended and cannot authenticate until an administrator unsuspends it.',
+    'accountStatus.suspended.hint.agentNotByOrganization': 'The agent is suspended and cannot authenticate.',
+    'accountStatus.suspended.hint.agentOwner': 'Its owner suspended it, and only the owner can lift that suspension.',
+    'accountStatus.suspended.hint.agentCascade':
+      "Its owner's account is suspended, and the agent stays suspended until that account is unsuspended.",
     'accountStatus.suspended.hint.application':
       'The application is suspended and cannot authenticate until an administrator unsuspends it.',
     'accountStatus.suspended.operatorNote': 'Operator note: {{operatorNote}}',
@@ -693,6 +697,14 @@ const translations = {
     'manageUser.sections.quickCopy.description': 'Copy user identifiers for use in your application.',
     'manageUser.sections.quickCopy.userId': 'User ID',
     'manageUser.sections.quickCopy.copyUserId': 'Copy user ID',
+    'manageUser.sections.ownedAgents.title': 'Owned agents',
+    'manageUser.sections.ownedAgents.description': 'Agents that name this user as their owner.',
+    'manageUser.sections.ownedAgents.error': 'Failed to load the agents this user owns',
+    'manageUser.sections.ownedAgents.personal': 'Personal',
+    'manageUser.sections.ownedAgents.columns.name': 'Name',
+    'manageUser.sections.ownedAgents.columns.agentId': 'Agent ID',
+    'manageUser.sections.ownedAgents.columns.kind': 'Kind',
+    'manageUser.sections.ownedAgents.empty': "This user doesn't own any agents.",
 
     // Create page
     'createUser.title': 'Create user',
@@ -720,6 +732,7 @@ const translations = {
     'delete.usages.title': 'The following agents list this user as their owner:',
     'delete.usages.more': '+{{count}} more',
     'delete.blocking.title': 'This user cannot be deleted until the following agents are reassigned or removed:',
+    'delete.cascading.title': 'These personal agents will be deleted with the user, and their tokens revoked:',
 
     // Credentials section on edit page
     'manageUser.sections.credentials.title': 'Credentials',
@@ -773,6 +786,9 @@ const translations = {
     'listing.error': 'Failed to load users',
     'manageUser.loadError': 'Failed to load user information',
     'manageUser.notFound': 'User not found',
+
+    // Owned agents
+    'manageUser.tabs.agents': 'Agents',
 
     // Affiliations
     'manageUser.tabs.affiliations': 'Affiliations',
@@ -1150,6 +1166,12 @@ const translations = {
     'listing.columns.status': 'Status',
     'listing.columns.deployment': 'Deployment',
     'listing.columns.actions': 'Actions',
+    'listing.view.label': 'Agents to show',
+    'listing.view.all': 'All',
+    'listing.view.personal': 'Personal agents',
+
+    // Agent kind
+    'kind.personal': 'Personal',
 
     // Onboarding (flow driven)
     'onboarding.errors.notConfigured.title': 'Agent onboarding is not configured',
@@ -1336,6 +1358,8 @@ const translations = {
     'edit.overview.accessMode.editAdvanced': 'Edit in advanced',
     'edit.overview.accessMode.own': 'On its own behalf',
     'edit.overview.accessMode.delegated': 'On behalf of a user',
+    'edit.overview.accessMode.allowedUsers': 'Allowed users',
+    'edit.overview.accessMode.ownerOnly': 'Owner only',
     'edit.overview.accessMode.allowedUserTypes': 'Allowed user types',
     'edit.overview.signInPreview.notConfigured': 'Not configured',
     'edit.overview.quickstart.title': 'Connect with LangChain',

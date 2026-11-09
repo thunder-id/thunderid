@@ -19,6 +19,7 @@ import {useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import useDeleteUser from '../api/useDeleteUser';
 import useGetUserUsages from '../api/useGetUserUsages';
+import type {UserUsage} from '../models/users';
 import getUserErrorMessage from '../utils/getUserErrorMessage';
 
 const MAX_VISIBLE_USAGES = 5;
@@ -50,6 +51,31 @@ export default function UserDeleteDialog({
   const hasBlockingUsages = usagesKnown && blockingUsages.length > 0;
   const visibleBlocking = blockingUsages.slice(0, MAX_VISIBLE_USAGES);
   const hiddenBlockingCount = blockingUsages.length - visibleBlocking.length;
+  // The user's personal agents, which are deleted with the user.
+  const cascadingUsages = usagesData?.usages.filter((usage) => usage.behaviorOnDelete === 'cascade') ?? [];
+  const visibleCascading = cascadingUsages.slice(0, MAX_VISIBLE_USAGES);
+  const hiddenCascadingCount = cascadingUsages.length - visibleCascading.length;
+
+  const renderUsages = (usages: UserUsage[], hiddenCount: number): JSX.Element => (
+    <List dense disablePadding>
+      {usages.map((usage) => (
+        <ListItem key={usage.id} disableGutters sx={{py: 0}}>
+          <ListItemText primary={<Typography variant="body2">{usage.displayName}</Typography>} />
+        </ListItem>
+      ))}
+      {hiddenCount > 0 && (
+        <ListItem disableGutters sx={{py: 0}}>
+          <ListItemText
+            primary={
+              <Typography variant="body2" color="text.secondary">
+                {t('delete.usages.more', {count: hiddenCount, defaultValue: '+{{count}} more'})}
+              </Typography>
+            }
+          />
+        </ListItem>
+      )}
+    </List>
+  );
 
   const handleCancel = (): void => {
     if (deleteUser.isPending) return;
@@ -98,24 +124,17 @@ export default function UserDeleteDialog({
                 'This user cannot be deleted until the following agents are reassigned or removed:',
               )}
             </Typography>
-            <List dense disablePadding>
-              {visibleBlocking.map((usage) => (
-                <ListItem key={usage.id} disableGutters sx={{py: 0}}>
-                  <ListItemText primary={<Typography variant="body2">{usage.displayName}</Typography>} />
-                </ListItem>
-              ))}
-              {hiddenBlockingCount > 0 && (
-                <ListItem disableGutters sx={{py: 0}}>
-                  <ListItemText
-                    primary={
-                      <Typography variant="body2" color="text.secondary">
-                        {t('delete.usages.more', {count: hiddenBlockingCount, defaultValue: '+{{count}} more'})}
-                      </Typography>
-                    }
-                  />
-                </ListItem>
+            {renderUsages(visibleBlocking, hiddenBlockingCount)}
+          </Alert>
+        ) : cascadingUsages.length > 0 ? (
+          <Alert severity="warning" sx={{mb: 2}}>
+            <Typography variant="body2" sx={{mb: 1}}>
+              {t(
+                'delete.cascading.title',
+                'These personal agents will be deleted with the user, and their tokens revoked:',
               )}
-            </List>
+            </Typography>
+            {renderUsages(visibleCascading, hiddenCascadingCount)}
           </Alert>
         ) : null}
 

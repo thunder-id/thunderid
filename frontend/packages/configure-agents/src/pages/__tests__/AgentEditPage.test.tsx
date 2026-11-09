@@ -368,6 +368,28 @@ describe('AgentEditPage', () => {
     });
   });
 
+  describe('Personal agents', () => {
+    it('labels a personal agent Personal', () => {
+      mockUseGetAgent.mockReturnValue({
+        data: {...baseAgent, kind: 'personal-assistant', owner: {id: 'user-1'}},
+        isLoading: false,
+        error: null,
+        isError: false,
+        refetch: mockRefetch,
+      });
+
+      render(<AgentEditPage />);
+
+      expect(screen.getByText('Personal')).toBeInTheDocument();
+    });
+
+    it('does not label an ordinary agent', () => {
+      render(<AgentEditPage />);
+
+      expect(screen.queryByText('Personal')).not.toBeInTheDocument();
+    });
+  });
+
   describe('Loading and Error States', () => {
     it('renders a progressbar while loading', () => {
       mockUseGetAgent.mockReturnValue({

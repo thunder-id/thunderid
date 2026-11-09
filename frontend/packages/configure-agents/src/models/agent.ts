@@ -4,6 +4,11 @@
 import type {AssertionConfig, OAuth2Config} from '@thunderid/configure-applications';
 import type {AccessStatusReport} from '@thunderid/types';
 
+/**
+ * Kind of an agent a user registered for themselves, which acts only for that user.
+ */
+export const PERSONAL_AGENT_KIND = 'personal-assistant';
+
 export type OAuthAgentConfig = OAuth2Config;
 
 export interface AgentInboundAuthConfig {
@@ -46,6 +51,8 @@ export interface Agent {
   description?: string;
   logoUrl?: string;
   owner?: AgentOwner;
+  /** The agent's kind, such as `personal-assistant`. Absent for an ordinary agent. */
+  kind?: string;
   clientId?: string;
   attributes?: Record<string, unknown>;
   allowedUserTypes?: string[];
@@ -83,6 +90,8 @@ export interface BasicAgent {
   description?: string;
   logoUrl?: string;
   clientId?: string;
+  /** The agent's kind, such as `personal-assistant`. Absent for an ordinary agent. */
+  kind?: string;
   attributes?: Record<string, unknown>;
   isReadOnly?: boolean;
   /**
