@@ -873,9 +873,11 @@ func activatePermissions(p *SystemPermissions) {
 
 		// User type tools.
 		"list_user_types": p.UserTypeView,
-		// Flow tools. execute_flow starts an administration flow by ID, which requires the administration
-		// flow permission.
-		"execute_flow": p.AdministrationFlow,
+		// Onboarding tools. onboard_agents starts an administration flow by ID, which requires the
+		// administration flow permission. onboard_users runs the user onboarding flow, and stays at the same
+		// permission onboarding needed before it was split.
+		"onboard_agents": p.AdministrationFlow,
+		"onboard_users":  p.AdministrationFlow,
 
 		// Agent tools, at the permissions of the agent API they act through.
 		"list_agents":              p.AgentView,

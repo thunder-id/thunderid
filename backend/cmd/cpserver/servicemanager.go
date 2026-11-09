@@ -392,7 +392,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	fatalOnError(ctx, logger, err, "Failed to initialize AgentService")
 	exporters = append(exporters, agentExporter)
 	// The control plane creates agents directly. The data plane creates them through its agent
-	// onboarding flow instead, which execute_flow runs, so only this plane registers onboard_agent.
+	// onboarding flow instead, which onboard_agents runs, so only this plane registers onboard_agent.
 	agent.RegisterOnboardAgentTool(mcpServer, agentService, entityService, entityTypeService, flowMgtService)
 
 	// Wire the dependency registry into the consuming services (two-phase init to avoid cyclic

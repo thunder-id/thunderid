@@ -20,7 +20,7 @@ import (
 
 // Initialize creates and configures the flow execution service components.
 //
-// mcpServer is optional. Given one, the execute_flow MCP tool is registered with it.
+// mcpServer is optional. Given one, the onboard_agents and onboard_users MCP tools are registered with it.
 func Initialize(
 	mux *http.ServeMux,
 	mcpServer *mcp.Server,

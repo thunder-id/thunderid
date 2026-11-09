@@ -121,6 +121,20 @@ func (suite *DefaultGuardTestSuite) TestDefaultGuard_UnconfiguredAudienceUsesDer
 	suite.Equal(testDerivedIdentifier, suite.audienceReachingVerification(guard, accessToken()))
 }
 
+// The metadata advertises every root the endpoint admits, so a client that requests the advertised scopes
+// gets a token carrying what the caller holds under either: the system root everywhere, and the
+// organization root on a data plane, which the control plane doesn't have.
+func (suite *DefaultGuardTestSuite) TestDefaultGuard_AdvertisesEveryAdmittedRoot() {
+	suite.initRuntime(nil)
+	_, metadata := DefaultGuard(suite.mockJWT, &fakeRevocationEnforcer{})
+	suite.Equal([]string{"system"}, metadata.ScopesSupported, "a control plane has no organization root")
+
+	security.InitDataPlanePermissions("")
+	defer security.InitControlPlanePermissions("")
+	_, metadata = DefaultGuard(suite.mockJWT, &fakeRevocationEnforcer{})
+	suite.Equal([]string{"system", "org"}, metadata.ScopesSupported)
+}
+
 // The endpoint admits any caller holding a system permission, since each tool call is checked against
 // its own permission; a caller holding none is refused. On the data plane the organization tree counts
 // as well; the control plane has none.

@@ -1382,14 +1382,14 @@ func TestResourceRoutesUseResourcePermissions(t *testing.T) {
 }
 
 // TestMCPToolPermissionsUseCatalogPermissions verifies that every mapped MCP tool requires a catalog
-// permission, except execute_flow, which requires the administration flow permission, and that an
+// permission, except the onboarding tools, which require the administration flow permission, and that an
 // unmapped tool requires root.
 func TestMCPToolPermissionsUseCatalogPermissions(t *testing.T) {
 	for _, prefix := range []string{"", "mgmt"} {
 		InitControlPlanePermissions(prefix)
 		p := GetSystemPermissions()
 		for name, perm := range mcpToolPermissions {
-			if name == "execute_flow" {
+			if name == "onboard_agents" || name == "onboard_users" {
 				assert.Equal(t, p.AdministrationFlow, perm)
 				continue
 			}

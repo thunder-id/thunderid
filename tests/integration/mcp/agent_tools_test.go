@@ -19,10 +19,11 @@ func agentToolsKey(kid string) map[string]any {
 		"x": "f83OJ3D2xF1Bg8vub9tLe1gHMzV76e8Tus9uPHvRVEU", "y": "x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0"}
 }
 
-// executeFlow calls execute_flow and returns its result, failing the test when the call fails.
-func (ts *MCPTestSuite) executeFlow(token string, args map[string]any) map[string]any {
-	result, raw := ts.callMCPTool(token, "execute_flow", args)
-	ts.Require().Falsef(result.Result.IsError, "execute_flow failed: %s", raw)
+// onboard calls an onboarding tool, onboard_agents or onboard_users, and returns its result, failing the
+// test when the call fails.
+func (ts *MCPTestSuite) onboard(token, tool string, args map[string]any) map[string]any {
+	result, raw := ts.callMCPTool(token, tool, args)
+	ts.Require().Falsef(result.Result.IsError, "%s failed: %s", tool, raw)
 	return result.Result.StructuredContent
 }
 
@@ -61,8 +62,8 @@ func (ts *MCPTestSuite) agentTypeChildOU(token string) string {
 // would. It returns the flow's final data (agentId, clientId and clientSecret) and the agent's unit.
 func (ts *MCPTestSuite) onboardAgentForTest(token, name string) (map[string]any, string) {
 	ouID := ts.agentTypeChildOU(token)
-	out := ts.executeFlow(token, map[string]any{
-		"flow": "agent_onboarding", "inputs": map[string]any{"name": name, "agentType": "default", "ouId": ouID}})
+	out := ts.onboard(token, "onboard_agents", map[string]any{
+		"inputs": map[string]any{"name": name, "agentType": "default", "ouId": ouID}})
 	for range 3 {
 		if out["status"] != "needs_input" {
 			break
@@ -76,7 +77,7 @@ func (ts *MCPTestSuite) onboardAgentForTest(token, name string) (map[string]any,
 		if actions, _ := out["actions"].([]any); len(actions) == 1 {
 			next["action"] = actions[0]
 		}
-		out = ts.executeFlow(token, next)
+		out = ts.onboard(token, "onboard_agents", next)
 	}
 	ts.Require().Equalf("complete", out["status"], "the flow must finish: %v", out)
 	data, _ := out["data"].(map[string]any)
@@ -87,8 +88,8 @@ func (ts *MCPTestSuite) onboardAgentForTest(token, name string) (map[string]any,
 	return data, ouID
 }
 
-// A data plane onboards agents through its agent onboarding flow, so it offers execute_flow and not
-// onboard_agent.
+// A data plane onboards agents and users through its onboarding flows, so it offers onboard_agents and
+// onboard_users, and not onboard_agent.
 func (ts *MCPTestSuite) TestAgentTools_DataPlaneOnboardsThroughTheFlow() {
 	message, body := ts.postStatelessMCP(ts.mcpScopedAdminToken(), "tools/list", "", map[string]any{})
 	var listed struct {
@@ -103,7 +104,8 @@ func (ts *MCPTestSuite) TestAgentTools_DataPlaneOnboardsThroughTheFlow() {
 	for _, tool := range listed.Result.Tools {
 		names = append(names, tool.Name)
 	}
-	ts.Contains(names, "execute_flow")
+	ts.Contains(names, "onboard_agents")
+	ts.Contains(names, "onboard_users")
 	ts.Contains(names, "update_agent")
 	ts.NotContains(names, "onboard_agent")
 }

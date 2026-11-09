@@ -327,7 +327,7 @@ It changes only what you send. actsForUsers, when sent, is the complete set, so 
 
 // RegisterOnboardAgentTool registers onboard_agent, which creates an agent directly. A control plane
 // registers it. A data plane does not: it creates agents through its agent onboarding flow, which the
-// execute_flow tool runs.
+// onboard_agents tool runs.
 func RegisterOnboardAgentTool(server *mcp.Server, agentService AgentServiceInterface,
 	entityService entity.EntityServiceInterface, entityTypeService entitytype.EntityTypeServiceInterface,
 	flowService flowmgt.FlowMgtServiceInterface) {

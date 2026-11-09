@@ -19,12 +19,11 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
-// executeFlowMCPInput is the input of the execute_flow tool.
+// onboardMCPInput is the input of the onboard_agents and onboard_users tools.
 //
 //nolint:lll
-type executeFlowMCPInput struct {
-	Flow           string            `json:"flow,omitempty" jsonschema:"The flow to start. agent_onboarding creates an agent. user_onboarding creates a user or invites one. Give flow or executionId."`
-	ExecutionID    string            `json:"executionId,omitempty" jsonschema:"ID of a run that paused, from an earlier execute_flow result, to go on with it. Give flow or executionId."`
+type onboardMCPInput struct {
+	ExecutionID    string            `json:"executionId,omitempty" jsonschema:"ID of a run that paused, from an earlier result of this tool, to go on with it. Leave it out to start a new run."`
 	ChallengeToken string            `json:"challengeToken,omitempty" jsonschema:"The challengeToken from the result that paused, when it had one. It changes on every step, so always send the latest."`
 	Action         string            `json:"action,omitempty" jsonschema:"The action to take, one of the actions the paused step returned. Send it every time you go on with a paused run, even when the step offers only one."`
 	Inputs         map[string]string `json:"inputs,omitempty" jsonschema:"Values for the flow's inputs, by identifier, such as name or ouId. Every value you already know can be given at once, and each step takes the ones it asks for."`
@@ -44,8 +43,8 @@ type flowFieldErrorMCPItem struct {
 	Message    string `json:"message"`
 }
 
-// executeFlowMCPResponse is the execute_flow output.
-type executeFlowMCPResponse struct {
+// onboardMCPResponse is the onboard_agents and onboard_users output.
+type onboardMCPResponse struct {
 	Status         flowRunStatus           `json:"status"`
 	ExecutionID    string                  `json:"executionId,omitempty"`
 	ChallengeToken string                  `json:"challengeToken,omitempty"`
@@ -58,8 +57,8 @@ type executeFlowMCPResponse struct {
 	Next           *flowNextCallMCPItem    `json:"next,omitempty"`
 }
 
-// flowNextCallMCPItem is the execute_flow call that goes on with a paused run. The action is filled in
-// when the step offers only one; the caller adds the inputs the step asks for.
+// flowNextCallMCPItem is the call that goes on with a paused run, to the tool that started it. The action
+// is filled in when the step offers only one; the caller adds the inputs the step asks for.
 type flowNextCallMCPItem struct {
 	ExecutionID    string `json:"executionId"`
 	ChallengeToken string `json:"challengeToken,omitempty"`
@@ -73,87 +72,105 @@ type flowTools struct {
 	serverConfig serverConfigProvider
 }
 
-// registerMCPTools registers the flow execution MCP tools with the server.
+// stepsGuide says how a client drives an onboarding flow, for both onboarding tools.
+const stepsGuide = `The administrator configures the flow, so its steps and inputs vary. Start with every ` +
+	`value you already know in inputs. When a step needs more, the result has status needs_input, the inputs ` +
+	`it asks for, the actions it offers, in error why a value was refused, and in next the call that goes on: ` +
+	`ask the administrator for what's missing, then send next with those inputs, choosing an action when next ` +
+	`has none. status info means a step shows the values in data and asks for nothing, and status complete ` +
+	`means the flow finished.`
+
+// registerMCPTools registers the onboarding MCP tools with the server, one for each onboarding flow.
 func registerMCPTools(server *mcp.Server, tools *flowTools) {
 	mcp.AddTool(server, &mcp.Tool{
-		Name: "execute_flow",
-		Description: `Run one of the flows this server uses to add accounts, the way the Console does. ` +
-			`Pick the flow by what the administrator asks for:
-- agent_onboarding: "add an agent for the support team", "register our inventory bot". It creates the ` +
-			`agent and returns its agentId, clientId and clientSecret.
-- user_onboarding: "add Alice as a user", "invite alice@example.com". It creates the user directly, or ` +
-			`invites them to set up their own account.
+		Name: string(toolOnboardAgents),
+		Description: `Create (onboard) an agent, such as "add an agent for the support team" or "register our ` +
+			`inventory bot". This is the tool for any request to create, add or register an agent on this ` +
+			`server: it runs the agent onboarding flow the server uses, the way the Console does, and returns ` +
+			`the agent's agentId, clientId and clientSecret. The clientSecret is shown only once.
 
-The administrator configures each flow, so its steps and inputs vary. Start with flow and every value you ` +
-			`already know in inputs. When a step needs more, the result has status needs_input, the inputs it ` +
-			`asks for, the actions it offers, in error why a value was refused, and in next the call that goes ` +
-			`on: ask the administrator for what's missing, then send next with those inputs, choosing an action ` +
-			`when next has none. Use ` +
-			`list_organization_units for an ouId; an agent goes under the unit of its agent type, from ` +
-			`list_agent_types. status info means a step shows the values in data and asks for nothing, and ` +
-			`status complete means the flow finished. A clientSecret in data is shown only once.
+` + stepsGuide + ` An agent goes under the unit of its agent type, from list_agent_types.
 
-Change an agent's credential or the ways it acts for users afterwards with update_agent.`,
-		InputSchema: tool.GenerateSchema[executeFlowMCPInput](
-			tool.WithEnum("", "flow", []string{string(flowAgentOnboarding), string(flowUserOnboarding)})),
+Change an agent's credential or the ways it acts for users afterwards with update_agent. To create a user, ` +
+			`use onboard_users.`,
+		InputSchema: tool.GenerateSchema[onboardMCPInput](),
 		Annotations: &mcp.ToolAnnotations{
-			Title:           "Execute Flow",
+			Title:           "Onboard Agents",
 			DestructiveHint: new(false),
 			IdempotentHint:  false,
 			OpenWorldHint:   new(false),
 		},
-	}, tools.executeFlow)
+	}, tools.onboard(flowAgentOnboarding))
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name: string(toolOnboardUsers),
+		Description: `Create (onboard) a user, or invite one, such as "add Alice as a user" or "invite ` +
+			`alice@example.com". This is the tool for any request to create, add or invite a user on this ` +
+			`server: it runs the user onboarding flow the server uses, the way the Console does, which creates ` +
+			`the user directly or invites them to set up their own account.
+
+` + stepsGuide + ` Use list_organization_units for an ouId.
+
+To create an agent, use onboard_agents.`,
+		InputSchema: tool.GenerateSchema[onboardMCPInput](),
+		Annotations: &mcp.ToolAnnotations{
+			Title:           "Onboard Users",
+			DestructiveHint: new(false),
+			IdempotentHint:  false,
+			OpenWorldHint:   new(false),
+		},
+	}, tools.onboard(flowUserOnboarding))
 }
 
-// executeFlow handles the execute_flow tool call.
-func (t *flowTools) executeFlow(ctx context.Context, _ *mcp.CallToolRequest, input executeFlowMCPInput) (
-	*mcp.CallToolResult, *executeFlowMCPResponse, error) {
-	if (input.Flow == "") == (input.ExecutionID == "") {
-		return nil, nil, errors.New("failed to execute flow: give flow to start one, or executionId to go on " +
-			"with a paused one")
-	}
-
-	var step *FlowStep
-	var svcErr *tidcommon.ServiceError
-	if input.Flow != "" {
-		flowID, err := t.onboardingFlowID(ctx, onboardingFlow(input.Flow))
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to execute flow: %w", err)
-		}
-		// The user onboarding flow is not an administration flow, so it starts by type, which runs the
-		// same configured flow.
-		if onboardingFlow(input.Flow) == flowAgentOnboarding {
-			step, svcErr = t.service.ExecuteByID(ctx, flowID, "", true, input.Action, input.Inputs, "", nil)
+// onboard returns the handler of the onboarding tool for purpose. It starts that purpose's flow, or goes on
+// with a paused run of it.
+func (t *flowTools) onboard(purpose onboardingFlow) func(context.Context, *mcp.CallToolRequest,
+	onboardMCPInput) (*mcp.CallToolResult, *onboardMCPResponse, error) {
+	return func(ctx context.Context, _ *mcp.CallToolRequest, input onboardMCPInput) (
+		*mcp.CallToolResult, *onboardMCPResponse, error) {
+		var step *FlowStep
+		var svcErr *tidcommon.ServiceError
+		if input.ExecutionID == "" {
+			flowID, err := t.onboardingFlowID(ctx, purpose)
+			if err != nil {
+				return nil, nil, fmt.Errorf("failed to start onboarding: %w", err)
+			}
+			// The user onboarding flow is not an administration flow, so it starts by type, which runs the
+			// same configured flow.
+			if purpose == flowAgentOnboarding {
+				step, svcErr = t.service.ExecuteByID(ctx, flowID, "", true, input.Action, input.Inputs, "", nil)
+			} else {
+				step, svcErr = t.service.Execute(ctx, "", "", string(providers.FlowTypeUserOnboarding), "", true,
+					input.Action, input.Inputs, "", "", "", nil)
+			}
 		} else {
-			step, svcErr = t.service.Execute(ctx, "", "", string(providers.FlowTypeUserOnboarding), "", true,
-				input.Action, input.Inputs, "", "", "", nil)
-		}
-	} else {
-		pausedAt, err := t.checkOnboardingExecution(ctx, input.ExecutionID)
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to execute flow: %w", err)
-		}
-		step, svcErr = t.service.ExecuteByID(ctx, "", input.ExecutionID, true, input.Action, input.Inputs,
-			input.ChallengeToken, nil)
-		// A step goes on only when an action is sent. A call that left it out and is still paused at the
-		// same step with a single action takes that action, so the run doesn't ask for the same step again.
-		if svcErr == nil && input.Action == "" {
-			if action := t.onlyActionAtSameStep(ctx, input.ExecutionID, pausedAt, step); action != "" {
-				step, svcErr = t.service.ExecuteByID(ctx, "", input.ExecutionID, true, action, input.Inputs,
-					step.ChallengeToken, nil)
+			pausedAt, err := t.checkOnboardingExecution(ctx, input.ExecutionID, purpose)
+			if err != nil {
+				return nil, nil, fmt.Errorf("failed to go on with onboarding: %w", err)
+			}
+			step, svcErr = t.service.ExecuteByID(ctx, "", input.ExecutionID, true, input.Action, input.Inputs,
+				input.ChallengeToken, nil)
+			// A step goes on only when an action is sent. A call that left it out and is still paused at the
+			// same step with a single action takes that action, so the run doesn't ask for the same step
+			// again.
+			if svcErr == nil && input.Action == "" {
+				if action := t.onlyActionAtSameStep(ctx, input.ExecutionID, pausedAt, step); action != "" {
+					step, svcErr = t.service.ExecuteByID(ctx, "", input.ExecutionID, true, action, input.Inputs,
+						step.ChallengeToken, nil)
+				}
 			}
 		}
-	}
-	if svcErr != nil {
-		return nil, nil, fmt.Errorf("failed to execute flow: %s", svcErr.ErrorDescription)
-	}
-	if step.Status == providers.FlowStatusError {
-		if step.Error != nil {
-			return nil, nil, fmt.Errorf("the flow stopped: %s", step.Error.ErrorDescription)
+		if svcErr != nil {
+			return nil, nil, fmt.Errorf("failed to run onboarding: %s", svcErr.ErrorDescription)
 		}
-		return nil, nil, errors.New("the flow stopped with an error")
+		if step.Status == providers.FlowStatusError {
+			if step.Error != nil {
+				return nil, nil, fmt.Errorf("the flow stopped: %s", step.Error.ErrorDescription)
+			}
+			return nil, nil, errors.New("the flow stopped with an error")
+		}
+		return nil, describeFlowStep(step), nil
 	}
-	return nil, describeFlowStep(step), nil
 }
 
 // onboardingFlowID returns the ID of the flow the server configuration names for the given purpose.
@@ -177,10 +194,11 @@ func (t *flowTools) onboardingFlowID(ctx context.Context, purpose onboardingFlow
 	return flow.ID, nil
 }
 
-// checkOnboardingExecution refuses an execution that doesn't run one of the flows execute_flow starts,
-// so an execution ID from elsewhere, such as someone's sign-in, can't be driven through this tool.
-// It returns the node the run is paused at.
-func (t *flowTools) checkOnboardingExecution(ctx context.Context, executionID string) (string, error) {
+// checkOnboardingExecution refuses an execution that doesn't run purpose's flow, so an execution ID from
+// elsewhere, such as someone's sign-in or the other onboarding tool's run, can't be driven through this
+// tool. It returns the node the run is paused at.
+func (t *flowTools) checkOnboardingExecution(ctx context.Context, executionID string, purpose onboardingFlow) (
+	string, error) {
 	flowID, nodeID, svcErr := t.service.GetExecutionPosition(ctx, executionID)
 	if svcErr != nil {
 		if svcErr.Code == ErrorInvalidExecutionID.Code {
@@ -189,12 +207,10 @@ func (t *flowTools) checkOnboardingExecution(ctx context.Context, executionID st
 		}
 		return "", fmt.Errorf("%s", svcErr.ErrorDescription)
 	}
-	for _, purpose := range onboardingFlows {
-		if id, err := t.onboardingFlowID(ctx, purpose); err == nil && id == flowID {
-			return nodeID, nil
-		}
+	if id, err := t.onboardingFlowID(ctx, purpose); err == nil && id == flowID {
+		return nodeID, nil
 	}
-	return "", errors.New("this executionId belongs to a run execute_flow didn't start")
+	return "", fmt.Errorf("this executionId belongs to a run %s didn't start", toolNameOf(purpose))
 }
 
 // onlyActionAtSameStep returns the step's one action when the run is still paused at the node it was
@@ -225,9 +241,9 @@ func stepActions(step *FlowStep) []string {
 	return actions
 }
 
-// describeFlowStep turns a flow step into the execute_flow result.
-func describeFlowStep(step *FlowStep) *executeFlowMCPResponse {
-	result := &executeFlowMCPResponse{Data: step.Data.AdditionalData}
+// describeFlowStep turns a flow step into an onboarding tool result.
+func describeFlowStep(step *FlowStep) *onboardMCPResponse {
+	result := &onboardMCPResponse{Data: step.Data.AdditionalData}
 	notices := []string{}
 	if _, ok := step.Data.AdditionalData[common.DataAgentClientSecret]; ok {
 		notices = append(notices, secretNotice)

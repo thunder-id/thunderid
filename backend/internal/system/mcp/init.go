@@ -145,10 +145,18 @@ func DefaultGuard(jwtService jwt.JWTServiceInterface, revocationEnforcer securit
 		}))
 	}
 
+	// Advertise every root the endpoint admits. A client requests these scopes, and a caller who holds
+	// none of them gets the narrower permissions they hold under each instead, so leaving out the
+	// organization root on a data plane would issue an organization administrator a token with nothing
+	// in it, which the guard above refuses.
+	scopesSupported := []string{rootPerm}
+	if org := security.GetSystemPermissions().Org; org != "" {
+		scopesSupported = append(scopesSupported, org)
+	}
 	metadata := &oauthex.ProtectedResourceMetadata{
 		Resource:             mcpResourceIdentifier,
 		AuthorizationServers: []string{authServer},
-		ScopesSupported:      []string{rootPerm},
+		ScopesSupported:      scopesSupported,
 	}
 
 	return guard, metadata

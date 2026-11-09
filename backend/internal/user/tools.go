@@ -196,7 +196,7 @@ func RegisterMCPTools(server *mcp.Server, userService UserServiceInterface,
 
 // RegisterCreateUserTool registers create_user, which creates a user directly. A control plane
 // registers it. A data plane does not: it creates users through its user onboarding flow, which the
-// execute_flow tool runs.
+// onboard_users tool runs.
 func RegisterCreateUserTool(server *mcp.Server, userService UserServiceInterface,
 	entityService entity.EntityServiceInterface, entityTypeService entitytype.EntityTypeServiceInterface,
 	ouService oupkg.OrganizationUnitServiceInterface) {

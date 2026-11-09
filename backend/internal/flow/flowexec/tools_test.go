@@ -69,18 +69,18 @@ func (s *FlowToolsTestSuite) connect(cfg flowconfig.FlowSectionConfig) {
 	s.Require().NoError(err)
 }
 
-func (s *FlowToolsTestSuite) call(args map[string]any) *mcp.CallToolResult {
+func (s *FlowToolsTestSuite) call(tool onboardingTool, args map[string]any) *mcp.CallToolResult {
 	result, err := s.session.CallTool(context.Background(),
-		&mcp.CallToolParams{Name: "execute_flow", Arguments: args})
+		&mcp.CallToolParams{Name: string(tool), Arguments: args})
 	s.Require().NoError(err)
 	return result
 }
 
-func (s *FlowToolsTestSuite) structured(result *mcp.CallToolResult) executeFlowMCPResponse {
+func (s *FlowToolsTestSuite) structured(result *mcp.CallToolResult) onboardMCPResponse {
 	s.Require().False(result.IsError, "tool returned an error: %v", result.Content)
 	raw, err := json.Marshal(result.StructuredContent)
 	s.Require().NoError(err)
-	var out executeFlowMCPResponse
+	var out onboardMCPResponse
 	s.Require().NoError(json.Unmarshal(raw, &out))
 	return out
 }
@@ -93,30 +93,36 @@ func (s *FlowToolsTestSuite) errorText(result *mcp.CallToolResult) string {
 	return text.Text
 }
 
+// One tool for each onboarding flow, so a client picks the flow by the tool's name, and each names the
+// other for the other kind of account.
 func (s *FlowToolsTestSuite) TestRegisterMCPTools() {
 	result, err := s.session.ListTools(context.Background(), nil)
 	s.Require().NoError(err)
-	s.Require().Len(result.Tools, 1)
-	t := result.Tools[0]
-	s.Equal("execute_flow", t.Name)
-	s.NotContains(t.Description, "—")
-	s.NotContains(t.Description, "--")
-	s.False(t.Annotations.ReadOnlyHint)
-	s.False(*t.Annotations.DestructiveHint)
-	s.False(t.Annotations.IdempotentHint)
-	s.False(*t.Annotations.OpenWorldHint)
+	tools := map[string]*mcp.Tool{}
+	for _, t := range result.Tools {
+		tools[t.Name] = t
+		s.NotContains(t.Description, "—", t.Name)
+		s.NotContains(t.Description, "--", t.Name)
+		s.False(t.Annotations.ReadOnlyHint, t.Name)
+		s.False(*t.Annotations.DestructiveHint, t.Name)
+		s.False(t.Annotations.IdempotentHint, t.Name)
+		s.False(*t.Annotations.OpenWorldHint, t.Name)
 
-	var schema struct {
-		Properties map[string]struct {
-			Enum []string `json:"enum"`
-		} `json:"properties"`
+		var schema struct {
+			Properties map[string]any `json:"properties"`
+		}
+		raw, err := json.Marshal(t.InputSchema)
+		s.Require().NoError(err)
+		s.Require().NoError(json.Unmarshal(raw, &schema))
+		s.NotContains(schema.Properties, "flow", "%s runs one flow, so it takes no flow input", t.Name)
 	}
-	raw, err := json.Marshal(t.InputSchema)
-	s.Require().NoError(err)
-	s.Require().NoError(json.Unmarshal(raw, &schema))
-	s.ElementsMatch([]string{"agent_onboarding", "user_onboarding"}, schema.Properties["flow"].Enum)
-
-	s.True(s.call(map[string]any{"flow": "authentication"}).IsError, "an unlisted flow is refused")
+	s.Require().Len(tools, 2)
+	s.Require().Contains(tools, "onboard_agents")
+	s.Require().Contains(tools, "onboard_users")
+	s.Contains(tools["onboard_agents"].Description, "Create (onboard) an agent")
+	s.Contains(tools["onboard_agents"].Description, "onboard_users")
+	s.Contains(tools["onboard_users"].Description, "Create (onboard) a user")
+	s.Contains(tools["onboard_users"].Description, "onboard_agents")
 }
 
 // Agent onboarding runs the configured administration flow by ID, with every input at once, and the
@@ -132,8 +138,8 @@ func (s *FlowToolsTestSuite) TestAgentOnboarding_Completes() {
 			common.DataAgentClientSecret: "s3cret"}},
 	}, (*tidcommon.ServiceError)(nil)).Once()
 
-	out := s.structured(s.call(map[string]any{
-		"flow": "agent_onboarding", "inputs": map[string]any{"name": "inventory-bot", "ouId": "ou-1"}}))
+	out := s.structured(s.call(toolOnboardAgents, map[string]any{
+		"inputs": map[string]any{"name": "inventory-bot", "ouId": "ou-1"}}))
 
 	s.Equal(flowStatusComplete, out.Status)
 	s.Empty(out.ExecutionID, "a finished run has nothing to go on with")
@@ -169,7 +175,7 @@ func (s *FlowToolsTestSuite) TestAgentOnboarding_NeedsInput() {
 		},
 	}, (*tidcommon.ServiceError)(nil)).Once()
 
-	out := s.structured(s.call(map[string]any{"flow": "agent_onboarding"}))
+	out := s.structured(s.call(toolOnboardAgents, map[string]any{}))
 
 	s.Equal(flowStatusNeedsInput, out.Status)
 	s.Equal("exec-1", out.ExecutionID)
@@ -200,7 +206,7 @@ func (s *FlowToolsTestSuite) TestUserOnboarding_StartsByType() {
 				{Ref: "action_send_email_invite"}, {Ref: "action_share_manually"}}},
 		}, (*tidcommon.ServiceError)(nil)).Once()
 
-	out := s.structured(s.call(map[string]any{"flow": "user_onboarding", "action": "action_invite_user",
+	out := s.structured(s.call(toolOnboardUsers, map[string]any{"action": "action_invite_user",
 		"inputs": map[string]any{"email": "alice@example.com"}}))
 
 	s.Equal(flowStatusNeedsInput, out.Status)
@@ -220,8 +226,8 @@ func (s *FlowToolsTestSuite) TestContinue_InfoStep() {
 		Data:           FlowData{AdditionalData: map[string]string{common.DataInviteLink: "https://invite"}},
 	}, (*tidcommon.ServiceError)(nil)).Once()
 
-	out := s.structured(s.call(map[string]any{"executionId": "exec-2", "challengeToken": "token-1",
-		"action": "action_share_manually"}))
+	out := s.structured(s.call(toolOnboardUsers, map[string]any{"executionId": "exec-2",
+		"challengeToken": "token-1", "action": "action_share_manually"}))
 
 	s.Equal(flowStatusInfo, out.Status)
 	s.Equal("token-2", out.ChallengeToken, "the next call needs the rotated token")
@@ -238,23 +244,15 @@ func (s *FlowToolsTestSuite) TestRefusals() {
 		name     string
 		cfg      *flowconfig.FlowSectionConfig
 		prepare  func()
+		tool     onboardingTool
 		args     map[string]any
 		expected string
 	}{
 		{
-			name:     "neither flow nor executionId",
-			args:     map[string]any{},
-			expected: "give flow to start one",
-		},
-		{
-			name:     "both flow and executionId",
-			args:     map[string]any{"flow": "agent_onboarding", "executionId": "exec-1"},
-			expected: "give flow to start one",
-		},
-		{
 			name:     "flow not configured",
 			cfg:      &flowconfig.FlowSectionConfig{},
-			args:     map[string]any{"flow": "agent_onboarding"},
+			tool:     toolOnboardAgents,
+			args:     map[string]any{},
 			expected: "set flow.agentOnboardingFlow.defaultHandle",
 		},
 		{
@@ -267,7 +265,8 @@ func (s *FlowToolsTestSuite) TestRefusals() {
 						Type: tidcommon.ClientErrorType, Code: "FLM-1003",
 						ErrorDescription: tidcommon.I18nMessage{DefaultValue: "flow not found"}}).Once()
 			},
-			args:     map[string]any{"flow": "user_onboarding"},
+			tool:     toolOnboardUsers,
+			args:     map[string]any{},
 			expected: `the configured user_onboarding flow "gone" can't be used: flow not found`,
 		},
 		{
@@ -276,8 +275,19 @@ func (s *FlowToolsTestSuite) TestRefusals() {
 				s.service.On("GetExecutionPosition", mock.Anything, "sign-in").
 					Return("auth-flow-id", "prompt_credentials", (*tidcommon.ServiceError)(nil)).Once()
 			},
+			tool:     toolOnboardAgents,
 			args:     map[string]any{"executionId": "sign-in"},
-			expected: "didn't start",
+			expected: "belongs to a run onboard_agents didn't start",
+		},
+		{
+			name: "a run of the other onboarding tool",
+			prepare: func() {
+				s.service.On("GetExecutionPosition", mock.Anything, "agent-run").
+					Return(toolAgentFlowID, "prompt_owner", (*tidcommon.ServiceError)(nil)).Once()
+			},
+			tool:     toolOnboardUsers,
+			args:     map[string]any{"executionId": "agent-run"},
+			expected: "belongs to a run onboard_users didn't start",
 		},
 		{
 			name: "finished or expired execution",
@@ -285,6 +295,7 @@ func (s *FlowToolsTestSuite) TestRefusals() {
 				s.service.On("GetExecutionPosition", mock.Anything, "old").
 					Return("", "", &ErrorInvalidExecutionID).Once()
 			},
+			tool:     toolOnboardAgents,
 			args:     map[string]any{"executionId": "old"},
 			expected: "finished or expired",
 		},
@@ -295,7 +306,8 @@ func (s *FlowToolsTestSuite) TestRefusals() {
 					mock.Anything).Return(&FlowStep{Status: providers.FlowStatusError, Error: stepErr},
 					(*tidcommon.ServiceError)(nil)).Once()
 			},
-			args:     map[string]any{"flow": "agent_onboarding"},
+			tool:     toolOnboardAgents,
+			args:     map[string]any{},
 			expected: "the flow stopped: the owner must be a user",
 		},
 		{
@@ -304,8 +316,9 @@ func (s *FlowToolsTestSuite) TestRefusals() {
 				s.service.On("ExecuteByID", mock.Anything, toolAgentFlowID, "", true, "", mock.Anything, "",
 					mock.Anything).Return((*FlowStep)(nil), &ErrorAdministrationPermissionRequired).Once()
 			},
-			args:     map[string]any{"flow": "agent_onboarding"},
-			expected: "failed to execute flow",
+			tool:     toolOnboardAgents,
+			args:     map[string]any{},
+			expected: "failed to run onboarding",
 		},
 	}
 	for _, tc := range cases {
@@ -318,7 +331,7 @@ func (s *FlowToolsTestSuite) TestRefusals() {
 			if tc.prepare != nil {
 				tc.prepare()
 			}
-			s.Contains(s.errorText(s.call(tc.args)), tc.expected)
+			s.Contains(s.errorText(s.call(tc.tool, tc.args)), tc.expected)
 		})
 	}
 }
@@ -341,7 +354,8 @@ func (s *FlowToolsTestSuite) TestContinue_TakesTheOnlyActionAtTheSameStep() {
 			Actions: []common.Action{{Ref: "action_agent_details"}}},
 	}, (*tidcommon.ServiceError)(nil)).Once()
 
-	out := s.structured(s.call(map[string]any{"executionId": "exec-1", "challengeToken": "token-1"}))
+	out := s.structured(s.call(toolOnboardAgents, map[string]any{"executionId": "exec-1",
+		"challengeToken": "token-1"}))
 
 	s.Equal([]string{"action_agent_details"}, out.Actions, "the run moved past the owner step")
 	s.Equal("token-3", out.Next.ChallengeToken)
@@ -361,8 +375,8 @@ func (s *FlowToolsTestSuite) TestContinue_LeavesANewStepAlone() {
 			Actions: []common.Action{{Ref: "action_agent_details"}}},
 	}, (*tidcommon.ServiceError)(nil)).Once()
 
-	out := s.structured(s.call(map[string]any{"executionId": "exec-1", "challengeToken": "token-1",
-		"inputs": map[string]any{"owner": "u1"}}))
+	out := s.structured(s.call(toolOnboardAgents, map[string]any{"executionId": "exec-1",
+		"challengeToken": "token-1", "inputs": map[string]any{"owner": "u1"}}))
 
 	s.Equal(flowStatusNeedsInput, out.Status)
 	s.Equal([]string{"action_agent_details"}, out.Actions)

@@ -53,29 +53,43 @@ const (
 	flowInitiationDevMode
 )
 
-// onboardingFlow is a flow execute_flow starts.
+// onboardingFlow is a flow an onboarding tool starts.
 type onboardingFlow string
 
-// Flows execute_flow starts.
+// Flows the onboarding tools start.
 const (
 	flowAgentOnboarding onboardingFlow = "agent_onboarding"
 	flowUserOnboarding  onboardingFlow = "user_onboarding"
 )
 
-// onboardingFlows lists every flow execute_flow starts.
-var onboardingFlows = []onboardingFlow{flowAgentOnboarding, flowUserOnboarding}
+// onboardingTool is the name of an onboarding MCP tool.
+type onboardingTool string
 
-// flowRunStatus is the state execute_flow reports a run in.
+// The onboarding tools, one for each onboarding flow.
+const (
+	toolOnboardAgents onboardingTool = "onboard_agents"
+	toolOnboardUsers  onboardingTool = "onboard_users"
+)
+
+// toolNameOf returns the tool that runs purpose's flow.
+func toolNameOf(purpose onboardingFlow) onboardingTool {
+	if purpose == flowAgentOnboarding {
+		return toolOnboardAgents
+	}
+	return toolOnboardUsers
+}
+
+// flowRunStatus is the state an onboarding tool reports a run in.
 type flowRunStatus string
 
-// States execute_flow reports a run in.
+// States an onboarding tool reports a run in.
 const (
 	flowStatusComplete   flowRunStatus = "complete"
 	flowStatusNeedsInput flowRunStatus = "needs_input"
 	flowStatusInfo       flowRunStatus = "info"
 )
 
-// execute_flow notices.
+// Onboarding tool notices.
 const (
 	// secretNotice goes with a client secret a flow returns.
 	secretNotice = "clientSecret is shown only this once, and no tool can return it again. Hand it to the " +
@@ -88,5 +102,5 @@ const (
 	// infoNotice goes with a step that only shows values.
 	infoNotice = "This step shows the values in data and asks for nothing. If it says someone else " +
 		"finishes the flow, such as an invited user opening their link, nothing more is needed from you. " +
-		"Otherwise call execute_flow with executionId to go on."
+		"Otherwise call the same tool with executionId to go on."
 )
