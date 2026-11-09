@@ -323,3 +323,21 @@ func (s *ContextTestSuite) TestGetClientWithWrongType() {
 	s.Empty(address)
 	s.Empty(userAgent)
 }
+
+func (s *ContextTestSuite) TestRequestMetadataRoundTrips() {
+	md := RequestMetadata{ClientIP: "203.0.113.10", UserAgent: "Mozilla/5.0"}
+
+	s.Equal(md, GetRequestMetadata(WithRequestMetadata(context.Background(), md)))
+}
+
+func (s *ContextTestSuite) TestGetRequestMetadataWithoutOne() {
+	s.Equal(RequestMetadata{}, GetRequestMetadata(context.Background()))
+	s.Equal(RequestMetadata{}, GetRequestMetadata(nil)) //nolint:staticcheck // Testing nil context handling
+}
+
+func (s *ContextTestSuite) TestWithRequestMetadataHandlesANilContext() {
+	md := RequestMetadata{ClientIP: "203.0.113.10"}
+	ctx := WithRequestMetadata(nil, md) //nolint:staticcheck // Testing nil context handling
+
+	s.Equal(md, GetRequestMetadata(ctx))
+}

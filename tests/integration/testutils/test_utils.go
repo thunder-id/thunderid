@@ -1227,6 +1227,34 @@ func copyConfigSection(section interface{}) map[string]interface{} {
 	return copied
 }
 
+// PatchServerConfig sets one key of the server section in the live deployment.yaml, keeping the rest
+// of the section. A nil value removes the key. Restart the server for the change to take effect.
+func PatchServerConfig(key string, value interface{}) error {
+	current, err := ReadDeploymentConfigKey("server")
+	if err != nil {
+		return err
+	}
+	server := copyConfigSection(current)
+	if value == nil {
+		delete(server, key)
+	} else {
+		server[key] = value
+	}
+	return PatchDeploymentConfig(map[string]interface{}{"server": server})
+}
+
+// ReadServerLog returns the output of the servers started from this test package. Servers started
+// before the package ran write elsewhere, so call it after RestartServer or StartServerExpectingExit.
+func ReadServerLog() (string, error) {
+	ensureInitialized()
+
+	data, err := os.ReadFile(ServerLogPath())
+	if err != nil {
+		return "", fmt.Errorf("failed to read the server log: %w", err)
+	}
+	return string(data), nil
+}
+
 // ensureDirectAuthSecretInDeploymentConfig guarantees server.security.direct_auth_secret is set to the
 // fixture value in the extracted product's deployment.yaml. The server is secure by default (an empty
 // secret blocks the Direct API endpoints), and suites that rewrite deployment.yaml via UpdateDeploymentConfig

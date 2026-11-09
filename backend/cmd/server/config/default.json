@@ -6,6 +6,7 @@
     "identifier": "default-deployment",
     "product_name": "ThunderID",
     "system_ou_id": "",
+    "trusted_proxies": [],
     "timeouts": {
       "read_header_seconds": 10,
       "write_seconds": 10,
