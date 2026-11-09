@@ -286,8 +286,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	group.RegisterMCPTools(mcpServer, groupService, entityService, ouService, false)
 	// The control plane creates users directly, so only this plane registers create_user.
 	user.RegisterMCPTools(mcpServer, userService, entityService, entityTypeService, roleService, resourceService)
-	user.RegisterCreateUserTool(mcpServer, userService, entityService, entityTypeService, ouService,
-		roleAssignmentService, groupService)
+	user.RegisterCreateUserTool(mcpServer, userService, entityService, entityTypeService, ouService)
 	exporters = append(exporters, roleExporter)
 
 	// Two-phase initialization: inject user/group/role resolvers into OU service.

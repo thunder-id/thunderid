@@ -19,7 +19,6 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/entitytype"
-	"github.com/thunder-id/thunderid/internal/group"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/resource"
 	"github.com/thunder-id/thunderid/internal/role"
@@ -38,8 +37,6 @@ type userTools struct {
 	roleService       role.RoleServiceInterface
 	resourceService   resource.ResourceServiceInterface
 	ouService         oupkg.OrganizationUnitServiceInterface
-	assignmentService role.RoleAssignmentServiceInterface
-	groupService      group.GroupServiceInterface
 }
 
 // listUsersMCPInput is the input of the list_users tool.
@@ -78,8 +75,6 @@ type createUserMCPInput struct {
 	Attributes map[string]any `json:"attributes" jsonschema:"The user's attributes, such as username and email, as the user type defines them. Credentials such as a password can't be given here."`
 	OUID       string         `json:"ouId,omitempty" jsonschema:"ID of the organization unit the user belongs to. Defaults to the Default organization unit."`
 	ProjectID  string         `json:"projectId,omitempty" jsonschema:"ID of the project the user belongs to, from list_projects. Leave it out for a user of the organization. Without ouId, a user in a project goes to the system organization unit."`
-	Roles      []string       `json:"roles,omitempty" jsonschema:"IDs of roles to grant the user, from list_roles"`
-	Groups     []string       `json:"groups,omitempty" jsonschema:"IDs of groups to add the user to, from list_groups"`
 }
 
 // userMCPItem is one user in a list.
@@ -137,10 +132,8 @@ type userMCPDetails struct {
 
 // createUserMCPResponse is the create_user output.
 type createUserMCPResponse struct {
-	User         userMCPDetails `json:"user"`
-	RolesGranted []string       `json:"rolesGranted"`
-	GroupsJoined []string       `json:"groupsJoined"`
-	Notice       string         `json:"notice,omitempty"`
+	User   userMCPDetails `json:"user"`
+	Notice string         `json:"notice,omitempty"`
 }
 
 // credentialNotice says how a user created without a credential gets one.
@@ -206,25 +199,23 @@ func RegisterMCPTools(server *mcp.Server, userService UserServiceInterface,
 // execute_flow tool runs.
 func RegisterCreateUserTool(server *mcp.Server, userService UserServiceInterface,
 	entityService entity.EntityServiceInterface, entityTypeService entitytype.EntityTypeServiceInterface,
-	ouService oupkg.OrganizationUnitServiceInterface, assignmentService role.RoleAssignmentServiceInterface,
-	groupService group.GroupServiceInterface) {
+	ouService oupkg.OrganizationUnitServiceInterface) {
 	tools := &userTools{
 		logger:            log.GetLogger().With(log.String(log.LoggerKeyComponentName, "UserMCPTools")),
 		userService:       userService,
 		entityService:     entityService,
 		entityTypeService: entityTypeService,
 		ouService:         ouService,
-		assignmentService: assignmentService,
-		groupService:      groupService,
 	}
 	mcp.AddTool(server, &mcp.Tool{
 		Name: "create_user",
-		Description: `Create a user, grant their roles and add them to groups, in one call. Call ` +
+		Description: `Create a user. Call ` +
 			`list_user_types first for the user type's attributes, and list_users to check the user doesn't ` +
 			`already exist. Without ouId, the user goes in the Default organization unit. No password or ` +
 			`other credential can be given: the user sets one through account recovery, or an administrator ` +
 			`sets it in the Console. Every problem with the input is reported in one error, and nothing is ` +
-			`created then.`,
+			`created then. To give the user access, add them to groups with update_group_memberships, or ` +
+			`grant them roles with update_role_assignments.`,
 		InputSchema: tool.GenerateSchema[createUserMCPInput](),
 		Annotations: &mcp.ToolAnnotations{
 			Title: "Create User", DestructiveHint: new(false), IdempotentHint: false, OpenWorldHint: new(false)},
@@ -328,8 +319,7 @@ func (t *userTools) updateUser(ctx context.Context, _ *mcp.CallToolRequest, inpu
 	return nil, describeUser(updated, schema), nil
 }
 
-// createUser handles the create_user tool call. The user is created first; granting roles and adding
-// groups follow, and a failure there is reported with what was already done.
+// createUser handles the create_user tool call.
 func (t *userTools) createUser(ctx context.Context, _ *mcp.CallToolRequest, input createUserMCPInput) (
 	*mcp.CallToolResult, *createUserMCPResponse, error) {
 	schema, err := t.schemaOf(ctx, input.UserType)
@@ -373,26 +363,7 @@ func (t *userTools) createUser(ctx context.Context, _ *mcp.CallToolRequest, inpu
 		return nil, nil, fmt.Errorf("failed to create user: %s", svcErr.ErrorDescription)
 	}
 
-	out := &createUserMCPResponse{RolesGranted: []string{}, GroupsJoined: []string{}, Notice: credentialNotice}
-	for _, roleID := range input.Roles {
-		if svcErr := t.assignmentService.AddAssignments(ctx, roleID, "",
-			[]role.RoleAssignment{{ID: created.ID, Type: role.AssigneeTypeUser}}); svcErr != nil {
-			return nil, nil, fmt.Errorf("the user was created with ID %s, but granting role %s failed: %s. "+
-				"Roles granted: %v. Groups joined: none", created.ID, roleID, svcErr.ErrorDescription,
-				out.RolesGranted)
-		}
-		out.RolesGranted = append(out.RolesGranted, roleID)
-	}
-	for _, groupID := range input.Groups {
-		if _, svcErr := t.groupService.AddGroupMembers(ctx, groupID,
-			[]group.Member{{ID: created.ID, Type: group.MemberTypeUser}}); svcErr != nil {
-			return nil, nil, fmt.Errorf("the user was created with ID %s, but adding them to group %s failed: "+
-				"%s. Roles granted: %v. Groups joined: %v", created.ID, groupID, svcErr.ErrorDescription,
-				out.RolesGranted, out.GroupsJoined)
-		}
-		out.GroupsJoined = append(out.GroupsJoined, groupID)
-	}
-
+	out := &createUserMCPResponse{Notice: credentialNotice}
 	stored, svcErr := t.userService.GetUser(ctx, created.ID, true)
 	if svcErr != nil {
 		stored = created
