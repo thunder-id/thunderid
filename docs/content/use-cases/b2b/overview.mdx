@@ -1,0 +1,107 @@
+---
+title: Understand It
+docType: use-case
+sidebar_position: 1
+description: Why a B2B SaaS application needs organizations, and how an identity layer keeps every customer company's people, sign-in, and access apart in one deployment.
+---
+
+# Understand It
+
+A company signs up for your product. Its office manager creates an account and the company in the same visit, then
+invites the team. A month later a larger customer signs up, but its IT department will not hand out yet another
+password: its employees must sign in through the company's own identity provider. Then a consultant starts working with
+both companies at once.
+
+To each company, your product is simply the tool its people use. To your backend, every request now raises questions
+that a consumer application never had to answer:
+
+- Which company is this person acting for right now?
+- How did they come to belong to that company, and who decided it?
+- What are they allowed to do there, and only there?
+- Who runs each company's team: your staff, or the company's own administrator?
+
+Handling those questions is what it takes to build identity for a B2B SaaS application, and the sign-in screen is the
+smallest part of it.
+
+## The Problem
+
+A first version usually treats every user as an individual with a `company` field on their profile. As customers
+arrive, the same challenges surface whatever the product is:
+
+- **Self-service company onboarding.** A new customer expects to create their company and its first administrator in
+  one sign-up, without a sales call or a ticket to your team.
+- **One person, several companies.** Consultants, agencies, and parent-company staff need one account that can act for
+  more than one customer, with different permissions in each.
+- **Each company's own sign-in.** Larger customers require their employees to sign in through the company's identity
+  provider (IdP), the system such as Okta or Microsoft Entra ID that already holds their workforce accounts.
+- **Delegated administration.** Each customer wants its own administrator to add people, form teams, and grant access,
+  without filing requests with you and without ever seeing another customer's people.
+- **Isolation on every request.** Every API call has to know which company it acts for, so one customer's data never
+  leaks into another's, even when the same person belongs to both.
+- **One deployment for every customer.** Roles, sign-in journeys, and the application itself should be defined once
+  and reach every company, including the ones that sign up tomorrow.
+
+## How It Works
+
+Solving this puts a dedicated **identity layer** between your application and the people who use it, and models each
+customer company as an **organization** inside it. A platform organization, owned by your team, defines your
+application, its roles, and its sign-in journeys once, and shares them with every customer organization beneath it.
+Each customer organization holds its own people and its own settings, such as which identity provider its employees
+sign in with.
+
+When someone signs in, the identity layer decides which organization the sign-in lands in, checks that the person
+belongs there, and issues a signed **token**: a piece of data your application presents to its APIs, signed so the
+APIs can detect any change to it. The token names the organization and lists only the roles the person holds in it.
+
+<B2BSolutionArchitectureDiagram />
+
+The organization is decided once, at sign-in, and travels in the token. Every API call after that knows which company
+it acts for without asking again, and a person who belongs to two companies holds a separate token for each.
+
+## What You Can Build
+
+<ProductName /> covers each stage of a customer company's life on your platform. Every journey below runs as a
+[flow](../../guides/flows/what-are-flows.mdx), the sequence of screens and checks one journey runs, which you build from
+a template in a visual designer and change without redeploying your application.
+
+- **Company sign-up.** One sign-up creates the person's account, creates the company's organization, and makes that
+  person its first administrator. You choose whether the account lives inside the new organization or stays on the
+  platform so it can join other companies later. An **HTTP Request** step can call your own services during sign-up,
+  for example to check billing details or to tell your CRM about the new customer. See
+  [Let Companies Sign Up](./journeys/organization-sign-up.mdx).
+- **Invitations.** An organization's administrator invites people by email, whether or not they already have an account
+  on your platform. Accepting adds them to the organization with the roles the administrator picked, and creates the
+  account first when there is none. See [Invite People In](./journeys/invite-members.mdx).
+- **Enterprise identity per organization.** Each company can connect its own OpenID Connect identity provider. Its
+  employees' accounts are created inside the organization the first time they sign in, so nobody has to add them in
+  advance, and [account linking](../../guides/identity-providers/link-accounts.mdx) joins a federated sign-in to an
+  account that already exists. See [Plug In an Enterprise IdP](./journeys/enterprise-sso.mdx).
+- **Sign-in that knows the organization.** One shared sign-in journey serves every company. A person reaches their
+  organization by its handle, through a link your application sends, or by choosing after sign-in when they belong to
+  several. Each organization can point the shared journey at its own identity provider. See
+  [Switch Organizations](./journeys/switch-organizations.mdx).
+- **Roles defined once, assigned per organization.** Roles and their permissions live in the platform organization and
+  are shared with every company. Each company assigns them to its own people, and a token carries only the roles held
+  in the organization it names.
+- **Delegated administration.** Management permissions are confined to the organization a token names, so a company's
+  administrator manages users, groups, and role assignments in that company only. See
+  [Let Org Admins Manage Teams](./journeys/delegated-administration.mdx).
+- **Policy-based sharing.** Applications, roles, flows, identity provider connections, users, and agents can be shared
+  with chosen organizations or all of them, with rules for what each organization may change. See
+  [Resource Sharing Across Organization Units](../../key-concepts/resource-sharing.mdx).
+- **Account recovery, consent, and protection.** Password recovery runs from the **Email Link Password Recovery** and
+  **SMS OTP Password Recovery** templates. A [consent](../../guides/consent.mdx) step asks people before their data is
+  shared, and [account protection](../../guides/account-protection/overview.mdx) locks or suspends accounts that need
+  it.
+- **SDK components.** The React SDK adds an organization switcher, user, group, and role management views, and
+  invitation screens to your own application. See [B2B SDK Components](./sdk-components.mdx).
+
+:::tip Not Your Pattern?
+- Users are individual consumers who each own their account: see [Secure Consumer Access to Your Application](../b2c/index.mdx).
+- Users are autonomous agents or machine-to-machine clients: see [Identity for AI Agents](../ai-agents/index.mdx).
+:::
+
+None of this locks you into a proprietary protocol: sign-in runs on standard
+[OAuth2 and OpenID Connect](../../guides/protocols/oauth-oidc/index.mdx), so your team's existing tooling and knowledge
+already apply. By the end of this section, companies sign themselves up, bring in their people by invitation or through
+their own identity provider, and manage their own teams, all from one shared application.

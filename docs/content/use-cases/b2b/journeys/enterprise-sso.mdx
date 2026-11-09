@@ -1,0 +1,181 @@
+---
+title: Plug In an Enterprise IdP
+sidebar_label: Plug In an Enterprise IdP
+docType: guide
+sidebar_position: 3
+description: Let each customer organization sign its employees in through its own OpenID Connect identity provider, set up by your team or by the customer's own admin.
+---
+
+# Plug In an Enterprise IdP
+
+Initech already manages its employees in its own identity provider (IdP), the corporate directory every Initech application signs in through. Its IT team will not create a second password for every employee in Wayfinder Enterprise, and it wants a person who leaves Initech to lose access to Wayfinder on the same day. So an Initech employee who signs in to Wayfinder should be sent to Initech's IdP, and come back signed in to the Initech organization. Northstar Labs, meanwhile, keeps signing in with passwords.
+
+One sign-in flow serves both. The flow is owned by Wayfinder Enterprise and shared with every company, and each company sets which IdP its own employees use.
+
+## How It Works
+
+Three pieces make an IdP per organization:
+
+- **A connection owned by the organization.** An OpenID Connect (OIDC) connection holds the client ID, secret, and endpoints of Initech's IdP. Every connection belongs to exactly one organization unit (OU), set when it is created and never changed afterward, so Initech's connection is Initech's own. See [Organization Unit Ownership](../../../guides/identity-providers/manage-identity-providers.mdx#organization-unit-ownership).
+- **A shared sign-in flow with a variable.** The **Basic + Enterprise SSO** template declares a variable, `enterpriseIdp`, that holds a connection. Its sign-in step reads the connection from that variable, so the same flow uses a different IdP for each organization.
+- **A value per organization.** The flow's sharing policy lets each company set its own value of `enterpriseIdp`. Initech sets its connection. Northstar sets nothing and keeps signing in with passwords.
+
+An employee reaches the right IdP by typing their organization's handle:
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Emp as Initech employee
+  participant App as Wayfinder Enterprise
+  participant TID as ThunderID
+  participant Corp as Initech IdP
+  Emp->>App: Sign in
+  App->>TID: Redirect to sign in
+  Emp->>TID: Sign in with SSO, organization handle "initech"
+  TID->>TID: Resolve the handle to the Initech organization
+  TID->>TID: Read Initech's value of enterpriseIdp
+  TID->>Corp: Redirect to Initech's IdP
+  Corp-->>TID: Signed-in employee
+  TID->>TID: Create the employee in Initech on first sign-in
+  TID-->>App: Tokens for the Initech organization
+```
+
+The handle resolves only to a direct child of the platform organization, so an employee cannot reach an organization outside Wayfinder Enterprise. A company that has not set a connection cannot use the SSO path: its employees see "The flow is not available for this organization yet. Contact your administrator" (`FES-1022`).
+
+## Set Up the Shared Sign-In Flow
+
+Your team does this once, for every company.
+
+<Stepper stepNode="h3" as="h3">
+
+### Create the Flow From the Template
+
+In the Console, navigate to **Flows** and create a sign-in flow owned by **Wayfinder Enterprise** from the **Basic + Enterprise SSO** template.
+
+### Set the Parent Organization
+
+The template has two **Resolve OU** steps, one for the SSO path and one after a password sign-in. On both, set **Parent OU ID** to the ID of Wayfinder Enterprise. Click **Save**.
+
+### Give First-Time Employees a Role
+
+The template creates an employee in the organization on their first SSO sign-in, but assigns no role. To give them one, select the **Provisioning** step on the SSO path and set **Assign role** to the ID of **Wayfinder Member**. The role must be shared with the company's organization.
+
+### Let Each Company Set Its IdP
+
+Share the flow with all child OUs of Wayfinder Enterprise, and make `enterpriseIdp` editable in the policy. In the Console, open the flow and click **Share**. Grant all child organization units, then turn on **Editable** for `enterpriseIdp`.
+
+Through the API, send the same policy to the server where you manage flows: the Control Plane, at `https://localhost:8095` in the quick start setup, or the Data Plane when you run one on its own. `$TOKEN` is an access token that holds `system:flow:update` in Wayfinder Enterprise:
+
+```bash
+curl -X POST https://localhost:8095/flows/<flow-id>/sharing-policies \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "childUnits": {
+      "mode": "all",
+      "overlayRules": {
+        "variables.enterpriseIdp": { "editable": true }
+      }
+    }
+  }'
+```
+
+See [Share a Flow](../../../guides/flows/share-a-flow.mdx) for the other terms a policy can set, such as limiting the connections a company may choose.
+
+### Attach the Flow to the Application
+
+Navigate to **Applications**, open the Wayfinder Enterprise application, and select the flow under **Authentication Flow** on the **Flows** tab. Click **Save**.
+
+</Stepper>
+
+When an IdP signs a first-time employee in, the provisioning step creates the account in the employee's organization with the application's allowed user type that has self registration turned on. Allow only one such user type on the application, or provisioning fails. If the IdP does not return an attribute the user type requires, such as `username` in the `Wayfinder User` type, the flow asks the employee for it.
+
+## Connect a Company's IdP
+
+Either your team connects the IdP for the company, or the company's admin does it from inside your application. Both write the same two things: a connection owned by the company, and the company's value of `enterpriseIdp`.
+
+Start on the company's side. In Initech's IdP, register an OIDC application with the authorization code grant, and add the callback of the Gate as its redirect URI. The Gate is the set of hosted sign-in pages <ProductName /> serves under `/gate`, so on a local server the redirect URI is `https://localhost:8090/gate/callback`. Note the client ID, client secret, and the IdP's endpoints.
+
+### Your Team Connects It
+
+A company's connection and its value of `enterpriseIdp` belong to that company, so write them on the Data Plane, where the company's sign-ins run. `$INITECH_TOKEN` is the backend client's token for Initech, from [Request a Token for the Admin's Organization](./delegated-administration.mdx#request-a-token-for-the-admins-organization).
+
+Create the connection in Initech's organization through the Connections API, with Initech's ID as `ouId`:
+
+```bash
+curl -X POST https://localhost:8090/connections/oidc \
+  -H "Authorization: Bearer $INITECH_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Initech Directory",
+    "ouId": "<initech-ou-id>",
+    "clientId": "<client-id-from-initech>",
+    "clientSecret": "<client-secret-from-initech>",
+    "redirectUri": "https://localhost:8090/gate/callback",
+    "authorizationEndpoint": "https://idp.initech.example/oauth2/authorize",
+    "tokenEndpoint": "https://idp.initech.example/oauth2/token",
+    "userInfoEndpoint": "https://idp.initech.example/oauth2/userinfo",
+    "jwksEndpoint": "https://idp.initech.example/oauth2/jwks",
+    "issuer": "https://idp.initech.example",
+    "scopes": ["openid", "profile", "email"]
+  }'
+```
+
+Then set Initech's value of the variable to the new connection's `id`:
+
+```bash
+curl -X PUT https://localhost:8090/flows/<flow-id>/variables \
+  -H "Authorization: Bearer $INITECH_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "ouId": "<initech-ou-id>",
+    "values": { "enterpriseIdp": "<connection-id>" }
+  }'
+```
+
+See [Add an OIDC Identity Provider](../../../guides/identity-providers/add-oidc-provider.mdx) for every connection field, including attribute mapping.
+
+### The Company's Admin Connects It
+
+Self-service lets Initech's admin connect the IdP the day they need it, without a support ticket to your team. Build an **Enterprise SSO** page in your application with two parts:
+
+1. **A form for the connection.** The SDKs have no form for creating a connection yet, so build one that collects the fields above. Send it to your application's backend, which creates the connection with `POST /connections/oidc` and sets `ouId` to the admin's own organization, never to a value from the browser.
+2. **A picker for the connection.** The React SDK's `FlowVariablesForm` shows the variables a shared flow opens to an organization, offers the connections the organization owns or was shared, and saves the organization's values:
+
+```jsx title="src/EnterpriseSso.jsx" showLineNumbers
+import { FlowVariablesForm, useThunderID } from '@thunderid/react'
+
+export default function EnterpriseSso({ signInFlowId }) {
+  const { currentOrganizationUnit } = useThunderID()
+
+  return (
+    <FlowVariablesForm
+      flowId={signInFlowId}
+      ouId={currentOrganizationUnit?.id}
+      title="Enterprise SSO connection"
+    />
+  )
+}
+```
+
+`FlowVariablesForm` takes `flowId`, `ouId`, and an optional `onSaved` callback. Pass `ouName` with `showScopeNotice` to tell the admin the setting applies to their organization only, and `onCreateConnection` to offer a link to your own connection form under the connection picker. It calls the flow and connection management APIs, which need a token with management permissions. <ProductName /> does not yet limit which organization a caller may name when setting a flow's variables, so send these calls through your backend, which checks the admin's permission and pins `ouId` to the admin's organization. Point the SDK's `endpoints.flows` and `endpoints.connections` at that backend route. See [Let Org Admins Manage Teams](./delegated-administration.mdx) for the backend route.
+
+## Next Steps
+
+<NextSteps>
+  <NextStepsCard
+    title="Let Org Admins Manage Teams"
+    description="The backend route that keeps every admin change inside the admin's own company."
+    href="../delegated-administration"
+  />
+  <NextStepsCard
+    title="Switch Organizations"
+    description="How a sign-in lands in one organization, and how a person moves between them."
+    href="../switch-organizations"
+  />
+  <NextStepsCard
+    title="Design Decisions"
+    description="When your team should connect a company's IdP, and when its admin should."
+    href="../../architecture-decisions"
+  />
+</NextSteps>
