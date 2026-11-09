@@ -28,7 +28,6 @@ import {
   hasInvalidUnitDefaults,
   hasTermsForRemovedVariable,
 } from '../components/flow-sharing/variableRules';
-import {EXECUTOR_TO_IDP_TYPE_MAP} from '../components/resource-property-panel/extended-properties/execution-properties/constants';
 import SsoDisableConfirmDialog from '../components/SsoDisableConfirmDialog';
 import SsoToggle from '../components/SsoToggle';
 import FlowConstants from '../constants/FlowConstants';
@@ -50,18 +49,17 @@ import useTemplateAndWidgetLoading from '../hooks/useTemplateAndWidgetLoading';
 import useValidationStatus from '../hooks/useValidationStatus';
 import {FlowType} from '../models/flows';
 import type {CreateFlowRequest, FlowDefinitionResponse} from '../models/responses';
-import {ExecutionTypes, StepTypes, type StepData} from '../models/steps';
+import {StepTypes, type StepData} from '../models/steps';
 import {hasUnpositionedNodes} from '../utils/applyAutoLayout';
 import collapseExecutorChains, {getExecutionStackHeadId} from '../utils/compactGraphTransforms';
 import {mutateComponents} from '../utils/componentMutations';
 import getConditionSkipEdges from '../utils/getConditionSkipEdges';
+import {resolveConnectionProperty} from '../utils/resolveConnectionPlaceholders';
 import {
   COMMON_GRAPH_VALIDATION_RULES,
   GRAPH_VALIDATION_RULES,
   SIGN_OUT_GRAPH_VALIDATION_RULES,
 } from '../validation/validation-rules';
-
-const SMS_EXECUTORS = new Set<string>([ExecutionTypes.SMSExecutor]);
 
 function FlowBuilder() {
   const {flowId: routeFlowId} = useParams<{flowId: string}>();
@@ -204,60 +202,19 @@ function FlowBuilder() {
         const executorName = (stepData?.action as {executor?: {name?: string}} | undefined)?.executor?.name;
         if (!executorName) return node;
 
-        const {senderId: currentSenderId = '', idpId: currentIdpId = ''} =
-          (stepData?.properties as Record<string, string> | undefined) ?? {};
-
-        // Handle the Email executor - an email step is unusable without a provider, so it takes
-        // the first one even when several exist; the user can switch it in the resource panel.
-        if (executorName === ExecutionTypes.EmailExecutor) {
-          if ((currentSenderId === '{{SENDER_ID}}' || currentSenderId === '') && emailProviders?.length) {
-            changed = true;
-            return {
-              ...node,
-              data: {
-                ...node.data,
-                properties: {...(stepData?.properties ?? {}), senderId: emailProviders[0].id},
-              },
-            };
-          }
-          return node;
-        }
-
-        // Handle SMS executors - auto-assign senderId
-        if (SMS_EXECUTORS.has(executorName) && smsProviders) {
-          if (currentSenderId === '{{SENDER_ID}}' || currentSenderId === '') {
-            if (smsProviders.length === 1) {
-              changed = true;
-              return {
-                ...node,
-                data: {
-                  ...node.data,
-                  properties: {
-                    ...(stepData?.properties ?? {}),
-                    senderId: smsProviders[0].id,
-                  },
-                },
-              };
-            }
-          }
-          return node;
-        }
-
-        // Handle IDP executors - auto-assign idpId
-        const idpType = EXECUTOR_TO_IDP_TYPE_MAP[executorName];
-        if (!idpType || !identityProviders) return node;
-
-        if (currentIdpId !== '{{IDP_ID}}' && currentIdpId !== '') return node;
-
-        const matching = identityProviders.filter((idp) => idp.type === idpType);
-        if (matching.length !== 1) return node;
+        const resolved = resolveConnectionProperty(executorName, stepData?.properties, {
+          identityProviders,
+          smsProviders,
+          emailProviders,
+        });
+        if (!resolved) return node;
 
         changed = true;
         return {
           ...node,
           data: {
             ...node.data,
-            properties: {...(stepData?.properties ?? {}), idpId: matching[0].id},
+            properties: {...(stepData?.properties ?? {}), ...resolved},
           },
         };
       });
