@@ -97,6 +97,35 @@ describe('EditAgentAttributes', () => {
     expect(screen.queryByTestId('field-password')).not.toBeInTheDocument();
   });
 
+  it("orders the editable fields as the agent type's schema does, display attribute first", () => {
+    mockUseGetAgentType.mockReturnValue({
+      data: {
+        id: 'schema-1',
+        handle: 'default',
+        displayName: 'Default',
+        ouId: 'ou-1',
+        systemAttributes: {display: 'label'},
+        schema: {
+          model: {type: 'string'},
+          environment: {type: 'string', required: true},
+          apiKey: {type: 'string', required: true, credential: true},
+          function: {type: 'string'},
+          label: {type: 'string', required: true},
+        },
+      },
+      isLoading: false,
+    });
+    render(<EditAgentAttributes agent={baseAgent} editedAgent={{}} onFieldChange={mockOnFieldChange} />);
+
+    // The credential is not editable here, so it is left out.
+    expect(screen.getAllByTestId(/^field-/).map((element) => element.getAttribute('data-testid'))).toEqual([
+      'field-label',
+      'field-environment',
+      'field-model',
+      'field-function',
+    ]);
+  });
+
   it('shows the lifespan beside the attributes, as the add form asks for it', () => {
     render(<EditAgentAttributes agent={baseAgent} editedAgent={{}} onFieldChange={mockOnFieldChange} />);
 

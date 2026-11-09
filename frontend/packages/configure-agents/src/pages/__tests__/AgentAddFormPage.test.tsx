@@ -4,6 +4,7 @@
 import {ProjectScopeProvider} from '@thunderid/contexts';
 import {render, screen, waitFor, userEvent, within} from '@thunderid/test-utils';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
+import {userEvent as browserUser} from 'vitest/browser';
 import AgentAddFormPage from '../AgentAddFormPage';
 
 const h = vi.hoisted(() => ({
@@ -115,10 +116,30 @@ async function chooseOption(user: ReturnType<typeof userEvent.setup>, index: num
   await user.click(within(await screen.findByRole('listbox')).getByText(label));
 }
 
-async function fillRequired(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+// The first step: the agent type and the organization unit.
+async function fillSetup(user: ReturnType<typeof userEvent.setup>): Promise<void> {
   await chooseOption(user, 0, 'Default');
   await user.click(await screen.findByTestId('ou-picker'));
+}
+
+// The first step's Continue turns on once the type's schema has loaded, and opens the attributes step.
+async function continueToAttributes(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+  const next = await screen.findByRole('button', {name: 'common:actions.continue'});
+  await waitFor(() => expect(next).toBeEnabled());
+  await user.click(next);
+}
+
+async function fillRequired(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+  await fillSetup(user);
+  await continueToAttributes(user);
   await user.type(await screen.findByRole('textbox', {name: /^name/}), 'Calendar Agent');
+}
+
+// The second step's required attributes, once the first step is done.
+async function fillAttributes(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+  await continueToAttributes(user);
+  await user.type(await screen.findByRole('textbox', {name: /^name/}), 'Calendar Agent');
+  await user.type(await screen.findByRole('textbox', {name: /llmModel/}), 'claude');
 }
 
 describe('AgentAddFormPage', () => {
@@ -150,10 +171,10 @@ describe('AgentAddFormPage', () => {
     const user = userEvent.setup();
     render(<AgentAddFormPage />);
 
-    await fillRequired(user);
+    await fillSetup(user);
     expect(screen.getByTestId('ou-picker')).toHaveAttribute('data-root', 'ou-root');
     await user.type(screen.getByRole('textbox', {name: 'agents:addForm.description'}), 'Exposes calendar tools');
-    await user.type(await screen.findByRole('textbox', {name: /llmModel/}), 'claude');
+    await fillAttributes(user);
     await user.click(screen.getByRole('button', {name: 'agents:addForm.submit'}));
 
     await waitFor(() => {
@@ -190,9 +211,8 @@ describe('AgentAddFormPage', () => {
     );
 
     await chooseOption(user, 0, 'Default');
-    await user.type(await screen.findByRole('textbox', {name: /^name/}), 'Calendar Agent');
-    await user.type(await screen.findByRole('textbox', {name: /llmModel/}), 'claude');
     expect(screen.queryByTestId('ou-picker')).not.toBeInTheDocument();
+    await fillAttributes(user);
     await user.click(screen.getByRole('button', {name: 'agents:addForm.submit'}));
 
     await waitFor(() => {
@@ -211,9 +231,9 @@ describe('AgentAddFormPage', () => {
     const user = userEvent.setup();
     render(<AgentAddFormPage />);
 
-    await fillRequired(user);
-    await user.type(await screen.findByRole('textbox', {name: /llmModel/}), 'claude');
+    await fillSetup(user);
     await chooseOption(user, 1, 'alice');
+    await fillAttributes(user);
     await user.click(screen.getByRole('button', {name: 'agents:addForm.submit'}));
 
     await waitFor(() => {
@@ -227,9 +247,10 @@ describe('AgentAddFormPage', () => {
     const user = userEvent.setup();
     render(<AgentAddFormPage />);
 
-    await fillAll(user);
+    await fillSetup(user);
     await user.click(screen.getByRole('radio', {name: 'agents:owner.kind.external'}));
     await user.type(screen.getByRole('textbox', {name: 'agents:owner.idType.email'}), 'jane@example.com');
+    await fillAttributes(user);
     await user.click(screen.getByRole('button', {name: 'agents:addForm.submit'}));
 
     await waitFor(() =>
@@ -242,17 +263,18 @@ describe('AgentAddFormPage', () => {
     const user = userEvent.setup();
     render(<AgentAddFormPage />);
 
-    await fillAll(user);
-    const submit = screen.getByRole('button', {name: 'agents:addForm.submit'});
-    await waitFor(() => expect(submit).toBeDisabled());
+    await fillSetup(user);
+    const next = screen.getByRole('button', {name: 'common:actions.continue'});
+    await waitFor(() => expect(next).toBeDisabled());
 
     await user.click(screen.getByRole('radio', {name: 'agents:owner.kind.external'}));
     const externalId = screen.getByRole('textbox', {name: 'agents:owner.idType.email'});
     await user.type(externalId, 'jane');
-    expect(submit).toBeDisabled();
+    expect(next).toBeDisabled();
     await user.type(externalId, '@example.com');
-    expect(submit).toBeEnabled();
-    await user.click(submit);
+    expect(next).toBeEnabled();
+    await fillAttributes(user);
+    await user.click(screen.getByRole('button', {name: 'agents:addForm.submit'}));
 
     await waitFor(() =>
       expect(posted()).toMatchObject({owner: {id: 'jane@example.com', idType: 'email', isLocal: false}}),
@@ -263,10 +285,11 @@ describe('AgentAddFormPage', () => {
     const user = userEvent.setup();
     render(<AgentAddFormPage />);
 
-    await fillAll(user);
+    await fillSetup(user);
     await chooseOption(user, 1, 'alice');
     await user.click(screen.getByRole('radio', {name: 'agents:owner.kind.external'}));
     await user.click(screen.getByRole('radio', {name: 'agents:owner.kind.internal'}));
+    await fillAttributes(user);
     await user.click(screen.getByRole('button', {name: 'agents:addForm.submit'}));
 
     await waitFor(() => expect(posted()).toMatchObject({owner: {id: 'user-1', idType: 'uuid', isLocal: true}}));
@@ -290,11 +313,6 @@ describe('AgentAddFormPage', () => {
     );
   }
 
-  async function fillAll(user: ReturnType<typeof userEvent.setup>): Promise<void> {
-    await fillRequired(user);
-    await user.type(await screen.findByRole('textbox', {name: /llmModel/}), 'claude');
-  }
-
   function posted(): unknown {
     return requests().find((request) => request.method === 'POST')?.data;
   }
@@ -303,12 +321,11 @@ describe('AgentAddFormPage', () => {
     const user = userEvent.setup();
     render(<AgentAddFormPage />);
 
-    await fillAll(user);
+    await fillSetup(user);
     expect(await screen.findByText('agents:addForm.ownerHint')).toBeInTheDocument();
     expect(screen.getByText('agents:addForm.ownerDefault')).toBeInTheDocument();
-    const submit = screen.getByRole('button', {name: 'agents:addForm.submit'});
-    await waitFor(() => expect(submit).toBeEnabled());
-    await user.click(submit);
+    await fillAttributes(user);
+    await user.click(screen.getByRole('button', {name: 'agents:addForm.submit'}));
 
     await waitFor(() => expect(posted()).toBeDefined());
     expect(posted()).not.toHaveProperty('owner');
@@ -323,18 +340,19 @@ describe('AgentAddFormPage', () => {
     const user = userEvent.setup();
     render(<AgentAddFormPage />);
 
-    await fillAll(user);
+    await fillSetup(user);
     expect(await screen.findByText('agents:addForm.ownerRequiredHint')).toBeInTheDocument();
-    const submit = screen.getByRole('button', {name: 'agents:addForm.submit'});
-    expect(submit).toBeDisabled();
+    const next = screen.getByRole('button', {name: 'common:actions.continue'});
+    expect(next).toBeDisabled();
 
     await user.click(screen.getAllByRole('combobox')[1]);
     const listbox = await screen.findByRole('listbox');
     expect(within(listbox).getByText('agents:addForm.selectOwner')).toBeInTheDocument();
     expect(within(listbox).queryByText('agents:addForm.ownerDefault')).not.toBeInTheDocument();
     await user.click(within(listbox).getByText('alice'));
-    expect(submit).toBeEnabled();
-    await user.click(submit);
+    expect(next).toBeEnabled();
+    await fillAttributes(user);
+    await user.click(screen.getByRole('button', {name: 'agents:addForm.submit'}));
 
     await waitFor(() => expect(posted()).toMatchObject({owner: {id: 'user-1', idType: 'uuid', isLocal: true}}));
     expect(requests().some((request) => lookedUpUser(request.url))).toBe(false);
@@ -345,11 +363,11 @@ describe('AgentAddFormPage', () => {
     const user = userEvent.setup();
     render(<AgentAddFormPage />);
 
-    await fillAll(user);
+    await fillSetup(user);
 
     expect(await screen.findByText('agents:addForm.ownerRequiredHint')).toBeInTheDocument();
     expect(screen.getByText('agents:addForm.selectOwner')).toBeInTheDocument();
-    expect(screen.getByRole('button', {name: 'agents:addForm.submit'})).toBeDisabled();
+    expect(screen.getByRole('button', {name: 'common:actions.continue'})).toBeDisabled();
     expect(requests().some((request) => lookedUpUser(request.url) === 'operator-elsewhere')).toBe(true);
   });
 
@@ -358,12 +376,12 @@ describe('AgentAddFormPage', () => {
     const user = userEvent.setup();
     render(<AgentAddFormPage />);
 
-    await fillAll(user);
-    const submit = screen.getByRole('button', {name: 'agents:addForm.submit'});
-    await waitFor(() => expect(submit).toBeEnabled());
+    await fillSetup(user);
+    await waitFor(() => expect(screen.getByRole('button', {name: 'common:actions.continue'})).toBeEnabled());
     expect(screen.getByText('agents:addForm.ownerDefault')).toBeInTheDocument();
     expect(screen.getByText('agents:addForm.ownerHint')).toBeInTheDocument();
-    await user.click(submit);
+    await fillAttributes(user);
+    await user.click(screen.getByRole('button', {name: 'agents:addForm.submit'}));
 
     await waitFor(() => expect(posted()).toBeDefined());
     expect(posted()).not.toHaveProperty('owner');
@@ -374,14 +392,15 @@ describe('AgentAddFormPage', () => {
     const user = userEvent.setup();
     render(<AgentAddFormPage />);
 
-    await fillAll(user);
-    const submit = screen.getByRole('button', {name: 'agents:addForm.submit'});
-    expect(submit).toBeDisabled();
+    await fillSetup(user);
+    const next = screen.getByRole('button', {name: 'common:actions.continue'});
+    expect(next).toBeDisabled();
     expect(screen.queryByText('agents:addForm.ownerRequiredHint')).not.toBeInTheDocument();
 
     await chooseOption(user, 1, 'alice');
-    expect(submit).toBeEnabled();
-    await user.click(submit);
+    expect(next).toBeEnabled();
+    await fillAttributes(user);
+    await user.click(screen.getByRole('button', {name: 'agents:addForm.submit'}));
 
     await waitFor(() => expect(posted()).toMatchObject({owner: {id: 'user-1', idType: 'uuid', isLocal: true}}));
   });
@@ -392,7 +411,7 @@ describe('AgentAddFormPage', () => {
     render(<AgentAddFormPage />);
 
     expect(await screen.findByText('agents:addForm.ownerNoUsers')).toBeInTheDocument();
-    expect(screen.getByRole('button', {name: 'agents:addForm.submit'})).toBeDisabled();
+    expect(screen.getByRole('button', {name: 'common:actions.continue'})).toBeDisabled();
   });
 
   it('tells two users with the same display name apart by their IDs', async () => {
@@ -413,7 +432,7 @@ describe('AgentAddFormPage', () => {
     const user = userEvent.setup();
     render(<AgentAddFormPage />);
 
-    await fillRequired(user);
+    await fillSetup(user);
     await user.click((await screen.findAllByRole('combobox'))[1]);
     const listbox = await screen.findByRole('listbox');
 
@@ -431,7 +450,7 @@ describe('AgentAddFormPage', () => {
     const user = userEvent.setup();
     render(<AgentAddFormPage />);
 
-    await fillRequired(user);
+    await fillSetup(user);
     await user.click(await screen.findByRole('button', {name: 'common:actions.refresh'}));
 
     // Only the agent type select is left until the owners load, then the owner select is back.
@@ -474,9 +493,9 @@ describe('AgentAddFormPage', () => {
     const user = userEvent.setup();
     render(<AgentAddFormPage />);
 
-    await fillRequired(user);
-    await user.type(await screen.findByRole('textbox', {name: /llmModel/}), 'claude');
+    await fillSetup(user);
     await user.click(screen.getByRole('switch', {name: 'agents:addForm.issueCredentials'}));
+    await fillAttributes(user);
     await user.click(screen.getByRole('button', {name: 'agents:addForm.submit'}));
 
     await waitFor(() => {
@@ -536,15 +555,21 @@ describe('AgentAddFormPage', () => {
     const user = userEvent.setup();
     render(<AgentAddFormPage />);
 
-    const choose = (type: string): Promise<void> => chooseOption(user, 0, type);
+    const choose = async (type: string): Promise<void> => {
+      await chooseOption(user, 0, type);
+      await user.click(await screen.findByTestId('ou-picker'));
+      await continueToAttributes(user);
+    };
+    const back = (): Promise<void> => user.click(screen.getByRole('button', {name: 'common:actions.back'}));
     await screen.findAllByRole('combobox');
     await choose('Default');
     await screen.findByRole('textbox', {name: /environment/});
+    await back();
     await choose('Assistant');
     await user.type(await screen.findByRole('textbox', {name: /environment/}), 'staging');
+    await back();
     // Back to a type whose schema is already loaded, so its fields stay mounted across the change.
     await choose('Default');
-    await user.click(await screen.findByTestId('ou-picker'));
     await waitFor(() => expect(screen.getByRole('textbox', {name: /environment/})).toHaveValue(''));
     await user.type(screen.getByRole('textbox', {name: /^name/}), 'Helper');
     await user.type(screen.getByRole('textbox', {name: /llmModel/}), 'claude');
@@ -587,16 +612,14 @@ describe('AgentAddFormPage', () => {
     const user = userEvent.setup();
     render(<AgentAddFormPage />);
 
-    await chooseOption(user, 0, 'Default');
-    await user.click(await screen.findByTestId('ou-picker'));
-    await screen.findByRole('textbox', {name: /llmModel/});
-    const submit = screen.getByRole('button', {name: 'agents:addForm.submit'});
-    expect(submit).toBeEnabled();
+    await fillSetup(user);
+    const next = screen.getByRole('button', {name: 'common:actions.continue'});
+    await waitFor(() => expect(next).toBeEnabled());
 
     await chooseOption(user, 0, 'Assistant');
 
     expect(await screen.findByTestId('ou-picker')).toHaveAttribute('data-root', 'ou-other');
-    expect(submit).toBeDisabled();
+    expect(next).toBeDisabled();
   });
 
   it('should explain which organization units an agent of the chosen type can go in', async () => {
@@ -629,17 +652,156 @@ describe('AgentAddFormPage', () => {
     expect(h.navigate).not.toHaveBeenCalled();
   });
 
-  it('keeps submit disabled until a type and an organization unit are given', async () => {
+  it('keeps Continue disabled until a type and an organization unit are given', async () => {
     const user = userEvent.setup();
     render(<AgentAddFormPage />);
 
-    const submit = await screen.findByRole('button', {name: 'agents:addForm.submit'});
-    expect(submit).toBeDisabled();
+    const next = await screen.findByRole('button', {name: 'common:actions.continue'});
+    expect(next).toBeDisabled();
+    expect(screen.queryByRole('button', {name: 'agents:addForm.submit'})).not.toBeInTheDocument();
 
     await chooseOption(user, 0, 'Default');
+    expect(next).toBeDisabled();
     await user.click(await screen.findByTestId('ou-picker'));
-    await screen.findByRole('textbox', {name: /llmModel/});
-    expect(submit).toBeEnabled();
+    await waitFor(() => expect(next).toBeEnabled());
+  });
+
+  it('asks for the type and placement first, and the schema attributes on the next step', async () => {
+    const user = userEvent.setup();
+    render(<AgentAddFormPage />);
+
+    await fillSetup(user);
+    // The type's schema has loaded, but its attributes wait for the next step.
+    await waitFor(() => expect(screen.getByRole('button', {name: 'common:actions.continue'})).toBeEnabled());
+    expect(screen.queryByRole('textbox', {name: /^name/})).not.toBeInTheDocument();
+    expect(screen.queryByRole('textbox', {name: /llmModel/})).not.toBeInTheDocument();
+    expect(screen.queryByText('agents:addForm.attributesStep.breadcrumb')).not.toBeInTheDocument();
+
+    await continueToAttributes(user);
+
+    expect(screen.getByRole('heading', {name: 'agents:addForm.attributesStep.title'})).toBeInTheDocument();
+    expect(screen.getByText('agents:addForm.attributesStep.breadcrumb')).toBeInTheDocument();
+    expect(screen.getByRole('textbox', {name: /^name/})).toBeInTheDocument();
+    expect(screen.getByRole('textbox', {name: /llmModel/})).toBeInTheDocument();
+    expect(screen.getByRole('textbox', {name: /environment/})).toBeInTheDocument();
+    // What the first step asked for is out of view.
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
+    expect(screen.queryByRole('textbox', {name: 'agents:addForm.description'})).not.toBeInTheDocument();
+    expect(screen.queryByRole('switch', {name: 'agents:addForm.issueCredentials'})).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', {name: 'common:actions.continue'})).not.toBeInTheDocument();
+  });
+
+  it('keeps what was entered on both steps when going back and forth', async () => {
+    const user = userEvent.setup();
+    render(<AgentAddFormPage />);
+
+    await fillSetup(user);
+    await user.click(screen.getByRole('radio', {name: 'agents:owner.kind.external'}));
+    await user.type(screen.getByRole('textbox', {name: 'agents:owner.idType.email'}), 'jane@example.com');
+    await fillAttributes(user);
+
+    await user.click(screen.getByRole('button', {name: 'common:actions.back'}));
+    expect(screen.getByRole('radio', {name: 'agents:owner.kind.external'})).toBeChecked();
+    expect(screen.getByRole('textbox', {name: 'agents:owner.idType.email'})).toHaveValue('jane@example.com');
+
+    await user.click(screen.getByRole('button', {name: 'common:actions.continue'}));
+    expect(screen.getByRole('textbox', {name: /^name/})).toHaveValue('Calendar Agent');
+    expect(screen.getByRole('textbox', {name: /llmModel/})).toHaveValue('claude');
+    await user.click(screen.getByRole('button', {name: 'agents:addForm.submit'}));
+
+    await waitFor(() =>
+      expect(posted()).toMatchObject({
+        attributes: {name: 'Calendar Agent', llmModel: 'claude'},
+        owner: {id: 'jane@example.com', idType: 'email', isLocal: false},
+      }),
+    );
+  });
+
+  it('keeps the way back closed while the agent is being created', async () => {
+    const base = h.http.request.getMockImplementation() as (config: unknown) => Promise<{data: unknown}>;
+    h.http.request.mockImplementation((config: unknown) =>
+      (config as RecordedRequest).method === 'POST' ? new Promise(() => undefined) : base(config),
+    );
+    const user = userEvent.setup();
+    render(<AgentAddFormPage />);
+
+    await fillSetup(user);
+    await fillAttributes(user);
+    expect(screen.getByText('agents:addAgent', {selector: 'button, a, [role="button"]'})).toBeInTheDocument();
+    await user.click(screen.getByRole('button', {name: 'agents:addForm.submit'}));
+
+    await waitFor(() => expect(screen.getByRole('button', {name: 'common:actions.back'})).toBeDisabled());
+    expect(screen.queryByText('agents:addAgent', {selector: 'button, a, [role="button"]'})).not.toBeInTheDocument();
+  });
+
+  it('does not create the agent when Continue is clicked, even with every attribute filled', async () => {
+    const user = userEvent.setup();
+    render(<AgentAddFormPage />);
+
+    await fillSetup(user);
+    await continueToAttributes(user);
+    expect(screen.queryByText(/is required/)).not.toBeInTheDocument();
+    await user.type(screen.getByRole('textbox', {name: /^name/}), 'Calendar Agent');
+    await user.type(screen.getByRole('textbox', {name: /llmModel/}), 'claude');
+    await user.click(screen.getByRole('button', {name: 'common:actions.back'}));
+    // A real click, not a dispatched one: the browser's default action for it then runs after
+    // React has re-rendered, so it acts on whatever button sits in Continue's place by then.
+    await browserUser.click(screen.getByRole('button', {name: 'common:actions.continue'}));
+
+    expect(await screen.findByRole('button', {name: 'agents:addForm.submit'})).toBeEnabled();
+    await new Promise((resolve) => {
+      setTimeout(resolve, 200);
+    });
+    expect(requests().some((request) => request.method === 'POST')).toBe(false);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it("asks for the attributes in the agent type's order: display attribute, required, optional, credentials", async () => {
+    const base = h.http.request.getMockImplementation() as (config: unknown) => Promise<{data: unknown}>;
+    h.http.request.mockImplementation((config: unknown) =>
+      (config as RecordedRequest).url.includes('/agent-types/type-1')
+        ? Promise.resolve({
+            data: {
+              ...defaultType,
+              systemAttributes: {display: 'label'},
+              schema: {
+                model: {type: 'string'},
+                environment: {type: 'string', required: true},
+                apiKey: {type: 'string', required: true, credential: true},
+                function: {type: 'string'},
+                label: {type: 'string', required: true},
+              },
+            },
+          })
+        : base(config),
+    );
+    const user = userEvent.setup();
+    render(<AgentAddFormPage />);
+
+    await fillSetup(user);
+    await continueToAttributes(user);
+
+    // The credential is a password input, with no textbox role, so every input of the form is read.
+    const fields = document.querySelectorAll<HTMLInputElement>('#agent-attributes-form input[id]');
+    expect(Array.from(fields, (element) => element.id)).toEqual([
+      'label',
+      'environment',
+      'model',
+      'function',
+      'apiKey',
+    ]);
+  });
+
+  it('returns to the first step from its breadcrumb', async () => {
+    const user = userEvent.setup();
+    render(<AgentAddFormPage />);
+
+    await fillSetup(user);
+    await continueToAttributes(user);
+    await user.click(screen.getByText('agents:addAgent', {selector: 'button, a, [role="button"]'}));
+
+    expect(await screen.findByRole('button', {name: 'common:actions.continue'})).toBeEnabled();
+    expect(screen.queryByRole('textbox', {name: /^name/})).not.toBeInTheDocument();
   });
 
   it('does not post when a required attribute is missing', async () => {
@@ -680,7 +842,7 @@ describe('AgentAddFormPage', () => {
     expect(attempts).toBe(2);
   });
 
-  it('says so when the attributes of the chosen agent type cannot be loaded, and keeps Create off', async () => {
+  it('says so when the attributes of the chosen agent type cannot be loaded, and keeps Continue off', async () => {
     const base = h.http.request.getMockImplementation() as (config: unknown) => Promise<{data: unknown}>;
     h.http.request.mockImplementation((config: unknown) =>
       (config as RecordedRequest).url.includes('/agent-types/type-1')
@@ -694,7 +856,7 @@ describe('AgentAddFormPage', () => {
 
     expect(await screen.findByText('agents:addForm.agentTypeSchemaError')).toBeInTheDocument();
     expect(screen.queryByRole('textbox', {name: /^name/})).not.toBeInTheDocument();
-    expect(screen.getByRole('button', {name: 'agents:addForm.submit'})).toBeDisabled();
+    expect(screen.getByRole('button', {name: 'common:actions.continue'})).toBeDisabled();
   });
 
   it('says so when no agent types exist', async () => {
@@ -704,11 +866,11 @@ describe('AgentAddFormPage', () => {
     expect(await screen.findByText('agents:addForm.noAgentTypes')).toBeInTheDocument();
   });
 
-  it('returns to the agent list on cancel', async () => {
+  it('returns to the agent list on close', async () => {
     const user = userEvent.setup();
     render(<AgentAddFormPage />);
 
-    await user.click(await screen.findByRole('button', {name: 'common:actions.cancel'}));
+    await user.click(await screen.findByRole('button', {name: 'actions.close'}));
 
     expect(h.navigate).toHaveBeenCalledWith('/agents');
   });
