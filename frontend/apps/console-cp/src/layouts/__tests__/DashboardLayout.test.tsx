@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {render, screen, userEvent, waitFor} from '@thunderid/test-utils';
-import {afterEach, describe, it, expect, vi, beforeEach} from 'vitest';
+import {afterEach, describe, it, expect, vi, beforeEach, type MockInstance} from 'vitest';
 import DashboardLayout from '../DashboardLayout';
 
 const mockNavigate = vi.fn();
@@ -136,9 +136,31 @@ vi.mock('@thunderid/contexts', async (importOriginal) => {
 // Mock react-i18next
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string) => key,
+    t: (key: string, _defaultValue?: string, options?: {count?: number}) =>
+      options?.count === undefined ? key : `${key}:${options.count}`,
   }),
 }));
+
+// The badge beside a sidebar entry, if it has one.
+const badgeOf = (page: string): HTMLElement | null =>
+  screen.getByText(page).closest('.MuiListItemButton-root')!.querySelector<HTMLElement>('.MuiChip-root');
+
+// What the dot beside a sidebar entry says on hover, if the entry has one.
+const hintOf = (page: string): string | null | undefined => badgeOf(page)?.textContent;
+
+// jsdom never matches :focus-visible; a browser does for focus that the keyboard moves, as in these tests.
+const focusVisibleOnFocus = (): MockInstance<(selector: string) => boolean> => {
+  const matches = Object.getOwnPropertyDescriptor(Element.prototype, 'matches')!.value as (
+    this: Element,
+    selector: string,
+  ) => boolean;
+  return vi.spyOn(Element.prototype, 'matches').mockImplementation(function (this: Element, selector: string) {
+    return selector === ':focus-visible' ? this === document.activeElement : matches.call(this, selector);
+  });
+};
+
+// The dot beside a sidebar entry, which points take to show its hint.
+const dotOf = (page: string): HTMLElement => badgeOf(page)!.querySelector<HTMLElement>('[aria-hidden="true"]')!;
 
 // Mock logger
 vi.mock('@thunderid/logger/react', () => ({
@@ -237,7 +259,7 @@ describe('DashboardLayout', () => {
     expect(screen.queryByText('navigation:pages.home')).not.toBeInTheDocument();
     expect(screen.queryByText('navigation:pages.administrators')).not.toBeInTheDocument();
     expect(screen.queryByText('navigation:pages.userTypes')).not.toBeInTheDocument();
-    expect(screen.getByText('navigation:badges.undeployed')).toBeInTheDocument();
+    expect(screen.getAllByText(/^navigation:badges\.undeployed:/).length).toBeGreaterThan(0);
   });
 
   it("lists the project's users, groups, organization units, design and verifiable credentials", () => {
@@ -261,8 +283,7 @@ describe('DashboardLayout', () => {
     mockProjectChanges = {resource_server: 1};
     render(<DashboardLayout />);
 
-    const item = screen.getByText('navigation:pages.resourceServers').closest('.MuiListItemButton-root')!;
-    expect(item).toHaveTextContent('navigation:badges.undeployed');
+    expect(hintOf('navigation:pages.resourceServers')).toBe('navigation:badges.undeployed:1');
   });
 
   it("lists the selected project's roles under it, with what is not deployed yet", () => {
@@ -271,8 +292,7 @@ describe('DashboardLayout', () => {
     render(<DashboardLayout />);
 
     expect(screen.getAllByText('navigation:pages.roles')).toHaveLength(1);
-    const item = screen.getByText('navigation:pages.roles').closest('.MuiListItemButton-root')!;
-    expect(item).toHaveTextContent('navigation:badges.undeployed');
+    expect(hintOf('navigation:pages.roles')).toBe('navigation:badges.undeployed:1');
   });
 
   it("lists the selected project's themes under Design, with what is not deployed yet", () => {
@@ -281,8 +301,7 @@ describe('DashboardLayout', () => {
     render(<DashboardLayout />);
 
     expect(screen.getAllByText('navigation:pages.design')).toHaveLength(1);
-    const item = screen.getByText('navigation:pages.design').closest('.MuiListItemButton-root')!;
-    expect(item).toHaveTextContent('navigation:badges.undeployed');
+    expect(hintOf('navigation:pages.design')).toBe('navigation:badges.undeployed:2');
   });
 
   it('lists every role in the organization, outside any project', () => {
@@ -298,8 +317,7 @@ describe('DashboardLayout', () => {
     mockProjectChanges = {flow: 2};
     render(<DashboardLayout />);
 
-    const item = screen.getByText('navigation:pages.flows').closest('.MuiListItemButton-root')!;
-    expect(item).toHaveTextContent('navigation:badges.undeployed');
+    expect(hintOf('navigation:pages.flows')).toBe('navigation:badges.undeployed:2');
   });
 
   it("badges the selected project's design when its layouts are not deployed yet", () => {
@@ -307,8 +325,7 @@ describe('DashboardLayout', () => {
     mockProjectChanges = {layout: 1};
     render(<DashboardLayout />);
 
-    const item = screen.getByText('navigation:pages.design').closest('.MuiListItemButton-root')!;
-    expect(item).toHaveTextContent('navigation:badges.undeployed');
+    expect(hintOf('navigation:pages.design')).toBe('navigation:badges.undeployed:1');
   });
 
   it("badges the selected project's organization units that are not deployed yet", () => {
@@ -316,8 +333,7 @@ describe('DashboardLayout', () => {
     mockProjectChanges = {organization_unit: 1};
     render(<DashboardLayout />);
 
-    const item = screen.getByText('navigation:pages.organizationUnits').closest('.MuiListItemButton-root')!;
-    expect(item).toHaveTextContent('navigation:badges.undeployed');
+    expect(hintOf('navigation:pages.organizationUnits')).toBe('navigation:badges.undeployed:1');
   });
 
   it("counts the selected project's undeployed verifiable credentials on the collapsed entry", () => {
@@ -325,9 +341,7 @@ describe('DashboardLayout', () => {
     mockProjectChanges = {credential_configuration: 1, presentation_definition: 2};
     render(<DashboardLayout />);
 
-    const item = screen.getByText('navigation:pages.verifiableCredentials').closest('.MuiListItemButton-root')!;
-    expect(item).toHaveTextContent('3');
-    expect(item).not.toHaveTextContent('navigation:badges.undeployed');
+    expect(hintOf('navigation:pages.verifiableCredentials')).toBe('navigation:badges.undeployed:3');
   });
 
   it('badges the undeployed credential templates and presentation definitions once the entry is expanded', async () => {
@@ -338,13 +352,9 @@ describe('DashboardLayout', () => {
     const parent = screen.getByText('navigation:pages.verifiableCredentials').closest('.MuiListItemButton-root')!;
     await userEvent.click(parent);
 
-    await waitFor(() => {
-      const templates = screen.getByText('navigation:pages.credentials').closest('.MuiListItemButton-root')!;
-      expect(templates).toHaveTextContent('navigation:badges.undeployed');
-    });
-    const presentations = screen.getByText('navigation:pages.presentations').closest('.MuiListItemButton-root')!;
-    expect(presentations).toHaveTextContent('navigation:badges.undeployed');
-    expect(parent).not.toHaveTextContent('3');
+    await waitFor(() => expect(hintOf('navigation:pages.credentials')).toBe('navigation:badges.undeployed:1'));
+    expect(hintOf('navigation:pages.presentations')).toBe('navigation:badges.undeployed:2');
+    expect(badgeOf('navigation:pages.verifiableCredentials')).toBeNull();
   });
 
   it("badges the selected project's notifications when its templates are not deployed yet", () => {
@@ -352,21 +362,80 @@ describe('DashboardLayout', () => {
     mockProjectChanges = {notification_template: 1};
     render(<DashboardLayout />);
 
-    const item = screen.getByText('navigation:pages.notifications').closest('.MuiListItemButton-root')!;
-    expect(item).toHaveTextContent('navigation:badges.undeployed');
+    expect(hintOf('navigation:pages.notifications')).toBe('navigation:badges.undeployed:1');
   });
 
-  it('keeps the whole label beside an undeployed badge, the badge after it', () => {
+  it('keeps the whole label beside an undeployed dot, the dot at the end of the entry', () => {
     mockUseProjectSelection.mockReturnValue(inShop());
     mockProjectChanges = {application: 1};
     render(<DashboardLayout />);
 
     const label = screen.getByText('navigation:pages.applications').closest('.MuiListItemText-root')!;
-    const badge = screen.getByText('navigation:badges.undeployed').closest('.MuiChip-root')!;
+    const badge = badgeOf('navigation:pages.applications')!;
+    expect(getComputedStyle(label).flexGrow).toBe('1');
     expect(getComputedStyle(label).flexShrink).toBe('0');
     expect(getComputedStyle(label).overflow).toBe('visible');
     expect(getComputedStyle(badge).flexShrink).toBe('0');
     expect(label.compareDocumentPosition(badge) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('shows no dot on an entry with nothing undeployed', () => {
+    mockUseProjectSelection.mockReturnValue(inShop());
+    mockProjectChanges = {flow: 1};
+    render(<DashboardLayout />);
+
+    expect(badgeOf('navigation:pages.roles')).toBeNull();
+    expect(badgeOf('navigation:pages.organizationUnits')).toBeNull();
+  });
+
+  it('shows the hint when the dot is hovered', async () => {
+    mockUseProjectSelection.mockReturnValue(inShop());
+    mockProjectChanges = {organization_unit: 1};
+    render(<DashboardLayout />);
+
+    await userEvent.hover(dotOf('navigation:pages.organizationUnits'));
+
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('navigation:badges.undeployed:1');
+  });
+
+  it("reads the dot's hint out as part of the entry's name, the dot itself hidden from screen readers", () => {
+    mockUseProjectSelection.mockReturnValue(inShop());
+    mockProjectChanges = {organization_unit: 1};
+    render(<DashboardLayout />);
+
+    expect(
+      screen.getByRole('link', {name: 'navigation:pages.organizationUnits navigation:badges.undeployed:1'}),
+    ).toBeInTheDocument();
+    expect(dotOf('navigation:pages.organizationUnits')).toHaveAttribute('aria-hidden', 'true');
+  });
+
+  it('shows the hint while the entry has keyboard focus', async () => {
+    mockUseProjectSelection.mockReturnValue(inShop());
+    mockProjectChanges = {organization_unit: 1};
+    render(<DashboardLayout />);
+    const focusVisible = focusVisibleOnFocus();
+
+    const link = screen.getByText('navigation:pages.organizationUnits').closest('a')!;
+    while (!link.contains(document.activeElement)) await userEvent.tab();
+
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('navigation:badges.undeployed:1');
+    // Leaving the entry hides the hint again.
+    while (link.contains(document.activeElement)) await userEvent.tab();
+    await waitFor(() => expect(screen.queryByRole('tooltip')).not.toBeInTheDocument());
+    focusVisible.mockRestore();
+  });
+
+  it("shows a collapsed menu's hint while its toggle has keyboard focus", async () => {
+    mockUseProjectSelection.mockReturnValue(inShop());
+    mockProjectChanges = {credential_configuration: 1, presentation_definition: 2};
+    render(<DashboardLayout />);
+    const focusVisible = focusVisibleOnFocus();
+
+    const toggle = screen.getByText('navigation:pages.verifiableCredentials').closest<HTMLElement>('[role="button"]')!;
+    while (document.activeElement !== toggle) await userEvent.tab();
+
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('navigation:badges.undeployed:3');
+    focusVisible.mockRestore();
   });
 
   it("shows the gateway's own navigation on its pages, back to the project", () => {
