@@ -13,15 +13,12 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/entitytype"
-	"github.com/thunder-id/thunderid/internal/group"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
-	"github.com/thunder-id/thunderid/internal/role"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/entitymock"
 	"github.com/thunder-id/thunderid/tests/mocks/entitytypemock"
-	"github.com/thunder-id/thunderid/tests/mocks/groupmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oumock"
 	"github.com/thunder-id/thunderid/tests/mocks/resourcemock"
 	"github.com/thunder-id/thunderid/tests/mocks/rolemock"
@@ -35,8 +32,6 @@ type UserToolsTestSuite struct {
 	entities    *entitymock.EntityServiceInterfaceMock
 	entityTypes *entitytypemock.EntityTypeServiceInterfaceMock
 	roles       *rolemock.RoleServiceInterfaceMock
-	assignments *rolemock.RoleAssignmentServiceInterfaceMock
-	groups      *groupmock.GroupServiceInterfaceMock
 	resources   *resourcemock.ResourceServiceInterfaceMock
 	ous         *oumock.OrganizationUnitServiceInterfaceMock
 	session     *mcp.ClientSession
@@ -57,8 +52,6 @@ func (s *UserToolsTestSuite) connect(withCreate bool) {
 	s.entities = entitymock.NewEntityServiceInterfaceMock(s.T())
 	s.entityTypes = entitytypemock.NewEntityTypeServiceInterfaceMock(s.T())
 	s.roles = rolemock.NewRoleServiceInterfaceMock(s.T())
-	s.assignments = rolemock.NewRoleAssignmentServiceInterfaceMock(s.T())
-	s.groups = groupmock.NewGroupServiceInterfaceMock(s.T())
 	s.resources = resourcemock.NewResourceServiceInterfaceMock(s.T())
 	s.ous = oumock.NewOrganizationUnitServiceInterfaceMock(s.T())
 	// A person needs a username and an email; the password is a credential.
@@ -73,7 +66,7 @@ func (s *UserToolsTestSuite) connect(withCreate bool) {
 	server := mcp.NewServer(&mcp.Implementation{Name: "test-server", Version: "1.0.0"}, nil)
 	RegisterMCPTools(server, s.users, s.entities, s.entityTypes, s.roles, s.resources)
 	if withCreate {
-		RegisterCreateUserTool(server, s.users, s.entities, s.entityTypes, s.ous, s.assignments, s.groups)
+		RegisterCreateUserTool(server, s.users, s.entities, s.entityTypes, s.ous)
 	}
 	serverTransport, clientTransport := mcp.NewInMemoryTransports()
 	serverSession, err := server.Connect(context.Background(), serverTransport, nil)
@@ -247,7 +240,7 @@ func (s *UserToolsTestSuite) TestUpdateUser() {
 }
 
 func (s *UserToolsTestSuite) TestCreateUser() {
-	s.Run("in the Default organization unit, with roles and groups", func() {
+	s.Run("in the Default organization unit", func() {
 		s.ous.On("GetOrganizationUnitByPath", mock.Anything, defaultOUHandle).
 			Return(oupkg.OrganizationUnit{ID: "ou-default"}, (*tidcommon.ServiceError)(nil)).Once()
 		var created *providers.User
@@ -255,25 +248,17 @@ func (s *UserToolsTestSuite) TestCreateUser() {
 			Run(func(args mock.Arguments) { created = args.Get(1).(*providers.User) }).
 			Return(&providers.User{ID: "new-1", Type: "person", OUID: "ou-default"},
 				(*tidcommon.ServiceError)(nil)).Once()
-		s.assignments.On("AddAssignments", mock.Anything, "r1", "",
-			[]role.RoleAssignment{{ID: "new-1", Type: role.AssigneeTypeUser}}).
-			Return((*tidcommon.ServiceError)(nil)).Once()
-		s.groups.On("AddGroupMembers", mock.Anything, "g1", []group.Member{{ID: "new-1", Type: group.MemberTypeUser}}).
-			Return(&group.Group{ID: "g1"}, (*tidcommon.ServiceError)(nil)).Once()
 		s.users.On("GetUser", mock.Anything, "new-1", true).Return(&providers.User{ID: "new-1", Type: "person",
 			OUID: "ou-default", Display: "Bob"}, (*tidcommon.ServiceError)(nil)).Once()
 
 		var out createUserMCPResponse
 		s.structured(s.call("create_user", map[string]any{"userType": "person",
-			"attributes": map[string]any{"username": "bob", "email": "bob@example.com"},
-			"roles":      []string{"r1"}, "groups": []string{"g1"}}), &out)
+			"attributes": map[string]any{"username": "bob", "email": "bob@example.com"}}), &out)
 		s.Require().NotNil(created)
 		s.Equal("ou-default", created.OUID)
 		s.Empty(created.ProjectID)
 		s.JSONEq(`{"username":"bob","email":"bob@example.com"}`, string(created.Attributes))
 		s.Equal("new-1", out.User.ID)
-		s.Equal([]string{"r1"}, out.RolesGranted)
-		s.Equal([]string{"g1"}, out.GroupsJoined)
 		s.Contains(out.Notice, "No password")
 	})
 
@@ -318,16 +303,27 @@ func (s *UserToolsTestSuite) TestCreateUser() {
 			"attributes": map[string]any{"username": "r"}})), "list_user_types")
 	})
 
-	s.Run("a role that can't be granted is reported with what was done", func() {
+	// create_user only creates. Access is given with the role and group tools, each checked for its own
+	// permission before it changes anything.
+	s.Run("takes no roles or groups", func() {
 		s.connect(true)
-		s.users.On("CreateUser", mock.Anything, mock.Anything).Return(&providers.User{ID: "new-2", Type: "person"},
-			(*tidcommon.ServiceError)(nil)).Once()
-		s.assignments.On("AddAssignments", mock.Anything, "r1", "", mock.Anything).
-			Return(&tidcommon.ServiceError{
-				ErrorDescription: tidcommon.I18nMessage{DefaultValue: "no such role"}}).Once()
-		text := s.errorText(s.call("create_user", map[string]any{"userType": "person", "ouId": "ou-1",
-			"attributes": map[string]any{"username": "c", "email": "c@example.com"}, "roles": []string{"r1"}}))
-		s.Contains(text, "the user was created with ID new-2, but granting role r1 failed: no such role")
+		result, err := s.session.ListTools(context.Background(), nil)
+		s.Require().NoError(err)
+		for _, t := range result.Tools {
+			if t.Name != "create_user" {
+				continue
+			}
+			raw, err := json.Marshal(t.InputSchema)
+			s.Require().NoError(err)
+			var schema struct {
+				Properties map[string]any `json:"properties"`
+			}
+			s.Require().NoError(json.Unmarshal(raw, &schema))
+			s.NotContains(schema.Properties, "roles")
+			s.NotContains(schema.Properties, "groups")
+			s.Contains(t.Description, "update_group_memberships")
+			s.Contains(t.Description, "update_role_assignments")
+		}
 	})
 }
 
