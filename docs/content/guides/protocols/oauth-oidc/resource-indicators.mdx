@@ -11,6 +11,19 @@ description: RFC 8707 Resource Indicators in {{ProductName}}, to target access t
 
 The effect: a token issued for the payments API cannot be replayed against the bookings API. Each token is bound to its intended audience.
 
+## One Resource Server per Token
+
+<ProductName /> binds each access token to at most one resource server. RFC 8707 allows a client to send several `resource` parameters, but <ProductName /> rejects an access token request that does with `invalid_target`, on every endpoint and grant that accepts `resource`. For example, a client credentials request with two `resource` parameters returns:
+
+```json
+{
+  "error": "invalid_target",
+  "error_description": "Only a single resource parameter is supported"
+}
+```
+
+A client that calls several resource servers, for example an agent that uses more than one MCP server, requests a separate token for each resource server and sends each token only to the server it names in `aud`.
+
 ## How It Works
 
 The `resource` parameter is accepted on authorization and PAR requests, on authorization code, client credentials, JWT bearer, refresh token, and token exchange requests, and on CIBA backchannel authentication requests (`POST /oauth2/bc-authorize`). A CIBA request binds to its resource server at initiation, before the user authorizes it. A `resource` supplied when polling the token endpoint must match that binding.
