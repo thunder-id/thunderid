@@ -3,7 +3,11 @@
 
 package variablestore
 
-import "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+import (
+	"errors"
+
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+)
 
 // Errors this service returns. The VAR prefix names the service that produced them.
 //
@@ -182,3 +186,6 @@ var (
 		},
 	}
 )
+
+// errNilEventBus is returned when the variable store is initialized without the event bus it audits on.
+var errNilEventBus = errors.New("the variable store needs an event bus")

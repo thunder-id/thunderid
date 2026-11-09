@@ -191,7 +191,8 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 
 	// Initialize the variable store. It takes the config crypto provider directly, since that is
 	// what seals a secret before it reaches the database.
-	_, references := variablestore.Initialize(mux, configCryptoSvc, cacheManager)
+	_, references, err := variablestore.Initialize(mux, configCryptoSvc, cacheManager, auditBus)
+	fatalOnError(ctx, logger, err, "Failed to initialize variable store")
 
 	ouService, ouHierarchyResolver, ouEnumerator, ouExporter, err := ou.Initialize(
 		mux, mcpServer, cacheManager, ouAuthzService, false, auditBus)
@@ -537,7 +538,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	// Inject the consent service into the consent enforcer. It is wired here rather than at enforcer
 	// construction because it depends on the inbound client service, which is only available after the
 	// flow services (which themselves depend on the enforcer) are initialized.
-	consentEnforcer.SetConsentService(initConsentService(ctx, logger, inboundClientService))
+	consentEnforcer.SetConsentService(initConsentService(ctx, logger, inboundClientService, auditBus))
 
 	applicationService, applicationExporter, err := application.Initialize(
 		mux, mcpServer, entityService, inboundClientService, ouService, i18nService,
@@ -811,8 +812,9 @@ func readSessionConfig(ctx context.Context, svc serverconfig.ServerConfigService
 // initConsentService initializes the consent service backed by the inbound client service, which
 // satisfies consent.InboundClientProvider directly.
 func initConsentService(ctx context.Context, logger *log.Logger,
-	inboundClientService inboundclient.InboundClientServiceInterface) consent.ConsentServiceInterface {
-	consentService, err := consent.Initialize(inboundClientService)
+	inboundClientService inboundclient.InboundClientServiceInterface,
+	auditBus eventbus.EventBusInterface) consent.ConsentServiceInterface {
+	consentService, err := consent.Initialize(inboundClientService, auditBus)
 	fatalOnError(ctx, logger, err, "Failed to initialize consent service")
 	return consentService
 }

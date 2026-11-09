@@ -100,7 +100,10 @@ func (s *StoreTestSuite) TestDeleteVariableIsDeploymentScoped() {
 	s.dbClientMock.On("ExecuteContext", mock.Anything, queryDeleteVariable, "API_URL", testDeploymentID).
 		Return(int64(1), nil).Once()
 
-	s.Require().NoError(s.store.DeleteVariable(context.Background(), "API_URL"))
+	deleted, err := s.store.DeleteVariable(context.Background(), "API_URL")
+
+	s.Require().NoError(err)
+	s.True(deleted)
 }
 
 // The query that reads a secret must not select its value. This asserts the SQL itself, because the
@@ -292,7 +295,37 @@ func (s *StoreTestSuite) TestDeleteSecretIsDeploymentScoped() {
 	s.dbClientMock.On("ExecuteContext", mock.Anything, queryDeleteSecret, "DB_PASSWORD", testDeploymentID).
 		Return(int64(1), nil).Once()
 
-	s.Require().NoError(s.store.DeleteSecret(context.Background(), "DB_PASSWORD"))
+	deleted, err := s.store.DeleteSecret(context.Background(), "DB_PASSWORD")
+
+	s.Require().NoError(err)
+	s.True(deleted)
+}
+
+// A delete that matched no row reports so, which is how the service tells a removal from a no-op.
+func (s *StoreTestSuite) TestADeleteOfAMissingNameReportsNothingDeleted() {
+	deletes := []struct {
+		name  string
+		query dbmodel.DBQuery
+		call  func() (bool, error)
+	}{
+		{"variable", queryDeleteVariable,
+			func() (bool, error) { return s.store.DeleteVariable(context.Background(), "ABSENT") }},
+		{"secret", queryDeleteSecret,
+			func() (bool, error) { return s.store.DeleteSecret(context.Background(), "ABSENT") }},
+	}
+	for _, d := range deletes {
+		s.Run(d.name, func() {
+			s.SetupTest()
+			s.expectDBClient()
+			s.dbClientMock.On("ExecuteContext", mock.Anything, d.query, "ABSENT", testDeploymentID).
+				Return(int64(0), nil).Once()
+
+			deleted, err := d.call()
+
+			s.Require().NoError(err)
+			s.False(deleted)
+		})
+	}
 }
 
 func (s *StoreTestSuite) TestAProviderFailureIsReported() {
@@ -302,6 +335,30 @@ func (s *StoreTestSuite) TestAProviderFailureIsReported() {
 
 	s.Require().Error(err)
 	s.Contains(err.Error(), "failed to get database client")
+}
+
+// A delete that cannot reach the database reports the failure and no removal, so the service never records
+// a removal that did not happen.
+func (s *StoreTestSuite) TestADeleteReportsAProviderFailure() {
+	deletes := []struct {
+		name string
+		call func() (bool, error)
+	}{
+		{"variable", func() (bool, error) { return s.store.DeleteVariable(context.Background(), "API_URL") }},
+		{"secret", func() (bool, error) { return s.store.DeleteSecret(context.Background(), "DB_PASSWORD") }},
+	}
+	for _, d := range deletes {
+		s.Run(d.name, func() {
+			s.SetupTest()
+			s.providerMock.On("GetConfigDBClient").Return(nil, errors.New("no pool")).Once()
+
+			deleted, err := d.call()
+
+			s.Require().Error(err)
+			s.False(deleted)
+			s.Contains(err.Error(), "failed to get database client")
+		})
+	}
 }
 
 // Every write reports a database failure rather than returning as if it had succeeded. Written as a
@@ -328,7 +385,10 @@ func (s *StoreTestSuite) TestEveryWriteReportsADatabaseFailure() {
 		{
 			name: "delete variable", query: queryDeleteVariable,
 			args: []interface{}{"A", testDeploymentID},
-			call: func() error { return s.store.DeleteVariable(context.Background(), "A") },
+			call: func() error {
+				_, err := s.store.DeleteVariable(context.Background(), "A")
+				return err
+			},
 
 			wantMsg: "failed to delete variable",
 		},
@@ -344,7 +404,10 @@ func (s *StoreTestSuite) TestEveryWriteReportsADatabaseFailure() {
 		{
 			name: "delete secret", query: queryDeleteSecret,
 			args: []interface{}{"A", testDeploymentID},
-			call: func() error { return s.store.DeleteSecret(context.Background(), "A") },
+			call: func() error {
+				_, err := s.store.DeleteSecret(context.Background(), "A")
+				return err
+			},
 
 			wantMsg: "failed to delete secret",
 		},

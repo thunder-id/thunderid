@@ -10,7 +10,11 @@
 // one by accident.
 package variablestore
 
-import "regexp"
+import (
+	"regexp"
+
+	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
+)
 
 // nameFormat is what a name may look like.
 //
@@ -109,3 +113,20 @@ type listQuery struct {
 	namePrefix string
 	nameEquals string
 }
+
+// auditedChange is an audit event with the target type and action it records, held together so a
+// change cannot be published under an event that names another.
+type auditedChange struct {
+	event      string
+	targetType string
+	action     audit.Action
+}
+
+var (
+	variableCreate = auditedChange{audit.EventVariableCreate, audit.TargetTypeVariable, audit.ActionCreate}
+	variableUpdate = auditedChange{audit.EventVariableUpdate, audit.TargetTypeVariable, audit.ActionUpdate}
+	variableDelete = auditedChange{audit.EventVariableDelete, audit.TargetTypeVariable, audit.ActionDelete}
+	secretCreate   = auditedChange{audit.EventSecretCreate, audit.TargetTypeSecret, audit.ActionCreate}
+	secretUpdate   = auditedChange{audit.EventSecretUpdate, audit.TargetTypeSecret, audit.ActionUpdate}
+	secretDelete   = auditedChange{audit.EventSecretDelete, audit.TargetTypeSecret, audit.ActionDelete}
+)
