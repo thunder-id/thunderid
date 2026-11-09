@@ -5,6 +5,8 @@ package mcp
 
 import (
 	"encoding/json"
+	"fmt"
+	"time"
 
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
@@ -18,8 +20,8 @@ type roleToolsRole struct {
 	OUID        string `json:"ouId"`
 	ReadOnly    bool   `json:"readOnly"`
 	Permissions []struct {
-		API         string   `json:"api"`
-		Permissions []string `json:"permissions"`
+		ResourceServer string   `json:"resourceServer"`
+		Permissions    []string `json:"permissions"`
 	} `json:"permissions"`
 	Holders *[]struct {
 		ID   string `json:"id"`
@@ -38,7 +40,7 @@ func (ts *MCPTestSuite) decodeToolResult(result mcpToolResult, raw string, out a
 // rolePermissions returns the permissions the role grants on the test API.
 func rolePermissions(role roleToolsRole) []string {
 	for _, api := range role.Permissions {
-		if api.API == roleToolsAPIIdentifier {
+		if api.ResourceServer == roleToolsAPIIdentifier {
 			return api.Permissions
 		}
 	}
@@ -62,7 +64,8 @@ func (ts *MCPTestSuite) TestRoleTools_RoleLifecycle() {
 	ts.Require().NoError(err, "failed to create the API")
 	defer func() { _ = testutils.DeleteResourceServerWithChildren(rsID) }()
 
-	result, raw := ts.callMCPTool(token, "list_api_permissions", map[string]any{"api": roleToolsAPIIdentifier})
+	result, raw := ts.callMCPTool(token, "list_resource_server_permissions",
+		map[string]any{"resourceServer": roleToolsAPIIdentifier})
 	var listed struct {
 		Permissions []struct {
 			Permission string `json:"permission"`
@@ -77,7 +80,7 @@ func (ts *MCPTestSuite) TestRoleTools_RoleLifecycle() {
 
 	result, raw = ts.callMCPTool(token, "create_role", map[string]any{
 		"name": "MCP Order Support", "ouId": ts.ouID,
-		"api": roleToolsAPIIdentifier, "permissions": []string{"read", "delete"},
+		"resourceServer": roleToolsAPIIdentifier, "permissions": []string{"read", "delete"},
 	})
 	var created roleToolsRole
 	ts.decodeToolResult(result, raw, &created)
@@ -87,7 +90,7 @@ func (ts *MCPTestSuite) TestRoleTools_RoleLifecycle() {
 	ts.ElementsMatch([]string{"read", "delete"}, rolePermissions(created))
 
 	result, raw = ts.callMCPTool(token, "list_roles", map[string]any{
-		"api": roleToolsAPIIdentifier, "permission": "delete",
+		"resourceServer": roleToolsAPIIdentifier, "permission": "delete",
 	})
 	var found struct {
 		TotalResults int `json:"totalResults"`
@@ -100,7 +103,7 @@ func (ts *MCPTestSuite) TestRoleTools_RoleLifecycle() {
 	ts.Equal(created.ID, found.Roles[0].ID)
 
 	result, raw = ts.callMCPTool(token, "update_role_permissions", map[string]any{
-		"roleId": created.ID, "api": roleToolsAPIIdentifier,
+		"roleId": created.ID, "resourceServer": roleToolsAPIIdentifier,
 		"add": []string{"refund"}, "remove": []string{"delete"},
 	})
 	var changed struct {
@@ -157,7 +160,7 @@ const roleToolsSecondAPIIdentifier = "https://mcp-role-tools.example.com/billing
 // an action of its own, and deletes it when the test ends.
 func (ts *MCPTestSuite) createRoleToolsAPI(name, identifier string) {
 	rsID, err := testutils.CreateResourceServerWithActions(testutils.ResourceServer{
-		Name: name, Identifier: identifier, OUID: ts.ouID,
+		Name: name, Identifier: identifier, OUID: ts.ouID, Type: "API",
 	}, []testutils.Action{
 		{Name: "Read", Handle: "read"},
 		{Name: "Delete", Handle: "delete"},
@@ -179,27 +182,31 @@ func (ts *MCPTestSuite) requireToolError(token, name string, arguments map[strin
 	return raw
 }
 
-// The role tools find APIs and roles in the ways the descriptions offer, refuse a duplicate or a name
+// The role tools find resource servers and roles in the ways the descriptions offer, refuse a duplicate or a name
 // already taken, move permissions between APIs, and report what a refused change left done.
 func (ts *MCPTestSuite) TestRoleTools_FindRefuseAndReport() {
 	token := ts.mcpScopedAdminToken()
 	ts.createRoleToolsAPI("MCP Role Tools Orders API", roleToolsAPIIdentifier)
 	ts.createRoleToolsAPI("MCP Role Tools Billing API", roleToolsSecondAPIIdentifier)
 
-	result, raw := ts.callMCPTool(token, "list_apis", map[string]any{"name": "mcp role tools"})
+	result, raw := ts.callMCPTool(token, "list_resource_servers", map[string]any{"name": "mcp role tools"})
 	var apis struct {
-		APIs []struct {
-			API string `json:"api"`
-		} `json:"apis"`
+		ResourceServers []struct {
+			ResourceServer string `json:"resourceServer"`
+			Type           string `json:"type"`
+		} `json:"resourceServers"`
 	}
 	ts.decodeToolResult(result, raw, &apis)
 	found := []string{}
-	for _, api := range apis.APIs {
-		found = append(found, api.API)
+	for _, api := range apis.ResourceServers {
+		found = append(found, api.ResourceServer)
+		ts.Equal("API", api.Type)
 	}
-	ts.ElementsMatchf([]string{roleToolsSecondAPIIdentifier, roleToolsAPIIdentifier}, found, "list_apis: %s", raw)
+	ts.ElementsMatchf([]string{roleToolsSecondAPIIdentifier, roleToolsAPIIdentifier}, found,
+		"list_resource_servers: %s", raw)
 
-	result, raw = ts.callMCPTool(token, "list_api_permissions", map[string]any{"api": roleToolsAPIIdentifier})
+	result, raw = ts.callMCPTool(token, "list_resource_server_permissions",
+		map[string]any{"resourceServer": roleToolsAPIIdentifier})
 	var permissions struct {
 		Permissions []struct {
 			Name string `json:"name"`
@@ -211,30 +218,32 @@ func (ts *MCPTestSuite) TestRoleTools_FindRefuseAndReport() {
 		names = append(names, p.Name)
 	}
 	ts.Subsetf(names, []string{"Invoices", "Export"}, "a resource and its own actions are listed: %s", raw)
-	ts.Contains(ts.requireToolError(token, "list_api_permissions", map[string]any{"api": "https://nowhere.example.com"}),
-		"no API was found")
+	ts.Contains(ts.requireToolError(token, "list_resource_server_permissions",
+		map[string]any{"resourceServer": "https://nowhere.example.com"}),
+		"no resource server was found")
 
 	ts.Contains(ts.requireToolError(token, "create_role", map[string]any{
-		"name": "MCP Half Role", "api": roleToolsAPIIdentifier}), "give api and permissions together")
+		"name": "MCP Half Role", "resourceServer": roleToolsAPIIdentifier}), "give resourceServer and permissions together")
 	ts.Contains(ts.requireToolError(token, "create_role", map[string]any{
-		"name": "MCP Lost Role", "api": "https://nowhere.example.com", "permissions": []string{"read"}}),
-		"no API was found")
+		"name": "MCP Lost Role", "resourceServer": "https://nowhere.example.com", "permissions": []string{"read"}}),
+		"no resource server was found")
 
 	result, raw = ts.callMCPTool(token, "create_role", map[string]any{
-		"name": "MCP Order Reader", "ouId": ts.ouID, "api": roleToolsAPIIdentifier, "permissions": []string{"read"},
+		"name": "MCP Order Reader", "ouId": ts.ouID, "resourceServer": roleToolsAPIIdentifier,
+		"permissions": []string{"read"},
 	})
 	var reader roleToolsRole
 	ts.decodeToolResult(result, raw, &reader)
 	ts.T().Cleanup(func() { _ = testutils.DeleteRole(reader.ID) })
 
 	ts.Contains(ts.requireToolError(token, "create_role", map[string]any{
-		"name": "MCP Order Reader Copy", "ouId": ts.ouID, "api": roleToolsAPIIdentifier,
+		"name": "MCP Order Reader Copy", "ouId": ts.ouID, "resourceServer": roleToolsAPIIdentifier,
 		"permissions": []string{"read"}}), reader.ID, "a role granting the same permissions is named")
 	ts.Contains(ts.requireToolError(token, "create_role", map[string]any{
 		"name": "MCP Order Reader", "ouId": ts.ouID}), reader.ID, "the role holding the name is named")
 
 	result, raw = ts.callMCPTool(token, "create_role", map[string]any{
-		"name": "MCP Order Reader Copy", "ouId": ts.ouID, "api": roleToolsAPIIdentifier,
+		"name": "MCP Order Reader Copy", "ouId": ts.ouID, "resourceServer": roleToolsAPIIdentifier,
 		"permissions": []string{"read"}, "allowDuplicate": true,
 	})
 	var copied roleToolsRole
@@ -249,10 +258,10 @@ func (ts *MCPTestSuite) TestRoleTools_FindRefuseAndReport() {
 	ts.Require().NoError(err)
 	ts.Equal(defaultOUID, inDefault.OUID, "a role without ouId goes to the Default unit")
 
-	ts.Contains(ts.requireToolError(token, "list_roles", map[string]any{"api": roleToolsAPIIdentifier}),
-		"give api and permission together")
+	ts.Contains(ts.requireToolError(token, "list_roles", map[string]any{"resourceServer": roleToolsAPIIdentifier}),
+		"give resourceServer and permission together")
 	ts.Contains(ts.requireToolError(token, "list_roles", map[string]any{
-		"api": "https://nowhere.example.com", "permission": "read"}), "no API was found")
+		"resourceServer": "https://nowhere.example.com", "permission": "read"}), "no resource server was found")
 
 	var listed struct {
 		TotalResults int `json:"totalResults"`
@@ -282,14 +291,15 @@ func (ts *MCPTestSuite) TestRoleTools_FindRefuseAndReport() {
 	ts.requireToolError(token, "get_role", map[string]any{"roleId": "01900000-0000-7000-8000-00000000dead"})
 
 	ts.Contains(ts.requireToolError(token, "update_role_permissions", map[string]any{
-		"roleId": reader.ID, "api": roleToolsAPIIdentifier}), "give add, remove, or both")
+		"roleId": reader.ID, "resourceServer": roleToolsAPIIdentifier}), "give add, remove, or both")
 	ts.Contains(ts.requireToolError(token, "update_role_permissions", map[string]any{
-		"roleId": reader.ID, "api": "https://nowhere.example.com", "add": []string{"read"}}), "no API was found")
+		"roleId": reader.ID, "resourceServer": "https://nowhere.example.com", "add": []string{"read"}}),
+		"no resource server was found")
 	ts.requireToolError(token, "update_role_permissions", map[string]any{
-		"roleId": "01900000-0000-7000-8000-00000000dead", "api": roleToolsAPIIdentifier, "add": []string{"read"}})
+		"roleId": "01900000-0000-7000-8000-00000000dead", "resourceServer": roleToolsAPIIdentifier, "add": []string{"read"}})
 
 	result, raw = ts.callMCPTool(token, "update_role_permissions", map[string]any{
-		"roleId": reader.ID, "api": roleToolsSecondAPIIdentifier, "add": []string{"refund"}})
+		"roleId": reader.ID, "resourceServer": roleToolsSecondAPIIdentifier, "add": []string{"refund"}})
 	var changed struct {
 		Role roleToolsRole `json:"role"`
 	}
@@ -297,10 +307,10 @@ func (ts *MCPTestSuite) TestRoleTools_FindRefuseAndReport() {
 	ts.Lenf(changed.Role.Permissions, 2, "the role grants on both APIs: %s", raw)
 
 	result, raw = ts.callMCPTool(token, "update_role_permissions", map[string]any{
-		"roleId": reader.ID, "api": roleToolsAPIIdentifier, "remove": []string{"read"}})
+		"roleId": reader.ID, "resourceServer": roleToolsAPIIdentifier, "remove": []string{"read"}})
 	ts.decodeToolResult(result, raw, &changed)
 	ts.Require().Lenf(changed.Role.Permissions, 1, "only the second API is left: %s", raw)
-	ts.Equal(roleToolsSecondAPIIdentifier, changed.Role.Permissions[0].API)
+	ts.Equal(roleToolsSecondAPIIdentifier, changed.Role.Permissions[0].ResourceServer)
 
 	userID := ts.createOperator("mcp-role-tools-reporter", "McpRoleTools@123")
 	assignee := []map[string]any{{"id": userID, "type": "user"}}
@@ -316,4 +326,50 @@ func (ts *MCPTestSuite) TestRoleTools_FindRefuseAndReport() {
 		"assignees": assignee, "revoke": []string{reader.ID},
 		"grant": []string{"01900000-0000-7000-8000-00000000dead"}}), reader.ID+" for "+userID,
 		"a refused grant reports the revocation already made")
+}
+
+// An MCP server is listed as one, type finds only MCP servers, and its permissions say whether each is for
+// a tool or a resource.
+func (ts *MCPTestSuite) TestRoleTools_MCPServer() {
+	token := ts.mcpScopedAdminToken()
+	identifier := fmt.Sprintf("https://mcp-%d.example.com/mcp", time.Now().UnixNano())
+	rsID, err := testutils.CreateResourceServerWithActions(testutils.ResourceServer{
+		Name: "MCP Role Tools Messaging", Identifier: identifier, OUID: ts.ouID, Type: "MCP",
+	}, []testutils.Action{
+		{Name: "Send Message", Handle: "send-message", Kind: "tool"},
+		{Name: "Inbox", Handle: "inbox", Kind: "resource"},
+	})
+	ts.Require().NoError(err, "failed to create the MCP server")
+	ts.T().Cleanup(func() { _ = testutils.DeleteResourceServerWithChildren(rsID) })
+
+	result, raw := ts.callMCPTool(token, "list_resource_servers", map[string]any{"type": "MCP"})
+	var servers struct {
+		ResourceServers []struct {
+			ResourceServer string `json:"resourceServer"`
+			Type           string `json:"type"`
+		} `json:"resourceServers"`
+	}
+	ts.decodeToolResult(result, raw, &servers)
+	found := false
+	for _, server := range servers.ResourceServers {
+		ts.Equal("MCP", server.Type, raw)
+		found = found || server.ResourceServer == identifier
+	}
+	ts.Truef(found, "the MCP server must be listed: %s", raw)
+
+	result, raw = ts.callMCPTool(token, "list_resource_server_permissions", map[string]any{"resourceServer": identifier})
+	var permissions struct {
+		Type        string `json:"type"`
+		Permissions []struct {
+			Permission string `json:"permission"`
+			Kind       string `json:"kind"`
+		} `json:"permissions"`
+	}
+	ts.decodeToolResult(result, raw, &permissions)
+	ts.Equal("MCP", permissions.Type)
+	kinds := map[string]string{}
+	for _, p := range permissions.Permissions {
+		kinds[p.Permission] = p.Kind
+	}
+	ts.Equal(map[string]string{"inbox": "resource", "send-message": "tool"}, kinds, raw)
 }

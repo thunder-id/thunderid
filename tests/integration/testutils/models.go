@@ -375,6 +375,7 @@ type ResourceServer struct {
 	Identifier  string  `json:"identifier,omitempty"`
 	OUID        string  `json:"ouId"`
 	Delimiter   *string `json:"delimiter,omitempty"`
+	Type        string  `json:"type,omitempty"`
 }
 
 // Action represents an action in the resource system
@@ -384,6 +385,7 @@ type Action struct {
 	Handle      string `json:"handle"`
 	Description string `json:"description,omitempty"`
 	Permission  string `json:"permission,omitempty"`
+	Kind        string `json:"kind,omitempty"`
 }
 
 // ResourcePermissions represents permissions grouped by resource server

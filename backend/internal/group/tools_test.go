@@ -358,8 +358,9 @@ func (s *GroupToolsTestSuite) TestRemovalNoticeFollowsThePlane() {
 	}
 }
 
-// A name or member search is paged like a plain list, and counts every match.
-func (s *GroupToolsTestSuite) TestListGroups_SearchIsPaged() {
+// A name or member search returns every match, since the services it reads don't page, and refuses
+// limit and offset.
+func (s *GroupToolsTestSuite) TestListGroups_SearchReturnsEveryMatch() {
 	s.groups.On("GetGroupsByNames", mock.Anything, []string{"Support"}).Return(map[string][]*Group{
 		"Support": {{ID: "g1"}, {ID: "g2"}, {ID: "g3"}},
 	}, (*tidcommon.ServiceError)(nil)).Once()
@@ -369,13 +370,14 @@ func (s *GroupToolsTestSuite) TestListGroups_SearchIsPaged() {
 	}
 
 	var out groupListMCPResponse
-	s.structured(s.call("list_groups", map[string]any{"name": "Support", "limit": 1, "offset": 1}), &out)
+	s.structured(s.call("list_groups", map[string]any{"name": "Support"}), &out)
 
 	s.Equal(3, out.TotalResults)
-	s.Require().Len(out.Groups, 1)
-	s.Equal("g2", out.Groups[0].ID)
-	s.Contains(s.errorText(s.call("list_groups", map[string]any{"name": "Support", "limit": 500})),
-		"limit must be 1 to 100")
+	s.Len(out.Groups, 3)
+	s.Contains(s.errorText(s.call("list_groups", map[string]any{"name": "Support", "limit": 1})),
+		"returns every match")
+	s.Contains(s.errorText(s.call("list_groups", map[string]any{"name": "Support", "offset": 1})),
+		"returns every match")
 }
 
 // Every group tool needs the group permission its API needs, so none falls back to root by accident.

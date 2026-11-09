@@ -314,9 +314,9 @@ func (ts *MCPTestSuite) TestAgentTools_GetAgentIncludesItsAccess() {
 			Granted string `json:"granted"`
 		} `json:"roles"`
 		Permissions []struct {
-			API         string   `json:"api"`
-			Name        string   `json:"name"`
-			Permissions []string `json:"permissions"`
+			ResourceServer string   `json:"resourceServer"`
+			Name           string   `json:"name"`
+			Permissions    []string `json:"permissions"`
 		} `json:"permissions"`
 		NotIncluded []string `json:"notIncluded"`
 	}
@@ -331,7 +331,7 @@ func (ts *MCPTestSuite) TestAgentTools_GetAgentIncludesItsAccess() {
 	}
 	ts.Equalf(map[string]string{directRole: "directly", groupRole: "through_group"}, granted, "roles: %s", raw)
 	ts.Require().Lenf(agent.Permissions, 1, "permissions: %s", raw)
-	ts.Equal(apiIdentifier, agent.Permissions[0].API)
+	ts.Equal(apiIdentifier, agent.Permissions[0].ResourceServer)
 	ts.Equal("MCP Agent Access API", agent.Permissions[0].Name)
 	ts.Equal([]string{"read", "write"}, agent.Permissions[0].Permissions)
 	ts.Empty(agent.NotIncluded)
