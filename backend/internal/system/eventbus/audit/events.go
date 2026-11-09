@@ -13,6 +13,9 @@ const (
 	EventAgentUpdate = "agent.update"
 	// EventAgentDelete names an attempt to delete an agent.
 	EventAgentDelete = "agent.delete"
+	// EventAgentCredentialUpdate names an attempt to set credentials of an agent. It never carries a
+	// credential or its type.
+	EventAgentCredentialUpdate = "agent.credential.update" //nolint:gosec // an event name, not a credential
 	// EventAgentTypeCreate names an attempt to create an agent type.
 	EventAgentTypeCreate = "agent_type.create"
 	// EventAgentTypeUpdate names an attempt to change an agent type.
@@ -25,6 +28,12 @@ const (
 	EventUserUpdate = "user.update"
 	// EventUserDelete names an attempt to delete a user.
 	EventUserDelete = "user.delete"
+	// EventUserCredentialEnroll names an attempt to enroll a credential for a user. It never carries
+	// credential data.
+	EventUserCredentialEnroll = "user.credential.enroll" //nolint:gosec // an event name, not a credential
+	// EventUserCredentialUpdate names an attempt to set credentials of a user. It never carries a
+	// credential or its type.
+	EventUserCredentialUpdate = "user.credential.update" //nolint:gosec // an event name, not a credential
 	// EventUserSharingPolicyCreate names an attempt to create a sharing policy of a user.
 	EventUserSharingPolicyCreate = "user.sharing_policy.create"
 	// EventUserSharingPolicyUpdate names an attempt to change a sharing policy of a user.
@@ -239,6 +248,8 @@ var auditedEvents = map[string][]string{
 	EventAgentUpdate: nil,
 	EventAgentDelete: nil,
 
+	EventAgentCredentialUpdate: nil,
+
 	EventAgentTypeCreate: nil,
 	EventAgentTypeUpdate: nil,
 	EventAgentTypeDelete: nil,
@@ -246,6 +257,9 @@ var auditedEvents = map[string][]string{
 	EventUserCreate: nil,
 	EventUserUpdate: nil,
 	EventUserDelete: nil,
+
+	EventUserCredentialEnroll: nil,
+	EventUserCredentialUpdate: nil,
 
 	EventUserSharingPolicyCreate: nil,
 	EventUserSharingPolicyUpdate: nil,

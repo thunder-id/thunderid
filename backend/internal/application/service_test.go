@@ -5200,6 +5200,7 @@ func (suite *ServiceTestSuite) newFlowTargetTestService(entity *providers.Entity
 		entityService:        mockEntityService,
 		dependencyRegistry:   noopDepRegistry{},
 		authzService:         allowAllAuthz(suite.T()),
+		bus:                  discardingBus{},
 	}
 	return service, mockStore
 }
@@ -5486,6 +5487,7 @@ func (suite *ServiceTestSuite) TestRegenerateClientSecret_PersistsAndReturnsNewS
 		entityService:        mockEntityService,
 		dependencyRegistry:   noopDepRegistry{},
 		authzService:         allowAllAuthz(suite.T()),
+		bus:                  discardingBus{},
 	}
 
 	secret, svcErr := service.ApplyCredentialAction(

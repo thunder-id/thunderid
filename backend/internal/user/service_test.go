@@ -660,7 +660,7 @@ func TestUserService_CreateUser_PropagatesStoreError(t *testing.T) {
 
 func TestUserService_UpdateUserCredentials_Validation(t *testing.T) {
 	t.Run("ReturnsAuthErrorWhenUserIDMissing", func(t *testing.T) {
-		service := &userService{}
+		service := &userService{bus: discardingBus{}}
 
 		err := service.UpdateUserCredentials(context.Background(), "", json.RawMessage(`{"password":"newpass"}`))
 		require.NotNil(t, err)
@@ -668,7 +668,7 @@ func TestUserService_UpdateUserCredentials_Validation(t *testing.T) {
 	})
 
 	t.Run("ReturnsMissingCredentialsWhenPayloadEmpty", func(t *testing.T) {
-		service := &userService{}
+		service := &userService{bus: discardingBus{}}
 
 		err := service.UpdateUserCredentials(context.Background(), svcTestUserID1, json.RawMessage(``))
 		require.NotNil(t, err)
@@ -676,7 +676,7 @@ func TestUserService_UpdateUserCredentials_Validation(t *testing.T) {
 	})
 
 	t.Run("ReturnsInvalidRequestFormatWhenInvalidJSON", func(t *testing.T) {
-		service := &userService{}
+		service := &userService{bus: discardingBus{}}
 
 		err := service.UpdateUserCredentials(context.Background(), svcTestUserID1, json.RawMessage(`invalid json`))
 		require.NotNil(t, err)
@@ -698,6 +698,7 @@ func TestUserService_UpdateUserCredentials_Validation(t *testing.T) {
 			Once()
 
 		service := &userService{
+			bus:           discardingBus{},
 			entityService: userStoreMock,
 			authzService:  newAllowAllAuthz(t),
 		}
@@ -709,7 +710,7 @@ func TestUserService_UpdateUserCredentials_Validation(t *testing.T) {
 	})
 
 	t.Run("ReturnsMissingCredentialsWhenMapEmpty", func(t *testing.T) {
-		service := &userService{}
+		service := &userService{bus: discardingBus{}}
 
 		err := service.UpdateUserCredentials(context.Background(), svcTestUserID1, json.RawMessage(`{}`))
 		require.NotNil(t, err)
@@ -732,6 +733,7 @@ func TestUserService_UpdateUserCredentials_ValueFailsSchema(t *testing.T) {
 		Once()
 
 	service := &userService{
+		bus:           discardingBus{},
 		entityService: userStoreMock,
 		authzService:  newAllowAllAuthz(t),
 	}
@@ -751,6 +753,7 @@ func TestUserService_UpdateUserCredentials_UserNotFound(t *testing.T) {
 		Once()
 
 	service := &userService{
+		bus:           discardingBus{},
 		entityService: userStoreMock,
 	}
 
@@ -783,6 +786,7 @@ func TestUserService_UpdateUserCredentials_Succeeds(t *testing.T) {
 		Once()
 
 	service := &userService{
+		bus:           discardingBus{},
 		entityService: userStoreMock,
 		authzService:  newAllowAllAuthz(t),
 	}
@@ -834,6 +838,7 @@ func TestUserService_UpdateUserCredentials_Rejections(t *testing.T) {
 				Maybe()
 
 			service := &userService{
+				bus:           discardingBus{},
 				entityService: userStoreMock,
 				authzService:  newAllowAllAuthz(t),
 			}
@@ -3537,6 +3542,7 @@ func TestUserService_UpdateUserCredentials_PreFetchAndAuthzChecks(t *testing.T) 
 				storeMock.On("GetEntityProfile", mock.Anything, userID).
 					Return((*providers.Entity)(nil), storeErr).Once()
 				return &userService{
+					bus:           discardingBus{},
 					entityService: storeMock,
 					authzService:  newAllowAllAuthz(t),
 				}
@@ -3558,6 +3564,7 @@ func TestUserService_UpdateUserCredentials_PreFetchAndAuthzChecks(t *testing.T) 
 					Return(false, (*tidcommon.ServiceError)(nil)).Once()
 
 				return &userService{
+					bus:           discardingBus{},
 					entityService: storeMock,
 					authzService:  authzMock,
 				}
@@ -3579,6 +3586,7 @@ func TestUserService_UpdateUserCredentials_PreFetchAndAuthzChecks(t *testing.T) 
 					Return(false, authzErr).Once()
 
 				return &userService{
+					bus:           discardingBus{},
 					entityService: storeMock,
 					authzService:  authzMock,
 				}
@@ -3602,6 +3610,7 @@ func TestUserService_UpdateUserCredentials_PreFetchAndAuthzChecks(t *testing.T) 
 					Return(&sysauthz.ErrorGrantNotPermitted).Once()
 
 				return &userService{
+					bus:           discardingBus{},
 					entityService: storeMock,
 					authzService:  authzMock,
 				}
@@ -4040,6 +4049,7 @@ func TestUpdateUserCredentials_DeclarativeResource(t *testing.T) {
 	entityTypeMock := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
 
 	service := &userService{
+		bus:               discardingBus{},
 		entityService:     storeMock,
 		entityTypeService: entityTypeMock,
 		authzService:      newAllowAllAuthz(t),
@@ -4070,6 +4080,7 @@ func TestUpdateUserCredentials_DeclarativeCheckError(t *testing.T) {
 	entityTypeMock := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
 
 	service := &userService{
+		bus:               discardingBus{},
 		entityService:     storeMock,
 		entityTypeService: entityTypeMock,
 		authzService:      newAllowAllAuthz(t),
