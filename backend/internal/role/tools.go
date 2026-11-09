@@ -41,8 +41,8 @@ type listRolesMCPInput struct {
 	API        string `json:"api,omitempty" jsonschema:"Identifier of an API, such as https://api.example.com/orders. With permission, lists the roles that grant that permission on it."`
 	Permission string `json:"permission,omitempty" jsonschema:"A permission on the API given in api, from list_api_permissions"`
 	OUID       string `json:"ouId,omitempty" jsonschema:"ID of an organization unit, to list the roles it owns and then the ones shared with it"`
-	Limit      int    `json:"limit,omitempty" jsonschema:"Maximum number of roles to return, at most 100"`
-	Offset     int    `json:"offset,omitempty" jsonschema:"Number of roles to skip"`
+	Limit      int    `json:"limit,omitempty" jsonschema:"Maximum number of roles to return, at most 100, and 30 when not given. Only without name, api and permission: a search returns every match."`
+	Offset     int    `json:"offset,omitempty" jsonschema:"Number of roles to skip. Only without name, api and permission."`
 }
 
 // getRoleMCPInput is the input of the get_role tool.
@@ -58,9 +58,7 @@ type getRoleMCPInput struct {
 
 // listAPIPermissionsMCPInput is the input of the list_api_permissions tool.
 type listAPIPermissionsMCPInput struct {
-	API    string `json:"api" jsonschema:"Identifier of the API, such as https://api.example.com/orders"`
-	Limit  int    `json:"limit,omitempty" jsonschema:"Maximum number of permissions to return, at most 100"`
-	Offset int    `json:"offset,omitempty" jsonschema:"Number of permissions to skip"`
+	API string `json:"api" jsonschema:"Identifier of the API, such as https://api.example.com/orders"`
 }
 
 // listAPIsMCPInput is the input of the list_apis tool.
@@ -68,8 +66,8 @@ type listAPIPermissionsMCPInput struct {
 //nolint:lll
 type listAPIsMCPInput struct {
 	Name   string `json:"name,omitempty" jsonschema:"Part of the API's name or identifier, in any case, such as orders"`
-	Limit  int    `json:"limit,omitempty" jsonschema:"Maximum number of APIs to return, at most 100"`
-	Offset int    `json:"offset,omitempty" jsonschema:"Number of APIs to skip"`
+	Limit  int    `json:"limit,omitempty" jsonschema:"Maximum number of APIs to return, at most 100, and 30 when not given. Only without name: a name search returns every match."`
+	Offset int    `json:"offset,omitempty" jsonschema:"Number of APIs to skip. Only without name."`
 }
 
 // apiMCPItem is one API in a list.
@@ -243,11 +241,12 @@ func RegisterMCPTools(server *mcp.Server, roleService RoleServiceInterface,
 		Description: `Find roles. With api, the identifier of an API (a resource server, as list_apis returns ` +
 			`it), and permission, one of the permissions defined on it (as list_api_permissions returns them), ` +
 			`lists the roles that grant that permission, so you can reuse one instead of creating a ` +
-			`near-duplicate. Results are paged with limit and offset. name matches a role's exact ` +
-			`name. ouId lists the roles an organization unit owns, then the ones shared with it. name and ` +
-			`ouId narrow a permission search. Returns each role's ID, name, organization unit and whether it ` +
+			`near-duplicate. name matches a role's exact name. ouId lists the roles an organization unit ` +
+			`owns, then the ones shared with it. name and ouId narrow a permission search. A search by name ` +
+			`or permission returns every match. Without one, the roles are paged with limit and offset, and ` +
+			`totalResults counts them all. Returns each role's ID, name, organization unit and whether it ` +
 			`is read-only. Use get_role for what a role grants and who holds it.`,
-		InputSchema: tool.GenerateSchema[listRolesMCPInput](tool.WithDefault("", "limit", defaultRolePageSize)),
+		InputSchema: tool.GenerateSchema[listRolesMCPInput](),
 		Annotations: &mcp.ToolAnnotations{Title: "List Roles", ReadOnlyHint: true, OpenWorldHint: new(false)},
 	}, tools.listRoles)
 
@@ -267,8 +266,9 @@ func RegisterMCPTools(server *mcp.Server, roleService RoleServiceInterface,
 		Name: "list_apis",
 		Description: `Find the APIs whose permissions roles grant, such as "the orders API". name matches ` +
 			`part of an API's name or identifier in any case. Returns each API's identifier, which ` +
-			`list_api_permissions, list_roles, create_role and update_role_permissions take. Results are paged ` +
-			`with limit and offset, and totalResults counts every match.`,
+			`list_api_permissions, list_roles, create_role and update_role_permissions take. A name search ` +
+			`returns every match. Without name, the APIs are paged with limit and offset, and totalResults ` +
+			`counts them all.`,
 		InputSchema: tool.GenerateSchema[listAPIsMCPInput](),
 		Annotations: &mcp.ToolAnnotations{Title: "List APIs", ReadOnlyHint: true, OpenWorldHint: new(false)},
 	}, tools.listAPIs)
@@ -277,8 +277,8 @@ func RegisterMCPTools(server *mcp.Server, roleService RoleServiceInterface,
 		Name: "list_api_permissions",
 		Description: `List the permissions an API offers, by its identifier, such as ` +
 			`https://api.example.com/orders; find the identifier with list_apis. Use these exact strings in ` +
-			`create_role and update_role_permissions instead of guessing them. Results are paged with limit and ` +
-			`offset, and totalResults counts them all.`,
+			`create_role and update_role_permissions instead of guessing them. Returns every permission, and ` +
+			`totalResults counts them.`,
 		InputSchema: tool.GenerateSchema[listAPIPermissionsMCPInput](),
 		Annotations: &mcp.ToolAnnotations{
 			Title: "List API Permissions", ReadOnlyHint: true, OpenWorldHint: new(false)},
@@ -329,11 +329,13 @@ func (t *roleTools) listRoles(ctx context.Context, _ *mcp.CallToolRequest, input
 		return nil, nil, errors.New("failed to list roles: give api and permission together")
 	}
 
-	limit, err := pageLimit(input.Limit, input.Offset)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to list roles: %w", err)
-	}
 	if input.API != "" || input.Name != "" {
+		// The searches the role service offers by name and by permission aren't paged, so a search
+		// returns every match.
+		if input.Limit != 0 || input.Offset != 0 {
+			return nil, nil, errors.New("failed to list roles: a search by name or permission returns every " +
+				"match, so limit and offset can't be used with it")
+		}
 		// With an organization unit, the unit's own listing decides which roles are returned, and it holds
 		// the roles shared into the unit, which the caller may not read where they are owned. So the search
 		// runs without the caller's authorization.
@@ -369,9 +371,13 @@ func (t *roleTools) listRoles(ctx context.Context, _ *mcp.CallToolRequest, input
 			}
 			roles = visible
 		}
-		return nil, roleListOf(len(roles), pageOf(roles, limit, input.Offset)), nil
+		return nil, roleListOf(len(roles), roles), nil
 	}
 
+	limit, err := pageLimit(input.Limit, input.Offset)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to list roles: %w", err)
+	}
 	var filters map[string]interface{}
 	if input.OUID != "" {
 		filters = map[string]interface{}{filter.AttributeOUID: input.OUID}
@@ -444,14 +450,33 @@ func (t *roleTools) rolesVisibleInOU(ctx context.Context, ouID string, roles []R
 	return kept, nil
 }
 
-// listAPIs handles the list_apis tool call. It reads every page, since the name match is made here.
+// listAPIs handles the list_apis tool call. Without a name, the resource service pages the APIs. The
+// resource service has no name search, so a name search reads every page, matches here, and returns
+// every match.
 func (t *roleTools) listAPIs(ctx context.Context, _ *mcp.CallToolRequest, input listAPIsMCPInput) (
 	*mcp.CallToolResult, *apiListMCPResponse, error) {
-	limit, err := pageLimit(input.Limit, input.Offset)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to list APIs: %w", err)
-	}
 	wanted := strings.ToLower(strings.TrimSpace(input.Name))
+	if wanted == "" {
+		limit, err := pageLimit(input.Limit, input.Offset)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to list APIs: %w", err)
+		}
+		page, svcErr := t.resourceService.GetResourceServerList(ctx, limit, input.Offset)
+		if svcErr != nil {
+			return nil, nil, fmt.Errorf("failed to list APIs: %s", svcErr.ErrorDescription)
+		}
+		apis := make([]apiMCPItem, 0, len(page.ResourceServers))
+		for _, server := range page.ResourceServers {
+			apis = append(apis, apiMCPItem{API: server.Identifier, Name: server.Name,
+				Description: server.Description, OUID: server.OUID})
+		}
+		return nil, &apiListMCPResponse{TotalResults: page.TotalResults, APIs: apis}, nil
+	}
+	if input.Limit != 0 || input.Offset != 0 {
+		return nil, nil, errors.New("failed to list APIs: a name search returns every match, so limit and " +
+			"offset can't be used with it")
+	}
+
 	apis := []apiMCPItem{}
 	for offset := 0; ; {
 		page, svcErr := t.resourceService.GetResourceServerList(ctx, serverconst.MaxPageSize, offset)
@@ -459,7 +484,7 @@ func (t *roleTools) listAPIs(ctx context.Context, _ *mcp.CallToolRequest, input 
 			return nil, nil, fmt.Errorf("failed to list APIs: %s", svcErr.ErrorDescription)
 		}
 		for _, server := range page.ResourceServers {
-			if wanted == "" || strings.Contains(strings.ToLower(server.Name), wanted) ||
+			if strings.Contains(strings.ToLower(server.Name), wanted) ||
 				strings.Contains(strings.ToLower(server.Identifier), wanted) {
 				apis = append(apis, apiMCPItem{API: server.Identifier, Name: server.Name,
 					Description: server.Description, OUID: server.OUID})
@@ -471,16 +496,14 @@ func (t *roleTools) listAPIs(ctx context.Context, _ *mcp.CallToolRequest, input 
 		}
 	}
 	slices.SortFunc(apis, func(a, b apiMCPItem) int { return strings.Compare(a.Name, b.Name) })
-	return nil, &apiListMCPResponse{TotalResults: len(apis), APIs: pageOf(apis, limit, input.Offset)}, nil
+	return nil, &apiListMCPResponse{TotalResults: len(apis), APIs: apis}, nil
 }
 
-// listAPIPermissions handles the list_api_permissions tool call.
+// listAPIPermissions handles the list_api_permissions tool call. An API's permissions are its actions and
+// those of each of its resources, which the resource service lists separately, so no single paged list
+// holds them all. It returns every permission.
 func (t *roleTools) listAPIPermissions(ctx context.Context, _ *mcp.CallToolRequest,
 	input listAPIPermissionsMCPInput) (*mcp.CallToolResult, *apiPermissionsMCPResponse, error) {
-	limit, err := pageLimit(input.Limit, input.Offset)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to list API permissions: %w", err)
-	}
 	server, err := t.apiByIdentifier(ctx, input.API)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to list API permissions: %w", err)
@@ -522,7 +545,7 @@ func (t *roleTools) listAPIPermissions(ctx context.Context, _ *mcp.CallToolReque
 		return strings.Compare(a.Permission, b.Permission)
 	})
 	return nil, &apiPermissionsMCPResponse{API: server.Identifier, Name: server.Name,
-		TotalResults: len(permissions), Permissions: pageOf(permissions, limit, input.Offset)}, nil
+		TotalResults: len(permissions), Permissions: permissions}, nil
 }
 
 // createRole handles the create_role tool call.

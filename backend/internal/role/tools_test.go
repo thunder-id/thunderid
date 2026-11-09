@@ -178,32 +178,29 @@ func (s *RoleToolsTestSuite) TestListRoles() {
 		s.True(out.Roles[0].ReadOnly)
 	})
 
-	s.Run("a permission search is paged, and reports how many it found", func() {
+	s.Run("a permission search returns every match, since the service doesn't page it", func() {
 		s.roles.On("GetRolesByPermission", mock.Anything, toolOrdersRS, "orders:refund").Return([]Role{
 			{ID: "r1", Name: "A"}, {ID: "r2", Name: "B"}, {ID: "r3", Name: "C"},
 		}, (*tidcommon.ServiceError)(nil)).Once()
 		var out roleListMCPResponse
-		s.structured(s.call("list_roles", map[string]any{
-			"api": toolOrdersAPI, "permission": "orders:refund", "limit": 2, "offset": 1}), &out)
+		s.structured(s.call("list_roles", map[string]any{"api": toolOrdersAPI, "permission": "orders:refund"}), &out)
 		s.Equal(3, out.TotalResults)
-		s.Require().Len(out.Roles, 2)
-		s.Equal("r2", out.Roles[0].ID)
-		s.Equal("r3", out.Roles[1].ID)
+		s.Len(out.Roles, 3)
 	})
 
-	s.Run("an offset past the matches returns none", func() {
-		s.roles.On("GetRolesByNames", mock.Anything, []string{"Refunds"}).Return(map[string][]*Role{
-			"Refunds": {{ID: "r1", Name: "Refunds"}},
-		}, (*tidcommon.ServiceError)(nil)).Once()
-		var out roleListMCPResponse
-		s.structured(s.call("list_roles", map[string]any{"name": "Refunds", "offset": 5}), &out)
-		s.Equal(1, out.TotalResults)
-		s.Empty(out.Roles)
+	s.Run("a search refuses limit and offset", func() {
+		for _, paging := range []map[string]any{{"limit": 2}, {"offset": 1}} {
+			args := map[string]any{"name": "Refunds"}
+			for k, v := range paging {
+				args[k] = v
+			}
+			s.Contains(s.errorText(s.call("list_roles", args)), "returns every match")
+		}
+		s.roles.AssertNotCalled(s.T(), "GetRolesByNames", mock.Anything, mock.Anything)
 	})
 
 	s.Run("a limit over the page size is refused", func() {
-		s.Contains(s.errorText(s.call("list_roles", map[string]any{"name": "Refunds", "limit": 500})),
-			"limit must be 1 to 100")
+		s.Contains(s.errorText(s.call("list_roles", map[string]any{"limit": 500})), "limit must be 1 to 100")
 	})
 
 	s.Run("permission without api", func() {
@@ -491,17 +488,18 @@ func (s *RoleToolsTestSuite) TestCreateRole_PointsToAnExistingRole() {
 	})
 }
 
-// list_apis and list_api_permissions return a page at a time, and count every match.
-func (s *RoleToolsTestSuite) TestAPIListsArePaged() {
-	s.resources.On("GetResourceServerList", mock.Anything, 100, 0).Return(&resourcepkg.ResourceServerList{
-		TotalResults: 3, ResourceServers: []providers.ResourceServer{
-			{Name: "A", Identifier: "https://a"}, {Name: "B", Identifier: "https://b"},
-			{Name: "C", Identifier: "https://c"},
-		}}, (*tidcommon.ServiceError)(nil)).Once()
+// list_apis pages through the resource service only where it can page, and list_api_permissions returns
+// every permission.
+func (s *RoleToolsTestSuite) TestAPIListsPageOnlyThroughTheService() {
+	s.resources.On("GetResourceServerList", mock.Anything, 1, 1).Return(&resourcepkg.ResourceServerList{
+		TotalResults: 3, ResourceServers: []providers.ResourceServer{{Name: "B", Identifier: "https://b"}}},
+		(*tidcommon.ServiceError)(nil)).Once()
 	var apis apiListMCPResponse
 	s.structured(s.call("list_apis", map[string]any{"limit": 1, "offset": 1}), &apis)
 	s.Equal(3, apis.TotalResults)
 	s.Equal([]apiMCPItem{{API: "https://b", Name: "B"}}, apis.APIs)
+	s.Contains(s.errorText(s.call("list_apis", map[string]any{"name": "orders", "limit": 1})),
+		"returns every match")
 
 	s.resources.On("GetActionList", mock.Anything, toolOrdersRS, (*string)(nil), providers.ActionKind(""), 100, 0).
 		Return(&resourcepkg.ActionList{TotalResults: 3, Actions: []providers.Action{
@@ -510,10 +508,11 @@ func (s *RoleToolsTestSuite) TestAPIListsArePaged() {
 	s.resources.On("GetAllResourceList", mock.Anything, toolOrdersRS).
 		Return([]providers.Resource{}, (*tidcommon.ServiceError)(nil)).Once()
 	var permissions apiPermissionsMCPResponse
-	s.structured(s.call("list_api_permissions", map[string]any{"api": toolOrdersAPI, "limit": 2}), &permissions)
+	s.structured(s.call("list_api_permissions", map[string]any{"api": toolOrdersAPI}), &permissions)
 	s.Equal(3, permissions.TotalResults)
 	s.Equal([]apiPermissionMCPItem{{Permission: "orders:cancel", Name: "Cancel"},
-		{Permission: "orders:read", Name: "Read"}}, permissions.Permissions)
+		{Permission: "orders:read", Name: "Read"}, {Permission: "orders:refund", Name: "Refund"}},
+		permissions.Permissions)
 
 	s.Contains(s.errorText(s.call("list_apis", map[string]any{"offset": -1})), "offset 0 or more")
 }
