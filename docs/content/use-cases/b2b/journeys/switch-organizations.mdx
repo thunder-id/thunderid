@@ -1,5 +1,6 @@
 ---
 title: Switch Organizations
+sidebar_label: Switch Organizations
 docType: guide
 sidebar_position: 5
 description: Let a person who belongs to several organizations move between them, with tokens that always name the organization they are working in.
@@ -7,18 +8,25 @@ description: Let a person who belongs to several organizations move between them
 
 # Switch Organizations
 
-Let a person who belongs to several organizations move between them without signing in again. A Wayfinder Enterprise travel consultant has one account that lives in the platform organization and is shared into Northstar Labs and Initech. They book trips for Northstar in the morning and for Initech in the afternoon, and every token they hold names exactly one of those organizations.
+Let a person who belongs to several organizations move between them. A Wayfinder Enterprise travel consultant has one account that lives in the platform organization and is shared into Northstar Labs and Initech. They book trips for Northstar in the morning and for Initech in the afternoon, and every token they hold names exactly one of those organizations.
 
 ## Prerequisites
 
 - The platform organization and the shared application from [B2B Quick Start with React](../quick-start.mdx).
 - A person shared into more than one organization. See [Invite People In](./invite-members.mdx).
+- To switch without asking for the password again, a sign-in flow that keeps a single sign-on (SSO) session. The **Basic + Enterprise SSO** template keeps none, so add **Check SSO Session** and **Save / Load Session** steps to it. See [Organization Units and Single Sign-On](../../../guides/flows/single-sign-on.mdx#organization-units-and-single-sign-on) for where they go around **Resolve OU**.
 
 ## How a Switch Works
 
-Each organization is an organization unit (OU), a node in the hierarchy that owns its own users, groups, and roles. See [Manage Organization Units](../../../guides/organization-units/manage-organization-units.mdx). A sign-in lands in exactly one OU, and its tokens name that OU. A switch is a new sign-in bounded to another OU. <ProductName /> reuses the person's single sign-on session when they can sign in there, so normally no credentials are asked.
+Each organization is an organization unit (OU), a node in the hierarchy that owns its own users, groups, and roles. See [Manage Organization Units](../../../guides/organization-units/manage-organization-units.mdx). A sign-in lands in exactly one OU, and its tokens name that OU. A switch is a new sign-in bounded to another OU. When the sign-in flow keeps an SSO session and the person can sign in to the other OU, <ProductName /> reuses that session and asks for no credentials. Otherwise, the person signs in again.
 
-In redirect mode, the SDK tries the quietest way first. When it has no device secret, it asks for a sign-in in a hidden frame with `prompt=none`, which tells <ProductName /> to answer at once from the existing session, never by showing a screen:
+When your application signs people in by redirecting them to <ProductName />, the SDK tries the quietest way first:
+
+- **A device secret.** A session holds one when the sign-in asked for the `device_sso` scope. The SDK exchanges it for tokens at the other OU's token endpoint, with no browser round trip. The application needs the token exchange grant for this. See [Sign-In With a Device Secret](../../../guides/organization-units/sign-in-to-organization-units.mdx#sign-in-with-a-device-secret).
+- **A silent sign-in.** Without a device secret, the SDK asks for a sign-in in a hidden frame with `prompt=none`, which tells <ProductName /> to answer at once from the existing session, never by showing a screen.
+- **A full-page redirect.** When neither works, the browser goes to the other OU's sign-in, where the person signs in again.
+
+The same order, when the consultant picks Initech:
 
 ```mermaid
 sequenceDiagram
@@ -41,7 +49,7 @@ sequenceDiagram
   app-->>user: Wayfinder, now acting in Initech
 ```
 
-A session holds a device secret when the sign-in asked for the `device_sso` scope. See [Sign-In With a Device Secret](../../../guides/organization-units/sign-in-to-organization-units.mdx#sign-in-with-a-device-secret). A failed switch leaves the previous session as it was.
+A failed switch leaves the previous session as it was.
 
 ## List the Organizations a Person Can Access
 
@@ -155,7 +163,7 @@ The application's token configuration must include these claims. See [What the S
 | `InvalidOrganizationUnit` | No organization ID was given. |
 | `Failed` | The bounded sign-in failed for another reason. The server's OAuth error is the message. |
 
-On the token endpoint itself, a code or refresh token issued for another OU fails with `invalid_grant`, and a device secret for a person who cannot sign in to that OU fails with `interaction_required`.
+At an OU's own token endpoint, `/ou/{ouId}/oauth2/token`, an authorization code issued for another OU fails with `invalid_grant`. A device secret fails with `invalid_grant` for a person who is not in that OU, and with `interaction_required` when its session cannot be reused without the person. The OU token endpoint takes no refresh tokens: a refresh goes to `/oauth2/token`, which refuses it with `invalid_grant` once the person can no longer sign in to the token's OU.
 
 ## Next Steps
 

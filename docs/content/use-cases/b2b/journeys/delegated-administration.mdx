@@ -1,27 +1,40 @@
 ---
-title: Let Org Admins Manage Teams
+title: Let Organization Admins Manage Teams
+sidebar_label: Let Organization Admins Manage Teams
 docType: guide
-sidebar_position: 4
+sidebar_position: 2
 description: Give each organization's admin a Team page that manages only their organization's users, groups, and role assignments.
 ---
 
-# Let Org Admins Manage Teams
+# Let Organization Admins Manage Teams
 
 Give each organization's admin a Team page inside your application, where they add people, organize them into groups, and hand out roles for their own organization and nothing beyond it. In Wayfinder Enterprise, the Northstar Labs admin onboards a new hire, adds them to a group, and makes a teammate a `Wayfinder Member`. Initech's people never appear on that page, and no call the page makes can reach them.
+
+This page also builds the backend client that the later journeys use to act for one organization, such as starting an invitation or setting a company's identity provider.
 
 ## Prerequisites
 
 - The platform organization, the shared `Wayfinder Admin` and `Wayfinder Member` roles, and the shared application from [B2B Quick Start with React](../quick-start.mdx).
-- An application with a server side, such as a Next.js application. The pattern on this page keeps management calls on your server.
+- An application with a server side, such as a Next.js application, registered as its own confidential application: one that holds a client secret, because it signs people in from your server instead of the browser. Configure its tokens and its **Organization Access** as the quick start configures `Wayfinder Enterprise Web`. See [Next.js Configuration](../../../sdks-and-tools/nextjs/apis/configuration.mdx).
 
-## How the Organization Boundary Works
+## Where the Boundary Sits
 
-Each organization is an organization unit (OU), a node in the hierarchy that owns its own users, groups, and roles. See [Manage Organization Units](../../../guides/organization-units/manage-organization-units.mdx). <ProductName /> confines its management permissions to OUs in the following ways:
+Each organization is an organization unit (OU), a node in the hierarchy that owns its own users, groups, and roles. See [Manage Organization Units](../../../guides/organization-units/manage-organization-units.mdx). A company's admin must never act outside their own organization, and two layers hold that line:
 
-- **Permissions stay in one organization.** A management permission such as `system:user:view` or `system:role:update` acts only on the resources of the OU the caller's token names, and a list returns only that OU's resources. The root `system` permission is the exception: it reaches every OU. See [System Permissions](../../../guides/users/manage-roles.mdx#system-permissions).
+- **Your backend pins the organization.** Every management call goes through a route in your backend. The route reads the organization from the admin's verified token and forces it onto the call, whatever the browser sent. In this design, this route is the boundary.
+- **<ProductName /> checks the data.** Whatever token a call carries, a group accepts only members who live in its OU or are shared into it. A role can be assigned only where it is shared with assignments on, and the backend client gets a token only for an organization it is shared with. See [What the Server Still Checks](#what-the-server-still-checks).
+
+The route is the boundary because the backend client holds the root `system` permission. `system` is the parent of every `system:*` management permission, and unlike them it is not confined to one OU: a token that holds it acts in every OU of the deployment. Starting an invitation needs it, which is why the backend client holds it. See [System Permissions](../../../guides/users/manage-roles.mdx#system-permissions).
+
+Without root `system`, <ProductName /> adds a boundary of its own on the Data Plane:
+
+- **Permissions stay in one organization.** A management permission such as `system:user:view` or `system:role:update` acts only on the resources of the OU the caller's token names, and a list returns only that OU's resources.
 - **Lists filter by organization.** `filter=ouId eq "<ou-id>"` lists one organization's resources. Users come back owned first, then shared into the organization. Roles come back the same way. Groups come back owned only, because groups are never shared.
-- **Group members stay inside the organization.** A group accepts a member only when the member lives in the group's OU or is shared into it. See [Organization Unit Boundary for Members](../../../guides/users/manage-groups.mdx#organization-unit-boundary-for-members).
-- **You grant only what you hold.** Assigning a role or adding a group member that would grant more permissions than the caller holds fails with `403` and `SAZ-4030`. Holders of the root `system` permission are exempt. See [Permission Requirements](../../../guides/users/manage-roles.mdx#permission-requirements).
+- **You grant only what you hold.** Assigning a role or adding a group member that would grant more permissions than the caller holds fails with `403` and `SAZ-4030`. See [Permission Requirements](../../../guides/users/manage-roles.mdx#permission-requirements).
+
+:::tip A narrower backend client
+If your backend never starts invitations, give its role `system:user`, `system:group`, and `system:role` instead of root `system`. <ProductName /> then confines every call to the organization in the backend's token, a second boundary behind your route.
+:::
 
 ## Keep Management Calls on Your Server
 
@@ -40,9 +53,9 @@ sequenceDiagram
   participant backend as Wayfinder backend (/api/admin)
   participant tokenEp as ThunderID token endpoint
   participant mgmt as ThunderID management API
-  browser->>backend: List users, with the admin's access token
+  browser->>backend: Lists users, with the admin's access token
   backend->>backend: Verifies the token, checks user:view, reads ouId
-  backend->>tokenEp: client_credentials at /ou/{ouId}/oauth2/token
+  backend->>tokenEp: Requests a client_credentials token at /ou/{ouId}/oauth2/token
   tokenEp-->>backend: Token that names the admin's organization
   backend->>mgmt: GET /users?filter=ouId eq "{ouId}"
   mgmt-->>backend: Northstar Labs users only
@@ -97,11 +110,13 @@ inboundAuthConfig:
               - ouName
 ```
 
-`01900000-0000-7000-8000-000000000020` is the ID of the System resource server in a default deployment. See [Machine-to-Machine (M2M) Access for Organization Units](../../../guides/organization-units/machine-to-machine-access.mdx) for sharing policies on clients.
+`01900000-0000-7000-8000-000000000020` is the ID of the System resource server, the resource server that holds the `system:*` permissions, in a default deployment. Import the file where you manage configuration: in the Control Plane console, click **Import / Export** at the bottom of the sidebar, or send it to `POST /import`. See [Import Resources](../../../guides/declarative-configurations/import-resources.mdx), and [Machine-to-Machine (M2M) Access for Organization Units](../../../guides/organization-units/machine-to-machine-access.mdx) for sharing policies on clients.
 
 ### Give Admins Your Application's Own Permissions
 
-The admin's token carries your application's permissions, not <ProductName />'s. Declare them on your application's resource server, then add them to the `Wayfinder Admin` role you already created: in the Console, open **Roles**, select `Wayfinder Admin`, and add them on the **Permissions** tab. Do not create a second role. If you manage the role as a declarative resource, these are the permissions to add to it:
+The admin's token carries your application's permissions, not <ProductName />'s. Create a resource server for your application's API, with the identifier `urn:wayfinder-enterprise:api`, and declare these permissions on it. See [Manage Resource Servers](../../../guides/resource-servers.mdx).
+
+Then add the permissions to the `Wayfinder Admin` role you already created: in the Console, open **Roles**, select `Wayfinder Admin`, and add them on the **Permissions** tab. Do not create a second role. If you manage the role as a declarative resource, these are the permissions to add to it:
 
 ```yaml title="Excerpt: permissions of the Wayfinder Admin role"
 permissions:
@@ -115,11 +130,11 @@ permissions:
       - role:manage
 ```
 
-The application requests these scopes when the admin signs in, and the backend reads them from the admin's access token.
+A token carries only the permissions the application asks for at sign-in, so your application requests them as scopes. See [Point the SDK Components at the Proxy](#point-the-sdk-components-at-the-proxy).
 
 ### Request a Token for the Admin's Organization
 
-For each call, request a token at the admin's organization's own token endpoint. Name the System resource server in `resource`, so the token carries its permissions. `https://localhost:8090/mcp` is the System resource server's identifier in a default deployment:
+For each call, request a token at the admin's organization's own token endpoint. Name the System resource server in `resource`, the [resource indicator](../../../guides/protocols/oauth-oidc/resource-indicators.mdx) that says which API the token is for, so the token carries its permissions. `https://localhost:8090/mcp` is the System resource server's identifier in a default deployment:
 
 ```bash
 curl -X POST https://localhost:8090/ou/<admin-ou-id>/oauth2/token \
@@ -129,11 +144,11 @@ curl -X POST https://localhost:8090/ou/<admin-ou-id>/oauth2/token \
   -d 'resource=https://localhost:8090/mcp'
 ```
 
-The token's `ouId`, `ouHandle`, and `ouName` claims name the admin's organization. An organization the client is not shared with gets `400 unauthorized_client`. Cache one token per organization until it nears expiry.
+The token's `ouId`, `ouHandle`, and `ouName` claims name the admin's organization. An organization the client is not shared with gets `400 unauthorized_client`. Cache one token per organization until it nears expiry. The journeys that follow call this token `$NORTHSTAR_TOKEN` when it is issued for Northstar Labs, and `$INITECH_TOKEN` when it is issued for Initech.
 
 ### Pin Every Call to the Caller's Organization
 
-Expose one backend route that the management components call. The following sketch shows its shape for users. Extend the same pattern to groups, roles, and user types:
+Expose one backend route that the management components call. The following sketch shows its shape for reading users. Extend the same pattern to groups, roles, and user types:
 
 ```ts title="app/api/admin/[...path]/route.ts (sketch)"
 export async function GET(request: Request, {params}: {params: Promise<{path: string[]}>}) {
@@ -141,22 +156,53 @@ export async function GET(request: Request, {params}: {params: Promise<{path: st
   if (!admin) return Response.json({error: 'Sign in again.'}, {status: 401});
 
   const [collection, id] = (await params).path;
-  if (collection !== 'users' || id !== undefined) return new Response(null, {status: 404});
+  if (collection !== 'users') return new Response(null, {status: 404});
   if (!admin.scopes.includes('user:view')) return new Response(null, {status: 403});
 
-  const query = new URLSearchParams({filter: `ouId eq "${admin.ouId}"`});
   const token = await getBackendToken(admin.ouId); // /ou/{ouId}/oauth2/token, cached
-  return fetch(`https://localhost:8090/users?${query}`, {
-    headers: {Authorization: `Bearer ${token}`},
+  const url =
+    id === undefined
+      ? `https://localhost:8090/users?${new URLSearchParams({filter: `ouId eq "${admin.ouId}"`})}`
+      : `https://localhost:8090/users/${encodeURIComponent(id)}?${new URLSearchParams({ouId: admin.ouId})}`;
+  return fetch(url, {headers: {Authorization: `Bearer ${token}`}});
+}
+```
+
+The route pins the organization on every kind of call:
+
+- **Lists.** It replaces any filter the browser sends with `ouId eq "<admin's ouId>"`. The SDK's `GroupList` and `RoleList` take no organization filter, so this rewrite is what limits them to one organization.
+- **One record.** It reads a user as the admin's organization sees it, with `GET /users/{id}?ouId=<admin's ouId>`. <ProductName /> answers `404` for a user that organization cannot see.
+- **Bodies.** It overwrites `ouId` in every body it forwards. `POST /users` and `POST /groups` create in that organization, and `POST /roles/{id}/assignments/add` and `POST /roles/{id}/assignments/remove` change assignments in it.
+
+Allow only the calls your Team page makes, and return `404` for everything else. A write follows the same shape. This sketch forwards a role assignment, and applies the role allow-list from [What the Server Still Checks](#what-the-server-still-checks):
+
+```ts title="app/api/admin/[...path]/route.ts (sketch, continued)"
+const ASSIGNABLE_ROLE_IDS = [process.env.WAYFINDER_ADMIN_ROLE_ID, process.env.WAYFINDER_MEMBER_ROLE_ID];
+
+export async function POST(request: Request, {params}: {params: Promise<{path: string[]}>}) {
+  const admin = await verifyAccessToken(request);
+  if (!admin) return Response.json({error: 'Sign in again.'}, {status: 401});
+
+  const [collection, roleId, part, action] = (await params).path;
+  if (collection !== 'roles' || part !== 'assignments' || !['add', 'remove'].includes(action)) {
+    return new Response(null, {status: 404});
+  }
+  if (!admin.scopes.includes('role:manage')) return new Response(null, {status: 403});
+  if (!ASSIGNABLE_ROLE_IDS.includes(roleId)) return new Response(null, {status: 403});
+
+  const body = await request.json();
+  const token = await getBackendToken(admin.ouId);
+  return fetch(`https://localhost:8090/roles/${roleId}/assignments/${action}`, {
+    method: 'POST',
+    headers: {Authorization: `Bearer ${token}`, 'Content-Type': 'application/json'},
+    body: JSON.stringify({...body, ouId: admin.ouId}),
   });
 }
 ```
 
-The route replaces any filter the browser sends with the admin's own organization, and sets `ouId` on every body it forwards, such as a new user or a role assignment. The SDK's `GroupList` and `RoleList` take no organization filter, so this rewrite is what limits them to one organization. Allow only the calls your Team page makes, and return `404` for everything else.
-
 ### Point the SDK Components at the Proxy
 
-Override the management `endpoints` in `ThunderIDProvider`, so the components call your backend route instead of <ProductName />. `UserCreate` also lists user types, so route `userTypes` too:
+Override the management `endpoints` in `ThunderIDProvider`, so the components call your backend route instead of <ProductName />. `UserCreate` also lists user types, so route `userTypes` too. Request your API's permissions as scopes, and name its resource server in `resource`, so the admin's token carries what the route checks:
 
 ```tsx title="app/layout.tsx"
 import {ThunderIDProvider} from '@thunderid/nextjs/server';
@@ -168,6 +214,7 @@ export default function RootLayout({children}: {children: React.ReactNode}) {
     <html lang="en">
       <body>
         <ThunderIDProvider
+          scopes={['openid', 'profile', 'ou', 'user:view', 'user:manage', 'group:view', 'group:manage', 'role:view', 'role:manage']}
           signInOptions={{resource: 'urn:wayfinder-enterprise:api'}}
           preferences={{user: {fetchUserProfile: false}}}
           endpoints={{
@@ -237,7 +284,7 @@ The backend client holds the root `system` permission, so the rule that you gran
 <NextSteps>
   <NextStepsCard
     title="Invite People In"
-    description="Bring people who already have an account into an organization."
+    description="Start invitations from the same backend, with the token for the admin's organization."
     href="../invite-members"
   />
   <NextStepsCard
