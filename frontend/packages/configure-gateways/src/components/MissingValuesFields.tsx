@@ -26,6 +26,7 @@ export interface MissingValuesFieldsProps {
 interface FieldGroup {
   key: string;
   resourceType?: string;
+  resourceId?: string;
   resourceName?: string;
   fields: MissingField[];
 }
@@ -39,6 +40,7 @@ function byResource(fields: MissingField[]): FieldGroup[] {
     const group = groups.get(key) ?? {
       key,
       resourceType: reference?.resourceType,
+      resourceId: reference?.resourceId,
       resourceName: reference?.resourceName ?? reference?.resourceId,
       fields: [],
     };
@@ -101,7 +103,12 @@ export default function MissingValuesFields({
             {field.references[0]?.field ? fieldLabel(t, field.references[0].field) : field.name}
           </Box>
           {field.references[0]?.field && (
-            <Typography component="span" variant="caption" color="text.secondary" sx={{fontFamily: 'monospace'}}>
+            <Typography
+              component="span"
+              variant="caption"
+              color="text.secondary"
+              sx={{fontFamily: 'monospace', overflowWrap: 'anywhere'}}
+            >
               {field.name}
             </Typography>
           )}
@@ -192,16 +199,48 @@ export default function MissingValuesFields({
           {byResource(fields).map((group: FieldGroup) => (
             <Stack key={group.key} spacing={1.25} data-testid={`missing-group-${group.key}`}>
               {group.resourceType && (
-                <Typography variant="caption" color="text.secondary" sx={{fontWeight: 600}}>
-                  {[
-                    group.resourceName,
-                    t(`changes.types.${group.resourceType}`, {defaultValue: humanize(group.resourceType)}),
-                  ]
-                    .filter(Boolean)
-                    .join(' · ')}
-                </Typography>
+                <Box data-testid={`missing-resource-${group.key}`}>
+                  <Stack direction="row" spacing={1} alignItems="center" sx={{flexWrap: 'wrap', rowGap: 0.5}}>
+                    <Chip
+                      size="small"
+                      variant="outlined"
+                      label={t(`changes.types.${group.resourceType}`, {
+                        defaultValue: humanize(group.resourceType),
+                      })}
+                      sx={{height: 20, fontSize: 11}}
+                    />
+                    {group.resourceName && (
+                      <Typography variant="subtitle2" sx={{overflowWrap: 'anywhere'}}>
+                        {group.resourceName}
+                      </Typography>
+                    )}
+                  </Stack>
+                  {group.resourceId && group.resourceId !== group.resourceName && (
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                      sx={{display: 'block', mt: 0.25, fontFamily: 'monospace', overflowWrap: 'anywhere'}}
+                    >
+                      {group.resourceId}
+                    </Typography>
+                  )}
+                  <Typography variant="caption" color="text.secondary" sx={{display: 'block', mt: 0.25}}>
+                    {t('missing.usedBy', 'Uses {{fields}}', {
+                      fields: group.fields
+                        .map((field: MissingField) =>
+                          field.references[0]?.field ? fieldLabel(t, field.references[0].field) : field.name,
+                        )
+                        .join(', '),
+                    })}
+                  </Typography>
+                </Box>
               )}
-              {group.fields.map(fieldInput)}
+              <Stack
+                spacing={1.25}
+                sx={group.resourceType ? {pl: 1.5, borderLeft: 2, borderColor: 'divider'} : undefined}
+              >
+                {group.fields.map(fieldInput)}
+              </Stack>
             </Stack>
           ))}
         </Stack>
