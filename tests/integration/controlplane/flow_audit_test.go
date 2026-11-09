@@ -22,7 +22,9 @@ func (ts *ControlPlaneTestSuite) TestFlowAndServerConfigChangesAreAudited() {
 	ts.Require().NoError(reader.Reset())
 
 	handle := unique("cp-audit-flow")
-	flowID, err := testutils.CreateIsolatedAuthFlow(handle)
+	flow := testutils.IsolatedAuthFlow(handle)
+	flow.ProjectID = defaultProjectID
+	flowID, err := testutils.CreateFlow(flow)
 	ts.Require().NoError(err)
 	ts.T().Cleanup(func() { _ = testutils.DeleteFlow(flowID) })
 	status, raw := ts.call(http.MethodPost, "/flows/"+flowID+"/restore", map[string]any{"version": 1}, nil)
@@ -93,7 +95,7 @@ func (ts *ControlPlaneTestSuite) setVariablesWithUpdateOnly() (string, map[strin
 	}
 	status, raw := ts.call(http.MethodPost, "/flows", map[string]any{
 		"handle": unique("cp-audit-vars-flow"), "name": "CP Audit Variables Flow", "flowType": "AUTHENTICATION",
-		"ouId": ts.ouID,
+		"ouId": ts.ouID, "projectId": defaultProjectID,
 		"nodes": []map[string]any{
 			{"id": "start", "type": "START", "onSuccess": "resolve_ou"},
 			{"id": "resolve_ou", "type": "TASK_EXECUTION", "onSuccess": "vars",

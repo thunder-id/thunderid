@@ -13,10 +13,11 @@ import (
 
 func TestProjectRequired(t *testing.T) {
 	for resourceType, expected := range map[security.ResourceType]bool{
-		security.ResourceTypeApplication:             false,
+		security.ResourceTypeApplication:             true,
 		security.ResourceTypeAuthorizationDetailType: true,
-		security.ResourceTypeAgent:                   false,
-		security.ResourceTypeFlow:                    false,
+		security.ResourceTypeAgent:                   true,
+		security.ResourceTypeDesign:                  true,
+		security.ResourceTypeFlow:                    true,
 		security.ResourceTypeGroup:                   false,
 		security.ResourceTypeNotificationTemplate:    true,
 		security.ResourceTypeOU:                      true,

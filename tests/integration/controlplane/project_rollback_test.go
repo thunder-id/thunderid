@@ -6,6 +6,8 @@ package controlplane
 import (
 	"net/http"
 	"strings"
+
+	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
 // projectStatus is what GET /gateways/{id}/project-status answers, as far as these tests read it.
@@ -31,14 +33,25 @@ func (ts *ControlPlaneTestSuite) statusOf(gatewayID, projectID string) projectSt
 	return status
 }
 
-// defaultProjectID is the project the bootstrap creates, which holds the default flows.
+// defaultProjectID is the project the bootstrap creates, which holds the default flows and the Console.
 const defaultProjectID = "01900000-0000-7000-8000-000000000002"
+
+// consoleAppID is the Console application the bootstrap creates in the default project.
+const consoleAppID = "01900000-0000-7000-8000-000000000060"
 
 // deployDefaultProject captures a version and deploys the default project to the gateway. Its default flows
 // are what other projects' applications sign in through, and a project deploy does not send another project's
-// resources.
+// resources. The data plane first gets its own values for the Console's client ID and redirect URIs, which the
+// Console's export refers to.
 func (ts *ControlPlaneTestSuite) deployDefaultProject(gatewayID string) {
 	ts.T().Helper()
+	status, raw := ts.toDataPlane(http.MethodPut, "/variables/"+variableName("APPLICATION", consoleAppID, "CLIENT_ID"),
+		map[string]any{"value": "CONSOLE"})
+	ts.Require().Less(status, http.StatusBadRequest, string(raw))
+	status, raw = ts.toDataPlane(http.MethodPut,
+		"/variables/"+variableName("APPLICATION", consoleAppID, "REDIRECT_URIS"),
+		map[string]any{"value": `["` + testutils.DataPlaneURL + `/console"]`})
+	ts.Require().Less(status, http.StatusBadRequest, string(raw))
 	code, raw := ts.call(http.MethodPost, "/configuration-versions", map[string]any{"note": "the default flows"}, nil)
 	ts.Require().Contains([]int{http.StatusCreated, http.StatusOK}, code, string(raw))
 	code, raw = ts.call(http.MethodPost, "/gateways/"+gatewayID+"/apply", map[string]any{"project": defaultProjectID}, nil)

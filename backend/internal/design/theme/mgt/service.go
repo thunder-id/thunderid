@@ -18,6 +18,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/managedresource"
+	"github.com/thunder-id/thunderid/internal/system/projectscope"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
@@ -55,8 +56,10 @@ type themeMgtService struct {
 	dependencyRegistry resourcedependency.Registry
 	// projectChecker is nil on a deployment that serves no projects.
 	projectChecker projectChecker
-	logger         *log.Logger
-	bus            eventbus.EventBusInterface
+	// projectRequired is set on a deployment that serves projects, where every theme belongs to one.
+	projectRequired bool
+	logger          *log.Logger
+	bus             eventbus.EventBusInterface
 	// managed says which themes a control plane deployed, which stay read only here. Nil where nothing
 	// is deployed from one.
 	managed managedresource.StoreInterface
@@ -82,8 +85,10 @@ func newThemeMgtService(themeMgtStore themeMgtStoreInterface, bus eventbus.Event
 		authzService:   authzService,
 		themeMgtStore:  themeMgtStore,
 		projectChecker: projectChecker,
-		logger:         logger,
-		bus:            bus,
+		projectRequired: projectChecker != nil &&
+			projectscope.ProjectRequired(security.ResourceTypeDesign),
+		logger: logger,
+		bus:    bus,
 	}
 }
 
@@ -223,7 +228,7 @@ func (ts *themeMgtService) createTheme(ctx context.Context, theme CreateThemeReq
 
 	// A deployment that serves projects keeps every theme in one.
 	if theme.ProjectID == "" {
-		if ts.projectChecker != nil {
+		if ts.projectRequired {
 			return nil, &ErrorProjectRequired
 		}
 	} else if err := ts.validateProject(ctx, theme.ProjectID); err != nil {
