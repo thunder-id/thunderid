@@ -68,6 +68,12 @@ const (
 	EventFlowRestore = "flow.restore"
 	// EventClientAuthenticate names a refused attempt by an OAuth client to authenticate.
 	EventClientAuthenticate = "client.authenticate"
+	// EventGatewayCreate names an attempt to register a gateway.
+	EventGatewayCreate = "gateway.create"
+	// EventGatewayUpdate names an attempt to change the registration of a gateway.
+	EventGatewayUpdate = "gateway.update"
+	// EventGatewayDelete names an attempt to remove the registration of a gateway.
+	EventGatewayDelete = "gateway.delete"
 	// EventGatewayApply names an attempt to apply a configuration version to a gateway.
 	EventGatewayApply = "gateway.apply"
 	// EventGatewayRevert names an attempt to return a gateway to the configuration it held before.
@@ -106,6 +112,8 @@ const (
 	EventConfigurationDelete = "configuration.delete"
 	// EventConfigurationExport names an attempt to export configuration, which can carry secrets.
 	EventConfigurationExport = "configuration.export"
+	// EventConfigurationVersionCreate names an attempt to capture the configuration as a version.
+	EventConfigurationVersionCreate = "configuration_version.create"
 	// EventNotificationSenderCreate names an attempt to create a notification sender.
 	EventNotificationSenderCreate = "notification_sender.create"
 	// EventNotificationSenderUpdate names an attempt to change a notification sender.
@@ -197,6 +205,9 @@ const (
 	// TargetTypeConfiguration is the target type of an event about the configuration as a whole, which
 	// has no ID.
 	TargetTypeConfiguration = "configuration"
+	// TargetTypeConfigurationVersion is the target type of an event about a captured version of the
+	// configuration, identified by its hash.
+	TargetTypeConfigurationVersion = "configuration_version"
 	// TargetTypeAgent is the target type of an event about an agent.
 	TargetTypeAgent = "agent"
 	// TargetTypeAgentType is the target type of an event about an agent type.
@@ -279,6 +290,10 @@ var auditedEvents = map[string][]string{
 	EventFlowRestore:        nil,
 	EventClientAuthenticate: nil,
 
+	EventGatewayCreate: nil,
+	EventGatewayUpdate: nil,
+	EventGatewayDelete: nil,
+
 	EventGatewayApply:     nil,
 	EventGatewayRevert:    nil,
 	EventConnectionCreate: nil,
@@ -298,6 +313,8 @@ var auditedEvents = map[string][]string{
 	EventConfigurationImport: {DetailDryRun},
 	EventConfigurationDelete: nil,
 	EventConfigurationExport: nil,
+
+	EventConfigurationVersionCreate: nil,
 
 	EventNotificationSenderCreate: nil,
 	EventNotificationSenderUpdate: nil,

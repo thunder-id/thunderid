@@ -136,7 +136,7 @@ func TestADeclaredGatewayIsRefusedAsAClientError(t *testing.T) {
 	declaredFor(t, fileStore, Gateway{
 		ID: "gw-declared", Name: testGatewayName, BaseURL: "https://dp.declared.test", Key: "k",
 	})
-	svc := newService(newCompositeStore(fileStore, &fakeStore{}), newPipeline())
+	svc := newService(newCompositeStore(fileStore, &fakeStore{}), newPipeline(), discardingBus{})
 	newName := "renamed"
 
 	_, updateErr := svc.Update(ctx, "gw-declared", UpdateRequest{Name: &newName})
