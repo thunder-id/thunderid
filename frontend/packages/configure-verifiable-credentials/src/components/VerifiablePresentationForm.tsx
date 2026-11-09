@@ -7,27 +7,21 @@ import {useCapabilitiesContext} from '@thunderid/contexts';
 import {
   Box,
   Button,
-  Chip,
   FormControl,
-  FormControlLabel,
   FormHelperText,
   FormLabel,
   IconButton,
   InputAdornment,
-  List,
-  ListItem,
-  ListItemText,
   MenuItem,
   Select,
   Stack,
-  Switch,
   Tab,
   Tabs,
   TextField,
   Tooltip,
   Typography,
 } from '@wso2/oxygen-ui';
-import {Check, Copy, Plus, Trash2} from '@wso2/oxygen-ui-icons-react';
+import {Check, Copy} from '@wso2/oxygen-ui-icons-react';
 import {
   useCallback,
   useEffect,
@@ -40,12 +34,14 @@ import {
   type SyntheticEvent,
 } from 'react';
 import {useTranslation} from 'react-i18next';
-import AddTrustedIssuerCertificateDialog from './AddTrustedIssuerCertificateDialog';
 import ClaimsEditor from './PresentationClaimsEditor';
+import PresentationSignInCard from './PresentationSignInCard';
+import TrustedIssuerCertificates from './TrustedIssuerCertificates';
 import {
   claimRowsToRequest,
   definitionToClaimRows,
   findDuplicateClaimNames,
+  isSignInValid,
   type ClaimRow,
 } from '../models/presentation-claims';
 import type {CreateVerifiablePresentationRequest, TrustedAuthorityInput} from '../models/presentation-requests';
@@ -128,11 +124,12 @@ export default function VerifiablePresentationForm({
   const [vct, setVct] = useState<string>(initial?.vct ?? '');
   const [format, setFormat] = useState<string>(initial?.format ?? 'dc+sd-jwt');
   const [claims, setClaims] = useState<ClaimRow[]>(definitionToClaimRows(initial));
-  const [enforceTrustedIssuer, setEnforceTrustedIssuer] = useState<boolean>(initial?.enforceTrustedIssuer ?? false);
   const [trustedAuthorities, setTrustedAuthorities] = useState<TrustedAuthorityInput[]>(
     toTrustedAuthorityInputs(initial),
   );
-  const [addCertificateOpen, setAddCertificateOpen] = useState<boolean>(false);
+  const [subjectClaim, setSubjectClaim] = useState<string>(initial?.subjectClaim ?? '');
+  const [signInTurnedOn, setSignInTurnedOn] = useState<boolean>(false);
+  const allowSignIn = signInTurnedOn || subjectClaim !== '';
 
   // Once a save succeeds the new certificates are stored on the server, so keep only their names: a
   // name-only entry keeps the stored certificate, and it matches the refreshed definition so the form
@@ -146,10 +143,6 @@ export default function VerifiablePresentationForm({
       );
     }
   }
-
-  // Enforcing issuer trust without any certificate would reject every presentation, so the toggle
-  // is disabled until a certificate is added.
-  const noCertificates = trustedAuthorities.length === 0;
 
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -178,7 +171,12 @@ export default function VerifiablePresentationForm({
   const duplicateClaimNames = findDuplicateClaimNames(claims);
 
   const valid =
-    handle.trim() !== '' && vct.trim() !== '' && effectiveOuId !== '' && Object.keys(duplicateClaimNames).length === 0;
+    handle.trim() !== '' &&
+    vct.trim() !== '' &&
+    effectiveOuId !== '' &&
+    Object.keys(duplicateClaimNames).length === 0 &&
+    isSignInValid(allowSignIn, subjectClaim, claims) &&
+    trustedAuthorities.length > 0;
 
   const snapshot = (
     h: string,
@@ -188,8 +186,8 @@ export default function VerifiablePresentationForm({
     v: string,
     f: string,
     cl: ClaimRow[],
-    enforce: boolean,
     authorities: TrustedAuthorityInput[],
+    subject: string,
   ): string =>
     JSON.stringify({
       handle: h.trim(),
@@ -199,8 +197,8 @@ export default function VerifiablePresentationForm({
       vct: v.trim(),
       format: f.trim(),
       ...claimRowsToRequest(cl),
-      enforceTrustedIssuer: enforce,
       trustedAuthorities: authorities,
+      subjectClaim: subject,
     });
   const initialSnapshot = useMemo(
     () =>
@@ -212,15 +210,13 @@ export default function VerifiablePresentationForm({
         initial?.vct ?? '',
         initial?.format ?? 'dc+sd-jwt',
         definitionToClaimRows(initial),
-        (initial?.enforceTrustedIssuer ?? false) && (initial?.trustedAuthorities?.length ?? 0) > 0,
         toTrustedAuthorityInputs(initial),
+        initial?.subjectClaim ?? '',
       ),
     [initial],
   );
-  // Never enforce issuer trust without a certificate (it would reject everything).
-  const effectiveEnforce = enforceTrustedIssuer && !noCertificates;
   const dirty =
-    snapshot(handle, effectiveOuId, name, description, vct, format, claims, effectiveEnforce, trustedAuthorities) !==
+    snapshot(handle, effectiveOuId, name, description, vct, format, claims, trustedAuthorities, subjectClaim) !==
     initialSnapshot;
 
   const handleSubmit = (): void => {
@@ -232,8 +228,8 @@ export default function VerifiablePresentationForm({
       vct: vct.trim(),
       format: format.trim() || undefined,
       ...claimRowsToRequest(claims),
-      enforceTrustedIssuer: effectiveEnforce,
-      trustedAuthorities: trustedAuthorities.length > 0 ? trustedAuthorities : undefined,
+      trustedAuthorities,
+      subjectClaim: subjectClaim || undefined,
     });
   };
 
@@ -245,8 +241,9 @@ export default function VerifiablePresentationForm({
     setVct(initial?.vct ?? '');
     setFormat(initial?.format ?? 'dc+sd-jwt');
     setClaims(definitionToClaimRows(initial));
-    setEnforceTrustedIssuer(initial?.enforceTrustedIssuer ?? false);
     setTrustedAuthorities(toTrustedAuthorityInputs(initial));
+    setSubjectClaim(initial?.subjectClaim ?? '');
+    setSignInTurnedOn(false);
     onErrorClear?.();
   };
 
@@ -257,11 +254,9 @@ export default function VerifiablePresentationForm({
 
   const handleRemoveCertificate = (certificateName: string): void => {
     onErrorClear?.();
-    const remaining = trustedAuthorities.filter((entry: TrustedAuthorityInput) => entry.name !== certificateName);
-    setTrustedAuthorities(remaining);
-    if (remaining.length === 0) {
-      setEnforceTrustedIssuer(false);
-    }
+    setTrustedAuthorities((prev: TrustedAuthorityInput[]) =>
+      prev.filter((entry: TrustedAuthorityInput) => entry.name !== certificateName),
+    );
   };
 
   const text = (
@@ -478,43 +473,37 @@ export default function VerifiablePresentationForm({
       </TabPanel>
 
       <TabPanel value={tab} index={2} disabled={readOnly}>
-        <ClaimsEditor
-          readOnly={readOnly}
-          duplicateNames={duplicateClaimNames}
-          claims={claims}
-          onChange={(rows: ClaimRow[]): void => {
-            onErrorClear?.();
-            setClaims(rows);
-          }}
-        />
+        <Stack spacing={3}>
+          <ClaimsEditor
+            readOnly={readOnly}
+            duplicateNames={duplicateClaimNames}
+            claims={claims}
+            onChange={(rows: ClaimRow[]): void => {
+              onErrorClear?.();
+              setClaims(rows);
+            }}
+          />
+          <PresentationSignInCard
+            claims={claims}
+            allowSignIn={allowSignIn}
+            subjectClaim={subjectClaim}
+            onAllowSignInChange={(on: boolean): void => {
+              onErrorClear?.();
+              setSignInTurnedOn(on);
+              if (!on) setSubjectClaim('');
+            }}
+            onSubjectClaimChange={(claim: string): void => {
+              onErrorClear?.();
+              setSubjectClaim(claim);
+            }}
+            storedSubjectClaim={initial?.subjectClaim}
+          />
+        </Stack>
       </TabPanel>
 
       <TabPanel value={tab} index={3} disabled={readOnly}>
         <SettingsCard title={t('form.issuerTrust.title')} description={t('form.issuerTrust.description')}>
-          <Stack spacing={3}>
-            <Box>
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={effectiveEnforce}
-                    disabled={noCertificates}
-                    onChange={(e: ChangeEvent<HTMLInputElement>): void => {
-                      onErrorClear?.();
-                      setEnforceTrustedIssuer(e.target.checked);
-                    }}
-                  />
-                }
-                label={t('form.issuerTrust.enforce.label')}
-              />
-              <FormHelperText>
-                {noCertificates
-                  ? t(
-                      'form.issuerTrust.enforce.noCertificatesHint',
-                      'Add a trusted issuer certificate before enforcing issuer trust.',
-                    )
-                  : t('form.issuerTrust.enforce.hint')}
-              </FormHelperText>
-            </Box>
+          <Stack spacing={2}>
             <Box>
               <FormLabel sx={{fontWeight: 600, fontSize: (theme) => theme.typography.body1.fontSize}}>
                 {t('form.issuerTrust.certificates.title', 'Trusted issuer certificates')}
@@ -525,50 +514,13 @@ export default function VerifiablePresentationForm({
                   'Certificates of the issuers, or of the CAs that sign them, that this presentation definition trusts.',
                 )}
               </Typography>
-              {noCertificates ? (
-                <Typography variant="body2" color="text.secondary" sx={{mt: 2}}>
-                  {t('form.issuerTrust.certificates.empty', 'No trusted issuer certificates added yet.')}
-                </Typography>
-              ) : (
-                <List aria-label={t('form.issuerTrust.certificates.title', 'Trusted issuer certificates')} sx={{mt: 1}}>
-                  {trustedAuthorities.map((entry: TrustedAuthorityInput) => (
-                    <ListItem
-                      key={entry.name}
-                      divider
-                      secondaryAction={
-                        <Tooltip title={t('common:actions.remove')}>
-                          <IconButton
-                            edge="end"
-                            color="error"
-                            aria-label={t('form.issuerTrust.certificates.remove', {
-                              name: entry.name,
-                              defaultValue: 'Remove certificate {{name}}',
-                            })}
-                            onClick={(): void => handleRemoveCertificate(entry.name)}
-                          >
-                            <Trash2 size={16} />
-                          </IconButton>
-                        </Tooltip>
-                      }
-                    >
-                      <ListItemText primary={entry.name} />
-                      {entry.certificate !== undefined && (
-                        <Chip size="small" label={t('form.issuerTrust.certificates.unsaved', 'Unsaved')} sx={{mr: 2}} />
-                      )}
-                    </ListItem>
-                  ))}
-                </List>
-              )}
             </Box>
-            <Box>
-              <Button
-                variant="outlined"
-                startIcon={<Plus size={16} />}
-                onClick={(): void => setAddCertificateOpen(true)}
-              >
-                {t('form.issuerTrust.certificates.add', 'Add certificate')}
-              </Button>
-            </Box>
+            <TrustedIssuerCertificates
+              certificates={trustedAuthorities}
+              onAdd={handleAddCertificate}
+              onRemove={handleRemoveCertificate}
+              markUnsaved
+            />
           </Stack>
         </SettingsCard>
       </TabPanel>
@@ -588,13 +540,6 @@ export default function VerifiablePresentationForm({
           </SettingsCard>
         </TabPanel>
       )}
-
-      <AddTrustedIssuerCertificateDialog
-        open={addCertificateOpen}
-        existingNames={trustedAuthorities.map((entry: TrustedAuthorityInput): string => entry.name)}
-        onClose={(): void => setAddCertificateOpen(false)}
-        onAdd={handleAddCertificate}
-      />
 
       {dirty && !readOnly && (
         <UnsavedChangesBar

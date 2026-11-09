@@ -648,19 +648,19 @@ type CredentialConfiguration struct {
 // definition management API. Handle is the definition_id used on initiate and
 // the DCQL credential id; VCT and OUID are required.
 type PresentationDefinition struct {
-	Handle               string              `json:"handle"`
-	OUID                 string              `json:"ouId,omitempty"`
-	ProjectID            string              `json:"projectId,omitempty"`
-	Name                 string              `json:"name,omitempty"`
-	Description          string              `json:"description,omitempty"`
-	VCT                  string              `json:"vct"`
-	Format               string              `json:"format,omitempty"`
-	RequestedClaims      []string            `json:"requestedClaims,omitempty"`
-	MandatoryClaims      []string            `json:"mandatoryClaims,omitempty"`
-	OptionalClaims       []string            `json:"optionalClaims,omitempty"`
-	ClaimValues          map[string][]string `json:"claimValues,omitempty"`
-	EnforceTrustedIssuer *bool               `json:"enforceTrustedIssuer,omitempty"`
-	TrustedAuthorities   []TrustedAuthority  `json:"trustedAuthorities,omitempty"`
+	Handle             string              `json:"handle"`
+	OUID               string              `json:"ouId,omitempty"`
+	ProjectID          string              `json:"projectId,omitempty"`
+	Name               string              `json:"name,omitempty"`
+	Description        string              `json:"description,omitempty"`
+	VCT                string              `json:"vct"`
+	Format             string              `json:"format,omitempty"`
+	RequestedClaims    []string            `json:"requestedClaims,omitempty"`
+	MandatoryClaims    []string            `json:"mandatoryClaims,omitempty"`
+	OptionalClaims     []string            `json:"optionalClaims,omitempty"`
+	ClaimValues        map[string][]string `json:"claimValues,omitempty"`
+	TrustedAuthorities []TrustedAuthority  `json:"trustedAuthorities,omitempty"`
+	SubjectClaim       string              `json:"subjectClaim,omitempty"`
 }
 
 // TrustedAuthority is a trusted issuer certificate supplied on a presentation definition

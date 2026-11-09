@@ -8,6 +8,9 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"time"
+
+	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
 // definitionsPath is the collection of presentation definitions these tests create.
@@ -107,10 +110,15 @@ func (ts *ProjectAPITestSuite) TestExportedPresentationDefinitionKeepsItsProject
 	ts.Contains(exported.Resources, "projectId: "+shop.ID)
 }
 
-// definitionBody builds a presentation definition request, with the given fields spliced in.
+// definitionBody builds a presentation definition request that trusts one issuer, with the given fields
+// spliced in.
 func (ts *ProjectAPITestSuite) definitionBody(name, fields string, args ...interface{}) string {
-	return fmt.Sprintf(`{"handle":%q,"vct":"urn:example:pid:1",%s}`, ts.handle("vp-"+name),
-		fmt.Sprintf(fields, args...))
+	certificate, err := testutils.NewSelfSignedCertificatePEM("Project Issuer CA", time.Now().Add(24*time.Hour))
+	ts.Require().NoError(err)
+	authorities, err := json.Marshal([]testutils.TrustedAuthority{{Name: "project-issuer", Certificate: certificate}})
+	ts.Require().NoError(err)
+	return fmt.Sprintf(`{"handle":%q,"vct":"urn:example:pid:1","trustedAuthorities":%s,%s}`, ts.handle("vp-"+name),
+		authorities, fmt.Sprintf(fields, args...))
 }
 
 // createDefinition posts a presentation definition, requires a 201, and records it for cleanup.

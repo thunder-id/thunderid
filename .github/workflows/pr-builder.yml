@@ -1591,6 +1591,13 @@ jobs:
           api-key: ${{ env.QUICKSTART_GATEWAY_KEY }}
           label: E2E admin app
 
+      # The bundle's Sky Pass definition trusts the server's own credential signing certificate,
+      # which each server generates, so it is read here on one line with \n escapes.
+      - name: 🔑 Read the Sky Pass Issuer Certificate
+        if: ${{ !cancelled() }}
+        run: |
+          echo "SKYPASS_ISSUER_CERTIFICATE=$(awk '{printf "%s\\n", $0}' tests/e2e/server/dp/config/certs/ecdsa-signing.cert)" >> $GITHUB_ENV
+
       - name: 📦 Import Wayfinder Bundle
         if: ${{ !cancelled() }}
         uses: ./.github/actions/import-declarative-config
@@ -1610,7 +1617,8 @@ jobs:
               "JANE_SMITH_PASSWORD": "jane.smith",
               "ALEX_CARTER_PASSWORD": "alex.carter",
               "SMS_SENDER_ID": "sender-id-value",
-              "CIBA_LOGIN_HINT_ATTRIBUTE": "email"
+              "CIBA_LOGIN_HINT_ATTRIBUTE": "email",
+              "SKYPASS_ISSUER_CERTIFICATE": ${{ toJSON(env.SKYPASS_ISSUER_CERTIFICATE) }}
             }
 
       - name: 🚀 Start Wayfinder Sample App

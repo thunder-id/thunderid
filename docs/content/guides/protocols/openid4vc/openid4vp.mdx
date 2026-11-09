@@ -38,9 +38,10 @@ The protocol uses a polling model: a **back-channel** between <ProductName /> an
 | **Credential format** | `dc+sd-jwt`. |
 | **Selective disclosure** | Disclosures beyond the combined requested claims list fail verification. Optional claims may be omitted by the wallet. |
 | **Key binding** | When `enforce_key_binding` is enabled, the wallet must include a `kb+jwt` binding the presentation to the nonce and verifier audience. |
-| **Issuer trust** | Configured per presentation definition. Each definition carries its own trusted issuer certificates in `trustedAuthorities`. When `enforceTrustedIssuer` is enabled, the issuer certificate chain in the SD-JWT VC `x5c` header must verify against one of them, and the request object advertises their Subject Key Identifiers as DCQL `trusted_authorities` of type `aki`. A certificate applies only to the definition it is added to. |
+| **Issuer trust** | Configured per presentation definition. Each definition carries its own trusted issuer certificates in `trustedAuthorities`, and needs at least one. The issuer certificate chain in the SD-JWT VC `x5c` header must verify against one of them, and the request object advertises their Subject Key Identifiers as DCQL `trusted_authorities` of type `aki`. A certificate applies only to the definition it is added to. In a sign-in flow, a holder is identified only when the credential `iss` matches the issuer certificate: it equals a URI SAN, or it is the `https` origin of a DNS SAN, such as `https://issuer.example` for `issuer.example`, with no path, port, or trailing slash. A wildcard DNS SAN never names an issuer. A credential without `iss` takes its issuer from the certificate's first URI SAN, or else the `https` origin of its first DNS SAN that is not a wildcard. The definition ID and issuer together are limited to 234 characters, so with a generated definition ID an issuer longer than 198 characters cannot sign in. A credential that does not meet these conditions still verifies, but cannot sign in, since one trusted issuer could otherwise assert another's. |
 | **Claim value constraints** | `claimValues` maps a dotted claim path to an allowed set of values. The constraint is advertised in the DCQL query and enforced at verification, but only when the claim is disclosed; undisclosed claims pass silently. |
-| **Result token** | Signed JWT issued on `COMPLETED`. Claims: `iss`, `sub`, `aud` (issuer URL), `jti`, `txn`, `definition_id`, `subject`, `verified_claims`, `verifier`. |
+| **Result token** | Signed JWT issued on `COMPLETED`. Claims: `iss`, `sub`, `aud` (issuer URL), `jti`, `txn`, `definition_id`, `credential_issuer`, `subject`, `verified_claims`, `verifier`. |
+| **Holder resolution** | In a sign-in flow, the holder is linked to a local user the same way a federated sign-in is linked by connection and subject. The connection is `openid4vp:<definitionID>:<iss>`, from the presentation definition ID and the credential issuer. The subject is `<claim>:<value>`, the name of the definition's **Subject claim** and its value in the credential, such as `national_id:DE123`. There is no fallback to the credential `sub`, so a definition without a subject claim verifies presentations but cannot sign users in. A sign-in flow that uses it fails before the wallet is asked for a credential. The verifier refuses the request with `EUDI-1007`, which the flow reports as `FET-1141`. A credential whose subject claim is missing or not a string fails verification. The first presentation records the link when the user is provisioned, and later presentations through the same definition from the same issuer and subject resolve to that user. Links belong to the definition whose trusted issuer certificates verified the credential, since each definition trusts its own issuers: another definition does not resolve them, even one that trusts the same issuer. Deleting and recreating a definition, or switching a flow to another definition, does not carry links over. Unlike a federated connection, no account-linking attributes apply: a holder is never matched to an existing user by email or another attribute. |
 | **State TTL** | Transactions expire after `state_ttl_seconds`. The status endpoint returns `EXPIRED` for past-TTL transactions. |
 | **Wallet errors** | A wallet may POST an OAuth error instead of a VP token (OpenID4VP §6.4). <ProductName /> records the error and reflects it as `FAILED` in the status response. |
 
@@ -57,8 +58,8 @@ Manage definitions in **Verifiable Credentials → Presentations** in the <Produ
 | **Handle** | Unique identifier for this definition. Used as the `definition_id` in the initiate request and in flow step configuration. Required. |
 | **Credential type (VCT)** | The `vct` URI the wallet must present to satisfy this request. Required. |
 | **Claims** | Each entry has a dotted claim path, a requirement (**Mandatory** or **Optional**), and an optional allowed-values list. Mandatory claims must be disclosed; optional claims may be withheld. When allowed values are set, the disclosed value must match one, enforced at verification. Undisclosed optional claims pass silently regardless of allowed values. |
-| **Enforce trusted issuer** | When enabled, the SD-JWT VC issuer certificate chain must verify against one of the definition's trusted issuer certificates. Requires at least one certificate. When disabled, credentials from any issuer are accepted. |
-| **Trusted issuer certificates** | PEM-encoded X.509 certificates of the issuers, or of the CAs that sign them, that this definition trusts. Each has a name that is unique within the definition. Add up to 10. To trust the same issuer in another definition, add its certificate to that definition as well. |
+| **Trusted issuer certificates** | PEM-encoded X.509 certificates of the issuers, or of the CAs that sign them, that this definition trusts. The SD-JWT VC issuer certificate chain must verify against one of them. Each has a name that is unique within the definition. Required: add at least one and up to 10. To trust the same issuer in another definition, add its certificate to that definition as well. |
+| **Subject claim** | A mandatory claim (dotted path) that identifies the holder at sign-in, such as a national identifier. OpenID4VP §14.4 requires a claim used for sign-in to stay stable for the holder and never be reassigned by the issuer to another holder. <ProductName /> cannot check this, so pick a claim your issuer guarantees it for. The claim must hold a string value and its name must not contain a colon (`:`), since the link subject joins the claim name and value with one. Optional. Without it, the definition only verifies presentations, and a sign-in flow that uses it fails with `EUDI-1007` (`FET-1141` in the flow). The value also becomes the `sub` of the result token. You can change the subject claim later, but links record the claim name, so returning holders then sign in as new users, even when a holder's value for the new claim equals a value recorded under the old one. In the Console, turn on **Allow sign-in using this definition** under **Claims**, then pick one of the mandatory claims. Through the API or a declarative resource, set `subjectClaim`. |
 
 ### Trusted Issuer Certificates
 
@@ -69,10 +70,10 @@ Through the management API, `trustedAuthorities` is a list of `{name, certificat
 - An entry with a `name` and a `certificate` adds that certificate.
 - An entry with only a `name` keeps the certificate already stored under that name.
 - A stored certificate whose name is left out is removed.
+- A list that ends up empty is rejected with `VP-2016`.
 
 ```json
 {
-  "enforceTrustedIssuer": true,
   "trustedAuthorities": [
     { "name": "existing-issuer-ca" },
     { "name": "new-issuer-ca", "certificate": "-----BEGIN CERTIFICATE-----\nMIIB...\n-----END CERTIFICATE-----" }
@@ -87,7 +88,6 @@ In a YAML presentation definition, give each certificate inline:
 ```yaml
 resource_type: presentation_definition
 handle: lounge-access
-enforceTrustedIssuer: true
 trustedAuthorities:
   - name: issuer-ca
     certificate: |
@@ -136,11 +136,12 @@ When the status endpoint returns `COMPLETED`, the response includes a signed JWT
 | Claim | Description |
 |---|---|
 | `iss` | The <ProductName /> instance base URL. |
-| `sub` | The holder's stable identifier, from the credential `sub` claim, or a key-binding thumbprint URN when `sub` is absent. |
+| `sub` | The value of the definition's Subject claim, without the claim name. Absent for a definition without a subject claim. |
 | `aud` | The <ProductName /> issuer URL. |
 | `jti` | Unique token identifier (same value as `txn`). |
 | `txn` | The transaction identifier (`txn_id`). |
 | `definition_id` | The presentation definition handle that was requested. |
+| `credential_issuer` | The issuer of the presented credential: its `iss`, or the issuer its signing certificate names when `iss` is absent. A `sub` is unique only within its issuer, so read the two together. The issuer is bound to its certificate only when `iss` matches the certificate, as described under **Issuer trust**. |
 | `subject` | Same as `sub`. |
 | `verified_claims` | Map of selectively disclosed claim values from the credential. |
 | `verifier` | The verifier's `client_id`. |

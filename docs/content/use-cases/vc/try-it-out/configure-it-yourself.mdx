@@ -76,6 +76,7 @@ The presentation definition is what the Skyline Lounge asks the wallet to disclo
 - **Type (`vct`):** `urn:wayfinder:skypass:1`
 - **Mandatory claims:** `tier`
 - **Optional claims:** `full_name`
+- **Trusted issuers:** click **Add certificate**, name it `wayfinder-sky-pass-issuer`, and paste the contents of `config/certs/ecdsa-signing.cert` from the <ProductName /> directory. <ProductName /> signs the Sky Pass with this certificate, and the definition accepts only a pass whose issuer certificate it trusts.
 
 Because only `tier` and `full_name` are requested, the wallet discloses just those two of the pass's six claims. The rest stay hidden.
 

@@ -21,8 +21,6 @@ type policy struct {
 	Leeway          time.Duration
 	// KeyBindingMaxAge rejects KB-JWTs older than this (replay protection). 0 = disabled.
 	KeyBindingMaxAge time.Duration
-	// EnforceTrustedIssuer requires the issuer's x5c chain to verify against the definition's trust anchors.
-	EnforceTrustedIssuer bool
 	// EnforceKeyBinding requires a Key Binding JWT proving holder possession.
 	EnforceKeyBinding bool
 	// ClaimValues constrains specific claims to an allowed set of values.
@@ -31,18 +29,41 @@ type policy struct {
 
 // verifiedCredential is the raw output of an SD-JWT VC verification, before policy enforcement.
 type verifiedCredential struct {
-	Issuer               string
-	VCT                  string
-	Claims               map[string]interface{}
-	DisclosedPaths       []string
-	KeyBindingThumbprint string
+	Issuer         string
+	IssuerBound    bool
+	VCT            string
+	Claims         map[string]interface{}
+	DisclosedPaths []string
 }
 
 // VerifiedPresentation is the result of a successful presentation verification.
 type VerifiedPresentation struct {
-	Subject              string
-	Claims               map[string]interface{}
-	KeyBindingThumbprint string
+	// DefinitionID is the stable uuid of the presentation definition that was verified.
+	DefinitionID string
+	Issuer       string
+	// IssuerTrusted reports whether iss was verified against the definition's trust anchors.
+	IssuerTrusted bool
+	// SubjectClaim names the claim whose value is Subject. It is empty when the definition cannot sign users in.
+	SubjectClaim string
+	Subject      string
+	Claims       map[string]interface{}
+}
+
+// maxLinkedConnectionIDLength bounds the connection id a link is recorded for, so the indexed name
+// "linkedIds.<connection id>" fits the entity identifier name column.
+const maxLinkedConnectionIDLength = 245
+
+// LinkedConnectionID returns the connection id that links a holder's subject to a local user. A subject
+// is unique only within the issuer that asserted it, and an issuer is trusted only by the definition whose
+// authorities verified it, so links are scoped per definition and issuer.
+func LinkedConnectionID(definitionID, issuer string) string {
+	return "openid4vp:" + definitionID + ":" + issuer
+}
+
+// LinkedSubject returns the subject a link records for a holder. The claim name keeps the values of one
+// subject claim from matching links recorded under another when a definition's subject claim changes.
+func LinkedSubject(claim, value string) string {
+	return claim + ":" + value
 }
 
 // subjectDeriver produces the authenticated subject for a verified presentation.
@@ -51,7 +72,11 @@ type subjectDeriver func(*VerifiedPresentation) string
 // presentationDefinition describes a single, named presentation request the verifier can serve.
 // Optional fields fall back to the engine defaults supplied by the Service.
 type presentationDefinition struct {
-	ID            string
+	handle string
+	id     string
+	// subjectClaim names the claim that identifies the holder at sign-in; empty when the definition cannot
+	// sign users in.
+	subjectClaim  string
 	DCQL          dcqlConfig
 	policy        policy
 	DeriveSubject subjectDeriver
@@ -71,16 +96,14 @@ func dtoToDefinition(
 	if len(allClaims) == 0 {
 		allClaims = slices.Concat(dto.MandatoryClaims, dto.OptionalClaims)
 	}
-	enforceTrustedIssuer := false
-	if dto.EnforceTrustedIssuer != nil {
-		enforceTrustedIssuer = *dto.EnforceTrustedIssuer
-	}
 	var keyIDs []string
-	if enforceTrustedIssuer && trust != nil {
+	if trust != nil {
 		keyIDs = trust.keyIDs()
 	}
 	return &presentationDefinition{
-		ID: dto.Handle,
+		handle:       dto.Handle,
+		id:           dto.ID,
+		subjectClaim: dto.SubjectClaim,
 		DCQL: dcqlConfig{
 			CredentialID:           dto.Handle,
 			VCT:                    dto.VCT,
@@ -89,15 +112,14 @@ func dtoToDefinition(
 			TrustedAuthorityKeyIDs: keyIDs,
 		},
 		policy: policy{
-			ExpectedVCT:          dto.VCT,
-			Audience:             clientID,
-			RequestedClaims:      allClaims,
-			MandatoryClaims:      dto.MandatoryClaims,
-			EnforceTrustedIssuer: enforceTrustedIssuer,
-			EnforceKeyBinding:    enforceKB,
-			ClaimValues:          dto.ClaimValues,
+			ExpectedVCT:       dto.VCT,
+			Audience:          clientID,
+			RequestedClaims:   allClaims,
+			MandatoryClaims:   dto.MandatoryClaims,
+			EnforceKeyBinding: enforceKB,
+			ClaimValues:       dto.ClaimValues,
 		},
-		DeriveSubject: defaultSubjectDeriver(),
+		DeriveSubject: subjectDeriverFor(dto.SubjectClaim),
 		trust:         trust,
 	}, nil
 }

@@ -78,7 +78,7 @@ func (s *DefinitionAuthzTestSuite) TestUpdate_MoveToOtherOU() {
 	s.stored(authzOwnOU)
 
 	_, svcErr := s.svc.UpdatePresentationDefinition(context.Background(), authzConfigID,
-		&PresentationDefinitionDTO{Handle: "cfg", VCT: "vct", OUID: authzOtherOU})
+		&PresentationDefinitionDTO{Handle: "cfg", VCT: "vct", OUID: authzOtherOU, TrustedAuthorities: testCA(s.T())})
 	s.Require().NotNil(svcErr)
 	s.Equal(tidcommon.ErrorUnauthorized.Code, svcErr.Code)
 	s.store.AssertNotCalled(s.T(), "UpdatePresentationDefinition", mock.Anything, mock.Anything)

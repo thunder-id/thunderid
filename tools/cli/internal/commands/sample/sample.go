@@ -245,6 +245,9 @@ func runWithResult(
 	if err != nil {
 		return nil, "", "", fmt.Errorf("could not find %s root: %w", product.Name, err)
 	}
+	if err := setSkyPassIssuerCertificate(vars, thunderRoot); err != nil {
+		return nil, "", "", fmt.Errorf("could not read the credential signing certificate: %w", err)
+	}
 	progress("Writing wayfinder resources...")
 	if err := writeResources(configYAML, vars, thunderRoot); err != nil {
 		return nil, "", "", fmt.Errorf("could not write resources: %w", err)
@@ -444,6 +447,24 @@ func writeResources(yamlPath string, vars map[string]string, thunderRoot string)
 			return err
 		}
 	}
+	return nil
+}
+
+// setSkyPassIssuerCertificate fills SKYPASS_ISSUER_CERTIFICATE, which the Wayfinder thunderid.env
+// ships empty, with the server's credential signing certificate, so the Sky Pass presentation
+// definition trusts the passes this server issues. The bundle reads the value inside a
+// double-quoted YAML string, so the PEM line breaks are written as \n escapes.
+func setSkyPassIssuerCertificate(vars map[string]string, thunderRoot string) error {
+	const key = "SKYPASS_ISSUER_CERTIFICATE"
+	if value, ok := vars[key]; !ok || value != "" {
+		return nil
+	}
+	pem, err := os.ReadFile(filepath.Join(thunderRoot, "config", "certs", "ecdsa-signing.cert"))
+	if err != nil {
+		return err
+	}
+	cert := strings.TrimSpace(strings.ReplaceAll(string(pem), "\r", ""))
+	vars[key] = strings.ReplaceAll(cert, "\n", `\n`)
 	return nil
 }
 

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
@@ -298,17 +299,17 @@ func (ts *OUResourceTestSuite) TestIdentityProviderSenderAndPDPConnections() {
 
 func (ts *OUResourceTestSuite) TestPresentationDefinitions() {
 	const path = "/openid4vp/presentation-definitions"
-	own := ts.createAsRoot(path, presentationDefinitionIn("ou_resource_own_pd", ts.ou1ID))
-	other := ts.createAsRoot(path, presentationDefinitionIn("ou_resource_other_pd", ts.ou2ID))
+	own := ts.createAsRoot(path, ts.presentationDefinitionIn("ou_resource_own_pd", ts.ou1ID))
+	other := ts.createAsRoot(path, ts.presentationDefinitionIn("ou_resource_other_pd", ts.ou2ID))
 
 	ts.requireConfinedToOwnOU(path, own, other)
 	ts.requireStatus(http.StatusForbidden, http.MethodPost, path,
-		presentationDefinitionIn("ou_resource_refused_pd", ts.ou2ID))
+		ts.presentationDefinitionIn("ou_resource_refused_pd", ts.ou2ID))
 	ts.requireStatus(http.StatusForbidden, http.MethodPut, path+"/"+other,
-		presentationDefinitionIn("ou_resource_other_pd", ts.ou2ID))
+		ts.presentationDefinitionIn("ou_resource_other_pd", ts.ou2ID))
 	// Moving the administrator's own definition into another OU is refused too.
 	ts.requireStatus(http.StatusForbidden, http.MethodPut, path+"/"+own,
-		presentationDefinitionIn("ou_resource_own_pd", ts.ou2ID))
+		ts.presentationDefinitionIn("ou_resource_own_pd", ts.ou2ID))
 
 	body := ts.requireStatus(http.StatusOK, http.MethodGet, path, nil)
 	ts.requireListedOnlyOwn(listedArrayIDs(body), own, other)
@@ -320,7 +321,7 @@ func (ts *OUResourceTestSuite) TestVCInParentOU() {
 		body func(handle, ouID string) map[string]interface{}
 	}{
 		{"/openid4vci/credential-configurations", credentialConfigurationIn},
-		{"/openid4vp/presentation-definitions", presentationDefinitionIn},
+		{"/openid4vp/presentation-definitions", ts.presentationDefinitionIn},
 	} {
 		id := ts.createAsRoot(vc.path, vc.body("ou_resource_parent_vc", ts.parentID))
 
@@ -409,14 +410,17 @@ func (ts *OUResourceTestSuite) TestAgentTypes() {
 	ts.requireListedOnlyOwn(listedIDs(body, "types"), own, other)
 }
 
-func presentationDefinitionIn(handle, ouID string) map[string]interface{} {
+func (ts *OUResourceTestSuite) presentationDefinitionIn(handle, ouID string) map[string]interface{} {
+	certificate, err := testutils.NewSelfSignedCertificatePEM("OU Resource Issuer CA", time.Now().Add(24*time.Hour))
+	ts.Require().NoError(err)
 	return map[string]interface{}{
-		"handle":          handle,
-		"ouId":            ouID,
-		"name":            "OU resource " + handle,
-		"format":          "dc+sd-jwt",
-		"vct":             "https://credentials.example.com/" + handle,
-		"requestedClaims": []string{"given_name"},
+		"handle":             handle,
+		"ouId":               ouID,
+		"name":               "OU resource " + handle,
+		"format":             "dc+sd-jwt",
+		"vct":                "https://credentials.example.com/" + handle,
+		"requestedClaims":    []string{"given_name"},
+		"trustedAuthorities": []testutils.TrustedAuthority{{Name: "ou-resource-issuer", Certificate: certificate}},
 	}
 }
 

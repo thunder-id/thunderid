@@ -37,69 +37,75 @@ type PresentationDefinitionDTO struct {
 	// ClaimValues constrains specific claims (by dotted path) to an allowed set
 	// of values, emitted as DCQL "values" and enforced at verification.
 	ClaimValues map[string][]string `json:"claimValues,omitempty" yaml:"claimValues,omitempty"`
-	// EnforceTrustedIssuer requires the issuer's x5c chain to verify against one
-	// of TrustedAuthorities. Nil means not enforced.
-	EnforceTrustedIssuer *bool `json:"enforceTrustedIssuer,omitempty" yaml:"enforceTrustedIssuer,omitempty"`
-	// TrustedAuthorities holds the trusted issuer certificates of this definition.
+	// EnforceTrustedIssuer is set only on an export, and always to true. Every presentation is verified against
+	// TrustedAuthorities, but a gateway from before that was mandatory reads a missing value as not enforced.
+	// TODO: Remove this field, and where the exporter sets it, once no gateway that predates mandatory issuer
+	// trust reads exports.
+	EnforceTrustedIssuer bool `json:"-" yaml:"enforceTrustedIssuer,omitempty"`
+	// TrustedAuthorities holds the trusted issuer certificates of this definition. Every presentation is
+	// verified against them, so a definition has at least one.
 	TrustedAuthorities []TrustedAuthority `json:"trustedAuthorities,omitempty" yaml:"trustedAuthorities,omitempty"`
+	// SubjectClaim names the mandatory claim (dotted path) that identifies the holder at sign-in, such as a
+	// national identifier. Empty means the definition only verifies presentations and cannot sign users in.
+	SubjectClaim string `json:"subjectClaim,omitempty" yaml:"subjectClaim,omitempty"`
 }
 
 // presentationDefinitionRequest is the API request body for create/update. A definition in a project may
 // leave ouId out to be placed in the system organization unit.
 type presentationDefinitionRequest struct {
-	Handle               string              `json:"handle"`
-	OUID                 string              `json:"ouId"`
-	ProjectID            string              `json:"projectId"`
-	Name                 string              `json:"name"`
-	Description          string              `json:"description"`
-	VCT                  string              `json:"vct"`
-	Format               string              `json:"format"`
-	RequestedClaims      []string            `json:"requestedClaims"`
-	MandatoryClaims      []string            `json:"mandatoryClaims"`
-	OptionalClaims       []string            `json:"optionalClaims"`
-	ClaimValues          map[string][]string `json:"claimValues"`
-	EnforceTrustedIssuer *bool               `json:"enforceTrustedIssuer"`
-	TrustedAuthorities   []TrustedAuthority  `json:"trustedAuthorities"`
+	Handle             string              `json:"handle"`
+	OUID               string              `json:"ouId"`
+	ProjectID          string              `json:"projectId"`
+	Name               string              `json:"name"`
+	Description        string              `json:"description"`
+	VCT                string              `json:"vct"`
+	Format             string              `json:"format"`
+	RequestedClaims    []string            `json:"requestedClaims"`
+	MandatoryClaims    []string            `json:"mandatoryClaims"`
+	OptionalClaims     []string            `json:"optionalClaims"`
+	ClaimValues        map[string][]string `json:"claimValues"`
+	TrustedAuthorities []TrustedAuthority  `json:"trustedAuthorities"`
+	SubjectClaim       string              `json:"subjectClaim"`
 }
 
 // presentationDefinitionResponse is the API response body. Trusted authorities
 // are returned by name only; their certificates are write-only.
 type presentationDefinitionResponse struct {
-	ID                   string              `json:"id"`
-	Handle               string              `json:"handle"`
-	OUID                 string              `json:"ouId"`
-	OUHandle             string              `json:"ouHandle,omitempty"`
-	ProjectID            string              `json:"projectId,omitempty"`
-	Name                 string              `json:"name,omitempty"`
-	Description          string              `json:"description,omitempty"`
-	VCT                  string              `json:"vct"`
-	Format               string              `json:"format"`
-	RequestedClaims      []string            `json:"requestedClaims,omitempty"`
-	MandatoryClaims      []string            `json:"mandatoryClaims,omitempty"`
-	OptionalClaims       []string            `json:"optionalClaims,omitempty"`
-	ClaimValues          map[string][]string `json:"claimValues,omitempty"`
-	EnforceTrustedIssuer *bool               `json:"enforceTrustedIssuer,omitempty"`
-	TrustedAuthorities   []string            `json:"trustedAuthorities,omitempty"`
+	ID                 string              `json:"id"`
+	Handle             string              `json:"handle"`
+	OUID               string              `json:"ouId"`
+	OUHandle           string              `json:"ouHandle,omitempty"`
+	ProjectID          string              `json:"projectId,omitempty"`
+	Name               string              `json:"name,omitempty"`
+	Description        string              `json:"description,omitempty"`
+	VCT                string              `json:"vct"`
+	Format             string              `json:"format"`
+	RequestedClaims    []string            `json:"requestedClaims,omitempty"`
+	MandatoryClaims    []string            `json:"mandatoryClaims,omitempty"`
+	OptionalClaims     []string            `json:"optionalClaims,omitempty"`
+	ClaimValues        map[string][]string `json:"claimValues,omitempty"`
+	TrustedAuthorities []string            `json:"trustedAuthorities,omitempty"`
+	SubjectClaim       string              `json:"subjectClaim,omitempty"`
 }
 
 // toResponse converts a DTO to its API response shape.
 func toResponse(dto PresentationDefinitionDTO) presentationDefinitionResponse {
 	return presentationDefinitionResponse{
-		ID:                   dto.ID,
-		Handle:               dto.Handle,
-		OUID:                 dto.OUID,
-		OUHandle:             dto.OUHandle,
-		ProjectID:            dto.ProjectID,
-		Name:                 dto.Name,
-		Description:          dto.Description,
-		VCT:                  dto.VCT,
-		Format:               dto.Format,
-		RequestedClaims:      dto.RequestedClaims,
-		MandatoryClaims:      dto.MandatoryClaims,
-		OptionalClaims:       dto.OptionalClaims,
-		ClaimValues:          dto.ClaimValues,
-		EnforceTrustedIssuer: dto.EnforceTrustedIssuer,
-		TrustedAuthorities:   trustedAuthorityNames(dto.TrustedAuthorities),
+		ID:                 dto.ID,
+		Handle:             dto.Handle,
+		OUID:               dto.OUID,
+		OUHandle:           dto.OUHandle,
+		ProjectID:          dto.ProjectID,
+		Name:               dto.Name,
+		Description:        dto.Description,
+		VCT:                dto.VCT,
+		Format:             dto.Format,
+		RequestedClaims:    dto.RequestedClaims,
+		MandatoryClaims:    dto.MandatoryClaims,
+		OptionalClaims:     dto.OptionalClaims,
+		ClaimValues:        dto.ClaimValues,
+		TrustedAuthorities: trustedAuthorityNames(dto.TrustedAuthorities),
+		SubjectClaim:       dto.SubjectClaim,
 	}
 }
 

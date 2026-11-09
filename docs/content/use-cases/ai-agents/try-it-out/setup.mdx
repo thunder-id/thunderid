@@ -43,7 +43,13 @@ Before you begin, make sure you have:
 
 Import the Wayfinder configuration bundle.
 
-1. **Edit `thunderid-config/redirect/thunderid.env`** if you want to change the agent's client secret. The default value (`wayfinder-agent-secret`) matches the sample's defaults.
+1. **Edit `thunderid-config/redirect/thunderid.env`.** Set `SKYPASS_ISSUER_CERTIFICATE`, which the bundle's Skyline Lounge presentation definition trusts. <ProductName /> generates its own signing certificate on first start, so the file ships without a value. From the <ProductName /> directory, print the certificate on one line, then paste the output after `SKYPASS_ISSUER_CERTIFICATE=`:
+
+   ```bash
+   awk '{printf "%s\\n", $0}' config/certs/ecdsa-signing.cert
+   ```
+
+   Change the agent's client secret too if you want. The default value (`wayfinder-agent-secret`) matches the sample's defaults.
 
 2. **Import the bundle into <ProductName />.**
 

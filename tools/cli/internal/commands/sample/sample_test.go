@@ -192,6 +192,45 @@ func TestWriteResourcesCommentedResourceType(t *testing.T) {
 	}
 }
 
+// An empty SKYPASS_ISSUER_CERTIFICATE is filled from the server's signing certificate on one line;
+// a value the operator set, or a sample without the key, is left alone.
+func TestSetSkyPassIssuerCertificate(t *testing.T) {
+	thunderRoot := t.TempDir()
+	certDir := filepath.Join(thunderRoot, "config", "certs")
+	if err := os.MkdirAll(certDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	pem := "-----BEGIN CERTIFICATE-----\r\nMIIB\r\n-----END CERTIFICATE-----\r\n"
+	if err := os.WriteFile(filepath.Join(certDir, "ecdsa-signing.cert"), []byte(pem), 0o644); err != nil {
+		t.Fatalf("write cert: %v", err)
+	}
+
+	vars := map[string]string{"SKYPASS_ISSUER_CERTIFICATE": ""}
+	if err := setSkyPassIssuerCertificate(vars, thunderRoot); err != nil {
+		t.Fatalf("setSkyPassIssuerCertificate: %v", err)
+	}
+	want := `-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----`
+	if got := vars["SKYPASS_ISSUER_CERTIFICATE"]; got != want {
+		t.Errorf("certificate = %q, want %q", got, want)
+	}
+
+	vars = map[string]string{"SKYPASS_ISSUER_CERTIFICATE": "operator-set"}
+	if err := setSkyPassIssuerCertificate(vars, thunderRoot); err != nil {
+		t.Fatalf("setSkyPassIssuerCertificate: %v", err)
+	}
+	if got := vars["SKYPASS_ISSUER_CERTIFICATE"]; got != "operator-set" {
+		t.Errorf("operator value overwritten: %q", got)
+	}
+
+	vars = map[string]string{}
+	if err := setSkyPassIssuerCertificate(vars, t.TempDir()); err != nil {
+		t.Fatalf("sample without the key must not read a certificate: %v", err)
+	}
+	if _, ok := vars["SKYPASS_ISSUER_CERTIFICATE"]; ok {
+		t.Error("key added to a sample that does not use it")
+	}
+}
+
 // serviceDir creates <root>/<service> and returns the path of its .env.
 func serviceDir(t *testing.T, root, service string) string {
 	t.Helper()

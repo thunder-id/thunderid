@@ -103,11 +103,17 @@ Download the latest Wayfinder sample distribution.
 
 ### Import the Sample Bundle
 
-1. Open the <ProductName /> Console at **`<PUBLIC_URL>/console`**.
-2. Click **Import / Export** at the bottom of the sidebar, then click **Import**.
-3. Select `thunderid-config/redirect/thunderid-config.yaml`.
-4. Select `thunderid-config/redirect/thunderid.env` for environment variables.
-5. The Console imports the files and reports the resources created.
+1. Set `SKYPASS_ISSUER_CERTIFICATE` in `thunderid-config/redirect/thunderid.env`. The lounge's presentation definition accepts only a Sky Pass signed by a certificate it trusts, and <ProductName /> generates its own signing certificate on first start, so the file ships without a value. From the <ProductName /> directory, print the certificate on one line, then paste the output after `SKYPASS_ISSUER_CERTIFICATE=`:
+
+   ```bash
+   awk '{printf "%s\\n", $0}' config/certs/ecdsa-signing.cert
+   ```
+
+2. Open the <ProductName /> Console at **`<PUBLIC_URL>/console`**.
+3. Click **Import / Export** at the bottom of the sidebar, then click **Import**.
+4. Select `thunderid-config/redirect/thunderid-config.yaml`.
+5. Select `thunderid-config/redirect/thunderid.env` for environment variables.
+6. The Console imports the files and reports the resources created.
 
 ### Run the Sample
 

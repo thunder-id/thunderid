@@ -114,19 +114,19 @@ func (h *definitionHandler) HandleDelete(w http.ResponseWriter, r *http.Request)
 // requestToDTO maps and sanitizes an API request to a managed DTO.
 func requestToDTO(req *presentationDefinitionRequest) *PresentationDefinitionDTO {
 	return &PresentationDefinitionDTO{
-		Handle:               sysutils.SanitizeString(req.Handle),
-		OUID:                 sysutils.SanitizeString(req.OUID),
-		ProjectID:            sysutils.SanitizeString(req.ProjectID),
-		Name:                 sysutils.SanitizeString(req.Name),
-		Description:          sysutils.SanitizeString(req.Description),
-		VCT:                  sysutils.SanitizeString(req.VCT),
-		Format:               sysutils.SanitizeString(req.Format),
-		RequestedClaims:      sanitizeStrings(req.RequestedClaims),
-		MandatoryClaims:      sanitizeStrings(req.MandatoryClaims),
-		OptionalClaims:       sanitizeStrings(req.OptionalClaims),
-		ClaimValues:          sanitizeClaimValues(req.ClaimValues),
-		EnforceTrustedIssuer: req.EnforceTrustedIssuer,
-		TrustedAuthorities:   sanitizeTrustedAuthorities(req.TrustedAuthorities),
+		Handle:             sysutils.SanitizeString(req.Handle),
+		OUID:               sysutils.SanitizeString(req.OUID),
+		ProjectID:          sysutils.SanitizeString(req.ProjectID),
+		Name:               sysutils.SanitizeString(req.Name),
+		Description:        sysutils.SanitizeString(req.Description),
+		VCT:                sysutils.SanitizeString(req.VCT),
+		Format:             sysutils.SanitizeString(req.Format),
+		RequestedClaims:    sanitizeStrings(req.RequestedClaims),
+		MandatoryClaims:    sanitizeStrings(req.MandatoryClaims),
+		OptionalClaims:     sanitizeStrings(req.OptionalClaims),
+		ClaimValues:        sanitizeClaimValues(req.ClaimValues),
+		TrustedAuthorities: sanitizeTrustedAuthorities(req.TrustedAuthorities),
+		SubjectClaim:       sysutils.SanitizeString(req.SubjectClaim),
 	}
 }
 

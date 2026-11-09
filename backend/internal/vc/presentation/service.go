@@ -622,6 +622,10 @@ func validateDefinition(dto *PresentationDefinitionDTO) *tidcommon.ServiceError 
 	if dto.Format != DefaultCredentialFormat {
 		return &ErrorDefinitionUnsupportedFormat
 	}
+	if dto.SubjectClaim != "" &&
+		(!slices.Contains(dto.MandatoryClaims, dto.SubjectClaim) || strings.Contains(dto.SubjectClaim, ":")) {
+		return &ErrorDefinitionInvalidSubjectClaim
+	}
 	if svcErr := validateClaimNames(dto.RequestedClaims); svcErr != nil {
 		return svcErr
 	}
@@ -651,7 +655,8 @@ func validateClaimNames(claims []string) *tidcommon.ServiceError {
 }
 
 // validateTrustedAuthorities enforces named, unique trusted authorities that each carry one parsable
-// certificate, within the supported limit, and requires at least one when issuer trust is enforced.
+// certificate, within the supported limit. At least one is required, since every presentation is verified
+// against them.
 func validateTrustedAuthorities(dto *PresentationDefinitionDTO) *tidcommon.ServiceError {
 	authorities := dto.TrustedAuthorities
 	if len(authorities) > maxTrustedAuthorities {
@@ -659,10 +664,7 @@ func validateTrustedAuthorities(dto *PresentationDefinitionDTO) *tidcommon.Servi
 			map[string]string{"max": strconv.Itoa(maxTrustedAuthorities)})
 	}
 	if len(authorities) == 0 {
-		if dto.EnforceTrustedIssuer != nil && *dto.EnforceTrustedIssuer {
-			return &ErrorDefinitionTrustedIssuerWithoutAuthorities
-		}
-		return nil
+		return &ErrorDefinitionTrustedIssuerWithoutAuthorities
 	}
 	names := make(map[string]bool, len(authorities))
 	certificates := make(map[string]bool, len(authorities))

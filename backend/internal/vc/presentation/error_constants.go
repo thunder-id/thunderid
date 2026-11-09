@@ -251,8 +251,8 @@ var (
 		},
 	}
 
-	// ErrorDefinitionTrustedIssuerWithoutAuthorities indicates issuer trust is enforced
-	// on a presentation definition that has no trusted authorities.
+	// ErrorDefinitionTrustedIssuerWithoutAuthorities indicates a presentation definition has no trusted
+	// authorities, so no presentation could verify against it.
 	ErrorDefinitionTrustedIssuerWithoutAuthorities = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
 		Code: "VP-2016",
@@ -262,7 +262,7 @@ var (
 		},
 		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "error.vp.definition_trusted_issuer_without_authorities_description",
-			DefaultValue: "Add at least one trusted authority certificate before enforcing issuer trust",
+			DefaultValue: "Add at least one trusted authority certificate",
 		},
 	}
 
@@ -338,6 +338,21 @@ var (
 			Key: "error.vp.definition_managed_description",
 			DefaultValue: "The presentation definition was deployed by the control plane and can only be " +
 				"changed there",
+		},
+	}
+
+	// ErrorDefinitionInvalidSubjectClaim is returned when the subject claim is not one of the definition's
+	// mandatory claims or contains a colon.
+	ErrorDefinitionInvalidSubjectClaim = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "VP-2022",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.vp.definition_invalid_subject_claim",
+			DefaultValue: "Invalid subject claim",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.vp.definition_invalid_subject_claim_description",
+			DefaultValue: "The subject claim must be one of the mandatory claims and must not contain a colon",
 		},
 	}
 )

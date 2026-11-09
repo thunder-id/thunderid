@@ -25,15 +25,16 @@ export interface VerifiablePresentation {
    */
   claimValues?: Record<string, string[]>;
   /**
-   * When true, the issuer's x5c chain must verify against one of the trusted
-   * issuer certificates of this definition. Omitted means not enforced.
-   */
-  enforceTrustedIssuer?: boolean;
-  /**
-   * Names of the trusted issuer certificates registered on this definition.
-   * The certificates themselves are never returned.
+   * Names of the trusted issuer certificates registered on this definition. The
+   * issuer's x5c chain must verify against one of them. The certificates
+   * themselves are never returned.
    */
   trustedAuthorities?: string[];
+  /**
+   * The mandatory claim that identifies the holder at sign-in. Omitted means the
+   * definition only verifies presentations and cannot sign users in.
+   */
+  subjectClaim?: string;
 }
 
 /**

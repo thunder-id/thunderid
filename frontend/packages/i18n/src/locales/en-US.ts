@@ -7087,6 +7087,14 @@ const translations = {
     'form.format.label': 'Format',
     'form.format.sdJwt': 'SD-JWT VC (dc+sd-jwt)',
     'form.format.hint': 'Only SD-JWT VC is currently supported.',
+    'form.signIn.allow': 'Allow sign-in using this definition',
+    'form.signIn.subjectClaim.label': 'Subject claim',
+    'form.signIn.subjectClaim.placeholder': 'Select a claim',
+    'form.signIn.subjectClaim.hint': 'A claim that identifies the holder. Mandatory claims only.',
+    'form.signIn.subjectClaim.required': 'Pick a subject claim.',
+    'form.signIn.subjectClaim.notMandatory': 'Must be a mandatory claim.',
+    'form.signIn.claimChanged': 'Returning holders will sign in as new users.',
+    'form.signIn.turnedOff': 'Sign-in flows using this definition will stop working.',
     'form.dangerZone.title': 'Danger zone',
     'form.dangerZone.description': 'Irreversible actions for this presentation definition.',
     'form.dangerZone.delete': 'Delete presentation definition',
@@ -7096,15 +7104,12 @@ const translations = {
 
     // Form - Issuer Trust tab
     'form.issuerTrust.title': 'Issuer trust',
-    'form.issuerTrust.description': 'Control which credential issuers are accepted for this presentation definition.',
-    'form.issuerTrust.enforce.label': 'Enforce trusted issuer',
-    'form.issuerTrust.enforce.hint':
-      'When enabled, only credentials whose issuer certificate chain leads to one of the trusted issuer certificates are accepted.',
-    'form.issuerTrust.enforce.noCertificatesHint': 'Add a trusted issuer certificate before enforcing issuer trust.',
+    'form.issuerTrust.description':
+      'Only credentials whose issuer certificate chain leads to one of these certificates are accepted.',
     'form.issuerTrust.certificates.title': 'Trusted issuer certificates',
     'form.issuerTrust.certificates.hint':
       'Certificates of the issuers, or of the CAs that sign them, that this presentation definition trusts.',
-    'form.issuerTrust.certificates.empty': 'No trusted issuer certificates added yet.',
+    'form.issuerTrust.certificates.required': 'Add at least one trusted issuer certificate.',
     'form.issuerTrust.certificates.add': 'Add certificate',
     'form.issuerTrust.certificates.unsaved': 'Unsaved',
     'form.issuerTrust.certificates.remove': 'Remove certificate {{name}}',
@@ -7152,6 +7157,8 @@ const translations = {
     'create.steps.organizationUnit': 'Organization unit',
     'create.steps.details': 'Type',
     'create.steps.claims': 'Claims',
+    'create.steps.trustedIssuers': 'Trusted issuers',
+    'create.trustedIssuers.title': 'Which issuers do you trust?',
     'create.organizationUnit.title': 'Where should this verifiable presentation belong?',
     'create.organizationUnit.subtitle':
       "Choose the organization unit that will own this verifiable presentation. You can't change this once created.",
@@ -7196,7 +7203,7 @@ const translations = {
     'errors.VP-2013': 'The trusted issuer certificate "{{name}}" is not a valid PEM-encoded X.509 certificate.',
     'errors.VP-2014': 'The trusted issuer certificate "{{name}}" has expired.',
     'errors.VP-2015': 'A presentation definition supports at most {{max}} trusted issuer certificates.',
-    'errors.VP-2016': 'Add at least one trusted issuer certificate before enforcing issuer trust.',
+    'errors.VP-2016': 'Add at least one trusted issuer certificate.',
     'errors.EUDI-1002': 'This verification request is no longer active. Start a new verification.',
     'errors.EUDI-1004': 'This presentation definition is not registered for verification.',
   },

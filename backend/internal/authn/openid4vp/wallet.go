@@ -130,7 +130,7 @@ func (s *openid4vpService) SubmitResponse(
 	for _, presentation := range candidates {
 		cred, verr := verifySDJWTPresentation(
 			presentation, def.trust, policy.Audience, rs.Nonce, policy.Leeway, policy.KeyBindingMaxAge,
-			policy.EnforceTrustedIssuer, policy.EnforceKeyBinding)
+			policy.EnforceKeyBinding)
 		if verr != nil {
 			lastErr = verr
 			continue
@@ -147,10 +147,17 @@ func (s *openid4vpService) SubmitResponse(
 		return nil, "", toServiceError(s.fail(ctx, rs, lastErr))
 	}
 	if def.DeriveSubject != nil {
-		if subject := def.DeriveSubject(vp); subject != "" {
-			vp.Subject = subject
-		}
+		vp.Subject = def.DeriveSubject(vp)
 	}
+	if def.subjectClaim != "" && vp.Subject == "" {
+		return nil, "", toServiceError(s.fail(ctx, rs,
+			fmt.Errorf("%w: %s", ErrInvalidSubjectClaim, def.subjectClaim)))
+	}
+	vp.SubjectClaim = def.subjectClaim
+	vp.DefinitionID = def.id
+	// A link is recorded only under a connection id that fits the identifier column.
+	vp.IssuerTrusted = vp.IssuerTrusted && def.id != "" &&
+		len(LinkedConnectionID(def.id, vp.Issuer)) <= maxLinkedConnectionIDLength
 
 	rs.Status = StatusCompleted
 	rs.Result = vp
@@ -442,7 +449,7 @@ func (r *authorizationResponse) presentationsFor(credentialID string) ([]string,
 func verifySDJWTPresentation(
 	presentation string, trust *trustAnchorStore,
 	expectedAudience, expectedNonce string, leeway, maxIATAge time.Duration,
-	enforceTrustedIssuer, enforceKeyBinding bool,
+	enforceKeyBinding bool,
 ) (*verifiedCredential, error) {
 	p, err := sdjwt.Parse(presentation)
 	if err != nil {
@@ -454,24 +461,17 @@ func verifySDJWTPresentation(
 		return nil, fmt.Errorf("%w: %w", ErrInvalidPresentation, err)
 	}
 	issuer, _ := issuerClaims["iss"].(string)
-	if issuer == "" {
-		return nil, fmt.Errorf("%w: credential missing iss", ErrInvalidPresentation)
-	}
 
 	chain, err := x5cChain(p.IssuerJWT)
 	if err != nil {
 		return nil, err
 	}
-	issuerLeaf := chain[0]
-	if enforceTrustedIssuer {
-		if trust == nil {
-			return nil, fmt.Errorf("%w: presentation definition has no trusted authorities", ErrUntrustedIssuer)
-		}
-		var err error
-		issuerLeaf, err = trust.verifyChain(chain, time.Now())
-		if err != nil {
-			return nil, err
-		}
+	if trust == nil {
+		return nil, fmt.Errorf("%w: presentation definition has no trusted authorities", ErrUntrustedIssuer)
+	}
+	issuerLeaf, err := trust.verifyChain(chain, time.Now())
+	if err != nil {
+		return nil, err
 	}
 	if err := sdjwt.VerifyIssuerSignature(p, issuerLeaf.PublicKey); err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrInvalidPresentation, err)
@@ -493,20 +493,51 @@ func verifySDJWTPresentation(
 		}
 	}
 
+	// iss is optional in SD-JWT VC; without it the signing certificate names the issuer.
+	if issuer == "" {
+		issuer = issuerFromCertificate(issuerLeaf)
+	}
+
 	vct, _ := cred.Claims["vct"].(string)
-	var keyBindingThumbprint string
-	if cred.ConfirmationKey != nil {
-		if jkt, jktErr := jws.ComputeJKT(cred.ConfirmationKey); jktErr == nil {
-			keyBindingThumbprint = jkt
+	return &verifiedCredential{
+		Issuer: issuer,
+		// iss names an issuer only when the trusted chain ends in a certificate that carries it. A
+		// mismatch still verifies the credential but leaves the holder unidentifiable at sign-in,
+		// since iss is then the issuer's own claim.
+		IssuerBound:    issuerMatchesCertificate(issuer, issuerLeaf),
+		VCT:            vct,
+		Claims:         cred.Claims,
+		DisclosedPaths: cred.DisclosedPaths,
+	}, nil
+}
+
+// issuerMatchesCertificate reports whether iss names the certificate that signed the credential: iss equals
+// a URI SAN, or is the https origin of a DNS SAN. Without it, any issuer under a trusted anchor could assert
+// another issuer's iss. A DNS SAN binds only a host, so an iss with a path or port is refused, as two issuers
+// on one host could otherwise assert each other's, and a wildcard SAN names no single issuer.
+func issuerMatchesCertificate(iss string, leaf *x509.Certificate) bool {
+	for _, uri := range leaf.URIs {
+		if uri.String() == iss {
+			return true
 		}
 	}
-	return &verifiedCredential{
-		Issuer:               issuer,
-		VCT:                  vct,
-		Claims:               cred.Claims,
-		DisclosedPaths:       cred.DisclosedPaths,
-		KeyBindingThumbprint: keyBindingThumbprint,
-	}, nil
+	return slices.ContainsFunc(leaf.DNSNames, func(name string) bool {
+		return !strings.Contains(name, "*") && strings.EqualFold(iss, "https://"+name)
+	})
+}
+
+// issuerFromCertificate names the issuer by the certificate's first URI SAN, else the https origin of its
+// first non-wildcard DNS SAN, so it matches what issuerMatchesCertificate accepts for an explicit iss.
+func issuerFromCertificate(leaf *x509.Certificate) string {
+	if len(leaf.URIs) > 0 {
+		return leaf.URIs[0].String()
+	}
+	for _, name := range leaf.DNSNames {
+		if !strings.Contains(name, "*") {
+			return "https://" + name
+		}
+	}
+	return ""
 }
 
 // x5cChain extracts the leaf-first DER certificate chain from the issuer JWT's x5c header (RFC 7515).
@@ -549,9 +580,10 @@ func finalizePresentation(cred *verifiedCredential, policy policy) (*VerifiedPre
 
 	subject, _ := cred.Claims["sub"].(string)
 	return &VerifiedPresentation{
-		Subject:              subject,
-		Claims:               flattenClaims(cred.Claims),
-		KeyBindingThumbprint: cred.KeyBindingThumbprint,
+		Issuer:        cred.Issuer,
+		IssuerTrusted: cred.IssuerBound,
+		Subject:       subject,
+		Claims:        flattenClaims(cred.Claims),
 	}, nil
 }
 
@@ -638,18 +670,14 @@ func flattenInto(out map[string]interface{}, prefix string, node map[string]inte
 	}
 }
 
-// defaultSubjectDeriver returns a deriver that falls back to the key-binding thumbprint when sub is absent.
-func defaultSubjectDeriver() subjectDeriver {
+// subjectDeriverFor identifies the holder by the named claim, and by nothing when none is named. The
+// key-binding key is no identity: a wallet reset or a batch-issued copy carries a different one.
+func subjectDeriverFor(subjectClaim string) subjectDeriver {
 	return func(vp *VerifiedPresentation) string {
-		if vp == nil {
+		if subjectClaim == "" {
 			return ""
 		}
-		if vp.Subject != "" {
-			return vp.Subject
-		}
-		if vp.KeyBindingThumbprint != "" {
-			return "urn:ietf:params:oauth:jwk-thumbprint:sha-256:" + vp.KeyBindingThumbprint
-		}
-		return ""
+		value, _ := vp.Claims[subjectClaim].(string)
+		return value
 	}
 }

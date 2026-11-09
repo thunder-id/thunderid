@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/suite"
 	"gopkg.in/yaml.v3"
@@ -79,17 +80,20 @@ func (ts *ExportAPITestSuite) SetupSuite() {
 	}
 	ts.vcConfigID = configID
 
-	enforceTrustedIssuer := false
+	certificate, err := testutils.NewSelfSignedCertificatePEM("Export Issuer CA", time.Now().Add(24*time.Hour))
+	if err != nil {
+		ts.T().Fatalf("Failed to create trusted authority certificate: %v", err)
+	}
 	definitionID, err := testutils.CreatePresentationDefinition(testutils.PresentationDefinition{
-		Handle:               vcExportDefinitionHandle,
-		OUID:                 ouID,
-		Name:                 "Export Test Presentation",
-		Description:          "Presentation definition for export testing",
-		VCT:                  vcExportConfigVCT,
-		Format:               "dc+sd-jwt",
-		RequestedClaims:      []string{"given_name", "family_name"},
-		MandatoryClaims:      []string{"given_name"},
-		EnforceTrustedIssuer: &enforceTrustedIssuer,
+		Handle:             vcExportDefinitionHandle,
+		OUID:               ouID,
+		Name:               "Export Test Presentation",
+		Description:        "Presentation definition for export testing",
+		VCT:                vcExportConfigVCT,
+		Format:             "dc+sd-jwt",
+		RequestedClaims:    []string{"given_name", "family_name"},
+		MandatoryClaims:    []string{"given_name"},
+		TrustedAuthorities: []testutils.TrustedAuthority{{Name: "export-issuer", Certificate: certificate}},
 	})
 	if err != nil {
 		ts.T().Fatalf("Failed to create test presentation definition: %v", err)
@@ -618,6 +622,8 @@ func (ts *ExportAPITestSuite) TestPresentationDefinitionExport() {
 	ts.Assert().Contains(yamlContent, "vct: "+vcExportConfigVCT)
 	ts.Assert().Contains(yamlContent, "given_name")
 	ts.Assert().Contains(yamlContent, "family_name")
+	// Older gateways enforce issuer trust only when the export says so.
+	ts.Assert().Contains(yamlContent, "enforceTrustedIssuer: true")
 }
 
 // TestVCResourcesExportYAML exports both VC resource types in a single request.

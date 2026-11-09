@@ -23,6 +23,7 @@ type claimsBlob struct {
 	Mandatory []string            `json:"mandatory,omitempty"`
 	Optional  []string            `json:"optional,omitempty"`
 	Values    map[string][]string `json:"values,omitempty"`
+	Subject   string              `json:"subject,omitempty"`
 }
 
 // definitionStoreInterface persists managed presentation definitions in configdb.
@@ -74,7 +75,7 @@ func (s *definitionStore) CreatePresentationDefinition(ctx context.Context, dto 
 	}
 	_, err = dbClient.ExecuteContext(ctx, queryCreateDefinition,
 		dto.ID, dto.Handle, dto.OUID, dto.Name, dto.Description, dto.VCT, dto.Format, claimsJSON,
-		nullableBool(dto.EnforceTrustedIssuer), authoritiesJSON, nullableString(dto.ProjectID), s.scope(ctx))
+		authoritiesJSON, nullableString(dto.ProjectID), s.scope(ctx))
 	if err != nil {
 		return fmt.Errorf("failed to create presentation definition: %w", err)
 	}
@@ -199,7 +200,7 @@ func (s *definitionStore) UpdatePresentationDefinition(ctx context.Context, dto 
 	}
 	_, err = dbClient.ExecuteContext(ctx, queryUpdateDefinition,
 		dto.ID, dto.Handle, dto.OUID, dto.Name, dto.Description, dto.VCT, dto.Format, claimsJSON,
-		nullableBool(dto.EnforceTrustedIssuer), authoritiesJSON, nullableString(dto.ProjectID), s.scope(ctx))
+		authoritiesJSON, nullableString(dto.ProjectID), s.scope(ctx))
 	if err != nil {
 		return fmt.Errorf("failed to update presentation definition: %w", err)
 	}
@@ -258,6 +259,7 @@ func marshalClaims(dto PresentationDefinitionDTO) (string, error) {
 		Mandatory: dto.MandatoryClaims,
 		Optional:  dto.OptionalClaims,
 		Values:    dto.ClaimValues,
+		Subject:   dto.SubjectClaim,
 	})
 	if err != nil {
 		return "", fmt.Errorf("failed to marshal claims: %w", err)
@@ -286,14 +288,6 @@ func nullableString(value string) interface{} {
 	return value
 }
 
-// nullableBool maps an optional bool to its SQL value, preserving NULL (inherit).
-func nullableBool(v *bool) interface{} {
-	if v == nil {
-		return nil
-	}
-	return *v
-}
-
 // buildDefinitionDTOFromRow reconstructs a DTO from a result row.
 func buildDefinitionDTOFromRow(row map[string]interface{}) (*PresentationDefinitionDTO, error) {
 	dto := &PresentationDefinitionDTO{
@@ -315,31 +309,14 @@ func buildDefinitionDTOFromRow(row map[string]interface{}) (*PresentationDefinit
 		dto.MandatoryClaims = cb.Mandatory
 		dto.OptionalClaims = cb.Optional
 		dto.ClaimValues = cb.Values
+		dto.SubjectClaim = cb.Subject
 	}
-	dto.EnforceTrustedIssuer = columnNullableBool(row["enforce_trusted_issuer"])
 	if authoritiesBytes := columnBytes(row["trusted_authorities"]); len(authoritiesBytes) > 0 {
 		if err := json.Unmarshal(authoritiesBytes, &dto.TrustedAuthorities); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal trusted authorities: %w", err)
 		}
 	}
 	return dto, nil
-}
-
-// columnNullableBool coerces a result-row value to an optional bool, tolerating
-// the bool/int64/[]byte representations returned by the supported drivers.
-// NULL (nil) yields a nil pointer (inherit the engine default).
-func columnNullableBool(v interface{}) *bool {
-	switch t := v.(type) {
-	case nil:
-		return nil
-	case bool:
-		return &t
-	case int64:
-		b := t != 0
-		return &b
-	default:
-		return nil
-	}
 }
 
 // columnString coerces a result-row value to a string, tolerating string/[]byte.
