@@ -4565,7 +4565,8 @@
               }
             ]
           },
-          "onSuccess": "authorization_check"
+          "onSuccess": "authorization_check",
+          "onIncomplete": "choose_auth"
         },
         {
           "id": "google_auth",
@@ -4906,7 +4907,8 @@
               }
             ]
           },
-          "onSuccess": "authorization_check"
+          "onSuccess": "authorization_check",
+          "onIncomplete": "choose_auth"
         },
         {
           "id": "github_auth",
@@ -5272,7 +5274,8 @@
               }
             ]
           },
-          "onSuccess": "authorization_check"
+          "onSuccess": "authorization_check",
+          "onIncomplete": "choose_auth"
         },
         {
           "id": "google_auth",
@@ -5868,7 +5871,8 @@
               }
             ]
           },
-          "onSuccess": "passkey_register_start"
+          "onSuccess": "passkey_register_start",
+          "onIncomplete": "prompt_password_for_registration"
         },
         {
           "id": "passkey_register_start",
@@ -5942,7 +5946,8 @@
               }
             ]
           },
-          "onSuccess": "authorization_check"
+          "onSuccess": "authorization_check",
+          "onIncomplete": "choose_auth_method"
         },
         {
           "id": "authorization_check",
