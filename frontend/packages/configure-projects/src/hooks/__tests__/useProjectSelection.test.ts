@@ -1,71 +1,73 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {act, renderHook} from '@thunderid/test-utils';
+import {renderHook} from '@thunderid/test-utils';
 import {describe, it, expect, beforeEach, vi} from 'vitest';
 import type {Project} from '../../models/project';
-import useProjectSelection, {PROJECT_SELECTION_STORAGE_KEY} from '../useProjectSelection';
+import useProjectSelection from '../useProjectSelection';
 
 const mockUseGetProjects = vi.fn<() => unknown>();
+const mockNavigate = vi.fn();
+let mockParams: Record<string, string> = {};
 
 vi.mock('../../api/useGetProjects', () => ({
   default: () => mockUseGetProjects(),
 }));
 
-function project(id: string): Project {
-  return {id, handle: id, displayName: id.toUpperCase(), createdAt: '2026-10-01T00:00:00Z'};
+vi.mock('react-router', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('react-router')>()),
+  useNavigate: () => mockNavigate,
+  useParams: () => mockParams,
+}));
+
+function project(id: string, handle: string): Project {
+  return {id, handle, displayName: handle.toUpperCase(), createdAt: '2026-10-01T00:00:00Z'};
 }
 
 describe('useProjectSelection', () => {
   beforeEach(() => {
-    localStorage.clear();
+    mockNavigate.mockReset();
+    mockParams = {};
     mockUseGetProjects.mockReturnValue({
-      data: {projects: [project('shop'), project('support')]},
+      data: {projects: [project('p1', 'shop'), project('p2', 'support')]},
       isLoading: false,
       error: null,
       refetch: vi.fn(),
     });
   });
 
-  it('selects the first project until one is chosen', () => {
+  it('selects the project the route names by its handle', () => {
+    mockParams = {projectHandle: 'support'};
+
     const {result} = renderHook(() => useProjectSelection());
 
-    expect(result.current.selectedProject?.id).toBe('shop');
-    expect(result.current.isCleared).toBe(false);
+    expect(result.current.selectedHandle).toBe('support');
+    expect(result.current.selectedProject?.id).toBe('p2');
   });
 
-  it('selects the chosen project and remembers it', () => {
+  it('selects no project on a page outside every project', () => {
     const {result} = renderHook(() => useProjectSelection());
 
-    act(() => result.current.selectProject('support'));
-
-    expect(result.current.selectedProject?.id).toBe('support');
-    expect(localStorage.getItem(PROJECT_SELECTION_STORAGE_KEY)).toBe('support');
-  });
-
-  it('has no selected project once the selection is cleared', () => {
-    const {result} = renderHook(() => useProjectSelection());
-
-    act(() => result.current.clearSelection());
-
+    expect(result.current.selectedHandle).toBeUndefined();
     expect(result.current.selectedProject).toBeUndefined();
-    expect(result.current.isCleared).toBe(true);
   });
 
-  it('shares the selection between every reader', () => {
-    const first = renderHook(() => useProjectSelection());
-    const second = renderHook(() => useProjectSelection());
-
-    act(() => first.result.current.selectProject('support'));
-
-    expect(second.result.current.selectedProject?.id).toBe('support');
-  });
-
-  it('falls back to the first project when the remembered one no longer exists', () => {
-    localStorage.setItem(PROJECT_SELECTION_STORAGE_KEY, 'removed');
+  it('selects no project when no project has the handle the route names', () => {
+    mockParams = {projectHandle: 'removed'};
 
     const {result} = renderHook(() => useProjectSelection());
 
-    expect(result.current.selectedProject?.id).toBe('shop');
+    expect(result.current.selectedHandle).toBe('removed');
+    expect(result.current.selectedProject).toBeUndefined();
+  });
+
+  it("opens a project's home, or a page within it", () => {
+    const {result} = renderHook(() => useProjectSelection());
+
+    result.current.selectProject('support');
+    result.current.selectProject('my shop', '/applications');
+
+    expect(mockNavigate).toHaveBeenNthCalledWith(1, '/project/support');
+    expect(mockNavigate).toHaveBeenNthCalledWith(2, '/project/my%20shop/applications');
   });
 });

@@ -19,7 +19,7 @@ export {default as ProjectQueryKeys} from './constants/project-query-keys';
 
 // Hooks
 export type {ProjectSelection} from './hooks/useProjectSelection';
-export {PROJECT_SELECTION_STORAGE_KEY, default as useProjectSelection} from './hooks/useProjectSelection';
+export {PROJECT_HANDLE_PARAM, default as useProjectSelection} from './hooks/useProjectSelection';
 
 // Models
 export * from './models/project';

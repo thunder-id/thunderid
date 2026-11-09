@@ -23,7 +23,7 @@ export default function ProjectsListPage(): ReactNode {
   const navigate = useNavigate();
   const routes = useProjectRoutes();
   const {can} = useCapabilitiesContext();
-  const {projects, selectedProject, isLoading, error, refetch, selectProject} = useProjectSelection();
+  const {projects, isLoading, error, refetch, selectProject} = useProjectSelection();
   const [search, setSearch] = useState('');
   const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
 
@@ -41,8 +41,7 @@ export default function ProjectsListPage(): ReactNode {
   }, [projects, search]);
 
   const handleOpen = (project: Project): void => {
-    selectProject(project.id);
-    void navigate(routes.applications.list());
+    selectProject(project.handle, routes.applications.list());
   };
 
   const title = t('projects:listing.title', 'All projects');
@@ -70,12 +69,7 @@ export default function ProjectsListPage(): ReactNode {
       <Grid container spacing={2}>
         {filtered.map((project) => (
           <Grid key={project.id} size={{xs: 12, sm: 6, md: 4, xl: 3}}>
-            <ProjectCard
-              project={project}
-              selected={project.id === selectedProject?.id}
-              onOpen={handleOpen}
-              onDelete={setProjectToDelete}
-            />
+            <ProjectCard project={project} onOpen={handleOpen} onDelete={setProjectToDelete} />
           </Grid>
         ))}
       </Grid>

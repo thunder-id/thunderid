@@ -38,7 +38,7 @@ import {
   Smartphone,
   Users,
 } from '@wso2/oxygen-ui-icons-react';
-import {Fragment, useEffect, useState, type JSX, type ReactNode} from 'react';
+import {Fragment, useState, type JSX, type ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
 import {Link, useNavigate} from 'react-router';
 import RouteConfig from '../configs/RouteConfig';
@@ -399,9 +399,7 @@ export default function OrganizationHomePage({
   const {t} = useTranslation();
   const navigate = useNavigate();
   const pipeline = usePipeline();
-  const {projects, selectProject: select, clearSelection} = useProjectSelection();
-  // The organization's home is the organization level: no project is selected while it is open.
-  useEffect(() => clearSelection(), [clearSelection]);
+  const {projects, selectProject: select} = useProjectSelection();
   const projectList = useProjects();
   const applications = useAcross(projects, applicationsOf);
   const agents = useAcross(projects, agentsOf);
@@ -410,21 +408,22 @@ export default function OrganizationHomePage({
   const [picking, setPicking] = useState<Pick | null>(null);
   const [chosen, setChosen] = useState<string | null>(null);
 
+  const handleOf = (id: string): string | undefined => projects.find((project) => project.id === id)?.handle;
   const openProject = (id: string): void => {
-    select(id);
-    void navigate(RouteConfig.projects.home(id));
+    const handle = handleOf(id);
+    if (handle) select(handle);
   };
   const pick = (purpose: Pick): void => {
     setChosen(projects[0]?.id ?? null);
     setPicking(purpose);
   };
   const proceed = (): void => {
-    if (!chosen || !picking) return;
-    select(chosen);
+    const handle = chosen ? handleOf(chosen) : undefined;
+    if (!handle || !picking) return;
     setPicking(null);
-    if (picking === 'application') void navigate(RouteConfig.applications.types());
-    else if (picking === 'agent') void navigate(RouteConfig.agents.create());
-    else void navigate(RouteConfig.projects.home(chosen));
+    if (picking === 'application') select(handle, RouteConfig.applications.types());
+    else if (picking === 'agent') select(handle, RouteConfig.agents.create());
+    else select(handle);
   };
 
   // What a gateway is for: the first is where a deploy enters. Which gateway follows which belongs to each

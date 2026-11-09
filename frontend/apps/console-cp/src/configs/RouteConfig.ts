@@ -33,10 +33,6 @@ export interface ConsoleRoutePaths {
   settings: {
     list: () => string;
   };
-  projects: {
-    /** A project's home: the gateways its configuration is deployed and promoted through. */
-    home: (projectId: string) => string;
-  };
 }
 
 /**
@@ -105,6 +101,7 @@ export const ROUTE_SEGMENTS = {
   importConfiguration: 'import-configuration',
   settings: 'settings',
   projects: 'projects',
+  project: 'project',
   gateways: 'gateways',
   deploy: 'deploy',
   // Where a gateway's own page is, before its id: as the deployment sets it, else under Deploy.
@@ -220,7 +217,7 @@ const RouteConfig: RouteConfig = {
   projects: {
     list: () => `/${ROUTE_SEGMENTS.projects}`,
     create: () => `/${ROUTE_SEGMENTS.projects}/create`,
-    home: (projectId: string) => `/${ROUTE_SEGMENTS.projects}/${encodeURIComponent(projectId)}`,
+    home: (handle, path = '') => `/${ROUTE_SEGMENTS.project}/${encodeURIComponent(handle)}${path}`,
   },
   gateways: {
     list: () => `/${ROUTE_SEGMENTS.gateways}`,
@@ -232,8 +229,52 @@ const RouteConfig: RouteConfig = {
     values: (gatewayId: string) => `/${ROUTE_SEGMENTS.deploy}/gateways/${encodeURIComponent(gatewayId)}/values`,
     // A gateway belongs to the organization, so its pages are the same from wherever they are opened.
     gateway: (gatewayId: string) => `/${ROUTE_SEGMENTS.deployTargets}/${encodeURIComponent(gatewayId)}`,
-    project: (projectId: string) => RouteConfig.projects.home(projectId),
+    // Outside a project there is no project home to return to; inside one, projectRouteConfig names it.
+    project: () => RouteConfig.projects.list(),
   },
 };
+
+/** The domains whose pages work in a project, and so are routed under the project's path. */
+const PROJECT_SCOPED_DOMAINS = [
+  'organizationUnits',
+  'users',
+  'agents',
+  'resourceServers',
+  'notificationTemplates',
+  'applications',
+  'groups',
+  'roles',
+  'verifiableCredentials',
+  'verifiablePresentations',
+  'flows',
+  'design',
+  'deploy',
+] as const satisfies readonly (keyof RouteConfig)[];
+
+type PathBuilders = Record<string, (...args: never[]) => string | undefined>;
+
+/**
+ * The route configuration inside one project: every project-scoped page is under the project's path,
+ * so the pages a package links to stay in the project they were opened in.
+ *
+ * @public
+ */
+export function projectRouteConfig(handle: string): RouteConfig {
+  const prefix = RouteConfig.projects.home(handle);
+  const scoped = Object.fromEntries(
+    PROJECT_SCOPED_DOMAINS.map((domain) => [
+      domain,
+      Object.fromEntries(
+        Object.entries(RouteConfig[domain] as PathBuilders).map(([name, build]) => [
+          name,
+          (...args: never[]) => `${prefix}${build(...args) ?? ''}`,
+        ]),
+      ),
+    ]),
+  );
+  const config = {...RouteConfig, ...scoped} as RouteConfig;
+  config.deploy.project = () => prefix;
+  return config;
+}
 
 export default RouteConfig;

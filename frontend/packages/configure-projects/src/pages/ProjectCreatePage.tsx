@@ -128,8 +128,7 @@ export default function ProjectCreatePage(): ReactNode {
 
     createProject.mutate(request, {
       onSuccess: (project) => {
-        selectProject(project.id);
-        goTo(routes.applications.list());
+        selectProject(project.handle, routes.applications.list());
       },
       onError: (err: Error) => {
         setError(

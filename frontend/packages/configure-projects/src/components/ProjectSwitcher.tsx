@@ -5,13 +5,13 @@ import {Box, ComplexSelect, IconButton, Tooltip} from '@wso2/oxygen-ui';
 import {X} from '@wso2/oxygen-ui-icons-react';
 import type {ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
-import {useNavigate} from 'react-router';
+import {useLocation, useNavigate} from 'react-router';
 import ProjectQuickSelector from './ProjectQuickSelector';
 import useProjectRoutes from '../hooks/useProjectRoutes';
 import useProjectSelection from '../hooks/useProjectSelection';
 
 /**
- * The header's project selector. Choosing another project keeps the current page; the clear button
+ * The header's project selector. Choosing another project keeps the current section; the clear button
  * in the selector's corner leaves the project and opens the projects page, after which a button
  * picks a project again. It is hidden while there are no projects to show, including when the list
  * cannot be read.
@@ -23,20 +23,31 @@ export default function ProjectSwitcher(): ReactNode {
   const {t} = useTranslation();
   const navigate = useNavigate();
   const routes = useProjectRoutes();
-  const {projects, selectedProject, selectProject, clearSelection} = useProjectSelection();
+  const {pathname} = useLocation();
+  const {projects, selectedProject, selectProject} = useProjectSelection();
 
   if (projects.length === 0) {
     return null;
   }
 
+  const handleOf = (id: string): string | undefined => projects.find((project) => project.id === id)?.handle;
+
   const handleClear = (): void => {
-    clearSelection();
     void navigate(routes.projects.list());
   };
 
   const handleQuickSelect = (id: string): void => {
-    selectProject(id);
-    void navigate(routes.applications.list());
+    const handle = handleOf(id);
+    if (handle) selectProject(handle, routes.applications.list());
+  };
+
+  // The other project opens on the same section; a resource of this project has no page in the other.
+  const handleSwitch = (id: string): void => {
+    const handle = handleOf(id);
+    if (!handle || !selectedProject) return;
+    const home = routes.projects.home(selectedProject.handle);
+    const section = pathname.startsWith(`${home}/`) ? pathname.slice(home.length + 1).split('/')[0] : '';
+    selectProject(handle, section ? `/${section}` : undefined);
   };
 
   const clearLabel = t('projects:switcher.clear', 'Clear project selection');
@@ -48,7 +59,7 @@ export default function ProjectSwitcher(): ReactNode {
         size="small"
         sx={{minWidth: 180}}
         label={t('projects:switcher.label', 'Project')}
-        onChange={(event) => selectProject(String(event.target.value))}
+        onChange={(event) => handleSwitch(String(event.target.value))}
         renderValue={() => <ComplexSelect.MenuItem.Text primary={selectedProject.displayName} />}
       >
         {projects.map((project) => (

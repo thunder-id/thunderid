@@ -23,6 +23,7 @@ import {Link, useNavigate, useSearchParams} from 'react-router';
 import PlatformBasedApplicationTemplateMetadata from '../config/PlatformBasedApplicationTemplateMetadata';
 import TechnologyBasedApplicationTemplateMetadata from '../config/TechnologyBasedApplicationTemplateMetadata';
 import useApplicationCreate from '../contexts/ApplicationCreate/useApplicationCreate';
+import useApplicationRoutes from '../hooks/useApplicationRoutes';
 import type {ApplicationTemplateMetadata, TemplateCategory} from '../models/application-templates';
 import {PlatformApplicationTemplate, TechnologyApplicationTemplate} from '../models/application-templates';
 import resolveCreationFlow from '../utils/resolveCreationFlow';
@@ -62,6 +63,7 @@ const TECHNOLOGY_VALUES = new Set<string>(TechnologyBasedApplicationTemplateMeta
 export default function ApplicationTemplateSelectPage(): JSX.Element {
   const {t} = useTranslation();
   const navigate = useNavigate();
+  const routes = useApplicationRoutes();
   const [searchParams] = useSearchParams();
   const logger = useLogger('ApplicationTemplateSelectPage');
 
@@ -114,7 +116,7 @@ export default function ApplicationTemplateSelectPage(): JSX.Element {
     }
 
     (async () => {
-      await navigate(`/applications/create?type=${option.value}`, {replace});
+      await navigate(`${routes.applications.create()}?type=${option.value}`, {replace});
     })().catch((error: unknown) => {
       logger.error('Failed to navigate to application creation wizard', {error, template: option.value});
     });
@@ -156,7 +158,7 @@ export default function ApplicationTemplateSelectPage(): JSX.Element {
     <PageContent>
       <DocumentTitle title={pageTitle} />
       <PageTitle>
-        <PageTitle.BackButton component={<Link to="/applications" />}>
+        <PageTitle.BackButton component={<Link to={routes.applications.list()} />}>
           {t('applications:edit.page.back')}
         </PageTitle.BackButton>
         <PageTitle.Header>{t('applications:onboarding.configure.stack.title', 'Choose a type')}</PageTitle.Header>

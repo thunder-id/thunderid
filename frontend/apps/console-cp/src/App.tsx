@@ -6,9 +6,8 @@ import {AgentTypeCreateProvider} from '@thunderid/configure-agent-types';
 import {ApplicationCreateProvider} from '@thunderid/configure-applications';
 import {LayoutBuilderProvider, ThemeBuilderProvider} from '@thunderid/configure-design';
 import {GroupCreateProvider} from '@thunderid/configure-groups';
-import type {NotificationChannel} from '@thunderid/configure-notification-templates';
 import {OrganizationUnitProvider} from '@thunderid/configure-organization-units';
-import {SelectedProjectScope} from '@thunderid/configure-projects';
+import {PROJECT_HANDLE_PARAM} from '@thunderid/configure-projects';
 import {RoleCreateProvider} from '@thunderid/configure-roles';
 import {TranslationCreateProvider} from '@thunderid/configure-translations';
 import {UserTypeCreateProvider} from '@thunderid/configure-user-types';
@@ -22,6 +21,7 @@ import {
 import {ProtectedRoute} from '@thunderid/react-router';
 import {lazy, Suspense, type JSX} from 'react';
 import {BrowserRouter, Navigate, Outlet, Route, Routes} from 'react-router';
+import RouteProjectScope from './components/RouteProjectScope';
 import RouteConfig, {ROUTE_SEGMENTS} from './configs/RouteConfig';
 import DashboardLayout from './layouts/DashboardLayout';
 import FullScreenLayout from './layouts/FullScreenLayout';
@@ -211,6 +211,178 @@ const ViewUserTypePage = lazy(() =>
 const CONTROL_PLANE_ADMINISTRATION: AdministrationConfig = {mode: AdministrationModes.NATIVE};
 
 /**
+ * The pages in the dashboard frame that work in a project. They are mounted under a project's path, where
+ * they work in that project, and at the root, where they work across every project.
+ */
+function projectDashboardRoutes(): JSX.Element {
+  return (
+    <>
+      <Route path={ROUTE_SEGMENTS.applications} element={<ApplicationsListPage />} />
+      <Route path={`${ROUTE_SEGMENTS.applications}/:applicationId`} element={<ApplicationEditPage />} />
+      <Route path={ROUTE_SEGMENTS.agents} element={<AgentsListPage />} />
+      <Route path={`${ROUTE_SEGMENTS.agents}/:agentId`} element={<AgentEditPage />} />
+      <Route path={ROUTE_SEGMENTS.resourceServers} element={<ResourceServersListPage />} />
+      <Route path={`${ROUTE_SEGMENTS.resourceServers}/:resourceServerId`} element={<ResourceServerEditPage />} />
+      <Route path={ROUTE_SEGMENTS.roles} element={<RolesListPage />} />
+      <Route path={`${ROUTE_SEGMENTS.roles}/:roleId`} element={<RoleEditPage />} />
+      <Route path={ROUTE_SEGMENTS.users} element={<UsersListPage />} />
+      <Route path={`${ROUTE_SEGMENTS.users}/:userId`} element={<UserEditPage />} />
+      <Route path={ROUTE_SEGMENTS.groups} element={<GroupsListPage />} />
+      <Route path={`${ROUTE_SEGMENTS.groups}/:groupId`} element={<GroupEditPage />} />
+      <Route path={ROUTE_SEGMENTS.flows} element={<FlowsListPage />} />
+      <Route
+        path={ROUTE_SEGMENTS.verifiablePresentations}
+        element={<VerifiablePresentationsListPage createInProjectsOnly />}
+      />
+      <Route path={`${ROUTE_SEGMENTS.verifiablePresentations}/:vpId`} element={<VerifiablePresentationEditPage />} />
+      <Route
+        path={ROUTE_SEGMENTS.verifiableCredentials}
+        element={<VerifiableCredentialsListPage createInProjectsOnly />}
+      />
+      <Route path={`${ROUTE_SEGMENTS.verifiableCredentials}/:vcId`} element={<VerifiableCredentialEditPage />} />
+      <Route path={`${ROUTE_SEGMENTS.deployTargets}/:gatewayId`} element={<OrganizationGatewayPage />} />
+      <Route
+        path={`${ROUTE_SEGMENTS.deployTargets}/:gatewayId/values`}
+        element={<OrganizationGatewayPage section="values" />}
+      />
+      <Route
+        path={`${ROUTE_SEGMENTS.deployTargets}/:gatewayId/endpoints`}
+        element={<OrganizationGatewayPage section="endpoints" />}
+      />
+      <Route
+        path={`${ROUTE_SEGMENTS.deployTargets}/:gatewayId/history`}
+        element={<OrganizationGatewayPage section="history" />}
+      />
+    </>
+  );
+}
+
+/**
+ * The pages with a frame of their own (create wizards, builders and the deploy pages) that work in a
+ * project, mounted the same two ways as {@link projectDashboardRoutes}.
+ */
+function projectFullScreenRoutes(): JSX.Element {
+  return (
+    <>
+      {/* Organization units keep their tree state across navigation in OrganizationUnitProvider. */}
+      <Route path={ROUTE_SEGMENTS.organizationUnits} element={<OrganizationUnitProvider />}>
+        <Route element={<DashboardLayout />}>
+          <Route index element={<OrganizationUnitsListPage createInProjectsOnly />} />
+          <Route
+            path=":id"
+            element={
+              <OrganizationUnitEditPage
+                renderDefaultFlowsSettings={(props) => <OrganizationUnitDefaultFlowsSettings {...props} />}
+              />
+            }
+          />
+        </Route>
+        <Route path="create" element={<FullScreenLayout />}>
+          <Route index element={<CreateOrganizationUnitPage createInProjectsOnly />} />
+        </Route>
+      </Route>
+      <Route
+        path={`${ROUTE_SEGMENTS.groups}/create`}
+        element={
+          <GroupCreateProvider>
+            <FullScreenLayout />
+          </GroupCreateProvider>
+        }
+      >
+        <Route index element={<CreateGroupPage />} />
+      </Route>
+      <Route
+        path={`${ROUTE_SEGMENTS.roles}/create`}
+        element={
+          <RoleCreateProvider>
+            <FullScreenLayout />
+          </RoleCreateProvider>
+        }
+      >
+        <Route index element={<CreateRolePage />} />
+      </Route>
+      <Route path={`${ROUTE_SEGMENTS.users}/add`} element={<FullScreenLayout />}>
+        <Route index element={<UserAddPage />} />
+      </Route>
+      <Route path={ROUTE_SEGMENTS.deploy} element={<FullScreenLayout />}>
+        <Route index element={<DeployPage />} />
+        <Route path="gateways/:gatewayId/explore" element={<GatewayExplorerPage />} />
+        <Route path="gateways/:gatewayId/values" element={<GatewayValuesPage />} />
+      </Route>
+      <Route path={`${ROUTE_SEGMENTS.deployTargets}/:gatewayId/explore`} element={<FullScreenLayout />}>
+        <Route index element={<OrganizationExplorerPage />} />
+      </Route>
+      <Route path={`${ROUTE_SEGMENTS.verifiablePresentations}/create`} element={<FullScreenLayout />}>
+        <Route index element={<VerifiablePresentationCreatePage createInProjectsOnly />} />
+      </Route>
+      <Route path={`${ROUTE_SEGMENTS.verifiableCredentials}/create`} element={<FullScreenLayout />}>
+        <Route index element={<VerifiableCredentialCreatePage createInProjectsOnly />} />
+      </Route>
+      <Route
+        element={
+          <ApplicationCreateProvider>
+            <Outlet />
+          </ApplicationCreateProvider>
+        }
+      >
+        <Route path={`${ROUTE_SEGMENTS.applications}/types`} element={<DashboardLayout />}>
+          <Route index element={<ApplicationTemplateSelectPage />} />
+        </Route>
+        <Route path={`${ROUTE_SEGMENTS.applications}/create`} element={<FullScreenLayout />}>
+          <Route index element={<ApplicationCreatePage />} />
+        </Route>
+      </Route>
+      <Route path={`${ROUTE_SEGMENTS.agents}/create`} element={<FullScreenLayout />}>
+        <Route index element={<AgentOnboardPage />} />
+      </Route>
+      <Route path={`${ROUTE_SEGMENTS.resourceServers}/create`} element={<FullScreenLayout />}>
+        <Route index element={<CreateResourceServerPage />} />
+      </Route>
+      <Route path={`${ROUTE_SEGMENTS.flows}/create`} element={<FullScreenLayout />}>
+        <Route index element={<FlowCreatePage />} />
+      </Route>
+      <Route path={`${ROUTE_SEGMENTS.flows}/:flowId`} element={<DashboardLayout collapseSidebar />}>
+        <Route index element={<FlowBuilderPage />} />
+      </Route>
+      <Route path={ROUTE_SEGMENTS.design} element={<DashboardLayout />}>
+        <Route index element={<DesignPage />} />
+      </Route>
+      <Route path={`${ROUTE_SEGMENTS.design}/themes/create`} element={<FullScreenLayout />}>
+        <Route index element={<ThemeCreatePage />} />
+      </Route>
+      <Route
+        path={`${ROUTE_SEGMENTS.design}/themes/:themeId`}
+        element={
+          <ThemeBuilderProvider>
+            <DashboardLayout />
+          </ThemeBuilderProvider>
+        }
+      >
+        <Route index element={<ThemeBuilderPage />} />
+      </Route>
+      <Route
+        path={`${ROUTE_SEGMENTS.design}/layouts/:layoutId`}
+        element={
+          <LayoutBuilderProvider>
+            <DashboardLayout />
+          </LayoutBuilderProvider>
+        }
+      >
+        <Route index element={<LayoutBuilderPage />} />
+      </Route>
+      <Route path={ROUTE_SEGMENTS.notificationTemplates} element={<DashboardLayout />}>
+        <Route index element={<Navigate to="email" replace />} />
+        <Route path=":channel" element={<NotificationTemplatesListPage createInProjectsOnly />} />
+        <Route path=":channel/:id" element={<NotificationTemplateEditPage />} />
+      </Route>
+      <Route path={`${ROUTE_SEGMENTS.notificationTemplates}/:channel/create`} element={<FullScreenLayout />}>
+        <Route index element={<NotificationTemplateCreatePage createInProjectsOnly />} />
+      </Route>
+    </>
+  );
+}
+
+/**
  * The console the control plane serves: everything the console offers, plus the gateways the
  * configuration is deployed to.
  */
@@ -232,7 +404,6 @@ export default function App(): JSX.Element {
                 >
                   <Route index element={<Navigate to={RouteConfig.home.list()} replace />} />
                   <Route path={ROUTE_SEGMENTS.home} element={<OrganizationHomePage />} />
-                  <Route path={`${ROUTE_SEGMENTS.projects}/:projectId`} element={<ProjectHomePage />} />
                   <Route path={ROUTE_SEGMENTS.userTypes} element={<UserTypesListPage />} />
                   <Route path={`${ROUTE_SEGMENTS.userTypes}/:id`} element={<ViewUserTypePage />} />
                   <Route path={ROUTE_SEGMENTS.agentTypes} element={<AgentTypesListPage />} />
@@ -245,117 +416,35 @@ export default function App(): JSX.Element {
                     element={<Navigate to={RouteConfig.connections.list()} replace />}
                   />
                   <Route path={`${ROUTE_SEGMENTS.trustedIssuers}/:id`} element={<TrustedIssuerDetailPage />} />
-                  <Route
-                    element={
-                      <SelectedProjectScope>
-                        <Outlet />
-                      </SelectedProjectScope>
-                    }
-                  >
-                    <Route path={ROUTE_SEGMENTS.applications} element={<ApplicationsListPage />} />
-                    <Route path={`${ROUTE_SEGMENTS.applications}/:applicationId`} element={<ApplicationEditPage />} />
-                    <Route path={ROUTE_SEGMENTS.agents} element={<AgentsListPage />} />
-                    <Route path={`${ROUTE_SEGMENTS.agents}/:agentId`} element={<AgentEditPage />} />
-                    <Route path={ROUTE_SEGMENTS.resourceServers} element={<ResourceServersListPage />} />
-                    <Route
-                      path={`${ROUTE_SEGMENTS.resourceServers}/:resourceServerId`}
-                      element={<ResourceServerEditPage />}
-                    />
-                    <Route path={ROUTE_SEGMENTS.roles} element={<RolesListPage />} />
-                    <Route path={`${ROUTE_SEGMENTS.roles}/:roleId`} element={<RoleEditPage />} />
-                    <Route path={ROUTE_SEGMENTS.users} element={<UsersListPage />} />
-                    <Route path={`${ROUTE_SEGMENTS.users}/:userId`} element={<UserEditPage />} />
-                    <Route path={ROUTE_SEGMENTS.groups} element={<GroupsListPage />} />
-                    <Route path={`${ROUTE_SEGMENTS.groups}/:groupId`} element={<GroupEditPage />} />
-                    <Route path={ROUTE_SEGMENTS.flows} element={<FlowsListPage />} />
-                    <Route
-                      path={ROUTE_SEGMENTS.verifiablePresentations}
-                      element={<VerifiablePresentationsListPage createInProjectsOnly />}
-                    />
-                    <Route
-                      path={`${ROUTE_SEGMENTS.verifiablePresentations}/:vpId`}
-                      element={<VerifiablePresentationEditPage />}
-                    />
-                    <Route
-                      path={ROUTE_SEGMENTS.verifiableCredentials}
-                      element={<VerifiableCredentialsListPage createInProjectsOnly />}
-                    />
-                    <Route
-                      path={`${ROUTE_SEGMENTS.verifiableCredentials}/:vcId`}
-                      element={<VerifiableCredentialEditPage />}
-                    />
-                  </Route>
+                  {projectDashboardRoutes()}
                   <Route path={ROUTE_SEGMENTS.settings} element={<SettingsPage />} />
                   <Route path={ROUTE_SEGMENTS.projects} element={<ProjectsListPage />} />
                   <Route path={ROUTE_SEGMENTS.gateways} element={<GatewaysListPage />} />
                   <Route path={`${ROUTE_SEGMENTS.gateways}/:gatewayId`} element={<GatewayDetailPage />} />
-                  <Route path={`${ROUTE_SEGMENTS.deployTargets}/:gatewayId`} element={<OrganizationGatewayPage />} />
-                  <Route
-                    path={`${ROUTE_SEGMENTS.deployTargets}/:gatewayId/values`}
-                    element={<OrganizationGatewayPage section="values" />}
-                  />
-                  <Route
-                    path={`${ROUTE_SEGMENTS.deployTargets}/:gatewayId/endpoints`}
-                    element={<OrganizationGatewayPage section="endpoints" />}
-                  />
-                  <Route
-                    path={`${ROUTE_SEGMENTS.deployTargets}/:gatewayId/history`}
-                    element={<OrganizationGatewayPage section="history" />}
-                  />
                 </Route>
-                {/* Organization Units - wrapped in OrganizationUnitProvider to preserve tree state across navigation */}
+                {/* A project's pages: the project is named by its handle, so a link opens the console in it. */}
                 <Route
-                  path={RouteConfig.organizationUnits.list()}
+                  path={`/${ROUTE_SEGMENTS.project}/:${PROJECT_HANDLE_PARAM}`}
                   element={
                     <ProtectedRoute>
-                      <SelectedProjectScope>
-                        <OrganizationUnitProvider />
-                      </SelectedProjectScope>
+                      <RouteProjectScope />
                     </ProtectedRoute>
                   }
                 >
                   <Route element={<DashboardLayout />}>
-                    <Route index element={<OrganizationUnitsListPage createInProjectsOnly />} />
-                    <Route
-                      path=":id"
-                      element={
-                        <OrganizationUnitEditPage
-                          renderDefaultFlowsSettings={(props) => <OrganizationUnitDefaultFlowsSettings {...props} />}
-                        />
-                      }
-                    />
+                    <Route index element={<ProjectHomePage />} />
+                    {projectDashboardRoutes()}
                   </Route>
-                  <Route path="create" element={<FullScreenLayout />}>
-                    <Route index element={<CreateOrganizationUnitPage createInProjectsOnly />} />
-                  </Route>
+                  {projectFullScreenRoutes()}
                 </Route>
                 <Route
-                  path={RouteConfig.groups.create()}
                   element={
                     <ProtectedRoute>
-                      <SelectedProjectScope>
-                        <GroupCreateProvider>
-                          <FullScreenLayout />
-                        </GroupCreateProvider>
-                      </SelectedProjectScope>
+                      <Outlet />
                     </ProtectedRoute>
                   }
                 >
-                  <Route index element={<CreateGroupPage />} />
-                </Route>
-                <Route
-                  path={RouteConfig.roles.create()}
-                  element={
-                    <ProtectedRoute>
-                      <SelectedProjectScope>
-                        <RoleCreateProvider>
-                          <FullScreenLayout />
-                        </RoleCreateProvider>
-                      </SelectedProjectScope>
-                    </ProtectedRoute>
-                  }
-                >
-                  <Route index element={<CreateRolePage />} />
+                  {projectFullScreenRoutes()}
                 </Route>
                 <Route
                   path={RouteConfig.projects.create()}
@@ -366,40 +455,6 @@ export default function App(): JSX.Element {
                   }
                 >
                   <Route index element={<ProjectCreatePage />} />
-                </Route>
-                <Route
-                  path={RouteConfig.users.add()}
-                  element={
-                    <ProtectedRoute>
-                      <SelectedProjectScope>
-                        <FullScreenLayout />
-                      </SelectedProjectScope>
-                    </ProtectedRoute>
-                  }
-                >
-                  <Route index element={<UserAddPage />} />
-                </Route>
-                <Route
-                  path={RouteConfig.deploy.list()}
-                  element={
-                    <ProtectedRoute>
-                      <FullScreenLayout />
-                    </ProtectedRoute>
-                  }
-                >
-                  <Route index element={<DeployPage />} />
-                  <Route path="gateways/:gatewayId/explore" element={<GatewayExplorerPage />} />
-                  <Route path="gateways/:gatewayId/values" element={<GatewayValuesPage />} />
-                </Route>
-                <Route
-                  path={`${ROUTE_SEGMENTS.deployTargets}/:gatewayId/explore`}
-                  element={
-                    <ProtectedRoute>
-                      <FullScreenLayout />
-                    </ProtectedRoute>
-                  }
-                >
-                  <Route index element={<OrganizationExplorerPage />} />
                 </Route>
                 <Route
                   path={RouteConfig.userTypes.create()}
@@ -426,89 +481,6 @@ export default function App(): JSX.Element {
                   <Route index element={<CreateAgentTypePage />} />
                 </Route>
                 <Route
-                  path={RouteConfig.verifiablePresentations.create()}
-                  element={
-                    <ProtectedRoute>
-                      <SelectedProjectScope>
-                        <FullScreenLayout />
-                      </SelectedProjectScope>
-                    </ProtectedRoute>
-                  }
-                >
-                  <Route index element={<VerifiablePresentationCreatePage createInProjectsOnly />} />
-                </Route>
-                <Route
-                  path={RouteConfig.verifiableCredentials.create()}
-                  element={
-                    <ProtectedRoute>
-                      <SelectedProjectScope>
-                        <FullScreenLayout />
-                      </SelectedProjectScope>
-                    </ProtectedRoute>
-                  }
-                >
-                  <Route index element={<VerifiableCredentialCreatePage createInProjectsOnly />} />
-                </Route>
-                <Route
-                  element={
-                    <ProtectedRoute>
-                      <SelectedProjectScope>
-                        <ApplicationCreateProvider>
-                          <Outlet />
-                        </ApplicationCreateProvider>
-                      </SelectedProjectScope>
-                    </ProtectedRoute>
-                  }
-                >
-                  <Route path={RouteConfig.applications.types()} element={<DashboardLayout />}>
-                    <Route index element={<ApplicationTemplateSelectPage />} />
-                  </Route>
-                  <Route path={RouteConfig.applications.create()} element={<FullScreenLayout />}>
-                    <Route index element={<ApplicationCreatePage />} />
-                  </Route>
-                </Route>
-                <Route
-                  path={RouteConfig.agents.create()}
-                  element={
-                    <ProtectedRoute>
-                      <FullScreenLayout />
-                    </ProtectedRoute>
-                  }
-                >
-                  <Route
-                    index
-                    element={
-                      <SelectedProjectScope>
-                        <AgentOnboardPage />
-                      </SelectedProjectScope>
-                    }
-                  />
-                </Route>
-                <Route
-                  path={RouteConfig.resourceServers.create()}
-                  element={
-                    <ProtectedRoute>
-                      <SelectedProjectScope>
-                        <FullScreenLayout />
-                      </SelectedProjectScope>
-                    </ProtectedRoute>
-                  }
-                >
-                  <Route index element={<CreateResourceServerPage />} />
-                </Route>
-                <Route
-                  path={RouteConfig.flows.create()}
-                  element={
-                    <ProtectedRoute>
-                      <SelectedProjectScope>
-                        <FullScreenLayout />
-                      </SelectedProjectScope>
-                    </ProtectedRoute>
-                  }
-                >
-                  <Route index element={<FlowCreatePage />} />
-                </Route>
-                <Route
                   path={RouteConfig.connections.create()}
                   element={
                     <ProtectedRoute>
@@ -527,18 +499,6 @@ export default function App(): JSX.Element {
                   }
                 >
                   <Route index element={<ConnectionConfigureWizardPage />} />
-                </Route>
-                <Route
-                  path={RouteConfig.flows.detail(':flowId')}
-                  element={
-                    <ProtectedRoute>
-                      <SelectedProjectScope>
-                        <DashboardLayout collapseSidebar />
-                      </SelectedProjectScope>
-                    </ProtectedRoute>
-                  }
-                >
-                  <Route index element={<FlowBuilderPage />} />
                 </Route>
                 <Route
                   path={RouteConfig.importExport.list()}
@@ -573,70 +533,6 @@ export default function App(): JSX.Element {
                   <Route path="summary" element={<ImportConfigurationSummaryPage />} />
                 </Route>
                 <Route
-                  path={RouteConfig.design.list()}
-                  element={
-                    <ProtectedRoute>
-                      <SelectedProjectScope>
-                        <DashboardLayout />
-                      </SelectedProjectScope>
-                    </ProtectedRoute>
-                  }
-                >
-                  <Route
-                    index
-                    element={
-                      <SelectedProjectScope>
-                        <DesignPage />
-                      </SelectedProjectScope>
-                    }
-                  />
-                </Route>
-                <Route
-                  path={RouteConfig.design.themesCreate()}
-                  element={
-                    <ProtectedRoute>
-                      <SelectedProjectScope>
-                        <FullScreenLayout />
-                      </SelectedProjectScope>
-                    </ProtectedRoute>
-                  }
-                >
-                  <Route index element={<ThemeCreatePage />} />
-                </Route>
-                <Route
-                  path={`/${ROUTE_SEGMENTS.design}/themes/:themeId`}
-                  element={
-                    <ProtectedRoute>
-                      <SelectedProjectScope>
-                        <ThemeBuilderProvider>
-                          <DashboardLayout />
-                        </ThemeBuilderProvider>
-                      </SelectedProjectScope>
-                    </ProtectedRoute>
-                  }
-                >
-                  <Route index element={<ThemeBuilderPage />} />
-                </Route>
-                <Route
-                  path={`/${ROUTE_SEGMENTS.design}/layouts/:layoutId`}
-                  element={
-                    <ProtectedRoute>
-                      <LayoutBuilderProvider>
-                        <DashboardLayout />
-                      </LayoutBuilderProvider>
-                    </ProtectedRoute>
-                  }
-                >
-                  <Route
-                    index
-                    element={
-                      <SelectedProjectScope>
-                        <LayoutBuilderPage />
-                      </SelectedProjectScope>
-                    }
-                  />
-                </Route>
-                <Route
                   path={RouteConfig.translations.create()}
                   element={
                     <ProtectedRoute>
@@ -658,32 +554,6 @@ export default function App(): JSX.Element {
                 >
                   <Route index element={<TranslationsListPage />} />
                   <Route path=":language" element={<TranslationsEditPage />} />
-                </Route>
-                <Route
-                  path={RouteConfig.notificationTemplates.list()}
-                  element={
-                    <ProtectedRoute>
-                      <SelectedProjectScope>
-                        <DashboardLayout />
-                      </SelectedProjectScope>
-                    </ProtectedRoute>
-                  }
-                >
-                  <Route index element={<Navigate to={RouteConfig.notificationTemplates.channel('email')} replace />} />
-                  <Route path=":channel" element={<NotificationTemplatesListPage createInProjectsOnly />} />
-                  <Route path=":channel/:id" element={<NotificationTemplateEditPage />} />
-                </Route>
-                <Route
-                  path={RouteConfig.notificationTemplates.create(':channel' as NotificationChannel)}
-                  element={
-                    <ProtectedRoute>
-                      <SelectedProjectScope>
-                        <FullScreenLayout />
-                      </SelectedProjectScope>
-                    </ProtectedRoute>
-                  }
-                >
-                  <Route index element={<NotificationTemplateCreatePage createInProjectsOnly />} />
                 </Route>
               </Routes>
             </Suspense>

@@ -6,26 +6,33 @@ import {ProjectScopeProvider} from '@thunderid/contexts';
 import {Button} from '@wso2/oxygen-ui';
 import type {JSX, PropsWithChildren} from 'react';
 import {useTranslation} from 'react-i18next';
+import {Navigate, useNavigate} from 'react-router';
+import useProjectRoutes from '../hooks/useProjectRoutes';
 import useProjectSelection from '../hooks/useProjectSelection';
 
 /**
- * Scopes the pages beneath it to the selected project, so feature packages list and create their
- * resources in that project.
+ * Scopes the pages beneath it to the project the route names, so feature packages list and create
+ * their resources in that project. A page the route puts in no project works across every project.
  *
- * The pages wait for the project list: until it loads, the selection is not known, and rendering
- * them unscoped would briefly list or create resources across every project. A cleared selection
- * is a deliberate choice to work across projects, so it does not wait. When the list cannot be
- * read, the header switcher is hidden, so the error offers that choice beside Refresh.
+ * The pages wait for the project list: until it loads, the project behind the handle is not known,
+ * and rendering them unscoped would briefly list or create resources across every project. A handle
+ * no project has leads to the projects page.
  */
 export default function SelectedProjectScope({children}: PropsWithChildren): JSX.Element {
   const {t} = useTranslation();
-  const {selectedProject, isCleared, isLoading, error, refetch, clearSelection} = useProjectSelection();
+  const navigate = useNavigate();
+  const routes = useProjectRoutes();
+  const {selectedHandle, selectedProject, isLoading, error, refetch} = useProjectSelection();
 
-  if (!isCleared && isLoading) {
+  if (!selectedHandle) {
+    return <ProjectScopeProvider project={undefined}>{children}</ProjectScopeProvider>;
+  }
+
+  if (isLoading) {
     return <PageLoadingAnimation />;
   }
 
-  if (!isCleared && error) {
+  if (error) {
     return (
       <QueryErrorNotice
         error={error}
@@ -33,12 +40,16 @@ export default function SelectedProjectScope({children}: PropsWithChildren): JSX
         variant="inline"
         onRetry={refetch}
         action={
-          <Button variant="text" onClick={clearSelection}>
+          <Button variant="text" onClick={() => void navigate(routes.projects.list())}>
             {t('projects:switcher.clear', 'Clear project selection')}
           </Button>
         }
       />
     );
+  }
+
+  if (!selectedProject) {
+    return <Navigate to={routes.projects.list()} replace />;
   }
 
   return <ProjectScopeProvider project={selectedProject}>{children}</ProjectScopeProvider>;

@@ -102,8 +102,7 @@ describe('ProjectCreatePage', () => {
     await user.click(screen.getByRole('button', {name: 'Create'}));
 
     expect(mockMutate).toHaveBeenCalledWith({handle: 'online-shop', displayName: 'Online Shop'}, expect.anything());
-    expect(mockSelectProject).toHaveBeenCalledWith('p1');
-    expect(mockNavigate).toHaveBeenCalledWith('/applications');
+    expect(mockSelectProject).toHaveBeenCalledWith('online-shop', '/applications');
   });
 
   it('sends the description when one is given', async () => {

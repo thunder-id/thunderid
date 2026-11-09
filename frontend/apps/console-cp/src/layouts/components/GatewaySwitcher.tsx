@@ -16,8 +16,9 @@ import {Box, Button, Divider, ListSubheader, Menu, MenuItem, Stack, Typography} 
 import {ChevronDown} from '@wso2/oxygen-ui-icons-react';
 import {useState, type MouseEvent, type ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
-import {useMatch, useNavigate} from 'react-router';
-import RouteConfig, {ROUTE_SEGMENTS} from '../../configs/RouteConfig';
+import {useNavigate} from 'react-router';
+import RouteConfig from '../../configs/RouteConfig';
+import useOpenGatewayId from '../useOpenGatewayId';
 
 /** The dot a gateway is marked with, in its pipeline colour. */
 function Dot({index}: {index: number}): ReactNode {
@@ -38,14 +39,14 @@ export default function GatewaySwitcher(): ReactNode {
   const versions = useVersions();
   const stages: PipelineStage[] = pipeline.data?.stages ?? [];
   const statuses = useProjectStatuses(stages);
-  const match = useMatch(`/${ROUTE_SEGMENTS.deployTargets}/:gatewayId/*`);
+  const openGatewayId = useOpenGatewayId();
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
 
   if (stages.length === 0) {
     return null;
   }
 
-  const openIndex = stages.findIndex((stage: PipelineStage) => stage.gateway.id === match?.params.gatewayId);
+  const openIndex = stages.findIndex((stage: PipelineStage) => stage.gateway.id === openGatewayId);
   const open = openIndex < 0 ? undefined : stages[openIndex];
   const latest = versions.data?.[0];
   const owes = (status: ProjectStatus | undefined): number =>
@@ -98,7 +99,7 @@ export default function GatewaySwitcher(): ReactNode {
       <Menu anchorEl={anchor} open={Boolean(anchor)} onClose={() => setAnchor(null)}>
         {project && <ListSubheader>{t('common:header.configure', 'Configure')}</ListSubheader>}
         {project && (
-          <MenuItem onClick={() => go(RouteConfig.projects.home(project))}>
+          <MenuItem onClick={() => go(routes.deploy.project?.(project) ?? RouteConfig.projects.list())}>
             <Stack>
               <Typography variant="body2">
                 {t('common:header.projectConfiguration', 'Project configuration')}
