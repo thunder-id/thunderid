@@ -13,8 +13,10 @@ import (
 
 	authncommon "github.com/thunder-id/thunderid/internal/authn/common"
 	"github.com/thunder-id/thunderid/internal/authn/openid4vp"
+	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
 	"github.com/thunder-id/thunderid/internal/flow/common"
+	"github.com/thunder-id/thunderid/internal/flow/core"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
@@ -23,14 +25,16 @@ import (
 
 // fakeOpenID4VPService is a test double for openid4vp.OpenID4VPServiceInterface.
 type fakeOpenID4VPService struct {
-	initiate  func(ctx context.Context, definitionID string) (*openid4vp.Initiation, *tidcommon.ServiceError)
+	initiate func(
+		ctx context.Context, definitionID string, forSignIn bool,
+	) (*openid4vp.Initiation, *tidcommon.ServiceError)
 	getResult func(ctx context.Context, state string) (*openid4vp.RequestState, *tidcommon.ServiceError)
 }
 
 func (f *fakeOpenID4VPService) Initiate(
-	ctx context.Context, definitionID string,
+	ctx context.Context, definitionID string, forSignIn bool,
 ) (*openid4vp.Initiation, *tidcommon.ServiceError) {
-	return f.initiate(ctx, definitionID)
+	return f.initiate(ctx, definitionID, forSignIn)
 }
 
 func (f *fakeOpenID4VPService) GetResult(
@@ -75,9 +79,13 @@ func openid4vpNodeContext(runtime map[string]string, properties map[string]inter
 
 func TestOpenID4VPExecutorInitiates(t *testing.T) {
 	var seenDefID string
+	var seenForSignIn bool
 	svc := &fakeOpenID4VPService{
-		initiate: func(_ context.Context, defID string) (*openid4vp.Initiation, *tidcommon.ServiceError) {
+		initiate: func(
+			_ context.Context, defID string, forSignIn bool,
+		) (*openid4vp.Initiation, *tidcommon.ServiceError) {
 			seenDefID = defID
+			seenForSignIn = forSignIn
 			return &openid4vp.Initiation{
 				State:      "state-123",
 				ClientID:   "x509_hash:abc",
@@ -93,6 +101,7 @@ func TestOpenID4VPExecutorInitiates(t *testing.T) {
 	resp, err := exec.Execute(openid4vpNodeContext(nil, props))
 	require.NoError(t, err)
 	assert.Equal(t, "custom-def", seenDefID, "executor must pass the configured definition id")
+	assert.True(t, seenForSignIn)
 	assert.Equal(t, providers.ExecUserInputRequired, resp.Status)
 	assert.Equal(t, "state-123", resp.RuntimeData[common.RuntimeKeyOpenID4VPState])
 	assert.Equal(t, "x509_hash:abc", resp.AdditionalData[common.DataOpenID4VPClientID])
@@ -105,7 +114,7 @@ func TestOpenID4VPExecutorInitiates(t *testing.T) {
 func TestOpenID4VPExecutorMissingDefinitionID(t *testing.T) {
 	called := false
 	svc := &fakeOpenID4VPService{
-		initiate: func(_ context.Context, _ string) (*openid4vp.Initiation, *tidcommon.ServiceError) {
+		initiate: func(_ context.Context, _ string, _ bool) (*openid4vp.Initiation, *tidcommon.ServiceError) {
 			called = true
 			return &openid4vp.Initiation{State: "s", ClientID: "x509_hash:abc", RequestURI: "https://x",
 				WalletURI: "openid4vp://authorize"}, nil
@@ -122,7 +131,7 @@ func TestOpenID4VPExecutorMissingDefinitionID(t *testing.T) {
 
 func TestOpenID4VPExecutorInitiateFailure(t *testing.T) {
 	svc := &fakeOpenID4VPService{
-		initiate: func(_ context.Context, _ string) (*openid4vp.Initiation, *tidcommon.ServiceError) {
+		initiate: func(_ context.Context, _ string, _ bool) (*openid4vp.Initiation, *tidcommon.ServiceError) {
 			return nil, &tidcommon.InternalServerError
 		},
 	}
@@ -134,6 +143,22 @@ func TestOpenID4VPExecutorInitiateFailure(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, providers.ExecFailure, resp.Status)
 	assert.Equal(t, ErrOpenID4VPInitiateFailed.Code, resp.Error.Code)
+}
+
+func TestOpenID4VPExecutorInitiateDefinitionNotForSignIn(t *testing.T) {
+	svc := &fakeOpenID4VPService{
+		initiate: func(_ context.Context, _ string, _ bool) (*openid4vp.Initiation, *tidcommon.ServiceError) {
+			return nil, &openid4vp.ErrorDefinitionNotForSignIn
+		},
+	}
+	exec := newTestOpenID4VPExecutor(t, svc)
+
+	resp, err := exec.Execute(openid4vpNodeContext(nil, map[string]interface{}{
+		propertyKeyPresentationDefinitionID: "custom-def",
+	}))
+	require.NoError(t, err)
+	assert.Equal(t, providers.ExecFailure, resp.Status)
+	assert.Equal(t, ErrOpenID4VPDefinitionNotForSignIn.Code, resp.Error.Code)
 }
 
 func TestOpenID4VPExecutorPollPending(t *testing.T) {
@@ -165,7 +190,11 @@ func TestOpenID4VPExecutorPollCompleted(t *testing.T) {
 			return &openid4vp.RequestState{
 				Status: openid4vp.StatusCompleted,
 				Result: &openid4vp.VerifiedPresentation{
-					Subject: "sub-1",
+					DefinitionID:  "def-1",
+					Issuer:        "https://issuer.example",
+					IssuerTrusted: true,
+					SubjectClaim:  "national_id",
+					Subject:       "sub-1",
 					Claims: map[string]interface{}{
 						"given_name":  "Erika",
 						"family_name": "Mustermann",
@@ -177,7 +206,11 @@ func TestOpenID4VPExecutorPollCompleted(t *testing.T) {
 
 	mockAuthnProvider := managermock.NewAuthnProviderManagerMock(t)
 	mockAuthnProvider.On("AuthenticateUser",
-		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		mock.Anything, mock.Anything, mock.MatchedBy(func(creds map[string]interface{}) bool {
+			cred, ok := creds[authnprovidercm.CredentialTypeOpenID4VP].(*authncommon.OpenID4VPCredential)
+			return ok && cred.DefinitionID == "def-1" && cred.Issuer == "https://issuer.example" &&
+				cred.IssuerTrusted && cred.Subject == "national_id:sub-1"
+		}), mock.Anything, mock.Anything, mock.Anything).
 		Return(providers.AuthUser{}, providers.AuthenticatedClaims{
 			"given_name":     "Erika",
 			"family_name":    "Mustermann",
@@ -192,12 +225,47 @@ func TestOpenID4VPExecutorPollCompleted(t *testing.T) {
 	}))
 	require.NoError(t, err)
 	assert.Equal(t, providers.ExecComplete, resp.Status)
-	// Claims from the authn provider are stored in the external identity entry
-	assert.Equal(t, "sub-1", externalClaim(resp.RuntimeData, userAttributeSub))
+	// The external identity names the link scoped to the definition and issuer, so provisioning records it,
+	// and the subject is kept out of the claims so it never lands in the profile.
+	identity := core.GetExternalIdentity(resp.RuntimeData)
+	require.NotNil(t, identity)
+	assert.Equal(t, "openid4vp:def-1:https://issuer.example", identity.IdpID)
+	assert.Equal(t, "national_id:sub-1", identity.Sub)
+	assert.NotContains(t, identity.Claims, userAttributeSub)
 	assert.Equal(t, "Erika", externalClaim(resp.RuntimeData, "given_name"))
 	// AuthUser is not authenticated (no entity reference resolved), so eligible for provisioning
 	assert.Equal(t, dataValueTrue, resp.RuntimeData[common.RuntimeKeyUserEligibleForProvisioning])
 	mockAuthnProvider.AssertExpectations(t)
+}
+
+// An unverified issuer's iss and sub are attacker-chosen, so no link is recorded for them: a recorded
+// link would resolve the real holder to whoever minted it.
+func TestOpenID4VPExecutorPollCompleted_UntrustedIssuerRecordsNoLink(t *testing.T) {
+	svc := &fakeOpenID4VPService{
+		getResult: func(_ context.Context, _ string) (*openid4vp.RequestState, *tidcommon.ServiceError) {
+			return &openid4vp.RequestState{
+				Status: openid4vp.StatusCompleted,
+				Result: &openid4vp.VerifiedPresentation{
+					Issuer:  "https://issuer.example",
+					Subject: "sub-1",
+				},
+			}, nil
+		},
+	}
+	mockAuthnProvider := managermock.NewAuthnProviderManagerMock(t)
+	mockAuthnProvider.On("AuthenticateUser",
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(providers.AuthUser{}, providers.AuthenticatedClaims{"given_name": "Erika"}, nil)
+
+	exec := newTestOpenID4VPExecutorWithProvider(t, svc, mockAuthnProvider)
+	runtime := map[string]string{common.RuntimeKeyOpenID4VPState: "state-123"}
+	resp, err := exec.Execute(openid4vpNodeContext(runtime, nil))
+	require.NoError(t, err)
+	assert.Equal(t, providers.ExecComplete, resp.Status)
+	identity := core.GetExternalIdentity(resp.RuntimeData)
+	require.NotNil(t, identity)
+	assert.Empty(t, identity.IdpID)
+	assert.Empty(t, identity.Sub)
 }
 
 // Failing to store the presented claims is a server fault, so it surfaces as an error rather than as a

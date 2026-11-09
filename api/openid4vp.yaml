@@ -153,7 +153,7 @@ components:
         application/json:
           schema: {$ref: '#/components/schemas/VPError'}
     VPInvalidRequest:
-      description: The request is malformed, omits a required field, uses an unsupported format, references an invalid organization unit, contains invalid claim definitions, contains an invalid, expired, or duplicate trusted authority, or names no project, a project that does not exist, or an organization unit outside its project.
+      description: The request is malformed, omits a required field, uses an unsupported format, references an invalid organization unit, contains invalid claim definitions, names a subject claim that is not mandatory or contains a colon, contains an invalid, expired, or duplicate trusted authority, or names no project, a project that does not exist, or an organization unit outside its project.
       content:
         application/json:
           schema: {$ref: '#/components/schemas/VPError'}
@@ -182,6 +182,12 @@ components:
                 code: VP-2019
                 message: {key: error.vp.definition_ou_not_in_project, defaultValue: Organization unit not in project}
                 description: {key: error.vp.definition_ou_not_in_project_description, defaultValue: The organization unit must belong to the project}
+            invalidSubjectClaim:
+              summary: Subject claim not mandatory or contains a colon
+              value:
+                code: VP-2022
+                message: {key: error.vp.definition_invalid_subject_claim, defaultValue: Invalid subject claim}
+                description: {key: error.vp.definition_invalid_subject_claim_description, defaultValue: The subject claim must be one of the mandatory claims and must not contain a colon}
     VPNotFound:
       description: No presentation definition exists for the supplied ID.
       content:
@@ -237,6 +243,12 @@ components:
           description: >-
             Requires the credential issuer's x5c certificate chain to verify against one of the
             definition's trusted authorities. Requires at least one trusted authority.
+        subjectClaim:
+          type: string
+          description: >-
+            Mandatory claim that identifies the holder at sign-in. A definition without one verifies
+            presentations but cannot sign users in. Must be one of mandatoryClaims and must not contain a
+            colon (:), otherwise the request fails with VP-2022.
     VPTrustedAuthority:
       type: object
       required: [name]

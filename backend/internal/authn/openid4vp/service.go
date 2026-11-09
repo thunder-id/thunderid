@@ -13,6 +13,7 @@ import (
 	"time"
 
 	authncommon "github.com/thunder-id/thunderid/internal/authn/common"
+	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/security"
@@ -23,8 +24,8 @@ import (
 
 // OpenID4VPServiceInterface is the external contract for the OpenID4VP verifier.
 type OpenID4VPServiceInterface interface {
-	// Initiate creates a new presentation request.
-	Initiate(ctx context.Context, definitionID string) (*Initiation, *tidcommon.ServiceError)
+	// Initiate creates a new presentation request. forSignIn refuses a definition that cannot sign users in.
+	Initiate(ctx context.Context, definitionID string, forSignIn bool) (*Initiation, *tidcommon.ServiceError)
 	// GetResult returns the current state of a request, consuming terminal states from the store.
 	GetResult(ctx context.Context, state string) (*RequestState, *tidcommon.ServiceError)
 	// Authenticate converts an OpenID4VP credential into an authentication result.
@@ -80,21 +81,23 @@ func newOpenID4VPService(
 
 // Initiate creates a fresh request for definitionID.
 func (s *openid4vpService) Initiate(
-	ctx context.Context, definitionID string,
+	ctx context.Context, definitionID string, forSignIn bool,
 ) (*Initiation, *tidcommon.ServiceError) {
-	init, err := s.initiate(ctx, definitionID)
+	def, err := s.resolveDefinition(ctx, definitionID)
+	if err != nil {
+		return nil, toServiceError(err)
+	}
+	if forSignIn && def.subjectClaim == "" {
+		return nil, &ErrorDefinitionNotForSignIn
+	}
+	init, err := s.initiate(ctx, def)
 	if err != nil {
 		return nil, toServiceError(err)
 	}
 	return init, nil
 }
 
-func (s *openid4vpService) initiate(ctx context.Context, definitionID string) (*Initiation, error) {
-	def, err := s.resolveDefinition(ctx, definitionID)
-	if err != nil {
-		return nil, err
-	}
-
+func (s *openid4vpService) initiate(ctx context.Context, def *presentationDefinition) (*Initiation, error) {
 	state, err := randomToken()
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate state: %w", err)
@@ -111,7 +114,7 @@ func (s *openid4vpService) initiate(ctx context.Context, definitionID string) (*
 	expiresAt := time.Now().Add(s.cfg.TTL)
 	rs := &RequestState{
 		State:        state,
-		DefinitionID: def.ID,
+		DefinitionID: def.handle,
 		Nonce:        nonce,
 		EphemeralKey: key,
 		ClientID:     s.clientID,
@@ -121,7 +124,7 @@ func (s *openid4vpService) initiate(ctx context.Context, definitionID string) (*
 	}
 	if err := s.store.SaveRequestState(ctx, rs); err != nil {
 		s.logger.Error(ctx, "Failed to store OpenID4VP request state",
-			log.String("definitionID", definitionID), log.String("error", err.Error()))
+			log.String("definitionID", def.handle), log.String("error", err.Error()))
 		return nil, fmt.Errorf("failed to store request state: %w", err)
 	}
 
@@ -152,16 +155,21 @@ func (s *openid4vpService) GetResult(ctx context.Context, state string) (*Reques
 		if s.jwtSvc == nil {
 			return nil, &tidcommon.InternalServerError
 		}
+		// The token's sub names the holder's key when the credential has no subject. Sign-in never sees it.
+		subject := rs.Result.Subject
+		if subject == "" && rs.Result.KeyBindingThumbprint != "" {
+			subject = "urn:ietf:params:oauth:jwk-thumbprint:sha-256:" + rs.Result.KeyBindingThumbprint
+		}
 		claims := map[string]interface{}{
 			"aud":             s.issuerURL,
 			"jti":             rs.State,
 			"txn":             rs.State,
 			"definition_id":   rs.DefinitionID,
-			"subject":         rs.Result.Subject,
+			"subject":         subject,
 			"verified_claims": rs.Result.Claims,
 			"verifier":        s.clientID,
 		}
-		token, _, svcErr := s.jwtSvc.GenerateJWT(ctx, rs.Result.Subject, s.issuerURL,
+		token, _, svcErr := s.jwtSvc.GenerateJWT(ctx, subject, s.issuerURL,
 			int64(s.cfg.ResultTokenValidity.Seconds()), claims, "JWT", "")
 		if svcErr != nil {
 			s.logger.Error(ctx, "Failed to issue OpenID4VP result token",
@@ -182,24 +190,25 @@ func (s *openid4vpService) Authenticate(_ context.Context, cred *authncommon.Ope
 	if cred == nil {
 		return nil, &tidcommon.InternalServerError
 	}
+	if !cred.IssuerTrusted || cred.DefinitionID == "" {
+		return nil, &ErrorUntrustedHolderIssuer
+	}
+	if cred.Subject == "" {
+		return nil, &ErrorNoHolderIdentifier
+	}
 
-	claims := make(map[string]interface{}, len(cred.Claims)+1)
+	claims := make(map[string]interface{}, len(cred.Claims))
 	for k, v := range cred.Claims {
 		claims[k] = v
 	}
-	if cred.Subject != "" {
-		claims["sub"] = cred.Subject
-	}
 
-	// Identification keys on subject only so IdentifyEntity matches a returning
-	// holder by sub rather than over all disclosed claims.
-	identification := map[string]interface{}{}
-	if cred.Subject != "" {
-		identification["sub"] = cred.Subject
-	}
-
+	// The holder resolves through the link recorded for the issuer's subject under the definition that
+	// trusted the issuer, like a federated sign-in.
 	return &authncommon.AuthnResult{
-		Token:               identification,
+		Token: map[string]interface{}{
+			authnprovidercm.UserAttributeFederatedIdpID: LinkedConnectionID(cred.DefinitionID, cred.Issuer),
+			authnprovidercm.UserAttributeSub:            cred.Subject,
+		},
 		AuthenticatedClaims: claims,
 	}, nil
 }

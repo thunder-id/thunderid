@@ -31,8 +31,15 @@ import {Navigate, useNavigate} from 'react-router';
 import useCreateVerifiablePresentation from '../api/useCreateVerifiablePresentation';
 import ConfigureName from '../components/create-verifiable-presentation/ConfigureName';
 import ClaimsEditor from '../components/PresentationClaimsEditor';
+import PresentationSignInCard from '../components/PresentationSignInCard';
 import useVerifiableCredentialRoutes from '../hooks/useVerifiableCredentialRoutes';
-import {claimRowsToRequest, emptyClaimRow, findDuplicateClaimNames, type ClaimRow} from '../models/presentation-claims';
+import {
+  claimRowsToRequest,
+  emptyClaimRow,
+  findDuplicateClaimNames,
+  isSignInValid,
+  type ClaimRow,
+} from '../models/presentation-claims';
 
 type Step = 'ORGANIZATION_UNIT' | 'NAME' | 'DETAILS' | 'CLAIMS';
 
@@ -71,6 +78,8 @@ export default function VerifiablePresentationCreatePage({
   const [vct, setVct] = useState<string>('');
   const [format, setFormat] = useState<string>('dc+sd-jwt');
   const [claims, setClaims] = useState<ClaimRow[]>([emptyClaimRow()]);
+  const [allowSignIn, setAllowSignIn] = useState<boolean>(false);
+  const [subjectClaim, setSubjectClaim] = useState<string>('');
 
   const effectiveOuId: string =
     ouId !== '' ? ouId : !isInProject && !hasMultipleOUs && ouList.length === 1 ? ouList[0].id : '';
@@ -105,7 +114,10 @@ export default function VerifiablePresentationCreatePage({
     ORGANIZATION_UNIT: effectiveOuId !== '',
     NAME: name.trim() !== '' && handle.trim() !== '',
     DETAILS: vct.trim() !== '' && (isInProject || effectiveOuId !== ''),
-    CLAIMS: claims.some((c) => c.name.trim() !== '') && Object.keys(duplicateClaimNames).length === 0,
+    CLAIMS:
+      claims.some((c) => c.name.trim() !== '') &&
+      Object.keys(duplicateClaimNames).length === 0 &&
+      isSignInValid(allowSignIn, subjectClaim, claims),
   };
 
   const stepIndex = stepOrder.indexOf(effectiveStep);
@@ -130,6 +142,7 @@ export default function VerifiablePresentationCreatePage({
         vct: vct.trim(),
         format: format.trim() || undefined,
         ...claimRowsToRequest(claims),
+        subjectClaim: subjectClaim || undefined,
       },
       {
         onSuccess: () => {
@@ -243,6 +256,20 @@ export default function VerifiablePresentationCreatePage({
           onChange={(rows: ClaimRow[]): void => {
             clearCreateError();
             setClaims(rows);
+          }}
+        />
+        <PresentationSignInCard
+          claims={claims}
+          allowSignIn={allowSignIn}
+          subjectClaim={subjectClaim}
+          onAllowSignInChange={(on: boolean): void => {
+            clearCreateError();
+            setAllowSignIn(on);
+            if (!on) setSubjectClaim('');
+          }}
+          onSubjectClaimChange={(claim: string): void => {
+            clearCreateError();
+            setSubjectClaim(claim);
           }}
         />
       </Stack>

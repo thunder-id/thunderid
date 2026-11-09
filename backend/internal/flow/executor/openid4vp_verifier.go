@@ -80,12 +80,15 @@ func (e *openid4vpVerifier) initiate(
 		execResp.Error = &ErrOpenID4VPDefinitionNotConfigured
 		return execResp, nil
 	}
-	init, svcErr := e.service.Initiate(ctx.Context, definitionID)
+	init, svcErr := e.service.Initiate(ctx.Context, definitionID, true)
 	if svcErr != nil {
 		logger.Error(ctx.Context, "Failed to initiate OpenID4VP request",
 			log.String("definitionID", definitionID), log.String("errorCode", svcErr.Code))
 		execResp.Status = providers.ExecFailure
 		execResp.Error = &ErrOpenID4VPInitiateFailed
+		if svcErr.Code == openid4vp.ErrorDefinitionNotForSignIn.Code {
+			execResp.Error = &ErrOpenID4VPDefinitionNotForSignIn
+		}
 		return execResp, nil
 	}
 
@@ -173,10 +176,17 @@ func (e *openid4vpVerifier) authenticate(
 		execResp.Error = &ErrOpenID4VPVerificationFailed
 		return nil
 	}
+	linkSubject := ""
+	if rs.Result.SubjectClaim != "" {
+		linkSubject = openid4vp.LinkedSubject(rs.Result.SubjectClaim, rs.Result.Subject)
+	}
 	credentials := map[string]interface{}{
 		authnprovidercm.CredentialTypeOpenID4VP: &authncommon.OpenID4VPCredential{
-			Subject: rs.Result.Subject,
-			Claims:  rs.Result.Claims,
+			DefinitionID:  rs.Result.DefinitionID,
+			Issuer:        rs.Result.Issuer,
+			IssuerTrusted: rs.Result.IssuerTrusted,
+			Subject:       linkSubject,
+			Claims:        rs.Result.Claims,
 		},
 	}
 
@@ -194,7 +204,14 @@ func (e *openid4vpVerifier) authenticate(
 		return nil
 	}
 
-	if err := setExternalIdentity(execResp, "", "", authenticatedClaims); err != nil {
+	// Only a verified issuer's subject is recorded as a link: anyone can mint another issuer's iss and sub
+	// from an unenforced definition, and a recorded link would then resolve the real holder to the minter.
+	connectionID, recordedSubject := "", ""
+	if rs.Result.IssuerTrusted && rs.Result.DefinitionID != "" {
+		connectionID = openid4vp.LinkedConnectionID(rs.Result.DefinitionID, rs.Result.Issuer)
+		recordedSubject = linkSubject
+	}
+	if err := setExternalIdentity(execResp, connectionID, recordedSubject, authenticatedClaims); err != nil {
 		return err
 	}
 

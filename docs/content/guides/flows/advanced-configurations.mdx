@@ -2675,6 +2675,7 @@ Initiates an OpenID4VP presentation request and, on each subsequent poll, checks
 **Prerequisites:**
 - The OpenID4VP service must be configured in <ProductName /> with at least one presentation definition (see the [OpenID4VP protocol guide](../../protocols/openid4vc/openid4vp)).
 - A certificate-backed signing key and an ephemeral encryption key must be registered in the key store.
+- The presentation definition must have a subject claim and enforce trusted issuers. In the Console, turn on **Allow sign-in using this definition** under **Claims** and pick a mandatory claim, then turn on **Enforce trusted issuer** under **Issuer trust**.
 
 **View pairing:** Use the **EUDI Wallet** widget (or manually pair with a custom View that renders `openid4vpWalletUri` as a QR code). The View must post back to the same TASK EXECUTION node to trigger the poll step.
 
@@ -2689,7 +2690,7 @@ Initiates an OpenID4VP presentation request and, on each subsequent poll, checks
 
 **How it works:**
 
-1. On **first execution** (no state in runtime data): calls the OpenID4VP service to initiate a new request. Sets runtime data with the request state and surfaces the following additional data:
+1. On **first execution** (no state in runtime data): calls the OpenID4VP service to initiate a new request. Fails the flow before showing a QR code if the presentation definition has no subject claim. Sets runtime data with the request state and surfaces the following additional data:
    - `openid4vpWalletUri`: the `openid4vp://` authorization URI for the wallet (QR code target or deep link)
    - `openid4vpClientId`: the verifier's `client_id`
    - `openid4vpRequestUri`: the signed request object URI
@@ -2697,7 +2698,7 @@ Initiates an OpenID4VP presentation request and, on each subsequent poll, checks
 
 2. On **subsequent executions** (state present in runtime data): polls the request state. Returns `INCOMPLETE` again (re-emitting the QR data) if the wallet has not yet responded; completes the flow if the credential is verified; fails the flow if verification fails or the request expires.
 
-3. On **completion**: sets `AuthenticatedUser` with the verified holder's `subject` and all selectively disclosed credential claims. If an existing local account matches the disclosed attributes, `AuthenticatedUser.UserID` is populated automatically. When `allowAuthenticationWithoutLocalUser` is `true`, the `userEligibleForProvisioning` runtime flag is set so a downstream **Provisioning** executor can create the account.
+3. On **completion**: resolves the holder through the link recorded for the presentation definition, the credential issuer, and the value of the definition's subject claim, the same way a federated sign-in resolves a user through its connection. If a local user holds that link, `AuthenticatedUser.UserID` is populated. A holder is never matched to an existing user by `sub` or any other disclosed attribute. The selectively disclosed credential claims are available to the rest of the flow. When `allowAuthenticationWithoutLocalUser` is `true`, the `userEligibleForProvisioning` runtime flag is set so a downstream **Provisioning** executor can create the account and record the link.
 
 **Example:**
 
@@ -2720,7 +2721,10 @@ Initiates an OpenID4VP presentation request and, on each subsequent poll, checks
 **Failure conditions:**
 - OpenID4VP service not configured in the server
 - Presentation definition ID not registered
+- Presentation definition has no subject claim (`FET-1139`)
 - Request expired before the wallet responded (state TTL elapsed)
+- Credential issuer not trusted for sign-in: the presentation definition does not enforce trusted issuers, or the credential `iss` does not match its certificate
+- Subject claim value missing from the presentation or not a string
 - Wallet presented an untrusted credential (issuer not in the trust store)
 - Credential signature or key binding verification failed
 - Mandatory claim missing from the presentation

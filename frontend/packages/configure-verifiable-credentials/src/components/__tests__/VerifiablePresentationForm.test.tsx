@@ -257,3 +257,126 @@ describe('VerifiablePresentationForm issuer trust', () => {
     expect(screen.queryByRole('button', {name: 'Save'})).not.toBeInTheDocument();
   });
 });
+
+describe('VerifiablePresentationForm sign-in', () => {
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const withClaims: VerifiablePresentation = {
+    ...definition,
+    mandatoryClaims: ['given_name', 'national_id', 'urn:id'],
+    optionalClaims: ['email'],
+  };
+
+  async function openClaimsTab(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+    await user.click(screen.getByRole('tab', {name: 'Claims'}));
+  }
+
+  const signInSwitch = (): HTMLElement => screen.getByRole('switch', {name: 'Allow sign-in'});
+  const subjectSelect = (): HTMLElement => screen.getByRole('combobox', {name: /Subject claim/});
+
+  it('starts off without a subject claim and keeps the subject claim out of the request', async () => {
+    const user = userEvent.setup();
+    renderForm({initial: withClaims});
+    await openClaimsTab(user);
+
+    expect(signInSwitch()).not.toBeChecked();
+    expect(screen.queryByRole('combobox', {name: /Subject claim/})).not.toBeInTheDocument();
+  });
+
+  it('offers only usable mandatory claims and sends the chosen one', async () => {
+    const user = userEvent.setup();
+    renderForm({initial: withClaims});
+    await openClaimsTab(user);
+
+    await user.click(signInSwitch());
+    expect(screen.getByText('Pick a subject claim.')).toBeInTheDocument();
+    expect(screen.queryByText('Also needs Enforce trusted issuer.')).not.toBeInTheDocument();
+    await user.click(subjectSelect());
+    const listbox = await screen.findByRole('listbox');
+    expect(
+      within(listbox)
+        .getAllByRole('option')
+        .map((option: HTMLElement) => option.textContent),
+    ).toEqual(['given_name', 'national_id']);
+    await user.click(within(listbox).getByRole('option', {name: 'national_id'}));
+    await user.click(screen.getByRole('button', {name: 'Save'}));
+
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({subjectClaim: 'national_id'}));
+  });
+
+  it('says sign-in also needs trusted issuer enforcement', async () => {
+    const user = userEvent.setup();
+    renderForm({initial: {...withClaims, enforceTrustedIssuer: false}});
+    await openClaimsTab(user);
+
+    await user.click(signInSwitch());
+
+    expect(screen.getByText('Also needs Enforce trusted issuer.')).toBeInTheDocument();
+  });
+
+  it('disables Save while sign-in is on without a subject claim', async () => {
+    const user = userEvent.setup();
+    renderForm({initial: withClaims});
+    await openClaimsTab(user);
+
+    await user.click(signInSwitch());
+    // Turning sign-in on alone changes nothing to save, so change a claim to show the save bar.
+    await user.click(screen.getAllByRole('button', {name: 'Remove claim'})[3]);
+
+    expect(screen.getByRole('button', {name: 'Save'})).toBeDisabled();
+  });
+
+  it('keeps a claim that is no longer mandatory selected and blocks Save', async () => {
+    const user = userEvent.setup();
+    renderForm({initial: {...withClaims, subjectClaim: 'national_id'}});
+    await openClaimsTab(user);
+
+    expect(signInSwitch()).toBeChecked();
+    expect(subjectSelect()).toHaveTextContent('national_id');
+    await user.click(screen.getAllByRole('button', {name: 'Remove claim'})[1]);
+
+    expect(subjectSelect()).toHaveTextContent('national_id');
+    expect(screen.getByText('Must be a mandatory claim.')).toBeInTheDocument();
+    expect(screen.getByRole('button', {name: 'Save'})).toBeDisabled();
+  });
+
+  it('warns that returning holders become new users when the stored claim changes', async () => {
+    const user = userEvent.setup();
+    renderForm({initial: {...withClaims, subjectClaim: 'national_id'}});
+    await openClaimsTab(user);
+
+    expect(screen.queryByText('Returning holders will sign in as new users.')).not.toBeInTheDocument();
+    await user.click(subjectSelect());
+    await user.click(within(await screen.findByRole('listbox')).getByRole('option', {name: 'given_name'}));
+
+    expect(screen.getByText('Returning holders will sign in as new users.')).toBeInTheDocument();
+  });
+
+  it('clears the subject claim and warns when sign-in is turned off', async () => {
+    const user = userEvent.setup();
+    renderForm({initial: {...withClaims, subjectClaim: 'national_id'}});
+    await openClaimsTab(user);
+
+    await user.click(signInSwitch());
+
+    expect(screen.queryByRole('combobox', {name: /Subject claim/})).not.toBeInTheDocument();
+    expect(screen.getByText('Sign-in flows using this definition will stop working.')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', {name: 'Save'}));
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({subjectClaim: undefined}));
+  });
+
+  it('restores the stored subject claim on reset', async () => {
+    const user = userEvent.setup();
+    renderForm({initial: {...withClaims, subjectClaim: 'national_id'}});
+    await openClaimsTab(user);
+
+    await user.click(signInSwitch());
+    await user.click(screen.getByRole('button', {name: 'Reset'}));
+
+    expect(signInSwitch()).toBeChecked();
+    expect(subjectSelect()).toHaveTextContent('national_id');
+    expect(screen.queryByRole('button', {name: 'Save'})).not.toBeInTheDocument();
+  });
+});

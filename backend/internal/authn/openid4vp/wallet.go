@@ -147,10 +147,17 @@ func (s *openid4vpService) SubmitResponse(
 		return nil, "", toServiceError(s.fail(ctx, rs, lastErr))
 	}
 	if def.DeriveSubject != nil {
-		if subject := def.DeriveSubject(vp); subject != "" {
-			vp.Subject = subject
-		}
+		vp.Subject = def.DeriveSubject(vp)
 	}
+	if def.subjectClaim != "" && vp.Subject == "" {
+		return nil, "", toServiceError(s.fail(ctx, rs,
+			fmt.Errorf("%w: %s", ErrInvalidSubjectClaim, def.subjectClaim)))
+	}
+	vp.SubjectClaim = def.subjectClaim
+	vp.DefinitionID = def.id
+	// A link is recorded only under a connection id that fits the identifier column.
+	vp.IssuerTrusted = vp.IssuerTrusted && def.id != "" &&
+		len(LinkedConnectionID(def.id, vp.Issuer)) <= maxLinkedConnectionIDLength
 
 	rs.Status = StatusCompleted
 	rs.Result = vp
@@ -454,9 +461,6 @@ func verifySDJWTPresentation(
 		return nil, fmt.Errorf("%w: %w", ErrInvalidPresentation, err)
 	}
 	issuer, _ := issuerClaims["iss"].(string)
-	if issuer == "" {
-		return nil, fmt.Errorf("%w: credential missing iss", ErrInvalidPresentation)
-	}
 
 	chain, err := x5cChain(p.IssuerJWT)
 	if err != nil {
@@ -493,6 +497,11 @@ func verifySDJWTPresentation(
 		}
 	}
 
+	// iss is optional in SD-JWT VC; without it the signing certificate names the issuer.
+	if issuer == "" {
+		issuer = issuerFromCertificate(issuerLeaf)
+	}
+
 	vct, _ := cred.Claims["vct"].(string)
 	var keyBindingThumbprint string
 	if cred.ConfirmationKey != nil {
@@ -501,12 +510,46 @@ func verifySDJWTPresentation(
 		}
 	}
 	return &verifiedCredential{
-		Issuer:               issuer,
+		Issuer: issuer,
+		// iss names an issuer only when a trusted chain ends in a certificate that carries it. A
+		// mismatch still verifies the credential but leaves the holder unidentifiable at sign-in,
+		// since iss is then the issuer's own claim.
+		IssuerBound:          enforceTrustedIssuer && issuerMatchesCertificate(issuer, issuerLeaf),
 		VCT:                  vct,
 		Claims:               cred.Claims,
 		DisclosedPaths:       cred.DisclosedPaths,
 		KeyBindingThumbprint: keyBindingThumbprint,
 	}, nil
+}
+
+// issuerMatchesCertificate reports whether iss names the certificate that signed the credential, as
+// SD-JWT VC requires for x5c: iss equals a URI SAN, or is an https URL whose host matches a DNS SAN.
+// Without it, any issuer under a trusted anchor could assert another issuer's iss.
+func issuerMatchesCertificate(iss string, leaf *x509.Certificate) bool {
+	for _, uri := range leaf.URIs {
+		if uri.String() == iss {
+			return true
+		}
+	}
+	u, err := url.Parse(iss)
+	if err != nil || u.Scheme != "https" || u.Hostname() == "" {
+		return false
+	}
+	return slices.ContainsFunc(leaf.DNSNames, func(name string) bool {
+		return strings.EqualFold(name, u.Hostname())
+	})
+}
+
+// issuerFromCertificate names the issuer by the certificate's first URI SAN, else its first DNS SAN as an
+// https URL, so it matches what issuerMatchesCertificate accepts for an explicit iss.
+func issuerFromCertificate(leaf *x509.Certificate) string {
+	if len(leaf.URIs) > 0 {
+		return leaf.URIs[0].String()
+	}
+	if len(leaf.DNSNames) > 0 {
+		return "https://" + leaf.DNSNames[0]
+	}
+	return ""
 }
 
 // x5cChain extracts the leaf-first DER certificate chain from the issuer JWT's x5c header (RFC 7515).
@@ -549,6 +592,8 @@ func finalizePresentation(cred *verifiedCredential, policy policy) (*VerifiedPre
 
 	subject, _ := cred.Claims["sub"].(string)
 	return &VerifiedPresentation{
+		Issuer:               cred.Issuer,
+		IssuerTrusted:        cred.IssuerBound,
 		Subject:              subject,
 		Claims:               flattenClaims(cred.Claims),
 		KeyBindingThumbprint: cred.KeyBindingThumbprint,
@@ -638,18 +683,14 @@ func flattenInto(out map[string]interface{}, prefix string, node map[string]inte
 	}
 }
 
-// defaultSubjectDeriver returns a deriver that falls back to the key-binding thumbprint when sub is absent.
-func defaultSubjectDeriver() subjectDeriver {
+// subjectDeriverFor identifies the holder by the named claim, and by nothing when none is named. The
+// key-binding key is no identity: a wallet reset or a batch-issued copy carries a different one.
+func subjectDeriverFor(subjectClaim string) subjectDeriver {
 	return func(vp *VerifiedPresentation) string {
-		if vp == nil {
+		if subjectClaim == "" {
 			return ""
 		}
-		if vp.Subject != "" {
-			return vp.Subject
-		}
-		if vp.KeyBindingThumbprint != "" {
-			return "urn:ietf:params:oauth:jwk-thumbprint:sha-256:" + vp.KeyBindingThumbprint
-		}
-		return ""
+		value, _ := vp.Claims[subjectClaim].(string)
+		return value
 	}
 }

@@ -128,7 +128,7 @@ func (h *openID4VPHandler) HandleInitiate(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	init, svcErr := h.verifySvc.Initiate(ctx, req.DefinitionID)
+	init, svcErr := h.verifySvc.Initiate(ctx, req.DefinitionID, false)
 	if svcErr != nil {
 		writeServiceErrorResponse(ctx, w, svcErr)
 		return

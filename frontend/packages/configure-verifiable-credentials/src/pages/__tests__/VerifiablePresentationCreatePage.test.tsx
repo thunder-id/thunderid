@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {ProjectScopeProvider} from '@thunderid/contexts';
-import {fireEvent, render, screen} from '@thunderid/test-utils';
+import {fireEvent, render, screen, within} from '@thunderid/test-utils';
 import {beforeEach, describe, expect, it, vi} from 'vitest';
 import VerifiablePresentationCreatePage from '../VerifiablePresentationCreatePage';
 
@@ -96,12 +96,16 @@ function renderInProject(): void {
   );
 }
 
-function createFromNameStep(): Record<string, unknown> {
+function goToClaimsStep(): void {
   fireEvent.click(screen.getByRole('button', {name: 'fill name'}));
   fireEvent.click(screen.getByRole('button', {name: 'Continue'}));
   fireEvent.change(document.getElementById('vp-vct')!, {target: {value: 'urn:eudi:pid:de:1'}});
   fireEvent.click(screen.getByRole('button', {name: 'Continue'}));
   fireEvent.click(screen.getByRole('button', {name: 'fill claims'}));
+}
+
+function createFromNameStep(): Record<string, unknown> {
+  goToClaimsStep();
   fireEvent.click(screen.getByRole('button', {name: 'Create'}));
 
   return mockMutate.mock.calls[0][0] as Record<string, unknown>;
@@ -183,5 +187,46 @@ describe('VerifiablePresentationCreatePage', () => {
     render(<VerifiablePresentationCreatePage createInProjectsOnly />);
 
     expect(screen.getByTestId('navigate')).toHaveAttribute('data-to', '/verifiable-presentations');
+  });
+
+  it('creates a definition that cannot sign in by default', () => {
+    mockUseHasMultipleOUs.mockReturnValue({hasMultipleOUs: false, isLoading: false, ouList: []});
+    renderInProject();
+    goToClaimsStep();
+
+    expect(screen.getByRole('switch', {name: 'Allow sign-in'})).not.toBeChecked();
+    fireEvent.click(screen.getByRole('button', {name: 'Create'}));
+    expect(mockMutate.mock.calls[0][0]).toMatchObject({subjectClaim: undefined});
+  });
+
+  it('requires a subject claim once sign-in is allowed and sends it', async () => {
+    mockUseHasMultipleOUs.mockReturnValue({hasMultipleOUs: false, isLoading: false, ouList: []});
+    renderInProject();
+    goToClaimsStep();
+
+    fireEvent.click(screen.getByRole('switch', {name: 'Allow sign-in'}));
+    expect(screen.getByText('Pick a subject claim.')).toBeInTheDocument();
+    expect(screen.getByText('Add a trusted issuer after creating.')).toBeInTheDocument();
+    expect(screen.getByRole('button', {name: 'Create'})).toBeDisabled();
+
+    fireEvent.mouseDown(screen.getByRole('combobox', {name: /Subject claim/}));
+    fireEvent.click(within(await screen.findByRole('listbox')).getByRole('option', {name: 'given_name'}));
+    fireEvent.click(screen.getByRole('button', {name: 'Create'}));
+
+    expect(mockMutate.mock.calls[0][0]).toMatchObject({subjectClaim: 'given_name'});
+  });
+
+  it('clears the subject claim when sign-in is turned off', async () => {
+    mockUseHasMultipleOUs.mockReturnValue({hasMultipleOUs: false, isLoading: false, ouList: []});
+    renderInProject();
+    goToClaimsStep();
+
+    fireEvent.click(screen.getByRole('switch', {name: 'Allow sign-in'}));
+    fireEvent.mouseDown(screen.getByRole('combobox', {name: /Subject claim/}));
+    fireEvent.click(within(await screen.findByRole('listbox')).getByRole('option', {name: 'given_name'}));
+    fireEvent.click(screen.getByRole('switch', {name: 'Allow sign-in'}));
+    fireEvent.click(screen.getByRole('button', {name: 'Create'}));
+
+    expect(mockMutate.mock.calls[0][0]).toMatchObject({subjectClaim: undefined});
   });
 });

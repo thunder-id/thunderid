@@ -34,7 +34,7 @@ func (suite *OpenID4VPHandlerTestSuite) TestHandleRequestObject() {
 	svc, _ := newTestService(t)
 	h := newOpenID4VPHandler(svc, svc)
 
-	init, svcErr := svc.Initiate(context.Background(), testDefinitionID)
+	init, svcErr := svc.Initiate(context.Background(), testDefinitionID, false)
 	suite.Require().Nil(svcErr)
 
 	suite.Run("success", func() {
@@ -72,7 +72,7 @@ func (suite *OpenID4VPHandlerTestSuite) TestHandleResponse() {
 	svc.cfg.ResultRedirectURIBase = resultRedirectURIBase
 	h := newOpenID4VPHandler(svc, svc)
 
-	init, svcErr := svc.Initiate(context.Background(), testDefinitionID)
+	init, svcErr := svc.Initiate(context.Background(), testDefinitionID, false)
 	suite.Require().Nil(svcErr)
 	rs := store[init.State]
 
@@ -109,7 +109,7 @@ func (suite *OpenID4VPHandlerTestSuite) TestHandleResponseVerificationFailure() 
 	svc, store := newTestService(t)
 	h := newOpenID4VPHandler(svc, svc)
 
-	init, svcErr := svc.Initiate(context.Background(), testDefinitionID)
+	init, svcErr := svc.Initiate(context.Background(), testDefinitionID, false)
 	suite.Require().Nil(svcErr)
 	rs := store[init.State]
 
@@ -132,7 +132,7 @@ func (suite *OpenID4VPHandlerTestSuite) TestHandleRequestObjectWriteError() {
 	svc, _ := newTestService(t)
 	h := newOpenID4VPHandler(svc, svc)
 
-	init, svcErr := svc.Initiate(context.Background(), testDefinitionID)
+	init, svcErr := svc.Initiate(context.Background(), testDefinitionID, false)
 	suite.Require().Nil(svcErr)
 
 	req := httptest.NewRequest(http.MethodGet, "/openid4vp/request?state="+url.QueryEscape(init.State), nil)
