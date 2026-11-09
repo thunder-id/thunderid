@@ -874,11 +874,11 @@ func activatePermissions(p *SystemPermissions) {
 
 		// User type tools.
 		"list_user_types": p.UserTypeView,
-		// Onboarding tools. onboard_agents starts an administration flow by ID, which requires the
-		// administration flow permission. onboard_users runs the user onboarding flow, and stays at the same
-		// permission onboarding needed before it was split.
-		"onboard_agents": p.AdministrationFlow,
-		"onboard_users":  p.AdministrationFlow,
+		// Onboarding tools, at the permission of the action their flow performs, as the Console needs. The
+		// flow checks its own permissions and the services authorize each write as the caller, so a
+		// custom flow that needs more still refuses a caller who lacks it.
+		"onboard_agents": p.AgentCreate,
+		"onboard_users":  p.UserCreate,
 
 		// Agent tools, at the permissions of the agent API they act through.
 		"list_agents":              p.AgentView,

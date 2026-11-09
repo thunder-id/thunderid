@@ -157,10 +157,15 @@ func TestToolPermissionMiddleware_DataPlane(t *testing.T) {
 			permissions: []string{"org"}, wantCalled: false},
 		{name: "SystemOnboardsAgents", tool: "onboard_agents", permissions: []string{"system"}, wantCalled: true},
 		{name: "OrgOnboardsAgents", tool: "onboard_agents", permissions: []string{"org"}, wantCalled: true},
-		{name: "OrgChildCannotOnboardAgents", tool: "onboard_agents", permissions: []string{"org:user"},
+		{name: "AgentCreateOnboardsAgents", tool: "onboard_agents", permissions: []string{"org:agent:create"},
+			wantCalled: true},
+		{name: "AgentViewCannotOnboardAgents", tool: "onboard_agents", permissions: []string{"org:agent:view"},
 			wantCalled: false},
-		{name: "OrgOnboardsUsers", tool: "onboard_users", permissions: []string{"org"}, wantCalled: true},
-		{name: "OrgChildCannotOnboardUsers", tool: "onboard_users", permissions: []string{"org:user"},
+		{name: "UserCreateCannotOnboardAgents", tool: "onboard_agents", permissions: []string{"org:user:create"},
+			wantCalled: false},
+		{name: "UserCreateOnboardsUsers", tool: "onboard_users", permissions: []string{"org:user:create"},
+			wantCalled: true},
+		{name: "AgentCreateCannotOnboardUsers", tool: "onboard_users", permissions: []string{"org:agent:create"},
 			wantCalled: false},
 	}
 

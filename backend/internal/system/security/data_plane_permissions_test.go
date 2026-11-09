@@ -36,11 +36,10 @@ func (s *DataPlanePermissionsTestSuite) TestRootsAndAdministrationFlow() {
 	s.Equal("org", p.AdministrationFlow)
 }
 
-// The onboarding tools run onboarding flows, so they require what the flow service requires to start an
-// administration flow.
-func (s *DataPlanePermissionsTestSuite) TestOnboardingToolsRequireTheAdministrationFlowPermission() {
-	s.Equal("org", ResolveMCPToolPermission("onboard_agents"))
-	s.Equal("org", ResolveMCPToolPermission("onboard_users"))
+// The onboarding tools require the permission of the action their flow performs, as the Console does.
+func (s *DataPlanePermissionsTestSuite) TestOnboardingToolsRequireTheCreatePermission() {
+	s.Equal("org:agent:create", ResolveMCPToolPermission("onboard_agents"))
+	s.Equal("org:user:create", ResolveMCPToolPermission("onboard_users"))
 }
 
 func (s *DataPlanePermissionsTestSuite) TestOrgChildrenForOUConfinedResources() {
