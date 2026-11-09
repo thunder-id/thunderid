@@ -8,6 +8,10 @@ const LEADING_ATTRIBUTES = ['username', 'given_name', 'family_name', 'email', 'm
 
 const PASSWORD_ATTRIBUTE = 'password';
 
+function isCredential(definition: PropertyDefinition): boolean {
+  return 'credential' in definition && definition.credential === true;
+}
+
 /**
  * Position of an attribute in the form, or null when it is not shown. Leading attributes come
  * first, then other required attributes, then other optional attributes when included, then
@@ -20,7 +24,7 @@ function rank(name: string, definition: PropertyDefinition, includeOptional: boo
 
   const base = LEADING_ATTRIBUTES.length;
   const required = definition.required === true;
-  const credential = 'credential' in definition && definition.credential === true;
+  const credential = isCredential(definition);
   if (name === PASSWORD_ATTRIBUTE) return required ? base + 2 : base + 4;
   if (!required) {
     if (!includeOptional) return null;
@@ -31,17 +35,23 @@ function rank(name: string, definition: PropertyDefinition, includeOptional: boo
 
 /**
  * Orders the attributes of a user type schema. The optional ones that are not commonly needed are
- * dropped, as on user creation, unless includeOptional is set.
+ * dropped, as on user creation, unless includeOptional is set. They are kept when dropping them
+ * would leave no attribute other than credentials.
  */
 export default function orderSchemaAttributes(
   schema: Record<string, PropertyDefinition>,
   {includeOptional = false}: {includeOptional?: boolean} = {},
 ): [string, PropertyDefinition][] {
-  return Object.entries(schema)
+  const ordered: [string, PropertyDefinition][] = Object.entries(schema)
     .map(([name, definition]) => ({name, definition, position: rank(name, definition, includeOptional)}))
     .filter(
       (entry): entry is {name: string; definition: PropertyDefinition; position: number} => entry.position !== null,
     )
     .sort((a, b) => a.position - b.position)
     .map(({name, definition}) => [name, definition]);
+
+  if (!includeOptional && !ordered.some(([, definition]) => !isCredential(definition))) {
+    return orderSchemaAttributes(schema, {includeOptional: true});
+  }
+  return ordered;
 }

@@ -67,4 +67,14 @@ describe('orderSchemaAttributes', () => {
       ),
     ).toEqual(['username', 'email', 'department', 'sub', 'picture', 'password', 'recovery_code']);
   });
+
+  it('keeps optional attributes when none other than credentials would be shown', () => {
+    expect(
+      names({
+        nickname: {type: 'string'},
+        password: {type: 'string', credential: true},
+        department: {type: 'string'},
+      }),
+    ).toEqual(['nickname', 'department', 'password']);
+  });
 });
