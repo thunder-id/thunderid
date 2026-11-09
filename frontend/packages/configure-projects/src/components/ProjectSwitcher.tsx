@@ -1,6 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {useCapabilitiesContext} from '@thunderid/contexts';
 import {Box, ComplexSelect, IconButton, Tooltip} from '@wso2/oxygen-ui';
 import {X} from '@wso2/oxygen-ui-icons-react';
 import type {ReactNode} from 'react';
@@ -25,6 +26,7 @@ export default function ProjectSwitcher(): ReactNode {
   const routes = useProjectRoutes();
   const {pathname} = useLocation();
   const {projects, selectedProject, selectProject} = useProjectSelection();
+  const {can} = useCapabilitiesContext();
 
   if (projects.length === 0) {
     return null;
@@ -88,6 +90,10 @@ export default function ProjectSwitcher(): ReactNode {
       </Tooltip>
     </Box>
   ) : (
-    <ProjectQuickSelector projects={projects} onSelect={handleQuickSelect} />
+    <ProjectQuickSelector
+      projects={projects}
+      onSelect={handleQuickSelect}
+      onCreate={can('project', 'create') ? () => void navigate(routes.projects.create()) : undefined}
+    />
   );
 }

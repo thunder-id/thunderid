@@ -102,12 +102,24 @@ describe('ProjectSwitcher', () => {
     renderSwitcher();
 
     await user.click(screen.getByRole('button', {name: 'projects:switcher.select', hidden: true}));
-    await user.type(screen.getByRole('textbox', {name: 'projects:listing.search'}), 'supp');
     const menu = screen.getByRole('menu');
-    expect(within(menu).queryByText('Shop')).not.toBeInTheDocument();
+    expect(within(menu).getByText('Shop')).toBeInTheDocument();
     await user.click(within(menu).getByText('Support'));
 
     expect(mockNavigate).toHaveBeenCalledWith('/project/support/applications');
+  });
+
+  it('offers to create a project first in the quick selector, and opens the creation', async () => {
+    mockParams = {};
+    const user = userEvent.setup();
+    renderSwitcher();
+
+    await user.click(screen.getByRole('button', {name: 'projects:switcher.select', hidden: true}));
+    const items = within(screen.getByRole('menu')).getAllByRole('menuitem');
+    expect(items[0]).toHaveTextContent('projects:switcher.create');
+    await user.click(items[0]);
+
+    expect(mockNavigate).toHaveBeenCalledWith('/projects/create');
   });
 
   it('renders nothing when there are no projects', () => {

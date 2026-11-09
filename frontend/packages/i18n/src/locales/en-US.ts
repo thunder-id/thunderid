@@ -6891,8 +6891,8 @@ const translations = {
     'delete.success': 'Project deleted',
     'delete.error': 'Failed to delete the project. Please try again.',
     'switcher.label': 'Project',
-    'switcher.heading': 'Projects',
     'switcher.select': 'Select project',
+    'switcher.create': 'Create a Project',
     'switcher.clear': 'Clear project selection',
   },
 
