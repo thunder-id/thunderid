@@ -223,6 +223,55 @@ describe('AgentAddFormPage', () => {
     });
   });
 
+  it('posts an external owner from the type and ID entered', async () => {
+    const user = userEvent.setup();
+    render(<AgentAddFormPage />);
+
+    await fillAll(user);
+    await user.click(screen.getByRole('radio', {name: 'agents:owner.kind.external'}));
+    await user.type(screen.getByRole('textbox', {name: 'agents:owner.idType.email'}), 'jane@example.com');
+    await user.click(screen.getByRole('button', {name: 'agents:addForm.submit'}));
+
+    await waitFor(() =>
+      expect(posted()).toMatchObject({owner: {id: 'jane@example.com', idType: 'email', isLocal: false}}),
+    );
+  });
+
+  it('lets a signed-in user found nowhere here create the agent for an external owner with a valid ID', async () => {
+    h.signedIn.current = {id: 'operator-elsewhere', username: 'admin'};
+    const user = userEvent.setup();
+    render(<AgentAddFormPage />);
+
+    await fillAll(user);
+    const submit = screen.getByRole('button', {name: 'agents:addForm.submit'});
+    await waitFor(() => expect(submit).toBeDisabled());
+
+    await user.click(screen.getByRole('radio', {name: 'agents:owner.kind.external'}));
+    const externalId = screen.getByRole('textbox', {name: 'agents:owner.idType.email'});
+    await user.type(externalId, 'jane');
+    expect(submit).toBeDisabled();
+    await user.type(externalId, '@example.com');
+    expect(submit).toBeEnabled();
+    await user.click(submit);
+
+    await waitFor(() =>
+      expect(posted()).toMatchObject({owner: {id: 'jane@example.com', idType: 'email', isLocal: false}}),
+    );
+  });
+
+  it('posts the chosen user again once Internal is chosen after External', async () => {
+    const user = userEvent.setup();
+    render(<AgentAddFormPage />);
+
+    await fillAll(user);
+    await chooseOption(user, 1, 'alice');
+    await user.click(screen.getByRole('radio', {name: 'agents:owner.kind.external'}));
+    await user.click(screen.getByRole('radio', {name: 'agents:owner.kind.internal'}));
+    await user.click(screen.getByRole('button', {name: 'agents:addForm.submit'}));
+
+    await waitFor(() => expect(posted()).toMatchObject({owner: {id: 'user-1', idType: 'uuid', isLocal: true}}));
+  });
+
   // Answers the request for the list of users with the given outcome and everything else as the other
   // tests do.
   function answerUsersWith(outcome: () => Promise<{data: unknown}>): void {

@@ -155,6 +155,11 @@ export default function AgentOverview({
     const match = owner.isLocal === false ? undefined : (usersData?.users ?? []).find((user) => user.id === owner.id);
     return match ? formatUserLabel(match) : owner.id;
   }, [usersData, agent.owner]);
+  const externalOwnerTypeLabel = (idType?: string): string => {
+    if (idType === 'email') return t('agents:owner.idType.email', 'Email');
+    if (idType === 'mobile') return t('agents:owner.idType.mobile', 'Mobile number');
+    return t('agents:owner.idType.uuid', 'User ID');
+  };
 
   const isDelegated = hasDelegationGrant(oauth2Config?.grantTypes);
   // Allowed user types apply only to users signing in through this agent, which takes the
@@ -202,7 +207,18 @@ export default function AgentOverview({
         {agent.clientId && (
           <CopyableField label={t('agents:edit.credentials.clientId.title', 'Client ID')} value={agent.clientId} />
         )}
-        {ownerLabel && <CopyableField label={t('agents:edit.general.labels.ownerId', 'Owner ID')} value={ownerLabel} />}
+        {ownerLabel && (
+          <CopyableField
+            label={
+              agent.owner?.isLocal === false
+                ? t('agents:edit.general.labels.externalOwner', 'External owner ({{idType}})', {
+                    idType: externalOwnerTypeLabel(agent.owner.idType),
+                  })
+                : t('agents:edit.general.labels.ownerId', 'Owner ID')
+            }
+            value={ownerLabel}
+          />
+        )}
         <CopyableField
           label={t('agents:edit.overview.agentDetails.organizationUnitId', 'Organization unit ID')}
           value={agent.ouId}

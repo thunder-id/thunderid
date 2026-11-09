@@ -3,10 +3,11 @@
 
 import {SettingsCard} from '@thunderid/components';
 import {useGetUsers} from '@thunderid/configure-users';
-import {FormControl, FormLabel, MenuItem, Select, Typography} from '@wso2/oxygen-ui';
+import {MenuItem, Select, Typography} from '@wso2/oxygen-ui';
 import {useMemo, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import type {Agent} from '../../../models/agent';
+import AgentOwnerField from '../../AgentOwnerField';
 
 interface OwnerSectionProps {
   agent: Agent;
@@ -38,54 +39,54 @@ export default function OwnerSection({agent, editedAgent, onFieldChange}: OwnerS
   );
 
   const owner = editedAgent.owner ?? agent.owner;
-  const ownerId = owner?.id ?? '';
-  // An owner managed in another identity system is not one of these users, so it is shown as is.
-  const isExternal = owner?.isLocal === false;
+  // An owner managed in another identity system is not one of these users, so the picker shows none.
+  const internalOwnerId = owner?.isLocal === false ? '' : (owner?.id ?? '');
 
   return (
     <SettingsCard
       title={t('agents:edit.general.sections.owner.title', 'Owner')}
       description={t('agents:edit.general.sections.owner.description', 'The user accountable for this agent.')}
     >
-      <FormControl fullWidth size="small">
-        <FormLabel htmlFor="agent-owner-select">{t('agents:edit.general.sections.owner.label', 'Owner')}</FormLabel>
-        <Select
-          id="agent-owner-select"
-          value={ownerId}
-          displayEmpty
-          disabled={usersLoading || isExternal || agent.isReadOnly}
-          onChange={(e) =>
-            onFieldChange(
-              'owner',
-              e.target.value ? {id: String(e.target.value), idType: 'uuid', isLocal: true} : undefined,
-            )
-          }
-          renderValue={(selected) =>
-            !selected ? (
-              <Typography color="text.secondary" variant="body2">
-                {t('agents:edit.general.owner.empty', 'No owner assigned')}
-              </Typography>
-            ) : (
-              (options.find((opt) => opt.id === selected)?.label ?? selected)
-            )
-          }
-        >
-          {isExternal && <MenuItem value={ownerId}>{ownerId}</MenuItem>}
-          {options.map((opt) => (
-            <MenuItem key={opt.id} value={opt.id}>
-              {opt.label}
-            </MenuItem>
-          ))}
-        </Select>
-        {isExternal && (
-          <Typography color="text.secondary" variant="caption">
-            {t(
-              'agents:edit.general.sections.owner.external',
-              'Managed in another identity system, so it cannot be changed here.',
-            )}
-          </Typography>
-        )}
-      </FormControl>
+      <AgentOwnerField
+        id="agent-owner"
+        size="small"
+        initialOwner={agent.owner}
+        disabled={agent.isReadOnly}
+        // Choosing Internal again leaves the saved owner in place until a user is picked.
+        onExternalChange={(external) => onFieldChange('owner', external)}
+        internalPicker={
+          <Select
+            id="agent-owner-select"
+            labelId="agent-owner-label"
+            size="small"
+            fullWidth
+            value={internalOwnerId}
+            displayEmpty
+            disabled={usersLoading || agent.isReadOnly}
+            onChange={(e) =>
+              onFieldChange(
+                'owner',
+                e.target.value ? {id: String(e.target.value), idType: 'uuid', isLocal: true} : undefined,
+              )
+            }
+            renderValue={(selected) =>
+              !selected ? (
+                <Typography color="text.secondary" variant="body2">
+                  {t('agents:edit.general.owner.empty', 'No owner assigned')}
+                </Typography>
+              ) : (
+                (options.find((opt) => opt.id === selected)?.label ?? selected)
+              )
+            }
+          >
+            {options.map((opt) => (
+              <MenuItem key={opt.id} value={opt.id}>
+                {opt.label}
+              </MenuItem>
+            ))}
+          </Select>
+        }
+      />
     </SettingsCard>
   );
 }
