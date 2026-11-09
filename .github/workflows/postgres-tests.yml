@@ -25,6 +25,9 @@ on:
     types: [completed]
     branches: [main]
 
+permissions:
+  contents: read
+
 env:
   GOFLAGS: "-mod=readonly"
   PRODUCT_NAME: "ThunderID"

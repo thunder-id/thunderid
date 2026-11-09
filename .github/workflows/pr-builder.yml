@@ -17,6 +17,9 @@ on:
   merge_group:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 # Avoid running multiple PR builders for the same PR on subsequent pushes. GitHub Actions'
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
