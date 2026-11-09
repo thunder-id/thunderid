@@ -28,6 +28,8 @@ const (
 	RS512 JWSAlgorithm = "RS512"
 	// PS256 represents RSA-PSS signature with SHA-256 hash for JWS
 	PS256 JWSAlgorithm = "PS256"
+	// PS384 represents RSA-PSS signature with SHA-384 hash for JWS
+	PS384 JWSAlgorithm = "PS384"
 	// ES256 represents ECDSA signature with SHA-256 hash for JWS
 	ES256 JWSAlgorithm = "ES256"
 	// ES384 represents ECDSA signature with SHA-384 hash for JWS

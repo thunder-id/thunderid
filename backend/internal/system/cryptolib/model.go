@@ -20,6 +20,8 @@ const (
 	AlgorithmRS512 Algorithm = "RS512"
 	// AlgorithmPS256 represents RSA-PSS signature with SHA-256.
 	AlgorithmPS256 Algorithm = "PS256"
+	// AlgorithmPS384 represents RSA-PSS signature with SHA-384.
+	AlgorithmPS384 Algorithm = "PS384"
 	// AlgorithmES256 represents ECDSA signature with SHA-256.
 	AlgorithmES256 Algorithm = "ES256"
 	// AlgorithmES384 represents ECDSA signature with SHA-384.
@@ -72,6 +74,8 @@ const (
 	RSASHA512 SignAlgorithm = "RSA-SHA512"
 	// RSAPSSSHA256 represents RSA-PSS signature with SHA-256.
 	RSAPSSSHA256 SignAlgorithm = "RSA-PSS-SHA256"
+	// RSAPSSSHA384 represents RSA-PSS signature with SHA-384.
+	RSAPSSSHA384 SignAlgorithm = "RSA-PSS-SHA384"
 	// ECDSASHA256 represents ECDSA signature with SHA-256.
 	ECDSASHA256 SignAlgorithm = "ECDSA-SHA256"
 	// ECDSASHA384 represents ECDSA signature with SHA-384.

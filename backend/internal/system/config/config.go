@@ -874,6 +874,7 @@ type OAuthConfig struct {
 	AllowedGrantTypes        []string                                `yaml:"allowed_grant_types" json:"allowed_grant_types"`                   //nolint:lll
 	AllowedResponseTypes     []string                                `yaml:"allowed_response_types" json:"allowed_response_types"`             //nolint:lll
 	AllowedAuthMethods       []string                                `yaml:"allowed_auth_methods" json:"allowed_auth_methods"`                 //nolint:lll
+	ProtectedResources       []string                                `yaml:"protected_resources" json:"protected_resources"`                   //nolint:lll
 	SendServerErrorsToClient *bool                                   `yaml:"send_server_errors_to_client" json:"send_server_errors_to_client"` //nolint:lll
 	TokenRevocation          engineconfig.OAuthTokenRevocationConfig `yaml:"token_revocation" json:"token_revocation"`
 	Logout                   engineconfig.LogoutConfig               `yaml:"logout" json:"logout"`
@@ -901,6 +902,7 @@ func (c OAuthConfig) ToEngineConfig() engineconfig.OAuthConfig {
 		AllowedGrantTypes:        c.AllowedGrantTypes,
 		AllowedResponseTypes:     c.AllowedResponseTypes,
 		AllowedAuthMethods:       c.AllowedAuthMethods,
+		ProtectedResources:       c.ProtectedResources,
 		SendServerErrorsToClient: c.SendServerErrorsToClient,
 		TokenRevocation:          c.TokenRevocation,
 		Logout:                   c.Logout,

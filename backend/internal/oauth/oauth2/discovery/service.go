@@ -70,6 +70,7 @@ func (ds *discoveryService) GetOAuth2AuthorizationServerMetadata(
 		AuthorizationGrantProfilesSupported:        ds.getSupportedAuthorizationGrantProfiles(),
 		ClientIDMetadataDocumentSupported:          ds.cfg.OAuth.CIMD.IsEnabled(),
 		AuthorizationDetailsTypesSupported:         ds.getSupportedAuthorizationDetailsTypes(ctx),
+		ProtectedResources:                         ds.cfg.OAuth.ProtectedResources,
 	}
 
 	if slices.Contains(metadata.GrantTypesSupported, string(providers.GrantTypeCIBA)) {

@@ -459,6 +459,9 @@ type OAuthConfig struct {
 	AllowedResponseTypes []string `yaml:"allowed_response_types" json:"allowed_response_types"`
 	// AllowedAuthMethods lists allowed client token endpoint auth methods
 	AllowedAuthMethods []string `yaml:"allowed_auth_methods" json:"allowed_auth_methods"`
+	// ProtectedResources lists the protected resource identifiers advertised in the authorization
+	// server metadata (RFC 9728 Section 4).
+	ProtectedResources []string `yaml:"protected_resources" json:"protected_resources"`
 	// AllowedScopes lists the OAuth scopes advertised as allowed by the server.
 	AllowedScopes []string `yaml:"allowed_scopes" json:"allowed_scopes"`
 	// AllowedClaims lists the claims advertised as allowed by the server.

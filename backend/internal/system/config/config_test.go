@@ -1859,6 +1859,7 @@ func (suite *ConfigTestSuite) TestOAuthConfig_ToEngineConfig_CopiesYAMLFields() 
 		AllowedGrantTypes:        []string{"authorization_code"},
 		AllowedResponseTypes:     []string{"code"},
 		AllowedAuthMethods:       []string{"client_secret_basic"},
+		ProtectedResources:       []string{"https://shop.example.com"},
 		SendServerErrorsToClient: &sendErrs,
 	}
 
@@ -1876,6 +1877,7 @@ func (suite *ConfigTestSuite) TestOAuthConfig_ToEngineConfig_CopiesYAMLFields() 
 	assert.Equal(suite.T(), src.AllowedGrantTypes, dst.AllowedGrantTypes)
 	assert.Equal(suite.T(), src.AllowedResponseTypes, dst.AllowedResponseTypes)
 	assert.Equal(suite.T(), src.AllowedAuthMethods, dst.AllowedAuthMethods)
+	assert.Equal(suite.T(), src.ProtectedResources, dst.ProtectedResources)
 	assert.Equal(suite.T(), src.SendServerErrorsToClient, dst.SendServerErrorsToClient)
 
 	// The four engine-only OIDC discovery fields are not settable through the yaml struct

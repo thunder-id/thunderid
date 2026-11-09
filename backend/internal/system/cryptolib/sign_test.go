@@ -72,6 +72,16 @@ func (suite *SignUtilsTestSuite) TestSignRSAPSSHA256() {
 	assert.NoError(suite.T(), err)
 }
 
+func (suite *SignUtilsTestSuite) TestSignRSAPSSHA384() {
+	signature, err := Generate(suite.testData, RSAPSSSHA384, suite.rsaPrivateKey)
+	assert.NoError(suite.T(), err)
+	assert.NotEmpty(suite.T(), signature)
+	err = Verify(suite.testData, signature, RSAPSSSHA384, &suite.rsaPrivateKey.PublicKey)
+	assert.NoError(suite.T(), err)
+	err = Verify(suite.testData, signature, RSAPSSSHA256, &suite.rsaPrivateKey.PublicKey)
+	assert.ErrorIs(suite.T(), err, ErrInvalidSignature)
+}
+
 func (suite *SignUtilsTestSuite) TestSignECDSASHA256() {
 	signature, err := Generate(suite.testData, ECDSASHA256, suite.ecdsaPrivateKey)
 	assert.NoError(suite.T(), err)
@@ -431,6 +441,7 @@ func (suite *SignUtilsTestSuite) TestSignAlgorithmForAllAlgorithms() {
 		{AlgorithmRS256, RSASHA256},
 		{AlgorithmRS512, RSASHA512},
 		{AlgorithmPS256, RSAPSSSHA256},
+		{AlgorithmPS384, RSAPSSSHA384},
 		{AlgorithmES256, ECDSASHA256},
 		{AlgorithmES384, ECDSASHA384},
 		{AlgorithmES512, ECDSASHA512},
