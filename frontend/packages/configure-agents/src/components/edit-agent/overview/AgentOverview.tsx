@@ -16,7 +16,7 @@ import {Box, Button, Chip, Link, Paper, Stack, Typography} from '@wso2/oxygen-ui
 import {ArrowRight, ArrowUpRight} from '@wso2/oxygen-ui-icons-react';
 import {useMemo, type JSX, type ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
-import type {Agent, OAuthAgentConfig} from '../../../models/agent';
+import {PERSONAL_AGENT_KIND, type Agent, type OAuthAgentConfig} from '../../../models/agent';
 import {hasDelegationGrant} from '../../../utils/isDelegatedAgent';
 import AttributesSummarySection from '../attributes/AttributesSummarySection';
 
@@ -130,7 +130,9 @@ function OverviewCard({
  *
  * Always shows the agent's identifiers, its OAuth2/OIDC endpoints, and a summary of the mode it
  * authenticates in (its own identity, and, when Delegated mode is on, on behalf of a user). Also
- * links out to the hosted quickstart for connecting an AI agent framework (e.g. LangChain).
+ * links out to the hosted quickstart for connecting an AI agent framework (e.g. LangChain), except
+ * for a personal agent, which its owner connects. A personal agent acts only for its owner, so it never
+ * authenticates on its own and only the owner signs in through it.
  */
 export default function AgentOverview({
   agent,
@@ -161,6 +163,7 @@ export default function AgentOverview({
     return t('agents:owner.idType.uuid', 'User ID');
   };
 
+  const isPersonal = agent.kind === PERSONAL_AGENT_KIND;
   const isDelegated = hasDelegationGrant(oauth2Config?.grantTypes);
   // Allowed user types apply only to users signing in through this agent, which takes the
   // authorization code grant, the same rule as the Advanced tab's Allowed user types section.
@@ -285,9 +288,9 @@ export default function AgentOverview({
             {t('agents:edit.overview.accessMode.own', 'On its own behalf')}
           </Typography>
           <Chip
-            label={t('common:status.enabled', 'Enabled')}
+            label={isPersonal ? t('common:status.disabled', 'Disabled') : t('common:status.enabled', 'Enabled')}
             size="small"
-            color="success"
+            color={isPersonal ? 'default' : 'success'}
             variant="outlined"
             sx={{height: 20, fontSize: '0.7rem'}}
           />
@@ -310,7 +313,7 @@ export default function AgentOverview({
             sx={{height: 20, fontSize: '0.7rem'}}
           />
         </Stack>
-        {hasAuthorizationCodeGrant && (
+        {isPersonal ? (
           <Stack
             direction="row"
             alignItems="center"
@@ -319,14 +322,29 @@ export default function AgentOverview({
             sx={{px: 1.75, py: 1.25, borderTop: '1px solid', borderColor: 'divider'}}
           >
             <Typography variant="body2" color="text.secondary">
-              {t('agents:edit.overview.accessMode.allowedUserTypes', 'Allowed user types')}
+              {t('agents:edit.overview.accessMode.allowedUsers', 'Allowed users')}
             </Typography>
-            <Typography variant="body2">
-              {allowedUserTypes.length > 0
-                ? allowedUserTypes.join(', ')
-                : t('agents:edit.overview.signInPreview.notConfigured', 'Not configured')}
-            </Typography>
+            <Typography variant="body2">{t('agents:edit.overview.accessMode.ownerOnly', 'Owner only')}</Typography>
           </Stack>
+        ) : (
+          hasAuthorizationCodeGrant && (
+            <Stack
+              direction="row"
+              alignItems="center"
+              justifyContent="space-between"
+              spacing={1.25}
+              sx={{px: 1.75, py: 1.25, borderTop: '1px solid', borderColor: 'divider'}}
+            >
+              <Typography variant="body2" color="text.secondary">
+                {t('agents:edit.overview.accessMode.allowedUserTypes', 'Allowed user types')}
+              </Typography>
+              <Typography variant="body2">
+                {allowedUserTypes.length > 0
+                  ? allowedUserTypes.join(', ')
+                  : t('agents:edit.overview.signInPreview.notConfigured', 'Not configured')}
+              </Typography>
+            </Stack>
+          )
         )}
       </Stack>
     </OverviewCard>
@@ -336,7 +354,7 @@ export default function AgentOverview({
     <Stack direction="row" flexWrap="wrap" gap={3.5} alignItems="flex-start">
       {/* Left: main content */}
       <Stack sx={{flex: '2 0 480px', minWidth: 0}} spacing={2.25}>
-        {quickstartDocsUrl && (
+        {quickstartDocsUrl && !isPersonal && (
           <IconCard
             icon={
               <IconBadge>

@@ -138,6 +138,21 @@ describe('useGetAgents', () => {
     );
   });
 
+  it('should list only the agents of the given kind', async () => {
+    mockHttpRequest.mockResolvedValueOnce({data: mockResponse});
+
+    const {result} = renderHook(() => useGetAgents({kind: 'personal-assistant'}));
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+    });
+
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+    const callArgs = mockHttpRequest.mock.calls[0][0];
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    expect(new URL(callArgs.url as string).searchParams.get('filter')).toBe('kind eq "personal-assistant"');
+  });
+
   it('should handle API error', async () => {
     const apiError = new Error('Failed to load agents');
     mockHttpRequest.mockRejectedValueOnce(apiError);

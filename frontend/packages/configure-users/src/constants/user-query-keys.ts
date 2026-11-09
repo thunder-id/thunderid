@@ -18,6 +18,10 @@ const UserQueryKeys = {
    */
   USER_USAGES: 'user-usages',
   /**
+   * Key for a user's owned agents query.
+   */
+  USER_OWNED_AGENTS: 'user-owned-agents',
+  /**
    * Base key for user type list queries.
    */
   USER_TYPES: 'userTypes',

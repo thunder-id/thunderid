@@ -10,7 +10,7 @@ import {ChevronDown, ChevronUp} from '@wso2/oxygen-ui-icons-react';
 import type {TFunction} from 'i18next';
 import {useCallback, useEffect, useState, type JSX, type MouseEvent} from 'react';
 import {useTranslation} from 'react-i18next';
-import {AccessStatuses} from './describeAccessStatus';
+import {AccessStatuses, isSuspendedByOrganization} from './describeAccessStatus';
 import {
   LIFECYCLE_ACTION_STEPS,
   LifecycleActionIncompleteError,
@@ -209,8 +209,14 @@ export default function AccountStatusAction({
   );
 
   const effective: AccessStatus = status?.value ?? AccessStatuses.ACTIVE;
+  // An administrator lifts only the organization's suspension. One held only by others, such as a
+  // personal agent's owner, can still take the organization's own.
+  const choices: LifecycleAction[] =
+    effective === AccessStatuses.SUSPENDED && !isSuspendedByOrganization(status)
+      ? ['suspend']
+      : (ACTIONS_FOR_STATUS[effective] ?? []);
   // Indexed, not asserted: an unknown status offers nothing.
-  const offered = (ACTIONS_FOR_STATUS[effective] ?? []).filter(
+  const offered = choices.filter(
     (choice) => (ACTION_CATEGORIES[choice]?.includes(category) ?? true) && flowsFor(choice),
   );
 

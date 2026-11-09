@@ -209,6 +209,25 @@ export interface UserUsage {
 export type UserUsagesSummary = Record<string, number> | null;
 
 /**
+ * An agent a user owns, as the agent list returns it.
+ */
+export interface OwnedAgent {
+  id: string;
+  display?: string;
+  logoUrl?: string;
+  kind?: string;
+}
+
+/**
+ * Response for the agent list filtered by owner.
+ */
+export interface OwnedAgentListResponse {
+  totalResults: number;
+  count: number;
+  agents: OwnedAgent[];
+}
+
+/**
  * Response for the user usages endpoint.
  * totalResults is null when usage data is unavailable; 0 means confirmed empty.
  */

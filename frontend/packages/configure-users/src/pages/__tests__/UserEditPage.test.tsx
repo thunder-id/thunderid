@@ -164,6 +164,10 @@ vi.mock('@/components/edit-user/AttributesSummarySection', () => ({
   default: () => <div data-testid="attributes-summary" />,
 }));
 
+vi.mock('@/components/edit-user/OwnedAgentsSection', () => ({
+  default: ({userId}: {userId: string}) => <div data-testid="owned-agents" data-user-id={userId} />,
+}));
+
 vi.mock('@/components/edit-user/EditUserAttributes', () => ({
   default: ({onFieldChange}: {onFieldChange: (field: string, value: unknown) => void}) => {
     stagingCallbackIdentities.add(onFieldChange);
@@ -674,6 +678,7 @@ describe('UserEditPage', () => {
       expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
         'General',
         'Attributes',
+        'Agents',
         'Affiliations',
         'Advanced',
       ]);
@@ -703,6 +708,19 @@ describe('UserEditPage', () => {
       expect(screen.getByTestId('quick-copy')).toBeInTheDocument();
       expect(screen.getByTestId('attributes-summary')).toBeInTheDocument();
       expect(screen.queryByTestId('edit-user-attributes')).not.toBeInTheDocument();
+    });
+
+    it("lists the user's owned agents on an Agents tab before Affiliations", async () => {
+      const user = userEvent.setup();
+      render(<UserEditPage />);
+
+      const names = screen.getAllByRole('tab').map((tab) => tab.textContent);
+      expect(names.indexOf('Agents')).toBe(names.indexOf('Affiliations') - 1);
+      expect(screen.queryByTestId('owned-agents')).not.toBeInTheDocument();
+
+      await user.click(screen.getByRole('tab', {name: 'Agents'}));
+
+      expect(screen.getByTestId('owned-agents')).toHaveAttribute('data-user-id', 'user123');
     });
 
     it('navigates back when Back button is clicked', async () => {
@@ -1085,6 +1103,7 @@ describe('UserEditPage', () => {
         'General',
         'Attributes',
         'Credentials',
+        'Agents',
         'Affiliations',
         'Advanced',
       ]);

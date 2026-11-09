@@ -3,7 +3,7 @@
 
 import userEvent from '@testing-library/user-event';
 import {DeployStatusProvider} from '@thunderid/components';
-import {CapabilitiesProvider} from '@thunderid/contexts';
+import {CapabilitiesProvider, ProjectScopeProvider} from '@thunderid/contexts';
 import {render, screen, waitFor, within} from '@thunderid/test-utils';
 import type {NavigateFunction} from 'react-router';
 import {describe, it, expect, beforeEach, vi} from 'vitest';
@@ -596,5 +596,69 @@ describe('AgentsList', () => {
     const chips = screen.getAllByTestId('resource-deploy-status');
     expect(chips[0]).toHaveTextContent('Not in Prod');
     chips.forEach((chip) => expect(chip).toHaveAttribute('tabindex', '-1'));
+  });
+
+  describe('personal agents', () => {
+    const personalAgentsData: AgentListResponse = {
+      ...mockAgentsData,
+      agents: [{...mockAgentsData.agents[0], kind: 'personal-assistant'}, mockAgentsData.agents[1]],
+    };
+
+    beforeEach(() => {
+      vi.mocked(useGetAgents).mockReturnValue({
+        data: personalAgentsData,
+        isLoading: false,
+        error: null,
+      } as ReturnType<typeof useGetAgents>);
+    });
+
+    it('marks only the personal agent with a Personal chip', () => {
+      renderComponent();
+
+      const rows = screen.getAllByRole('row');
+      expect(within(rows[0]).getByText('Personal')).toBeInTheDocument();
+      expect(within(rows[1]).queryByText('Personal')).not.toBeInTheDocument();
+    });
+
+    it('lists every agent until Personal agents is chosen', async () => {
+      const user = userEvent.setup();
+      renderComponent();
+
+      expect(vi.mocked(useGetAgents)).toHaveBeenLastCalledWith(undefined);
+
+      await user.click(screen.getByRole('tab', {name: 'Personal agents'}));
+      expect(vi.mocked(useGetAgents)).toHaveBeenLastCalledWith({kind: 'personal-assistant'});
+
+      await user.click(screen.getByRole('tab', {name: 'All'}));
+      expect(vi.mocked(useGetAgents)).toHaveBeenLastCalledWith(undefined);
+    });
+
+    it('keeps the view tabs when the list fails to load, so another view can be chosen', async () => {
+      const user = userEvent.setup();
+      vi.mocked(useGetAgents).mockReturnValue({
+        data: undefined,
+        isLoading: false,
+        error: new Error('Failed to load agents'),
+      } as ReturnType<typeof useGetAgents>);
+      renderComponent();
+
+      await user.click(screen.getByRole('tab', {name: 'Personal agents'}));
+      expect(vi.mocked(useGetAgents)).toHaveBeenLastCalledWith({kind: 'personal-assistant'});
+      expect(screen.getByText('Failed to load agents')).toBeInTheDocument();
+
+      await user.click(screen.getByRole('tab', {name: 'All'}));
+      expect(vi.mocked(useGetAgents)).toHaveBeenLastCalledWith(undefined);
+    });
+
+    it('offers no personal view inside a project, whose list filters only by organization unit', () => {
+      render(
+        <ProjectScopeProvider project={{id: 'project-1'}}>
+          <AgentsList />
+        </ProjectScopeProvider>,
+      );
+
+      expect(screen.queryByRole('tab', {name: 'Personal agents'})).not.toBeInTheDocument();
+      expect(vi.mocked(useGetAgents)).toHaveBeenLastCalledWith(undefined);
+    });
   });
 });
