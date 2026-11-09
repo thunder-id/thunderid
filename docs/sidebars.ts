@@ -214,10 +214,34 @@ const sidebars: SidebarsConfig = {
         },
         {
           type: 'category',
-          label: 'SaaS Applications (B2B)',
+          label: 'Secure B2B SaaS Applications',
+          link: {type: 'doc', id: 'use-cases/b2b/index'},
           collapsible: true,
           collapsed: true,
-          items: [{type: 'doc', id: 'use-cases/b2b/multi-tenant-saas', label: 'Multi-Tenant SaaS'}],
+          items: [
+            {type: 'doc', id: 'use-cases/b2b/overview', label: 'Understand It', key: 'b2b-understand-it'},
+            {type: 'doc', id: 'use-cases/b2b/concepts', label: 'Learn the Model'},
+            {type: 'doc', id: 'use-cases/b2b/quick-start', label: 'Quick Start'},
+            {
+              type: 'category',
+              label: 'Build Each Journey',
+              collapsible: true,
+              collapsed: true,
+              items: [
+                {type: 'doc', id: 'use-cases/b2b/journeys/organization-sign-up', label: 'Let Companies Sign Up'},
+                {type: 'doc', id: 'use-cases/b2b/journeys/invite-members', label: 'Invite People In'},
+                {type: 'doc', id: 'use-cases/b2b/journeys/enterprise-sso', label: 'Plug In an Enterprise IdP'},
+                {
+                  type: 'doc',
+                  id: 'use-cases/b2b/journeys/delegated-administration',
+                  label: 'Let Org Admins Manage Teams',
+                },
+                {type: 'doc', id: 'use-cases/b2b/journeys/switch-organizations', label: 'Switch Organizations'},
+              ],
+            },
+            {type: 'doc', id: 'use-cases/b2b/sdk-components', label: 'SDK Components'},
+            {type: 'doc', id: 'use-cases/b2b/architecture-decisions', label: 'Design Decisions', key: 'b2b-design-decisions'},
+          ],
         },
         {
           type: 'category',

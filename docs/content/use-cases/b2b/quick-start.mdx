@@ -1,0 +1,401 @@
+---
+title: B2B Quick Start with React
+docType: quickstart
+toc_progress: quickstart
+sidebar_position: 3
+description: Build a React application where each company signs up as its own organization, signs in to it, and sees its own name and roles.
+---
+
+import {Boxes, Building2, Clock, Container, FileCode, Hexagon, Package, Users} from '@wso2/oxygen-ui-icons-react';
+
+# B2B Quick Start with React
+
+Use this guide to build a React application where each company that signs up becomes its own organization in
+<ProductName />. You set up the Wayfinder Enterprise platform from the [model](./concepts.mdx), then write a small
+application that shows each signed-in person which company they are working in.
+
+<TutorialHero>
+
+## What You Will Learn
+
+<TutorialHeroItem icon={<Building2 />}>Create a platform organization that every customer company joins</TutorialHeroItem>
+<TutorialHeroItem icon={<Users />}>Let a company and its first admin sign up in one step</TutorialHeroItem>
+<TutorialHeroItem icon={<Boxes />}>Read the organization from the token with <code>@thunderid/react</code></TutorialHeroItem>
+
+## Prerequisites
+
+<TutorialHeroItem icon={<Clock />}>About 30 minutes</TutorialHeroItem>
+<TutorialHeroItem icon={<Container />}>Docker installed on your system</TutorialHeroItem>
+<TutorialHeroItem icon={<Hexagon />}>Node.js installed on your system</TutorialHeroItem>
+<TutorialHeroItem icon={<Package />}>npm, Yarn, or pnpm</TutorialHeroItem>
+<TutorialHeroItem icon={<FileCode />}>Your preferred code editor</TutorialHeroItem>
+
+</TutorialHero>
+
+:::note Building your own application?
+The names here (`Wayfinder Enterprise`, `Wayfinder Admin`, `northstar`) come from the running example of this section.
+Swap in your own product and role names as you go.
+:::
+
+## Set Up the Platform
+
+The platform side is everything your team defines once: the platform organization, the account schema, the roles, the
+two flows, and the application. Every company that signs up later uses these without any further setup.
+
+<Stepper stepNode="h3" as="h3">
+
+### Run <ProductName />
+
+Run the quickstart image. <ProductName /> splits into two planes: the Control Plane, where your team authors
+configuration, and the Data Plane, which serves sign-ins and holds the people who sign in. The image starts both,
+already wired together. You configure the platform in the Control Plane console, and your application signs people in
+on the Data Plane:
+
+```bash
+docker run --name thunderid-quickstart \
+  -p 8090:8090 -p 8091:8091 -p 8095:8095 \
+  -e ADMIN_PASSWORD='<admin-password>' \
+  -v thunderid-quickstart:/opt/thunderid-quickstart \
+  ghcr.io/thunder-id/thunderid:latest
+```
+
+| Endpoint | URL |
+|---|---|
+| Control Plane console, where you build the platform | `https://localhost:8095/console` |
+| Data Plane, where your application signs people in | `https://localhost:8090` |
+
+Open the Control Plane console and sign in as `admin` with the password you set. Every change you make there is applied
+to the Data Plane automatically. See
+[Run the Control Plane and Data Plane together with Docker](../../deployment/deployment-paths/docker.mdx#run-the-control-plane-and-data-plane-together-with-docker)
+for the other settings.
+
+### Create the Platform Organization
+
+The platform organization owns everything your customer companies share, and each company becomes a child of it.
+
+1. Navigate to **Organization units** and click **Add root organization unit**.
+2. Set **Name** to `Wayfinder Enterprise` and **Handle** to `wayfinder-enterprise`.
+3. Click **Create**.
+
+Open the new organization unit and copy its ID. The sign-in flow needs it later.
+
+### Define the Account
+
+A user type defines what an account looks like. Because it belongs to the platform organization, every company
+beneath it can use it.
+
+1. Navigate to **User types** and click **Create user type**.
+2. Set **User type name** to `Wayfinder User` and keep the suggested **Handle**, `wayfinder-user`.
+3. Set **Organization unit** to `Wayfinder Enterprise`.
+4. Turn on **Allow self registration**, so people can create accounts through sign-up.
+5. Define the schema:
+
+    | Attribute  | Type   | Properties       |
+    | ---------- | ------ | ---------------- |
+    | `username` | string | Required, unique |
+    | `email`    | string | Unique           |
+    | `password` | string | Credential       |
+
+6. Create the user type.
+
+The company sign-up asks only for a username and a password, so `email` stays optional. Invitations find people by
+email, so an account needs one before it can be invited into another company.
+
+### Create the Shared Roles
+
+The two roles mean the same thing in every company, so you define them once and share them with every company,
+including the ones that sign up later.
+
+1. Navigate to **Roles** and click **Create role**.
+2. Set **Name** to `Wayfinder Admin` and **Organization unit** to `Wayfinder Enterprise`.
+3. Click **Create**.
+4. Open the role and select the **Organization Access** tab.
+5. Select **Wayfinder Enterprise and chosen organization units**, then grant **All child organization units**.
+6. Click **Save changes**.
+7. Repeat these steps for a second role named `Wayfinder Member`.
+
+Copy the ID of the `Wayfinder Admin` role. The sign-up flow assigns it to each company's first user. See
+[Share a Role With Other Organization Units](../../guides/users/manage-roles.mdx#share-a-role-with-other-organization-units)
+for the sharing options.
+
+### Build the Company Sign-Up Flow
+
+The sign-up flow asks for the first admin's account, then for the company. It creates the company as an organization
+beneath `Wayfinder Enterprise`, creates the account inside it, and makes that person the company's `Wayfinder Admin`.
+
+1. Navigate to **Flows** and click **+ Create New Flow**.
+2. Select `Wayfinder Enterprise` as the organization unit that owns the flow and click **Continue**.
+3. Select **Self sign-up** as the flow type and click **Continue**.
+4. Select the **Organization Sign-up** template.
+5. Name the flow `Wayfinder Company Sign-up` and click **Create**.
+6. On the **Assign Roles** step, set the roles to the `Wayfinder Admin` role ID you copied.
+7. Click **Save**.
+
+See [Let Companies Sign Up](./journeys/organization-sign-up.mdx) for what each step does, and for a sign-up where the
+account can join more companies later.
+
+### Build the Sign-In Flow
+
+The sign-in flow offers a password sign-in and enterprise single sign-on (SSO), and a way to register a new company
+from the same screen.
+
+1. Navigate to **Flows** and click **+ Create New Flow**.
+2. Select `Wayfinder Enterprise` as the organization unit that owns the flow and click **Continue**.
+3. Select **Sign-in** as the flow type and click **Continue**.
+4. Select the **Basic + Enterprise SSO** template.
+5. Name the flow `Wayfinder Sign-in` and click **Create**.
+6. On both **Resolve OU** steps, set the parent OU to the `Wayfinder Enterprise` ID you copied. After a password
+   sign-in, this step picks the company the person belongs to.
+7. On the first sign-in screen, add a button labeled `Register your company`.
+8. Add a **CALL** step from the left panel and set it to call `Wayfinder Company Sign-up`.
+9. Connect the `Register your company` button to the **CALL** step. Connect the **CALL** step's success path to the
+   **Resolve OU** step that follows the password sign-in.
+10. Click **Save**.
+
+The **CALL** step runs the sign-up inside the sign-in, so a new admin finishes sign-up already signed in to the
+application. See [Call Node](../../guides/flows/advanced-configurations.mdx#call-node).
+
+### Register the Application
+
+One application serves every company. It belongs to the platform organization and is shared with every company
+beneath it.
+
+1. Navigate to **Applications** and create an application.
+2. On the **Organization unit** step, select `Wayfinder Enterprise`.
+3. Select **React** and name the application `Wayfinder Enterprise`.
+4. Turn off **Allow all user types to sign up for this application** and select `Wayfinder User`. Sign-up creates
+   accounts of this type, and creates each company beneath the organization unit that owns it.
+5. Add `http://localhost:5173` as an authorized redirect URI and allowed origin.
+6. Finish creating the application and copy its **Client ID**.
+
+Then, in the application's tabs:
+
+1. On **Flows**, set **Authentication Flow** to `Wayfinder Sign-in`. Turn on **Registration Flow** and select
+   `Wayfinder Company Sign-up`.
+2. On **Token**, open the **User** sub-tab. Under **Scopes & user attribute mappings**, add a custom scope named `ou`
+   and map it to `ouId`, `ouHandle`, and `ouName`. Turn on the `roles` scope.
+3. On the same sub-tab, make sure the ID token and the access token include `roles`, `ouId`, `ouHandle`, and `ouName`.
+4. On **Organization Access**, grant **All child organization units**.
+5. Save each tab.
+
+The `ou` scope puts the organization into the ID token, which is where the React SDK reads it from. In a declarative
+resource, the same settings are these fields of the application:
+
+```yaml title="applications/wayfinder-enterprise.yaml (excerpt)"
+inboundAuthConfig:
+  - type: oauth2
+    config:
+      token:
+        accessToken:
+          userConfig:
+            attributes: [roles, ouId, ouHandle, ouName]
+        idToken:
+          userAttributes: [roles, ouId, ouHandle, ouName]
+      scopeClaims:
+        ou: [ouId, ouHandle, ouName]
+        roles: [roles]
+allowedUserTypes: [wayfinder-user]
+sharingPolicies:
+  - id: wayfinder-enterprise-all-companies
+    childUnits:
+      mode: all
+```
+
+</Stepper>
+
+## Build the React Application
+
+With the platform ready, the application only has to send people to sign in and read the organization from the token
+it gets back.
+
+<Stepper stepNode="h3" as="h3">
+
+### Create a React App
+
+Create a React application with Vite:
+
+<CodeGroup>
+  <CodeBlock lang="bash" label="npm">
+    npm create vite@latest wayfinder-enterprise -- --template react
+    cd wayfinder-enterprise
+    npm install
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="Yarn">
+    yarn create vite wayfinder-enterprise --template react
+    cd wayfinder-enterprise
+    yarn install
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="pnpm">
+    pnpm create vite wayfinder-enterprise --template react
+    cd wayfinder-enterprise
+    pnpm install
+  </CodeBlock>
+</CodeGroup>
+
+### Install @thunderid/react
+
+<CodeGroup>
+  <CodeBlock lang="bash" label="npm">
+    npm install @thunderid/react
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="Yarn">
+    yarn add @thunderid/react
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="pnpm">
+    pnpm add @thunderid/react
+  </CodeBlock>
+</CodeGroup>
+
+### Wrap the App in the Provider
+
+Wrap the application in `<ThunderIDProvider />` and ask for the `ou` and `roles` scopes, so the ID token names the
+organization and the roles held there.
+
+:::warning Configuration
+Replace `<your-client-id>` with the Client ID you copied when you registered the application.
+:::
+
+```jsx title="src/main.jsx" {3,9-14,16} showLineNumbers
+import { StrictMode } from 'react'
+import { createRoot } from 'react-dom/client'
+import { ThunderIDProvider } from '@thunderid/react'
+import App from './App.jsx'
+import './index.css'
+
+createRoot(document.getElementById('root')).render(
+  <StrictMode>
+    <ThunderIDProvider
+      clientId="<your-client-id>"
+      baseUrl="https://localhost:8090"
+      scopes={['openid', 'profile', 'roles', 'ou']}
+      preferences={{ user: { fetchUserProfile: false } }}
+    >
+      <App />
+    </ThunderIDProvider>
+  </StrictMode>
+)
+```
+
+| Parameter | Description |
+|---|---|
+| `baseUrl` | The Data Plane, where people sign in. |
+| `scopes` | `ou` releases the organization claims, and `roles` releases the roles held in that organization. |
+| `preferences.user.fetchUserProfile` | `false` reads the signed-in person from the ID token, which carries the organization and roles. |
+
+### Show the Organization
+
+Replace `src/App.jsx` with a page that shows the company the person signed in to, their role there, and a switcher
+for people who belong to more than one company:
+
+```jsx title="src/App.jsx" showLineNumbers
+import {
+  OrganizationUnitSwitcher,
+  SignedIn,
+  SignedOut,
+  SignInButton,
+  SignOutButton,
+  useThunderID,
+} from '@thunderid/react'
+import './App.css'
+
+function Workspace() {
+  const { user, currentOrganizationUnit } = useThunderID()
+  const roles = Array.isArray(user?.roles) ? user.roles : []
+  const isAdmin = roles.includes('Wayfinder Admin')
+
+  return (
+    <>
+      <h1>{currentOrganizationUnit?.name}</h1>
+      <p>
+        Signed in to the organization with the handle <code>{currentOrganizationUnit?.handle}</code>
+      </p>
+      <p>{isAdmin ? 'You administer this company.' : 'You are a member of this company.'}</p>
+      <OrganizationUnitSwitcher />
+      <SignOutButton>Sign Out</SignOutButton>
+    </>
+  )
+}
+
+function App() {
+  return (
+    <section id="center">
+      <SignedIn>
+        <Workspace />
+      </SignedIn>
+      <SignedOut>
+        <h1>Wayfinder Enterprise</h1>
+        <SignInButton>Sign In or Register Your Company</SignInButton>
+      </SignedOut>
+    </section>
+  )
+}
+
+export default App
+```
+
+- `currentOrganizationUnit` holds the `id`, `handle`, and `name` of the organization the sign-in landed in, read from
+  the ID token. Treat it as display data. Your APIs read the organization from the access token they receive.
+- `user.roles` lists only the roles the person holds in that organization.
+- `<OrganizationUnitSwitcher />` lists the organizations the person belongs to and signs them in to another one. A
+  person who belongs to one company sees only that one.
+
+### Run Your Application
+
+<CodeGroup>
+  <CodeBlock lang="bash" label="npm">
+    npm run dev
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="Yarn">
+    yarn dev
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="pnpm">
+    pnpm run dev
+  </CodeBlock>
+</CodeGroup>
+
+Open [http://localhost:5173](http://localhost:5173) and register a company:
+
+1. Click **Sign In or Register Your Company**. The browser opens the <ProductName /> sign-in page.
+2. Click **Register your company**.
+3. Enter a username and a password. If the page asks for an account type, select `Wayfinder User`.
+4. Enter `Northstar Labs` as the company name and `northstar` as its handle.
+
+:::tip Success
+The browser returns to your application signed in. The page shows **Northstar Labs**, the handle `northstar`, and
+**You administer this company.** Register a second company, such as `Initech`, in a private window with a different
+username: each person sees only their own company.
+:::
+
+</Stepper>
+
+:::note Before you go to production
+This application runs entirely in the browser, so it can read the organization but cannot safely manage it. Letting a
+company's admin add people and assign roles needs a backend that holds a client secret. See
+[Let Org Admins Manage Teams](./journeys/delegated-administration.mdx).
+:::
+
+## What's Next
+
+<NextSteps>
+  <NextStepsCard
+    title="Invite People In"
+    description="Bring a company's employees and outside collaborators into its organization."
+    href="../journeys/invite-members"
+  />
+  <NextStepsCard
+    title="Plug In an Enterprise IdP"
+    description="Let a company's employees sign in through the company's own identity provider."
+    href="../journeys/enterprise-sso"
+  />
+  <NextStepsCard
+    title="Let Org Admins Manage Teams"
+    description="Give each company's admin the user, group, and role views, confined to their company."
+    href="../journeys/delegated-administration"
+  />
+</NextSteps>

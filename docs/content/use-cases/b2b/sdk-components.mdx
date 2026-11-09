@@ -1,0 +1,185 @@
+---
+title: B2B SDK Components
+docType: reference
+sidebar_position: 5
+description: The React SDK components and hooks for B2B applications, with the API each one calls and the permission it needs.
+---
+
+# B2B SDK Components
+
+The `@thunderid/react` components and hooks that build a B2B application: the organization context, organization-bounded sign-in, team management, invitations, organization administration, and enterprise SSO. Each table lists the <ProductName /> API a component calls and the permission that call needs. The Next.js SDK, `@thunderid/nextjs`, exports the same components for client components.
+
+## Install the SDK
+
+<CodeGroup>
+  <CodeBlock lang="bash" label="npm">
+    npm install @thunderid/react
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="Yarn">
+    yarn add @thunderid/react
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="pnpm">
+    pnpm add @thunderid/react
+  </CodeBlock>
+</CodeGroup>
+
+## Where Each Call Goes
+
+An organization is an organization unit (OU) beneath the platform organization. See [Manage Organization Units](../../guides/organization-units/manage-organization-units.mdx). The components resolve their target organization and their API endpoints as follows:
+
+- **Organization.** `UserCreate`, `GroupCreate`, and `RoleCreate` create in the `ouId` prop. When it is omitted, they fall back to the `ouId` in the signed-in user's profile. With `fetchUserProfile: false`, the profile comes from the ID token, so that is the organization the session signed in to. When the SDK fetches the profile from `/users/me`, it can be the organization the account lives in instead. Pass `ouId` explicitly, for example from `currentOrganizationUnit?.id`, so a person shared into the organization creates resources there.
+- **Endpoints.** Every management component calls the collection URL that `ThunderIDProvider`'s `endpoints` sets for it: `users`, `groups`, `roles`, `userTypes`, `agents`, `resourceServers`, `organizationUnits`, `connections`, or `flows`. Without an override, the URL is `baseUrl` plus the collection's path. Pointing these keys at a backend route keeps management calls, and the permissions they need, on the server. See [Let Org Admins Manage Teams](./journeys/delegated-administration.mdx).
+- **Permissions.** The permissions below are the <ProductName /> system permissions the calling token needs. Each one acts only in the OU the token names. See [System Permissions](../../guides/users/manage-roles.mdx#system-permissions).
+
+## Organization Context
+
+| Component or hook | What it does | Calls | Needs |
+|---|---|---|---|
+| `useThunderID()` → `currentOrganizationUnit` | The `id`, `handle`, and `name` of the organization the session was issued for, read from the ID token's `ouId`, `ouHandle`, and `ouName` claims. For display only. | Nothing | The application's token configuration includes the organization claims |
+| `useThunderID()` → `switchOrganizationUnit(id, options)` | Signs in again bounded to another organization and replaces the session. Fails with a code from `OrganizationUnitSwitchErrorCodes`. | `/ou/{ouId}/oauth2/token` or `/ou/{ouId}/oauth2/authorize` | The application is shared with the organization |
+| `OrganizationUnitSwitcher` | Lists the person's organizations and switches on a pick. Props: `scope`, `onSwitch`, `onSelect`, `onError`, `switchOptions`. | `GET /users/me/ous` | The person's own access token |
+| `getAccessibleOrganizationUnits` | One page of the person's organizations, with `current`, for a custom switcher. Options: `limit`, `offset`, `scope`. | `GET /users/me/ous` | The person's own access token |
+
+Used in [Switch Organizations](./journeys/switch-organizations.mdx).
+
+## Sign-In
+
+| Component | What it does | Calls |
+|---|---|---|
+| `SignInButton` with `signInOptions={{organizationUnitId}}` | Redirect-based sign-in bounded to one organization. | `/ou/{ouId}/oauth2/authorize`, then `/ou/{ouId}/oauth2/token` |
+| `SignIn` with `organizationUnitId` | App-native sign-in bounded to one organization. Sends `ouId` on the request that starts the `AUTHENTICATION` flow. | `POST /flow/execute` |
+
+Both take the organization's ID. A sign-in that starts from a handle resolves it in the flow with a **Resolve OU** step. See [Sign Users In to Organization Units](../../guides/organization-units/sign-in-to-organization-units.mdx).
+
+## Team Management
+
+| Component | What it does | Calls | Needs |
+|---|---|---|---|
+| `UserList` | Lists users. `filter` (for example `ouId eq "<ou-id>"`) narrows the list and hides the search box. | `GET /users` | `system:user:view` |
+| `UserCreate` | Creates a user in `ouId`. `fields` sets the form, and `mode="invite"` renders `InviteUser` instead. | `POST /users`, `GET /user-types` | `system:user:create`, `system:usertype:view` |
+| `UserDetails` | Shows a user, with `editable`, `deletable`, and `lifecycleActions` for changes. | `/users/{id}` | `system:user:view`, plus update or delete for the actions it offers |
+| `GroupList` | Lists groups. `onSelect` and `selectedGroupId` drive a master-detail view. Takes no organization filter. | `GET /groups` | `system:group:view` |
+| `GroupCreate` | Creates a group in `ouId`. | `POST /groups` | `system:group:create` |
+| `GroupMembers` | Shows and, with `editable`, changes a group's users and agents. `ouId` scopes the members offered. | `/groups/{id}/members`, `GET /users`, `GET /agents` | `system:group:update`, `system:user:view`, `system:agent:view` |
+| `GroupDetails` | Shows a group, with `editable` and `deletable`. | `/groups/{id}` | `system:group:view`, plus update or delete |
+| `RoleList` | Lists roles. Takes no organization filter. | `GET /roles` | `system:role:view` |
+| `RoleCreate` | Creates a role in `ouId`. | `POST /roles` | `system:role:create` |
+| `RoleAssignments` | Shows and, with `editable`, changes who holds a role in `ouId`: users, groups, and agents. `filterable` (default `true`) shows the assignee type filter. | `/roles/{id}/assignments`, `GET /users`, `GET /groups`, `GET /agents` | `system:role:update` |
+| `RolePermissions` | Shows and, with `editable`, changes the permissions a role grants. | `/roles/{id}`, `GET /resource-servers` | `system:role:update`, `system:rs:view` |
+| `RoleDetails` | Shows a role, with `editable` and `deletable`. | `/roles/{id}` | `system:role:view`, plus update or delete |
+| `useManagementRequestConfig(collection)` | The base URL, collection URL, and fetcher the SDK's management functions take, for an application's own data layer. | Any collection | The permission of the call made with it |
+| `useGrantedPermissions()` | The permissions in the signed-in person's access token, with a `can(permission)` check, for hiding pages a person cannot use. | Nothing | Nothing |
+
+Used in [Let Org Admins Manage Teams](./journeys/delegated-administration.mdx).
+
+## Invitations
+
+| Component | What it does | Calls | Needs |
+|---|---|---|---|
+| `InviteUser` | Runs the user onboarding flow (`USER_ONBOARDING`) as the signed-in admin, including its invite path. | `POST /flow/execute` | The permission the onboarding flow's **Permission Validator** step requires, `system` in the default flow |
+| `AcceptInvite` | Completes an invitation from its link. Reads `inviteToken` and `executionId` from the URL when they are not passed as props. | `POST /flow/execute` | Nothing: the invite link carries the execution |
+
+Invitations into an existing organization use the **Invite into Organization** flow template. See [Invite People In](./journeys/invite-members.mdx).
+
+## Organization Administration
+
+| Component | What it does | Calls | Needs |
+|---|---|---|---|
+| `OrganizationUnitList` | Lists OUs, or the children of `parentId`. | `GET /organization-units` | `system:ou:view` |
+| `OrganizationUnitCreate` | Creates an OU from a name, handle, description, and parent. | `POST /organization-units` | `system:ou:create` |
+| `OrganizationUnitDetails` | Shows an OU, with `editable` and `deletable`. | `/organization-units/{id}` | `system:ou:view`, plus update or delete |
+| `SharingPolicies` | Shows and, with `editable`, changes where a user, application, role, or flow is shared. Props: `resourceType`, `resourceId`, `editable`, and `ouId` to show the rules that apply in one organization. | `/{collection}/{id}/sharing-policies` | View or update on that resource |
+
+These components administer the OU tree. Organization sign-up, where a new customer creates their own organization, runs in a flow instead. See [Let Companies Sign Up](./journeys/organization-sign-up.mdx).
+
+## Enterprise SSO
+
+| Component or hook | What it does | Calls | Needs |
+|---|---|---|---|
+| `FlowVariablesForm` | Sets one organization's values for the variables a shared flow lets it change, such as the `enterpriseIdp` connection of the sign-in flow. Props: `flowId`, `ouId`, `onSaved`, `title`, plus `ouName` and `showScopeNotice` for a notice that the setting applies to this organization only, and `onCreateConnection` to link to your own connection form. | `GET /flows/{id}`, its overlay rules and variables, `PUT` variables, `GET /connections` | `system:flow:view`, `system:flow:update`, `system:connection:view` |
+| `useFlowVariables` | The data behind `FlowVariablesForm`: the definitions, connections, current values, and a save function, for a custom form. | Same as `FlowVariablesForm` | Same as `FlowVariablesForm` |
+| `createConnection` | Creates an identity provider connection, such as an OpenID Connect one, from an application's own form. | `POST /connections/{type}` | `system:connection:create` |
+
+Used in [Plug In an Enterprise IdP](./journeys/enterprise-sso.mdx).
+
+## Examples
+
+### Organization Switcher
+
+```jsx title="src/Header.jsx"
+import {OrganizationUnitSwitcher, useThunderID} from '@thunderid/react';
+
+export default function Header() {
+  const {currentOrganizationUnit} = useThunderID();
+
+  return (
+    <header>
+      <span>{currentOrganizationUnit?.name}</span>
+      <OrganizationUnitSwitcher scope="siblings" />
+    </header>
+  );
+}
+```
+
+### Team Page
+
+```jsx title="src/Team.jsx"
+import {RoleAssignments, UserCreate, UserList, useThunderID} from '@thunderid/react';
+
+export default function Team({memberRoleId}) {
+  const {currentOrganizationUnit} = useThunderID();
+  const ouId = currentOrganizationUnit?.id;
+
+  if (!ouId) return null;
+
+  return (
+    <>
+      <UserList filter={`ouId eq "${ouId}"`} />
+      <UserCreate ouId={ouId} />
+      <RoleAssignments roleId={memberRoleId} ouId={ouId} editable />
+    </>
+  );
+}
+```
+
+### Enterprise Identity Provider Setting
+
+```jsx title="src/EnterpriseSso.jsx"
+import {FlowVariablesForm, useThunderID} from '@thunderid/react';
+
+export default function EnterpriseSso({signInFlowId}) {
+  const {currentOrganizationUnit} = useThunderID();
+
+  return (
+    <FlowVariablesForm
+      flowId={signInFlowId}
+      ouId={currentOrganizationUnit?.id}
+      title="Enterprise SSO connection"
+      onSaved={() => console.log('Saved')}
+    />
+  );
+}
+```
+
+## Built Outside the Components
+
+- **The identity provider connection form.** No component renders a form for a new connection. Build the form in the application and save it with `createConnection`, or with the [Connections API](../../apis.mdx).
+- **Signing in by organization handle.** The SDK takes organization IDs. The sign-in flow turns a handle a person types into an organization, with a **Resolve OU** step.
+- **Organization filters on group and role lists.** `GroupList` and `RoleList` take no `filter` prop. A backend route that adds `ouId eq "<ou-id>"` to the request scopes them to one organization.
+
+## Next Steps
+
+<NextSteps>
+  <NextStepsCard
+    title="B2B Quick Start with React"
+    description="Put the provider, the organization context, and the switcher to work in a new application."
+    href="../quick-start"
+  />
+  <NextStepsCard
+    title="Let Org Admins Manage Teams"
+    description="Route the team management components through your backend."
+    href="../journeys/delegated-administration"
+  />
+</NextSteps>
