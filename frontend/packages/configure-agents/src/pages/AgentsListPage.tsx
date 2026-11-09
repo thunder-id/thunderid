@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {DocumentTitle, ExternalLink} from '@thunderid/components';
-import {useCapabilitiesContext} from '@thunderid/contexts';
+import {useCapabilitiesContext, useProjectScope} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {Button, PageContent, PageTitle} from '@wso2/oxygen-ui';
 import {Plus} from '@wso2/oxygen-ui-icons-react';
@@ -12,12 +12,25 @@ import {useNavigate} from 'react-router';
 import AgentsList from '../components/AgentsList';
 import useAgentRoutes from '../hooks/useAgentRoutes';
 
-export default function AgentsListPage(): JSX.Element {
+/**
+ * Props for the {@link AgentsListPage} component.
+ */
+export interface AgentsListPageProps {
+  /**
+   * Whether an agent is created in a project only. When set, an agent can be created inside a selected project and
+   * not outside one.
+   */
+  createInProjectsOnly?: boolean;
+}
+
+export default function AgentsListPage({createInProjectsOnly = false}: AgentsListPageProps): JSX.Element {
   const routes = useAgentRoutes();
   const navigate = useNavigate();
   const {t} = useTranslation();
   const logger = useLogger('AgentsListPage');
   const {can} = useCapabilitiesContext();
+  const {projectId} = useProjectScope();
+  const canCreate = !createInProjectsOnly || Boolean(projectId);
 
   return (
     <PageContent>
@@ -29,7 +42,7 @@ export default function AgentsListPage(): JSX.Element {
           <ExternalLink docKey="agents" confirmBeforeNavigate={false} />
         </PageTitle.SubHeader>
         <PageTitle.Actions>
-          {can('agent', 'create') && (
+          {canCreate && can('agent', 'create') && (
             <Button
               data-testid="agent-add-button"
               variant="contained"

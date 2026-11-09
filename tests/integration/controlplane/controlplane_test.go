@@ -236,7 +236,7 @@ value:
 
 func (ts *ControlPlaneTestSuite) TestAnUpdateReportsTheDerivedStatus() {
 	name := unique("CP Status App")
-	appID, err := testutils.CreateApplication(testutils.Application{OUID: ts.ouID, Name: name})
+	appID, err := testutils.CreateApplication(testutils.Application{ProjectID: defaultProjectID, Name: name})
 	ts.Require().NoError(err)
 	defer func() { _ = testutils.DeleteApplication(appID) }()
 
@@ -244,7 +244,7 @@ func (ts *ControlPlaneTestSuite) TestAnUpdateReportsTheDerivedStatus() {
 		Status json.RawMessage `json:"status"`
 	}
 	status, raw := ts.call(http.MethodPut, "/applications/"+appID, map[string]any{
-		"ouId": ts.ouID, "name": name, "description": "Updated on the Control Plane",
+		"name": name, "description": "Updated on the Control Plane",
 	}, &updated)
 	ts.Require().Equal(http.StatusOK, status, string(raw))
 	ts.JSONEq(`{"value":"ACTIVE"}`, string(updated.Status), "the update must report the derived status")
@@ -291,7 +291,7 @@ func (ts *ControlPlaneTestSuite) TestExportRefersToValuesAndImportKeepsTheRefere
 	clientID := unique("cp-reference-client")
 	clientSecret := unique("cp-reference-secret")
 	appID, err := testutils.CreateApplication(testutils.Application{
-		OUID:         ts.ouID,
+		ProjectID:    defaultProjectID,
 		Name:         name,
 		ClientID:     clientID,
 		ClientSecret: clientSecret,
@@ -351,7 +351,7 @@ func (ts *ControlPlaneTestSuite) TestExportRefersToValuesAndImportKeepsTheRefere
 func (ts *ControlPlaneTestSuite) TestExportRefersToAListAsOneReference() {
 	name := unique("CP List App")
 	appID, err := testutils.CreateApplication(testutils.Application{
-		OUID:         ts.ouID,
+		ProjectID:    defaultProjectID,
 		Name:         name,
 		ClientID:     unique("cp-list-client"),
 		ClientSecret: unique("cp-list-secret"),
@@ -478,15 +478,17 @@ func (ts *ControlPlaneTestSuite) TestAnImportedMCPResourceServerKeepsItsIdentifi
 // A Control Plane runs no executor, so a flow is validated against the static executor catalog:
 // a known executor is accepted and an unknown one refused.
 func (ts *ControlPlaneTestSuite) TestFlowsAreValidatedAgainstTheExecutorCatalog() {
-	flowID, err := testutils.CreateIsolatedAuthFlow(unique("cp-catalog-flow"))
+	flow := testutils.IsolatedAuthFlow(unique("cp-catalog-flow"))
+	flow.ProjectID = defaultProjectID
+	flowID, err := testutils.CreateFlow(flow)
 	ts.Require().NoError(err)
 	defer func() { _ = testutils.DeleteFlow(flowID) }()
 
 	status, raw := ts.call(http.MethodPost, "/flows", map[string]any{
-		"name":     "Unknown executor flow",
-		"ouId":     ts.ouID,
-		"flowType": "AUTHENTICATION",
-		"handle":   unique("cp-unknown-executor"),
+		"name":      "Unknown executor flow",
+		"projectId": defaultProjectID,
+		"flowType":  "AUTHENTICATION",
+		"handle":    unique("cp-unknown-executor"),
 		"nodes": []map[string]any{
 			{"id": "start", "type": "START", "onSuccess": "task"},
 			{"id": "task", "type": "TASK_EXECUTION", "executor": map[string]any{"name": "NoSuchExecutor"},

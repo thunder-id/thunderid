@@ -111,6 +111,7 @@ func (ts *ControlPlaneTestSuite) TestAnApplyRemovesTheUnusedValuesFromTheDataPla
 	ts.T().Cleanup(func() { _ = testutils.DeleteOrganizationUnit(ouID) })
 	deployedID, err := testutils.CreateApplication(testutils.Application{
 		OUID:         ouID,
+		ProjectID:    defaultProjectID,
 		Name:         unique("Swept Deployed App"),
 		ClientID:     unique("swept-deployed-client"),
 		ClientSecret: unique("swept-deployed-secret"),
@@ -120,6 +121,7 @@ func (ts *ControlPlaneTestSuite) TestAnApplyRemovesTheUnusedValuesFromTheDataPla
 	ts.T().Cleanup(func() { _ = testutils.DeleteApplication(deployedID) })
 	undeployedID, err := testutils.CreateApplication(testutils.Application{
 		OUID:         ts.ouID,
+		ProjectID:    defaultProjectID,
 		Name:         unique("Swept Undeployed App"),
 		ClientID:     unique("swept-undeployed-client"),
 		ClientSecret: unique("swept-undeployed-secret"),

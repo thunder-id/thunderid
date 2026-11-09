@@ -49,11 +49,21 @@ func (ts *ProjectAPITestSuite) TestCreateAgentInProject() {
 	ts.Equal(shop.ID, fetched.ProjectID)
 }
 
-// An agent is still created without a project while the project scope does not require one.
-func (ts *ProjectAPITestSuite) TestCreateAgentWithoutProject() {
-	agent := ts.createAgent(ts.agentBody("unscoped", `"ouId":%q`, defaultOUID))
-	ts.Empty(agent.ProjectID)
-	ts.Equal(defaultOUID, agent.OUID)
+// The Control Plane serves projects, so an agent must name one, even with an organization unit, whether it
+// is created through the API, the onboard_agent tool or an import.
+func (ts *ProjectAPITestSuite) TestCreateAgentRequiresProject() {
+	status, body := ts.do(http.MethodPost, "/agents", ts.agentBody("unscoped", `"ouId":%q`, defaultOUID))
+	ts.Equal(http.StatusBadRequest, status, body)
+	ts.Equal("AGT-1050", codeOf(ts.T(), body))
+
+	onboarded, raw := ts.callMCPTool("onboard_agent", map[string]any{
+		"name": ts.handle("agent-mcp-unscoped"), "ouId": defaultOUID,
+	})
+	ts.Truef(onboarded.Result.IsError, "an agent without a project was onboarded: %s", raw)
+	ts.Contains(raw, "Set projectId")
+
+	ts.Equal("AGT-1050", ts.importFailure(fmt.Sprintf("resource_type: agent\ntype: default\nouId: %s\n"+
+		"attributes:\n  name: %s\n", defaultOUID, ts.handle("agent-import-unscoped")), false))
 }
 
 // An agent in a project is in the system organization unit, and no other.
