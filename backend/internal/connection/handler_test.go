@@ -765,7 +765,7 @@ func (s *HTTPConnectionHandlerTestSuite) SetupTest() {
 	s.mockHTTP = httpconnectionmock.NewHTTPConnectionServiceInterfaceMock(s.T())
 	h := newHandler(withAllowAllAuthz(s.T(), newService(idpmock.NewIDPServiceInterfaceMock(s.T()),
 		notificationmock.NewNotificationSenderMgtSvcInterfaceMock(s.T()), &testResourceServerLister{},
-		newAuthZENPDPServiceMock(s.T()), s.mockHTTP)))
+		newAuthZENPDPServiceMock(s.T()), s.mockHTTP, newDiscardingBus(s.T()))))
 	s.mux = http.NewServeMux()
 	registerRoutes(s.mux, h)
 }

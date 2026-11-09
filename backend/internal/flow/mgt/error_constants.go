@@ -686,3 +686,10 @@ var errFlowNotFoundNoop = &tidcommon.ServiceError{
 	Type: tidcommon.ClientErrorType,
 	Code: ErrorFlowNotFound.Code,
 }
+
+// errSharingPolicyNotFoundNoop is returned by deleteSharingPolicy when the flow holds no policy under the
+// requested id. DeleteSharingPolicy turns it into a success, so it never reaches a caller.
+var errSharingPolicyNotFoundNoop = &tidcommon.ServiceError{
+	Type: tidcommon.ClientErrorType,
+	Code: ErrorSharingPolicyNotFound.Code,
+}

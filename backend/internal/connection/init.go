@@ -16,6 +16,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/resource"
 	"github.com/thunder-id/thunderid/internal/sharing"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
 	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
@@ -37,6 +38,9 @@ import (
 // Connections of every kind register with the sharing framework as one resource type, so a connection
 // can be shared with other organization units. A sharee can use the connection as it is and may not
 // override any of it.
+//
+// bus is required: the service publishes the audit event of every change to a sharing policy of a
+// connection on it. A change to a connection itself is published by the service of its kind.
 func Initialize(mux *http.ServeMux, mcpServer *mcp.Server, idpService idp.IDPServiceInterface,
 	notificationService notification.NotificationSenderMgtSvcInterface,
 	resourceService resource.ResourceServiceInterface,
@@ -44,9 +48,12 @@ func Initialize(mux *http.ServeMux, mcpServer *mcp.Server, idpService idp.IDPSer
 	httpService httpconnection.HTTPConnectionServiceInterface,
 	valueCapturer declarativeresource.ValueCapturer,
 	sharingService sharing.SharingServiceInterface,
-	authzService sysauthz.SystemAuthorizationServiceInterface) (
+	authzService sysauthz.SystemAuthorizationServiceInterface, bus eventbus.EventBusInterface) (
 	declarativeresource.ResourceExporter, resourcedependency.Provider, HTTPConnectionWriterInterface, error) {
-	svc := newService(idpService, notificationService, resourceService, authZENPDPService, httpService)
+	if bus == nil {
+		return nil, nil, nil, errNilEventBus
+	}
+	svc := newService(idpService, notificationService, resourceService, authZENPDPService, httpService, bus)
 	svc.managed = managedresource.GetStore()
 	svc.valueCapturer = valueCapturer
 	svc.sharingService = sharingService

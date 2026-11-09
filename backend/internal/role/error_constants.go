@@ -652,6 +652,13 @@ var errRoleNotFoundNoop = &tidcommon.ServiceError{
 	Code: ErrorRoleNotFound.Code,
 }
 
+// errSharingPolicyNotFoundNoop is returned by deleteSharingPolicy when the role holds no policy under the
+// requested id. DeleteSharingPolicy turns it into a success, so it never reaches a caller.
+var errSharingPolicyNotFoundNoop = &tidcommon.ServiceError{
+	Type: tidcommon.ClientErrorType,
+	Code: ErrorSharingPolicyNotFound.Code,
+}
+
 // sharingErrors answers the sharing framework's client errors in this service's own codes.
 var sharingErrors = sharing.ErrorTranslation{
 	PolicyNotFound:  ErrorSharingPolicyNotFound,

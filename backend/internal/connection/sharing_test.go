@@ -23,6 +23,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/sharing"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/connection/authzenpdpmock"
@@ -54,12 +55,18 @@ func (s *SharingTestSuite) SetupTest() {
 	s.mockHTTP = httpconnectionmock.NewHTTPConnectionServiceInterfaceMock(s.T())
 	s.mockSharing = sharingmock.NewSharingServiceInterfaceMock(s.T())
 	s.svc = withAllowAllAuthz(s.T(), newService(s.mockIDP, s.mockNotif, &testResourceServerLister{},
-		s.mockPDP, s.mockHTTP))
+		s.mockPDP, s.mockHTTP, newDiscardingBus(s.T())))
 	s.svc.sharingService = s.mockSharing
 }
 
 func (s *SharingTestSuite) TearDownTest() {
 	config.ResetServerRuntime()
+}
+
+// anyKindOwner looks a connection up through whichever kind holds it, as the sharing framework does.
+func (s *SharingTestSuite) anyKindOwner(ctx context.Context, id string) (connectionOwner, *tidcommon.ServiceError) {
+	ouID, svcErr := s.svc.owningOUID(ctx, id)
+	return connectionOwner{ouID: ouID, subjectType: audit.TargetTypeConnection}, svcErr
 }
 
 // ownedBy makes the connection resolve to the given organization unit through the kind that holds it.
@@ -164,7 +171,7 @@ func (s *SharingTestSuite) TestCreateSharingPolicyIssuesFromOwner() {
 	s.mockSharing.On("CreatePolicy", mock.Anything, ConnectionSharingType, "c-1", "ou-owner", req).
 		Return(sharing.Policy{ID: "p-1"}, (*tidcommon.ServiceError)(nil))
 
-	policy, svcErr := s.svc.createSharingPolicy(context.Background(), s.svc.owningOUID, "c-1", req)
+	policy, svcErr := s.svc.createSharingPolicy(context.Background(), s.anyKindOwner, "c-1", req)
 
 	s.Nil(svcErr)
 	s.Equal("p-1", policy.ID)
@@ -175,7 +182,7 @@ func (s *SharingTestSuite) TestCreateSharingPolicyTranslatesFrameworkErrors() {
 	s.mockSharing.On("CreatePolicy", mock.Anything, ConnectionSharingType, "c-1", "ou-owner", mock.Anything).
 		Return(sharing.Policy{}, &sharing.ErrorPolicyExists)
 
-	_, svcErr := s.svc.createSharingPolicy(context.Background(), s.svc.owningOUID, "c-1", sharing.PolicyRequest{})
+	_, svcErr := s.svc.createSharingPolicy(context.Background(), s.anyKindOwner, "c-1", sharing.PolicyRequest{})
 
 	s.Require().NotNil(svcErr)
 	s.Equal(ErrorSharingPolicyExists.Code, svcErr.Code)
@@ -187,7 +194,7 @@ func (s *SharingTestSuite) TestCreateSharingPolicyUnknownConnection() {
 	s.pdpMissing("c-1")
 	s.mockHTTP.On("GetHTTPConnection", mock.Anything, "c-1").Return(nil, &httpconnection.ErrorNotFound)
 
-	_, svcErr := s.svc.createSharingPolicy(context.Background(), s.svc.owningOUID, "c-1", sharing.PolicyRequest{})
+	_, svcErr := s.svc.createSharingPolicy(context.Background(), s.anyKindOwner, "c-1", sharing.PolicyRequest{})
 
 	s.Require().NotNil(svcErr)
 	s.Equal(authzenpdp.ErrorNotFound.Code, svcErr.Code)
@@ -200,7 +207,7 @@ func (s *SharingTestSuite) TestCreateSharingPolicyRefusedInDeclarativeMode() {
 		DeclarativeResources: config.DeclarativeResources{Enabled: true},
 	}))
 
-	_, svcErr := s.svc.createSharingPolicy(context.Background(), s.svc.owningOUID, "c-1", sharing.PolicyRequest{})
+	_, svcErr := s.svc.createSharingPolicy(context.Background(), s.anyKindOwner, "c-1", sharing.PolicyRequest{})
 
 	s.NotNil(svcErr)
 	s.mockSharing.AssertNotCalled(s.T(), "CreatePolicy", mock.Anything, mock.Anything, mock.Anything,
@@ -213,7 +220,7 @@ func (s *SharingTestSuite) TestPolicyOfAnotherConnectionIsNotFound() {
 		sharing.Policy{ID: "p-1", ResourceType: ConnectionSharingType, ResourceID: "c-2"},
 		(*tidcommon.ServiceError)(nil))
 
-	_, svcErr := s.svc.getSharingPolicy(context.Background(), s.svc.owningOUID, "c-1", "p-1")
+	_, svcErr := s.svc.getSharingPolicy(context.Background(), s.anyKindOwner, "c-1", "p-1")
 
 	s.Require().NotNil(svcErr)
 	s.Equal(ErrorSharingPolicyNotFound.Code, svcErr.Code)
@@ -225,7 +232,7 @@ func (s *SharingTestSuite) TestPolicyOfAnotherResourceTypeIsNotFound() {
 		sharing.Policy{ID: "p-1", ResourceType: "application", ResourceID: "c-1"},
 		(*tidcommon.ServiceError)(nil))
 
-	_, svcErr := s.svc.getSharingPolicy(context.Background(), s.svc.owningOUID, "c-1", "p-1")
+	_, svcErr := s.svc.getSharingPolicy(context.Background(), s.anyKindOwner, "c-1", "p-1")
 
 	s.Require().NotNil(svcErr)
 	s.Equal(ErrorSharingPolicyNotFound.Code, svcErr.Code)
@@ -237,7 +244,7 @@ func (s *SharingTestSuite) TestListSharingPolicies() {
 		sharing.PolicyList{TotalResults: 1, Count: 1, Policies: []sharing.Policy{{ID: "p-1"}}},
 		(*tidcommon.ServiceError)(nil))
 
-	list, svcErr := s.svc.listSharingPolicies(context.Background(), s.svc.owningOUID, "c-1", 10, 0)
+	list, svcErr := s.svc.listSharingPolicies(context.Background(), s.anyKindOwner, "c-1", 10, 0)
 
 	s.Nil(svcErr)
 	s.Equal(1, list.Count)
@@ -252,7 +259,7 @@ func (s *SharingTestSuite) TestUpdateSharingPolicy() {
 		Return(sharing.Policy{ID: "p-1"}, (*tidcommon.ServiceError)(nil))
 
 	policy, svcErr := s.svc.updateSharingPolicy(
-		context.Background(), s.svc.owningOUID, "c-1", "p-1", sharing.PolicyRequest{})
+		context.Background(), s.anyKindOwner, "c-1", "p-1", sharing.PolicyRequest{})
 
 	s.Nil(svcErr)
 	s.Equal("p-1", policy.ID)
@@ -265,14 +272,14 @@ func (s *SharingTestSuite) TestDeleteSharingPolicy() {
 		(*tidcommon.ServiceError)(nil))
 	s.mockSharing.On("DeletePolicy", mock.Anything, "p-1").Return((*tidcommon.ServiceError)(nil))
 
-	s.Nil(s.svc.deleteSharingPolicy(context.Background(), s.svc.owningOUID, "c-1", "p-1"))
+	s.Nil(s.svc.deleteSharingPolicy(context.Background(), s.anyKindOwner, "c-1", "p-1"))
 }
 
 func (s *SharingTestSuite) TestDeleteSharingPolicyThatIsGoneSucceeds() {
 	s.ownedByIDP("c-1", "ou-owner")
 	s.mockSharing.On("GetPolicy", mock.Anything, "p-1").Return(sharing.Policy{}, &sharing.ErrorPolicyNotFound)
 
-	s.Nil(s.svc.deleteSharingPolicy(context.Background(), s.svc.owningOUID, "c-1", "p-1"))
+	s.Nil(s.svc.deleteSharingPolicy(context.Background(), s.anyKindOwner, "c-1", "p-1"))
 	s.mockSharing.AssertNotCalled(s.T(), "DeletePolicy", mock.Anything, mock.Anything)
 }
 
@@ -282,7 +289,7 @@ func (s *SharingTestSuite) TestDeleteDeclaredSharingPolicyIsRefused() {
 		sharing.Policy{ID: "p-1", ResourceType: ConnectionSharingType, ResourceID: "c-1", Declared: true},
 		(*tidcommon.ServiceError)(nil))
 
-	svcErr := s.svc.deleteSharingPolicy(context.Background(), s.svc.owningOUID, "c-1", "p-1")
+	svcErr := s.svc.deleteSharingPolicy(context.Background(), s.anyKindOwner, "c-1", "p-1")
 
 	s.Require().NotNil(svcErr)
 	s.Equal(ErrorSharingPolicyDeclared.Code, svcErr.Code)
@@ -294,7 +301,7 @@ func (s *SharingTestSuite) TestResolveSharingOverlay() {
 	s.mockSharing.On("ResolveOverlayRules", mock.Anything, ConnectionSharingType, "c-1", "ou-child").
 		Return(sharing.ResolvedOverlay{OUID: "ou-child", Visible: true}, (*tidcommon.ServiceError)(nil))
 
-	overlay, svcErr := s.svc.resolveSharingOverlay(context.Background(), s.svc.owningOUID, "c-1", "ou-child")
+	overlay, svcErr := s.svc.resolveSharingOverlay(context.Background(), s.anyKindOwner, "c-1", "ou-child")
 
 	s.Nil(svcErr)
 	s.True(overlay.Visible)
@@ -306,7 +313,7 @@ func (s *SharingTestSuite) TestResolveSharingOverlayNotVisible() {
 	s.mockSharing.On("ResolveOverlayRules", mock.Anything, ConnectionSharingType, "c-1", "ou-other").
 		Return(sharing.ResolvedOverlay{OUID: "ou-other"}, (*tidcommon.ServiceError)(nil))
 
-	_, svcErr := s.svc.resolveSharingOverlay(context.Background(), s.svc.owningOUID, "c-1", "ou-other")
+	_, svcErr := s.svc.resolveSharingOverlay(context.Background(), s.anyKindOwner, "c-1", "ou-other")
 
 	s.Require().NotNil(svcErr)
 	s.Equal(ErrorConnectionNotSharedToOU.Code, svcErr.Code)
@@ -317,7 +324,7 @@ func (s *SharingTestSuite) TestResolveSharingOverlayUnknownOU() {
 	s.mockSharing.On("ResolveOverlayRules", mock.Anything, ConnectionSharingType, "c-1", "ou-gone").
 		Return(sharing.ResolvedOverlay{}, &oupkg.ErrorOrganizationUnitNotFound)
 
-	_, svcErr := s.svc.resolveSharingOverlay(context.Background(), s.svc.owningOUID, "c-1", "ou-gone")
+	_, svcErr := s.svc.resolveSharingOverlay(context.Background(), s.anyKindOwner, "c-1", "ou-gone")
 
 	s.Require().NotNil(svcErr)
 	s.Equal(ErrorConnectionNotSharedToOU.Code, svcErr.Code)
@@ -326,7 +333,7 @@ func (s *SharingTestSuite) TestResolveSharingOverlayUnknownOU() {
 func (s *SharingTestSuite) TestResolveSharingOverlayRequiresOU() {
 	s.ownedByIDP("c-1", "ou-owner")
 
-	_, svcErr := s.svc.resolveSharingOverlay(context.Background(), s.svc.owningOUID, "c-1", "")
+	_, svcErr := s.svc.resolveSharingOverlay(context.Background(), s.anyKindOwner, "c-1", "")
 
 	s.Require().NotNil(svcErr)
 	s.Equal(ErrorMissingOUIDParameter.Code, svcErr.Code)

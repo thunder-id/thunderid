@@ -74,7 +74,7 @@ func (s *ConnectionAuthzTestSuite) SetupTest() {
 	s.idps = idpmock.NewIDPServiceInterfaceMock(s.T())
 	s.http = httpconnectionmock.NewHTTPConnectionServiceInterfaceMock(s.T())
 	s.svc = newService(s.idps, notificationmock.NewNotificationSenderMgtSvcInterfaceMock(s.T()),
-		&testResourceServerLister{}, newAuthZENPDPServiceMock(s.T()), s.http)
+		&testResourceServerLister{}, newAuthZENPDPServiceMock(s.T()), s.http, newDiscardingBus(s.T()))
 	s.svc.authzService = s.authz
 	s.svc.sharingService = newSharingServiceMock(s.T())
 }

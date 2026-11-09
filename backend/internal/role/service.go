@@ -1717,6 +1717,20 @@ func (rs *roleService) CascadeDeleteDependencies(
 func (rs *roleService) CreateSharingPolicy(
 	ctx context.Context, roleID string, req sharing.PolicyRequest,
 ) (sharing.Policy, *tidcommon.ServiceError) {
+	policy, svcErr := rs.createSharingPolicy(ctx, roleID, req)
+	var policyID string
+	if svcErr == nil {
+		policyID = policy.ID
+	}
+	rs.publishSharingPolicyEvent(ctx, audit.EventRoleSharingPolicyCreate, audit.ActionCreate, roleID, policyID,
+		svcErr)
+	return policy, svcErr
+}
+
+// createSharingPolicy records a sharing policy of a role without publishing its audit event.
+func (rs *roleService) createSharingPolicy(
+	ctx context.Context, roleID string, req sharing.PolicyRequest,
+) (sharing.Policy, *tidcommon.ServiceError) {
 	owningOUID, svcErr := rs.requireSharing(ctx, roleID)
 	if svcErr != nil {
 		return sharing.Policy{}, svcErr
@@ -1782,6 +1796,16 @@ func (rs *roleService) ListSharingPolicies(
 func (rs *roleService) UpdateSharingPolicy(
 	ctx context.Context, roleID, policyID string, req sharing.PolicyRequest,
 ) (sharing.Policy, *tidcommon.ServiceError) {
+	updated, svcErr := rs.updateSharingPolicy(ctx, roleID, policyID, req)
+	rs.publishSharingPolicyEvent(ctx, audit.EventRoleSharingPolicyUpdate, audit.ActionUpdate, roleID, policyID,
+		svcErr)
+	return updated, svcErr
+}
+
+// updateSharingPolicy replaces a sharing policy of a role without publishing its audit event.
+func (rs *roleService) updateSharingPolicy(
+	ctx context.Context, roleID, policyID string, req sharing.PolicyRequest,
+) (sharing.Policy, *tidcommon.ServiceError) {
 	owningOUID, policy, svcErr := rs.requireOwnPolicy(ctx, roleID, policyID)
 	if svcErr != nil {
 		return sharing.Policy{}, svcErr
@@ -1807,10 +1831,25 @@ func (rs *roleService) UpdateSharingPolicy(
 func (rs *roleService) DeleteSharingPolicy(
 	ctx context.Context, roleID, policyID string,
 ) *tidcommon.ServiceError {
+	svcErr := rs.deleteSharingPolicy(ctx, roleID, policyID)
+	// A delete that found no policy of the role succeeds without an event, so no caller can record a
+	// deletion of an ID it made up.
+	if svcErr == errSharingPolicyNotFoundNoop {
+		return nil
+	}
+	rs.publishSharingPolicyEvent(ctx, audit.EventRoleSharingPolicyDelete, audit.ActionDelete, roleID, policyID,
+		svcErr)
+	return svcErr
+}
+
+// deleteSharingPolicy removes a sharing policy of a role without publishing its audit event.
+func (rs *roleService) deleteSharingPolicy(
+	ctx context.Context, roleID, policyID string,
+) *tidcommon.ServiceError {
 	owningOUID, policy, svcErr := rs.requireOwnPolicy(ctx, roleID, policyID)
 	if svcErr != nil {
 		if svcErr.Code == ErrorSharingPolicyNotFound.Code {
-			return nil
+			return errSharingPolicyNotFoundNoop
 		}
 		return svcErr
 	}
@@ -1831,6 +1870,20 @@ func (rs *roleService) DeleteSharingPolicy(
 		return &ErrorSharingPolicyDeclared
 	}
 	return translateSharingError(rs.sharingService.DeletePolicy(ctx, policyID))
+}
+
+// publishSharingPolicyEvent publishes the audit event of an attempt on the sharing policy with policyID
+// of the role with roleID, after the change committed or was refused. The policy is the target and the
+// role the subject, which a succeeded or denied attempt names: a sharing call is refused only once the
+// role is found. Reshares the framework re-narrows or removes beneath a changed policy write no event of
+// their own.
+func (rs *roleService) publishSharingPolicyEvent(ctx context.Context, name string, action audit.Action,
+	roleID, policyID string, svcErr *tidcommon.ServiceError) {
+	// A failed attempt keeps the IDs the caller sent, as evidence of what was probed.
+	target := audit.Ref{Type: audit.TargetTypeRoleSharingPolicy, ID: policyID}
+	subject := audit.Ref{Type: audit.TargetTypeRole, ID: roleID}
+	eventbus.TryPublish(ctx, rs.bus, eventbus.NewEvent(ctx, name).With(
+		audit.ChangePayloadWithSubject(ctx, target, subject, action, svcErr)))
 }
 
 // ResolveSharingOverlay answers whether one organization unit owns the role or is shared it, and

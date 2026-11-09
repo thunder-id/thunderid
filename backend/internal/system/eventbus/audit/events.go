@@ -66,6 +66,15 @@ const (
 	EventFlowDelete = "flow.delete"
 	// EventFlowRestore names an attempt to make an earlier version of a flow its current one.
 	EventFlowRestore = "flow.restore"
+	// EventFlowSharingPolicyCreate names an attempt to create a sharing policy of a flow.
+	EventFlowSharingPolicyCreate = "flow.sharing_policy.create"
+	// EventFlowSharingPolicyUpdate names an attempt to change a sharing policy of a flow.
+	EventFlowSharingPolicyUpdate = "flow.sharing_policy.update"
+	// EventFlowSharingPolicyDelete names an attempt to delete a sharing policy of a flow.
+	EventFlowSharingPolicyDelete = "flow.sharing_policy.delete"
+	// EventFlowVariablesUpdate names an attempt to set the values an organization unit holds for the
+	// variables of a flow.
+	EventFlowVariablesUpdate = "flow.variables.update"
 	// EventClientAuthenticate names a refused attempt by an OAuth client to authenticate.
 	EventClientAuthenticate = "client.authenticate"
 	// EventGatewayApply names an attempt to apply a configuration version to a gateway.
@@ -78,6 +87,12 @@ const (
 	EventConnectionUpdate = "connection.update"
 	// EventConnectionDelete names an attempt to delete a connection.
 	EventConnectionDelete = "connection.delete"
+	// EventConnectionSharingPolicyCreate names an attempt to create a sharing policy of a connection.
+	EventConnectionSharingPolicyCreate = "connection.sharing_policy.create"
+	// EventConnectionSharingPolicyUpdate names an attempt to change a sharing policy of a connection.
+	EventConnectionSharingPolicyUpdate = "connection.sharing_policy.update"
+	// EventConnectionSharingPolicyDelete names an attempt to delete a sharing policy of a connection.
+	EventConnectionSharingPolicyDelete = "connection.sharing_policy.delete"
 	// EventResourceServerCreate names an attempt to create a resource server.
 	EventResourceServerCreate = "resource_server.create"
 	// EventResourceServerUpdate names an attempt to change a resource server.
@@ -128,6 +143,12 @@ const (
 	EventRoleAssignmentAdd = "role.assignment.add"
 	// EventRoleAssignmentRemove names an attempt to take a role off principals.
 	EventRoleAssignmentRemove = "role.assignment.remove"
+	// EventRoleSharingPolicyCreate names an attempt to create a sharing policy of a role.
+	EventRoleSharingPolicyCreate = "role.sharing_policy.create"
+	// EventRoleSharingPolicyUpdate names an attempt to change a sharing policy of a role.
+	EventRoleSharingPolicyUpdate = "role.sharing_policy.update"
+	// EventRoleSharingPolicyDelete names an attempt to delete a sharing policy of a role.
+	EventRoleSharingPolicyDelete = "role.sharing_policy.delete"
 	// EventGroupCreate names an attempt to create a group.
 	EventGroupCreate = "group.create"
 	// EventGroupUpdate names an attempt to change a group.
@@ -184,9 +205,14 @@ const (
 	TargetTypeApplicationSharingPolicy = "application_sharing_policy"
 	// TargetTypeFlow is the target type of an event about a flow.
 	TargetTypeFlow = "flow"
+	// TargetTypeFlowSharingPolicy is the target type of an event about a sharing policy of a flow.
+	TargetTypeFlowSharingPolicy = "flow_sharing_policy"
 	// TargetTypeConnection is the target type of an event about a connection of any kind: an identity
 	// provider, an AuthZEN PDP or an HTTP endpoint.
 	TargetTypeConnection = "connection"
+	// TargetTypeConnectionSharingPolicy is the target type of an event about a sharing policy of a
+	// connection.
+	TargetTypeConnectionSharingPolicy = "connection_sharing_policy"
 	// TargetTypeResourceServer is the target type of an event about a resource server.
 	TargetTypeResourceServer = "resource_server"
 	// TargetTypeResource is the target type of an event about a resource of a resource server.
@@ -209,6 +235,8 @@ const (
 	TargetTypeNotificationTemplate = "notification_template"
 	// TargetTypeRole is the target type of an event about a role.
 	TargetTypeRole = "role"
+	// TargetTypeRoleSharingPolicy is the target type of an event about a sharing policy of a role.
+	TargetTypeRoleSharingPolicy = "role_sharing_policy"
 	// TargetTypeGroup is the target type of an event about a group.
 	TargetTypeGroup = "group"
 	// TargetTypeServerConfig is the target type of an event about a section of the server configuration,
@@ -279,11 +307,20 @@ var auditedEvents = map[string][]string{
 	EventFlowRestore:        nil,
 	EventClientAuthenticate: nil,
 
+	EventFlowSharingPolicyCreate: nil,
+	EventFlowSharingPolicyUpdate: nil,
+	EventFlowSharingPolicyDelete: nil,
+	EventFlowVariablesUpdate:     nil,
+
 	EventGatewayApply:     nil,
 	EventGatewayRevert:    nil,
 	EventConnectionCreate: nil,
 	EventConnectionUpdate: nil,
 	EventConnectionDelete: nil,
+
+	EventConnectionSharingPolicyCreate: nil,
+	EventConnectionSharingPolicyUpdate: nil,
+	EventConnectionSharingPolicyDelete: nil,
 
 	EventResourceServerCreate:         nil,
 	EventResourceServerUpdate:         nil,
@@ -316,6 +353,10 @@ var auditedEvents = map[string][]string{
 	EventRoleDelete:           nil,
 	EventRoleAssignmentAdd:    nil,
 	EventRoleAssignmentRemove: nil,
+
+	EventRoleSharingPolicyCreate: nil,
+	EventRoleSharingPolicyUpdate: nil,
+	EventRoleSharingPolicyDelete: nil,
 
 	EventGroupCreate:       nil,
 	EventGroupUpdate:       nil,
