@@ -78,7 +78,7 @@ export default function GroupEditPage(): JSX.Element {
   const [isEditingDescription, setIsEditingDescription] = useState(false);
   const [tempName, setTempName] = useState('');
   const [tempDescription, setTempDescription] = useState('');
-  const listUrl = '/groups';
+  const listUrl = routes.groups.list();
 
   const handleBack = async (): Promise<void> => {
     await navigate(listUrl);

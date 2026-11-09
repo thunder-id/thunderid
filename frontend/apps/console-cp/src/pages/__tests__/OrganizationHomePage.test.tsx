@@ -32,15 +32,13 @@ vi.mock('@thunderid/contexts', async (importOriginal) => {
   };
 });
 const selectProject = vi.fn();
-const clearSelection = vi.fn();
 vi.mock('@thunderid/configure-projects', () => ({
   useProjectSelection: () => ({
     projects: [
-      {id: 'p-shop', displayName: 'Shop'},
-      {id: 'p-bill', displayName: 'Billing'},
+      {id: 'p-shop', handle: 'shop', displayName: 'Shop'},
+      {id: 'p-bill', handle: 'billing', displayName: 'Billing'},
     ],
     selectProject,
-    clearSelection,
   }),
 }));
 vi.mock('@thunderid/configure-gateways', async (importOriginal) => {
@@ -85,7 +83,6 @@ describe('OrganizationHomePage', () => {
   beforeEach(() => {
     navigate.mockReset();
     selectProject.mockReset();
-    clearSelection.mockReset();
     request.mockImplementation((call: {url: string}) => {
       const path = Object.keys(totals).find((entry) =>
         call.url.includes(`${entry}${entry.includes('?') ? '&' : '?'}limit=1`),
@@ -163,14 +160,7 @@ describe('OrganizationHomePage', () => {
     );
     await userEvent.click(shop);
 
-    expect(navigate).toHaveBeenCalledWith('/projects/p-shop');
-    expect(selectProject).toHaveBeenCalledWith('p-shop');
-  });
-
-  it('is the organization level: opening it leaves the selected project', () => {
-    render(<OrganizationHomePage />);
-
-    expect(clearSelection).toHaveBeenCalled();
+    expect(selectProject).toHaveBeenCalledWith('shop');
   });
 
   it('says what each gateway is for along the path', () => {
@@ -202,8 +192,7 @@ describe('OrganizationHomePage', () => {
     await userEvent.click(within(picker).getByTestId('project-picker-p-bill'));
     await userEvent.click(screen.getByTestId('project-picker-continue'));
 
-    expect(selectProject).toHaveBeenCalledWith('p-bill');
-    expect(navigate).toHaveBeenCalledWith('/applications/types');
+    expect(selectProject).toHaveBeenCalledWith('billing', '/applications/types');
   });
 
   it("asks which project to deploy, then opens that project's home", async () => {
@@ -215,7 +204,7 @@ describe('OrganizationHomePage', () => {
     ).toBeInTheDocument();
     await userEvent.click(screen.getByTestId('project-picker-continue'));
 
-    expect(navigate).toHaveBeenCalledWith('/projects/p-shop');
+    expect(selectProject).toHaveBeenCalledWith('shop');
   });
 
   it('opens a new agent in the chosen project', async () => {
@@ -224,7 +213,7 @@ describe('OrganizationHomePage', () => {
     await userEvent.click(within(screen.getByTestId('organization-agents')).getByRole('button', {name: 'New agent'}));
     await userEvent.click(screen.getByTestId('project-picker-continue'));
 
-    expect(navigate).toHaveBeenCalledWith('/agents/create');
+    expect(selectProject).toHaveBeenCalledWith('shop', '/agents/create');
   });
 
   it('offers no administrators section, and reads no administrator count', async () => {

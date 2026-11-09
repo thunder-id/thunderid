@@ -4,15 +4,23 @@
 import {useProjectScope} from '@thunderid/contexts';
 import {render, screen, userEvent} from '@thunderid/test-utils';
 import {describe, it, expect, beforeEach, vi} from 'vitest';
-import {PROJECT_SELECTION_STORAGE_KEY} from '../../hooks/useProjectSelection';
 import type {Project} from '../../models/project';
 import SelectedProjectScope from '../SelectedProjectScope';
 
 const mockUseGetProjects =
   vi.fn<() => {data?: {projects: Project[]}; isLoading?: boolean; error?: Error | null; refetch?: () => void}>();
+const mockNavigate = vi.fn();
+let mockParams: Record<string, string> = {};
 
 vi.mock('../../api/useGetProjects', () => ({
   default: () => ({refetch: vi.fn(), error: null, isLoading: false, ...mockUseGetProjects()}),
+}));
+
+vi.mock('react-router', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('react-router')>()),
+  useNavigate: () => mockNavigate,
+  useParams: () => mockParams,
+  Navigate: ({to}: {to: string}) => <div data-testid="redirect">{to}</div>,
 }));
 
 const shop: Project = {
@@ -36,11 +44,12 @@ const renderScope = () =>
 
 describe('SelectedProjectScope', () => {
   beforeEach(() => {
-    localStorage.clear();
     mockUseGetProjects.mockReset();
+    mockNavigate.mockReset();
+    mockParams = {projectHandle: 'shop'};
   });
 
-  it('scopes the page to the selected project', () => {
+  it('scopes the page to the project the route names', () => {
     mockUseGetProjects.mockReturnValue({data: {projects: [shop]}});
 
     renderScope();
@@ -65,19 +74,28 @@ describe('SelectedProjectScope', () => {
     expect(screen.getByRole('alert')).toBeInTheDocument();
   });
 
-  it('lets the user clear the selection and work unscoped when the projects cannot be read', async () => {
+  it('lets the user leave the project for the projects page when the projects cannot be read', async () => {
     mockUseGetProjects.mockReturnValue({data: undefined, error: new Error('Forbidden')});
 
     const user = userEvent.setup();
     renderScope();
     await user.click(screen.getByRole('button', {name: 'Clear project selection'}));
 
-    expect(localStorage.getItem(PROJECT_SELECTION_STORAGE_KEY)).toBe('');
-    expect(screen.getByTestId('page')).toHaveTextContent('none');
+    expect(mockNavigate).toHaveBeenCalledWith('/projects');
   });
 
-  it('does not scope or wait once the selection is cleared', () => {
-    localStorage.setItem(PROJECT_SELECTION_STORAGE_KEY, '');
+  it('leads to the projects page when no project has the handle', () => {
+    mockParams = {projectHandle: 'removed'};
+    mockUseGetProjects.mockReturnValue({data: {projects: [shop]}});
+
+    renderScope();
+
+    expect(screen.queryByTestId('page')).not.toBeInTheDocument();
+    expect(screen.getByTestId('redirect')).toHaveTextContent('/projects');
+  });
+
+  it('does not scope or wait on a page outside every project', () => {
+    mockParams = {};
     mockUseGetProjects.mockReturnValue({data: undefined, isLoading: true});
 
     renderScope();

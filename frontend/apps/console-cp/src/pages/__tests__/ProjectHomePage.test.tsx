@@ -1,49 +1,32 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {useProjectScope} from '@thunderid/contexts';
-import {render, screen, waitFor} from '@thunderid/test-utils';
-import {beforeEach, describe, expect, it, vi} from 'vitest';
+import {render, screen} from '@thunderid/test-utils';
+import {describe, expect, it, vi} from 'vitest';
 import ProjectHomePage from '../ProjectHomePage';
 
-vi.mock('react-router', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('react-router')>()),
-  useParams: () => ({projectId: 'p-shop'}),
-}));
-
-function Overview({eyebrow = undefined, editPipelineUrl = undefined}: {eyebrow?: string; editPipelineUrl?: string}) {
-  return (
-    <div data-testid="gateways-overview" data-project={useProjectScope().projectId} data-edit={editPipelineUrl}>
-      {eyebrow}
-    </div>
-  );
-}
-
-const selectProject = vi.fn();
 vi.mock('@thunderid/configure-projects', () => ({
-  useProjectSelection: () => ({selectProject, projects: [{id: 'p-shop', handle: 'shop', displayName: 'Shop'}]}),
+  useProjectSelection: () => ({selectedProject: {id: 'p-shop', handle: 'shop', displayName: 'Shop'}}),
 }));
 
 vi.mock('@thunderid/configure-gateways', () => ({
-  useProjects: () => ({data: [{id: 'p-shop', displayName: 'Shop'}]}),
   GatewaysOverview: ({
     eyebrow = undefined,
     editPipelineUrl = undefined,
   }: {
     eyebrow?: string;
     editPipelineUrl?: string;
-  }) => <Overview eyebrow={eyebrow} editPipelineUrl={editPipelineUrl} />,
+  }) => (
+    <div data-testid="gateways-overview" data-edit={editPipelineUrl}>
+      {eyebrow}
+    </div>
+  ),
 }));
 
 describe('ProjectHomePage', () => {
-  beforeEach(() => {
-    selectProject.mockReset();
-  });
-
-  it('is the gateways of the project, with every deploy from it scoped to the project', () => {
+  it('is the gateways of the project the route names', () => {
     render(<ProjectHomePage />);
 
-    expect(screen.getByTestId('gateways-overview')).toHaveAttribute('data-project', 'p-shop');
     expect(screen.getByTestId('gateways-overview')).toHaveTextContent('Shop');
   });
 
@@ -62,11 +45,5 @@ describe('ProjectHomePage', () => {
       'data-edit',
       'https://platform.test/projects/shop/pipeline',
     );
-  });
-
-  it('selects the project it is opened for, so a link opens the console in the project', async () => {
-    render(<ProjectHomePage />);
-
-    await waitFor(() => expect(selectProject).toHaveBeenCalledWith('p-shop'));
   });
 });

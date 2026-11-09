@@ -250,10 +250,26 @@ describe('App', () => {
     expect(window.location.pathname).toBe('/home');
   });
 
-  it("loads a project's home at /projects/:projectId", async () => {
-    window.history.pushState({}, '', '/projects/p-shop');
+  it("loads a project's home at /project/:projectHandle", async () => {
+    window.history.pushState({}, '', '/project/shop');
     render(<App />);
     expect(await screen.findByTestId('project-home-page')).toBeInTheDocument();
+  });
+
+  it("opens a project's pages under the project's path", async () => {
+    for (const [path, page] of [
+      ['/project/shop/resource-servers', 'resource-servers-list-page'],
+      ['/project/shop/resource-servers/rs-123', 'resource-server-edit-page'],
+      ['/project/shop/resource-servers/create', 'create-resource-server-page'],
+      ['/project/shop/groups/create', 'create-group-page'],
+      ['/project/shop/users', 'administrators-list-page'],
+      ['/project/shop/deploy/gateways/gw-dev/history', 'gateway-page-history'],
+    ]) {
+      window.history.pushState({}, '', path);
+      const {unmount} = render(<App />);
+      expect(await screen.findByTestId(page)).toBeInTheDocument();
+      unmount();
+    }
   });
 
   it("opens each of a gateway's sections at the organization level", async () => {

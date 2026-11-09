@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {afterEach, describe, it, expect, vi} from 'vitest';
-import RouteConfig, {ROUTE_SEGMENTS} from '../RouteConfig';
+import RouteConfig, {projectRouteConfig, ROUTE_SEGMENTS} from '../RouteConfig';
 
 describe('RouteConfig', () => {
   it('gateways builds paths from the segment', () => {
@@ -16,8 +16,9 @@ describe('RouteConfig', () => {
     expect(RouteConfig.deploy.values('gw-1')).toBe('/deploy/gateways/gw-1/values');
     expect(RouteConfig.deploy.gateway('gw 1')).toBe('/deploy/gateways/gw%201');
     expect(RouteConfig.deploy.gateway('gw-1')).toBe('/deploy/gateways/gw-1');
-    expect(RouteConfig.deploy.project?.('p-1')).toBe('/projects/p-1');
-    expect(RouteConfig.projects.home('p 1')).toBe('/projects/p%201');
+    expect(RouteConfig.deploy.project?.('p-1')).toBe('/projects');
+    expect(RouteConfig.projects.home('my shop')).toBe('/project/my%20shop');
+    expect(RouteConfig.projects.home('shop', '/applications')).toBe('/project/shop/applications');
   });
 
   it('organizationUnits builds paths from the segment', () => {
@@ -143,6 +144,22 @@ describe('RouteConfig', () => {
   it('projects builds paths from the segment', () => {
     expect(RouteConfig.projects.list()).toBe('/projects');
     expect(RouteConfig.projects.create()).toBe('/projects/create');
+  });
+
+  it("puts a project's pages under the project's path, and leaves the organization's where they are", () => {
+    const inShop = projectRouteConfig('shop');
+
+    expect(inShop.applications.list()).toBe('/project/shop/applications');
+    expect(inShop.groups.detail('group-1')).toBe('/project/shop/groups/group-1');
+    expect(inShop.notificationTemplates.channel('email')).toBe('/project/shop/notification-templates/email');
+    expect(inShop.deploy.gateway('gw-1')).toBe('/project/shop/deploy/gateways/gw-1');
+    expect(inShop.deploy.project?.('p-shop')).toBe('/project/shop');
+    expect(inShop.connections.list()).toBe('/connections');
+    expect(inShop.projects.list()).toBe('/projects');
+    expect(inShop.home.list()).toBe('/home');
+    // The organization's own configuration is untouched.
+    expect(RouteConfig.applications.list()).toBe('/applications');
+    expect(RouteConfig.deploy.project?.('p-shop')).toBe('/projects');
   });
 
   it('every builder derives its path from ROUTE_SEGMENTS rather than a separate literal', () => {

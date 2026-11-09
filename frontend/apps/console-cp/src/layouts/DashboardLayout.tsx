@@ -63,10 +63,11 @@ import {
 } from '@wso2/oxygen-ui-icons-react';
 import {useCallback, useEffect, useMemo, useState, type JSX, type ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
-import {Link as NavigateLink, Outlet, useLocation, useMatch, useNavigate} from 'react-router';
+import {Link as NavigateLink, Outlet, useLocation, useNavigate} from 'react-router';
 import GatewaySwitcher from './components/GatewaySwitcher';
+import useOpenGatewayId from './useOpenGatewayId';
 import SignInOnUnauthorized from '../components/SignInOnUnauthorized';
-import RouteConfig, {ROUTE_SEGMENTS} from '../configs/RouteConfig';
+import RouteConfig, {projectRouteConfig} from '../configs/RouteConfig';
 
 const ICON_BUTTON_SX = {
   minWidth: 40,
@@ -100,8 +101,6 @@ interface NavRoute {
   badge?: string;
   /** A dot beside a parent entry while it is collapsed, standing in for its entries' own dots. */
   collapsedBadge?: string;
-  /** Done as well as going to the entry's page, such as leaving the selected project. */
-  onSelect?: () => void;
 }
 
 interface NavCategory {
@@ -196,12 +195,11 @@ export default function DashboardLayout({collapseSidebar = false}: DashboardLayo
 
 function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps): ReactNode {
   const {clearSession, discovery} = useThunderID();
-  const {projects, selectedProject: project, clearSelection} = useProjectSelection();
+  const {projects, selectedProject: project} = useProjectSelection();
   // How many of the project's own applications and agents the first gateway does not run yet.
   const undeployed = useProjectChanges();
   // On one of a gateway's pages, the navigation is the gateway's.
-  const gatewayMatch = useMatch(`/${ROUTE_SEGMENTS.deployTargets}/:gatewayId/*`);
-  const gatewayId = gatewayMatch?.params.gatewayId;
+  const gatewayId = useOpenGatewayId();
   const pipeline = usePipeline();
   const deployRoutes = useDeployRoutes();
   const stages: PipelineStage[] = pipeline.data?.stages ?? [];
@@ -251,54 +249,56 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
   };
 
   const appRoutes: NavCategory[] = useMemo(() => {
+    // In a project, its pages are under its path.
+    const paths = project ? projectRouteConfig(project.handle) : RouteConfig;
     const applications: NavRoute = {
       id: 'applications',
       resource: 'app',
       text: t('navigation:pages.applications'),
       icon: <LayoutGrid />,
-      path: RouteConfig.applications.list(),
+      path: paths.applications.list(),
     };
     const agents: NavRoute = {
       id: 'agents',
       resource: 'agent',
       text: t('navigation:pages.agents', 'Agents'),
       icon: <Bot />,
-      path: RouteConfig.agents.list(),
+      path: paths.agents.list(),
     };
     const resourceServers: NavRoute = {
       id: 'resource-servers',
       resource: 'rs',
       text: t('navigation:pages.resourceServers', 'Resource servers'),
       icon: <Server />,
-      path: RouteConfig.resourceServers.list(),
+      path: paths.resourceServers.list(),
     };
     const roles: NavRoute = {
       id: 'roles',
       resource: 'role',
       text: t('navigation:pages.roles'),
       icon: <ShieldCheck />,
-      path: RouteConfig.roles.list(),
+      path: paths.roles.list(),
     };
     const flows: NavRoute = {
       id: 'flows',
       resource: 'flow',
       text: t('navigation:pages.flows'),
       icon: <Workflow />,
-      path: RouteConfig.flows.list(),
+      path: paths.flows.list(),
     };
     const groups: NavRoute = {
       id: 'groups',
       resource: 'group',
       text: t('navigation:pages.groups', 'Groups'),
       icon: <Group />,
-      path: RouteConfig.groups.list(),
+      path: paths.groups.list(),
     };
     const design: NavRoute = {
       id: 'design',
       resource: 'design',
       text: t('navigation:pages.design', 'Design'),
       icon: <Palette />,
-      path: RouteConfig.design.list(),
+      path: paths.design.list(),
     };
     const notifications: NavRoute = {
       id: 'notifications',
@@ -310,14 +310,14 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
           resource: 'notificationtemplate',
           text: t('navigation:pages.emailTemplates', 'Email templates'),
           icon: <Mail />,
-          path: RouteConfig.notificationTemplates.channel('email'),
+          path: paths.notificationTemplates.channel('email'),
         },
         {
           id: 'sms-templates',
           resource: 'notificationtemplate',
           text: t('navigation:pages.smsTemplates', 'SMS templates'),
           icon: <MessageSquare />,
-          path: RouteConfig.notificationTemplates.channel('sms'),
+          path: paths.notificationTemplates.channel('sms'),
         },
       ],
     };
@@ -337,7 +337,7 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
                   id: 'gateway-back',
                   text: project.displayName,
                   icon: <ArrowLeft />,
-                  path: RouteConfig.projects.home(project.id),
+                  path: RouteConfig.projects.home(project.handle),
                 }
               : {
                   id: 'gateway-back',
@@ -413,7 +413,6 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
               text: t('navigation:pages.organizationSettings', 'Organization settings'),
               icon: <ArrowLeft />,
               path: RouteConfig.home.list(),
-              onSelect: clearSelection,
             },
           ],
         },
@@ -425,7 +424,7 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
               resource: 'project',
               text: t('navigation:pages.deploymentPipeline', 'Deployment pipeline'),
               icon: <FolderKanban />,
-              path: RouteConfig.projects.home(project.id),
+              path: RouteConfig.projects.home(project.handle),
             },
           ],
         },
@@ -451,7 +450,7 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
                   resource: 'vc',
                   text: t('navigation:pages.credentials', 'Templates'),
                   icon: <IdCard />,
-                  path: RouteConfig.verifiableCredentials.list(),
+                  path: paths.verifiableCredentials.list(),
                   badge: badgeOf(undeployed.credential_configuration),
                 },
                 {
@@ -459,7 +458,7 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
                   resource: 'vc',
                   text: t('navigation:pages.presentations', 'Presentations'),
                   icon: <ShieldCheck />,
-                  path: RouteConfig.verifiablePresentations.list(),
+                  path: paths.verifiablePresentations.list(),
                   badge: badgeOf(undeployed.presentation_definition),
                 },
               ],
@@ -474,7 +473,7 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
               resource: 'user',
               text: t('navigation:pages.users', 'Users'),
               icon: <UsersRound />,
-              path: RouteConfig.users.list(),
+              path: paths.users.list(),
             },
             groups,
             {
@@ -482,7 +481,7 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
               resource: 'ou',
               text: t('navigation:pages.organizationUnits', 'Organization units'),
               icon: <Building />,
-              path: RouteConfig.organizationUnits.list(),
+              path: paths.organizationUnits.list(),
               badge: badgeOf(undeployed.organization_unit),
             },
           ],
@@ -516,7 +515,7 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
             resource: 'user',
             text: t('navigation:pages.administrators', 'Administrators'),
             icon: <UsersRound />,
-            path: RouteConfig.users.list(),
+            path: paths.users.list(),
           },
           {
             id: 'gateways',
@@ -602,7 +601,6 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
     gatewayId,
     gatewayIndex,
     deployRoutes,
-    clearSelection,
   ]);
 
   const capabilities = useCapabilities();
@@ -826,11 +824,7 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
                       ))}
                     </Sidebar.Item>
                   ) : (
-                    <Sidebar.Item
-                      key={route.id}
-                      id={route.id}
-                      link={<NavigateLink to={route.path ?? ''} onClick={route.onSelect} />}
-                    >
+                    <Sidebar.Item key={route.id} id={route.id} link={<NavigateLink to={route.path ?? ''} />}>
                       <Sidebar.ItemIcon>{route.icon}</Sidebar.ItemIcon>
                       {labelOf(route.id, route.text, route.badge)}
                     </Sidebar.Item>

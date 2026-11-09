@@ -18,6 +18,8 @@ export interface ProjectRoutePaths {
   projects: {
     list: () => string;
     create: () => string;
+    /** A page in a project, named by its handle: the project's home, or the given path within it. */
+    home: (handle: string, path?: string) => string;
   };
   applications: {
     list: () => string;
@@ -33,6 +35,7 @@ export const defaultProjectRoutePaths: ProjectRoutePaths = {
   projects: {
     list: () => '/projects',
     create: () => '/projects/create',
+    home: (handle: string, path = '') => `/project/${encodeURIComponent(handle)}${path}`,
   },
   applications: {
     list: () => '/applications',

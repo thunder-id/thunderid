@@ -1,83 +1,54 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {useCallback, useSyncExternalStore} from 'react';
+import {useCallback} from 'react';
+import {useNavigate, useParams} from 'react-router';
+import useProjectRoutes from './useProjectRoutes';
 import useGetProjects from '../api/useGetProjects';
 import type {Project} from '../models/project';
 
-/** Where the selection is remembered, so it survives a reload and every layout mount. */
-export const PROJECT_SELECTION_STORAGE_KEY = 'thunderid.console-cp.selectedProject';
-
-/**
- * The stored selection: a project ID, `''` once the user has cleared the selection, or `null`
- * while nothing has been chosen yet (the first project is then shown as selected).
- */
-type StoredSelection = string | null;
-
-let fallback: StoredSelection = null;
-const listeners = new Set<() => void>();
-
-function readSelection(): StoredSelection {
-  try {
-    return localStorage.getItem(PROJECT_SELECTION_STORAGE_KEY);
-  } catch {
-    return fallback;
-  }
-}
-
-function writeSelection(value: string): void {
-  fallback = value;
-  try {
-    localStorage.setItem(PROJECT_SELECTION_STORAGE_KEY, value);
-  } catch {
-    // Storage can be unavailable (a private window, blocked site data); the in-memory value still applies.
-  }
-  listeners.forEach((listener) => listener());
-}
-
-function subscribe(listener: () => void): () => void {
-  listeners.add(listener);
-  return () => listeners.delete(listener);
-}
+/** The route parameter that names the project a page is in, by its handle. */
+export const PROJECT_HANDLE_PARAM = 'projectHandle';
 
 export interface ProjectSelection {
   /** The deployment's projects, oldest first. */
   projects: Project[];
-  /** The selected project, or undefined when the selection is cleared or there are no projects. */
+  /** The handle the current route names, or undefined when the page is not in a project. */
+  selectedHandle: string | undefined;
+  /** The project the current route names, or undefined when it names none or no such project exists. */
   selectedProject: Project | undefined;
-  /** True once the user has cleared the selection to work across all projects. */
-  isCleared: boolean;
   isLoading: boolean;
   error: Error | null;
   refetch: () => void;
-  selectProject: (id: string) => void;
-  clearSelection: () => void;
+  /** Opens a project: its home, or the given path within it. */
+  selectProject: (handle: string, path?: string) => void;
 }
 
 /**
- * The project the console is working in. The header switcher, the sidebar and the projects page
- * all read it, and the selection is shared between them without a provider, since the dashboard
- * layout mounts once per route group.
+ * The project the console is working in, as the route names it. A page in a project is under the
+ * project's path, so the project survives a reload and a shared link opens the console in it.
  */
 export default function useProjectSelection(): ProjectSelection {
   const {data, isLoading, error, refetch} = useGetProjects();
-  const stored = useSyncExternalStore(subscribe, readSelection, () => null);
+  const navigate = useNavigate();
+  const routes = useProjectRoutes();
+  const selectedHandle = useParams()[PROJECT_HANDLE_PARAM];
 
   const projects = data?.projects ?? [];
-  const isCleared = stored === '';
-  const selectedProject = isCleared ? undefined : (projects.find((project) => project.id === stored) ?? projects[0]);
+  const selectedProject = selectedHandle ? projects.find((project) => project.handle === selectedHandle) : undefined;
 
-  const selectProject = useCallback((id: string) => writeSelection(id), []);
-  const clearSelection = useCallback(() => writeSelection(''), []);
+  const selectProject = useCallback(
+    (handle: string, path?: string) => void navigate(routes.projects.home(handle, path)),
+    [navigate, routes],
+  );
 
   return {
     projects,
+    selectedHandle,
     selectedProject,
-    isCleared,
     isLoading,
     error,
     refetch: () => void refetch(),
     selectProject,
-    clearSelection,
   };
 }

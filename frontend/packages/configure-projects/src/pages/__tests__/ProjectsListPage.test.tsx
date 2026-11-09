@@ -4,7 +4,6 @@
 import {CapabilitiesProvider} from '@thunderid/contexts';
 import {render, screen, userEvent, within} from '@thunderid/test-utils';
 import {describe, it, expect, beforeEach, vi} from 'vitest';
-import {PROJECT_SELECTION_STORAGE_KEY} from '../../hooks/useProjectSelection';
 import type {Project} from '../../models/project';
 import ProjectsListPage from '../ProjectsListPage';
 
@@ -43,7 +42,6 @@ const viewOnly = {
 
 describe('ProjectsListPage', () => {
   beforeEach(() => {
-    localStorage.clear();
     mockNavigate.mockReset();
     mockUseGetProjects.mockReturnValue({
       data: {projects: [project('shop', 'Shop'), project('support', 'Support')]},
@@ -86,17 +84,7 @@ describe('ProjectsListPage', () => {
 
     await user.click(screen.getByRole('button', {name: /Support/}));
 
-    expect(localStorage.getItem(PROJECT_SELECTION_STORAGE_KEY)).toBe('support');
-    expect(mockNavigate).toHaveBeenCalledWith('/applications');
-  });
-
-  it('highlights the project the console is working in', () => {
-    localStorage.setItem(PROJECT_SELECTION_STORAGE_KEY, 'support');
-
-    render(<ProjectsListPage />);
-
-    expect(screen.getByTestId('project-card-support')).toHaveAttribute('data-selected', 'true');
-    expect(screen.getByTestId('project-card-shop')).not.toHaveAttribute('data-selected');
+    expect(mockNavigate).toHaveBeenCalledWith('/project/support/applications');
   });
 
   it('opens the create project page from the add button', async () => {

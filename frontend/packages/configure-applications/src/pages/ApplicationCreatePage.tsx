@@ -180,7 +180,7 @@ export default function ApplicationCreatePage(): JSX.Element {
     : ouLookup.ouList[0]?.id;
 
   const handleBackToTemplates = (): void => {
-    void navigate('/applications/types');
+    void navigate(routes.applications.types());
   };
 
   // The organization unit whose defaults are offered on the Details step: the picked one when
@@ -356,8 +356,8 @@ export default function ApplicationCreatePage(): JSX.Element {
   // wizard is reached directly (e.g. a bookmarked URL) with no template, send the user back to it.
   useEffect((): void => {
     if (selectedTemplateConfig) return;
-    void navigate('/applications/types');
-  }, [selectedTemplateConfig, navigate]);
+    void navigate(routes.applications.types());
+  }, [selectedTemplateConfig, navigate, routes]);
 
   // Derive the OAuth config from the selected template's defaults, mirroring what the removed
   // in-wizard template step used to seed on mount.
@@ -556,7 +556,7 @@ export default function ApplicationCreatePage(): JSX.Element {
   ]);
 
   const handleClose = (): void => {
-    void navigate('/applications');
+    void navigate(routes.applications.list());
   };
 
   const handleLogoSelect = (logoUrl: string): void => {

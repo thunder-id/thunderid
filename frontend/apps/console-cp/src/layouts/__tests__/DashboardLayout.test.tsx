@@ -35,25 +35,20 @@ vi.mock('@thunderid/hooks', async (importOriginal) => ({
   useCapabilities: () => mockCapabilities,
 }));
 interface MockProjectSelection {
-  projects: {id: string; displayName: string}[];
-  selectedProject?: {id: string; displayName: string};
-  isCleared: boolean;
+  projects: {id: string; handle: string; displayName: string}[];
+  selectedProject?: {id: string; handle: string; displayName: string};
   isLoading: boolean;
   error: Error | null;
-  clearSelection: () => void;
 }
 
-const mockClearSelection = vi.fn();
 const mockUseProjectSelection = vi.fn<() => MockProjectSelection>();
-const shop = {id: 'p-shop', displayName: 'Shop'};
+const shop = {id: 'p-shop', handle: 'shop', displayName: 'Shop'};
 
 function projectSelection(overrides: Partial<MockProjectSelection> = {}): MockProjectSelection {
   return {
     projects: [],
-    isCleared: false,
     isLoading: false,
     error: null,
-    clearSelection: mockClearSelection,
     ...overrides,
   };
 }
@@ -62,6 +57,7 @@ function projectSelection(overrides: Partial<MockProjectSelection> = {}): MockPr
 const inShop = (): MockProjectSelection => projectSelection({projects: [shop], selectedProject: shop});
 
 vi.mock('@thunderid/configure-projects', () => ({
+  PROJECT_HANDLE_PARAM: 'projectHandle',
   ProjectSwitcher: () => <div data-testid="project-switcher" />,
   useProjectSelection: () => mockUseProjectSelection(),
 }));
@@ -267,14 +263,14 @@ describe('DashboardLayout', () => {
     render(<DashboardLayout />);
 
     expect(screen.getByText('navigation:categories.identities')).toBeInTheDocument();
-    expect(screen.getByText('navigation:pages.users').closest('a')).toHaveAttribute('href', '/users');
-    expect(screen.getByText('navigation:pages.groups').closest('a')).toHaveAttribute('href', '/groups');
+    expect(screen.getByText('navigation:pages.users').closest('a')).toHaveAttribute('href', '/project/shop/users');
+    expect(screen.getByText('navigation:pages.groups').closest('a')).toHaveAttribute('href', '/project/shop/groups');
     expect(screen.getByText('navigation:pages.organizationUnits').closest('a')).toHaveAttribute(
       'href',
-      '/organization-units',
+      '/project/shop/organization-units',
     );
     expect(screen.getByText('navigation:categories.customize')).toBeInTheDocument();
-    expect(screen.getByText('navigation:pages.design').closest('a')).toHaveAttribute('href', '/design');
+    expect(screen.getByText('navigation:pages.design').closest('a')).toHaveAttribute('href', '/project/shop/design');
     expect(screen.getByText('navigation:pages.verifiableCredentials')).toBeInTheDocument();
   });
 
@@ -305,7 +301,7 @@ describe('DashboardLayout', () => {
   });
 
   it('lists every role in the organization, outside any project', () => {
-    mockUseProjectSelection.mockReturnValue(projectSelection({projects: [shop], isCleared: true}));
+    mockUseProjectSelection.mockReturnValue(projectSelection({projects: [shop]}));
     mockPath = '/home';
     render(<DashboardLayout />);
 
@@ -482,7 +478,7 @@ describe('DashboardLayout', () => {
   });
 
   it('leaves Projects out of the sidebar, and keeps settings in its own group at the end', () => {
-    mockUseProjectSelection.mockReturnValue(projectSelection({projects: [shop], isCleared: true}));
+    mockUseProjectSelection.mockReturnValue(projectSelection({projects: [shop]}));
     mockPath = '/home';
 
     render(<DashboardLayout />);
@@ -503,15 +499,25 @@ describe('DashboardLayout', () => {
     expect(screen.getByTestId('header-read-only')).toHaveTextContent('common:header.readOnly');
   });
 
-  it('leads out of a project to the organization from the top of its navigation', async () => {
+  it('leads out of a project to the organization from the top of its navigation', () => {
     mockUseProjectSelection.mockReturnValue(inShop());
     render(<DashboardLayout />);
 
     const organization = screen.getByText('navigation:pages.organizationSettings');
     expect(organization.closest('a')).toHaveAttribute('href', '/home');
-    await userEvent.click(organization);
+    expect(screen.getByText('navigation:pages.deploymentPipeline').closest('a')).toHaveAttribute(
+      'href',
+      '/project/shop',
+    );
+  });
 
-    expect(mockClearSelection).toHaveBeenCalled();
+  it("shows a gateway's own navigation on its pages in a project, back to the project", () => {
+    mockUseProjectSelection.mockReturnValue(inShop());
+    mockPath = '/project/shop/deploy/gateways/gw-dev';
+    render(<DashboardLayout />);
+
+    expect(screen.getByText('navigation:categories.gateway')).toBeInTheDocument();
+    expect(screen.getByText('Shop').closest('a')).toHaveAttribute('href', '/project/shop');
   });
 
   it('renders navigation categories', () => {

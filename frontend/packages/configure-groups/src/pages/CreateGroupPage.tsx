@@ -20,11 +20,13 @@ import useCreateGroup from '../api/useCreateGroup';
 import ConfigureName from '../components/create-group/ConfigureName';
 import GroupConstraints from '../constants/group-constraints';
 import useGroupCreate from '../contexts/GroupCreate/useGroupCreate';
+import useGroupRoutes from '../hooks/useGroupRoutes';
 import {GroupCreateFlowStep} from '../models/group-create-flow';
 import type {CreateGroupRequest} from '../models/requests';
 
 export default function CreateGroupPage(): JSX.Element {
   const navigate = useNavigate();
+  const routes = useGroupRoutes();
   const {t} = useTranslation('groups');
   const logger = useLogger('CreateGroupPage');
   const createGroup = useCreateGroup();
@@ -76,7 +78,7 @@ export default function CreateGroupPage(): JSX.Element {
     return map;
   }, [t, hasMultipleOUs]);
 
-  const listUrl = '/groups';
+  const listUrl = routes.groups.list();
 
   const handleClose = (): void => {
     if (createGroup.isPending) return;
