@@ -240,16 +240,7 @@ configuration:
   consoleClient:
     path: "/console"
     clientId: "CONSOLE"
-    scopes: >-
-      ['openid', 'profile', 'email', 'group', 'ou',
-      'system', 'org',
-      'org:ou', 'org:ou:view', 'org:ou:create', 'org:ou:update', 'org:ou:delete',
-      'org:user', 'org:user:view', 'org:user:create', 'org:user:update', 'org:user:delete',
-      'org:group', 'org:group:view', 'org:group:create', 'org:group:update', 'org:group:delete',
-      'org:agent', 'org:agent:view', 'org:agent:create', 'org:agent:update', 'org:agent:delete',
-      'org:usertype', 'org:usertype:view', 'org:usertype:create', 'org:usertype:update', 'org:usertype:delete',
-      'org:agenttype', 'org:agenttype:view', 'org:agenttype:create', 'org:agenttype:update', 'org:agenttype:delete',
-      ]
+    scopes: "['openid', 'profile', 'email', 'group', 'ou', 'system', 'org']"
     # Resource indicator (audience) the console sends on token requests. Must match the
     # identifier of the System resource server seeded by the bootstrap defaults, which is
     # "<server.publicUrl>/mcp". Leave empty to derive it from server.publicUrl (default);
