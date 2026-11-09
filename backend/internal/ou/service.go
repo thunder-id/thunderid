@@ -21,6 +21,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/eventbus"
 	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
@@ -132,6 +133,9 @@ type organizationUnitService struct {
 	// one belongs to a project.
 	projectRequired bool
 	bus             eventbus.EventBusInterface
+	// managed says which organization units a control plane deployed, which stay read only here. Nil
+	// where nothing is deployed from one.
+	managed managedresource.StoreInterface
 }
 
 // projectChecker reports whether the project an organization unit names exists.
@@ -161,6 +165,49 @@ func (ous *organizationUnitService) SetOURoleResolver(resolver OURoleResolver) {
 // the project service, which depends on this service, is initialized.
 func (ous *organizationUnitService) SetProjectChecker(checker projectChecker) {
 	ous.projectChecker = checker
+}
+
+// refuseChange refuses a change to an organization unit declared in a file, or deployed by a control
+// plane unless the change is the managed import's.
+func (ous *organizationUnitService) refuseChange(ctx context.Context, id string) *tidcommon.ServiceError {
+	if ous.ouStore.IsOrganizationUnitDeclarative(ctx, id) {
+		return &ErrorCannotModifyDeclarativeResource
+	}
+	managed, err := managedresource.IsReadOnly(ctx, ous.managed, id, managedresource.TypeOrganizationUnit)
+	if err != nil {
+		log.GetLogger().Error(ctx, "Failed to read whether a control plane deployed the organization unit",
+			log.String("id", id), log.Error(err))
+		return &tidcommon.InternalServerError
+	}
+	if managed {
+		return &ErrorManagedOrganizationUnit
+	}
+	return nil
+}
+
+// withManaged reports an organization unit a control plane deployed as read only. A failed read of that is
+// logged and taken as not: every write to such a unit is refused whatever the read says.
+func (ous *organizationUnitService) withManaged(
+	ctx context.Context, ou OrganizationUnit) (OrganizationUnit, *tidcommon.ServiceError) {
+	deployed, err := managedresource.IsDeployed(ctx, ous.managed, ou.ID, managedresource.TypeOrganizationUnit)
+	if err != nil {
+		log.GetLogger().Error(ctx, "Failed to read whether a control plane deployed the organization unit",
+			log.String("id", ou.ID), log.Error(err))
+	}
+	ou.IsReadOnly = deployed
+	return ou, nil
+}
+
+// markManaged reports the listed organization units a control plane deployed as read only.
+func (ous *organizationUnitService) markManaged(ctx context.Context, units []OrganizationUnitBasic) {
+	if err := managedresource.MarkDeployed(ctx, ous.managed, units,
+		func(u *OrganizationUnitBasic) string { return u.ID },
+		func(u *OrganizationUnitBasic) { u.IsReadOnly = true },
+		managedresource.TypeOrganizationUnit); err != nil {
+		// Every write to such a unit is refused whatever the list says, so it is served without the flag.
+		log.GetLogger().Error(ctx, "Failed to read which organization units a control plane deployed",
+			log.Error(err))
+	}
 }
 
 // newOrganizationUnitService creates a new instance of OrganizationUnitService.
@@ -207,13 +254,18 @@ func (ous *organizationUnitService) GetOrganizationUnitList(
 		return nil, &tidcommon.InternalServerError
 	}
 
-	// Unfiltered path: the caller can see all organization units.
+	var list *OrganizationUnitListResponse
 	if accessible.AllAllowed {
-		return ous.listAllOrganizationUnits(ctx, limit, offset, f)
+		// Unfiltered path: the caller can see all organization units.
+		list, svcErr = ous.listAllOrganizationUnits(ctx, limit, offset, f)
+	} else {
+		// Filtered path: the caller has a restricted set of accessible organization units.
+		list, svcErr = ous.listAccessibleOrganizationUnits(ctx, accessible.IDs, "", limit, offset, f)
 	}
-
-	// Filtered path: the caller has a restricted set of accessible organization units.
-	return ous.listAccessibleOrganizationUnits(ctx, accessible.IDs, "", limit, offset, f)
+	if list != nil {
+		ous.markManaged(ctx, list.OrganizationUnits)
+	}
+	return list, svcErr
 }
 
 // GetOrganizationUnitListByProject lists the top organization units of a project: its root organization units,
@@ -580,7 +632,7 @@ func (ous *organizationUnitService) GetOrganizationUnit(
 		return OrganizationUnit{}, &tidcommon.InternalServerError
 	}
 
-	return ou, nil
+	return ous.withManaged(ctx, ou)
 }
 
 // GetOrganizationUnitByPath retrieves an organization unit by hierarchical handle path.
@@ -608,7 +660,7 @@ func (ous *organizationUnitService) GetOrganizationUnitByPath(
 		return OrganizationUnit{}, svcErr
 	}
 
-	return ou, nil
+	return ous.withManaged(ctx, ou)
 }
 
 // IsOrganizationUnitExists checks if an organization unit exists by ID.
@@ -784,9 +836,9 @@ func (ous *organizationUnitService) updateOrganizationUnitByPath(
 			return errors.New("authz error")
 		}
 
-		// Check if OU is declarative (for composite mode)
-		if ous.ouStore.IsOrganizationUnitDeclarative(txCtx, existingOU.ID) {
-			capturedSvcErr = &ErrorCannotModifyDeclarativeResource
+		// Check if OU is declarative (for composite mode) or deployed by a control plane
+		if svcErr := ous.refuseChange(txCtx, existingOU.ID); svcErr != nil {
+			capturedSvcErr = svcErr
 			return errors.New("declarative resource")
 		}
 
@@ -819,9 +871,9 @@ func (ous *organizationUnitService) updateOUInternal(
 	existingOU OrganizationUnit,
 	logger *log.Logger,
 ) (OrganizationUnit, *tidcommon.ServiceError) {
-	// Check if OU is immutable (for composite mode)
-	if ous.ouStore.IsOrganizationUnitDeclarative(ctx, id) {
-		return OrganizationUnit{}, &ErrorCannotModifyDeclarativeResource
+	// Check if OU is immutable (for composite mode) or deployed by a control plane
+	if svcErr := ous.refuseChange(ctx, id); svcErr != nil {
+		return OrganizationUnit{}, svcErr
 	}
 
 	if err := ous.validateOUName(request.Name); err != nil {
@@ -1023,9 +1075,9 @@ func (ous *organizationUnitService) deleteOrganizationUnitByPath(
 			return errors.New("authz error")
 		}
 
-		// Check if OU is declarative (for composite mode)
-		if ous.ouStore.IsOrganizationUnitDeclarative(txCtx, ouID) {
-			capturedSvcErr = &ErrorCannotModifyDeclarativeResource
+		// Check if OU is declarative (for composite mode) or deployed by a control plane
+		if svcErr := ous.refuseChange(txCtx, ouID); svcErr != nil {
+			capturedSvcErr = svcErr
 			return errors.New("declarative resource")
 		}
 
@@ -1071,9 +1123,9 @@ func (ous *organizationUnitService) deleteOUInternal(
 	if id == configuredSystemOUID() {
 		return &ErrorCannotDeleteSystemOU
 	}
-	// Check if OU is immutable (for composite mode)
-	if ous.ouStore.IsOrganizationUnitDeclarative(ctx, id) {
-		return &ErrorCannotModifyDeclarativeResource
+	// Check if OU is immutable (for composite mode) or deployed by a control plane
+	if svcErr := ous.refuseChange(ctx, id); svcErr != nil {
+		return svcErr
 	}
 
 	// Refuse deletion when child organization units, users or groups still depend on this
@@ -1285,7 +1337,11 @@ func (ous *organizationUnitService) GetOrganizationUnitChildren(
 		return nil, svcErr
 	}
 	base := fmt.Sprintf("/organization-units/%s/ous", id)
-	return buildOrganizationUnitListResponse(base, items, totalCount, limit, offset)
+	list, svcErr := buildOrganizationUnitListResponse(base, items, totalCount, limit, offset)
+	if list != nil {
+		ous.markManaged(ctx, list.OrganizationUnits)
+	}
+	return list, svcErr
 }
 
 // GetOrganizationUnitChildrenByPath retrieves a list of child organization units by hierarchical handle path.
@@ -1816,8 +1872,8 @@ func (ous *organizationUnitService) moveDescendantsToProject(
 		return nil
 	}
 	for _, id := range descendants {
-		if ous.ouStore.IsOrganizationUnitDeclarative(ctx, id) {
-			return &ErrorCannotModifyDeclarativeResource
+		if svcErr := ous.refuseChange(ctx, id); svcErr != nil {
+			return svcErr
 		}
 	}
 	if err := ous.ouStore.UpdateOrganizationUnitsProject(ctx, descendants, projectID, updatedAt); err != nil {

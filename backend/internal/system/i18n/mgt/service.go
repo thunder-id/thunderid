@@ -17,6 +17,7 @@ import (
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	sysi18n "github.com/thunder-id/thunderid/internal/system/i18n/core"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 )
@@ -57,6 +58,9 @@ type i18nService struct {
 	authzService sysauthz.SystemAuthorizationServiceInterface
 	store        i18nStoreInterface
 	logger       *log.Logger
+	// managed says which languages a control plane deployed, which stay read only here. Nil where nothing
+	// is deployed from one.
+	managed managedresource.StoreInterface
 }
 
 // newI18nService creates a new instance of i18nService with injected dependencies.
@@ -146,6 +150,9 @@ func (s *i18nService) SetTranslationOverrideForKey(ctx context.Context,
 	if svcErr := s.checkWriteAccess(ctx, security.ActionUpdateI18n); svcErr != nil {
 		return nil, svcErr
 	}
+	if svcErr := s.refuseManagedLanguage(ctx, language); svcErr != nil {
+		return nil, svcErr
+	}
 	if isDeclarativeModeEnabled() {
 		return nil, &declarativeresource.ErrorDeclarativeResourceUpdateOperation
 	}
@@ -225,6 +232,9 @@ func (s *i18nService) SetTranslationOverridesForNamespace(
 func (s *i18nService) ClearTranslationOverrideForKey(ctx context.Context,
 	language string, namespace string, key string) *tidcommon.ServiceError {
 	if svcErr := s.checkWriteAccess(ctx, security.ActionDeleteI18n); svcErr != nil {
+		return svcErr
+	}
+	if svcErr := s.refuseManagedLanguage(ctx, language); svcErr != nil {
 		return svcErr
 	}
 	if isDeclarativeModeEnabled() {
@@ -325,6 +335,9 @@ func (s *i18nService) SetTranslationOverrides(ctx context.Context,
 	if svcErr := s.checkWriteAccess(ctx, security.ActionUpdateI18n); svcErr != nil {
 		return nil, svcErr
 	}
+	if svcErr := s.refuseManagedLanguage(ctx, language); svcErr != nil {
+		return nil, svcErr
+	}
 	if isDeclarativeModeEnabled() {
 		return nil, &declarativeresource.ErrorDeclarativeResourceUpdateOperation
 	}
@@ -381,6 +394,9 @@ func (s *i18nService) SetTranslationOverrides(ctx context.Context,
 // ClearTranslationOverrides removes all custom overrides for a language.
 func (s *i18nService) ClearTranslationOverrides(ctx context.Context, language string) *tidcommon.ServiceError {
 	if svcErr := s.checkWriteAccess(ctx, security.ActionDeleteI18n); svcErr != nil {
+		return svcErr
+	}
+	if svcErr := s.refuseManagedLanguage(ctx, language); svcErr != nil {
 		return svcErr
 	}
 	if isDeclarativeModeEnabled() {
@@ -568,4 +584,21 @@ func compareLangs(langA, langB string) int {
 		return 1
 	}
 	return 0
+}
+
+// refuseManagedLanguage refuses a change to a language a control plane deployed, unless the change is the
+// managed import's: every translation of such a language is changed only by a deploy from the control plane.
+// It guards the writes the translation API makes; a resource writing its own translations, as an application
+// does its localized names, is not refused.
+func (s *i18nService) refuseManagedLanguage(ctx context.Context, language string) *tidcommon.ServiceError {
+	managed, err := managedresource.IsReadOnly(ctx, s.managed, language, managedresource.TypeTranslation)
+	if err != nil {
+		s.logger.Error(ctx, "Failed to read whether a control plane deployed the language",
+			log.String("language", language), log.Error(err))
+		return &tidcommon.InternalServerError
+	}
+	if managed {
+		return &ErrorManagedLanguage
+	}
+	return nil
 }

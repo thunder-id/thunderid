@@ -250,6 +250,22 @@ var (
 				"Set projectId to the project it belongs to",
 		},
 	}
+
+	// ErrorManagedConfiguration is returned when attempting to change a credential configuration a control plane
+	// deployed. Only a deploy from the control plane changes or removes it.
+	ErrorManagedConfiguration = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "VCI-2016",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.vci.configuration_managed",
+			DefaultValue: "Cannot modify a credential configuration deployed by the control plane",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.vci.configuration_managed_description",
+			DefaultValue: "The credential configuration was deployed by the control plane and can only be " +
+				"changed there",
+		},
+	}
 )
 
 // configurationClientErrorStatus maps a client-facing error to its HTTP status.
@@ -257,7 +273,8 @@ func configurationClientErrorStatus(code string) int {
 	switch code {
 	case ErrorConfigurationNotFound.Code:
 		return http.StatusNotFound
-	case ErrorConfigurationAlreadyExists.Code, ErrorConfigurationImmutable.Code, ErrorConfigurationIDConflict.Code:
+	case ErrorConfigurationAlreadyExists.Code, ErrorConfigurationImmutable.Code, ErrorManagedConfiguration.Code,
+		ErrorConfigurationIDConflict.Code:
 		return http.StatusConflict
 	case tidcommon.ErrorUnauthorized.Code:
 		return http.StatusForbidden

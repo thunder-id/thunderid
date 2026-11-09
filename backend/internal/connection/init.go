@@ -16,6 +16,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/resource"
 	"github.com/thunder-id/thunderid/internal/sharing"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
@@ -46,6 +47,7 @@ func Initialize(mux *http.ServeMux, mcpServer *mcp.Server, idpService idp.IDPSer
 	authzService sysauthz.SystemAuthorizationServiceInterface) (
 	declarativeresource.ResourceExporter, resourcedependency.Provider, HTTPConnectionWriterInterface, error) {
 	svc := newService(idpService, notificationService, resourceService, authZENPDPService, httpService)
+	svc.managed = managedresource.GetStore()
 	svc.valueCapturer = valueCapturer
 	svc.sharingService = sharingService
 	svc.authzService = authzService

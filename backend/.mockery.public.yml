@@ -788,6 +788,15 @@ packages:
     interfaces:
       SharingServiceInterface:
 
+  github.com/thunder-id/thunderid/internal/system/managedresource:
+    config:
+      dir: tests/mocks/managedresourcemock
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: managedresourcemock
+      filename: "{{.InterfaceName}}_mock.go"
+    interfaces:
+      StoreInterface:
+
   github.com/thunder-id/thunderid/internal/system/sysauthz:
     config:
       dir: tests/mocks/sysauthzmock

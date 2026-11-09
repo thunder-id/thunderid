@@ -1294,7 +1294,7 @@ func TestRouteTableUsesCatalogPermissions(t *testing.T) {
 		"PUT /variables/**": true, "DELETE /variables/**": true,
 		"GET /secrets": true, "POST /secrets": true, "GET /secrets/**": true,
 		"PUT /secrets/**": true, "DELETE /secrets/**": true,
-		"POST /import": true, "POST /import/delete": true,
+		"POST /import": true, "POST /import/delete": true, "POST /import/managed": true,
 		"GET /users/*/ous": true,
 		// The administration flow permission is the root permission on the control plane.
 		"POST /flow/execute": true,

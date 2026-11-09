@@ -107,6 +107,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/kmprovider"
 	"github.com/thunder-id/thunderid/internal/system/kmprovider/defaultkm/pki"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/managedresource"
 
 	"github.com/thunder-id/thunderid/internal/system/mcp"
 	"github.com/thunder-id/thunderid/internal/system/observability"
@@ -140,6 +141,9 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 
 	// Service registration runs during application startup, outside any request.
 	ctx := context.Background()
+
+	// Before any service, so each reads what a control plane deployed here and keeps it read only.
+	managedresource.Initialize()
 
 	// Load the server's private key for signing JWTs.
 	pkiService, err := pki.Initialize()

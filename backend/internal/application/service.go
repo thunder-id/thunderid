@@ -33,6 +33,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/filter"
 	i18nmgt "github.com/thunder-id/thunderid/internal/system/i18n/mgt"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	"github.com/thunder-id/thunderid/internal/system/projectscope"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/security"
@@ -119,6 +120,9 @@ type applicationService struct {
 	// systemFlows is nil where system flows are off.
 	systemFlows systemFlowProvider
 	bus         eventbus.EventBusInterface
+	// managed says which applications a control plane deployed, which stay read only here. Nil where
+	// nothing is deployed from one.
+	managed managedresource.StoreInterface
 }
 
 // systemFlowProvider runs a system flow to completion. The flow engine implements it.
@@ -570,6 +574,15 @@ func (as *applicationService) buildApplicationList(ctx context.Context, entities
 		applicationList = append(applicationList, resp)
 	}
 
+	if err := managedresource.MarkDeployed(ctx, as.managed, applicationList,
+		func(a *model.BasicApplicationResponse) string { return a.ID },
+		func(a *model.BasicApplicationResponse) { a.IsReadOnly = true },
+		managedresource.TypeApplication); err != nil {
+		// Every write to such an application is refused whatever the list says, so it is served without the
+		// flag.
+		as.logger.Error(ctx, "Failed to read which applications a control plane deployed", log.Error(err))
+	}
+
 	return &model.ApplicationListResponse{
 		TotalResults: totalResults,
 		Count:        len(applicationList),
@@ -643,6 +656,32 @@ func (as *applicationService) checkApplicationDeclarative(
 	return nil
 }
 
+// checkApplicationMutable refuses a change to an application declared in a file, or deployed by a control
+// plane unless the change is the managed import's. An id no entity holds is answered as not found.
+func (as *applicationService) checkApplicationMutable(
+	ctx context.Context, appID string,
+) *tidcommon.ServiceError {
+	if svcErr := as.checkApplicationDeclarative(ctx, appID); svcErr != nil {
+		return svcErr
+	}
+	return as.refuseManaged(ctx, appID)
+}
+
+// refuseManaged refuses a change to an application a control plane deployed, unless the change is the
+// managed import's: only a deploy from the control plane changes or removes it.
+func (as *applicationService) refuseManaged(ctx context.Context, appID string) *tidcommon.ServiceError {
+	managed, err := managedresource.IsReadOnly(ctx, as.managed, appID, managedresource.TypeApplication)
+	if err != nil {
+		as.logger.Error(ctx, "Failed to read whether a control plane deployed the application",
+			log.String("appID", appID), log.Error(err))
+		return &tidcommon.InternalServerError
+	}
+	if managed {
+		return &ErrorManagedApplication
+	}
+	return nil
+}
+
 // UpdateApplication update the application for given app id.
 func (as *applicationService) UpdateApplication(ctx context.Context, appID string, app *model.ApplicationDTO) (
 	*model.ApplicationDTO, *tidcommon.ServiceError) {
@@ -657,7 +696,7 @@ func (as *applicationService) updateApplication(ctx context.Context, appID strin
 	if appID == "" {
 		return nil, &ErrorInvalidApplicationID
 	}
-	if svcErr := as.checkApplicationDeclarative(ctx, appID); svcErr != nil {
+	if svcErr := as.checkApplicationMutable(ctx, appID); svcErr != nil {
 		return nil, svcErr
 	}
 	// An update can set the client secret, switch the authentication method or replace the
@@ -919,7 +958,7 @@ func (as *applicationService) deleteApplication(ctx context.Context, appID strin
 			return svcErr
 		}
 		// Refused before anything is removed. Only an entity that exists can be declared.
-		if svcErr := as.checkApplicationDeclarative(ctx, appID); svcErr != nil {
+		if svcErr := as.checkApplicationMutable(ctx, appID); svcErr != nil {
 			return svcErr
 		}
 		if svcErr := as.authzService.CanControlEntity(ctx, appID); svcErr != nil {
@@ -1036,7 +1075,7 @@ func (as *applicationService) ValidateDeleteApplication(ctx context.Context, app
 	if svcErr := as.checkApplicationAccess(ctx, security.ActionDeleteApplication, existing.OUID); svcErr != nil {
 		return nil, svcErr
 	}
-	if svcErr := as.checkApplicationDeclarative(ctx, appID); svcErr != nil {
+	if svcErr := as.checkApplicationMutable(ctx, appID); svcErr != nil {
 		return nil, svcErr
 	}
 	if svcErr := as.authzService.CanControlEntity(ctx, appID); svcErr != nil {
@@ -1106,7 +1145,7 @@ func (as *applicationService) ValidateCredentialAction(
 	if svcErr := as.checkApplicationAccess(ctx, security.ActionUpdateApplication, existing.OUID); svcErr != nil {
 		return nil, svcErr
 	}
-	if svcErr := as.checkApplicationDeclarative(ctx, appID); svcErr != nil {
+	if svcErr := as.checkApplicationMutable(ctx, appID); svcErr != nil {
 		return nil, svcErr
 	}
 	if svcErr := as.authzService.CanControlEntity(ctx, appID); svcErr != nil {
@@ -3103,7 +3142,7 @@ func (as *applicationService) createSharingPolicy(
 	}
 	// A declared application's own sharing is declared with it.
 	if req.InitiatingOUID == "" || req.InitiatingOUID == owningOUID {
-		if svcErr := as.checkApplicationDeclarative(ctx, appID); svcErr != nil {
+		if svcErr := as.checkApplicationMutable(ctx, appID); svcErr != nil {
 			return sharing.Policy{}, svcErr
 		}
 	}
@@ -3160,7 +3199,7 @@ func (as *applicationService) UpdateSharingPolicy(
 func (as *applicationService) updateSharingPolicy(
 	ctx context.Context, appID, policyID string, req sharing.PolicyRequest,
 ) (sharing.Policy, *tidcommon.ServiceError) {
-	_, policy, svcErr := as.requireOwnPolicy(ctx, appID, policyID)
+	owningOUID, policy, svcErr := as.requireOwnPolicy(ctx, appID, policyID)
 	if svcErr != nil {
 		return sharing.Policy{}, svcErr
 	}
@@ -3170,6 +3209,12 @@ func (as *applicationService) updateSharingPolicy(
 	}
 	if isDeclarativeModeEnabled() {
 		return sharing.Policy{}, &ErrorCannotModifyDeclarativeResource
+	}
+	// A deployed application's own sharing is deployed with it; a unit it is shared into may still reshare.
+	if policy.InitiatingOUID == owningOUID {
+		if svcErr := as.refuseManaged(ctx, appID); svcErr != nil {
+			return sharing.Policy{}, svcErr
+		}
 	}
 	updated, svcErr := as.sharingService.UpdatePolicy(ctx, policyID, req)
 	return updated, translateSharingError(svcErr)
@@ -3194,7 +3239,7 @@ func (as *applicationService) DeleteSharingPolicy(
 func (as *applicationService) deleteSharingPolicy(
 	ctx context.Context, appID, policyID string,
 ) *tidcommon.ServiceError {
-	_, policy, svcErr := as.requireOwnPolicy(ctx, appID, policyID)
+	owningOUID, policy, svcErr := as.requireOwnPolicy(ctx, appID, policyID)
 	if svcErr != nil {
 		if svcErr.Code == ErrorSharingPolicyNotFound.Code {
 			return errSharingPolicyNotFoundNoop
@@ -3207,6 +3252,11 @@ func (as *applicationService) deleteSharingPolicy(
 	}
 	if isDeclarativeModeEnabled() {
 		return &ErrorCannotModifyDeclarativeResource
+	}
+	if policy.InitiatingOUID == owningOUID {
+		if svcErr := as.refuseManaged(ctx, appID); svcErr != nil {
+			return svcErr
+		}
 	}
 	if policy.Declared {
 		return &ErrorSharingPolicyDeclared

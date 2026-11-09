@@ -633,6 +633,20 @@ var (
 var (
 	errFlowNotFound    = errors.New("flow not found")
 	errVersionNotFound = errors.New("version not found")
+	// ErrorManagedFlow is the error returned when attempting to change a flow a control plane deployed.
+	// Only a deploy from the control plane changes, restores or removes it.
+	ErrorManagedFlow = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FLM-1048",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.flow_is_managed",
+			DefaultValue: "Cannot modify a flow deployed by the control plane",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.flow_is_managed_description",
+			DefaultValue: "The flow was deployed by the control plane and can only be changed there",
+		},
+	}
 )
 
 // errNilEventBus is returned when the service is initialized without the event bus it audits on.

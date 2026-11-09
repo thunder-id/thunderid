@@ -31,6 +31,9 @@ type ImportRequest struct {
 	// SharingRemovals names the sharing policies the content no longer carries for the resources it writes. They are
 	// removed once the resource is written, and a policy absent from the content is never removed otherwise.
 	SharingRemovals []SharingPolicyRemoval `json:"sharingRemovals,omitempty"`
+	// Managed is set by the managed import endpoint and never read from the body. What a managed
+	// import writes is recorded as deployed by a control plane and becomes read only here.
+	Managed bool `json:"-"`
 }
 
 // ResourceDeletion identifies a runtime resource to remove during an import.

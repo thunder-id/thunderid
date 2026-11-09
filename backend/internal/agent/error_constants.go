@@ -779,6 +779,21 @@ var (
 			DefaultValue: "A personal agent cannot be created for a user whose account is suspended",
 		},
 	}
+
+	// ErrorManagedAgent is the error returned when attempting to change an agent a control plane deployed.
+	// Only a deploy from the control plane changes or removes it.
+	ErrorManagedAgent = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AGT-1063",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.agentservice.managed_agent",
+			DefaultValue: "Cannot modify an agent deployed by the control plane",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.agentservice.managed_agent_description",
+			DefaultValue: "The agent was deployed by the control plane and can only be changed there",
+		},
+	}
 )
 
 // errInvalidDeclarativeLifespan is returned when a declarative agent's validUntil is not an RFC 3339

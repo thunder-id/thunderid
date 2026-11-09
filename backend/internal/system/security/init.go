@@ -13,8 +13,8 @@ import (
 // revocationEnforcer is consulted after authentication to reject revoked tokens; expectedAud, if
 // non-empty, is the required audience.
 //
-// managementAPIKeyHash, when configured, admits a second mechanism for the import and variable
-// store APIs only. It is registered ahead of the JWT authenticator because it claims a request only
+// managementAPIKeyHash, when configured, admits a second mechanism for the import and the
+// variable store APIs only. It is registered ahead of the JWT authenticator because it claims a request only
 // when the API-Key header hashes to that digest; anything else falls through to JWT unchanged.
 func Initialize(jwtService jwt.JWTServiceInterface, revocationEnforcer RevocationEnforcerInterface,
 	expectedAud string, managementAPIKeyHash string,

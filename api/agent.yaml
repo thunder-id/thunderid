@@ -1339,7 +1339,9 @@ paths:
                       defaultValue: "One or more user attributes are not valid for the configured allowed user types"
 
         "403":
-          description: Forbidden
+          description: >
+            Forbidden. The agent is declared in a file (`AGT-1027`), or was deployed by a control plane,
+            which only a later deploy from the control plane changes (`AGT-1063`).
           content:
             application/json:
               schema:
@@ -1419,7 +1421,9 @@ paths:
         "204":
           description: Agent deleted
         "403":
-          description: Forbidden
+          description: >
+            Forbidden. The agent is declared in a file (`AGT-1027`), or was deployed by a control plane,
+            which only a later deploy from the control plane changes (`AGT-1063`).
           content:
             application/json:
               schema:
@@ -2230,7 +2234,8 @@ components:
           description: |
             Indicates whether the agent is immutable. When `true`, update and delete
             operations are rejected. Set by the system for declaratively provisioned agents, and
-            for agents listed in an organization unit they are shared into.
+            for agents listed in an organization unit they are shared into, and for agents a control plane
+            deployed to a data plane.
           example: false
         status:
           $ref: '#/components/schemas/AgentAccessStatus'
@@ -3153,6 +3158,13 @@ components:
       type: object
       required: [id, handle, displayName, ouId, schema]
       properties:
+        isReadOnly:
+          type: boolean
+          readOnly: true
+          description: |
+            Whether the agent type is read only: declared in a resource file, or deployed by a control
+            plane, which only a later deploy from the control plane changes.
+          example: false
         id:
           type: string
           format: uuid

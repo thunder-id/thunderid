@@ -48,6 +48,8 @@ type EntityType struct {
 	AllowSelfRegistration bool              `json:"allowSelfRegistration" yaml:"allowSelfRegistration,omitempty"`
 	SystemAttributes      *SystemAttributes `json:"systemAttributes,omitempty" yaml:"systemAttributes,omitempty"`
 	Schema                json.RawMessage   `json:"schema,omitempty" yaml:"schema"`
+	// IsReadOnly marks a type a control plane deployed. It is never exported.
+	IsReadOnly bool `json:"isReadOnly" yaml:"-"`
 }
 
 // EntityTypeListItem represents a simplified entity type for listing operations.

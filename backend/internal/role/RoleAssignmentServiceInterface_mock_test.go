@@ -1009,6 +1009,76 @@ func (_c *RoleAssignmentServiceInterfaceMock_RemoveMandatedAssignments_Call) Run
 	return _c
 }
 
+// ResolveAssignmentOUs provides a mock function for the type RoleAssignmentServiceInterfaceMock
+func (_mock *RoleAssignmentServiceInterfaceMock) ResolveAssignmentOUs(ctx context.Context, assignments []RoleAssignment) ([]RoleAssignment, *common.ServiceError) {
+	ret := _mock.Called(ctx, assignments)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ResolveAssignmentOUs")
+	}
+
+	var r0 []RoleAssignment
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []RoleAssignment) ([]RoleAssignment, *common.ServiceError)); ok {
+		return returnFunc(ctx, assignments)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []RoleAssignment) []RoleAssignment); ok {
+		r0 = returnFunc(ctx, assignments)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]RoleAssignment)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, []RoleAssignment) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, assignments)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// RoleAssignmentServiceInterfaceMock_ResolveAssignmentOUs_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ResolveAssignmentOUs'
+type RoleAssignmentServiceInterfaceMock_ResolveAssignmentOUs_Call struct {
+	*mock.Call
+}
+
+// ResolveAssignmentOUs is a helper method to define mock.On call
+//   - ctx context.Context
+//   - assignments []RoleAssignment
+func (_e *RoleAssignmentServiceInterfaceMock_Expecter) ResolveAssignmentOUs(ctx any, assignments any) *RoleAssignmentServiceInterfaceMock_ResolveAssignmentOUs_Call {
+	return &RoleAssignmentServiceInterfaceMock_ResolveAssignmentOUs_Call{Call: _e.mock.On("ResolveAssignmentOUs", ctx, assignments)}
+}
+
+func (_c *RoleAssignmentServiceInterfaceMock_ResolveAssignmentOUs_Call) Run(run func(ctx context.Context, assignments []RoleAssignment)) *RoleAssignmentServiceInterfaceMock_ResolveAssignmentOUs_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 []RoleAssignment
+		if args[1] != nil {
+			arg1 = args[1].([]RoleAssignment)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *RoleAssignmentServiceInterfaceMock_ResolveAssignmentOUs_Call) Return(roleAssignments []RoleAssignment, serviceError *common.ServiceError) *RoleAssignmentServiceInterfaceMock_ResolveAssignmentOUs_Call {
+	_c.Call.Return(roleAssignments, serviceError)
+	return _c
+}
+
+func (_c *RoleAssignmentServiceInterfaceMock_ResolveAssignmentOUs_Call) RunAndReturn(run func(ctx context.Context, assignments []RoleAssignment) ([]RoleAssignment, *common.ServiceError)) *RoleAssignmentServiceInterfaceMock_ResolveAssignmentOUs_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // ValidateRemoveAssignment provides a mock function for the type RoleAssignmentServiceInterfaceMock
 func (_mock *RoleAssignmentServiceInterfaceMock) ValidateRemoveAssignment(ctx context.Context, id string, ouID string, assigneeID string) (*revocation.AccessRevocationTarget, *common.ServiceError) {
 	ret := _mock.Called(ctx, id, ouID, assigneeID)

@@ -15,6 +15,7 @@ import (
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/eventbus"
+	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
 	"github.com/thunder-id/thunderid/internal/system/projectscope"
 	"github.com/thunder-id/thunderid/internal/system/security"
@@ -46,6 +47,7 @@ func Initialize(
 	}
 
 	ouService := newOrganizationUnitService(authzService, ouStore, transactioner, projectRequired, bus)
+	ouService.(*organizationUnitService).managed = managedresource.GetStore()
 
 	ouHandler := newOrganizationUnitHandler(ouService)
 	registerRoutes(mux, ouHandler)

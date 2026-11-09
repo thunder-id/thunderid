@@ -324,6 +324,22 @@ var (
 				"Set projectId to the project it belongs to",
 		},
 	}
+
+	// ErrorManagedDefinition is returned when attempting to change a presentation definition a control plane deployed.
+	// Only a deploy from the control plane changes or removes it.
+	ErrorManagedDefinition = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "VP-2021",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.vp.definition_managed",
+			DefaultValue: "Cannot modify a presentation definition deployed by the control plane",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.vp.definition_managed_description",
+			DefaultValue: "The presentation definition was deployed by the control plane and can only be " +
+				"changed there",
+		},
+	}
 )
 
 // definitionClientErrorStatus maps a client-facing definition error to its HTTP status.
@@ -331,7 +347,8 @@ func definitionClientErrorStatus(code string) int {
 	switch code {
 	case ErrorDefinitionNotFound.Code:
 		return http.StatusNotFound
-	case ErrorDefinitionAlreadyExists.Code, ErrorDefinitionImmutable.Code, ErrorDefinitionIDConflict.Code:
+	case ErrorDefinitionAlreadyExists.Code, ErrorDefinitionImmutable.Code, ErrorManagedDefinition.Code,
+		ErrorDefinitionIDConflict.Code:
 		return http.StatusConflict
 	case tidcommon.ErrorUnauthorized.Code:
 		return http.StatusForbidden

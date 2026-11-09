@@ -233,4 +233,18 @@ var (
 			DefaultValue: "The filter must be a single ouId eq expression with a quoted organization unit ID",
 		},
 	}
+	// ErrorManagedConnection is the error returned when attempting to change a connection a control plane
+	// deployed. Only a deploy from the control plane changes or removes it.
+	ErrorManagedConnection = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "CON-1040",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.connectionservice.managed_connection",
+			DefaultValue: "Cannot modify a connection deployed by the control plane",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.connectionservice.managed_connection_description",
+			DefaultValue: "The connection was deployed by the control plane and can only be changed there",
+		},
+	}
 )

@@ -248,6 +248,20 @@ var (
 			DefaultValue: "A layout must belong to a project. Set projectId to the project it belongs to",
 		},
 	}
+	// ErrorManagedLayout is the error returned when attempting to change a layout a control plane deployed.
+	// Only a deploy from the control plane changes or removes it.
+	ErrorManagedLayout = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "LAY-1021",
+		Error: tidcommon.I18nMessage{
+			Key:          "layout.error.cannot_modify_managed",
+			DefaultValue: "Cannot modify a layout deployed by the control plane",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "layout.error.cannot_modify_managed_description",
+			DefaultValue: "The layout was deployed by the control plane and can only be changed there",
+		},
+	}
 )
 
 // errNilEventBus is returned when the service is initialized without the event bus it audits on.

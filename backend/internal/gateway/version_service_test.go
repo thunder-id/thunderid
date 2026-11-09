@@ -488,6 +488,8 @@ type fakeGatewayClient struct {
 	heldErr   error
 	// imported is the gateway's account of an import; unset, it refused nothing.
 	imported json.RawMessage
+	// plain makes the fake answer as a gateway with no managed import, which took the plain import.
+	plain bool
 	// onImport runs while an import is in flight, for what may change at that moment.
 	onImport func()
 }
@@ -512,7 +514,7 @@ func (f *fakeGatewayClient) HeldValues(_ context.Context, _ *Gateway, _ string,
 }
 
 func (f *fakeGatewayClient) Import(_ context.Context, gw *Gateway, key string,
-	req gatewayImportRequest) (json.RawMessage, error) {
+	req gatewayImportRequest) (json.RawMessage, bool, error) {
 	f.sent = append(f.sent, req)
 	f.keys = append(f.keys, key)
 	f.gatewayIDs = append(f.gatewayIDs, gw.ID)
@@ -520,12 +522,12 @@ func (f *fakeGatewayClient) Import(_ context.Context, gw *Gateway, key string,
 		f.onImport()
 	}
 	if f.err != nil {
-		return nil, f.err
+		return nil, false, f.err
 	}
 	if f.imported != nil {
-		return f.imported, nil
+		return f.imported, f.plain, nil
 	}
-	return json.RawMessage(`{"summary":{"failed":0},"results":[]}`), nil
+	return json.RawMessage(`{"summary":{"failed":0},"results":[]}`), f.plain, nil
 }
 
 func (f *fakeGatewayClient) last() gatewayImportRequest { return f.sent[len(f.sent)-1] }
@@ -1025,6 +1027,23 @@ func TestApplySendsTheVersionAndRecordsIt(t *testing.T) {
 	held, _ := f.svc.GetApplied(context.Background(), "gw-1")
 	assert.Equal(t, 1, held.AppliedVersion)
 	assert.Zero(t, held.PreviousVersion)
+}
+
+// An apply to a gateway that has no managed import says so, since what it deployed is not read only there.
+func TestApplyReportsADeployThroughThePlainImport(t *testing.T) {
+	f := newVersionFixture(t)
+	f.capture(t, "ou-a")
+
+	result, svcErr := f.svc.Apply(context.Background(), "gw-1", ApplyRequest{})
+	require.Nil(t, svcErr)
+	assert.False(t, result.PlainImport)
+
+	f.capture(t, "ou-b")
+	f.client.plain = true
+	result, svcErr = f.svc.Apply(context.Background(), "gw-1", ApplyRequest{})
+
+	require.Nil(t, svcErr)
+	assert.True(t, result.PlainImport)
 }
 
 // An apply and a revert record who made them.

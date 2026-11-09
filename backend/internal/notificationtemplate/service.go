@@ -26,6 +26,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/filter"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	"github.com/thunder-id/thunderid/internal/system/projectscope"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/security"
@@ -79,6 +80,9 @@ type notificationTemplateService struct {
 	projectRequired bool
 	logger          *log.Logger
 	bus             eventbus.EventBusInterface
+	// managed says which templates a control plane deployed, which stay read only here. Nil where
+	// nothing is deployed from one.
+	managed managedresource.StoreInterface
 }
 
 // projectOUValidator checks that a resource scoped to a project is in an organization unit the project holds.
@@ -243,6 +247,15 @@ func (ts *notificationTemplateService) GetTemplate(ctx context.Context, channel 
 		ts.logger.Error(ctx, "Failed to retrieve notification template", log.String("id", id), log.Error(err))
 		return nil, &tidcommon.InternalServerError
 	}
+	if !dao.IsReadOnly {
+		deployed, err := managedresource.IsDeployed(ctx, ts.managed, id, managedresource.TypeNotificationTemplate)
+		if err != nil {
+			// Every write to such a template is refused whatever the read says, so it is served without the flag.
+			ts.logger.Error(ctx, "Failed to read whether a control plane deployed the template",
+				log.String("id", id), log.Error(err))
+		}
+		dao.IsReadOnly = deployed
+	}
 
 	if svcErr := ts.checkTemplateAccess(ctx, security.ActionReadNotificationTemplate, dao.OUID); svcErr != nil {
 		return nil, svcErr
@@ -326,6 +339,7 @@ func (ts *notificationTemplateService) updateTemplate(ctx context.Context, chann
 	var notFound bool
 	var projectErr *tidcommon.ServiceError
 	var accessErr *tidcommon.ServiceError
+	var managedErr *tidcommon.ServiceError
 	txErr := ts.transactioner.Transact(ctx, func(txCtx context.Context) error {
 		existing, err := ts.store.GetTemplate(txCtx, channel, id)
 		if err != nil {
@@ -344,6 +358,10 @@ func (ts *notificationTemplateService) updateTemplate(ctx context.Context, chann
 		// ErrorTemplateReadOnly below.
 		if existing.IsReadOnly {
 			return errDeclarativeTemplate
+		}
+		if svcErr := ts.refuseManaged(txCtx, id); svcErr != nil {
+			managedErr = svcErr
+			return errManagedTemplate
 		}
 
 		// The handle and ouId are immutable; carry the stored values so the response reflects them.
@@ -375,6 +393,9 @@ func (ts *notificationTemplateService) updateTemplate(ctx context.Context, chann
 		}
 		if errors.Is(txErr, errDeclarativeTemplate) {
 			return nil, &ErrorTemplateReadOnly
+		}
+		if managedErr != nil {
+			return nil, managedErr
 		}
 		ts.logger.Error(ctx, "Failed to update notification template", log.String("id", id), log.Error(txErr))
 		return nil, &tidcommon.InternalServerError
@@ -428,6 +449,9 @@ func (ts *notificationTemplateService) deleteTemplate(
 	// that a flow references returns read-only (403) rather than in-use (409).
 	if existing.IsReadOnly {
 		return &ErrorTemplateReadOnly
+	}
+	if svcErr := ts.refuseManaged(ctx, id); svcErr != nil {
+		return svcErr
 	}
 
 	// A template reported as a blocking dependency by the registry cannot be deleted.
@@ -871,4 +895,22 @@ func buildSelf(channel ChannelType, id string) string {
 // pagination links.
 func buildCollectionSelf(channel ChannelType) string {
 	return fmt.Sprintf("/notification-templates/%s/templates", channel)
+}
+
+// errManagedTemplate rolls back an update refused because a control plane deployed the template.
+var errManagedTemplate = errors.New("the template was deployed by a control plane")
+
+// refuseManaged refuses a change to a template a control plane deployed, unless the change is the managed
+// import's: only a deploy from the control plane changes or removes it.
+func (ts *notificationTemplateService) refuseManaged(ctx context.Context, id string) *tidcommon.ServiceError {
+	managed, err := managedresource.IsReadOnly(ctx, ts.managed, id, managedresource.TypeNotificationTemplate)
+	if err != nil {
+		ts.logger.Error(ctx, "Failed to read whether a control plane deployed the template",
+			log.String("id", id), log.Error(err))
+		return &tidcommon.InternalServerError
+	}
+	if managed {
+		return &ErrorManagedTemplate
+	}
+	return nil
 }

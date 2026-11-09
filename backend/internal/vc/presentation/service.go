@@ -14,6 +14,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	"github.com/thunder-id/thunderid/internal/system/projectscope"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
@@ -69,6 +70,9 @@ type definitionService struct {
 	projectRequired bool
 	logger          *log.Logger
 	uuid            func() (string, error)
+	// managed says which presentation definitions a control plane deployed, which stay read only here. Nil
+	// where nothing is deployed from one.
+	managed managedresource.StoreInterface
 }
 
 // projectOUValidator checks that a resource scoped to a project is in an organization unit the project holds.
@@ -437,6 +441,9 @@ func (s *definitionService) UpdatePresentationDefinition(
 	if svcErr := s.checkAccess(ctx, security.ActionUpdateVC, existing.OUID); svcErr != nil {
 		return nil, svcErr
 	}
+	if svcErr := s.refuseManaged(ctx, id); svcErr != nil {
+		return nil, svcErr
+	}
 
 	if svcErr := carryStoredCertificates(dto.TrustedAuthorities, existing.TrustedAuthorities); svcErr != nil {
 		return nil, svcErr
@@ -505,6 +512,9 @@ func (s *definitionService) DeletePresentationDefinition(ctx context.Context, id
 		return &tidcommon.InternalServerError
 	}
 	if svcErr := s.checkAccess(ctx, security.ActionDeleteVC, existing.OUID); svcErr != nil {
+		return svcErr
+	}
+	if svcErr := s.refuseManaged(ctx, id); svcErr != nil {
 		return svcErr
 	}
 	if err := s.store.DeletePresentationDefinition(ctx, id); err != nil {
@@ -729,4 +739,26 @@ func (s *definitionService) checkAccess(ctx context.Context, action security.Act
 		return &tidcommon.ErrorUnauthorized
 	}
 	return nil
+}
+
+// refuseManaged refuses a change to a presentation definition a control plane deployed, unless the change is the
+// managed import's: only a deploy from the control plane changes or removes it.
+func (s *definitionService) refuseManaged(ctx context.Context, id string) *tidcommon.ServiceError {
+	managed, err := managedresource.IsReadOnly(ctx, s.managed, id, managedresource.TypePresentationDefinition)
+	if err != nil {
+		s.logger.Error(ctx, "Failed to read whether a control plane deployed the presentation definition",
+			log.String("id", id), log.Error(err))
+		return &tidcommon.InternalServerError
+	}
+	if managed {
+		return &ErrorManagedDefinition
+	}
+	return nil
+}
+
+// setManagedStore gives the service the record of what a control plane deployed.
+func setManagedStore(service any, managed managedresource.StoreInterface) {
+	if svc, ok := service.(*definitionService); ok {
+		svc.managed = managed
+	}
 }

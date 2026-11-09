@@ -599,6 +599,34 @@ var (
 
 	// errNilEventBus is returned when the service is initialized without the event bus it audits on.
 	errNilEventBus = errors.New("the role service needs an event bus")
+	// ErrorManagedRole is the error returned when attempting to change a role a control plane deployed.
+	// Only a deploy from the control plane changes or removes it.
+	ErrorManagedRole = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "ROL-1043",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.roleservice.cannot_modify_managed_role",
+			DefaultValue: "Cannot modify a role deployed by the control plane",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.roleservice.cannot_modify_managed_role_description",
+			DefaultValue: "The role was deployed by the control plane and can only be changed there",
+		},
+	}
+	// ErrorManagedRoleAssignment is the error returned when attempting to remove an assignment a control
+	// plane deployed to a role. Assignments made on this deployment stay removable.
+	ErrorManagedRoleAssignment = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "ROL-1044",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.roleservice.cannot_remove_managed_assignment",
+			DefaultValue: "Cannot remove an assignment deployed by the control plane",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.roleservice.cannot_remove_managed_assignment_description",
+			DefaultValue: "The assignment was deployed to the role by the control plane and can only be removed there",
+		},
+	}
 )
 
 // errRoleNotFoundNoop is returned by deleteRole when the role does not exist. DeleteRole turns it into a

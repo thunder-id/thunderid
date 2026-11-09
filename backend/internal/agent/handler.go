@@ -447,7 +447,7 @@ func writeServiceError(ctx context.Context, w http.ResponseWriter, svcErr *tidco
 		case ErrorAttributeConflict.Code,
 			ErrorAgentAlreadyExistsWithClientID.Code:
 			statusCode = http.StatusConflict
-		case ErrorCannotModifyDeclarativeResource.Code,
+		case ErrorCannotModifyDeclarativeResource.Code, ErrorManagedAgent.Code,
 			ErrorDelegatedTokenNotAllowed.Code,
 			tidcommon.ErrorUnauthorized.Code,
 			sysauthz.ErrorGrantNotPermitted.Code:

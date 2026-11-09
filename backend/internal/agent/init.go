@@ -26,6 +26,7 @@ import (
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/eventbus"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
 	"github.com/thunder-id/thunderid/internal/system/observability"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
@@ -79,6 +80,7 @@ func Initialize(
 	service := newAgentService(authzService, entityService, inboundClientService, ouService, roleService,
 		governance, valueCapturer, entityTypeService, transactioner, observabilitySvc, projectValidator, bus,
 		revoker, artifactLifetime)
+	service.(*agentService).managed = managedresource.GetStore()
 
 	if err := entityService.LoadIndexedAttributes(getAgentIndexedAttributes()); err != nil {
 		return nil, nil, err

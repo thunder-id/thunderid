@@ -787,7 +787,7 @@ func TestCreateHTTPServer_AuditsTheEventAServicePublishes(t *testing.T) {
 			read := auditLines(t)
 			bus, stopper := initAuditBus(context.Background(), log.GetLogger(), cfg)
 			mux := http.NewServeMux()
-			mux.HandleFunc("POST /import", func(w http.ResponseWriter, r *http.Request) {
+			mux.HandleFunc("POST /import/managed", func(w http.ResponseWriter, r *http.Request) {
 				ctx := r.Context()
 				for _, p := range published {
 					target := audit.Ref{Type: p.targetType, ID: "id-1"}
@@ -798,7 +798,7 @@ func TestCreateHTTPServer_AuditsTheEventAServicePublishes(t *testing.T) {
 			})
 			server := createHTTPServer(context.Background(), log.GetLogger(), cfg, mux, nil, enforcer)
 
-			request := httptest.NewRequest(http.MethodPost, "/import", nil)
+			request := httptest.NewRequest(http.MethodPost, "/import/managed", nil)
 			request.RemoteAddr = tc.remoteAddr
 			request.Header.Set("User-Agent", "audit-test/1.0")
 			request.Header.Set(constants.APIKeyHeaderName, testAuditAPIKey)

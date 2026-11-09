@@ -267,6 +267,9 @@ type ApplyResult struct {
 	Diff      Diff   `json:"diff"`
 	// Import is the gateway's own account of the import, passed through as it answered.
 	Import json.RawMessage `json:"import,omitempty"`
+	// PlainImport reports that the gateway has no managed import, so the apply went through its plain
+	// import: what it wrote is not read only on that gateway until the gateway is upgraded.
+	PlainImport bool `json:"plainImport,omitempty"`
 	// Recorded reports whether the gateway's applied version moved, which every completed apply does
 	// and a dry run never does. Import says which resources, if any, the gateway refused.
 	Recorded bool `json:"recorded"`

@@ -167,6 +167,68 @@ paths:
                   key: "error.internal_server_error_description"
                   defaultValue: "An unexpected error occurred while processing the import request"
 
+  /import/managed:
+    post:
+      tags:
+        - Import
+      summary: Deploy resources from a control plane
+      description: >
+        Imports declarative YAML documents the way `POST /import` does, with the same request and
+        response, for a control plane deploying to this deployment. Only the management API key may call
+        it; any other caller is refused with `403`. What it writes is recorded as deployed by the control
+        plane and becomes read only here: the resources' own APIs, and the plain import, refuse to change
+        or remove them. Reads report `isReadOnly` where the resource's response has the field. Application
+        and agent details, connections, projects, credential configurations, presentation definitions,
+        translations and server configuration sections do not report it, though writes to them are refused
+        all the same. A group's members and a role's assignments are
+        owned entry by entry: the ones it sends are read only, the ones it sent before and does not send
+        any more are removed, and ones added on this deployment are left as they are. A resource it removes
+        through `deletions` is forgotten. A dry run records nothing. A resource written but not recorded is
+        reported as failed, so the control plane deploys it again.
+      security:
+        - ManagementAPIKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ImportRequest'
+      responses:
+        "200":
+          description: Import completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportResponse'
+        "400":
+          description: Invalid import request or processing error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          description: The caller is not the management API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "IMP-1008"
+                message:
+                  key: "error.import.managedImportNotAllowed"
+                  defaultValue: "Managed import not allowed"
+                description:
+                  key: "error.import.managedImportNotAllowed.description"
+                  defaultValue: "Only the management API key may deploy resources through the managed import"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /import/delete:
     post:
       tags:
@@ -228,6 +290,14 @@ paths:
 
 components:
   securitySchemes:
+    ManagementAPIKey:
+      type: apiKey
+      in: header
+      name: API-Key
+      description: >
+        The deployment's management API key, whose SHA-256 digest is configured as
+        `server.security.management_api_key_hash`. It opens the managed import, the plain import, and the
+        variable and secret stores. Only the managed import marks what it writes as read only.
     OAuth2:
       type: oauth2
       flows:

@@ -31,9 +31,7 @@ func (ts *GatewayVersionsTestSuite) TestAnApplyRemovingManyResourcesIsRefusedUnt
 	full := ts.capture("six units")
 	ts.True(ts.apply(full.Version, false).Recorded)
 
-	for _, id := range ids {
-		ts.Require().NoError(testutils.DeleteOrganizationUnit(id))
-	}
+	ts.removeManagedUnits(ids...)
 	ids = nil
 	emptied := ts.capture("none of them")
 

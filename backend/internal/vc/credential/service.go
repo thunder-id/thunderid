@@ -11,6 +11,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	"github.com/thunder-id/thunderid/internal/system/projectscope"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
@@ -68,6 +69,9 @@ type configurationService struct {
 	projectRequired bool
 	logger          *log.Logger
 	uuid            func() (string, error)
+	// managed says which credential configurations a control plane deployed, which stay read only here. Nil
+	// where nothing is deployed from one.
+	managed managedresource.StoreInterface
 }
 
 // projectOUValidator checks that a resource scoped to a project is in an organization unit the project holds.
@@ -508,6 +512,9 @@ func (s *configurationService) UpdateCredentialConfiguration(
 	if svcErr := s.checkAccess(ctx, security.ActionUpdateVC, existing.OUID); svcErr != nil {
 		return nil, svcErr
 	}
+	if svcErr := s.refuseManaged(ctx, id); svcErr != nil {
+		return nil, svcErr
+	}
 
 	// An update that names no project keeps the configuration's project, and one in a project that names no
 	// organization unit keeps its organization unit.
@@ -572,6 +579,9 @@ func (s *configurationService) DeleteCredentialConfiguration(
 		return &tidcommon.InternalServerError
 	}
 	if svcErr := s.checkAccess(ctx, security.ActionDeleteVC, existing.OUID); svcErr != nil {
+		return svcErr
+	}
+	if svcErr := s.refuseManaged(ctx, id); svcErr != nil {
 		return svcErr
 	}
 	if err := s.store.DeleteCredentialConfiguration(ctx, id); err != nil {
@@ -654,4 +664,26 @@ func (s *configurationService) checkAccess(ctx context.Context, action security.
 		return &tidcommon.ErrorUnauthorized
 	}
 	return nil
+}
+
+// refuseManaged refuses a change to a credential configuration a control plane deployed, unless the change is the
+// managed import's: only a deploy from the control plane changes or removes it.
+func (s *configurationService) refuseManaged(ctx context.Context, id string) *tidcommon.ServiceError {
+	managed, err := managedresource.IsReadOnly(ctx, s.managed, id, managedresource.TypeCredentialConfiguration)
+	if err != nil {
+		s.logger.Error(ctx, "Failed to read whether a control plane deployed the credential configuration",
+			log.String("id", id), log.Error(err))
+		return &tidcommon.InternalServerError
+	}
+	if managed {
+		return &ErrorManagedConfiguration
+	}
+	return nil
+}
+
+// setManagedStore gives the service the record of what a control plane deployed.
+func setManagedStore(service any, managed managedresource.StoreInterface) {
+	if svc, ok := service.(*configurationService); ok {
+		svc.managed = managed
+	}
 }

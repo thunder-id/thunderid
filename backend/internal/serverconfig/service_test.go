@@ -14,11 +14,13 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	"github.com/thunder-id/thunderid/internal/system/observability/event"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+	"github.com/thunder-id/thunderid/tests/mocks/managedresourcemock"
 	"github.com/thunder-id/thunderid/tests/mocks/observabilityprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/sysauthzmock"
 )
@@ -253,6 +255,28 @@ func (suite *ServiceTestSuite) TestSetConfig_UnsupportedName() {
 	svcErr := suite.service.SetConfig(suite.ctx, ConfigName("bogus"), incomingRaw)
 	assert.Same(suite.T(), &ErrorUnsupportedConfigName, svcErr)
 	suite.mockStore.AssertNotCalled(suite.T(), "UpsertServerConfig", mock.Anything, mock.Anything)
+}
+
+// A section a control plane deployed is not written through SetConfig, whether the call is an API write or a
+// plain import, but the managed import is let through; a failed read of the marks refuses the write.
+func (suite *ServiceTestSuite) TestSetConfig_ManagedSection() {
+	store := managedresourcemock.NewStoreInterfaceMock(suite.T())
+	suite.service.(*serverConfigService).managed = store
+
+	store.EXPECT().IsManaged(mock.Anything, string(ConfigNameCORS), managedresource.TypeServerConfig).
+		Return(true, nil).Once()
+	svcErr := suite.service.SetConfig(suite.ctx, ConfigNameCORS, incomingRaw)
+	assert.Same(suite.T(), &ErrorManagedConfig, svcErr)
+
+	store.EXPECT().IsManaged(mock.Anything, string(ConfigNameCORS), managedresource.TypeServerConfig).
+		Return(false, errors.New("marker store unavailable")).Once()
+	svcErr = suite.service.SetConfig(suite.ctx, ConfigNameCORS, incomingRaw)
+	assert.Same(suite.T(), &common.InternalServerError, svcErr)
+	suite.mockStore.AssertNotCalled(suite.T(), "UpsertServerConfig", mock.Anything, mock.Anything)
+
+	suite.mockHandler.EXPECT().Decode(incomingRaw).Return(nil, errors.New("bad shape"))
+	svcErr = suite.service.SetConfig(managedresource.WithManagedImport(suite.ctx), ConfigNameCORS, incomingRaw)
+	assert.Same(suite.T(), &ErrorInvalidConfigValue, svcErr, "the managed import reached the write")
 }
 
 func (suite *ServiceTestSuite) TestSetConfig_NoHandlerRegistered_FailClosed() {

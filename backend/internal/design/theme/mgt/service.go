@@ -17,6 +17,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/eventbus"
 	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
@@ -56,6 +57,16 @@ type themeMgtService struct {
 	projectChecker projectChecker
 	logger         *log.Logger
 	bus            eventbus.EventBusInterface
+	// managed says which themes a control plane deployed, which stay read only here. Nil where nothing
+	// is deployed from one.
+	managed managedresource.StoreInterface
+}
+
+// setManagedStore gives the service the record of what a control plane deployed.
+func setManagedStore(service ThemeMgtServiceInterface, managed managedresource.StoreInterface) {
+	if ts, ok := service.(*themeMgtService); ok {
+		ts.managed = managed
+	}
 }
 
 // projectChecker reports whether the project a theme names exists.
@@ -92,6 +103,13 @@ func (ts *themeMgtService) GetThemeList(ctx context.Context, limit, offset int) 
 	if err != nil {
 		ts.logger.Error(ctx, "Failed to list themes", log.Error(err))
 		return nil, &tidcommon.InternalServerError
+	}
+
+	if err := managedresource.MarkDeployed(ctx, ts.managed, themes,
+		func(t *Theme) string { return t.ID }, func(t *Theme) { t.IsReadOnly = true },
+		managedresource.TypeTheme); err != nil {
+		// Every write to such a theme is refused whatever the list says, so it is served without the flag.
+		ts.logger.Error(ctx, "Failed to read which themes a control plane deployed", log.Error(err))
 	}
 
 	response := &ThemeList{
@@ -266,8 +284,33 @@ func (ts *themeMgtService) GetTheme(ctx context.Context, id string) (*Theme, *ti
 		return nil, &tidcommon.InternalServerError
 	}
 
+	if !theme.IsReadOnly {
+		deployed, err := managedresource.IsDeployed(ctx, ts.managed, id, managedresource.TypeTheme)
+		if err != nil {
+			// Every write to such a theme is refused whatever the read says, so it is served without the flag.
+			ts.logger.Error(ctx, "Failed to read whether a control plane deployed the theme",
+				log.String("id", id), log.Error(err))
+		}
+		theme.IsReadOnly = deployed
+	}
+
 	ts.logger.Debug(ctx, "Successfully retrieved theme", log.String("id", theme.ID))
 	return &theme, nil
+}
+
+// refuseManaged refuses a change to a theme a control plane deployed, unless the change is the managed
+// import's: only a deploy from the control plane changes or removes it.
+func (ts *themeMgtService) refuseManaged(ctx context.Context, id string) *tidcommon.ServiceError {
+	managed, err := managedresource.IsReadOnly(ctx, ts.managed, id, managedresource.TypeTheme)
+	if err != nil {
+		ts.logger.Error(ctx, "Failed to read whether a control plane deployed the theme",
+			log.String("id", id), log.Error(err))
+		return &tidcommon.InternalServerError
+	}
+	if managed {
+		return &ErrorManagedTheme
+	}
+	return nil
 }
 
 // UpdateTheme updates an existing theme configuration.
@@ -298,6 +341,9 @@ func (ts *themeMgtService) updateTheme(ctx context.Context, id string, theme Upd
 	// Check if the theme is declarative (read-only)
 	if ts.themeMgtStore.IsThemeDeclarative(ctx, id) {
 		return nil, &ErrorCannotModifyDeclarativeResource
+	}
+	if svcErr := ts.refuseManaged(ctx, id); svcErr != nil {
+		return nil, svcErr
 	}
 
 	// Fetch existing theme to enforce handle immutability
@@ -374,6 +420,9 @@ func (ts *themeMgtService) deleteTheme(ctx context.Context, id string) *tidcommo
 	// Check if the theme is declarative (read-only)
 	if ts.themeMgtStore.IsThemeDeclarative(ctx, id) {
 		return &ErrorCannotModifyDeclarativeResource
+	}
+	if svcErr := ts.refuseManaged(ctx, id); svcErr != nil {
+		return svcErr
 	}
 
 	// Check if theme exists. Return success for non-existing themes (idempotent delete).

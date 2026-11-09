@@ -233,6 +233,21 @@ var (
 			DefaultValue: "Set projectId to the project the theme belongs to",
 		},
 	}
+
+	// ErrorManagedTheme is the error returned when attempting to change a theme a control plane deployed.
+	// Only a deploy from the control plane changes or removes it.
+	ErrorManagedTheme = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "THM-1020",
+		Error: tidcommon.I18nMessage{
+			Key:          "theme.error.cannot_modify_managed",
+			DefaultValue: "Cannot modify a theme deployed by the control plane",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "theme.error.cannot_modify_managed_description",
+			DefaultValue: "The theme was deployed by the control plane and can only be changed there",
+		},
+	}
 )
 
 // errNilEventBus is returned when the service is initialized without the event bus it audits on.

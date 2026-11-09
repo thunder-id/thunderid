@@ -25,6 +25,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/filter"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	"github.com/thunder-id/thunderid/internal/system/projectscope"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/security"
@@ -144,6 +145,9 @@ type resourceService struct {
 	authzService    sysauthz.SystemAuthorizationServiceInterface
 	// systemFlows is nil where system flows are off.
 	systemFlows systemFlowProvider
+	// managed says which resource servers a control plane deployed, which stay read only here with their
+	// resources and actions. Nil where nothing is deployed from one.
+	managed managedresource.StoreInterface
 }
 
 // projectOUValidator checks that the organization unit of a resource scoped to a project belongs to it.
@@ -285,6 +289,49 @@ func newResourceService(
 		option(service)
 	}
 	return service, nil
+}
+
+// refuseManaged refuses a change to a resource server a control plane deployed, or to its resources or
+// actions, unless the change is the managed import's: only a deploy from the control plane changes them.
+func (rs *resourceService) refuseManaged(ctx context.Context, resourceServerID string) *tidcommon.ServiceError {
+	managed, err := managedresource.IsReadOnly(ctx, rs.managed, resourceServerID,
+		managedresource.TypeResourceServer)
+	if err != nil {
+		rs.logger.Error(ctx, "Failed to read whether a control plane deployed the resource server",
+			log.String("resourceServerID", resourceServerID), log.Error(err))
+		return &tidcommon.InternalServerError
+	}
+	if managed {
+		return ErrorManagedResourceServer.WithParams(map[string]string{"id": resourceServerID})
+	}
+	return nil
+}
+
+// withManaged reports a resource server a control plane deployed as read only. A failed read of that is
+// logged and taken as not: every write to such a server is refused whatever the read says.
+func (rs *resourceService) withManaged(ctx context.Context, resourceServer *providers.ResourceServer) (
+	*providers.ResourceServer, *tidcommon.ServiceError) {
+	deployed, err := managedresource.IsDeployed(ctx, rs.managed, resourceServer.ID,
+		managedresource.TypeResourceServer)
+	if err != nil {
+		rs.logger.Error(ctx, "Failed to read whether a control plane deployed the resource server",
+			log.String("resourceServerID", resourceServer.ID), log.Error(err))
+	}
+	if deployed {
+		resourceServer.IsReadOnly = true
+	}
+	return resourceServer, nil
+}
+
+// markManaged reports the listed resource servers a control plane deployed as read only.
+func (rs *resourceService) markManaged(ctx context.Context, resourceServers []providers.ResourceServer) {
+	if err := managedresource.MarkDeployed(ctx, rs.managed, resourceServers,
+		func(r *providers.ResourceServer) string { return r.ID },
+		func(r *providers.ResourceServer) { r.IsReadOnly = true },
+		managedresource.TypeResourceServer); err != nil {
+		// Every write to such a server is refused whatever the list says, so it is served without the flag.
+		rs.logger.Error(ctx, "Failed to read which resource servers a control plane deployed", log.Error(err))
+	}
 }
 
 // Resource Server Methods
@@ -465,7 +512,7 @@ func (rs *resourceService) getResourceServer(
 		return nil, &tidcommon.InternalServerError
 	}
 
-	return &resourceServer, nil
+	return rs.withManaged(ctx, &resourceServer)
 }
 
 // GetResourceServerByIdentifier retrieves a resource server by its identifier.
@@ -487,7 +534,7 @@ func (rs *resourceService) GetResourceServerByIdentifier(
 		return nil, &tidcommon.InternalServerError
 	}
 
-	return &resourceServer, nil
+	return rs.withManaged(ctx, &resourceServer)
 }
 
 // GetResourceServerList retrieves a paginated list of resource servers.
@@ -524,6 +571,7 @@ func (rs *resourceService) GetResourceServerList(
 		return nil, &tidcommon.InternalServerError
 	}
 
+	rs.markManaged(ctx, resourceServers)
 	response := &ResourceServerList{
 		TotalResults:    totalCount,
 		ResourceServers: resourceServers,
@@ -636,6 +684,7 @@ func (rs *resourceService) listResourceServersByOUID(
 		return nil, &tidcommon.InternalServerError
 	}
 
+	rs.markManaged(ctx, resourceServers)
 	return &ResourceServerList{
 		TotalResults:    totalCount,
 		ResourceServers: resourceServers,
@@ -692,6 +741,7 @@ func (rs *resourceService) GetResourceServerListByProject(
 		return nil, &tidcommon.InternalServerError
 	}
 
+	rs.markManaged(ctx, resourceServers)
 	return &ResourceServerList{
 		TotalResults:    totalCount,
 		ResourceServers: resourceServers,
@@ -735,6 +785,18 @@ func (rs *resourceService) UpdateResourceServer(
 	return updated, svcErr
 }
 
+// refuseImmutable refuses a change to a resource server deployed by a control plane, or declared in a file.
+func (rs *resourceService) refuseImmutable(ctx context.Context, id string) *tidcommon.ServiceError {
+	if svcErr := rs.refuseManaged(ctx, id); svcErr != nil {
+		return svcErr
+	}
+	if rs.IsResourceServerDeclarative(id) {
+		rs.logger.Debug(ctx, "Cannot modify declarative resource server", log.String("id", id))
+		return ErrorImmutableResourceServer.WithParams(map[string]string{"id": id})
+	}
+	return nil
+}
+
 // updateResourceServer updates a resource server without publishing its audit event.
 func (rs *resourceService) updateResourceServer(
 	ctx context.Context,
@@ -762,10 +824,8 @@ func (rs *resourceService) updateResourceServer(
 		return nil, svcErr
 	}
 
-	// Check if resource server is declarative (immutable)
-	if rs.IsResourceServerDeclarative(id) {
-		rs.logger.Debug(ctx, "Cannot modify declarative resource server", log.String("id", id))
-		return nil, ErrorImmutableResourceServer.WithParams(map[string]string{"id": id})
+	if svcErr := rs.refuseImmutable(ctx, id); svcErr != nil {
+		return nil, svcErr
 	}
 
 	// An update that names no organization unit keeps the resource server in its own, and one that names no
@@ -919,6 +979,9 @@ func (rs *resourceService) deleteResourceServer(ctx context.Context, id string) 
 		existing.OUID); svcErr != nil {
 		return svcErr
 	}
+	if svcErr := rs.refuseManaged(ctx, id); svcErr != nil {
+		return svcErr
+	}
 
 	// Refuse deletion when resources or actions still depend on this resource server. Dependencies
 	// are aggregated through the dependency registry.
@@ -972,6 +1035,9 @@ func (rs *resourceService) createResource(
 	resourceServer, svcErr := rs.validateAndGetResourceServer(ctx, resourceServerID,
 		security.ActionUpdateResourceServer)
 	if svcErr != nil {
+		return nil, svcErr
+	}
+	if svcErr := rs.refuseManaged(ctx, resourceServerID); svcErr != nil {
 		return nil, svcErr
 	}
 
@@ -1206,6 +1272,9 @@ func (rs *resourceService) updateResource(
 	if svcErr != nil {
 		return nil, svcErr
 	}
+	if svcErr := rs.refuseManaged(ctx, resourceServerID); svcErr != nil {
+		return nil, svcErr
+	}
 
 	// Validate resource exists
 	currentResource, err := rs.resourceStore.GetResource(ctx, id, resourceServerID)
@@ -1292,6 +1361,9 @@ func (rs *resourceService) deleteResource(
 		resourceServer.OUID); svcErr != nil {
 		return svcErr
 	}
+	if svcErr := rs.refuseManaged(ctx, resourceServerID); svcErr != nil {
+		return svcErr
+	}
 
 	// Check resource exists
 	if _, err := rs.resourceStore.GetResource(ctx, id, resourceServerID); err != nil {
@@ -1350,6 +1422,9 @@ func (rs *resourceService) createAction(
 	resourceServer, svcErr := rs.validateAndGetResourceServer(ctx, resourceServerID,
 		security.ActionUpdateResourceServer)
 	if svcErr != nil {
+		return nil, svcErr
+	}
+	if svcErr := rs.refuseManaged(ctx, resourceServerID); svcErr != nil {
 		return nil, svcErr
 	}
 
@@ -1591,6 +1666,9 @@ func (rs *resourceService) updateAction(
 	if svcErr != nil {
 		return nil, svcErr
 	}
+	if svcErr := rs.refuseManaged(ctx, resourceServerID); svcErr != nil {
+		return nil, svcErr
+	}
 
 	// Validate resource if provided
 	var resID *string
@@ -1693,6 +1771,9 @@ func (rs *resourceService) deleteAction(
 		}
 		return nil, nil, svcErr
 	}
+	if svcErr := rs.refuseManaged(ctx, resourceServerID); svcErr != nil {
+		return nil, nil, svcErr
+	}
 
 	// Validate resource if provided
 	var resID *string
@@ -1769,6 +1850,9 @@ func (rs *resourceService) ValidateDeleteAction(
 	}
 	if svcErr := rs.checkResourceServerAccess(ctx, security.ActionUpdateResourceServer,
 		resourceServer.OUID); svcErr != nil {
+		return nil, svcErr
+	}
+	if svcErr := rs.refuseManaged(ctx, resourceServerID); svcErr != nil {
 		return nil, svcErr
 	}
 	action, svcErr := rs.getAction(ctx, resourceServerID, resourceID, id)

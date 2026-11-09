@@ -198,6 +198,20 @@ var (
 				"organization units before deleting the project",
 		},
 	}
+	// ErrorManagedProject is the error returned when attempting to change a project a control plane
+	// deployed. Only a deploy from the control plane changes or removes it.
+	ErrorManagedProject = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "PRJ-1014",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.projectservice.managed_project",
+			DefaultValue: "Cannot modify a project deployed by the control plane",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.projectservice.managed_project_description",
+			DefaultValue: "The project was deployed by the control plane and can only be changed there",
+		},
+	}
 )
 
 // errNilEventBus is returned when the service is initialized without the event bus it audits on.

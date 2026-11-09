@@ -31,6 +31,9 @@ func (s *importService) deleteResources(
 	failed := 0
 	for _, deletion := range ordered {
 		outcome, removed := s.deleteRuntimeResource(ctx, deletion, dryRun)
+		if removed && !dryRun && outcome.Status == statusSuccess {
+			outcome = s.unmarkManaged(ctx, deletion, outcome)
+		}
 		outcomes = append(outcomes, outcome)
 		if outcome.Status == statusSuccess {
 			if removed {
