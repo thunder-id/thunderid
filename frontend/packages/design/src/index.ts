@@ -64,6 +64,8 @@ export {default as AuthPageLayout} from './components/flow/AuthPageLayout';
 export type {AuthPageLayoutProps} from './components/flow/AuthPageLayout';
 
 export {default as FlowComponentRenderer} from './components/flow/FlowComponentRenderer';
+export {default as DateTimePickerField} from './components/DateTimePickerField';
+export type {DateTimePickerFieldProps} from './components/DateTimePickerField';
 
 // Flow adapters
 export {default as BlockAdapter} from './components/flow/adapters/BlockAdapter';
@@ -75,6 +77,7 @@ export {
 } from './components/flow/adapters/ConsentAdapter';
 export type {AuthorizationDetailValueProps} from './components/flow/adapters/ConsentAdapter';
 export {default as DividerAdapter} from './components/flow/adapters/DividerAdapter';
+export {default as DateTimeInputAdapter} from './components/flow/adapters/DateTimeInputAdapter';
 export {default as getResourceSelectAdapter} from './components/flow/adapters/getResourceSelectAdapter';
 export {default as IconAdapter} from './components/flow/adapters/IconAdapter';
 export {default as ImageAdapter} from './components/flow/adapters/ImageAdapter';

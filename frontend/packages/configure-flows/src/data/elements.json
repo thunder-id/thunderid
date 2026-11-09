@@ -116,6 +116,20 @@
   {
     "resourceType": "ELEMENT",
     "category": "FIELD",
+    "type": "DATE_TIME_INPUT",
+    "display": {
+      "label": "Date Time Input",
+      "description": "Field for picking a date and time",
+      "image": "assets/images/icons/date.svg"
+    },
+    "inputType": "datetime-local",
+    "hint": "",
+    "label": "Date and time",
+    "required": true
+  },
+  {
+    "resourceType": "ELEMENT",
+    "category": "FIELD",
     "type": "OTP_INPUT",
     "display": {
       "label": "OTP Input",

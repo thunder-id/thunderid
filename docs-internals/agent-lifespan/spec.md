@@ -1,7 +1,7 @@
 # Agent Lifespan Specification
 
 - **Status:** Draft
-- **Version:** 0.7
+- **Version:** 0.8
 - **Related documents:** [Feature issue #4609](https://github.com/thunder-id/thunderid/issues/4609), [Finalized requirements](https://github.com/thunder-id/thunderid/issues/4609#issuecomment-6054905581), [Account locks and suspensions feature issue #5073](https://github.com/thunder-id/thunderid/issues/5073), [Account locks and suspensions specification (#5442)](https://github.com/thunder-id/thunderid/pull/5442)
 
 ## Summary
@@ -143,7 +143,7 @@ The feature is delivered in one change, on top of the identity governance author
 | Enforcement, status, and token capping | In the governance authority and the grants, as specified. |
 | Audit events | Every event under Lifecycle audit. |
 | Console | The **Expires** column, the status chip, and the **Expires on** field, in a separate frontend change from the backend. |
-| Owner access and the onboarding **Expires on** input | Not delivered; see Open decisions. |
+| Owner access | Not delivered; see Open decisions. Custom onboarding flows can collect `validUntil` with the shared **Date Time Input** component. The default flow remains unchanged. |
 
 Every acceptance criterion is met except AC2.1, which depends on owner access, and the Console parts of AC2.2, AC3.1, AC3.2, and AC3.3, which the frontend change delivers.
 
@@ -699,7 +699,7 @@ Refusal of an expired agent at every plane, and token lifetime capping, are deci
 | Deployment lifespan policy | Whether a later version adds a deployment default, a maximum, or a warning window, if deployments need to require agents to expire. |
 | Lifespan filtering | Whether to add a range filter on `validUntil` to the agent list API, so that expiring and expired agents can be queried directly. |
 | Owner access | How the owner read rule passes the `GET /agents/**` API gate, which requires the agent view permission before the agent service runs, and which owner index `GET /users/me/agents` uses. Owner access follows once this is decided. |
-| Onboarding expiry input | Whether the default onboarding flow collects **Expires on** with a date-time input, or with a date input and a defined rule for the instant it means (for example, the end of that day in UTC). |
+| Default onboarding lifespan | Whether the shipped default onboarding flow should collect `validUntil`; custom flows can already use **Date Time Input** for this value. |
 | Issuance checks for users | The token builder checks every party without a category check, so a user subject also gains an issuance-plane check on every token built for it, including at code redemption, CIBA redemption, and token exchange. Whether that matches the account locks and suspensions specification's intent for users, or the checks apply to agents only, is to be agreed with that specification. |
 | `NotAfter` | The new access-decision field, `NotAfter`, the zero instant when no lifespan applies, to be agreed with the account locks and suspensions specification. |
 | Governance in the token builder | The account locks and suspensions specification keeps the token builder free of governance calls. This specification moves the issuance check into the builder, so every token is checked whichever grant builds it. To be agreed with that specification. |
@@ -716,3 +716,4 @@ Refusal of an expired agent at every plane, and token lifetime capping, are deci
 | 0.5 | 2026-10-26 | Aligned with the account locks and suspensions feature as merged: a held client is refused at client authentication, after its credentials are verified, with the same `invalid_client` as a wrong secret; the nested actors token exchange checks are the subject token's `act` chain, which the exchange carries over, not the actor token's own chain. |
 | 0.6 | 2026-10-27 | Removed the rule that an agent may not change its own lifespan, and its `403`. A lifespan change is authorized by the agent update permission alone, as for any other field; an agent holding that permission can extend itself, now a known limitation. A token exchange party whose mapped `sub` cannot be resolved through its `aci` entry is left unchecked rather than failing the exchange with `invalid_grant`, also a known limitation. |
 | 0.7 | 2026-11-02 | Aligned with the implementation: the token builder, not each grant, makes the issuance-plane check for every party of every token it builds, memoized per token request, and replaces the refresh grant's own subject check; nested actors from another issuer are skipped. Token exchange falls back to the `aci` entry only when the actor is not found or lookups are not supported, and fails with `server_error` on any other lookup failure. Added `AccessHold` for AuthZEN and passkey enrolment, the `sub_valid_until` claim, the transaction end hook that drops cached entries, update of an unreadable stored value, and import of a document without `validUntil`. Governance in the token builder is a new open decision. |
+| 0.8 | 2026-11-10 | Custom agent onboarding flows can collect `validUntil` with the shared Date Time Input component; the shipped default flow remains unchanged. |

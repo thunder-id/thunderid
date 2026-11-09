@@ -48,7 +48,7 @@ The cap is fixed when a token is issued. If you later move `validUntil` earlier,
 
 ## Set a lifespan when you create an agent
 
-Send `validUntil` when you create the agent through the API. The Console's **Add agent** form does not ask for it; set it on the agent's page after creating it, as described in [Change or remove a lifespan](#change-or-remove-a-lifespan).
+Send `validUntil` when you create the agent through the API. The Console's built-in onboarding flow does not ask for it; set it on the agent's page after creating it, as described in [Change or remove a lifespan](#change-or-remove-a-lifespan), or [add it to your onboarding flow](#set-a-lifespan-during-onboarding).
 
 ```bash
 curl -X POST https://localhost:8090/agents \
@@ -65,7 +65,7 @@ curl -X POST https://localhost:8090/agents \
   }'
 ```
 
-Replace `<future-date-time>` with an RFC 3339 date and time later than the current time, such as `2027-03-31T00:00:00Z`. Leave it out, or send `null`, for an agent that does not expire. A value that fails is refused with `400`, and the agent is not created:
+Replace `<future-date-time>` with an RFC 3339 date and time later than the current time. Leave it out, or send `null`, for an agent that does not expire. A value that fails is refused with `400`, and the agent is not created:
 
 | Error code | Cause |
 |---|---|
@@ -73,6 +73,23 @@ Replace `<future-date-time>` with an RFC 3339 date and time later than the curre
 | `AGT-1046` | `validUntil` is not later than the current time. |
 
 There is no default lifespan and no maximum: whoever creates the agent decides.
+
+## Set a lifespan during onboarding
+
+The built-in agent onboarding flow and the onboarding templates do not ask for a lifespan, so an agent created in the Console does not expire until someone sets one on its page. To ask for the end date when the agent is created, add a **Date Time Input** to the onboarding flow, either the built-in flow or one you created. Bind the field to `validUntil`. The **Provisioning** step reads that value and sets the agent's lifespan.
+
+`validUntil` belongs to the agent record, like its owner and description, and is not an attribute in the [Agent Schema](../agent-schema). You do not need to change the schema.
+
+1. In **Flows**, open the agent onboarding flow the Console uses, such as **Default Agent Onboarding Flow**. To keep the built-in flow unchanged, create a flow from a template instead, as described in [Select a flow template](../manage-agents#select-a-flow-template).
+2. On the **Agent Details** step, add a **Date Time Input** from **Components** to the form, before the submit button.
+3. Select the field. In **Attribute**, type `validUntil`; it is not in the list of schema attributes.
+4. Set **Label** to `Valid Until`.
+5. Leave **Required** off to let administrators create agents that do not expire. Turn it on to require a lifespan for every agent the flow creates.
+6. Save the flow. If it is a new flow, [make it the Console default](../manage-agents#make-the-flow-active).
+
+The onboarding screen displays the date and time in the administrator's time zone and submits it in UTC. The value must be later than the current time. An empty optional field creates an agent that does not expire.
+
+A value that fails is refused with the same `AGT-1045` or `AGT-1046` error as the API, and the agent is not created. The supplied templates connect the failure output of **Provisioning** to **Agent Details**, so the administrator sees the error and can correct the value. Keep that connection when you customize the flow.
 
 ## Change or remove a lifespan
 

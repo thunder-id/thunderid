@@ -1,6 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {DateTimePickerField} from '@thunderid/design';
 import {useTemplateLiteralResolver} from '@thunderid/hooks';
 import {Box, Button, Checkbox, Divider, FormControlLabel, Stack, TextField, Typography} from '@wso2/oxygen-ui';
 import {ImageIcon, Workflow} from '@wso2/oxygen-ui-icons-react';
@@ -260,6 +261,19 @@ function SimulationScreenSketch({components, options, onChoose, onPreview}: Simu
       }
       default:
         break;
+    }
+
+    if (component.type === ElementTypes.DateTimeInput) {
+      const resolvedLabel = component.label ? resolve(component.label, {t}) : undefined;
+      return (
+        <DateTimePickerField
+          id={component.id}
+          value={null}
+          label={resolvedLabel === '' ? undefined : resolvedLabel}
+          required={component.required}
+          onChange={() => undefined}
+        />
+      );
     }
 
     if (SKETCH_TEXT_INPUT_TYPES.has(component.type)) {

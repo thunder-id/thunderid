@@ -23,6 +23,7 @@ const INPUT_ELEMENT_TYPES = new Set<string>([
   ElementTypes.PhoneInput,
   ElementTypes.NumberInput,
   ElementTypes.DateInput,
+  ElementTypes.DateTimeInput,
   ElementTypes.OtpInput,
   ElementTypes.Checkbox,
   ElementTypes.Dropdown,
@@ -159,6 +160,8 @@ function normalizeInputProperties(component: Record<string, unknown>): Record<st
       inputType = 'tel';
     } else if (component['variant'] === 'NUMBER') {
       inputType = 'number';
+    } else if (component['type'] === ElementTypes.DateTimeInput) {
+      inputType = 'datetime-local';
     } else {
       inputType = 'text';
     }

@@ -15,6 +15,7 @@ import FormAdapter from './adapters/FormAdapter';
 import IconAdapter from './adapters/IconAdapter';
 import ImageAdapter from './adapters/ImageAdapter';
 import CheckboxAdapter from './adapters/input/CheckboxAdapter';
+import DateTimeInputAdapter from './adapters/input/DateTimeInputAdapter';
 import DefaultInputAdapter from './adapters/input/DefaultInputAdapter';
 import OTPInputAdapter from './adapters/input/OTPInputAdapter';
 import PhoneNumberInputAdapter from './adapters/input/PhoneNumberInputAdapter';
@@ -100,6 +101,9 @@ function CommonElementFactory({
   }
   if (resource.type === ElementTypes.OtpInput) {
     return <OTPInputAdapter resource={resource} stepId={stepId} />;
+  }
+  if (resource.type === ElementTypes.DateTimeInput) {
+    return <DateTimeInputAdapter resource={resource} />;
   }
   if (
     resource.type === ElementTypes.TextInput ||

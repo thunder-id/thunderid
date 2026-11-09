@@ -17,6 +17,7 @@ export interface PreviewComponent extends Element {
   alt?: string;
   align?: 'inherit' | 'left' | 'center' | 'right' | 'justify';
   image?: string;
+  required?: boolean;
 }
 
 const APPLICATION_META_PATTERN = /\{\{\s*meta\(application\.(\w+)\)\s*\}\}/g;
