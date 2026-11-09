@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -54,6 +55,14 @@ func NewOTelSubscriber() *OTelSubscriber {
 	return &OTelSubscriber{}
 }
 
+// defaultServiceName derives the service name spans carry from the product name. Ex: "Acme" becomes "acme-iam".
+func defaultServiceName(productName string) string {
+	words := strings.FieldsFunc(strings.ToLower(productName), func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsDigit(r)
+	})
+	return strings.Join(append(words, "iam"), "-")
+}
+
 // IsEnabled checks if the OTel subscriber should be activated based on configuration.
 func (o *OTelSubscriber) IsEnabled() bool {
 	return config.GetServerRuntime().Config.Observability.Output.OpenTelemetry.Enabled
@@ -73,12 +82,17 @@ func (o *OTelSubscriber) Initialize() error {
 		log.String("exporterType", otelConfig.ExporterType),
 		log.String("endpoint", otelConfig.OTLPEndpoint))
 
+	serviceName := otelConfig.ServiceName
+	if serviceName == "" {
+		serviceName = defaultServiceName(config.GetServerRuntime().Config.Server.ProductName)
+	}
+
 	// Convert our config to otel package config
 	otelProviderCfg := otelconfig.Config{
 		Enabled:        otelConfig.Enabled,
 		ExporterType:   otelConfig.ExporterType,
 		OTLPEndpoint:   otelConfig.OTLPEndpoint,
-		ServiceName:    otelConfig.ServiceName,
+		ServiceName:    serviceName,
 		ServiceVersion: otelConfig.ServiceVersion,
 		Environment:    otelConfig.Environment,
 		SampleRate:     otelConfig.SampleRate,
@@ -104,7 +118,7 @@ func (o *OTelSubscriber) Initialize() error {
 
 	o.logger.Debug(ctx, "OpenTelemetry subscriber initialized successfully",
 		log.String("exporterType", otelConfig.ExporterType),
-		log.String("serviceName", otelConfig.ServiceName))
+		log.String("serviceName", serviceName))
 
 	o.categories = convertCategories(otelConfig.Categories)
 	if len(o.categories) == 0 {
