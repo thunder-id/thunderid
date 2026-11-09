@@ -41,7 +41,7 @@ export default function MandatedRolesPicker({
   const candidates: MandatableRole[] = data?.candidates ?? [];
   const fieldId = `mandated-roles-${ouId}`;
 
-  // A mandated role the candidates no longer list still shows, by the name the unit sees it under or
+  // A mandated role the candidates no longer list still shows, by the name the issuer sees it under or
   // else by its ID, so it can be removed.
   const selected: MandatableRole[] = value.map(
     (id) => candidates.find((role) => role.id === id) ?? {id, name: data?.names[id] ?? id, ouId: issuerOuId},

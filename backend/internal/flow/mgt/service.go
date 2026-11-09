@@ -91,6 +91,9 @@ type FlowMgtServiceInterface interface {
 	// GetFlowForOU returns a flow as one organization unit sees it: whole when it owns it, its variables when the
 	// flow was shared with it.
 	GetFlowForOU(ctx context.Context, flowID, ouID string) (*FlowView, *tidcommon.ServiceError)
+	// GetFlowView returns a flow as the caller sees it: whole in the organization unit that owns it, or as the
+	// organization unit the caller is confined to sees it when the flow is shared there.
+	GetFlowView(ctx context.Context, flowID string) (*FlowView, *tidcommon.ServiceError)
 	// IsFlowVisible reports whether an organization unit owns a flow or was shared it.
 	IsFlowVisible(ctx context.Context, flowID, ouID string) (bool, *tidcommon.ServiceError)
 	// UpdateFlowWithSharing updates a flow and replaces its sharing policies with the ones a document carries, in one
@@ -258,16 +261,13 @@ func (s *flowMgtService) ListFlows(ctx context.Context, limit, offset int, flowT
 	if !visible {
 		return buildFlowListResponse([]BasicFlowDefinition{}, 0, limit, offset, flowTypeQueryParam(flowType)), nil
 	}
-	var flows []BasicFlowDefinition
-	var totalCount int
-	var err error
 	if ouID != "" {
-		// A caller confined to an organization unit lists the flows it owns, as the user list does. The ones
-		// shared into it are listed with the organization unit filter.
-		flows, totalCount, err = s.store.ListFlowsByOU(ctx, ouID, limit, offset, string(flowType))
-	} else {
-		flows, totalCount, err = s.store.ListFlows(ctx, limit, offset, string(flowType))
+		// A caller confined to an organization unit lists what that unit sees: the flows it owns, then the ones
+		// shared into it.
+		return s.listFlowsForOU(ctx, ouID, flowType, limit, offset, true)
 	}
+
+	flows, totalCount, err := s.store.ListFlows(ctx, limit, offset, string(flowType))
 	if err != nil {
 		s.logger.Error(ctx, "Failed to list flows", log.Error(err))
 		return nil, &tidcommon.InternalServerError
@@ -498,6 +498,29 @@ func (s *flowMgtService) GetFlow(ctx context.Context, flowID string) (
 		return nil, svcErr
 	}
 	return flow, nil
+}
+
+// GetFlowView returns a flow as the caller sees it. A caller that may read the flows of the organization unit that
+// owns the flow sees the whole definition. A caller refused there and confined to another organization unit the flow
+// is shared into sees the flow as that unit does. Any other caller is refused.
+func (s *flowMgtService) GetFlowView(ctx context.Context, flowID string) (*FlowView, *tidcommon.ServiceError) {
+	flow, svcErr := s.getFlow(ctx, flowID)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	refusal := s.authorizeFlowAction(ctx, security.ActionReadFlow, flow.OUID)
+	if refusal == nil {
+		return &FlowView{Owned: &OwnedFlow{CompleteFlowDefinition: flow, IsOwnedByOU: true}}, nil
+	}
+	ouID := sysauthz.SharedAccessOU(ctx, s.authzService, flow.OUID, refusal)
+	if ouID == "" {
+		return nil, refusal
+	}
+	view, svcErr := s.GetFlowForOU(ctx, flowID, ouID)
+	if svcErr != nil && svcErr.Code == ErrorFlowNotFound.Code {
+		return nil, refusal
+	}
+	return view, svcErr
 }
 
 // getFlow retrieves a flow definition by its ID without checking the caller.
@@ -1148,7 +1171,7 @@ func (s *flowMgtService) deleteFlow(ctx context.Context, flowID string) *tidcomm
 	}
 
 	if svcErr := s.authorizeFlowAction(ctx, security.ActionDeleteFlow, existingFlow.OUID); svcErr != nil {
-		return svcErr
+		return s.sharedFlowRefusal(ctx, flowID, existingFlow.OUID, svcErr)
 	}
 	if existingFlow.IsReadOnly {
 		return &ErrorFlowDeclarativeReadOnly
@@ -2801,10 +2824,25 @@ func (s *flowMgtService) checkFlowWritable(
 	ctx context.Context, flow *providers.CompleteFlowDefinition,
 ) *tidcommon.ServiceError {
 	if svcErr := s.authorizeFlowAction(ctx, security.ActionUpdateFlow, flow.OUID); svcErr != nil {
-		return svcErr
+		return s.sharedFlowRefusal(ctx, flow.ID, flow.OUID, svcErr)
 	}
 	if flow.IsReadOnly {
 		return &ErrorFlowDeclarativeReadOnly
 	}
 	return s.refuseManaged(ctx, flow.ID)
+}
+
+// sharedFlowRefusal answers a change refused in the flow's owning organization unit with ErrorSharedFlowReadOnly
+// when the flow is shared into the organization unit the caller is confined to, and with the refusal otherwise.
+func (s *flowMgtService) sharedFlowRefusal(ctx context.Context, flowID, ownerOUID string,
+	refusal *tidcommon.ServiceError) *tidcommon.ServiceError {
+	ouID, svcErr := sharing.SharedIntoCallerOU(ctx, s.authzService, s.sharingSvc, s.logger, FlowSharingType,
+		flowID, ownerOUID, refusal)
+	if svcErr != nil {
+		return svcErr
+	}
+	if ouID != "" {
+		return &ErrorSharedFlowReadOnly
+	}
+	return refusal
 }

@@ -130,10 +130,12 @@ func (suite *OUToolsTestSuite) TestRegisteredToolsRequireOUPermissions() {
 		suite.Run(plane, func() {
 			p := security.GetSystemPermissions()
 			for _, registered := range tools.Tools {
-				suite.Contains([]string{p.OUView, p.OUCreate, p.OUUpdate, p.OUDelete},
+				suite.Contains([]string{p.OUListRoots, p.OUView, p.OUCreate, p.OUUpdate, p.OUDelete},
 					security.ResolveMCPToolPermission(registered.Name),
 					"tool %q must require an organization unit permission", registered.Name)
 			}
+			suite.Equal(p.OUListRoots, security.ResolveMCPToolPermission("list_organization_units"),
+				"listing the root organization units needs the permission that lists them")
 		})
 	})
 }

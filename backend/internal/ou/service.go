@@ -650,7 +650,7 @@ func (ous *organizationUnitService) GetOrganizationUnitByPath(
 	ou, err := ous.ouStore.GetOrganizationUnitByPath(ctx, handles)
 	if err != nil {
 		if errors.Is(err, ErrOrganizationUnitNotFound) {
-			return OrganizationUnit{}, &ErrorOrganizationUnitNotFound
+			return OrganizationUnit{}, ous.pathNotFound(ctx)
 		}
 		logger.Error(ctx, "Failed to get organization unit by path", log.Error(err))
 		return OrganizationUnit{}, &tidcommon.InternalServerError
@@ -824,7 +824,7 @@ func (ous *organizationUnitService) updateOrganizationUnitByPath(
 		existingOU, err := ous.ouStore.GetOrganizationUnitByPath(txCtx, handles)
 		if err != nil {
 			if errors.Is(err, ErrOrganizationUnitNotFound) {
-				capturedSvcErr = &ErrorOrganizationUnitNotFound
+				capturedSvcErr = ous.pathNotFound(txCtx)
 				return err
 			}
 			return err
@@ -884,11 +884,15 @@ func (ous *organizationUnitService) updateOUInternal(
 		return OrganizationUnit{}, err
 	}
 
-	// Moving an organization unit to the root makes it a root organization unit, so the caller must be
-	// allowed to create one.
+	// Moving an organization unit places it under its new parent, or makes it a root organization unit, so the
+	// caller must be allowed to create one there.
 	parentChanged := !stringPtrEqual(existingOU.Parent, request.Parent)
-	if parentChanged && request.Parent == nil {
-		if svcErr := ous.checkOUAccess(ctx, security.ActionCreateOU, ""); svcErr != nil {
+	if parentChanged {
+		newParentID := ""
+		if request.Parent != nil {
+			newParentID = *request.Parent
+		}
+		if svcErr := ous.checkOUAccess(ctx, security.ActionCreateOU, newParentID); svcErr != nil {
 			return OrganizationUnit{}, svcErr
 		}
 	}
@@ -1063,7 +1067,7 @@ func (ous *organizationUnitService) deleteOrganizationUnitByPath(
 		existingOU, err := ous.ouStore.GetOrganizationUnitByPath(txCtx, handles)
 		if err != nil {
 			if errors.Is(err, ErrOrganizationUnitNotFound) {
-				capturedSvcErr = &ErrorOrganizationUnitNotFound
+				capturedSvcErr = ous.pathNotFound(txCtx)
 				return err
 			}
 			return err
@@ -1201,6 +1205,17 @@ func (ous *organizationUnitService) GetResourceDependencies(
 		})
 	}
 	return deps, nil
+}
+
+// pathNotFound answers a handle path that names no organization unit. A caller confined to the organization unit its
+// token names is refused as it is for a path it may not reach, so a path tells it nothing about the units outside its
+// reach. A caller that reaches every unit is told the unit is not found.
+func (ous *organizationUnitService) pathNotFound(ctx context.Context) *tidcommon.ServiceError {
+	if !security.IsRuntimeContext(ctx) && !security.HasSystemPermission(security.GetPermissions(ctx)) &&
+		ous.authzService.GetBoundary(ctx).Type == sysauthz.BoundaryTypeOU {
+		return &tidcommon.ErrorUnauthorized
+	}
+	return &ErrorOrganizationUnitNotFound
 }
 
 // checkOUAccess validates that the caller is authorized to perform the given action on an organization unit.
@@ -1359,7 +1374,7 @@ func (ous *organizationUnitService) GetOrganizationUnitChildrenByPath(
 	ou, err := ous.ouStore.GetOrganizationUnitByPath(ctx, handles)
 	if err != nil {
 		if errors.Is(err, ErrOrganizationUnitNotFound) {
-			return nil, &ErrorOrganizationUnitNotFound
+			return nil, ous.pathNotFound(ctx)
 		}
 		logger.Error(ctx, "Failed to get organization unit by path", log.Error(err))
 		return nil, &tidcommon.InternalServerError
@@ -1387,7 +1402,7 @@ func (ous *organizationUnitService) GetOrganizationUnitUsersByPath(
 	ou, err := ous.ouStore.GetOrganizationUnitByPath(ctx, handles)
 	if err != nil {
 		if errors.Is(err, ErrOrganizationUnitNotFound) {
-			return nil, &ErrorOrganizationUnitNotFound
+			return nil, ous.pathNotFound(ctx)
 		}
 		logger.Error(ctx, "Failed to get organization unit by path", log.Error(err))
 		return nil, &tidcommon.InternalServerError
@@ -1437,7 +1452,7 @@ func (ous *organizationUnitService) GetOrganizationUnitGroupsByPath(
 	ou, err := ous.ouStore.GetOrganizationUnitByPath(ctx, handles)
 	if err != nil {
 		if errors.Is(err, ErrOrganizationUnitNotFound) {
-			return nil, &ErrorOrganizationUnitNotFound
+			return nil, ous.pathNotFound(ctx)
 		}
 		logger.Error(ctx, "Failed to get organization unit by path", log.Error(err))
 		return nil, &tidcommon.InternalServerError
@@ -1484,7 +1499,7 @@ func (ous *organizationUnitService) GetOrganizationUnitRolesByPath(
 	ou, err := ous.ouStore.GetOrganizationUnitByPath(ctx, handles)
 	if err != nil {
 		if errors.Is(err, ErrOrganizationUnitNotFound) {
-			return nil, &ErrorOrganizationUnitNotFound
+			return nil, ous.pathNotFound(ctx)
 		}
 		logger.Error(ctx, "Failed to get organization unit by path", log.Error(err))
 		return nil, &tidcommon.InternalServerError

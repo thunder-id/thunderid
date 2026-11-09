@@ -18,6 +18,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/eventbus"
 	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/security"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/tests/mocks/eventbusmock"
 	"github.com/thunder-id/thunderid/tests/mocks/sysauthzmock"
 )
@@ -98,6 +99,7 @@ func (s *OUServiceAuditTestSuite) TearDownTest() {
 func (s *OUServiceAuditTestSuite) SetupSubTest() {
 	s.store = newOrganizationUnitStoreInterfaceMock(s.T())
 	s.authz = sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(s.T())
+	s.authz.On("GetBoundary", mock.Anything).Return(sysauthz.Boundary{Type: sysauthz.BoundaryTypeDeployment}).Maybe()
 }
 
 // service returns an organization unit service over the suite's store and access check, publishing on

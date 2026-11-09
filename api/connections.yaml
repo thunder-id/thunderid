@@ -41,7 +41,7 @@ paths:
         identity-provider, notification-sender, authorization PDP and HTTP endpoint connection types,
         optionally filtered by functional category. Omit the category parameter to return all instances.
 
-        A caller whose permission is limited to an organization unit lists the connections that unit owns. An `ouId` filter lists the connections the organization unit owns, then those shared into it, with `isOwnedByOU` telling them apart. A shared connection carries the `ouId` of the organization unit in the filter, not its owner's.
+        An `ouId` filter lists the connections the organization unit owns, then those shared into it, with `isOwnedByOU` telling them apart. A shared connection carries the `ouId` of the organization unit in the filter, not its owner's. Without the filter, a caller confined to an organization unit lists that unit the same way.
       parameters:
         - name: category
           in: query
@@ -156,7 +156,7 @@ paths:
         "404": { $ref: '#/components/responses/NotFound' }
         "409": { $ref: '#/components/responses/AuthZENPDPConflict' }
         "401": { $ref: '#/components/responses/Unauthorized' }
-        "403": { $ref: '#/components/responses/Forbidden' }
+        "403": { $ref: '#/components/responses/ConnectionWriteForbidden' }
         "500": { $ref: '#/components/responses/InternalServerError' }
     delete:
       tags: [Connections]
@@ -166,7 +166,7 @@ paths:
         "404": { $ref: '#/components/responses/NotFound' }
         "409": { $ref: '#/components/responses/ConnectionDependencyConflict' }
         "401": { $ref: '#/components/responses/Unauthorized' }
-        "403": { $ref: '#/components/responses/Forbidden' }
+        "403": { $ref: '#/components/responses/ConnectionWriteForbidden' }
         "500": { $ref: '#/components/responses/InternalServerError' }
   /connections/authzen-pdp/{id}/usages:
     parameters:
@@ -258,7 +258,7 @@ paths:
         "404": { $ref: '#/components/responses/HTTPConnectionNotFound' }
         "409": { $ref: '#/components/responses/HTTPConnectionConflict' }
         "401": { $ref: '#/components/responses/Unauthorized' }
-        "403": { $ref: '#/components/responses/Forbidden' }
+        "403": { $ref: '#/components/responses/ConnectionWriteForbidden' }
         "500": { $ref: '#/components/responses/InternalServerError' }
     delete:
       tags: [Connections]
@@ -271,7 +271,7 @@ paths:
         "400": { $ref: '#/components/responses/HTTPConnectionDeleteBadRequest' }
         "409": { $ref: '#/components/responses/HTTPConnectionDependencyConflict' }
         "401": { $ref: '#/components/responses/Unauthorized' }
-        "403": { $ref: '#/components/responses/Forbidden' }
+        "403": { $ref: '#/components/responses/ConnectionWriteForbidden' }
         "500": { $ref: '#/components/responses/InternalServerError' }
   /connections/http/{id}/usages:
     parameters:
@@ -350,7 +350,7 @@ paths:
         "404": { $ref: '#/components/responses/NotFound' }
         "409": { $ref: '#/components/responses/Conflict' }
         "401": { $ref: '#/components/responses/Unauthorized' }
-        "403": { $ref: '#/components/responses/Forbidden' }
+        "403": { $ref: '#/components/responses/ConnectionWriteForbidden' }
         "500": { $ref: '#/components/responses/InternalServerError' }
     delete:
       tags: [Connections]
@@ -360,7 +360,7 @@ paths:
         "404": { $ref: '#/components/responses/NotFound' }
         "409": { $ref: '#/components/responses/Conflict' }
         "401": { $ref: '#/components/responses/Unauthorized' }
-        "403": { $ref: '#/components/responses/Forbidden' }
+        "403": { $ref: '#/components/responses/ConnectionWriteForbidden' }
         "500": { $ref: '#/components/responses/InternalServerError' }
   /connections/google/{id}/usages:
     parameters:
@@ -451,7 +451,7 @@ paths:
         "404": { $ref: '#/components/responses/NotFound' }
         "409": { $ref: '#/components/responses/Conflict' }
         "401": { $ref: '#/components/responses/Unauthorized' }
-        "403": { $ref: '#/components/responses/Forbidden' }
+        "403": { $ref: '#/components/responses/ConnectionWriteForbidden' }
         "500": { $ref: '#/components/responses/InternalServerError' }
     delete:
       tags: [Connections]
@@ -461,7 +461,7 @@ paths:
         "404": { $ref: '#/components/responses/NotFound' }
         "409": { $ref: '#/components/responses/Conflict' }
         "401": { $ref: '#/components/responses/Unauthorized' }
-        "403": { $ref: '#/components/responses/Forbidden' }
+        "403": { $ref: '#/components/responses/ConnectionWriteForbidden' }
         "500": { $ref: '#/components/responses/InternalServerError' }
   /connections/github/{id}/usages:
     parameters:
@@ -552,7 +552,7 @@ paths:
         "404": { $ref: '#/components/responses/NotFound' }
         "409": { $ref: '#/components/responses/Conflict' }
         "401": { $ref: '#/components/responses/Unauthorized' }
-        "403": { $ref: '#/components/responses/Forbidden' }
+        "403": { $ref: '#/components/responses/ConnectionWriteForbidden' }
         "500": { $ref: '#/components/responses/InternalServerError' }
     delete:
       tags: [Connections]
@@ -562,7 +562,7 @@ paths:
         "404": { $ref: '#/components/responses/NotFound' }
         "409": { $ref: '#/components/responses/Conflict' }
         "401": { $ref: '#/components/responses/Unauthorized' }
-        "403": { $ref: '#/components/responses/Forbidden' }
+        "403": { $ref: '#/components/responses/ConnectionWriteForbidden' }
         "500": { $ref: '#/components/responses/InternalServerError' }
   /connections/oidc/{id}/usages:
     parameters:
@@ -654,7 +654,7 @@ paths:
         "404": { $ref: '#/components/responses/NotFound' }
         "409": { $ref: '#/components/responses/Conflict' }
         "401": { $ref: '#/components/responses/Unauthorized' }
-        "403": { $ref: '#/components/responses/Forbidden' }
+        "403": { $ref: '#/components/responses/ConnectionWriteForbidden' }
         "500": { $ref: '#/components/responses/InternalServerError' }
     delete:
       tags: [Connections]
@@ -663,7 +663,7 @@ paths:
         "204": { description: Connection deleted }
         "409": { $ref: '#/components/responses/Conflict' }
         "401": { $ref: '#/components/responses/Unauthorized' }
-        "403": { $ref: '#/components/responses/Forbidden' }
+        "403": { $ref: '#/components/responses/ConnectionWriteForbidden' }
         "500": { $ref: '#/components/responses/InternalServerError' }
   /connections/twilio/{id}/usages:
     parameters:
@@ -755,7 +755,7 @@ paths:
         "404": { $ref: '#/components/responses/NotFound' }
         "409": { $ref: '#/components/responses/Conflict' }
         "401": { $ref: '#/components/responses/Unauthorized' }
-        "403": { $ref: '#/components/responses/Forbidden' }
+        "403": { $ref: '#/components/responses/ConnectionWriteForbidden' }
         "500": { $ref: '#/components/responses/InternalServerError' }
     delete:
       tags: [Connections]
@@ -764,7 +764,7 @@ paths:
         "204": { description: Connection deleted }
         "409": { $ref: '#/components/responses/Conflict' }
         "401": { $ref: '#/components/responses/Unauthorized' }
-        "403": { $ref: '#/components/responses/Forbidden' }
+        "403": { $ref: '#/components/responses/ConnectionWriteForbidden' }
         "500": { $ref: '#/components/responses/InternalServerError' }
   /connections/vonage/{id}/usages:
     parameters:
@@ -858,7 +858,7 @@ paths:
         "404": { $ref: '#/components/responses/NotFound' }
         "409": { $ref: '#/components/responses/Conflict' }
         "401": { $ref: '#/components/responses/Unauthorized' }
-        "403": { $ref: '#/components/responses/Forbidden' }
+        "403": { $ref: '#/components/responses/ConnectionWriteForbidden' }
         "500": { $ref: '#/components/responses/InternalServerError' }
     delete:
       tags: [Connections]
@@ -867,7 +867,7 @@ paths:
         "204": { description: Connection deleted }
         "409": { $ref: '#/components/responses/Conflict' }
         "401": { $ref: '#/components/responses/Unauthorized' }
-        "403": { $ref: '#/components/responses/Forbidden' }
+        "403": { $ref: '#/components/responses/ConnectionWriteForbidden' }
         "500": { $ref: '#/components/responses/InternalServerError' }
   /connections/sms-gateway/{id}/usages:
     parameters:
@@ -963,7 +963,7 @@ paths:
         "404": { $ref: '#/components/responses/NotFound' }
         "409": { $ref: '#/components/responses/Conflict' }
         "401": { $ref: '#/components/responses/Unauthorized' }
-        "403": { $ref: '#/components/responses/Forbidden' }
+        "403": { $ref: '#/components/responses/ConnectionWriteForbidden' }
         "500": { $ref: '#/components/responses/InternalServerError' }
     delete:
       tags: [Connections]
@@ -972,7 +972,7 @@ paths:
         "204": { description: Connection deleted }
         "409": { $ref: '#/components/responses/Conflict' }
         "401": { $ref: '#/components/responses/Unauthorized' }
-        "403": { $ref: '#/components/responses/Forbidden' }
+        "403": { $ref: '#/components/responses/ConnectionWriteForbidden' }
         "500": { $ref: '#/components/responses/InternalServerError' }
   /connections/email-smtp/{id}/usages:
     parameters:
@@ -1063,7 +1063,7 @@ paths:
         "404": { $ref: '#/components/responses/NotFound' }
         "409": { $ref: '#/components/responses/Conflict' }
         "401": { $ref: '#/components/responses/Unauthorized' }
-        "403": { $ref: '#/components/responses/Forbidden' }
+        "403": { $ref: '#/components/responses/ConnectionWriteForbidden' }
         "500": { $ref: '#/components/responses/InternalServerError' }
     delete:
       tags: [Connections]
@@ -1073,7 +1073,7 @@ paths:
         "404": { $ref: '#/components/responses/NotFound' }
         "409": { $ref: '#/components/responses/Conflict' }
         "401": { $ref: '#/components/responses/Unauthorized' }
-        "403": { $ref: '#/components/responses/Forbidden' }
+        "403": { $ref: '#/components/responses/ConnectionWriteForbidden' }
         "500": { $ref: '#/components/responses/InternalServerError' }
   /connections/oauth/{id}/usages:
     parameters:
@@ -2559,7 +2559,9 @@ components:
                   defaultValue: "The sharing policy changed since it was read; read it again and retry the edit"
 
     InstanceList:
-      description: Configured connection instances
+      description: >-
+        Configured connection instances. A caller confined to an organization unit lists the ones that unit owns, then
+        the ones shared into it, with `isOwnedByOU` telling them apart.
       content:
         application/json:
           schema:
@@ -2567,7 +2569,9 @@ components:
             items:
               $ref: '#/components/schemas/ConnectionInstanceSummary'
     AuthZENPDPInstanceList:
-      description: Configured AuthZEN PDP connections
+      description: >-
+        Configured AuthZEN PDP connections. A caller confined to an organization unit lists the ones that unit owns,
+        then the ones shared into it, with `isOwnedByOU` telling them apart.
       content:
         application/json:
           schema:
@@ -2578,6 +2582,8 @@ components:
             - id: "05d6e254-a3ca-49dd-89b7-2cf78fee6b23"
               name: "Production PDP"
               description: "Production AuthZEN PDP connection"
+              ouId: "01900000-0000-7000-8000-000000000001"
+              isOwnedByOU: true
     ConnectionUsages:
       description: Resources that reference this connection
       content:
@@ -2643,7 +2649,9 @@ components:
               key: "error.connectionservice.authzen_pdp_already_exists_description"
               defaultValue: "Choose a different name for the AuthZEN PDP connection"
     HTTPConnectionInstanceList:
-      description: Configured HTTP endpoint connections
+      description: >-
+        Configured HTTP endpoint connections. A caller confined to an organization unit lists the ones that unit owns,
+        then the ones shared into it, with `isOwnedByOU` telling them apart.
       content:
         application/json:
           schema:
@@ -2654,6 +2662,8 @@ components:
             - id: "0199d1f4-6a1e-7c3b-9f2a-1b2c3d4e5f60"
               name: "Risk Engine"
               description: "Sign-in risk evaluation"
+              ouId: "01900000-0000-7000-8000-000000000001"
+              isOwnedByOU: true
     HTTPConnectionBadRequest:
       description: Invalid HTTP endpoint connection request
       content:
@@ -2924,6 +2934,34 @@ components:
             description:
               key: "error.forbidden_description"
               defaultValue: "You do not have sufficient permissions to access this resource"
+    ConnectionWriteForbidden:
+      description: >-
+        Insufficient permissions to change or delete the connection, or the connection is shared into the
+        organization unit the caller is confined to, which may only read it (CON-1041).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          examples:
+            forbidden:
+              summary: The caller may not change or delete the connection
+              value:
+                code: "AUTH-4030"
+                message:
+                  key: "error.forbidden"
+                  defaultValue: "Forbidden"
+                description:
+                  key: "error.forbidden_description"
+                  defaultValue: "You do not have sufficient permissions to access this resource"
+            sharedReadOnly:
+              summary: The connection is shared into the caller's organization unit
+              value:
+                code: "CON-1041"
+                message:
+                  key: "error.connectionservice.shared_connection_read_only"
+                  defaultValue: "Shared connection is read only"
+                description:
+                  key: "error.connectionservice.shared_connection_read_only_description"
+                  defaultValue: "Only the organization unit that owns the connection can change or delete it"
     InternalServerError:
       description: Internal server error
       content:
@@ -2996,7 +3034,7 @@ components:
           example: ["identity-provider"]
         isOwnedByOU:
           type: boolean
-          description: 'Whether the listed organization unit owns the connection rather than being shared it. Without an `ouId` filter, every listed connection is owned.'
+          description: 'Whether the listed organization unit owns the connection rather than being shared it. Without an `ouId` filter, a caller confined to an organization unit lists that unit the same way, and any other caller lists every connection as owned.'
           example: true
 
     ConnectionInstanceSummary:
@@ -3006,6 +3044,27 @@ components:
         id: { type: string, format: uuid }
         name: { type: string, example: "My Google" }
         description: { type: string }
+        ouId:
+          type: string
+          description: >-
+            ID of the organization unit that owns the connection. A connection shared into the organization unit the
+            caller lists carries the ID of that unit instead.
+          example: "01900000-0000-7000-8000-000000000001"
+        isOwnedByOU:
+          type: boolean
+          description: >-
+            Whether the listed organization unit owns the connection rather than being shared it. A caller that may
+            act across the deployment lists every connection as owned.
+          example: true
+
+    ConnectionIsOwnedByOU:
+      type: boolean
+      description: >-
+        Whether the organization unit reading the connection owns it, returned on a read only. A caller confined to an
+        organization unit also reads a connection shared into that unit: it comes back with `isOwnedByOU` set to
+        `false` and the ID of that unit as `ouId`, and it is read only, so an update or a delete is refused with
+        CON-1041.
+      example: true
 
     ConnectionUsage:
       type: object
@@ -3124,6 +3183,7 @@ components:
         issuer: { type: string }
         tokenExchangeEnabled: { type: boolean }
         attributeConfiguration: { $ref: '#/components/schemas/AttributeConfiguration' }
+        isOwnedByOU: { $ref: '#/components/schemas/ConnectionIsOwnedByOU' }
 
     GitHubConnectionUpdateRequest:
       type: object
@@ -3168,6 +3228,7 @@ components:
         scopes: { type: array, items: { type: string } }
         prompt: { type: string }
         attributeConfiguration: { $ref: '#/components/schemas/AttributeConfiguration' }
+        isOwnedByOU: { $ref: '#/components/schemas/ConnectionIsOwnedByOU' }
 
     OIDCConnectionUpdateRequest:
       type: object
@@ -3228,6 +3289,7 @@ components:
         idJagEnabled: { type: boolean, description: "Enable ID-JAG issuance for this identity provider (draft-ietf-oauth-identity-assertion-authz-grant), so that self-issued ID tokens naming it as issuer can be trusted for the jwt-bearer grant. Requires issuer and jwksEndpoint to be set." }
         trustedTokenAudience: { type: string }
         attributeConfiguration: { $ref: '#/components/schemas/AttributeConfiguration' }
+        isOwnedByOU: { $ref: '#/components/schemas/ConnectionIsOwnedByOU' }
 
     OAuthConnectionUpdateRequest:
       type: object
@@ -3283,6 +3345,7 @@ components:
         scopes: { type: array, items: { type: string } }
         prompt: { type: string }
         attributeConfiguration: { $ref: '#/components/schemas/AttributeConfiguration' }
+        isOwnedByOU: { $ref: '#/components/schemas/ConnectionIsOwnedByOU' }
 
     AuthZENPDPConnectionUpdateRequest:
       allOf:
@@ -3348,6 +3411,7 @@ components:
             type: { type: string, enum: [authzen-pdp] }
             authentication:
               $ref: '#/components/schemas/OutboundAuthentication'
+            isOwnedByOU: { $ref: '#/components/schemas/ConnectionIsOwnedByOU' }
         - $ref: '#/components/schemas/AuthZENPDPConnectionConfiguration'
 
     AuthZENPDPSubjectAttributeMapping:
@@ -3462,6 +3526,7 @@ components:
           type: array
           items: { $ref: '#/components/schemas/HTTPConnectionHeader' }
         authentication: { $ref: '#/components/schemas/OutboundAuthentication' }
+        isOwnedByOU: { $ref: '#/components/schemas/ConnectionIsOwnedByOU' }
       example:
         id: "0199d1f4-6a1e-7c3b-9f2a-1b2c3d4e5f60"
         name: "Risk Engine"
@@ -3520,6 +3585,7 @@ components:
         accountSid: { type: string }
         authToken: { type: string, description: "Masked as \"******\".", example: "******" }
         senderId: { type: string }
+        isOwnedByOU: { $ref: '#/components/schemas/ConnectionIsOwnedByOU' }
 
     VonageConnectionUpdateRequest:
       type: object
@@ -3558,6 +3624,7 @@ components:
         apiKey: { type: string }
         apiSecret: { type: string, description: "Masked as \"******\".", example: "******" }
         senderId: { type: string }
+        isOwnedByOU: { $ref: '#/components/schemas/ConnectionIsOwnedByOU' }
 
     SMSGatewayConnectionUpdateRequest:
       type: object
@@ -3616,6 +3683,7 @@ components:
         authentication:
           $ref: '#/components/schemas/OutboundAuthentication'
         contentType: { type: string }
+        isOwnedByOU: { $ref: '#/components/schemas/ConnectionIsOwnedByOU' }
 
     SMTPConnectionUpdateRequest:
       type: object
@@ -3682,6 +3750,7 @@ components:
         fromName: { type: string, example: "Acme Support" }
         tls: { type: string, enum: [none, starttls, implicit] }
         authentication: { $ref: '#/components/schemas/OutboundAuthentication' }
+        isOwnedByOU: { $ref: '#/components/schemas/ConnectionIsOwnedByOU' }
 
     OutboundAuthentication:
       type: object

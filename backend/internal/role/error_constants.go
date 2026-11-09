@@ -569,6 +569,21 @@ var (
 			DefaultValue: "A request can remove at most 100 assignments",
 		},
 	}
+	// ErrorSharedRoleReadOnly is returned when an organization unit a role is shared into tries to change or
+	// delete the role.
+	ErrorSharedRoleReadOnly = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "ROL-1045",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.roleservice.shared_role_read_only",
+			DefaultValue: "Shared role is read only",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.roleservice.shared_role_read_only_description",
+			DefaultValue: "Only the organization unit that owns the role can change or delete it. Manage its " +
+				"assignments in this organization unit instead",
+		},
+	}
 )
 
 // Internal error constants for role management operations.

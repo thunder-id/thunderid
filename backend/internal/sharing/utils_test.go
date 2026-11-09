@@ -16,6 +16,12 @@ import (
 	"gopkg.in/yaml.v3"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
+	oupkg "github.com/thunder-id/thunderid/internal/ou"
+	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/security"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
+	"github.com/thunder-id/thunderid/tests/mocks/sysauthzmock"
 )
 
 // testInvalidFormat stands in for the error a mounting resource type answers a malformed body with.
@@ -31,6 +37,53 @@ type UtilsTestSuite struct {
 
 func TestUtilsTestSuite(t *testing.T) {
 	suite.Run(t, new(UtilsTestSuite))
+}
+
+func (suite *UtilsTestSuite) TestSharedIntoCallerOU() {
+	const (
+		resourceID = "res-1"
+		ownerOU    = "ou-owner"
+		callerOU   = "ou-caller"
+	)
+	tests := []struct {
+		name       string
+		boundary   string
+		refusal    *tidcommon.ServiceError
+		visible    bool
+		visibleErr *tidcommon.ServiceError
+		asksShared bool
+		wantOU     string
+		wantErr    *tidcommon.ServiceError
+	}{
+		{name: "shared into the caller's unit", boundary: callerOU, refusal: &tidcommon.ErrorUnauthorized,
+			visible: true, asksShared: true, wantOU: callerOU},
+		{name: "not shared into the caller's unit", boundary: callerOU, refusal: &tidcommon.ErrorUnauthorized,
+			asksShared: true},
+		{name: "the caller's unit no longer exists", boundary: callerOU, refusal: &tidcommon.ErrorUnauthorized,
+			visibleErr: &oupkg.ErrorOrganizationUnitNotFound, asksShared: true},
+		{name: "the share cannot be checked", boundary: callerOU, refusal: &tidcommon.ErrorUnauthorized,
+			visibleErr: &tidcommon.InternalServerError, asksShared: true, wantErr: &tidcommon.InternalServerError},
+		{name: "the caller's unit owns the resource", boundary: ownerOU, refusal: &tidcommon.ErrorUnauthorized},
+		{name: "a refusal a share cannot lift", boundary: callerOU, refusal: &tidcommon.InternalServerError},
+	}
+	for _, tc := range tests {
+		suite.Run(tc.name, func() {
+			authz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+			authz.On("GetBoundary", mock.Anything).
+				Return(sysauthz.Boundary{Type: sysauthz.BoundaryTypeOU, OUID: tc.boundary}).Maybe()
+			sharingSvc := NewSharingServiceInterfaceMock(suite.T())
+			if tc.asksShared {
+				sharingSvc.On("IsVisible", mock.MatchedBy(security.IsRuntimeContext), ResourceType("app"),
+					resourceID, callerOU).Return(tc.visible, tc.visibleErr).Once()
+			}
+
+			ouID, svcErr := SharedIntoCallerOU(context.Background(), authz, sharingSvc, log.GetLogger(),
+				ResourceType("app"), resourceID, ownerOU, tc.refusal)
+
+			suite.Equal(tc.wantOU, ouID)
+			suite.Equal(tc.wantErr, svcErr)
+		})
+	}
 }
 
 func (suite *UtilsTestSuite) TestDecodePolicyBody_ReadsAWellFormedBody() {

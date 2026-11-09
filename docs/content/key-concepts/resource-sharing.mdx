@@ -266,6 +266,25 @@ sharingPolicies:
 
 `allUnits` and `otherTreeRoots` reach outside the owner's own tree. An owner that is a root organization unit can always state them. An owner that has a parent can state them only when `resource_sharing.allow_child_ou_cross_tree_sharing` is `true`. See [Resource Sharing Configuration](../deployment/configuration.mdx#resource-sharing-configuration).
 
+## Shared Resources in the Receiving Organization Unit
+
+An administrator whose token is confined to one organization unit, such as a Data Plane token that holds `org` or one of its child permissions, works with that organization unit only. The token names the organization unit in its `ouId` claim, and the Data Plane refuses such a token without one with `403 Forbidden`. For users, agents, applications, roles, connections, and flows, the organization unit sees both the resources it owns and the resources shared into it:
+
+- **List**: a list request with no `ouId` filter returns the resources the organization unit owns, followed by the resources shared into it. Each item carries `isOwnedByOU`, which is `false` for a shared item. A shared item is listed under the receiving organization unit's `ouId`. For users and agents, a list narrowed by another filter returns owned resources only. A list filtered to any other organization unit's `ouId` is empty.
+- **Read**: `GET` on a resource's ID returns a resource shared into the organization unit, under the receiving organization unit's `ouId` and with `isOwnedByOU: false`. A resource the organization unit owns returns `isOwnedByOU: true`. A shared flow returns its name, handle, type, and variables, not the whole definition.
+- **Change and delete**: only the owner can change or delete the resource. The receiving organization unit gets `403 Forbidden` with the code for its resource type.
+
+| Resource | Code for a change or delete in the receiving organization unit | What the receiving organization unit can change |
+|---|---|---|
+| User | `USR-1045` | Nothing. Roles a share mandates are set by the owner's policy. |
+| Agent | `AGT-1027` | Nothing. Agents are shared through declarative files only. |
+| Application | `APP-1070` | Nothing. |
+| Role | `ROL-1045` | Assignments of the role in the organization unit, when the `assignments` overlay rule is editable. |
+| Connection | `CON-1041` | Nothing. |
+| Flow | `FLM-1039` | Flow variables through `PUT /flows/{id}/variables`, when the `variables` overlay rule allows it. |
+
+A resource neither owned by nor shared into the organization unit returns `403 Forbidden` with the general authorization code.
+
 ## Related
 
 - [Machine-to-Machine (M2M) Access for Organization Units](../guides/organization-units/machine-to-machine-access.mdx)

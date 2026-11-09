@@ -28,6 +28,8 @@ type twilioConnectionResponse struct {
 	AccountSID  string `json:"accountSid,omitempty"`
 	AuthToken   string `json:"authToken,omitempty"`
 	SenderID    string `json:"senderId,omitempty"`
+
+	connectionOwnership
 }
 
 func twilioToSenderDTO(req twilioConnectionRequest) (*ncommon.NotificationSenderDTO, error) {

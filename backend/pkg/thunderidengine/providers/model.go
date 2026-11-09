@@ -1495,6 +1495,11 @@ type Application struct {
 	// EntityCategory is the category of the entity backing this runtime application view (app or
 	// agent). Runtime-only: never serialized on the application API or in declarative resources.
 	EntityCategory EntityCategory `yaml:"-" json:"-"`
+	// IsOwnedByOU says, on a read, whether the organization unit the application is read in owns it rather
+	// than being shared it.
+	IsOwnedByOU *bool `yaml:"-" json:"-"`
+	// IsReadOnly reports, on a read, that the organization unit the application is read in cannot change it.
+	IsReadOnly bool `yaml:"-" json:"-"`
 }
 
 // OAuthClientID returns the client_id of the application's OAuth inbound auth config, or an empty

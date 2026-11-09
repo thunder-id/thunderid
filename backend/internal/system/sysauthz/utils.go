@@ -56,6 +56,32 @@ func ResolveListOUs(ctx context.Context, authzService SystemAuthorizationService
 	}
 }
 
+// boundaryOU returns the organization unit the caller is confined to, and empty when the caller may act across
+// the deployment or is the server itself.
+func boundaryOU(ctx context.Context, authzService SystemAuthorizationServiceInterface) string {
+	if security.IsRuntimeContext(ctx) {
+		return ""
+	}
+	if boundary := authzService.GetBoundary(ctx); boundary.Type == BoundaryTypeOU {
+		return boundary.OUID
+	}
+	return ""
+}
+
+// SharedAccessOU returns the organization unit in which a caller refused access to a resource in its owning
+// organization unit may still reach the resource, when it is shared there: the one the caller is confined to,
+// unless that unit owns the resource. It returns empty for any other refusal.
+func SharedAccessOU(ctx context.Context, authzService SystemAuthorizationServiceInterface, ownerOUID string,
+	refusal *tidcommon.ServiceError) string {
+	if refusal == nil || refusal.Code != tidcommon.ErrorUnauthorized.Code {
+		return ""
+	}
+	if ouID := boundaryOU(ctx, authzService); ouID != ownerOUID {
+		return ouID
+	}
+	return ""
+}
+
 // CheckActionInAnyOU checks the caller may perform the action on a resource of the type in any of
 // the organization units. It answers tidcommon.ErrorUnauthorized when the caller may act in none.
 func CheckActionInAnyOU(ctx context.Context, authzService SystemAuthorizationServiceInterface,

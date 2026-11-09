@@ -36,6 +36,9 @@ type ConnectionResponse struct {
 	RetryCount               int                         `json:"retryCount"`
 	Authentication           outboundauth.Authentication `json:"authentication"`
 	SubjectAttributeMappings []SubjectAttributeMapping   `json:"subjectAttributeMappings,omitempty"`
+	// IsOwnedByOU says whether the organization unit reading the connection owns it rather than being shared it.
+	// Only a read sets it.
+	IsOwnedByOU *bool `json:"isOwnedByOU,omitempty"`
 }
 
 // ToResponse converts an internal connection into an API response.

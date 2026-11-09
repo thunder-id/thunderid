@@ -247,4 +247,18 @@ var (
 			DefaultValue: "The connection was deployed by the control plane and can only be changed there",
 		},
 	}
+	// ErrorSharedConnectionReadOnly is returned when an organization unit a connection is shared into tries to
+	// change or delete the connection.
+	ErrorSharedConnectionReadOnly = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "CON-1041",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.connectionservice.shared_connection_read_only",
+			DefaultValue: "Shared connection is read only",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.connectionservice.shared_connection_read_only_description",
+			DefaultValue: "Only the organization unit that owns the connection can change or delete it",
+		},
+	}
 )

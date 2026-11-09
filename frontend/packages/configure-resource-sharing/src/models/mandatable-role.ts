@@ -23,7 +23,7 @@ export interface MandatableRoles {
    */
   candidates: MandatableRole[];
   /**
-   * The name of every role the unit can see, keyed by role ID, to name a mandated role that is no
+   * The name of every role the issuer can see, keyed by role ID, to name a mandated role that is no
    * longer a candidate.
    */
   names: Record<string, string>;

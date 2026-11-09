@@ -37,6 +37,10 @@ paths:
         does not exist has no organization units. A caller who may list only some organization units gets
         every organization unit of the project it may list, at any level, as the list without `projectId`
         does.
+
+        On the Data Plane, listing the root organization units requires the `system` permission. A token
+        holding `org` or `org:ou` reaches only the organization unit it names, and lists that unit's children
+        with `GET /organization-units/{id}/ous` instead.
       parameters:
         - $ref: '#/components/parameters/limitQueryParam'
         - $ref: '#/components/parameters/offsetQueryParam'
@@ -111,6 +115,22 @@ paths:
                     description:
                       key: "error.ouservice.invalid_filter_description"
                       defaultValue: "The filter parameter is invalid. Use format: attribute (eq|gt|lt) \"value\""
+        "403":
+          description: |
+            The caller may not list the root organization units. On a data plane, only the `system`
+            permission lists them.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "SSE-4030"
+                message:
+                  key: "error.unauthorized"
+                  defaultValue: "Unauthorized"
+                description:
+                  key: "error.unauthorized_description"
+                  defaultValue: "The caller is not authorized to perform this operation"
         "500":
           description: Internal server error
 
@@ -296,6 +316,9 @@ paths:
       tags:
         - Organization Units
       summary: Get an organization unit by id
+      description: |
+        On the Data Plane, a token holding `org` or `org:ou` without `system` reads the organization unit it
+        names and that unit's direct children. Any other organization unit is refused with `403`.
       parameters:
         - in: path
           name: id
@@ -316,6 +339,22 @@ paths:
                 name: "Engineering Team"
                 description: "Engineering unit that handles all engineering tasks"
                 parent: null
+        "403":
+          description: |
+            The caller may not read the organization unit. On a data plane, a token holding `org` or
+            `org:ou` without `system` reads only the organization unit it names and its direct children.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "SSE-4030"
+                message:
+                  key: "error.unauthorized"
+                  defaultValue: "Unauthorized"
+                description:
+                  key: "error.unauthorized_description"
+                  defaultValue: "The caller is not authorized to perform this operation"
         "404":
           description: Organization unit not found
           content:
@@ -337,6 +376,10 @@ paths:
       tags:
         - Organization Units
       summary: Update an organization unit by id
+      description: |
+        On the Data Plane, a token holding `org` or `org:ou` without `system` updates only the direct
+        children of the organization unit it names. Its own unit and any other organization unit are refused
+        with `403`.
       parameters:
         - in: path
           name: id
@@ -448,8 +491,9 @@ paths:
                       defaultValue: "The organization unit is declarative and cannot be modified or deleted"
         "403":
           description: |
-            The caller may not update the organization unit. Moving it to the root also needs the
-            permission to create an organization unit. On a data plane, no token moves an organization
+            The caller may not update the organization unit. Moving it also needs the permission to
+            create an organization unit beneath its new parent, or at the root for a move to the root.
+            On a data plane, no token moves an organization
             unit to the root, whatever its permissions: only an import with the management API key
             does.
           content:
@@ -512,6 +556,10 @@ paths:
       tags:
         - Organization Units
       summary: Delete an organization unit by id
+      description: |
+        On the Data Plane, a token holding `org` or `org:ou` without `system` deletes only the direct
+        children of the organization unit it names. Its own unit and any other organization unit are refused
+        with `403`.
       parameters:
         - in: path
           name: id
@@ -549,6 +597,22 @@ paths:
                     description:
                       key: "error.ouservice.cannot_delete_system_ou_description"
                       defaultValue: "The deployment configuration names this organization unit in server.system_ou_id"
+        "403":
+          description: |
+            The caller may not delete the organization unit. On a data plane, a token holding `org` or
+            `org:ou` without `system` deletes only the direct children of the organization unit it names.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "SSE-4030"
+                message:
+                  key: "error.unauthorized"
+                  defaultValue: "Unauthorized"
+                description:
+                  key: "error.unauthorized_description"
+                  defaultValue: "The caller is not authorized to perform this operation"
         "404":
           description: Organization unit not found
           content:
@@ -571,6 +635,9 @@ paths:
       tags:
         - Organization Units
       summary: List child organization units
+      description: |
+        On the Data Plane, a token holding `org` or `org:ou` without `system` lists the children of the
+        organization unit it names only. The children of any other organization unit are refused with `403`.
       parameters:
         - in: path
           name: id
@@ -643,6 +710,23 @@ paths:
                     description:
                       key: "error.ouservice.invalid_filter_description"
                       defaultValue: "The filter parameter is invalid. Use format: attribute (eq|gt|lt) \"value\""
+        "403":
+          description: |
+            The caller may not list the children of the organization unit. On a data plane, a token
+            holding `org` or `org:ou` without `system` lists only the children of the organization unit it
+            names.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "SSE-4030"
+                message:
+                  key: "error.unauthorized"
+                  defaultValue: "Unauthorized"
+                description:
+                  key: "error.unauthorized_description"
+                  defaultValue: "The caller is not authorized to perform this operation"
         "404":
           description: Organization unit not found
           content:
@@ -914,6 +998,11 @@ paths:
       tags:
         - organization-units-by-path
       summary: Get an organization unit by hierarchical handle path
+      description: |
+        The path resolves to the last organization unit it names, and the request is authorized as the
+        matching request by id. On the Data Plane, a token holding `org` or `org:ou` without `system` is
+        refused with `403` for a path that names no organization unit, as it is for one out of its reach, so a
+        path reveals nothing about the organization units outside its reach.
       parameters:
         - in: path
           name: path
@@ -953,6 +1042,23 @@ paths:
                     handle: "frontend"
                     description: "Handles UI/UX work"
                     parent: "afc77cfd-620b-4cf0-a31c-7377b0ea8902"
+        "403":
+          description: |
+            The caller may not read the organization unit. On a data plane, a token holding `org` or
+            `org:ou` without `system` reads only the organization unit it names and its direct children, and
+            is refused for a path that names no organization unit.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "SSE-4030"
+                message:
+                  key: "error.unauthorized"
+                  defaultValue: "Unauthorized"
+                description:
+                  key: "error.unauthorized_description"
+                  defaultValue: "The caller is not authorized to perform this operation"
         "404":
           description: Organization unit not found
           content:
@@ -1048,8 +1154,9 @@ paths:
                   defaultValue: "The request body is malformed, contains invalid data, or required fields are missing/empty"
         "403":
           description: |
-            The caller may not update the organization unit. Moving it to the root also needs the
-            permission to create an organization unit. On a data plane, no token moves an organization
+            The caller may not update the organization unit. Moving it also needs the permission to
+            create an organization unit beneath its new parent, or at the root for a move to the root.
+            On a data plane, no token moves an organization
             unit to the root, whatever its permissions: only an import with the management API key
             does.
           content:
@@ -1157,6 +1264,22 @@ paths:
                     description:
                       key: "error.ouservice.cannot_delete_system_ou_description"
                       defaultValue: "The deployment configuration names this organization unit in server.system_ou_id"
+        "403":
+          description: |
+            The caller may not delete the organization unit. On a data plane, a token holding `org` or
+            `org:ou` without `system` deletes only the direct children of the organization unit it names.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "SSE-4030"
+                message:
+                  key: "error.unauthorized"
+                  defaultValue: "Unauthorized"
+                description:
+                  key: "error.unauthorized_description"
+                  defaultValue: "The caller is not authorized to perform this operation"
         "404":
           description: Organization unit not found
           content:
@@ -1179,6 +1302,11 @@ paths:
       tags:
         - organization-units-by-path
       summary: List child organization units by handle path
+      description: |
+        The path resolves to the last organization unit it names, and its children are listed as
+        `GET /organization-units/{id}/ous` lists them. On the Data Plane, a token holding `org` or `org:ou`
+        without `system` lists only the children of the organization unit it names, and is refused with
+        `403` for a path that names no organization unit.
       parameters:
         - in: path
           name: path
@@ -1258,6 +1386,23 @@ paths:
                     description:
                       key: "error.ouservice.invalid_filter_description"
                       defaultValue: "The filter parameter is invalid. Use format: attribute (eq|gt|lt) \"value\""
+        "403":
+          description: |
+            The caller may not list the children of the organization unit. On a data plane, a token
+            holding `org` or `org:ou` without `system` lists only the children of the organization unit it
+            names, and is refused for a path that names no organization unit.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "SSE-4030"
+                message:
+                  key: "error.unauthorized"
+                  defaultValue: "Unauthorized"
+                description:
+                  key: "error.unauthorized_description"
+                  defaultValue: "The caller is not authorized to perform this operation"
         "404":
           description: Organization unit not found
           content:

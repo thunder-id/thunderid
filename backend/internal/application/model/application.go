@@ -174,6 +174,11 @@ type ApplicationGetResponse struct {
 
 	InboundAuthConfig []inboundmodel.InboundAuthConfig `json:"inboundAuthConfig,omitempty"`
 	Metadata          map[string]interface{}           `json:"metadata,omitempty"`
+	// IsOwnedByOU says whether the organization unit the application is read in owns it rather than being
+	// shared it.
+	IsOwnedByOU *bool `json:"isOwnedByOU,omitempty"`
+	// IsReadOnly reports that the organization unit the application is read in cannot change it.
+	IsReadOnly bool `json:"isReadOnly,omitempty"`
 }
 
 // BasicApplicationResponse represents a simplified response structure for an application.

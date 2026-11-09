@@ -39,6 +39,8 @@ type smsGatewayConnectionResponse struct {
 	HTTPHeaders    string                      `json:"httpHeaders,omitempty"`
 	Authentication outboundauth.Authentication `json:"authentication"`
 	ContentType    string                      `json:"contentType,omitempty"`
+
+	connectionOwnership
 }
 
 func smsGatewayToSenderDTO(req smsGatewayConnectionRequest) (*ncommon.NotificationSenderDTO, error) {

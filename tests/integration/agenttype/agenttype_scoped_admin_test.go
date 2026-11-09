@@ -32,16 +32,17 @@ const (
 
 // AgentTypeScopedAdminTestSuite covers what an administrator scoped to one organization unit sees of agent
 // types, and which ones it can create agents of. The administrator belongs to a child unit and holds the
-// agent permission and the agent type view permission. It reads the agent types of its own unit and of
-// its ancestors, and no others. An agent type it cannot read is answered the way an unknown one is, so
-// creating an agent reveals nothing about agent types outside its reach.
+// agent permission and the agent type permission. It reads the agent types of its own unit and of its
+// ancestors, and no others, and changes or deletes only those of its own unit. An agent type it cannot read
+// is answered the way an unknown one is, so creating an agent reveals nothing about agent types outside its
+// reach.
 type AgentTypeScopedAdminTestSuite struct {
 	suite.Suite
 
 	parentOUID  string
 	childOUID   string
 	siblingOUID string
-	typeIDs     []string
+	typeIDs     map[string]string
 	userTypeID  string
 	userID      string
 	roleID      string
@@ -61,6 +62,7 @@ func (s *AgentTypeScopedAdminTestSuite) SetupSuite() {
 	s.childOUID = s.createOU("agent-type-scoped-child-ou", &s.parentOUID)
 	s.siblingOUID = s.createOU("agent-type-scoped-sibling-ou", nil)
 
+	s.typeIDs = map[string]string{}
 	for handle, ouID := range map[string]string{
 		scopedParentAgentType: s.parentOUID, scopedChildAgentType: s.childOUID, scopedSiblingAgentType: s.siblingOUID,
 	} {
@@ -69,7 +71,7 @@ func (s *AgentTypeScopedAdminTestSuite) SetupSuite() {
 			Schema: map[string]interface{}{"name": map[string]interface{}{"type": "string", "required": true}},
 		})
 		s.Require().NoError(err)
-		s.typeIDs = append(s.typeIDs, id)
+		s.typeIDs[handle] = id
 	}
 
 	userTypeID, err := testutils.CreateUserType(testutils.UserType{
@@ -102,7 +104,7 @@ func (s *AgentTypeScopedAdminTestSuite) SetupSuite() {
 		Name: "Agent Type Scoped Admin Role",
 		OUID: s.childOUID,
 		Permissions: []testutils.ResourcePermissions{
-			{ResourceServerID: rsID, Permissions: []string{"org:agent", "org:agenttype:view"}},
+			{ResourceServerID: rsID, Permissions: []string{"org:agent", "org:agenttype"}},
 		},
 		Assignments: []testutils.Assignment{{ID: s.userID, Type: "user"}},
 	})
@@ -113,11 +115,11 @@ func (s *AgentTypeScopedAdminTestSuite) SetupSuite() {
 	s.Require().NoError(err)
 
 	tokenResp, err := testutils.ObtainAccessTokenWithPassword(
-		scopedAdminClientID, testutils.OUSignInRedirectURI, "org:agent org:agenttype:view",
+		scopedAdminClientID, testutils.OUSignInRedirectURI, "org:agent org:agenttype",
 		scopedAdminUsername, scopedAdminPassword, true, "", scopedAdminRSIdentity)
 	s.Require().NoError(err)
 	granted := strings.Fields(tokenResp.Scope)
-	s.Require().Contains(granted, "org:agenttype:view", "token must carry the agent type view scope")
+	s.Require().Contains(granted, "org:agenttype", "token must carry the agent type scope")
 	s.Require().Contains(granted, "org:agent", "token must carry the agent scope")
 	s.scopedClient = testutils.GetHTTPClientWithToken(tokenResp.AccessToken)
 }
@@ -231,4 +233,53 @@ func (s *AgentTypeScopedAdminTestSuite) TestUnreadableAgentTypeAnswersAsAnUnknow
 	}
 	s.Require().NoError(json.Unmarshal(unknownBody, &refusal))
 	s.Equal("AGT-1054", refusal.Code, "an unknown agent type is reported as not found: %s", string(unknownBody))
+}
+
+func (s *AgentTypeScopedAdminTestSuite) TestReadAncestorAgentType() {
+	status, body := s.doScoped(http.MethodGet, agentTypeBasePath+"/"+s.typeIDs[scopedParentAgentType], nil)
+	s.Require().Equal(http.StatusOK, status, "body: %s", string(body))
+
+	var agentType AgentType
+	s.Require().NoError(json.Unmarshal(body, &agentType))
+	s.Equal(scopedParentAgentType, agentType.Handle)
+	s.Equal(s.parentOUID, agentType.OUID)
+}
+
+// The administrator may change agent types, as it changes its own unit's, but not one an ancestor owns.
+func (s *AgentTypeScopedAdminTestSuite) TestUpdateAncestorAgentType() {
+	update := func(handle, ouID string) (int, []byte) {
+		return s.doScoped(http.MethodPut, agentTypeBasePath+"/"+s.typeIDs[handle], AgentTypeRequest{
+			Handle:      handle,
+			DisplayName: handle + " renamed",
+			OUID:        ouID,
+			Schema:      json.RawMessage(`{"name": {"type": "string", "required": true}}`),
+		})
+	}
+
+	status, body := update(scopedParentAgentType, s.parentOUID)
+	s.Equal(http.StatusForbidden, status, "an ancestor's agent type must not be updated: %s", string(body))
+	s.Equal(scopedParentAgentType, s.rootGetAgentType(s.typeIDs[scopedParentAgentType]).DisplayName,
+		"a refused update must not reach the store")
+
+	status, body = update(scopedChildAgentType, s.childOUID)
+	s.Equal(http.StatusOK, status, "the administrator's own agent type is updated: %s", string(body))
+}
+
+func (s *AgentTypeScopedAdminTestSuite) TestDeleteAncestorAgentType() {
+	status, body := s.doScoped(http.MethodDelete, agentTypeBasePath+"/"+s.typeIDs[scopedParentAgentType], nil)
+	s.Equal(http.StatusForbidden, status, "an ancestor's agent type must not be deleted: %s", string(body))
+	s.Equal(scopedParentAgentType, s.rootGetAgentType(s.typeIDs[scopedParentAgentType]).Handle,
+		"the agent type must still exist after a refused delete")
+}
+
+// rootGetAgentType reads an agent type as the root administrator.
+func (s *AgentTypeScopedAdminTestSuite) rootGetAgentType(id string) AgentType {
+	s.T().Helper()
+	resp, err := testutils.GetHTTPClient().Get(testutils.TestServerURL + agentTypeBasePath + "/" + id)
+	s.Require().NoError(err)
+	defer closeBody(resp)
+	s.Require().Equal(http.StatusOK, resp.StatusCode)
+	var agentType AgentType
+	s.Require().NoError(json.NewDecoder(resp.Body).Decode(&agentType))
+	return agentType
 }

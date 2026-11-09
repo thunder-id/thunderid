@@ -39,6 +39,7 @@ func InitDataPlanePermissions(handle string) {
 		Root:               system,
 		Org:                org,
 		AdministrationFlow: org,
+		OUListRoots:        system,
 
 		OU:              orgChild(ResourceTypeOU, ""),
 		OUView:          orgChild(ResourceTypeOU, catalogActionView),

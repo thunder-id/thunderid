@@ -457,6 +457,7 @@ type smsStubReq struct {
 
 type smsStubResp struct {
 	ID string `json:"id"`
+	connectionOwnership
 }
 
 var errStubMapper = errors.New("stub mapper failure")
@@ -966,7 +967,8 @@ func (s *HTTPConnectionHandlerTestSuite) TestListReturnsSummaries() {
 	rr := s.serve(http.MethodGet, "/connections/http", "")
 
 	s.Equal(http.StatusOK, rr.Code)
-	s.JSONEq(`[{"id":"http-1","name":"Risk","description":"Risk engine"}]`, rr.Body.String())
+	s.JSONEq(`[{"id":"http-1","name":"Risk","description":"Risk engine","ouId":"ou-1","isOwnedByOU":true}]`,
+		rr.Body.String())
 }
 
 func (s *HTTPConnectionHandlerTestSuite) TestServiceErrorsMapToStatus() {

@@ -4,8 +4,10 @@
 import {useQuery, type UseQueryResult} from '@tanstack/react-query';
 import {useConfig} from '@thunderid/contexts';
 import {useThunderID} from '@thunderid/react';
+import fetchSharingPolicies from './fetchSharingPolicies';
 import ResourceSharingQueryKeys from '../constants/resource-sharing-query-keys';
 import type {MandatableRole, MandatableRoles} from '../models/mandatable-role';
+import policyReachesChildUnit from '../utils/policyReachesChildUnit';
 
 interface ListedRole {
   id: string;
@@ -25,18 +27,16 @@ const PAGE_SIZE = 100;
  * Fetches the roles an issuing unit can mandate in one of its child units: the issuer's own roles that
  * are shared with the child unit. Roles the child unit owns itself are left out, because the issuer
  * has no say over them.
- *
- * A role listed for a unit it is shared with carries that unit's ID, not its owner's, so ownership is
- * read from the issuer's own listing.
- *
+ * The issuer may not list the child unit's roles, so the hook lists the issuer's own roles and keeps
+ * those whose sharing policy, as the issuer states it, reaches the child unit. A role is mandated only
+ * in a child unit the user share names, which is a direct child of the issuer, and only the issuer's
+ * own policy reaches a direct child.
  * Called directly rather than through `configure-roles`, which depends on this package.
- *
  * @param ouId - The child unit the roles would be mandated in
  * @param issuerOuId - The unit issuing the share
  * @param enabled - Whether to fetch
  * @returns TanStack Query result holding the candidates, in the order the server lists them, and the
- * names of every role the unit can see
- *
+ * names of every role the issuer can see
  * @public
  */
 export default function useGetMandatableRoles(
@@ -52,34 +52,38 @@ export default function useGetMandatableRoles(
     queryFn: async (): Promise<MandatableRoles> => {
       const serverUrl: string = getServerUrl();
 
-      const listRoles = async (listedOuId: string): Promise<ListedRole[]> => {
-        const listed: ListedRole[] = [];
-        for (;;) {
-          const params = new URLSearchParams({
-            filter: `ouId eq "${listedOuId}"`,
-            limit: PAGE_SIZE.toString(),
-            offset: listed.length.toString(),
-          });
-          const response: {data: RoleListPage} = await http.request({
-            url: `${serverUrl}/roles?${params.toString()}`,
-            method: 'GET',
-          } as unknown as Parameters<typeof http.request>[0]);
+      const ofIssuer: ListedRole[] = [];
+      for (;;) {
+        const params = new URLSearchParams({
+          filter: `ouId eq "${issuerOuId}"`,
+          limit: PAGE_SIZE.toString(),
+          offset: ofIssuer.length.toString(),
+        });
+        const response: {data: RoleListPage} = await http.request({
+          url: `${serverUrl}/roles?${params.toString()}`,
+          method: 'GET',
+        } as unknown as Parameters<typeof http.request>[0]);
 
-          const page = response.data.roles ?? [];
-          listed.push(...page);
+        const page = response.data.roles ?? [];
+        ofIssuer.push(...page);
 
-          if (page.length === 0 || listed.length >= response.data.totalResults) break;
-        }
-        return listed;
-      };
+        if (page.length === 0 || ofIssuer.length >= response.data.totalResults) break;
+      }
 
-      const [inUnit, ofIssuer] = await Promise.all([listRoles(ouId), listRoles(issuerOuId)]);
-      const ownedByIssuer = new Set(ofIssuer.filter((role) => role.isOwnedByOU === true).map((role) => role.id));
+      const owned = ofIssuer.filter((role) => role.isOwnedByOU === true);
+      const reaches = await Promise.all(
+        owned.map(async (role) => {
+          const policies = await fetchSharingPolicies(http, serverUrl, `roles/${role.id}`);
+          return policies.some(
+            (policy) => policy.initiatingOuId === issuerOuId && policyReachesChildUnit(policy, ouId),
+          );
+        }),
+      );
 
-      const candidates: MandatableRole[] = inUnit
-        .filter((role) => role.isOwnedByOU === false && ownedByIssuer.has(role.id))
+      const candidates: MandatableRole[] = owned
+        .filter((_, index) => reaches[index])
         .map(({id, name, description}) => ({id, name, description, ouId: issuerOuId}));
-      const names: Record<string, string> = Object.fromEntries(inUnit.map((role) => [role.id, role.name]));
+      const names: Record<string, string> = Object.fromEntries(ofIssuer.map((role) => [role.id, role.name]));
 
       return {candidates, names};
     },

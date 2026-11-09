@@ -125,27 +125,22 @@ func (h *flowMgtHandler) getFlow(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// With an organization unit, the flow is as that unit sees it. Without one, it is the whole definition.
+	var view *FlowView
+	var svcErr *tidcommon.ServiceError
 	if ouID := r.URL.Query().Get(queryParamOUID); ouID != "" {
-		view, svcErr := h.service.GetFlowForOU(ctx, flowID, ouID)
-		if svcErr != nil {
-			handleError(ctx, w, svcErr)
-			return
-		}
-		if view.Shared != nil {
-			utils.WriteSuccessResponse(ctx, w, http.StatusOK, view.Shared)
-		} else {
-			utils.WriteSuccessResponse(ctx, w, http.StatusOK, view.Owned)
-		}
-		h.logger.Debug(ctx, "Flow retrieved successfully", log.String(logKeyFlowID, flowID))
-		return
+		view, svcErr = h.service.GetFlowForOU(ctx, flowID, ouID)
+	} else {
+		view, svcErr = h.service.GetFlowView(ctx, flowID)
 	}
-
-	flow, svcErr := h.service.GetFlow(ctx, flowID)
 	if svcErr != nil {
 		handleError(ctx, w, svcErr)
 		return
 	}
-	utils.WriteSuccessResponse(ctx, w, http.StatusOK, flow)
+	if view.Shared != nil {
+		utils.WriteSuccessResponse(ctx, w, http.StatusOK, view.Shared)
+	} else {
+		utils.WriteSuccessResponse(ctx, w, http.StatusOK, view.Owned)
+	}
 	h.logger.Debug(ctx, "Flow retrieved successfully", log.String(logKeyFlowID, flowID))
 }
 

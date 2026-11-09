@@ -15,6 +15,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/entity"
 	flowcommon "github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/system/config"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/entitymock"
@@ -121,6 +122,7 @@ func (s *UserDeletionSystemFlowTestSuite) TestAMissingUserRunsNoFlow() {
 // A caller refused the deletion revokes nothing.
 func (s *UserDeletionSystemFlowTestSuite) TestARefusedAccessCheckRunsNoFlow() {
 	s.expectUser(false)
+	s.authz.On("GetBoundary", mock.Anything).Return(sysauthz.Boundary{Type: sysauthz.BoundaryTypeDeployment})
 
 	s.Equal(&tidcommon.ErrorUnauthorized, s.service.DeleteUser(context.Background(), "user-1"))
 }

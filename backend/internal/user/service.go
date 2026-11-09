@@ -208,6 +208,17 @@ func (us *userService) GetUserList(ctx context.Context, limit, offset int,
 		return us.listAllUsers(ctx, limit, offset, filters, includeDisplay, listQuery, logger)
 	}
 
+	// A caller that may list one organization unit lists what that unit sees: the users it owns, then the ones
+	// shared into it. Other conditions cannot match shared users yet, so a list they narrow keeps to owned users.
+	if len(accessible.IDs) == 1 && len(filters) == 0 {
+		users, totalCount, listErr := us.listUsersInOU(ctx, accessible.IDs[0], limit, offset, filters,
+			includeDisplay, logger)
+		if listErr != nil {
+			return nil, listErr
+		}
+		return buildUserListResponse(users, totalCount, limit, offset, listQuery), nil
+	}
+
 	// Filtered path: return users belonging to the accessible OUs.
 	return us.listUsersByOUIDs(ctx, accessible.IDs, limit, offset, filters, includeDisplay, listQuery, logger)
 }
@@ -570,8 +581,10 @@ func (us *userService) GetUser(
 
 	// Check authz using the user's OU ID (fetched from store).
 	if svcErr := us.checkUserAccess(ctx, security.ActionReadUser, user.OUID, userID); svcErr != nil {
-		return nil, svcErr
+		return us.getSharedUser(ctx, userID, user.OUID, includeDisplay, svcErr)
 	}
+	// Read in its owning organization unit, as a shared user is read in the one it is shared into.
+	user.IsOwnedByOU = new(true)
 	us.completeUserRead(ctx, e, &user, includeDisplay, logger)
 	if !user.IsReadOnly {
 		deployed, err := managedresource.IsDeployed(ctx, us.managed, user.ID, managedresource.TypeUser)
@@ -585,6 +598,36 @@ func (us *userService) GetUser(
 
 	logger.Debug(ctx, "Successfully retrieved user", log.MaskedString(log.LoggerKeyUserID, userID))
 	return &user, nil
+}
+
+// getSharedUser answers a read refused in the user's owning organization unit with the user as the organization
+// unit the caller is confined to sees it, when the user is shared there, and with the refusal otherwise.
+func (us *userService) getSharedUser(ctx context.Context, userID, ownerOUID string, includeDisplay bool,
+	refusal *tidcommon.ServiceError) (*providers.User, *tidcommon.ServiceError) {
+	ouID := sysauthz.SharedAccessOU(ctx, us.authzService, ownerOUID, refusal)
+	if ouID == "" {
+		return nil, refusal
+	}
+	user, svcErr := us.GetUserInOU(ctx, userID, ouID, includeDisplay)
+	if svcErr != nil && svcErr.Code == ErrorUserNotFound.Code {
+		return nil, refusal
+	}
+	return user, svcErr
+}
+
+// sharedUserRefusal answers a write refused in the user's owning organization unit with ErrorSharedUserReadOnly
+// when the user is shared into the organization unit the caller is confined to, and with the refusal otherwise.
+func (us *userService) sharedUserRefusal(ctx context.Context, userID, ownerOUID string,
+	refusal *tidcommon.ServiceError) *tidcommon.ServiceError {
+	ouID, svcErr := sharing.SharedIntoCallerOU(ctx, us.authzService, us.sharingService, us.logger,
+		UserSharingType, userID, ownerOUID, refusal)
+	if svcErr != nil {
+		return svcErr
+	}
+	if ouID != "" {
+		return &ErrorSharedUserReadOnly
+	}
+	return refusal
 }
 
 // GetUserInOU retrieves a user as an organization unit sees it: one the unit owns, or one shared into it.
@@ -807,7 +850,7 @@ func (us *userService) updateUser(
 	// Check authz using the existing user's OU ID.
 	if svcErr := us.checkUserAccess(
 		ctx, security.ActionUpdateUser, existingUser.OUID, userID); svcErr != nil {
-		return nil, svcErr
+		return nil, us.sharedUserRefusal(ctx, userID, existingUser.OUID, svcErr)
 	}
 	// Attributes such as an email or phone number lead to account recovery, so changing them is
 	// control over the user.
@@ -979,7 +1022,7 @@ func (us *userService) updateUserAttributes(
 	// Check authz outside the transaction so a denial is returned directly without a rollback.
 	if svcErr := us.checkUserAccess(
 		ctx, security.ActionUpdateUser, existingUser.OUID, userID); svcErr != nil {
-		return nil, svcErr
+		return nil, us.sharedUserRefusal(ctx, userID, existingUser.OUID, svcErr)
 	}
 	if svcErr := us.authzService.CanControlEntity(ctx, userID); svcErr != nil {
 		return nil, svcErr
@@ -1071,7 +1114,7 @@ func (us *userService) UpdateUserCredentials(
 	// Check authz outside the transaction so a denial is returned directly without a rollback.
 	if svcErr := us.checkUserAccess(
 		ctx, security.ActionUpdateUser, existingUser.OUID, userID); svcErr != nil {
-		return svcErr
+		return us.sharedUserRefusal(ctx, userID, existingUser.OUID, svcErr)
 	}
 
 	if svcErr := us.authzService.CanControlEntity(ctx, userID); svcErr != nil {
@@ -1191,7 +1234,7 @@ func (us *userService) ValidateDeleteUser(ctx context.Context, userID string) *t
 	}
 	if svcErr := us.checkUserAccess(ctx, security.ActionDeleteUser,
 		entityToUser(existingEntity).OUID, userID); svcErr != nil {
-		return svcErr
+		return us.sharedUserRefusal(ctx, userID, existingEntity.OUID, svcErr)
 	}
 	if svcErr := us.authzService.CanControlEntity(ctx, userID); svcErr != nil {
 		return svcErr
@@ -1237,7 +1280,7 @@ func (us *userService) deleteUser(ctx context.Context, userID string) *tidcommon
 	// Check authz using the user's OU ID.
 	if svcErr := us.checkUserAccess(
 		ctx, security.ActionDeleteUser, existingUser.OUID, userID); svcErr != nil {
-		return svcErr
+		return us.sharedUserRefusal(ctx, userID, existingUser.OUID, svcErr)
 	}
 	if svcErr := us.authzService.CanControlEntity(ctx, userID); svcErr != nil {
 		return svcErr

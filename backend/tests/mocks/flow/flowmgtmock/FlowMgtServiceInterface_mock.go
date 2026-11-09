@@ -915,6 +915,76 @@ func (_c *FlowMgtServiceInterfaceMock_GetFlowVersion_Call) RunAndReturn(run func
 	return _c
 }
 
+// GetFlowView provides a mock function for the type FlowMgtServiceInterfaceMock
+func (_mock *FlowMgtServiceInterfaceMock) GetFlowView(ctx context.Context, flowID string) (*flowmgt.FlowView, *common.ServiceError) {
+	ret := _mock.Called(ctx, flowID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetFlowView")
+	}
+
+	var r0 *flowmgt.FlowView
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (*flowmgt.FlowView, *common.ServiceError)); ok {
+		return returnFunc(ctx, flowID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *flowmgt.FlowView); ok {
+		r0 = returnFunc(ctx, flowID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*flowmgt.FlowView)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, flowID)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// FlowMgtServiceInterfaceMock_GetFlowView_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetFlowView'
+type FlowMgtServiceInterfaceMock_GetFlowView_Call struct {
+	*mock.Call
+}
+
+// GetFlowView is a helper method to define mock.On call
+//   - ctx context.Context
+//   - flowID string
+func (_e *FlowMgtServiceInterfaceMock_Expecter) GetFlowView(ctx any, flowID any) *FlowMgtServiceInterfaceMock_GetFlowView_Call {
+	return &FlowMgtServiceInterfaceMock_GetFlowView_Call{Call: _e.mock.On("GetFlowView", ctx, flowID)}
+}
+
+func (_c *FlowMgtServiceInterfaceMock_GetFlowView_Call) Run(run func(ctx context.Context, flowID string)) *FlowMgtServiceInterfaceMock_GetFlowView_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *FlowMgtServiceInterfaceMock_GetFlowView_Call) Return(flowView *flowmgt.FlowView, serviceError *common.ServiceError) *FlowMgtServiceInterfaceMock_GetFlowView_Call {
+	_c.Call.Return(flowView, serviceError)
+	return _c
+}
+
+func (_c *FlowMgtServiceInterfaceMock_GetFlowView_Call) RunAndReturn(run func(ctx context.Context, flowID string) (*flowmgt.FlowView, *common.ServiceError)) *FlowMgtServiceInterfaceMock_GetFlowView_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetGraph provides a mock function for the type FlowMgtServiceInterfaceMock
 func (_mock *FlowMgtServiceInterfaceMock) GetGraph(ctx context.Context, flowID string) (core.GraphInterface, *common.ServiceError) {
 	ret := _mock.Called(ctx, flowID)

@@ -279,6 +279,7 @@ func newAllowAllAuthz(t interface {
 		Return(true, nil).Maybe()
 	authzMock.On("GetAccessibleResources", mock.Anything, mock.Anything, mock.Anything).
 		Return(&sysauthz.AccessibleResources{AllAllowed: true}, nil).Maybe()
+	authzMock.On("GetBoundary", mock.Anything).Return(sysauthz.Boundary{Type: sysauthz.BoundaryTypeDeployment}).Maybe()
 	return authzMock
 }
 
@@ -675,6 +676,55 @@ func (suite *OrganizationUnitServiceTestSuite) TestOUService_GetOrganizationUnit
 			}
 		})
 	}
+}
+
+// A handle path that names no organization unit is refused, as a path out of reach is, for a caller confined to the
+// organization unit its token names, so a path tells it nothing about units outside its reach. A caller holding the
+// system root permission, or one the deployment does not confine, is told the unit is not found.
+func (suite *OrganizationUnitServiceTestSuite) TestOUService_PathNamingNoUnitForAConfinedCaller() {
+	security.ForEachPermissionPlaneForTest(func(plane string) {
+		if plane != "DataPlane" {
+			return
+		}
+		confined := func(permissions ...string) context.Context {
+			return security.WithSecurityContextTest(context.Background(),
+				security.NewSecurityContextForTest("admin-1", "ou-1", "", permissions, nil))
+		}
+		tests := []struct {
+			name     string
+			ctx      context.Context
+			boundary sysauthz.BoundaryType
+			want     tidcommon.ServiceError
+		}{
+			{name: "org in a unit", ctx: confined("org"), boundary: sysauthz.BoundaryTypeOU,
+				want: tidcommon.ErrorUnauthorized},
+			{name: "system in a unit", ctx: confined("system"), boundary: sysauthz.BoundaryTypeOU,
+				want: ErrorOrganizationUnitNotFound},
+			{name: "runtime", ctx: security.WithRuntimeContext(confined("org")), boundary: sysauthz.BoundaryTypeOU,
+				want: ErrorOrganizationUnitNotFound},
+			{name: "deployment boundary", ctx: confined("org"), boundary: sysauthz.BoundaryTypeDeployment,
+				want: ErrorOrganizationUnitNotFound},
+		}
+		for _, tc := range tests {
+			suite.Run(tc.name, func() {
+				store := newOrganizationUnitStoreInterfaceMock(suite.T())
+				store.On("GetOrganizationUnitByPath", mock.Anything, []string{"root", "gone"}).
+					Return(OrganizationUnit{}, ErrOrganizationUnitNotFound)
+				authz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+				authz.On("GetBoundary", mock.Anything).
+					Return(sysauthz.Boundary{Type: tc.boundary, OUID: "ou-1"}).Maybe()
+				service := suite.newService(store, authz)
+
+				_, err := service.GetOrganizationUnitByPath(tc.ctx, "root/gone")
+				suite.Require().NotNil(err)
+				suite.Equal(tc.want.Code, err.Code)
+
+				_, err = service.GetOrganizationUnitChildrenByPath(tc.ctx, "root/gone", 10, 0, nil)
+				suite.Require().NotNil(err)
+				suite.Equal(tc.want.Code, err.Code)
+			})
+		}
+	})
 }
 
 func (suite *OrganizationUnitServiceTestSuite) TestOUService_GetOrganizationUnitByPath() {
@@ -2868,18 +2918,20 @@ func (suite *OrganizationUnitServiceTestSuite) TestOUService_UpdateOrganizationU
 	otherParentID := "other-parent"
 
 	tests := []struct {
-		name              string
-		existing          *string
-		requested         *string
-		checksRootCreate  bool
-		rootCreateAllowed bool
+		name          string
+		existing      *string
+		requested     *string
+		checksCreate  bool
+		createAllowed bool
 	}{
 		{name: "moving to root is refused without root creation", existing: &parentID, requested: nil,
-			checksRootCreate: true, rootCreateAllowed: false},
+			checksCreate: true, createAllowed: false},
 		{name: "moving to root is allowed with root creation", existing: &parentID, requested: nil,
-			checksRootCreate: true, rootCreateAllowed: true},
-		{name: "moving under another parent needs only the update", existing: &parentID,
-			requested: &otherParentID},
+			checksCreate: true, createAllowed: true},
+		{name: "moving under another parent is refused without creation there", existing: &parentID,
+			requested: &otherParentID, checksCreate: true, createAllowed: false},
+		{name: "moving under another parent is allowed with creation there", existing: &parentID,
+			requested: &otherParentID, checksCreate: true, createAllowed: true},
 		{name: "updating a root without moving it needs only the update", existing: nil, requested: nil},
 	}
 
@@ -2890,7 +2942,7 @@ func (suite *OrganizationUnitServiceTestSuite) TestOUService_UpdateOrganizationU
 				Return(OrganizationUnit{ID: testOUID, Handle: "finance", Name: "Finance", Parent: tc.existing}, nil).
 				Once()
 			store.On("IsOrganizationUnitDeclarative", mock.Anything, testOUID).Return(false).Once()
-			wantUpdated := !tc.checksRootCreate || tc.rootCreateAllowed
+			wantUpdated := !tc.checksCreate || tc.createAllowed
 			if wantUpdated {
 				if tc.requested != nil {
 					store.On("IsOrganizationUnitExists", mock.Anything, *tc.requested).Return(true, nil).Once()
@@ -2906,16 +2958,20 @@ func (suite *OrganizationUnitServiceTestSuite) TestOUService_UpdateOrganizationU
 				store.On("UpdateOrganizationUnit", mock.Anything, mock.Anything).Return(nil).Once()
 			}
 
-			// The mock refuses any call it does not expect, so an update that is not a move to the root
-			// fails if it checks creation.
+			// The mock refuses any call it does not expect, so an update that is not a move fails if it checks
+			// creation.
 			authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
 			authzMock.On("IsActionAllowed", mock.Anything, security.ActionUpdateOU,
 				mock.MatchedBy(func(c *sysauthz.ActionContext) bool { return c.OUID == testOUID })).
 				Return(true, nil).Once()
-			if tc.checksRootCreate {
+			if tc.checksCreate {
+				newParentID := ""
+				if tc.requested != nil {
+					newParentID = *tc.requested
+				}
 				authzMock.On("IsActionAllowed", mock.Anything, security.ActionCreateOU,
-					mock.MatchedBy(func(c *sysauthz.ActionContext) bool { return c.OUID == "" })).
-					Return(tc.rootCreateAllowed, nil).Once()
+					mock.MatchedBy(func(c *sysauthz.ActionContext) bool { return c.OUID == newParentID })).
+					Return(tc.createAllowed, nil).Once()
 			}
 
 			service := suite.newService(store, authzMock)

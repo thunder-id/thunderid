@@ -4,6 +4,7 @@
 package security
 
 import (
+	"context"
 	"maps"
 	"strings"
 
@@ -371,7 +372,10 @@ type SystemPermissions struct {
 	// empty on the control plane, which enforces no organization permission.
 	Org string
 	// AdministrationFlow is the permission a caller needs to run an administration flow.
-	AdministrationFlow         string
+	AdministrationFlow string
+	// OUListRoots is the permission a caller needs to list the root organization units. On the data plane it
+	// is the system root permission, since an organization permission reaches only the unit its token names.
+	OUListRoots                string
 	OU                         string
 	OUView                     string
 	User                       string
@@ -487,7 +491,7 @@ func activatePermissions(p *SystemPermissions) {
 		ActionReadOU:       p.OUView,
 		ActionUpdateOU:     p.OUUpdate,
 		ActionDeleteOU:     p.OUDelete,
-		ActionListOUs:      p.OUView,
+		ActionListOUs:      p.OUListRoots,
 		ActionListChildOUs: p.OUView,
 
 		// User actions.
@@ -634,7 +638,7 @@ func activatePermissions(p *SystemPermissions) {
 		{"POST /flow/execute", ""},
 
 		// Organization unit APIs. "/tree/{path...}" addresses an organization unit by its handle path.
-		{"GET /organization-units", p.OUView},
+		{"GET /organization-units", p.OUListRoots},
 		{"POST /organization-units", p.OUCreate},
 		{"GET /organization-units/**", p.OUView},
 		{"PUT /organization-units/**", p.OUUpdate},
@@ -864,7 +868,7 @@ func activatePermissions(p *SystemPermissions) {
 
 	mcpToolPermissions = map[string]string{
 		// Organization unit tools.
-		"list_organization_units": p.OUView,
+		"list_organization_units": p.OUListRoots,
 
 		// User tools, at the permissions of the user API they act through.
 		"list_users":  p.UserView,
@@ -1060,6 +1064,17 @@ func HasAnySystemPermission(permissions []string) bool {
 		}
 	}
 	return false
+}
+
+// LacksOrganizationUnit reports whether the caller must name an organization unit and its token names none. Where
+// the organization root permission is bounded to the organization unit a token names, as on the data plane, a
+// caller without the root system permission acts only in that unit, so a token naming no unit reaches nothing. The
+// root system permission reaches the whole deployment and needs no unit.
+func LacksOrganizationUnit(ctx context.Context) bool {
+	if sysPerms == nil || sysPerms.Org == "" {
+		return false
+	}
+	return GetOUID(ctx) == "" && !HasSystemPermission(GetPermissions(ctx))
 }
 
 // HasSufficientSystemPermission reports whether permissions satisfy a permission of the System resource

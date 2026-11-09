@@ -36,6 +36,11 @@ paths:
       tags:
         - Users
       summary: List users
+      description: |
+        A caller confined to one organization unit, such as a Data Plane token holding `org` or
+        `org:user:view`, lists what that unit sees when no `ouId` filter is given: the users it owns,
+        then the ones shared into it, each marked with `isOwnedByOU`. A list narrowed by other
+        conditions holds the users the unit owns only.
       parameters:
         - $ref: '#/components/parameters/limitQueryParam'
         - $ref: '#/components/parameters/offsetQueryParam'
@@ -310,6 +315,10 @@ paths:
         shared into it. A shared user is returned under the unit it is shared into, and
         `isOwnedByOU` says which of the two it is. The caller needs to be able to read users in that
         unit, and a user the unit can't see answers `404`.
+
+        Without `ouId`, the user is read in the organization unit that owns it. A caller confined to
+        one organization unit, such as a Data Plane token holding `org` or `org:user:view`, also reads
+        a user shared into its unit, returned as it is with `ouId`. `isOwnedByOU` is always present.
       parameters:
         - in: path
           name: id
@@ -565,6 +574,8 @@ paths:
                     description:
                       key: "error.userservice.shared_user_cannot_move_description"
                       defaultValue: "The user is shared into other organization units. Delete its sharing policies before moving it to another organization unit or project"
+        "403":
+          $ref: '#/components/responses/SharedUserReadOnly'
         "404":
           description: User not found
           content:
@@ -613,6 +624,8 @@ paths:
                     description:
                       key: "error.userservice.cannot_modify_declarative_resource_description"
                       defaultValue: "The user is declarative and cannot be modified or deleted"
+        "403":
+          $ref: '#/components/responses/SharedUserReadOnly'
         "404":
           description: User not found
         "500":
@@ -687,6 +700,8 @@ paths:
                     description:
                       key: "error.userservice.cannot_modify_declarative_resource_description"
                       defaultValue: "The user is declarative and cannot be modified or deleted"
+        "403":
+          $ref: '#/components/responses/SharedUserReadOnly'
         "404":
           description: User not found
           content:
@@ -3345,6 +3360,23 @@ components:
       example: "0195a2c0-6f3e-7a21-9f2a-2c4f8f1d9a10"
 
   responses:
+    SharedUserReadOnly:
+      description: |
+        The caller may not change the user. A caller confined to an organization unit the user is shared
+        into gets `USR-1045`: only the organization unit that owns the user can change or delete it. Any
+        other caller without access gets the generic forbidden error.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: "USR-1045"
+            message:
+              key: "error.userservice.shared_user_read_only"
+              defaultValue: "Shared user is read only"
+            description:
+              key: "error.userservice.shared_user_read_only_description"
+              defaultValue: "Only the organization unit that owns the user can change or delete it"
     UserSharingPolicyCreateBadRequest:
       description: |
         The policy is not one the issuing organization unit may write. The code says which kind of
@@ -3856,8 +3888,8 @@ components:
           type: boolean
           readOnly: true
           description: |
-            Whether the listed organization unit owns the user rather than being shared it. Present
-            in user lists, and when a user is read with `ouId`.
+            Whether the organization unit the user is listed or read under (its `ouId`) owns the user
+            rather than being shared it. Present in user lists and when a user is read by id.
         status:
           $ref: '#/components/schemas/UserAccessStatus'
         lastLoginAt:

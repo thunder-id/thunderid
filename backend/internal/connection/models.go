@@ -136,4 +136,25 @@ type connectionInstanceSummary struct {
 	ID          string `json:"id"`
 	Name        string `json:"name"`
 	Description string `json:"description,omitempty"`
+	OUID        string `json:"ouId,omitempty"`
+	// IsOwnedByOU says whether the listed organization unit owns the connection rather than being shared it.
+	IsOwnedByOU *bool `json:"isOwnedByOU,omitempty"`
+}
+
+// connectionOwnership is the part of a connection's detail payload that says whether the organization unit reading
+// the connection owns it rather than being shared it. Only a read sets it.
+type connectionOwnership struct {
+	IsOwnedByOU *bool `json:"isOwnedByOU,omitempty"`
+}
+
+// setOwnedByOU records whether the organization unit reading the connection owns it.
+func (o *connectionOwnership) setOwnedByOU(owned bool) {
+	o.IsOwnedByOU = new(owned)
+}
+
+// ownedByOUSetter is a pointer to a connection's detail payload, which records whether the organization unit
+// reading the connection owns it.
+type ownedByOUSetter[Resp any] interface {
+	*Resp
+	setOwnedByOU(owned bool)
 }

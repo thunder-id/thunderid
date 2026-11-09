@@ -555,8 +555,8 @@ func (ts *UserOUFilterTestSuite) TestASharedUserReadInAUnitCarriesThatUnitsHandl
 	ts.Contains(string(user.Attributes), "ou-filter-named-unit")
 }
 
-// A caller allowed to read users in the child reads a user shared into it, which the read without ouId
-// refuses, since that one is authorized in the unit owning the user.
+// A caller allowed to read users in the child reads a user shared into it, with ouId or without: a read
+// that names no unit reads in the unit the caller is confined to.
 func (ts *UserOUFilterTestSuite) TestAScopedCallerReadsAUserSharedIntoItsUnit() {
 	status, user := ts.readIn(ts.childAdmin, ts.users["named-unit"], ts.childOUID, "")
 	ts.Require().Equal(http.StatusOK, status)
@@ -564,7 +564,41 @@ func (ts *UserOUFilterTestSuite) TestAScopedCallerReadsAUserSharedIntoItsUnit() 
 	ts.False(*user.IsOwnedByOU)
 
 	status, raw := sendRequest(ts.T(), ts.childAdmin, http.MethodGet, "/users/"+ts.users["named-unit"], nil)
+	ts.Require().Equal(http.StatusOK, status, string(raw))
+	ts.Require().NoError(json.Unmarshal(raw, &user))
+	ts.Require().NotNil(user.IsOwnedByOU)
+	ts.False(*user.IsOwnedByOU)
+	ts.Equal(ts.childOUID, user.OUID, "a shared user is read under the unit it is shared into")
+
+	status, raw = sendRequest(ts.T(), ts.childAdmin, http.MethodGet, "/users/"+ts.users["child-owned"], nil)
+	ts.Require().Equal(http.StatusOK, status, string(raw))
+	ts.Require().NoError(json.Unmarshal(raw, &user))
+	ts.Require().NotNil(user.IsOwnedByOU)
+	ts.True(*user.IsOwnedByOU)
+}
+
+// Without a filter, a caller confined to the child lists what the child owns and is shared, as the filter
+// on the child does.
+func (ts *UserOUFilterTestSuite) TestAScopedCallerListsItsUnitWithoutAFilter() {
+	ts.assertListed(ts.childOUID, ts.everyPage(ts.childAdmin, fmt.Sprintf("/users?limit=%d", ouFilterPageSize)),
+		true)
+}
+
+// A user shared into the child stays the owner's to change: the child may neither update nor delete it.
+func (ts *UserOUFilterTestSuite) TestAScopedCallerCannotChangeAUserSharedIntoItsUnit() {
+	userID := ts.users["named-unit"]
+	status, raw := sendRequest(ts.T(), ts.childAdmin, http.MethodPut, "/users/"+userID, map[string]interface{}{
+		"ouId": ts.parentOUID, "type": ouFilterTestUserType, "attributes": map[string]string{"username": "renamed"},
+	})
 	ts.Equal(http.StatusForbidden, status, string(raw))
+	ts.Contains(string(raw), "USR-1045")
+
+	status, raw = sendRequest(ts.T(), ts.childAdmin, http.MethodDelete, "/users/"+userID, nil)
+	ts.Equal(http.StatusForbidden, status, string(raw))
+	ts.Contains(string(raw), "USR-1045")
+
+	status, _ = sendRequest(ts.T(), ts.rootClient, http.MethodGet, "/users/"+userID, nil)
+	ts.Equal(http.StatusOK, status, "the shared user is still there")
 }
 
 // A caller not allowed to read users in a unit is refused there, even for a user the unit can see.
