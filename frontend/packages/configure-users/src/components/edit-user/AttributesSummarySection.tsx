@@ -11,6 +11,7 @@ import VerificationStatus from './VerificationStatus';
 import useGetUserType from '../../api/useGetUserType';
 import useGetUserTypes from '../../api/useGetUserTypes';
 import getVerifiableAttributes from '../../utils/getVerifiableAttributes';
+import orderSchemaAttributes from '../../utils/orderSchemaAttributes';
 
 interface AttributesSummarySectionProps {
   user: User;
@@ -37,6 +38,15 @@ export default function AttributesSummarySection({user}: AttributesSummarySectio
   const {data: userTypeDetails, isLoading} = useGetUserType(matchedSchema?.id);
 
   const attributes = user.attributes ?? {};
+  // Attributes follow the schema order. Any not in the schema keep their place after them.
+  const schemaOrder = orderSchemaAttributes(userTypeDetails?.schema ?? {}, {includeOptional: true}).map(
+    ([name]) => name,
+  );
+  const position = (key: string): number => {
+    const index = schemaOrder.indexOf(key);
+    return index >= 0 ? index : schemaOrder.length;
+  };
+  const orderedAttributes = Object.entries(attributes).sort(([a], [b]) => position(a) - position(b));
   const verifiable = getVerifiableAttributes(user, userTypeDetails?.schema);
 
   const labelFor = (key: string): string => {
@@ -61,7 +71,7 @@ export default function AttributesSummarySection({user}: AttributesSummarySectio
         </Box>
       ) : Object.keys(attributes).length > 0 ? (
         <Stack spacing={2}>
-          {Object.entries(attributes).map(([key, value]) => (
+          {orderedAttributes.map(([key, value]) => (
             <Box key={key}>
               <Typography variant="caption" color="text.secondary">
                 {labelFor(key)}

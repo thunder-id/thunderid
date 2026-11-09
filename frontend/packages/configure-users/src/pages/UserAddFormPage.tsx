@@ -27,6 +27,7 @@ import useGetUserTypes from '../api/useGetUserTypes';
 import useUserRoutes from '../hooks/useUserRoutes';
 import type {PropertyDefinition, SchemaInterface} from '../models/users';
 import getUserErrorMessage from '../utils/getUserErrorMessage';
+import orderSchemaAttributes from '../utils/orderSchemaAttributes';
 import renderSchemaField from '../utils/renderSchemaField';
 
 type AttributeFormData = Record<string, unknown>;
@@ -172,7 +173,7 @@ export default function UserAddFormPage(): JSX.Element {
 
             {/* The type's own schema decides the rest, so a type with extra attributes needs no
                 change here. */}
-            {Object.entries(schema).map(([name, definition]: [string, PropertyDefinition]) =>
+            {orderSchemaAttributes(schema).map(([name, definition]: [string, PropertyDefinition]) =>
               renderSchemaField(name, definition, control, errors, resolveDisplayName),
             )}
 
