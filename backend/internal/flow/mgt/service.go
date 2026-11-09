@@ -362,7 +362,7 @@ func (s *flowMgtService) createFlow(ctx context.Context, flowDef *FlowDefinition
 	if err := s.flowValidator.ValidateFlowDefinition(ctx, flowDef); err != nil {
 		return nil, err
 	}
-	if svcErr := s.checkProjectGiven(ctx, flowDef.ProjectID); svcErr != nil {
+	if svcErr := s.checkProjectGiven(flowDef.ProjectID); svcErr != nil {
 		return nil, svcErr
 	}
 	if svcErr := s.ResolveFlowOU(ctx, flowDef); svcErr != nil {
@@ -424,16 +424,11 @@ func (s *flowMgtService) createFlow(ctx context.Context, flowDef *FlowDefinition
 	return createdFlow, nil
 }
 
-// checkProjectGiven refuses a flow created without a project where projects are served and one is required,
-// and warns about it where one is not required yet.
-func (s *flowMgtService) checkProjectGiven(ctx context.Context, projectID string) *tidcommon.ServiceError {
-	if projectID != "" || s.projectValidator == nil {
-		return nil
-	}
-	if s.projectRequired {
+// checkProjectGiven refuses a flow created without a project where one is required.
+func (s *flowMgtService) checkProjectGiven(projectID string) *tidcommon.ServiceError {
+	if projectID == "" && s.projectRequired {
 		return &ErrorProjectRequired
 	}
-	s.logger.Warn(ctx, "Flow created without a project; a project will be required")
 	return nil
 }
 

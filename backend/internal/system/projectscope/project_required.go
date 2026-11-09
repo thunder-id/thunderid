@@ -11,10 +11,11 @@ import "github.com/thunder-id/thunderid/internal/system/security"
 // projectRequired lists the resource types that must be created in a project on a deployment that serves
 // projects. A type set to false may still be created without one while its clients migrate.
 var projectRequired = map[security.ResourceType]bool{
-	security.ResourceTypeApplication:             false,
+	security.ResourceTypeApplication:             true,
 	security.ResourceTypeAuthorizationDetailType: true,
-	security.ResourceTypeAgent:                   false,
-	security.ResourceTypeFlow:                    false,
+	security.ResourceTypeAgent:                   true,
+	security.ResourceTypeDesign:                  true,
+	security.ResourceTypeFlow:                    true,
 	security.ResourceTypeNotificationTemplate:    true,
 	security.ResourceTypeOU:                      true,
 	security.ResourceTypeVerifiableCredential:    true,

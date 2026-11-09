@@ -21,7 +21,7 @@ type FlowDefinition struct {
 	Nodes        []providers.NodeDefinition        `json:"nodes"                                                jsonschema:"Array of nodes defining the flow steps. Must include START and END nodes. Use get_flow on existing flows to see node structure examples." validate:"required"`
 	OUID         string                            `json:"ouId,omitempty"         yaml:"ouId,omitempty"         jsonschema:"Organization unit that owns the flow. Required on create unless projectId is given, and cannot be changed afterwards."`
 	OUHandle     string                            `json:"-"                      yaml:"-"`
-	ProjectID    string                            `json:"projectId,omitempty"    yaml:"projectId,omitempty"    jsonschema:"Optional project the flow belongs to. Without ouId, the flow is placed in the system organization unit; with ouId, the organization unit must belong to the project."`
+	ProjectID    string                            `json:"projectId,omitempty"    yaml:"projectId,omitempty"    jsonschema:"Project the flow belongs to, required where the deployment serves projects. Without ouId, the flow is placed in the system organization unit; with ouId, the organization unit must belong to the project."`
 }
 
 // FlowDefinitionRequest represents the API request body for create/update flow operations.

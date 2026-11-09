@@ -46,6 +46,7 @@ type VerifiedAttribute struct {
 type Application struct {
 	ID                        string                   `json:"id,omitempty"`
 	OUID                      string                   `json:"ouId,omitempty"`
+	ProjectID                 string                   `json:"projectId,omitempty"`
 	Name                      string                   `json:"name"`
 	Description               string                   `json:"description"`
 	Type                      string                   `json:"type,omitempty"`
@@ -480,6 +481,7 @@ type Flow struct {
 	Interceptors interface{} `json:"interceptors,omitempty"`
 	Nodes        interface{} `json:"nodes"`
 	OUID         string      `json:"ouId,omitempty"`
+	ProjectID    string      `json:"projectId,omitempty"`
 }
 
 // NotificationSender represents a notification sender in the system
@@ -545,6 +547,7 @@ func ExternalAgentOwner(id, idType string) *AgentOwner {
 type Agent struct {
 	ID          string      `json:"id,omitempty"`
 	OUID        string      `json:"ouId,omitempty"`
+	ProjectID   string      `json:"projectId,omitempty"`
 	OUHandle    string      `json:"ouHandle,omitempty"`
 	Type        string      `json:"type,omitempty"`
 	Description string      `json:"description,omitempty"`

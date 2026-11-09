@@ -35,7 +35,7 @@ func (ts *ControlPlaneTestSuite) TestAgentAndUserTypeChangesAreAudited() {
 	name := unique("cp-audit-agent")
 	clientSecret := unique("CpAuditAgentSecret")
 	agentID, err := testutils.CreateAgent(testutils.Agent{
-		OUID: ts.ouID, Type: "default", Attributes: map[string]interface{}{"name": name},
+		ProjectID: defaultProjectID, Type: "default", Attributes: map[string]interface{}{"name": name},
 		InboundAuthConfig: []testutils.AgentInboundAuthConfig{{
 			Type: "oauth2",
 			Config: &testutils.AgentOAuthConfig{

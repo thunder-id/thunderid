@@ -232,9 +232,9 @@ const CONTROL_PLANE_ADMINISTRATION: AdministrationConfig = {mode: Administration
 function projectDashboardRoutes(): JSX.Element {
   return (
     <>
-      <Route path={ROUTE_SEGMENTS.applications} element={<ApplicationsListPage />} />
+      <Route path={ROUTE_SEGMENTS.applications} element={<ApplicationsListPage createInProjectsOnly />} />
       <Route path={`${ROUTE_SEGMENTS.applications}/:applicationId`} element={<ApplicationEditPage />} />
-      <Route path={ROUTE_SEGMENTS.agents} element={<AgentsListPage />} />
+      <Route path={ROUTE_SEGMENTS.agents} element={<AgentsListPage createInProjectsOnly />} />
       <Route path={`${ROUTE_SEGMENTS.agents}/:agentId`} element={<AgentEditPage />} />
       <Route path={ROUTE_SEGMENTS.resourceServers} element={<ResourceServersListPage />} />
       <Route path={`${ROUTE_SEGMENTS.resourceServers}/:resourceServerId`} element={<ResourceServerEditPage />} />
@@ -249,7 +249,7 @@ function projectDashboardRoutes(): JSX.Element {
       <Route path={`${ROUTE_SEGMENTS.users}/:userId`} element={<UserEditPage />} />
       <Route path={ROUTE_SEGMENTS.groups} element={<GroupsListPage />} />
       <Route path={`${ROUTE_SEGMENTS.groups}/:groupId`} element={<GroupEditPage />} />
-      <Route path={ROUTE_SEGMENTS.flows} element={<FlowsListPage />} />
+      <Route path={ROUTE_SEGMENTS.flows} element={<FlowsListPage createInProjectsOnly />} />
       <Route
         path={ROUTE_SEGMENTS.verifiablePresentations}
         element={<VerifiablePresentationsListPage createInProjectsOnly />}
@@ -349,20 +349,20 @@ function projectFullScreenRoutes(): JSX.Element {
         }
       >
         <Route path={`${ROUTE_SEGMENTS.applications}/types`} element={<DashboardLayout />}>
-          <Route index element={<ApplicationTemplateSelectPage />} />
+          <Route index element={<ApplicationTemplateSelectPage createInProjectsOnly />} />
         </Route>
         <Route path={`${ROUTE_SEGMENTS.applications}/create`} element={<FullScreenLayout />}>
-          <Route index element={<ApplicationCreatePage />} />
+          <Route index element={<ApplicationCreatePage createInProjectsOnly />} />
         </Route>
       </Route>
       <Route path={`${ROUTE_SEGMENTS.agents}/create`} element={<FullScreenLayout />}>
-        <Route index element={<AgentOnboardPage />} />
+        <Route index element={<AgentOnboardPage createInProjectsOnly />} />
       </Route>
       <Route path={`${ROUTE_SEGMENTS.resourceServers}/create`} element={<FullScreenLayout />}>
         <Route index element={<CreateResourceServerPage />} />
       </Route>
       <Route path={`${ROUTE_SEGMENTS.flows}/create`} element={<FullScreenLayout />}>
-        <Route index element={<FlowCreatePage />} />
+        <Route index element={<FlowCreatePage createInProjectsOnly />} />
       </Route>
       <Route path={`${ROUTE_SEGMENTS.flows}/:flowId`} element={<DashboardLayout collapseSidebar />}>
         <Route index element={<FlowBuilderPage />} />

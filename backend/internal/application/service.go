@@ -195,7 +195,7 @@ func (as *applicationService) createApplication(ctx context.Context, app *model.
 	if isDeclarativeModeEnabled() {
 		return nil, &ErrorCannotModifyDeclarativeResource
 	}
-	if svcErr := as.checkProjectGiven(ctx, app.ProjectID); svcErr != nil {
+	if svcErr := as.checkProjectGiven(app.ProjectID); svcErr != nil {
 		return nil, svcErr
 	}
 
@@ -465,16 +465,11 @@ func (as *applicationService) GetApplicationListByProject(ctx context.Context, p
 	return as.buildApplicationList(ctx, entities, len(entities), total)
 }
 
-// checkProjectGiven refuses an application created without a project where projects are served and one is
-// required, and warns about it where one is not required yet.
-func (as *applicationService) checkProjectGiven(ctx context.Context, projectID string) *tidcommon.ServiceError {
-	if projectID != "" || as.projectValidator == nil {
-		return nil
-	}
-	if as.projectRequired {
+// checkProjectGiven refuses an application created without a project where one is required.
+func (as *applicationService) checkProjectGiven(projectID string) *tidcommon.ServiceError {
+	if projectID == "" && as.projectRequired {
 		return &ErrorProjectRequired
 	}
-	as.logger.Warn(ctx, "Application created without a project; a project will be required")
 	return nil
 }
 

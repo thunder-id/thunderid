@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import userEvent from '@testing-library/user-event';
-import {CapabilitiesProvider} from '@thunderid/contexts';
+import {CapabilitiesProvider, ProjectScopeProvider} from '@thunderid/contexts';
 import {render, screen, waitFor} from '@thunderid/test-utils';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import ApplicationsListPage from '../ApplicationsListPage';
@@ -83,6 +83,22 @@ describe('ApplicationsListPage', () => {
       );
 
       expect(screen.queryByRole('button', {name: /Create Application/i})).not.toBeInTheDocument();
+    });
+
+    it('offers no create action outside a project when applications are created in projects only', () => {
+      render(<ApplicationsListPage createInProjectsOnly />);
+
+      expect(screen.queryByRole('button', {name: /Create Application/i})).not.toBeInTheDocument();
+    });
+
+    it('offers the create action inside a project when applications are created in projects only', () => {
+      render(
+        <ProjectScopeProvider project={{id: 'project-1'}}>
+          <ApplicationsListPage createInProjectsOnly />
+        </ProjectScopeProvider>,
+      );
+
+      expect(screen.getByRole('button', {name: /Create Application/i})).toBeInTheDocument();
     });
 
     it('should render the ApplicationsList component', () => {

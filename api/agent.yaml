@@ -424,6 +424,16 @@ paths:
                     description:
                       key: "error.agentservice.missing_delegation_grant_type_description"
                       defaultValue: "A delegated agent needs at least one of these grant types: {{param(grantTypes)}}"
+                project-required:
+                  summary: No project was given on a deployment that requires one, such as the Control Plane
+                  value:
+                    code: "AGT-1050"
+                    message:
+                      key: "error.agentservice.project_required"
+                      defaultValue: "Project required"
+                    description:
+                      key: "error.agentservice.project_required_description"
+                      defaultValue: "Set projectId to the project the agent belongs to"
                 invalid-project:
                   summary: The project does not exist
                   value:
@@ -2318,8 +2328,8 @@ components:
           type: string
           description: |
             The ID of the project the agent belongs to. On a deployment that serves projects, such
-            as the Control Plane, creating an agent without one is deprecated and will be refused
-            (`AGT-1050`) in a future release. The agent's organization unit, the given `ouId` or the
+            as the Control Plane, creating an agent without one is refused (`AGT-1050`). The agent's
+            organization unit, the given `ouId` or the
             default one, must belong to the project.
           example: "7c9e6679-7425-40de-944b-e07fc1f90ae7"
         type:

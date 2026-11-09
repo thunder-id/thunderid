@@ -369,6 +369,7 @@ nodes:
 resource_type: flow
 id: 01900000-0000-7000-8000-000000000092
 ouHandle: default
+projectId: 01900000-0000-7000-8000-000000000002
 name: Default Personal Agent Authentication Flow
 handle: default-personal-agent-auth-flow
 flowType: AUTHENTICATION
@@ -563,6 +564,7 @@ nodes:
 resource_type: flow
 id: 01900000-0000-7000-8000-000000000093
 ouHandle: default
+projectId: 01900000-0000-7000-8000-000000000002
 name: User and Personal Assistant Registration Flow
 handle: user-and-personal-assistant-registration-flow
 flowType: REGISTRATION
@@ -6120,6 +6122,7 @@ name: Console
 description: Management application for ThunderID
 type: browser
 ouId: 01900000-0000-7000-8000-000000000001
+projectId: 01900000-0000-7000-8000-000000000002
 url: "{{ .PUBLIC_URL }}/console"
 logoUrl: "avatar:shape=rounded,variant=anonymous_entity,content=cube,colors=0"
 authFlowId: 01900000-0000-7000-8000-000000000068

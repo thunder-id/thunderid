@@ -776,6 +776,10 @@ func CreateApplication(app Application) (string, error) {
 		appData["signOutFlowId"] = app.SignOutFlowID
 	}
 
+	if app.ProjectID != "" {
+		appData["projectId"] = app.ProjectID
+	}
+
 	// Add allowed_user_types if provided
 	if len(app.AllowedUserTypes) > 0 {
 		appData["allowedUserTypes"] = app.AllowedUserTypes
@@ -2658,7 +2662,13 @@ func SetFlowNodeProperty(flow *Flow, nodeID, key string, value interface{}) erro
 // default registration and recovery flows. The handle is caller-supplied so tests can craft unique
 // values per suite and clean up deterministically.
 func CreateIsolatedAuthFlow(handle string) (string, error) {
-	return CreateFlow(Flow{
+	return CreateFlow(IsolatedAuthFlow(handle))
+}
+
+// IsolatedAuthFlow returns the flow CreateIsolatedAuthFlow creates, for a test that sets more of it
+// before creating it.
+func IsolatedAuthFlow(handle string) Flow {
+	return Flow{
 		Name:     "Isolated Auth Flow " + handle,
 		FlowType: "AUTHENTICATION",
 		Handle:   handle,
@@ -2679,7 +2689,7 @@ func CreateIsolatedAuthFlow(handle string) (string, error) {
 				"type": "END",
 			},
 		},
-	})
+	}
 }
 
 // ExtensionAuthFlow returns the smallest login flow with one extension step, placed after the user is

@@ -70,8 +70,9 @@ Prerequisites:
 
 Key Requirements:
 - Handle: Lowercase alphanumeric, dashes/underscores allowed (not at start/end). Unique per flow type.
-- Owner: Give ouId, projectId, or both. With only projectId, the flow is placed in the system organization unit.
-  With both, the organization unit must belong to the project.
+- Owner: Give ouId, projectId, or both. projectId is required where the deployment serves projects.
+  With only projectId, the flow is placed in the system organization unit. With both, the organization
+  unit must belong to the project.
 - Structure: Must include START and END nodes with at least one functional node in between.
 - Node types: START, END, TASK_EXECUTION, PROMPT.
 - PROMPT nodes: Require 'meta.components' array for UI rendering.

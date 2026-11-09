@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import userEvent from '@testing-library/user-event';
+import {ProjectScopeProvider} from '@thunderid/contexts';
 import {fireEvent, render, screen} from '@thunderid/test-utils';
 import type {ReactNode} from 'react';
 import {beforeEach, describe, expect, it, vi} from 'vitest';
@@ -28,6 +29,7 @@ vi.mock('react-router', async () => {
     useNavigate: () => mockNavigate,
     useSearchParams: () => [mockSearchParams, vi.fn()],
     Link: ({to, children = null}: {to: string; children?: ReactNode}) => <a href={to}>{children}</a>,
+    Navigate: ({to}: {to: string}) => <div data-testid="navigate" data-to={to} />,
   };
 });
 
@@ -91,6 +93,30 @@ describe('ApplicationTemplateSelectPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockSearchParams = new URLSearchParams();
+  });
+
+  it('returns to the list outside a project when applications are created in projects only', () => {
+    render(
+      <ApplicationCreateContext.Provider value={buildContext()}>
+        <ApplicationTemplateSelectPage createInProjectsOnly />
+      </ApplicationCreateContext.Provider>,
+    );
+
+    expect(screen.getByTestId('navigate')).toHaveAttribute('data-to', '/applications');
+    expect(screen.queryByRole('heading', {name: 'Choose a type'})).not.toBeInTheDocument();
+  });
+
+  it('shows the templates inside a project when applications are created in projects only', () => {
+    render(
+      <ProjectScopeProvider project={{id: 'project-1'}}>
+        <ApplicationCreateContext.Provider value={buildContext()}>
+          <ApplicationTemplateSelectPage createInProjectsOnly />
+        </ApplicationCreateContext.Provider>
+      </ProjectScopeProvider>,
+    );
+
+    expect(screen.queryByTestId('navigate')).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', {name: 'Choose a type'})).toBeInTheDocument();
   });
 
   it('renders the heading and all templates', () => {

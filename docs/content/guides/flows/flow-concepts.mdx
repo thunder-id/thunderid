@@ -170,13 +170,13 @@ Send `ouId` in the body of `POST /flows`, next to the other flow fields. Get the
 }
 ```
 
-A create request with neither `ouId` nor `projectId` fails with `FLM-1029`, and one that names an organization unit that does not exist fails with `FLM-1027`. A `PUT` that names a different organization unit than the current owner fails with `FLM-1028`. All three return `400`.
+On a data plane, a create request with neither `ouId` nor `projectId` fails with `FLM-1029`. A create request that names an organization unit that does not exist fails with `FLM-1027`, and a `PUT` that names a different organization unit than the current owner fails with `FLM-1028`. All three return `400`.
 
 ### Scope a Flow to a Project
 
 Every project on the control plane includes the system organization unit, and a flow in a project is placed there or in one of the project's own organization units. When you manage flows through the REST API or the MCP server on the control plane, pass a project ID to work within a project.
 
-- **Create**: set `projectId` in the body of `POST /flows`. Without `ouId`, the flow belongs to the system organization unit. With `ouId`, that organization unit must be the system organization unit or an organization unit of the project.
+- **Create**: set `projectId` in the body of `POST /flows`. The control plane requires it, so a request without `projectId` fails with `FLM-1047`, even when it names an organization unit. Without `ouId`, the flow belongs to the system organization unit. With `ouId`, that organization unit must be the system organization unit or an organization unit of the project.
 - **Update**: a `PUT /flows/{flowId}` without `projectId`, or with the current one, keeps the flow in its project without checking the project again. A different `projectId` moves the flow to that project, after the same organization unit check.
 - **List**: `GET /flows?projectId=<project-id>` returns the flows in the project. To narrow the list, add `flowType`. A project that does not exist returns an empty list.
 - **MCP tools**: `list_flows` takes `project_id` and lists the flows in that project. `create_flow` takes `projectId` and then does not need `ouId`. `update_flow` keeps the flow in its project.

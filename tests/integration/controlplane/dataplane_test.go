@@ -75,7 +75,7 @@ func (ts *ControlPlaneTestSuite) TestADataPlaneImportsTheExportWithItsOwnValues(
 
 	name := unique("DP Import App")
 	appID, err := testutils.CreateApplication(testutils.Application{
-		OUID:         ouID,
+		ProjectID:    defaultProjectID,
 		Name:         name,
 		ClientID:     unique("cp-only-client"),
 		ClientSecret: unique("cp-only-secret"),

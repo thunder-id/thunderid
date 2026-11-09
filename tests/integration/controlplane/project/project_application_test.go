@@ -50,11 +50,15 @@ func (ts *ProjectAPITestSuite) TestCreateApplicationInProject() {
 	ts.Equal(shop.ID, fetched.ProjectID)
 }
 
-// An application is still created without a project while the project scope does not require one.
-func (ts *ProjectAPITestSuite) TestCreateApplicationWithoutProject() {
-	app := ts.createApp(ts.appBody("unscoped", `"ouId":%q`, defaultOUID))
-	ts.Empty(app.ProjectID)
-	ts.Equal(defaultOUID, app.OUID)
+// The Control Plane serves projects, so an application must name one, even with an organization unit, whether
+// it is created through the API or an import. The create_application tool is covered with the other MCP tools.
+func (ts *ProjectAPITestSuite) TestCreateApplicationRequiresProject() {
+	status, body := ts.do(http.MethodPost, "/applications", ts.appBody("unscoped", `"ouId":%q`, defaultOUID))
+	ts.Equal(http.StatusBadRequest, status, body)
+	ts.Equal("APP-1067", codeOf(ts.T(), body))
+
+	ts.Equal("APP-1067", ts.importFailure(fmt.Sprintf("resource_type: application\nname: %s\ntype: m2m\nouId: %s\n",
+		ts.handle("app-import-unscoped"), defaultOUID), false))
 }
 
 // An update keeps an application in its project and organization unit unless it names others, and
@@ -166,8 +170,11 @@ func (ts *ProjectAPITestSuite) TestApplicationMCPToolsInProject() {
 	inDefault := ts.createMCPApp(map[string]any{"name": ts.handle("app-mcp-default"), "projectId": shop.ID})
 	ts.Equal(defaultOUID, inDefault["ouId"])
 
-	unscoped := ts.createMCPApp(map[string]any{"name": ts.handle("app-mcp-unscoped"), "ouId": defaultOUID})
-	ts.Empty(unscoped["projectId"])
+	unscoped, raw := ts.callMCPTool("create_application", map[string]any{
+		"name": ts.handle("app-mcp-unscoped"), "ouId": defaultOUID,
+		"type": "fullstack", "isRegistrationFlowEnabled": false, "isRecoveryFlowEnabled": false,
+	})
+	ts.Truef(unscoped.Result.IsError, "an application without a project was created: %s", raw)
 
 	args := map[string]any{
 		"name": ts.handle("app-mcp-child"), "projectId": shop.ID, "ouId": childOUID,

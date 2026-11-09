@@ -283,6 +283,16 @@ paths:
                     description:
                       key: "error.applicationservice.invalid_request_format_description"
                       defaultValue: "The request body is malformed or contains invalid data"
+                project-required:
+                  summary: No project was given on a deployment that requires one, such as the Control Plane
+                  value:
+                    code: "APP-1067"
+                    message:
+                      key: "error.applicationservice.project_required"
+                      defaultValue: "Project required"
+                    description:
+                      key: "error.applicationservice.project_required_description"
+                      defaultValue: "Set projectId to the project the application belongs to"
                 invalid-project:
                   summary: The project does not exist
                   value:
@@ -1595,8 +1605,8 @@ components:
           type: string
           description: |
             The ID of the project this application belongs to. On a deployment that serves
-            projects, such as the Control Plane, creating an application without one is deprecated
-            and will be refused (`APP-1067`) in a future release. The application's organization
+            projects, such as the Control Plane, creating an application without one is refused
+            (`APP-1067`). The application's organization
             unit, the given `ouId` or the default one, must belong to the project. On update, leaving it
             out keeps the application in its project, and a different project moves it unless the
             application is shared. An application can't be taken out of a project.

@@ -147,7 +147,7 @@ func (ts *ControlPlaneTestSuite) TestMCPOnboardsAgentsDirectly() {
 	defer func() { _ = testutils.DeleteUser(ownerID) }()
 
 	message := ts.callMCPTool(token, "onboard_agent", map[string]any{
-		"name": unique("cp-agent"), "ouId": ts.ouID, "owner": ownerID, "include": []string{"token_guide"}})
+		"name": unique("cp-agent"), "projectId": defaultProjectID, "owner": ownerID, "include": []string{"token_guide"}})
 	var result struct {
 		Result struct {
 			IsError           bool `json:"isError"`
@@ -173,7 +173,7 @@ func (ts *ControlPlaneTestSuite) TestMCPOnboardsAgentsDirectly() {
 	// An agent holding a key that also signs users in and exchanges their tokens gets a guide for each
 	// way of getting a token, each authenticating with a signed assertion.
 	message = ts.callMCPTool(token, "onboard_agent", map[string]any{
-		"name": unique("cp-keyed-agent"), "ouId": ts.ouID, "owner": ownerID,
+		"name": unique("cp-keyed-agent"), "projectId": defaultProjectID, "owner": ownerID,
 		"credential": "private_key_jwt", "jwksUri": "https://agent.example.com/.well-known/jwks.json",
 		"actsForUsers": []string{"sign_in", "token_exchange"}, "redirectUris": []string{"https://agent.example.com/cb"},
 		"include": []string{"token_guide"}})

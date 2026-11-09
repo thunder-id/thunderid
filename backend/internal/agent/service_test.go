@@ -3335,22 +3335,17 @@ func (suite *AgentServiceTestSuite) TestValidateAgent_DefaultOU() {
 
 func (suite *AgentServiceTestSuite) TestCreateAgent_ProjectGiven() {
 	for name, tc := range map[string]struct {
-		servesProjects  bool
 		projectRequired bool
 		expected        *tidcommon.ServiceError
 	}{
-		"projects not served":        {},
-		"a project not yet required": {servesProjects: true},
-		"a project required":         {servesProjects: true, projectRequired: true, expected: &ErrorProjectRequired},
+		"no project required": {},
+		"a project required":  {projectRequired: true, expected: &ErrorProjectRequired},
 	} {
 		suite.Run(name, func() {
 			svc, _, _, _, _ := suite.setupService()
-			if tc.servesProjects {
-				svc.projectValidator = suite.validating(testSystemOU, nil)
-			}
 			svc.projectRequired = tc.projectRequired
 
-			assert.Equal(suite.T(), tc.expected, svc.checkProjectGiven(context.Background(), ""))
+			assert.Equal(suite.T(), tc.expected, svc.checkProjectGiven(""))
 		})
 	}
 }

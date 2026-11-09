@@ -184,7 +184,7 @@ func (s *agentService) createAgent(ctx context.Context, agent *providers.Agent) 
 	if agent == nil {
 		return nil, &ErrorInvalidRequestFormat
 	}
-	if svcErr := s.checkProjectGiven(ctx, agent.ProjectID); svcErr != nil {
+	if svcErr := s.checkProjectGiven(agent.ProjectID); svcErr != nil {
 		return nil, svcErr
 	}
 	normalizeLoginConsent(agent.LoginConsent)
@@ -2138,16 +2138,11 @@ func (s *agentService) validateOrganizationUnitForAgentType(
 	return nil
 }
 
-// checkProjectGiven refuses an agent created without a project where projects are served and one is
-// required, and warns about it where one is not required yet.
-func (s *agentService) checkProjectGiven(ctx context.Context, projectID string) *tidcommon.ServiceError {
-	if projectID != "" || s.projectValidator == nil {
-		return nil
-	}
-	if s.projectRequired {
+// checkProjectGiven refuses an agent created without a project where one is required.
+func (s *agentService) checkProjectGiven(projectID string) *tidcommon.ServiceError {
+	if projectID == "" && s.projectRequired {
 		return &ErrorProjectRequired
 	}
-	s.logger.Warn(ctx, "Agent created without a project; a project will be required")
 	return nil
 }
 

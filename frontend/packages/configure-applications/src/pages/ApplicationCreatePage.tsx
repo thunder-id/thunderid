@@ -32,7 +32,7 @@ import {ChevronLeft, ChevronRight, Home} from '@wso2/oxygen-ui-icons-react';
 import type {JSX} from 'react';
 import {useState, useCallback, useEffect, useMemo, useRef} from 'react';
 import {useTranslation} from 'react-i18next';
-import {useNavigate} from 'react-router';
+import {Navigate, useNavigate} from 'react-router';
 import useCreateApplication from '../api/useCreateApplication';
 import useGetApplications from '../api/useGetApplications';
 import ConfigureMetadataDocument from '../components/create-application/cimd/ConfigureMetadataDocument';
@@ -67,7 +67,18 @@ import mergeCorsOrigins from '../utils/mergeCorsOrigins';
 import resolveApplicationType from '../utils/resolveApplicationType';
 import resolveCreationFlow from '../utils/resolveCreationFlow';
 
-export default function ApplicationCreatePage(): JSX.Element {
+/**
+ * Props for the {@link ApplicationCreatePage} component.
+ */
+export interface ApplicationCreatePageProps {
+  /**
+   * Whether an application is created in a project only. When set, the page returns to the list outside a selected
+   * project, since an application created there would be refused.
+   */
+  createInProjectsOnly?: boolean;
+}
+
+export default function ApplicationCreatePage({createInProjectsOnly = false}: ApplicationCreatePageProps): JSX.Element {
   const routes = useApplicationRoutes();
   const {t} = useTranslation();
   const {showToast} = useToast();
@@ -361,11 +372,12 @@ export default function ApplicationCreatePage(): JSX.Element {
   const [walletClientId, setWalletClientId] = useState<string>('');
 
   // The template is chosen on the standalone selection page before this wizard mounts. If the
-  // wizard is reached directly (e.g. a bookmarked URL) with no template, send the user back to it.
+  // wizard is reached directly (e.g. a bookmarked URL) with no template, send the user back to it,
+  // unless the page is leaving for the list because no project is selected.
   useEffect((): void => {
-    if (selectedTemplateConfig) return;
+    if (selectedTemplateConfig || (createInProjectsOnly && !isInProject)) return;
     void navigate(routes.applications.types());
-  }, [selectedTemplateConfig, navigate, routes]);
+  }, [selectedTemplateConfig, createInProjectsOnly, isInProject, navigate, routes]);
 
   // Derive the OAuth config from the selected template's defaults, mirroring what the removed
   // in-wizard template step used to seed on mount.
@@ -1189,6 +1201,10 @@ export default function ApplicationCreatePage(): JSX.Element {
   };
 
   const pageTitle = t('applications:listing.addApplication', 'Add application');
+
+  if (createInProjectsOnly && !isInProject) {
+    return <Navigate to={routes.applications.list()} replace />;
+  }
 
   if (currentStep === ApplicationCreateFlowStep.ORGANIZATION_UNIT) {
     if (isOuLoading || !hasMultipleOUs) {

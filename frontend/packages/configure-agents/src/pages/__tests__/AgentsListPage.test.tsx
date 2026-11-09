@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import userEvent from '@testing-library/user-event';
-import {CapabilitiesProvider} from '@thunderid/contexts';
+import {CapabilitiesProvider, ProjectScopeProvider} from '@thunderid/contexts';
 import {render, screen, waitFor} from '@thunderid/test-utils';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import AgentsListPage from '../AgentsListPage';
@@ -90,6 +90,22 @@ describe('AgentsListPage', () => {
 
     expect(screen.getByTestId('agents-list')).toBeInTheDocument();
     expect(screen.queryByTestId('agent-add-button')).not.toBeInTheDocument();
+  });
+
+  it('offers no create action outside a project when agents are created in projects only', () => {
+    render(<AgentsListPage createInProjectsOnly />);
+
+    expect(screen.queryByTestId('agent-add-button')).not.toBeInTheDocument();
+  });
+
+  it('offers the create action inside a project when agents are created in projects only', () => {
+    render(
+      <ProjectScopeProvider project={{id: 'project-1'}}>
+        <AgentsListPage createInProjectsOnly />
+      </ProjectScopeProvider>,
+    );
+
+    expect(screen.getByTestId('agent-add-button')).toBeInTheDocument();
   });
 
   it('renders the AgentsList component', () => {

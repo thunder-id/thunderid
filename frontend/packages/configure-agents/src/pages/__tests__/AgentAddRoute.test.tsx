@@ -1,10 +1,15 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {AdministrationModes, AdministrationProvider} from '@thunderid/contexts';
+import {AdministrationModes, AdministrationProvider, ProjectScopeProvider} from '@thunderid/contexts';
 import {render, screen} from '@thunderid/test-utils';
 import {describe, it, expect, vi} from 'vitest';
 import AgentAddRoute from '../AgentAddRoute';
+
+vi.mock('react-router', async () => ({
+  ...(await vi.importActual('react-router')),
+  Navigate: ({to}: {to: string}) => <div data-testid="navigate" data-to={to} />,
+}));
 
 vi.mock('../AgentAddFormPage', () => ({
   default: () => <div data-testid="agent-add-form-page" />,
@@ -50,6 +55,23 @@ describe('AgentAddRoute', () => {
       >
         <AgentAddRoute />
       </AdministrationProvider>,
+    );
+
+    expect(screen.getByTestId('agent-onboard-flow-page')).toBeInTheDocument();
+  });
+
+  it('returns to the list outside a project when agents are created in projects only', () => {
+    render(<AgentAddRoute createInProjectsOnly />);
+
+    expect(screen.getByTestId('navigate')).toHaveAttribute('data-to', '/agents');
+    expect(screen.queryByTestId('agent-onboard-flow-page')).not.toBeInTheDocument();
+  });
+
+  it('adds the agent inside a project when agents are created in projects only', () => {
+    render(
+      <ProjectScopeProvider project={{id: 'project-1'}}>
+        <AgentAddRoute createInProjectsOnly />
+      </ProjectScopeProvider>,
     );
 
     expect(screen.getByTestId('agent-onboard-flow-page')).toBeInTheDocument();
