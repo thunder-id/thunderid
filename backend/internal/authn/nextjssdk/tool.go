@@ -11,33 +11,42 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// RegisterTools registers all Next.js SDK tools with the MCP server.
-func RegisterTools(server *mcp.Server) {
+// productNamePlaceholder marks where the instructions name the product.
+const productNamePlaceholder = "{{productName}}"
+
+// nextJSSDKTools serves the Next.js SDK tools for the product the server is configured with.
+type nextJSSDKTools struct {
+	productName string
+}
+
+// RegisterTools registers all Next.js SDK tools with the MCP server, naming productName in their text.
+func RegisterTools(server *mcp.Server, productName string) {
+	tools := &nextJSSDKTools{productName: productName}
 	mcp.AddTool(server, &mcp.Tool{
 		Name: "integrate_nextjs_sdk",
-		Description: "Provides instructions and code snippets for integrating ThunderID authentication via the " +
-			"ThunderID Next.js SDK into a Next.js application (App Router). Uses ThunderID-hosted login pages " +
+		Description: "Provides instructions and code snippets for integrating " + productName + " authentication " +
+			"via the ThunderID Next.js SDK into a Next.js application (App Router). Uses hosted login pages " +
 			"with redirect-based OAuth 2.0/OIDC flow and server-side session management via middleware.",
 		Annotations: &mcp.ToolAnnotations{
 			Title:          "Integrate Next.js SDK",
 			IdempotentHint: true,
 		},
-	}, integrateNextJSSDK)
+	}, tools.integrateNextJSSDK)
 }
 
 // integrateNextJSSDK handles the integrate_nextjs_sdk tool call.
-func integrateNextJSSDK(
+func (t *nextJSSDKTools) integrateNextJSSDK(
 	ctx context.Context,
 	req *mcp.CallToolRequest,
 	input integrateNextJSSDKInput,
 ) (*mcp.CallToolResult, integrateNextJSSDKOutput, error) {
 	rawInstructions := `
-# ThunderID Authentication – Next.js Integration Instructions
+# {{productName}} Authentication – Next.js Integration Instructions
 
 ## Project Context
 
-This project is a **Next.js application** (App Router) that integrates **ThunderID authentication**
-using the **ThunderID Next.js SDK** (~@thunderid/nextjs~). It uses ThunderID-hosted login pages with
+This project is a **Next.js application** (App Router) that integrates **{{productName}} authentication**
+using the **ThunderID Next.js SDK** (~@thunderid/nextjs~). It uses hosted login pages with
 redirect-based OAuth 2.0/OIDC flow and server-side session management.
 
 ---
@@ -45,9 +54,9 @@ redirect-based OAuth 2.0/OIDC flow and server-side session management.
 ## SDK & Platform
 
 - **SDK**: @thunderid/nextjs
-- **Authentication Mode**: ThunderID-hosted login (redirect-based)
+- **Authentication Mode**: Hosted login (redirect-based)
 - **Router**: App Router (not Pages Router)
-- **Base URL**: https://localhost:8090 (or ThunderID instance URL)
+- **Base URL**: https://localhost:8090 (or {{productName}} instance URL)
 - **Client ID**: <CREATED_APP'S_CLIENT_ID>
 
 ---
@@ -88,7 +97,7 @@ Generate a random value for ~THUNDERID_SECRET~:
 openssl rand -base64 32
 ~~~
 
-~NODE_TLS_REJECT_UNAUTHORIZED=0~ is required when ThunderID runs locally with a self-signed certificate.
+~NODE_TLS_REJECT_UNAUTHORIZED=0~ is required when {{productName}} runs locally with a self-signed certificate.
 
 ### Step 4: Add ThunderIDProvider to your layout
 
@@ -136,7 +145,7 @@ export default function RootLayout({
 
 ### Step 5: Add the ThunderID proxy
 
-Create a ~proxy.ts~ file at your project root to proxy requests through ThunderID and protect routes:
+Create a ~proxy.ts~ file at your project root to add the ThunderID proxy and protect routes:
 
 ~~~ts
 // proxy.ts
@@ -188,7 +197,7 @@ export default function Home() {
 npm run dev
 ~~~
 
-Visit http://localhost:3000. Click **Sign In** to be redirected to the ThunderID-hosted sign-in page.
+Visit http://localhost:3000. Click **Sign In** to be redirected to the hosted sign-in page.
 
 ---
 
@@ -246,6 +255,7 @@ const isProtectedRoute = createRouteMatcher([
 - [SDK Components](/docs/next/sdks/nextjs/apis/components/sign-in-button)
 `
 	instructions := strings.ReplaceAll(rawInstructions, "~", "`")
+	instructions = strings.ReplaceAll(instructions, productNamePlaceholder, t.productName)
 
 	snippets := `
 import { ThunderIDProvider } from '@thunderid/nextjs/server';

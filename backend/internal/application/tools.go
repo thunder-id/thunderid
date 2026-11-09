@@ -115,7 +115,7 @@ Templates contain ONLY the required fields to create each app type. ` +
 			`Optional fields with service-layer defaults are omitted.
 
 Theme: SPA, Mobile, and Server templates include a themeId field that controls the ` +
-			`visual appearance of the ThunderID-hosted login page. ` +
+			`visual appearance of the hosted login page. ` +
 			`Call list_themes first to see available themes, then replace the ` +
 			`<THEME_ID> placeholder with the ID of the desired theme. ` +
 			`Omit themeId to use the system default theme. ` +
