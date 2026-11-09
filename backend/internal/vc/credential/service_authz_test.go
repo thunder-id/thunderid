@@ -127,3 +127,20 @@ func (s *ConfigurationAuthzTestSuite) TestGetByHandle_OtherOUInRuntimeContext() 
 	s.Require().Nil(svcErr)
 	s.Equal(authzConfigID, dto.ID)
 }
+
+func (s *ConfigurationAuthzTestSuite) TestListSummaries_OwnAndParentOUs() {
+	s.authz.On("GetAccessibleResources", mock.Anything, security.ActionListVCs, security.ResourceTypeOU).
+		Return(&sysauthz.AccessibleResources{IDs: []string{authzOwnOU, "ou-parent"}}, nil)
+	s.store.On("ListCredentialConfigurationSummaries", mock.Anything).
+		Return([]CredentialConfigurationList{
+			{ID: "cfg-own", OUID: authzOwnOU},
+			{ID: "cfg-parent", OUID: "ou-parent"},
+			{ID: "cfg-other", OUID: authzOtherOU},
+		}, nil)
+
+	summaries, svcErr := s.svc.ListCredentialConfigurationSummaries(context.Background())
+	s.Require().Nil(svcErr)
+	s.Require().Len(summaries, 2)
+	s.Equal("cfg-own", summaries[0].ID)
+	s.Equal("cfg-parent", summaries[1].ID)
+}

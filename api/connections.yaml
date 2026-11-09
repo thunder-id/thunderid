@@ -41,7 +41,7 @@ paths:
         identity-provider, notification-sender, authorization PDP and HTTP endpoint connection types,
         optionally filtered by functional category. Omit the category parameter to return all instances.
 
-        An `ouId` filter lists the connections the organization unit owns, then those shared into it, with `isOwnedByOU` telling them apart. A shared connection carries the `ouId` of the organization unit in the filter, not its owner's.
+        A caller whose permission is limited to an organization unit lists the connections that unit owns. An `ouId` filter lists the connections the organization unit owns, then those shared into it, with `isOwnedByOU` telling them apart. A shared connection carries the `ouId` of the organization unit in the filter, not its owner's.
       parameters:
         - name: category
           in: query

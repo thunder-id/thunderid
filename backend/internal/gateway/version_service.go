@@ -23,6 +23,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/export"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
@@ -156,6 +157,13 @@ func configurationExport() *export.ExportRequest {
 	}
 }
 
+// exportConfiguration exports the whole configuration of the deployment. It is read as the runtime, so
+// a version never depends on what the caller may read, as with the capture after each change.
+func (s *versionService) exportConfiguration(ctx context.Context) (*export.ExportResponse,
+	*tidcommon.ServiceError) {
+	return s.exporter.ReadResources(security.WithRuntimeContext(ctx), configurationExport())
+}
+
 // Capture captures the configuration as a version and answers with it, its user named.
 func (s *versionService) Capture(ctx context.Context, req CaptureRequest) (*Version, *tidcommon.ServiceError) {
 	version, svcErr := s.capture(ctx, req)
@@ -165,7 +173,7 @@ func (s *versionService) Capture(ctx context.Context, req CaptureRequest) (*Vers
 // capture captures the configuration as a version. Its user is left unnamed: the capture after each
 // change discards the answer, so a name read for it would be an issuer call for nothing.
 func (s *versionService) capture(ctx context.Context, req CaptureRequest) (*Version, *tidcommon.ServiceError) {
-	exported, svcErr := s.exporter.ReadResources(ctx, configurationExport())
+	exported, svcErr := s.exportConfiguration(ctx)
 	if svcErr != nil {
 		return nil, svcErr
 	}
@@ -332,7 +340,7 @@ func (s *versionService) GetVersion(ctx context.Context, ref string) (*Version, 
 // references say what each value is for as soon as a resource is written, before any capture, and its
 // hash is the one a capture would give it.
 func (s *versionService) current(ctx context.Context) (*Version, *tidcommon.ServiceError) {
-	exported, svcErr := s.exporter.ReadResources(ctx, configurationExport())
+	exported, svcErr := s.exportConfiguration(ctx)
 	if svcErr != nil {
 		return nil, svcErr
 	}

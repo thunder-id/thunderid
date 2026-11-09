@@ -130,8 +130,11 @@ func (s *RoleToolsTestSuite) TestRegisterMCPTools() {
 }
 
 func (s *RoleToolsTestSuite) TestListRoles() {
+	asCaller := mock.MatchedBy(func(ctx context.Context) bool { return !security.IsRuntimeContext(ctx) })
+	asRuntime := mock.MatchedBy(security.IsRuntimeContext)
+
 	s.Run("by permission, narrowed by name", func() {
-		s.roles.On("GetRolesByPermission", mock.Anything, toolOrdersRS, "orders:refund").Return([]Role{
+		s.roles.On("GetRolesByPermission", asCaller, toolOrdersRS, "orders:refund").Return([]Role{
 			{ID: "r1", Name: "Refunds", OUID: "ou-1"}, {ID: "r2", Name: "Order Admin", OUID: "ou-1"},
 		}, (*tidcommon.ServiceError)(nil)).Once()
 		var out roleListMCPResponse
@@ -142,15 +145,16 @@ func (s *RoleToolsTestSuite) TestListRoles() {
 	})
 
 	s.Run("by permission in a unit keeps the roles shared with it", func() {
-		s.roles.On("GetRolesByPermission", mock.Anything, toolOrdersRS, "orders:refund").Return([]Role{
+		// The search runs as the runtime, and the unit's listing, read as the caller, decides what is kept.
+		s.roles.On("GetRolesByPermission", asRuntime, toolOrdersRS, "orders:refund").Return([]Role{
 			{ID: "r1", Name: "Refunds", OUID: "ou-2", IsReadOnly: true},
 			{ID: "r2", Name: "Shared Refunds", OUID: "ou-9"},
 			{ID: "r3", Name: "Elsewhere", OUID: "ou-9"},
 		}, (*tidcommon.ServiceError)(nil)).Once()
-		s.roles.On("GetRoleList", mock.Anything, 100, 0, map[string]interface{}{"ouId": "ou-2"}).
+		s.roles.On("GetRoleList", asCaller, 100, 0, map[string]interface{}{"ouId": "ou-2"}).
 			Return(&RoleList{TotalResults: 2, Roles: []Role{{ID: "r1", Name: "Refunds", OUID: "ou-2"}}},
 				(*tidcommon.ServiceError)(nil)).Once()
-		s.roles.On("GetRoleList", mock.Anything, 100, 1, map[string]interface{}{"ouId": "ou-2"}).
+		s.roles.On("GetRoleList", asCaller, 100, 1, map[string]interface{}{"ouId": "ou-2"}).
 			Return(&RoleList{TotalResults: 2, Roles: []Role{
 				{ID: "r2", Name: "Shared Refunds", OUID: "ou-9", IsReadOnly: true}}},
 				(*tidcommon.ServiceError)(nil)).Once()

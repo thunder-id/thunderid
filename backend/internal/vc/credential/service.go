@@ -278,11 +278,11 @@ func (s *configurationService) ListCredentialConfigurations(
 		s.logger.Error(ctx, "Failed to list credential configurations", log.Error(err))
 		return nil, &tidcommon.InternalServerError
 	}
-	listOU, visible, svcErr := sysauthz.ResolveListOU(ctx, s.authzSvc, s.logger, security.ActionListVCs, "")
+	ouIDs, all, svcErr := sysauthz.ResolveListOUs(ctx, s.authzSvc, s.logger, security.ActionListVCs, "")
 	if svcErr != nil {
 		return nil, svcErr
 	}
-	configs = sysauthz.FilterByListOU(configs, listOU, visible,
+	configs = sysauthz.FilterByListOUs(configs, ouIDs, all,
 		func(d CredentialConfigurationDTO) string { return d.OUID })
 	ptrs := make([]*CredentialConfigurationDTO, len(configs))
 	for i := range configs {
@@ -296,19 +296,19 @@ func (s *configurationService) ListCredentialConfigurations(
 func (s *configurationService) ListCredentialConfigurationSummaries(
 	ctx context.Context,
 ) ([]CredentialConfigurationList, *tidcommon.ServiceError) {
-	listOU, visible, svcErr := sysauthz.ResolveListOU(ctx, s.authzSvc, s.logger, security.ActionListVCs, "")
+	ouIDs, all, svcErr := sysauthz.ResolveListOUs(ctx, s.authzSvc, s.logger, security.ActionListVCs, "")
 	if svcErr != nil {
 		return nil, svcErr
 	}
-	if !visible {
+	if !all && len(ouIDs) == 0 {
 		return []CredentialConfigurationList{}, nil
 	}
 	var summaries []CredentialConfigurationList
 	var err error
-	if listOU == "" {
-		summaries, err = s.store.ListCredentialConfigurationSummaries(ctx)
+	if len(ouIDs) == 1 {
+		summaries, err = s.store.ListCredentialConfigurationSummariesByOUID(ctx, ouIDs[0])
 	} else {
-		summaries, err = s.store.ListCredentialConfigurationSummariesByOUID(ctx, listOU)
+		summaries, err = s.store.ListCredentialConfigurationSummaries(ctx)
 	}
 	if err != nil {
 		if errors.Is(err, ErrResultLimitExceededInCompositeMode) {
@@ -317,6 +317,8 @@ func (s *configurationService) ListCredentialConfigurationSummaries(
 		s.logger.Error(ctx, "Failed to list credential configuration summaries", log.Error(err))
 		return nil, &tidcommon.InternalServerError
 	}
+	summaries = sysauthz.FilterByListOUs(summaries, ouIDs, all,
+		func(d CredentialConfigurationList) string { return d.OUID })
 	s.populateSummaryOUHandles(ctx, summaries)
 	return summaries, nil
 }
@@ -338,11 +340,11 @@ func (s *configurationService) ListCredentialConfigurationSummariesByOUID(
 			log.String("ouID", ouID), log.Error(err))
 		return nil, &tidcommon.InternalServerError
 	}
-	listOU, visible, svcErr := sysauthz.ResolveListOU(ctx, s.authzSvc, s.logger, security.ActionListVCs, ouID)
+	ouIDs, all, svcErr := sysauthz.ResolveListOUs(ctx, s.authzSvc, s.logger, security.ActionListVCs, ouID)
 	if svcErr != nil {
 		return nil, svcErr
 	}
-	summaries = sysauthz.FilterByListOU(summaries, listOU, visible,
+	summaries = sysauthz.FilterByListOUs(summaries, ouIDs, all,
 		func(d CredentialConfigurationList) string { return d.OUID })
 	s.populateSummaryOUHandles(ctx, summaries)
 	return summaries, nil

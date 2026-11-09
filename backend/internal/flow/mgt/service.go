@@ -254,11 +254,16 @@ func (s *flowMgtService) ListFlows(ctx context.Context, limit, offset int, flowT
 	if !visible {
 		return buildFlowListResponse([]BasicFlowDefinition{}, 0, limit, offset, flowTypeQueryParam(flowType)), nil
 	}
+	var flows []BasicFlowDefinition
+	var totalCount int
+	var err error
 	if ouID != "" {
-		return s.listFlowsForOU(ctx, ouID, flowType, limit, offset, true)
+		// A caller confined to an organization unit lists the flows it owns, as the user list does. The ones
+		// shared into it are listed with the organization unit filter.
+		flows, totalCount, err = s.store.ListFlowsByOU(ctx, ouID, limit, offset, string(flowType))
+	} else {
+		flows, totalCount, err = s.store.ListFlows(ctx, limit, offset, string(flowType))
 	}
-
-	flows, totalCount, err := s.store.ListFlows(ctx, limit, offset, string(flowType))
 	if err != nil {
 		s.logger.Error(ctx, "Failed to list flows", log.Error(err))
 		return nil, &tidcommon.InternalServerError

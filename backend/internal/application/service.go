@@ -389,20 +389,25 @@ func (as *applicationService) ValidateApplication(ctx context.Context, app *mode
 // unit owns, followed by the ones shared into it.
 func (as *applicationService) GetApplicationList(
 	ctx context.Context, filters map[string]interface{}) (*model.ApplicationListResponse, *tidcommon.ServiceError) {
-	ouID, rest, err := filter.SplitOUIDFilter(filters)
+	requestedOUID, rest, err := filter.SplitOUIDFilter(filters)
 	if err != nil || len(rest) > 0 {
 		return nil, &ErrorInvalidFilter
 	}
 	ouID, visible, svcErr := sysauthz.ResolveListOU(ctx, as.authzService, as.logger, security.ActionListApplications,
-		ouID)
+		requestedOUID)
 	if svcErr != nil {
 		return nil, svcErr
 	}
 	if !visible {
 		return as.buildApplicationList(ctx, nil, 0, 0)
 	}
+	if requestedOUID != "" {
+		return as.listApplicationsInOU(ctx, ouID, entity.OUEntityScopeAll)
+	}
+	// Without a filter, a caller confined to an organization unit lists the applications it owns, as the
+	// user list does. The ones shared into it are listed with the organization unit filter.
 	if ouID != "" {
-		return as.listApplicationsInOU(ctx, ouID)
+		return as.listApplicationsInOU(ctx, ouID, entity.OUEntityScopeOwned)
 	}
 
 	totalResults, entErr := as.entityService.GetEntityListCount(ctx, providers.EntityCategoryApp, nil)
@@ -497,11 +502,11 @@ func (as *applicationService) validateProjectOU(ctx context.Context, projectID, 
 }
 
 // listApplicationsInOU lists the applications an organization unit owns, followed by the ones shared
-// into it.
-func (as *applicationService) listApplicationsInOU(
-	ctx context.Context, ouID string) (*model.ApplicationListResponse, *tidcommon.ServiceError) {
+// into it when the scope includes them.
+func (as *applicationService) listApplicationsInOU(ctx context.Context, ouID string,
+	scope entity.OUEntityScope) (*model.ApplicationListResponse, *tidcommon.ServiceError) {
 	page, err := as.entityService.GetEntityPageInOU(ctx, providers.EntityCategoryApp, ouID,
-		entity.OUEntityScopeAll, serverconst.MaxCompositeStoreRecords, 0, nil)
+		scope, serverconst.MaxCompositeStoreRecords, 0, nil)
 	if err != nil {
 		as.logger.Error(ctx, "Failed to list application entities in organization unit",
 			log.String("ouID", ouID), log.Error(err))

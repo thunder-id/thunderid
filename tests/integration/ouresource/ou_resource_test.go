@@ -70,6 +70,7 @@ var adminPermissions = []string{
 	"system:rs",
 	"system:vc",
 	"system:agenttype",
+	"system:configversion",
 	"system:ou:view",
 }
 

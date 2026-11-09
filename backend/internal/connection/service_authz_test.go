@@ -116,7 +116,7 @@ func (s *ConnectionAuthzTestSuite) TestListHTTP_OwnOUOnly() {
 	s.Equal("http-own", connections[0].ID)
 }
 
-func (s *ConnectionAuthzTestSuite) TestListInstances_KeepsHTTPAndPDPSharedIntoOwnOU() {
+func (s *ConnectionAuthzTestSuite) TestListInstances_HTTPAndPDPSharedIntoOwnOU() {
 	expectOwnOUOnly(s.authz, security.ActionListConnections)
 	pdp := authzenpdpmock.NewAuthZENPDPServiceInterfaceMock(s.T())
 	pdp.On("ListAuthZENPDPs", mock.Anything).Return([]authzenpdp.AuthZENPDPConnection{
@@ -132,19 +132,22 @@ func (s *ConnectionAuthzTestSuite) TestListInstances_KeepsHTTPAndPDPSharedIntoOw
 		Return([]string{"pdp-shared", "http-shared"}, (*tidcommon.ServiceError)(nil))
 	s.svc.sharingService = sharingSvc
 
-	for _, category := range []connectionCategory{categoryAuthorizationPDP, categoryHTTP} {
-		list, svcErr := s.svc.listInstances(context.Background(), category, "", 10, 0)
+	listed := func(category connectionCategory, ouID string) []string {
+		list, svcErr := s.svc.listInstances(context.Background(), category, ouID, 10, 0)
 		s.Require().Nil(svcErr)
 		ids := make([]string, 0, len(list.Connections))
 		for _, c := range list.Connections {
 			ids = append(ids, c.ID)
 		}
-		if category == categoryHTTP {
-			s.Equal([]string{"http-own", "http-shared"}, ids)
-		} else {
-			s.Equal([]string{"pdp-own", "pdp-shared"}, ids)
-		}
+		return ids
 	}
+
+	// The organization unit filter lists the connections shared into the unit after its own.
+	s.Equal([]string{"http-own", "http-shared"}, listed(categoryHTTP, authzOwnOU))
+	s.Equal([]string{"pdp-own", "pdp-shared"}, listed(categoryAuthorizationPDP, authzOwnOU))
+	// Without it, the caller lists the connections its unit owns.
+	s.Equal([]string{"http-own"}, listed(categoryHTTP, ""))
+	s.Equal([]string{"pdp-own"}, listed(categoryAuthorizationPDP, ""))
 }
 
 func (s *ConnectionAuthzTestSuite) TestUpdateIdentityProvider_OtherOU() {

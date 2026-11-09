@@ -120,13 +120,34 @@ func (s *ResourceAuthzTestSuite) TestCreateResource_UnderOtherOUServer() {
 
 func (s *ResourceAuthzTestSuite) TestGetResourceServerList_OwnOUOnly() {
 	expectOwnOUOnly(s.authz, security.ActionListResourceServers)
-	s.store.On("GetResourceServerListCountByOUID", mock.Anything, authzOwnOU).Return(0, nil)
+	s.store.On("GetResourceServerListCountByOUID", mock.Anything, authzOwnOU).Return(1, nil)
 	s.store.On("GetResourceServerListByOUID", mock.Anything, authzOwnOU, 10, 0).
-		Return([]providers.ResourceServer{}, nil)
+		Return([]providers.ResourceServer{{ID: "rs-own", OUID: authzOwnOU}}, nil)
 
-	_, svcErr := s.service.GetResourceServerList(context.Background(), 10, 0)
+	list, svcErr := s.service.GetResourceServerList(context.Background(), 10, 0)
 	s.Require().Nil(svcErr)
+	s.Equal(1, list.TotalResults)
 	s.store.AssertNotCalled(s.T(), "GetResourceServerList", mock.Anything, mock.Anything, mock.Anything)
+}
+
+// A caller may list the resource servers of its own organization unit and of the ones above it, in
+// that order, so a page can span both.
+func (s *ResourceAuthzTestSuite) TestGetResourceServerList_OwnThenParentOU() {
+	s.authz.On("GetAccessibleResources", mock.Anything, security.ActionListResourceServers,
+		security.ResourceTypeOU).Return(&sysauthz.AccessibleResources{IDs: []string{authzOwnOU, "ou-parent"}}, nil)
+	s.store.On("GetResourceServerListCountByOUID", mock.Anything, authzOwnOU).Return(2, nil)
+	s.store.On("GetResourceServerListCountByOUID", mock.Anything, "ou-parent").Return(2, nil)
+	s.store.On("GetResourceServerListByOUID", mock.Anything, authzOwnOU, 2, 1).
+		Return([]providers.ResourceServer{{ID: "rs-own-2", OUID: authzOwnOU}}, nil)
+	s.store.On("GetResourceServerListByOUID", mock.Anything, "ou-parent", 1, 0).
+		Return([]providers.ResourceServer{{ID: "rs-parent-1", OUID: "ou-parent"}}, nil)
+
+	list, svcErr := s.service.GetResourceServerList(context.Background(), 2, 1)
+	s.Require().Nil(svcErr)
+	s.Equal(4, list.TotalResults)
+	s.Require().Len(list.ResourceServers, 2)
+	s.Equal("rs-own-2", list.ResourceServers[0].ID)
+	s.Equal("rs-parent-1", list.ResourceServers[1].ID)
 }
 
 func (s *ResourceAuthzTestSuite) TestGetResourceServerListByOUID_OtherOU() {
@@ -159,4 +180,17 @@ func (s *ResourceAuthzTestSuite) TestUpdateResourceServer_MoveToOtherOU() {
 	s.Require().NotNil(svcErr)
 	s.Equal(tidcommon.ErrorUnauthorized.Code, svcErr.Code)
 	s.store.AssertNotCalled(s.T(), "UpdateResourceServer", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (s *ResourceAuthzTestSuite) TestValidateDeleteAction_ReadsActionWithoutViewCheck() {
+	s.storedResourceServer(authzOwnOU)
+	s.store.On("IsResourceServerDeclarative", authzRSID).Return(false)
+	s.store.On("GetAction", mock.Anything, "act-1", authzRSID, (*string)(nil)).
+		Return(providers.Action{ID: "act-1", Permission: "orders:read"}, nil)
+
+	target, svcErr := s.service.ValidateDeleteAction(context.Background(), authzRSID, nil, "act-1")
+	s.Require().Nil(svcErr)
+	s.Require().Len(target.Scopes, 1)
+	s.Equal("orders:read", target.Scopes[0].Scope)
+	s.authz.AssertNotCalled(s.T(), "IsActionAllowed", mock.Anything, mock.Anything, mock.Anything)
 }

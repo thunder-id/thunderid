@@ -188,8 +188,15 @@ func (rs *roleService) GetRoleList(
 		if svcErr != nil {
 			return nil, svcErr
 		}
-	} else if ouID != "" {
+	} else if requestedOUID != "" {
 		roles, totalCount, svcErr = rs.listRolesInOU(ctx, ouID, limit, offset)
+		if svcErr != nil {
+			return nil, svcErr
+		}
+	} else if ouID != "" {
+		// Without a filter, a caller confined to an organization unit lists the roles it owns, as the user
+		// list does. The ones shared into it are listed with the organization unit filter.
+		roles, totalCount, svcErr = rs.listOwnedRolesInOU(ctx, ouID, limit, offset)
 		if svcErr != nil {
 			return nil, svcErr
 		}
@@ -311,6 +318,33 @@ func (rs *roleService) resolveRoleOUHandles(ctx context.Context, roles []Role) {
 	for i := range roles {
 		roles[i].OUHandle = ouHandles[roles[i].OUID]
 	}
+}
+
+// listOwnedRolesInOU returns a page of the roles an organization unit owns, with how many it owns.
+func (rs *roleService) listOwnedRolesInOU(
+	ctx context.Context, ouID string, limit, offset int,
+) ([]Role, int, *tidcommon.ServiceError) {
+	total, err := rs.roleStore.GetRoleListCountByOUID(ctx, ouID)
+	if err != nil {
+		return nil, 0, rs.ouRoleListError(ctx, ouID, err)
+	}
+	roles, err := rs.roleStore.GetRoleListByOUID(ctx, ouID, limit, offset)
+	if err != nil {
+		return nil, 0, rs.ouRoleListError(ctx, ouID, err)
+	}
+	for i := range roles {
+		roles[i].IsOwnedByOU = true
+	}
+	return roles, total, nil
+}
+
+// ouRoleListError answers a failure to list the roles of an organization unit.
+func (rs *roleService) ouRoleListError(ctx context.Context, ouID string, err error) *tidcommon.ServiceError {
+	if errors.Is(err, errResultLimitExceededInCompositeMode) {
+		return &ResultLimitExceededInCompositeMode
+	}
+	rs.logger.Error(ctx, "Failed to list roles in organization unit", log.String("ouID", ouID), log.Error(err))
+	return &tidcommon.InternalServerError
 }
 
 // listRolesInOU lists the roles an organization unit owns, followed by the ones shared with it, and

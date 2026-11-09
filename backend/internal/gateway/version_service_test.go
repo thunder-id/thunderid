@@ -443,6 +443,8 @@ type fakeExporter struct {
 	response *export.ExportResponse
 	err      *tidcommon.ServiceError
 	asked    *export.ExportRequest
+	// askedAsRuntime records whether the last export was read as the runtime.
+	askedAsRuntime bool
 
 	variables map[string]string
 	secrets   map[string]string
@@ -458,9 +460,10 @@ type valuesRequest struct {
 	resource     interface{}
 }
 
-func (f *fakeExporter) ReadResources(_ context.Context,
+func (f *fakeExporter) ReadResources(ctx context.Context,
 	request *export.ExportRequest) (*export.ExportResponse, *tidcommon.ServiceError) {
 	f.asked = request
+	f.askedAsRuntime = security.IsRuntimeContext(ctx)
 	return f.response, f.err
 }
 
@@ -675,6 +678,22 @@ func TestACaptureIsKeptForWhoAskedForIt(t *testing.T) {
 	assert.Equal(t, &Actor{ID: "u-2", Name: "bob"}, replaced.CreatedBy)
 	listed, _ := f.svc.ListVersions(context.Background())
 	assert.Equal(t, &Actor{ID: "u-2", Name: "bob"}, listed[0].CreatedBy)
+}
+
+// A capture and the current version read the whole configuration, whatever the user who asked may read.
+func TestACaptureReadsTheConfigurationAsTheRuntime(t *testing.T) {
+	f := newVersionFixture(t)
+	ctx := signedIn("u-1", map[string]interface{}{"username": "alice"})
+
+	v, svcErr := f.svc.Capture(ctx, CaptureRequest{})
+	require.Nil(t, svcErr)
+	assert.True(t, f.exporter.askedAsRuntime)
+	assert.Equal(t, &Actor{ID: "u-1", Name: "alice"}, v.CreatedBy)
+
+	f.exporter.askedAsRuntime = false
+	_, svcErr = f.svc.GetVersion(ctx, currentVersion)
+	require.Nil(t, svcErr)
+	assert.True(t, f.exporter.askedAsRuntime)
 }
 
 // A capture keeps only the configured number of versions.
