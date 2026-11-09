@@ -647,6 +647,8 @@ type fakeOUService struct {
 	created  []ou.OrganizationUnitRequestWithID
 	updated  []ou.OrganizationUnitRequest
 	existing map[string]ou.OrganizationUnit
+	// updateAttempts counts every update called, including one of a unit that does not exist.
+	updateAttempts int
 }
 
 func (f *fakeOUService) CreateOrganizationUnit(
@@ -711,6 +713,7 @@ func (f *fakeOUService) GetOrganizationUnitByPath(
 func (f *fakeOUService) UpdateOrganizationUnit(
 	_ context.Context, id string, request ou.OrganizationUnitRequestWithID,
 ) (ou.OrganizationUnit, *tidcommon.ServiceError) {
+	f.updateAttempts++
 	updateReq := ou.OrganizationUnitRequest{
 		Handle:          request.Handle,
 		Name:            request.Name,
@@ -2276,6 +2279,42 @@ func TestImportResources_OrganizationUnitUpsertCreatePreservesID(t *testing.T) {
 	assert.Equal(t, "ou-123", resp.Results[0].ResourceID)
 	assert.Len(t, ouSvc.created, 1)
 	assert.Equal(t, "ou-123", ouSvc.created[0].ID)
+}
+
+// An upsert looks the organization unit up and then creates or updates it, so creating one is never
+// preceded by an update that fails, which the organization unit service would record.
+func TestImportResources_OrganizationUnitUpsertLooksUpBeforeWriting(t *testing.T) {
+	ouSvc := &fakeOUService{existing: map[string]ou.OrganizationUnit{
+		"ou-existing": {ID: "ou-existing", Handle: "sales", Name: "Sales"},
+	}}
+	svc := newImportService(
+		nil, nil, nil, nil, ouSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
+		discardingBus{})
+
+	content := strings.Join([]string{
+		"resource_type: organization_unit",
+		"id: ou-new",
+		"handle: eng",
+		"name: Engineering",
+		"---",
+		"resource_type: organization_unit",
+		"id: ou-existing",
+		"handle: sales",
+		"name: Sales and Marketing",
+		"",
+	}, "\n")
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{Content: content})
+
+	require.Nil(t, err)
+	require.Len(t, resp.Results, 2)
+	assert.Equal(t, operationCreate, resp.Results[0].Operation)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status)
+	assert.Equal(t, operationUpdate, resp.Results[1].Operation)
+	assert.Equal(t, statusSuccess, resp.Results[1].Status)
+	require.Len(t, ouSvc.created, 1)
+	assert.Equal(t, "ou-new", ouSvc.created[0].ID)
+	assert.Equal(t, 1, ouSvc.updateAttempts, "only the unit that exists is updated")
 }
 
 func TestImportResources_OrganizationUnitCarriesDefaultFlowFields(t *testing.T) {

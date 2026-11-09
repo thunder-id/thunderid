@@ -25,6 +25,12 @@ const (
 	EventUserUpdate = "user.update"
 	// EventUserDelete names an attempt to delete a user.
 	EventUserDelete = "user.delete"
+	// EventUserSharingPolicyCreate names an attempt to create a sharing policy of a user.
+	EventUserSharingPolicyCreate = "user.sharing_policy.create"
+	// EventUserSharingPolicyUpdate names an attempt to change a sharing policy of a user.
+	EventUserSharingPolicyUpdate = "user.sharing_policy.update"
+	// EventUserSharingPolicyDelete names an attempt to delete a sharing policy of a user.
+	EventUserSharingPolicyDelete = "user.sharing_policy.delete"
 	// EventUserTypeCreate names an attempt to create a user type.
 	EventUserTypeCreate = "user_type.create"
 	// EventUserTypeUpdate names an attempt to change a user type.
@@ -37,6 +43,12 @@ const (
 	EventApplicationUpdate = "application.update"
 	// EventApplicationDelete names an attempt to delete an application.
 	EventApplicationDelete = "application.delete"
+	// EventApplicationSharingPolicyCreate names an attempt to create a sharing policy of an application.
+	EventApplicationSharingPolicyCreate = "application.sharing_policy.create"
+	// EventApplicationSharingPolicyUpdate names an attempt to change a sharing policy of an application.
+	EventApplicationSharingPolicyUpdate = "application.sharing_policy.update"
+	// EventApplicationSharingPolicyDelete names an attempt to delete a sharing policy of an application.
+	EventApplicationSharingPolicyDelete = "application.sharing_policy.delete"
 	// EventFlowCreate names an attempt to create a flow.
 	EventFlowCreate = "flow.create"
 	// EventFlowUpdate names an attempt to change a flow.
@@ -135,15 +147,32 @@ const (
 	EventThemeUpdate = "theme.update"
 	// EventThemeDelete names an attempt to delete a theme.
 	EventThemeDelete = "theme.delete"
+	// EventOUCreate names an attempt to create an organization unit.
+	EventOUCreate = "ou.create"
+	// EventOUUpdate names an attempt to change an organization unit.
+	EventOUUpdate = "ou.update"
+	// EventOUDelete names an attempt to delete an organization unit.
+	EventOUDelete = "ou.delete"
+	// EventProjectCreate names an attempt to create a project.
+	EventProjectCreate = "project.create"
+	// EventProjectUpdate names an attempt to change a project.
+	EventProjectUpdate = "project.update"
+	// EventProjectDelete names an attempt to delete a project.
+	EventProjectDelete = "project.delete"
 )
 
 const (
 	// TargetTypeUser is the target type of an event about a user.
 	TargetTypeUser = "user"
+	// TargetTypeUserSharingPolicy is the target type of an event about a sharing policy of a user.
+	TargetTypeUserSharingPolicy = "user_sharing_policy"
 	// TargetTypeUserType is the target type of an event about a user type.
 	TargetTypeUserType = "user_type"
 	// TargetTypeApplication is the target type of an event about an application.
 	TargetTypeApplication = "application"
+	// TargetTypeApplicationSharingPolicy is the target type of an event about a sharing policy of an
+	// application.
+	TargetTypeApplicationSharingPolicy = "application_sharing_policy"
 	// TargetTypeFlow is the target type of an event about a flow.
 	TargetTypeFlow = "flow"
 	// TargetTypeConnection is the target type of an event about a connection of any kind: an identity
@@ -182,6 +211,10 @@ const (
 	TargetTypeLayout = "layout"
 	// TargetTypeTheme is the target type of an event about a theme.
 	TargetTypeTheme = "theme"
+	// TargetTypeOU is the target type of an event about an organization unit.
+	TargetTypeOU = "ou"
+	// TargetTypeProject is the target type of an event about a project.
+	TargetTypeProject = "project"
 )
 
 // principalTargetTypes maps the type a role assignment or a group membership names its principal by to
@@ -213,6 +246,10 @@ var auditedEvents = map[string][]string{
 	EventUserCreate: nil,
 	EventUserUpdate: nil,
 	EventUserDelete: nil,
+
+	EventUserSharingPolicyCreate: nil,
+	EventUserSharingPolicyUpdate: nil,
+	EventUserSharingPolicyDelete: nil,
 
 	EventUserTypeCreate: nil,
 	EventUserTypeUpdate: nil,
@@ -256,6 +293,10 @@ var auditedEvents = map[string][]string{
 	EventNotificationTemplateUpdate: nil,
 	EventNotificationTemplateDelete: nil,
 
+	EventApplicationSharingPolicyCreate: nil,
+	EventApplicationSharingPolicyUpdate: nil,
+	EventApplicationSharingPolicyDelete: nil,
+
 	EventRoleCreate:           nil,
 	EventRoleUpdate:           nil,
 	EventRoleDelete:           nil,
@@ -278,4 +319,12 @@ var auditedEvents = map[string][]string{
 	EventThemeCreate: nil,
 	EventThemeUpdate: nil,
 	EventThemeDelete: nil,
+
+	EventOUCreate: nil,
+	EventOUUpdate: nil,
+	EventOUDelete: nil,
+
+	EventProjectCreate: nil,
+	EventProjectUpdate: nil,
+	EventProjectDelete: nil,
 }

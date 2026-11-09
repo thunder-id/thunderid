@@ -190,7 +190,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	_, references := variablestore.Initialize(mux, configCryptoSvc, cacheManager)
 
 	ouService, ouHierarchyResolver, ouEnumerator, ouExporter, err := ou.Initialize(
-		mux, mcpServer, cacheManager, ouAuthzService, false)
+		mux, mcpServer, cacheManager, ouAuthzService, false, auditBus)
 	fatalOnError(ctx, logger, err, "Failed to initialize OrganizationUnitService")
 	exporters = append(exporters, ouExporter)
 

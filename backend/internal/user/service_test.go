@@ -4615,7 +4615,7 @@ func newSharingFixture(t *testing.T, allowed map[security.Action][]string) *shar
 
 	f.service = &userService{
 		governance: activeGovernance(t), entityService: store, verification: verification, authzService: authz,
-		sharingService: f.sharing}
+		sharingService: f.sharing, bus: discardingBus{}}
 	return f
 }
 

@@ -229,6 +229,14 @@ func (suite *ProjectStoreTestSuite) TestDeleteProject() {
 
 		suite.Error(suite.store.DeleteProject(context.Background(), testProjectID))
 	})
+	suite.Run("no project has the ID", func() {
+		suite.SetupTest()
+		suite.withClient()
+		suite.mockDBClient.On("ExecuteContext", mock.Anything, queryDeleteProject, testProjectID, testDeploymentID).
+			Return(int64(0), nil)
+
+		suite.ErrorIs(suite.store.DeleteProject(context.Background(), testProjectID), errProjectNotFound)
+	})
 }
 
 func (suite *ProjectStoreTestSuite) TestUnreadableCreatedAt() {

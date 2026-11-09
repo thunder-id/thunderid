@@ -4,6 +4,8 @@
 package project
 
 import (
+	"errors"
+
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
 	"github.com/thunder-id/thunderid/internal/system/projectscope"
@@ -197,3 +199,13 @@ var (
 		},
 	}
 )
+
+// errNilEventBus is returned when the service is initialized without the event bus it audits on.
+var errNilEventBus = errors.New("the project service needs an event bus")
+
+// errProjectNotFoundNoop is returned by deleteProject when there was no project to delete. DeleteProject
+// turns it into a success, so it never reaches a caller.
+var errProjectNotFoundNoop = &tidcommon.ServiceError{
+	Type: tidcommon.ClientErrorType,
+	Code: ErrorProjectNotFound.Code,
+}

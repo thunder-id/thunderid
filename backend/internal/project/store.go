@@ -129,14 +129,18 @@ func (s *projectStore) UpdateProject(ctx context.Context, project Project) error
 	return nil
 }
 
-// DeleteProject removes the project with the given ID.
+// DeleteProject removes the project with the given ID, or returns errProjectNotFound when there is none.
 func (s *projectStore) DeleteProject(ctx context.Context, id string) error {
 	dbClient, err := s.dbProvider.GetEntityDBClient()
 	if err != nil {
 		return fmt.Errorf("failed to get database client: %w", err)
 	}
-	if _, err := dbClient.ExecuteContext(ctx, queryDeleteProject, id, s.scope(ctx)); err != nil {
+	deleted, err := dbClient.ExecuteContext(ctx, queryDeleteProject, id, s.scope(ctx))
+	if err != nil {
 		return fmt.Errorf("failed to delete project: %w", err)
+	}
+	if deleted == 0 {
+		return errProjectNotFound
 	}
 	return nil
 }
