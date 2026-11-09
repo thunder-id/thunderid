@@ -394,6 +394,9 @@ func (s *agentService) GetAgentList(ctx context.Context, limit, offset int,
 	if ouID != "" {
 		return s.listAccessibleAgentsInOU(ctx, ouID, limit, offset, includeDisplay, listQuery)
 	}
+	if query := systemAttributeQuery(filters); query != nil {
+		return s.listAgentsBySystemAttributes(ctx, *query, limit, offset, includeDisplay, listQuery)
+	}
 
 	accessible, svcErr := s.getAccessibleOUs(ctx)
 	if svcErr != nil {
@@ -483,7 +486,13 @@ func (s *agentService) GetAgentListByOwner(ctx context.Context, ownerID string, 
 		SystemAttributes: map[string]interface{}{fieldOwnerID: ownerID},
 		Attributes:       filters,
 	}
+	return s.listAgentsBySystemAttributes(ctx, query, limit, offset, includeDisplay, listQuery)
+}
 
+// listAgentsBySystemAttributes returns a paginated list of the agents a system attribute query selects, from
+// the organization units the caller can list agents from.
+func (s *agentService) listAgentsBySystemAttributes(ctx context.Context, query entity.SystemAttributeQuery,
+	limit, offset int, includeDisplay bool, listQuery string) (*model.AgentListResponse, *tidcommon.ServiceError) {
 	accessible, svcErr := s.getAccessibleOUs(ctx)
 	if svcErr != nil {
 		return nil, svcErr
@@ -491,6 +500,7 @@ func (s *agentService) GetAgentListByOwner(ctx context.Context, ownerID string, 
 
 	var totalCount int
 	var entities []providers.Entity
+	var err error
 	switch {
 	case accessible.AllAllowed:
 		totalCount, err = s.entityService.GetEntityListCountBySystemAttributes(
@@ -2366,6 +2376,28 @@ func readSystemAttributes(raw json.RawMessage) model.AgentSystemAttributes {
 		sysAttrs.Kind = providers.AgentKind(v)
 	}
 	return sysAttrs
+}
+
+// systemAttributeQuery returns the lookup for a filter on the kind or the owner, which are matched against the
+// agents' system attributes, the owner by its ID, with the rest of the filter on the schema attributes. It
+// returns nil for a filter on schema attributes only.
+func systemAttributeQuery(filters map[string]interface{}) *entity.SystemAttributeQuery {
+	sysAttrs := map[string]interface{}{}
+	attrs := map[string]interface{}{}
+	for key, value := range filters {
+		switch key {
+		case fieldKind:
+			sysAttrs[fieldKind] = value
+		case fieldOwner:
+			sysAttrs[fieldOwnerID] = value
+		default:
+			attrs[key] = value
+		}
+	}
+	if len(sysAttrs) == 0 {
+		return nil
+	}
+	return &entity.SystemAttributeQuery{SystemAttributes: sysAttrs, Attributes: attrs}
 }
 
 // resolveDisplayPaths resolves the display attribute path of each given agent type.

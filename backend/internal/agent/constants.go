@@ -27,6 +27,12 @@ const (
 	fieldKind = "kind"
 )
 
+// filterAttributeName is the only schema attribute a filter can combine with the kind and the owner.
+const filterAttributeName = "name"
+
+// combinableFilterAttributes are the attributes a filter can join with "and".
+var combinableFilterAttributes = []string{fieldKind, fieldOwner, filterAttributeName}
+
 // fieldOwnerID is the path of the owner's ID within the SystemAttributes blob.
 const fieldOwnerID = fieldOwner + ".id"
 

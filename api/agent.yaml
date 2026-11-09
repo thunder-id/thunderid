@@ -2115,14 +2115,15 @@ components:
       name: filter
       required: false
       description: |
-        Filter agents by a custom attribute value or by organization unit. Keys inside the
-        `attributes` JSON object are filterable, including `name`. Of the system fields, only
-        `ouId` is supported: `ouId eq "<id>"` lists the agents the organization unit owns, followed
-        by the agents shared into it, and cannot be combined with another expression. The other
-        system fields (`description`, `type`, `owner`, `clientId`) are not supported.
+        Filter agents by a custom attribute value, by `kind`, by `owner`, or by organization unit. Keys
+        inside the `attributes` JSON object are filterable, including `name`; `kind` matches the agent's
+        kind and `owner` the ID of its owner. Of the other system fields, only `ouId` is supported:
+        `ouId eq "<id>"` lists the agents the organization unit owns, followed by the agents shared into
+        it, and cannot be combined with another expression. The other system fields (`description`,
+        `type`, `clientId`) are not supported.
         Supported operators: `eq`.
         Format: `attribute operator "value"`. The value must be wrapped in double quotes.
-        Example: `name eq "Calendar Agent"`.
+        Terms on `kind`, `owner`, and `name` can be joined with `and`, each at most once.
       schema:
         type: string
       examples:
@@ -2132,6 +2133,9 @@ components:
         organization-unit:
           summary: Agents owned by or shared into an organization unit
           value: 'ouId eq "456e8400-e29b-41d4-a716-446655440001"'
+        personal-agents-of-an-owner:
+          summary: The personal agents of an owner
+          value: 'kind eq "personal-assistant" and owner eq "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"'
 
   schemas:
     Agent:

@@ -62,6 +62,9 @@ CREATE INDEX idx_entity_project ON "ENTITY" (DEPLOYMENT_ID, PROJECT_ID, CATEGORY
 -- Expression index for looking up agents by their owner
 CREATE INDEX idx_entity_owner ON "ENTITY" (DEPLOYMENT_ID, json_extract(SYSTEM_ATTRIBUTES, '$.owner.id'));
 
+-- Expression index for looking up agents by their kind
+CREATE INDEX idx_entity_kind ON "ENTITY" (DEPLOYMENT_ID, json_extract(SYSTEM_ATTRIBUTES, '$.kind'));
+
 -- Table to store Groups
 CREATE TABLE "GROUP" (
     DEPLOYMENT_ID   VARCHAR(255) NOT NULL,

@@ -217,6 +217,77 @@ func (ts *PersonalAgentTestSuite) TestAdminReadsKindOwnerAndDetails() {
 	ts.Equal("pa_suite_assistant", attributes["name"])
 }
 
+// An administrator finds personal agents by kind, by owner, and by kind and name together.
+func (ts *PersonalAgentTestSuite) TestAdminFiltersByKindAndOwner() {
+	listIDs := func(filter string) (int, []string) {
+		resp, err := doGet(testServerURL + "/agents?limit=100&filter=" + url.QueryEscape(filter))
+		ts.Require().NoError(err)
+		defer resp.Body.Close()
+		body := readBody(resp)
+		if resp.StatusCode != http.StatusOK {
+			return resp.StatusCode, nil
+		}
+		var list struct {
+			Agents []struct {
+				ID string `json:"id"`
+			} `json:"agents"`
+		}
+		ts.Require().NoError(json.Unmarshal([]byte(body), &list))
+		ids := make([]string, 0, len(list.Agents))
+		for _, agent := range list.Agents {
+			ids = append(ids, agent.ID)
+		}
+		return resp.StatusCode, ids
+	}
+
+	for _, filter := range []string{
+		`kind eq "` + paKind + `"`,
+		`owner eq "` + ts.ownerID + `"`,
+		`kind eq "` + paKind + `" and name eq "pa_suite_assistant"`,
+		`kind eq "` + paKind + `" and owner eq "` + ts.ownerID + `"`,
+	} {
+		status, ids := listIDs(filter)
+		ts.Equal(http.StatusOK, status, filter)
+		ts.Contains(ids, ts.agentID, filter)
+	}
+
+	status, ids := listIDs(`owner eq "` + ts.otherID + `"`)
+	ts.Equal(http.StatusOK, status)
+	ts.NotContains(ids, ts.agentID, "another user's filter does not list the agent")
+
+	status, _ = listIDs(`kind eq "` + paKind + `" and software eq "x"`)
+	ts.Equal(http.StatusBadRequest, status, "only the kind, the owner and the name combine")
+}
+
+// The owner's usages list the personal agent, found through the owner in the agent's system attributes.
+// Another user's usages do not.
+func (ts *PersonalAgentTestSuite) TestOwnerUsagesListThePersonalAgent() {
+	usageIDs := func(userID string) []string {
+		resp, err := doGet(testServerURL + "/users/" + userID + "/usages")
+		ts.Require().NoError(err)
+		defer resp.Body.Close()
+		body := readBody(resp)
+		ts.Require().Equal(http.StatusOK, resp.StatusCode, body)
+		var usages struct {
+			Usages []struct {
+				ResourceType string `json:"resourceType"`
+				ID           string `json:"id"`
+			} `json:"usages"`
+		}
+		ts.Require().NoError(json.Unmarshal([]byte(body), &usages))
+		ids := make([]string, 0, len(usages.Usages))
+		for _, usage := range usages.Usages {
+			if usage.ResourceType == "agent" {
+				ids = append(ids, usage.ID)
+			}
+		}
+		return ids
+	}
+
+	ts.Contains(usageIDs(ts.ownerID), ts.agentID)
+	ts.NotContains(usageIDs(ts.otherID), ts.agentID)
+}
+
 // --- signing the owner in ---
 
 // The owner signs in, is always asked for consent, and the token names the owner as the subject and
