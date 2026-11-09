@@ -16,6 +16,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/projectscope"
+	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
 	"github.com/thunder-id/thunderid/tests/mocks/oumock"
@@ -761,6 +762,70 @@ func (s *ConfigurationServiceTestSuite) TestListSummariesByOUIDErrors() {
 			s.Equal(tc.expectedCode, svcErr.Code)
 		})
 	}
+}
+
+func (s *ConfigurationServiceTestSuite) TestGetResourceDependencies_OUReportsOwnedConfigurations() {
+	store := newCredentialStoreInterfaceMock(s.T())
+	store.EXPECT().ListCredentialConfigurationSummariesByOUID(mock.Anything, "ou-1").Return(
+		[]CredentialConfigurationList{{ID: "cc-1", Handle: "employee-badge"}, {ID: "cc-2", Handle: "membership"}},
+		nil)
+	svc := newCredentialConfigurationService(store, nil, allowAllAuthz(s.T()), nil, false)
+
+	deps, err := svc.GetResourceDependencies(context.Background(), resourcedependency.ResourceTypeOU, "ou-1")
+
+	s.Require().NoError(err)
+	s.Equal([]resourcedependency.ResourceDependency{
+		{
+			ResourceType:     resourcedependency.ResourceTypeVCIConfiguration,
+			ID:               "cc-1",
+			DisplayName:      "employee-badge",
+			BehaviorOnDelete: resourcedependency.BehaviorRestrict,
+		},
+		{
+			ResourceType:     resourcedependency.ResourceTypeVCIConfiguration,
+			ID:               "cc-2",
+			DisplayName:      "membership",
+			BehaviorOnDelete: resourcedependency.BehaviorRestrict,
+		},
+	}, deps)
+}
+
+func (s *ConfigurationServiceTestSuite) TestGetResourceDependencies_OUWithoutConfigurations() {
+	store := newCredentialStoreInterfaceMock(s.T())
+	store.EXPECT().ListCredentialConfigurationSummariesByOUID(mock.Anything, "ou-1").
+		Return([]CredentialConfigurationList{}, nil)
+	svc := newCredentialConfigurationService(store, nil, allowAllAuthz(s.T()), nil, false)
+
+	deps, err := svc.GetResourceDependencies(context.Background(), resourcedependency.ResourceTypeOU, "ou-1")
+
+	s.Require().NoError(err)
+	s.NotNil(deps)
+	s.Empty(deps)
+}
+
+func (s *ConfigurationServiceTestSuite) TestGetResourceDependencies_OUStoreError() {
+	store := newCredentialStoreInterfaceMock(s.T())
+	store.EXPECT().ListCredentialConfigurationSummariesByOUID(mock.Anything, "ou-1").
+		Return(nil, errors.New("boom"))
+	svc := newCredentialConfigurationService(store, nil, allowAllAuthz(s.T()), nil, false)
+
+	deps, err := svc.GetResourceDependencies(context.Background(), resourcedependency.ResourceTypeOU, "ou-1")
+
+	s.Require().EqualError(err, "boom")
+	s.Nil(deps)
+}
+
+func (s *ConfigurationServiceTestSuite) TestGetResourceDependencies_OtherResourceTypes() {
+	store := newCredentialStoreInterfaceMock(s.T())
+	svc := newCredentialConfigurationService(store, nil, allowAllAuthz(s.T()), nil, false)
+
+	deps, err := svc.GetResourceDependencies(
+		context.Background(), resourcedependency.ResourceTypeVCIConfiguration, "cc-1")
+
+	s.Require().NoError(err)
+	s.NotNil(deps)
+	s.Empty(deps)
+	store.AssertNotCalled(s.T(), "ListCredentialConfigurationSummariesByOUID", mock.Anything, mock.Anything)
 }
 
 // testProjectID is the project the project tests place credential configurations in.

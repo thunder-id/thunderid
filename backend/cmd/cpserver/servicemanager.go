@@ -417,7 +417,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		governance:     governanceService,
 	}, applicationService, agentService, flowMgtService, roleAssignmentService, roleService,
 		groupService, ouService, ouUserResolver, ouGroupResolver, entityTypeService, resourceService,
-		sharingService, notifTemplateSvc, ouDependencyProvider)
+		sharingService, notifTemplateSvc, ouDependencyProvider, openid4vpDefSvc, openid4vciCredSvc)
 
 	// Capabilities are answered by the authorization service the management APIs use.
 	capability.Initialize(mux, ouAuthzService)

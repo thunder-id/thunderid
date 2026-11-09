@@ -12,7 +12,7 @@ export interface CreateEmailTemplateRequest {
   handle: string;
   /**
    * The organization unit this template belongs to. Set at creation and immutable thereafter. A template in a
-   * project leaves it out and is placed in the system organization unit.
+   * project leaves it out to be placed in the system organization unit, or names one of the project's.
    */
   ouId?: string;
   /** The project this template belongs to. Required on the control plane. */
@@ -32,7 +32,7 @@ export interface CreateSmsTemplateRequest {
   handle: string;
   /**
    * The organization unit this template belongs to. Set at creation and immutable thereafter. A template in a
-   * project leaves it out and is placed in the system organization unit.
+   * project leaves it out to be placed in the system organization unit, or names one of the project's.
    */
   ouId?: string;
   /** The project this template belongs to. Required on the control plane. */

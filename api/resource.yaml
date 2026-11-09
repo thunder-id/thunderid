@@ -2448,9 +2448,10 @@ components:
         projectId:
           type: string
           description: |
-            ID of the project this resource server belongs to. A resource server in a project is in the
-            system organization unit, so `ouId` can be left out, and any other organization unit is
-            refused. Without `projectId`, the resource server belongs to no project.
+            ID of the project this resource server belongs to. A resource server in a project without
+            `ouId` is placed in the system organization unit. Any organization unit other than the system
+            one or one of the project's is refused. Without `projectId`, the resource server belongs to no
+            project.
         delimiter:
           type: string
           description: Optional delimiter character for permission hierarchy (defaults to ":", immutable after creation)
@@ -2481,7 +2482,7 @@ components:
           type: string
           description: |
             ID of the project this resource server belongs to. A resource server in a project must be in
-            the system organization unit. Leaving it out keeps the resource server in its current
+            the system organization unit or in an organization unit of the project. Leaving it out keeps the resource server in its current
             project, and a different project moves it.
         authorizationEngine:
           $ref: '#/components/schemas/AuthorizationEngineConfig'

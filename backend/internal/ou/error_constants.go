@@ -79,8 +79,8 @@ var (
 		},
 		ErrorDescription: tidcommon.I18nMessage{
 			Key: "error.ouservice.organization_unit_has_children_description",
-			DefaultValue: "Cannot delete an organization unit that has child organization units, users, " +
-				"groups, user types, agent types, connections, flows, or sharing policies it issued",
+			DefaultValue: "Cannot delete an organization unit while other resources, such as child organization " +
+				"units, users, groups, roles or applications, belong to it or refer to it",
 		},
 	}
 	// ErrorCircularDependency is the error returned when a circular dependency is detected.
@@ -257,6 +257,36 @@ var (
 		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "error.ouservice.system_ou_in_project_description",
 			DefaultValue: "The system organization unit is shared by every project and cannot belong to one",
+		},
+	}
+	// ErrorProjectMoveWithResources is returned when an organization unit moves to another project while it, or an
+	// organization unit beneath it, still holds resources.
+	ErrorProjectMoveWithResources = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "OU-1027",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.ouservice.project_move_with_resources",
+			DefaultValue: "Organization unit holds resources",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.ouservice.project_move_with_resources_description",
+			DefaultValue: "An organization unit can move to another project only while it and the organization " +
+				"units beneath it hold no resources",
+		},
+	}
+	// ErrorPlacementWithFilter is the error returned when a placement listing is asked for with a filter. The
+	// listing leads with the system organization unit, which a filter could not page around.
+	ErrorPlacementWithFilter = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "OU-1028",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.ouservice.placement_with_filter",
+			DefaultValue: "Filter not supported with placement",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.ouservice.placement_with_filter_description",
+			DefaultValue: "The placement listing cannot be filtered. Remove the filter parameter or the placement " +
+				"parameter",
 		},
 	}
 )

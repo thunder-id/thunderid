@@ -3735,6 +3735,60 @@ func (suite *AgentServiceTestSuite) TestGetResourceDependencies_ByAgentType_Erro
 	assert.Error(suite.T(), err, "agents allowing the type cannot be listed")
 }
 
+// The agents an organization unit owns block its deletion, each named like the owner dependencies.
+func (suite *AgentServiceTestSuite) TestGetResourceDependencies_ByOU_Success() {
+	svc, mockEntity, mockInbound, _, _ := suite.setupService()
+	suite.withDisplayPaths(svc, "name")
+
+	attrs, _ := json.Marshal(map[string]interface{}{"name": "Agent One"})
+	clearMockCalls(mockEntity, "GetEntityListByOUIDs")
+	mockEntity.On("GetEntityListByOUIDs", mock.Anything, providers.EntityCategoryAgent, []string{"ou-1"},
+		serverconst.MaxCompositeStoreRecords, 0, map[string]interface{}(nil)).
+		Return([]providers.Entity{
+			{ID: "agent-1", Category: providers.EntityCategoryAgent, Type: testAgentType, Attributes: attrs},
+			{ID: "agent-2", Category: providers.EntityCategoryAgent, Type: testAgentType},
+		}, nil)
+
+	result, err := svc.GetResourceDependencies(context.Background(), resourcedependency.ResourceTypeOU, "ou-1")
+	assert.NoError(suite.T(), err)
+	suite.Require().Len(result, 2)
+	assert.Equal(suite.T(), "agent-1", result[0].ID)
+	assert.Equal(suite.T(), "Agent One", result[0].DisplayName)
+	assert.Equal(suite.T(), "agent-2", result[1].ID)
+	assert.Equal(suite.T(), "agent-2", result[1].DisplayName, "an agent without a display value is named by its ID")
+	for _, usage := range result {
+		assert.Equal(suite.T(), resourcedependency.ResourceTypeAgent, usage.ResourceType)
+		assert.Equal(suite.T(), resourcedependency.BehaviorRestrict, usage.BehaviorOnDelete)
+	}
+	mockInbound.AssertNotCalled(suite.T(), "GetEntityIDsByReference", mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (suite *AgentServiceTestSuite) TestGetResourceDependencies_ByOU_Empty() {
+	svc, mockEntity, _, _, _ := suite.setupService()
+	clearMockCalls(mockEntity, "GetEntityListByOUIDs")
+	mockEntity.On("GetEntityListByOUIDs", mock.Anything, providers.EntityCategoryAgent, []string{"ou-1"},
+		serverconst.MaxCompositeStoreRecords, 0, map[string]interface{}(nil)).
+		Return([]providers.Entity{}, nil)
+
+	result, err := svc.GetResourceDependencies(context.Background(), resourcedependency.ResourceTypeOU, "ou-1")
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), result)
+	assert.Empty(suite.T(), result)
+}
+
+func (suite *AgentServiceTestSuite) TestGetResourceDependencies_ByOU_Error() {
+	svc, mockEntity, _, _, _ := suite.setupService()
+	clearMockCalls(mockEntity, "GetEntityListByOUIDs")
+	mockEntity.On("GetEntityListByOUIDs", mock.Anything, providers.EntityCategoryAgent, []string{"ou-1"},
+		serverconst.MaxCompositeStoreRecords, 0, map[string]interface{}(nil)).
+		Return(nil, errors.New("store error"))
+
+	result, err := svc.GetResourceDependencies(context.Background(), resourcedependency.ResourceTypeOU, "ou-1")
+	assert.Nil(suite.T(), result)
+	assert.EqualError(suite.T(), err, "store error")
+}
+
 // placementTypeMock returns an entity type service that answers the agent type lookup with the given type
 // or error.
 func (suite *AgentServiceTestSuite) placementTypeMock(

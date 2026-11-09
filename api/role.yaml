@@ -257,7 +257,7 @@ paths:
                       defaultValue: "Organization unit not in project"
                     description:
                       key: "error.roleservice.ou_not_in_project_description"
-                      defaultValue: "A role in a project must be in the system organization unit"
+                      defaultValue: "A role in a project must be in the system organization unit or in an organization unit of the project"
                 invalid-permissions:
                   summary: Invalid permissions
                   value:
@@ -558,7 +558,7 @@ paths:
                       defaultValue: "Organization unit not in project"
                     description:
                       key: "error.roleservice.ou_not_in_project_description"
-                      defaultValue: "A role in a project must be in the system organization unit"
+                      defaultValue: "A role in a project must be in the system organization unit or in an organization unit of the project"
                 invalid-permissions:
                   summary: Invalid permissions
                   value:

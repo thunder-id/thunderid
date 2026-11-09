@@ -228,12 +228,15 @@ func (rs *resourceService) cascadeDeleteDependents(ctx context.Context, resource
 // deletion while it still has resources or resource-server-level actions; a resource is blocked while
 // it still has sub-resources or actions. These dependents live in the same store, so their existence
 // is resolved directly and reported as a single restrict usage. Other resource types have no
-// dependencies here.
+// dependencies here, except an organization unit, which is blocked from deletion while it owns resource
+// servers.
 func (rs *resourceService) GetResourceDependencies(
 	ctx context.Context, resourceType, id string) ([]resourcedependency.ResourceDependency, error) {
 	var hasDeps bool
 	var err error
 	switch resourceType {
+	case resourcedependency.ResourceTypeOU:
+		return rs.organizationUnitUsages(ctx, id)
 	case resourcedependency.ResourceTypeResourceServer:
 		hasDeps, err = rs.resourceStore.CheckResourceServerHasDependencies(ctx, id)
 	case resourcedependency.ResourceTypeResource:
@@ -253,6 +256,26 @@ func (rs *resourceService) GetResourceDependencies(
 		ID:               id,
 		BehaviorOnDelete: resourcedependency.BehaviorRestrict,
 	}}, nil
+}
+
+// organizationUnitUsages reports the resource servers an organization unit owns. The number scanned is bounded
+// by MaxCompositeStoreRecords.
+func (rs *resourceService) organizationUnitUsages(
+	ctx context.Context, ouID string) ([]resourcedependency.ResourceDependency, error) {
+	servers, err := rs.resourceStore.GetResourceServerListByOUID(ctx, ouID, serverconst.MaxCompositeStoreRecords, 0)
+	if err != nil {
+		return nil, err
+	}
+	deps := make([]resourcedependency.ResourceDependency, 0, len(servers))
+	for _, server := range servers {
+		deps = append(deps, resourcedependency.ResourceDependency{
+			ResourceType:     resourcedependency.ResourceTypeResourceServer,
+			ID:               server.ID,
+			DisplayName:      server.Name,
+			BehaviorOnDelete: resourcedependency.BehaviorRestrict,
+		})
+	}
+	return deps, nil
 }
 
 // newResourceService creates a new instance of ResourceService.

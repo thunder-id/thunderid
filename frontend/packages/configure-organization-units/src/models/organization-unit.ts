@@ -136,4 +136,9 @@ export interface OrganizationUnit {
    * Whether the organization unit is read-only and cannot be modified or deleted.
    */
   isReadOnly?: boolean;
+
+  /**
+   * Whether this is the system organization unit. Set only by the project placement listing.
+   */
+  isSystem?: boolean;
 }

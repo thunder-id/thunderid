@@ -232,6 +232,22 @@ func buildChildrenOUListQuery(g *tidcommon.FilterGroup) (dbmodel.DBQuery, []inte
 }
 
 var (
+	// queryGetOrganizationUnitChildrenCountInProject counts the children of a parent that belong to a project.
+	queryGetOrganizationUnitChildrenCountInProject = dbmodel.DBQuery{
+		ID: "OUQ-OU_MGT-25",
+		Query: `SELECT COUNT(*) as total FROM "ORGANIZATION_UNIT" ` +
+			`WHERE PARENT_ID = $1 AND PROJECT_ID = $2 AND DEPLOYMENT_ID = $3`,
+	}
+
+	// queryGetOrganizationUnitChildrenListInProject lists a page of the children of a parent that belong to a
+	// project.
+	queryGetOrganizationUnitChildrenListInProject = dbmodel.DBQuery{
+		ID: "OUQ-OU_MGT-26",
+		Query: `SELECT OU_ID, PARENT_ID, PROJECT_ID, HANDLE, NAME, DESCRIPTION, METADATA, CREATED_AT, UPDATED_AT ` +
+			`FROM "ORGANIZATION_UNIT" WHERE PARENT_ID = $1 AND PROJECT_ID = $2 AND DEPLOYMENT_ID = $5 ` +
+			`ORDER BY NAME, OU_ID LIMIT $3 OFFSET $4`,
+	}
+
 	// queryCreateOrganizationUnit is the query to create a new organization unit.
 	queryCreateOrganizationUnit = dbmodel.DBQuery{
 		ID: "OUQ-OU_MGT-03",
@@ -343,10 +359,12 @@ func buildGetOrganizationUnitsByIDsQuery(ids []string) dbmodel.DBQuery {
 
 	return dbmodel.DBQuery{
 		ID: "OUQ-OU_MGT-21",
-		PostgresQuery: `SELECT OU_ID, PROJECT_ID, HANDLE, NAME, DESCRIPTION, METADATA, CREATED_AT, UPDATED_AT ` +
+		PostgresQuery: `SELECT OU_ID, PARENT_ID, PROJECT_ID, HANDLE, NAME, DESCRIPTION, METADATA, ` +
+			`CREATED_AT, UPDATED_AT ` +
 			`FROM "ORGANIZATION_UNIT" ` +
 			`WHERE OU_ID IN (` + pgInClause + `) AND DEPLOYMENT_ID = ` + deploymentIDParam + ` ORDER BY NAME`,
-		SQLiteQuery: `SELECT OU_ID, PROJECT_ID, HANDLE, NAME, DESCRIPTION, METADATA, CREATED_AT, UPDATED_AT ` +
+		SQLiteQuery: `SELECT OU_ID, PARENT_ID, PROJECT_ID, HANDLE, NAME, DESCRIPTION, METADATA, ` +
+			`CREATED_AT, UPDATED_AT ` +
 			`FROM "ORGANIZATION_UNIT" ` +
 			`WHERE OU_ID IN (` + sqliteInClause + `) AND DEPLOYMENT_ID = ? ORDER BY NAME`,
 	}

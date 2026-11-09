@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -33,6 +34,11 @@ const loggerComponentNameService = "OrganizationUnitService"
 const (
 	// projectIDQueryParam is the list query parameter that names a project.
 	projectIDQueryParam = "projectId"
+	// placementQueryParam is the list query parameter that asks for the organization units a project's
+	// resources can be placed in.
+	placementQueryParam = "placement"
+	// withinQueryParam is the placement listing query parameter that keeps only an organization unit's subtree.
+	withinQueryParam = "within"
 	// maxProjectIDLength is the length of the PROJECT_ID column. A longer project ID names no project.
 	maxProjectIDLength = 36
 )
@@ -47,6 +53,12 @@ type OrganizationUnitServiceInterface interface {
 	GetOrganizationUnitListByProject(
 		ctx context.Context, projectID string, limit, offset int, f *tidcommon.FilterGroup,
 	) (*OrganizationUnitListResponse, *tidcommon.ServiceError)
+	// GetOrganizationUnitPlacementList lists the organization units a resource of the project can be placed in: the
+	// system organization unit first, then the project's top organization units. A non-empty withinOUID keeps only
+	// the ones in that organization unit's subtree. A project that does not exist has none.
+	GetOrganizationUnitPlacementList(
+		ctx context.Context, projectID, withinOUID string, limit, offset int,
+	) (*OrganizationUnitListResponse, *tidcommon.ServiceError)
 	// ProjectHasOrganizationUnits reports whether an organization unit belongs to the project.
 	ProjectHasOrganizationUnits(ctx context.Context, projectID string) (bool, *tidcommon.ServiceError)
 	CreateOrganizationUnit(
@@ -59,6 +71,9 @@ type OrganizationUnitServiceInterface interface {
 	) (OrganizationUnit, *tidcommon.ServiceError)
 	IsOrganizationUnitExists(ctx context.Context, id string) (bool, *tidcommon.ServiceError)
 	GetSystemOUID(ctx context.Context) (string, *tidcommon.ServiceError)
+	// GetOrganizationUnitProjectID returns the ID of the project an organization unit belongs to, or an empty
+	// string for one in no project.
+	GetOrganizationUnitProjectID(ctx context.Context, id string) (string, *tidcommon.ServiceError)
 	ResolveOwner(ctx context.Context, ouID, ouHandle string, errs OwnerErrors) (string, *tidcommon.ServiceError)
 	ResolveOwnerForUpdate(
 		ctx context.Context, requestedID, requestedHandle, currentID string, errs OwnerErrors,
@@ -332,6 +347,247 @@ func (ous *organizationUnitService) GetOrganizationUnitListByProject(
 		Count:             len(ouList),
 		Links:             utils.BuildPaginationLinks("/organization-units", limit, offset, totalCount, extraQuery),
 	}, nil
+}
+
+// GetOrganizationUnitPlacementList lists the organization units a resource of the project can be placed in: the
+// system organization unit, then the project's top organization units, with their children listed under them. The
+// system organization unit is listed first and counts towards the total, but not with its children, which belong
+// to other projects too. A caller who cannot list the system organization unit gets the project's organization
+// units alone, and a project that does not exist has none.
+//
+// A non-empty withinOUID keeps only the placements in that organization unit's subtree, such as the ones a user
+// type allows. For the system organization unit, that is the system one and the project's units placed under it.
+// For one of the project's units, it is that unit alone, whose children are all in the subtree too. For any other
+// organization unit, there are none.
+func (ous *organizationUnitService) GetOrganizationUnitPlacementList(
+	ctx context.Context, projectID, withinOUID string, limit, offset int,
+) (*OrganizationUnitListResponse, *tidcommon.ServiceError) {
+	if err := validatePaginationParams(limit, offset); err != nil {
+		return nil, err
+	}
+	extraQuery := "&" + projectIDQueryParam + "=" + url.QueryEscape(projectID) + "&" + placementQueryParam + "=true"
+	if withinOUID != "" {
+		extraQuery += "&" + withinQueryParam + "=" + url.QueryEscape(withinOUID)
+	}
+	if projectID == "" {
+		return pageOrganizationUnits(nil, limit, offset, extraQuery), nil
+	}
+	if ous.projectChecker != nil {
+		exists, svcErr := ous.projectChecker.ProjectExists(ctx, projectID)
+		if svcErr != nil {
+			return nil, svcErr
+		}
+		if !exists {
+			return pageOrganizationUnits(nil, limit, offset, extraQuery), nil
+		}
+	}
+
+	if withinOUID == "" || withinOUID == configuredSystemOUID() {
+		systemOU, svcErr := ous.placementSystemOU(ctx)
+		if svcErr != nil {
+			return nil, svcErr
+		}
+		return ous.listPlacements(systemOU, limit, offset, extraQuery,
+			func(limit, offset int) (*OrganizationUnitListResponse, *tidcommon.ServiceError) {
+				if withinOUID == "" {
+					return ous.GetOrganizationUnitListByProject(ctx, projectID, limit, offset, nil)
+				}
+				return ous.listProjectChildren(ctx, projectID, withinOUID, limit, offset)
+			})
+	}
+
+	unit, svcErr := ous.placementProjectUnit(ctx, projectID, withinOUID)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	var units []OrganizationUnitBasic
+	if unit != nil {
+		units = []OrganizationUnitBasic{*unit}
+	}
+	return pageOrganizationUnits(units, limit, offset, extraQuery), nil
+}
+
+// listPlacements pages the system organization unit, when given, followed by the project's organization units that
+// projectPage lists.
+func (ous *organizationUnitService) listPlacements(
+	systemOU *OrganizationUnitBasic, limit, offset int, extraQuery string,
+	projectPage func(limit, offset int) (*OrganizationUnitListResponse, *tidcommon.ServiceError),
+) (*OrganizationUnitListResponse, *tidcommon.ServiceError) {
+	lead := 0
+	if systemOU != nil {
+		lead = 1
+	}
+
+	// The project's units follow the system one, so they shift by one place.
+	projectLimit, projectOffset := limit, offset
+	if lead == 1 {
+		if offset == 0 {
+			projectLimit = limit - 1
+		} else {
+			projectOffset = offset - 1
+		}
+	}
+	// A page with room for the system unit alone still reads one unit of the project, for the total.
+	page, svcErr := projectPage(max(projectLimit, 1), projectOffset)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+
+	units := make([]OrganizationUnitBasic, 0, limit)
+	if systemOU != nil && offset == 0 {
+		units = append(units, *systemOU)
+	}
+	if projectLimit > 0 {
+		units = append(units, page.OrganizationUnits...)
+	}
+	total := page.TotalResults + lead
+
+	return &OrganizationUnitListResponse{
+		TotalResults:      total,
+		OrganizationUnits: units,
+		StartIndex:        offset + 1,
+		Count:             len(units),
+		Links:             utils.BuildPaginationLinks("/organization-units", limit, offset, total, extraQuery),
+	}, nil
+}
+
+// listProjectChildren lists a page of the child organization units of a parent that belong to the project. A caller
+// who can list only some organization units gets the ones among them.
+func (ous *organizationUnitService) listProjectChildren(
+	ctx context.Context, projectID, parentID string, limit, offset int,
+) (*OrganizationUnitListResponse, *tidcommon.ServiceError) {
+	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentNameService))
+	accessible, svcErr := ous.authzService.GetAccessibleResources(
+		ctx, security.ActionListOUs, security.ResourceTypeOU)
+	if svcErr != nil {
+		return nil, &tidcommon.InternalServerError
+	}
+	if !accessible.AllAllowed {
+		units, err := ous.ouStore.GetOrganizationUnitsByIDs(ctx, accessible.IDs)
+		if err != nil {
+			logger.Error(ctx, "Failed to get organization units by IDs", log.Error(err))
+			return nil, &tidcommon.InternalServerError
+		}
+		children := make([]OrganizationUnitBasic, 0, len(units))
+		for _, unit := range units {
+			if unit.ProjectID == projectID && unit.Parent != nil && *unit.Parent == parentID {
+				children = append(children, unit)
+			}
+		}
+		return pageOrganizationUnits(children, limit, offset, ""), nil
+	}
+
+	total, err := ous.ouStore.GetOrganizationUnitChildrenCountInProject(ctx, parentID, projectID)
+	if err != nil {
+		logger.Error(ctx, "Failed to count the child organization units in a project",
+			log.String("projectID", projectID), log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+	children, err := ous.ouStore.GetOrganizationUnitChildrenListInProject(ctx, parentID, projectID, limit, offset)
+	if err != nil {
+		if errors.Is(err, ErrResultLimitExceededInCompositeMode) {
+			return nil, &ErrorResultLimitExceeded
+		}
+		logger.Error(ctx, "Failed to list the child organization units in a project",
+			log.String("projectID", projectID), log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+	return &OrganizationUnitListResponse{TotalResults: total, OrganizationUnits: children, Count: len(children)}, nil
+}
+
+// placementProjectUnit returns an organization unit as a placement listing lists it when it belongs to the project
+// and the caller can list it, or nil otherwise.
+func (ous *organizationUnitService) placementProjectUnit(
+	ctx context.Context, projectID, ouID string,
+) (*OrganizationUnitBasic, *tidcommon.ServiceError) {
+	unit, err := ous.ouStore.GetOrganizationUnit(ctx, ouID)
+	if err != nil {
+		if errors.Is(err, ErrOrganizationUnitNotFound) {
+			return nil, nil
+		}
+		log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentNameService)).Error(ctx,
+			"Failed to get organization unit", log.String("ouID", ouID), log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+	if unit.ProjectID != projectID {
+		return nil, nil
+	}
+	accessible, svcErr := ous.authzService.GetAccessibleResources(
+		ctx, security.ActionListOUs, security.ResourceTypeOU)
+	if svcErr != nil {
+		return nil, &tidcommon.InternalServerError
+	}
+	if !accessible.AllAllowed && !slices.Contains(accessible.IDs, ouID) {
+		return nil, nil
+	}
+	basic := basicOf(unit)
+	basic.IsReadOnly = ous.ouStore.IsOrganizationUnitDeclarative(ctx, unit.ID)
+	return &basic, nil
+}
+
+// basicOf returns the list form of an organization unit.
+func basicOf(unit OrganizationUnit) OrganizationUnitBasic {
+	return OrganizationUnitBasic{
+		ID:          unit.ID,
+		Handle:      unit.Handle,
+		Name:        unit.Name,
+		Description: unit.Description,
+		ProjectID:   unit.ProjectID,
+		Parent:      unit.Parent,
+		LogoURL:     unit.LogoURL,
+		CreatedAt:   unit.CreatedAt,
+		UpdatedAt:   unit.UpdatedAt,
+	}
+}
+
+// pageOrganizationUnits returns one page of a list of organization units held in memory.
+func pageOrganizationUnits(
+	units []OrganizationUnitBasic, limit, offset int, extraQuery string,
+) *OrganizationUnitListResponse {
+	total := len(units)
+	start := min(offset, total)
+	end := min(start+limit, total)
+	page := append([]OrganizationUnitBasic{}, units[start:end]...)
+	return &OrganizationUnitListResponse{
+		TotalResults:      total,
+		OrganizationUnits: page,
+		StartIndex:        offset + 1,
+		Count:             len(page),
+		Links:             utils.BuildPaginationLinks("/organization-units", limit, offset, total, extraQuery),
+	}
+}
+
+// placementSystemOU returns the system organization unit as a placement listing lists it, or nil when the deployment
+// names none or the caller cannot list it.
+func (ous *organizationUnitService) placementSystemOU(
+	ctx context.Context,
+) (*OrganizationUnitBasic, *tidcommon.ServiceError) {
+	systemOUID := configuredSystemOUID()
+	if systemOUID == "" {
+		return nil, nil
+	}
+	accessible, svcErr := ous.authzService.GetAccessibleResources(
+		ctx, security.ActionListOUs, security.ResourceTypeOU)
+	if svcErr != nil {
+		return nil, &tidcommon.InternalServerError
+	}
+	if !accessible.AllAllowed && !slices.Contains(accessible.IDs, systemOUID) {
+		return nil, nil
+	}
+
+	unit, err := ous.ouStore.GetOrganizationUnit(ctx, systemOUID)
+	if err != nil {
+		if errors.Is(err, ErrOrganizationUnitNotFound) {
+			return nil, nil
+		}
+		log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentNameService)).Error(ctx,
+			"Failed to get the system organization unit", log.String("ouID", systemOUID), log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+	basic := basicOf(unit)
+	basic.IsReadOnly = ous.ouStore.IsOrganizationUnitDeclarative(ctx, unit.ID)
+	basic.IsSystem = true
+	return &basic, nil
 }
 
 // ProjectHasOrganizationUnits reports whether an organization unit belongs to the project. Every organization
@@ -702,6 +958,24 @@ func (ous *organizationUnitService) GetSystemOUID(ctx context.Context) (string, 
 	return ouID, nil
 }
 
+// GetOrganizationUnitProjectID returns the ID of the project an organization unit belongs to, or an empty string
+// for one in no project. It does not check the caller's access: callers use it to decide where a resource they
+// place may go, and check access to that resource themselves.
+func (ous *organizationUnitService) GetOrganizationUnitProjectID(
+	ctx context.Context, id string,
+) (string, *tidcommon.ServiceError) {
+	ou, err := ous.ouStore.GetOrganizationUnit(ctx, id)
+	if err != nil {
+		if errors.Is(err, ErrOrganizationUnitNotFound) {
+			return "", &ErrorOrganizationUnitNotFound
+		}
+		logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentNameService))
+		logger.Error(ctx, "Failed to get organization unit", log.String("ouID", id), log.Error(err))
+		return "", &tidcommon.InternalServerError
+	}
+	return ou.ProjectID, nil
+}
+
 func (ous *organizationUnitService) IsOrganizationUnitDeclarative(ctx context.Context, id string) bool {
 	return ous.ouStore.IsOrganizationUnitDeclarative(ctx, id)
 }
@@ -971,7 +1245,8 @@ func (ous *organizationUnitService) updateOUInternal(
 	// A unit that moves to another project carries its descendants along. They move first and the unit is
 	// written last, so a failure leaves no new value in the cache of a transaction that rolls back.
 	if projectID != existingOU.ProjectID {
-		if svcErr := ous.moveDescendantsToProject(ctx, id, projectID, updatedOU.UpdatedAt, logger); svcErr != nil {
+		if svcErr := ous.moveDescendantsToProject(
+			ctx, id, existingOU.ProjectID, projectID, updatedOU.UpdatedAt, logger); svcErr != nil {
 			return OrganizationUnit{}, svcErr
 		}
 	}
@@ -1355,6 +1630,10 @@ func (ous *organizationUnitService) GetOrganizationUnitChildren(
 	list, svcErr := buildOrganizationUnitListResponse(base, items, totalCount, limit, offset)
 	if list != nil {
 		ous.markManaged(ctx, list.OrganizationUnits)
+		// The stores list a unit's children without the parent they were listed under.
+		for i := range list.OrganizationUnits {
+			list.OrganizationUnits[i].Parent = &id
+		}
 	}
 	return list, svcErr
 }
@@ -1876,25 +2155,64 @@ func (ous *organizationUnitService) resolveUpdatedOUProject(
 // moveDescendantsToProject moves every organization unit beneath ouID to the project its ancestor moves to, so
 // that a tree never spans projects. Every descendant is checked before any is written, and the store drops the
 // moved units from its caches.
+//
+// A unit that leaves a project must hold no resources, nor may any unit beneath it: a resource of the old project
+// would otherwise sit in another project's unit. A unit that had no project, such as one from before projects,
+// may take its resources along.
 func (ous *organizationUnitService) moveDescendantsToProject(
-	ctx context.Context, ouID, projectID string, updatedAt time.Time, logger *log.Logger,
+	ctx context.Context, ouID, fromProjectID, toProjectID string, updatedAt time.Time, logger *log.Logger,
 ) *tidcommon.ServiceError {
 	descendants, svcErr := ous.hierarchy.DescendantOUIDs(ctx, ouID)
 	if svcErr != nil {
 		return svcErr
-	}
-	if len(descendants) == 0 {
-		return nil
 	}
 	for _, id := range descendants {
 		if svcErr := ous.refuseChange(ctx, id); svcErr != nil {
 			return svcErr
 		}
 	}
-	if err := ous.ouStore.UpdateOrganizationUnitsProject(ctx, descendants, projectID, updatedAt); err != nil {
+	if fromProjectID != "" {
+		subtree := append([]string{ouID}, descendants...)
+		if svcErr := ous.ensureNoResourcesInSubtree(ctx, subtree, logger); svcErr != nil {
+			return svcErr
+		}
+	}
+	if len(descendants) == 0 {
+		return nil
+	}
+	if err := ous.ouStore.UpdateOrganizationUnitsProject(ctx, descendants, toProjectID, updatedAt); err != nil {
 		logger.Error(ctx, "Failed to move descendant organization units to another project",
 			log.String("ouID", ouID), log.Error(err))
 		return &tidcommon.InternalServerError
+	}
+	return nil
+}
+
+// ensureNoResourcesInSubtree refuses a move to another project while any of the given organization units holds a
+// resource other than its child organization units, which move along. Like deletion, it fails closed: when the
+// dependencies cannot be determined, the move is refused.
+func (ous *organizationUnitService) ensureNoResourcesInSubtree(
+	ctx context.Context, ouIDs []string, logger *log.Logger,
+) *tidcommon.ServiceError {
+	if ous.dependencyRegistry == nil {
+		logger.Error(ctx, "Dependency registry not set; refusing to move organization unit to another project")
+		return &tidcommon.InternalServerError
+	}
+	for _, id := range ouIDs {
+		deps, err := ous.dependencyRegistry.GetDependencies(ctx, resourcedependency.ResourceTypeOU, id)
+		if err != nil {
+			logger.Error(ctx, "Failed to evaluate organization unit dependencies", log.Error(err))
+			return &tidcommon.InternalServerError
+		}
+		if deps == nil || deps.TotalResults == nil {
+			logger.Error(ctx, "Organization unit dependency data unavailable; refusing to move it")
+			return &tidcommon.InternalServerError
+		}
+		for _, dep := range resourcedependency.BlockingUsages(deps) {
+			if dep.ResourceType != resourcedependency.ResourceTypeOU {
+				return &ErrorProjectMoveWithResources
+			}
+		}
 	}
 	return nil
 }

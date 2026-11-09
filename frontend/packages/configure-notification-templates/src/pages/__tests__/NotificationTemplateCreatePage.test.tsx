@@ -38,15 +38,20 @@ vi.mock('@thunderid/configure-organization-units', () => ({
   useGetOrganizationUnit: mockUseGetOU,
   OrganizationUnitPickerScreen: ({
     value,
+    projectId = undefined,
     onChange,
     onContinue,
   }: {
     value: string;
+    projectId?: string;
     onChange: (v: string) => void;
     onContinue: () => void;
   }) => (
     <div>
-      <span data-testid="ou-step" />
+      <span data-testid="ou-step" data-project-id={projectId} />
+      <button type="button" data-testid="pick-system-ou" onClick={() => onChange('system-ou')}>
+        pick system
+      </button>
       <button type="button" data-testid="pick-ou" onClick={() => onChange('ou-picked')}>
         {value === '' ? 'pick' : value}
       </button>
@@ -238,35 +243,76 @@ describe('NotificationTemplateCreatePage', () => {
     expect(mockNavigate).toHaveBeenCalledWith('/notification-templates/email/new-id');
   });
 
-  it('skips the organization unit step inside a project and creates the template in the project', async () => {
-    mockUseHasMultipleOUs.mockReturnValue({hasMultipleOUs: true, isLoading: false, ouList: [{id: 'ou-a'}]});
-    const user = userEvent.setup();
-    render(
-      <ProjectScopeProvider project={{id: 'project-1'}}>
-        <NotificationTemplateCreatePage />
-      </ProjectScopeProvider>,
-    );
+  describe('inside a project', () => {
+    const renderInProject = (): void => {
+      render(
+        <ProjectScopeProvider project={{id: 'project-1'}}>
+          <NotificationTemplateCreatePage />
+        </ProjectScopeProvider>,
+      );
+    };
 
-    expect(screen.queryByTestId('ou-step')).not.toBeInTheDocument();
-    await startFromScratch(user);
-    await user.click(screen.getByTestId('fill-identity'));
-    await user.click(continueBtn());
-    await user.click(screen.getByTestId('fill-content'));
-    await user.click(createBtn());
+    const createFromTemplateStep = async (user: ReturnType<typeof userEvent.setup>): Promise<void> => {
+      await startFromScratch(user);
+      await user.click(screen.getByTestId('fill-identity'));
+      await user.click(continueBtn());
+      await user.click(screen.getByTestId('fill-content'));
+      await user.click(createBtn());
+    };
 
-    expect(mockMutate).toHaveBeenCalledWith(
-      {
-        channel: 'email',
-        data: {
-          handle: 'otp-verification',
-          projectId: 'project-1',
-          displayName: 'OTP Verification',
-          design: {colorScheme: 'light'},
-          content: {subject: 'Your code', body: '<p>Body</p>'},
+    const expectCreated = (owner: Record<string, string>): void => {
+      expect(mockMutate).toHaveBeenCalledWith(
+        {
+          channel: 'email',
+          data: {
+            handle: 'otp-verification',
+            ...owner,
+            displayName: 'OTP Verification',
+            design: {colorScheme: 'light'},
+            content: {subject: 'Your code', body: '<p>Body</p>'},
+          },
         },
-      },
-      expect.anything(),
-    );
+        expect.anything(),
+      );
+    };
+
+    it('skips the organization unit step when the project has none and creates the template in the project', async () => {
+      mockUseHasMultipleOUs.mockReturnValue({hasMultipleOUs: false, isLoading: false, ouList: []});
+      const user = userEvent.setup();
+      renderInProject();
+
+      expect(mockUseHasMultipleOUs).toHaveBeenCalledWith('project-1');
+      expect(screen.queryByTestId('ou-step')).not.toBeInTheDocument();
+      await createFromTemplateStep(user);
+
+      expectCreated({projectId: 'project-1'});
+    });
+
+    it("shows the project's organization unit step and creates the template in the system organization unit it selects", async () => {
+      mockUseHasMultipleOUs.mockReturnValue({hasMultipleOUs: true, isLoading: false, ouList: [{id: 'ou-a'}]});
+      const user = userEvent.setup();
+      renderInProject();
+
+      expect(screen.getByTestId('ou-step')).toHaveAttribute('data-project-id', 'project-1');
+      await user.click(screen.getByTestId('pick-system-ou'));
+      await user.click(screen.getByTestId('ou-continue'));
+      await createFromTemplateStep(user);
+
+      expectCreated({projectId: 'project-1', ouId: 'system-ou'});
+      expect(mockUseGetOU).toHaveBeenCalledWith('system-ou', true);
+    });
+
+    it('creates the template in the picked project organization unit', async () => {
+      mockUseHasMultipleOUs.mockReturnValue({hasMultipleOUs: true, isLoading: false, ouList: [{id: 'ou-a'}]});
+      const user = userEvent.setup();
+      renderInProject();
+
+      await user.click(screen.getByTestId('pick-ou'));
+      await user.click(screen.getByTestId('ou-continue'));
+      await createFromTemplateStep(user);
+
+      expectCreated({projectId: 'project-1', ouId: 'ou-picked'});
+    });
   });
 
   it('returns to the list outside a project when templates are created in projects only', () => {
@@ -357,7 +403,8 @@ describe('NotificationTemplateCreatePage', () => {
     render(<NotificationTemplateCreatePage />);
 
     // The OU picker is the first screen; pick an OU and continue into the wizard.
-    expect(screen.getByTestId('ou-step')).toBeInTheDocument();
+    expect(mockUseHasMultipleOUs).toHaveBeenCalledWith(undefined);
+    expect(screen.getByTestId('ou-step')).not.toHaveAttribute('data-project-id');
     await user.click(screen.getByTestId('pick-ou'));
     await user.click(screen.getByTestId('ou-continue'));
 

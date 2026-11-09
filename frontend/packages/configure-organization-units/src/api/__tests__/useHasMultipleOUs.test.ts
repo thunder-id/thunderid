@@ -117,6 +117,35 @@ describe('useHasMultipleOUs', () => {
     expect(refetchRoots).not.toHaveBeenCalled();
   });
 
+  it('reports a choice in project mode when the project has an organization unit, without looking up children', () => {
+    vi.mocked(useGetOrganizationUnits).mockReturnValue(rootQuery([{id: 'a'}], 1));
+    vi.mocked(useGetChildOrganizationUnits).mockReturnValue(childQuery(0, true));
+
+    const {result} = renderHook(() => useHasMultipleOUs('project-1'));
+
+    expect(useGetOrganizationUnits).toHaveBeenCalledWith({limit: 2, offset: 0, projectId: 'project-1'});
+    expect(useGetChildOrganizationUnits).toHaveBeenCalledWith(undefined, {limit: 1, offset: 0});
+    expect(result.current).toMatchObject({hasMultipleOUs: true, isError: false, ouList: [{id: 'a'}]});
+  });
+
+  it('reports no choice in project mode when the project has no organization units', () => {
+    vi.mocked(useGetOrganizationUnits).mockReturnValue(rootQuery([], 0));
+    vi.mocked(useGetChildOrganizationUnits).mockReturnValue(childQuery(0));
+
+    const {result} = renderHook(() => useHasMultipleOUs('project-1'));
+
+    expect(result.current).toMatchObject({hasMultipleOUs: false, isError: false});
+  });
+
+  it('reports an error in project mode when the project lookup fails', () => {
+    vi.mocked(useGetOrganizationUnits).mockReturnValue(rootQuery([], 0, true));
+    vi.mocked(useGetChildOrganizationUnits).mockReturnValue(childQuery(0));
+
+    const {result} = renderHook(() => useHasMultipleOUs('project-1'));
+
+    expect(result.current.isError).toBe(true);
+  });
+
   it('ignores a children lookup error unless there is exactly one root', () => {
     const refetchRoots = vi.fn();
     const refetchChildren = vi.fn();

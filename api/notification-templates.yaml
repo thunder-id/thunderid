@@ -721,8 +721,8 @@ components:
           description: >
             The ID of the project this template belongs to. Required on a deployment that serves projects, where a
             request without it fails with `NTM-1031` and a project that does not exist fails with `NTM-1029`. A
-            template in a project is in the system organization unit, so `ouId` can be left out; any other
-            organization unit fails with `NTM-1030`.
+            template in a project without `ouId` is placed in the system organization unit. Any organization
+            unit other than the system one or one of the project's fails with `NTM-1030`.
           example: "01900000-0000-7000-8000-000000000002"
         displayName:
           type: string
@@ -796,8 +796,8 @@ components:
           description: >
             The ID of the project this template belongs to. Required on a deployment that serves projects, where a
             request without it fails with `NTM-1031` and a project that does not exist fails with `NTM-1029`. A
-            template in a project is in the system organization unit, so `ouId` can be left out; any other
-            organization unit fails with `NTM-1030`.
+            template in a project without `ouId` is placed in the system organization unit. Any organization
+            unit other than the system one or one of the project's fails with `NTM-1030`.
           example: "01900000-0000-7000-8000-000000000002"
         displayName:
           type: string

@@ -1592,11 +1592,29 @@ func (rs *roleService) markManagedRoles(ctx context.Context, roles []Role) {
 	}
 }
 
-// GetResourceDependencies implements resourcedependency.Provider. Role permissions are cleaned up
-// via cascade rather than surfaced as blocking usages, so no dependencies are reported here.
+// GetResourceDependencies implements resourcedependency.Provider. It reports the roles an organization unit
+// owns, which block its deletion. Role permissions are cleaned up via cascade rather than surfaced as
+// blocking usages, so nothing is reported for other resource types. The number of roles scanned is bounded
+// by MaxCompositeStoreRecords.
 func (rs *roleService) GetResourceDependencies(
-	_ context.Context, _, _ string) ([]resourcedependency.ResourceDependency, error) {
-	return []resourcedependency.ResourceDependency{}, nil
+	ctx context.Context, resourceType, id string) ([]resourcedependency.ResourceDependency, error) {
+	if resourceType != resourcedependency.ResourceTypeOU {
+		return []resourcedependency.ResourceDependency{}, nil
+	}
+	roles, err := rs.roleStore.GetRoleListByOUID(ctx, id, serverconst.MaxCompositeStoreRecords, 0)
+	if err != nil {
+		return nil, err
+	}
+	deps := make([]resourcedependency.ResourceDependency, 0, len(roles))
+	for _, r := range roles {
+		deps = append(deps, resourcedependency.ResourceDependency{
+			ResourceType:     resourcedependency.ResourceTypeRole,
+			ID:               r.ID,
+			DisplayName:      r.Name,
+			BehaviorOnDelete: resourcedependency.BehaviorRestrict,
+		})
+	}
+	return deps, nil
 }
 
 // CascadeDeleteDependencies implements resourcedependency.CascadeDeleter. When a resource server,

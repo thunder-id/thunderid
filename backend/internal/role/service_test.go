@@ -2083,6 +2083,52 @@ func (suite *RoleServiceTestSuite) TestGetResourceDependencies_ReportsNoUsages()
 
 	suite.NoError(err)
 	suite.Empty(deps)
+	suite.mockStore.AssertNotCalled(suite.T(), "GetRoleListByOUID", mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything)
+}
+
+func (suite *RoleServiceTestSuite) TestGetResourceDependencies_OUReportsOwnedRoles() {
+	suite.mockStore.On("GetRoleListByOUID", mock.Anything, "ou1", serverconst.MaxCompositeStoreRecords, 0).
+		Return([]Role{{ID: "role1", Name: "Admin"}, {ID: "role2", Name: "Viewer"}}, nil)
+
+	deps, err := suite.service.GetResourceDependencies(context.Background(), resourcedependency.ResourceTypeOU, "ou1")
+
+	suite.NoError(err)
+	suite.Equal([]resourcedependency.ResourceDependency{
+		{
+			ResourceType:     resourcedependency.ResourceTypeRole,
+			ID:               "role1",
+			DisplayName:      "Admin",
+			BehaviorOnDelete: resourcedependency.BehaviorRestrict,
+		},
+		{
+			ResourceType:     resourcedependency.ResourceTypeRole,
+			ID:               "role2",
+			DisplayName:      "Viewer",
+			BehaviorOnDelete: resourcedependency.BehaviorRestrict,
+		},
+	}, deps)
+}
+
+func (suite *RoleServiceTestSuite) TestGetResourceDependencies_OUWithoutRoles() {
+	suite.mockStore.On("GetRoleListByOUID", mock.Anything, "ou1", serverconst.MaxCompositeStoreRecords, 0).
+		Return([]Role{}, nil)
+
+	deps, err := suite.service.GetResourceDependencies(context.Background(), resourcedependency.ResourceTypeOU, "ou1")
+
+	suite.NoError(err)
+	suite.NotNil(deps)
+	suite.Empty(deps)
+}
+
+func (suite *RoleServiceTestSuite) TestGetResourceDependencies_OUStoreError() {
+	suite.mockStore.On("GetRoleListByOUID", mock.Anything, "ou1", serverconst.MaxCompositeStoreRecords, 0).
+		Return(nil, errors.New("db error"))
+
+	deps, err := suite.service.GetResourceDependencies(context.Background(), resourcedependency.ResourceTypeOU, "ou1")
+
+	suite.EqualError(err, "db error")
+	suite.Nil(deps)
 }
 
 func (suite *RoleServiceTestSuite) TestCascadeDeleteDependencies_IgnoresUnrelatedResourceTypes() {

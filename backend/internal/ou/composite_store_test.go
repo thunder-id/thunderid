@@ -1044,6 +1044,52 @@ func (suite *CompositeStoreCoverageTestSuite) TestCompositeStore_GetOrganization
 	})
 }
 
+// The children of a parent in a project are counted and listed across both stores.
+func (suite *CompositeStoreCoverageTestSuite) TestCompositeStore_ChildrenInProject() {
+	ctx := context.Background()
+	parentID := testSystemOUID
+	suite.Require().NoError(suite.fileStore.CreateOrganizationUnit(ctx, OrganizationUnit{
+		ID: "file-child", Handle: "file", Name: "File", Parent: &parentID, ProjectID: "project-1",
+	}))
+	suite.dbStoreMock.On("GetOrganizationUnitChildrenCountInProject", mock.Anything, parentID, "project-1").
+		Return(1, nil)
+	suite.dbStoreMock.On("GetOrganizationUnitChildrenListInProject", mock.Anything, parentID, "project-1", 1, 0).
+		Return([]OrganizationUnitBasic{{ID: "db-child", Parent: &parentID, ProjectID: "project-1"}}, nil)
+
+	count, err := suite.compositeStore.GetOrganizationUnitChildrenCountInProject(ctx, parentID, "project-1")
+	suite.Require().NoError(err)
+	suite.Equal(2, count)
+
+	children, err := suite.compositeStore.GetOrganizationUnitChildrenListInProject(ctx, parentID, "project-1", 10, 0)
+	suite.Require().NoError(err)
+	suite.Equal([]string{"db-child", "file-child"}, []string{children[0].ID, children[1].ID})
+	suite.False(children[0].IsReadOnly)
+	suite.True(children[1].IsReadOnly)
+}
+
+func (suite *CompositeStoreCoverageTestSuite) TestCompositeStore_ChildrenInProjectErrors() {
+	ctx := context.Background()
+	suite.Run("fails when the database store cannot list them", func() {
+		suite.SetupTest()
+		suite.dbStoreMock.On("GetOrganizationUnitChildrenCountInProject", mock.Anything, "parent", "project-1").
+			Return(1, nil)
+		suite.dbStoreMock.On("GetOrganizationUnitChildrenListInProject", mock.Anything, "parent", "project-1", 1, 0).
+			Return(nil, errors.New("boom"))
+
+		_, err := suite.compositeStore.GetOrganizationUnitChildrenListInProject(ctx, "parent", "project-1", 10, 0)
+		suite.Error(err)
+	})
+
+	suite.Run("refuses more than the composite store's limit", func() {
+		suite.SetupTest()
+		suite.dbStoreMock.On("GetOrganizationUnitChildrenCountInProject", mock.Anything, "parent", "project-1").
+			Return(serverconst.MaxCompositeStoreRecords+1, nil)
+
+		_, err := suite.compositeStore.GetOrganizationUnitChildrenListInProject(ctx, "parent", "project-1", 10, 0)
+		suite.ErrorIs(err, ErrResultLimitExceededInCompositeMode)
+	})
+}
+
 // A project's organization units are counted and listed across both stores, and a unit whose parent the other
 // store holds in the same project is listed under its parent, not at the top.
 func (suite *CompositeStoreTestSuite) TestCompositeStore_ProjectListing() {

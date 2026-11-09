@@ -357,13 +357,19 @@ func (ts *CredentialConfigurationAPITestSuite) TestUpdateCanChangeOUID() {
 	}
 	secondOUID, err := testutils.CreateOrganizationUnit(secondOU)
 	ts.Require().NoError(err, "create second test OU")
+	// The resource is deleted before the organization unit it moved to, which cannot be deleted while it
+	// holds the resource.
+	var id string
 	defer func() {
+		if id != "" {
+			ts.Require().NoError(testutils.DeleteCredentialConfiguration(id))
+		}
 		ts.Require().NoError(testutils.DeleteOrganizationUnit(secondOUID))
 	}()
 
 	res, created := ts.createConfig(ts.baseConfig("cfg_crud_change_ou"))
 	ts.Require().Equalf(http.StatusCreated, res.StatusCode, "create: %s", string(res.Body))
-	id, _ := created["id"].(string)
+	id, _ = created["id"].(string)
 
 	updated := ts.baseConfig("cfg_crud_change_ou")
 	updated.OUID = secondOUID

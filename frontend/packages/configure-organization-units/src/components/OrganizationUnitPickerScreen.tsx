@@ -36,6 +36,12 @@ export interface OrganizationUnitPickerScreenProps {
   rootOuId?: string;
 
   /**
+   * When set, lists where a resource of this project can be placed: the system organization unit,
+   * which is selected when nothing else is, then the project's own organization units.
+   */
+  projectId?: string;
+
+  /**
    * Callback invoked when the user picks a different organization unit.
    */
   onChange: (ouId: string) => void;
@@ -94,6 +100,7 @@ export default function OrganizationUnitPickerScreen({
   subtitle,
   value,
   rootOuId = undefined,
+  projectId = undefined,
   onChange,
   onBack,
   onContinue,
@@ -181,6 +188,7 @@ export default function OrganizationUnitPickerScreen({
             id="organization-unit-picker-screen-tree"
             value={value}
             rootOuId={rootOuId}
+            projectId={projectId}
             onChange={onChange}
             maxHeight={420}
             spacious

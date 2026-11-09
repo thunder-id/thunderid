@@ -514,8 +514,9 @@ var (
 			DefaultValue: "Organization unit not in project",
 		},
 		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "error.userservice.ou_not_in_project_description",
-			DefaultValue: "A user in a project must be in the system organization unit",
+			Key: "error.userservice.ou_not_in_project_description",
+			DefaultValue: "A user in a project must be in the system organization unit " +
+				"or in an organization unit of the project",
 		},
 	}
 	// ErrorSharedUserReadOnly is the error returned when an organization unit a user is shared into tries to

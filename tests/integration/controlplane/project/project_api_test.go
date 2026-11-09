@@ -57,6 +57,8 @@ type ProjectAPITestSuite struct {
 	themes []string
 	// templates are the email notification templates a test created.
 	templates []string
+	// smsTemplates are the SMS notification templates a test created.
+	smsTemplates []string
 	// presentationDefinitions are the presentation definitions a test created.
 	presentationDefinitions []string
 	// credentialConfigurations are the credential configurations a test created.
@@ -105,6 +107,9 @@ func (ts *ProjectAPITestSuite) TearDownTest() {
 	for _, id := range ts.templates {
 		ts.do(http.MethodDelete, templatesPath+"/"+id, "")
 	}
+	for _, id := range ts.smsTemplates {
+		ts.do(http.MethodDelete, smsTemplatesPath+"/"+id, "")
+	}
 	for _, id := range ts.presentationDefinitions {
 		ts.do(http.MethodDelete, definitionsPath+"/"+id, "")
 	}
@@ -128,7 +133,8 @@ func (ts *ProjectAPITestSuite) TearDownTest() {
 	}
 	ts.projects, ts.ous, ts.apps, ts.agents, ts.flows, ts.resourceServers, ts.roles, ts.layouts =
 		nil, nil, nil, nil, nil, nil, nil, nil
-	ts.themes, ts.templates, ts.presentationDefinitions, ts.credentialConfigurations = nil, nil, nil, nil
+	ts.themes, ts.templates, ts.smsTemplates, ts.presentationDefinitions, ts.credentialConfigurations =
+		nil, nil, nil, nil, nil
 	ts.users, ts.userTypes, ts.groups = nil, nil, nil
 }
 

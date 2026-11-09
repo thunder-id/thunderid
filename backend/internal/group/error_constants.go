@@ -235,8 +235,9 @@ var (
 			DefaultValue: "Organization unit not in project",
 		},
 		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "error.groupservice.ou_not_in_project_description",
-			DefaultValue: "A group in a project must be in the system organization unit",
+			Key: "error.groupservice.ou_not_in_project_description",
+			DefaultValue: "A group in a project must be in the system organization unit " +
+				"or in an organization unit of the project",
 		},
 	}
 )

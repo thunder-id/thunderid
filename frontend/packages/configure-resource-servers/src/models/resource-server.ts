@@ -102,7 +102,7 @@ export interface CreateResourceServerRequest {
   hierarchicalPermissions?: boolean;
   /** Required unless `projectId` is given. */
   ouId?: string;
-  /** Places the resource server in the project, in the system organization unit. */
+  /** Places the resource server in the project, in the system organization unit unless `ouId` names one of the project's. */
   projectId?: string;
   type?: ResourceServerType;
 }

@@ -582,6 +582,78 @@ func (_c *organizationUnitStoreInterfaceMock_GetOrganizationUnitChildrenCount_Ca
 	return _c
 }
 
+// GetOrganizationUnitChildrenCountInProject provides a mock function for the type organizationUnitStoreInterfaceMock
+func (_mock *organizationUnitStoreInterfaceMock) GetOrganizationUnitChildrenCountInProject(ctx context.Context, id string, projectID string) (int, error) {
+	ret := _mock.Called(ctx, id, projectID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetOrganizationUnitChildrenCountInProject")
+	}
+
+	var r0 int
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) (int, error)); ok {
+		return returnFunc(ctx, id, projectID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) int); ok {
+		r0 = returnFunc(ctx, id, projectID)
+	} else {
+		r0 = ret.Get(0).(int)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string) error); ok {
+		r1 = returnFunc(ctx, id, projectID)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// organizationUnitStoreInterfaceMock_GetOrganizationUnitChildrenCountInProject_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetOrganizationUnitChildrenCountInProject'
+type organizationUnitStoreInterfaceMock_GetOrganizationUnitChildrenCountInProject_Call struct {
+	*mock.Call
+}
+
+// GetOrganizationUnitChildrenCountInProject is a helper method to define mock.On call
+//   - ctx context.Context
+//   - id string
+//   - projectID string
+func (_e *organizationUnitStoreInterfaceMock_Expecter) GetOrganizationUnitChildrenCountInProject(ctx any, id any, projectID any) *organizationUnitStoreInterfaceMock_GetOrganizationUnitChildrenCountInProject_Call {
+	return &organizationUnitStoreInterfaceMock_GetOrganizationUnitChildrenCountInProject_Call{Call: _e.mock.On("GetOrganizationUnitChildrenCountInProject", ctx, id, projectID)}
+}
+
+func (_c *organizationUnitStoreInterfaceMock_GetOrganizationUnitChildrenCountInProject_Call) Run(run func(ctx context.Context, id string, projectID string)) *organizationUnitStoreInterfaceMock_GetOrganizationUnitChildrenCountInProject_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *organizationUnitStoreInterfaceMock_GetOrganizationUnitChildrenCountInProject_Call) Return(n int, err error) *organizationUnitStoreInterfaceMock_GetOrganizationUnitChildrenCountInProject_Call {
+	_c.Call.Return(n, err)
+	return _c
+}
+
+func (_c *organizationUnitStoreInterfaceMock_GetOrganizationUnitChildrenCountInProject_Call) RunAndReturn(run func(ctx context.Context, id string, projectID string) (int, error)) *organizationUnitStoreInterfaceMock_GetOrganizationUnitChildrenCountInProject_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetOrganizationUnitChildrenList provides a mock function for the type organizationUnitStoreInterfaceMock
 func (_mock *organizationUnitStoreInterfaceMock) GetOrganizationUnitChildrenList(ctx context.Context, id string, limit int, offset int, f *common.FilterGroup) ([]OrganizationUnitBasic, error) {
 	ret := _mock.Called(ctx, id, limit, offset, f)
@@ -664,6 +736,92 @@ func (_c *organizationUnitStoreInterfaceMock_GetOrganizationUnitChildrenList_Cal
 }
 
 func (_c *organizationUnitStoreInterfaceMock_GetOrganizationUnitChildrenList_Call) RunAndReturn(run func(ctx context.Context, id string, limit int, offset int, f *common.FilterGroup) ([]OrganizationUnitBasic, error)) *organizationUnitStoreInterfaceMock_GetOrganizationUnitChildrenList_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetOrganizationUnitChildrenListInProject provides a mock function for the type organizationUnitStoreInterfaceMock
+func (_mock *organizationUnitStoreInterfaceMock) GetOrganizationUnitChildrenListInProject(ctx context.Context, id string, projectID string, limit int, offset int) ([]OrganizationUnitBasic, error) {
+	ret := _mock.Called(ctx, id, projectID, limit, offset)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetOrganizationUnitChildrenListInProject")
+	}
+
+	var r0 []OrganizationUnitBasic
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, int, int) ([]OrganizationUnitBasic, error)); ok {
+		return returnFunc(ctx, id, projectID, limit, offset)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, int, int) []OrganizationUnitBasic); ok {
+		r0 = returnFunc(ctx, id, projectID, limit, offset)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]OrganizationUnitBasic)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string, int, int) error); ok {
+		r1 = returnFunc(ctx, id, projectID, limit, offset)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// organizationUnitStoreInterfaceMock_GetOrganizationUnitChildrenListInProject_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetOrganizationUnitChildrenListInProject'
+type organizationUnitStoreInterfaceMock_GetOrganizationUnitChildrenListInProject_Call struct {
+	*mock.Call
+}
+
+// GetOrganizationUnitChildrenListInProject is a helper method to define mock.On call
+//   - ctx context.Context
+//   - id string
+//   - projectID string
+//   - limit int
+//   - offset int
+func (_e *organizationUnitStoreInterfaceMock_Expecter) GetOrganizationUnitChildrenListInProject(ctx any, id any, projectID any, limit any, offset any) *organizationUnitStoreInterfaceMock_GetOrganizationUnitChildrenListInProject_Call {
+	return &organizationUnitStoreInterfaceMock_GetOrganizationUnitChildrenListInProject_Call{Call: _e.mock.On("GetOrganizationUnitChildrenListInProject", ctx, id, projectID, limit, offset)}
+}
+
+func (_c *organizationUnitStoreInterfaceMock_GetOrganizationUnitChildrenListInProject_Call) Run(run func(ctx context.Context, id string, projectID string, limit int, offset int)) *organizationUnitStoreInterfaceMock_GetOrganizationUnitChildrenListInProject_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		var arg3 int
+		if args[3] != nil {
+			arg3 = args[3].(int)
+		}
+		var arg4 int
+		if args[4] != nil {
+			arg4 = args[4].(int)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+			arg4,
+		)
+	})
+	return _c
+}
+
+func (_c *organizationUnitStoreInterfaceMock_GetOrganizationUnitChildrenListInProject_Call) Return(organizationUnitBasics []OrganizationUnitBasic, err error) *organizationUnitStoreInterfaceMock_GetOrganizationUnitChildrenListInProject_Call {
+	_c.Call.Return(organizationUnitBasics, err)
+	return _c
+}
+
+func (_c *organizationUnitStoreInterfaceMock_GetOrganizationUnitChildrenListInProject_Call) RunAndReturn(run func(ctx context.Context, id string, projectID string, limit int, offset int) ([]OrganizationUnitBasic, error)) *organizationUnitStoreInterfaceMock_GetOrganizationUnitChildrenListInProject_Call {
 	_c.Call.Return(run)
 	return _c
 }

@@ -16,12 +16,14 @@ import type {OrganizationUnitListResponse} from '../models/responses';
  * @param params.limit - Maximum number of records to return
  * @param params.offset - Number of records to skip
  * @param params.projectId - List only the organization units of this project
+ * @param params.placement - With a project, list the system organization unit first, then the project's
+ * @param params.within - With `placement`, keep only the placements in this organization unit's subtree
  * @returns The organization unit list response
  */
 export default async function fetchOrganizationUnits(
   http: {request: (...args: never[]) => Promise<{data: OrganizationUnitListResponse}>},
   serverUrl: string,
-  params: {limit: number; offset: number; projectId?: string},
+  params: {limit: number; offset: number; projectId?: string; placement?: boolean; within?: string},
 ): Promise<OrganizationUnitListResponse> {
   const queryParams = new URLSearchParams({
     limit: String(params.limit),
@@ -29,6 +31,12 @@ export default async function fetchOrganizationUnits(
   });
   if (params.projectId) {
     queryParams.append('projectId', params.projectId);
+  }
+  if (params.placement) {
+    queryParams.append('placement', 'true');
+  }
+  if (params.within) {
+    queryParams.append('within', params.within);
   }
 
   const response: {data: OrganizationUnitListResponse} = await http.request({

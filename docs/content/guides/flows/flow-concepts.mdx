@@ -174,14 +174,14 @@ A create request with neither `ouId` nor `projectId` fails with `FLM-1029`, and 
 
 ### Scope a Flow to a Project
 
-Every project on the control plane is backed by the system organization unit. When you manage flows through the REST API or the MCP server on the control plane, pass a project ID to work within a project.
+Every project on the control plane includes the system organization unit, and a flow in a project is placed there or in one of the project's own organization units. When you manage flows through the REST API or the MCP server on the control plane, pass a project ID to work within a project.
 
-- **Create**: set `projectId` in the body of `POST /flows`. Without `ouId`, the flow belongs to the system organization unit. With `ouId`, that organization unit must be the system organization unit itself.
+- **Create**: set `projectId` in the body of `POST /flows`. Without `ouId`, the flow belongs to the system organization unit. With `ouId`, that organization unit must be the system organization unit or an organization unit of the project.
 - **Update**: a `PUT /flows/{flowId}` without `projectId`, or with the current one, keeps the flow in its project without checking the project again. A different `projectId` moves the flow to that project, after the same organization unit check.
 - **List**: `GET /flows?projectId=<project-id>` returns the flows in the project. To narrow the list, add `flowType`. A project that does not exist returns an empty list.
 - **MCP tools**: `list_flows` takes `project_id` and lists the flows in that project. `create_flow` takes `projectId` and then does not need `ouId`. `update_flow` keeps the flow in its project.
 - **Delete the project**: a project that still has a flow cannot be deleted. `DELETE /projects/{projectId}` fails with `PRJ-1013` and `409` until you delete the project's flows or move them to another project.
-- **Console**: on the control plane, flows belong to projects. Select a project to see its flows under **Build**. A flow you create there belongs to the project, so the Console does not ask for an organization unit. The default flows that <ProductName /> creates at startup belong to the default project.
+- **Console**: on the control plane, flows belong to projects. Select a project to see its flows under **Build**. A flow you create there belongs to the project. When the project has organization units, the Console asks which one the flow belongs to, with the system organization unit as the default. The default flows that <ProductName /> creates at startup belong to the default project.
 
 A project that does not exist fails a create, or an update that moves the flow to it, with `FLM-1045`. An organization unit outside that project fails the same requests with `FLM-1046`. Both return `400`. A flow response for the organization unit that owns the flow, and every entry of the `GET /flows` list, carries `projectId` when the flow belongs to a project. The response an organization unit gets for a flow shared with it does not.
 

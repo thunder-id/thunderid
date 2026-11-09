@@ -117,12 +117,14 @@ type OrganizationUnitBasic struct {
 	Name        string `json:"name"`
 	Description string `json:"description,omitempty"`
 	ProjectID   string `json:"projectId,omitempty"`
-	// Parent is read only where a listing needs it to decide which units are its top ones, and never sent.
-	Parent     *string   `json:"-"`
-	LogoURL    string    `json:"logoUrl,omitempty"`
-	IsReadOnly bool      `json:"isReadOnly"`
-	CreatedAt  time.Time `json:"createdAt"`
-	UpdatedAt  time.Time `json:"updatedAt"`
+	// Parent is the ID of the parent organization unit, omitted for a root organization unit.
+	Parent     *string `json:"parent,omitempty"`
+	LogoURL    string  `json:"logoUrl,omitempty"`
+	IsReadOnly bool    `json:"isReadOnly"`
+	// IsSystem marks the system organization unit where a placement listing lists it.
+	IsSystem  bool      `json:"isSystem,omitempty"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
 }
 
 // User represents a user with basic information for OU endpoints. IsOwnedByOU reports whether the

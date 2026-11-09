@@ -16,6 +16,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	"github.com/thunder-id/thunderid/internal/system/projectscope"
+	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/internal/system/utils"
@@ -28,6 +29,9 @@ const maxProjectIDLength = 36
 // PresentationDefinitionServiceInterface manages OpenID4VP presentation
 // definitions in the configdb store, which the verifier engine reads on demand.
 type PresentationDefinitionServiceInterface interface {
+	// GetResourceDependencies reports the presentation definitions an organization unit owns, which block its deletion.
+	GetResourceDependencies(
+		ctx context.Context, resourceType, id string) ([]resourcedependency.ResourceDependency, error)
 	CreatePresentationDefinition(ctx context.Context, dto *PresentationDefinitionDTO) (
 		*PresentationDefinitionDTO, *tidcommon.ServiceError)
 	GetPresentationDefinition(ctx context.Context, id string) (*PresentationDefinitionDTO, *tidcommon.ServiceError)
@@ -761,4 +765,27 @@ func setManagedStore(service any, managed managedresource.StoreInterface) {
 	if svc, ok := service.(*definitionService); ok {
 		svc.managed = managed
 	}
+}
+
+// GetResourceDependencies implements resourcedependency.Provider. It reports the presentation definitions an
+// organization unit owns, which block its deletion. Other resource types have no dependencies here.
+func (s *definitionService) GetResourceDependencies(
+	ctx context.Context, resourceType, id string) ([]resourcedependency.ResourceDependency, error) {
+	if resourceType != resourcedependency.ResourceTypeOU {
+		return []resourcedependency.ResourceDependency{}, nil
+	}
+	summaries, err := s.store.ListPresentationDefinitionSummariesByOUID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	deps := make([]resourcedependency.ResourceDependency, 0, len(summaries))
+	for _, c := range summaries {
+		deps = append(deps, resourcedependency.ResourceDependency{
+			ResourceType:     resourcedependency.ResourceTypeVPDefinition,
+			ID:               c.ID,
+			DisplayName:      c.Handle,
+			BehaviorOnDelete: resourcedependency.BehaviorRestrict,
+		})
+	}
+	return deps, nil
 }

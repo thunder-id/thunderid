@@ -163,6 +163,28 @@ describe('OrganizationUnitPickerScreen', () => {
     expect(defaultProps.onContinue).toHaveBeenCalled();
   });
 
+  it('should select the system organization unit in project mode', async () => {
+    mockUseGetOrganizationUnits.mockReturnValue({
+      data: {
+        totalResults: 1,
+        startIndex: 1,
+        count: 1,
+        organizationUnits: [{id: 'system-ou', handle: 'default', name: 'Default', parent: null, isSystem: true}],
+      },
+      isLoading: false,
+      error: null,
+    });
+
+    renderWithProviders(
+      <OrganizationUnitPickerScreen {...defaultProps} projectId="project-1" autoSelectFirst={false} />,
+    );
+
+    await waitFor(() => {
+      expect(defaultProps.onChange).toHaveBeenCalledWith('system-ou');
+    });
+    expect(screen.getByRole('button', {name: 'Continue'})).toBeDisabled();
+  });
+
   it('should show why the selected organization unit cannot be used and block Continue', () => {
     renderWithProviders(
       <OrganizationUnitPickerScreen {...defaultProps} value="ou-1" error="This organization unit is taken." />,

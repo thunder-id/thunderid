@@ -51,14 +51,13 @@ export default function CreateResourceServerPage(): JSX.Element {
   const setDefaultResourceServer = useSetDefaultResourceServer();
   const {data: defaultConfig, isLoading: isDefaultLoading, error: defaultError} = useGetDefaultResourceServer();
 
-  const ouLookup = useHasMultipleOUs();
   const {projectId} = useProjectScope();
-  // Inside a project the resource server is created with the project alone, and the API places it in
-  // the system organization unit, so there is no organization unit to pick.
+  // Inside a project the resource server goes to the system organization unit or one of the
+  // project's own, picked on the organization unit step. The step is offered only when the project
+  // has organization units; without any, the API places the resource server in the system
+  // organization unit.
   const isInProject = Boolean(projectId);
-  const hasMultipleOUs = !isInProject && ouLookup.hasMultipleOUs;
-  const isOuLoading = !isInProject && ouLookup.isLoading;
-  const {ouList} = ouLookup;
+  const {hasMultipleOUs, isLoading: isOuLoading, ouList} = useHasMultipleOUs(projectId);
 
   // Only trust the config once it has resolved, so the checkbox does not flicker from unticked to
   // ticked. A declarative (read-only) default is locked: the backend rejects any write to it.
@@ -159,7 +158,7 @@ export default function CreateResourceServerPage(): JSX.Element {
     };
   }, [t, hasMultipleOUs]);
 
-  const effectiveOuId = hasMultipleOUs ? ouId : (ouList[0]?.id ?? '');
+  const effectiveOuId = hasMultipleOUs ? ouId : isInProject ? '' : (ouList[0]?.id ?? '');
 
   // The organization unit is the wizard's first step whenever there's a choice to make. Single-OU
   // deployments never need it, so once that's known, skip straight past it. Adjusted during render
@@ -225,7 +224,8 @@ export default function CreateResourceServerPage(): JSX.Element {
     const payload = {
       name: name.trim(),
       identifier: identifier.trim(),
-      ...(isInProject ? {projectId} : {ouId: resolvedOuId}),
+      ...(isInProject ? {projectId} : {}),
+      ...(resolvedOuId ? {ouId: resolvedOuId} : {}),
       type: selectedType,
       delimiter,
       hierarchicalPermissions,
@@ -378,6 +378,7 @@ export default function CreateResourceServerPage(): JSX.Element {
             'Select which organization unit this resource server belongs to.',
           )}
           value={ouId}
+          projectId={projectId}
           onChange={handleOuIdChange}
           onBack={handleClose}
           onContinue={handleNext}

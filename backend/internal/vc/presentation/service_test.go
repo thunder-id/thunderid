@@ -17,6 +17,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/projectscope"
+	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
 	"github.com/thunder-id/thunderid/tests/mocks/oumock"
@@ -1005,6 +1006,69 @@ func (suite *DefinitionServiceTestSuite) TestListSummariesByOUIDErrors() {
 			suite.Equal(tc.expectedCode, svcErr.Code)
 		})
 	}
+}
+
+func (suite *DefinitionServiceTestSuite) TestGetResourceDependencies_OUReportsOwnedDefinitions() {
+	store := newDefinitionStoreInterfaceMock(suite.T())
+	store.EXPECT().ListPresentationDefinitionSummariesByOUID(mock.Anything, "ou-1").Return(
+		[]PresentationDefinitionList{{ID: "pd-1", Handle: "age-check"}, {ID: "pd-2", Handle: "employment"}}, nil)
+	svc := newPresentationDefinitionService(store, nil, allowAllAuthz(suite.T()), nil, false)
+
+	deps, err := svc.GetResourceDependencies(context.Background(), resourcedependency.ResourceTypeOU, "ou-1")
+
+	suite.Require().NoError(err)
+	suite.Equal([]resourcedependency.ResourceDependency{
+		{
+			ResourceType:     resourcedependency.ResourceTypeVPDefinition,
+			ID:               "pd-1",
+			DisplayName:      "age-check",
+			BehaviorOnDelete: resourcedependency.BehaviorRestrict,
+		},
+		{
+			ResourceType:     resourcedependency.ResourceTypeVPDefinition,
+			ID:               "pd-2",
+			DisplayName:      "employment",
+			BehaviorOnDelete: resourcedependency.BehaviorRestrict,
+		},
+	}, deps)
+}
+
+func (suite *DefinitionServiceTestSuite) TestGetResourceDependencies_OUWithoutDefinitions() {
+	store := newDefinitionStoreInterfaceMock(suite.T())
+	store.EXPECT().ListPresentationDefinitionSummariesByOUID(mock.Anything, "ou-1").
+		Return([]PresentationDefinitionList{}, nil)
+	svc := newPresentationDefinitionService(store, nil, allowAllAuthz(suite.T()), nil, false)
+
+	deps, err := svc.GetResourceDependencies(context.Background(), resourcedependency.ResourceTypeOU, "ou-1")
+
+	suite.Require().NoError(err)
+	suite.NotNil(deps)
+	suite.Empty(deps)
+}
+
+func (suite *DefinitionServiceTestSuite) TestGetResourceDependencies_OUStoreError() {
+	store := newDefinitionStoreInterfaceMock(suite.T())
+	store.EXPECT().ListPresentationDefinitionSummariesByOUID(mock.Anything, "ou-1").
+		Return(nil, errors.New("boom"))
+	svc := newPresentationDefinitionService(store, nil, allowAllAuthz(suite.T()), nil, false)
+
+	deps, err := svc.GetResourceDependencies(context.Background(), resourcedependency.ResourceTypeOU, "ou-1")
+
+	suite.Require().EqualError(err, "boom")
+	suite.Nil(deps)
+}
+
+func (suite *DefinitionServiceTestSuite) TestGetResourceDependencies_OtherResourceTypes() {
+	store := newDefinitionStoreInterfaceMock(suite.T())
+	svc := newPresentationDefinitionService(store, nil, allowAllAuthz(suite.T()), nil, false)
+
+	deps, err := svc.GetResourceDependencies(
+		context.Background(), resourcedependency.ResourceTypeVPDefinition, "pd-1")
+
+	suite.Require().NoError(err)
+	suite.NotNil(deps)
+	suite.Empty(deps)
+	store.AssertNotCalled(suite.T(), "ListPresentationDefinitionSummariesByOUID", mock.Anything, mock.Anything)
 }
 
 // testProjectID is the project the project tests place presentation definitions in.

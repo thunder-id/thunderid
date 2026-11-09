@@ -41,6 +41,18 @@ paths:
         On the Data Plane, listing the root organization units requires the `system` permission. A token
         holding `org` or `org:ou` reaches only the organization unit it names, and lists that unit's children
         with `GET /organization-units/{id}/ous` instead.
+
+        With `projectId` and `placement=true`, lists where a resource of the project can be placed: the
+        system organization unit first, marked `isSystem`, then the project's top organization units. The
+        system organization unit counts towards `totalResults` and is listed without its children, which
+        belong to other projects too. A caller who may not list it gets the project's organization units
+        alone. A project that does not exist has none. Combining `placement` with `filter` fails with `OU-1028`.
+
+        With `within`, the placement listing keeps only the organization units in that organization unit's
+        subtree, such as the ones a user type or an agent type allows. Within the system organization unit,
+        that is the system organization unit and the project's organization units placed directly under it.
+        Within an organization unit of the project, it is that organization unit alone, listed with its
+        children under it. Within any other organization unit, it is empty.
       parameters:
         - $ref: '#/components/parameters/limitQueryParam'
         - $ref: '#/components/parameters/offsetQueryParam'
@@ -52,6 +64,22 @@ paths:
           schema:
             type: string
             maxLength: 36
+        - in: query
+          name: placement
+          required: false
+          description: |
+            With `projectId`, lists the organization units a resource of the project can be placed in: the
+            system organization unit, then the project's top organization units.
+          schema:
+            type: boolean
+        - in: query
+          name: within
+          required: false
+          description: |
+            With `placement=true`, keeps only the placements in the subtree of this organization unit, for
+            example the organization unit of the user type or agent type being placed.
+          schema:
+            type: string
       responses:
         "200":
           description: List of root organization units, or of the top organization units of a project
@@ -115,6 +143,16 @@ paths:
                     description:
                       key: "error.ouservice.invalid_filter_description"
                       defaultValue: "The filter parameter is invalid. Use format: attribute (eq|gt|lt) \"value\""
+                placement-with-filter:
+                  summary: Placement listing with a filter
+                  value:
+                    code: "OU-1028"
+                    message:
+                      key: "error.ouservice.placement_with_filter"
+                      defaultValue: "Filter not supported with placement"
+                    description:
+                      key: "error.ouservice.placement_with_filter_description"
+                      defaultValue: "The placement listing cannot be filtered. Remove the filter parameter or the placement parameter"
         "403":
           description: |
             The caller may not list the root organization units. On a data plane, only the `system`
@@ -489,6 +527,16 @@ paths:
                     description:
                       key: "error.ouservice.cannot_modify_declarative_resource_description"
                       defaultValue: "The organization unit is declarative and cannot be modified or deleted"
+                project-move-with-resources:
+                  summary: Project move while the organization units hold resources
+                  value:
+                    code: "OU-1027"
+                    message:
+                      key: "error.ouservice.project_move_with_resources"
+                      defaultValue: "Organization unit holds resources"
+                    description:
+                      key: "error.ouservice.project_move_with_resources_description"
+                      defaultValue: "An organization unit can move to another project only while it and the organization units beneath it hold no resources"
         "403":
           description: |
             The caller may not update the organization unit. Moving it also needs the permission to
@@ -586,7 +634,7 @@ paths:
                       defaultValue: "Organization unit has children"
                     description:
                       key: "error.ouservice.organization_unit_has_children_description"
-                      defaultValue: "Cannot delete an organization unit that has child organization units, users, groups, user types, agent types, connections, flows, or sharing policies it issued"
+                      defaultValue: "Cannot delete an organization unit while other resources, such as child organization units, users, groups, roles or applications, belong to it or refer to it"
                 system-ou:
                   summary: The system organization unit
                   value:
@@ -1253,7 +1301,7 @@ paths:
                       defaultValue: "Organization unit has children"
                     description:
                       key: "error.ouservice.organization_unit_has_children_description"
-                      defaultValue: "Cannot delete an organization unit that has child organization units, users, groups, user types, agent types, connections, flows, or sharing policies it issued"
+                      defaultValue: "Cannot delete an organization unit while other resources, such as child organization units, users, groups, roles or applications, belong to it or refer to it"
                 system-ou:
                   summary: The system organization unit
                   value:
@@ -1803,6 +1851,11 @@ components:
           type: string
           maxLength: 36
           description: "ID of the project the organization unit belongs to. The system organization unit belongs to none."
+        parent:
+          type: string
+          format: uuid
+          readOnly: true
+          description: "ID of the parent organization unit. Omitted for a root organization unit. In a placement listing, a project's organization unit placed under the system organization unit names it here."
         logoUrl:
           type: string
           format: uri
@@ -1811,6 +1864,10 @@ components:
           type: boolean
           readOnly: true
           description: "Whether the organization unit is immutable by clients."
+        isSystem:
+          type: boolean
+          readOnly: true
+          description: "Marks the system organization unit in a placement listing (`placement=true`)."
         createdAt:
           type: string
           format: date-time
@@ -1992,7 +2049,8 @@ components:
             without `projectId` fails with `OU-1023`, and a project that does not exist fails with
             `OU-1022`. An update without `projectId` keeps the organization unit in its project, and an update
             that names another project moves the organization unit and its descendants there. A move
-            that reaches a declarative descendant moves nothing and fails with `OU-1012`.
+            that reaches a declarative descendant moves nothing and fails with `OU-1012`, and a move out of
+            a project while the organization unit or a descendant holds resources fails with `OU-1027`.
             A server without projects keeps the `projectId` it receives without checking it.
         themeId:
           type: string
@@ -2067,7 +2125,8 @@ components:
             without `projectId` fails with `OU-1023`, and a project that does not exist fails with
             `OU-1022`. An update without `projectId` keeps the organization unit in its project, and an update
             that names another project moves the organization unit and its descendants there. A move
-            that reaches a declarative descendant moves nothing and fails with `OU-1012`.
+            that reaches a declarative descendant moves nothing and fails with `OU-1012`, and a move out of
+            a project while the organization unit or a descendant holds resources fails with `OU-1027`.
             A server without projects keeps the `projectId` it receives without checking it.
         themeId:
           type: string

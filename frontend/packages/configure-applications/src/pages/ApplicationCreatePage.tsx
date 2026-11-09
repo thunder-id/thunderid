@@ -168,24 +168,32 @@ export default function ApplicationCreatePage(): JSX.Element {
   const {data: applicationsData} = useGetApplications({limit: 100});
   const {data: corsConfigData} = useGetCorsConfig();
   const updateCorsConfig = useUpdateCorsConfig();
-  const ouLookup = useHasMultipleOUs();
   const {projectId} = useProjectScope();
-  // Inside a project the application is created with the project alone, and the API places it in
-  // the system organization unit, so there is no organization unit to pick.
+  // Inside a project the application goes to the system organization unit or one of the project's
+  // own, picked on the organization unit step. The step is offered only when the project has
+  // organization units; without any, the API places the application in the system organization
+  // unit.
   const isInProject = Boolean(projectId);
-  const hasMultipleOUs = !isInProject && ouLookup.hasMultipleOUs;
-  const isOuLoading = !isInProject && ouLookup.isLoading;
+  const ouLookup = useHasMultipleOUs(projectId);
+  const {hasMultipleOUs, isLoading: isOuLoading} = ouLookup;
   const defaultOuId: string | undefined = isInProject
     ? ApplicationConstants.SYSTEM_ORGANIZATION_UNIT_ID
     : ouLookup.ouList[0]?.id;
+  // The organization unit picked for the application inside a project, if any.
+  const pickedProjectOuId: string | undefined = isInProject && hasMultipleOUs ? ouId || undefined : undefined;
 
   const handleBackToTemplates = (): void => {
     void navigate(routes.applications.types());
   };
 
   // The organization unit whose defaults are offered on the Details step: the picked one when
-  // there are multiple, or the deployment's sole one otherwise.
-  const resolvedOuId: string | undefined = hasMultipleOUs ? ouId || undefined : defaultOuId;
+  // there are multiple, or the deployment's sole one otherwise. Inside a project, the picked organization
+  // unit, or the system one when the project has none to pick from.
+  const resolvedOuId: string | undefined = isInProject
+    ? (pickedProjectOuId ?? defaultOuId)
+    : hasMultipleOUs
+      ? ouId || undefined
+      : defaultOuId;
   const {data: resolvedOrganizationUnit} = useGetOrganizationUnit(resolvedOuId, Boolean(resolvedOuId));
 
   // When the Details step snapshots the organization unit's theme, the preview should reflect
@@ -656,7 +664,7 @@ export default function ApplicationCreatePage(): JSX.Element {
       return undefined;
     })();
 
-    const effectiveOuId = hasMultipleOUs ? ouId : defaultOuId;
+    const effectiveOuId = isInProject ? pickedProjectOuId : hasMultipleOUs ? ouId : defaultOuId;
 
     const templateId = selectedTemplateConfig?.id;
     const finalTemplateId =
@@ -717,7 +725,8 @@ export default function ApplicationCreatePage(): JSX.Element {
           ...(approvedCimd.contacts.length > 0 && {contacts: approvedCimd.contacts}),
         }),
       ...(finalAuthFlowId && {authFlowId: finalAuthFlowId}),
-      ...(isInProject ? {projectId} : effectiveOuId && {ouId: effectiveOuId}),
+      ...(isInProject && {projectId}),
+      ...(effectiveOuId && {ouId: effectiveOuId}),
       ...(applicationType && {type: applicationType}),
       ...(finalTemplateId && {template: finalTemplateId}),
       ...(includesDesign && {
@@ -868,12 +877,12 @@ export default function ApplicationCreatePage(): JSX.Element {
       };
 
       // The generated flow belongs to the same project or organization unit as the application.
-      const flowOuId = hasMultipleOUs ? ouId : defaultOuId;
+      const flowOuId = isInProject ? pickedProjectOuId : hasMultipleOUs ? ouId : defaultOuId;
       if (!isInProject && !flowOuId) {
         setError(t('flows:create.organizationUnit.required', 'Organization unit is required'));
         return;
       }
-      const flowScope = isInProject ? {projectId} : {ouId: flowOuId};
+      const flowScope = isInProject ? {projectId, ...(flowOuId && {ouId: flowOuId})} : {ouId: flowOuId};
 
       // Generation randomizes the flow handle so retries never collide, which also means a retry
       // always mints a duplicate. Keying the generated flow on its inputs and owning scope is what
@@ -1199,6 +1208,7 @@ export default function ApplicationCreatePage(): JSX.Element {
           title={t('applications:onboarding.organizationUnit.title')}
           subtitle={t('applications:onboarding.organizationUnit.subtitle')}
           value={ouId}
+          projectId={projectId}
           onChange={handleOuIdChange}
           onBack={ouId ? () => setCurrentStep(ApplicationCreateFlowStep.DETAILS) : handleBackToTemplates}
           onContinue={handleNextStep}

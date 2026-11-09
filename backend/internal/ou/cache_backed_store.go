@@ -200,6 +200,20 @@ func (s *cacheBackedOUStore) GetOrganizationUnitChildrenList(
 	return s.store.GetOrganizationUnitChildrenList(ctx, id, limit, offset, f)
 }
 
+// GetOrganizationUnitChildrenCountInProject delegates to the underlying store.
+func (s *cacheBackedOUStore) GetOrganizationUnitChildrenCountInProject(
+	ctx context.Context, id, projectID string,
+) (int, error) {
+	return s.store.GetOrganizationUnitChildrenCountInProject(ctx, id, projectID)
+}
+
+// GetOrganizationUnitChildrenListInProject delegates to the underlying store.
+func (s *cacheBackedOUStore) GetOrganizationUnitChildrenListInProject(
+	ctx context.Context, id, projectID string, limit, offset int,
+) ([]OrganizationUnitBasic, error) {
+	return s.store.GetOrganizationUnitChildrenListInProject(ctx, id, projectID, limit, offset)
+}
+
 // --- Cache helpers ---
 
 // handleParentCacheKey builds a composite cache key from handle and parent.

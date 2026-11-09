@@ -725,6 +725,9 @@ const translations = {
     'addForm.selectUserType': 'Select a user type',
     'addForm.submit': 'Create user',
     'addForm.subtitle': 'Choose a user type, then fill in what it requires.',
+    'addForm.typeOutsideProject':
+      "Users of this type cannot be created in this project. Choose a type whose organization unit is the system organization unit or one of this project's.",
+    'addForm.placementsError': 'The organization units this user can be placed in could not be loaded.',
     'addForm.userType': 'User type',
 
     'create.success': 'User created successfully.',
@@ -1228,6 +1231,9 @@ const translations = {
     'addForm.selectAgentType': 'Select an agent type',
     'addForm.submit': 'Create agent',
     'addForm.subtitle': "Choose the agent's type, where it belongs and who owns it. You fill in its attributes next.",
+    'addForm.typeOutsideProject':
+      "Agents of this type cannot be created in this project. Choose a type whose organization unit is the system organization unit or one of this project's.",
+    'addForm.placementsError': 'The organization units this agent can be placed in could not be loaded.',
     'create.error': 'Failed to create agent. Please try again.',
     'create.success': 'Agent created successfully.',
 

@@ -66,6 +66,7 @@ vi.mock('@thunderid/configure-organization-units', () => ({
   ),
   OrganizationUnitPickerScreen: ({
     value,
+    projectId = undefined,
     onChange,
     onBack,
     onContinue,
@@ -73,6 +74,7 @@ vi.mock('@thunderid/configure-organization-units', () => ({
     continueLabel,
   }: {
     value: string;
+    projectId?: string;
     onChange: (id: string) => void;
     onBack: () => void;
     onContinue: () => void;
@@ -81,6 +83,10 @@ vi.mock('@thunderid/configure-organization-units', () => ({
   }) => (
     <div data-testid="configure-organization-unit">
       <span data-testid="ou-value">{value}</span>
+      <span data-testid="ou-project-id">{projectId}</span>
+      <button type="button" data-testid="select-system-ou" onClick={() => onChange('system-ou')}>
+        Select system OU
+      </button>
       <button type="button" data-testid="select-ou" onClick={() => onChange('ou-123')}>
         Select OU
       </button>
@@ -92,7 +98,7 @@ vi.mock('@thunderid/configure-organization-units', () => ({
       </button>
     </div>
   ),
-  useHasMultipleOUs: (): unknown => mockUseHasMultipleOUs(),
+  useHasMultipleOUs: (projectId?: string): unknown => mockUseHasMultipleOUs(projectId),
   useGetOrganizationUnit: (id?: string) => ({
     data: id ? {id, name: 'Test Organization Unit'} : undefined,
     isLoading: false,
@@ -215,7 +221,9 @@ describe('CreateGroupPage', () => {
     it('should render the OU picker before the name step', () => {
       renderPage();
 
+      expect(mockUseHasMultipleOUs).toHaveBeenCalledWith(undefined);
       expect(screen.getByTestId('configure-organization-unit')).toBeInTheDocument();
+      expect(screen.getByTestId('ou-project-id')).toBeEmptyDOMElement();
       expect(screen.queryByTestId('configure-name')).not.toBeInTheDocument();
     });
 
@@ -428,36 +436,85 @@ describe('CreateGroupPage', () => {
   });
 
   describe('inside a project', () => {
-    beforeEach(() => {
-      mockUseHasMultipleOUs.mockReturnValue({
-        hasMultipleOUs: true,
-        isLoading: false,
-        ouList: [
-          {id: 'ou-1', name: 'Default OU'},
-          {id: 'ou-2', name: 'Other OU'},
-        ],
-      });
-    });
-
-    it('should create the group in the project, without an organization unit step', async () => {
-      const user = userEvent.setup();
-      renderWithProviders(
+    function renderProjectPage() {
+      return renderWithProviders(
         <ProjectScopeProvider project={{id: 'project-1'}}>
           <GroupCreateProvider>
             <CreateGroupPage />
           </GroupCreateProvider>
         </ProjectScopeProvider>,
       );
+    }
 
-      expect(screen.queryByTestId('configure-organization-unit')).not.toBeInTheDocument();
-      await user.type(screen.getByPlaceholderText('Enter group name'), 'Shoppers');
+    async function submitName(user: ReturnType<typeof userEvent.setup>, name: string): Promise<void> {
+      await user.type(screen.getByPlaceholderText('Enter group name'), name);
       await waitFor(() => {
         expect(screen.getByRole('button', {name: 'Continue'})).not.toBeDisabled();
       });
       await user.click(screen.getByRole('button', {name: 'Continue'}));
+    }
+
+    it('should create the group in the project, without an organization unit step, when the project has none', async () => {
+      mockUseHasMultipleOUs.mockReturnValue({hasMultipleOUs: false, isLoading: false, ouList: []});
+      const user = userEvent.setup();
+      renderProjectPage();
+
+      expect(mockUseHasMultipleOUs).toHaveBeenCalledWith('project-1');
+      expect(screen.queryByTestId('configure-organization-unit')).not.toBeInTheDocument();
+      await submitName(user, 'Shoppers');
 
       await waitFor(() => {
         expect(mockMutateAsync).toHaveBeenCalledWith({name: 'Shoppers', projectId: 'project-1'});
+      });
+    });
+
+    describe('when the project has organization units', () => {
+      beforeEach(() => {
+        mockUseHasMultipleOUs.mockReturnValue({
+          hasMultipleOUs: true,
+          isLoading: false,
+          ouList: [{id: 'ou-p1', name: 'Project OU'}],
+        });
+      });
+
+      it("should show the project's organization unit step", () => {
+        renderProjectPage();
+
+        expect(screen.getByTestId('configure-organization-unit')).toBeInTheDocument();
+        expect(screen.getByTestId('ou-project-id')).toHaveTextContent('project-1');
+      });
+
+      it('should create the group in the system organization unit the picker selects', async () => {
+        const user = userEvent.setup();
+        renderProjectPage();
+
+        await user.click(screen.getByTestId('select-system-ou'));
+        await user.click(screen.getByRole('button', {name: 'Continue'}));
+        await waitFor(() => {
+          expect(screen.getByTestId('configure-name')).toBeInTheDocument();
+        });
+        expect(screen.getByText('Test Organization Unit')).toBeInTheDocument();
+        await submitName(user, 'Shoppers');
+
+        await waitFor(() => {
+          expect(mockMutateAsync).toHaveBeenCalledWith({name: 'Shoppers', projectId: 'project-1', ouId: 'system-ou'});
+        });
+      });
+
+      it('should create the group in the picked project organization unit', async () => {
+        const user = userEvent.setup();
+        renderProjectPage();
+
+        await user.click(screen.getByTestId('select-ou'));
+        await user.click(screen.getByRole('button', {name: 'Continue'}));
+        await waitFor(() => {
+          expect(screen.getByTestId('configure-name')).toBeInTheDocument();
+        });
+        await submitName(user, 'Shoppers');
+
+        await waitFor(() => {
+          expect(mockMutateAsync).toHaveBeenCalledWith({name: 'Shoppers', projectId: 'project-1', ouId: 'ou-123'});
+        });
       });
     });
   });

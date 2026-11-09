@@ -275,6 +275,7 @@ curl -kL "https://localhost:8090/organization-units?filter=name%20eq%20%22Engine
 |------------|-------------|-------|
 | `OU-1014` | 400 | The filter expression is malformed, uses an unsupported connector, or references an unsupported attribute |
 | `OU-1013` | 400 | The result count exceeds the limit supported in the current store configuration |
+| `OU-1028` | 400 | The request combines `filter` with `placement=true`, which can't be filtered |
 
 ## List Users in an Organization Unit
 
@@ -348,7 +349,7 @@ curl -kL -G "https://localhost:8090/groups" \
 2. Click **Delete** and confirm.
 
 :::warning
-Deletion fails if the OU still contains users, groups, user types, agent types, connections, flows, or child OUs. Delete or reassign all contained resources before deleting the OU. An agent type can be deleted only when no agent is of that type and no application, agent, or flow lists it in its allowed agent types. See [Agent Schema](../../agents/agent-schema).
+Deletion fails if the OU still contains users, groups, roles, applications, agents, resource servers, notification templates, credential configurations, presentation definitions, user types, agent types, connections, flows, or child OUs. Delete or reassign all contained resources before deleting the OU. An agent type can be deleted only when no agent is of that type and no application, agent, or flow lists it in its allowed agent types. See [Agent Schema](../../agents/agent-schema).
 :::
 
 To delete an OU using the API by its ID:
@@ -390,12 +391,14 @@ On the control plane, every OU except the system OU belongs to a project. The sy
 - **Create**: set `projectId` in the request body of `POST /organization-units`. A request without `projectId` fails with `OU-1023`, and a project that does not exist fails with `OU-1022`.
 - **Parent**: an OU in a project is a root OU, a child of the system OU, or a child of another OU in the same project. A parent in another project fails with `OU-1024`.
 - **List**: `GET /organization-units?projectId=<project-id>` returns the top OUs of the project: its root OUs and the OUs it placed under the system OU. List the rest under their parent. A project that does not exist returns an empty list. A caller who can list only some OUs gets every OU of the project they can list, at any level, as the list without `projectId` does.
-- **Update**: an update without `projectId` keeps the OU in its current project. A different `projectId` moves the OU and all its descendant OUs to that project. If a descendant is defined in a declarative resource file, nothing moves and the request fails with `OU-1012`.
+- **Placement**: `GET /organization-units?projectId=<project-id>&placement=true` lists where a resource of the project can be placed: the system OU first, marked `isSystem`, then the project's top OUs. The system OU is listed without its children, since they belong to other projects too. List the rest of the project's OUs under their parent. A project that does not exist returns an empty list. Combining `placement` with `filter` fails with `OU-1028`. Add `within=<ou-id>` to keep only the placements in that OU's subtree, such as the ones a user type or agent type allows: within the system OU, the system OU and the project's OUs directly under it; within an OU of the project, that OU and its subtree; within any other OU, none.
+- **Update**: an update without `projectId` keeps the OU in its current project. A different `projectId` moves the OU and all its descendant OUs to that project. If a descendant is defined in a declarative resource file, nothing moves and the request fails with `OU-1012`. An OU leaves a project only while neither it nor a descendant holds a resource, such as a user, group, role, application, or child OU's resource. Otherwise nothing moves and the request fails with `OU-1027`. An OU that belonged to no project, such as one from before projects, moves into a project with its resources.
 - **System OU**: setting `projectId` on the system OU fails with `OU-1025`.
-- **Resources in a project**: a resource in a project that belongs to an OU, such as an application, agent, user, group, role, resource server, or flow, is still placed only in the system OU. A project's own OUs do not hold them.
+- **Resources in a project**: a resource in a project that belongs to an OU, such as an application, agent, user, group, role, resource server, flow, notification template, credential configuration, or presentation definition, is placed in the system OU or in one of the project's OUs. Without `ouId`, it goes to the system OU. An OU of another project, or of no project, fails the request.
+- **User types**: a user in an OU must be of a user type in that OU or in one of its ancestors. An OU under the system OU can use the user types of the system OU. A project's root OU has no such ancestor, so create the user types its users need in it.
 - **Delete a project**: a project that still has OUs cannot be deleted. The request fails with `409` (`PRJ-1013`) until its OUs are deleted or moved to another project. The API cannot delete or move an OU defined in a declarative resource file, so remove it from the file or set a different `projectId` there, and reload the configuration.
 
-In the control plane Console, open a project and select **Organization units** under **Identities** to see the OUs of that project.
+In the control plane Console, open a project and select **Organization units** under **Identities** to see the OUs of that project. When the project has OUs, creating a resource in the project asks where it belongs: the system OU, selected by default, or one of the project's OUs. For a user or an agent, the choices are narrowed to the OUs its type allows, and a type that can't be used in the project is reported before the user or agent is created. When it has none, the Console places the resource in the system OU without asking.
 
 A server without projects, such as the all-in-one server, does not require a project and keeps the `projectId` it receives without checking it, but refuses one longer than 36 characters with `OU-1022`.
 

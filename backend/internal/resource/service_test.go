@@ -22,6 +22,7 @@ import (
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/revocation"
 	"github.com/thunder-id/thunderid/internal/system/config"
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/projectscope"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
@@ -6251,4 +6252,61 @@ func (suite *ResourceServiceTestSuite) TestValidateDeleteAction_RequiresTheUpdat
 				mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 		})
 	}
+}
+
+func (suite *ResourceServiceTestSuite) TestGetResourceDependencies_OUReportsOwnedResourceServers() {
+	suite.mockStore.On("GetResourceServerListByOUID", mock.Anything, "ou-1", serverconst.MaxCompositeStoreRecords, 0).
+		Return([]providers.ResourceServer{{ID: "rs-1", Name: "Orders"}, {ID: "rs-2", Name: "Billing"}}, nil)
+
+	deps, err := suite.service.GetResourceDependencies(
+		context.Background(), resourcedependency.ResourceTypeOU, "ou-1")
+
+	suite.NoError(err)
+	suite.Equal([]resourcedependency.ResourceDependency{
+		{
+			ResourceType:     resourcedependency.ResourceTypeResourceServer,
+			ID:               "rs-1",
+			DisplayName:      "Orders",
+			BehaviorOnDelete: resourcedependency.BehaviorRestrict,
+		},
+		{
+			ResourceType:     resourcedependency.ResourceTypeResourceServer,
+			ID:               "rs-2",
+			DisplayName:      "Billing",
+			BehaviorOnDelete: resourcedependency.BehaviorRestrict,
+		},
+	}, deps)
+}
+
+func (suite *ResourceServiceTestSuite) TestGetResourceDependencies_OUWithoutResourceServers() {
+	suite.mockStore.On("GetResourceServerListByOUID", mock.Anything, "ou-1", serverconst.MaxCompositeStoreRecords, 0).
+		Return([]providers.ResourceServer{}, nil)
+
+	deps, err := suite.service.GetResourceDependencies(
+		context.Background(), resourcedependency.ResourceTypeOU, "ou-1")
+
+	suite.NoError(err)
+	suite.NotNil(deps)
+	suite.Empty(deps)
+}
+
+func (suite *ResourceServiceTestSuite) TestGetResourceDependencies_OUStoreError() {
+	suite.mockStore.On("GetResourceServerListByOUID", mock.Anything, "ou-1", serverconst.MaxCompositeStoreRecords, 0).
+		Return(nil, errors.New("db error"))
+
+	deps, err := suite.service.GetResourceDependencies(
+		context.Background(), resourcedependency.ResourceTypeOU, "ou-1")
+
+	suite.EqualError(err, "db error")
+	suite.Nil(deps)
+}
+
+func (suite *ResourceServiceTestSuite) TestGetResourceDependencies_UnrelatedResourceType() {
+	deps, err := suite.service.GetResourceDependencies(
+		context.Background(), resourcedependency.ResourceTypeUser, "user-1")
+
+	suite.NoError(err)
+	suite.Empty(deps)
+	suite.mockStore.AssertNotCalled(suite.T(), "GetResourceServerListByOUID", mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything)
 }

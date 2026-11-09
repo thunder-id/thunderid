@@ -149,8 +149,9 @@ var (
 			DefaultValue: "Organization unit not in project",
 		},
 		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "error.projectservice.ou_not_in_project_description",
-			DefaultValue: "The organization unit must be the system organization unit",
+			Key: "error.projectservice.ou_not_in_project_description",
+			DefaultValue: "The organization unit must be the system organization unit " +
+				"or one that belongs to the project",
 		},
 	}
 

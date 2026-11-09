@@ -1543,6 +1543,8 @@ func (s *agentService) GetResourceDependencies(
 		return s.getAgentsByOwner(ctx, id)
 	case resourcedependency.ResourceTypeAgentType:
 		return s.getAgentTypeUsages(ctx, id)
+	case resourcedependency.ResourceTypeOU:
+		return s.getAgentsInOU(ctx, id)
 	}
 	return s.getAgentsByReference(ctx, resourceType, id, resourcedependency.BehaviorFallback)
 }
@@ -1641,6 +1643,31 @@ func (s *agentService) getAgentsByOwner(
 			ID:               e.ID,
 			DisplayName:      sysutils.ResolveDisplay(e.ID, e.Type, e.Attributes, displayPaths),
 			BehaviorOnDelete: behavior,
+		})
+	}
+	return usages, nil
+}
+
+// getAgentsInOU returns the agents an organization unit owns. An agent cannot exist without its organization
+// unit, so each blocks the organization unit's deletion. The number of agents returned is bounded by
+// MaxCompositeStoreRecords.
+func (s *agentService) getAgentsInOU(
+	ctx context.Context, ouID string) ([]resourcedependency.ResourceDependency, error) {
+	entities, err := s.entityService.GetEntityListByOUIDs(
+		ctx, providers.EntityCategoryAgent, []string{ouID}, serverconst.MaxCompositeStoreRecords, 0, nil)
+	if err != nil {
+		s.logger.Error(ctx, "Failed to list agents in organization unit", log.Error(err))
+		return nil, err
+	}
+
+	displayPaths := s.resolveDisplayPaths(ctx, entityTypes(entities))
+	usages := make([]resourcedependency.ResourceDependency, 0, len(entities))
+	for _, e := range entities {
+		usages = append(usages, resourcedependency.ResourceDependency{
+			ResourceType:     resourcedependency.ResourceTypeAgent,
+			ID:               e.ID,
+			DisplayName:      sysutils.ResolveDisplay(e.ID, e.Type, e.Attributes, displayPaths),
+			BehaviorOnDelete: resourcedependency.BehaviorRestrict,
 		})
 	}
 	return usages, nil

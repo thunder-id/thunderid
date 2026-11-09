@@ -13,7 +13,7 @@ export interface CreateGroupRequest {
   description?: string;
   /** ID of the organization unit this group belongs to; the system organization unit when omitted */
   ouId?: string;
-  /** Places the group in the project, in the system organization unit */
+  /** Places the group in the project, in the system organization unit unless `ouId` names one of the project's */
   projectId?: string;
   /** Optional initial members */
   members?: Member[];

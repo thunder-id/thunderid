@@ -419,6 +419,18 @@ func (s *CacheBackedOUStoreTestSuite) TestPassThroughMethods() {
 	s.Nil(err)
 	s.Empty(projectList)
 
+	s.mockStore.On("GetOrganizationUnitChildrenCountInProject", mock.Anything, "parent-1", "project-1").
+		Return(1, nil).Once()
+	projectChildCount, err := s.cachedStore.GetOrganizationUnitChildrenCountInProject(ctx, "parent-1", "project-1")
+	s.Nil(err)
+	s.Equal(1, projectChildCount)
+
+	s.mockStore.On("GetOrganizationUnitChildrenListInProject", mock.Anything, "parent-1", "project-1", 10, 0).
+		Return([]OrganizationUnitBasic{}, nil).Once()
+	projectChildren, err := s.cachedStore.GetOrganizationUnitChildrenListInProject(ctx, "parent-1", "project-1", 10, 0)
+	s.Nil(err)
+	s.Empty(projectChildren)
+
 	s.mockStore.On("GetOrganizationUnitsByIDs", mock.Anything,
 		[]string{"id-1"}).Return([]OrganizationUnitBasic{}, nil).Once()
 	byIDs, err := s.cachedStore.GetOrganizationUnitsByIDs(ctx, []string{"id-1"})
