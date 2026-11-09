@@ -59,7 +59,7 @@ type listUsersMCPInput struct {
 //nolint:lll
 type getUserMCPInput struct {
 	UserID  string   `json:"userId" jsonschema:"ID of the user, from list_users"`
-	Include []string `json:"include,omitempty" jsonschema:"Details to add. groups: the groups the user is in, directly or through a nested group. roles: the roles the user holds, directly or through a group. permissions: what those roles let the user do, by API."`
+	Include []string `json:"include,omitempty" jsonschema:"Details to add. groups: the groups the user is in, directly or through a nested group. roles: the roles the user holds, directly or through a group. permissions: what those roles let the user do, by resource server (API or MCP server)."`
 }
 
 // updateUserMCPInput is the input of the update_user tool.
@@ -112,11 +112,11 @@ type userRoleMCPItem struct {
 	Granted string `json:"granted"`
 }
 
-// userPermissionMCPItem is what a user's roles let them do on one API.
+// userPermissionMCPItem is what a user's roles let them do on one resource server, an API or MCP server.
 type userPermissionMCPItem struct {
-	API         string   `json:"api"`
-	Name        string   `json:"name,omitempty"`
-	Permissions []string `json:"permissions"`
+	ResourceServer string   `json:"resourceServer"`
+	Name           string   `json:"name,omitempty"`
+	Permissions    []string `json:"permissions"`
 }
 
 // userMCPDetails is one user, as get_user, update_user and create_user return it.
@@ -523,9 +523,9 @@ func (t *userTools) addUserDetails(ctx context.Context, details *userMCPDetails,
 		items := make([]userPermissionMCPItem, 0, len(permissions))
 		for _, serverID := range slices.Sorted(maps.Keys(permissions)) {
 			item := userPermissionMCPItem{
-				API: serverID, Permissions: slices.Sorted(slices.Values(permissions[serverID]))}
+				ResourceServer: serverID, Permissions: slices.Sorted(slices.Values(permissions[serverID]))}
 			if server, svcErr := t.resourceService.GetResourceServer(ctx, serverID); svcErr == nil && server != nil {
-				item.API = server.Identifier
+				item.ResourceServer = server.Identifier
 				item.Name = server.Name
 			}
 			items = append(items, item)

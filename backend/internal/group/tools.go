@@ -46,8 +46,8 @@ type listGroupsMCPInput struct {
 	Member    *groupMemberMCPInput `json:"member,omitempty" jsonschema:"A user, app, agent or group, to list the groups it belongs to, directly or through a group nested in another"`
 	OUID      string               `json:"ouId,omitempty" jsonschema:"ID of an organization unit, to list the groups it owns. Narrows a name or member search."`
 	ProjectID string               `json:"projectId,omitempty" jsonschema:"ID of a project, from list_projects, to list its groups. Can't be combined with name or member."`
-	Limit     int                  `json:"limit,omitempty" jsonschema:"Maximum number of groups to return, at most 100"`
-	Offset    int                  `json:"offset,omitempty" jsonschema:"Number of groups to skip"`
+	Limit     int                  `json:"limit,omitempty" jsonschema:"Maximum number of groups to return, at most 100, and 30 when not given. Only without name and member: a search returns every match."`
+	Offset    int                  `json:"offset,omitempty" jsonschema:"Number of groups to skip. Only without name and member."`
 }
 
 // getGroupMCPInput is the input of the get_group tool.
@@ -167,12 +167,12 @@ func RegisterMCPTools(server *mcp.Server, groupService GroupServiceInterface,
 		Description: `Find groups. name matches a group's exact name. member lists the groups a user, app, ` +
 			`agent or group belongs to, directly or through a nested group, and direct tells them apart, so ` +
 			`it answers "is Alice in the support team?". ouId lists the groups an organization unit owns, ` +
-			`and narrows a name or member search. Results are paged with limit and offset, and totalResults ` +
-			`counts every match. Returns each group's ID, name, organization unit and whether it is ` +
-			`read-only. Use get_group for who is in a group.`,
+			`and narrows a name or member search. A search by name or member returns every match. Without ` +
+			`one, the groups are paged with limit and offset, and totalResults counts them all. Returns each ` +
+			`group's ID, name, organization unit and whether it is read-only. Use get_group for who is in a ` +
+			`group.`,
 		InputSchema: tool.GenerateSchema[listGroupsMCPInput](
-			tool.WithEnum("member", "type", memberTypes),
-			tool.WithDefault("", "limit", defaultGroupPageSize)),
+			tool.WithEnum("member", "type", memberTypes)),
 		Annotations: &mcp.ToolAnnotations{Title: "List Groups", ReadOnlyHint: true, OpenWorldHint: new(false)},
 	}, tools.listGroups)
 
@@ -215,14 +215,14 @@ func RegisterMCPTools(server *mcp.Server, groupService GroupServiceInterface,
 // listGroups handles the list_groups tool call.
 func (t *groupTools) listGroups(ctx context.Context, _ *mcp.CallToolRequest, input listGroupsMCPInput) (
 	*mcp.CallToolResult, *groupListMCPResponse, error) {
-	limit, err := pageLimit(input.Limit, input.Offset)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to list groups: %w", err)
-	}
 	if input.ProjectID != "" && (input.Name != "" || input.Member != nil) {
 		return nil, nil, errors.New("failed to list groups: projectId can't be combined with name or member")
 	}
 	if input.Name == "" && input.Member == nil {
+		limit, err := pageLimit(input.Limit, input.Offset)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to list groups: %w", err)
+		}
 		var filters map[string]interface{}
 		if input.OUID != "" {
 			filters = map[string]interface{}{filter.AttributeOUID: input.OUID}
@@ -246,6 +246,12 @@ func (t *groupTools) listGroups(ctx context.Context, _ *mcp.CallToolRequest, inp
 		return nil, &groupListMCPResponse{TotalResults: list.TotalResults, Groups: groups}, nil
 	}
 
+	// The searches the group and entity services offer by name and by member aren't paged, so a search
+	// returns every match.
+	if input.Limit != 0 || input.Offset != 0 {
+		return nil, nil, errors.New("failed to list groups: a search by name or member returns every match, " +
+			"so limit and offset can't be used with it")
+	}
 	candidates, err := t.searchGroupIDs(ctx, input)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to list groups: %w", err)
@@ -277,7 +283,7 @@ func (t *groupTools) listGroups(ctx context.Context, _ *mcp.CallToolRequest, inp
 		groups = append(groups, item)
 	}
 	slices.SortFunc(groups, func(a, b groupMCPItem) int { return strings.Compare(a.Name, b.Name) })
-	return nil, &groupListMCPResponse{TotalResults: len(groups), Groups: pageOf(groups, limit, input.Offset)}, nil
+	return nil, &groupListMCPResponse{TotalResults: len(groups), Groups: groups}, nil
 }
 
 // searchGroupIDs returns the IDs of the groups with the given name, the groups the given member belongs
@@ -469,14 +475,6 @@ func pageLimit(limit, offset int) (int, error) {
 		return 0, fmt.Errorf("limit must be 1 to %d and offset 0 or more", serverconst.MaxPageSize)
 	}
 	return limit, nil
-}
-
-// pageOf returns the page of items that limit and offset select.
-func pageOf[T any](items []T, limit, offset int) []T {
-	if offset >= len(items) {
-		return []T{}
-	}
-	return items[offset:min(offset+limit, len(items))]
 }
 
 // describeGroup describes a group without its members.

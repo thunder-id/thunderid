@@ -62,7 +62,7 @@ type listAgentsMCPInput struct {
 type getAgentMCPInput struct {
 	AgentID  string   `json:"agentId,omitempty" jsonschema:"ID of the agent, from list_agents. Give agentId or clientId."`
 	ClientID string   `json:"clientId,omitempty" jsonschema:"OAuth client ID the agent gets tokens with. Give agentId or clientId."`
-	Include  []string `json:"include,omitempty" jsonschema:"Details to add. groups: the groups the agent is in, directly or through another group. roles: its roles, granted directly or through a group. permissions: what it can do on each API, from all its roles."`
+	Include  []string `json:"include,omitempty" jsonschema:"Details to add. groups: the groups the agent is in, directly or through another group. roles: its roles, granted directly or through a group. permissions: what it can do on each resource server (API or MCP server), from all its roles."`
 }
 
 // agentAccessMCPInput is how an agent proves who it is and acts for users, as onboard_agent and
@@ -172,11 +172,11 @@ type agentRoleMCPItem struct {
 	Granted string `json:"granted"`
 }
 
-// agentPermissionMCPItem is what an agent can do on one API.
+// agentPermissionMCPItem is what an agent can do on one resource server, an API or MCP server.
 type agentPermissionMCPItem struct {
-	API         string   `json:"api"`
-	Name        string   `json:"name,omitempty"`
-	Permissions []string `json:"permissions"`
+	ResourceServer string   `json:"resourceServer"`
+	Name           string   `json:"name,omitempty"`
+	Permissions    []string `json:"permissions"`
 }
 
 // onboardAgentMCPResponse is the onboard_agent output.
@@ -918,9 +918,9 @@ func (t *agentTools) addAgentDetails(ctx context.Context, details *agentMCPDetai
 		items := make([]agentPermissionMCPItem, 0, len(permissions))
 		for _, serverID := range slices.Sorted(maps.Keys(permissions)) {
 			item := agentPermissionMCPItem{
-				API: serverID, Permissions: slices.Sorted(slices.Values(permissions[serverID]))}
+				ResourceServer: serverID, Permissions: slices.Sorted(slices.Values(permissions[serverID]))}
 			if server, svcErr := t.resourceService.GetResourceServer(ctx, serverID); svcErr == nil && server != nil {
-				item.API = server.Identifier
+				item.ResourceServer = server.Identifier
 				item.Name = server.Name
 			}
 			items = append(items, item)

@@ -990,13 +990,13 @@ func InitSystemPermissions(handle string) {
 		"list_agent_types": p.AgentTypeView,
 
 		// Role tools, at the permissions of the role and resource server APIs they act through.
-		"list_roles":              p.RoleView,
-		"get_role":                p.RoleView,
-		"create_role":             p.RoleCreate,
-		"update_role_permissions": p.RoleUpdate,
-		"update_role_assignments": p.RoleUpdate,
-		"list_apis":               p.ResourceServerView,
-		"list_api_permissions":    p.ResourceServerView,
+		"list_roles":                       p.RoleView,
+		"get_role":                         p.RoleView,
+		"create_role":                      p.RoleCreate,
+		"update_role_permissions":          p.RoleUpdate,
+		"update_role_assignments":          p.RoleUpdate,
+		"list_resource_servers":            p.ResourceServerView,
+		"list_resource_server_permissions": p.ResourceServerView,
 
 		// Group tools, at the permissions of the group API they act through.
 		"list_groups":              p.GroupView,
