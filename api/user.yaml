@@ -4737,6 +4737,8 @@ components:
                     type: boolean
                     default: false
                     description: "Whether this attribute must be provided for the user type"
+                  display:
+                    $ref: "#/components/schemas/UserTypeAttributeDisplay"
                   unique:
                     type: boolean
                     default: false
@@ -4766,6 +4768,8 @@ components:
                     type: boolean
                     default: false
                     description: "Whether this attribute must be provided for the user type"
+                  display:
+                    $ref: "#/components/schemas/UserTypeAttributeDisplay"
                 additionalProperties: false
               - type: object
                 description: "Object property definition"
@@ -4779,11 +4783,13 @@ components:
                     type: boolean
                     default: false
                     description: "Whether this attribute must be provided for the user type"
+                  display:
+                    $ref: "#/components/schemas/UserTypeAttributeDisplay"
                   properties:
                     type: object
                     description: "Nested properties of the object"
                     additionalProperties:
-                      $ref: "#/components/schemas/UserType/properties/schema/additionalProperties"
+                      $ref: "#/components/schemas/UserTypeNestedProperty"
                 additionalProperties: false
               - type: object
                 description: "Array property definition"
@@ -4797,6 +4803,8 @@ components:
                     type: boolean
                     default: false
                     description: "Whether this attribute must be provided for the user type"
+                  display:
+                    $ref: "#/components/schemas/UserTypeAttributeDisplay"
                   items:
                     oneOf:
                       - type: object
@@ -4833,7 +4841,7 @@ components:
                           properties:
                             type: object
                             additionalProperties:
-                              $ref: "#/components/schemas/UserType/properties/schema/additionalProperties"
+                              $ref: "#/components/schemas/UserTypeNestedProperty"
                         additionalProperties: false
                 additionalProperties: false
           example:
@@ -4874,6 +4882,140 @@ components:
               items:
                 type: "string"
                 enum: ["vip", "premium", "standard"]
+
+    UserTypeNestedProperty:
+      description: "A property nested in an object or an array of objects. Same as a top-level user type property, without display settings."
+      oneOf:
+        - type: object
+          description: "Leaf property - string, email, mobile, or number"
+          required: [type]
+          properties:
+            type:
+              type: string
+              enum: ["string", "email", "mobile", "number"]
+              description: "Data type of the property"
+            required:
+              type: boolean
+              default: false
+              description: "Whether this attribute must be provided for the user type"
+            unique:
+              type: boolean
+              default: false
+              description: "Whether this property must be unique across all users"
+            credential:
+              type: boolean
+              default: false
+              description: "Whether this property should be treated as a credential attribute. Not supported for email or mobile types."
+            enum:
+              type: array
+              items:
+                type: string
+              description: "List of allowed values for this property. Not supported for email or mobile types."
+            regex:
+              type: string
+              description: "Regular expression pattern for validating the property value"
+          additionalProperties: false
+        - type: object
+          description: "Leaf property - boolean"
+          required: [type]
+          properties:
+            type:
+              type: string
+              enum: ["boolean"]
+              description: "Data type of the property"
+            required:
+              type: boolean
+              default: false
+              description: "Whether this attribute must be provided for the user type"
+          additionalProperties: false
+        - type: object
+          description: "Object property definition"
+          required: [type, properties]
+          properties:
+            type:
+              type: string
+              enum: ["object"]
+              description: "Data type (object)"
+            required:
+              type: boolean
+              default: false
+              description: "Whether this attribute must be provided for the user type"
+            properties:
+              type: object
+              description: "Nested properties of the object"
+              additionalProperties:
+                $ref: "#/components/schemas/UserTypeNestedProperty"
+          additionalProperties: false
+        - type: object
+          description: "Array property definition"
+          required: [type, items]
+          properties:
+            type:
+              type: string
+              enum: ["array"]
+              description: "Data type (array)"
+            required:
+              type: boolean
+              default: false
+              description: "Whether this attribute must be provided for the user type"
+            items:
+              oneOf:
+                - type: object
+                  description: "Array of strings, emails, mobiles, or numbers"
+                  required: [type]
+                  properties:
+                    type:
+                      type: string
+                      enum: ["string", "email", "mobile", "number"]
+                    enum:
+                      type: array
+                      items:
+                        type: string
+                      description: "List of allowed values. Not supported for email or mobile types."
+                    regex:
+                      type: string
+                      description: "Custom validation pattern. Contact types use their default when omitted or empty."
+                  additionalProperties: false
+                - type: object
+                  description: "Array of booleans"
+                  required: [type]
+                  properties:
+                    type:
+                      type: string
+                      enum: ["boolean"]
+                  additionalProperties: false
+                - type: object
+                  description: "Array of objects"
+                  required: [type, properties]
+                  properties:
+                    type:
+                      type: string
+                      enum: ["object"]
+                    properties:
+                      type: object
+                      additionalProperties:
+                        $ref: "#/components/schemas/UserTypeNestedProperty"
+                  additionalProperties: false
+          additionalProperties: false
+
+    UserTypeAttributeDisplay:
+      type: object
+      description: "How a top-level attribute is presented when attributes are listed or collected. Nested properties don't accept it."
+      properties:
+        order:
+          type: integer
+          minimum: 0
+          description: "Position of the attribute when user attributes are listed or collected, lowest first, and by attribute name for the same order. Attributes without one follow the ordered ones."
+        onCreate:
+          type: object
+          description: "Settings for when a user account is created."
+          properties:
+            hidden:
+              type: boolean
+              default: false
+              description: "Whether an optional attribute is left out when a user account is created. A flow asks for optional attributes only when its Provisioning step enables includeOptional, and asks for an attribute the step declares in its own inputs even when it's hidden. Required attributes are always asked for."
+          additionalProperties: false
+      additionalProperties: false
 
     UserTypeListResponse:
       type: object

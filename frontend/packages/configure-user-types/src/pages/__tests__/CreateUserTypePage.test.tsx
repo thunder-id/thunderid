@@ -692,6 +692,7 @@ describe('CreateUserTypePage', () => {
           email: {
             type: 'string',
             required: true,
+            display: {order: 0},
           },
         },
         systemAttributes: {display: 'email'},
@@ -735,6 +736,7 @@ describe('CreateUserTypePage', () => {
           email: {
             type: 'string',
             required: false,
+            display: {order: 0},
           },
         },
         systemAttributes: {display: 'email'},
@@ -876,6 +878,7 @@ describe('CreateUserTypePage', () => {
           code: {
             type: 'string',
             required: false,
+            display: {order: 0},
             regex: '^[A-Z]{3}$',
           },
         },
@@ -913,6 +916,7 @@ describe('CreateUserTypePage', () => {
           employeeId: {
             type: 'number',
             required: false,
+            display: {order: 0},
           },
         },
         systemAttributes: {display: 'employeeId'},
@@ -936,8 +940,18 @@ describe('CreateUserTypePage', () => {
       expect(mockMutateAsync).toHaveBeenCalledWith(
         expect.objectContaining({
           schema: {
-            workMail: {type: 'email', required: false, regex: '^[^\\s@]+@[^\\s@]+$'},
-            phone: {type: 'mobile', required: false, regex: '^\\+[1-9]\\d{1,14}$'},
+            workMail: {
+              type: 'email',
+              required: false,
+              display: {order: 0},
+              regex: '^[^\\s@]+@[^\\s@]+$',
+            },
+            phone: {
+              type: 'mobile',
+              required: false,
+              display: {order: 1},
+              regex: '^\\+[1-9]\\d{1,14}$',
+            },
           },
           systemAttributes: expect.objectContaining({primaryEmail: 'workMail', primaryMobile: 'phone'}) as unknown,
         }),
@@ -990,7 +1004,7 @@ describe('CreateUserTypePage', () => {
         handle: 'contacts',
         displayName: 'Contacts',
         ouId: 'root-ou',
-        schema: {username: {type: 'string', required: true, unique: true}},
+        schema: {username: {type: 'string', required: true, display: {order: 0}, unique: true}},
         systemAttributes: {display: 'username'},
       });
     });
@@ -1043,6 +1057,7 @@ describe('CreateUserTypePage', () => {
             [attribute]: {
               type,
               required: false,
+              display: {order: 0},
               regex: type === 'email' ? '^[^\\s@]+@[^\\s@]+$' : '^\\+[1-9]\\d{1,14}$',
             },
           },
@@ -1073,8 +1088,13 @@ describe('CreateUserTypePage', () => {
         displayName: 'Contacts',
         ouId: 'root-ou',
         schema: {
-          username: {type: 'string', required: true, unique: true},
-          altMail: {type: 'email', required: false, regex: '^[^\\s@]+@[^\\s@]+$'},
+          username: {type: 'string', required: true, display: {order: 0}, unique: true},
+          altMail: {
+            type: 'email',
+            required: false,
+            display: {order: 1},
+            regex: '^[^\\s@]+@[^\\s@]+$',
+          },
         },
         systemAttributes: {display: 'username', primaryEmail: 'altMail'},
       });

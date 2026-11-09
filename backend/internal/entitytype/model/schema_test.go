@@ -514,6 +514,81 @@ func (s *SchemaValidateTestSuite) TestGetAttributes_EnumKeepsDeclaredOrder() {
 	s.Empty(attrMap["active"].Enum, "a non-string property carries no permitted values")
 }
 
+func (s *SchemaValidateTestSuite) TestGetAttributes_DisplaySettings() {
+	schema, err := CompileSchema(json.RawMessage(`{
+		"username": {"type": "string", "required": true, "display": {"order": 0}},
+		"nickname": {"type": "string", "display": {"order": 2, "onCreate": {"hidden": true}}},
+		"tags":     {"type": "array", "items": {"type": "string"}, "display": {"onCreate": {"hidden": false}}},
+		"active":   {"type": "boolean"}
+	}`))
+	s.Require().NoError(err)
+
+	attrMap := make(map[string]AttributeInfo)
+	for _, a := range schema.GetAttributes(AttributeFilter{AllowNonCredential: true}) {
+		attrMap[a.Attribute] = a
+	}
+
+	s.Require().NotNil(attrMap["username"].DisplayOrder)
+	s.Equal(0, *attrMap["username"].DisplayOrder)
+	s.Require().NotNil(attrMap["nickname"].DisplayOrder)
+	s.Equal(2, *attrMap["nickname"].DisplayOrder)
+	s.Nil(attrMap["active"].DisplayOrder)
+	s.True(attrMap["nickname"].HiddenOnCreate)
+	s.False(attrMap["tags"].HiddenOnCreate)
+	s.False(attrMap["active"].HiddenOnCreate)
+}
+
+func (s *SchemaValidateTestSuite) TestCompileSchema_InvalidDisplaySettings() {
+	cases := []struct {
+		name    string
+		schema  string
+		wantErr string
+	}{
+		{"display not an object", `{"name": {"type": "string", "display": 1}}`,
+			"'display' field must be an object"},
+		{"null display", `{"name": {"type": "string", "display": null}}`,
+			"'display' field must be an object"},
+		{"unknown display key", `{"name": {"type": "string", "display": {"width": 1}}}`,
+			"invalid field 'display.width'"},
+		{"negative order", `{"name": {"type": "string", "display": {"order": -1}}}`,
+			"'display.order' field must be a non-negative integer"},
+		{"fractional order", `{"name": {"type": "string", "display": {"order": 1.5}}}`,
+			"'display.order' field must be a non-negative integer"},
+		{"string order", `{"name": {"type": "string", "display": {"order": "1"}}}`,
+			"'display.order' field must be a non-negative integer"},
+		{"null order", `{"name": {"type": "string", "display": {"order": null}}}`,
+			"'display.order' field must be a non-negative integer"},
+		{"onCreate not an object", `{"name": {"type": "string", "display": {"onCreate": true}}}`,
+			"'display.onCreate' field must be an object"},
+		{"unknown onCreate key", `{"name": {"type": "string", "display": {"onCreate": {"shown": true}}}}`,
+			"invalid field 'display.onCreate.shown'"},
+		{"non-boolean hidden", `{"name": {"type": "string", "display": {"onCreate": {"hidden": "no"}}}}`,
+			"'display.onCreate.hidden' field must be a boolean"},
+		{"null hidden", `{"name": {"type": "string", "display": {"onCreate": {"hidden": null}}}}`,
+			"'display.onCreate.hidden' field must be a boolean"},
+		{"nested display", `{"address": {"type": "object",
+			"properties": {"city": {"type": "string", "display": {"order": 1}}}}}`,
+			"invalid field 'display' for leaf property"},
+		{"not an object", `{"name": "string"}`,
+			"invalid property 'name': property definition must be an object"},
+	}
+	for _, tc := range cases {
+		_, err := CompileSchema(json.RawMessage(tc.schema))
+		s.ErrorContains(err, tc.wantErr, tc.name)
+	}
+}
+
+func (s *SchemaValidateTestSuite) TestValidate_IgnoresDisplaySettings() {
+	schema, err := CompileSchema(json.RawMessage(`{
+		"email": {"type": "email", "required": true, "display": {"order": 1, "onCreate": {"hidden": false}}}
+	}`))
+	s.Require().NoError(err)
+
+	valid, err := schema.Validate(context.Background(), json.RawMessage(`{"email": "a@example.com"}`), s.logger, false)
+	s.Require().NoError(err)
+	s.True(valid)
+}
+
 func (s *SchemaValidateTestSuite) TestGetAttributes_NonCredentialRequiredOnly_EmptySchema() {
 	schema := &Schema{properties: map[string]property{}}
 

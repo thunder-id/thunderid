@@ -864,6 +864,9 @@ const translations = {
     credential: 'Credential',
     unique: 'Unique',
     removeProperty: 'Remove property',
+    moveUp: 'Move up',
+    moveDown: 'Move down',
+    promptOnCreate: 'Prompt on onboarding',
     regexPattern: 'Regular expression pattern (optional)',
     contactRegexPattern: 'Regular expression pattern',
     'validationErrors.emailRegexRequired': 'Enter a regular expression for email attributes.',
@@ -873,6 +876,8 @@ const translations = {
     enumPlaceholder: 'Add value and press Enter',
     'tooltips.required': 'Users must provide a value for this field',
     'tooltips.unique': 'Each user must have a distinct value for this field',
+    'tooltips.promptOnCreate':
+      'Prompt for this optional field when an account is created: added by an admin, accepted from an invite, or signed up',
     'tooltips.credential': 'Values will be hashed and not returned in API responses',
     'tooltips.primary': 'Used as the primary contact for users',
     'tooltips.primarySelected':
@@ -1030,6 +1035,9 @@ const translations = {
     credential: 'Credential',
     unique: 'Unique',
     removeProperty: 'Remove property',
+    moveUp: 'Move up',
+    moveDown: 'Move down',
+    promptOnCreate: 'Prompt on onboarding',
     regexPattern: 'Regular expression pattern (optional)',
     contactRegexPattern: 'Regular expression pattern',
     'validationErrors.emailRegexRequired': 'Enter a regular expression for email attributes.',
@@ -1038,6 +1046,8 @@ const translations = {
     enumValues: 'Allowed values (enum) - optional',
     enumPlaceholder: 'Add value and press Enter',
     'tooltips.required': 'Agents must provide a value for this field',
+    'tooltips.promptOnCreate':
+      'Prompt for this optional field when an agent is created: added by an admin or onboarded through a flow',
     'tooltips.unique': 'Each agent must have a distinct value for this field',
     'tooltips.credential': 'Values will be hashed and not returned in API responses',
     credentialHint: 'This field will be treated as a secret. Values will be hashed and cannot be retrieved.',

@@ -10,6 +10,8 @@ import {
   getContactTypesMissingRegex,
   getErrorMessage,
   isEqualIgnoringEmpty,
+  isHiddenOnCreate,
+  orderAttributes,
   resolveAttributeRegex,
 } from '@thunderid/utils';
 import {
@@ -64,11 +66,12 @@ function TabPanel({children = null, value, index, ...other}: TabPanelProps): JSX
 }
 
 /**
- * Convert API schema to editable property inputs.
+ * Convert API schema to editable property inputs, in the order the add agent form uses.
  */
-function convertSchemaToProperties(schema: AgentTypeDefinition): SchemaPropertyInput[] {
-  return Object.entries(schema).map(([key, value], index) => ({
-    id: `${index}`,
+function convertSchemaToProperties(schema: AgentTypeDefinition, displayAttribute?: string): SchemaPropertyInput[] {
+  // Rows are keyed by name, so an expanded row stays with its attribute after a reorder is saved.
+  return orderAttributes(schema, {leading: displayAttribute}).map(([key, value]) => ({
+    id: `attr-${key}`,
     name: key,
     displayName: 'displayName' in value ? (value.displayName ?? '') : '',
     type:
@@ -80,6 +83,7 @@ function convertSchemaToProperties(schema: AgentTypeDefinition): SchemaPropertyI
     credential: 'credential' in value ? (value.credential ?? false) : false,
     enum: 'enum' in value ? (value.enum ?? []) : [],
     regex: resolveAttributeRegex(value.type, 'regex' in value ? value.regex : undefined),
+    ...(isHiddenOnCreate(value) ? {hiddenOnCreate: true} : {}),
     ...('items' in value ? {items: value.items} : {}),
     ...('properties' in value ? {properties: value.properties} : {}),
   }));
@@ -131,7 +135,10 @@ export default function ViewAgentTypePage(): JSX.Element {
   const [breakingAttributes, setBreakingAttributes] = useState<string[]>([]);
 
   // Base properties from server data (useMemo so they're available synchronously)
-  const baseProperties = useMemo(() => (agentType ? convertSchemaToProperties(agentType.schema) : []), [agentType]);
+  const baseProperties = useMemo(
+    () => (agentType ? convertSchemaToProperties(agentType.schema, agentType.systemAttributes?.display) : []),
+    [agentType],
+  );
 
   // Effective properties (edited or from server)
   const effectiveProperties = editedProperties ?? baseProperties;

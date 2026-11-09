@@ -4,6 +4,7 @@
 import {SettingsCard} from '@thunderid/components';
 import {useResolveDisplayName} from '@thunderid/hooks';
 import type {User} from '@thunderid/types';
+import {orderAttributes} from '@thunderid/utils';
 import {Box, CircularProgress, Typography} from '@wso2/oxygen-ui';
 import {useEffect, useRef, type JSX} from 'react';
 import {useForm, useWatch} from 'react-hook-form';
@@ -15,7 +16,6 @@ import useGetUserType from '../../api/useGetUserType';
 import useGetUserTypes from '../../api/useGetUserTypes';
 import UserConstants from '../../constants/user-constants';
 import getVerifiableAttributes from '../../utils/getVerifiableAttributes';
-import orderSchemaAttributes from '../../utils/orderSchemaAttributes';
 import renderSchemaField from '../../utils/renderSchemaField';
 
 interface EditUserAttributesProps {
@@ -82,7 +82,7 @@ export default function EditUserAttributes({user, editedUser, onFieldChange}: Ed
   }
 
   const schemaFields = userTypeDetails?.schema
-    ? orderSchemaAttributes(userTypeDetails.schema, {includeOptional: true}).filter(
+    ? orderAttributes(userTypeDetails.schema).filter(
         ([, fieldDef]) => !((fieldDef.type === 'string' || fieldDef.type === 'number') && fieldDef.credential),
       )
     : [];

@@ -50,6 +50,11 @@ export {
 } from './validation/contactAttribute';
 export type {ContactAttributeType} from './validation/contactAttribute';
 
+// Entity Type Schemas
+export {compareAttributes, getDisplayOrder, isHiddenOnCreate} from './schema/attributeDisplay';
+export type {AttributeDisplay} from './schema/attributeDisplay';
+export {default as orderAttributes} from './schema/orderAttributes';
+
 // Administration Flows
 export {
   ADMINISTRATION_FLOW_TYPE,

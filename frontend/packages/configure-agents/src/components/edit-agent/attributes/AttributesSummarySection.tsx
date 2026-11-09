@@ -4,12 +4,12 @@
 import {QueryErrorNotice, SettingsCard} from '@thunderid/components';
 import {useGetAgentType, useGetAllAgentTypes} from '@thunderid/configure-agent-types';
 import {useResolveDisplayName} from '@thunderid/hooks';
+import {orderAttributes} from '@thunderid/utils';
 import {Box, Chip, CircularProgress, Stack, Typography} from '@wso2/oxygen-ui';
 import {Tag} from '@wso2/oxygen-ui-icons-react';
 import {useCallback, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import type {Agent} from '../../../models/agent';
-import orderAgentAttributes from '../../../utils/orderAgentAttributes';
 import EmptyState from '../shared/EmptyState';
 
 interface AttributesSummarySectionProps {
@@ -56,9 +56,9 @@ export default function AttributesSummarySection({
 
   const attributes = agent.attributes ?? {};
   // Attributes follow the agent type's schema order. Any the schema does not hold keep their place after them.
-  const schemaOrder = orderAgentAttributes(schemaDetails?.schema ?? {}, schemaDetails?.systemAttributes?.display).map(
-    ([name]) => name,
-  );
+  const schemaOrder = orderAttributes(schemaDetails?.schema ?? {}, {
+    leading: schemaDetails?.systemAttributes?.display,
+  }).map(([name]) => name);
   const position = (key: string): number => {
     const index = schemaOrder.indexOf(key);
     return index >= 0 ? index : schemaOrder.length;

@@ -94,7 +94,7 @@ describe('AttributesSummarySection', () => {
 
     expect(
       screen.getAllByText(/^(extra|function|model|environment|label)$/).map((element) => element.textContent),
-    ).toEqual(['label', 'environment', 'model', 'function', 'extra']);
+    ).toEqual(['label', 'environment', 'function', 'model', 'extra']);
   });
 
   it('shows an empty state when there are no attribute values', () => {

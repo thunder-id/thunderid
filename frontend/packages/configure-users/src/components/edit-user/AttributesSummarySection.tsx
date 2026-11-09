@@ -4,6 +4,7 @@
 import {SettingsCard} from '@thunderid/components';
 import {useResolveDisplayName} from '@thunderid/hooks';
 import type {User} from '@thunderid/types';
+import {orderAttributes} from '@thunderid/utils';
 import {Box, Chip, CircularProgress, Stack, Typography} from '@wso2/oxygen-ui';
 import type {JSX} from 'react';
 import {useTranslation} from 'react-i18next';
@@ -11,7 +12,6 @@ import VerificationStatus from './VerificationStatus';
 import useGetUserType from '../../api/useGetUserType';
 import useGetUserTypes from '../../api/useGetUserTypes';
 import getVerifiableAttributes from '../../utils/getVerifiableAttributes';
-import orderSchemaAttributes from '../../utils/orderSchemaAttributes';
 
 interface AttributesSummarySectionProps {
   user: User;
@@ -39,9 +39,7 @@ export default function AttributesSummarySection({user}: AttributesSummarySectio
 
   const attributes = user.attributes ?? {};
   // Attributes follow the schema order. Any not in the schema keep their place after them.
-  const schemaOrder = orderSchemaAttributes(userTypeDetails?.schema ?? {}, {includeOptional: true}).map(
-    ([name]) => name,
-  );
+  const schemaOrder = orderAttributes(userTypeDetails?.schema ?? {}).map(([name]) => name);
   const position = (key: string): number => {
     const index = schemaOrder.indexOf(key);
     return index >= 0 ? index : schemaOrder.length;

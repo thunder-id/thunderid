@@ -57,6 +57,30 @@ Select **Primary** beside an email or mobile attribute in the schema editor. The
 Email and mobile attributes use a default regex when the regex is omitted or empty. A custom regex replaces the default. Omit optional contact attributes when they have no value. Supplied values, including empty strings and array items, must match the regex.
 :::
 
+## Attribute Order and Account Creation
+
+A top-level attribute's `display` setting controls how <ProductName /> presents it when collecting user details. Attributes inside objects and arrays don't accept it. Agent types accept the same setting; see [Agent Schema](../../agents/agent-schema).
+
+```yaml
+picture:
+  type: string
+  display:
+    order: 7
+    onCreate:
+      hidden: true
+```
+
+| Setting | Type | Default | What It Does |
+|---------|------|---------|--------------|
+| `display.order` | Non-negative integer | None | The attribute's position, lowest first, on the Console's **Add user** form, on the user's profile, and among the fields a flow's **Provisioning** step asks for, such as in user onboarding and registration. Attributes with the same order follow attribute name. Fields that a prompt lists itself keep the order the flow gives them. |
+| `display.onCreate.hidden` | Boolean | `false` | Whether an optional attribute is left out when an account is created. This covers an administrator adding a user, an invited user completing their account, and self sign-up. Set it to `true` to collect the attribute later instead. Required attributes are always asked for, and so are fields that a prompt lists itself. |
+
+Attributes without an order follow the ordered ones: required attributes first, then optional ones, then credentials, each by attribute name.
+
+In the Console, open the user type's **Schema** tab. Use the up and down arrows on an attribute to change its position. Select **Prompt on onboarding** on an optional attribute to ask for it when an account is created, or clear it to stop asking. Saving the schema records the order of every attribute.
+
+A flow asks for optional attributes only when its **Provisioning** step enables `includeOptional` or `includeOptionalCredentials`. `display.onCreate.hidden` then narrows which optional attributes it asks for. An attribute that the Provisioning step declares in its own inputs is asked for regardless. See [User Provisioning and Attributes](../../flows/advanced-configurations#user-provisioning-and-attributes).
+
 ## Default Schema
 
 <ProductName /> includes one default user type with a pre-defined schema. You can use it as-is, customize it, or create your own user types. See [User Types](../user-types) for more information.
@@ -72,10 +96,12 @@ The general-purpose user type, with the handle `person` and the display name `Pe
 | `given_name` | `string` | - | |
 | `family_name` | `string` | - | |
 | `mobile_number` | `mobile` | regex | Primary mobile. Validated against E.164 format, for example `+14155552671` |
-| `sub` | `string` | - | |
-| `name` | `string` | - | |
-| `picture` | `string` | - | |
 | `password` | `string` | credential | Never returned in responses |
+| `name` | `string` | - | Not prompted on onboarding |
+| `picture` | `string` | - | Not prompted on onboarding |
+| `sub` | `string` | - | Not prompted on onboarding |
+
+The attributes are listed in their display order.
 
 :::note
 The `picture` attribute stores a URL. When a user's picture is hosted on an external origin, allow that origin in the Content Security Policy `img-src` directive. Otherwise the browser blocks the image where the Console displays it. See [Content Security Policy](../../../deployment/configuration#content-security-policy).

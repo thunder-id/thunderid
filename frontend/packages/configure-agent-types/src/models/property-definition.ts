@@ -1,6 +1,8 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import type {AttributeDisplay} from '@thunderid/utils';
+
 /**
  * Schema property definitions for the agent type schema editor.
  */
@@ -9,6 +11,8 @@ interface BasePropertyDefinition {
   required?: boolean;
   unique?: boolean;
   displayName?: string;
+  /** How a top-level attribute is ordered and whether it is hidden when an agent is created. */
+  display?: AttributeDisplay;
 }
 
 /**
@@ -103,6 +107,8 @@ export interface SchemaPropertyInput {
   credential: boolean;
   enum: string[];
   regex: string;
+  /** Whether the optional attribute is hidden when an agent is created. */
+  hiddenOnCreate?: boolean;
   /** Preserved array item definition for round-trip fidelity. */
   items?: ArrayItemDefinition;
   /** Preserved nested object properties for round-trip fidelity. */
