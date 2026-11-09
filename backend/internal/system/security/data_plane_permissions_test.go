@@ -169,7 +169,7 @@ func (s *DataPlanePermissionsTestSuite) TestRouteTable() {
 		{http.MethodGet, "/gateways", "system"},
 		{http.MethodPost, "/import", "system"},
 		{http.MethodGet, "/variables", "system"},
-		{http.MethodPost, "/flow/execute", "org"},
+		{http.MethodPost, "/flow/execute", ""},
 		{http.MethodGet, "/not-a-route", "system"},
 	}
 	for _, tc := range tests {
@@ -253,11 +253,10 @@ func (s *DataPlanePermissionsTestSuite) TestForEachPermissionPlaneForTest() {
 	s.Empty(GetSystemPermissions().Org, "the control plane's set is restored")
 }
 
-// /flow/execute is public, so a token that fails the route's permission is handed on as a runtime caller.
-// The route requires the administration flow permission, so an org holder reaches the flow as itself and
-// the flow's own checks decide.
-func (s *DataPlanePermissionsTestSuite) TestFlowExecuteKeepsTheAdministrationCaller() {
-	for permission, wantRuntime := range map[string]bool{"system": false, "org": false, "org:user": true} {
+// /flow/execute requires no permission, so every token reaches the flow engine as its caller and the
+// flow decides what each flow type needs.
+func (s *DataPlanePermissionsTestSuite) TestFlowExecuteKeepsTheCaller() {
+	for permission, wantRuntime := range map[string]bool{"system": false, "org": false, "org:user": false} {
 		s.Run(permission, func() {
 			req := httptest.NewRequest(http.MethodPost, "/flow/execute", nil)
 			auth := NewAuthenticatorInterfaceMock(s.T())

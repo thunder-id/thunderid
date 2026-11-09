@@ -31,6 +31,7 @@
             "name": "PermissionValidator"
           },
           "id": "permission_validator",
+          "properties": {"requiredScopes": ["system:agent:create", "org:agent:create"]},
           "layout": {
             "position": {"x": 283, "y": 1089},
             "size": {
@@ -543,6 +544,7 @@
             "name": "PermissionValidator"
           },
           "id": "permission_validator",
+          "properties": {"requiredScopes": ["system:agent:create", "org:agent:create"]},
           "layout": {
             "position": {"x": 203, "y": 1856},
             "size": {
@@ -1207,6 +1209,7 @@
             "name": "PermissionValidator"
           },
           "id": "permission_validator",
+          "properties": {"requiredScopes": ["system:agent:create", "org:agent:create"]},
           "layout": {
             "position": {"x": 203, "y": 1856},
             "size": {

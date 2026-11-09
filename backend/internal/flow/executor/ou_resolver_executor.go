@@ -88,7 +88,8 @@ func (e *ouResolverExecutor) applicationUsableFromOU(ctx *providers.NodeContext,
 	}
 
 	boundary.EntityID = ""
-	usable, svcErr := e.ouService.IsEligibleOU(authnprovidercm.WithSignInBoundary(ctx.Context, boundary), ouID)
+	usable, svcErr := e.ouService.IsEligibleOU(
+		security.WithRuntimeContext(authnprovidercm.WithSignInBoundary(ctx.Context, boundary)), ouID)
 	if svcErr != nil {
 		if svcErr.Type == tidcommon.ClientErrorType {
 			return false, nil
@@ -108,6 +109,10 @@ func (e *ouResolverExecutor) applicationUsableFromOU(ctx *providers.NodeContext,
 //   - "promptAll": shows the full OU tree from root, independent of UserTypeResolver.
 //
 // Inside a sign-in boundary, an OU the flow already decided is kept whatever the strategy.
+//
+// Each read of the OU provider runs with the server's authority at its call site. Reading the units to choose
+// from grants nothing, and the entity the flow places there is authorized as the caller; the rest of the
+// resolution keeps the caller's context.
 func (e *ouResolverExecutor) Execute(ctx *providers.NodeContext) (*providers.ExecutorResponse, error) {
 	logger := e.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 
@@ -217,7 +222,7 @@ func (e *ouResolverExecutor) resolveFromPrompt(ctx *providers.NodeContext,
 		selectedOUID := selection
 
 		// Validate that the selected OU belongs to the parent OU's subtree.
-		isDescendant, svcErr := e.ouService.IsParent(ctx.Context, parentOUID, selectedOUID)
+		isDescendant, svcErr := e.ouService.IsParent(security.WithRuntimeContext(ctx.Context), parentOUID, selectedOUID)
 		if svcErr != nil {
 			if svcErr.Type == tidcommon.ClientErrorType {
 				execResp.Status = providers.ExecUserInputRequired
@@ -256,7 +261,8 @@ func (e *ouResolverExecutor) resolveFromPrompt(ctx *providers.NodeContext,
 	}
 
 	// Check if the parent OU has child OUs.
-	children, svcErr := e.ouService.GetOrganizationUnitChildren(ctx.Context, parentOUID, 1, 0, nil)
+	children, svcErr := e.ouService.GetOrganizationUnitChildren(
+		security.WithRuntimeContext(ctx.Context), parentOUID, 1, 0, nil)
 	if svcErr != nil {
 		return nil, errors.New("failed to check child organization units: " + svcErr.Error.DefaultValue)
 	}
@@ -310,7 +316,8 @@ func (e *ouResolverExecutor) selectDirectChild(ctx *providers.NodeContext, paren
 		withHandle := &tidcommon.FilterGroup{Clauses: []tidcommon.FilterClause{{
 			Expr: tidcommon.FilterExpression{Attribute: "handle", Operator: tidcommon.OperatorEq, Value: selection},
 		}}}
-		matches, svcErr := e.ouService.GetOrganizationUnitChildren(ctx.Context, parentOUID, 1, 0, withHandle)
+		matches, svcErr := e.ouService.GetOrganizationUnitChildren(
+			security.WithRuntimeContext(ctx.Context), parentOUID, 1, 0, withHandle)
 		if svcErr != nil {
 			return failed(svcErr)
 		}
@@ -321,7 +328,7 @@ func (e *ouResolverExecutor) selectDirectChild(ctx *providers.NodeContext, paren
 		}
 		selectedOUID = matches.OrganizationUnits[0].ID
 	} else {
-		selectedOU, svcErr := e.ouService.GetOrganizationUnit(ctx.Context, selection)
+		selectedOU, svcErr := e.ouService.GetOrganizationUnit(security.WithRuntimeContext(ctx.Context), selection)
 		if svcErr != nil {
 			if svcErr.Type == tidcommon.ClientErrorType {
 				return askAgain(&ErrInvalidOU)
@@ -388,7 +395,7 @@ func (e *ouResolverExecutor) resolveFromPromptAll(ctx *providers.NodeContext,
 
 	// If the user already provided an OU selection, validate and accept it.
 	if selectedOUID, ok := ctx.UserInputs[ouIDKey]; ok && selectedOUID != "" {
-		exists, svcErr := e.ouService.IsOrganizationUnitExists(ctx.Context, selectedOUID)
+		exists, svcErr := e.ouService.IsOrganizationUnitExists(security.WithRuntimeContext(ctx.Context), selectedOUID)
 		if svcErr != nil {
 			return nil, errors.New("failed to validate selected organization unit: " + svcErr.Error.DefaultValue)
 		}
@@ -430,7 +437,7 @@ func (e *ouResolverExecutor) eligibleOUs(ctx *providers.NodeContext) ([]string, 
 	}
 	// A signed-in user the OU provider cannot list OUs for, such as one the entity store does not hold, picks as
 	// before sign-in.
-	eligible, svcErr := e.ouService.GetEligibleOUs(ctx.Context)
+	eligible, svcErr := e.ouService.GetEligibleOUs(security.WithRuntimeContext(ctx.Context))
 	if svcErr != nil {
 		if svcErr.Type == tidcommon.ClientErrorType {
 			return nil, false, nil
@@ -528,7 +535,7 @@ func (e *ouResolverExecutor) withinParentOU(ctx *providers.NodeContext, ouIDs []
 			}
 			below = ou.Parent == parentOUID
 		} else {
-			isDescendant, svcErr := e.ouService.IsParent(ctx.Context, parentOUID, ouID)
+			isDescendant, svcErr := e.ouService.IsParent(security.WithRuntimeContext(ctx.Context), parentOUID, ouID)
 			if svcErr != nil {
 				return nil, errors.New("failed to check organization unit hierarchy: " + svcErr.Error.DefaultValue)
 			}
@@ -582,7 +589,7 @@ func (e *ouResolverExecutor) readOU(ctx context.Context, ouID string,
 	if ou, ok := read[ouID]; ok {
 		return ou, nil
 	}
-	ou, svcErr := e.ouService.GetOrganizationUnit(ctx, ouID)
+	ou, svcErr := e.ouService.GetOrganizationUnit(security.WithRuntimeContext(ctx), ouID)
 	if svcErr != nil {
 		return providers.OrganizationUnit{},
 			errors.New("failed to read organization unit: " + svcErr.Error.DefaultValue)

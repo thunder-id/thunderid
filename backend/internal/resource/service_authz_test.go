@@ -206,7 +206,9 @@ func (s *ResourceAuthzTestSuite) TestUpdateResourceServer_MoveToOtherOU() {
 	s.store.AssertNotCalled(s.T(), "UpdateResourceServer", mock.Anything, mock.Anything, mock.Anything)
 }
 
+// Deleting an action is authorized as updating its resource server; reading the action needs no view check.
 func (s *ResourceAuthzTestSuite) TestValidateDeleteAction_ReadsActionWithoutViewCheck() {
+	expectOwnOUOnly(s.authz, security.ActionUpdateResourceServer)
 	s.storedResourceServer(authzOwnOU)
 	s.store.On("IsResourceServerDeclarative", authzRSID).Return(false)
 	s.store.On("GetAction", mock.Anything, "act-1", authzRSID, (*string)(nil)).
@@ -216,5 +218,5 @@ func (s *ResourceAuthzTestSuite) TestValidateDeleteAction_ReadsActionWithoutView
 	s.Require().Nil(svcErr)
 	s.Require().Len(target.Scopes, 1)
 	s.Equal("orders:read", target.Scopes[0].Scope)
-	s.authz.AssertNotCalled(s.T(), "IsActionAllowed", mock.Anything, mock.Anything, mock.Anything)
+	s.authz.AssertNotCalled(s.T(), "IsActionAllowed", mock.Anything, security.ActionReadResourceServer, mock.Anything)
 }

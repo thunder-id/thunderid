@@ -18,6 +18,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/cert"
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	i18nmgt "github.com/thunder-id/thunderid/internal/system/i18n/mgt"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/tests/mocks/applicationmock"
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
 	i18nmock "github.com/thunder-id/thunderid/tests/mocks/i18n/mgtmock"
@@ -713,7 +714,7 @@ func (s *DCRServiceTestSuite) TestRegisterClient_LocalizedVariantsWriteFailure()
 	).Return(i18nErr)
 	mockI18n.On("DeleteTranslationsByKey", mock.Anything, application.AppI18nNamespace(), mock.Anything).
 		Return((*tidcommon.ServiceError)(nil))
-	s.mockAppService.On("DeleteApplication", mock.Anything, "app-id").
+	s.mockAppService.On("DeleteApplication", mock.MatchedBy(security.IsRuntimeContext), "app-id").
 		Return((*tidcommon.ServiceError)(nil))
 
 	response, err := svc.RegisterClient(context.Background(), request)
@@ -757,7 +758,7 @@ func (s *DCRServiceTestSuite) TestRegisterClient_InvalidLocalizedURI() {
 	// URI validation fails before any i18n writes; compensation still runs.
 	mockI18n.On("DeleteTranslationsByKey", mock.Anything, application.AppI18nNamespace(), mock.Anything).
 		Return((*tidcommon.ServiceError)(nil))
-	s.mockAppService.On("DeleteApplication", mock.Anything, "app-id").
+	s.mockAppService.On("DeleteApplication", mock.MatchedBy(security.IsRuntimeContext), "app-id").
 		Return((*tidcommon.ServiceError)(nil))
 
 	response, err := svc.RegisterClient(context.Background(), request)
@@ -888,7 +889,7 @@ func (s *DCRServiceTestSuite) TestRegisterClient_LocalizedVariantsWriteFailure_C
 	).Return(i18nClientErr)
 	mockI18n.On("DeleteTranslationsByKey", mock.Anything, application.AppI18nNamespace(), mock.Anything).
 		Return((*tidcommon.ServiceError)(nil))
-	s.mockAppService.On("DeleteApplication", mock.Anything, "app-id").
+	s.mockAppService.On("DeleteApplication", mock.MatchedBy(security.IsRuntimeContext), "app-id").
 		Return((*tidcommon.ServiceError)(nil))
 
 	response, err := svc.RegisterClient(context.Background(), request)

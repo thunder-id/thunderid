@@ -21,6 +21,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
 	"github.com/thunder-id/thunderid/internal/system/filter"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
 
@@ -475,14 +476,14 @@ func (ah *applicationHandler) handleError(ctx context.Context, w http.ResponseWr
 	statusCode := http.StatusInternalServerError
 	if svcErr.Type == tidcommon.ClientErrorType {
 		switch svcErr.Code {
+		case tidcommon.ErrorUnauthorized.Code, sysauthz.ErrorGrantNotPermitted.Code:
+			statusCode = http.StatusForbidden
 		case ErrorApplicationNotFound.Code, ErrorSharingPolicyNotFound.Code,
 			ErrorApplicationNotSharedToOU.Code:
 			statusCode = http.StatusNotFound
 		case ErrorSharingPolicyExists.Code, ErrorSharingPolicyVersionMismatch.Code:
 			// Both are conflicts with state the caller has not seen, not malformed requests.
 			statusCode = http.StatusConflict
-		case tidcommon.ErrorUnauthorized.Code:
-			statusCode = http.StatusForbidden
 		default:
 			statusCode = http.StatusBadRequest
 		}

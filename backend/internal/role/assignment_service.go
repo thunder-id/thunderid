@@ -739,6 +739,13 @@ func (as *roleAssignmentService) requireAssignableInOU(
 func (as *roleAssignmentService) ListAssignableRoles(
 	ctx context.Context, ouID string,
 ) ([]Role, *tidcommon.ServiceError) {
+	// A caller who may not change role assignments in the unit may assign none there.
+	if svcErr := checkRoleAccess(ctx, as.authzService, as.logger, security.ActionUpdateRole, ouID); svcErr != nil {
+		if svcErr.Type == tidcommon.ServerErrorType {
+			return nil, svcErr
+		}
+		return nil, nil
+	}
 	ownedCount, err := as.roleStore.GetRoleListCountByOUID(ctx, ouID)
 	if err != nil {
 		return nil, as.listError(ctx, ouID, err)

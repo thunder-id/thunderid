@@ -74,6 +74,14 @@ func (r *EffectivePermissionResolver) ResolveForEntity(
 	return permissions, nil
 }
 
+// GetEntityPermissions returns the permissions an entity holds now, directly and through its groups,
+// keyed by resource server ID.
+func (r *EffectivePermissionResolver) GetEntityPermissions(
+	ctx context.Context, entityID string,
+) (map[string][]string, error) {
+	return r.ResolveForEntity(ctx, entityID)
+}
+
 // ResolveForGroup returns every permission that membership in a group confers, including the roles
 // its ancestors carry. Omitting ancestors would let a caller join a harmless group nested inside a
 // privileged one.

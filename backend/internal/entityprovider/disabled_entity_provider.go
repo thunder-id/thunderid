@@ -51,15 +51,6 @@ func (p *disabledEntityProvider) GetEntityProfile(
 	return nil, errNotImplemented
 }
 
-func (p *disabledEntityProvider) UpdateEntity(_ context.Context, _ string,
-	_ *providers.Entity) (*providers.Entity, *EntityProviderError) {
-	return nil, errNotImplemented
-}
-
-func (p *disabledEntityProvider) DeleteEntity(_ context.Context, _ string) *EntityProviderError {
-	return errNotImplemented
-}
-
 func (p *disabledEntityProvider) UpdateCredentials(_ context.Context, _ string,
 	_ json.RawMessage) *EntityProviderError {
 	return errNotImplemented

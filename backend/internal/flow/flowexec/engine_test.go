@@ -2974,6 +2974,56 @@ func (s *EngineTestSuite) TestCalledSelfFlowHasNoBoundSubject() {
 	s.Empty(ctx.boundSubject)
 }
 
+// A flow running with the system's authority cannot call a flow that acts for its caller, while one acting for
+// its caller may call a flow of either kind.
+func (s *EngineTestSuite) TestCallTargetMustNotActForTheCallerOfASystemAuthorityFlow() {
+	for _, tc := range []struct {
+		name       string
+		rootType   providers.FlowType
+		calleeType providers.FlowType
+		refused    bool
+	}{
+		{"registration calls administration", providers.FlowTypeRegistration, providers.FlowTypeAdministration, true},
+		{"authentication calls onboarding", providers.FlowTypeAuthentication, providers.FlowTypeUserOnboarding, true},
+		{"system calls invitation", providers.FlowTypeSystem, providers.FlowTypeInvitation, true},
+		{"administration calls authentication", providers.FlowTypeAdministration, providers.FlowTypeAuthentication,
+			false},
+		{"authentication calls authentication", providers.FlowTypeAuthentication, providers.FlowTypeAuthentication,
+			false},
+	} {
+		s.Run(tc.name, func() {
+			t := s.T()
+			callNode := coremock.NewCallNodeInterfaceMock(t)
+			flowProvider := NewFlowProviderMock(t)
+			graphBuilder := NewGraphBuilderInterfaceMock(t)
+			flow := &providers.CompleteFlowDefinition{ID: "callee-flow", FlowType: tc.calleeType}
+			flowProvider.On("GetFlow", mock.Anything, "callee-flow").Return(flow, nil)
+			if !tc.refused {
+				calleeGraph := coremock.NewGraphInterfaceMock(t)
+				callNode.On("GetID").Return("call")
+				graphBuilder.On("GetGraph", mock.Anything, flow).Return(calleeGraph, nil)
+				calleeGraph.On("GetType").Return(tc.calleeType).Maybe()
+				calleeGraph.On("GetStartNode").Return(coremock.NewNodeInterfaceMock(t), nil)
+			}
+			engine := &flowEngine{logger: log.GetLogger(), flowProvider: flowProvider, graphBuilder: graphBuilder}
+			ctx := &EngineContext{Context: context.Background(), Graph: coremock.NewGraphInterfaceMock(t),
+				CurrentNode: callNode, FlowType: tc.rootType}
+
+			_, svcErr := engine.handleCallResponse(ctx, &common.NodeResponse{
+				Status: common.NodeStatusCall, CallTargetFlowID: "callee-flow",
+			}, log.GetLogger())
+
+			if tc.refused {
+				s.Require().NotNil(svcErr)
+				s.Equal(ErrorCallTargetNotPermitted.Code, svcErr.Code)
+				graphBuilder.AssertNotCalled(t, "GetGraph", mock.Anything, mock.Anything)
+				return
+			}
+			s.Nil(svcErr)
+		})
+	}
+}
+
 func (s *EngineTestSuite) TestBoundSubjectSurvivesCallAndReturn() {
 	t := s.T()
 	callerGraph := coremock.NewGraphInterfaceMock(t)

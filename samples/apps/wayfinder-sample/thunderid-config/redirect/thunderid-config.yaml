@@ -564,7 +564,7 @@ nodes:
   - id: permission_validator
     type: TASK_EXECUTION
     properties:
-      requiredScopes: ["system"]
+      requiredScopes: ["system", "org"]
     executor:
       name: PermissionValidator
     onSuccess: user_type_resolver

@@ -549,4 +549,11 @@ func (s *SecurityContextTestSuite) TestWithRecordedCaller() {
 	s.Equal("ou-a", GetOUID(ctx))
 	s.Equal([]string{"system:user:view"}, GetPermissions(ctx))
 	s.False(IsRuntimeContext(ctx))
+	s.True(IsRecordedCaller(ctx))
+}
+
+func (s *SecurityContextTestSuite) TestIsRecordedCaller_FalseForAPresentedCredential() {
+	s.False(IsRecordedCaller(context.Background()))
+	s.False(IsRecordedCaller(withSecurityContext(context.Background(),
+		newSecurityContext("admin-1", "ou-a", "token", []string{"system"}, nil))))
 }

@@ -2054,8 +2054,8 @@ nodes:
   type: TASK_EXECUTION
   properties:
     requiredScopes:
-    - system:user
-    - org:user
+    - system
+    - org
   executor:
     name: PermissionValidator
   onSuccess: user_type_resolver
@@ -2644,6 +2644,10 @@ nodes:
       y: 200
 - id: permission_validator
   type: TASK_EXECUTION
+  properties:
+    requiredScopes:
+    - system:app:update
+    - org
   executor:
     name: PermissionValidator
   onSuccess: validate_secret_regeneration
@@ -2735,6 +2739,10 @@ nodes:
       y: 1131
 - id: permission_validator
   type: TASK_EXECUTION
+  properties:
+    requiredScopes:
+    - system:agent:create
+    - org:agent:create
   executor:
     name: PermissionValidator
   onSuccess: agent_type_resolution
@@ -6806,8 +6814,8 @@ nodes:
   type: TASK_EXECUTION
   properties:
     requiredScopes:
-    - system:user
-    - org:user
+    - system:user:update
+    - org:user:update
   executor:
     name: PermissionValidator
   onSuccess: access_governance
@@ -6883,8 +6891,8 @@ nodes:
   type: TASK_EXECUTION
   properties:
     requiredScopes:
-    - system:agent
-    - org:agent
+    - system:agent:update
+    - org:agent:update
   executor:
     name: PermissionValidator
   onSuccess: access_governance
@@ -6940,8 +6948,8 @@ nodes:
   type: TASK_EXECUTION
   properties:
     requiredScopes:
-    - system:user
-    - org:user
+    - system:user:update
+    - org:user:update
   executor:
     name: PermissionValidator
   onSuccess: pre_suspend
@@ -7053,8 +7061,8 @@ nodes:
   type: TASK_EXECUTION
   properties:
     requiredScopes:
-    - system:user
-    - org:user
+    - system:user:update
+    - org:user:update
   executor:
     name: PermissionValidator
   onSuccess: access_governance
@@ -7130,8 +7138,8 @@ nodes:
   type: TASK_EXECUTION
   properties:
     requiredScopes:
-    - system:agent
-    - org:agent
+    - system:agent:update
+    - org:agent:update
   executor:
     name: PermissionValidator
   onSuccess: pre_suspend
@@ -7243,8 +7251,8 @@ nodes:
   type: TASK_EXECUTION
   properties:
     requiredScopes:
-    - system:agent
-    - org:agent
+    - system:agent:update
+    - org:agent:update
   executor:
     name: PermissionValidator
   onSuccess: access_governance
@@ -7300,7 +7308,7 @@ nodes:
   type: TASK_EXECUTION
   properties:
     requiredScopes:
-    - system
+    - system:app:update
     - org
   executor:
     name: PermissionValidator
@@ -7413,7 +7421,7 @@ nodes:
   type: TASK_EXECUTION
   properties:
     requiredScopes:
-    - system
+    - system:app:update
     - org
   executor:
     name: PermissionValidator

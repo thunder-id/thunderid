@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/suite"
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
@@ -52,12 +53,14 @@ type UserAuthzTestSuite struct {
 	entityTypeOU2ID string
 
 	// Test role and users
-	userMgrRoleID      string
-	userMgrUserID      string
-	scopedRSID         string
-	targetUserOU1ID    string
-	deletableUserOU1ID string
-	targetUserOU2ID    string
+	userMgrRoleID       string
+	userMgrUserID       string
+	privilegedRoleID    string
+	privilegedUserOU1ID string
+	scopedRSID          string
+	targetUserOU1ID     string
+	deletableUserOU1ID  string
+	targetUserOU2ID     string
 
 	// HTTP client carrying the user-manager's org:user scoped token
 	userAdminClient *http.Client
@@ -72,6 +75,8 @@ const (
 	userMgrRoleName   = "User Admin (user-authz-test)"
 	entityTypeOU1Name = "authz-user-type-ou1"
 	entityTypeOU2Name = "authz-user-type-ou2"
+
+	scopedRSIdentifier = "https://authz-test.example.com/user"
 )
 
 var userAuthzDevelopRedirectURI = testutils.TestServerURL + "/console"
@@ -167,11 +172,10 @@ func (ts *UserAuthzTestSuite) SetupSuite() {
 	ts.targetUserOU2ID = targetOU2ID
 
 	// ---- 5. Create a custom resource server declaring the fine-grained org scopes ----
-	// This reproduces the Data Plane permissions "org:user" and
-	// "org:usertype:view" so the suite can verify resource-level enforcement when configured.
-	const scopedRSIdentifier = "https://authz-test.example.com/user"
+	// This reproduces the Data Plane permissions "org:user",
+	// "org:usertype:view", and "org:role:view" so the suite can verify resource-level enforcement when configured.
 	systemRSID, err := testutils.CreateOrgScopedResourceServer(
-		ts.userOU1ID, "Authz Test RS (user)", scopedRSIdentifier, "user", "usertype")
+		ts.userOU1ID, "Authz Test RS (user)", scopedRSIdentifier, "user", "usertype", "role")
 	ts.Require().NoError(err, "create scoped resource server")
 	ts.scopedRSID = systemRSID
 
@@ -192,6 +196,32 @@ func (ts *UserAuthzTestSuite) SetupSuite() {
 	ts.Require().NoError(err, "create user-manager role")
 	ts.userMgrRoleID = roleID
 
+	// Create a privileged user holding org:role:view (which user-manager does not hold)
+	privUserID, err := testutils.CreateUser(testutils.User{
+		Type: entityTypeOU1Name,
+		OUID: ts.userOU1ID,
+		Attributes: json.RawMessage(
+			`{"username": "authz-privileged-ou1", "password": "Privileged@123", "display_name": "Privileged User OU1"}`),
+	})
+	ts.Require().NoError(err, "create privileged user in OU1")
+	ts.privilegedUserOU1ID = privUserID
+
+	privRoleID, err := testutils.CreateRole(testutils.Role{
+		Name: "Privileged Role (user-authz-test)",
+		OUID: ts.userOU1ID,
+		Permissions: []testutils.ResourcePermissions{
+			{
+				ResourceServerID: systemRSID,
+				Permissions:      []string{"org:role:view"},
+			},
+		},
+		Assignments: []testutils.Assignment{
+			{ID: privUserID, Type: "user"},
+		},
+	})
+	ts.Require().NoError(err, "create privileged role")
+	ts.privilegedRoleID = privRoleID
+
 	// ---- 7. Obtain a scoped access token for the user-manager ----
 	tokenResp, err := ts.signIn.ObtainAccessToken(ts.userOU1ID,
 		"system org:user org:usertype:view", userMgrUsername, userMgrPassword, scopedRSIdentifier)
@@ -209,6 +239,11 @@ func (ts *UserAuthzTestSuite) TearDownSuite() {
 	if err := ts.signIn.DeleteAll(); err != nil {
 		ts.T().Logf("teardown: delete sign-in applications: %v", err)
 	}
+	if ts.privilegedRoleID != "" {
+		if err := testutils.DeleteRole(ts.privilegedRoleID); err != nil {
+			ts.T().Logf("teardown: delete privileged role: %v", err)
+		}
+	}
 	if ts.userMgrRoleID != "" {
 		if err := testutils.DeleteRole(ts.userMgrRoleID); err != nil {
 			ts.T().Logf("teardown: delete user-manager role: %v", err)
@@ -222,7 +257,7 @@ func (ts *UserAuthzTestSuite) TearDownSuite() {
 			ts.T().Errorf("teardown: delete scoped resource server: %v", err)
 		}
 	}
-	for _, id := range []string{ts.targetUserOU1ID, ts.deletableUserOU1ID, ts.userMgrUserID} {
+	for _, id := range []string{ts.privilegedUserOU1ID, ts.targetUserOU1ID, ts.deletableUserOU1ID, ts.userMgrUserID} {
 		if id != "" {
 			if err := testutils.DeleteUser(id); err != nil {
 				ts.T().Logf("teardown: delete user %s: %v", id, err)
@@ -503,6 +538,110 @@ func (ts *UserAuthzTestSuite) TestCreateUserByPathRequiresOUView() {
 				"a refused by-path create must not persist a user")
 		})
 	}
+}
+
+// TestUpdateUserCredentials_SelfSucceeds verifies that the user-manager can update their own credentials.
+func (ts *UserAuthzTestSuite) TestUpdateUserCredentials_SelfSucceeds() {
+	payload, err := json.Marshal(map[string]interface{}{
+		"credentials": map[string]interface{}{
+			"password": "NewUserMgrPassword@123",
+		},
+	})
+	ts.Require().NoError(err)
+
+	resp := ts.doUser(http.MethodPost, "/users/"+ts.userMgrUserID+"/update-credentials", payload)
+	defer resp.Body.Close()
+
+	ts.Require().Equal(http.StatusNoContent, resp.StatusCode,
+		"user-manager must be able to update their own credentials")
+
+	// Replacing the password revokes the user-manager's tokens, so sign in again for the tests that follow. The
+	// revocation cutoff is sub-second while a grant's issue time has second granularity and the comparison is at
+	// or before.
+	time.Sleep(1100 * time.Millisecond)
+	tokenResp, err := ts.signIn.ObtainAccessToken(ts.userOU1ID,
+		"system org:user org:usertype:view", userMgrUsername, "NewUserMgrPassword@123", scopedRSIdentifier)
+	ts.Require().NoError(err, "obtain user-manager token with the new password")
+	ts.userAdminClient = testutils.GetHTTPClientWithToken(tokenResp.AccessToken)
+}
+
+// TestUpdateUserCredentials_UnprivilegedUserSucceeds verifies that the user-manager can update
+// credentials of an unprivileged user whose conferred permissions they cover.
+func (ts *UserAuthzTestSuite) TestUpdateUserCredentials_UnprivilegedUserSucceeds() {
+	payload, err := json.Marshal(map[string]interface{}{
+		"credentials": map[string]interface{}{
+			"password": "NewTargetPassword@123",
+		},
+	})
+	ts.Require().NoError(err)
+
+	resp := ts.doUser(http.MethodPost, "/users/"+ts.targetUserOU1ID+"/update-credentials", payload)
+	defer resp.Body.Close()
+
+	ts.Equal(http.StatusNoContent, resp.StatusCode,
+		"user-manager must be able to update credentials of an unprivileged user in the same OU")
+}
+
+// TestUpdateUserCredentials_PrivilegedUserRefused verifies that the user-manager cannot update
+// credentials of a more privileged user who holds permissions the caller does not hold.
+func (ts *UserAuthzTestSuite) TestUpdateUserCredentials_PrivilegedUserRefused() {
+	payload, err := json.Marshal(map[string]interface{}{
+		"credentials": map[string]interface{}{
+			"password": "HackedPassword@123",
+		},
+	})
+	ts.Require().NoError(err)
+
+	resp := ts.doUser(http.MethodPost, "/users/"+ts.privilegedUserOU1ID+"/update-credentials", payload)
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	ts.Require().NoError(err)
+	ts.Require().Equal(http.StatusForbidden, resp.StatusCode, "error body: %s", string(body))
+
+	var errResp testutils.ErrorResponse
+	ts.Require().NoError(json.Unmarshal(body, &errResp), "error body: %s", string(body))
+	ts.Equal("SAZ-4030", errResp.Code)
+}
+
+// TestUpdateUser_PrivilegedUserRefused verifies that the user-manager cannot update the attributes of
+// a more privileged user, since attributes such as an email lead to account recovery.
+func (ts *UserAuthzTestSuite) TestUpdateUser_PrivilegedUserRefused() {
+	payload, err := json.Marshal(map[string]interface{}{
+		"type": entityTypeOU1Name,
+		"ouId": ts.userOU1ID,
+		"attributes": map[string]interface{}{
+			"username":     "authz-privileged-ou1",
+			"display_name": "Should Not Update",
+		},
+	})
+	ts.Require().NoError(err)
+
+	resp := ts.doUser(http.MethodPut, "/users/"+ts.privilegedUserOU1ID, payload)
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	ts.Require().NoError(err)
+	ts.Require().Equal(http.StatusForbidden, resp.StatusCode, "error body: %s", string(body))
+
+	var errResp testutils.ErrorResponse
+	ts.Require().NoError(json.Unmarshal(body, &errResp), "error body: %s", string(body))
+	ts.Equal("SAZ-4030", errResp.Code)
+}
+
+// TestDeleteUser_PrivilegedUserRefused verifies that the user-manager cannot delete a more
+// privileged user who holds permissions the caller does not hold.
+func (ts *UserAuthzTestSuite) TestDeleteUser_PrivilegedUserRefused() {
+	resp := ts.doUser(http.MethodDelete, "/users/"+ts.privilegedUserOU1ID, nil)
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	ts.Require().NoError(err)
+	ts.Require().Equal(http.StatusForbidden, resp.StatusCode, "error body: %s", string(body))
+
+	var errResp testutils.ErrorResponse
+	ts.Require().NoError(json.Unmarshal(body, &errResp), "error body: %s", string(body))
+	ts.Equal("SAZ-4030", errResp.Code)
 }
 
 // countUsersByUsername counts users with the given username using the unrestricted admin client, so

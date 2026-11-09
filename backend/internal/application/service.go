@@ -660,6 +660,11 @@ func (as *applicationService) updateApplication(ctx context.Context, appID strin
 	if svcErr := as.checkApplicationDeclarative(ctx, appID); svcErr != nil {
 		return nil, svcErr
 	}
+	// An update can set the client secret, switch the authentication method or replace the
+	// certificate, so it is control over the application.
+	if svcErr := as.authzService.CanControlEntity(ctx, appID); svcErr != nil {
+		return nil, svcErr
+	}
 	existingApp, inboundAuthConfig, svcErr := as.validateApplicationForUpdate(ctx, appID, app)
 
 	if svcErr != nil {
@@ -917,6 +922,9 @@ func (as *applicationService) deleteApplication(ctx context.Context, appID strin
 		if svcErr := as.checkApplicationDeclarative(ctx, appID); svcErr != nil {
 			return svcErr
 		}
+		if svcErr := as.authzService.CanControlEntity(ctx, appID); svcErr != nil {
+			return svcErr
+		}
 		// Revokes what the application issued before anything of it is removed.
 		var svcErr *tidcommon.ServiceError
 		if shared, svcErr = as.runSystemFlow(ctx, systemFlowApplicationDeletePre, inputs, nil); svcErr != nil {
@@ -1025,7 +1033,13 @@ func (as *applicationService) ValidateDeleteApplication(ctx context.Context, app
 	if svcErr != nil {
 		return nil, svcErr
 	}
+	if svcErr := as.checkApplicationAccess(ctx, security.ActionDeleteApplication, existing.OUID); svcErr != nil {
+		return nil, svcErr
+	}
 	if svcErr := as.checkApplicationDeclarative(ctx, appID); svcErr != nil {
+		return nil, svcErr
+	}
+	if svcErr := as.authzService.CanControlEntity(ctx, appID); svcErr != nil {
 		return nil, svcErr
 	}
 	if as.dependencyRegistry == nil {
@@ -1089,7 +1103,13 @@ func (as *applicationService) ValidateCredentialAction(
 	if svcErr != nil {
 		return nil, svcErr
 	}
+	if svcErr := as.checkApplicationAccess(ctx, security.ActionUpdateApplication, existing.OUID); svcErr != nil {
+		return nil, svcErr
+	}
 	if svcErr := as.checkApplicationDeclarative(ctx, appID); svcErr != nil {
+		return nil, svcErr
+	}
+	if svcErr := as.authzService.CanControlEntity(ctx, appID); svcErr != nil {
 		return nil, svcErr
 	}
 

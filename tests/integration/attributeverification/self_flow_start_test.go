@@ -274,7 +274,8 @@ func (ts *SelfFlowStartTestSuite) TestAnApplicationIDIsIgnored() {
 }
 
 // A self flow cannot be started by its flow ID: an administrator is told the flow is not
-// permitted there, and any other caller that they are not authenticated for it.
+// permitted there, a user without a system permission that they lack one, and a caller without a
+// token that they are not authenticated for it.
 func (ts *SelfFlowStartTestSuite) TestAStartByFlowIDIsRefused() {
 	user := ts.fixture.newUser(ts.T(), "by_id")
 	flowID, err := testutils.GetFlowIDByHandle(verificationFlowHandle, selfFlowType)
@@ -286,7 +287,7 @@ func (ts *SelfFlowStartTestSuite) TestAStartByFlowIDIsRefused() {
 		code   string
 	}{
 		"administrator": {adminToken(ts.T()), http.StatusForbidden, errCodeFlowIDNotPermitted},
-		"user":          {ts.fixture.token(ts.T(), user), http.StatusUnauthorized, errCodeAuthenticationRequired},
+		"user":          {ts.fixture.token(ts.T(), user), http.StatusForbidden, errCodeAdministrationPermission},
 		"no token":      {"", http.StatusUnauthorized, errCodeAuthenticationRequired},
 	} {
 		ts.Run(name, func() {

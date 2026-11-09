@@ -1282,7 +1282,9 @@ func (p *provisioningExecutor) entityTypeOUID(ctx *providers.NodeContext, catego
 	if p.entityTypeService == nil {
 		return "", errors.New("entity type service is not configured")
 	}
-	entityType, svcErr := p.entityTypeService.GetEntityTypeByHandle(ctx.Context, category, handle)
+	// Reading the type grants nothing; the entity provisioned into its unit is authorized on its own.
+	entityType, svcErr := p.entityTypeService.GetEntityTypeByHandle(
+		security.WithRuntimeContext(ctx.Context), category, handle)
 	if svcErr != nil {
 		return "", fmt.Errorf("failed to retrieve entity type %q in category %q: %s",
 			handle, category, svcErr.Error.DefaultValue)

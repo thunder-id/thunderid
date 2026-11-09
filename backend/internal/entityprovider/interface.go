@@ -29,14 +29,6 @@ type EntityProviderInterface interface {
 	// Use it whenever the caller does not need the entity's status.
 	GetEntityProfile(ctx context.Context, entityID string) (*providers.Entity, *EntityProviderError)
 
-	// UpdateEntity updates an existing entity's core fields. The entity's state is not written.
-	UpdateEntity(
-		ctx context.Context, entityID string, entity *providers.Entity,
-	) (*providers.Entity, *EntityProviderError)
-
-	// DeleteEntity deletes an entity by ID. Cascades to identifiers.
-	DeleteEntity(ctx context.Context, entityID string) *EntityProviderError
-
 	// UpdateCredentials updates schema-defined credentials for an entity.
 	UpdateCredentials(ctx context.Context, entityID string,
 		credentials json.RawMessage) *EntityProviderError

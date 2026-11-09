@@ -1207,7 +1207,7 @@ spec:
               x: 305
               y: 515
           properties:
-            requiredScopes: ["system:user"]
+            requiredScopes: ["system", "org"]
           executor:
             name: PermissionValidator
           onSuccess: user_type_resolver

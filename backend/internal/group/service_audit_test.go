@@ -365,6 +365,7 @@ func (s *GroupServiceAuditTestSuite) TestUpdateAndDeleteGroup_PublishOneEventPer
 			name: "the group is deleted", call: deleteGroup,
 			arrange: func() {
 				existing(true)()
+				s.expectGrantChecks(nil, 1)
 				s.store.On("DeleteGroup", mock.Anything, testAuditGroupID).Return(nil).Once()
 			},
 			event: audit.EventGroupDelete, action: audit.ActionDelete, outcome: audit.OutcomeSucceeded,

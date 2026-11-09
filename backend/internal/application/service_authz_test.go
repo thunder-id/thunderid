@@ -69,6 +69,7 @@ func TestApplicationAuthzTestSuite(t *testing.T) {
 
 func (s *ApplicationAuthzTestSuite) SetupTest() {
 	s.authz = sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(s.T())
+	s.authz.On("CanControlEntity", mock.Anything, mock.Anything).Return(nil).Maybe()
 	s.inbound = inboundclientmock.NewInboundClientServiceInterfaceMock(s.T())
 	s.ous = oumock.NewOrganizationUnitServiceInterfaceMock(s.T())
 	s.entities = entitymock.NewEntityServiceInterfaceMock(s.T())
