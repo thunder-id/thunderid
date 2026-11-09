@@ -31,11 +31,10 @@ paths:
         - Roles
       summary: List roles
       description: |
-        Lists every role in the deployment. A caller whose permission is limited to an organization unit
-        lists the roles that unit owns instead. A `filter` naming an organization unit lists the roles that unit
-        owns, followed by the roles shared with it. Each role says whether the listed unit owns it. For a
-        unit whose roles the caller may not list, it lists the roles shared with the unit that the caller
-        can read, as read only.
+        Lists every role in the deployment. A `filter` naming an organization unit lists the roles that unit
+        owns, followed by the roles shared with it. A caller whose permission is limited to an organization
+        unit lists that unit the same way without the filter. Each role says whether the listed unit owns it. A
+        filter naming a unit whose roles the caller may not list returns an empty list.
       parameters:
         - $ref: '#/components/parameters/limitQueryParam'
         - $ref: '#/components/parameters/offsetQueryParam'
@@ -331,6 +330,11 @@ paths:
         Returns role metadata with permissions list. With `ouId`, returns the role as that organization
         unit sees it: the role itself when the unit owns it, and the shared role, read under the unit,
         when the role is shared with it. A role not shared with the unit is not found.
+
+        Without `ouId`, a caller confined to one organization unit reads the role as that unit sees it:
+        a role the unit owns has `isOwnedByOU` set to true, and a role shared into the unit is read under
+        it, with the unit's `ouId` and `isOwnedByOU` set to false. A role the unit neither owns nor has
+        shared with it is forbidden. Any other caller reads the role in the organization unit that owns it.
       parameters:
         - in: path
           name: id
@@ -433,6 +437,9 @@ paths:
         A shared organization unit manages its own assignments of the role through
         `/roles/{id}/assignments`. Any other organization unit is somewhere to move the role to, which
         is refused while the role has sharing policies or assignments.
+
+        A caller confined to an organization unit the role is shared into cannot update the role at all:
+        such an update is refused with ROL-1045 and status 403.
 
         An update that drops a permission revokes it from the role's holders' tokens first. When the
         server reads roles from both files and the database and the role has more assignments than it
@@ -618,14 +625,27 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-              example:
-                code: "SAZ-4030"
-                message:
-                  key: "error.sysauthz.grant_not_permitted"
-                  defaultValue: "Insufficient privileges to grant these permissions"
-                description:
-                  key: "error.sysauthz.grant_not_permitted_description"
-                  defaultValue: "The operation would grant permissions that the caller does not hold"
+              examples:
+                grant-not-permitted:
+                  summary: Update grants permissions the caller does not hold
+                  value:
+                    code: "SAZ-4030"
+                    message:
+                      key: "error.sysauthz.grant_not_permitted"
+                      defaultValue: "Insufficient privileges to grant these permissions"
+                    description:
+                      key: "error.sysauthz.grant_not_permitted_description"
+                      defaultValue: "The operation would grant permissions that the caller does not hold"
+                shared-role-read-only:
+                  summary: Role updated by a caller confined to an organization unit it is shared into
+                  value:
+                    code: "ROL-1045"
+                    message:
+                      key: "error.roleservice.shared_role_read_only"
+                      defaultValue: "Shared role is read only"
+                    description:
+                      key: "error.roleservice.shared_role_read_only_description"
+                      defaultValue: "Only the organization unit that owns the role can change or delete it. Manage its assignments in this organization unit instead"
         "404":
           description: Role not found
           content:
@@ -673,6 +693,9 @@ paths:
       tags:
         - Roles
       summary: Delete a role by id
+      description: |
+        Deletes the role with its assignments and sharing policies. A caller confined to an organization
+        unit the role is shared into cannot delete it: such a delete is refused with ROL-1045 and status 403.
       parameters:
         - in: path
           name: id
@@ -741,7 +764,32 @@ paths:
                       key: "error.roleservice.result_limit_exceeded_in_composite_mode_description"
                       defaultValue: "The total number of records exceeds the maximum limit in composite mode"
         "403":
-          $ref: '#/components/responses/Forbidden'
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                unauthorized:
+                  summary: The caller may not delete roles in the role's organization unit
+                  value:
+                    code: "SSE-4030"
+                    message:
+                      key: "error.unauthorized"
+                      defaultValue: "Unauthorized"
+                    description:
+                      key: "error.unauthorized_description"
+                      defaultValue: "The caller is not authorized to perform this operation"
+                shared-role-read-only:
+                  summary: Role deleted by a caller confined to an organization unit it is shared into
+                  value:
+                    code: "ROL-1045"
+                    message:
+                      key: "error.roleservice.shared_role_read_only"
+                      defaultValue: "Shared role is read only"
+                    description:
+                      key: "error.roleservice.shared_role_read_only_description"
+                      defaultValue: "Only the organization unit that owns the role can change or delete it. Manage its assignments in this organization unit instead"
         "404":
           description: Role not found
           content:

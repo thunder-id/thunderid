@@ -181,12 +181,11 @@ func (rs *roleService) GetRoleList(
 	if err != nil || len(rest) > 0 {
 		return nil, &ErrorInvalidFilter
 	}
-	requestedOUID := ouID
 	ouID, visible, svcErr := sysauthz.ResolveListOU(ctx, rs.authzService, rs.logger, security.ActionListRoles, ouID)
 	if svcErr != nil {
 		return nil, svcErr
 	}
-	if !visible && requestedOUID == "" {
+	if !visible {
 		return &RoleList{
 			Roles:      []Role{},
 			StartIndex: offset + 1,
@@ -196,20 +195,10 @@ func (rs *roleService) GetRoleList(
 
 	var roles []Role
 	var totalCount int
-	if !visible {
-		roles, totalCount, svcErr = rs.listReadableSharedRolesInOU(ctx, requestedOUID, limit, offset)
-		if svcErr != nil {
-			return nil, svcErr
-		}
-	} else if requestedOUID != "" {
+	if ouID != "" {
+		// With a filter, or without one for a caller confined to an organization unit, the list is what that
+		// unit sees: the roles it owns, then the ones shared with it.
 		roles, totalCount, svcErr = rs.listRolesInOU(ctx, ouID, limit, offset)
-		if svcErr != nil {
-			return nil, svcErr
-		}
-	} else if ouID != "" {
-		// Without a filter, a caller confined to an organization unit lists the roles it owns, as the user
-		// list does. The ones shared into it are listed with the organization unit filter.
-		roles, totalCount, svcErr = rs.listOwnedRolesInOU(ctx, ouID, limit, offset)
 		if svcErr != nil {
 			return nil, svcErr
 		}
@@ -333,33 +322,6 @@ func (rs *roleService) resolveRoleOUHandles(ctx context.Context, roles []Role) {
 	for i := range roles {
 		roles[i].OUHandle = ouHandles[roles[i].OUID]
 	}
-}
-
-// listOwnedRolesInOU returns a page of the roles an organization unit owns, with how many it owns.
-func (rs *roleService) listOwnedRolesInOU(
-	ctx context.Context, ouID string, limit, offset int,
-) ([]Role, int, *tidcommon.ServiceError) {
-	total, err := rs.roleStore.GetRoleListCountByOUID(ctx, ouID)
-	if err != nil {
-		return nil, 0, rs.ouRoleListError(ctx, ouID, err)
-	}
-	roles, err := rs.roleStore.GetRoleListByOUID(ctx, ouID, limit, offset)
-	if err != nil {
-		return nil, 0, rs.ouRoleListError(ctx, ouID, err)
-	}
-	for i := range roles {
-		roles[i].IsOwnedByOU = true
-	}
-	return roles, total, nil
-}
-
-// ouRoleListError answers a failure to list the roles of an organization unit.
-func (rs *roleService) ouRoleListError(ctx context.Context, ouID string, err error) *tidcommon.ServiceError {
-	if errors.Is(err, errResultLimitExceededInCompositeMode) {
-		return &ResultLimitExceededInCompositeMode
-	}
-	rs.logger.Error(ctx, "Failed to list roles in organization unit", log.String("ouID", ouID), log.Error(err))
-	return &tidcommon.InternalServerError
 }
 
 // listRolesInOU lists the roles an organization unit owns, followed by the ones shared with it, and
@@ -619,6 +581,9 @@ func (rs *roleService) GetRoleInOU(ctx context.Context, id, ouID string) (
 	if ouID == "" || role.OUID == ouID {
 		if svcErr := checkRoleAccess(ctx, rs.authzService, rs.logger, security.ActionReadRole,
 			role.OUID); svcErr != nil {
+			if ouID == "" {
+				return rs.getSharedRole(ctx, id, role.OUID, svcErr)
+			}
 			return nil, svcErr
 		}
 		return role, nil
@@ -650,6 +615,36 @@ func (rs *roleService) GetRoleInOU(ctx context.Context, id, ouID string) (
 		role.OUHandle = ou.Handle
 	}
 	return role, nil
+}
+
+// getSharedRole answers a read refused in the role's owning organization unit with the role as the organization
+// unit the caller is confined to sees it, when the role is shared there, and with the refusal otherwise.
+func (rs *roleService) getSharedRole(ctx context.Context, id, ownerOUID string,
+	refusal *tidcommon.ServiceError) (*RoleWithPermissions, *tidcommon.ServiceError) {
+	ouID := sysauthz.SharedAccessOU(ctx, rs.authzService, ownerOUID, refusal)
+	if ouID == "" {
+		return nil, refusal
+	}
+	role, svcErr := rs.GetRoleInOU(ctx, id, ouID)
+	if svcErr != nil && svcErr.Code == ErrorRoleNotSharedToOU.Code {
+		return nil, refusal
+	}
+	return role, svcErr
+}
+
+// sharedRoleRefusal answers a change refused in the role's owning organization unit with ErrorSharedRoleReadOnly
+// when the role is shared into the organization unit the caller is confined to, and with the refusal otherwise.
+func (rs *roleService) sharedRoleRefusal(ctx context.Context, id, ownerOUID string,
+	refusal *tidcommon.ServiceError) *tidcommon.ServiceError {
+	ouID, svcErr := sharing.SharedIntoCallerOU(ctx, rs.authzService, rs.sharingService, rs.logger,
+		RoleSharingType, id, ownerOUID, refusal)
+	if svcErr != nil {
+		return svcErr
+	}
+	if ouID != "" {
+		return &ErrorSharedRoleReadOnly
+	}
+	return refusal
 }
 
 // GetRolesByNames retrieves roles by a list of names, keyed by name. A name may resolve to more than
@@ -747,7 +742,7 @@ func (rs *roleService) updateRoleWithPermissions(
 	}
 	if svcErr := checkRoleAccess(ctx, rs.authzService, rs.logger, security.ActionUpdateRole,
 		stored.OUID); svcErr != nil {
-		return nil, svcErr
+		return nil, rs.sharedRoleRefusal(ctx, id, stored.OUID, svcErr)
 	}
 	// An update that names no organization unit keeps the role in its own, and one that names no project
 	// keeps it in its project.
@@ -892,7 +887,7 @@ func (rs *roleService) deleteRole(ctx context.Context, id string) *tidcommon.Ser
 	}
 	if svcErr := checkRoleAccess(ctx, rs.authzService, rs.logger, security.ActionDeleteRole,
 		existing.OUID); svcErr != nil {
-		return svcErr
+		return rs.sharedRoleRefusal(ctx, id, existing.OUID, svcErr)
 	}
 
 	if svcErr := rs.authzService.CanGrantMembership(ctx, sysauthz.PrincipalTypeRole, id); svcErr != nil {
@@ -1997,41 +1992,6 @@ func (rs *roleService) revokeDroppedPermissions(ctx context.Context, id string,
 		return nil, nil, svcErr
 	}
 	return inputs, shared, nil
-}
-
-// listReadableSharedRolesInOU lists, for a caller who may not list an organization unit's roles, the
-// roles shared with it whose owning organization unit the caller may read. The organization unit that
-// shares a role chooses the roles it mandates there from these.
-func (rs *roleService) listReadableSharedRolesInOU(
-	ctx context.Context, ouID string, limit, offset int,
-) ([]Role, int, *tidcommon.ServiceError) {
-	sharedIDs, svcErr := rs.sharingService.ListVisibleResourceIDs(ctx, RoleSharingType, ouID)
-	if svcErr != nil {
-		// An organization unit that does not exist has nothing shared with it.
-		if svcErr.Code == oupkg.ErrorOrganizationUnitNotFound.Code {
-			return []Role{}, 0, nil
-		}
-		return nil, 0, translateSharingError(svcErr)
-	}
-	if len(sharedIDs) == 0 {
-		return []Role{}, 0, nil
-	}
-	shared, err := rs.roleStore.GetRolesByIDs(ctx, sharedIDs)
-	if err != nil {
-		rs.logger.Error(ctx, "Failed to read the roles shared with an organization unit",
-			log.String("ouID", ouID), log.Error(err))
-		return nil, 0, &tidcommon.InternalServerError
-	}
-	readable, svcErr := rs.readableRoles(ctx, shared)
-	if svcErr != nil {
-		return nil, 0, svcErr
-	}
-	for i := range readable {
-		readable[i].OUID = ouID
-		readable[i].IsOwnedByOU = false
-		readable[i].IsReadOnly = true
-	}
-	return pageOf(readable, limit, offset), len(readable), nil
 }
 
 // readableRoles keeps the roles the caller may read.

@@ -32,8 +32,9 @@ import (
 // org:ou:view permission. It then obtains a view-only access token and
 // verifies that:
 //
-//   - Read operations on OU1 are allowed (200)
-//   - Read operations on OU2 (sibling) and OU12 (child) are denied (403)
+//   - Read operations on OU1 and OU12 (its direct child) are allowed (200)
+//   - Read operations on OU2 (sibling) are denied (403)
+//   - Listing the root OUs is denied (403): only the system permission lists them
 //   - All write operations are denied (403) because org:ou:view does not
 //     satisfy org:ou
 //
@@ -257,28 +258,32 @@ func closeBody(resp *http.Response) { _ = resp.Body.Close() }
 // Tests — READ operations (org:ou:view is sufficient)
 // ---------------------------------------------------------------------------
 
-// TestListOUs verifies that an OU-scoped admin's list result contains OU1 but
-// not OU2 (sibling root) or OU12 (child, not directly assigned).
+// TestListOUs verifies that an OU-scoped admin may not list the root OUs: an organization permission
+// reaches only the unit its token names, so only the system permission lists them.
 func (ts *OUAuthzTestSuite) TestListOUs() {
 	resp := ts.do(http.MethodGet, "/organization-units", nil)
 	defer closeBody(resp)
 
-	ts.Require().Equal(http.StatusOK, resp.StatusCode, "list OUs should succeed")
+	ts.Equal(http.StatusForbidden, resp.StatusCode, "an org:ou:view token must not list the root OUs")
+}
+
+// TestListOwnChildOUs verifies that the OU-admin lists the direct children of OU1, and not those of OU12.
+func (ts *OUAuthzTestSuite) TestListOwnChildOUs() {
+	resp := ts.do(http.MethodGet, "/organization-units/"+ts.ou1ID+"/ous", nil)
+	defer closeBody(resp)
+	ts.Require().Equal(http.StatusOK, resp.StatusCode, "list OU1's children should succeed")
 
 	var listResp OrganizationUnitListResponse
 	ts.Require().NoError(json.NewDecoder(resp.Body).Decode(&listResp))
-
 	ids := make([]string, 0, len(listResp.OrganizationUnits))
 	for _, ou := range listResp.OrganizationUnits {
 		ids = append(ids, ou.ID)
 	}
+	ts.Containsf(ids, ts.ou12ID, "OU1's children must include OU12, got IDs: %v", ids)
 
-	ts.Containsf(ids, ts.ou1ID,
-		"list must include OU1 (user's home OU), got IDs: %v", ids)
-	ts.NotContainsf(ids, ts.ou2ID,
-		"list must NOT include OU2 (sibling root), got IDs: %v", ids)
-	ts.NotContainsf(ids, ts.ou12ID,
-		"list must NOT include OU12 (child, not directly assigned), got IDs: %v", ids)
+	childResp := ts.do(http.MethodGet, "/organization-units/"+ts.ou12ID+"/ous", nil)
+	defer closeBody(childResp)
+	ts.Equal(http.StatusForbidden, childResp.StatusCode, "the children of a child OU are out of reach")
 }
 
 // TestGetOwnOUByID verifies that the OU-admin can read their own OU by ID.
@@ -298,13 +303,12 @@ func (ts *OUAuthzTestSuite) TestGetSiblingOUByID() {
 		"OU-admin should be denied access to sibling OU (OU2) by ID")
 }
 
-// TestGetChildOUByID verifies the OU-admin is denied access to OU12 by ID.
+// TestGetChildOUByID verifies the OU-admin reads OU12, a direct child of OU1, by ID.
 func (ts *OUAuthzTestSuite) TestGetChildOUByID() {
 	resp := ts.do(http.MethodGet, "/organization-units/"+ts.ou12ID, nil)
 	defer closeBody(resp)
 
-	ts.Equal(http.StatusForbidden, resp.StatusCode,
-		"OU-admin should be denied access to child OU (OU12) by ID")
+	ts.Equal(http.StatusOK, resp.StatusCode, "OU-admin should read a direct child OU (OU12) by ID")
 }
 
 // TestGetOwnOUByPath verifies the OU-admin can read their own OU by handle path.
@@ -384,12 +388,11 @@ func (ts *OUAuthzTestSuite) TestDeleteOwnOU() {
 		"view-only OU-admin must not delete own OU (org:ou required)")
 }
 
-// TestListOUsWithFilterMatch verifies that a filter applied over the restricted
-// OU set returns only the OUs that both the caller is authorized to see AND
-// match the filter expression.
+// TestListOUsWithFilterMatch verifies that a filter applied to the children of the OU-admin's own OU
+// returns the children that match the filter expression.
 func (ts *OUAuthzTestSuite) TestListOUsWithFilterMatch() {
-	// "Authz Test OU1" is the name set in SetupSuite for OU1.
-	resp := ts.doWithFilter("/organization-units", `name eq "Authz Test OU1"`)
+	// "Authz Test OU12 (child of OU1)" is the name set in SetupSuite for OU12.
+	resp := ts.doWithFilter("/organization-units/"+ts.ou1ID+"/ous", `name eq "Authz Test OU12 (child of OU1)"`)
 	defer closeBody(resp)
 
 	ts.Require().Equal(http.StatusOK, resp.StatusCode)
@@ -402,14 +405,14 @@ func (ts *OUAuthzTestSuite) TestListOUsWithFilterMatch() {
 		ids = append(ids, ou.ID)
 	}
 
-	ts.Containsf(ids, ts.ou1ID,
-		"filter matching OU1's name should return OU1; got IDs: %v", ids)
+	ts.Containsf(ids, ts.ou12ID,
+		"filter matching OU12's name should return OU12; got IDs: %v", ids)
 }
 
-// TestListOUsWithFilterNoMatch verifies that a filter that matches no authorized
-// OU returns an empty list, even though the caller is authorized to see OU1.
+// TestListOUsWithFilterNoMatch verifies that a filter that matches none of the OU-admin's child OUs
+// returns an empty list.
 func (ts *OUAuthzTestSuite) TestListOUsWithFilterNoMatch() {
-	resp := ts.doWithFilter("/organization-units", `name eq "__no_match__"`)
+	resp := ts.doWithFilter("/organization-units/"+ts.ou1ID+"/ous", `name eq "__no_match__"`)
 	defer closeBody(resp)
 
 	ts.Require().Equal(http.StatusOK, resp.StatusCode)
@@ -418,7 +421,7 @@ func (ts *OUAuthzTestSuite) TestListOUsWithFilterNoMatch() {
 	ts.Require().NoError(json.NewDecoder(resp.Body).Decode(&listResp))
 
 	ts.Equal(0, listResp.TotalResults,
-		"filter that matches no authorized OU should return empty results")
+		"filter that matches no child OU should return empty results")
 	ts.Empty(listResp.OrganizationUnits)
 }
 
@@ -441,10 +444,10 @@ func (ts *OUAuthzTestSuite) doWithFilter(path, filterExpr string) *http.Response
 	return resp
 }
 
-// TestListOUsOffsetBeyondAuthorizedSet verifies that paging past the end of the caller's authorized
-// organization units returns an empty page while still reporting the true total.
+// TestListOUsOffsetBeyondAuthorizedSet verifies that paging past the end of the OU-admin's child OUs
+// returns an empty page while still reporting the true total.
 func (ts *OUAuthzTestSuite) TestListOUsOffsetBeyondAuthorizedSet() {
-	resp := ts.do(http.MethodGet, "/organization-units?limit=10&offset=1000", nil)
+	resp := ts.do(http.MethodGet, "/organization-units/"+ts.ou1ID+"/ous?limit=10&offset=1000", nil)
 	defer closeBody(resp)
 
 	ts.Require().Equal(http.StatusOK, resp.StatusCode)
@@ -453,10 +456,10 @@ func (ts *OUAuthzTestSuite) TestListOUsOffsetBeyondAuthorizedSet() {
 	ts.Require().NoError(json.NewDecoder(resp.Body).Decode(&listResp))
 
 	ts.Empty(listResp.OrganizationUnits,
-		"an offset past the authorized set must return no organization units")
+		"an offset past the child OUs must return no organization units")
 	ts.Equal(0, listResp.Count, "count must be zero for an empty page")
 	ts.GreaterOrEqual(listResp.TotalResults, 1,
-		"total results must still report the authorized set size")
+		"total results must still report the number of child OUs")
 }
 
 // ---------------------------------------------------------------------------

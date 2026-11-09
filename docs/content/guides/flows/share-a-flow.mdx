@@ -29,13 +29,13 @@ A connection that a variable of a flow names cannot be deleted, as a connection 
 
 ## Name the Organization Unit
 
-A call that depends on an organization unit names it. <ProductName /> takes nothing from the token of the caller, and does not yet limit which organization unit a caller may name.
+A call that depends on an organization unit names it. A caller whose token is confined to one organization unit acts in that unit: the list of flows and the read of one flow, described below, take the unit from the token when the request names none, and a request that names another unit lists nothing or is refused.
 
 | Call | Where `ouId` goes |
 |---|---|
 | `POST /flows` | Required in the body, as for connections, unless the body gives `projectId`. See [Scope a Flow to a Project](../flow-concepts#scope-a-flow-to-a-project). |
-| `GET /flows` | The filter `filter=ouId eq "<id>"`. |
-| `GET /flows/{flowId}` | The query parameter `ouId`. Without it, the whole definition is returned. With it, the flow is as that organization unit sees it. |
+| `GET /flows` | The filter `filter=ouId eq "<id>"`. Without the filter, a caller whose token is confined to an organization unit gets that unit's list: the flows it owns, then the ones shared with it. |
+| `GET /flows/{flowId}` | The query parameter `ouId`. With it, the flow is as that organization unit sees it. Without it, the whole definition is returned. A caller whose token is confined to an organization unit the flow is shared with gets the flow as that unit sees it, as if it named the unit. |
 | `GET /flows/{flowId}/variables`, `GET /flows/{flowId}/overlay-rules` | Required query parameter. |
 | `PUT /flows/{flowId}/variables` | Required property of the body. |
 
@@ -47,13 +47,13 @@ A shared flow shows its variables and nothing more. The nodes, interceptors, lay
 |---|---|---|
 | `GET /flows` | Entry with `isOwnedByOU: true` | Same entry, with `isOwnedByOU: false` and `isReadOnly: true` |
 | `GET /flows/{flowId}` | Whole definition | Only the variables that apply to it, resolved for it |
-| `PUT /flows/{flowId}` | Allowed | `403` |
+| `PUT` and `DELETE /flows/{flowId}` | Allowed | `403` with the code `FLM-1039` |
 | `/versions`, `/restore`, and `/usages` with `ouId` | Allowed | `404` for a read, `403` for a write |
 | `GET` and `PUT /flows/{flowId}/variables` | Allowed | Allowed, within the terms |
 | `/sharing-policies` | Allowed | Only to reshare what it may reshare |
 | `GET /flows/{flowId}/overlay-rules` | Allowed | For its own organization unit |
 
-When a unit reads a flow that was shared with it, the `ouId` in the response is the unit that made the request, not the owner. This applies to `GET /flows` with the filter `ouId eq "<id>"` and to `GET /flows/{flowId}?ouId=<id>`. In both, `isOwnedByOU: false` marks the flow as shared. 
+When a unit reads a flow that was shared with it, the `ouId` in the response is the unit that made the request, not the owner. This applies to `GET /flows` with the filter `ouId eq "<id>"`, to `GET /flows/{flowId}?ouId=<id>`, and to `GET /flows/{flowId}` from a caller whose token is confined to the unit. In each, `isOwnedByOU: false` marks the flow as shared. 
 
 ## Choose the Right Read
 

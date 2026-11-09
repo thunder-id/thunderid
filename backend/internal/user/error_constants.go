@@ -518,6 +518,20 @@ var (
 			DefaultValue: "A user in a project must be in the system organization unit",
 		},
 	}
+	// ErrorSharedUserReadOnly is the error returned when an organization unit a user is shared into tries to
+	// change or delete the user.
+	ErrorSharedUserReadOnly = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "USR-1045",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.userservice.shared_user_read_only",
+			DefaultValue: "Shared user is read only",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.userservice.shared_user_read_only_description",
+			DefaultValue: "Only the organization unit that owns the user can change or delete it",
+		},
+	}
 )
 
 // Error variables

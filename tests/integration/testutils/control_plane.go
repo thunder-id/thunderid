@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/thunder-id/thunderid/tests/integration/mockservices"
@@ -62,6 +63,16 @@ const (
 	// OtherResource is a resource the trusted issuer issues tokens for that is not this Control Plane.
 	OtherResource = "https://other-resource.example.com"
 )
+
+// ControlPlaneChildScopes are the child permissions of system the trusted issuer signs a management token for,
+// each in the environment variable ControlPlaneScopedTokenEnv names.
+var ControlPlaneChildScopes = []string{"system:user", "system:app", "system:role", "system:flow", "system:connection"}
+
+// ControlPlaneScopedTokenEnv returns the environment variable that carries the trusted issuer's management token
+// with exactly scope.
+func ControlPlaneScopedTokenEnv(scope string) string {
+	return "TEST_CP_TOKEN_" + strings.ToUpper(strings.ReplaceAll(scope, ":", "_"))
+}
 
 // MCPResource is the resource identifier the Control Plane's MCP server advertises, and the audience
 // a token for /mcp must name: the MCP server accepts only tokens issued for it, not for the audience

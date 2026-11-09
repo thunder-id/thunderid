@@ -209,6 +209,9 @@ func toApplicationGetResponse(ctx context.Context, appDTO *providers.Application
 		PolicyURI: appDTO.PolicyURI,
 		Contacts:  appDTO.Contacts,
 		Metadata:  appDTO.Metadata,
+
+		IsOwnedByOU: appDTO.IsOwnedByOU,
+		IsReadOnly:  appDTO.IsReadOnly,
 	}
 
 	// TODO: Need to refactor when supporting other/multiple inbound auth types.
@@ -476,7 +479,8 @@ func (ah *applicationHandler) handleError(ctx context.Context, w http.ResponseWr
 	statusCode := http.StatusInternalServerError
 	if svcErr.Type == tidcommon.ClientErrorType {
 		switch svcErr.Code {
-		case tidcommon.ErrorUnauthorized.Code, sysauthz.ErrorGrantNotPermitted.Code:
+		case tidcommon.ErrorUnauthorized.Code, sysauthz.ErrorGrantNotPermitted.Code,
+			ErrorSharedApplicationReadOnly.Code:
 			statusCode = http.StatusForbidden
 		case ErrorApplicationNotFound.Code, ErrorSharingPolicyNotFound.Code,
 			ErrorApplicationNotSharedToOU.Code:

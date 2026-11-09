@@ -365,6 +365,24 @@ curl -kL -X DELETE "https://localhost:8090/organization-units/tree/{path}" \
   -H 'Authorization: Bearer <access-token>'
 ```
 
+## Manage the Organization Units Beneath Your Own
+
+On a Data Plane, a token that holds `org` or `org:ou`, and not `system`, acts for the OU its `ouId` claim names. It manages the OUs directly beneath that OU, and nothing further:
+
+| Request | Allowed for |
+|---|---|
+| List the root OUs (`GET /organization-units`) | `system` only |
+| List child OUs (`GET /organization-units/{id}/ous`) | The token's own OU |
+| View an OU (`GET /organization-units/{id}`) | The token's own OU and its direct children |
+| Create an OU (`POST /organization-units`) | A direct child of the token's own OU |
+| Update or delete an OU | The direct children of the token's own OU |
+
+Every other OU is refused with `403 Forbidden`, including the token's own OU for an update or delete, a grandchild, a sibling and the parent. An update that moves a child under another parent, or to the root, is refused too, because a move needs the permission to create an OU beneath the new parent. `org:ou:view` allows the views and child listing only.
+
+A request by hierarchical path, such as `/organization-units/tree/{path}`, resolves to the last OU in the path and is allowed as the same request by ID is. For such a token, a path that names no OU is refused with `403 Forbidden` too, so a path does not reveal which OUs exist outside its reach. A token that holds `system` gets `404 Not Found` for it.
+
+A token that holds `system` manages every OU in the deployment. A control plane bounds no permission to an OU.
+
 ## Organization Units in Projects
 
 On the control plane, every OU except the system OU belongs to a project. The system OU, with the handle `default`, is shared by every project and belongs to none.

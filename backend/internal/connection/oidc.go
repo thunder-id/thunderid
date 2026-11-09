@@ -55,6 +55,8 @@ type oidcConnectionResponse struct {
 	IDJagEnabled          *bool    `json:"idJagEnabled,omitempty"`
 
 	AttributeConfiguration *providers.AttributeConfiguration `json:"attributeConfiguration,omitempty"`
+
+	connectionOwnership
 }
 
 func oidcToIDPDTO(req oidcConnectionRequest) (*providers.IDPDTO, error) {

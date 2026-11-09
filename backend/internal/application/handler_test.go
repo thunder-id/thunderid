@@ -1413,6 +1413,41 @@ func (suite *HandlerTestSuite) TestHandleError_ClientError() {
 	assert.Equal(suite.T(), ErrorInvalidApplicationName.Code, errResp.Code)
 }
 
+func (suite *HandlerTestSuite) TestHandleError_SharedApplicationReadOnly() {
+	handler := newApplicationHandler(NewApplicationServiceInterfaceMock(suite.T()))
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodPut, "/applications/app-1", nil)
+
+	handler.handleError(context.Background(), w, r, &ErrorSharedApplicationReadOnly)
+
+	assert.Equal(suite.T(), http.StatusForbidden, w.Code)
+	var errResp apierror.ErrorResponse
+	assert.NoError(suite.T(), json.Unmarshal(w.Body.Bytes(), &errResp))
+	assert.Equal(suite.T(), ErrorSharedApplicationReadOnly.Code, errResp.Code)
+}
+
+func (suite *HandlerTestSuite) TestHandleApplicationGetRequest_SharedApplication() {
+	mockService := NewApplicationServiceInterfaceMock(suite.T())
+	handler := newApplicationHandler(mockService)
+	mockService.On("GetApplication", mock.Anything, "app-1").Return(&providers.Application{
+		ID: "app-1", OUID: "ou-1", Name: "TestApp", IsOwnedByOU: new(false), IsReadOnly: true,
+	}, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/applications/app-1", nil)
+	req.SetPathValue("id", "app-1")
+	w := httptest.NewRecorder()
+
+	handler.HandleApplicationGetRequest(w, req)
+
+	assert.Equal(suite.T(), http.StatusOK, w.Code)
+	var response map[string]interface{}
+	assert.NoError(suite.T(), json.Unmarshal(w.Body.Bytes(), &response))
+	assert.Equal(suite.T(), "ou-1", response["ouId"])
+	assert.Equal(suite.T(), false, response["isOwnedByOU"])
+	assert.Equal(suite.T(), true, response["isReadOnly"])
+}
+
 func (suite *HandlerTestSuite) TestHandleError_NotFoundError() {
 	mockService := NewApplicationServiceInterfaceMock(suite.T())
 	handler := newApplicationHandler(mockService)

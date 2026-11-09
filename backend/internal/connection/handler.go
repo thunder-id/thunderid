@@ -65,7 +65,7 @@ func createConnection[Req any, Resp any](h *handler, w http.ResponseWriter, r *h
 }
 
 // getConnection fetches an instance of the given type and writes the encoded response.
-func getConnection[Resp any](h *handler, w http.ResponseWriter, r *http.Request,
+func getConnection[Resp any, PResp ownedByOUSetter[Resp]](h *handler, w http.ResponseWriter, r *http.Request,
 	idpType providers.IDPType, fromDTO func(providers.IDPDTO) (Resp, error)) {
 	ctx := r.Context()
 	id := r.PathValue("id")
@@ -73,7 +73,7 @@ func getConnection[Resp any](h *handler, w http.ResponseWriter, r *http.Request,
 		writeServiceError(ctx, w, &idp.ErrorInvalidIDPID)
 		return
 	}
-	dto, svcErr := h.svc.getByType(ctx, idpType, id)
+	dto, owned, svcErr := h.svc.getByType(ctx, idpType, id)
 	if svcErr != nil {
 		writeServiceError(ctx, w, svcErr)
 		return
@@ -83,6 +83,7 @@ func getConnection[Resp any](h *handler, w http.ResponseWriter, r *http.Request,
 		writeServiceError(ctx, w, &tidcommon.InternalServerError)
 		return
 	}
+	PResp(&resp).setOwnedByOU(owned)
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, resp)
 }
 
@@ -129,10 +130,10 @@ func createHandler[Req any, Resp any](h *handler, toDTO func(Req) (*providers.ID
 }
 
 // getHandler binds a vendor's type and mapper to getConnection, yielding a registerable handler.
-func getHandler[Resp any](h *handler, idpType providers.IDPType,
+func getHandler[Resp any, PResp ownedByOUSetter[Resp]](h *handler, idpType providers.IDPType,
 	fromDTO func(providers.IDPDTO) (Resp, error)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		getConnection(h, w, r, idpType, fromDTO)
+		getConnection[Resp, PResp](h, w, r, idpType, fromDTO)
 	}
 }
 
@@ -154,16 +155,23 @@ func (h *handler) listInstances(idpType providers.IDPType) http.HandlerFunc {
 			writeServiceError(ctx, w, svcErr)
 			return
 		}
-		summaries := make([]connectionInstanceSummary, 0, len(instances))
-		for _, instance := range instances {
-			summaries = append(summaries, connectionInstanceSummary{
-				ID:          instance.ID,
-				Name:        instance.Name,
-				Description: instance.Description,
-			})
-		}
-		sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, summaries)
+		sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, instanceSummaries(instances))
 	}
+}
+
+// instanceSummaries returns the per-vendor listing of the listed connections.
+func instanceSummaries(instances []connectionInstance) []connectionInstanceSummary {
+	summaries := make([]connectionInstanceSummary, 0, len(instances))
+	for _, instance := range instances {
+		summaries = append(summaries, connectionInstanceSummary{
+			ID:          instance.ID,
+			Name:        instance.Name,
+			Description: instance.Description,
+			OUID:        instance.OUID,
+			IsOwnedByOU: instance.IsOwnedByOU,
+		})
+	}
+	return summaries
 }
 
 // deleteInstance returns a handler that deletes an instance of a connection type.
@@ -285,15 +293,7 @@ func (h *handler) listAuthZENPDPConnections(w http.ResponseWriter, r *http.Reque
 		writeServiceError(ctx, w, svcErr)
 		return
 	}
-	summaries := make([]connectionInstanceSummary, 0, len(connections))
-	for _, connection := range connections {
-		summaries = append(summaries, connectionInstanceSummary{
-			ID:          connection.ID,
-			Name:        connection.Name,
-			Description: connection.Description,
-		})
-	}
-	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, summaries)
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, instanceSummaries(connections))
 }
 
 // getAuthZENPDPConnection returns an AuthZEN PDP connection by ID.
@@ -304,12 +304,14 @@ func (h *handler) getAuthZENPDPConnection(w http.ResponseWriter, r *http.Request
 		writeServiceError(ctx, w, &authzenpdp.ErrorNotFound)
 		return
 	}
-	connection, svcErr := h.svc.getAuthZENPDP(ctx, id)
+	connection, owned, svcErr := h.svc.getAuthZENPDP(ctx, id)
 	if svcErr != nil {
 		writeServiceError(ctx, w, svcErr)
 		return
 	}
-	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, authzenpdp.ToResponse(*connection))
+	resp := authzenpdp.ToResponse(*connection)
+	resp.IsOwnedByOU = new(owned)
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, resp)
 }
 
 // updateAuthZENPDPConnection updates an AuthZEN PDP connection by ID.
@@ -393,26 +395,24 @@ func (h *handler) listHTTPConnections(w http.ResponseWriter, r *http.Request) {
 		writeServiceError(ctx, w, svcErr)
 		return
 	}
-	summaries := make([]connectionInstanceSummary, 0, len(connections))
-	for _, connection := range connections {
-		summaries = append(summaries, connectionInstanceSummary{
-			ID:          connection.ID,
-			Name:        connection.Name,
-			Description: connection.Description,
-		})
-	}
-	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, summaries)
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, instanceSummaries(connections))
 }
 
 // getHTTPConnection returns an HTTP connection by ID, with its secret masked.
 func (h *handler) getHTTPConnection(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	connection, svcErr := h.svc.getHTTP(ctx, r.PathValue("id"))
+	connection, owned, svcErr := h.svc.getHTTP(ctx, r.PathValue("id"))
 	if svcErr != nil {
 		writeServiceError(ctx, w, svcErr)
 		return
 	}
-	writeHTTPConnection(ctx, w, http.StatusOK, connection)
+	resp, err := httpFromDTO(*connection)
+	if err != nil {
+		writeServiceError(ctx, w, &tidcommon.InternalServerError)
+		return
+	}
+	resp.setOwnedByOU(owned)
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, resp)
 }
 
 // updateHTTPConnection updates an HTTP connection by ID.
@@ -512,7 +512,7 @@ func createSenderConnection[Req any, Resp any](h *handler, w http.ResponseWriter
 
 // getSenderConnection fetches a sender of the given type and provider and writes the encoded
 // response.
-func getSenderConnection[Resp any](h *handler, w http.ResponseWriter, r *http.Request,
+func getSenderConnection[Resp any, PResp ownedByOUSetter[Resp]](h *handler, w http.ResponseWriter, r *http.Request,
 	senderType ncommon.NotificationSenderType, provider ncommon.NotificationProviderType,
 	fromDTO func(ncommon.NotificationSenderDTO) (Resp, error)) {
 	ctx := r.Context()
@@ -521,7 +521,7 @@ func getSenderConnection[Resp any](h *handler, w http.ResponseWriter, r *http.Re
 		writeServiceError(ctx, w, &notification.ErrorInvalidSenderID)
 		return
 	}
-	dto, svcErr := h.svc.getSenderByProvider(ctx, senderType, provider, id)
+	dto, owned, svcErr := h.svc.getSenderByProvider(ctx, senderType, provider, id)
 	if svcErr != nil {
 		writeServiceError(ctx, w, svcErr)
 		return
@@ -531,6 +531,7 @@ func getSenderConnection[Resp any](h *handler, w http.ResponseWriter, r *http.Re
 		writeServiceError(ctx, w, &tidcommon.InternalServerError)
 		return
 	}
+	PResp(&resp).setOwnedByOU(owned)
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, resp)
 }
 
@@ -580,11 +581,11 @@ func createSenderHandler[Req any, Resp any](h *handler,
 }
 
 // getSenderHandler binds a vendor's type, provider and mapper to getSenderConnection.
-func getSenderHandler[Resp any](h *handler, senderType ncommon.NotificationSenderType,
+func getSenderHandler[Resp any, PResp ownedByOUSetter[Resp]](h *handler, senderType ncommon.NotificationSenderType,
 	provider ncommon.NotificationProviderType,
 	fromDTO func(ncommon.NotificationSenderDTO) (Resp, error)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		getSenderConnection(h, w, r, senderType, provider, fromDTO)
+		getSenderConnection[Resp, PResp](h, w, r, senderType, provider, fromDTO)
 	}
 }
 
@@ -608,15 +609,7 @@ func (h *handler) listSenderInstances(senderType ncommon.NotificationSenderType,
 			writeServiceError(ctx, w, svcErr)
 			return
 		}
-		summaries := make([]connectionInstanceSummary, 0, len(instances))
-		for _, instance := range instances {
-			summaries = append(summaries, connectionInstanceSummary{
-				ID:          instance.ID,
-				Name:        instance.Name,
-				Description: instance.Description,
-			})
-		}
-		sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, summaries)
+		sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, instanceSummaries(instances))
 	}
 }
 

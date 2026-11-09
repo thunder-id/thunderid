@@ -933,6 +933,20 @@ var (
 			DefaultValue: "The application was deployed by the control plane and can only be changed there",
 		},
 	}
+	// ErrorSharedApplicationReadOnly is the error returned when an organization unit an application is shared
+	// into tries to change or delete the application.
+	ErrorSharedApplicationReadOnly = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "APP-1070",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.shared_application_read_only",
+			DefaultValue: "Shared application is read only",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.shared_application_read_only_description",
+			DefaultValue: "Only the organization unit that owns the application can change or delete it",
+		},
+	}
 )
 
 // errNilEventBus is returned when the service is initialized without the event bus it audits on.

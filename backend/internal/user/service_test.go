@@ -53,6 +53,19 @@ const (
 )
 const testOrgID = "11111111-1111-1111-1111-111111111111"
 
+// testOtherOrgID is a second organization unit, for a caller that may list several.
+const testOtherOrgID = "22222222-2222-2222-2222-222222222222"
+
+// withDeploymentBoundary lets an authorization mock answer GetBoundary as a caller that may act across the
+// deployment, which a refused action asks to find the organization unit a shared user is reached in.
+func withDeploymentBoundary(
+	authzMock *sysauthzmock.SystemAuthorizationServiceInterfaceMock,
+) *sysauthzmock.SystemAuthorizationServiceInterfaceMock {
+	authzMock.On("GetBoundary", mock.Anything).
+		Return(sysauthz.Boundary{Type: sysauthz.BoundaryTypeDeployment}).Maybe()
+	return authzMock
+}
+
 // newAllowAllAuthz returns a mock SystemAuthorizationServiceInterface that allows all actions.
 func newAllowAllAuthz(t interface {
 	mock.TestingT
@@ -1011,6 +1024,146 @@ func TestUserService_GetUser_ReturnsUser(t *testing.T) {
 	require.Nil(t, err)
 	require.Equal(t, userID, user.ID)
 	require.Equal(t, testOrgID, user.OUID)
+	require.True(t, *user.IsOwnedByOU)
+}
+
+// confinedReadAuthz is an authorization mock for a caller confined to testOrgID that may act on users there
+// and nowhere else.
+func confinedReadAuthz(t *testing.T) *sysauthzmock.SystemAuthorizationServiceInterfaceMock {
+	authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
+	authzMock.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).Return(
+		func(_ context.Context, _ security.Action, actionCtx *sysauthz.ActionContext) bool {
+			return actionCtx.OUID == testOrgID
+		}, (*tidcommon.ServiceError)(nil)).Maybe()
+	authzMock.On("GetBoundary", mock.Anything).
+		Return(sysauthz.Boundary{Type: sysauthz.BoundaryTypeOU, OUID: testOrgID}).Maybe()
+	return authzMock
+}
+
+func TestUserService_GetUser_ReadsASharedUserInTheCallersUnit(t *testing.T) {
+	userID := svcTestUserID1
+	tests := []struct {
+		name    string
+		visible bool
+		wantErr string
+	}{
+		{name: "shared into the unit", visible: true},
+		{name: "not shared into the unit", visible: false, wantErr: tidcommon.ErrorUnauthorized.Code},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			storeMock := entitymock.NewEntityServiceInterfaceMock(t)
+			storeMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
+			storeMock.On("GetEntity", mock.Anything, userID).Return(&providers.Entity{
+				Category: providers.EntityCategoryUser, ID: userID, OUID: testOtherOrgID,
+			}, nil)
+			verification := attributeverificationmock.NewAttributeVerificationServiceInterfaceMock(t)
+			verification.On("GetVerifiedAttributes", mock.Anything, mock.Anything).
+				Return(map[string]providers.VerifiedAttribute{}).Maybe()
+			sharingMock := sharingmock.NewSharingServiceInterfaceMock(t)
+			sharingMock.On("IsVisible", mock.Anything, UserSharingType, userID, testOrgID).
+				Return(tc.visible, (*tidcommon.ServiceError)(nil)).Once()
+			service := &userService{entityService: storeMock, verification: verification,
+				authzService: confinedReadAuthz(t), sharingService: sharingMock, governance: activeGovernance(t)}
+
+			user, svcErr := service.GetUser(context.Background(), userID, false)
+
+			if tc.wantErr != "" {
+				require.Nil(t, user)
+				require.Equal(t, tc.wantErr, svcErr.Code)
+				return
+			}
+			require.Nil(t, svcErr)
+			require.False(t, *user.IsOwnedByOU)
+			require.Equal(t, testOrgID, user.OUID, "a shared user is read under the unit it is shared into")
+		})
+	}
+}
+
+func TestUserService_SharedUserIsReadOnlyToTheUnitItIsSharedInto(t *testing.T) {
+	userID := svcTestUserID1
+	writes := map[string]func(service *userService) *tidcommon.ServiceError{
+		"update": func(service *userService) *tidcommon.ServiceError {
+			_, svcErr := service.UpdateUser(context.Background(), userID,
+				&providers.User{OUID: testOtherOrgID, Attributes: json.RawMessage(`{}`)})
+			return svcErr
+		},
+		"update attributes": func(service *userService) *tidcommon.ServiceError {
+			_, svcErr := service.UpdateUserAttributes(context.Background(), userID, json.RawMessage(`{}`))
+			return svcErr
+		},
+		"delete": func(service *userService) *tidcommon.ServiceError {
+			return service.DeleteUser(context.Background(), userID)
+		},
+	}
+	sharing := map[string]struct {
+		visible bool
+		err     *tidcommon.ServiceError
+	}{
+		"shared into the unit":     {visible: true},
+		"not shared into the unit": {},
+		// A unit that no longer exists has nothing shared into it.
+		"the token's unit is gone": {err: &oupkg.ErrorOrganizationUnitNotFound},
+	}
+	for name, write := range writes {
+		for sharingName, tc := range sharing {
+			visible := tc.visible
+			t.Run(name+", "+sharingName, func(t *testing.T) {
+				storeMock := entitymock.NewEntityServiceInterfaceMock(t)
+				storeMock.On("GetEntityProfile", mock.Anything, userID).Return(&providers.Entity{
+					Category: providers.EntityCategoryUser, ID: userID, OUID: testOtherOrgID,
+				}, nil).Maybe()
+				storeMock.On("GetEntity", mock.Anything, userID).Return(&providers.Entity{
+					Category: providers.EntityCategoryUser, ID: userID, OUID: testOtherOrgID,
+				}, nil).Maybe()
+				sharingMock := sharingmock.NewSharingServiceInterfaceMock(t)
+				sharingMock.On("IsVisible", mock.Anything, UserSharingType, userID, testOrgID).
+					Return(visible, tc.err).Once()
+				typeMock := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
+				typeMock.On("GetAttributes", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+					Return([]entitytype.AttributeInfo{}, (*tidcommon.ServiceError)(nil)).Maybe()
+				service := &userService{entityService: storeMock, authzService: confinedReadAuthz(t),
+					sharingService: sharingMock, entityTypeService: typeMock, bus: discardingBus{}}
+
+				svcErr := write(service)
+
+				want := tidcommon.ErrorUnauthorized.Code
+				if visible {
+					want = ErrorSharedUserReadOnly.Code
+				}
+				require.Equal(t, want, svcErr.Code)
+			})
+		}
+	}
+}
+
+func TestUserService_GetUserList_ListsWhatACallersUnitSees(t *testing.T) {
+	storeMock := entitymock.NewEntityServiceInterfaceMock(t)
+	storeMock.On("GetEntityPageInOU", mock.Anything, providers.EntityCategoryUser, testOrgID,
+		entitypkg.OUEntityScopeAll, 10, 0, map[string]interface{}{}).Return(&entitypkg.OUEntityPage{
+		Owned: []providers.Entity{{ID: svcTestUserID1, OUID: testOrgID, Category: providers.EntityCategoryUser}},
+		Shared: []providers.Entity{
+			{ID: svcTestUserID123, OUID: testOtherOrgID, Category: providers.EntityCategoryUser},
+		},
+		TotalResults: 2,
+	}, nil).Once()
+	verification := attributeverificationmock.NewAttributeVerificationServiceInterfaceMock(t)
+	verification.On("GetVerifiedAttributes", mock.Anything, mock.Anything).
+		Return(map[string]providers.VerifiedAttribute{}).Maybe()
+	authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
+	authzMock.On("GetAccessibleResources", mock.Anything, security.ActionListUsers, security.ResourceTypeOU).
+		Return(&sysauthz.AccessibleResources{IDs: []string{testOrgID}}, nil).Once()
+	service := &userService{entityService: storeMock, verification: verification, authzService: authzMock,
+		governance: activeGovernance(t)}
+
+	resp, svcErr := service.GetUserList(context.Background(), 10, 0, map[string]interface{}{}, false)
+
+	require.Nil(t, svcErr)
+	require.Equal(t, 2, resp.TotalResults)
+	require.Len(t, resp.Users, 2)
+	require.True(t, *resp.Users[0].IsOwnedByOU)
+	require.False(t, *resp.Users[1].IsOwnedByOU)
+	require.Equal(t, testOrgID, resp.Users[1].OUID, "a shared user is listed under the unit it is shared into")
 }
 
 func TestUserService_GetUser_WithIncludeDisplay(t *testing.T) {
@@ -1692,7 +1845,7 @@ func TestUserService_UpdateUser_AuthzBranches(t *testing.T) {
 	ctx := context.Background()
 	userID := svcTestUserID1
 	existingOU := "11111111-1111-1111-1111-111111111111"
-	destinationOU := "22222222-2222-2222-2222-222222222222"
+	destinationOU := testOtherOrgID
 
 	tests := []struct {
 		name            string
@@ -1887,7 +2040,7 @@ func TestUserService_UpdateUser_AuthzBranches(t *testing.T) {
 			storeMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
 			ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
 			entityTypeMock := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
-			authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
+			authzMock := withDeploymentBoundary(sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t))
 			// The existing user always lives in existingOU.
 			storeMock.On("GetEntityProfile", mock.Anything, userID).
 				Return(&providers.Entity{
@@ -2041,7 +2194,7 @@ func TestUserService_GetUserList_ScopedByOUIDs(t *testing.T) {
 	limit := 10
 	offset := 0
 	filters := map[string]interface{}{}
-	ouIDs := []string{testOrgID}
+	ouIDs := []string{testOrgID, testOtherOrgID}
 
 	storeMock := entitymock.NewEntityServiceInterfaceMock(t)
 	verification := attributeverificationmock.NewAttributeVerificationServiceInterfaceMock(t)
@@ -2725,7 +2878,7 @@ func TestUserService_CheckUserAccess(t *testing.T) {
 func TestUserService_GetUserList_ErrorCases(t *testing.T) {
 	limit, offset := 10, 0
 	filters := map[string]interface{}{}
-	ouIDs := []string{testOrgID}
+	ouIDs := []string{testOrgID, testOtherOrgID}
 	storeErr := errors.New("db error")
 	authzErr := &tidcommon.ServiceError{
 		Code:  "SVC-5000",
@@ -2995,7 +3148,7 @@ func TestUserService_GetUser_ErrorCases(t *testing.T) {
 						Category: providers.EntityCategoryUser, ID: userID, OUID: testOrgID,
 					}, nil).Once()
 
-				authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
+				authzMock := withDeploymentBoundary(sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t))
 				authzMock.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).
 					Return(false, (*tidcommon.ServiceError)(nil)).Once()
 
@@ -3016,7 +3169,7 @@ func TestUserService_GetUser_ErrorCases(t *testing.T) {
 						Category: providers.EntityCategoryUser, ID: userID, OUID: testOrgID,
 					}, nil).Once()
 
-				authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
+				authzMock := withDeploymentBoundary(sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t))
 				authzMock.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).
 					Return(false, authzErr).Once()
 
@@ -3174,7 +3327,7 @@ func TestUserService_UpdateUser_PreFetchAndAuthzChecks(t *testing.T) {
 						Category: providers.EntityCategoryUser, ID: userID, OUID: testOrgID,
 					}, nil).Once()
 
-				authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
+				authzMock := withDeploymentBoundary(sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t))
 				authzMock.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).
 					Return(false, (*tidcommon.ServiceError)(nil)).Once()
 
@@ -3196,7 +3349,7 @@ func TestUserService_UpdateUser_PreFetchAndAuthzChecks(t *testing.T) {
 						Category: providers.EntityCategoryUser, ID: userID, OUID: testOrgID,
 					}, nil).Once()
 
-				authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
+				authzMock := withDeploymentBoundary(sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t))
 				authzMock.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).
 					Return(false, authzErr).Once()
 
@@ -3271,7 +3424,7 @@ func TestUserService_UpdateUserAttributes_PreFetchAndAuthzChecks(t *testing.T) {
 					entitytype.AttributeFilter{AllowCredential: true}).
 					Return([]entitytype.AttributeInfo{}, (*tidcommon.ServiceError)(nil)).Once()
 
-				authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
+				authzMock := withDeploymentBoundary(sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t))
 				authzMock.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).
 					Return(false, (*tidcommon.ServiceError)(nil)).Once()
 
@@ -3301,7 +3454,7 @@ func TestUserService_UpdateUserAttributes_PreFetchAndAuthzChecks(t *testing.T) {
 					entitytype.AttributeFilter{AllowCredential: true}).
 					Return([]entitytype.AttributeInfo{}, (*tidcommon.ServiceError)(nil)).Once()
 
-				authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
+				authzMock := withDeploymentBoundary(sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t))
 				authzMock.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).
 					Return(false, authzErr).Once()
 
@@ -3400,7 +3553,7 @@ func TestUserService_UpdateUserCredentials_PreFetchAndAuthzChecks(t *testing.T) 
 						Category: providers.EntityCategoryUser, ID: userID, OUID: testOrgID,
 					}, nil).Once()
 
-				authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
+				authzMock := withDeploymentBoundary(sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t))
 				authzMock.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).
 					Return(false, (*tidcommon.ServiceError)(nil)).Once()
 
@@ -3421,7 +3574,7 @@ func TestUserService_UpdateUserCredentials_PreFetchAndAuthzChecks(t *testing.T) 
 						Category: providers.EntityCategoryUser, ID: userID, OUID: testOrgID,
 					}, nil).Once()
 
-				authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
+				authzMock := withDeploymentBoundary(sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t))
 				authzMock.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).
 					Return(false, authzErr).Once()
 
@@ -3509,7 +3662,7 @@ func TestUserService_DeleteUser_PreFetchAndAuthzChecks(t *testing.T) {
 						Category: providers.EntityCategoryUser, ID: userID, OUID: testOrgID,
 					}, nil).Once()
 
-				authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
+				authzMock := withDeploymentBoundary(sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t))
 				authzMock.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).
 					Return(false, (*tidcommon.ServiceError)(nil)).Once()
 
@@ -3531,7 +3684,7 @@ func TestUserService_DeleteUser_PreFetchAndAuthzChecks(t *testing.T) {
 						Category: providers.EntityCategoryUser, ID: userID, OUID: testOrgID,
 					}, nil).Once()
 
-				authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
+				authzMock := withDeploymentBoundary(sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t))
 				authzMock.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).
 					Return(false, authzErr).Once()
 
@@ -5488,7 +5641,7 @@ func TestGetUserOrganizationUnits_PagesUnderTheUsersPath(t *testing.T) {
 // The caller is checked as for reading the user, against the organization unit the user lives in.
 func TestGetUserOrganizationUnits_RefusesACallerWhoCannotReadTheUser(t *testing.T) {
 	service, ctx := newAccessFixture(t, "ou-r", "ou-c")
-	authz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
+	authz := withDeploymentBoundary(sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t))
 	authz.EXPECT().IsActionAllowed(mock.Anything, security.ActionReadUser, &sysauthz.ActionContext{
 		ResourceType: security.ResourceTypeUser, OUID: "ou-p", ResourceID: svcTestUserID1,
 	}).Return(false, nil).Once()
@@ -5591,7 +5744,7 @@ func TestUserService_GetUser_RefusedReadDerivesNoStatus(t *testing.T) {
 	verification := attributeverificationmock.NewAttributeVerificationServiceInterfaceMock(t)
 	storeMock.On("GetEntity", mock.Anything, svcTestUserID1).Return(&providers.Entity{
 		Category: providers.EntityCategoryUser, ID: svcTestUserID1, OUID: testOrgID}, nil).Once()
-	authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
+	authzMock := withDeploymentBoundary(sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t))
 	authzMock.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).
 		Return(false, (*tidcommon.ServiceError)(nil)).Once()
 	governance := identitygovernancemock.NewIdentityGovernanceServiceInterfaceMock(t)
@@ -5662,7 +5815,7 @@ func TestUserService_GetUserList_ReportsTheGovernedStatus(t *testing.T) {
 		}},
 		{name: "users in accessible units", setup: func(
 			storeMock *entitymock.EntityServiceInterfaceMock) sysauthz.SystemAuthorizationServiceInterface {
-			ouIDs := []string{testOrgID}
+			ouIDs := []string{testOrgID, testOtherOrgID}
 			storeMock.On("GetEntityListCountByOUIDs", mock.Anything, providers.EntityCategoryUser, ouIDs, filters).
 				Return(2, nil).Once()
 			storeMock.On("GetEntityListByOUIDs", mock.Anything, providers.EntityCategoryUser, ouIDs, 10, 0,
@@ -6095,7 +6248,7 @@ func deletingUserService(t *testing.T, bus eventbus.EventBusInterface, allowed b
 	storeMock.On("GetEntityProfile", mock.Anything, svcTestUserID1).Return(&providers.Entity{
 		Category: providers.EntityCategoryUser, ID: svcTestUserID1, OUID: testOrgID,
 	}, nil).Once()
-	authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
+	authzMock := withDeploymentBoundary(sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t))
 	authzMock.On("IsActionAllowed", mock.Anything, security.ActionDeleteUser, mock.Anything).
 		Return(allowed, (*tidcommon.ServiceError)(nil)).Once()
 	authzMock.On("CanControlEntity", mock.Anything, mock.Anything).
@@ -6119,6 +6272,7 @@ func (suite *UserServiceTestSuite) TestValidateDeleteUser_RefusesACallerWhoMayNo
 	authzMock.On("IsActionAllowed", mock.Anything, security.ActionDeleteUser, &sysauthz.ActionContext{
 		ResourceType: security.ResourceTypeUser, OUID: testOrgID, ResourceID: svcTestUserID1,
 	}).Return(false, (*tidcommon.ServiceError)(nil)).Once()
+	authzMock.On("GetBoundary", mock.Anything).Return(sysauthz.Boundary{Type: sysauthz.BoundaryTypeDeployment})
 	service := &userService{entityService: storeMock, authzService: authzMock}
 
 	svcErr := service.ValidateDeleteUser(context.Background(), svcTestUserID1)
@@ -6320,7 +6474,7 @@ func TestUserService_UpdateUser_PublishesADeniedUpdateOfTheUser(t *testing.T) {
 	storeMock.On("GetEntityProfile", mock.Anything, svcTestUserID1).Return(&providers.Entity{
 		Category: providers.EntityCategoryUser, ID: svcTestUserID1, OUID: testOrgID, Type: testUserType,
 	}, nil).Once()
-	authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
+	authzMock := withDeploymentBoundary(sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t))
 	authzMock.On("IsActionAllowed", mock.Anything, security.ActionUpdateUser, mock.Anything).
 		Return(false, (*tidcommon.ServiceError)(nil)).Once()
 	service := &userService{entityService: storeMock, authzService: authzMock, bus: bus}

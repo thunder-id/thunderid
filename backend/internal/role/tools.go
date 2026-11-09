@@ -848,14 +848,6 @@ func pageLimit(limit, offset int) (int, error) {
 	return limit, nil
 }
 
-// pageOf returns the page of items that limit and offset select.
-func pageOf[T any](items []T, limit, offset int) []T {
-	if offset >= len(items) {
-		return []T{}
-	}
-	return items[offset:min(offset+limit, len(items))]
-}
-
 // roleListOf builds the list_roles output.
 func roleListOf(total int, roles []Role) *roleListMCPResponse {
 	items := make([]roleMCPItem, 0, len(roles))

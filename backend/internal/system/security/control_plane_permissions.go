@@ -48,6 +48,7 @@ func InitControlPlanePermissions(handle string) {
 		Root:                       buildPermission(handle, "system"),
 		OU:                         buildPermission(handle, "system", "ou"),
 		OUView:                     buildPermission(handle, "system", "ou", "view"),
+		OUListRoots:                buildPermission(handle, "system", "ou", "view"),
 		User:                       buildPermission(handle, "system", "user"),
 		UserView:                   buildPermission(handle, "system", "user", "view"),
 		Group:                      buildPermission(handle, "system", "group"),

@@ -75,8 +75,8 @@ paths:
       summary: List all flows
       description: |
         Retrieves a paginated list of all flow definitions. A caller whose permission is limited to an
-        organization unit lists the flows that unit owns instead. The flows shared into it are listed with
-        a `filter` naming the organization unit.
+        organization unit lists what that unit sees instead: the flows it owns, followed by the flows
+        shared into it, as a `filter` naming the organization unit does.
       operationId: listFlows
       parameters:
         - name: flowType
@@ -318,7 +318,10 @@ paths:
       tags:
         - Flow Management
       summary: Get flow by ID
-      description: Retrieves a specific flow definition by its unique identifier
+      description: |
+        Retrieves a specific flow definition by its unique identifier.
+
+        Without `ouId`, a flow comes back whole with `isOwnedByOU: true` when the caller may read the flows of the organization unit that owns it. A caller whose token is confined to another organization unit the flow was shared with gets the flow as that unit sees it (`SharedFlowResponse`), the same as with `ouId` naming that unit. A flow neither owned by nor shared with that unit is refused with 403.
       operationId: getFlow
       parameters:
         - name: flowId
@@ -330,7 +333,7 @@ paths:
         - name: ouId
           in: query
           required: false
-          description: The organization unit to see the flow as. A flow it owns comes back whole, one shared with it comes back as its variables only. Leave it out for the whole definition.
+          description: The organization unit to see the flow as. A flow it owns comes back whole, one shared with it comes back as its variables only. Leave it out for the whole definition, or, for a caller confined to an organization unit the flow was shared with, the flow as that unit sees it.
           schema:
             type: string
           example: 0193b0a1-2001-7000-8000-000000000002
@@ -455,7 +458,11 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
-          $ref: '#/components/responses/Forbidden'
+          description: The caller may not read the flow in the organization unit that owns it, and, without `ouId`, the flow was not shared with the organization unit the caller is confined to
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '500':
           description: Internal server error
           content:
@@ -521,7 +528,7 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
-          description: The caller does not act for the organization unit that owns the flow, as is the case for a flow that was only shared with it, so it cannot be changed (FLM-1039)
+          description: The caller may not change the flow. A flow shared with the organization unit the caller is confined to, or the one the request body's `ouId` names, is read only to it (FLM-1039) and is configured through `PUT /flows/{flowId}/variables`. Any other flow of another organization unit answers with the generic forbidden error.
           content:
             application/json:
               schema:
@@ -615,7 +622,7 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
-          description: The caller may not delete the flow. With `ouId` naming an organization unit the flow was only shared with, FLM-1039.
+          description: The caller may not delete the flow. A flow shared with the organization unit the caller is confined to, or with the one `ouId` names, answers FLM-1039 (shared flow is read only). Any other flow of another organization unit answers with the generic forbidden error.
           content:
             application/json:
               schema:
@@ -1646,12 +1653,16 @@ components:
           example: false
         isOwnedByOU:
           type: boolean
-          description: With an `ouId` filter or query parameter, whether that organization unit owns the flow. `false` means it was shared with it. An unfiltered list says `true`.
+          description: |
+            In a list or read made for an organization unit, named by an `ouId` filter or query parameter or by the
+            token of a caller confined to one organization unit, whether that unit owns the flow. `false` means it was
+            shared with it. Any other list or read says `true`.
         ouId:
           type: string
           description: |
             ID of the organization unit that owns the flow. In a list or read made for an organization unit the flow
-            was shared with, the ID of that organization unit instead.
+            was shared with, named by an `ouId` filter or query parameter or by the token of a caller confined to it,
+            the ID of that organization unit instead.
           example: "01900000-0000-7000-8000-000000000001"
         projectId:
           type: string
@@ -1991,7 +2002,7 @@ components:
           type: boolean
           enum:
             - true
-          description: With `ouId` in the request, always `true`, as the organization unit owns the flow.
+          description: On a read, always `true`, as the flow is read in the organization unit that owns it.
         ouId:
           type: string
           description: |
@@ -2576,13 +2587,13 @@ components:
           example: AUTHENTICATION
         ouId:
           type: string
-          description: ID of the organization unit the flow is shown for, the one in the request's `ouId`, not the one that owns the flow.
+          description: ID of the organization unit the flow is shown for, the one in the request's `ouId` or, without one, the one the caller is confined to, not the one that owns the flow.
           example: 0193b0a1-2001-7000-8000-000000000001
         isOwnedByOU:
           type: boolean
           enum:
             - false
-          description: Always `false`, as the flow is owned by another organization unit and was shared with the organization unit in the request's `ouId`.
+          description: Always `false`, as the flow is owned by another organization unit and was shared with the organization unit it is shown for.
         isReadOnly:
           type: boolean
           enum:

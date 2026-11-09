@@ -77,9 +77,9 @@ func Initialize(
 	if err != nil {
 		return nil, nil, err
 	}
-	service := newAgentService(authzService, entityService, inboundClientService, ouService, roleService,
-		governance, valueCapturer, entityTypeService, transactioner, observabilitySvc, projectValidator, bus,
-		revoker, artifactLifetime)
+	service := newAgentService(authzService, entityService, inboundClientService, ouService, sharingService,
+		roleService, governance, valueCapturer, entityTypeService, transactioner, observabilitySvc, projectValidator,
+		bus, revoker, artifactLifetime)
 	service.(*agentService).managed = managedresource.GetStore()
 
 	if err := entityService.LoadIndexedAttributes(getAgentIndexedAttributes()); err != nil {

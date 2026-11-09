@@ -31,6 +31,7 @@ import (
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/revocation"
 	"github.com/thunder-id/thunderid/internal/role"
+	"github.com/thunder-id/thunderid/internal/sharing"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/eventbus"
@@ -101,6 +102,7 @@ type agentService struct {
 	governance           identitygovernance.IdentityGovernanceServiceInterface
 	inboundClientService inboundclient.InboundClientServiceInterface
 	ouService            oupkg.OrganizationUnitServiceInterface
+	sharingService       sharing.SharingServiceInterface
 	dependencyRegistry   resourcedependency.Registry
 	roleService          role.RoleServiceInterface
 	valueCapturer        declarativeresource.ValueCapturer
@@ -130,6 +132,7 @@ func newAgentService(
 	entityService entity.EntityServiceInterface,
 	inboundClientService inboundclient.InboundClientServiceInterface,
 	ouService oupkg.OrganizationUnitServiceInterface,
+	sharingService sharing.SharingServiceInterface,
 	roleService role.RoleServiceInterface,
 	governance identitygovernance.IdentityGovernanceServiceInterface,
 	valueCapturer declarativeresource.ValueCapturer,
@@ -148,6 +151,7 @@ func newAgentService(
 		governance:           governance,
 		inboundClientService: inboundClientService,
 		ouService:            ouService,
+		sharingService:       sharingService,
 		roleService:          roleService,
 		valueCapturer:        valueCapturer,
 		entityTypeService:    entityTypeService,
@@ -326,14 +330,27 @@ func (s *agentService) GetAgent(ctx context.Context, agentID string, includeDisp
 		return nil, &ErrorAgentNotFound
 	}
 
-	// Check authz using the agent's OU ID (fetched from store).
+	// Check authz using the agent's OU ID (fetched from store). A refused caller may still read the agent in
+	// the organization unit it is shared into.
+	ouID := e.OUID
 	if svcErr := s.checkAgentAccess(ctx, security.ActionReadAgent, e.OUID, agentID, ""); svcErr != nil {
-		return nil, svcErr
+		if ouID, svcErr = s.sharedReadOU(ctx, agentID, e.OUID, svcErr); svcErr != nil {
+			return nil, svcErr
+		}
 	}
+	owned := ouID == e.OUID
 
 	resp, svcErr := s.composeGetResponse(ctx, e)
 	if svcErr != nil {
 		return nil, svcErr
+	}
+	resp.IsOwnedByOU = new(owned)
+	// The organization unit an agent is shared into cannot change it until overlay rules are supported for
+	// agents.
+	resp.IsReadOnly = e.IsReadOnly || !owned
+	if !owned {
+		// A shared agent is read under the organization unit it is shared into, as the agent list does.
+		resp.OUID, resp.OUHandle = ouID, ""
 	}
 
 	if includeDisplay {
@@ -800,8 +817,29 @@ func (s *agentService) revocationTTL(ctx context.Context, clientID string, floor
 	return max(floor, s.resolveLifetime(client))
 }
 
+// sharedReadOU answers a read refused in the agent's owning organization unit with the organization unit the
+// caller is confined to, when the caller may read agents there and the agent is shared into it, and with the
+// refusal otherwise.
+func (s *agentService) sharedReadOU(ctx context.Context, agentID, ownerOUID string,
+	refusal *tidcommon.ServiceError) (string, *tidcommon.ServiceError) {
+	ouID, svcErr := sharing.SharedIntoCallerOU(ctx, s.authzService, s.sharingService, s.logger,
+		agentSharingType, agentID, ownerOUID, refusal)
+	if svcErr != nil {
+		return "", svcErr
+	}
+	if ouID == "" {
+		return "", refusal
+	}
+	// Names no agent, so the check is whether the caller may read the agents of the organization unit.
+	if svcErr := s.checkAgentAccess(ctx, security.ActionReadAgent, ouID, "", ""); svcErr != nil {
+		return "", svcErr
+	}
+	return ouID, nil
+}
+
 // GetAgentList returns a paginated list of agents. An organization unit filter lists the agents that
-// unit owns, followed by the ones shared into it.
+// unit owns, followed by the ones shared into it, as does a caller that may list agents in one
+// organization unit only when no filter is given.
 func (s *agentService) GetAgentList(ctx context.Context, limit, offset int,
 	filters map[string]interface{}, includeDisplay bool) (
 	*model.AgentListResponse, *tidcommon.ServiceError) {
@@ -838,6 +876,13 @@ func (s *agentService) GetAgentList(ctx context.Context, limit, offset int,
 	// Unfiltered path: system-level caller — return all agents.
 	if accessible.AllAllowed {
 		return s.listAllAgents(ctx, limit, offset, filters, includeDisplay, listQuery)
+	}
+
+	// A caller that may list one organization unit lists what that unit sees: the agents it owns, then the
+	// ones shared into it. Other conditions cannot match shared agents yet, so a list they narrow keeps to
+	// owned agents.
+	if len(accessible.IDs) == 1 && len(filters) == 0 {
+		return s.listAgentsInOU(ctx, accessible.IDs[0], limit, offset, includeDisplay, listQuery)
 	}
 
 	// Filtered path: return agents belonging to the accessible OUs.

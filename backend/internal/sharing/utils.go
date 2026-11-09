@@ -12,7 +12,11 @@ import (
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
+	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
+	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/security"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 
 	"gopkg.in/yaml.v3"
@@ -190,4 +194,32 @@ func pagePolicies(policies []Policy, limit, offset int) PolicyList {
 		Count:        len(page),
 		Policies:     page,
 	}
+}
+
+// SharedIntoCallerOU answers a caller refused access to a resource in its owning organization unit with the
+// organization unit the caller is confined to, when the resource is shared into that unit. It returns empty when the
+// refusal is not one a share can lift, the resource is not shared there, or that unit no longer exists.
+func SharedIntoCallerOU(ctx context.Context, authzService sysauthz.SystemAuthorizationServiceInterface,
+	sharingService SharingServiceInterface, logger *log.Logger, rt ResourceType, resourceID, ownerOUID string,
+	refusal *tidcommon.ServiceError) (string, *tidcommon.ServiceError) {
+	ouID := sysauthz.SharedAccessOU(ctx, authzService, ownerOUID, refusal)
+	if ouID == "" {
+		return "", nil
+	}
+	// Asked as the runtime, as the caller may not read the organization units above its own.
+	visible, svcErr := sharingService.IsVisible(security.WithRuntimeContext(ctx), rt, resourceID, ouID)
+	if svcErr != nil {
+		// The organization unit the token names no longer exists, so nothing is shared into it.
+		if svcErr.Code == oupkg.ErrorOrganizationUnitNotFound.Code {
+			return "", nil
+		}
+		logger.Error(ctx, "Failed to check whether the resource is shared into the organization unit",
+			log.String("resourceType", string(rt)), log.MaskedString("resourceID", resourceID),
+			log.String("ouID", ouID), log.Any("error", svcErr))
+		return "", &tidcommon.InternalServerError
+	}
+	if !visible {
+		return "", nil
+	}
+	return ouID, nil
 }

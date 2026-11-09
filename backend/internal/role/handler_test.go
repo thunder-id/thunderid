@@ -968,6 +968,17 @@ func (suite *RoleHandlerTestSuite) TestHandleError_ClientAndServerErrors() {
 		suite.Equal(ErrorRoleNotFound.Code, resp.Code)
 	})
 
+	suite.T().Run("Client_SharedRoleReadOnly", func(t *testing.T) {
+		w := httptest.NewRecorder()
+
+		handleError(context.Background(), w, &ErrorSharedRoleReadOnly)
+
+		suite.Equal(http.StatusForbidden, w.Code)
+		var resp apierror.ErrorResponse
+		suite.NoError(json.Unmarshal(w.Body.Bytes(), &resp))
+		suite.Equal(ErrorSharedRoleReadOnly.Code, resp.Code)
+	})
+
 	suite.T().Run("ServerError", func(t *testing.T) {
 		w := httptest.NewRecorder()
 

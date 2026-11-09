@@ -32,8 +32,10 @@ paths:
       summary: List agents
       description: |
         Retrieve a paginated list of agents. An `ouId` filter lists the agents the organization unit
-        owns, followed by the agents shared into it. A `projectId` lists the project's agents,
-        narrowed to the organization unit in the `ouId` filter when one is given.
+        owns, followed by the agents shared into it. A caller that may list agents in one organization
+        unit only gets the same list without a filter. A filter on other attributes narrows that
+        caller's list to the agents the organization unit owns. A `projectId` lists the project's
+        agents, narrowed to the organization unit in the `ouId` filter when one is given.
       parameters:
         - $ref: '#/components/parameters/limitQueryParam'
         - $ref: '#/components/parameters/offsetQueryParam'
@@ -773,6 +775,11 @@ paths:
       tags:
         - Agents
       summary: Get an agent by id
+      description: |
+        Retrieve an agent. A caller confined to an organization unit other than the one that owns the
+        agent reads it when the agent is shared into the caller's organization unit. The agent is then
+        returned under that organization unit, with `isOwnedByOU` set to `false` and `isReadOnly` set to
+        `true`.
       parameters:
         - in: path
           name: id
@@ -804,6 +811,8 @@ paths:
                   name: "Calendar Agent"
                   model: "claude-3-5-sonnet"
                   modelProvider: "anthropic"
+                isReadOnly: false
+                isOwnedByOU: true
                 authFlowId: "edc013d0-e893-4dc0-990c-3e1d203e005b"
                 registrationFlowId: "f1c2d3e4-f5a6-7b8c-9d0e-1f2a3b4c5d6e"
                 isRegistrationFlowEnabled: false
@@ -869,6 +878,8 @@ paths:
                   defaultValue: "The agent with the specified id does not exist"
         "401":
           $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "500":
           description: Internal server error
 
@@ -2255,8 +2266,10 @@ components:
           type: boolean
           readOnly: true
           description: |
-            Whether the listed organization unit owns the agent rather than being shared it. Present
-            only in agent lists. Without an `ouId` filter or a `projectId`, every listed agent is owned.
+            Whether the listed organization unit owns the agent rather than being shared it. Agents
+            shared into an organization unit are listed under an `ouId` filter, and in the unfiltered list
+            of a caller that may list agents in one organization unit only. In any other list, every
+            listed agent is owned.
 
     AgentListResponse:
       type: object
@@ -2732,6 +2745,22 @@ components:
             `accountAccess.agent.recordLastLogin` is enabled, and the value can lag the latest
             sign-in by up to `accountAccess.agent.lastLoginResolutionSeconds` (one hour by default).
           example: "2026-09-09T18:22:04Z"
+        isReadOnly:
+          type: boolean
+          readOnly: true
+          description: |
+            Indicates whether the agent is immutable. When `true`, update and delete operations are
+            rejected. Set by the system for declaratively provisioned agents, and for agents read in an
+            organization unit they are shared into.
+          example: false
+        isOwnedByOU:
+          type: boolean
+          readOnly: true
+          description: |
+            Whether the organization unit the agent is read in owns it rather than being shared it.
+            `false` when the agent is read in an organization unit it is shared into, where `ouId` names
+            that organization unit.
+          example: true
 
     AgentGroup:
       type: object

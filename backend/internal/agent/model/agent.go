@@ -139,6 +139,9 @@ type AgentGetResponse struct {
 	LastLoginAt string    `json:"lastLoginAt,omitempty" yaml:"-"`
 	ValidUntil  string    `json:"validUntil,omitempty" yaml:"validUntil,omitempty"`
 	Lifespan    *Lifespan `json:"lifespan,omitempty"   yaml:"-"`
+	IsReadOnly  bool      `json:"isReadOnly"           yaml:"-"`
+	// IsOwnedByOU says whether the organization unit the agent is read in owns it rather than being shared it.
+	IsOwnedByOU *bool `json:"isOwnedByOU,omitempty" yaml:"-"`
 
 	Kind providers.AgentKind `json:"kind,omitempty" yaml:"kind,omitempty"`
 

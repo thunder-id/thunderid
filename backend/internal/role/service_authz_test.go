@@ -76,12 +76,18 @@ func (s *RoleAuthzTestSuite) SetupTest() {
 		discardingBus{})
 }
 
+// boundary sets the organization unit boundary the caller acts within.
+func (s *RoleAuthzTestSuite) boundary(b sysauthz.Boundary) {
+	s.authz.On("GetBoundary", mock.Anything).Return(b).Maybe()
+}
+
 func (s *RoleAuthzTestSuite) storedRole(ouID string) {
 	s.store.On("GetRole", mock.Anything, authzRoleID).
 		Return(RoleWithPermissions{ID: authzRoleID, Name: "role", OUID: ouID}, nil).Maybe()
 }
 
 func (s *RoleAuthzTestSuite) TestGetRoleInOU_OtherOU() {
+	s.boundary(sysauthz.Boundary{Type: sysauthz.BoundaryTypeDeployment})
 	expectOwnOUOnly(s.authz, security.ActionReadRole)
 	s.storedRole(authzOtherOU)
 
@@ -113,6 +119,7 @@ func (s *RoleAuthzTestSuite) TestUpdateRole_MoveToOtherOU() {
 }
 
 func (s *RoleAuthzTestSuite) TestDeleteRole_OtherOU() {
+	s.boundary(sysauthz.Boundary{Type: sysauthz.BoundaryTypeDeployment})
 	expectOwnOUOnly(s.authz, security.ActionDeleteRole)
 	s.storedRole(authzOtherOU)
 
@@ -163,22 +170,16 @@ func (s *RoleAuthzTestSuite) TestValidateRemoveAssignment_InOtherOU() {
 		mock.Anything, mock.Anything)
 }
 
-func (s *RoleAuthzTestSuite) TestGetRoleList_SharedIntoOUTheCallerMayNotList() {
-	expectOwnOUOnly(s.authz, security.ActionListRoles, security.ActionReadRole)
-	s.sharing.On("ListVisibleResourceIDs", mock.Anything, RoleSharingType, "ou-child").
-		Return([]string{"role-own", "role-other"}, nil)
-	s.store.On("GetRolesByIDs", mock.Anything, []string{"role-own", "role-other"}).Return([]Role{
-		{ID: "role-own", OUID: authzOwnOU}, {ID: "role-other", OUID: authzOtherOU},
-	}, nil)
+// A caller confined to its own organization unit lists no roles of another one, not even its own roles shared there.
+func (s *RoleAuthzTestSuite) TestGetRoleList_AnotherOUIsEmpty() {
+	expectOwnOUOnly(s.authz, security.ActionListRoles)
 
 	list, svcErr := s.service.GetRoleList(context.Background(), 10, 0,
 		map[string]interface{}{filter.AttributeOUID: "ou-child"})
 	s.Require().Nil(svcErr)
-	s.Equal(1, list.TotalResults)
-	s.Require().Len(list.Roles, 1)
-	s.Equal("role-own", list.Roles[0].ID)
-	s.Equal("ou-child", list.Roles[0].OUID)
-	s.False(list.Roles[0].IsOwnedByOU)
+	s.Zero(list.TotalResults)
+	s.Empty(list.Roles)
+	s.sharing.AssertNotCalled(s.T(), "ListVisibleResourceIDs", mock.Anything, mock.Anything, mock.Anything)
 	s.store.AssertNotCalled(s.T(), "GetRoleListByOUID", mock.Anything, mock.Anything, mock.Anything,
 		mock.Anything)
 }
@@ -186,15 +187,20 @@ func (s *RoleAuthzTestSuite) TestGetRoleList_SharedIntoOUTheCallerMayNotList() {
 func (s *RoleAuthzTestSuite) TestGetRoleList_OwnOUOnly() {
 	expectOwnOUOnly(s.authz, security.ActionListRoles)
 	s.store.On("GetRoleListCountByOUID", mock.Anything, authzOwnOU).Return(1, nil)
-	s.store.On("GetRoleListByOUID", mock.Anything, authzOwnOU, 10, 0).
+	s.store.On("GetRoleListByOUID", mock.Anything, authzOwnOU, mock.Anything, 0).
 		Return([]Role{{ID: "role-own", OUID: authzOwnOU}}, nil)
+	s.sharing.On("ListVisibleResourceIDs", mock.Anything, RoleSharingType, authzOwnOU).
+		Return([]string{"role-shared"}, (*tidcommon.ServiceError)(nil))
+	s.store.On("GetRolesByIDs", mock.Anything, []string{"role-shared"}).
+		Return([]Role{{ID: "role-shared", OUID: authzOtherOU}}, nil)
 
 	list, svcErr := s.service.GetRoleList(context.Background(), 10, 0, nil)
 	s.Require().Nil(svcErr)
-	s.Equal(1, list.TotalResults)
-	s.Require().Len(list.Roles, 1)
+	s.Equal(2, list.TotalResults)
+	s.Require().Len(list.Roles, 2)
 	s.True(list.Roles[0].IsOwnedByOU)
-	s.sharing.AssertNotCalled(s.T(), "ListVisibleResourceIDs", mock.Anything, mock.Anything, mock.Anything)
+	s.False(list.Roles[1].IsOwnedByOU)
+	s.Equal(authzOwnOU, list.Roles[1].OUID, "a shared role is listed under the unit it is shared with")
 }
 
 func (s *RoleAuthzTestSuite) TestGetRolesByPermission_OnlyReadable() {
@@ -219,4 +225,94 @@ func (s *RoleAuthzTestSuite) TestGetRolesByNames_OnlyReadable() {
 	s.Require().Nil(svcErr)
 	s.Require().Len(byName["support"], 1)
 	s.Equal("role-own", byName["support"][0].ID)
+}
+
+func (s *RoleAuthzTestSuite) TestGetRoleInOU_OwnedByCallersOU() {
+	expectOwnOUOnly(s.authz, security.ActionReadRole)
+	s.boundary(sysauthz.Boundary{Type: sysauthz.BoundaryTypeOU, OUID: authzOwnOU})
+	s.storedRole(authzOwnOU)
+
+	role, svcErr := s.service.GetRoleInOU(context.Background(), authzRoleID, "")
+	s.Require().Nil(svcErr)
+	s.True(role.IsOwnedByOU)
+	s.Equal(authzOwnOU, role.OUID)
+}
+
+func (s *RoleAuthzTestSuite) TestGetRoleInOU_SharedIntoCallersOU() {
+	tests := []struct {
+		name    string
+		visible bool
+		wantErr string
+	}{
+		{name: "shared", visible: true},
+		{name: "not shared", wantErr: tidcommon.ErrorUnauthorized.Code},
+	}
+	for _, tc := range tests {
+		s.Run(tc.name, func() {
+			s.SetupTest()
+			expectOwnOUOnly(s.authz, security.ActionReadRole)
+			s.boundary(sysauthz.Boundary{Type: sysauthz.BoundaryTypeOU, OUID: authzOwnOU})
+			s.storedRole(authzOtherOU)
+			s.sharing.On("IsVisible", mock.Anything, RoleSharingType, authzRoleID, authzOwnOU).
+				Return(tc.visible, (*tidcommon.ServiceError)(nil))
+
+			role, svcErr := s.service.GetRoleInOU(context.Background(), authzRoleID, "")
+			if tc.wantErr != "" {
+				s.Nil(role)
+				s.Require().NotNil(svcErr)
+				s.Equal(tc.wantErr, svcErr.Code)
+				return
+			}
+			s.Require().Nil(svcErr)
+			s.False(role.IsOwnedByOU)
+			s.Equal(authzOwnOU, role.OUID, "a shared role is read under the unit it is shared into")
+		})
+	}
+}
+
+func (s *RoleAuthzTestSuite) TestChangeRole_SharedIntoCallersOU() {
+	writes := map[string]struct {
+		action security.Action
+		write  func(RoleServiceInterface) *tidcommon.ServiceError
+	}{
+		"update": {action: security.ActionUpdateRole, write: func(svc RoleServiceInterface) *tidcommon.ServiceError {
+			_, svcErr := svc.UpdateRoleWithPermissions(context.Background(), authzRoleID,
+				RoleUpdateDetail{Name: "renamed"})
+			return svcErr
+		}},
+		"delete": {action: security.ActionDeleteRole, write: func(svc RoleServiceInterface) *tidcommon.ServiceError {
+			return svc.DeleteRole(context.Background(), authzRoleID)
+		}},
+	}
+	visibility := []struct {
+		name       string
+		visible    bool
+		visibleErr *tidcommon.ServiceError
+		wantErr    string
+	}{
+		{name: "shared", visible: true, wantErr: ErrorSharedRoleReadOnly.Code},
+		{name: "not shared", wantErr: tidcommon.ErrorUnauthorized.Code},
+		{name: "visibility check fails", visibleErr: &tidcommon.InternalServerError,
+			wantErr: tidcommon.InternalServerError.Code},
+		{name: "the token's unit is gone", visibleErr: &oupkg.ErrorOrganizationUnitNotFound,
+			wantErr: tidcommon.ErrorUnauthorized.Code},
+	}
+	for writeName, w := range writes {
+		for _, tc := range visibility {
+			s.Run(writeName+" "+tc.name, func() {
+				s.SetupTest()
+				expectOwnOUOnly(s.authz, w.action)
+				s.boundary(sysauthz.Boundary{Type: sysauthz.BoundaryTypeOU, OUID: authzOwnOU})
+				s.storedRole(authzOtherOU)
+				s.sharing.On("IsVisible", mock.MatchedBy(security.IsRuntimeContext), RoleSharingType, authzRoleID,
+					authzOwnOU).Return(tc.visible, tc.visibleErr)
+
+				svcErr := w.write(s.service)
+				s.Require().NotNil(svcErr)
+				s.Equal(tc.wantErr, svcErr.Code)
+				s.store.AssertNotCalled(s.T(), "UpdateRole", mock.Anything, mock.Anything, mock.Anything)
+				s.store.AssertNotCalled(s.T(), "DeleteRole", mock.Anything, mock.Anything)
+			})
+		}
+	}
 }

@@ -78,12 +78,50 @@ func (s *ListOUTestSuite) TestFilterByListOUs() {
 	s.Empty(FilterByListOUs(items, []string{}, false, ouOf))
 }
 
-// stubAuthz answers the two calls the list and any-unit helpers make.
+func (s *ListOUTestSuite) TestBoundaryOUOfTheCaller() {
+	ctx := context.Background()
+	s.Equal("ou-1", boundaryOU(ctx, &stubAuthz{boundary: Boundary{Type: BoundaryTypeOU, OUID: "ou-1"}}))
+	s.Empty(boundaryOU(ctx, &stubAuthz{boundary: Boundary{Type: BoundaryTypeDeployment}}))
+	s.Empty(boundaryOU(security.WithRuntimeContext(ctx),
+		&stubAuthz{boundary: Boundary{Type: BoundaryTypeOU, OUID: "ou-1"}}))
+}
+
+func (s *ListOUTestSuite) TestSharedAccessOU() {
+	ctx := context.Background()
+	confined := &stubAuthz{boundary: Boundary{Type: BoundaryTypeOU, OUID: "ou-1"}}
+	tests := []struct {
+		name    string
+		authz   *stubAuthz
+		owner   string
+		refusal *tidcommon.ServiceError
+		want    string
+	}{
+		{name: "refused in another unit", authz: confined, owner: "ou-2", refusal: &tidcommon.ErrorUnauthorized,
+			want: "ou-1"},
+		{name: "refused in its own unit", authz: confined, owner: "ou-1", refusal: &tidcommon.ErrorUnauthorized},
+		{name: "not refused", authz: confined, owner: "ou-2"},
+		{name: "another refusal", authz: confined, owner: "ou-2", refusal: &tidcommon.InternalServerError},
+		{name: "deployment wide", authz: &stubAuthz{boundary: Boundary{Type: BoundaryTypeDeployment}},
+			owner: "ou-2", refusal: &tidcommon.ErrorUnauthorized},
+	}
+	for _, tc := range tests {
+		s.Run(tc.name, func() {
+			s.Equal(tc.want, SharedAccessOU(ctx, tc.authz, tc.owner, tc.refusal))
+		})
+	}
+}
+
+// stubAuthz answers the calls the list, any-unit and boundary helpers make.
 type stubAuthz struct {
 	SystemAuthorizationServiceInterface
 	allowedOUs []string
 	accessible *AccessibleResources
+	boundary   Boundary
 	err        *tidcommon.ServiceError
+}
+
+func (a *stubAuthz) GetBoundary(_ context.Context) Boundary {
+	return a.boundary
 }
 
 func (a *stubAuthz) IsActionAllowed(_ context.Context, _ security.Action,

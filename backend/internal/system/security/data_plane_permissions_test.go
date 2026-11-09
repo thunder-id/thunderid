@@ -4,6 +4,7 @@
 package security
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -280,4 +281,92 @@ func (s *DataPlanePermissionsTestSuite) TestFlowExecuteKeepsTheCaller() {
 			}
 		})
 	}
+}
+
+// On the data plane a caller without the root system permission acts in the organization unit its token names, so
+// a token naming none is refused before any service runs. The root system permission needs no unit, and a route
+// any authenticated caller may use asks for none.
+func (s *DataPlanePermissionsTestSuite) TestATokenNamingNoUnitNeedsTheSystemPermission() {
+	tests := []struct {
+		name        string
+		ouID        string
+		permissions []string
+		path        string
+		wantErr     error
+	}{
+		{name: "org without a unit", permissions: []string{"org"}, path: "/users", wantErr: errForbidden},
+		{name: "org child without a unit", permissions: []string{"org:user:view"}, path: "/users",
+			wantErr: errForbidden},
+		{name: "org root for another resource", permissions: []string{"org"}, path: "/applications",
+			wantErr: errForbidden},
+		{name: "org with a unit", ouID: "ou-1", permissions: []string{"org"}, path: "/users"},
+		{name: "org child with a unit", ouID: "ou-1", permissions: []string{"org:user:view"}, path: "/users"},
+		{name: "system without a unit", permissions: []string{"system"}, path: "/users"},
+		{name: "self service without a unit", permissions: []string{"org"}, path: "/users/me"},
+	}
+	for _, tc := range tests {
+		s.Run(tc.name, func() {
+			s.Equal(tc.wantErr, s.process(tc.ouID, tc.permissions, tc.path))
+		})
+	}
+}
+
+// A public path also serves callers without a token, so a token naming no unit keeps its caller there, and the
+// service behind the path decides what it may do.
+func (s *DataPlanePermissionsTestSuite) TestAPublicPathKeepsACallerNamingNoUnit() {
+	auth := &AuthenticatorInterfaceMock{}
+	revocation := &RevocationEnforcerInterfaceMock{}
+	revocation.On("EnsureNotRevoked", mock.Anything, mock.Anything).Return(nil)
+	req := httptest.NewRequest(http.MethodPost, "/flow/execute", nil)
+	auth.On("CanHandle", req).Return(true)
+	auth.On("Authenticate", req).Return(newSecurityContext("user-1", "", "token", []string{"org"}, nil), nil)
+	svc, err := newSecurityService([]AuthenticatorInterface{auth}, revocation, publicPaths, apiPermissionEntries)
+	s.Require().NoError(err)
+
+	ctx, err := svc.Process(req)
+	s.Require().NoError(err)
+	s.False(IsRuntimeContext(ctx), "the caller is kept rather than dropped to the runtime")
+	s.Equal("user-1", GetSubject(ctx))
+}
+
+// The control plane bounds no permission to an organization unit, so a token needs none.
+func (s *DataPlanePermissionsTestSuite) TestAControlPlaneTokenNeedsNoUnit() {
+	InitControlPlanePermissions("")
+	s.Nil(s.process("", []string{"system:user:view"}, "/users"))
+	s.Nil(s.process("", []string{"system"}, "/users"))
+	s.False(LacksOrganizationUnit(WithSecurityContextTest(context.Background(),
+		NewSecurityContextForTest("user-1", "", "", []string{"system:user"}, nil))))
+}
+
+// process authenticates a GET of path as a caller holding permissions in ouID, and returns the refusal, if any.
+func (s *DataPlanePermissionsTestSuite) process(ouID string, permissions []string, path string) error {
+	auth := &AuthenticatorInterfaceMock{}
+	revocation := &RevocationEnforcerInterfaceMock{}
+	revocation.On("EnsureNotRevoked", mock.Anything, mock.Anything).Return(nil)
+	req := httptest.NewRequest(http.MethodGet, path, nil)
+	auth.On("CanHandle", req).Return(true)
+	auth.On("Authenticate", req).Return(newSecurityContext("user-1", ouID, "token", permissions, nil), nil)
+	svc, err := newSecurityService([]AuthenticatorInterface{auth}, revocation, publicPaths, apiPermissionEntries)
+	s.Require().NoError(err)
+	_, err = svc.Process(req)
+	return err
+}
+
+// An organization permission reaches only the unit its token names, so only the system root permission lists the
+// root organization units on the data plane. The control plane keeps the view permission of organization units.
+func (s *DataPlanePermissionsTestSuite) TestListingTheRootOrganizationUnitsNeedsSystem() {
+	svc, err := newSecurityService(nil, nil, []string{}, apiPermissionEntries)
+	s.Require().NoError(err)
+	s.Equal("system", GetSystemPermissions().OUListRoots)
+	s.Equal("system", svc.getRequiredPermissionForAPI(http.MethodGet, "/organization-units"))
+	s.Equal("system", ResolveActionPermission(ActionListOUs))
+	s.Equal("system", ResolveMCPToolPermission("list_organization_units"))
+	s.Equal("org:ou:view", svc.getRequiredPermissionForAPI(http.MethodGet, "/organization-units/ou-1/ous"))
+	s.Equal("org:ou:view", ResolveActionPermission(ActionListChildOUs))
+
+	InitControlPlanePermissions("")
+	svc, err = newSecurityService(nil, nil, []string{}, apiPermissionEntries)
+	s.Require().NoError(err)
+	s.Equal("system:ou:view", svc.getRequiredPermissionForAPI(http.MethodGet, "/organization-units"))
+	s.Equal("system:ou:view", ResolveActionPermission(ActionListOUs))
 }

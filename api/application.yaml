@@ -33,10 +33,10 @@ paths:
         - Applications
       summary: List applications
       description: |
-        Retrieve a list of all applications. A caller whose permission is limited to an organization
-        unit lists the applications that unit owns instead. An `ouId` filter lists the applications the
-        organization unit owns, followed by the applications shared into it, and none for a unit the
-        caller may not list. A `projectId` lists the project's applications, narrowed to the
+        Retrieve a list of all applications. An `ouId` filter lists the applications the organization
+        unit owns, followed by the applications shared into it, and none for a unit the caller may not
+        list. A caller whose permission is limited to an organization unit lists that unit the same way
+        without the filter. A `projectId` lists the project's applications, narrowed to the
         organization unit in the `ouId` filter when one is given.
       parameters:
         - $ref: '#/components/parameters/limitQueryParam'
@@ -345,7 +345,12 @@ paths:
       tags:
         - Applications
       summary: Get an application by ID
-      description: Retrieve a specific application using its ID.
+      description: |
+        Retrieve a specific application using its ID. A caller whose permission is limited to an
+        organization unit reads the applications that unit owns, with `isOwnedByOU` true, and the
+        applications shared into it. A shared application is returned read only, with `isOwnedByOU`
+        false, `isReadOnly` true and `ouId` set to the organization unit it is read in. Any other
+        application is refused.
       parameters:
         - in: path
           name: id
@@ -481,7 +486,9 @@ paths:
       tags:
         - Applications
       summary: Update an application
-      description: Update the details of an existing application.
+      description: |
+        Update the details of an existing application. An organization unit an application is shared
+        into cannot change it.
       parameters:
         - in: path
           name: id
@@ -714,7 +721,7 @@ paths:
                       key: "error.applicationservice.shared_application_cannot_move_description"
                       defaultValue: "The application is shared into other organization units. Delete its sharing policies before moving it to another organization unit"
         "403":
-          $ref: '#/components/responses/Forbidden'
+          $ref: '#/components/responses/ApplicationWriteForbidden'
         "404":
           description: Application not found
           content:
@@ -751,7 +758,8 @@ paths:
       description: |
         Deletes an application using its ID. Its group memberships and role assignments are
         automatically removed by cascade. The delete is fail-closed and retriable: if dependency
-        cleanup fails, the application is left intact and the operation can be retried.
+        cleanup fails, the application is left intact and the operation can be retried. An
+        organization unit an application is shared into cannot delete it.
       parameters:
         - in: path
           name: id
@@ -779,7 +787,7 @@ paths:
                   key: "error.applicationservice.invalid_application_id_description"
                   defaultValue: "The provided application ID is invalid or empty"
         "403":
-          $ref: '#/components/responses/Forbidden'
+          $ref: '#/components/responses/ApplicationWriteForbidden'
         "500":
           description: Internal server error
           content:
@@ -1237,6 +1245,36 @@ components:
             description:
               key: "error.unauthorized_description"
               defaultValue: "The caller is not authorized to perform this operation"
+    ApplicationWriteForbidden:
+      description: |
+        The caller may not perform the operation in the organization unit of the application, or for an
+        update that moves the application, in the organization unit it moves to. A caller limited to an
+        organization unit the application is shared into is told that the shared application is read only.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            unauthorized:
+              summary: Not permitted in the application's organization unit
+              value:
+                code: "SSE-4030"
+                message:
+                  key: "error.unauthorized"
+                  defaultValue: "Unauthorized"
+                description:
+                  key: "error.unauthorized_description"
+                  defaultValue: "The caller is not authorized to perform this operation"
+            shared-application-read-only:
+              summary: Application shared into the caller's organization unit
+              value:
+                code: "APP-1070"
+                message:
+                  key: "error.applicationservice.shared_application_read_only"
+                  defaultValue: "Shared application is read only"
+                description:
+                  key: "error.applicationservice.shared_application_read_only_description"
+                  defaultValue: "Only the organization unit that owns the application can change or delete it"
     ApplicationSharingPolicyCreateBadRequest:
       description: |
         The policy is not one the issuing organization unit may write. The code says which kind of
@@ -2001,6 +2039,20 @@ components:
             team: "platform"
         status:
           $ref: '#/components/schemas/ApplicationAccessStatus'
+        isOwnedByOU:
+          type: boolean
+          readOnly: true
+          description: |
+            Whether the organization unit the application is read in owns it rather than being shared it.
+            False when a caller limited to an organization unit reads an application shared into that unit.
+          example: true
+        isReadOnly:
+          type: boolean
+          readOnly: true
+          description: |
+            True when the application is read in an organization unit it is shared into, which cannot change
+            or delete it. Omitted otherwise.
+          example: false
 
     BasicApplicationResponse:
       type: object

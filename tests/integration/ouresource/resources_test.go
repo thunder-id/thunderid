@@ -5,6 +5,7 @@ package ouresource
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
@@ -50,6 +51,8 @@ func (ts *OUResourceTestSuite) TestRoles() {
 	ts.requireStatus(http.StatusForbidden, http.MethodGet, "/organization-units/"+ts.ou2ID+"/roles", nil)
 }
 
+// The administrator may not list the child's roles, so a list filtered to the child is empty, even of the
+// administrator's own role shared into it.
 func (ts *OUResourceTestSuite) TestRoleListInChildOU() {
 	own, err := testutils.CreateRole(testutils.Role{Name: "ou-resource-shared-role", OUID: ts.ou1ID})
 	ts.Require().NoError(err)
@@ -67,23 +70,37 @@ func (ts *OUResourceTestSuite) TestRoleListInChildOU() {
 		})
 	ts.cleanup("/roles/" + own + "/sharing-policies/" + idOf(created))
 
-	// The administrator may not list the child's roles, so the list holds only the roles shared into it.
 	body := ts.requireStatus(http.StatusOK, http.MethodGet,
 		"/roles?limit=100&filter="+url.QueryEscape(`ouId eq "`+child+`"`), nil)
-	var list struct {
-		Roles []struct {
-			ID          string `json:"id"`
-			OUID        string `json:"ouId"`
-			IsReadOnly  bool   `json:"isReadOnly"`
-			IsOwnedByOU bool   `json:"isOwnedByOU"`
-		} `json:"roles"`
+	ts.Empty(listedIDs(body, "roles"), "a list of a unit the administrator may not list must be empty")
+}
+
+// A list filtered to a unit the administrator may not list is empty for every resource, whatever that unit
+// owns or is shared.
+func (ts *OUResourceTestSuite) TestListFilteredToAnotherOUIsEmpty() {
+	app, err := testutils.CreateApplication(testutils.Application{Name: "ou-resource-filter-app", OUID: ts.parentID})
+	ts.Require().NoError(err)
+	ts.cleanup("/applications/" + app)
+	role, err := testutils.CreateRole(testutils.Role{Name: "ou-resource-filter-role", OUID: ts.parentID})
+	ts.Require().NoError(err)
+	ts.cleanup("/roles/" + role)
+	flow, err := testutils.CreateFlow(ouResourceFlow("ou-resource-filter-flow", ts.parentID))
+	ts.Require().NoError(err)
+	ts.cleanup("/flows/" + flow)
+	ts.createAsRoot("/connections/http", httpConnectionIn("ou-resource-filter-http", ts.parentID))
+
+	for _, ouID := range []string{ts.parentID, ts.ou2ID} {
+		filter := url.QueryEscape(`ouId eq "` + ouID + `"`)
+		for _, r := range []struct{ path, key string }{
+			{"/applications?filter=" + filter, "applications"},
+			{"/roles?limit=100&filter=" + filter, "roles"},
+			{"/flows?limit=100&filter=" + filter, "flows"},
+			{"/connections?limit=100&filter=" + filter, "connections"},
+		} {
+			body := ts.requireStatus(http.StatusOK, http.MethodGet, r.path, nil)
+			ts.Emptyf(listedIDs(body, r.key), "%s must list nothing", r.path)
+		}
 	}
-	ts.Require().NoError(json.Unmarshal(body, &list))
-	ts.Require().Len(list.Roles, 1)
-	ts.Equal(own, list.Roles[0].ID)
-	ts.Equal(child, list.Roles[0].OUID)
-	ts.True(list.Roles[0].IsReadOnly)
-	ts.False(list.Roles[0].IsOwnedByOU)
 }
 
 func (ts *OUResourceTestSuite) TestFlows() {
@@ -343,9 +360,9 @@ func (ts *OUResourceTestSuite) TestResourceServerInParentOU() {
 	ts.True(ids[ts.rsID], "the list must include the administrator's own resource server")
 }
 
-// A resource shared into the administrator's OU is listed with an OU filter, and left out of the list
-// without one, which holds what the OU owns.
-func (ts *OUResourceTestSuite) TestSharedResourcesListedWithOUFilter() {
+// A resource shared into the administrator's OU is listed with an OU filter and without one, and opening it
+// reads it in that OU rather than refusing it.
+func (ts *OUResourceTestSuite) TestSharedResourcesListedAndRead() {
 	app, err := testutils.CreateApplication(testutils.Application{Name: "ou-resource-shared-app", OUID: ts.parentID})
 	ts.Require().NoError(err)
 	ts.cleanup("/applications/" + app)
@@ -374,9 +391,10 @@ func (ts *OUResourceTestSuite) TestSharedResourcesListedWithOUFilter() {
 		id := r.item[strings.LastIndex(r.item, "/")+1:]
 
 		body = ts.requireStatus(http.StatusOK, http.MethodGet, r.list, nil)
-		ts.Falsef(listedIDs(body, r.key)[id], "%s without a filter must leave out the shared resource", r.list)
+		ts.Truef(listedIDs(body, r.key)[id], "%s without a filter must list the shared resource", r.list)
 		body = ts.requireStatus(http.StatusOK, http.MethodGet, r.filtered, nil)
 		ts.Truef(listedIDs(body, r.key)[id], "%s must list the shared resource", r.filtered)
+		ts.requireStatus(http.StatusOK, http.MethodGet, r.item, nil)
 	}
 }
 
@@ -402,7 +420,8 @@ func presentationDefinitionIn(handle, ouID string) map[string]interface{} {
 	}
 }
 
-// A token that names no organization unit lists nothing and reads nothing, whatever permissions it carries.
+// A token that names no organization unit is refused on the Data Plane unless it holds system, which reaches every
+// unit: org and its children act only in the unit a token names, so a token naming none reaches nothing.
 func (ts *OUResourceTestSuite) TestTokenWithoutOU() {
 	const clientID = "ou-resource-no-ou-sign-in"
 	appID, err := testutils.CreateApplication(testutils.Application{
@@ -425,28 +444,243 @@ func (ts *OUResourceTestSuite) TestTokenWithoutOU() {
 	ts.Require().NoError(err)
 	ts.cleanup("/applications/" + appID)
 
-	scope := "system"
-	for _, p := range adminPermissions {
-		scope += " " + p
-	}
-	token, err := testutils.ObtainAccessTokenWithPassword(clientID, testutils.OUSignInRedirectURI, scope,
-		adminUsername, adminPassword, true, "", rsIdentifier)
-	ts.Require().NoError(err)
-	client := testutils.GetHTTPClientWithToken(token.AccessToken)
-
 	own, err := testutils.CreateFlow(ouResourceFlow("ou-resource-no-ou-flow", ts.ou1ID))
 	ts.Require().NoError(err)
 	ts.cleanup("/flows/" + own)
 
-	status, body := ts.send(client, http.MethodGet, "/flows?limit=100", nil)
-	ts.Require().Equal(http.StatusOK, status, string(body))
-	ts.Empty(listedIDs(body, "flows"))
-	for _, path := range []string{"/connections/http", "/openid4vci/credential-configurations",
-		"/openid4vp/presentation-definitions"} {
-		status, body = ts.send(client, http.MethodGet, path, nil)
-		ts.Require().Equalf(http.StatusOK, status, "%s: %s", path, body)
-		ts.Emptyf(listedArrayIDs(body), "%s must list nothing", path)
+	signIn := func(username, scope string) *http.Client {
+		token, err := testutils.ObtainAccessTokenWithPassword(clientID, testutils.OUSignInRedirectURI, scope,
+			username, adminPassword, true, "", rsIdentifier)
+		ts.Require().NoError(err)
+		claims, err := testutils.DecodeJWT(token.AccessToken)
+		ts.Require().NoError(err)
+		ts.Require().Empty(claims.OUID, "the token must name no organization unit")
+		return testutils.GetHTTPClientWithToken(token.AccessToken)
 	}
-	status, body = ts.send(client, http.MethodGet, "/flows/"+own, nil)
-	ts.Equal(http.StatusForbidden, status, string(body))
+
+	org := signIn(adminUsername, "org")
+	for _, path := range []string{"/flows?limit=100", "/flows/" + own, "/applications", "/connections/http",
+		"/openid4vci/credential-configurations", "/openid4vp/presentation-definitions"} {
+		status, body := ts.send(org, http.MethodGet, path, nil)
+		ts.Equalf(http.StatusForbidden, status, "%s: %s", path, body)
+	}
+
+	system := signIn(ts.createSystemAdmin("ou-resource-no-ou-system-admin"), "system")
+	status, body := ts.send(system, http.MethodGet, "/flows?limit=100", nil)
+	ts.Require().Equal(http.StatusOK, status, string(body))
+	status, body = ts.send(system, http.MethodGet, "/flows/"+own, nil)
+	ts.Equal(http.StatusOK, status, string(body))
+}
+
+// A system token taken in OU1 reaches every unit. Without a filter it lists another tree's resources, and a filter
+// lists what the unit owns, then what is shared into it, or what another unit owns.
+func (ts *OUResourceTestSuite) TestSystemTokenInAUnitListsEveryUnit() {
+	client := ts.systemAdminClient()
+
+	app, err := testutils.CreateApplication(testutils.Application{Name: "ou-resource-system-app", OUID: ts.parentID})
+	ts.Require().NoError(err)
+	ts.cleanup("/applications/" + app)
+	otherApp, err := testutils.CreateApplication(testutils.Application{Name: "ou-resource-system-other-app",
+		OUID: ts.ou2ID})
+	ts.Require().NoError(err)
+	ts.cleanup("/applications/" + otherApp)
+	role, err := testutils.CreateRole(testutils.Role{Name: "ou-resource-system-role", OUID: ts.parentID})
+	ts.Require().NoError(err)
+	ts.cleanup("/roles/" + role)
+	otherRole, err := testutils.CreateRole(testutils.Role{Name: "ou-resource-system-other-role", OUID: ts.ou2ID})
+	ts.Require().NoError(err)
+	ts.cleanup("/roles/" + otherRole)
+	flow, err := testutils.CreateFlow(ouResourceFlow("ou-resource-system-flow", ts.parentID))
+	ts.Require().NoError(err)
+	ts.cleanup("/flows/" + flow)
+	otherFlow, err := testutils.CreateFlow(ouResourceFlow("ou-resource-system-other-flow", ts.ou2ID))
+	ts.Require().NoError(err)
+	ts.cleanup("/flows/" + otherFlow)
+	conn := ts.createAsRoot("/connections/http", httpConnectionIn("ou-resource-system-http", ts.parentID))
+	otherConn := ts.createAsRoot("/connections/http", httpConnectionIn("ou-resource-system-other-http", ts.ou2ID))
+
+	for _, r := range []struct {
+		item, list, key, shared, other string
+	}{
+		{"/applications/", "/applications", "applications", app, otherApp},
+		{"/roles/", "/roles", "roles", role, otherRole},
+		{"/flows/", "/flows", "flows", flow, otherFlow},
+		{"/connections/http/", "/connections", "connections", conn, otherConn},
+	} {
+		ts.Run(r.key, func() {
+			status, body := ts.root(http.MethodPost, r.item+r.shared+"/sharing-policies",
+				map[string]interface{}{"childUnits": map[string]interface{}{"mode": "all"}})
+			ts.Require().Equalf(http.StatusCreated, status, "share %s: %s", r.shared, body)
+			ts.cleanup(r.item + r.shared + "/sharing-policies/" + idOf(body))
+
+			every := ts.listOwnership(client, r.list, r.key, "")
+			ts.Contains(every, r.shared, "the unfiltered list holds the parent's resource")
+			ts.Contains(every, r.other, "the unfiltered list holds the other tree's resource")
+
+			inOU1 := ts.listOwnership(client, r.list, r.key, ts.ou1ID)
+			ts.Require().Contains(inOU1, r.shared, "OU1 lists the resource shared into it")
+			ts.False(inOU1[r.shared], "OU1 lists the parent's resource as shared")
+			ts.NotContains(inOU1, r.other)
+
+			inOU2 := ts.listOwnership(client, r.list, r.key, ts.ou2ID)
+			ts.Require().Contains(inOU2, r.other, "a filter on another tree lists what it owns")
+			ts.True(inOU2[r.other])
+			ts.NotContains(inOU2, r.shared)
+		})
+	}
+}
+
+// systemAdminClient creates an administrator in OU1 holding system, and returns a client carrying its token.
+func (ts *OUResourceTestSuite) systemAdminClient() *http.Client {
+	ts.T().Helper()
+	username := ts.createSystemAdmin("ou-resource-system-admin")
+	token, err := ts.signIn.ObtainAccessToken(ts.ou1ID, "system", username, adminPassword, rsIdentifier)
+	ts.Require().NoError(err, "obtain the system administrator's token")
+	ts.Require().NotEmpty(token.AccessToken)
+	return testutils.GetHTTPClientWithToken(token.AccessToken)
+}
+
+// createSystemAdmin creates an administrator in OU1 holding system, and returns its username.
+func (ts *OUResourceTestSuite) createSystemAdmin(username string) string {
+	ts.T().Helper()
+	userID, err := testutils.CreateUser(testutils.User{
+		Type: "ou-resource-admin-type",
+		OUID: ts.ou1ID,
+		Attributes: json.RawMessage(fmt.Sprintf(`{"username": %q, "password": %q}`,
+			username, adminPassword)),
+	})
+	ts.Require().NoError(err, "create the system administrator %s", username)
+	ts.cleanup("/users/" + userID)
+	roleID, err := testutils.CreateRole(testutils.Role{
+		Name: username + "-role",
+		OUID: ts.ou1ID,
+		Permissions: []testutils.ResourcePermissions{
+			{ResourceServerID: ts.rsID, Permissions: []string{"system"}},
+		},
+		Assignments: []testutils.Assignment{{ID: userID, Type: "user"}},
+	})
+	ts.Require().NoError(err, "create the system administrator's role")
+	ts.cleanup("/roles/" + roleID)
+	return username
+}
+
+// listOwnership reads every page of a list with the client, filtered to ouID when it is set, and returns whether
+// each listed resource is listed as owned.
+func (ts *OUResourceTestSuite) listOwnership(client *http.Client, list, key, ouID string) map[string]bool {
+	ts.T().Helper()
+	query := ""
+	if ouID != "" {
+		query = "&filter=" + url.QueryEscape(`ouId eq "`+ouID+`"`)
+	}
+	listed := map[string]bool{}
+	for offset := 0; ; offset += 100 {
+		status, body := ts.send(client, http.MethodGet, fmt.Sprintf("%s?limit=100&offset=%d%s", list, offset, query),
+			nil)
+		ts.Require().Equalf(http.StatusOK, status, "%s: %s", list, body)
+		var page map[string]json.RawMessage
+		ts.Require().NoError(json.Unmarshal(body, &page))
+		var total int
+		_ = json.Unmarshal(page["totalResults"], &total)
+		var items []struct {
+			ID          string `json:"id"`
+			IsOwnedByOU *bool  `json:"isOwnedByOU"`
+		}
+		ts.Require().NoError(json.Unmarshal(page[key], &items))
+		for _, item := range items {
+			listed[item.ID] = item.IsOwnedByOU == nil || *item.IsOwnedByOU
+		}
+		if len(items) < 100 || offset+100 >= total {
+			return listed
+		}
+	}
+}
+
+// User types and agent types are read down the hierarchy without being shared: a token from a child unit, holding
+// org or only the view permission of a type, lists and reads the types its ancestors own, but not another tree's.
+// Changing or deleting an ancestor's type stays with the unit that owns it.
+func (ts *OUResourceTestSuite) TestTypesAreReadFromTheParent() {
+	schema := map[string]interface{}{"name": map[string]interface{}{"type": "string"}}
+	// A unit owns at most one agent type, and OU2 may own one already, so another tree gets a root of its own.
+	otherRoot, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
+		Handle: "ou-resource-types-other", Name: "OU Resource Types Other Tree",
+	})
+	ts.Require().NoError(err)
+	ts.cleanups = append(ts.cleanups, func() { _ = testutils.DeleteOrganizationUnit(otherRoot) })
+	parentAgentType := ts.createAsRoot("/agent-types", map[string]interface{}{"handle": "ou-resource-parent-agents",
+		"displayName": "OU Resource Parent Agents", "ouId": ts.parentID, "schema": schema})
+	otherAgentType := ts.createAsRoot("/agent-types", map[string]interface{}{"handle": "ou-resource-other-agents",
+		"displayName": "OU Resource Other Agents", "ouId": otherRoot, "schema": schema})
+	parentUserType := ts.createAsRoot("/user-types", map[string]interface{}{"handle": "ou-resource-parent-people",
+		"displayName": "OU Resource Parent People", "ouId": ts.parentID, "schema": schema})
+	otherUserType := ts.createAsRoot("/user-types", map[string]interface{}{"handle": "ou-resource-other-people",
+		"displayName": "OU Resource Other People", "ouId": otherRoot, "schema": schema})
+
+	clients := map[string]*http.Client{
+		"org":                                  ts.adminClient,
+		"org:usertype:view org:agenttype:view": ts.typeViewerClient(),
+	}
+	for scope, client := range clients {
+		ts.Run(scope, func() {
+			for _, r := range []struct{ path, parent, other string }{
+				{"/user-types", parentUserType, otherUserType},
+				{"/agent-types", parentAgentType, otherAgentType},
+			} {
+				listed := ts.listOwnership(client, r.path, "types", "")
+				ts.Contains(listed, r.parent, "%s lists the parent's type", r.path)
+				ts.NotContains(listed, r.other, "%s leaves out another tree's type", r.path)
+
+				status, body := ts.send(client, http.MethodGet, r.path+"/"+r.parent, nil)
+				ts.Equalf(http.StatusOK, status, "%s reads the parent's type: %s", r.path, body)
+				status, body = ts.send(client, http.MethodGet, r.path+"/"+r.other, nil)
+				ts.Equalf(http.StatusForbidden, status, "%s refuses another tree's type: %s", r.path, body)
+			}
+		})
+	}
+
+	ts.requireStatus(http.StatusForbidden, http.MethodPut, "/agent-types/"+parentAgentType,
+		map[string]interface{}{"handle": "ou-resource-parent-agents", "displayName": "Renamed",
+			"ouId": ts.parentID, "schema": schema})
+	ts.requireStatus(http.StatusForbidden, http.MethodDelete, "/agent-types/"+parentAgentType, nil)
+	ts.requireStatus(http.StatusForbidden, http.MethodPut, "/user-types/"+parentUserType,
+		map[string]interface{}{"handle": "ou-resource-parent-people", "displayName": "Renamed",
+			"ouId": ts.parentID, "schema": schema})
+	ts.requireStatus(http.StatusForbidden, http.MethodDelete, "/user-types/"+parentUserType, nil)
+}
+
+// typeViewerClient creates an administrator in OU1 holding only the view permissions of user types and agent types,
+// on a resource server of its own that declares them, and returns a client carrying its token.
+func (ts *OUResourceTestSuite) typeViewerClient() *http.Client {
+	ts.T().Helper()
+	const username = "ou-resource-type-viewer"
+	const identifier = "https://ou-resource.example.com/types"
+	rsID, err := testutils.CreateOrgScopedResourceServer(ts.ou1ID, "OU Resource Types RS", identifier,
+		"usertype", "agenttype")
+	ts.Require().NoError(err)
+	ts.cleanups = append(ts.cleanups, func() { _ = testutils.DeleteResourceServerWithChildren(rsID) })
+
+	userID, err := testutils.CreateUser(testutils.User{
+		Type: "ou-resource-admin-type",
+		OUID: ts.ou1ID,
+		Attributes: json.RawMessage(fmt.Sprintf(`{"username": %q, "password": %q}`,
+			username, adminPassword)),
+	})
+	ts.Require().NoError(err)
+	ts.cleanup("/users/" + userID)
+	roleID, err := testutils.CreateRole(testutils.Role{
+		Name: username + "-role",
+		OUID: ts.ou1ID,
+		Permissions: []testutils.ResourcePermissions{
+			{ResourceServerID: rsID, Permissions: []string{"org:usertype:view", "org:agenttype:view"}},
+		},
+		Assignments: []testutils.Assignment{{ID: userID, Type: "user"}},
+	})
+	ts.Require().NoError(err)
+	ts.cleanup("/roles/" + roleID)
+
+	token, err := ts.signIn.ObtainAccessToken(ts.ou1ID, "org:usertype:view org:agenttype:view", username,
+		adminPassword, identifier)
+	ts.Require().NoError(err)
+	ts.Require().ElementsMatch([]string{"org:usertype:view", "org:agenttype:view"}, strings.Fields(token.Scope),
+		"the token carries only the view scopes")
+	return testutils.GetHTTPClientWithToken(token.AccessToken)
 }

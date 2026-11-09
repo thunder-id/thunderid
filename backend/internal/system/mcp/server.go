@@ -32,12 +32,13 @@ func serverName(productName string) string {
 }
 
 // toolPermissionMiddleware refuses a tool call unless the caller holds the permission the tool is
-// mapped to, as the route table does for a REST call.
+// mapped to, and names an organization unit when it must, as the route table does for a REST call.
 func toolPermissionMiddleware(next mcp.MethodHandler) mcp.MethodHandler {
 	return func(ctx context.Context, method string, req mcp.Request) (mcp.Result, error) {
 		if call, ok := req.(*mcp.CallToolRequest); ok {
 			required := security.ResolveMCPToolPermission(call.Params.Name)
-			if !security.HasSufficientSystemPermission(security.GetPermissions(ctx), required) {
+			if !security.HasSufficientSystemPermission(security.GetPermissions(ctx), required) ||
+				security.LacksOrganizationUnit(ctx) {
 				return &mcp.CallToolResult{
 					IsError: true,
 					Content: []mcp.Content{&mcp.TextContent{

@@ -1,7 +1,7 @@
 # Machine-to-Machine Access Across Organization Units Specification
 
 - **Status:** Draft
-- **Version:** 0.5
+- **Version:** 0.7
 - **Related documents:** [Discussion #5461: Machine-to-Machine (M2M) service working across OUs](https://github.com/thunder-id/thunderid/discussions/5461), [Issue #4037: Allow trusted machine clients to obtain an access token scoped to a chosen Organization Unit (without a per-OU application)](https://github.com/thunder-id/thunderid/issues/4037)
 
 ## Summary
@@ -329,12 +329,12 @@ inboundAuthConfig:
 
 ### R2. The grant is visibility only
 
-**Requirement:** This requirement covers machine-to-machine (M2M) applications. Sharing an M2M application with an organization unit permits that unit to be named as the accessing organization unit and nothing else. The application stays invisible inside the organization units it is shared to.
+**Requirement:** This requirement covers machine-to-machine (M2M) applications. Sharing an M2M application with an organization unit permits that unit to be named as the accessing organization unit. A delegated administrator in that unit lists and reads the application, and it stays read only there: the unit cannot change or delete it.
 
 **Acceptance criteria:**
 
-- **AC2.1:** Given an M2M application shared to B, when a delegated administrator in B lists applications, then the application is absent.
-- **AC2.2:** Given an M2M application shared to B, when a delegated administrator in B attempts to read, edit, or delete it, then the attempt is refused.
+- **AC2.1:** Given an M2M application shared to B, when a delegated administrator in B lists applications, then the application is listed after the ones B owns, with `isOwnedByOU: false`.
+- **AC2.2:** Given an M2M application shared to B, when a delegated administrator in B reads it, then it is returned under B with `isOwnedByOU: false` and `isReadOnly: true`; when the administrator attempts to edit or delete it, then the attempt is refused with `APP-1070`.
 - **AC2.3:** Given a policy on an M2M application that names any overlay rule, when it is created, then the request is refused, because the shared M2M applications should not be changed by sharee organization unit.
 
 ### R3. The owner controls which organization units are reached
@@ -405,3 +405,5 @@ inboundAuthConfig:
 | 0.3 | 2026-10-27 | A policy field the format does not declare fails a resource file or an imported document instead of being ignored. A shared application cannot be moved to another organization unit. |
 | 0.4 | 2026-10-30 | An application's scopes and its `roles` and `groups` claims come only from the role assignments made in, and the groups owned by, its own organization unit. |
 | 0.5 | 2026-11-07 | The Organization Access tab shows for every application, not only those with the `client_credentials` grant, since a policy also decides which organization units' users can sign in. |
+| 0.6 | 2026-11-09 | A delegated administrator in a sharee organization unit lists and reads a shared application, marked as not owned, and an edit or delete is refused with `APP-1070` (AC2.1, AC2.2). |
+| 0.7 | 2026-11-09 | The R2 requirement states that a sharee organization unit lists and reads a shared M2M application and cannot change it, as AC2.1 and AC2.2 do. |

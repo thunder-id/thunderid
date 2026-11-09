@@ -3,6 +3,7 @@
 
 import {waitFor, renderHook} from '@thunderid/test-utils';
 import {describe, it, expect, beforeEach, vi} from 'vitest';
+import type {SharingPolicy} from '../../models/sharing-policy';
 import useGetMandatableRoles from '../useGetMandatableRoles';
 
 const mockHttpRequest = vi.fn();
@@ -15,25 +16,34 @@ vi.mock('@thunderid/contexts', async (importOriginal) => {
   return {...actual, useConfig: () => ({getServerUrl: () => 'https://localhost:8090'})};
 });
 
-// A role listed for a unit carries that unit's ID whoever owns it, as the roles API returns it.
-const role = (id: string, listedOuId: string, isOwnedByOU: boolean) => ({
-  id,
-  name: `${id}-name`,
-  ouId: listedOuId,
-  isOwnedByOU,
-});
+const role = (id: string, isOwnedByOU: boolean) => ({id, name: `${id}-name`, ouId: 'acme', isOwnedByOU});
 
 const listUrl = (ouId: string, offset = 0) =>
   `https://localhost:8090/roles?${new URLSearchParams({filter: `ouId eq "${ouId}"`, limit: '100', offset: String(offset)}).toString()}`;
 
-// Answers each listing by the unit its filter names.
-const answerBy = (pages: Record<string, {totalResults: number; roles: ReturnType<typeof role>[]}[]>) => {
+const policiesUrl = (roleId: string) => `https://localhost:8090/roles/${roleId}/sharing-policies?offset=0`;
+
+const sharedWith = (initiatingOuId: string, ...units: string[]): SharingPolicy => ({
+  id: `policy-${initiatingOuId}`,
+  stage: 'share',
+  version: 1,
+  initiatingOuId,
+  childUnits: {mode: 'selected', units: units.map((ouId) => ({ouId, reach: 'unit'}))},
+});
+
+// Answers the issuer's role listing page by page, and each role's policies by its ID.
+const answer = (
+  issuerPages: {totalResults: number; roles: ReturnType<typeof role>[]}[],
+  policies: Record<string, SharingPolicy[]>,
+) => {
   mockHttpRequest.mockImplementation(({url}: {url: string}) => {
-    const params = new URL(url).searchParams;
-    const ouId = /ouId eq "([^"]+)"/.exec(params.get('filter') ?? '')?.[1] ?? '';
-    const offset = Number(params.get('offset'));
-    const queue = pages[ouId] ?? [{totalResults: 0, roles: []}];
-    const page = queue.find((p, i) => queue.slice(0, i).reduce((n, q) => n + q.roles.length, 0) === offset);
+    const policyMatch = /\/roles\/([^/]+)\/sharing-policies/.exec(url);
+    if (policyMatch) {
+      const list = policies[policyMatch[1]] ?? [];
+      return Promise.resolve({data: {totalResults: list.length, policies: list}});
+    }
+    const offset = Number(new URL(url).searchParams.get('offset'));
+    const page = issuerPages.find((_, i) => issuerPages.slice(0, i).reduce((n, p) => n + p.roles.length, 0) === offset);
     return Promise.resolve({data: page ?? {totalResults: 0, roles: []}});
   });
 };
@@ -43,77 +53,74 @@ describe('useGetMandatableRoles', () => {
     mockHttpRequest.mockReset();
   });
 
-  it("keeps the issuer's own roles shared with the unit, read against the issuer's listing", async () => {
-    answerBy({
-      retail: [
+  it("keeps the issuer's own roles its policy shares with the unit, without listing the unit's roles", async () => {
+    answer(
+      [
         {
           totalResults: 4,
           roles: [
-            role('own-by-unit', 'retail', true),
-            role('from-issuer', 'retail', false),
-            role('from-other', 'retail', false),
-            role('from-issuer-2', 'retail', false),
+            role('to-retail', true),
+            role('to-other', true),
+            role('from-root', false),
+            role('reshared-by-retail', true),
           ],
         },
       ],
-      acme: [
-        {
-          totalResults: 3,
-          roles: [
-            role('from-issuer', 'acme', true),
-            role('from-issuer-2', 'acme', true),
-            role('from-root', 'acme', false),
-          ],
-        },
-      ],
-    });
+      {
+        'to-retail': [sharedWith('acme', 'retail')],
+        'to-other': [sharedWith('acme', 'wholesale')],
+        'from-root': [sharedWith('root', 'retail')],
+        'reshared-by-retail': [sharedWith('retail', 'retail-east')],
+      },
+    );
 
     const {result} = renderHook(() => useGetMandatableRoles('retail', 'acme'));
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(result.current.data?.candidates.map((r) => r.id)).toEqual(['from-issuer', 'from-issuer-2']);
-    expect(result.current.data?.candidates[0]).toEqual({
-      id: 'from-issuer',
-      name: 'from-issuer-name',
-      description: undefined,
-      ouId: 'acme',
-    });
-    expect(mockHttpRequest).toHaveBeenCalledWith(expect.objectContaining({url: listUrl('retail')}));
+    expect(result.current.data?.candidates).toEqual([
+      {id: 'to-retail', name: 'to-retail-name', description: undefined, ouId: 'acme'},
+    ]);
     expect(mockHttpRequest).toHaveBeenCalledWith(expect.objectContaining({url: listUrl('acme')}));
+    expect(mockHttpRequest).not.toHaveBeenCalledWith(expect.objectContaining({url: listUrl('retail')}));
+    expect(mockHttpRequest).not.toHaveBeenCalledWith(expect.objectContaining({url: policiesUrl('from-root')}));
   });
 
-  it('names every role the unit sees, so a mandated role that is no longer a candidate is not shown by ID', async () => {
-    answerBy({
-      retail: [{totalResults: 2, roles: [role('from-other', 'retail', false), role('own-by-unit', 'retail', true)]}],
-      acme: [{totalResults: 0, roles: []}],
-    });
+  it('names every role the issuer sees, so a mandated role that is no longer a candidate is not shown by ID', async () => {
+    answer([{totalResults: 2, roles: [role('unshared', true), role('from-root', false)]}], {});
 
     const {result} = renderHook(() => useGetMandatableRoles('retail', 'acme'));
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(result.current.data?.candidates).toEqual([]);
-    expect(result.current.data?.names).toEqual({'from-other': 'from-other-name', 'own-by-unit': 'own-by-unit-name'});
+    expect(result.current.data?.names).toEqual({unshared: 'unshared-name', 'from-root': 'from-root-name'});
   });
 
-  it('follows pagination to the end', async () => {
-    const first = Array.from({length: 100}, (_, i) => role(`r${i}`, 'retail', false));
-    answerBy({
-      retail: [
-        {totalResults: 101, roles: first},
-        {totalResults: 101, roles: [role('last', 'retail', false)]},
+  it("follows pagination of the issuer's roles to the end", async () => {
+    answer(
+      [
+        {totalResults: 101, roles: Array.from({length: 100}, (_, i) => role(`r${i}`, true))},
+        {totalResults: 101, roles: [role('last', true)]},
       ],
-      acme: [
-        {totalResults: 101, roles: Array.from({length: 100}, (_, i) => role(`r${i}`, 'acme', true))},
-        {totalResults: 101, roles: [role('last', 'acme', true)]},
-      ],
-    });
+      {last: [sharedWith('acme', 'retail')]},
+    );
 
     const {result} = renderHook(() => useGetMandatableRoles('retail', 'acme'));
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(result.current.data?.candidates).toHaveLength(101);
-    expect(mockHttpRequest).toHaveBeenCalledWith(expect.objectContaining({url: listUrl('retail', 100)}));
+    expect(result.current.data?.candidates.map((r) => r.id)).toEqual(['last']);
     expect(mockHttpRequest).toHaveBeenCalledWith(expect.objectContaining({url: listUrl('acme', 100)}));
+  });
+
+  it('fails when a role policy cannot be read', async () => {
+    mockHttpRequest.mockImplementation(({url}: {url: string}) =>
+      url.includes('/sharing-policies')
+        ? Promise.reject(new Error('denied'))
+        : Promise.resolve({data: {totalResults: 1, roles: [role('to-retail', true)]}}),
+    );
+
+    const {result} = renderHook(() => useGetMandatableRoles('retail', 'acme'));
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
   });
 
   it('does not fetch without a unit or an issuer', () => {

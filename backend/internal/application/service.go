@@ -390,7 +390,8 @@ func (as *applicationService) ValidateApplication(ctx context.Context, app *mode
 }
 
 // GetApplicationList list the applications. An organization unit filter lists the applications that
-// unit owns, followed by the ones shared into it.
+// unit owns, followed by the ones shared into it, as does a list without the filter by a caller confined to
+// an organization unit.
 func (as *applicationService) GetApplicationList(
 	ctx context.Context, filters map[string]interface{}) (*model.ApplicationListResponse, *tidcommon.ServiceError) {
 	requestedOUID, rest, err := filter.SplitOUIDFilter(filters)
@@ -405,13 +406,8 @@ func (as *applicationService) GetApplicationList(
 	if !visible {
 		return as.buildApplicationList(ctx, nil, 0, 0)
 	}
-	if requestedOUID != "" {
-		return as.listApplicationsInOU(ctx, ouID, entity.OUEntityScopeAll)
-	}
-	// Without a filter, a caller confined to an organization unit lists the applications it owns, as the
-	// user list does. The ones shared into it are listed with the organization unit filter.
 	if ouID != "" {
-		return as.listApplicationsInOU(ctx, ouID, entity.OUEntityScopeOwned)
+		return as.listApplicationsInOU(ctx, ouID)
 	}
 
 	totalResults, entErr := as.entityService.GetEntityListCount(ctx, providers.EntityCategoryApp, nil)
@@ -506,11 +502,11 @@ func (as *applicationService) validateProjectOU(ctx context.Context, projectID, 
 }
 
 // listApplicationsInOU lists the applications an organization unit owns, followed by the ones shared
-// into it when the scope includes them.
-func (as *applicationService) listApplicationsInOU(ctx context.Context, ouID string,
-	scope entity.OUEntityScope) (*model.ApplicationListResponse, *tidcommon.ServiceError) {
+// into it.
+func (as *applicationService) listApplicationsInOU(
+	ctx context.Context, ouID string) (*model.ApplicationListResponse, *tidcommon.ServiceError) {
 	page, err := as.entityService.GetEntityPageInOU(ctx, providers.EntityCategoryApp, ouID,
-		scope, serverconst.MaxCompositeStoreRecords, 0, nil)
+		entity.OUEntityScopeAll, serverconst.MaxCompositeStoreRecords, 0, nil)
 	if err != nil {
 		as.logger.Error(ctx, "Failed to list application entities in organization unit",
 			log.String("ouID", ouID), log.Error(err))
@@ -631,9 +627,58 @@ func (as *applicationService) GetApplication(ctx context.Context, appID string) 
 		return nil, svcErr
 	}
 	if svcErr := as.checkApplicationAccess(ctx, security.ActionReadApplication, fullApp.OUID); svcErr != nil {
+		return as.getSharedApplication(ctx, fullApp, svcErr)
+	}
+	app, svcErr := as.enrichApplicationWithCertificate(ctx, buildApplicationResponse(fullApp))
+	if svcErr != nil {
 		return nil, svcErr
 	}
-	return as.enrichApplicationWithCertificate(ctx, buildApplicationResponse(fullApp))
+	// Read in its owning organization unit, as a shared application is read in the one it is shared into.
+	app.IsOwnedByOU = new(true)
+	return app, nil
+}
+
+// getSharedApplication answers a read refused in the application's owning organization unit with the
+// application as the organization unit the caller is confined to sees it, when the application is shared
+// there, and with the refusal otherwise. That unit cannot change it, as applications declare no fields it
+// may override.
+func (as *applicationService) getSharedApplication(ctx context.Context, fullApp *model.ApplicationProcessedDTO,
+	refusal *tidcommon.ServiceError) (*providers.Application, *tidcommon.ServiceError) {
+	ouID, svcErr := sharing.SharedIntoCallerOU(ctx, as.authzService, as.sharingService, as.logger,
+		ApplicationSharingType, fullApp.ID, fullApp.OUID, refusal)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	if ouID == "" {
+		return nil, refusal
+	}
+	if svcErr := as.checkApplicationAccess(ctx, security.ActionReadApplication, ouID); svcErr != nil {
+		return nil, svcErr
+	}
+	app, svcErr := as.enrichApplicationWithCertificate(ctx, buildApplicationResponse(fullApp))
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	app.OUID = ouID
+	app.IsOwnedByOU = new(false)
+	app.IsReadOnly = true
+	return app, nil
+}
+
+// sharedApplicationRefusal answers a write refused in the application's owning organization unit with
+// ErrorSharedApplicationReadOnly when the application is shared into the organization unit the caller is
+// confined to, and with the refusal otherwise.
+func (as *applicationService) sharedApplicationRefusal(ctx context.Context, appID, ownerOUID string,
+	refusal *tidcommon.ServiceError) *tidcommon.ServiceError {
+	ouID, svcErr := sharing.SharedIntoCallerOU(ctx, as.authzService, as.sharingService, as.logger,
+		ApplicationSharingType, appID, ownerOUID, refusal)
+	if svcErr != nil {
+		return svcErr
+	}
+	if ouID == "" {
+		return refusal
+	}
+	return &ErrorSharedApplicationReadOnly
 }
 
 // checkApplicationDeclarative refuses an application declared in a resource file, which cannot be
@@ -955,7 +1000,7 @@ func (as *applicationService) deleteApplication(ctx context.Context, appID strin
 		}
 		if svcErr := as.checkApplicationAccess(ctx, security.ActionDeleteApplication,
 			existing.OUID); svcErr != nil {
-			return svcErr
+			return as.sharedApplicationRefusal(ctx, appID, existing.OUID, svcErr)
 		}
 		// Refused before anything is removed. Only an entity that exists can be declared.
 		if svcErr := as.checkApplicationMutable(ctx, appID); svcErr != nil {
@@ -1818,7 +1863,7 @@ func (as *applicationService) validateApplicationForUpdate(
 	}
 	if svcErr := as.checkApplicationAccess(ctx, security.ActionUpdateApplication,
 		existingApp.OUID); svcErr != nil {
-		return nil, nil, svcErr
+		return nil, nil, as.sharedApplicationRefusal(ctx, appID, existingApp.OUID, svcErr)
 	}
 
 	// If the application name is changed, check if an application with the new name already exists.

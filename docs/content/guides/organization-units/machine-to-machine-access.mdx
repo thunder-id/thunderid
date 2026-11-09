@@ -85,6 +85,8 @@ inboundAuthConfig:
               - ouHandle
 ```
 
+A token that calls the Data Plane's management APIs with `org` or one of its child permissions, such as `org:user:view`, must carry `ouId`. Those permissions act only in the organization unit the token names, so the Data Plane refuses a token without `ouId` with `403 Forbidden`. A token that holds `system` reaches every organization unit and needs no `ouId`. The Control Plane bounds no permission to an organization unit, so its tokens need no `ouId` either.
+
 ## Request a Token for an Organization Unit
 
 Name the organization unit by its id in the token endpoint's path. The path does not resolve handles:

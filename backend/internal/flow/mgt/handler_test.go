@@ -209,7 +209,8 @@ func (s *FlowMgtHandlerTestSuite) TestGetFlow_Success() {
 		FlowType: providers.FlowTypeAuthentication,
 	}
 
-	s.mockService.EXPECT().GetFlow(mock.Anything, testFlowIDHandler).Return(expectedFlow, nil)
+	s.mockService.EXPECT().GetFlowView(mock.Anything, testFlowIDHandler).
+		Return(&FlowView{Owned: &OwnedFlow{CompleteFlowDefinition: expectedFlow, IsOwnedByOU: true}}, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/flows/"+testFlowIDHandler, nil)
 	req.SetPathValue(pathParamFlowID, testFlowIDHandler)
@@ -218,10 +219,30 @@ func (s *FlowMgtHandlerTestSuite) TestGetFlow_Success() {
 	s.handler.getFlow(w, req)
 
 	s.Equal(http.StatusOK, w.Code)
-	var response providers.CompleteFlowDefinition
+	var response OwnedFlow
 	err := json.Unmarshal(w.Body.Bytes(), &response)
 	s.NoError(err)
 	s.Equal(testFlowIDHandler, response.ID)
+	s.True(response.IsOwnedByOU)
+}
+
+// A flow shared into the caller's organization unit is written as that unit sees it, without its definition.
+func (s *FlowMgtHandlerTestSuite) TestGetFlow_SharedView() {
+	s.mockService.EXPECT().GetFlowView(mock.Anything, testFlowIDHandler).
+		Return(&FlowView{Shared: &SharedFlow{ID: testFlowIDHandler, OUID: testOUIDHandler, IsReadOnly: true}}, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/flows/"+testFlowIDHandler, nil)
+	req.SetPathValue(pathParamFlowID, testFlowIDHandler)
+	w := httptest.NewRecorder()
+	s.handler.getFlow(w, req)
+
+	s.Equal(http.StatusOK, w.Code)
+	var response map[string]interface{}
+	s.NoError(json.Unmarshal(w.Body.Bytes(), &response))
+	s.Equal(false, response["isOwnedByOU"])
+	s.Equal(true, response["isReadOnly"])
+	s.Equal(testOUIDHandler, response["ouId"])
+	s.NotContains(response, "nodes")
 }
 
 func (s *FlowMgtHandlerTestSuite) TestGetFlow_MissingFlowID() {
@@ -234,7 +255,7 @@ func (s *FlowMgtHandlerTestSuite) TestGetFlow_MissingFlowID() {
 }
 
 func (s *FlowMgtHandlerTestSuite) TestGetFlow_NotFound() {
-	s.mockService.EXPECT().GetFlow(mock.Anything, testFlowIDHandler).Return(nil, &ErrorFlowNotFound)
+	s.mockService.EXPECT().GetFlowView(mock.Anything, testFlowIDHandler).Return(nil, &ErrorFlowNotFound)
 
 	req := httptest.NewRequest(http.MethodGet, "/flows/"+testFlowIDHandler, nil)
 	req.SetPathValue(pathParamFlowID, testFlowIDHandler)
@@ -838,8 +859,9 @@ func (s *FlowMgtHandlerTestSuite) TestGetFlow_NotSharedWithTheUnitIsNotFound() {
 // Without an organization unit the whole definition comes back. The filter is a list parameter, and a single flow
 // does not read it.
 func (s *FlowMgtHandlerTestSuite) TestGetFlow_WithoutAnOrganizationUnitIsTheWholeDefinition() {
-	s.mockService.EXPECT().GetFlow(mock.Anything, testFlowIDHandler).
-		Return(&providers.CompleteFlowDefinition{ID: testFlowIDHandler}, nil).Twice()
+	s.mockService.EXPECT().GetFlowView(mock.Anything, testFlowIDHandler).
+		Return(&FlowView{Owned: &OwnedFlow{CompleteFlowDefinition: &providers.CompleteFlowDefinition{
+			ID: testFlowIDHandler}, IsOwnedByOU: true}}, nil).Twice()
 
 	for _, target := range []string{
 		"/flows/" + testFlowIDHandler,

@@ -46,6 +46,7 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/observability/observabilitymock"
 	"github.com/thunder-id/thunderid/tests/mocks/oumock"
 	"github.com/thunder-id/thunderid/tests/mocks/rolemock"
+	"github.com/thunder-id/thunderid/tests/mocks/sharingmock"
 	"github.com/thunder-id/thunderid/tests/mocks/sysauthzmock"
 )
 
@@ -4312,7 +4313,30 @@ func (suite *AgentServiceTestSuite) newDenyAuthz(
 		Return(true, nil).Maybe()
 	authzMock.On("CanControlEntity", mock.Anything, mock.Anything).
 		Return(nil).Maybe()
+	authzMock.On("GetBoundary", mock.Anything).Return(sysauthz.Boundary{Type: sysauthz.BoundaryTypeDeployment}).Maybe()
 	return authzMock
+}
+
+// newConfinedAuthz returns a mock for a caller confined to testOUID that may act on agents there and
+// nowhere else.
+func (suite *AgentServiceTestSuite) newConfinedAuthz() *sysauthzmock.SystemAuthorizationServiceInterfaceMock {
+	authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+	authzMock.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).Return(
+		func(_ context.Context, _ security.Action, actionCtx *sysauthz.ActionContext) bool {
+			return actionCtx.OUID == testOUID
+		}, (*tidcommon.ServiceError)(nil)).Maybe()
+	authzMock.On("GetBoundary", mock.Anything).
+		Return(sysauthz.Boundary{Type: sysauthz.BoundaryTypeOU, OUID: testOUID}).Maybe()
+	return authzMock
+}
+
+// sharedAgentFixture returns the test agent owned by another organization unit, as a sharee reads it.
+func sharedAgentFixture() *providers.Entity {
+	e := buildAgentEntityFixture(testAgentName, "", "", "")
+	e.OUID = "owner-ou"
+	e.OUHandle = "owner"
+	e.IsReadOnly = true
+	return e
 }
 
 func (suite *AgentServiceTestSuite) TestCreateAgent_AuthzDenied() {
@@ -4345,6 +4369,120 @@ func (suite *AgentServiceTestSuite) TestGetAgent_AuthzDenied() {
 	assert.Nil(suite.T(), resp)
 	suite.Require().NotNil(svcErr)
 	assert.Equal(suite.T(), tidcommon.ErrorUnauthorized.Code, svcErr.Code)
+}
+
+func (suite *AgentServiceTestSuite) TestGetAgent_OwnedAgentIsOwnedByOU() {
+	for name, readOnly := range map[string]bool{"stored": false, "declared": true} {
+		suite.Run(name, func() {
+			svc, mockEntity, _, _, _ := suite.setupService()
+			agentEntity := buildAgentEntityFixture(testAgentName, "", "", "")
+			agentEntity.IsReadOnly = readOnly
+			clearMockCalls(mockEntity, "GetEntity")
+			mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(agentEntity, nil)
+
+			resp, svcErr := svc.GetAgent(context.Background(), testAgentID, false)
+
+			suite.Require().Nil(svcErr)
+			assert.Equal(suite.T(), new(true), resp.IsOwnedByOU)
+			assert.Equal(suite.T(), readOnly, resp.IsReadOnly)
+			assert.Equal(suite.T(), testOUID, resp.OUID)
+		})
+	}
+}
+
+func (suite *AgentServiceTestSuite) TestGetAgent_SharedIntoCallersOrganizationUnit() {
+	tests := []struct {
+		name       string
+		visible    bool
+		visibleErr *tidcommon.ServiceError
+		wantErr    string
+	}{
+		{name: "shared into the unit", visible: true},
+		{name: "not shared into the unit", wantErr: tidcommon.ErrorUnauthorized.Code},
+		{name: "unit gone", visibleErr: &oupkg.ErrorOrganizationUnitNotFound,
+			wantErr: tidcommon.ErrorUnauthorized.Code},
+		{name: "visibility failure", visibleErr: &tidcommon.InternalServerError,
+			wantErr: tidcommon.InternalServerError.Code},
+	}
+	for _, tc := range tests {
+		suite.Run(tc.name, func() {
+			svc, mockEntity := suite.setupServiceWithAuthz(suite.newConfinedAuthz())
+			clearMockCalls(mockEntity, "GetEntity")
+			mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(sharedAgentFixture(), nil)
+			sharingMock := sharingmock.NewSharingServiceInterfaceMock(suite.T())
+			sharingMock.On("IsVisible", mock.MatchedBy(security.IsRuntimeContext), agentSharingType,
+				testAgentID, testOUID).Return(tc.visible, tc.visibleErr).Once()
+			svc.sharingService = sharingMock
+
+			resp, svcErr := svc.GetAgent(context.Background(), testAgentID, true)
+
+			if tc.wantErr != "" {
+				assert.Nil(suite.T(), resp)
+				suite.Require().NotNil(svcErr)
+				assert.Equal(suite.T(), tc.wantErr, svcErr.Code)
+				return
+			}
+			suite.Require().Nil(svcErr)
+			assert.Equal(suite.T(), new(false), resp.IsOwnedByOU)
+			assert.True(suite.T(), resp.IsReadOnly)
+			assert.Equal(suite.T(), testOUID, resp.OUID, "a shared agent is read under the unit it is shared into")
+		})
+	}
+}
+
+// A confined caller that may not read agents in its own unit is refused without asking about sharing.
+func (suite *AgentServiceTestSuite) TestGetAgent_SharedWithoutReadInCallersOrganizationUnit() {
+	authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+	authzMock.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).Return(false, nil)
+	authzMock.On("GetBoundary", mock.Anything).Return(sysauthz.Boundary{Type: sysauthz.BoundaryTypeOU, OUID: testOUID})
+	svc, mockEntity := suite.setupServiceWithAuthz(authzMock)
+	clearMockCalls(mockEntity, "GetEntity")
+	mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(sharedAgentFixture(), nil)
+	sharingMock := sharingmock.NewSharingServiceInterfaceMock(suite.T())
+	sharingMock.On("IsVisible", mock.MatchedBy(security.IsRuntimeContext), agentSharingType, testAgentID,
+		testOUID).Return(true, nil).Once()
+	svc.sharingService = sharingMock
+
+	resp, svcErr := svc.GetAgent(context.Background(), testAgentID, false)
+
+	assert.Nil(suite.T(), resp)
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), tidcommon.ErrorUnauthorized.Code, svcErr.Code)
+}
+
+// The unit an agent is shared into reads it, but changing or deleting it is refused as read only.
+func (suite *AgentServiceTestSuite) TestSharedAgentIsReadOnlyToCallersOrganizationUnit() {
+	writes := map[string]func(svc *agentService) *tidcommon.ServiceError{
+		"update": func(svc *agentService) *tidcommon.ServiceError {
+			_, svcErr := svc.UpdateAgent(context.Background(), testAgentID,
+				&model.UpdateAgentRequest{Type: testAgentType})
+			return svcErr
+		},
+		"update credentials": func(svc *agentService) *tidcommon.ServiceError {
+			return svc.UpdateAgentCredentials(context.Background(), testAgentID, json.RawMessage(`{"key":"v"}`))
+		},
+		"regenerate secret": func(svc *agentService) *tidcommon.ServiceError {
+			_, svcErr := svc.RegenerateAgentSecret(context.Background(), testAgentID)
+			return svcErr
+		},
+		"delete": func(svc *agentService) *tidcommon.ServiceError {
+			return svc.DeleteAgent(context.Background(), testAgentID)
+		},
+	}
+	for name, write := range writes {
+		suite.Run(name, func() {
+			svc, mockEntity := suite.setupServiceWithAuthz(suite.newConfinedAuthz())
+			clearMockCalls(mockEntity, "GetEntityProfile")
+			mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).Return(sharedAgentFixture(), nil)
+
+			svcErr := write(svc)
+
+			suite.Require().NotNil(svcErr)
+			assert.Equal(suite.T(), ErrorCannotModifyDeclarativeResource.Code, svcErr.Code)
+			mockEntity.AssertNotCalled(suite.T(), "UpdateEntity", mock.Anything, mock.Anything, mock.Anything)
+			mockEntity.AssertNotCalled(suite.T(), "DeleteEntity", mock.Anything, mock.Anything)
+		})
+	}
 }
 
 func (suite *AgentServiceTestSuite) TestUpdateAgent_AuthzDeniedOnExistingOU() {
@@ -4486,7 +4624,7 @@ func (suite *AgentServiceTestSuite) TestGetAgentRoles_AuthzDenied() {
 
 // A restricted caller lists through the OU-filtered store query, not the unfiltered one.
 func (suite *AgentServiceTestSuite) TestGetAgentList_FiltersByAccessibleOUs() {
-	accessibleOUIDs := []string{testOUID}
+	accessibleOUIDs := []string{testOUID, "other-ou"}
 
 	authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
 	authzMock.On("GetAccessibleResources", mock.Anything, security.ActionListAgents,
@@ -4510,6 +4648,58 @@ func (suite *AgentServiceTestSuite) TestGetAgentList_FiltersByAccessibleOUs() {
 	assert.Equal(suite.T(), 1, resp.TotalResults)
 	mockEntity.AssertNotCalled(suite.T(), "GetEntityList", mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything, mock.Anything)
+}
+
+// A caller that may list one organization unit lists, with no filter, the agents it owns, then the ones
+// shared into it.
+func (suite *AgentServiceTestSuite) TestGetAgentList_InCallersOnlyOrganizationUnit() {
+	authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+	authzMock.On("GetAccessibleResources", mock.Anything, security.ActionListAgents, security.ResourceTypeOU).
+		Return(&sysauthz.AccessibleResources{IDs: []string{testOUID}}, nil).Once()
+	svc, mockEntity := suite.setupServiceWithAuthz(authzMock)
+	mockEntity.On("GetEntityPageInOU", mock.Anything, providers.EntityCategoryAgent, testOUID,
+		entity.OUEntityScopeAll, 10, 0, map[string]interface{}(nil)).
+		Return(&entity.OUEntityPage{
+			Owned:        []providers.Entity{*buildAgentEntityFixture(testAgentName, "", "", "")},
+			Shared:       []providers.Entity{*sharedAgentFixture()},
+			TotalResults: 2,
+		}, nil)
+
+	resp, svcErr := svc.GetAgentList(context.Background(), 10, 0, nil, false)
+
+	suite.Require().Nil(svcErr)
+	assert.Equal(suite.T(), 2, resp.TotalResults)
+	suite.Require().Len(resp.Agents, 2)
+	assert.Equal(suite.T(), new(true), resp.Agents[0].IsOwnedByOU)
+	assert.Equal(suite.T(), new(false), resp.Agents[1].IsOwnedByOU)
+	assert.True(suite.T(), resp.Agents[1].IsReadOnly)
+	assert.Equal(suite.T(), testOUID, resp.Agents[1].OUID)
+	mockEntity.AssertNotCalled(suite.T(), "GetEntityListByOUIDs", mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+// Other conditions cannot match shared agents, so a list they narrow keeps to the owned agents.
+func (suite *AgentServiceTestSuite) TestGetAgentList_FilteredInCallersOnlyOrganizationUnit() {
+	accessibleOUIDs := []string{testOUID}
+	filters := map[string]interface{}{"name": testAgentName}
+	authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+	authzMock.On("GetAccessibleResources", mock.Anything, security.ActionListAgents, security.ResourceTypeOU).
+		Return(&sysauthz.AccessibleResources{IDs: accessibleOUIDs}, nil).Once()
+	svc, mockEntity := suite.setupServiceWithAuthz(authzMock)
+	clearMockCalls(mockEntity, "GetEntityListCountByOUIDs")
+	clearMockCalls(mockEntity, "GetEntityListByOUIDs")
+	mockEntity.On("GetEntityListCountByOUIDs", mock.Anything, providers.EntityCategoryAgent, accessibleOUIDs,
+		filters).Return(1, nil)
+	mockEntity.On("GetEntityListByOUIDs", mock.Anything, providers.EntityCategoryAgent, accessibleOUIDs, 10, 0,
+		filters).Return([]providers.Entity{*buildAgentEntityFixture(testAgentName, "", "", "")}, nil)
+
+	resp, svcErr := svc.GetAgentList(context.Background(), 10, 0, filters, false)
+
+	suite.Require().Nil(svcErr)
+	suite.Require().Len(resp.Agents, 1)
+	assert.Equal(suite.T(), new(true), resp.Agents[0].IsOwnedByOU)
+	mockEntity.AssertNotCalled(suite.T(), "GetEntityPageInOU", mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 }
 
 // A caller with no accessible OUs gets an empty page without querying the store.

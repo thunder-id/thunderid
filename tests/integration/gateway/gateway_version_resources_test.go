@@ -642,6 +642,9 @@ func (ts *GatewayVersionsTestSuite) read(path string) document {
 	if _, ok := body["isReadOnly"]; ok {
 		body["isReadOnly"] = false
 	}
+	// Whether the reading organization unit owns the resource belongs to the read, not to the resource, so a
+	// version does not hold it.
+	delete(body, "isOwnedByOU")
 	return body
 }
 

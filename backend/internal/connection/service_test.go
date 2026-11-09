@@ -369,16 +369,17 @@ func (s *ServiceTestSuite) TestGetByTypeReturnsMatch() {
 	s.mockIDP.On("GetIdentityProvider", mock.Anything, "g-1").
 		Return(&providers.IDPDTO{ID: "g-1", Type: providers.IDPTypeGoogle}, (*tidcommon.ServiceError)(nil))
 
-	got, svcErr := s.svc.getByType(context.Background(), providers.IDPTypeGoogle, "g-1")
+	got, owned, svcErr := s.svc.getByType(context.Background(), providers.IDPTypeGoogle, "g-1")
 	s.Nil(svcErr)
 	s.Equal("g-1", got.ID)
+	s.True(owned)
 }
 
 func (s *ServiceTestSuite) TestGetByTypeMismatchReturnsNotFound() {
 	s.mockIDP.On("GetIdentityProvider", mock.Anything, "x").
 		Return(&providers.IDPDTO{ID: "x", Type: providers.IDPTypeGitHub}, (*tidcommon.ServiceError)(nil))
 
-	_, svcErr := s.svc.getByType(context.Background(), providers.IDPTypeGoogle, "x")
+	_, _, svcErr := s.svc.getByType(context.Background(), providers.IDPTypeGoogle, "x")
 	s.Require().NotNil(svcErr)
 	s.Equal(idp.ErrorIDPNotFound.Code, svcErr.Code)
 }
@@ -387,7 +388,7 @@ func (s *ServiceTestSuite) TestGetByTypeNotFound() {
 	s.mockIDP.On("GetIdentityProvider", mock.Anything, "missing").
 		Return((*providers.IDPDTO)(nil), &idp.ErrorIDPNotFound)
 
-	_, svcErr := s.svc.getByType(context.Background(), providers.IDPTypeGoogle, "missing")
+	_, _, svcErr := s.svc.getByType(context.Background(), providers.IDPTypeGoogle, "missing")
 	s.Require().NotNil(svcErr)
 	s.Equal(idp.ErrorIDPNotFound.Code, svcErr.Code)
 }
@@ -495,7 +496,7 @@ func (s *ServiceTestSuite) TestGetSMSByProviderMismatchReturnsNotFound() {
 		ID: "x", Type: ncommon.NotificationSenderTypeMessage, Provider: ncommon.NotificationProviderTypeVonage,
 	}, (*tidcommon.ServiceError)(nil))
 
-	_, svcErr := s.svc.getSenderByProvider(context.Background(), ncommon.NotificationSenderTypeMessage,
+	_, _, svcErr := s.svc.getSenderByProvider(context.Background(), ncommon.NotificationSenderTypeMessage,
 		ncommon.NotificationProviderTypeTwilio, "x")
 	s.Require().NotNil(svcErr)
 	s.Equal(notification.ErrorSenderNotFound.Code, svcErr.Code)
@@ -505,7 +506,7 @@ func (s *ServiceTestSuite) TestGetSMSByProviderError() {
 	s.mockNotif.On("GetSender", mock.Anything, "missing").
 		Return((*ncommon.NotificationSenderDTO)(nil), &notification.ErrorSenderNotFound)
 
-	_, svcErr := s.svc.getSenderByProvider(context.Background(), ncommon.NotificationSenderTypeMessage,
+	_, _, svcErr := s.svc.getSenderByProvider(context.Background(), ncommon.NotificationSenderTypeMessage,
 		ncommon.NotificationProviderTypeTwilio, "missing")
 	s.Require().NotNil(svcErr)
 	s.Equal(notification.ErrorSenderNotFound.Code, svcErr.Code)

@@ -5,6 +5,7 @@ package application
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/identitygovernance"
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
+	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/sharing"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/security"
@@ -103,6 +105,7 @@ func (s *ApplicationAuthzTestSuite) storedApplication(ouID string) {
 
 func (s *ApplicationAuthzTestSuite) TestGetApplication_OtherOU() {
 	expectOwnOUOnly(s.authz, security.ActionReadApplication)
+	s.authz.On("GetBoundary", mock.Anything).Return(sysauthz.Boundary{Type: sysauthz.BoundaryTypeDeployment}).Maybe()
 	s.storedApplication(authzOtherOU)
 
 	app, svcErr := s.svc.GetApplication(context.Background(), authzAppID)
@@ -113,6 +116,7 @@ func (s *ApplicationAuthzTestSuite) TestGetApplication_OtherOU() {
 
 func (s *ApplicationAuthzTestSuite) TestDeleteApplication_OtherOU() {
 	expectOwnOUOnly(s.authz, security.ActionDeleteApplication)
+	s.authz.On("GetBoundary", mock.Anything).Return(sysauthz.Boundary{Type: sysauthz.BoundaryTypeDeployment}).Maybe()
 	s.storedApplication(authzOtherOU)
 
 	svcErr := s.svc.DeleteApplication(context.Background(), authzAppID)
@@ -151,7 +155,7 @@ func (s *ApplicationAuthzTestSuite) TestListSharingPolicies_OnlyOwnInitiated() {
 func (s *ApplicationAuthzTestSuite) TestGetApplicationList_OwnOUOnly() {
 	expectOwnOUOnly(s.authz, security.ActionListApplications)
 	s.entities.On("GetEntityPageInOU", mock.Anything, providers.EntityCategoryApp, authzOwnOU,
-		entity.OUEntityScopeOwned, mock.Anything, 0, mock.Anything).Return(&entity.OUEntityPage{}, nil)
+		entity.OUEntityScopeAll, mock.Anything, 0, mock.Anything).Return(&entity.OUEntityPage{}, nil)
 
 	resp, svcErr := s.svc.GetApplicationList(context.Background(), nil)
 	s.Require().Nil(svcErr)
@@ -172,6 +176,7 @@ func (s *ApplicationAuthzTestSuite) updateRequest(ouID string) *model.Applicatio
 
 func (s *ApplicationAuthzTestSuite) TestUpdateApplication_OtherOU() {
 	expectOwnOUOnly(s.authz, security.ActionUpdateApplication)
+	s.authz.On("GetBoundary", mock.Anything).Return(sysauthz.Boundary{Type: sysauthz.BoundaryTypeDeployment}).Maybe()
 	s.storedApplication(authzOtherOU)
 
 	_, svcErr := s.svc.UpdateApplication(context.Background(), authzAppID, s.updateRequest(""))
@@ -190,4 +195,129 @@ func (s *ApplicationAuthzTestSuite) TestUpdateApplication_MoveToOtherOU() {
 	s.Equal(tidcommon.ErrorUnauthorized.Code, svcErr.Code)
 	s.inbound.AssertNotCalled(s.T(), "UpdateInboundClient", mock.Anything, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything)
+}
+
+// confinedToOwnOU confines the caller to its own organization unit, into which the stored application is
+// shared or not.
+func (s *ApplicationAuthzTestSuite) confinedToOwnOU(shared bool) {
+	s.authz.On("GetBoundary", mock.Anything).
+		Return(sysauthz.Boundary{Type: sysauthz.BoundaryTypeOU, OUID: authzOwnOU}).Maybe()
+	s.sharing.On("IsVisible", mock.Anything, ApplicationSharingType, authzAppID, authzOwnOU).
+		Return(shared, nil)
+}
+
+func (s *ApplicationAuthzTestSuite) TestGetApplication_OwnOU() {
+	expectOwnOUOnly(s.authz, security.ActionReadApplication)
+	s.storedApplication(authzOwnOU)
+
+	app, svcErr := s.svc.GetApplication(context.Background(), authzAppID)
+	s.Require().Nil(svcErr)
+	s.Equal(authzOwnOU, app.OUID)
+	s.Require().NotNil(app.IsOwnedByOU)
+	s.True(*app.IsOwnedByOU)
+	s.False(app.IsReadOnly)
+}
+
+func (s *ApplicationAuthzTestSuite) TestGetApplication_SharedIntoOwnOU() {
+	expectOwnOUOnly(s.authz, security.ActionReadApplication)
+	s.storedApplication(authzOtherOU)
+	s.confinedToOwnOU(true)
+
+	app, svcErr := s.svc.GetApplication(context.Background(), authzAppID)
+	s.Require().Nil(svcErr)
+	s.Equal(authzOwnOU, app.OUID, "a shared application is read under the unit it is shared into")
+	s.Require().NotNil(app.IsOwnedByOU)
+	s.False(*app.IsOwnedByOU)
+	s.True(app.IsReadOnly)
+}
+
+func (s *ApplicationAuthzTestSuite) TestGetApplication_NotSharedIntoOwnOU() {
+	expectOwnOUOnly(s.authz, security.ActionReadApplication)
+	s.storedApplication(authzOtherOU)
+	s.confinedToOwnOU(false)
+
+	app, svcErr := s.svc.GetApplication(context.Background(), authzAppID)
+	s.Nil(app)
+	s.Require().NotNil(svcErr)
+	s.Equal(tidcommon.ErrorUnauthorized.Code, svcErr.Code)
+}
+
+func (s *ApplicationAuthzTestSuite) TestGetApplication_SharingCheckFails() {
+	expectOwnOUOnly(s.authz, security.ActionReadApplication)
+	s.storedApplication(authzOtherOU)
+	s.authz.On("GetBoundary", mock.Anything).
+		Return(sysauthz.Boundary{Type: sysauthz.BoundaryTypeOU, OUID: authzOwnOU})
+	s.sharing.On("IsVisible", mock.Anything, ApplicationSharingType, authzAppID, authzOwnOU).
+		Return(false, &tidcommon.InternalServerError)
+
+	app, svcErr := s.svc.GetApplication(context.Background(), authzAppID)
+	s.Nil(app)
+	s.Require().NotNil(svcErr)
+	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+}
+
+// A shared application is read only by a caller that may read applications in the organization unit it is shared
+// into.
+func (s *ApplicationAuthzTestSuite) TestGetApplication_SharedButNotReadableInOwnOU() {
+	s.authz.On("IsActionAllowed", mock.Anything, security.ActionReadApplication, mock.Anything).Return(false, nil)
+	s.storedApplication(authzOtherOU)
+	s.confinedToOwnOU(true)
+
+	app, svcErr := s.svc.GetApplication(context.Background(), authzAppID)
+	s.Nil(app)
+	s.Require().NotNil(svcErr)
+	s.Equal(tidcommon.ErrorUnauthorized.Code, svcErr.Code)
+}
+
+// A token naming an organization unit that no longer exists has nothing shared into it, so it is refused rather than
+// answered with a server error.
+func (s *ApplicationAuthzTestSuite) TestGetApplication_TheTokensUnitIsGone() {
+	expectOwnOUOnly(s.authz, security.ActionReadApplication)
+	s.storedApplication(authzOtherOU)
+	s.authz.On("GetBoundary", mock.Anything).
+		Return(sysauthz.Boundary{Type: sysauthz.BoundaryTypeOU, OUID: authzOwnOU})
+	s.sharing.On("IsVisible", mock.Anything, ApplicationSharingType, authzAppID, authzOwnOU).
+		Return(false, &oupkg.ErrorOrganizationUnitNotFound)
+
+	app, svcErr := s.svc.GetApplication(context.Background(), authzAppID)
+	s.Nil(app)
+	s.Require().NotNil(svcErr)
+	s.Equal(tidcommon.ErrorUnauthorized.Code, svcErr.Code)
+}
+
+func (s *ApplicationAuthzTestSuite) TestWritesToASharedApplicationAreReadOnly() {
+	writes := map[string]struct {
+		action security.Action
+		write  func() *tidcommon.ServiceError
+	}{
+		"update": {action: security.ActionUpdateApplication, write: func() *tidcommon.ServiceError {
+			_, svcErr := s.svc.UpdateApplication(context.Background(), authzAppID, s.updateRequest(""))
+			return svcErr
+		}},
+		"delete": {action: security.ActionDeleteApplication, write: func() *tidcommon.ServiceError {
+			return s.svc.DeleteApplication(context.Background(), authzAppID)
+		}},
+	}
+	for name, tc := range writes {
+		for _, shared := range []bool{true, false} {
+			s.Run(fmt.Sprintf("%s shared=%t", name, shared), func() {
+				s.SetupTest()
+				expectOwnOUOnly(s.authz, tc.action)
+				s.storedApplication(authzOtherOU)
+				s.confinedToOwnOU(shared)
+
+				svcErr := tc.write()
+
+				s.Require().NotNil(svcErr)
+				want := tidcommon.ErrorUnauthorized.Code
+				if shared {
+					want = ErrorSharedApplicationReadOnly.Code
+				}
+				s.Equal(want, svcErr.Code)
+				s.inbound.AssertNotCalled(s.T(), "UpdateInboundClient", mock.Anything, mock.Anything,
+					mock.Anything, mock.Anything, mock.Anything)
+				s.entities.AssertNotCalled(s.T(), "DeleteEntity", mock.Anything, mock.Anything)
+			})
+		}
+	}
 }

@@ -145,6 +145,7 @@ func TestToolPermissionMiddleware_DataPlane(t *testing.T) {
 		name        string
 		tool        string
 		permissions []string
+		noUnit      bool
 		wantCalled  bool
 	}{
 		{name: "SystemCallsOrgTool", tool: "create_flow", permissions: []string{"system"}, wantCalled: true},
@@ -162,6 +163,10 @@ func TestToolPermissionMiddleware_DataPlane(t *testing.T) {
 		{name: "OrgOnboardsUsers", tool: "onboard_users", permissions: []string{"org"}, wantCalled: true},
 		{name: "OrgChildCannotOnboardUsers", tool: "onboard_users", permissions: []string{"org:user"},
 			wantCalled: false},
+		{name: "OrgWithoutAUnitCannotCall", tool: "create_flow", permissions: []string{"org"}, noUnit: true,
+			wantCalled: false},
+		{name: "SystemWithoutAUnitCalls", tool: "create_flow", permissions: []string{"system"}, noUnit: true,
+			wantCalled: true},
 	}
 
 	for _, tt := range tests {
@@ -171,8 +176,12 @@ func TestToolPermissionMiddleware_DataPlane(t *testing.T) {
 				called = true
 				return &mcp.CallToolResult{}, nil
 			}
+			ouID := "ou-1"
+			if tt.noUnit {
+				ouID = ""
+			}
 			ctx := security.WithSecurityContextTest(context.Background(),
-				security.NewSecurityContextForTest("user-1", "ou-1", "", tt.permissions, nil))
+				security.NewSecurityContextForTest("user-1", ouID, "", tt.permissions, nil))
 
 			_, err := toolPermissionMiddleware(next)(ctx, "tools/call",
 				&mcp.CallToolRequest{Params: &mcp.CallToolParamsRaw{Name: tt.tool}})
