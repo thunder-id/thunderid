@@ -4,6 +4,7 @@
 package agent
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	"github.com/thunder-id/thunderid/internal/inboundclient"
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	"github.com/thunder-id/thunderid/internal/sharing"
 	"github.com/thunder-id/thunderid/tests/mocks/agentmock"
@@ -294,6 +296,54 @@ func (s *MakeAgentEntityParserTestSuite) TestMakeAgentEntityParser_InvalidValidU
 	assert.Contains(s.T(), err.Error(), "failed to validate agent 'bad-lifespan'")
 }
 
+// The parser hands the personal kind to ValidateAgent, which applies the personal agent setup and its refusals.
+func (s *MakeAgentEntityParserTestSuite) TestMakeAgentEntityParser_PersonalSetupRefusalSurfaces() {
+	yamlData := []byte("id: pa-agent\nouId: ou-1\ntype: t\nkind: personal-assistant\nowner:\n  id: user-1\n" +
+		"inboundAuthConfig:\n  - type: oauth2\n    config:\n      grantTypes:\n        - client_credentials\n")
+	mockSvc := agentmock.NewAgentServiceInterfaceMock(s.T())
+	mockSvc.EXPECT().ValidateAgent(mock.Anything, mock.MatchedBy(func(a *providers.Agent) bool {
+		return a.Kind == providers.AgentKindPersonalAssistant
+	}), "pa-agent").Return("", "", inboundmodel.InboundClient{}, &ErrorGrantTypeNotAllowedForPersonalAgent).Once()
+	parser := makeAgentEntityParser(mockSvc)
+
+	_, _, _, err := parser(yamlData)
+
+	s.Require().Error(err)
+	assert.Contains(s.T(), err.Error(), ErrorGrantTypeNotAllowedForPersonalAgent.Code)
+}
+
+// A personal agent with an owner and the personal grants loads, keeping its kind and owner.
+func (s *MakeAgentEntityParserTestSuite) TestMakeAgentEntityParser_PersonalAgentStored() {
+	yamlData := []byte("id: pa-agent\nouId: ou-1\ntype: t\nkind: personal-assistant\nowner:\n  id: user-1\n" +
+		"inboundAuthConfig:\n  - type: oauth2\n    config:\n      grantTypes:\n        - authorization_code\n")
+	mockSvc := agentmock.NewAgentServiceInterfaceMock(s.T())
+	mockSvc.EXPECT().ValidateAgent(mock.Anything, mock.Anything, "pa-agent").
+		Return("", "", inboundmodel.InboundClient{}, nil).Once()
+	parser := makeAgentEntityParser(mockSvc)
+
+	e, _, _, err := parser(yamlData)
+
+	s.Require().NoError(err)
+	s.Require().NotNil(e)
+	stored := readSystemAttributes(e.SystemAttributes)
+	assert.Equal(s.T(), providers.AgentKindPersonalAssistant, stored.Kind)
+	assert.Equal(s.T(), "user-1", stored.Owner.ID)
+}
+
+// A file without a kind loads as an ordinary agent.
+func (s *MakeAgentEntityParserTestSuite) TestMakeAgentEntityParser_NoKindIsOrdinaryAgent() {
+	mockSvc := agentmock.NewAgentServiceInterfaceMock(s.T())
+	mockSvc.EXPECT().ValidateAgent(mock.Anything, mock.Anything, "plain-agent").
+		Return("", "", inboundmodel.InboundClient{}, nil).Once()
+	parser := makeAgentEntityParser(mockSvc)
+
+	e, _, _, err := parser([]byte("id: plain-agent\nouId: ou-1\ntype: t\n"))
+
+	s.Require().NoError(err)
+	s.Require().NotNil(e)
+	assert.Empty(s.T(), readSystemAttributes(e.SystemAttributes).Kind)
+}
+
 // --- makeAgentInboundParser error paths ---
 
 type MakeAgentSharingParserTestSuite struct {
@@ -402,6 +452,33 @@ func (s *MakeAgentInboundParserTestSuite) TestMakeAgentInboundParser_ValidateAge
 
 	assert.Error(s.T(), err)
 	assert.Contains(s.T(), err.Error(), "failed to validate agent 'inbound-err-agent'")
+}
+
+// The inbound client carries the OAuth config as ValidateAgent completed it, so a personal agent declared without
+// one still gets the OAuth client its setup adds.
+func (s *MakeAgentInboundParserTestSuite) TestMakeAgentInboundParser_ReadsTheCompletedOAuthConfig() {
+	yamlData := []byte("id: pa-agent\nouId: ou-1\ntype: t\nkind: personal-assistant\nowner:\n  id: user-1\n")
+	mockSvc := agentmock.NewAgentServiceInterfaceMock(s.T())
+	mockSvc.EXPECT().ValidateAgent(mock.Anything, mock.Anything, "pa-agent").
+		Run(func(_ context.Context, a *providers.Agent, _ string) {
+			a.InboundAuthConfig = []providers.InboundAuthConfigWithSecret{{
+				Type: providers.OAuthInboundAuthType,
+				OAuthConfig: &providers.OAuthConfigWithSecret{
+					GrantTypes: []providers.GrantType{providers.GrantTypeAuthorizationCode},
+				},
+			}}
+		}).
+		Return("", "", inboundmodel.InboundClient{}, nil).Once()
+
+	client, err := makeAgentInboundParser(mockSvc)(yamlData)
+
+	s.Require().NoError(err)
+	s.Require().NotNil(client)
+	s.Equal("pa-agent", client.ID)
+	s.True(client.IsReadOnly)
+	profile, ok := client.Properties[inboundclient.PropOAuthProfile].(providers.OAuthProfile)
+	s.Require().True(ok, "the OAuth profile is set")
+	s.Equal([]string{string(providers.GrantTypeAuthorizationCode)}, profile.GrantTypes)
 }
 
 // --- makeAgentInboundConfig validator ---

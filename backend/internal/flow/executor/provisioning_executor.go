@@ -135,16 +135,19 @@ func (p *provisioningExecutor) Execute(ctx *providers.NodeContext) (*providers.E
 		return execResp, err
 	}
 
-	// An agent is created by an administrator, so only an administration flow provisions one.
+	// An agent is created by an administrator, or registered by a user as a personal agent that acts
+	// for them. Self-registration never creates an agent that acts with its own authority.
 	if category == entitytype.TypeCategoryAgent && ctx.FlowType != providers.FlowTypeAdministration {
-		if ctx.FlowType == providers.FlowTypeRegistration {
-			logger.Debug(ctx.Context, "Agent provisioning is not available in a registration flow")
+		if ctx.FlowType != providers.FlowTypeRegistration {
+			return execResp, fmt.Errorf("agent provisioning is not supported in a %s flow", ctx.FlowType)
+		}
+		if providers.AgentKind(collectedValue(ctx, kindKey)) != providers.AgentKindPersonalAssistant {
+			logger.Debug(ctx.Context, "Only a personal agent can be provisioned in a registration flow")
 			execResp.Status = providers.ExecFailure
 			execResp.Error = &ErrSelfRegNotSupportedForAgents
 
 			return execResp, nil
 		}
-		return execResp, fmt.Errorf("agent provisioning is not supported in a %s flow", ctx.FlowType)
 	}
 
 	// A resolved user needs no provisioning. Checked before required inputs so the user is not
@@ -179,8 +182,9 @@ func (p *provisioningExecutor) Execute(ctx *providers.NodeContext) (*providers.E
 	// A federated identity resolves users only through its recorded links, and no input can change
 	// which users those are, so registration applies the existing-user rules to the link's holders
 	// before prompting for attributes. With cross-OU provisioning, holders in other OUs do not count,
-	// so registering into an OU where nobody holds the link provisions a new user with it.
-	if isSelfRegistering(ctx) {
+	// so registering into an OU where nobody holds the link provisions a new user with it. An agent is
+	// never linked to a federated identity: one in the flow belongs to the user who signed in.
+	if isSelfRegistering(ctx) && category != entitytype.TypeCategoryAgent {
 		if federated := federatedIdentityFrom(ctx); federated != nil {
 			holderIDs, err := p.registrationLinkHolders(ctx, category, federated, execResp)
 			if err != nil {
@@ -473,9 +477,13 @@ func (p *provisioningExecutor) completeProvisioning(ctx *providers.NodeContext,
 		return execResp
 	}
 
-	p.authenticateProvisionedEntity(ctx, category, entityID, execResp)
-	if execResp.Status == providers.ExecFailure {
-		return execResp
+	// An agent is never the flow's signed-in entity: whoever created it, or the user who registered it,
+	// stays signed in.
+	if category != entitytype.TypeCategoryAgent {
+		p.authenticateProvisionedEntity(ctx, category, entityID, execResp)
+		if execResp.Status == providers.ExecFailure {
+			return execResp
+		}
 	}
 
 	execResp.Status = providers.ExecComplete
@@ -978,19 +986,6 @@ func (p *provisioningExecutor) createUserInStore(nodeCtx *providers.NodeContext,
 	return createdUser, nil
 }
 
-// resolvedOwner returns the owner the owner resolver verified, a local entity, or nil when none was
-// resolved so the agent service falls back to the caller.
-func resolvedOwner(nodeCtx *providers.NodeContext) *providers.AgentOwner {
-	ownerID := nodeCtx.RuntimeData[ownerIDKey]
-	if ownerID == "" {
-		return nil
-	}
-	local := true
-	return &providers.AgentOwner{
-		ID: ownerID, IDType: providers.AgentOwnerIDTypeUUID, IsLocal: &local,
-	}
-}
-
 // createAgentInStore provisions an agent through the agent management provider. Description, logo
 // and owner are carried on the agent record rather than as schema attributes, and are forwarded as
 // collected: the agent service owns their validation. The name is a schema attribute and travels
@@ -1024,16 +1019,20 @@ func (p *provisioningExecutor) createAgentInStore(nodeCtx *providers.NodeContext
 	}
 
 	// The flow shows the agent's client credentials, so an OAuth client is always requested. The
-	// agent service fills in its grant types from Delegated.
-	oauthConfig := &providers.OAuthConfigWithSecret{}
+	// agent service fills in its grant types from Delegated and Kind. A key lets any agent authenticate
+	// with private_key_jwt; the agent service checks the key.
+	oauthConfig := &providers.OAuthConfigWithSecret{Certificate: collectedCertificate(nodeCtx)}
+	if oauthConfig.Certificate != nil {
+		oauthConfig.TokenEndpointAuthMethod = providers.TokenEndpointAuthMethodPrivateKeyJWT
+	}
 	agent := &providers.Agent{
 		OUID:        targetRef.ouID,
 		Type:        targetRef.entityType,
 		Description: collectedValue(nodeCtx, descriptionKey),
 		LogoURL:     collectedValue(nodeCtx, logoURLKey),
-		Owner:       resolvedOwner(nodeCtx),
 		Delegated:   delegated,
 		Attributes:  attributesJSON,
+		Kind:        providers.AgentKind(collectedValue(nodeCtx, kindKey)),
 		InboundAuthConfig: []providers.InboundAuthConfigWithSecret{
 			{Type: providers.OAuthInboundAuthType, OAuthConfig: oauthConfig},
 		},
@@ -1041,16 +1040,35 @@ func (p *provisioningExecutor) createAgentInStore(nodeCtx *providers.NodeContext
 	if validUntil := collectedValue(nodeCtx, validUntilKey); validUntil != "" {
 		agent.ValidUntil = &validUntil
 	}
-	// The callback URIs, login flow and user type belong to a delegated agent, and all three are
-	// required with delegation, so leftovers from an earlier choice are not applied to one that acts
-	// on its own behalf. The service validates all three.
-	if delegated {
+	// The callback URIs and login flow belong to an agent that acts for a signed-in user, so leftovers
+	// from an earlier choice are not applied to one that acts on its own behalf. A delegated agent
+	// requires them and its user type; a personal agent always acts for its owner. The service
+	// validates them.
+	if delegated || agent.Kind == providers.AgentKindPersonalAssistant {
 		oauthConfig.RedirectURIs = splitTrimmed(collectedValue(nodeCtx, redirectURIsKey))
 		agent.AuthFlowID = collectedValue(nodeCtx, authFlowIDKey)
+		agent.AuthFlowHandle = collectedValue(nodeCtx, authFlowHandleKey)
+	}
+	if delegated {
 		if handle := collectedValue(nodeCtx, allowedUserTypesKey); handle != "" {
 			agent.AllowedUserTypes = []string{handle}
 		}
 	}
+	// Whether consent is asked on every authorization is the caller's to choose; unset leaves the agent
+	// service's default.
+	if raw := collectedValue(nodeCtx, alwaysPromptConsentKey); raw != "" {
+		alwaysPrompt, err := strconv.ParseBool(raw)
+		if err != nil {
+			return nil, errForAttribute(ErrInvalidFlagValue, alwaysPromptConsentKey)
+		}
+		agent.LoginConsent = &providers.LoginConsentConfig{AlwaysPrompt: &alwaysPrompt}
+	}
+
+	owner, svcErr := p.resolveAgentOwner(nodeCtx)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	agent.Owner = owner
 
 	createdAgent, svcErr := p.agentMgtProvider.CreateAgent(nodeCtx.Context, agent)
 	if svcErr != nil {
@@ -1090,6 +1108,72 @@ func agentDelegation(ctx *providers.NodeContext) (bool, *tidcommon.ServiceError)
 	}
 
 	return false, nil
+}
+
+// collectedCertificate reads the key a caller supplied, as a JWKS URI or as a public key (a JWKS document),
+// or nil. An agent holds one certificate, so a JWKS URI wins over a public key: the keys behind it can be
+// rotated without updating the agent. The agent service checks the key.
+func collectedCertificate(nodeCtx *providers.NodeContext) *providers.Certificate {
+	if jwksURI := collectedValue(nodeCtx, jwksURIKey); jwksURI != "" {
+		return &providers.Certificate{Type: providers.CertificateTypeJWKSURI, Value: jwksURI}
+	}
+	if publicKey := collectedValue(nodeCtx, publicKeyKey); publicKey != "" {
+		return &providers.Certificate{Type: providers.CertificateTypeJWKS, Value: publicKey}
+	}
+	return nil
+}
+
+// resolveAgentOwner returns the local owner of an agent being created.
+func (p *provisioningExecutor) resolveAgentOwner(nodeCtx *providers.NodeContext) (
+	*providers.AgentOwner, *tidcommon.ServiceError) {
+	var ownerID string
+	if nodeCtx.FlowType == providers.FlowTypeAdministration {
+		ownerID = nodeCtx.RuntimeData[ownerIDKey]
+		if ownerID == "" {
+			return nil, nil
+		}
+	} else {
+		userID, svcErr := p.resolveRegisteringUserID(nodeCtx)
+		if svcErr != nil {
+			return nil, svcErr
+		}
+		ownerID = userID
+	}
+
+	local := true
+	return &providers.AgentOwner{ID: ownerID, IDType: providers.AgentOwnerIDTypeUUID, IsLocal: &local}, nil
+}
+
+// resolveRegisteringUserID resolves the registering user. A user the flow signed in takes precedence;
+// otherwise it is the subject of the request's token, so a caller with a signed-in user need not sign
+// them in again. A delegated token is refused.
+func (p *provisioningExecutor) resolveRegisteringUserID(nodeCtx *providers.NodeContext) (
+	string, *tidcommon.ServiceError) {
+	if nodeCtx.AuthUser.IsAuthenticated() {
+		_, entityRef, svcErr := p.authnProvider.GetEntityReference(nodeCtx.Context, nodeCtx.AuthUser)
+		if svcErr != nil || entityRef == nil || entityRef.EntityID == "" {
+			return "", &ErrUserNotAuthenticated
+		}
+		return entityRef.EntityID, nil
+	}
+	if subject := security.GetSubject(nodeCtx.Context); subject != "" && !security.IsDelegated(nodeCtx.Context) &&
+		tokenIssuedToApplication(nodeCtx) {
+		return subject, nil
+	}
+	return "", &ErrUserNotAuthenticated
+}
+
+// tokenIssuedToApplication reports whether the request's token was issued to the OAuth client of the
+// application running the flow. A token that names no client does not qualify.
+func tokenIssuedToApplication(nodeCtx *providers.NodeContext) bool {
+	clientID := security.GetClientID(nodeCtx.Context)
+	if clientID == "" {
+		return false
+	}
+	return slices.ContainsFunc(nodeCtx.Application.InboundAuthConfig,
+		func(inbound providers.InboundAuthConfigWithSecret) bool {
+			return inbound.OAuthConfig != nil && inbound.OAuthConfig.ClientID == clientID
+		})
 }
 
 // collectedValue reads a value the flow collected for key, preferring what an executor resolved
