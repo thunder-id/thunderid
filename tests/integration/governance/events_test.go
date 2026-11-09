@@ -34,6 +34,7 @@ const (
 	eventKeySubjectType   = "sub_type"
 	eventKeyActorSub      = "act_sub"
 	eventKeyNoteRecorded  = "operator_note_recorded"
+	eventKeyAppliedBy     = "applied_by"
 	eventKeyError         = "error"
 	eventKeyConfigName    = "config_name"
 	eventKeyLockMethod    = "lock_method"
@@ -92,6 +93,7 @@ func (ts *GovernanceEventsTestSuite) TestLifecycleOperationsArePublishedWithTheO
 	ts.Equal("user", suspended.Str(eventKeySubjectType), "the target's category must be published")
 	ts.Equal("success", suspended.Status)
 	ts.Equal(true, suspended.Data[eventKeyNoteRecorded], "whether a note was given is published")
+	ts.Equal("organization", suspended.Str(eventKeyAppliedBy), "an operator's suspension is the organization's")
 
 	runAdministrationFlow(ts.T(), unsuspendFlowHandle, userID)
 	unsuspended := ts.awaitEvent(eventIdentityUnsuspended, userID)

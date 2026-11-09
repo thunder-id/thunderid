@@ -190,6 +190,11 @@ const (
 	LifespanPhaseExpired LifespanPhase = "EXPIRED"
 )
 
+// SuspendOwnedAgentsResponse reports how many of the owner's agents a suspend-all suspended.
+type SuspendOwnedAgentsResponse struct {
+	SuspendedCount int `json:"suspendedCount"`
+}
+
 // UpdateOwnedAgentRequest is the body of an owner's update of their agent: the whole part the owner may change.
 // Attributes, grant types and redirect URIs are required; a description left out is cleared.
 type UpdateOwnedAgentRequest struct {

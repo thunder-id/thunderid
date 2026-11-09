@@ -49,6 +49,138 @@ func (_m *entityRuntimeStoreInterfaceMock) EXPECT() *entityRuntimeStoreInterface
 	return &entityRuntimeStoreInterfaceMock_Expecter{mock: &_m.Mock}
 }
 
+// ClearAccessCascadeSuspension provides a mock function for the type entityRuntimeStoreInterfaceMock
+func (_mock *entityRuntimeStoreInterfaceMock) ClearAccessCascadeSuspension(ctx context.Context, entityID string) (bool, error) {
+	ret := _mock.Called(ctx, entityID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ClearAccessCascadeSuspension")
+	}
+
+	var r0 bool
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (bool, error)); ok {
+		return returnFunc(ctx, entityID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) bool); ok {
+		r0 = returnFunc(ctx, entityID)
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = returnFunc(ctx, entityID)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// entityRuntimeStoreInterfaceMock_ClearAccessCascadeSuspension_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ClearAccessCascadeSuspension'
+type entityRuntimeStoreInterfaceMock_ClearAccessCascadeSuspension_Call struct {
+	*mock.Call
+}
+
+// ClearAccessCascadeSuspension is a helper method to define mock.On call
+//   - ctx context.Context
+//   - entityID string
+func (_e *entityRuntimeStoreInterfaceMock_Expecter) ClearAccessCascadeSuspension(ctx any, entityID any) *entityRuntimeStoreInterfaceMock_ClearAccessCascadeSuspension_Call {
+	return &entityRuntimeStoreInterfaceMock_ClearAccessCascadeSuspension_Call{Call: _e.mock.On("ClearAccessCascadeSuspension", ctx, entityID)}
+}
+
+func (_c *entityRuntimeStoreInterfaceMock_ClearAccessCascadeSuspension_Call) Run(run func(ctx context.Context, entityID string)) *entityRuntimeStoreInterfaceMock_ClearAccessCascadeSuspension_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *entityRuntimeStoreInterfaceMock_ClearAccessCascadeSuspension_Call) Return(b bool, err error) *entityRuntimeStoreInterfaceMock_ClearAccessCascadeSuspension_Call {
+	_c.Call.Return(b, err)
+	return _c
+}
+
+func (_c *entityRuntimeStoreInterfaceMock_ClearAccessCascadeSuspension_Call) RunAndReturn(run func(ctx context.Context, entityID string) (bool, error)) *entityRuntimeStoreInterfaceMock_ClearAccessCascadeSuspension_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ClearAccessOwnerSuspension provides a mock function for the type entityRuntimeStoreInterfaceMock
+func (_mock *entityRuntimeStoreInterfaceMock) ClearAccessOwnerSuspension(ctx context.Context, entityID string) (bool, error) {
+	ret := _mock.Called(ctx, entityID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ClearAccessOwnerSuspension")
+	}
+
+	var r0 bool
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (bool, error)); ok {
+		return returnFunc(ctx, entityID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) bool); ok {
+		r0 = returnFunc(ctx, entityID)
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = returnFunc(ctx, entityID)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// entityRuntimeStoreInterfaceMock_ClearAccessOwnerSuspension_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ClearAccessOwnerSuspension'
+type entityRuntimeStoreInterfaceMock_ClearAccessOwnerSuspension_Call struct {
+	*mock.Call
+}
+
+// ClearAccessOwnerSuspension is a helper method to define mock.On call
+//   - ctx context.Context
+//   - entityID string
+func (_e *entityRuntimeStoreInterfaceMock_Expecter) ClearAccessOwnerSuspension(ctx any, entityID any) *entityRuntimeStoreInterfaceMock_ClearAccessOwnerSuspension_Call {
+	return &entityRuntimeStoreInterfaceMock_ClearAccessOwnerSuspension_Call{Call: _e.mock.On("ClearAccessOwnerSuspension", ctx, entityID)}
+}
+
+func (_c *entityRuntimeStoreInterfaceMock_ClearAccessOwnerSuspension_Call) Run(run func(ctx context.Context, entityID string)) *entityRuntimeStoreInterfaceMock_ClearAccessOwnerSuspension_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *entityRuntimeStoreInterfaceMock_ClearAccessOwnerSuspension_Call) Return(b bool, err error) *entityRuntimeStoreInterfaceMock_ClearAccessOwnerSuspension_Call {
+	_c.Call.Return(b, err)
+	return _c
+}
+
+func (_c *entityRuntimeStoreInterfaceMock_ClearAccessOwnerSuspension_Call) RunAndReturn(run func(ctx context.Context, entityID string) (bool, error)) *entityRuntimeStoreInterfaceMock_ClearAccessOwnerSuspension_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // ClearAccessState provides a mock function for the type entityRuntimeStoreInterfaceMock
 func (_mock *entityRuntimeStoreInterfaceMock) ClearAccessState(ctx context.Context, entityID string, methods []providers.AuthenticationMethod) error {
 	ret := _mock.Called(ctx, entityID, methods)
@@ -758,6 +890,150 @@ func (_c *entityRuntimeStoreInterfaceMock_ResetRuntimeData_Call) Return(err erro
 }
 
 func (_c *entityRuntimeStoreInterfaceMock_ResetRuntimeData_Call) RunAndReturn(run func(ctx context.Context, entityID string, state providers.EntityState) error) *entityRuntimeStoreInterfaceMock_ResetRuntimeData_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// SetAccessCascadeSuspension provides a mock function for the type entityRuntimeStoreInterfaceMock
+func (_mock *entityRuntimeStoreInterfaceMock) SetAccessCascadeSuspension(ctx context.Context, entityID string, at time.Time) (bool, error) {
+	ret := _mock.Called(ctx, entityID, at)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SetAccessCascadeSuspension")
+	}
+
+	var r0 bool
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, time.Time) (bool, error)); ok {
+		return returnFunc(ctx, entityID, at)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, time.Time) bool); ok {
+		r0 = returnFunc(ctx, entityID, at)
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, time.Time) error); ok {
+		r1 = returnFunc(ctx, entityID, at)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// entityRuntimeStoreInterfaceMock_SetAccessCascadeSuspension_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetAccessCascadeSuspension'
+type entityRuntimeStoreInterfaceMock_SetAccessCascadeSuspension_Call struct {
+	*mock.Call
+}
+
+// SetAccessCascadeSuspension is a helper method to define mock.On call
+//   - ctx context.Context
+//   - entityID string
+//   - at time.Time
+func (_e *entityRuntimeStoreInterfaceMock_Expecter) SetAccessCascadeSuspension(ctx any, entityID any, at any) *entityRuntimeStoreInterfaceMock_SetAccessCascadeSuspension_Call {
+	return &entityRuntimeStoreInterfaceMock_SetAccessCascadeSuspension_Call{Call: _e.mock.On("SetAccessCascadeSuspension", ctx, entityID, at)}
+}
+
+func (_c *entityRuntimeStoreInterfaceMock_SetAccessCascadeSuspension_Call) Run(run func(ctx context.Context, entityID string, at time.Time)) *entityRuntimeStoreInterfaceMock_SetAccessCascadeSuspension_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 time.Time
+		if args[2] != nil {
+			arg2 = args[2].(time.Time)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *entityRuntimeStoreInterfaceMock_SetAccessCascadeSuspension_Call) Return(b bool, err error) *entityRuntimeStoreInterfaceMock_SetAccessCascadeSuspension_Call {
+	_c.Call.Return(b, err)
+	return _c
+}
+
+func (_c *entityRuntimeStoreInterfaceMock_SetAccessCascadeSuspension_Call) RunAndReturn(run func(ctx context.Context, entityID string, at time.Time) (bool, error)) *entityRuntimeStoreInterfaceMock_SetAccessCascadeSuspension_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// SetAccessOwnerSuspension provides a mock function for the type entityRuntimeStoreInterfaceMock
+func (_mock *entityRuntimeStoreInterfaceMock) SetAccessOwnerSuspension(ctx context.Context, entityID string, at time.Time) (bool, error) {
+	ret := _mock.Called(ctx, entityID, at)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SetAccessOwnerSuspension")
+	}
+
+	var r0 bool
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, time.Time) (bool, error)); ok {
+		return returnFunc(ctx, entityID, at)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, time.Time) bool); ok {
+		r0 = returnFunc(ctx, entityID, at)
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, time.Time) error); ok {
+		r1 = returnFunc(ctx, entityID, at)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// entityRuntimeStoreInterfaceMock_SetAccessOwnerSuspension_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetAccessOwnerSuspension'
+type entityRuntimeStoreInterfaceMock_SetAccessOwnerSuspension_Call struct {
+	*mock.Call
+}
+
+// SetAccessOwnerSuspension is a helper method to define mock.On call
+//   - ctx context.Context
+//   - entityID string
+//   - at time.Time
+func (_e *entityRuntimeStoreInterfaceMock_Expecter) SetAccessOwnerSuspension(ctx any, entityID any, at any) *entityRuntimeStoreInterfaceMock_SetAccessOwnerSuspension_Call {
+	return &entityRuntimeStoreInterfaceMock_SetAccessOwnerSuspension_Call{Call: _e.mock.On("SetAccessOwnerSuspension", ctx, entityID, at)}
+}
+
+func (_c *entityRuntimeStoreInterfaceMock_SetAccessOwnerSuspension_Call) Run(run func(ctx context.Context, entityID string, at time.Time)) *entityRuntimeStoreInterfaceMock_SetAccessOwnerSuspension_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 time.Time
+		if args[2] != nil {
+			arg2 = args[2].(time.Time)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *entityRuntimeStoreInterfaceMock_SetAccessOwnerSuspension_Call) Return(b bool, err error) *entityRuntimeStoreInterfaceMock_SetAccessOwnerSuspension_Call {
+	_c.Call.Return(b, err)
+	return _c
+}
+
+func (_c *entityRuntimeStoreInterfaceMock_SetAccessOwnerSuspension_Call) RunAndReturn(run func(ctx context.Context, entityID string, at time.Time) (bool, error)) *entityRuntimeStoreInterfaceMock_SetAccessOwnerSuspension_Call {
 	_c.Call.Return(run)
 	return _c
 }

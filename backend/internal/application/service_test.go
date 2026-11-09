@@ -284,6 +284,10 @@ func (r noopDepRegistry) CascadeDelete(context.Context, string, string) (int, er
 	return 0, r.cascadeErr
 }
 
+func (r noopDepRegistry) SuspensionDependents(context.Context, string, string) ([]string, error) {
+	return nil, nil
+}
+
 func (noopDepRegistry) ValidateReferenceUpdate(
 	context.Context, string, string) *tidcommon.ServiceError {
 	return nil
@@ -304,6 +308,10 @@ func (recordingDepRegistry) GetDependencies(
 func (r recordingDepRegistry) CascadeDelete(context.Context, string, string) (int, error) {
 	*r.cascadeCalls++
 	return 1, nil
+}
+
+func (r recordingDepRegistry) SuspensionDependents(context.Context, string, string) ([]string, error) {
+	return nil, nil
 }
 
 func (recordingDepRegistry) ValidateReferenceUpdate(
@@ -5218,6 +5226,10 @@ func (blockingDepRegistry) CascadeDelete(context.Context, string, string) (int, 
 	return 0, nil
 }
 
+func (blockingDepRegistry) SuspensionDependents(context.Context, string, string) ([]string, error) {
+	return nil, nil
+}
+
 func (blockingDepRegistry) ValidateReferenceUpdate(
 	context.Context, string, string) *tidcommon.ServiceError {
 	return nil
@@ -5235,6 +5247,10 @@ func (unknownDepRegistry) GetDependencies(
 
 func (unknownDepRegistry) CascadeDelete(context.Context, string, string) (int, error) {
 	return 0, nil
+}
+
+func (unknownDepRegistry) SuspensionDependents(context.Context, string, string) ([]string, error) {
+	return nil, nil
 }
 
 func (unknownDepRegistry) ValidateReferenceUpdate(

@@ -829,12 +829,13 @@ paths:
       summary: Get user usages
       description: |
         Returns the resources that reference this user, aggregated across all resource types.
-        For example, agents that list this user as their owner. This endpoint is informational
-        only — it drives the pre-delete confirmation dialog in the UI and does not gate deletion
-        on the server.
+        For example, agents that list this user as their owner. It drives the pre-delete
+        confirmation dialog in the UI.
 
         Each usage entry includes a `behaviorOnDelete` field describing what happens to the
         referencing resource if the user is deleted:
+        - `restrict`: the user cannot be deleted while the reference exists. An agent the user
+          owns restricts the deletion, except a personal agent created at runtime.
         - `fallback`: the reference is kept as-is.
         - `cascade`: the resource is permanently deleted along with the user.
 
@@ -866,11 +867,11 @@ paths:
                   - resourceType: agent
                     id: "a1b2c3d4-0000-0000-0000-000000000001"
                     displayName: "Support Agent"
-                    behaviorOnDelete: fallback
+                    behaviorOnDelete: restrict
                   - resourceType: agent
                     id: "a1b2c3d4-0000-0000-0000-000000000002"
-                    displayName: "Billing Agent"
-                    behaviorOnDelete: fallback
+                    displayName: "Calendar Assistant"
+                    behaviorOnDelete: cascade
         "404":
           description: User not found
           content:
@@ -2521,6 +2522,151 @@ paths:
                   key: "error.internal_server_error_description"
                   defaultValue: "An unexpected error occurred while processing the request"
 
+  /users/me/agents/suspend:
+    post:
+      tags:
+        - Self
+      summary: Suspend all of the caller's personal agents
+      description: |
+        Suspends every personal agent of the caller, in the organization unit the access token names, that the
+        caller has not already suspended, after revoking the tokens issued to each agent's client. A token that
+        names no organization unit suspends none. An agent the organization suspended is suspended by the caller
+        too: the two suspensions are independent.
+      security:
+        - OAuth2: []
+      responses:
+        "200":
+          description: The caller's agents are suspended
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  suspendedCount:
+                    type: integer
+                    description: |
+                      How many agents this request suspended. Agents already suspended by the caller
+                      are not counted.
+                    example: 2
+        "401":
+          description: No user access token (`AGT-1060`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "403":
+          description: |
+            A delegated token (`AGT-1061`): one carrying an `act` claim, such as an agent's own token for its
+            owner.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /users/me/agents/{id}/suspend:
+    post:
+      tags:
+        - Self
+      summary: Suspend one of the caller's personal agents
+      description: |
+        Revokes the tokens issued to the agent's client, then suspends the agent until the caller lifts the
+        suspension. The agent's credentials and settings are kept. Suspending an agent the caller already
+        suspended changes nothing. The suspension is the caller's own: it is independent of a suspension by the
+        organization, which the caller cannot lift. The agent must be one of the caller's personal agents in the
+        organization unit the access token names; any other is not found.
+      security:
+        - OAuth2: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: "The agent ID"
+      responses:
+        "204":
+          description: The agent is suspended by the caller
+        "401":
+          description: No user access token (`AGT-1060`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "403":
+          description: |
+            A delegated token (`AGT-1061`): one carrying an `act` claim, such as an agent's own token for its
+            owner.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "404":
+          description: Not one of the caller's personal agents (`AGT-1004`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /users/me/agents/{id}/unsuspend:
+    post:
+      tags:
+        - Self
+      summary: Lift the caller's suspension of one of their personal agents
+      description: |
+        Lifts the suspension the caller placed. A suspension by the organization stays in force, and the agent
+        stays suspended until an administrator lifts it. Lifting when the caller has not suspended the agent
+        changes nothing. The agent must be one of the caller's personal agents in the organization unit the access
+        token names; any other is not found.
+      security:
+        - OAuth2: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: "The agent ID"
+      responses:
+        "204":
+          description: The caller's suspension is lifted
+        "401":
+          description: No user access token (`AGT-1060`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "403":
+          description: |
+            A delegated token (`AGT-1061`): one carrying an `act` claim, such as an agent's own token for its
+            owner.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "404":
+          description: Not one of the caller's personal agents (`AGT-1004`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /users/me/update-credentials:
     post:
       tags:
@@ -3622,10 +3768,11 @@ components:
           type: string
           description: |
             What happens to this resource when the target resource is deleted.
+            - `restrict`: the target cannot be deleted while the reference exists.
             - `fallback`: the reference is kept as-is.
-            - `cascade`: the resource is permanently deleted.
-          enum: [fallback, cascade]
-          example: fallback
+            - `cascade`: the resource is permanently deleted with the target.
+          enum: [restrict, fallback, cascade]
+          example: restrict
 
     ResourceUsagesSummary:
       type: object
@@ -3642,7 +3789,8 @@ components:
       type: object
       description: |
         Resources that reference a target resource, aggregated across all resource types.
-        Drives pre-delete confirmation dialogs; informational only.
+        Drives pre-delete confirmation dialogs. A usage whose `behaviorOnDelete` is `restrict` blocks the
+        deletion.
       properties:
         totalResults:
           type: integer
@@ -3776,6 +3924,16 @@ components:
                 One reason covers every entry in `lockedMethods`. A suspension release lock is never
                 reported together with authentication method locks.
               example: "FAILED_ATTEMPTS"
+            appliedBy:
+              type: array
+              readOnly: true
+              items:
+                type: string
+                enum: [organization]
+              description: |
+                Every party holding the user suspended. Always `organization` for a user. Present only
+                when the status is `SUSPENDED`.
+              example: ["organization"]
             since:
               type: string
               format: date-time
@@ -3959,7 +4117,7 @@ components:
         isOwnedByOU:
           type: boolean
           readOnly: true
-          description: Always true, since the caller's list is not scoped to an organization unit.
+          description: Always true, since the list holds only the agents in the access token's organization unit.
         kind:
           type: string
           readOnly: true
@@ -4106,17 +4264,32 @@ components:
           properties:
             value:
               type: string
-              enum: [ACTIVE, LOCKED, SUSPENDED]
+              enum: [ACTIVE, LOCKED, SUSPENDED, EXPIRED]
             details:
               type: object
               description: Why the status applies. Absent for `ACTIVE`.
               properties:
                 reason:
                   type: string
-                  enum: [FAILED_ATTEMPTS, ADMINISTRATIVE_SUSPENSION]
+                  enum: [FAILED_ATTEMPTS, ADMINISTRATIVE_SUSPENSION, OWNER_SUSPENSION, CASCADED_SUSPENSION,
+                    LIFESPAN_ENDED]
+                  description: |
+                    `ADMINISTRATIVE_SUSPENSION` when the organization holds the agent suspended, otherwise
+                    `OWNER_SUSPENSION` for the owner's own suspension, or `CASCADED_SUSPENSION` while the owner's
+                    account is suspended. `LIFESPAN_ENDED` for an agent whose `validUntil` has passed.
+                appliedBy:
+                  type: array
+                  items:
+                    type: string
+                    enum: [organization, owner, cascade]
+                  description: |
+                    Every party holding the agent suspended: the organization, the owner, or `cascade` while the
+                    owner's account is suspended. Each is independent, and the owner can lift only their own.
+                  example: ["owner"]
                 since:
                   type: string
                   format: date-time
+                  description: When the suspension that `reason` describes was placed, or when the lifespan ended.
                 operatorNote:
                   type: string
                   description: The note the operator entered when placing the hold, if any.

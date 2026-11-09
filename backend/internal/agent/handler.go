@@ -368,6 +368,59 @@ func (h *agentHandler) HandleOwnedAgentDeleteRequest(w http.ResponseWriter, r *h
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusNoContent, nil)
 }
 
+// HandleOwnedAgentSuspendRequest handles POST /users/me/agents/{id}/suspend: the owner suspends one of their
+// personal agents.
+func (h *agentHandler) HandleOwnedAgentSuspendRequest(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	callerID, svcErr := selfServiceCaller(ctx)
+	if svcErr != nil {
+		writeServiceError(ctx, w, svcErr)
+		return
+	}
+
+	if svcErr := h.service.SuspendOwnedAgent(ctx, callerID, r.PathValue("id"),
+		providers.AgentKindPersonalAssistant); svcErr != nil {
+		writeServiceError(ctx, w, svcErr)
+		return
+	}
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusNoContent, nil)
+}
+
+// HandleOwnedAgentUnsuspendRequest handles POST /users/me/agents/{id}/unsuspend: the owner lifts their own
+// suspension of one of their personal agents.
+func (h *agentHandler) HandleOwnedAgentUnsuspendRequest(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	callerID, svcErr := selfServiceCaller(ctx)
+	if svcErr != nil {
+		writeServiceError(ctx, w, svcErr)
+		return
+	}
+
+	if svcErr := h.service.UnsuspendOwnedAgent(ctx, callerID, r.PathValue("id"),
+		providers.AgentKindPersonalAssistant); svcErr != nil {
+		writeServiceError(ctx, w, svcErr)
+		return
+	}
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusNoContent, nil)
+}
+
+// HandleOwnedAgentsSuspendRequest handles POST /users/me/agents/suspend: the owner suspends all their personal
+// agents.
+func (h *agentHandler) HandleOwnedAgentsSuspendRequest(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	callerID, svcErr := selfServiceCaller(ctx)
+	if svcErr != nil {
+		writeServiceError(ctx, w, svcErr)
+		return
+	}
+	suspended, svcErr := h.service.SuspendOwnedAgents(ctx, callerID, providers.AgentKindPersonalAssistant)
+	if svcErr != nil {
+		writeServiceError(ctx, w, svcErr)
+		return
+	}
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, model.SuspendOwnedAgentsResponse{SuspendedCount: suspended})
+}
+
 // selfServiceCaller returns the user an owner's request acts for: the subject of its token. A request without
 // one is refused, and so is a delegated token, so an agent cannot manage its owner's agents with the token it
 // holds for the owner.

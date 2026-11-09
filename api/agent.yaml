@@ -672,6 +672,16 @@ paths:
                     description:
                       key: "error.agentservice.invalid_owner_description"
                       defaultValue: "An owner needs an id of at most 256 characters matching its type, and a local owner a uuid"
+                owner-suspended:
+                  summary: The personal agent's owner is suspended
+                  value:
+                    code: "AGT-1062"
+                    message:
+                      key: "error.agentservice.owner_suspended"
+                      defaultValue: "Owner suspended"
+                    description:
+                      key: "error.agentservice.owner_suspended_description"
+                      defaultValue: "A personal agent cannot be created for a user whose account is suspended"
                 grant-type-not-allowed-for-personal-agent:
                   summary: A personal agent is given a grant type it cannot use
                   value:
@@ -3507,20 +3517,36 @@ components:
             reason:
               type: string
               readOnly: true
-              enum: [FAILED_ATTEMPTS, ADMINISTRATIVE_SUSPENSION, LIFESPAN_ENDED]
+              enum: [FAILED_ATTEMPTS, ADMINISTRATIVE_SUSPENSION, LIFESPAN_ENDED, OWNER_SUSPENSION, CASCADED_SUSPENSION]
               description: |
                 What caused the status. `FAILED_ATTEMPTS` is an automatic lock after repeated failed
                 sign-ins. `ADMINISTRATIVE_SUSPENSION` is a suspension placed by an operator.
-                `LIFESPAN_ENDED` is an agent whose `validUntil` has passed. One reason covers every
-                entry in `lockedMethods`.
+                `LIFESPAN_ENDED` is an agent whose `validUntil` has passed. `OWNER_SUSPENSION` is a
+                suspension placed by the agent's owner. `CASCADED_SUSPENSION` is the suspension an agent
+                carries while its owner's account is suspended. One reason covers every entry in
+                `lockedMethods`.
               example: "FAILED_ATTEMPTS"
+            appliedBy:
+              type: array
+              readOnly: true
+              items:
+                type: string
+                enum: [organization, owner, cascade]
+              description: |
+                Every party holding the agent suspended: `organization` for an operator's suspension,
+                `owner` for the agent owner's, `cascade` while the owner's account is suspended. Present
+                only when the status is `SUSPENDED`. Each is independent and lifted on its own: `cascade`
+                lifts when the owner's account is unsuspended, and the agent stays suspended while any
+                remains. `reason`, `since` and `operatorNote` describe the organization's suspension
+                when there is one, otherwise the owner's, otherwise the cascade.
+              example: ["organization"]
             since:
               type: string
               format: date-time
               readOnly: true
               description: |
-                When the operator placed the hold, or for `LIFESPAN_ENDED` the agent's `validUntil`.
-                Absent for an automatic lock.
+                When the hold was placed, or for `LIFESPAN_ENDED` the agent's `validUntil`. Absent for an
+                automatic lock.
             operatorNote:
               type: string
               readOnly: true

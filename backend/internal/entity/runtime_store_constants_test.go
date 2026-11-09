@@ -47,7 +47,8 @@ func (s *RuntimeStoreConstantsTestSuite) TestQueryIDsAreDistinctAndAscending() {
 
 	queries := []model.DBQuery{queryResetRuntimeData, queryDeleteRuntimeData, querySetAccessSuspension,
 		queryClearAccessSuspension, queryClearAccessSuspensionWithHold, queryRecordAccessLogin, getQuery,
-		initQuery, clearQuery, guardedClearQuery, incrementQuery, formQuery}
+		initQuery, clearQuery, guardedClearQuery, incrementQuery, formQuery, querySetAccessOwnerSuspension,
+		queryClearAccessOwnerSuspension, querySetAccessCascadeSuspension, queryClearAccessCascadeSuspension}
 	for i, query := range queries {
 		s.Equal(fmt.Sprintf("ERD-ENTITY_MGT-%02d", i+1), query.ID)
 	}
@@ -69,7 +70,8 @@ func (s *RuntimeStoreConstantsTestSuite) allRuntimeStatements() []model.DBQuery 
 	queries := make([]model.DBQuery, 0, 10+2*len(identitygovernance.AllAuthenticationMethods))
 	queries = append(queries, queryResetRuntimeData, queryDeleteRuntimeData, querySetAccessSuspension,
 		queryClearAccessSuspension, queryClearAccessSuspensionWithHold, queryRecordAccessLogin, getQuery,
-		initQuery, clearQuery, guardedClearQuery)
+		initQuery, clearQuery, guardedClearQuery, querySetAccessOwnerSuspension, queryClearAccessOwnerSuspension,
+		querySetAccessCascadeSuspension, queryClearAccessCascadeSuspension)
 	for _, method := range identitygovernance.AllAuthenticationMethods {
 		increment, err := methodQuery(incrementAccessQueries, method)
 		s.Require().NoError(err)
@@ -105,7 +107,9 @@ func (s *RuntimeStoreConstantsTestSuite) TestDialectSpecificStatementsSetBothFor
 	s.Require().NoError(err)
 
 	for _, query := range []model.DBQuery{querySetAccessSuspension, queryClearAccessSuspension,
-		queryClearAccessSuspensionWithHold, queryRecordAccessLogin, clearQuery, incrementQuery, formQuery} {
+		queryClearAccessSuspensionWithHold, queryRecordAccessLogin, clearQuery, incrementQuery, formQuery,
+		querySetAccessOwnerSuspension, queryClearAccessOwnerSuspension, querySetAccessCascadeSuspension,
+		queryClearAccessCascadeSuspension} {
 		s.Empty(query.Query, query.ID)
 		s.NotEmpty(query.PostgresQuery, query.ID)
 		s.NotEmpty(query.SQLiteQuery, query.ID)
@@ -186,6 +190,30 @@ func (s *RuntimeStoreConstantsTestSuite) TestStatementsGuardTheirWrites() {
 			[]string{`DELETE FROM "ENTITY_RUNTIME_DATA" WHERE ENTITY_ID = $1 AND DEPLOYMENT_ID = $2`}},
 		{"get", getQuery.GetQuery("postgres"),
 			[]string{`WHERE ENTITY_ID IN ($1,$2) AND DEPLOYMENT_ID = $3`}},
+		{"owner suspend, postgres", querySetAccessOwnerSuspension.PostgresQuery, []string{
+			`WHERE ENTITY_ID = $1 AND RUNTIME_ATTRIBUTES->'accessState'->'ownerSuspend' IS NULL ` +
+				`AND DEPLOYMENT_ID = $4`}},
+		{"owner suspend, sqlite", querySetAccessOwnerSuspension.SQLiteQuery, []string{
+			`WHERE ENTITY_ID = $1 AND json_extract(RUNTIME_ATTRIBUTES, '$.accessState.ownerSuspend') IS NULL ` +
+				`AND DEPLOYMENT_ID = $4`}},
+		{"owner release, postgres", queryClearAccessOwnerSuspension.PostgresQuery, []string{
+			`WHERE ENTITY_ID = $1 AND RUNTIME_ATTRIBUTES->'accessState'->'ownerSuspend' IS NOT NULL ` +
+				`AND DEPLOYMENT_ID = $3`}},
+		{"owner release, sqlite", queryClearAccessOwnerSuspension.SQLiteQuery, []string{
+			`WHERE ENTITY_ID = $1 AND json_extract(RUNTIME_ATTRIBUTES, '$.accessState.ownerSuspend') IS NOT NULL ` +
+				`AND DEPLOYMENT_ID = $3`}},
+		{"cascade suspend, postgres", querySetAccessCascadeSuspension.PostgresQuery, []string{
+			`WHERE ENTITY_ID = $1 AND RUNTIME_ATTRIBUTES->'accessState'->'cascadeSuspend' IS NULL ` +
+				`AND DEPLOYMENT_ID = $4`}},
+		{"cascade suspend, sqlite", querySetAccessCascadeSuspension.SQLiteQuery, []string{
+			`WHERE ENTITY_ID = $1 AND json_extract(RUNTIME_ATTRIBUTES, '$.accessState.cascadeSuspend') IS NULL ` +
+				`AND DEPLOYMENT_ID = $4`}},
+		{"cascade release, postgres", queryClearAccessCascadeSuspension.PostgresQuery, []string{
+			`WHERE ENTITY_ID = $1 AND RUNTIME_ATTRIBUTES->'accessState'->'cascadeSuspend' IS NOT NULL ` +
+				`AND DEPLOYMENT_ID = $3`}},
+		{"cascade release, sqlite", queryClearAccessCascadeSuspension.SQLiteQuery, []string{
+			`WHERE ENTITY_ID = $1 AND json_extract(RUNTIME_ATTRIBUTES, '$.accessState.cascadeSuspend') IS NOT NULL ` +
+				`AND DEPLOYMENT_ID = $3`}},
 		{"suspend, postgres", querySetAccessSuspension.PostgresQuery, []string{
 			`WHERE ENTITY_ID = $1 AND STATE <> 'SUSPENDED' ` +
 				`AND RUNTIME_ATTRIBUTES->'accessState'->'suspend' IS NULL AND DEPLOYMENT_ID = $5`}},
@@ -276,6 +304,33 @@ func (s *RuntimeStoreConstantsTestSuite) TestStatementsWriteOnlyTheirOwnMember()
 
 	cases := make([]statementCase, 0, 10+4*len(methodStatements))
 	cases = append(cases, []statementCase{
+		// The owner's suspension writes only its own member and never the state column.
+		{"owner suspend, postgres", querySetAccessOwnerSuspension.PostgresQuery, []string{
+			`SET RUNTIME_ATTRIBUTES = ` + keepState + ` || jsonb_build_object('ownerSuspend', ` +
+				`jsonb_build_object('suspendedAt', $2::text))), REVISION = REVISION + 1, UPDATED_AT = $3`}},
+		{"owner suspend, sqlite", querySetAccessOwnerSuspension.SQLiteQuery, []string{
+			`SET RUNTIME_ATTRIBUTES = json_set(RUNTIME_ATTRIBUTES, ` +
+				`'$.accessState.ownerSuspend', json_object('suspendedAt', $2)), ` +
+				`REVISION = REVISION + 1, UPDATED_AT = $3`}},
+		{"owner release, postgres", queryClearAccessOwnerSuspension.PostgresQuery, []string{
+			`SET RUNTIME_ATTRIBUTES = ` + keepState + ` - 'ownerSuspend'), ` +
+				`REVISION = REVISION + 1, UPDATED_AT = $2`}},
+		{"owner release, sqlite", queryClearAccessOwnerSuspension.SQLiteQuery, []string{
+			`SET RUNTIME_ATTRIBUTES = json_remove(RUNTIME_ATTRIBUTES, '$.accessState.ownerSuspend'), ` +
+				`REVISION = REVISION + 1, UPDATED_AT = $2`}},
+		{"cascade suspend, postgres", querySetAccessCascadeSuspension.PostgresQuery, []string{
+			`SET RUNTIME_ATTRIBUTES = ` + keepState + ` || jsonb_build_object('cascadeSuspend', ` +
+				`jsonb_build_object('suspendedAt', $2::text))), REVISION = REVISION + 1, UPDATED_AT = $3`}},
+		{"cascade suspend, sqlite", querySetAccessCascadeSuspension.SQLiteQuery, []string{
+			`SET RUNTIME_ATTRIBUTES = json_set(RUNTIME_ATTRIBUTES, ` +
+				`'$.accessState.cascadeSuspend', json_object('suspendedAt', $2)), ` +
+				`REVISION = REVISION + 1, UPDATED_AT = $3`}},
+		{"cascade release, postgres", queryClearAccessCascadeSuspension.PostgresQuery, []string{
+			`SET RUNTIME_ATTRIBUTES = ` + keepState + ` - 'cascadeSuspend'), ` +
+				`REVISION = REVISION + 1, UPDATED_AT = $2`}},
+		{"cascade release, sqlite", queryClearAccessCascadeSuspension.SQLiteQuery, []string{
+			`SET RUNTIME_ATTRIBUTES = json_remove(RUNTIME_ATTRIBUTES, '$.accessState.cascadeSuspend'), ` +
+				`REVISION = REVISION + 1, UPDATED_AT = $2`}},
 		{"suspend, postgres", querySetAccessSuspension.PostgresQuery, []string{
 			`SET STATE = 'SUSPENDED', RUNTIME_ATTRIBUTES = ` + keepState + ` || jsonb_build_object('suspend', ` +
 				`jsonb_build_object('suspendedAt', $2::text, 'operatorNote', $3::text))), ` +

@@ -623,6 +623,9 @@ func activatePermissions(p *SystemPermissions) {
 		{"POST /users/me/update-credentials", ""},
 		{"GET /capabilities", ""},
 		{"DELETE /users/me/agents/*", ""},
+		{"POST /users/me/agents/suspend", ""},
+		{"POST /users/me/agents/*/suspend", ""},
+		{"POST /users/me/agents/*/unsuspend", ""},
 		{"GET /register/passkey/**", ""},
 		{"POST /register/passkey/**", ""},
 		// MCP checks each tool call against the permission the tool is mapped to, so a token reaches it as its caller.
