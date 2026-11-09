@@ -62,6 +62,34 @@ describe('AttributesSummarySection', () => {
     expect(screen.getByText('a, b')).toBeInTheDocument();
   });
 
+  it('shows attributes in the schema order with the ones not in the schema last', () => {
+    mockUseGetUserType.mockReturnValue({
+      data: {
+        id: 'schema-1',
+        handle: 'employee',
+        displayName: 'Employee',
+        schema: {
+          sub: {type: 'string'},
+          email: {type: 'string', required: true},
+          given_name: {type: 'string'},
+          username: {type: 'string', required: true},
+        },
+      },
+      isLoading: false,
+    });
+    render(
+      <AttributesSummarySection
+        user={{
+          ...baseUser,
+          attributes: {nickname: 'bo', sub: 's-1', email: 'a@b.com', given_name: 'Bob', username: 'bob'},
+        }}
+      />,
+    );
+
+    const labels = screen.getAllByText(/^(nickname|sub|email|given_name|username)$/).map((el) => el.textContent);
+    expect(labels).toEqual(['username', 'given_name', 'email', 'sub', 'nickname']);
+  });
+
   it('shows an empty state when there are no attribute values', () => {
     render(<AttributesSummarySection user={{...baseUser, attributes: {}}} />);
 

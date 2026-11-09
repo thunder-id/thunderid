@@ -13,6 +13,7 @@ import VerificationStatus from './VerificationStatus';
 import useGetUserType from '../../api/useGetUserType';
 import useGetUserTypes from '../../api/useGetUserTypes';
 import getVerifiableAttributes from '../../utils/getVerifiableAttributes';
+import orderSchemaAttributes from '../../utils/orderSchemaAttributes';
 import renderSchemaField from '../../utils/renderSchemaField';
 
 interface EditUserAttributesProps {
@@ -79,7 +80,7 @@ export default function EditUserAttributes({user, editedUser, onFieldChange}: Ed
   }
 
   const schemaFields = userTypeDetails?.schema
-    ? Object.entries(userTypeDetails.schema).filter(
+    ? orderSchemaAttributes(userTypeDetails.schema, {includeOptional: true}).filter(
         ([, fieldDef]) => !((fieldDef.type === 'string' || fieldDef.type === 'number') && fieldDef.credential),
       )
     : [];

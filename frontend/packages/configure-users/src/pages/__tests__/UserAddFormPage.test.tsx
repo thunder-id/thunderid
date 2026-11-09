@@ -74,7 +74,7 @@ const customerType = {
   displayName: 'Customer',
   schema: {
     username: {type: 'string', required: true},
-    nickname: {type: 'string'},
+    given_name: {type: 'string'},
   },
 };
 
@@ -154,13 +154,13 @@ describe('UserAddFormPage', () => {
     };
     await screen.findByRole('combobox');
     await choose('Customer');
-    await screen.findByRole('textbox', {name: /nickname/i});
+    await screen.findByRole('textbox', {name: /given_name/i});
     await choose('Employee');
-    await user.type(await screen.findByRole('textbox', {name: /nickname/i}), 'ally');
+    await user.type(await screen.findByRole('textbox', {name: /given_name/i}), 'ally');
     // Back to a type whose schema is already loaded, so its fields stay mounted across the change.
     await choose('Customer');
     await user.click(await screen.findByTestId('ou-picker'));
-    await waitFor(() => expect(screen.getByRole('textbox', {name: /nickname/i})).toHaveValue(''));
+    await waitFor(() => expect(screen.getByRole('textbox', {name: /given_name/i})).toHaveValue(''));
     await user.type(screen.getByRole('textbox', {name: /username/i}), 'bob');
     await user.click(screen.getByRole('button', {name: 'users:addForm.submit'}));
 
