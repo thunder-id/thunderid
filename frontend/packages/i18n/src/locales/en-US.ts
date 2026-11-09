@@ -1191,6 +1191,9 @@ const translations = {
     'addForm.agentType': 'Agent type',
     'addForm.agentTypeSchemaError': 'The attributes of the selected agent type could not be loaded.',
     'addForm.agentTypesError': 'The agent types could not be loaded.',
+    'addForm.attributesStep.breadcrumb': 'Attributes',
+    'addForm.attributesStep.subtitle': 'Fill in the attributes the {{type}} agent type defines.',
+    'addForm.attributesStep.title': 'Agent attributes',
     'addForm.creating': 'Creating...',
     'addForm.description': 'Description',
     'addForm.descriptionPlaceholder': 'What this agent does',
@@ -1216,7 +1219,7 @@ const translations = {
       'Agents of this agent type can be created in its organization unit, shown at the top, or in any unit below it.',
     'addForm.selectAgentType': 'Select an agent type',
     'addForm.submit': 'Create agent',
-    'addForm.subtitle': 'Name the agent, choose its type, then fill in what the type requires.',
+    'addForm.subtitle': "Choose the agent's type, where it belongs and who owns it. You fill in its attributes next.",
     'create.error': 'Failed to create agent. Please try again.',
     'create.success': 'Agent created successfully.',
 

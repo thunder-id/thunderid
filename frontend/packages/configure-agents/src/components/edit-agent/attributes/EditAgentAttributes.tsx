@@ -12,6 +12,7 @@ import {useTranslation} from 'react-i18next';
 import AttributesSummarySection from './AttributesSummarySection';
 import LifespanSection from './LifespanSection';
 import type {Agent} from '../../../models/agent';
+import orderAgentAttributes from '../../../utils/orderAgentAttributes';
 
 interface EditAgentAttributesProps {
   agent: Agent;
@@ -128,7 +129,7 @@ export default function EditAgentAttributes({
   }
 
   const schemaFields = schemaDetails?.schema
-    ? Object.entries(schemaDetails.schema).filter(
+    ? orderAgentAttributes(schemaDetails.schema, schemaDetails.systemAttributes?.display).filter(
         ([, fieldDef]) => !((fieldDef.type === 'string' || fieldDef.type === 'number') && fieldDef.credential),
       )
     : [];

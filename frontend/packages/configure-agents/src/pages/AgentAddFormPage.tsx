@@ -34,8 +34,12 @@ import ClientSecretSuccessDialog from '../components/ClientSecretSuccessDialog';
 import useAgentRoutes from '../hooks/useAgentRoutes';
 import type {Agent, AgentInboundAuthConfig, AgentOwner, CreateAgentRequest} from '../models/agent';
 import {isInvalidExternalOwner} from '../utils/externalOwner';
+import orderAgentAttributes from '../utils/orderAgentAttributes';
 
 type AttributeFormData = Record<string, unknown>;
+
+/** The wizard's two screens: the agent's type and placement, then the attributes the type's schema holds. */
+type AgentAddStep = 'setup' | 'attributes';
 
 /** The OAuth client an agent is issued: the client credentials grant, authenticated with a secret. */
 const AGENT_CREDENTIALS: AgentInboundAuthConfig = {
@@ -59,12 +63,12 @@ function isNotFound(error: unknown): boolean {
 }
 
 /**
- * Creates an agent from a single form, without running an onboarding flow.
+ * Creates an agent in two steps, without running an onboarding flow.
  *
  * Used when agent creation runs natively, for example on a deployment that holds configuration
- * only and so has no /flow/execute for the onboarding flow to call. It asks for an agent type, an
- * organization unit and what the type's schema holds, the agent's name among it, and posts them to
- * the agents API. An owner can be chosen from the users that exist here; without one the API makes the
+ * only and so has no /flow/execute for the onboarding flow to call. The first step asks for an agent
+ * type, an organization unit and an owner; the second asks for what the type's schema holds, the
+ * agent's name among it. Both are posted to the agents API. An owner can be chosen from the users that exist here; without one the API makes the
  * caller the owner, so that is offered only when the caller is a user here too. OAuth client
  * credentials are issued with the agent unless switched off: the API generates the client ID and
  * secret, and the secret is shown once here, since the agent's page can only regenerate it afterwards.
@@ -80,6 +84,7 @@ export default function AgentAddFormPage(): JSX.Element {
   // organization unit, so there is no organization unit to pick.
   const isInProject = Boolean(projectId);
 
+  const [step, setStep] = useState<AgentAddStep>('setup');
   const [description, setDescription] = useState<string>('');
   const [typeId, setTypeId] = useState<string>('');
   const [ouId, setOuId] = useState<string>('');
@@ -151,6 +156,16 @@ export default function AgentAddFormPage(): JSX.Element {
     void navigate(routes.agents.list());
   };
 
+  // The attributes come from the chosen type's schema, so the second step opens only once it has loaded.
+  const isSetupComplete =
+    Boolean(selectedType) &&
+    (isInProject || Boolean(ouId)) &&
+    Boolean(agentType) &&
+    (Boolean(externalOwner) || callerCanOwn || Boolean(ownerId)) &&
+    !isInvalidExternalOwner(externalOwner);
+  const isAttributesStep = step === 'attributes';
+  const selectedTypeName = selectedType ? resolveDisplayName(selectedType.displayName) || selectedType.handle : '';
+
   const onSubmit = handleSubmit((values: AttributeFormData) => {
     // An optional field left empty is omitted rather than posted as an empty string.
     const attributes: AttributeFormData = Object.fromEntries(
@@ -185,28 +200,81 @@ export default function AgentAddFormPage(): JSX.Element {
   return (
     <FullScreenCreationWizardLayout
       onClose={handleClose}
-      progress={0}
-      breadcrumbItems={[{key: 'add-agent', label: t('agents:addAgent', 'Add agent')}]}
-      footer={null}
+      progress={isAttributesStep ? 100 : 50}
+      breadcrumbItems={[
+        {
+          key: 'add-agent',
+          label: t('agents:addAgent', 'Add agent'),
+          // Like Back, it waits for a create in flight, so a failed create keeps what it was given.
+          onClick: isAttributesStep && !createAgent.isPending ? () => setStep('setup') : undefined,
+        },
+        ...(isAttributesStep
+          ? [{key: 'attributes', label: t('agents:addForm.attributesStep.breadcrumb', 'Attributes')}]
+          : []),
+      ]}
+      footer={
+        <Stack direction="row" justifyContent={isAttributesStep ? 'space-between' : 'flex-end'} spacing={2}>
+          {isAttributesStep && (
+            <Button
+              variant="outlined"
+              sx={{minWidth: 100}}
+              disabled={createAgent.isPending}
+              onClick={() => setStep('setup')}
+            >
+              {t('common:actions.back', 'Back')}
+            </Button>
+          )}
+          {/* Keyed apart so Continue is never reused as Create: the click that opens the attributes
+              would otherwise land on a submit button once React re-renders, and create the agent. */}
+          {isAttributesStep ? (
+            <Button
+              key="create"
+              type="submit"
+              form="agent-attributes-form"
+              variant="contained"
+              sx={{minWidth: 140}}
+              disabled={!isSetupComplete || createAgent.isPending}
+            >
+              {createAgent.isPending ? t('agents:addForm.creating') : t('agents:addForm.submit')}
+            </Button>
+          ) : (
+            <Button
+              key="continue"
+              variant="contained"
+              sx={{minWidth: 140}}
+              disabled={!isSetupComplete}
+              onClick={() => setStep('attributes')}
+            >
+              {t('common:actions.continue', 'Continue')}
+            </Button>
+          )}
+        </Stack>
+      }
     >
       <DocumentTitle title={t('agents:addAgent', 'Add agent')} />
       <Stack spacing={3}>
         <Box>
           <Typography variant="h1" gutterBottom>
-            {t('agents:addAgent', 'Add agent')}
+            {isAttributesStep
+              ? t('agents:addForm.attributesStep.title', 'Agent attributes')
+              : t('agents:addAgent', 'Add agent')}
           </Typography>
           <Typography variant="body1" color="text.secondary">
-            {t('agents:addForm.subtitle')}
+            {isAttributesStep
+              ? t('agents:addForm.attributesStep.subtitle', 'Fill in the attributes the {{type}} agent type defines.', {
+                  type: selectedTypeName,
+                })
+              : t('agents:addForm.subtitle')}
           </Typography>
         </Box>
 
-        {typesLoading && (
+        {!isAttributesStep && typesLoading && (
           <Box sx={{display: 'flex', justifyContent: 'center', py: 8}}>
             <CircularProgress />
           </Box>
         )}
 
-        {!typesLoading && !typesReadError && types.length === 0 && (
+        {!isAttributesStep && !typesLoading && !typesReadError && types.length === 0 && (
           <Alert severity="info">{t('agents:addForm.noAgentTypes')}</Alert>
         )}
 
@@ -221,191 +289,176 @@ export default function AgentAddFormPage(): JSX.Element {
           </Alert>
         )}
 
+        {/* Both steps stay mounted and only the current one is shown, so going back keeps what was
+            entered, the owner field's own choices among it. */}
+        <Stack spacing={3} sx={isAttributesStep ? {display: 'none'} : undefined}>
+          <TextField
+            labelPlacement="top"
+            label={t('agents:addForm.description')}
+            fullWidth
+            id="agent-description"
+            value={description}
+            multiline
+            minRows={2}
+            placeholder={t('agents:addForm.descriptionPlaceholder')}
+            onChange={(event) => setDescription(event.target.value)}
+          />
+
+          <FormControl fullWidth required>
+            <FormLabel htmlFor="agent-type">{t('agents:addForm.agentType')}</FormLabel>
+            {typesReadError ? (
+              // A failed read is shown in place of the picker, not as a list with no agent types.
+              <QueryErrorNotice
+                variant="inline"
+                error={typesReadError}
+                t={tForErrors}
+                fallbackKey="agents:addForm.agentTypesError"
+                fallbackDefaultValue="The agent types could not be loaded."
+                onRetry={() => {
+                  void refetchTypes();
+                }}
+              />
+            ) : (
+              <Select
+                id="agent-type"
+                value={typeId}
+                displayEmpty
+                onChange={(event) => {
+                  setTypeId(String(event.target.value));
+                  setOuId('');
+                  // Another type's schema can share a field name, so its values are not carried over.
+                  reset({});
+                }}
+              >
+                <MenuItem value="">
+                  <em>{t('agents:addForm.selectAgentType')}</em>
+                </MenuItem>
+                {types.map((type: AgentTypeListItem) => (
+                  <MenuItem key={type.id} value={type.id}>
+                    {resolveDisplayName(type.displayName) || type.handle}
+                  </MenuItem>
+                ))}
+              </Select>
+            )}
+          </FormControl>
+
+          {selectedType && !isInProject && (
+            <FormControl fullWidth required>
+              <FormLabel htmlFor="agent-ou">{t('agents:addForm.organizationUnit')}</FormLabel>
+              {/* An agent of a type belongs to the type's organization unit or one beneath it. */}
+              <OrganizationUnitTreePicker
+                key={selectedType.id}
+                id="agent-ou"
+                value={ouId}
+                onChange={setOuId}
+                rootOuId={selectedType.ouId || undefined}
+                helperText={t(
+                  'agents:addForm.organizationUnitHint',
+                  'Agents of this agent type can be created in its organization unit, shown at the top, or in any unit below it.',
+                )}
+              />
+            </FormControl>
+          )}
+
+          {agentTypeError && !agentType && (
+            // Without the type's schema there are no attribute fields to fill in, so Continue stays off.
+            <QueryErrorNotice
+              variant="inline"
+              error={agentTypeError}
+              t={tForErrors}
+              fallbackKey="agents:addForm.agentTypeSchemaError"
+              fallbackDefaultValue="The attributes of the selected agent type could not be loaded."
+              onRetry={() => {
+                void refetchAgentType();
+              }}
+            />
+          )}
+
+          <AgentOwnerField
+            id="agent-owner"
+            required={callerElsewhere}
+            onExternalChange={setExternalOwner}
+            internalPicker={
+              <>
+                {usersError ? (
+                  // A failed read is shown in place of the picker, not as an empty one: the agent would
+                  // otherwise be owned by the caller with nothing said about the owners that did not load.
+                  <QueryErrorNotice
+                    variant="inline"
+                    error={usersError}
+                    t={tForErrors}
+                    fallbackKey="agents:addForm.ownersError"
+                    fallbackDefaultValue="The users to choose an owner from could not be loaded."
+                    onRetry={() => {
+                      void refetchUsers();
+                    }}
+                  />
+                ) : (
+                  <Select
+                    id="agent-owner-select"
+                    labelId="agent-owner-label"
+                    value={ownerId}
+                    displayEmpty
+                    disabled={usersLoading}
+                    onChange={(event) => setOwnerId(String(event.target.value))}
+                  >
+                    <MenuItem value="">
+                      <em>
+                        {callerElsewhere
+                          ? t('agents:addForm.selectOwner', 'Select an owner')
+                          : t('agents:addForm.ownerDefault', 'Me (default)')}
+                      </em>
+                    </MenuItem>
+                    {users.map((user) => (
+                      <MenuItem key={user.id} value={user.id}>
+                        {ownerLabel(user)}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                )}
+                {usersTruncated && (
+                  <Typography variant="caption" color="text.secondary">
+                    {t('agents:addForm.ownerTruncated', 'Showing the first {{shown}} of {{total}} users.', {
+                      shown: users.length,
+                      total: userList?.totalResults,
+                    })}
+                  </Typography>
+                )}
+                <Typography variant="caption" color="text.secondary">
+                  {ownerHint}
+                </Typography>
+              </>
+            }
+          />
+
+          <FormControl fullWidth>
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={issueCredentials}
+                  onChange={(event) => setIssueCredentials(event.target.checked)}
+                  inputProps={{'aria-label': t('agents:addForm.issueCredentials')}}
+                />
+              }
+              label={t('agents:addForm.issueCredentials')}
+            />
+            <Typography variant="caption" color="text.secondary">
+              {t('agents:addForm.issueCredentialsHint')}
+            </Typography>
+          </FormControl>
+        </Stack>
+
         <form
+          id="agent-attributes-form"
           noValidate
           onSubmit={(event) => {
             void onSubmit(event);
           }}
         >
-          <Stack spacing={3}>
-            <TextField
-              labelPlacement="top"
-              label={t('agents:addForm.description')}
-              fullWidth
-              id="agent-description"
-              value={description}
-              multiline
-              minRows={2}
-              placeholder={t('agents:addForm.descriptionPlaceholder')}
-              onChange={(event) => setDescription(event.target.value)}
-            />
-
-            <FormControl fullWidth required>
-              <FormLabel htmlFor="agent-type">{t('agents:addForm.agentType')}</FormLabel>
-              {typesReadError ? (
-                // A failed read is shown in place of the picker, not as a list with no agent types.
-                <QueryErrorNotice
-                  variant="inline"
-                  error={typesReadError}
-                  t={tForErrors}
-                  fallbackKey="agents:addForm.agentTypesError"
-                  fallbackDefaultValue="The agent types could not be loaded."
-                  onRetry={() => {
-                    void refetchTypes();
-                  }}
-                />
-              ) : (
-                <Select
-                  id="agent-type"
-                  value={typeId}
-                  displayEmpty
-                  onChange={(event) => {
-                    setTypeId(String(event.target.value));
-                    setOuId('');
-                    // Another type's schema can share a field name, so its values are not carried over.
-                    reset({});
-                  }}
-                >
-                  <MenuItem value="">
-                    <em>{t('agents:addForm.selectAgentType')}</em>
-                  </MenuItem>
-                  {types.map((type: AgentTypeListItem) => (
-                    <MenuItem key={type.id} value={type.id}>
-                      {resolveDisplayName(type.displayName) || type.handle}
-                    </MenuItem>
-                  ))}
-                </Select>
-              )}
-            </FormControl>
-
-            {selectedType && !isInProject && (
-              <FormControl fullWidth required>
-                <FormLabel htmlFor="agent-ou">{t('agents:addForm.organizationUnit')}</FormLabel>
-                {/* An agent of a type belongs to the type's organization unit or one beneath it. */}
-                <OrganizationUnitTreePicker
-                  key={selectedType.id}
-                  id="agent-ou"
-                  value={ouId}
-                  onChange={setOuId}
-                  rootOuId={selectedType.ouId || undefined}
-                  helperText={t(
-                    'agents:addForm.organizationUnitHint',
-                    'Agents of this agent type can be created in its organization unit, shown at the top, or in any unit below it.',
-                  )}
-                />
-              </FormControl>
+          <Stack spacing={3} sx={isAttributesStep ? undefined : {display: 'none'}}>
+            {orderAgentAttributes(agentType?.schema ?? {}, agentType?.systemAttributes?.display).map(
+              ([fieldName, fieldDef]) => renderSchemaField(fieldName, fieldDef, control, errors, resolveDisplayName),
             )}
-
-            <AgentOwnerField
-              id="agent-owner"
-              required={callerElsewhere}
-              onExternalChange={setExternalOwner}
-              internalPicker={
-                <>
-                  {usersError ? (
-                    // A failed read is shown in place of the picker, not as an empty one: the agent would
-                    // otherwise be owned by the caller with nothing said about the owners that did not load.
-                    <QueryErrorNotice
-                      variant="inline"
-                      error={usersError}
-                      t={tForErrors}
-                      fallbackKey="agents:addForm.ownersError"
-                      fallbackDefaultValue="The users to choose an owner from could not be loaded."
-                      onRetry={() => {
-                        void refetchUsers();
-                      }}
-                    />
-                  ) : (
-                    <Select
-                      id="agent-owner-select"
-                      labelId="agent-owner-label"
-                      value={ownerId}
-                      displayEmpty
-                      disabled={usersLoading}
-                      onChange={(event) => setOwnerId(String(event.target.value))}
-                    >
-                      <MenuItem value="">
-                        <em>
-                          {callerElsewhere
-                            ? t('agents:addForm.selectOwner', 'Select an owner')
-                            : t('agents:addForm.ownerDefault', 'Me (default)')}
-                        </em>
-                      </MenuItem>
-                      {users.map((user) => (
-                        <MenuItem key={user.id} value={user.id}>
-                          {ownerLabel(user)}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  )}
-                  {usersTruncated && (
-                    <Typography variant="caption" color="text.secondary">
-                      {t('agents:addForm.ownerTruncated', 'Showing the first {{shown}} of {{total}} users.', {
-                        shown: users.length,
-                        total: userList?.totalResults,
-                      })}
-                    </Typography>
-                  )}
-                  <Typography variant="caption" color="text.secondary">
-                    {ownerHint}
-                  </Typography>
-                </>
-              }
-            />
-
-            {agentTypeError && !agentType ? (
-              // Without the type's schema there are no attribute fields to fill in, so Create stays off.
-              <QueryErrorNotice
-                variant="inline"
-                error={agentTypeError}
-                t={tForErrors}
-                fallbackKey="agents:addForm.agentTypeSchemaError"
-                fallbackDefaultValue="The attributes of the selected agent type could not be loaded."
-                onRetry={() => {
-                  void refetchAgentType();
-                }}
-              />
-            ) : (
-              Object.entries(agentType?.schema ?? {}).map(([fieldName, fieldDef]) =>
-                renderSchemaField(fieldName, fieldDef, control, errors, resolveDisplayName),
-              )
-            )}
-
-            <FormControl fullWidth>
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={issueCredentials}
-                    onChange={(event) => setIssueCredentials(event.target.checked)}
-                    inputProps={{'aria-label': t('agents:addForm.issueCredentials')}}
-                  />
-                }
-                label={t('agents:addForm.issueCredentials')}
-              />
-              <Typography variant="caption" color="text.secondary">
-                {t('agents:addForm.issueCredentialsHint')}
-              </Typography>
-            </FormControl>
-
-            <Stack direction="row" spacing={1}>
-              <Button
-                type="submit"
-                variant="contained"
-                disabled={
-                  !selectedType ||
-                  (!isInProject && !ouId) ||
-                  !agentType ||
-                  (!externalOwner && !callerCanOwn && !ownerId) ||
-                  isInvalidExternalOwner(externalOwner) ||
-                  createAgent.isPending
-                }
-              >
-                {createAgent.isPending ? t('agents:addForm.creating') : t('agents:addForm.submit')}
-              </Button>
-              <Button variant="outlined" onClick={handleClose}>
-                {t('common:actions.cancel', 'Cancel')}
-              </Button>
-            </Stack>
           </Stack>
         </form>
       </Stack>

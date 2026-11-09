@@ -68,6 +68,35 @@ describe('AttributesSummarySection', () => {
     expect(screen.getByText('a, b')).toBeInTheDocument();
   });
 
+  it("lists the attributes in the agent type's order, with any the schema does not hold last", () => {
+    mockUseGetAgentType.mockReturnValue({
+      data: {
+        id: 'schema-1',
+        handle: 'default',
+        displayName: 'Default',
+        ouId: 'ou-1',
+        systemAttributes: {display: 'label'},
+        schema: {
+          model: {type: 'string'},
+          environment: {type: 'string', required: true},
+          apiKey: {type: 'string', required: true, credential: true},
+          function: {type: 'string'},
+          label: {type: 'string', required: true},
+        },
+      },
+      isLoading: false,
+    });
+    render(
+      <AttributesSummarySection
+        agent={{...baseAgent, attributes: {extra: 'x', function: 'f', model: 'm', environment: 'e', label: 'l'}}}
+      />,
+    );
+
+    expect(
+      screen.getAllByText(/^(extra|function|model|environment|label)$/).map((element) => element.textContent),
+    ).toEqual(['label', 'environment', 'model', 'function', 'extra']);
+  });
+
   it('shows an empty state when there are no attribute values', () => {
     render(<AttributesSummarySection agent={{...baseAgent, attributes: {}}} />);
 

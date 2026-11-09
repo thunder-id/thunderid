@@ -131,7 +131,7 @@ Every agent belongs to an **Organization Unit (OU)** and has an **agent type**. 
 Select a creation path below. These instructions follow the supplied templates; custom flows can change the fields and their order. Selecting a card changes these instructions, not the Console's [configured onboarding flow](#make-the-flow-active).
 
 :::note
-On a Control Plane console, **Add agent** opens a form instead of an onboarding flow. Choose an **Owner** there, the person accountable for the agent: **Internal** for a user created on the Control Plane, or **External** for someone managed in another identity system, entered by their email address, mobile number, or user ID. If you signed in to the Control Plane through another deployment, choose an owner, because your account is not a user here.
+On a Control Plane console, **Add agent** opens a two-step form instead of an onboarding flow. The first step asks for the agent type, organization unit, and owner. Click **Continue** to fill in the attributes the agent type's schema defines, including `name`, then click **Create agent**. Choose an **Owner** on the first step, the person accountable for the agent: **Internal** for a user created on the Control Plane, or **External** for someone managed in another identity system, entered by their email address, mobile number, or user ID. If you signed in to the Control Plane through another deployment, choose an owner, because your account is not a user here.
 :::
 
 <AgentModeSelector />

@@ -9,6 +9,7 @@ import {Tag} from '@wso2/oxygen-ui-icons-react';
 import {useCallback, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import type {Agent} from '../../../models/agent';
+import orderAgentAttributes from '../../../utils/orderAgentAttributes';
 import EmptyState from '../shared/EmptyState';
 
 interface AttributesSummarySectionProps {
@@ -54,6 +55,15 @@ export default function AttributesSummarySection({
   );
 
   const attributes = agent.attributes ?? {};
+  // Attributes follow the agent type's schema order. Any the schema does not hold keep their place after them.
+  const schemaOrder = orderAgentAttributes(schemaDetails?.schema ?? {}, schemaDetails?.systemAttributes?.display).map(
+    ([name]) => name,
+  );
+  const position = (key: string): number => {
+    const index = schemaOrder.indexOf(key);
+    return index >= 0 ? index : schemaOrder.length;
+  };
+  const orderedAttributes = Object.entries(attributes).sort(([a], [b]) => position(a) - position(b));
   // The lifespan is not a schema attribute, but the Overview previews it beside them once one is set.
   const validUntil =
     variant === 'bare' && agent.validUntil
@@ -84,7 +94,7 @@ export default function AttributesSummarySection({
   ) : Object.keys(attributes).length > 0 || validUntil ? (
     variant === 'bare' ? (
       <Box sx={{display: 'flex', flexWrap: 'wrap', gap: 1}}>
-        {Object.entries(attributes).map(([key, value]) => (
+        {orderedAttributes.map(([key, value]) => (
           <Chip
             key={key}
             label={`${labelFor(key)}: ${formatChipValue(value)}`}
@@ -104,7 +114,7 @@ export default function AttributesSummarySection({
       </Box>
     ) : (
       <Stack spacing={2}>
-        {Object.entries(attributes).map(([key, value]) => (
+        {orderedAttributes.map(([key, value]) => (
           <Box key={key}>
             <Typography variant="caption" color="text.secondary">
               {labelFor(key)}
