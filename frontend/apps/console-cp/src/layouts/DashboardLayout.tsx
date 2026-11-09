@@ -26,6 +26,7 @@ import {
   Footer,
   Header,
   Sidebar,
+  Tooltip,
   useAppShell,
   useSidebar,
   UserMenu,
@@ -95,9 +96,9 @@ interface NavRoute {
   /** Shown only to admins who can manage the APIs only the root `system` permission reaches. */
   rootOnly?: boolean;
   children?: NavRoute[];
-  /** A short note beside the entry, such as how many of its changes are not deployed yet. */
+  /** What a dot beside the entry says on hover, such as how many of its changes are not deployed yet. */
   badge?: string;
-  /** A short note beside a parent entry while it is collapsed, standing in for its entries' own badges. */
+  /** A dot beside a parent entry while it is collapsed, standing in for its entries' own dots. */
   collapsedBadge?: string;
   /** Done as well as going to the entry's page, such as leaving the selected project. */
   onSelect?: () => void;
@@ -322,7 +323,6 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
     };
     const badgeOf = (count: number | undefined): string | undefined =>
       count ? t('navigation:badges.undeployed', '{{count}} undeployed', {count}) : undefined;
-    const countOf = (count: number): string | undefined => (count ? String(count) : undefined);
     // On a gateway's pages the navigation is the gateway's, the same from wherever it was opened: a
     // gateway belongs to the organization. The way back leads to the project it was opened from, if any.
     if (gateway && gatewayId) {
@@ -441,9 +441,8 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
               id: 'verifiable-credentials',
               text: t('navigation:pages.verifiableCredentials', 'Verifiable credentials'),
               icon: <Wallet />,
-              // The entry's name leaves no room for a full badge, so it shows the count while collapsed and each
-              // entry shows its own once expanded.
-              collapsedBadge: countOf(
+              // While collapsed it stands for its entries' changes; once expanded each entry shows its own.
+              collapsedBadge: badgeOf(
                 (undeployed.credential_configuration ?? 0) + (undeployed.presentation_definition ?? 0),
               ),
               children: [
@@ -668,16 +667,60 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
     });
   }, [appRoutes, activeItem]);
 
-  // An entry's label, with its badge after it. With a badge the label keeps its whole width and the badge follows it.
-  // The Sidebar picks an item's parts out of its direct children, so they are returned as a list, not a fragment.
-  const labelOf = (text: string, badge: string | undefined): JSX.Element[] => [
-    <Sidebar.ItemLabel key="label" sx={badge ? {flex: '0 0 auto', overflow: 'visible'} : undefined}>
+  // The entry whose dot's hint is showing: on hover, or while the entry has keyboard focus, as a dot cannot take focus
+  // inside its entry. An entry is found by the dot inside what took focus, whether that is a link or a menu's toggle.
+  const [hintEntry, setHintEntry] = useState<string | null>(null);
+  useEffect(() => {
+    const showHintOnFocus = (event: FocusEvent): void => {
+      const target = event.target instanceof HTMLElement ? event.target : null;
+      const entry = target?.querySelector<HTMLElement>('[data-hint-entry]')?.dataset.hintEntry;
+      setHintEntry(entry && target?.matches(':focus-visible') ? entry : null);
+    };
+    document.addEventListener('focusin', showHintOnFocus);
+    return () => document.removeEventListener('focusin', showHintOnFocus);
+  }, []);
+
+  // An entry's label, with its badge at the end of the entry: a small dot that says on hover what it stands for, so it
+  // fits beside any entry's name. With a badge the label keeps its whole width and takes the entry's free space, so every
+  // dot lines up at the end of its entry. The hint is also part of the entry's name, so screen readers read it.
+  // The Sidebar picks an item's parts out of its direct children, so they are returned as a list, not a fragment, and
+  // the hint wraps the dot inside the badge rather than the badge. The hint's target is larger than the dot, so the
+  // dot is easy to hover.
+  const labelOf = (id: string, text: string, badge: string | undefined): JSX.Element[] => [
+    <Sidebar.ItemLabel key="label" sx={badge ? {flex: '1 0 auto', overflow: 'visible'} : undefined}>
       {text}
     </Sidebar.ItemLabel>,
     ...(badge
       ? [
-          <Sidebar.ItemBadge key="badge" color="warning" sx={{ml: 1, flexShrink: 0, '& .MuiChip-label': {px: 0.75}}}>
-            {badge}
+          <Sidebar.ItemBadge
+            key="badge"
+            sx={{ml: 1, flexShrink: 0, height: 'auto', bgcolor: 'transparent', '& .MuiChip-label': {p: 0}}}
+          >
+            <Tooltip
+              title={badge}
+              placement="right"
+              open={hintEntry === id}
+              onOpen={() => setHintEntry(id)}
+              onClose={() => setHintEntry(null)}
+            >
+              <Box component="span" aria-hidden sx={{display: 'flex', p: 0.75}}>
+                <Box component="span" sx={{width: 8, height: 8, borderRadius: '50%', bgcolor: 'warning.main'}} />
+              </Box>
+            </Tooltip>
+            <Box
+              component="span"
+              data-hint-entry={id}
+              sx={{
+                position: 'absolute',
+                width: '1px',
+                height: '1px',
+                overflow: 'hidden',
+                clip: 'rect(0 0 0 0)',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {badge}
+            </Box>
           </Sidebar.ItemBadge>,
         ]
       : []),
@@ -770,11 +813,15 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
                   route.children ? (
                     <Sidebar.Item key={route.id} id={route.id}>
                       <Sidebar.ItemIcon>{route.icon}</Sidebar.ItemIcon>
-                      {labelOf(route.text, route.badge ?? (expandedMenus[route.id] ? undefined : route.collapsedBadge))}
+                      {labelOf(
+                        route.id,
+                        route.text,
+                        route.badge ?? (expandedMenus[route.id] ? undefined : route.collapsedBadge),
+                      )}
                       {route.children.map((child) => (
                         <Sidebar.Item key={child.id} id={child.id} link={<NavigateLink to={child.path ?? ''} />}>
                           <Sidebar.ItemIcon>{child.icon}</Sidebar.ItemIcon>
-                          {labelOf(child.text, child.badge)}
+                          {labelOf(child.id, child.text, child.badge)}
                         </Sidebar.Item>
                       ))}
                     </Sidebar.Item>
@@ -785,7 +832,7 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
                       link={<NavigateLink to={route.path ?? ''} onClick={route.onSelect} />}
                     >
                       <Sidebar.ItemIcon>{route.icon}</Sidebar.ItemIcon>
-                      {labelOf(route.text, route.badge)}
+                      {labelOf(route.id, route.text, route.badge)}
                     </Sidebar.Item>
                   ),
                 )}
