@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type {User, ApiPaginationLink} from '@thunderid/types';
+import type {AttributeDisplay} from '@thunderid/utils';
 
 /**
  * Error response structure
@@ -97,6 +98,8 @@ export interface BasePropertyDefinition {
   type: string;
   required?: boolean;
   displayName?: string;
+  /** How a top-level attribute is ordered and whether it is hidden when an account is created. */
+  display?: AttributeDisplay;
 }
 
 /**

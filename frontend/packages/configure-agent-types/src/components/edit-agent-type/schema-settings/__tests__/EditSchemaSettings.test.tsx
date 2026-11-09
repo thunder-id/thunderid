@@ -7,7 +7,8 @@ import type {SchemaPropertyInput} from '../../../../models/property-definition';
 import EditSchemaSettings from '../EditSchemaSettings';
 
 // I18nTextInput renders a complex i18n-aware widget; replace it with a simple text input.
-vi.mock('@thunderid/components', () => ({
+vi.mock('@thunderid/components', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@thunderid/components')>()),
   I18nTextInput: ({
     value,
     onChange,
@@ -294,6 +295,30 @@ describe('EditSchemaSettings (agent-type)', () => {
     expect(within(dialog).queryByText(/existing hashed values may become inaccessible/i) !== null).toBe(warns);
   });
 
+  it('moves a property and sets whether an optional one is asked for on create', async () => {
+    const user = userEvent.setup();
+    render(
+      <EditSchemaSettings
+        properties={baseProperties}
+        onPropertiesChange={mockOnPropertiesChange}
+        agentTypeHandle="test"
+      />,
+    );
+
+    await user.click(screen.getAllByRole('button', {name: 'Move down'})[0]);
+    expect(mockOnPropertiesChange).toHaveBeenLastCalledWith([baseProperties[1], baseProperties[0]]);
+
+    // Only the optional property offers the choice.
+    const [askOnCreate] = screen.getAllByLabelText(/ask when created/i);
+    expect(screen.getAllByLabelText(/ask when created/i)).toHaveLength(1);
+    expect(askOnCreate).toBeChecked();
+    await user.click(askOnCreate);
+    expect(mockOnPropertiesChange).toHaveBeenLastCalledWith([
+      baseProperties[0],
+      {...baseProperties[1], hiddenOnCreate: true},
+    ]);
+  });
+
   it('shows the remove button when it gets keyboard focus', async () => {
     const user = userEvent.setup();
     render(
@@ -304,6 +329,8 @@ describe('EditSchemaSettings (agent-type)', () => {
       />,
     );
 
+    // Move down comes first in tab order; Move up is disabled on the first property.
+    await user.tab();
     await user.tab();
     const [firstRemove] = screen.getAllByRole('button', {name: 'Remove property'});
     expect(firstRemove).toHaveFocus();

@@ -159,7 +159,7 @@ vi.mock('@/components/edit-agent-type/schema-settings/EditSchemaSettings', () =>
         onClick={() =>
           onPropertiesChange([
             {
-              id: '0',
+              id: 'attr-email',
               name: 'email',
               displayName: '',
               type: 'string',
@@ -168,9 +168,10 @@ vi.mock('@/components/edit-agent-type/schema-settings/EditSchemaSettings', () =>
               credential: false,
               enum: [],
               regex: '',
+              hiddenOnCreate: false,
             },
             {
-              id: '1',
+              id: 'attr-age',
               name: 'age',
               displayName: '',
               type: 'number',
@@ -179,6 +180,7 @@ vi.mock('@/components/edit-agent-type/schema-settings/EditSchemaSettings', () =>
               credential: false,
               enum: [],
               regex: '',
+              hiddenOnCreate: false,
             },
           ])
         }

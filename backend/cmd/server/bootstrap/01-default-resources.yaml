@@ -26,42 +26,66 @@ schema:
   username:
     type: string
     displayName: Username
+    display:
+      order: 0
     required: true
     unique: true
   email:
     type: email
     displayName: Email
+    display:
+      order: 1
     required: true
     unique: true
     regex: "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$"
   given_name:
     type: string
     displayName: First Name
+    display:
+      order: 2
     required: false
   family_name:
     type: string
     displayName: Last Name
+    display:
+      order: 3
     required: false
   mobile_number:
     type: mobile
     displayName: Mobile Number
+    display:
+      order: 4
     required: false
     regex: "^\\+[1-9]\\d{1,14}$"
   sub:
     type: string
     displayName: Subject
+    display:
+      order: 8
+      onCreate:
+        hidden: true
     required: false
   name:
     type: string
     displayName: Full Name
+    display:
+      order: 6
+      onCreate:
+        hidden: true
     required: false
   picture:
     type: string
     displayName: Picture
+    display:
+      order: 7
+      onCreate:
+        hidden: true
     required: false
   password:
     type: string
     displayName: Password
+    display:
+      order: 5
     required: false
     credential: true
 ---

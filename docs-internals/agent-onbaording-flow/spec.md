@@ -1,7 +1,7 @@
 # Agent Onboarding Flow Specification
 
 - **Status:** Draft
-- **Version:** 0.6
+- **Version:** 0.8
 
 ## Summary
 
@@ -161,7 +161,7 @@ Agent reads and lists can request `include=display`. The returned `display` valu
 
 #### Schema attributes and their correction path
 
-Provisioning checks the resolved schema for outstanding required attributes and, when `includeOptional` is enabled, optional attributes. Missing string attributes with an enumeration are requested as `SELECT` inputs with those values as options. A prompt receiving those inputs can display the schema's choices. A prompt reached before provisioning supplies inputs must declare its own options; a static list in a template does not automatically follow later schema edits.
+Provisioning checks the resolved schema for outstanding required attributes and, when `includeOptional` is enabled, optional attributes. An optional attribute whose schema sets `display.onCreate.hidden: true` is not requested unless the node declares it in its inputs. Requested inputs whose attribute sets a `display.order` come first, lowest first and by attribute name for the same order, ahead of the required, optional and credential grouping. Missing string attributes with an enumeration are requested as `SELECT` inputs with those values as options. A prompt receiving those inputs can display the schema's choices. A prompt reached before provisioning supplies inputs must declare its own options; a static list in a template does not automatically follow later schema edits.
 
 In the default flow and the own-identity template, Provisioning runs before the Agent Details prompt and sends the run to it when the schema needs values it does not have. The prompt is dynamic: it shows only those missing attributes, and submits through `AttributeUniquenessValidator`. A conflict returns to the same prompt asking again for just the conflicting attribute, built from its schema attribute (display name, type and choices). In the OBO and Choose Mode templates, the Agent Details prompt is static and comes before provisioning, and provisioning requests any remaining inputs on its incomplete connection. The service validates the complete request again at creation, including conflicts that arise after the precheck.
 
@@ -378,7 +378,7 @@ The templates include Agent Type Resolver before provisioning. An author can use
 | `agent_mgt_provider.type` | Default service-backed provider | Deployment | `disabled` must reject agent provisioning. |
 | Provisioning `delegated` | `false` | Flow node | Fallback for agent delegation intent; runtime data and submitted values take precedence. |
 | Agent resolver `allowedAgentTypes` | Unset in the shipped flow | Flow node | Restrict the candidate schema types; an empty list adds no restriction, and `*` is rejected on save. |
-| Provisioning `includeOptional` | `true` in the shipped flow | Flow node | Include optional schema attributes in collection. |
+| Provisioning `includeOptional` | `true` in the shipped flow | Flow node | Include optional schema attributes in collection, except those whose schema sets `display.onCreate.hidden: true`. |
 
 The Console must read the `merged` configuration layer. A missing handle, a handle that does not resolve to an administration flow, and a configuration request failure are distinct conditions. Missing configuration will identify the setting to configure; a missing flow will identify the configured handle. A request failure must not be reported as an empty setting.
 
@@ -462,6 +462,8 @@ The default flow and its configuration will be bootstrap resources. Existing dep
 - **AC6.7:** Given outstanding schema information, when provisioning cannot proceed, then it forwards the missing inputs through its incomplete connection.
 - **AC6.8:** Given an agent read with `include=display`, when its display attribute has a value, then the response exposes the derived label; otherwise it falls back to the agent ID.
 - **AC6.9:** Given an agent type resolved earlier in the flow, when the uniqueness step runs, then it checks the submitted unique attributes defined by that type.
+- **AC6.10:** Given an optional schema attribute with `display.onCreate.hidden: true` that the provisioning node doesn't declare, when provisioning requests missing inputs, then that attribute is not requested. In native administration, the Console's **Add agent** form doesn't show it. The dynamic Agent Details prompt of the default flow and the own-identity template follows this. Fields that a prompt lists itself, such as those on the Agent Details step of the OBO and Choose Mode templates, are unaffected.
+- **AC6.11:** Given schema attributes that set `display.order`, when provisioning requests missing inputs, then those inputs come first, lowest first and by attribute name for the same order. In native administration, the Console's **Add agent** form lists the attributes in the same order. Fields that a prompt lists itself keep the order the flow gives them.
 
 ### R7. Create the requested inbound authentication configuration
 
@@ -543,3 +545,4 @@ The default flow and its configuration will be bootstrap resources. Existing dep
 | 0.5 | 2026-11-08 | A flow whose `AgentTypeResolver` lists `*` in `allowedAgentTypes` is rejected when it is saved (`FLM-1023`): the node reads entries as handles, and an empty list already allows every agent type. |
 | 0.6 | 2026-11-10 | Add Date Time Input to supported flow inputs, including save/load, backend validation, preview, and deployed rendering. |
 | 0.7 | 2026-11-16 | The default flow and the own-identity template ask for agent details on a dynamic prompt after provisioning, with no provisioning failure connection. The default agent schema no longer has `model` and `function`. The OBO and Choose Mode templates are unchanged. |
+| 0.8 | 2026-11-16 | Agent type attributes can set `display.order` and `display.onCreate.hidden`: provisioning orders requested inputs by display order and skips optional attributes hidden on create (AC6.10, AC6.11), as implemented in #6697. |
