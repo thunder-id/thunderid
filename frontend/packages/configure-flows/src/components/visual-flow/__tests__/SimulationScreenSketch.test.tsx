@@ -193,4 +193,31 @@ describe('SimulationScreenSketch', () => {
 
     expect(onChoose).not.toHaveBeenCalled();
   });
+
+  it('should render a date-time input as a date-time picker with its label', () => {
+    render(
+      <SimulationScreenSketch
+        components={[{id: 'valid_until', type: 'DATE_TIME_INPUT', label: 'Valid Until', required: true}] as never}
+        options={[]}
+        onChoose={onChoose}
+        onPreview={onPreview}
+      />,
+    );
+
+    expect(document.getElementById('valid_until')).toBeInTheDocument();
+    expect(screen.getAllByText('Valid Until').length).toBeGreaterThan(0);
+  });
+
+  it('should render a date-time input without a label', () => {
+    render(
+      <SimulationScreenSketch
+        components={[{id: 'valid_until', type: 'DATE_TIME_INPUT'}] as never}
+        options={[]}
+        onChoose={onChoose}
+        onPreview={onPreview}
+      />,
+    );
+
+    expect(document.getElementById('valid_until')).toBeInTheDocument();
+  });
 });

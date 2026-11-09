@@ -59,6 +59,7 @@ const DEFAULT_INPUT_TYPES: readonly string[] = [
   ElementTypes.EmailInput,
   ElementTypes.NumberInput,
   ElementTypes.DateInput,
+  ElementTypes.DateTimeInput,
 ];
 
 export const VALIDATION_RULES: ValidationRuleDefinition[] = [
