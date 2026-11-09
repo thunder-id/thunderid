@@ -13,8 +13,10 @@ import (
 
 	authncommon "github.com/thunder-id/thunderid/internal/authn/common"
 	"github.com/thunder-id/thunderid/internal/authn/openid4vp"
+	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
 	"github.com/thunder-id/thunderid/internal/flow/common"
+	"github.com/thunder-id/thunderid/internal/flow/core"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
@@ -165,7 +167,10 @@ func TestOpenID4VPExecutorPollCompleted(t *testing.T) {
 			return &openid4vp.RequestState{
 				Status: openid4vp.StatusCompleted,
 				Result: &openid4vp.VerifiedPresentation{
-					Subject: "sub-1",
+					DefinitionID:  "def-1",
+					Issuer:        "https://issuer.example",
+					IssuerTrusted: true,
+					Subject:       "sub-1",
 					Claims: map[string]interface{}{
 						"given_name":  "Erika",
 						"family_name": "Mustermann",
@@ -177,7 +182,11 @@ func TestOpenID4VPExecutorPollCompleted(t *testing.T) {
 
 	mockAuthnProvider := managermock.NewAuthnProviderManagerMock(t)
 	mockAuthnProvider.On("AuthenticateUser",
-		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		mock.Anything, mock.Anything, mock.MatchedBy(func(creds map[string]interface{}) bool {
+			cred, ok := creds[authnprovidercm.CredentialTypeOpenID4VP].(*authncommon.OpenID4VPCredential)
+			return ok && cred.DefinitionID == "def-1" && cred.Issuer == "https://issuer.example" &&
+				cred.IssuerTrusted && cred.Subject == "sub-1"
+		}), mock.Anything, mock.Anything, mock.Anything).
 		Return(providers.AuthUser{}, providers.AuthenticatedClaims{
 			"given_name":     "Erika",
 			"family_name":    "Mustermann",
@@ -192,12 +201,47 @@ func TestOpenID4VPExecutorPollCompleted(t *testing.T) {
 	}))
 	require.NoError(t, err)
 	assert.Equal(t, providers.ExecComplete, resp.Status)
-	// Claims from the authn provider are stored in the external identity entry
-	assert.Equal(t, "sub-1", externalClaim(resp.RuntimeData, userAttributeSub))
+	// The external identity names the link scoped to the definition and issuer, so provisioning records it,
+	// and the subject is kept out of the claims so it never lands in the profile.
+	identity := core.GetExternalIdentity(resp.RuntimeData)
+	require.NotNil(t, identity)
+	assert.Equal(t, "openid4vp:def-1:https://issuer.example", identity.IdpID)
+	assert.Equal(t, "sub-1", identity.Sub)
+	assert.NotContains(t, identity.Claims, userAttributeSub)
 	assert.Equal(t, "Erika", externalClaim(resp.RuntimeData, "given_name"))
 	// AuthUser is not authenticated (no entity reference resolved), so eligible for provisioning
 	assert.Equal(t, dataValueTrue, resp.RuntimeData[common.RuntimeKeyUserEligibleForProvisioning])
 	mockAuthnProvider.AssertExpectations(t)
+}
+
+// An unverified issuer's iss and sub are attacker-chosen, so no link is recorded for them: a recorded
+// link would resolve the real holder to whoever minted it.
+func TestOpenID4VPExecutorPollCompleted_UntrustedIssuerRecordsNoLink(t *testing.T) {
+	svc := &fakeOpenID4VPService{
+		getResult: func(_ context.Context, _ string) (*openid4vp.RequestState, *tidcommon.ServiceError) {
+			return &openid4vp.RequestState{
+				Status: openid4vp.StatusCompleted,
+				Result: &openid4vp.VerifiedPresentation{
+					Issuer:  "https://issuer.example",
+					Subject: "sub-1",
+				},
+			}, nil
+		},
+	}
+	mockAuthnProvider := managermock.NewAuthnProviderManagerMock(t)
+	mockAuthnProvider.On("AuthenticateUser",
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(providers.AuthUser{}, providers.AuthenticatedClaims{"given_name": "Erika"}, nil)
+
+	exec := newTestOpenID4VPExecutorWithProvider(t, svc, mockAuthnProvider)
+	runtime := map[string]string{common.RuntimeKeyOpenID4VPState: "state-123"}
+	resp, err := exec.Execute(openid4vpNodeContext(runtime, nil))
+	require.NoError(t, err)
+	assert.Equal(t, providers.ExecComplete, resp.Status)
+	identity := core.GetExternalIdentity(resp.RuntimeData)
+	require.NotNil(t, identity)
+	assert.Empty(t, identity.IdpID)
+	assert.Empty(t, identity.Sub)
 }
 
 // Failing to store the presented claims is a server fault, so it surfaces as an error rather than as a

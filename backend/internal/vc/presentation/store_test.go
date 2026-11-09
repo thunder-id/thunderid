@@ -86,6 +86,7 @@ func (suite *DefinitionStoreTestSuite) TestDefinitionStoreRoundTripTrustFields()
 		TrustedAuthorities: []TrustedAuthority{
 			{Name: "root-a", Certificate: "pem-a"}, {Name: "root-b", Certificate: "pem-b"},
 		},
+		SubjectClaim: "given_name",
 	}
 
 	got, err := buildDefinitionDTOFromRow(rowFromDTO(suite.T(), original))
@@ -93,6 +94,7 @@ func (suite *DefinitionStoreTestSuite) TestDefinitionStoreRoundTripTrustFields()
 	suite.Require().NotNil(got.EnforceTrustedIssuer)
 	suite.True(*got.EnforceTrustedIssuer)
 	suite.Equal(original.TrustedAuthorities, got.TrustedAuthorities)
+	suite.Equal(original.SubjectClaim, got.SubjectClaim)
 }
 
 func (suite *DefinitionStoreTestSuite) TestDefinitionStoreRoundTripTrustFieldsNull() {

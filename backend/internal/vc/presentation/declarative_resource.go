@@ -127,6 +127,7 @@ type definitionRequestWithID struct {
 	ClaimValues          map[string][]string `yaml:"claimValues"`
 	EnforceTrustedIssuer *bool               `yaml:"enforceTrustedIssuer"`
 	TrustedAuthorities   []TrustedAuthority  `yaml:"trustedAuthorities"`
+	SubjectClaim         string              `yaml:"subjectClaim"`
 }
 
 // loadDeclarativeResources loads declarative presentation-definition resources from YAML files
@@ -189,6 +190,7 @@ func buildDefinitionDTOFromRequest(req definitionRequestWithID) *PresentationDef
 		ClaimValues:          req.ClaimValues,
 		EnforceTrustedIssuer: req.EnforceTrustedIssuer,
 		TrustedAuthorities:   req.TrustedAuthorities,
+		SubjectClaim:         req.SubjectClaim,
 	}
 }
 

@@ -124,6 +124,7 @@ export default function VerifiablePresentationForm({
   const [trustedAuthorities, setTrustedAuthorities] = useState<TrustedAuthorityInput[]>(
     toTrustedAuthorityInputs(initial),
   );
+  const [subjectClaim, setSubjectClaim] = useState<string>(initial?.subjectClaim ?? '');
   const [addCertificateOpen, setAddCertificateOpen] = useState<boolean>(false);
 
   // Once a save succeeds the new certificates are stored on the server, so keep only their names: a
@@ -169,6 +170,14 @@ export default function VerifiablePresentationForm({
 
   const duplicateClaimNames = findDuplicateClaimNames(claims);
 
+  // Only a mandatory claim can identify the holder, so making the chosen claim optional, renaming or
+  // removing it falls back to the credential sub.
+  const mandatoryClaimNames = claims
+    .filter((row: ClaimRow): boolean => row.requirement === 'mandatory' && !duplicateClaimNames[row.id])
+    .map((row: ClaimRow): string => row.name.trim())
+    .filter((claimName: string): boolean => claimName !== '');
+  const effectiveSubjectClaim = mandatoryClaimNames.includes(subjectClaim) ? subjectClaim : '';
+
   const valid =
     handle.trim() !== '' && vct.trim() !== '' && effectiveOuId !== '' && Object.keys(duplicateClaimNames).length === 0;
 
@@ -182,6 +191,7 @@ export default function VerifiablePresentationForm({
     cl: ClaimRow[],
     enforce: boolean,
     authorities: TrustedAuthorityInput[],
+    subject: string,
   ): string =>
     JSON.stringify({
       handle: h.trim(),
@@ -193,6 +203,7 @@ export default function VerifiablePresentationForm({
       ...claimRowsToRequest(cl),
       enforceTrustedIssuer: enforce,
       trustedAuthorities: authorities,
+      subjectClaim: subject,
     });
   const initialSnapshot = useMemo(
     () =>
@@ -206,14 +217,25 @@ export default function VerifiablePresentationForm({
         definitionToClaimRows(initial),
         (initial?.enforceTrustedIssuer ?? false) && (initial?.trustedAuthorities?.length ?? 0) > 0,
         toTrustedAuthorityInputs(initial),
+        initial?.subjectClaim ?? '',
       ),
     [initial],
   );
   // Never enforce issuer trust without a certificate (it would reject everything).
   const effectiveEnforce = enforceTrustedIssuer && !noCertificates;
   const dirty =
-    snapshot(handle, effectiveOuId, name, description, vct, format, claims, effectiveEnforce, trustedAuthorities) !==
-    initialSnapshot;
+    snapshot(
+      handle,
+      effectiveOuId,
+      name,
+      description,
+      vct,
+      format,
+      claims,
+      effectiveEnforce,
+      trustedAuthorities,
+      effectiveSubjectClaim,
+    ) !== initialSnapshot;
 
   const handleSubmit = (): void => {
     onSubmit({
@@ -226,6 +248,7 @@ export default function VerifiablePresentationForm({
       ...claimRowsToRequest(claims),
       enforceTrustedIssuer: effectiveEnforce,
       trustedAuthorities: trustedAuthorities.length > 0 ? trustedAuthorities : undefined,
+      subjectClaim: effectiveSubjectClaim || undefined,
     });
   };
 
@@ -239,6 +262,7 @@ export default function VerifiablePresentationForm({
     setClaims(definitionToClaimRows(initial));
     setEnforceTrustedIssuer(initial?.enforceTrustedIssuer ?? false);
     setTrustedAuthorities(toTrustedAuthorityInputs(initial));
+    setSubjectClaim(initial?.subjectClaim ?? '');
     onErrorClear?.();
   };
 
@@ -469,14 +493,50 @@ export default function VerifiablePresentationForm({
       </TabPanel>
 
       <TabPanel value={tab} index={2}>
-        <ClaimsEditor
-          duplicateNames={duplicateClaimNames}
-          claims={claims}
-          onChange={(rows: ClaimRow[]): void => {
-            onErrorClear?.();
-            setClaims(rows);
-          }}
-        />
+        <Stack spacing={3}>
+          <ClaimsEditor
+            duplicateNames={duplicateClaimNames}
+            claims={claims}
+            onChange={(rows: ClaimRow[]): void => {
+              onErrorClear?.();
+              setClaims(rows);
+            }}
+          />
+          <SettingsCard
+            title={t('form.holder.title', 'Holder identification')}
+            description={t(
+              'form.holder.description',
+              'Choose the claim that identifies the holder when this presentation definition is used to sign in.',
+            )}
+          >
+            <FormControl fullWidth>
+              <FormLabel id="vp-subject-claim-label">{t('form.holder.subjectClaim.label', 'Subject claim')}</FormLabel>
+              <Select
+                labelId="vp-subject-claim-label"
+                id="vp-subject-claim"
+                value={effectiveSubjectClaim}
+                displayEmpty
+                onChange={(e): void => {
+                  onErrorClear?.();
+                  setSubjectClaim(e.target.value);
+                }}
+              >
+                <MenuItem value="">{t('form.holder.subjectClaim.sub', 'Credential subject (sub)')}</MenuItem>
+                {mandatoryClaimNames.map((claimName: string) => (
+                  <MenuItem key={claimName} value={claimName}>
+                    {claimName}
+                  </MenuItem>
+                ))}
+              </Select>
+              <FormHelperText>
+                {t(
+                  'form.holder.subjectClaim.hint',
+                  'Only mandatory claims are listed. Sign-in also requires enforcing a trusted issuer whose certificate matches the credential issuer. Changing this claim later stops returning holders from resolving to their existing users.',
+                )}
+              </FormHelperText>
+            </FormControl>
+          </SettingsCard>
+        </Stack>
       </TabPanel>
 
       <TabPanel value={tab} index={3}>
