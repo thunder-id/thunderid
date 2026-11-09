@@ -103,6 +103,28 @@ const sidebar: SidebarsConfig = {
                 },
               ],
             },
+            {
+              type: 'category',
+              label: 'Consent Components',
+              collapsed: true,
+              items: [
+                {
+                  type: 'doc',
+                  id: 'sdks-and-tools/react/apis/components/consent',
+                  label: '<Consent />',
+                },
+                {
+                  type: 'doc',
+                  id: 'sdks-and-tools/react/apis/components/consent-authorization-detail',
+                  label: '<ConsentAuthorizationDetail />',
+                },
+                {
+                  type: 'doc',
+                  id: 'sdks-and-tools/react/apis/components/consent-detail-field',
+                  label: '<ConsentDetailField />',
+                },
+              ],
+            },
           ],
         },
         {
@@ -119,6 +141,11 @@ const sidebar: SidebarsConfig = {
               type: 'doc',
               id: 'sdks-and-tools/react/apis/hooks/management-hooks',
               label: 'Management Hooks',
+            },
+            {
+              type: 'doc',
+              id: 'sdks-and-tools/react/apis/hooks/use-consent-detail-field',
+              label: 'useConsentDetailField()',
             },
           ],
         },

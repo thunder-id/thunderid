@@ -7,7 +7,7 @@ description: RFC 8707 Resource Indicators in {{ProductName}}, to target access t
 
 # Resource Indicators
 
-**Resource Indicators for OAuth 2.0** ([RFC 8707](https://datatracker.ietf.org/doc/html/rfc8707)) lets a client tell <ProductName /> *which* resource server the access token is for. The client passes a single `resource` parameter. <ProductName /> looks it up against the registered resource servers, narrows the granted permission scopes to those owned by that resource server, and writes its identifier into the token's `aud` claim. When permission scopes are requested without `resource`, <ProductName /> uses the configured `defaultResourceServer`. If neither target is available, token issuance fails with `invalid_target`. OIDC-only and scopeless requests without `resource` are not bound to a resource server, so their audience is the application's configured default audience (`token.accessToken.defaultAudience`), or the `client_id` when it is unset.
+**Resource Indicators for OAuth 2.0** ([RFC 8707](https://datatracker.ietf.org/doc/html/rfc8707)) lets a client tell <ProductName /> *which* resource server the access token is for. The client passes a single `resource` parameter. <ProductName /> looks it up against the registered resource servers, narrows the granted permission scopes to those owned by that resource server, and writes its identifier into the token's `aud` claim. When permission scopes or [authorization details](../rich-authorization-requests) are requested without `resource`, <ProductName /> uses the configured `defaultResourceServer`. If neither target is available, token issuance fails with `invalid_target`. OIDC-only and scopeless requests without `resource` or authorization details are not bound to a resource server, so their audience is the application's configured default audience (`token.accessToken.defaultAudience`), or the `client_id` when it is unset.
 
 The effect: a token issued for the payments API cannot be replayed against the bookings API. Each token is bound to its intended audience.
 
@@ -68,9 +68,10 @@ The issued access token carries the resource identifier as its `aud`:
 | Value rules | The `resource` must be an absolute URI with no fragment. A request with more than one `resource` parameter is rejected with `invalid_target`. |
 | Resolution | The URI is matched to a registered resource server's `identifier` |
 | Unknown identifier | Request rejected with `invalid_target` |
-| No `resource` | Permission-bearing requests use `defaultResourceServer` and return `invalid_target` if it is unset. OIDC-only and scopeless requests use the application's `token.accessToken.defaultAudience`, or `client_id` when it is unset |
+| No `resource` | Permission-bearing requests and requests with `authorization_details` use `defaultResourceServer` and return `invalid_target` if it is unset. Other OIDC-only and scopeless requests use the application's `token.accessToken.defaultAudience`, or `client_id` when it is unset |
 | CIBA | The request binds to a resource server at `/oauth2/bc-authorize`, before user authorization. A `resource` supplied at token-endpoint polling must equal that binding, or the poll is rejected with `invalid_target` |
 | Scope filtering | Requested scopes are filtered to those defined on the targeted resource server. Scopes not owned by that resource server are silently dropped |
+| Authorization details | A request with `authorization_details` ([RFC 9396](../rich-authorization-requests)) binds to a resource server like a permission-bearing request: the supplied `resource`, else `defaultResourceServer`, else `invalid_target` |
 | OIDC scopes | `openid`, `profile`, `email`, `phone`, `address`, and any scope the application's `scopeClaims` mapping defines are **not** filtered by resource indicators |
 
 ### `aud` Claim Behavior
@@ -80,7 +81,8 @@ The issued access token carries the resource identifier as its `aud`:
 | One `resource` | JSON string: `"aud": "https://api.example.com/payments"` |
 | Multiple `resource` parameters | Rejected with `invalid_target` |
 | No `resource`, permission scopes requested | The configured `defaultResourceServer` identifier. If no default is configured, the request is rejected with `invalid_target`. |
-| No `resource`, no permission scopes | The application's configured default audience (`token.accessToken.defaultAudience`), or the requesting client's `client_id` when it is unset. |
+| No `resource`, authorization details requested | The configured `defaultResourceServer` identifier. If no default is configured, the request is rejected with `invalid_target`. |
+| No `resource`, no permission scopes or authorization details | The application's configured default audience (`token.accessToken.defaultAudience`), or the requesting client's `client_id` when it is unset. |
 
 The `aud` claim is always a single string, per [RFC 7519 §4.1.3](https://datatracker.ietf.org/doc/html/rfc7519#section-4.1.3).
 

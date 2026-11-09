@@ -62,7 +62,7 @@ During an authorization flow, <ProductName /> resolves the target resource serve
 | `subject`     | The subject type and ID. `properties` contains the configured subject attributes available for the subject. Attribute mappings rename properties when the configured AuthZEN PDP expects different names. |
 | `resource`    | The target resource server identifier, sent as `resource.type`.                                                                                                                                           |
 | `action`      | The <ProductName /> permission under evaluation, sent as `action.name`.                                                                                                                                   |
-| `context`     | Optional request-time data supplied by the authorization flow.                                                                                                                                            |
+| `context`     | Optional request-time data supplied by the authorization flow. With [authorization details](../../oauth-oidc/rich-authorization-requests), `context.authorization_details` holds them: in a sign-in flow, the details the client requested; on `client_credentials`, the details the processors approved; on a refresh, every detail the refresh token renews, before any narrowing in the token request. The access token can therefore carry fewer details than the PDP evaluated. |
 
 </div>
 

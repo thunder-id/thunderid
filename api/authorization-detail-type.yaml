@@ -864,10 +864,10 @@ components:
           description: |
             Absolute HTTPS URL of the processor, with a valid host and port and no user information. HTTP is accepted only on a loopback host.
         authentication:
-          $ref: '#/components/schemas/OutboundAuthentication'
+          $ref: '#/components/schemas/AuthorizationDetailProcessorAuthentication'
       additionalProperties: false
 
-    OutboundAuthentication:
+    AuthorizationDetailProcessorAuthentication:
       type: object
       description: |
         How ThunderID authenticates itself to the processor: `none`, `bearer`, `basic` or `api_key`. The `type` selects the method and `properties` carries that method's fields, as for a connection's outbound authentication.

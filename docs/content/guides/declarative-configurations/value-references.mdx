@@ -77,7 +77,7 @@ not change resources already written. Import the configuration again to apply a 
 
 A `sec:` reference is accepted only in a field that holds a credential: an application's or agent's
 `clientSecret`, a connection's secret such as `clientSecret`, `authToken`, `apiSecret` or an outbound
-authentication password, and a user's or agent's `credentials`. These are the fields an export writes
+authentication password, an [authorization details type's](../intents.mdx) processor credential, such as a bearer `token` or a basic `password`, and a user's or agent's `credentials`. These are the fields an export writes
 a `sec:` placeholder into, and the fields whose stored value is never returned. A user's stored
 credential is a hash, so an export of it carries no value: an import that updates a user and resolves
 such a credential to nothing leaves the stored one as it is, while a user it creates is refused without one.
@@ -136,6 +136,7 @@ The control plane captures values when you write these resources:
 | User | create, credential update |
 | Connection (identity provider or SMS sender) | create, update |
 | Resource server | create, update |
+| Authorization details type (processor credential) | create, update |
 
 A captured value comes from the write itself, while the control plane still holds it in plain text.
 This is the only point at which a generated client secret can be captured, because the control plane

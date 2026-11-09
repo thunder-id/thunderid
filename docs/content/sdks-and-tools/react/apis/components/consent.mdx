@@ -1,0 +1,127 @@
+---
+displayed_sidebar: null
+title: <Consent />
+docType: reference
+description: Renders the consent step of a sign-in flow in React, including RFC 9396 authorization details the user approves, narrows, or declines.
+---
+
+# `<Consent />`
+
+The `Consent` component renders the purposes on the consent step of a sign-in flow: the attributes and permissions an application asks for, and the [RFC 9396 authorization details](../../../../../guides/protocols/oauth-oidc/rich-authorization-requests) it requests. Use it to build a custom sign-in UI with the render props of the `SignIn` component.
+
+Authorization details reach the consent step only on a sign-in that starts from an authorization request. <ProductName /> runs that sign-in in the sign-in UI that the [`gate_client`](../../../../../deployment/configuration#gate-client-configuration) settings point to, so render authorization details there.
+
+## Usage
+
+`SignIn` passes the consent prompt of the current step, parsed into `{ purposes }`, in `additionalData.consentPrompt`. Keep the consent form values in state and pass them to `Consent` with a callback that updates them:
+
+```tsx title="src/ConsentStep.tsx" showLineNumbers
+import { Consent, ConsentAuthorizationDetail, type ConsentProps } from '@thunderid/react'
+import { type ReactElement, useCallback, useState } from 'react'
+
+interface ConsentStepProps {
+  consentPrompt: ConsentProps['consentData']
+  onApprove: (inputs: Record<string, string>) => void
+}
+
+export default function ConsentStep({ consentPrompt, onApprove }: ConsentStepProps): ReactElement {
+  const [formValues, setFormValues] = useState<Record<string, string>>({})
+  const onInputChange = useCallback(
+    (name: string, value: string) => setFormValues((previous) => ({ ...previous, [name]: value })),
+    [],
+  )
+
+  return (
+    <Consent consentData={consentPrompt} formValues={formValues} onInputChange={onInputChange}>
+      {({ purposes, isApprovalBlocked }) => (
+        <>
+          {purposes
+            .filter((purpose) => purpose.type === 'authorization_details')
+            .flatMap((purpose) =>
+              purpose.optional.map((element) => (
+                <ConsentAuthorizationDetail
+                  key={element.name}
+                  purposeId={purpose.purposeId}
+                  element={element}
+                  formValues={formValues}
+                  onInputChange={onInputChange}
+                />
+              )),
+            )}
+          <button disabled={isApprovalBlocked} onClick={() => onApprove(formValues)}>
+            Approve
+          </button>
+        </>
+      )}
+    </Consent>
+  )
+}
+```
+
+This example renders only the authorization details purposes. Submit the form values with the `id` of the primary (approve) action of the flow's consent step, and `SignIn` builds the consent decisions from them, including the values the user changed:
+
+```tsx title="src/CustomSignIn.tsx" showLineNumbers
+import { SignIn } from '@thunderid/react'
+import { type ReactElement } from 'react'
+import ConsentStep from './ConsentStep'
+import CredentialsStep from './CredentialsStep'
+
+export default function CustomSignIn(): ReactElement {
+  return (
+    <SignIn>
+      {({ additionalData, onSubmit }) =>
+        additionalData?.['consentPrompt'] ? (
+          <ConsentStep
+            consentPrompt={additionalData['consentPrompt']}
+            onApprove={(inputs) => onSubmit({ action: 'consent_action_allow', inputs })}
+          />
+        ) : (
+          <CredentialsStep onSubmit={onSubmit} />
+        )
+      }
+    </SignIn>
+  )
+}
+```
+
+`CredentialsStep` stands for the UI of the steps before consent, and `consent_action_allow` for the `id` of the flow's approve action.
+
+## Props
+
+| Prop | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `consentData` | `string \| ConsentPurpose[] \| { purposes: ConsentPurpose[] }` | ❌ | The consent prompt from `additionalData.consentPrompt`, as JSON text or parsed. Nothing renders when it holds no purposes. |
+| `formValues` | `Record<string, string>` | ✅ | The consent form values: each optional element's approval, and the values the user changed on an authorization detail. |
+| `onInputChange` | `(name: string, value: string) => void` | ✅ | Called with a form key and its new value. |
+| `children` | `(props: ConsentRenderProps) => ReactNode` | ❌ | Render-props callback that replaces the default UI. |
+| `t` | `UseTranslation['t']` | ❌ | Translation function for the default UI's labels. |
+
+`Consent` approves every authorization detail when it renders: it writes `'true'` for each one that has no value in `formValues` yet. A detail is the transaction the user is asked to allow, so the user declines it rather than opting in.
+
+## Render Props
+
+| Prop | Type | Description |
+| :--- | :--- | :--- |
+| `purposes` | `ConsentPurpose[]` | The parsed purposes. An authorization details purpose has `type: 'authorization_details'`, and each of its `optional` elements is one detail. |
+| `formValues` | `Record<string, string>` | The current form values. |
+| `onInputChange` | `(name: string, value: string) => void` | The callback that updates a form value. |
+| `isApprovalBlocked` | `boolean` | `true` while an authorization detail the user has not declined shows, in a field the user may change, a value that cannot be submitted, such as a number above the requested amount or text that is not a number. Disable the approve action while it is `true`. Declining stays possible. |
+
+## Checking Approval Outside the Component
+
+`isConsentApprovalBlocked(purposes, formValues)` is the function behind `isApprovalBlocked`. Call it to check approval from a consent prompt parsed outside the component:
+
+```tsx
+import { type ConsentPurpose, isConsentApprovalBlocked } from '@thunderid/react'
+
+const canApprove = (purposes: ConsentPurpose[], formValues: Record<string, string>): boolean =>
+  !isConsentApprovalBlocked(purposes, formValues)
+```
+
+**Returns:** `boolean`, `true` when the approval must wait until the user corrects a field or declines its detail.
+
+## Related
+
+- [`<ConsentAuthorizationDetail />`](../consent-authorization-detail) renders one authorization detail.
+- [`<ConsentDetailField />`](../consent-detail-field) renders one field of a detail.
+- [`useConsentDetailField()`](../../hooks/use-consent-detail-field) gives a field's state for a custom UI.

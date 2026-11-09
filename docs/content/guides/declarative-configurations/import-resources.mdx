@@ -624,6 +624,53 @@ A `deletions` entry of type `resource_server` removes the resource server's acti
 
 These removals run one at a time, not in a single transaction. If one fails, the resource server can be left with some of its children removed. Send the same request again to finish the removal.
 
+## Authorization Detail Types
+
+An `authorization_detail_type` document declares an [intent](../intents.mdx), an RFC 9396 authorization details type that clients request through the `authorization_details` parameter. It takes the same fields as the management API: `id`, `type`, `name`, `description`, `schema`, `consentTemplate`, `processor`, and `reuse`. The import validates it as the API does and keeps its `id`, so an intent keeps the same ID across deployments.
+
+`schema` can be a YAML mapping, as below, or the schema's JSON, which is how an export writes it. Either way, the properties keep their order, which is the order of the rows on the consent card.
+
+```yaml
+resource_type: authorization_detail_type
+id: 0193b0a1-5001-7000-8000-000000000001
+type: fx_transfer
+name: Foreign exchange transfer
+description: Transfer money to an account in another currency
+schema:
+  type: object
+  properties:
+    amount:
+      type: number
+      title: Amount
+      minimum: 1
+      multipleOf: 0.01
+      policy:
+        modification: decrease
+        modifiableBy: [user]
+    currency:
+      type: string
+      title: Currency
+      enum: [EUR, GBP, USD]
+    rate:
+      type: number
+      title: Exchange rate
+      policy:
+        suppliedBy: processor
+  required: [amount, currency, rate]
+consentTemplate: "Transfer {{amount}} {{currency}}"
+processor:
+  endpoint: https://fx.example.com/rar/process
+  authentication:
+    type: bearer
+    properties:
+      token: "{{.FX_PROCESSOR_TOKEN}}"
+reuse: false
+```
+
+`{{amount}}` and `{{currency}}` in `consentTemplate` are summary placeholders and are kept as written. `{{.FX_PROCESSOR_TOKEN}}` is a template variable, resolved from `variables` on import.
+
+An intent imported through `POST /import` is stored like one created through the API. On a data plane, import intents with the management API key, and change them later with another import: an import with a `system` token reports the intent as failed with `SSE-4030`. An intent written by `POST /import/managed` is read only, and a plain import that changes or deletes it fails with `RAR-1030`. A processor credential can also be a `sec:` [value reference](./value-references.mdx#where-a-secret-may-stand). To declare read-only intents instead, place one document per file in `config/resources/authorization_detail_types/`. <ProductName /> loads these files at startup when `authorization_detail_type.store` is `declarative` or `composite`, the default. In a file, the processor credential can refer to an environment variable with the same `{{.NAME}}` syntax, read when the server starts. The API returns a file-based intent with `isReadOnly: true` and refuses to change it with `RAR-1013`, and so does an import of a document with the same `id`. See [Declarative Intents](../intents.mdx#declarative-intents).
+
 ## Delete File-Backed Declarative Resource
 
 `POST /import/delete` removes a declarative file-backed resource by `resourceType` and `resourceKey`.

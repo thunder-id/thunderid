@@ -733,6 +733,11 @@ const sidebars: SidebarsConfig = {
                     },
                   ],
                 },
+                {
+                  type: 'doc',
+                  id: 'guides/integrations/authorization-details-processor',
+                  label: 'Authorization Details Processor',
+                },
               ],
             },
             {
@@ -878,6 +883,11 @@ const sidebars: SidebarsConfig = {
           type: 'doc',
           id: 'guides/resource-servers',
           label: 'Resource Servers',
+        },
+        {
+          type: 'doc',
+          id: 'guides/intents',
+          label: 'Intents',
         },
         {
           type: 'category',
@@ -1042,6 +1052,11 @@ const sidebars: SidebarsConfig = {
                       type: 'doc',
                       id: 'guides/protocols/oauth-oidc/resource-indicators',
                       label: 'Resource Indicators',
+                    },
+                    {
+                      type: 'doc',
+                      id: 'guides/protocols/oauth-oidc/rich-authorization-requests',
+                      label: 'Rich Authorization Requests',
                     },
                   ],
                 },

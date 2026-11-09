@@ -315,6 +315,7 @@ const { authReqId, interval, expiresIn } = await client.initiateCIBA({
 | `options.bindingMessage` | `string` | No | A short, human-readable string displayed on both the consumption and authentication devices to bind the two interactions. Maximum 256 printable characters. |
 | `options.requestedExpiry` | `number` | No | Requested lifetime in seconds for the `auth_req_id`. The server clamps values above its maximum. |
 | `options.acrValues` | `string` | No | Space-separated Authentication Context Class Reference values. |
+| `options.authorizationDetails` | `AuthorizationDetail[]` | No | RFC 9396 authorization details to request, sent JSON-encoded as the `authorization_details` parameter. Takes precedence over the `authorizationDetails` configuration. See [Rich Authorization Requests](#rich-authorization-requests). |
 
 Exactly one of `loginHint` or `idTokenHint` must be provided.
 
@@ -378,6 +379,110 @@ try {
 | `JS-AUTH_CORE-CIBA2-HE03` | The server returned a terminal error (`expired_token`, `access_denied`, or another non-retryable error). |
 | `JS-AUTH_CORE-CIBA2-AB05` | Polling was cancelled via `AbortSignal`. |
 
+### Rich Authorization Requests
+
+The client requests [RFC 9396](https://datatracker.ietf.org/doc/html/rfc9396) authorization details from the [`authorizationDetails`](../configuration#authorization-details) configuration and from the `authorizationDetails` option of a single request. For the protocol and the server setup, see [Rich Authorization Requests](../../../../guides/protocols/oauth-oidc/rich-authorization-requests).
+
+#### Request Options
+
+| Request | Option | Precedence |
+|---------|--------|------------|
+| Sign-in | `authorizationDetails` in the sign-in options of a platform client's `signIn()`, which reach `getSignInUrl(requestConfig)` | Replaces the configured `authorizationDetails` for this sign-in |
+| Backchannel authentication | `authorizationDetails` in the [`initiateCIBA(options)`](#initiatecibaoptions) options | Replaces the configured `authorizationDetails` for this request |
+| Client credentials token | None. `getAccessToken()` sends the configured `authorizationDetails` when `grantType` is `'client_credentials'` | Not applicable |
+
+#### `AuthorizationDetail`
+
+One authorization the client requests, or that the server reports as granted.
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `type` | `string` | Required. A type registered on the server, which defines every other member |
+| `actions` | `string[]` | Kinds of actions to take at the resource |
+| `datatypes` | `string[]` | Kinds of data requested from the resource |
+| `identifier` | `string` | A specific resource available at the API |
+| `locations` | `string[]` | Locations of the resources or resource servers the detail applies to |
+| `privileges` | `string[]` | Privilege levels at the resource |
+| `[member: string]` | `unknown` | Any other member the type defines, such as `instructedAmount` |
+
+The server accepts only the members a type's schema declares, including the common members above.
+
+#### Granted Authorization Details
+
+The details the server grants can differ from the ones requested: the user may lower a value or decline a detail on the consent step, and a type's processor may fill in a field. Read what was granted from these places:
+
+| Where | Field |
+|-------|-------|
+| `TokenResponse` from a server-side `signIn()`, such as the [Express SDK](../../../express/apis/configuration/express-client-config) `onSignIn` callback | `authorizationDetails?: AuthorizationDetail[]`, present only when the server returns `authorization_details` |
+| Stored session (`SessionData`) | `authorization_details?: AuthorizationDetail[]` |
+| `getUserSession()` (protected) | `authorizationDetails?: AuthorizationDetail[]` |
+| The access token | The `authorization_details` claim |
+
+#### `getSupportedAuthorizationDetailsTypes(config)`
+
+Exported function that reads every authorization details type a client may request from the server's public types endpoint, `{baseUrl}/oauth2/authorization-details-types`. The endpoint needs no access token.
+
+```ts
+import { getSupportedAuthorizationDetailsTypes } from '@thunderid/javascript'
+
+const { types } = await getSupportedAuthorizationDetailsTypes({ baseUrl: 'https://localhost:8090' })
+
+for (const type of types) {
+  console.log(type.type, type.modifications)
+}
+```
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `config.baseUrl` | `string` | Base URL of the <ProductName /> instance |
+| `config.url` | `string` | Absolute URL of the types endpoint, such as the `authorization_details_types_endpoint` from the server's discovery document. Takes precedence over `baseUrl` |
+| `config.fetcher` | `(url: string, config: RequestInit) => Promise<Response>` | Performs the request. Defaults to the global `fetch` |
+
+**Returns:** `Promise<SupportedAuthorizationDetailsTypesResponse>`, an object with a `types` array of `SupportedAuthorizationDetailsType`.
+
+#### `getSupportedAuthorizationDetailsType(config)`
+
+Exported function that reads one type by its `type` value from `{baseUrl}/oauth2/authorization-details-types/{type}`. It takes the same options as `getSupportedAuthorizationDetailsTypes()`, plus `config.type`, which is percent-encoded as one path segment.
+
+```ts
+import { getSupportedAuthorizationDetailsType, ThunderIDAPIError } from '@thunderid/javascript'
+
+try {
+  const paymentType = await getSupportedAuthorizationDetailsType({
+    baseUrl: 'https://localhost:8090',
+    type: 'payment_initiation',
+  })
+  console.log(paymentType.version, paymentType.schema)
+} catch (err) {
+  if (err instanceof ThunderIDAPIError && err.code === 'getSupportedAuthorizationDetailsType-NotFoundError-001') {
+    // The server has no type with this value.
+  }
+}
+```
+
+**Returns:** `Promise<SupportedAuthorizationDetailsType>`
+
+`SupportedAuthorizationDetailsType` is the request view of a type. It leaves out the type's processor, consent summary, and reuse settings.
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `type` | `string` | The value a client sends as the `type` of a detail |
+| `name` | `string` | Display name of the type |
+| `description` | `string` | Description of the type, when it has one |
+| `version` | `number` | Version of the type |
+| `schema` | `Record<string, unknown>` | The type's JSON Schema as a client sees it: field policies are left out, and so are fields only the processor supplies |
+| `modifications` | `SupportedAuthorizationDetailsTypeModification[]` | The changes a client may make to a granted detail at the token endpoint, each with `field` (the dot-separated path) and `modification` (`'decrease'`, `'increase'`, `'removeItems'`, or `'addItems'`). A field only the user may change on the consent step is not listed |
+
+Both functions throw [`ThunderIDAPIError`](../errors#thunderidapierror) with the same codes as the [management functions](../management#error-handling), prefixed with the function name.
+
+#### Errors
+
+| Request | When the server rejects the authorization details |
+|---------|------|
+| Sign-in | The server redirects back to `afterSignInUrl` with `error=invalid_authorization_details` and an `error_description` in the query, and the user stays signed out. In the browser SDK, the next `signIn()` call throws `ThunderIDAuthException` with code `SPA-AUTH_HELPER-SI-SE01`, whose `name` is the error and `message` the description, and removes both from the URL. In the Express SDK, `handleSignIn()` passes `ThunderIDAuthException` with code `EXPRESS-CLIENT-SI-IV01` to `onError` |
+| `initiateCIBA()` | Throws `ThunderIDAPIError` with code `JS-AUTH_CORE-CIBA1-HE03`. The message carries the server's `invalid_authorization_details` description |
+| `getAccessToken()` with the `client_credentials` grant | Throws `ThunderIDAuthException` with code `JS-AUTH_CORE-RCCT-HE03`. The message carries the server's `invalid_authorization_details` description |
+
 ### Protected Methods (for subclass use)
 
 These methods are available to subclasses building platform adapters:
@@ -385,14 +490,14 @@ These methods are available to subclasses building platform adapters:
 | Method | Description |
 |--------|-------------|
 | `loadOpenIDProviderConfiguration(forceInit?)` | Fetch and cache the OIDC discovery document |
-| `getSignInUrl(requestConfig?, userId?)` | Build the OAuth 2.0 authorization URL with PKCE |
+| `getSignInUrl(requestConfig?, userId?)` | Build the OAuth 2.0 authorization URL with PKCE. `requestConfig.authorizationDetails` overrides the configured authorization details for this request |
 | `requestAccessToken(code, sessionState, state, userId?, tokenRequestConfig?)` | Exchange an authorization code for tokens |
 | `getSignOutUrl(userId?)` | Build the OIDC end-session URL |
 | `refreshAccessToken(userId?)` | Use the refresh token to get a new access token |
 | `revokeAccessToken(userId?)` | Revoke the current access token |
 | `getDecodedIdToken(userId?, idToken?)` | Decode the stored ID token |
 | `getIdToken(userId?)` | Get the raw ID token string |
-| `getUserSession(userId?)` | Get scopes and session state for the current session |
+| `getUserSession(userId?)` | Get the granted scopes and authorization details for the current session |
 | `getOpenIDProviderEndpoints()` | Get the cached OIDC endpoint URLs |
 | `getStorageManager()` | Access the underlying `StorageManager` instance |
 | `getCryptoHelper()` | Access the underlying `IsomorphicCrypto` instance |

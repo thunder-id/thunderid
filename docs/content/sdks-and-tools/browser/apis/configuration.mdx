@@ -37,6 +37,7 @@ await auth.initialize({
 |-----------|------|---------|-------------|
 | `afterSignInUrl` | `string` | `window.location.origin` | URL to redirect to after sign-in |
 | `afterSignOutUrl` | `string` | `window.location.origin` | URL to redirect to after sign-out |
+| `authorizationDetails` | `AuthorizationDetail[]` | - | RFC 9396 authorization details to request on every sign-in. Authorization details passed to `signIn()` take precedence. See [Authorization Details](../../../javascript/apis/configuration#authorization-details) and [`signIn(config?)`](../thunderid-browser-client#signinconfig) |
 | `scopes` | `string[]` | `['openid', 'profile']` | OAuth 2.0 scopes to request |
 | `enablePKCE` | `boolean` | `true` | Enable PKCE for the authorization request |
 | `prompt` | `string` | - | Controls the authentication UI behavior (e.g., `"login"`, `"none"`, `"consent"`) |

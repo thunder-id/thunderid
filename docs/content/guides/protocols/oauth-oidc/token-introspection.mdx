@@ -46,7 +46,7 @@ Use it when a resource server cannot or should not validate JWTs locally. For ex
 }
 ```
 
-When the token is DPoP-bound, the response also includes the `cnf.jkt` claim.
+When the token is DPoP-bound, the response also includes the `cnf.jkt` claim. When an access token carries RFC 9396 authorization details, the response also includes them as `authorization_details`. The introspection of a refresh token does not include them (see [Rich Authorization Requests](../rich-authorization-requests#token-introspection)).
 
 </details>
 

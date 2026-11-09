@@ -14,7 +14,7 @@ import ConsentLoginScreenDark from './assets/images/consent-login-screen-dark.pn
 
 <ProductName /> provides built-in support for capturing user consent during the login flow.
 
-Consent can cover profile attributes and permissions. For permission consent, place **Authorization** before **User Consent** in the sign-in flow. The consent screen lists the permissions the authenticated user holds for the requested resource; the issued token carries only the permissions they approve.
+Consent can cover profile attributes, permissions, and [authorization details](#authorization-details-consent). For permission consent, place **Authorization** before **User Consent** in the sign-in flow. The consent screen lists the permissions the authenticated user holds for the requested resource; the issued token carries only the permissions they approve.
 
 On a hierarchy-aware resource server, refusing a child permission also removes any remembered parent approval that covers it.
 
@@ -104,6 +104,49 @@ curl --location -X POST 'https://localhost:8090/applications' \
 ```
 
 `validityPeriod` is specified in seconds (e.g., `120` for a 2-minute validity period). After this period expires, the user will be prompted to grant consent again during the next login attempt.
+
+## Authorization Details Consent
+
+When a client requests [intents](./intents.mdx) through the RFC 9396 `authorization_details` parameter, the **User Consent** step asks the user to approve each requested detail. See [Rich Authorization Requests](./protocols/oauth-oidc/rich-authorization-requests.mdx) for the request.
+
+### Add the Steps to the Sign-in Flow
+
+The default authentication flows have no consent step. When an application's flow has none, a sign-in that requests authorization details ends with `access_denied` and `Authorization details were not approved`.
+
+Add these steps to the application's authentication flow, after the user signs in:
+
+1. Add the **User Consent** widget, as described in [Configuring Consent in Flows](#configuring-consent-in-flows).
+2. If a requested intent has a processor, expand the **Executors** section and add the **Check Intents** executor. Connect it after the node where the user signs in, and before **User Consent**, so that the processor approves or fills in each detail before the user sees it.
+3. Save the flow configuration.
+
+Without **Check Intents**, **User Consent** fails the flow with `FET-1130` when a requested intent has a processor. The client receives `access_denied` with `The sign-in flow does not run the checks the requested authorization details need`. An intent without a processor needs only **User Consent**. To define the steps in a flow definition instead, use the executors `AuthorizationDetailExecutor` and `ConsentExecutor`. See [Authorization and Consent](./flows/advanced-configurations.mdx#authorization-and-consent).
+
+### The Consent Card
+
+The consent screen shows one card for each detail that needs approval:
+
+- The card heading is the intent's [consent summary](./intents.mdx#consent-summary), filled in with the requested values.
+- Below it, the card lists the detail's fields with their display names. A value the processor supplied, such as an account number, appears as a value the user cannot edit.
+- A field the intent lets the user change appears as an input: a number box, a date picker, or a list whose items the user can remove or add.
+- Each card has its own **Approve** switch. A detail whose switch is off is left out of the grant.
+
+### Narrow a Detail
+
+The user can change a field only in the direction its [field policy](./intents.mdx#field-policies) allows, such as lowering an amount or removing an account from a list. The consent screen does not accept a wider value. For an amount of 45 that can only go down, entering 50 shows `Enter 45 or less.` and disables the approve action. The token carries the narrowed value.
+
+<ProductName /> checks every change again when it records the decision. A change the intent does not allow fails the flow with `FET-1129`, and the client receives `access_denied` with `The change made to the authorization details is not allowed`.
+
+### Deny
+
+When the user clicks **Deny**, the flow goes on, as for attributes and permissions, and the token carries no authorization details. If **Fail flow when user denies consent** is enabled on the **User Consent** node, the flow fails instead. See [Fail the flow when the user denies consent](#fail-the-flow-when-the-user-denies-consent).
+
+A processor that refuses every requested detail fails the flow before the consent screen with `FET-1127`, and a processor that cannot be reached fails it with `FET-1128`. See [Failures](./integrations/authorization-details-processor.mdx#failures).
+
+### Earlier Approvals and New Versions
+
+An intent with `reuse` set to `true`, that is, with **Ask every time** turned off, lets an earlier approval stand in. A request for a detail no wider than one the user already approved for the same application is not prompted again while the approval is within the application's [validity period](#configure-validity-period-for-granted-consent). A wider request is prompted. An intent with **Ask every time** turned on prompts on every request. A `prompt=consent` request, a CIBA request, and an application or agent with `loginConsent.alwaysPrompt` set to `true` also prompt every time.
+
+An approval counts only for the intent version it was given on. A change to the intent's schema, consent summary, or reuse setting moves its version, and so does adding or removing its processor. The user is then prompted again on the next request. See [Versions](./intents.mdx#versions).
 
 ## Trying It Out
 

@@ -78,6 +78,7 @@ Access tokens issued earlier stay valid until they expire, except after a role i
 | Authorization re-evaluation | Permission scopes are re-evaluated against the subject's current role and group assignments on every refresh. Scopes the subject no longer holds are dropped |
 | Credential changes | Each entity records when its password or client secret last changed. A refresh token established at or before that instant is rejected with `invalid_grant` |
 | DPoP binding | A DPoP-bound refresh token continues to require a DPoP proof on refresh; the new access token inherits the `cnf.jkt` binding |
+| Authorization details | The refresh token keeps only the granted details whose type has `reuse` set to `true` and is still on the version it was granted on. `authorization_details` on the refresh request narrows them for the new access token only; the new refresh token keeps the whole renewable grant. See [Rich Authorization Requests](../rich-authorization-requests#refresh-tokens) |
 
 ### What Changes Between the Original and Refreshed Token
 
@@ -89,6 +90,7 @@ Access tokens issued earlier stay valid until they expire, except after a role i
 | `scope` | Preserved by default. Narrowed when `scope` is supplied, and narrowed further to the permissions the subject currently holds |
 | `exp` / `iat` | New values |
 | `cnf.jkt` (DPoP) | Preserved |
+| `authorization_details` | Details of reusable types are preserved while their type is unchanged; one-off details are dropped. Narrowed when `authorization_details` is supplied |
 | `auth_time` | Not carried into refreshed tokens |
 | `sid` (ID Token) | Unchanged. A refreshed ID Token names the same SSO session as the original |
 
@@ -132,3 +134,4 @@ Because rotation makes each refresh token single-use, a client must persist the 
 - [Resource Indicators](../resource-indicators), preserve and validate the resource binding during refresh
 - [DPoP](../dpop), refresh tokens issued under DPoP remain sender-constrained
 - [Token Formats](../token-formats), token lifetimes, signing and encryption settings
+- [Rich Authorization Requests](../rich-authorization-requests), which authorization details a refresh renews

@@ -2,12 +2,12 @@
 title: JavaScript Management API
 docType: reference
 displayed_sidebar: javascriptSdkSidebar
-description: Functions for listing, reading, creating, updating, and deleting applications, users, and agents through the management API.
+description: Functions for listing, reading, creating, updating, and deleting applications, users, agents, and authorization details types through the management API.
 ---
 
 # JavaScript Management API
 
-These functions call the <ProductName /> management API to list, read, create, update, and delete applications, users, and agents. They take a fetch-compatible `fetcher`, so they run with any HTTP client or data fetching library. Requests are authorized with the signed-in user's access token, and the token needs the permissions the server requires for each resource.
+These functions call the <ProductName /> management API to list, read, create, update, and delete applications, users, agents, and authorization details types. They take a fetch-compatible `fetcher`, so they run with any HTTP client or data fetching library. Requests are authorized with the signed-in user's access token, and the token needs the permissions the server requires for each resource.
 
 The functions attach no token themselves. Pass a `fetcher` that adds the `Authorization` header, for example one built on [`ThunderIDJavaScriptClient.getAccessToken()`](../thunderid-javascript-client):
 
@@ -42,7 +42,7 @@ Every function accepts these options alongside its own parameters. Other `Reques
 
 | Parameter | Type | Required | Description |
 |-----------|------|:--------:|-------------|
-| `baseUrl` | `string` | No | Base URL of the <ProductName /> resource server. The collection URL is derived as `{baseUrl}/applications`, `{baseUrl}/users`, or `{baseUrl}/agents`. |
+| `baseUrl` | `string` | No | Base URL of the <ProductName /> resource server. The collection URL is derived as `{baseUrl}/applications`, `{baseUrl}/users`, `{baseUrl}/agents`, or `{baseUrl}/authorization-detail-types`. |
 | `url` | `string` | No | Absolute URL of the resource collection. Takes precedence over `baseUrl`. A single resource is addressed as `{url}/{id}`. |
 | `fetcher` | `(url: string, config: RequestInit) => Promise<Response>` | No | Performs the request. Defaults to the global `fetch`, which sends no access token, so pass a fetcher that attaches one. |
 
@@ -100,9 +100,55 @@ The agent `type` is the handle of an agent type, and `allowedUserTypes` and `all
 
 `AgentListResponse` contains `agents` (`BasicAgent[]`), `count`, `startIndex`, and `totalResults`.
 
+## Authorization Details Types
+
+An authorization details type defines what clients may request in [RFC 9396 authorization details](../../../../guides/protocols/oauth-oidc/rich-authorization-requests). The Console lists these types under **Intents**. For the schema, field policies, and processor settings, see [Manage Intents](../../../../guides/intents).
+
+| Function | Request | Returns |
+|----------|---------|---------|
+| `getAuthorizationDetailTypes({limit, offset})` | `GET /authorization-detail-types?limit=&offset=` | `AuthorizationDetailTypeListResponse` |
+| `getAuthorizationDetailType({authorizationDetailTypeId})` | `GET /authorization-detail-types/{authorizationDetailTypeId}` | `AuthorizationDetailType` |
+| `createAuthorizationDetailType({payload})` | `POST /authorization-detail-types` | `AuthorizationDetailType` |
+| `updateAuthorizationDetailType({authorizationDetailTypeId, payload})` | `PUT /authorization-detail-types/{authorizationDetailTypeId}` | `AuthorizationDetailType` |
+| `deleteAuthorizationDetailType({authorizationDetailTypeId})` | `DELETE /authorization-detail-types/{authorizationDetailTypeId}` | `void` |
+
+On a data plane, including the all-in-one server, no access token creates, updates, or deletes an authorization details type: the server answers `403`, and the functions throw `ThunderIDAPIError` with the code `<function>-ForbiddenError-001`. Call these three against a control plane, or import the types. See [Resources Imported Only With the Management API Key](../../../../guides/declarative-configurations/import-resources#resources-imported-only-with-the-management-api-key). `getAuthorizationDetailTypes()` and `getAuthorizationDetailType()` work with any token that may read them.
+
+```ts
+import { createAuthorizationDetailType } from '@thunderid/javascript'
+
+const accountType = await createAuthorizationDetailType({
+  baseUrl: 'https://localhost:8090',
+  fetcher: authenticatedFetch,
+  payload: {
+    type: 'account_information',
+    name: 'Account information',
+    schema: {type: 'object', properties: {accounts: {type: 'array', items: {type: 'string'}}}},
+  },
+})
+```
+
+`payload` is an `AuthorizationDetailTypeRequest`:
+
+| Field | Type | Required | Description |
+|-------|------|:--------:|-------------|
+| `type` | `string` | Yes | The value clients send as the `type` of a detail. It cannot change after creation: an update with a different `type` fails with HTTP 400 |
+| `name` | `string` | Yes | Display name of the type |
+| `schema` | `Record<string, unknown>` | Yes | The JSON Schema every detail of the type must conform to |
+| `description` | `string` | No | Description of the type |
+| `consentTemplate` | `string` | No | The summary shown for a detail on the consent step |
+| `reuse` | `boolean` | No | Whether an earlier approval may stand in for the consent prompt |
+| `processor` | `AuthorizationDetailProcessor` | No | The endpoint that approves and fills in each detail: `endpoint` and an optional `authentication` (`type` and `properties`) |
+
+An `AuthorizationDetailType` has the same fields, plus `id`, `version`, and `isReadOnly`, which is `true` for a type the API cannot update or delete: one declared in a configuration file, or one a control plane deployed. The server returns stored processor credentials masked.
+
+`AuthorizationDetailTypeListResponse` contains `types`, `count`, `startIndex`, `totalResults`, and optional pagination `links`.
+
+To read the types a client may request without an access token, use [`getSupportedAuthorizationDetailsTypes()`](../thunderid-javascript-client#getsupportedauthorizationdetailstypesconfig).
+
 ## Management API on a Separate Host
 
-When the management API runs on a different host from the authorization server, pass the collection URL as `url`. To keep the URL in configuration instead, set `endpoints.applications`, `endpoints.users`, or `endpoints.agents` and read it with `resolveResourceEndpoint`, as the React hooks do. See [Configuration](../configuration#discovery-and-endpoint-parameters).
+When the management API runs on a different host from the authorization server, pass the collection URL as `url`. To keep the URL in configuration instead, set `endpoints.applications`, `endpoints.users`, `endpoints.agents`, or `endpoints.authorizationDetailTypes` and read it with `resolveResourceEndpoint`, as the React hooks do. See [Configuration](../configuration#discovery-and-endpoint-parameters).
 
 ```ts
 await deleteUser({
