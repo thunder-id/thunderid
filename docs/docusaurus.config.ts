@@ -219,6 +219,10 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
             from: '/docs/next/use-cases/ai-agents/personal-assistants',
             to: '/docs/next/use-cases/ai-agents/personal-assistants/overview',
           },
+          {
+            from: '/docs/next/use-cases/b2b/multi-tenant-saas',
+            to: '/docs/next/use-cases/b2b/overview',
+          },
         ],
 
         // The lastVersion is served at the bare /docs/ root. Redirect its versioned

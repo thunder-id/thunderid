@@ -28,8 +28,12 @@ A sign-up or invitation flow shares an account only into a direct child of the O
 
 - The platform organization, **Wayfinder Enterprise** (`wayfinder-enterprise`). See the [B2B Quick Start with React](../quick-start.mdx).
 - A user type owned by Wayfinder Enterprise with **Allow self registration** turned on, such as **Wayfinder User** (`wayfinder-user`). A user type is usable in the OU that owns it and every OU beneath it, so one user type covers every company. See [User Types](../../../guides/users/user-types.mdx).
-- The roles a new admin gets, such as **Wayfinder Admin**, owned by Wayfinder Enterprise and shared with all of its child OUs with their assignments editable. A role shared this way covers an organization the sign-up has only just created. See [Share a Role With Other Organization Units](../../../guides/users/manage-roles.mdx#share-a-role-with-other-organization-units).
-- An application owned by Wayfinder Enterprise and shared with its child OUs. See [Sign Users In to Organization Units](../../../guides/organization-units/sign-in-to-organization-units.mdx).
+- The roles a new admin gets, such as **Wayfinder Admin**, shared with every OU beneath Wayfinder Enterprise with their assignments editable. A role shared with **All child organization units** covers an organization the sign-up has only just created. See [Share a Role With Other Organization Units](../../../guides/users/manage-roles.mdx#share-a-role-with-other-organization-units).
+- An application shared the same way. See [Sign Users In to Organization Units](../../../guides/organization-units/sign-in-to-organization-units.mdx).
+
+:::tip Followed the quick start?
+You already have this sign-up: `Wayfinder Company Sign-up`, run from the **Register your company** button of `Wayfinder Sign-in`. Read on for what each step does, or to switch to the shared-account template.
+:::
 
 ## Build the Sign-Up
 
@@ -37,9 +41,9 @@ A sign-up or invitation flow shares an account only into a direct child of the O
 
 ### Create the Flow From a Template
 
-In the Console, navigate to **Flows** and click **+ Create New Flow**. Select **Wayfinder Enterprise** as the organization unit that owns the flow, then select **Self sign-up** as the flow type. Choose **Organization Sign-up**, or **Organization Sign-up with Shared Account** if the account should live outside the organization. Name the flow and click **Create**.
+In the Console, navigate to **Flows** and click **Create new flow**. Select **Self sign-up** as the flow type, then select **Organization Sign-up**, or **Organization Sign-up with Shared Account** if the account should live outside the organization. Name the flow and click **Create**.
 
-The template names values only your deployment has, so the canvas opens it unsaved.
+The template needs a role ID from your deployment, so the designer opens it unsaved.
 
 ### Set the Roles the New Admin Gets
 
@@ -49,13 +53,18 @@ In the shared-account template, the **Share** step before **Assign Roles** alrea
 
 ### Attach the Flow to the Application
 
-Navigate to **Applications**, open the Wayfinder Enterprise application, and select the **Flows** tab. Under **Registration Flow**, turn on the toggle and select the sign-up flow. Click **Save**.
+Navigate to **Applications**, open the `Wayfinder Enterprise Web` application, and select the **Flows** tab. Turn on **Sign-up flow** and select the sign-up flow. Save the tab.
 
 ### Offer Sign-Up From the Sign-In Screen
 
-A sign-up started on its own has no application to return the new admin to, so offer it from the sign-in flow instead. Open the application's sign-in flow. Add a **Register your company** button to its first screen, and connect it to a **CALL** step whose flow is the sign-up flow.
+A sign-up started on its own ends with the new admin signed out, back at your application's sign-in page. Run it from the sign-in flow instead, so the admin lands in the application already signed in. Open the application's sign-in flow:
 
-Connect the success path of the **CALL** step to the step that picks the organization after a password sign-in, the **Resolve OU** step in the **Basic + Enterprise SSO** template. The new admin then belongs to exactly one organization, so the step picks it without asking, and the sign-in finishes as it would for a returning user. See [Call Node](../../../guides/flows/advanced-configurations.mdx#call-node).
+1. From **Components** in the **Resources** panel, add a **Button** labeled `Register your company` to the first screen.
+2. From **Steps**, add a **Flow** step and set its **Referenced flow** to the sign-up flow.
+3. Connect the button to the **Flow** step.
+4. Connect the **Flow** step's success path to the step that picks the organization after a password sign-in, the **Resolve OU** step that follows the password sign-in in the **Basic + Enterprise SSO** template.
+
+The new admin belongs to exactly one organization, so **Resolve OU** picks it without asking, and the sign-in finishes as it would for a returning user. See [Call Node](../../../guides/flows/advanced-configurations.mdx#call-node).
 
 </Stepper>
 
@@ -106,26 +115,26 @@ See [What the Sign-In Carries](../../../guides/organization-units/sign-in-to-org
 | The username is taken | The account step checks that no user has it | The account screen again, with "The user already exists" |
 | The organization name is taken | Another organization beneath Wayfinder Enterprise has it (`FET-1031`) | The company screen again, to change the name |
 | The handle is taken | Another organization beneath Wayfinder Enterprise has it (`FET-1032`) | The company screen again, to change the handle |
-| The role cannot be assigned | The role is not shared with the new organization, or its assignments are not editable there (`FET-1134`) | The sign-up fails. Share the role with all child OUs of Wayfinder Enterprise and try again |
+| The role cannot be assigned | The role is not shared with the new organization, or its assignments are not editable there (`FET-1134`) | The sign-up fails. Share the role with every OU beneath Wayfinder Enterprise and try again |
 
 :::warning
 The organization is created before the account. A sign-up that fails at a later step, such as the role assignment, leaves the organization in place. Fix the cause before you open sign-up to customers.
 :::
 
-For the flow concepts behind these templates, see the section on applications that serve many organizations in [Build a Multi-Factor Sign-In Flow](../../../guides/flows/build-a-flow.mdx#go-further).
+For a summary of every organization template, see [Go Further](../../../guides/flows/build-a-flow.mdx#go-further) in Build a Multi-Factor Sign-In Flow.
 
 ## Next Steps
 
 <NextSteps>
   <NextStepsCard
+    title="Let Organization Admins Manage Teams"
+    description="Give the new admin a Team page that manages Northstar's people, and nobody else's."
+    href="../delegated-administration"
+  />
+  <NextStepsCard
     title="Invite People In"
     description="Bring the rest of Northstar's team into the organization the admin just created."
     href="../invite-members"
-  />
-  <NextStepsCard
-    title="Plug In an Enterprise IdP"
-    description="Let a company sign its employees in with its own identity provider."
-    href="../enterprise-sso"
   />
   <NextStepsCard
     title="Design Decisions"

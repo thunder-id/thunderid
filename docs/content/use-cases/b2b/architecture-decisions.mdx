@@ -7,7 +7,7 @@ description: The reasoning behind the B2B pattern's defaults, and what to choose
 
 # Design Decisions
 
-The shape of Wayfinder Enterprise, from the [B2B model](./concepts.mdx) through the [quick start](./quick-start.mdx) and each journey, rests on a handful of choices. Each decision below names the default this section uses and when the alternative fits better.
+The shape of Wayfinder Enterprise, from the [B2B model](./concepts.mdx) through the [quick start](./quick-start.mdx) and each journey, rests on the choices below. Each decision names the default this section uses and when the alternative fits better.
 
 Every organization in this section is an organization unit (OU), a node in the hierarchy that owns its own users, groups, and roles, beneath one platform OU. See [Manage Organization Units](../../guides/organization-units/manage-organization-units.mdx).
 
@@ -21,10 +21,10 @@ The two organization sign-up templates differ in where the new account is create
 | The account lives in | The new organization | The user type's OU, the platform organization |
 | One person in several organizations | No: an invitation shares an account only into a direct child of the OU that owns it, so a Northstar Labs account cannot be invited into Initech, its sibling | Yes: the platform organization's direct children are the companies, so the account can be shared into any of them |
 
-- **Default in this section:** accounts live in their organization. Each company's people belong to that company, which matches how most business customers think about their staff.
+- **Default in this section:** a company's first admin lives in their organization, through **Organization Sign-up**. Each company's people belong to that company, which matches how most business customers think about their staff. Accounts that an invitation creates are the exception: they live in the platform organization and are shared in, so an invited person can later join another company.
 - **Choose shared accounts when** one person works across organizations, such as consultants, agencies, or a support team serving every customer. See [Switch Organizations](./journeys/switch-organizations.mdx).
 
-See the section on applications that serve many organizations in [Build a Multi-Factor Sign-In Flow](../../guides/flows/build-a-flow.mdx#go-further) for both templates.
+See [Go Further](../../guides/flows/build-a-flow.mdx#go-further) in Build a Multi-Factor Sign-In Flow for both templates.
 
 ## How a Sign-In Picks the Organization
 
@@ -58,8 +58,8 @@ See [Share a Flow](../../guides/flows/share-a-flow.mdx) for how an organization'
 
 ## How Admins Reach the Management API
 
-- **Default in this section:** a backend route checks the admin's own application permission, pins every call to the admin's organization, and calls <ProductName /> with a backend client's token issued for that organization. The admin's token never carries a <ProductName /> management permission. See [Let Org Admins Manage Teams](./journeys/delegated-administration.mdx).
-- **Choose direct calls when** an internal tool's admins sign in with tokens that name their organization in `ouId` and carry organization-confined permissions such as `system:user:view`. Each of those permissions acts only in the OU the token names. If the deployment sets `server.security.rest.audience`, the tokens must also be issued for that audience. See [System Permissions](../../guides/users/manage-roles.mdx#system-permissions).
+- **Default in this section:** a backend route checks the admin's own application permission, pins every call to the admin's organization, and calls <ProductName /> with a backend client's token issued for that organization. The client holds the root `system` permission, so the route, not <ProductName />, keeps each call inside that organization. The admin's token never carries a <ProductName /> management permission. See [Let Organization Admins Manage Teams](./journeys/delegated-administration.mdx).
+- **Choose direct calls when** an internal tool's admins sign in with tokens that name their organization in `ouId` and carry organization-confined permissions such as `system:user:view`. On the Data Plane, each of those permissions acts only in the OU the token names. If the deployment sets `server.security.rest.audience`, the tokens must also be issued for that audience. See [System Permissions](../../guides/users/manage-roles.mdx#system-permissions).
 
 :::warning
 Never let an organization admin's token carry the root `system` permission. It acts in every OU of the deployment, not only the admin's organization.
@@ -67,7 +67,7 @@ Never let an organization admin's token carry the root `system` permission. It a
 
 ## One Shared Application or One per Organization
 
-- **Default in this section:** one application, owned by the platform organization and shared with every child. A new company can sign in the moment it signs up, and one client ID serves every company.
+- **Default in this section:** one application, shared with every company. A new company can sign in the moment it signs up, and one client ID serves every company.
 - **Choose an application per organization when** each customer needs its own client registration, such as different redirect URIs, or a dedicated deployment of your product. An application that is not shared signs people in to its own OU only, so no organization step is needed in the flow.
 
 A shared application's flow must decide the organization, or the sign-in is refused at its assertion step with `FET-1124`.
@@ -75,12 +75,12 @@ A shared application's flow must decide the organization, or the sign-in is refu
 ## Flat or Nested Organizations
 
 - **Default in this section:** companies are direct children of the platform organization. A handle such as `northstar` names one company, and a role shared with all child organizations reaches each of them.
-- **Choose nested organizations when** customers have departments, regions, or subsidiaries of their own. OUs nest to any depth, a sharing policy can reach one OU or its whole subtree, and **Resolve OU** offers nested OUs by their handle path, such as `northstar/engineering`.
+- **Choose nested organizations when** customers have departments, regions, or subsidiaries of their own. OUs nest to any depth, and a sharing policy can reach one OU or its whole subtree. **Resolve OU** without `directChildrenOnly` offers OUs by their handle path from the top of the tree, such as `default/wayfinder-enterprise/northstar/engineering`.
 
 Two rules shape a nested tree:
 
 - A sign-up or invitation flow shares an account only into a direct child of the OU that owns it. A sharing policy set through the API or a resource file can reach a whole subtree.
-- Groups are never shared, so a group and its members stay in one OU.
+- Groups are never shared: a group belongs to one OU, and its members must live in that OU or be shared into it.
 
 See [Resource Sharing Across Organization Units](../../key-concepts/resource-sharing.mdx) for every sharing mode.
 
