@@ -67,7 +67,7 @@ func (dh *dcrHandler) HandleDCRRegistration(w http.ResponseWriter, r *http.Reque
 // checkDCRAuthorization verifies that the caller holds the application create permission.
 // Returns true if authorized, false (and writes an HTTP 401) otherwise.
 func (dh *dcrHandler) checkDCRAuthorization(r *http.Request, w http.ResponseWriter) bool {
-	if security.HasSufficientPermission(security.GetPermissions(r.Context()),
+	if security.HasSufficientSystemPermission(security.GetPermissions(r.Context()),
 		security.GetSystemPermissions().AppCreate) {
 		return true
 	}
@@ -171,7 +171,7 @@ func (dh *dcrHandler) authorizeClientConfigurationRequest(
 		return "", false
 	}
 
-	if security.HasSufficientPermission(security.GetPermissions(ctx), required) {
+	if security.HasSufficientSystemPermission(security.GetPermissions(ctx), required) {
 		return clientID, true
 	}
 

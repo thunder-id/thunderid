@@ -342,7 +342,8 @@ func validateAdministrationCaller(ctx context.Context, flowType providers.FlowTy
 	if security.IsRuntimeContext(ctx) || security.GetSubject(ctx) == "" {
 		return &ErrorFlowAuthenticationRequired
 	}
-	if !security.HasSystemPermission(security.GetPermissions(ctx)) {
+	if !security.HasSufficientSystemPermission(security.GetPermissions(ctx),
+		security.GetSystemPermissions().AdministrationFlow) {
 		return &ErrorAdministrationPermissionRequired
 	}
 	return nil
@@ -452,16 +453,21 @@ func (s *flowExecService) loadNewContext(ctx context.Context, flowID, appID, flo
 		if svcErr := validateAdministrationCaller(ctx, providers.FlowTypeAdministration); svcErr != nil {
 			return nil, svcErr
 		}
-		flow, svcErr := s.flowProvider.GetFlow(ctx, flowID)
+		// The flow is resolved as the server, since what authorizes it depends on its type.
+		flow, svcErr := s.flowProvider.GetFlow(security.WithRuntimeContext(ctx), flowID)
 		if svcErr != nil {
 			return nil, svcErr
 		}
 		// Only administration and invitation flows start by ID: the entry point must not become a
 		// way to start an authentication, registration, recovery or sign-out flow directly, bypassing
-		// the application binding and initiation guards those types require. An administration flow is
-		// gated below.
+		// the application binding and initiation guards those types require. An administration flow
+		// starts only where the caller may read it, and is gated below. An invitation flow starts in
+		// the unit the caller's token names, which must own the flow or have been shared it.
 		switch flow.FlowType {
 		case providers.FlowTypeAdministration:
+			if _, svcErr := s.flowProvider.GetFlow(ctx, flowID); svcErr != nil {
+				return nil, svcErr
+			}
 		case providers.FlowTypeInvitation:
 			if svcErr := validateInvitationCaller(ctx); svcErr != nil {
 				return nil, svcErr
@@ -894,7 +900,8 @@ func (s *flowExecService) loadContextFromStore(ctx context.Context, executionID 
 		return nil, &tidcommon.InternalServerError
 	}
 
-	flow, svcErr := s.flowProvider.GetFlow(ctx, graphID)
+	// The flow was authorized when the execution started, so it is reloaded as the server.
+	flow, svcErr := s.flowProvider.GetFlow(security.WithRuntimeContext(ctx), graphID)
 	if svcErr != nil {
 		logger.Error(ctx, "Error retrieving flow graph from flow provider",
 			log.String("graphID", graphID), log.String("error", svcErr.Error.DefaultValue))
@@ -909,7 +916,7 @@ func (s *flowExecService) loadContextFromStore(ctx context.Context, executionID 
 	}
 
 	graphResolver := graphResolverFunc(func(rctx context.Context, flowID string) (core.GraphInterface, error) {
-		f, svcErr := s.flowProvider.GetFlow(rctx, flowID)
+		f, svcErr := s.flowProvider.GetFlow(security.WithRuntimeContext(rctx), flowID)
 		if svcErr != nil {
 			return nil, fmt.Errorf("failed to get flow %s: %s", flowID, svcErr.Error.DefaultValue)
 		}

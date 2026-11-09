@@ -19,23 +19,23 @@ import (
 
 // OUAuthzTestSuite validates the OU authorization model end-to-end.
 //
-// The product ships only the root "system" scope by default. This suite creates a custom
-// resource server that declares the following hierarchical permission structure, simulating an
-// operator configuring fine-grained scopes:
+// This suite creates a custom resource server that declares the Data Plane's hierarchical
+// permission structure:
 //
 //	Authz Test RS (ou)
-//	└── Resource  "system"      → permission "system"
-//	    └── Resource  "ou"      → permission "system:ou"
-//	        └── Action "view"   → permission "system:ou:view"
+//	├── Resource  "system"      → permission "system"
+//	└── Resource  "org"         → permission "org"
+//	    └── Resource  "ou"      → permission "org:ou"
+//	        └── Action "view"   → permission "org:ou:view"
 //
 // The suite creates a test user scoped to OU1 and a role carrying the
-// system:ou:view permission. It then obtains a view-only access token and
+// org:ou:view permission. It then obtains a view-only access token and
 // verifies that:
 //
 //   - Read operations on OU1 are allowed (200)
 //   - Read operations on OU2 (sibling) and OU12 (child) are denied (403)
-//   - All write operations are denied (403) because system:ou:view does not
-//     satisfy system:ou
+//   - All write operations are denied (403) because org:ou:view does not
+//     satisfy org:ou
 //
 // Fixture topology:
 //
@@ -145,23 +145,23 @@ func (ts *OUAuthzTestSuite) SetupSuite() {
 	ts.Require().NoError(err, "create ou-admin user")
 	ts.ouAdminUserID = userID
 
-	// ---- 4. Create a custom resource server declaring the fine-grained system scopes ----
-	// The product ships only the root "system" scope; this reproduces the "system:ou:view"
-	// permission so the suite can verify resource-level enforcement when configured.
+	// ---- 4. Create a custom resource server declaring the fine-grained org scopes ----
+	// This reproduces the Data Plane permission "org:ou:view" so the suite can verify
+	// resource-level enforcement.
 	const scopedRSIdentifier = "https://authz-test.example.com/ou"
-	systemRSID, err := testutils.CreateSystemScopedResourceServer(
+	systemRSID, err := testutils.CreateOrgScopedResourceServer(
 		ts.ou1ID, "Authz Test RS (ou)", scopedRSIdentifier, "ou")
 	ts.Require().NoError(err, "create scoped resource server")
 	ts.scopedRSID = systemRSID
 
-	// ---- 5. Create a role with permission system:ou:view ----
+	// ---- 5. Create a role with permission org:ou:view ----
 	role := testutils.Role{
 		Name: ouViewRoleName,
 		OUID: ts.ou1ID,
 		Permissions: []testutils.ResourcePermissions{
 			{
 				ResourceServerID: systemRSID,
-				Permissions:      []string{"system:ou:view"},
+				Permissions:      []string{"org:ou:view"},
 			},
 		},
 		Assignments: []testutils.Assignment{
@@ -174,10 +174,10 @@ func (ts *OUAuthzTestSuite) SetupSuite() {
 
 	// ---- 6. Obtain a scoped access token for the OU-admin user ----
 	tokenResp, err := ts.signIn.ObtainAccessToken(ts.ou1ID,
-		"system system:ou:view", ouAdminUsername, ouAdminPassword, scopedRSIdentifier)
+		"system org:ou:view", ouAdminUsername, ouAdminPassword, scopedRSIdentifier)
 	ts.Require().NoError(err, "obtain ou-admin scoped token")
 	ts.Require().NotEmpty(tokenResp.AccessToken, "ou-admin token must be non-empty")
-	ts.Require().Equal("system:ou:view", tokenResp.Scope, "token must carry exactly the requested scope")
+	ts.Require().Equal("org:ou:view", tokenResp.Scope, "token must carry exactly the requested scope")
 
 	ts.ouViewClient = testutils.GetHTTPClientWithToken(tokenResp.AccessToken)
 }
@@ -254,7 +254,7 @@ func (ts *OUAuthzTestSuite) do(method, path string, body []byte) *http.Response 
 func closeBody(resp *http.Response) { _ = resp.Body.Close() }
 
 // ---------------------------------------------------------------------------
-// Tests — READ operations (system:ou:view is sufficient)
+// Tests — READ operations (org:ou:view is sufficient)
 // ---------------------------------------------------------------------------
 
 // TestListOUs verifies that an OU-scoped admin's list result contains OU1 but
@@ -326,7 +326,7 @@ func (ts *OUAuthzTestSuite) TestGetSiblingOUByPath() {
 }
 
 // ---------------------------------------------------------------------------
-// Tests — WRITE operations (require system:ou; view-only token must be denied)
+// Tests — WRITE operations (require org:ou; view-only token must be denied)
 // ---------------------------------------------------------------------------
 
 func (ts *OUAuthzTestSuite) newOUPayload(handle, name string, parent *string) []byte {
@@ -357,7 +357,7 @@ func (ts *OUAuthzTestSuite) TestCreateOUUnderOwnOU() {
 	defer closeBody(resp)
 
 	ts.Equal(http.StatusForbidden, resp.StatusCode,
-		"view-only OU-admin must not create a child OU (system:ou required)")
+		"view-only OU-admin must not create a child OU (org:ou required)")
 }
 
 // TestUpdateOwnOU verifies the view-only OU-admin cannot update OU1.
@@ -372,7 +372,7 @@ func (ts *OUAuthzTestSuite) TestUpdateOwnOU() {
 	defer closeBody(resp)
 
 	ts.Equal(http.StatusForbidden, resp.StatusCode,
-		"view-only OU-admin must not update own OU (system:ou required)")
+		"view-only OU-admin must not update own OU (org:ou required)")
 }
 
 // TestDeleteOwnOU verifies the view-only OU-admin cannot delete OU1.
@@ -381,7 +381,7 @@ func (ts *OUAuthzTestSuite) TestDeleteOwnOU() {
 	defer closeBody(resp)
 
 	ts.Equal(http.StatusForbidden, resp.StatusCode,
-		"view-only OU-admin must not delete own OU (system:ou required)")
+		"view-only OU-admin must not delete own OU (org:ou required)")
 }
 
 // TestListOUsWithFilterMatch verifies that a filter applied over the restricted

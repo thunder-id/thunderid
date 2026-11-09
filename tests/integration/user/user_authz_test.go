@@ -20,10 +20,10 @@ import (
 //
 // Permission model:
 //
-//	system:user      → create, update, delete users
-//	system:user:view → list, get users (implied by system:user)
+//	org:user      → create, update, delete users
+//	org:user:view → list, get users (implied by org:user)
 //
-// A user-manager living in OU1 holds the system:user permission. The suite
+// A user-manager living in OU1 holds the org:user permission. The suite
 // verifies that:
 //
 //   - Read operations on users in OU1 are allowed (200)
@@ -59,7 +59,7 @@ type UserAuthzTestSuite struct {
 	deletableUserOU1ID string
 	targetUserOU2ID    string
 
-	// HTTP client carrying the user-manager's system:user scoped token
+	// HTTP client carrying the user-manager's org:user scoped token
 	userAdminClient *http.Client
 }
 
@@ -166,23 +166,23 @@ func (ts *UserAuthzTestSuite) SetupSuite() {
 	ts.Require().NoError(err, "create target user in OU2")
 	ts.targetUserOU2ID = targetOU2ID
 
-	// ---- 5. Create a custom resource server declaring the fine-grained system scopes ----
-	// The product ships only the root "system" scope; this reproduces "system:user" and
-	// "system:usertype:view" so the suite can verify resource-level enforcement when configured.
+	// ---- 5. Create a custom resource server declaring the fine-grained org scopes ----
+	// This reproduces the Data Plane permissions "org:user" and
+	// "org:usertype:view" so the suite can verify resource-level enforcement when configured.
 	const scopedRSIdentifier = "https://authz-test.example.com/user"
-	systemRSID, err := testutils.CreateSystemScopedResourceServer(
+	systemRSID, err := testutils.CreateOrgScopedResourceServer(
 		ts.userOU1ID, "Authz Test RS (user)", scopedRSIdentifier, "user", "usertype")
 	ts.Require().NoError(err, "create scoped resource server")
 	ts.scopedRSID = systemRSID
 
-	// ---- 6. Create a role with system:user permission and assign to the user-manager ----
+	// ---- 6. Create a role with org:user permission and assign to the user-manager ----
 	roleID, err := testutils.CreateRole(testutils.Role{
 		Name: userMgrRoleName,
 		OUID: ts.userOU1ID,
 		Permissions: []testutils.ResourcePermissions{
 			{
 				ResourceServerID: systemRSID,
-				Permissions:      []string{"system:user", "system:usertype:view"},
+				Permissions:      []string{"org:user", "org:usertype:view"},
 			},
 		},
 		Assignments: []testutils.Assignment{
@@ -194,7 +194,7 @@ func (ts *UserAuthzTestSuite) SetupSuite() {
 
 	// ---- 7. Obtain a scoped access token for the user-manager ----
 	tokenResp, err := ts.signIn.ObtainAccessToken(ts.userOU1ID,
-		"system system:user system:usertype:view", userMgrUsername, userMgrPassword, scopedRSIdentifier)
+		"system org:user org:usertype:view", userMgrUsername, userMgrPassword, scopedRSIdentifier)
 	ts.Require().NoError(err, "obtain user-manager token")
 	ts.Require().NotEmpty(tokenResp.AccessToken, "user-manager token must be non-empty")
 
@@ -301,7 +301,7 @@ func (ts *UserAuthzTestSuite) TestCapabilitiesReportTheManagerPermissions() {
 }
 
 // ---------------------------------------------------------------------------
-// Tests — READ operations (system:user:view implied by system:user)
+// Tests — READ operations (org:user:view implied by org:user)
 // ---------------------------------------------------------------------------
 
 // TestListUsers verifies the list contains users from the accessible OU only.
@@ -344,7 +344,7 @@ func (ts *UserAuthzTestSuite) TestGetUserInOtherOU() {
 }
 
 // ---------------------------------------------------------------------------
-// Tests — WRITE operations (system:user)
+// Tests — WRITE operations (org:user)
 // ---------------------------------------------------------------------------
 
 // TestCreateUserInOwnOU verifies the user-manager can create a user in their own OU.
@@ -451,7 +451,7 @@ func (ts *UserAuthzTestSuite) TestDeleteUserInOtherOU() {
 }
 
 // TestListUsersByPathWithoutOUViewIsForbidden verifies that listing users by an OU path, which
-// first reads the OU, is refused with 403 when the caller lacks system:ou:view.
+// first reads the OU, is refused with 403 when the caller lacks org:ou:view.
 func (ts *UserAuthzTestSuite) TestListUsersByPathWithoutOUViewIsForbidden() {
 	resp := ts.doUser(http.MethodGet, "/users/tree/"+userAuthzOU1Handle, nil)
 	defer resp.Body.Close()
@@ -465,7 +465,7 @@ func (ts *UserAuthzTestSuite) TestListUsersByPathWithoutOUViewIsForbidden() {
 	ts.Equal("SSE-4030", errResp.Code)
 }
 
-// TestCreateUserByPathRequiresOUView verifies the by-path create route passes the `system:user:create`
+// TestCreateUserByPathRequiresOUView verifies the by-path create route passes the `org:user:create`
 // gate for the user-manager, then resolves the path through the OU service, which requires OU read
 // access. The user-manager holds none, so both the own OU and OU2 are refused with a 403 and no user
 // is persisted.

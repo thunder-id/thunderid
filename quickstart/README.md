@@ -16,7 +16,7 @@ How a sign-in and a sync work:
 
 1. An operator opens the Control Plane console at `https://localhost:8095/console`.
 2. The console has no login of its own. It redirects to auth-dp for an OIDC sign-in (PKCE, client `CP_CONSOLE`).
-3. auth-dp returns a token for the Control Plane's own URL (the `resource` the console asks for). auth-dp's System resource server is registered under that URL at package time, and the Control Plane accepts the token because it shares auth-dp's signing keys and claims auth-dp's issuer.
+3. auth-dp returns a token for the Control Plane's own URL (the `resource` the console asks for). auth-dp holds the Control Plane resource server, which is registered under that URL and declares the `system` permissions the Control Plane enforces, and the Control Plane accepts the token because it shares auth-dp's signing keys and claims auth-dp's issuer.
 4. A write on the Control Plane (a user, a password change, an application) is synced to the Data Plane. The credential value is first written to dp's secret and variable stores, then a configuration version is captured and imported through dp's management API, authenticated with the gateway's API key.
 5. An operator opens the Data Plane Admin Console at `https://localhost:8090/console` and signs in on dp's own Gate (client `ADMIN_CONSOLE`).
 
@@ -52,7 +52,7 @@ The result is `target/dist/thunderid-<version>-<os>-<arch>.zip`.
 - strips the default `CONSOLE` application from every plane's bootstrap, since none of them use it
 - removes auth-dp's console UI
 - ships `console-cp` (the console that runs every operation as a direct API call) as the Control Plane's console, and points it at auth-dp as its trusted issuer, with client `CP_CONSOLE`
-- registers auth-dp's System resource server under the Control Plane's URL, because the console asks auth-dp for a token for that URL
+- adds the Control Plane resource server ([backend/cmd/cpserver/idp-bootstrap](../backend/cmd/cpserver/idp-bootstrap)) to auth-dp, because the console asks auth-dp for a token for the Control Plane's URL, and grants its `system` permission to auth-dp's admin group
 - points the managed dp's admin console at client `ADMIN_CONSOLE`
 - turns the default admin into the Service Desk Admin on dp and cp, with its own group and role under separate IDs, and leaves auth-dp's default `admin` as it is
 - sets auth-dp to port 8091
@@ -63,7 +63,7 @@ The result is `target/dist/thunderid-<version>-<os>-<arch>.zip`.
 
 | Directory | Layered onto | Contents |
 |---|---|---|
-| [bootstrap/auth-dp](bootstrap/auth-dp) | auth-dp | CORS allowlist for the CP console origin; the `CP_CONSOLE` application |
+| [bootstrap/auth-dp](bootstrap/auth-dp) | auth-dp | CORS allowlist for the CP console origin; the `CP_CONSOLE` application; the role that grants the admin group `system` on the Control Plane resource server |
 | [bootstrap/dp-cp](bootstrap/dp-cp) | dp and cp | The `ADMIN_CONSOLE` application, same fixed ID on both so the Control Plane's copy replaces dp's on sync. |
 | [bootstrap/cp](bootstrap/cp) | cp | Registers dp as a gateway (`00-` prefix so it exists before other resources are written) |
 

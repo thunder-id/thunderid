@@ -12,6 +12,7 @@ import (
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -22,7 +23,7 @@ import (
 // every logger.IsDebugEnabled() branch in service.go is exercised.
 func TestMain(m *testing.M) {
 	_ = log.GetLogger().SetLevel("debug")
-	security.InitSystemPermissions("")
+	security.InitControlPlanePermissions("")
 	os.Exit(m.Run())
 }
 
@@ -752,4 +753,39 @@ func (s *SystemAuthzTestSuite) TestIsActionAllowedWithoutRecord() {
 			})
 		}
 	}
+}
+
+// On the data plane the OU actions require the organization tree. The deployment-wide system root
+// still passes the permission step and reaches every organization unit, while an organization
+// permission stays within the caller's organization unit.
+func TestOUBoundedAuthorization_DataPlanePermissions(t *testing.T) {
+	security.InitDataPlanePermissions("")
+	t.Cleanup(func() { security.InitControlPlanePermissions("") })
+	service, err := InitializeOUBoundedAuthorization()
+	require.NoError(t, err)
+
+	tests := []struct {
+		name        string
+		ctx         context.Context
+		ouID        string
+		wantAllowed bool
+	}{
+		{name: "System_OtherOU_Allowed", ctx: buildCtxWithOU("system", "ou1"), ouID: "ou2", wantAllowed: true},
+		{name: "OrgView_OwnOU_Allowed", ctx: buildCtxWithOU("org:ou:view", "ou1"), ouID: "ou1", wantAllowed: true},
+		{name: "OrgView_OtherOU_Denied", ctx: buildCtxWithOU("org:ou:view", "ou1"), ouID: "ou2"},
+		{name: "StaleSystemChild_Denied", ctx: buildCtxWithOU("system:ou:view", "ou1"), ouID: "ou1"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			allowed, svcErr := service.IsActionAllowed(tt.ctx, security.ActionReadOU,
+				&ActionContext{ResourceType: security.ResourceTypeOU, OUID: tt.ouID})
+			assert.Nil(t, svcErr)
+			assert.Equal(t, tt.wantAllowed, allowed)
+		})
+	}
+
+	result, svcErr := service.GetAccessibleResources(
+		buildCtxWithOU("system", "ou1"), security.ActionListOUs, security.ResourceTypeOU)
+	assert.Nil(t, svcErr)
+	assert.True(t, result.AllAllowed)
 }

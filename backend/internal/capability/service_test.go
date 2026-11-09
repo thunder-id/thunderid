@@ -27,7 +27,7 @@ func TestServiceTestSuite(t *testing.T) {
 }
 
 func (s *ServiceTestSuite) SetupTest() {
-	security.InitSystemPermissions("")
+	security.InitControlPlanePermissions("")
 	s.authz = sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(s.T())
 }
 

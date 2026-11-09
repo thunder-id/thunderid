@@ -16,7 +16,7 @@ import (
 )
 
 func TestToolPermissionMiddleware(t *testing.T) {
-	security.InitSystemPermissions("")
+	security.InitControlPlanePermissions("")
 
 	tests := []struct {
 		name        string
@@ -83,7 +83,7 @@ func TestToolPermissionMiddleware(t *testing.T) {
 }
 
 func TestToolPermissionMiddleware_OtherMethodsPassThrough(t *testing.T) {
-	security.InitSystemPermissions("")
+	security.InitControlPlanePermissions("")
 
 	called := false
 	next := func(context.Context, string, mcp.Request) (mcp.Result, error) {
@@ -135,4 +135,47 @@ func TestNewServer_ReportsNameFromProductName(t *testing.T) {
 	info := session.InitializeResult().ServerInfo
 	require.NotNil(t, info)
 	assert.Equal(t, "acme-iam-mcp", info.Name)
+}
+
+func TestToolPermissionMiddleware_DataPlane(t *testing.T) {
+	security.InitDataPlanePermissions("")
+	t.Cleanup(func() { security.InitControlPlanePermissions("") })
+
+	tests := []struct {
+		name        string
+		tool        string
+		permissions []string
+		wantCalled  bool
+	}{
+		{name: "SystemCallsOrgTool", tool: "create_flow", permissions: []string{"system"}, wantCalled: true},
+		{name: "OrgCallsOrgTool", tool: "create_flow", permissions: []string{"org"}, wantCalled: true},
+		{name: "StaleSystemChildCannotCall", tool: "create_flow",
+			permissions: []string{"system:flow:create"}, wantCalled: false},
+		{name: "SystemCallsDeploymentWideTool", tool: "list_gateway_variables",
+			permissions: []string{"system"}, wantCalled: true},
+		{name: "OrgCannotCallDeploymentWideTool", tool: "list_gateway_variables",
+			permissions: []string{"org"}, wantCalled: false},
+		{name: "SystemExecutesFlow", tool: "execute_flow", permissions: []string{"system"}, wantCalled: true},
+		{name: "OrgExecutesFlow", tool: "execute_flow", permissions: []string{"org"}, wantCalled: true},
+		{name: "OrgChildCannotExecuteFlow", tool: "execute_flow", permissions: []string{"org:user"},
+			wantCalled: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			called := false
+			next := func(context.Context, string, mcp.Request) (mcp.Result, error) {
+				called = true
+				return &mcp.CallToolResult{}, nil
+			}
+			ctx := security.WithSecurityContextTest(context.Background(),
+				security.NewSecurityContextForTest("user-1", "ou-1", "", tt.permissions, nil))
+
+			_, err := toolPermissionMiddleware(next)(ctx, "tools/call",
+				&mcp.CallToolRequest{Params: &mcp.CallToolParamsRaw{Name: tt.tool}})
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantCalled, called)
+		})
+	}
 }

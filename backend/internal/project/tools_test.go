@@ -224,9 +224,9 @@ func (s *ProjectToolsTestSuite) TestUpdateProject() {
 }
 
 // TestRegisteredToolsRequireProjectPermissions verifies that every project MCP tool is mapped to a project
-// catalog permission, so none falls back to root by accident.
+// catalog permission, so none falls back to root by accident. Only the Control Plane serves projects.
 func (s *ProjectToolsTestSuite) TestRegisteredToolsRequireProjectPermissions() {
-	security.InitSystemPermissions("")
+	security.InitControlPlanePermissions("")
 	p := security.GetSystemPermissions()
 	tools, err := s.session.ListTools(context.Background(), nil)
 	s.Require().NoError(err)

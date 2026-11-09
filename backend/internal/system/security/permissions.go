@@ -3,7 +3,10 @@
 
 package security
 
-import "strings"
+import (
+	"maps"
+	"strings"
+)
 
 // publicPaths defines the list of public paths using glob patterns.
 // - "*": Matches a single path segment (e.g., /a/*/b).
@@ -113,41 +116,24 @@ const (
 // crudActions are the actions declared on a catalog resource unless it lists its own.
 var crudActions = []string{catalogActionView, catalogActionCreate, catalogActionUpdate, catalogActionDelete}
 
-// serverConfigActions are the actions declared on server configurations, which can only be read and
-// replaced.
-var serverConfigActions = []string{catalogActionView, catalogActionUpdate}
-
-// configVersionActions are the actions declared on configuration versions, which can only be read and
-// captured.
-var configVersionActions = []string{catalogActionView, catalogActionCreate}
-
-// systemCatalog lists, in declaration order, each resource declared under the root system resource
-// on the System resource server and the actions declared on it. It must match the System resource
-// server in the bootstrap bundle (cmd/server/bootstrap/01-default-resources.yaml).
-var systemCatalog = []struct {
+// catalogResource is a resource declared under a root resource on the System resource server, with the
+// actions declared on it.
+type catalogResource struct {
 	resource ResourceType
 	actions  []string
-}{
-	{ResourceTypeOU, crudActions},
-	{ResourceTypeUser, crudActions},
-	{ResourceTypeGroup, crudActions},
-	{ResourceTypeAgent, crudActions},
-	{ResourceTypeUserType, crudActions},
-	{ResourceTypeAgentType, crudActions},
-	{ResourceTypeNotificationTemplate, crudActions},
-	{ResourceTypeApplication, crudActions},
-	{ResourceTypeRole, crudActions},
-	{ResourceTypeResourceServer, crudActions},
-	{ResourceTypeConnection, crudActions},
-	{ResourceTypeFlow, crudActions},
-	{ResourceTypeVerifiableCredential, crudActions},
-	{ResourceTypeProject, crudActions},
-	{ResourceTypeDesign, crudActions},
-	{ResourceTypeI18n, crudActions},
-	{ResourceTypeGateway, crudActions},
-	{ResourceTypeAuthorizationDetailType, crudActions},
-	{ResourceTypeServerConfig, serverConfigActions},
-	{ResourceTypeConfigurationVersion, configVersionActions},
+}
+
+// buildCatalog returns, in declaration order, the permission of each resource under root followed by
+// the permissions of its actions.
+func buildCatalog(handle, root string, resources []catalogResource) []string {
+	var catalog []string
+	for _, entry := range resources {
+		catalog = append(catalog, buildPermission(handle, root, string(entry.resource)))
+		for _, action := range entry.actions {
+			catalog = append(catalog, buildPermission(handle, root, string(entry.resource), action))
+		}
+	}
+	return catalog
 }
 
 // ---- Actions ----
@@ -373,10 +359,17 @@ const (
 
 // ---- Permissions ----
 
-// SystemPermissions holds the runtime-resolved permission strings for the system resource server.
-// All values are set by InitSystemPermissions and must not be used before it is called.
+// SystemPermissions holds the runtime-resolved permission strings for the system resource server. Each
+// field is the permission the plane requires for that resource or action. All values are set by
+// InitControlPlanePermissions or InitDataPlanePermissions and must not be used before one is called.
 type SystemPermissions struct {
-	Root                       string
+	// Root is the system root permission. It reaches every organization unit in the deployment.
+	Root string
+	// Org is the organization root permission, bounded to the organization unit the token names. It is
+	// empty on the control plane, which enforces no organization permission.
+	Org string
+	// AdministrationFlow is the permission a caller needs to run an administration flow.
+	AdministrationFlow         string
 	OU                         string
 	OUView                     string
 	User                       string
@@ -460,12 +453,13 @@ type SystemPermissions struct {
 	AppCreate                  string
 	AppUpdate                  string
 	AppDelete                  string
-	// Catalog holds every permission declared under Root, in declaration order: each resource
-	// followed by its actions.
+	// Catalog holds every permission the plane declares besides Root, in declaration order: each
+	// resource followed by its actions.
 	Catalog []string
 }
 
-// sysPerms holds the active system permissions, initialized by InitSystemPermissions.
+// sysPerms holds the active system permissions, initialized by InitControlPlanePermissions or
+// InitDataPlanePermissions.
 var sysPerms *SystemPermissions
 
 // buildPermission constructs a permission string by joining non-empty parts with ":".
@@ -479,103 +473,10 @@ func buildPermission(parts ...string) string {
 	return strings.Join(nonEmpty, ":")
 }
 
-// InitSystemPermissions initializes the system permission strings using the given handle prefix.
-// When handle is empty, permissions match the legacy values ("system", "system:ou", etc.).
-// When handle is non-empty (e.g. "mgmt"), permissions are prefixed ("mgmt:system", "mgmt:system:ou", etc.).
-// This function must be called once at startup before any service or middleware uses permissions.
-func InitSystemPermissions(handle string) {
-	p := &SystemPermissions{
-		Root:                       buildPermission(handle, "system"),
-		OU:                         buildPermission(handle, "system", "ou"),
-		OUView:                     buildPermission(handle, "system", "ou", "view"),
-		User:                       buildPermission(handle, "system", "user"),
-		UserView:                   buildPermission(handle, "system", "user", "view"),
-		Group:                      buildPermission(handle, "system", "group"),
-		GroupView:                  buildPermission(handle, "system", "group", "view"),
-		Agent:                      buildPermission(handle, "system", "agent"),
-		AgentView:                  buildPermission(handle, "system", "agent", "view"),
-		UserType:                   buildPermission(handle, "system", "usertype"),
-		UserTypeView:               buildPermission(handle, "system", "usertype", "view"),
-		AgentType:                  buildPermission(handle, "system", "agenttype"),
-		AgentTypeView:              buildPermission(handle, "system", "agenttype", "view"),
-		NotificationTemplate:       buildPermission(handle, "system", "notificationtemplate"),
-		NotificationTemplateView:   buildPermission(handle, "system", "notificationtemplate", "view"),
-		FlowView:                   buildPermission(handle, "system", "flow", catalogActionView),
-		FlowCreate:                 buildPermission(handle, "system", "flow", catalogActionCreate),
-		FlowUpdate:                 buildPermission(handle, "system", "flow", catalogActionUpdate),
-		FlowDelete:                 buildPermission(handle, "system", "flow", catalogActionDelete),
-		OUCreate:                   buildPermission(handle, "system", "ou", catalogActionCreate),
-		OUUpdate:                   buildPermission(handle, "system", "ou", catalogActionUpdate),
-		OUDelete:                   buildPermission(handle, "system", "ou", catalogActionDelete),
-		UserCreate:                 buildPermission(handle, "system", "user", catalogActionCreate),
-		UserUpdate:                 buildPermission(handle, "system", "user", catalogActionUpdate),
-		UserDelete:                 buildPermission(handle, "system", "user", catalogActionDelete),
-		GroupCreate:                buildPermission(handle, "system", "group", catalogActionCreate),
-		GroupUpdate:                buildPermission(handle, "system", "group", catalogActionUpdate),
-		GroupDelete:                buildPermission(handle, "system", "group", catalogActionDelete),
-		AgentCreate:                buildPermission(handle, "system", "agent", catalogActionCreate),
-		AgentUpdate:                buildPermission(handle, "system", "agent", catalogActionUpdate),
-		AgentDelete:                buildPermission(handle, "system", "agent", catalogActionDelete),
-		UserTypeCreate:             buildPermission(handle, "system", "usertype", catalogActionCreate),
-		UserTypeUpdate:             buildPermission(handle, "system", "usertype", catalogActionUpdate),
-		UserTypeDelete:             buildPermission(handle, "system", "usertype", catalogActionDelete),
-		AgentTypeCreate:            buildPermission(handle, "system", "agenttype", catalogActionCreate),
-		AgentTypeUpdate:            buildPermission(handle, "system", "agenttype", catalogActionUpdate),
-		AgentTypeDelete:            buildPermission(handle, "system", "agenttype", catalogActionDelete),
-		NotificationTemplateCreate: buildPermission(handle, "system", "notificationtemplate", catalogActionCreate),
-		NotificationTemplateUpdate: buildPermission(handle, "system", "notificationtemplate", catalogActionUpdate),
-		NotificationTemplateDelete: buildPermission(handle, "system", "notificationtemplate", catalogActionDelete),
-		RoleView:                   buildPermission(handle, "system", "role", catalogActionView),
-		RoleCreate:                 buildPermission(handle, "system", "role", catalogActionCreate),
-		RoleUpdate:                 buildPermission(handle, "system", "role", catalogActionUpdate),
-		RoleDelete:                 buildPermission(handle, "system", "role", catalogActionDelete),
-		ResourceServerView:         buildPermission(handle, "system", "rs", catalogActionView),
-		ResourceServerCreate:       buildPermission(handle, "system", "rs", catalogActionCreate),
-		ResourceServerUpdate:       buildPermission(handle, "system", "rs", catalogActionUpdate),
-		ResourceServerDelete:       buildPermission(handle, "system", "rs", catalogActionDelete),
-		ConnectionView:             buildPermission(handle, "system", "connection", catalogActionView),
-		ConnectionCreate:           buildPermission(handle, "system", "connection", catalogActionCreate),
-		ConnectionUpdate:           buildPermission(handle, "system", "connection", catalogActionUpdate),
-		ConnectionDelete:           buildPermission(handle, "system", "connection", catalogActionDelete),
-		VCView:                     buildPermission(handle, "system", "vc", catalogActionView),
-		VCCreate:                   buildPermission(handle, "system", "vc", catalogActionCreate),
-		VCUpdate:                   buildPermission(handle, "system", "vc", catalogActionUpdate),
-		VCDelete:                   buildPermission(handle, "system", "vc", catalogActionDelete),
-		ProjectView:                buildPermission(handle, "system", "project", catalogActionView),
-		ProjectCreate:              buildPermission(handle, "system", "project", catalogActionCreate),
-		ProjectUpdate:              buildPermission(handle, "system", "project", catalogActionUpdate),
-		ProjectDelete:              buildPermission(handle, "system", "project", catalogActionDelete),
-		DesignView:                 buildPermission(handle, "system", "design", catalogActionView),
-		DesignCreate:               buildPermission(handle, "system", "design", catalogActionCreate),
-		DesignUpdate:               buildPermission(handle, "system", "design", catalogActionUpdate),
-		DesignDelete:               buildPermission(handle, "system", "design", catalogActionDelete),
-		I18nView:                   buildPermission(handle, "system", "i18n", catalogActionView),
-		I18nCreate:                 buildPermission(handle, "system", "i18n", catalogActionCreate),
-		I18nUpdate:                 buildPermission(handle, "system", "i18n", catalogActionUpdate),
-		I18nDelete:                 buildPermission(handle, "system", "i18n", catalogActionDelete),
-		GatewayView:                buildPermission(handle, "system", "gateway", catalogActionView),
-		GatewayCreate:              buildPermission(handle, "system", "gateway", catalogActionCreate),
-		GatewayUpdate:              buildPermission(handle, "system", "gateway", catalogActionUpdate),
-		GatewayDelete:              buildPermission(handle, "system", "gateway", catalogActionDelete),
-		ServerConfigView:           buildPermission(handle, "system", "serverconfig", catalogActionView),
-		ServerConfigUpdate:         buildPermission(handle, "system", "serverconfig", catalogActionUpdate),
-		ConfigVersionView:          buildPermission(handle, "system", "configversion", catalogActionView),
-		ConfigVersionCreate:        buildPermission(handle, "system", "configversion", catalogActionCreate),
-		AuthzDetailView:            buildPermission(handle, "system", "authzdetail", catalogActionView),
-		AuthzDetailCreate:          buildPermission(handle, "system", "authzdetail", catalogActionCreate),
-		AuthzDetailUpdate:          buildPermission(handle, "system", "authzdetail", catalogActionUpdate),
-		AuthzDetailDelete:          buildPermission(handle, "system", "authzdetail", catalogActionDelete),
-		AppView:                    buildPermission(handle, "system", "app", catalogActionView),
-		AppCreate:                  buildPermission(handle, "system", "app", catalogActionCreate),
-		AppUpdate:                  buildPermission(handle, "system", "app", catalogActionUpdate),
-		AppDelete:                  buildPermission(handle, "system", "app", catalogActionDelete),
-	}
-	for _, entry := range systemCatalog {
-		p.Catalog = append(p.Catalog, buildPermission(handle, "system", string(entry.resource)))
-		for _, action := range entry.actions {
-			p.Catalog = append(p.Catalog, buildPermission(handle, "system", string(entry.resource), action))
-		}
-	}
+// activatePermissions makes p the active permission set and rebuilds the action, route and MCP tool
+// maps from it. Each plane's initializer calls it once at startup, before any service or middleware
+// uses permissions.
+func activatePermissions(p *SystemPermissions) {
 	sysPerms = p
 
 	actionPermissionMap = map[Action]string{
@@ -708,13 +609,6 @@ func InitSystemPermissions(handle string) {
 		ActionUpdateAuthzDetail: p.AuthzDetailUpdate,
 		ActionDeleteAuthzDetail: p.AuthzDetailDelete,
 		ActionListAuthzDetails:  p.AuthzDetailView,
-
-		// Project actions.
-		ActionCreateProject: p.ProjectCreate,
-		ActionReadProject:   p.ProjectView,
-		ActionUpdateProject: p.ProjectUpdate,
-		ActionDeleteProject: p.ProjectDelete,
-		ActionListProjects:  p.ProjectView,
 	}
 
 	apiPermissionEntries = []apiPermissionEntry{
@@ -730,6 +624,10 @@ func InitSystemPermissions(handle string) {
 		{"POST /register/passkey/**", ""},
 		// MCP checks each tool call against the permission the tool is mapped to, so a token reaches it as its caller.
 		{"* /mcp/**", ""},
+		// Flow execution is public. A token holding the administration flow permission reaches the flow as
+		// its caller, so an administration flow can authorize it; any other token is handed on as a
+		// runtime caller.
+		{"POST /flow/execute", p.AdministrationFlow},
 
 		// Organization unit APIs. "/tree/{path...}" addresses an organization unit by its handle path.
 		{"GET /organization-units", p.OUView},
@@ -919,13 +817,6 @@ func InitSystemPermissions(handle string) {
 		{"PUT /authorization-detail-types/**", p.AuthzDetailUpdate},
 		{"DELETE /authorization-detail-types/**", p.AuthzDetailDelete},
 
-		// Project APIs.
-		{"GET /projects", p.ProjectView},
-		{"POST /projects", p.ProjectCreate},
-		{"GET /projects/**", p.ProjectView},
-		{"PUT /projects/**", p.ProjectUpdate},
-		{"DELETE /projects/**", p.ProjectDelete},
-
 		// Application APIs. A sharing policy is part of the application it governs, so changing one
 		// updates the application. Sharing policy rules are listed before the "**" rules.
 		{"GET /applications", p.AppView},
@@ -978,8 +869,11 @@ func InitSystemPermissions(handle string) {
 
 		// User type tools.
 		"list_user_types": p.UserTypeView,
-		// Agent tools, at the permissions of the agent API they act through. execute_flow stays root: only a
-		// caller holding root may start an administration flow by ID.
+		// Flow tools. execute_flow starts an administration flow by ID, which requires the administration
+		// flow permission.
+		"execute_flow": p.AdministrationFlow,
+
+		// Agent tools, at the permissions of the agent API they act through.
 		"list_agents":              p.AgentView,
 		"get_agent":                p.AgentView,
 		"onboard_agent":            p.AgentCreate,
@@ -1003,12 +897,6 @@ func InitSystemPermissions(handle string) {
 		"get_group":                p.GroupView,
 		"create_group":             p.GroupCreate,
 		"update_group_memberships": p.GroupUpdate,
-
-		// Project tools.
-		"list_projects":     p.ProjectView,
-		"get_project_by_id": p.ProjectView,
-		"create_project":    p.ProjectCreate,
-		"update_project":    p.ProjectUpdate,
 
 		// Flow tools.
 		"list_flows":         p.FlowView,
@@ -1051,16 +939,41 @@ func InitSystemPermissions(handle string) {
 		"create_application":           p.AppCreate,
 		"update_application":           p.AppUpdate,
 	}
+
+	// Only the Control Plane serves projects. A plane that declares no project permission leaves the
+	// project actions, APIs and tools out, so they require the root permission.
+	if p.ProjectView != "" {
+		maps.Copy(actionPermissionMap, map[Action]string{
+			ActionCreateProject: p.ProjectCreate,
+			ActionReadProject:   p.ProjectView,
+			ActionUpdateProject: p.ProjectUpdate,
+			ActionDeleteProject: p.ProjectDelete,
+			ActionListProjects:  p.ProjectView,
+		})
+		apiPermissionEntries = append(apiPermissionEntries,
+			apiPermissionEntry{"GET /projects", p.ProjectView},
+			apiPermissionEntry{"POST /projects", p.ProjectCreate},
+			apiPermissionEntry{"GET /projects/**", p.ProjectView},
+			apiPermissionEntry{"PUT /projects/**", p.ProjectUpdate},
+			apiPermissionEntry{"DELETE /projects/**", p.ProjectDelete},
+		)
+		maps.Copy(mcpToolPermissions, map[string]string{
+			"list_projects":     p.ProjectView,
+			"get_project_by_id": p.ProjectView,
+			"create_project":    p.ProjectCreate,
+			"update_project":    p.ProjectUpdate,
+		})
+	}
 }
 
 // GetSystemPermissions returns the active system permissions.
-// Returns nil if InitSystemPermissions has not been called.
+// Returns nil if no plane's permissions have been initialized.
 func GetSystemPermissions() *SystemPermissions {
 	return sysPerms
 }
 
 // GetSystemRootPermission returns the root system permission string.
-// It panics if InitSystemPermissions has not been called, which fails closed
+// It panics if no plane's permissions have been initialized, which fails closed
 // rather than allowing unauthenticated access.
 func GetSystemRootPermission() string {
 	return sysPerms.Root
@@ -1070,7 +983,7 @@ func GetSystemRootPermission() string {
 
 // actionPermissionMap maps each system action to the minimum permission required to perform it.
 // Actions not present in this map default to requiring the root system permission.
-// Rebuilt by InitSystemPermissions at startup.
+// Rebuilt by activatePermissions at startup.
 var actionPermissionMap map[Action]string
 
 // ---- API → Permission map ----
@@ -1090,14 +1003,14 @@ type apiPermissionEntry struct {
 //   - "**" matches zero or more path segments; only valid as the final component
 //     after "/" (e.g., "GET /users/me/**" covers all sub-paths of /users/me).
 //
-// Rebuilt by InitSystemPermissions at startup.
+// Rebuilt by activatePermissions at startup.
 var apiPermissionEntries []apiPermissionEntry
 
 // ---- MCP tool → Permission map ----
 
 // mcpToolPermissions maps each MCP tool name to the minimum permission required to call it.
 // Tools not present in this map default to requiring the root system permission.
-// Rebuilt by InitSystemPermissions at startup.
+// Rebuilt by activatePermissions at startup.
 var mcpToolPermissions map[string]string
 
 // ResolveMCPToolPermission returns the minimum permission required to call the named MCP tool.
@@ -1126,7 +1039,7 @@ func HasSystemPermission(permissions []string) bool {
 }
 
 // HasAnySystemPermission reports whether permissions include the root system permission or any permission
-// under it.
+// under it. On the data plane the organization root and any permission under it count as well.
 func HasAnySystemPermission(permissions []string) bool {
 	if sysPerms == nil {
 		return false
@@ -1135,8 +1048,21 @@ func HasAnySystemPermission(permissions []string) bool {
 		if p == sysPerms.Root || strings.HasPrefix(p, sysPerms.Root+":") {
 			return true
 		}
+		if sysPerms.Org != "" && (p == sysPerms.Org || strings.HasPrefix(p, sysPerms.Org+":")) {
+			return true
+		}
 	}
 	return false
+}
+
+// HasSufficientSystemPermission reports whether permissions satisfy a permission of the System resource
+// server. It applies HasSufficientPermission and additionally lets the root system permission satisfy
+// every requirement, so that on the data plane it covers the organization tree as well as its own.
+func HasSufficientSystemPermission(permissions []string, required string) bool {
+	if HasSufficientPermission(permissions, required) {
+		return true
+	}
+	return required != "" && HasSystemPermission(permissions)
 }
 
 // HasSufficientPermission returns true if any permission in userPermissions satisfies

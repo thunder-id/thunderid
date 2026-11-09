@@ -320,10 +320,10 @@ func (suite *GroupDeclarativeAPITestSuite) TestCreateGroupConflictingWithDeclara
 func (suite *GroupDeclarativeAPITestSuite) TestDeclarativeUserInheritsPermissionThroughNestedGroups() {
 	const (
 		rsIdentifier = "https://declarative-group-test.example.com/inherit"
-		grantedScope = "system:group:view"
+		grantedScope = "org:group:view"
 	)
 
-	rsID, err := testutils.CreateSystemScopedResourceServer(
+	rsID, err := testutils.CreateOrgScopedResourceServer(
 		declGroupOUID, "Declarative Inheritance RS", rsIdentifier, "group")
 	suite.Require().NoError(err)
 	defer func() {

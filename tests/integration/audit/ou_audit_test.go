@@ -74,7 +74,7 @@ func (ts *AuditLogTestSuite) TestEveryOrganizationUnitPathRecordsItsOutcome() {
 	parent := ts.createOrganizationUnit("ou-parent")
 	child := ts.createChildOrganizationUnit("ou-child", parent)
 	sibling := ts.createOrganizationUnit("ou-sibling")
-	manager := ts.createScopedManager("ou-mgr", []string{"ou"}, []string{"system:ou"})
+	manager := ts.createScopedManager("ou-mgr", []string{"ou"}, []string{"org:ou"})
 	managerClient := manager.client
 	managerRef := testutils.AuditRef{Type: "user", ID: manager.id}
 	missing := unusedID()

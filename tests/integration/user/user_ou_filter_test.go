@@ -266,7 +266,7 @@ func (ts *UserOUFilterTestSuite) importUser(name, policies string) {
 	ts.users[name] = imported.Results[0].ResourceID
 }
 
-// childAdminClient creates a child user holding system:user in the child only, and returns a client
+// childAdminClient creates a child user holding org:user in the child only, and returns a client
 // carrying its token.
 func (ts *UserOUFilterTestSuite) childAdminClient() *http.Client {
 	ts.T().Helper()

@@ -350,14 +350,17 @@ func (s *UserToolsTestSuite) TestCreateUser_RefusesATypeThatRequiresACredential(
 
 // Every user tool needs the user permission its API needs, so none falls back to root by accident.
 func (s *UserToolsTestSuite) TestToolsRequireTheUserAPIPermissions() {
-	security.InitSystemPermissions("")
-	p := security.GetSystemPermissions()
 	tools, err := s.session.ListTools(context.Background(), nil)
 	s.Require().NoError(err)
 	s.Require().NotEmpty(tools.Tools)
-	for _, registered := range tools.Tools {
-		s.Contains([]string{p.UserView, p.UserCreate, p.UserUpdate},
-			security.ResolveMCPToolPermission(registered.Name),
-			"tool %q must require a user permission", registered.Name)
-	}
+	security.ForEachPermissionPlaneForTest(func(plane string) {
+		s.Run(plane, func() {
+			p := security.GetSystemPermissions()
+			for _, registered := range tools.Tools {
+				s.Contains([]string{p.UserView, p.UserCreate, p.UserUpdate},
+					security.ResolveMCPToolPermission(registered.Name),
+					"tool %q must require a user permission", registered.Name)
+			}
+		})
+	})
 }

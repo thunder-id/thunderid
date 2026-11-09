@@ -19,10 +19,10 @@ import (
 //
 // Permission model:
 //
-//	system:agent      → create, update, delete agents
-//	system:agent:view → list, get agents and their groups and roles (implied by system:agent)
+//	org:agent      → create, update, delete agents
+//	org:agent:view → list, get agents and their groups and roles (implied by org:agent)
 //
-// An agent-manager living in OU1 holds the system:agent permission. The suite verifies that:
+// An agent-manager living in OU1 holds the org:agent permission. The suite verifies that:
 //
 //   - Read operations on agents in OU1 are allowed (200)
 //   - Read operations on agents in OU2 (sibling) are denied (403)
@@ -60,7 +60,7 @@ type AgentAuthzTestSuite struct {
 	// The OU1 application the manager signs in through.
 	signInAppID string
 
-	// HTTP client carrying the agent-manager's system:agent scoped token
+	// HTTP client carrying the agent-manager's org:agent scoped token
 	agentAdminClient *http.Client
 }
 
@@ -191,22 +191,22 @@ func (ts *AgentAuthzTestSuite) SetupSuite() {
 	ts.Require().NoError(err, "create target agent in OU2")
 	ts.targetAgentOU2ID = targetOU2ID
 
-	// ---- 6. Create a custom resource server declaring the fine-grained system scopes ----
-	// The product ships only the root "system" scope; this reproduces "system:agent" and
-	// "system:agenttype:view" so the suite can verify resource-level enforcement when configured.
-	systemRSID, err := testutils.CreateSystemScopedResourceServer(
+	// ---- 6. Create a custom resource server declaring the fine-grained org scopes ----
+	// This reproduces the Data Plane permissions "org:agent" and
+	// "org:agenttype:view" so the suite can verify resource-level enforcement when configured.
+	systemRSID, err := testutils.CreateOrgScopedResourceServer(
 		ts.agentOU1ID, "Authz Test RS (agent)", scopedRSIdentifier, "agent", "agenttype")
 	ts.Require().NoError(err, "create scoped resource server")
 	ts.scopedRSID = systemRSID
 
-	// ---- 7. Create a role with system:agent permission and assign to the agent-manager ----
+	// ---- 7. Create a role with org:agent permission and assign to the agent-manager ----
 	roleID, err := testutils.CreateRole(testutils.Role{
 		Name: agentMgrRoleName,
 		OUID: ts.agentOU1ID,
 		Permissions: []testutils.ResourcePermissions{
 			{
 				ResourceServerID: systemRSID,
-				Permissions:      []string{"system:agent", "system:agenttype:view"},
+				Permissions:      []string{"org:agent", "org:agenttype:view"},
 			},
 		},
 		Assignments: []testutils.Assignment{
@@ -222,7 +222,7 @@ func (ts *AgentAuthzTestSuite) SetupSuite() {
 	tokenResp, err := testutils.ObtainAccessTokenWithPassword(
 		agentAuthzClientID,
 		testutils.OUSignInRedirectURI,
-		"system system:agent system:agenttype:view",
+		"system org:agent org:agenttype:view",
 		agentMgrUsername,
 		agentMgrPassword,
 		true,
@@ -325,7 +325,7 @@ func (ts *AgentAuthzTestSuite) doAgent(method, path string, body []byte) *http.R
 }
 
 // ---------------------------------------------------------------------------
-// Tests — READ operations (system:agent:view implied by system:agent)
+// Tests — READ operations (org:agent:view implied by org:agent)
 // ---------------------------------------------------------------------------
 
 // TestListAgents verifies the list contains agents from the accessible OU only.
@@ -387,7 +387,7 @@ func (ts *AgentAuthzTestSuite) TestGetAgentRolesInOtherOU() {
 }
 
 // ---------------------------------------------------------------------------
-// Tests — WRITE operations (system:agent)
+// Tests — WRITE operations (org:agent)
 // ---------------------------------------------------------------------------
 
 // TestCreateAgentInOwnOU verifies the agent-manager can create an agent in their own OU.

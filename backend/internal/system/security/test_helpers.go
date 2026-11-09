@@ -35,3 +35,23 @@ func WithSecurityContextTest(ctx context.Context, authCtx *SecurityContext) cont
 	}
 	return context.WithValue(ctx, securityContextKey, authCtx)
 }
+
+// ForEachPermissionPlaneForTest activates each plane's permission set in turn, the control plane's and
+// then the data plane's, and calls run with the plane's name while it is active. It restores the control
+// plane's set when it returns.
+func ForEachPermissionPlaneForTest(run func(plane string)) {
+	if !testing.Testing() {
+		panic("only for tests!")
+	}
+	defer InitControlPlanePermissions("")
+	for _, plane := range []struct {
+		name string
+		init func(handle string)
+	}{
+		{"ControlPlane", InitControlPlanePermissions},
+		{"DataPlane", InitDataPlanePermissions},
+	} {
+		plane.init("")
+		run(plane.name)
+	}
+}

@@ -628,6 +628,9 @@ function prepare_cp_backend_for_packaging() {
     cp -r "$BACKEND_DIR/bootstrap" "$DIST_DIR/$CP_PRODUCT_FOLDER/"
     # Never ship the dev-only CORS seed that `run` stages into the source bootstrap dir.
     rm -f "$DIST_DIR/$CP_PRODUCT_FOLDER/bootstrap/03-dev-server-configurations.yaml"
+    # Ship the Control Plane resource server for the identity provider that signs operators into the
+    # Control Plane. It sits outside bootstrap/ because the Control Plane must not import it.
+    cp -r "$CPSERVER_DIR/idp-bootstrap" "$DIST_DIR/$CP_PRODUCT_FOLDER/"
 
     # Key material is not generated into the distribution; setup-cp.sh generates it per deployment.
 }
@@ -932,11 +935,10 @@ function stage_quickstart_pack() {
 
     # The Control Plane's console signs in through auth-dp as a trusted issuer, and asks for a token
     # for the Control Plane's own URL (the RFC 8707 "resource" parameter). auth-dp refuses a resource
-    # no resource server is registered for, so its System resource server, whose permissions the
-    # admin role already holds, is identified by that URL instead of the default Data Plane one.
-    sed -i.bak "s#^identifier: https://localhost:8090/mcp\$#identifier: https://localhost:$QUICKSTART_CP_PORT#" \
-        "$auth_dp_dir/bootstrap/01-default-resources.yaml"
-    rm -f "$auth_dp_dir/bootstrap/01-default-resources.yaml.bak"
+    # no resource server is registered for, so it imports the Control Plane resource server, which
+    # is identified by that URL and declares the permissions the Control Plane enforces. The
+    # quickstart's 05-quickstart-cp-administrator.yaml grants its system root to the admin group.
+    cp "$CPSERVER_DIR/idp-bootstrap"/*.yaml "$auth_dp_dir/bootstrap/"
     rm -rf "${auth_dp_dir:?}/$CONSOLE_APP_DIST_DIR"
 
     # Layer the Data Plane's own admin console application onto the managed dp and the cp. It is
@@ -1028,7 +1030,7 @@ function stage_quickstart_pack() {
         echo "  allow_private_addresses: true"
     } >> "$cp_dir/deployment.yaml"
 
-    assert_patched "$auth_dp_dir/bootstrap/01-default-resources.yaml" "identifier: https://localhost:$QUICKSTART_CP_PORT"
+    assert_patched "$auth_dp_dir/bootstrap/control-plane-resource-server.yaml" "identifier: https://localhost:$QUICKSTART_CP_PORT"
     assert_patched "$auth_dp_dir/deployment.yaml" "port: $QUICKSTART_AUTH_DP_PORT"
     assert_patched "$dp_dir/bootstrap/01-default-resources.yaml" "Service Desk Administrators"
     assert_patched "$cp_dir/bootstrap/01-default-resources.yaml" "Service Desk Administrators"

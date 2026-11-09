@@ -20,16 +20,16 @@ import (
 // delegates every mutation to internal/user and internal/group, which own
 // the actual OU boundary check.
 //
-// The product ships only the root "system" scope by default. This suite creates a custom
+// This suite creates a custom
 // resource server (mirroring backend/internal/system/security/permissions.go's naming) that
 // declares the fine-grained scopes actually exercised:
 //
-//	system:user            → create, replace, delete SCIM users
-//	system:user:view       → list, get SCIM users
-//	system:usertype:view   → required to resolve a usertype's own schema
+//	org:user            → create, replace, delete SCIM users
+//	org:user:view       → list, get SCIM users
+//	org:usertype:view   → required to resolve a usertype's own schema
 //	                          before create/replace can proceed
-//	system:group           → create, replace, patch, delete SCIM groups
-//	system:group:view      → list, get SCIM groups
+//	org:group           → create, replace, patch, delete SCIM groups
+//	org:group:view      → list, get SCIM groups
 //
 // Fixture topology:
 //
@@ -72,7 +72,7 @@ type SCIMAuthzTestSuite struct {
 	deletableGroupOU1ID string
 	targetGroupOU2ID    string
 
-	// scopedClient carries the scim-manager's system:user/system:group scoped
+	// scopedClient carries the scim-manager's org:user/org:group scoped
 	// token, restricted to OU1.
 	scopedClient *http.Client
 }
@@ -200,11 +200,11 @@ func (ts *SCIMAuthzTestSuite) SetupSuite() {
 	ts.Require().NoError(err, "create target group in OU2")
 	ts.targetGroupOU2ID = targetGroupOU2ID
 
-	// The product ships only the root "system" scope; this reproduces the fine-grained
-	// system:user/system:group/system:usertype:view scopes so the suite can verify
+	// This reproduces the fine-grained Data Plane
+	// org:user/org:group/org:usertype:view scopes so the suite can verify
 	// resource-level enforcement when configured (see tests/integration/user's equivalent).
 	const scopedRSIdentifier = "https://authz-test.example.com/scim"
-	systemRSID, err := testutils.CreateSystemScopedResourceServer(
+	systemRSID, err := testutils.CreateOrgScopedResourceServer(
 		ts.ou1ID, "Authz Test RS (scim)", scopedRSIdentifier, "user", "usertype", "group")
 	ts.Require().NoError(err, "create scoped resource server")
 	ts.scopedRSID = systemRSID
@@ -216,8 +216,8 @@ func (ts *SCIMAuthzTestSuite) SetupSuite() {
 			{
 				ResourceServerID: systemRSID,
 				Permissions: []string{
-					"system:user", "system:user:view", "system:usertype:view",
-					"system:group", "system:group:view",
+					"org:user", "org:user:view", "org:usertype:view",
+					"org:group", "org:group:view",
 				},
 			},
 		},
@@ -229,7 +229,7 @@ func (ts *SCIMAuthzTestSuite) SetupSuite() {
 	ts.roleID = roleID
 
 	tokenResp, err := ts.signIn.ObtainAccessToken(ts.ou1ID,
-		"system system:user system:user:view system:usertype:view system:group system:group:view",
+		"system org:user org:user:view org:usertype:view org:group org:group:view",
 		scimAuthzMgrUsername, scimAuthzMgrPassword, scopedRSIdentifier)
 	ts.Require().NoError(err, "obtain scim-manager token")
 	ts.Require().NotEmpty(tokenResp.AccessToken, "scim-manager token must be non-empty")
@@ -337,7 +337,7 @@ func (ts *SCIMAuthzTestSuite) buildUserPayload(extensionURN, email string) []byt
 }
 
 // ---------------------------------------------------------------------------
-// Tests — SCIM Users, READ (system:user:view)
+// Tests — SCIM Users, READ (org:user:view)
 // ---------------------------------------------------------------------------
 
 // TestListUsersOnlyReturnsOwnOU verifies listing users only returns users from the caller's own OU.
@@ -369,7 +369,7 @@ func (ts *SCIMAuthzTestSuite) TestGetUserInOtherOUForbidden() {
 }
 
 // ---------------------------------------------------------------------------
-// Tests — SCIM Users, WRITE (system:user)
+// Tests — SCIM Users, WRITE (org:user)
 // ---------------------------------------------------------------------------
 
 // TestCreateUserInOwnOUAllowed verifies the caller can create a user in their own OU.
@@ -421,7 +421,7 @@ func (ts *SCIMAuthzTestSuite) TestDeleteUserInOtherOUForbidden() {
 }
 
 // ---------------------------------------------------------------------------
-// Tests — SCIM Groups, READ (system:group:view)
+// Tests — SCIM Groups, READ (org:group:view)
 // ---------------------------------------------------------------------------
 
 // TestListGroupsOnlyReturnsOwnOU verifies listing groups only returns groups from the caller's own OU.
@@ -453,7 +453,7 @@ func (ts *SCIMAuthzTestSuite) TestGetGroupInOtherOUForbidden() {
 }
 
 // ---------------------------------------------------------------------------
-// Tests — SCIM Groups, WRITE (system:group)
+// Tests — SCIM Groups, WRITE (org:group)
 // ---------------------------------------------------------------------------
 
 // TestCreateGroupAlwaysLandsInOwnOU documents that SCIM Group create carries

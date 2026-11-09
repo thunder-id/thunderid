@@ -15,7 +15,7 @@ import (
 
 const ouAdminPassword = "MCPOUAdmin@123"
 
-// ouAdminToken signs in an administrator holding the system permission in a new organization unit under
+// ouAdminToken signs in an administrator holding the org permission in a new organization unit under
 // parentID, and returns its MCP token and its unit. Everything it creates is deleted when the test ends.
 func (ts *MCPTestSuite) ouAdminToken(parentID string) (string, string) {
 	suffix := time.Now().UnixNano()
@@ -51,7 +51,7 @@ func (ts *MCPTestSuite) ouAdminToken(parentID string) (string, string) {
 		Name: fmt.Sprintf("mcp-ou-admin-role-%d", suffix),
 		OUID: ouID,
 		Permissions: []testutils.ResourcePermissions{
-			{ResourceServerID: ts.resourceServerID, Permissions: []string{systemActionHandle}},
+			{ResourceServerID: ts.resourceServerID, Permissions: []string{orgActionHandle}},
 		},
 		Assignments: []testutils.Assignment{{ID: userID, Type: "user"}},
 	})
@@ -60,7 +60,7 @@ func (ts *MCPTestSuite) ouAdminToken(parentID string) (string, string) {
 
 	var signIn testutils.OUSignInApps
 	ts.T().Cleanup(func() { _ = signIn.DeleteAll() })
-	token, err := signIn.ObtainAccessToken(ouID, systemActionHandle, username, ouAdminPassword,
+	token, err := signIn.ObtainAccessToken(ouID, orgActionHandle, username, ouAdminPassword,
 		mcpResourceIdentifier)
 	ts.Require().NoError(err)
 	ts.Require().NotEmpty(token.AccessToken)

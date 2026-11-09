@@ -59,7 +59,7 @@ func TestDefaultGuardTestSuite(t *testing.T) {
 
 func (suite *DefaultGuardTestSuite) SetupTest() {
 	suite.mockJWT = jwtmock.NewJWTServiceInterfaceMock(suite.T())
-	security.InitSystemPermissions("")
+	security.InitControlPlanePermissions("")
 }
 
 func (suite *DefaultGuardTestSuite) TearDownTest() {
@@ -122,32 +122,47 @@ func (suite *DefaultGuardTestSuite) TestDefaultGuard_UnconfiguredAudienceUsesDer
 }
 
 // The endpoint admits any caller holding a system permission, since each tool call is checked against
-// its own permission; a caller holding none is refused.
+// its own permission; a caller holding none is refused. On the data plane the organization tree counts
+// as well; the control plane has none.
 func (suite *DefaultGuardTestSuite) TestDefaultGuard_AdmitsAnySystemPermission() {
+	statuses := map[string]map[string]int{
+		"ControlPlane": {
+			"system:user:view": http.StatusOK,
+			"org:user:view":    http.StatusForbidden,
+			"orders:read":      http.StatusForbidden,
+		},
+		"DataPlane": {
+			"system":        http.StatusOK,
+			"org":           http.StatusOK,
+			"org:user:view": http.StatusOK,
+			"orders:read":   http.StatusForbidden,
+		},
+	}
 	suite.initRuntime(nil)
 	guard, _ := DefaultGuard(suite.mockJWT, &fakeRevocationEnforcer{})
 
-	for scope, status := range map[string]int{
-		"system:user:view": http.StatusOK,
-		"orders:read":      http.StatusForbidden,
-	} {
-		token := accessTokenWithScope(scope)
-		suite.mockJWT.On("VerifyJWT", mock.Anything, token, mock.Anything, "").Return(nil)
+	security.ForEachPermissionPlaneForTest(func(plane string) {
+		suite.Run(plane, func() {
+			for scope, status := range statuses[plane] {
+				token := accessTokenWithScope(scope)
+				suite.mockJWT.On("VerifyJWT", mock.Anything, token, mock.Anything, "").Return(nil).Maybe()
 
-		req := httptest.NewRequest(http.MethodPost, MCPEndpointPath, nil)
-		req.Header.Set("Authorization", "Bearer "+token)
-		rec := httptest.NewRecorder()
-		guard(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })).
-			ServeHTTP(rec, req)
+				req := httptest.NewRequest(http.MethodPost, MCPEndpointPath, nil)
+				req.Header.Set("Authorization", "Bearer "+token)
+				rec := httptest.NewRecorder()
+				guard(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })).
+					ServeHTTP(rec, req)
 
-		suite.Equal(status, rec.Code, scope)
-		if status == http.StatusForbidden {
-			challenge := rec.Header().Get("WWW-Authenticate")
-			suite.Contains(challenge, `error="insufficient_scope"`)
-			suite.Contains(challenge, `resource_metadata="`)
-			suite.NotContains(challenge, "scope=\"system\"")
-		}
-	}
+				suite.Equal(status, rec.Code, scope)
+				if status == http.StatusForbidden {
+					challenge := rec.Header().Get("WWW-Authenticate")
+					suite.Contains(challenge, `error="insufficient_scope"`)
+					suite.Contains(challenge, `resource_metadata="`)
+					suite.NotContains(challenge, "scope=\"system\"")
+				}
+			}
+		})
+	})
 }
 
 // The REST gate marks an anonymous request on the public /mcp path as a runtime caller; the guard

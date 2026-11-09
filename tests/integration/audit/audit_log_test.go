@@ -169,7 +169,7 @@ func (ts *AuditLogTestSuite) TestAnUpdateOfAMissingUserIsRecordedAsFailed() {
 	ts.Equal(map[string]string{"result": "failed", "reason": "usr_1003"}, line.Outcome)
 }
 
-// A user manager scoped to one organization unit passes the security layer with system:user, and the
+// A user manager scoped to one organization unit passes the security layer with org:user, and the
 // user service refuses its delete of a user in a sibling unit, which is recorded as denied. The user
 // exists, so it is the subject.
 func (ts *AuditLogTestSuite) TestADeleteTheUserServiceRefusesIsRecordedAsDenied() {
@@ -666,12 +666,12 @@ func (ts *AuditLogTestSuite) createUser(ouID, userType, username, password strin
 }
 
 // createScopedUserManager creates a user manager in an organization unit of its own, named by name, who
-// holds system:user through a role, all removed when the test ends. It returns the manager's ID and a
+// holds org:user through a role, all removed when the test ends. It returns the manager's ID and a
 // client that calls with the manager's token.
 func (ts *AuditLogTestSuite) createScopedUserManager(name string) (string, *http.Client) {
 	ts.T().Helper()
 	manager := ts.createScopedManager(name, []string{"user", "usertype"},
-		[]string{"system:user", "system:usertype:view"})
+		[]string{"org:user", "org:usertype:view"})
 	return manager.id, manager.client
 }
 
@@ -695,7 +695,7 @@ func (ts *AuditLogTestSuite) createScopedManager(name string, handles, permissio
 	managerID := ts.createUser(ownOU, ownType, username, password)
 
 	identifier := "https://" + ts.prefix + name + ".audit.example.com/user"
-	rsID, err := testutils.CreateSystemScopedResourceServer(ownOU, "Audit Test RS "+ts.prefix+name, identifier,
+	rsID, err := testutils.CreateOrgScopedResourceServer(ownOU, "Audit Test RS "+ts.prefix+name, identifier,
 		handles...)
 	ts.Require().NoError(err)
 	ts.T().Cleanup(func() { _ = testutils.DeleteResourceServerWithChildren(rsID) })

@@ -117,9 +117,12 @@ resources:
   - name: System
     handle: system
     description: System resource
+  - name: Organization
+    handle: org
+    description: Resources of the organization unit the token names
   - name: Organization Units
     handle: ou
-    parent: system
+    parent: org
     description: Organization unit management
     actions:
       - name: View
@@ -132,7 +135,7 @@ resources:
         handle: delete
   - name: Users
     handle: user
-    parent: system
+    parent: org
     description: User management, including SCIM users
     actions:
       - name: View
@@ -145,7 +148,7 @@ resources:
         handle: delete
   - name: Groups
     handle: group
-    parent: system
+    parent: org
     description: Group management, including SCIM groups
     actions:
       - name: View
@@ -158,7 +161,7 @@ resources:
         handle: delete
   - name: Agents
     handle: agent
-    parent: system
+    parent: org
     description: Agent management
     actions:
       - name: View
@@ -171,7 +174,7 @@ resources:
         handle: delete
   - name: User Types
     handle: usertype
-    parent: system
+    parent: org
     description: User type management
     actions:
       - name: View
@@ -184,7 +187,7 @@ resources:
         handle: delete
   - name: Agent Types
     handle: agenttype
-    parent: system
+    parent: org
     description: Agent type management
     actions:
       - name: View
@@ -195,180 +198,6 @@ resources:
         handle: update
       - name: Delete
         handle: delete
-  - name: Notification Templates
-    handle: notificationtemplate
-    parent: system
-    description: Notification template management
-    actions:
-      - name: View
-        handle: view
-      - name: Create
-        handle: create
-      - name: Update
-        handle: update
-      - name: Delete
-        handle: delete
-  - name: Applications
-    handle: app
-    parent: system
-    description: Application management
-    actions:
-      - name: View
-        handle: view
-      - name: Create
-        handle: create
-      - name: Update
-        handle: update
-      - name: Delete
-        handle: delete
-  - name: Roles
-    handle: role
-    parent: system
-    description: Role and role assignment management
-    actions:
-      - name: View
-        handle: view
-      - name: Create
-        handle: create
-      - name: Update
-        handle: update
-      - name: Delete
-        handle: delete
-  - name: Resource Servers
-    handle: rs
-    parent: system
-    description: Resource server management
-    actions:
-      - name: View
-        handle: view
-      - name: Create
-        handle: create
-      - name: Update
-        handle: update
-      - name: Delete
-        handle: delete
-  - name: Connections
-    handle: connection
-    parent: system
-    description: Connection management
-    actions:
-      - name: View
-        handle: view
-      - name: Create
-        handle: create
-      - name: Update
-        handle: update
-      - name: Delete
-        handle: delete
-  - name: Flows
-    handle: flow
-    parent: system
-    description: Flow management
-    actions:
-      - name: View
-        handle: view
-      - name: Create
-        handle: create
-      - name: Update
-        handle: update
-      - name: Delete
-        handle: delete
-  - name: Verifiable Credentials
-    handle: vc
-    parent: system
-    description: Credential configuration, presentation definition and trust anchor management
-    actions:
-      - name: View
-        handle: view
-      - name: Create
-        handle: create
-      - name: Update
-        handle: update
-      - name: Delete
-        handle: delete
-  - name: Projects
-    handle: project
-    parent: system
-    description: Project management
-    actions:
-      - name: View
-        handle: view
-      - name: Create
-        handle: create
-      - name: Update
-        handle: update
-      - name: Delete
-        handle: delete
-  - name: Design
-    handle: design
-    parent: system
-    description: Theme and layout management
-    actions:
-      - name: View
-        handle: view
-      - name: Create
-        handle: create
-      - name: Update
-        handle: update
-      - name: Delete
-        handle: delete
-  - name: Translations
-    handle: i18n
-    parent: system
-    description: Translation management
-    actions:
-      - name: View
-        handle: view
-      - name: Create
-        handle: create
-      - name: Update
-        handle: update
-      - name: Delete
-        handle: delete
-  - name: Gateways
-    handle: gateway
-    parent: system
-    description: Gateway management
-    actions:
-      - name: View
-        handle: view
-      - name: Create
-        handle: create
-      - name: Update
-        handle: update
-      - name: Delete
-        handle: delete
-  - name: Authorization Detail Types
-    handle: authzdetail
-    parent: system
-    description: Authorization detail type management
-    actions:
-      - name: View
-        handle: view
-      - name: Create
-        handle: create
-      - name: Update
-        handle: update
-      - name: Delete
-        handle: delete
-  - name: Server Configuration
-    handle: serverconfig
-    parent: system
-    description: Server configuration management
-    actions:
-      - name: View
-        handle: view
-      - name: Update
-        handle: update
-  - name: Configuration Versions
-    handle: configversion
-    parent: system
-    description: Configuration version management
-    actions:
-      - name: View
-        handle: view
-      - name: Create
-        handle: create
 ---
 resource_type: flow
 id: 01900000-0000-7000-8000-000000000061
@@ -2225,6 +2054,7 @@ nodes:
   properties:
     requiredScopes:
     - system:user
+    - org:user
   executor:
     name: PermissionValidator
   onSuccess: user_type_resolver
@@ -6973,6 +6803,7 @@ nodes:
   properties:
     requiredScopes:
     - system:user
+    - org:user
   executor:
     name: PermissionValidator
   onSuccess: access_governance
@@ -7049,6 +6880,7 @@ nodes:
   properties:
     requiredScopes:
     - system:agent
+    - org:agent
   executor:
     name: PermissionValidator
   onSuccess: access_governance
@@ -7105,6 +6937,7 @@ nodes:
   properties:
     requiredScopes:
     - system:user
+    - org:user
   executor:
     name: PermissionValidator
   onSuccess: pre_suspend
@@ -7217,6 +7050,7 @@ nodes:
   properties:
     requiredScopes:
     - system:user
+    - org:user
   executor:
     name: PermissionValidator
   onSuccess: access_governance
@@ -7293,6 +7127,7 @@ nodes:
   properties:
     requiredScopes:
     - system:agent
+    - org:agent
   executor:
     name: PermissionValidator
   onSuccess: pre_suspend
@@ -7405,6 +7240,7 @@ nodes:
   properties:
     requiredScopes:
     - system:agent
+    - org:agent
   executor:
     name: PermissionValidator
   onSuccess: access_governance
@@ -7461,6 +7297,7 @@ nodes:
   properties:
     requiredScopes:
     - system
+    - org
   executor:
     name: PermissionValidator
   onSuccess: pre_suspend
@@ -7573,6 +7410,7 @@ nodes:
   properties:
     requiredScopes:
     - system
+    - org
   executor:
     name: PermissionValidator
   onSuccess: access_governance

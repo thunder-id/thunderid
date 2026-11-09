@@ -380,14 +380,17 @@ func (s *GroupToolsTestSuite) TestListGroups_SearchIsPaged() {
 
 // Every group tool needs the group permission its API needs, so none falls back to root by accident.
 func (s *GroupToolsTestSuite) TestToolsRequireTheGroupAPIPermissions() {
-	security.InitSystemPermissions("")
-	p := security.GetSystemPermissions()
 	tools, err := s.session.ListTools(context.Background(), nil)
 	s.Require().NoError(err)
 	s.Require().NotEmpty(tools.Tools)
-	for _, registered := range tools.Tools {
-		s.Contains([]string{p.GroupView, p.GroupCreate, p.GroupUpdate},
-			security.ResolveMCPToolPermission(registered.Name),
-			"tool %q must require a group permission", registered.Name)
-	}
+	security.ForEachPermissionPlaneForTest(func(plane string) {
+		s.Run(plane, func() {
+			p := security.GetSystemPermissions()
+			for _, registered := range tools.Tools {
+				s.Contains([]string{p.GroupView, p.GroupCreate, p.GroupUpdate},
+					security.ResolveMCPToolPermission(registered.Name),
+					"tool %q must require a group permission", registered.Name)
+			}
+		})
+	})
 }

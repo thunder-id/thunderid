@@ -19,10 +19,10 @@ import (
 //
 // Permission model:
 //
-//	system:group      → create, update, delete groups
-//	system:group:view → list, get groups (implied by system:group)
+//	org:group      → create, update, delete groups
+//	org:group:view → list, get groups (implied by org:group)
 //
-// A user-manager living in OU1 holds the system:group permission. The suite
+// A user-manager living in OU1 holds the org:group permission. The suite
 // verifies that:
 //
 //   - Read operations on groups in OU1 are allowed (200)
@@ -53,7 +53,7 @@ type GroupAuthzTestSuite struct {
 	deletableGroupOU1ID string
 	targetGroupOU2ID    string
 
-	// Privileged fixture: a group conferring system:user, which the group-manager does not hold,
+	// Privileged fixture: a group conferring org:user, which the group-manager does not hold,
 	// plus a harmless group nested inside it to exercise the ancestor walk.
 	librarianGroupID  string
 	librarianRoleID   string
@@ -79,7 +79,7 @@ type GroupAuthzTestSuite struct {
 	declOUMgrRoleID string
 	declOUMgrClient *http.Client
 
-	// HTTP client carrying the user-manager's system:group scoped token
+	// HTTP client carrying the user-manager's org:group scoped token
 	groupAdminClient *http.Client
 
 	// The managers live outside the default OU, and a sign-in is bounded to its application's OU, so each
@@ -233,23 +233,23 @@ func (ts *GroupAuthzTestSuite) SetupSuite() {
 	ts.Require().NoError(err, "create target group in OU2")
 	ts.targetGroupOU2ID = targetOU2ID
 
-	// ---- 5. Create a custom resource server declaring the fine-grained system scopes ----
-	// The product ships only the root "system" scope; this reproduces "system:ou:view",
-	// "system:group" and "system:group:view" so the suite can verify resource-level enforcement
+	// ---- 5. Create a custom resource server declaring the fine-grained org scopes ----
+	// This reproduces the Data Plane permissions "org:ou:view",
+	// "org:group" and "org:group:view" so the suite can verify resource-level enforcement
 	// when configured.
-	systemRSID, err := testutils.CreateSystemScopedResourceServer(
+	systemRSID, err := testutils.CreateOrgScopedResourceServer(
 		ts.groupOU1ID, "Authz Test RS (group)", groupAuthzScopedRSID, "ou", "group", "user")
 	ts.Require().NoError(err, "create scoped resource server")
 	ts.scopedRSID = systemRSID
 
-	// ---- 6. Create a role with system:group permission and assign to the user-manager ----
+	// ---- 6. Create a role with org:group permission and assign to the user-manager ----
 	roleID, err := testutils.CreateRole(testutils.Role{
 		Name: groupMgrRoleName,
 		OUID: ts.groupOU1ID,
 		Permissions: []testutils.ResourcePermissions{
 			{
 				ResourceServerID: systemRSID,
-				Permissions:      []string{"system:ou:view", "system:group", "system:group:view"},
+				Permissions:      []string{"org:ou:view", "org:group", "org:group:view"},
 			},
 		},
 		Assignments: []testutils.Assignment{
@@ -261,7 +261,7 @@ func (ts *GroupAuthzTestSuite) SetupSuite() {
 
 	// ---- 7. Obtain a scoped access token for the user-manager ----
 	tokenResp, err := ts.signIn.ObtainAccessToken(ts.groupOU1ID,
-		"system:ou:view system:group system:group:view", groupMgrUsername, groupMgrPassword, groupAuthzScopedRSID)
+		"org:ou:view org:group org:group:view", groupMgrUsername, groupMgrPassword, groupAuthzScopedRSID)
 	ts.Require().NoError(err, "obtain group-manager token")
 	ts.Require().NotEmpty(tokenResp.AccessToken, "group-manager token must be non-empty")
 
@@ -281,14 +281,14 @@ func (ts *GroupAuthzTestSuite) SetupSuite() {
 	// The privileged group, created with the harmless group already nested inside it.
 	librarianID, err := testutils.CreateGroup(testutils.Group{
 		Name:        "authz-librarian-ou1",
-		Description: "Group conferring system:user",
+		Description: "Group conferring org:user",
 		OUID:        ts.groupOU1ID,
 		Members:     []testutils.Member{{Id: nestedID, Type: "group"}},
 	})
 	ts.Require().NoError(err, "create librarian group")
 	ts.librarianGroupID = librarianID
 
-	// Assigned a role conferring "system:user", which the group-manager does not hold. Adding anyone
+	// Assigned a role conferring "org:user", which the group-manager does not hold. Adding anyone
 	// to this group would therefore transfer a permission the caller was never granted.
 	librarianRoleID, err := testutils.CreateRole(testutils.Role{
 		Name: "authz-librarian-role",
@@ -296,7 +296,7 @@ func (ts *GroupAuthzTestSuite) SetupSuite() {
 		Permissions: []testutils.ResourcePermissions{
 			{
 				ResourceServerID: systemRSID,
-				Permissions:      []string{"system:user"},
+				Permissions:      []string{"org:user"},
 			},
 		},
 		Assignments: []testutils.Assignment{
@@ -345,7 +345,7 @@ func (ts *GroupAuthzTestSuite) SetupSuite() {
 		Permissions: []testutils.ResourcePermissions{
 			{
 				ResourceServerID: systemRSID,
-				Permissions:      []string{"system:ou:view", "system:group", "system:group:view"},
+				Permissions:      []string{"org:ou:view", "org:group", "org:group:view"},
 			},
 		},
 		Assignments: []testutils.Assignment{
@@ -356,7 +356,7 @@ func (ts *GroupAuthzTestSuite) SetupSuite() {
 	ts.emptyOUMgrRoleID = emptyMgrRoleID
 
 	emptyMgrToken, err := ts.signIn.ObtainAccessToken(ts.emptyOUID,
-		"system:ou:view system:group system:group:view", emptyOUMgrUsername, emptyOUMgrPassword, groupAuthzScopedRSID)
+		"org:ou:view org:group org:group:view", emptyOUMgrUsername, emptyOUMgrPassword, groupAuthzScopedRSID)
 	ts.Require().NoError(err, "obtain empty-OU manager token")
 	ts.Require().NotEmpty(emptyMgrToken.AccessToken, "empty-OU manager token must be non-empty")
 
@@ -393,7 +393,7 @@ func (ts *GroupAuthzTestSuite) SetupSuite() {
 		Permissions: []testutils.ResourcePermissions{
 			{
 				ResourceServerID: systemRSID,
-				Permissions:      []string{"system:ou:view", "system:group", "system:group:view"},
+				Permissions:      []string{"org:ou:view", "org:group", "org:group:view"},
 			},
 		},
 		Assignments: []testutils.Assignment{
@@ -404,7 +404,7 @@ func (ts *GroupAuthzTestSuite) SetupSuite() {
 	ts.declOUMgrRoleID = declMgrRoleID
 
 	declMgrToken, err := ts.signIn.ObtainAccessToken(declGroupOUID,
-		"system:ou:view system:group system:group:view", declOUMgrUsername, declOUMgrPassword, groupAuthzScopedRSID)
+		"org:ou:view org:group org:group:view", declOUMgrUsername, declOUMgrPassword, groupAuthzScopedRSID)
 	ts.Require().NoError(err, "obtain declarative-OU manager token")
 	ts.Require().NotEmpty(declMgrToken.AccessToken, "declarative-OU manager token must be non-empty")
 
@@ -543,7 +543,7 @@ func (ts *GroupAuthzTestSuite) doGroup(method, path string, body []byte) *http.R
 }
 
 // ---------------------------------------------------------------------------
-// Tests — READ operations (system:group:view implied by system:group)
+// Tests — READ operations (org:group:view implied by org:group)
 // ---------------------------------------------------------------------------
 
 // TestListGroups verifies the list contains groups from the accessible OU only.
@@ -619,7 +619,7 @@ func (ts *GroupAuthzTestSuite) TestGetGroupInOtherOU() {
 }
 
 // ---------------------------------------------------------------------------
-// Tests — WRITE operations (system:group)
+// Tests — WRITE operations (org:group)
 // ---------------------------------------------------------------------------
 
 // TestCreateGroupInOwnOU verifies the group-manager can create a group in their own OU.
@@ -715,7 +715,7 @@ func (ts *GroupAuthzTestSuite) TestDeleteGroupInOtherOU() {
 }
 
 // ---------------------------------------------------------------------------
-// Tests — MEMBER operations (system:group)
+// Tests — MEMBER operations (org:group)
 // ---------------------------------------------------------------------------
 
 // TestAddMemberFromOtherOU verifies the group-manager is denied adding a user from OU2 to a group in OU1.
@@ -1002,8 +1002,8 @@ func (ts *GroupAuthzTestSuite) mustMarshal(v any) []byte {
 // Privilege escalation via group membership
 // ---------------------------------------------------------------------------
 
-// The reported vulnerability. The group-manager holds system:group but not system:user. The
-// librarian group confers system:user through its assigned role, so adding anyone to it — including
+// The reported vulnerability. The group-manager holds org:group but not org:user. The
+// librarian group confers org:user through its assigned role, so adding anyone to it — including
 // the caller — would grant a permission the caller was never given.
 func (ts *GroupAuthzTestSuite) TestAddSelfToPrivilegedGroupIsForbidden() {
 	payload := ts.mustMarshal(map[string]any{
@@ -1014,7 +1014,7 @@ func (ts *GroupAuthzTestSuite) TestAddSelfToPrivilegedGroupIsForbidden() {
 	defer resp.Body.Close()
 
 	ts.Equalf(http.StatusForbidden, resp.StatusCode,
-		"adding self to a group conferring system:user must be forbidden, got %d", resp.StatusCode)
+		"adding self to a group conferring org:user must be forbidden, got %d", resp.StatusCode)
 }
 
 // Escalation on behalf of someone else is the same defect; the guard is actor-relative.

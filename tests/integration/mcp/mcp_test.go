@@ -37,6 +37,7 @@ const (
 	adminGroupOUID = "01900000-0000-7000-8000-000000000001"
 
 	systemActionHandle = "system"
+	orgActionHandle    = "org"
 
 	// declarativeCORSOrigin is the origin the declarative CORS fixture allows
 	// (tests/integration/resources/declarative_resources/server_configs/cors.yaml).
@@ -100,10 +101,10 @@ func (ts *MCPTestSuite) SetupSuite() {
 
 	// Registers the resource server whose identifier matches this server's real mcpURL, so a token
 	// requested with resource=mcpResourceIdentifier carries a matching "aud" claim. Declares the
-	// "system" root resource and the "system:app:view" permission, reproducing the fine-grained scopes
-	// used to verify MCP tool permission enforcement.
-	resourceServerID, err := testutils.CreateSystemScopedResourceServer(
-		ts.ouID, "MCP Auth Test Resource Server", mcpResourceIdentifier, "app")
+	// "system" and "org" root resources and the "org:user:view" permission, reproducing the
+	// fine-grained scopes used to verify MCP tool permission enforcement.
+	resourceServerID, err := testutils.CreateOrgScopedResourceServer(
+		ts.ouID, "MCP Auth Test Resource Server", mcpResourceIdentifier, "user")
 	ts.Require().NoError(err, "failed to create resource server")
 	ts.resourceServerID = resourceServerID
 
@@ -944,21 +945,21 @@ func (ts *MCPTestSuite) TestHTTPConnectionTools_MaskedPasswordReadBackIsRefused(
 	ts.NotContains(raw, password)
 }
 
-// A caller holding only system:app:view connects to the MCP server and can call list_applications,
-// but cannot call create_application or an unmapped tool that requires root.
-func (ts *MCPTestSuite) TestApplicationTools_EnforceFineGrainedPermissions() {
+// A caller holding only org:user:view connects to the MCP server and can call list_users, but cannot
+// call create_user or an unmapped tool that requires root.
+func (ts *MCPTestSuite) TestUserTools_EnforceFineGrainedPermissions() {
 	const (
-		username = "mcp-app-viewer-operator"
-		password = "McpAppViewer@123"
+		username = "mcp-user-viewer-operator"
+		password = "McpUserViewer@123"
 	)
 	operatorID := ts.createOperator(username, password)
 
 	operatorRoleID, err := testutils.CreateRole(testutils.Role{
-		Name:        "MCP Auth Test Operator App View Role",
-		Description: "Grants system:app:view permission on the MCP auth test resource server",
+		Name:        "MCP Auth Test Operator User View Role",
+		Description: "Grants org:user:view permission on the MCP auth test resource server",
 		OUID:        ts.ouID,
 		Permissions: []testutils.ResourcePermissions{
-			{ResourceServerID: ts.resourceServerID, Permissions: []string{"system:app:view"}},
+			{ResourceServerID: ts.resourceServerID, Permissions: []string{"org:user:view"}},
 		},
 		Assignments: []testutils.Assignment{
 			{ID: operatorID, Type: "user"},
@@ -969,17 +970,17 @@ func (ts *MCPTestSuite) TestApplicationTools_EnforceFineGrainedPermissions() {
 
 	var signIn testutils.OUSignInApps
 	defer func() { _ = signIn.DeleteAll() }()
-	tokenResp, err := signIn.ObtainAccessToken(ts.ouID, "system:app:view", username, password, mcpResourceIdentifier)
+	tokenResp, err := signIn.ObtainAccessToken(ts.ouID, "org:user:view", username, password, mcpResourceIdentifier)
 	ts.Require().NoError(err, "the operator must sign in")
 	token := tokenResp.AccessToken
 
 	// Calling a tool mapped to the permission the caller holds succeeds.
-	listResult, rawList := ts.callMCPTool(token, "list_applications", map[string]any{})
-	ts.Require().Falsef(listResult.Result.IsError, "list_applications failed: %s", rawList)
+	listResult, rawList := ts.callMCPTool(token, "list_users", map[string]any{})
+	ts.Require().Falsef(listResult.Result.IsError, "list_users failed: %s", rawList)
 
-	// Calling a tool requiring a different application permission is refused by toolPermissionMiddleware.
-	createResult, rawCreate := ts.callMCPTool(token, "create_application", map[string]any{"name": "Denied App"})
-	ts.Require().Truef(createResult.Result.IsError, "create_application should be refused: %s", rawCreate)
+	// Calling a tool requiring a different user permission is refused by toolPermissionMiddleware.
+	createResult, rawCreate := ts.callMCPTool(token, "create_user", map[string]any{"type": "person"})
+	ts.Require().Truef(createResult.Result.IsError, "create_user should be refused: %s", rawCreate)
 	ts.Contains(rawCreate, "The caller is not authorized to call this tool")
 
 	// Calling an unmapped tool requiring root system permission is refused.

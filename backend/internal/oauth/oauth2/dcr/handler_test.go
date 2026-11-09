@@ -47,7 +47,7 @@ func (s *DCRHandlerTestSuite) SetupTest() {
 	_ = config.InitializeServerRuntime("test", &config.Config{
 		OAuth: config.OAuthConfig{DCR: engineconfig.DCRConfig{Insecure: true}},
 	})
-	security.InitSystemPermissions("")
+	security.InitControlPlanePermissions("")
 	cfg := testhelpers.OAuthConfig()
 	cfg.OAuth.DCR.Insecure = true
 	s.handler = newDCRHandler(s.mockService, cfg)
@@ -55,7 +55,7 @@ func (s *DCRHandlerTestSuite) SetupTest() {
 
 func (s *DCRHandlerTestSuite) TearDownTest() {
 	config.ResetServerRuntime()
-	security.InitSystemPermissions("")
+	security.InitControlPlanePermissions("")
 }
 
 // TestHandleDCRRegistration_InvalidRequestFormat tests handling of invalid JSON in request body
@@ -324,8 +324,8 @@ func TestHandleDCRRegistration_ClosedDCR_NoToken(t *testing.T) {
 func TestHandleDCRRegistration_ClosedDCR_InsufficientPermissions(t *testing.T) {
 	_ = config.InitializeServerRuntime("test", &config.Config{})
 	defer config.ResetServerRuntime()
-	security.InitSystemPermissions("")
-	defer security.InitSystemPermissions("")
+	security.InitControlPlanePermissions("")
+	defer security.InitControlPlanePermissions("")
 
 	mockService := NewDCRServiceInterfaceMock(t)
 	handler := newDCRHandler(mockService, testhelpers.OAuthConfig())
@@ -354,7 +354,20 @@ func TestHandleDCRRegistration_ClosedDCR_InsufficientPermissions(t *testing.T) {
 // Uses the default config where Insecure defaults to false (secure by default).
 func TestHandleDCRRegistration_ClosedDCR_WithSystemPermission(t *testing.T) {
 	for _, perm := range []string{"system", "system:app", "system:app:create"} {
-		t.Run(perm, func(t *testing.T) { assertClosedDCRRegistrationAllowed(t, perm) })
+		t.Run(perm, func(t *testing.T) {
+			assertClosedDCRRegistrationAllowed(t, security.InitControlPlanePermissions, perm)
+		})
+	}
+}
+
+// TestHandleDCRRegistration_ClosedDCR_DataPlane tests that on the data plane, where application
+// create requires the organization root, both that root and the deployment-wide system root allow
+// registration.
+func TestHandleDCRRegistration_ClosedDCR_DataPlane(t *testing.T) {
+	for _, perm := range []string{"system", "org"} {
+		t.Run(perm, func(t *testing.T) {
+			assertClosedDCRRegistrationAllowed(t, security.InitDataPlanePermissions, perm)
+		})
 	}
 }
 
@@ -363,8 +376,8 @@ func TestHandleDCRRegistration_ClosedDCR_WithSystemPermission(t *testing.T) {
 func TestHandleDCRRegistration_ClosedDCR_OtherAppPermission(t *testing.T) {
 	_ = config.InitializeServerRuntime("test", &config.Config{})
 	defer config.ResetServerRuntime()
-	security.InitSystemPermissions("")
-	defer security.InitSystemPermissions("")
+	security.InitControlPlanePermissions("")
+	defer security.InitControlPlanePermissions("")
 
 	mockService := NewDCRServiceInterfaceMock(t)
 	handler := newDCRHandler(mockService, testhelpers.OAuthConfig())
@@ -381,11 +394,11 @@ func TestHandleDCRRegistration_ClosedDCR_OtherAppPermission(t *testing.T) {
 	mockService.AssertNotCalled(t, "RegisterClient")
 }
 
-func assertClosedDCRRegistrationAllowed(t *testing.T, perm string) {
+func assertClosedDCRRegistrationAllowed(t *testing.T, initPermissions func(string), perm string) {
 	_ = config.InitializeServerRuntime("test", &config.Config{})
 	defer config.ResetServerRuntime()
-	security.InitSystemPermissions("")
-	defer security.InitSystemPermissions("")
+	initPermissions("")
+	defer security.InitControlPlanePermissions("")
 
 	mockService := NewDCRServiceInterfaceMock(t)
 	handler := newDCRHandler(mockService, testhelpers.OAuthConfig())

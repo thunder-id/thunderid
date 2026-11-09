@@ -822,7 +822,7 @@ var defaultMessages = map[string]string{
 	"error.flowexecservice.administration_authentication_required": "Authentication required",
 	"error.flowexecservice.administration_authentication_required_description": "This flow requires an authenticated caller",
 	"error.flowexecservice.administration_permission_required": "Insufficient permissions",
-	"error.flowexecservice.administration_permission_required_description": "Administrative flows require the system permission",
+	"error.flowexecservice.administration_permission_required_description": "The caller lacks the permission required to run administrative flows",
 	"error.flowexecservice.application_not_usable": "Flow execution not permitted",
 	"error.flowexecservice.application_not_usable_description": "The flow cannot be executed for the requested application",
 	"error.flowexecservice.application_retrieval_error": "Application retrieval error",

@@ -25,7 +25,7 @@ import (
 //	└── child (handle: user-sharing-child)  ← holds the child admin
 //	    └── grandchild (handle: user-sharing-grandchild)
 //
-// The parent and child admins each hold system:user in their own organization unit only, which is
+// The parent and child admins each hold org:user in their own organization unit only, which is
 // what makes "a policy belongs to the unit that issued it" observable.
 type UserSharingAPITestSuite struct {
 	suite.Suite
@@ -52,7 +52,7 @@ type UserSharingAPITestSuite struct {
 const (
 	sharingTestUserType = "user-sharing-test-type"
 	sharingTestPassword = "Sharing@123"
-	sharingTestScopes   = "system system:user system:usertype:view"
+	sharingTestScopes   = "system org:user org:usertype:view"
 )
 
 var sharingTestConsoleURI = testutils.TestServerURL + "/console"
@@ -164,7 +164,7 @@ func (ts *UserSharingAPITestSuite) createUser(ouID, username string) string {
 	return id
 }
 
-// adminClient creates a user in ouID holding system:user there and nowhere else, and returns a
+// adminClient creates a user in ouID holding org:user there and nowhere else, and returns a
 // client carrying that user's token.
 func (ts *UserSharingAPITestSuite) adminClient(ouID, username, name string) *http.Client {
 	ts.T().Helper()
@@ -184,20 +184,20 @@ func (ts *UserSharingAPITestSuite) do(client *http.Client, method, path string, 
 	return sendRequest(ts.T(), client, method, path, body)
 }
 
-// scopedAdminClient makes userID hold system:user in ouID and nowhere else, and returns a client
+// scopedAdminClient makes userID hold org:user in ouID and nowhere else, and returns a client
 // carrying a token obtained as username, with the resource server and role it created for teardown.
 func scopedAdminClient(
 	t *testing.T, signIn *testutils.OUSignInApps, ouID, userID, username, label, identifier string,
 ) (client *http.Client, rsID, roleID string) {
 	t.Helper()
-	rsID, err := testutils.CreateSystemScopedResourceServer(ouID, label+" RS", identifier, "user", "usertype")
+	rsID, err := testutils.CreateOrgScopedResourceServer(ouID, label+" RS", identifier, "user", "usertype")
 	require.NoError(t, err, "create resource server for %s", label)
 
 	roleID, err = testutils.CreateRole(testutils.Role{
 		Name: label + " Admin",
 		OUID: ouID,
 		Permissions: []testutils.ResourcePermissions{
-			{ResourceServerID: rsID, Permissions: []string{"system:user", "system:usertype:view"}},
+			{ResourceServerID: rsID, Permissions: []string{"org:user", "org:usertype:view"}},
 		},
 		Assignments: []testutils.Assignment{{ID: userID, Type: "user"}},
 	})

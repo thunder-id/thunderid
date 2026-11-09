@@ -20,7 +20,7 @@ import (
 // permission, which had no integration coverage: entity-type authorization is unit-tested against
 // mocks, and integration-tested only for /user-types.
 //
-// The caller here holds `system:usertype` and nothing else. Every /agent-types route refuses it at
+// The caller here holds `org:usertype` and nothing else. Every /agent-types route refuses it at
 // the security middleware with 403 AUTH-4030 (`system/security/middleware.go:51`), which is a
 // route-level permission gate that runs before the handler — so the two categories are separated
 // before any OU or resource logic is reached. The same token reads /user-types successfully
@@ -38,7 +38,7 @@ type AgentTypeAuthzTestSuite struct {
 	scopedRSID string
 	signInApp  string
 
-	// scopedClient carries a token with system:usertype but no agenttype permission.
+	// scopedClient carries a token with org:usertype but no agenttype permission.
 	scopedClient *http.Client
 }
 
@@ -98,7 +98,7 @@ func (s *AgentTypeAuthzTestSuite) SetupSuite() {
 
 	// Declare both category permissions so the tree is complete, then grant only `usertype`.
 	// Granting nothing at all would not distinguish "no agenttype permission" from "no permissions".
-	rsID, err := testutils.CreateSystemScopedResourceServer(
+	rsID, err := testutils.CreateOrgScopedResourceServer(
 		s.ouID, "Authz Test RS (agenttype)", agentTypeAuthzRSIdentity, "usertype", "agenttype")
 	s.Require().NoError(err)
 	s.scopedRSID = rsID
@@ -107,7 +107,7 @@ func (s *AgentTypeAuthzTestSuite) SetupSuite() {
 		Name: "Agent Type Authz Role",
 		OUID: s.ouID,
 		Permissions: []testutils.ResourcePermissions{
-			{ResourceServerID: rsID, Permissions: []string{"system:usertype"}},
+			{ResourceServerID: rsID, Permissions: []string{"org:usertype"}},
 		},
 		Assignments: []testutils.Assignment{{ID: s.userID, Type: "user"}},
 	})
@@ -120,7 +120,7 @@ func (s *AgentTypeAuthzTestSuite) SetupSuite() {
 	tokenResp, err := testutils.ObtainAccessTokenWithPassword(
 		agentTypeAuthzClientID,
 		testutils.OUSignInRedirectURI,
-		"system system:usertype",
+		"system org:usertype",
 		agentTypeAuthzUsername,
 		agentTypeAuthzPassword,
 		true,
@@ -131,9 +131,9 @@ func (s *AgentTypeAuthzTestSuite) SetupSuite() {
 	s.Require().NotEmpty(tokenResp.AccessToken)
 
 	granted := strings.Fields(tokenResp.Scope)
-	s.Require().Contains(granted, "system:usertype", "token must carry the usertype scope")
+	s.Require().Contains(granted, "org:usertype", "token must carry the usertype scope")
 	for _, scope := range granted {
-		s.Require().False(strings.HasPrefix(scope, "system:agenttype"),
+		s.Require().False(strings.HasPrefix(scope, "org:agenttype"),
 			"the token must carry no agenttype scope, or the suite proves nothing; got %v", granted)
 	}
 
