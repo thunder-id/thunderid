@@ -327,7 +327,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		mux, entityService, groupService, ouService, resourceService, entityTypeService, ouAuthzService,
 		sharingService, auditBus, nil)
 	fatalOnError(ctx, logger, err, "Failed to initialize RoleService")
-	// The data plane creates users through its user onboarding flow, which execute_flow runs, so it
+	// The data plane creates users through its user onboarding flow, which onboard_users runs, so it
 	// registers no create_user.
 	user.RegisterMCPTools(mcpServer, userService, entityService, entityTypeService, roleService, resourceService)
 	exporters = append(exporters, roleExporter)

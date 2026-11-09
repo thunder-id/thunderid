@@ -652,7 +652,8 @@ func (ts *MCPTestSuite) TestProtectedResourceMetadata_MatchesTheChallengeAndTheA
 	ts.getJSON(metadataURL, &metadata)
 	ts.Equal(mcpResourceIdentifier, metadata.Resource,
 		"the advertised resource must be the audience the guard accepts")
-	ts.Equal([]string{systemActionHandle}, metadata.ScopesSupported)
+	ts.Equal([]string{systemActionHandle, orgActionHandle}, metadata.ScopesSupported,
+		"a data plane admits the organization root as well as the system root")
 	ts.Require().Len(metadata.AuthorizationServers, 1)
 
 	var server struct {

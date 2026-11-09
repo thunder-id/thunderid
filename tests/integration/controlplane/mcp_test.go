@@ -118,7 +118,7 @@ func (ts *ControlPlaneTestSuite) TestMCPRefusesATokenItDoesNotTrust() {
 	}
 }
 
-// A Control Plane creates agents directly, so it offers onboard_agent and not execute_flow, which
+// A Control Plane creates agents directly, so it offers onboard_agent and not onboard_agents or onboard_users, which
 // runs flows it does not have. The agent it creates gets a secret, and the token guide says the token
 // endpoints are on the data planes.
 func (ts *ControlPlaneTestSuite) TestMCPOnboardsAgentsDirectly() {
@@ -126,7 +126,8 @@ func (ts *ControlPlaneTestSuite) TestMCPOnboardsAgentsDirectly() {
 	status, _, body := ts.listMCPTools(token)
 	ts.Require().Equalf(http.StatusOK, status, "response: %s", body)
 	ts.Contains(string(body), `"onboard_agent"`)
-	ts.NotContains(string(body), `"execute_flow"`)
+	ts.NotContains(string(body), `"onboard_agents"`)
+	ts.NotContains(string(body), `"onboard_users"`)
 
 	// The suite's administrator is a user of the trusted issuer, not of the Control Plane, so the
 	// agent needs an owner of its own.

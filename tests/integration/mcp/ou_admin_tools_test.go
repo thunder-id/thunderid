@@ -18,6 +18,11 @@ const ouAdminPassword = "MCPOUAdmin@123"
 // ouAdminToken signs in an administrator holding the org permission in a new organization unit under
 // parentID, and returns its MCP token and its unit. Everything it creates is deleted when the test ends.
 func (ts *MCPTestSuite) ouAdminToken(parentID string) (string, string) {
+	return ts.ouAdminTokenFor(parentID, orgActionHandle)
+}
+
+// ouAdminTokenFor is ouAdminToken with the token requested for scope.
+func (ts *MCPTestSuite) ouAdminTokenFor(parentID, scope string) (string, string) {
 	suffix := time.Now().UnixNano()
 	ouID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
 		Handle: fmt.Sprintf("mcp-ou-admin-%d", suffix), Name: "MCP OU Admin", Parent: &parentID})
@@ -60,7 +65,7 @@ func (ts *MCPTestSuite) ouAdminToken(parentID string) (string, string) {
 
 	var signIn testutils.OUSignInApps
 	ts.T().Cleanup(func() { _ = signIn.DeleteAll() })
-	token, err := signIn.ObtainAccessToken(ouID, orgActionHandle, username, ouAdminPassword,
+	token, err := signIn.ObtainAccessToken(ouID, scope, username, ouAdminPassword,
 		mcpResourceIdentifier)
 	ts.Require().NoError(err)
 	ts.Require().NotEmpty(token.AccessToken)
@@ -143,4 +148,16 @@ func (ts *MCPTestSuite) TestOUAdminTools_ApprovalFlowOfAnotherUnit() {
 	ts.Truef(refused.Result.IsError, "approval must be refused with the default flow: %s", raw)
 	ts.Contains(raw, "can't reach a user who isn't there")
 	ts.NotContains(raw, "names no flow")
+}
+
+// An organization administrator signing in for the scopes the MCP server advertises, as an MCP client
+// does, gets a token the server accepts, so the client can call the tools.
+func (ts *MCPTestSuite) TestOUAdminTools_AdvertisedScopesAdmitAnOrganizationAdministrator() {
+	agentType, raw := ts.defaultAgentType(ts.mcpScopedAdminToken())
+	parentID, _ := agentType["ouId"].(string)
+	ts.Require().NotEmpty(parentID, raw)
+	token, _ := ts.ouAdminTokenFor(parentID, systemActionHandle+" "+orgActionHandle)
+
+	listed, raw := ts.callMCPTool(token, "list_groups", map[string]any{})
+	ts.Falsef(listed.Result.IsError, "list_groups must work with the advertised scopes: %s", raw)
 }

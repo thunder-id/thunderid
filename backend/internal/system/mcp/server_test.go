@@ -155,9 +155,12 @@ func TestToolPermissionMiddleware_DataPlane(t *testing.T) {
 			permissions: []string{"system"}, wantCalled: true},
 		{name: "OrgCannotCallDeploymentWideTool", tool: "list_gateway_variables",
 			permissions: []string{"org"}, wantCalled: false},
-		{name: "SystemExecutesFlow", tool: "execute_flow", permissions: []string{"system"}, wantCalled: true},
-		{name: "OrgExecutesFlow", tool: "execute_flow", permissions: []string{"org"}, wantCalled: true},
-		{name: "OrgChildCannotExecuteFlow", tool: "execute_flow", permissions: []string{"org:user"},
+		{name: "SystemOnboardsAgents", tool: "onboard_agents", permissions: []string{"system"}, wantCalled: true},
+		{name: "OrgOnboardsAgents", tool: "onboard_agents", permissions: []string{"org"}, wantCalled: true},
+		{name: "OrgChildCannotOnboardAgents", tool: "onboard_agents", permissions: []string{"org:user"},
+			wantCalled: false},
+		{name: "OrgOnboardsUsers", tool: "onboard_users", permissions: []string{"org"}, wantCalled: true},
+		{name: "OrgChildCannotOnboardUsers", tool: "onboard_users", permissions: []string{"org:user"},
 			wantCalled: false},
 	}
 

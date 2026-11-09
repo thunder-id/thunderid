@@ -36,9 +36,11 @@ func (s *DataPlanePermissionsTestSuite) TestRootsAndAdministrationFlow() {
 	s.Equal("org", p.AdministrationFlow)
 }
 
-// execute_flow starts an administration flow by ID, so it requires what the flow service requires.
-func (s *DataPlanePermissionsTestSuite) TestExecuteFlowToolRequiresTheAdministrationFlowPermission() {
-	s.Equal("org", ResolveMCPToolPermission("execute_flow"))
+// The onboarding tools run onboarding flows, so they require what the flow service requires to start an
+// administration flow.
+func (s *DataPlanePermissionsTestSuite) TestOnboardingToolsRequireTheAdministrationFlowPermission() {
+	s.Equal("org", ResolveMCPToolPermission("onboard_agents"))
+	s.Equal("org", ResolveMCPToolPermission("onboard_users"))
 }
 
 func (s *DataPlanePermissionsTestSuite) TestOrgChildrenForOUConfinedResources() {
