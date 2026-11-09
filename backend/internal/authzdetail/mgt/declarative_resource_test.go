@@ -145,7 +145,7 @@ func (s *DeclarativeResourceTestSuite) TestInitialize_LoadsDeclarativeTypes() {
 	s.T().Cleanup(func() { _ = newTypeFileBasedStore().ClearByType() })
 	authz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(s.T())
 	authz.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).Return(true, nil)
-	service, exporter, err := Initialize(http.NewServeMux(), nil, nil, authz)
+	service, exporter, err := Initialize(http.NewServeMux(), nil, nil, authz, discardingBus{})
 	s.Require().NoError(err)
 	s.Equal(resourceTypeAuthorizationDetailType, exporter.GetResourceType())
 
@@ -185,7 +185,7 @@ func (s *DeclarativeResourceTestSuite) TestInitialize_RegistersWriteToolsOnlyUnd
 			authz.On("GetBoundary", mock.Anything).Return(sysauthz.Boundary{Type: tc.boundary})
 			server := mcp.NewServer(&mcp.Implementation{Name: "test"}, nil)
 
-			_, _, err := Initialize(http.NewServeMux(), server, nil, authz)
+			_, _, err := Initialize(http.NewServeMux(), server, nil, authz, discardingBus{})
 
 			s.Require().NoError(err)
 			s.ElementsMatch(tc.want, toolNames(s.T(), connectMCP(s.T(), server)))
@@ -199,7 +199,7 @@ func (s *DeclarativeResourceTestSuite) TestInitialize_FailsOnInvalidFile() {
 	s.setupConfig(home, "declarative", false)
 	s.Require().NoError(newTypeFileBasedStore().ClearByType())
 
-	_, _, err := Initialize(http.NewServeMux(), nil, nil, nil)
+	_, _, err := Initialize(http.NewServeMux(), nil, nil, nil, discardingBus{})
 	s.Require().Error(err)
 	s.Contains(err.Error(), "failed to load authorization details type resources")
 }

@@ -12,6 +12,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
 	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
 	"github.com/thunder-id/thunderid/internal/system/projectscope"
@@ -39,11 +40,16 @@ import (
 // verifier engine, which resolves definitions through it on demand.
 //
 // projectValidator is nil on a deployment that serves no projects.
+//
+// bus is required: the service publishes the audit event of every change to a definition on it.
 func Initialize(
 	mux *http.ServeMux, ouService ou.OrganizationUnitServiceInterface,
 	authzService sysauthz.SystemAuthorizationServiceInterface,
-	projectValidator projectOUValidator,
+	projectValidator projectOUValidator, bus eventbus.EventBusInterface,
 ) (PresentationDefinitionServiceInterface, declarativeresource.ResourceExporter, error) {
+	if bus == nil {
+		return nil, nil, errNilEventBus
+	}
 	store, fileStore, dbStore, err := initializeStore()
 	if err != nil {
 		return nil, nil, err
@@ -51,7 +57,7 @@ func Initialize(
 	projectRequired := projectValidator != nil &&
 		projectscope.ProjectRequired(security.ResourceTypeVerifiableCredential)
 	svc := newPresentationDefinitionService(store, ouService, authzService, projectValidator,
-		projectRequired)
+		projectRequired, bus)
 	setManagedStore(svc, managedresource.GetStore())
 	if fileStore != nil {
 		if err := loadDeclarativeResources(fileStore, dbStore, svc); err != nil {

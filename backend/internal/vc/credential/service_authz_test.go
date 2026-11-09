@@ -56,7 +56,7 @@ func TestConfigurationAuthzTestSuite(t *testing.T) {
 func (s *ConfigurationAuthzTestSuite) SetupTest() {
 	s.authz = sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(s.T())
 	s.store = newCredentialStoreInterfaceMock(s.T())
-	s.svc = newCredentialConfigurationService(s.store, nil, s.authz, nil, false)
+	s.svc = newCredentialConfigurationService(s.store, nil, s.authz, nil, false, discardingBus{})
 }
 
 func (s *ConfigurationAuthzTestSuite) stored(ouID string) {

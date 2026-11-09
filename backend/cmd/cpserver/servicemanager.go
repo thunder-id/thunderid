@@ -216,7 +216,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 
 	// Initialize authorization details type management.
 	authzDetailMgtService, authzDetailExporter, err := authzdetailmgt.Initialize(
-		mux, mcpServer, valueCapture, ouAuthzService)
+		mux, mcpServer, valueCapture, ouAuthzService, auditBus)
 	fatalOnError(ctx, logger, err, "Failed to initialize AuthorizationDetailMgtService")
 	exporters = append(exporters, authzDetailExporter)
 
@@ -328,14 +328,16 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	// Verifiable-credential DEFINITION management. Presentation definitions and credential
 	// configurations are authored here; the OpenID4VP verifier and OpenID4VCI issuer runtimes are
 	// data plane concerns and are dropped.
-	openid4vpDefSvc, vpDefExp, err := presentation.Initialize(mux, ouService, ouAuthzService, projectService)
+	openid4vpDefSvc, vpDefExp, err := presentation.Initialize(mux, ouService, ouAuthzService, projectService,
+		auditBus)
 	fatalOnError(ctx, logger, err, "Failed to initialize presentation definition service")
 	projectService.AddResourceCheck(openid4vpDefSvc.ProjectHasPresentationDefinitions)
 	if vpDefExp != nil {
 		exporters = append(exporters, vpDefExp)
 	}
 
-	openid4vciCredSvc, vciCredExp, err := credential.Initialize(mux, ouService, ouAuthzService, projectService)
+	openid4vciCredSvc, vciCredExp, err := credential.Initialize(mux, ouService, ouAuthzService, projectService,
+		auditBus)
 	fatalOnError(ctx, logger, err, "Failed to initialize credential configuration service")
 	projectService.AddResourceCheck(openid4vciCredSvc.ProjectHasCredentialConfigurations)
 	if vciCredExp != nil {
