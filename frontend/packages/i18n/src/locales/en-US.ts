@@ -7340,6 +7340,7 @@ const translations = {
     'missing.secretPlaceholder': 'Secret value',
     'missing.title': 'Values this gateway needs',
     'missing.titleFor': 'Values {{target}} needs · {{count}} to set',
+    'missing.usedBy': 'Uses {{fields}}',
     'missing.variablePlaceholder': 'Variable value',
     'page.description':
       'Deploy any version of the configuration to any gateway. The newest is kept up to date as the configuration changes.',

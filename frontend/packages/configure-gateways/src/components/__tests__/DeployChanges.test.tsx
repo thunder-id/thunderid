@@ -234,11 +234,42 @@ describe('MissingValuesFields for a gateway', () => {
     const panel = screen.getByTestId('missing-values');
     expect(within(panel).getByText('Values Prod needs · 1 to set')).toBeInTheDocument();
     const group = within(panel).getByTestId('missing-group-application/app-1');
-    expect(within(group).getByText(/^Customer portal · /)).toBeInTheDocument();
+    const resource = within(group).getByTestId('missing-resource-application/app-1');
+    expect(within(resource).getByText('Application')).toBeInTheDocument();
+    expect(within(resource).getByText('Customer portal')).toBeInTheDocument();
+    expect(within(resource).getByText('app-1')).toBeInTheDocument();
+    expect(within(resource).getByText('Uses Client secret')).toBeInTheDocument();
     expect(within(group).getByLabelText(/Client secret/)).toBeInTheDocument();
     expect(within(group).getByText('APP_ONE_CLIENT_SECRET')).toBeInTheDocument();
 
     await userEvent.click(within(panel).getByRole('button', {name: /Values Prod needs/}));
     expect(within(panel).getByRole('button', {name: /Values Prod needs/})).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('names a resource with no name by its ID once, a value with no field by its own name, and leaves a value no resource uses ungrouped', () => {
+    renderWithProviders(
+      <MissingValuesFields
+        fields={[
+          {
+            kind: 'variable',
+            name: 'CUSTOM_ISSUER',
+            list: false,
+            references: [{name: 'CUSTOM_ISSUER', kind: 'variable', resourceType: 'connection', resourceId: 'conn-9'}],
+          },
+          {kind: 'secret', name: 'LOOSE_SECRET', list: false, references: []},
+        ]}
+        values={{}}
+        onChange={vi.fn()}
+      />,
+    );
+
+    const resource = screen.getByTestId('missing-resource-connection/conn-9');
+    expect(within(resource).getByText('Connection')).toBeInTheDocument();
+    expect(within(resource).getAllByText('conn-9')).toHaveLength(1);
+    expect(within(resource).getByText('Uses CUSTOM_ISSUER')).toBeInTheDocument();
+
+    const loose = screen.getByTestId('missing-group-');
+    expect(within(loose).queryByTestId(/^missing-resource-/)).not.toBeInTheDocument();
+    expect(within(loose).getByText('LOOSE_SECRET')).toBeInTheDocument();
   });
 });
