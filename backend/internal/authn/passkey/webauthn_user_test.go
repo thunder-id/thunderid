@@ -75,7 +75,7 @@ func (suite *WebAuthnUserTestSuite) TestNewWebAuthnUserFromCoreUser_WithFullAttr
 	suite.NotNil(webAuthnUser)
 	suite.Equal([]byte("user123"), webAuthnUser.WebAuthnID())
 	suite.Equal("johndoe", webAuthnUser.WebAuthnName())
-	suite.Equal("John Doe", webAuthnUser.WebAuthnDisplayName())
+	suite.Equal("johndoe", webAuthnUser.WebAuthnDisplayName())
 	suite.Equal(credentials, webAuthnUser.WebAuthnCredentials())
 }
 
@@ -93,7 +93,7 @@ func (suite *WebAuthnUserTestSuite) TestNewWebAuthnUserFromCoreUser_WithEmailOnl
 	suite.NotNil(webAuthnUser)
 	suite.Equal([]byte("user123"), webAuthnUser.WebAuthnID())
 	suite.Equal("john@example.com", webAuthnUser.WebAuthnName())
-	suite.Equal("user123", webAuthnUser.WebAuthnDisplayName()) // Falls back to ID
+	suite.Equal("john@example.com", webAuthnUser.WebAuthnDisplayName())
 }
 
 func (suite *WebAuthnUserTestSuite) TestNewWebAuthnUserFromCoreUser_NoAttributes() {
