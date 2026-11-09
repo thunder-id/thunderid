@@ -40,13 +40,18 @@ vi.mock('@thunderid/configure-organization-units', async (importOriginal) => ({
   OrganizationUnitTreePicker: ({
     onChange,
     rootOuId = undefined,
+    helperText = undefined,
   }: {
     onChange: (ouId: string) => void;
     rootOuId?: string;
+    helperText?: string;
   }) => (
-    <button type="button" data-testid="ou-picker" data-root={rootOuId} onClick={() => onChange('ou-child')}>
-      pick ou
-    </button>
+    <>
+      <button type="button" data-testid="ou-picker" data-root={rootOuId} onClick={() => onChange('ou-child')}>
+        pick ou
+      </button>
+      {helperText && <span>{helperText}</span>}
+    </>
   ),
 }));
 
@@ -507,6 +512,74 @@ describe('AgentAddFormPage', () => {
     expect(requests().some((request) => /\/agent-types\?.*limit=100/.test(request.url))).toBe(true);
   });
 
+  // An agent must sit in its type's organization unit or one of its descendants, so an organization unit picked
+  // under one type is never posted with another.
+  it('should clear the organization unit and scope the picker to the new type when the type changes', async () => {
+    const twoTypes = {
+      ...agentTypes,
+      totalResults: 2,
+      count: 2,
+      types: [...agentTypes.types, {id: 'type-2', handle: 'assistant', displayName: 'Assistant', ouId: 'ou-other'}],
+    };
+    const assistantType = {
+      ...defaultType,
+      id: 'type-2',
+      handle: 'assistant',
+      displayName: 'Assistant',
+      ouId: 'ou-other',
+    };
+    h.http.request.mockImplementation((config: unknown) => {
+      const {url} = config as RecordedRequest;
+      if (url.includes('/users')) return Promise.resolve({data: users});
+      if (url.includes('/agent-types/type-1')) return Promise.resolve({data: defaultType});
+      if (url.includes('/agent-types/type-2')) return Promise.resolve({data: assistantType});
+      return Promise.resolve({data: twoTypes});
+    });
+    const user = userEvent.setup();
+    render(<AgentAddFormPage />);
+
+    await chooseOption(user, 0, 'Default');
+    await user.click(await screen.findByTestId('ou-picker'));
+    await screen.findByRole('textbox', {name: /llmModel/});
+    const submit = screen.getByRole('button', {name: 'agents:addForm.submit'});
+    expect(submit).toBeEnabled();
+
+    await chooseOption(user, 0, 'Assistant');
+
+    expect(await screen.findByTestId('ou-picker')).toHaveAttribute('data-root', 'ou-other');
+    expect(submit).toBeDisabled();
+  });
+
+  it('should explain which organization units an agent of the chosen type can go in', async () => {
+    const user = userEvent.setup();
+    render(<AgentAddFormPage />);
+
+    await chooseOption(user, 0, 'Default');
+
+    expect(await screen.findByText('agents:addForm.organizationUnitHint')).toBeInTheDocument();
+  });
+
+  it('should explain an organization unit outside the agent type when the server refuses it', async () => {
+    h.http.request.mockImplementation((config: unknown) => {
+      const {url, method} = config as RecordedRequest;
+      if (method === 'POST') {
+        return Promise.reject(Object.assign(new Error('Bad request'), {response: {data: {code: 'AGT-1053'}}}));
+      }
+      if (url.includes('/users')) return Promise.resolve({data: users});
+      if (url.includes('/agent-types/type-1')) return Promise.resolve({data: defaultType});
+      return Promise.resolve({data: agentTypes});
+    });
+    const user = userEvent.setup();
+    render(<AgentAddFormPage />);
+
+    await fillRequired(user);
+    await user.type(await screen.findByRole('textbox', {name: /llmModel/}), 'claude');
+    await user.click(screen.getByRole('button', {name: 'agents:addForm.submit'}));
+
+    expect(await screen.findByText('agents:errors.AGT-1053')).toBeInTheDocument();
+    expect(h.navigate).not.toHaveBeenCalled();
+  });
+
   it('keeps submit disabled until a type and an organization unit are given', async () => {
     const user = userEvent.setup();
     render(<AgentAddFormPage />);
@@ -530,6 +603,49 @@ describe('AgentAddFormPage', () => {
 
     await screen.findByText(/llmModel is required/);
     expect(requests().some((request) => request.method === 'POST')).toBe(false);
+  });
+
+  it('says so when the agent types cannot be loaded, and offers a retry', async () => {
+    const base = h.http.request.getMockImplementation() as (config: unknown) => Promise<{data: unknown}>;
+    let attempts = 0;
+    h.http.request.mockImplementation((config: unknown) => {
+      if ((config as RecordedRequest).url.includes('/agent-types?')) {
+        attempts += 1;
+        if (attempts === 1) return Promise.reject(new Error('network down'));
+      }
+      return base(config);
+    });
+    const user = userEvent.setup();
+    render(<AgentAddFormPage />);
+
+    // The failure takes the agent type select's place, and is not read as there being no agent types.
+    expect(await screen.findByText('agents:addForm.agentTypesError')).toBeInTheDocument();
+    expect(screen.queryByText('agents:addForm.noAgentTypes')).not.toBeInTheDocument();
+    expect(screen.getAllByRole('combobox')).toHaveLength(1);
+
+    await user.click(screen.getByRole('button', {name: 'common:actions.refresh'}));
+
+    await waitFor(() => {
+      expect(screen.getAllByRole('combobox')).toHaveLength(2);
+    });
+    expect(attempts).toBe(2);
+  });
+
+  it('says so when the attributes of the chosen agent type cannot be loaded, and keeps Create off', async () => {
+    const base = h.http.request.getMockImplementation() as (config: unknown) => Promise<{data: unknown}>;
+    h.http.request.mockImplementation((config: unknown) =>
+      (config as RecordedRequest).url.includes('/agent-types/type-1')
+        ? Promise.reject(new Error('network down'))
+        : base(config),
+    );
+    const user = userEvent.setup();
+    render(<AgentAddFormPage />);
+
+    await chooseOption(user, 0, 'Default');
+
+    expect(await screen.findByText('agents:addForm.agentTypeSchemaError')).toBeInTheDocument();
+    expect(screen.queryByRole('textbox', {name: /^name/})).not.toBeInTheDocument();
+    expect(screen.getByRole('button', {name: 'agents:addForm.submit'})).toBeDisabled();
   });
 
   it('says so when no agent types exist', async () => {

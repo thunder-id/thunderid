@@ -55,10 +55,6 @@ vi.mock('@thunderid/configure-roles', () => ({
   CreateRolePage: () => <div data-testid="create-role-page">CreateRolePage</div>,
 }));
 
-vi.mock('@thunderid/configure-agent-types', () => ({
-  ViewAgentTypePage: () => <div data-testid="view-agent-type-page">View Agent Type Page</div>,
-}));
-
 vi.mock('../layouts/FullScreenLayout', async () => {
   const {Outlet} = await import('react-router');
   return {default: () => <Outlet />};
@@ -179,14 +175,6 @@ describe('App', () => {
     render(<App />);
     await waitFor(() => {
       expect(screen.getByTestId('create-role-page')).toBeInTheDocument();
-    });
-  });
-
-  it('loads ViewAgentTypePage lazily at /agent-types/:id', async () => {
-    window.history.pushState({}, '', '/agent-types/at-1');
-    render(<App />);
-    await waitFor(() => {
-      expect(screen.getByTestId('view-agent-type-page')).toBeInTheDocument();
     });
   });
 });

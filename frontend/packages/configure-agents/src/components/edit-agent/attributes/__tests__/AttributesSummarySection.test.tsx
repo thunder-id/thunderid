@@ -7,14 +7,14 @@ import {describe, it, expect, vi, beforeEach} from 'vitest';
 import type {Agent} from '../../../../models/agent';
 import AttributesSummarySection from '../AttributesSummarySection';
 
-const {mockUseGetAgentTypes, mockUseGetAgentType} = vi.hoisted(() => ({
-  mockUseGetAgentTypes: vi.fn(),
+const {mockUseGetAllAgentTypes, mockUseGetAgentType} = vi.hoisted(() => ({
+  mockUseGetAllAgentTypes: vi.fn(),
   mockUseGetAgentType: vi.fn(),
 }));
 
 vi.mock('@thunderid/configure-agent-types', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@thunderid/configure-agent-types')>()),
-  useGetAgentTypes: () => mockUseGetAgentTypes(),
+  useGetAllAgentTypes: () => mockUseGetAllAgentTypes(),
   useGetAgentType: (id?: string) => mockUseGetAgentType(id),
 }));
 
@@ -33,8 +33,8 @@ describe('AttributesSummarySection', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockUseGetAgentTypes.mockReturnValue({
-      data: {types: [{id: 'schema-1', handle: 'default', displayName: 'Default', ouId: 'ou-1'}]},
+    mockUseGetAllAgentTypes.mockReturnValue({
+      data: [{id: 'schema-1', handle: 'default', displayName: 'Default', ouId: 'ou-1'}],
     });
     mockUseGetAgentType.mockReturnValue({
       data: {

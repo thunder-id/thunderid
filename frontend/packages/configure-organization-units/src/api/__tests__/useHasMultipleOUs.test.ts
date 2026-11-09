@@ -66,4 +66,78 @@ describe('useHasMultipleOUs', () => {
 
     expect(result.current.isError).toBe(true);
   });
+
+  it('hands back the failed lookup and retries only that one', () => {
+    const rootError = new Error('Boom');
+    const refetchRoots = vi.fn();
+    const refetchChildren = vi.fn();
+    vi.mocked(useGetOrganizationUnits).mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: true,
+      error: rootError,
+      refetch: refetchRoots,
+    } as never);
+    vi.mocked(useGetChildOrganizationUnits).mockReturnValue({
+      ...(childQuery(0) as object),
+      error: null,
+      refetch: refetchChildren,
+    } as never);
+
+    const {result} = renderHook(() => useHasMultipleOUs());
+    result.current.refetch();
+
+    expect(result.current.error).toBe(rootError);
+    expect(refetchRoots).toHaveBeenCalledTimes(1);
+    expect(refetchChildren).not.toHaveBeenCalled();
+  });
+
+  it('hands back the failed children lookup of the only root and retries it', () => {
+    const childError = new Error('Boom');
+    const refetchRoots = vi.fn();
+    const refetchChildren = vi.fn();
+    vi.mocked(useGetOrganizationUnits).mockReturnValue({
+      ...(rootQuery([{id: 'a'}], 1) as object),
+      error: null,
+      refetch: refetchRoots,
+    } as never);
+    vi.mocked(useGetChildOrganizationUnits).mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: true,
+      error: childError,
+      refetch: refetchChildren,
+    } as never);
+
+    const {result} = renderHook(() => useHasMultipleOUs());
+    result.current.refetch();
+
+    expect(result.current.error).toBe(childError);
+    expect(refetchChildren).toHaveBeenCalledTimes(1);
+    expect(refetchRoots).not.toHaveBeenCalled();
+  });
+
+  it('ignores a children lookup error unless there is exactly one root', () => {
+    const refetchRoots = vi.fn();
+    const refetchChildren = vi.fn();
+    vi.mocked(useGetOrganizationUnits).mockReturnValue({
+      ...(rootQuery([{id: 'a'}, {id: 'b'}], 2) as object),
+      error: null,
+      refetch: refetchRoots,
+    } as never);
+    vi.mocked(useGetChildOrganizationUnits).mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: true,
+      error: new Error('Boom'),
+      refetch: refetchChildren,
+    } as never);
+
+    const {result} = renderHook(() => useHasMultipleOUs());
+    result.current.refetch();
+
+    expect(result.current).toMatchObject({hasMultipleOUs: true, isError: false, error: null});
+    expect(refetchRoots).not.toHaveBeenCalled();
+    expect(refetchChildren).not.toHaveBeenCalled();
+  });
 });

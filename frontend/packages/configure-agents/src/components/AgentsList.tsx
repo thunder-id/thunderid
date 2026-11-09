@@ -8,8 +8,9 @@ import {
   ResourceDeployStatus,
   useDeployStatusSource,
 } from '@thunderid/components';
+import {useGetAllAgentTypes} from '@thunderid/configure-agent-types';
 import {useCapabilitiesContext} from '@thunderid/contexts';
-import {useDataGridLocaleText} from '@thunderid/hooks';
+import {useDataGridLocaleText, useResolveDisplayName} from '@thunderid/hooks';
 import {useLogger} from '@thunderid/logger/react';
 import {Box, IconButton, Tooltip, Typography, ListingTable, DataGrid} from '@wso2/oxygen-ui';
 import {Eye, Pencil, Trash2} from '@wso2/oxygen-ui-icons-react';
@@ -32,6 +33,17 @@ export default function AgentsList(): JSX.Element {
   const dataGridLocaleText = useDataGridLocaleText();
   const lifespanEndText = useLifespanEndText();
   const {data, isLoading, error, refetch} = useGetAgents();
+  const {data: agentTypes} = useGetAllAgentTypes();
+  // A stable handlers object keeps resolveDisplayName, and with it the grid's columns, stable.
+  const displayNameHandlers = useMemo(() => ({t}), [t]);
+  const {resolveDisplayName} = useResolveDisplayName({handlers: displayNameHandlers});
+
+  // An agent names its type by handle. The type's display name is shown when the types have loaded,
+  // and the handle otherwise.
+  const agentTypeNames = useMemo(
+    () => new Map((agentTypes ?? []).map((type) => [type.handle, resolveDisplayName(type.displayName) || type.handle])),
+    [agentTypes, resolveDisplayName],
+  );
 
   // Resolves an error through the `agents` catalog. `t` defaults to the `common` namespace, so
   // this forwards explicit `ns:` prefixes unchanged and prefixes bare keys with `agents:`, per
@@ -121,6 +133,16 @@ export default function AgentsList(): JSX.Element {
         ),
       },
       {
+        field: 'type',
+        headerName: t('agents:listing.columns.agentType', 'Agent type'),
+        flex: 0.5,
+        minWidth: 150,
+        valueGetter: (_value, row): string => agentTypeNames.get(row.type) ?? row.type,
+        renderCell: (params: DataGrid.GridRenderCellParams<BasicAgent>): JSX.Element => (
+          <Typography variant="body2">{agentTypeNames.get(params.row.type) ?? params.row.type}</Typography>
+        ),
+      },
+      {
         field: 'ouHandle',
         headerName: t('agents:listing.columns.organizationUnit', 'Organization unit'),
         flex: 0.5,
@@ -205,7 +227,7 @@ export default function AgentsList(): JSX.Element {
         ),
       },
     ],
-    [can, deploys, handleDeleteClick, handleEditClick, lifespanHint, t],
+    [agentTypeNames, can, deploys, handleDeleteClick, handleEditClick, lifespanHint, t],
   );
 
   if (error) {

@@ -105,6 +105,17 @@ describe('I18nTextInput', () => {
     expect(screen.getByText('Translated value')).toBeInTheDocument();
   });
 
+  it('disables the text field and the translation button when disabled', () => {
+    render(
+      <I18nTextInput label="Display name" value="First name" onChange={vi.fn()} placeholder="Type a value" disabled />,
+    );
+
+    expect(screen.getByPlaceholderText('Type a value')).toBeDisabled();
+    // The disabled button has no tooltip, so it keeps its name from its own label.
+    expect(screen.getByRole('button', {name: 'Configure translation'})).toBeDisabled();
+    expect(screen.queryByText('Create new translation')).not.toBeInTheDocument();
+  });
+
   it('opens popover and switches to create mode', async () => {
     const user = userEvent.setup();
     const {container} = render(

@@ -15,9 +15,6 @@ import FullScreenLayout from './layouts/FullScreenLayout';
 const AgentOnboardPage = lazy(() => import('@thunderid/configure-agents').then((m) => ({default: m.AgentOnboardPage})));
 const AgentEditPage = lazy(() => import('@thunderid/configure-agents').then((m) => ({default: m.AgentEditPage})));
 const AgentsListPage = lazy(() => import('@thunderid/configure-agents').then((m) => ({default: m.AgentsListPage})));
-const ViewAgentTypePage = lazy(() =>
-  import('@thunderid/configure-agent-types').then((m) => ({default: m.ViewAgentTypePage})),
-);
 const CreateGroupPage = lazy(() => import('@thunderid/configure-groups').then((m) => ({default: m.CreateGroupPage})));
 const GroupEditPage = lazy(() => import('@thunderid/configure-groups').then((m) => ({default: m.GroupEditPage})));
 const GroupsListPage = lazy(() => import('@thunderid/configure-groups').then((m) => ({default: m.GroupsListPage})));
@@ -46,7 +43,6 @@ export default function App(): JSX.Element {
                 <Route index element={<Navigate to={RouteConfig.users.list()} replace />} />
                 <Route path={ROUTE_SEGMENTS.users} element={<UsersListPage />} />
                 <Route path={`${ROUTE_SEGMENTS.users}/:userId`} element={<UserEditPage />} />
-                <Route path={`${ROUTE_SEGMENTS.agentTypes}/:id`} element={<ViewAgentTypePage />} />
                 <Route path={ROUTE_SEGMENTS.agents} element={<AgentsListPage />} />
                 <Route path={`${ROUTE_SEGMENTS.agents}/:agentId`} element={<AgentEditPage />} />
                 <Route path={ROUTE_SEGMENTS.groups} element={<GroupsListPage />} />

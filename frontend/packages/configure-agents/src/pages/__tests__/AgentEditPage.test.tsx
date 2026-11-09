@@ -17,7 +17,7 @@ const {
   mockUseGetAgent,
   mockUseUpdateAgent,
   mockMutateAsync,
-  mockUseGetAgentTypes,
+  mockUseGetAllAgentTypes,
   mockUseGetAgentType,
   mockUseLocation,
   stagingCallbackIdentities,
@@ -32,7 +32,7 @@ const {
   mockUseGetAgent: vi.fn(),
   mockUseUpdateAgent: vi.fn(),
   mockMutateAsync: vi.fn(),
-  mockUseGetAgentTypes: vi.fn(),
+  mockUseGetAllAgentTypes: vi.fn(),
   mockUseGetAgentType: vi.fn(),
   mockUseLocation: vi.fn(
     (): {
@@ -43,7 +43,7 @@ const {
 
 vi.mock('@thunderid/configure-agent-types', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@thunderid/configure-agent-types')>()),
-  useGetAgentTypes: () => mockUseGetAgentTypes(),
+  useGetAllAgentTypes: () => mockUseGetAllAgentTypes(),
   useGetAgentType: () => mockUseGetAgentType(),
 }));
 
@@ -301,8 +301,8 @@ describe('AgentEditPage', () => {
     }));
     mockMutateAsync.mockResolvedValue(undefined);
     mockRefetch.mockResolvedValue({});
-    mockUseGetAgentTypes.mockReturnValue({
-      data: {types: [{id: 'default-type', handle: 'default', displayName: 'Default'}]},
+    mockUseGetAllAgentTypes.mockReturnValue({
+      data: [{id: 'default-type', handle: 'default', displayName: 'Default'}],
       isLoading: false,
       error: null,
     });
@@ -873,6 +873,66 @@ describe('AgentEditPage', () => {
       await user.type(input, to);
       fireEvent.blur(input);
     };
+
+    // Without the type schema a save could keep attribute values the schema no longer allows, so Save stays
+    // off. Viewing an agent doesn't need permission to read agent types, so the rest of the page stays.
+    it('keeps Save off and offers a retry when the agent types fail to load', async () => {
+      const user = userEvent.setup();
+      const refetchAgentTypes = vi.fn();
+      mockUseGetAllAgentTypes.mockReturnValue({
+        data: undefined,
+        isLoading: false,
+        error: new Error('Boom'),
+        refetch: refetchAgentTypes,
+      });
+      render(<AgentEditPage />);
+
+      expect(screen.getByText("The agent's type could not be loaded, so changes can't be saved.")).toBeInTheDocument();
+      expect(screen.getByRole('tab', {name: 'Overview'})).toBeInTheDocument();
+
+      await editDescription(user, 'Test description', 'Changed description');
+      expect(screen.getByRole('button', {name: 'Save'})).toBeDisabled();
+
+      await user.click(screen.getByRole('button', {name: 'Refresh'}));
+      expect(refetchAgentTypes).toHaveBeenCalledTimes(1);
+      expect(mockRefetch).not.toHaveBeenCalled();
+    });
+
+    it('keeps Save off and offers a retry when the agent type schema fails to load', async () => {
+      const user = userEvent.setup();
+      const refetchAgentType = vi.fn();
+      mockUseGetAgentType.mockReturnValue({
+        data: undefined,
+        isLoading: false,
+        error: new Error('Boom'),
+        refetch: refetchAgentType,
+      });
+      render(<AgentEditPage />);
+
+      await editDescription(user, 'Test description', 'Changed description');
+      expect(screen.getByRole('button', {name: 'Save'})).toBeDisabled();
+
+      await user.click(screen.getByRole('button', {name: 'Refresh'}));
+      expect(refetchAgentType).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps Save on when only a refetch of agent types already read fails', async () => {
+      const user = userEvent.setup();
+      mockUseGetAllAgentTypes.mockReturnValue({
+        data: [{id: 'default-type', handle: 'default', displayName: 'Default'}],
+        isLoading: false,
+        error: new Error('Boom'),
+        refetch: vi.fn(),
+      });
+      render(<AgentEditPage />);
+
+      await editDescription(user, 'Test description', 'Changed description');
+
+      expect(screen.getByRole('button', {name: 'Save'})).toBeEnabled();
+      expect(
+        screen.queryByText("The agent's type could not be loaded, so changes can't be saved."),
+      ).not.toBeInTheDocument();
+    });
 
     it('hides the bar when a field is manually retyped back to its original value', async () => {
       const user = userEvent.setup();

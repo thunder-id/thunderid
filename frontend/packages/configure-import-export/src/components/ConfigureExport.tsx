@@ -1,6 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {BotCogIcon} from '@thunderid/components';
 import {useConfig} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {Box, Button, Chip, ColorSchemeSVG, IconButton, Paper, Stack, Typography} from '@wso2/oxygen-ui';
@@ -800,7 +801,7 @@ export default function ConfigureExport({
     items.push({
       id: 'agent-types',
       label: t('importExport:configureExport.labels.agentTypes', 'Agent types'),
-      icon: <Bot size={16} />,
+      icon: <BotCogIcon size={16} />,
       value: agentTypesCount,
       status: 'ready',
       dependencyCount: 0,
@@ -811,7 +812,7 @@ export default function ConfigureExport({
               {displayedAgentTypes.map((agentType, idx) => (
                 <Stack key={agentType.handle ?? `agent-type-${idx}`} spacing={0.5}>
                   <Stack direction="row" spacing={1} sx={{alignItems: 'center'}}>
-                    <Bot size={14} />
+                    <BotCogIcon size={14} />
                     <Typography variant="body2" fontWeight={600}>
                       {agentType.displayName ??
                         agentType.handle ??

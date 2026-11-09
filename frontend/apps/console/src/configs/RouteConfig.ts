@@ -118,7 +118,9 @@ const RouteConfig: RouteConfig = {
     create: () => `/${ROUTE_SEGMENTS.userTypes}/create`,
   },
   agentTypes: {
+    list: () => `/${ROUTE_SEGMENTS.agentTypes}`,
     detail: (id) => `/${ROUTE_SEGMENTS.agentTypes}/${id}`,
+    create: () => `/${ROUTE_SEGMENTS.agentTypes}/create`,
   },
   agents: {
     list: () => `/${ROUTE_SEGMENTS.agents}`,

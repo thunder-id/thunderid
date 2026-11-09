@@ -136,6 +136,16 @@ describe('OrganizationUnitPickerScreen', () => {
     });
   });
 
+  it('should leave the selection empty when auto-selecting is turned off', async () => {
+    renderWithProviders(<OrganizationUnitPickerScreen {...defaultProps} autoSelectFirst={false} />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Default')).toBeInTheDocument();
+    });
+    expect(defaultProps.onChange).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', {name: 'Continue'})).toBeDisabled();
+  });
+
   it('disables Continue until an organization unit is selected', () => {
     renderWithProviders(<OrganizationUnitPickerScreen {...defaultProps} />);
 
@@ -151,6 +161,41 @@ describe('OrganizationUnitPickerScreen', () => {
     fireEvent.click(continueButton);
 
     expect(defaultProps.onContinue).toHaveBeenCalled();
+  });
+
+  it('should show why the selected organization unit cannot be used and block Continue', () => {
+    renderWithProviders(
+      <OrganizationUnitPickerScreen {...defaultProps} value="ou-1" error="This organization unit is taken." />,
+    );
+
+    expect(screen.getByRole('alert')).toHaveTextContent('This organization unit is taken.');
+    expect(screen.getByRole('button', {name: 'Continue'})).toBeDisabled();
+  });
+
+  it('should show the action given with the error', () => {
+    const onOpen = vi.fn();
+    renderWithProviders(
+      <OrganizationUnitPickerScreen
+        {...defaultProps}
+        value="ou-1"
+        error="This organization unit is taken."
+        errorAction={
+          <button type="button" onClick={onOpen}>
+            Open it
+          </button>
+        }
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', {name: 'Open it'}));
+
+    expect(onOpen).toHaveBeenCalled();
+  });
+
+  it('should show no error by default', () => {
+    renderWithProviders(<OrganizationUnitPickerScreen {...defaultProps} value="ou-1" />);
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
   it('calls onBack when the back link is clicked', () => {

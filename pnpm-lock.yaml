@@ -1660,6 +1660,9 @@ importers:
       '@thunderid/components':
         specifier: workspace:^
         version: link:../components
+      '@thunderid/configure-organization-units':
+        specifier: workspace:^
+        version: link:../configure-organization-units
       '@thunderid/configure-user-types':
         specifier: workspace:^
         version: link:../configure-user-types
@@ -1669,6 +1672,9 @@ importers:
       '@thunderid/eslint-plugin':
         specifier: workspace:^
         version: link:../eslint-plugin
+      '@thunderid/hooks':
+        specifier: workspace:^
+        version: link:../hooks
       '@thunderid/logger':
         specifier: workspace:^
         version: link:../logger

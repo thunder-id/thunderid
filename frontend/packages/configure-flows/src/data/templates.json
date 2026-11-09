@@ -55,9 +55,6 @@
           },
           "onIncomplete": "prompt_agent_type",
           "onSuccess": "ou_selection",
-          "properties": {
-            "allowedAgentTypes": ["default"]
-          },
           "type": "TASK_EXECUTION"
         },
         {
@@ -570,9 +567,6 @@
           },
           "onIncomplete": "prompt_agent_type",
           "onSuccess": "ou_selection",
-          "properties": {
-            "allowedAgentTypes": ["default"]
-          },
           "type": "TASK_EXECUTION"
         },
         {
@@ -1237,9 +1231,6 @@
           },
           "onIncomplete": "prompt_agent_type",
           "onSuccess": "ou_selection",
-          "properties": {
-            "allowedAgentTypes": ["default"]
-          },
           "type": "TASK_EXECUTION"
         },
         {

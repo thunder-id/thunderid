@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {DocumentTitle, FullScreenCreationWizardLayout, QueryErrorNotice} from '@thunderid/components';
-import {useGetAgentType, useGetAgentTypes, type AgentTypeListItem} from '@thunderid/configure-agent-types';
+import {useGetAgentType, useGetAllAgentTypes, type AgentTypeListItem} from '@thunderid/configure-agent-types';
 import {OrganizationUnitTreePicker} from '@thunderid/configure-organization-units';
 import {renderSchemaField, useGetUser, useGetUsers} from '@thunderid/configure-users';
 import {useProjectScope} from '@thunderid/contexts';
@@ -85,8 +85,10 @@ export default function AgentAddFormPage(): JSX.Element {
   const [issueCredentials, setIssueCredentials] = useState<boolean>(true);
   // The created agent whose secret is being shown; the agent's page opens once the secret is closed.
   const [created, setCreated] = useState<{id: string; clientSecret: string} | null>(null);
-  const {data: typeList, isLoading: typesLoading} = useGetAgentTypes({limit: 100, offset: 0});
-  const {data: agentType} = useGetAgentType(typeId || undefined);
+  const {data: typeList, isLoading: typesLoading, error: typesError, refetch: refetchTypes} = useGetAllAgentTypes();
+  // A failed refetch of agent types already read leaves them in place.
+  const typesReadError = typesError && !typeList ? typesError : null;
+  const {data: agentType, error: agentTypeError, refetch: refetchAgentType} = useGetAgentType(typeId || undefined);
   const {
     data: userList,
     isLoading: usersLoading,
@@ -111,7 +113,7 @@ export default function AgentAddFormPage(): JSX.Element {
     reset,
   } = useForm<AttributeFormData>({mode: 'onBlur', shouldUnregister: true});
 
-  const types: AgentTypeListItem[] = typeList?.types ?? [];
+  const types: AgentTypeListItem[] = typeList ?? [];
   const selectedType: AgentTypeListItem | undefined = types.find((type) => type.id === typeId);
   const users = userList?.users ?? [];
   // Two users can share a display name, so the option shows the user's ID as well when they do.
@@ -199,7 +201,9 @@ export default function AgentAddFormPage(): JSX.Element {
           </Box>
         )}
 
-        {!typesLoading && types.length === 0 && <Alert severity="info">{t('agents:addForm.noAgentTypes')}</Alert>}
+        {!typesLoading && !typesReadError && types.length === 0 && (
+          <Alert severity="info">{t('agents:addForm.noAgentTypes')}</Alert>
+        )}
 
         {createAgent.isError && (
           <Alert severity="error">
@@ -233,26 +237,40 @@ export default function AgentAddFormPage(): JSX.Element {
 
             <FormControl fullWidth required>
               <FormLabel htmlFor="agent-type">{t('agents:addForm.agentType')}</FormLabel>
-              <Select
-                id="agent-type"
-                value={typeId}
-                displayEmpty
-                onChange={(event) => {
-                  setTypeId(String(event.target.value));
-                  setOuId('');
-                  // Another type's schema can share a field name, so its values are not carried over.
-                  reset({});
-                }}
-              >
-                <MenuItem value="">
-                  <em>{t('agents:addForm.selectAgentType')}</em>
-                </MenuItem>
-                {types.map((type: AgentTypeListItem) => (
-                  <MenuItem key={type.id} value={type.id}>
-                    {resolveDisplayName(type.displayName) || type.handle}
+              {typesReadError ? (
+                // A failed read is shown in place of the picker, not as a list with no agent types.
+                <QueryErrorNotice
+                  variant="inline"
+                  error={typesReadError}
+                  t={tForErrors}
+                  fallbackKey="agents:addForm.agentTypesError"
+                  fallbackDefaultValue="The agent types could not be loaded."
+                  onRetry={() => {
+                    void refetchTypes();
+                  }}
+                />
+              ) : (
+                <Select
+                  id="agent-type"
+                  value={typeId}
+                  displayEmpty
+                  onChange={(event) => {
+                    setTypeId(String(event.target.value));
+                    setOuId('');
+                    // Another type's schema can share a field name, so its values are not carried over.
+                    reset({});
+                  }}
+                >
+                  <MenuItem value="">
+                    <em>{t('agents:addForm.selectAgentType')}</em>
                   </MenuItem>
-                ))}
-              </Select>
+                  {types.map((type: AgentTypeListItem) => (
+                    <MenuItem key={type.id} value={type.id}>
+                      {resolveDisplayName(type.displayName) || type.handle}
+                    </MenuItem>
+                  ))}
+                </Select>
+              )}
             </FormControl>
 
             {selectedType && !isInProject && (
@@ -265,6 +283,10 @@ export default function AgentAddFormPage(): JSX.Element {
                   value={ouId}
                   onChange={setOuId}
                   rootOuId={selectedType.ouId || undefined}
+                  helperText={t(
+                    'agents:addForm.organizationUnitHint',
+                    'Agents of this agent type can be created in its organization unit, shown at the top, or in any unit below it.',
+                  )}
                 />
               </FormControl>
             )}
@@ -319,8 +341,22 @@ export default function AgentAddFormPage(): JSX.Element {
               </Typography>
             </FormControl>
 
-            {Object.entries(agentType?.schema ?? {}).map(([fieldName, fieldDef]) =>
-              renderSchemaField(fieldName, fieldDef, control, errors, resolveDisplayName),
+            {agentTypeError && !agentType ? (
+              // Without the type's schema there are no attribute fields to fill in, so Create stays off.
+              <QueryErrorNotice
+                variant="inline"
+                error={agentTypeError}
+                t={tForErrors}
+                fallbackKey="agents:addForm.agentTypeSchemaError"
+                fallbackDefaultValue="The attributes of the selected agent type could not be loaded."
+                onRetry={() => {
+                  void refetchAgentType();
+                }}
+              />
+            ) : (
+              Object.entries(agentType?.schema ?? {}).map(([fieldName, fieldDef]) =>
+                renderSchemaField(fieldName, fieldDef, control, errors, resolveDisplayName),
+              )
             )}
 
             <FormControl fullWidth>

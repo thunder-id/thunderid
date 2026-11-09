@@ -1,7 +1,6 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import type {AgentTypeRoutePaths} from '@thunderid/configure-agent-types';
 import type {AgentRoutePaths} from '@thunderid/configure-agents';
 import type {GroupRoutePaths} from '@thunderid/configure-groups';
 import type {RoleRoutePaths} from '@thunderid/configure-roles';
@@ -17,7 +16,7 @@ import type {UserRoutePaths} from '@thunderid/configure-users';
  *
  * @public
  */
-export type RouteConfig = UserRoutePaths & AgentTypeRoutePaths & AgentRoutePaths & GroupRoutePaths & RoleRoutePaths;
+export type RouteConfig = UserRoutePaths & AgentRoutePaths & GroupRoutePaths & RoleRoutePaths;
 
 /**
  * The resources the Admin Console manages, in navigation order.
@@ -36,7 +35,6 @@ export const MANAGED_RESOURCES: ManagedResource[] = ['users', 'agents', 'groups'
  */
 export const ROUTE_SEGMENTS = {
   users: 'users',
-  agentTypes: 'agent-types',
   agents: 'agents',
   groups: 'groups',
   roles: 'roles',
@@ -47,9 +45,6 @@ const RouteConfig: RouteConfig = {
     list: () => `/${ROUTE_SEGMENTS.users}`,
     detail: (userId) => `/${ROUTE_SEGMENTS.users}/${userId}`,
     add: () => `/${ROUTE_SEGMENTS.users}/add`,
-  },
-  agentTypes: {
-    detail: (id) => `/${ROUTE_SEGMENTS.agentTypes}/${id}`,
   },
   agents: {
     list: () => `/${ROUTE_SEGMENTS.agents}`,
