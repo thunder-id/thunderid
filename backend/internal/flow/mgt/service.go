@@ -545,7 +545,13 @@ func (s *flowMgtService) getFlow(ctx context.Context, flowID string) (
 			s.logger.Error(ctx, "Failed to read whether a control plane deployed the flow",
 				log.String(logKeyFlowID, flowID), log.Error(err))
 		}
-		flow.IsReadOnly = deployed
+		if deployed {
+			// The store may serve the flow it caches, which a later write reads to tell a declared flow: the
+			// flag is set on a copy, so that write still reaches the check that lets the managed import through.
+			marked := *flow
+			marked.IsReadOnly = true
+			return &marked, nil
+		}
 	}
 
 	return flow, nil

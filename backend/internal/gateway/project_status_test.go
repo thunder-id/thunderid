@@ -12,8 +12,9 @@ import (
 )
 
 // Against a version, a project's status counts its own changes, what it needs that the gateway lacks,
-// and what is shared, apart from another project's and what only another project needs; a gateway
-// holding none of it was deployed from none.
+// and what is shared, apart from another project's and what only another project needs, unless that is
+// the organization's own, such as its unit, which stays shared; a gateway holding none of it was deployed
+// from none.
 func (s *ProjectScopeTestSuite) TestAProjectsStatusCountsEachSection() {
 	s.captureDocs(docs(flow("flow-1"))...)
 
@@ -21,8 +22,8 @@ func (s *ProjectScopeTestSuite) TestAProjectsStatusCountsEachSection() {
 
 	s.Require().Nil(svcErr)
 	s.Equal(ProjectState{Versions: []ProjectVersion{}, Pending: 1, Required: 3}, status.Project)
-	s.Equal(2, status.Shared.Pending, "what only billing needs was counted as shared")
-	s.Equal([]TypeCount{{"translation", 1}, {"user", 1}}, status.Shared.ByType)
+	s.Equal(3, status.Shared.Pending, "what only billing needs was counted as shared, or its unit was not")
+	s.Equal([]TypeCount{{"organization_unit", 1}, {"translation", 1}, {"user", 1}}, status.Shared.ByType)
 	s.Equal(0, status.Needed.Differing)
 }
 
@@ -40,7 +41,7 @@ func (s *ProjectScopeTestSuite) TestADeployedProjectNamesItsVersion() {
 	s.Equal([]ProjectVersion{{Hash: latest.Hash, Number: latest.Seq, Resources: 1}}, status.Project.Versions)
 	s.Equal(0, status.Project.Pending)
 	s.Equal(0, status.Project.Required)
-	s.Equal(2, status.Shared.Pending, "what the shop deploy left out is still on offer")
+	s.Equal(3, status.Shared.Pending, "what the shop deploy left out is still on offer")
 
 	billing, svcErr := s.f.svc.ProjectStatus(context.Background(), "gw-1", "billing", "", "")
 	s.Require().Nil(svcErr)

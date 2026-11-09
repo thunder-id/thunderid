@@ -92,6 +92,42 @@ func (s *DependenciesTestSuite) TestAnIDSharedAcrossTypesNeedsEach() {
 	s.Equal([]string{"flow/same", "organization_unit/same"}, needs["role/r-1"])
 }
 
+// An agent and a user need the type they name by its handle, which a gateway may start without: a type of
+// the other kind with that handle is not taken for it, nor is a nested type such as a client's.
+func (s *DependenciesTestSuite) TestAnAgentAndAUserNeedTheTypeTheyNameByHandle() {
+	needs := needsOf(parseBundle(joinBundle([]string{
+		"resource_type: agent_type\nid: at-1\nhandle: default\nname: Default",
+		"resource_type: user_type\nid: ut-1\nhandle: person\nname: Person",
+		"resource_type: user_type\nid: ut-2\nhandle: default\nname: Default people",
+		"resource_type: agent\nid: ag-1\ntype: default\ninboundAuthConfig:\n  - type: oauth2",
+		"resource_type: user\nid: u-1\ntype: person",
+		"resource_type: user\nid: u-2\ntype: nobody",
+	})))
+
+	s.Equal([]string{"agent_type/at-1"}, needs["agent/ag-1"])
+	s.Equal([]string{"user_type/ut-1"}, needs["user/u-1"])
+	s.Empty(needs["user/u-2"], "a type the bundle does not hold was needed")
+}
+
+// An application needs the user types it admits, and a flow the agent types its nodes admit, listed by
+// handle as a block or a flow sequence.
+func (s *DependenciesTestSuite) TestTheTypesAnApplicationOrAFlowAdmitAreNeeded() {
+	needs := needsOf(parseBundle(joinBundle([]string{
+		"resource_type: agent_type\nid: at-1\nhandle: default\nname: Default",
+		"resource_type: user_type\nid: ut-1\nhandle: person\nname: Person",
+		"resource_type: user_type\nid: ut-2\nhandle: staff\nname: Staff",
+		"resource_type: application\nid: app-1\nname: a\nallowedUserTypes:\n  - person\n  - staff\n" +
+			"inboundAuthConfig:\n  - type: oauth2",
+		"resource_type: application\nid: app-2\nname: b\nallowedUserTypes: [staff]",
+		"resource_type: flow\nid: flow-1\nname: f\nnodes:\n  - id: n-1\n    properties:\n" +
+			"      allowedAgentTypes:\n        - default\n  - id: n-2",
+	})))
+
+	s.Equal([]string{"user_type/ut-1", "user_type/ut-2"}, needs["application/app-1"])
+	s.Equal([]string{"user_type/ut-2"}, needs["application/app-2"])
+	s.Equal([]string{"agent_type/at-1"}, needs["flow/flow-1"])
+}
+
 // A selection is widened to what it needs that the gateway lacks, through what those need in turn;
 // a dependency the gateway holds as it is stays out.
 func (s *DependenciesTestSuite) TestASelectionIsWidenedToWhatItNeeds() {

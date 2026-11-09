@@ -28,6 +28,10 @@ const (
 	codeImportUnresolvedReference = "IMP-1006"
 	// codeImportMisplacedSecret is returned for a secret referred to from a field that is not a credential.
 	codeImportMisplacedSecret = "IMP-1007"
+	// codeManagedType is returned for a change to a type a control plane deployed that is not its own import's.
+	codeManagedType = "RAR-1030"
+	// managedImportPath is the import a control plane deploys through, which marks what it writes as its own.
+	managedImportPath = "/import/managed"
 )
 
 type ImportExportTestSuite struct {
@@ -242,6 +246,37 @@ func (s *ImportExportTestSuite) TestDryRunPredictsTheOutcome() {
 	s.Equal(http.StatusNotFound, status, "a refused import writes nothing")
 }
 
+// A dry run of an update to a type a control plane deployed predicts the update: the control plane's import
+// may change it and any other import is refused, while a type declared in a file is refused either way.
+func (s *ImportExportTestSuite) TestDryRunOfADeployedOrDeclaredTypePredictsTheUpdate() {
+	id := uniqueTypeID()
+	value := uniqueTypeValue("deployed")
+	s.Require().Equal("success", s.importManaged(typeDocument(id, value, ""), false, nil)["status"])
+	defer func() {
+		s.importManaged("", false, []map[string]interface{}{
+			{"resourceType": resourceTypeAuthorizationDetailType, "id": id}})
+	}()
+
+	result := s.importDocument(typeDocument(id, value, ""), true, true)
+	s.Equal("failed", result["status"], "%v", result)
+	s.Equal(codeManagedType, result["code"], "%v", result)
+
+	result = s.importManaged(typeDocument(id, value, ""), true, nil)
+	s.Equal("success", result["status"], "the control plane's own import was refused: %v", result)
+	s.Equal("update", result["operation"], "%v", result)
+
+	for _, managed := range []bool{false, true} {
+		document := typeDocument(declarativeTypeID, declarativeTypeValue, "")
+		if managed {
+			result = s.importManaged(document, true, nil)
+		} else {
+			result = s.importDocument(document, true, true)
+		}
+		s.Equal("failed", result["status"], "managed %v: %v", managed, result)
+		s.Equal(codeImmutableType, result["code"], "managed %v: %v", managed, result)
+	}
+}
+
 // A dry run of an upsert that moves a type's processor to another endpoint predicts that the credential must
 // be given again.
 func (s *ImportExportTestSuite) TestDryRunPredictsAProcessorCredentialIsRequiredAgain() {
@@ -435,6 +470,28 @@ func (s *ImportExportTestSuite) importDocumentWithVariables(content string, vari
 	}
 	s.Require().NoError(json.Unmarshal(body, &resp))
 	s.Require().Len(resp.Results, 1, string(body))
+	return resp.Results[0]
+}
+
+// importManaged imports the given content, with upsert, and the given deletions through the control plane's
+// import, and returns the outcome of its single document or deletion.
+func (s *ImportExportTestSuite) importManaged(content string, dryRun bool,
+	deletions []map[string]interface{}) map[string]interface{} {
+	body, err := json.Marshal(map[string]interface{}{
+		"content":   content,
+		"dryRun":    dryRun,
+		"deletions": deletions,
+		"options":   map[string]interface{}{"upsert": true, "continueOnError": true, "target": "runtime"},
+	})
+	s.Require().NoError(err)
+	status, answer := doRawWith(s.T(), testutils.GetManagementAPIKeyHTTPClient(), http.MethodPost,
+		managedImportPath, body)
+	s.Require().Equal(http.StatusOK, status, string(answer))
+	var resp struct {
+		Results []map[string]interface{} `json:"results"`
+	}
+	s.Require().NoError(json.Unmarshal(answer, &resp))
+	s.Require().Len(resp.Results, 1, string(answer))
 	return resp.Results[0]
 }
 

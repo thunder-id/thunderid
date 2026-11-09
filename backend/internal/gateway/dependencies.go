@@ -15,7 +15,9 @@ import (
 // document that is the id of another document in the same bundle is taken as a dependency, so
 // nothing has to be declared per resource type, and a new type joins in by being in the bundle. A value
 // under a field that describes the resource, such as its name, is never a reference. A reference by
-// name or handle is not read: a resource named that way is expected to be on the gateway already.
+// name or handle is not read, a resource named that way being expected on the gateway already, except the
+// type an agent or a user names by its handle: a gateway can start with no types, and the agent or user
+// cannot be written without its type.
 
 // scalarLine reads the scalar a block-style line holds: a mapping's value, a list item, or a list
 // item's mapping value, quoted or not.
@@ -33,9 +35,69 @@ var describingKeys = map[string]bool{"name": true, "displayName": true, "descrip
 // reference either, while a nested id, such as a member's, is one.
 var kindKeys = map[string]bool{"resource_type": true, "type": true, "category": true}
 
-// needsOf reads, for each resource in a bundle, the keys of the resources its document names by id,
-// sorted, each once. A document never needs itself. Resources of different types that share an id are
-// all needed, since the document names the id alone.
+const (
+	resourceTypeAgentType = "agent_type"
+	resourceTypeUserType  = "user_type"
+)
+
+// typeReferences are, by the kind of resource that holds them, the fields that name a type by its handle,
+// and the kind of type each names: an agent's and a user's own type at the top of the document, the user
+// types an application admits, and the agent types a flow's node admits.
+var typeReferences = map[string]map[string]string{
+	resourceTypeAgent: {"type": resourceTypeAgentType},
+	resourceTypeUser:  {"type": resourceTypeUserType},
+	"application":     {"allowedUserTypes": resourceTypeUserType},
+	"flow":            {"allowedAgentTypes": resourceTypeAgentType},
+}
+
+// fieldLine reads a block-style mapping line's indent, key and value.
+var fieldLine = regexp.MustCompile(`^(\s*)(?:-\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(.*?)\s*$`)
+
+// listItem reads a block-style list item's indent and scalar.
+var listItem = regexp.MustCompile(`^(\s*)-\s+['"]?([^'"#\[\]{}]+?)['"]?\s*$`)
+
+// typesNamed returns the types a document names by handle, each as its kind and handle. A type of the
+// agent or the user itself is read from the top of the document only, since a nested type, such as a
+// client's, says what kind of entry holds it. A list of types is read as a block or as a flow sequence.
+func typesNamed(resource bundleResource) []string {
+	fields := typeReferences[resource.Type]
+	if len(fields) == 0 {
+		return nil
+	}
+	var named []string
+	lines := strings.Split(resource.Content, "\n")
+	for i, line := range lines {
+		match := fieldLine.FindStringSubmatch(line)
+		if match == nil {
+			continue
+		}
+		kind, ok := fields[match[2]]
+		if !ok || (match[2] == "type" && match[1] != "") {
+			continue
+		}
+		value := strings.Trim(match[3], `"'`)
+		if value != "" {
+			for _, handle := range strings.Split(strings.Trim(value, "[]"), ",") {
+				if handle = strings.Trim(strings.TrimSpace(handle), `"'`); handle != "" {
+					named = append(named, kind+"/"+handle)
+				}
+			}
+			continue
+		}
+		for _, next := range lines[i+1:] {
+			item := listItem.FindStringSubmatch(next)
+			if len(item) < 3 || len(item[1]) < len(match[1]) {
+				break
+			}
+			named = append(named, kind+"/"+strings.TrimSpace(item[2]))
+		}
+	}
+	return named
+}
+
+// needsOf reads, for each resource in a bundle, the keys of the resources its document names by id, and of
+// the types it names by handle, sorted, each once. A document never needs itself. Resources of different
+// types that share an id are all needed, since the document names the id alone.
 func needsOf(resources []bundleResource) map[string][]string {
 	byID := make(map[string][]string, len(resources))
 	for _, resource := range resources {
@@ -43,10 +105,24 @@ func needsOf(resources []bundleResource) map[string][]string {
 			byID[resource.ID] = append(byID[resource.ID], resource.key())
 		}
 	}
+	typeByHandle := map[string]string{}
+	for _, resource := range resources {
+		if resource.Type == resourceTypeAgentType || resource.Type == resourceTypeUserType {
+			if handle := firstMatch(handleField, resource.Content); handle != "" {
+				typeByHandle[resource.Type+"/"+handle] = resource.key()
+			}
+		}
+	}
 	needs := make(map[string][]string, len(resources))
 	for _, resource := range resources {
 		own := resource.key()
 		seen := map[string]bool{}
+		for _, named := range typesNamed(resource) {
+			if needed, found := typeByHandle[named]; found && !seen[needed] {
+				seen[needed] = true
+				needs[own] = append(needs[own], needed)
+			}
+		}
 		for _, line := range strings.Split(resource.Content, "\n") {
 			match := scalarLine.FindStringSubmatch(line)
 			if len(match) < 4 {
