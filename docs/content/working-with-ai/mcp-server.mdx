@@ -217,7 +217,7 @@ After connecting, ask your agent to use the <ProductName /> MCP server for tasks
 | `themes` | Browse and inspect login page themes, colors, and typography |
 | `organization_units` | List organization units |
 | `user_types` | List user types and self-registration settings |
-| `roles` | Find roles by name or by the API permission they grant, inspect a role and who holds it, find APIs and list their permissions, create roles, and change a role's permissions and who it is assigned to. On the data plane, removing a permission or revoking a role revokes the tokens that carried the removed access, as the API does. On the control plane, which issues no tokens, the removal is written directly |
+| `roles` | Find roles by name or by a permission they grant, inspect a role and who holds it, find resource servers (the APIs and MCP servers <ProductName /> protects) and list their permissions, create roles, and change a role's permissions and who it is assigned to. On the data plane, removing a permission or revoking a role revokes the tokens that carried the removed access, as the API does. On the control plane, which issues no tokens, the removal is written directly |
 | `users` | Find users by an attribute such as email, see a user's attributes, groups, roles and permissions, and change their attributes. On a control plane, also create a user with their roles and groups in one call |
 | `agents` | Find and inspect agents, change how they prove who they are and act for users, and rotate their credentials. On a control plane, also onboard an agent directly |
 | `flow_execution` | On a data plane, onboard an agent or a user by running the configured onboarding flow step by step, as the Console does |
@@ -225,6 +225,20 @@ After connecting, ask your agent to use the <ProductName /> MCP server for tasks
 | `groups` | Find groups by name or by who belongs to them, see who is in a group, create groups, and add and remove members in one call. On the data plane, removing a member revokes the tokens that carried the access the group gave, as the API does. On the control plane, which issues no tokens, the removal is written directly |
 | `react_sdk` | Get tailored integration code for the <ProductName /> React SDK |
 | `deployments` | List gateways and configuration versions, capture a version, compare it with what a gateway runs, deploy, promote, or roll back a gateway, list, set, and remove a gateway's variables and secrets, and export and import declarative configuration |
+
+### Paging
+
+List tools page their results only where <ProductName /> pages them, so a search never skips matches:
+
+| Paged with `limit` and `offset` | Returns every match, with no `limit` or `offset` |
+|---|---|
+| `list_users`, including a search by an attribute | `list_roles` searching by name or by permission |
+| `list_agents`, including a search by name or by owner | `list_groups` searching by name or by member |
+| `list_roles` and `list_groups` without a search | `list_resource_servers` searching by name or by type |
+| `list_resource_servers` without a search | `list_resource_server_permissions` |
+| The holders `get_role` returns, and the members `get_group` returns | |
+
+A paged list returns 30 results unless `limit` asks for up to 100, and `totalResults` counts them all. A search that returns every match refuses `limit` and `offset`, and `list_resource_server_permissions` doesn't take them.
 
 **Example prompts:**
 

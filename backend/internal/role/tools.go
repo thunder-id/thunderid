@@ -37,12 +37,12 @@ type roleTools struct {
 //
 //nolint:lll
 type listRolesMCPInput struct {
-	Name       string `json:"name,omitempty" jsonschema:"Exact name of the role"`
-	API        string `json:"api,omitempty" jsonschema:"Identifier of an API, such as https://api.example.com/orders. With permission, lists the roles that grant that permission on it."`
-	Permission string `json:"permission,omitempty" jsonschema:"A permission on the API given in api, from list_api_permissions"`
-	OUID       string `json:"ouId,omitempty" jsonschema:"ID of an organization unit, to list the roles it owns and then the ones shared with it"`
-	Limit      int    `json:"limit,omitempty" jsonschema:"Maximum number of roles to return, at most 100, and 30 when not given. Only without name, api and permission: a search returns every match."`
-	Offset     int    `json:"offset,omitempty" jsonschema:"Number of roles to skip. Only without name, api and permission."`
+	Name           string `json:"name,omitempty" jsonschema:"Exact name of the role"`
+	ResourceServer string `json:"resourceServer,omitempty" jsonschema:"Identifier of a resource server, an API or MCP server, such as https://api.example.com/orders or https://mcp.example.com/mcp. With permission, lists the roles that grant that permission on it."`
+	Permission     string `json:"permission,omitempty" jsonschema:"A permission on the resource server given in resourceServer, from list_resource_server_permissions"`
+	OUID           string `json:"ouId,omitempty" jsonschema:"ID of an organization unit, to list the roles it owns and then the ones shared with it"`
+	Limit          int    `json:"limit,omitempty" jsonschema:"Maximum number of roles to return, at most 100, and 30 when not given. Only without name, resourceServer and permission: a search returns every match."`
+	Offset         int    `json:"offset,omitempty" jsonschema:"Number of roles to skip. Only without name, resourceServer and permission."`
 }
 
 // getRoleMCPInput is the input of the get_role tool.
@@ -56,32 +56,36 @@ type getRoleMCPInput struct {
 	Offset  int      `json:"offset,omitempty" jsonschema:"Number of holders to skip"`
 }
 
-// listAPIPermissionsMCPInput is the input of the list_api_permissions tool.
-type listAPIPermissionsMCPInput struct {
-	API string `json:"api" jsonschema:"Identifier of the API, such as https://api.example.com/orders"`
-}
-
-// listAPIsMCPInput is the input of the list_apis tool.
+// listResourceServerPermissionsMCPInput is the input of the list_resource_server_permissions tool.
 //
 //nolint:lll
-type listAPIsMCPInput struct {
-	Name   string `json:"name,omitempty" jsonschema:"Part of the API's name or identifier, in any case, such as orders"`
-	Limit  int    `json:"limit,omitempty" jsonschema:"Maximum number of APIs to return, at most 100, and 30 when not given. Only without name: a name search returns every match."`
-	Offset int    `json:"offset,omitempty" jsonschema:"Number of APIs to skip. Only without name."`
+type listResourceServerPermissionsMCPInput struct {
+	ResourceServer string `json:"resourceServer" jsonschema:"Identifier of the resource server, an API or MCP server, such as https://api.example.com/orders or https://mcp.example.com/mcp"`
 }
 
-// apiMCPItem is one API in a list.
-type apiMCPItem struct {
-	API         string `json:"api"`
-	Name        string `json:"name"`
-	Description string `json:"description,omitempty"`
-	OUID        string `json:"ouId"`
+// listResourceServersMCPInput is the input of the list_resource_servers tool.
+//
+//nolint:lll
+type listResourceServersMCPInput struct {
+	Name   string `json:"name,omitempty" jsonschema:"Part of the resource server's name or identifier, in any case, such as orders"`
+	Type   string `json:"type,omitempty" jsonschema:"Kind of resource server to list: API, MCP (an MCP server) or CUSTOM"`
+	Limit  int    `json:"limit,omitempty" jsonschema:"Maximum number of resource servers to return, at most 100, and 30 when not given. Only without name and type: a search returns every match."`
+	Offset int    `json:"offset,omitempty" jsonschema:"Number of resource servers to skip. Only without name and type."`
 }
 
-// apiListMCPResponse is the list_apis output.
-type apiListMCPResponse struct {
-	TotalResults int          `json:"totalResults"`
-	APIs         []apiMCPItem `json:"apis"`
+// resourceServerMCPItem is one resource server in a list.
+type resourceServerMCPItem struct {
+	ResourceServer string `json:"resourceServer"`
+	Name           string `json:"name"`
+	Type           string `json:"type"`
+	Description    string `json:"description,omitempty"`
+	OUID           string `json:"ouId"`
+}
+
+// resourceServerListMCPResponse is the list_resource_servers output.
+type resourceServerListMCPResponse struct {
+	TotalResults    int                     `json:"totalResults"`
+	ResourceServers []resourceServerMCPItem `json:"resourceServers"`
 }
 
 // roleAssigneeMCPInput is a user, app, agent or group a role is granted to or revoked from.
@@ -94,12 +98,12 @@ type roleAssigneeMCPInput struct {
 //
 //nolint:lll
 type createRoleMCPInput struct {
-	Name        string                 `json:"name" jsonschema:"Name of the role, unique in its organization unit"`
-	Description string                 `json:"description,omitempty" jsonschema:"What the role is for"`
-	OUID        string                 `json:"ouId,omitempty" jsonschema:"ID of the organization unit that owns the role. Defaults to the Default organization unit."`
-	API         string                 `json:"api,omitempty" jsonschema:"Identifier of the API the permissions are on, such as https://api.example.com/orders"`
-	Permissions []string               `json:"permissions,omitempty" jsonschema:"Permissions on the API to grant, from list_api_permissions"`
-	Assignees   []roleAssigneeMCPInput `json:"assignees,omitempty" jsonschema:"Users, apps, agents and groups to assign the role to when it is created"`
+	Name           string                 `json:"name" jsonschema:"Name of the role, unique in its organization unit"`
+	Description    string                 `json:"description,omitempty" jsonschema:"What the role is for"`
+	OUID           string                 `json:"ouId,omitempty" jsonschema:"ID of the organization unit that owns the role. Defaults to the Default organization unit."`
+	ResourceServer string                 `json:"resourceServer,omitempty" jsonschema:"Identifier of the resource server the permissions are on, an API or MCP server, such as https://api.example.com/orders or https://mcp.example.com/mcp"`
+	Permissions    []string               `json:"permissions,omitempty" jsonschema:"Permissions on the resource server to grant, from list_resource_server_permissions"`
+	Assignees      []roleAssigneeMCPInput `json:"assignees,omitempty" jsonschema:"Users, apps, agents and groups to assign the role to when it is created"`
 	// AllowDuplicate lets a second role grant exactly what one in the unit already grants.
 	AllowDuplicate bool `json:"allowDuplicate,omitempty" jsonschema:"Create the role even when one in the organization unit already grants exactly these permissions. Leave it out to be told about that role instead."`
 }
@@ -108,10 +112,10 @@ type createRoleMCPInput struct {
 //
 //nolint:lll
 type updateRolePermissionsMCPInput struct {
-	RoleID string   `json:"roleId" jsonschema:"ID of the role, from list_roles"`
-	API    string   `json:"api" jsonschema:"Identifier of the API the permissions are on, such as https://api.example.com/orders"`
-	Add    []string `json:"add,omitempty" jsonschema:"Permissions on the API to add, from list_api_permissions"`
-	Remove []string `json:"remove,omitempty" jsonschema:"Permissions on the API to remove"`
+	RoleID         string   `json:"roleId" jsonschema:"ID of the role, from list_roles"`
+	ResourceServer string   `json:"resourceServer" jsonschema:"Identifier of the resource server the permissions are on, an API or MCP server, such as https://api.example.com/orders or https://mcp.example.com/mcp"`
+	Add            []string `json:"add,omitempty" jsonschema:"Permissions on the resource server to add, from list_resource_server_permissions"`
+	Remove         []string `json:"remove,omitempty" jsonschema:"Permissions on the resource server to remove"`
 }
 
 // updateRoleAssignmentsMCPInput is the input of the update_role_assignments tool.
@@ -139,11 +143,11 @@ type roleListMCPResponse struct {
 	Roles        []roleMCPItem `json:"roles"`
 }
 
-// roleAPIPermissionsMCPItem is what a role grants on one API.
-type roleAPIPermissionsMCPItem struct {
-	API         string   `json:"api"`
-	Name        string   `json:"name,omitempty"`
-	Permissions []string `json:"permissions"`
+// roleResourceServerPermissionsMCPItem is what a role grants on one resource server.
+type roleResourceServerPermissionsMCPItem struct {
+	ResourceServer string   `json:"resourceServer"`
+	Name           string   `json:"name,omitempty"`
+	Permissions    []string `json:"permissions"`
 }
 
 // roleHolderMCPItem is a user, app, agent or group a role is assigned to.
@@ -155,32 +159,35 @@ type roleHolderMCPItem struct {
 	Mandated bool   `json:"mandated"`
 }
 
-// roleMCPDetails is one role, with its permissions grouped by API.
+// roleMCPDetails is one role, with its permissions grouped by resource server.
 type roleMCPDetails struct {
-	ID           string                      `json:"id"`
-	Name         string                      `json:"name"`
-	Description  string                      `json:"description,omitempty"`
-	OUID         string                      `json:"ouId"`
-	ReadOnly     bool                        `json:"readOnly"`
-	Permissions  []roleAPIPermissionsMCPItem `json:"permissions"`
-	Holders      *[]roleHolderMCPItem        `json:"holders,omitempty"`
-	HoldersTotal int                         `json:"holdersTotal,omitempty"`
-	NotIncluded  []string                    `json:"notIncluded,omitempty"`
+	ID           string                                 `json:"id"`
+	Name         string                                 `json:"name"`
+	Description  string                                 `json:"description,omitempty"`
+	OUID         string                                 `json:"ouId"`
+	ReadOnly     bool                                   `json:"readOnly"`
+	Permissions  []roleResourceServerPermissionsMCPItem `json:"permissions"`
+	Holders      *[]roleHolderMCPItem                   `json:"holders,omitempty"`
+	HoldersTotal int                                    `json:"holdersTotal,omitempty"`
+	NotIncluded  []string                               `json:"notIncluded,omitempty"`
 }
 
-// apiPermissionMCPItem is one permission an API offers.
-type apiPermissionMCPItem struct {
+// resourceServerPermissionMCPItem is one permission a resource server offers.
+type resourceServerPermissionMCPItem struct {
 	Permission  string `json:"permission"`
 	Name        string `json:"name"`
 	Description string `json:"description,omitempty"`
+	// Kind is tool or resource for a permission on an MCP server's tool or resource, and empty otherwise.
+	Kind string `json:"kind,omitempty"`
 }
 
-// apiPermissionsMCPResponse is the list_api_permissions output.
-type apiPermissionsMCPResponse struct {
-	API          string                 `json:"api"`
-	Name         string                 `json:"name"`
-	TotalResults int                    `json:"totalResults"`
-	Permissions  []apiPermissionMCPItem `json:"permissions"`
+// resourceServerPermissionsMCPResponse is the list_resource_server_permissions output.
+type resourceServerPermissionsMCPResponse struct {
+	ResourceServer string                            `json:"resourceServer"`
+	Name           string                            `json:"name"`
+	Type           string                            `json:"type"`
+	TotalResults   int                               `json:"totalResults"`
+	Permissions    []resourceServerPermissionMCPItem `json:"permissions"`
 }
 
 // updateRolePermissionsMCPResponse is the update_role_permissions output.
@@ -238,8 +245,9 @@ func RegisterMCPTools(server *mcp.Server, roleService RoleServiceInterface,
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name: "list_roles",
-		Description: `Find roles. With api, the identifier of an API (a resource server, as list_apis returns ` +
-			`it), and permission, one of the permissions defined on it (as list_api_permissions returns them), ` +
+		Description: `Find roles. With resourceServer, the identifier of a resource server (an API or MCP server, ` +
+			`as list_resource_servers returns it), and permission, one of the permissions defined on it (as ` +
+			`list_resource_server_permissions returns them), ` +
 			`lists the roles that grant that permission, so you can reuse one instead of creating a ` +
 			`near-duplicate. name matches a role's exact name. ouId lists the roles an organization unit ` +
 			`owns, then the ones shared with it. name and ouId narrow a permission search. A search by name ` +
@@ -252,7 +260,8 @@ func RegisterMCPTools(server *mcp.Server, roleService RoleServiceInterface,
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name: "get_role",
-		Description: `Get one role: its permissions grouped by API, and whether it is read-only. With include ` +
+		Description: `Get one role: its permissions grouped by resource server, and whether it is read-only. ` +
+			`With include ` +
 			`holders, also the users, apps, agents and groups it is assigned to, a page at a time with limit and ` +
 			`offset, and holdersTotal counting them all. Members of a holder group ` +
 			`hold the role through it. notIncluded lists the sections left out, so a missing section doesn't ` +
@@ -263,33 +272,39 @@ func RegisterMCPTools(server *mcp.Server, roleService RoleServiceInterface,
 	}, tools.getRole)
 
 	mcp.AddTool(server, &mcp.Tool{
-		Name: "list_apis",
-		Description: `Find the APIs whose permissions roles grant, such as "the orders API". name matches ` +
-			`part of an API's name or identifier in any case. Returns each API's identifier, which ` +
-			`list_api_permissions, list_roles, create_role and update_role_permissions take. A name search ` +
-			`returns every match. Without name, the APIs are paged with limit and offset, and totalResults ` +
-			`counts them all.`,
-		InputSchema: tool.GenerateSchema[listAPIsMCPInput](),
-		Annotations: &mcp.ToolAnnotations{Title: "List APIs", ReadOnlyHint: true, OpenWorldHint: new(false)},
-	}, tools.listAPIs)
+		Name: "list_resource_servers",
+		Description: `Find the resource servers whose permissions roles grant: the APIs and MCP servers this ` +
+			`server protects, such as "the orders API" or "our messaging MCP server". name matches part of a ` +
+			`resource server's name or identifier in any case, and type lists only APIs, MCP servers or custom ` +
+			`ones. Returns each one's identifier, which list_resource_server_permissions, list_roles, ` +
+			`create_role and update_role_permissions take, and its type. A search by name or type returns every ` +
+			`match. Without one, the resource servers are paged with limit and offset, and totalResults counts ` +
+			`them all.`,
+		InputSchema: tool.GenerateSchema[listResourceServersMCPInput](
+			tool.WithEnum("", "type", resourceServerTypeNames())),
+		Annotations: &mcp.ToolAnnotations{
+			Title: "List Resource Servers", ReadOnlyHint: true, OpenWorldHint: new(false)},
+	}, tools.listResourceServers)
 
 	mcp.AddTool(server, &mcp.Tool{
-		Name: "list_api_permissions",
-		Description: `List the permissions an API offers, by its identifier, such as ` +
-			`https://api.example.com/orders; find the identifier with list_apis. Use these exact strings in ` +
+		Name: "list_resource_server_permissions",
+		Description: `List the permissions a resource server offers, by its identifier, such as ` +
+			`https://api.example.com/orders; find the identifier with list_resource_servers. For an MCP server, ` +
+			`kind says whether a permission is for a tool or a resource. Use these exact strings in ` +
 			`create_role and update_role_permissions instead of guessing them. Returns every permission, and ` +
 			`totalResults counts them.`,
-		InputSchema: tool.GenerateSchema[listAPIPermissionsMCPInput](),
+		InputSchema: tool.GenerateSchema[listResourceServerPermissionsMCPInput](),
 		Annotations: &mcp.ToolAnnotations{
-			Title: "List API Permissions", ReadOnlyHint: true, OpenWorldHint: new(false)},
-	}, tools.listAPIPermissions)
+			Title: "List Resource Server Permissions", ReadOnlyHint: true, OpenWorldHint: new(false)},
+	}, tools.listResourceServerPermissions)
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name: "create_role",
-		Description: `Create a role that grants permissions on an API, and optionally assign it right away. ` +
-			`Permissions are strings from list_api_permissions. If a role in the organization unit already ` +
-			`grants exactly these permissions, or has this name, nothing is created and the error names that ` +
-			`role, to grant with update_role_assignments instead. Without ouId, the role goes in the Default ` +
+		Description: `Create a role that grants permissions on a resource server, an API or MCP server, and ` +
+			`optionally assign it right away. Permissions are strings from list_resource_server_permissions. ` +
+			`If a role in the organization unit already grants exactly these permissions, or has this name, ` +
+			`nothing is created and the error names that role, to grant with update_role_assignments instead. ` +
+			`Without ouId, the role goes in the Default ` +
 			`organization unit. Use update_role_assignments to grant it later.`,
 		InputSchema: tool.GenerateSchema[createRoleMCPInput](
 			tool.WithEnum("assignees", "type", assigneeTypes)),
@@ -299,7 +314,8 @@ func RegisterMCPTools(server *mcp.Server, roleService RoleServiceInterface,
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name: "update_role_permissions",
-		Description: `Add and remove a role's permissions on one API, without resending the rest. It changes ` +
+		Description: `Add and remove a role's permissions on one resource server, without resending the rest. ` +
+			`It changes ` +
 			`access for every holder, so check them with get_role first. Removals run first, and nothing is ` +
 			`added if a removal is refused. ` + tools.removalNotice(),
 		InputSchema: tool.GenerateSchema[updateRolePermissionsMCPInput](),
@@ -325,11 +341,11 @@ func RegisterMCPTools(server *mcp.Server, roleService RoleServiceInterface,
 // listRoles handles the list_roles tool call.
 func (t *roleTools) listRoles(ctx context.Context, _ *mcp.CallToolRequest, input listRolesMCPInput) (
 	*mcp.CallToolResult, *roleListMCPResponse, error) {
-	if (input.API == "") != (input.Permission == "") {
-		return nil, nil, errors.New("failed to list roles: give api and permission together")
+	if (input.ResourceServer == "") != (input.Permission == "") {
+		return nil, nil, errors.New("failed to list roles: give resourceServer and permission together")
 	}
 
-	if input.API != "" || input.Name != "" {
+	if input.ResourceServer != "" || input.Name != "" {
 		// The searches the role service offers by name and by permission aren't paged, so a search
 		// returns every match.
 		if input.Limit != 0 || input.Offset != 0 {
@@ -344,8 +360,8 @@ func (t *roleTools) listRoles(ctx context.Context, _ *mcp.CallToolRequest, input
 			searchCtx = security.WithRuntimeContext(ctx)
 		}
 		var roles []Role
-		if input.API != "" {
-			server, err := t.apiByIdentifier(ctx, input.API)
+		if input.ResourceServer != "" {
+			server, err := t.resourceServerByIdentifier(ctx, input.ResourceServer)
 			if err != nil {
 				return nil, nil, fmt.Errorf("failed to list roles: %w", err)
 			}
@@ -450,44 +466,46 @@ func (t *roleTools) rolesVisibleInOU(ctx context.Context, ouID string, roles []R
 	return kept, nil
 }
 
-// listAPIs handles the list_apis tool call. Without a name, the resource service pages the APIs. The
-// resource service has no name search, so a name search reads every page, matches here, and returns
-// every match.
-func (t *roleTools) listAPIs(ctx context.Context, _ *mcp.CallToolRequest, input listAPIsMCPInput) (
-	*mcp.CallToolResult, *apiListMCPResponse, error) {
+// listResourceServers handles the list_resource_servers tool call. Without a name or a type, the resource
+// service pages the resource servers. The resource service has no search by name or type, so a search
+// reads every page, matches here, and returns every match.
+func (t *roleTools) listResourceServers(ctx context.Context, _ *mcp.CallToolRequest,
+	input listResourceServersMCPInput) (*mcp.CallToolResult, *resourceServerListMCPResponse, error) {
 	wanted := strings.ToLower(strings.TrimSpace(input.Name))
-	if wanted == "" {
+	if wanted == "" && input.Type == "" {
 		limit, err := pageLimit(input.Limit, input.Offset)
 		if err != nil {
-			return nil, nil, fmt.Errorf("failed to list APIs: %w", err)
+			return nil, nil, fmt.Errorf("failed to list resource servers: %w", err)
 		}
 		page, svcErr := t.resourceService.GetResourceServerList(ctx, limit, input.Offset)
 		if svcErr != nil {
-			return nil, nil, fmt.Errorf("failed to list APIs: %s", svcErr.ErrorDescription)
+			return nil, nil, fmt.Errorf("failed to list resource servers: %s", svcErr.ErrorDescription)
 		}
-		apis := make([]apiMCPItem, 0, len(page.ResourceServers))
+		servers := make([]resourceServerMCPItem, 0, len(page.ResourceServers))
 		for _, server := range page.ResourceServers {
-			apis = append(apis, apiMCPItem{API: server.Identifier, Name: server.Name,
-				Description: server.Description, OUID: server.OUID})
+			servers = append(servers, resourceServerItemOf(server))
 		}
-		return nil, &apiListMCPResponse{TotalResults: page.TotalResults, APIs: apis}, nil
+		return nil, &resourceServerListMCPResponse{TotalResults: page.TotalResults, ResourceServers: servers}, nil
 	}
 	if input.Limit != 0 || input.Offset != 0 {
-		return nil, nil, errors.New("failed to list APIs: a name search returns every match, so limit and " +
-			"offset can't be used with it")
+		return nil, nil, errors.New("failed to list resource servers: a search by name or type returns every " +
+			"match, so limit and offset can't be used with it")
 	}
 
-	apis := []apiMCPItem{}
+	servers := []resourceServerMCPItem{}
 	for offset := 0; ; {
 		page, svcErr := t.resourceService.GetResourceServerList(ctx, serverconst.MaxPageSize, offset)
 		if svcErr != nil {
-			return nil, nil, fmt.Errorf("failed to list APIs: %s", svcErr.ErrorDescription)
+			return nil, nil, fmt.Errorf("failed to list resource servers: %s", svcErr.ErrorDescription)
 		}
 		for _, server := range page.ResourceServers {
-			if strings.Contains(strings.ToLower(server.Name), wanted) ||
+			item := resourceServerItemOf(server)
+			if input.Type != "" && item.Type != input.Type {
+				continue
+			}
+			if wanted == "" || strings.Contains(strings.ToLower(server.Name), wanted) ||
 				strings.Contains(strings.ToLower(server.Identifier), wanted) {
-				apis = append(apis, apiMCPItem{API: server.Identifier, Name: server.Name,
-					Description: server.Description, OUID: server.OUID})
+				servers = append(servers, item)
 			}
 		}
 		offset += len(page.ResourceServers)
@@ -495,21 +513,22 @@ func (t *roleTools) listAPIs(ctx context.Context, _ *mcp.CallToolRequest, input 
 			break
 		}
 	}
-	slices.SortFunc(apis, func(a, b apiMCPItem) int { return strings.Compare(a.Name, b.Name) })
-	return nil, &apiListMCPResponse{TotalResults: len(apis), APIs: apis}, nil
+	slices.SortFunc(servers, func(a, b resourceServerMCPItem) int { return strings.Compare(a.Name, b.Name) })
+	return nil, &resourceServerListMCPResponse{TotalResults: len(servers), ResourceServers: servers}, nil
 }
 
-// listAPIPermissions handles the list_api_permissions tool call. An API's permissions are its actions and
-// those of each of its resources, which the resource service lists separately, so no single paged list
-// holds them all. It returns every permission.
-func (t *roleTools) listAPIPermissions(ctx context.Context, _ *mcp.CallToolRequest,
-	input listAPIPermissionsMCPInput) (*mcp.CallToolResult, *apiPermissionsMCPResponse, error) {
-	server, err := t.apiByIdentifier(ctx, input.API)
+// listResourceServerPermissions handles the list_resource_server_permissions tool call. A resource server's
+// permissions are its actions and those of each of its resources, which the resource service lists
+// separately, so no single paged list holds them all. It returns every permission.
+func (t *roleTools) listResourceServerPermissions(ctx context.Context, _ *mcp.CallToolRequest,
+	input listResourceServerPermissionsMCPInput) (*mcp.CallToolResult, *resourceServerPermissionsMCPResponse,
+	error) {
+	server, err := t.resourceServerByIdentifier(ctx, input.ResourceServer)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to list API permissions: %w", err)
+		return nil, nil, fmt.Errorf("failed to list resource server permissions: %w", err)
 	}
 
-	permissions := []apiPermissionMCPItem{}
+	permissions := []resourceServerPermissionMCPItem{}
 	addActions := func(resourceID *string) *tidcommon.ServiceError {
 		for offset := 0; ; {
 			actions, svcErr := t.resourceService.GetActionList(ctx, server.ID, resourceID, "",
@@ -518,8 +537,9 @@ func (t *roleTools) listAPIPermissions(ctx context.Context, _ *mcp.CallToolReque
 				return svcErr
 			}
 			for _, action := range actions.Actions {
-				permissions = append(permissions, apiPermissionMCPItem{
-					Permission: action.Permission, Name: action.Name, Description: action.Description})
+				permissions = append(permissions, resourceServerPermissionMCPItem{
+					Permission: action.Permission, Name: action.Name, Description: action.Description,
+					Kind: string(action.Kind)})
 			}
 			offset += len(actions.Actions)
 			if len(actions.Actions) == 0 || offset >= actions.TotalResults {
@@ -528,31 +548,31 @@ func (t *roleTools) listAPIPermissions(ctx context.Context, _ *mcp.CallToolReque
 		}
 	}
 	if svcErr := addActions(nil); svcErr != nil {
-		return nil, nil, fmt.Errorf("failed to list API permissions: %s", svcErr.ErrorDescription)
+		return nil, nil, fmt.Errorf("failed to list resource server permissions: %s", svcErr.ErrorDescription)
 	}
 	resources, svcErr := t.resourceService.GetAllResourceList(ctx, server.ID)
 	if svcErr != nil {
-		return nil, nil, fmt.Errorf("failed to list API permissions: %s", svcErr.ErrorDescription)
+		return nil, nil, fmt.Errorf("failed to list resource server permissions: %s", svcErr.ErrorDescription)
 	}
 	for _, resource := range resources {
-		permissions = append(permissions, apiPermissionMCPItem{
+		permissions = append(permissions, resourceServerPermissionMCPItem{
 			Permission: resource.Permission, Name: resource.Name, Description: resource.Description})
 		if svcErr := addActions(&resource.ID); svcErr != nil {
-			return nil, nil, fmt.Errorf("failed to list API permissions: %s", svcErr.ErrorDescription)
+			return nil, nil, fmt.Errorf("failed to list resource server permissions: %s", svcErr.ErrorDescription)
 		}
 	}
-	slices.SortFunc(permissions, func(a, b apiPermissionMCPItem) int {
+	slices.SortFunc(permissions, func(a, b resourceServerPermissionMCPItem) int {
 		return strings.Compare(a.Permission, b.Permission)
 	})
-	return nil, &apiPermissionsMCPResponse{API: server.Identifier, Name: server.Name,
-		TotalResults: len(permissions), Permissions: permissions}, nil
+	return nil, &resourceServerPermissionsMCPResponse{ResourceServer: server.Identifier, Name: server.Name,
+		Type: typeOf(server), TotalResults: len(permissions), Permissions: permissions}, nil
 }
 
 // createRole handles the create_role tool call.
 func (t *roleTools) createRole(ctx context.Context, _ *mcp.CallToolRequest, input createRoleMCPInput) (
 	*mcp.CallToolResult, *roleMCPDetails, error) {
-	if (input.API == "") != (len(input.Permissions) == 0) {
-		return nil, nil, errors.New("failed to create role: give api and permissions together")
+	if (input.ResourceServer == "") != (len(input.Permissions) == 0) {
+		return nil, nil, errors.New("failed to create role: give resourceServer and permissions together")
 	}
 
 	ouID := input.OUID
@@ -566,8 +586,8 @@ func (t *roleTools) createRole(ctx context.Context, _ *mcp.CallToolRequest, inpu
 	}
 	detail := RoleCreationDetail{Name: input.Name, Description: input.Description, OUID: ouID,
 		Assignments: assignmentsOf(input.Assignees)}
-	if input.API != "" {
-		server, err := t.apiByIdentifier(ctx, input.API)
+	if input.ResourceServer != "" {
+		server, err := t.resourceServerByIdentifier(ctx, input.ResourceServer)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to create role: %w", err)
 		}
@@ -604,7 +624,7 @@ func (t *roleTools) createRole(ctx context.Context, _ *mcp.CallToolRequest, inpu
 }
 
 // roleGrantingExactly returns a role in the organization unit whose permissions are exactly the given
-// ones on the given API, or nil when there is none.
+// ones on the given resource server, or nil when there is none.
 func (t *roleTools) roleGrantingExactly(ctx context.Context, ouID, serverID string, permissions []string) (
 	*RoleWithPermissions, error) {
 	wanted := slices.Sorted(slices.Values(slices.Compact(slices.Sorted(slices.Values(permissions)))))
@@ -650,7 +670,7 @@ func (t *roleTools) updateRolePermissions(ctx context.Context, _ *mcp.CallToolRe
 	if len(input.Add) == 0 && len(input.Remove) == 0 {
 		return nil, nil, errors.New("failed to update role permissions: give add, remove, or both")
 	}
-	server, err := t.apiByIdentifier(ctx, input.API)
+	server, err := t.resourceServerByIdentifier(ctx, input.ResourceServer)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to update role permissions: %w", err)
 	}
@@ -759,7 +779,7 @@ func (t *roleTools) revokeRole(ctx context.Context, roleID, ouID string, assigne
 	return nil
 }
 
-// describeRole reads a role and names the APIs it grants permissions on.
+// describeRole reads a role and names the resource servers it grants permissions on.
 func (t *roleTools) describeRole(ctx context.Context, roleID, ouID string) (*roleMCPDetails, error) {
 	role, svcErr := t.roleService.GetRoleInOU(ctx, roleID, ouID)
 	if svcErr != nil {
@@ -771,13 +791,13 @@ func (t *roleTools) describeRole(ctx context.Context, roleID, ouID string) (*rol
 	}
 
 	details := &roleMCPDetails{ID: role.ID, Name: role.Name, Description: role.Description, OUID: role.OUID,
-		ReadOnly: readOnly || !role.IsOwnedByOU, Permissions: []roleAPIPermissionsMCPItem{}}
+		ReadOnly: readOnly || !role.IsOwnedByOU, Permissions: []roleResourceServerPermissionsMCPItem{}}
 	for _, granted := range role.Permissions {
-		item := roleAPIPermissionsMCPItem{API: granted.ResourceServerID,
+		item := roleResourceServerPermissionsMCPItem{ResourceServer: granted.ResourceServerID,
 			Permissions: slices.Sorted(slices.Values(granted.Permissions))}
 		if server, svcErr := t.resourceService.GetResourceServer(ctx, granted.ResourceServerID); svcErr == nil &&
 			server != nil {
-			item.API = server.Identifier
+			item.ResourceServer = server.Identifier
 			item.Name = server.Name
 		}
 		details.Permissions = append(details.Permissions, item)
@@ -785,11 +805,34 @@ func (t *roleTools) describeRole(ctx context.Context, roleID, ouID string) (*rol
 	return details, nil
 }
 
-// apiByIdentifier finds the API, a resource server, with the given identifier.
-func (t *roleTools) apiByIdentifier(ctx context.Context, identifier string) (*providers.ResourceServer, error) {
+// resourceServerItemOf describes a resource server in a list.
+func resourceServerItemOf(server providers.ResourceServer) resourceServerMCPItem {
+	return resourceServerMCPItem{ResourceServer: server.Identifier, Name: server.Name, Type: typeOf(&server),
+		Description: server.Description, OUID: server.OUID}
+}
+
+// typeOf returns a resource server's type. One without a type is a custom resource server, as the
+// resource service stores it.
+func typeOf(server *providers.ResourceServer) string {
+	if server.Type == "" {
+		return string(providers.ResourceServerTypeCustom)
+	}
+	return string(server.Type)
+}
+
+// resourceServerTypeNames lists the resource server types list_resource_servers filters by.
+func resourceServerTypeNames() []string {
+	return []string{string(providers.ResourceServerTypeAPI), string(providers.ResourceServerTypeMCP),
+		string(providers.ResourceServerTypeCustom)}
+}
+
+// resourceServerByIdentifier finds the resource server with the given identifier.
+func (t *roleTools) resourceServerByIdentifier(ctx context.Context, identifier string) (
+	*providers.ResourceServer, error) {
 	server, svcErr := t.resourceService.GetResourceServerByIdentifier(ctx, identifier)
 	if svcErr != nil {
-		return nil, fmt.Errorf("no API was found with the identifier %s: %s", identifier, svcErr.ErrorDescription)
+		return nil, fmt.Errorf("no resource server was found with the identifier %s: %s", identifier,
+			svcErr.ErrorDescription)
 	}
 	return server, nil
 }

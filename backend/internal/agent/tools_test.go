@@ -353,7 +353,7 @@ func (s *AgentToolsTestSuite) TestGetAgent() {
 		s.Equal([]agentRoleMCPItem{{Name: "Order Support", Granted: "through_group"},
 			{Name: "Order Viewer", Granted: "directly"}}, *out.Roles)
 		s.Require().NotNil(out.Permissions)
-		s.Equal([]agentPermissionMCPItem{{API: "https://api.example.com/orders", Name: "Orders",
+		s.Equal([]agentPermissionMCPItem{{ResourceServer: "https://api.example.com/orders", Name: "Orders",
 			Permissions: []string{"orders:read", "orders:update"}}}, *out.Permissions)
 		s.Empty(out.NotIncluded)
 	})

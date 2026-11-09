@@ -119,7 +119,7 @@ func (s *RoleToolsTestSuite) TestRegisterMCPTools() {
 		s.False(*t.Annotations.OpenWorldHint, t.Name)
 	}
 	s.Len(tools, 7)
-	for _, name := range []string{"list_roles", "get_role", "list_api_permissions"} {
+	for _, name := range []string{"list_roles", "get_role", "list_resource_server_permissions"} {
 		s.True(tools[name].Annotations.ReadOnlyHint, name)
 	}
 	s.False(*tools["create_role"].Annotations.DestructiveHint)
@@ -139,7 +139,7 @@ func (s *RoleToolsTestSuite) TestListRoles() {
 		}, (*tidcommon.ServiceError)(nil)).Once()
 		var out roleListMCPResponse
 		s.structured(s.call("list_roles", map[string]any{
-			"api": toolOrdersAPI, "permission": "orders:refund", "name": "Refunds"}), &out)
+			"resourceServer": toolOrdersAPI, "permission": "orders:refund", "name": "Refunds"}), &out)
 		s.Equal(1, out.TotalResults)
 		s.Equal("r1", out.Roles[0].ID)
 	})
@@ -160,7 +160,7 @@ func (s *RoleToolsTestSuite) TestListRoles() {
 				(*tidcommon.ServiceError)(nil)).Once()
 		var out roleListMCPResponse
 		s.structured(s.call("list_roles", map[string]any{
-			"api": toolOrdersAPI, "permission": "orders:refund", "ouId": "ou-2"}), &out)
+			"resourceServer": toolOrdersAPI, "permission": "orders:refund", "ouId": "ou-2"}), &out)
 		s.Equal(2, out.TotalResults)
 		s.Equal("r1", out.Roles[0].ID)
 		s.Equal("r2", out.Roles[1].ID)
@@ -183,7 +183,8 @@ func (s *RoleToolsTestSuite) TestListRoles() {
 			{ID: "r1", Name: "A"}, {ID: "r2", Name: "B"}, {ID: "r3", Name: "C"},
 		}, (*tidcommon.ServiceError)(nil)).Once()
 		var out roleListMCPResponse
-		s.structured(s.call("list_roles", map[string]any{"api": toolOrdersAPI, "permission": "orders:refund"}), &out)
+		s.structured(s.call("list_roles", map[string]any{"resourceServer": toolOrdersAPI,
+			"permission": "orders:refund"}), &out)
 		s.Equal(3, out.TotalResults)
 		s.Len(out.Roles, 3)
 	})
@@ -205,14 +206,14 @@ func (s *RoleToolsTestSuite) TestListRoles() {
 
 	s.Run("permission without api", func() {
 		s.Contains(s.errorText(s.call("list_roles", map[string]any{"permission": "orders:refund"})),
-			"api and permission together")
+			"resourceServer and permission together")
 	})
 
 	s.Run("unknown api", func() {
 		s.resources.On("GetResourceServerByIdentifier", mock.Anything, "https://nope.example.com").
 			Return((*providers.ResourceServer)(nil), &resourcepkg.ErrorResourceServerNotFound).Once()
 		s.Contains(s.errorText(s.call("list_roles", map[string]any{
-			"api": "https://nope.example.com", "permission": "x"})), "no API was found")
+			"resourceServer": "https://nope.example.com", "permission": "x"})), "no resource server was found")
 	})
 }
 
@@ -227,7 +228,7 @@ func (s *RoleToolsTestSuite) TestGetRole() {
 
 	var out roleMCPDetails
 	s.structured(s.call("get_role", map[string]any{"roleId": toolRoleID}), &out)
-	s.Equal([]roleAPIPermissionsMCPItem{{API: toolOrdersAPI, Name: "Orders",
+	s.Equal([]roleResourceServerPermissionsMCPItem{{ResourceServer: toolOrdersAPI, Name: "Orders",
 		Permissions: []string{"orders:read", "orders:update"}}}, out.Permissions)
 	s.Equal([]string{"holders"}, out.NotIncluded)
 	s.Nil(out.Holders)
@@ -258,8 +259,8 @@ func (s *RoleToolsTestSuite) TestListAPIPermissions() {
 	}), providers.ActionKind(""), 100, 0).Return(&resourcepkg.ActionList{Actions: []providers.Action{
 		{Name: "Issue", Permission: "orders:refunds:issue"}}}, (*tidcommon.ServiceError)(nil)).Once()
 
-	var out apiPermissionsMCPResponse
-	s.structured(s.call("list_api_permissions", map[string]any{"api": toolOrdersAPI}), &out)
+	var out resourceServerPermissionsMCPResponse
+	s.structured(s.call("list_resource_server_permissions", map[string]any{"resourceServer": toolOrdersAPI}), &out)
 	s.Equal("Orders", out.Name)
 	permissions := make([]string, 0, len(out.Permissions))
 	for _, p := range out.Permissions {
@@ -281,7 +282,7 @@ func (s *RoleToolsTestSuite) TestCreateRole() {
 		s.existingRole("orders:read")
 
 		var out roleMCPDetails
-		s.structured(s.call("create_role", map[string]any{"name": "Order Support", "api": toolOrdersAPI,
+		s.structured(s.call("create_role", map[string]any{"name": "Order Support", "resourceServer": toolOrdersAPI,
 			"permissions": []string{"orders:read"}, "assignees": []any{map[string]any{"id": "g1", "type": "group"}}}),
 			&out)
 		s.Equal("ou-default", detail.OUID)
@@ -306,8 +307,9 @@ func (s *RoleToolsTestSuite) TestUpdateRolePermissions() {
 			Return(toolRole(), (*tidcommon.ServiceError)(nil)).Twice()
 
 		var out updateRolePermissionsMCPResponse
-		s.structured(s.call("update_role_permissions", map[string]any{"roleId": toolRoleID, "api": toolOrdersAPI,
-			"add": []string{"orders:refund", "orders:read"}, "remove": []string{"orders:delete", "orders:none"}}), &out)
+		s.structured(s.call("update_role_permissions", map[string]any{"roleId": toolRoleID,
+			"resourceServer": toolOrdersAPI, "add": []string{"orders:refund", "orders:read"},
+			"remove": []string{"orders:delete", "orders:none"}}), &out)
 
 		s.Require().Len(updates, 2)
 		s.Equal([]ResourcePermissions{{ResourceServerID: toolOrdersRS, Permissions: []string{"orders:read"}}},
@@ -331,7 +333,7 @@ func (s *RoleToolsTestSuite) TestUpdateRolePermissions() {
 			Return((*RoleWithPermissions)(nil),
 				&tidcommon.ServiceError{ErrorDescription: tidcommon.I18nMessage{DefaultValue: "refused"}}).Once()
 		text := s.errorText(s.call("update_role_permissions", map[string]any{"roleId": toolRoleID,
-			"api": toolOrdersAPI, "add": []string{"orders:read"}, "remove": []string{"orders:delete"}}))
+			"resourceServer": toolOrdersAPI, "add": []string{"orders:read"}, "remove": []string{"orders:delete"}}))
 		s.Contains(text, "nothing was added")
 		s.Contains(text, "refused")
 		s.roles.AssertNumberOfCalls(s.T(), "UpdateRoleWithPermissions", 1)
@@ -344,7 +346,7 @@ func (s *RoleToolsTestSuite) TestUpdateRolePermissions() {
 			Return(role, (*tidcommon.ServiceError)(nil)).Once()
 		var out updateRolePermissionsMCPResponse
 		s.structured(s.call("update_role_permissions", map[string]any{"roleId": toolRoleID,
-			"api": toolOrdersAPI, "remove": []string{"orders:delete"}}), &out)
+			"resourceServer": toolOrdersAPI, "remove": []string{"orders:delete"}}), &out)
 		s.Equal([]string{"orders:delete"}, out.Removed)
 		s.Equal(directRemovalNotice, out.Notice)
 	})
@@ -443,7 +445,7 @@ func (s *RoleToolsTestSuite) TestCreateRole_PointsToAnExistingRole() {
 			Permissions: []ResourcePermissions{{ResourceServerID: toolOrdersRS,
 				Permissions: []string{"orders:refund", "orders:read"}}}}, (*tidcommon.ServiceError)(nil)).Once()
 		text := s.errorText(s.call("create_role", map[string]any{"name": "Refunds", "ouId": "ou-1",
-			"api": toolOrdersAPI, "permissions": []string{"orders:read", "orders:refund"}}))
+			"resourceServer": toolOrdersAPI, "permissions": []string{"orders:read", "orders:refund"}}))
 		s.Contains(text, `the role "Order Readers" (role-1)`)
 		s.Contains(text, "update_role_assignments")
 		s.roles.AssertNotCalled(s.T(), "CreateRole", mock.Anything, mock.Anything)
@@ -461,7 +463,7 @@ func (s *RoleToolsTestSuite) TestCreateRole_PointsToAnExistingRole() {
 		s.existingRole("orders:read")
 		var out roleMCPDetails
 		s.structured(s.call("create_role", map[string]any{"name": "Readers", "ouId": "ou-1",
-			"api": toolOrdersAPI, "permissions": []string{"orders:read"}}), &out)
+			"resourceServer": toolOrdersAPI, "permissions": []string{"orders:read"}}), &out)
 		s.Equal(toolRoleID, out.ID)
 	})
 
@@ -472,7 +474,7 @@ func (s *RoleToolsTestSuite) TestCreateRole_PointsToAnExistingRole() {
 		s.existingRole("orders:read")
 		var out roleMCPDetails
 		s.structured(s.call("create_role", map[string]any{"name": "Readers 2", "ouId": "ou-1",
-			"api": toolOrdersAPI, "permissions": []string{"orders:read"}, "allowDuplicate": true}), &out)
+			"resourceServer": toolOrdersAPI, "permissions": []string{"orders:read"}, "allowDuplicate": true}), &out)
 		s.roles.AssertNotCalled(s.T(), "GetRolesByPermission", mock.Anything, mock.Anything, mock.Anything)
 	})
 
@@ -488,17 +490,17 @@ func (s *RoleToolsTestSuite) TestCreateRole_PointsToAnExistingRole() {
 	})
 }
 
-// list_apis pages through the resource service only where it can page, and list_api_permissions returns
-// every permission.
-func (s *RoleToolsTestSuite) TestAPIListsPageOnlyThroughTheService() {
+// list_resource_servers pages through the resource service only where it can page, and
+// list_resource_server_permissions returns every permission.
+func (s *RoleToolsTestSuite) TestResourceServerListsPageOnlyThroughTheService() {
 	s.resources.On("GetResourceServerList", mock.Anything, 1, 1).Return(&resourcepkg.ResourceServerList{
 		TotalResults: 3, ResourceServers: []providers.ResourceServer{{Name: "B", Identifier: "https://b"}}},
 		(*tidcommon.ServiceError)(nil)).Once()
-	var apis apiListMCPResponse
-	s.structured(s.call("list_apis", map[string]any{"limit": 1, "offset": 1}), &apis)
+	var apis resourceServerListMCPResponse
+	s.structured(s.call("list_resource_servers", map[string]any{"limit": 1, "offset": 1}), &apis)
 	s.Equal(3, apis.TotalResults)
-	s.Equal([]apiMCPItem{{API: "https://b", Name: "B"}}, apis.APIs)
-	s.Contains(s.errorText(s.call("list_apis", map[string]any{"name": "orders", "limit": 1})),
+	s.Equal([]resourceServerMCPItem{{ResourceServer: "https://b", Name: "B", Type: "CUSTOM"}}, apis.ResourceServers)
+	s.Contains(s.errorText(s.call("list_resource_servers", map[string]any{"name": "orders", "limit": 1})),
 		"returns every match")
 
 	s.resources.On("GetActionList", mock.Anything, toolOrdersRS, (*string)(nil), providers.ActionKind(""), 100, 0).
@@ -507,17 +509,18 @@ func (s *RoleToolsTestSuite) TestAPIListsPageOnlyThroughTheService() {
 			{Name: "Refund", Permission: "orders:refund"}}}, (*tidcommon.ServiceError)(nil)).Once()
 	s.resources.On("GetAllResourceList", mock.Anything, toolOrdersRS).
 		Return([]providers.Resource{}, (*tidcommon.ServiceError)(nil)).Once()
-	var permissions apiPermissionsMCPResponse
-	s.structured(s.call("list_api_permissions", map[string]any{"api": toolOrdersAPI}), &permissions)
+	var permissions resourceServerPermissionsMCPResponse
+	s.structured(s.call("list_resource_server_permissions", map[string]any{"resourceServer": toolOrdersAPI}),
+		&permissions)
 	s.Equal(3, permissions.TotalResults)
-	s.Equal([]apiPermissionMCPItem{{Permission: "orders:cancel", Name: "Cancel"},
+	s.Equal([]resourceServerPermissionMCPItem{{Permission: "orders:cancel", Name: "Cancel"},
 		{Permission: "orders:read", Name: "Read"}, {Permission: "orders:refund", Name: "Refund"}},
 		permissions.Permissions)
 
-	s.Contains(s.errorText(s.call("list_apis", map[string]any{"offset": -1})), "offset 0 or more")
+	s.Contains(s.errorText(s.call("list_resource_servers", map[string]any{"offset": -1})), "offset 0 or more")
 }
 
-func (s *RoleToolsTestSuite) TestListAPIs() {
+func (s *RoleToolsTestSuite) TestListResourceServers() {
 	s.resources.On("GetResourceServerList", mock.Anything, 100, 0).Return(&resourcepkg.ResourceServerList{
 		TotalResults: 3, ResourceServers: []providers.ResourceServer{
 			{Name: "Orders", Identifier: toolOrdersAPI, OUID: "ou-1"},
@@ -528,11 +531,48 @@ func (s *RoleToolsTestSuite) TestListAPIs() {
 			{Name: "Refund Orders", Identifier: "https://api.example.com/refunds", OUID: "ou-1"},
 		}}, (*tidcommon.ServiceError)(nil)).Once()
 
-	var out apiListMCPResponse
-	s.structured(s.call("list_apis", map[string]any{"name": "ORDERS"}), &out)
+	var out resourceServerListMCPResponse
+	s.structured(s.call("list_resource_servers", map[string]any{"name": "ORDERS"}), &out)
 	s.Equal(2, out.TotalResults, "the name matches in any case, across every page")
-	s.Equal([]apiMCPItem{{API: toolOrdersAPI, Name: "Orders", OUID: "ou-1"},
-		{API: "https://api.example.com/refunds", Name: "Refund Orders", OUID: "ou-1"}}, out.APIs)
+	s.Equal([]resourceServerMCPItem{{ResourceServer: toolOrdersAPI, Name: "Orders", Type: "CUSTOM", OUID: "ou-1"},
+		{ResourceServer: "https://api.example.com/refunds", Name: "Refund Orders", Type: "CUSTOM", OUID: "ou-1"}},
+		out.ResourceServers)
+}
+
+// An MCP server is listed with its type, type filters the list, and its permissions say whether each is
+// for a tool or a resource.
+func (s *RoleToolsTestSuite) TestMCPServers() {
+	const mcpServer = "https://mcp.example.com/mcp"
+	s.resources.On("GetResourceServerList", mock.Anything, 100, 0).Return(&resourcepkg.ResourceServerList{
+		TotalResults: 2, ResourceServers: []providers.ResourceServer{
+			{Name: "Orders", Identifier: toolOrdersAPI, Type: providers.ResourceServerTypeAPI},
+			{Name: "Messaging", Identifier: mcpServer, Type: providers.ResourceServerTypeMCP},
+		}}, (*tidcommon.ServiceError)(nil)).Once()
+	var listed resourceServerListMCPResponse
+	s.structured(s.call("list_resource_servers", map[string]any{"type": "MCP"}), &listed)
+	s.Equal([]resourceServerMCPItem{{ResourceServer: mcpServer, Name: "Messaging", Type: "MCP"}},
+		listed.ResourceServers)
+	s.Contains(s.errorText(s.call("list_resource_servers", map[string]any{"type": "MCP", "limit": 1})),
+		"returns every match")
+
+	s.resources.On("GetResourceServerByIdentifier", mock.Anything, mcpServer).Return(&providers.ResourceServer{
+		ID: "rs-mcp", Name: "Messaging", Identifier: mcpServer, Type: providers.ResourceServerTypeMCP},
+		(*tidcommon.ServiceError)(nil)).Once()
+	s.resources.On("GetActionList", mock.Anything, "rs-mcp", (*string)(nil), providers.ActionKind(""), 100, 0).
+		Return(&resourcepkg.ActionList{TotalResults: 2, Actions: []providers.Action{
+			{Name: "Send Message", Permission: "send-message", Kind: providers.ActionKindTool},
+			{Name: "Inbox", Permission: "inbox", Kind: providers.ActionKindResource}}},
+			(*tidcommon.ServiceError)(nil)).Once()
+	s.resources.On("GetAllResourceList", mock.Anything, "rs-mcp").
+		Return([]providers.Resource{}, (*tidcommon.ServiceError)(nil)).Once()
+	var permissions resourceServerPermissionsMCPResponse
+	s.structured(s.call("list_resource_server_permissions", map[string]any{"resourceServer": mcpServer}),
+		&permissions)
+	s.Equal("MCP", permissions.Type)
+	s.Equal([]resourceServerPermissionMCPItem{{Permission: "inbox", Name: "Inbox", Kind: "resource"},
+		{Permission: "send-message", Name: "Send Message", Kind: "tool"}}, permissions.Permissions)
+
+	s.Contains(s.errorText(s.call("list_resource_servers", map[string]any{"type": "GRPC"})), "type")
 }
 
 // Every role tool needs the permission its API needs, so none falls back to root by accident.
