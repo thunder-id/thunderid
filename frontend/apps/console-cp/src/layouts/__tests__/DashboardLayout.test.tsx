@@ -311,13 +311,14 @@ describe('DashboardLayout', () => {
     expect(item).toHaveTextContent('navigation:badges.undeployed');
   });
 
-  it("badges the selected project's organization units that are not deployed yet", () => {
+  it("counts the selected project's organization units that are not deployed yet", () => {
     mockUseProjectSelection.mockReturnValue(inShop());
-    mockProjectChanges = {organization_unit: 1};
+    mockProjectChanges = {organization_unit: 2};
     render(<DashboardLayout />);
 
     const item = screen.getByText('navigation:pages.organizationUnits').closest('.MuiListItemButton-root')!;
-    expect(item).toHaveTextContent('navigation:badges.undeployed');
+    expect(item.querySelector('.MuiChip-root')).toHaveTextContent(/^2$/);
+    expect(item).not.toHaveTextContent('navigation:badges.undeployed');
   });
 
   it("counts the selected project's undeployed verifiable credentials on the collapsed entry", () => {

@@ -484,7 +484,8 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
               text: t('navigation:pages.organizationUnits', 'Organization units'),
               icon: <Building />,
               path: RouteConfig.organizationUnits.list(),
-              badge: badgeOf(undeployed.organization_unit),
+              // The entry's name leaves no room for a full badge, so it shows the count.
+              badge: countOf(undeployed.organization_unit ?? 0),
             },
           ],
         },
