@@ -32,6 +32,7 @@ type policy struct {
 // verifiedCredential is the raw output of an SD-JWT VC verification, before policy enforcement.
 type verifiedCredential struct {
 	Issuer               string
+	IssuerBound          bool
 	VCT                  string
 	Claims               map[string]interface{}
 	DisclosedPaths       []string
@@ -40,9 +41,27 @@ type verifiedCredential struct {
 
 // VerifiedPresentation is the result of a successful presentation verification.
 type VerifiedPresentation struct {
+	// DefinitionID is the stable id of the presentation definition whose trusted authorities verified the
+	// credential. Links are scoped to it, since each definition trusts its own authorities.
+	DefinitionID string
+	Issuer       string
+	// IssuerTrusted reports whether iss was verified: the chain ends in a trust anchor and the leaf
+	// certificate carries iss. Only then does the subject identify a holder: otherwise anyone can mint any.
+	IssuerTrusted        bool
 	Subject              string
 	Claims               map[string]interface{}
 	KeyBindingThumbprint string
+}
+
+// maxLinkedConnectionIDLength bounds the connection id a link is recorded for, so the indexed name
+// "linkedIds.<connection id>" fits the entity identifier name column.
+const maxLinkedConnectionIDLength = 245
+
+// LinkedConnectionID returns the connection id that links a holder's subject to a local user. A subject
+// is unique only within the issuer that asserted it, and an issuer is trusted only by the definition whose
+// authorities verified it, so links are scoped per definition and issuer.
+func LinkedConnectionID(definitionID, issuer string) string {
+	return "openid4vp:" + definitionID + ":" + issuer
 }
 
 // subjectDeriver produces the authenticated subject for a verified presentation.
@@ -51,7 +70,10 @@ type subjectDeriver func(*VerifiedPresentation) string
 // presentationDefinition describes a single, named presentation request the verifier can serve.
 // Optional fields fall back to the engine defaults supplied by the Service.
 type presentationDefinition struct {
-	ID            string
+	ID string
+	// stableID is the definition's id, which unlike its handle never changes or passes to another
+	// definition.
+	stableID      string
 	DCQL          dcqlConfig
 	policy        policy
 	DeriveSubject subjectDeriver
@@ -80,7 +102,8 @@ func dtoToDefinition(
 		keyIDs = trust.keyIDs()
 	}
 	return &presentationDefinition{
-		ID: dto.Handle,
+		ID:       dto.Handle,
+		stableID: dto.ID,
 		DCQL: dcqlConfig{
 			CredentialID:           dto.Handle,
 			VCT:                    dto.VCT,
@@ -97,7 +120,7 @@ func dtoToDefinition(
 			EnforceKeyBinding:    enforceKB,
 			ClaimValues:          dto.ClaimValues,
 		},
-		DeriveSubject: defaultSubjectDeriver(),
+		DeriveSubject: subjectDeriverFor(dto.SubjectClaim),
 		trust:         trust,
 	}, nil
 }

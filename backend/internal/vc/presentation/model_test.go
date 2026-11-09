@@ -27,6 +27,7 @@ func TestToResponse(t *testing.T) {
 		TrustedAuthorities: []TrustedAuthority{
 			{Name: "root-a", Certificate: "pem-a"}, {Name: "root-b", Certificate: "pem-b"},
 		},
+		SubjectClaim: "family_name",
 	}
 
 	resp := toResponse(dto)
@@ -44,6 +45,7 @@ func TestToResponse(t *testing.T) {
 	assert.Equal(t, dto.ClaimValues, resp.ClaimValues)
 	assert.Equal(t, dto.EnforceTrustedIssuer, resp.EnforceTrustedIssuer)
 	assert.Equal(t, []string{"root-a", "root-b"}, resp.TrustedAuthorities)
+	assert.Equal(t, dto.SubjectClaim, resp.SubjectClaim)
 }
 
 func TestToResponseOmitsEmptyTrustedAuthorities(t *testing.T) {

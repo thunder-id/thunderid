@@ -608,6 +608,9 @@ func validateDefinition(dto *PresentationDefinitionDTO) *tidcommon.ServiceError 
 	if dto.Format != DefaultCredentialFormat {
 		return &ErrorDefinitionUnsupportedFormat
 	}
+	if dto.SubjectClaim != "" && !slices.Contains(dto.MandatoryClaims, dto.SubjectClaim) {
+		return &ErrorDefinitionInvalidRequest
+	}
 	if svcErr := validateClaimNames(dto.RequestedClaims); svcErr != nil {
 		return svcErr
 	}

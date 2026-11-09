@@ -446,9 +446,9 @@ func lengthPrefixed(data []byte) []byte {
 
 // OpenID4VP wallet simulator.
 
-// vpWalletIssuer is the "iss" claim placed in the self-signed SD-JWT VC. Issuer
-// trust is established by pinning the wallet's issuer certificate on a definition,
-// so any non-empty issuer is accepted.
+// vpWalletIssuer is the "iss" claim placed in the self-signed SD-JWT VC. Issuer trust is established
+// by pinning the wallet's issuer certificate on a definition, and iss matches a DNS SAN of that
+// certificate so a sign-in can identify the holder.
 const vpWalletIssuer = "https://integration-test-issuer.thunderid.local"
 
 // VPWallet is a self-contained OpenID4VP wallet. It owns a self-signed issuer
@@ -474,6 +474,7 @@ func NewVPWallet() (*VPWallet, error) {
 	tmpl := &x509.Certificate{
 		SerialNumber:          big.NewInt(1),
 		Subject:               pkix.Name{CommonName: "ThunderID Integration Test Issuer"},
+		DNSNames:              []string{"integration-test-issuer.thunderid.local"},
 		NotBefore:             time.Now().Add(-time.Hour),
 		NotAfter:              time.Now().Add(24 * time.Hour),
 		KeyUsage:              x509.KeyUsageDigitalSignature,

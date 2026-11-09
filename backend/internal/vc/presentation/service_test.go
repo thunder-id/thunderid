@@ -270,6 +270,24 @@ func (suite *DefinitionServiceTestSuite) TestDefinitionServiceCreateValidationAn
 	suite.Equal(ErrorDefinitionAlreadyExists.Code, svcErr.Code)
 }
 
+func (suite *DefinitionServiceTestSuite) TestDefinitionServiceSubjectClaimMustBeMandatory() {
+	svc, _ := newTestDefinitionService(suite.T())
+	ctx := context.Background()
+
+	// A wallet may withhold an optional claim, so it could never identify the holder.
+	_, svcErr := svc.CreatePresentationDefinition(ctx, &PresentationDefinitionDTO{
+		Handle: "optional-subject", VCT: "v", OptionalClaims: []string{"national_id"}, SubjectClaim: "national_id",
+	})
+	suite.Require().NotNil(svcErr)
+	suite.Equal(ErrorDefinitionInvalidRequest.Code, svcErr.Code)
+
+	created, svcErr := svc.CreatePresentationDefinition(ctx, &PresentationDefinitionDTO{
+		Handle: "mandatory-subject", VCT: "v", MandatoryClaims: []string{"national_id"}, SubjectClaim: "national_id",
+	})
+	suite.Require().Nil(svcErr)
+	suite.Equal("national_id", created.SubjectClaim)
+}
+
 func (suite *DefinitionServiceTestSuite) TestDefinitionServiceRejectsUnsupportedFormat() {
 	svc, _ := newTestDefinitionService(suite.T())
 	ctx := context.Background()
