@@ -867,17 +867,18 @@ export default function ApplicationCreatePage(): JSX.Element {
         smsOtpSenderId,
       };
 
-      // The generated flow belongs to the organization unit of the application.
+      // The generated flow belongs to the same project or organization unit as the application.
       const flowOuId = hasMultipleOUs ? ouId : defaultOuId;
-      if (!flowOuId) {
+      if (!isInProject && !flowOuId) {
         setError(t('flows:create.organizationUnit.required', 'Organization unit is required'));
         return;
       }
+      const flowScope = isInProject ? {projectId} : {ouId: flowOuId};
 
       // Generation randomizes the flow handle so retries never collide, which also means a retry
-      // always mints a duplicate. Keying the generated flow on its inputs and owning OU is what
-      // makes the retry reuse it: same inputs, same OU, same flow.
-      const inputsKey = JSON.stringify({...flowInputs, flowOuId});
+      // always mints a duplicate. Keying the generated flow on its inputs and owning scope is what
+      // makes the retry reuse it: same inputs, same scope, same flow.
+      const inputsKey = JSON.stringify({...flowInputs, ...flowScope});
       const memoizedFlow = generatedFlowRef.current;
 
       if (memoizedFlow?.inputsKey === inputsKey) {
@@ -891,7 +892,7 @@ export default function ApplicationCreatePage(): JSX.Element {
         rollbackGeneratedFlow(memoizedFlow);
       }
 
-      const generatedFlowRequest = {...generateFlowGraph(flowInputs), ouId: flowOuId};
+      const generatedFlowRequest = {...generateFlowGraph(flowInputs), ...flowScope};
 
       createFlow.mutate(generatedFlowRequest, {
         onSuccess: (savedFlow) => {
