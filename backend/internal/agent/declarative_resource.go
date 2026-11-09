@@ -33,6 +33,9 @@ const (
 	paramTypeAgent    = "Agent"
 )
 
+// ownerVariables are the owner's values an export refers to by name.
+var ownerVariables = []string{"Owner.ID", "Owner.IDType", "Owner.IsLocal"}
+
 // agentExporter implements declarativeresource.ResourceExporter for agents.
 type agentExporter struct {
 	service        AgentServiceInterface
@@ -224,6 +227,9 @@ func (e *agentExporter) GetResourceRules() *declarativeresource.ResourceRules {
 // GetResourceRulesForResource returns per-resource parameterization rules.
 // Clients without a client secret (public, private_key_jwt or none) omit ClientSecret. RedirectURIs
 // are only parameterized when present (e.g. M2M agents using client_credentials have no redirect URIs).
+// A control plane's export refers to the owner, so that each gateway names its own, except a personal
+// agent's, which is the user the agent acts for. A template export writes the owner as it is: a template
+// is filled in as text, which an owner's ID, being free text, could break.
 func (e *agentExporter) GetResourceRulesForResource(resource interface{}) *declarativeresource.ResourceRules {
 	a, ok := resource.(*model.AgentGetResponse)
 	if !ok {
@@ -245,6 +251,9 @@ func (e *agentExporter) GetResourceRulesForResource(resource interface{}) *decla
 	}
 
 	variables := []string{"InboundAuthConfig[].OAuthConfig.ClientID"}
+	if e.references && a.Owner != nil && a.Kind != providers.AgentKindPersonalAssistant {
+		variables = append(variables, ownerVariables...)
+	}
 	var secrets []string
 	if !hasNoClientSecret {
 		secrets = append(secrets, "InboundAuthConfig[].OAuthConfig.ClientSecret")

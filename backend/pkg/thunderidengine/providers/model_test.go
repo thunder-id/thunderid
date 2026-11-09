@@ -516,3 +516,98 @@ func (s *AuthorizationRuleMappingModelTestSuite) TestIsMultiValued() {
 	s.False(AuthorizationRuleMapping{ValueType: AuthorizationValueTypeBoolean}.IsMultiValued(),
 		"a boolean is always a single value, delimiter is not applicable to it")
 }
+
+func (suite *ModelTestSuite) TestAgentOwnerLocality_JSONIsABooleanUnlessAReference() {
+	cases := []struct {
+		name string
+		in   AgentOwner
+		want string
+	}{
+		{name: "local", in: AgentOwner{ID: "u1", IsLocal: AgentOwnerLocal}, want: `{"id":"u1","isLocal":true}`},
+		{name: "external", in: AgentOwner{ID: "u1", IsLocal: AgentOwnerExternal},
+			want: `{"id":"u1","isLocal":false}`},
+		{name: "unstated", in: AgentOwner{ID: "u1"}, want: `{"id":"u1"}`},
+		{name: "reference", in: AgentOwner{ID: "u1", IsLocal: "var:AGENT__A__IS_LOCAL"},
+			want: `{"id":"u1","isLocal":"var:AGENT__A__IS_LOCAL"}`},
+	}
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			encoded, err := json.Marshal(tc.in)
+			suite.Require().NoError(err)
+			suite.JSONEq(tc.want, string(encoded))
+
+			var decoded AgentOwner
+			suite.Require().NoError(json.Unmarshal(encoded, &decoded))
+			suite.Equal(tc.in, decoded)
+		})
+	}
+}
+
+// A null states no locality, which reads as local, as an absent one does.
+func (suite *ModelTestSuite) TestAgentOwnerLocality_JSONNullIsUnstated() {
+	var owner AgentOwner
+	suite.Require().NoError(json.Unmarshal([]byte(`{"id":"u1","isLocal":null}`), &owner))
+	suite.Equal(AgentOwnerLocality(""), owner.IsLocal)
+	suite.True(owner.Local())
+}
+
+func (suite *ModelTestSuite) TestAgentOwnerLocality_JSONRejectsANumber() {
+	var owner AgentOwner
+	suite.Error(json.Unmarshal([]byte(`{"id":"u1","isLocal":1}`), &owner))
+}
+
+func (suite *ModelTestSuite) TestAgentOwnerLocality_YAMLReadsABooleanTextOrAReference() {
+	cases := []struct {
+		name string
+		in   string
+		want AgentOwnerLocality
+	}{
+		{name: "boolean", in: "isLocal: false", want: AgentOwnerExternal},
+		{name: "resolved reference", in: `isLocal: "false"`, want: AgentOwnerExternal},
+		{name: "reference", in: "isLocal: var:AGENT__A__IS_LOCAL", want: "var:AGENT__A__IS_LOCAL"},
+		{name: "absent", in: "id: u1", want: ""},
+	}
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			var owner AgentOwner
+			suite.Require().NoError(yaml.Unmarshal([]byte(tc.in), &owner))
+			suite.Equal(tc.want, owner.IsLocal)
+		})
+	}
+}
+
+// A reference is put in as a string-tagged node, which is how a stored "false" arrives once resolved.
+func (suite *ModelTestSuite) TestAgentOwnerLocality_YAMLReadsAStringTaggedNode() {
+	node := &yaml.Node{Kind: yaml.MappingNode, Content: []*yaml.Node{
+		{Kind: yaml.ScalarNode, Value: "isLocal"},
+		{Kind: yaml.ScalarNode, Tag: "!!str", Value: "false"},
+	}}
+	var owner AgentOwner
+	suite.Require().NoError(node.Decode(&owner))
+	suite.Equal(AgentOwnerExternal, owner.IsLocal)
+	suite.False(owner.Local())
+}
+
+func (suite *ModelTestSuite) TestAgentOwnerLocality_YAMLRejectsAList() {
+	var owner AgentOwner
+	suite.Error(yaml.Unmarshal([]byte("isLocal: [true]"), &owner))
+}
+
+func (suite *ModelTestSuite) TestAgentOwnerLocality_YAMLWritesABooleanUnlessAReference() {
+	local, err := yaml.Marshal(AgentOwner{ID: "u1", IsLocal: AgentOwnerLocal})
+	suite.Require().NoError(err)
+	suite.Equal("id: u1\nisLocal: true\n", string(local))
+
+	reference, err := yaml.Marshal(AgentOwner{ID: "u1", IsLocal: "var:AGENT__A__IS_LOCAL"})
+	suite.Require().NoError(err)
+	suite.Equal("id: u1\nisLocal: var:AGENT__A__IS_LOCAL\n", string(reference))
+}
+
+func (suite *ModelTestSuite) TestAgentOwner_Local() {
+	suite.True((&AgentOwner{}).Local())
+	suite.True((&AgentOwner{IsLocal: AgentOwnerLocal}).Local())
+	suite.False((&AgentOwner{IsLocal: AgentOwnerExternal}).Local())
+	suite.False((&AgentOwner{IsLocal: "var:AGENT__A__IS_LOCAL"}).Local())
+	suite.Equal(AgentOwnerLocal, AgentOwnerLocalityOf(true))
+	suite.Equal(AgentOwnerExternal, AgentOwnerLocalityOf(false))
+}

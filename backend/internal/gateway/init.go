@@ -4,6 +4,7 @@
 package gateway
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -108,6 +109,10 @@ func Initialize(mux *http.ServeMux, mcpServer *mcp.Server, exporter export.Expor
 		if err := loadDeclarativeGateways(fileStore); err != nil {
 			return service, err
 		}
+	}
+	// After the declared gateways are loaded, so the first gateway can be one of them.
+	if capture != nil {
+		go capture.fillMissingVariables(context.Background(), exporters)
 	}
 	return service, nil
 }

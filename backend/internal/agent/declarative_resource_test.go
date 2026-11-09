@@ -496,6 +496,56 @@ func (s *AgentExporterTestSuite) TestGetResourceRulesForResource_NilOAuthConfig(
 	assert.Empty(s.T(), rules.ArrayVariables)
 }
 
+// referencingRuler returns the exporter as a control plane's export uses it, writing references.
+func (s *AgentExporterTestSuite) referencingRuler() declarativeresource.PerResourceRuler {
+	writer, ok := s.exporter.(declarativeresource.ReferenceWriter)
+	s.Require().True(ok)
+	writer.WriteValueReferences(true)
+	pr, ok := s.exporter.(declarativeresource.PerResourceRuler)
+	s.Require().True(ok)
+	return pr
+}
+
+func (s *AgentExporterTestSuite) TestGetResourceRulesForResource_OwnerIsNamedForEachDeployment() {
+	owner := &providers.AgentOwner{ID: "jane@example.com", IDType: providers.AgentOwnerIDTypeEmail,
+		IsLocal: providers.AgentOwnerExternal}
+
+	rules := s.referencingRuler().GetResourceRulesForResource(&model.AgentGetResponse{ID: "agent5", Owner: owner})
+
+	assert.Subset(s.T(), rules.Variables, []string{"Owner.ID", "Owner.IDType", "Owner.IsLocal"})
+}
+
+// A template export is filled in as text, so a free-text owner ID is written as it is.
+func (s *AgentExporterTestSuite) TestGetResourceRulesForResource_TemplateExportKeepsTheOwner() {
+	pr, ok := s.exporter.(declarativeresource.PerResourceRuler)
+	s.Require().True(ok)
+	owner := &providers.AgentOwner{ID: "#team: ops", IDType: providers.AgentOwnerIDTypeUUID,
+		IsLocal: providers.AgentOwnerExternal}
+
+	rules := pr.GetResourceRulesForResource(&model.AgentGetResponse{ID: "agent8", Owner: owner})
+
+	assert.NotContains(s.T(), rules.Variables, "Owner.ID")
+}
+
+func (s *AgentExporterTestSuite) TestGetResourceRulesForResource_NoOwnerNamesNone() {
+	pr := s.referencingRuler()
+
+	rules := pr.GetResourceRulesForResource(&model.AgentGetResponse{ID: "agent6"})
+
+	assert.NotContains(s.T(), rules.Variables, "Owner.ID")
+}
+
+func (s *AgentExporterTestSuite) TestGetResourceRulesForResource_PersonalAgentKeepsItsOwner() {
+	pr := s.referencingRuler()
+	owner := &providers.AgentOwner{ID: "user-1", IDType: providers.AgentOwnerIDTypeUUID,
+		IsLocal: providers.AgentOwnerLocal}
+
+	rules := pr.GetResourceRulesForResource(&model.AgentGetResponse{ID: "agent7", Owner: owner,
+		Kind: providers.AgentKindPersonalAssistant})
+
+	assert.NotContains(s.T(), rules.Variables, "Owner.ID")
+}
+
 func (s *AgentExporterTestSuite) TestGetResourceRulesForResource_NonAgentType() {
 	pr, ok := s.exporter.(declarativeresource.PerResourceRuler)
 	assert.True(s.T(), ok, "exporter should implement PerResourceRuler")

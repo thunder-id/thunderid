@@ -32,6 +32,15 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 )
 
+// Option adjusts the agent service for the plane it runs on.
+type Option func(*agentService)
+
+// KeepingValueReferences is for a control plane, which keeps a reference to the owner each deployment
+// holds where the owner's values belong.
+func KeepingValueReferences() Option {
+	return func(s *agentService) { s.keepsReferences = true }
+}
+
 // Initialize wires the agent service, registers HTTP routes and returns the service and exporter.
 //
 // mcpServer is optional. Given one, the agent MCP tools are registered with it, and they name APIs
@@ -69,6 +78,7 @@ func Initialize(
 	bus eventbus.EventBusInterface,
 	revoker revocation.CriteriaRevoker,
 	artifactLifetime artifactLifetimeResolver,
+	opts ...Option,
 ) (AgentServiceInterface, declarativeresource.ResourceExporter, error) {
 	if bus == nil {
 		return nil, nil, errNilEventBus
@@ -81,6 +91,9 @@ func Initialize(
 		governance, valueCapturer, entityTypeService, transactioner, observabilitySvc, projectValidator, bus,
 		revoker, artifactLifetime)
 	service.(*agentService).managed = managedresource.GetStore()
+	for _, opt := range opts {
+		opt(service.(*agentService))
+	}
 
 	if err := entityService.LoadIndexedAttributes(getAgentIndexedAttributes()); err != nil {
 		return nil, nil, err
