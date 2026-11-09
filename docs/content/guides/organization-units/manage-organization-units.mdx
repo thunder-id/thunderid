@@ -93,7 +93,7 @@ Handles must be unique within the same parent. Two sibling OUs cannot share the 
 
 ## Create an Organization Unit
 
-1. Navigate to **Organization units** in the <ProductName /> Console.
+1. Navigate to **Organization units** in the <ProductName /> Console. On the control plane, open the project the OU belongs to and select **Organization units** under **Identities**.
    - To create a root OU, click **Add root organization unit**.
    - To create a child OU, expand the parent OU and click **Add child organization unit**.
 2. Enter a **Name** - the human-readable display name for the OU.
@@ -101,6 +101,8 @@ Handles must be unique within the same parent. Two sibling OUs cannot share the 
 4. Optionally enter a **Description**.
 5. The **Parent organization unit** field shows where the OU will be created. For root OUs this displays **Root organization unit**; for child OUs it shows the selected parent.
 6. Click **Create**.
+
+When creating an OU through the API on the control plane, set `projectId` to the project the OU belongs to. See [Organization Units in Projects](#organization-units-in-projects).
 
 When creating an OU through the API, you can also provide the following optional branding and policy fields:
 
@@ -123,6 +125,7 @@ curl -kL -X POST "https://localhost:8090/organization-units" \
     "name": "Engineering",
     "handle": "engineering",
     "parent": null,
+    "projectId": "<project-id>",
     "logoUrl": "https://example.com/logo.png",
     "tosUri": "https://example.com/tos"
   }'
@@ -130,7 +133,7 @@ curl -kL -X POST "https://localhost:8090/organization-units" \
 
 ## View an Organization Unit
 
-Navigate to **Organization units** in the <ProductName /> Console to see all OUs. Click the three-dot menu on any OU and select **Edit** to view its details:
+Navigate to **Organization units** in the <ProductName /> Console to see all OUs. On the control plane, open the project first and select **Organization units** under **Identities**. Click the three-dot menu on any OU and select **Edit** to view its details:
 
 - **Details** - name, handle, description, and parent OU.
 - **Child organization units** - nested OUs directly under this OU.
@@ -159,7 +162,7 @@ curl -kL "https://localhost:8090/organization-units/tree/{path}" \
 
 ## Update an Organization Unit
 
-1. Navigate to **Organization units** in the <ProductName /> Console.
+1. Navigate to **Organization units** in the <ProductName /> Console. On the control plane, open the OU's project first and select **Organization units** under **Identities**.
 2. Click the three-dot menu on the OU you want to update and select **Edit**.
 3. Update the **Name**, **Handle**, or **Description** as needed.
 4. Click **Save**.
@@ -341,7 +344,7 @@ curl -kL -G "https://localhost:8090/groups" \
 
 ## Delete an Organization Unit
 
-1. Open the OU from the **Organization units** list.
+1. Open the OU from the **Organization units** list. On the control plane, open the OU's project first and select **Organization units** under **Identities**.
 2. Click **Delete** and confirm.
 
 :::warning
@@ -361,6 +364,24 @@ To delete by hierarchical path:
 curl -kL -X DELETE "https://localhost:8090/organization-units/tree/{path}" \
   -H 'Authorization: Bearer <access-token>'
 ```
+
+## Organization Units in Projects
+
+On the control plane, every OU except the system OU belongs to a project. The system OU, with the handle `default`, is shared by every project and belongs to none.
+
+- **Create**: set `projectId` in the request body of `POST /organization-units`. A request without `projectId` fails with `OU-1023`, and a project that does not exist fails with `OU-1022`.
+- **Parent**: an OU in a project is a root OU, a child of the system OU, or a child of another OU in the same project. A parent in another project fails with `OU-1024`.
+- **List**: `GET /organization-units?projectId=<project-id>` returns the top OUs of the project: its root OUs and the OUs it placed under the system OU. List the rest under their parent. A project that does not exist returns an empty list. A caller who can list only some OUs gets every OU of the project they can list, at any level, as the list without `projectId` does.
+- **Update**: an update without `projectId` keeps the OU in its current project. A different `projectId` moves the OU and all its descendant OUs to that project. If a descendant is defined in a declarative resource file, nothing moves and the request fails with `OU-1012`.
+- **System OU**: setting `projectId` on the system OU fails with `OU-1025`.
+- **Resources in a project**: a resource in a project that belongs to an OU, such as an application, agent, user, group, role, resource server, or flow, is still placed only in the system OU. A project's own OUs do not hold them.
+- **Delete a project**: a project that still has OUs cannot be deleted. The request fails with `409` (`PRJ-1013`) until its OUs are deleted or moved to another project. The API cannot delete or move an OU defined in a declarative resource file, so remove it from the file or set a different `projectId` there, and reload the configuration.
+
+In the control plane Console, open a project and select **Organization units** under **Identities** to see the OUs of that project.
+
+A server without projects, such as the all-in-one server, does not require a project and keeps the `projectId` it receives without checking it, but refuses one longer than 36 characters with `OU-1022`.
+
+On the control plane, a declarative OU file must set `projectId`, except for the system OU. A file without it stops the server from starting. Export and import keep `projectId`.
 
 ## Related Guides
 

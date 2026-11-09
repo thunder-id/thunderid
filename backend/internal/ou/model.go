@@ -19,6 +19,7 @@ type OrganizationUnitRequest struct {
 	Name                      string  `json:"name" native:"required,min=1,max=100"`
 	Description               string  `json:"description,omitempty"`
 	Parent                    *string `json:"parent" native:"omitempty,max=255"`
+	ProjectID                 string  `json:"projectId,omitempty"`
 	ThemeID                   string  `json:"themeId,omitempty"`
 	LayoutID                  string  `json:"layoutId,omitempty"`
 	AuthFlowID                string  `json:"authFlowId,omitempty"`
@@ -54,6 +55,7 @@ type OrganizationUnit struct {
 	Name                      string    `json:"name" yaml:"name"`
 	Description               string    `json:"description,omitempty" yaml:"description,omitempty"`
 	Parent                    *string   `json:"parent" yaml:"parent"`
+	ProjectID                 string    `json:"projectId,omitempty" yaml:"projectId,omitempty"`
 	ThemeID                   string    `json:"themeId,omitempty" yaml:"themeId,omitempty"`
 	LayoutID                  string    `json:"layoutId,omitempty" yaml:"layoutId,omitempty"`
 	AuthFlowID                string    `json:"authFlowId,omitempty" yaml:"authFlowId,omitempty"`
@@ -79,6 +81,7 @@ type OrganizationUnitRequestWithID struct {
 	Name                      string  `json:"name" yaml:"name" native:"required,min=1,max=100"`
 	Description               string  `json:"description,omitempty" yaml:"description,omitempty"`
 	Parent                    *string `json:"parent" yaml:"parent"`
+	ProjectID                 string  `json:"projectId,omitempty" yaml:"projectId,omitempty"`
 	ThemeID                   string  `json:"themeId,omitempty" yaml:"themeId,omitempty"`
 	LayoutID                  string  `json:"layoutId,omitempty" yaml:"layoutId,omitempty"`
 	AuthFlowID                string  `json:"authFlowId,omitempty" yaml:"authFlowId,omitempty"`
@@ -107,14 +110,17 @@ type OrganizationUnitListResponse struct {
 
 // OrganizationUnitBasic represents the basic information of an organization unit.
 type OrganizationUnitBasic struct {
-	ID          string    `json:"id"`
-	Handle      string    `json:"handle"`
-	Name        string    `json:"name"`
-	Description string    `json:"description,omitempty"`
-	LogoURL     string    `json:"logoUrl,omitempty"`
-	IsReadOnly  bool      `json:"isReadOnly"`
-	CreatedAt   time.Time `json:"createdAt"`
-	UpdatedAt   time.Time `json:"updatedAt"`
+	ID          string `json:"id"`
+	Handle      string `json:"handle"`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	ProjectID   string `json:"projectId,omitempty"`
+	// Parent is read only where a listing needs it to decide which units are its top ones, and never sent.
+	Parent     *string   `json:"-"`
+	LogoURL    string    `json:"logoUrl,omitempty"`
+	IsReadOnly bool      `json:"isReadOnly"`
+	CreatedAt  time.Time `json:"createdAt"`
+	UpdatedAt  time.Time `json:"updatedAt"`
 }
 
 // User represents a user with basic information for OU endpoints. IsOwnedByOU reports whether the

@@ -37,9 +37,10 @@ func (ts *ControlPlaneTestSuite) SetupSuite() {
 	defaultOUID, err := testutils.DefaultOUID()
 	ts.Require().NoError(err)
 	ouID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
-		Handle: unique("cp-suite"),
-		Name:   "Control Plane suite",
-		Parent: &defaultOUID,
+		Handle:    unique("cp-suite"),
+		Name:      "Control Plane suite",
+		Parent:    &defaultOUID,
+		ProjectID: defaultProjectID,
 	})
 	ts.Require().NoError(err)
 	ts.ouID = ouID
@@ -192,6 +193,7 @@ id: cp-declarative-ou
 handle: cp-declarative-ou
 name: Control Plane Declarative OU
 description: Owns the declarative sender
+projectId: `+defaultProjectID+`
 ---
 resource_type: connection
 id: `+senderID+`

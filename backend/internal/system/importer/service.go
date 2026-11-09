@@ -1373,9 +1373,9 @@ var resourceDependencyOrder = []string{
 	// First keeps it out of the way of the ordering that does matter.
 	resourceTypeGateway,
 	resourceTypeAuthorizationDetailType,
-	resourceTypeOrganizationUnit,
-	// Before everything that is placed in a project.
+	// Before everything that is placed in a project, organization units included.
 	resourceTypeProject,
+	resourceTypeOrganizationUnit,
 	resourceTypeEntityType,
 	resourceTypeAgentType,
 	resourceTypeConnection,

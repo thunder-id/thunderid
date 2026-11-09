@@ -75,7 +75,7 @@ func (ts *ControlPlaneTestSuite) masterOf(gatewayID string) gatewayMaster {
 func (ts *ControlPlaneTestSuite) TestApplyingToTheDataPlaneRecordsItsMaster() {
 	gatewayID := ts.registerDataPlane()
 	ouID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
-		Handle: unique("mastered"), Name: "Mastered on the data plane",
+		Handle: unique("mastered"), Name: "Mastered on the data plane", ProjectID: defaultProjectID,
 	})
 	ts.Require().NoError(err)
 	defer func() { _ = testutils.DeleteOrganizationUnit(ouID) }()

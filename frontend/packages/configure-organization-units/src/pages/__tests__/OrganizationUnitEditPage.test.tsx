@@ -1,7 +1,7 @@
 // Copyright 2025 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {CapabilitiesProvider} from '@thunderid/contexts';
+import {CapabilitiesProvider, ProjectScopeProvider} from '@thunderid/contexts';
 import {screen, fireEvent, waitFor, renderWithProviders, renderHook} from '@thunderid/test-utils';
 import type {ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
@@ -269,6 +269,42 @@ describe('OrganizationUnitEditPage', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Test Organization Unit')).toBeInTheDocument();
+    });
+  });
+
+  it("shows the selected project's organization unit", async () => {
+    mockUseGetOrganizationUnit.mockReturnValue({
+      data: {...mockOrganizationUnit, projectId: 'project-1'},
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+    });
+    renderWithProviders(
+      <ProjectScopeProvider project={{id: 'project-1'}}>
+        <OrganizationUnitEditPage />
+      </ProjectScopeProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Test Organization Unit')).toBeInTheDocument();
+    });
+  });
+
+  it("leaves another project's organization unit for the selected project's list", async () => {
+    mockUseGetOrganizationUnit.mockReturnValue({
+      data: {...mockOrganizationUnit, projectId: 'project-2'},
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+    });
+    renderWithProviders(
+      <ProjectScopeProvider project={{id: 'project-1'}}>
+        <OrganizationUnitEditPage />
+      </ProjectScopeProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.queryByText('Test Organization Unit')).not.toBeInTheDocument();
     });
   });
 

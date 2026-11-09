@@ -8,13 +8,14 @@ import {
   NameSuggestion,
   OrganizationUnitSummaryChip,
 } from '@thunderid/components';
+import {useProjectScope} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {generateHandle, getErrorMessage} from '@thunderid/utils';
 import {Box, Stack, Typography, Button, TextField, Alert} from '@wso2/oxygen-ui';
 import {useState, useMemo, useRef, type JSX} from 'react';
 import {useForm, Controller} from 'react-hook-form';
 import {useTranslation} from 'react-i18next';
-import {useNavigate, useLocation} from 'react-router';
+import {Navigate, useNavigate, useLocation} from 'react-router';
 import {z} from 'zod';
 import useCreateOrganizationUnit from '../api/useCreateOrganizationUnit';
 import OrganizationUnitConstraints from '../constants/organization-unit-constraints';
@@ -66,7 +67,20 @@ const createFormSchema = (t: (key: string, options?: Record<string, unknown>) =>
  */
 type FormData = z.infer<ReturnType<typeof createFormSchema>>;
 
-export default function CreateOrganizationUnitPage(): JSX.Element {
+/**
+ * Props for the {@link CreateOrganizationUnitPage} component.
+ */
+export interface CreateOrganizationUnitPageProps {
+  /**
+   * Create organization units only inside a project, on a deployment that places every organization unit but
+   * the system one in a project. Outside a project, the page returns to the list.
+   */
+  createInProjectsOnly?: boolean;
+}
+
+export default function CreateOrganizationUnitPage({
+  createInProjectsOnly = false,
+}: CreateOrganizationUnitPageProps): JSX.Element {
   const navigate = useNavigate();
   const location = useLocation();
   const routes = useOrganizationUnitRoutes();
@@ -74,6 +88,8 @@ export default function CreateOrganizationUnitPage(): JSX.Element {
   const logger = useLogger('CreateOrganizationUnitPage');
   const createOrganizationUnit = useCreateOrganizationUnit();
   const {resetTreeState} = useOrganizationUnit();
+  // Inside a project, the organization unit is created in it.
+  const {projectId} = useProjectScope();
 
   const navigationState = location.state as {parentId?: string; parentName?: string; parentHandle?: string} | null;
   const preselectedParentId = navigationState?.parentId ?? null;
@@ -141,6 +157,7 @@ export default function CreateOrganizationUnitPage(): JSX.Element {
       handle: data.handle,
       name: data.name,
       parent: data.parentId,
+      ...(projectId ? {projectId} : {}),
     };
 
     createOrganizationUnit.mutate(requestData, {
@@ -166,6 +183,10 @@ export default function CreateOrganizationUnitPage(): JSX.Element {
   };
 
   const pageTitle = t('organizationUnits:create.title', 'Create organization unit');
+
+  if (createInProjectsOnly && !projectId) {
+    return <Navigate to={listUrl} replace />;
+  }
 
   return (
     <FullScreenCreationWizardLayout

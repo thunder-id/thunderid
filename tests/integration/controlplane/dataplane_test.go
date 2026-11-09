@@ -66,8 +66,9 @@ func (ts *ControlPlaneTestSuite) importToDataPlane(content string) importOutcome
 func (ts *ControlPlaneTestSuite) TestADataPlaneImportsTheExportWithItsOwnValues() {
 	ouHandle := unique("dp-ou")
 	ouID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
-		Handle: ouHandle,
-		Name:   "Data Plane suite",
+		Handle:    ouHandle,
+		Name:      "Data Plane suite",
+		ProjectID: defaultProjectID,
 	})
 	ts.Require().NoError(err)
 	defer func() { _ = testutils.DeleteOrganizationUnit(ouID) }()
@@ -143,8 +144,9 @@ func (ts *ControlPlaneTestSuite) TestADataPlaneImportsTheExportWithItsOwnValues(
 // identifier another already has.
 func (ts *ControlPlaneTestSuite) TestADataPlaneHoldsAResourceServerUnderItsOwnIdentifier() {
 	ouID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
-		Handle: unique("dp-rs-ou"),
-		Name:   "Data Plane resource server suite",
+		Handle:    unique("dp-rs-ou"),
+		Name:      "Data Plane resource server suite",
+		ProjectID: defaultProjectID,
 	})
 	ts.Require().NoError(err)
 	defer func() { _ = testutils.DeleteOrganizationUnit(ouID) }()

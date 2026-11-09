@@ -3,7 +3,7 @@
 
 import {useQueryClient} from '@tanstack/react-query';
 import {PageLoadingAnimation, QueryErrorNotice, ResourceAvatar} from '@thunderid/components';
-import {useCapabilitiesContext, useConfig} from '@thunderid/contexts';
+import {useCapabilitiesContext, useConfig, useProjectScope} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {useThunderID} from '@thunderid/react';
 import {Box, IconButton, Typography, CircularProgress, TreeView, useTheme, Avatar, Tooltip} from '@wso2/oxygen-ui';
@@ -301,7 +301,7 @@ function CustomTreeItem(allProps: CustomTreeItemProps): JSX.Element {
             </Tooltip>
           ) : (
             <>
-              {can('ou', 'create') && (
+              {can('ou', 'create') && onAddChild && (
                 <Tooltip title={addChildTooltip}>
                   <IconButton
                     size="small"
@@ -356,7 +356,20 @@ function CustomTreeItem(allProps: CustomTreeItemProps): JSX.Element {
   );
 }
 
-export default function OrganizationUnitsTreeView(): JSX.Element {
+/**
+ * Props for the {@link OrganizationUnitsTreeView} component.
+ */
+export interface OrganizationUnitsTreeViewProps {
+  /**
+   * Offer to create organization units only inside a project, on a deployment that places every organization
+   * unit but the system one in a project.
+   */
+  createInProjectsOnly?: boolean;
+}
+
+export default function OrganizationUnitsTreeView({
+  createInProjectsOnly = false,
+}: OrganizationUnitsTreeViewProps): JSX.Element {
   const theme = useTheme();
   const navigate = useNavigate();
   const routes = useOrganizationUnitRoutes();
@@ -366,7 +379,10 @@ export default function OrganizationUnitsTreeView(): JSX.Element {
   const {getServerUrl} = useConfig();
   const {can} = useCapabilitiesContext();
   const queryClient = useQueryClient();
-  const {data, isLoading, error, refetch} = useGetOrganizationUnits();
+  // Inside a project, only its organization units are listed.
+  const {projectId} = useProjectScope();
+  const {data, isLoading, error, refetch} = useGetOrganizationUnits({projectId});
+  const canCreate = can('ou', 'create') && (!createInProjectsOnly || Boolean(projectId));
   const {treeItems, setTreeItems, expandedItems, setExpandedItems, loadedItems, setLoadedItems, resetTreeState} =
     useOrganizationUnit();
 
@@ -416,7 +432,7 @@ export default function OrganizationUnitsTreeView(): JSX.Element {
       const childOUs = result.organizationUnits;
       const parentItem = findTreeItem(treeItemsRef.current, parentId);
       const addChildItem = buildAddChildItem(parentId, parentItem?.label ?? '', parentItem?.handle ?? '');
-      const items = [...(can('ou', 'create') ? [addChildItem] : []), ...buildTreeItems(childOUs)];
+      const items = [...(canCreate ? [addChildItem] : []), ...buildTreeItems(childOUs)];
 
       if (childOUs.length < result.totalResults) {
         items.push({
@@ -429,7 +445,7 @@ export default function OrganizationUnitsTreeView(): JSX.Element {
 
       return items;
     },
-    [can, fetchChildPage],
+    [canCreate, fetchChildPage],
   );
 
   // Fetch and update state for user-triggered node expansion
@@ -481,12 +497,13 @@ export default function OrganizationUnitsTreeView(): JSX.Element {
       const result = await queryClient.fetchQuery<OrganizationUnitListResponse>({
         queryKey: [
           OrganizationUnitQueryKeys.ORGANIZATION_UNITS,
-          {limit: OrganizationUnitTreeConstants.PAGE_SIZE, offset: rootOffset},
+          {limit: OrganizationUnitTreeConstants.PAGE_SIZE, offset: rootOffset, ...(projectId ? {projectId} : {})},
         ],
         queryFn: async (): Promise<OrganizationUnitListResponse> =>
           fetchOrganizationUnits(http, getServerUrl(), {
             limit: OrganizationUnitTreeConstants.PAGE_SIZE,
             offset: rootOffset,
+            projectId,
           }),
         staleTime: 0,
       });
@@ -514,7 +531,7 @@ export default function OrganizationUnitsTreeView(): JSX.Element {
     } finally {
       setRootLoadMoreLoading(false);
     }
-  }, [rootOffset, getServerUrl, queryClient, http, setTreeItems, logger]);
+  }, [rootOffset, projectId, getServerUrl, queryClient, http, setTreeItems, logger]);
 
   const handleLoadMore = useCallback(
     async (parentId: string): Promise<void> => {
@@ -812,7 +829,7 @@ export default function OrganizationUnitsTreeView(): JSX.Element {
           <Typography variant="body2" color="text.secondary" sx={{mb: 2}}>
             {t('organizationUnits:listing.treeView.empty')}
           </Typography>
-          {can('ou', 'create') && (
+          {canCreate && (
             <Box
               role="button"
               tabIndex={0}
@@ -880,7 +897,7 @@ export default function OrganizationUnitsTreeView(): JSX.Element {
   return (
     <>
       <Box sx={{width: '100%', minHeight: 400}}>
-        {can('ou', 'create') && (
+        {canCreate && (
           <Box
             role="button"
             tabIndex={0}
@@ -950,7 +967,7 @@ export default function OrganizationUnitsTreeView(): JSX.Element {
             item: {
               onEdit: handleEditClick,
               onDelete: handleDeleteClick,
-              onAddChild: handleAddChildClick,
+              onAddChild: canCreate ? handleAddChildClick : undefined,
               onLoadMore: handleLoadMoreWithErrorLogging,
               addChildTooltip: t('organizationUnits:listing.treeView.addChild'),
               addChildButtonText: t('organizationUnits:listing.treeView.addChildOrganizationUnit'),

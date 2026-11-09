@@ -6764,6 +6764,7 @@ resource_type: organization_unit
 id: root-ou
 handle: shop
 name: Shop
+projectId: 019a3000-0000-7000-8000-0000000000p1
 themeId: theme-1
 `
 
@@ -6778,17 +6779,20 @@ func TestImportResources_ProjectIsSkippedWhereProjectsAreNotServed(t *testing.T)
 	require.Nil(t, err)
 	require.Len(t, resp.Results, 2)
 	assert.Equal(t, 0, resp.Summary.Failed)
-	assert.Equal(t, resourceTypeOrganizationUnit, resp.Results[0].ResourceType)
+	assert.Equal(t, resourceTypeProject, resp.Results[0].ResourceType)
 	assert.Equal(t, statusSuccess, resp.Results[0].Status)
-	assert.Equal(t, resourceTypeProject, resp.Results[1].ResourceType)
+	assert.Equal(t, operationSkip, resp.Results[0].Operation)
+	assert.Contains(t, resp.Results[0].Message, "Control Plane")
+	assert.Equal(t, resourceTypeOrganizationUnit, resp.Results[1].ResourceType)
 	assert.Equal(t, statusSuccess, resp.Results[1].Status)
-	assert.Equal(t, operationSkip, resp.Results[1].Operation)
-	assert.Contains(t, resp.Results[1].Message, "Control Plane")
 	require.Len(t, ouSvc.created, 1, "the root organization unit is still imported")
 	assert.Equal(t, "root-ou", ouSvc.created[0].ID)
+	assert.Equal(t, "019a3000-0000-7000-8000-0000000000p1", ouSvc.created[0].ProjectID,
+		"the organization unit keeps its project")
 }
 
-func TestImportResources_ProjectIsImportedAfterTheOrganizationUnits(t *testing.T) {
+// A project is imported before the organization units, so an organization unit in the project finds it.
+func TestImportResources_ProjectIsImportedBeforeTheOrganizationUnits(t *testing.T) {
 	ouSvc := &fakeOUService{existing: map[string]ou.OrganizationUnit{}}
 	projectSvc := &fakeProjectService{}
 
@@ -6798,11 +6802,11 @@ func TestImportResources_ProjectIsImportedAfterTheOrganizationUnits(t *testing.T
 	require.Nil(t, err)
 	require.Len(t, resp.Results, 2)
 	assert.Equal(t, 0, resp.Summary.Failed)
-	assert.Equal(t, resourceTypeOrganizationUnit, resp.Results[0].ResourceType)
+	assert.Equal(t, resourceTypeProject, resp.Results[0].ResourceType)
+	assert.Equal(t, operationCreate, resp.Results[0].Operation)
+	assert.Equal(t, "019a3000-0000-7000-8000-0000000000p1", resp.Results[0].ResourceID)
+	assert.Equal(t, resourceTypeOrganizationUnit, resp.Results[1].ResourceType)
 	require.Len(t, ouSvc.created, 1)
-	assert.Equal(t, resourceTypeProject, resp.Results[1].ResourceType)
-	assert.Equal(t, operationCreate, resp.Results[1].Operation)
-	assert.Equal(t, "019a3000-0000-7000-8000-0000000000p1", resp.Results[1].ResourceID)
 	assert.Equal(t, projectDocument{
 		ID: "019a3000-0000-7000-8000-0000000000p1", Handle: "shop", DisplayName: "Shop",
 		Description: "Online shop",
@@ -6821,7 +6825,7 @@ func TestImportResources_ExistingProjectIsUpdated(t *testing.T) {
 
 	require.Nil(t, err)
 	require.Len(t, resp.Results, 2)
-	assert.Equal(t, operationUpdate, resp.Results[1].Operation)
+	assert.Equal(t, operationUpdate, resp.Results[0].Operation)
 }
 
 func TestImportResources_ProjectDryRun(t *testing.T) {

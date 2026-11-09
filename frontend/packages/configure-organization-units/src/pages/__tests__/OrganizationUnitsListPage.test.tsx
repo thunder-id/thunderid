@@ -139,4 +139,14 @@ describe('OrganizationUnitsListPage', () => {
 
     expect(screen.getByText(t('organizationUnits:listing.addRootOrganizationUnit'))).toBeInTheDocument();
   });
+
+  it('hides the add root button outside a project when organization units are created only in projects', async () => {
+    renderWithProviders(<OrganizationUnitsListPage createInProjectsOnly />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Root Organization')).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText(t('organizationUnits:listing.addRootOrganizationUnit'))).not.toBeInTheDocument();
+  });
 });

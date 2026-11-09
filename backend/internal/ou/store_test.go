@@ -6,6 +6,8 @@ package ou
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -712,6 +714,7 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_UpdateOrganizationUnit(
 							`"policy_uri":"","recovery_flow_id":"","registration_flow_id":"",`+
 							`"signout_flow_id":"","theme_id":"","tos_uri":"","user_onboarding_flow_id":""}`,
 						mock.Anything,
+						nil,
 						testDeploymentID,
 					).
 					Return(int64(1), nil).
@@ -758,6 +761,7 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_UpdateOrganizationUnit(
 							`"signout_flow_id":"signout-flow-123","theme_id":"theme-123",`+
 							`"tos_uri":"","user_onboarding_flow_id":""}`,
 						mock.Anything,
+						nil,
 						testDeploymentID,
 					).
 					Return(int64(1), nil).
@@ -783,6 +787,7 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_UpdateOrganizationUnit(
 							`"policy_uri":"","recovery_flow_id":"","registration_flow_id":"",`+
 							`"signout_flow_id":"","theme_id":"","tos_uri":"","user_onboarding_flow_id":""}`,
 						mock.Anything,
+						nil,
 						testDeploymentID,
 					).
 					Return(int64(0), errors.New("update failed")).
@@ -1392,9 +1397,10 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_CreateOrganizationUnit(
 							`"is_registration_flow_enabled":false,"layout_id":"","logo_url":"",`+
 							`"policy_uri":"","recovery_flow_id":"","registration_flow_id":"",`+
 							`"signout_flow_id":"","theme_id":"","tos_uri":"","user_onboarding_flow_id":""}`,
+						mock.Anything,
+						mock.Anything,
+						nil,
 						testDeploymentID,
-						mock.Anything,
-						mock.Anything,
 					).
 					Return(int64(1), nil).
 					Once()
@@ -1435,9 +1441,10 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_CreateOrganizationUnit(
 							`"registration_flow_id":"registration-flow-123",`+
 							`"signout_flow_id":"signout-flow-123","theme_id":"theme-123",`+
 							`"tos_uri":"","user_onboarding_flow_id":""}`,
+						mock.Anything,
+						mock.Anything,
+						nil,
 						testDeploymentID,
-						mock.Anything,
-						mock.Anything,
 					).
 					Return(int64(1), nil).
 					Once()
@@ -1466,9 +1473,10 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_CreateOrganizationUnit(
 							`"is_registration_flow_enabled":false,"layout_id":"","logo_url":"",`+
 							`"policy_uri":"","recovery_flow_id":"","registration_flow_id":"",`+
 							`"signout_flow_id":"","theme_id":"","tos_uri":"","user_onboarding_flow_id":""}`,
+						mock.Anything,
+						mock.Anything,
+						nil,
 						testDeploymentID,
-						mock.Anything,
-						mock.Anything,
 					).
 					Return(int64(0), errors.New("insert failed")).
 					Once()
@@ -2460,4 +2468,148 @@ func loadRuntimeForScope() {
 	_ = config.InitializeServerRuntime("", &config.Config{
 		Server: engineconfig.ServerConfig{Identifier: testDeploymentID},
 	})
+}
+
+// The project listing counts and lists the top organization units of a project, filtered when asked.
+func (suite *OrganizationUnitStoreTestSuite) TestOUStore_ProjectListing() {
+	nameFilter := &tidcommon.FilterGroup{Clauses: []tidcommon.FilterClause{
+		{Expr: tidcommon.FilterExpression{Attribute: "name", Operator: tidcommon.OperatorEq, Value: "Shop"}},
+	}}
+
+	suite.Run("counts the project's top organization units", func() {
+		suite.SetupTest()
+		suite.expectDBClient()
+		suite.dbClientMock.On("QueryContext", mock.Anything, mock.MatchedBy(func(q dbmodel.DBQuery) bool {
+			// DEPLOYMENT_ID is the last parameter, after the filter's.
+			return q.ID == "OUQ-OU_MGT-22" && strings.Contains(q.Query, projectTopOUCondition) &&
+				strings.HasSuffix(q.Query, "AND OU.DEPLOYMENT_ID = $3")
+		}), "project-1", "Shop", testDeploymentID).Return([]map[string]interface{}{{"total": int64(2)}}, nil).Once()
+
+		count, err := suite.store.GetOrganizationUnitListCountByProject(context.Background(), "project-1", nameFilter)
+
+		suite.Require().NoError(err)
+		suite.Equal(2, count)
+	})
+
+	suite.Run("fails on an unexpected count", func() {
+		suite.SetupTest()
+		suite.expectDBClient()
+		suite.dbClientMock.On("QueryContext", mock.Anything, mock.Anything, "project-1", testDeploymentID).
+			Return([]map[string]interface{}{{"total": "two"}}, nil).Once()
+
+		_, err := suite.store.GetOrganizationUnitListCountByProject(context.Background(), "project-1", nil)
+
+		suite.Require().Error(err)
+	})
+
+	suite.Run("fails when the count query fails", func() {
+		suite.SetupTest()
+		suite.expectDBClient()
+		suite.dbClientMock.On("QueryContext", mock.Anything, mock.Anything, "project-1", testDeploymentID).
+			Return(nil, errors.New("boom")).Once()
+
+		_, err := suite.store.GetOrganizationUnitListCountByProject(context.Background(), "project-1", nil)
+
+		suite.Require().Error(err)
+	})
+
+	suite.Run("lists the project's top organization units with their project", func() {
+		suite.SetupTest()
+		suite.expectDBClient()
+		suite.dbClientMock.On("QueryContext", mock.Anything, mock.MatchedBy(func(q dbmodel.DBQuery) bool {
+			return q.ID == "OUQ-OU_MGT-23"
+		}), 10, 0, "project-1", testDeploymentID).Return([]map[string]interface{}{{
+			"ou_id": "ou-1", "project_id": "project-1", "handle": "shop", "name": "Shop",
+			"created_at": "2026-01-01 00:00:00", "updated_at": "2026-01-01 00:00:00",
+		}}, nil).Once()
+
+		ous, err := suite.store.GetOrganizationUnitListByProject(context.Background(), "project-1", 10, 0, nil)
+
+		suite.Require().NoError(err)
+		suite.Require().Len(ous, 1)
+		suite.Equal("project-1", ous[0].ProjectID)
+		suite.Nil(ous[0].Parent)
+	})
+
+	suite.Run("fails when the list query fails", func() {
+		suite.SetupTest()
+		suite.expectDBClient()
+		suite.dbClientMock.On("QueryContext", mock.Anything, mock.Anything, 10, 0, "project-1", testDeploymentID).
+			Return(nil, errors.New("boom")).Once()
+
+		_, err := suite.store.GetOrganizationUnitListByProject(context.Background(), "project-1", 10, 0, nil)
+
+		suite.Require().Error(err)
+	})
+
+	suite.Run("refuses an unknown filter attribute", func() {
+		suite.SetupTest()
+		suite.expectDBClient()
+		unknown := &tidcommon.FilterGroup{Clauses: []tidcommon.FilterClause{
+			{Expr: tidcommon.FilterExpression{Attribute: "unknown", Operator: tidcommon.OperatorEq, Value: "x"}},
+		}}
+
+		_, countErr := suite.store.GetOrganizationUnitListCountByProject(context.Background(), "project-1", unknown)
+		_, listErr := suite.store.GetOrganizationUnitListByProject(context.Background(), "project-1", 10, 0, unknown)
+
+		suite.Require().Error(countErr)
+		suite.Require().Error(listErr)
+	})
+}
+
+// A move to another project updates a page of organization units per statement, with DEPLOYMENT_ID last.
+func (suite *OrganizationUnitStoreTestSuite) TestOUStore_UpdateOrganizationUnitsProject() {
+	updatedAt := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	ids := make([]string, updateProjectPageSize+1)
+	for i := range ids {
+		ids[i] = fmt.Sprintf("ou-%d", i)
+	}
+
+	suite.Run("moves every page", func() {
+		suite.SetupTest()
+		suite.expectDBClient()
+		firstPage := make([]any, 0, updateProjectPageSize+3)
+		firstPage = append(firstPage, "project-1", updatedAt)
+		for _, id := range ids[:updateProjectPageSize] {
+			firstPage = append(firstPage, id)
+		}
+		firstPage = append(firstPage, testDeploymentID)
+		suite.dbClientMock.On("ExecuteContext", append([]any{mock.Anything,
+			buildUpdateOrganizationUnitsProjectQuery(ids[:updateProjectPageSize])}, firstPage...)...).
+			Return(int64(updateProjectPageSize), nil).Once()
+		suite.dbClientMock.On("ExecuteContext", mock.Anything,
+			buildUpdateOrganizationUnitsProjectQuery(ids[updateProjectPageSize:]), "project-1", updatedAt,
+			ids[updateProjectPageSize], testDeploymentID).Return(int64(1), nil).Once()
+
+		suite.Require().NoError(suite.store.UpdateOrganizationUnitsProject(context.Background(), ids, "project-1",
+			updatedAt))
+	})
+
+	suite.Run("fails when the statement fails", func() {
+		suite.SetupTest()
+		suite.expectDBClient()
+		suite.dbClientMock.On("ExecuteContext", mock.Anything, mock.Anything, "project-1", updatedAt, "ou-0",
+			testDeploymentID).Return(int64(0), errors.New("boom")).Once()
+
+		suite.Require().Error(suite.store.UpdateOrganizationUnitsProject(context.Background(), []string{"ou-0"},
+			"project-1", updatedAt))
+	})
+
+	suite.Run("fails without a database client", func() {
+		suite.SetupTest()
+		suite.providerMock.On("GetEntityDBClient").Return(nil, errors.New("boom"))
+
+		suite.Require().Error(suite.store.UpdateOrganizationUnitsProject(context.Background(), []string{"ou-0"},
+			"project-1", updatedAt))
+	})
+}
+
+func TestBuildUpdateOrganizationUnitsProjectQuery(t *testing.T) {
+	query := buildUpdateOrganizationUnitsProjectQuery([]string{"ou-1", "ou-2"})
+
+	require.Equal(t, "OUQ-OU_MGT-24", query.ID)
+	require.Equal(t, `UPDATE "ORGANIZATION_UNIT" SET PROJECT_ID = $1, UPDATED_AT = $2 `+
+		`WHERE OU_ID IN ($3, $4) AND DEPLOYMENT_ID = $5`, query.PostgresQuery)
+	require.Equal(t, `UPDATE "ORGANIZATION_UNIT" SET PROJECT_ID = ?, UPDATED_AT = ? `+
+		`WHERE OU_ID IN (?, ?) AND DEPLOYMENT_ID = ?`, query.SQLiteQuery)
 }

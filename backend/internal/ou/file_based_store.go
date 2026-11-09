@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"time"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -126,6 +127,7 @@ func (f *fileBasedStore) GetOrganizationUnitList(
 					Handle:      ou.Handle,
 					Name:        ou.Name,
 					Description: ou.Description,
+					ProjectID:   ou.ProjectID,
 					LogoURL:     ou.LogoURL,
 				})
 			}
@@ -163,6 +165,82 @@ func (f *fileBasedStore) GetOrganizationUnitListCount(ctx context.Context, fe *t
 	return count, nil
 }
 
+// GetOrganizationUnitListByProject implements organizationUnitStoreInterface.
+func (f *fileBasedStore) GetOrganizationUnitListByProject(
+	ctx context.Context, projectID string, limit, offset int, fe *tidcommon.FilterGroup,
+) ([]OrganizationUnitBasic, error) {
+	ous, err := f.projectTopOUs(projectID, fe)
+	if err != nil {
+		return nil, err
+	}
+
+	ouList := make([]OrganizationUnitBasic, 0, len(ous))
+	for _, ou := range ous {
+		ouList = append(ouList, OrganizationUnitBasic{
+			ID:          ou.ID,
+			Handle:      ou.Handle,
+			Name:        ou.Name,
+			Description: ou.Description,
+			ProjectID:   ou.ProjectID,
+			Parent:      ou.Parent,
+			LogoURL:     ou.LogoURL,
+		})
+	}
+
+	start := offset
+	if start > len(ouList) {
+		return []OrganizationUnitBasic{}, nil
+	}
+	end := start + limit
+	if end > len(ouList) {
+		end = len(ouList)
+	}
+
+	return ouList[start:end], nil
+}
+
+// GetOrganizationUnitListCountByProject implements organizationUnitStoreInterface.
+func (f *fileBasedStore) GetOrganizationUnitListCountByProject(
+	ctx context.Context, projectID string, fe *tidcommon.FilterGroup,
+) (int, error) {
+	ous, err := f.projectTopOUs(projectID, fe)
+	if err != nil {
+		return 0, err
+	}
+	return len(ous), nil
+}
+
+// projectTopOUs returns the organization units of a project whose parent is not in the project, matching the
+// filter.
+func (f *fileBasedStore) projectTopOUs(projectID string, fe *tidcommon.FilterGroup) ([]*OrganizationUnit, error) {
+	list, err := f.GenericFileBasedStore.List()
+	if err != nil {
+		return nil, err
+	}
+
+	projectOf := make(map[string]string, len(list))
+	for _, item := range list {
+		if ou, ok := item.Data.(*OrganizationUnit); ok {
+			projectOf[ou.ID] = ou.ProjectID
+		}
+	}
+
+	var ous []*OrganizationUnit
+	for _, item := range list {
+		ou, ok := item.Data.(*OrganizationUnit)
+		if !ok || ou.ProjectID != projectID {
+			continue
+		}
+		if ou.Parent != nil && projectOf[*ou.Parent] == projectID {
+			continue
+		}
+		if matchesOUFilter(ou, fe) {
+			ous = append(ous, ou)
+		}
+	}
+	return ous, nil
+}
+
 // GetOrganizationUnitsByIDs implements organizationUnitStoreInterface.
 func (f *fileBasedStore) GetOrganizationUnitsByIDs(
 	ctx context.Context,
@@ -191,6 +269,7 @@ func (f *fileBasedStore) GetOrganizationUnitsByIDs(
 					Handle:      ou.Handle,
 					Name:        ou.Name,
 					Description: ou.Description,
+					ProjectID:   ou.ProjectID,
 					LogoURL:     ou.LogoURL,
 				})
 			}
@@ -270,6 +349,13 @@ func (f *fileBasedStore) UpdateOrganizationUnit(ctx context.Context, ou Organiza
 	return errors.New("UpdateOrganizationUnit is not supported in file-based store")
 }
 
+// UpdateOrganizationUnitsProject implements organizationUnitStoreInterface.
+func (f *fileBasedStore) UpdateOrganizationUnitsProject(
+	ctx context.Context, ids []string, projectID string, updatedAt time.Time,
+) error {
+	return errors.New("UpdateOrganizationUnitsProject is not supported in file-based store")
+}
+
 // GetOrganizationUnitChildrenCount implements organizationUnitStoreInterface.
 func (f *fileBasedStore) GetOrganizationUnitChildrenCount(
 	ctx context.Context, id string, fe *tidcommon.FilterGroup,
@@ -309,6 +395,7 @@ func (f *fileBasedStore) GetOrganizationUnitChildrenList(
 					Handle:      ou.Handle,
 					Name:        ou.Name,
 					Description: ou.Description,
+					ProjectID:   ou.ProjectID,
 					LogoURL:     ou.LogoURL,
 				})
 			}

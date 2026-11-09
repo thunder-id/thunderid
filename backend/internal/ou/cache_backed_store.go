@@ -5,6 +5,7 @@ package ou
 
 import (
 	"context"
+	"time"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
@@ -91,6 +92,31 @@ func (s *cacheBackedOUStore) UpdateOrganizationUnit(ctx context.Context, ou Orga
 	return nil
 }
 
+// UpdateOrganizationUnitsProject moves a set of organization units to a project and drops them from the
+// caches, so a transaction that rolls back the move leaves no cached unit in the other project.
+func (s *cacheBackedOUStore) UpdateOrganizationUnitsProject(
+	ctx context.Context, ids []string, projectID string, updatedAt time.Time,
+) error {
+	handleParentKeys := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if key := s.getHandleParentKey(ctx, id); key != "" {
+			handleParentKeys = append(handleParentKeys, key)
+		}
+	}
+
+	if err := s.store.UpdateOrganizationUnitsProject(ctx, ids, projectID, updatedAt); err != nil {
+		return err
+	}
+
+	for _, id := range ids {
+		s.invalidateOUByID(ctx, id)
+	}
+	for _, key := range handleParentKeys {
+		s.deleteHandleParentCacheKey(ctx, key)
+	}
+	return nil
+}
+
 func (s *cacheBackedOUStore) DeleteOrganizationUnit(ctx context.Context, id string) error {
 	// Capture handle+parent key before the store call so we can invalidate it on success.
 	handleParentKey := s.getHandleParentKey(ctx, id)
@@ -116,6 +142,17 @@ func (s *cacheBackedOUStore) GetOrganizationUnitListCount(
 func (s *cacheBackedOUStore) GetOrganizationUnitList(
 	ctx context.Context, limit, offset int, f *tidcommon.FilterGroup) ([]OrganizationUnitBasic, error) {
 	return s.store.GetOrganizationUnitList(ctx, limit, offset, f)
+}
+
+func (s *cacheBackedOUStore) GetOrganizationUnitListCountByProject(
+	ctx context.Context, projectID string, f *tidcommon.FilterGroup) (int, error) {
+	return s.store.GetOrganizationUnitListCountByProject(ctx, projectID, f)
+}
+
+func (s *cacheBackedOUStore) GetOrganizationUnitListByProject(
+	ctx context.Context, projectID string, limit, offset int, f *tidcommon.FilterGroup,
+) ([]OrganizationUnitBasic, error) {
+	return s.store.GetOrganizationUnitListByProject(ctx, projectID, limit, offset, f)
 }
 
 func (s *cacheBackedOUStore) GetOrganizationUnitsByIDs(

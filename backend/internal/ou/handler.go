@@ -54,7 +54,14 @@ func (ouh *organizationUnitHandler) HandleOUListRequest(w http.ResponseWriter, r
 		return
 	}
 
-	ouListResponse, svcErr := ouh.service.GetOrganizationUnitList(ctx, limit, offset, f)
+	// An empty projectId= still takes the project branch and lists no organization units, rather than every one.
+	var ouListResponse *OrganizationUnitListResponse
+	if query := r.URL.Query(); query.Has(projectIDQueryParam) {
+		ouListResponse, svcErr = ouh.service.GetOrganizationUnitListByProject(
+			ctx, sysutils.SanitizeString(query.Get(projectIDQueryParam)), limit, offset, f)
+	} else {
+		ouListResponse, svcErr = ouh.service.GetOrganizationUnitList(ctx, limit, offset, f)
+	}
 	if svcErr != nil {
 		ouh.handleError(ctx, w, svcErr)
 		return
@@ -259,6 +266,7 @@ func (ouh *organizationUnitHandler) sanitizeOrganizationUnitRequest(
 		Name:                      sysutils.SanitizeString(request.Name),
 		Description:               sysutils.SanitizeString(request.Description),
 		Parent:                    request.Parent,
+		ProjectID:                 sysutils.SanitizeString(request.ProjectID),
 		ThemeID:                   request.ThemeID,
 		LayoutID:                  request.LayoutID,
 		AuthFlowID:                request.AuthFlowID,

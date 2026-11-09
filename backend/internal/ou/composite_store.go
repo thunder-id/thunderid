@@ -5,6 +5,8 @@ package ou
 
 import (
 	"context"
+	"errors"
+	"time"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
@@ -64,6 +66,80 @@ func (c *compositeOUStore) GetOrganizationUnitList(
 		return nil, ErrResultLimitExceededInCompositeMode
 	}
 	return items, nil
+}
+
+// GetOrganizationUnitListCountByProject retrieves the count of the top organization units of a project across
+// both stores.
+func (c *compositeOUStore) GetOrganizationUnitListCountByProject(
+	ctx context.Context, projectID string, f *tidcommon.FilterGroup,
+) (int, error) {
+	tops, err := c.projectTopOUs(ctx, projectID, f)
+	if err != nil {
+		return 0, err
+	}
+	return len(tops), nil
+}
+
+// GetOrganizationUnitListByProject retrieves the top organization units of a project across both stores with
+// pagination. Applies the 1000-record limit in composite mode, as GetOrganizationUnitList does.
+func (c *compositeOUStore) GetOrganizationUnitListByProject(
+	ctx context.Context, projectID string, limit, offset int, f *tidcommon.FilterGroup,
+) ([]OrganizationUnitBasic, error) {
+	tops, err := c.projectTopOUs(ctx, projectID, f)
+	if err != nil {
+		return nil, err
+	}
+	if offset >= len(tops) {
+		return []OrganizationUnitBasic{}, nil
+	}
+	return tops[offset:min(offset+limit, len(tops))], nil
+}
+
+// projectTopOUs returns the top organization units of a project across both stores. Each store leaves out a
+// unit whose parent it holds in the same project, but only this store sees a parent held by the other one: a
+// database unit under a declared unit of the same project, or the reverse. Those are listed under their parent.
+func (c *compositeOUStore) projectTopOUs(
+	ctx context.Context, projectID string, f *tidcommon.FilterGroup,
+) ([]OrganizationUnitBasic, error) {
+	dbCount, err := c.dbStore.GetOrganizationUnitListCountByProject(ctx, projectID, f)
+	if err != nil {
+		return nil, err
+	}
+	fileCount, err := c.fileStore.GetOrganizationUnitListCountByProject(ctx, projectID, f)
+	if err != nil {
+		return nil, err
+	}
+	if dbCount+fileCount > serverconst.MaxCompositeStoreRecords {
+		return nil, ErrResultLimitExceededInCompositeMode
+	}
+
+	var dbOUs, fileOUs []OrganizationUnitBasic
+	if dbCount > 0 {
+		if dbOUs, err = c.dbStore.GetOrganizationUnitListByProject(ctx, projectID, dbCount, 0, f); err != nil {
+			return nil, err
+		}
+	}
+	if fileCount > 0 {
+		if fileOUs, err = c.fileStore.GetOrganizationUnitListByProject(ctx, projectID, fileCount, 0, f); err != nil {
+			return nil, err
+		}
+	}
+
+	candidates := mergeAndDeduplicateOUs(dbOUs, fileOUs)
+	tops := make([]OrganizationUnitBasic, 0, len(candidates))
+	for _, candidate := range candidates {
+		if candidate.Parent != nil {
+			parent, err := c.GetOrganizationUnit(ctx, *candidate.Parent)
+			if err != nil && !errors.Is(err, ErrOrganizationUnitNotFound) {
+				return nil, err
+			}
+			if err == nil && parent.ProjectID == projectID {
+				continue
+			}
+		}
+		tops = append(tops, candidate)
+	}
+	return tops, nil
 }
 
 // GetOrganizationUnitsByIDs retrieves organization units matching the given IDs from both stores.
@@ -195,6 +271,14 @@ func (c *compositeOUStore) UpdateOrganizationUnit(ctx context.Context, ou Organi
 	return c.dbStore.UpdateOrganizationUnit(ctx, ou)
 }
 
+// UpdateOrganizationUnitsProject moves a set of organization units to a project in the database store only.
+// The service refuses to move a declarative organization unit before it calls this.
+func (c *compositeOUStore) UpdateOrganizationUnitsProject(
+	ctx context.Context, ids []string, projectID string, updatedAt time.Time,
+) error {
+	return c.dbStore.UpdateOrganizationUnitsProject(ctx, ids, projectID, updatedAt)
+}
+
 // DeleteOrganizationUnit deletes an organization unit from the database store only.
 // Immutability and children validation are handled at the service layer.
 func (c *compositeOUStore) DeleteOrganizationUnit(ctx context.Context, id string) error {
@@ -214,6 +298,8 @@ func (c *compositeOUStore) GetOrganizationUnitChildrenCount(
 // GetOrganizationUnitChildrenList retrieves child OUs from both stores with pagination.
 // Applies the 1000-record limit in composite mode to prevent memory exhaustion.
 // Returns ErrResultLimitExceededInCompositeMode if the limit is exceeded.
+//
+//nolint:dupl // Same merge as GetOrganizationUnitListByProject, over the children of a parent instead
 func (c *compositeOUStore) GetOrganizationUnitChildrenList(ctx context.Context,
 	id string, limit, offset int, f *tidcommon.FilterGroup,
 ) ([]OrganizationUnitBasic, error) {

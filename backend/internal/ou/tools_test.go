@@ -61,7 +61,7 @@ func (suite *OUToolsTestSuite) TestListOrganizationUnits_Success() {
 	ctx := context.Background()
 	req := &mcp.CallToolRequest{}
 
-	result, output, err := tools.listOrganizationUnits(ctx, req, nil)
+	result, output, err := tools.listOrganizationUnits(ctx, req, ouListMCPInput{})
 
 	assert.NoError(suite.T(), err)
 	assert.Nil(suite.T(), result)
@@ -98,7 +98,7 @@ func (suite *OUToolsTestSuite) TestListOrganizationUnits_Error() {
 	ctx := context.Background()
 	req := &mcp.CallToolRequest{}
 
-	result, output, err := tools.listOrganizationUnits(ctx, req, nil)
+	result, output, err := tools.listOrganizationUnits(ctx, req, ouListMCPInput{})
 
 	assert.Error(suite.T(), err)
 	assert.Nil(suite.T(), result)
@@ -133,4 +133,22 @@ func (suite *OUToolsTestSuite) TestRegisteredToolsRequireOUPermissions() {
 			security.ResolveMCPToolPermission(registered.Name),
 			"tool %q must require an organization unit permission", registered.Name)
 	}
+}
+
+// With a project, the tool lists the project's organization units.
+func (suite *OUToolsTestSuite) TestListOrganizationUnitsInProject() {
+	mockService := NewOrganizationUnitServiceInterfaceMock(suite.T())
+	tools := &ouTools{ouService: mockService}
+	mockService.On("GetOrganizationUnitListByProject", mock.Anything, "project-1", mock.Anything, 0,
+		(*tidcommon.FilterGroup)(nil)).
+		Return(&OrganizationUnitListResponse{
+			TotalResults:      1,
+			OrganizationUnits: []OrganizationUnitBasic{{ID: "ou1", ProjectID: "project-1"}},
+		}, nil).Once()
+
+	_, output, err := tools.listOrganizationUnits(context.Background(), &mcp.CallToolRequest{},
+		ouListMCPInput{ProjectID: "project-1"})
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), "project-1", output.OrganizationUnits[0].ProjectID)
 }

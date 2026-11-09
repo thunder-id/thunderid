@@ -18,6 +18,7 @@ func TestProjectRequired(t *testing.T) {
 		security.ResourceTypeFlow:                 false,
 		security.ResourceTypeGroup:                false,
 		security.ResourceTypeNotificationTemplate: true,
+		security.ResourceTypeOU:                   true,
 		security.ResourceTypeVerifiableCredential: true,
 	} {
 		assert.Equal(t, expected, ProjectRequired(resourceType), resourceType)
