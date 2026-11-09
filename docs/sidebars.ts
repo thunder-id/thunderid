@@ -942,6 +942,11 @@ const sidebars: SidebarsConfig = {
                       id: 'guides/protocols/oauth-oidc/client-credentials',
                       label: 'Client Credentials',
                     },
+                    {
+                      type: 'doc',
+                      id: 'guides/protocols/oauth-oidc/device-authorization',
+                      label: 'Device Authorization Grant',
+                    },
                     {type: 'doc', id: 'guides/protocols/oauth-oidc/refresh-token', label: 'Refresh Token'},
                     // Unique `key` avoids a translation-key collision with the "Token Exchange"
                     // item under Identity Providers (i18n key is derived from the label).
