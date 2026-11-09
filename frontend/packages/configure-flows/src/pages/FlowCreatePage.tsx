@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {DocumentTitle, FullScreenCreationWizardLayout} from '@thunderid/components';
+import {useEmailProviders, useIdentityProviders, useSMSProviders} from '@thunderid/configure-connections';
 import {useHasMultipleOUs} from '@thunderid/configure-organization-units';
 import {useProjectScope} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
@@ -21,6 +22,7 @@ import SelectFlowType from '../components/create-flow/SelectFlowType';
 import useFlowRoutes from '../hooks/useFlowRoutes';
 import {FlowType} from '../models/flows';
 import type {FlowTemplate} from '../models/templates';
+import resolveConnectionPlaceholders from '../utils/resolveConnectionPlaceholders';
 
 const FlowCreateStep = {
   ORGANIZATION_UNIT: 'ORGANIZATION_UNIT',
@@ -39,6 +41,13 @@ export default function FlowCreatePage(): JSX.Element {
   const createFlow = useCreateFlow();
   const {data: deviceGrantMeta} = useGetFlowsMeta({flowType: FlowType.DEVICE_GRANT});
   const deviceGrantTemplate = deviceGrantMeta.templates.find((template) => template.type === 'DEVICE_GRANT') ?? null;
+
+  // A template names its connections with placeholders, which are filled in before the flow is saved.
+  const identityProviders = useIdentityProviders();
+  const smsProviders = useSMSProviders();
+  const emailProviders = useEmailProviders();
+  const isConnectionsPending: boolean =
+    identityProviders.isPending || smsProviders.isPending || emailProviders.isPending;
 
   const [requestedStep, setCurrentStep] = useState<FlowCreateStep>(FlowCreateStep.ORGANIZATION_UNIT);
   const [selectedType, setSelectedType] = useState<FlowType | null>(null);
@@ -139,7 +148,11 @@ export default function FlowCreatePage(): JSX.Element {
         handle: nameValue.handle,
         flowType: selectedType,
         ...(isInProject ? {projectId} : {ouId}),
-        nodes: selectedTemplate.config.nodes,
+        nodes: resolveConnectionPlaceholders(selectedTemplate.config.nodes, {
+          identityProviders: identityProviders.data,
+          smsProviders: smsProviders.data,
+          emailProviders: emailProviders.data,
+        }),
       };
       setError(null);
       if (selectedType === FlowType.DEVICE_GRANT || selectedTemplate.configureBeforeSave) {
@@ -199,7 +212,7 @@ export default function FlowCreatePage(): JSX.Element {
   const isContinueDisabled = (): boolean => {
     if (currentStep === FlowCreateStep.TYPE) return !typeReady;
     if (currentStep === FlowCreateStep.TEMPLATE) return !selectedTemplate;
-    if (currentStep === FlowCreateStep.CONFIGURE) return !nameReady || createFlow.isPending;
+    if (currentStep === FlowCreateStep.CONFIGURE) return !nameReady || createFlow.isPending || isConnectionsPending;
     return false;
   };
 

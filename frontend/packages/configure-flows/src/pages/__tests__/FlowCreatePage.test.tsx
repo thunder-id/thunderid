@@ -99,6 +99,27 @@ vi.mock('../../components/create-flow/FlowOrganizationUnitStep', () => ({
   ),
 }));
 
+// Connection lookups the template placeholders are resolved against
+const connectionQueries = vi.hoisted(
+  (): {
+    identity: {data?: {id: string; type: string}[]; isPending: boolean};
+    sms: {data?: {id: string}[]; isPending: boolean};
+    email: {data?: {id: string}[]; isPending: boolean};
+  } => ({
+    identity: {data: [], isPending: false},
+    sms: {data: [], isPending: false},
+    email: {data: [], isPending: false},
+  }),
+);
+
+// Mocked outright: loading the real package needs the organization unit exports mocked away above.
+vi.mock('@thunderid/configure-connections', () => ({
+  IdentityProviderTypes: {GOOGLE: 'GOOGLE', GITHUB: 'GITHUB', OAUTH: 'OAUTH', OIDC: 'OIDC'},
+  useIdentityProviders: () => connectionQueries.identity,
+  useSMSProviders: () => connectionQueries.sms,
+  useEmailProviders: () => connectionQueries.email,
+}));
+
 // Track callbacks from child components
 let capturedTypeProps: Record<string, unknown> = {};
 let capturedTemplateProps: Record<string, unknown> = {};
@@ -137,6 +158,9 @@ describe('FlowCreatePage', () => {
     ouState.hasMultipleOUs = false;
     ouState.isLoading = false;
     ouState.ouList = [{id: 'ou-root'}];
+    connectionQueries.identity = {data: [], isPending: false};
+    connectionQueries.sms = {data: [], isPending: false};
+    connectionQueries.email = {data: [], isPending: false};
   });
 
   describe('Initial Rendering', () => {
@@ -424,6 +448,75 @@ describe('FlowCreatePage', () => {
           },
         },
       });
+    });
+
+    it('saves a template with its connection placeholder set to the only matching connection', () => {
+      connectionQueries.identity = {
+        data: [
+          {id: 'google-idp', type: 'GOOGLE'},
+          {id: 'github-idp', type: 'GITHUB'},
+        ],
+        isPending: false,
+      };
+      render(<FlowCreatePage />);
+
+      navigateToTemplateStep();
+      act(() => {
+        (capturedTemplateProps['onTemplateChange'] as (t: unknown) => void)({
+          type: 'GOOGLE',
+          flowType: 'AUTHENTICATION',
+          config: {
+            nodes: [
+              {
+                id: 'google_auth',
+                type: 'TASK_EXECUTION',
+                properties: {idpId: '{{IDP_ID}}', allowAuthenticationWithoutLocalUser: true},
+                executor: {name: 'GoogleOIDCAuthExecutor'},
+              },
+            ],
+          },
+        });
+      });
+      fireEvent.click(screen.getByText('Continue'));
+      act(() => {
+        (capturedConfigureProps['onChange'] as (v: {name: string; handle: string}) => void)({
+          name: 'Google Login',
+          handle: 'google-login',
+        });
+        (capturedConfigureProps['onReadyChange'] as (ready: boolean) => void)(true);
+      });
+
+      fireEvent.click(screen.getByText('Create'));
+
+      expect(mockMutate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          nodes: [
+            {
+              id: 'google_auth',
+              type: 'TASK_EXECUTION',
+              properties: {idpId: 'google-idp', allowAuthenticationWithoutLocalUser: true},
+              executor: {name: 'GoogleOIDCAuthExecutor'},
+            },
+          ],
+        }),
+        expect.any(Object),
+      );
+    });
+
+    it('keeps Create disabled until the connections are loaded', () => {
+      connectionQueries.identity = {data: undefined, isPending: true};
+      render(<FlowCreatePage />);
+
+      navigateToConfigureStep();
+      act(() => {
+        (capturedConfigureProps['onChange'] as (v: {name: string; handle: string}) => void)({
+          name: 'My Flow',
+          handle: 'my-flow',
+        });
+        (capturedConfigureProps['onReadyChange'] as (ready: boolean) => void)(true);
+      });
+
+      expect(screen.getByText('Create').closest('button')).toBeDisabled();
     });
 
     it('should navigate to flow builder on successful creation', async () => {

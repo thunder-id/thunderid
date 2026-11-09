@@ -1,7 +1,7 @@
 # Email Provider Configuration Specification
 
 - **Status:** Draft
-- **Version:** 0.3
+- **Version:** 0.4
 - **Related documents:** [Design discussion #3277](https://github.com/thunder-id/thunderid/discussions/3277), [Feature issue #5415](https://github.com/thunder-id/thunderid/issues/5415), [Feature issue #3276](https://github.com/thunder-id/thunderid/issues/3276)
 
 ## Summary
@@ -350,7 +350,7 @@ The email executor's property panel gains an **Email Provider** select listing t
 
 #### Assigning a provider automatically
 
-When at least one provider exists, the Console fills in any email step that names none, whether the step comes from a template or from a flow opened in the builder. It takes the first configured provider even when several exist, and the operator can switch it in the property panel. The assignment changes the flow in the builder only and persists when the operator saves.
+When at least one provider exists, the Console fills in any email step that names none, whether the step comes from a template or from a flow opened in the builder. It takes the first configured provider even when several exist, and the operator can switch it in the property panel. A flow created from a template in the flow create wizard is saved with the provider already filled in. A flow opened in the builder changes in the builder only, and the assignment persists when the operator saves.
 
 This departs from the SMS and IDP executors, which assign only when exactly one matching connection makes the choice unambiguous. An email step cannot send without a provider and there is no deployment default to fall back to, so leaving the step empty is never the better outcome.
 
@@ -513,3 +513,4 @@ This specification does not define the following.
 | 0.1 | 2026-09-19 | Initial specification for email providers as connections, the outbound authentication model, SMTP delivery, provider selection per step, and the removal of the deployment SMTP configuration. |
 | 0.2 | 2026-10-09 | Aligned the credential carry-over, dispatch failure, and vendor metadata behaviour with the implementation. A stored credential carries over on update only while the authentication type, its non-secret fields, and the provider's host and port are unchanged. A dispatch failure other than a missing provider fails the step as a server error. The vendor on `GET /connections/meta` is an optional filter. |
 | 0.3 | 2026-10-26 | Every email provider is owned by exactly one organization unit. `ouId` is required on create and immutable, a declarative document names its owner with `ouId` or `ouHandle`, `NOTIFICATION_SENDER` gains `OU_ID VARCHAR(36) NOT NULL`, and `MNS-1018`, `MNS-1019`, and `MNS-1020` report an unknown, changed, and missing owner. |
+| 0.4 | 2026-11-09 | The flow create wizard fills in a template's email provider before it saves the flow, rather than leaving the assignment to the builder, as implemented in #6669. |
