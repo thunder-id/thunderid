@@ -15,6 +15,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/system/mcp/tool"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
@@ -186,7 +187,10 @@ func (t *flowTools) onboardingFlowID(ctx context.Context, purpose onboardingFlow
 		return "", fmt.Errorf("no %s flow is configured; set flow.%s.defaultHandle in the server configuration",
 			purpose, key)
 	}
-	flow, svcErr := t.flows.GetFlowByHandle(ctx, handle, flowType)
+	// Who may run an onboarding flow is decided by the flow and the services it calls, not by flow:view,
+	// so the configured flow is read with the server's authority, as the flow engine reads the flows it
+	// runs. The flow itself still runs as the caller.
+	flow, svcErr := t.flows.GetFlowByHandle(security.WithRuntimeContext(ctx), handle, flowType)
 	if svcErr != nil {
 		return "", fmt.Errorf("the configured %s flow %q can't be used: %s", purpose, handle,
 			svcErr.ErrorDescription)

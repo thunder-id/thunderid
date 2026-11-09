@@ -14,6 +14,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	flowconfig "github.com/thunder-id/thunderid/internal/flow/config"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
@@ -53,9 +54,12 @@ func (s *FlowToolsTestSuite) connect(cfg flowconfig.FlowSectionConfig) {
 	s.serverConfig = newServerConfigProviderMock(s.T())
 	s.serverConfig.On("GetMergedConfig", mock.Anything, "flow").
 		Return(cfg, (*tidcommon.ServiceError)(nil)).Maybe()
-	s.flows.On("GetFlowByHandle", mock.Anything, toolAgentFlowHandle, providers.FlowTypeAdministration).
+	// The configured flow is read with the server's authority, since a caller who may onboard needn't hold
+	// flow:view. A read as the caller matches neither expectation and fails the test.
+	runtime := mock.MatchedBy(security.IsRuntimeContext)
+	s.flows.On("GetFlowByHandle", runtime, toolAgentFlowHandle, providers.FlowTypeAdministration).
 		Return(&providers.CompleteFlowDefinition{ID: toolAgentFlowID}, (*tidcommon.ServiceError)(nil)).Maybe()
-	s.flows.On("GetFlowByHandle", mock.Anything, toolUserFlowHandle, providers.FlowTypeUserOnboarding).
+	s.flows.On("GetFlowByHandle", runtime, toolUserFlowHandle, providers.FlowTypeUserOnboarding).
 		Return(&providers.CompleteFlowDefinition{ID: toolUserFlowID}, (*tidcommon.ServiceError)(nil)).Maybe()
 
 	server := mcp.NewServer(&mcp.Implementation{Name: "test-server", Version: "1.0.0"}, nil)
@@ -260,7 +264,8 @@ func (s *FlowToolsTestSuite) TestRefusals() {
 			cfg: &flowconfig.FlowSectionConfig{
 				UserOnboardingFlow: flowconfig.FlowTypeConfig{DefaultHandle: "gone"}},
 			prepare: func() {
-				s.flows.On("GetFlowByHandle", mock.Anything, "gone", providers.FlowTypeUserOnboarding).
+				s.flows.On("GetFlowByHandle", mock.MatchedBy(security.IsRuntimeContext), "gone",
+					providers.FlowTypeUserOnboarding).
 					Return((*providers.CompleteFlowDefinition)(nil), &tidcommon.ServiceError{
 						Type: tidcommon.ClientErrorType, Code: "FLM-1003",
 						ErrorDescription: tidcommon.I18nMessage{DefaultValue: "flow not found"}}).Once()
