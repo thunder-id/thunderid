@@ -65,6 +65,4 @@ var userDetails = []userDetail{userDetailGroups, userDetailRoles, userDetailPerm
 const (
 	// defaultUserPageSize is the number of users a list returns when no limit is given.
 	defaultUserPageSize = 30
-	// defaultOUHandle is the handle of the organization unit a user is created in when none is named.
-	defaultOUHandle = "default"
 )

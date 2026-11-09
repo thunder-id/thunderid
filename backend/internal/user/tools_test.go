@@ -13,16 +13,11 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/entitytype"
-	"github.com/thunder-id/thunderid/internal/group"
-	oupkg "github.com/thunder-id/thunderid/internal/ou"
-	"github.com/thunder-id/thunderid/internal/role"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/entitymock"
 	"github.com/thunder-id/thunderid/tests/mocks/entitytypemock"
-	"github.com/thunder-id/thunderid/tests/mocks/groupmock"
-	"github.com/thunder-id/thunderid/tests/mocks/oumock"
 	"github.com/thunder-id/thunderid/tests/mocks/resourcemock"
 	"github.com/thunder-id/thunderid/tests/mocks/rolemock"
 )
@@ -35,10 +30,7 @@ type UserToolsTestSuite struct {
 	entities    *entitymock.EntityServiceInterfaceMock
 	entityTypes *entitytypemock.EntityTypeServiceInterfaceMock
 	roles       *rolemock.RoleServiceInterfaceMock
-	assignments *rolemock.RoleAssignmentServiceInterfaceMock
-	groups      *groupmock.GroupServiceInterfaceMock
 	resources   *resourcemock.ResourceServiceInterfaceMock
-	ous         *oumock.OrganizationUnitServiceInterfaceMock
 	session     *mcp.ClientSession
 }
 
@@ -47,20 +39,16 @@ func TestUserToolsTestSuite(t *testing.T) {
 }
 
 func (s *UserToolsTestSuite) SetupTest() {
-	s.connect(true)
+	s.connect()
 }
 
-// connect registers the tools over mocked services and connects an in-memory MCP client. withCreate
-// registers create_user too, as a control plane does.
-func (s *UserToolsTestSuite) connect(withCreate bool) {
+// connect registers the tools over mocked services and connects an in-memory MCP client.
+func (s *UserToolsTestSuite) connect() {
 	s.users = NewUserServiceInterfaceMock(s.T())
 	s.entities = entitymock.NewEntityServiceInterfaceMock(s.T())
 	s.entityTypes = entitytypemock.NewEntityTypeServiceInterfaceMock(s.T())
 	s.roles = rolemock.NewRoleServiceInterfaceMock(s.T())
-	s.assignments = rolemock.NewRoleAssignmentServiceInterfaceMock(s.T())
-	s.groups = groupmock.NewGroupServiceInterfaceMock(s.T())
 	s.resources = resourcemock.NewResourceServiceInterfaceMock(s.T())
-	s.ous = oumock.NewOrganizationUnitServiceInterfaceMock(s.T())
 	// A person needs a username and an email; the password is a credential.
 	s.entityTypes.On("GetAttributes", mock.Anything, entitytype.TypeCategoryUser, "person", mock.Anything).Return(
 		[]entitytype.AttributeInfo{
@@ -72,9 +60,6 @@ func (s *UserToolsTestSuite) connect(withCreate bool) {
 
 	server := mcp.NewServer(&mcp.Implementation{Name: "test-server", Version: "1.0.0"}, nil)
 	RegisterMCPTools(server, s.users, s.entities, s.entityTypes, s.roles, s.resources)
-	if withCreate {
-		RegisterCreateUserTool(server, s.users, s.entities, s.entityTypes, s.ous, s.assignments, s.groups)
-	}
 	serverTransport, clientTransport := mcp.NewInMemoryTransports()
 	serverSession, err := server.Connect(context.Background(), serverTransport, nil)
 	s.Require().NoError(err)
@@ -124,23 +109,10 @@ func (s *UserToolsTestSuite) TestRegisterMCPTools() {
 		s.NotContains(t.Description, "--", t.Name)
 		s.False(*t.Annotations.OpenWorldHint, t.Name)
 	}
-	s.Len(tools, 4)
+	s.Len(tools, 3)
 	s.True(tools["list_users"].Annotations.ReadOnlyHint)
 	s.True(tools["get_user"].Annotations.ReadOnlyHint)
 	s.True(*tools["update_user"].Annotations.DestructiveHint)
-	s.False(*tools["create_user"].Annotations.DestructiveHint)
-}
-
-// Without create_user, as on a data plane, the other user tools stand on their own.
-func (s *UserToolsTestSuite) TestRegisterMCPTools_WithoutCreate() {
-	s.connect(false)
-	result, err := s.session.ListTools(context.Background(), nil)
-	s.Require().NoError(err)
-	names := make([]string, 0, len(result.Tools))
-	for _, t := range result.Tools {
-		names = append(names, t.Name)
-	}
-	s.ElementsMatch([]string{"list_users", "get_user", "update_user"}, names)
 }
 
 func (s *UserToolsTestSuite) TestListUsers() {
@@ -235,7 +207,7 @@ func (s *UserToolsTestSuite) TestUpdateUser() {
 	})
 
 	s.Run("refusals in one error", func() {
-		s.connect(true)
+		s.connect()
 		s.users.On("GetUser", mock.Anything, toolUserID, false).Return(alice(), (*tidcommon.ServiceError)(nil)).Once()
 		text := s.errorText(s.call("update_user", map[string]any{"userId": toolUserID,
 			"attributes": map[string]any{"email": nil, "password": "new"}}))
@@ -246,108 +218,6 @@ func (s *UserToolsTestSuite) TestUpdateUser() {
 	})
 }
 
-func (s *UserToolsTestSuite) TestCreateUser() {
-	s.Run("in the Default organization unit, with roles and groups", func() {
-		s.ous.On("GetOrganizationUnitByPath", mock.Anything, defaultOUHandle).
-			Return(oupkg.OrganizationUnit{ID: "ou-default"}, (*tidcommon.ServiceError)(nil)).Once()
-		var created *providers.User
-		s.users.On("CreateUser", mock.Anything, mock.Anything).
-			Run(func(args mock.Arguments) { created = args.Get(1).(*providers.User) }).
-			Return(&providers.User{ID: "new-1", Type: "person", OUID: "ou-default"},
-				(*tidcommon.ServiceError)(nil)).Once()
-		s.assignments.On("AddAssignments", mock.Anything, "r1", "",
-			[]role.RoleAssignment{{ID: "new-1", Type: role.AssigneeTypeUser}}).
-			Return((*tidcommon.ServiceError)(nil)).Once()
-		s.groups.On("AddGroupMembers", mock.Anything, "g1", []group.Member{{ID: "new-1", Type: group.MemberTypeUser}}).
-			Return(&group.Group{ID: "g1"}, (*tidcommon.ServiceError)(nil)).Once()
-		s.users.On("GetUser", mock.Anything, "new-1", true).Return(&providers.User{ID: "new-1", Type: "person",
-			OUID: "ou-default", Display: "Bob"}, (*tidcommon.ServiceError)(nil)).Once()
-
-		var out createUserMCPResponse
-		s.structured(s.call("create_user", map[string]any{"userType": "person",
-			"attributes": map[string]any{"username": "bob", "email": "bob@example.com"},
-			"roles":      []string{"r1"}, "groups": []string{"g1"}}), &out)
-		s.Require().NotNil(created)
-		s.Equal("ou-default", created.OUID)
-		s.Empty(created.ProjectID)
-		s.JSONEq(`{"username":"bob","email":"bob@example.com"}`, string(created.Attributes))
-		s.Equal("new-1", out.User.ID)
-		s.Equal([]string{"r1"}, out.RolesGranted)
-		s.Equal([]string{"g1"}, out.GroupsJoined)
-		s.Contains(out.Notice, "No password")
-	})
-
-	// A user in a project that names no organization unit is left for the user service to place in the
-	// system organization unit, so the Default organization unit is not looked up.
-	s.Run("in a project, without an organization unit", func() {
-		s.connect(true)
-		var created *providers.User
-		s.users.On("CreateUser", mock.Anything, mock.Anything).
-			Run(func(args mock.Arguments) { created = args.Get(1).(*providers.User) }).
-			Return(&providers.User{ID: "new-2", Type: "person", OUID: "ou-system", ProjectID: "project-1"},
-				(*tidcommon.ServiceError)(nil)).Once()
-		s.users.On("GetUser", mock.Anything, "new-2", true).Return(&providers.User{ID: "new-2", Type: "person",
-			OUID: "ou-system", ProjectID: "project-1"}, (*tidcommon.ServiceError)(nil)).Once()
-
-		var out createUserMCPResponse
-		s.structured(s.call("create_user", map[string]any{"userType": "person",
-			"attributes": map[string]any{"username": "carol", "email": "carol@example.com"},
-			"projectId":  "project-1"}), &out)
-		s.Require().NotNil(created)
-		s.Empty(created.OUID)
-		s.Equal("project-1", created.ProjectID)
-		s.Equal("project-1", out.User.ProjectID)
-		s.ous.AssertNotCalled(s.T(), "GetOrganizationUnitByPath", mock.Anything, mock.Anything)
-	})
-
-	s.Run("every problem at once, nothing created", func() {
-		s.connect(true)
-		text := s.errorText(s.call("create_user", map[string]any{"userType": "person",
-			"attributes": map[string]any{"username": "bob", "password": "secret"}}))
-		s.Contains(text, "nothing was created")
-		s.Contains(text, "email is required")
-		s.Contains(text, "password is a credential")
-		s.users.AssertNotCalled(s.T(), "CreateUser", mock.Anything, mock.Anything)
-	})
-
-	s.Run("an unknown user type", func() {
-		s.connect(true)
-		s.entityTypes.On("GetAttributes", mock.Anything, entitytype.TypeCategoryUser, "robot", mock.Anything).
-			Return([]entitytype.AttributeInfo(nil), &entitytype.ErrorEntityTypeNotFound).Once()
-		s.Contains(s.errorText(s.call("create_user", map[string]any{"userType": "robot",
-			"attributes": map[string]any{"username": "r"}})), "list_user_types")
-	})
-
-	s.Run("a role that can't be granted is reported with what was done", func() {
-		s.connect(true)
-		s.users.On("CreateUser", mock.Anything, mock.Anything).Return(&providers.User{ID: "new-2", Type: "person"},
-			(*tidcommon.ServiceError)(nil)).Once()
-		s.assignments.On("AddAssignments", mock.Anything, "r1", "", mock.Anything).
-			Return(&tidcommon.ServiceError{
-				ErrorDescription: tidcommon.I18nMessage{DefaultValue: "no such role"}}).Once()
-		text := s.errorText(s.call("create_user", map[string]any{"userType": "person", "ouId": "ou-1",
-			"attributes": map[string]any{"username": "c", "email": "c@example.com"}, "roles": []string{"r1"}}))
-		s.Contains(text, "the user was created with ID new-2, but granting role r1 failed: no such role")
-	})
-}
-
-// A user type that requires a credential can't be created here, since no credential goes through these
-// tools, so create_user says so before creating anything.
-func (s *UserToolsTestSuite) TestCreateUser_RefusesATypeThatRequiresACredential() {
-	s.entityTypes.On("GetAttributes", mock.Anything, entitytype.TypeCategoryUser, "staff", mock.Anything).Return(
-		[]entitytype.AttributeInfo{
-			{Attribute: "username", Required: true},
-			{Attribute: "password", Credential: true, Required: true},
-		}, (*tidcommon.ServiceError)(nil)).Once()
-
-	text := s.errorText(s.call("create_user", map[string]any{"userType": "staff",
-		"attributes": map[string]any{"username": "carol"}}))
-
-	s.Contains(text, "requires the credential password")
-	s.Contains(text, "nothing was created")
-	s.users.AssertNotCalled(s.T(), "CreateUser", mock.Anything, mock.Anything)
-}
-
 // Every user tool needs the user permission its API needs, so none falls back to root by accident.
 func (s *UserToolsTestSuite) TestToolsRequireTheUserAPIPermissions() {
 	security.InitSystemPermissions("")
@@ -356,7 +226,7 @@ func (s *UserToolsTestSuite) TestToolsRequireTheUserAPIPermissions() {
 	s.Require().NoError(err)
 	s.Require().NotEmpty(tools.Tools)
 	for _, registered := range tools.Tools {
-		s.Contains([]string{p.UserView, p.UserCreate, p.UserUpdate},
+		s.Contains([]string{p.UserView, p.UserUpdate},
 			security.ResolveMCPToolPermission(registered.Name),
 			"tool %q must require a user permission", registered.Name)
 	}

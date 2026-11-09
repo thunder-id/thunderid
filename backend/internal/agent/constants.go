@@ -122,14 +122,12 @@ var agentDetails = []agentDetail{agentDetailGroups, agentDetailRoles, agentDetai
 const (
 	// defaultAgentNameAttribute holds an agent's name when its type names no display attribute.
 	defaultAgentNameAttribute = "name"
-	// defaultOUHandle is the handle of the organization unit an agent is created in when none is named.
-	defaultOUHandle = "default"
 	// defaultAgentPageSize is the number of agents a list returns when no limit is given.
 	defaultAgentPageSize = 30
 )
 
-// accessTerms describes how an agent proves who it is and acts for users, in the terms onboard_agent
-// and update_agent take.
+// accessTerms describes how an agent proves who it is and acts for users, in the terms update_agent
+// takes.
 const accessTerms = `- credential: how it proves who it is. client_secret issues a secret, returned once in ` +
 	`the result and never again. private_key_jwt signs with the agent's own key, from jwksUri or jwks, so no ` +
 	`secret exists; prefer it when the agent can hold a private key. none: no credential.
@@ -140,12 +138,6 @@ const accessTerms = `- credential: how it proves who it is. client_secret issues
 	`agent exchanges a user token it already holds, or takes sub-tasks from another agent. Any ` +
 	`combination works, and approval and token_exchange need a credential. sign_in and approval share ` +
 	`one authentication flow.`
-
-// endpointsNote says where the paths in a token guide are served. Only a control plane registers
-// onboard_agent, and it serves no token endpoints.
-const endpointsNote = "This is a control plane, which serves no token endpoints. The paths below are on each " +
-	"data plane the agent is deployed to, and its discovery document at /.well-known/openid-configuration " +
-	"lists the issuer and every endpoint."
 
 // secretNotice goes with every client secret a tool returns.
 const secretNotice = "This is the only time this client secret is shown, and no tool can return it again. " +
@@ -165,7 +157,3 @@ const (
 // loginHintAttributeProperty is the identifying step's property naming the attribute a login_hint is
 // matched against. A flow whose identifying step sets it can find a user who isn't there.
 const loginHintAttributeProperty = "loginHintAttribute"
-
-// onboardDetailTokenGuide is the section onboard_agent adds only when asked: how the agent gets each kind
-// of token.
-const onboardDetailTokenGuide = "token_guide"

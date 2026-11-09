@@ -19,13 +19,6 @@ func agentToolsKey(kid string) map[string]any {
 		"x": "f83OJ3D2xF1Bg8vub9tLe1gHMzV76e8Tus9uPHvRVEU", "y": "x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0"}
 }
 
-// executeFlow calls execute_flow and returns its result, failing the test when the call fails.
-func (ts *MCPTestSuite) executeFlow(token string, args map[string]any) map[string]any {
-	result, raw := ts.callMCPTool(token, "execute_flow", args)
-	ts.Require().Falsef(result.Result.IsError, "execute_flow failed: %s", raw)
-	return result.Result.StructuredContent
-}
-
 // defaultAgentType returns the default agent type as list_agent_types lists it. Other agent types can
 // exist beside it, one per organization unit.
 func (ts *MCPTestSuite) defaultAgentType(token string) (map[string]any, string) {
@@ -42,7 +35,7 @@ func (ts *MCPTestSuite) defaultAgentType(token string) (map[string]any, string) 
 }
 
 // agentTypeChildOU creates an organization unit under the default agent type's own unit, the only units
-// the agent onboarding flow places an agent of that type in, and deletes it when the test ends.
+// an agent of that type is placed in, and deletes it when the test ends.
 func (ts *MCPTestSuite) agentTypeChildOU(token string) string {
 	agentType, raw := ts.defaultAgentType(token)
 	parent, _ := agentType["ouId"].(string)
@@ -54,68 +47,37 @@ func (ts *MCPTestSuite) agentTypeChildOU(token string) string {
 	return ouID
 }
 
-// onboardAgentForTest onboards an agent of the default agent type through the data plane's agent
-// onboarding flow, in a unit under the agent type's own, and deletes it when the test ends. The flow
-// offers every agent type, so the default one is chosen up front. A step that asks only for optional
-// inputs, such as the owner, is passed by going on with nothing, as an agent leaving it to the caller
-// would. It returns the flow's final data (agentId, clientId and clientSecret) and the agent's unit.
-func (ts *MCPTestSuite) onboardAgentForTest(token, name string) (map[string]any, string) {
+// agentToolsSecret is the client secret createAgentForTest gives the agents it creates.
+const agentToolsSecret = "mcp-agent-tools-secret"
+
+// createAgentForTest creates an agent of the default agent type through the agent API, in a unit under
+// the agent type's own, with an owner, a client secret and the default authentication flow, and deletes
+// it when the test ends. It returns the agent's ID, client ID and secret, and its unit.
+func (ts *MCPTestSuite) createAgentForTest(token, name string) (map[string]any, string) {
 	ouID := ts.agentTypeChildOU(token)
-	out := ts.executeFlow(token, map[string]any{
-		"flow": "agent_onboarding", "inputs": map[string]any{"name": name, "agentType": "default", "ouId": ouID}})
-	for range 3 {
-		if out["status"] != "needs_input" {
-			break
-		}
-		inputs, _ := out["inputs"].([]any)
-		for _, i := range inputs {
-			input, _ := i.(map[string]any)
-			ts.Require().NotEqualf(true, input["required"], "the flow asks again for %v: %v", input, out)
-		}
-		next := map[string]any{"executionId": out["executionId"], "challengeToken": out["challengeToken"]}
-		if actions, _ := out["actions"].([]any); len(actions) == 1 {
-			next["action"] = actions[0]
-		}
-		out = ts.executeFlow(token, next)
-	}
-	ts.Require().Equalf("complete", out["status"], "the flow must finish: %v", out)
-	data, _ := out["data"].(map[string]any)
-	agentID, _ := data["agentId"].(string)
-	ts.Require().NotEmptyf(agentID, "the flow must return the agent: %v", out)
+	ownerID := ts.createOperator(name+"-owner", "McpAgentOwner@123")
+	flowID, err := testutils.GetFlowIDByHandle("default-flow", "AUTHENTICATION")
+	ts.Require().NoError(err)
+	clientID := name + "-client"
+	agentID, err := testutils.CreateAgent(testutils.Agent{
+		Type: "default", OUID: ouID, Owner: testutils.LocalAgentOwner(ownerID),
+		Attributes: map[string]interface{}{"name": name}, AuthFlowID: flowID,
+		InboundAuthConfig: []testutils.AgentInboundAuthConfig{{Type: "oauth2", Config: &testutils.AgentOAuthConfig{
+			ClientID: clientID, ClientSecret: agentToolsSecret, GrantTypes: []string{"client_credentials"},
+			TokenEndpointAuthMethod: "client_secret_basic"}}},
+	})
+	ts.Require().NoError(err)
 	ts.T().Cleanup(func() { _ = testutils.DeleteAgent(agentID) })
-	ts.NotEmpty(out["notice"], "a returned secret comes with the one-time notice")
-	return data, ouID
+	return map[string]any{"agentId": agentID, "clientId": clientID, "clientSecret": agentToolsSecret}, ouID
 }
 
-// A data plane onboards agents through its agent onboarding flow, so it offers execute_flow and not
-// onboard_agent.
-func (ts *MCPTestSuite) TestAgentTools_DataPlaneOnboardsThroughTheFlow() {
-	message, body := ts.postStatelessMCP(ts.mcpScopedAdminToken(), "tools/list", "", map[string]any{})
-	var listed struct {
-		Result struct {
-			Tools []struct {
-				Name string `json:"name"`
-			} `json:"tools"`
-		} `json:"result"`
-	}
-	ts.Require().NoErrorf(json.Unmarshal([]byte(message), &listed), "tools/list returned: %s", body)
-	names := make([]string, 0, len(listed.Result.Tools))
-	for _, tool := range listed.Result.Tools {
-		names = append(names, tool.Name)
-	}
-	ts.Contains(names, "execute_flow")
-	ts.Contains(names, "update_agent")
-	ts.NotContains(names, "onboard_agent")
-}
-
-// The agent tools run end to end: the secret the onboarding flow returns works at the token endpoint and
-// is never returned again, the reads describe the agent, an update keeps the secret, and a rotation
+// The agent tools run end to end: the agent's secret works at the token endpoint and is never returned, the reads describe the agent, an update keeps the secret, and a rotation
 // replaces it.
-func (ts *MCPTestSuite) TestAgentTools_OnboardUpdateAndRotateSecret() {
+func (ts *MCPTestSuite) TestAgentTools_ReadUpdateAndRotateSecret() {
 	token := ts.mcpScopedAdminToken()
 	name := fmt.Sprintf("mcp-agent-%d", time.Now().UnixNano())
 
-	data, ouID := ts.onboardAgentForTest(token, name)
+	data, ouID := ts.createAgentForTest(token, name)
 	agentID, _ := data["agentId"].(string)
 	clientID, _ := data["clientId"].(string)
 	secret, _ := data["clientSecret"].(string)
@@ -124,7 +86,7 @@ func (ts *MCPTestSuite) TestAgentTools_OnboardUpdateAndRotateSecret() {
 
 	issued, err := testutils.RequestClientCredentialsToken(clientID, secret, "", "")
 	ts.Require().NoError(err)
-	ts.Equalf(http.StatusOK, issued.StatusCode, "the onboarded secret must work: %s", issued.Body)
+	ts.Equalf(http.StatusOK, issued.StatusCode, "the agent's secret must work: %s", issued.Body)
 
 	got, raw := ts.callMCPTool(token, "get_agent", map[string]any{"clientId": clientID})
 	ts.Require().Falsef(got.Result.IsError, "get_agent failed: %s", raw)
@@ -135,7 +97,7 @@ func (ts *MCPTestSuite) TestAgentTools_OnboardUpdateAndRotateSecret() {
 	ts.Equal("ACTIVE", agent["status"])
 	ts.Equal("client_secret", agent["credential"])
 	ts.Equal(ouID, agent["ouId"])
-	ts.NotEmpty(agent["owner"], "the calling user owns the agent")
+	ts.NotEmpty(agent["owner"], "the agent has an owner")
 
 	listed, raw := ts.callMCPTool(token, "list_agents", map[string]any{"name": name})
 	ts.Require().Falsef(listed.Result.IsError, "list_agents failed: %s", raw)
@@ -171,15 +133,15 @@ func (ts *MCPTestSuite) TestAgentTools_OnboardUpdateAndRotateSecret() {
 	ts.Equalf(http.StatusOK, issued.StatusCode, "the new secret must work: %s", issued.Body)
 }
 
-// An onboarded agent that update_agent sets up to sign users in and exchange tokens gets the matching
+// An agent that update_agent sets up to sign users in and exchange tokens gets the matching
 // grants, and every problem with such a change comes back in one error with nothing changed. Approval is
-// refused while the agent's flow only signs in a user who is present, as the onboarding flow's default
+// refused while the agent's flow only signs in a user who is present, as the default
 // flow does, and the refusal says why.
 func (ts *MCPTestSuite) TestAgentTools_UpdateToActForUsers() {
 	token := ts.mcpScopedAdminToken()
 	flowID, err := testutils.GetFlowIDByHandle("default-flow", "AUTHENTICATION")
 	ts.Require().NoError(err)
-	data, _ := ts.onboardAgentForTest(token, fmt.Sprintf("mcp-delegated-agent-%d", time.Now().UnixNano()))
+	data, _ := ts.createAgentForTest(token, fmt.Sprintf("mcp-delegated-agent-%d", time.Now().UnixNano()))
 	agentID, _ := data["agentId"].(string)
 
 	refused, raw := ts.callMCPTool(token, "update_agent", map[string]any{
@@ -223,7 +185,7 @@ func (ts *MCPTestSuite) TestAgentTools_UpdateToActForUsers() {
 // A registered key set is rotated by adding the new key next to the old one, then retiring the old one.
 func (ts *MCPTestSuite) TestAgentTools_RotateKeySet() {
 	token := ts.mcpScopedAdminToken()
-	data, _ := ts.onboardAgentForTest(token, fmt.Sprintf("mcp-keyed-agent-%d", time.Now().UnixNano()))
+	data, _ := ts.createAgentForTest(token, fmt.Sprintf("mcp-keyed-agent-%d", time.Now().UnixNano()))
 	agentID, _ := data["agentId"].(string)
 	keyed, raw := ts.callMCPTool(token, "update_agent", map[string]any{"agentId": agentID,
 		"credential": "private_key_jwt", "jwks": map[string]any{"keys": []any{agentToolsKey("old")}}})
@@ -268,7 +230,7 @@ func (ts *MCPTestSuite) TestAgentTools_ListAgentTypes() {
 func (ts *MCPTestSuite) TestAgentTools_GetAgentIncludesItsAccess() {
 	token := ts.mcpScopedAdminToken()
 	suffix := time.Now().UnixNano()
-	data, ouID := ts.onboardAgentForTest(token, fmt.Sprintf("mcp-access-agent-%d", suffix))
+	data, ouID := ts.createAgentForTest(token, fmt.Sprintf("mcp-access-agent-%d", suffix))
 	agentID, _ := data["agentId"].(string)
 
 	apiIdentifier := fmt.Sprintf("https://mcp-agent-access-%d.example.com", suffix)

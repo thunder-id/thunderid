@@ -327,8 +327,6 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		mux, entityService, groupService, ouService, resourceService, entityTypeService, ouAuthzService,
 		sharingService, auditBus, nil)
 	fatalOnError(ctx, logger, err, "Failed to initialize RoleService")
-	// The data plane creates users through its user onboarding flow, which execute_flow runs, so it
-	// registers no create_user.
 	user.RegisterMCPTools(mcpServer, userService, entityService, entityTypeService, roleService, resourceService)
 	exporters = append(exporters, roleExporter)
 
@@ -653,7 +651,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	// The flow endpoint and the authorize endpoint share one SSO handle transport. The SSO cookie is
 	// marked Secure unless the deployment is configured to serve over plain HTTP.
 	ssoTransport := flowsession.NewHandleTransport(flowsession.TransportConfig{SecureCookies: flowConfig.SecureCookies})
-	flowExecService, err := flowexec.Initialize(mux, mcpServer, flowMgtService, actorProvider, ouProvider,
+	flowExecService, err := flowexec.Initialize(mux, flowMgtService, actorProvider, ouProvider,
 		execRegistry, interceptorRegistry, observabilitySvc, runtimeCryptoSvc, attestationProvider,
 		graphBuilder, jwtService, runtimeStoreProvider, transactioner, serverConfigService, ssoTransport,
 		governanceProvider, flowMgtService, flowMgtService, flowConfig)

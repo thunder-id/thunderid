@@ -283,10 +283,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	// The control plane runs no flows, so the role and group tools write removals directly.
 	role.RegisterMCPTools(mcpServer, roleService, roleAssignmentService, resourceService, ouService, false)
 	group.RegisterMCPTools(mcpServer, groupService, entityService, ouService, false)
-	// The control plane creates users directly, so only this plane registers create_user.
 	user.RegisterMCPTools(mcpServer, userService, entityService, entityTypeService, roleService, resourceService)
-	user.RegisterCreateUserTool(mcpServer, userService, entityService, entityTypeService, ouService,
-		roleAssignmentService, groupService)
 	exporters = append(exporters, roleExporter)
 
 	// Two-phase initialization: inject user/group/role resolvers into OU service.
@@ -391,9 +388,6 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		projectService, auditBus)
 	fatalOnError(ctx, logger, err, "Failed to initialize AgentService")
 	exporters = append(exporters, agentExporter)
-	// The control plane creates agents directly. The data plane creates them through its agent
-	// onboarding flow instead, which execute_flow runs, so only this plane registers onboard_agent.
-	agent.RegisterOnboardAgentTool(mcpServer, agentService, entityService, entityTypeService, flowMgtService)
 
 	// Wire the dependency registry into the consuming services (two-phase init to avoid cyclic
 	// imports). flowMgtService is both a consumer and a provider: it reports which flows reference an

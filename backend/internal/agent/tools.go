@@ -23,7 +23,6 @@ import (
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/flow/executormeta"
 	flowmgt "github.com/thunder-id/thunderid/internal/flow/mgt"
-	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/resource"
 	"github.com/thunder-id/thunderid/internal/role"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
@@ -65,8 +64,7 @@ type getAgentMCPInput struct {
 	Include  []string `json:"include,omitempty" jsonschema:"Details to add. groups: the groups the agent is in, directly or through another group. roles: its roles, granted directly or through a group. permissions: what it can do on each API, from all its roles."`
 }
 
-// agentAccessMCPInput is how an agent proves who it is and acts for users, as onboard_agent and
-// update_agent take it.
+// agentAccessMCPInput is how an agent proves who it is and acts for users, as update_agent takes it.
 //
 //nolint:lll
 type agentAccessMCPInput struct {
@@ -78,21 +76,6 @@ type agentAccessMCPInput struct {
 	AllowedUserTypes   []string       `json:"allowedUserTypes,omitempty" jsonschema:"Handles of the user types the agent can register and resolve when it signs users in. Their attributes are the ones its tokens can carry."`
 	AuthFlowID         string         `json:"authFlowId,omitempty" jsonschema:"ID of the authentication flow that sign_in and approval both run. approval needs a flow that can reach a user who isn't there; if the one given can't, the error names the flows that can. Without one, sign_in runs the default flow."`
 	RegistrationFlowID string         `json:"registrationFlowId,omitempty" jsonschema:"ID of the flow a new user registers through when signing in, for sign_in. Giving one turns registration on."`
-}
-
-// onboardAgentMCPInput is the input of the onboard_agent tool.
-//
-//nolint:lll
-type onboardAgentMCPInput struct {
-	Name        string         `json:"name" jsonschema:"Name of the agent. No other agent can have it."`
-	Description string         `json:"description,omitempty" jsonschema:"What the agent does"`
-	Attributes  map[string]any `json:"attributes,omitempty" jsonschema:"Other attributes of the agent, by name. list_agent_types lists them and says which are required."`
-	Owner       string         `json:"owner,omitempty" jsonschema:"User ID of the person accountable for the agent. Defaults to you, as a local or an external owner."`
-	ProjectID   string         `json:"projectId,omitempty" jsonschema:"ID of the project the agent belongs to, from list_projects. Required where the deployment requires projects."`
-	OUID        string         `json:"ouId,omitempty" jsonschema:"ID of the organization unit to create the agent in. Defaults to the Default organization unit."`
-	ValidUntil  string         `json:"validUntil,omitempty" jsonschema:"RFC 3339 date and time after which the agent can't get tokens. Without it, the agent doesn't expire."`
-	Include     []string       `json:"include,omitempty" jsonschema:"Details to add. token_guide: how the agent gets each kind of token, with the endpoint, grant type and parameters."`
-	agentAccessMCPInput
 }
 
 // updateAgentMCPInput is the input of the update_agent tool.
@@ -131,7 +114,7 @@ type agentListMCPResponse struct {
 	Agents       []agentMCPItem `json:"agents"`
 }
 
-// agentMCPDetails is one agent, described in the terms onboard_agent and update_agent take.
+// agentMCPDetails is one agent, described in the terms update_agent takes.
 type agentMCPDetails struct {
 	ID                 string                    `json:"id"`
 	Name               string                    `json:"name,omitempty"`
@@ -179,16 +162,6 @@ type agentPermissionMCPItem struct {
 	Permissions []string `json:"permissions"`
 }
 
-// onboardAgentMCPResponse is the onboard_agent output.
-type onboardAgentMCPResponse struct {
-	Agent        agentMCPDetails     `json:"agent"`
-	ClientSecret string              `json:"clientSecret,omitempty"`
-	Notice       string              `json:"notice,omitempty"`
-	Endpoints    string              `json:"endpoints,omitempty"`
-	GetTokens    []tokenGuideMCPItem `json:"getTokens,omitempty"`
-	NotIncluded  []string            `json:"notIncluded,omitempty"`
-}
-
 // updateAgentMCPResponse is the update_agent output.
 type updateAgentMCPResponse struct {
 	ID string `json:"id"`
@@ -207,27 +180,12 @@ type rotateAgentCredentialsMCPResponse struct {
 	Notice       string   `json:"notice"`
 }
 
-// tokenGuideMCPItem describes one way an agent gets a token: the requests its code sends.
-type tokenGuideMCPItem struct {
-	For                  string             `json:"for"`
-	GrantType            string             `json:"grantType"`
-	ClientAuthentication string             `json:"clientAuthentication"`
-	Steps                []tokenStepMCPItem `json:"steps"`
-	Note                 string             `json:"note,omitempty"`
-}
-
-// tokenStepMCPItem is one request in getting a token.
-type tokenStepMCPItem struct {
-	Request    string   `json:"request"`
-	Parameters []string `json:"parameters"`
-}
-
-// credentialNames lists the credentials onboard_agent and update_agent take.
+// credentialNames lists the credentials update_agent takes.
 func credentialNames() []string {
 	return []string{string(credentialClientSecret), string(credentialPrivateKeyJWT), string(credentialNone)}
 }
 
-// actingModeNames lists the ways of acting for users onboard_agent and update_agent take.
+// actingModeNames lists the ways of acting for users update_agent takes.
 func actingModeNames() []string {
 	modes := make([]string, 0, len(actingModes))
 	for _, mode := range actingModes {
@@ -236,8 +194,7 @@ func actingModeNames() []string {
 	return modes
 }
 
-// registerMCPTools registers the agent MCP tools every plane offers. onboard_agent is registered
-// separately, by RegisterOnboardAgentTool.
+// registerMCPTools registers the agent MCP tools.
 func registerMCPTools(server *mcp.Server, tools *agentTools) {
 	credentials := credentialNames()
 	modes := actingModeNames()
@@ -323,49 +280,6 @@ It changes only what you send. actsForUsers, when sent, is the complete set, so 
 			OpenWorldHint:   new(false),
 		},
 	}, tools.rotateAgentCredentials)
-}
-
-// RegisterOnboardAgentTool registers onboard_agent, which creates an agent directly. A control plane
-// registers it. A data plane does not: it creates agents through its agent onboarding flow, which the
-// execute_flow tool runs.
-func RegisterOnboardAgentTool(server *mcp.Server, agentService AgentServiceInterface,
-	entityService entity.EntityServiceInterface, entityTypeService entitytype.EntityTypeServiceInterface,
-	flowService flowmgt.FlowMgtServiceInterface) {
-	registerOnboardAgentTool(server, &agentTools{
-		logger:            log.GetLogger().With(log.String(log.LoggerKeyComponentName, "AgentMCPTools")),
-		agentService:      agentService,
-		entityService:     entityService,
-		entityTypeService: entityTypeService,
-		flowService:       flowService,
-	})
-}
-
-// registerOnboardAgentTool registers onboard_agent over the given tools.
-func registerOnboardAgentTool(server *mcp.Server, tools *agentTools) {
-	credentials := credentialNames()
-	modes := actingModeNames()
-	mcp.AddTool(server, &mcp.Tool{
-		Name: "onboard_agent",
-		Description: `Create an agent with everything it needs to get tokens. With include token_guide, the ` +
-			`result also says how it gets each kind of token. Describe what the agent does, not OAuth ` +
-			`settings; credential defaults to client_secret:
-` + accessTerms + `
-
-Without owner, you own the agent if you are a user. Without ouId, it goes in the Default organization ` +
-			`unit. Call list_agent_types first for the attributes the agent needs. Every problem with the input ` +
-			`is reported in one error, and nothing is created then. Use update_agent to change the agent later.`,
-		InputSchema: tool.GenerateSchema[onboardAgentMCPInput](
-			tool.WithEnum("", "credential", credentials),
-			tool.WithDefault("", "credential", string(credentialClientSecret)),
-			tool.WithEnum("", "actsForUsers", modes),
-			tool.WithEnum("", "include", []string{onboardDetailTokenGuide})),
-		Annotations: &mcp.ToolAnnotations{
-			Title:           "Onboard Agent",
-			DestructiveHint: new(false),
-			IdempotentHint:  false,
-			OpenWorldHint:   new(false),
-		},
-	}, tools.onboardAgent)
 }
 
 // listAgents handles the list_agents tool call.
@@ -460,119 +374,6 @@ func (t *agentTools) getAgent(
 	return nil, &details, nil
 }
 
-// onboardAgent handles the onboard_agent tool call.
-func (t *agentTools) onboardAgent(
-	ctx context.Context,
-	_ *mcp.CallToolRequest,
-	input onboardAgentMCPInput,
-) (*mcp.CallToolResult, *onboardAgentMCPResponse, error) {
-	nameAttribute, svcErr := t.nameAttribute(ctx)
-	if svcErr != nil {
-		return nil, nil, fmt.Errorf("failed to onboard agent: %s", svcErr.ErrorDescription)
-	}
-
-	problems := []string{}
-	if strings.TrimSpace(input.Name) == "" {
-		problems = append(problems, "name is required")
-	}
-	attributes := maps.Clone(input.Attributes)
-	if attributes == nil {
-		attributes = map[string]any{}
-	}
-	attributes[nameAttribute] = input.Name
-	attributeProblems, err := t.attributeProblems(ctx, attributes, input.Attributes, true)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to onboard agent: %w", err)
-	}
-	problems = append(problems, attributeProblems...)
-
-	owner, ownerProblem, err := t.resolveOwner(ctx, input.Owner)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to onboard agent: %w", err)
-	}
-	if ownerProblem != "" {
-		problems = append(problems, ownerProblem)
-	}
-
-	credential := agentCredential(input.Credential)
-	if credential == "" {
-		credential = credentialClientSecret
-	}
-	oauthConfig, accessProblems := applyCapabilityChange(nil, capabilityChange{
-		credential:   &credential,
-		jwksURI:      input.JWKSURI,
-		jwks:         input.JWKS,
-		actsForUsers: modesOf(input.ActsForUsers),
-		redirectURIs: input.RedirectURIs,
-		authFlowID:   input.AuthFlowID,
-	})
-	problems = append(problems, accessProblems...)
-	if slices.Contains(input.ActsForUsers, string(actingApproval)) {
-		flowProblems, err := t.approvalFlowProblems(ctx, input.AuthFlowID)
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to onboard agent: %w", err)
-		}
-		problems = append(problems, flowProblems...)
-	}
-	if len(problems) > 0 {
-		return nil, nil, fmt.Errorf("cannot onboard the agent, so nothing was created: %s",
-			strings.Join(problems, "; "))
-	}
-
-	rawAttributes, err := json.Marshal(attributes)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to onboard agent: attributes are not valid JSON")
-	}
-	agent := &providers.Agent{
-		OUID:        input.OUID,
-		Type:        entitytype.DefaultAgentTypeHandle,
-		Description: input.Description,
-		ProjectID:   input.ProjectID,
-		Owner:       owner,
-		Attributes:  rawAttributes,
-		InboundAuthProfile: providers.InboundAuthProfile{
-			AuthFlowID:                input.AuthFlowID,
-			RegistrationFlowID:        input.RegistrationFlowID,
-			IsRegistrationFlowEnabled: input.RegistrationFlowID != "",
-			AllowedUserTypes:          input.AllowedUserTypes,
-		},
-	}
-	if input.OUID == "" {
-		agent.OUHandle = defaultOUHandle
-	}
-	if input.ValidUntil != "" {
-		agent.ValidUntil = &input.ValidUntil
-	}
-	if oauthConfig != nil {
-		agent.InboundAuthConfig = []providers.InboundAuthConfigWithSecret{
-			{Type: providers.OAuthInboundAuthType, OAuthConfig: oauthConfig},
-		}
-	}
-
-	created, svcErr := t.agentService.CreateAgent(ctx, agent)
-	if svcErr != nil {
-		if input.OUID == "" && svcErr.Code == ErrorOrganizationUnitNotFound.Code {
-			return nil, nil, errors.New("failed to onboard agent: the Default organization unit wasn't found, " +
-				"so give ouId")
-		}
-		return nil, nil, fmt.Errorf("failed to onboard agent: %s", svcErr.ErrorDescription)
-	}
-
-	details := describeAgent(readViewOf(created), nameAttribute)
-	out := &onboardAgentMCPResponse{Agent: details}
-	if slices.Contains(input.Include, onboardDetailTokenGuide) {
-		out.Endpoints = endpointsNote
-		out.GetTokens = tokenGuides(details, oauthConfigOf(created.InboundAuthConfig))
-	} else {
-		out.NotIncluded = []string{onboardDetailTokenGuide}
-	}
-	if secret := clientSecretOf(created.InboundAuthConfig); secret != "" {
-		out.ClientSecret = secret
-		out.Notice = secretNotice
-	}
-	return nil, out, nil
-}
-
 // updateAgent handles the update_agent tool call. The agent service replaces the whole agent, so the
 // tool reads it, applies the change, and writes back everything it read.
 func (t *agentTools) updateAgent(
@@ -600,7 +401,7 @@ func (t *agentTools) updateAgent(
 	if input.Name != "" {
 		attributes[nameAttribute] = input.Name
 	}
-	problems, err := t.attributeProblems(ctx, attributes, input.Attributes, false)
+	problems, err := t.attributeProblems(ctx, attributes, input.Attributes)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to update agent: %w", err)
 	}
@@ -786,9 +587,8 @@ func (t *agentTools) nameAttribute(ctx context.Context) (string, *tidcommon.Serv
 }
 
 // attributeProblems checks an agent's attributes against its type. Required attributes must be present,
-// and no credential attribute is accepted, since no credential goes through the MCP tools. A new agent
-// whose type requires a credential attribute can't be created here at all.
-func (t *agentTools) attributeProblems(ctx context.Context, attributes, given map[string]any, isNew bool) (
+// and no credential attribute is accepted, since no credential goes through the MCP tools.
+func (t *agentTools) attributeProblems(ctx context.Context, attributes, given map[string]any) (
 	[]string, error) {
 	schema, svcErr := t.entityTypeService.GetAttributes(ctx, entitytype.TypeCategoryAgent,
 		entitytype.DefaultAgentTypeHandle, entitytype.AttributeFilter{AllowCredential: true, AllowNonCredential: true})
@@ -803,9 +603,6 @@ func (t *agentTools) attributeProblems(ctx context.Context, attributes, given ma
 	for _, attribute := range schema {
 		_, isGiven := given[attribute.Attribute]
 		switch {
-		case attribute.Credential && attribute.Required && isNew:
-			problems = append(problems, fmt.Sprintf("the agent type requires the credential attribute %s, and no "+
-				"credential goes through these tools, so create this agent in the Console", attribute.Attribute))
 		case attribute.Credential && isGiven:
 			problems = append(problems, fmt.Sprintf("%s is a credential attribute, and no credential goes "+
 				"through these tools", attribute.Attribute))
@@ -814,40 +611,6 @@ func (t *agentTools) attributeProblems(ctx context.Context, attributes, given ma
 		}
 	}
 	return problems, nil
-}
-
-// resolveOwner returns the owner of a new agent. With no owner given it returns nil, and the agent service
-// makes the caller the owner, as a local user or as an external one such as a trusted issuer's. A given
-// owner must be an existing user, since the owner is the person accountable for the agent. A problem with
-// the owner is returned as the second value; the error is a failure to check it.
-func (t *agentTools) resolveOwner(ctx context.Context, owner string) (*providers.AgentOwner, string, error) {
-	if owner == "" {
-		return nil, "", nil
-	}
-	isUser, err := t.isUser(ctx, owner)
-	if err != nil {
-		return nil, "", err
-	}
-	if !isUser {
-		return nil, "owner must be the ID of an existing user", nil
-	}
-	return &providers.AgentOwner{ID: owner}, "", nil
-}
-
-// isUser reports whether the given ID belongs to a user.
-func (t *agentTools) isUser(ctx context.Context, id string) (bool, error) {
-	if id == "" {
-		return false, nil
-	}
-	e, err := t.entityService.GetEntityProfile(ctx, id)
-	if err != nil {
-		if errors.Is(err, entity.ErrEntityNotFound) {
-			return false, nil
-		}
-		t.logger.Error(ctx, "Failed to check an agent owner", log.Error(err))
-		return false, errors.New("the owner could not be checked")
-	}
-	return e.Category == providers.EntityCategoryUser, nil
 }
 
 // addAgentDetails adds the sections get_agent was asked for, and lists the rest as not included.
@@ -1006,7 +769,7 @@ func (t *agentTools) approvalFlows(ctx context.Context) ([]string, error) {
 	}
 }
 
-// describeAgent describes an agent in the terms onboard_agent and update_agent take.
+// describeAgent describes an agent in the terms update_agent takes.
 func describeAgent(agent *model.AgentGetResponse, nameAttribute string) agentMCPDetails {
 	caps := describeCapabilities(oauthConfigOf(agent.InboundAuthConfig))
 	attributes := decodeAttributes(agent.Attributes)
@@ -1050,112 +813,6 @@ func ownerIDOf(owner *providers.AgentOwner) string {
 		return ""
 	}
 	return owner.ID
-}
-
-// tokenGuides describes, for each way an agent gets tokens, the requests its code sends.
-func tokenGuides(details agentMCPDetails, cfg *providers.OAuthConfigWithSecret) []tokenGuideMCPItem {
-	guides := []tokenGuideMCPItem{}
-	if cfg == nil {
-		return guides
-	}
-	auth := clientAuthenticationOf(cfg)
-	scope := "scope: the permissions it needs, separated by spaces (optional)"
-
-	if details.Credential != string(credentialNone) {
-		guides = append(guides, tokenGuideMCPItem{
-			For:                  "on_its_own",
-			GrantType:            string(providers.GrantTypeClientCredentials),
-			ClientAuthentication: auth,
-			Steps: []tokenStepMCPItem{{
-				Request:    "POST " + oauth2const.OAuth2TokenEndpoint,
-				Parameters: []string{"grant_type=" + string(providers.GrantTypeClientCredentials), scope},
-			}},
-		})
-	}
-	for _, mode := range details.ActsForUsers {
-		switch actingMode(mode) {
-		case actingSignIn:
-			guide := tokenGuideMCPItem{
-				For:                  string(actingSignIn),
-				GrantType:            string(providers.GrantTypeAuthorizationCode),
-				ClientAuthentication: auth,
-				Steps: []tokenStepMCPItem{
-					{
-						Request: "GET " + oauth2const.OAuth2AuthorizationEndpoint,
-						Parameters: []string{"response_type=code", "client_id",
-							"redirect_uri: one of the agent's redirectUris",
-							"scope: openid and the permissions it needs, separated by spaces", "state",
-							"code_challenge and code_challenge_method=S256 (PKCE)"},
-					},
-					{
-						Request: "POST " + oauth2const.OAuth2TokenEndpoint,
-						Parameters: []string{"grant_type=" + string(providers.GrantTypeAuthorizationCode),
-							"code: from the redirect", "redirect_uri: the same one", "code_verifier"},
-					},
-				},
-			}
-			if slices.Contains(cfg.GrantTypes, providers.GrantTypeRefreshToken) {
-				guide.Note = "Renew the token at " + oauth2const.OAuth2TokenEndpoint + " with grant_type=" +
-					string(providers.GrantTypeRefreshToken) + " and the refresh_token."
-			}
-			guides = append(guides, guide)
-		case actingApproval:
-			guides = append(guides, tokenGuideMCPItem{
-				For:                  string(actingApproval),
-				GrantType:            string(providers.GrantTypeCIBA),
-				ClientAuthentication: auth,
-				Steps: []tokenStepMCPItem{
-					{
-						Request: "POST " + oauth2const.OAuth2BackchannelAuthEndpoint,
-						Parameters: []string{"scope: openid and the permissions it needs, separated by spaces",
-							"login_hint: identifies the user to the agent's authentication flow",
-							"binding_message: shown to the user, at most 256 characters (optional)"},
-					},
-					{
-						Request: "POST " + oauth2const.OAuth2TokenEndpoint,
-						Parameters: []string{"grant_type=" + string(providers.GrantTypeCIBA),
-							"auth_req_id: from the first response"},
-					},
-				},
-				Note: "Repeat the second request at the interval the first response gives, until the user " +
-					"approves or denies. The agent's authentication flow must find the user from login_hint " +
-					"and notify them.",
-			})
-		case actingTokenExchange:
-			guides = append(guides, tokenGuideMCPItem{
-				For:                  string(actingTokenExchange),
-				GrantType:            string(providers.GrantTypeTokenExchange),
-				ClientAuthentication: auth,
-				Steps: []tokenStepMCPItem{{
-					Request: "POST " + oauth2const.OAuth2TokenEndpoint,
-					Parameters: []string{"grant_type=" + string(providers.GrantTypeTokenExchange),
-						"subject_token: the user's access token",
-						"subject_token_type=" + string(oauth2const.TokenTypeIdentifierAccessToken), scope,
-						"actor_token and actor_token_type: when another agent hands over the task (optional)"},
-				}},
-				Note: "The new token carries the user's access, capped by what the agent holds, and names the " +
-					"agent as the actor.",
-			})
-		}
-	}
-	return guides
-}
-
-// clientAuthenticationOf says how an agent's code authenticates its client at the token endpoint.
-func clientAuthenticationOf(cfg *providers.OAuthConfigWithSecret) string {
-	switch credentialOf(cfg) {
-	case credentialPrivateKeyJWT:
-		return "client_assertion_type=urn:ietf:params:oauth:client-assertion-type:jwt-bearer and " +
-			"client_assertion: a JWT signed with the agent's private key, with kid in its header, iss and sub " +
-			"set to the client ID, aud set to the issuer from the discovery document, and jti and exp"
-	case credentialNone:
-		return "client_id in the request, with no secret"
-	case credentialClientSecret:
-	}
-	if cfg.TokenEndpointAuthMethod == providers.TokenEndpointAuthMethodClientSecretPost {
-		return "client_id and client_secret in the form body"
-	}
-	return "HTTP Basic with the client ID and client secret"
 }
 
 // changesAccess reports whether an update_agent input changes how the agent proves who it is or acts for

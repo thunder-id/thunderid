@@ -5076,39 +5076,3 @@ func (s *ServiceTestSuite) TestSelfFlowHasNoDefaultFlowHandle() {
 	}}}
 	s.Empty(service.resolveDefaultFlowHandle(context.Background(), providers.FlowTypeSelf))
 }
-
-func (s *ServiceTestSuite) TestGetExecutionPosition() {
-	s.Run("returns the flow a paused execution runs and its node", func() {
-		mockStore := newFlowStoreInterfaceMock(s.T())
-		mockStore.On("GetFlowContext", mock.Anything, "exec-1").Return(&FlowContextDB{ExecutionID: "exec-1",
-			Context: `{"graphId":"flow-1","currentNodeId":"prompt_owner"}`}, nil).Once()
-		svc := &flowExecService{flowStore: mockStore}
-
-		flowID, nodeID, svcErr := svc.GetExecutionPosition(context.Background(), "exec-1")
-
-		s.Nil(svcErr)
-		s.Equal("flow-1", flowID)
-		s.Equal("prompt_owner", nodeID)
-	})
-
-	s.Run("refuses an execution that isn't stored", func() {
-		mockStore := newFlowStoreInterfaceMock(s.T())
-		mockStore.On("GetFlowContext", mock.Anything, "gone").Return((*FlowContextDB)(nil), nil).Once()
-		svc := &flowExecService{flowStore: mockStore}
-
-		_, _, svcErr := svc.GetExecutionPosition(context.Background(), "gone")
-
-		s.Equal(&ErrorInvalidExecutionID, svcErr)
-	})
-
-	s.Run("reports a context it can't read", func() {
-		mockStore := newFlowStoreInterfaceMock(s.T())
-		mockStore.On("GetFlowContext", mock.Anything, "bad").
-			Return(&FlowContextDB{ExecutionID: "bad", Context: "{"}, nil).Once()
-		svc := &flowExecService{flowStore: mockStore}
-
-		_, _, svcErr := svc.GetExecutionPosition(context.Background(), "bad")
-
-		s.Equal(&tidcommon.InternalServerError, svcErr)
-	})
-}

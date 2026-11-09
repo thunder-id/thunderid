@@ -9,8 +9,7 @@ import (
 )
 
 // The user tools find a user by an attribute, describe them without their password, change an
-// attribute, and refuse to change the password. A data plane offers no create_user: it creates users
-// through its onboarding flow.
+// attribute, and refuse to change the password.
 func (ts *MCPTestSuite) TestUserTools_FindDescribeAndUpdate() {
 	token := ts.mcpScopedAdminToken()
 	username := fmt.Sprintf("mcp-user-%d", time.Now().UnixNano())
@@ -44,5 +43,5 @@ func (ts *MCPTestSuite) TestUserTools_FindDescribeAndUpdate() {
 
 	message, body := ts.postStatelessMCP(token, "tools/list", "", map[string]any{})
 	ts.Contains(message, `"update_user"`, body)
-	ts.NotContains(message, `"create_user"`, "a data plane creates users through its onboarding flow")
+	ts.NotContains(message, `"create_user"`, "no tool creates users")
 }

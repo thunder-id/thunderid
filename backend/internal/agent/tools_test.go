@@ -50,15 +50,14 @@ func TestAgentToolsTestSuite(t *testing.T) {
 	suite.Run(t, new(AgentToolsTestSuite))
 }
 
-// SetupTest connects with onboard_agent registered, as a control plane registers it.
 func (s *AgentToolsTestSuite) SetupTest() {
-	s.connect("", true)
+	s.connect("")
 }
 
 // connect registers the tools over mocked services and connects an in-memory MCP client, so every call
 // crosses the SDK's schema validation and output encoding as an agent's would. caller is the subject
-// the tools see. withOnboard registers onboard_agent too, as a control plane does.
-func (s *AgentToolsTestSuite) connect(caller string, withOnboard bool) {
+// the tools see.
+func (s *AgentToolsTestSuite) connect(caller string) {
 	s.agents = agentmock.NewAgentServiceInterfaceMock(s.T())
 	s.entities = entitymock.NewEntityServiceInterfaceMock(s.T())
 	s.entityTypes = entitytypemock.NewEntityTypeServiceInterfaceMock(s.T())
@@ -86,9 +85,6 @@ func (s *AgentToolsTestSuite) connect(caller string, withOnboard bool) {
 		flowService:       s.flows,
 	}
 	registerMCPTools(server, tools)
-	if withOnboard {
-		registerOnboardAgentTool(server, tools)
-	}
 	serverTransport, clientTransport := mcp.NewInMemoryTransports()
 	serverCtx := security.WithSecurityContext(context.Background(),
 		security.NewSecurityContextForTest(caller, "", "", nil, nil))
@@ -108,12 +104,6 @@ func (s *AgentToolsTestSuite) agentSchema(attributes ...entitytype.AttributeInfo
 	}
 	s.entityTypes.On("GetAttributes", mock.Anything, entitytype.TypeCategoryAgent,
 		entitytype.DefaultAgentTypeHandle, mock.Anything).Return(attributes, (*tidcommon.ServiceError)(nil))
-}
-
-// ownerExists makes toolOwnerID a user.
-func (s *AgentToolsTestSuite) ownerExists() {
-	s.entities.On("GetEntityProfile", mock.Anything, toolOwnerID).
-		Return(&providers.Entity{ID: toolOwnerID, Category: providers.EntityCategoryUser}, nil)
 }
 
 func (s *AgentToolsTestSuite) call(name string, args map[string]any) *mcp.CallToolResult {
@@ -184,14 +174,10 @@ func (s *AgentToolsTestSuite) TestRegisterMCPTools() {
 		s.NotContains(t.Description, "—", t.Name)
 		s.NotContains(t.Description, "--", t.Name)
 	}
-	s.Len(tools, 5)
+	s.Len(tools, 4)
 
 	s.True(tools["list_agents"].Annotations.ReadOnlyHint)
 	s.True(tools["get_agent"].Annotations.ReadOnlyHint)
-	onboard := tools["onboard_agent"].Annotations
-	s.False(onboard.ReadOnlyHint)
-	s.False(*onboard.DestructiveHint)
-	s.False(onboard.IdempotentHint)
 	update := tools["update_agent"].Annotations
 	s.True(*update.DestructiveHint)
 	s.True(update.IdempotentHint)
@@ -202,8 +188,10 @@ func (s *AgentToolsTestSuite) TestRegisterMCPTools() {
 		s.False(*t.Annotations.OpenWorldHint, t.Name)
 	}
 
+	s.Contains(tools["update_agent"].Description, "- credential:")
+	s.Contains(tools["update_agent"].Description, "- actsForUsers:")
+
 	var schema struct {
-		Required   []string `json:"required"`
 		Properties map[string]struct {
 			Enum  []string `json:"enum"`
 			Items *struct {
@@ -211,31 +199,12 @@ func (s *AgentToolsTestSuite) TestRegisterMCPTools() {
 			} `json:"items"`
 		} `json:"properties"`
 	}
-	raw, err := json.Marshal(tools["onboard_agent"].InputSchema)
+	raw, err := json.Marshal(tools["update_agent"].InputSchema)
 	s.Require().NoError(err)
 	s.Require().NoError(json.Unmarshal(raw, &schema))
-	s.Contains(schema.Required, "name")
 	s.ElementsMatch([]string{"client_secret", "private_key_jwt", "none"}, schema.Properties["credential"].Enum)
 	s.Require().NotNil(schema.Properties["actsForUsers"].Items)
 	s.ElementsMatch([]string{"sign_in", "approval", "token_exchange"}, schema.Properties["actsForUsers"].Items.Enum)
-}
-
-// Without onboard_agent, as on a data plane, the other agent tools stand on their own: none refers to
-// onboard_agent, and update_agent explains the terms itself.
-func (s *AgentToolsTestSuite) TestRegisterMCPTools_WithoutOnboard() {
-	s.connect("", false)
-	result, err := s.session.ListTools(context.Background(), nil)
-	s.Require().NoError(err)
-	names := make([]string, 0, len(result.Tools))
-	for _, t := range result.Tools {
-		names = append(names, t.Name)
-		s.NotContains(t.Description, "onboard_agent", t.Name)
-		if t.Name == "update_agent" {
-			s.Contains(t.Description, "- credential:")
-			s.Contains(t.Description, "- actsForUsers:")
-		}
-	}
-	s.ElementsMatch([]string{"list_agents", "get_agent", "update_agent", "rotate_agent_credentials"}, names)
 }
 
 func (s *AgentToolsTestSuite) TestListAgents() {
@@ -292,7 +261,7 @@ func (s *AgentToolsTestSuite) TestGetAgent() {
 	// The agent's flow-1 only signs in a user who is present, so its approval can't work.
 	s.flows.On("GetFlow", mock.Anything, "flow-1").Return(signInFlow(), (*tidcommon.ServiceError)(nil)).Maybe()
 
-	s.Run("by agent ID, in onboard_agent's terms", func() {
+	s.Run("by agent ID, in update_agent's terms", func() {
 		s.agents.On("GetAgent", mock.Anything, toolAgentID, true).
 			Return(toolAgent(cfg), (*tidcommon.ServiceError)(nil)).Once()
 		var out agentMCPDetails
@@ -367,157 +336,6 @@ func (s *AgentToolsTestSuite) TestGetAgent() {
 		s.agents.On("GetAgent", mock.Anything, "missing", true).
 			Return((*model.AgentGetResponse)(nil), &ErrorAgentNotFound).Once()
 		s.Contains(s.errorText(s.call("get_agent", map[string]any{"agentId": "missing"})), "does not exist")
-	})
-}
-
-func (s *AgentToolsTestSuite) TestOnboardAgent_SecretAgentOnItsOwn() {
-	s.agentSchema()
-	s.ownerExists()
-	var created *providers.Agent
-	created1 := completeOf(toolAgent(secretConfig()), "s3cret")
-	created1.OUID = "ou-default"
-	s.agents.On("CreateAgent", mock.Anything, mock.Anything).
-		Run(func(args mock.Arguments) { created = args.Get(1).(*providers.Agent) }).
-		Return(created1, (*tidcommon.ServiceError)(nil)).Once()
-
-	var out onboardAgentMCPResponse
-	s.structured(s.call("onboard_agent", map[string]any{"name": "inventory-agent", "owner": toolOwnerID,
-		"include": []string{"token_guide"}}), &out)
-
-	s.Require().NotNil(created)
-	s.Equal(entitytype.DefaultAgentTypeHandle, created.Type)
-	s.Equal(defaultOUHandle, created.OUHandle)
-	s.Empty(created.OUID)
-	s.Equal(toolOwnerID, created.Owner.ID)
-	s.False(created.Delegated)
-	s.JSONEq(`{"name":"inventory-agent"}`, string(created.Attributes))
-	cfg := oauthConfigOf(created.InboundAuthConfig)
-	s.Require().NotNil(cfg)
-	s.Equal([]providers.GrantType{providers.GrantTypeClientCredentials}, cfg.GrantTypes)
-	s.Equal(providers.TokenEndpointAuthMethodClientSecretBasic, cfg.TokenEndpointAuthMethod)
-
-	s.Equal("s3cret", out.ClientSecret)
-	s.Contains(out.Notice, "only time")
-	s.Equal("ou-default", out.Agent.OUID)
-	s.Contains(out.Endpoints, "control plane")
-	s.Contains(out.Endpoints, "/.well-known/openid-configuration")
-	s.Require().Len(out.GetTokens, 1)
-	s.Equal("on_its_own", out.GetTokens[0].For)
-	s.Contains(out.GetTokens[0].ClientAuthentication, "HTTP Basic")
-}
-
-func (s *AgentToolsTestSuite) TestOnboardAgent_KeyAgentActingForUsers() {
-	s.agentSchema()
-	s.ownerExists()
-	var created *providers.Agent
-	s.agents.On("CreateAgent", mock.Anything, mock.Anything).
-		Run(func(args mock.Arguments) { created = args.Get(1).(*providers.Agent) }).
-		Return(func(_ context.Context, agent *providers.Agent) *model.AgentCompleteResponse {
-			view := toolAgent(oauthConfigOf(agent.InboundAuthConfig))
-			return completeOf(view, "")
-		}, (*tidcommon.ServiceError)(nil)).Once()
-
-	var out onboardAgentMCPResponse
-	s.structured(s.call("onboard_agent", map[string]any{
-		"name": "support-agent", "owner": toolOwnerID, "ouId": "ou-1",
-		"credential": "private_key_jwt", "jwksUri": "https://agent.example.com/jwks",
-		"actsForUsers": []string{"approval", "sign_in"}, "redirectUris": []string{"https://agent.example.com/cb"},
-		"authFlowId": "ciba-flow", "registrationFlowId": "reg-flow", "include": []string{"token_guide"},
-	}), &out)
-
-	s.Require().NotNil(created)
-	s.Equal("ou-1", created.OUID)
-	s.Empty(created.OUHandle)
-	s.Equal("ciba-flow", created.AuthFlowID)
-	s.Equal("reg-flow", created.RegistrationFlowID)
-	s.True(created.IsRegistrationFlowEnabled)
-	cfg := oauthConfigOf(created.InboundAuthConfig)
-	s.Require().NotNil(cfg)
-	s.Equal([]providers.GrantType{providers.GrantTypeClientCredentials, providers.GrantTypeAuthorizationCode,
-		providers.GrantTypeCIBA, providers.GrantTypeRefreshToken}, cfg.GrantTypes)
-	s.True(cfg.PKCERequired)
-	s.Equal(&providers.Certificate{Type: providers.CertificateTypeJWKSURI,
-		Value: "https://agent.example.com/jwks"}, cfg.Certificate)
-
-	s.Empty(out.ClientSecret)
-	s.Equal("private_key_jwt", out.Agent.Credential)
-	ways := make([]string, 0, len(out.GetTokens))
-	for _, guide := range out.GetTokens {
-		ways = append(ways, guide.For)
-		s.Contains(guide.ClientAuthentication, "client_assertion")
-	}
-	s.Equal([]string{"on_its_own", "sign_in", "approval"}, ways)
-	s.Equal("POST /oauth2/bc-authorize", out.GetTokens[2].Steps[0].Request)
-	s.Contains(out.GetTokens[1].Note, "refresh_token")
-}
-
-func (s *AgentToolsTestSuite) TestOnboardAgent_ReportsEveryProblem() {
-	s.agentSchema(
-		entitytype.AttributeInfo{Attribute: "name", Type: "string", Required: true},
-		entitytype.AttributeInfo{Attribute: "modelProvider", Type: "string", Required: true},
-		entitytype.AttributeInfo{Attribute: "password", Type: "string", Required: true, Credential: true},
-	)
-	s.entities.On("GetEntityProfile", mock.Anything, "app-1").
-		Return(&providers.Entity{ID: "app-1", Category: providers.EntityCategoryApp}, nil)
-
-	text := s.errorText(s.call("onboard_agent", map[string]any{
-		"name": "support-agent", "owner": "app-1", "credential": "none",
-		"actsForUsers": []string{"sign_in", "approval"},
-	}))
-	s.Contains(text, "nothing was created")
-	for _, problem := range []string{"modelProvider", "password", "Console", "owner must be", "need a credential",
-		"redirectUris", "authFlowId"} {
-		s.Contains(text, problem)
-	}
-	s.agents.AssertNotCalled(s.T(), "CreateAgent", mock.Anything, mock.Anything)
-}
-
-func (s *AgentToolsTestSuite) TestOnboardAgent_Owner() {
-	s.Run("without one, the service makes the caller the owner", func() {
-		s.connect("caller-1", true)
-		s.agentSchema()
-		var created *providers.Agent
-		s.agents.On("CreateAgent", mock.Anything, mock.Anything).
-			Run(func(args mock.Arguments) { created = args.Get(1).(*providers.Agent) }).
-			Return(completeOf(toolAgent(nil), ""), (*tidcommon.ServiceError)(nil)).Once()
-		var out onboardAgentMCPResponse
-		s.structured(s.call("onboard_agent", map[string]any{"name": "a", "credential": "none"}), &out)
-		s.Require().NotNil(created)
-		s.Nil(created.Owner, "the service resolves the caller, local or external")
-		s.Nil(created.InboundAuthConfig)
-		s.Empty(out.GetTokens)
-	})
-
-	s.Run("a given owner must be an existing user", func() {
-		s.connect("caller-1", true)
-		s.agentSchema()
-		s.entities.On("GetEntityProfile", mock.Anything, "not-a-user").
-			Return(&providers.Entity{ID: "not-a-user", Category: providers.EntityCategoryAgent}, nil).Once()
-		s.Contains(s.errorText(s.call("onboard_agent", map[string]any{"name": "a", "owner": "not-a-user"})),
-			"owner must be the ID of an existing user")
-		s.agents.AssertNotCalled(s.T(), "CreateAgent", mock.Anything, mock.Anything)
-	})
-}
-
-func (s *AgentToolsTestSuite) TestOnboardAgent_ServiceErrors() {
-	s.Run("Default organization unit missing", func() {
-		s.agentSchema()
-		s.ownerExists()
-		s.agents.On("CreateAgent", mock.Anything, mock.Anything).
-			Return((*model.AgentCompleteResponse)(nil), &ErrorOrganizationUnitNotFound).Once()
-		s.Contains(s.errorText(s.call("onboard_agent", map[string]any{"name": "a", "owner": toolOwnerID})),
-			"give ouId")
-	})
-
-	s.Run("private key in jwks", func() {
-		s.connect("", true)
-		s.agentSchema()
-		s.ownerExists()
-		text := s.errorText(s.call("onboard_agent", map[string]any{
-			"name": "a", "owner": toolOwnerID, "credential": "private_key_jwt",
-			"jwks": map[string]any{"keys": []any{map[string]any{"kty": "EC", "kid": "k1", "d": "secret"}}},
-		}))
-		s.Contains(text, "private member")
 	})
 }
 
@@ -598,7 +416,7 @@ func (s *AgentToolsTestSuite) TestUpdateAgent_Refusals() {
 	})
 
 	s.Run("a blank name", func() {
-		s.connect("", false)
+		s.connect("")
 		s.agentSchema()
 		s.agents.On("GetAgent", mock.Anything, toolAgentID, false).
 			Return(toolAgent(secretConfig()), (*tidcommon.ServiceError)(nil)).Once()
@@ -608,7 +426,7 @@ func (s *AgentToolsTestSuite) TestUpdateAgent_Refusals() {
 	})
 
 	s.Run("a credential attribute", func() {
-		s.connect("", false)
+		s.connect("")
 		s.agentSchema(entitytype.AttributeInfo{Attribute: "password", Type: "string", Credential: true})
 		s.agents.On("GetAgent", mock.Anything, toolAgentID, false).
 			Return(toolAgent(secretConfig()), (*tidcommon.ServiceError)(nil)).Once()
@@ -618,7 +436,7 @@ func (s *AgentToolsTestSuite) TestUpdateAgent_Refusals() {
 	})
 
 	s.Run("agent not found", func() {
-		s.connect("", false)
+		s.connect("")
 		s.agents.On("GetAgent", mock.Anything, "missing", false).
 			Return((*model.AgentGetResponse)(nil), &ErrorAgentNotFound).Once()
 		s.Contains(s.errorText(s.call("update_agent", map[string]any{"agentId": "missing", "name": "x"})),
@@ -728,37 +546,19 @@ func (s *AgentToolsTestSuite) TestRotateAgentCredentials_KeySet() {
 	s.agents.AssertNumberOfCalls(s.T(), "UpdateAgent", 1)
 }
 
-// RegisterOnboardAgentTool, which a control plane calls, adds onboard_agent alone.
-func (s *AgentToolsTestSuite) TestRegisterOnboardAgentTool() {
-	server := mcp.NewServer(&mcp.Implementation{Name: "test-server", Version: "1.0.0"}, nil)
-	RegisterOnboardAgentTool(server, s.agents, s.entities, s.entityTypes, s.flows)
-	serverTransport, clientTransport := mcp.NewInMemoryTransports()
-	serverSession, err := server.Connect(context.Background(), serverTransport, nil)
-	s.Require().NoError(err)
-	defer func() { _ = serverSession.Close() }()
-	client := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "1.0.0"}, nil)
-	session, err := client.Connect(context.Background(), clientTransport, nil)
-	s.Require().NoError(err)
-	defer func() { _ = session.Close() }()
-
-	result, err := session.ListTools(context.Background(), nil)
-	s.Require().NoError(err)
-	s.Require().Len(result.Tools, 1)
-	s.Equal("onboard_agent", result.Tools[0].Name)
-}
-
 // cibaFlow is a flow that finds the user from login_hint and emails them an approval link.
 // An approval flow must be an authentication flow, however its steps look.
 func (s *AgentToolsTestSuite) TestApprovalFlowMustBeAnAuthenticationFlow() {
 	s.agentSchema()
-	s.ownerExists()
+	s.agents.On("GetAgent", mock.Anything, toolAgentID, false).
+		Return(toolAgent(secretConfig()), (*tidcommon.ServiceError)(nil)).Once()
 	admin := cibaFlow()
 	admin.ID, admin.FlowType = "admin-flow", providers.FlowTypeAdministration
 	s.flows.On("GetFlow", mock.Anything, "admin-flow").Return(admin, (*tidcommon.ServiceError)(nil)).Once()
-	text := s.errorText(s.call("onboard_agent", map[string]any{"name": "a", "owner": toolOwnerID,
+	text := s.errorText(s.call("update_agent", map[string]any{"agentId": toolAgentID,
 		"actsForUsers": []string{"approval"}, "authFlowId": "admin-flow"}))
 	s.Contains(text, "approval needs an authentication flow")
-	s.agents.AssertNotCalled(s.T(), "CreateAgent", mock.Anything, mock.Anything)
+	s.agents.AssertNotCalled(s.T(), "UpdateAgent", mock.Anything, mock.Anything, mock.Anything)
 }
 
 func cibaFlow() *providers.CompleteFlowDefinition {
@@ -799,31 +599,7 @@ func (s *AgentToolsTestSuite) TestReachesOfflineUser() {
 // Approval is refused with a flow that can't reach a user who isn't there, and the refusal names the
 // flows that can.
 func (s *AgentToolsTestSuite) TestApprovalFlowChecks() {
-	s.Run("onboarding with a sign-in flow", func() {
-		s.agentSchema()
-		s.ownerExists()
-		s.flows.On("GetFlow", mock.Anything, "flow-1").Return(signInFlow(),
-			(*tidcommon.ServiceError)(nil)).Once()
-		text := s.errorText(s.call("onboard_agent", map[string]any{"name": "a", "owner": toolOwnerID,
-			"actsForUsers": []string{"approval"}, "authFlowId": "flow-1"}))
-		s.Contains(text, "nothing was created")
-		s.Contains(text, "the flow default-flow can't reach a user who isn't there")
-		s.Contains(text, "flows that can: ciba-email (ciba-flow)")
-		s.agents.AssertNotCalled(s.T(), "CreateAgent", mock.Anything, mock.Anything)
-	})
-
-	s.Run("onboarding with no flow names the ones that can", func() {
-		s.connect("", true)
-		s.agentSchema()
-		s.ownerExists()
-		text := s.errorText(s.call("onboard_agent", map[string]any{"name": "a", "owner": toolOwnerID,
-			"actsForUsers": []string{"approval"}}))
-		s.Contains(text, "approval needs authFlowId")
-		s.Contains(text, "flows that can: ciba-email (ciba-flow)")
-	})
-
 	s.Run("adding approval to an agent whose flow can't reach the user", func() {
-		s.connect("", true)
 		s.agentSchema()
 		s.agents.On("GetAgent", mock.Anything, toolAgentID, false).
 			Return(toolAgent(secretConfig()), (*tidcommon.ServiceError)(nil)).Once()
@@ -837,17 +613,18 @@ func (s *AgentToolsTestSuite) TestApprovalFlowChecks() {
 	})
 
 	s.Run("no flow can reach the user yet", func() {
-		s.connect("", true)
+		s.connect("")
 		s.flows.ExpectedCalls = nil
 		s.agentSchema()
-		s.ownerExists()
+		s.agents.On("GetAgent", mock.Anything, toolAgentID, false).
+			Return(toolAgent(secretConfig()), (*tidcommon.ServiceError)(nil)).Once()
 		s.flows.On("GetFlow", mock.Anything, "flow-1").Return(signInFlow(),
 			(*tidcommon.ServiceError)(nil)).Twice()
 		s.flows.On("ListFlows", mock.Anything, 100, 0, providers.FlowTypeAuthentication).Return(
 			&flowmgt.FlowListResponse{Flows: []flowmgt.BasicFlowDefinition{{ID: "flow-1", Handle: "default-flow"}}},
 			(*tidcommon.ServiceError)(nil)).Once()
-		text := s.errorText(s.call("onboard_agent", map[string]any{"name": "a", "owner": toolOwnerID,
-			"actsForUsers": []string{"approval"}, "authFlowId": "flow-1"}))
+		text := s.errorText(s.call("update_agent", map[string]any{"agentId": toolAgentID,
+			"actsForUsers": []string{"approval"}}))
 		s.Contains(text, "ask the administrator to create one")
 	})
 }
@@ -881,20 +658,6 @@ func (s *AgentToolsTestSuite) TestGetAgent_NoWarningWithACIBAFlow() {
 	s.Empty(out.Warnings)
 }
 
-// onboard_agent leaves the token guide out unless asked, and says so.
-func (s *AgentToolsTestSuite) TestOnboardAgent_TokenGuideOnlyWhenAsked() {
-	s.agentSchema()
-	s.ownerExists()
-	s.agents.On("CreateAgent", mock.Anything, mock.Anything).
-		Return(completeOf(toolAgent(secretConfig()), "s3cret"), (*tidcommon.ServiceError)(nil)).Once()
-	var out onboardAgentMCPResponse
-	s.structured(s.call("onboard_agent", map[string]any{"name": "a", "owner": toolOwnerID}), &out)
-	s.Empty(out.GetTokens)
-	s.Empty(out.Endpoints)
-	s.Equal([]string{"token_guide"}, out.NotIncluded)
-	s.Equal("s3cret", out.ClientSecret, "the secret is always returned, since it is shown only once")
-}
-
 func (s *AgentToolsTestSuite) TestChangedFields() {
 	before := agentMCPDetails{ID: "a1", Name: "bot", Description: "old", Credential: "client_secret",
 		ActsForUsers: []string{}, RedirectURIs: []string{"https://a/cb"}}
@@ -909,12 +672,12 @@ func (s *AgentToolsTestSuite) TestChangedFields() {
 func (s *AgentToolsTestSuite) TestToolsRequireTheAgentAPIPermissions() {
 	security.InitSystemPermissions("")
 	p := security.GetSystemPermissions()
-	s.connect(toolOwnerID, true)
+	s.connect(toolOwnerID)
 	tools, err := s.session.ListTools(context.Background(), nil)
 	s.Require().NoError(err)
 	s.Require().NotEmpty(tools.Tools)
 	for _, registered := range tools.Tools {
-		s.Contains([]string{p.AgentView, p.AgentCreate, p.AgentUpdate},
+		s.Contains([]string{p.AgentView, p.AgentUpdate},
 			security.ResolveMCPToolPermission(registered.Name),
 			"tool %q must require an agent permission", registered.Name)
 	}

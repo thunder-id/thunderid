@@ -6,8 +6,6 @@ package flowexec
 import (
 	"net/http"
 
-	"github.com/modelcontextprotocol/go-sdk/mcp"
-
 	flowconfig "github.com/thunder-id/thunderid/internal/flow/config"
 	"github.com/thunder-id/thunderid/internal/flow/executor"
 	"github.com/thunder-id/thunderid/internal/flow/graphbuilder"
@@ -19,11 +17,8 @@ import (
 )
 
 // Initialize creates and configures the flow execution service components.
-//
-// mcpServer is optional. Given one, the execute_flow MCP tool is registered with it.
 func Initialize(
 	mux *http.ServeMux,
-	mcpServer *mcp.Server,
 	flowProvider providers.FlowProvider,
 	actorProvider providers.ActorProvider,
 	ouProvider providers.OrganizationUnitProvider,
@@ -57,10 +52,6 @@ func Initialize(
 
 	handler := newFlowExecutionHandler(flowExecService, ssoTransport, sessionTimeouts.Absolute)
 	registerRoutes(mux, handler)
-	if mcpServer != nil {
-		registerMCPTools(mcpServer, &flowTools{
-			service: flowExecService, flows: flowProvider, serverConfig: serverConfigSvc})
-	}
 
 	return flowExecService, nil
 }

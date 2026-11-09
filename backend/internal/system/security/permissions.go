@@ -974,15 +974,12 @@ func InitSystemPermissions(handle string) {
 		"list_users":  p.UserView,
 		"get_user":    p.UserView,
 		"update_user": p.UserUpdate,
-		"create_user": p.UserCreate,
 
 		// User type tools.
 		"list_user_types": p.UserTypeView,
-		// Agent tools, at the permissions of the agent API they act through. execute_flow stays root: only a
-		// caller holding root may start an administration flow by ID.
+		// Agent tools, at the permissions of the agent API they act through.
 		"list_agents":              p.AgentView,
 		"get_agent":                p.AgentView,
-		"onboard_agent":            p.AgentCreate,
 		"update_agent":             p.AgentUpdate,
 		"rotate_agent_credentials": p.AgentUpdate,
 
