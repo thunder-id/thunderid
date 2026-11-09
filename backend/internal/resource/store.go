@@ -43,6 +43,7 @@ type resourceStoreInterface interface {
 		ctx context.Context, resServerID string, parentID *string, limit, offset int,
 	) ([]providers.Resource, error)
 	GetResourceListCount(ctx context.Context, resServerID string) (int, error)
+	GetDeclaredPermissions(ctx context.Context, resServerID string, roots []string, delimiter string) ([]string, error)
 	GetResourceListCountByParent(ctx context.Context, resServerID string, parentID *string) (int, error)
 	UpdateResource(ctx context.Context, id string, resServerID string, res providers.Resource) error
 	UpdateResourcePermission(ctx context.Context, id string, resServerID string, permission string) error
@@ -79,8 +80,9 @@ type resourceStore struct {
 
 // resourceServerProperties represents the JSON structure of PROPERTIES column.
 type resourceServerProperties struct {
-	Delimiter           string                               `json:"delimiter"`
-	AuthorizationEngine *providers.AuthorizationEngineConfig `json:"authorizationEngine,omitempty"`
+	Delimiter               string                               `json:"delimiter"`
+	HierarchicalPermissions bool                                 `json:"hierarchicalPermissions,omitempty"`
+	AuthorizationEngine     *providers.AuthorizationEngineConfig `json:"authorizationEngine,omitempty"`
 }
 
 // actionProperties represents the JSON structure of the ACTION.PROPERTIES column.
@@ -945,6 +947,39 @@ func (s *resourceStore) CheckActionHandleExists(
 	return exists, err
 }
 
+// GetDeclaredPermissions retrieves covered resources and their actions in a single query.
+func (s *resourceStore) GetDeclaredPermissions(
+	ctx context.Context, resServerID string, roots []string, delimiter string,
+) ([]string, error) {
+	if len(roots) == 0 {
+		return nil, nil
+	}
+	encoded, err := json.Marshal(roots)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode permission roots: %w", err)
+	}
+	permissions := []string{}
+	err = s.withDBClient(func(client provider.DBClientInterface) error {
+		rows, queryErr := client.QueryContext(ctx, queryGetDeclaredPermissions,
+			resServerID, s.scope(ctx), string(encoded), delimiter)
+		if queryErr != nil {
+			return queryErr
+		}
+		for _, row := range rows {
+			permission, ok := row["permission"].(string)
+			if !ok {
+				return fmt.Errorf("permission field is missing or invalid in query result")
+			}
+			permissions = append(permissions, permission)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list declared permissions: %w", err)
+	}
+	return permissions, nil
+}
+
 // ValidatePermissions validates that permissions exist for a given resource server.
 // Returns array of invalid permissions (empty if all are valid).
 func (s *resourceStore) ValidatePermissions(
@@ -1079,6 +1114,7 @@ func resolveProperties(row map[string]interface{}, rs *providers.ResourceServer)
 		if len(propsBytes) > 0 {
 			if err := json.Unmarshal(propsBytes, &props); err == nil {
 				rs.Delimiter = props.Delimiter
+				rs.HierarchicalPermissions = props.HierarchicalPermissions
 				if props.AuthorizationEngine != nil {
 					rs.AuthorizationEngine = *props.AuthorizationEngine
 				}
@@ -1089,7 +1125,10 @@ func resolveProperties(row map[string]interface{}, rs *providers.ResourceServer)
 
 // buildPropertiesJSON builds the PROPERTIES JSON for a providers.ResourceServer.
 func buildPropertiesJSON(rs providers.ResourceServer) interface{} {
-	properties := resourceServerProperties{Delimiter: rs.Delimiter}
+	properties := resourceServerProperties{
+		Delimiter:               rs.Delimiter,
+		HierarchicalPermissions: rs.HierarchicalPermissions,
+	}
 	if rs.AuthorizationEngine.Type != "" || rs.AuthorizationEngine.Properties.PDPConnectionID != "" {
 		properties.AuthorizationEngine = &rs.AuthorizationEngine
 	}

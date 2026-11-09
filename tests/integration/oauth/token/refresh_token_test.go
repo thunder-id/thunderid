@@ -593,8 +593,15 @@ func (ts *RefreshSecurityTestSuite) createRole(name, userID string, permissions 
 func (ts *RefreshSecurityTestSuite) obtainTokens(
 	clientID, clientSecret, username, scope string,
 ) *testutils.TokenResponse {
+	return ts.obtainTokensForResource(clientID, clientSecret, username, scope, refreshSecResource)
+}
+
+// obtainTokensForResource completes authorization and redemption for the chosen resource audience.
+func (ts *RefreshSecurityTestSuite) obtainTokensForResource(
+	clientID, clientSecret, username, scope, audience string,
+) *testutils.TokenResponse {
 	resp, err := testutils.InitiateAuthorizationFlowWithResource(
-		clientID, refreshSecRedirectURI, "code", scope, "test-state", refreshSecResource)
+		clientID, refreshSecRedirectURI, "code", scope, "test-state", audience)
 	ts.Require().NoError(err, "Failed to initiate authorization flow")
 	defer resp.Body.Close()
 	ts.Require().Equal(http.StatusFound, resp.StatusCode, "Expected redirect from authorization endpoint")
@@ -619,7 +626,7 @@ func (ts *RefreshSecurityTestSuite) obtainTokens(
 	ts.Require().NoError(err, "Failed to extract authorization code")
 
 	result, err := testutils.RequestTokenWithResource(
-		clientID, clientSecret, code, refreshSecRedirectURI, "authorization_code", refreshSecResource)
+		clientID, clientSecret, code, refreshSecRedirectURI, "authorization_code", audience)
 	ts.Require().NoError(err, "Failed to exchange code for tokens")
 	ts.Require().Equal(http.StatusOK, result.StatusCode,
 		"Token request should succeed. Response: %s", string(result.Body))
@@ -895,4 +902,117 @@ func (ts *RefreshSecurityTestSuite) TestRefresh_TokenRejectedAsTokenExchangeSubj
 				"A refresh token must be refused as a subject_token. Response: %s", string(body))
 		})
 	}
+}
+
+func (ts *RefreshSecurityTestSuite) TestHierarchicalScopeCompactionAndRefreshNarrowing() {
+	const audience = refreshSecResource + "/hierarchical"
+	rsID, err := testutils.CreateResourceServerWithActions(testutils.ResourceServer{
+		Name: "Refresh hierarchy", Identifier: audience, OUID: ts.ouID, HierarchicalPermissions: true,
+	}, nil)
+	ts.Require().NoError(err)
+	ts.T().Cleanup(func() { ts.NoError(testutils.DeleteResourceServerWithChildren(rsID)) })
+	root, err := testutils.CreateResource(rsID, "Reservations", "reservations", "")
+	ts.Require().NoError(err)
+	_, err = testutils.CreateResourceAction(rsID, root, testutils.Action{Name: "Create", Handle: "create"})
+	ts.Require().NoError(err)
+	userID := ts.createUser("refresh_hierarchical_compaction")
+	roleID, err := testutils.CreateRole(testutils.Role{
+		Name: "Refresh hierarchy", OUID: ts.ouID,
+		Permissions: []testutils.ResourcePermissions{{ResourceServerID: rsID, Permissions: []string{"reservations"}}},
+		Assignments: []testutils.Assignment{{ID: userID, Type: "user"}},
+	})
+	ts.Require().NoError(err)
+	ts.createdRoleIDs = append(ts.createdRoleIDs, roleID)
+	tokens := ts.obtainTokensForResource(refreshSecClientID, refreshSecClientSecret,
+		"refresh_hierarchical_compaction", "openid reservations reservations:create", audience)
+	ts.ElementsMatch([]string{"openid", "reservations"}, strings.Fields(tokens.Scope))
+	ts.ElementsMatch(strings.Fields(tokens.Scope), ts.accessTokenScopes(tokens.AccessToken))
+	ts.ElementsMatch(strings.Fields(tokens.Scope), ts.accessTokenScopes(tokens.RefreshToken))
+
+	refreshed, err := testutils.RefreshAccessToken(refreshSecClientID, refreshSecClientSecret, tokens.RefreshToken)
+	ts.Require().NoError(err)
+	ts.ElementsMatch([]string{"openid", "reservations"}, ts.accessTokenScopes(refreshed.AccessToken))
+	narrowed, err := testutils.RefreshAccessTokenRaw(refreshSecClientID, refreshSecClientSecret,
+		refreshed.RefreshToken, "reservations:create")
+	ts.Require().NoError(err)
+	ts.Require().Equal(http.StatusOK, narrowed.StatusCode, "%s", narrowed.Body)
+	ts.Equal("reservations:create", narrowed.Token.Scope)
+	ts.Equal([]string{"reservations:create"}, ts.accessTokenScopes(narrowed.Token.AccessToken))
+}
+
+func (ts *RefreshSecurityTestSuite) TestCustomOIDCScopeCannotInheritPermissionGrant() {
+	const audience = refreshSecResource + "/oidc-boundary"
+	const clientID = "refresh_oidc_boundary_client"
+	const customScope = "reservations:history"
+	rsID, err := testutils.CreateResourceServerWithActions(testutils.ResourceServer{
+		Name: "OIDC scope boundary", Identifier: audience, OUID: ts.ouID, HierarchicalPermissions: true,
+	}, nil)
+	ts.Require().NoError(err)
+	ts.T().Cleanup(func() { ts.NoError(testutils.DeleteResourceServerWithChildren(rsID)) })
+	root, err := testutils.CreateResource(rsID, "Reservations", "reservations", "")
+	ts.Require().NoError(err)
+	_, err = testutils.CreateResourceAction(rsID, root, testutils.Action{Name: "Create", Handle: "create"})
+	ts.Require().NoError(err)
+	userID := ts.createUser("refresh_oidc_boundary")
+	roleID, err := testutils.CreateRole(testutils.Role{
+		Name: "OIDC scope boundary", OUID: ts.ouID,
+		Permissions: []testutils.ResourcePermissions{{ResourceServerID: rsID, Permissions: []string{"reservations"}}},
+		Assignments: []testutils.Assignment{{ID: userID, Type: "user"}},
+	})
+	ts.Require().NoError(err)
+	ts.createdRoleIDs = append(ts.createdRoleIDs, roleID)
+	appID, err := testutils.CreateApplication(testutils.Application{
+		Name: "OIDC scope boundary", OUID: ts.ouID, Type: "fullstack", AuthFlowID: ts.authFlowID,
+		AllowedUserTypes: []string{refreshSecUserType},
+		InboundAuthConfig: []map[string]interface{}{{"type": "oauth2", "config": map[string]interface{}{
+			"clientId": clientID, "clientSecret": refreshSecClientSecret,
+			"redirectUris": []string{refreshSecRedirectURI}, "responseTypes": []string{"code"},
+			"grantTypes":              []string{"authorization_code", "refresh_token", "urn:ietf:params:oauth:grant-type:token-exchange"},
+			"tokenEndpointAuthMethod": "client_secret_basic", "scopeClaims": map[string][]string{customScope: {"email"}},
+		}}},
+	})
+	ts.Require().NoError(err)
+	ts.createdAppIDs = append(ts.createdAppIDs, appID)
+	tokens := ts.obtainTokensForResource(clientID, refreshSecClientSecret, "refresh_oidc_boundary",
+		"openid reservations", audience)
+	ts.NotContains(ts.accessTokenScopes(tokens.RefreshToken), customScope)
+
+	refused, err := testutils.RefreshAccessTokenRaw(clientID, refreshSecClientSecret, tokens.RefreshToken, customScope)
+	ts.Require().NoError(err)
+	ts.Require().Equal(http.StatusBadRequest, refused.StatusCode, "%s", refused.Body)
+	var oauthError struct {
+		Error string `json:"error"`
+	}
+	ts.Require().NoError(json.Unmarshal(refused.Body, &oauthError))
+	ts.Equal("invalid_scope", oauthError.Error)
+	ts.Nil(refused.Token)
+
+	form := url.Values{
+		"grant_type":         {"urn:ietf:params:oauth:grant-type:token-exchange"},
+		"subject_token":      {tokens.AccessToken},
+		"subject_token_type": {"urn:ietf:params:oauth:token-type:access_token"},
+		"resource":           {audience}, "scope": {customScope + " reservations:create"},
+	}
+	req, err := http.NewRequest(http.MethodPost, testutils.TestServerURL+"/oauth2/token",
+		strings.NewReader(form.Encode()))
+	ts.Require().NoError(err)
+	req.SetBasicAuth(clientID, refreshSecClientSecret)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	resp, err := testutils.GetHTTPClient().Do(req)
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	ts.Require().NoError(err)
+	ts.Require().Equal(http.StatusOK, resp.StatusCode, "%s", body)
+	var exchanged testutils.TokenResponse
+	ts.Require().NoError(json.Unmarshal(body, &exchanged))
+	ts.Equal("reservations:create", exchanged.Scope)
+	ts.Equal([]string{"reservations:create"}, ts.accessTokenScopes(exchanged.AccessToken))
+
+	explicit := ts.obtainTokensForResource(clientID, refreshSecClientSecret, "refresh_oidc_boundary",
+		"openid reservations "+customScope, audience)
+	allowed, err := testutils.RefreshAccessTokenRaw(clientID, refreshSecClientSecret, explicit.RefreshToken, customScope)
+	ts.Require().NoError(err)
+	ts.Require().Equal(http.StatusOK, allowed.StatusCode, "%s", allowed.Body)
+	ts.Equal(customScope, allowed.Token.Scope)
 }

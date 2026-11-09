@@ -1113,6 +1113,98 @@ func (_c *roleStoreInterfaceMock_GetEntityRoleIDs_Call) RunAndReturn(run func(ct
 	return _c
 }
 
+// GetHeldPermissionsByResourceServer provides a mock function for the type roleStoreInterfaceMock
+func (_mock *roleStoreInterfaceMock) GetHeldPermissionsByResourceServer(ctx context.Context, entityID string, groupIDs []string, roleIDs []string, assignmentOUID string, resourceServerID string) ([]string, error) {
+	ret := _mock.Called(ctx, entityID, groupIDs, roleIDs, assignmentOUID, resourceServerID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetHeldPermissionsByResourceServer")
+	}
+
+	var r0 []string
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, []string, []string, string, string) ([]string, error)); ok {
+		return returnFunc(ctx, entityID, groupIDs, roleIDs, assignmentOUID, resourceServerID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, []string, []string, string, string) []string); ok {
+		r0 = returnFunc(ctx, entityID, groupIDs, roleIDs, assignmentOUID, resourceServerID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]string)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, []string, []string, string, string) error); ok {
+		r1 = returnFunc(ctx, entityID, groupIDs, roleIDs, assignmentOUID, resourceServerID)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// roleStoreInterfaceMock_GetHeldPermissionsByResourceServer_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetHeldPermissionsByResourceServer'
+type roleStoreInterfaceMock_GetHeldPermissionsByResourceServer_Call struct {
+	*mock.Call
+}
+
+// GetHeldPermissionsByResourceServer is a helper method to define mock.On call
+//   - ctx context.Context
+//   - entityID string
+//   - groupIDs []string
+//   - roleIDs []string
+//   - assignmentOUID string
+//   - resourceServerID string
+func (_e *roleStoreInterfaceMock_Expecter) GetHeldPermissionsByResourceServer(ctx any, entityID any, groupIDs any, roleIDs any, assignmentOUID any, resourceServerID any) *roleStoreInterfaceMock_GetHeldPermissionsByResourceServer_Call {
+	return &roleStoreInterfaceMock_GetHeldPermissionsByResourceServer_Call{Call: _e.mock.On("GetHeldPermissionsByResourceServer", ctx, entityID, groupIDs, roleIDs, assignmentOUID, resourceServerID)}
+}
+
+func (_c *roleStoreInterfaceMock_GetHeldPermissionsByResourceServer_Call) Run(run func(ctx context.Context, entityID string, groupIDs []string, roleIDs []string, assignmentOUID string, resourceServerID string)) *roleStoreInterfaceMock_GetHeldPermissionsByResourceServer_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 []string
+		if args[2] != nil {
+			arg2 = args[2].([]string)
+		}
+		var arg3 []string
+		if args[3] != nil {
+			arg3 = args[3].([]string)
+		}
+		var arg4 string
+		if args[4] != nil {
+			arg4 = args[4].(string)
+		}
+		var arg5 string
+		if args[5] != nil {
+			arg5 = args[5].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+			arg4,
+			arg5,
+		)
+	})
+	return _c
+}
+
+func (_c *roleStoreInterfaceMock_GetHeldPermissionsByResourceServer_Call) Return(strings []string, err error) *roleStoreInterfaceMock_GetHeldPermissionsByResourceServer_Call {
+	_c.Call.Return(strings, err)
+	return _c
+}
+
+func (_c *roleStoreInterfaceMock_GetHeldPermissionsByResourceServer_Call) RunAndReturn(run func(ctx context.Context, entityID string, groupIDs []string, roleIDs []string, assignmentOUID string, resourceServerID string) ([]string, error)) *roleStoreInterfaceMock_GetHeldPermissionsByResourceServer_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetReferencedPermissions provides a mock function for the type roleStoreInterfaceMock
 func (_mock *roleStoreInterfaceMock) GetReferencedPermissions(ctx context.Context) ([]ResourcePermissions, error) {
 	ret := _mock.Called(ctx)

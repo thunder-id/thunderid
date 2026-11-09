@@ -7,9 +7,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/declarative_resource/entity"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/transaction"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
@@ -655,6 +657,36 @@ func (f *fileBasedResourceStore) CheckActionHandleExists(
 	}
 
 	return false, nil
+}
+
+// GetDeclaredPermissions reads covered resources and actions from the loaded declaration.
+func (f *fileBasedResourceStore) GetDeclaredPermissions(
+	ctx context.Context, resServerID string, roots []string, delimiter string,
+) ([]string, error) {
+	if len(roots) == 0 {
+		return nil, nil
+	}
+	server, err := f.GetResourceServer(ctx, resServerID)
+	if errors.Is(err, errResourceServerNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	permissions := []string{}
+	for _, resource := range server.Resources {
+		if !security.AnyPermissionCovers(roots, resource.Permission, delimiter) {
+			continue
+		}
+		permissions = append(permissions, resource.Permission)
+		for _, action := range resource.Actions {
+			if security.AnyPermissionCovers(roots, action.Permission, delimiter) {
+				permissions = append(permissions, action.Permission)
+			}
+		}
+	}
+	slices.Sort(permissions)
+	return slices.Compact(permissions), nil
 }
 
 func (f *fileBasedResourceStore) ValidatePermissions(

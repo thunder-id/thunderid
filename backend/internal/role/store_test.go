@@ -2933,3 +2933,46 @@ func (suite *RoleStoreTestSuite) TestGetDirectAssignments() {
 		suite.Error(err)
 	})
 }
+
+func (suite *RoleStoreTestSuite) TestGetHeldPermissionsByResourceServer_UsesOneScopedQuery() {
+	suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil).Once()
+	suite.mockDBClient.On("QueryContext", mock.Anything,
+		mock.MatchedBy(func(query dbmodel.DBQuery) bool {
+			suite.Contains(query.Query, "SELECT DISTINCT rp.PERMISSION")
+			suite.Contains(query.Query, "ra.DEPLOYMENT_ID = $1")
+			suite.Contains(query.Query, "rp.DEPLOYMENT_ID = $1")
+			suite.Contains(query.Query, "ra.ASSIGNEE_ID = $2 AND ra.ASSIGNMENT_OU_ID = $3")
+			suite.Contains(query.Query, "ra.ASSIGNEE_ID IN ($4) AND ra.ASSIGNMENT_OU_ID = $5")
+			suite.Contains(query.Query, "rp.ROLE_ID IN ($6)")
+			suite.Contains(query.Query, "rp.RESOURCE_SERVER_ID = $7")
+			suite.NotContains(query.Query, "rp.PERMISSION IN")
+			suite.NotContains(query.SQLiteQuery, "rp.PERMISSION IN")
+			return true
+		}), testDeploymentID, "user-1", "ou-1", "group-1", "ou-1", "mapped-role", "booking-api").
+		Return([]map[string]interface{}{
+			{"permission": "reservations:create"}, {"permission": "reservations:view"},
+		}, nil).Once()
+	permissions, err := suite.store.GetHeldPermissionsByResourceServer(
+		context.Background(), "user-1", []string{"group-1"}, []string{"mapped-role"}, "ou-1", "booking-api")
+	suite.NoError(err)
+	suite.Equal([]string{"reservations:create", "reservations:view"}, permissions)
+	suite.mockDBClient.AssertNumberOfCalls(suite.T(), "QueryContext", 1)
+}
+
+func (suite *RoleStoreTestSuite) TestGetHeldPermissionsByResourceServer_EmptySubjectSkipsQuery() {
+	permissions, err := suite.store.GetHeldPermissionsByResourceServer(
+		context.Background(), "", nil, nil, "", "booking-api")
+	suite.NoError(err)
+	suite.Empty(permissions)
+	suite.mockDBClient.AssertNotCalled(suite.T(), "QueryContext")
+}
+
+func (suite *RoleStoreTestSuite) TestGetHeldPermissionsByResourceServer_QueryError() {
+	suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
+	suite.mockDBClient.On("QueryContext", mock.Anything, mock.Anything, testDeploymentID, "user-1", "booking-api").
+		Return(nil, errors.New("read failed")).Once()
+	permissions, err := suite.store.GetHeldPermissionsByResourceServer(
+		context.Background(), "user-1", nil, nil, "", "booking-api")
+	suite.ErrorContains(err, "read failed")
+	suite.Nil(permissions)
+}

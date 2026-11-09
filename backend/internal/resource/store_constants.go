@@ -477,3 +477,40 @@ var (
 		        )`,
 	}
 )
+
+// queryGetDeclaredPermissions reads covered resources and their actions without per-resource lookups.
+var queryGetDeclaredPermissions = dbmodel.DBQuery{
+	ID: "RSQ-RES_MGT-46",
+	PostgresQuery: `WITH roots AS (
+		        SELECT value::text AS permission FROM json_array_elements_text($3::json)
+		    ), covered_resources AS (
+		        SELECT r.ID, r.PERMISSION FROM "RESOURCE" r
+		        WHERE r.RESOURCE_SERVER_ID = $1 AND r.DEPLOYMENT_ID = $2
+		            AND EXISTS (SELECT 1 FROM roots p WHERE r.PERMISSION = p.permission
+		                OR ($4 <> '' AND substr(r.PERMISSION, 1, length(p.permission || $4)) = p.permission || $4))
+		    )
+		    SELECT PERMISSION AS permission FROM covered_resources
+		    UNION
+		    SELECT a.PERMISSION AS permission FROM "ACTION" a
+		    JOIN covered_resources r ON r.ID = a.RESOURCE_ID
+		    WHERE a.RESOURCE_SERVER_ID = $1 AND a.DEPLOYMENT_ID = $2
+		        AND EXISTS (SELECT 1 FROM roots p WHERE a.PERMISSION = p.permission
+		            OR ($4 <> '' AND substr(a.PERMISSION, 1, length(p.permission || $4)) = p.permission || $4))
+		    ORDER BY permission`,
+	SQLiteQuery: `WITH roots AS (
+		        SELECT value AS permission FROM json_each($3)
+		    ), covered_resources AS (
+		        SELECT r.ID, r.PERMISSION FROM "RESOURCE" r
+		        WHERE r.RESOURCE_SERVER_ID = $1 AND r.DEPLOYMENT_ID = $2
+		            AND EXISTS (SELECT 1 FROM roots p WHERE r.PERMISSION = p.permission
+		                OR ($4 <> '' AND substr(r.PERMISSION, 1, length(p.permission || $4)) = p.permission || $4))
+		    )
+		    SELECT PERMISSION AS permission FROM covered_resources
+		    UNION
+		    SELECT a.PERMISSION AS permission FROM "ACTION" a
+		    JOIN covered_resources r ON r.ID = a.RESOURCE_ID
+		    WHERE a.RESOURCE_SERVER_ID = $1 AND a.DEPLOYMENT_ID = $2
+		        AND EXISTS (SELECT 1 FROM roots p WHERE a.PERMISSION = p.permission
+		            OR ($4 <> '' AND substr(a.PERMISSION, 1, length(p.permission || $4)) = p.permission || $4))
+		    ORDER BY permission`,
+}

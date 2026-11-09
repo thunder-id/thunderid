@@ -175,19 +175,21 @@ type Resource struct {
 
 // ResourceServer represents a resource server in both declarative resources and service layer.
 type ResourceServer struct {
-	ID                  string                    `yaml:"id"                    json:"-"`
-	Name                string                    `yaml:"name"                  json:"name"`
-	Description         string                    `yaml:"description,omitempty" json:"description,omitempty"`
-	Identifier          string                    `yaml:"identifier"            json:"identifier"`
-	Type                ResourceServerType        `yaml:"type,omitempty"        json:"type,omitempty"`
-	OUID                string                    `yaml:"ouId,omitempty"        json:"ouId"`
-	OUHandle            string                    `yaml:"ouHandle,omitempty"    json:"-"`
-	ProjectID           string                    `yaml:"projectId,omitempty"   json:"projectId,omitempty"`
-	Delimiter           string                    `yaml:"delimiter,omitempty"   json:"delimiter,omitempty"   yamlfmt:"quoted"`
-	AuthorizationEngine AuthorizationEngineConfig `yaml:"authorizationEngine,omitempty" json:"authorizationEngine,omitempty"`
-	IsReadOnly          bool                      `yaml:"-"                     json:"-"`
-	Actions             []Action                  `yaml:"actions,omitempty"     json:"actions,omitempty"`
-	Resources           []Resource                `yaml:"resources,omitempty"   json:"resources,omitempty"`
+	ID          string             `yaml:"id"                    json:"-"`
+	Name        string             `yaml:"name"                  json:"name"`
+	Description string             `yaml:"description,omitempty" json:"description,omitempty"`
+	Identifier  string             `yaml:"identifier"            json:"identifier"`
+	Type        ResourceServerType `yaml:"type,omitempty"        json:"type,omitempty"`
+	OUID        string             `yaml:"ouId,omitempty"        json:"ouId"`
+	OUHandle    string             `yaml:"ouHandle,omitempty"    json:"-"`
+	ProjectID   string             `yaml:"projectId,omitempty"   json:"projectId,omitempty"`
+	Delimiter   string             `yaml:"delimiter,omitempty"   json:"delimiter,omitempty"   yamlfmt:"quoted"`
+	// HierarchicalPermissions enables parent-to-descendant permission inheritance. Defaults to false.
+	HierarchicalPermissions bool                      `yaml:"hierarchicalPermissions,omitempty" json:"hierarchicalPermissions,omitempty"`
+	AuthorizationEngine     AuthorizationEngineConfig `yaml:"authorizationEngine,omitempty" json:"authorizationEngine,omitempty"`
+	IsReadOnly              bool                      `yaml:"-"                     json:"-"`
+	Actions                 []Action                  `yaml:"actions,omitempty"     json:"actions,omitempty"`
+	Resources               []Resource                `yaml:"resources,omitempty"   json:"resources,omitempty"`
 }
 
 // AuthorizationEngineTypeAuthZENPDP identifies the AuthZEN PDP authorization engine.
@@ -1168,6 +1170,12 @@ func (m AuthorizationRuleMapping) IsMultiValued() bool {
 		(valueType == AuthorizationValueTypeString && m.Delimiter != "")
 }
 
+// AuthorizedResourcePermissions binds authorized permissions to their resource server.
+type AuthorizedResourcePermissions struct {
+	ResourceServerID string
+	Permissions      []string
+}
+
 // ConsentElementApproval represents a user's approval decision for a specific element.
 type ConsentElementApproval struct {
 	// Name is the consent element name
@@ -1224,6 +1232,10 @@ type ConsentPurposePrompt struct {
 	Essential []PromptElement `json:"essential"`
 	// Optional is the list of elements the user can opt in or out of
 	Optional []PromptElement `json:"optional"`
+	// PermissionDelimiter enables one consent decision per permission branch. Empty keeps exact decisions.
+	PermissionDelimiter string `json:"permissionDelimiter,omitempty"`
+	// DisplayElements describes the full covered tree without adding consent decisions or token scopes.
+	DisplayElements []PromptElement `json:"displayElements,omitempty"`
 }
 
 // ConsentDetailRowOriginServer is the ConsentDetailRow origin of a field value the type's processor supplied.
@@ -1733,6 +1745,8 @@ type AccessEvaluationRequest struct {
 type AccessEvaluationResponse struct {
 	Decision bool                   `json:"decision"`
 	Context  map[string]interface{} `json:"context,omitempty"`
+	// GrantedInstead contains provider-authorized alternatives for a denied permission, never JSON input.
+	GrantedInstead []string `json:"-"`
 }
 
 // AccessEvaluationsRequest represents a batched fine-grained access evaluation request.

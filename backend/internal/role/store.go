@@ -66,6 +66,9 @@ type roleStoreInterface interface {
 	GetAuthorizedPermissionsByResourceServer(
 		ctx context.Context, entityID string, groupIDs, roleIDs []string, assignmentOUID, resourceServerID string,
 		requestedPermissions []string) ([]string, error)
+	// GetHeldPermissionsByResourceServer lists held permissions, scoped to the assignment OU when given.
+	GetHeldPermissionsByResourceServer(ctx context.Context, entityID string, groupIDs, roleIDs []string,
+		assignmentOUID, resourceServerID string) ([]string, error)
 	// GetAllPermissionsForAssignees returns every permission the entity and/or groups hold through
 	// their assigned roles, grouped by resource server. It takes no filters: it enumerates.
 	GetAllPermissionsForAssignees(
@@ -1085,6 +1088,27 @@ func (s *roleStore) GetAuthorizedPermissionsByResourceServer(
 	entityID string,
 	groupIDs, roleIDs []string,
 	assignmentOUID, resourceServerID string,
+	requestedPermissions []string,
+) ([]string, error) {
+	if len(requestedPermissions) == 0 {
+		return []string{}, nil
+	}
+	return s.getPermissions(ctx, entityID, groupIDs, roleIDs, assignmentOUID, resourceServerID, requestedPermissions)
+}
+
+// GetHeldPermissionsByResourceServer retrieves all held permissions for one resource server in one query.
+func (s *roleStore) GetHeldPermissionsByResourceServer(
+	ctx context.Context, entityID string, groupIDs, roleIDs []string, assignmentOUID, resourceServerID string,
+) ([]string, error) {
+	if entityID == "" && len(groupIDs) == 0 && len(roleIDs) == 0 {
+		return []string{}, nil
+	}
+	return s.getPermissions(ctx, entityID, groupIDs, roleIDs, assignmentOUID, resourceServerID, nil)
+}
+
+// getPermissions retrieves held permissions, optionally restricted to requested names.
+func (s *roleStore) getPermissions(
+	ctx context.Context, entityID string, groupIDs, roleIDs []string, assignmentOUID, resourceServerID string,
 	requestedPermissions []string,
 ) ([]string, error) {
 	dbClient, err := s.getConfigDBClient()

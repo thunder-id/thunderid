@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -349,8 +350,9 @@ func fromEngineAccessEvaluationsResponse(
 	evaluations := make([]providers.AccessEvaluationResponse, 0, len(response.Evaluations))
 	for _, evaluation := range response.Evaluations {
 		evaluations = append(evaluations, providers.AccessEvaluationResponse{
-			Decision: evaluation.Decision,
-			Context:  evaluation.Context,
+			Decision:       evaluation.Decision,
+			Context:        evaluation.Context,
+			GrantedInstead: slices.Clone(evaluation.GrantedInstead),
 		})
 	}
 	return &providers.AccessEvaluationsResponse{Evaluations: evaluations}

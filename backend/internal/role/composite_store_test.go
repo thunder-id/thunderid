@@ -488,3 +488,64 @@ func (suite *CompositeRoleStoreTestSuite) TestGetDirectAssignments_StoreErrors()
 	_, err = suite.store.GetDirectAssignments(context.Background(), "role2", "ou1", named)
 	suite.Error(err)
 }
+
+func (suite *CompositeRoleStoreTestSuite) TestGetHeldPermissionsByResourceServer_MergesCrossStoreAssignments() {
+	suite.mockDBStore.On("GetHeldPermissionsByResourceServer", mock.Anything, "user-1", []string{"group-1"},
+		[]string{"mapped-role"}, "ou-1", "booking-api").Return([]string{"reservations:view"}, nil).Once()
+	suite.mockDBStore.On("GetEntityRoleIDs", mock.Anything, "user-1", []string{"group-1"}, "ou-1").
+		Return([]string{"yaml-role"}, nil).Once()
+	suite.mockFileStore.On("GetHeldPermissionsByResourceServer", mock.Anything, "user-1", []string{"group-1"},
+		[]string{"mapped-role", "yaml-role"}, "ou-1", "booking-api").
+		Return([]string{"reservations:create", "reservations:view"}, nil).Once()
+	permissions, err := suite.store.GetHeldPermissionsByResourceServer(
+		context.Background(), "user-1", []string{"group-1"}, []string{"mapped-role"}, "ou-1", "booking-api")
+	suite.NoError(err)
+	suite.ElementsMatch([]string{"reservations:create", "reservations:view"}, permissions)
+	suite.mockDBStore.AssertNotCalled(suite.T(), "GetRole", mock.Anything, mock.Anything)
+	suite.mockFileStore.AssertNotCalled(suite.T(), "GetRole", mock.Anything, mock.Anything)
+}
+
+func (suite *CompositeRoleStoreTestSuite) TestGetHeldPermissionsByResourceServer_MappedRolesWithoutSubject() {
+	suite.mockDBStore.On("GetHeldPermissionsByResourceServer", mock.Anything, "", []string(nil),
+		[]string{"mapped-role"}, "", "booking-api").Return([]string{}, nil).Once()
+	suite.mockFileStore.On("GetHeldPermissionsByResourceServer", mock.Anything, "", []string(nil),
+		[]string{"mapped-role"}, "", "booking-api").Return([]string{"reservations:view"}, nil).Once()
+	permissions, err := suite.store.GetHeldPermissionsByResourceServer(
+		context.Background(), "", nil, []string{"mapped-role"}, "", "booking-api")
+	suite.NoError(err)
+	suite.Equal([]string{"reservations:view"}, permissions)
+	suite.mockDBStore.AssertNotCalled(suite.T(), "GetEntityRoleIDs",
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (suite *CompositeRoleStoreTestSuite) TestGetHeldPermissionsByResourceServer_PropagatesErrors() {
+	for _, failing := range []string{"database", "assignments", "file"} {
+		suite.Run(failing, func() {
+			suite.SetupTest()
+			readErr := errors.New("read failed")
+			var dbErr, assignmentErr, fileErr error
+			switch failing {
+			case "database":
+				dbErr = readErr
+			case "assignments":
+				assignmentErr = readErr
+			case "file":
+				fileErr = readErr
+			}
+			suite.mockDBStore.On("GetHeldPermissionsByResourceServer", mock.Anything, "user-1", []string(nil),
+				[]string(nil), "ou-1", "booking-api").Return([]string{}, dbErr).Once()
+			if dbErr == nil {
+				suite.mockDBStore.On("GetEntityRoleIDs", mock.Anything, "user-1", []string(nil), "ou-1").
+					Return([]string{}, assignmentErr).Once()
+			}
+			if dbErr == nil && assignmentErr == nil {
+				suite.mockFileStore.On("GetHeldPermissionsByResourceServer", mock.Anything, "user-1", []string(nil),
+					[]string(nil), "ou-1", "booking-api").Return([]string{}, fileErr).Once()
+			}
+			permissions, err := suite.store.GetHeldPermissionsByResourceServer(context.Background(), "user-1", nil, nil,
+				"ou-1", "booking-api")
+			suite.ErrorIs(err, readErr)
+			suite.Nil(permissions)
+		})
+	}
+}

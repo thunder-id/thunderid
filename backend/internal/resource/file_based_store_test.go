@@ -911,3 +911,23 @@ func (s *FileBasedResourceStoreTestSuite) TestGetResourceServerListByProject() {
 	s.NoError(err)
 	s.Equal(1, count)
 }
+
+func (s *FileBasedResourceStoreTestSuite) TestGetDeclaredPermissionsIncludesNestedResources() {
+	store, ok := s.store.(*fileBasedResourceStore)
+	s.Require().True(ok)
+	server := &providers.ResourceServer{ID: "api", Delimiter: "_", Resources: []providers.Resource{
+		{Permission: "reports", Actions: []providers.Action{{Permission: "reports_view"}}},
+		{Permission: "reports_online", Actions: []providers.Action{{Permission: "reports_online_create"}}},
+		{Permission: "reportsx", Actions: []providers.Action{{Permission: "reportsx_delete"}}},
+	}}
+	s.Require().NoError(store.Create("api", server))
+	permissions, err := s.store.GetDeclaredPermissions(s.ctx, "api", []string{"reports"}, "_")
+	s.NoError(err)
+	s.Equal([]string{"reports", "reports_online", "reports_online_create", "reports_view"}, permissions)
+	exact, err := s.store.GetDeclaredPermissions(s.ctx, "api", []string{"reports"}, "")
+	s.NoError(err)
+	s.Equal([]string{"reports"}, exact)
+	missing, err := s.store.GetDeclaredPermissions(s.ctx, "other-api", []string{"reports"}, "_")
+	s.NoError(err)
+	s.Empty(missing)
+}

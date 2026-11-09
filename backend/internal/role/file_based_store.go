@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 
@@ -707,6 +708,21 @@ func (f *fileBasedStore) GetAuthorizedPermissionsByResourceServer(
 	if len(requestPermissions) == 0 {
 		return []string{}, nil
 	}
+	return f.getPermissions(ctx, entityID, groupIDs, roleIDs, assignmentOUID, resourceServerID, requestPermissions)
+}
+
+// GetHeldPermissionsByResourceServer lists declared grants without filtering permission names.
+func (f *fileBasedStore) GetHeldPermissionsByResourceServer(
+	ctx context.Context, entityID string, groupIDs, roleIDs []string, assignmentOUID, resourceServerID string,
+) ([]string, error) {
+	return f.getPermissions(ctx, entityID, groupIDs, roleIDs, assignmentOUID, resourceServerID, nil)
+}
+
+// getPermissions resolves declared assignments and mapped roles, optionally filtering permission names.
+func (f *fileBasedStore) getPermissions(
+	ctx context.Context, entityID string, groupIDs, roleIDs []string, assignmentOUID, resourceServerID string,
+	requestPermissions []string,
+) ([]string, error) {
 	if entityID == "" && len(groupIDs) == 0 && len(roleIDs) == 0 {
 		return []string{}, nil
 	}
@@ -752,13 +768,16 @@ func (f *fileBasedStore) GetAuthorizedPermissionsByResourceServer(
 				continue
 			}
 			for _, perm := range resourcePerms.Permissions {
-				if requestedSet[perm] {
+				if requestPermissions == nil || requestedSet[perm] {
 					permitted[perm] = true
 				}
 			}
 		}
 	}
 
+	if requestPermissions == nil {
+		return slices.Sorted(maps.Keys(permitted)), nil
+	}
 	result := make([]string, 0, len(permitted))
 	for _, perm := range requestPermissions {
 		if permitted[perm] {
@@ -804,14 +823,32 @@ func (f *fileBasedStore) GetUserRoles(
 	return roleNames, nil
 }
 
-// GetEntityRoleIDs is a no-op for the file-based store. Role assignments are persisted in the
-// database store and queried from there by the composite store; the file store has no
-// independent record of API-added assignments. Returning an empty slice keeps the composite
-// merge correct (callers union the result with the DB store's output).
+// GetEntityRoleIDs returns roles with matching declared assignments in the requested organization unit.
 func (f *fileBasedStore) GetEntityRoleIDs(
 	ctx context.Context, entityID string, groupIDs []string, assignmentOUID string,
 ) ([]string, error) {
-	return []string{}, nil
+	roleIDs := make([]string, 0)
+	if entityID == "" && len(groupIDs) == 0 {
+		return roleIDs, nil
+	}
+	list, err := f.GenericFileBasedStore.List()
+	if err != nil {
+		return nil, err
+	}
+	groupSet := make(map[string]bool, len(groupIDs))
+	for _, groupID := range groupIDs {
+		groupSet[groupID] = true
+	}
+	for _, item := range list {
+		roleData, err := roleFromDeclarativeData(item.ID.ID, item.Data)
+		if err != nil {
+			return nil, err
+		}
+		if matchesAssignee(declaredAssignments(roleData, assignmentOUID, ""), entityID, groupSet) {
+			roleIDs = append(roleIDs, item.ID.ID)
+		}
+	}
+	return roleIDs, nil
 }
 
 // IsRoleDeclarative returns true for roles in the file-based store because they are declarative.

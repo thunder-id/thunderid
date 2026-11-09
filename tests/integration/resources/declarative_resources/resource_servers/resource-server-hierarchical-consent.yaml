@@ -1,0 +1,19 @@
+resource_type: resource_server
+id: decl-hierarchical-consent-rs
+name: Declarative Hierarchical Consent API
+identifier: https://declared-consent.example/api
+ouId: 01900000-0000-7000-8000-000000000001
+delimiter: "_"
+hierarchicalPermissions: true
+resources:
+  - name: Reports
+    handle: reports
+    actions:
+      - name: View
+        handle: view
+  - name: Online reports
+    handle: online
+    parent: reports
+    actions:
+      - name: Create
+        handle: create

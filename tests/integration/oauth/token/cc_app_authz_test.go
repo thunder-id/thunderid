@@ -34,6 +34,7 @@ type CCAppAuthzTestSuite struct {
 	roleID                    string
 	groupID                   string
 	groupRoleID               string
+	subtreeRoleID             string
 }
 
 func TestCCAppAuthzTestSuite(t *testing.T) {
@@ -58,6 +59,9 @@ func (s *CCAppAuthzTestSuite) SetupSuite() {
 		Description: "Resource server for CC authz testing",
 		Identifier:  ccAuthzResourceServerIdentifier,
 		OUID:        s.ouID,
+		// Declared hierarchical so a role granting a resource carries the actions beneath it; the
+		// subtree cases below rely on it, and the rest of the suite is unaffected either way.
+		HierarchicalPermissions: true,
 	}, []testutils.Action{
 		{Name: "Read", Handle: "read", Description: "Read access"},
 		{Name: "Write", Handle: "write", Description: "Write access"},
@@ -128,9 +132,37 @@ func (s *CCAppAuthzTestSuite) SetupSuite() {
 	})
 	s.Require().NoError(err)
 	s.groupRoleID = groupRoleID
+
+	// A resource with an action beneath it, granted by the resource rather than by the action, so the
+	// token endpoint has to resolve "bookings:cancel" through the "bookings" the role actually holds.
+	bookingsResourceID, err := testutils.CreateResource(s.resourceServerID, "Bookings", "bookings", "")
+	s.Require().NoError(err)
+	_, err = testutils.CreateResourceAction(s.resourceServerID, bookingsResourceID,
+		testutils.Action{Name: "Cancel", Handle: "cancel", Description: "Cancel a booking"})
+	s.Require().NoError(err)
+
+	subtreeRoleID, err := testutils.CreateRole(testutils.Role{
+		Name:        "CC Authz Bookings Role",
+		Description: "Role granting the bookings resource rather than its actions",
+		OUID:        s.ouID,
+		Permissions: []testutils.ResourcePermissions{
+			{
+				ResourceServerID: s.resourceServerID,
+				Permissions:      []string{"bookings"},
+			},
+		},
+		Assignments: []testutils.Assignment{
+			{ID: s.appID, Type: "app"},
+		},
+	})
+	s.Require().NoError(err)
+	s.subtreeRoleID = subtreeRoleID
 }
 
 func (s *CCAppAuthzTestSuite) TearDownSuite() {
+	if s.subtreeRoleID != "" {
+		_ = testutils.DeleteRole(s.subtreeRoleID)
+	}
 	if s.groupRoleID != "" {
 		_ = testutils.DeleteRole(s.groupRoleID)
 	}
@@ -144,10 +176,10 @@ func (s *CCAppAuthzTestSuite) TearDownSuite() {
 		_ = testutils.DeleteApplication(s.appID)
 	}
 	if s.secondaryResourceServerID != "" {
-		_ = testutils.DeleteResourceServer(s.secondaryResourceServerID)
+		s.NoError(testutils.DeleteResourceServerWithChildren(s.secondaryResourceServerID))
 	}
 	if s.resourceServerID != "" {
-		_ = testutils.DeleteResourceServer(s.resourceServerID)
+		s.NoError(testutils.DeleteResourceServerWithChildren(s.resourceServerID))
 	}
 	if s.ouID != "" {
 		_ = testutils.DeleteOrganizationUnit(s.ouID)
@@ -333,4 +365,103 @@ func (s *CCAppAuthzTestSuite) TestCCWithExplicitResourceFiltersPermissionsByTarg
 
 	_, hasScope := body["scope"]
 	s.False(hasScope, "Response should not contain scopes authorized only on another resource server")
+}
+
+// A role granting a resource authorizes a scope naming an action beneath it, without that action
+// being granted individually.
+func (s *CCAppAuthzTestSuite) TestCCScopeBeneathAGrantedResource() {
+	status, body := s.requestToken("bookings:cancel")
+	s.Equal(http.StatusOK, status)
+	s.assertAccessTokenAudience(body, ccAuthzResourceServerIdentifier)
+
+	scopeStr, ok := body["scope"].(string)
+	s.Require().True(ok, "Response should contain scope")
+	s.ElementsMatch([]string{"bookings:cancel"}, strings.Fields(scopeStr))
+}
+
+// The granted resource is also a permission in its own right, so requesting it directly works too.
+func (s *CCAppAuthzTestSuite) TestCCScopeForTheGrantedResourceItself() {
+	status, body := s.requestToken("bookings")
+	s.Equal(http.StatusOK, status)
+
+	scopeStr, ok := body["scope"].(string)
+	s.Require().True(ok, "Response should contain scope")
+	s.ElementsMatch([]string{"bookings"}, strings.Fields(scopeStr))
+}
+
+// Holding an action never confers the resource it sits under. "read" is a server-level action, so
+// nothing the app holds covers a request for a resource it was not granted.
+func (s *CCAppAuthzTestSuite) TestCCScopeIsNotWidenedUpwards() {
+	status, body := s.requestToken("read bookings:cancel")
+	s.Equal(http.StatusOK, status)
+
+	scopeStr, _ := body["scope"].(string)
+	scopes := strings.Fields(scopeStr)
+	s.ElementsMatch([]string{"read", "bookings:cancel"}, scopes)
+	s.NotContains(scopes, "write", "nothing beyond what was requested is issued")
+}
+
+func (s *CCAppAuthzTestSuite) TestCCRootAndChildScopesAreCompacted() {
+	status, body := s.requestToken("bookings bookings:cancel read")
+	s.Require().Equal(http.StatusOK, status)
+	s.ElementsMatch([]string{"bookings", "read"}, strings.Fields(body["scope"].(string)))
+	claims, err := testutils.DecodeJWT(body["access_token"].(string))
+	s.Require().NoError(err)
+	s.Equal(body["scope"], claims.Additional["scope"])
+}
+
+func (s *CCAppAuthzTestSuite) TestCCFileRoleFallbackExcludesUndeclaredPermissions() {
+	const roleID = "decl-hierarchical-fallback-role"
+	const clientID = "cc_catalogue_fallback_client"
+	const clientSecret = "cc_catalogue_fallback_secret"
+	appID, err := testutils.CreateApplication(testutils.Application{
+		Name: "CC Catalogue Fallback App", OUID: "01900000-0000-7000-8000-000000000001", Type: "m2m",
+		InboundAuthConfig: []map[string]interface{}{{
+			"type": "oauth2",
+			"config": map[string]interface{}{
+				"clientId": clientID, "clientSecret": clientSecret,
+				"grantTypes": []string{"client_credentials"}, "tokenEndpointAuthMethod": "client_secret_basic",
+			},
+		}},
+	})
+	s.Require().NoError(err)
+	s.T().Cleanup(func() { s.NoError(testutils.DeleteApplication(appID)) })
+
+	body, err := json.Marshal(map[string]interface{}{
+		"assignments": []testutils.Assignment{{ID: appID, Type: "app"}},
+	})
+	s.Require().NoError(err)
+	req, err := http.NewRequest(http.MethodPost,
+		testServerURL+"/roles/"+roleID+"/assignments/add", bytes.NewReader(body))
+	s.Require().NoError(err)
+	req.Header.Set("Content-Type", "application/json")
+	response, err := s.client.Do(req)
+	s.Require().NoError(err)
+	defer response.Body.Close()
+	s.Require().Equal(http.StatusNoContent, response.StatusCode)
+	s.T().Cleanup(func() {
+		s.NoError(testutils.RemoveRoleAssignments(roleID, []testutils.Assignment{{ID: appID, Type: "app"}}))
+	})
+
+	for _, requested := range []string{"org:retired", "org"} {
+		s.Run(requested, func() {
+			result, tokenErr := testutils.RequestClientCredentialsToken(
+				clientID, clientSecret, requested, testutils.SystemResourceIdentifier)
+			s.Require().NoError(tokenErr)
+			s.Require().Equal(http.StatusOK, result.StatusCode)
+			s.Require().NotNil(result.Token)
+			if requested == "org" {
+				s.Equal("org:user:view", result.Token.Scope)
+			} else {
+				s.Empty(result.Token.Scope)
+			}
+			claims, decodeErr := testutils.DecodeJWT(result.Token.AccessToken)
+			s.Require().NoError(decodeErr)
+			if requested == "org" {
+				s.Equal(result.Token.Scope, claims.Additional["scope"])
+			} else {
+				s.Empty(claims.Additional["scope"])
+			}
+		})
+	}
 }

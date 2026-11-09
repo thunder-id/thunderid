@@ -741,3 +741,73 @@ func (ts *TokenExchangeAuthorizationRuleMappingTestSuite) TestTokenExchange_Mapp
 	ts.Contains(strings.Fields(resp.Scope), "read",
 		"a role granted to the mapped group's ancestor should be authorized, same as a real member")
 }
+
+func (ts *TokenExchangeAuthorizationRuleMappingTestSuite) TestTokenExchange_DirectPermissionTargetsMatchExactly() {
+	cases := []struct {
+		name         string
+		hierarchical bool
+		held         string
+		requested    string
+		expected     []string
+	}{
+		{
+			name:         "hierarchical parent does not grant requested child",
+			hierarchical: true,
+			held:         "reservations",
+			requested:    "reservations:create",
+			expected:     nil,
+		},
+		{
+			name:         "only the literal requested parent is granted",
+			hierarchical: true,
+			held:         "reservations",
+			requested:    "reservations reservations:create",
+			expected:     []string{"reservations"},
+		},
+		{
+			name:         "hierarchical child does not answer parent",
+			hierarchical: true,
+			held:         "reservations:create",
+			requested:    "reservations",
+			expected:     nil,
+		},
+		{name: "disabled parent does not grant child", held: "reservations", requested: "reservations:create"},
+		{name: "disabled child does not answer parent", held: "reservations:create", requested: "reservations"},
+		{
+			name:      "disabled exact grant preserved",
+			held:      "reservations",
+			requested: "reservations reservations:create",
+			expected:  []string{"reservations"},
+		},
+		{name: "undeclared child refused", hierarchical: true, held: "reservations", requested: "reservations:unknown"},
+	}
+	for i, tc := range cases {
+		ts.Run(tc.name, func() {
+			identifier := fmt.Sprintf("%s/hierarchy-%d", teAuthzRSIdentifier, i)
+			delimiter := ":"
+			rsID, err := testutils.CreateResourceServerWithActions(testutils.ResourceServer{
+				Name: fmt.Sprintf("Mapped Hierarchy %d", i), Identifier: identifier,
+				OUID: ts.ouID, Delimiter: &delimiter, HierarchicalPermissions: tc.hierarchical,
+			}, nil)
+			ts.Require().NoError(err)
+			ts.T().Cleanup(func() { ts.NoError(testutils.DeleteResourceServerWithChildren(rsID)) })
+			resourceID, err := testutils.CreateResource(rsID, "Reservations", "reservations", "")
+			ts.Require().NoError(err)
+			_, err = testutils.CreateResourceAction(rsID, resourceID,
+				testutils.Action{Name: "Create", Handle: "create"})
+			ts.Require().NoError(err)
+			ts.applyAuthorizationRuleMapping("scope_claim", "", map[string][]testutils.AuthorizationTarget{
+				"delegate": {{
+					Type: testutils.AuthorizationTargetPermission, ResourceServerID: rsID, Permission: tc.held,
+				}},
+			})
+			sub := ts.nextSubject()
+			ts.mockIDP.AddUser(&testutils.OIDCUserInfo{
+				Sub: sub, Custom: map[string]interface{}{"scope_claim": "delegate"},
+			})
+			resp, status := ts.exchangeToken(ts.mintExternalIDToken(sub), tc.requested, identifier)
+			ts.Require().Equal(http.StatusOK, status, "error=%s description=%s", resp.Error, resp.ErrorDescription)
+			ts.ElementsMatch(tc.expected, strings.Fields(resp.Scope))
+		})
+	}
+}

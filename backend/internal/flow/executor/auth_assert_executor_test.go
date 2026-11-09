@@ -29,6 +29,7 @@ import (
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/system/config"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/tests/mocks/attributecachemock"
 	"github.com/thunder-id/thunderid/tests/mocks/authn/assertmock"
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
@@ -38,6 +39,7 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/identitygovernanceprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/jose/jwtmock"
 	"github.com/thunder-id/thunderid/tests/mocks/ouprovidermock"
+	"github.com/thunder-id/thunderid/tests/mocks/resourceserverprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/rolemock"
 )
 
@@ -59,6 +61,7 @@ type AuthAssertExecutorTestSuite struct {
 	mockAttributeCacheSvc *attributecachemock.AttributeCacheServiceInterfaceMock
 	mockRoleService       *rolemock.RoleServiceInterfaceMock
 	mockEntityTypeService *entitytypemock.EntityTypeServiceInterfaceMock
+	mockResourceService   *resourceserverprovidermock.ResourceServerProviderMock
 	executor              *authAssertExecutor
 }
 
@@ -79,6 +82,7 @@ func (suite *AuthAssertExecutorTestSuite) SetupTest() {
 	suite.mockAttributeCacheSvc = attributecachemock.NewAttributeCacheServiceInterfaceMock(suite.T())
 	suite.mockRoleService = rolemock.NewRoleServiceInterfaceMock(suite.T())
 	suite.mockEntityTypeService = entitytypemock.NewEntityTypeServiceInterfaceMock(suite.T())
+	suite.mockResourceService = resourceserverprovidermock.NewResourceServerProviderMock(suite.T())
 
 	mockExec := createMockExecutorSimple(suite.T(), ExecutorNameAuthAssert, providers.ExecutorTypeUtility)
 	suite.mockFlowFactory.On("CreateExecutor", ExecutorNameAuthAssert, providers.ExecutorTypeUtility,
@@ -87,7 +91,7 @@ func (suite *AuthAssertExecutorTestSuite) SetupTest() {
 	suite.executor = newAuthAssertExecutor(suite.mockFlowFactory, suite.mockJWTService,
 		suite.mockOUService, suite.mockAssertGenerator, suite.mockAuthnProvider, suite.mockEntityProvider,
 		suite.mockAttributeCacheSvc, suite.mockRoleService,
-		suite.mockEntityTypeService, newAccessGuard(admitAllAccess(suite.T())))
+		suite.mockEntityTypeService, suite.mockResourceService, newAccessGuard(admitAllAccess(suite.T())))
 }
 
 func createMockExecutorSimple(t *testing.T, name string,
@@ -2077,7 +2081,9 @@ func (suite *AuthAssertExecutorTestSuite) TestResolvePermissionsForClaim_Prefers
 		"authorized_permissions":              "booking:read booking:write",
 		common.RuntimeKeyRequestedPermissions: "booking:read booking:write booking:cancel",
 	}}
-	assert.Equal(suite.T(), "booking:read", (&authAssertExecutor{}).resolvePermissionsForClaim(ctx))
+	permissions, err := suite.executor.resolvePermissionsForClaim(ctx)
+	suite.NoError(err)
+	suite.Equal("booking:read", permissions)
 }
 
 func (suite *AuthAssertExecutorTestSuite) TestResolvePermissionsForClaim_ConsentedEmptyStillPreferredOverAuthorized() {
@@ -2087,7 +2093,9 @@ func (suite *AuthAssertExecutorTestSuite) TestResolvePermissionsForClaim_Consent
 		common.RuntimeKeyConsentedPermissions: "",
 		"authorized_permissions":              "booking:read",
 	}}
-	assert.Equal(suite.T(), "", (&authAssertExecutor{}).resolvePermissionsForClaim(ctx))
+	permissions, err := suite.executor.resolvePermissionsForClaim(ctx)
+	suite.NoError(err)
+	suite.Empty(permissions)
 }
 
 func (suite *AuthAssertExecutorTestSuite) TestResolvePermissionsForClaim_FallsBackToAuthorized() {
@@ -2095,7 +2103,9 @@ func (suite *AuthAssertExecutorTestSuite) TestResolvePermissionsForClaim_FallsBa
 		"authorized_permissions":              "booking:read",
 		common.RuntimeKeyRequestedPermissions: "booking:read booking:write",
 	}}
-	assert.Equal(suite.T(), "booking:read", (&authAssertExecutor{}).resolvePermissionsForClaim(ctx))
+	permissions, err := suite.executor.resolvePermissionsForClaim(ctx)
+	suite.NoError(err)
+	suite.Equal("booking:read", permissions)
 }
 
 func (suite *AuthAssertExecutorTestSuite) TestResolvePermissionsForClaim_RequestedAloneNeverLeaksToClaim() {
@@ -2105,12 +2115,16 @@ func (suite *AuthAssertExecutorTestSuite) TestResolvePermissionsForClaim_Request
 	ctx := &providers.NodeContext{Context: context.Background(), RuntimeData: map[string]string{
 		common.RuntimeKeyRequestedPermissions: "booking:read booking:write",
 	}}
-	assert.Equal(suite.T(), "", (&authAssertExecutor{}).resolvePermissionsForClaim(ctx))
+	permissions, err := suite.executor.resolvePermissionsForClaim(ctx)
+	suite.NoError(err)
+	suite.Empty(permissions)
 }
 
 func (suite *AuthAssertExecutorTestSuite) TestResolvePermissionsForClaim_NoKeysReturnsEmpty() {
 	ctx := &providers.NodeContext{Context: context.Background(), RuntimeData: map[string]string{}}
-	assert.Equal(suite.T(), "", (&authAssertExecutor{}).resolvePermissionsForClaim(ctx))
+	permissions, err := suite.executor.resolvePermissionsForClaim(ctx)
+	suite.NoError(err)
+	suite.Empty(permissions)
 }
 
 func (suite *AuthAssertExecutorTestSuite) TestResolvePermissionsForClaim_IntersectsConsentedWithAuthorized() {
@@ -2120,27 +2134,121 @@ func (suite *AuthAssertExecutorTestSuite) TestResolvePermissionsForClaim_Interse
 		common.RuntimeKeyConsentedPermissions: "read write cancel",
 		"authorized_permissions":              "read cancel",
 	}}
-	got := (&authAssertExecutor{}).resolvePermissionsForClaim(ctx)
+	got, err := suite.executor.resolvePermissionsForClaim(ctx)
+	suite.NoError(err)
 	assert.Equal(suite.T(), "read cancel", got)
 }
 
-func (suite *AuthAssertExecutorTestSuite) TestIntersectPermissionSpaceList_EmptyInputs() {
-	assert.Equal(suite.T(), "", intersectPermissionSpaceList("", "a b"))
-	assert.Equal(suite.T(), "", intersectPermissionSpaceList("a b", ""))
-	assert.Equal(suite.T(), "", intersectPermissionSpaceList("", ""))
+func (suite *AuthAssertExecutorTestSuite) TestExecute_ResolvesPermissionHierarchyFromResourceServer() {
+	ctx := &providers.NodeContext{
+		Context: context.Background(), ExecutionID: "flow-123", EntityID: "app-123",
+		FlowType: providers.FlowTypeAuthentication, AuthUser: newTestAuthenticatedAuthUser(),
+		RuntimeData: map[string]string{
+			"authorized_permissions":              "reports:view invoices:view",
+			common.RuntimeKeyConsentedPermissions: "reports",
+			common.RuntimeKeyResourceServerID:     "api",
+		},
+	}
+	suite.setupGetEntityReference("", "")
+	suite.setupGetUserAttributesEmpty()
+	suite.mockResourceService.On("GetResourceServer", mock.MatchedBy(security.IsRuntimeContext), "api").Return(
+		&providers.ResourceServer{ID: "api", Delimiter: ":", HierarchicalPermissions: true}, nil).Once()
+	suite.mockJWTService.On("GenerateJWT", mock.Anything, "user-123", mock.Anything, mock.Anything,
+		mock.MatchedBy(func(claims map[string]interface{}) bool {
+			return claims["authorized_permissions"] == "reports:view"
+		}), mock.Anything, mock.Anything).Return("jwt-token", int64(3600), nil).Once()
+
+	response, err := suite.executor.Execute(ctx)
+
+	suite.Require().NoError(err)
+	suite.Require().NotNil(response)
+	suite.Equal(providers.ExecComplete, response.Status)
+	suite.Equal("jwt-token", response.Assertion)
 }
 
-func (suite *AuthAssertExecutorTestSuite) TestIntersectPermissionSpaceList_PreservesOrderOfFirstArg() {
-	assert.Equal(suite.T(), "c a", intersectPermissionSpaceList("c a b", "a c"))
+func (suite *AuthAssertExecutorTestSuite) TestResolvePermissionsForClaim_UsesResourceServerSettings() {
+	for _, test := range []struct {
+		name, authorized, consented, delimiter, expected string
+		hierarchical                                     bool
+	}{
+		{"parent approval", "reports:view reports:export", "reports", ":", "reports:view reports:export", true},
+		{"only approved branch", "reports:view invoices:view", "reports", ":", "reports:view", true},
+		{"exact server", "reports:view", "reports", ":", "", false},
+		{"exact approval", "reports:view", "reports:view", ":", "reports:view", false},
+		{"custom delimiter", "reports/view reports:export", "reports", "/", "reports/view", true},
+	} {
+		suite.Run(test.name, func() {
+			suite.SetupTest()
+			suite.mockResourceService.On("GetResourceServer", mock.Anything, "api").Return(
+				&providers.ResourceServer{ID: "api", Delimiter: test.delimiter,
+					HierarchicalPermissions: test.hierarchical}, nil).Once()
+			ctx := &providers.NodeContext{Context: context.Background(), RuntimeData: map[string]string{
+				"authorized_permissions":              test.authorized,
+				common.RuntimeKeyConsentedPermissions: test.consented,
+				common.RuntimeKeyResourceServerID:     "api",
+			}}
+
+			permissions, err := suite.executor.resolvePermissionsForClaim(ctx)
+
+			suite.NoError(err)
+			suite.Equal(test.expected, permissions)
+		})
+	}
 }
 
-func (suite *AuthAssertExecutorTestSuite) TestIntersectPermissionSpaceList_DropsDuplicates() {
+func (suite *AuthAssertExecutorTestSuite) TestGenerateAuthAssertion_FailsOnPermissionMetadataError() {
+	for _, test := range []struct {
+		name            string
+		svcErr          *tidcommon.ServiceError
+		missingProvider bool
+	}{
+		{name: "read failure", svcErr: &tidcommon.InternalServerError},
+		{name: "deleted server", svcErr: &tidcommon.ServiceError{Type: tidcommon.ClientErrorType}},
+		{name: "missing server"},
+		{name: "missing provider", missingProvider: true},
+	} {
+		suite.Run(test.name, func() {
+			suite.SetupTest()
+			if test.missingProvider {
+				suite.executor.resourceService = nil
+			} else {
+				suite.mockResourceService.On("GetResourceServer", mock.Anything, "api").
+					Return((*providers.ResourceServer)(nil), test.svcErr).Once()
+			}
+			ctx := &providers.NodeContext{Context: context.Background(), RuntimeData: map[string]string{
+				"authorized_permissions":              "reports:view",
+				common.RuntimeKeyConsentedPermissions: "reports",
+				common.RuntimeKeyResourceServerID:     "api",
+			}}
+
+			token, err := suite.executor.generateAuthAssertion(ctx, &providers.ExecutorResponse{},
+				&providers.EntityReference{}, suite.executor.logger)
+
+			suite.Error(err)
+			suite.Empty(token)
+			suite.mockJWTService.AssertNotCalled(suite.T(), "GenerateJWT", mock.Anything, mock.Anything,
+				mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+		})
+	}
+}
+
+func (suite *AuthAssertExecutorTestSuite) TestConsentedSubset_EmptyInputs() {
+	assert.Equal(suite.T(), "", consentedSubset("", "a b", ""))
+	assert.Equal(suite.T(), "", consentedSubset("a b", "", ""))
+	assert.Equal(suite.T(), "", consentedSubset("", "", ""))
+}
+
+func (suite *AuthAssertExecutorTestSuite) TestConsentedSubset_PreservesOrderOfFirstArg() {
+	assert.Equal(suite.T(), "c a", consentedSubset("c a b", "a c", ""))
+}
+
+func (suite *AuthAssertExecutorTestSuite) TestConsentedSubset_DropsDuplicates() {
 	// Defensive dedup: if `a` has duplicates, each token appears at most once in the result.
-	assert.Equal(suite.T(), "x y", intersectPermissionSpaceList("x y x y", "x y"))
+	assert.Equal(suite.T(), "x y", consentedSubset("x y x y", "x y", ""))
 }
 
-func (suite *AuthAssertExecutorTestSuite) TestIntersectPermissionSpaceList_NoOverlap() {
-	assert.Equal(suite.T(), "", intersectPermissionSpaceList("a b", "c d"))
+func (suite *AuthAssertExecutorTestSuite) TestConsentedSubset_NoOverlap() {
+	assert.Equal(suite.T(), "", consentedSubset("a b", "c d", ""))
 }
 
 func (suite *AuthAssertExecutorTestSuite) TestResolveSubject() {
@@ -2312,7 +2420,7 @@ func (suite *AuthAssertExecutorTestSuite) newGovernedExecutor(governance provide
 	suite.executor = newAuthAssertExecutor(suite.mockFlowFactory, suite.mockJWTService,
 		suite.mockOUService, suite.mockAssertGenerator, suite.mockAuthnProvider,
 		suite.mockEntityProvider, suite.mockAttributeCacheSvc, suite.mockRoleService,
-		suite.mockEntityTypeService, newAccessGuard(governance))
+		suite.mockEntityTypeService, suite.mockResourceService, newAccessGuard(governance))
 }
 
 // governedAssertionContext is an authenticated assertion node context.
@@ -2778,4 +2886,17 @@ func newVerificationClaimContext(requested []string, runtimeData map[string]stri
 			},
 		},
 	}
+}
+
+// A permission the subject approved answers for the ones it carries, so a consent given at the
+// resource is not undone by the token being issued for something beneath it.
+func (suite *AuthAssertExecutorTestSuite) TestConsentedSubset_ConsentToAResourceCoversWhatIsBeneathIt() {
+	assert.Equal(suite.T(), "reservations:create reservations:view",
+		consentedSubset("reservations:create reservations:view", "reservations", ":"))
+}
+
+// Without a delimiter the comparison is exact, which is what a resource server whose permissions do
+// not nest gets, and what a flow with no authorization step gets.
+func (suite *AuthAssertExecutorTestSuite) TestConsentedSubset_ExactWithoutADelimiter() {
+	assert.Equal(suite.T(), "", consentedSubset("reservations:create", "reservations", ""))
 }

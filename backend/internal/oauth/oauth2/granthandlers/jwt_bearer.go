@@ -189,6 +189,8 @@ func (h *jwtBearerGrantHandler) HandleGrant(ctx context.Context, tokenRequest *m
 	// `sub` is not mistaken for a local user id by downstream consumers. The subject is a user, so the
 	// client's user access token settings apply. An agent, or an application that opts in with
 	// includeActClaim, is recorded as acting for that user.
+	grantedScopes = compactPermissionScopes(grantedScopes, oidcScopes, targetRS)
+
 	accessTokenCtx := &tokenservice.AccessTokenBuildContext{
 		Subject:           assertionClaims.Sub,
 		Audiences:         audiences,

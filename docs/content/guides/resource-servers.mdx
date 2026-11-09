@@ -75,12 +75,28 @@ curl -kL -X POST https://localhost:8090/resource-servers \
 | `type` | No | `API`, `MCP`, or `CUSTOM`. Defaults to `CUSTOM`. Immutable after creation. |
 | `ouId` | No | Organization unit ID. When left out, the resource server is placed in the system organization unit. |
 | `projectId` | No | ID of the project the resource server belongs to. See [Scope Resource Servers to a Project](#scope-resource-servers-to-a-project). |
-| `delimiter` | No | Character that separates hierarchy levels in permission strings. Defaults to `:`. Immutable after creation. Allowed characters: `a-z A-Z 0-9 . _ : - /`. |
+| `delimiter` | No | Character that separates hierarchy levels in permission strings. Defaults to `:`. Immutable after creation. Allowed values: `.`, `_`, `:`, `-`, `/`. |
+| `hierarchicalPermissions` | No | Whether a grant also authorizes descendant permissions. Defaults to `false`. Immutable after creation. |
 | `description` | No | Description of the resource server. |
 
 :::note
-The `delimiter` field cannot be changed after creation. Plan this value before creating the resource server.
+The delimiter and permission-matching mode cannot be changed after creation. Choose both before creating the resource server.
 :::
+
+### Granting a Permission and What Is Beneath It
+
+By default, permission matching is exact. Holding `reservations` does not authorize `reservations:create`; the role must grant that child explicitly.
+
+In **Configure permission settings**, select **Use hierarchy-aware matching** to make a grant of `reservations` also authorize `reservations:create` and any permission added beneath it later. Holding every child does not grant the parent.
+
+On a hierarchical server:
+
+- **Scope requests** evaluated by built-in RBAC return the held descendants declared on that server when the subject does not hold the requested parent. Built-in System permissions are also recognized from their code definitions.
+- **Consent** shows one switch per granted branch, with the permissions beneath it listed read-only. Approving a branch approves everything beneath it. If the display tree cannot be loaded, the prompt shows the authorized permissions without the expanded tree.
+- **Tokens** omit a child scope when its parent is also returned. A request for `reservations reservations:create` returns `reservations`, so APIs that consume the token must apply the same hierarchy and delimiter.
+- **Revocation** of a parent through a revocation flow invalidates existing tokens for its whole branch. Obtain a new token to use any child permissions the role keeps. Action-deletion flows revoke tokens explicitly carrying the deleted scope; parent-only tokens remain active. Your API or gateway must enforce whether deleted operations remain available.
+
+An external AuthZEN policy service determines authorization decisions. When hierarchy-aware matching is enabled, consent and token processing still use the configured hierarchy. Your policy service and API must follow the same parent-grant semantics.
 
 ## Define Permissions
 

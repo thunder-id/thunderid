@@ -199,11 +199,6 @@ func (h *refreshTokenGrantHandler) HandleGrant(ctx context.Context, tokenRequest
 		return nil, errResp
 	}
 
-	newTokenScopes, scopeErr := h.validateAndApplyScopes(ctx, tokenRequest.Scope, refreshTokenClaims.Scopes, logger)
-	if scopeErr != nil {
-		return nil, scopeErr
-	}
-
 	// Only details whose type is unchanged and still allows reuse are issued again.
 	grantedDetails, errResp := refreshableAuthorizationDetails(ctx, h.authzDetails,
 		refreshTokenClaims.AuthorizationDetails)
@@ -234,15 +229,10 @@ func (h *refreshTokenGrantHandler) HandleGrant(ctx context.Context, tokenRequest
 	}
 	audiences := []string{audience}
 
-	oidcScopes, nonOidcScopes := oauth2utils.SeparateOIDCAndNonOIDCScopes(
-		strings.Join(newTokenScopes, " "), oauthApp.ScopeClaims)
-	if audience == tokenRequest.ClientID {
-		// The original token was not bound to a resource server (OIDC-only): its audience is the
-		// client_id, which is not a resource server, so there are no permissions to downscope against.
-		newTokenScopes = oidcScopes
-	} else {
-		// Resolve the bound resource server to downscope scopes to its currently defined permissions.
-		targetRS, rsErr := h.resourceService.GetResourceServerByIdentifier(ctx, audience)
+	// Resolve hierarchy before narrowing. A client_id audience denotes an unbound OIDC-only grant.
+	var targetRS *providers.ResourceServer
+	if audience != tokenRequest.ClientID {
+		resolved, rsErr := h.resourceService.GetResourceServerByIdentifier(ctx, audience)
 		if rsErr != nil {
 			if rsErr.Type == tidcommon.ServerErrorType {
 				return nil, &model.ErrorResponse{
@@ -255,6 +245,23 @@ func (h *refreshTokenGrantHandler) HandleGrant(ctx context.Context, tokenRequest
 				ErrorDescription: "The resource server bound to the refresh token no longer exists",
 			}
 		}
+		targetRS = resolved
+	}
+
+	// Only a resource server whose owner declared its permissions hierarchical narrows by coverage.
+	delimiter := hierarchyDelimiter(targetRS)
+
+	newTokenScopes, scopeErr := h.validateAndApplyScopes(
+		ctx, tokenRequest.Scope, refreshTokenClaims.Scopes, oauthApp.ScopeClaims, delimiter, logger)
+	if scopeErr != nil {
+		return nil, scopeErr
+	}
+
+	oidcScopes, nonOidcScopes := oauth2utils.SeparateOIDCAndNonOIDCScopes(
+		strings.Join(newTokenScopes, " "), oauthApp.ScopeClaims)
+	if targetRS == nil {
+		newTokenScopes = oidcScopes
+	} else {
 		downscopedNonOidc, scopeErr := resourceindicators.DownscopeToResourceServer(
 			ctx, h.resourceService, targetRS.ID, nonOidcScopes)
 		if scopeErr != nil {
@@ -269,6 +276,8 @@ func (h *refreshTokenGrantHandler) HandleGrant(ctx context.Context, tokenRequest
 		newTokenScopes = append(newTokenScopes, oidcScopes...)
 		newTokenScopes = append(newTokenScopes, authorizedNonOidc...)
 	}
+
+	newTokenScopes = compactPermissionScopes(newTokenScopes, oidcScopes, targetRS)
 
 	// Get user attributes from attribute cache.
 	// cacheEntry is kept so its current TTLSeconds can be compared later.
@@ -794,11 +803,11 @@ func (h *refreshTokenGrantHandler) reauthorizeScopes(ctx context.Context, subjec
 	return authorizedScopes, nil
 }
 
-// validateAndApplyScopes validates and applies OAuth2 scope downscoping logic per RFC 6749 §6.
-// If no scopes are requested, all refresh token scopes are granted.
-// If scopes are requested, they must be a subset of the original grant; otherwise an invalid_scope error is returned.
+// validateAndApplyScopes enforces the refresh grant's scope ceiling.
+// Blank scope reuses the grant. Permission scopes may narrow downward; OIDC scopes require exact grants.
 func (h *refreshTokenGrantHandler) validateAndApplyScopes(ctx context.Context, requestedScopes string,
-	refreshTokenScopes []string, logger *log.Logger) ([]string, *model.ErrorResponse) {
+	refreshTokenScopes []string, scopeClaims map[string][]string, delimiter string,
+	logger *log.Logger) ([]string, *model.ErrorResponse) {
 	trimmedRequestedScopes := tokenservice.ParseScopes(requestedScopes)
 
 	if len(trimmedRequestedScopes) == 0 {
@@ -807,8 +816,9 @@ func (h *refreshTokenGrantHandler) validateAndApplyScopes(ctx context.Context, r
 		return refreshTokenScopes, nil
 	}
 
+	oidcScopes := oidcScopeSet(slices.Concat(refreshTokenScopes, trimmedRequestedScopes), scopeClaims)
 	for _, requestedScope := range trimmedRequestedScopes {
-		if !slices.Contains(refreshTokenScopes, requestedScope) {
+		if !grantPermits(requestedScope, refreshTokenScopes, oidcScopes, delimiter) {
 			return nil, &model.ErrorResponse{
 				Error:            constants.ErrorInvalidScope,
 				ErrorDescription: "Requested scope exceeds the scope granted by the resource owner",

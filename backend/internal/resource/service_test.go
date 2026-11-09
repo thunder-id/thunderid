@@ -6,6 +6,7 @@ package resource
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
@@ -6115,4 +6116,101 @@ func (suite *ResourceServiceTestSuite) TestGetResourceServerListByProject_StoreE
 			suite.Equal(tc.expectedCode, err.Code)
 		})
 	}
+}
+
+// Whether permissions nest can be changed after creation. It decides how grants on this resource
+// server are read at evaluation time rather than being fixed into them, so the change takes effect
+// without rewriting any role. The delimiter it reads them with stays fixed, since the permission
+// strings were built from it.
+func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_PreservesHierarchicalPermissions() {
+	for _, hierarchical := range []bool{false, true} {
+		name := "exact"
+		if hierarchical {
+			name = "hierarchical"
+		}
+		suite.Run(name, func() {
+			rs := providers.ResourceServer{
+				Name:                    "updated-rs",
+				Identifier:              "original-identifier",
+				OUID:                    "ou-123",
+				HierarchicalPermissions: !hierarchical,
+				Delimiter:               "/", // Ignored: the delimiter stays as created.
+			}
+
+			existingRS := providers.ResourceServer{
+				ID:                      "rs-123",
+				Name:                    "old-name",
+				Identifier:              "original-identifier",
+				OUID:                    "ou-123",
+				Delimiter:               ":",
+				HierarchicalPermissions: hierarchical,
+			}
+
+			suite.mockStore.On("IsResourceServerDeclarative", "rs-123").Return(false)
+			suite.mockStore.On("GetResourceServer", mock.Anything, "rs-123").Return(existingRS, nil).Once()
+			suite.mockOU.On("GetOrganizationUnit", mock.Anything, "ou-123").
+				Return(oupkg.OrganizationUnit{ID: "ou-123"}, nil)
+			suite.mockStore.On("CheckResourceServerNameExists", mock.Anything, "updated-rs").Return(false, nil)
+			suite.mockStore.On("UpdateResourceServer", mock.Anything,
+				"rs-123", mock.MatchedBy(func(r providers.ResourceServer) bool {
+					return r.HierarchicalPermissions == hierarchical && r.Delimiter == ":"
+				})).Return(nil).Once()
+
+			result, err := suite.service.UpdateResourceServer(context.Background(), "rs-123", rs)
+
+			suite.Nil(err)
+			suite.Require().NotNil(result)
+			suite.Equal(hierarchical, result.HierarchicalPermissions)
+			suite.mockStore.AssertExpectations(suite.T())
+		})
+	}
+}
+
+func (suite *ResourceServiceTestSuite) TestGetDeclaredPermissionsUsesServerMatchingMode() {
+	for _, hierarchical := range []bool{false, true} {
+		suite.Run(fmt.Sprint(hierarchical), func() {
+			suite.SetupTest()
+			delimiter := ""
+			if hierarchical {
+				delimiter = "/"
+			}
+			suite.mockStore.On("GetResourceServer", mock.Anything, "api").Return(providers.ResourceServer{
+				ID: "api", Delimiter: "/", HierarchicalPermissions: hierarchical,
+			}, nil).Once()
+			suite.mockStore.On("GetDeclaredPermissions", mock.Anything, "api", []string{"reports"}, delimiter).
+				Return([]string{"reports", "reports/view"}, nil).Once()
+			permissions, svcErr := suite.service.GetDeclaredPermissions(
+				context.Background(), "api", []string{"reports"})
+			suite.Nil(svcErr)
+			suite.Equal([]string{"reports", "reports/view"}, permissions)
+		})
+	}
+}
+
+func (suite *ResourceServiceTestSuite) TestGetDeclaredPermissionsPropagatesFailures() {
+	for _, metadataFailure := range []bool{false, true} {
+		suite.Run(fmt.Sprint(metadataFailure), func() {
+			suite.SetupTest()
+			if metadataFailure {
+				suite.mockStore.On("GetResourceServer", mock.Anything, "api").
+					Return(providers.ResourceServer{}, errors.New("read failed")).Once()
+			} else {
+				suite.mockStore.On("GetResourceServer", mock.Anything, "api").
+					Return(providers.ResourceServer{ID: "api"}, nil).Once()
+				suite.mockStore.On("GetDeclaredPermissions", mock.Anything, "api", []string{"reports"}, "").
+					Return([]string(nil), errors.New("query failed")).Once()
+			}
+			permissions, svcErr := suite.service.GetDeclaredPermissions(
+				context.Background(), "api", []string{"reports"})
+			suite.Empty(permissions)
+			suite.Equal(&tidcommon.InternalServerError, svcErr)
+		})
+	}
+}
+
+func (suite *ResourceServiceTestSuite) TestGetDeclaredPermissionsSkipsEmptyRoots() {
+	permissions, svcErr := suite.service.GetDeclaredPermissions(context.Background(), "api", nil)
+	suite.Nil(svcErr)
+	suite.Empty(permissions)
+	suite.mockStore.AssertNotCalled(suite.T(), "GetResourceServer", mock.Anything, mock.Anything)
 }

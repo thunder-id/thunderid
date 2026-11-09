@@ -323,6 +323,7 @@ func (h *cibaGrantHandler) resolveIssuedAudiencesAndScopes(ctx context.Context,
 	oidcScopes, permissionScopes := oauth2utils.SeparateOIDCAndNonOIDCScopes(scopeStr, oauthApp.ScopeClaims)
 
 	var audiences []string
+	var targetRS *providers.ResourceServer
 	if len(record.Resources) == 0 {
 		if len(permissionScopes) > 0 {
 			return nil, nil, &model.ErrorResponse{
@@ -349,6 +350,7 @@ func (h *cibaGrantHandler) resolveIssuedAudiencesAndScopes(ctx context.Context,
 		if dErr != nil {
 			return nil, nil, dErr
 		}
+		targetRS = rs
 		audiences = []string{resourceIdentifier}
 	}
 
@@ -368,5 +370,5 @@ func (h *cibaGrantHandler) resolveIssuedAudiencesAndScopes(ctx context.Context,
 	if errResp != nil {
 		return nil, nil, errResp
 	}
-	return audiences, scopes, nil
+	return audiences, compactPermissionScopes(scopes, oidcScopes, targetRS), nil
 }

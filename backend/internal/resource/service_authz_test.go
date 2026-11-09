@@ -95,6 +95,30 @@ func (s *ResourceAuthzTestSuite) TestGetResourceServer_OtherOUInRuntimeContext()
 	s.Equal(authzRSID, rs.ID)
 }
 
+func (s *ResourceAuthzTestSuite) TestGetDeclaredPermissions_OtherOU() {
+	expectOwnOUOnly(s.authz, security.ActionReadResourceServer)
+	s.storedResourceServer(authzOtherOU)
+
+	permissions, svcErr := s.service.GetDeclaredPermissions(context.Background(), authzRSID, []string{"reports"})
+
+	s.Nil(permissions)
+	s.Require().NotNil(svcErr)
+	s.Equal(tidcommon.ErrorUnauthorized.Code, svcErr.Code)
+}
+
+func (s *ResourceAuthzTestSuite) TestGetDeclaredPermissions_OtherOUInRuntimeContext() {
+	expectOwnOUOnly(s.authz, security.ActionReadResourceServer)
+	s.storedResourceServer(authzOtherOU)
+	s.store.On("GetDeclaredPermissions", mock.Anything, authzRSID, []string{"reports"}, "").
+		Return([]string{"reports"}, nil).Once()
+
+	permissions, svcErr := s.service.GetDeclaredPermissions(security.WithRuntimeContext(context.Background()),
+		authzRSID, []string{"reports"})
+
+	s.Require().Nil(svcErr)
+	s.Equal([]string{"reports"}, permissions)
+}
+
 func (s *ResourceAuthzTestSuite) TestDeleteResourceServer_OtherOU() {
 	expectOwnOUOnly(s.authz, security.ActionDeleteResourceServer)
 	s.storedResourceServer(authzOtherOU)

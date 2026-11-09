@@ -1070,7 +1070,7 @@ func TestCovers(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.want, Covers(tt.actor, tt.required))
+			assert.Equal(t, tt.want, Covers(tt.actor, tt.required, map[string]string{rsSystem: ":", rsPayroll: ":"}))
 		})
 	}
 }
@@ -1083,8 +1083,10 @@ func TestCoversIsNotSymmetric(t *testing.T) {
 	groupAdmin := PermissionSet{rsSystem: {"system:group"}}
 	userAdmin := PermissionSet{rsSystem: {"system:user"}}
 
-	assert.False(t, Covers(groupAdmin, userAdmin), "group admin must not cover user admin")
-	assert.False(t, Covers(userAdmin, groupAdmin), "user admin must not cover group admin")
+	systemDelimiters := map[string]string{rsSystem: ":"}
+
+	assert.False(t, Covers(groupAdmin, userAdmin, systemDelimiters), "group admin must not cover user admin")
+	assert.False(t, Covers(userAdmin, groupAdmin, systemDelimiters), "user admin must not cover group admin")
 }
 
 // TestCoversHonoursConfiguredPermissionPrefix verifies that coverage is computed from the
@@ -1096,18 +1098,23 @@ func TestCoversHonoursConfiguredPermissionPrefix(t *testing.T) {
 	p := GetSystemPermissions()
 	require.Equal(t, "mgmt:system", p.Root)
 
+	systemDelimiters := map[string]string{rsSystem: ":"}
+
 	assert.True(t, Covers(
 		PermissionSet{rsSystem: {p.Root}},
 		PermissionSet{rsSystem: {p.User, p.GroupView}},
+		systemDelimiters,
 	))
 	assert.False(t, Covers(
 		PermissionSet{rsSystem: {p.UserView}},
 		PermissionSet{rsSystem: {p.User}},
+		systemDelimiters,
 	))
 	// An unprefixed permission must not satisfy a prefixed requirement.
 	assert.False(t, Covers(
 		PermissionSet{rsSystem: {"system"}},
 		PermissionSet{rsSystem: {p.User}},
+		systemDelimiters,
 	))
 }
 
@@ -1348,4 +1355,128 @@ func TestMCPToolPermissionsUseCatalogPermissions(t *testing.T) {
 		assert.Equal(t, p.Root, ResolveMCPToolPermission("unmapped_tool"))
 	}
 	InitControlPlanePermissions("")
+}
+
+func (suite *SecurityContextTestSuite) TestPermissionCovers() {
+	t := suite.T()
+	tests := []struct {
+		name      string
+		held      string
+		required  string
+		delimiter string
+		want      bool
+	}{
+		{"Exact", "reservations:create", "reservations:create", ":", true},
+		{"ParentCoversChild", "reservations", "reservations:create", ":", true},
+		{"AncestorCoversDescendant", "reservations", "reservations:online:create", ":", true},
+		{"ChildDoesNotCoverParent", "reservations:create", "reservations", ":", false},
+		{"SiblingDoesNotCover", "reservations:view", "reservations:create", ":", false},
+		{"PrefixWithoutDelimiterBoundary", "reserve", "reservations:create", ":", false},
+		{"NonColonDelimiter", "reservations", "reservations/create", "/", true},
+		{"WrongDelimiterDoesNotCover", "reservations", "reservations/create", ":", false},
+		{"EmptyDelimiterFallsBackToEquality", "reservations", "reservations:create", "", false},
+		{"EmptyDelimiterStillMatchesExactly", "reservations", "reservations", "", true},
+		{"EmptyHeld", "", "reservations", ":", false},
+		{"EmptyRequired", "reservations", "", ":", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, PermissionCovers(tt.held, tt.required, tt.delimiter))
+		})
+	}
+}
+
+func (suite *SecurityContextTestSuite) TestAnyPermissionCovers() {
+	t := suite.T()
+	held := []string{"invoices:read", "reservations"}
+
+	assert.True(t, AnyPermissionCovers(held, "reservations:create", ":"))
+	assert.True(t, AnyPermissionCovers(held, "invoices:read", ":"))
+	assert.False(t, AnyPermissionCovers(held, "invoices:write", ":"))
+	assert.False(t, AnyPermissionCovers(nil, "reservations", ":"))
+}
+
+func (suite *SecurityContextTestSuite) TestAncestorPermissions() {
+	t := suite.T()
+	tests := []struct {
+		name       string
+		permission string
+		delimiter  string
+		want       []string
+	}{
+		{
+			name:       "NearestAncestorFirst",
+			permission: "reservations:online:create",
+			delimiter:  ":",
+			want:       []string{"reservations:online", "reservations"},
+		},
+		{
+			name:       "SingleLevelHasOneAncestor",
+			permission: "reservations:create",
+			delimiter:  ":",
+			want:       []string{"reservations"},
+		},
+		{"TopLevelHasNone", "reservations", ":", nil},
+		{"NonColonDelimiter", "a/b", "/", []string{"a"}},
+		{"EmptyDelimiter", "a:b", "", nil},
+		{"EmptyPermission", "", ":", nil},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, AncestorPermissions(tt.permission, tt.delimiter))
+		})
+	}
+}
+
+// Whether one permission confers another is a property of the resource server, so the coverage
+// check has to be told. A resource server it was not told about is matched exactly, which refuses a
+// grant it cannot justify rather than approving one.
+func (suite *SecurityContextTestSuite) TestCoversMatchesExactlyWithoutADelimiter() {
+	t := suite.T()
+	const rs = "booking-api"
+	actor := PermissionSet{rs: {"reservations"}}
+
+	assert.False(t, Covers(actor, PermissionSet{rs: {"reservations:create"}}, nil),
+		"no delimiter means no nesting, so the resource confers only itself")
+	assert.False(t, Covers(actor, PermissionSet{rs: {"reservations:create"}}, map[string]string{}),
+		"a resource server absent from the map is matched exactly")
+	assert.True(t, Covers(actor, PermissionSet{rs: {"reservations"}}, nil),
+		"the permission still covers itself")
+	assert.True(t, Covers(actor, PermissionSet{rs: {"reservations:create"}}, map[string]string{rs: ":"}),
+		"told the delimiter, the resource confers what sits beneath it")
+}
+
+// Matching on a character the strings were not built with can read two unrelated permissions as
+// parent and child, which would approve a grant the resource server's tree does not support.
+func (suite *SecurityContextTestSuite) TestCoversUsesEachResourceServersOwnDelimiter() {
+	t := suite.T()
+	const dashRS = "dash-api"
+
+	// A real child on a "-" delimited server: only the right delimiter sees it.
+	assert.True(t, Covers(
+		PermissionSet{dashRS: {"reservations"}},
+		PermissionSet{dashRS: {"reservations-create"}},
+		map[string]string{dashRS: "-"},
+	))
+	assert.False(t, Covers(
+		PermissionSet{dashRS: {"reservations"}},
+		PermissionSet{dashRS: {"reservations-create"}},
+		map[string]string{dashRS: ":"},
+	))
+
+	// Two flat handles on a "-" delimited server are unrelated, whatever a colon would suggest.
+	assert.False(t, Covers(
+		PermissionSet{dashRS: {"https"}},
+		PermissionSet{dashRS: {"https://www.googleapis.com/auth/drive"}},
+		map[string]string{dashRS: "-"},
+	))
+
+	// Each resource server is resolved independently within one grant.
+	assert.False(t, Covers(
+		PermissionSet{dashRS: {"reservations"}, "other": {"a"}},
+		PermissionSet{dashRS: {"reservations-create"}, "other": {"a:b"}},
+		map[string]string{dashRS: "-"},
+	), "the second resource server has no delimiter, so a:b is not conferred")
 }

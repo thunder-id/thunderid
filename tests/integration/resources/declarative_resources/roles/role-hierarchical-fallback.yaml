@@ -1,0 +1,9 @@
+resource_type: role
+id: decl-hierarchical-fallback-role
+name: Hierarchical Fallback Test Role
+ouId: 01900000-0000-7000-8000-000000000001
+permissions:
+  - resourceServerId: 01900000-0000-7000-8000-000000000020
+    permissions:
+      - org:user:view
+      - org:retired

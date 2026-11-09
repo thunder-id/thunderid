@@ -11,7 +11,9 @@ import (
 	"net/http"
 	"slices"
 	"testing"
+	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
@@ -327,6 +329,65 @@ func (ts *AuthorizationAdministrationFlowTestSuite) TestUpdateRoleThroughTheAPI_
 		"The role still grants the kept permission, so a token carrying only it must stay accepted")
 	ts.Equal([]string{scopePermissionKept}, ts.rolePermissions(roleID),
 		"The role must grant exactly the permissions the update gave it")
+}
+
+func (ts *AuthorizationAdministrationFlowTestSuite) TestUpdateRoleThroughTheAPI_HierarchicalBranches() {
+	for _, retainChild := range []bool{false, true} {
+		name := "whole"
+		if retainChild {
+			name = "retained"
+		}
+		ts.Run(name, func() {
+			audience := "https://hierarchical-revocation.example/" + name
+			rsID, err := testutils.CreateResourceServerWithActions(testutils.ResourceServer{
+				Name: "Hierarchical revocation " + name, Identifier: audience, OUID: ts.ouID,
+				HierarchicalPermissions: true,
+			}, nil)
+			ts.Require().NoError(err)
+			ts.T().Cleanup(func() { ts.NoError(testutils.DeleteResourceServerWithChildren(rsID)) })
+			root, err := testutils.CreateResource(rsID, "Reservations", "reservations", "")
+			ts.Require().NoError(err)
+			for _, child := range []string{"create", "view"} {
+				_, err = testutils.CreateResource(rsID, child, child, root)
+				ts.Require().NoError(err)
+			}
+			roleID := ts.createRoleOn("Hierarchical revocation "+name, rsID, []string{"reservations"},
+				testutils.Assignment{ID: ts.appID, Type: "app"})
+			client := authzFlowClient
+			client.audience = audience
+			tokens := map[string]string{}
+			for _, permission := range []string{"reservations", "reservations:create", "reservations:view"} {
+				tokens[permission] = grantedToken(&ts.Suite, client, permission)
+			}
+			permissions := []string{}
+			if retainChild {
+				permissions = []string{"reservations:create"}
+			}
+			ts.Require().NoError(updateRolePermissions(roleID, ts.ouID, rsID,
+				"Hierarchical revocation "+name, permissions...), "Failed to update the hierarchical role")
+			for permission, token := range tokens {
+				ts.False(tokenIsActive(&ts.Suite, client, token),
+					"old subtree token must be revoked for %s", permission)
+			}
+			if retainChild {
+				ts.Require().EventuallyWithT(func(collect *assert.CollectT) {
+					result, err := testutils.RequestClientCredentialsToken(
+						client.id, client.secret, "reservations:create", client.audience)
+					if !assert.NoError(collect, err) || !assert.Equal(collect, http.StatusOK, result.StatusCode) {
+						return
+					}
+					assert.NotEmpty(collect, result.Token.AccessToken)
+					assert.Equal(collect, "reservations:create", result.Token.Scope)
+					active, err := testutils.IntrospectToken(result.Token.AccessToken, client.id, client.secret)
+					assert.NoError(collect, err)
+					assert.True(collect, active)
+				}, 5*time.Second, 100*time.Millisecond, "a new retained-branch token must become active")
+				for _, token := range tokens {
+					ts.False(tokenIsActive(&ts.Suite, client, token), "old tokens must remain revoked")
+				}
+			}
+		})
+	}
 }
 
 func (ts *AuthorizationAdministrationFlowTestSuite) TestUpdateRoleThroughTheAPI_NothingDroppedRevokesNothing() {

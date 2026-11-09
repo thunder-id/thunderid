@@ -50,10 +50,16 @@ func (e *enforcer) EnsureNotRevoked(_ context.Context, identity security.Revocat
 
 // isScopeRevoked reports whether any of the token's scopes is revoked for its subject or deployment-wide.
 func (e *enforcer) isScopeRevoked(identity security.RevocationIdentity) bool {
-	for _, criterion := range revocation.ScopeCriteria(identity.Subject, identity.Audiences, identity.Scopes) {
+	criteria := revocation.ScopeCriteria(identity.Subject, identity.Audiences, identity.Scopes)
+	for _, criterion := range criteria {
 		switch criterion.Type {
 		case revocation.CriterionTypeEntityScope:
 			if e.cache.isEntityScopeRevoked(criterion.Value, identity.EstablishedAt) {
+				return true
+			}
+
+		case revocation.CriterionTypeEntityScopeSubtree:
+			if e.cache.isEntityScopeSubtreeRevoked(criterion.Value, identity.EstablishedAt) {
 				return true
 			}
 		case revocation.CriterionTypeScope:
