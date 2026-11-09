@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {QueryErrorNotice} from '@thunderid/components';
-import {useCapabilitiesContext, useProjectScope} from '@thunderid/contexts';
+import {useCapabilitiesContext, useHiddenResources, useProjectScope} from '@thunderid/contexts';
 import {useDataGridLocaleText} from '@thunderid/hooks';
 import {useLogger} from '@thunderid/logger/react';
 import {Box, Chip, DataGrid, IconButton, ListingTable, Menu, MenuItem, Tooltip, Typography} from '@wso2/oxygen-ui';
@@ -47,6 +47,16 @@ export default function ResourceServersList(): JSX.Element {
     offset: paginationModel.page * paginationModel.pageSize,
     projectId,
   });
+  const {isHiddenResourceServer} = useHiddenResources();
+  const rows = useMemo(
+    () =>
+      (data?.resourceServers ?? []).filter(
+        (resourceServer: ResourceServer) => !isHiddenResourceServer(resourceServer.identifier),
+      ),
+    [data?.resourceServers, isHiddenResourceServer],
+  );
+  // The page is read from the server, so the total drops by the hidden resource servers on it.
+  const rowCount = (data?.totalResults ?? 0) - ((data?.resourceServers?.length ?? 0) - rows.length);
   const {data: defaultConfig, isLoading: isDefaultLoading, error: defaultError} = useGetDefaultResourceServer();
   const defaultId = defaultConfig?.merged?.resourceServerId;
   // A declarative (read-only) default is locked: the backend rejects any write to it.
@@ -250,7 +260,7 @@ export default function ResourceServersList(): JSX.Element {
       <ListingTable.Provider variant="data-grid-card" loading={isLoading}>
         <ListingTable.Container disablePaper>
           <ListingTable.DataGrid
-            rows={data?.resourceServers ?? []}
+            rows={rows}
             columns={columns}
             getRowId={(row) => (row as ResourceServer).id}
             onRowClick={(params) => {
@@ -260,7 +270,7 @@ export default function ResourceServersList(): JSX.Element {
                 logger.error('Failed to navigate to resource server detail', {error: err});
               });
             }}
-            rowCount={data?.totalResults ?? 0}
+            rowCount={rowCount}
             paginationMode="server"
             paginationModel={paginationModel}
             onPaginationModelChange={setPaginationModel}

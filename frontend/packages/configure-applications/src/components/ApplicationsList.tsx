@@ -8,7 +8,7 @@ import {
   ResourceDeployStatus,
   useDeployStatusSource,
 } from '@thunderid/components';
-import {useCapabilitiesContext, useConfig} from '@thunderid/contexts';
+import {useCapabilitiesContext, useConfig, useHiddenResources} from '@thunderid/contexts';
 import {useDataGridLocaleText} from '@thunderid/hooks';
 import {useLogger} from '@thunderid/logger/react';
 import {Box, Chip, IconButton, Tooltip, Typography, ListingTable, DataGrid} from '@wso2/oxygen-ui';
@@ -35,6 +35,12 @@ export default function ApplicationsList(): JSX.Element {
   const dataGridLocaleText = useDataGridLocaleText();
   const {data, isLoading, error, refetch} = useGetApplications();
   const consoleClientId = config?.client?.client_id;
+  const {isHiddenApplication} = useHiddenResources();
+  const rows = useMemo(
+    () =>
+      (data?.applications ?? []).filter((application: BasicApplication) => !isHiddenApplication(application.clientId)),
+    [data?.applications, isHiddenApplication],
+  );
 
   // Resolves an error through the `applications` catalog. `t` defaults to the `common` namespace,
   // so this forwards explicit `ns:` prefixes unchanged and prefixes bare keys with `applications:`,
@@ -231,7 +237,7 @@ export default function ApplicationsList(): JSX.Element {
       <ListingTable.Provider variant="data-grid-card" loading={isLoading}>
         <ListingTable.Container disablePaper>
           <ListingTable.DataGrid
-            rows={data?.applications ?? []}
+            rows={rows}
             columns={columns}
             getRowId={(row): string => (row as BasicApplication).id}
             onRowClick={(params) => {

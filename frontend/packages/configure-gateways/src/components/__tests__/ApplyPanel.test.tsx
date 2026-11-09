@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {ProjectScopeProvider} from '@thunderid/contexts';
+import {HiddenResourcesProvider, ProjectScopeProvider} from '@thunderid/contexts';
 import {render, screen, userEvent, waitFor, within} from '@thunderid/test-utils';
 import {describe, expect, it, vi} from 'vitest';
 import {fakeHttp, SERVER, type Call} from '../../__tests__/fakeHttp';
@@ -194,5 +194,87 @@ describe('ApplyPanel', () => {
     expect(request.selection).not.toContain('translation/de-DE');
     expect(request.selection).not.toContain('theme/t-1');
     expect(request.selection).not.toContain('translation/fr-FR');
+  });
+
+  it('leaves a hidden resource out of the changes it shows, but still deploys it', async () => {
+    const sent: unknown[] = [];
+    projectCheck(sent);
+    render(
+      <HiddenResourcesProvider hidden={{ids: {application: ['app-2']}}}>
+        <ProjectScopeProvider project={{id: 'p-shop'}}>
+          <ApplyPanel
+            version={version}
+            label="v2"
+            gateways={[gateway]}
+            gatewayId="gw-dev"
+            onClose={vi.fn()}
+            onDeployed={vi.fn()}
+          />
+        </ProjectScopeProvider>
+      </HiddenResourcesProvider>,
+    );
+
+    const panel = await screen.findByTestId('deploy-apply-panel');
+    expect(await within(panel).findByRole('checkbox', {name: /Orders/})).toBeChecked();
+    expect(within(panel).queryByRole('checkbox', {name: /Billing/})).not.toBeInTheDocument();
+    expect(within(panel).queryByText(/Billing/)).not.toBeInTheDocument();
+    await userEvent.click(await within(panel).findByRole('button', {name: /^Deploy/}));
+
+    await waitFor(() => expect(sent).toHaveLength(1));
+    const request = sent[0] as {selection: string[]};
+    expect([...request.selection].sort()).toEqual(['application/app-1', 'application/app-2', 'flow/f-1']);
+  });
+
+  it('offers a plain deploy in the drawer when only hidden changes are ticked', async () => {
+    const sent: unknown[] = [];
+    projectCheck(sent);
+    render(
+      <HiddenResourcesProvider hidden={{ids: {application: ['app-2']}}}>
+        <ProjectScopeProvider project={{id: 'p-shop'}}>
+          <ApplyPanel
+            version={version}
+            label="v2"
+            gateways={[gateway]}
+            gatewayId="gw-dev"
+            variant="drawer"
+            targetName="Dev"
+            onClose={vi.fn()}
+            onDeployed={vi.fn()}
+          />
+        </ProjectScopeProvider>
+      </HiddenResourcesProvider>,
+    );
+
+    const orders = await screen.findByRole('checkbox', {name: /Orders/});
+    expect(screen.getByRole('button', {name: 'Deploy 2 changes to Dev'})).toBeInTheDocument();
+    await userEvent.click(orders);
+    await userEvent.click(screen.getByRole('button', {name: 'Deploy'}));
+
+    await waitFor(() => expect(sent).toHaveLength(1));
+    const request = sent[0] as {selection: string[]};
+    expect(request.selection).toEqual(['application/app-2']);
+  });
+
+  it('says there is nothing to deploy in the drawer when every change is unticked', async () => {
+    projectCheck([]);
+    render(
+      <ProjectScopeProvider project={{id: 'p-shop'}}>
+        <ApplyPanel
+          version={version}
+          label="v2"
+          gateways={[gateway]}
+          gatewayId="gw-dev"
+          variant="drawer"
+          targetName="Dev"
+          onClose={vi.fn()}
+          onDeployed={vi.fn()}
+        />
+      </ProjectScopeProvider>,
+    );
+
+    await userEvent.click(await screen.findByRole('checkbox', {name: /Orders/}));
+    await userEvent.click(screen.getByRole('checkbox', {name: /Billing/}));
+
+    expect(screen.getByRole('button', {name: 'Nothing to deploy'})).toBeInTheDocument();
   });
 });

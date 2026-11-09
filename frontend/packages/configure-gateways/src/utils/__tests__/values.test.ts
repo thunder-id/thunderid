@@ -8,7 +8,7 @@ import {errorReasonOf} from '../apiError';
 import {aboutOwner, aboutValues, type MissingField} from '../missingValues';
 import runnersOf from '../runners';
 import {parseValueName} from '../valueLabels';
-import valueRowsOf from '../valueRows';
+import valueRowsOf, {withoutHiddenResources} from '../valueRows';
 
 describe('valueRowsOf', () => {
   it('lists every name of a kind the target holds or the version uses, unset first, then by name', () => {
@@ -160,5 +160,46 @@ describe('aboutValues and aboutOwner', () => {
     expect(aboutOwner({code: 'AGT-1039', message: 'Owner not found'})).toBe(true);
     expect(aboutOwner({message: 'Missing executor'})).toBe(false);
     expect(aboutOwner(undefined)).toBe(false);
+  });
+});
+
+describe('withoutHiddenResources', () => {
+  const ref = (name: string, resourceId: string) => ({
+    name,
+    kind: 'variable' as const,
+    resourceType: 'application',
+    resourceId,
+  });
+  const isHidden = (resourceType: string, id: string | undefined): boolean =>
+    resourceType === 'application' && id === 'app-hidden';
+
+  it('drops a value only hidden resources use, and keeps the others without the hidden uses', () => {
+    const rows = valueRowsOf(
+      'variable',
+      [
+        {name: 'HIDDEN_ONLY', value: 'h'},
+        {name: 'SHARED', value: 's'},
+        {name: 'UNUSED', value: 'u'},
+      ],
+      [ref('HIDDEN_ONLY', 'app-hidden'), ref('SHARED', 'app-hidden'), ref('SHARED', 'app-shown')],
+    );
+
+    const shown = withoutHiddenResources(rows, isHidden);
+
+    expect(shown.map((row) => row.name)).toEqual(['SHARED', 'UNUSED']);
+    expect(shown[0].references.map((reference) => reference.resourceId)).toEqual(['app-shown']);
+    expect(shown[1].references).toEqual([]);
+  });
+
+  it('drops a value only a hidden resource of the current configuration uses', () => {
+    const rows = valueRowsOf('variable', [{name: 'HIDDEN_NOW', value: 'h'}], [], [ref('HIDDEN_NOW', 'app-hidden')]);
+
+    expect(withoutHiddenResources(rows, isHidden)).toEqual([]);
+  });
+
+  it('keeps every row when nothing is hidden', () => {
+    const rows = valueRowsOf('variable', [{name: 'A', value: 'a'}], [ref('A', 'app-hidden')]);
+
+    expect(withoutHiddenResources(rows, () => false)).toEqual(rows);
   });
 });
