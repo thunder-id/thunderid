@@ -12,10 +12,15 @@ import (
 
 const (
 	agentBasePath = "/agents"
+	// ownedAgentsBasePath is where an owner lists their own agents.
+	ownedAgentsBasePath = "/users/me/agents"
 )
 
 // projectIDQueryParam is the query parameter that lists the agents of one project.
 const projectIDQueryParam = "projectId"
+
+// kindQueryParam is the query parameter that narrows an owner's agent list to one kind.
+const kindQueryParam = "kind"
 
 // Field keys stored in the entity SystemAttributes JSON blob.
 const (
@@ -35,6 +40,9 @@ var combinableFilterAttributes = []string{fieldKind, fieldOwner, filterAttribute
 
 // fieldOwnerID is the path of the owner's ID within the SystemAttributes blob.
 const fieldOwnerID = fieldOwner + ".id"
+
+// fieldOwnerIsLocal is the path of whether the owner is local within the SystemAttributes blob.
+const fieldOwnerIsLocal = fieldOwner + ".isLocal"
 
 // maxOwnerIDLength is the longest ID an agent owner may have. It keeps the owner well inside the
 // owner index's row size on PostgreSQL.

@@ -736,6 +736,35 @@ var (
 			DefaultValue: "A personal agent's client secret cannot be regenerated",
 		},
 	}
+
+	// ErrorAuthenticationRequired is returned when a self-service request carries no authenticated caller.
+	ErrorAuthenticationRequired = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AGT-1060",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.agentservice.authentication_required",
+			DefaultValue: "Authentication required",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.agentservice.authentication_required_description",
+			DefaultValue: "The request needs a user access token",
+		},
+	}
+
+	// ErrorDelegatedTokenNotAllowed is returned when an owner's agents are managed with a delegated token, such as
+	// an agent's own token for its owner.
+	ErrorDelegatedTokenNotAllowed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AGT-1061",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.agentservice.delegated_token_not_allowed",
+			DefaultValue: "Delegated token not allowed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.agentservice.delegated_token_not_allowed_description",
+			DefaultValue: "A token issued to a client acting for the user cannot manage the user's agents",
+		},
+	}
 )
 
 // errInvalidDeclarativeLifespan is returned when a declarative agent's validUntil is not an RFC 3339
