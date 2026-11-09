@@ -106,21 +106,6 @@ export default function ConfigProvider({children}: ConfigProviderProps) {
     () => ({
       config,
       getServerUrl: () => buildServerUrl(config),
-      getGateCallbackUrl: () => {
-        const gate = config.gate_client;
-
-        let base: string | undefined;
-        if (gate?.public_url) {
-          base = gate.public_url;
-        } else if (gate?.hostname) {
-          const scheme: string = gate.scheme ?? 'https';
-          base = gate.port !== undefined ? `${scheme}://${gate.hostname}:${gate.port}` : `${scheme}://${gate.hostname}`;
-        }
-        // Fall back to the resource server URL when the gate app is not separately configured.
-        base ??= buildServerUrl(config);
-
-        return `${base.replace(/\/+$/, '')}/gate/callback`;
-      },
       getServerHostname: () => config.server?.hostname,
       getServerPort: () => config.server?.port,
       isHttpOnly: () => config.server?.http_only,

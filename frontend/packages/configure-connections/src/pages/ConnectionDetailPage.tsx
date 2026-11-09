@@ -13,7 +13,7 @@ import {
   SettingsCard,
   UnsavedChangesBar,
 } from '@thunderid/components';
-import {useCapabilitiesContext, useConfig} from '@thunderid/contexts';
+import {useCapabilitiesContext, useConfig, useGateCallbackUrl} from '@thunderid/contexts';
 import {getErrorMessage} from '@thunderid/utils';
 import {
   Alert,
@@ -122,7 +122,7 @@ export default function ConnectionDetailPage(): JSX.Element | null {
   const {can} = useCapabilitiesContext();
   const navigate = useNavigate();
   const routes = useConnectionRoutes();
-  const {config: appConfig, getGateCallbackUrl} = useConfig();
+  const {config: appConfig} = useConfig();
   const productName: string = appConfig.brand.product_name;
   const {type, id} = useParams<{type: string; id?: string}>();
 
@@ -194,7 +194,7 @@ export default function ConnectionDetailPage(): JSX.Element | null {
   }, [meta, navigate, routes]);
 
   const fields = useMemo(() => (meta ? CONNECTION_FORM_FIELDS[connectionType] : []), [meta, connectionType]);
-  const redirectUri = getGateCallbackUrl();
+  const redirectUri = useGateCallbackUrl();
   const data = connectionQuery.data;
 
   const baseline = useMemo<ConnectionFormValues>(

@@ -346,7 +346,7 @@ export interface ProductConfig {
   /**
    * Optional gate-client configuration for the login gate app's location. When omitted,
    * the OAuth redirect/callback URL shown in connection wizards falls back to
-   * `${getServerUrl()}/gate/callback`.
+   * `${useRuntimeUrl()}/gate/callback`.
    */
   gate_client?: GateClientConfig;
 

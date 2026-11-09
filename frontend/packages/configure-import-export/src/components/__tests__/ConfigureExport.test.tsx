@@ -355,7 +355,6 @@ type: google
           server: {hostname: '', port: 0, http_only: false},
         },
         getServerUrl: () => 'http://localhost:8090',
-        getGateCallbackUrl: () => 'http://localhost:8090/gate/callback',
         getServerHostname: () => 'localhost',
         getServerPort: () => 8090,
         isHttpOnly: () => false,

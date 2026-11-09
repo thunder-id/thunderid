@@ -90,7 +90,8 @@ window.__THUNDERID_RUNTIME_CONFIG__ = {
   // },
 
   // Optional: location of the login gate, used to build the OAuth redirect URI shown when
-  // configuring social/OIDC connections. Omit to default to `${served origin}/gate/callback`.
+  // configuring social/OIDC connections. Omit to default to `${runtime URL}/gate/callback`: the
+  // default gateway's URL when the console manages a separate runtime, otherwise the server URL.
   // gate_client: {
   //   public_url: 'https://gate.example.com',   // or hostname/port/scheme
   // },
