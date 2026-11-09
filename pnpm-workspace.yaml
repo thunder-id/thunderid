@@ -360,6 +360,14 @@ auditConfig:
     # SVGO configuration at docs build time. Added 2026-11-05. Revisit once deepmerge publishes 4.3.2.
     - GHSA-gcqx-w48m-w2h4
 
+# JUSTIFICATION: Delays installation of newly published versions per the pnpm supply chain
+# security guidelines (https://pnpm.io/supply-chain-security#delay-dependency-updates), so a
+# compromised release has a window to be caught and yanked before it reaches this workspace.
+# Setting this explicitly also switches pnpm from its default lenient behavior (silently
+# auto-excluding an immature package and proceeding) to strict enforcement (failing the
+# install unless the package is listed in minimumReleaseAgeExclude below).
+minimumReleaseAge: 1440
+
 minimumReleaseAgeExclude:
   - '@thunderid/*'
   - nanoid@3.3.18
