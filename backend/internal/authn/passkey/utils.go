@@ -71,26 +71,6 @@ func parseEntityAttributes(attributes json.RawMessage) map[string]interface{} {
 	return parsed
 }
 
-// buildWebAuthnDisplayName builds a WebAuthn-friendly display name from entity attributes,
-// falling back to the entity ID when no human-readable name attributes are present.
-func buildWebAuthnDisplayName(entityID string, attributes map[string]interface{}) string {
-	if attributes == nil {
-		return entityID
-	}
-
-	firstName, firstOk := attributes["given_name"].(string)
-	lastName, lastOk := attributes["family_name"].(string)
-
-	if firstOk && firstName != "" {
-		if lastOk && lastName != "" {
-			return firstName + " " + lastName
-		}
-		return firstName
-	}
-
-	return entityID
-}
-
 // resolveWebAuthnName resolves a WebAuthn-friendly username from entity attributes,
 // falling back to the entity ID when no username/email attributes are present.
 func resolveWebAuthnName(entityID string, attributes map[string]interface{}) string {
@@ -110,12 +90,10 @@ func resolveWebAuthnName(entityID string, attributes map[string]interface{}) str
 }
 
 // extractWebAuthnIdentity derives a WebAuthn display name and username from any entity's
-// attributes, falling back to the entity ID when no name attributes are present.
+// attributes. Both use the username, falling back to the email and then the entity ID.
 func extractWebAuthnIdentity(e *providers.Entity) (displayName, name string) {
-	attributes := parseEntityAttributes(e.Attributes)
-	displayName = buildWebAuthnDisplayName(e.ID, attributes)
-	name = resolveWebAuthnName(e.ID, attributes)
-	return displayName, name
+	name = resolveWebAuthnName(e.ID, parseEntityAttributes(e.Attributes))
+	return name, name
 }
 
 // decodeBase64 attempts to decode a base64 string using multiple encodings.
