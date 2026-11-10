@@ -794,6 +794,20 @@ var (
 			DefaultValue: "The agent was deployed by the control plane and can only be changed there",
 		},
 	}
+
+	// ErrorPersonalAgentOwnerImmutable is returned when an update names a different owner for a personal agent.
+	ErrorPersonalAgentOwnerImmutable = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AGT-1064",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.agentservice.personal_agent_owner_immutable",
+			DefaultValue: "Owner cannot be changed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.agentservice.personal_agent_owner_immutable_description",
+			DefaultValue: "A personal agent keeps the owner it was registered for",
+		},
+	}
 )
 
 // errInvalidDeclarativeLifespan is returned when a declarative agent's validUntil is not an RFC 3339

@@ -2092,31 +2092,56 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_CarriesKindForward() {
 	assert.Equal(suite.T(), providers.AgentKind("future-kind"), resp.Kind)
 }
 
-// A personal agent's owner can only change to another local user.
-func (suite *AgentServiceTestSuite) TestUpdateAgent_PersonalAgentOwnerRefusals() {
-	for name, tc := range map[string]struct {
-		owner    *providers.AgentOwner
-		wantCode string
-	}{
-		"external owner": {owner: externalOwner("user-2", providers.AgentOwnerIDTypeUUID),
-			wantCode: ErrorInvalidOwner.Code},
-		"owner is an agent": {owner: localOwner("agent-2"), wantCode: ErrorOwnerNotFound.Code},
+// An update naming any other owner for a personal agent is refused before anything else is read or written.
+func (suite *AgentServiceTestSuite) TestUpdateAgent_PersonalAgentOwnerCannotChange() {
+	for name, owner := range map[string]*providers.AgentOwner{
+		"another local user": localOwner("user-2"),
+		"external owner":     externalOwner("user-2", providers.AgentOwnerIDTypeUUID),
+		"owner is an agent":  localOwner("agent-2"),
+	} {
+		suite.Run(name, func() {
+			svc, mockEntity, mockInbound, _, _ := suite.setupService()
+			clearMockCalls(mockEntity, "GetEntityProfile")
+			mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).Return(withKind(
+				buildAgentEntityFixture(testAgentName, "", "owner-1", ""), providers.AgentKindPersonalAssistant), nil)
+
+			resp, svcErr := svc.UpdateAgent(context.Background(), testAgentID, &model.UpdateAgentRequest{
+				Type: testAgentType, Owner: owner,
+			})
+			assert.Nil(suite.T(), resp)
+			suite.Require().NotNil(svcErr)
+			assert.Equal(suite.T(), ErrorPersonalAgentOwnerImmutable.Code, svcErr.Code)
+			mockEntity.AssertNumberOfCalls(suite.T(), "GetEntityProfile", 1)
+			mockInbound.AssertNotCalled(suite.T(), "GetOAuthProfileByEntityID", mock.Anything, mock.Anything)
+			mockEntity.AssertNotCalled(suite.T(), "UpdateEntity", mock.Anything, mock.Anything, mock.Anything)
+		})
+	}
+}
+
+// An update that leaves the owner out, or sends the current owner, keeps the personal agent's owner.
+func (suite *AgentServiceTestSuite) TestUpdateAgent_PersonalAgentKeepsItsOwner() {
+	for name, owner := range map[string]*providers.AgentOwner{
+		"owner left out": nil,
+		"same owner":     {ID: "owner-1"},
 	} {
 		suite.Run(name, func() {
 			svc, mockEntity, _, _, _ := suite.setupService()
 			clearMockCalls(mockEntity, "GetEntityProfile")
 			mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).Return(withKind(
 				buildAgentEntityFixture(testAgentName, "", "owner-1", ""), providers.AgentKindPersonalAssistant), nil)
-			mockEntity.On("GetEntityProfile", mock.Anything, "agent-2").
-				Return(&providers.Entity{ID: "agent-2", Category: providers.EntityCategoryAgent}, nil).Maybe()
+			var storedOwner *providers.AgentOwner
+			clearMockCalls(mockEntity, "UpdateEntity")
+			mockEntity.On("UpdateEntity", mock.Anything, testAgentID, mock.MatchedBy(func(e *providers.Entity) bool {
+				storedOwner = readSystemAttributes(e.SystemAttributes).Owner
+				return true
+			})).Return(&providers.Entity{}, nil)
 
 			resp, svcErr := svc.UpdateAgent(context.Background(), testAgentID, &model.UpdateAgentRequest{
-				Type: testAgentType, Owner: tc.owner,
+				Type: testAgentType, Owner: owner,
 			})
-			assert.Nil(suite.T(), resp)
-			suite.Require().NotNil(svcErr)
-			assert.Equal(suite.T(), tc.wantCode, svcErr.Code)
-			mockEntity.AssertNotCalled(suite.T(), "UpdateEntity", mock.Anything, mock.Anything, mock.Anything)
+			suite.Require().Nil(svcErr)
+			suite.Require().NotNil(resp)
+			assert.Equal(suite.T(), localOwner("owner-1"), storedOwner)
 		})
 	}
 }

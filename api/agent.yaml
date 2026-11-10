@@ -902,6 +902,9 @@ paths:
         otherwise the request is rejected with `AGT-1053`. As on create, the caller also needs permission
         to view the agent type (`system:agenttype:view`), and an agent type that does not exist, or that the
         caller cannot read, is rejected with `AGT-1054`.
+
+        A personal agent keeps the owner it was registered for. Leave `owner` out, or send the current owner;
+        a different owner is rejected with `AGT-1064`.
       parameters:
         - in: path
           name: id
@@ -1348,6 +1351,16 @@ paths:
                     description:
                       key: "error.agentservice.invalid_user_attribute_description"
                       defaultValue: "One or more user attributes are not valid for the configured allowed user types"
+                personal-agent-owner-immutable:
+                  summary: The update names a different owner for a personal agent
+                  value:
+                    code: "AGT-1064"
+                    message:
+                      key: "error.agentservice.personal_agent_owner_immutable"
+                      defaultValue: "Owner cannot be changed"
+                    description:
+                      key: "error.agentservice.personal_agent_owner_immutable_description"
+                      defaultValue: "A personal agent keeps the owner it was registered for"
 
         "403":
           description: >
@@ -2469,7 +2482,7 @@ components:
         owner:
           allOf:
             - $ref: '#/components/schemas/AgentOwner'
-          description: Admins can transfer ownership by setting a different owner. Omit it to keep the current owner.
+          description: Admins can transfer ownership by setting a different owner, except for a personal agent, which keeps the owner it was registered for. Omit it to keep the current owner.
         delegated:
           type: boolean
           default: false
