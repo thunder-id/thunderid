@@ -12,6 +12,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
 	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
 	"github.com/thunder-id/thunderid/internal/system/projectscope"
@@ -26,11 +27,16 @@ import (
 // Store selection (openid4vci.store): "mutable" (database, full CRUD),
 // "declarative" (file-based, read-only), or "composite" (file-based immutable +
 // database mutable). When unset it follows the global declarative_resources setting.
+//
+// bus is required: the service publishes the audit event of every change to a configuration on it.
 func Initialize(
 	mux *http.ServeMux, ouService ou.OrganizationUnitServiceInterface,
 	authzService sysauthz.SystemAuthorizationServiceInterface,
-	projectValidator projectOUValidator,
+	projectValidator projectOUValidator, bus eventbus.EventBusInterface,
 ) (CredentialConfigurationServiceInterface, declarativeresource.ResourceExporter, error) {
+	if bus == nil {
+		return nil, nil, errNilEventBus
+	}
 	store, fileStore, dbStore, err := initializeStore()
 	if err != nil {
 		return nil, nil, err
@@ -38,7 +44,7 @@ func Initialize(
 	projectRequired := projectValidator != nil &&
 		projectscope.ProjectRequired(security.ResourceTypeVerifiableCredential)
 	svc := newCredentialConfigurationService(store, ouService, authzService, projectValidator,
-		projectRequired)
+		projectRequired, bus)
 	setManagedStore(svc, managedresource.GetStore())
 	if fileStore != nil {
 		if err := loadDeclarativeResources(fileStore, dbStore, svc); err != nil {

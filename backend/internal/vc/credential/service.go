@@ -10,6 +10,8 @@ import (
 	"unicode/utf8"
 
 	"github.com/thunder-id/thunderid/internal/ou"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
+	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	"github.com/thunder-id/thunderid/internal/system/projectscope"
@@ -67,6 +69,7 @@ type configurationService struct {
 	projectValidator projectOUValidator
 	// projectRequired is set on a deployment that serves projects, where every configuration belongs to one.
 	projectRequired bool
+	bus             eventbus.EventBusInterface
 	logger          *log.Logger
 	uuid            func() (string, error)
 	// managed says which credential configurations a control plane deployed, which stay read only here. Nil
@@ -81,11 +84,11 @@ type projectOUValidator interface {
 
 // newCredentialConfigurationService builds a credential-configuration service over the given store. A nil
 // projectValidator serves no projects, and a project ID is kept unchecked; projectRequired refuses a
-// configuration created without a project.
+// configuration created without a project. Every change is audited on bus.
 func newCredentialConfigurationService(
 	store credentialStoreInterface, ouService ou.OrganizationUnitServiceInterface,
 	authzSvc sysauthz.SystemAuthorizationServiceInterface, projectValidator projectOUValidator,
-	projectRequired bool,
+	projectRequired bool, bus eventbus.EventBusInterface,
 ) *configurationService {
 	return &configurationService{
 		store:            store,
@@ -93,6 +96,7 @@ func newCredentialConfigurationService(
 		authzSvc:         authzSvc,
 		projectValidator: projectValidator,
 		projectRequired:  projectRequired,
+		bus:              bus,
 		logger: log.GetLogger().With(
 			log.String(log.LoggerKeyComponentName, "OpenID4VCIConfigurationService")),
 		uuid: utils.GenerateUUIDv7,
@@ -179,6 +183,19 @@ func (s *configurationService) populateOUHandle(ctx context.Context, dtos ...*Cr
 
 // CreateCredentialConfiguration validates, resolves the OU for, and persists a new credential configuration.
 func (s *configurationService) CreateCredentialConfiguration(
+	ctx context.Context, dto *CredentialConfigurationDTO,
+) (*CredentialConfigurationDTO, *tidcommon.ServiceError) {
+	created, svcErr := s.createCredentialConfiguration(ctx, dto)
+	var id string
+	if svcErr == nil {
+		id = created.ID
+	}
+	s.publishConfigurationEvent(ctx, audit.EventCredentialConfigurationCreate, audit.ActionCreate, id, svcErr)
+	return created, svcErr
+}
+
+// createCredentialConfiguration persists a new credential configuration without publishing its audit event.
+func (s *configurationService) createCredentialConfiguration(
 	ctx context.Context, dto *CredentialConfigurationDTO,
 ) (*CredentialConfigurationDTO, *tidcommon.ServiceError) {
 	if isDeclarativeModeEnabled() {
@@ -494,6 +511,16 @@ func (s *configurationService) validateProjectOU(
 func (s *configurationService) UpdateCredentialConfiguration(
 	ctx context.Context, id string, dto *CredentialConfigurationDTO,
 ) (*CredentialConfigurationDTO, *tidcommon.ServiceError) {
+	updated, svcErr := s.updateCredentialConfiguration(ctx, id, dto)
+	s.publishConfigurationEvent(ctx, audit.EventCredentialConfigurationUpdate, audit.ActionUpdate, id, svcErr)
+	return updated, svcErr
+}
+
+// updateCredentialConfiguration persists changes to a credential configuration without publishing its audit
+// event.
+func (s *configurationService) updateCredentialConfiguration(
+	ctx context.Context, id string, dto *CredentialConfigurationDTO,
+) (*CredentialConfigurationDTO, *tidcommon.ServiceError) {
 	if strings.TrimSpace(id) == "" {
 		return nil, &ErrorConfigurationInvalidRequest
 	}
@@ -567,13 +594,27 @@ func (s *configurationService) UpdateCredentialConfiguration(
 func (s *configurationService) DeleteCredentialConfiguration(
 	ctx context.Context, id string,
 ) *tidcommon.ServiceError {
+	svcErr := s.deleteCredentialConfiguration(ctx, id)
+	// A delete that found no configuration succeeds without an event, so no caller can record a deletion
+	// of an ID it made up.
+	if svcErr == errConfigurationNotFoundNoop {
+		return nil
+	}
+	s.publishConfigurationEvent(ctx, audit.EventCredentialConfigurationDelete, audit.ActionDelete, id, svcErr)
+	return svcErr
+}
+
+// deleteCredentialConfiguration deletes a credential configuration without publishing its audit event.
+func (s *configurationService) deleteCredentialConfiguration(
+	ctx context.Context, id string,
+) *tidcommon.ServiceError {
 	if strings.TrimSpace(id) == "" {
 		return &ErrorConfigurationInvalidRequest
 	}
 	existing, err := s.store.GetCredentialConfigurationByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
-			return nil // idempotent
+			return errConfigurationNotFoundNoop
 		}
 		s.logger.Error(ctx, "Failed to load credential configuration", log.Error(err))
 		return &tidcommon.InternalServerError
@@ -592,6 +633,18 @@ func (s *configurationService) DeleteCredentialConfiguration(
 		return &tidcommon.InternalServerError
 	}
 	return nil
+}
+
+// publishConfigurationEvent publishes the audit event of an attempt on the credential configuration with
+// id, after the change was stored or refused. Nothing of the configuration, its claims included, is
+// recorded.
+func (s *configurationService) publishConfigurationEvent(ctx context.Context, name string, action audit.Action,
+	id string, svcErr *tidcommon.ServiceError) {
+	// A failed attempt keeps the ID the caller asked for, even one that matches no configuration, as
+	// forensic evidence of what was probed; the payload caps it and the sink escapes it.
+	target := audit.Ref{Type: audit.TargetTypeCredentialConfiguration, ID: id}
+	eventbus.TryPublish(ctx, s.bus,
+		eventbus.NewEvent(ctx, name).With(audit.ChangePayload(ctx, target, action, svcErr)))
 }
 
 // IsCredentialConfigurationDeclarative reports whether the credential configuration with the given ID is declarative.

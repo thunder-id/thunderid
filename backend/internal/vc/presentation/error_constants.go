@@ -356,3 +356,13 @@ func definitionClientErrorStatus(code string) int {
 		return http.StatusBadRequest
 	}
 }
+
+// errNilEventBus is returned when the service is initialized without the event bus it audits on.
+var errNilEventBus = errors.New("the presentation definition service needs an event bus")
+
+// errDefinitionNotFoundNoop is returned by deletePresentationDefinition when the definition does not exist.
+// DeletePresentationDefinition turns it into a success, so it never reaches a caller.
+var errDefinitionNotFoundNoop = &tidcommon.ServiceError{
+	Type: tidcommon.ClientErrorType,
+	Code: ErrorDefinitionNotFound.Code,
+}

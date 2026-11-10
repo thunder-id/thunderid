@@ -13,6 +13,8 @@ import (
 	"unicode/utf8"
 
 	"github.com/thunder-id/thunderid/internal/ou"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
+	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	"github.com/thunder-id/thunderid/internal/system/projectscope"
@@ -68,6 +70,7 @@ type definitionService struct {
 	projectValidator projectOUValidator
 	// projectRequired is set on a deployment that serves projects, where every definition belongs to one.
 	projectRequired bool
+	bus             eventbus.EventBusInterface
 	logger          *log.Logger
 	uuid            func() (string, error)
 	// managed says which presentation definitions a control plane deployed, which stay read only here. Nil
@@ -82,11 +85,11 @@ type projectOUValidator interface {
 
 // newPresentationDefinitionService builds a presentation-definition service over the given store. A nil
 // projectValidator serves no projects, and a project ID is kept unchecked; projectRequired refuses a
-// definition created without a project.
+// definition created without a project. Every change is audited on bus.
 func newPresentationDefinitionService(
 	store definitionStoreInterface, ouService ou.OrganizationUnitServiceInterface,
 	authzSvc sysauthz.SystemAuthorizationServiceInterface, projectValidator projectOUValidator,
-	projectRequired bool,
+	projectRequired bool, bus eventbus.EventBusInterface,
 ) *definitionService {
 	return &definitionService{
 		store:            store,
@@ -94,6 +97,7 @@ func newPresentationDefinitionService(
 		authzSvc:         authzSvc,
 		projectValidator: projectValidator,
 		projectRequired:  projectRequired,
+		bus:              bus,
 		logger:           log.GetLogger().With(log.String(log.LoggerKeyComponentName, "OpenID4VPDefinitionService")),
 		uuid:             utils.GenerateUUIDv7,
 	}
@@ -179,6 +183,19 @@ func (s *definitionService) populateOUHandle(ctx context.Context, dtos ...*Prese
 
 // CreatePresentationDefinition validates, assigns an ID, and persists a new presentation definition.
 func (s *definitionService) CreatePresentationDefinition(
+	ctx context.Context, dto *PresentationDefinitionDTO,
+) (*PresentationDefinitionDTO, *tidcommon.ServiceError) {
+	created, svcErr := s.createPresentationDefinition(ctx, dto)
+	var id string
+	if svcErr == nil {
+		id = created.ID
+	}
+	s.publishDefinitionEvent(ctx, audit.EventPresentationDefinitionCreate, audit.ActionCreate, id, svcErr)
+	return created, svcErr
+}
+
+// createPresentationDefinition persists a new presentation definition without publishing its audit event.
+func (s *definitionService) createPresentationDefinition(
 	ctx context.Context, dto *PresentationDefinitionDTO,
 ) (*PresentationDefinitionDTO, *tidcommon.ServiceError) {
 	if isDeclarativeModeEnabled() {
@@ -423,6 +440,16 @@ func (s *definitionService) populateSummaryOUHandles(ctx context.Context, summar
 func (s *definitionService) UpdatePresentationDefinition(
 	ctx context.Context, id string, dto *PresentationDefinitionDTO,
 ) (*PresentationDefinitionDTO, *tidcommon.ServiceError) {
+	updated, svcErr := s.updatePresentationDefinition(ctx, id, dto)
+	s.publishDefinitionEvent(ctx, audit.EventPresentationDefinitionUpdate, audit.ActionUpdate, id, svcErr)
+	return updated, svcErr
+}
+
+// updatePresentationDefinition persists changes to a presentation definition without publishing its audit
+// event.
+func (s *definitionService) updatePresentationDefinition(
+	ctx context.Context, id string, dto *PresentationDefinitionDTO,
+) (*PresentationDefinitionDTO, *tidcommon.ServiceError) {
 	if strings.TrimSpace(id) == "" || dto == nil {
 		return nil, &ErrorDefinitionInvalidRequest
 	}
@@ -498,15 +525,28 @@ func (s *definitionService) UpdatePresentationDefinition(
 	return dto, nil
 }
 
-// DeletePresentationDefinition deletes the presentation definition with the given ID.
+// DeletePresentationDefinition deletes the presentation definition with the given ID, succeeding idempotently
+// when absent.
 func (s *definitionService) DeletePresentationDefinition(ctx context.Context, id string) *tidcommon.ServiceError {
+	svcErr := s.deletePresentationDefinition(ctx, id)
+	// A delete that found no definition succeeds without an event, so no caller can record a deletion of an
+	// ID it made up.
+	if svcErr == errDefinitionNotFoundNoop {
+		return nil
+	}
+	s.publishDefinitionEvent(ctx, audit.EventPresentationDefinitionDelete, audit.ActionDelete, id, svcErr)
+	return svcErr
+}
+
+// deletePresentationDefinition deletes a presentation definition without publishing its audit event.
+func (s *definitionService) deletePresentationDefinition(ctx context.Context, id string) *tidcommon.ServiceError {
 	if strings.TrimSpace(id) == "" {
 		return &ErrorDefinitionInvalidRequest
 	}
 	existing, err := s.store.GetPresentationDefinitionByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
-			return nil // idempotent
+			return errDefinitionNotFoundNoop
 		}
 		s.logger.Error(ctx, "Failed to load presentation definition", log.Error(err))
 		return &tidcommon.InternalServerError
@@ -525,6 +565,18 @@ func (s *definitionService) DeletePresentationDefinition(ctx context.Context, id
 		return &tidcommon.InternalServerError
 	}
 	return nil
+}
+
+// publishDefinitionEvent publishes the audit event of an attempt on the presentation definition with id,
+// after the change was stored or refused. Nothing of the definition, its trusted authorities included, is
+// recorded.
+func (s *definitionService) publishDefinitionEvent(ctx context.Context, name string, action audit.Action,
+	id string, svcErr *tidcommon.ServiceError) {
+	// A failed attempt keeps the ID the caller asked for, even one that matches no definition, as forensic
+	// evidence of what was probed; the payload caps it and the sink escapes it.
+	target := audit.Ref{Type: audit.TargetTypePresentationDefinition, ID: id}
+	eventbus.TryPublish(ctx, s.bus,
+		eventbus.NewEvent(ctx, name).With(audit.ChangePayload(ctx, target, action, svcErr)))
 }
 
 // IsPresentationDefinitionDeclarative reports whether the presentation definition with the given ID is file-based.

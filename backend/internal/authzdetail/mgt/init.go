@@ -11,6 +11,7 @@ import (
 
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
 	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
@@ -20,12 +21,17 @@ import (
 //
 // valueCapturer is optional. Given one, the service hands it every type it creates or changes, so the
 // processor credential the type's export refers to is kept where a reference finds it.
+//
+// bus is required: the service publishes the audit event of every change to a type it is asked for on it.
 func Initialize(
 	mux *http.ServeMux, mcpServer *mcp.Server, valueCapturer declarativeresource.ValueCapturer,
-	authzService sysauthz.SystemAuthorizationServiceInterface,
+	authzService sysauthz.SystemAuthorizationServiceInterface, bus eventbus.EventBusInterface,
 ) (AuthorizationDetailMgtServiceInterface, declarativeresource.ResourceExporter, error) {
+	if bus == nil {
+		return nil, nil, errNilEventBus
+	}
 	typeStore, fileStore, dbStore := initializeStore()
-	service := newAuthorizationDetailMgtService(typeStore, valueCapturer, authzService)
+	service := newAuthorizationDetailMgtService(typeStore, valueCapturer, authzService, bus)
 	service.(*authorizationDetailMgtService).managed = managedresource.GetStore()
 
 	if fileStore != nil {

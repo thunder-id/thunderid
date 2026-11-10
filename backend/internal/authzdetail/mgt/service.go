@@ -22,6 +22,8 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
+	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	"github.com/thunder-id/thunderid/internal/system/outboundauth"
@@ -82,6 +84,7 @@ type authorizationDetailMgtService struct {
 	authzService  sysauthz.SystemAuthorizationServiceInterface
 	typeStore     typeStoreInterface
 	valueCapturer declarativeresource.ValueCapturer
+	bus           eventbus.EventBusInterface
 	logger        *log.Logger
 	// managed says which types a control plane deployed, which stay read only here. Nil where nothing
 	// is deployed from one.
@@ -91,11 +94,13 @@ type authorizationDetailMgtService struct {
 // newAuthorizationDetailMgtService creates a new authorizationDetailMgtService.
 func newAuthorizationDetailMgtService(typeStore typeStoreInterface,
 	valueCapturer declarativeresource.ValueCapturer,
-	authzService sysauthz.SystemAuthorizationServiceInterface) AuthorizationDetailMgtServiceInterface {
+	authzService sysauthz.SystemAuthorizationServiceInterface,
+	bus eventbus.EventBusInterface) AuthorizationDetailMgtServiceInterface {
 	return &authorizationDetailMgtService{
 		authzService:  authzService,
 		typeStore:     typeStore,
 		valueCapturer: valueCapturer,
+		bus:           bus,
 		logger: log.GetLogger().With(
 			log.String(log.LoggerKeyComponentName, "AuthorizationDetailMgtService")),
 	}
@@ -103,6 +108,18 @@ func newAuthorizationDetailMgtService(typeStore typeStoreInterface,
 
 // CreateAuthorizationDetailType registers a type. Its processor credential is taken as the caller sent it.
 func (s *authorizationDetailMgtService) CreateAuthorizationDetailType(ctx context.Context,
+	t providers.AuthorizationDetailType) (*providers.AuthorizationDetailType, *tidcommon.ServiceError) {
+	created, svcErr := s.createAuthorizationDetailType(ctx, t)
+	var typeID string
+	if svcErr == nil {
+		typeID = created.ID
+	}
+	s.publishTypeEvent(ctx, audit.EventAuthorizationDetailTypeCreate, audit.ActionCreate, typeID, svcErr)
+	return created, svcErr
+}
+
+// createAuthorizationDetailType registers a type without publishing its audit event.
+func (s *authorizationDetailMgtService) createAuthorizationDetailType(ctx context.Context,
 	t providers.AuthorizationDetailType) (*providers.AuthorizationDetailType, *tidcommon.ServiceError) {
 	if svcErr := s.checkWriteAccess(ctx, security.ActionCreateAuthzDetail); svcErr != nil {
 		return nil, svcErr
@@ -250,6 +267,14 @@ func (s *authorizationDetailMgtService) ListAuthorizationDetailTypes(ctx context
 // omitted or masked one keeps the stored credential while the endpoint is unchanged.
 func (s *authorizationDetailMgtService) UpdateAuthorizationDetailType(ctx context.Context, id string,
 	t providers.AuthorizationDetailType) (*providers.AuthorizationDetailType, *tidcommon.ServiceError) {
+	updated, svcErr := s.updateAuthorizationDetailType(ctx, id, t)
+	s.publishTypeEvent(ctx, audit.EventAuthorizationDetailTypeUpdate, audit.ActionUpdate, id, svcErr)
+	return updated, svcErr
+}
+
+// updateAuthorizationDetailType updates a type without publishing its audit event.
+func (s *authorizationDetailMgtService) updateAuthorizationDetailType(ctx context.Context, id string,
+	t providers.AuthorizationDetailType) (*providers.AuthorizationDetailType, *tidcommon.ServiceError) {
 	if svcErr := s.checkWriteAccess(ctx, security.ActionUpdateAuthzDetail); svcErr != nil {
 		return nil, svcErr
 	}
@@ -349,13 +374,26 @@ func (s *authorizationDetailMgtService) ValidateAuthorizationDetailType(ctx cont
 // DeleteAuthorizationDetailType deletes a type. Deleting a type that does not exist succeeds.
 func (s *authorizationDetailMgtService) DeleteAuthorizationDetailType(ctx context.Context,
 	id string) *tidcommon.ServiceError {
+	svcErr := s.deleteAuthorizationDetailType(ctx, id)
+	// A delete that found no type succeeds without an event, so no caller can record a deletion of an ID
+	// it made up.
+	if svcErr == errTypeNotFoundNoop {
+		return nil
+	}
+	s.publishTypeEvent(ctx, audit.EventAuthorizationDetailTypeDelete, audit.ActionDelete, id, svcErr)
+	return svcErr
+}
+
+// deleteAuthorizationDetailType deletes a type without publishing its audit event.
+func (s *authorizationDetailMgtService) deleteAuthorizationDetailType(ctx context.Context,
+	id string) *tidcommon.ServiceError {
 	if svcErr := s.checkWriteAccess(ctx, security.ActionDeleteAuthzDetail); svcErr != nil {
 		return svcErr
 	}
 	existing, deployed, svcErr := s.getType(ctx, id)
 	if svcErr != nil {
 		if svcErr.Code == ErrorTypeNotFound.Code {
-			return nil
+			return errTypeNotFoundNoop
 		}
 		return svcErr
 	}
@@ -367,6 +405,23 @@ func (s *authorizationDetailMgtService) DeleteAuthorizationDetailType(ctx contex
 		return &tidcommon.InternalServerError
 	}
 	return nil
+}
+
+// publishTypeEvent publishes the audit event of an attempt on the authorization details type with typeID,
+// after the change was stored or refused. Neither the definition nor the processor credential is recorded.
+func (s *authorizationDetailMgtService) publishTypeEvent(ctx context.Context, name string, action audit.Action,
+	typeID string, svcErr *tidcommon.ServiceError) {
+	// A failed attempt keeps the ID the caller asked for, even one that matches no type, as forensic
+	// evidence of what was probed; the payload caps it and the sink escapes it.
+	target := audit.Ref{Type: audit.TargetTypeAuthorizationDetailType, ID: typeID}
+	// Access is checked before the type is looked up, so a denied attempt may name an ID no type has: only a
+	// succeeded one names its type as subject.
+	var subject audit.Ref
+	if svcErr == nil {
+		subject = target
+	}
+	eventbus.TryPublish(ctx, s.bus,
+		eventbus.NewEvent(ctx, name).With(audit.ChangePayloadWithSubject(ctx, target, subject, action, svcErr)))
 }
 
 // ListAllAuthorizationDetailTypes implements providers.AuthorizationDetailTypeProvider.

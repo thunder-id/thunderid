@@ -1651,29 +1651,32 @@ func (s *importService) importPresentationDefinition(
 	}
 	dto.OUID = resolvedOUID
 
+	// The upsert looks the definition up rather than attempting an update, so a create is not preceded by an
+	// audited failed update.
+	exists := false
+	if options.IsUpsertEnabled() && dto.ID != "" {
+		_, svcErr := s.presentationDefinitionService.GetPresentationDefinition(ctx, dto.ID)
+		if svcErr != nil && !isNotFoundServiceError(svcErr) {
+			return serviceErrorOutcome(
+				resourceTypePresentationDefinition, dto.ID, dto.Handle, operationUpdate, svcErr)
+		}
+		exists = svcErr == nil
+	}
+
 	if dryRun {
-		if options.IsUpsertEnabled() && dto.ID != "" {
-			_, svcErr := s.presentationDefinitionService.GetPresentationDefinition(ctx, dto.ID)
-			if svcErr == nil {
-				return successOutcome(resourceTypePresentationDefinition, dto.ID, dto.Handle, operationUpdate)
-			}
-			if !isNotFoundServiceError(svcErr) {
-				return serviceErrorOutcome(
-					resourceTypePresentationDefinition, dto.ID, dto.Handle, operationUpdate, svcErr)
-			}
+		if exists {
+			return successOutcome(resourceTypePresentationDefinition, dto.ID, dto.Handle, operationUpdate)
 		}
 		return successOutcome(resourceTypePresentationDefinition, dto.ID, dto.Handle, operationCreate)
 	}
 
-	if options.IsUpsertEnabled() && dto.ID != "" {
+	if exists {
 		updated, svcErr := s.presentationDefinitionService.UpdatePresentationDefinition(ctx, dto.ID, &dto)
-		if svcErr == nil {
-			return successOutcome(resourceTypePresentationDefinition, updated.ID, updated.Handle, operationUpdate)
-		}
-		if !isNotFoundServiceError(svcErr) {
+		if svcErr != nil {
 			return serviceErrorOutcome(
 				resourceTypePresentationDefinition, dto.ID, dto.Handle, operationUpdate, svcErr)
 		}
+		return successOutcome(resourceTypePresentationDefinition, updated.ID, updated.Handle, operationUpdate)
 	}
 
 	created, svcErr := s.presentationDefinitionService.CreatePresentationDefinition(ctx, &dto)
@@ -1713,29 +1716,32 @@ func (s *importService) importCredentialConfiguration(
 	}
 	dto.OUID = resolvedOUID
 
+	// The upsert looks the configuration up rather than attempting an update, so a create is not preceded by an
+	// audited failed update.
+	exists := false
+	if options.IsUpsertEnabled() && dto.ID != "" {
+		_, svcErr := s.credentialConfigurationService.GetCredentialConfiguration(ctx, dto.ID)
+		if svcErr != nil && !isNotFoundServiceError(svcErr) {
+			return serviceErrorOutcome(
+				resourceTypeCredentialConfiguration, dto.ID, dto.Handle, operationUpdate, svcErr)
+		}
+		exists = svcErr == nil
+	}
+
 	if dryRun {
-		if options.IsUpsertEnabled() && dto.ID != "" {
-			_, svcErr := s.credentialConfigurationService.GetCredentialConfiguration(ctx, dto.ID)
-			if svcErr == nil {
-				return successOutcome(resourceTypeCredentialConfiguration, dto.ID, dto.Handle, operationUpdate)
-			}
-			if !isNotFoundServiceError(svcErr) {
-				return serviceErrorOutcome(
-					resourceTypeCredentialConfiguration, dto.ID, dto.Handle, operationUpdate, svcErr)
-			}
+		if exists {
+			return successOutcome(resourceTypeCredentialConfiguration, dto.ID, dto.Handle, operationUpdate)
 		}
 		return successOutcome(resourceTypeCredentialConfiguration, dto.ID, dto.Handle, operationCreate)
 	}
 
-	if options.IsUpsertEnabled() && dto.ID != "" {
+	if exists {
 		updated, svcErr := s.credentialConfigurationService.UpdateCredentialConfiguration(ctx, dto.ID, &dto)
-		if svcErr == nil {
-			return successOutcome(resourceTypeCredentialConfiguration, updated.ID, updated.Handle, operationUpdate)
-		}
-		if !isNotFoundServiceError(svcErr) {
+		if svcErr != nil {
 			return serviceErrorOutcome(
 				resourceTypeCredentialConfiguration, dto.ID, dto.Handle, operationUpdate, svcErr)
 		}
+		return successOutcome(resourceTypeCredentialConfiguration, updated.ID, updated.Handle, operationUpdate)
 	}
 
 	created, svcErr := s.credentialConfigurationService.CreateCredentialConfiguration(ctx, &dto)
@@ -1905,14 +1911,19 @@ func (s *importService) importAuthorizationDetailType(
 		return s.dryRunAuthorizationDetailType(ctx, t, options)
 	}
 
+	// The upsert looks the type up rather than attempting an update, so a create is not preceded by an audited
+	// failed update.
 	if options.IsUpsertEnabled() && t.ID != "" {
-		updated, svcErr := s.authorizationDetailTypeService.UpdateAuthorizationDetailType(ctx, t.ID, *t)
-		if svcErr == nil {
-			return successOutcome(resourceTypeAuthorizationDetailType, updated.ID, updated.Name, operationUpdate)
-		}
-
-		if !isNotFoundServiceError(svcErr) {
+		_, svcErr := s.authorizationDetailTypeService.GetAuthorizationDetailType(ctx, t.ID)
+		if svcErr != nil && !isNotFoundServiceError(svcErr) {
 			return serviceErrorOutcome(resourceTypeAuthorizationDetailType, t.ID, t.Name, operationUpdate, svcErr)
+		}
+		if svcErr == nil {
+			updated, svcErr := s.authorizationDetailTypeService.UpdateAuthorizationDetailType(ctx, t.ID, *t)
+			if svcErr != nil {
+				return serviceErrorOutcome(resourceTypeAuthorizationDetailType, t.ID, t.Name, operationUpdate, svcErr)
+			}
+			return successOutcome(resourceTypeAuthorizationDetailType, updated.ID, updated.Name, operationUpdate)
 		}
 	}
 
