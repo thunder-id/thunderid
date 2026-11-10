@@ -532,6 +532,20 @@ var (
 			DefaultValue: "Only the organization unit that owns the user can change or delete it",
 		},
 	}
+	// ErrorDelegatedTokenNotAllowed is the error returned when a delegated token, one issued to a client acting
+	// for the user, is used to change the user's own credentials.
+	ErrorDelegatedTokenNotAllowed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "USR-1046",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.userservice.delegated_token_not_allowed",
+			DefaultValue: "Delegated token not allowed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.userservice.delegated_token_not_allowed_description",
+			DefaultValue: "Credentials cannot be changed with a delegated token",
+		},
+	}
 )
 
 // Error variables

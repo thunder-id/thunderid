@@ -1219,6 +1219,26 @@ func TestHandleSelfUserCredentialUpdateRequest_Unauthorized(t *testing.T) {
 	require.Equal(t, ErrorAuthenticationFailed.Code, errResp.Code)
 }
 
+// A delegated token, such as an agent's token for its owner, cannot change the owner's credentials.
+func TestHandleSelfUserCredentialUpdateRequest_DelegatedToken(t *testing.T) {
+	authCtx := security.NewSecurityContextForTest(testUserID789, "", "", nil,
+		map[string]any{"act": map[string]any{"sub": "agent-1"}})
+	mockSvc := NewUserServiceInterfaceMock(t)
+	handler := newUserHandler(mockSvc)
+	req := httptest.NewRequest(http.MethodPost, "/users/me/update-credentials",
+		bytes.NewBufferString(`{"attributes":{"password":"Secret123!"}}`))
+	req = req.WithContext(security.WithSecurityContextTest(req.Context(), authCtx))
+	rr := httptest.NewRecorder()
+
+	handler.HandleSelfUserCredentialUpdateRequest(rr, req)
+
+	require.Equal(t, http.StatusForbidden, rr.Code)
+
+	var errResp apierror.ErrorResponse
+	require.NoError(t, json.NewDecoder(rr.Body).Decode(&errResp))
+	require.Equal(t, ErrorDelegatedTokenNotAllowed.Code, errResp.Code)
+}
+
 func TestHandleSelfUserCredentialUpdateRequest_InvalidBody(t *testing.T) {
 	userID := testUserID789
 	authCtx := security.NewSecurityContextForTest(userID, "", "", nil, nil)
