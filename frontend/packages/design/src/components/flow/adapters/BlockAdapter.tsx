@@ -142,10 +142,18 @@ function flattenThroughStacks(components: EmbeddedFlowComponent[]): EmbeddedFlow
   );
 }
 
+function isSubmitAction(component: EmbeddedFlowComponent | undefined): boolean {
+  return (
+    (component?.type as EmbeddedFlowComponentType | undefined) === EmbeddedFlowComponentType.Action &&
+    component?.eventType === EmbeddedFlowEventType.Submit
+  );
+}
+
 function renderFormSubComponent(
   subComponent: EmbeddedFlowComponent,
   compIndex: number,
   ctx: BlockContext,
+  siblings: EmbeddedFlowComponent[] = ctx.blockComponents ?? [],
 ): JSX.Element | null {
   const sub = subComponent as FlowComponent;
 
@@ -155,7 +163,7 @@ function renderFormSubComponent(
     return (
       <StackContainer key={sub.id ?? compIndex} component={sub}>
         {(sub.components ?? []).map((nested: EmbeddedFlowComponent, nestedIndex: number) =>
-          renderFormSubComponent(nested, nestedIndex, ctx),
+          renderFormSubComponent(nested, nestedIndex, ctx, []),
         )}
       </StackContainer>
     );
@@ -242,6 +250,7 @@ function renderFormSubComponent(
           ctx.isLoading || ctx.isSubmitDisabled === true || (ctx.approvalBlocked === true && isApprovalAction(sub))
         }
         resolve={ctx.resolve}
+        followsSubmit={isSubmitAction(siblings[compIndex - 1])}
         onClick={
           ctx.hasMultipleSubmits && sub.id !== ctx.primarySubmitId
             ? () => {

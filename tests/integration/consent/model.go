@@ -36,9 +36,11 @@ type consentPromptElement struct {
 // consentDecisions mirrors the server's ConsentDecisions wire shape, submitted back as the
 // "consent_decisions" flow input.
 type consentDecisions struct {
-	Approved bool                     `json:"approved"`
-	Reason   string                   `json:"reason,omitempty"`
-	Purposes []consentPurposeDecision `json:"purposes"`
+	Approved       bool                     `json:"approved"`
+	Reason         string                   `json:"reason,omitempty"`
+	Purposes       []consentPurposeDecision `json:"purposes"`
+	ValidityPeriod interface{}              `json:"validityPeriod,omitempty"`
+	OneTime        bool                     `json:"oneTime,omitempty"`
 }
 
 type consentPurposeDecision struct {
@@ -95,6 +97,40 @@ func parsePromptPurposes(rawPrompt string) ([]consentPurposePrompt, error) {
 // approving or denying every element of the given purpose.
 func buildConsentDecisionsInput(purpose consentPurposePrompt, approve bool) (string, error) {
 	return buildConsentDecisionsInputFor(purpose, approve, approve)
+}
+
+// buildConsentDecisionsInputWithValidity builds an approving "consent_decisions" payload that also carries the
+// validity period the user chose.
+func buildConsentDecisionsInputWithValidity(purpose consentPurposePrompt, validityPeriod interface{}) (string, error) {
+	decisionsJSON, err := buildConsentDecisionsInput(purpose, true)
+	if err != nil {
+		return "", err
+	}
+
+	var decisions consentDecisions
+	if err := json.Unmarshal([]byte(decisionsJSON), &decisions); err != nil {
+		return "", err
+	}
+	decisions.ValidityPeriod = validityPeriod
+
+	return marshalConsentDecisions(decisions)
+}
+
+// buildConsentDecisionsInputNotRemembered builds an approving "consent_decisions" payload for a user who chose
+// not to remember the decision, which the prompt submits as the one-time flag alone, with no validity period.
+func buildConsentDecisionsInputNotRemembered(purpose consentPurposePrompt) (string, error) {
+	decisionsJSON, err := buildConsentDecisionsInput(purpose, true)
+	if err != nil {
+		return "", err
+	}
+
+	var decisions consentDecisions
+	if err := json.Unmarshal([]byte(decisionsJSON), &decisions); err != nil {
+		return "", err
+	}
+	decisions.OneTime = true
+
+	return marshalConsentDecisions(decisions)
 }
 
 // buildConsentDecisionsInputFor builds the "consent_decisions" payload with separate decisions for
