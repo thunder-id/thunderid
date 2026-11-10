@@ -170,7 +170,7 @@ An agent shows one status. A suspension ranks above expiry, and expiry above a l
 
 ## Read the lifespan from a token
 
-An agent's own `client_credentials` token can carry its `validUntil` as the `sub_valid_until` claim, in Unix seconds like `exp`, so a resource server can see when the agent stops working without calling the management API. Select `sub_valid_until` on the agent's **Tokens** tab to add it. It is left out for an agent that does not expire, and tokens the agent obtains for a user never carry it. See [Agent Token](../authentication/agent-own-token).
+An agent's own `client_credentials` token can carry its `validUntil` as the `sub_valid_until` claim, in Unix seconds like `exp`, so a resource server can see when the agent stops working without calling the management API. Select `sub_valid_until` on the agent's **Tokens** tab to add it. It is left out for an agent that does not expire. A token the agent obtains on behalf of a user carries it too, without any selection, nested in the `act` claim as `act.sub_valid_until`, because `sub` in that token is the user and the agent is the actor. See [Agent Token](../authentication/agent-own-token).
 
 The claim records the lifespan when the token was issued. To decide whether a token is still valid, rely on `exp`, which is never later than the claim, or on introspection, not on `sub_valid_until`.
 
