@@ -91,11 +91,17 @@ func ownerOf(resource bundleResource) string {
 	return firstMatch(projectIDField, resource.Content)
 }
 
+// organizationLevel are the kinds of resource that, in no project, are the organization's own: its
+// organization units, and the types its users and agents take. One that only one project's resources
+// need is still the organization's, so it is never counted as that project's, only as what it needs.
+var organizationLevel = map[string]bool{"organization_unit": true, resourceTypeAgentType: true,
+	resourceTypeUserType: true}
+
 // soleNeeders maps each resource that belongs to no project, but that the resources of exactly one
-// project need, to that project. What a project's resources need is followed through what that needs in
-// turn, never through another project's own resources. Such a resource goes with that project's sync and
-// counts in its status, not as an update shared with every project; one needed by several projects, or
-// by none, stays shared.
+// project need, to that project, unless the organization holds it as its own. What a project's resources
+// need is followed through what that needs in turn, never through another project's own resources. Such
+// a resource goes with that project's sync and counts in its status, not as an update shared with every
+// project; one needed by several projects, or by none, stays shared.
 func soleNeeders(resources []bundleResource) map[string]string {
 	owners := ownersOf(resources)
 	needs := needsOf(resources)
@@ -119,7 +125,7 @@ func soleNeeders(resources []bundleResource) map[string]string {
 	}
 	sole := map[string]string{}
 	for key, projects := range reachers {
-		if len(projects) != 1 {
+		if len(projects) != 1 || organizationLevel[strings.SplitN(key, "/", 2)[0]] {
 			continue
 		}
 		for project := range projects {

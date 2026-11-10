@@ -15,12 +15,14 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
+	authzdetailmgt "github.com/thunder-id/thunderid/internal/authzdetail/mgt"
 	"github.com/thunder-id/thunderid/internal/group"
 	"github.com/thunder-id/thunderid/internal/role"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/managedresourcemock"
 )
 
@@ -517,5 +519,29 @@ func TestAFailureWhileReconcilingAssignmentsFailsTheRole(t *testing.T) {
 			require.Nil(t, svcErr)
 			assert.Equal(t, tc.status, resp.Results[0].Status, resp.Results[0].Message)
 		})
+	}
+}
+
+// A dry run of a type a control plane deployed predicts what the update does: the managed import may change
+// it, anything else is refused as it is.
+func TestImportAuthorizationDetailType_DryRunOfADeployedType(t *testing.T) {
+	withAuthorizationDetailTypeStore(t, "")
+	for _, managedImport := range []bool{true, false} {
+		adtSvc := existingTypes(&providers.AuthorizationDetailType{ID: "adt-1", Type: "payment_initiation",
+			IsReadOnly: true})
+		svc := newAuthorizationDetailTypeImportService(adtSvc).(*importService)
+		store := managedresourcemock.NewStoreInterfaceMock(t)
+		store.EXPECT().IsManaged(mock.Anything, "adt-1", managedresource.TypeAuthorizationDetailType).Return(true, nil)
+		svc.managed = store
+
+		resp, err := svc.ImportResources(context.Background(),
+			&ImportRequest{Content: authorizationDetailTypeDocument, DryRun: true, Managed: managedImport})
+
+		require.Nil(t, err)
+		if managedImport {
+			assert.Equal(t, statusSuccess, resp.Results[0].Status, "the managed import was refused its own type")
+		} else {
+			assert.Equal(t, authzdetailmgt.ErrorManagedType.Code, resp.Results[0].Code)
+		}
 	}
 }

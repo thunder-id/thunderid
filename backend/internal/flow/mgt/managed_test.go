@@ -9,12 +9,15 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/managedresourcemock"
+	"github.com/thunder-id/thunderid/tests/mocks/sysauthzmock"
 )
 
 // What a control plane deployed is changed only by a deploy from it: anything else is refused, the managed
@@ -59,4 +62,31 @@ func TestDeployedFlowsReadAsReadOnly(t *testing.T) {
 	unflagged := []BasicFlowDefinition{{ID: "f-1"}}
 	svc.markManaged(ctx, unflagged)
 	assert.False(t, unflagged[0].IsReadOnly)
+}
+
+// Reading a flow a control plane deployed reports it read only without marking the stored flow, which the
+// cache serves to the next read: a later update from the managed import reads that flow, and must not find
+// it read only.
+func TestReadingADeployedFlowLeavesTheStoredFlowAsItIs(t *testing.T) {
+	ctx := context.Background()
+	stored := &providers.CompleteFlowDefinition{ID: "f-1", Handle: "login"}
+	flowStore := newFlowStoreInterfaceMock(t)
+	flowStore.EXPECT().GetFlowByID(mock.Anything, "f-1").Return(stored, nil)
+	managed := managedresourcemock.NewStoreInterfaceMock(t)
+	managed.EXPECT().IsManaged(mock.Anything, "f-1", managedresource.TypeFlow).Return(true, nil)
+	svc := &flowMgtService{store: flowStore, managed: managed, logger: log.GetLogger()}
+
+	read, svcErr := svc.getFlow(ctx, "f-1")
+
+	require.Nil(t, svcErr)
+	assert.True(t, read.IsReadOnly)
+	assert.False(t, stored.IsReadOnly)
+
+	// The managed import's update then reads the stored flow, and may change it.
+	authz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
+	authz.EXPECT().IsActionAllowed(mock.Anything, mock.Anything, mock.Anything).Return(true, nil)
+	svc.authzService = authz
+	again, err := flowStore.GetFlowByID(ctx, "f-1")
+	require.NoError(t, err)
+	assert.Nil(t, svc.checkFlowWritable(managedresource.WithManagedImport(ctx), again))
 }

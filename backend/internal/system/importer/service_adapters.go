@@ -1923,6 +1923,28 @@ func (s *importService) importAuthorizationDetailType(
 	return successOutcome(resourceTypeAuthorizationDetailType, created.ID, created.Name, operationCreate)
 }
 
+// refuseReadOnlyType refuses an update to a type read as read only as the update would: one a control plane
+// deployed only when the managed import does not make the update, and one declared in a file always.
+func (s *importService) refuseReadOnlyType(ctx context.Context, id string) *tidcommon.ServiceError {
+	deployed := false
+	if s.managed != nil {
+		var err error
+		deployed, err = s.managed.IsManaged(ctx, id, managedresource.TypeAuthorizationDetailType)
+		if err != nil {
+			log.GetLogger().Error(ctx, "Failed to read whether a control plane deployed the authorization details type",
+				log.String("id", id), log.Error(err))
+			return &tidcommon.InternalServerError
+		}
+	}
+	if !deployed {
+		return &authzdetailmgt.ErrorImmutableType
+	}
+	if !managedresource.IsManagedImport(ctx) {
+		return &authzdetailmgt.ErrorManagedType
+	}
+	return nil
+}
+
 // dryRunAuthorizationDetailType predicts the outcome of importing a type, refusing it in the order the
 // real update or create would.
 func (s *importService) dryRunAuthorizationDetailType(ctx context.Context, t *providers.AuthorizationDetailType,
@@ -1936,9 +1958,12 @@ func (s *importService) dryRunAuthorizationDetailType(ctx context.Context, t *pr
 		existing = found
 	}
 	if existing != nil && options.IsUpsertEnabled() {
+		// A read reports both a type declared in a file and one a control plane deployed as read only. The
+		// update refuses the first always and the second unless the managed import makes it, and so does this.
 		if existing.IsReadOnly {
-			return serviceErrorOutcome(resourceTypeAuthorizationDetailType, t.ID, t.Name, operationUpdate,
-				&authzdetailmgt.ErrorImmutableType)
+			if svcErr := s.refuseReadOnlyType(ctx, existing.ID); svcErr != nil {
+				return serviceErrorOutcome(resourceTypeAuthorizationDetailType, t.ID, t.Name, operationUpdate, svcErr)
+			}
 		}
 		if existing.Type != t.Type {
 			return serviceErrorOutcome(resourceTypeAuthorizationDetailType, t.ID, t.Name, operationUpdate,
