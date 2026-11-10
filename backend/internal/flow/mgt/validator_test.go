@@ -618,6 +618,27 @@ func (s *ValidatorTestSuite) TestValidateTaskExecutionNode_OnFailurePointsToNonP
 	s.Equal(ErrorInvalidNodeConfig.Code, err.Code)
 }
 
+func (s *ValidatorTestSuite) TestValidateVariablesNode_OnFailurePointsToNonPrompt() {
+	nodes := []providers.NodeDefinition{
+		{ID: "vars", Type: string(common.NodeTypeVariables), OnSuccess: "end", OnFailure: "end"},
+		{ID: "end", Type: string(common.NodeTypeEnd)},
+	}
+	index, _ := buildNodeIndex(nodes)
+	err := s.v.validateNodeFormat(&nodes[0], index)
+	s.Require().NotNil(err)
+	s.Equal(ErrorInvalidNodeConfig.Code, err.Code)
+}
+
+func (s *ValidatorTestSuite) TestValidateVariablesNode_OnFailurePointsToPrompt() {
+	nodes := []providers.NodeDefinition{
+		{ID: "vars", Type: string(common.NodeTypeVariables), OnSuccess: "end", OnFailure: "retry"},
+		{ID: "retry", Type: string(common.NodeTypePrompt)},
+		{ID: "end", Type: string(common.NodeTypeEnd)},
+	}
+	index, _ := buildNodeIndex(nodes)
+	s.Nil(s.v.validateNodeFormat(&nodes[0], index))
+}
+
 func (s *ValidatorTestSuite) TestValidateTaskExecutionNode_OnIncompletePointsToNonPrompt() {
 	nodes := []providers.NodeDefinition{
 		{ID: "start", Type: string(common.NodeTypeStart), OnSuccess: "task"},
@@ -3216,13 +3237,18 @@ func (s *ValidatorVariablesTestSuite) TestValidateVariablesNodeShape() {
 		node.OnSuccess = ""
 		s.Contains(reason(node), "onSuccess")
 	})
-	s.Run("it goes on through onSuccess only", func() {
+	s.Run("it goes on through onSuccess and onFailure only", func() {
 		node := valid()
-		node.OnFailure = endNode
-		s.Contains(reason(node), "onSuccess only")
+		node.OnIncomplete = endNode
+		s.Contains(reason(node), "onSuccess and onFailure only")
 		node = valid()
 		node.Next = endNode
-		s.Contains(reason(node), "onSuccess only")
+		s.Contains(reason(node), "onSuccess and onFailure only")
+	})
+	s.Run("its onFailure may be set", func() {
+		node := valid()
+		node.OnFailure = endNode
+		s.Nil(v.validateVariables(ctx, &FlowDefinition{Nodes: []providers.NodeDefinition{node}}))
 	})
 	s.Run("it shows and runs nothing", func() {
 		node := valid()

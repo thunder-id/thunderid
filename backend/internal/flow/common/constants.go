@@ -188,6 +188,9 @@ const (
 	// RuntimeKeyOUID holds the organization unit a flow has been asked to act for, such as the one a user picked on a
 	// prompt.
 	RuntimeKeyOUID = "ouId"
+	// RuntimeKeyOUFixed marks a sign-in whose organization unit was fixed before the flow ran, by the request or by
+	// the application, so that no step of the flow may choose another.
+	RuntimeKeyOUFixed = "ouFixed"
 	// RuntimeKeyInviter holds the subject that started an invitation flow.
 	RuntimeKeyInviter = "inviter"
 	// RuntimeKeyAuthorizedShare holds the "resourceType:targetOuId" share an invitation flow authorized.

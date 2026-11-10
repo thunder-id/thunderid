@@ -342,18 +342,19 @@ var ErrorFlowApplicationNotUsable = tidcommon.ServiceError{
 	},
 }
 
-// ErrorFlowConnectionNotSet is returned when a flow needs a connection that was never set for the organization unit of
-// the application driving it.
+// ErrorFlowConnectionNotSet is returned when a flow needs an identity provider that was never set for the
+// organization unit of the application driving it.
 var ErrorFlowConnectionNotSet = tidcommon.ServiceError{
 	Code: "FES-1022",
 	Type: tidcommon.ClientErrorType,
 	Error: tidcommon.I18nMessage{
-		Key:          "error.flowexecservice.connection_not_set",
-		DefaultValue: "Flow not available",
+		Key:          "error.flowexecservice.identity_provider_not_set",
+		DefaultValue: "Identity provider not found",
 	},
 	ErrorDescription: tidcommon.I18nMessage{
-		Key:          "error.flowexecservice.connection_not_set_description",
-		DefaultValue: "The flow is not available for this organization yet. Contact your administrator",
+		Key: "error.flowexecservice.identity_provider_not_set_description",
+		DefaultValue: "No identity provider has been set up for your organization. " +
+			"Contact your administrator",
 	},
 }
 

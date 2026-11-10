@@ -819,6 +819,29 @@ export const variablesDeclaredRule: GraphValidationRule = (nodes: Node[]): Notif
 };
 
 /**
+ * Mirrors the server's save check on the failure path of a Resolve Variables step: it must lead to a prompt view, the
+ * step that shows the error. A warning rather than an error, like `variablesDeclaredRule`: the server refuses the
+ * save either way, so it must not block the author mid-draw.
+ */
+export const variablesFailureTargetRule: GraphValidationRule = (nodes: Node[], edges: Edge[]): Notification[] =>
+  nodes
+    .filter((node) => node.type === StaticStepTypes.Variables)
+    .filter((node) => {
+      const target = edges.find((edge) => edge.source === node.id && edge.sourceHandle === FAILURE_HANDLE)?.target;
+      const targetNode = nodes.find((candidate) => candidate.id === target);
+
+      return targetNode !== undefined && targetNode.type !== StepTypes.View;
+    })
+    .map((node) =>
+      createGraphErrorNotification(
+        `${node.id}_VARIABLES_FAILURE_INVALID_TARGET`,
+        'flows:core.validation.variables.failureInvalidTarget',
+        node,
+        NotificationType.WARNING,
+      ),
+    );
+
+/**
  * Mirrors the server's save check on a Resolve OU step that prompts in a sign-in flow: it names the parent OU users
  * select below, since no user type sets one there. An error, so Save stays disabled until it is set.
  */
@@ -873,6 +896,7 @@ export const COMMON_GRAPH_VALIDATION_RULES: GraphValidationRule[] = [
   richTextActionWiringRule,
   promptInputHeldConstantRule,
   variablesDeclaredRule,
+  variablesFailureTargetRule,
 ];
 
 export const GRAPH_VALIDATION_RULES: GraphValidationRule[] = [

@@ -2184,7 +2184,7 @@ components:
           example: node_003
         onFailure:
           type: string
-          description: Next node ID on failed execution (TASK_EXECUTION nodes)
+          description: Next node ID on failed execution (TASK_EXECUTION, CALL and VARIABLES nodes)
           example: node_007
         onIncomplete:
           type: string

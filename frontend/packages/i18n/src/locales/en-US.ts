@@ -4890,6 +4890,8 @@ const translations = {
     // Validation messages - Resolve Variables
     'core.validation.variables.noneDeclared':
       'Resolve Variables step <code>{{id}}</code> declares no variables, so the flow will be rejected on save. Add at least one variable to a Resolve Variables step.',
+    'core.validation.variables.failureInvalidTarget':
+      'The failure path of Resolve Variables step <code>{{id}}</code> does not lead to a prompt view, so the flow will be rejected on save. Connect its failure handle to a prompt view.',
 
     // Validation messages - sign out
     'core.validation.signOut.confirmNotConnected':

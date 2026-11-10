@@ -409,6 +409,46 @@ func (s *GraphBuilderTestSuite) TestBuildGraph_WithOnFailure() {
 	s.Nil(err)
 }
 
+func (s *GraphBuilderTestSuite) TestConfigureNodeNavigation_VariablesNodeOnFailure() {
+	nodeDef := &providers.NodeDefinition{
+		ID:        "vars",
+		Type:      "VARIABLES",
+		OnSuccess: "end",
+		OnFailure: "retry-prompt",
+	}
+	allNodes := []providers.NodeDefinition{
+		*nodeDef,
+		{ID: "retry-prompt", Type: "PROMPT"},
+		{ID: "end", Type: "END"},
+	}
+	mockVariablesNode := coremock.NewVariablesNodeInterfaceMock(s.T())
+	mockVariablesNode.EXPECT().SetOnSuccess("end")
+	mockVariablesNode.EXPECT().SetOnFailure("retry-prompt")
+	edges := map[string][]string{}
+
+	err := s.builder.configureNodeNavigation(nodeDef, allNodes, mockVariablesNode, edges)
+
+	s.Nil(err)
+	s.Equal([]string{"end", "retry-prompt"}, edges["vars"])
+}
+
+func (s *GraphBuilderTestSuite) TestConfigureNodeNavigation_VariablesNodeOnFailureNotPromptNode() {
+	nodeDef := &providers.NodeDefinition{
+		ID:        "vars",
+		Type:      "VARIABLES",
+		OnSuccess: "end",
+		OnFailure: "end",
+	}
+	allNodes := []providers.NodeDefinition{*nodeDef, {ID: "end", Type: "END"}}
+	mockVariablesNode := coremock.NewVariablesNodeInterfaceMock(s.T())
+	mockVariablesNode.EXPECT().SetOnSuccess("end")
+
+	err := s.builder.configureNodeNavigation(nodeDef, allNodes, mockVariablesNode, map[string][]string{})
+
+	s.NotNil(err)
+	s.Contains(err.Error(), "onFailure must point to a PROMPT node")
+}
+
 func (s *GraphBuilderTestSuite) TestBuildGraph_OnFailureNotPromptNode() {
 	flow := &providers.CompleteFlowDefinition{
 		ID:       "flow-1",

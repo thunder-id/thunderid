@@ -898,6 +898,25 @@ func (v *flowValidator) validateNodeFormat(
 		return v.validatePromptNode(node)
 	case string(common.NodeTypeCall):
 		return v.validateCallNode(node)
+	case string(common.NodeTypeVariables):
+		return v.validateVariablesNodeFailureTarget(node, nodeIndex)
+	}
+	return nil
+}
+
+// validateVariablesNodeFailureTarget validates that the onFailure of a VARIABLES node points to a PROMPT node.
+func (v *flowValidator) validateVariablesNodeFailureTarget(
+	node *providers.NodeDefinition, nodeIndex map[string]*providers.NodeDefinition,
+) *tidcommon.ServiceError {
+	if node.OnFailure == "" {
+		return nil
+	}
+	if target, ok := nodeIndex[node.OnFailure]; ok && target.Type != string(common.NodeTypePrompt) {
+		return tidcommon.CustomServiceError(ErrorInvalidNodeConfig, tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.variables_node_invalid_failure_target_description",
+			DefaultValue: "VARIABLES node '{{param(nodeID)}}': onFailure must point to a PROMPT node",
+			Params:       map[string]string{"nodeID": node.ID},
+		})
 	}
 	return nil
 }
@@ -2219,8 +2238,8 @@ func (v *flowValidator) validateVariablesNodeFormat(node *providers.NodeDefiniti
 	switch {
 	case node.OnSuccess == "":
 		return fmt.Errorf("a VARIABLES node must have onSuccess")
-	case node.OnFailure != "" || node.OnIncomplete != "" || node.Next != "":
-		return fmt.Errorf("a VARIABLES node goes on through onSuccess only, with no onFailure, onIncomplete or next")
+	case node.OnIncomplete != "" || node.Next != "":
+		return fmt.Errorf("a VARIABLES node goes on through onSuccess and onFailure only, with no onIncomplete or next")
 	case node.Executor != nil || len(node.Prompts) > 0 || len(node.Properties) > 0 || node.Meta != nil ||
 		node.Flow != nil || node.Condition != nil || node.Variant != "" || node.Message != "":
 		return fmt.Errorf(

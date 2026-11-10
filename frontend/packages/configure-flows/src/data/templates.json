@@ -21501,7 +21501,8 @@
               "defaultValue": ""
             }
           ],
-          "onSuccess": "enterprise_auth"
+          "onSuccess": "enterprise_auth",
+          "onFailure": "prompt_signin"
         },
         {
           "id": "enterprise_auth",
