@@ -1555,6 +1555,12 @@ components:
             On a diff or apply scoped to a project, for a needed or shared change that updates or
             removes what the gateway holds: the names of the other projects whose resources on the
             gateway name it by id, which deploying it would also change.
+        carried:
+          type: boolean
+          description: |
+            On a diff or apply scoped to a project, a shared change the project's deploy sends unless
+            a selection leaves it out: an addition or update of the allowed origins or of a translation,
+            which no application names but the project's applications rely on.
         lines:
           type: array
           description: |

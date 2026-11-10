@@ -99,6 +99,14 @@ func ownerOf(resource bundleResource) string {
 var organizationLevel = map[string]bool{"organization_unit": true, resourceTypeAgentType: true,
 	resourceTypeUserType: true}
 
+// carriedShared reports whether a shared resource goes with a project's deploy unless it is left out.
+// No application names the allowed origins or a translation, so they are never needed, yet a project's
+// applications rely on them: a new application's origin is allowed, and its screens are shown, only
+// once they reach the gateway.
+func carriedShared(key string) bool {
+	return key == "server_config/cors" || strings.HasPrefix(key, "translation/")
+}
+
 // soleNeeders maps each resource that belongs to no project, but that the resources of exactly one
 // project need, to that project, unless the organization holds it as its own. What a project's resources
 // need is followed through what that needs in turn, never through another project's own resources. Such
@@ -184,6 +192,13 @@ func scopeToProject(projectID string, owners map[string]string, diff *Diff) proj
 			}
 		default:
 			change.Section = sectionShared
+			// A removal is not carried: it would take something away that other projects rely on.
+			if carriedShared(change.Key) && (change.Change == ChangeAdded || change.Change == ChangeUpdated) {
+				change.Carried = true
+				if !change.HeldBack {
+					scope.defaults = append(scope.defaults, change.Key)
+				}
+			}
 		}
 	}
 	return scope

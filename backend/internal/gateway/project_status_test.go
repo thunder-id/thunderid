@@ -41,7 +41,7 @@ func (s *ProjectScopeTestSuite) TestADeployedProjectNamesItsVersion() {
 	s.Equal([]ProjectVersion{{Hash: latest.Hash, Number: latest.Seq, Resources: 1}}, status.Project.Versions)
 	s.Equal(0, status.Project.Pending)
 	s.Equal(0, status.Project.Required)
-	s.Equal(3, status.Shared.Pending, "what the shop deploy left out is still on offer")
+	s.Equal(2, status.Shared.Pending, "what the shop deploy left out is still on offer, not the translation it carried")
 
 	billing, svcErr := s.f.svc.ProjectStatus(context.Background(), "gw-1", "billing", "", "")
 	s.Require().Nil(svcErr)
@@ -61,7 +61,7 @@ func (s *ProjectScopeTestSuite) TestAgainstASourceOnlyWhatItHoldsCounts() {
 	s.Require().Nil(svcErr)
 	s.Equal(1, status.Project.Pending)
 	s.Equal(3, status.Project.Required)
-	s.Equal(0, status.Shared.Pending, "the source holds nothing shared to promote")
+	s.Equal(1, status.Shared.Pending, "the source holds only the translation the shop deploy carried")
 
 	_, svcErr = s.f.svc.Promote(context.Background(), PromoteRequest{SourceGatewayID: "gw-1",
 		TargetGatewayID: scopeTarget, Project: "shop"})
