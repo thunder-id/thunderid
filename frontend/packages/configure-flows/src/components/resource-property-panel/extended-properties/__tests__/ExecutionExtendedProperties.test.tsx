@@ -88,6 +88,26 @@ vi.mock('@thunderid/configure-connections', async (importOriginal) => ({
   useConnectionInstances: () => ({data: [], isLoading: false, isSuccess: true, error: null, refetch: vi.fn()}),
 }));
 
+// Mock useGetAllGroups + useGetAllRoles, which back the Provisioning group and role pickers.
+vi.mock('../../../../api/useGetAllGroups', () => ({
+  default: () => ({
+    data: [{id: 'admin-group', name: 'Admins', ouId: 'ou-1'}],
+    error: null,
+    isLoading: false,
+    isSuccess: true,
+    refetch: vi.fn(),
+  }),
+}));
+vi.mock('../../../../api/useGetAllRoles', () => ({
+  default: () => ({
+    data: [{id: 'editor-role', name: 'Editors', ouId: 'ou-1'}],
+    error: null,
+    isLoading: false,
+    isSuccess: true,
+    refetch: vi.fn(),
+  }),
+}));
+
 // Mock useGetNotificationTemplates, which backs the Email/SMS template pickers.
 interface TemplatesState {
   data: unknown[] | undefined;
@@ -1391,24 +1411,17 @@ describe('ExecutionExtendedProperties', () => {
       expect(screen.getByLabelText('flows:core.executions.provisioning.maxPerPrompt.label')).toHaveValue(0);
     });
 
-    it('should commit assignGroup on blur', () => {
+    it.each([
+      {kind: 'group', property: 'assignGroup', name: 'Admins', id: 'admin-group'},
+      {kind: 'role', property: 'assignRole', name: 'Editors', id: 'editor-role'},
+    ])('should commit the ID of the $kind picked for $property', async ({property, name, id}) => {
+      const user = userEvent.setup();
       render(<ExecutionExtendedProperties resource={provisioningResource} onChange={mockOnChange} />);
 
-      const assignGroupInput = screen.getByLabelText('flows:core.executions.provisioning.assignGroup.label');
-      fireEvent.change(assignGroupInput, {target: {value: 'admin-group'}});
-      fireEvent.blur(assignGroupInput);
+      await user.click(screen.getByLabelText(`flows:core.executions.provisioning.${property}.label`));
+      await user.click(screen.getByRole('option', {name}));
 
-      expect(mockOnChange).toHaveBeenCalledWith('data.properties.assignGroup', 'admin-group', provisioningResource);
-    });
-
-    it('should commit assignRole on blur', () => {
-      render(<ExecutionExtendedProperties resource={provisioningResource} onChange={mockOnChange} />);
-
-      const assignRoleInput = screen.getByLabelText('flows:core.executions.provisioning.assignRole.label');
-      fireEvent.change(assignRoleInput, {target: {value: 'editor-role'}});
-      fireEvent.blur(assignRoleInput);
-
-      expect(mockOnChange).toHaveBeenCalledWith('data.properties.assignRole', 'editor-role', provisioningResource);
+      expect(mockOnChange).toHaveBeenCalledWith(`data.properties.${property}`, id, provisioningResource);
     });
 
     it('should call onChange without debounce when seedGroupsFromMapping checkbox is toggled', () => {

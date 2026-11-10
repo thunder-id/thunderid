@@ -21,6 +21,8 @@ export {default as Helmet} from './Helmet/Helmet';
 export type {HelmetProps} from './Helmet/Helmet';
 export {default as FullScreenCreationWizardLayout} from './FullScreenCreationWizardLayout/FullScreenCreationWizardLayout';
 export type {FullScreenCreationWizardLayoutProps} from './FullScreenCreationWizardLayout/FullScreenCreationWizardLayout';
+export {default as IdMultiSelect} from './IdMultiSelect/IdMultiSelect';
+export type {IdMultiSelectOption, IdMultiSelectProps} from './IdMultiSelect/IdMultiSelect';
 export {default as I18nTextInput} from './I18nTextInput/I18nTextInput';
 export type {I18nTextInputLabels, I18nTextInputProps} from './I18nTextInput/I18nTextInput';
 export {default as ExternalLink} from './ExternalLink/ExternalLink';
