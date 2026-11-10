@@ -47,8 +47,8 @@ catalog:
   '@vitejs/plugin-react': 6.0.2
   '@vitest/browser-playwright': 4.1.12
   '@vitest/coverage-istanbul': 4.1.12
-  '@wso2/oxygen-ui': 0.20.0
-  '@wso2/oxygen-ui-icons-react': 0.20.0
+  '@wso2/oxygen-ui': 0.23.0
+  '@wso2/oxygen-ui-icons-react': 0.23.0
   babel-plugin-react-compiler: 19.1.0-rc.3
   clsx: 2.1.1
   dayjs: 1.11.18
@@ -366,6 +366,10 @@ minimumReleaseAgeExclude:
   # JUSTIFICATION: Install the security patch for GHSA-68fv-2mgg-jv7q without waiting
   # for the release-age window. Limited to this patched source-map-js version.
   - source-map-js@1.2.2
+  # JUSTIFICATION: Oxygen UI is WSO2's own design system, adopted on its release day to bring the
+  # updated Choreo Labs theme to the cloud Console. Limited to these two versions.
+  - '@wso2/oxygen-ui-icons-react@0.23.0'
+  - '@wso2/oxygen-ui@0.23.0'
 
 patchedDependencies:
   minimatch@3.1.5: patches/minimatch@3.1.5.patch
