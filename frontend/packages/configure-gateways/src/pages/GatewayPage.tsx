@@ -60,6 +60,8 @@ const RECENT = 3;
 
 /** The key a resource is named by in a deploy's check. */
 const keyOf = (resourceType: string, id: string | undefined): string => `${resourceType}/${id ?? ''}`;
+const referenceKey = (reference: ValueReference): string =>
+  `${keyOf(reference.resourceType, reference.resourceId)}:${reference.kind}:${reference.name}:${reference.field ?? ''}`;
 
 /** A section of the page: a heading, an optional line under it, and what it holds. */
 function Section({
@@ -147,7 +149,16 @@ function GatewayPageContent({section}: Required<GatewayPageProps>): JSX.Element 
         .map((change: Change) => keyOf(change.resourceType, change.id)),
     );
   }, [project, changes]);
-  const allReferences = useMemo(() => running.data ?? [], [running.data]);
+  // What the gateway runs refers to, and what the next deploy needs that it lacks, so a value the deploy
+  // asks for can be set here before the gateway runs a version that refers to it.
+  const allReferences = useMemo(() => {
+    const own = running.data ?? [];
+    const seen = new Set(own.map(referenceKey));
+    const needed = (check.data?.missing?.references ?? []).filter(
+      (reference: ValueReference) => !seen.has(referenceKey(reference)),
+    );
+    return [...own, ...needed];
+  }, [running.data, check.data]);
   const references = useMemo(
     () =>
       projectKeys
