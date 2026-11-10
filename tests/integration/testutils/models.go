@@ -337,8 +337,9 @@ type TokenHTTPResult struct {
 
 // IntrospectionResult is the part of an introspection answer the tests read.
 type IntrospectionResult struct {
-	Active bool   `json:"active"`
-	Sub    string `json:"sub"`
+	Active bool                   `json:"active"`
+	Sub    string                 `json:"sub"`
+	Act    map[string]interface{} `json:"act"`
 }
 
 // AccessStatus is the effective access status a management read of a user, an agent or an

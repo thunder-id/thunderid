@@ -260,6 +260,68 @@ func (s *TokenIntrospectionServiceTestSuite) TestIntrospectToken_OmitsAbsentSubT
 	assert.Empty(s.T(), response.SubType)
 }
 
+// A delegated token's act claim is surfaced with its nested delegation chain intact, so a resource
+// server can see every actor without decoding the token itself.
+func (s *TokenIntrospectionServiceTestSuite) TestIntrospectToken_SurfacesActorClaimWithDelegationChain() {
+	act := map[string]interface{}{
+		"sub": "agent-b",
+		"act": map[string]interface{}{
+			"sub": "agent-a",
+			"iss": "https://external.example.com",
+		},
+	}
+	token := accessTokenFor("delegated-token")
+	s.stubAccessToken(token, map[string]interface{}{"sub": "user123", "act": act})
+
+	response, err := s.introspectService.IntrospectToken(context.Background(), token, "")
+
+	assert.NoError(s.T(), err)
+	assert.True(s.T(), response.Active)
+	assert.Equal(s.T(), "user123", response.Sub)
+	assert.Equal(s.T(), act, response.Act)
+
+	body, err := json.Marshal(response)
+	assert.NoError(s.T(), err)
+	assert.JSONEq(s.T(),
+		`{"sub":"agent-b","act":{"sub":"agent-a","iss":"https://external.example.com"}}`,
+		string(extractJSONField(s.T(), body, "act")))
+}
+
+// A token without an act claim, or with one that is not an object, reports no actor.
+func (s *TokenIntrospectionServiceTestSuite) TestIntrospectToken_OmitsAbsentOrMalformedActorClaim() {
+	cases := map[string]map[string]interface{}{
+		"absent":    {"sub": "user123"},
+		"empty":     {"sub": "user123", "act": map[string]interface{}{}},
+		"notObject": {"sub": "user123", "act": "agent-a"},
+	}
+	for name, claims := range cases {
+		s.Run(name, func() {
+			token := accessTokenFor("actor-" + name)
+			s.stubAccessToken(token, claims)
+
+			response, err := s.introspectService.IntrospectToken(context.Background(), token, "")
+
+			assert.NoError(s.T(), err)
+			assert.True(s.T(), response.Active)
+			assert.Nil(s.T(), response.Act)
+
+			body, err := json.Marshal(response)
+			assert.NoError(s.T(), err)
+			assert.NotContains(s.T(), string(body), `"act"`)
+		})
+	}
+}
+
+// extractJSONField returns the raw JSON of one top-level field of the encoded object.
+func extractJSONField(t *testing.T, body []byte, field string) json.RawMessage {
+	t.Helper()
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(body, &fields); err != nil {
+		t.Fatalf("decoding response: %v", err)
+	}
+	return fields[field]
+}
+
 // The details are returned as the token's claim text, so a number is kept exactly.
 func (s *TokenIntrospectionServiceTestSuite) TestIntrospectToken_SurfacesAuthorizationDetails() {
 	const details = `[{"type":"payment_initiation","amount":12345678901234567890.25}]`

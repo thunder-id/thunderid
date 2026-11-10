@@ -364,18 +364,14 @@ enrollment_lock = Lock()
 
 def record_enrollment(course_id: str, token: str) -> dict:
     identity = validate_token(token, "courses:enroll")
-    # Decode only after introspection validates this exact token.
-    # {{ProductName}}'s introspection response does not include the actor claim.
-    payload = token.split(".")[1]
-    claims = json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
-    if not claims.get("act", {}).get("sub"):
+    if not identity.get("act", {}).get("sub"):
         raise PermissionError("Enrollment requires a delegated user token.")
     student_id = identity["sub"]
     enrolled = enrollments.setdefault(student_id, set())
     status = "already_enrolled" if course_id in enrolled else "enrolled"
     enrolled.add(course_id)
     result = {"student_id": student_id, "course_id": course_id, "status": status}
-    print("Verified agent:", claims["act"]["sub"], flush=True)
+    print("Verified agent:", identity["act"]["sub"], flush=True)
     print("Tool result:", json.dumps(result), flush=True)
     return result
 
