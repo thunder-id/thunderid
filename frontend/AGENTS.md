@@ -24,6 +24,19 @@ Gate consumes ThunderID's published SDK packages — `@thunderid/react` and `@th
 [javascript-sdks](https://github.com/thunder-id/javascript-sdks) repository. Clone that repository only to develop or
 debug the SDK itself, or to test against unreleased SDK changes.
 
+### Project Scope
+
+`console-cp` mounts `projectDashboardRoutes()` and `projectFullScreenRoutes()` from `apps/console-cp/src/App.tsx` twice:
+under the project's path, where `ProjectScopeProvider` holds the selected project, and at the root, where no project is
+selected. A `configure-*` package for a resource that can belong to a project reads the project with `useProjectScope()`
+from `@thunderid/contexts`, puts `projectId` in its query keys, and sends it on list requests and in create requests.
+Where no project is selected, as at the root or in the main console, `projectId` is undefined: lists show every
+resource, in a project or not, and a create sends no project. For a type that needs a project, pass
+`createInProjectsOnly` to its list and create pages, as the organization unit, notification template, and verifiable
+credential pages do. To add a page, mount it in one of those two functions and add its domain to
+`PROJECT_SCOPED_DOMAINS` in `apps/console-cp/src/configs/RouteConfig.ts`, which keeps its links under the project's
+path. Backend rules for such a resource are in the `backend` skill's `resource.md`.
+
 ### rolldown External Subpaths
 
 Every package's `rolldown.config.js` builds `external` from `Object.keys(pkg.dependencies)` and
