@@ -18,9 +18,9 @@ import {
   Tooltip,
   Typography,
 } from '@wso2/oxygen-ui';
-import {ChevronDown, Info} from '@wso2/oxygen-ui-icons-react';
+import {ChevronDown} from '@wso2/oxygen-ui-icons-react';
 import {useMemo, useState, type JSX, type ReactNode} from 'react';
-import {Trans, useTranslation} from 'react-i18next';
+import {useTranslation} from 'react-i18next';
 import {Link, useParams} from 'react-router';
 import useAppliedVersions from '../api/useAppliedVersions';
 import useChangedValues, {changedCount} from '../api/useChangedValues';
@@ -95,9 +95,8 @@ function Section({
 
 /**
  * One gateway's own pages: an overview of what it runs, resource by resource, against the
- * configuration; the values it holds, set per resource; where clients reach it; and its deploys. A
- * banner says how it stands and offers the deploy that brings it up to date. In a project, everything is
- * about the project's own resources and the ones they need.
+ * configuration; the values it holds, set per resource; where clients reach it; and its deploys. In a
+ * project, everything is about the project's own resources and the ones they need.
  */
 /** A gateway's own page, with the resources it runs named as its map names them. */
 export default function GatewayPage({section = 'overview'}: GatewayPageProps): JSX.Element {
@@ -184,16 +183,13 @@ function GatewayPageContent({section}: Required<GatewayPageProps>): JSX.Element 
   }
 
   const label = (hash: string | undefined): string => panels.labelOf(hash);
-  const tag = stage.name.toUpperCase();
+  const tag = stage.name;
   const color = gatewayColor(index);
   const next = source ? all.find((version: Version) => version.version === source) : undefined;
   const entries: MasterEntry[] = master.data?.entries ?? [];
   const entryOf = (key: string): MasterEntry | undefined => entries.find((entry: MasterEntry) => entry.key === key);
   const inScope = (resourceType: string, id: string | undefined): boolean =>
     !projectKeys || projectKeys.has(keyOf(resourceType, id));
-  const pending = project
-    ? (status.data?.project.pending ?? 0) + (status.data?.project.required ?? 0)
-    : changes.filter((change: Change) => change.change !== 'unchanged').length;
   const projectVersion = status.data?.project.versions[0];
   const olderVersion = status.data?.project.versions[1];
   // In a project, the version its own resources came from, as the project home's card says it.
@@ -210,97 +206,6 @@ function GatewayPageContent({section}: Required<GatewayPageProps>): JSX.Element 
   } else {
     runningLabel = runs ? label(runs) : undefined;
   }
-  const deployedAt = project ? status.data?.deployedAt : (applied.data?.appliedAt ?? undefined);
-  const autoSyncOn = index === 0 && project !== undefined && status.data?.autoSync?.enabled === true;
-  const review = (): void => {
-    if (next) panels.deploy(next, gatewayId, undefined, gateways);
-  };
-
-  // The version in type as the design sets it, and the changes owed in the accent.
-  const bannerParts = {
-    mono: <Box component="span" sx={{fontFamily: 'monospace'}} />,
-    b: <Box component="b" sx={{fontWeight: 600, color: 'primary.light'}} />,
-  };
-  let bannerText: ReactNode;
-  if (autoSyncOn) {
-    bannerText = (
-      <Trans
-        t={t}
-        i18nKey="gateway.bannerAutoSync"
-        values={{tag, version: runningLabel ?? t('gateway.nothing', 'nothing yet')}}
-        components={bannerParts}
-      />
-    );
-  } else {
-    let runsText: ReactNode = <Trans t={t} i18nKey="gateway.bannerNothing" values={{tag}} components={bannerParts} />;
-    if (runningLabel && deployedAt) {
-      runsText = (
-        <Trans
-          t={t}
-          i18nKey="gateway.bannerRuns"
-          values={{tag, version: runningLabel, when: relativeTime(deployedAt)}}
-          components={bannerParts}
-        />
-      );
-    } else if (runningLabel) {
-      runsText = (
-        <Trans
-          t={t}
-          i18nKey="gateway.bannerRunsUndated"
-          values={{tag, version: runningLabel}}
-          components={bannerParts}
-        />
-      );
-    }
-    bannerText = (
-      <>
-        {runsText}{' '}
-        {pending > 0 ? (
-          <Trans t={t} i18nKey="gateway.bannerPending" count={pending} components={bannerParts} />
-        ) : (
-          t('gateway.bannerUpToDate', 'Everything in the configuration is deployed here.')
-        )}
-      </>
-    );
-  }
-
-  // A strip under the header across the whole page, as the design has it: how the gateway stands, and
-  // the deploy that brings it up to date while the configuration owes it changes.
-  const banner = (
-    <Box
-      role="status"
-      sx={{
-        display: 'flex',
-        flexWrap: 'wrap',
-        alignItems: 'center',
-        columnGap: 2.5,
-        rowGap: 1.5,
-        px: 3,
-        py: 1.75,
-        bgcolor: 'background.paper',
-        borderBottom: 1,
-        borderColor: 'divider',
-      }}
-      data-testid="gateway-status"
-    >
-      <Box aria-hidden sx={{display: 'flex', color: 'text.secondary'}}>
-        <Info size={20} />
-      </Box>
-      <Typography component="span" sx={{flex: '1 1 420px'}}>
-        {bannerText}
-      </Typography>
-      {next && pending > 0 && !autoSyncOn && (
-        <Button
-          variant="contained"
-          onClick={review}
-          sx={{minHeight: 40, px: 2, borderRadius: '20px', fontWeight: 600, whiteSpace: 'nowrap'}}
-          data-testid="gateway-deploy"
-        >
-          {index === 0 ? t('gateway.reviewAndDeploy', 'Review and deploy') : t('gateways.promote', 'Promote')}
-        </Button>
-      )}
-    </Box>
-  );
 
   const runningOf = (change: Change): string | undefined => {
     const entry = entryOf(change.key);
@@ -610,7 +515,6 @@ function GatewayPageContent({section}: Required<GatewayPageProps>): JSX.Element 
 
   return (
     <Box sx={{display: 'flex', flexDirection: 'column', width: '100%', minWidth: 0}}>
-      {banner}
       <PageContent>
         <DocumentTitle title={`${stage.name} · ${titles[section]}`} />
         <Stack spacing={3}>

@@ -12,12 +12,12 @@ const versions = Array.from({length: 7}, (_, index: number) => ({
 }));
 
 describe('PipelineVersions', () => {
-  it('offers every version to deploy, the latest first, and marks what the gateways run', async () => {
+  it('offers the versions the first gateway does not run to deploy, the latest first, and marks what the gateways run', async () => {
     const onDeploy = vi.fn();
     render(
       <PipelineVersions
         versions={versions}
-        runners={{'hash-5': [{name: 'Dev', index: 0}], 'hash-3': [{name: 'Prod', index: 1}]}}
+        runners={{'hash-5': [{name: 'Dev', index: 0}], 'hash-6': [{name: 'Prod', index: 1}]}}
         firstRuns="hash-5"
         firstName="Dev"
         onDeploy={onDeploy}
@@ -28,26 +28,24 @@ describe('PipelineVersions', () => {
     expect(within(latest).getByText(/^Latest/)).toBeInTheDocument();
     const deployLatest = within(latest).getByRole('button', {name: 'Deploy'});
     expect(deployLatest).toHaveClass('MuiButton-contained');
-    expect(within(screen.getByTestId('pipeline-version-hash-6')).getByRole('button', {name: 'Deploy'})).toHaveClass(
-      'MuiButton-outlined',
-    );
+    const older = screen.getByTestId('pipeline-version-hash-6');
+    expect(within(older).getByText('Prod')).toBeInTheDocument();
+    expect(within(older).getByRole('button', {name: 'Deploy'})).toHaveClass('MuiButton-outlined');
+    // What the first gateway runs shows its tag in place of a deploy.
     const running = screen.getByTestId('pipeline-version-hash-5');
     expect(within(running).getByText('Dev')).toBeInTheDocument();
-    // What the first gateway runs can be deployed again, and an older version to go back to it.
-    expect(within(running).getByRole('button', {name: 'Deploy'})).toHaveClass('MuiButton-outlined');
-    expect(
-      within(screen.getByTestId('pipeline-version-hash-3')).getByRole('button', {name: 'Deploy'}),
-    ).toBeInTheDocument();
+    expect(within(running).queryByRole('button', {name: 'Deploy'})).not.toBeInTheDocument();
 
     await userEvent.click(deployLatest);
     expect(onDeploy).toHaveBeenCalledWith(versions[0]);
   });
 
-  it('shows five versions, and every version in a dialog when asked', async () => {
+  it('shows three versions, and every version in a dialog when asked', async () => {
     const onDeploy = vi.fn();
     render(<PipelineVersions versions={versions} runners={{}} firstName="Dev" onDeploy={onDeploy} />);
 
-    expect(screen.queryByTestId('pipeline-version-hash-2')).not.toBeInTheDocument();
+    expect(screen.getByTestId('pipeline-version-hash-5')).toBeInTheDocument();
+    expect(screen.queryByTestId('pipeline-version-hash-4')).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', {name: 'View all versions'}));
     const dialog = await screen.findByRole('dialog', {name: 'All versions'});
     const oldest = within(dialog).getByTestId('pipeline-version-hash-1');
@@ -69,12 +67,12 @@ describe('PipelineVersions', () => {
     expect(screen.getByText(/Nothing is captured yet/)).toBeInTheDocument();
   });
 
-  it("keeps the latest's Deploy the main one while the first gateway runs it, the others outlined", () => {
+  it('offers no deploy of the latest while the first gateway runs it, the older ones outlined', () => {
     render(<PipelineVersions versions={versions} runners={{}} firstRuns="hash-7" firstName="Dev" onDeploy={vi.fn()} />);
 
-    expect(within(screen.getByTestId('pipeline-version-hash-7')).getByRole('button', {name: 'Deploy'})).toHaveClass(
-      'MuiButton-contained',
-    );
+    expect(
+      within(screen.getByTestId('pipeline-version-hash-7')).queryByRole('button', {name: 'Deploy'}),
+    ).not.toBeInTheDocument();
     expect(within(screen.getByTestId('pipeline-version-hash-6')).getByRole('button', {name: 'Deploy'})).toHaveClass(
       'MuiButton-outlined',
     );

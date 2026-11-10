@@ -16,6 +16,8 @@ export interface GatewaysStripProps {
   children: ReactNode;
   /** Where the gateways and the pipeline between them are edited, opened in a new tab. */
   editUrl?: string;
+  /** Controls shown first in the header, such as a switch for the whole pipeline. */
+  actions?: ReactNode;
 }
 
 const Fade = ({side}: {side: 'left' | 'right'}): JSX.Element => (
@@ -39,7 +41,12 @@ const Fade = ({side}: {side: 'left' | 'right'}): JSX.Element => (
  * The gateways, in pipeline order, on one row that scrolls sideways when they do not fit, with
  * buttons to step through them and a fade on the side there is more to see.
  */
-export default function GatewaysStrip({count, children, editUrl = undefined}: GatewaysStripProps): JSX.Element {
+export default function GatewaysStrip({
+  count,
+  children,
+  editUrl = undefined,
+  actions = undefined,
+}: GatewaysStripProps): JSX.Element {
   const {t} = useTranslation('deploy');
   const track = useRef<HTMLDivElement>(null);
   const [atStart, setAtStart] = useState(true);
@@ -67,6 +74,7 @@ export default function GatewaysStrip({count, children, editUrl = undefined}: Ga
           {t('pipeline.gatewaysLabel', 'Gateways · where it runs')}
         </Typography>
         <Stack direction="row" alignItems="center" spacing={0.5}>
+          {actions}
           <Typography variant="caption" color="text.secondary" sx={{mr: 0.5}}>
             {t('pipeline.gatewayCount', {
               count,

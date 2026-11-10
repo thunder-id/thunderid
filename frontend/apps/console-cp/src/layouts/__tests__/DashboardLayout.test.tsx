@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {render, screen, userEvent, waitFor} from '@thunderid/test-utils';
+import {render, screen, userEvent, waitFor, within} from '@thunderid/test-utils';
 import {afterEach, describe, it, expect, vi, beforeEach, type MockInstance} from 'vitest';
 import DashboardLayout from '../DashboardLayout';
 
@@ -29,6 +29,9 @@ let mockIsTrustedIssuerGenericOidc = false;
 let mockSdkConfig: Record<string, unknown> | undefined;
 let mockCapabilities: {can: (resource: string, action?: string) => boolean; canManageRoot: boolean; isLoading: boolean};
 let mockPathname: string | undefined;
+
+// The banner over every page reads the pipeline's pending changes; it has tests of its own.
+vi.mock('../../components/PendingDeployBanner', () => ({default: () => null}));
 
 vi.mock('@thunderid/hooks', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@thunderid/hooks')>()),
@@ -242,8 +245,11 @@ describe('DashboardLayout', () => {
     mockProjectChanges = {application: 2};
     render(<DashboardLayout />);
 
-    expect(screen.getByText('navigation:categories.project')).toBeInTheDocument();
-    expect(screen.getByText('navigation:pages.deploymentPipeline')).toBeInTheDocument();
+    expect(screen.getByText('navigation:pages.overview').closest('a')).toHaveAttribute('href', '/project/shop');
+    expect(screen.getByText('navigation:pages.deploymentPipeline').closest('a')).toHaveAttribute(
+      'href',
+      '/project/shop/pipeline',
+    );
     expect(screen.getByText('navigation:categories.build')).toBeInTheDocument();
     expect(screen.getAllByText('navigation:pages.applications')).toHaveLength(1);
     expect(screen.getAllByText('navigation:pages.agents')).toHaveLength(1);
@@ -434,14 +440,21 @@ describe('DashboardLayout', () => {
     focusVisible.mockRestore();
   });
 
-  it("shows the gateway's own navigation on its pages, back to the project", () => {
-    mockUseProjectSelection.mockReturnValue(inShop());
+  it("shows the gateway's own navigation on its organization pages, back to the organization's overview", () => {
+    mockUseProjectSelection.mockReturnValue(projectSelection({projects: [shop]}));
     mockPath = '/deploy/gateways/gw-dev/values';
     render(<DashboardLayout />);
 
-    // The way back names the project.
-    expect(screen.getByText('Shop')).toBeInTheDocument();
-    expect(screen.getByText('navigation:categories.gateway')).toBeInTheDocument();
+    // A gateway belongs to the organization, so the way back leads there, not to the project.
+    expect(screen.getByText('navigation:pages.organizationOverview').closest('a')).toHaveAttribute('href', '/home');
+    expect(screen.queryByText('Shop')).not.toBeInTheDocument();
+    for (const category of [
+      'navigation:categories.configure',
+      'navigation:categories.test',
+      'navigation:categories.releases',
+    ]) {
+      expect(screen.getByText(category)).toBeInTheDocument();
+    }
     for (const page of [
       'navigation:pages.overview',
       'navigation:pages.variablesAndSecrets',
@@ -458,57 +471,70 @@ describe('DashboardLayout', () => {
     mockPath = '/deploy/gateways/gw-dev';
     render(<DashboardLayout />);
 
-    expect(screen.getByText('navigation:categories.gateway')).toBeInTheDocument();
+    expect(screen.getByText('navigation:pages.organizationOverview').closest('a')).toHaveAttribute('href', '/home');
     expect(screen.getByText('navigation:pages.deploymentHistory')).toBeInTheDocument();
-    expect(screen.getAllByText('navigation:pages.overview')).toHaveLength(2);
+    expect(screen.getAllByText('navigation:pages.overview')).toHaveLength(1);
     expect(screen.queryByText('navigation:pages.applications')).not.toBeInTheDocument();
   });
 
-  it("offers switching gateways from the header on a gateway's pages only", () => {
+  it("offers switching gateways from the sidebar on a gateway's pages only", () => {
     mockUseProjectSelection.mockReturnValue(inShop());
     const {unmount} = render(<DashboardLayout />);
 
     expect(screen.queryByTestId('gateway-switcher')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('header-read-only')).not.toBeInTheDocument();
     unmount();
 
+    mockUseProjectSelection.mockReturnValue(projectSelection({projects: [shop]}));
     mockPath = '/deploy/gateways/gw-dev';
     render(<DashboardLayout />);
-    expect(screen.getByTestId('gateway-switcher')).toBeInTheDocument();
+    const switcher = screen.getByTestId('gateway-switcher');
+    // Above the gateway's own pages, below the way back.
+    const back = screen.getByText('navigation:pages.organizationOverview');
+    expect(back.compareDocumentPosition(switcher) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(
+      switcher.compareDocumentPosition(screen.getByText('navigation:pages.overview')) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
-  it('leaves Projects out of the sidebar, and keeps settings in its own group at the end', () => {
+  it("names the gateway open, and shows neither the project selector nor a read-only note on a gateway's pages", () => {
+    mockUseProjectSelection.mockReturnValue(inShop());
+    mockPath = '/deploy/gateways/gw-dev';
+    render(<DashboardLayout />);
+
+    expect(screen.getByTestId('gateway-switcher')).toHaveTextContent('Development');
+    expect(screen.queryByTestId('header-read-only')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('project-switcher')).not.toBeInTheDocument();
+  });
+
+  it('lists Projects, Administrators and Deployment after the overview, and keeps settings in its own group at the end', () => {
     mockUseProjectSelection.mockReturnValue(projectSelection({projects: [shop]}));
     mockPath = '/home';
 
     render(<DashboardLayout />);
 
-    expect(screen.queryByText('navigation:pages.projects')).not.toBeInTheDocument();
+    const projects = screen.getByText('navigation:pages.projects');
+    expect(projects.closest('a')).toHaveAttribute('href', '/projects');
+    expect(screen.getByText('navigation:pages.projectsHint')).toBeInTheDocument();
+    expect(screen.getByText('navigation:pages.administratorsHint')).toBeInTheDocument();
+    const overview = screen.getByText('navigation:pages.overview');
+    expect(overview.compareDocumentPosition(projects) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(
+      projects.compareDocumentPosition(screen.getByText('navigation:pages.administrators')) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
     expect(screen.queryByTestId('gateway-switcher')).not.toBeInTheDocument();
     const system = screen.getByText('navigation:categories.system');
     const settings = screen.getByText('navigation:pages.settings');
     expect(system.compareDocumentPosition(settings) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it('names the gateway open, and says its configuration is read-only there', () => {
-    mockUseProjectSelection.mockReturnValue(inShop());
-    mockPath = '/deploy/gateways/gw-dev';
-    render(<DashboardLayout />);
-
-    expect(screen.getByTestId('gateway-switcher')).toHaveTextContent('DEVELOPMENT');
-    expect(screen.getByTestId('header-read-only')).toHaveTextContent('common:header.readOnly');
-  });
-
-  it('leads out of a project to the organization from the top of its navigation', () => {
+  it("leads out of a project from the header's project selector, not the navigation", () => {
     mockUseProjectSelection.mockReturnValue(inShop());
     render(<DashboardLayout />);
 
-    const organization = screen.getByText('navigation:pages.organizationSettings');
-    expect(organization.closest('a')).toHaveAttribute('href', '/home');
-    expect(screen.getByText('navigation:pages.deploymentPipeline').closest('a')).toHaveAttribute(
-      'href',
-      '/project/shop',
-    );
+    expect(screen.queryByText('navigation:pages.organizationSettings')).not.toBeInTheDocument();
+    expect(screen.getByTestId('project-switcher')).toBeInTheDocument();
   });
 
   it("shows a gateway's own navigation on its pages in a project, back to the project", () => {
@@ -516,7 +542,7 @@ describe('DashboardLayout', () => {
     mockPath = '/project/shop/deploy/gateways/gw-dev';
     render(<DashboardLayout />);
 
-    expect(screen.getByText('navigation:categories.gateway')).toBeInTheDocument();
+    expect(screen.getByTestId('gateway-switcher')).toBeInTheDocument();
     expect(screen.getByText('Shop').closest('a')).toHaveAttribute('href', '/project/shop');
   });
 
@@ -525,14 +551,25 @@ describe('DashboardLayout', () => {
 
     // The organization's navigation, grouped as its overview lays it out.
     for (const category of [
-      'navigation:categories.administration',
       'navigation:categories.identitySetup',
       'navigation:categories.signInExperience',
       'navigation:categories.apisAndCredentials',
+      'navigation:categories.system',
     ]) {
       expect(screen.getByText(category)).toBeInTheDocument();
     }
     expect(screen.getByText('navigation:pages.overview')).toBeInTheDocument();
+  });
+
+  it('keeps the resources every project shares together in a band of their own', () => {
+    render(<DashboardLayout />);
+
+    const shared = screen.getByTestId('nav-shared');
+    expect(within(shared).getByText('navigation:categories.shared')).toBeInTheDocument();
+    expect(within(shared).getByText('navigation:categories.identitySetup')).toBeInTheDocument();
+    expect(within(shared).getByText('navigation:pages.settings')).toBeInTheDocument();
+    expect(within(shared).queryByText('navigation:pages.projects')).not.toBeInTheDocument();
+    expect(within(shared).queryByText('navigation:pages.gateways')).not.toBeInTheDocument();
   });
 
   it('offers no Deploy in the header or the navigation', () => {
@@ -654,8 +691,7 @@ describe('DashboardLayout', () => {
 
       expect(screen.getByText('navigation:pages.applications')).toBeInTheDocument();
       expect(screen.queryByText('navigation:pages.agents')).not.toBeInTheDocument();
-      expect(screen.queryByText('navigation:pages.deploymentPipeline')).not.toBeInTheDocument();
-      expect(screen.getByText('navigation:pages.organizationSettings')).toBeInTheDocument();
+      expect(screen.queryByText('navigation:pages.overview')).not.toBeInTheDocument();
     });
 
     it("offers a gateway's variables and secrets only to admins who can manage root-only APIs", () => {

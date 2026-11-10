@@ -11,7 +11,7 @@ import {versionLabel} from '../utils/format';
 import relativeTime from '../utils/relativeTime';
 
 /** How many versions show before the rest are asked for. */
-const SHOWN = 5;
+const SHOWN = 3;
 
 export interface PipelineVersionsProps {
   /** The captured versions, newest first. */
@@ -108,16 +108,18 @@ export default function PipelineVersions({
             ))}
           </Stack>
         )}
-        {deployable && (
+        {/* A version the first gateway runs already shows its tag in place of a deploy. */}
+        {deployable && version.version !== firstRuns && (
           <Button
             size="small"
-            variant={index === 0 && deployable ? 'contained' : 'outlined'}
+            variant={index === 0 ? 'contained' : 'outlined'}
+            color={index === 0 ? 'primary' : 'inherit'}
             onClick={() => {
               setAll(false);
               onDeploy(version);
             }}
             disabled={deploying === version.version}
-            sx={{borderRadius: 100, flexShrink: 0}}
+            sx={{borderRadius: 100, flexShrink: 0, ...(index === 0 ? {} : {borderColor: 'divider'})}}
           >
             {t('pipeline.deploy', 'Deploy')}
           </Button>

@@ -175,9 +175,18 @@ vi.mock('../layouts/DashboardLayout', async () => {
   return {default: () => <Outlet />};
 });
 
+// What the console's root reads to open the default project: no projects unless a test sets some.
+const projectSelection = vi.hoisted(() => ({
+  projects: [] as {id: string; handle: string; displayName: string}[],
+  selectedProject: undefined as {id: string} | undefined,
+  isLoading: false,
+  selectProject: (): void => undefined,
+}));
+
 vi.mock('@thunderid/configure-projects', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@thunderid/configure-projects')>()),
   SelectedProjectScope: ({children}: {children: ReactNode}) => children,
+  useProjectSelection: () => projectSelection,
 }));
 
 vi.mock('../layouts/FullScreenLayout', async () => {
@@ -243,11 +252,22 @@ describe('App', () => {
     });
   });
 
-  it('lands on the organization home at the root', async () => {
+  it('lands on the organization home at the root when there is no default project', async () => {
     window.history.pushState({}, '', '/');
     render(<App />);
     expect(await screen.findByTestId('organization-home-page')).toBeInTheDocument();
     expect(window.location.pathname).toBe('/home');
+  });
+
+  it("lands on the default project's home at the root once it is selected", async () => {
+    projectSelection.projects = [{id: 'p-default', handle: 'default', displayName: 'Default'}];
+    projectSelection.selectedProject = {id: 'p-default'};
+    window.history.pushState({}, '', '/');
+    render(<App />);
+    expect(await screen.findByTestId('project-home-page')).toBeInTheDocument();
+    expect(window.location.pathname).toBe('/project/default');
+    projectSelection.projects = [];
+    projectSelection.selectedProject = undefined;
   });
 
   it("loads a project's home at /project/:projectHandle", async () => {

@@ -21,7 +21,6 @@ export default function GatewayTag({name, index}: VersionRunner): JSX.Element {
       sx={(theme) => ({
         fontFamily: 'monospace',
         fontSize: 11,
-        textTransform: 'uppercase',
         px: 0.75,
         py: '1px',
         borderRadius: '6px',

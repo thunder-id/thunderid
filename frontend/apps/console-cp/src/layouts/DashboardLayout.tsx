@@ -3,7 +3,6 @@
 
 import {BotCogIcon, getInitials} from '@thunderid/components';
 import {
-  gatewayColor,
   gatewaySectionOf,
   useDeployRoutes,
   usePipeline,
@@ -18,15 +17,16 @@ import {SignOutButton, User, useThunderID} from '@thunderid/react';
 import {
   Alert,
   AppShell,
+  alpha,
   Box,
   Button,
-  Chip,
   ColorSchemeImage,
   ColorSchemeToggle,
   Footer,
   Header,
   Sidebar,
   Tooltip,
+  Typography,
   useAppShell,
   useSidebar,
   UserMenu,
@@ -34,10 +34,8 @@ import {
 import {
   Bot,
   Building,
-  FolderKanban,
   Group,
   ArrowLeft,
-  Circle,
   Compass,
   Globe,
   History,
@@ -52,11 +50,13 @@ import {
   MessageSquare,
   Network,
   Palette,
+  Rocket,
   Server,
   Settings,
   ShieldCheck,
   SquareArrowRightEnter,
   UserRoundCog,
+  UserStar,
   UsersRound,
   Wallet,
   Workflow,
@@ -66,6 +66,7 @@ import {useTranslation} from 'react-i18next';
 import {Link as NavigateLink, Outlet, useLocation, useNavigate} from 'react-router';
 import GatewaySwitcher from './components/GatewaySwitcher';
 import useOpenGatewayId from './useOpenGatewayId';
+import PendingDeployBanner from '../components/PendingDeployBanner';
 import SignInOnUnauthorized from '../components/SignInOnUnauthorized';
 import RouteConfig, {projectRouteConfig} from '../configs/RouteConfig';
 
@@ -101,11 +102,40 @@ interface NavRoute {
   badge?: string;
   /** A dot beside a parent entry while it is collapsed, standing in for its entries' own dots. */
   collapsedBadge?: string;
+  /** Done as well as going to the entry's page, such as leaving the selected project. */
+  onSelect?: () => void;
+  /** A line under the entry's name saying what it holds. */
+  description?: string;
 }
 
 interface NavCategory {
   category?: string;
   routes: NavRoute[];
+  /** Belongs to the organization's resources that every project shares, which sit together below the rest. */
+  shared?: boolean;
+  /** Shown above the group's entries, such as the gateway selector on a gateway's pages. */
+  before?: ReactNode;
+}
+
+/** Names the organization's resources every project shares, while the sidebar shows names. */
+function SharedHeading(): ReactNode {
+  const {t} = useTranslation();
+  const {state} = useAppShell();
+  if (state.sidebarCollapsed) return null;
+  return (
+    <Box sx={{pl: '22px', pr: 1.5, pb: 1.5}} data-testid="nav-shared-heading">
+      <Typography
+        component="div"
+        sx={{display: 'flex', alignItems: 'center', gap: 1, fontSize: 12, fontWeight: 600, color: 'text.secondary'}}
+      >
+        <Globe size={14} />
+        {t('navigation:categories.shared', 'Shared by all projects')}
+      </Typography>
+      <Typography sx={{fontSize: 12, color: 'text.secondary', opacity: 0.85}}>
+        {t('navigation:categories.sharedHint', 'Deployed with every project')}
+      </Typography>
+    </Box>
+  );
 }
 
 function SidebarFooterButtons(): ReactNode {
@@ -328,7 +358,7 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
     if (gateway && gatewayId) {
       const section = (name: 'overview' | 'values' | 'endpoints' | 'history' | 'explore'): string =>
         gatewaySectionOf(deployRoutes, gatewayId, undefined, name);
-      const color = gatewayColor(gatewayIndex);
+      // As the design has it: back to the organization, the gateway open with a way to switch it, then its pages.
       return [
         {
           routes: [
@@ -341,20 +371,20 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
                 }
               : {
                   id: 'gateway-back',
-                  text: t('navigation:pages.overview', 'Overview'),
+                  text: t('navigation:pages.organizationOverview', 'Organization overview'),
                   icon: <ArrowLeft />,
                   path: RouteConfig.home.list(),
                 },
           ],
         },
         {
-          category: t('navigation:categories.gateway', 'Gateway: {{name}}', {name: gateway.name}),
+          before: <GatewaySwitcher />,
           routes: [
             {
               id: 'gateway-overview',
               resource: 'gateway',
               text: t('navigation:pages.overview', 'Overview'),
-              icon: <Circle fill={color.light} stroke={color.light} />,
+              icon: <Home />,
               path: section('overview'),
             },
           ],
@@ -404,27 +434,25 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
         },
       ];
     }
+    // A project's navigation, as its home lays it out: its overview, then what it builds. The way back
+    // to the organization is beside the project in the header.
     if (project) {
       return [
         {
           routes: [
             {
-              id: 'organization',
-              text: t('navigation:pages.organizationSettings', 'Organization settings'),
-              icon: <ArrowLeft />,
-              path: RouteConfig.home.list(),
+              id: 'project-home',
+              resource: 'project',
+              text: t('navigation:pages.overview', 'Overview'),
+              icon: <Home />,
+              path: RouteConfig.projects.home(project.handle),
             },
-          ],
-        },
-        {
-          category: t('navigation:categories.project', 'Project: {{name}}', {name: project.displayName}),
-          routes: [
             {
-              id: 'project-gateways',
+              id: 'project-pipeline',
               resource: 'project',
               text: t('navigation:pages.deploymentPipeline', 'Deployment pipeline'),
-              icon: <FolderKanban />,
-              path: RouteConfig.projects.home(project.handle),
+              icon: <Rocket />,
+              path: RouteConfig.projects.home(project.handle, '/pipeline'),
             },
           ],
         },
@@ -508,13 +536,20 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
         ],
       },
       {
-        category: t('navigation:categories.administration', 'Administration'),
         routes: [
+          {
+            id: 'projects',
+            text: t('navigation:pages.projects', 'Projects'),
+            description: t('navigation:pages.projectsHint', 'Manage applications, agents, flows etc.'),
+            icon: <LayoutGrid />,
+            path: RouteConfig.projects.list(),
+          },
           {
             id: 'users',
             resource: 'user',
             text: t('navigation:pages.administrators', 'Administrators'),
-            icon: <UsersRound />,
+            description: t('navigation:pages.administratorsHint', 'People who manage your gateways'),
+            icon: <UserStar />,
             path: paths.users.list(),
           },
           {
@@ -527,6 +562,7 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
         ],
       },
       {
+        shared: true,
         category: t('navigation:categories.identitySetup', 'Identity setup'),
         routes: [
           groups,
@@ -548,6 +584,7 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
         ],
       },
       {
+        shared: true,
         category: t('navigation:categories.signInExperience', 'Sign-in experience'),
         routes: [
           {
@@ -567,16 +604,18 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
         ],
       },
       {
+        shared: true,
         category: t('navigation:categories.apisAndCredentials', 'APIs and credentials'),
         routes: [resourceServers],
       },
       {
+        shared: true,
         category: t('navigation:categories.system', 'System'),
         routes: [
           {
             id: 'settings',
             resource: 'serverconfig',
-            text: t('navigation:pages.settings', 'Settings'),
+            text: t('navigation:pages.settings', 'Configurations'),
             icon: <Settings />,
             path: RouteConfig.settings.list(),
           },
@@ -599,7 +638,6 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
     undeployed.organization_unit,
     gateway,
     gatewayId,
-    gatewayIndex,
     deployRoutes,
   ]);
 
@@ -684,7 +722,7 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
   // The Sidebar picks an item's parts out of its direct children, so they are returned as a list, not a fragment, and
   // the hint wraps the dot inside the badge rather than the badge. The hint's target is larger than the dot, so the
   // dot is easy to hover.
-  const labelOf = (id: string, text: string, badge: string | undefined): JSX.Element[] => [
+  const labelOf = (id: string, text: ReactNode, badge: string | undefined): JSX.Element[] => [
     <Sidebar.ItemLabel key="label" sx={badge ? {flex: '1 0 auto', overflow: 'visible'} : undefined}>
       {text}
     </Sidebar.ItemLabel>,
@@ -724,6 +762,49 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
       : []),
   ];
 
+  const renderGroup = (categoryGroup: NavCategory, index: number): ReactNode => (
+    <Sidebar.Category key={categoryGroup.category ?? `group-${index}`}>
+      {categoryGroup.before}
+      {categoryGroup.category && <Sidebar.CategoryLabel>{categoryGroup.category}</Sidebar.CategoryLabel>}
+      {categoryGroup.routes.map((route) =>
+        route.children ? (
+          <Sidebar.Item key={route.id} id={route.id}>
+            <Sidebar.ItemIcon>{route.icon}</Sidebar.ItemIcon>
+            {labelOf(route.id, route.text, route.badge ?? (expandedMenus[route.id] ? undefined : route.collapsedBadge))}
+            {route.children.map((child) => (
+              <Sidebar.Item key={child.id} id={child.id} link={<NavigateLink to={child.path ?? ''} />}>
+                <Sidebar.ItemIcon>{child.icon}</Sidebar.ItemIcon>
+                {labelOf(child.id, child.text, child.badge)}
+              </Sidebar.Item>
+            ))}
+          </Sidebar.Item>
+        ) : (
+          <Sidebar.Item
+            key={route.id}
+            id={route.id}
+            link={<NavigateLink to={route.path ?? ''} onClick={route.onSelect} />}
+          >
+            <Sidebar.ItemIcon>{route.icon}</Sidebar.ItemIcon>
+            {labelOf(
+              route.id,
+              route.description ? (
+                <Box component="span" sx={{display: 'flex', flexDirection: 'column', py: 0.75, whiteSpace: 'normal'}}>
+                  <span>{route.text}</span>
+                  <Typography component="span" sx={{fontSize: 12, lineHeight: 1.35, color: 'text.secondary'}}>
+                    {route.description}
+                  </Typography>
+                </Box>
+              ) : (
+                route.text
+              ),
+              route.badge,
+            )}
+          </Sidebar.Item>
+        ),
+      )}
+    </Sidebar.Category>
+  );
+
   return (
     // `collapseSidebar` seeds AppShell's own state rather than force-controlling the
     // Sidebar. Passing `collapsed` to the Sidebar would override the shell's state and
@@ -749,24 +830,14 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
             </Header.BrandLogo>
             <Header.BrandTitle>Console</Header.BrandTitle>
           </Header.Brand>
-          {projects.length > 0 && (
+          {/* On a gateway's pages the header names no project; the gateway is chosen in the sidebar. */}
+          {projects.length > 0 && !gateway && (
             <Header.Switchers showDivider={false}>
               <ProjectSwitcher />
             </Header.Switchers>
           )}
           <Header.Spacer />
           <Header.Actions>
-            {/* Switching gateways is offered on a gateway's own pages only. */}
-            {gateway && <GatewaySwitcher />}
-            {gateway && (
-              <Chip
-                size="small"
-                variant="outlined"
-                label={t('common:header.readOnly', 'Configuration read-only')}
-                sx={{mr: 1}}
-                data-testid="header-read-only"
-              />
-            )}
             <ColorSchemeToggle />
             <User>
               {(user) => {
@@ -804,34 +875,27 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
         {/* Wide enough for the longest page names, such as a gateway's deployed configuration, to show whole. */}
         <Sidebar width={272} activeItem={activeItem} expandedMenus={expandedMenus} onToggleExpand={handleToggleExpand}>
           <Sidebar.Nav>
-            {visibleRoutes.map((categoryGroup) => (
-              <Sidebar.Category key={categoryGroup.category}>
-                {categoryGroup.category && <Sidebar.CategoryLabel>{categoryGroup.category}</Sidebar.CategoryLabel>}
-                {categoryGroup.routes.map((route) =>
-                  route.children ? (
-                    <Sidebar.Item key={route.id} id={route.id}>
-                      <Sidebar.ItemIcon>{route.icon}</Sidebar.ItemIcon>
-                      {labelOf(
-                        route.id,
-                        route.text,
-                        route.badge ?? (expandedMenus[route.id] ? undefined : route.collapsedBadge),
-                      )}
-                      {route.children.map((child) => (
-                        <Sidebar.Item key={child.id} id={child.id} link={<NavigateLink to={child.path ?? ''} />}>
-                          <Sidebar.ItemIcon>{child.icon}</Sidebar.ItemIcon>
-                          {labelOf(child.id, child.text, child.badge)}
-                        </Sidebar.Item>
-                      ))}
-                    </Sidebar.Item>
-                  ) : (
-                    <Sidebar.Item key={route.id} id={route.id} link={<NavigateLink to={route.path ?? ''} />}>
-                      <Sidebar.ItemIcon>{route.icon}</Sidebar.ItemIcon>
-                      {labelOf(route.id, route.text, route.badge)}
-                    </Sidebar.Item>
-                  ),
-                )}
-              </Sidebar.Category>
-            ))}
+            {visibleRoutes.filter((group) => !group.shared).map(renderGroup)}
+            {visibleRoutes.some((group) => group.shared) && (
+              <Box
+                sx={(theme) => ({
+                  // A band of its own to the sidebar's edges and foot, as the design shades it.
+                  flex: '1 0 auto',
+                  mt: 2,
+                  mb: -1,
+                  pt: 3,
+                  pb: 2,
+                  bgcolor: alpha(theme.palette.text.primary, 0.03),
+                  ...theme.applyStyles('dark', {bgcolor: 'rgba(150, 170, 210, 0.06)'}),
+                  // The band starts the shared part on its own, without the divider before it.
+                  'hr:has(+ &)': {display: 'none'},
+                })}
+                data-testid="nav-shared"
+              >
+                <SharedHeading />
+                {visibleRoutes.filter((group) => group.shared).map(renderGroup)}
+              </Box>
+            )}
           </Sidebar.Nav>
           <Sidebar.Footer>
             <SidebarFooterButtons />
@@ -849,7 +913,22 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
           </Box>
         ) : (
           <CapabilitiesProvider capabilities={capabilities}>
-            <Outlet />
+            {/* The banner over every page, scrolling away with it: the two scroll together, the page at its full height. */}
+            <Box
+              sx={{
+                display: 'flex',
+                flexDirection: 'column',
+                flex: 1,
+                minWidth: 0,
+                minHeight: 0,
+                overflowY: 'auto',
+                '& > :last-child': {flex: '1 0 auto', height: 'auto', overflow: 'visible'},
+              }}
+            >
+              {/* An environment's own pages tell what it lacks themselves. */}
+              {!gatewayId && <PendingDeployBanner />}
+              <Outlet />
+            </Box>
           </CapabilitiesProvider>
         )}
       </AppShell.Main>

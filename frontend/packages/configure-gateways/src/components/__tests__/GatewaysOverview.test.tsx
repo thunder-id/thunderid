@@ -73,8 +73,10 @@ describe('GatewaysOverview', () => {
 
     const devCard = await screen.findByTestId('deploy-stage-gw-dev');
     const prodCard = screen.getByTestId('deploy-stage-gw-prod');
-    expect(within(devCard).getByText('Development')).toBeInTheDocument();
-    expect(within(prodCard).getByText('Production')).toBeInTheDocument();
+    // Each card names its gateway once, as its heading.
+    expect(within(devCard).getAllByText('Development')).toHaveLength(1);
+    expect(within(devCard).getByRole('heading', {name: 'Development'})).toBeInTheDocument();
+    expect(within(prodCard).getByRole('heading', {name: 'Production'})).toBeInTheDocument();
     expect(devCard.compareDocumentPosition(prodCard) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
     expect(within(prodCard).queryByText('Open the admin portal')).not.toBeInTheDocument();
@@ -89,38 +91,6 @@ describe('GatewaysOverview', () => {
     await userEvent.click(within(await screen.findByTestId('deploy-stage-gw-dev')).getByTestId('stage-open'));
 
     expect(navigate).toHaveBeenCalledWith('/deploy/gateways/gw-dev');
-  });
-
-  it('opens a gateway within the project it is shown for', async () => {
-    render(
-      <ProjectScopeProvider project={{id: 'p-shop'}}>
-        <GatewaysOverview />
-      </ProjectScopeProvider>,
-    );
-
-    await userEvent.click(within(await screen.findByTestId('deploy-stage-gw-dev')).getByTestId('stage-open'));
-
-    expect(navigate).toHaveBeenCalledWith('/projects/p-shop/deploy/gateways/gw-dev');
-  });
-
-  it("explores a gateway on the project's own gateway page", async () => {
-    render(
-      <ProjectScopeProvider project={{id: 'p-shop'}}>
-        <GatewaysOverview />
-      </ProjectScopeProvider>,
-    );
-
-    const prodCard = await screen.findByTestId('deploy-stage-gw-prod');
-    await userEvent.click(within(prodCard).getByRole('button', {name: 'Explore Production'}));
-    expect(navigate).toHaveBeenCalledWith('/projects/p-shop/deploy/gateways/gw-prod/explore');
-  });
-
-  it('explores a gateway on its own pages outside a project', async () => {
-    render(<GatewaysOverview />);
-
-    const prodCard = await screen.findByTestId('deploy-stage-gw-prod');
-    await userEvent.click(within(prodCard).getByRole('button', {name: 'Explore Production'}));
-    expect(navigate).toHaveBeenCalledWith('/deploy/gateways/gw-prod/explore');
   });
 
   it('shows a project that runs in one gateway as a pipeline of one, beside the versions to deploy to it', async () => {
@@ -155,36 +125,42 @@ describe('GatewaysOverview', () => {
     ).toBeInTheDocument();
   });
 
-  it('opens a gateway within the project it is shown for', async () => {
+  it("opens a gateway on the organization's own page, even within a project", async () => {
     render(
       <ProjectScopeProvider project={{id: 'p-shop'}}>
         <GatewaysOverview />
       </ProjectScopeProvider>,
     );
 
-    await userEvent.click(within(await screen.findByTestId('deploy-stage-gw-dev')).getByTestId('stage-open'));
+    const open = within(await screen.findByTestId('deploy-stage-gw-dev')).getByTestId('stage-open');
+    expect(open).toHaveTextContent('Open gateway');
+    await userEvent.click(open);
 
-    expect(navigate).toHaveBeenCalledWith('/projects/p-shop/deploy/gateways/gw-dev');
+    expect(navigate).toHaveBeenCalledWith('/deploy/gateways/gw-dev');
   });
 
-  it("explores a gateway on the project's own gateway page", async () => {
-    render(
-      <ProjectScopeProvider project={{id: 'p-shop'}}>
-        <GatewaysOverview />
-      </ProjectScopeProvider>,
-    );
-
-    const prodCard = await screen.findByTestId('deploy-stage-gw-prod');
-    await userEvent.click(within(prodCard).getByRole('button', {name: 'Explore Production'}));
-    expect(navigate).toHaveBeenCalledWith('/projects/p-shop/deploy/gateways/gw-prod/explore');
-  });
-
-  it('explores a gateway on its own pages outside a project', async () => {
+  it('offers no way to explore a gateway from its card', async () => {
     render(<GatewaysOverview />);
 
     const prodCard = await screen.findByTestId('deploy-stage-gw-prod');
-    await userEvent.click(within(prodCard).getByRole('button', {name: 'Explore Production'}));
-    expect(navigate).toHaveBeenCalledWith('/deploy/gateways/gw-prod/explore');
+    expect(within(prodCard).queryByRole('button', {name: 'Explore Production'})).not.toBeInTheDocument();
+  });
+
+  it('shows the headline, lead and pipeline title it is given, and what goes before the pipeline', async () => {
+    render(
+      <GatewaysOverview
+        headline="Ship it"
+        lead="Where configuration goes"
+        beforePipeline={<div data-testid="before-pipeline" />}
+        pipelineTitle="Your pipeline"
+      />,
+    );
+
+    expect(screen.getByRole('heading', {name: 'Ship it'})).toBeInTheDocument();
+    expect(screen.getByText('Where configuration goes')).toBeInTheDocument();
+    expect(screen.getByTestId('before-pipeline')).toBeInTheDocument();
+    expect(screen.getByRole('heading', {name: 'Your pipeline'})).toBeInTheDocument();
+    await screen.findByTestId('deploy-stage-gw-dev');
   });
 
   it("marks a version with the gateways the project's own resources there came from", async () => {
@@ -629,13 +605,16 @@ describe('GatewaysOverview', () => {
     expect(screen.getByText('1 gateway')).toBeInTheDocument();
   });
 
-  it('marks the versions the gateways run, and offers each to deploy', async () => {
+  it('marks the versions the gateways run, and offers each the first gateway does not run to deploy', async () => {
     render(<GatewaysOverview />);
 
     const latest = await screen.findByTestId(`pipeline-version-${v2}`);
     await waitFor(() => expect(within(latest).getByText('Development')).toBeInTheDocument());
-    expect(within(latest).getByRole('button', {name: 'Deploy'})).toHaveClass('MuiButton-contained');
-    expect(within(screen.getByTestId(`pipeline-version-${v1}`)).getByText('Production')).toBeInTheDocument();
+    // The first gateway runs the latest, so it shows there in place of a deploy.
+    expect(within(latest).queryByRole('button', {name: 'Deploy'})).not.toBeInTheDocument();
+    const older = screen.getByTestId(`pipeline-version-${v1}`);
+    expect(within(older).getByText('Production')).toBeInTheDocument();
+    expect(within(older).getByRole('button', {name: 'Deploy'})).toHaveClass('MuiButton-outlined');
     expect(within(screen.getByTestId('deploy-stage-gw-dev')).getByTestId('card-standing')).toHaveTextContent(
       'In sync with configuration',
     );

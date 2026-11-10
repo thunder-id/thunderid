@@ -47,6 +47,19 @@ describe('DeployedResources', () => {
     expect(screen.getByTestId('gateway-filter-all')).toHaveAttribute('aria-pressed', 'true');
   });
 
+  it('outlines every filter, and marks the selected one with a check', async () => {
+    show([app('a', 'unchanged'), app('b', 'added')]);
+
+    const attention = screen.getByTestId('gateway-filter-attention');
+    const all = screen.getByTestId('gateway-filter-all');
+    for (const chip of [attention, all]) expect(chip).toHaveClass('MuiChip-outlined');
+    expect(attention.querySelector('svg')).toBeInTheDocument();
+    expect(all.querySelector('svg')).not.toBeInTheDocument();
+    await userEvent.click(all);
+    expect(all.querySelector('svg')).toBeInTheDocument();
+    expect(attention.querySelector('svg')).not.toBeInTheDocument();
+  });
+
   it('groups by kind with a summary, open only where something needs attention', () => {
     show([
       app('a', 'added'),

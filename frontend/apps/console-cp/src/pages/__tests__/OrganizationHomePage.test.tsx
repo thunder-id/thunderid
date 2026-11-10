@@ -8,7 +8,7 @@ import OrganizationHomePage from '../OrganizationHomePage';
 
 const navigate = vi.fn();
 // The pipeline's stages; a test may leave only the first.
-const pipeline = vi.hoisted(() => ({only: false, fails: false}));
+const pipeline = vi.hoisted(() => ({only: false, fails: false, loading: false}));
 const pipelineRefetch = vi.hoisted(() => vi.fn());
 const request = vi.fn();
 vi.mock('react-router', async (importOriginal) => ({
@@ -58,6 +58,7 @@ vi.mock('@thunderid/configure-gateways', async (importOriginal) => {
           gateway: {id: 'gw-prod', name: 'prod', baseUrl: 'https://auth.test'},
         },
       ];
+      if (pipeline.loading) return {isLoading: true, refetch: pipelineRefetch};
       if (pipeline.fails) return {isLoading: false, isError: true, error: new Error('down'), refetch: pipelineRefetch};
       return {isLoading: false, data: {stages: pipeline.only ? stages.slice(0, 1) : stages}};
     },
@@ -97,15 +98,23 @@ describe('OrganizationHomePage', () => {
     expect(screen.getByText('Hello, Jerad')).toBeInTheDocument();
     const path = screen.getByTestId('organization-how-it-works');
     expect(within(path).getByText('Configure here')).toBeInTheDocument();
-    expect(within(path).getAllByText('Deploy')).toHaveLength(2);
+    expect(within(path).getAllByText('Deploy')).toHaveLength(1);
     expect(within(path).getAllByText('Promote')).toHaveLength(1);
     expect(within(path).queryByTestId('organization-gateway-more')).not.toBeInTheDocument();
     // A gateway's page is the organization's, the same as the project home opens.
+    const open = within(screen.getByTestId('organization-gateway-gw-dev')).getByRole('link', {
+      name: 'Open Development (dev.auth.test)',
+    });
+    expect(open).toHaveAttribute('href', '/deploy/gateways/gw-dev');
+    expect(open).toHaveTextContent('Open gateway');
+    // The tiles lead the page, without a heading of their own.
+    expect(screen.queryByRole('heading', {name: 'Applications and agents'})).not.toBeInTheDocument();
     expect(
-      within(screen.getByTestId('organization-gateway-gw-dev')).getByRole('link', {
-        name: 'Open DEVELOPMENT (dev.auth.test)',
-      }),
-    ).toHaveAttribute('href', '/deploy/gateways/gw-dev');
+      screen.getByTestId('organization-applications-and-agents').compareDocumentPosition(path) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    // Nothing is waiting, so no deploy is offered.
+    expect(screen.queryByTestId('organization-pending')).not.toBeInTheDocument();
     expect(within(path).getByText('Gateways come from the deployment configuration.')).toBeInTheDocument();
   });
 
@@ -115,9 +124,7 @@ describe('OrganizationHomePage', () => {
     pipeline.only = false;
 
     expect(
-      screen.getByText(
-        'Configure here, then deploy to your gateway. It has its own users and the apps connected to it.',
-      ),
+      screen.getByText('Configure here, then deploy to your gateway. It has its own users and apps.'),
     ).toBeInTheDocument();
     expect(screen.getByTestId('organization-gateway-more')).toHaveTextContent('Add a gateway');
   });
@@ -131,6 +138,15 @@ describe('OrganizationHomePage', () => {
     await userEvent.click(within(how).getByRole('button', {name: /refresh/i}));
     pipeline.fails = false;
     expect(pipelineRefetch).toHaveBeenCalled();
+  });
+
+  it("holds the diagram's place with a spinner while the gateways are read", () => {
+    pipeline.loading = true;
+    render(<OrganizationHomePage />);
+    pipeline.loading = false;
+
+    expect(screen.getByRole('progressbar', {name: 'Reading the gateways'})).toBeInTheDocument();
+    expect(screen.queryByRole('region', {name: 'Configuration flow diagram'})).not.toBeInTheDocument();
   });
 
   it('links to where the gateways are managed, when the deployment says where', () => {
@@ -193,18 +209,6 @@ describe('OrganizationHomePage', () => {
     await userEvent.click(screen.getByTestId('project-picker-continue'));
 
     expect(selectProject).toHaveBeenCalledWith('billing', '/applications/types');
-  });
-
-  it("asks which project to deploy, then opens that project's home", async () => {
-    render(<OrganizationHomePage />);
-
-    await userEvent.click(screen.getByTestId('organization-deploy'));
-    expect(
-      screen.getByText('Choose the project to deploy. Each project deploys through its own pipeline.'),
-    ).toBeInTheDocument();
-    await userEvent.click(screen.getByTestId('project-picker-continue'));
-
-    expect(selectProject).toHaveBeenCalledWith('shop');
   });
 
   it('opens a new agent in the chosen project', async () => {

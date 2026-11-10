@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {DocumentTitle, ExternalLink} from '@thunderid/components';
-import {useConfig} from '@thunderid/contexts';
 import {Box, PageContent, PageTitle, Tab, Tabs} from '@wso2/oxygen-ui';
 import {useState, type JSX, type SyntheticEvent} from 'react';
 import {useTranslation} from 'react-i18next';
@@ -11,7 +10,6 @@ import CorsSection from '../components/cors/CorsSection';
 
 export default function SettingsPage(): JSX.Element {
   const {t} = useTranslation();
-  const {config} = useConfig();
   const [activeTab, setActiveTab] = useState(0);
 
   const handleTabChange = (_event: SyntheticEvent, newValue: number): void => {
@@ -20,13 +18,11 @@ export default function SettingsPage(): JSX.Element {
 
   return (
     <PageContent>
-      <DocumentTitle title={t('settings:page.title', 'Settings')} />
+      <DocumentTitle title={t('settings:page.title', 'Configurations')} />
       <PageTitle>
         <PageTitle.Header>{t('settings:page.title')}</PageTitle.Header>
         <PageTitle.SubHeader>
-          {t('settings:page.subtitle', 'Settings that apply across your entire {{productName}} deployment.', {
-            productName: config.brand.product_name,
-          })}{' '}
+          {t('settings:page.subtitle', 'Configurations that apply across your system.')}{' '}
           <ExternalLink docKey="settings" confirmBeforeNavigate={false} />
         </PageTitle.SubHeader>
       </PageTitle>
