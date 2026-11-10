@@ -371,7 +371,7 @@ func (t *roleTools) listRoles(ctx context.Context, _ *mcp.CallToolRequest, input
 			}
 			roles = found
 		} else {
-			byName, svcErr := t.roleService.GetRolesByNames(searchCtx, []string{input.Name})
+			byName, svcErr := t.roleService.GetRolesByNames(searchCtx, []string{input.Name}, "")
 			if svcErr != nil {
 				return nil, nil, fmt.Errorf("failed to list roles: %s", svcErr.ErrorDescription)
 			}
@@ -651,7 +651,7 @@ func (t *roleTools) roleGrantingExactly(ctx context.Context, ouID, serverID stri
 // roleNamed returns the ID of the role with the given name in the organization unit, or "" when there
 // is none or it can't be read.
 func (t *roleTools) roleNamed(ctx context.Context, ouID, name string) string {
-	found, svcErr := t.roleService.GetRolesByNames(ctx, []string{name})
+	found, svcErr := t.roleService.GetRolesByNames(ctx, []string{name}, "")
 	if svcErr != nil {
 		return ""
 	}

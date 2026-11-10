@@ -2572,10 +2572,13 @@ const translations = {
     'authorizationRules.target.type.permission': 'Permission',
     'authorizationRules.target.role.label': 'Role',
     'authorizationRules.target.role.placeholder': 'Select a role',
+    'authorizationRules.target.role.unavailable': 'Unavailable: {{id}}',
     'authorizationRules.target.group.label': 'Group',
     'authorizationRules.target.group.placeholder': 'Select a group',
+    'authorizationRules.target.group.unavailable': 'Unavailable: {{id}}',
     'authorizationRules.target.resourceServer.label': 'Resource server',
     'authorizationRules.target.resourceServer.placeholder': 'Select a resource server',
+    'authorizationRules.target.resourceServer.unavailable': 'Unavailable: {{id}}',
     'authorizationRules.targetType.label': 'Target type',
 
     // Delete dialog
@@ -6234,6 +6237,7 @@ const translations = {
     'permissionCatalog.loadError': 'Failed to load permissions for this resource server.',
     'permissionCatalog.loadServersError': 'Failed to load resource servers.',
     'permissionCatalog.serverNotFound': 'Resource server not found',
+    'permissionCatalog.serverUnavailable': 'Unavailable',
     'create.separator.hierarchyLabel': 'Use hierarchy-aware matching',
     'create.separator.hierarchyHint':
       'When enabled, granting a permission also grants its descendants, including permissions added later.',

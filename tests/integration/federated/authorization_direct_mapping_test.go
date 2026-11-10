@@ -55,9 +55,10 @@ func (s *FederatedMappingSuite) TestAuthzDirectMapping_RoleNameNoMatchGrantsNoth
 	s.Empty(authorized, "an unmatched role name should confer nothing")
 }
 
-// A role name is unique only within an organization unit, so the same name in a second OU makes the
-// claim value ambiguous: it must confer nothing rather than picking one of the two roles arbitrarily.
-func (s *FederatedMappingSuite) TestAuthzDirectMapping_AmbiguousRoleNameAcrossOUsSkipped() {
+// A role name is unique only within an organization unit, but a direct mapping matches only roles the
+// connection's organization unit owns or has shared with it. A same-named role in another OU, not shared
+// with it, is not a candidate, so the connection's own role still resolves.
+func (s *FederatedMappingSuite) TestAuthzDirectMapping_RoleNameOutsideConnectionOUIgnored() {
 	otherOUID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
 		Handle: "direct-mapping-ambiguous-" + s.nextSubject(),
 		Name:   "Direct Mapping Ambiguous OU",
@@ -83,7 +84,8 @@ func (s *FederatedMappingSuite) TestAuthzDirectMapping_AmbiguousRoleNameAcrossOU
 	config := authzDirectMapping("role_name", "", testutils.AuthorizationTargetRole, "")
 
 	authorized := s.authorizeFederated(config, user, "read", "federated-authz-mapping-api")
-	s.Empty(authorized, "a name matching more than one role should confer nothing, not pick one arbitrarily")
+	s.Contains(authorized, "read",
+		"a role outside the connection's organization unit should not make the name ambiguous")
 }
 
 // A claim value matching a group's name exactly grants access through that group's own role
@@ -99,9 +101,9 @@ func (s *FederatedMappingSuite) TestAuthzDirectMapping_GroupNameMatchGrants() {
 	s.NotContains(authorized, "read", "only the matched group's own role permission should be authorized")
 }
 
-// A group name matching more than one group across organization units is ambiguous, mirroring the
-// role case above.
-func (s *FederatedMappingSuite) TestAuthzDirectMapping_AmbiguousGroupNameAcrossOUsSkipped() {
+// A same-named group in another organization unit is not a candidate either, since groups are never
+// shared, so the connection's own group still resolves, mirroring the role case above.
+func (s *FederatedMappingSuite) TestAuthzDirectMapping_GroupNameOutsideConnectionOUIgnored() {
 	otherOUID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
 		Handle: "direct-mapping-ambiguous-group-" + s.nextSubject(),
 		Name:   "Direct Mapping Ambiguous Group OU",
@@ -127,7 +129,8 @@ func (s *FederatedMappingSuite) TestAuthzDirectMapping_AmbiguousGroupNameAcrossO
 	config := authzDirectMapping("group_name", "", testutils.AuthorizationTargetGroup, "")
 
 	authorized := s.authorizeFederated(config, user, "write", "federated-authz-mapping-api")
-	s.Empty(authorized, "a name matching more than one group should confer nothing, not pick one arbitrarily")
+	s.Contains(authorized, "write",
+		"a group outside the connection's organization unit should not make the name ambiguous")
 }
 
 // A list-valued claim (a genuine JSON array on the signed ID token, not a delimited string) resolves
