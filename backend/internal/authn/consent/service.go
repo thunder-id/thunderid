@@ -249,7 +249,7 @@ func (s *consentEnforcerService) RecordConsent(ctx context.Context, ouID, appID,
 	}
 
 	// Approved authorization details are taken from the signed session, never from the submission.
-	grantedDetails, detailElements, detailTypes, svcErr := s.decideAuthorizationDetails(ctx, appID, sessionData,
+	grantedDetails, detailElements, svcErr := s.decideAuthorizationDetails(ctx, appID, sessionData,
 		decisions, existingConsents)
 	if svcErr != nil {
 		return nil, svcErr
@@ -276,10 +276,10 @@ func (s *consentEnforcerService) RecordConsent(ctx context.Context, ouID, appID,
 	var consentRecord *consent.Consent
 	if len(existingConsents) > 0 {
 		consentRecord, svcErr = s.updateExistingConsent(ctx, appID, userID,
-			existingConsents, newPurposeItems, detailElements, detailTypes, validityTime, sessionData)
+			existingConsents, newPurposeItems, detailElements, validityTime, sessionData)
 	} else {
 		consentRecord, svcErr = s.createNewConsent(ctx, appID, userID,
-			newPurposeItems, detailElements, detailTypes, validityTime)
+			newPurposeItems, detailElements, validityTime)
 	}
 	if svcErr != nil {
 		return nil, svcErr
@@ -299,8 +299,7 @@ func (s *consentEnforcerService) RecordConsent(ctx context.Context, ouID, appID,
 // updateExistingConsent merges fresh decisions, replacing superseded permission approvals.
 func (s *consentEnforcerService) updateExistingConsent(ctx context.Context, appID, userID string,
 	existingConsents []*consent.Consent, newPurposeItems []providers.ConsentPurposeItem,
-	detailElements map[string][]consent.ConsentElementApproval,
-	detailTypes map[string]providers.AuthorizationDetailType, validityTime int64,
+	detailElements map[string][]consent.ConsentElementApproval, validityTime int64,
 	session *consentSessionData,
 ) (*consent.Consent, *tidcommon.ServiceError) {
 	logger := s.logger.With(log.String("appID", appID), log.MaskedString(log.LoggerKeyUserID, userID),
@@ -324,7 +323,7 @@ func (s *consentEnforcerService) updateExistingConsent(ctx context.Context, appI
 	existing := existingConsents[0]
 	req.Purposes = mergeAuthorizationDetailPurposes(mergeConsentPurposes(
 		withoutSupersededPermissionDecisions(existing.Purposes, newPurposeItems, session), newPurposeItems),
-		detailElements, detailTypes)
+		detailElements)
 
 	updated, svcErr := s.consentService.UpdateConsent(ctx, existing.ID, req)
 	if svcErr != nil {
@@ -344,8 +343,7 @@ func (s *consentEnforcerService) updateExistingConsent(ctx context.Context, appI
 // createNewConsent creates a new consent record with the given purpose items and validity time.
 func (s *consentEnforcerService) createNewConsent(ctx context.Context, appID, userID string,
 	newPurposeItems []providers.ConsentPurposeItem, detailElements map[string][]consent.ConsentElementApproval,
-	detailTypes map[string]providers.AuthorizationDetailType, validityTime int64) (*consent.Consent,
-	*tidcommon.ServiceError) {
+	validityTime int64) (*consent.Consent, *tidcommon.ServiceError) {
 	logger := s.logger.With(log.String("appID", appID), log.MaskedString(log.LoggerKeyUserID, userID))
 	logger.Debug(ctx, "Creating new consent record")
 
@@ -361,8 +359,7 @@ func (s *consentEnforcerService) createNewConsent(ctx context.Context, appID, us
 			},
 		},
 	}
-	req.Purposes = mergeAuthorizationDetailPurposes(mergeConsentPurposes(nil, newPurposeItems), detailElements,
-		detailTypes)
+	req.Purposes = mergeAuthorizationDetailPurposes(mergeConsentPurposes(nil, newPurposeItems), detailElements)
 
 	created, svcErr := s.consentService.CreateConsent(ctx, req)
 	if svcErr != nil {
@@ -1150,23 +1147,23 @@ func (s *consentEnforcerService) authorizationDetailPurpose(ctx context.Context,
 }
 
 // decideAuthorizationDetails returns the granted authorization details: when the prompt is approved, those
-// earlier approvals cover, as requested, and the prompted details the user approved; their reusable consent
-// elements keyed by purpose, and the types of those elements keyed by type value.
+// earlier approvals cover, as requested, and the prompted details the user approved; and their reusable consent
+// elements keyed by purpose.
 func (s *consentEnforcerService) decideAuthorizationDetails(ctx context.Context, appID string,
 	session *consentSessionData, decisions *providers.ConsentDecisions,
 	records []*consent.Consent) ([]providers.AuthorizationDetail,
-	map[string][]consent.ConsentElementApproval, map[string]providers.AuthorizationDetailType,
-	*tidcommon.ServiceError) {
+	map[string][]consent.ConsentElementApproval, *tidcommon.ServiceError) {
 	granted := []providers.AuthorizationDetail{}
 	elements := map[string][]consent.ConsentElementApproval{}
-	types := map[string]providers.AuthorizationDetailType{}
 	// Every detail's type must still be the one the request started on, whether or not it is granted, and an
 	// approval must still cover a covered detail, since one may have been revoked while the prompt was open.
-	approvals := approvedAuthorizationDetails(records, consent.AuthorizationDetailPurposeName(appID))
+	coveredPurpose := consent.AuthorizationDetailPurposeName(appID)
+	approvals := approvedAuthorizationDetails(records, coveredPurpose)
+	var covered []providers.AuthorizationDetail
 	for _, detail := range session.CoveredDetails {
 		t, svcErr := authzdetail.StartedType(ctx, s.detailTypes, s.logger, detail)
 		if svcErr != nil {
-			return nil, nil, nil, svcErr
+			return nil, nil, svcErr
 		}
 		if !decisions.Approved {
 			continue
@@ -1174,19 +1171,20 @@ func (s *consentEnforcerService) decideAuthorizationDetails(ctx context.Context,
 		obj, err := authzdetail.DetailFromValue(detail.ID, detail.Type, detail.Value)
 		if err != nil {
 			s.logger.Error(ctx, "Failed to read authorization detail", log.Error(err))
-			return nil, nil, nil, &tidcommon.InternalServerError
+			return nil, nil, &tidcommon.InternalServerError
 		}
 		if !authzdetail.IsCovered(obj, t, approvals) {
 			s.logger.Debug(ctx, "Authorization detail is no longer covered", log.String("type", detail.Type))
 			continue
 		}
 		granted = append(granted, detail)
+		covered = append(covered, detail)
 	}
 	for _, purpose := range session.Purposes {
 		for _, detail := range purpose.Details {
 			t, svcErr := authzdetail.StartedType(ctx, s.detailTypes, s.logger, detail)
 			if svcErr != nil {
-				return nil, nil, nil, svcErr
+				return nil, nil, svcErr
 			}
 			decision, approved := approvedDetailDecision(decisions, purpose.PurposeName, detail.ID)
 			if !approved {
@@ -1195,7 +1193,7 @@ func (s *consentEnforcerService) decideAuthorizationDetails(ctx context.Context,
 			if len(decision.Modified) > 0 {
 				value, svcErr := s.modifyDetail(ctx, detail, t, decision.Modified)
 				if svcErr != nil {
-					return nil, nil, nil, svcErr
+					return nil, nil, svcErr
 				}
 				detail.Value = value
 			}
@@ -1203,18 +1201,31 @@ func (s *consentEnforcerService) decideAuthorizationDetails(ctx context.Context,
 			if !t.Reuse {
 				continue
 			}
-			types[t.Type] = t
-			elements[purpose.PurposeName] = append(elements[purpose.PurposeName], consent.ConsentElementApproval{
-				Name:           detail.ID,
-				Namespace:      consent.NamespaceAuthorizationDetail,
-				IsUserApproved: true,
-				TypeID:         detail.TypeID,
-				TypeVersion:    detail.TypeVersion,
-				Granted:        detail.Value,
-			})
+			elements[purpose.PurposeName] = append(elements[purpose.PurposeName], detailApproval(detail))
 		}
 	}
-	return granted, elements, types, nil
+	// A new approval of a type replaces the type's earlier approvals, so the covered details of that type are
+	// recorded with it, keeping them covered on later requests.
+	for _, detail := range covered {
+		if slices.ContainsFunc(elements[coveredPurpose], func(e consent.ConsentElementApproval) bool {
+			return elementDetailType(e) == detail.Type
+		}) {
+			elements[coveredPurpose] = append(elements[coveredPurpose], detailApproval(detail))
+		}
+	}
+	return granted, elements, nil
+}
+
+// detailApproval returns the consent element recording the user's approval of a granted authorization detail.
+func detailApproval(detail providers.AuthorizationDetail) consent.ConsentElementApproval {
+	return consent.ConsentElementApproval{
+		Name:           detail.ID,
+		Namespace:      consent.NamespaceAuthorizationDetail,
+		IsUserApproved: true,
+		TypeID:         detail.TypeID,
+		TypeVersion:    detail.TypeVersion,
+		Granted:        detail.Value,
+	}
 }
 
 // modifyDetail applies and validates the user's changes to an authorization detail.
@@ -1327,31 +1338,18 @@ func elementDetailType(element consent.ConsentElementApproval) string {
 	return detail.Type
 }
 
-// supersedes reports whether an added approval of type t makes an existing approval redundant.
-func supersedes(added, existing consent.ConsentElementApproval, t providers.AuthorizationDetailType) bool {
-	typ := elementDetailType(added)
-	if existing.Namespace != consent.NamespaceAuthorizationDetail || elementDetailType(existing) != typ {
-		return false
-	}
-	if existing.TypeID != added.TypeID || existing.TypeVersion != added.TypeVersion {
-		return true
-	}
-	addedDetail, err := authzdetail.DetailFromValue("", typ, added.Granted)
-	if err != nil {
-		return false
-	}
-	existingDetail, err := authzdetail.DetailFromValue("", typ, existing.Granted)
-	if err != nil {
-		return false
-	}
-	return authzdetail.CheckModification(addedDetail, existingDetail, authzdetail.Policies(t.Schema), "") == nil
+// supersedes reports whether an added approval replaces an existing one: the user's latest approval of a type
+// replaces their earlier approvals of that type for the application, so reuse follows the latest decision,
+// including one that narrowed a value an earlier approval allowed.
+func supersedes(added, existing consent.ConsentElementApproval) bool {
+	return existing.Namespace == consent.NamespaceAuthorizationDetail &&
+		elementDetailType(existing) == elementDetailType(added)
 }
 
 // mergeAuthorizationDetailPurposes adds the elements to their purposes, dropping existing elements they
-// supersede.
+// supersede. Elements added together never supersede each other.
 func mergeAuthorizationDetailPurposes(existing []consent.ConsentPurposeItem,
-	elements map[string][]consent.ConsentElementApproval,
-	types map[string]providers.AuthorizationDetailType) []consent.ConsentPurposeItem {
+	elements map[string][]consent.ConsentElementApproval) []consent.ConsentPurposeItem {
 	if len(elements) == 0 {
 		return existing
 	}
@@ -1360,7 +1358,7 @@ func mergeAuthorizationDetailPurposes(existing []consent.ConsentPurposeItem,
 		if added, ok := elements[purpose.Name]; ok {
 			superseded := func(e consent.ConsentElementApproval) bool {
 				return slices.ContainsFunc(added, func(a consent.ConsentElementApproval) bool {
-					return supersedes(a, e, types[elementDetailType(a)])
+					return supersedes(a, e)
 				})
 			}
 			purpose.Elements = slices.DeleteFunc(slices.Clone(purpose.Elements), superseded)
