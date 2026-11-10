@@ -2426,7 +2426,8 @@ func (s *ConsentEnforcerServiceTestSuite) recordDetails(decisions *providers.Con
 	return s.service.RecordConsent(context.Background(), "ou1", "app1", "user1", decisions, token, 0, nil)
 }
 
-func (s *ConsentEnforcerServiceTestSuite) TestRecordConsent_KeepsReusableApprovalsInTheSameRecord() {
+// A user who lowers a value is not held to an earlier, wider approval of the type: the latest approval replaces it.
+func (s *ConsentEnforcerServiceTestSuite) TestRecordConsent_LatestApprovalReplacesEarlierOnes() {
 	s.withDetailTypes(flightType())
 	s.mockConsentSvc.On("SearchConsents", mock.Anything, mock.Anything).
 		Return([]*consent.Consent{flightRecord("500")}, nil)
@@ -2448,11 +2449,11 @@ func (s *ConsentEnforcerServiceTestSuite) TestRecordConsent_KeepsReusableApprova
 	s.Equal("d-1", result.GrantedAuthorizationDetails[0].ID)
 	s.Require().Len(written.Purposes, 1)
 	elements := written.Purposes[0].Elements
-	s.Require().Len(elements, 2, "the earlier approval is kept beside the new one, and the denial is not kept")
-	s.Equal("d-1", elements[1].Name)
-	s.Equal("type-1", elements[1].TypeID)
-	s.Equal(2, elements[1].TypeVersion)
-	s.JSONEq(string(flightDetail("d-1", "450").Value), string(elements[1].Granted))
+	s.Require().Len(elements, 1, "the earlier approval of 500 is replaced, and the denial is not kept")
+	s.Equal("d-1", elements[0].Name)
+	s.Equal("type-1", elements[0].TypeID)
+	s.Equal(2, elements[0].TypeVersion)
+	s.JSONEq(string(flightDetail("d-1", "450").Value), string(elements[0].Granted))
 	s.mockConsentSvc.AssertNotCalled(s.T(), "CreateConsent", mock.Anything, mock.Anything)
 }
 
@@ -2635,6 +2636,54 @@ func (s *ConsentEnforcerServiceTestSuite) TestRecordConsent_DeclinedDetailIsNotG
 	s.Equal("d-1", result.GrantedAuthorizationDetails[0].ID)
 }
 
+// A new approval of a type replaces the type's earlier approvals, so a covered detail of that type is recorded
+// with it and stays covered: a request repeating both details prompts for neither.
+func (s *ConsentEnforcerServiceTestSuite) TestRecordConsent_RecordsCoveredDetailsWithANewApprovalOfTheirType() {
+	s.withDetailTypes(flightType())
+	s.mockConsentSvc.On("SearchConsents", mock.Anything, mock.Anything).
+		Return([]*consent.Consent{flightRecord("450")}, nil)
+	var written *consent.ConsentRequest
+	s.mockConsentSvc.On("UpdateConsent", mock.Anything, "consent-1", mock.MatchedBy(
+		func(r *consent.ConsentRequest) bool {
+			written = r
+			return true
+		})).Return(&consent.Consent{ID: "consent-1"}, nil).Once()
+	otherRoute := flightDetail("d-2", "300")
+	otherRoute.Value = json.RawMessage(`{"type":"` + testFlightType + `","route":"CMB-LHR","maxFare":300}`)
+	otherRoute.Requested = otherRoute.Value
+	covered := flightDetail("d-1", "400")
+
+	result, svcErr := s.recordWithCovered(&providers.ConsentDecisions{Approved: true,
+		Purposes: []providers.PurposeDecision{detailDecision("d-2", true)}}, otherRoute, covered)
+
+	s.Require().Nil(svcErr)
+	s.Len(result.GrantedAuthorizationDetails, 2)
+	s.Require().Len(written.Purposes, 1)
+	approvals := approvedAuthorizationDetails([]*consent.Consent{{Purposes: written.Purposes}}, testDetailPurpose)
+	s.Require().Len(approvals, 2, "the earlier approval of 450 is replaced by the details this prompt granted")
+	for _, detail := range []providers.AuthorizationDetail{otherRoute, covered} {
+		obj, err := authzdetail.DetailFromValue(detail.ID, detail.Type, detail.Value)
+		s.Require().NoError(err)
+		s.True(authzdetail.IsCovered(obj, *flightType(), approvals), detail.ID)
+	}
+}
+
+// Covered details are not recorded when the prompt approves nothing of their type, so their approvals are left as
+// they are.
+func (s *ConsentEnforcerServiceTestSuite) TestRecordConsent_LeavesCoveredDetailsWhenNothingOfTheirTypeIsApproved() {
+	s.withDetailTypes(flightType())
+	s.mockConsentSvc.On("SearchConsents", mock.Anything, mock.Anything).
+		Return([]*consent.Consent{flightRecord("450")}, nil)
+
+	result, svcErr := s.recordWithCovered(&providers.ConsentDecisions{Approved: true,
+		Purposes: []providers.PurposeDecision{detailDecision("d-2", false)}},
+		flightDetail("d-2", "900"), flightDetail("d-1", "400"))
+
+	s.Require().Nil(svcErr)
+	s.Len(result.GrantedAuthorizationDetails, 1)
+	s.mockConsentSvc.AssertNotCalled(s.T(), "UpdateConsent", mock.Anything, mock.Anything, mock.Anything)
+}
+
 func (s *ConsentEnforcerServiceTestSuite) TestRecordConsent_DeniedPromptGrantsNoCoveredDetails() {
 	s.withDetailTypes(flightType())
 	s.mockConsentSvc.On("SearchConsents", mock.Anything, mock.Anything).Return([]*consent.Consent{}, nil)
@@ -2750,21 +2799,23 @@ func (s *ConsentEnforcerServiceTestSuite) TestMergeAuthorizationDetailPurposes()
 		{Name: testDetailPurpose, Elements: []consent.ConsentElementApproval{d1}},
 	}
 	merged := mergeAuthorizationDetailPurposes(existing, map[string][]consent.ConsentElementApproval{
-		testDetailPurpose: {typedElement("d2", "a", "t-a", 1), typedElement("d3", "b", "t-b", 1)},
-	}, nil)
+		testDetailPurpose: {typedElement("d2", "a", "t-a", 1), typedElement("d3", "b", "t-b", 1),
+			typedElement("d4", "b", "t-b", 1)},
+	})
 	s.Require().Len(merged, 2)
 	s.Equal("attributes:app1", merged[0].Name)
 	names := make([]string, 0, len(merged[1].Elements))
 	for _, element := range merged[1].Elements {
 		names = append(names, element.Name)
 	}
-	s.Equal([]string{"d1", "d2", "d3"}, names, "approvals of every type share the purpose")
+	s.Equal([]string{"d2", "d3", "d4"}, names,
+		"approvals of every type share the purpose; d2 replaces d1 of the same type; d3 and d4 were added together")
 	s.Len(existing[1].Elements, 1, "the existing record is not modified")
-	s.Equal(existing, mergeAuthorizationDetailPurposes(existing, nil, nil))
+	s.Equal(existing, mergeAuthorizationDetailPurposes(existing, nil))
 
 	created := mergeAuthorizationDetailPurposes(existing[:1], map[string][]consent.ConsentElementApproval{
 		testDetailPurpose: {typedElement("d2", "a", "t-a", 1)},
-	}, nil)
+	})
 	s.Require().Len(created, 2)
 	s.Equal(testDetailPurpose, created[1].Name, "the purpose is added when the record has none")
 }
@@ -2780,15 +2831,14 @@ func (s *ConsentEnforcerServiceTestSuite) TestMergeAuthorizationDetailPurposes_D
 	}}}
 	merged := mergeAuthorizationDetailPurposes(existing, map[string][]consent.ConsentElementApproval{
 		testDetailPurpose: {typedElement("d3", "a", "t-1", 2)},
-	}, nil)
+	})
 	s.Require().Len(merged, 1)
 	names := make([]string, 0, len(merged[0].Elements))
 	for _, element := range merged[0].Elements {
 		names = append(names, element.Name)
 	}
-	s.Equal([]string{"d2", "d5", "d3"}, names,
-		"approvals on an earlier version, or on a deleted type of the same value, no longer count; "+
-			"those of other types are kept")
+	s.Equal([]string{"d5", "d3"}, names,
+		"earlier approvals of the type are replaced, whatever their version or values; those of other types are kept")
 	s.Len(existing[0].Elements, 4, "the existing record is not modified")
 }
 
@@ -2799,35 +2849,34 @@ func flightElement(name, fare string) consent.ConsentElementApproval {
 		Granted: json.RawMessage(`{"type":"` + testFlightType + `","route":"CMB-SIN","maxFare":` + fare + `}`)}
 }
 
-func (s *ConsentEnforcerServiceTestSuite) TestMergeAuthorizationDetailPurposes_DropsApprovalsTheAddedOneCovers() {
+func (s *ConsentEnforcerServiceTestSuite) TestMergeAuthorizationDetailPurposes_LatestApprovalReplacesWiderOnes() {
 	existing := []consent.ConsentPurposeItem{{Name: testDetailPurpose, Elements: []consent.ConsentElementApproval{
 		flightElement("d1", "300"), flightElement("d2", "900"),
 	}}}
 	merged := mergeAuthorizationDetailPurposes(existing, map[string][]consent.ConsentElementApproval{
 		testDetailPurpose: {flightElement("d3", "500")},
-	}, map[string]providers.AuthorizationDetailType{testFlightType: *flightType()})
+	})
 
 	s.Require().Len(merged, 1)
 	names := make([]string, 0, len(merged[0].Elements))
 	for _, element := range merged[0].Elements {
 		names = append(names, element.Name)
 	}
-	s.Equal([]string{"d2", "d3"}, names,
-		"an approval of 300 is redundant beside one of 500; one of 900 still covers more")
+	s.Equal([]string{"d3"}, names,
+		"the latest approval of 500 replaces the narrower 300 and the wider 900, so reuse follows it")
 }
 
 func (s *ConsentEnforcerServiceTestSuite) TestSupersedes() {
-	typ := *flightType()
 	added := flightElement("d2", "500")
 
-	s.True(supersedes(added, flightElement("d1", "500"), typ), "an equal approval is redundant")
-	s.False(supersedes(added, flightElement("d1", "600"), typ))
+	s.True(supersedes(added, flightElement("d1", "500")), "an equal approval is replaced")
+	s.True(supersedes(added, flightElement("d1", "600")), "a wider approval is replaced by a narrower latest one")
 	otherRoute := flightElement("d1", "100")
 	otherRoute.Granted = json.RawMessage(`{"type":"` + testFlightType + `","route":"CMB-LHR","maxFare":100}`)
-	s.False(supersedes(added, otherRoute, typ), "a field without a modification rule must be equal")
-	s.False(supersedes(added, typedElement("d1", "other", "type-9", 2), typ), "other types are kept")
+	s.True(supersedes(added, otherRoute), "an approval of the type with other values is replaced")
+	s.False(supersedes(added, typedElement("d1", "other", "type-9", 2)), "other types are kept")
 	s.False(supersedes(added, consent.ConsentElementApproval{Name: "email",
-		Namespace: consent.NamespaceAttribute, IsUserApproved: true}, typ))
+		Namespace: consent.NamespaceAttribute, IsUserApproved: true}))
 }
 
 // A subject who approved a resource is not asked again for a permission it carries. Consent is
