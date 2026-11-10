@@ -112,8 +112,8 @@ export interface FlowTemplate {
   type: string;
   flowType: FlowType;
   /**
-   * Opens the template in the builder unsaved, for one that names values only the deployment has, such as an
-   * organization unit or roles, and that the server would refuse to save without them.
+   * Opens the template in the builder unsaved, for one that names values only the deployment has, such as roles, and
+   * that the server would refuse to save without them.
    */
   configureBeforeSave?: boolean;
   display: {

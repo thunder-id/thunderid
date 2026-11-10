@@ -176,10 +176,10 @@ A flow has no effect until it is assigned to an application.
   - **Organization Sign-up with Shared Account** (Self sign-up): the same sign-up, but the account stays outside the organization. The flow creates the user in the user type's OU, affiliates the user with the new organization on its **Share** step, and then assigns the roles there. Because the account is not tied to one organization, it can be affiliated with more organizations later. A user can be shared only into a direct child of the OU that owns them, so this template always creates the organization directly beneath the user type's OU.
   - **Basic + Enterprise SSO** (Sign in): a password sign-in, or **Sign in with SSO**, which asks for the organization's handle and signs in through the OpenID Connect connection that organization chose. A first-time SSO user is created in the organization.
 
-  These templates name values only your deployment has, so the canvas opens them unsaved. Before you click **Save**, set these values:
+  These templates name values only your deployment has:
 
-  - In both sign-up templates, set the role IDs on the **Assign Roles** step.
-  - In the sign-in template, set the parent OU on both **Resolve OU** steps.
+  - The sign-up templates open unsaved, and **Save** stays disabled until you set the role IDs on the **Assign Roles** step.
+  - The sign-in template is saved when you create it. Both **Resolve OU** steps start with the OU the flow belongs to as their parent OU: the OU you choose when you create the flow, or the system organization unit for a flow in a project that has no OUs of its own. If your organizations sit beneath another OU, change the parent OU on both steps.
 
   To make them work across your organizations:
 

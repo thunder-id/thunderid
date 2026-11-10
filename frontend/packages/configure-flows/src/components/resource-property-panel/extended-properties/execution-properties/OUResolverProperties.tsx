@@ -11,6 +11,7 @@ import type {CommonResourcePropertiesPropsInterface} from './types';
 import FlowTypeContext from '../../../../context/FlowTypeContext';
 import {FlowType} from '../../../../models/flows';
 import type {StepData} from '../../../../models/steps';
+import {PARENT_OU_ID_PLACEHOLDER} from '../../../../utils/parentOrganizationUnit';
 
 function OUResolverProperties({resource, onChange}: CommonResourcePropertiesPropsInterface): ReactNode {
   const {t} = useTranslation();
@@ -22,7 +23,10 @@ function OUResolverProperties({resource, onChange}: CommonResourcePropertiesProp
   }, [resource]);
 
   const currentResolveFrom = (properties['resolveFrom'] as string) || 'caller';
-  const parentOuId = (properties['parentOuId'] as string) ?? '';
+  // A flow in a project without organization units is created with the placeholder until the console sets its
+  // system organization unit.
+  const configuredParentOuId = (properties['parentOuId'] as string) ?? '';
+  const parentOuId = configuredParentOuId === PARENT_OU_ID_PLACEHOLDER ? '' : configuredParentOuId;
   const isDirectChildrenOnly = Boolean(properties['directChildrenOnly']);
 
   const handleResolveFromChange = useCallback(

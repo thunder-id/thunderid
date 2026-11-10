@@ -13,6 +13,7 @@ import {ExecutionTypes, StaticStepTypes, StepTypes} from '../models/steps';
 import type {StepData} from '../models/steps';
 import {getExecutorInputs, hasInvalidInputConfig} from '../utils/executorInputs';
 import {getInputIdentifier, INPUT_ELEMENT_TYPES} from '../utils/inputTypeMapping';
+import {isParentOrganizationUnitUnset} from '../utils/parentOrganizationUnit';
 
 /** Placeholder a flow template carries until a sender is assigned. */
 const SENDER_ID_PLACEHOLDER = '{{SENDER_ID}}';
@@ -818,6 +819,54 @@ export const variablesDeclaredRule: GraphValidationRule = (nodes: Node[]): Notif
 };
 
 /**
+ * Mirrors the server's save check on a Resolve OU step that prompts in a sign-in flow: it names the parent OU users
+ * select below, since no user type sets one there. An error, so Save stays disabled until it is set.
+ */
+export const ouResolverParentRule: GraphValidationRule = (nodes: Node[]): Notification[] =>
+  nodes
+    .filter((node) => {
+      const properties = (node.data as StepData | undefined)?.properties;
+
+      return (
+        getNodeExecutorName(node) === ExecutionTypes.OUResolverExecutor &&
+        properties?.['resolveFrom'] === 'prompt' &&
+        isParentOrganizationUnitUnset(properties['parentOuId'])
+      );
+    })
+    .map((node) =>
+      createGraphErrorNotification(
+        `${node.id}_OU_RESOLVER_NO_PARENT`,
+        'flows:core.validation.ouResolver.noParent',
+        node,
+      ),
+    );
+
+/**
+ * Mirrors the server's save check on a sign-up flow's role assignment step: it names the roles it assigns, since no
+ * admin picks them there. An error, so Save stays disabled until they are set.
+ */
+export const roleAssignmentRolesRule: GraphValidationRule = (nodes: Node[]): Notification[] =>
+  nodes
+    .filter((node) => {
+      const stepData = node.data as StepData | undefined;
+      const mode = (stepData?.action?.executor as {mode?: string} | undefined)?.mode;
+      const roles = stepData?.properties?.['roles'];
+
+      return (
+        getNodeExecutorName(node) === ExecutionTypes.RoleExecutor &&
+        mode === 'role_assignment' &&
+        (typeof roles !== 'string' || roles.trim() === '')
+      );
+    })
+    .map((node) =>
+      createGraphErrorNotification(
+        `${node.id}_ROLE_ASSIGNMENT_NO_ROLES`,
+        'flows:core.validation.roleExecutor.noRoles',
+        node,
+      ),
+    );
+
+/**
  * Rules that apply to every flow type.
  */
 export const COMMON_GRAPH_VALIDATION_RULES: GraphValidationRule[] = [
@@ -829,8 +878,17 @@ export const COMMON_GRAPH_VALIDATION_RULES: GraphValidationRule[] = [
 export const GRAPH_VALIDATION_RULES: GraphValidationRule[] = [
   ssoPairingRule,
   ouResolverAfterSessionRule,
+  ouResolverParentRule,
   linkingRejectActionRule,
   linkingExecutorWiringRule,
+  ...COMMON_GRAPH_VALIDATION_RULES,
+];
+
+/**
+ * Rules that apply to sign-up flows.
+ */
+export const REGISTRATION_GRAPH_VALIDATION_RULES: GraphValidationRule[] = [
+  roleAssignmentRolesRule,
   ...COMMON_GRAPH_VALIDATION_RULES,
 ];
 

@@ -21243,7 +21243,6 @@
     "category": "SOCIAL_LOGIN",
     "type": "BASIC_ENTERPRISE_SSO",
     "flowType": "AUTHENTICATION",
-    "configureBeforeSave": true,
     "display": {
       "label": "Basic + Enterprise SSO",
       "description": "Password sign-in, or sign-in through the identity provider each organization sets for itself",
