@@ -4651,6 +4651,12 @@ const translations = {
     'core.executions.ouExecutor.generateOuHandle.hint':
       'Create the OU handle from the OU name when the user does not enter one.',
 
+    // Rollback executors (OU Delete and User Rollback)
+    'core.executions.rollbackExecutor.description': 'Configure how this rollback step ends.',
+    'core.executions.rollbackExecutor.forwardFailure.label': 'Forward the original failure',
+    'core.executions.rollbackExecutor.forwardFailure.hint':
+      'After the rollback, fail the flow with the error of the node that failed, so the reason reaches the client. Leave this node failure target empty.',
+
     // User Type Resolver executor
     'core.executions.userTypeResolver.description': 'Configure the user type resolver settings.',
     'core.executions.userTypeResolver.allowedUserTypes.label': 'Allowed user types',

@@ -458,6 +458,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	flowFactory, execRegistry, interceptorRegistry, graphBuilder := initializeFlowCoreAndExecutor(ctx, logger,
 		cacheManager, executor.ExecutorDependencies{
 			OUService:              ouProvider,
+			OUDeleter:              ouService,
 			IDPService:             idpService,
 			NotifSenderSvc:         notifSenderSvc,
 			JWTService:             jwtService,

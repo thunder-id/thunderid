@@ -222,6 +222,7 @@ type artifactLifetimeResolver func(client *providers.OAuthClient) time.Duration
 type ExecutorDependencies struct {
 	FlowFactory            core.FlowFactoryInterface
 	OUService              providers.OrganizationUnitProvider
+	OUDeleter              ouDeleter
 	IDPService             providers.IDPProvider
 	NotifSenderSvc         notification.NotificationSenderServiceInterface
 	JWTService             jwt.JWTServiceInterface
@@ -312,6 +313,9 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 		ExecutorNameOUCreation: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameOUCreation, newOUExecutor(deps.FlowFactory, deps.OUService,
 				deps.AuthnProvider, deps.EntityTypeService))
+		},
+		ExecutorNameOUDelete: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
+			reg.RegisterExecutor(ExecutorNameOUDelete, newOUDeleteExecutor(deps.FlowFactory, deps.OUDeleter))
 		},
 		ExecutorNameAttributeCollect: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameAttributeCollect, newAttributeCollector(
@@ -466,6 +470,10 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 		ExecutorNameAccountLinking: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameAccountLinking,
 				newAccountLinkingExecutor(deps.FlowFactory, deps.AuthnProvider, deps.EntityTypeService))
+		},
+		ExecutorNameUserRollback: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
+			reg.RegisterExecutor(ExecutorNameUserRollback,
+				newUserRollbackExecutor(deps.FlowFactory, deps.UserService))
 		},
 	}
 }

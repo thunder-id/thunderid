@@ -27,6 +27,7 @@ const (
 	ExecutorNameAuthorization                = "AuthorizationExecutor"
 	ExecutorNamePermissionValidator          = "PermissionValidator"
 	ExecutorNameOUCreation                   = "OUExecutor"
+	ExecutorNameOUDelete                     = "OUDeleteExecutor"
 	ExecutorNameHTTPRequest                  = "HTTPRequestExecutor"
 	ExecutorNameUserTypeResolver             = "UserTypeResolver"
 	ExecutorNameInviteExecutor               = "InviteExecutor"
@@ -57,6 +58,7 @@ const (
 	ExecutorNameAuthorizationDetail          = "AuthorizationDetailExecutor"
 	ExecutorNameSharing                      = "SharingExecutor"
 	ExecutorNameDeviceCode                   = "DeviceCodeExecutor"
+	ExecutorNameUserRollback                 = "UserRollbackExecutor"
 )
 
 // Executor mode constants
@@ -91,3 +93,19 @@ const (
 	ExecutorModePrepare  = "prepare"
 	ExecutorModeRecord   = "record"
 )
+
+// failureTargetExemptExecutors lists executors that a TASK_EXECUTION node's onFailure/onIncomplete
+// may target directly, bypassing the requirement that the target be a PROMPT node. OUDeleteExecutor
+// and UserRollbackExecutor are compensation steps meant to run as soon as an earlier node fails, so a
+// flow author can wire straight into them instead of forcing an intermediate prompt just to satisfy
+// that rule.
+var failureTargetExemptExecutors = map[string]bool{
+	ExecutorNameOUDelete:     true,
+	ExecutorNameUserRollback: true,
+}
+
+// IsFailureTargetExemptExecutor reports whether a TASK_EXECUTION node running the given executor may
+// be targeted by another node's onFailure/onIncomplete without being a PROMPT node.
+func IsFailureTargetExemptExecutor(executorName string) bool {
+	return failureTargetExemptExecutors[executorName]
+}

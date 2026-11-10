@@ -27,6 +27,7 @@ import PermissionValidatorProperties from './execution-properties/PermissionVali
 import PreDeleteProperties from './execution-properties/PreDeleteProperties';
 import ProvisioningProperties from './execution-properties/ProvisioningProperties';
 import RoleExecutorProperties from './execution-properties/RoleExecutorProperties';
+import RollbackExecutorProperties from './execution-properties/RollbackExecutorProperties';
 import SessionSignOutProperties from './execution-properties/SessionSignOutProperties';
 import SharingExecutorProperties from './execution-properties/SharingExecutorProperties';
 import SmsProperties from './execution-properties/SmsProperties';
@@ -131,6 +132,10 @@ function ExecutionExtendedProperties({resource, onChange}: ExecutionExtendedProp
       break;
     case ExecutionTypes.OUExecutor:
       executorSpecificProperties = <OUExecutorProperties resource={resource} onChange={onChange} />;
+      break;
+    case ExecutionTypes.OUDeleteExecutor:
+    case ExecutionTypes.UserRollbackExecutor:
+      executorSpecificProperties = <RollbackExecutorProperties resource={resource} onChange={onChange} />;
       break;
     case ExecutionTypes.UserTypeResolver:
       executorSpecificProperties = <UserTypeResolverProperties resource={resource} onChange={onChange} />;

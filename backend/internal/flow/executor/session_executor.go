@@ -383,6 +383,9 @@ var requestScopedSnapshotDenyList = map[string]struct{}{
 	// failureReasonJSON is the engine's pending error for the next prompt in this execution (raw
 	// literal in the task execution node); a replayed copy would show it to another app.
 	"failureReasonJSON": {},
+	// The rollback keys name what this execution created; a replayed copy would let another app's rollback delete it.
+	common.RuntimeKeyCreatedOUID:       {},
+	common.RuntimeKeyProvisionedUserID: {},
 }
 
 // sanitizeSnapshotRuntimeData copies RuntimeData for the durable snapshot, dropping the transient SSO

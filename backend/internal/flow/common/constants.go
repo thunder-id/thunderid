@@ -188,6 +188,12 @@ const (
 	// RuntimeKeyOUID holds the organization unit a flow has been asked to act for, such as the one a user picked on a
 	// prompt.
 	RuntimeKeyOUID = "ouId"
+	// RuntimeKeyCreatedOUID holds the ID of an organization unit this execution created. Only an OU creation node
+	// writes it, so a rollback acts on that OU and never on one the flow merely resolved or was started for.
+	RuntimeKeyCreatedOUID = "createdOuId"
+	// RuntimeKeyProvisionedUserID holds the ID of a user this execution created. Only a provisioning node writes it,
+	// so a rollback acts on that user and never on one the flow identified or signed in.
+	RuntimeKeyProvisionedUserID = "provisionedUserId"
 	// RuntimeKeyInviter holds the subject that started an invitation flow.
 	RuntimeKeyInviter = "inviter"
 	// RuntimeKeyAuthorizedShare holds the "resourceType:targetOuId" share an invitation flow authorized.

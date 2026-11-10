@@ -265,4 +265,6 @@ export const EXECUTORS_WITH_FIXED_INPUTS = new Set<string>([
   ExecutionTypes.IdentityGovernance,
   ExecutionTypes.ExtensionExecutor,
   ExecutionTypes.SharingExecutor,
+  ExecutionTypes.OUDeleteExecutor,
+  ExecutionTypes.UserRollbackExecutor,
 ]);

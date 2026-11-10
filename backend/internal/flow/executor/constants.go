@@ -41,6 +41,7 @@ const (
 	ExecutorNameAuthorizationDetail          = executormeta.ExecutorNameAuthorizationDetail
 	ExecutorNamePermissionValidator          = executormeta.ExecutorNamePermissionValidator
 	ExecutorNameOUCreation                   = executormeta.ExecutorNameOUCreation
+	ExecutorNameOUDelete                     = executormeta.ExecutorNameOUDelete
 	ExecutorNameHTTPRequest                  = executormeta.ExecutorNameHTTPRequest
 	ExecutorNameUserTypeResolver             = executormeta.ExecutorNameUserTypeResolver
 	ExecutorNameInviteExecutor               = executormeta.ExecutorNameInviteExecutor
@@ -71,6 +72,7 @@ const (
 	ExecutorNameExtension                    = executormeta.ExecutorNameExtension
 	ExecutorNameSharing                      = executormeta.ExecutorNameSharing
 	ExecutorNameDeviceCode                   = executormeta.ExecutorNameDeviceCode
+	ExecutorNameUserRollback                 = executormeta.ExecutorNameUserRollback
 )
 
 // Executor mode constants
@@ -154,6 +156,7 @@ const (
 	governanceInputOperatorNote = "operatorNote"
 
 	ouIDKey        = common.RuntimeKeyOUID
+	createdOUIDKey = common.RuntimeKeyCreatedOUID
 	ouHandleKey    = "ouHandle"
 	defaultOUIDKey = "defaultOUID"
 
@@ -260,6 +263,10 @@ const (
 	// propertyKeyGenerateOUHandle, when set to boolean true on an OU creation node, makes the executor
 	// generate the organization unit handle from the name when the handle is not provided.
 	propertyKeyGenerateOUHandle = "generateOuHandle"
+	// propertyKeyForwardFailure, when set to boolean true on an OU Delete or User Rollback node reached
+	// through onFailure, makes the executor fail the flow with the original failure once the rollback has
+	// finished, so the reason reaches the client instead of being dropped.
+	propertyKeyForwardFailure = "forwardFailure"
 
 	propertyKeyResourceType = "resourceType"
 	propertyKeyResourceID   = "resourceId"

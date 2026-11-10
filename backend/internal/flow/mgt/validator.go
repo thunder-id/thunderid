@@ -298,6 +298,13 @@ var modeFlowTypes = map[string]map[string][]providers.FlowType{
 	},
 }
 
+// isExemptFailureTarget reports whether the node is allowed as an onFailure/onIncomplete target
+// even though it is not a PROMPT node.
+func isExemptFailureTarget(target *providers.NodeDefinition) bool {
+	return target.Type == string(common.NodeTypeTaskExecution) &&
+		target.Executor != nil && executormeta.IsFailureTargetExemptExecutor(target.Executor.Name)
+}
+
 // validateFlowTypeBasedConstraints checks forbidden and required executor rules for the flow type.
 // Uses static maps only — no registry access required.
 func (v *flowValidator) validateFlowTypeBasedConstraints(
@@ -1008,7 +1015,8 @@ func (v *flowValidator) validateTaskExecutionNode(
 		})
 	}
 	if node.OnFailure != "" {
-		if target, ok := nodeIndex[node.OnFailure]; ok && target.Type != string(common.NodeTypePrompt) {
+		if target, ok := nodeIndex[node.OnFailure]; ok && target.Type != string(common.NodeTypePrompt) &&
+			!isExemptFailureTarget(target) {
 			return tidcommon.CustomServiceError(ErrorInvalidNodeConfig, tidcommon.I18nMessage{
 				Key:          "error.flowmgtservice.task_node_invalid_failure_target_description",
 				DefaultValue: "TASK_EXECUTION node '{{param(nodeID)}}': onFailure must point to a PROMPT node",

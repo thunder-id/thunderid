@@ -14,6 +14,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
+	"github.com/thunder-id/thunderid/internal/flow/executormeta"
 	"github.com/thunder-id/thunderid/internal/flow/interceptor"
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
@@ -289,11 +290,15 @@ func (b *graphBuilder) configureNodeNavigation(nodeDef *providers.NodeDefinition
 	return nil
 }
 
-// validateOnFailureTarget validates that the onFailure target node is a PROMPT node.
+// validateOnFailureTarget validates that the onFailure target node is a PROMPT node. TASK_EXECUTION
+// nodes whose executor is exempt (e.g. OUDeleteExecutor, a compensation step meant to run as soon as
+// an earlier node fails) may also be targeted directly.
 func (b *graphBuilder) validateOnFailureTarget(nodes []providers.NodeDefinition, targetNodeID string) error {
 	for _, node := range nodes {
 		if node.ID == targetNodeID {
-			if node.Type != "PROMPT" {
+			isExemptTaskNode := node.Type == string(common.NodeTypeTaskExecution) &&
+				node.Executor != nil && executormeta.IsFailureTargetExemptExecutor(node.Executor.Name)
+			if node.Type != "PROMPT" && !isExemptTaskNode {
 				return errors.New("onFailure must point to a PROMPT node")
 			}
 			return nil

@@ -154,6 +154,11 @@ var catalog = map[string]providers.ExecutorMeta{
 			{Property: "generateOuHandle"},
 		},
 	},
+	ExecutorNameOUDelete: {
+		SupportedProperties: []providers.ExecutorSupportedProperties{
+			{Property: "forwardFailure"},
+		},
+	},
 	ExecutorNameOUResolver: {
 		SupportedProperties: []providers.ExecutorSupportedProperties{
 			{Property: "resolveFrom"},
@@ -262,6 +267,11 @@ var catalog = map[string]providers.ExecutorMeta{
 		SupportedFlowTypes: []providers.FlowType{"INVITATION", "REGISTRATION"},
 		SupportedProperties: []providers.ExecutorSupportedProperties{
 			{Property: "roles"},
+		},
+	},
+	ExecutorNameUserRollback: {
+		SupportedProperties: []providers.ExecutorSupportedProperties{
+			{Property: "forwardFailure"},
 		},
 	},
 	ExecutorNameSharing: {
