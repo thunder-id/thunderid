@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
@@ -145,4 +146,35 @@ func (suite *ImportExportErrorSuite) TestImportFlowRefusesToChangeTheOwner() {
 	suite.Equal(flowOUUpdateRefusedCode, dryRun.Code)
 	suite.Equal("failed", result.Status)
 	suite.Equal(flowOUUpdateRefusedCode, result.Code)
+}
+
+// A dry run predicts the import of resources whose organization unit the same import creates: the real import
+// creates the unit first, so a dry run of a new deployment's starting resources does not refuse them for it.
+func (suite *ImportExportErrorSuite) TestADryRunTakesTheUnitsTheImportCreates() {
+	suffix := fmt.Sprintf("%d", time.Now().UnixNano())
+	ouID := "dry-run-ou-" + suffix
+	ouHandle := "dry-run-ou-" + suffix
+	documents := []string{
+		fmt.Sprintf("resource_type: organization_unit\nid: %s\nhandle: %s\nname: Dry Run Unit %s\n", ouID, ouHandle, suffix),
+		flowDocument("dry-run-flow-id-"+suffix, "dry-run-flow-id-"+suffix, "ouId: "+ouID+"\n"),
+		flowDocument("dry-run-flow-handle-"+suffix, "dry-run-flow-handle-"+suffix, "ouHandle: "+ouHandle+"\n"),
+		fmt.Sprintf("resource_type: group\nid: dry-run-group-%s\nname: Dry Run Group %s\nouId: %s\n", suffix, suffix, ouID),
+		fmt.Sprintf("resource_type: role\nid: dry-run-role-%s\nname: Dry Run Role %s\nouId: %s\n", suffix, suffix, ouID),
+	}
+	payload := suite.importBody(testutils.ImportRequest{
+		Content: strings.Join(documents, "---\n"),
+		DryRun:  true,
+		Options: testutils.ImportOptions{Upsert: true, ContinueOnError: true, Target: "runtime"},
+	})
+	status, body := suite.postJSON(suite.keyClient, "/import", payload)
+	suite.Require().Equal(http.StatusOK, status, "body: %s", body)
+
+	var resp testutils.ImportResponse
+	suite.Require().NoError(json.Unmarshal(body, &resp))
+	suite.Require().Len(resp.Results, len(documents), "body: %s", body)
+	for _, result := range resp.Results {
+		suite.Equal("success", result.Status, "%s %s: %s %s", result.ResourceType, result.ResourceID, result.Code,
+			result.Message)
+	}
+	suite.Empty(suite.flowOwner("dry-run-flow-id-"+suffix), "a dry run wrote a flow")
 }
