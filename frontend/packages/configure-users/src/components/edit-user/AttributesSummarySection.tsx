@@ -57,6 +57,13 @@ export default function AttributesSummarySection({user}: AttributesSummarySectio
     return key;
   };
 
+  // The label stays the value's sibling unless a status sits beside it.
+  const labelOf = (key: string): JSX.Element => (
+    <Typography variant="caption" color="text.secondary">
+      {labelFor(key)}
+    </Typography>
+  );
+
   return (
     <SettingsCard
       title={t('users:manageUser.sections.attributes.title', 'User attributes')}
@@ -73,10 +80,14 @@ export default function AttributesSummarySection({user}: AttributesSummarySectio
         <Stack spacing={2}>
           {orderedAttributes.map(([key, value]) => (
             <Box key={key}>
-              <Typography variant="caption" color="text.secondary">
-                {labelFor(key)}
-              </Typography>
-              {verifiable.has(key) && <VerificationStatus verifiedAt={verifiable.get(key)} />}
+              {verifiable.has(key) ? (
+                <Stack direction="row" alignItems="center" spacing={1} sx={{mb: 0.5}}>
+                  {labelOf(key)}
+                  <VerificationStatus verifiedAt={verifiable.get(key)} />
+                </Stack>
+              ) : (
+                labelOf(key)
+              )}
               {typeof value === 'boolean' ? (
                 <Box>
                   <Chip

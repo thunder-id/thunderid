@@ -13,6 +13,7 @@ import {
   Checkbox,
   FormControlLabel,
   Stack,
+  InputAdornment,
 } from '@wso2/oxygen-ui';
 import type {ReactNode} from 'react';
 import {Controller} from 'react-hook-form';
@@ -30,6 +31,7 @@ import type {PropertyDefinition} from '../models/users';
  * @param errors - Form validation errors
  * @param resolveDisplayName - Optional callback to resolve display name (handles plain strings and i18n patterns)
  * @param labelSuffix - Optional node shown after a string field's label, which also describes a text input
+ * @param endAdornment - Optional action shown at the end of a text input
  * @returns A rendered form field component or null for unsupported types
  */
 const renderSchemaField = <T extends Record<string, unknown>>(
@@ -39,6 +41,7 @@ const renderSchemaField = <T extends Record<string, unknown>>(
   errors: FieldErrors<T>,
   resolveDisplayName?: (displayName: string) => string,
   labelSuffix?: ReactNode,
+  endAdornment?: ReactNode,
 ) => {
   const isRequired = fieldDef.required ?? false;
 
@@ -53,19 +56,24 @@ const renderSchemaField = <T extends Record<string, unknown>>(
     const stringDef = fieldDef;
     const suffixId = labelSuffix ? `${fieldName}-label-suffix` : undefined;
     const label = (
-      <FormLabel htmlFor={fieldName}>
+      <FormLabel htmlFor={fieldName} sx={labelSuffix ? {mb: 0, lineHeight: 1} : undefined}>
         {fieldLabel}
         {isRequired && <span style={{color: 'red'}}> *</span>}
       </FormLabel>
     );
     const labelRow = labelSuffix ? (
-      <Stack direction="row" alignItems="center" sx={{mb: 1}}>
+      <Stack direction="row" alignItems="center" spacing={1} sx={{mb: 1}}>
         {label}
         <Box id={suffixId}>{labelSuffix}</Box>
       </Stack>
     ) : (
       label
     );
+    const adornment = endAdornment ? (
+      <InputAdornment position="end" sx={{my: 1}}>
+        {endAdornment}
+      </InputAdornment>
+    ) : undefined;
 
     // Render as Select dropdown if enum values are provided
     if (stringDef.enum && stringDef.enum.length > 0) {
@@ -152,6 +160,7 @@ const renderSchemaField = <T extends Record<string, unknown>>(
                 id={fieldName}
                 type={fieldDef.type === 'mobile' ? 'tel' : 'text'}
                 slotProps={{
+                  ...(adornment && {input: {endAdornment: adornment}}),
                   htmlInput: {
                     inputMode: fieldDef.type === 'email' ? 'email' : undefined,
                     // Replaces MUI's description, so the error text is added back.

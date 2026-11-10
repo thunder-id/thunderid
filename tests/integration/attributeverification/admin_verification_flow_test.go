@@ -512,3 +512,46 @@ func (ts *AdminVerificationFlowTestSuite) ouAdministratorToken(name string) (str
 	ts.Require().NoError(err, "sign the administrator in")
 	return token.AccessToken, ouID
 }
+
+// The Console reads which flow to start from adminAttributeVerificationFlow, so bootstrap names the
+// shipped flow there.
+func (ts *AdminVerificationFlowTestSuite) TestServerConfigNamesTheShippedFlow() {
+	resp, err := testutils.GetHTTPClient().Get(testutils.TestServerURL + "/server-config/flow")
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+	ts.Require().Equal(http.StatusOK, resp.StatusCode)
+
+	var layers struct {
+		Merged map[string]struct {
+			DefaultHandle string `json:"defaultHandle"`
+		} `json:"merged"`
+	}
+	ts.Require().NoError(json.NewDecoder(resp.Body).Decode(&layers))
+	ts.Equal(adminVerificationFlowHandle, layers.Merged["adminAttributeVerificationFlow"].DefaultHandle)
+}
+
+// The setting takes an administrator-initiated flow and refuses one of any other type.
+func (ts *AdminVerificationFlowTestSuite) TestServerConfigAcceptsOnlyAdminInitiatedFlows() {
+	original, err := testutils.GetWritableServerConfig("flow")
+	ts.Require().NoError(err)
+	ts.T().Cleanup(func() {
+		ts.NoError(testutils.PutWritableServerConfig("flow", original))
+	})
+
+	withHandle := func(handle string) []byte {
+		section := map[string]interface{}{}
+		ts.Require().NoError(json.Unmarshal(original, &section))
+		section["adminAttributeVerificationFlow"] = map[string]string{"defaultHandle": handle}
+		body, err := json.Marshal(section)
+		ts.Require().NoError(err)
+		return body
+	}
+
+	status, body, err := testutils.PutWritableServerConfigWithStatus("flow", withHandle(ts.flowHandle))
+	ts.Require().NoError(err)
+	ts.Equal(http.StatusOK, status, string(body))
+
+	status, body, err = testutils.PutWritableServerConfigWithStatus("flow", withHandle(userSuspendFlowHandle))
+	ts.Require().NoError(err)
+	ts.Equal(http.StatusBadRequest, status, string(body))
+}

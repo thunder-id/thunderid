@@ -22,6 +22,10 @@ const UserQueryKeys = {
    */
   USER_OWNED_AGENTS: 'user-owned-agents',
   /**
+   * Key for the handle of the attribute verification flow the server configures.
+   */
+  ATTRIBUTE_VERIFICATION_FLOW: 'attribute-verification-flow',
+  /**
    * Base key for user type list queries.
    */
   USER_TYPES: 'userTypes',

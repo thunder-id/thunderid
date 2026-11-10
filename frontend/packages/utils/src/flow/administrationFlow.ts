@@ -106,7 +106,8 @@ export const FLOW_PAGE_SIZE = 100;
 
 /**
  * `flow` server-config entries; an unset handle is the opt-out, running the native endpoint. The
- * account lifecycle actions have no native endpoint, so an unset handle withholds them.
+ * account lifecycle actions and attribute verification have no native endpoint, so an unset handle
+ * withholds them. Attribute verification names an `ADMIN_INITIATED` flow, which starts by handle.
  */
 export const AdministrationFlowConfigKey = {
   SECRET_REGENERATION: 'secretRegenerationFlow',
@@ -118,6 +119,7 @@ export const AdministrationFlowConfigKey = {
   AGENT_UNSUSPEND: 'agentUnsuspendFlow',
   APPLICATION_SUSPEND: 'applicationSuspendFlow',
   APPLICATION_UNSUSPEND: 'applicationUnsuspendFlow',
+  ADMIN_ATTRIBUTE_VERIFICATION: 'adminAttributeVerificationFlow',
 } as const;
 
 export type AdministrationFlowConfigKeyValue =
@@ -129,6 +131,7 @@ export type AdministrationFlowConfigKeyValue =
  */
 export const AdministrationFlowInput = {
   APPLICATION: 'targetApplicationId',
+  ATTRIBUTE: 'attribute',
   GROUP: 'targetGroupId',
   OPERATOR_NOTE: 'operatorNote',
   ROLE: 'targetRoleId',
@@ -137,11 +140,14 @@ export const AdministrationFlowInput = {
 
 /**
  * Keys of values a flow returns; a regenerated client secret is readable only here. `emailSent` is
- * `"false"` when a best-effort email node sent nothing.
+ * `"false"` when a best-effort email node sent nothing. `channel` and `maskedDestination` say where a
+ * verification link went.
  */
 export const AdministrationFlowData = {
+  CHANNEL: 'channel',
   CLIENT_SECRET: 'clientSecret',
   EMAIL_SENT: 'emailSent',
+  MASKED_DESTINATION: 'maskedDestination',
 } as const;
 
 /**
