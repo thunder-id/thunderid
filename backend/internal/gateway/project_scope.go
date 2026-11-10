@@ -64,6 +64,8 @@ type projectScope struct {
 	others map[string]bool
 	owners map[string]string
 	needs  map[string][]string
+	// lacking is the changes that write what the gateway does not hold, or holds refused.
+	lacking map[string]bool
 }
 
 // ownersOf maps each resource that belongs to a project to that project, by key: a project's own
@@ -137,12 +139,17 @@ func soleNeeders(resources []bundleResource) map[string]string {
 
 // scopeToProject places each change of a diff in the project's sections and marks the needed changes the
 // gateway lacks or refused as required. Who owns a resource is read from the version, or, for one the
-// version removes, from what the gateway holds.
+// version removes, from what the gateway holds. Another project's resource that the project's resources
+// need and the gateway does not hold is needed too, so a project deploys before the projects it builds on:
+// it is only added, and one the gateway holds stays that project's to deploy.
 func scopeToProject(projectID string, owners map[string]string, diff *Diff) projectScope {
 	scope := projectScope{projectID: projectID, required: map[string]bool{}, others: map[string]bool{},
-		owners: owners, needs: map[string][]string{}}
+		owners: owners, needs: map[string][]string{}, lacking: map[string]bool{}}
 	for _, change := range diff.Changes {
 		scope.needs[change.Key] = change.Needs
+		if change.Change == ChangeAdded || change.Failed {
+			scope.lacking[change.Key] = true
+		}
 	}
 	var own []string
 	for key, owner := range owners {
@@ -160,7 +167,7 @@ func scopeToProject(projectID string, owners map[string]string, diff *Diff) proj
 			if change.Change != ChangeUnchanged && !change.HeldBack {
 				scope.defaults = append(scope.defaults, change.Key)
 			}
-		case owner != "":
+		case owner != "" && !needed[change.Key]:
 			change.Section = sectionOther
 			scope.others[change.Key] = true
 		case needed[change.Key]:
@@ -191,8 +198,10 @@ func (s projectScope) reach(from []string) map[string]bool {
 		key := queue[0]
 		queue = queue[1:]
 		for _, need := range s.needs[key] {
-			// What any project owns is its own to deploy, so what it names is not followed either.
-			if s.owners[need] != "" || reached[need] {
+			// What a project owns is its own to deploy, so what it names is not followed either, unless the
+			// gateway does not hold it: then nothing of that project's runs there yet for this one to change.
+			owner := s.owners[need]
+			if reached[need] || owner == s.projectID || (owner != "" && !s.lacking[need]) {
 				continue
 			}
 			reached[need] = true

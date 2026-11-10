@@ -320,12 +320,13 @@ func TestRefusalsAgreeWithTheirCount(t *testing.T) {
 	assert.Contains(t, missing.ErrorDescription.DefaultValue, "flow/f, which the gateway does not hold. Select it")
 }
 
-// What another project owns is that project's, even when the project's resources name it, and what it
-// names in turn is not followed: it is never placed as needed, and so never sent with this project.
-func TestReachStopsAtAnotherProjectsResources(t *testing.T) {
+// What another project owns and the gateway holds is that project's, even when the project's resources name
+// it, and what it names in turn is not followed: it is never placed as needed, and so never sent with this
+// project.
+func TestReachStopsAtAnotherProjectsResourcesTheGatewayHolds(t *testing.T) {
 	diff := &Diff{Changes: []Change{
 		{Key: "application/shop", Change: ChangeAdded, Needs: []string{"application/bill"}},
-		{Key: "application/bill", Change: ChangeAdded, Needs: []string{"flow/bill-only"}},
+		{Key: "application/bill", Change: ChangeUpdated, Needs: []string{"flow/bill-only"}},
 		{Key: "flow/bill-only", Change: ChangeAdded},
 	}}
 	owners := map[string]string{"application/shop": "shop", "application/bill": "billing"}
@@ -336,6 +337,25 @@ func TestReachStopsAtAnotherProjectsResources(t *testing.T) {
 		"flow/bill-only": sectionShared}, sectionsOf(diff))
 	assert.Equal(t, []string{"application/shop"}, scope.defaults)
 	assert.False(t, changeNamed(diff, "flow/bill-only").Required)
+}
+
+// Another project's resource the project's resources need and the gateway does not hold is needed, with what
+// it needs in turn, so the project deploys before that project has: both are required and sent by default.
+func TestAnotherProjectsResourceTheGatewayLacksIsBroughtAlong(t *testing.T) {
+	diff := &Diff{Changes: []Change{
+		{Key: "application/shop", Change: ChangeAdded, Needs: []string{"flow/login"}},
+		{Key: "flow/login", Change: ChangeAdded, Needs: []string{"flow/bill-only"}},
+		{Key: "flow/bill-only", Change: ChangeAdded},
+	}}
+	owners := map[string]string{"application/shop": "shop", "flow/login": "default", "flow/bill-only": "default"}
+
+	scope := scopeToProject("shop", owners, diff)
+
+	assert.Equal(t, map[string]string{"application/shop": sectionProject, "flow/login": sectionNeeded,
+		"flow/bill-only": sectionNeeded}, sectionsOf(diff))
+	assert.True(t, changeNamed(diff, "flow/login").Required)
+	assert.ElementsMatch(t, []string{"application/shop", "flow/login", "flow/bill-only"}, scope.defaults)
+	assert.Nil(t, scope.check(scope.defaults))
 }
 
 // A needed change the gateway holds back stays required but is not sent by default: only selecting it
@@ -351,4 +371,24 @@ func TestAHeldBackRequiredChangeIsNotADefault(t *testing.T) {
 	assert.True(t, changeNamed(diff, "flow/f").Required)
 	assert.Equal(t, []string{"application/shop"}, scope.defaults)
 	assert.NotNil(t, scope.check(scope.defaults), "a default apply left out a held-back required change silently")
+}
+
+// A project deploys to a gateway the default project has not been deployed to: the organization's unit and
+// the project's application name the sign-in flow the default project holds, which the deploy brings along.
+func (s *ProjectScopeTestSuite) TestAProjectDeploysWithoutTheDefaultProjectBeforeIt() {
+	s.projects.projects["default"] = "Default"
+	s.captureDocs(
+		"resource_type: organization_unit\nid: ou-default\nname: default\nauthFlowId: flow-login",
+		"resource_type: flow\nid: flow-login\nname: login\nprojectId: default",
+		projectApp("app-bill", "billing", "ou-default", "flow-login"),
+	)
+
+	result, svcErr := s.f.svc.Apply(context.Background(), "gw-1", ApplyRequest{Project: "billing"})
+
+	s.Require().Nil(svcErr, "%v", svcErr)
+	sent := s.f.client.last().Content
+	s.Contains(sent, "id: app-bill")
+	s.Contains(sent, "id: ou-default")
+	s.Contains(sent, "id: flow-login", "the flow the project needs was not brought along")
+	s.NotNil(result)
 }
