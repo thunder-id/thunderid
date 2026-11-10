@@ -93,6 +93,29 @@ You can pass additional parameters:
 await auth.signIn({ fidp: 'GoogleOIDCAuthenticator' })
 ```
 
+To request [RFC 9396 authorization details](../../../../guides/protocols/oauth-oidc/rich-authorization-requests) for this sign-in only, pass `authorizationDetails`. It replaces the `authorizationDetails` configuration for this sign-in:
+
+```javascript
+await auth.signIn({
+  authorizationDetails: [
+    {
+      type: 'payment_initiation',
+      creditorName: 'Merchant B',
+      instructedAmount: { currency: 'EUR', amount: 80 },
+    },
+  ],
+})
+```
+
+The user can lower values on the consent step, so read what was granted from the `authorization_details` claim of the access token after the callback:
+
+```javascript
+const claims = await auth.decodeJwtToken(await auth.getAccessToken())
+console.log(claims.authorization_details)
+```
+
+When the server rejects the authorization details, it redirects back with `error=invalid_authorization_details` and an `error_description` in the query, and the user stays signed out. Calling `signIn()` on that page throws `ThunderIDAuthException` with code `SPA-AUTH_HELPER-SI-SE01`. Its `name` is the error and its `message` is the description, and the call removes both from the URL.
+
 **Returns:** `Promise<User | undefined>`, the authenticated user on callback, or `undefined` during the redirect.
 
 #### `signInSilently(additionalParams?)`

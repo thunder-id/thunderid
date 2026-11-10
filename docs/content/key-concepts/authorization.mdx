@@ -25,6 +25,20 @@ This mechanism prevents a token issued for one service from being reused at anot
 
 See [Resource Indicators](../../guides/protocols/oauth-oidc/resource-indicators) for usage details.
 
+## Fine-Grained Authorization with Authorization Details
+
+Scopes grant standing permissions such as `payments:read`. Some decisions concern one transaction and the values in it, such as a payment of 120.50 EUR to a named creditor, or read access to two specific accounts. For these, a client sends **authorization details** ([RFC 9396](https://datatracker.ietf.org/doc/html/rfc9396)): a JSON array of objects, each with a `type` and the fields of one authorization.
+
+Each `type` is registered in <ProductName /> as an authorization details type, shown as **Intents** in the Console. The type's schema decides which fields a client may send, and its policy decides which fields the user or the client may later lower or remove. A type can name a processor, the resource owner's own system, which approves or refuses each requested detail and can fill in fields such as a debtor account. In a sign-in, the user then sees each detail on the consent screen and approves or denies it. With the client credentials grant, the processor decides alone.
+
+Authorization details sit alongside scopes and resource servers rather than replacing them:
+
+- A token that carries authorization details is bound to one resource server, the same way as a token with permission scopes, so its `aud` names the API that enforces the details.
+- The access token carries the approved details in its `authorization_details` claim, which the resource server reads to enforce the exact values approved.
+- A type marked for reuse lets an earlier approval stand for later requests and refreshes; a one-off type, such as a single payment, needs approval every time and is not renewed on refresh.
+
+See [Rich Authorization Requests](../../guides/protocols/oauth-oidc/rich-authorization-requests) for the protocol details and [Intents](../../guides/intents) to register types.
+
 ## Federated Attribute Mapping
 
 A connection to an external identity provider can map the attribute values it asserts, such as group membership, onto local roles, groups, or permissions, so a federated identity's standing at the provider decides its local access without an administrator assigning it by hand or repeating the work whenever someone changes teams or leaves. The mapping applies consistently wherever the identity's attributes are read: at sign-in, when a token from that connection is exchanged, and when an identity assertion it issued is presented. Everything a mapping grants adds to whatever is already assigned directly; it never replaces it.

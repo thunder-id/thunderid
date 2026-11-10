@@ -155,6 +155,37 @@ identifier: {{.RESOURCE_SERVER__0198F3A17C2E7B109A445D3E8F21C6B7__IDENTIFIER}}
 
 Its resources, actions, and delimiter are exported as they are.
 
+## Processor Credentials
+
+[Intents](./intents.mdx) export as `authorization_detail_type` documents. Select them with `authorizationDetailTypes` in the export request, for example `"authorizationDetailTypes": ["*"]` for all of them. The schema is written as its JSON, so its properties keep the order of the rows on the consent card. `"*"` leaves out intents loaded from declarative files. Naming one by its ID exports it.
+
+A processor credential is exported as a template variable named like any other field: `AUTHORIZATION_DETAIL_TYPE`, the intent's ID, and the credential field, joined by double underscores. An intent with the ID `01a1ba94-812b-766a-867a-e9f0a442172f` and a bearer token exports:
+
+```yaml
+resource_type: authorization_detail_type
+id: 01a1ba94-812b-766a-867a-e9f0a442172f
+type: payment_initiation
+name: Payment initiation
+schema: {"type":"object","properties":{"...":"..."}}
+consentTemplate: Pay {{instructedAmount.amount}} {{instructedAmount.currency}} to {{creditorName}}
+processor:
+  endpoint: https://payments.example.com/rar/process
+  authentication:
+    type: bearer
+    properties:
+      token: {{.AUTHORIZATION_DETAIL_TYPE__01A1BA94812B766A867AE9F0A442172F__TOKEN}}
+reuse: false
+```
+
+| Authentication method | Exported as a variable | Variable for an intent with the ID `0198f3a1-7c2e-7b10-9a44-5d3e8f21c6b7` |
+| --- | --- | --- |
+| `bearer` | `token` | `AUTHORIZATION_DETAIL_TYPE__0198F3A17C2E7B109A445D3E8F21C6B7__TOKEN` |
+| `basic` | `password`. The `username` is exported as it is. | `AUTHORIZATION_DETAIL_TYPE__0198F3A17C2E7B109A445D3E8F21C6B7__PASSWORD` |
+| `api_key` | Each header, named after the header | `AUTHORIZATION_DETAIL_TYPE__0198F3A17C2E7B109A445D3E8F21C6B7__X_API_KEY` for `X-Api-Key` |
+| `none` | Nothing. `type: none` is written, so an import does not keep a credential stored earlier. | None |
+
+`environment_variables` carries the value of each processor credential, so treat the export response as a secret. The summary placeholders in `consentTemplate`, such as `{{creditorName}}`, are not template variables and import as they are.
+
 ## Exports From a Control Plane
 
 What an export contains depends on the plane you export from. A data plane holds its own values, so

@@ -59,6 +59,7 @@ app.use(
 | `afterSignOutUrl` | `string` | ❌ | `${origin}/logout` | Callback URL used after sign-out when not explicitly set |
 | `mode` | `'redirect' \| 'embedded'` | ❌ | `'redirect'` | Authentication interaction mode |
 | `signInOptions` | `Record<string, any>` | ❌ | - | Additional authorize request parameters |
+| `authorizationDetails` | `AuthorizationDetail[]` | ❌ | - | RFC 9396 authorization details to request on every sign-in. See [Authorization Details](#authorization-details) |
 | `signOutOptions` | `Record<string, unknown>` | ❌ | - | Additional sign-out request parameters |
 | `applicationId` | `string` | ❌ | - | Application identifier used by some flows such as embedded sign-in |
 
@@ -77,6 +78,45 @@ These fields come from `StrictExpressClientConfig`.
 :::note
 `protect()` accepts its own `onUnauthenticated` callback argument. The current `protect()` implementation does not read `config.onUnauthenticated`.
 :::
+
+## Authorization Details
+
+Set `authorizationDetails` to request [RFC 9396 authorization details](../../../../../guides/protocols/oauth-oidc/rich-authorization-requests), such as a single payment. The details the server granted reach `onSignIn` as `tokenResponse.authorizationDetails`. They can differ from the ones requested, since the user can lower values on the consent step:
+
+```ts title="src/server.ts" showLineNumbers
+import cookieParser from 'cookie-parser'
+import express from 'express'
+import { handleSignIn, thunderID, type TokenResponse } from '@thunderid/express'
+
+const app = express()
+
+app.use(cookieParser())
+app.use(
+  thunderID({
+    baseUrl: 'https://localhost:8090',
+    clientId: '<your-client-id>',
+    clientSecret: '<your-client-secret>',
+    afterSignInUrl: 'http://localhost:3000/callback',
+    scopes: ['openid', 'profile'],
+    authorizationDetails: [
+      {
+        type: 'payment_initiation',
+        creditorName: 'Merchant C',
+        instructedAmount: { currency: 'EUR', amount: 60 },
+      },
+    ],
+    onSignIn: (res: express.Response, tokenResponse: TokenResponse) => {
+      res.json({ authorizationDetails: tokenResponse.authorizationDetails })
+    },
+  }),
+)
+app.get('/login', handleSignIn())
+app.get('/callback', handleSignIn())
+
+app.listen(3000)
+```
+
+`tokenResponse.authorizationDetails` is absent when the server granted none. For the request and token fields, see [Rich Authorization Requests](../../../../javascript/apis/thunderid-javascript-client#rich-authorization-requests) in the JavaScript SDK reference.
 
 ## Session Cookie Configuration
 

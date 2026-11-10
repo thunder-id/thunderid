@@ -383,6 +383,7 @@ Every flow you deploy must reference only executors that are registered on the s
 | **Unlock Identity** | Clears every lock on a user or agent. In a recovery flow, releases the account whose credential the flow set. | In a recovery flow, Set Credentials must have run |
 | **OpenID4VP Verify** | Initiates an OpenID4VP credential presentation request, returns a QR code and deep link for the user's wallet, and polls until the credential is verified. | OpenID4VP service configured in <ProductName /> |
 | **Authorization** | Evaluates authorization policies for the current user. | - |
+| **Check Intents** | Runs the processors of the requested authorization details before User Consent. | User authenticated |
 | **User Consent** | Records explicit user consent for defined scopes or terms. | - |
 | **Validate Permission** | Checks that the request has required scope/permissions. | - |
 | **OU Creation** | Creates an organizational unit for the user. | - |
@@ -1742,6 +1743,8 @@ Evaluates whether the authenticated user holds the required permissions. The aut
 3. Calls the authorization service with the user ID, group IDs, and requested permissions.
 4. Passes the authorized permission set to Auth Assertion Generator.
 
+When the request carries [authorization details](../../protocols/oauth-oidc/rich-authorization-requests), the executor sends the requested details to the policy engine as `authorization_details` in the evaluation `context`. The policy engine decides only the permissions; the details are approved by Check Intents and User Consent.
+
 If no permissions are configured, the executor completes immediately with an empty permission set.
 
 **Input Configuration:** None. The executor reads `requested_permissions` from user inputs or the OIDC scope; it has no registered node input defaults.
@@ -1766,9 +1769,9 @@ If no permissions are configured, the executor completes immediately with an emp
 </details>
 
 <details>
-<summary>Authorization Details</summary>
+<summary>Check Intents</summary>
 
-Runs the processors of the RFC 9396 authorization details the application requests. A processor can approve a detail, refuse it, or fill in fields its type leaves to the processor. User Consent then prompts the user for the approved details, and Auth Assertion Generator issues the details the user grants.
+Runs the [processors](../../integrations/authorization-details-processor) of the [RFC 9396 authorization details](../../protocols/oauth-oidc/rich-authorization-requests) the application requests. A processor can approve a detail, refuse it, or fill in fields its type leaves to the processor. User Consent then prompts the user for the approved details, and Auth Assertion Generator issues the details the user grants.
 
 **When to use:** In authentication flows of applications that request `authorization_details`. Place it after authentication and before User Consent. If a requested detail's type declares a processor and this executor has not run, User Consent fails the flow with `FET-1130`.
 
@@ -1780,6 +1783,8 @@ Runs the processors of the RFC 9396 authorization details the application reques
 3. Applies the processors' changes and passes the approved details to User Consent.
 
 **Input Configuration:** None.
+
+See [Intents](../../intents) for the types and their processors.
 
 **Example:**
 
@@ -1806,7 +1811,7 @@ Runs the processors of the RFC 9396 authorization details the application reques
 
 Checks whether the authenticated user has active consent records for the required attributes and the requested authorization details, prompts if any are missing, and records the user's decisions. Auth Assertion Generator automatically filters token claims to consented attributes, and issues only the authorization details the user granted, when this executor has run.
 
-**When to use:** OAuth flows where the application requests access to specific user data. Required for privacy regulation compliance in many jurisdictions. Also required when the application requests `authorization_details`: without it, the login ends with `access_denied`. The default authentication flows have no User Consent step, so add one, with Authorization Details before it when a requested type declares a processor.
+**When to use:** OAuth flows where the application requests access to specific user data. Required for privacy regulation compliance in many jurisdictions. Also required when the application requests `authorization_details`: without it, the login ends with `access_denied`. The default authentication flows have no User Consent step, so add one, with Check Intents before it when a requested type declares a processor.
 
 **Prerequisites:**
 - `userID` (required): must be present in runtime data. Set by any authentication executor. The executor fails if missing.
@@ -1816,7 +1821,7 @@ Checks whether the authenticated user has active consent records for the require
 
 **How consent resolution works:**
 1. Reads `required_essential_attributes` and `required_optional_attributes` from the application's assertion configuration.
-2. Calls the consent enforcer to check existing consent records. An earlier approval covers a requested authorization detail while the consent record is within the application's login consent validity period, the detail's type allows reuse and is still on the version the approval was given on, and the request asks for no more than the approval. A `prompt=consent` request and a CIBA request always prompt.
+2. Calls the consent enforcer to check existing consent records. An earlier approval covers a requested authorization detail while the consent record is within the application's login consent validity period, the detail's type allows reuse and is still on the version the approval was given on, and the request asks for no more than the approval. A `prompt=consent` request, a CIBA request, and an application or agent with `loginConsent.alwaysPrompt` set to `true` always prompt.
 3. If all consents are active, completes immediately: no prompt is needed.
 4. If any consents are missing, forwards the prompt data to the Consent View and awaits the user's decisions.
 5. After decisions are received, records them and makes `consentId` and `consented_attributes` available for Auth Assertion Generator.
@@ -1825,7 +1830,8 @@ Checks whether the authenticated user has active consent records for the require
 
 | Property | UI Label | Required | Description |
 |---|---|---|---|
-| `timeout` | Consent Timeout (seconds) | No | Seconds before the consent prompt expires. If the user does not respond in time, the executor fails. |
+| `timeout` | Consent timeout (seconds) | No | Seconds before the consent prompt expires. `0` means no timeout. A prompt that times out records no consent: the flow goes on with no consented attributes or authorization details, or fails when `failOnDeny` is `true`. |
+| `failOnDeny` | Fail flow when user denies consent | No | When `true`, the flow fails if the user denies the prompt or lets it time out, even if every prompted item is optional. Default: `false`. |
 
 **Input Configuration:**
 - `consent_decisions` (required): JSON-encoded consent decisions returned by the Consent View. Default: `consent_decisions`
@@ -1851,8 +1857,9 @@ Checks whether the authenticated user has active consent records for the require
 **Failure conditions:**
 - `userID` not available
 - User denied one or more essential (required) attributes: hard failure
-- Consent prompt timed out (if `timeout` is configured)
-- A requested authorization detail needs its type's processor and Authorization Details did not run (`FET-1130`)
+- Consent prompt timed out with `failOnDeny` set, or the decisions arrived after the prompt expired
+- User denied the prompt with `failOnDeny` set
+- A requested authorization detail needs its type's processor and Check Intents did not run (`FET-1130`)
 - A change the user made to an authorization detail is not allowed by its type (`FET-1129`)
 - A requested authorization details type changed while the flow was in progress (`FET-1128`)
 - Consent service error

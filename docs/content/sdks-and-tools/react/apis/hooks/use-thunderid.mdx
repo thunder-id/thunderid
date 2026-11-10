@@ -53,6 +53,61 @@ The hook returns all properties and methods provided by `ThunderIDContextProps`:
 | `loading` | `boolean` | Indicates if an authentication operation is in progress |
 | `error` | `Error \| null` | The last error encountered during authentication, if any |
 
+## Request Authorization Details
+
+To request [RFC 9396 authorization details](../../../../../guides/protocols/oauth-oidc/rich-authorization-requests), such as a single payment, set the `authorizationDetails` prop of `ThunderIDProvider`. To request them for one sign-in only, pass `authorizationDetails` to `signIn()`. It replaces the provider's `authorizationDetails` for that sign-in. They are sent on redirect and silent sign-ins: an app-native sign-in flow cannot carry them:
+
+```jsx title="src/PayButton.jsx" showLineNumbers
+import { useState } from 'react'
+import { useThunderID } from '@thunderid/react'
+
+function PayButton() {
+  const { signIn } = useThunderID()
+  const [error, setError] = useState(null)
+
+  const pay = () => {
+    setError(null)
+    signIn({
+      authorizationDetails: [
+        {
+          type: 'payment_initiation',
+          creditorName: 'Merchant B',
+          instructedAmount: { currency: 'EUR', amount: 80 },
+        },
+      ],
+    }).catch((err) => setError(err.message))
+  }
+
+  return (
+    <>
+      <button onClick={pay}>Pay Merchant B</button>
+      {error && <p role="alert">{error}. Try again.</p>}
+    </>
+  )
+}
+
+export default PayButton
+```
+
+The user can lower values on the consent step, so read what was granted from the `authorization_details` claim of the access token:
+
+```ts title="src/grantedAuthorizationDetails.ts" showLineNumbers
+import type { AuthorizationDetail } from '@thunderid/react'
+
+export const getGrantedAuthorizationDetails = async (
+  getAccessToken: () => Promise<string>,
+): Promise<AuthorizationDetail[] | undefined> => {
+  const accessToken: string = await getAccessToken()
+  const payload: string = accessToken.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')
+  const bytes: Uint8Array = Uint8Array.from(atob(payload), (char: string) => char.charCodeAt(0))
+  const claims: { authorization_details?: AuthorizationDetail[] } = JSON.parse(new TextDecoder().decode(bytes))
+
+  return claims.authorization_details
+}
+```
+
+Call it with the `getAccessToken` function that `useThunderID()` returns, once `isSignedIn` is `true`. When the server rejects the authorization details, it redirects back with `error=invalid_authorization_details` and an `error_description` in the query. The user stays signed out, and `isLoading` stays `true` while the error is in the URL. The next `signIn()` call rejects with a `ThunderIDRuntimeError` whose message starts with `Sign in failed:` followed by the description, and removes the error from the URL, so handle the rejection and let the user try again.
+
 ## Error Handling
 
 If `useThunderID` is called outside of a `ThunderIDProvider`, it throws:
